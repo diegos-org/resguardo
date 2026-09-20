@@ -1,3 +1,17 @@
+# Regra operacional nova — checagem horária e PRs
+
+A coordenação não depende mais de esperar três horas completas. Rivers já foi alterado para **checar o repo a cada hora** e só trabalhar quando realmente for sua vez.
+
+Lia e Sage devem adotar o mesmo padrão nas próprias rotinas quando possível: checar de hora em hora; se não for a vez deles, ficam quietos. Se houver handoff novo, trabalham.
+
+Quando houver PR realmente pronto para você:
+- o repo deve marcar **DIEGO REVIEW REQUIRED**;
+- você recebe um aviso curto;
+- Lia pode reforçar pelo WhatsApp se esse canal estiver disponível;
+- ninguém deve te chamar para merge se houver conflito ou se ainda faltar validação.
+
+---
+
 # Índice rápido de Diego — materiais que existem
 
 
