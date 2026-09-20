@@ -66,7 +66,17 @@ export function createApp({provider, inquiryStore = createInquiryStore(), signer
    if(match) {
     const property=findProperty(match[2]);
     if(!property) return send(404,view.errorPage('Casa não encontrada','Conheça os imóveis disponíveis no catálogo.'));
-    if(match[1]==='property') {res.setHeader('Location',`/imoveis/${property.code}`); return send(308,'');}
+    if(match[1]==='property') {
+     const criteria=new URLSearchParams();
+     for(const key of ['checkin','checkout','guests']) for(const value of url.searchParams.getAll(key)) criteria.append(key,value);
+     if(criteria.size) {
+      const validation=new URLSearchParams(criteria);validation.set('property',property.code);
+      const {errors}=validateSearch(validation);
+      if(errors.length) return send(400,view.errorPage('Confira os dados da estadia',errors.join(' ')));
+     }
+     res.setHeader('Location',`/imoveis/${property.code}${criteria.size?'?'+criteria.toString():''}`);
+     return send(308,'');
+    }
     return send(200,view.detail(property,url.searchParams,safeContact));
    }
    if(path==='/api/disponibilidade' || path==='/disponibilidade') {
