@@ -1,10 +1,12 @@
-# Sage terminou — 20/09, após seu chamado
+# Decisão de Diego — mobile-first e página sem transbordamento, 20/09/2026
 
-Minha rotina agora verifica de hora em hora, sempre no minuto 15. Só trabalho quando houver passagem de turno para mim; sem novidade, fico quieto. Quando terminar uma rodada de verdade, continuo te avisando. Isso já foi salvo e confirmado ativo.
+Prioridade alta, reafirmada diretamente por Diego: hóspedes usarão predominantemente celular; proprietários e Diego também devem operar pelo celular, salvo funções específicas. Beleza, legibilidade, desempenho e usabilidade devem ser concebidos primeiro para toque/telas pequenas, mantendo boa adaptação ao desktop. Não tratar mobile como acabamento posterior.
 
-A Lia leu parte do código, mas ainda não conseguiu baixá-lo para testar. Testei outra saída: baixar pelo navegador do GitHub. Funcionou aqui; conferi que os 19 arquivos são exatamente os enviados e rodei novamente os 22 testes, todos passaram. Deixei o caminho e um pacote limpo para transferência no [handoff](handoffs/2026-09-20-1743-sage-para-lia.md). Ainda não significa que Lia conseguiu no ambiente dela.
+Critério de aprovação: página encaixada na largura disponível desde o primeiro carregamento, sem zoom manual ou arrasto lateral para alcançar conteúdo. Rolagem vertical normal é esperada; não espremer a página inteira na altura de uma tela. Carrosséis podem rolar dentro de sua própria área, sem alargar o documento. Não mascarar defeitos cortando conteúdo com overflow hidden global. Preservar zoom e ampliação de texto acessíveis.
 
-Lia pode retomar a validação, e Rivers já pode revisar. Se quiser acelerar, você pode encaminhar o pacote SCL-base-limpa-PR1.zip entregue na tarefa Sage. Não precisa configurar serviço, dar senha ou publicar nada agora. Ainda não estamos pedindo merge: falta a conferência prática da Lia. Site local e produção não foram alterados.
+Na próxima validação prática de Sage/Lia, conferir home, catálogo, cada imóvel, consulta e demo de checkout: larguras 320, 360, 390, 430, 768, 1024 e 1440 px, retrato/paisagem e Fold aberto/fechado quando disponível. Conferir carregamento inicial e após imagens/fontes, troca de imóvel, mensagens longas/erros, calendário aberto, recibo e teclado virtual. Documento não deve exceder a largura do viewport (tolerância de arredondamento de 1 px); campos, botões, calendário e WhatsApp não podem esconder conteúdo ou ações. Verificar toque, foco, tamanho de texto e zoom, além de screenshots. Emulação não equivale a teste em aparelho real: registrar aparelhos/navegadores efetivamente usados, incluindo Safari iOS e Chrome Android quando disponíveis.
+
+Aplicar o mesmo requisito aos futuros portais e painel, sem implementar esses módulos agora. Este registro é requisito de produto e roteiro de validação, não alegação de correção/teste já realizado. Não altera a vez dos agentes nem autoriza merge/publicação. Diego não precisa fazer nada agora.
 
 ---
 
@@ -95,12 +97,3 @@ Seu pedido de aviso foi incluído: ao encerrar cada rodada, Sage sempre escreve 
 Li a entrega de Sage e parte do código do PR#1. A leitura confirma que a demonstração não habilita cobrança e que uma disponibilidade desconhecida não vira reserva. Ainda não consegui executar a cópia: o acesso ao GitHub funciona no navegador, mas a obtenção dos arquivos para o ambiente de testes falhou. Portanto, não estou chamando essa etapa de validada; os22 testes continuam sendo os que Sage relatou.
 
 Deixei em LIA.md os limites e quatro fluxos para a conferência prática. Sage/Rivers podem preparar uma cópia local acessível; se precisarmos de preview remoto, combinamos antes, sem contratar ou publicar automaticamente. Não houve alteração de produção, merge, integração ou envio de dados reais. A próxima janela de Sage continua18h15. [Handoff Lia](handoffs/2026-09-20-1700-lia-para-sage.md).
-
-
-## Comunicação por voz / WhatsApp — decisão atual
-
-- Lia passa a poder usar ElevenLabs para transcrever áudios do WhatsApp.
-- Widget de voz na home entrou em Labs, não em implementação imediata.
-- Atendimento instantâneo via WhatsApp será estudado comparando ElevenLabs e Meta Business Agent.
-- Twilio não é mais a preferência atual.
-- Não há decisão de contratar API nova agora.
