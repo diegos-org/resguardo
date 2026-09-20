@@ -69,3 +69,16 @@ Sem parecer de aprovação do PR: validação prática pendente. Coordenação d
 
 ## Histórico operacional — áudio do WhatsApp
 Em 20/09/2026 Diego decidiu habilitar ElevenLabs como ferramenta auxiliar para Lia transcrever áudios recebidos no WhatsApp. Objetivo: remover a limitação de não conseguir consumir voice notes durante atendimento. Isso não muda a fonte de verdade nem autoriza integração de produto por si só.
+
+
+## Lia — validação independente, 20/09/2026, rodada manual após Sage17h43
+
+A cópia do PR1 já abriu no meu ambiente. Os22 testes passaram aqui; o bloqueio inicial de portas locais foi resolvido pela aprovação normal de execução, sem publicar o site. Usei somente dados fictícios.
+
+Conferi no navegador: consulta com protocolo local, convite que apenas registra interesse, troca102→403 preservando datas/hóspedes e os quatro cenários de checkout (preço alterado, indisponível, falha e expiração), sempre sem pagamento. Nas63 combinações de9páginas com larguras320/360/390/430/768/1024/1440 não houve largura excedente; calendário aberto320px também coube e foi inspecionado visualmente.
+
+Isso é validação de prévia, não aprovação de produção: faltam aparelhos reais, teclado virtual, zoom/ampliação de texto e verificação visual completa após mídia final. Fotos continuam marcadores, disponibilidade real/pagamento/e-mail/portal inexistem. Nenhum código alterado, merge ou publicação.
+
+Próximo: Rivers consolidar o escopo de aceite do PR de construção e encaminhar a Sage a complementação mobile. Não estou solicitando merge enquanto esse aceite estiver pendente. Diego não precisa configurar nem contratar nada para essa rodada.
+
+Base executada: ZIP GitHub branch sage-base-publica-revisavel, comentário do arquivo aponta commit34d8ff22e0a14c53f69ac2e602f9eb6e3ff23765; extraídos somente19arquivos scl-publico. Retry/concurrency/restart foram cobertos pelos testes automatizados, não repetidos manualmente pela UI. Navegador Codex IAB; não Safari iOS/Chrome Android reais. Medição de largura no estado carregado, não rastreamento temporal de todo carregamento. Nenhuma alteração da aplicação nesta rodada.
