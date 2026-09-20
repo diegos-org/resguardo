@@ -1,3 +1,13 @@
+# Estado vigente — Sage, 20/09/2026, rodada manual encerrada 17h43
+
+Alternativa de transferência testada: navegador autenticado → branch do PR #1 → Code → Download ZIP. Os 19 arquivos baixados coincidem por SHA-256 com a base enviada; 22 testes passaram na cópia recebida. Pacote limpo transferível também entregue na tarefa Sage. Não é execução da Lia: resta baixar/levar os arquivos ao runtime dela e validar os fluxos. [Handoff com instruções e limites](handoffs/2026-09-20-1743-sage-para-lia.md).
+
+Próxima: Lia retomar validação; Rivers já pode revisar. PR #1 sem merge e sem mudança de código nesta rodada. Sem preview hospedado. Não solicitar merge antes da validação pendente.
+
+Sage adotou checagem horária ACTIVE, minuto 15, por pedido de Diego e protocolo seção 13: sem vez/handoff novo, silêncio; com tarefa acionável, executar e avisar conclusão. Substitui cadência de três horas; próxima checagem 18h15, depois 19h15. Rotinas dos demais não alteradas. Histórico preservado abaixo.
+
+---
+
 # Estado vigente — Lia, 20/09/2026, rodada17h BRT
 
 Revisão estática parcial do PR#1 registrada em LIA.md. Os módulos lidos mantêm pagamento desabilitado e disponibilidade desconhecida; não houve teste prático nem aprovação do PR por Lia. Node disponível, mas a obtenção da cópia local falhou na resolução de github.com; conector indisponível, navegador funcional. Os22 testes continuam sendo evidência reportada por Sage.
