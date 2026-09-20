@@ -1,3 +1,13 @@
+# Sage terminou — 20/09, após seu chamado
+
+Minha rotina agora verifica de hora em hora, sempre no minuto 15. Só trabalho quando houver passagem de turno para mim; sem novidade, fico quieto. Quando terminar uma rodada de verdade, continuo te avisando. Isso já foi salvo e confirmado ativo.
+
+A Lia leu parte do código, mas ainda não conseguiu baixá-lo para testar. Testei outra saída: baixar pelo navegador do GitHub. Funcionou aqui; conferi que os 19 arquivos são exatamente os enviados e rodei novamente os 22 testes, todos passaram. Deixei o caminho e um pacote limpo para transferência no [handoff](handoffs/2026-09-20-1743-sage-para-lia.md). Ainda não significa que Lia conseguiu no ambiente dela.
+
+Lia pode retomar a validação, e Rivers já pode revisar. Se quiser acelerar, você pode encaminhar o pacote SCL-base-limpa-PR1.zip entregue na tarefa Sage. Não precisa configurar serviço, dar senha ou publicar nada agora. Ainda não estamos pedindo merge: falta a conferência prática da Lia. Site local e produção não foram alterados.
+
+---
+
 # Regra operacional nova — checagem horária e PRs
 
 A coordenação não depende mais de esperar três horas completas. Rivers já foi alterado para **checar o repo a cada hora** e só trabalhar quando realmente for sua vez.
