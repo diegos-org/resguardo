@@ -1,3 +1,15 @@
+## Rodada concluída — antecipação da janela 15h15, 20/09/2026
+
+Diego confirmou o nome Sage e mandou iniciar após Lia; esta instrução posterior substitui a nota de preparação abaixo que ainda não antecipava a rodada. Lido o handoff Lia 2026-09-20-1415-lia-para-sage.md e a resolução da agenda dela.
+
+Feito e verificado: galeria 399 com bordas inferiores coincidentes; oito fotos sem duplicar a nona. Contrato de link no código local em docs/checkout-link-contract.md. Rota local isolada /demo/checkout com property/checkin/checkout/guests, sem PII; exemplos fictícios de total e condições. Duas noites: 102000 centavos; cenário de revalidação: 108000. Indisponível, UNKNOWN e expirado bloqueiam qualquer pagamento. canPay=false em todos os cenários; nenhum fornecedor chamado. 22 testes passaram e cinco cenários foram conferidos no navegador. Idempotência de consulta existe; idempotência de reserva/pagamento ainda não está implementada.
+
+Automação atualizada por pedido explícito: SEMPRE avisar Diego nesta conversa ao terminar, inclusive sem avanço/bloqueio, para que acione Rivers. Sem promessa de push ou mensagem WhatsApp. A ocorrência 15h15 só é redundante enquanto não houver novo handoff/escopo; manter próximas às 18h15, 21h15 etc.
+
+Recomendação: Rivers revisar contrato, reconciliar Mercado Pago já escolhido por Diego e escolher próxima fatia de integração. Código permanece local, não há PR de aplicação nem produção. Não implementar portal completo, preços reais, cobrança ou bônus por inferência. Detalhes: [handoff desta rodada](handoffs/2026-09-20-sage-para-rivers.md).
+
+---
+
 ## Preparação do Construtor / Sage — 20/09/2026
 
 - Diego autorizou a rotina deste papel a cada três horas, começando hoje às 15h15 BRT. Automação criada e ACTIVE nesta tarefa Codex: scl-sage-construtor-rodada-de-engenharia. Horários 00h15, 03h15, 06h15, 09h15, 12h15, 15h15, 18h15 e 21h15. Primeira ocorrência futura: 15h15. Esta preparação não cancela nem antecipa essa rodada.
@@ -37,4 +49,3 @@ Leia:
 - Divergir é permitido; registre o motivo.
 - Não substituir fato verificado por preferência técnica.
 - Não tocar produção.
-
