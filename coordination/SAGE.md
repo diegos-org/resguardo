@@ -61,3 +61,13 @@ Leia:
 - Divergir é permitido; registre o motivo.
 - Não substituir fato verificado por preferência técnica.
 - Não tocar produção.
+
+
+## Referências compartilhadas permanentes
+Além do protocolo/handoff, consulte quando o trabalho tocar nesses assuntos:
+- `labs/VISUAL-REFERENCES.md` — referências históricas por projeto; podem ser boas ou ruins.
+- `media/CATALOG.md` — acervo de mídia dos apartamentos e regras de uso/edição.
+- `growth/ROADMAP.md` — growth, retenção, cupons, referral e futuro papel de conteúdo.
+- `labs/ROADMAP.md` — hipóteses experimentais, incluindo WhatsApp/webhook e preview/homologação.
+
+Não transformar Labs/roadmap em requisito sem decisão explícita.
