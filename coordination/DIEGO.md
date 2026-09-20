@@ -1,5 +1,6 @@
 # Índice rápido de Diego — materiais que existem
 
+
 Quando quiser encontrar alguma coisa sem lembrar o caminho:
 - **Estado humano do projeto:** este arquivo, `coordination/DIEGO.md`
 - **Referências visuais antigas / Labs por projeto:** `labs/VISUAL-REFERENCES.md`
@@ -8,119 +9,65 @@ Quando quiser encontrar alguma coisa sem lembrar o caminho:
 - **Ideias experimentais (WhatsApp/Twilio, preview etc.):** `labs/ROADMAP.md`
 - **Arquitetura de páginas/filtros:** `product/ARCHITECTURE-NOTES.md`
 
+
 A equipe deve manter esses índices legíveis para você. Nada em Labs vira implementação só por estar documentado.
 
+
 ---
+
 
 # Sage terminou — 20/09/2026, rodada das 15h15
 
+
 O código já pode ser revisado por todos no [PR #1](https://github.com/al-life/scl-reconstrucao/pull/1). O site que você estava vendo no Mac continua intacto. Compartilhei uma cópia limpa, com os mesmos fluxos e imagens provisórias no lugar das fotos, porque os direitos delas ainda não estão documentados para envio. Os 22 testes dessa cópia passaram.
+
 
 Nada foi colocado em produção nem incorporado à versão principal. Consultas funcionam apenas como caixa local; reserva, pagamento Mercado Pago, e-mail e conta do hóspede ainda não funcionam de verdade.
 
+
 A próxima é Lia, conforme a ordem proposta por Rivers. Ela já pode ler o código; para testar a interface, precisa rodá-lo no próprio ambiente. O GitHub sozinho não cria um endereço de preview. Esse limite está explicado no [handoff](handoffs/2026-09-20-1515-sage-para-lia.md), para ninguém confundir acesso ao código com site publicado. Rivers também já pode revisar o resultado.
+
 
 Você não precisa configurar nenhuma conta ou pagar nada agora. Se quiser acelerar, pode avisar Lia que o PR e o handoff estão prontos. Se ela não tiver como executar a cópia, vamos registrar isso e escolher um preview apropriado com você. Próxima rotina Sage: 18h15 BRT. Esta rodada aconteceu porque Rivers entregou trabalho novo; não foi repetição da anterior.
 
+
 ---
+
 
 ## Rivers terminou — 20/09/2026, rodada antecipada
 
+
 A boa notícia: Sage fez trabalho útil e os testes locais passaram. A trava agora não é produto; é **compartilhamento**. O código que ele mexeu ainda está só no ambiente local dele, então mandar Lia agora seria fazê-la procurar uma coisa que ela não consegue ver.
+
 
 Por isso eu mudei a ordem desta volta: **Sage vai de novo primeiro**, mas com uma missão curta — colocar no GitHub apenas a parte limpa e necessária desse trabalho, numa branch/PR de construção, sem segredos, dados de hóspedes, produção ou entulho antigo. Depois disso, Lia entra e testa o fluxo de verdade pelo navegador.
 
+
 Mercado Pago continua escolhido por você, mas não vamos integrar pagamento antes de termos a base compartilhada, cotação/revalidação e estados mínimos bem definidos. Isso evita construir cobrança em cima de chão movediço.
+
 
 ### O que você precisa fazer agora
 Se quiser acelerar, mande ao Sage:
 **“Rivers terminou. Leia o novo handoff Rivers → Sage no repo e pode começar.”**
 
+
 Você não precisa passar nenhuma instrução técnica além disso.
 
+
 ---
+
 
 ## Sage terminou — 20/09/2026, rodada antecipada
 
+
 Você pode chamar o **Rivers**. Li a entrega da Lia e avancei sem refazer o site: alinhei a galeria do 399 e montei uma demonstração separada de checkout com imóvel, datas, hóspedes e total detalhado. Testei também preço mudando, datas indisponíveis, falha e cotação expirada. Tudo nela é fictício e nenhum botão cobra. Os 22 testes do projeto passaram.
+
 
 Seu pedido de aviso foi incluído: ao encerrar cada rodada, Sage sempre escreve nesta conversa para você acionar Rivers. Rotina ativa a cada três horas, às 15h15, 18h15, 21h15 e assim por diante, no horário de São Paulo. Como você antecipou esta rodada, a de hoje às 15h15 só será ignorada se ainda for a mesma tarefa já concluída. As próximas não mudam. Nenhuma rotina extra de conversa foi criada.
 
-O que ainda falta: disponibilidade e preços reais, conexão Mercado Pago, e-mail e conta do hóspede. Você já escolheu Mercado Pago nesta conversa; registrei isso para reconciliar a informação que ainda aparecia aberta na entrega da Lia. Bônus continua sem regra aprovada. O código ainda está no Mac; o GitHub recebe neste momento a coordenação, não uma aplicação publicada.
-
-Agora você só precisa chamar Rivers com o [handoff de Sage](handoffs/2026-09-20-sage-para-rivers.md), se quiser adiantar. Não precisa preencher nenhum cadastro nem pagar nada para ver o teste local.
-
 ---
 
-## Resolvido — decisão final20/9
-Você autorizou integrar a coordenação ao final das passadas02/05/08/11/14/17/20/23h; a automação existente foi atualizada e está ACTIVE. Não há mais escolha pendente de formato. Rodada manual14h encerrada; próximo agenteSage. Pode acioná-lo agora apontando para o [handoff Lia](handoffs/2026-09-20-1415-lia-para-sage.md). Pode antecipar rodadas sucessivas, registrando a ocorrência substituída para não duplicar. Lia avisa aqui no aplicativo após conclusão; recebimento no celular depende do aplicativo. O pedido de escolha abaixo é histórico e está resolvido.
+## Lia — 20/09/2026, rodada17h
+Li a entrega de Sage e parte do código do PR#1. A leitura confirma que a demonstração não habilita cobrança e que uma disponibilidade desconhecida não vira reserva. Ainda não consegui executar a cópia: o acesso ao GitHub funciona no navegador, mas a obtenção dos arquivos para o ambiente de testes falhou. Portanto, não estou chamando essa etapa de validada; os22 testes continuam sendo os que Sage relatou.
 
-## Atualização Lia — 20/9, rodada das14h15
-
-
-A primeira passagem já começou e o acesso de leitura e escrita da Lia foi confirmado pelo navegador. O conector falhou nesta sessão; isso não bloqueou a documentação. O repositório está privado. Nada foi publicado ou migrado para produção.
-
-
-Registrei sua orientação: informações gerais podem ser dadas a interessados, mas acesso ao imóvel exige reserva validada. Vendas diretas devem terminar no checkout do site, com dados preenchidos a partir da consulta; essa função ainda precisa ser construída/testada. Bônus de indicação continua sem regras finais.
-
-
-Próximo passo para Sage: conferir seu acesso e preparar proposta/teste com dados fictícios, sem contratar serviço ou cobrar ninguém. As proteções da edição principal ainda não foram verificadas.
-
-
-Você precisa escolher apenas o formato da nova rotina: o aplicativo recusou uma segunda automação nesta conversa, pois a primeira atende hóspedes. Pergunta enviada aqui: integrar coordenação à rotina atual a cada3h ou criar conversa separada. Nenhuma nova automação foi criada; a de hóspedes permanece. Não precisa repetir o convite inicial à Lia.
-
-
-O texto abaixo é o painel inicial, preservado como histórico; esta atualização substitui suas pendências de convite à Lia e de verificar visibilidade.
-
-
----
-
-
-# DIEGO — painel humano do SCL 2.0
-
-
-## Onde estamos
-
-
-O novo canteiro de construção do SCL 2.0 está funcionando no GitHub em:
-`al-life/scl-reconstrucao`.
-
-
-Este repositório **não é produção**. Ele existe para Rivers, Lia e Sage coordenarem construção, decisões e histórico sem misturar com o futuro sistema oficial.
-
-
-## O que foi feito
-
-
-- O acesso de Rivers ao GitHub foi confirmado.
-- Foi criado um protocolo único dizendo como os três agentes devem trabalhar.
-- Foi criada uma área de coordenação com estado atual, arquivos individuais e handoffs.
-- Cada agente agora tem uma regra explícita: ao terminar, atualizar também este arquivo em linguagem humana.
-
-
-## Como você acompanha sem aprender código
-
-
-Você pode abrir este arquivo e ler só daqui.
-
-
-A ideia é que ele sempre responda:
-- o que aconteceu;
-- o que está funcionando;
-- o que não está;
-- o que mudou;
-- se existe risco;
-- se você precisa fazer alguma coisa.
-
-
-Se algo técnico aparecer aqui, deve vir traduzido.
-
-
-## O que ainda NÃO foi feito
-
-
-O conector do GitHub usado por Rivers consegue editar arquivos, mas não oferece todas as funções administrativas da conta.
-
-
-Ainda falta conferir manualmente:
-1. a visibilidade correta do repositório;
+Deixei em LIA.md os limites e quatro fluxos para a conferência prática. Sage/Rivers podem preparar uma cópia local acessível; se precisarmos de preview remoto, combinamos antes, sem contratar ou publicar automaticamente. Não houve alteração de produção, merge, integração ou envio de dados reais. A próxima janela de Sage continua18h15. [Handoff Lia](handoffs/2026-09-20-1700-lia-para-sage.md).
