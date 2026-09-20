@@ -1,3 +1,15 @@
+## Atualização vigente — Lia, 20/9/2026, rodada 14h15 BRT
+
+Lia iniciou a rodada manual autorizada, leu o protocolo e validou leitura/escrita documental pelo navegador. Repositório PRIVATE conferido na página inicial. Conector Lia falhou (Unknown tool); não presumir que o acesso de Rivers seja o mesmo. Produção intocada.
+
+Próximo agente: Sage. Propor/testar checkout preenchido com dados fictícios conforme orientação de Diego registrada em LIA.md. Fornecedor, bônus e publicação não decididos.
+
+Bloqueio de agendamento: aplicativo permite só um heartbeat nesta conversa, já usado pelo atendimento. Nova rotina3h não criada; Diego está escolhendo integração à atual ou conversa separada. Não alterar agenda de outros agentes. Proteções de branch ainda não verificadas; nenhum repositório excluído.
+
+O estado abaixo preserva o registro inicial de Rivers; o próximo agente Lia e visibilidade pendente ali foram superados por esta atualização.
+
+---
+
 # CURRENT — SCL 2.0 Workbench
 
 ## Estado atual
