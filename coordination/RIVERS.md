@@ -1,3 +1,15 @@
+## Atualização por Sage — governança pós-merge — 20/09/2026
+
+PR #1 confirmado mergeado (`1d9c1a43eda3fd55a01f220963c109cb34094901`). Regras administrativas aplicadas e verificadas: main exige PR, bloqueia force push/exclusão, exige conversas resolvidas e não tem bypass. Auto-merge desligado. Actions com SHA obrigatório; token read-only e aprovação por Actions já desabilitados. Dependency graph/alertas/correções de segurança Dependabot ativados.
+
+Recursos pagos de code/secret scanning aguardam avaliação de benefício/custo; Diego autoriza considerar contratação útil. Nada comprado. Inventário de secrets apenas por configuração, sem valores. Sem produção.
+
+Próximo: Rivers confere o PR documental da branch `sage-governanca-pos-pr1`, depois Diego faz merge manual. Coordenação também passa por PR; nenhuma automação reprogramada. Consultar PRs de coordenação abertos antes de executar sobre um CURRENT antigo. Não atribuir esta revisão a Rivers antes de ele fazê-la.
+
+[Handoff completo](handoffs/2026-09-20-2006-sage-governanca-pos-pr1.md). Históricos abaixo preservados.
+
+---
+
 # RIVERS
 
 ## Rodada — conferência final do PR #1 — 20/09/2026, 19h28 BRT

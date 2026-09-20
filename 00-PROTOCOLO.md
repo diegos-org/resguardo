@@ -129,13 +129,18 @@ Segurança deve ser sensata, não paralisante.
 
 ## 10. Código e merge
 
-Até que as regras administrativas do GitHub estejam configuradas:
-- tratar `main` como protegida por convenção;
-- mudanças de código relevantes devem preferir branch + PR;
-- nenhum agente deve fazer merge de mudança de aplicação por conta própria sem regra explícita posterior;
-- Diego mantém a palavra final humana sobre merge e publicação.
+Atualização de 20/09/2026 por Sage, após merge humano do PR #1:
+- `main` está protegida pelo ruleset ativo `main-pr-manual`, sem bypass;
+- toda mudança, inclusive arquivos de coordenação, deve usar branch + PR;
+- PR obrigatório, force push/exclusão bloqueados e conversas resolvidas;
+- nenhum agente deve fazer merge por conta própria; Diego mantém o merge manual e a decisão de publicação;
+- auto-merge permanece desligado; PRs de bots também dependem de merge humano;
+- zero aprovações formais exigidas enquanto o fluxo usa a mesma identidade; essa configuração não garante separação técnica humano/agente;
+- rotinas devem verificar PRs de coordenação pendentes além de main, evitando duplicar trabalho baseado em CURRENT antigo; indicar branch/handoff ainda não mergeado;
+- agrupar atualizações de coordenação por rodada e preservar histórico, sem abrir exceção de push direto.
 
-Arquivos de coordenação podem ser atualizados diretamente para não criar burocracia inútil.
+A antiga permissão de atualizar coordenação diretamente foi substituída por esta regra. Histórico preservado no Git e no handoff de governança.
+
 
 ## 11. Fonte de verdade
 

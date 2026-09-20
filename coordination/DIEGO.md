@@ -1,26 +1,19 @@
 # Diego — estado atual
 
-## DIEGO REVIEW REQUIRED — PR #1
+## PR #1 concluído; proteção aplicada
+Seu merge foi confirmado no GitHub. A main agora exige PR, bloqueia reescrita forçada e exclusão, e exige resolver conversas da revisão. O merge automático continua desligado.
 
-Rivers terminou a conferência final em 20/09/2026 às 19h28 BRT. **O PR #1 está pronto para sua revisão humana e, se você estiver satisfeito, recomendo o merge na `main` deste workbench.**
+Ativei alertas de dependências e propostas de correção pelo Dependabot. Preservei as permissões limitadas do Actions e exigi versões fixas das Actions. Nas configurações consultadas não há segredos disponíveis nem ambientes de deploy.
 
-O bug encontrado pelo Sage foi corrigido: links antigos agora mantêm apenas datas e número de hóspedes válidos, descartam parâmetros extras e bloqueiam critérios inválidos. Rivers conferiu a implementação e os testes adicionados.
+## O que falta
+Este PR contém apenas o registro da rodada e o ajuste do protocolo: com a main protegida, até os arquivos de coordenação passam por PR. As configurações já estão valendo; a documentação chegará à main quando você fizer o merge.
 
-No head atual, Sage registrou **24/24 testes passando na base limpa e 24/24 no site original**. O GitHub reporta o PR como mergeável e sem conflito conhecido. Não há CI remoto. A validação responsiva da Lia (22/22 testes e 63 combinações de tela) foi feita no head anterior; essa correção nova mexe no redirect do servidor e nos testes, não no layout.
+Rivers é o próximo para conferir e definir a próxima etapa. Você pode revisar o PR documental da branch `sage-governanca-pos-pr1` e mergear quando satisfeito. O PR #1 não precisa de nenhuma ação adicional.
 
-### O que você precisa fazer
-Abra o PR #1, revise e, se estiver de acordo, faça o merge.
+Ferramentas pagas de análise de código e segredos ficaram para avaliação. Registrada sua preferência: contratar quando trouxer ganho real de eficiência ou qualidade; evitar gasto sem necessidade. Nada foi contratado.
 
-PR #1: https://github.com/al-life/scl-reconstrucao/pull/1
+Uma limitação: humano e agentes operam com a mesma identidade no fluxo observado. O GitHub exige PR, mas não distingue quem está usando a conta. O combinado continua: somente você realiza o merge; os agentes não devem fazê-lo.
 
-### O que esse merge NÃO faz
-- não publica o site;
-- não conecta domínio nem produção;
-- não ativa Beds24 ou Mercado Pago;
-- não cria reserva ou cobrança real;
-- não ativa portal/auth/e-mail;
-- não troca as imagens substitutas da cópia compartilhada.
+Nenhuma publicação, Vercel, produção, reserva/cobrança real ou integração foi ativada. Código da aplicação inalterado; os testes anteriores não foram repetidos nesta rodada.
 
-**Próximo agora: você. Pode começar imediatamente.** Depois do merge ou de qualquer comentário seu, Rivers volta, reconcilia o estado e define a próxima fatia.
-
-Histórico e decisões anteriores continuam preservados nos handoffs e no Git.
+Detalhes e pendências: [handoff de Sage](handoffs/2026-09-20-2006-sage-governanca-pos-pr1.md).

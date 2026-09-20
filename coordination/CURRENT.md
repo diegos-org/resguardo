@@ -1,25 +1,19 @@
-# Rivers — conferência final do PR #1 — 20/09/2026, 19h28 BRT
+# Estado atual — governança por Sage — 20/09/2026
 
-**DIEGO REVIEW REQUIRED. PR #1 está pronto para revisão humana e merge no workbench.**
+**PR #1 MERGEADO. Governança administrativa aplicada. DIEGO REVIEW REQUIRED para o PR documental desta rodada.**
 
-Rivers conferiu o handoff de Sage e o head atual `7ba1c0c53d4edb13e0a75c1f6394a17817e67be4`. O PR #1 está aberto, não é draft e o GitHub reporta `mergeable: true`.
+PR #1 confirmado closed/merged=true; merge `1d9c1a43eda3fd55a01f220963c109cb34094901`.
 
-A correção do redirect legado foi inspecionada no diff: `/property/:id` preserva somente `checkin`, `checkout` e `guests`, valida os critérios usando a propriedade da rota, descarta parâmetros extras e não redireciona quando os critérios permitidos são inválidos, incompletos, duplicados ou excedem a capacidade. Os testes de regressão cobrem GET/HEAD, preenchimento no destino, descarte de extras e rejeições.
+- Ruleset main-pr-manual ativo na branch padrão main: PR obrigatório, bloqueio de force push/exclusão, conversas resolvidas, sem bypass.
+- Auto-merge permanece desligado. Merge manual de Diego é regra operacional; zero aprovações obrigatórias evita bloquear a conta compartilhada. O GitHub não distingue humano de agente usando a mesma identidade.
+- Actions já tinha token somente leitura e aprovação/criação de PRs desligada; agora exige SHA completo nas Actions.
+- Dependency graph, alertas e correções de segurança do Dependabot ativados.
+- Secrets consultados apenas por configuração: nenhum disponível nas categorias inspecionadas. Sem environments/deploy keys.
+- Code Security/Secret Protection pagos aguardam avaliação de benefício/custo. Diego aceita contratação útil; nada contratado.
 
-Evidência de Sage no head atual: 24/24 testes na base limpa e 24/24 no site original, sem CI remoto. Lia havia validado 22/22 testes e 63 combinações responsivas no head anterior; essa evidência continua útil para a base, mas não é reatribuída ao novo head.
+**Próximo: Rivers** confere o PR na branch `sage-governanca-pos-pr1` e define a próxima fatia; **Diego** mantém o merge manual da documentação. Configurações já ativas; arquivos só chegam a main após merge. A proteção também exige PR para coordenação, sem exceção de push direto. Rotinas não foram alteradas.
 
-## Recomendação
-Rivers recomenda que Diego revise e, se estiver satisfeito, faça o merge do PR #1 **na `main` deste workbench**. Esse merge não publica o site, não conecta produção e não habilita reserva/pagamento real.
+Sem publicação, Vercel, produção ou integrações reais. Aplicação inalterada; testes anteriores não foram reexecutados.
 
-## Limites que continuam verdadeiros
-- sem deploy/publicação;
-- sem Beds24/Mercado Pago;
-- sem reserva ou cobrança real;
-- sem auth/portal/e-mail de produção;
-- mídias compartilhadas continuam substitutas;
-- produção da Sua Casa Leblon permanece intocada.
-
-## Próximo
-**Diego é o próximo para revisão humana do PR #1 e pode começar imediatamente.** Nenhum agente deve abrir nova fatia de aplicação antes dessa decisão. Depois do merge ou de comentários de Diego, Rivers reconcilia o estado e define o próximo trabalho.
-
-Handoff: `coordination/handoffs/2026-09-20-1928-rivers-final-pr1.md`.
+Handoff: [Sage → Rivers](handoffs/2026-09-20-2006-sage-governanca-pos-pr1.md).
+Estado anterior preservado em [conferência de 19h28](handoffs/2026-09-20-1928-rivers-final-pr1.md) e no Git.
