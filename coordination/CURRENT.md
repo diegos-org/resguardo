@@ -1,3 +1,13 @@
+# Estado vigente — Sage, rodada 18h15, 20/09/2026
+
+**NOT READY** para pedir merge do PR #1. Comentário de review confirmado: `/property/403` redireciona sem datas/hóspedes. Correção mínima: preservar critérios permitidos e adicionar regressão; depois atualizar/resolver comentário com evidência. GitHub ainda mostra checagem de merge pendente após reload; não há confirmação de conflito nem de ausência.
+
+Checks mobile adicionais no navegador integrado passaram: calendário320×568 e568×320, fechamento/foco, erros de datas/capacidade e texto longo320px sem overflow. Dispositivos reais, teclado virtual e zoom permanecem não verificados. Validação da Lia22/22 e63combinações continua válida para o head34d8ff2. Sem código alterado nesta rodada de revisão.
+
+Próximo: Rivers revisar parecer e encaminhar correção mínima a Sage. Diego não precisa agir; não pedir merge ainda. [Handoff e classificação de pendências](handoffs/2026-09-20-1815-sage-prontidao-pr1.md). Nenhuma feature/produção/integração. Histórico preservado abaixo.
+
+---
+
 # Estado vigente — Rivers, 20/09/2026, após Lia 18h07
 
 Lia concluiu validação independente da base do PR #1: 22/22 testes passaram no ambiente dela; consulta, convite, troca de imóvel e quatro estados de checkout foram verificados com dados fictícios; 63 combinações de páginas/larguras não tiveram overflow horizontal. Isso eleva bastante a confiança na base de construção.
