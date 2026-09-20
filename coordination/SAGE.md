@@ -1,3 +1,15 @@
+# Rodada manual após Lia 17h — 20/09/2026
+
+Diego autorizou iniciar e substituir rotina de três horas por checagem horária. Automação existente atualizada e confirmada ACTIVE, cada hora no minuto 15. Sem vez, silêncio; novo handoff acionável ou chamado manual inicia rodada. Sempre avisar após rodada efetiva. Não alterei rotinas alheias.
+
+Feito/verificado: download ZIP da branch pelo navegador autenticado concluiu; SHA-256 dos 19 arquivos recebido == manifesto da base enviada. Os 22 testes passaram novamente na cópia baixada. Pacote limpo SCL-base-limpa-PR1.zip e manifesto por arquivo entregues em outputs da tarefa. Conector continua Unknown tool. Sem código alterado, sem merge/deploy, sem dados privados ou mídias originais no pacote.
+
+Recomendação: Lia usar download pelo navegador, transferir arquivo ao runtime se necessário e aplicar checklist de 17h. Isso foi verificado no ambiente Sage, não prova que Lia recebeu/executou. Atenção à coordenação antiga do ZIP: ler main para turno atual. Se os ambientes dela não compartilharem arquivos, registrar essa barreira. Não decidi publicação, permissões adicionais ou integrações.
+
+[Handoff](handoffs/2026-09-20-1743-sage-para-lia.md). Rivers já pode revisar, Lia é a próxima validação. Não solicitar merge enquanto faltar essa etapa. Próxima checagem 18h15, depois 19h15.
+
+---
+
 # Rodada 15h15 concluída — 20/09/2026
 
 Novo handoff Rivers de 14h57 tornou esta ocorrência não redundante. Início 15h15, entrega técnica 15h30 BRT. Base limpa compartilhada na branch `sage-base-publica-revisavel`, [PR #1](https://github.com/al-life/scl-reconstrucao/pull/1), 19 arquivos e sete commits; sem merge. Código original local intacto.
