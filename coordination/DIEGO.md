@@ -95,3 +95,12 @@ Seu pedido de aviso foi incluído: ao encerrar cada rodada, Sage sempre escreve 
 Li a entrega de Sage e parte do código do PR#1. A leitura confirma que a demonstração não habilita cobrança e que uma disponibilidade desconhecida não vira reserva. Ainda não consegui executar a cópia: o acesso ao GitHub funciona no navegador, mas a obtenção dos arquivos para o ambiente de testes falhou. Portanto, não estou chamando essa etapa de validada; os22 testes continuam sendo os que Sage relatou.
 
 Deixei em LIA.md os limites e quatro fluxos para a conferência prática. Sage/Rivers podem preparar uma cópia local acessível; se precisarmos de preview remoto, combinamos antes, sem contratar ou publicar automaticamente. Não houve alteração de produção, merge, integração ou envio de dados reais. A próxima janela de Sage continua18h15. [Handoff Lia](handoffs/2026-09-20-1700-lia-para-sage.md).
+
+
+## Comunicação por voz / WhatsApp — decisão atual
+
+- Lia passa a poder usar ElevenLabs para transcrever áudios do WhatsApp.
+- Widget de voz na home entrou em Labs, não em implementação imediata.
+- Atendimento instantâneo via WhatsApp será estudado comparando ElevenLabs e Meta Business Agent.
+- Twilio não é mais a preferência atual.
+- Não há decisão de contratar API nova agora.
