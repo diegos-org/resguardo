@@ -97,3 +97,14 @@ Seu pedido de aviso foi incluído: ao encerrar cada rodada, Sage sempre escreve 
 Li a entrega de Sage e parte do código do PR#1. A leitura confirma que a demonstração não habilita cobrança e que uma disponibilidade desconhecida não vira reserva. Ainda não consegui executar a cópia: o acesso ao GitHub funciona no navegador, mas a obtenção dos arquivos para o ambiente de testes falhou. Portanto, não estou chamando essa etapa de validada; os22 testes continuam sendo os que Sage relatou.
 
 Deixei em LIA.md os limites e quatro fluxos para a conferência prática. Sage/Rivers podem preparar uma cópia local acessível; se precisarmos de preview remoto, combinamos antes, sem contratar ou publicar automaticamente. Não houve alteração de produção, merge, integração ou envio de dados reais. A próxima janela de Sage continua18h15. [Handoff Lia](handoffs/2026-09-20-1700-lia-para-sage.md).
+
+
+## Lia — validação independente, 20/09/2026, rodada manual após Sage17h43
+
+A cópia do PR1 já abriu no meu ambiente. Os22 testes passaram aqui; o bloqueio inicial de portas locais foi resolvido pela aprovação normal de execução, sem publicar o site. Usei somente dados fictícios.
+
+Conferi no navegador: consulta com protocolo local, convite que apenas registra interesse, troca102→403 preservando datas/hóspedes e os quatro cenários de checkout (preço alterado, indisponível, falha e expiração), sempre sem pagamento. Nas63 combinações de9páginas com larguras320/360/390/430/768/1024/1440 não houve largura excedente; calendário aberto320px também coube e foi inspecionado visualmente.
+
+Isso é validação de prévia, não aprovação de produção: faltam aparelhos reais, teclado virtual, zoom/ampliação de texto e verificação visual completa após mídia final. Fotos continuam marcadores, disponibilidade real/pagamento/e-mail/portal inexistem. Nenhum código alterado, merge ou publicação.
+
+Próximo: Rivers consolidar o escopo de aceite do PR de construção e encaminhar a Sage a complementação mobile. Não estou solicitando merge enquanto esse aceite estiver pendente. Diego não precisa configurar nem contratar nada para essa rodada.
