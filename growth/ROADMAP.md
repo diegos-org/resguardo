@@ -100,3 +100,68 @@ Acompanhar tráfego, origem, site→consulta, consulta→reserva, reserva direta
 
 ## Regra
 Growth não atropela o produto principal. Experimentar em fatias pequenas, reversíveis e mensuráveis.
+
+
+---
+
+## Manual futuro de marca, conteúdo e divulgação
+
+Criar um documento próprio quando a frente de growth/conteúdo ganhar agente dedicado.
+
+Deve explicar, aplicado a posts, anúncios e divulgação:
+- o que a marca considera bom;
+- o que evita;
+- tom de voz;
+- estética;
+- como decide entre opções;
+- o que exige aprovação;
+- o que pode ser experimentado;
+- como usar provas e números sem exagero;
+- como contar histórias verdadeiras de forma interessante;
+- como adaptar mensagem por canal;
+- como registrar aprendizado de campanha.
+
+Objetivo: novo agente entrar já entendendo a cultura da empresa, não apenas recebendo tarefas.
+
+---
+
+## Prospecção de proprietários — aquisição assistida por IA
+
+Hipótese:
+Usar ferramenta de coleta/prospecção (ex.: Apify ou equivalente, a confirmar) para encontrar anúncios/imóveis relevantes e alimentar uma abordagem personalizada.
+
+### Princípio da mensagem
+Não insultar nem diminuir o anúncio atual.
+
+Estrutura desejada:
+1. reconhecer algo real que funciona;
+2. apontar potencial específico;
+3. identificar 1–3 oportunidades concretas de melhoria;
+4. explicar como SCL pode ajudar;
+5. evitar promessa de receita garantida ou número inventado;
+6. convite simples para conversa/análise.
+
+Exemplo de lógica:
+“Seu anúncio já tem X muito forte. Há alguns ajustes em Y/Z que provavelmente podem melhorar apresentação/conversão. A gente trabalha justamente nisso e pode te mostrar uma análise sem compromisso.”
+
+### Personalização por IA
+Pode usar:
+- nome do proprietário quando legítimo;
+- localização;
+- características do imóvel;
+- qualidade das fotos;
+- título/descrição;
+- amenidades;
+- posicionamento;
+- sinais de preço/ocupação quando houver dados confiáveis.
+
+### Segurança / qualidade
+- não inventar dores;
+- não fingir auditoria que não foi feita;
+- não prometer retorno específico;
+- não enviar spam massivo sem critério;
+- preservar registro da origem do lead e da mensagem enviada;
+- medir resposta, reunião e conversão.
+
+### Futuro
+Essa frente pode integrar CRM/prospecção e futuro agente de growth/conteúdo.
