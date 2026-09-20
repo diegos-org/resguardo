@@ -1,45 +1,15 @@
-# Estado vigente — Rivers, após Sage 18h15, 20/09/2026
+# Sage — correção do redirect — 20/09/2026, 18h43 BRT
 
-Sage marcou PR #1 como **NOT READY** por um defeito concreto: a rota legada `/property/:id` redireciona para `/imoveis/:id` e perde os critérios permitidos `checkin`, `checkout` e `guests`.
+**READY FOR DIEGO REVIEW (parecer técnico). Próximo agente: Rivers para conferência final; Diego ainda não precisa mergear.**
 
-Rivers confirmou agora que o GitHub já reporta o PR como **mergeable: true**. Portanto, conflito deixou de ser bloqueador conhecido.
+Rodada manual após handoff de Rivers; início nesta rodada, correção concluída às 18h43. PR #1 atualizado na branch sage-base-publica-revisavel: implementação bf1cb6d, regressões 7ba1c0c.
 
-### Próxima fatia
-**Sage** deve fazer somente a correção mínima:
-- preservar apenas `checkin`, `checkout` e `guests` no redirect legado;
-- não transportar parâmetros arbitrários/PII;
-- adicionar teste de regressão;
-- rodar testes;
-- atualizar o PR;
-- resolver o comentário de review apenas com evidência.
+O redirect /property/:id preserva somente checkin, checkout e guests válidos. Parâmetros extras são descartados; critérios incompletos, duplicados, inválidos ou acima da capacidade retornam 400 sem Location. Links sem critérios continuam redirecionando normalmente.
 
-Depois disso, Sage deve devolver:
-- `READY FOR DIEGO REVIEW`
-- ou `NOT READY` com motivo concreto restante.
+Verificado: 24/24 testes na base limpa e 24/24 no site original; GET, HEAD, preenchimento no destino, descarte de extras e rejeições cobertos. GitHub exibiu No conflicts with base branch no head 7ba1c0c. Comentário de review respondido com evidências e resolvido. Lia validou 22 testes e 63 combinações responsivas no head anterior; não atribuir a ela validação deste novo head. Sem CI remoto.
 
-Nenhuma feature nova nesta fatia.
+Escopo restrito: nenhum redesign, integração, feature, merge ou deploy. Workbench continua com mídia substituta e sem reserva/pagamento reais. A correção local preservou as fotos originais.
 
----
+Handoff: [Sage para Rivers](handoffs/2026-09-20-1843-sage-redirect-pr1.md). PR: https://github.com/al-life/scl-reconstrucao/pull/1
 
-# Estado vigente — Rivers, 20/09/2026, após parecer Sage 18h15
-
-Sage concluiu a passada de merge-readiness do PR #1 e marcou **NOT READY**. Há um defeito pequeno, reproduzido e confirmado: URLs legadas como `/property/403?checkin=...&checkout=...&guests=2` redirecionam para `/imoveis/403` e perdem os critérios de estadia. O review comment correspondente continua pendente. A validação independente da Lia (22/22 testes e 63 combinações sem overflow) permanece válida para o head anterior, mas não elimina esse defeito.
-
-## Decisão de Rivers
-A próxima fatia é estritamente corretiva e volta para **Sage**:
-1. preservar apenas `checkin`, `checkout` e `guests` permitidos no redirect legado;
-2. não transportar parâmetros arbitrários/PII;
-3. adicionar regressão para preservação dos critérios e rejeição/ignorância de parâmetros não permitidos;
-4. rodar a suíte novamente;
-5. atualizar/responder o review comment com evidência;
-6. reconsultar o estado de merge do PR.
-
-Encerrar com `READY FOR DIEGO REVIEW` ou `NOT READY` + motivo concreto. Não adicionar feature, Beds24, Mercado Pago, portal, mídia ou redesign.
-
-## Diego
-Diego **não precisa agir agora** e **não deve mergear o PR #1 ainda**. Se Sage voltar READY e o estado de merge estiver confirmado, Rivers fará a conferência final e marcará `DIEGO REVIEW REQUIRED`.
-
-## Próximo agente
-**Sage pode começar imediatamente.**
-
-Histórico anterior permanece preservado nos handoffs e no histórico Git; CURRENT volta a representar somente o estado operacional vigente, conforme o protocolo.
+Rivers pode iniciar a conferência final e, se concordar, marcar DIEGO REVIEW REQUIRED. Parecer favorável à revisão da base de trabalho, sem autorização de publicação.
