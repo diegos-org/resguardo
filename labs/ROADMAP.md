@@ -98,3 +98,85 @@ Investigar:
 - reconciliação e auditoria.
 
 Não implementar agora. Primeiro estabilizar reserva direta, pagamento, modelo financeiro e conciliação manual correta.
+
+
+---
+
+## LAB — Hub pessoal-operacional / “Finanças” evoluído
+
+### Hipótese
+O projeto originalmente estreito de “Finanças” pode ser o embrião de algo muito maior: um **hub pessoal-operacional** para organizar vida, projetos, dinheiro, arquivos, decisões e pendências.
+
+Não é prioridade atual. Registrar para amadurecer sem abrir nova frente.
+
+### O que esse produto poderia ser
+Um sistema central que reúne:
+- projetos;
+- dinheiro;
+- agenda;
+- arquivos;
+- decisões;
+- referências;
+- pendências;
+- vida prática;
+- memória de contexto;
+- automações;
+- acompanhamento de progresso.
+
+Possíveis módulos:
+- Sua Casa Leblon;
+- Disco 4 / carreira musical;
+- vida financeira;
+- administrativo pessoal;
+- documentos;
+- tarefas;
+- comunicação;
+- arquivos e acervos.
+
+A ideia não é criar “um Notion gigante”, e sim um sistema que entenda contexto, preserve histórico e ajude a coordenar trabalho real.
+
+### Princípio
+Labs não pode virar desculpa para adiar SCL 2.0 ou Disco 4.
+Retomar quando houver espaço real e uma necessidade clara que justifique produto próprio.
+
+---
+
+## LAB — Workflow de lançamento musical
+
+### Hipótese
+Quando uma faixa estiver próxima de lançamento, a mesma lógica de coordenação pode organizar todo o pacote de lançamento sem exigir um aplicativo global novo.
+
+Fluxo possível:
+1. áudio/master;
+2. capa;
+3. vídeo/clipes;
+4. material profissional de divulgação;
+5. textos de release;
+6. pitch para playlists/imprensa;
+7. biografia/contexto da faixa;
+8. formatos para redes sociais;
+9. anúncios;
+10. narrativa de lançamento;
+11. calendário;
+12. assets por plataforma.
+
+### Regra de narrativa
+A comunicação pode destacar os elementos mais interessantes da história real, mas não inventar personagem, trajetória ou fatos.
+Boa narrativa ≠ ficção.
+
+### Café Aguado às 8
+Se a demo recuperada evoluir bem e virar próximo single, este workflow pode ser usado como primeiro caso de teste.
+
+---
+
+## Futuro dos Labs na AL Life
+
+Enquanto SCL 2.0 está em construção, Labs pode ficar neste repo para ideias relacionadas ou próximas.
+
+Quando houver massa crítica:
+- separar Labs geral da AL Life em projeto/repositório próprio;
+- manter no SCL apenas Labs diretamente ligados ao produto/empresa;
+- projetos como Giro Temporada podem continuar próximos enquanto forem extensões naturais do ecossistema SCL.
+
+### Filosofia
+Os projetos podem evoluir em paralelo, mas foco aumenta quando um deles estiver perto de entrega.
