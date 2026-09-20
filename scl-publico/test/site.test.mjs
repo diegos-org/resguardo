@@ -56,3 +56,27 @@ test('consultation links prefill criteria without enabling checkout or accepting
 test('invalid contact configuration disables contact links',()=>withServer(async base=>{
  const html=await (await fetch(base+'/consulta?'+params)).text();assert.doesNotMatch(html,/https:\/\/wa.me/);
 },{contact:'javascript:alert(1)'}));
+
+test('legacy redirect preserves only valid stay criteria for the path property',()=>withServer(async base=>{
+ const criteria=new URLSearchParams({checkin:tomorrow,checkout:later,guests:'2'});
+ const extra=new URLSearchParams(criteria);extra.set('email','fixture@example.invalid');extra.set('token','fixture');extra.set('total','1');extra.set('property','303');
+ for(const method of ['GET','HEAD']) {
+  const r=await fetch(base+'/property/102?'+extra,{method,redirect:'manual'});
+  assert.equal(r.status,308);assert.equal(r.headers.get('location'),'/imoveis/102?'+criteria);
+ }
+ const html=await (await fetch(base+'/property/102?'+extra)).text();
+ assert.match(html,new RegExp('value="'+tomorrow+'"'));assert.match(html,new RegExp('value="'+later+'"'));
+ assert.doesNotMatch(html,/fixture@example|token=fixture|total=1/);
+ const onlyUnknown=await fetch(base+'/property/102?email=fixture@example.invalid',{redirect:'manual'});
+ assert.equal(onlyUnknown.headers.get('location'),'/imoveis/102');
+}));
+test('legacy redirect rejects invalid, incomplete, duplicate or over-capacity stay criteria',()=>withServer(async base=>{
+ const valid={checkin:tomorrow,checkout:later,guests:'2'};
+ for(const patch of [{guests:'6'},{checkin:'2026-02-30'},{checkout:tomorrow},{checkin:'fixture@example.invalid'},{guests:'2e0'},{checkin:'2020-01-01'}]) {
+  const r=await fetch(base+'/property/102?'+new URLSearchParams({...valid,...patch}),{redirect:'manual'});
+  assert.equal(r.status,400);assert.equal(r.headers.get('location'),null);
+ }
+ for(const query of ['guests=2',new URLSearchParams(valid)+'&guests=3']) {
+  const r=await fetch(base+'/property/102?'+query,{redirect:'manual'});assert.equal(r.status,400);assert.equal(r.headers.get('location'),null);
+ }
+}));
