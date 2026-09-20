@@ -321,3 +321,82 @@ Toda transformação deve ser:
 
 ### Produto potencial
 Este conceito pode absorver parte significativa dos antigos projetos de “automação do Logic” e talvez seja o núcleo do futuro super-estúdio, se a tese se provar boa.
+
+
+---
+
+## LAB — Voz na home pública
+
+Hipótese:
+Adicionar um widget pequeno e opcional na home/reserva com algo como:
+**“Prefere tirar suas dúvidas por voz? Fale com a gente.”**
+
+Objetivo:
+- ajudar hóspede a escolher imóvel;
+- tirar dúvidas do bairro;
+- explicar diferenças entre apartamentos;
+- responder por voz quando isso reduzir fricção.
+
+Princípios:
+- não abrir sozinho;
+- não competir com busca/reserva;
+- fácil de fechar;
+- voz com identidade agradável, sem caricatura;
+- piloto primeiro em homologação;
+- medir uso, qualidade e conversão antes de manter.
+
+ElevenLabs é candidato natural por já suportar agente de voz e widget.
+
+---
+
+## LAB — WhatsApp instantâneo com agente
+
+### Nova preferência
+Twilio deixa de ser a opção preferida neste momento.
+
+Comparar prioritariamente:
+
+### ElevenLabs + WhatsApp Business
+Capacidades confirmadas:
+- texto;
+- voice notes;
+- transcrição de áudio;
+- resposta em áudio;
+- mídia;
+- chamadas inbound/outbound;
+- integração por conta WhatsApp Business.
+
+Limitações atuais relevantes:
+- sem human handoff nativo ainda;
+- sem suporte a WhatsApp Flows;
+- número não pode estar simultaneamente ativo em outro provedor/app WhatsApp Business padrão no fluxo atual;
+- Meta pode cobrar separadamente templates/chamadas, além do uso ElevenLabs.
+
+### Meta Business Agent
+Meta lançou Business Agent e Business Agent Platform em 2026 para atendimento personalizado em WhatsApp/Messenger.
+
+Investigar:
+- disponibilidade no Brasil;
+- elegibilidade da conta SCL;
+- custos;
+- integração com sistemas próprios;
+- memória/contexto;
+- supervisão humana;
+- ferramentas/webhooks;
+- tratamento de áudio;
+- limites e políticas.
+
+### Papel futuro da Lia
+Lia pode continuar como supervisora/QA/operadora de exceções, enquanto atendimento instantâneo fica com agente integrado em tempo real.
+
+Não implementar por pressa.
+Decidir depois de teste comparativo em homologação.
+
+---
+
+## Histórico — transcrição de áudios da Lia
+
+Em 20/09/2026 Diego decidiu habilitar ElevenLabs para permitir que Lia transcreva áudios recebidos no WhatsApp e consiga tratar mensagens de voz operacionalmente.
+
+Isso é ferramenta de trabalho da Lia, não arquitetura canônica do produto.
+Registrar apenas como histórico operacional.
