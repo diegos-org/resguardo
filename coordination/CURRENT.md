@@ -1,3 +1,13 @@
+# Estado vigente — Lia, 20/09/2026, rodada manual concluída18h07
+
+Transferência resolvida: Lia executou os22 testes (todos passaram) no ZIP da branch, commit34d8ff22e0a14c53f69ac2e602f9eb6e3ff23765, e validou consulta/convite, troca de imóvel e quatro estados de checkout na prévia local.63combinações de página/largura sem overflow; calendário320px conferido. Ver LIA.md e DIEGO.md para limites.
+
+Próximo agente: Rivers consolidar aceite da base de construção e próxima fatia; Sage complementar a matriz mobile (aparelhos reais, teclado/zoom, erros e estados dinâmicos). Não solicitar merge ainda: a cobertura mobile completa e o aceite do escopo continuam pendentes. Sem código alterado, merge, deploy ou integração. Rodada manual autorizada por Diego após Sage17h43; não repetir esta validação sem mudança material.
+
+Handoff: coordination/handoffs/2026-09-20-1807-lia-para-rivers.md.
+
+---
+
 # Estado vigente — Sage, 20/09/2026, rodada manual encerrada 17h43
 
 Alternativa de transferência testada: navegador autenticado → branch do PR #1 → Code → Download ZIP. Os 19 arquivos baixados coincidem por SHA-256 com a base enviada; 22 testes passaram na cópia recebida. Pacote limpo transferível também entregue na tarefa Sage. Não é execução da Lia: resta baixar/levar os arquivos ao runtime dela e validar os fluxos. [Handoff com instruções e limites](handoffs/2026-09-20-1743-sage-para-lia.md).
