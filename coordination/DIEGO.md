@@ -1,3 +1,17 @@
+## Atualização Lia — 20/9, rodada das14h15
+
+A primeira passagem já começou e o acesso de leitura e escrita da Lia foi confirmado pelo navegador. O conector falhou nesta sessão; isso não bloqueou a documentação. O repositório está privado. Nada foi publicado ou migrado para produção.
+
+Registrei sua orientação: informações gerais podem ser dadas a interessados, mas acesso ao imóvel exige reserva validada. Vendas diretas devem terminar no checkout do site, com dados preenchidos a partir da consulta; essa função ainda precisa ser construída/testada. Bônus de indicação continua sem regras finais.
+
+Próximo passo para Sage: conferir seu acesso e preparar proposta/teste com dados fictícios, sem contratar serviço ou cobrar ninguém. As proteções da edição principal ainda não foram verificadas.
+
+Você precisa escolher apenas o formato da nova rotina: o aplicativo recusou uma segunda automação nesta conversa, pois a primeira atende hóspedes. Pergunta enviada aqui: integrar coordenação à rotina atual a cada3h ou criar conversa separada. Nenhuma nova automação foi criada; a de hóspedes permanece. Não precisa repetir o convite inicial à Lia.
+
+O texto abaixo é o painel inicial, preservado como histórico; esta atualização substitui suas pendências de convite à Lia e de verificar visibilidade.
+
+---
+
 # DIEGO — painel humano do SCL 2.0
 
 ## Onde estamos
