@@ -242,3 +242,82 @@ Para cada contato, quando possível:
 - observações.
 
 Não virar CRM burocrático: o objetivo é conseguir responder rapidamente “quem eu conheço que pode ajudar nisso?”.
+
+
+---
+
+## LAB — Logic Companion / interface musical determinística
+
+### Insight central
+O objetivo **não é automatizar o Logic com uma IA livre operando a DAW**.
+
+O produto desejado é uma **interface própria, muito mais intuitiva e prazerosa**, que usa o Logic como motor de áudio por baixo e aplica diretamente parâmetros, presets e ações previamente definidos/testados.
+
+Em outras palavras:
+- Logic continua sendo engine;
+- plugins bons continuam sendo processamento;
+- o novo produto vira a camada de experiência;
+- IA pode ajudar a sugerir/configurar, mas não precisa “fuçar” livremente na sessão.
+
+### Tese
+Trocar:
+**“agente controla Logic e decide o que mexer”**
+
+por:
+**“humano escolhe uma intenção musical numa interface simples → sistema executa uma transformação determinística já conhecida”**.
+
+Exemplos conceituais:
+- Voz íntima
+- Voz mais à frente
+- Violão mais aberto
+- Refrão cresce
+- Menos brilho
+- Mais cola
+- Textura discreta
+- Slap vocal
+- Secar ambiência
+
+Cada ação aponta para parâmetros previamente mapeados:
+- plugin;
+- parâmetro;
+- valor/faixa;
+- automação;
+- bus/send;
+- cadeia;
+- preset;
+- condição de aplicação.
+
+### Vantagem
+- previsibilidade;
+- reversibilidade;
+- menos erro;
+- menos comportamento autônomo indesejado;
+- interface pensada para músico, não engenheiro;
+- preserva o poder do Logic sem exigir que Diego viva dentro da interface dele.
+
+### Não é necessariamente uma DAW nova
+A primeira versão deve ser tratada como **control surface / companion app do Logic**.
+Só virar DAW própria se, no futuro, houver motivo concreto para substituir também o motor, timeline, áudio, edição e plugin hosting.
+
+### Papel da IA
+IA pode:
+- explicar;
+- recomendar ponto de partida;
+- ajudar a mapear parâmetros;
+- analisar áudio;
+- criar/ajustar receitas;
+- aprender preferências.
+
+Mas a execução principal pode continuar determinística e auditável.
+
+### Princípio de segurança criativa
+Nenhuma ação invisível ou irreversível.
+Toda transformação deve ser:
+- explícita;
+- previsível;
+- comparável A/B;
+- desfazível;
+- documentada.
+
+### Produto potencial
+Este conceito pode absorver parte significativa dos antigos projetos de “automação do Logic” e talvez seja o núcleo do futuro super-estúdio, se a tese se provar boa.
