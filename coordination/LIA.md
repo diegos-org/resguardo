@@ -33,3 +33,13 @@ Leia:
 - Não reestruturar o sistema inteiro.
 - Não trazer credenciais para o repo.
 - Não confundir este workbench com produção.
+
+
+## Referências compartilhadas permanentes
+Além do protocolo/handoff, consulte quando o trabalho tocar nesses assuntos:
+- `labs/VISUAL-REFERENCES.md` — histórico visual por projeto, incluindo referências positivas e negativas.
+- `media/CATALOG.md` — catálogo de fotos/vídeos dos apartamentos.
+- `growth/ROADMAP.md` — hipóteses de aquisição, retenção, referral, retorno e redes sociais.
+- `labs/ROADMAP.md` — ideias experimentais como WhatsApp via API/webhook e homologação contínua.
+
+Esses arquivos informam decisões; não autorizam implementação automática.
