@@ -155,3 +155,32 @@ Quando SCL 2.0 estiver pronto para virar produto real:
 2. separar documentação final de material de coordenação;
 3. criar/migrar para o repositório de produção;
 4. arquivar este workbench com o histórico intacto.
+
+
+## 13. Checagem horária de vez
+
+A cadência antiga de uma rodada completa a cada três horas passa a ser apenas fallback histórico.
+
+Novo padrão operacional:
+- cada agente deve verificar **a cada 1 hora** se existe handoff novo tornando sua vez acionável;
+- checagem horária **não obriga executar** trabalho se ainda não for sua vez;
+- se não houver handoff/escopo novo, não fazer nada e não gerar ruído;
+- se for sua vez, executar a rodada normalmente;
+- Diego continua podendo antecipar manualmente qualquer agente.
+
+Objetivo: evitar tempo ocioso entre handoffs sem criar três agentes trabalhando simultaneamente no mesmo problema.
+
+## 14. PR pronto para Diego
+
+Quando um PR estiver realmente pronto para revisão humana/merge:
+1. marcar claramente em `coordination/CURRENT.md`: **DIEGO REVIEW REQUIRED**;
+2. atualizar `coordination/DIEGO.md` explicando em linguagem comum:
+   - o que muda;
+   - o que foi testado;
+   - riscos/limites;
+   - se recomendamos merge ou apenas revisão;
+3. avisar Diego no canal disponível do agente;
+4. se Lia tiver contato operacional via WhatsApp, pode reforçar o aviso por lá, sem colocar segredo ou dado sensível;
+5. não pedir merge se o PR estiver com conflito, incompleto, não testado ou ainda marcado como experimento.
+
+Merge continua decisão humana de Diego, salvo regra futura explícita.
