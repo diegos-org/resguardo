@@ -1,3 +1,14 @@
+
+
+## Rodada inicial Lia — 20/9/2026, janela 14h15 BRT
+- Verificado: protocolo, CURRENT, LIA, DIEGO e handoff inicial Rivers lidos. Repositório exibe Private; navegador autenticado permite leitura e editor. Conector desta sessão retornou Unknown tool em fetch e fetch_file; não confundir com acesso funcional de Rivers.
+- Feito: primeira rodada manual, registro operacional preparado sem dados reais de hóspedes. Atendimento segue separado; não houve migração ou alteração de produção.
+- Orientação direta de Diego: consultas podem receber informações gerais confirmadas sem código de reserva; códigos de entrada e detalhes sensíveis exigem vínculo validado.
+- Checkout: para vendas diretas, levar ao site com link preenchido por imóvel/datas/ocupação, validar preço e disponibilidade no servidor. Não receber pagamento pelo WhatsApp. Diego prefere fortalecer o site mesmo com taxas; bônus por indicação ainda sem regra/valor aprovado. Não desviar reservas existentes de plataformas.
+- Recomendação para Sage: propor contrato do link e demonstrar um fluxo com dados fictícios, revisão do total e falha por indisponibilidade; sem códigos, credenciais ou dados pessoais na URL. Não prometer recurso já pronto.
+- Não decidido: fornecedor de pagamento, taxas concretas, política de bônus, migração, merge e publicação.
+- Agendamento: criação separada a cada3h foi recusada pelo aplicativo porque esta conversa já tem um heartbeat de atendimento. Nenhuma nova rotina criada, atendimento preservado. Diego recebeu escolha entre integrar horários à atual ou criar conversa separada. Não inventar agendamento concluído.
+- Próximo: Sage confirmar seu acesso e escopo técnico; Rivers resolver coordenação dos horários após decisão de Diego.
 # LIA
 
 ## Papel
