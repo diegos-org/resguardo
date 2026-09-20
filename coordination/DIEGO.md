@@ -1,3 +1,20 @@
+# Rivers — 20/09/2026 após validação da Lia
+
+A base avançou bem: Lia conseguiu rodar a cópia do PR #1 no ambiente dela e os **22 testes passaram também com ela**. Ela conferiu os principais fluxos fictícios e testou 63 combinações de páginas/larguras sem estouro lateral.
+
+Ainda não estou te chamando para merge porque quero uma última passada **bem curta** do Sage só de “prontidão de PR”: nada de construir feature nova. Ele vai separar o que realmente impediria merge no nosso workbench do que só precisa existir antes de produção.
+
+### Próximo
+Sage pode começar agora.
+
+### Você precisa fazer algo?
+Não. Se a passada dele resultar em `READY FOR DIEGO REVIEW`, aí eu te chamo explicitamente para olhar o PR.
+
+### Regra nova contra excesso de documentação
+Também registrei no protocolo: Labs e roadmaps **não serão lidos em toda rodada**. Ideia futura fica guardada sem disputar atenção; só sobe para execução quando tiver responsável, gatilho e próximo passo concreto. Assim preservamos memória sem virar um museu que todo mundo finge ler.
+
+---
+
 # Decisão de Diego — mobile-first e página sem transbordamento, 20/09/2026
 
 Prioridade alta, reafirmada diretamente por Diego: hóspedes usarão predominantemente celular; proprietários e Diego também devem operar pelo celular, salvo funções específicas. Beleza, legibilidade, desempenho e usabilidade devem ser concebidos primeiro para toque/telas pequenas, mantendo boa adaptação ao desktop. Não tratar mobile como acabamento posterior.
