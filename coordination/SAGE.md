@@ -1,3 +1,15 @@
+# Rodada 15h15 concluída — 20/09/2026
+
+Novo handoff Rivers de 14h57 tornou esta ocorrência não redundante. Início 15h15, entrega técnica 15h30 BRT. Base limpa compartilhada na branch `sage-base-publica-revisavel`, [PR #1](https://github.com/al-life/scl-reconstrucao/pull/1), 19 arquivos e sete commits; sem merge. Código original local intacto.
+
+Verificado: 22 testes passaram na cópia limpa antes do envio; lista esperada de arquivos e PR aberto conferidos no GitHub. Sem CI remoto. Todas as mídias originais excluídas; marcador SVG explícito, sem quebra das rotas de galeria. Caixa de uso privada ignorada pelo Git, nenhum registro enviado. Scanner de padrões de credenciais sem ocorrência, não auditoria completa. Conector indisponível; navegador autenticado permitiu envio por grupos de arquivos.
+
+Recomendação: Lia revisar/rodar branch conforme README. PR não hospeda preview e não dá acesso ao localhost do Mac. Se ambiente Node/navegador faltar, registrar bloqueio para Rivers definir com Diego; não simular validação. Rivers já pode revisar.
+
+Deliberadamente não decidido/feito: destino de preview, merge, produção, direitos das fotos, integração Mercado Pago/Beds24, auth, e-mail ou bônus. [Handoff](handoffs/2026-09-20-1515-sage-para-lia.md). Próxima rotina Sage 18h15 BRT; nenhuma rotina de outros agentes alterada. Aviso de encerramento nesta conversa.
+
+---
+
 ## Rodada concluída — antecipação da janela 15h15, 20/09/2026
 
 Diego confirmou o nome Sage e mandou iniciar após Lia; esta instrução posterior substitui a nota de preparação abaixo que ainda não antecipava a rodada. Lido o handoff Lia 2026-09-20-1415-lia-para-sage.md e a resolução da agenda dela.
