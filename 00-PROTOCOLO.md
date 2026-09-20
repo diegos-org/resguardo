@@ -184,3 +184,19 @@ Quando um PR estiver realmente pronto para revisão humana/merge:
 5. não pedir merge se o PR estiver com conflito, incompleto, não testado ou ainda marcado como experimento.
 
 Merge continua decisão humana de Diego, salvo regra futura explícita.
+
+
+## 15. Higiene de backlog / Labs
+
+Documentar tudo não significa ler tudo todo dia nem transformar toda ideia em compromisso.
+
+Regras:
+- arquivos de `labs/`, `growth/` e notas futuras **não são leitura obrigatória em toda rodada**; consultar apenas quando o trabalho tocar naquele tema;
+- toda ideia futura relevante deve ter um estado simples quando amadurecer: `LAB`, `CANDIDATA`, `PRÓXIMA`, `EM EXECUÇÃO`, `ADIADA` ou `ARQUIVADA`;
+- ideia sem próximo passo concreto continua em LAB e não disputa atenção com a execução atual;
+- quando algo virar `PRÓXIMA`, registrar: responsável, gatilho/condição de início e primeira ação concreta;
+- revisões periódicas podem promover, adiar ou arquivar ideias;
+- arquivar não apaga histórico nem motivo da decisão;
+- evitar repetir a mesma ideia em vários arquivos: usar links/referências para uma fonte principal.
+
+Objetivo: preservar memória sem transformar documentação em ruído.
