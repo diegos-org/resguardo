@@ -78,3 +78,23 @@ Uma ideia sai de Labs quando:
 2. tem benefício claro;
 3. custo/risco estão entendidos;
 4. entra numa fatia pequena e executável.
+
+
+---
+
+## LAB — Split automático de pagamentos / repasses
+
+Objetivo futuro: permitir que reservas diretas distribuam automaticamente valores entre empresa e proprietário, reduzindo conciliação manual.
+
+Investigar:
+- Mercado Pago e alternativas;
+- split/subcontas;
+- KYC;
+- chargebacks;
+- estornos;
+- cancelamentos;
+- taxas;
+- regras fiscais/contratuais;
+- reconciliação e auditoria.
+
+Não implementar agora. Primeiro estabilizar reserva direta, pagamento, modelo financeiro e conciliação manual correta.
