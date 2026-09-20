@@ -1,3 +1,19 @@
+## Rivers terminou — 20/09/2026, rodada antecipada
+
+A boa notícia: Sage fez trabalho útil e os testes locais passaram. A trava agora não é produto; é **compartilhamento**. O código que ele mexeu ainda está só no ambiente local dele, então mandar Lia agora seria fazê-la procurar uma coisa que ela não consegue ver.
+
+Por isso eu mudei a ordem desta volta: **Sage vai de novo primeiro**, mas com uma missão curta — colocar no GitHub apenas a parte limpa e necessária desse trabalho, numa branch/PR de construção, sem segredos, dados de hóspedes, produção ou entulho antigo. Depois disso, Lia entra e testa o fluxo de verdade pelo navegador.
+
+Mercado Pago continua escolhido por você, mas não vamos integrar pagamento antes de termos a base compartilhada, cotação/revalidação e estados mínimos bem definidos. Isso evita construir cobrança em cima de chão movediço.
+
+### O que você precisa fazer agora
+Se quiser acelerar, mande ao Sage:
+**“Rivers terminou. Leia o novo handoff Rivers → Sage no repo e pode começar.”**
+
+Você não precisa passar nenhuma instrução técnica além disso.
+
+---
+
 ## Sage terminou — 20/09/2026, rodada antecipada
 
 Você pode chamar o **Rivers**. Li a entrega da Lia e avancei sem refazer o site: alinhei a galeria do 399 e montei uma demonstração separada de checkout com imóvel, datas, hóspedes e total detalhado. Testei também preço mudando, datas indisponíveis, falha e cotação expirada. Tudo nela é fictício e nenhum botão cobra. Os 22 testes do projeto passaram.
