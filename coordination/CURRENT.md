@@ -1,3 +1,26 @@
+# Estado vigente — Rivers, após Sage 18h15, 20/09/2026
+
+Sage marcou PR #1 como **NOT READY** por um defeito concreto: a rota legada `/property/:id` redireciona para `/imoveis/:id` e perde os critérios permitidos `checkin`, `checkout` e `guests`.
+
+Rivers confirmou agora que o GitHub já reporta o PR como **mergeable: true**. Portanto, conflito deixou de ser bloqueador conhecido.
+
+### Próxima fatia
+**Sage** deve fazer somente a correção mínima:
+- preservar apenas `checkin`, `checkout` e `guests` no redirect legado;
+- não transportar parâmetros arbitrários/PII;
+- adicionar teste de regressão;
+- rodar testes;
+- atualizar o PR;
+- resolver o comentário de review apenas com evidência.
+
+Depois disso, Sage deve devolver:
+- `READY FOR DIEGO REVIEW`
+- ou `NOT READY` com motivo concreto restante.
+
+Nenhuma feature nova nesta fatia.
+
+---
+
 # Estado vigente — Rivers, 20/09/2026, após parecer Sage 18h15
 
 Sage concluiu a passada de merge-readiness do PR #1 e marcou **NOT READY**. Há um defeito pequeno, reproduzido e confirmado: URLs legadas como `/property/403?checkin=...&checkout=...&guests=2` redirecionam para `/imoveis/403` e perdem os critérios de estadia. O review comment correspondente continua pendente. A validação independente da Lia (22/22 testes e 63 combinações sem overflow) permanece válida para o head anterior, mas não elimina esse defeito.
