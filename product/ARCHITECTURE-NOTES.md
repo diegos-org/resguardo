@@ -97,3 +97,88 @@ Quando o ZIP antigo de julho estiver disponível para análise:
 - revisar o calendário;
 - comparar fluxos antigos com a arquitetura atual;
 - resgatar padrões que funcionavam melhor sem restaurar cegamente a UI antiga.
+
+
+---
+
+## Portal do proprietário — vínculo entre usuário e apartamentos
+
+### Modelo recomendado para clientes atuais
+
+Para proprietários já conhecidos pela operação, usar **vínculo pré-cadastrado + convite**.
+
+Fluxo:
+1. A empresa já tem o apartamento e o proprietário cadastrados no sistema.
+2. O sistema cria internamente a relação:
+   - proprietário ↔ apartamento(s)
+   - papel/permissões
+3. Enviamos um convite único por e-mail ou WhatsApp.
+4. O proprietário cria a conta ou entra com Google/Apple.
+5. Ao aceitar o convite, a conta é vinculada ao proprietário já existente.
+6. Ele passa a ver **somente** os apartamentos previamente associados.
+
+Esse fluxo é preferível a tentar descobrir automaticamente propriedade por CPF, telefone ou e-mail.
+
+### Por que não vincular só por dados pessoais
+
+Dados pessoais podem:
+- estar desatualizados;
+- ter variações;
+- ser compartilhados;
+- ter erros de digitação;
+- gerar associação indevida.
+
+Eles servem para validação auxiliar, não como fonte única de autorização.
+
+### Segurança mínima do convite
+- token único;
+- validade limitada;
+- uso único;
+- vínculo explícito com proprietário e papel;
+- registro de aceite;
+- opção de revogação;
+- reautenticação para ações sensíveis.
+
+---
+
+## Marketplace / auto-onboarding futuro
+
+Dois modos devem coexistir:
+
+### A. Operação cria primeiro
+A empresa cadastra o imóvel, configura a operação e depois convida o proprietário.
+
+Bom para:
+- clientes geridos pela Sua Casa Leblon;
+- onboarding assistido;
+- migração dos clientes atuais.
+
+### B. Proprietário cria do zero
+O proprietário:
+1. cria conta;
+2. inicia um anúncio;
+3. preenche dados do imóvel;
+4. envia documentos/verificações necessárias;
+5. configura anúncio/operação;
+6. publicação só ocorre depois das validações exigidas.
+
+Esse fluxo se aproxima de uma OTA/marketplace.
+
+### Regra de autorização
+
+Acesso ao imóvel deve depender de uma relação explícita no banco:
+`user -> owner/account -> property -> role/permissions`
+
+Nunca apenas de correspondência textual de e-mail/CPF.
+
+---
+
+## Primeiros proprietários
+
+Para clientes atuais como Vilmar, Leonardo e Luciana:
+- cadastrar/confirmar entidade proprietário;
+- associar seus apartamentos;
+- gerar convite individual;
+- ao entrar, portal já abre com a carteira correta;
+- se tiver mais de um apartamento, mostrar todos no seletor global e permitir visão individual.
+
