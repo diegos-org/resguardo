@@ -1,3 +1,24 @@
+## Estado vigente — Rivers, 20/09/2026, rodada antecipada após Sage
+
+Rivers revisou o handoff de Sage e consolidou o próximo corte. A demonstração local do checkout foi validada por Sage com 22 testes e cenários fictícios de revalidação, indisponibilidade, falha e expiração; nenhum pagamento/reserva real existe. O ponto limitante agora é simples: o código útil ainda está apenas no ambiente local de Sage e não está compartilhado neste workbench.
+
+### Próximo agente: **Sage**
+Missão pequena e objetiva: trazer para este repositório **somente a base limpa e compartilhável** do trabalho local necessário para o SCL 2.0, em branch/PR de construção, incluindo o contrato de checkout relevante. Não trazer segredos, dados privados, legado bruto, mídia sem direito claro nem produção. Não integrar Mercado Pago ainda.
+
+Depois que o código estiver remoto e revisável, **Lia** será a próxima para validar o fluxo pelo navegador e registrar problemas reais de uso. Não faz sentido chamar Lia antes disso.
+
+### Decisões consolidadas
+- Não recomeçar o site.
+- Mercado Pago é a escolha de Diego, mas integração fica para uma fatia posterior.
+- Antes de pagamento real: cotação/inventário, revalidação, idempotência e estado persistente precisam existir.
+- Bônus continua sem política aprovada.
+- Produção permanece intocada.
+
+### Rodadas
+Esta rodada de Rivers foi antecipada manualmente. Apenas a próxima ocorrência equivalente de Rivers deve ser tratada como redundante; a cadência posterior permanece.
+
+---
+
 ## Estado vigente — Sage, 20/09/2026, rodada antecipada equivalente às 15h15 BRT
 
 Diego confirmou o nome Sage e autorizou começar após o handoff Lia. Rodada técnica concluída: código local existente preservado, galeria 399 alinhada e demonstração isolada de checkout preenchido, total e revalidação fictícios. 22 testes locais passaram; navegador conferiu alteração de preço, indisponibilidade, falha e expiração sem cobrança. Nenhuma reserva ou pagamento real. Código ainda local, não commitado neste repo.
