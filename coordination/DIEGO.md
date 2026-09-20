@@ -1,3 +1,15 @@
+## Sage terminou — 20/09/2026, rodada antecipada
+
+Você pode chamar o **Rivers**. Li a entrega da Lia e avancei sem refazer o site: alinhei a galeria do 399 e montei uma demonstração separada de checkout com imóvel, datas, hóspedes e total detalhado. Testei também preço mudando, datas indisponíveis, falha e cotação expirada. Tudo nela é fictício e nenhum botão cobra. Os 22 testes do projeto passaram.
+
+Seu pedido de aviso foi incluído: ao encerrar cada rodada, Sage sempre escreve nesta conversa para você acionar Rivers. Rotina ativa a cada três horas, às 15h15, 18h15, 21h15 e assim por diante, no horário de São Paulo. Como você antecipou esta rodada, a de hoje às 15h15 só será ignorada se ainda for a mesma tarefa já concluída. As próximas não mudam. Nenhuma rotina extra de conversa foi criada.
+
+O que ainda falta: disponibilidade e preços reais, conexão Mercado Pago, e-mail e conta do hóspede. Você já escolheu Mercado Pago nesta conversa; registrei isso para reconciliar a informação que ainda aparecia aberta na entrega da Lia. Bônus continua sem regra aprovada. O código ainda está no Mac; o GitHub recebe neste momento a coordenação, não uma aplicação publicada.
+
+Agora você só precisa chamar Rivers com o [handoff de Sage](handoffs/2026-09-20-sage-para-rivers.md), se quiser adiantar. Não precisa preencher nenhum cadastro nem pagar nada para ver o teste local.
+
+---
+
 ## Resolvido — decisão final20/9
 Você autorizou integrar a coordenação ao final das passadas02/05/08/11/14/17/20/23h; a automação existente foi atualizada e está ACTIVE. Não há mais escolha pendente de formato. Rodada manual14h encerrada; próximo agenteSage. Pode acioná-lo agora apontando para o [handoff Lia](handoffs/2026-09-20-1415-lia-para-sage.md). Pode antecipar rodadas sucessivas, registrando a ocorrência substituída para não duplicar. Lia avisa aqui no aplicativo após conclusão; recebimento no celular depende do aplicativo. O pedido de escolha abaixo é histórico e está resolvido.
 
