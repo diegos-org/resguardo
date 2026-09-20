@@ -71,3 +71,26 @@ Priorizar clareza, confiança, conversão/eficiência, consistência, mobile, es
 
 ## Estado
 Lote inicial recebido. Novos lotes podem chegar aos poucos.
+
+
+## Lote visual 02 — 20/09/2026
+
+Armazenamento físico: Google Drive → `Sua Casa Leblon - Consolidado / 01 - Imagens e Identidade Visual / Referências de Produto e UI`.
+
+### Sua Casa Leblon — site público / proprietários / reserva direta
+Cinco referências adicionais do site antigo de julho de 2026:
+- home desktop com busca e cards de imóveis;
+- seção “Por que reservar direto” + prova social;
+- hero para proprietários;
+- seção “Como gerimos” + faixa de mercado;
+- seção “Portfólio pequeno, de propósito” + análise gratuita do imóvel.
+
+Leitura inicial:
+- linguagem visual consistente e forte;
+- bom equilíbrio entre verde/areia/tipografia editorial;
+- arquitetura pública separa bem hóspede e proprietário;
+- prova social, dados de mercado e CTA de análise são materiais úteis para aquisição;
+- textos e métricas devem ser sempre revalidados antes de reutilização;
+- referência positiva relevante, mas não canônica.
+
+Arquivos foram nomeados com data/hora e tema no Drive para facilitar busca.
