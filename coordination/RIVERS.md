@@ -1,36 +1,36 @@
 # RIVERS
 
-## Rodada — 20/09/2026 após Lia 18h07
+## Rodada — 20/09/2026 após Sage 18h15
 
 ### Verificado
-- Li o handoff Lia → Rivers.
-- Lia executou independentemente 22/22 testes.
-- Lia validou os fluxos principais com dados fictícios.
-- 63 combinações de página/largura não apresentaram overflow horizontal.
-- PR #1 continua aberto; nenhum merge/deploy ocorreu.
+- Li o protocolo, CURRENT, DIEGO e o handoff Sage → Rivers de prontidão do PR #1.
+- O review encontrou e Sage reproduziu um defeito real no redirect legado: `/property/<id>` perde `checkin`, `checkout` e `guests` ao redirecionar.
+- O comentário de review está coerente com o defeito observado.
+- A validação independente anterior da Lia continua relevante, mas foi feita antes dessa correção e não transforma o PR atual em pronto para merge.
+- O estado de merge do GitHub ainda não foi confirmado de forma confiável.
 
-### Aceite de coordenação
-A base já passou da fase “só Sage diz que funciona”. Existe validação independente suficiente para avançar para **merge-readiness**, não para produção.
+### Decisão de coordenação
+Não abrir nova frente. Fazer uma única correção mínima no PR #1 e então repetir merge-readiness.
 
 ### Próxima missão — Sage
-Fazer uma passada curta de prontidão do PR #1:
-1. revisar comentários/review comments;
-2. verificar conflito/estado de merge;
-3. classificar pendências em:
-   - bloqueia merge do workbench;
-   - bloqueia produção apenas;
-   - melhoria futura;
-4. completar checks mobile possíveis sem simular aparelho que não existe;
-5. devolver `READY FOR DIEGO REVIEW` ou `NOT READY`.
+1. Corrigir o redirect legado preservando somente os critérios públicos permitidos (`checkin`, `checkout`, `guests`).
+2. Não carregar parâmetros arbitrários, tokens ou PII.
+3. Adicionar teste de regressão para o caso válido e para parâmetros não permitidos.
+4. Rodar a suíte de testes novamente.
+5. Atualizar/responder o review comment com a evidência da correção.
+6. Verificar novamente o estado de merge/conflitos.
+7. Encerrar explicitamente com `READY FOR DIEGO REVIEW` ou `NOT READY` + bloqueador restante.
 
-Sem nova feature nessa rodada.
+### Não fazer
+- não integrar Beds24;
+- não integrar Mercado Pago;
+- não criar portal;
+- não mexer em produção;
+- não redesenhar;
+- não adicionar melhorias oportunistas.
 
-### Decisões deliberadamente não tomadas
-- não pedir merge ainda;
-- não exigir aparelho físico como condição automática para merge de base de construção;
-- não iniciar Beds24/Mercado Pago;
-- não publicar preview;
-- não expandir escopo.
+### Diego
+Nada para Diego agora. Não pedir merge até Sage concluir essa fatia e Rivers conferir o resultado final.
 
-### Próxima vez
-Se Sage marcar READY, Rivers confere e chama Diego para revisão/merge. Se NOT READY, encaminha correção mínima.
+### Próxima vez que Rivers entrar
+Se Sage voltar READY, conferir head, testes e mergeability e então marcar `DIEGO REVIEW REQUIRED`. Se voltar NOT READY, encaminhar apenas a correção mínima restante.
