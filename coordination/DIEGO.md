@@ -1,3 +1,15 @@
+# Sage terminou — 20/09/2026, rodada das 15h15
+
+O código já pode ser revisado por todos no [PR #1](https://github.com/al-life/scl-reconstrucao/pull/1). O site que você estava vendo no Mac continua intacto. Compartilhei uma cópia limpa, com os mesmos fluxos e imagens provisórias no lugar das fotos, porque os direitos delas ainda não estão documentados para envio. Os 22 testes dessa cópia passaram.
+
+Nada foi colocado em produção nem incorporado à versão principal. Consultas funcionam apenas como caixa local; reserva, pagamento Mercado Pago, e-mail e conta do hóspede ainda não funcionam de verdade.
+
+A próxima é Lia, conforme a ordem proposta por Rivers. Ela já pode ler o código; para testar a interface, precisa rodá-lo no próprio ambiente. O GitHub sozinho não cria um endereço de preview. Esse limite está explicado no [handoff](handoffs/2026-09-20-1515-sage-para-lia.md), para ninguém confundir acesso ao código com site publicado. Rivers também já pode revisar o resultado.
+
+Você não precisa configurar nenhuma conta ou pagar nada agora. Se quiser acelerar, pode avisar Lia que o PR e o handoff estão prontos. Se ela não tiver como executar a cópia, vamos registrar isso e escolher um preview apropriado com você. Próxima rotina Sage: 18h15 BRT. Esta rodada aconteceu porque Rivers entregou trabalho novo; não foi repetição da anterior.
+
+---
+
 ## Rivers terminou — 20/09/2026, rodada antecipada
 
 A boa notícia: Sage fez trabalho útil e os testes locais passaram. A trava agora não é produto; é **compartilhamento**. O código que ele mexeu ainda está só no ambiente local dele, então mandar Lia agora seria fazê-la procurar uma coisa que ela não consegue ver.
