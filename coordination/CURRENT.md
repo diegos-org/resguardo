@@ -1,15 +1,25 @@
-# Sage — correção do redirect — 20/09/2026, 18h43 BRT
+# Rivers — conferência final do PR #1 — 20/09/2026, 19h28 BRT
 
-**READY FOR DIEGO REVIEW (parecer técnico). Próximo agente: Rivers para conferência final; Diego ainda não precisa mergear.**
+**DIEGO REVIEW REQUIRED. PR #1 está pronto para revisão humana e merge no workbench.**
 
-Rodada manual após handoff de Rivers; início nesta rodada, correção concluída às 18h43. PR #1 atualizado na branch sage-base-publica-revisavel: implementação bf1cb6d, regressões 7ba1c0c.
+Rivers conferiu o handoff de Sage e o head atual `7ba1c0c53d4edb13e0a75c1f6394a17817e67be4`. O PR #1 está aberto, não é draft e o GitHub reporta `mergeable: true`.
 
-O redirect /property/:id preserva somente checkin, checkout e guests válidos. Parâmetros extras são descartados; critérios incompletos, duplicados, inválidos ou acima da capacidade retornam 400 sem Location. Links sem critérios continuam redirecionando normalmente.
+A correção do redirect legado foi inspecionada no diff: `/property/:id` preserva somente `checkin`, `checkout` e `guests`, valida os critérios usando a propriedade da rota, descarta parâmetros extras e não redireciona quando os critérios permitidos são inválidos, incompletos, duplicados ou excedem a capacidade. Os testes de regressão cobrem GET/HEAD, preenchimento no destino, descarte de extras e rejeições.
 
-Verificado: 24/24 testes na base limpa e 24/24 no site original; GET, HEAD, preenchimento no destino, descarte de extras e rejeições cobertos. GitHub exibiu No conflicts with base branch no head 7ba1c0c. Comentário de review respondido com evidências e resolvido. Lia validou 22 testes e 63 combinações responsivas no head anterior; não atribuir a ela validação deste novo head. Sem CI remoto.
+Evidência de Sage no head atual: 24/24 testes na base limpa e 24/24 no site original, sem CI remoto. Lia havia validado 22/22 testes e 63 combinações responsivas no head anterior; essa evidência continua útil para a base, mas não é reatribuída ao novo head.
 
-Escopo restrito: nenhum redesign, integração, feature, merge ou deploy. Workbench continua com mídia substituta e sem reserva/pagamento reais. A correção local preservou as fotos originais.
+## Recomendação
+Rivers recomenda que Diego revise e, se estiver satisfeito, faça o merge do PR #1 **na `main` deste workbench**. Esse merge não publica o site, não conecta produção e não habilita reserva/pagamento real.
 
-Handoff: [Sage para Rivers](handoffs/2026-09-20-1843-sage-redirect-pr1.md). PR: https://github.com/al-life/scl-reconstrucao/pull/1
+## Limites que continuam verdadeiros
+- sem deploy/publicação;
+- sem Beds24/Mercado Pago;
+- sem reserva ou cobrança real;
+- sem auth/portal/e-mail de produção;
+- mídias compartilhadas continuam substitutas;
+- produção da Sua Casa Leblon permanece intocada.
 
-Rivers pode iniciar a conferência final e, se concordar, marcar DIEGO REVIEW REQUIRED. Parecer favorável à revisão da base de trabalho, sem autorização de publicação.
+## Próximo
+**Diego é o próximo para revisão humana do PR #1 e pode começar imediatamente.** Nenhum agente deve abrir nova fatia de aplicação antes dessa decisão. Depois do merge ou de comentários de Diego, Rivers reconcilia o estado e define o próximo trabalho.
+
+Handoff: `coordination/handoffs/2026-09-20-1928-rivers-final-pr1.md`.
