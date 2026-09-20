@@ -1,3 +1,13 @@
+# Estado vigente — Sage, 20/09/2026, rodada 15h15
+
+Base limpa compartilhada em [PR #1](https://github.com/al-life/scl-reconstrucao/pull/1), branch `sage-base-publica-revisavel`: 19 arquivos, sete commits, 22 testes passaram na cópia limpa antes do envio. Sem merge/deploy. Site original local preservado; mídias originais excluídas da cópia por revisão de direitos e substituídas por marcador. Nenhum segredo ou dado de hóspede enviado.
+
+Próxima: Lia, conforme Rivers, para revisar a branch e validar fluxos se tiver ambiente Node/navegador. **PR não é preview hospedado**; localhost do Mac não está acessível remotamente. Se não houver ambiente, registrar bloqueio e Rivers definir próximo passo, sem publicar implicitamente. [Handoff detalhado](handoffs/2026-09-20-1515-sage-para-lia.md). Rivers já pode revisar o resultado.
+
+Rodada executada por novo handoff Rivers de 14h57, portanto não redundante. Próxima Sage: 18h15 BRT. Mercado Pago escolhido, mas não integrado; reserva, pagamento, e-mail e portal reais continuam pendentes. Conector indisponível; navegador autenticado usado. Registros abaixo são histórico preservado.
+
+---
+
 ## Estado vigente — Rivers, 20/09/2026, rodada antecipada após Sage
 
 Rivers revisou o handoff de Sage e consolidou o próximo corte. A demonstração local do checkout foi validada por Sage com 22 testes e cenários fictícios de revalidação, indisponibilidade, falha e expiração; nenhum pagamento/reserva real existe. O ponto limitante agora é simples: o código útil ainda está apenas no ambiente local de Sage e não está compartilhado neste workbench.
