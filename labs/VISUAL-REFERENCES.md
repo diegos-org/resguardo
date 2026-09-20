@@ -94,3 +94,24 @@ Leitura inicial:
 - referência positiva relevante, mas não canônica.
 
 Arquivos foram nomeados com data/hora e tema no Drive para facilitar busca.
+
+
+## Candidato de design oficial — antigo /painel (preferência de Diego)
+
+Diego identifica como sua maior satisfação visual histórica o antigo caminho escondido `/painel`, especialmente a área que usava conceitos como **Caixa** e **Recibo**.
+
+Status:
+- preferência forte de Diego;
+- **candidato oficial**, ainda não regra congelada;
+- equipe pode propor melhorias, mas deve partir dessa linguagem antes de substituí-la por gosto pessoal.
+
+Características a preservar enquanto validamos:
+- verde escuro + areia/off-white;
+- aparência sóbria, adulta e editorial;
+- tipografia com personalidade;
+- cards simples e bem espaçados;
+- hierarquia visual clara;
+- sensação de ferramenta premium sem parecer SaaS genérico;
+- financeiro legível, com Caixa/Recibos como conceitos reconhecíveis.
+
+O screenshot exato ainda não foi localizado com confiança no acervo indexado. Mock de reconstrução será usado para validação antes de declarar canônico.
