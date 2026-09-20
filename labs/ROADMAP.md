@@ -400,3 +400,47 @@ Em 20/09/2026 Diego decidiu habilitar ElevenLabs para permitir que Lia transcrev
 
 Isso é ferramenta de trabalho da Lia, não arquitetura canônica do produto.
 Registrar apenas como histórico operacional.
+
+
+---
+
+## Registro de decisão — Twilio / ElevenLabs / Meta
+
+### Por que Twilio entrou
+Twilio apareceu como solução natural para:
+- receber WhatsApp por webhook;
+- responder via API;
+- permitir integração instantânea sem depender de computer use periódico.
+
+### Por que deixou de ser preferência atual
+Com o avanço das opções:
+- ElevenLabs passou a oferecer integração direta com WhatsApp, voz, transcrição e agente conversacional;
+- Meta Business Agent passou a merecer estudo como opção nativa do próprio ecossistema WhatsApp;
+- Twilio adiciona uma camada intermediária que pode não ser necessária.
+
+Conclusão atual:
+- **Twilio não está descartado tecnicamente**;
+- apenas deixou de ser primeira opção;
+- reavaliar se surgir requisito que ElevenLabs/Meta não cubram melhor.
+
+A razão desta nota é histórica: preservar por que uma solução entrou e por que saiu da preferência.
+
+---
+
+## LAB — ElevenLabs como ferramenta de apresentação de produto
+
+Além de voz/atendimento, ElevenLabs pode ser útil para materiais de divulgação de produtos AL Life.
+
+Possíveis usos:
+- narração de vídeo de apresentação;
+- demonstração guiada;
+- vídeo comercial de Giro Temporada;
+- onboarding;
+- explicadores;
+- voice-over para conteúdo social;
+- versões multilíngues quando fizer sentido.
+
+Hipótese:
+Uma boa interface + boa voz + roteiro claro pode elevar bastante a percepção de produto, especialmente em materiais de venda e onboarding.
+
+Não usar como ferramenta de “melhoria musical” por padrão; esse caso deve ser avaliado separadamente e não é sua força principal hoje.
