@@ -180,3 +180,65 @@ Quando houver massa crítica:
 
 ### Filosofia
 Os projetos podem evoluir em paralelo, mas foco aumenta quando um deles estiver perto de entrega.
+
+
+---
+
+## Carreira musical — documentação operacional a preservar
+
+Quando a carreira musical ganhar projeto próprio, migrar estes itens para lá. Até então, ficam registrados no Labs geral.
+
+### Mapa de palco / stage plot
+Manter documentação pronta e fácil de exportar para contratação de shows.
+
+Prever versões por formação:
+- solo voz + violão;
+- duo/trio, se houver;
+- banda completa, quando aplicável.
+
+Conteúdo:
+- posição de músicos;
+- instrumentos;
+- entradas/canais;
+- microfones/DI;
+- retornos;
+- energia;
+- necessidades de palco;
+- patch list;
+- observações técnicas;
+- contato responsável;
+- versão/data.
+
+Ideal futuro: gerar PDF técnico limpo + versão resumida para envio rápido.
+
+### Contatos relevantes da carreira
+Criar CRM simples e útil para:
+- casas de show;
+- festivais;
+- produtores;
+- bookers;
+- estúdios;
+- engenheiros/técnicos de áudio;
+- músicos;
+- assessoria/imprensa;
+- rádios/playlists/canais;
+- fotógrafos;
+- videomakers;
+- designers;
+- selos/distribuição;
+- fornecedores relevantes.
+
+Para cada contato, quando possível:
+- nome;
+- empresa/local;
+- função;
+- cidade;
+- contato;
+- origem da relação;
+- última conversa;
+- contexto;
+- próximos passos;
+- grau de relevância;
+- observações.
+
+Não virar CRM burocrático: o objetivo é conseguir responder rapidamente “quem eu conheço que pode ajudar nisso?”.
