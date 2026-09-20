@@ -444,3 +444,57 @@ Hipótese:
 Uma boa interface + boa voz + roteiro claro pode elevar bastante a percepção de produto, especialmente em materiais de venda e onboarding.
 
 Não usar como ferramenta de “melhoria musical” por padrão; esse caso deve ser avaliado separadamente e não é sua força principal hoje.
+
+
+---
+
+## LAB — Coordenação por evento / webhook entre agentes
+
+### Problema
+As rodadas atuais duram poucos minutos. Checagem horária reduz ociosidade, mas ainda pode deixar até ~1h entre handoffs.
+
+### Arquitetura candidata
+1. agente termina e grava handoff no GitHub com próximo agente explícito;
+2. GitHub emite webhook/evento;
+3. coordenador mínimo deduplica por identificador do handoff;
+4. tenta acionar a conversa/tarefa do próximo agente;
+5. checagem horária permanece como fallback.
+
+### Ponto conhecido
+GitHub → webhook é simples.
+
+### Gargalo real
+Ainda não está comprovado que uma ferramenta externa possa acordar uma conversa existente específica de Rivers/Lia/Sage no ChatGPT/Work.
+
+Sage relatou que seu ambiente Codex possui capacidade de enviar mensagem para outra tarefa, mas isso ainda não foi validado entre estes três contextos e não implica que um webhook externo possa chamar a mesma função.
+
+### Caminho que NÃO deve virar infraestrutura
+Automatizar navegador para:
+- entrar na conta pessoal de Diego;
+- usar sessão/cookies/2FA;
+- enviar mensagens fingindo ser Diego.
+
+Mesmo se tecnicamente possível, isso é:
+- frágil;
+- difícil de auditar;
+- mistura identidade humana e agente;
+- suscetível a mudanças de UI;
+- arriscado para loops e autoria.
+
+Só reconsiderar se existir mecanismo oficial/autorizado que preserve identidade do agente e trilha de auditoria.
+
+### Prova de conceito recomendada
+- handoff fictício;
+- um único emissor;
+- uma única conversa destino;
+- uma única mensagem;
+- sem mudar estado real do projeto;
+- confirmar deduplicação e ausência de loop.
+
+Se funcionar por canal oficial, automatizar o próximo agente.
+Se não funcionar, manter checagem horária + antecipação manual de Diego.
+
+### Não fazer
+- criar quarta IA interpretando handoffs;
+- duplicar fonte de verdade;
+- usar login humano como ponte de automação.
