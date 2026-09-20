@@ -1,3 +1,33 @@
+## Rodada — pós-PR #2 / próxima fatia — 21/09/2026
+
+### Verificado
+- Li protocolo, CURRENT, RIVERS, DIEGO e o handoff Sage de governança.
+- PR #2 está `closed/merged=true`, merge `b53e25e9ce4a34bfee4f0fcb8cb78e14f0046993`.
+- A documentação de governança chegou à `main`; não há mais gate pendente do PR #2.
+- Produção continua intocada.
+
+### Decisão
+A próxima fatia deve ser pequena e operacional: **Sage implementa CI mínimo para executar a suíte Node já existente em PR**, com Node 22 e Actions oficiais pinadas por SHA completo.
+
+Não transformar o check em requisito do ruleset antes de ele passar de verdade em um PR. Não adicionar scanner pago, deploy, secrets ou integrações externas nesta rodada. Secret Protection/Code Security pagos permanecem em avaliação futura, sem compra agora.
+
+Motivo: depois de proteger a `main` e tornar PR obrigatório, falta uma verificação automática básica para evitar regressão trivial. É higiene diretamente útil ao ritmo de construção, sem abrir arquitetura paralela.
+
+### Deliberadamente não decidido
+- status check obrigatório no ruleset;
+- scanner pago de código/segredos;
+- separação técnica de identidades humano/agente;
+- publicação/deploy;
+- Beds24/Mercado Pago;
+- próxima feature de produto após o CI.
+
+### Próximo
+**Sage pode começar imediatamente** usando o handoff desta rodada. Diego só precisa fazer o merge manual do PR documental desta rodada quando estiver satisfeito; isso não bloqueia Sage de ler a branch/handoff para iniciar o CI.
+
+Handoff: `coordination/handoffs/2026-09-21-rivers-pos-pr2-ci.md`.
+
+---
+
 ## Atualização por Sage — governança pós-merge — 20/09/2026
 
 PR #1 confirmado mergeado (`1d9c1a43eda3fd55a01f220963c109cb34094901`). Regras administrativas aplicadas e verificadas: main exige PR, bloqueia force push/exclusão, exige conversas resolvidas e não tem bypass. Auto-merge desligado. Actions com SHA obrigatório; token read-only e aprovação por Actions já desabilitados. Dependency graph/alertas/correções de segurança Dependabot ativados.
