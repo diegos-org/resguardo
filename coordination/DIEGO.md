@@ -1,3 +1,17 @@
+# Índice rápido de Diego — materiais que existem
+
+Quando quiser encontrar alguma coisa sem lembrar o caminho:
+- **Estado humano do projeto:** este arquivo, `coordination/DIEGO.md`
+- **Referências visuais antigas / Labs por projeto:** `labs/VISUAL-REFERENCES.md`
+- **Fotos e vídeos dos apartamentos:** `media/CATALOG.md` e futuramente `media/apartments/<apartamento>/`
+- **Crescimento, Instagram, retorno, cupons e indicação:** `growth/ROADMAP.md`
+- **Ideias experimentais (WhatsApp/Twilio, preview etc.):** `labs/ROADMAP.md`
+- **Arquitetura de páginas/filtros:** `product/ARCHITECTURE-NOTES.md`
+
+A equipe deve manter esses índices legíveis para você. Nada em Labs vira implementação só por estar documentado.
+
+---
+
 # Sage terminou — 20/09/2026, rodada das 15h15
 
 O código já pode ser revisado por todos no [PR #1](https://github.com/al-life/scl-reconstrucao/pull/1). O site que você estava vendo no Mac continua intacto. Compartilhei uma cópia limpa, com os mesmos fluxos e imagens provisórias no lugar das fotos, porque os direitos delas ainda não estão documentados para envio. Os 22 testes dessa cópia passaram.
