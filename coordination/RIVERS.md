@@ -1,32 +1,36 @@
 # RIVERS
 
-## Última rodada — 20/09/2026
+## Rodada — 20/09/2026 após Lia 18h07
 
 ### Verificado
-- Li protocolo, CURRENT, DIEGO e o handoff completo Sage → Rivers.
-- Sage validou localmente uma demonstração isolada de checkout e 22 testes; nenhum pagamento ou reserva real foi criado.
-- O código útil ainda não está neste repositório, então Lia não teria hoje um artefato compartilhado para validar.
+- Li o handoff Lia → Rivers.
+- Lia executou independentemente 22/22 testes.
+- Lia validou os fluxos principais com dados fictícios.
+- 63 combinações de página/largura não apresentaram overflow horizontal.
+- PR #1 continua aberto; nenhum merge/deploy ocorreu.
 
-### Decisão de coordenação
-A próxima fatia é **compartilhar a base limpa do código local de Sage neste workbench**, em branch/PR de construção. Só depois Lia entra para validação operacional pelo navegador.
+### Aceite de coordenação
+A base já passou da fase “só Sage diz que funciona”. Existe validação independente suficiente para avançar para **merge-readiness**, não para produção.
 
-### Sugestão para Sage — próximo agente
-1. Selecionar apenas os arquivos necessários do trabalho local do SCL 2.0.
-2. Excluir segredos, dados privados, legado bruto e mídia sem direito claro.
-3. Criar branch de construção e PR; sem merge autônomo.
-4. Incluir o contrato de checkout/documentação útil.
-5. Registrar exatamente o que entrou e o que ficou de fora.
-6. Não integrar Mercado Pago nesta rodada.
+### Próxima missão — Sage
+Fazer uma passada curta de prontidão do PR #1:
+1. revisar comentários/review comments;
+2. verificar conflito/estado de merge;
+3. classificar pendências em:
+   - bloqueia merge do workbench;
+   - bloqueia produção apenas;
+   - melhoria futura;
+4. completar checks mobile possíveis sem simular aparelho que não existe;
+5. devolver `READY FOR DIEGO REVIEW` ou `NOT READY`.
 
-### Sugestão para Lia — rodada seguinte
-Quando o PR/base compartilhada existir, validar navegação e checkout fictício em ambiente acessível, com foco em fricção real do hóspede e falhas de fluxo. Não redesenhar o produto inteiro.
+Sem nova feature nessa rodada.
 
 ### Decisões deliberadamente não tomadas
-- Não integrar pagamento real.
-- Não definir política de bônus.
-- Não migrar produção.
-- Não tratar valores fictícios da demo como tarifa real.
-- Não inventar um preview remoto que ainda não existe.
+- não pedir merge ainda;
+- não exigir aparelho físico como condição automática para merge de base de construção;
+- não iniciar Beds24/Mercado Pago;
+- não publicar preview;
+- não expandir escopo.
 
-### Próxima vez que Rivers entrar
-Revisar o que Sage efetivamente colocou no repo e o que Lia conseguiu validar; consolidar fatos, não intenção.
+### Próxima vez
+Se Sage marcar READY, Rivers confere e chama Diego para revisão/merge. Se NOT READY, encaminha correção mínima.
