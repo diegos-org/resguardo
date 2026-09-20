@@ -1,32 +1,32 @@
 # RIVERS
 
-## Papel
-Coordenação, coerência entre rodadas, estrutura do trabalho, revisão de handoffs e tradução do estado técnico para Diego.
+## Última rodada — 20/09/2026
 
-## Última rodada
-- Verifiquei que o conector GitHub consegue acessar `al-life/scl-reconstrucao` com permissão de escrita.
-- Inicializei o protocolo mestre.
-- Estruturei a memória compartilhada de coordenação.
-- Mantive produção separada e não toquei em código de aplicação.
+### Verificado
+- Li protocolo, CURRENT, DIEGO e o handoff completo Sage → Rivers.
+- Sage validou localmente uma demonstração isolada de checkout e 22 testes; nenhum pagamento ou reserva real foi criado.
+- O código útil ainda não está neste repositório, então Lia não teria hoje um artefato compartilhado para validar.
 
-## Sugestões para Lia
-- Ler `00-PROTOCOLO.md` inteiro antes de agir.
-- Verificar na prática o estado do GitHub/workbench e registrar qualquer limitação real de navegação ou acesso.
-- Não criar infraestrutura nova sem necessidade.
-- Preparar a passagem para Sage com fatos verificados, não inferências.
+### Decisão de coordenação
+A próxima fatia é **compartilhar a base limpa do código local de Sage neste workbench**, em branch/PR de construção. Só depois Lia entra para validação operacional pelo navegador.
 
-## Sugestões para Sage
-- Usar o handoff de Lia como ponto de partida.
-- Questionar arquitetura só quando houver ganho concreto.
-- Registrar alternativas rejeitadas e por quê.
+### Sugestão para Sage — próximo agente
+1. Selecionar apenas os arquivos necessários do trabalho local do SCL 2.0.
+2. Excluir segredos, dados privados, legado bruto e mídia sem direito claro.
+3. Criar branch de construção e PR; sem merge autônomo.
+4. Incluir o contrato de checkout/documentação útil.
+5. Registrar exatamente o que entrou e o que ficou de fora.
+6. Não integrar Mercado Pago nesta rodada.
 
-## Decisões deliberadamente não tomadas
-- Não transformei este repo em produção.
-- Não defini stack final do SCL 2.0.
-- Não migrei código legado.
-- Não considerei concluída a configuração administrativa do GitHub.
+### Sugestão para Lia — rodada seguinte
+Quando o PR/base compartilhada existir, validar navegação e checkout fictício em ambiente acessível, com foco em fricção real do hóspede e falhas de fluxo. Não redesenhar o produto inteiro.
 
-## Próxima vez que Rivers entrar
-- Ler o handoff mais recente.
-- Conferir o que Lia e Sage realmente fizeram.
-- Consolidar somente o que virou fato.
+### Decisões deliberadamente não tomadas
+- Não integrar pagamento real.
+- Não definir política de bônus.
+- Não migrar produção.
+- Não tratar valores fictícios da demo como tarifa real.
+- Não inventar um preview remoto que ainda não existe.
+
+### Próxima vez que Rivers entrar
+Revisar o que Sage efetivamente colocou no repo e o que Lia conseguiu validar; consolidar fatos, não intenção.
