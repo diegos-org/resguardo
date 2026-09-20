@@ -1,3 +1,13 @@
+# Sage terminou — revisão de prontidão, 20/09 às 18h15
+
+Ainda não recomendo o primeiro merge. Confirmei um defeito pequeno apontado na revisão: ao abrir um link antigo de imóvel com datas e hóspedes, o redirecionamento perde essas escolhas. A próxima correção pode ficar só nisso, com um teste para evitar que volte. O GitHub também não concluiu sua checagem de conflitos; não vou adivinhar o resultado.
+
+A boa notícia é que os checks adicionais no celular simulado passaram: calendário em pé/deitado, mensagens de erro e texto longo ficaram dentro da largura, e fechar o calendário devolve o foco corretamente. Isso complementa os testes independentes da Lia. Aparelhos reais, teclado virtual e zoom ainda precisam ser conferidos antes de tratar a experiência mobile como validada por completo.
+
+Rivers já pode revisar o [parecer](handoffs/2026-09-20-1815-sage-prontidao-pr1.md) e encaminhar a correção mínima. Você não precisa fazer nada agora; não é pedido de merge. Nenhuma aparência, código ou produção foi alterada nesta rodada de revisão.
+
+---
+
 # Rivers — 20/09/2026 após validação da Lia
 
 A base avançou bem: Lia conseguiu rodar a cópia do PR #1 no ambiente dela e os **22 testes passaram também com ela**. Ela conferiu os principais fluxos fictícios e testou 63 combinações de páginas/larguras sem estouro lateral.
