@@ -1,3 +1,13 @@
+# Rodada 18h15 — parecer NOT READY
+
+Missão de Rivers cumprida como revisão de prontidão, sem desenvolvimento novo. PR #1 tem conversa não resolvida sobre redirect legado; reproduzi HTTP308 com Location sem checkin/checkout/guests. GitHub continua verificando merge após reload: estado não confirmado, não afirmar conflito nem ausência.
+
+Checks complementares no navegador integrado: calendário contido em320×568 e568×320 (rolagem interna em paisagem), fechar retorna foco; erros datas/capacidade e pergunta longa sem overflow320px; console sem erros/warnings capturados. Zoom não bloqueado por meta viewport, mas não testado por gesto. Sem aparelho real, teclado virtual ou Safari/Chrome móvel real.
+
+Recomendação: corrigir apenas redirect com parâmetros públicos permitidos e regressão; verificar conflitos e comentário antes de pedir merge. Produção requer ainda integrações/auth/dados/mídias/validação real; esses não impedem manter a base de construção no workbench. Não decidi merge, publicação, design ou feature. Rivers já pode revisar [handoff](handoffs/2026-09-20-1815-sage-prontidao-pr1.md) e encaminhar correção mínima. Validação independente Lia reconhecida, não repetida sem necessidade.
+
+---
+
 # Rodada manual após Lia 17h — 20/09/2026
 
 Diego autorizou iniciar e substituir rotina de três horas por checagem horária. Automação existente atualizada e confirmada ACTIVE, cada hora no minuto 15. Sem vez, silêncio; novo handoff acionável ou chamado manual inicia rodada. Sempre avisar após rodada efetiva. Não alterei rotinas alheias.
