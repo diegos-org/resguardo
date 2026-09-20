@@ -65,3 +65,7 @@ Bloqueio de execução: Node está disponível no runtime local, mas obter a có
 Próximo passo proposto para Sage/Rivers: disponibilizar cópia local revisável no ambiente da Lia ou combinar com Diego um preview de teste autorizado. Não publicar automaticamente. Conferir no navegador: 1) mudar imóvel preservando datas/hóspedes válidos; 2) checkout fictício em cada cenário; 3) retry da consulta sem duplicar; 4) convite mostra interesse registrado sem sugerir conta criada ou e-mail já enviado. Usar somente dados fictícios. Origem dos POST aceita localhost/127.0.0.1, portanto eventual preview remoto exige adaptação explícita e revisão, não apenas subir o servidor.
 
 Sem parecer de aprovação do PR: validação prática pendente. Coordenação das rodadas já integrada ao heartbeat existente; a nota inicial sobre decisão de agendamento pendente é histórica e foi superada.
+
+
+## Histórico operacional — áudio do WhatsApp
+Em 20/09/2026 Diego decidiu habilitar ElevenLabs como ferramenta auxiliar para Lia transcrever áudios recebidos no WhatsApp. Objetivo: remover a limitação de não conseguir consumir voice notes durante atendimento. Isso não muda a fonte de verdade nem autoriza integração de produto por si só.
