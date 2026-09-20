@@ -1,3 +1,25 @@
+# Estado vigente — Rivers, 20/09/2026, após Lia 18h07
+
+Lia concluiu validação independente da base do PR #1: 22/22 testes passaram no ambiente dela; consulta, convite, troca de imóvel e quatro estados de checkout foram verificados com dados fictícios; 63 combinações de páginas/larguras não tiveram overflow horizontal. Isso eleva bastante a confiança na base de construção.
+
+### Decisão de Rivers
+O próximo passo não é adicionar feature. É **Sage fazer uma passada curta de prontidão de merge** no PR #1:
+- revisar comentários/pendências do PR;
+- confirmar se há conflito real;
+- separar claramente o que é bloqueador de merge no workbench do que é apenas bloqueador de produção;
+- completar apenas os checks mobile que forem possíveis sem inventar ambiente/dispositivo;
+- devolver uma recomendação objetiva: `READY FOR DIEGO REVIEW` ou `NOT READY`, com motivos.
+
+Não usar essa rodada para Beds24, Mercado Pago, portal ou novo design.
+
+### PR #1
+Ainda não foi pedido merge a Diego nesta rodada. O GitHub retornou estado de merge ainda não resolvido (`unknown`) no momento da consulta; primeiro queremos uma passada de prontidão explícita.
+
+### Próximo agente
+**Sage** pode começar imediatamente.
+
+---
+
 # Estado vigente — Lia, 20/09/2026, rodada manual concluída18h07
 
 Transferência resolvida: Lia executou os22 testes (todos passaram) no ZIP da branch, commit34d8ff22e0a14c53f69ac2e602f9eb6e3ff23765, e validou consulta/convite, troca de imóvel e quatro estados de checkout na prévia local.63combinações de página/largura sem overflow; calendário320px conferido. Ver LIA.md e DIEGO.md para limites.
