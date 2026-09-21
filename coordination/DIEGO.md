@@ -1,25 +1,20 @@
-# Diego — coordenação atualizada após a entrega de Sage
+# Diego — rodada Rivers concluída; Sage pode começar agora
 
-Sage passou a revisão para Rivers. Conferi as versões atuais no GitHub e organizei o próximo passo. **Você não precisa fazer nada agora.**
+Conferi as entregas de Sage e Lia no GitHub. Já havia uma rodada Rivers no PR #16; atualizei esse mesmo PR com os guias que Lia entregou depois, sem abrir uma cópia.
 
-## Onde estamos e o que mudou
-A página de busca já recebeu a correção que faltava. Também existe uma demonstração de pagamento, inteiramente fictícia. A documentação antiga da main ainda pedia a correção já feita; esta rodada elimina essa ambiguidade na branch de coordenação, aguardando merge humano.
+## O que mudou
+Os guias agora separam preparação de relatórios pela Mia e comunicação/envio pela Lia. Lia continua responsável até a passagem ser aceita e registrada. Corrigi no #14 a diferença de redação na matriz: criar Mia para ler os guias é uma etapa; passar as rotinas é outra. A versão anterior ficou preservada no histórico. Nenhuma agente foi criada ou ativada nesta rodada.
 
-## O que foi conferido
-- No #11, li a correção e seus testes, além da lógica que mantém a demonstração sem cobrança real. A versão atual tem conflito com a base e não tem teste automático remoto comprovado; testes locais foram relatados por Sage.
-- No #15, li a correção de permissões e a regressão; o teste automático remoto da versão atual passou. Isso ainda é um módulo isolado, sem login ou proteção de um painel real.
-- #13 e #14 continuam rascunhos documentais com reconciliação pendente. A preparação de Mia ainda não é ativação.
+## O que funciona e o que falta
+Sage entregou a demonstração fictícia de pagamento, mas o #11 ainda tem conflito com a versão principal e não apresenta teste remoto no head consultado. Ele pode reconciliar isso agora; depois Lia valida busca, celular e pagamento fictício. O #15 tem teste automático aprovado, ainda sem aceite visual atribuído à Lia. Integrações, disponibilidade e pagamentos reais continuam sem ativação.
 
-## O que ainda falta
-Sage ajusta a base do #11 preservando o trabalho e confirma os testes da nova versão. Depois Lia valida busca, celular e pagamento fictício, e Rivers faz a revisão final. Lia também trata as correções documentais de sua divisão com Mia. Disponibilidade, reserva e cobrança reais continuam sem ativação.
+## Você precisa fazer algo?
+**Não precisa fazer nada para Sage e Lia continuarem.** O PR #16 é somente coordenação: você pode revisá-lo e fazer o merge quando a descrição confirmar que os testes da versão final passaram. **DIEGO REVIEW REQUIRED — somente #16, condicionado ao CI final.** Os PRs de produto e o #14 continuam rascunhos, sem recomendação de merge.
 
-## Sua decisão
-Nenhum PR de produto está sendo recomendado para merge nesta rodada. O PR desta coordenação começa como rascunho, sujeito ao próprio teste e revisão. Quando houver prontidão real, o aviso deve ser explícito. Todos os merges continuam exclusivamente seus.
+A versão atual está na branch do #16; a principal ainda não foi atualizada. Produção, automações e regras de segurança/status checks não foram alteradas. Tornar um teste obrigatório continua exigindo sua aprovação explícita separada.
 
-Tornar o teste obrigatório nas regras do GitHub continua dependendo de autorização sua, separada. Produção e rulesets não foram alterados. A proposta de armazenamento também não foi aprovada nem provisionada.
+[Handoff e evidências](handoffs/2026-09-21-1915-rivers-pos-lia.md).
+[Painel anterior preservado](handoffs/2026-09-21-1915-rivers-estado-anterior.md).
 
-[Handoff com evidências e responsáveis](handoffs/2026-09-21-1848-rivers-coordenacao.md). [Painel anterior preservado](handoffs/2026-09-21-1848-rivers-estado-anterior.md).
-
-## Revisão humana — somente a coordenação #16
-
-**DIEGO REVIEW REQUIRED**, condicionado ao sinal final de testes na descrição do PR #16. Os arquivos foram conferidos integralmente, o primeiro teste automático passou e a única mudança é documental. Assim que o head final passar e o PR sair de rascunho, recomendo revisar e incorporar o #16 se você concordar. Não é urgente nem bloqueia Sage/Lia; não é pedido de merge dos PRs de produto. O estado de rascunho mencionado acima descreve a abertura do PR.
+## Continuidade
+Registrei [o método do Rivers](METODO-RIVERS.md): visão do conjunto, conferência de evidências, correção de desvios, preservação de histórico e instruções de retomada por substituto. Se faltar uma decisão ou merge seu, o aviso deve identificar exatamente o que precisa fazer e o que está bloqueado.
