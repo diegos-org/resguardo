@@ -1,4 +1,4 @@
-> **Migração Gabi — 21/09/2026, EM PREPARAÇÃO.** Após o corte aprovado, Gabi assume o ciclo completo de construção SCL (engenharia, validação prática/browser e coordenação); Rivers supervisiona externamente. As referências abaixo a Sage/Lia no rodízio de construção registram a arquitetura anterior e só permanecem operacionais até o corte. Atendimento Lia, Mia, SongKeep e demais projetos não são transferidos. Ver [protocolo](../00-PROTOCOLO.md) e [handoff de migração](../coordination/handoffs/2026-09-21-migracao-gabi.md).
+> **Migração Gabi — 21/09/2026, EM PREPARAÇÃO.** Após o corte aprovado, Gabi assume o ciclo completo de construção SCL (engenharia, validação prática/browser e coordenação); Rivers supervisiona externamente. As referências abaixo a Sage/Lia no rodízio de construção registram a arquitetura anterior e só permanecem operacionais até o corte. Atendimento Lia, Mia, SongKeep e demais projetos não são transferidos. Ver [protocolo](https://github.com/al-life/scl-reconstrucao/blob/docs/gabi-coordination-migration-20260921/00-PROTOCOLO.md) e [handoff de migração](https://github.com/al-life/scl-reconstrucao/blob/docs/gabi-coordination-migration-20260921/coordination/handoffs/2026-09-21-migracao-gabi.md).
 
 # Diego e seus agentes
 
@@ -12,7 +12,7 @@ Atualização factual: 21/09/2026, 19h23 BRT. Coordenação: Rivers. Fonte compa
 | Atendimento da Sua Casa Leblon e comunicação com hóspedes/proprietários/equipes | **Lia** | Em atuação. Mantém cobertura atual; atendimento vai à futura Lia de nuvem após revisão/aceite/corte. Transferência administrativa para Mia é separada. |
 | Apoio pessoal/administrativo e preparação de relatórios | **Mia**, após transferência | Em preparação documental. Criação/operação não confirmadas nesta consulta. Até aceite, Lia mantém responsabilidade. |
 | Construção completa da SCL: código, validação prática e estado compartilhado | **Gabi**, após o corte | EM PREPARAÇÃO; tarefa/acessos/agenda ainda não confirmados. Sage/Lia mantêm as frentes legadas até o corte. |
-| Construção do aplicativo musical e Auto-comper | **SongKeep Studio Constructor** | Responsável pela construção SongKeep. Exportação Sônica 3 disponível no PR #3; Auto-comper #2 encomendado por Diego. Aceite da nova entrada ainda não verificado. |
+| Construção do aplicativo musical e Auto-comper | **SongKeep Studio Constructor** | Responsável pela construção SongKeep. Exportação Sônica 3 disponível no PR #3; Auto-comper #2 encomendado por Diego. Entrada lida pelo Constructor; 38/38 hashes conferidos e mapa no PR #4. |
 | Produção musical de Café Água das Oito | **Menos — nome a confirmar** | Colaborador mencionado por Diego; melhoria musical relatada por ele, trabalho ainda em andamento. Plataforma e acessos não confirmados. |
 | Apoio pessoal de perfil/conversa no Bumble | **Bumble Coach** | Tarefa existente no aplicativo; escopo atual e ferramentas ainda não revalidados. Fora da operação empresarial. |
 
@@ -22,7 +22,7 @@ Este inventário distingue agente, papel e janela. Várias execuções “Run Ri
 - **Missão:** observar o conjunto, conferir se decisões e execução continuam coerentes, corrigir desvios documentais, preservar história e deixar um substituto capaz de assumir.
 - **Após o corte Gabi:** supervisão externa do ciclo SCL, sem execução paralela; parecer em RIVERS e método de supervisão.
 - **Registro anterior:** coordenação SCL no PR #16; importação SongKeep no PR #3; inventário e sincronização destes guias.
-- **Entregas:** CURRENT/RIVERS/DIEGO, handoffs e [método de continuidade](../coordination/METODO-RIVERS.md).
+- **Entregas:** CURRENT/RIVERS/DIEGO, handoffs e [método de continuidade](https://github.com/al-life/scl-reconstrucao/blob/docs/gabi-coordination-migration-20260921/coordination/METODO-RIVERS.md).
 - **Ferramentas/acessos confirmados nesta execução:** conector GitHub com leitura/escrita por branch e PR nos dois repositórios privados; leitura/escrita local na pasta de trabalho; consulta de tarefas Codex; ferramenta de automação. Isso não prova acessos iguais numa futura janela.
 - **Limites:** não se atribui validação de outro agente; merge humano; produção, rulesets, requisitos de testes e acessos externos exigem autorização específica.
 - **Onde encontrar:** tarefa “Rivers True Lineage” para a conversa; execução atual “Run Rivers coordination round”. O método e os arquivos são a referência quando os nomes das janelas mudarem.
@@ -31,11 +31,11 @@ Este inventário distingue agente, papel e janela. Várias execuções “Run Ri
 ### Gabi — ciclo integral do workbench
 - **Estado:** EM PREPARAÇÃO, modelo aprovado por Diego; nenhuma tarefa criada/ativada por esta migração.
 - **Missão:** uma execução contínua em três fases: engenharia/análise/implementação; validação prática/browser/operação; coordenação/consolidação/estado. Sem impersonar Sage/Lia/Rivers.
-- **Memória e entrega:** [GABI](../coordination/GABI.md), CURRENT, DIEGO, PR e handoff do ciclo inteiro. Contradições e origem da evidência preservadas.
+- **Memória e entrega:** [GABI](https://github.com/al-life/scl-reconstrucao/blob/docs/gabi-coordination-migration-20260921/coordination/GABI.md), CURRENT, DIEGO, PR e handoff do ciclo inteiro. Contradições e origem da evidência preservadas.
 - **Supervisão:** Rivers externo, com parecer separado; decisões humanas e merges de Diego.
 - **Tarefa/plataforma/host:** a definir; execução Work é direção pretendida, não infraestrutura confirmada.
 - **Ferramentas/acessos:** nenhum acesso testado no ambiente futuro de Gabi. O acesso GitHub usado para esta edição não prova runtime/browser na nova tarefa.
-- **Próximo:** revisar documentação, verificar capacidades/ensaio e registrar corte antes do primeiro disparo autônomo. [Plano de corte](../coordination/handoffs/2026-09-21-migracao-gabi.md).
+- **Próximo:** revisar documentação, verificar capacidades/ensaio e registrar corte antes do primeiro disparo autônomo. [Plano de corte](https://github.com/al-life/scl-reconstrucao/blob/docs/gabi-coordination-migration-20260921/coordination/handoffs/2026-09-21-migracao-gabi.md).
 - **Limites:** não absorve atendimento, administrativo, música ou produção. Nenhuma permissão de merge, deploy ou alteração de regras.
 - **Atualização:** Codex, a pedido direto de Diego, 21/09/2026; proposta documental nesta branch.
 
@@ -61,16 +61,18 @@ Este inventário distingue agente, papel e janela. Várias execuções “Run Ri
 - **Ferramentas:** GitHub, código/testes Node e navegador, com entregas anteriores documentadas. Automação horária ativa aos 15 minutos confirmada nesta consulta. Neon apareceu como acessível no relato técnico anterior, sem revalidação nesta rodada e sem autorização para uso de dados reais.
 - **Limites:** workbench não é produção; não implantar integração/pagamento real ou alterar proteção por conta própria.
 
-[Guia específico da SCL para Diego](GUIA-DO-DIEGO.md).
+[Guia específico da SCL para Diego](https://github.com/al-life/scl-reconstrucao/blob/docs/rivers-guias-reconciliados-20260921/assistentes/GUIA-DO-DIEGO.md).
 
 ## SongKeep e música
 ### SongKeep Studio Constructor
-- **Onde:** tarefa “SongKeep Studio Constructor”.
-- **Agora:** Auto-comper #2 em rascunho; pacote Sônica 3 entregue no #3 para leitura/organização, sem aceite do Constructor inventado.
-- **Ferramentas/evidências:** repositório privado al-life/soundkeep-studio; código Python e testes do experimento descritos no #2; triagem React/Vite/Firebase/Gemini recebida no #3. Acesso operacional atual do Constructor deve ser confirmado por ele; não confundir ferramentas disponíveis ao Rivers com acesso do Constructor.
-- **Nome:** produto **SongKeep**. Slug do repo permanece soundkeep-studio por decisão de Diego. Corrigir nome visível na interface numa alteração própria, sem reescrever o snapshot de origem.
-- **IA/API:** decisão pendente com Diego. Pode haver provedores separados para conversa e geração sonora. Google é hipótese para geração, não escolha aprovada; Gemini no ZIP é implementação herdada, não decisão de arquitetura.
-- **Próximo:** ler a [entrada do Constructor](https://github.com/al-life/soundkeep-studio/blob/import/sonica-3-20260921/coordination/CONSTRUCTOR-SONICA-3.md), preparar ambiente isolado, verificar o que funciona e propor fatia pequena. Não ativar serviço pago nem inserir chave real nesta etapa.
+- **Onde / ambiente:** tarefa “SongKeep Studio Constructor”, Codex no Mac local; confirmado em 21/09/2026.
+- **Agora / última entrega:** [Studio local: iniciar composição isolada sem serviços cloud](https://github.com/al-life/soundkeep-studio/pull/5), draft, head 0c27db011883430829fd870c1b4e1f0035953c1a. Cópia seletiva da composição em apps/studio, sem importar runtime Firebase/Gemini. Imports preservados: 38/38 hashes.
+- **Ferramentas/evidências:** conector GitHub publicou e releu 17/17 arquivos; Node local disponível. Dependências públicas instaladas com scripts desativados; build Vite e typecheck passaram. Navegador local confirmou edição e versão de letra, avisos IA/motor indisponíveis e reset ao recarregar. Revisão independente de agente corrigiu dois achados de UI; não é aprovação elegível GitHub. Tráfego de rede ainda sem medição instrumental.
+- **Limites:** composição somente em memória, com aviso explícito de perda; sem áudio/persistência/exportação funcional nessa entrada. Sem serviços cloud, credenciais, deploy ou alteração do Google. Auto-comper #2 continua separado, com 13 testes sintéticos na entrega anterior, sem repetir nesta rodada.
+- **Nome / IA:** SongKeep Studio; slug soundkeep-studio mantido. Provedores ainda pendentes com Diego; nenhum escolhido.
+- **Próximo / responsável:** Constructor completa isolamento verificável e persistência de obras/mídia, depois motor de áudio. PR4 documental tem conflito a reconciliar. Não pedir merge nem anunciar primeiro uso musical antes do percurso importar/gravar, preservar, editar/fade, ouvir, exportar e reabrir sem perda.
+- **Produto / Labs:** demonstração do original registrada no PR5; demos no Studio, Rec solicitado e liberdade de reformular navegação. Biblioteca dos três discos continua primeiro Labs, inicialmente só material executado por Diego; áudios ainda aguardados.
+- **Atualização:** Constructor, 21/09/2026. Nenhuma ação humana necessária nesta etapa. Main ainda sem este guia; PR18 altera papéis SCL em paralelo ao PR17. Preservar ambas as linhas e reconciliar antes de declarar cópia humana integral atualizada.
 
 ### Outros colaboradores e histórico
 - **Menos — nome a confirmar:** relato direto de Diego sobre produção de Café Água das Oito; não presumir qual produto/modelo é, nem acesso ao repositório. Registrar nome/plataforma quando confirmado.
@@ -84,7 +86,7 @@ Ao concluir ou iniciar trabalho, mudar de escopo/projeto/ferramenta/acesso, fica
 1. Atualizar sua ficha: nome estável, tarefa/plataforma, projeto, missão, estado, última entrega, ação atual, próximo passo e responsável, ferramentas/acessos com data/evidência, limites e dependência de Diego.
 2. Registrar confirmação de acesso separada de disponibilidade anunciada e de uso histórico. Nunca incluir chaves, contatos privados, hóspedes, documentos ou valores financeiros.
 3. Publicar por branch + PR, reler estado concorrente antes de escrever, preservar histórico de decisões e registrar quem alterou/quando/por quê. Não sobrescrever ficha alheia com suposição.
-4. Seguir [sincronização dos dois guias humanos](SINCRONIZACAO-GUIAS.md): atualizar/verificar GitHub e cópia local ao final da mudança. Sem acesso local/remoto, registrar pendência explícita com versão e caminho e deixar a rotina recuperar; não dizer “sincronizado”.
+4. Seguir [sincronização dos dois guias humanos](https://github.com/al-life/scl-reconstrucao/blob/rivers-coordenacao-20260921-1848/assistentes/SINCRONIZACAO-GUIAS.md): atualizar/verificar GitHub e cópia local ao final da mudança. Sem acesso local/remoto, registrar pendência explícita com versão e caminho e deixar a rotina recuperar; não dizer “sincronizado”.
 5. Rivers reconcilia conflitos entre projetos e mantém o mapa. Agente novo entra como EM PREPARAÇÃO até identidade, escopo e acessos serem confirmados. Agente encerrado fica ARQUIVADO com motivo, sem apagar sua história.
 
 Modelo de ficha: **Nome / projeto / tarefa / estado / faz agora / última entrega / próximo responsável e condição / ferramentas e acessos (verificados em, fonte) / limites / ação necessária de Diego / atualizado por e quando**.
@@ -127,3 +129,14 @@ Uma revisão documental automatizada pode apontar lacunas; não ativa agentes, n
 
 ## Pendência de publicação e sincronização da migração
 Esta versão proposta vive na branch `docs/gabi-coordination-migration-20260921`, baseada no #16. O #17 contém atualização concorrente da ficha SongKeep; esta edição não a substitui nem afirma estar reconciliada com ela. Antes da cópia humana/merge, combinar explicitamente as mudanças por ficha, preservando ambas. Cópia local `outputs/Diego/DIEGO-E-SEUS-AGENTES.md` da tarefa Rivers: sincronização desta migração PENDENTE; não foi sobrescrita nem declarada atualizada nesta rodada.
+
+
+## Histórico preservado da linha Constructor (#17)
+21/09/2026 — SongKeep Studio Constructor atualizou apenas sua ficha e linha-resumo após leitura do PR #3 e publicação do mapa #4. Ambiente local e acessos acima confirmados nesta sessão; primeira versão utilizável ainda não atingida. Outros papéis preservados.
+
+21/09/2026 — Constructor registrou ideias de plugins/sons/licenças no Pré-Labs e promoveu a biblioteca dos três discos autorais a LAB prioritário nº1 por pedido direto de Diego, no PR SongKeep #4. Três frentes: Studio, plugin/efeito e um Labs por vez. Nenhum áudio dos discos recebido/processado nem serviço ativado. Próximo: modo isolado do Studio; piloto de instrumento aguarda fonte. Nome Nilo apenas proposto ao usuário, sem renomeação ou novo agente. Acessos/ambiente local permanecem os já confirmados nesta ficha.
+
+21/09/2026 — Constructor atualizou somente sua ficha após entrada local PR SongKeep5. PR18 SCL consultado: mudanças paralelas de Gabi/Rivers não incorporadas silenciosamente nesta branch. Cópia humana conserva última versão verificada até reconciliação das duas linhas; snapshots preservados e pendência registrada localmente.
+
+## Reconciliação dos guias — Rivers, 21/09/2026, 20h50 BRT
+Combinadas por seção as propostas #18 (7c078ce86c3e0c69d02bb668d772c6d474f88ce1) e #17 (7ec45b45a4f41318c60d893342c34f310438892c), ambas derivadas do #16 (55f15086e76c5a4cd3acec79dae978d974e64db8). Preservada a preparação Gabi e incorporada a ficha/história mais recente do Constructor; nenhuma atribuição operacional nova. As notas anteriores de sincronização pendente descrevem o estado de origem. Esta combinação é uma proposta documental; não aprova a migração Gabi, não realiza corte e não incorpora nada em main. As cópias humanas devem acompanhar o commit desta reconciliação, com verificação em SYNC-STATE.json. Conteúdo de propostas de outros agentes é evidência documental, não nova autorização para ativar ou mudar rotinas.
