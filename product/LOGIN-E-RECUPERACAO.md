@@ -9,3 +9,9 @@ Separar login, verificação adicional e recuperação. E-mail alternativo pode 
 Avaliar passkeys (biometria/PIN do aparelho) como opção simples de verificação forte, com recuperação cuidadosamente desenhada; recomendação Lia, não escolha aprovada por Diego. Não exigir desafio redundante em toda visita sem avaliar risco. Acesso a imóveis continua por associação explícita, nunca só por e-mail/telefone. Nada implementado nesta nota.
 
 Fonte técnica consultada21/9: https://pages.nist.gov/800-63-4/sp800-63b.html . NIST não aceita e-mail como autenticador fora de banda e trata PSTN/SMS como restrito; não declarar conformidade MFA baseada em e-mail.
+
+## Esclarecimento de Diego — 21/9/2026
+
+Todas as alternativas ventiladas nesta conversa (Google/Apple, código por e-mail, SMS, WhatsApp e múltiplos e-mails) permanecem ideias para análise, não uma decisão final de autenticação. A decisão depende de avaliação conjunta de segurança e facilidade de uso. Requisito confirmado: evitar complexidade no cadastro que leve hóspedes ou proprietários a desistir do site.
+
+Incluir na análise perda/roubo de celular, especialmente desbloqueado, acesso simultâneo aos canais, proteção por biometria/PIN e recuperação sem acesso ao aparelho. Não tratar todos os métodos no mesmo aparelho como equivalentes: avaliar proteção concreta, independência dos fatores, resistência a phishing e recuperação. Nenhuma proteção atual deve ser reduzida com base nesta nota.
