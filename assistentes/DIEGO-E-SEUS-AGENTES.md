@@ -111,3 +111,5 @@ Quando Lia apresentar o pacote final, Rivers deve:
 Uma revisão documental automatizada pode apontar lacunas; não ativa agentes, não muda agendas e não substitui a decisão de corte de Diego.
 
 21/09/2026 — SongKeep Studio Constructor atualizou apenas sua ficha e linha-resumo após leitura do PR #3 e publicação do mapa #4. Ambiente local e acessos acima confirmados nesta sessão; primeira versão utilizável ainda não atingida. Outros papéis preservados.
+
+21/09/2026 — Constructor registrou ideias de plugins/sons/licenças no Pré-Labs e promoveu a biblioteca dos três discos autorais a LAB prioritário nº1 por pedido direto de Diego, no PR SongKeep #4. Três frentes: Studio, plugin/efeito e um Labs por vez. Nenhum áudio dos discos recebido/processado nem serviço ativado. Próximo: modo isolado do Studio; piloto de instrumento aguarda fonte. Nome Nilo apenas proposto ao usuário, sem renomeação ou novo agente. Acessos/ambiente local permanecem os já confirmados nesta ficha.
