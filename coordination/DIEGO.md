@@ -1,13 +1,16 @@
-# Diego — PR #7 pronto para decisão humana
+# Diego — PR #7 já foi mergeado; não há nada para fazer agora
 
-**DIEGO REVIEW REQUIRED — PR #7.**
+**DIEGO REVIEW REQUIRED — PR #8 quando o CI do head final estiver verde.** Esse PR contém somente a reconciliação documental pós-merge do #7; não altera aplicação nem ruleset.
 
-Sage identificou e documentou a configuração mínima para tornar o teste `SCL Node 22 tests` obrigatório antes de merges na `main`. Rivers revisou a proposta e refez as verificações principais: nome do check, emissor GitHub Actions (`integration_id` 15368) e ruleset atual conferem com o plano.
+O PR #7 foi mergeado com sucesso na `main`. O CI do head final passou.
 
-A mudança proposta é estreita: exigir esse check sem acrescentar a obrigação de atualizar a branch a cada mudança da `main`. As proteções atuais continuam como estão.
+O que entrou foi **só a documentação da proposta** para tornar `SCL Node 22 tests` obrigatório antes de merges na `main`. Isso não alterou o ruleset e não tocou produção.
 
-**Nada foi aplicado no ruleset.** O PR #7 contém documentação/proposta e foi reconciliado para apontar diretamente a `main` depois do merge do PR #6. Recomendo merge do PR #7 quando o CI do head final estiver verde.
+## O que continua pendente
+Quando você quiser voltar a esse assunto, há uma decisão separada e simples: autorizar ou não que esse teste vire uma trava obrigatória antes de merge.
 
-Importante: **mergear o PR #7 não significa autorizar a alteração administrativa.** Para eu/Sage aplicarmos o check obrigatório depois, você precisa dizer explicitamente que autoriza.
+Se você autorizar explicitamente, a próxima rodada aplica somente essa regra, relê a configuração e verifica num PR se o gate ficou obrigatório. Se não autorizar, nada muda.
 
-Se autorizar, o próximo passo é aplicar somente essa regra, reler a configuração e verificar num PR que o gate ficou obrigatório. Sem deploy, site, produção, dados reais ou integrações afetados.
+**Você não precisa fazer isso agora.** O merge do PR #7 não foi interpretado como autorização administrativa.
+
+Produção, deploy, domínio, Vercel, Beds24, Mercado Pago, secrets e dados reais continuam intocados.

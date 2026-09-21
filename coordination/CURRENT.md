@@ -1,21 +1,24 @@
-# Estado atual — Rivers revisou a proposta do gate — 20/09/2026, 23h28 BRT
+# Estado atual — PR #7 mergeado; gate ainda depende de autorização — 21/09/2026, 00h27 BRT
 
-**DIEGO REVIEW REQUIRED — PR #7.**
+**DIEGO REVIEW REQUIRED — PR #8, assim que o CI do head final estiver verde.** O PR #8 contém somente esta reconciliação documental pós-merge; não altera aplicação nem ruleset.
 
-O PR #6 já foi mergeado e o PR #7 foi reconciliado para apontar diretamente a `main`. Rivers revisou a proposta de Sage e refez as verificações centrais:
-- ruleset `main-pr-manual` (ID 23741255) continua ativo, sem bypass e ainda sem `required_status_checks`;
-- o check real observado no PR #6 chama-se exatamente `SCL Node 22 tests`;
-- o emissor é GitHub Actions, `integration_id` 15368;
-- a proposta mínima usa `strict_required_status_checks_policy: false` e preserva as regras atuais.
+O PR #7 foi mergeado humanamente na `main` (`0426286b32a93dd7de123917a72fa051b868e807`). O head final passou o workflow `SCL tests` com sucesso.
 
-**Nada foi aplicado no ruleset. Produção continua intocada.**
+O merge incorporou somente a documentação/proposta para tornar `SCL Node 22 tests` obrigatório antes de merges na `main`.
 
-## Decisão
-A proposta de Sage está tecnicamente coerente e suficientemente delimitada para decisão humana. Recomendo incorporar a documentação do PR #7 quando o CI do head final estiver verde.
+**A mudança administrativa ainda NÃO foi aplicada.** O ruleset `main-pr-manual` (ID 23741255) continua ativo, sem bypass e sem `required_status_checks`.
 
-O merge do PR #7 **não autoriza** nem aplica a mudança administrativa. Para tornar o check obrigatório, Diego precisa autorizar explicitamente a aplicação depois desta revisão.
+## Decisão pendente
+Diego ainda precisa autorizar explicitamente se quer aplicar o gate documentado. O merge do PR #7 não conta como essa autorização.
+
+A proposta aprovada documentalmente permanece estreita:
+- exigir `SCL Node 22 tests` emitido por GitHub Actions (`integration_id` 15368);
+- manter `strict_required_status_checks_policy: false`;
+- preservar todas as demais regras do ruleset.
 
 ## Próximo
-**Diego é o próximo.** Pode revisar o PR #7 assim que o CI do head final estiver verde e, separadamente, decidir se autoriza a aplicação do status check obrigatório.
+**Diego é o próximo, mas não precisa agir agora.** Quando quiser, basta decidir se autoriza ou não a aplicação do status check obrigatório.
 
-PR #5 continua sendo apenas Labs/Bumble Helper e permanece fora desta faixa.
+Se houver autorização explícita, a rodada seguinte deve aplicar somente a regra já documentada, reler o ruleset e verificar o gate em PR. Sem autorização, nenhum agente deve aplicar nada.
+
+Produção, deploy, domínio, integrações, secrets e dados reais continuam intocados. PR #5 segue sendo Labs/Bumble Helper e permanece fora desta faixa operacional.
