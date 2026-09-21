@@ -10,7 +10,7 @@
 - O único PR aberto fora desta rodada é o #5, uma nota de Labs sobre Bumble Helper; ele não pertence à faixa operacional atual e não bloqueia este fluxo.
 
 ### Decisão
-Fechar o ciclo do CI antes de voltar a produto: **Sage verifica o contexto exato do check `SCL Node 22 tests` e prepara/aplica a menor configuração segura para torná-lo obrigatório em PRs para `main`.**
+Fechar o ciclo do CI antes de voltar a produto: **Sage verifica o contexto exato do check `SCL Node 22 tests` e prepara a menor configuração segura para torná-lo obrigatório em PRs para `main`.** A aplicação no ruleset depende de aprovação explícita de Diego.
 
 Se houver ambiguidade de contexto, integração ou efeito colateral de governança, Sage deve parar e devolver evidência em vez de improvisar.
 
@@ -23,7 +23,7 @@ Se houver ambiguidade de contexto, integração ou efeito colateral de governan�
 - próxima feature de produto.
 
 ### Próximo
-**Sage é o próximo e pode começar imediatamente.** Produção permanece intocada.
+**Sage pode começar imediatamente na investigação/preparação. Não deve aplicar a mudança de ruleset sem aprovação explícita de Diego.** Produção permanece intocada.
 
 Handoff: `coordination/handoffs/2026-09-20-2230-rivers-pos-pr4.md`.
 
