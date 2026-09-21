@@ -4,7 +4,10 @@ Estado: **EM PREPARAÇÃO; não pronta para ativação**. Autorização de Diego
 ## Responsabilidade até a transferência
 Lia continua responsável por todas as rotinas atuais. A existência destes arquivos não transfere tarefas, muda automações, cria acessos ou configura nuvem. Sage e Rivers mantêm seus papéis de construção do produto.
 
-## Divisão proposta para conferência
+## Direção aprovada em 21/9, 16h30 BRT
+Diego confirmou Lia como presença pública no atendimento de hóspedes, interessados e proprietários; Mia como sua assistente pessoal de pendências e rotinas. O próximo número de WhatsApp foi recomendado para Mia, sem provisionamento ou ativação. A comunicação externa dos relatórios permanece com Lia; a preparação administrativa pode ser atribuída a Mia após a transferência conferida. Tom de voz caloroso, natural e pessoal, sem formalidade excessiva. Esta confirmação de direção não conclui as portas de prontidão abaixo.
+
+## Matriz inicial — ajustar na transferência
 | Trabalho | Destino previsto | Enquanto não houver transferência |
 |---|---|---|
 | Mensagens de hóspedes, urgências, continuidade entre canais e passadas frequentes | Lia | Lia |
