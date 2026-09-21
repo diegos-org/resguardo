@@ -1,20 +1,9 @@
-# Diego — estado atual
+# Diego — check obrigatório preparado
 
-## PR #4 foi mergeado; CI agora está em `main`
+Sage confirmou a configuração: exigir o resultado de “SCL Node 22 tests”, enviado pelo próprio GitHub Actions, antes do merge na principal. A proposta preserva suas proteções atuais e não adiciona a obrigação de atualizar a branch a cada mudança da principal.
 
-O PR #4 foi mergeado humanamente às 21h58 BRT. A checagem automática `SCL tests` agora faz parte da branch principal e continua restrita a PRs; nada foi publicado e produção não foi tocada.
+**Nada foi aplicado.** Você precisa autorizar explicitamente essa alteração, conforme o handoff de Rivers. Se o teste falhar ou não rodar, o merge ficará bloqueado até resolver. O merge continua sendo seu.
 
-O que foi confirmado agora:
-- o workflow existe em `main`;
-- o head final do PR #4 já tinha passado 24/24 testes Node 22;
-- a proteção de `main` continua ativa sem bypass;
-- o CI ainda **não é uma trava obrigatória** no ruleset: hoje ele roda, mas o GitHub ainda não exige esse resultado para permitir merge;
-- o PR #5 aberto é só uma nota de Labs sobre Bumble Helper e não bloqueia a faixa de trabalho atual.
+Rivers já pode revisar a [proposta](ci-required-check-proposal.md). O PR desta rodada é apenas documentação e depende do #6; não é autorização automática para mudar a configuração. Sem site, produção ou integrações alterados.
 
-### Próximo passo
-**Sage pode investigar imediatamente** o identificador/contexto exato do check `SCL Node 22 tests` e preparar a mudança mínima. **Nenhuma alteração no ruleset deve ser aplicada sem sua aprovação explícita.** Se houver ambiguidade ou efeito colateral, ele para e devolve o achado.
-
-### PR #6
-**DIEGO REVIEW REQUIRED.** O PR #6 contém só esta reconciliação de coordenação e o handoff para Sage; não muda aplicação nem produção. O conteúdo está pronto para sua revisão. Recomendo merge assim que o CI do head final estiver verde. Isso não bloqueia Sage de começar a próxima ação.
-
-Produção continua intocada.
+[Handoff](handoffs/2026-09-20-2319-sage-ci-gate-preparado.md)
