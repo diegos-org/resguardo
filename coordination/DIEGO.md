@@ -27,3 +27,11 @@ Leitura integral dos seis áudios concluída. Regras sanitizadas de faxina, rela
 PR #14 permanece rascunho e precisa de reconciliação com main e revisão; não pedir merge. O estado antigo acima sobre PR #10 é histórico: main já recebeu #12. PR #11 tem revisão visual mais recente que exige validação própria; não revalidada pela Lia nesta rodada. Nenhum código, serviço, regra de acesso ou produção alterado. Próximo: Rivers revisar divisão e reconciliar coordenação com as frentes #11/#13, preservando mudanças concorrentes; continuar inventário documental antes de anunciar prontidão de Mia.
 
 Diego não precisa criar a Mia nem tentar liberar botões de merge agora. A preparação e os conflitos dos rascunhos são trabalho dos agentes. A pergunta sobre botão cinza foi respondida na conversa do #14. O próximo aviso de prontidão deve indicar revisão e verificações da versão final.
+
+
+## Rodada Lia — 21/9, 17h BRT
+Direção confirmada diretamente por Diego às16h30: Lia como presença pública para hóspedes, interessados e proprietários; Mia como assistente pessoal dele. Atualizada a matriz em operations/TRANSICAO-LIA-MIA.md, preservando portas de prontidão: nenhuma agente, número, automação ou acesso ativado. Tom de comunicação mais caloroso e natural confirmado.
+
+Conferidos main/protocolo e PRs abertos11/13/14/15, incluindo CURRENT e handoff de Sage na branch sage-gestao-demo-20260921. PR15 contém demo interna e política isolada de acesso; testes são relato de Sage, sem validação independente de Lia nesta rodada. Main contém coordenação antiga; não repetir correção HTTP já descrita no PR11. PR14 permanece draft e com reconciliação pendente; não pedir merge. Atendimento e relatórios solicitados mantiveram prioridade. Sem dados privados no repositório, código, produção ou configuração externa alterados.
+
+Próximo: reconciliar PR14 preservando frentes concorrentes e validar inventário/acessos/transferência antes de criar Mia. Lia mantém cobertura atual. Nenhuma ação imediata de Diego exigida por esta atualização documental.
