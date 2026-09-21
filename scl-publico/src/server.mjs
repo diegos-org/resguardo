@@ -83,7 +83,7 @@ export function createApp({provider, inquiryStore = createInquiryStore(), signer
     const {errors,query}=validateSearch(url.searchParams);
     if(errors.length) return path.startsWith('/api/')?json(400,{state:'UNKNOWN',canBook:false,errors}):send(400,view.results(url.searchParams,errors,query));
     const availability=await getAvailability(query,provider);
-    return path.startsWith('/api/')?json(503,availability):send(503,view.results(url.searchParams,[],query));
+    return path.startsWith('/api/')?json(503,availability):send(200,view.results(url.searchParams,[],query));
    }
    if(path==='/consulta') {
     const submitted=url.searchParams.has('checkin')||url.searchParams.has('checkout')||url.searchParams.has('guests');

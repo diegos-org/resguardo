@@ -1,30 +1,27 @@
-## Rodada — revisão do PR #11 e retorno mínimo para Sage — 21/09/2026, 06h31 BRT
+## Rodada — reconciliação pós-merge do PR #8 — 21/09/2026, 01h30 BRT
 
 ### Verificado
-- Li `00-PROTOCOLO.md`, `coordination/CURRENT.md`, `coordination/RIVERS.md`, `coordination/DIEGO.md` e os handoffs mais recentes relevantes, incluindo o handoff de Sage no PR #11.
-- Consultei os PRs abertos para não trabalhar sobre estado antigo: #9 (reconciliação pós-PR #8), #10 (consolidação documental da Lia), #11 (fatia de produto mobile/busca) e #5 (Labs).
-- PR #11 está draft, mergeable e com head `613b6297daa617c2f7c299114fa13687a74fac37` antes desta rodada.
-- O workflow `SCL tests` desse head concluiu com `success`.
-- O diff funcional do PR #11 implementa imóvel opcional, resultados filtrados por capacidade, preservação de datas nos links, ajustes de copy/alinhamento/mobile e mantém disponibilidade explicitamente UNKNOWN, sem Beds24 real.
-- O teste novo cobre filtragem por capacidade e preservação de critérios, mas não afirma o status HTTP da página de resultados.
-- Como `searchForm()` agora aponta por padrão para `/disponibilidade`, o fluxo principal de busca passa por uma rota que atualmente responde HTTP 503 mesmo em consulta válida e página renderizada com sucesso. Antes desta fatia, a home usava `/consulta` como caminho normal.
+- Li protocolo, CURRENT, RIVERS, DIEGO e o handoff mais recente `2026-09-21-0027-rivers-pos-pr7.md`.
+- PR #8 está `closed/merged=true`; merge humano às 00h34 BRT em `153675277fbe41ba172e6bc614aeb47a81ba4fc5`.
+- O head final `7f7dc3fd3ce629b4810293211afdddffa806e4f9` executou `SCL tests` com conclusão `success`.
+- Reli o ruleset 23741255: `main-pr-manual` segue ativo, sem bypass e ainda sem `required_status_checks`.
+- PR #8 continha somente coordenação/histórico; nenhuma mudança de aplicação ou administrativa foi incorporada.
 
 ### Decisão
-Há uma correção pequena de semântica/robustez antes de Lia validar visualmente: para consulta HTML válida em `/disponibilidade`, retornar 200 com a mensagem clara de disponibilidade não confirmada. Manter a API fail-closed/503 enquanto o provider estiver ausente ou não verificado. Adicionar regressão que exija 200 no HTML válido e preserve 400 para parâmetros inválidos.
+Reconciliar o merge do PR #8 sem reabrir a decisão já delegada a Diego. O gate documentado continua dependendo de autorização humana explícita; merge documental não é autorização administrativa.
 
-Não marcar o PR #11 como pronto para Diego ainda. Primeiro Sage faz a correção mínima, CI volta a ficar verde e então Lia valida busca e responsividade ampliada.
+A única mudança material desta rodada é atualizar o estado canônico para registrar que o PR #8 já foi mergeado e manter a decisão do gate separada.
 
 ### Deliberadamente não decidido
-- não alterei aplicação nem corrigi código de produto nesta rodada; devolvi o defeito ao construtor responsável;
-- não fiz merge nem mudei o estado draft do PR #11;
-- não apliquei o gate administrativo pendente;
-- não toquei em deploy, produção, domínio, Vercel, Beds24, Mercado Pago, secrets, mídia original ou dados reais;
-- não tentei fundir ou reescrever PRs #9/#10 dentro do #11.
+- não apliquei `required_status_checks`;
+- não mudei strictness, bypass, aprovações, merge queue ou qualquer outra proteção;
+- não toquei em deploy, produção, Vercel, domínio, Beds24, Mercado Pago, secrets ou dados reais;
+- não promovi o PR #5/Labs para execução.
 
 ### Próximo
-**Sage é o próximo e pode começar imediatamente.** Corrigir somente o status HTTP do fluxo HTML válido, adicionar o teste de regressão e rodar CI. Depois, handoff para Lia validar busca/mobile. Diego não precisa agir agora e não deve revisar/mergear o PR #11 ainda.
+Abrir PR apenas documental desta reconciliação. **Diego revisa/mergeia quando o CI do head final estiver verde.** Depois disso, Diego continua sendo o próximo somente para decidir, quando quiser, se autoriza a aplicação do gate. Sem autorização explícita, nenhum agente aplica nada.
 
-Handoff: `coordination/handoffs/2026-09-21-0631-rivers-para-sage-pr11.md`.
+Handoff: `coordination/handoffs/2026-09-21-0130-rivers-pos-pr8.md`.
 
 ---
 

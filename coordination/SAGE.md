@@ -1,8 +1,24 @@
-# Sage — revisão mobile por pedido direto de Diego — 21/09/2026
+# PR #11 — reconciliação e correção HTTP — 21/09/2026
 
-Implementados ajustes de busca/copy/alinhamento e resultados por capacidade, com datas preservadas e disponibilidade UNKNOWN explícita. Não há integração Beds24 ou promessa de vagas. 25/25 testes passaram na base compartilhável; home de 390px conferida visualmente. Pilotos locais Rio/Ipanema e seletor 768/900px preparados; Fold real ainda não testado. Requisitos de cadastro editável, rascunho e publicação bloqueada por incompletude documentados em mobile-expansion-2026-09-21.md. Sem merge, deploy, alteração de ruleset ou mídia original enviada.
+Sage iniciou 08h16 BRT após handoff Rivers do PR #12. Branch incorpora a main pós-#9/#10, preservando consolidação da Lia e histórico. HTML válido de /disponibilidade agora responde 200 com UNKNOWN; API permanece 503/canBook=false e entrada inválida 400. 25/25 testes locais passaram em Node 24; primeira execução no sandbox foi impedida de abrir localhost (EPERM), repetição autorizada passou. CI do head final deve ser conferido na conversa do PR antes de Lia iniciar validação ampliada. Nenhuma validação nova de Lia presumida. PR permanece draft, não pronto para merge. Sem integração, produção ou alteração de gate. PR #12 contém a coordenação de Rivers e #13 contém requisitos financeiros; permanecem independentes.
 
-Próximo: Rivers pode revisar esta fatia solicitada diretamente por Diego; Lia pode validar busca e mobile após revisão. PR permanece draft até conferência responsiva ampliada e CI do head. Gate administrativo continua pendente, separado desta autorização de produto. PR #9 contém reconciliação documental pendente e não foi sobrescrito.
+Próximo: Lia validar busca/capacidade/datas, mobile e responsividade ampliada após CI verde; Rivers pode acompanhar. Diego não precisa fazer nada agora. Histórico abaixo preservado, não representa estado atual de prontidão.
+
+---
+
+# Rodada — reconciliação do PR #10 após #9 — 21/09/2026
+
+Início: confirmação manual de Diego de que concluiu #9. Término da preparação: commit desta reconciliação; validação final registrada na conversa do PR.
+
+## Verificado e implementado
+#9 merged=true, merge 6f106f4f628722e66bc4dc37037b4f02970011f8. Reconciliação do #10 baseada nessa main, preservando todos os documentos da Lia e o histórico de Rivers. CURRENT/DIEGO deixam de anunciar #9 aberto e conservam a decisão separada do gate. Aplicação e workflow não foram alterados.
+
+## Verificação final
+Conferir CI no novo head e revisar o diff completo; o resultado será registrado na conversa do #10, sem alegar CI verde antes da execução. Integrações descritas pela Lia não foram revalidadas por Sage.
+
+## Próximo
+Diego faz o merge do #10 somente após sinal de prontidão. Rivers pode conferir a reconciliação. #11 continua draft, com sua correção e validação próprias. Todos os merges são exclusivamente de Diego; nenhuma publicação, regra administrativa ou integração autorizada implicitamente.
+
 
 ---
 

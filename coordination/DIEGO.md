@@ -1,36 +1,25 @@
-# Diego — PR #11 revisado por Rivers; Sage faz uma correção pequena antes da Lia
+# PR #11 — reconciliação e correção HTTP — 21/09/2026
 
-Revisei a fatia mobile/busca que o Sage colocou no PR #11. O CI do head que ele entregou passou e a direção funcional está boa: busca com imóvel opcional, filtro por capacidade, datas preservadas e nenhuma falsa promessa de disponibilidade.
+Sage iniciou 08h16 BRT após handoff Rivers do PR #12. Branch incorpora a main pós-#9/#10, preservando consolidação da Lia e histórico. HTML válido de /disponibilidade agora responde 200 com UNKNOWN; API permanece 503/canBook=false e entrada inválida 400. 25/25 testes locais passaram em Node 24; primeira execução no sandbox foi impedida de abrir localhost (EPERM), repetição autorizada passou. CI do head final deve ser conferido na conversa do PR antes de Lia iniciar validação ampliada. Nenhuma validação nova de Lia presumida. PR permanece draft, não pronto para merge. Sem integração, produção ou alteração de gate. PR #12 contém a coordenação de Rivers e #13 contém requisitos financeiros; permanecem independentes.
 
-Achei um detalhe técnico que vale corrigir antes da revisão visual final: como a busca principal agora usa `/disponibilidade`, uma consulta válida está recebendo **HTTP 503** mesmo quando a página de resultados é o fluxo normal esperado. A página abre e explica que a disponibilidade ainda não foi confirmada, mas o status técnico deveria ser 200 nesse caso. A API pode continuar fechada/503 enquanto Beds24 não estiver integrado.
-
-**Sage é o próximo e pode começar imediatamente.** A correção é pequena: ajustar somente o status do fluxo HTML válido e adicionar teste de regressão. Depois, Lia valida busca e responsividade ampliada.
-
-**Você não precisa fazer nada agora e o PR #11 ainda não está pronto para revisão/merge humano.** PRs #9 e #10 seguem independentes; produção, deploy, domínio, Beds24, Mercado Pago, secrets e dados reais continuam intocados.
+Próximo: Lia validar busca/capacidade/datas, mobile e responsividade ampliada após CI verde; Rivers pode acompanhar. Diego não precisa fazer nada agora. Histórico abaixo preservado, não representa estado atual de prontidão.
 
 ---
 
-# Sage — revisão mobile por pedido direto de Diego — 21/09/2026
+# Diego — #9 concluído; conferência final do #10
 
-Implementados ajustes de busca/copy/alinhamento e resultados por capacidade, com datas preservadas e disponibilidade UNKNOWN explícita. Não há integração Beds24 ou promessa de vagas. 25/25 testes passaram na base compartilhável; home de 390px conferida visualmente. Pilotos locais Rio/Ipanema e seletor 768/900px preparados; Fold real ainda não testado. Requisitos de cadastro editável, rascunho e publicação bloqueada por incompletude documentados em mobile-expansion-2026-09-21.md. Sem merge, deploy, alteração de ruleset ou mídia original enviada.
+Seu merge do #9 foi confirmado. O #10 agora incorpora a nova base e mantém a consolidação da Lia: seis imóveis na operação, cinco do Rio no site; Búzios fora do público, com inclusão interna ainda a decidir. A migração das regras é parcial e não leva dados sensíveis ao GitHub.
 
-Próximo: Rivers pode revisar esta fatia solicitada diretamente por Diego; Lia pode validar busca e mobile após revisão. PR permanece draft até conferência responsiva ampliada e CI do head. Gate administrativo continua pendente, separado desta autorização de produto. PR #9 contém reconciliação documental pendente e não foi sobrescrito.
+O plano de Beds24, Booking e Mercado Pago continua documentado; os acessos e a validação das integrações são etapas próprias. Nenhuma sincronização, cobrança ou publicação ocorreu nesta entrega.
 
----
+## Você precisa fazer algo?
+Aguarde o sinal no PR #10 após CI e revisão do head final. Só você fará os merges. O #11 continua rascunho e não deve ser mergeado; o #5 continua Labs.
+A reconciliação muda apenas documentação; não muda o site. Testes automáticos não comprovam integrações externas nem validação em celular real.
 
-# Diego — PR #7 já foi mergeado; não há nada para fazer agora
+## Decisão separada
+Tornar os testes uma trava obrigatória ainda depende de sua autorização específica. Conforme o registro do Rivers no #9, essa regra ainda não estava aplicada. Nenhuma regra administrativa foi alterada agora.
 
-**DIEGO REVIEW REQUIRED — PR #8 quando o CI do head final estiver verde.** Esse PR contém somente a reconciliação documental pós-merge do #7; não altera aplicação nem ruleset.
+O histórico e as decisões do #9 permanecem no Git e no [handoff do Rivers](handoffs/2026-09-21-0130-rivers-pos-pr8.md).
 
-O PR #7 foi mergeado com sucesso na `main`. O CI do head final passou.
-
-O que entrou foi **só a documentação da proposta** para tornar `SCL Node 22 tests` obrigatório antes de merges na `main`. Isso não alterou o ruleset e não tocou produção.
-
-## O que continua pendente
-Quando você quiser voltar a esse assunto, há uma decisão separada e simples: autorizar ou não que esse teste vire uma trava obrigatória antes de merge.
-
-Se você autorizar explicitamente, a próxima rodada aplica somente essa regra, relê a configuração e verifica num PR se o gate ficou obrigatório. Se não autorizar, nada muda.
-
-**Você não precisa fazer isso agora.** O merge do PR #7 não foi interpretado como autorização administrativa.
-
-Produção, deploy, domínio, Vercel, Beds24, Mercado Pago, secrets e dados reais continuam intocados.
+## Complemento Lia —21/9, modelo de relatório e atualização canônica
+Por pedido direto de Diego, regra geral de sincronização registrada na seção17 do protocolo e modelo sanitizado em operations/RELATORIOS-PROPRIETARIOS.md. Exemplo PDF financeiro foi produzido e inspecionado localmente; aguarda aprovação visual privada. Nenhum documento financeiro, nome/contato privado ou valor real foi incluído no GitHub. Migração histórica continua parcial. Preservada reconciliação de Sage pós-#9; revisão/CI precisam considerar este novo head do #10, sem merge automático.

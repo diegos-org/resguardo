@@ -1,46 +1,31 @@
-# Rivers — revisão do PR #11: uma correção antes da validação mobile — 21/09/2026, 06h31 BRT
+# PR #11 — reconciliação e correção HTTP — 21/09/2026
 
-Revisei a fatia de produto entregue por Sage no PR #11 (`sage-mobile-busca-pilotos`). O head `613b6297daa617c2f7c299114fa13687a74fac37` passou o workflow `SCL tests` com `success`. O diff funcional está coerente com o pedido de Diego: busca com imóvel opcional, filtro por capacidade, datas preservadas nos links e disponibilidade explicitamente não confirmada.
+Sage iniciou 08h16 BRT após handoff Rivers do PR #12. Branch incorpora a main pós-#9/#10, preservando consolidação da Lia e histórico. HTML válido de /disponibilidade agora responde 200 com UNKNOWN; API permanece 503/canBook=false e entrada inválida 400. 25/25 testes locais passaram em Node 24; primeira execução no sandbox foi impedida de abrir localhost (EPERM), repetição autorizada passou. CI do head final deve ser conferido na conversa do PR antes de Lia iniciar validação ampliada. Nenhuma validação nova de Lia presumida. PR permanece draft, não pronto para merge. Sem integração, produção ou alteração de gate. PR #12 contém a coordenação de Rivers e #13 contém requisitos financeiros; permanecem independentes.
 
-Há um bloqueador pequeno antes da validação da Lia: a busca principal agora envia o usuário para `/disponibilidade`, mas o servidor devolve **HTTP 503** mesmo quando a consulta é válida e a página de resultados é o fluxo esperado. Como essa rota virou navegação normal do site, o HTML válido deve responder 200 mantendo a mensagem de disponibilidade desconhecida; a API pode continuar fail-closed/503 enquanto o provedor não estiver configurado. O teste novo verifica conteúdo, mas não verifica o status HTTP.
-
-**Próximo: Sage pode começar imediatamente.** Fazer somente a correção mínima do status do fluxo HTML, adicionar regressão que exija 200 para consulta válida e manter 400 para entrada inválida / UNKNOWN sem promessa de vaga. Depois disso, rodar CI e entregar para Lia validar busca e responsividade ampliada. PR #11 continua draft e **não está pronto para Diego revisar/mergear**.
-
-PRs #9 e #10 continuam independentes e contêm reconciliação/documentação pendentes; não sobrescrever seus históricos ao integrar. Gate administrativo segue separado e sem autorização de aplicação. Produção, deploy, domínio, Beds24, Mercado Pago, secrets e dados reais permanecem intocados.
-
-Handoff desta rodada: `coordination/handoffs/2026-09-21-0631-rivers-para-sage-pr11.md`.
+Próximo: Lia validar busca/capacidade/datas, mobile e responsividade ampliada após CI verde; Rivers pode acompanhar. Diego não precisa fazer nada agora. Histórico abaixo preservado, não representa estado atual de prontidão.
 
 ---
 
-# Sage — revisão mobile por pedido direto de Diego — 21/09/2026
+# Estado atual — PR #9 mergeado; PR #10 reconciliado — 21/09/2026
 
-Implementados ajustes de busca/copy/alinhamento e resultados por capacidade, com datas preservadas e disponibilidade UNKNOWN explícita. Não há integração Beds24 ou promessa de vagas. 25/25 testes passaram na base compartilhável; home de 390px conferida visualmente. Pilotos locais Rio/Ipanema e seletor 768/900px preparados; Fold real ainda não testado. Requisitos de cadastro editável, rascunho e publicação bloqueada por incompletude documentados em mobile-expansion-2026-09-21.md. Sem merge, deploy, alteração de ruleset ou mídia original enviada.
+Diego realizou o merge do PR #9 na main em 6f106f4f628722e66bc4dc37037b4f02970011f8. Esta branch incorpora essa base e preserva a consolidação operacional da Lia.
 
-Próximo: Rivers pode revisar esta fatia solicitada diretamente por Diego; Lia pode validar busca e mobile após revisão. PR permanece draft até conferência responsiva ampliada e CI do head. Gate administrativo continua pendente, separado desta autorização de produto. PR #9 contém reconciliação documental pendente e não foi sobrescrito.
+## Consolidação da Lia
+Diego autorizou unificar regras no GitHub: seis imóveis operados, somente cinco do Rio no catálogo público. Búzios separado e inclusão interna indecisa. Ver [consolidação](../operations/CONSOLIDACAO-2026-09-21.md).
+Prioridades registradas: Beds24/Booking e Mercado Pago; Lia reconcilia após autenticação. Migração documental parcial, sem ativação de integração ou produção.
 
----
+## Revisão e próximo passo
+PR #10: reconciliação documental preparada. CI e revisão devem ser conferidos no head final antes de recomendar merge; resultado registrado na conversa do PR, sem inferir sucesso antecipado.
+Todos os merges ficam exclusivamente com Diego, por confirmação direta nesta conversa.
+PR #11 permanece draft: correção da resposta HTML de disponibilidade e validação mobile ainda pendentes. PR #5 continua Labs.
 
-# Estado atual — PR #7 mergeado; gate ainda depende de autorização — 21/09/2026, 00h27 BRT
+## Decisão administrativa separada
+A proposta de exigir SCL Node 22 tests (GitHub Actions, integration_id 15368), strict_required_status_checks_policy=false, preservando as demais regras, continua dependendo de autorização explícita. O último registro de Rivers no #9 informa ruleset ativo sem bypass e sem required_status_checks; não foi revalidado nem alterado nesta reconciliação.
+Merge documental não autoriza aplicar o gate. Produção, domínio, credenciais e dados reais permanecem fora desta entrega.
 
-**DIEGO REVIEW REQUIRED — PR #8, assim que o CI do head final estiver verde.** O PR #8 contém somente esta reconciliação documental pós-merge; não altera aplicação nem ruleset.
+## Histórico
+O estado integral registrado pelo Rivers no #9 está preservado no Git e em [seu handoff](handoffs/2026-09-21-0130-rivers-pos-pr8.md). A solicitação de merge daquele PR está concluída.
+[Handoff da reconciliação](handoffs/2026-09-21-sage-pr10-pos-pr9.md).
 
-O PR #7 foi mergeado humanamente na `main` (`0426286b32a93dd7de123917a72fa051b868e807`). O head final passou o workflow `SCL tests` com sucesso.
-
-O merge incorporou somente a documentação/proposta para tornar `SCL Node 22 tests` obrigatório antes de merges na `main`.
-
-**A mudança administrativa ainda NÃO foi aplicada.** O ruleset `main-pr-manual` (ID 23741255) continua ativo, sem bypass e sem `required_status_checks`.
-
-## Decisão pendente
-Diego ainda precisa autorizar explicitamente se quer aplicar o gate documentado. O merge do PR #7 não conta como essa autorização.
-
-A proposta aprovada documentalmente permanece estreita:
-- exigir `SCL Node 22 tests` emitido por GitHub Actions (`integration_id` 15368);
-- manter `strict_required_status_checks_policy: false`;
-- preservar todas as demais regras do ruleset.
-
-## Próximo
-**Diego é o próximo, mas não precisa agir agora.** Quando quiser, basta decidir se autoriza ou não a aplicação do status check obrigatório.
-
-Se houver autorização explícita, a rodada seguinte deve aplicar somente a regra já documentada, reler o ruleset e verificar o gate em PR. Sem autorização, nenhum agente deve aplicar nada.
-
-Produção, deploy, domínio, integrações, secrets e dados reais continuam intocados. PR #5 segue sendo Labs/Bumble Helper e permanece fora desta faixa operacional.
+## Complemento Lia —21/9, modelo de relatório e atualização canônica
+Por pedido direto de Diego, regra geral de sincronização registrada na seção17 do protocolo e modelo sanitizado em operations/RELATORIOS-PROPRIETARIOS.md. Exemplo PDF financeiro foi produzido e inspecionado localmente; aguarda aprovação visual privada. Nenhum documento financeiro, nome/contato privado ou valor real foi incluído no GitHub. Migração histórica continua parcial. Preservada reconciliação de Sage pós-#9; revisão/CI precisam considerar este novo head do #10, sem merge automático.
