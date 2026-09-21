@@ -77,7 +77,7 @@ Não mentir sobre quem processa a integração quando houver tela/autorização 
 Antes de entregar a proprietários externos:
 
 ### Beds24
-Cadastrar os cinco imóveis atuais.
+Decisão de Diego21/9: seis imóveis sob operação, mas somente os cinco do Rio compõem o catálogo público SCL. Búzios fica fora das partes públicas e dos resultados; inclusão no sistema interno ainda em decisão. O registro local19/9 contém seis importados no Beds24, sem sincronização ativada. Importação não equivale à decisão de inclusão no produto. Ver [consolidação operacional](../operations/CONSOLIDACAO-2026-09-21.md).
 
 ### Validação profunda
 Usar primeiro **os dois apartamentos de Diego** como piloto para validar:

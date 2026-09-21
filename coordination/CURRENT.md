@@ -1,22 +1,23 @@
-# Estado atual — PR #8 mergeado; decisão humana do gate continua pendente — 21/09/2026, 01h30 BRT
+# Estado atual — PR #9 mergeado; PR #10 reconciliado — 21/09/2026
 
-O PR #8 foi mergeado humanamente na `main` às 00h34 BRT (`153675277fbe41ba172e6bc614aeb47a81ba4fc5`). O head final `7f7dc3fd3ce629b4810293211afdddffa806e4f9` passou o workflow `SCL tests` com conclusão `success`.
+Diego realizou o merge do PR #9 na main em 6f106f4f628722e66bc4dc37037b4f02970011f8. Esta branch incorpora essa base e preserva a consolidação operacional da Lia.
 
-O PR #8 continha somente a reconciliação documental pós-merge do PR #7. Não alterou aplicação, produção nem ruleset.
+## Consolidação da Lia
+Diego autorizou unificar regras no GitHub: seis imóveis operados, somente cinco do Rio no catálogo público. Búzios separado e inclusão interna indecisa. Ver [consolidação](../operations/CONSOLIDACAO-2026-09-21.md).
+Prioridades registradas: Beds24/Booking e Mercado Pago; Lia reconcilia após autenticação. Migração documental parcial, sem ativação de integração ou produção.
 
-O ruleset `main-pr-manual` (ID 23741255) foi relido nesta rodada e continua ativo, sem bypass e sem `required_status_checks`.
+## Revisão e próximo passo
+PR #10: reconciliação documental preparada. CI e revisão devem ser conferidos no head final antes de recomendar merge; resultado registrado na conversa do PR, sem inferir sucesso antecipado.
+Todos os merges ficam exclusivamente com Diego, por confirmação direta nesta conversa.
+PR #11 permanece draft: correção da resposta HTML de disponibilidade e validação mobile ainda pendentes. PR #5 continua Labs.
 
-## Decisão pendente
-Diego ainda precisa autorizar explicitamente se quer aplicar o gate já documentado. O merge dos PRs #7 e #8 não conta como essa autorização.
+## Decisão administrativa separada
+A proposta de exigir SCL Node 22 tests (GitHub Actions, integration_id 15368), strict_required_status_checks_policy=false, preservando as demais regras, continua dependendo de autorização explícita. O último registro de Rivers no #9 informa ruleset ativo sem bypass e sem required_status_checks; não foi revalidado nem alterado nesta reconciliação.
+Merge documental não autoriza aplicar o gate. Produção, domínio, credenciais e dados reais permanecem fora desta entrega.
 
-A proposta continua estreita:
-- exigir `SCL Node 22 tests` emitido por GitHub Actions (`integration_id` 15368);
-- manter `strict_required_status_checks_policy: false`;
-- preservar todas as demais regras do ruleset.
+## Histórico
+O estado integral registrado pelo Rivers no #9 está preservado no Git e em [seu handoff](handoffs/2026-09-21-0130-rivers-pos-pr8.md). A solicitação de merge daquele PR está concluída.
+[Handoff da reconciliação](handoffs/2026-09-21-sage-pr10-pos-pr9.md).
 
-## Próximo
-**DIEGO REVIEW REQUIRED — PR de reconciliação desta rodada, depois que o CI do head final estiver verde.** Esse PR altera apenas coordenação/histórico.
-
-Depois desse merge documental, Diego continua sendo o próximo para a decisão administrativa do gate, mas não precisa decidir agora. Se houver autorização explícita, a rodada seguinte aplica somente a regra documentada, relê o ruleset e verifica o gate em PR. Sem autorização, nenhum agente deve aplicar nada.
-
-Produção, deploy, domínio, integrações, secrets e dados reais continuam intocados. PR #5 segue sendo Labs/Bumble Helper e permanece fora desta faixa operacional.
+## Complemento Lia —21/9, modelo de relatório e atualização canônica
+Por pedido direto de Diego, regra geral de sincronização registrada na seção17 do protocolo e modelo sanitizado em operations/RELATORIOS-PROPRIETARIOS.md. Exemplo PDF financeiro foi produzido e inspecionado localmente; aguarda aprovação visual privada. Nenhum documento financeiro, nome/contato privado ou valor real foi incluído no GitHub. Migração histórica continua parcial. Preservada reconciliação de Sage pós-#9; revisão/CI precisam considerar este novo head do #10, sem merge automático.

@@ -1,6 +1,6 @@
 # SCL 2.0 — PROTOCOLO DE COORDENAÇÃO
 
-> **Status:** workbench temporário e não canônico.
+> **Status:** código em workbench temporário. Diego definiu em21/9 o GitHub como destino canônico das regras e decisões compartilhadas; migração documental gradual, conferida por tema.
 > **Não é produção. Não é documentação final da Sua Casa Leblon.**
 
 Este repositório é o canteiro de construção coordenado de **Rivers, Lia e Sage** para o SCL 2.0.
@@ -205,3 +205,13 @@ Regras:
 - evitar repetir a mesma ideia em vários arquivos: usar links/referências para uma fonte principal.
 
 Objetivo: preservar memória sem transformar documentação em ruído.
+
+## 16. Consolidação autorizada em21/9
+Consultar [operação e integrações](operations/CONSOLIDACAO-2026-09-21.md). Seis imóveis operados, cinco do Rio no catálogo público; Búzios excluído das partes públicas/resultados e inclusão interna ainda pendente. Esta atualização substitui a classificação anterior de toda documentação como não canônica; não promove código a produção nem declara migração completa.
+
+## 17. Atualização canônica e exceções locais — decisão direta de Diego,21/9
+Ao terminar cada trabalho, atualizar e verificar no GitHub os documentos compartilháveis alterados. Cópias locais são permitidas, mas não devem permanecer como única versão mais recente sem pendência explícita. Respeitar branch + PR e merge exclusivamente humano; enquanto main aguarda merge, informar qual PR/branch contém a versão atual. Não dizer que main está atualizada antes da confirmação.
+
+Extratos, PDFs financeiros reais, documentos de hóspedes, contatos privados, segredos e materiais de risco permanecem locais/restritos. O GitHub recebe regras e modelos sanitizados, sem esses dados. Entregas privadas de relatórios seguem autorização e validação do destinatário; não autorizam subir arquivos ao repo. Não apagar originais nem imprimir segredos automaticamente.
+
+A migração histórica ainda é parcial. Consolidar por tema, verificar equivalência e registrar lacunas. Falha de publicação exige preservar o registro local e declarar sincronização pendente. Arquivos grandes podem ganhar volumes com referências nos dois sentidos e índice; preservar histórico. Isso não resolve bloqueio de permissão de escrita.

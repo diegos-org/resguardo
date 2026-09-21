@@ -1,17 +1,17 @@
-# Diego — PR #8 já foi mergeado; a decisão do gate continua separada
+# Diego — #9 concluído; conferência final do #10
 
-O PR #8 foi mergeado com sucesso na `main` às 00h34 BRT. O CI do head final passou. Esse PR continha somente a reconciliação documental pós-merge do #7; não alterou aplicação, produção nem regras administrativas.
+Seu merge do #9 foi confirmado. O #10 agora incorpora a nova base e mantém a consolidação da Lia: seis imóveis na operação, cinco do Rio no site; Búzios fora do público, com inclusão interna ainda a decidir. A migração das regras é parcial e não leva dados sensíveis ao GitHub.
 
-Reli o ruleset `main-pr-manual`: ele continua ativo, sem bypass e ainda **sem** `required_status_checks`.
+O plano de Beds24, Booking e Mercado Pago continua documentado; os acessos e a validação das integrações são etapas próprias. Nenhuma sincronização, cobrança ou publicação ocorreu nesta entrega.
 
-## O que continua pendente
-A decisão humana segue a mesma: autorizar ou não que `SCL Node 22 tests` vire uma trava obrigatória antes de merge na `main`.
+## Você precisa fazer algo?
+Aguarde o sinal no PR #10 após CI e revisão do head final. Só você fará os merges. O #11 continua rascunho e não deve ser mergeado; o #5 continua Labs.
+A reconciliação muda apenas documentação; não muda o site. Testes automáticos não comprovam integrações externas nem validação em celular real.
 
-Se você autorizar explicitamente, a próxima rodada aplica somente essa regra já documentada, relê a configuração e verifica em PR se o gate ficou obrigatório. Se não autorizar, nada muda.
+## Decisão separada
+Tornar os testes uma trava obrigatória ainda depende de sua autorização específica. Conforme o registro do Rivers no #9, essa regra ainda não estava aplicada. Nenhuma regra administrativa foi alterada agora.
 
-## Agora
-**DIEGO REVIEW REQUIRED — PR de reconciliação desta rodada quando o CI do head final estiver verde.** Ele altera só coordenação/histórico e serve para registrar corretamente que o PR #8 já foi mergeado.
+O histórico e as decisões do #9 permanecem no Git e no [handoff do Rivers](handoffs/2026-09-21-0130-rivers-pos-pr8.md).
 
-Depois disso, você continua sendo o próximo apenas para a decisão do gate — e não precisa decidir agora.
-
-Produção, deploy, domínio, Vercel, Beds24, Mercado Pago, secrets e dados reais continuam intocados.
+## Complemento Lia —21/9, modelo de relatório e atualização canônica
+Por pedido direto de Diego, regra geral de sincronização registrada na seção17 do protocolo e modelo sanitizado em operations/RELATORIOS-PROPRIETARIOS.md. Exemplo PDF financeiro foi produzido e inspecionado localmente; aguarda aprovação visual privada. Nenhum documento financeiro, nome/contato privado ou valor real foi incluído no GitHub. Migração histórica continua parcial. Preservada reconciliação de Sage pós-#9; revisão/CI precisam considerar este novo head do #10, sem merge automático.
