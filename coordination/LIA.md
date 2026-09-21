@@ -95,3 +95,9 @@ Por pedido direto de Diego, regra geral de sincronização registrada na seção
 
 ## Complemento operacional Lia —21/9: modelo aprovado
 Diego aprovou o visual do PDF. Correção Studio e regras de isolamento dos extratos, comunicação WhatsApp e nomes de transcrições registradas em [decisões de relatórios](../operations/RELATORIOS-COMUNICACAO-2026-09-21.md). PDFs reais conferidos e mantidos localmente; nenhuma informação financeira privada enviada ao GitHub. Sem alteração do produto ou da vez dos agentes. A aprovação é visual, não validação de saldo de acertos ou autorização de comissão futura. Publicação documental nesta branch aguarda revisão/merge humano, sem alegar main atualizada.
+
+
+## Rodada Lia — 21/9, 14h BRT
+Leitura integral dos seis áudios concluída. Regras sanitizadas de faxina, relatório parcial e documentos 403 em [decisões operacionais](../operations/DECISOES-OPERACIONAIS-2026-09-21.md). Preparação Lia/Mia autorizada: [matriz e prontidão](../operations/TRANSICAO-LIA-MIA.md), com entradas separadas. Lia continua nos dois papéis; Mia ainda não foi criada. Migração histórica incompleta, sem dados privados no repo.
+
+PR #14 permanece rascunho e precisa de reconciliação com main e revisão; não pedir merge. O estado antigo acima sobre PR #10 é histórico: main já recebeu #12. PR #11 tem revisão visual mais recente que exige validação própria; não revalidada pela Lia nesta rodada. Nenhum código, serviço, regra de acesso ou produção alterado. Próximo: Rivers revisar divisão e reconciliar coordenação com as frentes #11/#13, preservando mudanças concorrentes; continuar inventário documental antes de anunciar prontidão de Mia.
