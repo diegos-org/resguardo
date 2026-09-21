@@ -1,5 +1,7 @@
 # Diego — PR #7 já foi mergeado; não há nada para fazer agora
 
+**DIEGO REVIEW REQUIRED — PR #8 quando o CI do head final estiver verde.** Esse PR contém somente a reconciliação documental pós-merge do #7; não altera aplicação nem ruleset.
+
 O PR #7 foi mergeado com sucesso na `main`. O CI do head final passou.
 
 O que entrou foi **só a documentação da proposta** para tornar `SCL Node 22 tests` obrigatório antes de merges na `main`. Isso não alterou o ruleset e não tocou produção.
