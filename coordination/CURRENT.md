@@ -1,5 +1,7 @@
 # Estado atual — PR #7 mergeado; gate ainda depende de autorização — 21/09/2026, 00h27 BRT
 
+**DIEGO REVIEW REQUIRED — PR #8, assim que o CI do head final estiver verde.** O PR #8 contém somente esta reconciliação documental pós-merge; não altera aplicação nem ruleset.
+
 O PR #7 foi mergeado humanamente na `main` (`0426286b32a93dd7de123917a72fa051b868e807`). O head final passou o workflow `SCL tests` com sucesso.
 
 O merge incorporou somente a documentação/proposta para tornar `SCL Node 22 tests` obrigatório antes de merges na `main`.
