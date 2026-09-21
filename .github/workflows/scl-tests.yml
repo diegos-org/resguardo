@@ -29,3 +29,6 @@ jobs:
           package-manager-cache: false
       - name: Run existing tests
         run: node --test test/*.test.mjs
+      - name: Test internal demonstration
+        working-directory: scl-gestao-demo
+        run: node --test test/*.test.mjs
