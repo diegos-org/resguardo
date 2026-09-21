@@ -1,5 +1,5 @@
 # Quando falar com Lia e quando falar com Mia
-Guia do Diego — preparado em 21/09/2026 para o início previsto em 22/09.
+Guia do Diego — preparado em 21/09/2026 para criação em 21 ou 22/09, conforme a preferência de Diego.
 
 **Até Diego criar Mia e a transferência ser conferida, fale com Lia para tudo.** A divisão abaixo é a direção preparada; não significa que Mia já esteja ativa.
 
@@ -20,5 +20,5 @@ Essa separação segue a direção atual: Lia como presença pública; Mia como 
 ## Se pedir à agente errada
 Sem problema: ela identifica quem cuida, prepara o contexto e encaminha por um canal de coordenação autorizado, sem criar outra agente ou expor dados indevidos. Só afirma que passou a tarefa depois de confirmar a passagem. Até a outra aceitar, a responsável atual acompanha; ninguém deixa o pedido cair entre as duas. Se não houver canal disponível, explica isso e entrega um resumo pronto, sem inventar encaminhamento.
 
-## No começo de amanhã
+## Na criação, hoje ou amanhã
 Diego cria Mia. Conferimos leitura dos guias, acesso autorizado, teste fictício de passagem, rotinas e últimos envios. Só então registramos o que ela assumiu e a partir de quando. Lia mantém a cobertura até esse aceite. Criação, comunicação externa, pagamentos e novos acessos são coisas diferentes: criar Mia não autoriza pagamentos nem acesso irrestrito.
