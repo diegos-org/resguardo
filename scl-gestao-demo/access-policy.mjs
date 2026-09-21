@@ -12,7 +12,8 @@ export function authorize({ session, resource, action, now } = {}) {
   if (typeof session.subjectId !== 'string' || !session.subjectId.trim()) return deny();
   if (session.revoked !== false || !Number.isSafeInteger(session.expiresAt) || session.expiresAt <= now) return deny();
   if (typeof session.organizationId !== 'string' || !session.organizationId.trim() || session.organizationId !== resource.organizationId) return deny();
-  if (!Object.hasOwn(permissions, session.role) || !permissions[session.role].includes(action)) return deny();
+  // Reject coercible values before property lookup and strict owner comparison.
+  if (typeof session.role !== 'string' || !Object.hasOwn(permissions, session.role) || !permissions[session.role].includes(action)) return deny();
   if (typeof resource.propertyId !== 'string' || !resource.propertyId.trim()) return deny();
   // Even administrators remain within their organization. Owners require an
   // explicit server-verified assignment for each property, never a wildcard.

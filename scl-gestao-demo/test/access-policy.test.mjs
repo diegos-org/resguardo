@@ -26,3 +26,10 @@ test('revoked, expired and incomplete sessions deny access',()=>{
 test('owner writes remain denied pending authorized mutation and audit design',()=>{
  for(const action of ['property:edit','reservation:cancel','calendar:write','pricing:write','payment:refund']) assert.equal(decide(session,resource,action),false);
 });
+
+test('malformed roles cannot be coerced into privileges or bypass owner scope',()=>{
+ for(const role of [['admin'],['owner'],new String('owner'),{toString:()=> 'admin'}]) {
+  assert.equal(decide({...session,role}, {...resource,propertyId:'DEMO-OTHER'}),false);
+ }
+});
+
