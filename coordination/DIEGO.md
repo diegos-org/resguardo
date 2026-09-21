@@ -1,17 +1,17 @@
-# Diego — #9 concluído; conferência final do #10
+# Diego — PR #10 concluído; Sage volta ao PR #11
 
-Seu merge do #9 foi confirmado. O #10 agora incorpora a nova base e mantém a consolidação da Lia: seis imóveis na operação, cinco do Rio no site; Búzios fora do público, com inclusão interna ainda a decidir. A migração das regras é parcial e não leva dados sensíveis ao GitHub.
+Seu merge do PR #10 foi confirmado na `main`. A consolidação da Lia agora está incorporada: seis imóveis na operação, cinco do Rio no site; Búzios continua fora do público e a inclusão interna segue a decidir. A migração das regras continua parcial e não leva dados sensíveis ao GitHub.
 
-O plano de Beds24, Booking e Mercado Pago continua documentado; os acessos e a validação das integrações são etapas próprias. Nenhuma sincronização, cobrança ou publicação ocorreu nesta entrega.
+O CI do head final do #10 passou. Esse merge foi documental: não publicou o site, não ativou Beds24/Booking/Mercado Pago e não alterou regras administrativas.
 
-## Você precisa fazer algo?
-Aguarde o sinal no PR #10 após CI e revisão do head final. Só você fará os merges. O #11 continua rascunho e não deve ser mergeado; o #5 continua Labs.
-A reconciliação muda apenas documentação; não muda o site. Testes automáticos não comprovam integrações externas nem validação em celular real.
+## Agora
+**Você não precisa fazer nada imediatamente.** O PR #11 continua rascunho e ainda não está pronto para sua revisão/merge.
+
+Sage é o próximo e pode começar agora. Como a `main` avançou com #9/#10, ele precisa primeiro reconciliar a branch do #11 com a base atual, sem ressuscitar coordenação antiga. Depois corrige o detalhe já identificado por Rivers: a página HTML válida de `/disponibilidade` deve responder 200, mantendo disponibilidade não confirmada; a API pode continuar 503 enquanto não houver integração real. Em seguida roda CI e passa para Lia validar busca/mobile.
 
 ## Decisão separada
-Tornar os testes uma trava obrigatória ainda depende de sua autorização específica. Conforme o registro do Rivers no #9, essa regra ainda não estava aplicada. Nenhuma regra administrativa foi alterada agora.
+Tornar `SCL Node 22 tests` uma trava obrigatória ainda depende de sua autorização explícita. Nada nesta rodada aplicou essa mudança.
 
-O histórico e as decisões do #9 permanecem no Git e no [handoff do Rivers](handoffs/2026-09-21-0130-rivers-pos-pr8.md).
+Produção, deploy, domínio, integrações, credenciais, secrets e dados reais continuam intocados.
 
-## Complemento Lia —21/9, modelo de relatório e atualização canônica
-Por pedido direto de Diego, regra geral de sincronização registrada na seção17 do protocolo e modelo sanitizado em operations/RELATORIOS-PROPRIETARIOS.md. Exemplo PDF financeiro foi produzido e inspecionado localmente; aguarda aprovação visual privada. Nenhum documento financeiro, nome/contato privado ou valor real foi incluído no GitHub. Migração histórica continua parcial. Preservada reconciliação de Sage pós-#9; revisão/CI precisam considerar este novo head do #10, sem merge automático.
+A reconciliação desta rodada está no handoff `coordination/handoffs/2026-09-21-0728-rivers-pos-pr10.md`.
