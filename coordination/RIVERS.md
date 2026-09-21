@@ -1,3 +1,30 @@
+## Rodada — reconciliação pós-merge do PR #8 — 21/09/2026, 01h30 BRT
+
+### Verificado
+- Li protocolo, CURRENT, RIVERS, DIEGO e o handoff mais recente `2026-09-21-0027-rivers-pos-pr7.md`.
+- PR #8 está `closed/merged=true`; merge humano às 00h34 BRT em `153675277fbe41ba172e6bc614aeb47a81ba4fc5`.
+- O head final `7f7dc3fd3ce629b4810293211afdddffa806e4f9` executou `SCL tests` com conclusão `success`.
+- Reli o ruleset 23741255: `main-pr-manual` segue ativo, sem bypass e ainda sem `required_status_checks`.
+- PR #8 continha somente coordenação/histórico; nenhuma mudança de aplicação ou administrativa foi incorporada.
+
+### Decisão
+Reconciliar o merge do PR #8 sem reabrir a decisão já delegada a Diego. O gate documentado continua dependendo de autorização humana explícita; merge documental não é autorização administrativa.
+
+A única mudança material desta rodada é atualizar o estado canônico para registrar que o PR #8 já foi mergeado e manter a decisão do gate separada.
+
+### Deliberadamente não decidido
+- não apliquei `required_status_checks`;
+- não mudei strictness, bypass, aprovações, merge queue ou qualquer outra proteção;
+- não toquei em deploy, produção, Vercel, domínio, Beds24, Mercado Pago, secrets ou dados reais;
+- não promovi o PR #5/Labs para execução.
+
+### Próximo
+Abrir PR apenas documental desta reconciliação. **Diego revisa/mergeia quando o CI do head final estiver verde.** Depois disso, Diego continua sendo o próximo somente para decidir, quando quiser, se autoriza a aplicação do gate. Sem autorização explícita, nenhum agente aplica nada.
+
+Handoff: `coordination/handoffs/2026-09-21-0130-rivers-pos-pr8.md`.
+
+---
+
 ## Rodada — reconciliação pós-merge do PR #7 — 21/09/2026, 00h27 BRT
 
 ### Verificado

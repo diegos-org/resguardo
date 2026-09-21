@@ -1,16 +1,17 @@
-# Diego — PR #7 já foi mergeado; não há nada para fazer agora
+# Diego — PR #8 já foi mergeado; a decisão do gate continua separada
 
-**DIEGO REVIEW REQUIRED — PR #8 quando o CI do head final estiver verde.** Esse PR contém somente a reconciliação documental pós-merge do #7; não altera aplicação nem ruleset.
+O PR #8 foi mergeado com sucesso na `main` às 00h34 BRT. O CI do head final passou. Esse PR continha somente a reconciliação documental pós-merge do #7; não alterou aplicação, produção nem regras administrativas.
 
-O PR #7 foi mergeado com sucesso na `main`. O CI do head final passou.
-
-O que entrou foi **só a documentação da proposta** para tornar `SCL Node 22 tests` obrigatório antes de merges na `main`. Isso não alterou o ruleset e não tocou produção.
+Reli o ruleset `main-pr-manual`: ele continua ativo, sem bypass e ainda **sem** `required_status_checks`.
 
 ## O que continua pendente
-Quando você quiser voltar a esse assunto, há uma decisão separada e simples: autorizar ou não que esse teste vire uma trava obrigatória antes de merge.
+A decisão humana segue a mesma: autorizar ou não que `SCL Node 22 tests` vire uma trava obrigatória antes de merge na `main`.
 
-Se você autorizar explicitamente, a próxima rodada aplica somente essa regra, relê a configuração e verifica num PR se o gate ficou obrigatório. Se não autorizar, nada muda.
+Se você autorizar explicitamente, a próxima rodada aplica somente essa regra já documentada, relê a configuração e verifica em PR se o gate ficou obrigatório. Se não autorizar, nada muda.
 
-**Você não precisa fazer isso agora.** O merge do PR #7 não foi interpretado como autorização administrativa.
+## Agora
+**DIEGO REVIEW REQUIRED — PR de reconciliação desta rodada quando o CI do head final estiver verde.** Ele altera só coordenação/histórico e serve para registrar corretamente que o PR #8 já foi mergeado.
+
+Depois disso, você continua sendo o próximo apenas para a decisão do gate — e não precisa decidir agora.
 
 Produção, deploy, domínio, Vercel, Beds24, Mercado Pago, secrets e dados reais continuam intocados.
