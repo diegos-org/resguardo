@@ -1,4 +1,4 @@
-# Estado atual — Rivers após PR #2 — 21/09/2026
+# Estado atual — Rivers após PR #2 — 20/09/2026
 
 **PR #2 MERGEADO. Rivers reconciliou a governança e definiu a próxima fatia.**
 
@@ -19,4 +19,4 @@ Secret Protection/Code Security pagos continuam adiados até existir benefício 
 
 **DIEGO REVIEW REQUIRED** para o PR documental desta rodada de Rivers. O PR só registra estado e escopo; não altera aplicação nem produção.
 
-Handoff: `coordination/handoffs/2026-09-21-rivers-pos-pr2-ci.md`.
+Handoff: `coordination/handoffs/2026-09-20-rivers-pos-pr2-ci.md`.
