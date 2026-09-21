@@ -19,3 +19,7 @@ Nenhum PR de produto está sendo recomendado para merge nesta rodada. O PR desta
 Tornar o teste obrigatório nas regras do GitHub continua dependendo de autorização sua, separada. Produção e rulesets não foram alterados. A proposta de armazenamento também não foi aprovada nem provisionada.
 
 [Handoff com evidências e responsáveis](handoffs/2026-09-21-1848-rivers-coordenacao.md). [Painel anterior preservado](handoffs/2026-09-21-1848-rivers-estado-anterior.md).
+
+## Revisão humana — somente a coordenação #16
+
+**DIEGO REVIEW REQUIRED**, condicionado ao sinal final de testes na descrição do PR #16. Os arquivos foram conferidos integralmente, o primeiro teste automático passou e a única mudança é documental. Assim que o head final passar e o PR sair de rascunho, recomendo revisar e incorporar o #16 se você concordar. Não é urgente nem bloqueia Sage/Lia; não é pedido de merge dos PRs de produto. O estado de rascunho mencionado acima descreve a abertura do PR.

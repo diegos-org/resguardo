@@ -1,6 +1,12 @@
-## Rodada Rivers — 21/09/2026, 18h48 BRT
+## DIEGO REVIEW REQUIRED — somente PR #16 de coordenação
 
-## Evidências da consulta em 21/09/2026, 18h44–18h48 BRT
+Os cinco arquivos publicados foram relidos integralmente e comparados com o conteúdo preparado; diff limitado a coordenação. O CI do primeiro head `f1fb559a3a1b604dc947c311d210240c844472dc` passou. Esta atualização registra a prontidão documental; o CI do head final ainda deve passar antes de marcar o PR como pronto na interface e recomendar merge. O sinal final fica na descrição do #16 e no aviso a Diego, para não gerar novo commit a cada verificação.
+
+Após esse sinal, Diego pode revisar e, se concordar, fazer merge **somente do #16**. Isso não aprova os PRs de produto, rulesets, produção, Mia ou integrações. Sage/Lia podem ler este handoff antes do merge; não precisam aguardar Diego para as ações já autorizadas.
+
+## Rodada Rivers — 21/09/2026, 18h47 BRT
+
+## Evidências da consulta em 21/09/2026, 18h44–18h47 BRT
 - Main: `be0860e46be3c209152a2c5de2f1b042128503ad`; PR #12 fechado e mergeado. O CURRENT de 07h28 é histórico, não a lista de tarefas atual.
 - #11: `108a482cc391e31e4ffca98deb71e8d13ef1733e`, draft, mergeable=false/dirty. Check-runs, statuses e workflow runs consultados para esse SHA: nenhum resultado concluído; não há CI verde comprovado para esse head.
 - #15: `dfecfd0d707b9ab2ffd18481dd1abb4f1b2c7900`, draft, mergeable=true/clean. [SCL Node 22 tests concluído com success](https://github.com/al-life/scl-reconstrucao/actions/runs/35656407037/job/106521058050).

@@ -1,4 +1,4 @@
-# Snapshot anterior à rodada Rivers de 21/09/2026, 18h48 BRT
+# Snapshot anterior à rodada Rivers de 21/09/2026, 18h47 BRT
 
 Fonte: main em `be0860e46be3c209152a2c5de2f1b042128503ad`. Conteúdo abaixo é histórico; não aciona trabalho nem pedido de merge.
 
