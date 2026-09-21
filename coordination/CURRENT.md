@@ -1,23 +1,24 @@
-# Estado atual — PR #9 mergeado; PR #10 reconciliado — 21/09/2026
+# Estado atual — PR #10 mergeado; PR #11 volta para Sage — 21/09/2026, 07h28 BRT
 
-Diego realizou o merge do PR #9 na main em 6f106f4f628722e66bc4dc37037b4f02970011f8. Esta branch incorpora essa base e preserva a consolidação operacional da Lia.
+Diego realizou o merge humano do PR #10 na `main` (`b370b5de72836f5cfb73d917aba90b9902cd2653`). O head final do PR #10 (`ec62f87e4474c1482f3dc10bf4c0df498f364e1f`) executou `SCL tests` com conclusão `success`. O merge incorporou somente documentação sanitizada de operação/produto e coordenação; não publicou aplicação, não ativou integrações e não alterou regras administrativas.
 
-## Consolidação da Lia
-Diego autorizou unificar regras no GitHub: seis imóveis operados, somente cinco do Rio no catálogo público. Búzios separado e inclusão interna indecisa. Ver [consolidação](../operations/CONSOLIDACAO-2026-09-21.md).
-Prioridades registradas: Beds24/Booking e Mercado Pago; Lia reconcilia após autenticação. Migração documental parcial, sem ativação de integração ou produção.
+## Consolidação agora em main
+A `main` passa a conter a consolidação autorizada por Diego: seis imóveis operados, somente cinco do Rio no catálogo público; Búzios separado e inclusão interna ainda indecisa. A migração documental continua parcial e dados sensíveis permanecem fora do GitHub. Beds24, Booking e Mercado Pago continuam como frentes próprias de validação, sem sincronização, cobrança ou publicação autorizada por esse merge.
 
-## Revisão e próximo passo
-PR #10: reconciliação documental preparada. CI e revisão devem ser conferidos no head final antes de recomendar merge; resultado registrado na conversa do PR, sem inferir sucesso antecipado.
-Todos os merges ficam exclusivamente com Diego, por confirmação direta nesta conversa.
-PR #11 permanece draft: correção da resposta HTML de disponibilidade e validação mobile ainda pendentes. PR #5 continua Labs.
+## PR #11 — próximo passo
+O PR #11 continua `draft` e ainda não está pronto para Diego. A revisão anterior de Rivers encontrou um ajuste pequeno: consulta HTML válida em `/disponibilidade` deve responder 200, mantendo disponibilidade UNKNOWN; `/api/disponibilidade` pode permanecer fail-closed/503 enquanto não houver provider validado, e entrada inválida continua 400.
+
+Como a `main` avançou com os merges #9 e #10, a branch do #11 ficou baseada em estado anterior e hoje aparece não mergeável. **Sage é o próximo e pode começar imediatamente:** primeiro reconciliar/rebasear o #11 sobre a `main` atual sem reintroduzir coordenação antiga; depois fazer somente a correção do status HTTP + regressão, rodar CI e entregar para Lia validar busca e responsividade ampliada. O PR permanece draft até essa validação.
+
+## Coordenação desta rodada
+PR #12 contém apenas esta reconciliação pós-merge do #10. Foi aberto para revisão humana conforme o protocolo, mas ainda **não deve ser tratado como pronto para merge até o CI do head final concluir com sucesso**. O #12 não bloqueia Sage de começar o #11.
 
 ## Decisão administrativa separada
-A proposta de exigir SCL Node 22 tests (GitHub Actions, integration_id 15368), strict_required_status_checks_policy=false, preservando as demais regras, continua dependendo de autorização explícita. O último registro de Rivers no #9 informa ruleset ativo sem bypass e sem required_status_checks; não foi revalidado nem alterado nesta reconciliação.
-Merge documental não autoriza aplicar o gate. Produção, domínio, credenciais e dados reais permanecem fora desta entrega.
+A proposta de exigir `SCL Node 22 tests` como status check obrigatório continua dependendo de autorização explícita de Diego. Nenhum merge documental é autorização para aplicar o gate.
+
+Produção, deploy, domínio, Vercel, Beds24, Mercado Pago, secrets e dados reais permanecem intocados.
 
 ## Histórico
-O estado integral registrado pelo Rivers no #9 está preservado no Git e em [seu handoff](handoffs/2026-09-21-0130-rivers-pos-pr8.md). A solicitação de merge daquele PR está concluída.
-[Handoff da reconciliação](handoffs/2026-09-21-sage-pr10-pos-pr9.md).
-
-## Complemento Lia —21/9, modelo de relatório e atualização canônica
-Por pedido direto de Diego, regra geral de sincronização registrada na seção17 do protocolo e modelo sanitizado em operations/RELATORIOS-PROPRIETARIOS.md. Exemplo PDF financeiro foi produzido e inspecionado localmente; aguarda aprovação visual privada. Nenhum documento financeiro, nome/contato privado ou valor real foi incluído no GitHub. Migração histórica continua parcial. Preservada reconciliação de Sage pós-#9; revisão/CI precisam considerar este novo head do #10, sem merge automático.
+- PR #10 incorporou os handoffs `2026-09-21-sage-pr10-pos-pr9.md` e `2026-09-21-lia-relatorios-governanca.md`.
+- A revisão Rivers do PR #11 permanece preservada em `coordination/handoffs/2026-09-21-0631-rivers-para-sage-pr11.md` dentro da branch do #11.
+- Reconciliação desta rodada: `coordination/handoffs/2026-09-21-0728-rivers-pos-pr10.md`.

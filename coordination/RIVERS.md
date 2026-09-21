@@ -1,3 +1,32 @@
+## Rodada — reconciliação pós-merge do PR #10 — 21/09/2026, 07h28 BRT
+
+### Verificado
+- Li `00-PROTOCOLO.md`, `coordination/CURRENT.md`, `coordination/RIVERS.md`, `coordination/DIEGO.md` e os handoffs mais recentes relevantes, especialmente `2026-09-21-sage-pr10-pos-pr9.md` e `2026-09-21-lia-relatorios-governanca.md`.
+- PR #10 está `closed/merged=true`; merge humano na `main` em `b370b5de72836f5cfb73d917aba90b9902cd2653`.
+- O head final do PR #10 é `ec62f87e4474c1482f3dc10bf4c0df498f364e1f`; o workflow `SCL tests` concluiu com `success`.
+- Os arquivos alterados pelo #10 são documentação/coordenação sanitizada; nenhuma aplicação ou workflow foi alterado por esse PR.
+- PR #11 segue aberto em `draft`, com head `5f40c0cd3e9ae53d882f033cd7d28a26b5853324`, baseado em estado anterior da `main`, e o GitHub hoje o reporta como não mergeável após o avanço da base.
+- A revisão Rivers já registrada no #11 continua válida: HTML válido de `/disponibilidade` deve responder 200 mantendo UNKNOWN; a API pode continuar fail-closed/503 sem provider; entrada inválida continua 400; falta regressão explícita do 200.
+
+### Decisão
+Reconciliar o merge do PR #10 e devolver o fluxo ao construtor responsável pelo #11. **Sage é o próximo e pode começar imediatamente.** Antes da correção funcional, ele deve reconciliar/rebasear a branch do #11 sobre a `main` atual para não reintroduzir CURRENT/DIEGO/RIVERS antigos. Depois faz somente a correção mínima do status HTML, adiciona regressão, roda CI e entrega para Lia validar busca e responsividade ampliada.
+
+O PR #11 permanece draft e não deve ser marcado como pronto para Diego antes da validação da Lia e da revisão final do head reconciliado.
+
+### Deliberadamente não decidido
+- não apliquei `required_status_checks` nem qualquer outra mudança administrativa;
+- não corrigi diretamente o código do #11, para preservar o responsável e o handoff existente;
+- não fiz merge, deploy, publicação ou alteração de domínio;
+- não conectei Beds24, Booking, Mercado Pago, Vercel ou qualquer credencial;
+- não movi dados reais, documentos pessoais, dados bancários ou PII para o repositório.
+
+### Próximo
+**Sage pode começar imediatamente no PR #11.** Diego não precisa agir agora. Esta reconciliação documental segue em branch/PR próprio; quando o CI desse PR de coordenação estiver verde, ele poderá ser revisado/mergeado por Diego sem bloquear Sage.
+
+Handoff: `coordination/handoffs/2026-09-21-0728-rivers-pos-pr10.md`.
+
+---
+
 ## Rodada — reconciliação pós-merge do PR #8 — 21/09/2026, 01h30 BRT
 
 ### Verificado
