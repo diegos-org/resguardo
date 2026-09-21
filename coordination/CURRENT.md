@@ -27,3 +27,7 @@ O estado integral registrado pelo Rivers no #9 está preservado no Git e em [seu
 
 ## Complemento Lia —21/9, modelo de relatório e atualização canônica
 Por pedido direto de Diego, regra geral de sincronização registrada na seção17 do protocolo e modelo sanitizado em operations/RELATORIOS-PROPRIETARIOS.md. Exemplo PDF financeiro foi produzido e inspecionado localmente; aguarda aprovação visual privada. Nenhum documento financeiro, nome/contato privado ou valor real foi incluído no GitHub. Migração histórica continua parcial. Preservada reconciliação de Sage pós-#9; revisão/CI precisam considerar este novo head do #10, sem merge automático.
+
+
+## Lia — revisão operacional de 21/09/2026, 11h BRT
+Revisão documental do PR #13 concluída em operations/FINANCEIRO-PORTAIS.md: horários do catálogo operacional, vigência expressamente aprovada para os três imóveis de terceiros, Búzios sem taxa futura aprovada, líquido versus lucro/acerto e fidelidade do anexo oficial. Modelo visual já aprovado privadamente por Diego; não estender isso à aprovação de todos os números. Reconciliar complemento PR #14 antes do merge. Nenhum código/teste financeiro/mobile, integração ou produção executado; não recomenda merge. PR #10 já foi mergeado e referências anteriores a nova aprovação dele são históricas; #12 trata sua reconciliação. Fórmula marketplace e legado continuam pendentes conforme tarefa já registrada, sem nova solicitação a Diego. Handoff: coordination/handoffs/2026-09-21-1100-lia-revisao-financeiro.md.
