@@ -1,3 +1,22 @@
+## Rodada — reconciliação do PR #4 após merge do #3 — 20/09/2026
+
+### Verificado
+- Diego confirmou merge humano do PR #3.
+- PR #4 estava draft e ainda baseado na branch do #3.
+- Retarget para `main` mostrou branch divergente: 5 commits à frente e 5 atrás.
+- Head anterior do PR #4 teve workflow `SCL tests` concluído com sucesso, 24/24 testes.
+
+### Ação
+Reconstruí a branch do PR #4 sobre a `main` mergeada, preservando apenas o workflow de CI e a coordenação material do Sage/Rivers. Nenhum arquivo da aplicação foi alterado.
+
+### Gate
+Aguardar/conferir nova execução do workflow no novo head e então revisar o diff final. Não recomendar merge antes disso.
+
+### Limites
+Sem deploy, produção, secrets, integrações reais ou compras.
+
+---
+
 ## Rodada — pós-PR #2 / próxima fatia — 20/09/2026
 
 ### Verificado

@@ -1,22 +1,21 @@
-# Estado atual — Rivers após PR #2 — 20/09/2026
+# Estado atual — Rivers após merge do PR #3 — 20/09/2026
 
-**PR #2 MERGEADO. Rivers reconciliou a governança e definiu a próxima fatia.**
+**PR #3 MERGEADO. CI mínimo do PR #4 foi reconciliado para `main` e está em validação final.**
 
-PR #2 foi confirmado `closed/merged=true`, merge `b53e25e9ce4a34bfee4f0fcb8cb78e14f0046993`. A documentação de governança agora está em `main`; a proteção `main-pr-manual` e as demais configurações registradas por Sage continuam válidas.
+Diego confirmou o merge humano do PR #3. Rivers retargetou o PR #4 para `main` e reconciliou a branch para remover a dependência da antiga branch do PR #3.
 
-## Próxima fatia
-**Sage** implementa CI mínimo e gratuito para a base atual:
-- workflow apenas para executar a suíte Node já existente em `scl-publico`;
+## CI mínimo
+O PR #4 adiciona somente:
+- workflow `.github/workflows/scl-tests.yml`;
 - Node 22;
-- Actions oficiais referenciadas por SHA completo;
-- sem secrets, deploy, Vercel, Beds24, Mercado Pago ou dados reais;
-- sem tornar o check obrigatório no ruleset antes de o workflow provar que funciona em PR real.
+- execução da suíte existente em `scl-publico`;
+- `contents: read`;
+- Actions oficiais fixadas por SHA;
+- sem secrets, deploy, Vercel, Beds24, Mercado Pago ou dados reais.
 
-Secret Protection/Code Security pagos continuam adiados até existir benefício concreto; nenhuma compra autorizada nesta rodada. Não abrir nova frente de produto junto com esta fatia curta.
+O head anterior já teve execução verde com 24/24 testes. Após esta reconciliação, o GitHub deve executar novamente o check no novo head antes da recomendação final de merge.
 
 ## Próximo
-**Sage é o próximo e pode começar imediatamente**, usando este handoff/branch como estado de coordenação enquanto o PR documental aguarda merge humano.
+**Rivers confere o novo check e o diff do PR #4. Diego não precisa agir até a confirmação final.**
 
-**DIEGO REVIEW REQUIRED** para o PR documental desta rodada de Rivers. O PR só registra estado e escopo; não altera aplicação nem produção.
-
-Handoff: `coordination/handoffs/2026-09-20-rivers-pos-pr2-ci.md`.
+Produção permanece intocada.
