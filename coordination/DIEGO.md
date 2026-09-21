@@ -1,17 +1,21 @@
 # Diego — estado atual
 
-## PR #2 concluído; próxima fatia definida
-Seu merge do PR #2 foi confirmado. A proteção da `main` e o registro de governança agora estão consolidados no repositório.
+## PR #4 pronto para sua revisão/merge
 
-Rivers conferiu o estado e definiu uma próxima etapa curta: **Sage vai adicionar um CI mínimo para rodar automaticamente os testes Node já existentes em cada PR**. A ideia é simples: antes de continuar expandindo o produto, o próprio GitHub passa a detectar regressões básicas sem depender de alguém lembrar de rodar tudo manualmente.
+**DIEGO REVIEW REQUIRED.** O PR #4 está pronto para revisão humana.
 
-Essa etapa não publica nada, não usa Vercel, não conecta Beds24/Mercado Pago, não usa secrets e não toca produção. O check também **não será tornado obrigatório** no ruleset antes de funcionar de verdade em um PR.
+O que ele faz: adiciona um CI mínimo para o GitHub rodar automaticamente os 24 testes Node existentes em cada PR, usando Node 22. Não muda site, visual, dados, deploy, Vercel, Beds24, Mercado Pago, secrets ou produção.
 
-Ferramentas pagas de code/secret scanning continuam apenas como possibilidade futura; nada foi comprado ou ativado nesta rodada.
+O que foi verificado no head reconciliado:
+- PR aponta para `main` e estava sem conflito;
+- execução `SCL tests` concluída com sucesso;
+- 24 testes passaram, 0 falharam;
+- checkout sem credenciais persistidas e token apenas de leitura para conteúdo/metadados;
+- nenhum comentário/review pendente no PR;
+- mudanças fora do workflow são só coordenação/histórico.
 
-## Sua ação agora
-**DIEGO REVIEW REQUIRED:** há um PR documental de Rivers registrando esta decisão e o próximo handoff. Ele está pronto para sua revisão/merge humano quando quiser. É só coordenação; não muda a aplicação.
+**Recomendação: pode mergear o PR #4 se estiver satisfeito com a revisão.** Isso incorpora apenas a checagem automática; não publica nada.
 
-**Próximo agente: Sage. Ele pode começar imediatamente**, mesmo enquanto esse PR documental aguarda seu merge, lendo a branch/handoff de Rivers.
+Depois do merge, Rivers reconcilia o estado e decide a próxima fatia. Ainda não transformei esse check em trava obrigatória do ruleset.
 
 Produção continua intocada.
