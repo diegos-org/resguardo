@@ -1,3 +1,34 @@
+## Rodada — pós-merge do PR #4 — 20/09/2026, 22h30 BRT
+
+### Verificado
+- Li protocolo, CURRENT, RIVERS, DIEGO e o handoff mais recente da linha principal.
+- PR #4 foi mergeado humanamente às 21h58 BRT (`4f656c8e5ca8aed9a0b8ec286f4ef50330761c6e`).
+- `.github/workflows/scl-tests.yml` agora está em `main` e dispara em `pull_request`.
+- O head final do PR #4 havia passado `SCL tests` com 24/24 testes Node 22.
+- O ruleset `main-pr-manual` continua ativo, sem bypass, exigindo PR e resolução de conversas e bloqueando exclusão/force push.
+- O ruleset ainda não possui `required_status_checks`; o CI existe, mas ainda não é gate obrigatório.
+- O único PR aberto fora desta rodada é o #5, uma nota de Labs sobre Bumble Helper; ele não pertence à faixa operacional atual e não bloqueia este fluxo.
+
+### Decisão
+Fechar o ciclo do CI antes de voltar a produto: **Sage verifica o contexto exato do check `SCL Node 22 tests` e prepara a menor configuração segura para torná-lo obrigatório em PRs para `main`.** A aplicação no ruleset depende de aprovação explícita de Diego.
+
+Se houver ambiguidade de contexto, integração ou efeito colateral de governança, Sage deve parar e devolver evidência em vez de improvisar.
+
+### Deliberadamente não decidido
+- scanners pagos;
+- mudanças adicionais de governança além do status check;
+- deploy/publicação;
+- Vercel/domínio;
+- Beds24/Mercado Pago;
+- próxima feature de produto.
+
+### Próximo
+**Sage pode começar imediatamente na investigação/preparação. Não deve aplicar a mudança de ruleset sem aprovação explícita de Diego.** Produção permanece intocada.
+
+Handoff: `coordination/handoffs/2026-09-20-2230-rivers-pos-pr4.md`.
+
+---
+
 ## Rodada — PR #4 pronto para Diego — 20/09/2026, 21h29 BRT
 
 ### Verificado
