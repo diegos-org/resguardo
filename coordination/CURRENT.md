@@ -1,3 +1,12 @@
+# Atualização Lia21/9 — consolidação documental em revisão
+
+Diego autorizou unificar regras no GitHub e esclareceu seis imóveis operados versus cinco do Rio no público. Búzios separado e inclusão interna indecisa. Ver [consolidação](../operations/CONSOLIDACAO-2026-09-21.md).
+
+Prioridades: Beds24/Booking e Mercado Pago; autenticação pendente com Diego. Próximo Lia: reconciliação após login. Rivers/Sage podem revisar esta fronteira e propor próxima entrega independente; não acionados automaticamente.
+
+PR9 permanece aberto para reconciliação pós8; PR5 é Labs. A decisão de gate permanece separada. Este PR não altera segurança/produção. Não presumir que toda migração terminou.
+
+## Histórico preservado da main anterior
 # Estado atual — PR #7 mergeado; gate ainda depende de autorização — 21/09/2026, 00h27 BRT
 
 **DIEGO REVIEW REQUIRED — PR #8, assim que o CI do head final estiver verde.** O PR #8 contém somente esta reconciliação documental pós-merge; não altera aplicação nem ruleset.

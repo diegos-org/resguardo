@@ -1,6 +1,6 @@
 # SCL 2.0 — PROTOCOLO DE COORDENAÇÃO
 
-> **Status:** workbench temporário e não canônico.
+> **Status:** código em workbench temporário. Diego definiu em21/9 o GitHub como destino canônico das regras e decisões compartilhadas; migração documental gradual, conferida por tema.
 > **Não é produção. Não é documentação final da Sua Casa Leblon.**
 
 Este repositório é o canteiro de construção coordenado de **Rivers, Lia e Sage** para o SCL 2.0.
@@ -205,3 +205,6 @@ Regras:
 - evitar repetir a mesma ideia em vários arquivos: usar links/referências para uma fonte principal.
 
 Objetivo: preservar memória sem transformar documentação em ruído.
+
+## 16. Consolidação autorizada em21/9
+Consultar [operação e integrações](operations/CONSOLIDACAO-2026-09-21.md). Seis imóveis operados, cinco do Rio no catálogo público; Búzios excluído das partes públicas/resultados e inclusão interna ainda pendente. Esta atualização substitui a classificação anterior de toda documentação como não canônica; não promove código a produção nem declara migração completa.

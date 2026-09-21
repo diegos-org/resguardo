@@ -82,3 +82,6 @@ Isso é validação de prévia, não aprovação de produção: faltam aparelhos
 Próximo: Rivers consolidar o escopo de aceite do PR de construção e encaminhar a Sage a complementação mobile. Não estou solicitando merge enquanto esse aceite estiver pendente. Diego não precisa configurar nem contratar nada para essa rodada.
 
 Base executada: ZIP GitHub branch sage-base-publica-revisavel, comentário do arquivo aponta commit34d8ff22e0a14c53f69ac2e602f9eb6e3ff23765; extraídos somente19arquivos scl-publico. Retry/concurrency/restart foram cobertos pelos testes automatizados, não repetidos manualmente pela UI. Navegador Codex IAB; não Safari iOS/Chrome Android reais. Medição de largura no estado carregado, não rastreamento temporal de todo carregamento. Nenhuma alteração da aplicação nesta rodada.
+
+## Rodada manual21/9 — unificação solicitada
+Consolidação sanitizada de escopo, estado de integrações e regras transversais do acervo local. Corrigida distinção seis operados/cinco públicos. GitHub destino canônico por decisão direta, sem migração integral nem produção. Acessos Beds24/Booking/MP pedem login; Diego fará. PR9 aberto, não pedir PR8 novamente. Histórico preservado; nenhuma credencial/contato privado/documento/reserva nominal transferidos. Próximo: reconciliar após login e migrar regras completas por tema com validação.
