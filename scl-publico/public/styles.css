@@ -31,3 +31,14 @@ body{background-color:var(--cream);background-image:repeating-linear-gradient(13
 @media(max-width:600px){.hero h1{font-size:clamp(1.8rem,7.5vw,2.65rem)}.hero-inner{padding-top:22px}.why{padding-top:28px;padding-bottom:26px}.benefits{gap:16px;margin-top:18px}.benefits article p{margin-bottom:8px}.detail-heading h1{font-size:2.075rem}.consultation h1{font-size:2.475rem}.whatsapp{position:static;margin:0 20px 20px auto;box-shadow:none}footer{padding-bottom:16px}}
 
 .search-form .date-trigger{padding:9px 0;justify-content:flex-start;font-weight:400;text-align:left}
+
+/* Live review 21/09: common column edges and independent hero anchor. */
+.hero-inner{position:relative}.hero-copy{min-width:0}
+@media(min-width:1001px){
+ .hero-inner{max-width:1120px;margin-inline:auto;padding:20px 24px 60px;display:flex;justify-content:flex-end}
+ .hero-copy{width:max-content;max-width:50%;text-align:left}
+ .hero-link{position:absolute;left:24px;bottom:60px}
+ .hero-image{background-image:linear-gradient(90deg,#17221b10 15%,#17221b40 50%,#17221b99 100%),url('/images/leblon-beach.jpg')}
+}
+@media(min-width:601px){.detail .gallery,.detail .detail-columns{grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:32px}.gallery-main{aspect-ratio:3/2}.gallery-thumbs{min-width:0}}
+@media(max-width:600px){.gallery-main{aspect-ratio:3/2}}

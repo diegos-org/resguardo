@@ -36,7 +36,7 @@ test('server rejects invalid dates, duplicate parameters, capacity and unknown p
  const p=new URLSearchParams(params);p.append('guests','3');assert.equal((await fetch(base+'/api/disponibilidade?'+p)).status,400);
 }));
 test('consulta preserves criteria but does not claim delivery; escaping blocks markup injection',()=>withServer(async base=>{
- const r=await fetch(base+'/consulta?'+params);const html=await r.text();assert.match(html,/Enviar consulta/);assert.match(html,/registrada apenas neste computador/);assert.match(html,/Estúdio Mezanino Leblon/);assert.match(html,/https:\/\/wa.me\/5521995360322/);
+ const r=await fetch(base+'/consulta?'+params);const html=await r.text();assert.match(html,/Enviar consulta/);assert.match(html,/registrada apenas neste computador/);assert.match(html,/Studio Mezanino Leblon/);assert.match(html,/https:\/\/wa.me\/5521995360322/);
  const evil=new URLSearchParams(params);evil.set('checkin','"><script>alert(1)</script>');const invalid=await fetch(base+'/consulta?'+evil);assert.equal(invalid.status,400);assert.doesNotMatch(await invalid.text(),/<script>alert/);
 }));
 test('destination comes only from validated server configuration',()=>withServer(async base=>{

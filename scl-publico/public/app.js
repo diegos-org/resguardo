@@ -31,7 +31,7 @@ document.querySelectorAll('.search-form').forEach(form=>{
 // Swap the selected photo with the large frame, preserving each image exactly once.
 document.querySelectorAll('.gallery').forEach(gallery=>{
  const main=gallery.querySelector('.gallery-main img'),caption=gallery.querySelector('figcaption');
- let current=1;
+ let current=Number(gallery.dataset.galleryInitial || 1);
  gallery.querySelectorAll('[data-gallery-image]').forEach(button=>button.addEventListener('click',()=>{
   const thumb=button.querySelector('img'),oldSrc=main.getAttribute('src'),next=Number(button.dataset.galleryImage);
   main.src=thumb.getAttribute('src');thumb.src=oldSrc;
