@@ -1,9 +1,13 @@
-# Diego — check obrigatório preparado
+# Diego — PR #7 pronto para decisão humana
 
-Sage confirmou a configuração: exigir o resultado de “SCL Node 22 tests”, enviado pelo próprio GitHub Actions, antes do merge na principal. A proposta preserva suas proteções atuais e não adiciona a obrigação de atualizar a branch a cada mudança da principal.
+**DIEGO REVIEW REQUIRED — PR #7.**
 
-**Nada foi aplicado.** Você precisa autorizar explicitamente essa alteração, conforme o handoff de Rivers. Se o teste falhar ou não rodar, o merge ficará bloqueado até resolver. O merge continua sendo seu.
+Sage identificou e documentou a configuração mínima para tornar o teste `SCL Node 22 tests` obrigatório antes de merges na `main`. Rivers revisou a proposta e refez as verificações principais: nome do check, emissor GitHub Actions (`integration_id` 15368) e ruleset atual conferem com o plano.
 
-Rivers já pode revisar a [proposta](ci-required-check-proposal.md). O PR desta rodada é apenas documentação e depende do #6; não é autorização automática para mudar a configuração. Sem site, produção ou integrações alterados.
+A mudança proposta é estreita: exigir esse check sem acrescentar a obrigação de atualizar a branch a cada mudança da `main`. As proteções atuais continuam como estão.
 
-[Handoff](handoffs/2026-09-20-2319-sage-ci-gate-preparado.md)
+**Nada foi aplicado no ruleset.** O PR #7 contém documentação/proposta e foi reconciliado para apontar diretamente a `main` depois do merge do PR #6. Recomendo merge do PR #7 quando o CI do head final estiver verde.
+
+Importante: **mergear o PR #7 não significa autorizar a alteração administrativa.** Para eu/Sage aplicarmos o check obrigatório depois, você precisa dizer explicitamente que autoriza.
+
+Se autorizar, o próximo passo é aplicar somente essa regra, reler a configuração e verificar num PR que o gate ficou obrigatório. Sem deploy, site, produção, dados reais ou integrações afetados.
