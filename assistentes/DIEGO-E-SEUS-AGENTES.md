@@ -10,7 +10,7 @@ Atualização factual: 21/09/2026, 19h23 BRT. Coordenação: Rivers. Fonte compa
 | Atendimento da Sua Casa Leblon e comunicação com hóspedes/proprietários/equipes | **Lia** | Em atuação. Mantém cobertura atual; atendimento vai à futura Lia de nuvem após revisão/aceite/corte. Transferência administrativa para Mia é separada. |
 | Apoio pessoal/administrativo e preparação de relatórios | **Mia**, após transferência | Em preparação documental. Criação/operação não confirmadas nesta consulta. Até aceite, Lia mantém responsabilidade. |
 | Código, testes e investigação técnica da SCL | **Sage** | Em atuação no workbench SCL; site/demos e reconciliação técnica. |
-| Construção do aplicativo musical e Auto-comper | **SongKeep Studio Constructor** | Responsável pela construção SongKeep. Exportação Sônica 3 disponível no PR #3; Auto-comper #2 encomendado por Diego. Aceite da nova entrada ainda não verificado. |
+| Construção do aplicativo musical e Auto-comper | **SongKeep Studio Constructor** | Responsável pela construção SongKeep. Exportação Sônica 3 disponível no PR #3; Auto-comper #2 encomendado por Diego. Entrada lida pelo Constructor; 38/38 hashes conferidos e mapa no PR #4. |
 | Produção musical de Café Água das Oito | **Menos — nome a confirmar** | Colaborador mencionado por Diego; melhoria musical relatada por ele, trabalho ainda em andamento. Plataforma e acessos não confirmados. |
 | Apoio pessoal de perfil/conversa no Bumble | **Bumble Coach** | Tarefa existente no aplicativo; escopo atual e ferramentas ainda não revalidados. Fora da operação empresarial. |
 
@@ -52,11 +52,11 @@ Este inventário distingue agente, papel e janela. Várias execuções “Run Ri
 ## SongKeep e música
 ### SongKeep Studio Constructor
 - **Onde:** tarefa “SongKeep Studio Constructor”.
-- **Agora:** Auto-comper #2 em rascunho; pacote Sônica 3 entregue no #3 para leitura/organização, sem aceite do Constructor inventado.
-- **Ferramentas/evidências:** repositório privado al-life/soundkeep-studio; código Python e testes do experimento descritos no #2; triagem React/Vite/Firebase/Gemini recebida no #3. Acesso operacional atual do Constructor deve ser confirmado por ele; não confundir ferramentas disponíveis ao Rivers com acesso do Constructor.
+- **Agora:** entrada #3 lida estaticamente pelo Constructor em 21/09/2026; 38/38 hashes conferidos. Mapa de implementação e isolamento no PR #4. Auto-comper #2 preservado como frente separada.
+- **Ferramentas/evidências confirmadas pelo Constructor em 21/09/2026:** Codex no Mac local; shell/Python local; conector GitHub leu o snapshot #3 e publicou branch/PR #4 em al-life/soundkeep-studio. 13 testes sintéticos do auto-comper passaram na entrega #2. Nesta leitura do Studio não instalou dependências nem executou app/build/typecheck; acesso Firebase/Gemini não testado nem ativado. Revisão estática por outro agente Codex, sem aprovação GitHub elegível.
 - **Nome:** produto **SongKeep**. Slug do repo permanece soundkeep-studio por decisão de Diego. Corrigir nome visível na interface numa alteração própria, sem reescrever o snapshot de origem.
 - **IA/API:** decisão pendente com Diego. Pode haver provedores separados para conversa e geração sonora. Google é hipótese para geração, não escolha aprovada; Gemini no ZIP é implementação herdada, não decisão de arquitetura.
-- **Próximo:** ler a [entrada do Constructor](https://github.com/al-life/soundkeep-studio/blob/import/sonica-3-20260921/coordination/CONSTRUCTOR-SONICA-3.md), preparar ambiente isolado, verificar o que funciona e propor fatia pequena. Não ativar serviço pago nem inserir chave real nesta etapa.
+- **Próximo / responsável:** Constructor prepara cópia isolada antes de rodar. [Mapa e evidências no PR #4](https://github.com/al-life/soundkeep-studio/pull/4). Nenhuma ação de Diego agora: não mergear #1/#2 até revisão/base adequadas. Chamá-lo para usar quando importar/gravar, editar, ouvir, exportar e reabrir preservando mídia estiverem verificáveis. Sem prazo prometido, serviço pago ou chave real.
 
 ### Outros colaboradores e histórico
 - **Menos — nome a confirmar:** relato direto de Diego sobre produção de Café Água das Oito; não presumir qual produto/modelo é, nem acesso ao repositório. Registrar nome/plataforma quando confirmado.
@@ -109,3 +109,5 @@ Quando Lia apresentar o pacote final, Rivers deve:
 7. Atualizar este guia, o guia SCL e suas cópias locais. Declarar transferência CONCLUÍDA apenas com evidência; se algo faltar, indicar exatamente o quê e preservar cobertura atual.
 
 Uma revisão documental automatizada pode apontar lacunas; não ativa agentes, não muda agendas e não substitui a decisão de corte de Diego.
+
+21/09/2026 — SongKeep Studio Constructor atualizou apenas sua ficha e linha-resumo após leitura do PR #3 e publicação do mapa #4. Ambiente local e acessos acima confirmados nesta sessão; primeira versão utilizável ainda não atingida. Outros papéis preservados.
