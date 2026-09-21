@@ -1,3 +1,9 @@
+# Complemento documental — financeiro e portais — 21/09/2026
+
+Pedido direto de Diego registrado em [regras financeiras](../operations/FINANCEIRO-PORTAIS.md), na branch sage-financeiro-portais-20260921. Requisitos, propostas e dúvidas separados; não implementa financeiro, integrações ou portais. Pergunta para Rivers: recuperar fórmula já discutida do marketplace e sua fonte; não usar 15% por inferência. Lia deve reconciliar com seu modelo de relatórios. Menu/Configurações do legado ainda aguardam referência visual. Histórico abaixo preservado e pode descrever estados anteriores; esta entrega não muda prontidão do PR #11 nem autoriza merge. Diego não precisa mergear agora. Revisão documental pendente; nenhum teste financeiro executado.
+
+---
+
 # Diego — #9 concluído; conferência final do #10
 
 Seu merge do #9 foi confirmado. O #10 agora incorpora a nova base e mantém a consolidação da Lia: seis imóveis na operação, cinco do Rio no site; Búzios fora do público, com inclusão interna ainda a decidir. A migração das regras é parcial e não leva dados sensíveis ao GitHub.
