@@ -9,6 +9,9 @@ O CI do head final do #10 passou. Esse merge foi documental: não publicou o sit
 
 Sage é o próximo e pode começar agora. Como a `main` avançou com #9/#10, ele precisa primeiro reconciliar a branch do #11 com a base atual, sem ressuscitar coordenação antiga. Depois corrige o detalhe já identificado por Rivers: a página HTML válida de `/disponibilidade` deve responder 200, mantendo disponibilidade não confirmada; a API pode continuar 503 enquanto não houver integração real. Em seguida roda CI e passa para Lia validar busca/mobile.
 
+## PR #12
+O PR #12 contém somente a reconciliação documental desta rodada pós-#10. Ele **ainda não está marcado como pronto para merge**, porque o CI do head final precisa concluir com sucesso. Isso não bloqueia Sage no #11. Quando o #12 estiver realmente pronto para sua revisão/merge, o aviso será explícito.
+
 ## Decisão separada
 Tornar `SCL Node 22 tests` uma trava obrigatória ainda depende de sua autorização explícita. Nada nesta rodada aplicou essa mudança.
 
