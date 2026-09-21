@@ -42,3 +42,6 @@ body{background-color:var(--cream);background-image:repeating-linear-gradient(13
 }
 @media(min-width:601px){.detail .gallery,.detail .detail-columns{grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:32px}.gallery-main{aspect-ratio:3/2}.gallery-thumbs{min-width:0}}
 @media(max-width:600px){.gallery-main{aspect-ratio:3/2}}
+
+/* Isolated payment demo: synthetic state only; keep controls inside narrow screens. */
+[data-payment-demo]{min-width:0;overflow-wrap:anywhere}[data-payment-demo] fieldset label{display:flex;flex-direction:column;align-items:stretch;margin:0 0 12px}[data-payment-demo] select{width:100%;min-width:0;max-width:100%;min-height:44px}[data-payment-demo] .button{white-space:normal;max-width:100%}

@@ -1,3 +1,4 @@
+import { paymentDemo } from './payment-demo-view.mjs';
 import http from 'node:http';
 import { evaluateDemoQuote } from './checkout-demo.mjs';
 import { createInquiryStore, formSigner, validateInquiry } from './inquiries.mjs';
@@ -8,7 +9,7 @@ import { properties, findProperty, publicProperty } from './catalog.mjs';
 import { validateSearch, getAvailability } from './availability.mjs';
 import * as view from './views.mjs';
 const publicDir = new URL('../public/', import.meta.url);
-const assets = new Map([['/styles.css','text/css'],['/app.js','text/javascript'],['/images/logo-blue.png','image/png'],['/images/leblon-beach.jpg','image/jpeg'],...['102','103','303','403'].map(c=>[`/images/${c}.jpeg`,'image/jpeg'])]);
+const assets = new Map([['/payment-demo.mjs','text/javascript'],['/payment-demo-ui.mjs','text/javascript'],['/styles.css','text/css'],['/app.js','text/javascript'],['/images/logo-blue.png','image/png'],['/images/leblon-beach.jpg','image/jpeg'],...['102','103','303','403'].map(c=>[`/images/${c}.jpeg`,'image/jpeg'])]);
 for (const property of properties) for (const image of property.gallery) assets.set(image, 'image/jpeg');
 for (const place of ['talho','argumento','shopping']) assets.set(`/images/places/${place}.jpg`,'image/jpeg');
 const headers = {
@@ -59,6 +60,7 @@ export function createApp({provider, inquiryStore = createInquiryStore(), signer
    // No session, query parameter, cookie or spoofed role can enable these routes.
    if (/^\/(?:interno|painel|admin|operador|equipe|proprietario|minha-reserva)(?:\/|$)/i.test(path) || /^\/api\/(?:internal|admin|auth)(?:\/|$)/i.test(path)) return send(404,view.errorPage('Página indisponível','Esta área não está disponível nesta versão.'));
    if(path==='/') return send(200,view.home(safeContact));
+   if(path==='/demo/pagamento'){const quote=evaluateDemoQuote(url.searchParams);return send(quote.state==='INVALID'?400:200,paymentDemo(quote));}
    if(path==='/demo/checkout'){const quote=evaluateDemoQuote(url.searchParams);return send(quote.state==='INVALID'?400:200,view.checkoutDemo(url.searchParams,quote));}
    if(path==='/imoveis') return send(200,view.listing(safeContact));
    if(path==='/api/site/properties') return json(200,properties.map(publicProperty));
