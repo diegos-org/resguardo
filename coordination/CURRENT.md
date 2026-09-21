@@ -12,11 +12,11 @@ O PR #4 foi mergeado humanamente às 21h58 BRT (`4f656c8e5ca8aed9a0b8ec286f4ef50
 - O PR #5 aberto é apenas uma nota de Labs (`Bumble Helper`) e não faz parte da faixa de execução atual; não bloqueia esta rodada.
 
 ## Decisão
-A próxima fatia é fechar o ciclo do CI sem abrir arquitetura nova: **Sage verifica o contexto exato do check `SCL Node 22 tests` e prepara/aplica a configuração mínima para torná-lo obrigatório em PRs para `main`, somente se puder confirmar a configuração com segurança.**
+A próxima fatia é fechar o ciclo do CI sem abrir arquitetura nova: **Sage verifica o contexto exato do check `SCL Node 22 tests` e prepara a configuração mínima para torná-lo obrigatório em PRs para `main`.**
 
-Se a API/configuração exigir suposição, comportamento estranho ou mudança mais ampla de governança, Sage deve parar e devolver o achado em vez de improvisar.
+**Sage não deve aplicar nenhuma mudança no ruleset sem aprovação explícita de Diego.** Pode investigar e preparar agora; se a API/configuração exigir suposição, comportamento estranho ou mudança mais ampla de governança, deve parar e devolver o achado.
 
 ## Próximo
-**Sage é o próximo e pode começar imediatamente.**
+**Sage pode começar imediatamente apenas na investigação/preparação. A aplicação do gate depende de aprovação explícita de Diego.**
 
 Sem deploy, domínio, Vercel, integrações reais, secrets, dados de clientes ou mudanças de produto nesta fatia.
