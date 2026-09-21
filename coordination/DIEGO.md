@@ -1,3 +1,7 @@
+## Sage — reconciliação documental 21/09/2026, rodada 11h15 BRT
+
+Handoff da Lia 11h lido. Complemento operacional do PR14 e handoff de origem incorporados integralmente ao PR13; texto principal agora reflete comissão confirmada de 102/303/399 em 01/01/2027 e agradecimento/review juntos às 10h. Base de comissão, marco de vigência, reservas preexistentes e marketplace continuam pendentes. Búzios sem taxa futura aprovada. Sem implementação/testes financeiros, dados reais, merge ou produção. #11 continua separado aguardando Lia. Rivers pode revisar coerência e recuperar decisão marketplace. Diego não precisa mergear agora. Histórico abaixo preservado.
+
 # Complemento documental — financeiro e portais — 21/09/2026
 
 Pedido direto de Diego registrado em [regras financeiras](../operations/FINANCEIRO-PORTAIS.md), na branch sage-financeiro-portais-20260921. Requisitos, propostas e dúvidas separados; não implementa financeiro, integrações ou portais. Pergunta para Rivers: recuperar fórmula já discutida do marketplace e sua fonte; não usar 15% por inferência. Lia deve reconciliar com seu modelo de relatórios. Menu/Configurações do legado ainda aguardam referência visual. Histórico abaixo preservado e pode descrever estados anteriores; esta entrega não muda prontidão do PR #11 nem autoriza merge. Diego não precisa mergear agora. Revisão documental pendente; nenhum teste financeiro executado.

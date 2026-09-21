@@ -1,6 +1,6 @@
 # Financeiro, portais e conciliação — decisões de Diego em 21/09/2026
 
-Estado: requisitos registrados, não implementados. Complementa [relatórios de proprietários](RELATORIOS-PROPRIETARIOS.md), preservando o modelo da Lia. Valores abaixo são exemplos ilustrativos, sem dados reais. Código financeiro legado não deve ser copiado: Diego relata divergências recorrentes entre telas e fechamento.
+Estado: requisitos registrados, não implementados. Complementos do PR #14 incorporados sem modificação em [relatórios e comunicação](RELATORIOS-COMUNICACAO-2026-09-21.md); a revisão operacional da Lia abaixo prevalece sobre formulações históricas. Aprovação do visual não aprova saldos financeiros. Complementa [relatórios de proprietários](RELATORIOS-PROPRIETARIOS.md), preservando o modelo da Lia. Valores abaixo são exemplos ilustrativos, sem dados reais. Código financeiro legado não deve ser copiado: Diego relata divergências recorrentes entre telas e fechamento.
 
 ## Uma base financeira, várias visões
 Portal do proprietário, aba Apartamentos, dashboard e PDFs devem consultar o mesmo ledger reconciliado e regras versionadas. Separar valor bruto da reserva, taxas do canal, líquido, comissão SCL, direito do proprietário, recebimentos efetivos, adiantamentos e liquidações. Não somar passagem de dinheiro como receita própria. Dinheiro em centavos inteiros; arredondamento, base da comissão e competência ainda exigem definição/testes.
@@ -31,7 +31,7 @@ Interpretação contextual: as métricas de receita pedidas no início referem-s
 - Dashboard soma receitas e despesas próprias da empresa sem duplicar repasses de terceiros; mostrar métricas e um ou dois gráficos.
 - Criar aba de despesas da empresa com categorias iniciais como salários/fixos, contador e lavanderia; Diego cria/edita/arquiva categorias na interface, sem depender de GitHub ou banco.
 - Exclusão exige confirmação adicional; desfazer por dez segundos é sugestão adicional. Preferir arquivamento de categoria usada e estorno/correção auditável de lançamento, preservando histórico e referências.
-- Gestão total: comissão por imóvel e vigência. Diego indicou tendência de todos migrarem para 15% em 1º de janeiro; não aplicar automaticamente. Confirmar ano, imóveis, aprovação, base de cálculo e critério de vigência (reserva/estadia etc.). Não recalcular retroativamente.
+- Gestão total: conforme confirmação operacional da Lia abaixo, 102, 303 e 399 retornam a 15% empresa/85% proprietário em 01/01/2027. Isso substitui o registro inicial de tendência genérica. Base de cálculo, marco de vigência e reservas já confirmadas ainda exigem definição; não recalcular retroativamente nem estender a Búzios.
 - Marketplace tem cálculo distinto dos 15%: não inventar nem aplicar regra de gestão total.
 
 ## Pergunta para Rivers
@@ -54,7 +54,7 @@ Diego pediu recuperar print ou mock fiel do menu lateral e das sub-abas de Confi
 - Acesso desejado por Google/Apple ou código de reserva com verificação adicional. Proposta técnica: código temporário/magic link enviado ao contato já associado, com validade, limite de tentativas, revogação e mensagens que não revelem existência da reserva. Telefone/e-mail digitados não são segredo nem prova de posse. Identidade autenticada deve estar autorizada para aquela reserva.
 - Exibir dados da própria reserva, fotos e envio de dúvidas; chat é evolução futura. Nenhum portal completo implementado nesta rodada.
 - Instruções de check-in: dois dias antes, às 10h. Check-out: um dia antes, às 14h. Liberar no portal no mesmo horário da janela prevista de envio. Definir fuso por imóvel explicitamente (pilotos no Rio: proposta America/Sao_Paulo), regras de reserva feita após a janela, alteração/cancelamento e suspensão por pendência operacional.
-- Mensagem de agradecimento pela reserva após confirmação; agradecimento pela estadia e convite discreto a review três dias após check-out. Confirmar se agradecimento pela estadia e convite compõem a mesma mensagem.
+- Mensagem de agradecimento pela reserva após confirmação; agradecimento pela estadia e convite discreto a review três dias após check-out. Lia confirmou abaixo: mesma mensagem, às 10h, três dias após checkout, no fuso do anúncio.
 - Eventos/jobs determinísticos, idempotentes e auditáveis; envio tentado, enviado, entregue e lido são estados distintos quando comprováveis. Falha de e-mail não deve impedir liberação autorizada no portal; alteração/cancelamento deve recalcular/revogar tarefas obsoletas. Autenticação não antecipa janela de instruções.
 - Decisão pendente: manter reviews somente no Airbnb ou também criar avaliações próprias, e quais mensagens/canais usar por origem da reserva.
 - Proposta de Diego, não política ativa: 10% na próxima estadia por avaliação, além de incentivos para retorno ao site. Definir elegibilidade, validade, custos, não acumulação e compatibilidade com políticas dos canais antes de aprovar; nunca condicionar à nota positiva, nem apresentar avaliação incentivada como espontânea. Alternativa a avaliar: benefício de retorno independente de review.
