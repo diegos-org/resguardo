@@ -18,3 +18,6 @@ A versão atual está na branch do #16; a principal ainda não foi atualizada. P
 
 ## Continuidade
 Registrei [o método do Rivers](METODO-RIVERS.md): visão do conjunto, conferência de evidências, correção de desvios, preservação de histórico e instruções de retomada por substituto. Se faltar uma decisão ou merge seu, o aviso deve identificar exatamente o que precisa fazer e o que está bloqueado.
+
+## Seus dois guias sempre à mão
+[Diego e seus agentes](../assistentes/DIEGO-E-SEUS-AGENTES.md) reúne a equipe por projeto, trabalho e acessos confirmados; [guia SCL](../assistentes/GUIA-DO-DIEGO.md) mantém a divisão Lia/Mia. Cópias atuais ficam na pasta Diego da entrega local. Atualização ao fim de cada mudança e conferência horária; versão e pendências no registro local. Não exige ação sua para leitura. #16 continua sendo o PR documental, sujeito ao CI atualizado antes de merge humano.

@@ -26,3 +26,6 @@ Diego não precisa agir para destravar o próximo turno. Produção, regras admi
 
 ## Método e continuidade
 Por orientação direta de Diego, o papel de visão geral de Rivers e o procedimento para um substituto estão registrados em [METODO-RIVERS.md](METODO-RIVERS.md). Inclui corrigir desvios documentais, preservar decisões/histórico e avisar quando uma ação humana realmente bloquear o fluxo.
+
+## Guia transversal — atualização posterior nesta rodada
+Cadastro vivo em assistentes/DIEGO-E-SEUS-AGENTES.md; guia SCL e cadastro são as duas cópias humanas sincronizadas com o computador, com procedimento e recuperação horária separados. Versão atual neste PR #16, não em main. IA/API SongKeep continua pendente; nome do produto SongKeep, repo mantido. A prontidão anterior do #16 depende novamente do CI do novo head; sinal final na descrição. Handoff: handoffs/2026-09-21-rivers-guias-sincronizados.md.
