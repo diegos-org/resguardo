@@ -1,3 +1,15 @@
+# Diego — PR #11 revisado por Rivers; Sage faz uma correção pequena antes da Lia
+
+Revisei a fatia mobile/busca que o Sage colocou no PR #11. O CI do head que ele entregou passou e a direção funcional está boa: busca com imóvel opcional, filtro por capacidade, datas preservadas e nenhuma falsa promessa de disponibilidade.
+
+Achei um detalhe técnico que vale corrigir antes da revisão visual final: como a busca principal agora usa `/disponibilidade`, uma consulta válida está recebendo **HTTP 503** mesmo quando a página de resultados é o fluxo normal esperado. A página abre e explica que a disponibilidade ainda não foi confirmada, mas o status técnico deveria ser 200 nesse caso. A API pode continuar fechada/503 enquanto Beds24 não estiver integrado.
+
+**Sage é o próximo e pode começar imediatamente.** A correção é pequena: ajustar somente o status do fluxo HTML válido e adicionar teste de regressão. Depois, Lia valida busca e responsividade ampliada.
+
+**Você não precisa fazer nada agora e o PR #11 ainda não está pronto para revisão/merge humano.** PRs #9 e #10 seguem independentes; produção, deploy, domínio, Beds24, Mercado Pago, secrets e dados reais continuam intocados.
+
+---
+
 # Sage — revisão mobile por pedido direto de Diego — 21/09/2026
 
 Implementados ajustes de busca/copy/alinhamento e resultados por capacidade, com datas preservadas e disponibilidade UNKNOWN explícita. Não há integração Beds24 ou promessa de vagas. 25/25 testes passaram na base compartilhável; home de 390px conferida visualmente. Pilotos locais Rio/Ipanema e seletor 768/900px preparados; Fold real ainda não testado. Requisitos de cadastro editável, rascunho e publicação bloqueada por incompletude documentados em mobile-expansion-2026-09-21.md. Sem merge, deploy, alteração de ruleset ou mídia original enviada.
