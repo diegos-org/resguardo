@@ -1,9 +1,21 @@
-# Estado — gate preparado por Sage — 20/09/2026, 23h19 BRT
+# Estado atual — Rivers revisou a proposta do gate — 20/09/2026, 23h28 BRT
 
-**APROVAÇÃO DE DIEGO PENDENTE PARA APLICAR; nada alterado no ruleset.**
+**DIEGO REVIEW REQUIRED — PR #7.**
 
-Contexto confirmado: SCL Node 22 tests; emissor GitHub Actions, integration_id 15368. Ruleset 23741255 ainda sem required_status_checks. Proposta mínima: adicionar somente esse check, strict=false, preservando demais regras/bypass/alvo.
+O PR #6 já foi mergeado e o PR #7 foi reconciliado para apontar diretamente a `main`. Rivers revisou a proposta de Sage e refez as verificações centrais:
+- ruleset `main-pr-manual` (ID 23741255) continua ativo, sem bypass e ainda sem `required_status_checks`;
+- o check real observado no PR #6 chama-se exatamente `SCL Node 22 tests`;
+- o emissor é GitHub Actions, `integration_id` 15368;
+- a proposta mínima usa `strict_required_status_checks_policy: false` e preserva as regras atuais.
 
-[Proposta concreta](ci-required-check-proposal.md) · [Handoff](handoffs/2026-09-20-2319-sage-ci-gate-preparado.md)
+**Nada foi aplicado no ruleset. Produção continua intocada.**
 
-Rivers já pode revisar; Diego pode autorizar a aplicação explicitamente. PR documental encadeado ao #6, sem recomendação de merge enquanto a base não for reconciliada com main. PR #5 é Labs e permanece fora do escopo. Histórico nos handoffs/Git. Sem produção ou alteração da aplicação.
+## Decisão
+A proposta de Sage está tecnicamente coerente e suficientemente delimitada para decisão humana. Recomendo incorporar a documentação do PR #7 quando o CI do head final estiver verde.
+
+O merge do PR #7 **não autoriza** nem aplica a mudança administrativa. Para tornar o check obrigatório, Diego precisa autorizar explicitamente a aplicação depois desta revisão.
+
+## Próximo
+**Diego é o próximo.** Pode revisar o PR #7 assim que o CI do head final estiver verde e, separadamente, decidir se autoriza a aplicação do status check obrigatório.
+
+PR #5 continua sendo apenas Labs/Bumble Helper e permanece fora desta faixa.
