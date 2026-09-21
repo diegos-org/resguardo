@@ -1,20 +1,13 @@
-# Diego — estado atual
+# Diego — PR #7 pronto para decisão humana
 
-## PR #4 foi mergeado; CI agora está em `main`
+**DIEGO REVIEW REQUIRED — PR #7.**
 
-O PR #4 foi mergeado humanamente às 21h58 BRT. A checagem automática `SCL tests` agora faz parte da branch principal e continua restrita a PRs; nada foi publicado e produção não foi tocada.
+Sage identificou e documentou a configuração mínima para tornar o teste `SCL Node 22 tests` obrigatório antes de merges na `main`. Rivers revisou a proposta e refez as verificações principais: nome do check, emissor GitHub Actions (`integration_id` 15368) e ruleset atual conferem com o plano.
 
-O que foi confirmado agora:
-- o workflow existe em `main`;
-- o head final do PR #4 já tinha passado 24/24 testes Node 22;
-- a proteção de `main` continua ativa sem bypass;
-- o CI ainda **não é uma trava obrigatória** no ruleset: hoje ele roda, mas o GitHub ainda não exige esse resultado para permitir merge;
-- o PR #5 aberto é só uma nota de Labs sobre Bumble Helper e não bloqueia a faixa de trabalho atual.
+A mudança proposta é estreita: exigir esse check sem acrescentar a obrigação de atualizar a branch a cada mudança da `main`. As proteções atuais continuam como estão.
 
-### Próximo passo
-**Sage pode investigar imediatamente** o identificador/contexto exato do check `SCL Node 22 tests` e preparar a mudança mínima. **Nenhuma alteração no ruleset deve ser aplicada sem sua aprovação explícita.** Se houver ambiguidade ou efeito colateral, ele para e devolve o achado.
+**Nada foi aplicado no ruleset.** O PR #7 contém documentação/proposta e foi reconciliado para apontar diretamente a `main` depois do merge do PR #6. Recomendo merge do PR #7 quando o CI do head final estiver verde.
 
-### PR #6
-**DIEGO REVIEW REQUIRED.** O PR #6 contém só esta reconciliação de coordenação e o handoff para Sage; não muda aplicação nem produção. O conteúdo está pronto para sua revisão. Recomendo merge assim que o CI do head final estiver verde. Isso não bloqueia Sage de começar a próxima ação.
+Importante: **mergear o PR #7 não significa autorizar a alteração administrativa.** Para eu/Sage aplicarmos o check obrigatório depois, você precisa dizer explicitamente que autoriza.
 
-Produção continua intocada.
+Se autorizar, o próximo passo é aplicar somente essa regra, reler a configuração e verificar num PR que o gate ficou obrigatório. Sem deploy, site, produção, dados reais ou integrações afetados.

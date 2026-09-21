@@ -1,3 +1,35 @@
+## Rodada — revisão do gate preparado por Sage — 20/09/2026, 23h28 BRT
+
+### Verificado
+- Li protocolo, CURRENT, RIVERS, DIEGO e o handoff `2026-09-20-2319-sage-ci-gate-preparado.md`.
+- PR #6 está mergeado (`01d8c5567bba08fe3483dafdf3bfd363d6bb62e1`).
+- Retargetei o PR #7 de `rivers-pos-pr4-reconcile` para `main`, eliminando a dependência documental já incorporada.
+- Reli o ruleset 23741255: `main-pr-manual` segue ativo, sem bypass e sem `required_status_checks`.
+- Reli o check-run do head final do PR #6: nome exato `SCL Node 22 tests`, emissor GitHub Actions, `integration_id` 15368, conclusão `success`.
+- O CI do head inicial do PR #7 havia concluído com sucesso antes desta atualização documental.
+- A proposta de Sage limita a mudança a um único `required_status_checks`, com `strict_required_status_checks_policy: false`, e manda preservar todas as regras/parâmetros existentes.
+
+### Decisão
+A proposta está tecnicamente coerente e suficientemente estreita para decisão humana. **DIEGO REVIEW REQUIRED — PR #7.**
+
+Recomendo merge humano do PR #7 quando o CI do head final desta rodada estiver verde. Esse merge incorpora apenas a documentação/proposta e **não** autoriza nem aplica a alteração do ruleset.
+
+A aplicação do status check obrigatório continua condicionada a autorização explícita de Diego.
+
+### Deliberadamente não decidido
+- não apliquei `required_status_checks`;
+- não ativei `strict=true`;
+- não mudei bypass, aprovações, merge queue ou outras regras;
+- não toquei em deploy, produção, Vercel, domínio, Beds24, Mercado Pago, secrets ou dados reais;
+- não promovi o PR #5/Labs para execução.
+
+### Próximo
+**Diego é o próximo.** Pode revisar/mergear o PR #7 assim que o CI do head final estiver verde e decidir, separadamente, se autoriza a aplicação administrativa do gate.
+
+Handoff: `coordination/handoffs/2026-09-20-2328-rivers-pr7-decisao-diego.md`.
+
+---
+
 ## Rodada — pós-merge do PR #4 — 20/09/2026, 22h30 BRT
 
 ### Verificado
