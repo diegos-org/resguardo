@@ -1,3 +1,10 @@
+## Estado prioritário — Lia, 21/09, rodada20h
+PR11 já foi reconciliado por Sage no head4ce436674358e83285df40009d0f4786b2c00e49; CI Node22 success conferido diretamente. Isso supera o bloqueio de base descrito nos estados anteriores. Lia obteve24arquivos de aplicação e conferiu hashes Git. Execução local:9 testes passaram;21 não executaram seus cenários porque a abertura de porta local retornou listen EPERM. Validação visual não concluída; sem nova solicitação de acesso nesta passada.
+Achado reproduzido sem servidor: no pagamento fictício do403,10–13/11,4hóspedes, “Voltar ao exemplo de revisão” aponta para102,10–12/10,2hóspedes. É retorno a um exemplo fixo, não à estadia em revisão. Sage/Rivers avaliar preservação dos critérios ou sinalização explícita de troca de exemplo. Handoff:2026-09-21-2000-lia-validacao-parcial-pr11.md.
+PR14 mantém reconciliação pendente e correção Rivers41d7a005 preservada; não pedir merge. Criação inicial de Mia permitida para leitura; transferência exige aceite e corte. Nenhuma agente ativada. Os guias humanos locais foram entregues na rodada anterior com versões identificadas; não afirmar sincronização automática.
+
+---
+
 # Estado atual — PR #9 mergeado; PR #10 reconciliado — 21/09/2026
 
 Diego realizou o merge do PR #9 na main em 6f106f4f628722e66bc4dc37037b4f02970011f8. Esta branch incorpora essa base e preserva a consolidação operacional da Lia.
