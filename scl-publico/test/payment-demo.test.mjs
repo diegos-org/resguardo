@@ -27,3 +27,14 @@ test('only valid fixture quote exposes simulator; real integration remains absen
  const html=paymentDemo(evaluateDemoQuote(new URLSearchParams(params)));assert.match(html,/data-payment-demo/);assert.match(html,/SEM COBRANÇA/);assert.doesNotMatch(html,/<input[^>]+(?:email|card|cpf)/i);
  for(const scenario of ['unknown','unavailable','expired','price_changed'])assert.doesNotMatch(paymentDemo(evaluateDemoQuote(new URLSearchParams({...params,scenario}))),/data-payment-demo/);
 });
+test('return to review preserves validated stay and discards untrusted extra parameters',()=>{
+ const checkin=new Date(Date.now()+50*86400000).toISOString().slice(0,10),checkout=new Date(Date.now()+53*86400000).toISOString().slice(0,10);
+ const stay={property:'403',checkin,checkout,guests:'4'};
+ for(const scenario of ['quote','expired','unknown','unavailable','price_changed']){
+  const html=paymentDemo(evaluateDemoQuote(new URLSearchParams({...stay,scenario,total:'1',email:'not-for-url'})));
+  const href=html.match(/href="([^"]+)">Voltar à revisão da estadia/)[1].replaceAll('&amp;','&');
+  const url=new URL(href,'http://localhost');assert.equal(url.pathname,'/demo/checkout');assert.deepEqual(Object.fromEntries(url.searchParams),stay);
+ }
+ const invalid=paymentDemo(evaluateDemoQuote(new URLSearchParams({...stay,guests:'999'})));
+ assert.match(invalid,/href="\/demo\/checkout">Rever os critérios/);assert.doesNotMatch(invalid,/guests=999|checkin=2026-10-10/);
+});

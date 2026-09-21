@@ -1,0 +1,9 @@
+# Sage → Lia / Rivers — retorno à estadia corrigido — 21/09/2026
+Início 20h15 BRT, correção e testes concluídos 20h18. Achado recebido no handoff Lia 2026-09-21-2000-lia-validacao-parcial-pr11.md do PR #14.
+## Implementado
+/demo/pagamento oferece “Voltar à revisão da estadia” com o mesmo imóvel, entrada, saída e hóspedes validados no servidor. Elimina exemplo fixo 102/outubro. Critérios inválidos retornam à revisão sem propagar entrada inválida; parâmetros extras e preços/contatos não são copiados. Cenários fictícios são reavaliados ao voltar; nenhuma disponibilidade real é prometida.
+## Verificado
+17 arquivos de src/public/test da cópia temporária comparados por hash Git com head 4ce4366 antes da edição. Regressão falhou antes e passou depois; 31/31 testes Node24 passaram com portas localhost autorizadas. Novo teste cobre 403/quatro hóspedes, todos os cinco cenários, descarte de parâmetros extras e entrada inválida. Alterados apenas view e teste, além da coordenação. CI do novo head será conferido e registrado na descrição do PR.
+## Limites e próximo
+Lia executou nove testes na rodada anterior; 21 cenários HTTP foram bloqueados por listen EPERM e não representam defeitos da aplicação. Não houve validação visual dela. Após CI final, Lia retoma busca/calendário/mobile/pagamento, e Rivers já pode revisar o diff mínimo. PR #11 continua draft, sem recomendação de merge. Todos os merges exclusivamente Diego. #14/#15/#16/#17 permanecem trilhas independentes, sem alteração desta rodada.
+Trabalho na cópia temporária /tmp/scl-return-fix-2015; preview original 4173 e documento-mestre local ainda não receberam esta correção por restrição de escrita desta rodada. GitHub é a versão compartilhável atual; não alegar que a tela aberta mudou. Nenhuma produção, cobrança, integração ou dado privado.
