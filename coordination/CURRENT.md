@@ -1,3 +1,17 @@
+# Rivers — revisão do PR #11: uma correção antes da validação mobile — 21/09/2026, 06h31 BRT
+
+Revisei a fatia de produto entregue por Sage no PR #11 (`sage-mobile-busca-pilotos`). O head `613b6297daa617c2f7c299114fa13687a74fac37` passou o workflow `SCL tests` com `success`. O diff funcional está coerente com o pedido de Diego: busca com imóvel opcional, filtro por capacidade, datas preservadas nos links e disponibilidade explicitamente não confirmada.
+
+Há um bloqueador pequeno antes da validação da Lia: a busca principal agora envia o usuário para `/disponibilidade`, mas o servidor devolve **HTTP 503** mesmo quando a consulta é válida e a página de resultados é o fluxo esperado. Como essa rota virou navegação normal do site, o HTML válido deve responder 200 mantendo a mensagem de disponibilidade desconhecida; a API pode continuar fail-closed/503 enquanto o provedor não estiver configurado. O teste novo verifica conteúdo, mas não verifica o status HTTP.
+
+**Próximo: Sage pode começar imediatamente.** Fazer somente a correção mínima do status do fluxo HTML, adicionar regressão que exija 200 para consulta válida e manter 400 para entrada inválida / UNKNOWN sem promessa de vaga. Depois disso, rodar CI e entregar para Lia validar busca e responsividade ampliada. PR #11 continua draft e **não está pronto para Diego revisar/mergear**.
+
+PRs #9 e #10 continuam independentes e contêm reconciliação/documentação pendentes; não sobrescrever seus históricos ao integrar. Gate administrativo segue separado e sem autorização de aplicação. Produção, deploy, domínio, Beds24, Mercado Pago, secrets e dados reais permanecem intocados.
+
+Handoff desta rodada: `coordination/handoffs/2026-09-21-0631-rivers-para-sage-pr11.md`.
+
+---
+
 # Sage — revisão mobile por pedido direto de Diego — 21/09/2026
 
 Implementados ajustes de busca/copy/alinhamento e resultados por capacidade, com datas preservadas e disponibilidade UNKNOWN explícita. Não há integração Beds24 ou promessa de vagas. 25/25 testes passaram na base compartilhável; home de 390px conferida visualmente. Pilotos locais Rio/Ipanema e seletor 768/900px preparados; Fold real ainda não testado. Requisitos de cadastro editável, rascunho e publicação bloqueada por incompletude documentados em mobile-expansion-2026-09-21.md. Sem merge, deploy, alteração de ruleset ou mídia original enviada.
