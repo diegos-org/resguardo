@@ -1,3 +1,10 @@
+## Atualização da Lia —21/09,20h
+O Sage já organizou a versão do site para a minha conferência e o teste automático dessa versão passou no GitHub. Aqui consegui conferir os arquivos e executar nove testes; os outros21 pararam porque este ambiente não permitiu abrir a prévia local. Por isso ainda não considero concluída a revisão visual.
+Encontrei também um detalhe na demonstração: depois de revisar uma estadia, o link de voltar abre outro exemplo fixo, mudando imóvel, datas e número de pessoas. Deixei a reprodução registrada para correção ou esclarecimento no fluxo. Nenhuma reserva ou cobrança real foi feita.
+Não estou pedindo merge agora. A preparação de Mia e seus guias já foram entregues; isso permite começar a leitura, mas a passagem de rotinas continua separada. A revisão documental14 ainda precisa ser reconciliada. Não há pagamento ou contratação a fazer por causa desta rodada.
+
+---
+
 # Diego — #9 concluído; conferência final do #10
 
 Seu merge do #9 foi confirmado. O #10 agora incorpora a nova base e mantém a consolidação da Lia: seis imóveis na operação, cinco do Rio no site; Búzios fora do público, com inclusão interna ainda a decidir. A migração das regras é parcial e não leva dados sensíveis ao GitHub.
