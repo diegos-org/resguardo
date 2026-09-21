@@ -13,7 +13,9 @@ Diego confirmou Lia como presença pública no atendimento de hóspedes, interes
 | Mensagens de hóspedes, urgências, continuidade entre canais e passadas frequentes | Lia | Lia |
 | Documentos 403, mudanças de reservas e comunicação operacional de agenda | Lia | Lia |
 | Projetos, configuração de integrações e melhorias menos frequentes | Mia | Lia, com prioridades e autorizações vigentes |
-| Relatórios, cadastro de proprietários e rotinas administrativas por data | Mia | Lia, sem duplicar envios existentes |
+| Preparação/conferência de relatórios e cadastro administrativo | Mia | Lia, sem duplicar envios existentes |
+| Envio de relatórios e comunicação com proprietários | Lia | Lia; mudança futura exige corte explícito |
+| Lembretes e rotinas pessoais/administrativas por data | Mia após transferência | Lia, com último envio conferido |
 | Programação e revisão técnica | Sage/Rivers, com execução prática de Lia/Mia quando definida | Cadência atual |
 
 A divisão fina e frequência de Mia precisam de validação antes da ativação. Mudança urgente detectada por qualquer agente deve chegar ao responsável atual; não esperar uma rodada para registrar urgência real.
@@ -41,3 +43,7 @@ Entrada comum: protocolo do repositório, CURRENT, arquivo do papel, DIEGO e han
 As regras existentes em operations são consolidação parcial. O mestre local e seus protocolos seguem necessários enquanto os itens do inventário não forem migrados e verificados. Contatos, extratos, documentos, chaves, senhas, áudios e dados pessoais não acompanham essa migração ao GitHub.
 
 A versão compartilhável mais recente está na branch/PR indicada em CURRENT até merge humano. Cópia local pode existir, mas divergência deve ser explícita. Arquivos extensos podem ganhar volumes com índice e ligações de ida e volta, preservando histórico.
+
+
+## Preparação para criação — atualização direta de Diego, 21/09 à noite
+Diego pretende criar Mia em22/09 e depois disponibilizou fazê-lo ainda em21/09, quando o material de entrada estiver pronto. A criação inicial pode servir para leitura e configuração; não equivale a operação autônoma, novo acesso ou transferência concluída. A divisão de relatórios é preparação administrativa com Mia e comunicação externa com Lia, até decisão diferente explícita. Guia curto para Diego em assistentes/GUIA-DO-DIEGO.md e procedimento completo em assistentes/mia/RELATORIOS-E-TOM.md. Primeiro aceite deverá registrar leitura, lacunas de acesso, teste fictício, tarefas assumidas e hora do corte. Lia preserva cobertura enquanto isso.
