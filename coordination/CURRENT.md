@@ -1,33 +1,20 @@
-# Atualização Lia21/9 — consolidação documental em revisão
+# Estado atual — PR #9 mergeado; PR #10 reconciliado — 21/09/2026
 
-Diego autorizou unificar regras no GitHub e esclareceu seis imóveis operados versus cinco do Rio no público. Búzios separado e inclusão interna indecisa. Ver [consolidação](../operations/CONSOLIDACAO-2026-09-21.md).
+Diego realizou o merge do PR #9 na main em 6f106f4f628722e66bc4dc37037b4f02970011f8. Esta branch incorpora essa base e preserva a consolidação operacional da Lia.
 
-Prioridades: Beds24/Booking e Mercado Pago; autenticação pendente com Diego. Próximo Lia: reconciliação após login. Rivers/Sage podem revisar esta fronteira e propor próxima entrega independente; não acionados automaticamente.
+## Consolidação da Lia
+Diego autorizou unificar regras no GitHub: seis imóveis operados, somente cinco do Rio no catálogo público. Búzios separado e inclusão interna indecisa. Ver [consolidação](../operations/CONSOLIDACAO-2026-09-21.md).
+Prioridades registradas: Beds24/Booking e Mercado Pago; Lia reconcilia após autenticação. Migração documental parcial, sem ativação de integração ou produção.
 
-PR9 permanece aberto para reconciliação pós8; PR5 é Labs. A decisão de gate permanece separada. Este PR não altera segurança/produção. Não presumir que toda migração terminou.
+## Revisão e próximo passo
+PR #10: reconciliação documental preparada. CI e revisão devem ser conferidos no head final antes de recomendar merge; resultado registrado na conversa do PR, sem inferir sucesso antecipado.
+Todos os merges ficam exclusivamente com Diego, por confirmação direta nesta conversa.
+PR #11 permanece draft: correção da resposta HTML de disponibilidade e validação mobile ainda pendentes. PR #5 continua Labs.
 
-## Histórico preservado da main anterior
-# Estado atual — PR #7 mergeado; gate ainda depende de autorização — 21/09/2026, 00h27 BRT
+## Decisão administrativa separada
+A proposta de exigir SCL Node 22 tests (GitHub Actions, integration_id 15368), strict_required_status_checks_policy=false, preservando as demais regras, continua dependendo de autorização explícita. O último registro de Rivers no #9 informa ruleset ativo sem bypass e sem required_status_checks; não foi revalidado nem alterado nesta reconciliação.
+Merge documental não autoriza aplicar o gate. Produção, domínio, credenciais e dados reais permanecem fora desta entrega.
 
-**DIEGO REVIEW REQUIRED — PR #8, assim que o CI do head final estiver verde.** O PR #8 contém somente esta reconciliação documental pós-merge; não altera aplicação nem ruleset.
-
-O PR #7 foi mergeado humanamente na `main` (`0426286b32a93dd7de123917a72fa051b868e807`). O head final passou o workflow `SCL tests` com sucesso.
-
-O merge incorporou somente a documentação/proposta para tornar `SCL Node 22 tests` obrigatório antes de merges na `main`.
-
-**A mudança administrativa ainda NÃO foi aplicada.** O ruleset `main-pr-manual` (ID 23741255) continua ativo, sem bypass e sem `required_status_checks`.
-
-## Decisão pendente
-Diego ainda precisa autorizar explicitamente se quer aplicar o gate documentado. O merge do PR #7 não conta como essa autorização.
-
-A proposta aprovada documentalmente permanece estreita:
-- exigir `SCL Node 22 tests` emitido por GitHub Actions (`integration_id` 15368);
-- manter `strict_required_status_checks_policy: false`;
-- preservar todas as demais regras do ruleset.
-
-## Próximo
-**Diego é o próximo, mas não precisa agir agora.** Quando quiser, basta decidir se autoriza ou não a aplicação do status check obrigatório.
-
-Se houver autorização explícita, a rodada seguinte deve aplicar somente a regra já documentada, reler o ruleset e verificar o gate em PR. Sem autorização, nenhum agente deve aplicar nada.
-
-Produção, deploy, domínio, integrações, secrets e dados reais continuam intocados. PR #5 segue sendo Labs/Bumble Helper e permanece fora desta faixa operacional.
+## Histórico
+O estado integral registrado pelo Rivers no #9 está preservado no Git e em [seu handoff](handoffs/2026-09-21-0130-rivers-pos-pr8.md). A solicitação de merge daquele PR está concluída.
+[Handoff da reconciliação](handoffs/2026-09-21-sage-pr10-pos-pr9.md).

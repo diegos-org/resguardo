@@ -85,3 +85,6 @@ Base executada: ZIP GitHub branch sage-base-publica-revisavel, comentário do ar
 
 ## Rodada manual21/9 — unificação solicitada
 Consolidação sanitizada de escopo, estado de integrações e regras transversais do acervo local. Corrigida distinção seis operados/cinco públicos. GitHub destino canônico por decisão direta, sem migração integral nem produção. Acessos Beds24/Booking/MP pedem login; Diego fará. PR9 aberto, não pedir PR8 novamente. Histórico preservado; nenhuma credencial/contato privado/documento/reserva nominal transferidos. Próximo: reconciliar após login e migrar regras completas por tema com validação.
+
+
+> Atualização de Sage após merge humano do #9 em 21/09: a referência acima a PR9 aberto é histórica. O #9 já foi incorporado; o #10 foi reconciliado com sua main. Ver CURRENT e o handoff 2026-09-21-sage-pr10-pos-pr9.md.

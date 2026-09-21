@@ -1,23 +1,14 @@
-# Atualização Lia21/9
+# Diego — #9 concluído; conferência final do #10
 
-Preparada unificação inicial: seis imóveis na operação, cinco do Rio no site. Búzios fora do público e dos resultados; você decidirá se entra internamente. O plano inclui Beds24, Booking e Mercado Pago e separa o que existe das pendências. Seus logins são a dependência atual. Nenhuma sincronização, cobrança ou publicação foi feita.
+Seu merge do #9 foi confirmado. O #10 agora incorpora a nova base e mantém a consolidação da Lia: seis imóveis na operação, cinco do Rio no site; Búzios fora do público, com inclusão interna ainda a decidir. A migração das regras é parcial e não leva dados sensíveis ao GitHub.
 
-PR9 continua aberto; PR5 guarda uma ideia de Labs. Esta consolidação também seguirá PR para sua revisão. A migração ainda é parcial e exclui dados sensíveis.
+O plano de Beds24, Booking e Mercado Pago continua documentado; os acessos e a validação das integrações são etapas próprias. Nenhuma sincronização, cobrança ou publicação ocorreu nesta entrega.
 
-## Histórico preservado
-# Diego — PR #7 já foi mergeado; não há nada para fazer agora
+## Você precisa fazer algo?
+Aguarde o sinal no PR #10 após CI e revisão do head final. Só você fará os merges. O #11 continua rascunho e não deve ser mergeado; o #5 continua Labs.
+A reconciliação muda apenas documentação; não muda o site. Testes automáticos não comprovam integrações externas nem validação em celular real.
 
-**DIEGO REVIEW REQUIRED — PR #8 quando o CI do head final estiver verde.** Esse PR contém somente a reconciliação documental pós-merge do #7; não altera aplicação nem ruleset.
+## Decisão separada
+Tornar os testes uma trava obrigatória ainda depende de sua autorização específica. Conforme o registro do Rivers no #9, essa regra ainda não estava aplicada. Nenhuma regra administrativa foi alterada agora.
 
-O PR #7 foi mergeado com sucesso na `main`. O CI do head final passou.
-
-O que entrou foi **só a documentação da proposta** para tornar `SCL Node 22 tests` obrigatório antes de merges na `main`. Isso não alterou o ruleset e não tocou produção.
-
-## O que continua pendente
-Quando você quiser voltar a esse assunto, há uma decisão separada e simples: autorizar ou não que esse teste vire uma trava obrigatória antes de merge.
-
-Se você autorizar explicitamente, a próxima rodada aplica somente essa regra, relê a configuração e verifica num PR se o gate ficou obrigatório. Se não autorizar, nada muda.
-
-**Você não precisa fazer isso agora.** O merge do PR #7 não foi interpretado como autorização administrativa.
-
-Produção, deploy, domínio, Vercel, Beds24, Mercado Pago, secrets e dados reais continuam intocados.
+O histórico e as decisões do #9 permanecem no Git e no [handoff do Rivers](handoffs/2026-09-21-0130-rivers-pos-pr8.md).
