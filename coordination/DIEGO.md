@@ -1,20 +1,21 @@
-# Diego — PR #10 concluído; Sage volta ao PR #11
+# Diego — coordenação atualizada após a entrega de Sage
 
-Seu merge do PR #10 foi confirmado na `main`. A consolidação da Lia agora está incorporada: seis imóveis na operação, cinco do Rio no site; Búzios continua fora do público e a inclusão interna segue a decidir. A migração das regras continua parcial e não leva dados sensíveis ao GitHub.
+Sage passou a revisão para Rivers. Conferi as versões atuais no GitHub e organizei o próximo passo. **Você não precisa fazer nada agora.**
 
-O CI do head final do #10 passou. Esse merge foi documental: não publicou o site, não ativou Beds24/Booking/Mercado Pago e não alterou regras administrativas.
+## Onde estamos e o que mudou
+A página de busca já recebeu a correção que faltava. Também existe uma demonstração de pagamento, inteiramente fictícia. A documentação antiga da main ainda pedia a correção já feita; esta rodada elimina essa ambiguidade na branch de coordenação, aguardando merge humano.
 
-## Agora
-**Você não precisa fazer nada imediatamente.** O PR #11 continua rascunho e ainda não está pronto para sua revisão/merge.
+## O que foi conferido
+- No #11, li a correção e seus testes, além da lógica que mantém a demonstração sem cobrança real. A versão atual tem conflito com a base e não tem teste automático remoto comprovado; testes locais foram relatados por Sage.
+- No #15, li a correção de permissões e a regressão; o teste automático remoto da versão atual passou. Isso ainda é um módulo isolado, sem login ou proteção de um painel real.
+- #13 e #14 continuam rascunhos documentais com reconciliação pendente. A preparação de Mia ainda não é ativação.
 
-Sage é o próximo e pode começar agora. Como a `main` avançou com #9/#10, ele precisa primeiro reconciliar a branch do #11 com a base atual, sem ressuscitar coordenação antiga. Depois corrige o detalhe já identificado por Rivers: a página HTML válida de `/disponibilidade` deve responder 200, mantendo disponibilidade não confirmada; a API pode continuar 503 enquanto não houver integração real. Em seguida roda CI e passa para Lia validar busca/mobile.
+## O que ainda falta
+Sage ajusta a base do #11 preservando o trabalho e confirma os testes da nova versão. Depois Lia valida busca, celular e pagamento fictício, e Rivers faz a revisão final. Lia também trata as correções documentais de sua divisão com Mia. Disponibilidade, reserva e cobrança reais continuam sem ativação.
 
-## PR #12
-O PR #12 contém somente a reconciliação documental desta rodada pós-#10. Ele **ainda não está marcado como pronto para merge**, porque o CI do head final precisa concluir com sucesso. Isso não bloqueia Sage no #11. Quando o #12 estiver realmente pronto para sua revisão/merge, o aviso será explícito.
+## Sua decisão
+Nenhum PR de produto está sendo recomendado para merge nesta rodada. O PR desta coordenação começa como rascunho, sujeito ao próprio teste e revisão. Quando houver prontidão real, o aviso deve ser explícito. Todos os merges continuam exclusivamente seus.
 
-## Decisão separada
-Tornar `SCL Node 22 tests` uma trava obrigatória ainda depende de sua autorização explícita. Nada nesta rodada aplicou essa mudança.
+Tornar o teste obrigatório nas regras do GitHub continua dependendo de autorização sua, separada. Produção e rulesets não foram alterados. A proposta de armazenamento também não foi aprovada nem provisionada.
 
-Produção, deploy, domínio, integrações, credenciais, secrets e dados reais continuam intocados.
-
-A reconciliação desta rodada está no handoff `coordination/handoffs/2026-09-21-0728-rivers-pos-pr10.md`.
+[Handoff com evidências e responsáveis](handoffs/2026-09-21-1848-rivers-coordenacao.md). [Painel anterior preservado](handoffs/2026-09-21-1848-rivers-estado-anterior.md).
