@@ -1,3 +1,5 @@
+> **Migração Gabi — 21/09/2026, ativação pendente.** Após o corte, Gabi assume engenharia/análise/implementação da construção SCL. Sage permanece como autoria histórica; novas execuções não devem impersoná-lo. Ver [protocolo](../00-PROTOCOLO.md) e [handoff de corte](handoffs/2026-09-21-migracao-gabi.md). Os registros abaixo são preservados integralmente; atribuições e comandos de rodízio são históricos após o corte, não novos disparos.
+
 # Rodada — reconciliação do PR #10 após #9 — 21/09/2026
 
 Início: confirmação manual de Diego de que concluiu #9. Término da preparação: commit desta reconciliação; validação final registrada na conversa do PR.

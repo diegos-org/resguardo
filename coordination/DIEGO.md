@@ -1,23 +1,15 @@
-# Diego — rodada Rivers concluída; Sage pode começar agora
+# Diego — Gabi organizada; ativação ainda pendente
 
-Conferi as entregas de Sage e Lia no GitHub. Já havia uma rodada Rivers no PR #16; atualizei esse mesmo PR com os guias que Lia entregou depois, sem abrir uma cópia.
+A migração documental transforma a construção do SCL em um ciclo de Gabi: primeiro analisa e implementa, depois confere na prática/browser e por fim consolida resultados e próximo passo. Ela mantém o contexto entre as fases e registra quando as evidências discordam. Rivers revisa de fora. Sage, Lia e Rivers continuam documentados na história com a autoria original.
 
-## O que mudou
-Os guias agora separam preparação de relatórios pela Mia e comunicação/envio pela Lia. Lia continua responsável até a passagem ser aceita e registrada. Corrigi no #14 a diferença de redação na matriz: criar Mia para ler os guias é uma etapa; passar as rotinas é outra. A versão anterior ficou preservada no histórico. Nenhuma agente foi criada ou ativada nesta rodada.
+## O que está pronto e o que falta
+Protocolo, memória Gabi, supervisão Rivers e [passagem das rotinas](handoffs/2026-09-21-migracao-gabi.md) estão propostos em `docs/gabi-coordination-migration-20260921`. A branch parte da documentação do #16; a versão ainda não está na principal. Nenhuma tarefa Gabi foi criada ou ativada, e nenhuma rotina antiga foi desligada.
 
-## O que funciona e o que falta
-Sage entregou a demonstração fictícia de pagamento, mas o #11 ainda tem conflito com a versão principal e não apresenta teste remoto no head consultado. Ele pode reconciliar isso agora; depois Lia valida busca, celular e pagamento fictício. O #15 tem teste automático aprovado, ainda sem aceite visual atribuído à Lia. Integrações, disponibilidade e pagamentos reais continuam sem ativação.
+Esta rodada confere documentos e o estado dos PRs; não executa teste funcional nem validação de browser do produto. O #11 continua rascunho e sua validação visual permanece pendente. Nenhum parecer de Rivers sobre Gabi foi inventado. O perfil/guia de comunicação do Diego entrou somente em Labs para o futuro.
 
-## Você precisa fazer algo?
-**Não precisa fazer nada para Sage e Lia continuarem.** O PR #16 é somente coordenação: você pode revisá-lo e fazer o merge quando a descrição confirmar que os testes da versão final passaram. **DIEGO REVIEW REQUIRED — somente #16, condicionado ao CI final.** Os PRs de produto e o #14 continuam rascunhos, sem recomendação de merge.
+## O que depende de você
+1. Revisar e fazer os merges documentais: #16 primeiro; depois esta migração, após reconciliação com main, revisão do diff e CI do head final. Por enquanto o PR da migração é draft, sem pedido de merge imediato.
+2. Definir/autorizar a tarefa Gabi (ambiente e disparo por recorrência ou evento), a supervisão Rivers e o corte, após confirmar acessos e um ensaio sem concorrência.
+3. No corte, confirmar que as antigas rotinas de construção Sage/Lia/Rivers pararam antes do primeiro disparo autônomo de Gabi. O atendimento da Lia e a sincronização dos guias precisam continuar preservados.
 
-A versão atual está na branch do #16; a principal ainda não foi atualizada. Produção, automações e regras de segurança/status checks não foram alteradas. Tornar um teste obrigatório continua exigindo sua aprovação explícita separada.
-
-[Handoff e evidências](handoffs/2026-09-21-1915-rivers-pos-lia.md).
-[Painel anterior preservado](handoffs/2026-09-21-1915-rivers-estado-anterior.md).
-
-## Continuidade
-Registrei [o método do Rivers](METODO-RIVERS.md): visão do conjunto, conferência de evidências, correção de desvios, preservação de histórico e instruções de retomada por substituto. Se faltar uma decisão ou merge seu, o aviso deve identificar exatamente o que precisa fazer e o que está bloqueado.
-
-## Seus dois guias sempre à mão
-[Diego e seus agentes](../assistentes/DIEGO-E-SEUS-AGENTES.md) reúne a equipe por projeto, trabalho e acessos confirmados; [guia SCL](../assistentes/GUIA-DO-DIEGO.md) mantém a divisão Lia/Mia. Cópias atuais ficam na pasta Diego da entrega local. Atualização ao fim de cada mudança e conferência horária; versão e pendências no registro local. Não exige ação sua para leitura. #16 continua sendo o PR documental, sujeito ao CI atualizado antes de merge humano.
+Você mantém decisões humanas, merges e autorizações de produção/regras administrativas. Este modelo não autoriza deploy, secrets, rulesets ou tornar testes obrigatórios. Histórico anterior: [snapshot](handoffs/2026-09-21-pre-gabi-estado-anterior.md).

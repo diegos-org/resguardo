@@ -1,3 +1,5 @@
+> **Migração Gabi — 21/09/2026, ativação pendente.** Após o corte, Gabi assume a validação prática/browser da construção SCL. Atendimento da Lia, cobertura de hóspedes e transições Lia/Mia permanecem separados e não são desativados por esta migração. Ver [protocolo](../00-PROTOCOLO.md) e [handoff de corte](handoffs/2026-09-21-migracao-gabi.md). Os registros abaixo são preservados integralmente; atribuições e comandos de rodízio são históricos após o corte, não novos disparos.
+
 
 
 

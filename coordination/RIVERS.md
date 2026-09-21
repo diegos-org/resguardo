@@ -1,3 +1,5 @@
+> **Migração Gabi — 21/09/2026, ativação pendente.** Após o corte, Rivers atua como supervisor/revisor externo de Gabi, conforme [método](METODO-RIVERS.md); não integra as três fases nem executa rodadas paralelas. Ver [protocolo](../00-PROTOCOLO.md) e [handoff de corte](handoffs/2026-09-21-migracao-gabi.md). Os registros abaixo são preservados integralmente; atribuições e comandos de rodízio são históricos após o corte, não novos disparos.
+
 # Rivers — guia transversal e sincronização humana — 21/09/2026
 
 Pedido direto de Diego: um cadastro vivo de todos os agentes, separado por projeto, com trabalho e acessos, e cópias atuais no GitHub/computador para ele e o guia SCL. Criados cadastro, regra de atualização, política de sincronização e cópia humana. Inventário delimita atuação confirmada, preparação e relato; não atribui acesso testado a Mia ou validação de atendimento a Rivers.

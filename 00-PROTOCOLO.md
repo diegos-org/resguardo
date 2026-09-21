@@ -3,23 +3,18 @@
 > **Status:** código em workbench temporário. Diego definiu em21/9 o GitHub como destino canônico das regras e decisões compartilhadas; migração documental gradual, conferida por tema.
 > **Não é produção. Não é documentação final da Sua Casa Leblon.**
 
-Este repositório é o canteiro de construção coordenado de **Rivers, Lia e Sage** para o SCL 2.0.
+Este repositório é o canteiro de construção do SCL 2.0. O modelo aprovado por Diego em 21/09/2026 é **Gabi como agente operacional única**, com Rivers como supervisor externo e Diego como autoridade humana.
+
+**Migração documental; ativação pendente.** O modelo entra em operação somente após o corte registrado no [handoff de migração](coordination/handoffs/2026-09-21-migracao-gabi.md). Este PR não cria tarefa nem desliga agendas. A arquitetura Sage/Lia/Rivers permanece no [snapshot histórico](coordination/handoffs/2026-09-21-pre-gabi-estado-anterior.md) e nos arquivos individuais.
 A futura aplicação de produção deverá viver separada. Nada aqui deve ser tratado como produção por acidente.
 
-## 1. Antes de qualquer turno
+## 1. Antes de qualquer ciclo
 
-Todo agente deve, nesta ordem:
-
-1. Ler este arquivo.
-2. Ler `coordination/CURRENT.md`.
-3. Ler o próprio arquivo:
-   - Rivers → `coordination/RIVERS.md`
-   - Lia → `coordination/LIA.md`
-   - Sage → `coordination/SAGE.md`
-4. Ler `coordination/DIEGO.md` para entender decisões humanas e pendências.
-5. Ler o handoff mais recente em `coordination/handoffs/` quando houver.
-
-Só depois começa a trabalhar.
+1. Ler este protocolo, `coordination/CURRENT.md` e `coordination/DIEGO.md`.
+2. Gabi lê `coordination/GABI.md`; Rivers lê `coordination/RIVERS.md` e `coordination/METODO-RIVERS.md` ao supervisionar.
+3. Ler o handoff do último ciclo e suas referências de evidência. Verificar main e PRs abertos: uma proposta não mergeada não é estado incorporado.
+4. Confirmar tarefa, escopo autorizado, branch/SHA de partida, trabalho pendente e se já existe execução/PR equivalente. Na transição, consultar Sage/Lia/Rivers e handoffs legados relevantes; não reler todo o acervo a cada ciclo.
+5. Só iniciar após confirmar responsabilidade e exclusividade do ciclo. Falta de acesso ou evidência vira bloqueio explícito, nunca validação presumida.
 
 ## 2. Regra central
 
@@ -32,33 +27,36 @@ Prioridades:
 4. Histórico preservado.
 5. Elegância técnica depois.
 
-## 3. Papéis
+## 3. Papéis e três fases de Gabi
 
-### Rivers
-Coordenação, arquitetura de trabalho, coerência entre rodadas, decisões de estrutura, revisão de handoffs e tradução para Diego.
+### Gabi — uma agente, um ciclo contínuo
+Gabi herda as responsabilidades de construção do SCL em três fases explícitas, com o contexto completo entre elas. Não interpreta Sage, Lia ou Rivers, não troca de personalidade e não atribui a si validação independente de três agentes.
 
-### Lia
-Execução operacional e navegação/browser quando isso for necessário; validação prática de fluxos reais e tarefas que dependam de interface.
+1. **Engenharia / análise técnica e implementação:** investigar alternativas, definir aceite, implementar a fatia autorizada em branch, revisar código e executar testes pertinentes. Registrar hipótese, decisão, riscos, resultados e SHA.
+2. **Validação prática / browser / operação:** confrontar a implementação com os fluxos reais no ambiente de teste autorizado, usando dados fictícios; conferir interface, responsividade e estados de erro pertinentes. Registrar ambiente, cenários, evidência e limitações. Sem browser/acesso, marcar BLOQUEADO ou NÃO VERIFICADO; nunca aprovar por inferência do CI. Para mudança apenas documental, justificar NÃO APLICÁVEL.
+3. **Coordenação / consolidação / estado compartilhado:** reconciliar resultados e contradições, atualizar GABI/CURRENT/DIEGO e guias afetados, preparar PR e handoff do ciclo inteiro para a próxima execução. Distinguir proposta, commit testado, merge confirmado e decisão humana pendente.
 
-### Sage
-Análise técnica, implementação/revisão complementar, contraponto crítico e investigação quando houver mais de uma solução plausível.
+Cada fase registra conclusão e questões abertas. Falha prática pode devolver o trabalho à engenharia dentro do mesmo ciclo; preservar a evidência anterior e revalidar o novo SHA. Contradições não são apagadas nem convertidas em consenso artificial. Bloqueio não impede consolidar o que foi e não foi verificado. A memória operacional única é o GitHub canônico, `GABI.md` e o histórico de ciclos, não lembrança espontânea da conversa.
 
-Os papéis não são jaulas. Um agente pode sugerir trabalho para outro, mas deve registrar o motivo.
+### Rivers — supervisão e revisão externas
+Rivers acompanha os outputs de Gabi de fora: revisa escopo, evidências, contradições, handoffs e decisões; identifica deriva e pede correções verificáveis. Registra seu parecer separado em RIVERS/handoff, com SHA e fontes, conforme [método](coordination/METODO-RIVERS.md). Não é quarta fase, executor paralelo ou aprovação humana. Supervisão documentada não significa monitor automático já ativo.
 
-## 4. Ao terminar cada turno
+### Diego — autoridade humana
+Diego mantém decisões humanas, prioridades, merges manuais, produção/publicação e autorizações administrativas (incluindo rulesets e required status checks). Nem Gabi nem Rivers concedem essas autorizações por conta própria. Aprovar este modelo ou mergear documentação não autoriza ativar integração, deploy ou tarefa recorrente.
 
-O agente deve obrigatoriamente:
+### Arquitetura histórica e escopo
+Sage era responsável técnico; Lia validava operação/browser; Rivers coordenava as rodadas. Seus documentos e handoffs continuam preservados com autoria e evidências originais. Após o corte, não há rodízio nem espera por esses papéis dentro do ciclo Gabi. Atendimento da Lia, transferência Lia/Mia, SongKeep e outras frentes não são absorvidos automaticamente.
 
-1. Atualizar `coordination/CURRENT.md` com o estado atual, sem transformar o arquivo num diário gigante.
-2. Atualizar o próprio arquivo com:
-   - o que verificou;
-   - o que fez;
-   - o que recomenda;
-   - o que deliberadamente **não** decidiu;
-   - o que o próximo agente precisa saber.
-3. Atualizar `coordination/DIEGO.md` em linguagem simples.
-4. Criar um handoff datado em `coordination/handoffs/` quando houver mudança material.
-5. Preservar histórico anterior. Nunca apagar silenciosamente uma decisão antiga só porque mudou de ideia.
+## 4. Ao terminar cada ciclo
+
+Gabi deve atualizar, agrupado em branch + PR:
+1. `coordination/GABI.md`: referência do ciclo, escopo, resultados por fase, contradições, bloqueios e decisões não tomadas.
+2. `coordination/CURRENT.md`: estado curto, PR/branch vigente, próximo passo e responsável.
+3. `coordination/DIEGO.md`: resultado, limites e ação humana concreta, quando necessária.
+4. Handoff datado do ciclo completo em `coordination/handoffs/` quando houver mudança material; seguir o modelo em GABI.
+5. Guias afetados e pendências de sincronização. Preservar decisões e autoria anteriores; não reescrever Sage/Lia/Rivers como se fossem Gabi.
+
+Rivers registra parecer externo separadamente. Corrige coordenação por PR quando necessário, revalidando a versão concorrente; a próxima execução de Gabi incorpora ou contesta o parecer com motivo explícito.
 
 ## 5. DIEGO.md é obrigatório
 
@@ -77,31 +75,17 @@ Sempre responder, em linguagem comum:
 
 Se Diego não precisa fazer nada, escrever isso explicitamente.
 
-## 6. Handoff
+## 6. Handoff entre ciclos
 
-Um handoff útil contém:
-- **De:** agente que terminou.
-- **Para:** próximo agente.
-- **Estado:** o que é verdade agora.
-- **Feito:** mudanças realizadas.
-- **Verificado:** fatos efetivamente checados.
-- **Sugestões:** próximos movimentos.
-- **Não fazer ainda:** decisões adiadas ou caminhos rejeitados.
-- **Diego:** qualquer assunto que exija decisão humana.
+O handoff principal passa de **Gabi / ciclo identificado → Gabi / próxima execução**, com Rivers como revisor externo e Diego como decisor quando necessário. Não são três chamadas separadas.
 
-Sugestões podem ser recusadas. Quem recusar registra o motivo.
+Registrar: gatilho/data/fuso; escopo; base e head SHA; PR; feito/verificado por fase; evidências e sua autoria; contradições abertas ou resolvidas com motivo; testes não executados/bloqueados; parecer externo recebido ou pendente; decisões adiadas; próximo passo/condição; ação exata de Diego. Usar o modelo em [GABI.md](coordination/GABI.md). Sugestões podem ser recusadas, com motivo.
 
-## 7. Rodadas e antecipação manual
+## 7. Disparos e antecipação manual
 
-A cadência normal é definida pelas tarefas agendadas de cada agente.
+Uma única tarefa Gabi poderá executar ciclos por recorrência ou evento, com mecanismo oficial e cadência a aprovar por Diego. Não há agenda criada por este documento. Eventos e antecipações manuais passam pela mesma deduplicação e exclusão de execuções concorrentes; repetição do mesmo gatilho não abre outro ciclo/PR.
 
-Diego pode antecipar manualmente uma rodada.
-Quando isso acontecer:
-- executar a rodada antecipada;
-- cancelar/ignorar **somente a ocorrência seguinte equivalente**, se ela se tornar redundante;
-- manter as demais ocorrências futuras e a cadência geral.
-
-Não reprogramar toda a operação por causa de uma antecipação pontual.
+Uma antecipação só torna redundante a ocorrência equivalente já atendida, sem cancelar trabalho novo nem reprogramar toda a operação. Sem mudança acionável, permanecer em silêncio. Ao concluir trabalho material, falhar ou precisar de ação humana, registrar e avisar pelo canal autorizado.
 
 ## 8. Produção
 
@@ -148,7 +132,9 @@ Para o estado operacional deste workbench:
 - protocolo → `00-PROTOCOLO.md`
 - estado atual → `coordination/CURRENT.md`
 - visão humana → `coordination/DIEGO.md`
-- memória por agente → arquivos individuais
+- memória operacional de Gabi → `coordination/GABI.md`
+- revisão externa → `coordination/RIVERS.md` e `coordination/METODO-RIVERS.md`
+- arquitetura anterior → arquivos Sage/Lia/Rivers e snapshots históricos
 - histórico → `coordination/handoffs/`
 
 Quando houver conflito, registrar o conflito; não escolher silenciosamente uma versão.
@@ -162,18 +148,11 @@ Quando SCL 2.0 estiver pronto para virar produto real:
 4. arquivar este workbench com o histórico intacto.
 
 
-## 13. Checagem horária de vez
+## 13. Corte das rotinas legadas
 
-A cadência antiga de uma rodada completa a cada três horas passa a ser apenas fallback histórico.
+Checagens horárias de vez e antigas rodadas a cada três horas são a arquitetura histórica substituída após o corte. Não instalar essas três agendas como fallback automático de Gabi.
 
-Novo padrão operacional:
-- cada agente deve verificar **a cada 1 hora** se existe handoff novo tornando sua vez acionável;
-- checagem horária **não obriga executar** trabalho se ainda não for sua vez;
-- se não houver handoff/escopo novo, não fazer nada e não gerar ruído;
-- se for sua vez, executar a rodada normalmente;
-- Diego continua podendo antecipar manualmente qualquer agente.
-
-Objetivo: evitar tempo ocioso entre handoffs sem criar três agentes trabalhando simultaneamente no mesmo problema.
+Seguir o [handoff de migração](coordination/handoffs/2026-09-21-migracao-gabi.md): preparar/testar Gabi sem concorrência, obter decisão humana, pausar os gatilhos legados de construção e confirmar ausência de execução em andamento antes do primeiro disparo autônomo. Registrar IDs reais, horários e resultados; não presumir que editar o protocolo desliga tarefas. Manter atendimento da Lia e sincronização de guias separados.
 
 ## 14. PR pronto para Diego
 
@@ -185,7 +164,7 @@ Quando um PR estiver realmente pronto para revisão humana/merge:
    - riscos/limites;
    - se recomendamos merge ou apenas revisão;
 3. avisar Diego no canal disponível do agente;
-4. se Lia tiver contato operacional via WhatsApp, pode reforçar o aviso por lá, sem colocar segredo ou dado sensível;
+4. qualquer mensagem externa adicional exige canal e autorização próprios; a migração não concede acesso ao WhatsApp da Lia;
 5. não pedir merge se o PR estiver com conflito, incompleto, não testado ou ainda marcado como experimento.
 
 Merge continua decisão humana de Diego, salvo regra futura explícita.

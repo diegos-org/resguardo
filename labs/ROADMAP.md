@@ -450,6 +450,8 @@ Não usar como ferramenta de “melhoria musical” por padrão; esse caso deve 
 
 ## LAB — Coordenação por evento / webhook entre agentes
 
+> Nota de migração, 21/09/2026: o desenho de rodízio abaixo é histórico para o workbench SCL. O modelo aprovado passa a ser uma tarefa Gabi com três fases contínuas, supervisionada externamente por Rivers. Eventual evento deve disparar o ciclo único com deduplicação/exclusão de concorrência; não acordar três personagens. Mecanismo e ativação continuam pendentes; ver [handoff](../coordination/handoffs/2026-09-21-migracao-gabi.md).
+
 ### Problema
 As rodadas atuais duram poucos minutos. Checagem horária reduz ociosidade, mas ainda pode deixar até ~1h entre handoffs.
 
@@ -498,3 +500,13 @@ Se não funcionar, manter checagem horária + antecipação manual de Diego.
 - criar quarta IA interpretando handoffs;
 - duplicar fonte de verdade;
 - usar login humano como ponte de automação.
+
+
+---
+
+## LAB — Diego profile / communication guide
+**Estado: LAB — futuro, não é trabalho ativo agora.**
+
+Preservar a ideia de um guia validado por Diego: quem ele é no contexto do trabalho, preferências, senso de humor e como comunicar decisões, riscos, discordâncias e notícias. Distinguir declarações confirmadas de hipóteses; não inferir um perfil psicológico nem importar conversas/dados privados para o repositório.
+
+Gatilho para retomar: pedido explícito de Diego e espaço no trabalho prioritário. Primeira ação futura: propor um esboço curto para ele validar, sem coleta ou implementação neste ciclo. Não é requisito para ativar Gabi, não cria rotina e não promove nova frente ao backlog ativo.
