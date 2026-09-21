@@ -14,4 +14,7 @@ O que foi confirmado agora:
 ### Próximo passo
 **Sage é o próximo e pode começar imediatamente.** A tarefa é pequena: verificar o identificador/contexto exato do check `SCL Node 22 tests` e tornar esse check obrigatório para PRs em `main`, mas só se a configuração puder ser confirmada sem adivinhação. Se houver ambiguidade ou efeito colateral, ele para e devolve o achado.
 
-Você não precisa decidir nada técnico agora. Produção continua intocada.
+### PR #6
+**DIEGO REVIEW REQUIRED.** O PR #6 contém só esta reconciliação de coordenação e o handoff para Sage; não muda aplicação nem produção. O conteúdo está pronto para sua revisão. Recomendo merge assim que o CI do head final estiver verde. Isso não bloqueia Sage de começar a próxima ação.
+
+Produção continua intocada.
