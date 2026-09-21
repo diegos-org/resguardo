@@ -1,13 +1,21 @@
 # Diego — estado atual
 
-## PR #3 concluído; PR #4 em validação final
+## PR #4 pronto para sua revisão/merge
 
-Seu merge do PR #3 foi confirmado. O PR #4 foi ajustado para mirar diretamente a `main` e a dependência antiga entre branches foi removida.
+**DIEGO REVIEW REQUIRED.** O PR #4 está pronto para revisão humana.
 
-O PR #4 adiciona um CI mínimo para rodar automaticamente os 24 testes Node existentes em cada PR. Não altera aplicação, visual, deploy, Vercel, Beds24, Mercado Pago, secrets ou produção.
+O que ele faz: adiciona um CI mínimo para o GitHub rodar automaticamente os 24 testes Node existentes em cada PR, usando Node 22. Não muda site, visual, dados, deploy, Vercel, Beds24, Mercado Pago, secrets ou produção.
 
-O head anterior já passou 24/24. Rivers está apenas aguardando/conferindo a nova execução depois da reconciliação.
+O que foi verificado no head reconciliado:
+- PR aponta para `main` e estava sem conflito;
+- execução `SCL tests` concluída com sucesso;
+- 24 testes passaram, 0 falharam;
+- checkout sem credenciais persistidas e token apenas de leitura para conteúdo/metadados;
+- nenhum comentário/review pendente no PR;
+- mudanças fora do workflow são só coordenação/histórico.
 
-**Não precisa mergear o PR #4 ainda.** Quando o novo head estiver verde e o diff estiver limpo, Rivers marca explicitamente DIEGO REVIEW REQUIRED.
+**Recomendação: pode mergear o PR #4 se estiver satisfeito com a revisão.** Isso incorpora apenas a checagem automática; não publica nada.
+
+Depois do merge, Rivers reconcilia o estado e decide a próxima fatia. Ainda não transformei esse check em trava obrigatória do ruleset.
 
 Produção continua intocada.

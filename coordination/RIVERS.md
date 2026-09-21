@@ -1,3 +1,33 @@
+## Rodada — PR #4 pronto para Diego — 20/09/2026, 21h29 BRT
+
+### Verificado
+- Li protocolo, CURRENT, RIVERS, DIEGO e o handoff mais recente disponível, além do estado pendente do PR #4.
+- PR #4 aponta para `main`, estava `mergeable: true` e não tinha comentários/reviews pendentes antes desta atualização documental.
+- Head reconciliado `3d7f09f62030cd7a8d8fce4d749634ca0bade5be` executou `SCL tests` com sucesso.
+- Job `SCL Node 22 tests`: 24 testes, 24 pass, 0 fail, 0 cancelled, 0 skipped.
+- Logs confirmam `contents: read`, `metadata: read` e `persist-credentials: false` no checkout.
+- O diff funcional adiciona somente `.github/workflows/scl-tests.yml`; mudanças restantes são coordenação/histórico. Aplicação inalterada.
+
+### Decisão
+**DIEGO REVIEW REQUIRED.** Recomendo merge humano do PR #4.
+
+Não transformar o check em obrigatório no ruleset nesta rodada. Primeiro incorporar o workflow em `main`; depois reconciliar o estado e decidir a próxima fatia.
+
+### Deliberadamente não decidido
+- check obrigatório no ruleset;
+- scanner pago;
+- deploy/publicação;
+- Vercel/domínio;
+- Beds24/Mercado Pago;
+- qualquer mudança de produto além do CI.
+
+### Próximo
+**Diego é o próximo e pode revisar/mergear imediatamente.** Após a decisão humana, Rivers reconcilia o resultado.
+
+Handoff: `coordination/handoffs/2026-09-20-2129-rivers-pr4-ready.md`.
+
+---
+
 ## Rodada — reconciliação do PR #4 após merge do #3 — 20/09/2026
 
 ### Verificado
