@@ -51,12 +51,14 @@ Este inventário distingue agente, papel e janela. Várias execuções “Run Ri
 
 ## SongKeep e música
 ### SongKeep Studio Constructor
-- **Onde:** tarefa “SongKeep Studio Constructor”.
-- **Agora:** entrada #3 lida estaticamente pelo Constructor em 21/09/2026; 38/38 hashes conferidos. Mapa de implementação e isolamento no PR #4. Auto-comper #2 preservado como frente separada.
-- **Ferramentas/evidências confirmadas pelo Constructor em 21/09/2026:** Codex no Mac local; shell/Python local; conector GitHub leu o snapshot #3 e publicou branch/PR #4 em al-life/soundkeep-studio. 13 testes sintéticos do auto-comper passaram na entrega #2. Nesta leitura do Studio não instalou dependências nem executou app/build/typecheck; acesso Firebase/Gemini não testado nem ativado. Revisão estática por outro agente Codex, sem aprovação GitHub elegível.
-- **Nome:** produto **SongKeep**. Slug do repo permanece soundkeep-studio por decisão de Diego. Corrigir nome visível na interface numa alteração própria, sem reescrever o snapshot de origem.
-- **IA/API:** decisão pendente com Diego. Pode haver provedores separados para conversa e geração sonora. Google é hipótese para geração, não escolha aprovada; Gemini no ZIP é implementação herdada, não decisão de arquitetura.
-- **Próximo / responsável:** Constructor prepara cópia isolada antes de rodar. [Mapa e evidências no PR #4](https://github.com/al-life/soundkeep-studio/pull/4). Nenhuma ação de Diego agora: não mergear #1/#2 até revisão/base adequadas. Chamá-lo para usar quando importar/gravar, editar, ouvir, exportar e reabrir preservando mídia estiverem verificáveis. Sem prazo prometido, serviço pago ou chave real.
+- **Onde / ambiente:** tarefa “SongKeep Studio Constructor”, Codex no Mac local; confirmado em 21/09/2026.
+- **Agora / última entrega:** [Studio local: iniciar composição isolada sem serviços cloud](https://github.com/al-life/soundkeep-studio/pull/5), draft, head 0c27db011883430829fd870c1b4e1f0035953c1a. Cópia seletiva da composição em apps/studio, sem importar runtime Firebase/Gemini. Imports preservados: 38/38 hashes.
+- **Ferramentas/evidências:** conector GitHub publicou e releu 17/17 arquivos; Node local disponível. Dependências públicas instaladas com scripts desativados; build Vite e typecheck passaram. Navegador local confirmou edição e versão de letra, avisos IA/motor indisponíveis e reset ao recarregar. Revisão independente de agente corrigiu dois achados de UI; não é aprovação elegível GitHub. Tráfego de rede ainda sem medição instrumental.
+- **Limites:** composição somente em memória, com aviso explícito de perda; sem áudio/persistência/exportação funcional nessa entrada. Sem serviços cloud, credenciais, deploy ou alteração do Google. Auto-comper #2 continua separado, com 13 testes sintéticos na entrega anterior, sem repetir nesta rodada.
+- **Nome / IA:** SongKeep Studio; slug soundkeep-studio mantido. Provedores ainda pendentes com Diego; nenhum escolhido.
+- **Próximo / responsável:** Constructor completa isolamento verificável e persistência de obras/mídia, depois motor de áudio. PR4 documental tem conflito a reconciliar. Não pedir merge nem anunciar primeiro uso musical antes do percurso importar/gravar, preservar, editar/fade, ouvir, exportar e reabrir sem perda.
+- **Produto / Labs:** demonstração do original registrada no PR5; demos no Studio, Rec solicitado e liberdade de reformular navegação. Biblioteca dos três discos continua primeiro Labs, inicialmente só material executado por Diego; áudios ainda aguardados.
+- **Atualização:** Constructor, 21/09/2026. Nenhuma ação humana necessária nesta etapa. Main ainda sem este guia; PR18 altera papéis SCL em paralelo ao PR17. Preservar ambas as linhas e reconciliar antes de declarar cópia humana integral atualizada.
 
 ### Outros colaboradores e histórico
 - **Menos — nome a confirmar:** relato direto de Diego sobre produção de Café Água das Oito; não presumir qual produto/modelo é, nem acesso ao repositório. Registrar nome/plataforma quando confirmado.
@@ -113,3 +115,5 @@ Uma revisão documental automatizada pode apontar lacunas; não ativa agentes, n
 21/09/2026 — SongKeep Studio Constructor atualizou apenas sua ficha e linha-resumo após leitura do PR #3 e publicação do mapa #4. Ambiente local e acessos acima confirmados nesta sessão; primeira versão utilizável ainda não atingida. Outros papéis preservados.
 
 21/09/2026 — Constructor registrou ideias de plugins/sons/licenças no Pré-Labs e promoveu a biblioteca dos três discos autorais a LAB prioritário nº1 por pedido direto de Diego, no PR SongKeep #4. Três frentes: Studio, plugin/efeito e um Labs por vez. Nenhum áudio dos discos recebido/processado nem serviço ativado. Próximo: modo isolado do Studio; piloto de instrumento aguarda fonte. Nome Nilo apenas proposto ao usuário, sem renomeação ou novo agente. Acessos/ambiente local permanecem os já confirmados nesta ficha.
+
+21/09/2026 — Constructor atualizou somente sua ficha após entrada local PR SongKeep5. PR18 SCL consultado: mudanças paralelas de Gabi/Rivers não incorporadas silenciosamente nesta branch. Cópia humana conserva última versão verificada até reconciliação das duas linhas; snapshots preservados e pendência registrada localmente.
