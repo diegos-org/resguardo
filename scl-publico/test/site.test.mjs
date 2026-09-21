@@ -80,3 +80,12 @@ test('legacy redirect rejects invalid, incomplete, duplicate or over-capacity st
   const r=await fetch(base+'/property/102?'+query,{redirect:'manual'});assert.equal(r.status,400);assert.equal(r.headers.get('location'),null);
  }
 }));
+
+test('all-property search filters capacity and preserves dates without claiming availability',()=>withServer(async base=>{
+ const p=new URLSearchParams({checkin:tomorrow,checkout:later,guests:'4'});
+ const html=await (await fetch(base+'/disponibilidade?'+p)).text();
+ assert.match(html,/Disponibilidade ainda não confirmada/);
+ assert.match(html,/href="\/imoveis\/303\?checkin=/);assert.match(html,/href="\/imoveis\/403\?checkin=/);
+ assert.doesNotMatch(html,/href="\/imoveis\/(102|103|399)\?/);
+ assert.match(html,/guests=4/);
+}));

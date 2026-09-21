@@ -24,3 +24,10 @@ body{background-color:var(--cream);background-image:repeating-linear-gradient(13
 /* Gallery alignment: shared lower edge, including an odd thumbnail count. */
 @media(min-width:601px){.gallery{height:auto;align-items:stretch}.gallery-main{aspect-ratio:3/2}.gallery-main img{position:absolute;inset:0;object-position:center bottom}.gallery-thumbs{grid-template-rows:repeat(4,minmax(0,1fr))}.gallery-thumbs button{position:relative}.gallery-thumbs img{position:absolute;inset:0}.gallery-thumbs button:last-child:nth-child(odd){grid-column:1/-1}}
 .demo-scenarios{display:flex;flex-wrap:wrap;gap:12px;margin:24px 0}.demo-scenarios .button{font-size:12px}
+
+/* Revisão mobile solicitada por Diego, 21/09. */
+.date-trigger{justify-content:flex-start;text-align:left;width:100%}.date-trigger span:first-child{text-align:left}.date-trigger span:last-child{margin-left:6px}.search-form select{text-align:left}.nearby h2{word-spacing:normal}.detail-columns>div{align-self:start}.detail-columns aside{justify-content:flex-start}.page-intro h1{font-size:clamp(2.45rem,5.4vw,5.35rem)}
+@media(min-width:1001px){.hero-inner{max-width:none;padding-left:57%;padding-right:4vw}.hero h1{font-size:2.75rem}}
+@media(max-width:600px){.hero h1{font-size:clamp(1.8rem,7.5vw,2.65rem)}.hero-inner{padding-top:22px}.why{padding-top:28px;padding-bottom:26px}.benefits{gap:16px;margin-top:18px}.benefits article p{margin-bottom:8px}.detail-heading h1{font-size:2.075rem}.consultation h1{font-size:2.475rem}.whatsapp{position:static;margin:0 20px 20px auto;box-shadow:none}footer{padding-bottom:16px}}
+
+.search-form .date-trigger{padding:9px 0;justify-content:flex-start;font-weight:400;text-align:left}
