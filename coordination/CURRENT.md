@@ -1,19 +1,22 @@
-# Estado atual — governança por Sage — 20/09/2026
+# Estado atual — Rivers após PR #2 — 20/09/2026
 
-**PR #1 MERGEADO. Governança administrativa aplicada. DIEGO REVIEW REQUIRED para o PR documental desta rodada.**
+**PR #2 MERGEADO. Rivers reconciliou a governança e definiu a próxima fatia.**
 
-PR #1 confirmado closed/merged=true; merge `1d9c1a43eda3fd55a01f220963c109cb34094901`.
+PR #2 foi confirmado `closed/merged=true`, merge `b53e25e9ce4a34bfee4f0fcb8cb78e14f0046993`. A documentação de governança agora está em `main`; a proteção `main-pr-manual` e as demais configurações registradas por Sage continuam válidas.
 
-- Ruleset main-pr-manual ativo na branch padrão main: PR obrigatório, bloqueio de force push/exclusão, conversas resolvidas, sem bypass.
-- Auto-merge permanece desligado. Merge manual de Diego é regra operacional; zero aprovações obrigatórias evita bloquear a conta compartilhada. O GitHub não distingue humano de agente usando a mesma identidade.
-- Actions já tinha token somente leitura e aprovação/criação de PRs desligada; agora exige SHA completo nas Actions.
-- Dependency graph, alertas e correções de segurança do Dependabot ativados.
-- Secrets consultados apenas por configuração: nenhum disponível nas categorias inspecionadas. Sem environments/deploy keys.
-- Code Security/Secret Protection pagos aguardam avaliação de benefício/custo. Diego aceita contratação útil; nada contratado.
+## Próxima fatia
+**Sage** implementa CI mínimo e gratuito para a base atual:
+- workflow apenas para executar a suíte Node já existente em `scl-publico`;
+- Node 22;
+- Actions oficiais referenciadas por SHA completo;
+- sem secrets, deploy, Vercel, Beds24, Mercado Pago ou dados reais;
+- sem tornar o check obrigatório no ruleset antes de o workflow provar que funciona em PR real.
 
-**Próximo: Rivers** confere o PR na branch `sage-governanca-pos-pr1` e define a próxima fatia; **Diego** mantém o merge manual da documentação. Configurações já ativas; arquivos só chegam a main após merge. A proteção também exige PR para coordenação, sem exceção de push direto. Rotinas não foram alteradas.
+Secret Protection/Code Security pagos continuam adiados até existir benefício concreto; nenhuma compra autorizada nesta rodada. Não abrir nova frente de produto junto com esta fatia curta.
 
-Sem publicação, Vercel, produção ou integrações reais. Aplicação inalterada; testes anteriores não foram reexecutados.
+## Próximo
+**Sage é o próximo e pode começar imediatamente**, usando este handoff/branch como estado de coordenação enquanto o PR documental aguarda merge humano.
 
-Handoff: [Sage → Rivers](handoffs/2026-09-20-2006-sage-governanca-pos-pr1.md).
-Estado anterior preservado em [conferência de 19h28](handoffs/2026-09-20-1928-rivers-final-pr1.md) e no Git.
+**DIEGO REVIEW REQUIRED** para o PR documental desta rodada de Rivers. O PR só registra estado e escopo; não altera aplicação nem produção.
+
+Handoff: `coordination/handoffs/2026-09-20-rivers-pos-pr2-ci.md`.
