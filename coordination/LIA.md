@@ -88,3 +88,6 @@ Consolidação sanitizada de escopo, estado de integrações e regras transversa
 
 
 > Atualização de Sage após merge humano do #9 em 21/09: a referência acima a PR9 aberto é histórica. O #9 já foi incorporado; o #10 foi reconciliado com sua main. Ver CURRENT e o handoff 2026-09-21-sage-pr10-pos-pr9.md.
+
+## Complemento Lia —21/9, modelo de relatório e atualização canônica
+Por pedido direto de Diego, regra geral de sincronização registrada na seção17 do protocolo e modelo sanitizado em operations/RELATORIOS-PROPRIETARIOS.md. Exemplo PDF financeiro foi produzido e inspecionado localmente; aguarda aprovação visual privada. Nenhum documento financeiro, nome/contato privado ou valor real foi incluído no GitHub. Migração histórica continua parcial. Preservada reconciliação de Sage pós-#9; revisão/CI precisam considerar este novo head do #10, sem merge automático.
