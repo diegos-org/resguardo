@@ -91,3 +91,7 @@ Consolidação sanitizada de escopo, estado de integrações e regras transversa
 
 ## Complemento Lia —21/9, modelo de relatório e atualização canônica
 Por pedido direto de Diego, regra geral de sincronização registrada na seção17 do protocolo e modelo sanitizado em operations/RELATORIOS-PROPRIETARIOS.md. Exemplo PDF financeiro foi produzido e inspecionado localmente; aguarda aprovação visual privada. Nenhum documento financeiro, nome/contato privado ou valor real foi incluído no GitHub. Migração histórica continua parcial. Preservada reconciliação de Sage pós-#9; revisão/CI precisam considerar este novo head do #10, sem merge automático.
+
+
+## Complemento operacional Lia —21/9: modelo aprovado
+Diego aprovou o visual do PDF. Correção Studio e regras de isolamento dos extratos, comunicação WhatsApp e nomes de transcrições registradas em [decisões de relatórios](../operations/RELATORIOS-COMUNICACAO-2026-09-21.md). PDFs reais conferidos e mantidos localmente; nenhuma informação financeira privada enviada ao GitHub. Sem alteração do produto ou da vez dos agentes. A aprovação é visual, não validação de saldo de acertos ou autorização de comissão futura. Publicação documental nesta branch aguarda revisão/merge humano, sem alegar main atualizada.
