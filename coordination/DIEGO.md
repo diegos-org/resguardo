@@ -12,7 +12,7 @@ O que foi confirmado agora:
 - o PR #5 aberto é só uma nota de Labs sobre Bumble Helper e não bloqueia a faixa de trabalho atual.
 
 ### Próximo passo
-**Sage é o próximo e pode começar imediatamente.** A tarefa é pequena: verificar o identificador/contexto exato do check `SCL Node 22 tests` e tornar esse check obrigatório para PRs em `main`, mas só se a configuração puder ser confirmada sem adivinhação. Se houver ambiguidade ou efeito colateral, ele para e devolve o achado.
+**Sage pode investigar imediatamente** o identificador/contexto exato do check `SCL Node 22 tests` e preparar a mudança mínima. **Nenhuma alteração no ruleset deve ser aplicada sem sua aprovação explícita.** Se houver ambiguidade ou efeito colateral, ele para e devolve o achado.
 
 ### PR #6
 **DIEGO REVIEW REQUIRED.** O PR #6 contém só esta reconciliação de coordenação e o handoff para Sage; não muda aplicação nem produção. O conteúdo está pronto para sua revisão. Recomendo merge assim que o CI do head final estiver verde. Isso não bloqueia Sage de começar a próxima ação.
