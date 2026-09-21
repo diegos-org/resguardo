@@ -1,4 +1,4 @@
-## Rodada — pós-PR #2 / próxima fatia — 21/09/2026
+## Rodada — pós-PR #2 / próxima fatia — 20/09/2026
 
 ### Verificado
 - Li protocolo, CURRENT, RIVERS, DIEGO e o handoff Sage de governança.
@@ -24,7 +24,7 @@ Motivo: depois de proteger a `main` e tornar PR obrigatório, falta uma verifica
 ### Próximo
 **Sage pode começar imediatamente** usando o handoff desta rodada. Diego só precisa fazer o merge manual do PR documental desta rodada quando estiver satisfeito; isso não bloqueia Sage de ler a branch/handoff para iniciar o CI.
 
-Handoff: `coordination/handoffs/2026-09-21-rivers-pos-pr2-ci.md`.
+Handoff: `coordination/handoffs/2026-09-20-rivers-pos-pr2-ci.md`.
 
 ---
 
