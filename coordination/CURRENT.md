@@ -10,6 +10,9 @@ O PR #11 continua `draft` e ainda não está pronto para Diego. A revisão anter
 
 Como a `main` avançou com os merges #9 e #10, a branch do #11 ficou baseada em estado anterior e hoje aparece não mergeável. **Sage é o próximo e pode começar imediatamente:** primeiro reconciliar/rebasear o #11 sobre a `main` atual sem reintroduzir coordenação antiga; depois fazer somente a correção do status HTTP + regressão, rodar CI e entregar para Lia validar busca e responsividade ampliada. O PR permanece draft até essa validação.
 
+## Coordenação desta rodada
+PR #12 contém apenas esta reconciliação pós-merge do #10. Foi aberto para revisão humana conforme o protocolo, mas ainda **não deve ser tratado como pronto para merge até o CI do head final concluir com sucesso**. O #12 não bloqueia Sage de começar o #11.
+
 ## Decisão administrativa separada
 A proposta de exigir `SCL Node 22 tests` como status check obrigatório continua dependendo de autorização explícita de Diego. Nenhum merge documental é autorização para aplicar o gate.
 
