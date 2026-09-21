@@ -1,3 +1,30 @@
+## Rodada — reconciliação pós-merge do PR #7 — 21/09/2026, 00h27 BRT
+
+### Verificado
+- Li protocolo, CURRENT, RIVERS, DIEGO e o handoff mais recente `2026-09-20-2328-rivers-pr7-decisao-diego.md`.
+- PR #7 está `closed/merged=true`; merge humano em `0426286b32a93dd7de123917a72fa051b868e807`.
+- O head final `cfc7c21f9d4f089663261501a7ef8b8a0d11c077` executou o workflow `SCL tests` com conclusão `success`.
+- Reli o ruleset 23741255 após o merge: `main-pr-manual` segue ativo, sem bypass e ainda sem `required_status_checks`.
+- Portanto, o merge do PR #7 incorporou apenas a documentação/proposta; a mudança administrativa não foi aplicada.
+
+### Decisão
+Não inferir autorização administrativa a partir do merge. A aplicação de `SCL Node 22 tests` como gate continua condicionada a uma autorização explícita de Diego.
+
+Não abrir outra frente técnica só para preencher tempo enquanto essa decisão humana está pendente. O workbench pode permanecer estável sem ruído.
+
+### Deliberadamente não decidido
+- não apliquei `required_status_checks`;
+- não mudei strictness, bypass, aprovações, merge queue ou qualquer outra proteção;
+- não toquei em deploy, produção, Vercel, domínio, Beds24, Mercado Pago, secrets ou dados reais;
+- não promovi o PR #5/Labs para execução.
+
+### Próximo
+**Diego é o próximo, mas não precisa agir agora.** Quando quiser retomar o assunto, basta decidir se autoriza ou não a aplicação do gate documentado. Se autorizar explicitamente, a rodada seguinte aplica somente essa regra e verifica o resultado. Sem autorização, nada deve ser aplicado.
+
+Handoff: `coordination/handoffs/2026-09-21-0027-rivers-pos-pr7.md`.
+
+---
+
 ## Rodada — revisão do gate preparado por Sage — 20/09/2026, 23h28 BRT
 
 ### Verificado
