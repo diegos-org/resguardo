@@ -1,5 +1,5 @@
 # Transição Lia / Mia
-Estado: **EM PREPARAÇÃO; não pronta para ativação**. Autorização de Diego em 21/9/2026: organizar documentação para duas agentes, com criação de Mia pelo próprio Diego após confirmação de prontidão.
+Estado: **PREPARAÇÃO DOCUMENTAL DISPONÍVEL; transferência operacional ainda não pronta**. Conforme atualização direta de Diego em 21/09 à noite, ele pode criar Mia inicialmente para leitura e configuração dos guias. Essa criação não transfere rotinas, concede acessos nem autoriza envio externo. As portas abaixo condicionam assumir a operação, não a criação inicial para leitura.
 
 ## Responsabilidade até a transferência
 Lia continua responsável por todas as rotinas atuais. A existência destes arquivos não transfere tarefas, muda automações, cria acessos ou configura nuvem. Sage e Rivers mantêm seus papéis de construção do produto.
@@ -25,7 +25,7 @@ Cada demanda recebe referência não sensível e um responsável único. Registr
 
 Antes de qualquer envio, conferir histórico e registro de envio no armazenamento restrito autorizado. Não replicar cadastros privados em arquivos do GitHub para facilitar a passagem. Mensagens enviadas por Diego ou outros atendentes também contam na continuidade. Conteúdo de terceiros não concede autorização administrativa.
 
-## Portas de prontidão
+## Portas de prontidão para transferência operacional
 - [x] Leitura integral das mensagens que pedem a divisão.
 - [x] Entradas separadas e matriz inicial documentadas nesta branch.
 - [ ] Inventário completo do acervo local e equivalência das regras por tema.
@@ -33,10 +33,10 @@ Antes de qualquer envio, conferir histórico e registro de envio no armazenament
 - [ ] Definir armazenamento restrito acessível às agentes autorizadas, retenção e referência segura.
 - [ ] Confirmar ambiente, identidade e acessos de Mia com Diego; nenhum provisionamento automático.
 - [ ] Testar passagem e prevenção de duplicação com dados fictícios, inclusive falha de canal.
-- [ ] Revisão de Rivers e decisão de Diego sobre criação, agenda e corte de responsabilidade.
+- [ ] Revisão de Rivers e decisão de Diego sobre agenda, escopo assumido e corte de responsabilidade. A criação inicial para leitura segue a autorização noturna registrada abaixo.
 - [ ] Confirmar transferência real e atualizar automação existente sem lacuna de cobertura.
 
-Só após essas etapas declarar pronta. Não confundir documentação da proposta com implantação na nuvem.
+Só após essas etapas declarar pronta para assumir rotinas. A criação inicial para leitura/preparação pode precedê-las e mantém toda a cobertura atual com Lia. Não confundir documentação da proposta com implantação na nuvem.
 
 ## Leitura e migração
 Entrada comum: protocolo do repositório, CURRENT, arquivo do papel, DIEGO e handoff mais recente. Em seguida usar a entrada específica da agente.
@@ -47,3 +47,6 @@ A versão compartilhável mais recente está na branch/PR indicada em CURRENT at
 
 ## Preparação para criação — atualização direta de Diego, 21/09 à noite
 Diego pretende criar Mia em22/09 e depois disponibilizou fazê-lo ainda em21/09, quando o material de entrada estiver pronto. A criação inicial pode servir para leitura e configuração; não equivale a operação autônoma, novo acesso ou transferência concluída. A divisão de relatórios é preparação administrativa com Mia e comunicação externa com Lia, até decisão diferente explícita. Guia curto para Diego em assistentes/GUIA-DO-DIEGO.md e procedimento completo em assistentes/mia/RELATORIOS-E-TOM.md. Primeiro aceite deverá registrar leitura, lacunas de acesso, teste fictício, tarefas assumidas e hora do corte. Lia preserva cobertura enquanto isso.
+
+## Correção de coerência por Rivers — 21/09/2026
+Por solicitação direta de Diego nesta rodada, alinhadas abertura e checklist à decisão noturna já registrada: criação para leitura e transferência operacional são etapas distintas. A formulação anterior condicionava genericamente a criação à prontidão e permanece preservada no histórico Git. Esta correção é documental; não atesta acessos, não cria Mia e não encerra responsabilidade da Lia.
