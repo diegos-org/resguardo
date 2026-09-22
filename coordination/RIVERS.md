@@ -1,3 +1,5 @@
+> Estado atual e contrato: [arquitetura cloud](ARQUITETURA-OPERACIONAL.md). Abaixo está a linhagem documental anterior, preservada; comandos/papéis antigos não substituem a instrução atual nem comprovam corte. Sage permanece builder; Lia local mantém cobertura até transferência; Rivers supervisiona externamente.
+
 ## Rodada — reconciliação pós-merge do PR #10 — 21/09/2026, 07h28 BRT
 
 ### Verificado

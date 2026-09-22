@@ -1,0 +1,280 @@
+{
+  "observed_at": "2026-09-21T21:05:00-03:00",
+  "scl": {
+    "repo": "al-life/scl-reconstrucao",
+    "main": "be0860e46be3c209152a2c5de2f1b042128503ad",
+    "prs": [
+      {
+        "number": 19,
+        "title": "docs: reconciliar guias de Diego entre Gabi e Constructor",
+        "base": "docs/gabi-coordination-migration-20260921",
+        "head": "docs/rivers-guias-reconciliados-20260921",
+        "sha": "240908fd24bdee91eff401642d0ff3360d072e1a",
+        "draft": true
+      },
+      {
+        "number": 18,
+        "title": "docs: migrar coordenação SCL para Gabi com supervisão externa de Rivers",
+        "base": "rivers-coordenacao-20260921-1848",
+        "head": "docs/gabi-coordination-migration-20260921",
+        "sha": "7c078ce86c3e0c69d02bb668d772c6d474f88ce1",
+        "draft": true
+      },
+      {
+        "number": 17,
+        "title": "docs: atualizar ficha SongKeep Constructor após aceite da entrada",
+        "base": "rivers-coordenacao-20260921-1848",
+        "head": "docs/constructor-status-20260921",
+        "sha": "7ec45b45a4f41318c60d893342c34f310438892c",
+        "draft": true
+      },
+      {
+        "number": 16,
+        "title": "docs: coordenação Rivers, guia de agentes e continuidade local/nuvem",
+        "base": "main",
+        "head": "rivers-coordenacao-20260921-1848",
+        "sha": "55f15086e76c5a4cd3acec79dae978d974e64db8",
+        "draft": false
+      },
+      {
+        "number": 15,
+        "title": "Iniciar demonstração interna de gestão e cadastro com pendências",
+        "base": "main",
+        "head": "sage-gestao-demo-20260921",
+        "sha": "dfecfd0d707b9ab2ffd18481dd1abb4f1b2c7900",
+        "draft": true
+      },
+      {
+        "number": 14,
+        "title": "docs: relatórios, atendimento e preparação da divisão Lia/Mia",
+        "base": "main",
+        "head": "lia-relatorios-studio-20260921",
+        "sha": "2fe480b787b1b69389d47a95cb088a48813e121d",
+        "draft": true
+      },
+      {
+        "number": 13,
+        "title": "Registrar financeiro, conciliação e portais conforme decisões de Diego",
+        "base": "main",
+        "head": "sage-financeiro-portais-20260921",
+        "sha": "7d50db57df0f04ca1ffd3d158ed2bd9a72a61fe6",
+        "draft": true
+      },
+      {
+        "number": 11,
+        "title": "Refinar site mobile e demonstrar fluxo de pagamento sem integrações reais",
+        "base": "main",
+        "head": "sage-mobile-busca-pilotos",
+        "sha": "50ec318e07e078f56ac180a11aff7827df415567",
+        "draft": true
+      },
+      {
+        "number": 5,
+        "title": "Registrar Bumble Helper no Labs",
+        "base": "main",
+        "head": "labs-bumble-helper",
+        "sha": "0ff4fe1dbc63f49529817d61209eed1ec688337f",
+        "draft": false
+      }
+    ],
+    "branches": [
+      {
+        "name": "docs/constructor-status-20260921",
+        "sha": "7ec45b45a4f41318c60d893342c34f310438892c"
+      },
+      {
+        "name": "docs/gabi-coordination-migration-20260921",
+        "sha": "7c078ce86c3e0c69d02bb668d772c6d474f88ce1"
+      },
+      {
+        "name": "docs/rivers-guias-reconciliados-20260921",
+        "sha": "240908fd24bdee91eff401642d0ff3360d072e1a"
+      },
+      {
+        "name": "labs-bumble-helper",
+        "sha": "0ff4fe1dbc63f49529817d61209eed1ec688337f"
+      },
+      {
+        "name": "lia-consolidacao-operacao-20260921",
+        "sha": "ec62f87e4474c1482f3dc10bf4c0df498f364e1f"
+      },
+      {
+        "name": "lia-relatorios-studio-20260921",
+        "sha": "2fe480b787b1b69389d47a95cb088a48813e121d"
+      },
+      {
+        "name": "main",
+        "sha": "be0860e46be3c209152a2c5de2f1b042128503ad"
+      },
+      {
+        "name": "rivers-coordenacao-20260921-1848",
+        "sha": "55f15086e76c5a4cd3acec79dae978d974e64db8"
+      },
+      {
+        "name": "rivers-pos-pr2-ci-scope",
+        "sha": "31b75c1619a98cb118f48bbac49c58c3539b9221"
+      },
+      {
+        "name": "rivers-pos-pr4-reconcile",
+        "sha": "554c5723c9758278bd97b6e20c8cb1cfa26f6cdf"
+      },
+      {
+        "name": "rivers-pos-pr7-reconcile",
+        "sha": "7f7dc3fd3ce629b4810293211afdddffa806e4f9"
+      },
+      {
+        "name": "rivers-pos-pr8-reconcile",
+        "sha": "99d45cdd1cf65a53640997f5ed28d27b64d61b18"
+      },
+      {
+        "name": "rivers-pos-pr10-reconcile",
+        "sha": "efc207167689f264e9cd26d608311bffd7bb19cc"
+      },
+      {
+        "name": "sage-base-publica-revisavel",
+        "sha": "7ba1c0c53d4edb13e0a75c1f6394a17817e67be4"
+      },
+      {
+        "name": "sage-ci-gate-proposta",
+        "sha": "cfc7c21f9d4f089663261501a7ef8b8a0d11c077"
+      },
+      {
+        "name": "sage-ci-node22",
+        "sha": "cdb04fd8c3285e08993e8c8063500ab3081aa470"
+      },
+      {
+        "name": "sage-financeiro-portais-20260921",
+        "sha": "7d50db57df0f04ca1ffd3d158ed2bd9a72a61fe6"
+      },
+      {
+        "name": "sage-gestao-demo-20260921",
+        "sha": "dfecfd0d707b9ab2ffd18481dd1abb4f1b2c7900"
+      },
+      {
+        "name": "sage-governanca-pos-pr1",
+        "sha": "3cc037bd59ccd19128d21a9f391e4884163c1b69"
+      },
+      {
+        "name": "sage-mobile-busca-pilotos",
+        "sha": "50ec318e07e078f56ac180a11aff7827df415567"
+      }
+    ],
+    "branches_without_open_pr": [
+      {
+        "name": "lia-consolidacao-operacao-20260921",
+        "status": "behind",
+        "ahead_by": 0
+      },
+      {
+        "name": "rivers-pos-pr2-ci-scope",
+        "status": "behind",
+        "ahead_by": 0
+      },
+      {
+        "name": "rivers-pos-pr4-reconcile",
+        "status": "behind",
+        "ahead_by": 0
+      },
+      {
+        "name": "rivers-pos-pr7-reconcile",
+        "status": "behind",
+        "ahead_by": 0
+      },
+      {
+        "name": "rivers-pos-pr8-reconcile",
+        "status": "behind",
+        "ahead_by": 0
+      },
+      {
+        "name": "rivers-pos-pr10-reconcile",
+        "status": "behind",
+        "ahead_by": 0
+      },
+      {
+        "name": "sage-base-publica-revisavel",
+        "status": "behind",
+        "ahead_by": 0
+      },
+      {
+        "name": "sage-ci-gate-proposta",
+        "status": "behind",
+        "ahead_by": 0
+      },
+      {
+        "name": "sage-ci-node22",
+        "status": "behind",
+        "ahead_by": 0
+      },
+      {
+        "name": "sage-governanca-pos-pr1",
+        "status": "behind",
+        "ahead_by": 0
+      }
+    ]
+  },
+  "songkeep": {
+    "repo": "al-life/soundkeep-studio",
+    "requested_repo_error": "al-life/songkeep-studio: HTTP 404",
+    "main": "d2bc43a3c40f7b3e6e42f7e54c831c476384bdfe",
+    "main_files": [
+      "README.md"
+    ],
+    "prs": [
+      {
+        "number": 5,
+        "title": "Studio local: iniciar composição isolada sem serviços cloud",
+        "base": "import/sonica-3-20260921",
+        "head": "feat/studio-local-entry",
+        "sha": "b5560a321f8198c2dd52825206b2a48c313a7584",
+        "draft": true
+      },
+      {
+        "number": 4,
+        "title": "docs: mapear implementação do SongKeep e preparar desenvolvimento isolado",
+        "base": "import/sonica-3-20260921",
+        "head": "docs/constructor-songkeep-intake",
+        "sha": "1d2278501e0b3a590b39ece08285467dfa6feafa",
+        "draft": true
+      },
+      {
+        "number": 3,
+        "title": "Importar Sônica 3 para SongKeep e registrar decisões pendentes",
+        "base": "docs/visao-inicial",
+        "head": "import/sonica-3-20260921",
+        "sha": "4a3e03080063153680672f5dcad427bceeffe72d",
+        "draft": true
+      },
+      {
+        "number": 2,
+        "title": "Auto-comper: motor offline inicial, propostas editáveis e render preservando takes",
+        "base": "docs/visao-inicial",
+        "head": "feat/autocomper-core",
+        "sha": "4b6bcd0029bc376e19fadcb7e7a97d3a233045a9",
+        "draft": true
+      },
+      {
+        "number": 1,
+        "title": "docs: consolidar visão inicial do Soundkeep Studio",
+        "base": "main",
+        "head": "docs/visao-inicial",
+        "sha": "cb73fc941dbca1876db5bb2ef4256cf7468ca2e9",
+        "draft": false
+      }
+    ]
+  },
+  "sites": {
+    "read_access": true,
+    "project_id": "appgprj_6ab1c6c1d5b88191ac1cdc44c8271b50",
+    "current_live_url": null,
+    "version_count": 0,
+    "status": "private project registered; dashboard local/PR only; no deploy"
+  },
+  "agents": {
+    "cloud_status": "created; completed read-only preflight reports; no operational cutover",
+    "gabi": "6ab1c5bb-159c-83e9-bd8f-95516ee28b43",
+    "lia": "6ab1c5c4-d1c0-83e9-9e0e-068489be949e",
+    "mia": "6ab1c5cf-2c58-83e9-ae7a-457bcd21854f",
+    "visible_title": "Relatório de prontidão GitHub",
+    "title_note": "Requested role-specific titles were not reflected by cloud creation UI; mapping verified from initial prompt and response"
+  }
+}
