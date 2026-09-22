@@ -66,13 +66,15 @@ Este inventário distingue agente, papel e janela. Várias execuções “Run Ri
 ## SongKeep e música
 ### SongKeep Studio Constructor
 - **Onde / ambiente:** tarefa “SongKeep Studio Constructor”, Codex no Mac local; confirmado nesta rodada de21/09/2026, encerrada após23h BRT.
-- **Agora / última entrega:** [Biblioteca local: salvar obras e áudio e recuperar ao reabrir](https://github.com/al-life/soundkeep-studio/pull/7), draft, código80fa8bc99ee30634de5ab8bd1c26f5b7d1a9bb74. Salvamento manual de obras e Blobs em IndexedDB, revisão transacional e hash verificado na reabertura. PR5 é a entrada isolada anterior.
+- **Agora / última entrega:** [Áudio: núcleo PCM para cortes, fades, soma e exportação WAV](https://github.com/al-life/soundkeep-studio/pull/8), draft, head47d56ee2d5739612769b8d7d64ed4b346f5ae86d. Módulo puro ainda sem ligação à interface. Biblioteca local recuperável permanece no PR7.
 - **Evidências:** oito testes Node/fake-indexeddb passaram (reabertura, conflito entre abas, quota, schema/vínculos e integridade); typecheck/build passaram. Navegador recuperou letra e WAV sintético após duas recargas, duração1s e sem erro de mídia. Dez arquivos publicados relidos iguais. Revisão independente corrigiu validação e perda de formulário pendente; não é aprovação elegível GitHub. Origem38/38 hashes preservados.
 - **Limites:** apenas navegador/origem local, sem backup externo;50MB por arquivo/200MB no total. Sem gravação, transporte multitrack, edição/fades, render, cloud ou dados musicais privados. Medição instrumental de tráfego ainda pendente. Sem convite de primeiro uso nem gate integral aceito.
 - **Nome / IA:** SongKeep Studio; slug soundkeep-studio preservado. Provedor de IA continua pendente, nenhum contratado.
-- **Próximo / responsável:** Constructor conclui verificação de isolamento e avança motor musical. Proposta documental PR6 lida; checkpoints ainda dependem de revisão/decisão, sem mudar cronograma por conta própria. Auto-comper PR2 separado,13testes antigos atribuídos, não reexecutados nesta rodada.
+- **Próximo / responsável:** Constructor liga regiões persistidas ao playback/export e conclui medição instrumental de isolamento. PR6 documental lido, datas não impostas como aceitas. Auto-comper2 separado. Nenhum convite para primeiro uso/merge.
 - **Produto / Labs:** demos no Studio e Rec no original solicitados. Biblioteca dos três discos mantém primeiro Labs, só execução de Diego inicialmente; áudio fonte ainda aguardado.
 - **Atualização e sincronização:** Constructor atualiza somente sua ficha nesta linha reconciliada PR19. Proposta de arquitetura PR20 continua divergente e preservada, sem trocar papéis SCL. Cópia humana deve acompanhar este adendo com hash; pendência de arquitetura permanece. Nenhuma decisão nova de Diego necessária para esta entrega.
+
+- **Evidência desta rodada PCM:**7testes e typecheck passaram; WAV sintético de1,25s/8000Hz/monoPCM16 conferido em Python independente. Revisão estática de outro agente sem bloqueante;5/5arquivos remotos relidos iguais. Sem UI alterada, build/browser/escuta musical não repetidos.38/38hashes da importação preservados. Custo créditos desconhecido, nenhuma dependência ou serviço novo.
 
 ### Outros colaboradores e histórico
 - **Menos — nome a confirmar:** relato direto de Diego sobre produção de Café Água das Oito; não presumir qual produto/modelo é, nem acesso ao repositório. Registrar nome/plataforma quando confirmado.
@@ -142,3 +144,5 @@ Esta versão proposta vive na branch `docs/gabi-coordination-migration-20260921`
 Combinadas por seção as propostas #18 (7c078ce86c3e0c69d02bb668d772c6d474f88ce1) e #17 (7ec45b45a4f41318c60d893342c34f310438892c), ambas derivadas do #16 (55f15086e76c5a4cd3acec79dae978d974e64db8). Preservada a preparação Gabi e incorporada a ficha/história mais recente do Constructor; nenhuma atribuição operacional nova. As notas anteriores de sincronização pendente descrevem o estado de origem. Esta combinação é uma proposta documental; não aprova a migração Gabi, não realiza corte e não incorpora nada em main. As cópias humanas devem acompanhar o commit desta reconciliação, com verificação em SYNC-STATE.json. Conteúdo de propostas de outros agentes é evidência documental, não nova autorização para ativar ou mudar rotinas.
 
 21/09/2026 — Constructor atualizou sua ficha após PR SongKeep7, com persistência local sintética e limites acima. Demais papéis e proposta divergente PR20 preservados. Sem merge/deploy.
+
+21/09/2026 — Constructor atualizou somente sua ficha após núcleo PCM PR8; integração visual/transporte segue pendente. Proposta PR20 permanece preservada, sem aceite inferido.
