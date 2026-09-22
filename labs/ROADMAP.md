@@ -498,3 +498,6 @@ Se não funcionar, manter checagem horária + antecipação manual de Diego.
 - criar quarta IA interpretando handoffs;
 - duplicar fonte de verdade;
 - usar login humano como ponte de automação.
+
+## Recuperação do PR5 — 22/09/2026
+[Ideia Bumble preservada](BUMBLE-IDEIA-HISTORICA.md), sem ativação ou nova frente de implementação.

@@ -23,7 +23,7 @@ test('no operational files, secrets or traversal are served',()=>withServer(asyn
 }));
 test('availability fails closed and never creates a reservation',()=>withServer(async base=>{
  const r=await fetch(base+'/api/disponibilidade?'+params);assert.equal(r.status,503);assert.deepEqual(await r.json(),{state:'UNKNOWN',reason:'PROVIDER_NOT_CONFIGURED',checkedAt:null,canBook:false});
- const html=await fetch(base+'/disponibilidade?'+params);assert.equal(html.status,503);assert.match(await html.text(),/Disponibilidade ainda não confirmada/);
+ const html=await fetch(base+'/disponibilidade?'+params);assert.equal(html.status,200);assert.match(await html.text(),/Disponibilidade ainda não confirmada/);
  const post=await fetch(base+'/api/reservations',{method:'POST',body:'{}'});assert.equal(post.status,405);
 }));
 test('provider failure, malformed response and unverified success never become available',async()=>{
@@ -32,11 +32,11 @@ test('provider failure, malformed response and unverified success never become a
 });
 test('server rejects invalid dates, duplicate parameters, capacity and unknown properties',()=>withServer(async base=>{
  for(const patch of [{checkin:'2026-02-30'},{checkout:tomorrow},{checkin:'2020-01-01'},{guests:'7'},{guests:'2e0'},{property:'102',guests:'4'},{property:'999'},{checkout:'2099-01-01'}]) {
- const p=new URLSearchParams({...Object.fromEntries(params),...patch});assert.equal((await fetch(base+'/api/disponibilidade?'+p)).status,400,JSON.stringify(patch)); }
+ const p=new URLSearchParams({...Object.fromEntries(params),...patch});assert.equal((await fetch(base+'/api/disponibilidade?'+p)).status,400,JSON.stringify(patch));assert.equal((await fetch(base+'/disponibilidade?'+p)).status,400,JSON.stringify(patch)); }
  const p=new URLSearchParams(params);p.append('guests','3');assert.equal((await fetch(base+'/api/disponibilidade?'+p)).status,400);
 }));
 test('consulta preserves criteria but does not claim delivery; escaping blocks markup injection',()=>withServer(async base=>{
- const r=await fetch(base+'/consulta?'+params);const html=await r.text();assert.match(html,/Enviar consulta/);assert.match(html,/registrada apenas neste computador/);assert.match(html,/Estúdio Mezanino Leblon/);assert.match(html,/https:\/\/wa.me\/5521995360322/);
+ const r=await fetch(base+'/consulta?'+params);const html=await r.text();assert.match(html,/Enviar consulta/);assert.match(html,/registrada apenas neste computador/);assert.match(html,/Studio Mezanino Leblon/);assert.match(html,/https:\/\/wa.me\/5521995360322/);
  const evil=new URLSearchParams(params);evil.set('checkin','"><script>alert(1)</script>');const invalid=await fetch(base+'/consulta?'+evil);assert.equal(invalid.status,400);assert.doesNotMatch(await invalid.text(),/<script>alert/);
 }));
 test('destination comes only from validated server configuration',()=>withServer(async base=>{
@@ -79,4 +79,14 @@ test('legacy redirect rejects invalid, incomplete, duplicate or over-capacity st
  for(const query of ['guests=2',new URLSearchParams(valid)+'&guests=3']) {
   const r=await fetch(base+'/property/102?'+query,{redirect:'manual'});assert.equal(r.status,400);assert.equal(r.headers.get('location'),null);
  }
+}));
+
+test('all-property search filters capacity and preserves dates without claiming availability',()=>withServer(async base=>{
+ const p=new URLSearchParams({checkin:tomorrow,checkout:later,guests:'4'});
+ const response=await fetch(base+'/disponibilidade?'+p);assert.equal(response.status,200);
+ const html=await response.text();
+ assert.match(html,/Disponibilidade ainda não confirmada/);
+ assert.match(html,/href="\/imoveis\/303\?checkin=/);assert.match(html,/href="\/imoveis\/403\?checkin=/);
+ assert.doesNotMatch(html,/href="\/imoveis\/(102|103|399)\?/);
+ assert.match(html,/guests=4/);
 }));
