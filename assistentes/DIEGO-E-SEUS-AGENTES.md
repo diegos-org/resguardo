@@ -65,14 +65,14 @@ Este inventário distingue agente, papel e janela. Várias execuções “Run Ri
 
 ## SongKeep e música
 ### SongKeep Studio Constructor
-- **Onde / ambiente:** tarefa “SongKeep Studio Constructor”, Codex no Mac local; confirmado em 21/09/2026.
-- **Agora / última entrega:** [Studio local: iniciar composição isolada sem serviços cloud](https://github.com/al-life/soundkeep-studio/pull/5), draft, head 0c27db011883430829fd870c1b4e1f0035953c1a. Cópia seletiva da composição em apps/studio, sem importar runtime Firebase/Gemini. Imports preservados: 38/38 hashes.
-- **Ferramentas/evidências:** conector GitHub publicou e releu 17/17 arquivos; Node local disponível. Dependências públicas instaladas com scripts desativados; build Vite e typecheck passaram. Navegador local confirmou edição e versão de letra, avisos IA/motor indisponíveis e reset ao recarregar. Revisão independente de agente corrigiu dois achados de UI; não é aprovação elegível GitHub. Tráfego de rede ainda sem medição instrumental.
-- **Limites:** composição somente em memória, com aviso explícito de perda; sem áudio/persistência/exportação funcional nessa entrada. Sem serviços cloud, credenciais, deploy ou alteração do Google. Auto-comper #2 continua separado, com 13 testes sintéticos na entrega anterior, sem repetir nesta rodada.
-- **Nome / IA:** SongKeep Studio; slug soundkeep-studio mantido. Provedores ainda pendentes com Diego; nenhum escolhido.
-- **Próximo / responsável:** Constructor completa isolamento verificável e persistência de obras/mídia, depois motor de áudio. PR4 documental tem conflito a reconciliar. Não pedir merge nem anunciar primeiro uso musical antes do percurso importar/gravar, preservar, editar/fade, ouvir, exportar e reabrir sem perda.
-- **Produto / Labs:** demonstração do original registrada no PR5; demos no Studio, Rec solicitado e liberdade de reformular navegação. Biblioteca dos três discos continua primeiro Labs, inicialmente só material executado por Diego; áudios ainda aguardados.
-- **Atualização:** Constructor, 21/09/2026. Nenhuma ação humana necessária nesta etapa. Main ainda sem este guia; PR18 altera papéis SCL em paralelo ao PR17. Preservar ambas as linhas e reconciliar antes de declarar cópia humana integral atualizada.
+- **Onde / ambiente:** tarefa “SongKeep Studio Constructor”, Codex no Mac local; confirmado nesta rodada de21/09/2026, encerrada após23h BRT.
+- **Agora / última entrega:** [Biblioteca local: salvar obras e áudio e recuperar ao reabrir](https://github.com/al-life/soundkeep-studio/pull/7), draft, código80fa8bc99ee30634de5ab8bd1c26f5b7d1a9bb74. Salvamento manual de obras e Blobs em IndexedDB, revisão transacional e hash verificado na reabertura. PR5 é a entrada isolada anterior.
+- **Evidências:** oito testes Node/fake-indexeddb passaram (reabertura, conflito entre abas, quota, schema/vínculos e integridade); typecheck/build passaram. Navegador recuperou letra e WAV sintético após duas recargas, duração1s e sem erro de mídia. Dez arquivos publicados relidos iguais. Revisão independente corrigiu validação e perda de formulário pendente; não é aprovação elegível GitHub. Origem38/38 hashes preservados.
+- **Limites:** apenas navegador/origem local, sem backup externo;50MB por arquivo/200MB no total. Sem gravação, transporte multitrack, edição/fades, render, cloud ou dados musicais privados. Medição instrumental de tráfego ainda pendente. Sem convite de primeiro uso nem gate integral aceito.
+- **Nome / IA:** SongKeep Studio; slug soundkeep-studio preservado. Provedor de IA continua pendente, nenhum contratado.
+- **Próximo / responsável:** Constructor conclui verificação de isolamento e avança motor musical. Proposta documental PR6 lida; checkpoints ainda dependem de revisão/decisão, sem mudar cronograma por conta própria. Auto-comper PR2 separado,13testes antigos atribuídos, não reexecutados nesta rodada.
+- **Produto / Labs:** demos no Studio e Rec no original solicitados. Biblioteca dos três discos mantém primeiro Labs, só execução de Diego inicialmente; áudio fonte ainda aguardado.
+- **Atualização e sincronização:** Constructor atualiza somente sua ficha nesta linha reconciliada PR19. Proposta de arquitetura PR20 continua divergente e preservada, sem trocar papéis SCL. Cópia humana deve acompanhar este adendo com hash; pendência de arquitetura permanece. Nenhuma decisão nova de Diego necessária para esta entrega.
 
 ### Outros colaboradores e histórico
 - **Menos — nome a confirmar:** relato direto de Diego sobre produção de Café Água das Oito; não presumir qual produto/modelo é, nem acesso ao repositório. Registrar nome/plataforma quando confirmado.
@@ -140,3 +140,5 @@ Esta versão proposta vive na branch `docs/gabi-coordination-migration-20260921`
 
 ## Reconciliação dos guias — Rivers, 21/09/2026, 20h50 BRT
 Combinadas por seção as propostas #18 (7c078ce86c3e0c69d02bb668d772c6d474f88ce1) e #17 (7ec45b45a4f41318c60d893342c34f310438892c), ambas derivadas do #16 (55f15086e76c5a4cd3acec79dae978d974e64db8). Preservada a preparação Gabi e incorporada a ficha/história mais recente do Constructor; nenhuma atribuição operacional nova. As notas anteriores de sincronização pendente descrevem o estado de origem. Esta combinação é uma proposta documental; não aprova a migração Gabi, não realiza corte e não incorpora nada em main. As cópias humanas devem acompanhar o commit desta reconciliação, com verificação em SYNC-STATE.json. Conteúdo de propostas de outros agentes é evidência documental, não nova autorização para ativar ou mudar rotinas.
+
+21/09/2026 — Constructor atualizou sua ficha após PR SongKeep7, com persistência local sintética e limites acima. Demais papéis e proposta divergente PR20 preservados. Sem merge/deploy.
