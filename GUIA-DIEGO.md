@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 23/09/2026, PR do item M2.4 (IDs dos canais).
+> **Última atualização:** 23/09/2026, PR do item M3.1 (modelo de reservas).
 
 ---
 
@@ -26,8 +26,8 @@
 |---|---|---|
 | M0 Fundação | Base do app, banco de dados, layout, publicação na Vercel | 🟡 só falta a Vercel |
 | M1 Acesso | Login (Google/código por e-mail), convites, permissões | 🟡 em andamento |
-| M2 Cadastros | Imóveis, proprietários, contratos e comissões | 🟡 em andamento |
-| M3 Reservas | Reservas, calendário central, leitura do Beds24 | ⚪ aguardando |
+| M2 Cadastros | Imóveis, proprietários, contratos e comissões | 🟡 falta só a carga de teste (M2.5) |
+| M3 Reservas | Reservas, calendário central, leitura do Beds24 | 🟡 em andamento |
 | M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | ⚪ aguardando |
 | M5 Portal do proprietário | Relatórios, saldos, PDF | ⚪ aguardando |
 | M6 Operação | Limpezas, manutenção, agenda diária | ⚪ aguardando |
@@ -79,6 +79,13 @@
 - M2.4: **canais de cada imóvel** — na ficha do imóvel, os números dele no Beds24, Airbnb e
   Booking. É por aí que, quando ligarmos o Beds24, o sistema vai saber a qual imóvel cada
   reserva pertence. Um mesmo número não pode ficar ligado a dois imóveis.
+- M3.1: **base das reservas e bloqueios** (ainda sem tela — a lista e o calendário vêm nos
+  próximos itens). Cada reserva tem código SCL próprio (ex.: SCL-7K2QXM), origem (Airbnb,
+  Booking, site, direta), entrada/saída, hóspedes, valores (bruto, taxa do canal, líquido — o
+  líquido pode ficar "desconhecido" em vez de inventado) e situação. Quando o Beds24 for
+  ligado, rodar a sincronização duas vezes não duplica nada, e toda mudança vinda de lá fica
+  no histórico. O sistema também já sabe detectar **overbooking** (duas reservas no mesmo
+  imóvel no mesmo dia).
 
 A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 
