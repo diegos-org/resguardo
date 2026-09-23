@@ -3,9 +3,9 @@ import { historicoDe } from "@/auditoria/auditoria";
 import { imoveis, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
-import { estornar, mudarEstado, saldoAcerto, totaisPorTipo } from "@/financeiro/ledger";
+import { listarLancamentos, saldoAcerto, totaisPorTipo } from "@/financeiro/ledger";
 import { atualizarCategoria, criarCategoria, excluirCategoria, garantirCategoriasIniciais, listarCategorias } from "./categorias";
-import { type DadosDespesa, listarDespesas, obterDespesa, registrarDespesa, totaisDespesas } from "./despesas";
+import { type DadosDespesa, estornarDespesa, listarDespesas, marcarDespesaPaga, obterDespesa, registrarDespesa, totaisDespesas } from "./despesas";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -73,6 +73,13 @@ describe("categorias", () => {
     await garantirCategoriasIniciais(db, org);
     expect((await listarCategorias(db, org)).length).toBe(1);
   });
+
+  it("apagar todas as categorias não faz as iniciais voltarem", async () => {
+    await garantirCategoriasIniciais(db, outraOrg);
+    for (const c of await listarCategorias(db, outraOrg)) expect(await excluirCategoria(db, outraOrg, c.id, null)).toEqual({ ok: true });
+    await garantirCategoriasIniciais(db, outraOrg);
+    expect(await listarCategorias(db, outraOrg, true)).toHaveLength(0);
+  });
 });
 
 describe("despesas", () => {
@@ -83,16 +90,33 @@ describe("despesas", () => {
     expect(await saldoAcerto(db, org, {})).toBe(0);
   });
 
-  it("despesa do proprietário paga pela empresa: não é custo da empresa, e o proprietário passa a dever", async () => {
+  it("despesa do proprietário que a empresa ainda vai pagar: não é custo da empresa nem dívida ainda", async () => {
     const r = await registrarDespesa(db, org, despesa({ responsavel: "proprietario", imovelId: im, descricao: "Ar-condicionado", valor: 80000 }), null);
-    expect(r).toMatchObject({ ok: true, lancamento: { tipo: "despesa_proprietario", valor: 0, montante: 80000, efeitoSaldo: -80000, proprietarioId: dono } });
+    expect(r).toMatchObject({ ok: true, lancamento: { tipo: "despesa_proprietario", valor: 0, montante: 80000, efeitoSaldo: 0, pagoPor: "empresa", proprietarioId: dono } });
     expect((await totaisPorTipo(db, org, {})).despesa_proprietario).toBe(0);
+    expect(await saldoAcerto(db, org, { proprietarioId: dono })).toBe(0);
+    expect(totaisDespesas(await listarDespesas(db, org))).toMatchObject({ proprietarios: 80000, aCobrar: 0, aPagar: 80000 });
+    // Quando a empresa paga, nasce o adiantamento e a dívida do proprietário (uma vez só).
+    const id = r.ok ? r.lancamento.id : "";
+    expect(await marcarDespesaPaga(db, org, id, "2026-10-10", null)).toBe(true);
+    expect(await marcarDespesaPaga(db, org, id, "2026-10-10", null)).toBe(true);
+    expect(await saldoAcerto(db, org, { proprietarioId: dono })).toBe(-80000);
+    const adiant = (await listarLancamentos(db, org, { proprietarioId: dono })).filter((l) => l.tipo === "adiantamento");
+    expect(adiant).toHaveLength(1);
+    expect(adiant[0]).toMatchObject({ valor: 0, efeitoSaldo: -80000, estado: "realizado", dataCaixa: "2026-10-10" });
+    expect((await totaisPorTipo(db, org, {})).adiantamento).toBe(0); // não vira despesa dupla da empresa
+    expect(totaisDespesas(await listarDespesas(db, org))).toMatchObject({ aCobrar: 80000, aPagar: 0 });
+  });
+
+  it("paga na hora pela empresa: dívida do proprietário imediata", async () => {
+    await registrarDespesa(db, org, despesa({ responsavel: "proprietario", imovelId: im, valor: 80000, paga: true, dataPagamento: "2026-10-06" }), null);
     expect(await saldoAcerto(db, org, { proprietarioId: dono })).toBe(-80000);
   });
 
   it("despesa do proprietário paga por ele mesmo: só registro, sem dívida", async () => {
     const r = await registrarDespesa(db, org, despesa({ responsavel: "proprietario", pagoPor: "proprietario", imovelId: im }), null);
-    expect(r).toMatchObject({ ok: true, lancamento: { efeitoSaldo: 0, montante: 25000 } });
+    expect(r).toMatchObject({ ok: true, lancamento: { efeitoSaldo: 0, montante: 25000, pagoPor: "proprietario" } });
+    await marcarDespesaPaga(db, org, r.ok ? r.lancamento.id : "", "2026-10-07", null);
     expect(await saldoAcerto(db, org, { proprietarioId: dono })).toBe(0);
   });
 
@@ -118,20 +142,31 @@ describe("despesas", () => {
     expect(await registrarDespesa(db, org, despesa(), null)).toMatchObject({ ok: false, erros: { categoriaId: expect.any(String) } });
   });
 
-  it("paga na hora, marcar como paga depois e estornar", async () => {
+  it("paga na hora, marcar como paga depois e estornar (estorno leva junto o adiantamento)", async () => {
     const paga = await registrarDespesa(db, org, despesa({ paga: true, dataPagamento: "2026-10-06" }), null);
     expect(paga).toMatchObject({ ok: true, lancamento: { estado: "realizado", dataCaixa: "2026-10-06" } });
     const r = await registrarDespesa(db, org, despesa({ responsavel: "proprietario", imovelId: im, valor: 80000 }), null);
     const id = r.ok ? r.lancamento.id : "";
-    await mudarEstado(db, org, id, "realizado", null, "2026-10-10");
+    expect(await marcarDespesaPaga(db, org, id, "2026-02-30", null)).toBe(false);
+    await marcarDespesaPaga(db, org, id, "2026-10-10", null);
     expect(await obterDespesa(db, org, id)).toMatchObject({ estado: "realizado", dataCaixa: "2026-10-10", categoria: "Manutenção" });
-    await estornar(db, org, id, "lançada em duplicidade", null);
+    expect(await estornarDespesa(db, org, id, "  ", null)).toBe(false);
+    expect(await estornarDespesa(db, org, id, "lançada em duplicidade", null)).toBe(true);
+    expect(await estornarDespesa(db, org, id, "de novo", null)).toBe(false);
+    expect(await marcarDespesaPaga(db, org, id, "2026-10-11", null)).toBe(false);
     expect(await saldoAcerto(db, org, { proprietarioId: dono })).toBe(0);
     expect(await obterDespesa(db, org, id)).toMatchObject({ estornada: true });
     const lista = await listarDespesas(db, org, {});
     expect(lista).toHaveLength(1); // estornada some da lista padrão, espelho nunca aparece
     expect(await listarDespesas(db, org, { incluirEstornadas: true })).toHaveLength(2);
     expect(totaisDespesas(await listarDespesas(db, org, { incluirEstornadas: true }))).toEqual({ empresa: 25000, proprietarios: 0, aCobrar: 0, aPagar: 0 });
+  });
+
+  it("outra organização não marca nem estorna", async () => {
+    const r = await registrarDespesa(db, org, despesa(), null);
+    const id = r.ok ? r.lancamento.id : "";
+    expect(await marcarDespesaPaga(db, outraOrg, id, "2026-10-10", null)).toBe(false);
+    expect(await estornarDespesa(db, outraOrg, id, "x", null)).toBe(false);
   });
 
   it("filtra por período e imóvel; outra organização não vê", async () => {

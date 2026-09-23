@@ -1,7 +1,7 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
 import { violouUnicidade } from "@/db/erros";
-import { categoriasDespesa, lancamentos } from "@/db/schema";
+import { appSettings, categoriasDespesa, lancamentos } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
 
@@ -48,12 +48,19 @@ export async function criarCategoria(db: Db, organizacaoId: string, nome: string
   }
 }
 
-/** Cria as categorias iniciais só se a organização ainda não tiver nenhuma. */
+/**
+ * Cria as categorias iniciais uma única vez por organização (marca em app_settings). Se o
+ * admin depois apagar todas, elas não voltam sozinhas.
+ */
 export async function garantirCategoriasIniciais(db: Db, organizacaoId: string): Promise<void> {
   await db.transaction(async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`categorias:${organizacaoId}`}))`);
-    const existentes = await listarCategorias(tx, organizacaoId, true);
-    if (existentes.length) return;
+    const [marca] = await tx
+      .insert(appSettings)
+      .values({ key: `categorias-iniciais:${organizacaoId}`, value: { criadasEm: new Date().toISOString() } })
+      .onConflictDoNothing()
+      .returning();
+    if (!marca) return; // já foi feito antes
+    if ((await listarCategorias(tx, organizacaoId, true)).length) return;
     for (const nome of CATEGORIAS_INICIAIS) await criarCategoria(tx, organizacaoId, nome, null);
   });
 }

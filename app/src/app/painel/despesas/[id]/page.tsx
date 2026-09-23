@@ -35,7 +35,14 @@ export default async function DetalheDespesa({ params, searchParams }: PageProps
     ...(d.tipo === "despesa_proprietario"
       ? ([
           ["Proprietário", dono?.nome ?? "—"],
-          ["Acerto", d.efeitoSaldo ? `Empresa pagou: proprietário deve ${formatBRL(-d.efeitoSaldo)}` : "Pago pelo proprietário (só registro)"],
+          [
+            "Acerto",
+            d.pagoPor !== "empresa"
+              ? "Pago pelo proprietário (só registro)"
+              : d.estado === "previsto"
+                ? `A empresa vai pagar: o proprietário passa a dever ${formatBRL(d.montante ?? 0)} quando for paga`
+                : `Empresa pagou: proprietário deve ${formatBRL(d.montante ?? 0)}`,
+          ],
         ] as [string, string][])
       : []),
     ["Categoria", d.categoria ?? "—"],

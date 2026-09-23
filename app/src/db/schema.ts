@@ -383,6 +383,8 @@ export const lancamentos = pgTable(
      * proprietário (R$ 800 de reparo) tem `valor` 0 para a empresa, mas `montante` 80000.
      */
     montante: integer("montante"),
+    /** Despesa do proprietário: quem tira o dinheiro do bolso ("empresa" | "proprietario"). */
+    pagoPor: text("pago_por"),
     estornoDe: uuid("estorno_de"),
     criadoPor: uuid("criado_por").references(() => usuarios.id),
     criadoEm: criadoEm(),

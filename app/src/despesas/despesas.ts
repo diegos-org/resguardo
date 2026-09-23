@@ -3,15 +3,17 @@
  * - da EMPRESA: custo próprio (equipe, mercado, pequenas manutenções absorvidas). Entra no
  *   resultado da empresa (`valor` negativo) e não mexe no acerto com proprietários.
  * - do PROPRIETÁRIO: gasto de responsabilidade dele (ex.: ar-condicionado do apartamento).
- *   NÃO é custo da empresa (`valor` 0; o valor de face fica em `montante`). Se a empresa
- *   pagou, o proprietário passa a dever esse valor (`efeitoSaldo` negativo) até ser
- *   compensado/reembolsado (M4.4). Se o próprio proprietário pagou, fica só o registro.
+ *   NÃO é custo da empresa (`valor` 0; o valor de face fica em `montante`). Quando a empresa
+ *   efetivamente paga, nasce um lançamento de ADIANTAMENTO ligado à despesa, e só então o
+ *   proprietário passa a dever (`efeitoSaldo` negativo) até ser compensado/reembolsado
+ *   (M4.4). Conta ainda a pagar não vira dívida. Se o próprio proprietário pagou, fica só o
+ *   registro.
  * Situação: "a pagar" = previsto; "paga" = realizado, com data de pagamento (caixa).
  */
 import { and, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { categoriasDespesa, imoveis, lancamentos, proprietarioImoveis } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { lancar, type Lancamento } from "@/financeiro/ledger";
+import { estornar, lancar, type Lancamento, mudarEstado } from "@/financeiro/ledger";
 import { uuidValido } from "@/lib/ids";
 import { dataValida } from "@/reservas/regras";
 
@@ -102,7 +104,8 @@ export async function registrarDespesa(db: Db, organizacaoId: string, d: DadosDe
           descricao: d.descricao,
           valor: empresa ? -d.valor : 0,
           montante: d.valor,
-          efeitoSaldo: !empresa && d.pagoPor === "empresa" ? -d.valor : 0,
+          efeitoSaldo: 0,
+          pagoPor: empresa ? null : d.pagoPor,
           competencia: d.data,
           estado: d.paga ? "realizado" : "previsto",
           dataCaixa: d.paga ? d.dataPagamento : null,
@@ -116,7 +119,77 @@ export async function registrarDespesa(db: Db, organizacaoId: string, d: DadosDe
       ],
       autorId,
     );
+    if (d.paga) await lancarAdiantamento(tx, organizacaoId, lancamento, d.dataPagamento!, autorId);
     return { ok: true as const, lancamento };
+  });
+}
+
+const chaveAdiantamento = (despesaId: string) => `despesa:${despesaId}:pagamento`;
+
+/** Despesa do proprietário paga pela empresa: registra o adiantamento (idempotente). */
+async function lancarAdiantamento(tx: Db, organizacaoId: string, d: Lancamento, dataPagamento: string, autorId: string | null) {
+  if (d.tipo !== "despesa_proprietario" || d.pagoPor !== "empresa" || !d.proprietarioId || !d.montante) return;
+  await lancar(
+    tx,
+    organizacaoId,
+    [
+      {
+        tipo: "adiantamento",
+        descricao: `Pago pela empresa: ${d.descricao}`,
+        valor: 0,
+        montante: d.montante,
+        efeitoSaldo: -d.montante,
+        competencia: d.competencia,
+        estado: "realizado",
+        dataCaixa: dataPagamento,
+        imovelId: d.imovelId,
+        proprietarioId: d.proprietarioId,
+        categoriaId: d.categoriaId,
+        fornecedor: d.fornecedor,
+        origem: "despesa",
+        chaveOrigem: chaveAdiantamento(d.id),
+      },
+    ],
+    autorId,
+  );
+}
+
+async function adiantamentoAtivo(tx: Db, organizacaoId: string, despesaId: string): Promise<Lancamento | null> {
+  const [a] = await tx
+    .select()
+    .from(lancamentos)
+    .where(
+      and(
+        eq(lancamentos.organizacaoId, organizacaoId),
+        eq(lancamentos.chaveOrigem, chaveAdiantamento(despesaId)),
+        sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`,
+      ),
+    );
+  return a ?? null;
+}
+
+/** Marca a despesa como paga; se era do proprietário e a empresa pagou, nasce a dívida dele. */
+export async function marcarDespesaPaga(db: Db, organizacaoId: string, id: string, dataPagamento: string, autorId: string | null): Promise<boolean> {
+  if (!dataValida(dataPagamento)) return false;
+  return db.transaction(async (tx) => {
+    const d = await obterDespesa(tx, organizacaoId, id);
+    if (!d || d.estornada) return false;
+    const pago = await mudarEstado(tx, organizacaoId, id, "realizado", autorId, dataPagamento);
+    if (!pago) return false;
+    await lancarAdiantamento(tx, organizacaoId, pago, dataPagamento, autorId);
+    return true;
+  });
+}
+
+/** Estorna a despesa e, junto, o adiantamento que ela gerou (se houver). */
+export async function estornarDespesa(db: Db, organizacaoId: string, id: string, motivo: string, autorId: string | null): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const d = await obterDespesa(tx, organizacaoId, id);
+    if (!d || d.estornada || !motivo.trim()) return false;
+    const a = await adiantamentoAtivo(tx, organizacaoId, id);
+    if (a) await estornar(tx, organizacaoId, a.id, motivo, autorId);
+    await estornar(tx, organizacaoId, id, motivo, autorId);
+    return true;
   });
 }
 
@@ -177,7 +250,8 @@ export function totaisDespesas(linhas: readonly LinhaDespesa[]) {
   return {
     empresa: soma(ativas.filter((l) => l.tipo === "despesa_empresa").map((l) => l.montante ?? -l.valor)),
     proprietarios: soma(ativas.filter((l) => l.tipo === "despesa_proprietario").map((l) => l.montante ?? 0)),
-    aCobrar: 0 - soma(ativas.filter((l) => l.tipo === "despesa_proprietario").map((l) => l.efeitoSaldo)),
+    // Só o que a empresa já pagou por eles vira dívida do proprietário.
+    aCobrar: soma(ativas.filter((l) => l.tipo === "despesa_proprietario" && l.pagoPor === "empresa" && l.estado !== "previsto").map((l) => l.montante ?? 0)),
     aPagar: soma(ativas.filter((l) => l.estado === "previsto").map((l) => l.montante ?? 0)),
   };
 }

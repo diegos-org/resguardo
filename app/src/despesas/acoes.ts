@@ -5,11 +5,9 @@ import { redirect } from "next/navigation";
 import { exigir } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { getDb } from "@/db/client";
-import { estornar, LancamentoInvalido, mudarEstado } from "@/financeiro/ledger";
 import { hojeISO } from "@/lib/datas";
-import { dataValida } from "@/reservas/regras";
 import { atualizarCategoria, criarCategoria, excluirCategoria } from "./categorias";
-import { type ErrosDespesa, obterDespesa, registrarDespesa } from "./despesas";
+import { type ErrosDespesa, estornarDespesa as estornarNoLivro, marcarDespesaPaga, registrarDespesa } from "./despesas";
 import { lerFormDespesa } from "./formulario";
 
 export type EstadoFormDespesa = { erros?: ErrosDespesa; mensagem?: string };
@@ -35,10 +33,7 @@ export async function marcarPaga(form: FormData): Promise<void> {
   const sessao = await sessaoEditora();
   const id = String(form.get("id") ?? "");
   const data = String(form.get("dataPagamento") ?? "") || hojeISO();
-  const db = getDb();
-  const d = await obterDespesa(db, sessao.organizacaoId, id);
-  if (!d || d.estornada || !dataValida(data)) redirect(`/painel/despesas/${id}?erro=pagamento`);
-  await mudarEstado(db, sessao.organizacaoId, id, "realizado", sessao.usuarioId, data);
+  if (!(await marcarDespesaPaga(getDb(), sessao.organizacaoId, id, data, sessao.usuarioId))) redirect(`/painel/despesas/${id}?erro=pagamento`);
   revalidatePath(`/painel/despesas/${id}`);
   revalidatePath("/painel/despesas");
 }
@@ -46,16 +41,8 @@ export async function marcarPaga(form: FormData): Promise<void> {
 export async function estornarDespesa(form: FormData): Promise<void> {
   const sessao = await sessaoEditora();
   const id = String(form.get("id") ?? "");
-  const motivo = String(form.get("motivo") ?? "").trim();
-  const db = getDb();
-  const d = await obterDespesa(db, sessao.organizacaoId, id);
-  if (!d || d.estornada || !motivo) redirect(`/painel/despesas/${id}?erro=estorno`);
-  try {
-    await estornar(db, sessao.organizacaoId, id, motivo, sessao.usuarioId);
-  } catch (e) {
-    if (e instanceof LancamentoInvalido) redirect(`/painel/despesas/${id}?erro=estorno`);
-    throw e;
-  }
+  const motivo = String(form.get("motivo") ?? "").trim().slice(0, 200);
+  if (!(await estornarNoLivro(getDb(), sessao.organizacaoId, id, motivo, sessao.usuarioId))) redirect(`/painel/despesas/${id}?erro=estorno`);
   revalidatePath(`/painel/despesas/${id}`);
   revalidatePath("/painel/despesas");
 }

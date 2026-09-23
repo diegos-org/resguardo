@@ -1,5 +1,5 @@
 {
-  "id": "c50702a1-5536-409f-a142-515f4ece9967",
+  "id": "7dc50259-31cd-4af4-bfca-470803c07def",
   "prevId": "95344aca-dab7-4f81-a623-0c2b99359d1f",
   "version": "7",
   "dialect": "postgresql",
@@ -911,6 +911,12 @@
         "montante": {
           "name": "montante",
           "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pago_por": {
+          "name": "pago_por",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },

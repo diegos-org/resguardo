@@ -86,7 +86,7 @@ export default async function ListaDespesas({ searchParams }: PageProps<"/painel
                     <Link href={`/painel/despesas/${d.id}`}>{d.descricao}</Link>
                   </td>
                   <td>{d.categoria ?? "—"}</td>
-                  <td>{d.tipo === "despesa_empresa" ? "Empresa" : d.efeitoSaldo ? "Proprietário (a cobrar)" : "Proprietário (pagou)"}</td>
+                  <td>{d.tipo === "despesa_empresa" ? "Empresa" : d.pagoPor === "empresa" ? "Proprietário (empresa paga)" : "Proprietário (ele pagou)"}</td>
                   <td>{d.imovelId ? (porId.get(d.imovelId)?.codigo ?? "—") : "Geral"}</td>
                   <td style={{ whiteSpace: "nowrap" }}>{formatBRL(d.montante ?? -d.valor)}</td>
                   <td>

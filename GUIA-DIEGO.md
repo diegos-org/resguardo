@@ -129,12 +129,14 @@
   - **da empresa** — custo da SCL (equipe, mercado, pequenos reparos absorvidos): entra no
     resultado da empresa;
   - **do proprietário** — gasto que é dele (ex.: conserto do ar-condicionado). **Não** conta
-    como custo da empresa. Se a empresa pagou, o proprietário passa a dever esse valor no
-    acerto; se ele mesmo pagou, fica só o registro.
+    como custo da empresa. Quando a empresa **efetivamente paga** (marcar "paga"), o
+    proprietário passa a dever esse valor no acerto — conta ainda a pagar não vira dívida;
+    se ele mesmo pagou, fica só o registro.
   - Errou? **Estornar** (com motivo) anula sem apagar o histórico.
   - **Categorias** editáveis em Despesas → Categorias: criar, renomear, arquivar (some das
     opções novas, continua nas antigas) e excluir (só se nunca foi usada). Começa com
-    Equipe, Limpeza e lavanderia, Manutenção, Mercado e consumo, Contas e Outros.
+    Equipe, Limpeza e lavanderia, Manutenção, Mercado e consumo, Contas e Outros (só na
+    primeira vez — se você apagar, elas não voltam).
   - Só o admin vê e lança despesas.
 
 ### Como está ficando (prints com dados fictícios)

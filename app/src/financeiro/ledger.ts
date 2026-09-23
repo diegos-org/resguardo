@@ -35,6 +35,7 @@ export type NovoLancamento = {
   fornecedor?: string;
   comprovante?: string;
   montante?: number | null;
+  pagoPor?: string | null;
 };
 
 export class LancamentoInvalido extends Error {
@@ -120,6 +121,7 @@ export async function lancar(db: Db, organizacaoId: string, novos: NovoLancament
           fornecedor: n.fornecedor?.trim() ?? "",
           comprovante: n.comprovante?.trim() ?? "",
           montante: n.montante ?? null,
+          pagoPor: n.pagoPor ?? null,
           criadoPor: autorId,
         })
         .returning();
@@ -181,6 +183,7 @@ export async function estornar(
         categoriaId: original.categoriaId,
         fornecedor: original.fornecedor,
         montante: original.montante === null ? null : -original.montante,
+        pagoPor: original.pagoPor,
         origem: "estorno",
         estornoDe: original.id,
         criadoPor: autorId,
