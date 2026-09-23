@@ -45,6 +45,7 @@ describe("contratos", () => {
     const id = r.ok ? r.contrato.id : "";
     expect((await encerrarContrato(db, org, id, "2026-12-31", null)).ok).toBe(false);
     expect((await encerrarContrato(db, org, id, "2025-12-31", null)).ok).toBe(false);
+    expect((await encerrarContrato(db, org, id, "2026-02-30", null)).ok).toBe(false);
     expect((await encerrarContrato(db, outra, id, "2026-03-31", null)).ok).toBe(false);
     expect((await encerrarContrato(db, org, id, "2026-03-31", null)).ok).toBe(true);
   });
@@ -53,5 +54,16 @@ describe("contratos", () => {
     const r = await criarContrato(db, outra, imovel, { tipo: "gestao_online", comissao: "10", inicio: "2026-01-01" }, null);
     expect(r).toEqual({ ok: false, erros: { geral: "Imóvel não encontrado." } });
     expect(await listarContratos(db, outra, imovel)).toEqual([]);
+  });
+});
+
+describe("encerramentos concorrentes", () => {
+  it("o segundo encerramento lê o fim já gravado pelo primeiro e não estende o contrato", async () => {
+    const r = await criarContrato(db, org, imovel, { tipo: "gestao_online", comissao: "10", inicio: "2026-01-01" }, null);
+    const id = r.ok ? r.contrato.id : "";
+    const [a, b] = await Promise.all([encerrarContrato(db, org, id, "2026-03-31", null), encerrarContrato(db, org, id, "2026-06-30", null)]);
+    expect(a).toEqual({ ok: true });
+    expect(b.ok).toBe(false);
+    expect((await listarContratos(db, org, imovel))[0].fim).toBe("2026-03-31");
   });
 });

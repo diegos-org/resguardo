@@ -3,7 +3,7 @@ import { registrarAuditoria } from "@/auditoria/auditoria";
 import { contratos, imoveis } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido as uuidOk } from "@/lib/ids";
-import { bpParaTexto, type ErrosContrato, NOMES_TIPO, sobrepoe, validarContrato } from "./regras";
+import { bpParaTexto, dataOk, type ErrosContrato, NOMES_TIPO, sobrepoe, validarContrato } from "./regras";
 
 export type Contrato = typeof contratos.$inferSelect;
 
@@ -65,12 +65,15 @@ export async function encerrarContrato(
 ): Promise<{ ok: true } | { ok: false; erro: string }> {
   if (!uuidOk(contratoId)) return { ok: false, erro: "Contrato não encontrado." };
   return db.transaction(async (tx) => {
-    const [c] = await tx
-      .select()
+    const [previa] = await tx
+      .select({ imovelId: contratos.imovelId })
       .from(contratos)
       .where(and(eq(contratos.id, contratoId), eq(contratos.organizacaoId, organizacaoId)));
-    if (!c || !(await travarImovel(tx, organizacaoId, c.imovelId))) return { ok: false as const, erro: "Contrato não encontrado." };
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(fim) || fim < c.inicio) return { ok: false as const, erro: "A data de fim deve ser igual ou depois do início." };
+    if (!previa || !(await travarImovel(tx, organizacaoId, previa.imovelId))) return { ok: false as const, erro: "Contrato não encontrado." };
+    // Relê o contrato depois da trava: outro encerramento pode ter acabado de mudar o fim.
+    const [c] = await tx.select().from(contratos).where(eq(contratos.id, contratoId)).for("update");
+    if (!c) return { ok: false as const, erro: "Contrato não encontrado." };
+    if (!dataOk(fim) || fim < c.inicio) return { ok: false as const, erro: "A data de fim deve ser uma data válida, igual ou depois do início." };
     if (c.fim !== null && fim > c.fim) return { ok: false as const, erro: "Só é possível antecipar o fim, não estender." };
     const outros = (await listarContratos(tx, organizacaoId, c.imovelId)).filter((o) => o.id !== c.id);
     if (outros.some((o) => sobrepoe(o, { ...c, fim }))) return { ok: false as const, erro: "Conflita com outro contrato." };

@@ -1,4 +1,4 @@
-import type { TipoContrato } from "@/db/schema";
+import { TIPOS_CONTRATO, type TipoContrato } from "@/db/schema";
 
 /** Regras puras de contratos: vigência, sobreposição e percentuais. Datas em "AAAA-MM-DD". */
 
@@ -23,7 +23,7 @@ export const COMISSAO_PADRAO_BP: Record<TipoContrato, number | null> = {
   marketplace: null,
 };
 
-const dataOk = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(`${d}T00:00:00Z`)) && new Date(`${d}T00:00:00Z`).toISOString().startsWith(d);
+export const dataOk = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(`${d}T00:00:00Z`)) && new Date(`${d}T00:00:00Z`).toISOString().startsWith(d);
 
 export function vigenteEm(c: ContratoVigencia, dia: string): boolean {
   return c.inicio <= dia && (c.fim === null || dia <= c.fim);
@@ -62,7 +62,7 @@ export function validarContrato(
   const erros: ErrosContrato = {};
   const txt = (k: string) => (typeof entrada[k] === "string" ? (entrada[k] as string).trim() : "");
   const tipo = txt("tipo") as TipoContrato;
-  if (!(tipo in NOMES_TIPO)) erros.tipo = "Escolha o tipo de contrato.";
+  if (!TIPOS_CONTRATO.includes(tipo)) erros.tipo = "Escolha o tipo de contrato.";
 
   let comissaoBp: number | null = null;
   const pct = txt("comissao");
