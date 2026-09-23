@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 23/09/2026, PR do item M1.1 (modelo de acesso e permissões).
+> **Última atualização:** 23/09/2026, PR do item M1.2 (login com Google).
 
 ---
 
@@ -52,6 +52,9 @@
 
   O vínculo proprietário ↔ imóvel é sempre cadastrado explicitamente, nunca deduzido por e-mail ou CPF.
   Tudo o que não está permitido é bloqueado.
+- M1.2: **login com Google.** O painel só abre para quem entra com uma conta Google
+  cadastrada (admin ou operação). Seu e-mail vira administrador automaticamente no
+  primeiro login (configurado na Vercel, fora do GitHub). Tem botão "Sair" no topo.
 
 A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 
@@ -108,6 +111,7 @@ e escreva normalmente.
 | **Beds24** | Channel manager (Airbnb/Booking), reservas e calendário | 🟡 conta criada | Gerar a chave de API (seção 6) |
 | **Mercado Pago** | Pagamentos da reserva direta | ⚪ não conectado | Credenciais de *teste*, mais adiante (M8) |
 | **Meta / WhatsApp Business** | Atendimento pelo WhatsApp da empresa | ⚪ não conectado | Verificação da empresa no Meta Business (demora dias) |
+| **Google Cloud (login)** | Botão "Entrar com Google" | ⚪ não configurado | Criar credenciais OAuth (seção 6) |
 | **Cloudflare** | Domínio e e-mail | ⚪ não conectado | Só no final (M11) |
 
 **Onde ficam senhas e chaves:** nunca no GitHub e nunca no chat. Elas ficam nas
@@ -125,10 +129,21 @@ ambiente).
    3. No projeto criado: *Storage* (ou *Integrations*) → **Neon** → conecte sua conta
       Neon. Isso cria a variável `DATABASE_URL` automaticamente.
    4. Me avise aqui na conversa: eu confiro se o site de homologação abriu.
-3. **Beds24:** gere a chave de API. **Não cole no chat.** Coloque nas configurações do
+3. **Login com Google** (uns 10 minutos, junto com a Vercel):
+   1. Em console.cloud.google.com → crie um projeto "SCL" → *APIs e serviços → Tela de
+      consentimento OAuth* (tipo "Externo", nome "Sua Casa Leblon").
+   2. *Credenciais → Criar credenciais → ID do cliente OAuth → Aplicativo da Web*.
+      Em "URIs de redirecionamento autorizados" coloque
+      `https://SEU-ENDERECO.vercel.app/api/auth/callback/google` (o endereço que a Vercel der).
+   3. Na Vercel, em *Settings → Environment Variables*, crie:
+      `AUTH_GOOGLE_ID` e `AUTH_GOOGLE_SECRET` (os dois valores que o Google mostrar),
+      `AUTH_SECRET` (qualquer texto longo e aleatório, ex.: gerado em 1password ou similar) e
+      `ADMIN_EMAILS` = seu e-mail do Google.
+   4. Faça *Redeploy* e entre em `/entrar`. Se travar em algum passo, me chame que eu guio.
+4. **Beds24:** gere a chave de API. **Não cole no chat.** Coloque nas configurações do
    ambiente do Claude Code (menu do ambiente no topo da sessão → *Edit* → variável
    `BEDS24_API_KEY`) e também na Vercel (*Settings → Environment Variables*).
-4. **Meta Business:** comece a verificação da empresa, porque ela demora.
+5. **Meta Business:** comece a verificação da empresa, porque ela demora.
 
 ---
 

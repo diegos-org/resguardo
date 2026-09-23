@@ -1,10 +1,12 @@
 import { notFound } from "next/navigation";
+import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { FiltroGlobal } from "@/components/painel/FiltroGlobal";
 import styles from "@/components/painel/painel.module.css";
 import { descreverFiltros, lerFiltros } from "@/lib/filtros";
 import { encontrarSecao } from "@/lib/navegacao";
 
 export default async function SecaoPainel({ params, searchParams }: PageProps<"/painel/[secao]">) {
+  await exigirSessaoPainel();
   const { secao: slug } = await params;
   const secao = encontrarSecao(slug);
   if (!secao) notFound();

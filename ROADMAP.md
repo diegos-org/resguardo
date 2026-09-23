@@ -39,14 +39,14 @@ item muda a linha para `feito` **no próprio PR do item**.
 | M0.2 | Esqueleto Next.js + TypeScript + lint + Vitest em `app/`; CI rodando lint, typecheck e testes | feito | M0.1 |
 | M0.3 | Drizzle + Neon: conexão por `DATABASE_URL`, pasta de migrações, helper de teste com PGlite | feito | M0.2 |
 | M0.4 | Layout base do painel (menu lateral, cabeçalho, filtro global de imóveis/período reutilizável) com identidade SCL | feito | M0.2 |
-| M0.5 | Deploy de homologação na Vercel conectado ao Neon (branch de banco `homolog`) | bloqueado | Diego: conectar repo na Vercel e Neon (ver "Ações de Diego") |
+| M0.5 | Deploy de homologação na Vercel conectado ao Neon (branch de banco `homolog`); migrações aplicadas no build (`vercel-build`, já pronto) | bloqueado | Diego: conectar repo na Vercel e Neon (ver "Ações de Diego") |
 
 ### M1 — Acesso e permissões
 
 | ID | Item | Estado | Depende de |
 |---|---|---|---|
 | M1.1 | Modelo: organização, usuário, papel (admin, operação, proprietário, hóspede), vínculo usuário↔proprietário↔imóvel; autorização deny-by-default no servidor (portar ideias de `prototipos/scl-gestao-demo/access-policy.mjs`) | feito | M0.3 |
-| M1.2 | Login com Google (Auth.js) para equipe interna; lista de e-mails autorizados | a fazer | M1.1 |
+| M1.2 | Login com Google (Auth.js) para equipe interna; lista de e-mails autorizados | feito | M1.1 |
 | M1.3 | Login por código enviado por e-mail (uso único, validade, limite de tentativas) — provedor de e-mail com adaptador trocável; em teste, e-mails ficam em memória | a fazer | M1.2 |
 | M1.4 | Convite de proprietário: token único, validade, uso único, revogação, aceite registrado | a fazer | M1.3 |
 | M1.5 | Log de auditoria (quem alterou o quê, quando) usado por todos os módulos | a fazer | M1.1 |

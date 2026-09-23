@@ -25,3 +25,11 @@ npm run build
 - Código do app usa `getDb()` (`src/db/client.ts`), que lê `DATABASE_URL`.
 - Testes usam `createTestDb()` (`src/db/testing.ts`): Postgres em memória (PGlite) com
   todas as migrações aplicadas — sem rede nem credenciais.
+
+## Login (Auth.js + Google)
+
+- Variáveis: ver `.env.example` (`AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `ADMIN_EMAILS`).
+- Sem essas variáveis o login fica desligado e `/painel` redireciona para `/entrar`.
+- Só entra quem está cadastrado e ativo em `usuarios`; e-mails em `ADMIN_EMAILS` são criados
+  como admin no primeiro login. O painel aceita os papéis admin e operação.
+- Toda página do painel chama `exigirSessaoPainel()` no servidor.
