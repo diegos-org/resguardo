@@ -71,6 +71,13 @@
       "when": 1790204979444,
       "tag": "0009_recebimento",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790206713237,
+      "tag": "0010_despesas",
+      "breakpoints": true
     }
   ]
 }
