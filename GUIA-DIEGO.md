@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 23/09/2026, PR do item M3.5 (tela de reservas).
+> **Última atualização:** 23/09/2026, PR do item M3.4 (calendário) e M2.5 (dados de demonstração).
 
 ---
 
@@ -26,7 +26,7 @@
 |---|---|---|
 | M0 Fundação | Base do app, banco de dados, layout, publicação na Vercel | 🟡 só falta a Vercel |
 | M1 Acesso | Login (Google/código por e-mail), convites, permissões | 🟡 em andamento |
-| M2 Cadastros | Imóveis, proprietários, contratos e comissões | 🟡 falta só a carga de teste (M2.5) |
+| M2 Cadastros | Imóveis, proprietários, contratos e comissões | ✅ pronto |
 | M3 Reservas | Reservas, calendário central, leitura do Beds24 | 🟡 em andamento |
 | M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | ⚪ aguardando |
 | M5 Portal do proprietário | Relatórios, saldos, PDF | ⚪ aguardando |
@@ -91,6 +91,22 @@
   vermelho se houver overbooking; opção de mostrar canceladas; **"Nova reserva"** para lançar
   à mão (reservas diretas/WhatsApp); ficha de cada reserva com botão de cancelar e histórico.
   A equipe de operação vê as reservas, mas **não vê valores**.
+- M3.4: **Calendário central** — todos os imóveis numa grade do mês, uma linha por imóvel,
+  reservas coloridas por canal (Airbnb, Booking, site/direta), bloqueios listrados e
+  **overbooking com borda vermelha**. Clique/toque numa reserva abre a ficha. Setas para mês
+  anterior/seguinte; no celular a grade desliza para o lado com a coluna dos imóveis fixa.
+- M2.5: **dados de demonstração** — um comando carrega 6 imóveis, 3 proprietários, contratos e
+  ~37 reservas **fictícias** para testar/mostrar o sistema (nunca roda por cima de dados reais).
+
+### Como está ficando (prints com dados fictícios)
+
+| Calendário | Reservas |
+|---|---|
+| ![Calendário](docs/telas/calendario.png) | ![Reservas](docs/telas/reservas.png) |
+
+| Calendário no celular | Imóveis |
+|---|---|
+| ![Calendário no celular](docs/telas/calendario-celular.png) | ![Imóveis](docs/telas/imoveis.png) |
 
 A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 
@@ -127,6 +143,7 @@ e escreva normalmente.
 | `GUIA-DIEGO.md` | Este guia | ✅ sim |
 | `ROADMAP.md` | Plano completo, item por item, com o que falta | Se quiser detalhe |
 | `requisitos/` | Suas decisões de negócio, escritas e organizadas por tema | Só para conferir regras |
+| `docs/telas/` | Prints das telas (dados fictícios), atualizados a cada entrega visual | Se quiser ver |
 | `requisitos/operations/FINANCEIRO-PORTAIS.md` | Regras do financeiro e dos portais | Quando chegarmos no M4/M5 |
 | `app/` | **O sistema novo** (código) | ❌ não |
 | `app/drizzle/` | Histórico das mudanças no banco de dados | ❌ não |

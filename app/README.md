@@ -33,3 +33,18 @@ npm run build
 - Só entra quem está cadastrado e ativo em `usuarios`; e-mails em `ADMIN_EMAILS` são criados
   como admin no primeiro login. O painel aceita os papéis admin e operação.
 - Toda página do painel chama `exigirSessaoPainel()` no servidor.
+
+## Rodar no computador com dados fictícios
+
+Precisa de um Postgres local (ex.: `postgres://usuario@localhost:5432/scl_dev`).
+
+```sh
+export DATABASE_URL=postgres://usuario@localhost:5432/scl_dev
+npm run db:migrate
+SCL_DEMO_EMAIL=dev@example.com npm run db:semear-demo   # 6 imóveis, proprietários, contratos e reservas fictícios
+SCL_DEV_EMAIL=dev@example.com npm run dev               # entra direto como esse usuário (só em `next dev`)
+```
+
+- `SCL_DEV_EMAIL` só funciona com `next dev` (NODE_ENV=development); em produção/Vercel é ignorado.
+- `db:semear-demo` só roda em banco local, ou no Neon de homologação com `SEMEAR_CONFIRMO=homologacao`,
+  e não faz nada se já houver imóveis cadastrados.

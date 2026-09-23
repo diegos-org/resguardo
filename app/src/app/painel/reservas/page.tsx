@@ -7,7 +7,7 @@ import { getDb } from "@/db/client";
 import { listarImoveis } from "@/imoveis/repositorio";
 import { descreverFiltros, lerFiltros, manterFiltros, periodoDosFiltros } from "@/lib/filtros";
 import { formatBRL } from "@/lib/money";
-import { conflitos, NOMES_ORIGEM, noites } from "@/reservas/regras";
+import { conflitos, NOMES_ESTADO, NOMES_ORIGEM, noites } from "@/reservas/regras";
 import { listarReservas } from "@/reservas/repositorio";
 
 const dataBr = (d: string) => d.split("-").reverse().join("/");
@@ -79,7 +79,7 @@ export default async function ListaReservas({ searchParams }: PageProps<"/painel
                   <td>{r.hospedeNome || "—"}</td>
                   {verValores && <td>{r.valorBruto === null ? "—" : formatBRL(r.valorBruto)}</td>}
                   <td>
-                    <span className={styles.etiqueta}>{r.estado}</span>
+                    <span className={styles.etiqueta}>{NOMES_ESTADO[r.estado]}</span>
                   </td>
                 </tr>
               ))}
