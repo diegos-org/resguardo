@@ -22,6 +22,7 @@ const ROTULOS: Record<string, string> = {
   imoveis: "Imóveis",
   representante: "Representante",
   contrato: "Contrato",
+  idExterno: "Canal",
 };
 
 const ACOES: Record<string, string> = {
@@ -34,6 +35,8 @@ const ACOES: Record<string, string> = {
   "proprietario.representante.remover": "removeu representante",
   "contrato.criar": "adicionou contrato",
   "contrato.encerrar": "encerrou contrato",
+  "idexterno.adicionar": "ligou canal",
+  "idexterno.remover": "desligou canal",
 };
 
 function valor(v: unknown): string {

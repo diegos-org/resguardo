@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 23/09/2026, PR do item M2.3 (contratos de gestão).
+> **Última atualização:** 23/09/2026, PR do item M2.4 (IDs dos canais).
 
 ---
 
@@ -76,6 +76,9 @@
   assim reservas antigas continuam com a regra da época (ex.: 102, 303 e 399 voltando a
   15/85 em 01/01/2027 = novo contrato começando nessa data). O sistema não deixa dois
   contratos valerem no mesmo dia. Só o admin mexe em contratos.
+- M2.4: **canais de cada imóvel** — na ficha do imóvel, os números dele no Beds24, Airbnb e
+  Booking. É por aí que, quando ligarmos o Beds24, o sistema vai saber a qual imóvel cada
+  reserva pertence. Um mesmo número não pode ficar ligado a dois imóveis.
 
 A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 

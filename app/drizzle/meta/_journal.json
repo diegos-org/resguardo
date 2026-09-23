@@ -43,6 +43,13 @@
       "when": 1790201652834,
       "tag": "0005_contratos",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790202188905,
+      "tag": "0006_ids_externos",
+      "breakpoints": true
     }
   ]
 }

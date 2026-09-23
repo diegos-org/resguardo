@@ -58,7 +58,7 @@ item muda a linha para `feito` **no próprio PR do item**.
 | M2.1 | Imóveis: ID interno SCL, nome público (Studio…), código (102, 103, 303, 399, 403, Búzios), flag `publico` (Búzios = false), fuso, capacidade, endereço | feito | M1.1, M0.4 |
 | M2.2 | Proprietários e representantes (dados sensíveis só no banco, nunca no Git); vínculo com imóveis | feito | M2.1 |
 | M2.3 | Contratos de gestão com vigência: gestão completa 15%/85%, online 10%, regra 102/303/399 → 15/85 a partir de 01/01/2027; marketplace como tipo separado (fórmula pendente) | feito | M2.2 |
-| M2.4 | IDs externos: mapeamento imóvel ↔ Beds24 / Airbnb / Booking | a fazer | M2.1 |
+| M2.4 | IDs externos: mapeamento imóvel ↔ Beds24 / Airbnb / Booking | feito | M2.1 |
 | M2.5 | Script de carga inicial (seed) com dados fictícios para homologação | a fazer | M2.3 |
 
 ### M3 — Reservas e calendário
