@@ -13,6 +13,8 @@ import { ehBancoLocal, getDb } from "../src/db/client";
 import type { Db } from "../src/db/types";
 import { bloqueios, imoveis, organizacoes, usuarios } from "../src/db/schema";
 import { criarImovel } from "../src/imoveis/repositorio";
+import { garantirCategoriasIniciais, listarCategorias } from "../src/despesas/categorias";
+import { registrarDespesa } from "../src/despesas/despesas";
 import { hojeISO } from "../src/lib/datas";
 import { criarProprietario, definirImoveis } from "../src/proprietarios/repositorio";
 import { sincronizarReserva } from "../src/reservas/repositorio";
@@ -146,6 +148,19 @@ async function semear(db: Db) {
     observacoes: "Demonstração de conflito.",
   });
   await db.insert(bloqueios).values({ organizacaoId: org.id, imovelId: porCodigo["102"], inicio: somaDias(inicioMes, 20), fim: somaDias(inicioMes, 23), motivo: "Manutenção (demo)" });
+  // Despesas fictícias: da empresa e uma do proprietário paga pela empresa (a cobrar).
+  await garantirCategoriasIniciais(db, org.id);
+  const cat = Object.fromEntries((await listarCategorias(db, org.id)).map((c) => [c.nome, c.id]));
+  const despesaBase = { pagoPor: "empresa" as const, imovelId: null, proprietarioId: null, comprovante: "", paga: true, dataPagamento: somaDias(inicioMes, 3) };
+  for (const d of [
+    { responsavel: "empresa" as const, categoriaId: cat["Equipe"], descricao: "Diária de apoio (demo)", valor: 45000, fornecedor: "Equipe demo" },
+    { responsavel: "empresa" as const, categoriaId: cat["Mercado e consumo"], descricao: "Compras de limpeza em volume (demo)", valor: 32890, fornecedor: "Mercado demo" },
+    { responsavel: "empresa" as const, categoriaId: cat["Limpeza e lavanderia"], descricao: "Lavanderia do mês (demo)", valor: 61200, fornecedor: "Lavanderia demo", paga: false, dataPagamento: null },
+    { responsavel: "proprietario" as const, categoriaId: cat["Manutenção"], descricao: "Conserto do ar-condicionado (demo)", valor: 80000, fornecedor: "Refrigeração demo", imovelId: porCodigo["303"] },
+  ]) {
+    const r = await registrarDespesa(db, org.id, { ...despesaBase, data: somaDias(inicioMes, 3), ...d }, null);
+    if (!r.ok) throw new Error(`despesa demo: ${JSON.stringify(r.erros)}`);
+  }
   console.log(`[semear] pronto: ${criados.length} imóveis, ${donos.length} proprietários, ${n + 1} reservas fictícias. Admin: ${email}`);
 }
 

@@ -130,6 +130,22 @@
   não for preenchido, a parte do proprietário fica **pendente** e fora do acerto. O mesmo vale
   para imóvel com **mais de um proprietário** (ainda não há cadastro de cotas) ou sem
   proprietário — nada é atribuído a alguém por chute.
+- M4.3: **despesas** (menu **Despesas**). Cada despesa tem categoria, valor, data, imóvel
+  (opcional para as da empresa), fornecedor, comprovante (por enquanto um link ou referência,
+  ex.: link do recibo no Drive — o envio de arquivo vem depois) e situação (a pagar / paga).
+  Dois tipos, sem misturar:
+  - **da empresa** — custo da SCL (equipe, mercado, pequenos reparos absorvidos): entra no
+    resultado da empresa;
+  - **do proprietário** — gasto que é dele (ex.: conserto do ar-condicionado). **Não** conta
+    como custo da empresa. Quando a empresa **efetivamente paga** (marcar "paga"), o
+    proprietário passa a dever esse valor no acerto — conta ainda a pagar não vira dívida;
+    se ele mesmo pagou, fica só o registro.
+  - Errou? **Estornar** (com motivo) anula sem apagar o histórico.
+  - **Categorias** editáveis em Despesas → Categorias: criar, renomear, arquivar (some das
+    opções novas, continua nas antigas) e excluir (só se nunca foi usada). Começa com
+    Equipe, Limpeza e lavanderia, Manutenção, Mercado e consumo, Contas e Outros (só na
+    primeira vez — se você apagar, elas não voltam).
+  - Só o admin vê e lança despesas.
 
 ### Como está ficando (prints com dados fictícios)
 
@@ -141,9 +157,9 @@
 |---|---|
 | ![Calendário no celular](docs/telas/calendario-celular.png) | ![Imóveis](docs/telas/imoveis.png) |
 
-| Ficha da reserva com o financeiro |
-|---|
-| ![Reserva com financeiro](docs/telas/reserva-financeiro.png) |
+| Ficha da reserva com o financeiro | Despesas |
+|---|---|
+| ![Reserva com financeiro](docs/telas/reserva-financeiro.png) | ![Despesas](docs/telas/despesas.png) |
 
 A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 

@@ -1,5 +1,5 @@
 {
-  "id": "caf1a14c-3bbf-44a8-acb6-f2347261ae87",
+  "id": "7dc50259-31cd-4af4-bfca-470803c07def",
   "prevId": "95344aca-dab7-4f81-a623-0c2b99359d1f",
   "version": "7",
   "dialect": "postgresql",
@@ -316,8 +316,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.codigos_login": {
-      "name": "codigos_login",
+    "public.categorias_despesa": {
+      "name": "categorias_despesa",
       "schema": "",
       "columns": {
         "id": {
@@ -327,42 +327,24 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "email": {
-          "name": "email",
+        "organizacao_id": {
+          "name": "organizacao_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nome": {
+          "name": "nome",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "codigo_hash": {
-          "name": "codigo_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "expira_em": {
-          "name": "expira_em",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "tentativas": {
-          "name": "tentativas",
-          "type": "integer",
+        "ativa": {
+          "name": "ativa",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": 0
-        },
-        "usado_em": {
-          "name": "usado_em",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "invalidado_em": {
-          "name": "invalidado_em",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
+          "default": true
         },
         "criado_em": {
           "name": "criado_em",
@@ -373,29 +355,43 @@
         }
       },
       "indexes": {
-        "codigos_login_email": {
-          "name": "codigos_login_email",
+        "categorias_despesa_nome": {
+          "name": "categorias_despesa_nome",
           "columns": [
             {
-              "expression": "email",
+              "expression": "organizacao_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
             },
             {
-              "expression": "criado_em",
-              "isExpression": false,
+              "expression": "lower(\"nome\")",
               "asc": true,
+              "isExpression": true,
               "nulls": "last"
             }
           ],
-          "isUnique": false,
+          "isUnique": true,
           "concurrently": false,
           "method": "btree",
           "with": {}
         }
       },
-      "foreignKeys": {},
+      "foreignKeys": {
+        "categorias_despesa_organizacao_id_organizacoes_id_fk": {
+          "name": "categorias_despesa_organizacao_id_organizacoes_id_fk",
+          "tableFrom": "categorias_despesa",
+          "tableTo": "organizacoes",
+          "columnsFrom": [
+            "organizacao_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
@@ -892,6 +888,38 @@
           "notNull": true,
           "default": "''"
         },
+        "categoria_id": {
+          "name": "categoria_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fornecedor": {
+          "name": "fornecedor",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "comprovante": {
+          "name": "comprovante",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "montante": {
+          "name": "montante",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pago_por": {
+          "name": "pago_por",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "estorno_de": {
           "name": "estorno_de",
           "type": "uuid",
@@ -1055,6 +1083,19 @@
           "tableTo": "reservas",
           "columnsFrom": [
             "reserva_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "lancamentos_categoria_id_categorias_despesa_id_fk": {
+          "name": "lancamentos_categoria_id_categorias_despesa_id_fk",
+          "tableFrom": "lancamentos",
+          "tableTo": "categorias_despesa",
+          "columnsFrom": [
+            "categoria_id"
           ],
           "columnsTo": [
             "id"

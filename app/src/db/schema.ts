@@ -349,6 +349,22 @@ export type EstadoLancamento = (typeof ESTADOS_LANCAMENTO)[number];
 export const estadoLancamentoEnum = pgEnum("estado_lancamento", ESTADOS_LANCAMENTO);
 
 /**
+ * Categoria de despesa (M4.3), editável pelo admin. Não se apaga categoria usada: arquiva-se
+ * (`ativa = false`), e ela some das opções novas mas continua nos lançamentos antigos.
+ */
+export const categoriasDespesa = pgTable(
+  "categorias_despesa",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    nome: text("nome").notNull(),
+    ativa: boolean("ativa").notNull().default(true),
+    criadoEm: criadoEm(),
+  },
+  (t) => [uniqueIndex("categorias_despesa_nome").on(t.organizacaoId, sql`lower(${t.nome})`)],
+);
+
+/**
  * Lançamento financeiro. IMUTÁVEL: nunca é editado nem apagado — correção é feita com um
  * estorno (novo lançamento com valores invertidos apontando para o original). Só o estado
  * (previsto → realizado → conciliado / pendente) muda, e com auditoria.
@@ -378,6 +394,17 @@ export const lancamentos = pgTable(
     origem: text("origem").notNull().default("manual"),
     /** Chave de idempotência de quem gerou (ex.: "reserva:<id>:comissao"). */
     chaveOrigem: text("chave_origem").notNull().default(""),
+    /** Despesas (M4.3): categoria, fornecedor/recebedor e referência do comprovante. */
+    categoriaId: uuid("categoria_id").references(() => categoriasDespesa.id),
+    fornecedor: text("fornecedor").notNull().default(""),
+    comprovante: text("comprovante").notNull().default(""),
+    /**
+     * Valor de face do fato quando difere do efeito no resultado — ex.: despesa do
+     * proprietário (R$ 800 de reparo) tem `valor` 0 para a empresa, mas `montante` 80000.
+     */
+    montante: integer("montante"),
+    /** Despesa do proprietário: quem tira o dinheiro do bolso ("empresa" | "proprietario"). */
+    pagoPor: text("pago_por"),
     estornoDe: uuid("estorno_de"),
     criadoPor: uuid("criado_por").references(() => usuarios.id),
     criadoEm: criadoEm(),

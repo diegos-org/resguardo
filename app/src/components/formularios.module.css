@@ -20,7 +20,8 @@
 }
 
 .form input,
-.form textarea {
+.form textarea,
+.form select {
   font: inherit;
   font-size: 1rem;
   color: var(--scl-texto);
@@ -145,4 +146,15 @@
   white-space: nowrap;
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+.pequeno {
+  font: inherit;
+  font-size: 0.875rem;
+  padding: 4px 10px;
+  border: 1px solid #d8d0c0;
+  border-radius: 6px;
+  background: #fff;
+  color: var(--scl-texto);
+  cursor: pointer;
 }

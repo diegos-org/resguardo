@@ -1,6 +1,7 @@
 import { and, asc, eq, gte, inArray, isNotNull, lt, sql, sum } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import {
+  categoriasDespesa,
   ESTADOS_LANCAMENTO,
   type EstadoLancamento,
   imoveis,
@@ -30,6 +31,11 @@ export type NovoLancamento = {
   reservaId?: string | null;
   origem?: string;
   chaveOrigem?: string;
+  categoriaId?: string | null;
+  fornecedor?: string;
+  comprovante?: string;
+  montante?: number | null;
+  pagoPor?: string | null;
 };
 
 export class LancamentoInvalido extends Error {
@@ -50,14 +56,16 @@ export function validarLancamento(n: NovoLancamento): string | null {
   if (!dataValida(n.competencia)) return "Competência inválida.";
   if (n.dataCaixa && !dataValida(n.dataCaixa)) return "Data de caixa inválida.";
   if (n.estado && !ESTADOS_LANCAMENTO.includes(n.estado)) return "Estado inválido.";
-  for (const id of [n.imovelId, n.proprietarioId, n.reservaId]) if (id && !uuidValido(id)) return "Referência inválida.";
+  for (const id of [n.imovelId, n.proprietarioId, n.reservaId, n.categoriaId]) if (id && !uuidValido(id)) return "Referência inválida.";
+  if (n.montante != null && !inteiro(n.montante)) return "Montante deve ser inteiro em centavos.";
+  if ((n.fornecedor?.length ?? 0) > 200 || (n.comprovante?.length ?? 0) > 500) return "Fornecedor ou comprovante longo demais.";
   if (n.efeitoSaldo && !n.proprietarioId) return "Lançamento que mexe no acerto precisa de proprietário.";
   return null;
 }
 
 /** Confere que imóvel/proprietário/reserva citados são da mesma organização. */
 async function referenciasDaOrganizacao(tx: Db, org: string, n: NovoLancamento): Promise<boolean> {
-  const checar = async (tabela: typeof imoveis | typeof proprietarios | typeof reservas, id: string | null | undefined) => {
+  const checar = async (tabela: typeof imoveis | typeof proprietarios | typeof reservas | typeof categoriasDespesa, id: string | null | undefined) => {
     if (!id) return true;
     const [l] = await tx
       .select({ id: tabela.id })
@@ -65,7 +73,7 @@ async function referenciasDaOrganizacao(tx: Db, org: string, n: NovoLancamento):
       .where(and(eq(tabela.id, id), eq(tabela.organizacaoId, org)));
     return Boolean(l);
   };
-  return (await checar(imoveis, n.imovelId)) && (await checar(proprietarios, n.proprietarioId)) && (await checar(reservas, n.reservaId));
+  return (await checar(imoveis, n.imovelId)) && (await checar(proprietarios, n.proprietarioId)) && (await checar(reservas, n.reservaId)) && (await checar(categoriasDespesa, n.categoriaId));
 }
 
 /**
@@ -109,6 +117,11 @@ export async function lancar(db: Db, organizacaoId: string, novos: NovoLancament
           reservaId: n.reservaId ?? null,
           origem: n.origem ?? "manual",
           chaveOrigem: chave,
+          categoriaId: n.categoriaId ?? null,
+          fornecedor: n.fornecedor?.trim() ?? "",
+          comprovante: n.comprovante?.trim() ?? "",
+          montante: n.montante ?? null,
+          pagoPor: n.pagoPor ?? null,
           criadoPor: autorId,
         })
         .returning();
@@ -167,6 +180,10 @@ export async function estornar(
         imovelId: original.imovelId,
         proprietarioId: original.proprietarioId,
         reservaId: original.reservaId,
+        categoriaId: original.categoriaId,
+        fornecedor: original.fornecedor,
+        montante: original.montante === null ? null : -original.montante,
+        pagoPor: original.pagoPor,
         origem: "estorno",
         estornoDe: original.id,
         criadoPor: autorId,
