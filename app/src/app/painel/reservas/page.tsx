@@ -7,7 +7,7 @@ import { getDb } from "@/db/client";
 import { listarImoveis } from "@/imoveis/repositorio";
 import { descreverFiltros, lerFiltros, manterFiltros, periodoDosFiltros } from "@/lib/filtros";
 import { formatBRL } from "@/lib/money";
-import { conflitos, NOMES_ORIGEM, noites } from "@/reservas/regras";
+import { conflitos, NOMES_ESTADO, NOMES_ORIGEM, noites } from "@/reservas/regras";
 import { listarReservas } from "@/reservas/repositorio";
 
 const dataBr = (d: string) => d.split("-").reverse().join("/");
@@ -20,9 +20,12 @@ export default async function ListaReservas({ searchParams }: PageProps<"/painel
   const opcoes = imoveis.map((i) => ({ codigo: i.codigo, nome: i.nome }));
   const filtros = lerFiltros(params, opcoes);
   const periodo = periodoDosFiltros(filtros);
-  const idsFiltro = filtros.imoveis.length ? imoveis.filter((i) => filtros.imoveis.includes(i.codigo)).map((i) => i.id) : undefined;
+  // "Todos" = todos os imóveis ativos (reservas de imóvel inativo não aparecem).
+  const idsFiltro = (filtros.imoveis.length ? imoveis.filter((i) => filtros.imoveis.includes(i.codigo)) : imoveis).map((i) => i.id);
   const verCanceladas = params.canceladas === "1";
-  const lista = await listarReservas(db, sessao.organizacaoId, { ...periodo, imovelIds: idsFiltro, incluirCanceladas: verCanceladas });
+  const lista = idsFiltro.length
+    ? await listarReservas(db, sessao.organizacaoId, { ...periodo, imovelIds: idsFiltro, incluirCanceladas: verCanceladas })
+    : [];
 
   const porId = new Map(imoveis.map((i) => [i.id, i]));
   const emConflito = new Set(conflitos(lista).flat());
@@ -79,7 +82,7 @@ export default async function ListaReservas({ searchParams }: PageProps<"/painel
                   <td>{r.hospedeNome || "—"}</td>
                   {verValores && <td>{r.valorBruto === null ? "—" : formatBRL(r.valorBruto)}</td>}
                   <td>
-                    <span className={styles.etiqueta}>{r.estado}</span>
+                    <span className={styles.etiqueta}>{NOMES_ESTADO[r.estado]}</span>
                   </td>
                 </tr>
               ))}

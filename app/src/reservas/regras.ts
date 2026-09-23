@@ -11,6 +11,8 @@ export const NOMES_ORIGEM: Record<OrigemReserva, string> = {
   outro: "Outro",
 };
 
+export const NOMES_ESTADO: Record<EstadoReserva, string> = { pendente: "Pendente", confirmada: "Confirmada", cancelada: "Cancelada" };
+
 export function dataValida(d: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
   const t = new Date(`${d}T00:00:00Z`);

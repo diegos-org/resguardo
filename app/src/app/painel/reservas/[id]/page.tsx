@@ -8,7 +8,7 @@ import { getDb } from "@/db/client";
 import { obterImovel } from "@/imoveis/repositorio";
 import { formatBRL } from "@/lib/money";
 import { cancelar } from "@/reservas/acoes";
-import { NOMES_ORIGEM, noites } from "@/reservas/regras";
+import { NOMES_ESTADO, NOMES_ORIGEM, noites } from "@/reservas/regras";
 import { obterReserva } from "@/reservas/repositorio";
 
 const CAMPOS_FINANCEIROS = ["valorBruto", "taxaCanal", "valorLiquido", "moeda"];
@@ -28,7 +28,7 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
   const linhas: [string, string][] = [
     ["Imóvel", imovel ? `${imovel.codigo} · ${imovel.nome}` : "—"],
     ["Origem", `${NOMES_ORIGEM[r.origem]}${r.codigoCanal ? ` (${r.codigoCanal})` : ""}`],
-    ["Situação", r.estado],
+    ["Situação", NOMES_ESTADO[r.estado]],
     ["Entrada → saída", `${dataBr(r.checkin)} → ${dataBr(r.checkout)} · ${noites(r.checkin, r.checkout)} noite(s)`],
     ["Hóspedes", r.hospedes === null ? "—" : String(r.hospedes)],
     ["Hóspede", r.hospedeNome || "—"],

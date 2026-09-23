@@ -1,0 +1,155 @@
+.rolagem {
+  overflow-x: auto;
+  background: #fff;
+  border: 1px solid var(--scl-areia);
+  border-radius: 8px;
+}
+
+.grade {
+  display: grid;
+  min-width: max-content;
+  font-size: 0.8125rem;
+}
+
+.cabecalhoImovel,
+.nomeImovel {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: #fff;
+  border-right: 1px solid var(--scl-areia);
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.nomeImovel {
+  border-top: 1px solid var(--scl-areia);
+  display: flex;
+  align-items: center;
+  font-weight: 500;
+}
+
+.dia {
+  text-align: center;
+  padding: 4px 0;
+  color: var(--scl-texto-2);
+  border-left: 1px solid #f4efe5;
+}
+
+.dia strong {
+  display: block;
+  color: var(--scl-texto);
+  font-weight: 500;
+}
+
+.fimDeSemana {
+  background: #faf6ef;
+}
+
+.hoje strong {
+  background: var(--scl-salvia);
+  color: #fff;
+  border-radius: 999px;
+  display: inline-block;
+  min-width: 22px;
+}
+
+.linha {
+  display: grid;
+  grid-column: 2 / -1;
+  border-top: 1px solid var(--scl-areia);
+  padding: 4px 0;
+  row-gap: 3px;
+  position: relative;
+}
+
+.segmento {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: 3px 6px;
+  border-radius: 6px;
+  margin: 0 1px;
+  color: #1f241c;
+  text-decoration: none;
+  line-height: 1.3;
+  min-height: 22px;
+}
+
+.segmento:focus-visible {
+  outline: 2px solid var(--scl-salvia);
+  outline-offset: 1px;
+}
+
+.continuaAntes {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.continuaDepois {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.conflito {
+  outline: 2px solid #b3261e;
+}
+
+.airbnb {
+  background: #f3c4bf;
+}
+
+.booking {
+  background: #bcd1ec;
+}
+
+.site,
+.direta {
+  background: #c9d4bd;
+}
+
+.outro {
+  background: #ecdcb8;
+}
+
+.bloqueio {
+  background: repeating-linear-gradient(135deg, #e6e2da, #e6e2da 6px, #d6d1c6 6px, #d6d1c6 12px);
+  color: #4a4a44;
+}
+
+.navegacao {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.navegacao a {
+  text-decoration: none;
+  border: 1px solid #d8d0c0;
+  border-radius: 6px;
+  padding: 4px 12px;
+  background: #fff;
+}
+
+.legenda {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 0.8125rem;
+  color: var(--scl-texto-2);
+}
+
+.legenda span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legenda i {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  display: inline-block;
+}
