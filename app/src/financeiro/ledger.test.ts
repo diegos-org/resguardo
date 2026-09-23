@@ -55,6 +55,13 @@ describe("ledger", () => {
     await expect(estornar(db, org, l.id, "", null)).rejects.toThrow("motivo");
   });
 
+  it("estorno de lançamento já realizado leva data de caixa", async () => {
+    const [l] = await lancar(db, org, [{ tipo: "recebimento", descricao: "Payout", valor: 1000, competencia: "2026-10-10", dataCaixa: "2026-10-12", estado: "realizado" }], null);
+    expect((await estornar(db, org, l.id, "payout devolvido", null, "2026-10-20")).dataCaixa).toBe("2026-10-20");
+    const [p] = await lancar(db, org, [{ tipo: "comissao", descricao: "Prevista", valor: 10, competencia: "2026-10-10" }], null);
+    expect((await estornar(db, org, p.id, "x", null)).dataCaixa).toBeNull();
+  });
+
   it("chave de origem torna o lançamento idempotente", async () => {
     const novo = { tipo: "receita_bruta" as const, descricao: "Reserva X", valor: 150000, competencia: "2026-10-10", imovelId: im, chaveOrigem: "reserva:x:bruto" };
     const [a] = await lancar(db, org, [novo], null);

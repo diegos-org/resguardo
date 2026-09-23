@@ -10,6 +10,7 @@
 import { eq } from "drizzle-orm";
 import { criarContrato } from "../src/contratos/repositorio";
 import { ehBancoLocal, getDb } from "../src/db/client";
+import type { Db } from "../src/db/types";
 import { bloqueios, imoveis, organizacoes, reservas, usuarios } from "../src/db/schema";
 import { criarImovel } from "../src/imoveis/repositorio";
 import { aplicarMotor } from "../src/financeiro/aplicar";
@@ -26,7 +27,11 @@ if (!ehBancoLocal(url) && process.env.SEMEAR_CONFIRMO !== "homologacao") {
 const somaDias = (dia: string, n: number) => new Date(Date.parse(`${dia}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 
 async function main() {
-  const db = getDb();
+  // Tudo numa transação: se algo falhar no meio, nada fica gravado e dá para rodar de novo.
+  await getDb().transaction(async (db) => semear(db));
+}
+
+async function semear(db: Db) {
   let [org] = await db.select().from(organizacoes).limit(1);
   if (!org) [org] = await db.insert(organizacoes).values({ nome: "Sua Casa Leblon" }).returning();
   if ((await db.select({ id: imoveis.id }).from(imoveis).where(eq(imoveis.organizacaoId, org.id))).length > 0) {
