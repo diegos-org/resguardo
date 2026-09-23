@@ -54,6 +54,16 @@ describe("decidirEntrada", () => {
     expect(await decidirEntrada(db, "equipe@example.com", config)).toBeNull();
   });
 
+  it("dois primeiros logins simultâneos de admins caem na mesma organização", async () => {
+    const cfg = { ...config, adminEmails: ["chefe@example.com", "socia@example.com"] };
+    const [a, b] = await Promise.all([decidirEntrada(db, "chefe@example.com", cfg), decidirEntrada(db, "socia@example.com", cfg)]);
+    expect(a).toBeTruthy();
+    expect(b).toBeTruthy();
+    expect(await db.select().from(organizacoes)).toHaveLength(1);
+    const orgs = new Set((await db.select().from(usuarios)).map((u) => u.organizacaoId));
+    expect(orgs.size).toBe(1);
+  });
+
   it("usa a organização existente no bootstrap", async () => {
     const [org] = await db.insert(organizacoes).values({ nome: "Existente" }).returning();
     await decidirEntrada(db, "chefe@example.com", config);

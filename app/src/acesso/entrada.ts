@@ -12,6 +12,9 @@ export type ConfigEntrada = {
   nomeOrganizacao: string;
 };
 
+/** Id da organização criada no primeiro acesso (quando o banco está vazio). */
+export const ORGANIZACAO_INICIAL_ID = "00000000-0000-4000-8000-000000000001";
+
 export function normalizarEmail(email: string): string {
   return email.trim().toLowerCase();
 }
@@ -37,9 +40,14 @@ export async function decidirEntrada(db: Db, emailBruto: string, config: ConfigE
 
   if (!config.adminEmails.map(normalizarEmail).includes(email)) return null;
 
-  let [org] = await db.select().from(organizacoes).orderBy(organizacoes.criadoEm).limit(1);
+  let [org] = await db.select().from(organizacoes).orderBy(organizacoes.criadoEm, organizacoes.id).limit(1);
   if (!org) {
-    [org] = await db.insert(organizacoes).values({ nome: config.nomeOrganizacao }).returning();
+    // Id fixo + ON CONFLICT: dois primeiros logins simultâneos criam a mesma organização.
+    await db
+      .insert(organizacoes)
+      .values({ id: ORGANIZACAO_INICIAL_ID, nome: config.nomeOrganizacao })
+      .onConflictDoNothing();
+    [org] = await db.select().from(organizacoes).orderBy(organizacoes.criadoEm, organizacoes.id).limit(1);
   }
   const [novo] = await db
     .insert(usuarios)
