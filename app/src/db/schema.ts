@@ -74,11 +74,44 @@ export const imoveis = pgTable(
   (t) => [uniqueIndex("imoveis_codigo_por_org").on(t.organizacaoId, t.codigo)],
 );
 
-/** Proprietário (pessoa ou empresa). Dados pessoais completos entram no M2.2. */
+export const TIPOS_PESSOA = ["fisica", "juridica"] as const;
+export const tipoPessoaEnum = pgEnum("tipo_pessoa", TIPOS_PESSOA);
+
+/**
+ * Proprietário formal (pessoa física ou jurídica). Documento, contato e Pix são dados
+ * sensíveis: ficam só no banco, visíveis apenas para quem tem `proprietario:ler` (admin).
+ */
 export const proprietarios = pgTable("proprietarios", {
   id: uuid("id").primaryKey().defaultRandom(),
   organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
   nome: text("nome").notNull(),
+  tipo: tipoPessoaEnum("tipo").notNull().default("fisica"),
+  /** CPF ou CNPJ, só dígitos. */
+  documento: text("documento").notNull().default(""),
+  email: text("email").notNull().default(""),
+  telefone: text("telefone").notNull().default(""),
+  endereco: text("endereco").notNull().default(""),
+  chavePix: text("chave_pix").notNull().default(""),
+  observacoes: text("observacoes").notNull().default(""),
+  ativo: boolean("ativo").notNull().default(true),
+  criadoEm: criadoEm(),
+  atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Representante autorizado de um proprietário (cônjuge, procurador, responsável
+ * financeiro). Não vira coproprietário por aparecer aqui.
+ */
+export const representantes = pgTable("representantes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  proprietarioId: uuid("proprietario_id").notNull().references(() => proprietarios.id, { onDelete: "cascade" }),
+  nome: text("nome").notNull(),
+  /** Ex.: "cônjuge", "financeiro", "procurador". */
+  relacao: text("relacao").notNull().default(""),
+  email: text("email").notNull().default(""),
+  telefone: text("telefone").notNull().default(""),
+  /** Recebe cópia dos relatórios mensais. */
+  recebeRelatorios: boolean("recebe_relatorios").notNull().default(false),
   criadoEm: criadoEm(),
 });
 
