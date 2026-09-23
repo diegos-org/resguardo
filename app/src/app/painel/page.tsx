@@ -1,10 +1,12 @@
 import Link from "next/link";
+import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { FiltroGlobal } from "@/components/painel/FiltroGlobal";
 import styles from "@/components/painel/painel.module.css";
 import { descreverFiltros, lerFiltros, manterFiltros } from "@/lib/filtros";
 import { SECOES } from "@/lib/navegacao";
 
 export default async function PainelInicio({ searchParams }: PageProps<"/painel">) {
+  await exigirSessaoPainel();
   const params = await searchParams;
   const filtros = lerFiltros(params);
   const query = manterFiltros(params);

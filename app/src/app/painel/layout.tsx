@@ -1,9 +1,18 @@
 import Link from "next/link";
 import { Suspense } from "react";
+import { signOut } from "@/acesso/auth";
+import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { Menu } from "@/components/painel/Menu";
 import styles from "@/components/painel/painel.module.css";
 
-export default function PainelLayout({ children }: LayoutProps<"/painel">) {
+export default async function PainelLayout({ children }: LayoutProps<"/painel">) {
+  await exigirSessaoPainel();
+
+  async function sair() {
+    "use server";
+    await signOut({ redirectTo: "/entrar" });
+  }
+
   return (
     <div className={styles.estrutura}>
       <aside className={styles.lateral}>
@@ -17,7 +26,14 @@ export default function PainelLayout({ children }: LayoutProps<"/painel">) {
       <div className={styles.principal}>
         <header className={styles.cabecalho}>
           <span>Painel interno</span>
-          <span className={styles.selo}>Homologação · dados fictícios</span>
+          <span style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            <span className={styles.selo}>Homologação · dados fictícios</span>
+            <form action={sair}>
+              <button type="submit" className={styles.sair}>
+                Sair
+              </button>
+            </form>
+          </span>
         </header>
         <main className={styles.conteudo}>{children}</main>
       </div>
