@@ -12,6 +12,7 @@ import {
 } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
+import { hojeISO } from "@/lib/datas";
 import { dataValida } from "@/reservas/regras";
 
 export type Lancamento = typeof lancamentos.$inferSelect;
@@ -125,10 +126,22 @@ export async function lancar(db: Db, organizacaoId: string, novos: NovoLancament
   });
 }
 
-/** Estorna (anula) um lançamento criando o espelho com valores invertidos. Não se estorna um estorno nem duas vezes. */
-export async function estornar(db: Db, organizacaoId: string, id: string, motivo: string, autorId: string | null): Promise<Lancamento> {
+/**
+ * Estorna (anula) um lançamento criando o espelho com valores invertidos. Não se estorna um
+ * estorno nem duas vezes. Se o original já movimentou caixa, o estorno registra a data de
+ * caixa em que foi desfeito (padrão: hoje) para entrar no período certo da conciliação.
+ */
+export async function estornar(
+  db: Db,
+  organizacaoId: string,
+  id: string,
+  motivo: string,
+  autorId: string | null,
+  dataCaixa?: string,
+): Promise<Lancamento> {
   if (!uuidValido(id)) throw new LancamentoInvalido("Lançamento não encontrado.");
   if (!motivo.trim()) throw new LancamentoInvalido("Informe o motivo do estorno.");
+  if (dataCaixa && !dataValida(dataCaixa)) throw new LancamentoInvalido("Data de caixa inválida.");
   return db.transaction(async (tx) => {
     const [original] = await tx
       .select()
@@ -150,6 +163,7 @@ export async function estornar(db: Db, organizacaoId: string, id: string, motivo
         efeitoSaldo: -original.efeitoSaldo,
         competencia: original.competencia,
         estado: original.estado,
+        dataCaixa: original.dataCaixa ? (dataCaixa ?? hojeISO()) : null,
         imovelId: original.imovelId,
         proprietarioId: original.proprietarioId,
         reservaId: original.reservaId,
