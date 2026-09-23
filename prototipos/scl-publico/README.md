@@ -7,7 +7,7 @@ Workbench privado de revisão, não produção. Extraído da base local em 20/09
 Requer Node.js 22+. Sem dependências, instalação, credenciais ou serviços externos.
 
 ```sh
-cd scl-publico
+cd prototipos/scl-publico
 node --test test/*.test.mjs
 node src/server.mjs
 ```
