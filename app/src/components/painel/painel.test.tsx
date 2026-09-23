@@ -5,7 +5,10 @@ import { SECOES, encontrarSecao } from "@/lib/navegacao";
 import { FiltroGlobal } from "./FiltroGlobal";
 import { Menu } from "./Menu";
 
-vi.mock("next/navigation", () => ({ usePathname: () => "/painel/reservas" }));
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/painel/reservas",
+  useSearchParams: () => new URLSearchParams("imovel=403&mes=todos&ano=2025"),
+}));
 
 afterEach(cleanup);
 
@@ -16,6 +19,8 @@ describe("Menu", () => {
     expect(links).toHaveLength(SECOES.length + 1);
     const atual = screen.getByRole("link", { current: "page" });
     expect(atual.textContent).toBe("Reservas");
+    expect(atual.getAttribute("href")).toBe("/painel/reservas?imovel=403&ano=2025&mes=todos");
+    expect(screen.getByRole("link", { name: "Financeiro" }).getAttribute("href")).toBe("/painel/financeiro?imovel=403&ano=2025&mes=todos");
   });
 });
 

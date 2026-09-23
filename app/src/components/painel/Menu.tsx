@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
+import { manterFiltros } from "@/lib/filtros";
 import { SECOES } from "@/lib/navegacao";
 import styles from "./painel.module.css";
 
@@ -9,6 +10,7 @@ const ITENS = [{ slug: "", titulo: "Início" }, ...SECOES];
 
 export function Menu() {
   const atual = usePathname();
+  const filtros = manterFiltros(useSearchParams());
   return (
     <nav aria-label="Menu do painel">
       <ul className={styles.menu}>
@@ -17,7 +19,7 @@ export function Menu() {
           const ativo = atual === href;
           return (
             <li key={href}>
-              <Link href={href} className={ativo ? styles.ativo : undefined} aria-current={ativo ? "page" : undefined}>
+              <Link href={href + filtros} className={ativo ? styles.ativo : undefined} aria-current={ativo ? "page" : undefined}>
                 {item.titulo}
               </Link>
             </li>

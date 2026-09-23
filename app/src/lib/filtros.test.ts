@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { descreverFiltros, filtrosParaQuery, hojeNoFuso, lerFiltros } from "./filtros";
+import { descreverFiltros, filtrosParaQuery, hojeNoFuso, lerFiltros, manterFiltros } from "./filtros";
 
 // 1º de outubro, 01h UTC = ainda 30 de setembro em São Paulo.
 const agora = new Date("2026-10-01T01:00:00Z");
@@ -46,5 +46,13 @@ describe("descreverFiltros", () => {
   it("descreve a seleção em português", () => {
     expect(descreverFiltros({ imoveis: [], ano: 2026, mes: 9 })).toBe("Todos os imóveis · setembro de 2026");
     expect(descreverFiltros({ imoveis: ["403", "buzios"], ano: 2027, mes: null })).toBe("403, Búzios · ano de 2027");
+  });
+});
+
+describe("manterFiltros", () => {
+  it("mantém só os parâmetros do filtro", () => {
+    expect(manterFiltros({ imovel: ["403", "102"], ano: "2025", mes: "todos", outro: "x" })).toBe("?imovel=403&imovel=102&ano=2025&mes=todos");
+    expect(manterFiltros(new URLSearchParams("mes=3&pagina=2"))).toBe("?mes=3");
+    expect(manterFiltros({})).toBe("");
   });
 });

@@ -84,6 +84,22 @@ export function filtrosParaQuery(f: Filtros): string {
   return q.toString();
 }
 
+const CHAVES_FILTRO = ["imovel", "ano", "mes"] as const;
+
+/**
+ * Mantém só os parâmetros do filtro global, como vieram na URL, para levá-los
+ * adiante ao navegar entre seções. Retorna "" ou "?imovel=...&ano=...".
+ */
+export function manterFiltros(params: Params | URLSearchParams): string {
+  const q = new URLSearchParams();
+  for (const chave of CHAVES_FILTRO) {
+    const valores = params instanceof URLSearchParams ? params.getAll(chave) : [params[chave] ?? []].flat();
+    for (const v of valores) q.append(chave, v);
+  }
+  const texto = q.toString();
+  return texto ? `?${texto}` : "";
+}
+
 const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 
 export function nomeDoMes(mes: number): string {

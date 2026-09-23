@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { Menu } from "@/components/painel/Menu";
 import styles from "@/components/painel/painel.module.css";
 
@@ -9,7 +10,9 @@ export default function PainelLayout({ children }: LayoutProps<"/painel">) {
         <Link href="/painel" className={styles.marca}>
           Sua Casa Leblon
         </Link>
-        <Menu />
+        <Suspense>
+          <Menu />
+        </Suspense>
       </aside>
       <div className={styles.principal}>
         <header className={styles.cabecalho}>
