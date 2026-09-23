@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { podeFazer } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
-import { historicoDe } from "@/auditoria/auditoria";
+import { historicoDe, ocultarCampos } from "@/auditoria/auditoria";
 import styles from "@/components/formularios.module.css";
 import { HistoricoAlteracoes } from "@/components/HistoricoAlteracoes";
 import { getDb } from "@/db/client";
@@ -11,6 +11,7 @@ import { cancelar } from "@/reservas/acoes";
 import { NOMES_ORIGEM, noites } from "@/reservas/regras";
 import { obterReserva } from "@/reservas/repositorio";
 
+const CAMPOS_FINANCEIROS = ["valorBruto", "taxaCanal", "valorLiquido", "moeda"];
 const dataBr = (d: string) => d.split("-").reverse().join("/");
 const brl = (c: number | null) => (c === null ? "não informado" : formatBRL(c));
 
@@ -67,7 +68,7 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
           </button>
         </form>
       )}
-      <HistoricoAlteracoes linhas={historico} />
+      <HistoricoAlteracoes linhas={verValores ? historico : ocultarCampos(historico, CAMPOS_FINANCEIROS)} />
     </>
   );
 }
