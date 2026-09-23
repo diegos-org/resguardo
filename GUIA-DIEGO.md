@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 23/09/2026, PR do item M0.4 (layout do painel).
+> **Última atualização:** 23/09/2026, PR do item M1.1 (modelo de acesso e permissões).
 
 ---
 
@@ -23,8 +23,8 @@
 
 | Etapa | O que entrega | Situação |
 |---|---|---|
-| M0 Fundação | Base do app, banco de dados, layout, publicação na Vercel | 🟡 em andamento |
-| M1 Acesso | Login (Google/código por e-mail), convites, permissões | ⚪ aguardando |
+| M0 Fundação | Base do app, banco de dados, layout, publicação na Vercel | 🟡 só falta a Vercel |
+| M1 Acesso | Login (Google/código por e-mail), convites, permissões | 🟡 em andamento |
 | M2 Cadastros | Imóveis, proprietários, contratos e comissões | ⚪ aguardando |
 | M3 Reservas | Reservas, calendário central, leitura do Beds24 | ⚪ aguardando |
 | M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | ⚪ aguardando |
@@ -43,6 +43,15 @@
 - M0.4: **painel interno com menu e filtro global** (imóveis + mês/ano). Todas as seções
   aparecem no menu, marcadas como "em construção" até ganharem conteúdo. Funciona no
   celular: o menu vira uma faixa que desliza para o lado.
+- M1.1: **quem pode ver e fazer o quê.** Existem quatro papéis:
+  - **admin** (você): pode tudo;
+  - **operação** (equipe): reservas, calendário, limpezas, manutenção e mensagens, mas **não vê o financeiro**;
+  - **proprietário**: só **lê** (imóvel, reservas, calendário e financeiro), e **só dos imóveis dele**. Representantes
+    autorizados veem o mesmo que o proprietário que representam;
+  - **hóspede**: sem acesso por enquanto (o portal do hóspede é o M9).
+
+  O vínculo proprietário ↔ imóvel é sempre cadastrado explicitamente, nunca deduzido por e-mail ou CPF.
+  Tudo o que não está permitido é bloqueado.
 
 A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 
