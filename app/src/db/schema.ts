@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 /**
  * Esquema do banco (Drizzle). Novas tabelas entram aqui e geram migração com
@@ -46,8 +46,8 @@ export const usuarios = pgTable(
 );
 
 /**
- * Imóvel (versão mínima para o controle de acesso). O cadastro completo — nome
- * público, fuso, capacidade, flag de site público — entra no M2.1.
+ * Imóvel. `codigo` é o identificador curto usado pela operação (102, 403, buzios…);
+ * `nome` é o nome comercial exibido ao público (ex.: "Studio …").
  */
 export const imoveis = pgTable(
   "imoveis",
@@ -56,7 +56,20 @@ export const imoveis = pgTable(
     organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
     codigo: text("codigo").notNull(),
     nome: text("nome").notNull(),
+    /** Aparece no site público e na busca. Búzios = false. */
+    publico: boolean("publico").notNull().default(false),
+    /** Em operação. Imóvel inativo some das listas, mas o histórico fica. */
+    ativo: boolean("ativo").notNull().default(true),
+    bairro: text("bairro").notNull().default(""),
+    cidade: text("cidade").notNull().default("Rio de Janeiro"),
+    endereco: text("endereco").notNull().default(""),
+    fuso: text("fuso").notNull().default("America/Sao_Paulo"),
+    capacidade: integer("capacidade"),
+    quartos: integer("quartos"),
+    banheiros: integer("banheiros"),
+    descricao: text("descricao").notNull().default(""),
     criadoEm: criadoEm(),
+    atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("imoveis_codigo_por_org").on(t.organizacaoId, t.codigo)],
 );
