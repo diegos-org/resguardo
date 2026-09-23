@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 23/09/2026, PR do item M3.1 (modelo de reservas).
+> **Última atualização:** 23/09/2026, PR do item M3.5 (tela de reservas).
 
 ---
 
@@ -86,6 +86,11 @@
   ligado, rodar a sincronização duas vezes não duplica nada, e toda mudança vinda de lá fica
   no histórico. O sistema também já sabe detectar **overbooking** (duas reservas no mesmo
   imóvel no mesmo dia).
+- M3.5: **tela de Reservas** no painel: lista filtrada pelo filtro do topo (imóveis + mês/ano),
+  com código, imóvel, origem, entrada, saída, noites, hóspede, valor e situação; aviso em
+  vermelho se houver overbooking; opção de mostrar canceladas; **"Nova reserva"** para lançar
+  à mão (reservas diretas/WhatsApp); ficha de cada reserva com botão de cancelar e histórico.
+  A equipe de operação vê as reservas, mas **não vê valores**.
 
 A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 

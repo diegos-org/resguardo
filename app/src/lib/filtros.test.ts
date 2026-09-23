@@ -56,3 +56,12 @@ describe("manterFiltros", () => {
     expect(manterFiltros({})).toBe("");
   });
 });
+
+describe("periodoDosFiltros", () => {
+  it("mês, dezembro e ano inteiro", async () => {
+    const { periodoDosFiltros } = await import("./filtros");
+    expect(periodoDosFiltros({ imoveis: [], ano: 2026, mes: 9 })).toEqual({ inicio: "2026-09-01", fim: "2026-10-01" });
+    expect(periodoDosFiltros({ imoveis: [], ano: 2026, mes: 12 })).toEqual({ inicio: "2026-12-01", fim: "2027-01-01" });
+    expect(periodoDosFiltros({ imoveis: [], ano: 2027, mes: null })).toEqual({ inicio: "2027-01-01", fim: "2028-01-01" });
+  });
+});

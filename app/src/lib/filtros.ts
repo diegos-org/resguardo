@@ -113,3 +113,12 @@ export function descreverFiltros(f: Filtros, opcoes: readonly OpcaoImovel[] = IM
   const periodo = f.mes === null ? `ano de ${f.ano}` : `${nomeDoMes(f.mes)} de ${f.ano}`;
   return `${imoveis} · ${periodo}`;
 }
+
+/** Período [inicio, fim) do filtro: o mês escolhido ou o ano inteiro. */
+export function periodoDosFiltros(f: Filtros): { inicio: string; fim: string } {
+  const p = (n: number) => String(n).padStart(2, "0");
+  if (f.mes === null) return { inicio: `${f.ano}-01-01`, fim: `${f.ano + 1}-01-01` };
+  const fimAno = f.mes === 12 ? f.ano + 1 : f.ano;
+  const fimMes = f.mes === 12 ? 1 : f.mes + 1;
+  return { inicio: `${f.ano}-${p(f.mes)}-01`, fim: `${fimAno}-${p(fimMes)}-01` };
+}
