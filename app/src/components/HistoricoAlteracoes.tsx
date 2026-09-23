@@ -23,6 +23,14 @@ const ROTULOS: Record<string, string> = {
   representante: "Representante",
   contrato: "Contrato",
   idExterno: "Canal",
+  estado: "Situação",
+  checkin: "Entrada",
+  checkout: "Saída",
+  hospedes: "Hóspedes",
+  hospedeNome: "Hóspede",
+  valorBruto: "Valor bruto (centavos)",
+  taxaCanal: "Taxa do canal (centavos)",
+  valorLiquido: "Líquido (centavos)",
 };
 
 const ACOES: Record<string, string> = {
@@ -37,6 +45,10 @@ const ACOES: Record<string, string> = {
   "contrato.encerrar": "encerrou contrato",
   "idexterno.adicionar": "ligou canal",
   "idexterno.remover": "desligou canal",
+  "reserva.criar": "lançou a reserva",
+  "reserva.importar": "importou a reserva",
+  "reserva.sincronizar": "atualizou pela sincronização",
+  "reserva.cancelar": "cancelou a reserva",
 };
 
 function valor(v: unknown): string {

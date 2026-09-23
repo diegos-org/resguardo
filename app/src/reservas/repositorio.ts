@@ -106,7 +106,8 @@ export async function sincronizarReserva(
     const novo = { ...existente, ...dados };
     const mudancas = calcularMudancas(existente, novo);
     if (Object.keys(mudancas).length === 0) return { ok: true as const, reserva: existente, criada: false };
-    const canceladaEm = dados.estado === "cancelada" && existente.estado !== "cancelada" ? new Date() : existente.canceladaEm;
+    // Cancelou agora → data de agora; continua cancelada → mantém; voltou a valer → limpa.
+    const canceladaEm = dados.estado !== "cancelada" ? null : existente.estado === "cancelada" ? existente.canceladaEm : new Date();
     const [reserva] = await tx
       .update(reservas)
       .set({ ...dados, canceladaEm, atualizadoEm: new Date() })

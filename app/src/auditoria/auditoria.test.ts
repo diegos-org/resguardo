@@ -4,7 +4,7 @@ import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { atualizarImovel, criarImovel } from "@/imoveis/repositorio";
 import type { DadosImovel } from "@/imoveis/validacao";
-import { calcularMudancas, historicoDe } from "./auditoria";
+import { calcularMudancas, historicoDe, ocultarCampos } from "./auditoria";
 
 describe("calcularMudancas", () => {
   it("criação lista todos os campos, exceto os técnicos", () => {
@@ -71,5 +71,21 @@ describe("histórico de imóveis", () => {
     const im = await criarImovel(db, org, dados, null);
     expect(await historicoDe(db, outraOrg, "imovel", im.id)).toEqual([]);
     expect((await historicoDe(db, org, "imovel", im.id))[0].autor).toBeNull();
+  });
+});
+
+describe("ocultarCampos", () => {
+  it("tira os campos escondidos e some com edições que só mexiam neles", () => {
+    const base = { id: "1", criadoEm: new Date(), autor: null };
+    const linhas = [
+      { ...base, id: "a", acao: "reserva.sincronizar", mudancas: { valorBruto: [1, 2], checkout: ["x", "y"] } },
+      { ...base, id: "b", acao: "reserva.sincronizar", mudancas: { valorLiquido: [1, 2] } },
+      { ...base, id: "c", acao: "reserva.importar", mudancas: { valorBruto: [null, 5] } },
+    ] as Parameters<typeof ocultarCampos>[0];
+    const r = ocultarCampos(linhas, ["valorBruto", "valorLiquido"]);
+    expect(r.map((l) => [l.id, Object.keys(l.mudancas)])).toEqual([
+      ["a", ["checkout"]],
+      ["c", []],
+    ]);
   });
 });

@@ -69,7 +69,7 @@ item muda a linha para `feito` **no próprio PR do item**.
 | M3.2 | Cliente Beds24 API v2 **somente leitura** (reservas, bloqueios, preços) com adaptador falso para testes | a fazer | M3.1 |
 | M3.3 | Sincronização Beds24 → banco: idempotente, agendada (cron Vercel), registro de divergências | bloqueado | M3.2 + Diego: chave API Beds24 no ambiente |
 | M3.4 | Calendário central: todas as unidades, por imóvel, reservas/bloqueios/limpezas/manutenção, filtros global e local | a fazer | M3.1, M0.4 |
-| M3.5 | Lista de reservas com filtros e detalhe da reserva | a fazer | M3.1 |
+| M3.5 | Lista de reservas com filtros e detalhe da reserva | feito | M3.1 |
 | M3.6 | Importação manual (CSV) de reservas como alternativa enquanto Beds24 não estiver ligado | a fazer | M3.1 |
 
 ### M4 — Financeiro (ledger)

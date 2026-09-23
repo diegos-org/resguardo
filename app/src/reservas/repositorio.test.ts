@@ -82,6 +82,12 @@ describe("reservas", () => {
     expect(await listarReservas(db, org, { inicio: "2026-01-01", fim: "2027-01-01", incluirCanceladas: true })).toHaveLength(1);
   });
 
+  it("reserva reativada pela sincronização perde a data de cancelamento", async () => {
+    await sincronizarReserva(db, org, "beds24", "999", dados({ estado: "cancelada" }));
+    const r = await sincronizarReserva(db, org, "beds24", "999", dados({ estado: "confirmada" }));
+    expect(r.ok && r.reserva.canceladaEm).toBeNull();
+  });
+
   it("reserva que já chega cancelada ganha data de cancelamento", async () => {
     const r = await sincronizarReserva(db, org, "beds24", "888", dados({ estado: "cancelada" }));
     expect(r.ok && r.reserva.canceladaEm).toBeInstanceOf(Date);
