@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 23/09/2026, PR do item M4.3 (despesas).
+> **Última atualização:** 23/09/2026, PR do item M3.2 (leitura do Beds24).
 
 ---
 
@@ -98,6 +98,13 @@
 - M2.5: **dados de demonstração** — um comando carrega 6 imóveis, 3 proprietários, contratos e
   ~37 reservas **fictícias** para testar/mostrar o sistema (nunca roda por cima de dados reais).
 
+- M3.2: **leitura do Beds24 (só leitura).** O sistema já sabe ler do Beds24 as reservas,
+  os bloqueios, o calendário (unidades livres, preço e estadia mínima) e a lista de
+  quartos. **Não escreve nada lá.** Cada reserva do Beds24 é ligada ao imóvel certo pelos
+  "canais de cada imóvel" (na ficha do imóvel: canal Beds24, número do imóvel no Beds24 e,
+  como detalhe, o número do quarto). Qualquer informação estranha vira uma
+  **divergência** para conferir — nunca uma reserva inventada. Ainda falta a sua chave
+  de API para ligar de verdade (próximo item, M3.3).
 - M4.1: **base do financeiro (o "livro" de lançamentos).** Cada fato financeiro vira um
   lançamento: valor bruto da reserva, taxa do canal, comissão SCL, parte do proprietário,
   recebimentos, repasses, despesas da empresa, despesas do proprietário, adiantamentos,
@@ -208,7 +215,7 @@ e escreva normalmente.
 | **Codex** (revisor automático) | Revisa cada PR | ✅ ativo no repositório | — |
 | **Neon** | Banco de dados (Postgres) | 🟡 sua conta existe e está paga | Ligar à Vercel (item abaixo) |
 | **Vercel** | Publica o sistema na internet (homologação e depois produção) | ⚪ não conectado | Importar o repositório (seção 6) |
-| **Beds24** | Channel manager (Airbnb/Booking), reservas e calendário | 🟡 conta criada | Gerar a chave de API (seção 6) |
+| **Beds24** | Channel manager (Airbnb/Booking), reservas e calendário | 🟡 conta criada; leitor pronto no sistema | Gerar a chave de API só de leitura (seção 6) |
 | **Mercado Pago** | Pagamentos da reserva direta | ⚪ não conectado | Credenciais de *teste*, mais adiante (M8) |
 | **Meta / WhatsApp Business** | Atendimento pelo WhatsApp da empresa | ⚪ não conectado | Verificação da empresa no Meta Business (demora dias) |
 | **Google Cloud (login)** | Botão "Entrar com Google" | ⚪ não configurado | Criar credenciais OAuth (seção 6) |
@@ -239,7 +246,9 @@ ambiente).
       `AUTH_SECRET` (qualquer texto longo e aleatório, ex.: gerado em 1password ou similar) e
       `ADMIN_EMAILS` = seu e-mail do Google.
    4. Faça *Redeploy* e entre em `/entrar`. Se travar em algum passo, me chame que eu guio.
-3. **Beds24:** gere a chave de API. **Não cole no chat.** Coloque nas configurações do
+3. **Beds24:** gere a chave de API (no painel do Beds24, na área de API, crie um
+   "long life token" marcando **só permissões de leitura** — o sistema não precisa escrever
+   nada lá por enquanto). **Não cole no chat.** Coloque nas configurações do
    ambiente do Claude Code (menu do ambiente no topo da sessão → *Edit* → variável
    `BEDS24_API_KEY`) e também na Vercel (*Settings → Environment Variables*).
 4. **Meta Business:** comece a verificação da empresa, porque ela demora.
