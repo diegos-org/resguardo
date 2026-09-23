@@ -1,11 +1,18 @@
-# Sua Casa Leblon — base de reconstrução
+# SCL 2.0 — Sua Casa Leblon
 
-Esta versão reúne o site de consulta, a demonstração de gestão e os requisitos operacionais antes dispersos. É uma candidata para revisão; não é implantação de produção nem comprovação de migração dos assistentes.
+Reconstrução do sistema de gestão da Sua Casa Leblon.
 
-- Diego: [situação e próximos passos](assistentes/PROJETO-DIEGO.md).
-- Colaboradores: começar por [protocolo](00-PROTOCOLO.md), [estado atual](coordination/CURRENT.md) e [papéis](assistentes/GUIA-DO-DIEGO.md).
-- Produto: [site público](scl-publico/README.md), [gestão demonstrativa](scl-gestao-demo/README.md), [financeiro e portais](operations/FINANCEIRO-PORTAIS.md).
-- Operação: [relatórios](operations/RELATORIOS-PROPRIETARIOS.md), [regras complementares](operations/RELATORIOS-COMUNICACAO-2026-09-21.md), [serviços](operations/SERVICOS-EXTERNOS.md).
-- Recuperação: [origens e seleção](coordination/RECONSTRUCAO.md). Histórico anterior continua nos handoffs, no Git e em history/reconstrucao-fontes.
+- **Planejamento e progresso:** [ROADMAP.md](ROADMAP.md)
+- **Regras para as sessões Claude:** [CLAUDE.md](CLAUDE.md)
+- **Requisitos** (decisões de Diego, sanitizadas): [requisitos/](requisitos/)
+  - financeiro e portais: [FINANCEIRO-PORTAIS.md](requisitos/operations/FINANCEIRO-PORTAIS.md)
+  - custos e conciliação: [FINANCE-COSTS-SETTLEMENT.md](requisitos/product/FINANCE-COSTS-SETTLEMENT.md)
+  - operação: [CONSOLIDACAO-2026-09-21.md](requisitos/operations/CONSOLIDACAO-2026-09-21.md), [DECISOES-OPERACIONAIS-2026-09-21.md](requisitos/operations/DECISOES-OPERACIONAIS-2026-09-21.md)
+  - relatórios: [RELATORIOS-PROPRIETARIOS.md](requisitos/operations/RELATORIOS-PROPRIETARIOS.md)
+- **Protótipos anteriores** (referência, sem banco nem login): [prototipos/](prototipos/)
+- **Histórico da coordenação anterior** (somente consulta): [arquivo/](arquivo/)
 
-O site usa disponibilidade desconhecida quando não há fonte configurada; não aceita reservas/pagamentos reais. A gestão usa dados fictícios e não tem autenticação nem persistência de produção. O atendimento real permanece separado e temporariamente em espera por pedido de Diego.
+## Estado
+
+Nada deste repositório está em produção. O aplicativo definitivo (Next.js + Neon + Vercel)
+começa no item M0.2 do roadmap, em `app/`.
