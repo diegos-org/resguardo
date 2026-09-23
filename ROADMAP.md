@@ -38,7 +38,7 @@ item muda a linha para `feito` **no próprio PR do item**.
 | M0.1 | Limpeza do repositório, ROADMAP e CLAUDE.md (este PR) | feito | — |
 | M0.2 | Esqueleto Next.js + TypeScript + lint + Vitest em `app/`; CI rodando lint, typecheck e testes | feito | M0.1 |
 | M0.3 | Drizzle + Neon: conexão por `DATABASE_URL`, pasta de migrações, helper de teste com PGlite | feito | M0.2 |
-| M0.4 | Layout base do painel (menu lateral, cabeçalho, filtro global de imóveis/período reutilizável) com identidade SCL | a fazer | M0.2 |
+| M0.4 | Layout base do painel (menu lateral, cabeçalho, filtro global de imóveis/período reutilizável) com identidade SCL | feito | M0.2 |
 | M0.5 | Deploy de homologação na Vercel conectado ao Neon (branch de banco `homolog`) | bloqueado | Diego: conectar repo na Vercel e Neon (ver "Ações de Diego") |
 
 ### M1 — Acesso e permissões

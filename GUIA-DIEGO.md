@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 23/09/2026, PR do item M0.3 (banco de dados).
+> **Última atualização:** 23/09/2026, PR do item M0.4 (layout do painel).
 
 ---
 
@@ -39,7 +39,10 @@
 **Itens já prontos (na `main`):**
 - M0.1: repositório limpo, plano único (ROADMAP) e regras para o Claude.
 - M0.2: esqueleto do aplicativo, com testes automáticos.
-- M0.3: conexão com o banco de dados (Neon) e banco de teste automático. *(neste PR)*
+- M0.3: conexão com o banco de dados (Neon) e banco de teste automático.
+- M0.4: **painel interno com menu e filtro global** (imóveis + mês/ano). Todas as seções
+  aparecem no menu, marcadas como "em construção" até ganharem conteúdo. Funciona no
+  celular: o menu vira uma faixa que desliza para o lado.
 
 A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 
@@ -57,6 +60,10 @@ A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 4. **Você faz o merge** quando o CI estiver verde. Pode ser pelo app do GitHub no
    celular. Não precisa entender o código: a descrição do PR explica.
 5. Pode haver até **3 PRs abertos** ao mesmo tempo esperando seu merge.
+
+**Onde ver o sistema:** assim que a Vercel estiver conectada (seção 6), cada PR ganha um
+link de *preview*, e a `main` fica publicada num endereço fixo de homologação. O painel
+fica em `/painel`.
 
 **Se quiser acompanhar ou pedir algo:** abra esta conversa no app Claude (área *Code*)
 e escreva normalmente.
