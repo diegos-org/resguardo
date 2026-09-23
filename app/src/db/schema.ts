@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 /**
  * Esquema do banco (Drizzle). Novas tabelas entram aqui e geram migração com
@@ -160,4 +160,34 @@ export const auditoria = pgTable(
     criadoEm: criadoEm(),
   },
   (t) => [index("auditoria_entidade").on(t.organizacaoId, t.entidade, t.entidadeId, t.criadoEm)],
+);
+
+// ---------------------------------------------------------------------------
+// Contratos de gestão (M2.3): percentuais com vigência, por imóvel
+// ---------------------------------------------------------------------------
+
+export const TIPOS_CONTRATO = ["gestao_completa", "gestao_online", "marketplace"] as const;
+export type TipoContrato = (typeof TIPOS_CONTRATO)[number];
+export const tipoContratoEnum = pgEnum("tipo_contrato", TIPOS_CONTRATO);
+
+/**
+ * Contrato de gestão de um imóvel. Vale de `inicio` até `fim` (inclusive; null = sem fim).
+ * Percentual em pontos-base (1500 = 15,00%) para evitar arredondamento.
+ * Mudança de regra = novo contrato com nova vigência; nunca recalcular o passado.
+ */
+export const contratos = pgTable(
+  "contratos",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    imovelId: uuid("imovel_id").notNull().references(() => imoveis.id),
+    tipo: tipoContratoEnum("tipo").notNull(),
+    /** Comissão da empresa em pontos-base. Null só para marketplace com fórmula pendente. */
+    comissaoBp: integer("comissao_bp"),
+    inicio: date("inicio", { mode: "string" }).notNull(),
+    fim: date("fim", { mode: "string" }),
+    observacoes: text("observacoes").notNull().default(""),
+    criadoEm: criadoEm(),
+  },
+  (t) => [index("contratos_imovel_inicio").on(t.imovelId, t.inicio)],
 );

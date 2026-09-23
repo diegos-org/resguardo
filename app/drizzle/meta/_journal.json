@@ -36,6 +36,13 @@
       "when": 1790201404259,
       "tag": "0004_proprietarios",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790201652834,
+      "tag": "0005_contratos",
+      "breakpoints": true
     }
   ]
 }

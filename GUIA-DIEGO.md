@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 23/09/2026, PR do item M2.2 (cadastro de proprietários).
+> **Última atualização:** 23/09/2026, PR do item M2.3 (contratos de gestão).
 
 ---
 
@@ -70,6 +70,12 @@
   **representantes autorizados** (cônjuge, financeiro, procurador), com opção "recebe cópia dos
   relatórios". Essa área é **só do admin** (tem dados pessoais); na lista o CPF aparece
   mascarado (•••.•••.247-25) e o histórico nunca grava CPF nem Pix por extenso.
+- M2.3: **contratos de gestão com data de início e fim**, na ficha de cada imóvel: gestão
+  completa (sugestão 15%), gestão online (10%) ou marketplace (fórmula ainda a definir).
+  Mudou o percentual? Encerra-se o contrato atual e cria-se um novo a partir da data nova —
+  assim reservas antigas continuam com a regra da época (ex.: 102, 303 e 399 voltando a
+  15/85 em 01/01/2027 = novo contrato começando nessa data). O sistema não deixa dois
+  contratos valerem no mesmo dia. Só o admin mexe em contratos.
 
 A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 
