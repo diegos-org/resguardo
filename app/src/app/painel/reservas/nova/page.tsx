@@ -17,7 +17,7 @@ export default async function NovaReserva() {
         Para reservas fechadas diretamente (WhatsApp, indicação) ou enquanto o Beds24 não está ligado. Reservas do Airbnb e do Booking
         virão automaticamente pela sincronização.
       </p>
-      <FormReserva acao={salvarNovaReserva} imoveis={imoveis} />
+      <FormReserva acao={salvarNovaReserva} imoveis={imoveis} comValores={podeFazer(sessao.papel, "financeiro:editar")} />
     </>
   );
 }

@@ -20,9 +20,12 @@ export default async function ListaReservas({ searchParams }: PageProps<"/painel
   const opcoes = imoveis.map((i) => ({ codigo: i.codigo, nome: i.nome }));
   const filtros = lerFiltros(params, opcoes);
   const periodo = periodoDosFiltros(filtros);
-  const idsFiltro = filtros.imoveis.length ? imoveis.filter((i) => filtros.imoveis.includes(i.codigo)).map((i) => i.id) : undefined;
+  // "Todos" = todos os imóveis ativos (reservas de imóvel inativo não aparecem).
+  const idsFiltro = (filtros.imoveis.length ? imoveis.filter((i) => filtros.imoveis.includes(i.codigo)) : imoveis).map((i) => i.id);
   const verCanceladas = params.canceladas === "1";
-  const lista = await listarReservas(db, sessao.organizacaoId, { ...periodo, imovelIds: idsFiltro, incluirCanceladas: verCanceladas });
+  const lista = idsFiltro.length
+    ? await listarReservas(db, sessao.organizacaoId, { ...periodo, imovelIds: idsFiltro, incluirCanceladas: verCanceladas })
+    : [];
 
   const porId = new Map(imoveis.map((i) => [i.id, i]));
   const emConflito = new Set(conflitos(lista).flat());
