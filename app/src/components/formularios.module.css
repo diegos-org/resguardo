@@ -140,3 +140,9 @@
 .inativo td {
   color: var(--scl-texto-2);
 }
+
+.numero {
+  white-space: nowrap;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
