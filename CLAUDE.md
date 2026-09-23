@@ -13,7 +13,10 @@ financeiro, portal do proprietário, portal do hóspede, site público e integra
 4. Item novo: o primeiro `a fazer` (na ordem do arquivo) cujas dependências estão
    `feito` na `main` e que não está em PR. Branch nova a partir da `main` atualizada.
 5. **Um item = um PR**, título `[ID] descrição curta`, pronto para revisão (não draft).
-   No mesmo PR, mudar a linha do item no ROADMAP para `feito`.
+   No mesmo PR, mudar a linha do item no ROADMAP para `feito` **e atualizar o
+   `GUIA-DIEGO.md`** (seção "Onde estamos", contas/serviços, o que Diego precisa fazer,
+   data da última atualização). O guia é o documento de Diego: linguagem simples, sem código.
+   Branch por item: `claude/<id>-<slug>` a partir da `main` (autorizado por Diego em 23/09).
 6. Se não houver item disponível (tudo bloqueado ou em PR), não abrir nada — encerrar.
 7. No máximo **3 PRs de roadmap abertos** ao mesmo tempo. Se já houver 3, só consertar.
 
