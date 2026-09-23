@@ -11,9 +11,8 @@ import { eq } from "drizzle-orm";
 import { criarContrato } from "../src/contratos/repositorio";
 import { ehBancoLocal, getDb } from "../src/db/client";
 import type { Db } from "../src/db/types";
-import { bloqueios, imoveis, organizacoes, reservas, usuarios } from "../src/db/schema";
+import { bloqueios, imoveis, organizacoes, usuarios } from "../src/db/schema";
 import { criarImovel } from "../src/imoveis/repositorio";
-import { aplicarMotor } from "../src/financeiro/aplicar";
 import { hojeISO } from "../src/lib/datas";
 import { criarProprietario, definirImoveis } from "../src/proprietarios/repositorio";
 import { sincronizarReserva } from "../src/reservas/repositorio";
@@ -120,6 +119,8 @@ async function semear(db: Db) {
         taxaCanal: taxa,
         valorLiquido: bruto - taxa,
         codigoCanal: origem === "airbnb" ? `HMDEMO${n}` : "",
+        // Airbnb: a maioria com split confirmado; algumas "a confirmar" para mostrar o acerto pendente.
+        recebimento: origem === "airbnb" && n % 3 !== 0 ? "split" : null,
         observacoes: "Reserva fictícia.",
       });
       dia = somaDias(checkout, n % 3);
@@ -145,9 +146,6 @@ async function semear(db: Db) {
     observacoes: "Demonstração de conflito.",
   });
   await db.insert(bloqueios).values({ organizacaoId: org.id, imovelId: porCodigo["102"], inicio: somaDias(inicioMes, 20), fim: somaDias(inicioMes, 23), motivo: "Manutenção (demo)" });
-  for (const r of await db.select({ id: reservas.id }).from(reservas).where(eq(reservas.organizacaoId, org.id))) {
-    await aplicarMotor(db, org.id, r.id, null);
-  }
   console.log(`[semear] pronto: ${criados.length} imóveis, ${donos.length} proprietários, ${n + 1} reservas fictícias. Admin: ${email}`);
 }
 

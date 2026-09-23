@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { listarContratos } from "@/contratos/repositorio";
 import { lancamentos, proprietarioImoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
@@ -7,11 +7,15 @@ import { uuidValido } from "@/lib/ids";
 import { estornar, lancar, type NovoLancamento } from "./ledger";
 import { calcularReserva, REGRAS_PADRAO, type RegrasMotor } from "./motor";
 
+/** Tudo o que define o lançamento desejado: se qualquer coisa mudar, ele é refeito. */
 const assinatura = (l: NovoLancamento) =>
   createHash("sha1")
-    .update(JSON.stringify([l.valor, l.efeitoSaldo ?? 0, l.proprietarioId ?? null, l.competencia]))
+    .update(JSON.stringify([l.valor, l.efeitoSaldo ?? 0, l.proprietarioId ?? null, l.imovelId ?? null, l.competencia, l.estado ?? "previsto"]))
     .digest("hex")
     .slice(0, 10);
+
+/** Chave gravada = base ou base#N (N-ésima vez que o mesmo cálculo volta a valer). */
+const baseDaChave = (chave: string) => chave.replace(/#\d+$/, "");
 
 export type ResultadoAplicacao = { criados: number; estornados: number; mantidos: number; avisos: string[] };
 
@@ -38,11 +42,18 @@ export async function aplicarMotor(
     if (!r) return null;
 
     const contratos = await listarContratos(tx, organizacaoId, r.imovelId);
-    const donos = await tx.select({ id: proprietarioImoveis.proprietarioId }).from(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, r.imovelId));
-    const avisosExtras = donos.length > 1 ? ["Imóvel com mais de um proprietário: acerto atribuído ao primeiro cadastrado."] : [];
-    const { lancamentos: desejados, avisos } = calcularReserva(r, contratos, donos[0]?.id ?? null, regras);
-    const comChave = desejados.map((l) => ({ ...l, chaveOrigem: `${l.chaveOrigem}:${assinatura(l)}` }));
+    const donos = await tx
+      .select({ id: proprietarioImoveis.proprietarioId })
+      .from(proprietarioImoveis)
+      .where(eq(proprietarioImoveis.imovelId, r.imovelId))
+      .orderBy(asc(proprietarioImoveis.proprietarioId));
+    const { lancamentos: calculados, avisos } = calcularReserva(r, contratos, donos.map((d) => d.id), regras);
+    const desejados = calculados.map((l) => ({ ...l, chaveOrigem: `${l.chaveOrigem}:${assinatura(l)}` }));
 
+    const doMotor = await tx
+      .select({ id: lancamentos.id, chave: lancamentos.chaveOrigem })
+      .from(lancamentos)
+      .where(and(eq(lancamentos.organizacaoId, organizacaoId), eq(lancamentos.reservaId, reservaId), eq(lancamentos.origem, "motor")));
     const ativos = await tx
       .select({ id: lancamentos.id, chave: lancamentos.chaveOrigem })
       .from(lancamentos)
@@ -55,18 +66,33 @@ export async function aplicarMotor(
           sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`,
         ),
       );
-    const desejadas = new Set(comChave.map((l) => l.chaveOrigem));
-    const existentes = new Set(ativos.map((a) => a.chave));
+    const desejadas = new Set(desejados.map((l) => l.chaveOrigem));
 
+    // Mantém um ativo por cálculo desejado; estorna o resto.
+    const mantidas = new Set<string>();
     let estornados = 0;
     for (const a of ativos) {
-      if (!desejadas.has(a.chave)) {
-        await estornar(tx, organizacaoId, a.id, "Recalculado pelo motor (reserva ou contrato mudou)", autorId);
-        estornados++;
+      const base = a.chave ? baseDaChave(a.chave) : "";
+      if (desejadas.has(base) && !mantidas.has(base)) {
+        mantidas.add(base);
+        continue;
       }
+      await estornar(tx, organizacaoId, a.id, "Recalculado pelo motor (reserva ou contrato mudou)", autorId);
+      estornados++;
     }
-    const novos = comChave.filter((l) => !existentes.has(l.chaveOrigem));
+
+    // Cálculo que já valeu, foi estornado e volta a valer ganha chave nova (base#2, #3…),
+    // senão a idempotência do livro devolveria o lançamento antigo, já estornado.
+    const usadas = new Set(doMotor.map((l) => l.chave).filter((c): c is string => Boolean(c)));
+    const novos = desejados
+      .filter((l) => !mantidas.has(l.chaveOrigem))
+      .map((l) => {
+        let chave = l.chaveOrigem;
+        for (let n = 2; usadas.has(chave); n++) chave = `${l.chaveOrigem}#${n}`;
+        usadas.add(chave);
+        return { ...l, chaveOrigem: chave };
+      });
     if (novos.length) await lancar(tx, organizacaoId, novos, autorId);
-    return { criados: novos.length, estornados, mantidos: ativos.length - estornados, avisos: [...avisosExtras, ...avisos] };
+    return { criados: novos.length, estornados, mantidos: mantidas.size, avisos };
   });
 }

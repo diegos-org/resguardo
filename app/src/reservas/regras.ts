@@ -1,7 +1,12 @@
 import { randomInt } from "node:crypto";
-import { ORIGENS_RESERVA, type EstadoReserva, type OrigemReserva } from "@/db/schema";
+import { ORIGENS_RESERVA, RECEBIMENTOS_RESERVA, type EstadoReserva, type OrigemReserva, type RecebimentoReserva } from "@/db/schema";
 
 /** Regras puras de reservas. Datas "AAAA-MM-DD"; checkout/fim são exclusivos (dia de saída). */
+
+export const NOMES_RECEBIMENTO: Record<RecebimentoReserva, string> = {
+  split: "Canal paga o proprietário direto (split)",
+  empresa: "Empresa recebe tudo e repassa",
+};
 
 export const NOMES_ORIGEM: Record<OrigemReserva, string> = {
   airbnb: "Airbnb",
@@ -70,6 +75,8 @@ export type DadosReserva = {
   valorBruto: number | null;
   taxaCanal: number | null;
   valorLiquido: number | null;
+  /** Omitido = mantém o que já estava gravado (sincronização). */
+  recebimento?: RecebimentoReserva | null;
   codigoCanal: string;
   observacoes: string;
 };
@@ -90,6 +97,7 @@ export function validarReserva(d: DadosReserva): ErrosReserva {
   for (const campo of ["valorBruto", "taxaCanal", "valorLiquido"] as const) {
     if (!centavosOk(d[campo])) erros[campo] = "Valor em centavos, inteiro e não negativo.";
   }
+  if (d.recebimento != null && !RECEBIMENTOS_RESERVA.includes(d.recebimento)) erros.recebimento = "Forma de recebimento inválida.";
   if (!/^[A-Z]{3}$/.test(d.moeda)) erros.moeda = "Moeda com 3 letras (ex.: BRL).";
   return erros;
 }

@@ -31,6 +31,7 @@ const ROTULOS: Record<string, string> = {
   valorBruto: "Valor bruto (centavos)",
   taxaCanal: "Taxa do canal (centavos)",
   valorLiquido: "Líquido (centavos)",
+  recebimento: "Quem recebe do canal",
 };
 
 const ACOES: Record<string, string> = {

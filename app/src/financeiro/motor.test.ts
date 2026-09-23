@@ -11,6 +11,7 @@ const reserva = (over: Partial<ReservaParaMotor> = {}): ReservaParaMotor => ({
   checkout: "2026-10-13",
   valorBruto: 150000,
   taxaCanal: 22500,
+  recebimento: null,
   ...over,
 });
 const quinzePorCento = [{ tipo: "gestao_completa" as const, comissaoBp: 1500, inicio: "2025-01-01", fim: null }];
@@ -42,7 +43,7 @@ describe("utilitários", () => {
 
 describe("calcularReserva", () => {
   it("Booking (empresa recebe tudo): comissão sobre o líquido do canal e parte do proprietário no acerto", () => {
-    const { lancamentos, avisos } = calcularReserva(reserva(), quinzePorCento, "p1");
+    const { lancamentos, avisos } = calcularReserva(reserva(), quinzePorCento, ["p1"]);
     expect(avisos).toEqual([]);
     const por = Object.fromEntries(lancamentos.map((l) => [l.tipo, l]));
     expect(por.receita_bruta.valor).toBe(150000);
@@ -52,15 +53,28 @@ describe("calcularReserva", () => {
     expect(lancamentos.every((l) => l.competencia === "2026-10-01" && l.chaveOrigem?.startsWith("reserva:r1:"))).toBe(true);
   });
 
-  it("Airbnb (split): parte do proprietário não entra no acerto", () => {
-    const { lancamentos } = calcularReserva(reserva({ origem: "airbnb" }), quinzePorCento, "p1");
+  it("Airbnb confirmado como split: parte do proprietário não entra no acerto", () => {
+    const { lancamentos } = calcularReserva(reserva({ origem: "airbnb", recebimento: "split" }), quinzePorCento, ["p1"]);
     const direito = lancamentos.find((l) => l.tipo === "direito_proprietario")!;
     expect(direito.efeitoSaldo).toBe(0);
+    expect(direito.estado).toBe("previsto");
     expect(direito.descricao).toContain("paga direto pelo canal");
   });
 
+  it("Airbnb sem confirmação: não presume split, deixa o acerto pendente e avisa", () => {
+    const { lancamentos, avisos } = calcularReserva(reserva({ origem: "airbnb" }), quinzePorCento, ["p1"]);
+    const direito = lancamentos.find((l) => l.tipo === "direito_proprietario")!;
+    expect(direito).toMatchObject({ efeitoSaldo: 0, estado: "pendente" });
+    expect(avisos.some((a) => a.includes("split"))).toBe(true);
+  });
+
+  it("Airbnb em que a empresa recebe tudo: parte do proprietário entra no acerto", () => {
+    const { lancamentos } = calcularReserva(reserva({ origem: "airbnb", recebimento: "empresa" }), quinzePorCento, ["p1"]);
+    expect(lancamentos.find((l) => l.tipo === "direito_proprietario")).toMatchObject({ efeitoSaldo: 108375, proprietarioId: "p1" });
+  });
+
   it("estadia entre meses: rateio pelas noites, somas exatas", () => {
-    const { lancamentos } = calcularReserva(reserva({ checkin: "2026-10-29", checkout: "2026-11-02", valorBruto: 100001, taxaCanal: 15001 }), quinzePorCento, "p1");
+    const { lancamentos } = calcularReserva(reserva({ checkin: "2026-10-29", checkout: "2026-11-02", valorBruto: 100001, taxaCanal: 15001 }), quinzePorCento, ["p1"]);
     const doTipo = (t: string) => lancamentos.filter((l) => l.tipo === t);
     expect(doTipo("receita_bruta").map((l) => l.competencia)).toEqual(["2026-10-01", "2026-11-01"]);
     expect(soma(doTipo("receita_bruta").map((l) => l.valor))).toBe(100001);
@@ -73,15 +87,15 @@ describe("calcularReserva", () => {
       { tipo: "gestao_completa" as const, comissaoBp: 2000, inicio: "2025-01-01", fim: "2026-12-31" },
       { tipo: "gestao_completa" as const, comissaoBp: 1500, inicio: "2027-01-01", fim: null },
     ];
-    const antes = calcularReserva(reserva({ checkin: "2026-12-30", checkout: "2027-01-02", taxaCanal: 0, valorBruto: 30000 }), contratos, "p1");
-    const depois = calcularReserva(reserva({ checkin: "2027-01-01", checkout: "2027-01-04", taxaCanal: 0, valorBruto: 30000 }), contratos, "p1");
+    const antes = calcularReserva(reserva({ checkin: "2026-12-30", checkout: "2027-01-02", taxaCanal: 0, valorBruto: 30000 }), contratos, ["p1"]);
+    const depois = calcularReserva(reserva({ checkin: "2027-01-01", checkout: "2027-01-04", taxaCanal: 0, valorBruto: 30000 }), contratos, ["p1"]);
     const totalComissao = (r: typeof antes) => soma(r.lancamentos.filter((l) => l.tipo === "comissao").map((l) => l.valor));
     expect(totalComissao(antes)).toBe(6000);
     expect(totalComissao(depois)).toBe(4500);
   });
 
   it("base 'bruto' quando configurado", () => {
-    const { lancamentos } = calcularReserva(reserva(), quinzePorCento, "p1", {
+    const { lancamentos } = calcularReserva(reserva(), quinzePorCento, ["p1"], {
       base: "bruto",
       recebimento: { airbnb: "split", booking: "empresa", site: "empresa", direta: "empresa", outro: "empresa" },
     });
@@ -89,15 +103,21 @@ describe("calcularReserva", () => {
   });
 
   it("não inventa: cancelada, sem valor, sem contrato ou marketplace pendente não geram lançamentos", () => {
-    expect(calcularReserva(reserva({ estado: "cancelada" }), quinzePorCento, "p1").lancamentos).toEqual([]);
-    expect(calcularReserva(reserva({ valorBruto: null }), quinzePorCento, "p1").avisos[0]).toContain("pendente");
-    expect(calcularReserva(reserva(), [], "p1").avisos[0]).toContain("Sem contrato");
-    expect(calcularReserva(reserva(), [{ tipo: "marketplace", comissaoBp: null, inicio: "2025-01-01", fim: null }], "p1").avisos[0]).toContain("marketplace");
+    expect(calcularReserva(reserva({ estado: "cancelada" }), quinzePorCento, ["p1"]).lancamentos).toEqual([]);
+    expect(calcularReserva(reserva({ valorBruto: null }), quinzePorCento, ["p1"]).avisos[0]).toContain("pendente");
+    expect(calcularReserva(reserva(), [], ["p1"]).avisos[0]).toContain("Sem contrato");
+    expect(calcularReserva(reserva(), [{ tipo: "marketplace", comissaoBp: null, inicio: "2025-01-01", fim: null }], ["p1"]).avisos[0]).toContain("marketplace");
   });
 
-  it("sem proprietário vinculado: calcula, avisa e não mexe no acerto", () => {
-    const { lancamentos, avisos } = calcularReserva(reserva(), quinzePorCento, null);
+  it("sem proprietário vinculado: calcula, avisa e deixa o acerto pendente", () => {
+    const { lancamentos, avisos } = calcularReserva(reserva(), quinzePorCento, []);
     expect(avisos.some((a) => a.includes("sem proprietário"))).toBe(true);
-    expect(lancamentos.find((l) => l.tipo === "direito_proprietario")!.efeitoSaldo).toBe(0);
+    expect(lancamentos.find((l) => l.tipo === "direito_proprietario")).toMatchObject({ efeitoSaldo: 0, estado: "pendente" });
+  });
+
+  it("mais de um proprietário: não atribui a nenhum deles, acerto pendente", () => {
+    const { lancamentos, avisos } = calcularReserva(reserva(), quinzePorCento, ["p1", "p2"]);
+    expect(avisos.some((a) => a.includes("mais de um proprietário"))).toBe(true);
+    expect(lancamentos.find((l) => l.tipo === "direito_proprietario")).toMatchObject({ proprietarioId: null, efeitoSaldo: 0, estado: "pendente" });
   });
 });

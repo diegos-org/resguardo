@@ -9,10 +9,10 @@ import { listarLancamentos } from "@/financeiro/ledger";
 import { obterImovel } from "@/imoveis/repositorio";
 import { formatBRL } from "@/lib/money";
 import { cancelar } from "@/reservas/acoes";
-import { NOMES_ESTADO, NOMES_ORIGEM, noites } from "@/reservas/regras";
+import { NOMES_ESTADO, NOMES_ORIGEM, NOMES_RECEBIMENTO, noites } from "@/reservas/regras";
 import { obterReserva } from "@/reservas/repositorio";
 
-const CAMPOS_FINANCEIROS = ["valorBruto", "taxaCanal", "valorLiquido", "moeda"];
+const CAMPOS_FINANCEIROS = ["valorBruto", "taxaCanal", "valorLiquido", "moeda", "recebimento"];
 const dataBr = (d: string) => d.split("-").reverse().join("/");
 const brl = (c: number | null) => (c === null ? "não informado" : formatBRL(c));
 
@@ -41,6 +41,7 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
           ["Valor bruto", brl(r.valorBruto)],
           ["Taxa do canal", brl(r.taxaCanal)],
           ["Líquido recebido", brl(r.valorLiquido)],
+          ["Quem recebe do canal", r.recebimento ? NOMES_RECEBIMENTO[r.recebimento] : "a confirmar"],
         ] as [string, string][])
       : []),
     ["Observações", r.observacoes || "—"],

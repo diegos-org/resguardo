@@ -64,6 +64,13 @@
       "when": 1790203851858,
       "tag": "0008_lancamentos",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790204979444,
+      "tag": "0009_recebimento",
+      "breakpoints": true
     }
   ]
 }

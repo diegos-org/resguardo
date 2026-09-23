@@ -116,9 +116,12 @@
   **comissão SCL** pelo contrato vigente na data de entrada, e **parte do proprietário**. A
   ficha da reserva mostra esse financeiro (só para o admin). Regras que adotei — **confirme ou
   corrija** (seção 7): comissão sobre o valor **depois da taxa do canal**; estadia que atravessa
-  o mês é **dividida pelas noites**; no **Airbnb** a parte do proprietário é paga direto a ele
-  (não vira dívida da empresa), no **Booking/site/direta** a empresa recebe tudo e fica devendo
-  a parte do proprietário.
+  o mês é **dividida pelas noites**; no **Booking/site/direta** a empresa recebe tudo e fica
+  devendo a parte do proprietário. No **Airbnb** o sistema **não presume** que o repasse ao
+  proprietário é automático (split): cada reserva tem o campo "Quem recebe do canal"; enquanto
+  não for preenchido, a parte do proprietário fica **pendente** e fora do acerto. O mesmo vale
+  para imóvel com **mais de um proprietário** (ainda não há cadastro de cotas) ou sem
+  proprietário — nada é atribuído a alguém por chute.
 
 ### Como está ficando (prints com dados fictícios)
 
@@ -233,8 +236,10 @@ ambiente).
 - **Regras do cálculo da comissão (adotei assim, confirme):**
   1. comissão calculada sobre o valor **após a taxa do canal** (e não sobre o bruto);
   2. estadia que atravessa a virada do mês é **dividida pelas noites** de cada mês;
-  3. **Airbnb** paga a parte do proprietário direto a ele; **Booking, site e direta**: a
-     empresa recebe tudo e repassa depois.
+  3. **Booking, site e direta**: a empresa recebe tudo e repassa depois. **Airbnb**: fica
+     "a confirmar" em cada reserva (split ou empresa recebe). Se todas as suas do Airbnb forem
+     split, me diga e eu deixo isso como padrão.
+  4. Algum imóvel tem **mais de um proprietário**? Se sim, preciso da cota de cada um.
   Qualquer uma delas muda com um ajuste simples — é só me dizer.
 - **Búzios** no sistema interno: por ora entra cadastrado, mas fora do site público.
 - **Avaliações**: só no Airbnb ou também próprias.

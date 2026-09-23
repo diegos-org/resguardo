@@ -6,25 +6,28 @@
  * - Base da comissão: valor bruto − taxa do canal ("liquido_canal") ou o bruto ("bruto").
  * - Competência: rateio pelas noites de cada mês (estadia 29/10→02/11 = 3 noites em
  *   outubro, 1 em novembro); a soma dos meses é sempre exatamente o total.
- * - Quem recebe o dinheiro, por origem: "split" (Airbnb paga a parte do proprietário
- *   direto a ele → não gera dívida da empresa) ou "empresa" (empresa recebe tudo e deve a
- *   parte do proprietário → entra no acerto).
+ * - Quem recebe o dinheiro: o que estiver gravado na reserva ("split" = o canal paga a parte
+ *   do proprietário direto a ele → não gera dívida da empresa; "empresa" = a empresa recebe
+ *   tudo e deve a parte do proprietário → entra no acerto). Sem isso, vale a regra da origem;
+ *   no Airbnb não se presume split: fica "a_confirmar" e a parte do proprietário fica pendente.
+ * - Acerto pendente também quando o imóvel não tem proprietário ou tem mais de um (as cotas
+ *   de cada um ainda não existem no cadastro) — nada é atribuído a um dono arbitrário.
  * - Arredondamento: comissão arredondada ao centavo mais próximo (meio centavo para cima),
  *   calculada sobre o total e depois rateada.
  */
-import type { OrigemReserva, TipoContrato } from "@/db/schema";
+import type { OrigemReserva, RecebimentoReserva, TipoContrato } from "@/db/schema";
 import { contratoVigente } from "@/contratos/regras";
 import { noites } from "@/reservas/regras";
 import type { NovoLancamento } from "./ledger";
 
 export type RegrasMotor = {
   base: "liquido_canal" | "bruto";
-  recebimento: Record<OrigemReserva, "split" | "empresa">;
+  recebimento: Record<OrigemReserva, RecebimentoReserva | "a_confirmar">;
 };
 
 export const REGRAS_PADRAO: RegrasMotor = {
   base: "liquido_canal",
-  recebimento: { airbnb: "split", booking: "empresa", site: "empresa", direta: "empresa", outro: "empresa" },
+  recebimento: { airbnb: "a_confirmar", booking: "empresa", site: "empresa", direta: "empresa", outro: "empresa" },
 };
 
 export type ReservaParaMotor = {
@@ -37,6 +40,7 @@ export type ReservaParaMotor = {
   checkout: string;
   valorBruto: number | null;
   taxaCanal: number | null;
+  recebimento: RecebimentoReserva | null;
 };
 
 export type ContratoParaMotor = { tipo: TipoContrato; comissaoBp: number | null; inicio: string; fim: string | null };
@@ -79,7 +83,8 @@ export function comissao(base: number, bp: number): number {
 export function calcularReserva(
   r: ReservaParaMotor,
   contratos: readonly ContratoParaMotor[],
-  proprietarioId: string | null,
+  /** Proprietários vinculados ao imóvel. */
+  donos: readonly string[],
   regras: RegrasMotor = REGRAS_PADRAO,
 ): ResultadoMotor {
   const avisos: string[] = [];
@@ -95,8 +100,12 @@ export function calcularReserva(
   const bp = contrato.comissaoBp;
   const comissaoTotal = comissao(base, bp);
   const direitoTotal = base - comissaoTotal;
-  const quemRecebe = regras.recebimento[r.origem];
-  if (!proprietarioId) avisos.push("Imóvel sem proprietário vinculado: acerto não calculado.");
+  const quemRecebe = r.recebimento ?? regras.recebimento[r.origem];
+  const proprietarioId = donos.length === 1 ? donos[0] : null;
+  if (donos.length === 0) avisos.push("Imóvel sem proprietário vinculado: acerto pendente.");
+  if (donos.length > 1) avisos.push("Imóvel com mais de um proprietário: acerto pendente até definir a cota de cada um.");
+  if (quemRecebe === "a_confirmar") avisos.push("Confirmar se o canal paga o proprietário direto (split) ou se a empresa recebe tudo: acerto pendente.");
+  const acertoPendente = !proprietarioId || quemRecebe === "a_confirmar";
 
   const meses = noitesPorMes(r.checkin, r.checkout);
   const pesos = meses.map(([, n]) => n);
@@ -132,10 +141,11 @@ export function calcularReserva(
     lancamentos.push({
       ...comum,
       tipo: "direito_proprietario",
-      descricao: `Reserva ${r.codigo} — parte do proprietário${quemRecebe === "split" ? " (paga direto pelo canal)" : ""}${sufixo}`,
+      descricao: `Reserva ${r.codigo} — parte do proprietário${quemRecebe === "split" ? " (paga direto pelo canal)" : ""}${acertoPendente ? " (acerto pendente)" : ""}${sufixo}`,
       valor: partes.direito[i],
       proprietarioId,
       efeitoSaldo: quemRecebe === "empresa" && proprietarioId ? partes.direito[i] : 0,
+      ...(acertoPendente ? { estado: "pendente" as const } : {}),
       chaveOrigem: chave("direito"),
     });
   });
