@@ -1,0 +1,45 @@
+/* Identidade SCL (requisitos/operations/RELATORIOS-PROPRIETARIOS.md) */
+:root {
+  --scl-salvia: #505b46;
+  --scl-areia: #f0e7d7;
+  --scl-dourado: #c9a96e;
+  --scl-texto: #252b23;
+  --scl-texto-2: #5b604f;
+  --background: #fbf8f2;
+  --foreground: var(--scl-texto);
+  --font-serif: Georgia, "Times New Roman", serif;
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+body {
+  min-height: 100vh;
+  color: var(--foreground);
+  background: var(--background);
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  color: var(--scl-salvia);
+}
+
+a {
+  color: inherit;
+}
