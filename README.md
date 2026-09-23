@@ -2,6 +2,7 @@
 
 Reconstrução do sistema de gestão da Sua Casa Leblon.
 
+- **Diego, comece aqui:** [GUIA-DIEGO.md](GUIA-DIEGO.md)
 - **Planejamento e progresso:** [ROADMAP.md](ROADMAP.md)
 - **Regras para as sessões Claude:** [CLAUDE.md](CLAUDE.md)
 - **Requisitos** (decisões de Diego, sanitizadas): [requisitos/](requisitos/)
