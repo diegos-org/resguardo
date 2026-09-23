@@ -2,6 +2,9 @@ import { notFound, redirect } from "next/navigation";
 import { podeFazer } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { historicoDe } from "@/auditoria/auditoria";
+import { excluirIdExterno, novoIdExterno } from "@/canais/acoes";
+import { listarIdsExternos } from "@/canais/ids-externos";
+import { IdsExternos } from "@/components/canais/IdsExternos";
 import { Contratos } from "@/components/contratos/Contratos";
 import { HistoricoAlteracoes } from "@/components/HistoricoAlteracoes";
 import { encerrar, novoContrato } from "@/contratos/acoes";
@@ -18,9 +21,10 @@ export default async function EditarImovel({ params }: PageProps<"/painel/imovei
   const { id } = await params;
   const imovel = await obterImovel(getDb(), sessao.organizacaoId, id);
   if (!imovel) notFound();
-  const [historico, contratos] = await Promise.all([
+  const [historico, contratos, ids] = await Promise.all([
     historicoDe(getDb(), sessao.organizacaoId, "imovel", imovel.id),
     listarContratos(getDb(), sessao.organizacaoId, imovel.id),
+    listarIdsExternos(getDb(), sessao.organizacaoId, imovel.id),
   ]);
   return (
     <>
@@ -28,6 +32,7 @@ export default async function EditarImovel({ params }: PageProps<"/painel/imovei
         {imovel.codigo} · {imovel.nome}
       </h1>
       <FormImovel acao={salvarImovel} id={imovel.id} inicial={imovel} />
+      <IdsExternos imovelId={imovel.id} lista={ids} adicionar={novoIdExterno} remover={excluirIdExterno} />
       <Contratos
         imovelId={imovel.id}
         lista={contratos}

@@ -191,3 +191,30 @@ export const contratos = pgTable(
   },
   (t) => [index("contratos_imovel_inicio").on(t.imovelId, t.inicio)],
 );
+
+// ---------------------------------------------------------------------------
+// IDs externos (M2.4): imóvel ↔ Beds24 / Airbnb / Booking
+// ---------------------------------------------------------------------------
+
+export const CANAIS = ["beds24", "airbnb", "booking"] as const;
+export type Canal = (typeof CANAIS)[number];
+export const canalEnum = pgEnum("canal", CANAIS);
+
+/**
+ * Identificador de um imóvel num sistema externo. O ID interno SCL continua sendo a
+ * identidade do imóvel; estes são só referências. Um ID externo aponta para um único
+ * imóvel. `detalhe` guarda o sub-identificador quando existe (ex.: roomId no Beds24).
+ */
+export const idsExternos = pgTable(
+  "ids_externos",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    imovelId: uuid("imovel_id").notNull().references(() => imoveis.id, { onDelete: "cascade" }),
+    canal: canalEnum("canal").notNull(),
+    idExterno: text("id_externo").notNull(),
+    detalhe: text("detalhe").notNull().default(""),
+    criadoEm: criadoEm(),
+  },
+  (t) => [uniqueIndex("ids_externos_unico").on(t.organizacaoId, t.canal, t.idExterno, t.detalhe)],
+);

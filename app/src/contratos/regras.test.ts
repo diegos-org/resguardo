@@ -49,6 +49,13 @@ describe("validarContrato", () => {
     expect(!r.ok && r.erros.comissao).toBeTruthy();
   });
 
+  it("recusa tipos forjados (propriedades herdadas)", () => {
+    for (const tipo of ["toString", "__proto__", "constructor", "gestao"]) {
+      const r = validarContrato({ tipo, comissao: "15", inicio: "2026-10-01" }, []);
+      expect(!r.ok && r.erros.tipo).toBeTruthy();
+    }
+  });
+
   it("rejeita datas inválidas, fim antes do início e sobreposição", () => {
     const r1 = validarContrato({ tipo: "gestao_completa", comissao: "15", inicio: "2026-02-30", fim: "x" }, []);
     expect(!r1.ok && Object.keys(r1.erros).sort()).toEqual(["fim", "inicio"]);
