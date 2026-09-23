@@ -1,6 +1,9 @@
 import { and, asc, eq } from "drizzle-orm";
 import { imoveis } from "@/db/schema";
+import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
+import { violouUnicidade } from "@/db/erros";
 import type { Db } from "@/db/types";
+import { uuidValido } from "@/lib/ids";
 import type { DadosImovel } from "./validacao";
 
 export type Imovel = typeof imoveis.$inferSelect;
@@ -14,7 +17,7 @@ export async function listarImoveis(db: Db, organizacaoId: string, opcoes: { inc
 }
 
 export async function obterImovel(db: Db, organizacaoId: string, id: string): Promise<Imovel | null> {
-  if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+  if (!uuidValido(id)) return null;
   const [linha] = await db
     .select()
     .from(imoveis)
@@ -37,23 +40,68 @@ async function codigoEmUso(db: Db, organizacaoId: string, codigo: string, exceto
   return Boolean(linha && linha.id !== excetoId);
 }
 
-export async function criarImovel(db: Db, organizacaoId: string, dados: DadosImovel): Promise<Imovel> {
+/**
+ * `autorId`: usuário que fez a alteração (null = sistema). O dado e seu registro na
+ * auditoria são gravados na mesma transação (tudo ou nada).
+ */
+export async function criarImovel(db: Db, organizacaoId: string, dados: DadosImovel, autorId: string | null): Promise<Imovel> {
   if (await codigoEmUso(db, organizacaoId, dados.codigo)) throw new CodigoDuplicado(dados.codigo);
-  const [novo] = await db
-    .insert(imoveis)
-    .values({ ...dados, organizacaoId })
-    .returning();
-  return novo;
+  try {
+    return await db.transaction(async (tx) => {
+      const [novo] = await tx
+        .insert(imoveis)
+        .values({ ...dados, organizacaoId })
+        .returning();
+      await registrarAuditoria(tx, {
+        organizacaoId,
+        usuarioId: autorId,
+        acao: "imovel.criar",
+        entidade: "imovel",
+        entidadeId: novo.id,
+        mudancas: calcularMudancas(null, novo),
+      });
+      return novo;
+    });
+  } catch (e) {
+    // Dois cadastros simultâneos com o mesmo código: o índice único barra o segundo.
+    if (violouUnicidade(e)) throw new CodigoDuplicado(dados.codigo);
+    throw e;
+  }
 }
 
-export async function atualizarImovel(db: Db, organizacaoId: string, id: string, dados: DadosImovel): Promise<Imovel | null> {
+export async function atualizarImovel(
+  db: Db,
+  organizacaoId: string,
+  id: string,
+  dados: DadosImovel,
+  autorId: string | null,
+): Promise<Imovel | null> {
+  if (!uuidValido(id)) return null;
   if (await codigoEmUso(db, organizacaoId, dados.codigo, id)) throw new CodigoDuplicado(dados.codigo);
-  const [atualizado] = await db
-    .update(imoveis)
-    .set({ ...dados, atualizadoEm: new Date() })
-    .where(and(eq(imoveis.id, id), eq(imoveis.organizacaoId, organizacaoId)))
-    .returning();
-  return atualizado ?? null;
+  try {
+    return await db.transaction(async (tx) => {
+      // Trava a linha: edições simultâneas são serializadas e o histórico parte do valor real.
+      const [antes] = await tx
+        .select()
+        .from(imoveis)
+        .where(and(eq(imoveis.id, id), eq(imoveis.organizacaoId, organizacaoId)))
+        .for("update");
+      if (!antes) return null;
+      const [atualizado] = await tx
+        .update(imoveis)
+        .set({ ...dados, atualizadoEm: new Date() })
+        .where(eq(imoveis.id, id))
+        .returning();
+      const mudancas = calcularMudancas(antes, atualizado);
+      if (Object.keys(mudancas).length > 0) {
+        await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "imovel.editar", entidade: "imovel", entidadeId: id, mudancas });
+      }
+      return atualizado;
+    });
+  } catch (e) {
+    if (violouUnicidade(e)) throw new CodigoDuplicado(dados.codigo);
+    throw e;
+  }
 }
 
 /** Opções para o filtro global do painel (só imóveis ativos). */

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 /**
  * Esquema do banco (Drizzle). Novas tabelas entram aqui e geram migração com
@@ -105,4 +105,26 @@ export const proprietarioUsuarios = pgTable(
     criadoEm: criadoEm(),
   },
   (t) => [primaryKey({ columns: [t.proprietarioId, t.usuarioId] })],
+);
+
+// ---------------------------------------------------------------------------
+// Auditoria (M1.5): registro só de inclusão de quem mudou o quê e quando
+// ---------------------------------------------------------------------------
+
+export const auditoria = pgTable(
+  "auditoria",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    /** Quem fez. Null = o próprio sistema (sincronização, rotina agendada…). */
+    usuarioId: uuid("usuario_id").references(() => usuarios.id),
+    /** Ex.: "imovel.criar", "imovel.editar". */
+    acao: text("acao").notNull(),
+    entidade: text("entidade").notNull(),
+    entidadeId: text("entidade_id").notNull(),
+    /** Campos alterados: { campo: [antes, depois] }. */
+    mudancas: jsonb("mudancas").notNull().default({}),
+    criadoEm: criadoEm(),
+  },
+  (t) => [index("auditoria_entidade").on(t.organizacaoId, t.entidade, t.entidadeId, t.criadoEm)],
 );
