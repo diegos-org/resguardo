@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useActionState } from "react";
 import type { EstadoFormImovel } from "@/imoveis/acoes";
 import type { DadosImovel } from "@/imoveis/validacao";
-import styles from "./imoveis.module.css";
+import styles from "../formularios.module.css";
 
 type Props = {
   acao: (anterior: EstadoFormImovel, form: FormData) => Promise<EstadoFormImovel>;

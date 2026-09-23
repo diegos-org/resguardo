@@ -13,14 +13,31 @@ const ROTULOS: Record<string, string> = {
   quartos: "Quartos",
   banheiros: "Banheiros",
   descricao: "Descrição",
+  tipo: "Tipo",
+  documento: "CPF/CNPJ",
+  email: "E-mail",
+  telefone: "Telefone",
+  chavePix: "Chave Pix",
+  observacoes: "Observações",
+  imoveis: "Imóveis",
+  representante: "Representante",
 };
 
-const ACOES: Record<string, string> = { "imovel.criar": "criou", "imovel.editar": "alterou" };
+const ACOES: Record<string, string> = {
+  "imovel.criar": "criou",
+  "imovel.editar": "alterou",
+  "proprietario.criar": "cadastrou",
+  "proprietario.editar": "alterou",
+  "proprietario.imoveis": "alterou os imóveis",
+  "proprietario.representante.adicionar": "adicionou representante",
+  "proprietario.representante.remover": "removeu representante",
+};
 
 function valor(v: unknown): string {
   if (v === null || v === undefined || v === "") return "—";
   if (v === true) return "sim";
   if (v === false) return "não";
+  if (Array.isArray(v)) return v.length ? `${v.length} item(ns)` : "nenhum";
   const t = String(v);
   return t.length > 60 ? `${t.slice(0, 57)}…` : t;
 }
@@ -38,7 +55,7 @@ export function HistoricoAlteracoes({ linhas }: { linhas: LinhaHistorico[] }) {
           {linhas.map((l) => (
             <li key={l.id} style={{ fontSize: "0.875rem", borderLeft: "3px solid var(--scl-areia)", paddingLeft: 10 }}>
               <strong>{l.autor ?? "Sistema"}</strong> {ACOES[l.acao] ?? l.acao} · {quando.format(l.criadoEm)}
-              {l.acao !== "imovel.criar" && (
+              {!l.acao.endsWith(".criar") && (
                 <ul style={{ listStyle: "none", color: "var(--scl-texto-2)" }}>
                   {Object.entries(l.mudancas).map(([campo, [antes, depois]]) => (
                     <li key={campo}>

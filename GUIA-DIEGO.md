@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 23/09/2026, PR do item M1.5 (histórico de alterações).
+> **Última atualização:** 23/09/2026, PR do item M2.2 (cadastro de proprietários).
 
 ---
 
@@ -63,6 +63,12 @@
   que mudou (ex.: "Diego alterou · Nome: Studio A → Studio B"). Aparece embaixo da ficha de
   cada imóvel e vai valer para todos os módulos (reservas, financeiro…). O histórico não pode
   ser apagado pelo sistema.
+- M2.2: **cadastro de proprietários** em Painel → Proprietários: nome/razão social, pessoa
+  física ou jurídica, CPF/CNPJ (conferido automaticamente), e-mail, telefone, endereço,
+  **chave Pix**, observações e **quais imóveis são dele**. Cada proprietário pode ter
+  **representantes autorizados** (cônjuge, financeiro, procurador), com opção "recebe cópia dos
+  relatórios". Essa área é **só do admin** (tem dados pessoais); na lista o CPF aparece
+  mascarado (•••.•••.247-25) e o histórico nunca grava CPF nem Pix por extenso.
 
 A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 

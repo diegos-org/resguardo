@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { podeFazer } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
-import styles from "@/components/imoveis/imoveis.module.css";
+import styles from "@/components/formularios.module.css";
 import { getDb } from "@/db/client";
 import { listarImoveis } from "@/imoveis/repositorio";
 
