@@ -2,6 +2,7 @@
 
 import { AuthError } from "next-auth";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { getDb } from "@/db/client";
 import { correioDoAmbiente } from "@/email/correio";
 import { loginCodigoConfigurado, signIn } from "./auth";
@@ -15,14 +16,17 @@ export async function pedirCodigoAcao(form: FormData): Promise<void> {
   if (!loginCodigoConfigurado || !correio) redirect("/entrar");
   const email = String(form.get("email") ?? "").trim().toLowerCase().slice(0, 200);
   if (!email) redirect("/entrar?erro=email-vazio");
-  let r: Awaited<ReturnType<typeof pedirCodigo>>;
-  try {
-    r = await pedirCodigo(getDb(), correio, email, { segredo: process.env.AUTH_SECRET!, adminEmails: lerAdminEmails(process.env.ADMIN_EMAILS) });
-  } catch (e) {
-    console.error("[entrar] falha ao enviar código", e);
-    redirect("/entrar?erro=envio");
-  }
-  redirect(r === "limite" ? "/entrar?erro=limite" : paraCodigo(email));
+  // Tudo depois da resposta: a tela é igual para qualquer e-mail, com ou sem acesso,
+  // e mesmo se o provedor de e-mail falhar.
+  after(async () => {
+    try {
+      const r = await pedirCodigo(getDb(), correio, email, { segredo: process.env.AUTH_SECRET!, adminEmails: lerAdminEmails(process.env.ADMIN_EMAILS) });
+      if (r === "limite") console.warn("[entrar] limite de códigos atingido");
+    } catch (e) {
+      console.error("[entrar] falha ao enviar código", e);
+    }
+  });
+  redirect(paraCodigo(email));
 }
 
 export async function entrarComCodigo(form: FormData): Promise<void> {

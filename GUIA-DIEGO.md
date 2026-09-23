@@ -60,8 +60,9 @@
   equipe). A pessoa digita o e-mail, recebe um código de 6 dígitos e entra. Segurança:
   o código vale **10 minutos**, só pode ser usado **uma vez**, **5 erros** bloqueiam o
   código, no máximo **5 pedidos por hora** por e-mail, e pedir um novo cancela o anterior.
-  A tela responde sempre igual, exista ou não o e-mail, para ninguém descobrir quem tem
-  acesso. Só recebe código quem está cadastrado e ativo. Para funcionar na internet
+  A tela responde sempre igual, exista ou não o e-mail (e mesmo se o serviço de e-mail
+  falhar), para ninguém descobrir quem tem acesso. Só recebe código quem está cadastrado e
+  ativo; se o envio falhar, o código anterior continua valendo. Para funcionar na internet
   falta um serviço de envio de e-mail (seção 6, item 5).
 - M2.1: **cadastro de imóveis** em Painel → Imóveis: código (102, 403, buzios…), nome
   comercial, bairro, endereço, capacidade, quartos, banheiros, descrição, se **aparece no site**

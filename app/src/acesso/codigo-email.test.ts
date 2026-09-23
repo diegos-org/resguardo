@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { codigosLogin, organizacoes, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
-import { CorreioMemoria, CorreioResend, correioDoAmbiente } from "@/email/correio";
-import { MAX_CODIGOS_POR_HORA, pedirCodigo, verificarCodigo } from "./codigo-email";
+import { type Correio, CorreioMemoria, CorreioResend, correioDoAmbiente } from "@/email/correio";
+import { MAX_CODIGOS_GERAL_POR_HORA, MAX_CODIGOS_POR_HORA, pedirCodigo, verificarCodigo } from "./codigo-email";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -35,12 +35,30 @@ describe("pedir código", () => {
     expect(linha.codigoHash).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it("não envia para desconhecido nem para inativo, mas responde igual", async () => {
-    expect(await pedirCodigo(db, correio, "estranho@example.com", opcoes())).toBe("enviado");
-    expect(await pedirCodigo(db, correio, "saiu@example.com", opcoes())).toBe("enviado");
+  it("não envia para desconhecido nem para inativo, e não grava nada no banco", async () => {
+    expect(await pedirCodigo(db, correio, "estranho@example.com", opcoes())).toBe("sem-acesso");
+    expect(await pedirCodigo(db, correio, "saiu@example.com", opcoes())).toBe("sem-acesso");
+    expect(await pedirCodigo(db, correio, "nao-e-email", opcoes())).toBe("invalido");
     expect(correio.enviadas).toHaveLength(0);
-    // e o "código" de quem não pode entrar nunca vale
+    expect(await db.select().from(codigosLogin)).toHaveLength(0);
     expect(await verificarCodigo(db, "estranho@example.com", "123456", opcoes())).toMatchObject({ ok: false });
+  });
+
+  it("falha no envio: nada muda — o código anterior continua valendo e não conta no limite", async () => {
+    await pedirCodigo(db, correio, "equipe@example.com", opcoes());
+    const quebrado: Correio = { nome: "quebrado", enviar: async () => Promise.reject(new Error("provedor fora")) };
+    for (let i = 0; i < MAX_CODIGOS_POR_HORA + 2; i++) {
+      await expect(pedirCodigo(db, quebrado, "equipe@example.com", opcoes({ gerar: () => "999999", agora: mais(1) }))).rejects.toThrow("provedor fora");
+    }
+    expect(await db.select().from(codigosLogin)).toHaveLength(1);
+    expect(await verificarCodigo(db, "equipe@example.com", "123456", opcoes({ agora: mais(2) }))).toMatchObject({ ok: true });
+  });
+
+  it("apaga códigos com mais de 1 dia", async () => {
+    await pedirCodigo(db, correio, "equipe@example.com", opcoes());
+    await pedirCodigo(db, correio, "chefe@example.com", opcoes({ agora: mais(60 * 25) }));
+    const linhas = await db.select().from(codigosLogin);
+    expect(linhas.map((l) => l.email)).toEqual(["chefe@example.com"]);
   });
 
   it("admin do primeiro acesso (ADMIN_EMAILS) recebe código", async () => {
@@ -48,12 +66,16 @@ describe("pedir código", () => {
     expect(correio.enviadas).toHaveLength(1);
   });
 
-  it("limite de pedidos por hora, igual para quem existe e quem não existe", async () => {
+  it("limite de pedidos por hora por e-mail e teto geral", async () => {
     for (let i = 0; i < MAX_CODIGOS_POR_HORA; i++) expect(await pedirCodigo(db, correio, "equipe@example.com", opcoes({ agora: mais(i) }))).toBe("enviado");
     expect(await pedirCodigo(db, correio, "equipe@example.com", opcoes({ agora: mais(10) }))).toBe("limite");
+    expect(correio.enviadas).toHaveLength(MAX_CODIGOS_POR_HORA);
     expect(await pedirCodigo(db, correio, "equipe@example.com", opcoes({ agora: mais(61) }))).toBe("enviado");
-    for (let i = 0; i < MAX_CODIGOS_POR_HORA; i++) await pedirCodigo(db, correio, "x@example.com", opcoes({ agora: mais(i) }));
-    expect(await pedirCodigo(db, correio, "x@example.com", opcoes({ agora: mais(10) }))).toBe("limite");
+    // teto geral: simula muitos códigos recentes de outros e-mails
+    await db.insert(codigosLogin).values(
+      Array.from({ length: MAX_CODIGOS_GERAL_POR_HORA }, (_, i) => ({ email: `outro${i}@example.com`, codigoHash: "x", expiraEm: mais(80), criadoEm: mais(62) })),
+    );
+    expect(await pedirCodigo(db, correio, "chefe@example.com", opcoes({ agora: mais(63) }))).toBe("limite");
   });
 });
 

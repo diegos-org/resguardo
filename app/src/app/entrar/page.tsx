@@ -7,8 +7,6 @@ const MENSAGENS: Record<string, string> = {
   "email-nao-verificado": "O Google não confirmou este e-mail. Use uma conta com e-mail verificado.",
   "sem-acesso": "Sua conta não tem acesso ao painel interno.",
   "email-vazio": "Informe seu e-mail.",
-  limite: "Muitos pedidos de código para este e-mail. Espere um pouco e tente de novo.",
-  envio: "Não conseguimos enviar o e-mail agora. Tente de novo em instantes.",
   codigo: "Código incorreto ou vencido. Confira o e-mail mais recente ou peça um novo código.",
 };
 
@@ -41,7 +39,8 @@ export default async function Entrar({ searchParams }: PageProps<"/entrar">) {
       {digitarCodigo ? (
         <form action={entrarComCodigo} style={{ display: "grid", gap: 12 }} aria-label="Digitar código">
           <p style={{ margin: 0 }}>
-            Se <strong>{emailInformado}</strong> tiver acesso, enviamos um código de 6 dígitos para ele. O código vale por 10 minutos.
+            Se <strong>{emailInformado}</strong> tiver acesso, enviamos um código de 6 dígitos para ele. O código vale por 10 minutos. Não
+            chegou em alguns minutos? Confira o spam e peça outro (até 5 por hora).
           </p>
           <input type="hidden" name="email" value={emailInformado} />
           <label style={{ display: "grid", gap: 4 }}>
