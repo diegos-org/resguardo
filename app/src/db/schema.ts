@@ -218,3 +218,78 @@ export const idsExternos = pgTable(
   },
   (t) => [uniqueIndex("ids_externos_unico").on(t.organizacaoId, t.canal, t.idExterno, t.detalhe)],
 );
+
+// ---------------------------------------------------------------------------
+// Reservas e bloqueios (M3.1)
+// ---------------------------------------------------------------------------
+
+export const ORIGENS_RESERVA = ["airbnb", "booking", "site", "direta", "outro"] as const;
+export type OrigemReserva = (typeof ORIGENS_RESERVA)[number];
+export const origemReservaEnum = pgEnum("origem_reserva", ORIGENS_RESERVA);
+
+export const ESTADOS_RESERVA = ["pendente", "confirmada", "cancelada"] as const;
+export type EstadoReserva = (typeof ESTADOS_RESERVA)[number];
+export const estadoReservaEnum = pgEnum("estado_reserva", ESTADOS_RESERVA);
+
+/**
+ * Reserva. `codigo` é o código público SCL (não é credencial). `fonte`+`idFonte` identificam
+ * a reserva no sistema que a trouxe (ex.: beds24 / 12345678) — a sincronização é idempotente
+ * por esse par. Valores em centavos; `valorLiquido` null = ainda não conhecido.
+ * Dados do hóspede: só o necessário para a operação.
+ */
+export const reservas = pgTable(
+  "reservas",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    imovelId: uuid("imovel_id").notNull().references(() => imoveis.id),
+    codigo: text("codigo").notNull(),
+    origem: origemReservaEnum("origem").notNull(),
+    estado: estadoReservaEnum("estado").notNull().default("confirmada"),
+    checkin: date("checkin", { mode: "string" }).notNull(),
+    checkout: date("checkout", { mode: "string" }).notNull(),
+    hospedes: integer("hospedes"),
+    hospedeNome: text("hospede_nome").notNull().default(""),
+    hospedeEmail: text("hospede_email").notNull().default(""),
+    hospedeTelefone: text("hospede_telefone").notNull().default(""),
+    /** Cidade/país informados pelo hóspede — nunca inferidos. */
+    hospedeOrigem: text("hospede_origem").notNull().default(""),
+    moeda: text("moeda").notNull().default("BRL"),
+    valorBruto: integer("valor_bruto"),
+    taxaCanal: integer("taxa_canal"),
+    valorLiquido: integer("valor_liquido"),
+    fonte: text("fonte").notNull().default("manual"),
+    idFonte: text("id_fonte").notNull().default(""),
+    /** Código da reserva no canal (ex.: HMXXXX do Airbnb). */
+    codigoCanal: text("codigo_canal").notNull().default(""),
+    observacoes: text("observacoes").notNull().default(""),
+    canceladaEm: timestamp("cancelada_em", { withTimezone: true }),
+    criadoEm: criadoEm(),
+    atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("reservas_codigo").on(t.organizacaoId, t.codigo),
+    uniqueIndex("reservas_fonte").on(t.organizacaoId, t.fonte, t.idFonte).where(sql`${t.idFonte} <> ''`),
+    index("reservas_imovel_periodo").on(t.imovelId, t.checkin, t.checkout),
+  ],
+);
+
+/** Bloqueio de calendário (manutenção, uso do proprietário, bloqueio de canal…). Fim exclusivo, como o checkout. */
+export const bloqueios = pgTable(
+  "bloqueios",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    imovelId: uuid("imovel_id").notNull().references(() => imoveis.id),
+    inicio: date("inicio", { mode: "string" }).notNull(),
+    fim: date("fim", { mode: "string" }).notNull(),
+    motivo: text("motivo").notNull().default(""),
+    fonte: text("fonte").notNull().default("manual"),
+    idFonte: text("id_fonte").notNull().default(""),
+    criadoEm: criadoEm(),
+  },
+  (t) => [
+    uniqueIndex("bloqueios_fonte").on(t.organizacaoId, t.fonte, t.idFonte).where(sql`${t.idFonte} <> ''`),
+    index("bloqueios_imovel_periodo").on(t.imovelId, t.inicio, t.fim),
+  ],
+);
