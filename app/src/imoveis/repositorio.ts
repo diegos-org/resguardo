@@ -1,5 +1,6 @@
 import { and, asc, eq } from "drizzle-orm";
 import { imoveis } from "@/db/schema";
+import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
 import type { Db } from "@/db/types";
 import type { DadosImovel } from "./validacao";
 
@@ -37,23 +38,45 @@ async function codigoEmUso(db: Db, organizacaoId: string, codigo: string, exceto
   return Boolean(linha && linha.id !== excetoId);
 }
 
-export async function criarImovel(db: Db, organizacaoId: string, dados: DadosImovel): Promise<Imovel> {
+/** `autorId`: usuário que fez a alteração (null = sistema). Toda alteração vai para a auditoria. */
+export async function criarImovel(db: Db, organizacaoId: string, dados: DadosImovel, autorId: string | null): Promise<Imovel> {
   if (await codigoEmUso(db, organizacaoId, dados.codigo)) throw new CodigoDuplicado(dados.codigo);
   const [novo] = await db
     .insert(imoveis)
     .values({ ...dados, organizacaoId })
     .returning();
+  await registrarAuditoria(db, {
+    organizacaoId,
+    usuarioId: autorId,
+    acao: "imovel.criar",
+    entidade: "imovel",
+    entidadeId: novo.id,
+    mudancas: calcularMudancas(null, novo),
+  });
   return novo;
 }
 
-export async function atualizarImovel(db: Db, organizacaoId: string, id: string, dados: DadosImovel): Promise<Imovel | null> {
+export async function atualizarImovel(
+  db: Db,
+  organizacaoId: string,
+  id: string,
+  dados: DadosImovel,
+  autorId: string | null,
+): Promise<Imovel | null> {
+  const antes = await obterImovel(db, organizacaoId, id);
+  if (!antes) return null;
   if (await codigoEmUso(db, organizacaoId, dados.codigo, id)) throw new CodigoDuplicado(dados.codigo);
   const [atualizado] = await db
     .update(imoveis)
     .set({ ...dados, atualizadoEm: new Date() })
     .where(and(eq(imoveis.id, id), eq(imoveis.organizacaoId, organizacaoId)))
     .returning();
-  return atualizado ?? null;
+  if (!atualizado) return null;
+  const mudancas = calcularMudancas(antes, atualizado);
+  if (Object.keys(mudancas).length > 0) {
+    await registrarAuditoria(db, { organizacaoId, usuarioId: autorId, acao: "imovel.editar", entidade: "imovel", entidadeId: id, mudancas });
+  }
+  return atualizado;
 }
 
 /** Opções para o filtro global do painel (só imóveis ativos). */

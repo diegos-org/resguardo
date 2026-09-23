@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 23/09/2026, PR do item M2.1 (cadastro de imóveis).
+> **Última atualização:** 23/09/2026, PR do item M1.5 (histórico de alterações).
 
 ---
 
@@ -59,6 +59,10 @@
   comercial, bairro, endereço, capacidade, quartos, banheiros, descrição, se **aparece no site**
   e se está **em operação**. O filtro global do painel passa a usar essa lista. Búzios deve ser
   cadastrado com "Aparece no site" desmarcado. Só o admin cadastra/edita; a equipe só consulta.
+- M1.5: **histórico de alterações.** Toda mudança fica registrada com quem fez, quando e o
+  que mudou (ex.: "Diego alterou · Nome: Studio A → Studio B"). Aparece embaixo da ficha de
+  cada imóvel e vai valer para todos os módulos (reservas, financeiro…). O histórico não pode
+  ser apagado pelo sistema.
 
 A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 

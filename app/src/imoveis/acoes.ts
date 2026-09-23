@@ -20,10 +20,10 @@ export async function salvarImovel(_anterior: EstadoFormImovel, form: FormData):
   const id = form.get("id");
   try {
     if (typeof id === "string" && id) {
-      const salvo = await atualizarImovel(getDb(), sessao.organizacaoId, id, resultado.dados);
+      const salvo = await atualizarImovel(getDb(), sessao.organizacaoId, id, resultado.dados, sessao.usuarioId);
       if (!salvo) return { mensagem: "Imóvel não encontrado." };
     } else {
-      await criarImovel(getDb(), sessao.organizacaoId, resultado.dados);
+      await criarImovel(getDb(), sessao.organizacaoId, resultado.dados, sessao.usuarioId);
     }
   } catch (e) {
     if (e instanceof CodigoDuplicado) return { erros: { codigo: e.message }, mensagem: "Confira os campos destacados." };

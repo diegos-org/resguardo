@@ -1,6 +1,8 @@
 import { notFound, redirect } from "next/navigation";
 import { podeFazer } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
+import { historicoDe } from "@/auditoria/auditoria";
+import { HistoricoAlteracoes } from "@/components/HistoricoAlteracoes";
 import { FormImovel } from "@/components/imoveis/FormImovel";
 import { getDb } from "@/db/client";
 import { salvarImovel } from "@/imoveis/acoes";
@@ -12,12 +14,14 @@ export default async function EditarImovel({ params }: PageProps<"/painel/imovei
   const { id } = await params;
   const imovel = await obterImovel(getDb(), sessao.organizacaoId, id);
   if (!imovel) notFound();
+  const historico = await historicoDe(getDb(), sessao.organizacaoId, "imovel", imovel.id);
   return (
     <>
       <h1>
         {imovel.codigo} · {imovel.nome}
       </h1>
       <FormImovel acao={salvarImovel} id={imovel.id} inicial={imovel} />
+      <HistoricoAlteracoes linhas={historico} />
     </>
   );
 }

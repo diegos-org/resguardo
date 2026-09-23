@@ -36,9 +36,9 @@ afterEach(() => close());
 
 describe("repositório de imóveis", () => {
   it("cria, lista em ordem de código e esconde inativos por padrão", async () => {
-    await criarImovel(db, org, dados({ codigo: "t2", nome: "Dois" }));
-    await criarImovel(db, org, dados({ codigo: "t1", nome: "Um" }));
-    await criarImovel(db, org, dados({ codigo: "t3", nome: "Três", ativo: false }));
+    await criarImovel(db, org, dados({ codigo: "t2", nome: "Dois" }), null);
+    await criarImovel(db, org, dados({ codigo: "t1", nome: "Um" }), null);
+    await criarImovel(db, org, dados({ codigo: "t3", nome: "Três", ativo: false }), null);
     expect((await listarImoveis(db, org)).map((i) => i.codigo)).toEqual(["t1", "t2"]);
     expect((await listarImoveis(db, org, { incluirInativos: true })).map((i) => i.codigo)).toEqual(["t1", "t2", "t3"]);
     expect(await opcoesDeFiltro(db, org)).toEqual([
@@ -48,24 +48,24 @@ describe("repositório de imóveis", () => {
   });
 
   it("não deixa repetir código na mesma organização, mas permite em outra", async () => {
-    await criarImovel(db, org, dados());
-    await expect(criarImovel(db, org, dados())).rejects.toBeInstanceOf(CodigoDuplicado);
-    await expect(criarImovel(db, outraOrg, dados())).resolves.toBeTruthy();
+    await criarImovel(db, org, dados(), null);
+    await expect(criarImovel(db, org, dados(), null)).rejects.toBeInstanceOf(CodigoDuplicado);
+    await expect(criarImovel(db, outraOrg, dados(), null)).resolves.toBeTruthy();
   });
 
   it("atualiza e protege contra código duplicado", async () => {
-    const a = await criarImovel(db, org, dados({ codigo: "t1" }));
-    await criarImovel(db, org, dados({ codigo: "t2" }));
-    const salvo = await atualizarImovel(db, org, a.id, dados({ codigo: "t1", nome: "Novo nome" }));
+    const a = await criarImovel(db, org, dados({ codigo: "t1" }), null);
+    await criarImovel(db, org, dados({ codigo: "t2" }), null);
+    const salvo = await atualizarImovel(db, org, a.id, dados({ codigo: "t1", nome: "Novo nome" }), null);
     expect(salvo?.nome).toBe("Novo nome");
     expect(salvo!.atualizadoEm.getTime()).toBeGreaterThanOrEqual(a.atualizadoEm.getTime());
-    await expect(atualizarImovel(db, org, a.id, dados({ codigo: "t2" }))).rejects.toBeInstanceOf(CodigoDuplicado);
+    await expect(atualizarImovel(db, org, a.id, dados({ codigo: "t2" }), null)).rejects.toBeInstanceOf(CodigoDuplicado);
   });
 
   it("não enxerga nem altera imóvel de outra organização", async () => {
-    const a = await criarImovel(db, org, dados());
+    const a = await criarImovel(db, org, dados(), null);
     expect(await obterImovel(db, outraOrg, a.id)).toBeNull();
-    expect(await atualizarImovel(db, outraOrg, a.id, dados({ nome: "Invasão" }))).toBeNull();
+    expect(await atualizarImovel(db, outraOrg, a.id, dados({ nome: "Invasão" }), null)).toBeNull();
     expect((await obterImovel(db, org, a.id))?.nome).toBe("Teste 1");
     expect(await obterImovel(db, org, "não-é-uuid")).toBeNull();
   });
