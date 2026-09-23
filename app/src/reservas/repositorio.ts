@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, inArray, lt, ne } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, lt, ne, sql } from "drizzle-orm";
 import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
 import { violouUnicidade } from "@/db/erros";
 import { bloqueios, imoveis, reservas } from "@/db/schema";
@@ -39,7 +39,8 @@ async function inserirComCodigo(tx: Db, valores: typeof reservas.$inferInsert): 
         return r;
       });
     } catch (e) {
-      if (!violouUnicidade(e) || tentativa >= 3) throw e;
+      // Só tenta de novo se colidiu o código público — qualquer outra violação sobe.
+      if (!violouUnicidade(e, "reservas_codigo") || tentativa >= 3) throw e;
     }
   }
 }
@@ -79,6 +80,9 @@ export async function sincronizarReserva(
   if (Object.keys(erros).length) return { ok: false, erros };
   return db.transaction(async (tx) => {
     if (!(await imovelDaOrganizacao(tx, organizacaoId, dados.imovelId))) return { ok: false as const, erros: { imovelId: "Imóvel não encontrado." } };
+    // Trava por chave de sincronização: duas execuções simultâneas para a mesma reserva
+    // (cron sobreposto, reenvio) são processadas uma depois da outra, mesmo antes de a linha existir.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`reserva:${organizacaoId}:${fonte}:${idFonte}`}))`);
     const [existente] = await tx
       .select()
       .from(reservas)
@@ -86,7 +90,8 @@ export async function sincronizarReserva(
       .for("update");
 
     if (!existente) {
-      const reserva = await inserirComCodigo(tx, { ...dados, organizacaoId, codigo: "", fonte, idFonte });
+      const canceladaEm = dados.estado === "cancelada" ? new Date() : null;
+      const reserva = await inserirComCodigo(tx, { ...dados, organizacaoId, codigo: "", fonte, idFonte, canceladaEm });
       await registrarAuditoria(tx, {
         organizacaoId,
         usuarioId: null,

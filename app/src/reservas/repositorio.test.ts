@@ -75,6 +75,18 @@ describe("reservas", () => {
     expect(r4.ok && r4.reserva.id).not.toBe(id);
   });
 
+  it("sincronizações simultâneas da mesma reserva não duplicam nem falham", async () => {
+    const resultados = await Promise.all([1, 2, 3].map(() => sincronizarReserva(db, org, "beds24", "777", dados())));
+    expect(resultados.every((r) => r.ok)).toBe(true);
+    expect(resultados.filter((r) => r.ok && r.criada)).toHaveLength(1);
+    expect(await listarReservas(db, org, { inicio: "2026-01-01", fim: "2027-01-01", incluirCanceladas: true })).toHaveLength(1);
+  });
+
+  it("reserva que já chega cancelada ganha data de cancelamento", async () => {
+    const r = await sincronizarReserva(db, org, "beds24", "888", dados({ estado: "cancelada" }));
+    expect(r.ok && r.reserva.canceladaEm).toBeInstanceOf(Date);
+  });
+
   it("lista por período (saída exclusiva), filtra imóveis e esconde canceladas", async () => {
     await criarReserva(db, org, dados({ checkin: "2026-09-28", checkout: "2026-10-01" }), null);
     const dentro = await criarReserva(db, org, dados({ checkin: "2026-10-05", checkout: "2026-10-08" }), null);
