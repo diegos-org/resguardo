@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 23/09/2026, PR do item M1.2 (login com Google).
+> **Última atualização:** 23/09/2026, PR do item M2.1 (cadastro de imóveis).
 
 ---
 
@@ -25,7 +25,7 @@
 |---|---|---|
 | M0 Fundação | Base do app, banco de dados, layout, publicação na Vercel | 🟡 só falta a Vercel |
 | M1 Acesso | Login (Google/código por e-mail), convites, permissões | 🟡 em andamento |
-| M2 Cadastros | Imóveis, proprietários, contratos e comissões | ⚪ aguardando |
+| M2 Cadastros | Imóveis, proprietários, contratos e comissões | 🟡 em andamento |
 | M3 Reservas | Reservas, calendário central, leitura do Beds24 | ⚪ aguardando |
 | M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | ⚪ aguardando |
 | M5 Portal do proprietário | Relatórios, saldos, PDF | ⚪ aguardando |
@@ -55,6 +55,10 @@
 - M1.2: **login com Google.** O painel só abre para quem entra com uma conta Google
   cadastrada (admin ou operação). Seu e-mail vira administrador automaticamente no
   primeiro login (configurado na Vercel, fora do GitHub). Tem botão "Sair" no topo.
+- M2.1: **cadastro de imóveis** em Painel → Imóveis: código (102, 403, buzios…), nome
+  comercial, bairro, endereço, capacidade, quartos, banheiros, descrição, se **aparece no site**
+  e se está **em operação**. O filtro global do painel passa a usar essa lista. Búzios deve ser
+  cadastrado com "Aparece no site" desmarcado. Só o admin cadastra/edita; a equipe só consulta.
 
 A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 

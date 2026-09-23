@@ -19,6 +19,7 @@ export function FiltroGlobal({ filtros, acao, opcoes = IMOVEIS_PROVISORIOS }: Pr
     <form method="get" action={acao} className={styles.filtro} aria-label="Filtro global">
       <fieldset className={styles.imoveis}>
         <legend>Imóveis</legend>
+        {opcoes.length === 0 && <span>Nenhum imóvel cadastrado ainda.</span>}
         {opcoes.map((o) => (
           <label key={o.codigo}>
             <input type="checkbox" name="imovel" value={o.codigo} defaultChecked={todos || filtros.imoveis.includes(o.codigo)} />

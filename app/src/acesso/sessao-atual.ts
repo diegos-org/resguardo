@@ -1,5 +1,6 @@
 import "server-only";
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import { getDb } from "@/db/client";
 import { auth, loginConfigurado } from "./auth";
 import { destinoPainel } from "./painel";
@@ -11,6 +12,8 @@ import { carregarSessao } from "./sessao";
  * (desativar um usuário corta o acesso na hora).
  */
 export async function obterSessao(): Promise<Sessao | null> {
+  // Sempre por requisição: nunca pré-renderizar páginas que dependem de login.
+  await connection();
   if (!loginConfigurado) return null;
   const s = await auth();
   const id = s?.user?.id;
