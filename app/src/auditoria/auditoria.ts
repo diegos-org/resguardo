@@ -60,3 +60,11 @@ export async function historicoDe(db: Db, organizacaoId: string, entidade: strin
     .limit(limite);
   return linhas.map((l) => ({ ...l, mudancas: l.mudancas as Mudancas }));
 }
+
+/** Remove campos do histórico que o leitor não pode ver (ex.: valores para quem não tem financeiro). */
+export function ocultarCampos(linhas: LinhaHistorico[], campos: readonly string[]): LinhaHistorico[] {
+  const esconder = new Set(campos);
+  return linhas
+    .map((l) => ({ ...l, mudancas: Object.fromEntries(Object.entries(l.mudancas).filter(([c]) => !esconder.has(c))) }))
+    .filter((l) => l.acao.endsWith(".criar") || l.acao.endsWith(".importar") || Object.keys(l.mudancas).length > 0);
+}
