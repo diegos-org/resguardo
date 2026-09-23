@@ -57,6 +57,13 @@
       "when": 1790202309137,
       "tag": "0007_reservas",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790203851858,
+      "tag": "0008_lancamentos",
+      "breakpoints": true
     }
   ]
 }

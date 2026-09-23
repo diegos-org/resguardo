@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 23/09/2026, PR do item M3.4 (calendário) e M2.5 (dados de demonstração).
+> **Última atualização:** 23/09/2026, PR do item M4.1 (base do financeiro).
 
 ---
 
@@ -28,7 +28,7 @@
 | M1 Acesso | Login (Google/código por e-mail), convites, permissões | 🟡 em andamento |
 | M2 Cadastros | Imóveis, proprietários, contratos e comissões | ✅ pronto |
 | M3 Reservas | Reservas, calendário central, leitura do Beds24 | 🟡 em andamento |
-| M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | ⚪ aguardando |
+| M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | 🟡 em andamento |
 | M5 Portal do proprietário | Relatórios, saldos, PDF | ⚪ aguardando |
 | M6 Operação | Limpezas, manutenção, agenda diária | ⚪ aguardando |
 | M7 Site público | Site novo com disponibilidade real | ⚪ aguardando |
@@ -97,6 +97,21 @@
   anterior/seguinte; no celular a grade desliza para o lado com a coluna dos imóveis fixa.
 - M2.5: **dados de demonstração** — um comando carrega 6 imóveis, 3 proprietários, contratos e
   ~37 reservas **fictícias** para testar/mostrar o sistema (nunca roda por cima de dados reais).
+
+- M4.1: **base do financeiro (o "livro" de lançamentos).** Cada fato financeiro vira um
+  lançamento: valor bruto da reserva, taxa do canal, comissão SCL, parte do proprietário,
+  recebimentos, repasses, despesas da empresa, despesas do proprietário, adiantamentos,
+  reembolsos e ajustes. Regras que atendem ao que você pediu:
+  - **nada é apagado nem editado** — erro se corrige com **estorno** (um lançamento espelho,
+    com motivo), e tudo fica no histórico;
+  - cada lançamento tem situação: **previsto, realizado, conciliado ou pendente** (reserva
+    futura não é dinheiro recebido);
+  - separa o **resultado da empresa** do **acerto com o proprietário** ("quem deve quanto a
+    quem"): ex. a empresa adianta R$ 4.000 de reparo → o proprietário fica devendo R$ 4.000; o
+    saldo só zera quando houver reembolso/compensação registrado — e isso não vira receita nem
+    despesa duplicada da empresa;
+  - valores sempre em centavos, sem arredondamento escondido.
+  Ainda sem tela: o cálculo automático das comissões (M4.2) e as telas (M4.6/M4.7) vêm a seguir.
 
 ### Como está ficando (prints com dados fictícios)
 

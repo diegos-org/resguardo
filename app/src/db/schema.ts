@@ -293,3 +293,70 @@ export const bloqueios = pgTable(
     index("bloqueios_imovel_periodo").on(t.imovelId, t.inicio, t.fim),
   ],
 );
+
+// ---------------------------------------------------------------------------
+// Financeiro — ledger (M4.1)
+// ---------------------------------------------------------------------------
+
+export const TIPOS_LANCAMENTO = [
+  "receita_bruta", // valor bruto da reserva
+  "taxa_canal", // taxa cobrada pelo Airbnb/Booking/gateway (negativa)
+  "comissao", // comissão SCL sobre a reserva
+  "direito_proprietario", // parte do proprietário na reserva
+  "recebimento", // dinheiro que efetivamente entrou (extrato)
+  "repasse", // empresa pagou ao proprietário
+  "despesa_empresa", // custo próprio da empresa
+  "despesa_proprietario", // despesa atribuída ao proprietário
+  "adiantamento", // empresa pagou algo devido pelo proprietário
+  "reembolso", // proprietário devolveu adiantamento
+  "ajuste", // correção/ajuste de canal (motivo obrigatório)
+] as const;
+export type TipoLancamento = (typeof TIPOS_LANCAMENTO)[number];
+export const tipoLancamentoEnum = pgEnum("tipo_lancamento", TIPOS_LANCAMENTO);
+
+export const ESTADOS_LANCAMENTO = ["previsto", "realizado", "conciliado", "pendente"] as const;
+export type EstadoLancamento = (typeof ESTADOS_LANCAMENTO)[number];
+export const estadoLancamentoEnum = pgEnum("estado_lancamento", ESTADOS_LANCAMENTO);
+
+/**
+ * Lançamento financeiro. IMUTÁVEL: nunca é editado nem apagado — correção é feita com um
+ * estorno (novo lançamento com valores invertidos apontando para o original). Só o estado
+ * (previsto → realizado → conciliado / pendente) muda, e com auditoria.
+ *
+ * `valor`: efeito no resultado, em centavos com sinal (receita +, custo −).
+ * `efeitoSaldo`: efeito no acerto empresa ↔ proprietário (+ = empresa deve ao proprietário,
+ * − = proprietário deve à empresa). É o que responde "quem deve quanto para quem".
+ */
+export const lancamentos = pgTable(
+  "lancamentos",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    imovelId: uuid("imovel_id").references(() => imoveis.id),
+    proprietarioId: uuid("proprietario_id").references(() => proprietarios.id),
+    reservaId: uuid("reserva_id").references(() => reservas.id),
+    tipo: tipoLancamentoEnum("tipo").notNull(),
+    descricao: text("descricao").notNull(),
+    valor: integer("valor").notNull(),
+    efeitoSaldo: integer("efeito_saldo").notNull().default(0),
+    /** Mês/dia a que o fato pertence (competência). */
+    competencia: date("competencia", { mode: "string" }).notNull(),
+    /** Dia em que o dinheiro entrou/saiu, quando houver. */
+    dataCaixa: date("data_caixa", { mode: "string" }),
+    estado: estadoLancamentoEnum("estado").notNull().default("previsto"),
+    /** manual | motor | sincronizacao | importacao */
+    origem: text("origem").notNull().default("manual"),
+    /** Chave de idempotência de quem gerou (ex.: "reserva:<id>:comissao"). */
+    chaveOrigem: text("chave_origem").notNull().default(""),
+    estornoDe: uuid("estorno_de"),
+    criadoPor: uuid("criado_por").references(() => usuarios.id),
+    criadoEm: criadoEm(),
+  },
+  (t) => [
+    uniqueIndex("lancamentos_chave_origem").on(t.organizacaoId, t.chaveOrigem).where(sql`${t.chaveOrigem} <> ''`),
+    uniqueIndex("lancamentos_estorno_unico").on(t.estornoDe).where(sql`${t.estornoDe} is not null`),
+    index("lancamentos_competencia").on(t.organizacaoId, t.competencia),
+    index("lancamentos_proprietario").on(t.proprietarioId, t.competencia),
+    index("lancamentos_reserva").on(t.reservaId),
+  ],
+);
