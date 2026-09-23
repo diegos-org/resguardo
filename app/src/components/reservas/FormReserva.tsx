@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useActionState } from "react";
 import type { EstadoFormReserva } from "@/reservas/acoes";
-import { NOMES_ORIGEM } from "@/reservas/regras";
+import { NOMES_ORIGEM, NOMES_RECEBIMENTO } from "@/reservas/regras";
 import styles from "../formularios.module.css";
 
 type Props = {
@@ -111,6 +111,18 @@ export function FormReserva({ acao, imoveis, comValores = true }: Props) {
             Líquido recebido (R$)
             <input name="valorLiquido" inputMode="decimal" placeholder="deixe vazio se não souber" {...inv("valorLiquido")} />
             {erro("valorLiquido")}
+          </label>
+          <label>
+            Quem recebe do canal
+            <select name="recebimento" defaultValue="" {...inv("recebimento")}>
+              <option value="">A confirmar (regra da origem)</option>
+              {Object.entries(NOMES_RECEBIMENTO).map(([valor, nome]) => (
+                <option key={valor} value={valor}>
+                  {nome}
+                </option>
+              ))}
+            </select>
+            {erro("recebimento")}
           </label>
         </div>
       )}

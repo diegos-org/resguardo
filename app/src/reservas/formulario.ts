@@ -1,4 +1,4 @@
-import { ESTADOS_RESERVA, type EstadoReserva, ORIGENS_RESERVA, type OrigemReserva } from "@/db/schema";
+import { ESTADOS_RESERVA, type EstadoReserva, ORIGENS_RESERVA, type OrigemReserva, RECEBIMENTOS_RESERVA, type RecebimentoReserva } from "@/db/schema";
 import { reaisParaCentavos } from "@/lib/dinheiro-form";
 import { type DadosReserva, type ErrosReserva, validarReserva } from "./regras";
 
@@ -21,6 +21,9 @@ export function lerFormReserva(e: Entrada): { ok: true; dados: DadosReserva } | 
   const estado = (txt(e.estado) || "confirmada") as EstadoReserva;
   if (!ORIGENS_RESERVA.includes(origem)) erros.origem = "Escolha a origem.";
   if (!ESTADOS_RESERVA.includes(estado)) erros.estado = "Situação inválida.";
+  const recebimentoTxt = txt(e.recebimento);
+  const recebimento = recebimentoTxt === "" ? null : (recebimentoTxt as RecebimentoReserva);
+  if (recebimento !== null && !RECEBIMENTOS_RESERVA.includes(recebimento)) erros.recebimento = "Forma de recebimento inválida.";
 
   const dados: DadosReserva = {
     imovelId: txt(e.imovelId),
@@ -35,6 +38,7 @@ export function lerFormReserva(e: Entrada): { ok: true; dados: DadosReserva } | 
     hospedeOrigem: txt(e.hospedeOrigem),
     moeda: "BRL",
     ...valores,
+    recebimento,
     codigoCanal: txt(e.codigoCanal),
     observacoes: txt(e.observacoes),
   };

@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 23/09/2026, PR do item M4.1 (base do financeiro).
+> **Última atualização:** 23/09/2026, PR do item M4.2 (cálculo automático da comissão).
 
 ---
 
@@ -111,7 +111,17 @@
     saldo só zera quando houver reembolso/compensação registrado — e isso não vira receita nem
     despesa duplicada da empresa;
   - valores sempre em centavos, sem arredondamento escondido.
-  Ainda sem tela: o cálculo automático das comissões (M4.2) e as telas (M4.6/M4.7) vêm a seguir.
+- M4.2: **cálculo automático de cada reserva.** Ao lançar, importar, alterar ou cancelar uma
+  reserva, o sistema gera (ou corrige com estorno) os lançamentos: valor bruto, taxa do canal,
+  **comissão SCL** pelo contrato vigente na data de entrada, e **parte do proprietário**. A
+  ficha da reserva mostra esse financeiro (só para o admin). Regras que adotei — **confirme ou
+  corrija** (seção 7): comissão sobre o valor **depois da taxa do canal**; estadia que atravessa
+  o mês é **dividida pelas noites**; no **Booking/site/direta** a empresa recebe tudo e fica
+  devendo a parte do proprietário. No **Airbnb** o sistema **não presume** que o repasse ao
+  proprietário é automático (split): cada reserva tem o campo "Quem recebe do canal"; enquanto
+  não for preenchido, a parte do proprietário fica **pendente** e fora do acerto. O mesmo vale
+  para imóvel com **mais de um proprietário** (ainda não há cadastro de cotas) ou sem
+  proprietário — nada é atribuído a alguém por chute.
 
 ### Como está ficando (prints com dados fictícios)
 
@@ -122,6 +132,10 @@
 | Calendário no celular | Imóveis |
 |---|---|
 | ![Calendário no celular](docs/telas/calendario-celular.png) | ![Imóveis](docs/telas/imoveis.png) |
+
+| Ficha da reserva com o financeiro |
+|---|
+| ![Reserva com financeiro](docs/telas/reserva-financeiro.png) |
 
 A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 
@@ -219,8 +233,14 @@ ambiente).
 ## 7. Decisões pendentes (sem pressa, não travam o trabalho)
 
 - Fórmula da comissão do **marketplace**: você não lembrava; quando lembrar, me conte.
-- **Competência × caixa** no financeiro: se a receita conta no mês da estadia ou no mês
-  do recebimento.
+- **Regras do cálculo da comissão (adotei assim, confirme):**
+  1. comissão calculada sobre o valor **após a taxa do canal** (e não sobre o bruto);
+  2. estadia que atravessa a virada do mês é **dividida pelas noites** de cada mês;
+  3. **Booking, site e direta**: a empresa recebe tudo e repassa depois. **Airbnb**: fica
+     "a confirmar" em cada reserva (split ou empresa recebe). Se todas as suas do Airbnb forem
+     split, me diga e eu deixo isso como padrão.
+  4. Algum imóvel tem **mais de um proprietário**? Se sim, preciso da cota de cada um.
+  Qualquer uma delas muda com um ajuste simples — é só me dizer.
 - **Búzios** no sistema interno: por ora entra cadastrado, mas fora do site público.
 - **Avaliações**: só no Airbnb ou também próprias.
 

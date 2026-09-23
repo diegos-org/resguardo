@@ -31,6 +31,7 @@ const ROTULOS: Record<string, string> = {
   valorBruto: "Valor bruto (centavos)",
   taxaCanal: "Taxa do canal (centavos)",
   valorLiquido: "Líquido (centavos)",
+  recebimento: "Quem recebe do canal",
 };
 
 const ACOES: Record<string, string> = {
@@ -73,7 +74,7 @@ export function HistoricoAlteracoes({ linhas }: { linhas: LinhaHistorico[] }) {
           {linhas.map((l) => (
             <li key={l.id} style={{ fontSize: "0.875rem", borderLeft: "3px solid var(--scl-areia)", paddingLeft: 10 }}>
               <strong>{l.autor ?? "Sistema"}</strong> {ACOES[l.acao] ?? l.acao} · {quando.format(l.criadoEm)}
-              {!l.acao.endsWith(".criar") && (
+              {!/\.(criar|importar)$/.test(l.acao) && (
                 <ul style={{ listStyle: "none", color: "var(--scl-texto-2)" }}>
                   {Object.entries(l.mudancas).map(([campo, [antes, depois]]) => (
                     <li key={campo}>

@@ -232,6 +232,15 @@ export type EstadoReserva = (typeof ESTADOS_RESERVA)[number];
 export const estadoReservaEnum = pgEnum("estado_reserva", ESTADOS_RESERVA);
 
 /**
+ * Quem recebe o pagamento do canal: "split" = o canal paga a parte do proprietário direto a
+ * ele (não gera dívida da empresa); "empresa" = a empresa recebe tudo e deve a parte dele.
+ * null = ainda não confirmado (o motor deixa o acerto pendente ou usa a regra da origem).
+ */
+export const RECEBIMENTOS_RESERVA = ["split", "empresa"] as const;
+export type RecebimentoReserva = (typeof RECEBIMENTOS_RESERVA)[number];
+export const recebimentoReservaEnum = pgEnum("recebimento_reserva", RECEBIMENTOS_RESERVA);
+
+/**
  * Reserva. `codigo` é o código público SCL (não é credencial). `fonte`+`idFonte` identificam
  * a reserva no sistema que a trouxe (ex.: beds24 / 12345678) — a sincronização é idempotente
  * por esse par. Valores em centavos; `valorLiquido` null = ainda não conhecido.
@@ -258,6 +267,7 @@ export const reservas = pgTable(
     valorBruto: integer("valor_bruto"),
     taxaCanal: integer("taxa_canal"),
     valorLiquido: integer("valor_liquido"),
+    recebimento: recebimentoReservaEnum("recebimento"),
     fonte: text("fonte").notNull().default("manual"),
     idFonte: text("id_fonte").notNull().default(""),
     /** Código da reserva no canal (ex.: HMXXXX do Airbnb). */

@@ -2,6 +2,7 @@ import { and, asc, eq, gt, inArray, lt, ne, sql } from "drizzle-orm";
 import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
 import { violouUnicidade } from "@/db/erros";
 import { bloqueios, imoveis, reservas } from "@/db/schema";
+import { aplicarMotor } from "@/financeiro/aplicar";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
 import { type DadosReserva, type ErrosReserva, gerarCodigo, validarReserva } from "./regras";
@@ -60,6 +61,7 @@ export async function criarReserva(db: Db, organizacaoId: string, dados: DadosRe
       entidadeId: reserva.id,
       mudancas: semContato(calcularMudancas(null, reserva)),
     });
+    await aplicarMotor(tx, organizacaoId, reserva.id, autorId);
     return { ok: true as const, reserva, criada: true };
   });
 }
@@ -67,6 +69,7 @@ export async function criarReserva(db: Db, organizacaoId: string, dados: DadosRe
 /**
  * Cria ou atualiza uma reserva vinda de fora (Beds24, CSV), identificada por fonte+idFonte.
  * Idempotente: rodar de novo com os mesmos dados não altera nada nem gera histórico.
+ * Os lançamentos do motor de comissões são recalculados na mesma transação.
  */
 export async function sincronizarReserva(
   db: Db,
@@ -100,12 +103,17 @@ export async function sincronizarReserva(
         entidadeId: reserva.id,
         mudancas: semContato(calcularMudancas(null, reserva)),
       });
+      await aplicarMotor(tx, organizacaoId, reserva.id, null);
       return { ok: true as const, reserva, criada: true };
     }
 
     const novo = { ...existente, ...dados };
     const mudancas = calcularMudancas(existente, novo);
-    if (Object.keys(mudancas).length === 0) return { ok: true as const, reserva: existente, criada: false };
+    if (Object.keys(mudancas).length === 0) {
+      // Reserva igual: o financeiro só muda se o contrato mudou (idempotente).
+      await aplicarMotor(tx, organizacaoId, existente.id, null);
+      return { ok: true as const, reserva: existente, criada: false };
+    }
     // Cancelou agora → data de agora; continua cancelada → mantém; voltou a valer → limpa.
     const canceladaEm = dados.estado !== "cancelada" ? null : existente.estado === "cancelada" ? existente.canceladaEm : new Date();
     const [reserva] = await tx
@@ -121,6 +129,7 @@ export async function sincronizarReserva(
       entidadeId: reserva.id,
       mudancas: semContato(mudancas),
     });
+    await aplicarMotor(tx, organizacaoId, reserva.id, null);
     return { ok: true as const, reserva, criada: false };
   });
 }
@@ -143,6 +152,7 @@ export async function cancelarReserva(db: Db, organizacaoId: string, id: string,
       entidadeId: id,
       mudancas: { estado: [r.estado, "cancelada"] },
     });
+    await aplicarMotor(tx, organizacaoId, id, autorId);
     return true;
   });
 }

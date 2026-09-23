@@ -80,7 +80,7 @@ export default async function ListaReservas({ searchParams }: PageProps<"/painel
                   <td>{dataBr(r.checkout)}</td>
                   <td>{noites(r.checkin, r.checkout)}</td>
                   <td>{r.hospedeNome || "—"}</td>
-                  {verValores && <td>{r.valorBruto === null ? "—" : formatBRL(r.valorBruto)}</td>}
+                  {verValores && <td className={styles.numero}>{r.valorBruto === null ? "—" : formatBRL(r.valorBruto)}</td>}
                   <td>
                     <span className={styles.etiqueta}>{NOMES_ESTADO[r.estado]}</span>
                   </td>

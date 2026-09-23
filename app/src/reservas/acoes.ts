@@ -17,7 +17,7 @@ export async function salvarNovaReserva(_a: EstadoFormReserva, form: FormData): 
   const entrada = Object.fromEntries(form);
   // Valores financeiros só são aceitos de quem pode editar o financeiro.
   if (!podeFazer(sessao.papel, "financeiro:editar")) {
-    for (const campo of ["valorBruto", "taxaCanal", "valorLiquido"]) delete entrada[campo];
+    for (const campo of ["valorBruto", "taxaCanal", "valorLiquido", "recebimento"]) delete entrada[campo];
   }
   const lido = lerFormReserva(entrada);
   if (!lido.ok) return { erros: lido.erros, mensagem: "Confira os campos destacados." };

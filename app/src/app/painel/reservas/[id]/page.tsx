@@ -5,13 +5,14 @@ import { historicoDe, ocultarCampos } from "@/auditoria/auditoria";
 import styles from "@/components/formularios.module.css";
 import { HistoricoAlteracoes } from "@/components/HistoricoAlteracoes";
 import { getDb } from "@/db/client";
+import { listarLancamentos } from "@/financeiro/ledger";
 import { obterImovel } from "@/imoveis/repositorio";
 import { formatBRL } from "@/lib/money";
 import { cancelar } from "@/reservas/acoes";
-import { NOMES_ESTADO, NOMES_ORIGEM, noites } from "@/reservas/regras";
+import { NOMES_ESTADO, NOMES_ORIGEM, NOMES_RECEBIMENTO, noites } from "@/reservas/regras";
 import { obterReserva } from "@/reservas/repositorio";
 
-const CAMPOS_FINANCEIROS = ["valorBruto", "taxaCanal", "valorLiquido", "moeda"];
+const CAMPOS_FINANCEIROS = ["valorBruto", "taxaCanal", "valorLiquido", "moeda", "recebimento"];
 const dataBr = (d: string) => d.split("-").reverse().join("/");
 const brl = (c: number | null) => (c === null ? "não informado" : formatBRL(c));
 
@@ -24,6 +25,7 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
   if (!r) notFound();
   const [imovel, historico] = await Promise.all([obterImovel(db, sessao.organizacaoId, r.imovelId), historicoDe(db, sessao.organizacaoId, "reserva", r.id)]);
   const verValores = podeFazer(sessao.papel, "financeiro:ler");
+  const lancs = verValores ? await listarLancamentos(db, sessao.organizacaoId, { reservaId: r.id }) : [];
 
   const linhas: [string, string][] = [
     ["Imóvel", imovel ? `${imovel.codigo} · ${imovel.nome}` : "—"],
@@ -39,6 +41,7 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
           ["Valor bruto", brl(r.valorBruto)],
           ["Taxa do canal", brl(r.taxaCanal)],
           ["Líquido recebido", brl(r.valorLiquido)],
+          ["Quem recebe do canal", r.recebimento ? NOMES_RECEBIMENTO[r.recebimento] : "a confirmar"],
         ] as [string, string][])
       : []),
     ["Observações", r.observacoes || "—"],
@@ -67,6 +70,41 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
             Cancelar reserva
           </button>
         </form>
+      )}
+      {verValores && (
+        <section aria-label="Lançamentos financeiros" style={{ maxWidth: 820, display: "flex", flexDirection: "column", gap: 8 }}>
+          <h2 style={{ fontSize: "1.25rem" }}>Financeiro desta reserva</h2>
+          {lancs.length === 0 ? (
+            <p style={{ color: "var(--scl-texto-2)", fontSize: "0.875rem" }}>
+              Sem lançamentos (valor não informado, reserva cancelada ou imóvel sem contrato).
+            </p>
+          ) : (
+            <div className={styles.rolagem}>
+              <table className={styles.tabela}>
+                <thead>
+                  <tr>
+                    <th>Competência</th>
+                    <th>Descrição</th>
+                    <th>Valor</th>
+                    <th>Acerto c/ proprietário</th>
+                    <th>Situação</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lancs.map((l) => (
+                    <tr key={l.id} className={l.estornoDe ? styles.inativo : undefined}>
+                      <td>{l.competencia.slice(0, 7).split("-").reverse().join("/")}</td>
+                      <td>{l.descricao}</td>
+                      <td className={styles.numero}>{formatBRL(l.valor)}</td>
+                      <td className={styles.numero}>{l.efeitoSaldo === 0 ? "—" : formatBRL(l.efeitoSaldo)}</td>
+                      <td>{l.estado}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
       )}
       <HistoricoAlteracoes linhas={verValores ? historico : ocultarCampos(historico, CAMPOS_FINANCEIROS)} />
     </>
