@@ -1,3 +1,5 @@
+> Estado histórico preservado abaixo. Os horários, prontidão e próximos responsáveis descritos nas rodadas não são o estado atual. Consulte [CURRENT](CURRENT.md) e o [guia de responsabilidades](../assistentes/GUIA-DO-DIEGO.md). A reconstrução é conduzida por Lia; este arquivo não ativa a agenda de nenhum agente.
+
 ## Rodada — reconciliação pós-merge do PR #10 — 21/09/2026, 07h28 BRT
 
 ### Verificado

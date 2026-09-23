@@ -1,0 +1,30 @@
+# Esclarecimentos operacionais — 21/9/2026
+Fonte: instruções diretas de Diego, áudios privados integralmente lidos pela Lia na rodada das 14h. Este documento contém somente regras sanitizadas. Dados financeiros, cadastros e transcrições ficam restritos.
+
+## Faxina e conservação
+Agendar limpeza no dia do checkout, mesmo sem nova entrada, incluindo finais de semana com profissional responsável ou substituto aprovado. Agendamento não comprova execução: registrar separadamente pedido, confirmação e realização.
+
+A orientação geral sobre distribuição entre dias úteis e fins de semana não apaga ocorrências específicas já registradas nem comprova faxinas passadas. Divergências históricas precisam de conferência, sem preencher lacunas por inferência.
+
+Na operação cuja gestão física está a cargo da empresa, limpeza ordinária, lavanderia, itens básicos de abastecimento e limpeza, água, pilhas e pequenos itens de manutenção usuais são custos internos da empresa conforme esclarecimento de Diego. Não estender automaticamente essa regra a contratos exclusivamente online.
+
+Reparos maiores e responsabilidades controversas são decididos por Diego caso a caso. Registrar necessidade, serviço e custo conhecido; consultar antes de assumir responsabilidade ou cobrar o proprietário. Exemplos de valores citados em conversa não são limites de aprovação automática. Esta regra não autoriza contratar nem gastar por iniciativa própria.
+
+## Relatórios
+Um relatório parcial tem período menor e definido; isso não é sinônimo de relatório com fontes faltantes. Conferir reservas, outras receitas, ajustes e despesas atribuíveis ao proprietário. Separar realizado de contratado/projetado.
+
+Custo interno de faxina ainda não confirmado não deve impedir o relatório de receitas do proprietário quando não altera seu resultado. Não descontá-lo do proprietário indevidamente. Se houver lançamento efetivamente relevante ao acerto e não validado, explicitar a lacuna e não apresentar saldo definitivo.
+
+## Documentos de portaria — somente apartamento 403
+Manter vínculo validado entre reserva, hóspedes, datas e documentos, destinatário previamente conferido e histórico entre canais. Nunca publicar documento, número ou foto no repositório ou grupo de limpeza.
+- Aviso inicial na reserva.
+- Segundo pedido entre cinco e sete dias antes da entrada, se faltarem documentos.
+- Pedido final na véspera, se ainda necessário.
+Conferir histórico antes; não cobrar a cada hora nem comprimir três pedidos repetidos em reservas de última hora.
+
+Depois do encaminhamento correto com entrega confirmada, encerrar a tarefa de encaminhar. Silêncio da portaria sozinho não mantém uma cobrança indefinida. Entrega não significa cadastro ou aprovação de acesso. Se houver falha de entrega, dúvida de correspondência ou problema concreto de chegada, registrar e tratar essa pendência específica.
+
+Após os pedidos, manter indicação factual dos documentos faltantes sem repetir cobranças indefinidamente. Não inventar proibição de entrada, aprovação ou isenção de responsabilidade.
+
+## Calendário
+A revisão de sete dias e investigação de bloqueios suspeitos foram reafirmadas. Confirmar reserva, manutenção e contexto antes de alterar. Valores visíveis na grade não bastam para comprovar todas as regras de mínimo de noites. Revisão não concede autorização irrestrita para descontos, desbloqueios ou sincronizações.

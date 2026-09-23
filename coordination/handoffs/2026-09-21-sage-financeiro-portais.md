@@ -1,0 +1,3 @@
+# Sage → Rivers e Lia — financeiro e portais
+
+21/09/2026. Rodada documental por pedido direto de Diego. Regras em operations/FINANCEIRO-PORTAIS.md; despesas confirmadas como do proprietário. Incluído portal separado do hóspede, IDs próprios, horários de instruções e propostas de acesso verificado e incentivo a reviews. Rivers: recuperar fórmula do marketplace já discutida e citar origem. Lia: conferir modelo de relatório e horários operacionais. Portal e financeiro ainda não implementados; nenhuma integração/teste financeiro/merge/produção. Menu antigo pendente. PR #11 segue separado e draft. Documento para revisão, não pedido de merge.
