@@ -13,7 +13,8 @@
 - **Onde está:** tudo neste repositório do GitHub, `al-life/scl-reconstrucao`.
 - **Quem constrói:** o Claude, por meio de uma rotina automática a cada 3 horas e das
   conversas com você.
-- **Quem decide:** você. Nada entra no sistema sem o seu **merge**.
+- **Quem decide:** você. Por enquanto o Claude faz os merges sozinho (com CI verde e revisão
+  automática sem pendências), por sua autorização; você pode revogar quando quiser.
 - **Está em uso?** **Não.** Só vai ser usado "para valer" quando tudo estiver pronto
   (marco M11).
 
@@ -83,8 +84,10 @@ A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 3. Dois robôs conferem cada PR automaticamente:
    - **CI** (GitHub Actions): roda todos os testes. Verde = passou.
    - **Codex**: revisão automática de código. O Claude corrige o que ele apontar.
-4. **Você faz o merge** quando o CI estiver verde. Pode ser pelo app do GitHub no
-   celular. Não precisa entender o código: a descrição do PR explica.
+4. **O Claude faz o merge** (autorizado por você em 23/09, até o sistema estabilizar), mas só
+   quando o CI está verde, a revisão do Codex terminou sem pendências e não há conflito.
+   Você continua podendo ler cada PR — a descrição explica em português o que mudou — e
+   pode pedir para voltar a ser você quem faz o merge a qualquer momento.
 5. Pode haver até **3 PRs abertos** ao mesmo tempo esperando seu merge.
 
 **Onde ver o sistema:** assim que a Vercel estiver conectada (seção 6), cada PR ganha um
@@ -136,14 +139,13 @@ ambiente).
 
 ## 6. O que você precisa fazer agora
 
-1. **Mergear os PRs abertos** quando o CI estiver verde.
-2. **Vercel + Neon** (uns 5 minutos, dá para fazer pelo computador):
+1. **Vercel + Neon** (uns 5 minutos, dá para fazer pelo computador):
    1. Entre em vercel.com → *Add New… → Project* → escolha `al-life/scl-reconstrucao`.
    2. Em **Root Directory**, escolha `app`. Clique em *Deploy*.
    3. No projeto criado: *Storage* (ou *Integrations*) → **Neon** → conecte sua conta
       Neon. Isso cria a variável `DATABASE_URL` automaticamente.
    4. Me avise aqui na conversa: eu confiro se o site de homologação abriu.
-3. **Login com Google** (uns 10 minutos, junto com a Vercel):
+2. **Login com Google** (uns 10 minutos, junto com a Vercel):
    1. Em console.cloud.google.com → crie um projeto "SCL" → *APIs e serviços → Tela de
       consentimento OAuth* (tipo "Externo", nome "Sua Casa Leblon").
    2. *Credenciais → Criar credenciais → ID do cliente OAuth → Aplicativo da Web*.
@@ -154,10 +156,10 @@ ambiente).
       `AUTH_SECRET` (qualquer texto longo e aleatório, ex.: gerado em 1password ou similar) e
       `ADMIN_EMAILS` = seu e-mail do Google.
    4. Faça *Redeploy* e entre em `/entrar`. Se travar em algum passo, me chame que eu guio.
-4. **Beds24:** gere a chave de API. **Não cole no chat.** Coloque nas configurações do
+3. **Beds24:** gere a chave de API. **Não cole no chat.** Coloque nas configurações do
    ambiente do Claude Code (menu do ambiente no topo da sessão → *Edit* → variável
    `BEDS24_API_KEY`) e também na Vercel (*Settings → Environment Variables*).
-5. **Meta Business:** comece a verificação da empresa, porque ela demora.
+4. **Meta Business:** comece a verificação da empresa, porque ela demora.
 
 ---
 
