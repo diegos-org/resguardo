@@ -46,6 +46,26 @@ export const usuarios = pgTable(
 );
 
 /**
+ * Código de login enviado por e-mail (M1.3). Guarda só o HMAC do código, nunca o código.
+ * Uso único (`usadoEm`), validade curta (`expiraEm`) e limite de tentativas.
+ */
+export const codigosLogin = pgTable(
+  "codigos_login",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    email: text("email").notNull(),
+    codigoHash: text("codigo_hash").notNull(),
+    expiraEm: timestamp("expira_em", { withTimezone: true }).notNull(),
+    tentativas: integer("tentativas").notNull().default(0),
+    usadoEm: timestamp("usado_em", { withTimezone: true }),
+    /** Substituído por um código mais novo, esgotado ou usado: não vale mais. */
+    invalidadoEm: timestamp("invalidado_em", { withTimezone: true }),
+    criadoEm: criadoEm(),
+  },
+  (t) => [index("codigos_login_email").on(t.email, t.criadoEm)],
+);
+
+/**
  * Imóvel. `codigo` é o identificador curto usado pela operação (102, 403, buzios…);
  * `nome` é o nome comercial exibido ao público (ex.: "Studio …").
  */

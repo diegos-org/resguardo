@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 23/09/2026, PR do item M4.2 (cálculo automático da comissão).
+> **Última atualização:** 23/09/2026, PR do item M1.3 (login por código no e-mail).
 
 ---
 
@@ -56,6 +56,13 @@
 - M1.2: **login com Google.** O painel só abre para quem entra com uma conta Google
   cadastrada (admin ou operação). Seu e-mail vira administrador automaticamente no
   primeiro login (configurado na Vercel, fora do GitHub). Tem botão "Sair" no topo.
+- M1.3: **login por código no e-mail** (para quem não usa Google, como proprietários e
+  equipe). A pessoa digita o e-mail, recebe um código de 6 dígitos e entra. Segurança:
+  o código vale **10 minutos**, só pode ser usado **uma vez**, **5 erros** bloqueiam o
+  código, no máximo **5 pedidos por hora** por e-mail, e pedir um novo cancela o anterior.
+  A tela responde sempre igual, exista ou não o e-mail, para ninguém descobrir quem tem
+  acesso. Só recebe código quem está cadastrado e ativo. Para funcionar na internet
+  falta um serviço de envio de e-mail (seção 6, item 5).
 - M2.1: **cadastro de imóveis** em Painel → Imóveis: código (102, 403, buzios…), nome
   comercial, bairro, endereço, capacidade, quartos, banheiros, descrição, se **aparece no site**
   e se está **em operação**. O filtro global do painel passa a usar essa lista. Búzios deve ser
@@ -196,6 +203,7 @@ e escreva normalmente.
 | **Mercado Pago** | Pagamentos da reserva direta | ⚪ não conectado | Credenciais de *teste*, mais adiante (M8) |
 | **Meta / WhatsApp Business** | Atendimento pelo WhatsApp da empresa | ⚪ não conectado | Verificação da empresa no Meta Business (demora dias) |
 | **Google Cloud (login)** | Botão "Entrar com Google" | ⚪ não configurado | Criar credenciais OAuth (seção 6) |
+| **Resend** (envio de e-mail) | E-mails do sistema: código de login, depois relatórios | ⚪ não conectado | Criar conta e chave (seção 6, item 5) — pode esperar o domínio |
 | **Cloudflare** | Domínio e e-mail | ⚪ não conectado | Só no final (M11) |
 
 **Onde ficam senhas e chaves:** nunca no GitHub e nunca no chat. Elas ficam nas
@@ -227,6 +235,12 @@ ambiente).
    ambiente do Claude Code (menu do ambiente no topo da sessão → *Edit* → variável
    `BEDS24_API_KEY`) e também na Vercel (*Settings → Environment Variables*).
 4. **Meta Business:** comece a verificação da empresa, porque ela demora.
+5. **E-mail do sistema (Resend)** — sem pressa; enquanto isso, o login com Google funciona:
+   1. Crie conta grátis em resend.com e cadastre o domínio de onde os e-mails vão sair
+      (ex.: suacasaleblon.com.br). Ele pede para adicionar alguns registros no DNS
+      (Cloudflare) — eu te guio nessa hora.
+   2. Crie uma *API key* e coloque na Vercel como `RESEND_API_KEY`, e crie
+      `EMAIL_REMETENTE` = `Sua Casa Leblon <acesso@seudominio.com.br>`. **Não cole no chat.**
 
 ---
 
