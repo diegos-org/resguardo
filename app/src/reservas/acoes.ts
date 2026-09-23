@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { exigir } from "@/acesso/politica";
+import { exigir, podeFazer } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { getDb } from "@/db/client";
 import { aplicarMotor } from "@/financeiro/aplicar";
@@ -15,7 +15,12 @@ export type EstadoFormReserva = { erros?: ErrosReserva; mensagem?: string };
 export async function salvarNovaReserva(_a: EstadoFormReserva, form: FormData): Promise<EstadoFormReserva> {
   const sessao = await exigirSessaoPainel();
   exigir(sessao, "reserva:editar", { organizacaoId: sessao.organizacaoId });
-  const lido = lerFormReserva(Object.fromEntries(form));
+  const entrada = Object.fromEntries(form);
+  // Valores financeiros só são aceitos de quem pode editar o financeiro.
+  if (!podeFazer(sessao.papel, "financeiro:editar")) {
+    for (const campo of ["valorBruto", "taxaCanal", "valorLiquido"]) delete entrada[campo];
+  }
+  const lido = lerFormReserva(entrada);
   if (!lido.ok) return { erros: lido.erros, mensagem: "Confira os campos destacados." };
   const r = await criarReserva(getDb(), sessao.organizacaoId, lido.dados, sessao.usuarioId);
   if (!r.ok) return { erros: r.erros, mensagem: "Confira os campos destacados." };
