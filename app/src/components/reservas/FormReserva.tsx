@@ -9,9 +9,11 @@ import styles from "../formularios.module.css";
 type Props = {
   acao: (a: EstadoFormReserva, f: FormData) => Promise<EstadoFormReserva>;
   imoveis: { id: string; codigo: string; nome: string }[];
+  /** Mostrar os campos de valores (só para quem edita o financeiro). */
+  comValores?: boolean;
 };
 
-export function FormReserva({ acao, imoveis }: Props) {
+export function FormReserva({ acao, imoveis, comValores = true }: Props) {
   const [estado, enviar, enviando] = useActionState(acao, {});
   const e = estado.erros ?? {};
   const erro = (c: keyof typeof e) => (e[c] ? <span className={styles.erro}>{e[c]}</span> : null);
@@ -93,23 +95,25 @@ export function FormReserva({ acao, imoveis }: Props) {
           <input name="hospedeOrigem" />
         </label>
       </div>
+      {comValores && (
       <div className={styles.linha}>
-        <label>
-          Valor bruto (R$)
-          <input name="valorBruto" inputMode="decimal" placeholder="1.500,00" {...inv("valorBruto")} />
-          {erro("valorBruto")}
-        </label>
-        <label>
-          Taxa do canal (R$)
-          <input name="taxaCanal" inputMode="decimal" {...inv("taxaCanal")} />
-          {erro("taxaCanal")}
-        </label>
-        <label>
-          Líquido recebido (R$)
-          <input name="valorLiquido" inputMode="decimal" placeholder="deixe vazio se não souber" {...inv("valorLiquido")} />
-          {erro("valorLiquido")}
-        </label>
-      </div>
+          <label>
+            Valor bruto (R$)
+            <input name="valorBruto" inputMode="decimal" placeholder="1.500,00" {...inv("valorBruto")} />
+            {erro("valorBruto")}
+          </label>
+          <label>
+            Taxa do canal (R$)
+            <input name="taxaCanal" inputMode="decimal" {...inv("taxaCanal")} />
+            {erro("taxaCanal")}
+          </label>
+          <label>
+            Líquido recebido (R$)
+            <input name="valorLiquido" inputMode="decimal" placeholder="deixe vazio se não souber" {...inv("valorLiquido")} />
+            {erro("valorLiquido")}
+          </label>
+        </div>
+      )}
       <div className={styles.linha}>
         <label>
           Código no canal
