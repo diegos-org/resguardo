@@ -188,7 +188,11 @@ export async function marcarDespesaPaga(db: Db, organizacaoId: string, id: strin
  * ficaria com crédito indevido. Retorna "quitado" nesse caso.
  */
 export async function estornarDespesa(db: Db, organizacaoId: string, id: string, motivo: string, autorId: string | null): Promise<boolean | "quitado"> {
+  if (!uuidValido(id)) return false;
   return db.transaction(async (tx) => {
+    // Trava a despesa primeiro: um "marcar como paga" ao mesmo tempo (que também trava esta
+    // linha e cria o adiantamento) termina antes, e o adiantamento aparece na busca abaixo.
+    await tx.select({ id: lancamentos.id }).from(lancamentos).where(and(eq(lancamentos.id, id), eq(lancamentos.organizacaoId, organizacaoId))).for("update");
     const d = await obterDespesa(tx, organizacaoId, id);
     if (!d || d.estornada || !motivo.trim()) return false;
     const a = await adiantamentoAtivo(tx, organizacaoId, id);
