@@ -102,7 +102,7 @@ const VAZIO: TotaisDoImovel = { valor: {}, montante: {}, acerto: 0 };
 
 function temMovimento(l: LinhaApartamento): boolean {
   const f = l.financeiro;
-  return Boolean(l.reservas || f.receitaBruta || f.comissoes || f.despesasEmpresa || f.ajustesEmpresa || l.despesasProprietario || l.acertoPeriodo || l.saldo || l.anteriores.length || l.aCobrar || l.contestados);
+  return Boolean(l.reservas || f.receitaBruta || f.taxasCanais || f.comissoes || f.despesasEmpresa || f.ajustesEmpresa || l.despesasProprietario || l.acertoPeriodo || l.saldo || l.anteriores.length || l.aCobrar || l.contestados);
 }
 
 /**

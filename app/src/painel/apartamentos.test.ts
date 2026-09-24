@@ -189,6 +189,14 @@ describe("aba Apartamentos", () => {
     expect(total.porSentido?.saldo).toEqual({ empresaDeve: 72250, proprietariosDevem: 72250 }); // …por sentido, não
   });
 
+  it("arquivado só com taxa do canal no período aparece (total bate com o Início)", async () => {
+    await db.insert(lancamentos).values({ organizacaoId: org, tipo: "taxa_canal", descricao: "Taxa fictícia", valor: -3000, competencia: "2026-10-15", estado: "realizado", imovelId: b, origem: "manual" });
+    await db.update(imoveis).set({ ativo: false }).where(eq(imoveis.id, b));
+    const { linhas, total } = await carregar();
+    expect(linhas.map((l) => l.codigo)).toContain("102");
+    expect(total.financeiro.taxasCanais).toBe(3000);
+  });
+
   it("filtro sem imóvel nenhum não soma a organização inteira", async () => {
     await despesa({ responsavel: "empresa", valor: 30000, imovelId: null, descricao: "Contador" });
     const r = await carregarApartamentos(db, org, { imoveis: [], todos: false, periodo });

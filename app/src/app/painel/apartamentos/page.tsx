@@ -171,7 +171,12 @@ export default async function Apartamentos({ searchParams }: PageProps<"/painel/
         Uma linha por imóvel. O resultado é o da empresa (comissões − despesas da empresa + ajustes). O acerto com o proprietário fica à parte:
         despesas dele, o que mudou no período, o saldo acumulado e os adiantamentos a cobrar.
       </p>
-      <FiltroGlobal filtros={filtros} opcoes={opcoes} acao="/painel/apartamentos" manter={colunas.map((c) => ["col", c] as [string, string])} />
+      <FiltroGlobal filtros={filtros} opcoes={opcoes} acao="/painel/apartamentos" manter={[
+          ...colunas.map((c) => ["col", c] as [string, string]),
+          // O intervalo De/Até continua valendo ao trocar os imóveis (limpa-se em "Voltar ao padrão").
+          ...(intervalo.periodo ? ([["de", intervalo.de!], ["ate", intervalo.ate!]] as [string, string][]) : []),
+        ]}
+      />
 
       <form method="get" action="/painel/apartamentos" className={styles.form} aria-label="Como ver">
         {filtros.imoveis.map((c) => (
