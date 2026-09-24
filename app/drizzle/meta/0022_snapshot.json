@@ -1,5 +1,5 @@
 {
-  "id": "4038f5dc-65dc-45c6-990a-c4de8ee51bb2",
+  "id": "7d03f014-4c24-4ea9-8307-11c48775455c",
   "prevId": "1bb34636-9628-4142-9b15-98ec8127e825",
   "version": "7",
   "dialect": "postgresql",
@@ -2904,6 +2904,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "imovel_id": {
+          "name": "imovel_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "pendencia": {
           "name": "pendencia",
           "type": "text",
@@ -2947,6 +2953,19 @@
           "tableTo": "reservas",
           "columnsFrom": [
             "reserva_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "portaria_checklists_imovel_id_imoveis_id_fk": {
+          "name": "portaria_checklists_imovel_id_imoveis_id_fk",
+          "tableFrom": "portaria_checklists",
+          "tableTo": "imoveis",
+          "columnsFrom": [
+            "imovel_id"
           ],
           "columnsTo": [
             "id"

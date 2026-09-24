@@ -835,6 +835,8 @@ export const portariaChecklists = pgTable("portaria_checklists", {
   /** Datas da estada quando foi encaminhado: se a reserva mudar de data, é preciso encaminhar de novo. */
   encaminhadoCheckin: date("encaminhado_checkin", { mode: "string" }),
   encaminhadoCheckout: date("encaminhado_checkout", { mode: "string" }),
+  /** Imóvel da reserva quando a lista foi mexida: se a reserva mudar de imóvel, destinatário e envio valem de novo do zero. */
+  imovelId: uuid("imovel_id").references(() => imoveis.id),
   /** Pendência concreta (falha de entrega, dúvida de correspondência…); vazio = nenhuma. */
   pendencia: text("pendencia").notNull().default(""),
   criadoEm: criadoEm(),

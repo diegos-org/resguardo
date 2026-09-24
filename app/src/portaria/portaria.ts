@@ -147,7 +147,7 @@ export async function listarPortaria(db: Db, organizacaoId: string, f: { hoje: s
       hospede: r.hospedeNome,
       checkout: r.checkout,
       checklist: c,
-      destinatarioConferido: c?.destinatarioConferido ?? false,
+      destinatarioConferido: destinatarioVigente(c, r),
       pendencia: c?.pendencia ?? "",
     };
   });
@@ -226,10 +226,19 @@ function pedidosVigentes(
 
 type Envio = Pick<Checklist, "encaminhadoEm" | "entregaConfirmadaEm" | "encaminhadoCheckin" | "encaminhadoCheckout">;
 const SEM_ENVIO: Envio = { encaminhadoEm: null, entregaConfirmadaEm: null, encaminhadoCheckin: null, encaminhadoCheckout: null };
+type ReservaAtual = { imovelId: string; checkin: string; checkout: string };
 
-/** Encaminhamento e entrega só valem para as datas da estada com que foram feitos. */
-function envioVigente(c: Envio | null, r: { checkin: string; checkout: string }): Envio {
-  if (!c?.encaminhadoEm) return SEM_ENVIO;
+/** A lista foi mexida com a reserva em outro imóvel (portaria e destinatário são de outro prédio)? */
+const outroImovel = (c: Pick<Checklist, "imovelId"> | null, r: ReservaAtual) => Boolean(c?.imovelId && c.imovelId !== r.imovelId);
+
+/** Destinatário conferido só vale para o imóvel em que foi conferido. */
+function destinatarioVigente(c: Pick<Checklist, "imovelId" | "destinatarioConferido"> | null, r: ReservaAtual): boolean {
+  return Boolean(c?.destinatarioConferido) && !outroImovel(c, r);
+}
+
+/** Encaminhamento e entrega só valem para o imóvel e as datas da estada com que foram feitos. */
+function envioVigente(c: (Envio & Pick<Checklist, "imovelId">) | null, r: ReservaAtual): Envio {
+  if (!c?.encaminhadoEm || outroImovel(c, r)) return SEM_ENVIO;
   if (c.encaminhadoCheckin !== r.checkin || c.encaminhadoCheckout !== r.checkout) return SEM_ENVIO;
   return { encaminhadoEm: c.encaminhadoEm, entregaConfirmadaEm: c.entregaConfirmadaEm, encaminhadoCheckin: c.encaminhadoCheckin, encaminhadoCheckout: c.encaminhadoCheckout };
 }
@@ -250,7 +259,13 @@ export async function registrarPortaria(db: Db, organizacaoId: string, reservaId
     const [antes] = await tx.select().from(portariaChecklists).where(eq(portariaChecklists.reservaId, reservaId)).for("update");
     // Pedidos feitos para uma entrada antiga saem (o histórico guarda as datas) e não contam na ordem.
     // Idem para o encaminhamento feito para outras datas da estada.
-    const vigentes = { ...pedidosVigentes(antes, r.checkin, diaDaReserva(r.criadoEm)), ...envioVigente(antes, r) };
+    // E o que foi conferido/encaminhado com a reserva em outro imóvel. A lista passa a ser deste imóvel.
+    const vigentes = {
+      ...pedidosVigentes(antes, r.checkin, diaDaReserva(r.criadoEm)),
+      ...envioVigente(antes, r),
+      destinatarioConferido: destinatarioVigente(antes, r),
+      imovelId: r.imovelId,
+    };
     const atual: Checklist = { ...antes, ...vigentes };
 
     let novo: Partial<Checklist>;
@@ -271,7 +286,7 @@ export async function registrarPortaria(db: Db, organizacaoId: string, reservaId
     } else {
       if (!dataValida(reg.data) || reg.data > hoje) return { ok: false as const, erro: "Data inválida (não pode ser no futuro)." };
       if (reg.tipo === "encaminhado" || reg.tipo === "entrega_confirmada") {
-        if (!antes.destinatarioConferido) return { ok: false as const, erro: "Confira o destinatário da portaria antes de encaminhar ou confirmar a entrega." };
+        if (!atual.destinatarioConferido) return { ok: false as const, erro: "Confira o destinatário da portaria antes de encaminhar ou confirmar a entrega." };
         if (r.hospedes === null || antes.documentosRecebidos < r.hospedes) return { ok: false as const, erro: "Ainda faltam documentos (ou o número de hóspedes não está na reserva)." };
       }
       if (reg.tipo === "entrega_confirmada" && !atual.encaminhadoEm) return { ok: false as const, erro: "Registre o encaminhamento antes de confirmar a entrega." };
