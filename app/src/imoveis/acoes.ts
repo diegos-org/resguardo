@@ -63,6 +63,7 @@ export type EstadoDetalhes = { ok?: boolean; mensagem?: string; erros?: ErrosDet
 function lerForm(form: FormData): Record<string, string | string[]> {
   const saida: Record<string, string | string[]> = {};
   for (const k of new Set(form.keys())) {
+    if (k.startsWith("$ACTION")) continue; // campos internos do Next.js
     const vs = form.getAll(k).filter((v): v is string => typeof v === "string");
     saida[k] = ["comodidades", "diasChegada", "diasSaida"].includes(k) ? vs : (vs[0] ?? "");
   }
