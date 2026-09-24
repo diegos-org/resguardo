@@ -314,7 +314,7 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
           )}
 
           <section aria-label="Números do período" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
-            <Numero titulo="Reservas" valor={String(resumo.reservas)} detalhe={escolhidos.map((i) => i.codigo).join(", ")} />
+            <Numero titulo="Reservas" valor={String(resumo.reservas)} detalhe={selecao.imoveis.map((i) => i.codigo).join(", ")} />
             <Numero titulo="Valor bruto das reservas" valor={formatBRL(resumo.receitaBruta)} detalhe={`Taxas dos canais: ${formatBRL(resumo.taxasCanais)}`} />
             <Numero titulo={`Comissão da ${empresa}`} valor={formatBRL(resumo.comissao)} />
             <Numero titulo="Sua parte das reservas" valor={formatBRL(resumo.suaParte)} />
@@ -337,7 +337,7 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
             <section aria-label="Calendário" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <h2 style={{ fontSize: "1.125rem", margin: 0 }}>Calendário</h2>
               <p style={{ ...rotulo, margin: 0 }}>Toque numa reserva para ver os valores dela na tabela.</p>
-              <CalendarioPortal periodo={periodo} imoveis={escolhidos} itens={itens} hoje={hoje} />
+              <CalendarioPortal periodo={periodo} imoveis={selecao.imoveis} itens={itens} hoje={hoje} />
             </section>
           )}
 
