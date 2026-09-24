@@ -526,6 +526,22 @@ describe("configuração e envio", () => {
     expect(correio.enviadas[1].texto).toContain("entrada qui 01/07");
   });
 
+  it("criada pendente dentro da faixa e confirmada depois do corte: só a agenda seguinte avisa (uma vez)", async () => {
+    const dados = reserva(rio, "2028-02-01", "2028-02-03", { estado: "pendente", codigoCanal: "HMPEND" });
+    const r = await sincronizarReserva(db, org, "beds24", "B-3", dados);
+    if (!r.ok) throw new Error("reserva");
+    const criada = new Date(Date.now() - 60_000);
+    await db.update(reservas).set({ criadoEm: criada }).where(eq(reservas.id, r.reserva.id));
+    const corte = new Date();
+    // Confirmada depois do corte, antes da consulta.
+    await new Promise((ok) => setTimeout(ok, 5));
+    expect((await sincronizarReserva(db, org, "beds24", "B-3", { ...dados, estado: "confirmada" })).ok).toBe(true);
+    const antes = await montarAgenda(db, org, "2026-10-01", new Date(criada.getTime() - 60_000), corte);
+    expect(antes.secoes.flatMap((x) => x.novas)).toEqual([]);
+    const depois = await montarAgenda(db, org, "2026-10-01", corte, new Date(Date.now() + 60_000));
+    expect(depois.secoes.flatMap((x) => x.novas).map((n) => n.checkin)).toEqual(["2028-02-01"]);
+  });
+
   it("reserva criada depois do corte fica para a próxima agenda (sem repetir)", async () => {
     await nova(rio, "2026-12-20", "2026-12-27", "2026-10-01T23:00:30Z");
     const antes = await montarAgenda(db, org, "2026-10-01", new Date("2026-10-01T22:00:00Z"), AGORA);

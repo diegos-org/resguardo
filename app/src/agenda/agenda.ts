@@ -206,7 +206,13 @@ export async function montarAgenda(db: Db, organizacaoId: string, hoje: string, 
               // (pendente/cancelada que confirmou numa sincronização: registrada no histórico).
               // Até `novasAte` (o corte gravado como marco): o que entrar depois fica para a próxima.
               or(
-                and(gt(reservas.criadoEm, novasDesde), lte(reservas.criadoEm, novasAte)),
+                // Criada já confirmada (o histórico da criação diz "confirmada"): uma criada pendente e
+                // confirmada depois só conta pela confirmação, que pode ser posterior ao corte.
+                and(
+                  gt(reservas.criadoEm, novasDesde),
+                  lte(reservas.criadoEm, novasAte),
+                  sql`exists (select 1 from ${auditoria} where ${auditoria.organizacaoId} = ${organizacaoId} and ${auditoria.entidade} = 'reserva' and ${auditoria.entidadeId} = ${reservas.id}::text and ${auditoria.acao} in ('reserva.criar', 'reserva.importar') and ${auditoria.mudancas} -> 'estado' ->> 1 = 'confirmada')`,
+                ),
                 sql`${reservas.id}::text in (select ${auditoria.entidadeId} from ${auditoria} where ${auditoria.organizacaoId} = ${organizacaoId} and ${auditoria.entidade} = 'reserva' and ${auditoria.criadoEm} > ${novasDesde.toISOString()}::timestamptz and ${auditoria.criadoEm} <= ${novasAte.toISOString()}::timestamptz and ${auditoria.mudancas} -> 'estado' ->> 1 = 'confirmada')`,
               ),
               gte(reservas.checkout, hoje),
