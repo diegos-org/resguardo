@@ -93,9 +93,9 @@ describe("fluxo da manutenção", () => {
     expect(await aprovar(id, "proprietario", null)).toMatchObject({ ok: false, erro: expect.stringContaining("não tem proprietário") });
     expect(await aprovar(id, "empresa", null)).toMatchObject({ ok: true });
     await realizarManutencao(db, org, id, HOJE, HOJE, null);
-    expect(await lancarCusto(db, org, id, custo({ valor: 20000, paga: false, dataPagamento: null }), null)).toMatchObject({ ok: true });
+    expect(await lancarCusto(db, org, id, custo({ valor: 20000, paga: false, dataPagamento: null, comprovante: "NF 123 fictícia" }), null)).toMatchObject({ ok: true });
     const doLivro = await db.select().from(lancamentos).where(eq(lancamentos.organizacaoId, org));
-    expect(doLivro.map((l) => [l.tipo, l.valor, l.efeitoSaldo, l.estado])).toEqual([["despesa_empresa", -20000, 0, "previsto"]]);
+    expect(doLivro.map((l) => [l.tipo, l.valor, l.efeitoSaldo, l.estado, l.comprovante])).toEqual([["despesa_empresa", -20000, 0, "previsto", "NF 123 fictícia"]]);
   });
 
   it("orçamento não autoriza: não realiza sem aprovação; orçamento novo depois de aprovada exige aprovar de novo", async () => {

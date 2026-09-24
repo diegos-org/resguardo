@@ -221,6 +221,10 @@ export default async function Manutencao({ searchParams }: PageProps<"/painel/ma
                 Data do pagamento
                 <input type="date" name="dataPagamento" max={hoje} />
               </label>
+              <label style={{ flex: "1 1 240px" }}>
+                Comprovante (opcional)
+                <input name="comprovante" maxLength={500} placeholder="ex.: link do recibo no Drive, nº da nota" />
+              </label>
               <div className={styles.acoes}>
                 <button type="submit">Lançar custo</button>
               </div>
