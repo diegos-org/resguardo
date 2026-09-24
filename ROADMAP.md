@@ -52,7 +52,7 @@ item muda a linha para `feito` **no próprio PR do item**.
 | M1.4 | Convite de proprietário: token único, validade, uso único, revogação, aceite registrado | feito | M1.3 |
 | M1.5 | Log de auditoria (quem alterou o quê, quando) usado por todos os módulos | feito | M1.1 |
 | M1.6 | Área "Sistema" no painel: serviços ligados (banco, Beds24, e-mail, WhatsApp, Mercado Pago) com situação, automações/rotinas com última execução, e as regras em vigor (comissões, recebimento, contratos) com atalho para editar | feito | M1.2 |
-| M1.7 | Configurações com sub-abas: empresa, usuários e permissões, integrações (Beds24, e-mail, WhatsApp, pagamento), regras financeiras, categorias, modelos de mensagem e textos do site — tudo editável | a fazer | M1.6 |
+| M1.7 | Configurações com sub-abas: empresa, usuários e permissões, integrações (Beds24, e-mail, WhatsApp, pagamento), regras financeiras, categorias, modelos de mensagem e textos do site — tudo editável | feito | M1.6 |
 
 ### M2 — Cadastros
 

@@ -51,6 +51,7 @@ export async function novaCategoria(_a: EstadoCategoria, form: FormData): Promis
   const sessao = await sessaoEditora();
   const r = await criarCategoria(getDb(), sessao.organizacaoId, String(form.get("nome") ?? ""), sessao.usuarioId);
   revalidatePath("/painel/despesas/categorias");
+  revalidatePath("/painel/configuracoes/categorias");
   return r.ok ? { ok: true } : { erro: r.erro };
 }
 
@@ -70,5 +71,6 @@ export async function editarCategoria(_a: EstadoCategoria, form: FormData): Prom
           sessao.usuarioId,
         );
   revalidatePath("/painel/despesas/categorias");
+  revalidatePath("/painel/configuracoes/categorias");
   return r.ok ? { ok: true } : { erro: r.erro };
 }

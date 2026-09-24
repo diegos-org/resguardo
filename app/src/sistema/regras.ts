@@ -8,7 +8,7 @@ import { bpParaTexto, contratoVigente, NOMES_TIPO } from "@/contratos/regras";
 import { listarContratos } from "@/contratos/repositorio";
 import { ORIGENS_RESERVA, type OrigemReserva, proprietarioImoveis, proprietarios } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { REGRAS_PADRAO } from "@/financeiro/motor";
+import { lerRegrasFinanceiras } from "@/configuracoes/regras-financeiras";
 import { lerRecebimento } from "@/imoveis/recebimento";
 import { listarImoveis } from "@/imoveis/repositorio";
 
@@ -25,7 +25,7 @@ export type RegrasImovel = {
 };
 
 export async function regrasEmVigor(db: Db, organizacaoId: string, hoje: string): Promise<RegrasImovel[]> {
-  const lista = await listarImoveis(db, organizacaoId);
+  const [lista, padrao] = await Promise.all([listarImoveis(db, organizacaoId), lerRegrasFinanceiras(db, organizacaoId)]);
   const saida: RegrasImovel[] = [];
   for (const im of lista) {
     const [contratos, config, donos] = await Promise.all([
@@ -49,7 +49,7 @@ export async function regrasEmVigor(db: Db, organizacaoId: string, hoje: string)
       proximoContrato: proximo ? `${texto(proximo)} a partir de ${proximo.inicio.split("-").reverse().join("/")}` : null,
       recebimento: ORIGENS_RESERVA.map((origem) => ({
         origem,
-        valor: config[origem] ?? REGRAS_PADRAO.recebimento[origem],
+        valor: config[origem] ?? padrao.recebimento[origem],
         fonte: config[origem] ? ("imovel" as const) : ("padrao" as const),
       })),
     });

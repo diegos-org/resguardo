@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 24/09/2026, página Sistema (M1.6).
+> **Última atualização:** 24/09/2026, Configurações (M1.7).
 
 ---
 
@@ -86,6 +86,29 @@
     hoje (e o próximo, se já estiver cadastrado) e quem recebe em cada canal, com o botão
     **Editar**. O que estiver faltando (imóvel sem contrato, sem proprietário) aparece em
     vermelho.
+- M1.7: **Configurações** (menu **Configurações**, só para você), com abas:
+  - **Empresa:** nome, razão social, CNPJ, e-mail, telefone/WhatsApp, endereço e site.
+  - **Usuários e permissões:** adicionar alguém da equipe (nome, e-mail e papel:
+    Administrador ou Operação), trocar o papel, renomear, desativar (pede confirmação e
+    corta o acesso na hora) e reativar. Você não consegue se desativar nem tirar o seu
+    próprio papel, e o sistema nunca deixa a empresa sem nenhum administrador. Embaixo, uma
+    tabela mostra o que cada papel pode fazer. Proprietários continuam entrando por convite.
+  - **Regras financeiras:** sobre qual valor a comissão é calculada e **quem recebe em cada
+    canal** (canal paga o proprietário direto, empresa recebe e repassa no mês, ou "a
+    confirmar"). É o padrão da empresa; cada imóvel e cada reserva ainda podem ter a sua
+    escolha. Ao salvar, pede confirmação e recalcula só as reservas com entrada **de hoje em
+    diante** — o passado não muda — e mostra quantas foram recalculadas.
+  - **Integrações:** a situação de cada serviço e o nome exato da variável que vai na
+    Vercel. Chaves e senhas nunca ficam no painel.
+  - **Categorias de despesa:** as mesmas da tela de Despesas, também editáveis aqui.
+  - **Modelos de mensagem:** quatro modelos prontos (confirmação, instruções de check-in,
+    lembrete de check-out e agradecimento) que você edita, arquiva ou exclui, e pode criar
+    outros. Use variáveis como `{hospede}` e `{checkin}`; a tela mostra uma prévia com dados
+    de exemplo e recusa variável escrita errada (ex.: `{hopede}`). O envio automático chega
+    no M9.2 e no WhatsApp (M10).
+  - **Textos do site:** título, subtítulo, "sobre", "como reservar", contato e rodapé. O site
+    novo (M7.1) vai ler daqui.
+  Toda mudança fica no histórico com quem fez e quando.
 - M2.1: **cadastro de imóveis** em Painel → Imóveis: código (102, 403, buzios…), nome
   comercial, bairro, endereço, capacidade, quartos, banheiros, descrição, se **aparece no site**
   e se está **em operação**. O filtro global do painel passa a usar essa lista. Búzios deve ser
@@ -205,9 +228,13 @@
 |---|---|
 | ![Reserva com financeiro](docs/telas/reserva-financeiro.png) | ![Despesas](docs/telas/despesas.png) |
 
-| Página Sistema |
+| Página Sistema | Configurações · Regras financeiras |
+|---|---|
+| ![Sistema](docs/telas/sistema.png) | ![Regras financeiras](docs/telas/configuracoes-regras.png) |
+
+| Configurações · Modelos de mensagem |
 |---|
-| ![Sistema](docs/telas/sistema.png) |
+| ![Modelos de mensagem](docs/telas/configuracoes-mensagens.png) |
 
 A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 
@@ -370,7 +397,8 @@ ambiente).
   fica num lugar só**: quando você muda (um contrato, quem recebe num canal), o sistema
   recalcula o que depende dela na hora; a cada nova versão publicada, recalcula tudo. Não
   ficam duas versões da mesma regra. E a mudança vale **daquela data para frente**: o
-  passado e o dinheiro que já movimentou nunca são recalculados.
+  passado e o dinheiro que já movimentou nunca são recalculados. Desde o M1.7, as regras
+  gerais, os usuários, os modelos de mensagem e os textos do site estão em **Configurações**.
 - **Excluir com confirmação:** todo botão de excluir, remover, cancelar ou estornar agora
   pergunta "tem certeza?" antes. Onde há histórico (financeiro, reservas), o sistema
   prefere arquivar ou estornar em vez de apagar de vez.
