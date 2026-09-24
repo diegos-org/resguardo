@@ -1,5 +1,5 @@
 {
-  "id": "043c6c50-7a1b-4327-9613-3fbda2a75c53",
+  "id": "fd123037-fd02-471d-91e0-676c31aedfb8",
   "prevId": "2541be5f-3fd3-4e39-8b56-c7cde0f9f346",
   "version": "7",
   "dialect": "postgresql",
@@ -2434,6 +2434,12 @@
         },
         "lancamento_id": {
           "name": "lancamento_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "contestacao_id": {
+          "name": "contestacao_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false

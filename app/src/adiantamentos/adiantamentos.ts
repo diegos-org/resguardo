@@ -148,6 +148,8 @@ export async function quitar(
   adiantamentoId: string,
   q: { forma: FormaQuitacao; valor: number; data: string; nota?: string },
   autorId: string | null,
+  /** Uso interno de resolverContestacao: liga a quitação à contestação que a originou. */
+  contestacaoId: string | null = null,
 ): Promise<Resultado> {
   if (!["reembolso", "compensacao", "empresa_assume"].includes(q.forma)) return { ok: false, erro: "Forma de quitação inválida." };
   if (!Number.isSafeInteger(q.valor) || q.valor <= 0) return { ok: false, erro: "Informe um valor maior que zero." };
@@ -202,7 +204,7 @@ export async function quitar(
     }
     const [nova] = await tx
       .insert(quitacoesAdiantamento)
-      .values({ organizacaoId, adiantamentoId, forma: q.forma, valor: q.valor, data: q.data, lancamentoId, nota, criadoPor: autorId })
+      .values({ organizacaoId, adiantamentoId, forma: q.forma, valor: q.valor, data: q.data, lancamentoId, contestacaoId, nota, criadoPor: autorId })
       .returning();
     await registrarAuditoria(tx, {
       organizacaoId,
@@ -232,19 +234,22 @@ export async function desfazerQuitacao(db: Db, organizacaoId: string, quitacaoId
     if (atual.desfeitaEm) return { ok: false as const, erro: "Quitação já desfeita." };
     if (q.lancamentoId) await estornar(tx, organizacaoId, q.lancamentoId, motivo.trim(), autorId);
     await tx.update(quitacoesAdiantamento).set({ desfeitaEm: new Date() }).where(eq(quitacoesAdiantamento.id, quitacaoId));
-    // "Empresa assume" que veio da resolução de uma contestação: desfazer reabre a contestação
-    // (senão o valor voltaria a ser cobrado com a tela dizendo que a empresa assumiu).
+    // "Empresa assume" que veio da resolução de uma contestação: desfazer reabre AQUELA contestação
+    // (senão o valor voltaria a ser cobrado com a tela dizendo que a empresa assumiu). Se outra
+    // contestação já estiver aberta, o adiantamento continua contestado por ela.
     let reaberta = false;
-    if (q.forma === "empresa_assume") {
-      const [c] = await tx
+    if (q.contestacaoId) {
+      const [aberta] = await tx
         .select({ id: contestacoesAdiantamento.id })
         .from(contestacoesAdiantamento)
-        .where(and(eq(contestacoesAdiantamento.adiantamentoId, q.adiantamentoId), eq(contestacoesAdiantamento.resolucao, "empresa_assume")))
-        .orderBy(desc(contestacoesAdiantamento.resolvidaEm))
-        .limit(1);
-      if (c) {
-        await tx.update(contestacoesAdiantamento).set({ resolvidaEm: null, resolucao: null, notaResolucao: "" }).where(eq(contestacoesAdiantamento.id, c.id));
-        reaberta = true;
+        .where(and(eq(contestacoesAdiantamento.adiantamentoId, q.adiantamentoId), isNull(contestacoesAdiantamento.resolvidaEm)));
+      if (!aberta) {
+        const r = await tx
+          .update(contestacoesAdiantamento)
+          .set({ resolvidaEm: null, resolucao: null, notaResolucao: "" })
+          .where(and(eq(contestacoesAdiantamento.id, q.contestacaoId), eq(contestacoesAdiantamento.resolucao, "empresa_assume")))
+          .returning({ id: contestacoesAdiantamento.id });
+        reaberta = r.length > 0;
       }
     }
     await registrarAuditoria(tx, {
@@ -305,7 +310,7 @@ export async function resolverContestacao(
       mudancas: { contestacao: ["aberta", r.resolucao === "mantida" ? "mantida (volta a cobrar)" : "empresa assumiu"] },
     });
     if (r.resolucao === "empresa_assume" && a.aberto > 0) {
-      const q = await quitar(tx, organizacaoId, adiantamentoId, { forma: "empresa_assume", valor: a.aberto, data: r.data, nota: r.nota }, autorId);
+      const q = await quitar(tx, organizacaoId, adiantamentoId, { forma: "empresa_assume", valor: a.aberto, data: r.data, nota: r.nota }, autorId, a.contestacao.id);
       if (!q.ok) throw new Error(q.erro);
     }
     return { ok: true as const };
