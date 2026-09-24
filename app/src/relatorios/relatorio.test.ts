@@ -281,9 +281,9 @@ describe("dados e acesso", () => {
       { id: outro, nome: "Outro Fictício" },
     ];
     // Só o 403: só a dona, e é tudo dela (entram os lançamentos sem imóvel dela).
-    expect(await donosDosEscolhidos(db, donos, [{ id: a }])).toEqual({ donos: [donos[0]], todosOsImoveis: true });
+    expect(await donosDosEscolhidos(db, donos, [{ id: a }])).toEqual({ donos: [donos[0]], imoveis: [{ id: a }], todosOsImoveis: true });
     // Os dois imóveis: os dois donos.
-    expect(await donosDosEscolhidos(db, donos, [{ id: a }, { id: b }])).toEqual({ donos, todosOsImoveis: true });
+    expect(await donosDosEscolhidos(db, donos, [{ id: a }, { id: b }])).toEqual({ donos, imoveis: [{ id: a }, { id: b }], todosOsImoveis: true });
     // E o PDF sai normalmente.
     const r = await relatorioDoPortal(db, { ...donaUsuario, imovelIds: [a, b] }, { ano: "2026", mes: "10", imovel: ["403"] }, AGORA);
     expect(r).toMatchObject({ ok: true, arquivo: "relatorio-2026-10-403.pdf" });
@@ -301,6 +301,17 @@ describe("dados e acesso", () => {
     const dezembro = { inicio: "2026-12-01", fim: "2027-01-01" };
     expect((await donosDosEscolhidos(db, donos, [{ id: a }], outubro)).donos).toEqual([donos[0]]);
     expect((await donosDosEscolhidos(db, donos, [{ id: a }], dezembro)).donos).toEqual([donos[1]]);
+  });
+
+  it("portal: imóvel que ainda não era dele no mês sai do relatório daquele mês", async () => {
+    // O 102 passou a ser da dona só em 15/11 (antes, era do outro).
+    await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, b));
+    await db.insert(proprietarioImoveis).values({ proprietarioId: dona, imovelId: b, criadoEm: new Date("2026-11-15T12:00:00Z") });
+    const sessao: Sessao = { ...donaUsuario, imovelIds: [a, b] };
+    const r = await relatorioDoPortal(db, sessao, { ano: "2026", mes: "10" }, AGORA);
+    // Outubro: só o 403 (o 102 ainda não era dela; o lançamento de outubro do 102 é do outro).
+    expect(r).toMatchObject({ ok: true, arquivo: "relatorio-2026-10-403.pdf" });
+    expect(await relatorioDoPortal(db, sessao, { ano: "2026", mes: "10", imovel: ["102"] }, AGORA)).toMatchObject({ ok: false, status: 400 });
   });
 
   it("painel: só quem vê proprietários e financeiro; imóvel de outro proprietário é recusado", async () => {

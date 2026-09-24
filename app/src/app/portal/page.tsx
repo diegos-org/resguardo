@@ -170,10 +170,10 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
   const escolhidos = filtros.imoveis.length ? meus.filter((i) => filtros.imoveis.includes(i.codigo)) : meus;
   const periodo = periodoDosFiltros(filtros);
   const hoje = hojeISO();
-  const escolhidosIds = escolhidos.map((i) => i.id);
-  // Mesma regra do PDF: só os donos dos imóveis escolhidos; os lançamentos sem imóvel entram
-  // quando todos os imóveis desses donos estão escolhidos.
+  // Mesma regra do PDF: só os donos dos imóveis escolhidos (no período) e só os imóveis que eram
+  // deles no período; os lançamentos sem imóvel entram quando todos os imóveis desses donos estão escolhidos.
   const selecao = await donosDosEscolhidos(db, donos, escolhidos, periodo);
+  const escolhidosIds = selecao.imoveis.map((i) => i.id);
   const donosIds = selecao.donos.map((d) => d.id);
   const resumo = await resumoDoProprietario(db, sessao.organizacaoId, {
     proprietarioIds: donosIds,
