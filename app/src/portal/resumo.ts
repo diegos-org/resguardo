@@ -5,7 +5,7 @@
  */
 import { and, eq, exists, gt, gte, inArray, isNotNull, isNull, lt, not, notInArray, or, sql, sum } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { lancamentos, proprietarios, proprietarioUsuarios, reservas, type TipoLancamento } from "@/db/schema";
+import { ajustes, lancamentos, proprietarios, proprietarioUsuarios, reservas, type TipoLancamento } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
 
@@ -32,12 +32,17 @@ export type ResumoPortal = {
   acerto: number;
   /** Efeito no acerto do que ainda está em conferência (lançamento "pendente"): fora de `acerto`. */
   acertoPendente: number;
+  /**
+   * Há algo em conferência no período (lançamento pendente ou ajuste não esclarecido, mesmo sem
+   * valor)? Vale mesmo se os valores se anularem: como no fechamento do mês, conta a existência.
+   */
+  emConferencia: boolean;
 };
 
 /** Lançamentos que a própria reserva gera (motor e seus estornos). */
 const DA_RESERVA: TipoLancamento[] = ["receita_bruta", "taxa_canal", "comissao", "direito_proprietario"];
 
-const ZERO: ResumoPortal = { reservas: 0, receitaBruta: 0, taxasCanais: 0, comissao: 0, suaParte: 0, despesas: 0, acerto: 0, acertoPendente: 0 };
+const ZERO: ResumoPortal = { reservas: 0, receitaBruta: 0, taxasCanais: 0, comissao: 0, suaParte: 0, despesas: 0, acerto: 0, acertoPendente: 0, emConferencia: false };
 
 export async function resumoDoProprietario(
   db: Db,
@@ -68,6 +73,21 @@ export async function resumoDoProprietario(
     .from(lancamentos)
     .where(and(base, inArray(lancamentos.proprietarioId, donos)))
     .groupBy(lancamentos.tipo, lancamentos.estado);
+  // Ajuste com ele ainda não esclarecido no período (inclusive sem valor, que não tem lançamento).
+  const [abertos] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(ajustes)
+    .where(
+      and(
+        eq(ajustes.organizacaoId, organizacaoId),
+        eq(ajustes.afeta, "proprietario"),
+        isNull(ajustes.esclarecidoEm),
+        gte(ajustes.data, o.periodo.inicio),
+        lt(ajustes.data, o.periodo.fim),
+        or(inArray(ajustes.proprietarioId, donos), and(isNull(ajustes.proprietarioId), inArray(ajustes.imovelId, imoveis))),
+        o.semImovel ? undefined : inArray(ajustes.imovelId, imoveis),
+      ),
+    );
   // A reserva é de quem tem a parte do proprietário *em vigor* (nem estorno, nem estornada):
   // se o imóvel foi A→B→A, a parte antiga de A, já estornada, não faz a reserva de B ser de A.
   const estorno = alias(lancamentos, "estorno");
@@ -138,5 +158,6 @@ export async function resumoDoProprietario(
     // como no fechamento do mês: não aparece como definitivo.
     acerto: dele.filter((x) => x.estado !== "pendente").reduce((t, x) => t + Number(x.acerto ?? 0), 0),
     acertoPendente: dele.filter((x) => x.estado === "pendente").reduce((t, x) => t + Number(x.acerto ?? 0), 0),
+    emConferencia: dele.some((x) => x.estado === "pendente") || (abertos?.n ?? 0) > 0,
   };
 }

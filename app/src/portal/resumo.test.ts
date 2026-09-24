@@ -81,7 +81,7 @@ describe("resumo do portal", () => {
   it("só os números da própria dona: reservas, bruto, taxa, comissão, parte dela, despesas e acerto", async () => {
     const r = await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo });
     // Bruto 1.000; taxa 150; comissão 15% de 850 = 127,50; parte dela 722,50; reparo 200 pago pela empresa.
-    expect(r).toEqual({ reservas: 1, receitaBruta: 100000, taxasCanais: 15000, comissao: 12750, suaParte: 72250, despesas: 20000, acerto: 72250 - 20000, acertoPendente: 0 });
+    expect(r).toEqual({ reservas: 1, receitaBruta: 100000, taxasCanais: 15000, comissao: 12750, suaParte: 72250, despesas: 20000, acerto: 72250 - 20000, acertoPendente: 0, emConferencia: false });
   });
 
   it("só reservas confirmadas: pendente não entra e cancelada sai da contagem", async () => {
@@ -99,7 +99,7 @@ describe("resumo do portal", () => {
     await cancelarReserva(db, org, r.reserva.id, null);
     const depois = await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo });
     // O ajuste ainda não esclarecido fica à parte, como pendente (não entra no acerto definitivo).
-    expect(depois).toMatchObject({ reservas: 1, receitaBruta: 100000, suaParte: 72250, acerto: 72250 - 20000, acertoPendente: 5000 });
+    expect(depois).toMatchObject({ reservas: 1, receitaBruta: 100000, suaParte: 72250, acerto: 72250 - 20000, acertoPendente: 5000, emConferencia: true });
   });
 
   it("cancelada depois de dinheiro movimentado: os lançamentos protegidos continuam, como no livro", async () => {
@@ -142,6 +142,18 @@ describe("resumo do portal", () => {
     await db.insert(lancamentos).values({ organizacaoId: org, tipo: "ajuste", descricao: "De outra pessoa", valor: 0, efeitoSaldo: 9000, competencia: "2026-10-20", estado: "realizado", imovelId: null, proprietarioId: outro, origem: "manual" });
     expect((await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], semImovel: true, periodo })).acerto).toBe(72250 - 20000 + 3000);
     expect((await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo })).acerto).toBe(72250 - 20000);
+  });
+
+  it("ajuste sem valor ou pendências que se anulam: continua 'em conferência'", async () => {
+    await registrarAjuste(
+      db,
+      org,
+      { data: "2026-10-26", imovelId: a, reservaId: null, proprietarioId: null, motivo: "Vidro quebrado", origem: "desconhecida", origemComprovada: false, evidencia: "", comprovante: "", valor: null, direcao: "proprietario_debito" },
+      null,
+    );
+    expect(await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo })).toMatchObject({ acertoPendente: 0, emConferencia: true });
+    // De outro imóvel/dono, não.
+    expect(await resumoDoProprietario(db, org, { proprietarioIds: [outro], imovelIds: [b], periodo })).toMatchObject({ emConferencia: false });
   });
 
   it("não vê imóvel de outro dono, nem 'todos' quando a lista vem vazia", async () => {
