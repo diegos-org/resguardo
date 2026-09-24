@@ -4,10 +4,10 @@
  * - painel: quem vê proprietários e financeiro (admin), de um proprietário, com foto e extrato
  *   anexados na hora (não ficam guardados). Cada geração no painel fica no histórico do proprietário.
  */
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import { podeFazer, type Sessao } from "@/acesso/politica";
 import { registrarAuditoria } from "@/auditoria/auditoria";
-import { imoveis, proprietarioImoveis } from "@/db/schema";
+import { imoveis, lancamentos, proprietarioImoveis } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
 import { periodoDosFiltros } from "@/lib/filtros";
@@ -32,16 +32,39 @@ export async function donosDosEscolhidos<D extends { id: string }>(
   db: Db,
   donos: readonly D[],
   escolhidos: readonly { id: string }[],
+  periodo?: { inicio: string; fim: string },
 ): Promise<{ donos: D[]; todosOsImoveis: boolean }> {
   if (!donos.length) return { donos: [], todosOsImoveis: false };
+  const ids = donos.map((d) => d.id);
+  // Vínculo atual: com período, só se já existia antes do fim dele (como na regra de posse).
   const vinculos = await db
     .select({ proprietarioId: proprietarioImoveis.proprietarioId, imovelId: proprietarioImoveis.imovelId })
     .from(proprietarioImoveis)
-    .where(inArray(proprietarioImoveis.proprietarioId, donos.map((d) => d.id)));
+    .where(
+      and(
+        inArray(proprietarioImoveis.proprietarioId, ids),
+        periodo ? sql`(${proprietarioImoveis.criadoEm} at time zone 'America/Sao_Paulo')::date < ${periodo.fim}::date` : undefined,
+      ),
+    );
+  // Mês de antes de uma troca de dono: o livro do período mostra de quem era o imóvel.
+  const doLivro = periodo
+    ? await db
+        .selectDistinct({ proprietarioId: lancamentos.proprietarioId, imovelId: lancamentos.imovelId })
+        .from(lancamentos)
+        .where(
+          and(
+            inArray(lancamentos.proprietarioId, ids),
+            gte(lancamentos.competencia, periodo.inicio),
+            lt(lancamentos.competencia, periodo.fim),
+            isNotNull(lancamentos.imovelId),
+          ),
+        )
+    : [];
+  const pares = [...vinculos, ...doLivro.map((l) => ({ proprietarioId: l.proprietarioId!, imovelId: l.imovelId! }))];
   const escolhido = (id: string) => escolhidos.some((i) => i.id === id);
-  const ids = new Set(vinculos.filter((v) => escolhido(v.imovelId)).map((v) => v.proprietarioId));
-  const deles = vinculos.filter((v) => ids.has(v.proprietarioId));
-  return { donos: donos.filter((d) => ids.has(d.id)), todosOsImoveis: deles.every((v) => escolhido(v.imovelId)) };
+  const deles = new Set(pares.filter((v) => escolhido(v.imovelId)).map((v) => v.proprietarioId));
+  const imoveisDeles = pares.filter((v) => deles.has(v.proprietarioId));
+  return { donos: donos.filter((d) => deles.has(d.id)), todosOsImoveis: imoveisDeles.every((v) => escolhido(v.imovelId)) };
 }
 
 /** PDF do mês escolhido no portal, só com o que é do proprietário logado. */
@@ -61,7 +84,7 @@ export async function relatorioDoPortal(db: Db, sessao: Sessao | null, params: P
   if (aviso) return { ok: false, status: 400, erro: aviso };
   if (filtros.mes === null) return { ok: false, status: 400, erro: "O relatório em PDF é de um mês: escolha o mês." };
   const escolhidos = filtros.imoveis.length ? meus.filter((i) => filtros.imoveis.includes(i.codigo)) : meus;
-  const { donos: donosDoPdf, todosOsImoveis } = await donosDosEscolhidos(db, donos, escolhidos);
+  const { donos: donosDoPdf, todosOsImoveis } = await donosDosEscolhidos(db, donos, escolhidos, periodoDosFiltros(filtros));
   if (!donosDoPdf.length) return { ok: false, status: 404, erro: "Nenhum imóvel ligado ao seu cadastro." };
   const dados = await dadosDoRelatorio(db, sessao.organizacaoId, {
     donos: donosDoPdf,

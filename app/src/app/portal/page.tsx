@@ -173,7 +173,7 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
   const escolhidosIds = escolhidos.map((i) => i.id);
   // Mesma regra do PDF: só os donos dos imóveis escolhidos; os lançamentos sem imóvel entram
   // quando todos os imóveis desses donos estão escolhidos.
-  const selecao = await donosDosEscolhidos(db, donos, escolhidos);
+  const selecao = await donosDosEscolhidos(db, donos, escolhidos, periodo);
   const donosIds = selecao.donos.map((d) => d.id);
   const resumo = await resumoDoProprietario(db, sessao.organizacaoId, {
     proprietarioIds: donosIds,

@@ -289,6 +289,20 @@ describe("dados e acesso", () => {
     expect(r).toMatchObject({ ok: true, arquivo: "relatorio-2026-10-403.pdf" });
   });
 
+  it("portal: mês de antes de uma troca de dono fica com o dono daquele mês (pelo livro), não com o atual", async () => {
+    // O 403 passou da dona para o outro em 15/11; o mesmo usuário representa os dois.
+    await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));
+    await db.insert(proprietarioImoveis).values({ proprietarioId: outro, imovelId: a, criadoEm: new Date("2026-11-15T12:00:00Z") });
+    const donos = [
+      { id: dona, nome: "Dona Fictícia" },
+      { id: outro, nome: "Outro Fictício" },
+    ];
+    const outubro = { inicio: "2026-10-01", fim: "2026-11-01" };
+    const dezembro = { inicio: "2026-12-01", fim: "2027-01-01" };
+    expect((await donosDosEscolhidos(db, donos, [{ id: a }], outubro)).donos).toEqual([donos[0]]);
+    expect((await donosDosEscolhidos(db, donos, [{ id: a }], dezembro)).donos).toEqual([donos[1]]);
+  });
+
   it("painel: só quem vê proprietários e financeiro; imóvel de outro proprietário é recusado", async () => {
     const operacao: Sessao = { ...admin(), papel: "operacao" };
     expect(await relatorioDoPainel(db, operacao, dona, { mes: "2026-10", imoveis: [], anexos: {} }, AGORA)).toMatchObject({ ok: false, status: 403 });
