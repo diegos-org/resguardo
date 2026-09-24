@@ -561,6 +561,28 @@ describe("configuração e envio", () => {
     expect(depois.secoes.flatMap((x) => x.novas).map((n) => n.checkin)).toEqual(["2028-02-01"]);
   });
 
+  it("cancelada antes do corte e reconfirmada depois: vale o estado no corte (avisa uma vez, na seguinte)", async () => {
+    const dados = reserva(rio, "2028-03-01", "2028-03-03", { codigoCanal: "HMVAIVEM" });
+    const r = await sincronizarReserva(db, org, "beds24", "B-4", dados);
+    if (!r.ok) throw new Error("reserva");
+    const desde = new Date(Date.now() - 60_000);
+    expect((await sincronizarReserva(db, org, "beds24", "B-4", { ...dados, estado: "cancelada" })).ok).toBe(true);
+    await new Promise((ok) => setTimeout(ok, 5));
+    const corte = new Date();
+    await new Promise((ok) => setTimeout(ok, 5));
+    expect((await sincronizarReserva(db, org, "beds24", "B-4", dados)).ok).toBe(true);
+    expect((await montarAgenda(db, org, "2026-10-01", desde, corte)).secoes.flatMap((x) => x.novas)).toEqual([]);
+    const depois = await montarAgenda(db, org, "2026-10-01", corte, new Date(Date.now() + 60_000));
+    expect(depois.secoes.flatMap((x) => x.novas).map((n) => n.checkin)).toEqual(["2028-03-01"]);
+  });
+
+  it("horário da última agenda nunca volta (execução antiga que termina depois)", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    await enviarAgenda(db, org, new CorreioMemoria(), AGORA);
+    await enviarAgenda(db, org, new CorreioMemoria(), new Date(AGORA.getTime() - 60_000), { manual: true });
+    expect(await ultimaAgenda(db, org)).toEqual(AGORA);
+  });
+
   it("reserva criada depois do corte fica para a próxima agenda (sem repetir)", async () => {
     await nova(rio, "2026-12-20", "2026-12-27", "2026-10-01T23:00:30Z");
     const antes = await montarAgenda(db, org, "2026-10-01", new Date("2026-10-01T22:00:00Z"), AGORA);

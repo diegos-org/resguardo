@@ -200,7 +200,9 @@ export async function montarAgenda(db: Db, organizacaoId: string, hoje: string, 
           .where(
             and(
               eq(reservas.organizacaoId, organizacaoId),
-              eq(reservas.estado, "confirmada"),
+              // Confirmada no corte (último estado registrado no histórico até `novasAte`, ou o atual se não
+              // houver): cancelada antes do corte e reconfirmada depois fica para a próxima agenda.
+              sql`coalesce((select ${auditoria.mudancas} -> 'estado' ->> 1 from ${auditoria} where ${auditoria.organizacaoId} = ${organizacaoId} and ${auditoria.entidade} = 'reserva' and ${auditoria.entidadeId} = ${reservas.id}::text and ${auditoria.mudancas} ? 'estado' and ${auditoria.criadoEm} <= ${novasAte.toISOString()}::timestamptz order by ${auditoria.criadoEm} desc limit 1), ${reservas.estado}::text) = 'confirmada'`,
               inArray(reservas.imovelId, ids),
               // Nova = criada já confirmada depois do marco, ou que passou a confirmada depois dele
               // (pendente/cancelada que confirmou numa sincronização: registrada no histórico).
@@ -634,10 +636,16 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
           cidades: noEmail.map((x) => x.cidade).sort(),
         };
         // Guarda o pedido antes de enviar: uma retomada manda exatamente o mesmo.
-        await db
+        const [minha] = await db
           .update(appSettings)
           .set({ value: { em: agora.toISOString(), estado: "enviando", corte: corte.toISOString(), tentativa, carga }, updatedAt: new Date() })
-          .where(and(eq(appSettings.key, chave), daTentativa));
+          .where(and(eq(appSettings.key, chave), daTentativa))
+          .returning({ key: appSettings.key });
+        if (!minha) {
+          // Esta tentativa passou do prazo e outra a retomou: quem retomou envia; esta não chama o provedor.
+          r.falhas.push(`${d.email}: tentativa demorou demais e foi retomada por outra execução`);
+          return;
+        }
       }
       // A mesma chave do dia vai para o provedor: uma nova tentativa do mesmo envio não duplica.
       await correio.enviar({ para: d.email, assunto: carga.assunto, texto: carga.texto, chave });
@@ -716,7 +724,17 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
   }
 
   // Para a tela: quando a agenda saiu por último (para alguém).
-  if (r.enviados) await gravarMarco(db, chaveUltima(organizacaoId), agora);
+  if (r.enviados) {
+    // Nunca volta: uma execução mais antiga que termina depois não troca o horário de uma mais nova.
+    const value = { em: agora.toISOString() };
+    await db
+      .insert(appSettings)
+      .values({ key: chaveUltima(organizacaoId), value })
+      .onConflictDoUpdate({
+        target: appSettings.key,
+        set: { value: sql`case when (${appSettings.value} ->> 'em')::timestamptz >= ${value.em}::timestamptz then ${appSettings.value} else excluded.value end`, updatedAt: new Date() },
+      });
+  }
   return r;
 }
 
