@@ -20,7 +20,9 @@ export type SituacaoRodape =
   /** O mês ainda não terminou: saldo parcial, sem credor/Pix. */
   | "parcial"
   /** Há acerto pendente ou ajuste a esclarecer: sem credor/Pix até resolver. */
-  | "em_conferencia";
+  | "em_conferencia"
+  /** Sem repasse neste mês, mas um repasse posterior já levou o saldo acumulado. */
+  | "no_repasse_posterior";
 
 export type Rodape = {
   proprietarioId: string;
@@ -37,6 +39,12 @@ export type Rodape = {
   /** Chave Pix de quem recebe; vazio = não cadastrada. */
   chavePix: string;
   dataPagamento: string | null;
+  /** Mudança no acerto depois do fechamento deste mês (vai para o próximo repasse). */
+  diferenca: number;
+  /** Mês fechado, mas com algo em conferência lançado depois. */
+  emConferencia: boolean;
+  /** Mês ("AAAA-MM") do repasse posterior que levou o saldo deste mês. */
+  repassePosterior: string | null;
 };
 
 export async function rodapeDoPortal(
@@ -57,16 +65,30 @@ export async function rodapeDoPortal(
   );
   return o.proprietarios.map((dono) => {
     const p = previsoes.find((x) => x.proprietarioId === dono.id);
-    const base = { proprietarioId: dono.id, nome: dono.nome, saldo: 0, descontado: 0, valor: 0, aFavor: null, chavePix: "", dataPagamento: null };
+    const base = { proprietarioId: dono.id, nome: dono.nome, saldo: 0, descontado: 0, valor: 0, aFavor: null, chavePix: "", dataPagamento: null, diferenca: 0, emConferencia: false, repassePosterior: null };
     if (!p) return { ...base, situacao: "zerado" };
     const r = p.repasse;
     if (r) {
-      return { ...base, saldo: r.saldo, descontado: r.descontado, valor: r.valor, aFavor: "proprietario", chavePix: p.chavePix, situacao: r.situacao === "pago" ? "pago" : "fechado", dataPagamento: r.dataPagamento };
+      // Fechado/pago, com o que mudou depois (lançamento novo, ajuste…) à parte: vai para o próximo repasse.
+      return {
+        ...base,
+        saldo: r.saldo,
+        descontado: r.descontado,
+        valor: r.valor,
+        aFavor: "proprietario",
+        chavePix: p.chavePix,
+        situacao: r.situacao === "pago" ? "pago" : "fechado",
+        dataPagamento: r.dataPagamento,
+        diferenca: p.diferencaPosFechamento,
+        emConferencia: p.emConferencia,
+      };
     }
     const aFavor = p.valor > 0 ? ("proprietario" as const) : p.deve > 0 ? ("empresa" as const) : null;
     const comum = { ...base, saldo: p.saldo, descontado: p.aDescontar, aFavor };
     if (o.hoje < lim.fim) return { ...comum, situacao: "parcial", valor: p.valor || p.deve };
-    if (p.bloqueios.length) return { ...comum, situacao: "em_conferencia", valor: p.valor || p.deve };
+    // Só o que é conferência de verdade (pendente, ajuste a esclarecer) segura o credor e o Pix.
+    if (p.emConferencia) return { ...comum, situacao: "em_conferencia", valor: p.valor || p.deve };
+    if (p.repassePosterior) return { ...comum, situacao: "no_repasse_posterior", valor: 0, aFavor: null, repassePosterior: p.repassePosterior };
     if (p.valor > 0) return { ...comum, situacao: "empresa_deve", valor: p.valor, chavePix: p.chavePix };
     if (p.deve > 0) return { ...comum, situacao: "proprietario_deve", valor: p.deve, chavePix: o.pixEmpresa };
     return { ...comum, situacao: "zerado" };

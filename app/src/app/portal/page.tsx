@@ -17,6 +17,7 @@ import { janela, lerPeriodoPortal, nome, situacaoDoPeriodo, vizinhos } from "@/p
 import { reservasDoPortal, type SituacaoReserva } from "@/portal/reservas";
 import { proprietariosDoUsuario, resumoDoProprietario } from "@/portal/resumo";
 import { type Rodape, rodapeDoPortal } from "@/portal/rodape";
+import { nomeMes } from "@/repasses/repasses";
 import { NOMES_ORIGEM } from "@/reservas/regras";
 import { listarBloqueios } from "@/reservas/repositorio";
 
@@ -30,14 +31,40 @@ const SITUACAO_RESERVA: Record<SituacaoReserva, string> = { definido: "Definido"
 const br = (d: string) => d.split("-").reverse().join("/");
 
 /** Rodapé de um proprietário: saldo, quem deve a quem e o Pix de quem recebe (só depois do fechamento). */
+/** O que mudou depois do fechamento (vai para o próximo repasse) e o que está em conferência. */
+function DepoisDoFechamento({ r, empresa }: { r: Rodape; empresa: string }) {
+  if (!r.diferenca && !r.emConferencia) return null;
+  return (
+    <p style={{ margin: 0, fontSize: "0.9375rem" }}>
+      {r.diferenca !== 0 && (
+        <>
+          Depois do fechamento, o acerto deste mês mudou {formatBRL(Math.abs(r.diferenca))} ({r.diferenca > 0 ? "a seu favor" : `a favor da ${empresa}`}): isso entra no
+          próximo repasse.{" "}
+        </>
+      )}
+      {r.emConferencia && <>Há itens deste mês em conferência, lançados depois do fechamento.</>}
+    </p>
+  );
+}
+
 function TextoRodape({ r, empresa }: { r: Rodape; empresa: string }) {
   const valor = <strong>{formatBRL(r.valor)}</strong>;
   const descontos = r.descontado > 0 ? ` (já descontados ${formatBRL(r.descontado)} de despesas que a ${empresa} pagou por você)` : "";
   switch (r.situacao) {
     case "pago":
-      return <p style={{ margin: 0 }}>Repasse de {valor} pago em {br(r.dataPagamento!)}.</p>;
+      return (
+        <>
+          <p style={{ margin: 0 }}>
+            Repasse de {valor} pago em {br(r.dataPagamento!)}.
+          </p>
+          <DepoisDoFechamento r={r} empresa={empresa} />
+        </>
+      );
+    case "no_repasse_posterior":
+      return <p style={{ margin: 0 }}>O saldo deste mês já entrou no repasse de {nomeMes(r.repassePosterior!)}: veja aquele mês.</p>;
     case "fechado":
       return (
+        <>
         <p style={{ margin: 0 }}>
           Mês fechado: a {empresa} vai lhe transferir {valor}
           {descontos}
@@ -50,6 +77,8 @@ function TextoRodape({ r, empresa }: { r: Rodape; empresa: string }) {
             <>. Sua chave Pix não está cadastrada: fale com a {empresa}.</>
           )}
         </p>
+        <DepoisDoFechamento r={r} empresa={empresa} />
+        </>
       );
     case "empresa_deve":
       return (

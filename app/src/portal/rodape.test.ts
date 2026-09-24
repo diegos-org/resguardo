@@ -122,6 +122,26 @@ describe("rodapé do portal", () => {
     expect(await rodape("2026-11-04")).toMatchObject({ situacao: "pago", valor: 72250, dataPagamento: "2026-11-03" });
   });
 
+  it("mudança depois do fechamento: o mês continua fechado e mostra a diferença que vai para o próximo repasse", async () => {
+    const f = await fecharMes(db, org, dona, MES, "2026-11-02", null);
+    if (!f.ok) throw new Error(f.erro);
+    await registrarDespesa(
+      db,
+      org,
+      { responsavel: "proprietario", pagoPor: "empresa", categoriaId: categoria, descricao: "Chave nova", valor: 5000, data: "2026-10-28", imovelId: a, proprietarioId: null, fornecedor: "", comprovante: "", paga: true, dataPagamento: "2026-10-28" },
+      null,
+    );
+    expect(await rodape("2026-11-03")).toMatchObject({ situacao: "fechado", valor: 72250, diferenca: -5000, emConferencia: false });
+  });
+
+  it("mês sem repasse cujo saldo entrou num repasse posterior: não fica 'em conferência'", async () => {
+    await criarContrato(db, org, b, { tipo: "gestao_completa", comissao: "15", inicio: "2025-01-01" }, null);
+    await criarReserva(db, org, { ...reserva(b), checkin: "2026-11-10", checkout: "2026-11-13" }, null);
+    const f = await fecharMes(db, org, outro, "2026-11", "2026-12-02", null);
+    if (!f.ok) throw new Error(f.erro);
+    expect(await rodape("2026-12-02", { id: outro, nome: "Outro" })).toMatchObject({ situacao: "no_repasse_posterior", repassePosterior: "2026-11", valor: 0 });
+  });
+
   it("sem movimento: zerado; mês inválido ou sem proprietário: nada", async () => {
     const [sem] = await db.insert(proprietarios).values({ organizacaoId: org, nome: "Sem movimento" }).returning();
     expect(await rodape("2026-11-02", { id: sem.id, nome: "Sem movimento" })).toMatchObject({ situacao: "zerado", valor: 0 });
