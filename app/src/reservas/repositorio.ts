@@ -126,8 +126,9 @@ export async function sincronizarReserva(
     const canceladaEm = dados.estado !== "cancelada" ? null : existente.estado === "cancelada" ? existente.canceladaEm : new Date();
     const [reserva] = await tx
       .update(reservas)
-      // Mudou a situação: uma conferência dada por resolvida antes volta a valer (M4.8).
-      .set({ ...dados, canceladaEm, conferenciaResolvidaEm: dados.estado !== existente.estado ? null : existente.conferenciaResolvidaEm, atualizadoEm: new Date() })
+      // Qualquer mudança na reserva (situação, valores, datas, imóvel…): uma conferência dada por
+      // resolvida antes volta a valer (M4.8) — a decisão foi tomada sobre os dados de antes.
+      .set({ ...dados, canceladaEm, conferenciaResolvidaEm: null, atualizadoEm: new Date() })
       .where(eq(reservas.id, existente.id))
       .returning();
     await registrarAuditoria(tx, {

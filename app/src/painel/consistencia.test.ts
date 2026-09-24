@@ -286,6 +286,10 @@ describe("consistência entre telas (M4.8)", () => {
     expect(t.inicio.alertas.map((x) => x.texto).join(" | ")).not.toContain("com dinheiro já movimentado");
     const lista = await reservasDoPortal(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo: OUTUBRO });
     expect(lista.find((x) => x.id === r.reserva.id)?.situacao).toBe("definido");
+    // Mudou o valor (mesma situação): a decisão foi sobre os dados de antes, a conferência volta.
+    await sincronizarReserva(db, org, "csv", "booking:R5", { ...dados, estado: "pendente", valorBruto: 55000 }, null);
+    expect(await bloqueios()).toContain("acerto pendente");
+    expect(await resolverConferencia(db, org, r.reserva.id, null)).toBe(true);
     // Cancelada depois: a situação mudou, a conferência volta.
     await sincronizarReserva(db, org, "csv", "booking:R5", { ...dados, estado: "cancelada" }, null);
     expect(await bloqueios()).toContain("acerto pendente");
