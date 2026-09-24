@@ -118,6 +118,12 @@ describe("textos do relatório (primeira página)", () => {
     expect(t.numeros.find((n) => n.rotulo === "Taxas dos canais")?.valor).toBe("R$ 150,00");
   });
 
+  it("vendas diretas em destaque no início, só quando existem", () => {
+    expect(textosDoRelatorio(base).numeros.some((n) => n.rotulo === "Vendas diretas")).toBe(false);
+    const com = textosDoRelatorio({ ...base, reservas: [...base.reservas, { ...base.reservas[0], id: "r2", canal: "direta", bruto: 50000 }, { ...base.reservas[0], id: "r3", canal: "site", bruto: 30000 }] });
+    expect(com.numeros[1]).toMatchObject({ rotulo: "Vendas diretas", valor: "R$ 800,00", detalhe: expect.stringContaining("2 reserva(s)") });
+  });
+
   it("do hóspede, só o primeiro nome; coluna de imóvel só com mais de um imóvel", () => {
     const t = textosDoRelatorio(base);
     expect(t.reservas[0]).toMatchObject({ hospede: "Hóspede", entrada: "10/10", canal: "Booking.com", bruto: "R$ 1.000,00", situacao: "Definido" });

@@ -218,8 +218,19 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
         : null;
   const r = d.resumo;
   const e = d.empresa;
+  // Vendas diretas (site, WhatsApp, indicação) em destaque logo no início, só quando existem.
+  const diretas = d.reservas.filter((x) => x.canal === "site" || x.canal === "direta");
   const numeros: Numero[] = [
     { rotulo: "Reservas no mês", valor: String(r.reservas) },
+    ...(diretas.length
+      ? [
+          {
+            rotulo: "Vendas diretas",
+            valor: formatBRL(diretas.reduce((t, x) => t + x.bruto, 0)),
+            detalhe: `${diretas.length} reserva(s) vendida(s) direto, sem Airbnb ou Booking (site, WhatsApp, indicação); valor bruto do mês`,
+          },
+        ]
+      : []),
     { rotulo: "Valor bruto das reservas", valor: formatBRL(r.receitaBruta), detalhe: "o que o hóspede pagou, pela parte do mês de cada estada" },
     { rotulo: "Taxas dos canais", valor: formatBRL(r.taxasCanais), detalhe: "Airbnb, Booking e outros" },
     { rotulo: `Comissão da ${e}`, valor: formatBRL(r.comissao) },
