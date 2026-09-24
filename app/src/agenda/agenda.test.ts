@@ -231,6 +231,16 @@ describe("configuração e envio", () => {
     expect(amanha.enviadas[0].texto).not.toContain("entrada ter 01/12");
   });
 
+  it("'enviar agora' pouco antes das 20h: a reserva avisada nele não se repete às 20h nem no dia seguinte", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    await nova(rio, "2027-03-01", "2027-03-03", new Date(AGORA.getTime() - 6 * 60_000).toISOString());
+    const correio = new CorreioMemoria();
+    await enviarAgenda(db, org, correio, new Date(AGORA.getTime() - 5 * 60_000), { manual: true });
+    await enviarAgenda(db, org, correio, AGORA);
+    await enviarAgenda(db, org, correio, new Date("2026-10-02T23:00:00Z"));
+    expect(correio.enviadas.map((m) => m.texto.includes("entrada seg 01/03"))).toEqual([true, false, false]);
+  });
+
   it("reserva criada depois do corte fica para a próxima agenda (sem repetir)", async () => {
     await nova(rio, "2026-12-20", "2026-12-27", "2026-10-01T23:00:30Z");
     const antes = await montarAgenda(db, org, "2026-10-01", new Date("2026-10-01T22:00:00Z"), AGORA);

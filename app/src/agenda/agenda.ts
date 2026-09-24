@@ -230,20 +230,35 @@ const chaveAvisadasDe = (org: string, email: string) => `agenda-diaria:avisadas:
 /**
  * Sobreposição da busca de reservas novas antes do marco: uma reserva gravada com horário anterior
  * ao corte, mas confirmada no banco só depois da consulta, ainda aparece na agenda seguinte. As que
- * a pessoa já recebeu nessa faixa são puladas (lista das avisadas no último envio).
+ * a pessoa já recebeu nessa faixa são puladas (lista das avisadas, mantida enquanto podem voltar).
  */
 const SOBREPOSICAO_MS = 10 * 60_000;
 
-async function lerAvisadas(db: Db, chave: string): Promise<string[]> {
+type Avisada = { id: string; corte: string };
+
+/** Reservas novas já avisadas a esta pessoa, com o corte do envio em que foram (para podar). */
+async function lerAvisadas(db: Db, chave: string): Promise<Avisada[]> {
   const [l] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, chave));
-  const ids = (l?.value as { ids?: unknown } | undefined)?.ids;
-  return Array.isArray(ids) ? ids.filter((x): x is string => typeof x === "string") : [];
+  const lista = (l?.value as { avisadas?: unknown } | undefined)?.avisadas;
+  return Array.isArray(lista) ? lista.filter((x): x is Avisada => !!x && typeof (x as Avisada).id === "string" && typeof (x as Avisada).corte === "string") : [];
+}
+
+/**
+ * Lista a guardar depois de um envio: as de antes que ainda podem cair na faixa de sobreposição do
+ * próximo envio (corte até SOBREPOSICAO antes deste) mais as deste envio. As mais antigas não voltam
+ * a aparecer (o horário delas é anterior à faixa), então saem.
+ */
+function avisadasDepois(antes: readonly Avisada[], novas: readonly string[], corte: Date): Avisada[] {
+  const limite = corte.getTime() - SOBREPOSICAO_MS;
+  const ficam = antes.filter((a) => Date.parse(a.corte) >= limite && !novas.includes(a.id));
+  return [...ficam, ...novas.map((id) => ({ id, corte: corte.toISOString() }))];
 }
 
 /** A agenda sem as reservas novas que a pessoa já recebeu. */
-function semAvisadas(a: Agenda, avisadas: readonly string[]): Agenda {
+function semAvisadas(a: Agenda, avisadas: readonly Avisada[]): Agenda {
   if (!avisadas.length) return a;
-  return { ...a, secoes: a.secoes.map((s) => ({ ...s, novas: s.novas.filter((n) => !avisadas.includes(n.id)) })) };
+  const ids = new Set(avisadas.map((x) => x.id));
+  return { ...a, secoes: a.secoes.map((s) => ({ ...s, novas: s.novas.filter((n) => !ids.has(n.id)) })) };
 }
 
 async function lerMarco(db: Db, chave: string): Promise<Date | null> {
@@ -333,11 +348,13 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
     }
     const { corte } = reserva;
     let agenda: Agenda;
+    let avisadas: Avisada[] = [];
     try {
       // Sem marco próprio (primeira agenda desta pessoa): as reservas novas das últimas 24h.
       const marco = await lerMarco(db, chaveUltimaDe(organizacaoId, d.email));
       const desde = marco ? new Date(marco.getTime() - SOBREPOSICAO_MS) : new Date(agora.getTime() - 86_400_000);
-      agenda = semAvisadas(await agendaDesde(desde, corte), await lerAvisadas(db, chaveAvisadasDe(organizacaoId, d.email)));
+      avisadas = await lerAvisadas(db, chaveAvisadasDe(organizacaoId, d.email));
+      agenda = semAvisadas(await agendaDesde(desde, corte), avisadas);
       // A mesma chave do dia vai para o provedor: uma nova tentativa do mesmo envio não duplica.
       await correio.enviar({ para: d.email, assunto: `Agenda SCL — ${diaCurto(agenda.dias[0])} a ${diaCurto(agenda.dias.at(-1)!)}`, texto: textoDaAgenda(agenda, d.cidades), chave });
     } catch (e) {
@@ -354,11 +371,11 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
         await tx.update(appSettings).set({ value: { em: agora.toISOString(), estado: "enviado", corte: corte.toISOString() }, updatedAt: new Date() }).where(eq(appSettings.key, chave));
         await gravarMarco(tx, chaveUltimaDe(organizacaoId, d.email), corte);
         // As reservas novas deste envio: na próxima, a faixa de sobreposição não as repete.
-        const ids = agenda.secoes.flatMap((x) => x.novas.map((n) => n.id));
+        const value = { avisadas: avisadasDepois(avisadas, agenda.secoes.flatMap((x) => x.novas.map((n) => n.id)), corte) };
         await tx
           .insert(appSettings)
-          .values({ key: chaveAvisadasDe(organizacaoId, d.email), value: { ids } })
-          .onConflictDoUpdate({ target: appSettings.key, set: { value: { ids }, updatedAt: new Date() } });
+          .values({ key: chaveAvisadasDe(organizacaoId, d.email), value })
+          .onConflictDoUpdate({ target: appSettings.key, set: { value, updatedAt: new Date() } });
       });
     } catch (e) {
       r.falhas.push(`${d.email}: enviada, mas não foi possível registrar o envio (${e instanceof Error ? e.message : String(e)})`);
