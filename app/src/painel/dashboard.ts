@@ -5,7 +5,7 @@
 import { and, eq, gte, inArray, isNull, lt, ne, sql, sum } from "drizzle-orm";
 import { listarAdiantamentos, totalACobrar } from "@/adiantamentos/adiantamentos";
 import { listarAjustes } from "@/ajustes/ajustes";
-import { lancamentos, type TipoLancamento } from "@/db/schema";
+import { lancamentos, reservas as reservasTabela, type TipoLancamento } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { listarDespesas, totaisDespesas } from "@/despesas/despesas";
 import { totaisPorTipo } from "@/financeiro/ledger";
@@ -177,27 +177,28 @@ export async function carregarDashboard(
         texto: `${semCalculo.length} reserva(s) do período com valor mas sem cálculo no financeiro: confira o contrato na data da entrada.${notaArquivados(semCalculo.map((r) => r.imovelId))}`,
         link: "/painel/reservas",
       });
-    // Pendente que ainda tem lançamento do motor em vigor: já movimentou dinheiro (o recálculo não
-    // mexe nisso). Conta nos totais de todas as telas, mas não é venda confirmada: confira.
-    const pendentesDoPeriodo = doPeriodo.filter((r) => r.estado === "pendente");
-    const comDinheiro = pendentesDoPeriodo.length
-      ? await db
-          .selectDistinct({ reservaId: lancamentos.reservaId })
-          .from(lancamentos)
-          .where(
-            and(
-              eq(lancamentos.organizacaoId, organizacaoId),
-              inArray(lancamentos.reservaId, pendentesDoPeriodo.map((r) => r.id)),
-              eq(lancamentos.origem, "motor"),
-              isNull(lancamentos.estornoDe),
-              sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`,
-            ),
-          )
-      : [];
+    // Reserva que deixou de estar confirmada (pendente/cancelada) e ainda tem lançamento do motor em
+    // vigor no período: já movimentou dinheiro (o recálculo não mexe nisso) e fica em conferência.
+    const comDinheiro = await db
+      .selectDistinct({ reservaId: lancamentos.reservaId })
+      .from(lancamentos)
+      .innerJoin(reservasTabela, eq(reservasTabela.id, lancamentos.reservaId))
+      .where(
+        and(
+          eq(lancamentos.organizacaoId, organizacaoId),
+          ne(reservasTabela.estado, "confirmada"),
+          eq(lancamentos.origem, "motor"),
+          gte(lancamentos.competencia, o.periodo.inicio),
+          lt(lancamentos.competencia, o.periodo.fim),
+          o.todos ? undefined : inArray(lancamentos.imovelId, ids),
+          isNull(lancamentos.estornoDe),
+          sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`,
+        ),
+      );
     if (comDinheiro.length)
       alertas.push({
         nivel: "atencao",
-        texto: `${comDinheiro.length} reserva(s) pendente(s) com dinheiro já movimentado: os valores continuam no financeiro. Confirme a reserva ou faça um ajuste manual.`,
+        texto: `${comDinheiro.length} reserva(s) pendente(s) ou cancelada(s) com dinheiro já movimentado: os valores continuam no financeiro, em conferência. Confirme a reserva ou faça um ajuste manual.`,
         link: "/painel/reservas",
       });
     const codigoDe = new Map(regras.map((r) => [r.imovelId, r.codigo]));

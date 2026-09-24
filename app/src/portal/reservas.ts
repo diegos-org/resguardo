@@ -5,7 +5,7 @@
  * movimentou dinheiro): o resumo conta esses valores, então a tabela mostra de onde vêm, marcada
  * "em conferência" (M4.8).
  */
-import { and, asc, eq, gt, gte, inArray, isNull, lt, or, sql, sum } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, isNull, lt, ne, or, sql, sum } from "drizzle-orm";
 import { bloqueios, imoveis, lancamentos, type OrigemReserva, proprietarioImoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
@@ -58,27 +58,32 @@ export async function reservasDoPortal(
       and(
         eq(reservas.organizacaoId, organizacaoId),
         or(
-          // Confirmada: pela estada no período.
-          and(eq(reservas.estado, "confirmada"), lt(reservas.checkin, o.periodo.fim), gt(reservas.checkout, o.periodo.inicio)),
-          // Não confirmada com valores em vigor: pela competência dos valores (a estada pode ter mudado).
-          inArray(
-            reservas.id,
-            db
-              .select({ id: lancamentos.reservaId })
-              .from(lancamentos)
-              .where(
-                and(
-                  eq(lancamentos.organizacaoId, organizacaoId),
-                  inArray(lancamentos.tipo, ["receita_bruta", "direito_proprietario"]),
-                  gte(lancamentos.competencia, o.periodo.inicio),
-                  lt(lancamentos.competencia, o.periodo.fim),
-                  lancamentoEmVigor(db),
+          // Confirmada: pela estada no período, pelo imóvel atual e pela regra de posse.
+          and(eq(reservas.estado, "confirmada"), lt(reservas.checkin, o.periodo.fim), gt(reservas.checkout, o.periodo.inicio), inArray(reservas.imovelId, ids), reservaDosDonos(db, donos)),
+          // Não confirmada com valores em vigor (já movimentou dinheiro): pelo livro, como o resumo —
+          // a parte dele, em vigor, num dos imóveis escolhidos, com competência no período (a estada
+          // ou o imóvel da reserva podem ter mudado depois).
+          and(
+            ne(reservas.estado, "confirmada"),
+            inArray(
+              reservas.id,
+              db
+                .select({ id: lancamentos.reservaId })
+                .from(lancamentos)
+                .where(
+                  and(
+                    eq(lancamentos.organizacaoId, organizacaoId),
+                    eq(lancamentos.tipo, "direito_proprietario"),
+                    inArray(lancamentos.proprietarioId, donos),
+                    inArray(lancamentos.imovelId, ids),
+                    gte(lancamentos.competencia, o.periodo.inicio),
+                    lt(lancamentos.competencia, o.periodo.fim),
+                    lancamentoEmVigor(db),
+                  ),
                 ),
-              ),
+            ),
           ),
         ),
-        inArray(reservas.imovelId, ids),
-        reservaDosDonos(db, donos),
       ),
     )
     .orderBy(asc(reservas.checkin), asc(imoveis.codigo));

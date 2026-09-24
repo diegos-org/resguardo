@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, asc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, gte, isNull, sql } from "drizzle-orm";
 import { listarContratos } from "@/contratos/repositorio";
 import { lancamentos, proprietarioImoveis, recebimentoPorCanal, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
@@ -88,52 +88,9 @@ export async function aplicarMotor(
       ativos.some((a) => !a.chave || !desejadas.has(baseDaChave(a.chave))) ||
       desejados.some((l) => !ativos.some((a) => a.chave && baseDaChave(a.chave) === l.chaveOrigem));
     if (precisaMudar && ativos.some((a) => a.estado === "realizado" || a.estado === "conciliado")) {
-      // Reserva que deixou de estar confirmada (pendente/cancelada) com dinheiro já movimentado: a
-      // parte do proprietário ainda prevista vira "pendente" (em conferência). Assim o portal, o PDF e
-      // o fechamento do mês (que não fecha com acerto pendente) param até alguém decidir.
-      let emConferencia = 0;
-      if (r.estado !== "confirmada") {
-        const previstas = await tx
-          .select()
-          .from(lancamentos)
-          .where(
-            and(
-              inArray(
-                lancamentos.id,
-                ativos.map((a) => a.id),
-              ),
-              eq(lancamentos.tipo, "direito_proprietario"),
-              eq(lancamentos.estado, "previsto"),
-            ),
-          );
-        for (const l of previstas) {
-          await estornar(tx, organizacaoId, l.id, "Reserva não confirmada com dinheiro já movimentado: em conferência", autorId);
-          await lancar(
-            tx,
-            organizacaoId,
-            [
-              {
-                tipo: l.tipo,
-                descricao: `${l.descricao} (em conferência: reserva não confirmada)`,
-                valor: l.valor,
-                efeitoSaldo: l.efeitoSaldo,
-                competencia: l.competencia,
-                estado: "pendente",
-                imovelId: l.imovelId,
-                proprietarioId: l.proprietarioId,
-                reservaId: l.reservaId,
-                origem: "motor",
-                chaveOrigem: `${l.chaveOrigem ?? l.id}:conferencia`,
-              },
-            ],
-            autorId,
-          );
-          emConferencia++;
-        }
-      }
       return {
-        criados: emConferencia,
-        estornados: emConferencia,
+        criados: 0,
+        estornados: 0,
         mantidos: ativos.length,
         protegido: true,
         avisos: [...avisos, "Esta reserva já teve dinheiro movimentado: o cálculo novo não foi aplicado. Se precisar, faça um ajuste manual."],

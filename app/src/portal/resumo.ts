@@ -7,7 +7,7 @@ import { and, eq, gt, gte, inArray, isNotNull, isNull, lt, or, sql, sum } from "
 import { ajustes, lancamentos, proprietarios, proprietarioUsuarios, reservas, type TipoLancamento } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
-import { lancamentoEmVigor, noPeriodoDosDonos, reservaDosDonos } from "./posse";
+import { lancamentoEmConferencia, lancamentoEmVigor, noPeriodoDosDonos, reservaDosDonos } from "./posse";
 
 /** Proprietários (ativos) que este usuário pode ver no portal: ele mesmo ou quem ele representa. */
 export async function proprietariosDoUsuario(db: Db, organizacaoId: string, usuarioId: string): Promise<{ id: string; nome: string; chavePix: string }[]> {
@@ -62,11 +62,14 @@ export async function resumoDoProprietario(
     o.semImovel ? or(inArray(lancamentos.imovelId, imoveis), and(isNull(lancamentos.imovelId), inArray(lancamentos.proprietarioId, donos))) : inArray(lancamentos.imovelId, imoveis),
   );
   // Linhas do próprio proprietário: parte dele, despesas, acerto.
+  // Em conferência e em vigor (um par lançamento + estorno se anula fora da conferência).
+  const conferencia = sql<boolean>`coalesce(${and(lancamentoEmConferencia(), lancamentoEmVigor(db))}, false)`;
   const dele = await db
-    .select({ tipo: lancamentos.tipo, estado: lancamentos.estado, valor: sum(lancamentos.valor), montante: sum(lancamentos.montante), acerto: sum(lancamentos.efeitoSaldo) })
+    .select({ tipo: lancamentos.tipo, conferencia, valor: sum(lancamentos.valor), montante: sum(lancamentos.montante), acerto: sum(lancamentos.efeitoSaldo) })
     .from(lancamentos)
     .where(and(base, inArray(lancamentos.proprietarioId, donos)))
-    .groupBy(lancamentos.tipo, lancamentos.estado);
+    // Pelas posições (tipo, conferência): a expressão tem parâmetros e não se repete igual no GROUP BY.
+    .groupBy(sql`1`, sql`2`);
   // Ajuste com ele ainda não esclarecido no período (inclusive sem valor, que não tem lançamento).
   const [abertos] = await db
     .select({ n: sql<number>`count(*)::int` })
@@ -94,7 +97,7 @@ export async function resumoDoProprietario(
         // Dele, ou sem dono num imóvel dele (reserva calculada antes de o imóvel ter proprietário),
         // como no fechamento do mês.
         or(inArray(lancamentos.proprietarioId, donos), and(isNull(lancamentos.proprietarioId), inArray(lancamentos.imovelId, imoveis), noPeriodoDosDonos(donos, lancamentos.imovelId, lancamentos.competencia))),
-        eq(lancamentos.estado, "pendente"),
+        lancamentoEmConferencia(),
         ativo,
       ),
     );
@@ -134,7 +137,7 @@ export async function resumoDoProprietario(
     despesas: dele.filter((x) => x.tipo === "despesa_proprietario").reduce((s, x) => s + Number(x.montante ?? 0), 0),
     // O que ainda está em conferência (ajuste a esclarecer, acerto pendente) fica à parte,
     // como no fechamento do mês: não aparece como definitivo.
-    acerto: dele.filter((x) => x.estado !== "pendente").reduce((t, x) => t + Number(x.acerto ?? 0), 0),
+    acerto: dele.filter((x) => !x.conferencia).reduce((t, x) => t + Number(x.acerto ?? 0), 0),
     acertoPendente: Number(pendente?.total ?? 0),
     emConferencia: (pendente?.n ?? 0) > 0 || (abertos?.n ?? 0) > 0,
   };

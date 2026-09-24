@@ -220,7 +220,7 @@ describe("consistência entre telas (M4.8)", () => {
     const t = await tresTelas();
     expect(t.brutos).toEqual([310000, 310000, 310000]);
     expect(t.acertos[0]).toBe(t.acertos[1]);
-    expect(t.inicio.alertas.map((x) => x.texto).join(" | ")).toContain("pendente(s) com dinheiro já movimentado");
+    expect(t.inicio.alertas.map((x) => x.texto).join(" | ")).toContain("com dinheiro já movimentado");
     // O portal e o PDF mostram de onde vem o valor: a reserva aparece na tabela, "em conferência".
     const lista = await reservasDoPortal(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo: OUTUBRO });
     const portal = await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], semImovel: true, periodo: OUTUBRO });
@@ -242,5 +242,31 @@ describe("consistência entre telas (M4.8)", () => {
     const portal = await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], semImovel: true, periodo: OUTUBRO });
     expect(lista.reduce((x, y) => x + y.bruto, 0)).toBe(portal.receitaBruta);
     expect(lista.some((x) => x.id === r.reserva.id)).toBe(true);
+  });
+
+  it("reserva reconfirmada sai da conferência sozinha (o fechamento volta a passar)", async () => {
+    const dados = reserva(a, "2026-10-01", "2026-10-03", { valorBruto: 50000, taxaCanal: 0 });
+    const r = await sincronizarReserva(db, org, "csv", "booking:R3", dados, null);
+    if (!r.ok) throw new Error("reserva");
+    await db.update(lancamentos).set({ estado: "realizado" }).where(and(eq(lancamentos.reservaId, r.reserva.id), eq(lancamentos.tipo, "receita_bruta")));
+    await sincronizarReserva(db, org, "csv", "booking:R3", { ...dados, estado: "pendente" }, null);
+    const bloqueios = async () => (await preverRepasses(db, org, "2026-10", "2026-11-10", [dona]))[0].bloqueios.join(" ");
+    expect(await bloqueios()).toContain("acerto pendente");
+    await sincronizarReserva(db, org, "csv", "booking:R3", dados, null);
+    expect(await bloqueios()).not.toContain("acerto pendente");
+    const portal = await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], semImovel: true, periodo: OUTUBRO });
+    expect(portal.emConferencia).toBe(false);
+  });
+
+  it("não confirmada com dinheiro movimentado que mudou de imóvel: a tabela do dono antigo explica o total dele", async () => {
+    const dados = reserva(a, "2026-10-01", "2026-10-03", { valorBruto: 50000, taxaCanal: 0 });
+    const r = await sincronizarReserva(db, org, "csv", "booking:R4", dados, null);
+    if (!r.ok) throw new Error("reserva");
+    await db.update(lancamentos).set({ estado: "realizado" }).where(and(eq(lancamentos.reservaId, r.reserva.id), eq(lancamentos.tipo, "receita_bruta")));
+    await sincronizarReserva(db, org, "csv", "booking:R4", { ...dados, estado: "cancelada", imovelId: b }, null);
+    const lista = await reservasDoPortal(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo: OUTUBRO });
+    const portal = await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], semImovel: true, periodo: OUTUBRO });
+    expect(lista.some((x) => x.id === r.reserva.id)).toBe(true);
+    expect(lista.reduce((x, y) => x + y.bruto, 0)).toBe(portal.receitaBruta);
   });
 });

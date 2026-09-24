@@ -18,6 +18,18 @@ export function lancamentoEmVigor(db: Db) {
   return and(isNull(lancamentos.estornoDe), not(exists(db.select({ um: sql`1` }).from(estorno).where(eq(estorno.estornoDe, lancamentos.id)))));
 }
 
+/**
+ * Lançamento em conferência (uma regra, um lugar: portal, PDF, fechamento do mês e Início): o
+ * pendente, e o do motor de uma reserva que deixou de estar confirmada (pendente/cancelada) mas
+ * ficou em vigor porque já movimentou dinheiro. Reconfirmada a reserva, sai da conferência sozinho.
+ */
+export function lancamentoEmConferencia() {
+  return or(
+    eq(lancamentos.estado, "pendente"),
+    and(eq(lancamentos.origem, "motor"), sql`${lancamentos.reservaId} in (select ${reservas.id} from ${reservas} where ${reservas.estado} <> 'confirmada')`),
+  );
+}
+
 /** Condição sobre `reservas`: a reserva é de um destes proprietários (ver o topo do arquivo). */
 export function reservaDosDonos(db: Db, donos: readonly string[]) {
   const ativo = lancamentoEmVigor(db);

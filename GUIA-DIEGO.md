@@ -357,7 +357,9 @@
     de limpezas, como antes. Pendentes antigas, calculadas antes desta mudança, são acertadas
     sozinhas na próxima publicação do sistema. Se uma reserva já tinha dinheiro recebido e
     voltou a ficar pendente, os valores continuam (nada que já movimentou dinheiro é mexido
-    sozinho) e o Início mostra um aviso para você confirmar a reserva ou fazer um ajuste;
+    sozinho), mas ficam **em conferência**: o Início avisa, o portal e o PDF mostram a reserva
+    marcada assim, e o fechamento do mês espera até você confirmar a reserva de novo (aí sai da
+    conferência sozinha) ou fazer um ajuste. Vale também para reserva cancelada nessa situação;
   - o contador de reservas do Início e da aba Apartamentos passou a contar **só as
     confirmadas**, igual ao portal e ao relatório.
 - M6.5: **rotinas recorrentes** (menu **Rotinas**). Tarefas que se repetem, cada uma com a
