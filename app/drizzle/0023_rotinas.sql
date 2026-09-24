@@ -17,6 +17,7 @@ CREATE TABLE "rotinas" (
 	"descricao" text DEFAULT '' NOT NULL,
 	"frequencia" text NOT NULL,
 	"proxima_data" date NOT NULL,
+	"ancora" date NOT NULL,
 	"ativa" boolean DEFAULT true NOT NULL,
 	"criado_em" timestamp with time zone DEFAULT now() NOT NULL,
 	"atualizado_em" timestamp with time zone DEFAULT now() NOT NULL

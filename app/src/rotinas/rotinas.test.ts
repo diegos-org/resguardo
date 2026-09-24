@@ -19,23 +19,23 @@ import {
 } from "./rotinas";
 
 describe("datas das rotinas (regra pura)", () => {
-  it("soma semanas, quinzenas, meses e anos; mês curto fica no último dia", () => {
+  it("soma semanas, 15 dias, meses e anos; mês curto fica no último dia", () => {
     expect(somarPeriodo("2026-10-01", "semanal")).toBe("2026-10-08");
-    expect(somarPeriodo("2026-10-01", "quinzenal")).toBe("2026-10-15");
+    expect(somarPeriodo("2026-10-01", "quinzenal")).toBe("2026-10-16");
     expect(somarPeriodo("2026-01-31", "mensal")).toBe("2026-02-28");
     expect(somarPeriodo("2026-01-31", "mensal", 2)).toBe("2026-03-31");
     expect(somarPeriodo("2028-02-29", "anual")).toBe("2029-02-28");
+    expect(somarPeriodo("2028-02-29", "anual", 4)).toBe("2032-02-29");
     expect(somarPeriodo("2026-12-15", "mensal")).toBe("2027-01-15");
   });
 
-  it("próxima data: primeiro vencimento depois do dia em que foi feita, no mesmo ritmo", () => {
+  it("próxima data: primeiro vencimento depois do dia, no ritmo contado da âncora", () => {
     expect(proximaDepois("2026-10-05", "semanal", "2026-10-05")).toBe("2026-10-12");
     // Atrasada três semanas: não acumula três conferências.
     expect(proximaDepois("2026-10-05", "semanal", "2026-10-27")).toBe("2026-11-02");
-    // Feita antes do vencimento: a próxima é o vencimento seguinte.
-    expect(proximaDepois("2026-10-05", "semanal", "2026-10-03")).toBe("2026-10-12");
-    // Mensal no dia 31 continua no fim do mês.
-    expect(proximaDepois("2026-01-31", "mensal", "2026-03-05")).toBe("2026-03-31");
+    // Mensal no dia 31: fevereiro no último dia e depois de novo 31.
+    expect(proximaDepois("2026-01-31", "mensal", "2026-01-31")).toBe("2026-02-28");
+    expect(proximaDepois("2026-01-31", "mensal", "2026-02-28")).toBe("2026-03-31");
   });
 
   it("situação: atrasada, hoje, esta semana, em dia, arquivada", () => {
@@ -100,6 +100,21 @@ describe("cadastro e execução", () => {
     // Próxima data editada de volta para um vencimento já registrado: avisa em vez de duplicar.
     await editarRotina(db, org, r.id, { titulo: r.titulo, descricao: "", frequencia: "semanal", proximaData: "2026-10-05" }, null);
     expect(await registrarExecucao(db, org, r.id, { prevista: "2026-10-05", feitaEm: "2026-11-03", observacao: "", pulada: false }, "2026-11-03", null)).toMatchObject({ ok: false, erro: expect.stringContaining("já foi registrado") });
+  });
+
+  it("mensal no dia 31 continua no fim do mês em execuções seguidas; quinzenal anda 15 dias", async () => {
+    await nova({ titulo: "Mensal", frequencia: "mensal", proximaData: "2026-01-31" });
+    await nova({ titulo: "Quinzenal", frequencia: "quinzenal", proximaData: "2026-10-01" });
+    const achar = async (t: string, hoje: string) => (await listarRotinas(db, org, hoje)).find((r) => r.titulo === t)!;
+    let m = await achar("Mensal", "2026-01-31");
+    await registrarExecucao(db, org, m.id, { prevista: "2026-01-31", feitaEm: "2026-01-31", observacao: "", pulada: false }, "2026-01-31", null);
+    m = await achar("Mensal", "2026-02-28");
+    expect(m.proximaData).toBe("2026-02-28");
+    await registrarExecucao(db, org, m.id, { prevista: "2026-02-28", feitaEm: "2026-02-28", observacao: "", pulada: false }, "2026-02-28", null);
+    expect((await achar("Mensal", "2026-03-01")).proximaData).toBe("2026-03-31");
+    const q = await achar("Quinzenal", "2026-10-01");
+    await registrarExecucao(db, org, q.id, { prevista: "2026-10-01", feitaEm: "2026-10-01", observacao: "", pulada: false }, "2026-10-01", null);
+    expect((await achar("Quinzenal", "2026-10-01")).proximaData).toBe("2026-10-16");
   });
 
   it("dois cliques ao mesmo tempo registram uma vez só", async () => {

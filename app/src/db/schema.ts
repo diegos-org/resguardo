@@ -863,6 +863,8 @@ export const rotinas = pgTable(
     frequencia: text("frequencia").$type<FrequenciaRotina>().notNull(),
     /** Próxima vez que a rotina vence. */
     proximaData: date("proxima_data", { mode: "string" }).notNull(),
+    /** Data de referência do ritmo (a informada no cadastro): o fim de mês continua no fim de mês. */
+    ancora: date("ancora", { mode: "string" }).notNull(),
     /** Arquivada = não aparece mais como pendente; o histórico fica. */
     ativa: boolean("ativa").notNull().default(true),
     criadoEm: criadoEm(),

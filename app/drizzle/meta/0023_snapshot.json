@@ -1,5 +1,5 @@
 {
-  "id": "7c41894a-bbc8-4ee3-9879-e4158afb8474",
+  "id": "a273e64e-0d09-47b1-b12e-537a3a2e309e",
   "prevId": "ec2c1158-a90e-428b-a761-b09ab528c686",
   "version": "7",
   "dialect": "postgresql",
@@ -4348,6 +4348,12 @@
         },
         "proxima_data": {
           "name": "proxima_data",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ancora": {
+          "name": "ancora",
           "type": "date",
           "primaryKey": false,
           "notNull": true

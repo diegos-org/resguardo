@@ -30,7 +30,7 @@ const iso = (d: Date) => d.toISOString().slice(0, 10);
 export function somarPeriodo(base: string, f: FrequenciaRotina, n = 1): string {
   const d = dia(base);
   if (f === "semanal" || f === "quinzenal") {
-    d.setUTCDate(d.getUTCDate() + n * (f === "semanal" ? 7 : 14));
+    d.setUTCDate(d.getUTCDate() + n * (f === "semanal" ? 7 : 15));
     return iso(d);
   }
   const meses = n * (f === "mensal" ? 1 : 12);
@@ -40,11 +40,14 @@ export function somarPeriodo(base: string, f: FrequenciaRotina, n = 1): string {
   return iso(alvo);
 }
 
-/** Primeiro vencimento depois de `feitaEm`, contando no ritmo a partir de `prevista`. */
-export function proximaDepois(prevista: string, f: FrequenciaRotina, feitaEm: string): string {
-  let n = 1;
-  let proxima = somarPeriodo(prevista, f, n);
-  while (proxima <= feitaEm) proxima = somarPeriodo(prevista, f, ++n);
+/**
+ * Primeiro vencimento depois de `apos`, no ritmo contado sempre a partir da âncora (a data do
+ * cadastro): uma rotina mensal no dia 31 volta ao dia 31 depois de passar por fevereiro.
+ */
+export function proximaDepois(ancora: string, f: FrequenciaRotina, apos: string): string {
+  let n = 0;
+  let proxima = ancora;
+  while (proxima <= apos) proxima = somarPeriodo(ancora, f, ++n);
   return proxima;
 }
 
@@ -61,7 +64,7 @@ export function situacaoDa(r: Pick<Rotina, "ativa" | "proximaData">, hoje: strin
 
 export type DadosRotina = { titulo: string; descricao: string; frequencia: string; proximaData: string };
 
-function validar(d: DadosRotina): { ok: true; dados: Pick<Rotina, "titulo" | "descricao" | "frequencia" | "proximaData"> } | { ok: false; erro: string } {
+function validar(d: DadosRotina): { ok: true; dados: Pick<Rotina, "titulo" | "descricao" | "frequencia" | "proximaData" | "ancora"> } | { ok: false; erro: string } {
   const titulo = d.titulo.trim();
   const descricao = d.descricao.trim();
   if (!titulo) return { ok: false, erro: "Informe o nome da rotina." };
@@ -69,7 +72,8 @@ function validar(d: DadosRotina): { ok: true; dados: Pick<Rotina, "titulo" | "de
   if (descricao.length > 1000) return { ok: false, erro: "Descrição com mais de 1000 caracteres." };
   if (!(FREQUENCIAS_ROTINA as readonly string[]).includes(d.frequencia)) return { ok: false, erro: "Escolha a frequência." };
   if (!dataValida(d.proximaData)) return { ok: false, erro: "Informe a próxima data." };
-  return { ok: true, dados: { titulo, descricao, frequencia: d.frequencia as FrequenciaRotina, proximaData: d.proximaData } };
+  // A próxima data informada vira a referência do ritmo daqui em diante.
+  return { ok: true, dados: { titulo, descricao, frequencia: d.frequencia as FrequenciaRotina, proximaData: d.proximaData, ancora: d.proximaData } };
 }
 
 const auditar = (tx: Db, organizacaoId: string, autorId: string | null, acao: string, id: string, mudancas: Record<string, [unknown, unknown]>) =>
@@ -158,7 +162,8 @@ export async function registrarExecucao(
       .from(rotinaExecucoes)
       .where(and(eq(rotinaExecucoes.rotinaId, r.id), eq(rotinaExecucoes.prevista, r.proximaData)));
     if (ja) return { ok: false as const, erro: "O vencimento desta data já foi registrado: ajuste a próxima data da rotina." };
-    const proxima = proximaDepois(r.proximaData, r.frequencia, d.feitaEm);
+    // Depois do vencimento coberto e do dia em que foi feita (feita adiantada não repete o mesmo vencimento).
+    const proxima = proximaDepois(r.ancora, r.frequencia, d.feitaEm > r.proximaData ? d.feitaEm : r.proximaData);
     await tx.insert(rotinaExecucoes).values({ organizacaoId, rotinaId: r.id, prevista: r.proximaData, feitaEm: d.feitaEm, pulada: d.pulada, observacao, usuarioId: autorId });
     await tx.update(rotinas).set({ proximaData: proxima, atualizadoEm: new Date() }).where(eq(rotinas.id, r.id));
     await auditar(tx, organizacaoId, autorId, d.pulada ? "pular" : "feita", r.id, {
