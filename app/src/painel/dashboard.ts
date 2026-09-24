@@ -69,7 +69,8 @@ export async function carregarDashboard(
   let financeiro: Financeiro | null = null;
   let porMes: Dashboard["porMes"] = null;
   if (o.verFinanceiro && !vazio) {
-    const f = { ...o.periodo, imovelIds: ids };
+    // "Todos os imóveis" inclui o que não é de imóvel nenhum (custos gerais da empresa).
+    const f = o.todos ? o.periodo : { ...o.periodo, imovelIds: ids };
     const inicioAno = `${o.ano}-01-01`;
     const fimAno = `${o.ano + 1}-01-01`;
     const [totais, mensal, regras, despesas, ajustesPendentes, adiantamentos, pendentes] = await Promise.all([
@@ -98,7 +99,7 @@ export async function carregarDashboard(
           and(
             eq(lancamentos.organizacaoId, organizacaoId),
             eq(lancamentos.estado, "pendente"),
-            inArray(lancamentos.imovelId, ids),
+            o.todos ? undefined : inArray(lancamentos.imovelId, ids),
             sql`${lancamentos.estornoDe} is null`,
             sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`,
           ),

@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { criarContrato } from "@/contratos/repositorio";
 import { bloqueios, imoveis, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
+import { criarCategoria } from "@/despesas/categorias";
+import { registrarDespesa } from "@/despesas/despesas";
 import type { Db } from "@/db/types";
 import { listarImoveis } from "@/imoveis/repositorio";
 import type { DadosReserva } from "@/reservas/regras";
@@ -87,6 +89,16 @@ describe("painel inicial", () => {
     expect(d.porMes).toBeNull();
     expect(d.alertas.some((x) => x.texto.includes("contrato"))).toBe(false);
     expect(d.proximasEntradas).toHaveLength(1);
+  });
+
+  it("todos os imóveis inclui despesas gerais da empresa (sem imóvel); filtro por imóvel não", async () => {
+    const c = await criarCategoria(db, org, "Escritório", null);
+    if (!c.ok) throw new Error("categoria");
+    const base = { responsavel: "empresa" as const, pagoPor: "empresa" as const, categoriaId: c.categoria.id, proprietarioId: null, fornecedor: "", comprovante: "", paga: true, dataPagamento: "2026-10-05" };
+    await registrarDespesa(db, org, { ...base, descricao: "Contador", valor: 30000, data: "2026-10-05", imovelId: null }, null);
+    await registrarDespesa(db, org, { ...base, descricao: "Lâmpada", valor: 5000, data: "2026-10-05", imovelId: a }, null);
+    expect((await carregar(true)).financeiro?.despesasEmpresa).toBe(35000);
+    expect((await carregar(true, "403")).financeiro?.despesasEmpresa).toBe(5000);
   });
 
   it("filtro de imóvel: números só do imóvel escolhido; sobreposição vira alerta", async () => {
