@@ -42,7 +42,9 @@ export async function estornarDespesa(form: FormData): Promise<void> {
   const sessao = await sessaoEditora();
   const id = String(form.get("id") ?? "");
   const motivo = String(form.get("motivo") ?? "").trim().slice(0, 200);
-  if (!(await estornarNoLivro(getDb(), sessao.organizacaoId, id, motivo, sessao.usuarioId))) redirect(`/painel/despesas/${id}?erro=estorno`);
+  const r = await estornarNoLivro(getDb(), sessao.organizacaoId, id, motivo, sessao.usuarioId);
+  if (r === "quitado") redirect(`/painel/despesas/${id}?erro=quitado`);
+  if (!r) redirect(`/painel/despesas/${id}?erro=estorno`);
   revalidatePath(`/painel/despesas/${id}`);
   revalidatePath("/painel/despesas");
 }

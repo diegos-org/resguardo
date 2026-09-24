@@ -1,0 +1,142 @@
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { historicoDe } from "@/auditoria/auditoria";
+import { imoveis, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
+import { createTestDb } from "@/db/testing";
+import type { Db } from "@/db/types";
+import { criarCategoria } from "@/despesas/categorias";
+import { estornarDespesa, registrarDespesa } from "@/despesas/despesas";
+import { saldoAcerto, totaisPorTipo } from "@/financeiro/ledger";
+import { contestar, desfazerQuitacao, listarAdiantamentos, obterAdiantamento, quitar, resolverContestacao, resumoPorProprietario, situacaoDe } from "./adiantamentos";
+
+let db: Db;
+let close: () => Promise<void>;
+let org: string;
+let outraOrg: string;
+let im: string;
+let dono: string;
+let despesaId: string;
+let adiantamentoId: string;
+
+beforeEach(async () => {
+  ({ db, close } = await createTestDb());
+  [{ id: org }, { id: outraOrg }] = await db.insert(organizacoes).values([{ nome: "A" }, { nome: "B" }]).returning();
+  [{ id: im }] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "403", nome: "Quatro" }).returning();
+  [{ id: dono }] = await db.insert(proprietarios).values({ organizacaoId: org, nome: "Dona Exemplo" }).returning();
+  await db.insert(proprietarioImoveis).values({ proprietarioId: dono, imovelId: im });
+  const c = await criarCategoria(db, org, "Manutenção", null);
+  if (!c.ok) throw new Error("categoria");
+  // Reparo de R$ 4.000 do proprietário, pago pela empresa → adiantamento.
+  const d = await registrarDespesa(
+    db,
+    org,
+    {
+      responsavel: "proprietario",
+      pagoPor: "empresa",
+      categoriaId: c.categoria.id,
+      descricao: "Reparo do ar-condicionado",
+      valor: 400000,
+      data: "2026-10-05",
+      imovelId: im,
+      proprietarioId: null,
+      fornecedor: "Refrigeração Exemplo",
+      comprovante: "",
+      paga: true,
+      dataPagamento: "2026-10-06",
+    },
+    null,
+  );
+  if (!d.ok) throw new Error("despesa");
+  despesaId = d.lancamento.id;
+  [{ id: adiantamentoId }] = await listarAdiantamentos(db, org);
+});
+afterEach(() => close());
+
+const saldo = () => saldoAcerto(db, org, { proprietarioId: dono });
+
+describe("situação", () => {
+  it("regra pura", () => {
+    expect(situacaoDe(100, 0, false)).toBe("a_cobrar");
+    expect(situacaoDe(100, 40, false)).toBe("parcial");
+    expect(situacaoDe(100, 100, true)).toBe("quitado");
+    expect(situacaoDe(100, 40, true)).toBe("contestado");
+  });
+
+  it("adiantamento nasce a cobrar, ligado à despesa, e o proprietário deve o valor", async () => {
+    const a = await obterAdiantamento(db, org, adiantamentoId);
+    expect(a).toMatchObject({ valor: 400000, aberto: 400000, situacao: "a_cobrar", despesaId, proprietario: "Dona Exemplo", imovel: "403", dataPagamento: "2026-10-06" });
+    expect(await saldo()).toBe(-400000);
+  });
+});
+
+describe("quitação sem dupla cobrança", () => {
+  it("reembolso parcial + total zera a dívida; mais que o aberto é recusado", async () => {
+    expect(await quitar(db, org, adiantamentoId, { forma: "reembolso", valor: 150000, data: "2026-10-20" }, null)).toEqual({ ok: true });
+    expect(await saldo()).toBe(-250000);
+    expect((await obterAdiantamento(db, org, adiantamentoId))?.situacao).toBe("parcial");
+    expect(await quitar(db, org, adiantamentoId, { forma: "reembolso", valor: 250001, data: "2026-10-21" }, null)).toMatchObject({ ok: false, erro: expect.stringContaining("em aberto") });
+    expect(await quitar(db, org, adiantamentoId, { forma: "compensacao", valor: 250000, data: "2026-11-01" }, null)).toEqual({ ok: true });
+    const a = await obterAdiantamento(db, org, adiantamentoId);
+    expect(a).toMatchObject({ situacao: "quitado", aberto: 0, quitado: 400000 });
+    // Compensação não gera lançamento próprio (o repasse do M4.9 paga o líquido).
+    expect(await saldo()).toBe(-250000);
+    expect(await quitar(db, org, adiantamentoId, { forma: "reembolso", valor: 1, data: "2026-11-02" }, null)).toMatchObject({ ok: false });
+  });
+
+  it("duas quitações simultâneas não passam do valor", async () => {
+    const r = await Promise.all([
+      quitar(db, org, adiantamentoId, { forma: "reembolso", valor: 300000, data: "2026-10-20" }, null),
+      quitar(db, org, adiantamentoId, { forma: "reembolso", valor: 300000, data: "2026-10-20" }, null),
+    ]);
+    expect(r.filter((x) => x.ok)).toHaveLength(1);
+    expect((await obterAdiantamento(db, org, adiantamentoId))?.quitado).toBe(300000);
+  });
+
+  it("desfazer quitação estorna o reembolso e reabre o valor", async () => {
+    await quitar(db, org, adiantamentoId, { forma: "reembolso", valor: 400000, data: "2026-10-20" }, null);
+    expect(await saldo()).toBe(0);
+    const [q] = (await obterAdiantamento(db, org, adiantamentoId))!.quitacoes;
+    expect(await desfazerQuitacao(db, org, q.id, "", null)).toMatchObject({ ok: false });
+    expect(await desfazerQuitacao(db, org, q.id, "Pix devolvido pelo banco", null)).toEqual({ ok: true });
+    expect(await desfazerQuitacao(db, org, q.id, "de novo", null)).toMatchObject({ ok: false });
+    expect(await saldo()).toBe(-400000);
+    expect((await obterAdiantamento(db, org, adiantamentoId))?.situacao).toBe("a_cobrar");
+  });
+
+  it("despesa com adiantamento já quitado não pode ser estornada (evita crédito indevido)", async () => {
+    await quitar(db, org, adiantamentoId, { forma: "reembolso", valor: 100000, data: "2026-10-20" }, null);
+    expect(await estornarDespesa(db, org, despesaId, "Lançada errado", null)).toBe("quitado");
+    expect(await saldo()).toBe(-300000);
+    const [q] = (await obterAdiantamento(db, org, adiantamentoId))!.quitacoes;
+    await desfazerQuitacao(db, org, q.id, "Desfazendo para estornar", null);
+    expect(await estornarDespesa(db, org, despesaId, "Lançada errado", null)).toBe(true);
+    expect(await saldo()).toBe(0);
+    expect(await listarAdiantamentos(db, org)).toEqual([]);
+  });
+
+  it("outra organização não quita nem vê", async () => {
+    expect(await quitar(db, outraOrg, adiantamentoId, { forma: "reembolso", valor: 1, data: "2026-10-20" }, null)).toMatchObject({ ok: false });
+    expect(await listarAdiantamentos(db, outraOrg)).toEqual([]);
+    expect(await quitar(db, org, "nao-uuid", { forma: "reembolso", valor: 1, data: "2026-10-20" }, null)).toMatchObject({ ok: false });
+  });
+});
+
+describe("contestação", () => {
+  it("contestado não é cobrado; mantida volta a cobrar", async () => {
+    expect(await contestar(db, org, adiantamentoId, "O ar já estava com defeito na entrega", null)).toEqual({ ok: true });
+    expect(await contestar(db, org, adiantamentoId, "de novo", null)).toMatchObject({ ok: false });
+    expect(await quitar(db, org, adiantamentoId, { forma: "compensacao", valor: 1000, data: "2026-11-01" }, null)).toMatchObject({ ok: false, erro: expect.stringContaining("contest") });
+    expect(resumoPorProprietario(await listarAdiantamentos(db, org))).toEqual([{ proprietarioId: dono, proprietario: "Dona Exemplo", aCobrar: 0, contestado: 400000, quantidade: 1 }]);
+    expect(await resolverContestacao(db, org, adiantamentoId, { resolucao: "mantida", nota: "Nota fiscal mostra defeito novo", data: "2026-10-25" }, null)).toEqual({ ok: true });
+    expect((await obterAdiantamento(db, org, adiantamentoId))?.situacao).toBe("a_cobrar");
+  });
+
+  it("empresa assume: dívida zerada e o valor vira custo da empresa", async () => {
+    await quitar(db, org, adiantamentoId, { forma: "reembolso", valor: 100000, data: "2026-10-20" }, null);
+    await contestar(db, org, adiantamentoId, "Discorda do restante", null);
+    expect(await resolverContestacao(db, org, adiantamentoId, { resolucao: "empresa_assume", nota: "Acordo", data: "2026-10-25" }, null)).toEqual({ ok: true });
+    expect(await obterAdiantamento(db, org, adiantamentoId)).toMatchObject({ situacao: "quitado", aberto: 0 });
+    expect(await saldo()).toBe(0);
+    expect((await totaisPorTipo(db, org, {})).ajuste).toBe(-300000);
+    expect((await historicoDe(db, org, "adiantamento", adiantamentoId)).length).toBe(4);
+  });
+});

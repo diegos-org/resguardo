@@ -78,7 +78,11 @@ export default async function DetalheDespesa({ params, searchParams }: PageProps
       )}
       {erro && (
         <p role="alert" className={styles.alerta}>
-          {erro === "estorno" ? "Não foi possível estornar: informe o motivo." : "Não foi possível marcar como paga: confira a data."}
+          {erro === "estorno"
+            ? "Não foi possível estornar: informe o motivo."
+            : erro === "quitado"
+              ? "Não dá para estornar: o adiantamento desta despesa já teve reembolso ou compensação. Desfaça a quitação em Adiantamentos antes."
+              : "Não foi possível marcar como paga: confira a data."}
         </p>
       )}
       <dl className={styles.form} style={{ display: "grid", gridTemplateColumns: "minmax(140px, max-content) 1fr", gap: "8px 16px" }}>

@@ -14,6 +14,7 @@ import { and, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { categoriasDespesa, imoveis, lancamentos, proprietarioImoveis } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { estornar, lancar, type Lancamento, mudarEstado } from "@/financeiro/ledger";
+import { temQuitacaoAtiva } from "@/adiantamentos/adiantamentos";
 import { uuidValido } from "@/lib/ids";
 import { dataValida } from "@/reservas/regras";
 
@@ -181,13 +182,22 @@ export async function marcarDespesaPaga(db: Db, organizacaoId: string, id: strin
   });
 }
 
-/** Estorna a despesa e, junto, o adiantamento que ela gerou (se houver). */
-export async function estornarDespesa(db: Db, organizacaoId: string, id: string, motivo: string, autorId: string | null): Promise<boolean> {
+/**
+ * Estorna a despesa e, junto, o adiantamento que ela gerou (se houver). Se o adiantamento já
+ * teve quitação (reembolso, compensação…), recusa: desfazer primeiro, senão o proprietário
+ * ficaria com crédito indevido. Retorna "quitado" nesse caso.
+ */
+export async function estornarDespesa(db: Db, organizacaoId: string, id: string, motivo: string, autorId: string | null): Promise<boolean | "quitado"> {
   return db.transaction(async (tx) => {
     const d = await obterDespesa(tx, organizacaoId, id);
     if (!d || d.estornada || !motivo.trim()) return false;
     const a = await adiantamentoAtivo(tx, organizacaoId, id);
-    if (a) await estornar(tx, organizacaoId, a.id, motivo, autorId);
+    if (a) {
+      // Trava o adiantamento: uma quitação ao mesmo tempo espera ou aparece aqui.
+      await tx.select({ id: lancamentos.id }).from(lancamentos).where(eq(lancamentos.id, a.id)).for("update");
+      if (await temQuitacaoAtiva(tx, organizacaoId, a)) return "quitado" as const;
+      await estornar(tx, organizacaoId, a.id, motivo, autorId);
+    }
     await estornar(tx, organizacaoId, id, motivo, autorId);
     return true;
   });

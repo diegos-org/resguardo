@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 24/09/2026, cadastro completo do imóvel (M2.6).
+> **Última atualização:** 24/09/2026, adiantamentos e compensações (M4.4).
 
 ---
 
@@ -189,6 +189,20 @@
   sua própria escolha. **Um proprietário por imóvel** (pessoa ou empresa): o sistema não
   deixa ligar um imóvel que já tem dono a outro proprietário — primeiro tira de um, depois
   põe no outro.
+- M4.4: **adiantamentos** (Painel → Despesas → **Adiantamentos**). Quando a empresa paga uma
+  despesa que é do proprietário (ex.: reparo de R$ 4.000), nasce um adiantamento: o valor que
+  ele deve. A tela mostra, por proprietário, quanto há a cobrar e o que está contestado, e a
+  lista de adiantamentos com a situação (a cobrar, parcialmente quitado, quitado, contestado).
+  Em cada um você pode:
+  - **registrar reembolso** (total ou parcial) quando o proprietário devolver o dinheiro;
+  - **registrar contestação** — enquanto estiver contestado, ele não é cobrado nem descontado;
+    depois você resolve: **manter a cobrança** ou **a empresa assume** o valor (vira custo da
+    empresa e a dívida some);
+  - **desfazer** uma quitação lançada errado (com motivo; o histórico fica).
+  O que não for reembolsado será **descontado no repasse mensal** (M4.9). **Sem dupla
+  cobrança:** nunca se quita mais do que o valor, duas pessoas quitando ao mesmo tempo não
+  passam do total, e uma despesa cujo adiantamento já teve reembolso não pode ser estornada
+  (desfaça a quitação antes).
 - M4.1: **base do financeiro (o "livro" de lançamentos).** Cada fato financeiro vira um
   lançamento: valor bruto da reserva, taxa do canal, comissão SCL, parte do proprietário,
   recebimentos, repasses, despesas da empresa, despesas do proprietário, adiantamentos,
@@ -258,9 +272,9 @@
 |---|---|
 | ![Modelos de mensagem](docs/telas/configuracoes-mensagens.png) | ![Simulador](docs/telas/imovel-simulador.png) |
 
-| Imóvel · cadastro completo |
-|---|
-| ![Cadastro completo](docs/telas/imovel-cadastro-completo.png) |
+| Imóvel · cadastro completo | Adiantamento |
+|---|---|
+| ![Cadastro completo](docs/telas/imovel-cadastro-completo.png) | ![Adiantamento](docs/telas/adiantamento.png) |
 
 A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 

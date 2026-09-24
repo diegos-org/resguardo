@@ -579,3 +579,52 @@ export const imoveisPeriodos = pgTable(
   },
   (t) => [index("imoveis_periodos_imovel").on(t.imovelId, t.inicio)],
 );
+
+// ---------------------------------------------------------------------------
+// Adiantamentos (M4.4): como cada adiantamento ao proprietário é quitado, sem dupla cobrança
+// ---------------------------------------------------------------------------
+
+export const FORMAS_QUITACAO = ["reembolso", "compensacao", "empresa_assume"] as const;
+export type FormaQuitacao = (typeof FORMAS_QUITACAO)[number];
+
+/**
+ * Quitação (total ou parcial) de um adiantamento. A soma das quitações ativas nunca passa do
+ * valor do adiantamento. `reembolso`: o proprietário devolveu (gera lançamento de reembolso);
+ * `compensacao`: descontado no repasse mensal (M4.9, sem lançamento próprio — o repasse já
+ * paga o saldo líquido); `empresa_assume`: a empresa absorveu o custo (gera ajuste).
+ * Desfazer = marcar `desfeitaEm` e estornar o lançamento gerado.
+ */
+export const quitacoesAdiantamento = pgTable(
+  "quitacoes_adiantamento",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    adiantamentoId: uuid("adiantamento_id").notNull().references(() => lancamentos.id),
+    forma: text("forma").$type<FormaQuitacao>().notNull(),
+    valor: integer("valor").notNull(),
+    data: date("data", { mode: "string" }).notNull(),
+    lancamentoId: uuid("lancamento_id").references(() => lancamentos.id),
+    nota: text("nota").notNull().default(""),
+    criadoPor: uuid("criado_por").references(() => usuarios.id),
+    criadoEm: criadoEm(),
+    desfeitaEm: timestamp("desfeita_em", { withTimezone: true }),
+  },
+  (t) => [index("quitacoes_adiantamento_adiantamento").on(t.adiantamentoId)],
+);
+
+/** Contestação do proprietário sobre um adiantamento: enquanto aberta, ele não é cobrado. */
+export const contestacoesAdiantamento = pgTable(
+  "contestacoes_adiantamento",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    adiantamentoId: uuid("adiantamento_id").notNull().references(() => lancamentos.id),
+    motivo: text("motivo").notNull(),
+    abertaEm: timestamp("aberta_em", { withTimezone: true }).notNull().defaultNow(),
+    resolvidaEm: timestamp("resolvida_em", { withTimezone: true }),
+    /** "mantida" (volta a cobrar) | "empresa_assume" */
+    resolucao: text("resolucao"),
+    notaResolucao: text("nota_resolucao").notNull().default(""),
+  },
+  (t) => [uniqueIndex("contestacao_aberta_unica").on(t.adiantamentoId).where(sql`${t.resolvidaEm} is null`)],
+);
