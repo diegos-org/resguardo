@@ -123,3 +123,15 @@ describe("avisos e arquivo quebrado", () => {
     expect(await importarCsv(db, org, csv, null)).toMatchObject({ erroGeral: expect.stringContaining("aspas"), criadas: 0 });
   });
 });
+
+describe("imóvel inativo e valores enormes", () => {
+  it("recusa imóvel inativo e valor acima do limite do banco na conferência (nada é importado pela metade)", async () => {
+    await db.update(imoveis).set({ ativo: false }).where(eq(imoveis.codigo, "102"));
+    const csv = ["imovel;origem;codigo_canal;entrada;saida;valor_bruto", "403;airbnb;OK1;10/10/2026;12/10/2026;1.000,00", "102;airbnb;INATIVO;10/10/2026;12/10/2026;", "403;airbnb;GRANDE;20/10/2026;22/10/2026;21474836,48"].join("\n");
+    const a = await analisarCsv(db, org, csv);
+    expect(a.linhas.map((l) => l.situacao)).toEqual(["nova", "erro", "erro"]);
+    expect(a.linhas[1].erros[0]).toContain("inativo");
+    expect(a.linhas[2].erros[0]).toContain("R$ 21 milhões");
+    expect(await importarCsv(db, org, csv, null)).toMatchObject({ criadas: 1, comErro: 2 });
+  });
+});

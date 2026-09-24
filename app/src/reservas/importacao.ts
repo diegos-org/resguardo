@@ -45,8 +45,8 @@ export async function analisarCsv(db: Db, organizacaoId: string, texto: string):
     return { erroGeral: `Faltam colunas obrigatórias: ${cab.faltando.map((c) => nomes[c]).join(", ")}. Use o modelo.`, colunasIgnoradas: cab.ignoradas, linhas: [] };
   }
 
-  const lista = await db.select({ id: imoveis.id, codigo: imoveis.codigo }).from(imoveis).where(eq(imoveis.organizacaoId, organizacaoId));
-  const porCodigo = new Map(lista.map((i) => [i.codigo.toLowerCase(), i.id]));
+  const lista = await db.select({ id: imoveis.id, codigo: imoveis.codigo, ativo: imoveis.ativo }).from(imoveis).where(eq(imoveis.organizacaoId, organizacaoId));
+  const porCodigo = new Map(lista.map((i) => [i.codigo.toLowerCase(), i]));
   const vistos = new Map<string, number>();
   const linhas: LinhaAnalise[] = [];
 
@@ -57,9 +57,11 @@ export async function analisarCsv(db: Db, organizacaoId: string, texto: string):
       continue;
     }
     const resumo = `${l.imovel} · ${l.dados.origem} ${l.dados.codigoCanal} · ${dataBr(l.dados.checkin)} → ${dataBr(l.dados.checkout)}`;
-    const imovelId = porCodigo.get(l.imovel);
+    const imovel = porCodigo.get(l.imovel);
     const erros: string[] = [];
-    if (!imovelId) erros.push(`Imóvel "${l.imovel}" não cadastrado (use o código, ex.: 403).`);
+    if (!imovel) erros.push(`Imóvel "${l.imovel}" não cadastrado (use o código, ex.: 403).`);
+    // Imóvel inativo some das telas de operação: a reserva ficaria invisível.
+    else if (!imovel.ativo) erros.push(`Imóvel "${l.imovel}" está inativo. Reative-o antes de importar reservas para ele.`);
     const repetida = vistos.get(l.idFonte);
     if (repetida) erros.push(`Mesma reserva da linha ${repetida}.`);
     vistos.set(l.idFonte, l.numero);
@@ -67,7 +69,7 @@ export async function analisarCsv(db: Db, organizacaoId: string, texto: string):
       linhas.push({ numero: l.numero, situacao: "erro", resumo, erros, avisos: [] });
       continue;
     }
-    linhas.push({ numero: l.numero, situacao: "nova", resumo, erros: [], avisos: [], dados: { ...l.dados, imovelId: imovelId! }, idFonte: l.idFonte });
+    linhas.push({ numero: l.numero, situacao: "nova", resumo, erros: [], avisos: [], dados: { ...l.dados, imovelId: imovel!.id }, idFonte: l.idFonte });
   }
 
   // Já importadas antes? (mesma fonte + id) → atualiza ou igual.
