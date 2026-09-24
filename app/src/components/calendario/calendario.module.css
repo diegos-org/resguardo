@@ -113,6 +113,12 @@
   background: #ecdcb8;
 }
 
+.limpeza {
+  background: #fff;
+  border: 1px dashed #2f5d8a;
+  color: #2f5d8a;
+}
+
 .manutencao {
   background: #fff;
   border: 1px dashed #8a6d1c;

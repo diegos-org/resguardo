@@ -1,5 +1,5 @@
 {
-  "id": "eaf61252-2229-4e46-ab0f-aadfd7061f1e",
+  "id": "1bb34636-9628-4142-9b15-98ec8127e825",
   "prevId": "4a24bb95-2994-4a9e-a9dc-e4fa449a75cd",
   "version": "7",
   "dialect": "postgresql",
@@ -2233,6 +2233,219 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.limpezas": {
+      "name": "limpezas",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organizacao_id": {
+          "name": "organizacao_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "imovel_id": {
+          "name": "imovel_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reserva_id": {
+          "name": "reserva_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "data": {
+          "name": "data",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "estado": {
+          "name": "estado",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pedida'"
+        },
+        "profissional_id": {
+          "name": "profissional_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "custo": {
+          "name": "custo",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "observacao": {
+          "name": "observacao",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "cancelada_manual": {
+          "name": "cancelada_manual",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "despesa_id": {
+          "name": "despesa_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "confirmada_em": {
+          "name": "confirmada_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "realizada_em": {
+          "name": "realizada_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "criado_em": {
+          "name": "criado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "atualizado_em": {
+          "name": "atualizado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "limpezas_uma_por_reserva": {
+          "name": "limpezas_uma_por_reserva",
+          "columns": [
+            {
+              "expression": "reserva_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"limpezas\".\"reserva_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "limpezas_org_data": {
+          "name": "limpezas_org_data",
+          "columns": [
+            {
+              "expression": "organizacao_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "data",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "limpezas_organizacao_id_organizacoes_id_fk": {
+          "name": "limpezas_organizacao_id_organizacoes_id_fk",
+          "tableFrom": "limpezas",
+          "tableTo": "organizacoes",
+          "columnsFrom": [
+            "organizacao_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "limpezas_imovel_id_imoveis_id_fk": {
+          "name": "limpezas_imovel_id_imoveis_id_fk",
+          "tableFrom": "limpezas",
+          "tableTo": "imoveis",
+          "columnsFrom": [
+            "imovel_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "limpezas_reserva_id_reservas_id_fk": {
+          "name": "limpezas_reserva_id_reservas_id_fk",
+          "tableFrom": "limpezas",
+          "tableTo": "reservas",
+          "columnsFrom": [
+            "reserva_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "limpezas_profissional_id_profissionais_limpeza_id_fk": {
+          "name": "limpezas_profissional_id_profissionais_limpeza_id_fk",
+          "tableFrom": "limpezas",
+          "tableTo": "profissionais_limpeza",
+          "columnsFrom": [
+            "profissional_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "limpezas_despesa_id_lancamentos_id_fk": {
+          "name": "limpezas_despesa_id_lancamentos_id_fk",
+          "tableFrom": "limpezas",
+          "tableTo": "lancamentos",
+          "columnsFrom": [
+            "despesa_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.manutencoes": {
       "name": "manutencoes",
       "schema": "",
@@ -2612,8 +2825,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.portaria_checklists": {
-      "name": "portaria_checklists",
+    "public.profissionais_limpeza": {
+      "name": "profissionais_limpeza",
       "schema": "",
       "columns": {
         "id": {
@@ -2629,62 +2842,32 @@
           "primaryKey": false,
           "notNull": true
         },
-        "reserva_id": {
-          "name": "reserva_id",
-          "type": "uuid",
+        "nome": {
+          "name": "nome",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "aviso_inicial_em": {
-          "name": "aviso_inicial_em",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "segundo_pedido_em": {
-          "name": "segundo_pedido_em",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "pedido_final_em": {
-          "name": "pedido_final_em",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "documentos_recebidos": {
-          "name": "documentos_recebidos",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "destinatario_conferido": {
-          "name": "destinatario_conferido",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "encaminhado_em": {
-          "name": "encaminhado_em",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "entrega_confirmada_em": {
-          "name": "entrega_confirmada_em",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "pendencia": {
-          "name": "pendencia",
+        "telefone": {
+          "name": "telefone",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "default": "''"
+        },
+        "observacoes": {
+          "name": "observacoes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "ativo": {
+          "name": "ativo",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
         },
         "criado_em": {
           "name": "criado_em",
@@ -2692,20 +2875,35 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
-        },
-        "atualizado_em": {
-          "name": "atualizado_em",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "profissionais_limpeza_nome": {
+          "name": "profissionais_limpeza_nome",
+          "columns": [
+            {
+              "expression": "organizacao_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "lower(\"nome\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
-        "portaria_checklists_organizacao_id_organizacoes_id_fk": {
-          "name": "portaria_checklists_organizacao_id_organizacoes_id_fk",
-          "tableFrom": "portaria_checklists",
+        "profissionais_limpeza_organizacao_id_organizacoes_id_fk": {
+          "name": "profissionais_limpeza_organizacao_id_organizacoes_id_fk",
+          "tableFrom": "profissionais_limpeza",
           "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
@@ -2715,31 +2913,10 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
-        },
-        "portaria_checklists_reserva_id_reservas_id_fk": {
-          "name": "portaria_checklists_reserva_id_reservas_id_fk",
-          "tableFrom": "portaria_checklists",
-          "tableTo": "reservas",
-          "columnsFrom": [
-            "reserva_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "portaria_checklists_reserva_id_unique": {
-          "name": "portaria_checklists_reserva_id_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "reserva_id"
-          ]
-        }
-      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
