@@ -12,6 +12,7 @@ CREATE TABLE "ajustes" (
 	"comprovante" text DEFAULT '' NOT NULL,
 	"valor" integer,
 	"afeta" text DEFAULT 'empresa' NOT NULL,
+	"direcao" text DEFAULT 'empresa_saida' NOT NULL,
 	"esclarecido_em" timestamp with time zone,
 	"lancamento_id" uuid,
 	"criado_por" uuid,

@@ -666,6 +666,8 @@ export const ajustes = pgTable(
     valor: integer("valor"),
     /** "empresa" (resultado da empresa) ou "proprietario" (acerto com o proprietário). */
     afeta: text("afeta").notNull().default("empresa"),
+    /** Efeito escolhido (entrada/saída; crédito/débito) — guardado mesmo sem valor conhecido. */
+    direcao: text("direcao").notNull().default("empresa_saida"),
     esclarecidoEm: timestamp("esclarecido_em", { withTimezone: true }),
     lancamentoId: uuid("lancamento_id").references(() => lancamentos.id),
     criadoPor: uuid("criado_por").references(() => usuarios.id),

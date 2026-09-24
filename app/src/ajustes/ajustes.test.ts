@@ -78,6 +78,15 @@ describe("registro e esclarecimento", () => {
     expect(a).toMatchObject({ valor: null, reservaCodigo, imovelCodigo: "403", imovelId: im });
   });
 
+  it("sem valor, a direção escolhida é guardada (não vira 'entrada' ao reabrir)", async () => {
+    const r = await registrarAjuste(db, org, dados({ valor: null, direcao: "proprietario_debito" }), null);
+    if (!r.ok) throw new Error("x");
+    const a = await obterAjuste(db, org, r.id);
+    expect(direcaoDe(a!)).toBe("proprietario_debito");
+    await complementarAjuste(db, org, r.id, dados({ valor: 5000, direcao: direcaoDe(a!) }), null);
+    expect(await saldoAcerto(db, org, { proprietarioId: dono })).toBe(-5000);
+  });
+
   it("com valor e sem motivo: lançamento pendente com texto genérico; sem motivo não esclarece", async () => {
     const r = await registrarAjuste(db, org, dados(), null);
     if (!r.ok) throw new Error("x");
@@ -115,7 +124,7 @@ describe("registro e esclarecimento", () => {
     if (!r.ok) throw new Error("x");
     expect(await saldoAcerto(db, org, { proprietarioId: dono })).toBe(-15000);
     expect((await obterAjuste(db, org, r.id))?.proprietarioId).toBe(dono);
-    expect(direcaoDe({ afeta: "proprietario", valor: -15000 })).toBe("proprietario_debito");
+    expect(direcaoDe({ direcao: "", afeta: "proprietario", valor: -15000 })).toBe("proprietario_debito");
   });
 
   it("isolamento: reserva/imóvel de outra organização recusados", async () => {

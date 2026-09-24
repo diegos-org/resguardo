@@ -81,7 +81,13 @@ export function FormAjuste({ salvar, imoveis, origens, direcoes, inicial }: Prop
           {erro("origem")}
         </label>
         <label className={styles.check} style={{ alignSelf: "flex-end" }}>
-          <input type="checkbox" name="origemComprovada" defaultChecked={v("origemComprovada") === "on"} /> Origem comprovada
+          <input
+            type="checkbox"
+            name="origemComprovada"
+            // Desmarcado não vai no formulário: depois de um erro, ausência = desmarcado (sem voltar ao inicial).
+            defaultChecked={estado.valores ? estado.valores.origemComprovada === "on" : inicial.origemComprovada === "on"}
+          />{" "}
+          Origem comprovada
         </label>
       </div>
       {erro("origemComprovada")}

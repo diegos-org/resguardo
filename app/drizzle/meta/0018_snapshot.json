@@ -1,6 +1,6 @@
 {
-  "id": "83235f6c-8d24-4d45-ba67-901eab616aef",
-  "prevId": "043c6c50-7a1b-4327-9613-3fbda2a75c53",
+  "id": "b295e048-aa48-41bd-8864-58f3d3693eba",
+  "prevId": "fd123037-fd02-471d-91e0-676c31aedfb8",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -92,6 +92,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'empresa'"
+        },
+        "direcao": {
+          "name": "direcao",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'empresa_saida'"
         },
         "esclarecido_em": {
           "name": "esclarecido_em",
@@ -2665,6 +2672,12 @@
         },
         "lancamento_id": {
           "name": "lancamento_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "contestacao_id": {
+          "name": "contestacao_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false

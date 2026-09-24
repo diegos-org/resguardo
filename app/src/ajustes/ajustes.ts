@@ -195,6 +195,7 @@ export async function registrarAjuste(db: Db, org: string, d: DadosAjuste, autor
         comprovante: d.comprovante,
         valor: d.valor === null ? null : sinal * d.valor,
         afeta: DIRECOES[d.direcao].afeta,
+        direcao: d.direcao,
         criadoPor: autorId,
       })
       .returning();
@@ -241,6 +242,7 @@ export async function complementarAjuste(db: Db, org: string, id: string, d: Dad
       comprovante: d.comprovante,
       valor: d.valor === null ? null : sinal * d.valor,
       afeta: DIRECOES[d.direcao].afeta,
+      direcao: d.direcao,
     };
     const mudancas = calcularMudancas(antes, { ...antes, ...novo });
     if (!Object.keys(mudancas).length) return { ok: true as const, id };
@@ -301,8 +303,9 @@ export async function obterAjuste(db: Db, org: string, id: string): Promise<Ajus
   return (await listarAjustes(db, org, { id }))[0] ?? null;
 }
 
-/** Direção a partir do que está gravado (para preencher o formulário). */
-export function direcaoDe(a: { afeta: string; valor: number | null }): Direcao {
+/** Direção gravada (mesmo quando o valor ainda é desconhecido). */
+export function direcaoDe(a: { direcao: string; afeta: string; valor: number | null }): Direcao {
+  if (Object.hasOwn(DIRECOES, a.direcao)) return a.direcao as Direcao;
   const negativo = (a.valor ?? 0) < 0;
   return a.afeta === "proprietario" ? (negativo ? "proprietario_debito" : "proprietario_credito") : negativo ? "empresa_saida" : "empresa_entrada";
 }
