@@ -11,7 +11,7 @@ import { formatBRL } from "@/lib/money";
 import { cancelar } from "@/reservas/acoes";
 import { NOMES_ESTADO, NOMES_ORIGEM, NOMES_RECEBIMENTO, noites } from "@/reservas/regras";
 import { obterReserva } from "@/reservas/repositorio";
-import { REGRAS_PADRAO } from "@/financeiro/motor";
+import { lerRegrasFinanceiras } from "@/configuracoes/regras-financeiras";
 import { lerRecebimento } from "@/imoveis/recebimento";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 
@@ -32,8 +32,8 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
 
   // Mesma ordem do motor: reserva > configuração do imóvel para o canal > padrão do sistema.
   const doImovel = verValores ? (await lerRecebimento(db, sessao.organizacaoId, r.imovelId))[r.origem] : undefined;
-  const efetivo = r.recebimento ?? doImovel ?? REGRAS_PADRAO.recebimento[r.origem];
-  const fonte = r.recebimento ? "definido nesta reserva" : doImovel ? "configuração do imóvel" : "padrão do sistema";
+  const efetivo = r.recebimento ?? doImovel ?? (await lerRegrasFinanceiras(db, sessao.organizacaoId, r.checkin)).recebimento[r.origem];
+  const fonte = r.recebimento ? "definido nesta reserva" : doImovel ? "configuração do imóvel" : "padrão da empresa vigente na entrada";
   const quemRecebe = `${efetivo === "a_confirmar" ? "A confirmar" : NOMES_RECEBIMENTO[efetivo]} (${fonte})`;
 
   const linhas: [string, string][] = [

@@ -5,6 +5,7 @@ import { podeFazer } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import styles from "@/components/formularios.module.css";
 import { getDb } from "@/db/client";
+import { lerRegrasFinanceiras } from "@/configuracoes/regras-financeiras";
 import { hojeISO } from "@/lib/datas";
 import { NOMES_ORIGEM } from "@/reservas/regras";
 import { AUTOMACOES, ultimasExecucoes } from "@/sistema/automacoes";
@@ -32,7 +33,11 @@ export default async function Sistema() {
   } catch {
     bancoOk = false;
   }
-  const [execucoes, regras] = await Promise.all([ultimasExecucoes(db), regrasEmVigor(db, sessao.organizacaoId, hojeISO())]);
+  const [execucoes, regras, financeiras] = await Promise.all([
+    ultimasExecucoes(db),
+    regrasEmVigor(db, sessao.organizacaoId, hojeISO()),
+    lerRegrasFinanceiras(db, sessao.organizacaoId),
+  ]);
   const servicos = situacaoServicos(process.env, bancoOk);
 
   return (
@@ -117,7 +122,10 @@ export default async function Sistema() {
       <section aria-label="Regras em vigor" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <h2 style={{ fontSize: "1.25rem" }}>Regras em vigor</h2>
         <ul style={{ fontSize: "0.875rem", color: "var(--scl-texto-2)", margin: 0, paddingLeft: 18 }}>
-          <li>Comissão calculada sobre o valor que o canal repassa (depois da taxa do canal).</li>
+          <li>
+            Comissão calculada sobre {financeiras.base === "bruto" ? "o valor bruto pago pelo hóspede" : "o valor que o canal repassa (depois da taxa do canal)"}.{" "}
+            <Link href="/painel/configuracoes/regras">Mudar</Link>
+          </li>
           <li>Estadia entre meses: valor total (com limpeza) dividido igualmente por noite.</li>
           <li>Repasse e relatório mensal: dia 1º do mês seguinte.</li>
           <li>Mudança de regra vale daquela data para frente; o que já movimentou dinheiro não é recalculado.</li>

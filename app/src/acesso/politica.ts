@@ -46,7 +46,7 @@ const OPERACAO: readonly Acao[] = [
 /** Proprietário só lê, e só o que é dos seus imóveis. */
 const PROPRIETARIO: readonly Acao[] = ["imovel:ler", "reserva:ler", "calendario:ler", "financeiro:ler"];
 
-const PERMISSOES: Readonly<Record<Papel, readonly Acao[]>> = Object.freeze({
+export const PERMISSOES: Readonly<Record<Papel, readonly Acao[]>> = Object.freeze({
   admin: ACOES,
   operacao: OPERACAO,
   proprietario: PROPRIETARIO,

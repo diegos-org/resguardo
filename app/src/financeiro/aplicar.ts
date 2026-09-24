@@ -6,7 +6,8 @@ import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { estornar, lancar, type NovoLancamento } from "./ledger";
-import { calcularReserva, REGRAS_PADRAO, type RegrasMotor } from "./motor";
+import { lerRegrasFinanceiras } from "@/configuracoes/regras-financeiras";
+import { calcularReserva, type RegrasMotor } from "./motor";
 
 /** Tudo o que define o lançamento desejado: se qualquer coisa mudar, ele é refeito. */
 const assinatura = (l: NovoLancamento) =>
@@ -30,7 +31,8 @@ export async function aplicarMotor(
   organizacaoId: string,
   reservaId: string,
   autorId: string | null,
-  regras: RegrasMotor = REGRAS_PADRAO,
+  /** Sem regras: usa as da organização vigentes na data de entrada (Configurações → Regras financeiras). */
+  regras?: RegrasMotor,
 ): Promise<ResultadoAplicacao | null> {
   if (!uuidValido(reservaId)) return null;
   return db.transaction(async (tx) => {
@@ -53,7 +55,7 @@ export async function aplicarMotor(
       .from(recebimentoPorCanal)
       .where(and(eq(recebimentoPorCanal.imovelId, r.imovelId), eq(recebimentoPorCanal.organizacaoId, organizacaoId)));
     const recebimentoDoImovel = Object.fromEntries(config.map((c) => [c.origem, c.recebimento]));
-    const { lancamentos: calculados, avisos } = calcularReserva(r, contratos, donos.map((d) => d.id), regras, recebimentoDoImovel);
+    const { lancamentos: calculados, avisos } = calcularReserva(r, contratos, donos.map((d) => d.id), regras ?? (await lerRegrasFinanceiras(tx, organizacaoId, r.checkin)), recebimentoDoImovel);
     const desejados = calculados.map((l) => ({ ...l, chaveOrigem: `${l.chaveOrigem}:${assinatura(l)}` }));
 
     const doMotor = await tx
@@ -135,7 +137,8 @@ export async function recalcularReservas(
   organizacaoId: string,
   f: { imovelId?: string; aPartirDe?: string } = {},
   autorId: string | null = null,
-  regras: RegrasMotor = REGRAS_PADRAO,
+  /** Sem regras: usa as da organização vigentes na data de entrada (Configurações → Regras financeiras). */
+  regras?: RegrasMotor,
 ): Promise<ResultadoRecalculo> {
   if (f.imovelId && !uuidValido(f.imovelId)) return { reservas: 0, criados: 0, estornados: 0 };
   // Nunca antes de hoje: mesmo uma regra com data no passado só vale daqui para frente.

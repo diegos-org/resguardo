@@ -25,7 +25,7 @@ export const SECOES: readonly Secao[] = [
   { slug: "manutencao", titulo: "Manutenção", marco: "M6.2", descricao: "Pedidos, orçamentos, aprovação e custos de manutenção." , exige: "manutencao:ler" },
   { slug: "mensagens", titulo: "Mensagens", marco: "M10.1", descricao: "Caixa de entrada do WhatsApp e mensagens programadas." , exige: "mensagem:ler" },
   { slug: "sistema", titulo: "Sistema", marco: "M1.6", descricao: "Serviços ligados, automações e regras em vigor." , exige: "configuracao:editar" },
-  { slug: "configuracoes", titulo: "Configurações", marco: "M1.2", descricao: "Usuários, permissões e integrações." , exige: "usuario:gerenciar" },
+  { slug: "configuracoes", titulo: "Configurações", marco: "M1.7", descricao: "Empresa, usuários, regras financeiras, integrações, categorias, modelos de mensagem e textos do site." , exige: "configuracao:editar" },
 ];
 
 /** Só as seções que este papel pode abrir. */

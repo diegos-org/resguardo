@@ -1,5 +1,6 @@
 "use server";
 
+import { nomeDaEmpresa } from "@/configuracoes/empresa";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -33,13 +34,14 @@ export async function convidar(_a: EstadoConvite, form: FormData): Promise<Estad
   if (!r.ok) return { erro: r.erro };
   const link = await endereco(`/convite/${r.token}`);
   const correio = correioDoAmbiente();
+  const empresa = await nomeDaEmpresa(getDb(), sessao.organizacaoId);
   if (correio) {
     after(async () => {
       try {
         await correio.enviar({
           para: r.convite.email,
-          assunto: "Convite para o portal da Sua Casa Leblon",
-          texto: `Olá! Você foi convidado para acompanhar seus imóveis no portal da Sua Casa Leblon.\n\nAbra o link abaixo e entre com este e-mail (${r.convite.email}). O convite vale por 7 dias e só pode ser usado uma vez.\n\n${link}\n\nSe você não esperava este convite, ignore este e-mail.`,
+          assunto: `Convite para o portal da ${empresa}`,
+          texto: `Olá! Você foi convidado para acompanhar seus imóveis no portal da ${empresa}.\n\nAbra o link abaixo e entre com este e-mail (${r.convite.email}). O convite vale por 7 dias e só pode ser usado uma vez.\n\n${link}\n\nSe você não esperava este convite, ignore este e-mail.`,
         });
       } catch (e) {
         console.error("[convite] falha ao enviar e-mail", e);

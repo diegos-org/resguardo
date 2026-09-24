@@ -30,6 +30,11 @@ export function situacao(c: Pick<Convite, "aceitoEm" | "revogadoEm" | "expiraEm"
   return "pendente";
 }
 
+/** Trava por e-mail (até o fim da transação) usada ao criar convite e usuário da equipe. */
+export async function travarEmail(db: Db, email: string): Promise<void> {
+  await db.execute(sql`select pg_advisory_xact_lock(hashtext(${`acesso-email:${normalizarEmail(email)}`}))`);
+}
+
 export type ResultadoCriacao = { ok: true; convite: Convite; token: string } | { ok: false; erro: string };
 
 export async function criarConvite(
@@ -44,6 +49,7 @@ export async function criarConvite(
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 200) return { ok: false, erro: "E-mail inválido." };
   if (!uuidValido(proprietarioId)) return { ok: false, erro: "Proprietário não encontrado." };
   return db.transaction(async (tx) => {
+    await travarEmail(tx, email);
     const [p] = await tx
       .select({ id: proprietarios.id, ativo: proprietarios.ativo })
       .from(proprietarios)

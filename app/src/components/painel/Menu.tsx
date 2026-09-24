@@ -17,7 +17,8 @@ export function Menu({ papel }: { papel: Papel }) {
       <ul className={styles.menu}>
         {itens.map((item) => {
           const href = item.slug ? `/painel/${item.slug}` : "/painel";
-          const ativo = atual === href;
+          // Subpáginas (ex.: /painel/configuracoes/regras) marcam a seção de cima.
+          const ativo = atual === href || (item.slug !== "" && atual.startsWith(`${href}/`));
           return (
             <li key={href}>
               <Link href={href + filtros} className={ativo ? styles.ativo : undefined} aria-current={ativo ? "page" : undefined}>

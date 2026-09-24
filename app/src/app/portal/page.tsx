@@ -4,6 +4,7 @@ import { signOut } from "@/acesso/auth";
 import { obterSessao } from "@/acesso/sessao-atual";
 import { getDb } from "@/db/client";
 import { imoveis } from "@/db/schema";
+import { nomeDaEmpresa } from "@/configuracoes/empresa";
 
 /** Porta de entrada do proprietário. O portal completo (relatórios, saldos, PDF) é o M5. */
 export default async function Portal() {
@@ -13,6 +14,7 @@ export default async function Portal() {
   const meus = sessao.imovelIds.length
     ? await getDb().select({ codigo: imoveis.codigo, nome: imoveis.nome }).from(imoveis).where(inArray(imoveis.id, sessao.imovelIds))
     : [];
+  const empresa = await nomeDaEmpresa(getDb(), sessao.organizacaoId);
   async function sair() {
     "use server";
     await signOut({ redirectTo: "/entrar" });
@@ -31,7 +33,7 @@ export default async function Portal() {
           ))}
         </ul>
       ) : (
-        <p>Nenhum imóvel ligado ao seu cadastro ainda. Fale com a Sua Casa Leblon.</p>
+        <p>Nenhum imóvel ligado ao seu cadastro ainda. Fale com a {empresa}.</p>
       )}
       <form action={sair} style={{ marginTop: 32 }}>
         <button type="submit" style={{ font: "inherit", padding: "6px 14px", borderRadius: 6, border: "1px solid #d8d0c0", background: "#fff", cursor: "pointer" }}>

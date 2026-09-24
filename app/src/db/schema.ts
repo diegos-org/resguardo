@@ -477,3 +477,44 @@ export const execucoesAutomacao = pgTable(
   },
   (t) => [index("execucoes_automacao_nome").on(t.nome, t.iniciadoEm)],
 );
+
+// ---------------------------------------------------------------------------
+// Configurações (M1.7): um lugar só para cada regra/texto editável da organização
+// ---------------------------------------------------------------------------
+
+/**
+ * Configuração da organização por chave ("empresa", "regras_financeiras", "textos_site").
+ * O formato de cada valor é validado no código (`src/configuracoes`), e o resto do sistema
+ * lê daqui — nada de uma segunda cópia da mesma regra.
+ */
+export const configuracoes = pgTable(
+  "configuracoes",
+  {
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    chave: text("chave").notNull(),
+    valor: jsonb("valor").notNull(),
+    atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+    atualizadoPor: uuid("atualizado_por").references(() => usuarios.id),
+  },
+  (t) => [primaryKey({ columns: [t.organizacaoId, t.chave] })],
+);
+
+/**
+ * Modelo de mensagem (M1.7) com variáveis como {hospede} e {checkin}. As mensagens
+ * programadas (M9.2) e o WhatsApp (M10) usam estes modelos. Arquivar em vez de apagar.
+ */
+export const modelosMensagem = pgTable(
+  "modelos_mensagem",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    nome: text("nome").notNull(),
+    /** Quando é usado (texto livre, ex.: "2 dias antes do check-in, 10h"). */
+    quando: text("quando").notNull().default(""),
+    texto: text("texto").notNull(),
+    ativo: boolean("ativo").notNull().default(true),
+    criadoEm: criadoEm(),
+    atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("modelos_mensagem_nome").on(t.organizacaoId, sql`lower(${t.nome})`)],
+);
