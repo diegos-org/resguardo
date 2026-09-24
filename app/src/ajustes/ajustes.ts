@@ -6,7 +6,7 @@
  * não é inventado: fica sem lançamento até alguém completar. Texto genérico não é
  * conciliação: o ajuste fica PENDENTE até ser esclarecido (motivo e valor conhecidos).
  */
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
 import { ajustes, imoveis, ORIGENS_AJUSTE, type OrigemAjuste, proprietarioImoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
@@ -297,10 +297,16 @@ export async function esclarecerAjuste(db: Db, org: string, id: string, autorId:
   });
 }
 
-export async function listarAjustes(db: Db, org: string, f: { pendentes?: boolean; id?: string } = {}): Promise<Ajuste[]> {
+/** `imovelIds`: só ajustes desses imóveis (proprietário vê só os dele; lista vazia = nenhum). */
+export async function listarAjustes(db: Db, org: string, f: { pendentes?: boolean; id?: string; imovelIds?: string[] } = {}): Promise<Ajuste[]> {
   const c = [eq(ajustes.organizacaoId, org)];
   if (f.pendentes) c.push(isNull(ajustes.esclarecidoEm));
   if (f.id) c.push(eq(ajustes.id, f.id));
+  if (f.imovelIds) {
+    const ids = f.imovelIds.filter(uuidValido);
+    if (!ids.length) return [];
+    c.push(inArray(ajustes.imovelId, ids));
+  }
   const linhas = await db
     .select({ a: ajustes, reservaCodigo: reservas.codigo, imovelCodigo: imoveis.codigo })
     .from(ajustes)

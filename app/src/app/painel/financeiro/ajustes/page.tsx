@@ -12,7 +12,8 @@ const dataBr = (d: string) => d.split("-").reverse().join("/");
 export default async function Ajustes() {
   const sessao = await exigirSessaoPainel();
   if (!podeFazer(sessao.papel, "financeiro:ler")) redirect("/painel");
-  const lista = await listarAjustes(getDb(), sessao.organizacaoId);
+  // Proprietário só vê ajustes dos imóveis dele (deny-by-default).
+  const lista = await listarAjustes(getDb(), sessao.organizacaoId, sessao.papel === "proprietario" ? { imovelIds: [...sessao.imovelIds] } : {});
   return (
     <>
       <div className={styles.topo}>
