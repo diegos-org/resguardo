@@ -80,7 +80,7 @@ describe("destinoPainel", () => {
   it("admin e operação entram; proprietário e hóspede não", () => {
     expect(destinoPainel({ ...base, papel: "admin" }).ok).toBe(true);
     expect(destinoPainel({ ...base, papel: "operacao" }).ok).toBe(true);
-    expect(destinoPainel({ ...base, papel: "proprietario" })).toEqual({ ok: false, redirecionar: "/entrar?erro=sem-acesso" });
+    expect(destinoPainel({ ...base, papel: "proprietario" })).toEqual({ ok: false, redirecionar: "/portal" });
     expect(destinoPainel({ ...base, papel: "hospede" }).ok).toBe(false);
   });
 });

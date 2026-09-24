@@ -160,6 +160,29 @@ export const proprietarioUsuarios = pgTable(
   (t) => [primaryKey({ columns: [t.proprietarioId, t.usuarioId] })],
 );
 
+/**
+ * Convite de proprietário para o portal (M1.4). O link leva um token aleatório; o banco
+ * guarda só o hash. Uso único (`aceitoEm`), validade (`expiraEm`) e revogação.
+ */
+export const convites = pgTable(
+  "convites",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    proprietarioId: uuid("proprietario_id").notNull().references(() => proprietarios.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    expiraEm: timestamp("expira_em", { withTimezone: true }).notNull(),
+    criadoPor: uuid("criado_por").references(() => usuarios.id),
+    criadoEm: criadoEm(),
+    aceitoEm: timestamp("aceito_em", { withTimezone: true }),
+    aceitoPor: uuid("aceito_por").references(() => usuarios.id),
+    revogadoEm: timestamp("revogado_em", { withTimezone: true }),
+    revogadoPor: uuid("revogado_por").references(() => usuarios.id),
+  },
+  (t) => [uniqueIndex("convites_token").on(t.tokenHash), index("convites_proprietario").on(t.proprietarioId)],
+);
+
 // ---------------------------------------------------------------------------
 // Auditoria (M1.5): registro só de inclusão de quem mudou o quê e quando
 // ---------------------------------------------------------------------------
