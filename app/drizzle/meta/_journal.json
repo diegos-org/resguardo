@@ -127,6 +127,13 @@
       "when": 1790218635215,
       "tag": "0017_adiantamentos",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790219880561,
+      "tag": "0018_ajustes",
+      "breakpoints": true
     }
   ]
 }

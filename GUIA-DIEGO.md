@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 24/09/2026, adiantamentos e compensações (M4.4).
+> **Última atualização:** 24/09/2026, ajustes e divergências (M4.5).
 
 ---
 
@@ -203,6 +203,19 @@
   cobrança:** nunca se quita mais do que o valor, duas pessoas quitando ao mesmo tempo não
   passam do total, e uma despesa cujo adiantamento já teve reembolso não pode ser estornada
   (desfaça a quitação antes).
+- M4.5: **ajustes e divergências** (Painel → **Financeiro** → Ajustes). Achou uma diferença
+  (ex.: o Airbnb pagou R$ 150 a menos)? Registre no mesmo dia: data, reserva (código) ou
+  imóvel, o efeito (entrou/saiu dinheiro da empresa, ou a empresa deve/o proprietário deve),
+  o valor e **o que foi consultado** (obrigatório). Regras, como você pediu:
+  - sem motivo conhecido, a descrição fica "Ajuste de reserva — motivo não identificado";
+  - "feito pelo Airbnb" (ou outro) só aparece se você marcar **origem comprovada**;
+  - valor desconhecido não é inventado: fica em branco e nada entra no financeiro até você
+    completar;
+  - o ajuste fica **pendente** até ser esclarecido, e só pode ser esclarecido com motivo e
+    valor conhecidos. Depois de esclarecido, não muda mais (se precisar, registre outro).
+  Dá para completar depois (motivo, origem, valor, comprovante); o financeiro é corrigido
+  sozinho e o histórico guarda cada mudança. A página Financeiro mostra quantos ajustes
+  estão pendentes (o painel com os números do mês chega no M4.6).
 - M4.1: **base do financeiro (o "livro" de lançamentos).** Cada fato financeiro vira um
   lançamento: valor bruto da reserva, taxa do canal, comissão SCL, parte do proprietário,
   recebimentos, repasses, despesas da empresa, despesas do proprietário, adiantamentos,
@@ -275,6 +288,10 @@
 | Imóvel · cadastro completo | Adiantamento |
 |---|---|
 | ![Cadastro completo](docs/telas/imovel-cadastro-completo.png) | ![Adiantamento](docs/telas/adiantamento.png) |
+
+| Ajuste esclarecido |
+|---|
+| ![Ajuste](docs/telas/ajuste.png) |
 
 A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 
