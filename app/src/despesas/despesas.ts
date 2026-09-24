@@ -14,7 +14,7 @@ import { and, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { categoriasDespesa, imoveis, lancamentos, proprietarioImoveis } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { estornar, lancar, type Lancamento, mudarEstado } from "@/financeiro/ledger";
-import { temQuitacaoAtiva } from "@/adiantamentos/adiantamentos";
+import { encerrarContestacaoAberta, quitacaoAtiva } from "@/adiantamentos/adiantamentos";
 import { uuidValido } from "@/lib/ids";
 import { dataValida } from "@/reservas/regras";
 
@@ -185,9 +185,10 @@ export async function marcarDespesaPaga(db: Db, organizacaoId: string, id: strin
 /**
  * Estorna a despesa e, junto, o adiantamento que ela gerou (se houver). Se o adiantamento já
  * teve quitação (reembolso, compensação…), recusa: desfazer primeiro, senão o proprietário
- * ficaria com crédito indevido. Retorna "quitado" nesse caso.
+ * ficaria com crédito indevido. Retorna "quitado" (desfazer em Adiantamentos) ou "compensacao"
+ * (descontado num repasse: só estornando o repasse) nesse caso.
  */
-export async function estornarDespesa(db: Db, organizacaoId: string, id: string, motivo: string, autorId: string | null): Promise<boolean | "quitado"> {
+export async function estornarDespesa(db: Db, organizacaoId: string, id: string, motivo: string, autorId: string | null): Promise<boolean | "quitado" | "compensacao"> {
   if (!uuidValido(id)) return false;
   return db.transaction(async (tx) => {
     // Trava a despesa primeiro: um "marcar como paga" ao mesmo tempo (que também trava esta
@@ -199,8 +200,11 @@ export async function estornarDespesa(db: Db, organizacaoId: string, id: string,
     if (a) {
       // Trava o adiantamento: uma quitação ao mesmo tempo espera ou aparece aqui.
       await tx.select({ id: lancamentos.id }).from(lancamentos).where(eq(lancamentos.id, a.id)).for("update");
-      if (await temQuitacaoAtiva(tx, organizacaoId, a)) return "quitado" as const;
+      const quitacao = await quitacaoAtiva(tx, organizacaoId, a);
+      if (quitacao) return quitacao;
       await estornar(tx, organizacaoId, a.id, motivo, autorId);
+      // A dívida deixou de existir: uma contestação aberta sobre ela é encerrada junto.
+      await encerrarContestacaoAberta(tx, organizacaoId, a.id, `Despesa estornada: ${motivo}`);
     }
     await estornar(tx, organizacaoId, id, motivo, autorId);
     return true;

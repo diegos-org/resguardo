@@ -321,14 +321,26 @@ export async function resolverContestacao(
   });
 }
 
-/** Tem quitação ativa? (bloqueia estornar a despesa que gerou o adiantamento) */
-export async function temQuitacaoAtiva(db: Db, organizacaoId: string, adiantamento: Pick<Lancamento, "id">): Promise<boolean> {
-  const [q] = await db
-    .select({ id: quitacoesAdiantamento.id })
+/**
+ * Quitações ativas do adiantamento: bloqueiam estornar a despesa que o gerou. Devolve a forma
+ * que manda no caminho de volta: "compensacao" (só estornando o repasse) ou "quitado" (desfazer
+ * a quitação em Adiantamentos). Null = nenhuma.
+ */
+export async function quitacaoAtiva(db: Db, organizacaoId: string, adiantamento: Pick<Lancamento, "id">): Promise<"compensacao" | "quitado" | null> {
+  const qs = await db
+    .select({ forma: quitacoesAdiantamento.forma })
     .from(quitacoesAdiantamento)
-    .where(and(eq(quitacoesAdiantamento.organizacaoId, organizacaoId), eq(quitacoesAdiantamento.adiantamentoId, adiantamento.id), isNull(quitacoesAdiantamento.desfeitaEm)))
-    .limit(1);
-  return Boolean(q);
+    .where(and(eq(quitacoesAdiantamento.organizacaoId, organizacaoId), eq(quitacoesAdiantamento.adiantamentoId, adiantamento.id), isNull(quitacoesAdiantamento.desfeitaEm)));
+  if (!qs.length) return null;
+  return qs.some((q) => q.forma === "compensacao") ? "compensacao" : "quitado";
+}
+
+/** Encerra a contestação aberta de um adiantamento que deixou de existir (despesa estornada). */
+export async function encerrarContestacaoAberta(db: Db, organizacaoId: string, adiantamentoId: string, motivo: string): Promise<void> {
+  await db
+    .update(contestacoesAdiantamento)
+    .set({ resolvidaEm: new Date(), resolucao: "despesa_estornada", notaResolucao: motivo.slice(0, 500) })
+    .where(and(eq(contestacoesAdiantamento.organizacaoId, organizacaoId), eq(contestacoesAdiantamento.adiantamentoId, adiantamentoId), isNull(contestacoesAdiantamento.resolvidaEm)));
 }
 
 /** Resumo por proprietário: quanto deve de adiantamentos em aberto (sem contestados). */
