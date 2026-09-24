@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { registrarAjuste } from "@/ajustes/ajustes";
+import { complementarAjuste, type DadosAjuste, esclarecerAjuste, registrarAjuste } from "@/ajustes/ajustes";
 import { criarContrato } from "@/contratos/repositorio";
 import { imoveis, lancamentos, organizacoes, proprietarioImoveis, proprietarios, proprietarioUsuarios, reservas, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
@@ -154,6 +154,16 @@ describe("resumo do portal", () => {
     expect(await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo })).toMatchObject({ acertoPendente: 0, emConferencia: true });
     // De outro imóvel/dono, não.
     expect(await resumoDoProprietario(db, org, { proprietarioIds: [outro], imovelIds: [b], periodo })).toMatchObject({ emConferencia: false });
+  });
+
+  it("ajuste complementado e esclarecido: o pendente estornado não deixa 'em conferência' para sempre", async () => {
+    const dados: DadosAjuste = { data: "2026-10-26", imovelId: a, reservaId: null, proprietarioId: null, motivo: "Dano no imóvel", origem: "desconhecida", origemComprovada: false, evidencia: "Vistoria", comprovante: "", valor: 5000, direcao: "proprietario_credito" };
+    const r = await registrarAjuste(db, org, dados, null);
+    if (!r.ok) throw new Error("ajuste");
+    expect((await complementarAjuste(db, org, r.id, { ...dados, valor: 6000 }, null)).ok).toBe(true);
+    expect(await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo })).toMatchObject({ acertoPendente: 6000, emConferencia: true });
+    expect((await esclarecerAjuste(db, org, r.id, null)).ok).toBe(true);
+    expect(await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo })).toMatchObject({ acerto: 72250 - 20000 + 6000, acertoPendente: 0, emConferencia: false });
   });
 
   it("não vê imóvel de outro dono, nem 'todos' quando a lista vem vazia", async () => {

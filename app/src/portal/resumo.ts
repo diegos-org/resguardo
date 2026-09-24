@@ -92,6 +92,12 @@ export async function resumoDoProprietario(
   // se o imóvel foi A→B→A, a parte antiga de A, já estornada, não faz a reserva de B ser de A.
   const estorno = alias(lancamentos, "estorno");
   const ativo = and(isNull(lancamentos.estornoDe), not(exists(db.select({ um: sql`1` }).from(estorno).where(eq(estorno.estornoDe, lancamentos.id)))));
+  // Em conferência: só o pendente em vigor (como no fechamento do mês). Um pendente já
+  // estornado (ajuste complementado/esclarecido, reserva recalculada) não conta mais.
+  const [pendente] = await db
+    .select({ n: sql<number>`count(*)::int`, total: sum(lancamentos.efeitoSaldo) })
+    .from(lancamentos)
+    .where(and(base, inArray(lancamentos.proprietarioId, donos), eq(lancamentos.estado, "pendente"), ativo));
   // Valores das reservas: as que têm a parte do proprietário lançada para ele no período.
   const reservasDele = db
     .selectDistinct({ id: lancamentos.reservaId })
@@ -157,7 +163,7 @@ export async function resumoDoProprietario(
     // O que ainda está em conferência (ajuste a esclarecer, acerto pendente) fica à parte,
     // como no fechamento do mês: não aparece como definitivo.
     acerto: dele.filter((x) => x.estado !== "pendente").reduce((t, x) => t + Number(x.acerto ?? 0), 0),
-    acertoPendente: dele.filter((x) => x.estado === "pendente").reduce((t, x) => t + Number(x.acerto ?? 0), 0),
-    emConferencia: dele.some((x) => x.estado === "pendente") || (abertos?.n ?? 0) > 0,
+    acertoPendente: Number(pendente?.total ?? 0),
+    emConferencia: (pendente?.n ?? 0) > 0 || (abertos?.n ?? 0) > 0,
   };
 }
