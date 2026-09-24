@@ -49,7 +49,10 @@ export async function cidadesDosImoveis(db: Db, organizacaoId: string): Promise<
 }
 
 export async function salvarConfigAgenda(db: Db, organizacaoId: string, c: ConfigAgenda, autorId: string | null): Promise<{ ok: true } | { ok: false; erro: string }> {
-  const cidades = await cidadesDosImoveis(db, organizacaoId);
+  // Cidades válidas: as dos imóveis ativos e as já configuradas (imóvel renomeado ou inativado
+  // não vira "todas as cidades" por engano: a escolha continua como estava).
+  const anterior = await lerConfigAgenda(db, organizacaoId);
+  const cidades = [...(await cidadesDosImoveis(db, organizacaoId)), ...anterior.destinatarios.flatMap((d) => d.cidades)];
   const vistos = new Set<string>();
   const destinatarios: Destinatario[] = [];
   for (const d of c.destinatarios) {
@@ -184,6 +187,10 @@ export function textoDoItem(i: ItemAgenda): string {
   return `${i.tipo === "entrada" ? "Entrada" : "Saída"} ${i.imovel} — ${nome}, ${pessoas(i.hospedes)} (${i.reserva})`;
 }
 
+export function textoDaNova(n: NovaReserva): string {
+  return `${n.imovel}: entrada ${diaCurto(n.checkin)}, saída ${diaCurto(n.checkout)} — ${n.hospede || "hóspede sem nome"}, ${pessoas(n.hospedes)} (${n.reserva})`;
+}
+
 /** Texto simples do e-mail, só com as cidades pedidas (vazio = todas). */
 export function textoDaAgenda(a: Agenda, cidades: readonly string[] = []): string {
   const secoes = a.secoes.filter((s) => !cidades.length || cidades.includes(s.cidade));
@@ -197,7 +204,7 @@ export function textoDaAgenda(a: Agenda, cidades: readonly string[] = []): strin
     }
     if (s.novas.length) {
       linhas.push("Reservas novas desde a última agenda:");
-      for (const n of s.novas) linhas.push(`  - ${n.imovel}: entrada ${diaCurto(n.checkin)}, saída ${diaCurto(n.checkout)} — ${n.hospede || "hóspede sem nome"}, ${pessoas(n.hospedes)} (${n.reserva})`);
+      for (const n of s.novas) linhas.push(`  - ${textoDaNova(n)}`);
     }
     linhas.push("");
   }
@@ -258,7 +265,9 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
       r.falhas.push(`${d.email}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
-  if (r.enviados) {
+  // O marco das "reservas novas" só anda quando todos receberam: quem falhou recebe, na nova
+  // tentativa, as mesmas reservas novas.
+  if (r.enviados && !r.falhas.length) {
     await db
       .insert(appSettings)
       .values({ key: chaveUltima(organizacaoId), value: { em: agora.toISOString() } })

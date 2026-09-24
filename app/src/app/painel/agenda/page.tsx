@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { podeFazer } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { enviarAgoraAcao, salvarAgendaAcao } from "@/agenda/acoes";
-import { cidadesDosImoveis, DIAS_AGENDA, diaCurto, lerConfigAgenda, previaDaAgenda, textoDoItem } from "@/agenda/agenda";
+import { cidadesDosImoveis, DIAS_AGENDA, diaCurto, lerConfigAgenda, previaDaAgenda, textoDaNova, textoDoItem } from "@/agenda/agenda";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import styles from "@/components/formularios.module.css";
 import { getDb } from "@/db/client";
@@ -13,13 +13,15 @@ export default async function Agenda({ searchParams }: PageProps<"/painel/agenda
   const params = await searchParams;
   const db = getDb();
   const configurar = podeFazer(sessao.papel, "configuracao:editar");
-  const [{ agenda, ultima }, config, cidades] = await Promise.all([
+  const [{ agenda, ultima }, config, ativas] = await Promise.all([
     previaDaAgenda(db, sessao.organizacaoId),
     lerConfigAgenda(db, sessao.organizacaoId),
     cidadesDosImoveis(db, sessao.organizacaoId),
   ]);
   const salvo = typeof params.salvo === "string" ? params.salvo : undefined;
   const erro = typeof params.erro === "string" ? params.erro : undefined;
+  // Cidades já escolhidas continuam na tela mesmo sem imóvel ativo (senão salvar viraria "todas").
+  const cidades = [...new Set([...ativas, ...config.destinatarios.flatMap((d) => d.cidades)])].sort((a, b) => a.localeCompare(b, "pt-BR"));
   // Linhas do formulário: os destinatários atuais e duas em branco para acrescentar.
   const linhas = [...config.destinatarios, { email: "", cidades: [] }, { email: "", cidades: [] }];
 
@@ -72,9 +74,7 @@ export default async function Agenda({ searchParams }: PageProps<"/painel/agenda
               <strong>Reservas novas desde a última agenda</strong>
               <ul style={{ margin: "2px 0 0", paddingLeft: 18 }}>
                 {s.novas.map((n) => (
-                  <li key={n.reserva}>
-                    {n.imovel}: entrada {diaCurto(n.checkin)}, saída {diaCurto(n.checkout)} — {n.hospede || "hóspede sem nome"} ({n.reserva})
-                  </li>
+                  <li key={n.reserva}>{textoDaNova(n)}</li>
                 ))}
               </ul>
             </div>
@@ -100,6 +100,7 @@ export default async function Agenda({ searchParams }: PageProps<"/painel/agenda
                   {cidades.map((c) => (
                     <label key={c} className={styles.check}>
                       <input type="checkbox" name={`cidade_${i}`} value={c} defaultChecked={d.cidades.includes(c)} /> {c}
+                      {!ativas.includes(c) && " (sem imóvel ativo)"}
                     </label>
                   ))}
                 </span>

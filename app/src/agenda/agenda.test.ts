@@ -6,7 +6,7 @@ import type { Db } from "@/db/types";
 import { type Correio, CorreioMemoria } from "@/email/correio";
 import type { DadosReserva } from "@/reservas/regras";
 import { criarReserva } from "@/reservas/repositorio";
-import { enviarAgenda, lerConfigAgenda, montarAgenda, salvarConfigAgenda, textoDaAgenda } from "./agenda";
+import { enviarAgenda, lerConfigAgenda, montarAgenda, salvarConfigAgenda, textoDaAgenda, ultimaAgenda } from "./agenda";
 import { agendaDeTodas } from "./cron";
 
 let db: Db;
@@ -115,6 +115,38 @@ describe("configuração e envio", () => {
       await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: " Equipe@Example.com ", cidades: [] }, { email: "", cidades: [] }] }, null),
     ).toEqual({ ok: true });
     expect(await lerConfigAgenda(db, org)).toEqual({ ativa: true, destinatarios: [{ email: "equipe@example.com", cidades: [] }] });
+  });
+
+  it("cidade já escolhida continua valendo mesmo sem imóvel ativo (não vira 'todas')", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "buzios@example.com", cidades: ["Armação dos Búzios"] }] }, null);
+    await db.update(imoveis).set({ ativo: false }).where(eq(imoveis.id, buzios));
+    // A tela reenvia a cidade já configurada: continua aceita e o destinatário não passa a receber o Rio.
+    expect(await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "buzios@example.com", cidades: ["Armação dos Búzios"] }] }, null)).toEqual({ ok: true });
+    const correio = new CorreioMemoria();
+    await enviarAgenda(db, org, correio, AGORA);
+    expect(correio.enviadas[0].texto).not.toContain("Rio de Janeiro");
+    expect(correio.enviadas[0].texto).toContain("Nenhum imóvel ativo nas cidades deste destinatário.");
+  });
+
+  it("o marco das reservas novas só anda quando todos receberam", async () => {
+    await nova(rio, "2026-12-20", "2026-12-27", "2026-10-01T15:00:00Z");
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }, { email: "b@example.com", cidades: [] }] }, null);
+    const enviadas: string[] = [];
+    const meioQuebrado: Correio = {
+      nome: "meio",
+      enviar: async (m) => {
+        if (m.para === "b@example.com") throw new Error("HTTP 500");
+        enviadas.push(m.texto);
+      },
+    };
+    expect(await enviarAgenda(db, org, meioQuebrado, AGORA)).toMatchObject({ enviados: 1, falhas: [expect.stringContaining("b@example.com")] });
+    expect(await ultimaAgenda(db, org)).toBeNull();
+    const correio = new CorreioMemoria();
+    expect(await enviarAgenda(db, org, correio, new Date(AGORA.getTime() + 600_000))).toMatchObject({ enviados: 1, jaEnviados: 1 });
+    // Quem falhou recebe as mesmas reservas novas.
+    expect(correio.enviadas[0]).toMatchObject({ para: "b@example.com" });
+    expect(correio.enviadas[0].texto).toContain("entrada dom 20/12");
+    expect(await ultimaAgenda(db, org)).not.toBeNull();
   });
 
   it("envia uma vez por dia a cada destinatário, com as cidades dele; manual não bloqueia o das 20h", async () => {
