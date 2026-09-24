@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 24/09/2026, Configurações (M1.7).
+> **Última atualização:** 24/09/2026, importação de reservas por planilha (M3.6).
 
 ---
 
@@ -170,6 +170,21 @@
   sua própria escolha. **Um proprietário por imóvel** (pessoa ou empresa): o sistema não
   deixa ligar um imóvel que já tem dono a outro proprietário — primeiro tira de um, depois
   põe no outro.
+- M3.6: **importar reservas de uma planilha** (Painel → Reservas → **Importar planilha**),
+  enquanto o Beds24 não está ligado. Baixe o modelo, preencha (ou exporte de outro lugar) e
+  salve do Excel como "CSV separado por ponto e vírgula". Colunas obrigatórias: imóvel
+  (código, ex.: 403), origem (airbnb, booking, site, direta ou outro), código da reserva no
+  canal, entrada e saída (DD/MM/AAAA). Opcionais: situação, hóspedes, nome, e-mail,
+  telefone, cidade, valor bruto, taxa do canal, valor líquido, observações.
+  - Primeiro o sistema **confere** (não grava nada) e mostra linha a linha: nova, a atualizar,
+    já importada e igual, ou com erro (e qual o erro). Também avisa se a reserva cruza com
+    outra no mesmo imóvel.
+  - Depois você clica em **Importar**: só as linhas sem erro entram, e o financeiro de cada
+    reserva é calculado na hora.
+  - Importar o mesmo arquivo de novo **não duplica**: a reserva é reconhecida pela origem +
+    código do canal, e o que mudou é atualizado.
+  - Acentos funcionam tanto em arquivo do Excel brasileiro quanto em UTF-8. Só o
+    administrador importa (a planilha traz valores).
 - M4.1: **base do financeiro (o "livro" de lançamentos).** Cada fato financeiro vira um
   lançamento: valor bruto da reserva, taxa do canal, comissão SCL, parte do proprietário,
   recebimentos, repasses, despesas da empresa, despesas do proprietário, adiantamentos,
