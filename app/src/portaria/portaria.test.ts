@@ -122,7 +122,10 @@ describe("lista de portaria", () => {
     expect(await reg({ tipo: "destinatario", conferido: true })).toEqual({ ok: true });
     expect(await reg({ tipo: "encaminhado", data: hoje })).toEqual({ ok: true });
     expect((await listarPortaria(db, org, { hoje, ate: "2026-11-05" }))[0].passo).toBe("confirmar_entrega");
+    expect(await reg({ tipo: "entrega_confirmada", data: "2026-10-04" })).toMatchObject({ ok: false, erro: expect.stringContaining("antes do encaminhamento") });
     expect(await reg({ tipo: "entrega_confirmada", data: hoje })).toEqual({ ok: true });
+    expect(await reg({ tipo: "encaminhado", data: "2026-10-06" })).toMatchObject({ ok: false }); // futuro
+    expect(await reg({ tipo: "segundo_pedido", data: "2026-10-04" })).toMatchObject({ ok: false, erro: expect.stringContaining("antes do aviso inicial") });
     expect(await reg({ tipo: "pendencia", texto: "  Portaria pediu foto legível  " })).toEqual({ ok: true });
     const [l] = await listarPortaria(db, org, { hoje, ate: "2026-11-05" });
     expect(l).toMatchObject({ passo: "concluido", pendencia: "Portaria pediu foto legível", destinatarioConferido: true });
@@ -139,6 +142,7 @@ describe("lista de portaria", () => {
     if (!ra.ok) throw new Error("reserva");
     expect(await registrarPortaria(db, outra.id, ra.reserva.id, { tipo: "aviso_inicial", data: "2026-10-05" }, "2026-10-05", null)).toMatchObject({ ok: false });
     await db.update(reservas).set({ estado: "cancelada" }).where(eq(reservas.id, ra.reserva.id));
+    expect(await registrarPortaria(db, org, ra.reserva.id, { tipo: "aviso_inicial", data: "2026-10-05" }, "2026-10-05", null)).toMatchObject({ ok: false, erro: expect.stringContaining("não está confirmada") });
     expect(await listarPortaria(db, org, { hoje: "2026-10-05", ate: "2026-11-05" })).toEqual([]);
   });
 });

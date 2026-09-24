@@ -164,6 +164,34 @@ const CAMPO_DATA = {
   entrega_confirmada: "entregaConfirmadaEm",
 } as const;
 
+/** Cada sequência precisa de datas em ordem: pedidos (aviso → segundo → final) e encaminhamento → entrega. */
+const SEQUENCIAS: (keyof typeof CAMPO_DATA)[][] = [
+  ["aviso_inicial", "segundo_pedido", "pedido_final"],
+  ["encaminhado", "entrega_confirmada"],
+];
+const NOME_PASSO: Record<keyof typeof CAMPO_DATA, string> = {
+  aviso_inicial: "do aviso inicial",
+  segundo_pedido: "do segundo pedido",
+  pedido_final: "do pedido final",
+  encaminhado: "do encaminhamento",
+  entrega_confirmada: "da entrega",
+};
+
+/** Mensagem se a data quebra a ordem da sequência (comparada com os passos já registrados). */
+function foraDeOrdem(c: Checklist, tipo: keyof typeof CAMPO_DATA, data: string): string | null {
+  const seq = SEQUENCIAS.find((x) => x.includes(tipo))!;
+  const i = seq.indexOf(tipo);
+  for (const antes of seq.slice(0, i)) {
+    const d = c[CAMPO_DATA[antes]];
+    if (d && data < d) return `A data não pode ser antes ${NOME_PASSO[antes]} (${br(d)}).`;
+  }
+  for (const depois of seq.slice(i + 1)) {
+    const d = c[CAMPO_DATA[depois]];
+    if (d && data > d) return `A data não pode ser depois ${NOME_PASSO[depois]} (${br(d)}).`;
+  }
+  return null;
+}
+
 /** Registra um passo da lista (cria a lista da reserva na primeira vez). Com trava e histórico. */
 export async function registrarPortaria(db: Db, organizacaoId: string, reservaId: string, reg: Registro, hoje: string, autorId: string | null): Promise<Resultado> {
   if (!uuidValido(reservaId)) return { ok: false, erro: "Reserva não encontrada." };
@@ -174,6 +202,7 @@ export async function registrarPortaria(db: Db, organizacaoId: string, reservaId
       .where(and(eq(reservas.id, reservaId), eq(reservas.organizacaoId, organizacaoId)))
       .for("update");
     if (!r) return { ok: false as const, erro: "Reserva não encontrada." };
+    if (r.estado !== "confirmada") return { ok: false as const, erro: "A reserva não está confirmada: a lista de portaria só vale para reservas confirmadas." };
     if (!(await imoveisComPortaria(tx, organizacaoId)).includes(r.imovelId)) return { ok: false as const, erro: "Este imóvel não exige documentos de portaria." };
     await tx.insert(portariaChecklists).values({ organizacaoId, reservaId }).onConflictDoNothing();
     const [antes] = await tx.select().from(portariaChecklists).where(eq(portariaChecklists.reservaId, reservaId)).for("update");
@@ -195,6 +224,8 @@ export async function registrarPortaria(db: Db, organizacaoId: string, reservaId
         if (r.hospedes === null || antes.documentosRecebidos < r.hospedes) return { ok: false as const, erro: "Ainda faltam documentos (ou o número de hóspedes não está na reserva)." };
       }
       if (reg.tipo === "entrega_confirmada" && !antes.encaminhadoEm) return { ok: false as const, erro: "Registre o encaminhamento antes de confirmar a entrega." };
+      const fora = foraDeOrdem(antes, reg.tipo, reg.data);
+      if (fora) return { ok: false as const, erro: fora };
       novo = { [CAMPO_DATA[reg.tipo]]: reg.data };
     }
     const [depois] = await tx
