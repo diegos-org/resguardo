@@ -280,6 +280,13 @@ describe("dados e acesso", () => {
     expect(await relatorioDoPainel(db, admin(), dona, { mes: "2026-10", imoveis: [], anexos: {} }, AGORA)).toMatchObject({ ok: true });
   });
 
+  it("painel: imóvel ligado depois do mês não entra no relatório daquele mês", async () => {
+    // O vínculo da dona foi criado agora; num mês que acabou antes disso, sem lançamento dela, não há imóvel.
+    const r = await relatorioDoPainel(db, admin(), dona, { mes: "2025-01", imoveis: [], anexos: {} }, AGORA);
+    expect(r).toMatchObject({ ok: false, status: 400, erro: expect.stringContaining("neste mês") });
+    expect(await relatorioDoPainel(db, admin(), dona, { mes: "2025-01", imoveis: ["403"], anexos: {} }, AGORA)).toMatchObject({ ok: false, status: 400 });
+  });
+
   it("painel: ex-proprietário continua com o relatório dos meses em que o imóvel era dele", async () => {
     // O 403 passa para outro dono: o vínculo da dona é apagado, o livro de outubro continua dela.
     await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));

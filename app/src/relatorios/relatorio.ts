@@ -3,7 +3,7 @@
  * rodapé), montados como textos da primeira página do PDF. Nada é recalculado aqui — uma regra,
  * um lugar: o PDF, o portal e o painel leem as mesmas funções.
  */
-import { and, asc, eq, gte, inArray, isNotNull, lt, or } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNotNull, lt, or, sql } from "drizzle-orm";
 import { imoveis, lancamentos, proprietarioImoveis, proprietarios, representantes } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { lerEmpresa, NOME_EMPRESA_INICIAL } from "@/configuracoes/empresa";
@@ -39,16 +39,24 @@ export type DadosRelatorio = {
 };
 
 /**
- * Imóveis do relatório de um proprietário (painel): os ligados a ele hoje e, com um período, também
+ * Imóveis do relatório de um proprietário (painel): os ligados a ele (com período: ligados antes do
+ * fim dele) e, com um período, também
  * os que têm lançamento dele no livro nesse período — o imóvel que já passou para outro dono continua
  * no relatório dos meses em que foi dele (o vínculo atual é apagado na troca de dono).
  */
 export async function imoveisDoProprietario(db: Db, organizacaoId: string, proprietarioId: string, periodo?: { inicio: string; fim: string }): Promise<ImovelDoRelatorio[]> {
   if (!uuidValido(proprietarioId)) return [];
+  // Vínculo atual só conta a partir da data dele (dia em São Paulo), como na regra de posse do
+  // portal: um imóvel ligado depois do mês pedido não entra no relatório daquele mês.
   const ligados = db
     .select({ id: proprietarioImoveis.imovelId })
     .from(proprietarioImoveis)
-    .where(eq(proprietarioImoveis.proprietarioId, proprietarioId));
+    .where(
+      and(
+        eq(proprietarioImoveis.proprietarioId, proprietarioId),
+        periodo ? sql`(${proprietarioImoveis.criadoEm} at time zone 'America/Sao_Paulo')::date < ${periodo.fim}::date` : undefined,
+      ),
+    );
   const doLivro = periodo
     ? db
         .select({ id: lancamentos.imovelId })
