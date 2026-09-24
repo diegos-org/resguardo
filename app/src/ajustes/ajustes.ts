@@ -13,10 +13,7 @@ import type { Db } from "@/db/types";
 import { estornar, lancar, mudarEstado } from "@/financeiro/ledger";
 import { reaisParaCentavos } from "@/lib/dinheiro-form";
 import { uuidValido } from "@/lib/ids";
-import { dataValida } from "@/reservas/regras";
-
-/** Limite das colunas integer do Postgres (≈ R$ 21 milhões). */
-const CENTAVOS_MAXIMO = 2_147_483_647;
+import { CENTAVOS_MAXIMO, dataValida } from "@/reservas/regras";
 
 export const NOMES_ORIGEM_AJUSTE: Record<OrigemAjuste, string> = {
   airbnb: "Airbnb",
