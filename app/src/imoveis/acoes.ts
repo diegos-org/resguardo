@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { exigir } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { getDb } from "@/db/client";
+import { ORIGENS_RESERVA } from "@/db/schema";
+import { type ConfigRecebimento, salvarRecebimento } from "./recebimento";
 import { atualizarImovel, CodigoDuplicado, criarImovel } from "./repositorio";
 import { type ErrosImovel, validarImovel } from "./validacao";
 
@@ -32,4 +34,22 @@ export async function salvarImovel(_anterior: EstadoFormImovel, form: FormData):
 
   revalidatePath("/painel", "layout");
   redirect("/painel/imoveis?salvo=1");
+}
+
+export type EstadoRecebimento = { ok?: boolean; mensagem?: string };
+
+/** "Quem recebe o pagamento" por canal, para este imóvel. Só quem edita o financeiro. */
+export async function salvarRecebimentoAcao(_a: EstadoRecebimento, form: FormData): Promise<EstadoRecebimento> {
+  const sessao = await exigirSessaoPainel();
+  exigir(sessao, "financeiro:editar", { organizacaoId: sessao.organizacaoId });
+  const imovelId = String(form.get("imovelId") ?? "");
+  const config: ConfigRecebimento = {};
+  for (const origem of ORIGENS_RESERVA) {
+    const v = String(form.get(`recebimento_${origem}`) ?? "");
+    if (v === "split" || v === "empresa") config[origem] = v;
+  }
+  const ok = await salvarRecebimento(getDb(), sessao.organizacaoId, imovelId, config, sessao.usuarioId);
+  if (!ok) return { mensagem: "Não foi possível salvar." };
+  revalidatePath(`/painel/imoveis/${imovelId}`);
+  return { ok: true };
 }

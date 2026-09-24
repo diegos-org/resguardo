@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef } from "react";
 import type { EstadoIdExterno } from "@/canais/acoes";
 import { type IdExterno, NOMES_CANAL } from "@/canais/ids-externos";
 import styles from "../formularios.module.css";
+import { BotaoConfirmar } from "../BotaoConfirmar";
 
 type Props = {
   imovelId: string;
@@ -38,9 +39,12 @@ export function IdsExternos({ imovelId, lista, adicionar, remover }: Props) {
               <form action={remover}>
                 <input type="hidden" name="imovelId" value={imovelId} />
                 <input type="hidden" name="registroId" value={r.id} />
-                <button type="submit" style={{ font: "inherit", fontSize: "0.875rem", background: "none", border: "1px solid #d8d0c0", borderRadius: 6, padding: "2px 10px", cursor: "pointer" }}>
+                <BotaoConfirmar
+                  pergunta={`Remover a ligação ${NOMES_CANAL[r.canal]} ${r.idExterno}? As reservas desse canal deixam de ser ligadas a este imóvel.`}
+                  style={{ font: "inherit", fontSize: "0.875rem", background: "none", border: "1px solid #d8d0c0", borderRadius: 6, padding: "2px 10px", cursor: "pointer" }}
+                >
                   Remover
-                </button>
+                </BotaoConfirmar>
               </form>
             </li>
           ))}

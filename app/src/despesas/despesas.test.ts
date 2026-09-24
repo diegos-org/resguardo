@@ -120,13 +120,10 @@ describe("despesas", () => {
     expect(await saldoAcerto(db, org, { proprietarioId: dono })).toBe(0);
   });
 
-  it("imóvel com dois proprietários exige escolher um vinculado", async () => {
-    const [{ id: outro }] = await db.insert(proprietarios).values({ organizacaoId: org, nome: "Outro" }).returning();
-    await db.insert(proprietarioImoveis).values({ proprietarioId: outro, imovelId: im });
+  it("proprietário informado precisa ser o do imóvel", async () => {
     const [{ id: estranho }] = await db.insert(proprietarios).values({ organizacaoId: org, nome: "Estranho" }).returning();
-    expect(await registrarDespesa(db, org, despesa({ responsavel: "proprietario", imovelId: im }), null)).toMatchObject({ ok: false, erros: { proprietarioId: expect.stringContaining("mais de um") } });
     expect(await registrarDespesa(db, org, despesa({ responsavel: "proprietario", imovelId: im, proprietarioId: estranho }), null)).toMatchObject({ ok: false });
-    expect(await registrarDespesa(db, org, despesa({ responsavel: "proprietario", imovelId: im, proprietarioId: outro }), null)).toMatchObject({ ok: true, lancamento: { proprietarioId: outro } });
+    expect(await registrarDespesa(db, org, despesa({ responsavel: "proprietario", imovelId: im, proprietarioId: dono }), null)).toMatchObject({ ok: true, lancamento: { proprietarioId: dono } });
   });
 
   it("validações: valor, data, categoria arquivada ou de outra organização, imóvel de outra organização", async () => {

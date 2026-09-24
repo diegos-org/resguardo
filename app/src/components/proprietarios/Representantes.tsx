@@ -5,6 +5,7 @@ import type { EstadoForm } from "@/proprietarios/acoes";
 import type { Representante } from "@/proprietarios/repositorio";
 import type { DadosRepresentante } from "@/proprietarios/validacao";
 import styles from "../formularios.module.css";
+import { BotaoConfirmar } from "../BotaoConfirmar";
 
 type Props = {
   proprietarioId: string;
@@ -43,9 +44,12 @@ export function Representantes({ proprietarioId, lista, adicionar, remover }: Pr
               <form action={remover}>
                 <input type="hidden" name="proprietarioId" value={proprietarioId} />
                 <input type="hidden" name="representanteId" value={r.id} />
-                <button type="submit" style={{ font: "inherit", fontSize: "0.875rem", background: "none", border: "1px solid #d8d0c0", borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>
+                <BotaoConfirmar
+                  pergunta={`Remover o representante ${r.nome}?`}
+                  style={{ font: "inherit", fontSize: "0.875rem", background: "none", border: "1px solid #d8d0c0", borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}
+                >
                   Remover
-                </button>
+                </BotaoConfirmar>
               </form>
             </li>
           ))}

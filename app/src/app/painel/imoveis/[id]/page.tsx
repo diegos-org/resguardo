@@ -12,7 +12,10 @@ import { listarContratos } from "@/contratos/repositorio";
 import { hojeISO } from "@/lib/datas";
 import { FormImovel } from "@/components/imoveis/FormImovel";
 import { getDb } from "@/db/client";
-import { salvarImovel } from "@/imoveis/acoes";
+import { Recebimento } from "@/components/imoveis/Recebimento";
+import { REGRAS_PADRAO } from "@/financeiro/motor";
+import { salvarImovel, salvarRecebimentoAcao } from "@/imoveis/acoes";
+import { lerRecebimento } from "@/imoveis/recebimento";
 import { obterImovel } from "@/imoveis/repositorio";
 
 export default async function EditarImovel({ params }: PageProps<"/painel/imoveis/[id]">) {
@@ -21,10 +24,11 @@ export default async function EditarImovel({ params }: PageProps<"/painel/imovei
   const { id } = await params;
   const imovel = await obterImovel(getDb(), sessao.organizacaoId, id);
   if (!imovel) notFound();
-  const [historico, contratos, ids] = await Promise.all([
+  const [historico, contratos, ids, recebimento] = await Promise.all([
     historicoDe(getDb(), sessao.organizacaoId, "imovel", imovel.id),
     listarContratos(getDb(), sessao.organizacaoId, imovel.id),
     listarIdsExternos(getDb(), sessao.organizacaoId, imovel.id),
+    lerRecebimento(getDb(), sessao.organizacaoId, imovel.id),
   ]);
   return (
     <>
@@ -41,6 +45,9 @@ export default async function EditarImovel({ params }: PageProps<"/painel/imovei
         encerrar={encerrar}
         podeEditar={podeFazer(sessao.papel, "financeiro:editar")}
       />
+      {podeFazer(sessao.papel, "financeiro:editar") && (
+        <Recebimento imovelId={imovel.id} config={recebimento} padrao={REGRAS_PADRAO.recebimento} salvar={salvarRecebimentoAcao} />
+      )}
       <HistoricoAlteracoes linhas={historico} />
     </>
   );

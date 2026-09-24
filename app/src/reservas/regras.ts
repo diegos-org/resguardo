@@ -12,7 +12,7 @@ export const NOMES_ORIGEM: Record<OrigemReserva, string> = {
   airbnb: "Airbnb",
   booking: "Booking.com",
   site: "Site",
-  direta: "Direta",
+  direta: "Direta (WhatsApp, indicação)",
   outro: "Outro",
 };
 

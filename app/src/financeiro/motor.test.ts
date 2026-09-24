@@ -66,6 +66,15 @@ describe("calcularReserva", () => {
     expect(lancamentos.find((l) => l.tipo === "direito_proprietario")).toMatchObject({ efeitoSaldo: 0, estado: "previsto" });
   });
 
+  it("ordem de prioridade: reserva > configuração do imóvel > padrão", () => {
+    const direito = (r: Partial<ReservaParaMotor>, imovel = {}) =>
+      calcularReserva(reserva(r), quinzePorCento, ["p1"], REGRAS_PADRAO, imovel).lancamentos.find((l) => l.tipo === "direito_proprietario")!.efeitoSaldo;
+    expect(direito({ origem: "booking" })).toBe(108375); // padrão: empresa recebe
+    expect(direito({ origem: "booking" }, { booking: "split" })).toBe(0); // imóvel diz split
+    expect(direito({ origem: "booking", recebimento: "empresa" }, { booking: "split" })).toBe(108375); // reserva manda
+    expect(direito({ origem: "airbnb" }, { airbnb: "empresa" })).toBe(108375);
+  });
+
   it("regra 'a confirmar' (para canal novo): acerto pendente e aviso", () => {
     const regras = { ...REGRAS_PADRAO, recebimento: { ...REGRAS_PADRAO.recebimento, outro: "a_confirmar" as const } };
     const { lancamentos, avisos } = calcularReserva(reserva({ origem: "outro" }), quinzePorCento, ["p1"], regras);

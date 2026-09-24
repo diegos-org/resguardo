@@ -5,6 +5,7 @@ import type { EstadoContrato } from "@/contratos/acoes";
 import type { Contrato } from "@/contratos/repositorio";
 import { bpParaTexto, COMISSAO_PADRAO_BP, NOMES_TIPO } from "@/contratos/regras";
 import styles from "../formularios.module.css";
+import { BotaoConfirmar } from "../BotaoConfirmar";
 
 type Acao = (a: EstadoContrato, f: FormData) => Promise<EstadoContrato>;
 type Props = { imovelId: string; lista: Contrato[]; hoje: string; criar: Acao; encerrar: Acao; podeEditar: boolean };
@@ -18,9 +19,13 @@ function Encerrar({ c, imovelId, acao }: { c: Contrato; imovelId: string; acao: 
       <input type="hidden" name="contratoId" value={c.id} />
       <input type="hidden" name="imovelId" value={imovelId} />
       <input type="date" name="fim" required aria-label="Último dia do contrato" min={c.inicio} style={{ font: "inherit", padding: 4 }} />
-      <button type="submit" disabled={enviando} style={{ font: "inherit", fontSize: "0.875rem", padding: "4px 10px", borderRadius: 6, border: "1px solid #d8d0c0", background: "#fff", cursor: "pointer" }}>
+      <BotaoConfirmar
+        pergunta="Encerrar este contrato na data escolhida? Não dá para estender depois, só criar um contrato novo."
+        disabled={enviando}
+        style={{ font: "inherit", fontSize: "0.875rem", padding: "4px 10px", borderRadius: 6, border: "1px solid #d8d0c0", background: "#fff", cursor: "pointer" }}
+      >
         Encerrar
-      </button>
+      </BotaoConfirmar>
       {estado.mensagem && <span className={styles.erro}>{estado.mensagem}</span>}
     </form>
   );

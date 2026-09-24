@@ -135,7 +135,7 @@ export const representantes = pgTable("representantes", {
   criadoEm: criadoEm(),
 });
 
-/** Quais imóveis pertencem a quais proprietários. */
+/** Quais imóveis pertencem a quais proprietários (cada imóvel tem UM proprietário). */
 export const proprietarioImoveis = pgTable(
   "proprietario_imoveis",
   {
@@ -143,7 +143,8 @@ export const proprietarioImoveis = pgTable(
     imovelId: uuid("imovel_id").notNull().references(() => imoveis.id, { onDelete: "cascade" }),
     criadoEm: criadoEm(),
   },
-  (t) => [primaryKey({ columns: [t.proprietarioId, t.imovelId] })],
+  // Um proprietário por imóvel (decisão de Diego, 24/09): o dinheiro vai para uma conta só.
+  (t) => [primaryKey({ columns: [t.proprietarioId, t.imovelId] }), uniqueIndex("proprietario_imoveis_um_dono").on(t.imovelId)],
 );
 
 /**
@@ -325,6 +326,23 @@ export const reservas = pgTable(
     uniqueIndex("reservas_fonte").on(t.organizacaoId, t.fonte, t.idFonte).where(sql`${t.idFonte} <> ''`),
     index("reservas_imovel_periodo").on(t.imovelId, t.checkin, t.checkout),
   ],
+);
+
+/**
+ * Quem recebe o pagamento, por imóvel e por canal (Diego, 24/09): vale para todas as
+ * reservas desse imóvel naquele canal, a menos que a própria reserva diga outra coisa.
+ * Sem linha aqui, vale o padrão do sistema (Airbnb = split; demais = empresa).
+ */
+export const recebimentoPorCanal = pgTable(
+  "recebimento_por_canal",
+  {
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    imovelId: uuid("imovel_id").notNull().references(() => imoveis.id, { onDelete: "cascade" }),
+    origem: origemReservaEnum("origem").notNull(),
+    recebimento: recebimentoReservaEnum("recebimento").notNull(),
+    atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.imovelId, t.origem] })],
 );
 
 /** Bloqueio de calendário (manutenção, uso do proprietário, bloqueio de canal…). Fim exclusivo, como o checkout. */

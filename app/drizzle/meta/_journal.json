@@ -92,6 +92,13 @@
       "when": 1790207897174,
       "tag": "0012_convites",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790209976270,
+      "tag": "0013_recebimento_por_imovel",
+      "breakpoints": true
     }
   ]
 }

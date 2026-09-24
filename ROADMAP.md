@@ -50,6 +50,7 @@ item muda a linha para `feito` **no próprio PR do item**.
 | M1.3 | Login por código enviado por e-mail (uso único, validade, limite de tentativas) — provedor de e-mail com adaptador trocável; em teste, e-mails ficam em memória | feito | M1.2 |
 | M1.4 | Convite de proprietário: token único, validade, uso único, revogação, aceite registrado | feito | M1.3 |
 | M1.5 | Log de auditoria (quem alterou o quê, quando) usado por todos os módulos | feito | M1.1 |
+| M1.6 | Área "Sistema" no painel: serviços ligados (banco, Beds24, e-mail, WhatsApp, Mercado Pago) com situação, automações/rotinas com última execução, e as regras em vigor (comissões, recebimento, contratos) com atalho para editar | a fazer | M1.2 |
 
 ### M2 — Cadastros
 
@@ -61,6 +62,7 @@ item muda a linha para `feito` **no próprio PR do item**.
 | M2.4 | IDs externos: mapeamento imóvel ↔ Beds24 / Airbnb / Booking | feito | M2.1 |
 | M2.5 | Script de carga inicial (seed) com dados fictícios para homologação | feito | M2.3 |
 | M2.6 | Cadastro completo do imóvel: endereço completo, camas/comodidades, regras da casa, horários de entrada/saída, taxas (limpeza, hóspede extra), regras de venda (estadia mínima/máxima com exceções por período, antecedência, dias de chegada/saída), preço base e preço dinâmico (liga/desliga); tudo editável no painel (Diego 24/09) | a fazer | M2.1 |
+| M2.7 | Quem recebe o pagamento por imóvel e por canal (Airbnb, Booking, site, direta/WhatsApp); um proprietário por imóvel; confirmação ao excluir; recálculo automático quando a regra muda | feito | M4.2 |
 
 ### M3 — Reservas e calendário
 
@@ -114,7 +116,7 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 
 | ID | Item | Estado | Depende de |
 |---|---|---|---|
-| M7.1 | Migrar `prototipos/scl-publico` para o app (home, catálogo 5 imóveis, página, galeria, consulta) lendo imóveis do banco | a fazer | M2.1 |
+| M7.1 | Migrar `prototipos/scl-publico` para o app (home, catálogo 5 imóveis, página, galeria, consulta) lendo imóveis do banco; textos do site editáveis no painel | a fazer | M2.1 |
 | M7.2 | Disponibilidade e cotação reais a partir das reservas/preços sincronizados | a fazer | M7.1, M3.3 |
 | M7.3 | Fotos reais (upload privado → Vercel Blob) quando Diego liberar os direitos de uso | bloqueado | Diego: autorizar fotos |
 
@@ -132,7 +134,7 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 | ID | Item | Estado | Depende de |
 |---|---|---|---|
 | M9.1 | Portal do hóspede: acesso por código/magic link ao contato já associado; dados da própria reserva | a fazer | M1.3, M3.1 |
-| M9.2 | Mensagens programadas (confirmação, check-in D-2 10h, checkout D-1 14h, agradecimento D+3 10h), jobs idempotentes | a fazer | M9.1 |
+| M9.2 | Mensagens programadas (confirmação, check-in D-2 10h, checkout D-1 14h, agradecimento D+3 10h), jobs idempotentes; modelos de mensagem editáveis no painel | a fazer | M9.1 |
 
 ### M10 — WhatsApp (Meta Cloud API)
 
@@ -174,7 +176,7 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 ## Pendências de decisão (não bloqueiam o início)
 
 - Competência × caixa no financeiro.
-- Inclusão de Búzios no sistema interno (modelado com `publico = false` até decidir).
+- Búzios: fica no sistema interno para controle (decidido 24/09); se entra no site público, a decidir.
 - Avaliações próprias × só Airbnb.
 
 ## Decisões registradas
@@ -183,3 +185,6 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
   estadia entre meses rateada igualmente por noite (valor total, com limpeza); Airbnb faz
   split automático (proprietário recebe direto); Booking/site/direta: empresa recebe tudo e
   repassa uma vez por mês.
+- 24/09 (Diego): quem recebe é configurável por imóvel e por canal (padrão: Airbnb split);
+  um proprietário por imóvel (pessoa ou empresa); imóveis do Diego são clientes normais;
+  tudo editável pelo painel, uma regra num lugar só, exclusão com confirmação.

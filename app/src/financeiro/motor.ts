@@ -7,9 +7,10 @@
  * - Competência: rateio IGUAL por noite do valor total (diárias + limpeza), sem olhar a
  *   diária de cada dia (estadia 29/10→02/11 = 3 noites em outubro, 1 em novembro); a soma
  *   dos meses é sempre exatamente o total.
- * - Quem recebe o dinheiro: o que estiver gravado na reserva ("split" = o canal paga a parte
- *   do proprietário direto a ele → não gera dívida da empresa; "empresa" = a empresa recebe
- *   tudo e deve a parte do proprietário → entra no acerto). Sem isso, vale a regra da origem:
+ * - Quem recebe o dinheiro ("split" = o canal paga a parte do proprietário direto a ele →
+ *   não gera dívida da empresa; "empresa" = a empresa recebe tudo e deve a parte do
+ *   proprietário → entra no acerto), nesta ordem: o que estiver gravado na reserva; a
+ *   configuração do imóvel para aquele canal; e, sem nada disso, o padrão do sistema:
  *   Airbnb = split (configurado assim nas contas da SCL); Booking, site e direta = empresa
  *   recebe e repassa no fechamento mensal. "a_confirmar" deixa o acerto pendente.
  * - Acerto pendente também quando o imóvel não tem proprietário ou tem mais de um (as cotas
@@ -88,6 +89,8 @@ export function calcularReserva(
   /** Proprietários vinculados ao imóvel. */
   donos: readonly string[],
   regras: RegrasMotor = REGRAS_PADRAO,
+  /** Configuração do imóvel: quem recebe, por canal (sobrepõe o padrão). */
+  recebimentoDoImovel: Partial<Record<OrigemReserva, RecebimentoReserva>> = {},
 ): ResultadoMotor {
   const avisos: string[] = [];
   if (r.estado === "cancelada") return { lancamentos: [], avisos: ["Reserva cancelada: sem lançamentos."] };
@@ -102,7 +105,7 @@ export function calcularReserva(
   const bp = contrato.comissaoBp;
   const comissaoTotal = comissao(base, bp);
   const direitoTotal = base - comissaoTotal;
-  const quemRecebe = r.recebimento ?? regras.recebimento[r.origem];
+  const quemRecebe = r.recebimento ?? recebimentoDoImovel[r.origem] ?? regras.recebimento[r.origem];
   const proprietarioId = donos.length === 1 ? donos[0] : null;
   if (donos.length === 0) avisos.push("Imóvel sem proprietário vinculado: acerto pendente.");
   if (donos.length > 1) avisos.push("Imóvel com mais de um proprietário: acerto pendente até definir a cota de cada um.");

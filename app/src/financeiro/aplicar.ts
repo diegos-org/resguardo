@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { listarContratos } from "@/contratos/repositorio";
-import { lancamentos, proprietarioImoveis, reservas } from "@/db/schema";
+import { lancamentos, proprietarioImoveis, recebimentoPorCanal, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
 import { estornar, lancar, type NovoLancamento } from "./ledger";
@@ -47,7 +47,12 @@ export async function aplicarMotor(
       .from(proprietarioImoveis)
       .where(eq(proprietarioImoveis.imovelId, r.imovelId))
       .orderBy(asc(proprietarioImoveis.proprietarioId));
-    const { lancamentos: calculados, avisos } = calcularReserva(r, contratos, donos.map((d) => d.id), regras);
+    const config = await tx
+      .select({ origem: recebimentoPorCanal.origem, recebimento: recebimentoPorCanal.recebimento })
+      .from(recebimentoPorCanal)
+      .where(and(eq(recebimentoPorCanal.imovelId, r.imovelId), eq(recebimentoPorCanal.organizacaoId, organizacaoId)));
+    const recebimentoDoImovel = Object.fromEntries(config.map((c) => [c.origem, c.recebimento]));
+    const { lancamentos: calculados, avisos } = calcularReserva(r, contratos, donos.map((d) => d.id), regras, recebimentoDoImovel);
     const desejados = calculados.map((l) => ({ ...l, chaveOrigem: `${l.chaveOrigem}:${assinatura(l)}` }));
 
     const doMotor = await tx

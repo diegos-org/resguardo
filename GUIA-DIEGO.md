@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 24/09/2026, regras de comissão confirmadas por você e novos itens no plano.
+> **Última atualização:** 24/09/2026, quem recebe por imóvel e canal, um proprietário por imóvel e confirmação ao excluir (M2.7).
 
 ---
 
@@ -124,6 +124,14 @@
   como detalhe, o número do quarto). Qualquer informação estranha vira uma
   **divergência** para conferir — nunca uma reserva inventada. Ainda falta a sua chave
   de API para ligar de verdade (próximo item, M3.3).
+- M2.7: **quem recebe o pagamento, por imóvel e por canal.** Na ficha de cada imóvel, seção
+  "Quem recebe o pagamento": para Airbnb, Booking, site, direta (WhatsApp, indicação) e
+  outros, você escolhe "canal paga o proprietário direto" ou "empresa recebe e repassa" (ou
+  deixa o padrão: Airbnb direto ao proprietário, os demais pela empresa). Ao salvar, o
+  financeiro das reservas daquele imóvel é recalculado. Uma reserva específica ainda pode ter
+  sua própria escolha. **Um proprietário por imóvel** (pessoa ou empresa): o sistema não
+  deixa ligar um imóvel que já tem dono a outro proprietário — primeiro tira de um, depois
+  põe no outro.
 - M4.1: **base do financeiro (o "livro" de lançamentos).** Cada fato financeiro vira um
   lançamento: valor bruto da reserva, taxa do canal, comissão SCL, parte do proprietário,
   recebimentos, repasses, despesas da empresa, despesas do proprietário, adiantamentos,
@@ -291,11 +299,23 @@ ambiente).
   OTA, proprietário ganhando mais e a SCL também ganhando — para você escolher. (M12.1)
 - **Data do repasse mensal** (Booking/site/direta): último dia do mês ou dia 1º do mês
   seguinte? (M4.9)
-- **Algum imóvel tem mais de um proprietário?** Se sim, a cota de cada um.
-- **Búzios** no sistema interno: por ora entra cadastrado, mas fora do site público.
+- **Búzios:** fica no sistema interno para controle (combinado). No site público, a decidir.
 - **Avaliações**: só no Airbnb ou também próprias.
 
 **Respostas:**
+- **Tudo editável por você, sem código nem banco:** virou regra do projeto (está no
+  `CLAUDE.md`, que toda sessão do Claude segue): cadastros, contratos, taxas, regras de venda,
+  textos do site, modelos de mensagem, categorias — tudo com tela de edição. E **uma regra
+  fica num lugar só**: quando você muda (um contrato, quem recebe num canal), o sistema
+  recalcula o que depende dela na hora; a cada nova versão publicada, recalcula tudo. Não
+  ficam duas versões da mesma regra.
+- **Excluir com confirmação:** todo botão de excluir, remover, cancelar ou estornar agora
+  pergunta "tem certeza?" antes. Onde há histórico (financeiro, reservas), o sistema
+  prefere arquivar ou estornar em vez de apagar de vez.
+- **Área para ver serviços, automações e regras:** entrou no plano como **M1.6** — uma
+  página "Sistema" no painel mostrando os serviços ligados (banco, Beds24, e-mail,
+  WhatsApp, Mercado Pago) e se estão funcionando, as automações com a última vez que
+  rodaram, e as regras em vigor, com atalho para editar.
 - **Recebimento do site com divisão automática (como o Airbnb):** existe. O **Mercado Pago**
   tem o modelo "marketplace": cada proprietário liga a conta Mercado Pago dele ao nosso
   sistema, e cada pagamento cai direto na conta dele com a comissão da SCL separada

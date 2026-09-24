@@ -10,6 +10,7 @@ import { obterImovel } from "@/imoveis/repositorio";
 import { hojeISO } from "@/lib/datas";
 import { formatBRL } from "@/lib/money";
 import { obterProprietario } from "@/proprietarios/repositorio";
+import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 
 const dataBr = (d: string | null) => (d ? d.split("-").reverse().join("/") : "—");
 const ehLink = (s: string) => /^https:\/\//i.test(s);
@@ -115,9 +116,9 @@ export default async function DetalheDespesa({ params, searchParams }: PageProps
             </label>
           </div>
           <div className={styles.acoes}>
-            <button type="submit" style={{ background: "#b3261e" }}>
+            <BotaoConfirmar pergunta="Estornar esta despesa? Ela deixa de contar (o histórico fica guardado)." style={{ background: "#b3261e" }}>
               Estornar
-            </button>
+            </BotaoConfirmar>
           </div>
         </form>
       )}
