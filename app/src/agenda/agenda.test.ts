@@ -469,6 +469,25 @@ describe("configuração e envio", () => {
     expect(correio.enviadas[2].texto).toContain("entrada seg 10/01");
   });
 
+  it("marcas diárias concluídas de mais de 3 dias saem; pendentes e recentes ficam", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    const k = (data: string, manual = false) => `agenda-diaria${manual ? "-manual" : ""}:${org}:${data}:a@example.com`;
+    await db.insert(appSettings).values([
+      { key: k("2026-09-20"), value: { em: "x", estado: "enviado" } },
+      { key: k("2026-09-21", true), value: { em: "x", estado: "resolvido" } },
+      { key: k("2026-09-22"), value: { em: "2026-09-22T23:00:00.000Z", estado: "incerto", corte: "2026-09-22T23:00:00.000Z" } },
+      { key: k("2026-09-29"), value: { em: "x", estado: "enviado" } },
+    ]);
+    await enviarAgenda(db, org, new CorreioMemoria(), AGORA);
+    const chaves = (await db.select({ key: appSettings.key }).from(appSettings)).map((x) => x.key);
+    expect(chaves).not.toContain(k("2026-09-20"));
+    expect(chaves).not.toContain(k("2026-09-21", true));
+    expect(chaves).toContain(k("2026-09-29"));
+    // O incerto não some sozinho: foi coberto por este envio e ficou "resolvido" (sai numa limpeza futura).
+    const [inc] = await db.select().from(appSettings).where(eq(appSettings.key, k("2026-09-22")));
+    expect((inc.value as { estado: string }).estado).toBe("resolvido");
+  });
+
   it("envio incerto de outro dia continua avisado até um envio dar certo", async () => {
     await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
     await nova(rio, "2027-12-06", "2027-12-08", new Date(AGORA.getTime() - 60 * 60_000).toISOString());

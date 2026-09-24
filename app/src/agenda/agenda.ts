@@ -458,14 +458,10 @@ export async function previaDaAgenda(db: Db, organizacaoId: string, agora: Date 
  * o maior corte entre eles e os "incerto" ainda não resolvidos: as reservas novas até ele saem de
  * novo, com o aviso de que podem já ter chegado. Só um envio que dá certo resolve (`chaves`).
  */
-async function reconciliarIncertos(db: Db, organizacaoId: string, email: string, hoje: string): Promise<{ ate: Date | null; chaves: string[] }> {
-  const linhas = await db
-    .select({ key: appSettings.key, value: appSettings.value })
-    .from(appSettings)
-    .where(and(sql`${appSettings.key} like ${`agenda-diaria%:${organizacaoId}:%`}`, sql`${appSettings.value} ->> 'estado' in ('enviando', 'incerto')`));
+async function reconciliarIncertos(db: Db, pendentes: readonly Marca[], email: string, hoje: string): Promise<{ ate: Date | null; chaves: string[] }> {
   let maior: Date | null = null;
   const chaves: string[] = [];
-  for (const l of linhas) {
+  for (const l of pendentes) {
     const m = l.key.match(/^agenda-diaria(?:-manual)?:[^:]+:(\d{4}-\d{2}-\d{2}):(.+)$/);
     if (!m || m[2] !== email || m[1] >= hoje) continue;
     const v = l.value as { corte?: string; em?: string; estado?: string };
@@ -475,6 +471,31 @@ async function reconciliarIncertos(db: Db, organizacaoId: string, email: string,
     if (!Number.isNaN(corte.getTime()) && (!maior || corte > maior)) maior = corte;
   }
   return { ate: maior, chaves };
+}
+
+type Marca = { key: string; value: unknown };
+
+/** Faixa de chaves das marcas diárias de uma organização (agendado e manual), consultada pelo índice da chave. */
+const faixas = (org: string) => [`agenda-diaria:${org}:`, `agenda-diaria-manual:${org}:`];
+const naFaixa = (prefixo: string, ate = "\uffff") => and(gte(appSettings.key, prefixo), lt(appSettings.key, prefixo + ate));
+
+/** Marcas ainda não resolvidas desta organização ("enviando" ou "incerto"), lidas uma vez por execução. */
+async function marcasPendentes(db: Db, org: string): Promise<Marca[]> {
+  return db
+    .select({ key: appSettings.key, value: appSettings.value })
+    .from(appSettings)
+    .where(and(or(...faixas(org).map((p) => naFaixa(p))), sql`${appSettings.value} ->> 'estado' in ('enviando', 'incerto')`));
+}
+
+/**
+ * Marcas diárias concluídas ("enviado", "resolvido") de mais de 3 dias atrás já não servem para nada
+ * (a chave de idempotência do provedor vale 24h): saem, para a consulta não crescer com o histórico.
+ */
+async function limparMarcasAntigas(db: Db, org: string, hoje: string): Promise<void> {
+  const limite = new Date(Date.parse(`${hoje}T12:00:00Z`) - 3 * 86_400_000).toISOString().slice(0, 10);
+  await db
+    .delete(appSettings)
+    .where(and(or(...faixas(org).map((p) => naFaixa(p, limite))), sql`${appSettings.value} ->> 'estado' in ('enviado', 'resolvido')`));
 }
 
 /**
@@ -567,7 +588,7 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
   };
   const enviarPara = async (d: Destinatario): Promise<void> => {
     const chave = chaveEnvio(organizacaoId, hoje, d.email, o.manual);
-    const incertos = await reconciliarIncertos(db, organizacaoId, d.email, hoje);
+    const incertos = await reconciliarIncertos(db, pendentes, d.email, hoje);
     const incertoAte = incertos.ate;
     const reserva = await reservarEnvio(db, chave, agora);
     if (!reserva) {
@@ -659,9 +680,14 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
       r.falhas.push(`${d.email}: enviada, mas não foi possível registrar o envio (${e instanceof Error ? e.message : String(e)})`);
     }
   };
+  await limparMarcasAntigas(db, organizacaoId, hoje);
+  const pendentes = await marcasPendentes(db, organizacaoId);
+  // O relógio anda durante a execução: a trava de cada pessoa leva o horário de quando é tomada
+  // (senão, depois de envios lentos, a trava de quem está no fim da lista já nasceria vencida).
+  const inicio = Date.now();
   for (const d of config.destinatarios) {
     const trava = chaveTravaDe(organizacaoId, d.email);
-    const dono = await travarPessoa(db, trava, agora);
+    const dono = await travarPessoa(db, trava, new Date(agora.getTime() + (Date.now() - inicio)));
     if (!dono) {
       r.falhas.push(`${d.email}: outro envio para esta pessoa está em andamento; tente de novo em alguns minutos`);
       continue;
