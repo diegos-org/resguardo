@@ -63,6 +63,8 @@ export function lerIntervalo(params: Params): { periodo?: { inicio: string; fim:
   return { de, ate, periodo: { inicio: `${de}-01`, fim: `${anoFim}-${String(mesFim).padStart(2, "0")}-01` } };
 }
 
+export type DonoAnterior = { proprietarioId: string; nome: string; saldo: number; acertoPeriodo: number; aCobrar: number; contestados: number };
+
 export type LinhaApartamento = {
   /** null = lançamentos sem imóvel (despesas gerais da empresa). */
   imovelId: string | null;
@@ -78,8 +80,11 @@ export type LinhaApartamento = {
   acertoPeriodo: number;
   /** Acumulado até o fim do período, do proprietário atual. Positivo: a empresa deve a ele. */
   saldo: number;
-  /** Saldos que ficaram com proprietários anteriores do imóvel, um por proprietário (não entram em `saldo`). */
-  saldosAnteriores: { proprietarioId: string; nome: string; total: number }[];
+  /**
+   * Proprietários anteriores do imóvel com algo em aberto ou movimento no período, um por pessoa
+   * (não entram nos campos do dono atual e nunca se compensam entre si).
+   */
+  anteriores: DonoAnterior[];
   aCobrar: number;
   contestados: number;
 };
@@ -88,7 +93,7 @@ const VAZIO: TotaisDoImovel = { valor: {}, montante: {}, acerto: 0 };
 
 function temMovimento(l: LinhaApartamento): boolean {
   const f = l.financeiro;
-  return Boolean(l.reservas || f.receitaBruta || f.comissoes || f.despesasEmpresa || f.ajustesEmpresa || l.despesasProprietario || l.acertoPeriodo || l.saldo || l.saldosAnteriores.length || l.aCobrar || l.contestados);
+  return Boolean(l.reservas || f.receitaBruta || f.comissoes || f.despesasEmpresa || f.ajustesEmpresa || l.despesasProprietario || l.acertoPeriodo || l.saldo || l.anteriores.length || l.aCobrar || l.contestados);
 }
 
 /**
@@ -126,23 +131,44 @@ export async function carregarApartamentos(
   // O acerto da linha é o do proprietário atual do imóvel; o de donos anteriores fica à parte
   // (um imóvel que trocou de dono não soma a dívida de um com o crédito do outro).
   const donoAtual = new Map(donos.map((d) => [d.imovelId, d.proprietarioId]));
-  const idsAnteriores = [...new Set(saldos.map((x) => x.proprietarioId))];
+  const idsDonos = [...new Set([...saldos.map((x) => x.proprietarioId), ...acertoPeriodo.map((x) => x.proprietarioId), ...adiantamentos.map((a) => a.proprietarioId)])];
   const nomes = new Map(
-    idsAnteriores.length
-      ? (await db.select({ id: proprietarios.id, nome: proprietarios.nome }).from(proprietarios).where(inArray(proprietarios.id, idsAnteriores))).map((p) => [p.id, p.nome])
+    idsDonos.length
+      ? (await db.select({ id: proprietarios.id, nome: proprietarios.nome }).from(proprietarios).where(inArray(proprietarios.id, idsDonos))).map((p) => [p.id, p.nome])
       : [],
   );
-  const doDono = (lista: typeof saldos, imovelId: string) => lista.filter((x) => x.imovelId === imovelId && x.proprietarioId === donoAtual.get(imovelId)).reduce((t, x) => t + x.total, 0);
-  // Um por proprietário anterior: saldos de pessoas diferentes nunca se compensam.
-  const anteriores = (imovelId: string) =>
-    saldos
-      .filter((x) => x.imovelId === imovelId && x.proprietarioId !== donoAtual.get(imovelId) && x.total !== 0)
-      .map((x) => ({ proprietarioId: x.proprietarioId, nome: nomes.get(x.proprietarioId) ?? "Proprietário anterior", total: x.total }));
+  const somaDe = (lista: typeof saldos, imovelId: string, dono: string) => lista.filter((x) => x.imovelId === imovelId && x.proprietarioId === dono).reduce((t, x) => t + x.total, 0);
+  const cobrar = (lista: typeof adiantamentos) => lista.filter((a) => a.situacao !== "contestado").reduce((t, a) => t + a.aberto, 0);
+  const contest = (lista: typeof adiantamentos) => lista.filter((a) => a.situacao === "contestado").length;
+  // Um por proprietário anterior: valores de pessoas diferentes nunca se compensam.
+  const anteriores = (imovelId: string): DonoAnterior[] => {
+    const atual = donoAtual.get(imovelId);
+    const outros = new Set(
+      [...saldos, ...acertoPeriodo].filter((x) => x.imovelId === imovelId).map((x) => x.proprietarioId).concat(adiantamentos.filter((a) => a.imovelId === imovelId).map((a) => a.proprietarioId)),
+    );
+    outros.delete(atual as string);
+    return [...outros]
+      .map((dono) => {
+        const adiant = adiantamentos.filter((a) => a.imovelId === imovelId && a.proprietarioId === dono);
+        return {
+          proprietarioId: dono,
+          nome: nomes.get(dono) ?? "Proprietário anterior",
+          saldo: somaDe(saldos, imovelId, dono),
+          acertoPeriodo: somaDe(acertoPeriodo, imovelId, dono),
+          aCobrar: cobrar(adiant),
+          contestados: contest(adiant),
+        };
+      })
+      .filter((x) => x.saldo || x.acertoPeriodo || x.aCobrar || x.contestados);
+  };
 
   const linha = (imovelId: string | null, codigo: string, nome: string, ativo: boolean): LinhaApartamento => {
     const t = totais.get(imovelId) ?? VAZIO;
-    const oc = imovelId ? ocupacao.get(imovelId) : undefined;
-    const adiant = adiantamentos.filter((a) => a.imovelId === imovelId && imovelId !== null && a.proprietarioId === donoAtual.get(imovelId));
+    // Arquivado sem noite vendida não entra na ocupação (como no Início): não dilui a taxa.
+    const ocBruta = imovelId ? ocupacao.get(imovelId) : undefined;
+    const oc = ocBruta && !ativo && ocBruta.vendidas === 0 ? undefined : ocBruta;
+    const dono = imovelId ? donoAtual.get(imovelId) : undefined;
+    const adiant = adiantamentos.filter((a) => a.imovelId === imovelId && imovelId !== null && a.proprietarioId === dono);
     return {
       imovelId,
       codigo,
@@ -154,11 +180,11 @@ export async function carregarApartamentos(
       ocupacao: oc?.taxa ?? null,
       financeiro: resumoFinanceiro(t.valor),
       despesasProprietario: t.montante.despesa_proprietario ?? 0,
-      acertoPeriodo: imovelId ? doDono(acertoPeriodo, imovelId) : 0,
-      saldo: imovelId ? doDono(saldos, imovelId) : 0,
-      saldosAnteriores: imovelId ? anteriores(imovelId) : [],
-      aCobrar: adiant.filter((a) => a.situacao !== "contestado").reduce((s, a) => s + a.aberto, 0),
-      contestados: adiant.filter((a) => a.situacao === "contestado").length,
+      acertoPeriodo: imovelId && dono ? somaDe(acertoPeriodo, imovelId, dono) : 0,
+      saldo: imovelId && dono ? somaDe(saldos, imovelId, dono) : 0,
+      anteriores: imovelId ? anteriores(imovelId) : [],
+      aCobrar: cobrar(adiant),
+      contestados: contest(adiant),
     };
   };
 
@@ -200,12 +226,19 @@ export function somar(linhas: readonly LinhaApartamento[]): LinhaApartamento {
     despesasProprietario: s((l) => l.despesasProprietario),
     acertoPeriodo: s((l) => l.acertoPeriodo),
     saldo: s((l) => l.saldo),
-    saldosAnteriores: [
+    // No total, somam-se só valores da mesma pessoa.
+    anteriores: [
       ...linhas
-        .flatMap((l) => l.saldosAnteriores)
-        .reduce((m, x) => m.set(x.proprietarioId, { ...x, total: (m.get(x.proprietarioId)?.total ?? 0) + x.total }), new Map<string, { proprietarioId: string; nome: string; total: number }>())
+        .flatMap((l) => l.anteriores)
+        .reduce((m, x) => {
+          const y = m.get(x.proprietarioId);
+          return m.set(
+            x.proprietarioId,
+            y ? { ...y, saldo: y.saldo + x.saldo, acertoPeriodo: y.acertoPeriodo + x.acertoPeriodo, aCobrar: y.aCobrar + x.aCobrar, contestados: y.contestados + x.contestados } : x,
+          );
+        }, new Map<string, DonoAnterior>())
         .values(),
-    ].filter((x) => x.total !== 0),
+    ],
     aCobrar: s((l) => l.aCobrar),
     contestados: s((l) => l.contestados),
   };

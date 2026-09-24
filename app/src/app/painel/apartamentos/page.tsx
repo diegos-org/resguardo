@@ -8,7 +8,7 @@ import { getDb } from "@/db/client";
 import { listarImoveis } from "@/imoveis/repositorio";
 import { descreverFiltros, lerFiltros, periodoDosFiltros } from "@/lib/filtros";
 import { formatBRL } from "@/lib/money";
-import { type ChaveColuna, carregarApartamentos, COLUNAS, type LinhaApartamento, lerColunas, lerIntervalo } from "@/painel/apartamentos";
+import { type ChaveColuna, carregarApartamentos, COLUNAS, type DonoAnterior, type LinhaApartamento, lerColunas, lerIntervalo } from "@/painel/apartamentos";
 
 const pct = (t: number | null) => (t === null ? "—" : `${Math.round(t * 100)}%`);
 const mesBr = (m: string) => m.split("-").reverse().join("/");
@@ -21,6 +21,24 @@ function Saldo({ valor }: { valor: number }) {
       {formatBRL(Math.abs(valor))}
       <br />
       <small style={{ color: "var(--scl-texto-2)" }}>{valor > 0 ? "empresa deve" : "proprietário deve"}</small>
+    </>
+  );
+}
+
+/** Valores de proprietários anteriores do imóvel, um por linha (nunca somados com o do dono atual). */
+function Anteriores({ lista, valor }: { lista: readonly DonoAnterior[]; valor: (x: DonoAnterior) => number }) {
+  return (
+    <>
+      {lista
+        .filter((x) => valor(x) !== 0)
+        .map((x) => (
+          <span key={x.proprietarioId}>
+            <br />
+            <small style={{ color: "#b3261e" }}>
+              + {formatBRL(Math.abs(valor(x)))} com {x.nome} ({valor(x) > 0 ? "empresa deve" : "ele deve"})
+            </small>
+          </span>
+        ))}
     </>
   );
 }
@@ -57,19 +75,17 @@ function celula(l: LinhaApartamento, c: ChaveColuna): React.ReactNode {
     case "despesasProprietario":
       return formatBRL(l.despesasProprietario);
     case "acertoPeriodo":
-      return <Saldo valor={l.acertoPeriodo} />;
+      return (
+        <>
+          <Saldo valor={l.acertoPeriodo} />
+          <Anteriores lista={l.anteriores} valor={(x) => x.acertoPeriodo} />
+        </>
+      );
     case "saldo":
       return (
         <>
           <Saldo valor={l.saldo} />
-          {l.saldosAnteriores.map((x) => (
-            <span key={x.proprietarioId}>
-              <br />
-              <small style={{ color: "#b3261e" }}>
-                + {formatBRL(Math.abs(x.total))} com {x.nome} ({x.total > 0 ? "empresa deve" : "ele deve"})
-              </small>
-            </span>
-          ))}
+          <Anteriores lista={l.anteriores} valor={(x) => x.saldo} />
         </>
       );
     case "aCobrar":
@@ -82,6 +98,17 @@ function celula(l: LinhaApartamento, c: ChaveColuna): React.ReactNode {
               <small style={{ color: "#b3261e" }}>{l.contestados} contestado(s)</small>
             </>
           )}
+          {l.anteriores
+            .filter((x) => x.aCobrar || x.contestados)
+            .map((x) => (
+              <span key={x.proprietarioId}>
+                <br />
+                <small style={{ color: "#b3261e" }}>
+                  + {formatBRL(x.aCobrar)} de {x.nome}
+                  {x.contestados ? ` (${x.contestados} contestado(s))` : ""}
+                </small>
+              </span>
+            ))}
         </>
       );
   }

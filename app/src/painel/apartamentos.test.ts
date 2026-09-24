@@ -150,10 +150,10 @@ describe("aba Apartamentos", () => {
     await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));
     await db.insert(proprietarioImoveis).values({ proprietarioId: novo.id, imovelId: a });
     let l = (await carregar()).linhas.find((x) => x.codigo === "403")!;
-    expect(l).toMatchObject({ saldo: 0, acertoPeriodo: 0, saldosAnteriores: [{ nome: "Dona", total: -40000 }], aCobrar: 0 });
+    expect(l).toMatchObject({ saldo: 0, acertoPeriodo: 0, aCobrar: 0, anteriores: [{ nome: "Dona", saldo: -40000, acertoPeriodo: -40000, aCobrar: 40000, contestados: 0 }] });
     await despesa({ responsavel: "proprietario", valor: 10000, imovelId: a, descricao: "Chave" }); // já do novo dono
     l = (await carregar()).linhas.find((x) => x.codigo === "403")!;
-    expect(l).toMatchObject({ saldo: -10000, acertoPeriodo: -10000, saldosAnteriores: [{ nome: "Dona", total: -40000 }], aCobrar: 10000 });
+    expect(l).toMatchObject({ saldo: -10000, acertoPeriodo: -10000, aCobrar: 10000, anteriores: [{ nome: "Dona", saldo: -40000, aCobrar: 40000 }] });
 
     // Terceiro dono: o crédito do segundo e a dívida da primeira ficam separados, sem se anular.
     await db.insert(lancamentos).values({ organizacaoId: org, tipo: "ajuste", descricao: "Crédito fictício", valor: 0, efeitoSaldo: 50000, competencia: "2026-10-20", estado: "realizado", imovelId: a, proprietarioId: novo.id, origem: "manual" });
@@ -162,10 +162,20 @@ describe("aba Apartamentos", () => {
     await db.insert(proprietarioImoveis).values({ proprietarioId: terceiro.id, imovelId: a });
     l = (await carregar()).linhas.find((x) => x.codigo === "403")!;
     expect(l.saldo).toBe(0);
-    expect(l.saldosAnteriores.map((x) => [x.nome, x.total]).sort()).toEqual([
+    expect(l.anteriores.map((x) => [x.nome, x.saldo]).sort()).toEqual([
       ["Dona", -40000],
       ["Novo dono", 40000],
     ]);
+  });
+
+  it("arquivado só com movimento financeiro não entra na ocupação", async () => {
+    await criarReserva(db, org, reserva(a, "2026-10-10", "2026-10-13"), null);
+    await despesa({ responsavel: "empresa", valor: 5000, imovelId: b, descricao: "Lâmpada" });
+    await db.update(imoveis).set({ ativo: false }).where(eq(imoveis.id, b));
+    const { linhas, total } = await carregar();
+    expect(linhas.find((l) => l.codigo === "102")).toMatchObject({ ativo: false, noitesDisponiveis: 0, ocupacao: null });
+    expect(total.noitesDisponiveis).toBe(31);
+    expect(total.noitesVendidas).toBe(3);
   });
 
   it("filtro sem imóvel nenhum não soma a organização inteira", async () => {
