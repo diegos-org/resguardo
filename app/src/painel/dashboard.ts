@@ -74,7 +74,8 @@ export async function carregarDashboard(
     const f = o.todos ? o.periodo : { ...o.periodo, imovelIds: ids };
     const inicioAno = `${o.ano}-01-01`;
     const fimAno = `${o.ano + 1}-01-01`;
-    const [totais, mensal, regras, despesas, ajustesPendentes, adiantamentos, pendentes] = await Promise.all([
+    const comValor = reservas.filter((r) => r.valorBruto !== null);
+    const [totais, mensal, regras, despesas, ajustesPendentes, adiantamentos, pendentes, calculadas] = await Promise.all([
       totaisPorTipo(db, organizacaoId, f),
       db
         .select({ mes: sql<string>`to_char(${lancamentos.competencia}, 'YYYY-MM')`, tipo: lancamentos.tipo, total: sum(lancamentos.valor) })
@@ -95,7 +96,7 @@ export async function carregarDashboard(
       listarAjustes(db, organizacaoId, { pendentes: true }),
       listarAdiantamentos(db, organizacaoId, o.todos ? { somenteAbertos: true } : { imovelIds: ids, somenteAbertos: true }),
       db
-        .select({ n: sql<number>`count(*)::int` })
+        .select({ imovelId: lancamentos.imovelId, n: sql<number>`count(*)::int` })
         .from(lancamentos)
         .where(
           and(
@@ -107,7 +108,16 @@ export async function carregarDashboard(
             sql`${lancamentos.estornoDe} is null`,
             sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`,
           ),
-        ),
+        )
+        .groupBy(lancamentos.imovelId),
+      // Reservas do período com valor que não têm nenhum lançamento: o motor não calculou (ex.: sem
+      // contrato na data da entrada, mesmo que hoje o imóvel já tenha contrato).
+      comValor.length
+        ? db
+            .selectDistinct({ reservaId: lancamentos.reservaId })
+            .from(lancamentos)
+            .where(and(eq(lancamentos.organizacaoId, organizacaoId), inArray(lancamentos.reservaId, comValor.map((r) => r.id))))
+        : [],
     ]);
     financeiro = resumoFinanceiro(totais);
     const m = new Map<string, { receitaBruta: number; comissoes: number }>();
@@ -126,8 +136,22 @@ export async function carregarDashboard(
     if (semDono.length) alertas.push({ nivel: "atencao", texto: `Sem proprietário: ${semDono.join(", ")}.`, link: "/painel/sistema" });
     const semValor = reservas.filter((r) => r.valorBruto === null).length;
     if (semValor) alertas.push({ nivel: "atencao", texto: `${semValor} reserva(s) do período sem valor: financeiro pendente.`, link: "/painel/reservas" });
-    if (pendentes[0]?.n) alertas.push({ nivel: "info", texto: `${pendentes[0].n} lançamento(s) com acerto pendente.` });
-    const ajustes = ajustesPendentes.filter((a) => (a.imovelId ? selecionados.has(a.imovelId) : o.todos)).length;
+    const comLancamento = new Set(calculadas.map((x) => x.reservaId));
+    const semCalculo = comValor.filter((r) => !comLancamento.has(r.id)).length;
+    if (semCalculo)
+      alertas.push({ nivel: "atencao", texto: `${semCalculo} reserva(s) do período com valor mas sem cálculo no financeiro: confira o contrato na data da entrada.`, link: "/painel/reservas" });
+    const codigoDe = new Map(regras.map((r) => [r.imovelId, r.codigo]));
+    const nPendentes = pendentes.reduce((t, x) => t + x.n, 0);
+    if (nPendentes) {
+      const codigos = [...new Set(pendentes.map((x) => (x.imovelId ? (porId.get(x.imovelId)?.codigo ?? codigoDe.get(x.imovelId)) : null)).filter(Boolean))];
+      alertas.push({
+        nivel: "info",
+        texto: `${nPendentes} lançamento(s) com acerto pendente${codigos.length ? ` (${codigos.join(", ")})` : ""}: falta proprietário ou confirmar quem recebe do canal.`,
+        link: "/painel/sistema",
+      });
+    }
+    // Em "todos", entram também os ajustes de imóveis arquivados (como nos totais).
+    const ajustes = o.todos ? ajustesPendentes.length : ajustesPendentes.filter((a) => a.imovelId && selecionados.has(a.imovelId)).length;
     if (ajustes) alertas.push({ nivel: "info", texto: `${ajustes} ajuste(s) pendente(s) de esclarecimento.`, link: "/painel/financeiro/ajustes" });
     const aCobrar = totalACobrar(adiantamentos);
     const contestados = adiantamentos.filter((a) => a.situacao === "contestado").length;
