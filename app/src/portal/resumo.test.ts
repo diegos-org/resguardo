@@ -81,7 +81,7 @@ describe("resumo do portal", () => {
   it("só os números da própria dona: reservas, bruto, taxa, comissão, parte dela, despesas e acerto", async () => {
     const r = await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo });
     // Bruto 1.000; taxa 150; comissão 15% de 850 = 127,50; parte dela 722,50; reparo 200 pago pela empresa.
-    expect(r).toEqual({ reservas: 1, receitaBruta: 100000, taxasCanais: 15000, comissao: 12750, suaParte: 72250, despesas: 20000, acerto: 72250 - 20000 });
+    expect(r).toEqual({ reservas: 1, receitaBruta: 100000, taxasCanais: 15000, comissao: 12750, suaParte: 72250, despesas: 20000, acerto: 72250 - 20000, acertoPendente: 0 });
   });
 
   it("só reservas confirmadas: pendente não entra e cancelada sai da contagem", async () => {
@@ -98,7 +98,8 @@ describe("resumo do portal", () => {
     );
     await cancelarReserva(db, org, r.reserva.id, null);
     const depois = await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo });
-    expect(depois).toMatchObject({ reservas: 1, receitaBruta: 100000, suaParte: 72250, acerto: 72250 - 20000 + 5000 });
+    // O ajuste ainda não esclarecido fica à parte, como pendente (não entra no acerto definitivo).
+    expect(depois).toMatchObject({ reservas: 1, receitaBruta: 100000, suaParte: 72250, acerto: 72250 - 20000, acertoPendente: 5000 });
   });
 
   it("cancelada depois de dinheiro movimentado: os lançamentos protegidos continuam, como no livro", async () => {

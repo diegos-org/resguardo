@@ -174,6 +174,12 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
               detalhe={resumo.acerto > 0 ? `a ${empresa} passou a lhe dever` : resumo.acerto < 0 ? `você passou a dever à ${empresa}` : "zerado no período (já conta os repasses)"}
             />
           </section>
+          {resumo.acertoPendente !== 0 && (
+            <p role="note" style={{ margin: 0, padding: "8px 12px", borderRadius: 6, background: "var(--scl-areia)", fontSize: "0.9375rem" }}>
+              <strong>Em conferência:</strong> {formatBRL(Math.abs(resumo.acertoPendente))} ({resumo.acertoPendente > 0 ? `a seu favor` : `a favor da ${empresa}`}) ainda
+              não estão definidos e ficaram fora do acerto acima. A {empresa} vai esclarecer antes do fechamento do mês.
+            </p>
+          )}
           <p style={{ ...rotulo, margin: 0 }}>
             Valores pelo mês da estadia (estadas que passam de um mês para o outro são divididas pelas noites). A lista de reservas, o calendário e o
             saldo com o Pix chegam nas próximas etapas.
