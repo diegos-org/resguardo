@@ -27,12 +27,13 @@ function Numero({ titulo, valor, detalhe }: { titulo: string; valor: string; det
 export default async function PainelInicio({ searchParams }: PageProps<"/painel">) {
   const sessao = await exigirSessaoPainel();
   const db = getDb();
-  const imoveis = await listarImoveis(db, sessao.organizacaoId);
-  const opcoes = imoveis.map((i) => ({ codigo: i.codigo, nome: i.nome }));
+  // Arquivados entram nas contas de "todos os imóveis" (como no financeiro), mas não no filtro.
+  const imoveis = await listarImoveis(db, sessao.organizacaoId, { incluirInativos: true });
+  const opcoes = imoveis.filter((i) => i.ativo).map((i) => ({ codigo: i.codigo, nome: i.nome }));
   const params = await searchParams;
   const filtros = lerFiltros(params, opcoes);
   const query = manterFiltros(params);
-  const selecionados = filtros.imoveis.length ? imoveis.filter((i) => filtros.imoveis.includes(i.codigo)) : imoveis;
+  const selecionados = filtros.imoveis.length ? imoveis.filter((i) => i.ativo && filtros.imoveis.includes(i.codigo)) : imoveis;
   const verFinanceiro = podeFazer(sessao.papel, "financeiro:ler");
   const hoje = hojeISO();
   const d = await carregarDashboard(db, sessao.organizacaoId, {
