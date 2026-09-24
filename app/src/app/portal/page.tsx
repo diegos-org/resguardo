@@ -17,6 +17,7 @@ import { janela, lerPeriodoPortal, nome, situacaoDoPeriodo, vizinhos } from "@/p
 import { bloqueiosDoPortal, reservasDoPortal, type SituacaoReserva } from "@/portal/reservas";
 import { proprietariosDoUsuario, resumoDoProprietario } from "@/portal/resumo";
 import { type Rodape, rodapeDoPortal } from "@/portal/rodape";
+import { donosDosEscolhidos } from "@/relatorios/gerar";
 import { nomeMes } from "@/repasses/repasses";
 import { NOMES_ORIGEM } from "@/reservas/regras";
 
@@ -169,18 +170,22 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
   const escolhidos = filtros.imoveis.length ? meus.filter((i) => filtros.imoveis.includes(i.codigo)) : meus;
   const periodo = periodoDosFiltros(filtros);
   const hoje = hojeISO();
-  const escolhidosIds = escolhidos.map((i) => i.id);
+  // Mesma regra do PDF: só os donos dos imóveis escolhidos (no período) e só os imóveis que eram
+  // deles no período; os lançamentos sem imóvel entram quando todos os imóveis desses donos estão escolhidos.
+  const selecao = await donosDosEscolhidos(db, donos, escolhidos, periodo);
+  const escolhidosIds = selecao.imoveis.map((i) => i.id);
+  const donosIds = selecao.donos.map((d) => d.id);
   const resumo = await resumoDoProprietario(db, sessao.organizacaoId, {
-    proprietarioIds: donos.map((d) => d.id),
+    proprietarioIds: donosIds,
     imovelIds: escolhidosIds,
     // Com todos os imóveis dele, entra também o que é dele sem imóvel (ajuste/acerto geral).
-    semImovel: escolhidos.length === meus.length,
+    semImovel: selecao.todosOsImoveis,
     periodo,
   });
-  const lista = await reservasDoPortal(db, sessao.organizacaoId, { proprietarioIds: donos.map((d) => d.id), imovelIds: escolhidosIds, periodo });
+  const lista = await reservasDoPortal(db, sessao.organizacaoId, { proprietarioIds: donosIds, imovelIds: escolhidosIds, periodo });
   // Calendário só no mês (no ano inteiro, a tabela basta).
   // Bloqueios só do tempo em que o imóvel é dele (os do dono anterior não aparecem).
-  const bloqueios = filtros.mes !== null && escolhidosIds.length ? await bloqueiosDoPortal(db, sessao.organizacaoId, { proprietarioIds: donos.map((d) => d.id), imovelIds: escolhidosIds, periodo }) : [];
+  const bloqueios = filtros.mes !== null && escolhidosIds.length ? await bloqueiosDoPortal(db, sessao.organizacaoId, { proprietarioIds: donosIds, imovelIds: escolhidosIds, periodo }) : [];
   const itens: ItemCalendario[] = [
     ...lista.map((r) => ({
       id: r.id,
@@ -196,7 +201,7 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
   ];
   // Saldo do acerto: o do repasse do mês (no ano inteiro, o de dezembro), com todos os imóveis dele.
   const mesSaldo = `${filtros.ano}-${String(filtros.mes ?? 12).padStart(2, "0")}`;
-  const rodape = await rodapeDoPortal(db, sessao.organizacaoId, { proprietarios: donos, mes: mesSaldo, hoje, pixEmpresa: (await lerEmpresa(db, sessao.organizacaoId)).chavePix });
+  const rodape = await rodapeDoPortal(db, sessao.organizacaoId, { proprietarios: selecao.donos, mes: mesSaldo, hoje, pixEmpresa: (await lerEmpresa(db, sessao.organizacaoId)).chavePix });
   const situacao = situacaoDoPeriodo(filtros);
   const { anterior, seguinte } = vizinhos(filtros);
   const j = janela();
@@ -295,6 +300,13 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
               <span />
             )}
           </nav>
+          {filtros.mes !== null && selecao.imoveis.length > 0 && (
+            <p style={{ margin: 0, textAlign: "center" }}>
+              <a href={link({ ano: filtros.ano, mes: filtros.mes }).replace("/portal?", "/portal/relatorio?")} download>
+                Baixar o relatório deste mês em PDF
+              </a>
+            </p>
+          )}
           {SITUACAO[situacao] && (
             <p role="note" style={{ margin: 0, padding: "8px 12px", borderRadius: 6, background: "var(--scl-areia)", fontSize: "0.9375rem" }}>
               <strong>{SITUACAO[situacao].titulo}:</strong> {SITUACAO[situacao].texto}
@@ -302,7 +314,7 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
           )}
 
           <section aria-label="Números do período" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
-            <Numero titulo="Reservas" valor={String(resumo.reservas)} detalhe={escolhidos.map((i) => i.codigo).join(", ")} />
+            <Numero titulo="Reservas" valor={String(resumo.reservas)} detalhe={selecao.imoveis.map((i) => i.codigo).join(", ")} />
             <Numero titulo="Valor bruto das reservas" valor={formatBRL(resumo.receitaBruta)} detalhe={`Taxas dos canais: ${formatBRL(resumo.taxasCanais)}`} />
             <Numero titulo={`Comissão da ${empresa}`} valor={formatBRL(resumo.comissao)} />
             <Numero titulo="Sua parte das reservas" valor={formatBRL(resumo.suaParte)} />
@@ -325,7 +337,7 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
             <section aria-label="Calendário" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <h2 style={{ fontSize: "1.125rem", margin: 0 }}>Calendário</h2>
               <p style={{ ...rotulo, margin: 0 }}>Toque numa reserva para ver os valores dela na tabela.</p>
-              <CalendarioPortal periodo={periodo} imoveis={escolhidos} itens={itens} hoje={hoje} />
+              <CalendarioPortal periodo={periodo} imoveis={selecao.imoveis} itens={itens} hoje={hoje} />
             </section>
           )}
 
