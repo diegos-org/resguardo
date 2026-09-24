@@ -5,6 +5,7 @@
  */
 import { and, asc, eq, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
+import { temConvitePendente, travarEmail } from "@/convites/convites";
 import { normalizarEmail } from "@/acesso/entrada";
 import { violouUnicidade } from "@/db/erros";
 import { usuarios } from "@/db/schema";
@@ -33,8 +34,12 @@ export async function criarUsuarioEquipe(
   if (!nome || nome.length > 80) return { ok: false, erro: "Informe o nome (até 80 caracteres)." };
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 200) return { ok: false, erro: "E-mail inválido." };
   if (!PAPEIS_EQUIPE.includes(bruto.papel as PapelEquipe)) return { ok: false, erro: "Escolha o papel." };
+  const CONVITE = "Este e-mail tem um convite de proprietário pendente. Cancele o convite antes, ou use outro e-mail.";
   try {
-    await db.transaction(async (tx) => {
+    const r = await db.transaction(async (tx) => {
+      // Mesma trava do convite: os dois não podem nascer ao mesmo tempo para o mesmo e-mail.
+      await travarEmail(tx, email);
+      if (await temConvitePendente(tx, email)) return { ok: false as const, erro: CONVITE };
       const [u] = await tx.insert(usuarios).values({ organizacaoId, nome, email, papel: bruto.papel as PapelEquipe }).returning();
       await registrarAuditoria(tx, {
         organizacaoId,
@@ -44,8 +49,9 @@ export async function criarUsuarioEquipe(
         entidadeId: u.id,
         mudancas: { nome: [null, nome], email: [null, email], papel: [null, u.papel] },
       });
+      return { ok: true as const };
     });
-    return { ok: true };
+    return r;
   } catch (e) {
     if (violouUnicidade(e, "usuarios_email_unico")) return { ok: false, erro: "Este e-mail já tem acesso ao sistema." };
     throw e;

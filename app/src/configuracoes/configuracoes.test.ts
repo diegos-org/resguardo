@@ -216,6 +216,19 @@ describe("usuários da equipe", () => {
     expect(lista.map((u) => u.email)).toContain("bia@example.com");
   });
 
+  it("e-mail com convite de proprietário pendente não vira usuário da equipe", async () => {
+    const { criarConvite, revogarConvite } = await import("@/convites/convites");
+    const [p] = await db.insert(proprietarios).values({ organizacaoId: org, nome: "Dono", email: "dono@example.com" }).returning();
+    const c = await criarConvite(db, org, p.id, "dono@example.com", admin);
+    if (!c.ok) throw new Error(c.erro);
+    expect(await criarUsuarioEquipe(db, org, { nome: "Dono", email: "Dono@example.com", papel: "operacao" }, admin)).toMatchObject({
+      ok: false,
+      erro: expect.stringContaining("convite"),
+    });
+    await revogarConvite(db, org, c.convite.id, admin);
+    expect(await criarUsuarioEquipe(db, org, { nome: "Dono", email: "dono@example.com", papel: "operacao" }, admin)).toEqual({ ok: true });
+  });
+
   it("ninguém muda o próprio papel nem se desativa; sempre sobra um admin ativo", async () => {
     await criarUsuarioEquipe(db, org, { nome: "Bia", email: "bia@example.com", papel: "admin" }, admin);
     const bia = (await listarUsuarios(db, org)).find((u) => u.email === "bia@example.com")!;
