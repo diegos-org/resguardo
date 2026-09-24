@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 24/09/2026, mudança de regra vale só daquela data para frente (M4.2c).
+> **Última atualização:** 24/09/2026, página Sistema (M1.6).
 
 ---
 
@@ -75,6 +75,17 @@
   não entra. Depois de entrar, o proprietário vê o **Portal do proprietário** (por
   enquanto só os imóveis dele; relatórios e saldo chegam no M5) e **não** consegue abrir
   o painel interno.
+- M1.6: **página "Sistema"** (menu **Sistema**, só para você). Três partes:
+  - **Serviços:** banco, login com Google, e-mail, Beds24, WhatsApp e pagamentos — cada um
+    com "Funcionando" (testado na hora, como o banco), "Configurado" (chave existe), "Falta configurar", "Com problema" ou "Ainda não construído", e o que
+    falta. Nenhuma chave ou senha aparece. Mostra também se o envio para o Beds24 está
+    ligado ou desligado.
+  - **Automações:** o que roda sozinho, quando roda, a última vez que rodou e o resultado
+    (as que ainda vão existir aparecem com o item do plano em que chegam).
+  - **Regras em vigor:** as regras gerais e, para cada imóvel, o proprietário, o contrato de
+    hoje (e o próximo, se já estiver cadastrado) e quem recebe em cada canal, com o botão
+    **Editar**. O que estiver faltando (imóvel sem contrato, sem proprietário) aparece em
+    vermelho.
 - M2.1: **cadastro de imóveis** em Painel → Imóveis: código (102, 403, buzios…), nome
   comercial, bairro, endereço, capacidade, quartos, banheiros, descrição, se **aparece no site**
   e se está **em operação**. O filtro global do painel passa a usar essa lista. Búzios deve ser
@@ -193,6 +204,10 @@
 | Ficha da reserva com o financeiro | Despesas |
 |---|---|
 | ![Reserva com financeiro](docs/telas/reserva-financeiro.png) | ![Despesas](docs/telas/despesas.png) |
+
+| Página Sistema |
+|---|
+| ![Sistema](docs/telas/sistema.png) |
 
 A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 

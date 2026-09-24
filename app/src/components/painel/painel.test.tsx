@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SECOES, encontrarSecao } from "@/lib/navegacao";
+import { SECOES, encontrarSecao, secoesPara } from "@/lib/navegacao";
 import { FiltroGlobal } from "./FiltroGlobal";
 import { Menu } from "./Menu";
 
@@ -14,13 +14,27 @@ afterEach(cleanup);
 
 describe("Menu", () => {
   it("lista Início e todas as seções, marcando a atual", () => {
-    render(<Menu />);
+    render(<Menu papel="admin" />);
     const links = screen.getAllByRole("link");
     expect(links).toHaveLength(SECOES.length + 1);
     const atual = screen.getByRole("link", { current: "page" });
     expect(atual.textContent).toBe("Reservas");
     expect(atual.getAttribute("href")).toBe("/painel/reservas?imovel=403&ano=2025&mes=todos");
     expect(screen.getByRole("link", { name: "Financeiro" }).getAttribute("href")).toBe("/painel/financeiro?imovel=403&ano=2025&mes=todos");
+  });
+});
+
+describe("Menu por papel", () => {
+  it("equipe de operação não vê financeiro, proprietários, sistema nem configurações", () => {
+    render(<Menu papel="operacao" />);
+    const nomes = screen.getAllByRole("link").map((l) => l.textContent);
+    for (const escondido of ["Financeiro", "Apartamentos", "Despesas", "Proprietários", "Sistema", "Configurações"]) expect(nomes).not.toContain(escondido);
+    for (const visivel of ["Início", "Calendário", "Reservas", "Limpezas"]) expect(nomes).toContain(visivel);
+  });
+
+  it("admin vê tudo; hóspede não vê nada", () => {
+    expect(secoesPara("admin")).toHaveLength(SECOES.length);
+    expect(secoesPara("hospede")).toHaveLength(0);
   });
 });
 

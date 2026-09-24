@@ -6,7 +6,7 @@ import { Menu } from "@/components/painel/Menu";
 import styles from "@/components/painel/painel.module.css";
 
 export default async function PainelLayout({ children }: LayoutProps<"/painel">) {
-  await exigirSessaoPainel();
+  const sessao = await exigirSessaoPainel();
 
   async function sair() {
     "use server";
@@ -20,7 +20,7 @@ export default async function PainelLayout({ children }: LayoutProps<"/painel">)
           Sua Casa Leblon
         </Link>
         <Suspense>
-          <Menu />
+          <Menu papel={sessao.papel} />
         </Suspense>
       </aside>
       <div className={styles.principal}>

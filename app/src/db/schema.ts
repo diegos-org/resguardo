@@ -458,3 +458,22 @@ export const lancamentos = pgTable(
     index("lancamentos_reserva").on(t.reservaId),
   ],
 );
+
+// ---------------------------------------------------------------------------
+// Sistema (M1.6): registro das automações (quando rodou, se deu certo, resumo)
+// ---------------------------------------------------------------------------
+
+export const execucoesAutomacao = pgTable(
+  "execucoes_automacao",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** Identificador da automação (ex.: "recalculo-deploy"). */
+    nome: text("nome").notNull(),
+    iniciadoEm: timestamp("iniciado_em", { withTimezone: true }).notNull().defaultNow(),
+    terminadoEm: timestamp("terminado_em", { withTimezone: true }),
+    ok: boolean("ok"),
+    /** Resumo legível (sem dados pessoais nem segredos). */
+    resumo: text("resumo").notNull().default(""),
+  },
+  (t) => [index("execucoes_automacao_nome").on(t.nome, t.iniciadoEm)],
+);
