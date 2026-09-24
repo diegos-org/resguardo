@@ -114,7 +114,7 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 | M6.1 | Limpezas: gerar no dia do checkout; estados pedida/confirmada/realizada; profissional; custo | feito | M3.4 |
 | M6.2 | Manutenção: pedido, orçamento, aprovação de Diego, execução, custo e responsável (empresa/proprietário) | feito | M4.3 |
 | M6.3 | Agenda diária (20h, próximos 5 dias, Rio e Búzios separados) enviada para a equipe | feito | M6.1 |
-| M6.4 | Documentos de portaria (só 403): checklist de pedidos, sem armazenar documentos no Git | a fazer | M3.5 |
+| M6.4 | Documentos de portaria (só 403): checklist de pedidos, sem armazenar documentos no Git | feito | M3.5 |
 | M6.5 | Rotinas recorrentes (manutenção quinzenal, faxinas semanal, lembrete mensal) | a fazer | M6.2 |
 | M6.6 | Equipe de limpeza: acesso próprio pelo celular (agenda, marcar faxina feita) e aviso por WhatsApp quando o M10 estiver ligado (e-mail enquanto isso) | a fazer | M6.1, M1.3 |
 

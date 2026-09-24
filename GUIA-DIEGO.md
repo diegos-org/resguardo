@@ -327,6 +327,22 @@
     de meses (até 36). Intervalo inválido não é adivinhado: aparece um aviso e vale o filtro;
   - com "todos os imóveis", entra também uma linha **Geral da empresa** (despesas sem imóvel)
     e os imóveis arquivados que tiveram movimento, então o total bate com o Início.
+- M6.4: **documentos de portaria** (menu **Portaria**). É só uma lista de controle:
+  **nenhum documento, número ou foto é guardado** no sistema.
+  - você marca na própria tela quais imóveis exigem documentos (hoje, o 403). Nada fica fixo
+    no código;
+  - para cada reserva confirmada desses imóveis nos próximos 30 dias, a tela diz o próximo
+    passo:
+    - **aviso inicial** na reserva;
+    - **segundo pedido** entre 5 e 7 dias antes da entrada, se faltar documento;
+    - **pedido final** na véspera;
+  - reserva de última hora não recebe os três pedidos de uma vez. Depois da entrada, não há
+    mais cobrança: fica só o registro do que falta;
+  - a equipe registra quantos hóspedes já mandaram documento. Com todos completos, confere o
+    destinatário e registra o **encaminhamento**, depois a **entrega confirmada**. Entrega não
+    é aprovação da portaria;
+  - dá para anotar uma **pendência** concreta (falha de entrega, dúvida). Tudo fica no
+    histórico da reserva.
 - M6.2: **manutenção** (menu **Manutenção**). Cada serviço segue quatro passos:
   - a equipe registra o **pedido** (imóvel e o que precisa ser feito) e depois o **orçamento**
     (quem vai fazer e o valor);
@@ -430,9 +446,13 @@
 |---|---|
 | ![Apartamentos](docs/telas/apartamentos.png) | ![Manutenção no celular](docs/telas/manutencao-celular.png) |
 
-| Manutenção (pedido, orçamento, aprovação e custo) |
+| Manutenção (pedido, orçamento, aprovação e custo) | Portaria no celular |
+|---|---|
+| ![Manutenção](docs/telas/manutencao.png) | ![Portaria no celular](docs/telas/portaria-celular.png) |
+
+| Portaria (documentos: pedidos, encaminhamento e entrega) |
 |---|
-| ![Manutenção](docs/telas/manutencao.png) |
+| ![Portaria](docs/telas/portaria.png) |
 | Apartamentos (resultado por imóvel) | Portal do proprietário no celular |
 |---|---|
 | ![Apartamentos](docs/telas/apartamentos.png) | ![Portal no celular](docs/telas/portal-celular.png) |
@@ -569,10 +589,12 @@ ambiente).
    Proprietários) se a chave Pix está preenchida — a tela de Repasses usa ela para o botão
    "Copiar Pix" e avisa quando falta.
 8. **Booking:** criar os anúncios (ver "Copiar anúncios do Airbnb para o Booking" na seção 7).
-9. **Manutenção:** quando aparecer "aguardando aprovação" (no menu **Manutenção**), confira o
+9. **Portaria:** em Painel → **Portaria**, marque os imóveis que exigem documentos de
+   portaria (hoje, o 403). Sem marcação, a tela só avisa e não lista nada.
+10. **Manutenção:** quando aparecer "aguardando aprovação" (no menu **Manutenção**), confira o
    orçamento, escolha quem paga (empresa ou proprietário) e aprove, ou recuse com o motivo.
    Só você (administrador) vê esses botões.
-10. **Sistema antigo (referência):** mande o arquivo (zip) do sistema antigo — o jeito mais
+11. **Sistema antigo (referência):** mande o arquivo (zip) do sistema antigo — o jeito mais
    fácil é subir no seu **Google Drive** e me dizer o nome do arquivo (o Drive já está
    conectado aqui). Eu só leio para levantar todas as telas e capacidades e comparar com o
    plano; **nada dele vai para o GitHub**, e dados reais de clientes não são copiados.

@@ -26,6 +26,7 @@ export const SECOES: readonly Secao[] = [
   { slug: "limpezas", titulo: "Limpezas", marco: "M6.1", descricao: "Faxinas por checkout: pedida, confirmada e realizada." , exige: "limpeza:ler" },
   { slug: "agenda", titulo: "Agenda", marco: "M6.3", descricao: "Agenda diária da equipe: entradas, saídas e limpezas dos próximos 5 dias, por cidade." , exige: "limpeza:ler", interno: true },
   { slug: "manutencao", titulo: "Manutenção", marco: "M6.2", descricao: "Pedidos, orçamentos, aprovação e custos de manutenção." , exige: "manutencao:ler" },
+  { slug: "portaria", titulo: "Portaria", marco: "M6.4", descricao: "Documentos de portaria: pedidos, encaminhamento e entrega (sem guardar documentos)." , exige: "reserva:editar", interno: true },
   { slug: "mensagens", titulo: "Mensagens", marco: "M10.1", descricao: "Caixa de entrada do WhatsApp e mensagens programadas." , exige: "mensagem:ler" },
   { slug: "sistema", titulo: "Sistema", marco: "M1.6", descricao: "Serviços ligados, automações e regras em vigor." , exige: "configuracao:editar" },
   { slug: "configuracoes", titulo: "Configurações", marco: "M1.7", descricao: "Empresa, usuários, regras financeiras, integrações, categorias, modelos de mensagem e textos do site." , exige: "configuracao:editar" },
