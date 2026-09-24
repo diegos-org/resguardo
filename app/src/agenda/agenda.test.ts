@@ -670,6 +670,33 @@ describe("configuração e envio", () => {
     expect(correio.enviadas[1].texto).not.toContain("entrada seg 04/12");
   });
 
+  it("manual retomado pelo das 20h, aceito pelo provedor mas sem registro: o das 20h não repete as reservas dele", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    await nova(rio, "2028-12-04", "2028-12-06", new Date(AGORA.getTime() - 60 * 60_000).toISOString());
+    const caiu: Correio = { nome: "caiu", enviar: async () => Promise.reject(new ErroEnvioIncerto("Sem resposta do provedor de e-mail")) };
+    await enviarAgenda(db, org, caiu, new Date(AGORA.getTime() - 40 * 60_000), { manual: true });
+    await nova(rio, "2028-12-11", "2028-12-13", new Date(AGORA.getTime() - 10 * 60_000).toISOString());
+    // O provedor aceita a retomada do manual e o banco cai na gravação dela (só nessa).
+    let aceitos = 0;
+    let caiuUmaVez = false;
+    const enviadas: Mensagem[] = [];
+    const correio: Correio = { nome: "teste", enviar: async (m) => { enviadas.push(m); aceitos++; } };
+    const original = db.transaction.bind(db);
+    const espiao = vi.spyOn(db, "transaction").mockImplementation(((fn: Parameters<Db["transaction"]>[0]) => {
+      if (aceitos === 1 && !caiuUmaVez) {
+        caiuUmaVez = true;
+        throw new Error("banco fora");
+      }
+      return original(fn);
+    }) as Db["transaction"]);
+    const r = await enviarAgenda(db, org, correio, AGORA);
+    espiao.mockRestore();
+    expect(r.falhas[0]).toContain("não foi possível registrar");
+    expect(enviadas).toHaveLength(2);
+    expect(enviadas[1].texto).toContain("entrada seg 11/12");
+    expect(enviadas[1].texto).not.toContain("entrada seg 04/12");
+  });
+
   it("'enviar agora' ainda sem confirmação (menos de 15 min): o das 20h sai sem as reservas dele", async () => {
     await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
     await nova(rio, "2028-12-04", "2028-12-06", new Date(AGORA.getTime() - 60 * 60_000).toISOString());
@@ -906,6 +933,20 @@ describe("configuração e envio", () => {
     expect((await montarAgenda(db, org, "2026-10-01", desde, corte)).secoes.flatMap((x) => x.novas)).toEqual([]);
     const depois = await montarAgenda(db, org, "2026-10-01", corte, new Date(Date.now() + 60_000));
     expect(depois.secoes.flatMap((x) => x.novas).map((n) => n.checkin)).toEqual(["2028-03-01"]);
+  });
+
+  it("confirmada no corte e cancelada depois dele: não é anunciada como nova", async () => {
+    const dados = reserva(rio, "2028-04-01", "2028-04-03", { codigoCanal: "HMCANC" });
+    const r = await sincronizarReserva(db, org, "beds24", "B-5", dados);
+    if (!r.ok) throw new Error("reserva");
+    const desde = new Date(Date.now() - 60_000);
+    await new Promise((ok) => setTimeout(ok, 5));
+    const corte = new Date();
+    await new Promise((ok) => setTimeout(ok, 5));
+    // Cancelada depois do corte, antes da consulta (outra organização atrasou a execução).
+    expect((await sincronizarReserva(db, org, "beds24", "B-5", { ...dados, estado: "cancelada" })).ok).toBe(true);
+    expect((await montarAgenda(db, org, "2026-10-01", desde, corte)).secoes.flatMap((x) => x.novas)).toEqual([]);
+    expect((await montarAgenda(db, org, "2026-10-01", corte, new Date(Date.now() + 60_000))).secoes.flatMap((x) => x.novas)).toEqual([]);
   });
 
   it("horário da última agenda nunca volta (execução antiga que termina depois)", async () => {

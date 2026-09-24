@@ -203,9 +203,11 @@ export async function montarAgenda(db: Db, organizacaoId: string, hoje: string, 
           .where(
             and(
               eq(reservas.organizacaoId, organizacaoId),
-              // Confirmada no corte (último estado registrado no histórico até `novasAte`, ou o atual se não
-              // houver): cancelada antes do corte e reconfirmada depois fica para a próxima agenda.
-              sql`coalesce((select ${auditoria.mudancas} -> 'estado' ->> 1 from ${auditoria} where ${auditoria.organizacaoId} = ${organizacaoId} and ${auditoria.entidade} = 'reserva' and ${auditoria.entidadeId} = ${reservas.id}::text and ${auditoria.mudancas} ? 'estado' and ${auditoria.criadoEm} <= ${novasAte.toISOString()}::timestamptz order by ${auditoria.criadoEm} desc limit 1), ${reservas.estado}::text) = 'confirmada'`,
+              // Confirmada agora e sem mudança de estado depois do corte (`novasAte`): cancelada depois do
+              // corte não é anunciada como nova; cancelada antes e reconfirmada depois fica para a próxima
+              // agenda (a reconfirmação é posterior ao marco que esta grava).
+              eq(reservas.estado, "confirmada"),
+              sql`not exists (select 1 from ${auditoria} where ${auditoria.organizacaoId} = ${organizacaoId} and ${auditoria.entidade} = 'reserva' and ${auditoria.entidadeId} = ${reservas.id}::text and ${auditoria.mudancas} ? 'estado' and ${auditoria.criadoEm} > ${novasAte.toISOString()}::timestamptz)`,
               inArray(reservas.imovelId, ids),
               // Nova = criada já confirmada depois do marco, ou que passou a confirmada depois dele
               // (pendente/cancelada que confirmou numa sincronização: registrada no histórico).
@@ -751,7 +753,7 @@ export async function enviarAgenda(
   // quando é renovada (senão, depois de envios lentos, ela nasceria ou ficaria vencida).
   const inicio = Date.now();
   const relogio = o.relogio ?? (() => new Date(agora.getTime() + (Date.now() - inicio)));
-  const enviarPara = async (d: Destinatario, trava: { chave: string; dono: string }, chaveForcada?: string): Promise<void> => {
+  const enviarPara = async (d: Destinatario, trava: { chave: string; dono: string }, chaveForcada?: string): Promise<boolean> => {
     // Um envio de hoje do outro tipo ainda sem confirmação do provedor ("enviando"):
     // - "enviar agora" usa a marca e a chave do agendado (repete o mesmo pedido, que o provedor não
     //   duplica) em vez de mandar outro e-mail; antes de 15 minutos, espera;
@@ -770,9 +772,9 @@ export async function enviarAgenda(
       const [daOutra] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, outra));
       const incerta = (daOutra?.value as { estado?: string } | undefined)?.estado === "enviando";
       if (incerta && !o.manual) {
-        const antes = r.enviados;
-        await enviarPara(d, trava, outra);
-        if (r.enviados === antes) {
+        // Só conta como fechado o que ficou registrado ("enviado" gravado): o provedor aceitar e o
+        // registro falhar deixa o manual pendente, e as reservas dele não vão de novo neste.
+        if (!(await enviarPara(d, trava, outra))) {
           const [ainda] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, outra));
           const v = ainda?.value as { estado?: string; carga?: unknown } | undefined;
           if (v?.estado === "enviando" && cargaValida(v.carga)) doManualPendente = v.carga.eventos;
@@ -791,7 +793,7 @@ export async function enviarAgenda(
       const emAberto = outraIncerta || (marca?.value as { estado?: string } | undefined)?.estado === "enviando";
       if (emAberto) r.falhas.push(`${d.email}: o envio anterior de hoje ainda não foi confirmado pelo provedor; nova tentativa com o mesmo e-mail depois de 15 minutos`);
       else r.jaEnviados++;
-      return;
+      return false;
     }
     const { corte, tentativa } = reserva;
     const daTentativa = sql`${appSettings.value} ->> 'tentativa' = ${tentativa}`;
@@ -816,7 +818,7 @@ export async function enviarAgenda(
         if (!minha) {
           // Esta tentativa passou do prazo e outra a retomou: quem retomou envia; esta não chama o provedor.
           r.falhas.push(`${d.email}: tentativa demorou demais e foi retomada por outra execução`);
-          return;
+          return false;
         }
       }
       // Logo antes do provedor: a trava da pessoa ainda é desta execução (e ganha prazo novo). Se outra
@@ -824,7 +826,7 @@ export async function enviarAgenda(
       // agendado), a pessoa receberia duas vezes.
       if (!(await renovarPessoa(db, trava.chave, trava.dono, relogio()))) {
         r.falhas.push(`${d.email}: tentativa demorou demais e foi retomada por outra execução`);
-        return;
+        return false;
       }
       // A mesma chave do dia vai para o provedor: uma nova tentativa do mesmo envio não duplica.
       // Com prazo bem menor que o da trava: uma chamada presa vira "incerta" (a marca e o pedido ficam
@@ -837,26 +839,26 @@ export async function enviarAgenda(
         // minutos repete o mesmo pedido com a mesma chave; se virar o dia, vira "incerto" e a agenda
         // seguinte avisa que as reservas podem já ter vindo.
         r.falhas.push(`${d.email}: envio incerto (${msg}); nova tentativa com o mesmo e-mail depois de 15 minutos`);
-        return;
+        return false;
       }
       // O provedor recusou (ou nem chegou a ser chamado): libera para tentar de novo.
       await db.delete(appSettings).where(and(eq(appSettings.key, chave), daTentativa));
       r.falhas.push(`${d.email}: ${msg}`);
-      return;
+      return false;
     }
     // Daqui em diante o e-mail já saiu: falha ao registrar não libera outro envio (a marca fica).
     r.enviados++;
     const enviada = carga;
     try {
       // Marca do dia e marco das reservas novas juntos: ou os dois, ou nenhum.
-      await db.transaction(async (tx) => {
+      return await db.transaction(async (tx) => {
         const [dona] = await tx
           .update(appSettings)
           .set({ value: { em: agora.toISOString(), estado: "enviado", corte: corte.toISOString() }, updatedAt: new Date() })
           .where(and(eq(appSettings.key, chave), daTentativa))
           .returning({ key: appSettings.key });
         // A marca foi retomada por outra tentativa (esta passou do prazo): ela repete o mesmo pedido e registra.
-        if (!dona) return;
+        if (!dona) return false;
         // "Enviar agora" que fechou o agendado pendente: o manual do dia também está feito (outro clique
         // hoje não manda de novo para esta pessoa).
         if (outraIncerta) {
@@ -938,9 +940,11 @@ export async function enviarAgenda(
             })
             .where(eq(appSettings.key, i.chave));
         }
+        return true;
       });
     } catch (e) {
       r.falhas.push(`${d.email}: enviada, mas não foi possível registrar o envio (${e instanceof Error ? e.message : String(e)})`);
+      return false;
     }
   };
   await limparMarcasAntigas(db, organizacaoId, hoje);
