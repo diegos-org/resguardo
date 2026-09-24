@@ -7,7 +7,7 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { podeFazer, type Sessao } from "@/acesso/politica";
 import { registrarAuditoria } from "@/auditoria/auditoria";
-import { imoveis } from "@/db/schema";
+import { imoveis, proprietarioImoveis } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
 import { periodoDosFiltros } from "@/lib/filtros";
@@ -22,6 +22,27 @@ type Params = Record<string, string | string[] | undefined>;
 
 const nomeArquivo = (ano: number, mes: number, imoveis: { codigo: string }[]) =>
   `relatorio-${ano}-${String(mes).padStart(2, "0")}-${imoveis.map((i) => i.codigo.replace(/[^\w-]/g, "")).join("-") || "imoveis"}.pdf`;
+
+/**
+ * Quem representa mais de um proprietário: o PDF só leva os donos dos imóveis escolhidos (nome,
+ * representantes e saldo de outro proprietário não entram no relatório deste imóvel).
+ * `todosOsImoveis`: todos os imóveis desses donos estão no PDF (aí entram os lançamentos sem imóvel).
+ */
+export async function donosDosEscolhidos<D extends { id: string }>(
+  db: Db,
+  donos: readonly D[],
+  escolhidos: readonly { id: string }[],
+): Promise<{ donos: D[]; todosOsImoveis: boolean }> {
+  if (!donos.length) return { donos: [], todosOsImoveis: false };
+  const vinculos = await db
+    .select({ proprietarioId: proprietarioImoveis.proprietarioId, imovelId: proprietarioImoveis.imovelId })
+    .from(proprietarioImoveis)
+    .where(inArray(proprietarioImoveis.proprietarioId, donos.map((d) => d.id)));
+  const escolhido = (id: string) => escolhidos.some((i) => i.id === id);
+  const ids = new Set(vinculos.filter((v) => escolhido(v.imovelId)).map((v) => v.proprietarioId));
+  const deles = vinculos.filter((v) => ids.has(v.proprietarioId));
+  return { donos: donos.filter((d) => ids.has(d.id)), todosOsImoveis: deles.every((v) => escolhido(v.imovelId)) };
+}
 
 /** PDF do mês escolhido no portal, só com o que é do proprietário logado. */
 export async function relatorioDoPortal(db: Db, sessao: Sessao | null, params: Params, agora: Date = new Date()): Promise<Resultado> {
@@ -40,10 +61,12 @@ export async function relatorioDoPortal(db: Db, sessao: Sessao | null, params: P
   if (aviso) return { ok: false, status: 400, erro: aviso };
   if (filtros.mes === null) return { ok: false, status: 400, erro: "O relatório em PDF é de um mês: escolha o mês." };
   const escolhidos = filtros.imoveis.length ? meus.filter((i) => filtros.imoveis.includes(i.codigo)) : meus;
+  const { donos: donosDoPdf, todosOsImoveis } = await donosDosEscolhidos(db, donos, escolhidos);
+  if (!donosDoPdf.length) return { ok: false, status: 404, erro: "Nenhum imóvel ligado ao seu cadastro." };
   const dados = await dadosDoRelatorio(db, sessao.organizacaoId, {
-    donos,
+    donos: donosDoPdf,
     imoveis: escolhidos,
-    todosOsImoveis: escolhidos.length === meus.length,
+    todosOsImoveis,
     ano: filtros.ano,
     mes: filtros.mes,
     hoje: hojeISO("America/Sao_Paulo", agora),

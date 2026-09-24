@@ -10,7 +10,7 @@ import { resumoDoProprietario } from "@/portal/resumo";
 import type { Rodape } from "@/portal/rodape";
 import type { DadosReserva } from "@/reservas/regras";
 import { criarReserva } from "@/reservas/repositorio";
-import { relatorioDoPainel, relatorioDoPortal } from "./gerar";
+import { donosDosEscolhidos, relatorioDoPainel, relatorioDoPortal } from "./gerar";
 import { conferirAnexos, ErroRelatorio, gerarPdfRelatorio, lerPaginas } from "./pdf";
 import { type DadosRelatorio, dadosDoRelatorio, textoDoSaldo, textosDoRelatorio } from "./relatorio";
 
@@ -266,6 +266,21 @@ describe("dados e acesso", () => {
     if (!r.ok) throw new Error(r.erro);
     expect(r.arquivo).toBe("relatorio-2026-10-403.pdf");
     expect(await paginasDe(r.pdf)).toBe(1);
+  });
+
+  it("portal: quem representa dois proprietários recebe no PDF só o dono do imóvel escolhido", async () => {
+    await db.insert(proprietarioUsuarios).values({ proprietarioId: outro, usuarioId: donaUsuario.usuarioId });
+    const donos = [
+      { id: dona, nome: "Dona Fictícia" },
+      { id: outro, nome: "Outro Fictício" },
+    ];
+    // Só o 403: só a dona, e é tudo dela (entram os lançamentos sem imóvel dela).
+    expect(await donosDosEscolhidos(db, donos, [{ id: a }])).toEqual({ donos: [donos[0]], todosOsImoveis: true });
+    // Os dois imóveis: os dois donos.
+    expect(await donosDosEscolhidos(db, donos, [{ id: a }, { id: b }])).toEqual({ donos, todosOsImoveis: true });
+    // E o PDF sai normalmente.
+    const r = await relatorioDoPortal(db, { ...donaUsuario, imovelIds: [a, b] }, { ano: "2026", mes: "10", imovel: ["403"] }, AGORA);
+    expect(r).toMatchObject({ ok: true, arquivo: "relatorio-2026-10-403.pdf" });
   });
 
   it("painel: só quem vê proprietários e financeiro; imóvel de outro proprietário é recusado", async () => {
