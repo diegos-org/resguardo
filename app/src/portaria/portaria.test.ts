@@ -222,6 +222,31 @@ describe("lista de portaria", () => {
     expect(await reg({ tipo: "encaminhado", data: "2026-10-05" })).toEqual({ ok: true });
   });
 
+  it("hóspedes da reserva mudam (titular ou quantidade): documentos e envio recomeçam, com aviso", async () => {
+    await salvarImoveisComPortaria(db, org, [a], null);
+    const r = await criarReserva(db, org, reserva(a, { hospedes: 3 }), null);
+    if (!r.ok) throw new Error("reserva");
+    const id = r.reserva.id;
+    const reg = (x: Parameters<typeof registrarPortaria>[3]) => registrarPortaria(db, org, id, x, "2026-10-05", null);
+    await reg({ tipo: "documentos", recebidos: 3 });
+    await reg({ tipo: "destinatario", conferido: true });
+    await reg({ tipo: "encaminhado", data: "2026-10-05" });
+    await reg({ tipo: "entrega_confirmada", data: "2026-10-05" });
+    // A sincronização reduz para 2 hóspedes: os 3 documentos eram da lista anterior.
+    await db.update(reservas).set({ hospedes: 2 }).where(eq(reservas.id, id));
+    let [l] = await listarPortaria(db, org, { hoje: "2026-10-05", ate: "2026-11-05" });
+    expect(l).toMatchObject({ documentosRecebidos: 0, encaminhadoEm: null, entregaConfirmadaEm: null, destinatarioConferido: true });
+    expect(l.texto).toContain("Os hóspedes da reserva mudaram");
+    expect(await reg({ tipo: "encaminhado", data: "2026-10-05" })).toMatchObject({ ok: false, erro: expect.stringContaining("faltam documentos") });
+    await reg({ tipo: "documentos", recebidos: 2 });
+    [l] = await listarPortaria(db, org, { hoje: "2026-10-05", ate: "2026-11-05" });
+    expect(l).toMatchObject({ documentosRecebidos: 2, passo: "encaminhar" });
+    expect(l.texto).not.toContain("mudaram");
+    // Troca do titular também recomeça.
+    await db.update(reservas).set({ hospedeNome: "Outra Pessoa Fictícia" }).where(eq(reservas.id, id));
+    expect((await listarPortaria(db, org, { hoje: "2026-10-05", ate: "2026-11-05" }))[0]).toMatchObject({ documentosRecebidos: 0 });
+  });
+
   it("mais documentos depois do encaminhamento pedem novo encaminhamento", async () => {
     await salvarImoveisComPortaria(db, org, [a], null);
     const r = await criarReserva(db, org, reserva(a), null);

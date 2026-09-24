@@ -420,6 +420,8 @@ export const lancamentos = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
     imovelId: uuid("imovel_id").references(() => imoveis.id),
+  /** Hóspedes da reserva ("nome|quantidade") quando a lista foi mexida: se mudarem, documentos e envio recomeçam. */
+  hospedesReferencia: text("hospedes_referencia"),
     proprietarioId: uuid("proprietario_id").references(() => proprietarios.id),
     reservaId: uuid("reserva_id").references(() => reservas.id),
     tipo: tipoLancamentoEnum("tipo").notNull(),
@@ -661,6 +663,8 @@ export const ajustes = pgTable(
     organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
     data: date("data", { mode: "string" }).notNull(),
     imovelId: uuid("imovel_id").references(() => imoveis.id),
+  /** Hóspedes da reserva ("nome|quantidade") quando a lista foi mexida: se mudarem, documentos e envio recomeçam. */
+  hospedesReferencia: text("hospedes_referencia"),
     reservaId: uuid("reserva_id").references(() => reservas.id),
     proprietarioId: uuid("proprietario_id").references(() => proprietarios.id),
     /** Explicação conhecida; vazio = motivo não identificado. */
@@ -837,6 +841,8 @@ export const portariaChecklists = pgTable("portaria_checklists", {
   encaminhadoCheckout: date("encaminhado_checkout", { mode: "string" }),
   /** Imóvel da reserva quando a lista foi mexida: se a reserva mudar de imóvel, destinatário e envio valem de novo do zero. */
   imovelId: uuid("imovel_id").references(() => imoveis.id),
+  /** Hóspedes da reserva ("nome|quantidade") quando a lista foi mexida: se mudarem, documentos e envio recomeçam. */
+  hospedesReferencia: text("hospedes_referencia"),
   /** Pendência concreta (falha de entrega, dúvida de correspondência…); vazio = nenhuma. */
   pendencia: text("pendencia").notNull().default(""),
   criadoEm: criadoEm(),

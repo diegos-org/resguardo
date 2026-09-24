@@ -132,15 +132,18 @@ export async function listarPortaria(db: Db, organizacaoId: string, f: { hoje: s
       checkin: r.checkin,
       reservadaEm: diaDaReserva(r.criadoEm),
       hospedes: r.hospedes,
-      documentosRecebidos: c?.documentosRecebidos ?? 0,
+      // Hóspedes mudaram (nome do titular ou quantidade): os documentos contados eram de outra lista.
+      documentosRecebidos: hospedesMudaram(c, r) ? 0 : (c?.documentosRecebidos ?? 0),
       // Pedido feito para uma entrada que mudou (reserva adiada/antecipada) não vale mais.
       ...pedidosVigentes(c, r.checkin, diaDaReserva(r.criadoEm)),
       // Encaminhado para outras datas da estada: precisa encaminhar de novo.
       ...envioVigente(c, r),
     };
+    const passo = proximoPasso(estado, f.hoje);
+    if (hospedesMudaram(c, r)) passo.texto = `Os hóspedes da reserva mudaram depois do último registro: confira os documentos de novo. ${passo.texto}`;
     return {
       ...estado,
-      ...proximoPasso(estado, f.hoje),
+      ...passo,
       reservaId: r.id,
       codigo: r.codigo,
       imovelCodigo,
@@ -226,7 +229,14 @@ function pedidosVigentes(
 
 type Envio = Pick<Checklist, "encaminhadoEm" | "entregaConfirmadaEm" | "encaminhadoCheckin" | "encaminhadoCheckout">;
 const SEM_ENVIO: Envio = { encaminhadoEm: null, entregaConfirmadaEm: null, encaminhadoCheckin: null, encaminhadoCheckout: null };
-type ReservaAtual = { imovelId: string; checkin: string; checkout: string };
+type ReservaAtual = { imovelId: string; checkin: string; checkout: string; hospedeNome: string; hospedes: number | null };
+
+/** Quem são os hóspedes da reserva (nome do titular e quantidade), para saber se mudaram. */
+const referenciaHospedes = (r: ReservaAtual) => `${r.hospedeNome.trim()}|${r.hospedes ?? ""}`;
+
+/** Os hóspedes mudaram depois do último registro? Documentos e envio eram de outra lista. */
+const hospedesMudaram = (c: Pick<Checklist, "hospedesReferencia"> | null, r: ReservaAtual) =>
+  Boolean(c?.hospedesReferencia && c.hospedesReferencia !== referenciaHospedes(r));
 
 /** A lista foi mexida com a reserva em outro imóvel (portaria e destinatário são de outro prédio)? */
 const outroImovel = (c: Pick<Checklist, "imovelId"> | null, r: ReservaAtual) => Boolean(c?.imovelId && c.imovelId !== r.imovelId);
@@ -237,8 +247,8 @@ function destinatarioVigente(c: Pick<Checklist, "imovelId" | "destinatarioConfer
 }
 
 /** Encaminhamento e entrega só valem para o imóvel e as datas da estada com que foram feitos. */
-function envioVigente(c: (Envio & Pick<Checklist, "imovelId">) | null, r: ReservaAtual): Envio {
-  if (!c?.encaminhadoEm || outroImovel(c, r)) return SEM_ENVIO;
+function envioVigente(c: (Envio & Pick<Checklist, "imovelId" | "hospedesReferencia">) | null, r: ReservaAtual): Envio {
+  if (!c?.encaminhadoEm || outroImovel(c, r) || hospedesMudaram(c, r)) return SEM_ENVIO;
   if (c.encaminhadoCheckin !== r.checkin || c.encaminhadoCheckout !== r.checkout) return SEM_ENVIO;
   return { encaminhadoEm: c.encaminhadoEm, entregaConfirmadaEm: c.entregaConfirmadaEm, encaminhadoCheckin: c.encaminhadoCheckin, encaminhadoCheckout: c.encaminhadoCheckout };
 }
@@ -248,7 +258,7 @@ export async function registrarPortaria(db: Db, organizacaoId: string, reservaId
   if (!uuidValido(reservaId)) return { ok: false, erro: "Reserva não encontrada." };
   return db.transaction(async (tx) => {
     const [r] = await tx
-      .select({ id: reservas.id, imovelId: reservas.imovelId, hospedes: reservas.hospedes, estado: reservas.estado, checkin: reservas.checkin, checkout: reservas.checkout, criadoEm: reservas.criadoEm })
+      .select({ id: reservas.id, imovelId: reservas.imovelId, hospedes: reservas.hospedes, hospedeNome: reservas.hospedeNome, estado: reservas.estado, checkin: reservas.checkin, checkout: reservas.checkout, criadoEm: reservas.criadoEm })
       .from(reservas)
       .where(and(eq(reservas.id, reservaId), eq(reservas.organizacaoId, organizacaoId)))
       .for("update");
@@ -264,7 +274,9 @@ export async function registrarPortaria(db: Db, organizacaoId: string, reservaId
       ...pedidosVigentes(antes, r.checkin, diaDaReserva(r.criadoEm)),
       ...envioVigente(antes, r),
       destinatarioConferido: destinatarioVigente(antes, r),
+      documentosRecebidos: hospedesMudaram(antes, r) ? 0 : antes.documentosRecebidos,
       imovelId: r.imovelId,
+      hospedesReferencia: referenciaHospedes(r),
     };
     const atual: Checklist = { ...antes, ...vigentes };
 
@@ -287,7 +299,7 @@ export async function registrarPortaria(db: Db, organizacaoId: string, reservaId
       if (!dataValida(reg.data) || reg.data > hoje) return { ok: false as const, erro: "Data inválida (não pode ser no futuro)." };
       if (reg.tipo === "encaminhado" || reg.tipo === "entrega_confirmada") {
         if (!atual.destinatarioConferido) return { ok: false as const, erro: "Confira o destinatário da portaria antes de encaminhar ou confirmar a entrega." };
-        if (r.hospedes === null || antes.documentosRecebidos < r.hospedes) return { ok: false as const, erro: "Ainda faltam documentos (ou o número de hóspedes não está na reserva)." };
+        if (r.hospedes === null || atual.documentosRecebidos < r.hospedes) return { ok: false as const, erro: "Ainda faltam documentos (ou o número de hóspedes não está na reserva)." };
       }
       if (reg.tipo === "entrega_confirmada" && !atual.encaminhadoEm) return { ok: false as const, erro: "Registre o encaminhamento antes de confirmar a entrega." };
       if (reg.tipo === "aviso_inicial" || reg.tipo === "segundo_pedido" || reg.tipo === "pedido_final") {

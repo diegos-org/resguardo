@@ -12,12 +12,15 @@ CREATE TABLE "portaria_checklists" (
 	"encaminhado_checkin" date,
 	"encaminhado_checkout" date,
 	"imovel_id" uuid,
+	"hospedes_referencia" text,
 	"pendencia" text DEFAULT '' NOT NULL,
 	"criado_em" timestamp with time zone DEFAULT now() NOT NULL,
 	"atualizado_em" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "portaria_checklists_reserva_id_unique" UNIQUE("reserva_id")
 );
 --> statement-breakpoint
+ALTER TABLE "ajustes" ADD COLUMN "hospedes_referencia" text;--> statement-breakpoint
+ALTER TABLE "lancamentos" ADD COLUMN "hospedes_referencia" text;--> statement-breakpoint
 ALTER TABLE "portaria_checklists" ADD CONSTRAINT "portaria_checklists_organizacao_id_organizacoes_id_fk" FOREIGN KEY ("organizacao_id") REFERENCES "public"."organizacoes"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "portaria_checklists" ADD CONSTRAINT "portaria_checklists_reserva_id_reservas_id_fk" FOREIGN KEY ("reserva_id") REFERENCES "public"."reservas"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "portaria_checklists" ADD CONSTRAINT "portaria_checklists_imovel_id_imoveis_id_fk" FOREIGN KEY ("imovel_id") REFERENCES "public"."imoveis"("id") ON DELETE no action ON UPDATE no action;
