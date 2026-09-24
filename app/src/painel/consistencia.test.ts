@@ -344,4 +344,25 @@ describe("consistência entre telas (M4.8)", () => {
     expect(depois.estado).toBe("pendente");
     expect((await preverRepasses(db, org, "2026-10", "2026-11-10", [dona]))[0].bloqueios.join(" ")).toContain("acerto pendente");
   });
+
+  it("sincronização que confirma de volta com valor diferente do dinheiro já movimentado fica em conferência", async () => {
+    const dados = reserva(a, "2026-10-01", "2026-10-03", { valorBruto: 50000, taxaCanal: 0 });
+    const r = await sincronizarReserva(db, org, "csv", "booking:R8", dados, null);
+    if (!r.ok) throw new Error("reserva");
+    await db.update(lancamentos).set({ estado: "realizado" }).where(and(eq(lancamentos.reservaId, r.reserva.id), eq(lancamentos.tipo, "receita_bruta")));
+    await sincronizarReserva(db, org, "csv", "booking:R8", { ...dados, estado: "pendente" }, null);
+    // Volta confirmada, mas com outro valor: o motor não mexe no que já movimentou dinheiro.
+    await sincronizarReserva(db, org, "csv", "booking:R8", { ...dados, valorBruto: 70000 }, null);
+    const bloqueios = async () => (await preverRepasses(db, org, "2026-10", "2026-11-10", [dona]))[0].bloqueios.join(" ");
+    expect(await bloqueios()).toContain("acerto pendente");
+    const t = await tresTelas();
+    expect(t.inicio.alertas.map((x) => x.texto).join(" | ")).toContain("com dinheiro já movimentado");
+    // Resolvida no painel (depois do ajuste): libera.
+    expect(await resolverConferencia(db, org, r.reserva.id, null)).toBe(true);
+    expect(await bloqueios()).not.toContain("acerto pendente");
+    // Voltou a bater com o livro: acabou a divergência.
+    await sincronizarReserva(db, org, "csv", "booking:R8", dados, null);
+    const [depois] = await db.select().from(reservas).where(eq(reservas.id, r.reserva.id));
+    expect(depois.divergenciaEm).toBeNull();
+  });
 });

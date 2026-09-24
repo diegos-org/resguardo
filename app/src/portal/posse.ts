@@ -27,7 +27,7 @@ export function lancamentoEmVigor(db: Db) {
 const daReservaNaoConfirmada = (resolvida: boolean) =>
   and(
     eq(lancamentos.origem, "motor"),
-    sql`${lancamentos.reservaId} in (select ${reservas.id} from ${reservas} where ${reservas.estado} <> 'confirmada' and ${reservas.conferenciaResolvidaEm} is ${sql.raw(resolvida ? "not null" : "null")})`,
+    sql`${lancamentos.reservaId} in (select ${reservas.id} from ${reservas} where (${reservas.estado} <> 'confirmada' or ${reservas.divergenciaEm} is not null) and ${reservas.conferenciaResolvidaEm} is ${sql.raw(resolvida ? "not null" : "null")})`,
   );
 
 /** Lançamento do motor de reserva não confirmada cuja conferência foi dada por resolvida. */

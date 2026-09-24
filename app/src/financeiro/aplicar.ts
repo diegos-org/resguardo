@@ -88,6 +88,9 @@ export async function aplicarMotor(
       ativos.some((a) => !a.chave || !desejadas.has(baseDaChave(a.chave))) ||
       desejados.some((l) => !ativos.some((a) => a.chave && baseDaChave(a.chave) === l.chaveOrigem));
     if (precisaMudar && ativos.some((a) => a.estado === "realizado" || a.estado === "conciliado")) {
+      // Divergência entre o cálculo e o dinheiro já movimentado: a reserva fica em conferência (M4.8),
+      // qualquer que seja a situação dela, até bater de novo ou alguém dar por resolvida.
+      if (!r.divergenciaEm) await tx.update(reservas).set({ divergenciaEm: new Date() }).where(eq(reservas.id, r.id));
       return {
         criados: 0,
         estornados: 0,
@@ -122,6 +125,8 @@ export async function aplicarMotor(
         return { ...l, chaveOrigem: chave };
       });
     if (novos.length) await lancar(tx, organizacaoId, novos, autorId);
+    // O cálculo e o livro batem de novo: acabou a divergência.
+    if (r.divergenciaEm) await tx.update(reservas).set({ divergenciaEm: null }).where(eq(reservas.id, r.id));
     return { criados: novos.length, estornados, mantidos: mantidas.size, avisos };
   });
 }

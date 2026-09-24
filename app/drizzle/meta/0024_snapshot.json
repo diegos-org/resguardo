@@ -1,5 +1,5 @@
 {
-  "id": "6e8874b4-0d78-469a-aa96-91efda7691c3",
+  "id": "03e18834-4d88-486d-b38f-9bffe148d249",
   "prevId": "a273e64e-0d09-47b1-b12e-537a3a2e309e",
   "version": "7",
   "dialect": "postgresql",
@@ -4052,6 +4052,12 @@
         },
         "conferencia_resolvida_em": {
           "name": "conferencia_resolvida_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "divergencia_em": {
+          "name": "divergencia_em",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false

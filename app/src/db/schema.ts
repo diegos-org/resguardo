@@ -323,6 +323,12 @@ export const reservas = pgTable(
      * equipe dar por resolvida (depois do ajuste manual). Volta a vazio quando a situação muda.
      */
     conferenciaResolvidaEm: timestamp("conferencia_resolvida_em", { withTimezone: true }),
+    /**
+     * O cálculo atual não bate com lançamentos que já movimentaram dinheiro (o motor não mexe neles):
+     * a reserva fica em conferência, qualquer que seja a situação, até o cálculo voltar a bater ou
+     * alguém dar por resolvida (M4.8).
+     */
+    divergenciaEm: timestamp("divergencia_em", { withTimezone: true }),
     criadoEm: criadoEm(),
     atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
   },

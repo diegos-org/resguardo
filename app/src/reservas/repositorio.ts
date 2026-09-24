@@ -228,7 +228,7 @@ export async function resolverConferencia(db: Db, organizacaoId: string, id: str
       .from(reservas)
       .where(and(eq(reservas.id, id), eq(reservas.organizacaoId, organizacaoId)))
       .for("update");
-    if (!r || r.estado === "confirmada" || r.conferenciaResolvidaEm) return false;
+    if (!r || (r.estado === "confirmada" && !r.divergenciaEm) || r.conferenciaResolvidaEm) return false;
     const agora = new Date();
     await tx.update(reservas).set({ conferenciaResolvidaEm: agora, atualizadoEm: agora }).where(eq(reservas.id, id));
     await registrarAuditoria(tx, {

@@ -31,7 +31,7 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
   const lancs = verValores ? await listarLancamentos(db, sessao.organizacaoId, { reservaId: r.id }) : [];
   // Não confirmada com lançamento do motor ainda em vigor: já movimentou dinheiro, em conferência (M4.8).
   const emVigor = lancs.filter((l) => l.origem === "motor" && !l.estornoDe && !lancs.some((e) => e.estornoDe === l.id));
-  const emConferencia = r.estado !== "confirmada" && !r.conferenciaResolvidaEm && emVigor.length > 0;
+  const emConferencia = (r.estado !== "confirmada" || r.divergenciaEm !== null) && !r.conferenciaResolvidaEm && emVigor.length > 0;
 
   // Mesma ordem do motor: reserva > configuração do imóvel para o canal > padrão do sistema.
   const doImovel = verValores ? (await lerRecebimento(db, sessao.organizacaoId, r.imovelId))[r.origem] : undefined;
@@ -106,8 +106,9 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
       {emConferencia && (
         <section aria-label="Em conferência" className={styles.alerta} style={{ maxWidth: 820 }}>
           <p style={{ margin: 0 }}>
-            Esta reserva não está confirmada, mas já movimentou dinheiro: os valores continuam no financeiro, em conferência, e o fechamento do mês do
-            proprietário espera. Confirme a reserva de novo ou faça o ajuste manual e depois dê a conferência por resolvida.
+            {r.estado !== "confirmada"
+              ? "Esta reserva não está confirmada, mas já movimentou dinheiro: os valores continuam no financeiro, em conferência, e o fechamento do mês do proprietário espera. Confirme a reserva de novo ou faça o ajuste manual e depois dê a conferência por resolvida."
+              : "Os valores atuais desta reserva não batem com o que já movimentou dinheiro no financeiro: em conferência, e o fechamento do mês do proprietário espera. Faça o ajuste manual e depois dê a conferência por resolvida."}
           </p>
           {podeFazer(sessao.papel, "financeiro:editar") && (
             <form action={resolverConferenciaAcao} style={{ marginTop: 8 }}>

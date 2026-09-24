@@ -2,7 +2,7 @@
  * Dados do painel inicial (M4.6), já filtrados pelo filtro global (imóveis + período). Cada
  * bloco vem da mesma função que alimenta a tela específica (reservas, despesas, ajustes…).
  */
-import { and, eq, gte, inArray, isNull, lt, ne, sql, sum } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, isNull, lt, ne, or, sql, sum } from "drizzle-orm";
 import { listarAdiantamentos, totalACobrar } from "@/adiantamentos/adiantamentos";
 import { listarAjustes } from "@/ajustes/ajustes";
 import { lancamentos, reservas as reservasTabela, type TipoLancamento } from "@/db/schema";
@@ -189,7 +189,7 @@ export async function carregarDashboard(
       .where(
         and(
           eq(lancamentos.organizacaoId, organizacaoId),
-          ne(reservasTabela.estado, "confirmada"),
+          or(ne(reservasTabela.estado, "confirmada"), isNotNull(reservasTabela.divergenciaEm)),
           isNull(reservasTabela.conferenciaResolvidaEm),
           eq(lancamentos.origem, "motor"),
           gte(lancamentos.competencia, o.periodo.inicio),

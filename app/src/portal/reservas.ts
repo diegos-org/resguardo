@@ -52,6 +52,7 @@ export async function reservasDoPortal(
       canal: reservas.origem,
       estado: reservas.estado,
       resolvida: reservas.conferenciaResolvidaEm,
+      divergencia: reservas.divergenciaEm,
     })
     .from(reservas)
     .innerJoin(imoveis, eq(imoveis.id, reservas.imovelId))
@@ -149,14 +150,15 @@ export async function reservasDoPortal(
     if (d.some((p) => p.estado === "pendente")) return "em_conferencia";
     return d.length ? "definido" : "sem_calculo";
   };
-  return lista.map(({ estado, resolvida, ...r }) => {
+  return lista.map(({ estado, resolvida, divergencia, ...r }) => {
     const livro = estado !== "confirmada" ? doLivro.find((x) => x.reservaId === r.id) : undefined;
     return {
       ...r,
       ...(livro ? { imovelId: livro.imovelId, imovelCodigo: livro.imovelCodigo } : {}),
       bruto: valor(r.id, "receita_bruta"),
       suaParte: valor(r.id, "direito_proprietario"),
-      situacao: situacao(r.id, estado, resolvida),
+      // Divergência com o dinheiro já movimentado conta como "não confirmada" para a conferência.
+      situacao: situacao(r.id, divergencia ? "divergente" : estado, resolvida),
     };
   });
 }
