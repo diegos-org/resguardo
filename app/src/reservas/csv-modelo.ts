@@ -1,5 +1,6 @@
 /** Limites e modelo da importação por CSV — sem dependências, usados também na tela. */
-export const LIMITE_LINHAS = 2000;
+/** Cada reserva nova é gravada numa transação: arquivos maiores devem ser divididos. */
+export const LIMITE_LINHAS = 500;
 /** Abaixo do limite de 1 MB das ações do servidor. */
 export const LIMITE_BYTES = 900 * 1024;
 

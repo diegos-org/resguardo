@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { historicoDe } from "@/auditoria/auditoria";
-import { imoveis, organizacoes, reservas } from "@/db/schema";
+import { criarContrato } from "@/contratos/repositorio";
+import { imoveis, organizacoes, reservas, usuarios } from "@/db/schema";
+import { listarLancamentos, mudarEstado } from "@/financeiro/ledger";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { MODELO_CSV } from "./csv";
@@ -64,13 +66,13 @@ describe("conferir o arquivo", () => {
 
 describe("importar", () => {
   it("importa, e reimportar o mesmo arquivo não duplica; linha alterada é atualizada", async () => {
-    expect(await importarCsv(db, org, MODELO_CSV, null)).toEqual({ criadas: 2, atualizadas: 0, iguais: 0, comErro: 0 });
-    expect(await importarCsv(db, org, MODELO_CSV, null)).toEqual({ criadas: 0, atualizadas: 0, iguais: 2, comErro: 0 });
+    expect(await importarCsv(db, org, MODELO_CSV, null)).toEqual({ criadas: 2, atualizadas: 0, iguais: 0, comErro: 0, semRecalculo: [] });
+    expect(await importarCsv(db, org, MODELO_CSV, null)).toEqual({ criadas: 0, atualizadas: 0, iguais: 2, comErro: 0, semRecalculo: [] });
     const alterado = MODELO_CSV.replace("2.400,00", "2.500,00");
     const a = await analisarCsv(db, org, alterado);
     expect(a.linhas.map((l) => l.situacao)).toEqual(["atualiza", "igual"]);
     expect(a.linhas[0].avisos[0]).toContain("valorBruto");
-    expect(await importarCsv(db, org, alterado, null)).toEqual({ criadas: 0, atualizadas: 1, iguais: 1, comErro: 0 });
+    expect(await importarCsv(db, org, alterado, null)).toEqual({ criadas: 0, atualizadas: 1, iguais: 1, comErro: 0, semRecalculo: [] });
     const [r] = await db
       .select()
       .from(reservas)
@@ -83,5 +85,27 @@ describe("importar", () => {
   it("linhas com erro ficam de fora e são contadas", async () => {
     const csv = MODELO_CSV + "\n999;airbnb;X;10/10/2026;12/10/2026";
     expect(await importarCsv(db, org, csv, null)).toMatchObject({ criadas: 2, comErro: 1 });
+  });
+});
+
+describe("autor e dinheiro já movimentado", () => {
+  it("o histórico da reserva mostra quem importou", async () => {
+    const [u] = await db.insert(usuarios).values({ organizacaoId: org, email: "admin@example.com", nome: "Admin", papel: "admin" }).returning();
+    await importarCsv(db, org, MODELO_CSV, u.id);
+    const [r] = await db.select().from(reservas).where(eq(reservas.idFonte, "airbnb:HMEXEMPLO1"));
+    const h = await historicoDe(db, org, "reserva", r.id);
+    expect(h[0].autor).toBe("Admin");
+  });
+
+  it("reimportação que mudaria reserva com dinheiro já movimentado avisa a linha e não mexe no financeiro", async () => {
+    await criarContrato(db, org, im403, { tipo: "gestao_completa", comissao: "15", inicio: "2025-01-01" }, null);
+    await importarCsv(db, org, MODELO_CSV, null);
+    const [r] = await db.select().from(reservas).where(eq(reservas.idFonte, "airbnb:HMEXEMPLO1"));
+    const antes = await listarLancamentos(db, org, { reservaId: r.id });
+    expect(antes.length).toBeGreaterThan(0);
+    await mudarEstado(db, org, antes[0].id, "realizado", null);
+    const res = await importarCsv(db, org, MODELO_CSV.replace("2.400,00", "2.600,00"), null);
+    expect(res).toMatchObject({ atualizadas: 1, semRecalculo: [2] });
+    expect(await listarLancamentos(db, org, { reservaId: r.id })).toHaveLength(antes.length);
   });
 });

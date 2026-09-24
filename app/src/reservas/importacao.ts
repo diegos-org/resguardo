@@ -82,49 +82,62 @@ export async function analisarCsv(db: Db, organizacaoId: string, texto: string):
     if (l.situacao === "atualiza") l.avisos.push(`Muda: ${Object.keys(m).join(", ")}.`);
   }
 
-  // Avisa (não bloqueia) sobreposição com outras reservas do mesmo imóvel.
-  for (const l of validas) {
+  // Avisa (não bloqueia) sobreposição com outras reservas do mesmo imóvel. Uma consulta só,
+  // para todos os imóveis e o intervalo de datas do arquivo; a comparação é feita em memória.
+  const ativas = validas.filter((l) => l.dados!.estado !== "cancelada");
+  const doArquivo = ativas.length
+    ? await db
+        .select({ id: reservas.id, imovelId: reservas.imovelId, codigo: reservas.codigo, checkin: reservas.checkin, checkout: reservas.checkout })
+        .from(reservas)
+        .where(
+          and(
+            eq(reservas.organizacaoId, organizacaoId),
+            inArray(reservas.imovelId, [...new Set(ativas.map((l) => l.dados!.imovelId))]),
+            ne(reservas.estado, "cancelada"),
+            lt(reservas.checkin, ativas.reduce((m, l) => (l.dados!.checkout > m ? l.dados!.checkout : m), "")),
+            gt(reservas.checkout, ativas.reduce((m, l) => (l.dados!.checkin < m ? l.dados!.checkin : m), "9999-12-31")),
+          ),
+        )
+    : [];
+  for (const l of ativas) {
     const d = l.dados!;
-    if (d.estado === "cancelada") continue;
     const proprio = porIdFonte.get(l.idFonte!);
-    const [choque] = await db
-      .select({ codigo: reservas.codigo, checkin: reservas.checkin, checkout: reservas.checkout })
-      .from(reservas)
-      .where(
-        and(
-          eq(reservas.organizacaoId, organizacaoId),
-          eq(reservas.imovelId, d.imovelId),
-          ne(reservas.estado, "cancelada"),
-          lt(reservas.checkin, d.checkout),
-          gt(reservas.checkout, d.checkin),
-          proprio ? ne(reservas.id, proprio.id) : undefined,
-        ),
-      )
-      .limit(1);
+    const choque = doArquivo.find((r) => r.imovelId === d.imovelId && r.id !== proprio?.id && r.checkin < d.checkout && r.checkout > d.checkin);
     if (choque) l.avisos.push(`Cruza com a reserva ${choque.codigo} (${dataBr(choque.checkin)} → ${dataBr(choque.checkout)}) no mesmo imóvel.`);
-    const outra = validas.find((o) => o !== l && o.dados!.imovelId === d.imovelId && o.dados!.estado !== "cancelada" && o.dados!.checkin < d.checkout && o.dados!.checkout > d.checkin);
+    const outra = ativas.find((o) => o !== l && o.dados!.imovelId === d.imovelId && o.dados!.checkin < d.checkout && o.dados!.checkout > d.checkin);
     if (outra) l.avisos.push(`Cruza com a linha ${outra.numero} deste arquivo.`);
   }
   return { colunasIgnoradas: cab.ignoradas, linhas };
 }
 
-export type ResultadoImportacao = { erroGeral?: string; criadas: number; atualizadas: number; iguais: number; comErro: number };
+/**
+ * `semRecalculo`: linhas cuja reserva foi atualizada, mas o financeiro não, porque já tinha
+ * dinheiro movimentado (precisa de ajuste manual).
+ */
+export type ResultadoImportacao = { erroGeral?: string; criadas: number; atualizadas: number; iguais: number; comErro: number; semRecalculo: number[] };
 
 /** Importa as linhas válidas (as com erro ficam de fora e são contadas). */
 export async function importarCsv(db: Db, organizacaoId: string, texto: string, autorId: string | null): Promise<ResultadoImportacao> {
   const a = await analisarCsv(db, organizacaoId, texto);
-  const r: ResultadoImportacao = { erroGeral: a.erroGeral, criadas: 0, atualizadas: 0, iguais: 0, comErro: 0 };
+  const r: ResultadoImportacao = { erroGeral: a.erroGeral, criadas: 0, atualizadas: 0, iguais: 0, comErro: 0, semRecalculo: [] };
   if (a.erroGeral) return r;
   for (const l of a.linhas) {
     if (!l.dados) {
       r.comErro++;
       continue;
     }
-    const s = await sincronizarReserva(db, organizacaoId, FONTE_CSV, l.idFonte!, l.dados);
+    // Igual ao que já está gravado: nada a fazer (e o arquivo grande não demora à toa).
+    if (l.situacao === "igual") {
+      r.iguais++;
+      continue;
+    }
+    const s = await sincronizarReserva(db, organizacaoId, FONTE_CSV, l.idFonte!, l.dados, autorId);
     if (!s.ok) r.comErro++;
-    else if (s.criada) r.criadas++;
-    else if (l.situacao === "igual") r.iguais++;
-    else r.atualizadas++;
+    else {
+      if (s.criada) r.criadas++;
+      else r.atualizadas++;
+      if (s.financeiroNaoAtualizado) r.semRecalculo.push(l.numero);
+    }
   }
   await registrarAuditoria(db, {
     organizacaoId,

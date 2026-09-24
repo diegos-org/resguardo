@@ -25,7 +25,11 @@ async function imovelDaOrganizacao(tx: Db, organizacaoId: string, imovelId: stri
   return Boolean(i);
 }
 
-export type ResultadoReserva = { ok: true; reserva: Reserva; criada: boolean } | { ok: false; erros: ErrosReserva };
+/**
+ * `financeiroNaoAtualizado`: a reserva mudou, mas já tinha dinheiro movimentado, então o
+ * financeiro ficou como estava (precisa de ajuste manual) — quem chamou deve avisar.
+ */
+export type ResultadoReserva = { ok: true; reserva: Reserva; criada: boolean; financeiroNaoAtualizado?: boolean } | { ok: false; erros: ErrosReserva };
 
 async function inserirComCodigo(tx: Db, valores: typeof reservas.$inferInsert): Promise<Reserva> {
   // Código aleatório: em caso raríssimo de colisão, tenta de novo.
@@ -77,6 +81,8 @@ export async function sincronizarReserva(
   fonte: string,
   idFonte: string,
   dados: DadosReserva,
+  /** Quem fez (importação por planilha); null = sistema (Beds24). */
+  autorId: string | null = null,
 ): Promise<ResultadoReserva> {
   if (!fonte || !idFonte) return { ok: false, erros: { geral: "Fonte e id da fonte são obrigatórios." } };
   const erros = validarReserva(dados);
@@ -97,13 +103,13 @@ export async function sincronizarReserva(
       const reserva = await inserirComCodigo(tx, { ...dados, organizacaoId, codigo: "", fonte, idFonte, canceladaEm });
       await registrarAuditoria(tx, {
         organizacaoId,
-        usuarioId: null,
+        usuarioId: autorId,
         acao: "reserva.importar",
         entidade: "reserva",
         entidadeId: reserva.id,
         mudancas: semContato(calcularMudancas(null, reserva)),
       });
-      await aplicarMotor(tx, organizacaoId, reserva.id, null);
+      await aplicarMotor(tx, organizacaoId, reserva.id, autorId);
       return { ok: true as const, reserva, criada: true };
     }
 
@@ -111,8 +117,8 @@ export async function sincronizarReserva(
     const mudancas = calcularMudancas(existente, novo);
     if (Object.keys(mudancas).length === 0) {
       // Reserva igual: o financeiro só muda se o contrato mudou (idempotente).
-      await aplicarMotor(tx, organizacaoId, existente.id, null);
-      return { ok: true as const, reserva: existente, criada: false };
+      const m = await aplicarMotor(tx, organizacaoId, existente.id, autorId);
+      return { ok: true as const, reserva: existente, criada: false, financeiroNaoAtualizado: m?.protegido };
     }
     // Cancelou agora → data de agora; continua cancelada → mantém; voltou a valer → limpa.
     const canceladaEm = dados.estado !== "cancelada" ? null : existente.estado === "cancelada" ? existente.canceladaEm : new Date();
@@ -123,14 +129,14 @@ export async function sincronizarReserva(
       .returning();
     await registrarAuditoria(tx, {
       organizacaoId,
-      usuarioId: null,
+      usuarioId: autorId,
       acao: "reserva.sincronizar",
       entidade: "reserva",
       entidadeId: reserva.id,
       mudancas: semContato(mudancas),
     });
-    await aplicarMotor(tx, organizacaoId, reserva.id, null);
-    return { ok: true as const, reserva, criada: false };
+    const m = await aplicarMotor(tx, organizacaoId, reserva.id, autorId);
+    return { ok: true as const, reserva, criada: false, financeiroNaoAtualizado: m?.protegido };
   });
 }
 

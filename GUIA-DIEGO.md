@@ -180,7 +180,11 @@
     já importada e igual, ou com erro (e qual o erro). Também avisa se a reserva cruza com
     outra no mesmo imóvel.
   - Depois você clica em **Importar**: só as linhas sem erro entram, e o financeiro de cada
-    reserva é calculado na hora.
+    reserva é calculado na hora. Se uma reserva que já teve dinheiro movimentado mudar na
+    planilha, o sistema atualiza a reserva, deixa o financeiro como está e avisa a linha,
+    para você fazer o ajuste manual.
+  - Até 500 reservas por arquivo (arquivos maiores: divida em partes). O histórico de cada
+    reserva mostra quem importou.
   - Importar o mesmo arquivo de novo **não duplica**: a reserva é reconhecida pela origem +
     código do canal, e o que mudou é atualizado.
   - Acentos funcionam tanto em arquivo do Excel brasileiro quanto em UTF-8. Só o

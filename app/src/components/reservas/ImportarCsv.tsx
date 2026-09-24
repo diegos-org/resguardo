@@ -93,6 +93,13 @@ export function ImportarCsv({ acao }: { acao: (a: EstadoImportacao, f: FormData)
           {estado.resultado.comErro ? `, ${estado.resultado.comErro} com erro (ficaram de fora)` : ""}. <Link href="/painel/reservas">Ver reservas</Link>
         </p>
       )}
+      {estado.resultado && estado.resultado.semRecalculo.length > 0 && (
+        <p role="alert" className={styles.alerta}>
+          Atenção: {estado.resultado.semRecalculo.length === 1 ? "a reserva da linha" : "as reservas das linhas"} {estado.resultado.semRecalculo.join(", ")}{" "}
+          {estado.resultado.semRecalculo.length === 1 ? "foi atualizada" : "foram atualizadas"}, mas já tinha(m) dinheiro movimentado: o financeiro
+          ficou como estava. Confira na ficha da reserva e, se precisar, faça um ajuste manual.
+        </p>
+      )}
 
       {conferido && estado.linhas && (
         <section aria-label="Conferência" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
