@@ -10,7 +10,7 @@ import { getDb } from "@/db/client";
 export default async function Financeiro() {
   const sessao = await exigirSessaoPainel();
   if (!podeFazer(sessao.papel, "financeiro:ler")) redirect("/painel");
-  const pendentes = await listarAjustes(getDb(), sessao.organizacaoId, { pendentes: true });
+  const pendentes = await listarAjustes(getDb(), sessao.organizacaoId, { pendentes: true, ...(sessao.papel === "proprietario" ? { imovelIds: [...sessao.imovelIds] } : {}) });
   return (
     <>
       <h1>Financeiro</h1>

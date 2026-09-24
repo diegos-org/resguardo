@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { podeFazer } from "@/acesso/politica";
+import { autorizar, podeFazer } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { historicoDe } from "@/auditoria/auditoria";
 import { esclarecerAcao, salvarAjusteAcao } from "@/ajustes/acoes";
@@ -22,7 +22,8 @@ export default async function AjustePagina({ params, searchParams }: PageProps<"
   const { salvo, esclarecido, erro } = await searchParams;
   const db = getDb();
   const a = await obterAjuste(db, sessao.organizacaoId, id);
-  if (!a) notFound();
+  // Autorização por recurso: proprietário só o ajuste de imóvel dele (deny-by-default).
+  if (!a || !autorizar(sessao, "financeiro:ler", { organizacaoId: sessao.organizacaoId, imovelId: a.imovelId ?? undefined }).permitido) notFound();
   const [historico, imoveis] = await Promise.all([historicoDe(db, sessao.organizacaoId, "ajuste", a.id), listarImoveis(db, sessao.organizacaoId, { incluirInativos: true })]);
   const editar = podeFazer(sessao.papel, "financeiro:editar") && !a.esclarecidoEm;
   const linhas: [string, React.ReactNode][] = [

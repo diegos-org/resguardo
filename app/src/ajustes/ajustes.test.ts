@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { autorizar } from "@/acesso/politica";
 import { historicoDe } from "@/auditoria/auditoria";
 import { imoveis, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
@@ -144,6 +145,19 @@ describe("registro e esclarecimento", () => {
     expect((await obterAjuste(db, org, r.id))?.proprietarioId).toBeNull();
     await complementarAjuste(db, org, r.id, dados({ direcao: "proprietario_debito", motivo: "Dano" }), null);
     expect((await obterAjuste(db, org, r.id))?.proprietarioId).toBe(novoDono);
+  });
+
+  it("proprietário vê só ajustes dos imóveis dele (lista e detalhe)", async () => {
+    const r = await registrarAjuste(db, org, dados(), null);
+    if (!r.ok) throw new Error("x");
+    const [outro] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "102", nome: "Outro" }).returning();
+    expect(await listarAjustes(db, org, { imovelIds: [outro.id] })).toEqual([]);
+    expect(await listarAjustes(db, org, { imovelIds: [] })).toEqual([]);
+    expect(await listarAjustes(db, org, { imovelIds: [im] })).toHaveLength(1);
+    const sessaoDono = { usuarioId: "u", organizacaoId: org, papel: "proprietario" as const, imovelIds: [outro.id] };
+    const a = await obterAjuste(db, org, r.id);
+    expect(autorizar(sessaoDono, "financeiro:ler", { organizacaoId: org, imovelId: a?.imovelId ?? undefined }).permitido).toBe(false);
+    expect(autorizar({ ...sessaoDono, imovelIds: [im] }, "financeiro:ler", { organizacaoId: org, imovelId: a?.imovelId ?? undefined }).permitido).toBe(true);
   });
 
   it("isolamento: reserva/imóvel de outra organização recusados", async () => {
