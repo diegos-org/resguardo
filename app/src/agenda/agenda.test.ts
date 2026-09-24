@@ -630,6 +630,24 @@ describe("configuração e envio", () => {
     expect(correio.enviadas[1].texto).not.toContain("entrada seg 04/12");
   });
 
+  it("'enviar agora' ainda sem confirmação (menos de 15 min): o das 20h sai sem as reservas dele", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    await nova(rio, "2028-12-04", "2028-12-06", new Date(AGORA.getTime() - 60 * 60_000).toISOString());
+    const caiu: Correio = { nome: "caiu", enviar: async () => Promise.reject(new ErroEnvioIncerto("Sem resposta do provedor de e-mail")) };
+    await enviarAgenda(db, org, caiu, new Date(AGORA.getTime() - 5 * 60_000), { manual: true });
+    await nova(rio, "2028-12-11", "2028-12-13", new Date(AGORA.getTime() - 2 * 60_000).toISOString());
+    const correio = new CorreioMemoria();
+    const r = await enviarAgenda(db, org, correio, AGORA);
+    expect(r.enviados).toBe(1);
+    expect(r.falhas[0]).toContain("ainda não foi confirmado");
+    expect(correio.enviadas[0].texto).toContain("entrada seg 11/12");
+    expect(correio.enviadas[0].texto).not.toContain("entrada seg 04/12");
+    // No dia seguinte, o manual vira "incerto" e a reserva dele vai com o aviso.
+    await enviarAgenda(db, org, correio, new Date("2026-10-02T23:00:00Z"));
+    expect(correio.enviadas[1].texto).toContain("entrada seg 04/12");
+    expect(correio.enviadas[1].texto).toContain("pode já ter vindo");
+  });
+
   it("evento substituído por uma nova confirmação não segura o envio incerto", async () => {
     await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
     const dados = reserva(rio, "2028-10-02", "2028-10-04", { codigoCanal: "HMSUB" });

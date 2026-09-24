@@ -669,12 +669,22 @@ export async function enviarAgenda(
     //   agenda do dia com a própria chave: o pedido velho do manual não toma o lugar dela.
     let outraIncerta = false;
     let chave = chaveForcada ?? chaveEnvio(organizacaoId, hoje, d.email, o.manual);
+    // Reservas novas de um manual ainda sem confirmação: não vão de novo no das 20h (se o manual não
+    // chegou, a agenda seguinte as manda pelo caminho do envio incerto, com o aviso).
+    let doManualPendente: string[] = [];
     if (!chaveForcada) {
       const outra = chaveEnvio(organizacaoId, hoje, d.email, !o.manual);
       const [daOutra] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, outra));
       const incerta = (daOutra?.value as { estado?: string } | undefined)?.estado === "enviando";
-      if (incerta && !o.manual) await enviarPara(d, trava, outra);
-      else if (incerta) {
+      if (incerta && !o.manual) {
+        const antes = r.enviados;
+        await enviarPara(d, trava, outra);
+        if (r.enviados === antes) {
+          const [ainda] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, outra));
+          const v = ainda?.value as { estado?: string; carga?: unknown } | undefined;
+          if (v?.estado === "enviando" && cargaValida(v.carga)) doManualPendente = v.carga.eventos;
+        }
+      } else if (incerta) {
         outraIncerta = true;
         chave = outra;
       }
@@ -719,7 +729,7 @@ export async function enviarAgenda(
           const ini = inicioIncerto(i);
           if (ini && ini < menor) menor = ini;
         }
-        const avisadas = await lerAvisadas(db, chaveAvisadasDe(organizacaoId, d.email));
+        const avisadas = [...(await lerAvisadas(db, chaveAvisadasDe(organizacaoId, d.email))), ...doManualPendente.map((id) => ({ id, corte: corte.toISOString() }))];
         const bruta = await agendaDesde(menor, corte);
         const agenda = semAvisadas(
           { ...bruta, secoes: bruta.secoes.map((x) => ({ ...x, novas: x.novas.filter((n) => Date.parse(n.registradaEm) > inicioDe(n.imovelId).getTime()) })) },
