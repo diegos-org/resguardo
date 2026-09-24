@@ -496,7 +496,7 @@ export async function previaDaAgenda(db: Db, organizacaoId: string, agora: Date 
  * Um envio incerto: o corte dele e os imóveis que o e-mail levava (null = o pedido nem chegou a ser
  * montado: vale para todos).
  */
-type Incerto = { chave: string; corte: Date | null; imoveis: string[] | null };
+type Incerto = { chave: string; corte: Date | null; imoveis: string[] | null; eventos: string[] };
 
 async function reconciliarIncertos(db: Db, pendentes: readonly Marca[], email: string, hoje: string): Promise<{ ate: Date | null; lista: Incerto[] }> {
   let maior: Date | null = null;
@@ -508,7 +508,7 @@ async function reconciliarIncertos(db: Db, pendentes: readonly Marca[], email: s
     const corte = new Date(v.corte ?? v.em ?? "");
     if (v.estado === "enviando") await db.update(appSettings).set({ value: { ...v, estado: "incerto" }, updatedAt: new Date() }).where(eq(appSettings.key, l.key));
     const valido = !Number.isNaN(corte.getTime());
-    lista.push({ chave: l.key, corte: valido ? corte : null, imoveis: cargaValida(v.carga) ? v.carga.imoveis : null });
+    lista.push({ chave: l.key, corte: valido ? corte : null, imoveis: cargaValida(v.carga) ? v.carga.imoveis : null, eventos: cargaValida(v.carga) ? v.carga.eventos : [] });
     if (valido && (!maior || corte > maior)) maior = corte;
   }
   return { ate: maior, lista };
@@ -673,7 +673,11 @@ export async function enviarAgenda(
     const incertoAte = incertos.ate;
     const reserva = await reservarEnvio(db, chave, agora);
     if (!reserva) {
-      if (outraIncerta) r.falhas.push(`${d.email}: o envio anterior de hoje ainda não foi confirmado pelo provedor; nova tentativa com o mesmo e-mail depois de 15 minutos`);
+      // "Já enviado" só se a marca diz "enviado": uma tentativa ainda sem confirmação do provedor
+      // (deste tipo ou do outro) continua como falha até a retomada dar certo.
+      const [marca] = outraIncerta ? [] : await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, chave));
+      const emAberto = outraIncerta || (marca?.value as { estado?: string } | undefined)?.estado === "enviando";
+      if (emAberto) r.falhas.push(`${d.email}: o envio anterior de hoje ainda não foi confirmado pelo provedor; nova tentativa com o mesmo e-mail depois de 15 minutos`);
       else r.jaEnviados++;
       return;
     }
@@ -790,8 +794,19 @@ export async function enviarAgenda(
         // Os envios incertos de dias anteriores cobertos por este (com o aviso): resolvidos. Só os que
         // este e-mail cobre por inteiro: um imóvel dele que ficou de fora (inativo, cidade que saiu da
         // lista) deixa o incerto aberto, e as reservas dele saem quando o imóvel voltar.
+        // E só se cada reserva nova daquele envio foi entregue (neste ou antes) ou já não precisa de
+        // aviso (saída já passou, ou deixou de estar confirmada).
         for (const i of incertos.lista) {
           if (i.imoveis !== null && !i.imoveis.every((x) => enviada.imoveis.includes(x))) continue;
+          const faltam = i.eventos.filter((e) => !enviada.eventos.includes(e) && !atuais.some((a) => a.id === e));
+          const ids = [...new Set(faltam.map((e) => e.split("@")[0]).filter((x) => /^[0-9a-f-]{36}$/i.test(x)))];
+          if (ids.length) {
+            const aindaValem = await tx
+              .select({ id: reservas.id })
+              .from(reservas)
+              .where(and(inArray(reservas.id, ids), eq(reservas.estado, "confirmada"), gte(reservas.checkout, hoje)));
+            if (aindaValem.length) continue;
+          }
           await tx.update(appSettings).set({ value: sql`jsonb_set(${appSettings.value}, '{estado}', '"resolvido"')`, updatedAt: new Date() }).where(eq(appSettings.key, i.chave));
         }
       });

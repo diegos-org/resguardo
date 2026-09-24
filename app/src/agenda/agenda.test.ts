@@ -206,7 +206,7 @@ describe("configuração e envio", () => {
     const chave = `agenda-diaria:${org}:2026-10-01:a@example.com`;
     await db.insert(appSettings).values({ key: chave, value: { em: new Date(AGORA.getTime() - 5 * 60_000).toISOString(), estado: "enviando" } });
     const correio = new CorreioMemoria();
-    expect(await enviarAgenda(db, org, correio, AGORA)).toMatchObject({ enviados: 0, jaEnviados: 1 });
+    expect(await enviarAgenda(db, org, correio, AGORA)).toMatchObject({ enviados: 0, jaEnviados: 0, falhas: [expect.stringContaining("ainda não foi confirmado")] });
     await db.update(appSettings).set({ value: { em: new Date(AGORA.getTime() - 20 * 60_000).toISOString(), estado: "enviando" } }).where(eq(appSettings.key, chave));
     expect(await enviarAgenda(db, org, correio, AGORA)).toMatchObject({ enviados: 1 });
     expect(await enviarAgenda(db, org, correio, new Date(AGORA.getTime() + 60 * 60_000))).toMatchObject({ enviados: 0, jaEnviados: 1 });
@@ -235,7 +235,7 @@ describe("configuração e envio", () => {
     expect(await ultimaAgendaDe(db, org, "a@example.com")).toBeNull();
     expect(enviadas[0].chave).toBe(`agenda-diaria:${org}:2026-10-01:a@example.com`);
     // Nova execução no mesmo dia: a marca continua, nada é reenviado.
-    expect(await enviarAgenda(db, org, correio, new Date(AGORA.getTime() + 60_000))).toMatchObject({ enviados: 0, jaEnviados: 1 });
+    expect(await enviarAgenda(db, org, correio, new Date(AGORA.getTime() + 60_000))).toMatchObject({ enviados: 0, jaEnviados: 0, falhas: [expect.stringContaining("ainda não foi confirmado")] });
     expect(enviadas).toHaveLength(1);
   });
 
@@ -384,7 +384,10 @@ describe("configuração e envio", () => {
     expect((marca.value as { estado: string }).estado).toBe("enviando");
     // Antes de 15 minutos não tenta de novo; depois, manda exatamente o mesmo texto.
     const correio = new CorreioMemoria();
-    expect(await enviarAgenda(db, org, correio, new Date(AGORA.getTime() + 5 * 60_000))).toMatchObject({ enviados: 0, jaEnviados: 1 });
+    // Mesmo tipo de envio antes dos 15 minutos: continua como falha (não conta como "já enviada").
+    const cedo = await enviarAgenda(db, org, correio, new Date(AGORA.getTime() + 5 * 60_000));
+    expect(cedo).toMatchObject({ enviados: 0, jaEnviados: 0 });
+    expect(cedo.falhas[0]).toContain("ainda não foi confirmado");
     await nova(rio, "2027-09-10", "2027-09-12", new Date(AGORA.getTime() + 60_000).toISOString());
     expect(await enviarAgenda(db, org, correio, new Date(AGORA.getTime() + 20 * 60_000))).toMatchObject({ enviados: 1 });
     expect(correio.enviadas[0].texto).toContain("entrada qua 01/09");
@@ -608,6 +611,24 @@ describe("configuração e envio", () => {
     expect(correio.enviadas[2].texto).toContain("entrada seg 03/07");
     expect(correio.enviadas[2].texto).toContain("pode já ter vindo");
     expect(await estado()).toBe("resolvido");
+  });
+
+  it("envio incerto só é resolvido quando as reservas dele foram entregues ou não precisam mais de aviso", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    const futura = await nova(rio, "2028-10-02", "2028-10-04", new Date(AGORA.getTime() - 3_600_000).toISOString());
+    const passada = await nova(rio, "2026-09-20", "2026-09-22", new Date(AGORA.getTime() - 3_600_000).toISOString());
+    const k = (data: string) => `agenda-diaria:${org}:${data}:a@example.com`;
+    const carga = (id: string) => ({ assunto: "x", texto: "x", eventos: [`${id}@outro-registro`], imoveis: [] });
+    await db.insert(appSettings).values([
+      { key: k("2026-09-29"), value: { em: "2026-09-29T23:00:00.000Z", estado: "incerto", corte: "2026-09-29T23:00:00.000Z", carga: carga(futura.id) } },
+      { key: k("2026-09-30"), value: { em: "2026-09-30T23:00:00.000Z", estado: "incerto", corte: "2026-09-30T23:00:00.000Z", carga: carga(passada.id) } },
+    ]);
+    await enviarAgenda(db, org, new CorreioMemoria(), AGORA);
+    const estado = async (data: string) => ((await db.select().from(appSettings).where(eq(appSettings.key, k(data))))[0].value as { estado: string }).estado;
+    // A reserva futura daquele envio não saiu neste (é outro evento): o incerto fica aberto.
+    expect(await estado("2026-09-29")).toBe("incerto");
+    // A que já terminou não precisa mais de aviso: resolvido.
+    expect(await estado("2026-09-30")).toBe("resolvido");
   });
 
   it("envio incerto de outro dia continua avisado até um envio dar certo", async () => {
