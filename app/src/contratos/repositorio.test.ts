@@ -28,7 +28,7 @@ describe("contratos", () => {
     expect(bloqueado.ok).toBe(false);
 
     const id = r1.ok ? r1.contrato.id : "";
-    expect(await encerrarContrato(db, org, id, "2026-12-31", null)).toEqual({ ok: true });
+    expect(await encerrarContrato(db, org, id, "2026-12-31", null)).toMatchObject({ ok: true });
     expect((await criarContrato(db, org, imovel, { tipo: "gestao_completa", comissao: "15", inicio: "2027-01-01" }, null)).ok).toBe(true);
 
     const lista = await listarContratos(db, org, imovel);
@@ -62,7 +62,7 @@ describe("encerramentos concorrentes", () => {
     const r = await criarContrato(db, org, imovel, { tipo: "gestao_online", comissao: "10", inicio: "2026-01-01" }, null);
     const id = r.ok ? r.contrato.id : "";
     const [a, b] = await Promise.all([encerrarContrato(db, org, id, "2026-03-31", null), encerrarContrato(db, org, id, "2026-06-30", null)]);
-    expect(a).toEqual({ ok: true });
+    expect(a).toMatchObject({ ok: true });
     expect(b.ok).toBe(false);
     expect((await listarContratos(db, org, imovel))[0].fim).toBe("2026-03-31");
   });

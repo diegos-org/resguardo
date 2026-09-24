@@ -13,8 +13,9 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node scripts/migrar.mjs",
     "db:check": "drizzle-kit check",
-    "vercel-build": "node scripts/migrar.mjs && next build",
-    "db:semear-demo": "tsx scripts/semear-demo.ts"
+    "vercel-build": "node scripts/migrar.mjs && tsx scripts/recalcular.ts && next build",
+    "db:semear-demo": "tsx scripts/semear-demo.ts",
+    "financeiro:recalcular": "tsx scripts/recalcular.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

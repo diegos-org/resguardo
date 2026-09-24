@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { criarContrato } from "@/contratos/repositorio";
-import { imoveis, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
+import { eq } from "drizzle-orm";
+import { criarContrato, encerrarContrato } from "@/contratos/repositorio";
+import { contratos, imoveis, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import type { DadosReserva } from "@/reservas/regras";
 import { cancelarReserva, criarReserva, sincronizarReserva } from "@/reservas/repositorio";
-import { aplicarMotor } from "./aplicar";
+import { aplicarMotor, recalcularReservas } from "./aplicar";
+import { REGRAS_PADRAO } from "./motor";
 import { listarLancamentos, saldoAcerto, totaisPorTipo } from "./ledger";
 
 let db: Db;
@@ -131,6 +133,29 @@ describe("aplicarMotor", () => {
     expect(await ativosDoMotor(id)).toHaveLength(4);
     expect(await cancelarReserva(db, org, id, null)).toBe(true);
     expect(await ativosDoMotor(id)).toHaveLength(0);
+  });
+
+  it("regra padrão alterada: recalcular faz os lançamentos antigos acompanharem", async () => {
+    const aConfirmar = { ...REGRAS_PADRAO, recebimento: { ...REGRAS_PADRAO.recebimento, airbnb: "a_confirmar" as const } };
+    const id = await sinc({ origem: "airbnb" });
+    await recalcularReservas(db, org, {}, null, aConfirmar); // como estava na versão anterior
+    expect((await ativosDoMotor(id)).find((l) => l.tipo === "direito_proprietario")?.estado).toBe("pendente");
+    const r = await recalcularReservas(db, org); // versão nova: Airbnb = split
+    expect(r).toMatchObject({ reservas: 1, criados: 1, estornados: 1 });
+    expect((await ativosDoMotor(id)).find((l) => l.tipo === "direito_proprietario")?.estado).toBe("previsto");
+    expect(await recalcularReservas(db, org)).toMatchObject({ criados: 0, estornados: 0 }); // idempotente
+  });
+
+  it("contrato novo: recalcular o imóvel aplica a nova comissão", async () => {
+    const id = await sinc({ checkin: "2027-02-10", checkout: "2027-02-13" });
+    expect((await totaisPorTipo(db, org, {})).comissao).toBe(19125);
+    const [c] = await db.select().from(contratos).where(eq(contratos.imovelId, im));
+    await encerrarContrato(db, org, c.id, "2026-12-31", null);
+    await criarContrato(db, org, im, { tipo: "gestao_completa", comissao: "20", inicio: "2027-01-01" }, null);
+    expect(await recalcularReservas(db, org, { imovelId: im })).toMatchObject({ reservas: 1 });
+    expect((await totaisPorTipo(db, org, {})).comissao).toBe(25500);
+    expect(await ativosDoMotor(id)).toHaveLength(4);
+    expect(await recalcularReservas(db, org, { imovelId: "lixo" })).toEqual({ reservas: 0, criados: 0, estornados: 0 });
   });
 
   it("reserva de outra organização ou id inválido: nada acontece", async () => {

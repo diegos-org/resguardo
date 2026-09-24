@@ -96,3 +96,32 @@ export async function aplicarMotor(
     return { criados: novos.length, estornados, mantidos: mantidas.size, avisos };
   });
 }
+
+export type ResultadoRecalculo = { reservas: number; criados: number; estornados: number };
+
+/**
+ * Passa o motor de novo nas reservas (todas da organização, ou só de um imóvel) para que
+ * uma regra alterada — padrão de recebimento, contrato, configuração do imóvel — valha
+ * também para o que já estava lançado. Idempotente: o que não mudou fica como está.
+ */
+export async function recalcularReservas(
+  db: Db,
+  organizacaoId: string,
+  f: { imovelId?: string } = {},
+  autorId: string | null = null,
+  regras: RegrasMotor = REGRAS_PADRAO,
+): Promise<ResultadoRecalculo> {
+  if (f.imovelId && !uuidValido(f.imovelId)) return { reservas: 0, criados: 0, estornados: 0 };
+  const ids = await db
+    .select({ id: reservas.id })
+    .from(reservas)
+    .where(and(eq(reservas.organizacaoId, organizacaoId), f.imovelId ? eq(reservas.imovelId, f.imovelId) : undefined))
+    .orderBy(asc(reservas.checkin), asc(reservas.id));
+  const total: ResultadoRecalculo = { reservas: ids.length, criados: 0, estornados: 0 };
+  for (const { id } of ids) {
+    const r = await aplicarMotor(db, organizacaoId, id, autorId, regras);
+    total.criados += r?.criados ?? 0;
+    total.estornados += r?.estornados ?? 0;
+  }
+  return total;
+}
