@@ -8,7 +8,7 @@ import type { Db } from "@/db/types";
 import { criarCategoria } from "@/despesas/categorias";
 import { estornarDespesa, registrarDespesa } from "@/despesas/despesas";
 import { saldoAcerto, totaisPorTipo } from "@/financeiro/ledger";
-import { contestar, desfazerQuitacao, listarAdiantamentos, obterAdiantamento, quitar, resolverContestacao, resumoPorProprietario, situacaoDe } from "./adiantamentos";
+import { contestar, desfazerQuitacao, listarAdiantamentos, obterAdiantamento, quitar, resolverContestacao, resumoPorProprietario, situacaoDe, totalACobrar } from "./adiantamentos";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -75,6 +75,7 @@ describe("quitação sem dupla cobrança", () => {
     expect(await quitar(db, org, adiantamentoId, { forma: "reembolso", valor: 150000, data: "2026-10-20" }, null)).toEqual({ ok: true });
     expect(await saldo()).toBe(-250000);
     expect((await obterAdiantamento(db, org, adiantamentoId))?.situacao).toBe("parcial");
+    expect(totalACobrar(await listarAdiantamentos(db, org))).toBe(250000);
     expect(await quitar(db, org, adiantamentoId, { forma: "reembolso", valor: 250001, data: "2026-10-21" }, null)).toMatchObject({ ok: false, erro: expect.stringContaining("em aberto") });
     expect(await quitar(db, org, adiantamentoId, { forma: "compensacao", valor: 250000, data: "2026-11-01" }, null)).toEqual({ ok: true });
     const a = await obterAdiantamento(db, org, adiantamentoId);
@@ -151,5 +152,10 @@ describe("contestação", () => {
     expect(await saldo()).toBe(0);
     expect((await totaisPorTipo(db, org, {})).ajuste).toBe(-300000);
     expect((await historicoDe(db, org, "adiantamento", adiantamentoId)).length).toBe(4);
+    // Desfazer o "empresa assume" reabre a contestação: nada fica cobrado enquanto isso.
+    const q = (await obterAdiantamento(db, org, adiantamentoId))!.quitacoes.find((x) => x.forma === "empresa_assume")!;
+    expect(await desfazerQuitacao(db, org, q.id, "Acordo desfeito", null)).toEqual({ ok: true });
+    expect(await obterAdiantamento(db, org, adiantamentoId)).toMatchObject({ situacao: "contestado", aberto: 300000, contestacao: { resolvidaEm: null } });
+    expect(totalACobrar(await listarAdiantamentos(db, org))).toBe(0);
   });
 });

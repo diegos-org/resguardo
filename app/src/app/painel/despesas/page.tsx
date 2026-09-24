@@ -4,6 +4,7 @@ import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import styles from "@/components/formularios.module.css";
 import { FiltroGlobal } from "@/components/painel/FiltroGlobal";
 import { getDb } from "@/db/client";
+import { listarAdiantamentos, totalACobrar } from "@/adiantamentos/adiantamentos";
 import { listarDespesas, totaisDespesas } from "@/despesas/despesas";
 import { listarImoveis } from "@/imoveis/repositorio";
 import { descreverFiltros, lerFiltros, manterFiltros, periodoDosFiltros } from "@/lib/filtros";
@@ -26,6 +27,8 @@ export default async function ListaDespesas({ searchParams }: PageProps<"/painel
   const imovelIds = filtros.imoveis.length ? imoveis.filter((i) => filtros.imoveis.includes(i.codigo)).map((i) => i.id) : undefined;
   const lista = await listarDespesas(db, sessao.organizacaoId, { ...periodo, imovelIds, incluirEstornadas: verEstornadas });
   const t = totaisDespesas(lista);
+  // Saldo de hoje (não do período): o que os proprietários ainda devem, sem os contestados.
+  const aCobrar = totalACobrar(await listarAdiantamentos(db, sessao.organizacaoId, { imovelIds, somenteAbertos: true }));
   const porId = new Map(imoveis.map((i) => [i.id, i]));
   const editar = podeFazer(sessao.papel, "despesa:editar");
   const q = manterFiltros(params);
@@ -56,7 +59,7 @@ export default async function ListaDespesas({ searchParams }: PageProps<"/painel
         {[
           ["Da empresa", t.empresa],
           ["Dos proprietários", t.proprietarios],
-          ["A cobrar dos proprietários", t.aCobrar],
+          ["A cobrar dos proprietários (hoje)", aCobrar],
           ["Ainda a pagar", t.aPagar],
         ].map(([k, v]) => (
           <div key={k as string}>

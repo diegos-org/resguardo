@@ -253,15 +253,16 @@ export async function obterDespesa(db: Db, organizacaoId: string, id: string): P
   return x ? { ...x.l, categoria: x.categoria, estornada: Boolean(x.estornada) } : null;
 }
 
-/** Totais das despesas ativas: da empresa, dos proprietários e quanto os proprietários devem por elas. */
+/**
+ * Totais das despesas ativas: da empresa, dos proprietários e o que ainda falta pagar. O que os
+ * proprietários devem sai dos adiantamentos em aberto (M4.4: `totalACobrar`), não daqui.
+ */
 export function totaisDespesas(linhas: readonly LinhaDespesa[]) {
   const ativas = linhas.filter((l) => !l.estornada);
   const soma = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
   return {
     empresa: soma(ativas.filter((l) => l.tipo === "despesa_empresa").map((l) => l.montante ?? -l.valor)),
     proprietarios: soma(ativas.filter((l) => l.tipo === "despesa_proprietario").map((l) => l.montante ?? 0)),
-    // Só o que a empresa já pagou por eles vira dívida do proprietário.
-    aCobrar: soma(ativas.filter((l) => l.tipo === "despesa_proprietario" && l.pagoPor === "empresa" && l.estado !== "previsto").map((l) => l.montante ?? 0)),
     aPagar: soma(ativas.filter((l) => l.estado === "previsto").map((l) => l.montante ?? 0)),
   };
 }
