@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { destinoPainel } from "@/acesso/painel";
 import { autorizar } from "@/acesso/politica";
 import { historicoDe } from "@/auditoria/auditoria";
-import { imoveis, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
+import { isNull } from "drizzle-orm";
+import { contestacoesAdiantamento, imoveis, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { criarCategoria } from "@/despesas/categorias";
@@ -133,6 +134,21 @@ describe("quitação sem dupla cobrança", () => {
     expect(await quitar(db, outraOrg, adiantamentoId, { forma: "reembolso", valor: 1, data: "2026-10-20" }, null)).toMatchObject({ ok: false });
     expect(await listarAdiantamentos(db, outraOrg)).toEqual([]);
     expect(await quitar(db, org, "nao-uuid", { forma: "reembolso", valor: 1, data: "2026-10-20" }, null)).toMatchObject({ ok: false });
+  });
+});
+
+describe("estorno com contestação aberta", () => {
+  it("descontado num repasse: o estorno aponta o caminho do repasse", async () => {
+    await quitar(db, org, adiantamentoId, { forma: "compensacao", valor: 1000, data: "2026-11-01" }, null);
+    expect(await estornarDespesa(db, org, despesaId, "Lançada errado", null)).toBe("compensacao");
+  });
+
+  it("estornar a despesa encerra a contestação aberta do adiantamento", async () => {
+    await contestar(db, org, adiantamentoId, "Não reconheço", null);
+    expect(await estornarDespesa(db, org, despesaId, "Lançada errado", null)).toBe(true);
+    const abertas = await db.select().from(contestacoesAdiantamento).where(isNull(contestacoesAdiantamento.resolvidaEm));
+    expect(abertas).toEqual([]);
+    expect(await saldo()).toBe(0);
   });
 });
 

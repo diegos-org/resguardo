@@ -81,7 +81,9 @@ export default async function DetalheDespesa({ params, searchParams }: PageProps
           {erro === "estorno"
             ? "Não foi possível estornar: informe o motivo."
             : erro === "quitado"
-              ? "Não dá para estornar: o adiantamento desta despesa já teve reembolso ou compensação. Desfaça a quitação em Adiantamentos antes."
+              ? "Não dá para estornar: o adiantamento desta despesa já teve reembolso ou foi assumido pela empresa. Desfaça a quitação em Adiantamentos antes."
+              : erro === "compensacao"
+                ? "Não dá para estornar: o valor desta despesa já foi descontado num repasse ao proprietário. Estorne o repasse antes."
               : "Não foi possível marcar como paga: confira a data."}
         </p>
       )}
