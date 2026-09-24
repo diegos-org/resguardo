@@ -6,7 +6,8 @@ import { exigir } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { getDb } from "@/db/client";
 import { correioDoAmbiente } from "@/email/correio";
-import { type Destinatario, enviarAgenda, resumoDoEnvio, salvarConfigAgenda } from "./agenda";
+import { type Destinatario, resumoDoEnvio, salvarConfigAgenda } from "./agenda";
+import { agendaManual } from "./cron";
 
 function voltar(r: { ok: boolean; erro?: string; info?: string }): never {
   revalidatePath("/painel/agenda");
@@ -34,7 +35,10 @@ export async function salvarAgendaAcao(form: FormData) {
 
 export async function enviarAgoraAcao() {
   const s = await sessaoAdmin();
-  const r = await enviarAgenda(getDb(), s.organizacaoId, correioDoAmbiente(), new Date(), { manual: true });
-  if (r.aviso || r.falhas.length) voltar({ ok: false, erro: `Agenda não enviada: ${r.aviso ?? r.falhas.join("; ")}` });
+  const r = await agendaManual(getDb(), s.organizacaoId, correioDoAmbiente(), new Date());
+  if (r.aviso) voltar({ ok: false, erro: `Agenda não enviada: ${r.aviso}.` });
+  if (r.falhas.length) {
+    voltar({ ok: false, erro: `${resumoDoEnvio(r)} — ${r.falhas.join("; ")}. Clique em "Enviar agora" de novo para tentar só quem falhou.` });
+  }
   voltar({ ok: true, info: resumoDoEnvio(r) });
 }

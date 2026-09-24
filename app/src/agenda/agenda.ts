@@ -220,7 +220,8 @@ export function textoDaAgenda(a: Agenda, cidades: readonly string[] = []): strin
 // ——— Envio ———
 
 const chaveUltima = (org: string) => `agenda-diaria:ultima:${org}`;
-const chaveEnvio = (org: string, data: string, email: string) => `agenda-diaria:${org}:${data}:${email}`;
+/** Marca de "já recebeu hoje": uma para o envio das 20h e outra para o "enviar agora" (um não bloqueia o outro). */
+const chaveEnvio = (org: string, data: string, email: string, manual = false) => `agenda-diaria${manual ? "-manual" : ""}:${org}:${data}:${email}`;
 
 const chaveUltimaDe = (org: string, email: string) => `agenda-diaria:ultima:${org}:${email}`;
 
@@ -257,7 +258,8 @@ export type ResultadoEnvio = { enviados: number; jaEnviados: number; falhas: str
 /**
  * Envia a agenda a cada destinatário. No envio agendado, cada destinatário recebe uma vez por
  * dia (marca antes de enviar; se o envio falha, a marca sai para a próxima tentativa). O envio
- * manual ("enviar agora") não marca: não impede o das 20h.
+ * manual ("enviar agora") tem a sua própria marca: não impede o das 20h, e repeti-lo no mesmo dia
+ * só tenta de novo quem falhou (ou entrou na lista depois).
  */
 export async function enviarAgenda(db: Db, organizacaoId: string, correio: Correio | null, agora: Date, o: { manual?: boolean } = {}): Promise<ResultadoEnvio> {
   const r: ResultadoEnvio = { enviados: 0, jaEnviados: 0, falhas: [], aviso: null };
@@ -275,13 +277,11 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
     return agendas.get(k)!;
   };
   for (const d of config.destinatarios) {
-    const chave = chaveEnvio(organizacaoId, hoje, d.email);
-    if (!o.manual) {
-      const [marca] = await db.insert(appSettings).values({ key: chave, value: { em: agora.toISOString() } }).onConflictDoNothing().returning();
-      if (!marca) {
-        r.jaEnviados++;
-        continue;
-      }
+    const chave = chaveEnvio(organizacaoId, hoje, d.email, o.manual);
+    const [marca] = await db.insert(appSettings).values({ key: chave, value: { em: agora.toISOString() } }).onConflictDoNothing().returning();
+    if (!marca) {
+      r.jaEnviados++;
+      continue;
     }
     try {
       // Sem marco próprio (primeira agenda desta pessoa): as reservas novas das últimas 24h.
@@ -291,7 +291,7 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
       await gravarMarco(db, chaveUltimaDe(organizacaoId, d.email), agora);
       r.enviados++;
     } catch (e) {
-      if (!o.manual) await db.delete(appSettings).where(eq(appSettings.key, chave));
+      await db.delete(appSettings).where(eq(appSettings.key, chave));
       r.falhas.push(`${d.email}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }

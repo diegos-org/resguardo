@@ -7,7 +7,7 @@ import { type Correio, CorreioMemoria } from "@/email/correio";
 import type { DadosReserva } from "@/reservas/regras";
 import { criarReserva, sincronizarReserva } from "@/reservas/repositorio";
 import { enviarAgenda, lerConfigAgenda, montarAgenda, salvarConfigAgenda, textoDaAgenda, ultimaAgenda, ultimaAgendaDe } from "./agenda";
-import { agendaDeTodas } from "./cron";
+import { agendaDeTodas, agendaManual } from "./cron";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -206,6 +206,30 @@ describe("configuração e envio", () => {
     };
     expect(await enviarAgenda(db, org, quebrado, AGORA)).toMatchObject({ enviados: 0, falhas: ["equipe@example.com: HTTP 500"] });
     expect(await enviarAgenda(db, org, correio, AGORA)).toMatchObject({ enviados: 1 });
+  });
+
+  it("'enviar agora' fica no histórico do Sistema e, repetido no dia, só tenta quem falhou", async () => {
+    await salvarConfigAgenda(db, org, { ativa: false, destinatarios: [{ email: "a@example.com", cidades: [] }, { email: "b@example.com", cidades: [] }] }, null);
+    const para: string[] = [];
+    const meioQuebrado: Correio = {
+      nome: "meio",
+      enviar: async (m) => {
+        if (m.para === "b@example.com") throw new Error("HTTP 500");
+        para.push(m.para);
+      },
+    };
+    expect(await agendaManual(db, org, meioQuebrado, AGORA)).toMatchObject({ enviados: 1, falhas: [expect.stringContaining("b@example.com")] });
+    const correio = new CorreioMemoria();
+    expect(await agendaManual(db, org, correio, new Date(AGORA.getTime() + 60_000))).toMatchObject({ enviados: 1, jaEnviados: 1, falhas: [] });
+    expect(correio.enviadas.map((m) => m.para)).toEqual(["b@example.com"]);
+    const execucoes = await db.select().from(execucoesAutomacao).where(eq(execucoesAutomacao.nome, "agenda-diaria"));
+    expect(execucoes.map((e) => [e.ok, e.resumo]).sort()).toEqual([
+      [false, "Falhou: envio manual: 1 enviada(s), 1 falha(s)"],
+      [true, "envio manual: 1 enviada(s), 1 já enviada(s) hoje"],
+    ]);
+    // O das 20h continua valendo para os dois (com a agenda ligada).
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }, { email: "b@example.com", cidades: [] }] }, null);
+    expect(await enviarAgenda(db, org, correio, AGORA)).toMatchObject({ enviados: 2 });
   });
 
   it("execução agendada fica registrada na página Sistema; sem provedor com a agenda ligada é falha", async () => {

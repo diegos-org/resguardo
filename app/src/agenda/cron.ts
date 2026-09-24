@@ -3,7 +3,7 @@ import { organizacoes } from "@/db/schema";
 import type { Db } from "@/db/types";
 import type { Correio } from "@/email/correio";
 import { registrarExecucao } from "@/sistema/automacoes";
-import { enviarAgenda, resumoDoEnvio } from "./agenda";
+import { enviarAgenda, type ResultadoEnvio, resumoDoEnvio } from "./agenda";
 
 /** Envia a agenda de cada organização. Falha de envio ou falta de provedor (com a agenda ligada) fica como erro. */
 export function agendaDeTodas(db: Db, correio: Correio | null, agora: Date): Promise<string> {
@@ -19,4 +19,20 @@ export function agendaDeTodas(db: Db, correio: Correio | null, agora: Date): Pro
     if (erro) throw new Error(resumo);
     return resumo;
   });
+}
+
+/** "Enviar agora" do painel: registrado em Sistema → Automações como o das 20h. */
+export async function agendaManual(db: Db, organizacaoId: string, correio: Correio | null, agora: Date): Promise<ResultadoEnvio> {
+  const feito: { r?: ResultadoEnvio } = {};
+  try {
+    await registrarExecucao(db, "agenda-diaria", async () => {
+      const r = (feito.r = await enviarAgenda(db, organizacaoId, correio, agora, { manual: true }));
+      const resumo = `envio manual: ${resumoDoEnvio(r)}`;
+      if (r.falhas.length || r.aviso) throw new Error(resumo);
+      return resumo;
+    });
+  } catch (e) {
+    if (!feito.r) throw e;
+  }
+  return feito.r!;
 }
