@@ -5,7 +5,7 @@
  * movimentou dinheiro): o resumo conta esses valores, então a tabela mostra de onde vêm, marcada
  * "em conferência" (M4.8).
  */
-import { and, asc, eq, gt, gte, inArray, isNull, lt, ne, or, sql, sum } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, or, sql, sum } from "drizzle-orm";
 import { bloqueios, imoveis, lancamentos, type OrigemReserva, proprietarioImoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
@@ -61,12 +61,12 @@ export async function reservasDoPortal(
         eq(reservas.organizacaoId, organizacaoId),
         or(
           // Confirmada: pela estada no período, pelo imóvel atual e pela regra de posse.
-          and(eq(reservas.estado, "confirmada"), lt(reservas.checkin, o.periodo.fim), gt(reservas.checkout, o.periodo.inicio), inArray(reservas.imovelId, ids), reservaDosDonos(db, donos)),
-          // Não confirmada com valores em vigor (já movimentou dinheiro): pelo livro, como o resumo —
-          // a parte dele, em vigor, num dos imóveis escolhidos, com competência no período (a estada
-          // ou o imóvel da reserva podem ter mudado depois).
+          and(eq(reservas.estado, "confirmada"), isNull(reservas.divergenciaEm), lt(reservas.checkin, o.periodo.fim), gt(reservas.checkout, o.periodo.inicio), inArray(reservas.imovelId, ids), reservaDosDonos(db, donos)),
+          // Não confirmada, ou com divergência entre o cálculo e o dinheiro já movimentado: pelo livro,
+          // como o resumo — a parte dele, em vigor, num dos imóveis escolhidos, com competência no
+          // período (a estada ou o imóvel da reserva podem ter mudado depois).
           and(
-            ne(reservas.estado, "confirmada"),
+            or(ne(reservas.estado, "confirmada"), isNotNull(reservas.divergenciaEm)),
             inArray(
               reservas.id,
               db
@@ -91,9 +91,10 @@ export async function reservasDoPortal(
     .orderBy(asc(reservas.checkin), asc(imoveis.codigo));
   if (!lista.length) return [];
   const reservaIds = lista.map((r) => r.id);
-  // Não confirmada: o imóvel mostrado é o do livro (o da parte dele), não o atual da reserva — ela
+  // Não confirmada ou divergente: o imóvel mostrado é o do livro (o da parte dele), não o atual da reserva — ela
   // pode ter passado para imóvel de outro dono depois de movimentar dinheiro.
-  const naoConfirmadas = lista.filter((r) => r.estado !== "confirmada").map((r) => r.id);
+  const peloLivro = (r: { estado: string; divergencia: Date | null }) => r.estado !== "confirmada" || r.divergencia !== null;
+  const naoConfirmadas = lista.filter(peloLivro).map((r) => r.id);
   const doLivro = naoConfirmadas.length
     ? await db
         .selectDistinct({ reservaId: lancamentos.reservaId, imovelId: imoveis.id, imovelCodigo: imoveis.codigo })
@@ -151,7 +152,7 @@ export async function reservasDoPortal(
     return d.length ? "definido" : "sem_calculo";
   };
   return lista.map(({ estado, resolvida, divergencia, ...r }) => {
-    const livro = estado !== "confirmada" ? doLivro.find((x) => x.reservaId === r.id) : undefined;
+    const livro = peloLivro({ estado, divergencia }) ? doLivro.find((x) => x.reservaId === r.id) : undefined;
     return {
       ...r,
       ...(livro ? { imovelId: livro.imovelId, imovelCodigo: livro.imovelCodigo } : {}),

@@ -7,9 +7,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { criarContrato } from "@/contratos/repositorio";
-import { recalcularPendentes } from "@/financeiro/aplicar";
+import { recalcularPendentes, recalcularReservas } from "@/financeiro/aplicar";
 import { preverRepasses } from "@/repasses/repasses";
-import { lancamentos, imoveis, organizacoes, proprietarioImoveis, proprietarios, reservas } from "@/db/schema";
+import { contratos, lancamentos, imoveis, organizacoes, proprietarioImoveis, proprietarios, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { criarCategoria } from "@/despesas/categorias";
@@ -364,5 +364,37 @@ describe("consistência entre telas (M4.8)", () => {
     await sincronizarReserva(db, org, "csv", "booking:R8", dados, null);
     const [depois] = await db.select().from(reservas).where(eq(reservas.id, r.reserva.id));
     expect(depois.divergenciaEm).toBeNull();
+  });
+  it("conferência resolvida reabre quando o contrato muda e o cálculo novo diverge de outro jeito", async () => {
+    const dados = reserva(a, "2026-10-01", "2026-10-03", { valorBruto: 50000, taxaCanal: 0 });
+    const r = await sincronizarReserva(db, org, "csv", "booking:R9", dados, null);
+    if (!r.ok) throw new Error("reserva");
+    await db.update(lancamentos).set({ estado: "realizado" }).where(and(eq(lancamentos.reservaId, r.reserva.id), eq(lancamentos.tipo, "receita_bruta")));
+    await sincronizarReserva(db, org, "csv", "booking:R9", { ...dados, valorBruto: 70000 }, null);
+    const bloqueios = async () => (await preverRepasses(db, org, "2026-10", "2026-11-10", [dona]))[0].bloqueios.join(" ");
+    expect(await resolverConferencia(db, org, r.reserva.id, null)).toBe(true);
+    // O recálculo do deploy com as mesmas regras não reabre (é a mesma divergência já resolvida).
+    await recalcularReservas(db, org, { aPartirDe: "2026-09-24" });
+    expect(await bloqueios()).not.toContain("acerto pendente");
+    // O contrato muda: o cálculo novo é outro, a decisão anterior não vale para ele.
+    await db.update(contratos).set({ comissaoBp: 2500 }).where(eq(contratos.imovelId, a));
+    await recalcularReservas(db, org, { imovelId: a, aPartirDe: "2026-09-24" });
+    expect(await bloqueios()).toContain("acerto pendente");
+  });
+
+  it("confirmada com divergência que mudou de mês: a tabela do mês dos valores mostra a reserva", async () => {
+    const dados = reserva(a, "2026-10-01", "2026-10-03", { valorBruto: 50000, taxaCanal: 0 });
+    const r = await sincronizarReserva(db, org, "csv", "booking:R10", dados, null);
+    if (!r.ok) throw new Error("reserva");
+    await db.update(lancamentos).set({ estado: "realizado" }).where(and(eq(lancamentos.reservaId, r.reserva.id), eq(lancamentos.tipo, "receita_bruta")));
+    // Continua confirmada, mas a estada foi para dezembro: os valores protegidos ficam em outubro.
+    await sincronizarReserva(db, org, "csv", "booking:R10", { ...dados, checkin: "2026-12-01", checkout: "2026-12-03" }, null);
+    const lista = await reservasDoPortal(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo: OUTUBRO });
+    const portal = await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], semImovel: true, periodo: OUTUBRO });
+    expect(lista.find((x) => x.id === r.reserva.id)?.situacao).toBe("em_conferencia");
+    expect(lista.reduce((x, y) => x + y.bruto, 0)).toBe(portal.receitaBruta);
+    // Em dezembro não há valores dela no livro: não aparece uma linha sem valores.
+    const dezembro = await reservasDoPortal(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo: { inicio: "2026-12-01", fim: "2027-01-01" } });
+    expect(dezembro.some((x) => x.id === r.reserva.id)).toBe(false);
   });
 });

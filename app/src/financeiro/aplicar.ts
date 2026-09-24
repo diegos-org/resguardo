@@ -90,7 +90,14 @@ export async function aplicarMotor(
     if (precisaMudar && ativos.some((a) => a.estado === "realizado" || a.estado === "conciliado")) {
       // Divergência entre o cálculo e o dinheiro já movimentado: a reserva fica em conferência (M4.8),
       // qualquer que seja a situação dela, até bater de novo ou alguém dar por resolvida.
-      if (!r.divergenciaEm) await tx.update(reservas).set({ divergenciaEm: new Date() }).where(eq(reservas.id, r.id));
+      // Um cálculo divergente diferente do que já estava em conferência (contrato, recebimento ou regra
+      // mudou depois) reabre a conferência, mesmo que a anterior tenha sido dada por resolvida.
+      const calculo = createHash("sha1").update(JSON.stringify([...desejadas].sort())).digest("hex").slice(0, 16);
+      if (!r.divergenciaEm || r.divergenciaCalculo !== calculo)
+        await tx
+          .update(reservas)
+          .set({ divergenciaEm: r.divergenciaEm ?? new Date(), divergenciaCalculo: calculo, conferenciaResolvidaEm: null })
+          .where(eq(reservas.id, r.id));
       return {
         criados: 0,
         estornados: 0,
@@ -126,7 +133,7 @@ export async function aplicarMotor(
       });
     if (novos.length) await lancar(tx, organizacaoId, novos, autorId);
     // O cálculo e o livro batem de novo: acabou a divergência.
-    if (r.divergenciaEm) await tx.update(reservas).set({ divergenciaEm: null }).where(eq(reservas.id, r.id));
+    if (r.divergenciaEm || r.divergenciaCalculo) await tx.update(reservas).set({ divergenciaEm: null, divergenciaCalculo: null }).where(eq(reservas.id, r.id));
     return { criados: novos.length, estornados, mantidos: mantidas.size, avisos };
   });
 }

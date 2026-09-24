@@ -329,6 +329,8 @@ export const reservas = pgTable(
      * alguém dar por resolvida (M4.8).
      */
     divergenciaEm: timestamp("divergencia_em", { withTimezone: true }),
+    /** O cálculo divergente que ficou em conferência (M4.8): outro cálculo divergente reabre a conferência. */
+    divergenciaCalculo: text("divergencia_calculo"),
     criadoEm: criadoEm(),
     atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
   },
