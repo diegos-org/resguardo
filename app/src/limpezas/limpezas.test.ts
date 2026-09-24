@@ -188,6 +188,10 @@ describe("cancelada à mão e mudança de imóvel", () => {
     expect((await lista("2026-11-05"))[0]).toMatchObject({ data: "2026-10-30", movida: false });
     expect(l.avisos.join(" ")).toContain("mudou para 03/11/2026");
     expect(await listarLimpezas(db, org, { ...novembro, imovelIds: [b], hoje: "2026-11-05" })).toHaveLength(1);
+    // Data e imóvel sempre do mesmo par: novembro/403 e outubro/102 não mostram a limpeza.
+    expect(await listarLimpezas(db, org, { ...novembro, imovelIds: [a], hoje: "2026-11-05" })).toHaveLength(0);
+    expect(await listarLimpezas(db, org, { ...periodo, imovelIds: [b], hoje: "2026-11-05" })).toHaveLength(0);
+    expect(await listarLimpezas(db, org, { ...periodo, imovelIds: [a], hoje: "2026-11-05" })).toHaveLength(1);
   });
 
   it("profissional arquivada depois de escolhida ainda pode ser registrada como quem fez", async () => {

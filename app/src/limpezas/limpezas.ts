@@ -124,13 +124,13 @@ const dataBr = (d: string) => d.split("-").reverse().join("/");
 export async function listarLimpezas(db: Db, organizacaoId: string, f: Periodo & { imovelIds?: string[]; hoje: string }): Promise<LinhaLimpeza[]> {
   // Realizada cuja reserva mudou de mês/imóvel aparece também no período/imóvel novo da reserva,
   // com o aviso (a limpeza em si continua na data e no imóvel em que foi feita).
-  const realizadaMovida = and(eq(limpezas.estado, "realizada"), gte(reservas.checkout, f.inicio), lt(reservas.checkout, f.fim));
-  const c = [eq(limpezas.organizacaoId, organizacaoId), or(and(gte(limpezas.data, f.inicio), lt(limpezas.data, f.fim)), realizadaMovida)];
-  if (f.imovelIds) {
-    const ids = f.imovelIds.filter(uuidValido);
-    if (!ids.length) return [];
-    c.push(or(inArray(limpezas.imovelId, ids), and(eq(limpezas.estado, "realizada"), inArray(reservas.imovelId, ids))));
-  }
+  // Duas alternativas completas (data e imóvel sempre do mesmo par): a limpeza em si, ou a
+  // realizada pela saída/imóvel atuais da reserva.
+  const ids = f.imovelIds?.filter(uuidValido);
+  if (ids && !ids.length) return [];
+  const daLimpeza = and(gte(limpezas.data, f.inicio), lt(limpezas.data, f.fim), ids ? inArray(limpezas.imovelId, ids) : undefined);
+  const realizadaMovida = and(eq(limpezas.estado, "realizada"), gte(reservas.checkout, f.inicio), lt(reservas.checkout, f.fim), ids ? inArray(reservas.imovelId, ids) : undefined);
+  const c = [eq(limpezas.organizacaoId, organizacaoId), or(daLimpeza, realizadaMovida)];
   const linhas = await db
     .select({
       l: limpezas,
@@ -304,17 +304,20 @@ export function cancelarLimpeza(db: Db, organizacaoId: string, id: string, motiv
 export async function criarLimpezaAvulsa(db: Db, organizacaoId: string, d: { imovelId: string; data: string; observacao: string }, autorId: string | null): Promise<Resultado> {
   if (!uuidValido(d.imovelId)) return { ok: false, erro: "Escolha o imóvel." };
   if (!dataValida(d.data)) return { ok: false, erro: "Data inválida." };
-  const [im] = await db
-    .select({ id: imoveis.id })
-    .from(imoveis)
-    .where(and(eq(imoveis.id, d.imovelId), eq(imoveis.organizacaoId, organizacaoId)));
-  if (!im) return { ok: false, erro: "Imóvel não encontrado." };
-  const [l] = await db
-    .insert(limpezas)
-    .values({ organizacaoId, imovelId: d.imovelId, data: d.data, observacao: d.observacao.trim().slice(0, 500) })
-    .returning();
-  await registrarAuditoria(db, { organizacaoId, usuarioId: autorId, acao: "limpeza.criar", entidade: "limpeza", entidadeId: l.id, mudancas: { limpeza: [null, `avulsa em ${d.data}`] } });
-  return { ok: true };
+  // Limpeza e histórico juntos: ou os dois ficam, ou nenhum.
+  return db.transaction(async (tx) => {
+    const [im] = await tx
+      .select({ id: imoveis.id })
+      .from(imoveis)
+      .where(and(eq(imoveis.id, d.imovelId), eq(imoveis.organizacaoId, organizacaoId)));
+    if (!im) return { ok: false as const, erro: "Imóvel não encontrado." };
+    const [l] = await tx
+      .insert(limpezas)
+      .values({ organizacaoId, imovelId: d.imovelId, data: d.data, observacao: d.observacao.trim().slice(0, 500) })
+      .returning();
+    await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "limpeza.criar", entidade: "limpeza", entidadeId: l.id, mudancas: { limpeza: [null, `avulsa em ${d.data}`] } });
+    return { ok: true as const };
+  });
 }
 
 // ——— Profissionais ———
@@ -343,12 +346,14 @@ export async function criarProfissional(db: Db, organizacaoId: string, d: DadosP
   const erro = validarProfissional(d);
   if (erro) return { ok: false, erro };
   try {
-    const [p] = await db
-      .insert(profissionaisLimpeza)
-      .values({ organizacaoId, nome: d.nome.trim(), telefone: d.telefone.trim(), observacoes: d.observacoes.trim() })
-      .returning();
-    await registrarAuditoria(db, { organizacaoId, usuarioId: autorId, acao: "profissional_limpeza.criar", entidade: "profissional_limpeza", entidadeId: p.id, mudancas: { nome: [null, p.nome] } });
-    return { ok: true };
+    return await db.transaction(async (tx) => {
+      const [p] = await tx
+        .insert(profissionaisLimpeza)
+        .values({ organizacaoId, nome: d.nome.trim(), telefone: d.telefone.trim(), observacoes: d.observacoes.trim() })
+        .returning();
+      await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "profissional_limpeza.criar", entidade: "profissional_limpeza", entidadeId: p.id, mudancas: { nome: [null, p.nome] } });
+      return { ok: true as const };
+    });
   } catch (e) {
     if (nomeRepetido(e)) return { ok: false, erro: "Já existe uma profissional com esse nome." };
     throw e;
