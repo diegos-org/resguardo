@@ -1,5 +1,5 @@
 {
-  "id": "fd123037-fd02-471d-91e0-676c31aedfb8",
+  "id": "bec6533f-690f-426b-8ed4-1aa9a9f7a637",
   "prevId": "2541be5f-3fd3-4e39-8b56-c7cde0f9f346",
   "version": "7",
   "dialect": "postgresql",
@@ -2451,6 +2451,12 @@
           "notNull": true,
           "default": "''"
         },
+        "chave": {
+          "name": "chave",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "criado_por": {
           "name": "criado_por",
           "type": "uuid",
@@ -2483,6 +2489,27 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "quitacoes_adiantamento_chave": {
+          "name": "quitacoes_adiantamento_chave",
+          "columns": [
+            {
+              "expression": "adiantamento_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "chave",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
           "concurrently": false,
           "method": "btree",
           "with": {}
