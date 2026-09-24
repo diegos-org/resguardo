@@ -527,6 +527,16 @@ async function travarPessoa(db: Db, chave: string, agora: Date): Promise<string 
   return tomada ? valor.dono : null;
 }
 
+/** Confere que a trava ainda é deste dono e renova o prazo dela; false se outra execução a tomou. */
+async function renovarPessoa(db: Db, chave: string, dono: string, em: Date): Promise<boolean> {
+  const [minha] = await db
+    .update(appSettings)
+    .set({ value: sql`jsonb_set(${appSettings.value}, '{em}', to_jsonb(${em.toISOString()}::text))`, updatedAt: new Date() })
+    .where(and(eq(appSettings.key, chave), sql`${appSettings.value} ->> 'dono' = ${dono}`))
+    .returning({ key: appSettings.key });
+  return !!minha;
+}
+
 async function soltarPessoa(db: Db, chave: string, dono: string): Promise<void> {
   await db.delete(appSettings).where(and(eq(appSettings.key, chave), sql`${appSettings.value} ->> 'dono' = ${dono}`));
 }
@@ -597,7 +607,11 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
     if (!agendas.has(k)) agendas.set(k, await montarAgenda(db, organizacaoId, hoje, desde, corte));
     return agendas.get(k)!;
   };
-  const enviarPara = async (d: Destinatario): Promise<void> => {
+  // O relógio anda durante a execução: a trava de cada pessoa leva o horário de quando é tomada e de
+  // quando é renovada (senão, depois de envios lentos, ela nasceria ou ficaria vencida).
+  const inicio = Date.now();
+  const relogio = () => new Date(agora.getTime() + (Date.now() - inicio));
+  const enviarPara = async (d: Destinatario, trava: { chave: string; dono: string }): Promise<void> => {
     const chave = chaveEnvio(organizacaoId, hoje, d.email, o.manual);
     const incertos = await reconciliarIncertos(db, pendentes, d.email, hoje);
     const incertoAte = incertos.ate;
@@ -646,6 +660,13 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
           r.falhas.push(`${d.email}: tentativa demorou demais e foi retomada por outra execução`);
           return;
         }
+      }
+      // Logo antes do provedor: a trava da pessoa ainda é desta execução (e ganha prazo novo). Se outra
+      // a tomou (esta demorou mais que o prazo), esta não envia: senão, com chaves diferentes (manual e
+      // agendado), a pessoa receberia duas vezes.
+      if (!(await renovarPessoa(db, trava.chave, trava.dono, relogio()))) {
+        r.falhas.push(`${d.email}: tentativa demorou demais e foi retomada por outra execução`);
+        return;
       }
       // A mesma chave do dia vai para o provedor: uma nova tentativa do mesmo envio não duplica.
       await correio.enviar({ para: d.email, assunto: carga.assunto, texto: carga.texto, chave });
@@ -706,18 +727,16 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
   };
   await limparMarcasAntigas(db, organizacaoId, hoje);
   const pendentes = await marcasPendentes(db, organizacaoId);
-  // O relógio anda durante a execução: a trava de cada pessoa leva o horário de quando é tomada
-  // (senão, depois de envios lentos, a trava de quem está no fim da lista já nasceria vencida).
-  const inicio = Date.now();
+
   for (const d of config.destinatarios) {
     const trava = chaveTravaDe(organizacaoId, d.email);
-    const dono = await travarPessoa(db, trava, new Date(agora.getTime() + (Date.now() - inicio)));
+    const dono = await travarPessoa(db, trava, relogio());
     if (!dono) {
       r.falhas.push(`${d.email}: outro envio para esta pessoa está em andamento; tente de novo em alguns minutos`);
       continue;
     }
     try {
-      await enviarPara(d);
+      await enviarPara(d, { chave: trava, dono });
     } finally {
       await soltarPessoa(db, trava, dono);
     }
