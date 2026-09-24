@@ -462,10 +462,18 @@ export function ultimaAgendaDe(db: Db, organizacaoId: string, email: string): Pr
   return lerMarco(db, chaveUltimaDe(organizacaoId, email));
 }
 
-/** O que a agenda mandaria agora (para a tela): novas desde a última agenda, ou das últimas 24h. */
+/**
+ * Prévia para a tela: os próximos dias e as reservas novas desde o marco mais antigo entre os
+ * destinatários (quem nunca recebeu conta as últimas 24h). É o máximo que alguém recebe agora; cada
+ * pessoa recebe só o que ainda não recebeu e só as cidades dela.
+ */
 export async function previaDaAgenda(db: Db, organizacaoId: string, agora: Date = new Date()): Promise<{ agenda: Agenda; ultima: Date | null }> {
-  const ultima = await ultimaAgenda(db, organizacaoId);
-  const agenda = await montarAgenda(db, organizacaoId, hojeISO("America/Sao_Paulo", agora), ultima ?? new Date(agora.getTime() - 86_400_000));
+  const [ultima, config] = await Promise.all([ultimaAgenda(db, organizacaoId), lerConfigAgenda(db, organizacaoId)]);
+  const umDia = new Date(agora.getTime() - 86_400_000);
+  const marcos = await Promise.all(config.destinatarios.map((d) => ultimaAgendaDe(db, organizacaoId, d.email)));
+  const inicios = marcos.map((m) => (m ? m.getTime() - SOBREPOSICAO_MS : umDia.getTime()));
+  const desde = inicios.length ? new Date(Math.min(...inicios)) : (ultima ?? umDia);
+  const agenda = await montarAgenda(db, organizacaoId, hojeISO("America/Sao_Paulo", agora), desde, agora);
   return { agenda, ultima };
 }
 

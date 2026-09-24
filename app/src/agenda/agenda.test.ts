@@ -7,7 +7,7 @@ import type { Db } from "@/db/types";
 import { type Correio, CorreioMemoria, ErroEnvioIncerto, type Mensagem } from "@/email/correio";
 import type { DadosReserva } from "@/reservas/regras";
 import { criarReserva, sincronizarReserva } from "@/reservas/repositorio";
-import { enviarAgenda, lerConfigAgenda, montarAgenda, salvarConfigAgenda, textoDaAgenda, ultimaAgenda, ultimaAgendaDe } from "./agenda";
+import { enviarAgenda, lerConfigAgenda, montarAgenda, previaDaAgenda, salvarConfigAgenda, textoDaAgenda, ultimaAgenda, ultimaAgendaDe } from "./agenda";
 import { agendaDeTodas, agendaManual } from "./cron";
 
 let db: Db;
@@ -541,6 +541,16 @@ describe("configuração e envio", () => {
     await db.update(imoveis).set({ ativo: true }).where(eq(imoveis.id, um.id));
     await enviarAgenda(db, org, correio, new Date(dia2.getTime() + 60_000), { manual: true });
     expect(correio.enviadas[2].texto).toContain("entrada ter 02/05");
+  });
+
+  it("prévia da tela: parte do marco mais antigo entre os destinatários (quem falhou ainda vê a reserva)", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }, { email: "b@example.com", cidades: [] }] }, null);
+    await nova(rio, "2028-08-01", "2028-08-03", new Date(AGORA.getTime() - 60_000).toISOString());
+    // "a" recebe; "b" falha. O marco global anda, o de "b" não.
+    const soA: Correio = { nome: "soA", enviar: async (m) => { if (m.para === "b@example.com") throw new Error("Falha ao enviar e-mail (HTTP 422)."); } };
+    await enviarAgenda(db, org, soA, AGORA);
+    const { agenda } = await previaDaAgenda(db, org, new Date(AGORA.getTime() + 3_600_000));
+    expect(agenda.secoes.flatMap((x) => x.novas).map((n) => n.checkin)).toContain("2028-08-01");
   });
 
   it("envio agendado incerto: o 'enviar agora' do mesmo dia repete o mesmo pedido, sem segundo e-mail", async () => {

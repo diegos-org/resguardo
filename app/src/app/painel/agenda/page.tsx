@@ -34,7 +34,8 @@ export default async function Agenda({ searchParams }: PageProps<"/painel/agenda
       <p style={{ color: "var(--scl-texto-2)", fontSize: "0.875rem", maxWidth: 820, margin: 0 }}>
         Todo dia às 20h a equipe recebe por e-mail os próximos {DIAS_AGENDA} dias, separados por cidade, no modelo de 23/09: no Rio, só as limpezas de cada
         dia (com horário-limite quando alguém entra no mesmo dia) e as entradas à parte; em Búzios, uma linha por reserva. Vão também as reservas novas desde a
-        última agenda (mesmo fora dessa janela). A agenda só informa: não confirma limpeza. Abaixo, o texto que vai sair.
+        última agenda (mesmo fora dessa janela). A agenda só informa: não confirma limpeza. Abaixo, uma prévia do texto: cada pessoa recebe só as cidades
+        dela e só as reservas novas que ainda não recebeu.
       </p>
       {salvo && (
         <p role="status" className={styles.sucesso}>
