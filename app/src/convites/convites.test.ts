@@ -93,6 +93,11 @@ describe("convites", () => {
     const r2 = await criarConvite(db, org, outroDono, "dona@example.com", null, dias(2));
     expect(r2.ok && (await aceitarConvite(db, r2.token, "dona@example.com", dias(2)))).toBe(uid);
     expect([...((await carregarSessao(db, uid!))?.imovelIds ?? [])].sort()).toEqual([im, im2].sort());
+    // Um dos proprietários sai (desativado): o acesso aos imóveis dele acaba na hora; o do outro continua.
+    await db.update(proprietarios).set({ ativo: false }).where(eq(proprietarios.id, outroDono));
+    expect((await carregarSessao(db, uid!))?.imovelIds).toEqual([im]);
+    await db.update(proprietarios).set({ ativo: false }).where(eq(proprietarios.id, dono));
+    expect((await carregarSessao(db, uid!))?.imovelIds).toEqual([]);
   });
 
   it("isolamento: outra organização não convida nem cancela", async () => {
