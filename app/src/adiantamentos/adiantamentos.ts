@@ -232,8 +232,6 @@ export async function desfazerQuitacao(db: Db, organizacaoId: string, quitacaoId
     // Relê com a trava: outra requisição pode ter desfeito ao mesmo tempo.
     const [atual] = await tx.select().from(quitacoesAdiantamento).where(eq(quitacoesAdiantamento.id, quitacaoId)).for("update");
     if (atual.desfeitaEm) return { ok: false as const, erro: "Quitação já desfeita." };
-    if (q.lancamentoId) await estornar(tx, organizacaoId, q.lancamentoId, motivo.trim(), autorId);
-    await tx.update(quitacoesAdiantamento).set({ desfeitaEm: new Date() }).where(eq(quitacoesAdiantamento.id, quitacaoId));
     // "Empresa assume" que veio da resolução de uma contestação: desfazer reabre AQUELA contestação
     // (senão o valor voltaria a ser cobrado com a tela dizendo que a empresa assumiu). Se outra
     // contestação já estiver aberta, o adiantamento continua contestado por ela.
@@ -243,15 +241,18 @@ export async function desfazerQuitacao(db: Db, organizacaoId: string, quitacaoId
         .select({ id: contestacoesAdiantamento.id })
         .from(contestacoesAdiantamento)
         .where(and(eq(contestacoesAdiantamento.adiantamentoId, q.adiantamentoId), isNull(contestacoesAdiantamento.resolvidaEm)));
-      if (!aberta) {
-        const r = await tx
-          .update(contestacoesAdiantamento)
-          .set({ resolvidaEm: null, resolucao: null, notaResolucao: "" })
-          .where(and(eq(contestacoesAdiantamento.id, q.contestacaoId), eq(contestacoesAdiantamento.resolucao, "empresa_assume")))
-          .returning({ id: contestacoesAdiantamento.id });
-        reaberta = r.length > 0;
-      }
+      // Com outra contestação aberta, a de origem não poderia ser reaberta: recusa em vez de
+      // deixar a de origem marcada como "empresa assumiu" sem a quitação correspondente.
+      if (aberta) return { ok: false as const, erro: "Há outra contestação aberta neste adiantamento: resolva-a antes de desfazer." };
+      const r = await tx
+        .update(contestacoesAdiantamento)
+        .set({ resolvidaEm: null, resolucao: null, notaResolucao: "" })
+        .where(and(eq(contestacoesAdiantamento.id, q.contestacaoId), eq(contestacoesAdiantamento.resolucao, "empresa_assume")))
+        .returning({ id: contestacoesAdiantamento.id });
+      reaberta = r.length > 0;
     }
+    if (q.lancamentoId) await estornar(tx, organizacaoId, q.lancamentoId, motivo.trim(), autorId);
+    await tx.update(quitacoesAdiantamento).set({ desfeitaEm: new Date() }).where(eq(quitacoesAdiantamento.id, quitacaoId));
     await registrarAuditoria(tx, {
       organizacaoId,
       usuarioId: autorId,

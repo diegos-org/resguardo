@@ -6,7 +6,7 @@ import { imoveis, organizacoes, proprietarioImoveis, proprietarios } from "@/db/
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { criarCategoria } from "@/despesas/categorias";
-import { estornarDespesa, registrarDespesa } from "@/despesas/despesas";
+import { estornarDespesa, marcarDespesaPaga, registrarDespesa } from "@/despesas/despesas";
 import { saldoAcerto, totaisPorTipo } from "@/financeiro/ledger";
 import { contestar, desfazerQuitacao, listarAdiantamentos, obterAdiantamento, quitar, resolverContestacao, resumoPorProprietario, situacaoDe, totalACobrar } from "./adiantamentos";
 
@@ -133,6 +133,24 @@ describe("quitação sem dupla cobrança", () => {
   });
 });
 
+describe("corrida entre pagar e estornar", () => {
+  it("marcar paga e estornar ao mesmo tempo nunca deixa adiantamento ativo de despesa estornada", async () => {
+    const c = await criarCategoria(db, org, "Reparos", null);
+    if (!c.ok) throw new Error("categoria");
+    const d = await registrarDespesa(
+      db,
+      org,
+      { responsavel: "proprietario", pagoPor: "empresa", categoriaId: c.categoria.id, descricao: "Conserto", valor: 50000, data: "2026-10-05", imovelId: im, proprietarioId: null, fornecedor: "", comprovante: "", paga: false, dataPagamento: null },
+      null,
+    );
+    if (!d.ok) throw new Error("despesa");
+    await Promise.allSettled([marcarDespesaPaga(db, org, d.lancamento.id, "2026-10-07", null), estornarDespesa(db, org, d.lancamento.id, "Lançada errado", null)]);
+    const ativos = (await listarAdiantamentos(db, org)).filter((a) => a.despesaId === d.lancamento.id);
+    expect(ativos).toEqual([]); // o estorno sempre leva o adiantamento junto
+    expect(await saldo()).toBe(-400000); // só o adiantamento do beforeEach
+  });
+});
+
 describe("contestação", () => {
   it("contestado não é cobrado; mantida volta a cobrar", async () => {
     expect(await contestar(db, org, adiantamentoId, "O ar já estava com defeito na entrega", null)).toEqual({ ok: true });
@@ -172,5 +190,17 @@ describe("contestação", () => {
     const a = (await obterAdiantamento(db, org, adiantamentoId))!;
     expect(a).toMatchObject({ situacao: "contestado", aberto: 300000 });
     expect(a.contestacao?.motivo).toBe("Primeira");
+  });
+
+  it("desfazer 'empresa assume' com outra contestação aberta é recusado", async () => {
+    await quitar(db, org, adiantamentoId, { forma: "reembolso", valor: 100000, data: "2026-10-20" }, null);
+    await contestar(db, org, adiantamentoId, "A", null);
+    await resolverContestacao(db, org, adiantamentoId, { resolucao: "empresa_assume", nota: "", data: "2026-10-25" }, null);
+    const reembolso = (await obterAdiantamento(db, org, adiantamentoId))!.quitacoes.find((x) => x.forma === "reembolso")!;
+    await desfazerQuitacao(db, org, reembolso.id, "Pix estornado", null);
+    await contestar(db, org, adiantamentoId, "B", null);
+    const assumida = (await obterAdiantamento(db, org, adiantamentoId))!.quitacoes.find((x) => x.forma === "empresa_assume")!;
+    expect(await desfazerQuitacao(db, org, assumida.id, "Revisto", null)).toMatchObject({ ok: false, erro: expect.stringContaining("outra contestação") });
+    expect(await saldo()).toBe(-100000); // nada mudou: só o reembolso desfeito está em aberto
   });
 });
