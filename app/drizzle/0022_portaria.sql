@@ -9,6 +9,8 @@ CREATE TABLE "portaria_checklists" (
 	"destinatario_conferido" boolean DEFAULT false NOT NULL,
 	"encaminhado_em" date,
 	"entrega_confirmada_em" date,
+	"encaminhado_checkin" date,
+	"encaminhado_checkout" date,
 	"pendencia" text DEFAULT '' NOT NULL,
 	"criado_em" timestamp with time zone DEFAULT now() NOT NULL,
 	"atualizado_em" timestamp with time zone DEFAULT now() NOT NULL,

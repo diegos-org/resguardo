@@ -1,5 +1,5 @@
 {
-  "id": "226fe193-bca9-4d49-956f-66c53a845f25",
+  "id": "4038f5dc-65dc-45c6-990a-c4de8ee51bb2",
   "prevId": "1bb34636-9628-4142-9b15-98ec8127e825",
   "version": "7",
   "dialect": "postgresql",
@@ -2888,6 +2888,18 @@
         },
         "entrega_confirmada_em": {
           "name": "entrega_confirmada_em",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "encaminhado_checkin": {
+          "name": "encaminhado_checkin",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "encaminhado_checkout": {
+          "name": "encaminhado_checkout",
           "type": "date",
           "primaryKey": false,
           "notNull": false

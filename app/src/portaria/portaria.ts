@@ -135,8 +135,8 @@ export async function listarPortaria(db: Db, organizacaoId: string, f: { hoje: s
       documentosRecebidos: c?.documentosRecebidos ?? 0,
       // Pedido feito para uma entrada que mudou (reserva adiada/antecipada) não vale mais.
       ...pedidosVigentes(c, r.checkin, diaDaReserva(r.criadoEm)),
-      encaminhadoEm: c?.encaminhadoEm ?? null,
-      entregaConfirmadaEm: c?.entregaConfirmadaEm ?? null,
+      // Encaminhado para outras datas da estada: precisa encaminhar de novo.
+      ...envioVigente(c, r),
     };
     return {
       ...estado,
@@ -224,12 +224,22 @@ function pedidosVigentes(
   };
 }
 
+type Envio = Pick<Checklist, "encaminhadoEm" | "entregaConfirmadaEm" | "encaminhadoCheckin" | "encaminhadoCheckout">;
+const SEM_ENVIO: Envio = { encaminhadoEm: null, entregaConfirmadaEm: null, encaminhadoCheckin: null, encaminhadoCheckout: null };
+
+/** Encaminhamento e entrega só valem para as datas da estada com que foram feitos. */
+function envioVigente(c: Envio | null, r: { checkin: string; checkout: string }): Envio {
+  if (!c?.encaminhadoEm) return SEM_ENVIO;
+  if (c.encaminhadoCheckin !== r.checkin || c.encaminhadoCheckout !== r.checkout) return SEM_ENVIO;
+  return { encaminhadoEm: c.encaminhadoEm, entregaConfirmadaEm: c.entregaConfirmadaEm, encaminhadoCheckin: c.encaminhadoCheckin, encaminhadoCheckout: c.encaminhadoCheckout };
+}
+
 /** Registra um passo da lista (cria a lista da reserva na primeira vez). Com trava e histórico. */
 export async function registrarPortaria(db: Db, organizacaoId: string, reservaId: string, reg: Registro, hoje: string, autorId: string | null): Promise<Resultado> {
   if (!uuidValido(reservaId)) return { ok: false, erro: "Reserva não encontrada." };
   return db.transaction(async (tx) => {
     const [r] = await tx
-      .select({ id: reservas.id, imovelId: reservas.imovelId, hospedes: reservas.hospedes, estado: reservas.estado, checkin: reservas.checkin, criadoEm: reservas.criadoEm })
+      .select({ id: reservas.id, imovelId: reservas.imovelId, hospedes: reservas.hospedes, estado: reservas.estado, checkin: reservas.checkin, checkout: reservas.checkout, criadoEm: reservas.criadoEm })
       .from(reservas)
       .where(and(eq(reservas.id, reservaId), eq(reservas.organizacaoId, organizacaoId)))
       .for("update");
@@ -239,18 +249,19 @@ export async function registrarPortaria(db: Db, organizacaoId: string, reservaId
     await tx.insert(portariaChecklists).values({ organizacaoId, reservaId }).onConflictDoNothing();
     const [antes] = await tx.select().from(portariaChecklists).where(eq(portariaChecklists.reservaId, reservaId)).for("update");
     // Pedidos feitos para uma entrada antiga saem (o histórico guarda as datas) e não contam na ordem.
-    const vigentes = pedidosVigentes(antes, r.checkin, diaDaReserva(r.criadoEm));
+    // Idem para o encaminhamento feito para outras datas da estada.
+    const vigentes = { ...pedidosVigentes(antes, r.checkin, diaDaReserva(r.criadoEm)), ...envioVigente(antes, r) };
     const atual: Checklist = { ...antes, ...vigentes };
 
     let novo: Partial<Checklist>;
     // Encaminhamento e entrega valem só com o destinatário conferido e os documentos completos:
     // se uma correção desfaz isso, os dois saem (o histórico guarda as datas) e o passo volta.
-    const desfazEnvio = { encaminhadoEm: null, entregaConfirmadaEm: null };
+    const desfazEnvio = SEM_ENVIO;
     if (reg.tipo === "documentos") {
       if (!Number.isSafeInteger(reg.recebidos) || reg.recebidos < 0 || reg.recebidos > 50) return { ok: false as const, erro: "Quantidade inválida." };
       if (r.hospedes !== null && reg.recebidos > r.hospedes) return { ok: false as const, erro: `A reserva tem ${r.hospedes} hóspede(s): confira a quantidade.` };
       // Qualquer mudança na contagem depois do encaminhamento pede novo encaminhamento (e entrega).
-      const mudou = reg.recebidos !== antes.documentosRecebidos && antes.encaminhadoEm !== null;
+      const mudou = reg.recebidos !== atual.documentosRecebidos && atual.encaminhadoEm !== null;
       novo = { documentosRecebidos: reg.recebidos, ...(mudou || r.hospedes === null || reg.recebidos < r.hospedes ? desfazEnvio : {}) };
     } else if (reg.tipo === "destinatario") {
       novo = { destinatarioConferido: reg.conferido, ...(reg.conferido ? {} : desfazEnvio) };
@@ -263,14 +274,18 @@ export async function registrarPortaria(db: Db, organizacaoId: string, reservaId
         if (!antes.destinatarioConferido) return { ok: false as const, erro: "Confira o destinatário da portaria antes de encaminhar ou confirmar a entrega." };
         if (r.hospedes === null || antes.documentosRecebidos < r.hospedes) return { ok: false as const, erro: "Ainda faltam documentos (ou o número de hóspedes não está na reserva)." };
       }
-      if (reg.tipo === "entrega_confirmada" && !antes.encaminhadoEm) return { ok: false as const, erro: "Registre o encaminhamento antes de confirmar a entrega." };
+      if (reg.tipo === "entrega_confirmada" && !atual.encaminhadoEm) return { ok: false as const, erro: "Registre o encaminhamento antes de confirmar a entrega." };
       if (reg.tipo === "aviso_inicial" || reg.tipo === "segundo_pedido" || reg.tipo === "pedido_final") {
         const janela = foraDaJanela(reg.tipo, reg.data, r.checkin, diaDaReserva(r.criadoEm));
         if (janela) return { ok: false as const, erro: janela };
       }
+      // Segundo e pedido final só depois do aviso inicial (a sequência começa por ele).
+      if ((reg.tipo === "segundo_pedido" || reg.tipo === "pedido_final") && !atual.avisoInicialEm) return { ok: false as const, erro: "Registre o aviso inicial antes dos outros pedidos." };
       const fora = foraDeOrdem(atual, reg.tipo, reg.data);
       if (fora) return { ok: false as const, erro: fora };
       novo = { [CAMPO_DATA[reg.tipo]]: reg.data };
+      // O encaminhamento fica ligado às datas da estada de agora.
+      if (reg.tipo === "encaminhado") novo = { ...novo, encaminhadoCheckin: r.checkin, encaminhadoCheckout: r.checkout };
     }
     const [depois] = await tx
       .update(portariaChecklists)

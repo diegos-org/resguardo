@@ -832,6 +832,9 @@ export const portariaChecklists = pgTable("portaria_checklists", {
   destinatarioConferido: boolean("destinatario_conferido").notNull().default(false),
   encaminhadoEm: date("encaminhado_em", { mode: "string" }),
   entregaConfirmadaEm: date("entrega_confirmada_em", { mode: "string" }),
+  /** Datas da estada quando foi encaminhado: se a reserva mudar de data, é preciso encaminhar de novo. */
+  encaminhadoCheckin: date("encaminhado_checkin", { mode: "string" }),
+  encaminhadoCheckout: date("encaminhado_checkout", { mode: "string" }),
   /** Pendência concreta (falha de entrega, dúvida de correspondência…); vazio = nenhuma. */
   pendencia: text("pendencia").notNull().default(""),
   criadoEm: criadoEm(),

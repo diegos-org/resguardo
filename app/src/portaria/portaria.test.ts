@@ -181,6 +181,29 @@ describe("lista de portaria", () => {
     expect(await reg({ tipo: "pedido_final", data: "2026-10-29" }, "2026-10-29")).toEqual({ ok: true });
   });
 
+  it("reserva que muda de data depois da entrega pede novo encaminhamento; segundo e final exigem o aviso inicial", async () => {
+    await salvarImoveisComPortaria(db, org, [a], null);
+    const r = await criarReserva(db, org, reserva(a), null);
+    if (!r.ok) throw new Error("reserva");
+    const id = r.reserva.id;
+    await db.update(reservas).set({ criadoEm: new Date("2026-09-01T15:00:00Z") }).where(eq(reservas.id, id));
+    const reg = (x: Parameters<typeof registrarPortaria>[3], hoje = "2026-10-14") => registrarPortaria(db, org, id, x, hoje, null);
+    expect(await reg({ tipo: "segundo_pedido", data: "2026-10-14" })).toMatchObject({ ok: false, erro: expect.stringContaining("aviso inicial antes") });
+    expect(await reg({ tipo: "pedido_final", data: "2026-10-19" }, "2026-10-19")).toMatchObject({ ok: false, erro: expect.stringContaining("aviso inicial antes") });
+    await reg({ tipo: "documentos", recebidos: 2 });
+    await reg({ tipo: "destinatario", conferido: true });
+    await reg({ tipo: "encaminhado", data: "2026-10-14" });
+    await reg({ tipo: "entrega_confirmada", data: "2026-10-14" });
+    expect((await listarPortaria(db, org, { hoje: "2026-10-14", ate: "2026-11-30" }))[0].passo).toBe("concluido");
+    // Mudou só a saída: o que foi encaminhado tinha outras datas.
+    await db.update(reservas).set({ checkout: "2026-10-25" }).where(eq(reservas.id, id));
+    expect((await listarPortaria(db, org, { hoje: "2026-10-14", ate: "2026-11-30" }))[0]).toMatchObject({ passo: "encaminhar", encaminhadoEm: null, entregaConfirmadaEm: null });
+    expect(await reg({ tipo: "entrega_confirmada", data: "2026-10-14" })).toMatchObject({ ok: false, erro: expect.stringContaining("encaminhamento") });
+    expect(await reg({ tipo: "encaminhado", data: "2026-10-14" })).toEqual({ ok: true });
+    expect(await reg({ tipo: "entrega_confirmada", data: "2026-10-14" })).toEqual({ ok: true });
+    expect((await listarPortaria(db, org, { hoje: "2026-10-14", ate: "2026-11-30" }))[0].passo).toBe("concluido");
+  });
+
   it("mais documentos depois do encaminhamento pedem novo encaminhamento", async () => {
     await salvarImoveisComPortaria(db, org, [a], null);
     const r = await criarReserva(db, org, reserva(a), null);
