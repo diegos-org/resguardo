@@ -7,7 +7,7 @@ import { and, eq, gt, inArray, lt, ne } from "drizzle-orm";
 import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
 import { imoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { LIMITE_BYTES, LIMITE_LINHAS, lerCabecalho, lerCsv, lerLinha } from "./csv";
+import { CsvInvalido, LIMITE_BYTES, LIMITE_LINHAS, lerCabecalho, lerCsv, lerLinha } from "./csv";
 import { type DadosReserva } from "./regras";
 import { sincronizarReserva } from "./repositorio";
 
@@ -30,7 +30,13 @@ const dataBr = (d: string) => d.split("-").reverse().join("/");
 
 export async function analisarCsv(db: Db, organizacaoId: string, texto: string): Promise<Analise> {
   if (new TextEncoder().encode(texto).length > LIMITE_BYTES) return { erroGeral: "Arquivo acima de 900 KB: divida em partes.", colunasIgnoradas: [], linhas: [] };
-  const tabela = lerCsv(texto);
+  let tabela: string[][];
+  try {
+    tabela = lerCsv(texto);
+  } catch (e) {
+    if (e instanceof CsvInvalido) return { erroGeral: e.message, colunasIgnoradas: [], linhas: [] };
+    throw e;
+  }
   if (tabela.length < 2) return { erroGeral: "O arquivo precisa ter o cabeçalho e pelo menos uma reserva.", colunasIgnoradas: [], linhas: [] };
   if (tabela.length - 1 > LIMITE_LINHAS) return { erroGeral: `No máximo ${LIMITE_LINHAS} reservas por arquivo.`, colunasIgnoradas: [], linhas: [] };
   const cab = lerCabecalho(tabela[0]);
@@ -113,13 +119,23 @@ export async function analisarCsv(db: Db, organizacaoId: string, texto: string):
 /**
  * `semRecalculo`: linhas cuja reserva foi atualizada, mas o financeiro não, porque já tinha
  * dinheiro movimentado (precisa de ajuste manual).
+ * `avisosFinanceiro`: o que o cálculo financeiro avisou em cada linha importada (valor bruto
+ * faltando, sem contrato vigente, taxa do canal não informada…) — nada fica calado.
  */
-export type ResultadoImportacao = { erroGeral?: string; criadas: number; atualizadas: number; iguais: number; comErro: number; semRecalculo: number[] };
+export type ResultadoImportacao = {
+  erroGeral?: string;
+  criadas: number;
+  atualizadas: number;
+  iguais: number;
+  comErro: number;
+  semRecalculo: number[];
+  avisosFinanceiro: { linha: number; avisos: string[] }[];
+};
 
 /** Importa as linhas válidas (as com erro ficam de fora e são contadas). */
 export async function importarCsv(db: Db, organizacaoId: string, texto: string, autorId: string | null): Promise<ResultadoImportacao> {
   const a = await analisarCsv(db, organizacaoId, texto);
-  const r: ResultadoImportacao = { erroGeral: a.erroGeral, criadas: 0, atualizadas: 0, iguais: 0, comErro: 0, semRecalculo: [] };
+  const r: ResultadoImportacao = { erroGeral: a.erroGeral, criadas: 0, atualizadas: 0, iguais: 0, comErro: 0, semRecalculo: [], avisosFinanceiro: [] };
   if (a.erroGeral) return r;
   for (const l of a.linhas) {
     if (!l.dados) {
@@ -137,6 +153,7 @@ export async function importarCsv(db: Db, organizacaoId: string, texto: string, 
       if (s.criada) r.criadas++;
       else r.atualizadas++;
       if (s.financeiroNaoAtualizado) r.semRecalculo.push(l.numero);
+      else if (s.avisosFinanceiro?.length) r.avisosFinanceiro.push({ linha: l.numero, avisos: s.avisosFinanceiro });
     }
   }
   await registrarAuditoria(db, {

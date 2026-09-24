@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { lerCabecalho, lerCsv, lerLinha, MODELO_CSV } from "./csv";
+import { CsvInvalido, lerCabecalho, lerCsv, lerLinha, MODELO_CSV } from "./csv";
 
 describe("lerCsv", () => {
   it("detecta ; e , e trata aspas, BOM, CRLF e linhas vazias", () => {
@@ -11,6 +11,7 @@ describe("lerCsv", () => {
       ["a", "b"],
       ["1", "2"],
     ]);
+    expect(() => lerCsv('a,b\n1,"aberto')).toThrow(CsvInvalido);
     expect(lerCsv('a,b\n"linha\nquebrada",2')).toEqual([
       ["a", "b"],
       ["linha\nquebrada", "2"],

@@ -10,6 +10,9 @@ import { type DadosReserva, dataValida, validarReserva } from "./regras";
 
 export { LIMITE_BYTES, LIMITE_LINHAS, MODELO_CSV } from "./csv-modelo";
 
+/** Arquivo que não dá para ler com segurança (ex.: aspas abertas sem fechar). */
+export class CsvInvalido extends Error {}
+
 /** Separa o texto em linhas e colunas (RFC 4180, com o separador detectado no cabeçalho). */
 export function lerCsv(texto: string): string[][] {
   const t = texto.replace(/^﻿/, "");
@@ -39,6 +42,8 @@ export function lerCsv(texto: string): string[][] {
       campo = "";
     } else campo += c;
   }
+  // Aspas sem fechar engoliriam o resto do arquivo calado: melhor recusar.
+  if (aspas) throw new CsvInvalido("Há um campo com aspas (\") aberto e não fechado. Confira a planilha.");
   if (campo !== "" || linha.length) {
     linha.push(campo);
     linhas.push(linha);

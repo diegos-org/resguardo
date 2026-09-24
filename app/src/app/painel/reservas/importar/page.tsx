@@ -14,7 +14,7 @@ export default async function ImportarReservas() {
       <p style={{ color: "var(--scl-texto-2)", fontSize: "0.875rem", maxWidth: 820, margin: 0 }}>
         Enquanto o Beds24 não está ligado, dá para trazer reservas de uma planilha. Primeiro o sistema confere o arquivo e mostra o que vai
         acontecer em cada linha; só depois você importa. Importar o mesmo arquivo de novo não duplica: a reserva é reconhecida pela origem +
-        código do canal, e o que mudou é atualizado. O financeiro de cada reserva é calculado na hora — menos o de reserva que já teve dinheiro movimentado, que fica como está e é avisado.
+        código do canal, e o que mudou é atualizado. O financeiro de cada reserva é calculado na hora; o que faltar para o cálculo (valor, contrato) e reserva que já teve dinheiro movimentado são avisados linha a linha.
       </p>
       <ImportarCsv acao={importacaoAcao} />
       <p>

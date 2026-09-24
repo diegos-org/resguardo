@@ -64,7 +64,7 @@ export async function importacaoAcao(_a: EstadoImportacao, form: FormData): Prom
     const r = await importarCsv(db, sessao.organizacaoId, texto, sessao.usuarioId);
     if (r.erroGeral) return { texto, erroGeral: r.erroGeral };
     revalidatePath("/painel", "layout");
-    return { resultado: { criadas: r.criadas, atualizadas: r.atualizadas, iguais: r.iguais, comErro: r.comErro, semRecalculo: r.semRecalculo } };
+    return { resultado: { criadas: r.criadas, atualizadas: r.atualizadas, iguais: r.iguais, comErro: r.comErro, semRecalculo: r.semRecalculo, avisosFinanceiro: r.avisosFinanceiro } };
   }
   const a = await analisarCsv(db, sessao.organizacaoId, texto);
   // Só o necessário para a tela (os dados completos ficam no arquivo do próprio usuário).

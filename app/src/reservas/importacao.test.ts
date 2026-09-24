@@ -66,13 +66,13 @@ describe("conferir o arquivo", () => {
 
 describe("importar", () => {
   it("importa, e reimportar o mesmo arquivo não duplica; linha alterada é atualizada", async () => {
-    expect(await importarCsv(db, org, MODELO_CSV, null)).toEqual({ criadas: 2, atualizadas: 0, iguais: 0, comErro: 0, semRecalculo: [] });
-    expect(await importarCsv(db, org, MODELO_CSV, null)).toEqual({ criadas: 0, atualizadas: 0, iguais: 2, comErro: 0, semRecalculo: [] });
+    expect(await importarCsv(db, org, MODELO_CSV, null)).toEqual({ criadas: 2, atualizadas: 0, iguais: 0, comErro: 0, semRecalculo: [], avisosFinanceiro: expect.any(Array) });
+    expect(await importarCsv(db, org, MODELO_CSV, null)).toEqual({ criadas: 0, atualizadas: 0, iguais: 2, comErro: 0, semRecalculo: [], avisosFinanceiro: expect.any(Array) });
     const alterado = MODELO_CSV.replace("2.400,00", "2.500,00");
     const a = await analisarCsv(db, org, alterado);
     expect(a.linhas.map((l) => l.situacao)).toEqual(["atualiza", "igual"]);
     expect(a.linhas[0].avisos[0]).toContain("valorBruto");
-    expect(await importarCsv(db, org, alterado, null)).toEqual({ criadas: 0, atualizadas: 1, iguais: 1, comErro: 0, semRecalculo: [] });
+    expect(await importarCsv(db, org, alterado, null)).toEqual({ criadas: 0, atualizadas: 1, iguais: 1, comErro: 0, semRecalculo: [], avisosFinanceiro: expect.any(Array) });
     const [r] = await db
       .select()
       .from(reservas)
@@ -107,5 +107,19 @@ describe("autor e dinheiro já movimentado", () => {
     const res = await importarCsv(db, org, MODELO_CSV.replace("2.400,00", "2.600,00"), null);
     expect(res).toMatchObject({ atualizadas: 1, semRecalculo: [2] });
     expect(await listarLancamentos(db, org, { reservaId: r.id })).toHaveLength(antes.length);
+  });
+});
+
+describe("avisos e arquivo quebrado", () => {
+  it("linha sem valor ou sem contrato entra, mas com o aviso do financeiro", async () => {
+    const r = await importarCsv(db, org, "imovel;origem;codigo_canal;entrada;saida\n403;airbnb;SEMVALOR;10/10/2026;12/10/2026", null);
+    expect(r.criadas).toBe(1);
+    expect(r.avisosFinanceiro).toEqual([{ linha: 2, avisos: ["Valor bruto não informado: cálculo pendente."] }]);
+  });
+
+  it("aspas abertas sem fechar: recusa o arquivo em vez de engolir linhas", async () => {
+    const csv = 'imovel;origem;codigo_canal;entrada;saida;observacoes\n403;airbnb;A1;10/10/2026;12/10/2026;"sem fechar\n102;airbnb;A2;10/10/2026;12/10/2026;ok';
+    expect((await analisarCsv(db, org, csv)).erroGeral).toContain("aspas");
+    expect(await importarCsv(db, org, csv, null)).toMatchObject({ erroGeral: expect.stringContaining("aspas"), criadas: 0 });
   });
 });

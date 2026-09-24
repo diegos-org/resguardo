@@ -93,6 +93,18 @@ export function ImportarCsv({ acao }: { acao: (a: EstadoImportacao, f: FormData)
           {estado.resultado.comErro ? `, ${estado.resultado.comErro} com erro (ficaram de fora)` : ""}. <Link href="/painel/reservas">Ver reservas</Link>
         </p>
       )}
+      {estado.resultado && estado.resultado.avisosFinanceiro.length > 0 && (
+        <div className={styles.alerta}>
+          <strong>Financeiro com pendências:</strong> estas reservas entraram, mas o cálculo avisou:
+          <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+            {estado.resultado.avisosFinanceiro.map((a) => (
+              <li key={a.linha}>
+                Linha {a.linha}: {a.avisos.join(" ")}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {estado.resultado && estado.resultado.semRecalculo.length > 0 && (
         <p role="alert" className={styles.alerta}>
           Atenção: {estado.resultado.semRecalculo.length === 1 ? "a reserva da linha" : "as reservas das linhas"} {estado.resultado.semRecalculo.join(", ")}{" "}
