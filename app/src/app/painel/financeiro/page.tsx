@@ -21,12 +21,14 @@ export default async function Financeiro() {
           <Link href="/painel/financeiro/ajustes">Abrir</Link>
         </p>
       </section>
-      <section className={styles.cartao}>
-        <h2>Repasses aos proprietários</h2>
-        <p>
-          Fechamento do mês no dia 1º: valor a transferir, Pix para copiar e marcar pago. <Link href="/painel/financeiro/repasses">Abrir</Link>
-        </p>
-      </section>
+      {sessao.papel !== "proprietario" && (
+        <section className={styles.cartao}>
+          <h2>Repasses aos proprietários</h2>
+          <p>
+            Fechamento do mês no dia 1º: valor a transferir, Pix para copiar e marcar pago. <Link href="/painel/financeiro/repasses">Abrir</Link>
+          </p>
+        </section>
+      )}
       <section className={styles.cartao}>
         <h2>Despesas</h2>
         <p>
