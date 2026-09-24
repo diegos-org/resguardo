@@ -35,11 +35,18 @@ export default async function ListaReservas({ searchParams }: PageProps<"/painel
     <>
       <div className={styles.topo}>
         <h1>Reservas</h1>
-        {podeFazer(sessao.papel, "reserva:editar") && (
-          <Link href="/painel/reservas/nova" className={styles.botao}>
-            Nova reserva
-          </Link>
-        )}
+        <span style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {podeFazer(sessao.papel, "reserva:editar") && podeFazer(sessao.papel, "financeiro:editar") && (
+            <Link href="/painel/reservas/importar" className={styles.botao} style={{ background: "#fff", color: "var(--scl-texto)", border: "1px solid var(--scl-areia)" }}>
+              Importar planilha
+            </Link>
+          )}
+          {podeFazer(sessao.papel, "reserva:editar") && (
+            <Link href="/painel/reservas/nova" className={styles.botao}>
+              Nova reserva
+            </Link>
+          )}
+        </span>
       </div>
       <FiltroGlobal filtros={filtros} opcoes={opcoes} acao="/painel/reservas" />
       <p className={styles.etiqueta} style={{ alignSelf: "flex-start" }}>

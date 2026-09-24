@@ -19,7 +19,8 @@ const assinatura = (l: NovoLancamento) =>
 /** Chave gravada = base ou base#N (N-ésima vez que o mesmo cálculo volta a valer). */
 const baseDaChave = (chave: string) => chave.replace(/#\d+$/, "");
 
-export type ResultadoAplicacao = { criados: number; estornados: number; mantidos: number; avisos: string[] };
+/** `protegido`: o cálculo mudou, mas a reserva já movimentou dinheiro e nada foi alterado. */
+export type ResultadoAplicacao = { criados: number; estornados: number; mantidos: number; avisos: string[]; protegido?: boolean };
 
 /**
  * Deixa os lançamentos da reserva iguais ao que o motor calcula agora:
@@ -91,6 +92,7 @@ export async function aplicarMotor(
         criados: 0,
         estornados: 0,
         mantidos: ativos.length,
+        protegido: true,
         avisos: [...avisos, "Esta reserva já teve dinheiro movimentado: o cálculo novo não foi aplicado. Se precisar, faça um ajuste manual."],
       };
     }
