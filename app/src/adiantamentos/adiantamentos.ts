@@ -156,7 +156,9 @@ export async function quitar(
   return db.transaction(async (tx) => {
     const a = await travar(tx, organizacaoId, adiantamentoId);
     if (!a) return { ok: false as const, erro: "Adiantamento não encontrado." };
-    if (a.situacao === "contestado" && q.forma !== "empresa_assume") {
+    // Nenhuma quitação com contestação aberta (nem "empresa assume"): resolverContestacao fecha a
+    // contestação antes de quitar, então o estado nunca fica contraditório.
+    if (a.situacao === "contestado") {
       return { ok: false as const, erro: "O proprietário contestou este adiantamento: resolva a contestação antes de cobrar." };
     }
     if (q.valor > a.aberto) return { ok: false as const, erro: `Valor acima do que está em aberto (${(a.aberto / 100).toFixed(2).replace(".", ",")}).` };

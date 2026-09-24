@@ -125,6 +125,7 @@ describe("contestação", () => {
     expect(await contestar(db, org, adiantamentoId, "O ar já estava com defeito na entrega", null)).toEqual({ ok: true });
     expect(await contestar(db, org, adiantamentoId, "de novo", null)).toMatchObject({ ok: false });
     expect(await quitar(db, org, adiantamentoId, { forma: "compensacao", valor: 1000, data: "2026-11-01" }, null)).toMatchObject({ ok: false, erro: expect.stringContaining("contest") });
+    expect(await quitar(db, org, adiantamentoId, { forma: "empresa_assume", valor: 1000, data: "2026-11-01" }, null)).toMatchObject({ ok: false, erro: expect.stringContaining("contest") });
     expect(resumoPorProprietario(await listarAdiantamentos(db, org))).toEqual([{ proprietarioId: dono, proprietario: "Dona Exemplo", aCobrar: 0, contestado: 400000, quantidade: 1 }]);
     expect(await resolverContestacao(db, org, adiantamentoId, { resolucao: "mantida", nota: "Nota fiscal mostra defeito novo", data: "2026-10-25" }, null)).toEqual({ ok: true });
     expect((await obterAdiantamento(db, org, adiantamentoId))?.situacao).toBe("a_cobrar");
