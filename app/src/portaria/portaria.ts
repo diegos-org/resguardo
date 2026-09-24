@@ -185,13 +185,15 @@ const NOME_PASSO: Record<keyof typeof CAMPO_DATA, string> = {
 function foraDeOrdem(c: Checklist, tipo: keyof typeof CAMPO_DATA, data: string): string | null {
   const seq = SEQUENCIAS.find((x) => x.includes(tipo))!;
   const i = seq.indexOf(tipo);
+  // Pedidos em dias diferentes (nunca dois pedidos no mesmo dia); encaminhar e entregar podem ser no mesmo dia.
+  const pedidos = seq === SEQUENCIAS[0];
   for (const antes of seq.slice(0, i)) {
     const d = c[CAMPO_DATA[antes]];
-    if (d && data < d) return `A data não pode ser antes ${NOME_PASSO[antes]} (${br(d)}).`;
+    if (d && (data < d || (pedidos && data === d))) return `A data precisa ser ${pedidos ? "depois" : "no dia ou depois"} ${NOME_PASSO[antes]} (${br(d)}).`;
   }
   for (const depois of seq.slice(i + 1)) {
     const d = c[CAMPO_DATA[depois]];
-    if (d && data > d) return `A data não pode ser depois ${NOME_PASSO[depois]} (${br(d)}).`;
+    if (d && (data > d || (pedidos && data === d))) return `A data precisa ser ${pedidos ? "antes" : "no dia ou antes"} ${NOME_PASSO[depois]} (${br(d)}).`;
   }
   return null;
 }

@@ -6,6 +6,7 @@ import styles from "@/components/formularios.module.css";
 import { getDb } from "@/db/client";
 import { listarImoveis } from "@/imoveis/repositorio";
 import { hojeISO } from "@/lib/datas";
+import { lerFiltros, manterFiltros } from "@/lib/filtros";
 import { imoveisAcao, registrarAcao } from "@/portaria/acoes";
 import { imoveisComPortaria, type LinhaPortaria, listarPortaria, type Passo, somaDias } from "@/portaria/portaria";
 
@@ -28,10 +29,11 @@ const BOTAO: Partial<Record<Passo, [string, string]>> = {
   confirmar_entrega: ["entrega_confirmada", "Registrar entrega confirmada"],
 };
 
-function Registro({ reservaId, tipo, rotulo, hoje }: { reservaId: string; tipo: string; rotulo: string; hoje: string }) {
+function Registro({ reservaId, tipo, rotulo, hoje, voltar }: { reservaId: string; tipo: string; rotulo: string; hoje: string; voltar: string }) {
   return (
     <form action={registrarAcao} className={styles.linha} style={{ alignItems: "flex-end" }}>
       <input type="hidden" name="reservaId" value={reservaId} />
+      <input type="hidden" name="voltar" value={voltar} />
       <input type="hidden" name="tipo" value={tipo} />
       <label style={{ flex: "0 1 170px" }}>
         Data
@@ -44,7 +46,7 @@ function Registro({ reservaId, tipo, rotulo, hoje }: { reservaId: string; tipo: 
   );
 }
 
-function Cartao({ l, hoje }: { l: LinhaPortaria; hoje: string }) {
+function Cartao({ l, hoje, voltar }: { l: LinhaPortaria; hoje: string; voltar: string }) {
   const botao = BOTAO[l.passo];
   return (
     <section className={styles.form} aria-label={`Portaria ${l.imovelCodigo} ${l.codigo}`} style={{ gap: 10 }}>
@@ -68,10 +70,11 @@ function Cartao({ l, hoje }: { l: LinhaPortaria; hoje: string }) {
           Pendência: {l.pendencia}
         </p>
       )}
-      {botao && <Registro reservaId={l.reservaId} tipo={botao[0]} rotulo={botao[1]} hoje={hoje} />}
+      {botao && <Registro reservaId={l.reservaId} tipo={botao[0]} rotulo={botao[1]} hoje={hoje} voltar={voltar} />}
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "flex-end" }}>
         <form action={registrarAcao} className={styles.linha} style={{ alignItems: "flex-end", flex: "0 1 280px" }}>
           <input type="hidden" name="reservaId" value={l.reservaId} />
+            <input type="hidden" name="voltar" value={voltar} />
           <input type="hidden" name="tipo" value="documentos" />
           <label>
             Hóspedes com documento
@@ -83,6 +86,7 @@ function Cartao({ l, hoje }: { l: LinhaPortaria; hoje: string }) {
         </form>
         <form action={registrarAcao} className={styles.acoes}>
           <input type="hidden" name="reservaId" value={l.reservaId} />
+            <input type="hidden" name="voltar" value={voltar} />
           <input type="hidden" name="tipo" value="destinatario" />
           <input type="hidden" name="conferido" value={l.destinatarioConferido ? "nao" : "sim"} />
           <button type="submit">{l.destinatarioConferido ? "Desmarcar destinatário" : "Destinatário conferido"}</button>
@@ -94,10 +98,11 @@ function Cartao({ l, hoje }: { l: LinhaPortaria; hoje: string }) {
           {(Object.values(BOTAO) as [string, string][])
             .filter(([t]) => t !== botao?.[0])
             .map(([t, rotulo]) => (
-              <Registro key={t} reservaId={l.reservaId} tipo={t} rotulo={rotulo} hoje={hoje} />
+              <Registro key={t} reservaId={l.reservaId} tipo={t} rotulo={rotulo} hoje={hoje} voltar={voltar} />
             ))}
           <form action={registrarAcao} className={styles.linha} style={{ alignItems: "flex-end" }}>
             <input type="hidden" name="reservaId" value={l.reservaId} />
+            <input type="hidden" name="voltar" value={voltar} />
             <input type="hidden" name="tipo" value="pendencia" />
             <label>
               Pendência concreta (vazio = nenhuma)
@@ -119,11 +124,13 @@ export default async function Portaria({ searchParams }: PageProps<"/painel/port
   const params = await searchParams;
   const db = getDb();
   const hoje = hojeISO();
-  const [lista, marcados, imoveis] = await Promise.all([
-    listarPortaria(db, sessao.organizacaoId, { hoje, ate: somaDias(hoje, 31) }),
-    imoveisComPortaria(db, sessao.organizacaoId),
-    listarImoveis(db, sessao.organizacaoId),
-  ]);
+  const [marcados, imoveis] = await Promise.all([imoveisComPortaria(db, sessao.organizacaoId), listarImoveis(db, sessao.organizacaoId)]);
+  // Seleção global de imóveis (do menu): só as reservas dos imóveis escolhidos.
+  const filtros = lerFiltros(params, imoveis.map((i) => ({ codigo: i.codigo, nome: i.nome })));
+  const escolhidos = imoveis.filter((i) => filtros.imoveis.includes(i.codigo));
+  const imovelIds = filtros.imoveis.length ? escolhidos.map((i) => i.id) : undefined;
+  const lista = await listarPortaria(db, sessao.organizacaoId, { hoje, ate: somaDias(hoje, 31), imovelIds });
+  const voltar = manterFiltros(params).slice(1);
   const configurar = podeFazer(sessao.papel, "configuracao:editar");
   const salvo = params.salvo === "1";
   const erro = typeof params.erro === "string" ? params.erro : undefined;
@@ -150,6 +157,7 @@ export default async function Portaria({ searchParams }: PageProps<"/painel/port
         <details open={marcados.length === 0}>
           <summary style={{ cursor: "pointer", fontWeight: 600 }}>Imóveis que exigem documentos de portaria</summary>
           <form action={imoveisAcao} className={styles.form} style={{ marginTop: 8 }}>
+            <input type="hidden" name="voltar" value={voltar} />
             <div style={{ display: "flex", gap: "4px 16px", flexWrap: "wrap" }}>
               {imoveis.map((i) => (
                 <label key={i.id} className={styles.check}>
@@ -163,6 +171,11 @@ export default async function Portaria({ searchParams }: PageProps<"/painel/port
           </form>
         </details>
       )}
+      {imovelIds && (
+        <p className={styles.etiqueta} style={{ alignSelf: "flex-start" }}>
+          Só {escolhidos.map((i) => i.codigo).join(", ")} (seleção de imóveis do menu)
+        </p>
+      )}
       {marcados.length === 0 ? (
         <p role="note" className={styles.alerta}>
           Nenhum imóvel marcado como exigindo documentos de portaria{configurar ? ": marque acima." : ". Peça a um administrador para marcar."}
@@ -170,7 +183,7 @@ export default async function Portaria({ searchParams }: PageProps<"/painel/port
       ) : lista.length === 0 ? (
         <p>Nenhuma reserva confirmada com entrada nos próximos 30 dias nos imóveis com portaria.</p>
       ) : (
-        lista.map((l) => <Cartao key={l.reservaId} l={l} hoje={hoje} />)
+        lista.map((l) => <Cartao key={l.reservaId} l={l} hoje={hoje} voltar={voltar} />)
       )}
     </>
   );

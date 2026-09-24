@@ -8,9 +8,15 @@ import { getDb } from "@/db/client";
 import { hojeISO } from "@/lib/datas";
 import { type Registro, registrarPortaria, type Resultado, salvarImoveisComPortaria } from "./portaria";
 
-function voltar(r: Resultado): never {
+/** Volta para a lista mantendo a seleção de imóveis que estava na tela. */
+function voltar(form: FormData, r: Resultado): never {
   revalidatePath("/painel/portaria");
-  redirect(r.ok ? "/painel/portaria?salvo=1" : `/painel/portaria?erro=${encodeURIComponent(r.erro)}`);
+  const q = new URLSearchParams(String(form.get("voltar") ?? ""));
+  q.delete("salvo");
+  q.delete("erro");
+  if (r.ok) q.set("salvo", "1");
+  else q.set("erro", r.erro);
+  redirect(`/painel/portaria?${q}`);
 }
 
 const DATAS = ["aviso_inicial", "segundo_pedido", "pedido_final", "encaminhado", "entrega_confirmada"] as const;
@@ -25,12 +31,12 @@ export async function registrarAcao(form: FormData) {
   else if (tipo === "documentos") reg = { tipo, recebidos: Number(form.get("recebidos") ?? -1) };
   else if (tipo === "destinatario") reg = { tipo, conferido: form.get("conferido") === "sim" };
   else if (tipo === "pendencia") reg = { tipo, texto: String(form.get("texto") ?? "") };
-  else voltar({ ok: false, erro: "Ação inválida." });
-  voltar(await registrarPortaria(getDb(), s.organizacaoId, String(form.get("reservaId") ?? ""), reg, hoje, s.usuarioId));
+  else voltar(form, { ok: false, erro: "Ação inválida." });
+  voltar(form, await registrarPortaria(getDb(), s.organizacaoId, String(form.get("reservaId") ?? ""), reg, hoje, s.usuarioId));
 }
 
 export async function imoveisAcao(form: FormData) {
   const s = await exigirSessaoPainel();
   exigir(s, "configuracao:editar", { organizacaoId: s.organizacaoId });
-  voltar(await salvarImoveisComPortaria(getDb(), s.organizacaoId, form.getAll("imovelId").map(String), s.usuarioId));
+  voltar(form, await salvarImoveisComPortaria(getDb(), s.organizacaoId, form.getAll("imovelId").map(String), s.usuarioId));
 }

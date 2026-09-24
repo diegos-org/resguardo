@@ -122,7 +122,7 @@ describe("lista de portaria", () => {
     expect(await reg({ tipo: "destinatario", conferido: true })).toEqual({ ok: true });
     expect(await reg({ tipo: "encaminhado", data: hoje })).toEqual({ ok: true });
     expect((await listarPortaria(db, org, { hoje, ate: "2026-11-05" }))[0].passo).toBe("confirmar_entrega");
-    expect(await reg({ tipo: "entrega_confirmada", data: "2026-10-04" })).toMatchObject({ ok: false, erro: expect.stringContaining("antes do encaminhamento") });
+    expect(await reg({ tipo: "entrega_confirmada", data: "2026-10-04" })).toMatchObject({ ok: false, erro: expect.stringContaining("no dia ou depois do encaminhamento") });
     expect(await reg({ tipo: "entrega_confirmada", data: hoje })).toEqual({ ok: true });
     expect(await reg({ tipo: "encaminhado", data: "2026-10-06" })).toMatchObject({ ok: false }); // futuro
     expect(await reg({ tipo: "pendencia", texto: "  Portaria pediu foto legível  " })).toEqual({ ok: true });
@@ -142,7 +142,8 @@ describe("lista de portaria", () => {
     expect(await reg({ tipo: "aviso_inicial", data: "2026-10-14" })).toEqual({ ok: true });
     expect(await reg({ tipo: "segundo_pedido", data: "2026-10-12" })).toMatchObject({ ok: false, erro: expect.stringContaining("entre 13/10/2026 e 15/10/2026") });
     expect(await reg({ tipo: "segundo_pedido", data: "2026-10-16" })).toMatchObject({ ok: false, erro: expect.stringContaining("entre 13/10/2026 e 15/10/2026") });
-    expect(await reg({ tipo: "segundo_pedido", data: "2026-10-13" })).toMatchObject({ ok: false, erro: expect.stringContaining("antes do aviso inicial") });
+    expect(await reg({ tipo: "segundo_pedido", data: "2026-10-13" })).toMatchObject({ ok: false, erro: expect.stringContaining("depois do aviso inicial") });
+    expect(await reg({ tipo: "segundo_pedido", data: "2026-10-14" })).toMatchObject({ ok: false, erro: expect.stringContaining("depois do aviso inicial") }); // mesmo dia
     expect(await reg({ tipo: "segundo_pedido", data: "2026-10-15" })).toEqual({ ok: true });
     expect(await reg({ tipo: "pedido_final", data: "2026-10-18" })).toMatchObject({ ok: false, erro: expect.stringContaining("véspera") });
     expect(await reg({ tipo: "pedido_final", data: "2026-10-20" })).toMatchObject({ ok: false, erro: expect.stringContaining("véspera") });
