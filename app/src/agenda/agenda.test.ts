@@ -711,6 +711,51 @@ describe("configuração e envio", () => {
     expect(correio.enviadas[0]).toMatchObject({ chave: manual.chave, texto: manual.texto });
   });
 
+  it("aviso 'pode já ter vindo' só para reserva que estava no envio incerto", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    // Marco de 1h atrás cobrindo só o Rio; Búzios ficou de fora (volta a olhar 24h).
+    await db.insert(appSettings).values([
+      { key: `agenda-diaria:ultima:${org}:a@example.com`, value: { em: new Date(AGORA.getTime() - 3_600_000).toISOString(), imoveis: [rio] } },
+      {
+        key: `agenda-diaria:${org}:2026-09-30:a@example.com`,
+        value: { em: new Date(AGORA.getTime() - 3_600_000).toISOString(), estado: "incerto", corte: new Date(AGORA.getTime() - 3_600_000).toISOString(), carga: { assunto: "x", texto: "x", eventos: [], imoveis: [rio] } },
+      },
+    ]);
+    await nova(buzios, "2029-01-08", "2029-01-10", new Date(AGORA.getTime() - 2 * 3_600_000).toISOString());
+    const correio = new CorreioMemoria();
+    await enviarAgenda(db, org, correio, AGORA);
+    expect(correio.enviadas[0].texto).toContain("entrada seg 08/01");
+    expect(correio.enviadas[0].texto).not.toContain("pode já ter vindo");
+  });
+
+  it("prévia da tela mostra o mesmo aviso 'pode já ter vindo' do e-mail", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    await nova(rio, "2029-01-15", "2029-01-17", new Date(AGORA.getTime() - 60_000).toISOString());
+    const caiu: Correio = { nome: "caiu", enviar: async () => Promise.reject(new ErroEnvioIncerto("Sem resposta do provedor de e-mail")) };
+    await enviarAgenda(db, org, caiu, AGORA);
+    const { agenda, talvezJaVeio } = await previaDaAgenda(db, org, new Date("2026-10-02T23:00:00Z"));
+    const n = agenda.secoes.flatMap((x) => x.novas).find((x) => x.checkin === "2029-01-15");
+    expect(n && talvezJaVeio?.(n)).toBe(true);
+  });
+
+  it("um endereço cujo provedor demora não segura os outros (envio em paralelo)", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }, { email: "b@example.com", cidades: [] }] }, null);
+    let liberaA!: () => void;
+    const bSaiu = new Promise<void>((ok) => (liberaA = ok));
+    const saiu: string[] = [];
+    // "a" só termina depois que "b" saiu: um por vez, "a" estouraria o prazo.
+    const correio: Correio = {
+      nome: "lento",
+      enviar: async (m) => {
+        if (m.para === "a@example.com") await bSaiu;
+        else liberaA();
+        saiu.push(m.para);
+      },
+    };
+    expect(await enviarAgenda(db, org, correio, AGORA, { prazoProvedorMs: 2_000 })).toMatchObject({ enviados: 2, falhas: [] });
+    expect(saiu.sort()).toEqual(["a@example.com", "b@example.com"]);
+  });
+
   it("evento substituído por uma nova confirmação não segura o envio incerto", async () => {
     await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
     const dados = reserva(rio, "2028-10-02", "2028-10-04", { codigoCanal: "HMSUB" });

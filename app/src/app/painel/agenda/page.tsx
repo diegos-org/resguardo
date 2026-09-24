@@ -13,7 +13,7 @@ export default async function Agenda({ searchParams }: PageProps<"/painel/agenda
   const params = await searchParams;
   const db = getDb();
   const configurar = podeFazer(sessao.papel, "configuracao:editar");
-  const [{ agenda, ultima }, config, ativas] = await Promise.all([
+  const [{ agenda, ultima, talvezJaVeio }, config, ativas] = await Promise.all([
     previaDaAgenda(db, sessao.organizacaoId),
     lerConfigAgenda(db, sessao.organizacaoId),
     cidadesDosImoveis(db, sessao.organizacaoId),
@@ -65,7 +65,7 @@ export default async function Agenda({ searchParams }: PageProps<"/painel/agenda
             {config.formatos[s.cidade] ? "" : " (automático)"}
           </p>
           {/* O mesmo texto que a equipe recebe. */}
-          <pre style={{ margin: 0, whiteSpace: "pre-wrap", font: "inherit", lineHeight: 1.5 }}>{textoDaSecao(s, agenda.dias.at(-1)!, config).join("\n")}</pre>
+          <pre style={{ margin: 0, whiteSpace: "pre-wrap", font: "inherit", lineHeight: 1.5 }}>{textoDaSecao(s, agenda.dias.at(-1)!, { ...config, talvezJaVeio }).join("\n")}</pre>
         </section>
       ))}
       {agenda.secoes.length > 0 && <p style={{ margin: 0, color: "var(--scl-texto-2)" }}>{FRASE_FINAL}</p>}

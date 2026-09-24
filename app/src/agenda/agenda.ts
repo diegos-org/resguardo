@@ -316,7 +316,8 @@ const maiuscula = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 const diaDoMes = (d: string) => `${SEMANA[new Date(`${d}T12:00:00Z`).getUTCDay()]} ${d.slice(8, 10)}`;
 const lista = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} e ${xs.at(-1)}`);
 
-export type OpcoesTexto = Pick<ConfigAgenda, "formatos" | "horaEntrada" | "horaSaida"> & { incertoAte?: Date | null };
+/** `talvezJaVeio`: a reserva nova estava num envio anterior ainda sem confirmação (pode já ter chegado). */
+export type OpcoesTexto = Pick<ConfigAgenda, "formatos" | "horaEntrada" | "horaSaida"> & { talvezJaVeio?: (n: NovaReserva) => boolean };
 export const OPCOES_PADRAO: OpcoesTexto = { formatos: {}, horaEntrada: HORA_ENTRADA_PADRAO, horaSaida: HORA_SAIDA_PADRAO };
 
 export function textoDaNova(n: NovaReserva): string {
@@ -365,7 +366,7 @@ export function textoDaSecao(s: SecaoCidade, fim: string, o: OpcoesTexto = OPCOE
     linhas.push("", "Reservas novas desde a última agenda:");
     for (const n of s.novas) {
       // Envio anterior sem confirmação de registro: pode ter chegado; avisa em vez de supor.
-      const talvez = o.incertoAte && Date.parse(n.registradaEm) <= o.incertoAte.getTime() ? " (pode já ter vindo numa agenda anterior, cujo envio não foi confirmado)" : "";
+      const talvez = o.talvezJaVeio?.(n) ? " (pode já ter vindo numa agenda anterior, cujo envio não foi confirmado)" : "";
       linhas.push(`• ${textoDaNova(n)}${talvez}`);
     }
   }
@@ -468,7 +469,11 @@ export function ultimaAgendaDe(db: Db, organizacaoId: string, email: string): Pr
  * incertos em aberto). É o máximo que alguém recebe; cada pessoa recebe só o que ainda não recebeu
  * e só as cidades dela.
  */
-export async function previaDaAgenda(db: Db, organizacaoId: string, agora: Date = new Date()): Promise<{ agenda: Agenda; ultima: Date | null }> {
+export async function previaDaAgenda(
+  db: Db,
+  organizacaoId: string,
+  agora: Date = new Date(),
+): Promise<{ agenda: Agenda; ultima: Date | null; talvezJaVeio?: (n: NovaReserva) => boolean }> {
   const [ultima, config] = await Promise.all([ultimaAgenda(db, organizacaoId), lerConfigAgenda(db, organizacaoId)]);
   const hoje = hojeISO("America/Sao_Paulo", agora);
   if (!config.destinatarios.length) return { agenda: await montarAgenda(db, organizacaoId, hoje, ultima ?? new Date(agora.getTime() - 86_400_000), agora), ultima };
@@ -481,7 +486,10 @@ export async function previaDaAgenda(db: Db, organizacaoId: string, agora: Date 
   };
   const pendentes = await marcasPendentes(db, organizacaoId);
   const porPessoa = await Promise.all(
-    config.destinatarios.map(async (d) => ({ d, agenda: await agendaDaPessoa(db, organizacaoId, d.email, agora, incertosDe(pendentes, d.email, hoje).lista, [], montar) })),
+    config.destinatarios.map(async (d) => {
+      const incertos = incertosDe(pendentes, d.email, hoje).lista;
+      return { d, incertos, agenda: await agendaDaPessoa(db, organizacaoId, d.email, agora, incertos, [], montar) };
+    }),
   );
   const base = porPessoa[0].agenda;
   const agenda: Agenda = {
@@ -496,7 +504,8 @@ export async function previaDaAgenda(db: Db, organizacaoId: string, agora: Date 
       return { ...sec, novas };
     }),
   };
-  return { agenda, ultima };
+  // O mesmo aviso do e-mail ("pode já ter vindo"), para quem o recebe.
+  return { agenda, ultima, talvezJaVeio: talvezJaVeioEm(porPessoa.flatMap((x) => x.incertos)) };
 }
 
 /**
@@ -550,6 +559,15 @@ async function agendaDaPessoa(
  * montado: vale para todos).
  */
 type Incerto = { chave: string; corte: Date | null; imoveis: string[] | null; eventos: string[] };
+
+/**
+ * A reserva nova estava num envio incerto: pelo pedido guardado (os eventos que ele levava). Sem pedido
+ * guardado (não se sabe o que levava), vale a data: registrada até o corte dele.
+ */
+function talvezJaVeioEm(incertos: readonly Incerto[]): (n: NovaReserva) => boolean {
+  return (n) =>
+    incertos.some((i) => i.eventos.includes(n.evento) || (i.imoveis === null && i.corte !== null && Date.parse(n.registradaEm) <= i.corte.getTime()));
+}
 
 /** Envios de dias anteriores desta pessoa ainda sem confirmação (sem mexer em nada). */
 function incertosDe(pendentes: readonly Marca[], email: string, hoje: string): { ate: Date | null; lista: Incerto[]; enviando: Marca[] } {
@@ -648,6 +666,9 @@ function comPrazo<T>(p: Promise<T>, ms: number): Promise<T> {
 
 /** Tentativa "enviando" mais velha que isto (a execução caiu no meio) pode ser refeita. */
 const ENVIO_EXPIRA_MS = 15 * 60_000;
+
+/** Quantas pessoas recebem ao mesmo tempo no envio (cada uma com prazo de provedor próprio). */
+const ENVIOS_SIMULTANEOS = 5;
 
 /**
  * Marca o envio do dia para este destinatário como "enviando". Devolve false se já foi enviado
@@ -755,7 +776,6 @@ export async function enviarAgenda(
       }
     }
     const incertos = await reconciliarIncertos(db, pendentes, d.email, hoje);
-    const incertoAte = incertos.ate;
     const reserva = await reservarEnvio(db, chave, agora, relogio());
     if (!reserva) {
       // "Já enviado" só se a marca diz "enviado": uma tentativa ainda sem confirmação do provedor
@@ -776,7 +796,7 @@ export async function enviarAgenda(
         const noEmail = agenda.secoes.filter((x) => !d.cidades.length || d.cidades.includes(x.cidade));
         carga = {
           assunto: `Agenda SCL — ${diaCurto(agenda.dias[0])} a ${diaCurto(agenda.dias.at(-1)!)}`,
-          texto: textoDaAgenda(agenda, d.cidades, { ...config, incertoAte }),
+          texto: textoDaAgenda(agenda, d.cidades, { ...config, talvezJaVeio: talvezJaVeioEm(incertos.lista) }),
           eventos: noEmail.flatMap((x) => x.novas.map((n) => n.evento)),
           imoveis: noEmail.flatMap((x) => x.imovelIds).sort(),
         };
@@ -919,19 +939,27 @@ export async function enviarAgenda(
   await limparMarcasAntigas(db, organizacaoId, hoje);
   const pendentes = await marcasPendentes(db, organizacaoId);
 
-  for (const d of config.destinatarios) {
+  // Algumas pessoas ao mesmo tempo: um endereço cujo provedor trava não segura os outros até o fim
+  // do tempo da execução. Cada pessoa continua com a sua trava (um envio por vez para ela).
+  const fila = [...config.destinatarios];
+  const umaPessoa = async (d: Destinatario) => {
     const trava = chaveTravaDe(organizacaoId, d.email);
     const dono = await travarPessoa(db, trava, relogio());
     if (!dono) {
       r.falhas.push(`${d.email}: outro envio para esta pessoa está em andamento; tente de novo em alguns minutos`);
-      continue;
+      return;
     }
     try {
       await enviarPara(d, { chave: trava, dono });
     } finally {
       await soltarPessoa(db, trava, dono);
     }
-  }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(ENVIOS_SIMULTANEOS, fila.length) }, async () => {
+      for (let d = fila.shift(); d; d = fila.shift()) await umaPessoa(d);
+    }),
+  );
 
   // Para a tela: quando a agenda saiu por último (para alguém).
   if (r.enviados) {
