@@ -9,6 +9,7 @@ import { lancamentos, reservas as reservasTabela, type TipoLancamento } from "@/
 import type { Db } from "@/db/types";
 import { listarDespesas, totaisDespesas } from "@/despesas/despesas";
 import { totaisPorTipo } from "@/financeiro/ledger";
+import { lancamentoDeConferenciaResolvida } from "@/portal/posse";
 import type { Imovel } from "@/imoveis/repositorio";
 import { conflitos } from "@/reservas/regras";
 import { listarBloqueios, listarReservas, type Reserva } from "@/reservas/repositorio";
@@ -115,6 +116,8 @@ export async function carregarDashboard(
           and(
             eq(lancamentos.organizacaoId, organizacaoId),
             eq(lancamentos.estado, "pendente"),
+            // Reserva com a conferência dada por resolvida: a decisão vale para os pendentes dela.
+            sql`not ${lancamentoDeConferenciaResolvida()}`,
             // Ajuste pendente já tem o seu alerta ("pendente de esclarecimento"): não conta duas vezes.
             ne(lancamentos.tipo, "ajuste"),
             o.todos ? undefined : inArray(lancamentos.imovelId, ids),

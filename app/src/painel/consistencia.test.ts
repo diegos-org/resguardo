@@ -312,5 +312,8 @@ describe("consistência entre telas (M4.8)", () => {
     expect(await bloqueios()).not.toContain("acerto pendente");
     const lista = await reservasDoPortal(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo: OUTUBRO });
     expect(lista.find((x) => x.id === r.reserva.id)?.situacao).toBe("definido");
+    // O Início também para de acusar "acerto pendente" dessa reserva.
+    const t = await tresTelas();
+    expect(t.inicio.alertas.map((x) => x.texto).join(" | ")).not.toContain("acerto pendente");
   });
 });
