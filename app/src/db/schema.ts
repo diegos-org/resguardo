@@ -604,6 +604,8 @@ export const quitacoesAdiantamento = pgTable(
     valor: integer("valor").notNull(),
     data: date("data", { mode: "string" }).notNull(),
     lancamentoId: uuid("lancamento_id").references(() => lancamentos.id),
+    /** Contestação cuja resolução ("empresa assume") gerou esta quitação — desfazer reabre essa. */
+    contestacaoId: uuid("contestacao_id"),
     nota: text("nota").notNull().default(""),
     criadoPor: uuid("criado_por").references(() => usuarios.id),
     criadoEm: criadoEm(),

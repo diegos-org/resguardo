@@ -158,4 +158,19 @@ describe("contestação", () => {
     expect(await obterAdiantamento(db, org, adiantamentoId)).toMatchObject({ situacao: "contestado", aberto: 300000, contestacao: { resolvidaEm: null } });
     expect(totalACobrar(await listarAdiantamentos(db, org))).toBe(0);
   });
+
+  it("dois 'empresa assume' de contestações diferentes: desfazer o primeiro reabre a contestação dele", async () => {
+    await quitar(db, org, adiantamentoId, { forma: "reembolso", valor: 100000, data: "2026-10-20" }, null);
+    await contestar(db, org, adiantamentoId, "Primeira", null);
+    await resolverContestacao(db, org, adiantamentoId, { resolucao: "empresa_assume", nota: "", data: "2026-10-25" }, null);
+    const reembolso = (await obterAdiantamento(db, org, adiantamentoId))!.quitacoes.find((x) => x.forma === "reembolso")!;
+    await desfazerQuitacao(db, org, reembolso.id, "Pix estornado", null);
+    await contestar(db, org, adiantamentoId, "Segunda", null);
+    await resolverContestacao(db, org, adiantamentoId, { resolucao: "empresa_assume", nota: "", data: "2026-10-26" }, null);
+    const primeiro = (await obterAdiantamento(db, org, adiantamentoId))!.quitacoes.find((x) => x.forma === "empresa_assume" && x.valor === 300000)!;
+    await desfazerQuitacao(db, org, primeiro.id, "Revisto", null);
+    const a = (await obterAdiantamento(db, org, adiantamentoId))!;
+    expect(a).toMatchObject({ situacao: "contestado", aberto: 300000 });
+    expect(a.contestacao?.motivo).toBe("Primeira");
+  });
 });

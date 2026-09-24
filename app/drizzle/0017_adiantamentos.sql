@@ -17,6 +17,7 @@ CREATE TABLE "quitacoes_adiantamento" (
 	"valor" integer NOT NULL,
 	"data" date NOT NULL,
 	"lancamento_id" uuid,
+	"contestacao_id" uuid,
 	"nota" text DEFAULT '' NOT NULL,
 	"criado_por" uuid,
 	"criado_em" timestamp with time zone DEFAULT now() NOT NULL,
