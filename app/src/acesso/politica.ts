@@ -23,6 +23,8 @@ export const ACOES = [
   "limpeza:editar",
   "manutencao:ler",
   "manutencao:editar",
+  /** Aprovar orçamento de manutenção e decidir quem paga: só o admin (Diego). */
+  "manutencao:aprovar",
   "mensagem:ler",
   "mensagem:enviar",
   "usuario:gerenciar",

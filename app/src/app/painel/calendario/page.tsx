@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { podeFazer } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { diasDoPeriodo, type ItemCalendario, mesesVizinhos, montarCalendario } from "@/calendario/grade";
 import styles from "@/components/calendario/calendario.module.css";
@@ -8,6 +9,7 @@ import { listarImoveis } from "@/imoveis/repositorio";
 import { hojeISO } from "@/lib/datas";
 import { filtrosParaQuery, lerFiltros, nomeDoMes, periodoDosFiltros } from "@/lib/filtros";
 import { conflitos, NOMES_ORIGEM } from "@/reservas/regras";
+import { itensDoCalendario as manutencoesDoCalendario } from "@/manutencao/manutencao";
 import { listarBloqueios, listarReservas } from "@/reservas/repositorio";
 
 const SEMANA = ["D", "S", "T", "Q", "Q", "S", "S"];
@@ -25,9 +27,12 @@ export default async function Calendario({ searchParams }: PageProps<"/painel/ca
   const visiveis = filtros.imoveis.length ? imoveis.filter((i) => filtros.imoveis.includes(i.codigo)) : imoveis;
   const ids = visiveis.map((i) => i.id);
 
-  const [reservas, bloqueios] = await Promise.all([
+  // Manutenção feita só para quem pode ver manutenção (o proprietário não vê).
+  const verManutencao = podeFazer(sessao.papel, "manutencao:ler");
+  const [reservas, bloqueios, manutencoes] = await Promise.all([
     ids.length ? listarReservas(db, sessao.organizacaoId, { ...periodo, imovelIds: ids }) : [],
     ids.length ? listarBloqueios(db, sessao.organizacaoId, { ...periodo, imovelIds: ids }) : [],
+    verManutencao ? manutencoesDoCalendario(db, sessao.organizacaoId, { ...periodo, imovelIds: ids }) : [],
   ]);
   const emConflito = new Set(conflitos(reservas).flat());
   const itens: ItemCalendario[] = [
@@ -51,6 +56,7 @@ export default async function Calendario({ searchParams }: PageProps<"/painel/ca
       rotulo: b.motivo || "Bloqueado",
       categoria: "bloqueio",
     })),
+    ...manutencoes,
   ];
 
   const dias = diasDoPeriodo(periodo.inicio, periodo.fim);
@@ -84,6 +90,11 @@ export default async function Calendario({ searchParams }: PageProps<"/painel/ca
         <span>
           <i className={styles.bloqueio} /> Bloqueio
         </span>
+        {verManutencao && (
+          <span>
+            <i className={styles.manutencao} /> Manutenção feita
+          </span>
+        )}
         <span>
           <i style={{ outline: "2px solid #b3261e" }} /> Overbooking
         </span>
