@@ -35,7 +35,7 @@ export async function salvarAgendaAcao(form: FormData) {
 
 export async function enviarAgoraAcao() {
   const s = await sessaoAdmin();
-  const r = await agendaManual(getDb(), s.organizacaoId, correioDoAmbiente(), new Date());
+  const r = await agendaManual(getDb(), s.organizacaoId, correioDoAmbiente(), new Date(), s.usuarioId);
   if (r.aviso) voltar({ ok: false, erro: `Agenda não enviada: ${r.aviso}.` });
   if (r.falhas.length) {
     voltar({ ok: false, erro: `${resumoDoEnvio(r)} — ${r.falhas.join("; ")}. Clique em "Enviar agora" de novo para tentar só quem falhou.` });

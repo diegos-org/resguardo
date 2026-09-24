@@ -257,8 +257,9 @@
   - Na mesma tela você cadastra **quem recebe** e, para cada pessoa, as cidades que ela
     recebe (sem cidade marcada = todas). Também liga ou desliga o envio das 20h e tem o botão
     **"Enviar agora"** (pede confirmação).
-  - Cada pessoa recebe **uma vez por dia**. Cada envio aparece em **Sistema → Automações**,
-    com "falhou" quando não deu certo.
+  - Cada pessoa recebe **uma vez por dia**. O envio das 20h aparece em **Sistema →
+    Automações**, com "falhou" quando não deu certo; o "Enviar agora" fica no histórico de
+    alterações e mostra na tela quantos saíram e quantos falharam.
 - M5.1: **portal do proprietário** (o que o proprietário vê ao entrar com o e-mail dele):
   - escolhe os **imóveis dele** (quem tem mais de um marca quais quer ver), o **mês** ou o
     **ano inteiro**;

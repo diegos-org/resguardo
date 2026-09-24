@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { historicoDe } from "@/auditoria/auditoria";
 import { appSettings, execucoesAutomacao, imoveis, organizacoes, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
@@ -215,6 +216,21 @@ describe("configuração e envio", () => {
     expect(amanha.enviadas[0].texto).toContain("entrada dom 10/01");
   });
 
+  it("reserva gravada com horário antes do corte mas que só apareceu depois ainda chega; a já avisada não repete", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    // Avisada no envio de hoje (criada 5 min antes do corte).
+    await nova(rio, "2026-12-01", "2026-12-03", new Date(AGORA.getTime() - 5 * 60_000).toISOString());
+    const hoje = new CorreioMemoria();
+    await enviarAgenda(db, org, hoje, AGORA);
+    expect(hoje.enviadas[0].texto).toContain("entrada ter 01/12");
+    // Outra, com horário 3 min antes do corte, só ficou visível depois do envio (gravação concorrente).
+    await nova(rio, "2027-02-01", "2027-02-03", new Date(AGORA.getTime() - 3 * 60_000).toISOString());
+    const amanha = new CorreioMemoria();
+    await enviarAgenda(db, org, amanha, new Date("2026-10-02T23:00:00Z"));
+    expect(amanha.enviadas[0].texto).toContain("entrada seg 01/02");
+    expect(amanha.enviadas[0].texto).not.toContain("entrada ter 01/12");
+  });
+
   it("reserva criada depois do corte fica para a próxima agenda (sem repetir)", async () => {
     await nova(rio, "2026-12-20", "2026-12-27", "2026-10-01T23:00:30Z");
     const antes = await montarAgenda(db, org, "2026-10-01", new Date("2026-10-01T22:00:00Z"), AGORA);
@@ -272,7 +288,7 @@ describe("configuração e envio", () => {
     expect(await enviarAgenda(db, org, correio, AGORA)).toMatchObject({ enviados: 1 });
   });
 
-  it("'enviar agora' fica no histórico do Sistema e, repetido no dia, só tenta quem falhou", async () => {
+  it("'enviar agora' fica no histórico da organização (não no Sistema) e, repetido no dia, só tenta quem falhou", async () => {
     await salvarConfigAgenda(db, org, { ativa: false, destinatarios: [{ email: "a@example.com", cidades: [] }, { email: "b@example.com", cidades: [] }] }, null);
     const para: string[] = [];
     const meioQuebrado: Correio = {
@@ -286,11 +302,12 @@ describe("configuração e envio", () => {
     const correio = new CorreioMemoria();
     expect(await agendaManual(db, org, correio, new Date(AGORA.getTime() + 60_000))).toMatchObject({ enviados: 1, jaEnviados: 1, falhas: [] });
     expect(correio.enviadas.map((m) => m.para)).toEqual(["b@example.com"]);
-    const execucoes = await db.select().from(execucoesAutomacao).where(eq(execucoesAutomacao.nome, "agenda-diaria"));
-    expect(execucoes.map((e) => [e.ok, e.resumo]).sort()).toEqual([
-      [false, "Falhou: envio manual: 1 enviada(s), 1 falha(s)"],
-      [true, "envio manual: 1 enviada(s), 1 já enviada(s) hoje"],
-    ]);
+    // Nada no histórico comum de automações (é da organização, não do sistema)…
+    expect(await db.select().from(execucoesAutomacao).where(eq(execucoesAutomacao.nome, "agenda-diaria"))).toEqual([]);
+    // …e sim no histórico dela, sem e-mails.
+    const h = (await historicoDe(db, org, "configuracao", org)).filter((x) => x.acao === "agenda.envio_manual");
+    expect(h.map((x) => (x.mudancas as Record<string, [unknown, unknown]>).envio[1]).sort()).toEqual(["falhou: 1 enviada(s), 1 falha(s)", "ok: 1 enviada(s), 1 já enviada(s) hoje"]);
+    expect(JSON.stringify(h)).not.toContain("@example.com");
     // O das 20h continua valendo para os dois (com a agenda ligada).
     await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }, { email: "b@example.com", cidades: [] }] }, null);
     expect(await enviarAgenda(db, org, correio, AGORA)).toMatchObject({ enviados: 2 });

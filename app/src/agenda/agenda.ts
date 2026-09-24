@@ -77,7 +77,7 @@ export type ItemAgenda =
   | { tipo: "entrada" | "saida"; imovel: string; reserva: string; hospede: string; hospedes: number | null }
   | { tipo: "limpeza"; imovel: string; estado: string; profissional: string | null; avisos: string[] };
 
-export type NovaReserva = { imovel: string; reserva: string; hospede: string; hospedes: number | null; checkin: string; checkout: string };
+export type NovaReserva = { id: string; imovel: string; reserva: string; hospede: string; hospedes: number | null; checkin: string; checkout: string };
 
 export type SecaoCidade = { cidade: string; dias: { data: string; itens: ItemAgenda[] }[]; novas: NovaReserva[] };
 
@@ -173,7 +173,7 @@ export async function montarAgenda(db: Db, organizacaoId: string, hoje: string, 
   }
   for (const r of novas) {
     const im = doImovel.get(r.imovelId)!;
-    secao(im.cidade).novas.push({ imovel: im.codigo, reserva: r.codigo, hospede: primeiroNome(r.hospedeNome), hospedes: r.hospedes, checkin: r.checkin, checkout: r.checkout });
+    secao(im.cidade).novas.push({ id: r.id, imovel: im.codigo, reserva: r.codigo, hospede: primeiroNome(r.hospedeNome), hospedes: r.hospedes, checkin: r.checkin, checkout: r.checkout });
   }
   const secoes = [...porCidade.values()].sort((a, b) => a.cidade.localeCompare(b.cidade, "pt-BR"));
   for (const s of secoes) for (const d of s.dias) d.itens.sort((a, b) => ORDEM[a.tipo] - ORDEM[b.tipo] || a.imovel.localeCompare(b.imovel));
@@ -225,6 +225,26 @@ const chaveUltima = (org: string) => `agenda-diaria:ultima:${org}`;
 const chaveEnvio = (org: string, data: string, email: string, manual = false) => `agenda-diaria${manual ? "-manual" : ""}:${org}:${data}:${email}`;
 
 const chaveUltimaDe = (org: string, email: string) => `agenda-diaria:ultima:${org}:${email}`;
+const chaveAvisadasDe = (org: string, email: string) => `agenda-diaria:avisadas:${org}:${email}`;
+
+/**
+ * Sobreposição da busca de reservas novas antes do marco: uma reserva gravada com horário anterior
+ * ao corte, mas confirmada no banco só depois da consulta, ainda aparece na agenda seguinte. As que
+ * a pessoa já recebeu nessa faixa são puladas (lista das avisadas no último envio).
+ */
+const SOBREPOSICAO_MS = 10 * 60_000;
+
+async function lerAvisadas(db: Db, chave: string): Promise<string[]> {
+  const [l] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, chave));
+  const ids = (l?.value as { ids?: unknown } | undefined)?.ids;
+  return Array.isArray(ids) ? ids.filter((x): x is string => typeof x === "string") : [];
+}
+
+/** A agenda sem as reservas novas que a pessoa já recebeu. */
+function semAvisadas(a: Agenda, avisadas: readonly string[]): Agenda {
+  if (!avisadas.length) return a;
+  return { ...a, secoes: a.secoes.map((s) => ({ ...s, novas: s.novas.filter((n) => !avisadas.includes(n.id)) })) };
+}
 
 async function lerMarco(db: Db, chave: string): Promise<Date | null> {
   const [l] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, chave));
@@ -312,10 +332,12 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
       continue;
     }
     const { corte } = reserva;
+    let agenda: Agenda;
     try {
       // Sem marco próprio (primeira agenda desta pessoa): as reservas novas das últimas 24h.
-      const desde = (await lerMarco(db, chaveUltimaDe(organizacaoId, d.email))) ?? new Date(agora.getTime() - 86_400_000);
-      const agenda = await agendaDesde(desde, corte);
+      const marco = await lerMarco(db, chaveUltimaDe(organizacaoId, d.email));
+      const desde = marco ? new Date(marco.getTime() - SOBREPOSICAO_MS) : new Date(agora.getTime() - 86_400_000);
+      agenda = semAvisadas(await agendaDesde(desde, corte), await lerAvisadas(db, chaveAvisadasDe(organizacaoId, d.email)));
       // A mesma chave do dia vai para o provedor: uma nova tentativa do mesmo envio não duplica.
       await correio.enviar({ para: d.email, assunto: `Agenda SCL — ${diaCurto(agenda.dias[0])} a ${diaCurto(agenda.dias.at(-1)!)}`, texto: textoDaAgenda(agenda, d.cidades), chave });
     } catch (e) {
@@ -331,6 +353,12 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
       await db.transaction(async (tx) => {
         await tx.update(appSettings).set({ value: { em: agora.toISOString(), estado: "enviado", corte: corte.toISOString() }, updatedAt: new Date() }).where(eq(appSettings.key, chave));
         await gravarMarco(tx, chaveUltimaDe(organizacaoId, d.email), corte);
+        // As reservas novas deste envio: na próxima, a faixa de sobreposição não as repete.
+        const ids = agenda.secoes.flatMap((x) => x.novas.map((n) => n.id));
+        await tx
+          .insert(appSettings)
+          .values({ key: chaveAvisadasDe(organizacaoId, d.email), value: { ids } })
+          .onConflictDoUpdate({ target: appSettings.key, set: { value: { ids }, updatedAt: new Date() } });
       });
     } catch (e) {
       r.falhas.push(`${d.email}: enviada, mas não foi possível registrar o envio (${e instanceof Error ? e.message : String(e)})`);
