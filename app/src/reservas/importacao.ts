@@ -1,0 +1,181 @@
+/**
+ * Importação de reservas por CSV (M3.6): conferir (sem gravar) e importar. A importação usa
+ * a mesma `sincronizarReserva` do Beds24 (fonte "csv", id = origem:código do canal), então
+ * importar o mesmo arquivo de novo não duplica nada, e reservas alteradas são atualizadas.
+ */
+import { and, eq, gt, inArray, lt, ne } from "drizzle-orm";
+import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
+import { imoveis, reservas } from "@/db/schema";
+import type { Db } from "@/db/types";
+import { CsvInvalido, LIMITE_BYTES, LIMITE_LINHAS, lerCabecalho, lerCsv, lerLinha, linhaVazia } from "./csv";
+import { type DadosReserva } from "./regras";
+import { sincronizarReserva } from "./repositorio";
+
+export const FONTE_CSV = "csv";
+/** Quantas reservas são gravadas ao mesmo tempo na importação. */
+const IMPORTACOES_SIMULTANEAS = 4;
+
+export type SituacaoLinha = "nova" | "atualiza" | "igual" | "erro";
+export type LinhaAnalise = {
+  numero: number;
+  situacao: SituacaoLinha;
+  resumo: string;
+  erros: string[];
+  avisos: string[];
+  /** Presente nas linhas válidas: o que será gravado. */
+  dados?: DadosReserva;
+  idFonte?: string;
+};
+export type Analise = { erroGeral?: string; colunasIgnoradas: string[]; linhas: LinhaAnalise[] };
+
+const dataBr = (d: string) => d.split("-").reverse().join("/");
+
+export async function analisarCsv(db: Db, organizacaoId: string, texto: string): Promise<Analise> {
+  if (new TextEncoder().encode(texto).length > LIMITE_BYTES) return { erroGeral: "Arquivo acima de 900 KB: divida em partes.", colunasIgnoradas: [], linhas: [] };
+  let tabela: string[][];
+  try {
+    tabela = lerCsv(texto);
+  } catch (e) {
+    if (e instanceof CsvInvalido) return { erroGeral: e.message, colunasIgnoradas: [], linhas: [] };
+    throw e;
+  }
+  if (tabela.filter((l) => !linhaVazia(l)).length < 2) return { erroGeral: "O arquivo precisa ter o cabeçalho e pelo menos uma reserva.", colunasIgnoradas: [], linhas: [] };
+  if (tabela.slice(1).filter((l) => !linhaVazia(l)).length > LIMITE_LINHAS) return { erroGeral: `No máximo ${LIMITE_LINHAS} reservas por arquivo.`, colunasIgnoradas: [], linhas: [] };
+  const cab = lerCabecalho(tabela[0]);
+  if (cab.faltando.length) {
+    const nomes: Record<string, string> = { imovel: "imovel", origem: "origem", codigoCanal: "codigo_canal", checkin: "entrada", checkout: "saida" };
+    return { erroGeral: `Faltam colunas obrigatórias: ${cab.faltando.map((c) => nomes[c]).join(", ")}. Use o modelo.`, colunasIgnoradas: cab.ignoradas, linhas: [] };
+  }
+
+  const lista = await db.select({ id: imoveis.id, codigo: imoveis.codigo, ativo: imoveis.ativo }).from(imoveis).where(eq(imoveis.organizacaoId, organizacaoId));
+  const porCodigo = new Map(lista.map((i) => [i.codigo.toLowerCase(), i]));
+  const vistos = new Map<string, number>();
+  const linhas: LinhaAnalise[] = [];
+
+  for (let i = 1; i < tabela.length; i++) {
+    if (linhaVazia(tabela[i])) continue; // linha em branco na planilha: pula, sem renumerar as outras
+    const l = lerLinha(tabela[i], cab, i + 1);
+    if (!l.ok) {
+      linhas.push({ numero: l.numero, situacao: "erro", resumo: "", erros: l.erros, avisos: [] });
+      continue;
+    }
+    const resumo = `${l.imovel} · ${l.dados.origem} ${l.dados.codigoCanal} · ${dataBr(l.dados.checkin)} → ${dataBr(l.dados.checkout)}`;
+    const imovel = porCodigo.get(l.imovel);
+    const erros: string[] = [];
+    if (!imovel) erros.push(`Imóvel "${l.imovel}" não cadastrado (use o código, ex.: 403).`);
+    // Imóvel inativo some das telas de operação: a reserva ficaria invisível.
+    else if (!imovel.ativo) erros.push(`Imóvel "${l.imovel}" está inativo. Reative-o antes de importar reservas para ele.`);
+    const repetida = vistos.get(l.idFonte);
+    if (repetida) erros.push(`Mesma reserva da linha ${repetida}.`);
+    vistos.set(l.idFonte, l.numero);
+    if (erros.length) {
+      linhas.push({ numero: l.numero, situacao: "erro", resumo, erros, avisos: [] });
+      continue;
+    }
+    linhas.push({ numero: l.numero, situacao: "nova", resumo, erros: [], avisos: [], dados: { ...l.dados, imovelId: imovel!.id }, idFonte: l.idFonte });
+  }
+
+  // Já importadas antes? (mesma fonte + id) → atualiza ou igual.
+  const validas = linhas.filter((l) => l.dados);
+  const ids = validas.map((l) => l.idFonte!);
+  const existentes = ids.length
+    ? await db
+        .select()
+        .from(reservas)
+        .where(and(eq(reservas.organizacaoId, organizacaoId), eq(reservas.fonte, FONTE_CSV), inArray(reservas.idFonte, ids)))
+    : [];
+  const porIdFonte = new Map(existentes.map((r) => [r.idFonte, r]));
+  for (const l of validas) {
+    const r = porIdFonte.get(l.idFonte!);
+    if (!r) continue;
+    const m = calcularMudancas(r, { ...r, ...l.dados });
+    l.situacao = Object.keys(m).length ? "atualiza" : "igual";
+    if (l.situacao === "atualiza") l.avisos.push(`Muda: ${Object.keys(m).join(", ")}.`);
+  }
+
+  // Avisa (não bloqueia) sobreposição com outras reservas do mesmo imóvel. Uma consulta só,
+  // para todos os imóveis e o intervalo de datas do arquivo; a comparação é feita em memória.
+  const ativas = validas.filter((l) => l.dados!.estado !== "cancelada");
+  const doArquivo = ativas.length
+    ? await db
+        .select({ id: reservas.id, imovelId: reservas.imovelId, codigo: reservas.codigo, checkin: reservas.checkin, checkout: reservas.checkout })
+        .from(reservas)
+        .where(
+          and(
+            eq(reservas.organizacaoId, organizacaoId),
+            inArray(reservas.imovelId, [...new Set(ativas.map((l) => l.dados!.imovelId))]),
+            ne(reservas.estado, "cancelada"),
+            lt(reservas.checkin, ativas.reduce((m, l) => (l.dados!.checkout > m ? l.dados!.checkout : m), "")),
+            gt(reservas.checkout, ativas.reduce((m, l) => (l.dados!.checkin < m ? l.dados!.checkin : m), "9999-12-31")),
+          ),
+        )
+    : [];
+  for (const l of ativas) {
+    const d = l.dados!;
+    const proprio = porIdFonte.get(l.idFonte!);
+    const choque = doArquivo.find((r) => r.imovelId === d.imovelId && r.id !== proprio?.id && r.checkin < d.checkout && r.checkout > d.checkin);
+    if (choque) l.avisos.push(`Cruza com a reserva ${choque.codigo} (${dataBr(choque.checkin)} → ${dataBr(choque.checkout)}) no mesmo imóvel.`);
+    const outra = ativas.find((o) => o !== l && o.dados!.imovelId === d.imovelId && o.dados!.checkin < d.checkout && o.dados!.checkout > d.checkin);
+    if (outra) l.avisos.push(`Cruza com a linha ${outra.numero} deste arquivo.`);
+  }
+  return { colunasIgnoradas: cab.ignoradas, linhas };
+}
+
+/**
+ * `semRecalculo`: linhas cuja reserva foi atualizada, mas o financeiro não, porque já tinha
+ * dinheiro movimentado (precisa de ajuste manual).
+ * `avisosFinanceiro`: o que o cálculo financeiro avisou em cada linha importada (valor bruto
+ * faltando, sem contrato vigente, taxa do canal não informada…) — nada fica calado.
+ */
+export type ResultadoImportacao = {
+  erroGeral?: string;
+  criadas: number;
+  atualizadas: number;
+  iguais: number;
+  comErro: number;
+  semRecalculo: number[];
+  avisosFinanceiro: { linha: number; avisos: string[] }[];
+};
+
+/** Importa as linhas válidas (as com erro ficam de fora e são contadas). */
+export async function importarCsv(db: Db, organizacaoId: string, texto: string, autorId: string | null): Promise<ResultadoImportacao> {
+  const a = await analisarCsv(db, organizacaoId, texto);
+  const r: ResultadoImportacao = { erroGeral: a.erroGeral, criadas: 0, atualizadas: 0, iguais: 0, comErro: 0, semRecalculo: [], avisosFinanceiro: [] };
+  if (a.erroGeral) return r;
+  // Algumas reservas ao mesmo tempo (cada uma na sua transação e com a sua trava): um arquivo
+  // de 500 linhas não fica esperando uma por uma.
+  const fila = a.linhas.filter((l) => {
+    if (!l.dados) r.comErro++;
+    return Boolean(l.dados);
+  });
+  const trabalhar = async () => {
+    for (let l = fila.shift(); l; l = fila.shift()) {
+      // Mesmo a linha igual passa pela sincronização: o financeiro é conferido de novo (ex.: o
+      // imóvel ganhou proprietário ou contrato depois da primeira importação).
+      const s = await sincronizarReserva(db, organizacaoId, FONTE_CSV, l.idFonte!, l.dados!, autorId);
+      if (!s.ok) r.comErro++;
+      else {
+        if (s.criada) r.criadas++;
+        else if (l.situacao === "igual") r.iguais++;
+        else r.atualizadas++;
+        if (s.financeiroNaoAtualizado) r.semRecalculo.push(l.numero);
+        // Os demais avisos do cálculo aparecem sempre, inclusive nas linhas protegidas (o aviso de
+        // "dinheiro já movimentado" já vai em `semRecalculo`).
+        const outros = (s.avisosFinanceiro ?? []).filter((x) => !s.financeiroNaoAtualizado || !x.includes("dinheiro movimentado"));
+        if (outros.length) r.avisosFinanceiro.push({ linha: l.numero, avisos: outros });
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: IMPORTACOES_SIMULTANEAS }, trabalhar));
+  r.semRecalculo.sort((x, y) => x - y);
+  r.avisosFinanceiro.sort((x, y) => x.linha - y.linha);
+  await registrarAuditoria(db, {
+    organizacaoId,
+    usuarioId: autorId,
+    acao: "reservas.importar_csv",
+    entidade: "importacao",
+    entidadeId: organizacaoId,
+    mudancas: { resultado: [null, `${r.criadas} nova(s), ${r.atualizadas} atualizada(s), ${r.iguais} igual(is), ${r.comErro} com erro`] },
+  });
+  return r;
+}

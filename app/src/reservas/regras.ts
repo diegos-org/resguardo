@@ -83,7 +83,9 @@ export type DadosReserva = {
 
 export type ErrosReserva = Partial<Record<keyof DadosReserva | "geral", string>>;
 
-const centavosOk = (v: number | null) => v === null || (Number.isSafeInteger(v) && v >= 0);
+/** Limite das colunas integer do Postgres (≈ R$ 21 milhões). */
+export const CENTAVOS_MAXIMO = 2_147_483_647;
+const centavosOk = (v: number | null) => v === null || (Number.isSafeInteger(v) && v >= 0 && v <= CENTAVOS_MAXIMO);
 
 /** Valida dados já tipados (vindos de formulário, CSV ou Beds24). */
 export function validarReserva(d: DadosReserva): ErrosReserva {
@@ -95,7 +97,7 @@ export function validarReserva(d: DadosReserva): ErrosReserva {
   if (!erros.checkin && !erros.checkout && noites(d.checkin, d.checkout) > 365) erros.checkout = "Estadia acima de 365 noites.";
   if (d.hospedes !== null && (!Number.isInteger(d.hospedes) || d.hospedes < 1 || d.hospedes > 50)) erros.hospedes = "Entre 1 e 50 hóspedes.";
   for (const campo of ["valorBruto", "taxaCanal", "valorLiquido"] as const) {
-    if (!centavosOk(d[campo])) erros[campo] = "Valor em centavos, inteiro e não negativo.";
+    if (!centavosOk(d[campo])) erros[campo] = "Valor inválido: precisa ser positivo e até R$ 21 milhões.";
   }
   if (d.recebimento != null && !RECEBIMENTOS_RESERVA.includes(d.recebimento)) erros.recebimento = "Forma de recebimento inválida.";
   if (!/^[A-Z]{3}$/.test(d.moeda)) erros.moeda = "Moeda com 3 letras (ex.: BRL).";

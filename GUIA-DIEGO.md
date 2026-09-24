@@ -189,6 +189,27 @@
   sua própria escolha. **Um proprietário por imóvel** (pessoa ou empresa): o sistema não
   deixa ligar um imóvel que já tem dono a outro proprietário — primeiro tira de um, depois
   põe no outro.
+- M3.6: **importar reservas de uma planilha** (Painel → Reservas → **Importar planilha**),
+  enquanto o Beds24 não está ligado. Baixe o modelo, preencha (ou exporte de outro lugar) e
+  salve do Excel como "CSV separado por ponto e vírgula". Colunas obrigatórias: imóvel
+  (código, ex.: 403), origem (airbnb, booking, site, direta ou outro), código da reserva no
+  canal, entrada e saída (DD/MM/AAAA). Opcionais: situação, hóspedes, nome, e-mail,
+  telefone, cidade, valor bruto, taxa do canal, valor líquido, observações.
+  - Primeiro o sistema **confere** (não grava nada) e mostra linha a linha: nova, a atualizar,
+    já importada e igual, ou com erro (e qual o erro). Também avisa se a reserva cruza com
+    outra no mesmo imóvel.
+  - Depois você clica em **Importar**: só as linhas sem erro entram, e o financeiro de cada
+    reserva é calculado na hora. Se faltar algo para o cálculo (valor bruto, contrato do
+    imóvel), a reserva entra e a tela avisa a linha. Se uma reserva que já teve dinheiro movimentado mudar na
+    planilha, o sistema atualiza a reserva, deixa o financeiro como está e avisa a linha,
+    para você fazer o ajuste manual.
+  - Até 500 reservas por arquivo (arquivos maiores: divida em partes). O histórico de cada
+    reserva mostra quem importou.
+  - Importar o mesmo arquivo de novo **não duplica**: a reserva é reconhecida pela origem +
+    código do canal, e o que mudou é atualizado.
+  - Acentos funcionam tanto em arquivo do Excel brasileiro quanto em UTF-8. Arquivo com
+    aspas abertas sem fechar é recusado (evita sumir com linhas). Só o
+    administrador importa (a planilha traz valores).
 - M4.4: **adiantamentos** (Painel → Despesas → **Adiantamentos**). Quando a empresa paga uma
   despesa que é do proprietário (ex.: reparo de R$ 4.000), nasce um adiantamento: o valor que
   ele deve. A tela mostra, por proprietário, quanto há a cobrar e o que está contestado, e a
