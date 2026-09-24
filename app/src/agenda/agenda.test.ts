@@ -241,6 +241,37 @@ describe("configuração e envio", () => {
     expect(correio.enviadas.map((m) => m.texto.includes("entrada seg 01/03"))).toEqual([true, false, false]);
   });
 
+  it("'enviar agora' que termina depois das 20h não volta o marco nem apaga as avisadas das 20h", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    // Criada entre o corte do manual (19:59) e o das 20h.
+    await nova(rio, "2027-04-01", "2027-04-03", new Date(AGORA.getTime() - 30_000).toISOString());
+    const correio = new CorreioMemoria();
+    await enviarAgenda(db, org, correio, AGORA);
+    // O manual (corte 19:59) termina depois.
+    await enviarAgenda(db, org, correio, new Date(AGORA.getTime() - 60_000), { manual: true });
+    expect(await ultimaAgendaDe(db, org, "a@example.com")).toEqual(AGORA);
+    const amanha = new CorreioMemoria();
+    await enviarAgenda(db, org, amanha, new Date("2026-10-02T23:00:00Z"));
+    expect(amanha.enviadas[0].texto).not.toContain("entrada qui 01/04");
+  });
+
+  it("envio de um dia anterior sem registro confirmado: as reservas saem de novo com aviso", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    await nova(rio, "2027-05-03", "2027-05-05", new Date(AGORA.getTime() - 60 * 60_000).toISOString());
+    // Anteontem o envio foi registrado (marco de 30/09); ontem (01/10) o provedor pode ter aceitado,
+    // mas o registro ficou "enviando" e o marco não andou.
+    await db.insert(appSettings).values([
+      { key: `agenda-diaria:ultima:${org}:a@example.com`, value: { em: "2026-09-30T23:00:00.000Z" } },
+      { key: `agenda-diaria:${org}:2026-10-01:a@example.com`, value: { em: AGORA.toISOString(), estado: "enviando", corte: AGORA.toISOString() } },
+    ]);
+    const correio = new CorreioMemoria();
+    await enviarAgenda(db, org, correio, new Date("2026-10-02T23:00:00Z"));
+    expect(correio.enviadas[0].texto).toContain("entrada seg 03/05");
+    expect(correio.enviadas[0].texto).toContain("pode já ter vindo numa agenda anterior");
+    const [marca] = await db.select().from(appSettings).where(eq(appSettings.key, `agenda-diaria:${org}:2026-10-01:a@example.com`));
+    expect((marca.value as { estado: string }).estado).toBe("incerto");
+  });
+
   it("reserva criada depois do corte fica para a próxima agenda (sem repetir)", async () => {
     await nova(rio, "2026-12-20", "2026-12-27", "2026-10-01T23:00:30Z");
     const antes = await montarAgenda(db, org, "2026-10-01", new Date("2026-10-01T22:00:00Z"), AGORA);
