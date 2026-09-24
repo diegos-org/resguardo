@@ -73,5 +73,6 @@ Usar "merge commit" (nunca squash/rebase de histórico alheio). Depois do merge,
 - Colocar segredos, dados reais de hóspedes/proprietários, CPF, Pix, extratos ou documentos
   no Git. Dados de teste são fictícios.
 - Escrever em sistemas externos reais (Beds24, Mercado Pago, WhatsApp) sem o item do
-  ROADMAP autorizar explicitamente.
+  ROADMAP autorizar explicitamente. (Beds24: escrita de calendário/preços autorizada no
+  M3.7, mas sempre atrás da variável `BEDS24_ESCRITA=ligada`, que só o Diego liga.)
 - Abrir PR só de documentação de status.

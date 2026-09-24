@@ -41,7 +41,9 @@ export function validarProprietario(e: Entrada): Resultado<DadosProprietario> {
   else if (nome.length > 150) erros.nome = "Máximo de 150 caracteres.";
   if (documento && tipo === "fisica" && !cpfValido(documento)) erros.documento = "CPF inválido.";
   if (documento && tipo === "juridica" && !cnpjValido(documento)) erros.documento = "CNPJ inválido.";
-  if (!emailOk(email)) erros.email = "E-mail inválido.";
+  // E-mail obrigatório (Diego, 24/09): convite do portal, relatórios mensais e avisos vão por ele.
+  if (!email) erros.email = "Informe o e-mail (usado para o convite do portal e os relatórios).";
+  else if (!emailOk(email)) erros.email = "E-mail inválido.";
   if (!telefoneOk(telefone)) erros.telefone = "Telefone com DDD (10 a 13 dígitos).";
   if (chavePix.length > 140) erros.chavePix = "Máximo de 140 caracteres.";
 

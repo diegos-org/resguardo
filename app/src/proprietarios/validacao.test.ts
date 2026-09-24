@@ -8,9 +8,14 @@ describe("validarProprietario", () => {
   });
 
   it("documento é opcional, mas se vier precisa ser válido para o tipo", () => {
-    expect(validarProprietario({ nome: "Sem doc" }).ok).toBe(true);
+    expect(validarProprietario({ nome: "Sem doc", email: "semdoc@example.com" }).ok).toBe(true);
     const r = validarProprietario({ nome: "Empresa", tipo: "juridica", documento: "52998224725" });
     expect(!r.ok && r.erros.documento).toBe("CNPJ inválido.");
+  });
+
+  it("e-mail é obrigatório", () => {
+    const r = validarProprietario({ nome: "Sem e-mail" });
+    expect(!r.ok && r.erros.email).toContain("Informe o e-mail");
   });
 
   it("aponta nome, e-mail e telefone inválidos", () => {
