@@ -16,15 +16,17 @@ export type DadosEmpresa = {
   telefone: string;
   endereco: string;
   site: string;
+  /** Chave Pix da empresa: aparece no portal para o proprietário que deve à empresa. */
+  chavePix: string;
 };
 export type ErrosEmpresa = Partial<Record<keyof DadosEmpresa, string>>;
 
-const CAMPOS_CONFIG = ["razaoSocial", "cnpj", "email", "telefone", "endereco", "site"] as const;
-const LIMITES: Record<keyof DadosEmpresa, number> = { nome: 80, razaoSocial: 120, cnpj: 18, email: 200, telefone: 30, endereco: 200, site: 200 };
+const CAMPOS_CONFIG = ["razaoSocial", "cnpj", "email", "telefone", "endereco", "site", "chavePix"] as const;
+const LIMITES: Record<keyof DadosEmpresa, number> = { nome: 80, razaoSocial: 120, cnpj: 18, email: 200, telefone: 30, endereco: 200, site: 200, chavePix: 140 };
 
 export function validarEmpresa(bruto: Record<string, unknown>): { ok: true; dados: DadosEmpresa } | { ok: false; erros: ErrosEmpresa } {
   const txt = (k: keyof DadosEmpresa) => (typeof bruto[k] === "string" ? (bruto[k] as string).trim() : "");
-  const dados: DadosEmpresa = { nome: txt("nome"), razaoSocial: txt("razaoSocial"), cnpj: txt("cnpj"), email: txt("email").toLowerCase(), telefone: txt("telefone"), endereco: txt("endereco"), site: txt("site") };
+  const dados: DadosEmpresa = { nome: txt("nome"), razaoSocial: txt("razaoSocial"), cnpj: txt("cnpj"), email: txt("email").toLowerCase(), telefone: txt("telefone"), endereco: txt("endereco"), site: txt("site"), chavePix: txt("chavePix") };
   const erros: ErrosEmpresa = {};
   for (const k of Object.keys(LIMITES) as (keyof DadosEmpresa)[]) if (dados[k].length > LIMITES[k]) erros[k] = `Máximo de ${LIMITES[k]} caracteres.`;
   if (!dados.nome) erros.nome = "Informe o nome da empresa.";
@@ -38,7 +40,7 @@ export async function lerEmpresa(db: Db, organizacaoId: string): Promise<DadosEm
   const [org] = await db.select({ nome: organizacoes.nome }).from(organizacoes).where(eq(organizacoes.id, organizacaoId));
   const c = (await lerConfig(db, organizacaoId, "empresa")) ?? {};
   const s = (k: string) => (typeof c[k] === "string" ? (c[k] as string) : "");
-  return { nome: org?.nome ?? "", razaoSocial: s("razaoSocial"), cnpj: s("cnpj"), email: s("email"), telefone: s("telefone"), endereco: s("endereco"), site: s("site") };
+  return { nome: org?.nome ?? "", razaoSocial: s("razaoSocial"), cnpj: s("cnpj"), email: s("email"), telefone: s("telefone"), endereco: s("endereco"), site: s("site"), chavePix: s("chavePix") };
 }
 
 export async function salvarEmpresa(db: Db, organizacaoId: string, dados: DadosEmpresa, autorId: string | null): Promise<void> {
@@ -49,7 +51,12 @@ export async function salvarEmpresa(db: Db, organizacaoId: string, dados: DadosE
       await tx.update(organizacoes).set({ nome: dados.nome }).where(eq(organizacoes.id, organizacaoId));
       await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "configuracao.empresa", entidade: "configuracao", entidadeId: organizacaoId, mudancas: { nome: [org.nome, dados.nome] } });
     }
-    await gravarConfig(tx, organizacaoId, "empresa", Object.fromEntries(CAMPOS_CONFIG.map((k) => [k, dados[k]])), autorId);
+    // Histórico sem a chave Pix em claro (como a dos proprietários): registra só que mudou.
+    const mudancas = await gravarConfig(tx, organizacaoId, "empresa", Object.fromEntries(CAMPOS_CONFIG.map((k) => [k, dados[k]])), autorId, false);
+    if (mudancas.chavePix) mudancas.chavePix = ["(alterado)", "(alterado)"];
+    if (Object.keys(mudancas).length) {
+      await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "configuracao.empresa", entidade: "configuracao", entidadeId: organizacaoId, mudancas });
+    }
   });
 }
 

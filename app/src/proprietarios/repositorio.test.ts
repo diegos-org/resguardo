@@ -1,6 +1,7 @@
+import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { historicoDe } from "@/auditoria/auditoria";
-import { imoveis, organizacoes } from "@/db/schema";
+import { imoveis, organizacoes, proprietarioImoveis } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import {
@@ -73,6 +74,18 @@ describe("proprietários", () => {
     // passar o imóvel: tira do primeiro e dá ao segundo
     expect(await definirImoveis(db, org, p1.id, [], null)).toBe(true);
     expect(await definirImoveis(db, org, p2.id, [im.a], null)).toBe(true);
+  });
+
+  it("editar os imóveis mantém a data de início dos vínculos que continuam", async () => {
+    const p = await criarProprietario(db, org, dados(), null);
+    await definirImoveis(db, org, p.id, [im.a], null);
+    await db.update(proprietarioImoveis).set({ criadoEm: new Date("2025-01-01T12:00:00Z") }).where(eq(proprietarioImoveis.imovelId, im.a));
+    await definirImoveis(db, org, p.id, [im.a, im.b], null);
+    const vinculos = await db.select().from(proprietarioImoveis).where(eq(proprietarioImoveis.proprietarioId, p.id));
+    expect(vinculos.find((v) => v.imovelId === im.a)?.criadoEm.toISOString()).toBe("2025-01-01T12:00:00.000Z");
+    expect(vinculos).toHaveLength(2);
+    await definirImoveis(db, org, p.id, [im.b], null);
+    expect((await db.select().from(proprietarioImoveis).where(eq(proprietarioImoveis.proprietarioId, p.id))).map((v) => v.imovelId)).toEqual([im.b]);
   });
 
   it("não expõe nem altera proprietário de outra organização", async () => {

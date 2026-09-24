@@ -1,13 +1,13 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { contestar, desfazerQuitacao, listarAdiantamentos, obterAdiantamento, resolverContestacao } from "@/adiantamentos/adiantamentos";
+import { contestar, desfazerQuitacao, listarAdiantamentos, obterAdiantamento, quitar, resolverContestacao } from "@/adiantamentos/adiantamentos";
 import { registrarAjuste } from "@/ajustes/ajustes";
 import { criarContrato } from "@/contratos/repositorio";
 import { imoveis, lancamentos, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { criarCategoria } from "@/despesas/categorias";
-import { registrarDespesa } from "@/despesas/despesas";
+import { estornarDespesa, registrarDespesa } from "@/despesas/despesas";
 import { saldoAcerto } from "@/financeiro/ledger";
 import type { DadosReserva } from "@/reservas/regras";
 import { criarReserva } from "@/reservas/repositorio";
@@ -179,6 +179,73 @@ describe("fechamento do mês", () => {
     // Contestação mantida depois do fechamento: a dívida passa a ser descontada no próximo repasse — avisa.
     await resolverContestacao(db, org, adiant.id, { resolucao: "mantida", nota: "", data: "2026-11-02" }, null);
     expect((await prever()).avisos.join(" ")).toContain("mudou em -400,00: a diferença entra no próximo repasse");
+  });
+
+  it("mês sem repasse próprio: contestação resolvida depois do repasse seguinte aparece como diferença", async () => {
+    await reparo(40000);
+    const [adiant] = await listarAdiantamentos(db, org, { proprietarioId: dono });
+    await contestar(db, org, adiant.id, "Não autorizei", null);
+    await criarReserva(db, org, reserva(a, "2026-11-10", "2026-11-13"), null);
+    expect((await fecharMes(db, org, dono, "2026-11", "2026-12-01", null)).ok).toBe(true);
+    const outubro = async () => (await preverRepasses(db, org, MES, "2026-12-02"))[0];
+    expect(await outubro()).toMatchObject({ repasse: null, repassePosterior: "2026-11", diferencaPosFechamento: 0 });
+    // Mantida depois do repasse de novembro: a dívida de outubro não foi descontada nele.
+    await resolverContestacao(db, org, adiant.id, { resolucao: "mantida", nota: "", data: "2026-12-02" }, null);
+    expect(await outubro()).toMatchObject({ diferencaPosFechamento: -40000 });
+    // Contestada de novo: volta a ficar fora do desconto, como no repasse.
+    await contestar(db, org, adiant.id, "Revisar de novo", null);
+    expect(await outubro()).toMatchObject({ diferencaPosFechamento: 0 });
+  });
+
+  it("mês sem repasse próprio: 'empresa assume' depois do repasse seguinte não inventa diferença", async () => {
+    await reparo(40000);
+    const [adiant] = await listarAdiantamentos(db, org, { proprietarioId: dono });
+    await contestar(db, org, adiant.id, "Não autorizei", null);
+    await criarReserva(db, org, reserva(a, "2026-11-10", "2026-11-13"), null);
+    expect((await fecharMes(db, org, dono, "2026-11", "2026-12-01", null)).ok).toBe(true);
+    // A empresa assume com data de outubro: o adiantamento sai quitado e a compensação entra no livro.
+    expect((await resolverContestacao(db, org, adiant.id, { resolucao: "empresa_assume", nota: "", data: "2026-10-20" }, null)).ok).toBe(true);
+    expect((await preverRepasses(db, org, MES, "2026-12-02"))[0]).toMatchObject({ repassePosterior: "2026-11", diferencaPosFechamento: 0 });
+  });
+
+  it("mês sem repasse próprio: 'empresa assume' feito antes do repasse seguinte e desfeito depois não inventa diferença", async () => {
+    await reparo(40000);
+    const [adiant] = await listarAdiantamentos(db, org, { proprietarioId: dono });
+    await contestar(db, org, adiant.id, "Não autorizei", null);
+    expect((await resolverContestacao(db, org, adiant.id, { resolucao: "empresa_assume", nota: "", data: "2026-10-20" }, null)).ok).toBe(true);
+    await criarReserva(db, org, reserva(a, "2026-11-10", "2026-11-13"), null);
+    expect((await fecharMes(db, org, dono, "2026-11", "2026-12-01", null)).ok).toBe(true);
+    // Desfeito depois do repasse de novembro: a contestação reabre e o valor volta a ficar fora do desconto.
+    const q = (await obterAdiantamento(db, org, adiant.id))!.quitacoes.find((x) => x.forma === "empresa_assume")!;
+    expect((await desfazerQuitacao(db, org, q.id, "lançado errado", null)).ok).toBe(true);
+    expect(await obterAdiantamento(db, org, adiant.id)).toMatchObject({ situacao: "contestado" });
+    expect((await preverRepasses(db, org, MES, "2026-12-02"))[0]).toMatchObject({ repassePosterior: "2026-11", diferencaPosFechamento: 0 });
+  });
+
+  it("mês sem repasse próprio: despesa de adiantamento contestado estornada depois do repasse seguinte não inventa diferença", async () => {
+    await reparo(40000);
+    const [adiant] = await listarAdiantamentos(db, org, { proprietarioId: dono });
+    await contestar(db, org, adiant.id, "Não autorizei", null);
+    await criarReserva(db, org, reserva(a, "2026-11-10", "2026-11-13"), null);
+    expect((await fecharMes(db, org, dono, "2026-11", "2026-12-01", null)).ok).toBe(true);
+    // A despesa de origem é estornada: a contestação é encerrada e o adiantamento, estornado.
+    expect(await estornarDespesa(db, org, adiant.despesaId!, "lançada errado", null)).toBe(true);
+    expect(await listarAdiantamentos(db, org, { proprietarioId: dono })).toEqual([]);
+    expect((await preverRepasses(db, org, MES, "2026-12-02"))[0]).toMatchObject({ repassePosterior: "2026-11", diferencaPosFechamento: 0 });
+  });
+
+  it("mês sem repasse próprio: reembolso parcial e nova contestação do restante não inventam diferença", async () => {
+    await reparo(40000);
+    const [adiant] = await listarAdiantamentos(db, org, { proprietarioId: dono });
+    await contestar(db, org, adiant.id, "Não autorizei", null);
+    await criarReserva(db, org, reserva(a, "2026-11-10", "2026-11-13"), null);
+    expect((await fecharMes(db, org, dono, "2026-11", "2026-12-01", null)).ok).toBe(true);
+    // Mantida, reembolso parcial com data de outubro e nova contestação dos 300 restantes.
+    await resolverContestacao(db, org, adiant.id, { resolucao: "mantida", nota: "", data: "2026-12-02" }, null);
+    expect(await quitar(db, org, adiant.id, { forma: "reembolso", valor: 10000, data: "2026-10-25" }, null)).toEqual({ ok: true });
+    await contestar(db, org, adiant.id, "Restante também não", null);
+    // O que ficou fora do desconto caiu de 400 para 300, e o reembolso de 100 entrou: nada muda.
+    expect((await preverRepasses(db, org, MES, "2026-12-02"))[0]).toMatchObject({ repassePosterior: "2026-11", diferencaPosFechamento: 0 });
   });
 
   it("imóvel devedor é compensado com o outro do mesmo proprietário; cada imóvel fica zerado", async () => {
