@@ -51,6 +51,8 @@ export function lerIntervalo(params: Params): { periodo?: { inicio: string; fim:
   const a = MES.exec(de);
   const b = MES.exec(ate);
   if (!a || !b) return { de, ate, aviso: "Intervalo incompleto ou inválido: mostrando o período do filtro." };
+  // Mesma faixa de anos do filtro global (o banco não tem ano zero, por exemplo).
+  if ([a, b].some((m) => Number(m[1]) < 2000 || Number(m[1]) > 2100)) return { de, ate, aviso: "Ano fora da faixa (2000 a 2100): mostrando o período do filtro." };
   const meses = (Number(b[1]) - Number(a[1])) * 12 + (Number(b[2]) - Number(a[2])) + 1;
   if (meses < 1) return { de, ate, aviso: "O mês final vem antes do inicial: mostrando o período do filtro." };
   if (meses > LIMITE_MESES) return { de, ate, aviso: `Intervalo de no máximo ${LIMITE_MESES} meses: mostrando o período do filtro.` };

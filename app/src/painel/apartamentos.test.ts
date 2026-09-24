@@ -27,6 +27,8 @@ describe("como ver (URL)", () => {
     expect(lerIntervalo({ de: "2020-01", ate: "2026-01" })).toMatchObject({ aviso: expect.stringContaining("36") });
     expect(lerIntervalo({ de: "2026-03" })).toMatchObject({ aviso: expect.stringContaining("incompleto") });
     expect(lerIntervalo({ de: "2026-13", ate: "2026-14" }).periodo).toBeUndefined();
+    expect(lerIntervalo({ de: "0000-01", ate: "0000-02" })).toMatchObject({ aviso: expect.stringContaining("faixa") });
+    expect(lerIntervalo({ de: "2100-11", ate: "2101-01" }).periodo).toBeUndefined();
   });
 });
 
