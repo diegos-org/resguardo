@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 24/09/2026, ajustes e divergências (M4.5).
+> **Última atualização:** 24/09/2026, repasse mensal aos proprietários (M4.9).
 
 ---
 
@@ -220,12 +220,28 @@
     depois você resolve: **manter a cobrança** ou **a empresa assume** o valor (vira custo da
     empresa e a dívida some);
   - **desfazer** uma quitação lançada errado (com motivo; o histórico fica).
-  O que não for reembolsado vai ser **descontado no repasse mensal** quando o repasse
-  existir (item M4.9, ainda não feito). Até lá, o valor fica em aberto e a cobrança é
-  com você. **Sem dupla
+  O que não for reembolsado é **descontado no repasse mensal** (M4.9) quando você fecha o
+  mês, se o proprietário tiver o que receber. **Sem dupla
   cobrança:** nunca se quita mais do que o valor, duas pessoas quitando ao mesmo tempo não
   passam do total, e uma despesa cujo adiantamento já teve reembolso não pode ser estornada
   (desfaça a quitação antes).
+- M4.9: **repasse mensal aos proprietários** (Painel → **Financeiro** → Repasses). No dia 1º,
+  a tela abre no mês anterior e mostra, para cada proprietário:
+  - o **crédito dele até o fim do mês**, os **adiantamentos descontados** e os
+    **contestados** (esses ficam de fora do desconto até você resolver);
+  - o valor **a transferir**. Se o que ele deve for maior do que tem a receber, a tela diz
+    quanto ele deve e nada é transferido (registre o reembolso ou fica para o próximo mês);
+  - **avisos antes de fechar:** mês que ainda não terminou, acerto pendente (sem
+    proprietário, "quem recebe" a confirmar, ajuste a esclarecer) — esses **impedem** o
+    fechamento; lançamentos ainda previstos (dinheiro que pode não ter entrado) e falta de
+    chave Pix aparecem como aviso.
+  **Fechar mês e gerar repasse** (com confirmação) grava o repasse no livro e marca os
+  adiantamentos descontados. Depois: **Copiar Pix**, **Copiar valor**, faça o Pix no banco e
+  **Marcar como pago** com a data. Errou? **Estornar este repasse** (com motivo e
+  confirmação) desfaz tudo: os adiantamentos voltam a ficar em aberto e o mês pode ser
+  fechado de novo. Algo que entrar no mês depois do fechamento aparece como aviso e vai
+  sozinho para o repasse do mês seguinte. Proprietário com mais de um imóvel recebe um
+  repasse só; se um imóvel dele deu prejuízo, é compensado com o outro.
 - M4.5: **ajustes e divergências** (Painel → **Financeiro** → Ajustes). Achou uma diferença
   (ex.: o Airbnb pagou R$ 150 a menos)? Registre no mesmo dia: data, reserva (código) ou
   imóvel, o efeito (entrou/saiu dinheiro da empresa, ou a empresa deve/o proprietário deve),
@@ -312,9 +328,13 @@
 |---|---|
 | ![Cadastro completo](docs/telas/imovel-cadastro-completo.png) | ![Adiantamento](docs/telas/adiantamento.png) |
 
-| Ajuste esclarecido |
+| Ajuste esclarecido | Repasses no celular |
+|---|---|
+| ![Ajuste](docs/telas/ajuste.png) | ![Repasses no celular](docs/telas/repasses-celular.png) |
+
+| Repasses aos proprietários (fechamento do mês) |
 |---|
-| ![Ajuste](docs/telas/ajuste.png) |
+| ![Repasses](docs/telas/repasses.png) |
 
 A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 
@@ -425,8 +445,11 @@ ambiente).
       (Cloudflare) — eu te guio nessa hora.
    2. Crie uma *API key* e coloque na Vercel como `RESEND_API_KEY`, e crie
       `EMAIL_REMETENTE` = `Sua Casa Leblon <acesso@seudominio.com.br>`. **Não cole no chat.**
-6. **Booking:** criar os anúncios (ver "Copiar anúncios do Airbnb para o Booking" na seção 7).
-7. **Sistema antigo (referência):** mande o arquivo (zip) do sistema antigo — o jeito mais
+6. **Chave Pix dos proprietários:** confira no cadastro de cada proprietário (Painel →
+   Proprietários) se a chave Pix está preenchida — a tela de Repasses usa ela para o botão
+   "Copiar Pix" e avisa quando falta.
+7. **Booking:** criar os anúncios (ver "Copiar anúncios do Airbnb para o Booking" na seção 7).
+8. **Sistema antigo (referência):** mande o arquivo (zip) do sistema antigo — o jeito mais
    fácil é subir no seu **Google Drive** e me dizer o nome do arquivo (o Drive já está
    conectado aqui). Eu só leio para levantar todas as telas e capacidades e comparar com o
    plano; **nada dele vai para o GitHub**, e dados reais de clientes não são copiados.

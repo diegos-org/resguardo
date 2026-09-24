@@ -22,6 +22,12 @@ export default async function Financeiro() {
         </p>
       </section>
       <section className={styles.cartao}>
+        <h2>Repasses aos proprietários</h2>
+        <p>
+          Fechamento do mês no dia 1º: valor a transferir, Pix para copiar e marcar pago. <Link href="/painel/financeiro/repasses">Abrir</Link>
+        </p>
+      </section>
+      <section className={styles.cartao}>
         <h2>Despesas</h2>
         <p>
           Despesas da empresa e dos proprietários. <Link href="/painel/despesas">Abrir</Link>
