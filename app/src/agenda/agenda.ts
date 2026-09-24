@@ -480,23 +480,31 @@ const ENVIO_EXPIRA_MS = 15 * 60_000;
  * ou se há outra tentativa em andamento (recente); uma tentativa antiga que ficou pela metade
  * (execução interrompida antes de confirmar) é retomada.
  */
-async function reservarEnvio(db: Db, chave: string, agora: Date): Promise<{ corte: Date } | null> {
+/** O pedido exato feito ao provedor, guardado antes de enviar para uma retomada repetir igual. */
+type Carga = { assunto: string; texto: string; eventos: string[] };
+
+const cargaValida = (c: unknown): c is Carga =>
+  !!c && typeof (c as Carga).assunto === "string" && typeof (c as Carga).texto === "string" && Array.isArray((c as Carga).eventos);
+
+async function reservarEnvio(db: Db, chave: string, agora: Date): Promise<{ corte: Date; carga: Carga | null } | null> {
   // `corte`: o limite das reservas novas desta tentativa. Uma retomada reaproveita o da tentativa
-  // original (o provedor ignora o reenvio com a mesma chave; o marco tem de ser o do e-mail que saiu).
+  // original e, se o pedido já tinha sido montado, o pedido inteiro: o provedor só ignora o reenvio
+  // com a mesma chave se o conteúdo for idêntico, e o marco tem de ser o do e-mail que saiu.
   const valor = { em: agora.toISOString(), estado: "enviando", corte: agora.toISOString() };
   const [nova] = await db.insert(appSettings).values({ key: chave, value: valor }).onConflictDoNothing().returning();
-  if (nova) return { corte: agora };
+  if (nova) return { corte: agora, carga: null };
   const [l] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, chave));
-  const v = (l?.value ?? {}) as { em?: string; estado?: string; corte?: string };
+  const v = (l?.value ?? {}) as { em?: string; estado?: string; corte?: string; carga?: unknown };
   if (v.estado !== "enviando" || !v.em || agora.getTime() - Date.parse(v.em) < ENVIO_EXPIRA_MS) return null;
   const corte = v.corte && !Number.isNaN(Date.parse(v.corte)) ? v.corte : v.em;
+  const carga = cargaValida(v.carga) ? v.carga : null;
   // Troca só se ninguém retomou antes (compara o valor antigo).
   const [retomada] = await db
     .update(appSettings)
-    .set({ value: { ...valor, corte }, updatedAt: new Date() })
+    .set({ value: { ...valor, corte, ...(carga ? { carga } : {}) }, updatedAt: new Date() })
     .where(and(eq(appSettings.key, chave), sql`${appSettings.value} ->> 'em' = ${v.em}`, sql`${appSettings.value} ->> 'estado' = 'enviando'`))
     .returning();
-  return retomada ? { corte: new Date(corte) } : null;
+  return retomada ? { corte: new Date(corte), carga } : null;
 }
 
 export type ResultadoEnvio = { enviados: number; jaEnviados: number; falhas: string[]; aviso: string | null };
@@ -531,27 +539,40 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
       continue;
     }
     const { corte } = reserva;
-    let agenda: Agenda;
-    let avisadas: Avisada[] = [];
+    let carga = reserva.carga;
     try {
-      // Sem marco próprio (primeira agenda desta pessoa): as reservas novas das últimas 24h.
-      const marco = await lerMarco(db, chaveUltimaDe(organizacaoId, d.email));
-      const umDia = new Date(agora.getTime() - 86_400_000);
-      const desde = marco ? new Date(marco.getTime() - SOBREPOSICAO_MS) : umDia;
-      // Cidades que o marco não cobre (a pessoa passou a recebê-las depois): desde 24h, como quem é novo.
-      const cobertas = marco ? await lerCobertura(db, chaveUltimaDe(organizacaoId, d.email)) : null;
-      const coberta = (cidade: string) => cobertas === null || cobertas.includes(cidade);
-      const menor = desde < umDia ? desde : umDia;
-      avisadas = await lerAvisadas(db, chaveAvisadasDe(organizacaoId, d.email));
-      const bruta = await agendaDesde(cobertas === null ? desde : menor, corte);
-      agenda = semAvisadas(
-        cobertas === null
-          ? bruta
-          : { ...bruta, secoes: bruta.secoes.map((x) => ({ ...x, novas: x.novas.filter((n) => Date.parse(n.registradaEm) > (coberta(x.cidade) ? desde : umDia).getTime()) })) },
-        avisadas,
-      );
+      if (!carga) {
+        // Sem marco próprio (primeira agenda desta pessoa): as reservas novas das 24h antes do corte.
+        const marco = await lerMarco(db, chaveUltimaDe(organizacaoId, d.email));
+        const umDia = new Date(corte.getTime() - 86_400_000);
+        const desde = marco ? new Date(marco.getTime() - SOBREPOSICAO_MS) : umDia;
+        // Cidades que o marco não cobre (a pessoa passou a recebê-las depois): desde 24h, como quem é novo.
+        const cobertas = marco ? await lerCobertura(db, chaveUltimaDe(organizacaoId, d.email)) : null;
+        const coberta = (cidade: string) => cobertas === null || cobertas.includes(cidade);
+        const menor = desde < umDia ? desde : umDia;
+        const avisadas = await lerAvisadas(db, chaveAvisadasDe(organizacaoId, d.email));
+        const bruta = await agendaDesde(cobertas === null ? desde : menor, corte);
+        const agenda = semAvisadas(
+          cobertas === null
+            ? bruta
+            : { ...bruta, secoes: bruta.secoes.map((x) => ({ ...x, novas: x.novas.filter((n) => Date.parse(n.registradaEm) > (coberta(x.cidade) ? desde : umDia).getTime()) })) },
+          avisadas,
+        );
+        // Só o que vai no e-mail desta pessoa (as cidades dela) conta como avisado.
+        const noEmail = agenda.secoes.filter((x) => !d.cidades.length || d.cidades.includes(x.cidade));
+        carga = {
+          assunto: `Agenda SCL — ${diaCurto(agenda.dias[0])} a ${diaCurto(agenda.dias.at(-1)!)}`,
+          texto: textoDaAgenda(agenda, d.cidades, { ...config, incertoAte }),
+          eventos: noEmail.flatMap((x) => x.novas.map((n) => n.evento)),
+        };
+        // Guarda o pedido antes de enviar: uma retomada manda exatamente o mesmo.
+        await db
+          .update(appSettings)
+          .set({ value: { em: agora.toISOString(), estado: "enviando", corte: corte.toISOString(), carga }, updatedAt: new Date() })
+          .where(and(eq(appSettings.key, chave), sql`${appSettings.value} ->> 'estado' = 'enviando'`));
+      }
       // A mesma chave do dia vai para o provedor: uma nova tentativa do mesmo envio não duplica.
-      await correio.enviar({ para: d.email, assunto: `Agenda SCL — ${diaCurto(agenda.dias[0])} a ${diaCurto(agenda.dias.at(-1)!)}`, texto: textoDaAgenda(agenda, d.cidades, { ...config, incertoAte }), chave });
+      await correio.enviar({ para: d.email, assunto: carga.assunto, texto: carga.texto, chave });
     } catch (e) {
       // O provedor não aceitou: libera para tentar de novo.
       await db.delete(appSettings).where(eq(appSettings.key, chave));
@@ -560,6 +581,7 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
     }
     // Daqui em diante o e-mail já saiu: falha ao registrar não libera outro envio (a marca fica).
     r.enviados++;
+    const enviada = carga;
     try {
       // Marca do dia e marco das reservas novas juntos: ou os dois, ou nenhum.
       await db.transaction(async (tx) => {
@@ -576,9 +598,7 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
         await gravarMarco(tx, chaveUltimaDe(organizacaoId, d.email), marco, cidades);
         // As reservas novas deste envio: na próxima, a faixa de sobreposição não as repete.
         const atuais = await lerAvisadas(tx, chaveAvisadasDe(organizacaoId, d.email));
-        // Só o que foi no e-mail desta pessoa (as cidades dela); as outras cidades não contam como avisadas.
-        const noEmail = agenda.secoes.filter((x) => !d.cidades.length || d.cidades.includes(x.cidade));
-        const value = { avisadas: avisadasDepois(atuais, noEmail.flatMap((x) => x.novas.map((n) => n.evento)), corte, marco) };
+        const value = { avisadas: avisadasDepois(atuais, enviada.eventos, corte, marco) };
         await tx
           .insert(appSettings)
           .values({ key: chaveAvisadasDe(organizacaoId, d.email), value })

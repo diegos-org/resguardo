@@ -121,6 +121,10 @@ describe("montagem da agenda", () => {
     // Rio com mais de um imóvel no formato por reserva: o código do imóvel aparece.
     expect(texto).toContain("• 403 · Eva — entrada sex 02/10 a partir das 14h");
     expect(texto).not.toContain("🧹");
+    // Estada que começa antes da janela e termina depois dela não aparece (nenhum movimento nos 5 dias).
+    await nova(buzios, "2026-09-20", "2026-10-20", "2026-09-01T12:00:00Z", { hospedeNome: "Longa" });
+    const b = await montarAgenda(db, org, "2026-10-05", null);
+    expect(textoDaAgenda(b)).not.toContain("Longa");
   });
 
   it("reservas novas desde a última agenda aparecem mesmo fora da janela; pendentes e canceladas não", async () => {
@@ -233,6 +237,31 @@ describe("configuração e envio", () => {
     // Nova execução no mesmo dia: a marca continua, nada é reenviado.
     expect(await enviarAgenda(db, org, correio, new Date(AGORA.getTime() + 60_000))).toMatchObject({ enviados: 0, jaEnviados: 1 });
     expect(enviadas).toHaveLength(1);
+  });
+
+  it("retomada manda exatamente o pedido guardado na tentativa original (mesmo com reservas novas no meio)", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    const original = new Date(AGORA.getTime() - 20 * 60_000);
+    const carga = { assunto: "Agenda SCL — original", texto: "texto original\n", eventos: ["ev-1"] };
+    await db.insert(appSettings).values({ key: `agenda-diaria:${org}:2026-10-01:a@example.com`, value: { em: original.toISOString(), estado: "enviando", corte: original.toISOString(), carga } });
+    await nova(rio, "2027-01-10", "2027-01-12", new Date(AGORA.getTime() - 10 * 60_000).toISOString());
+    const correio = new CorreioMemoria();
+    expect(await enviarAgenda(db, org, correio, AGORA)).toMatchObject({ enviados: 1 });
+    expect(correio.enviadas[0]).toMatchObject({ assunto: "Agenda SCL — original", texto: "texto original\n" });
+    // As avisadas são as do pedido original.
+    const [av] = await db.select().from(appSettings).where(eq(appSettings.key, `agenda-diaria:avisadas:${org}:a@example.com`));
+    expect((av.value as { avisadas: { id: string }[] }).avisadas.map((x) => x.id)).toEqual(["ev-1"]);
+  });
+
+  it("primeira agenda retomada: as 24h contam do corte original, não da retomada", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    const original = new Date(AGORA.getTime() - 20 * 60_000);
+    await db.insert(appSettings).values({ key: `agenda-diaria:${org}:2026-10-01:a@example.com`, value: { em: original.toISOString(), estado: "enviando", corte: original.toISOString() } });
+    // Criada 24h − 5 min antes do corte original (entre corte−24h e agora−24h).
+    await nova(rio, "2027-02-15", "2027-02-17", new Date(original.getTime() - 86_400_000 + 5 * 60_000).toISOString());
+    const correio = new CorreioMemoria();
+    await enviarAgenda(db, org, correio, AGORA);
+    expect(correio.enviadas[0].texto).toContain("entrada seg 15/02");
   });
 
   it("retomada de tentativa interrompida usa o corte da tentativa original (reserva entre as duas vai na próxima)", async () => {
