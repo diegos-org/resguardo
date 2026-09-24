@@ -12,6 +12,8 @@ import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
 import type { ItemCalendario } from "@/calendario/grade";
 import { type EstadoLimpeza, imoveis, lancamentos, limpezas, profissionaisLimpeza, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { listarContratos } from "@/contratos/repositorio";
+import { contratoVigente } from "@/contratos/regras";
 import { garantirCategoriasIniciais, listarCategorias } from "@/despesas/categorias";
 import { estornarDespesa, obterDespesa, registrarDespesa } from "@/despesas/despesas";
 import { uuidValido } from "@/lib/ids";
@@ -164,6 +166,8 @@ export async function listarLimpezas(db: Db, organizacaoId: string, f: Periodo &
       avisos.push("Cancelada à mão, mas a reserva continua confirmada: confira se a saída não precisa de limpeza.");
     if ((l.estado === "pedida" || l.estado === "confirmada") && l.data < f.hoje) avisos.push("A data já passou e a limpeza não foi registrada como realizada.");
     if (l.estado === "realizada" && l.custo === null) avisos.push("Custo não informado.");
+    if (l.estado === "realizada" && l.custo !== null && l.custo > 0 && !l.despesaId)
+      avisos.push("Custo não lançado no livro: o imóvel não estava em gestão completa nessa data. Lance em Despesas indicando quem paga.");
     if (l.estado === "realizada" && l.despesaId && x.despesaEstornada) avisos.push("A despesa desta limpeza foi estornada em Despesas: informe o custo de novo para lançar.");
     const movida = l.data < f.inicio || l.data >= f.fim || Boolean(f.imovelIds && !f.imovelIds.includes(l.imovelId));
     return { ...l, movida, imovelCodigo: x.imovelCodigo, reservaCodigo: x.reservaCodigo, profissional: x.profissional, avisos };
@@ -210,8 +214,9 @@ async function profissionalAtivo(tx: Db, organizacaoId: string, id: string): Pro
 
 /** Muda o estado com trava e histórico. `de` lista os estados de onde a mudança é permitida. */
 /**
- * Deixa a despesa da limpeza de acordo com o custo: realizada com custo → uma despesa da empresa
- * (categoria de limpeza, a pagar) com esse valor; sem custo ou reaberta → nenhuma. Troca de valor
+ * Deixa a despesa da limpeza de acordo com o custo: realizada com custo, em imóvel de gestão
+ * completa → uma despesa da empresa (categoria de limpeza, a pagar) com esse valor; sem custo,
+ * reaberta ou outro contrato → nenhuma. Troca de valor
  * estorna a anterior e lança outra. Despesa já paga não é mexida automaticamente: vira aviso
  * para corrigir em Despesas. Devolve o id da despesa em vigor (ou null), ou o erro.
  */
@@ -225,6 +230,11 @@ async function acertarDespesa(tx: Db, organizacaoId: string, l: Limpeza, autorId
     if ((await estornarDespesa(tx, organizacaoId, vigente.id, "Custo da limpeza mudou", autorId)) !== true) return { erro: "Não foi possível estornar a despesa anterior desta limpeza." };
   }
   if (desejado === null) return { id: null };
+  // Só na gestão completa a limpeza é custo interno da empresa (DECISOES-OPERACIONAIS): em
+  // contrato online, marketplace ou sem contrato na data, não se supõe quem paga — fica o aviso
+  // na lista para lançar em Despesas.
+  const contrato = contratoVigente(await listarContratos(tx, organizacaoId, l.imovelId), l.data);
+  if (contrato?.tipo !== "gestao_completa") return { id: null };
   await garantirCategoriasIniciais(tx, organizacaoId);
   const categoria = (await listarCategorias(tx, organizacaoId)).find((c) => /limpeza/i.test(c.nome));
   if (!categoria) return { erro: "Não há categoria de despesa ativa com “Limpeza” no nome: crie ou reative uma em Despesas → Categorias." };

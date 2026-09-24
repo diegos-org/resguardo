@@ -4,6 +4,7 @@ import { historicoDe } from "@/auditoria/auditoria";
 import { imoveis, lancamentos, limpezas, organizacoes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
+import { criarContrato } from "@/contratos/repositorio";
 import { atualizarCategoria, listarCategorias } from "@/despesas/categorias";
 import { estornarDespesa, marcarDespesaPaga, obterDespesa } from "@/despesas/despesas";
 import type { DadosReserva } from "@/reservas/regras";
@@ -63,6 +64,8 @@ beforeEach(async () => {
       { organizacaoId: org, codigo: "102", nome: "Um" },
     ])
     .returning();
+  // Gestão completa: a limpeza é custo da empresa (vai para o livro).
+  for (const i of [a, b]) await criarContrato(db, org, i, { tipo: "gestao_completa", comissao: "15", inicio: "2025-01-01" }, null);
 });
 afterEach(() => close());
 
@@ -270,6 +273,20 @@ describe("custo no livro", () => {
     expect(await marcarDespesaPaga(db, org, depois.despesaId!, "2026-10-16", null)).toBe(true);
     expect(await informarCusto(db, org, l.id, 17000, null)).toMatchObject({ ok: false, erro: expect.stringContaining("já foi paga") });
     expect(await despesasNoLivro()).toBe(-16000);
+  });
+
+  it("imóvel em gestão online: o custo não vira despesa da empresa; fica o aviso", async () => {
+    const [c] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "555", nome: "Online" }).returning();
+    await criarContrato(db, org, c.id, { tipo: "gestao_online", comissao: "10", inicio: "2025-01-01" }, null);
+    await criarReserva(db, org, reserva(c.id, "2026-10-10", "2026-10-15"), null);
+    await sincronizarLimpezas(db, org, periodo);
+    const maria = await profissional();
+    const l = (await lista()).find((x) => x.imovelCodigo === "555")!;
+    expect(await realizarLimpeza(db, org, l.id, { profissionalId: maria, custo: 15000 }, "2026-10-15", null)).toEqual({ ok: true });
+    expect(await despesasNoLivro()).toBe(0);
+    const depois = (await lista()).find((x) => x.imovelCodigo === "555")!;
+    expect(depois).toMatchObject({ custo: 15000, despesaId: null });
+    expect(depois.avisos.join(" ")).toContain("não estava em gestão completa");
   });
 
   it("despesa estornada em Despesas: aviso e dá para lançar de novo; sem categoria de limpeza: avisa", async () => {
