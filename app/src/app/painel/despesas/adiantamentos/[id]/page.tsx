@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { podeFazer } from "@/acesso/politica";
+import { autorizar, podeFazer } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { historicoDe } from "@/auditoria/auditoria";
 import { contestarAcao, desfazerAcao, quitarAcao, resolverAcao } from "@/adiantamentos/acoes";
@@ -23,7 +23,8 @@ export default async function Adiantamento({ params, searchParams }: PageProps<"
   const { salvo, erro } = await searchParams;
   const db = getDb();
   const a = await obterAdiantamento(db, sessao.organizacaoId, id);
-  if (!a) notFound();
+  // Autorização por recurso: proprietário só o adiantamento de imóvel dele (deny-by-default).
+  if (!a || !autorizar(sessao, "financeiro:ler", { organizacaoId: sessao.organizacaoId, imovelId: a.imovelId ?? undefined }).permitido) notFound();
   const historico = await historicoDe(db, sessao.organizacaoId, "adiantamento", a.id);
   const editar = podeFazer(sessao.papel, "despesa:editar");
   const hoje = hojeISO();

@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { destinoPainel } from "@/acesso/painel";
+import { autorizar } from "@/acesso/politica";
 import { historicoDe } from "@/auditoria/auditoria";
 import { imoveis, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
@@ -111,6 +113,16 @@ describe("quitação sem dupla cobrança", () => {
     expect(await estornarDespesa(db, org, despesaId, "Lançada errado", null)).toBe(true);
     expect(await saldo()).toBe(0);
     expect(await listarAdiantamentos(db, org)).toEqual([]);
+  });
+
+  it("filtro por imóveis (proprietário vê só os dele) e painel fechado para proprietário", async () => {
+    const [outro] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "102", nome: "Outro" }).returning();
+    expect(await listarAdiantamentos(db, org, { imovelIds: [outro.id] })).toEqual([]);
+    expect(await listarAdiantamentos(db, org, { imovelIds: [] })).toEqual([]);
+    expect(await listarAdiantamentos(db, org, { imovelIds: [im] })).toHaveLength(1);
+    const sessaoDono = { usuarioId: "u", organizacaoId: org, papel: "proprietario" as const, imovelIds: [outro.id] };
+    expect(destinoPainel(sessaoDono)).toEqual({ ok: false, redirecionar: "/portal" });
+    expect(autorizar(sessaoDono, "financeiro:ler", { organizacaoId: org, imovelId: im }).permitido).toBe(false);
   });
 
   it("outra organização não quita nem vê", async () => {

@@ -14,7 +14,11 @@ export default async function Adiantamentos({ searchParams }: PageProps<"/painel
   const sessao = await exigirSessaoPainel();
   if (!podeFazer(sessao.papel, "financeiro:ler")) redirect("/painel");
   const { todos } = await searchParams;
-  const lista = await listarAdiantamentos(getDb(), sessao.organizacaoId, { somenteAbertos: todos !== "1" });
+  // O painel já é só da equipe; mesmo assim, proprietário nunca vê imóveis que não são dele.
+  const lista = await listarAdiantamentos(getDb(), sessao.organizacaoId, {
+    somenteAbertos: todos !== "1",
+    ...(sessao.papel === "proprietario" ? { imovelIds: [...sessao.imovelIds] } : {}),
+  });
   const resumo = resumoPorProprietario(lista);
   return (
     <>
