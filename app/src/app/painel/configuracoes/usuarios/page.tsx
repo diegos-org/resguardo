@@ -22,6 +22,7 @@ const NOME_ACAO: Record<(typeof ACOES)[number], string> = {
   "limpeza:editar": "Gerir limpezas",
   "manutencao:ler": "Ver manutenção",
   "manutencao:editar": "Gerir manutenção",
+  "manutencao:aprovar": "Aprovar orçamento de manutenção e decidir quem paga",
   "mensagem:ler": "Ver mensagens",
   "mensagem:enviar": "Enviar mensagens",
   "usuario:gerenciar": "Gerir usuários",

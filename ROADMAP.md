@@ -112,7 +112,7 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 | ID | Item | Estado | Depende de |
 |---|---|---|---|
 | M6.1 | Limpezas: gerar no dia do checkout; estados pedida/confirmada/realizada; profissional; custo | a fazer | M3.4 |
-| M6.2 | Manutenção: pedido, orçamento, aprovação de Diego, execução, custo e responsável (empresa/proprietário) | a fazer | M4.3 |
+| M6.2 | Manutenção: pedido, orçamento, aprovação de Diego, execução, custo e responsável (empresa/proprietário) | feito | M4.3 |
 | M6.3 | Agenda diária (20h, próximos 5 dias, Rio e Búzios separados) enviada para a equipe | a fazer | M6.1 |
 | M6.4 | Documentos de portaria (só 403): checklist de pedidos, sem armazenar documentos no Git | a fazer | M3.5 |
 | M6.5 | Rotinas recorrentes (manutenção quinzenal, faxinas semanal, lembrete mensal) | a fazer | M6.2 |

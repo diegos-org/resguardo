@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 24/09/2026, aba Apartamentos com o resultado por imóvel (M4.7).
+> **Última atualização:** 24/09/2026, manutenção com orçamento e sua aprovação (M6.2).
 
 ---
 
@@ -30,7 +30,7 @@
 | M3 Reservas | Reservas, calendário central, leitura do Beds24 | 🟡 em andamento |
 | M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | 🟡 em andamento |
 | M5 Portal do proprietário | Relatórios, saldos, PDF | ⚪ aguardando |
-| M6 Operação | Limpezas, manutenção, agenda diária | ⚪ aguardando |
+| M6 Operação | Limpezas, manutenção, agenda diária | 🟡 em andamento |
 | M7 Site público | Site novo com disponibilidade real | ⚪ aguardando |
 | M8 Reserva direta | Pagamento pelo Mercado Pago | ⚪ aguardando |
 | M9 Portal do hóspede | Acesso do hóspede e mensagens automáticas | ⚪ aguardando |
@@ -280,6 +280,20 @@
     de meses (até 36). Intervalo inválido não é adivinhado: aparece um aviso e vale o filtro;
   - com "todos os imóveis", entra também uma linha **Geral da empresa** (despesas sem imóvel)
     e os imóveis arquivados que tiveram movimento, então o total bate com o Início.
+- M6.2: **manutenção** (menu **Manutenção**). Cada serviço segue quatro passos:
+  - a equipe registra o **pedido** (imóvel e o que precisa ser feito) e depois o **orçamento**
+    (quem vai fazer e o valor);
+  - **você aprova** e escolhe **quem paga**: empresa ou proprietário. Nada é decidido pelo valor.
+    Enquanto não aprovar, a tela avisa "não execute antes". Se chegar um orçamento novo depois
+    da aprovação, ele volta para você aprovar de novo;
+  - feito o serviço, a equipe registra a **data**;
+  - quem cuida do financeiro **lança o custo final**. Ele vira uma despesa com o imóvel, o
+    fornecedor e quem paga já preenchidos. Se o proprietário paga e a empresa adiantou, vira
+    adiantamento a cobrar, como nas outras despesas.
+
+  A tela avisa quando o custo passa do orçamento, quando falta lançar o custo e quando a
+  despesa foi estornada. Também dá para recusar ou cancelar, sempre com motivo e confirmação.
+  A equipe de operação cuida dos pedidos, mas não aprova nem lança custo.
 - M4.1: **base do financeiro (o "livro" de lançamentos).** Cada fato financeiro vira um
   lançamento: valor bruto da reserva, taxa do canal, comissão SCL, parte do proprietário,
   recebimentos, repasses, despesas da empresa, despesas do proprietário, adiantamentos,
@@ -365,9 +379,13 @@
 |---|---|
 | ![Repasses](docs/telas/repasses.png) | ![Apartamentos no celular](docs/telas/apartamentos-celular.png) |
 
-| Apartamentos (resultado por imóvel) |
+| Apartamentos (resultado por imóvel) | Manutenção no celular |
+|---|---|
+| ![Apartamentos](docs/telas/apartamentos.png) | ![Manutenção no celular](docs/telas/manutencao-celular.png) |
+
+| Manutenção (pedido, orçamento, aprovação e custo) |
 |---|
-| ![Apartamentos](docs/telas/apartamentos.png) |
+| ![Manutenção](docs/telas/manutencao.png) |
 
 A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 
@@ -482,7 +500,10 @@ ambiente).
    Proprietários) se a chave Pix está preenchida — a tela de Repasses usa ela para o botão
    "Copiar Pix" e avisa quando falta.
 7. **Booking:** criar os anúncios (ver "Copiar anúncios do Airbnb para o Booking" na seção 7).
-8. **Sistema antigo (referência):** mande o arquivo (zip) do sistema antigo — o jeito mais
+8. **Manutenção:** quando aparecer "aguardando aprovação" (no menu **Manutenção**), confira o
+   orçamento, escolha quem paga (empresa ou proprietário) e aprove, ou recuse com o motivo.
+   Só você (administrador) vê esses botões.
+9. **Sistema antigo (referência):** mande o arquivo (zip) do sistema antigo — o jeito mais
    fácil é subir no seu **Google Drive** e me dizer o nome do arquivo (o Drive já está
    conectado aqui). Eu só leio para levantar todas as telas e capacidades e comparar com o
    plano; **nada dele vai para o GitHub**, e dados reais de clientes não são copiados.
