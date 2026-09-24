@@ -111,6 +111,18 @@ describe("painel inicial", () => {
     expect(d.porMes?.[9]).toEqual({ mes: 10, receitaBruta: 100000, comissoes: 12750 });
   });
 
+  it("todos os imóveis: adiantamento de imóvel arquivado continua no alerta; sem imóvel ativo o financeiro aparece", async () => {
+    const c = await criarCategoria(db, org, "Manutenção", null);
+    if (!c.ok) throw new Error("categoria");
+    const base = { categoriaId: c.categoria.id, proprietarioId: null, fornecedor: "", comprovante: "", paga: true, dataPagamento: "2026-10-05", data: "2026-10-05" };
+    await registrarDespesa(db, org, { ...base, responsavel: "proprietario", pagoPor: "empresa", descricao: "Reparo", valor: 40000, imovelId: a }, null);
+    await registrarDespesa(db, org, { ...base, responsavel: "empresa", pagoPor: "empresa", descricao: "Contador", valor: 30000, imovelId: null }, null);
+    await db.update(imoveis).set({ ativo: false }); // todos arquivados
+    const d = await carregar();
+    expect(d.alertas.map((x) => x.texto).join(" | ")).toContain("Adiantamentos a cobrar dos proprietários");
+    expect(d.financeiro?.despesasEmpresa).toBe(30000);
+  });
+
   it("ajuste pendente aparece uma vez só nos alertas (não como acerto pendente)", async () => {
     const r = await registrarAjuste(
       db,

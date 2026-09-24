@@ -68,7 +68,8 @@ export async function carregarDashboard(
 
   let financeiro: Financeiro | null = null;
   let porMes: Dashboard["porMes"] = null;
-  if (o.verFinanceiro && !vazio) {
+  // "Todos" roda mesmo sem imóvel ativo: despesas gerais e imóveis arquivados continuam contando.
+  if (o.verFinanceiro && (!vazio || o.todos)) {
     // "Todos os imóveis" inclui o que não é de imóvel nenhum (custos gerais da empresa).
     const f = o.todos ? o.periodo : { ...o.periodo, imovelIds: ids };
     const inicioAno = `${o.ano}-01-01`;
@@ -92,7 +93,7 @@ export async function carregarDashboard(
       regrasEmVigor(db, organizacaoId, o.hoje),
       listarDespesas(db, organizacaoId, o.todos ? {} : { imovelIds: ids }),
       listarAjustes(db, organizacaoId, { pendentes: true }),
-      listarAdiantamentos(db, organizacaoId, { imovelIds: ids, somenteAbertos: true }),
+      listarAdiantamentos(db, organizacaoId, o.todos ? { somenteAbertos: true } : { imovelIds: ids, somenteAbertos: true }),
       db
         .select({ n: sql<number>`count(*)::int` })
         .from(lancamentos)
