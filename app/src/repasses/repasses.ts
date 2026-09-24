@@ -16,7 +16,7 @@
 import { and, asc, desc, eq, gt, inArray, isNull, lt, ne, or, sql, sum } from "drizzle-orm";
 import { desfazerCompensacoesDoRepasse, listarAdiantamentos, quitar } from "@/adiantamentos/adiantamentos";
 import { registrarAuditoria } from "@/auditoria/auditoria";
-import { ajustes, imoveis, lancamentos, proprietarioImoveis, proprietarios, repasses, type SituacaoRepasse } from "@/db/schema";
+import { ajustes, contestacoesAdiantamento, imoveis, lancamentos, proprietarioImoveis, proprietarios, repasses, type SituacaoRepasse } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { estornar, lancar, mudarEstado } from "@/financeiro/ledger";
 import { dataValida } from "@/reservas/regras";
@@ -214,6 +214,23 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
         ),
       );
     diferenca = Number(depois?.total ?? 0);
+    // Mudança só de situação (sem lançamento): adiantamento deste mês ou antes que estava
+    // contestado no último repasse (ficou fora do desconto) e deixou de estar — ou o contrário.
+    const deste = doMes.filter((a) => a.aberto > 0);
+    if (deste.length) {
+      const contestacoes = await db
+        .select({ adiantamentoId: contestacoesAdiantamento.adiantamentoId, abertaEm: contestacoesAdiantamento.abertaEm, resolvidaEm: contestacoesAdiantamento.resolvidaEm })
+        .from(contestacoesAdiantamento)
+        .where(and(eq(contestacoesAdiantamento.organizacaoId, org), inArray(contestacoesAdiantamento.adiantamentoId, deste.map((a) => a.id))));
+      const corte = posterior.criadoEm.getTime();
+      for (const a of deste) {
+        const naqueleRepasse = contestacoes.some((c) => c.adiantamentoId === a.id && c.abertaEm.getTime() <= corte && (!c.resolvidaEm || c.resolvidaEm.getTime() > corte));
+        const agora = a.situacao === "contestado";
+        // Contestado fica fora do desconto (volta ao saldo a favor do proprietário).
+        if (naqueleRepasse && !agora) diferenca -= a.aberto;
+        if (!naqueleRepasse && agora) diferenca += a.aberto;
+      }
+    }
     if (diferenca !== 0) avisos.push(`Depois do repasse de ${nomeMes(posterior.mes.slice(0, 7))}, o acerto até este mês mudou em ${(diferenca / 100).toFixed(2).replace(".", ",")}: a diferença entra no próximo repasse.`);
   }
   return { ...calc, proprietarioId: dono.id, nome: dono.nome, email: dono.email, chavePix: dono.chavePix, imoveis: vinculos.map((v) => v.codigo), bloqueios, avisos, repasse: atual ?? null,

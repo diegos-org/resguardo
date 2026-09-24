@@ -181,6 +181,22 @@ describe("fechamento do mês", () => {
     expect((await prever()).avisos.join(" ")).toContain("mudou em -400,00: a diferença entra no próximo repasse");
   });
 
+  it("mês sem repasse próprio: contestação resolvida depois do repasse seguinte aparece como diferença", async () => {
+    await reparo(40000);
+    const [adiant] = await listarAdiantamentos(db, org, { proprietarioId: dono });
+    await contestar(db, org, adiant.id, "Não autorizei", null);
+    await criarReserva(db, org, reserva(a, "2026-11-10", "2026-11-13"), null);
+    expect((await fecharMes(db, org, dono, "2026-11", "2026-12-01", null)).ok).toBe(true);
+    const outubro = async () => (await preverRepasses(db, org, MES, "2026-12-02"))[0];
+    expect(await outubro()).toMatchObject({ repasse: null, repassePosterior: "2026-11", diferencaPosFechamento: 0 });
+    // Mantida depois do repasse de novembro: a dívida de outubro não foi descontada nele.
+    await resolverContestacao(db, org, adiant.id, { resolucao: "mantida", nota: "", data: "2026-12-02" }, null);
+    expect(await outubro()).toMatchObject({ diferencaPosFechamento: -40000 });
+    // Contestada de novo: volta a ficar fora do desconto, como no repasse.
+    await contestar(db, org, adiant.id, "Revisar de novo", null);
+    expect(await outubro()).toMatchObject({ diferencaPosFechamento: 0 });
+  });
+
   it("imóvel devedor é compensado com o outro do mesmo proprietário; cada imóvel fica zerado", async () => {
     await reparo(10000, b); // o 102 não tem receita: só a dívida
     const p = await prever();
