@@ -335,7 +335,8 @@ describe("configuração e envio", () => {
     expect(correio.enviadas[0].texto).toContain("entrada seg 03/05");
     expect(correio.enviadas[0].texto).toContain("pode já ter vindo numa agenda anterior");
     const [marca] = await db.select().from(appSettings).where(eq(appSettings.key, `agenda-diaria:${org}:2026-10-01:a@example.com`));
-    expect((marca.value as { estado: string }).estado).toBe("incerto");
+    // Coberto por este envio (com o aviso): resolvido.
+    expect((marca.value as { estado: string }).estado).toBe("resolvido");
   });
 
   it("avisadas: só as das cidades da pessoa; ganhar outra cidade traz a reserva recente dela", async () => {
@@ -404,6 +405,50 @@ describe("configuração e envio", () => {
     await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
     await enviarAgenda(db, org, correio, new Date(dia2.getTime() + 60_000), { manual: true });
     expect(correio.enviadas[2].texto).toContain("entrada ter 05/10");
+  });
+
+  it("'enviar agora' ao mesmo tempo que o das 20h: um envio por vez para a pessoa (sem repetir a reserva)", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    await nova(rio, "2027-11-01", "2027-11-03", new Date(AGORA.getTime() - 60_000).toISOString());
+    const saiu: Mensagem[] = [];
+    let libera!: () => void;
+    const espera = new Promise<void>((ok) => (libera = ok));
+    const lento: Correio = { nome: "lento", enviar: async (m) => { saiu.push(m); await espera; } };
+    const agendado = enviarAgenda(db, org, lento, AGORA);
+    await vi.waitFor(() => expect(saiu).toHaveLength(1));
+    const manual = await enviarAgenda(db, org, lento, new Date(AGORA.getTime() + 1_000), { manual: true });
+    expect(manual.falhas[0]).toContain("em andamento");
+    libera();
+    expect(await agendado).toMatchObject({ enviados: 1 });
+    expect(saiu).toHaveLength(1);
+    // A trava sai no fim; uma trava esquecida (execução que caiu) vence em 15 minutos.
+    await db.insert(appSettings).values({ key: `agenda-diaria:trava:${org}:a@example.com`, value: { em: new Date(AGORA.getTime() - 20 * 60_000).toISOString() } });
+    const correio = new CorreioMemoria();
+    expect(await enviarAgenda(db, org, correio, new Date(AGORA.getTime() + 2_000), { manual: true })).toMatchObject({ enviados: 1 });
+    expect(await db.select().from(appSettings).where(eq(appSettings.key, `agenda-diaria:trava:${org}:a@example.com`))).toEqual([]);
+  });
+
+  it("envio incerto de outro dia continua avisado até um envio dar certo", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    await nova(rio, "2027-12-06", "2027-12-08", new Date(AGORA.getTime() - 60 * 60_000).toISOString());
+    await db.insert(appSettings).values([
+      { key: `agenda-diaria:ultima:${org}:a@example.com`, value: { em: "2026-09-30T23:00:00.000Z" } },
+      { key: `agenda-diaria:${org}:2026-10-01:a@example.com`, value: { em: AGORA.toISOString(), estado: "enviando", corte: AGORA.toISOString() } },
+    ]);
+    const dia2 = new Date("2026-10-02T23:00:00Z");
+    const recusa: Correio = { nome: "recusa", enviar: async () => Promise.reject(new Error("Falha ao enviar e-mail (HTTP 422).")) };
+    expect((await enviarAgenda(db, org, recusa, dia2)).falhas).toHaveLength(1);
+    // Nova tentativa no mesmo dia: o aviso continua.
+    const correio = new CorreioMemoria();
+    await enviarAgenda(db, org, correio, new Date(dia2.getTime() + 60_000));
+    expect(correio.enviadas[0].texto).toContain("pode já ter vindo numa agenda anterior");
+    const [ontem] = await db.select().from(appSettings).where(eq(appSettings.key, `agenda-diaria:${org}:2026-10-01:a@example.com`));
+    expect((ontem.value as { estado: string }).estado).toBe("resolvido");
+    // Resolvido: no dia seguinte, sem aviso.
+    const dia3 = new CorreioMemoria();
+    await nova(rio, "2027-12-20", "2027-12-22", new Date(dia2.getTime() + 3_600_000).toISOString());
+    await enviarAgenda(db, org, dia3, new Date("2026-10-03T23:00:00Z"));
+    expect(dia3.enviadas[0].texto).not.toContain("pode já ter vindo");
   });
 
   it("reserva avisada, cancelada e confirmada de novo depois é avisada outra vez (é outro evento)", async () => {

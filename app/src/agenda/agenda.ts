@@ -376,6 +376,7 @@ const chaveEnvio = (org: string, data: string, email: string, manual = false) =>
 
 const chaveUltimaDe = (org: string, email: string) => `agenda-diaria:ultima:${org}:${email}`;
 const chaveAvisadasDe = (org: string, email: string) => `agenda-diaria:avisadas:${org}:${email}`;
+const chaveTravaDe = (org: string, email: string) => `agenda-diaria:trava:${org}:${email}`;
 
 /**
  * Sobreposição da busca de reservas novas antes do marco: uma reserva gravada com horário anterior
@@ -453,23 +454,46 @@ export async function previaDaAgenda(db: Db, organizacaoId: string, agora: Date 
 /**
  * Envios de dias anteriores para esta pessoa que ficaram "enviando" (o provedor pode ter aceitado,
  * mas o registro não foi gravado e a chave do provedor já é outra). Marca como "incerto" e devolve
- * o maior corte: as reservas novas até ele saem de novo, com o aviso de que podem já ter chegado.
+ * o maior corte entre eles e os "incerto" ainda não resolvidos: as reservas novas até ele saem de
+ * novo, com o aviso de que podem já ter chegado. Só um envio que dá certo resolve (`chaves`).
  */
-async function reconciliarIncertos(db: Db, organizacaoId: string, email: string, hoje: string): Promise<Date | null> {
+async function reconciliarIncertos(db: Db, organizacaoId: string, email: string, hoje: string): Promise<{ ate: Date | null; chaves: string[] }> {
   const linhas = await db
     .select({ key: appSettings.key, value: appSettings.value })
     .from(appSettings)
-    .where(and(sql`${appSettings.key} like ${`agenda-diaria%:${organizacaoId}:%`}`, sql`${appSettings.value} ->> 'estado' = 'enviando'`));
+    .where(and(sql`${appSettings.key} like ${`agenda-diaria%:${organizacaoId}:%`}`, sql`${appSettings.value} ->> 'estado' in ('enviando', 'incerto')`));
   let maior: Date | null = null;
+  const chaves: string[] = [];
   for (const l of linhas) {
     const m = l.key.match(/^agenda-diaria(?:-manual)?:[^:]+:(\d{4}-\d{2}-\d{2}):(.+)$/);
     if (!m || m[2] !== email || m[1] >= hoje) continue;
-    const v = l.value as { corte?: string; em?: string };
+    const v = l.value as { corte?: string; em?: string; estado?: string };
     const corte = new Date(v.corte ?? v.em ?? "");
-    await db.update(appSettings).set({ value: { ...v, estado: "incerto" }, updatedAt: new Date() }).where(eq(appSettings.key, l.key));
+    if (v.estado === "enviando") await db.update(appSettings).set({ value: { ...v, estado: "incerto" }, updatedAt: new Date() }).where(eq(appSettings.key, l.key));
+    chaves.push(l.key);
     if (!Number.isNaN(corte.getTime()) && (!maior || corte > maior)) maior = corte;
   }
-  return maior;
+  return { ate: maior, chaves };
+}
+
+/**
+ * Um envio por vez para cada pessoa ("enviar agora" junto com o das 20h): a trava vale da montagem
+ * do e-mail até o registro, para que os dois não leiam as mesmas avisadas e repitam a reserva.
+ * Trava mais velha que ENVIO_EXPIRA_MS (execução que caiu) pode ser tomada.
+ */
+async function travarPessoa(db: Db, chave: string, agora: Date): Promise<boolean> {
+  const valor = { em: agora.toISOString() };
+  const [nova] = await db.insert(appSettings).values({ key: chave, value: valor }).onConflictDoNothing().returning();
+  if (nova) return true;
+  const [l] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, chave));
+  const em = (l?.value as { em?: string } | undefined)?.em;
+  if (em && agora.getTime() - Date.parse(em) < ENVIO_EXPIRA_MS) return false;
+  const [tomada] = await db
+    .update(appSettings)
+    .set({ value: valor, updatedAt: new Date() })
+    .where(and(eq(appSettings.key, chave), em ? sql`${appSettings.value} ->> 'em' = ${em}` : sql`true`))
+    .returning();
+  return !!tomada;
 }
 
 /** Tentativa "enviando" mais velha que isto (a execução caiu no meio) pode ser refeita. */
@@ -530,13 +554,14 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
     if (!agendas.has(k)) agendas.set(k, await montarAgenda(db, organizacaoId, hoje, desde, corte));
     return agendas.get(k)!;
   };
-  for (const d of config.destinatarios) {
+  const enviarPara = async (d: Destinatario): Promise<void> => {
     const chave = chaveEnvio(organizacaoId, hoje, d.email, o.manual);
-    const incertoAte = await reconciliarIncertos(db, organizacaoId, d.email, hoje);
+    const incertos = await reconciliarIncertos(db, organizacaoId, d.email, hoje);
+    const incertoAte = incertos.ate;
     const reserva = await reservarEnvio(db, chave, agora);
     if (!reserva) {
       r.jaEnviados++;
-      continue;
+      return;
     }
     const { corte } = reserva;
     let carga = reserva.carga;
@@ -580,12 +605,12 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
         // minutos repete o mesmo pedido com a mesma chave; se virar o dia, vira "incerto" e a agenda
         // seguinte avisa que as reservas podem já ter vindo.
         r.falhas.push(`${d.email}: envio incerto (${msg}); nova tentativa com o mesmo e-mail depois de 15 minutos`);
-        continue;
+        return;
       }
       // O provedor recusou (ou nem chegou a ser chamado): libera para tentar de novo.
       await db.delete(appSettings).where(eq(appSettings.key, chave));
       r.falhas.push(`${d.email}: ${msg}`);
-      continue;
+      return;
     }
     // Daqui em diante o e-mail já saiu: falha ao registrar não libera outro envio (a marca fica).
     r.enviados++;
@@ -599,7 +624,6 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
         await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${chaveUltimaDe(organizacaoId, d.email)}))`);
         const marcoAtual = await lerMarco(tx, chaveUltimaDe(organizacaoId, d.email));
         const marco = marcoAtual && marcoAtual > corte ? marcoAtual : corte;
-        // Cobertura: as cidades deste envio (vazio = todas), somadas às de um envio mais novo que já gravou.
         // Cobertura do marco que fica: a deste envio (vazio = todas) ou, se um envio mais novo já
         // gravou, a dele. Nunca é somada: cidade que saiu da lista deixa de ser coberta, e ao
         // voltar conta como nova para a pessoa (reservas novas das últimas 24h).
@@ -613,11 +637,28 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
           .insert(appSettings)
           .values({ key: chaveAvisadasDe(organizacaoId, d.email), value })
           .onConflictDoUpdate({ target: appSettings.key, set: { value, updatedAt: new Date() } });
+        // Os envios incertos de dias anteriores foram cobertos por este (com o aviso): resolvidos.
+        for (const k of incertos.chaves) {
+          await tx.update(appSettings).set({ value: sql`jsonb_set(${appSettings.value}, '{estado}', '"resolvido"')`, updatedAt: new Date() }).where(eq(appSettings.key, k));
+        }
       });
     } catch (e) {
       r.falhas.push(`${d.email}: enviada, mas não foi possível registrar o envio (${e instanceof Error ? e.message : String(e)})`);
     }
+  };
+  for (const d of config.destinatarios) {
+    const trava = chaveTravaDe(organizacaoId, d.email);
+    if (!(await travarPessoa(db, trava, agora))) {
+      r.falhas.push(`${d.email}: outro envio para esta pessoa está em andamento; tente de novo em alguns minutos`);
+      continue;
+    }
+    try {
+      await enviarPara(d);
+    } finally {
+      await db.delete(appSettings).where(eq(appSettings.key, trava));
+    }
   }
+
   // Para a tela: quando a agenda saiu por último (para alguém).
   if (r.enviados) await gravarMarco(db, chaveUltima(organizacaoId), agora);
   return r;
