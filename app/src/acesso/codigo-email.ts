@@ -15,6 +15,7 @@ import { and, desc, eq, gte, isNull, lt, sql } from "drizzle-orm";
 import { codigosLogin, usuarios } from "@/db/schema";
 import type { Db } from "@/db/types";
 import type { Correio } from "@/email/correio";
+import { temConvitePendente } from "@/convites/convites";
 import { normalizarEmail } from "./entrada";
 
 export const VALIDADE_MS = 10 * 60 * 1000;
@@ -31,11 +32,12 @@ export function gerarCodigoNumerico(): string {
   return String(randomInt(0, 1_000_000)).padStart(6, "0");
 }
 
-/** Pode entrar: usuário cadastrado e ativo, ou e-mail de ADMIN_EMAILS (primeiro acesso). */
+/** Pode entrar: usuário cadastrado e ativo, e-mail de ADMIN_EMAILS (primeiro acesso) ou com convite pendente. */
 export async function podeEntrar(db: Db, email: string, adminEmails: readonly string[]): Promise<boolean> {
   const [u] = await db.select({ ativo: usuarios.ativo }).from(usuarios).where(eq(sql`lower(${usuarios.email})`, email));
   if (u) return u.ativo;
-  return adminEmails.map(normalizarEmail).includes(email);
+  if (adminEmails.map(normalizarEmail).includes(email)) return true;
+  return temConvitePendente(db, email);
 }
 
 export type OpcoesCodigo = {
