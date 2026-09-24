@@ -5,6 +5,8 @@
  *   existem no ambiente. O provedor definitivo é decisão do Diego (M11.2); trocar é
  *   escrever outro adaptador com o mesmo formato.
  */
+import { createHash } from "node:crypto";
+
 export type Mensagem = {
   para: string;
   assunto: string;
@@ -12,6 +14,11 @@ export type Mensagem = {
   /** Chave de idempotência: o provedor ignora um segundo envio com a mesma chave (ex.: nova tentativa). */
   chave?: string;
 };
+
+/** Chave de idempotência com tamanho fixo: hash da chave inteira (cortar poderia juntar e-mails diferentes). */
+export function chaveIdempotencia(chave: string): string {
+  return createHash("sha256").update(chave).digest("hex");
+}
 
 export interface Correio {
   readonly nome: string;
@@ -39,7 +46,7 @@ export class CorreioResend implements Correio {
   async enviar(m: Mensagem) {
     const r = await this.fetchImpl("https://api.resend.com/emails", {
       method: "POST",
-      headers: { Authorization: `Bearer ${this.chave}`, "Content-Type": "application/json", ...(m.chave ? { "Idempotency-Key": m.chave.slice(0, 256) } : {}) },
+      headers: { Authorization: `Bearer ${this.chave}`, "Content-Type": "application/json", ...(m.chave ? { "Idempotency-Key": chaveIdempotencia(m.chave) } : {}) },
       body: JSON.stringify({ from: this.remetente, to: [m.para], subject: m.assunto, text: m.texto }),
     });
     if (!r.ok) throw new Error(`Falha ao enviar e-mail (HTTP ${r.status}).`);

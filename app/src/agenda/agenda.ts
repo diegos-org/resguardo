@@ -322,8 +322,11 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
     // Daqui em diante o e-mail já saiu: falha ao registrar não libera outro envio (a marca fica).
     r.enviados++;
     try {
-      await db.update(appSettings).set({ value: { em: agora.toISOString(), estado: "enviado" }, updatedAt: new Date() }).where(eq(appSettings.key, chave));
-      await gravarMarco(db, chaveUltimaDe(organizacaoId, d.email), agora);
+      // Marca do dia e marco das reservas novas juntos: ou os dois, ou nenhum.
+      await db.transaction(async (tx) => {
+        await tx.update(appSettings).set({ value: { em: agora.toISOString(), estado: "enviado" }, updatedAt: new Date() }).where(eq(appSettings.key, chave));
+        await gravarMarco(tx, chaveUltimaDe(organizacaoId, d.email), agora);
+      });
     } catch (e) {
       r.falhas.push(`${d.email}: enviada, mas não foi possível registrar o envio (${e instanceof Error ? e.message : String(e)})`);
     }

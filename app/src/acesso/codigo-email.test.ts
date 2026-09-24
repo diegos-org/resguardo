@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { codigosLogin, organizacoes, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
-import { type Correio, CorreioMemoria, CorreioResend, correioDoAmbiente } from "@/email/correio";
+import { chaveIdempotencia, type Correio, CorreioMemoria, CorreioResend, correioDoAmbiente } from "@/email/correio";
 import { MAX_CODIGOS_GERAL_POR_HORA, MAX_CODIGOS_POR_HORA, pedirCodigo, verificarCodigo } from "./codigo-email";
 
 let db: Db;
@@ -138,6 +138,10 @@ describe("correio", () => {
     await expect(c.enviar({ para: "a@example.com", assunto: "Oi", texto: "t", chave: "agenda:1" })).rejects.toThrow("HTTP 500");
     // Sem chave, sem cabeçalho; com chave, o provedor recebe a chave de idempotência.
     expect(new Headers(chamadas[0][1].headers).get("Idempotency-Key")).toBeNull();
-    expect(new Headers(chamadas[1][1].headers).get("Idempotency-Key")).toBe("agenda:1");
+    expect(new Headers(chamadas[1][1].headers).get("Idempotency-Key")).toBe(chaveIdempotencia("agenda:1"));
+    // Hash da chave inteira, tamanho fixo: e-mails longos com o mesmo começo não se confundem.
+    const longo = "a".repeat(190);
+    expect(chaveIdempotencia(`agenda:${longo}1@example.com`)).not.toBe(chaveIdempotencia(`agenda:${longo}2@example.com`));
+    expect(chaveIdempotencia(`agenda:${longo}1@example.com`)).toHaveLength(64);
   });
 });
