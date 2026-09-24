@@ -564,6 +564,26 @@ describe("configuração e envio", () => {
     expect(agenda.secoes.flatMap((x) => x.novas).map((n) => n.checkin)).not.toContain("2028-08-07");
   });
 
+  it("prévia da tela: quem não recebe a cidade não segura a reserva que os outros já receberam", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: ["Rio de Janeiro"] }, { email: "b@example.com", cidades: ["Armação dos Búzios"] }] }, null);
+    await nova(rio, "2028-08-14", "2028-08-16", new Date(AGORA.getTime() - 60_000).toISOString());
+    await enviarAgenda(db, org, new CorreioMemoria(), AGORA);
+    const { agenda } = await previaDaAgenda(db, org, new Date(AGORA.getTime() + 60_000));
+    expect(agenda.secoes.flatMap((x) => x.novas).map((n) => n.checkin)).not.toContain("2028-08-14");
+  });
+
+  it("'enviar agora' que fechou o agendado pendente conta como o manual do dia", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    await nova(rio, "2028-09-11", "2028-09-13", new Date(AGORA.getTime() - 60_000).toISOString());
+    const caiu: Correio = { nome: "caiu", enviar: async () => Promise.reject(new ErroEnvioIncerto("Sem resposta do provedor de e-mail")) };
+    await enviarAgenda(db, org, caiu, AGORA);
+    const correio = new CorreioMemoria();
+    expect(await enviarAgenda(db, org, correio, new Date(AGORA.getTime() + 20 * 60_000), { manual: true })).toMatchObject({ enviados: 1 });
+    // Outro clique no mesmo dia: já enviado, não manda de novo.
+    expect(await enviarAgenda(db, org, correio, new Date(AGORA.getTime() + 25 * 60_000), { manual: true })).toMatchObject({ enviados: 0, jaEnviados: 1 });
+    expect(correio.enviadas).toHaveLength(1);
+  });
+
   it("prévia da tela: imóvel reativado mostra as reservas das últimas 24h, como no envio", async () => {
     await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
     await db.update(imoveis).set({ ativo: false }).where(eq(imoveis.id, buzios));

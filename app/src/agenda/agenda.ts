@@ -483,10 +483,16 @@ export async function previaDaAgenda(db: Db, organizacaoId: string, agora: Date 
   const inicios = [...marcos.map((m) => (m ? m.getTime() - SOBREPOSICAO_MS : umDia.getTime())), umDia.getTime(), ...cortesIncertos];
   const desde = marcos.length ? new Date(Math.min(...inicios)) : (ultima ?? umDia);
   const bruta = await montarAgenda(db, organizacaoId, hojeISO("America/Sao_Paulo", agora), desde, agora);
-  // Como no envio: reserva nova que todos os destinatários já receberam não aparece de novo.
-  const listas = await Promise.all(config.destinatarios.map((d) => lerAvisadas(db, chaveAvisadasDe(organizacaoId, d.email))));
-  const deTodos = listas.length ? listas.reduce<Avisada[]>((comum, l) => comum.filter((x) => l.some((y) => y.id === x.id)), listas[0]) : [];
-  const agenda = semAvisadas(bruta, deTodos);
+  // Como no envio: reserva nova que todas as pessoas que recebem aquela cidade já receberam não
+  // aparece de novo (quem não recebe a cidade não conta).
+  const listas = await Promise.all(config.destinatarios.map(async (d) => ({ d, avisadas: new Set((await lerAvisadas(db, chaveAvisadasDe(organizacaoId, d.email))).map((x) => x.id)) })));
+  const agenda: Agenda = {
+    ...bruta,
+    secoes: bruta.secoes.map((sec) => {
+      const recebem = listas.filter((x) => !x.d.cidades.length || x.d.cidades.includes(sec.cidade));
+      return { ...sec, novas: sec.novas.filter((n) => !recebem.length || !recebem.every((x) => x.avisadas.has(n.evento))) };
+    }),
+  };
   return { agenda, ultima };
 }
 
@@ -797,6 +803,14 @@ export async function enviarAgenda(
           .returning({ key: appSettings.key });
         // A marca foi retomada por outra tentativa (esta passou do prazo): ela repete o mesmo pedido e registra.
         if (!dona) return;
+        // "Enviar agora" que fechou o agendado pendente: o manual do dia também está feito (outro clique
+        // hoje não manda de novo para esta pessoa).
+        if (outraIncerta) {
+          await tx
+            .insert(appSettings)
+            .values({ key: chaveEnvio(organizacaoId, hoje, d.email, true), value: { em: agora.toISOString(), estado: "enviado", corte: corte.toISOString() } })
+            .onConflictDoNothing();
+        }
         // Um envio por vez mexe no marco desta pessoa ("enviar agora" junto com o das 20h): relê com
         // trava, fica o maior corte e junta as avisadas dos dois.
         await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${chaveUltimaDe(organizacaoId, d.email)}))`);
