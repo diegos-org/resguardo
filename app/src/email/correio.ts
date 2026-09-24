@@ -56,6 +56,8 @@ export class CorreioResend implements Correio {
         method: "POST",
         headers: { Authorization: `Bearer ${this.chave}`, "Content-Type": "application/json", ...(m.chave ? { "Idempotency-Key": chaveIdempotencia(m.chave) } : {}) },
         body: JSON.stringify({ from: this.remetente, to: [m.para], subject: m.assunto, text: m.texto }),
+        // Não fica pendurada: sem resposta em 50s, vira envio incerto.
+        signal: AbortSignal.timeout(50_000),
       });
     } catch (e) {
       // A conexão caiu sem resposta: o provedor pode ter recebido.

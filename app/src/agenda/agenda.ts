@@ -466,8 +466,9 @@ export async function previaDaAgenda(db: Db, organizacaoId: string, agora: Date 
  * o maior corte entre eles e os "incerto" ainda não resolvidos: as reservas novas até ele saem de
  * novo, com o aviso de que podem já ter chegado. Só um envio que dá certo resolve (`chaves`).
  */
-async function reconciliarIncertos(db: Db, pendentes: readonly Marca[], email: string, hoje: string): Promise<{ ate: Date | null; chaves: string[] }> {
+async function reconciliarIncertos(db: Db, pendentes: readonly Marca[], email: string, hoje: string): Promise<{ ate: Date | null; desde: Date | null; chaves: string[] }> {
   let maior: Date | null = null;
+  let menor: Date | null = null;
   const chaves: string[] = [];
   for (const l of pendentes) {
     const m = l.key.match(/^agenda-diaria(?:-manual)?:[^:]+:(\d{4}-\d{2}-\d{2}):(.+)$/);
@@ -477,8 +478,9 @@ async function reconciliarIncertos(db: Db, pendentes: readonly Marca[], email: s
     if (v.estado === "enviando") await db.update(appSettings).set({ value: { ...v, estado: "incerto" }, updatedAt: new Date() }).where(eq(appSettings.key, l.key));
     chaves.push(l.key);
     if (!Number.isNaN(corte.getTime()) && (!maior || corte > maior)) maior = corte;
+    if (!Number.isNaN(corte.getTime()) && (!menor || corte < menor)) menor = corte;
   }
-  return { ate: maior, chaves };
+  return { ate: maior, desde: menor, chaves };
 }
 
 type Marca = { key: string; value: unknown };
@@ -541,6 +543,17 @@ async function soltarPessoa(db: Db, chave: string, dono: string): Promise<void> 
   await db.delete(appSettings).where(and(eq(appSettings.key, chave), sql`${appSettings.value} ->> 'dono' = ${dono}`));
 }
 
+/** Prazo de uma chamada ao provedor de e-mail (bem menor que ENVIO_EXPIRA_MS). */
+const PRAZO_PROVEDOR_MS = 60_000;
+
+function comPrazo<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limite = new Promise<never>((_, falha) => {
+    timer = setTimeout(() => falha(new ErroEnvioIncerto(`O provedor de e-mail não respondeu em ${ms / 1000}s.`)), ms);
+  });
+  return Promise.race([p, limite]).finally(() => clearTimeout(timer));
+}
+
 /** Tentativa "enviando" mais velha que isto (a execução caiu no meio) pode ser refeita. */
 const ENVIO_EXPIRA_MS = 15 * 60_000;
 
@@ -592,7 +605,13 @@ export type ResultadoEnvio = { enviados: number; jaEnviados: number; falhas: str
  * manual ("enviar agora") tem a sua própria marca: não impede o das 20h, e repeti-lo no mesmo dia
  * só tenta de novo quem falhou (ou entrou na lista depois).
  */
-export async function enviarAgenda(db: Db, organizacaoId: string, correio: Correio | null, agora: Date, o: { manual?: boolean } = {}): Promise<ResultadoEnvio> {
+export async function enviarAgenda(
+  db: Db,
+  organizacaoId: string,
+  correio: Correio | null,
+  agora: Date,
+  o: { manual?: boolean; /** Só para testes. */ prazoProvedorMs?: number } = {},
+): Promise<ResultadoEnvio> {
   const r: ResultadoEnvio = { enviados: 0, jaEnviados: 0, falhas: [], aviso: null };
   const config = await lerConfigAgenda(db, organizacaoId);
   if (!config.ativa && !o.manual) return { ...r, aviso: "agenda desligada" };
@@ -627,7 +646,10 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
       if (!carga) {
         // Sem marco próprio (primeira agenda desta pessoa): as reservas novas das 24h antes do corte.
         const marco = await lerMarco(db, chaveUltimaDe(organizacaoId, d.email));
-        const umDia = new Date(corte.getTime() - 86_400_000);
+        // Com um envio incerto anterior ainda sem marco, a faixa começa nas 24h antes do corte dele
+        // (se ele não chegou, as reservas daquela faixa têm de ir agora).
+        const base = !marco && incertos.desde && incertos.desde < corte ? incertos.desde : corte;
+        const umDia = new Date(base.getTime() - 86_400_000);
         const desde = marco ? new Date(marco.getTime() - SOBREPOSICAO_MS) : umDia;
         // Cidades que o marco não cobre (a pessoa passou a recebê-las depois): desde 24h, como quem é novo.
         const cobertas = marco ? await lerCobertura(db, chaveUltimaDe(organizacaoId, d.email)) : null;
@@ -669,7 +691,9 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
         return;
       }
       // A mesma chave do dia vai para o provedor: uma nova tentativa do mesmo envio não duplica.
-      await correio.enviar({ para: d.email, assunto: carga.assunto, texto: carga.texto, chave });
+      // Com prazo bem menor que o da trava: uma chamada presa vira "incerta" (a marca e o pedido ficam
+      // para a retomada), em vez de continuar depois que outra execução pode ter tomado a trava.
+      await comPrazo(correio.enviar({ para: d.email, assunto: carga.assunto, texto: carga.texto, chave }), o.prazoProvedorMs ?? PRAZO_PROVEDOR_MS);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (e instanceof ErroEnvioIncerto) {

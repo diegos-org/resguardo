@@ -507,6 +507,26 @@ describe("configuração e envio", () => {
     expect((inc.value as { estado: string }).estado).toBe("resolvido");
   });
 
+  it("provedor que não responde no prazo: envio incerto, a marca fica para a retomada", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    const preso: Correio = { nome: "preso", enviar: () => new Promise(() => {}) };
+    const r = await enviarAgenda(db, org, preso, AGORA, { prazoProvedorMs: 50 });
+    expect(r.falhas[0]).toContain("não respondeu");
+    const [marca] = await db.select().from(appSettings).where(eq(appSettings.key, `agenda-diaria:${org}:2026-10-01:a@example.com`));
+    expect((marca.value as { estado: string }).estado).toBe("enviando");
+  });
+
+  it("primeira agenda incerta de ontem: a de hoje cobre desde 24h antes do corte de ontem", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    // Ontem (sem marco nenhum) o envio ficou "enviando"; a reserva é de 23h antes daquele corte.
+    await db.insert(appSettings).values({ key: `agenda-diaria:${org}:2026-10-01:a@example.com`, value: { em: AGORA.toISOString(), estado: "enviando", corte: AGORA.toISOString() } });
+    await nova(rio, "2028-04-03", "2028-04-05", new Date(AGORA.getTime() - 23 * 3_600_000).toISOString());
+    const correio = new CorreioMemoria();
+    await enviarAgenda(db, org, correio, new Date("2026-10-02T23:00:00Z"));
+    expect(correio.enviadas[0].texto).toContain("entrada seg 03/04");
+    expect(correio.enviadas[0].texto).toContain("pode já ter vindo");
+  });
+
   it("envio incerto de outro dia continua avisado até um envio dar certo", async () => {
     await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
     await nova(rio, "2027-12-06", "2027-12-08", new Date(AGORA.getTime() - 60 * 60_000).toISOString());
