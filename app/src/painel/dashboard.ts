@@ -85,7 +85,8 @@ export async function carregarDashboard(
     const fimAno = `${o.ano + 1}-01-01`;
     // Em "todos", a conferência de cálculo olha também reservas de imóveis arquivados (como os totais).
     const doPeriodo = o.todos ? await listarReservas(db, organizacaoId, o.periodo) : reservas;
-    const comValor = doPeriodo.filter((r) => r.valorBruto !== null);
+    // Pendente não é calculada até confirmar (M4.8): não entra no aviso de "sem cálculo".
+    const comValor = doPeriodo.filter((r) => r.valorBruto !== null && r.estado === "confirmada");
     const [totais, mensal, regras, despesas, ajustesPendentes, adiantamentos, pendentes, calculadas] = await Promise.all([
       totaisPorTipo(db, organizacaoId, f),
       db

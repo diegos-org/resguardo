@@ -177,6 +177,9 @@ describe("consistência entre telas (M4.8)", () => {
     const pendente = reserva(a, "2026-10-01", "2026-10-03", { estado: "pendente", valorBruto: 50000, taxaCanal: 0 });
     await sincronizarReserva(db, org, "csv", "booking:P1", pendente, null);
     expect(await totais()).toEqual(antes);
+    // Pendente sem lançamento é o esperado: o Início não acusa "sem cálculo".
+    const inicio = await carregarDashboard(db, org, { imoveis: so403, todos: false, periodo: OUTUBRO, ano: 2026, hoje: "2026-11-10", verFinanceiro: true });
+    expect(inicio.alertas.map((x) => x.texto).join(" | ")).not.toContain("sem cálculo");
     await sincronizarReserva(db, org, "csv", "booking:P1", { ...pendente, estado: "confirmada" }, null);
     expect(await totais()).toEqual([310000, 4, 310000, 4, 310000, 4]);
   });
