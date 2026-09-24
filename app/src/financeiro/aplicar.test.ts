@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { criarContrato, encerrarContrato } from "@/contratos/repositorio";
-import { contratos, imoveis, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
+import { contratos, imoveis, organizacoes, proprietarioImoveis, proprietarios, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import type { DadosReserva } from "@/reservas/regras";
@@ -212,6 +212,20 @@ describe("aplicarMotor", () => {
     expect(res?.avisos.some((a) => a.includes("dinheiro movimentado"))).toBe(true);
     expect((await totaisPorTipo(db, org, {})).receita_bruta).toBe(150000); // intacto
     expect(await listarLancamentos(db, org, { reservaId: id })).toHaveLength(4);
+  });
+
+  it("baixa e recálculo ao mesmo tempo: nunca sobra lançamento pago que foi estornado", async () => {
+    const id = await sinc();
+    const direito = (await ativosDoMotor(id)).find((l) => l.tipo === "direito_proprietario")!;
+    await sincronizarReserva(db, org, "beds24", "x", dados({ checkin: "2030-11-10", checkout: "2030-11-12" })); // outra, só para ter movimento
+    // Muda o valor sem recalcular ainda (atualização direta), depois dispara baixa e recálculo juntos.
+    await db.update(reservas).set({ valorBruto: 200000 }).where(eq(reservas.id, id));
+    const [baixa] = await Promise.allSettled([mudarEstado(db, org, direito.id, "realizado", null, "2030-10-14"), aplicarMotor(db, org, id, null)]);
+    const todos = await listarLancamentos(db, org, { reservaId: id });
+    const estornados = new Set(todos.map((l) => l.estornoDe).filter(Boolean));
+    expect(todos.some((l) => l.estado === "realizado" && estornados.has(l.id))).toBe(false);
+    // ou a baixa entrou primeiro (e o recálculo não mexeu), ou foi recusada porque o valor já tinha sido estornado
+    if (baixa.status === "rejected") expect(String(baixa.reason)).toContain("estornado");
   });
 
   it("reserva de outra organização ou id inválido: nada acontece", async () => {

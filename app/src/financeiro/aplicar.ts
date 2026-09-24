@@ -71,7 +71,11 @@ export async function aplicarMotor(
           isNull(lancamentos.estornoDe),
           sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`,
         ),
-      );
+      )
+      // Trava os lançamentos enquanto decide: uma baixa ("realizado") feita ao mesmo tempo
+      // espera este cálculo terminar, ou já aparece aqui como realizada — nunca é estornada
+      // por engano depois da checagem.
+      .for("update");
     const desejadas = new Set(desejados.map((l) => l.chaveOrigem));
 
     // O que já movimentou dinheiro (realizado/conciliado) nunca é mexido automaticamente

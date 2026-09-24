@@ -220,6 +220,9 @@ export async function mudarEstado(
       .for("update");
     if (!antes) return null;
     if (antes.estado === estado && (!dataCaixa || dataCaixa === antes.dataCaixa)) return antes;
+    // Lançamento já estornado não muda mais de situação (ex.: não se dá baixa num valor anulado).
+    const [estorno] = await tx.select({ id: lancamentos.id }).from(lancamentos).where(eq(lancamentos.estornoDe, id));
+    if (estorno) throw new LancamentoInvalido("Este lançamento foi estornado e não pode mudar de situação.");
     const [depois] = await tx
       .update(lancamentos)
       .set({ estado, dataCaixa: dataCaixa ?? antes.dataCaixa })
