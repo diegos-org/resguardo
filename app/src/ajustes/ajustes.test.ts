@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { historicoDe } from "@/auditoria/auditoria";
 import { imoveis, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
@@ -125,6 +126,24 @@ describe("registro e esclarecimento", () => {
     expect(await saldoAcerto(db, org, { proprietarioId: dono })).toBe(-15000);
     expect((await obterAjuste(db, org, r.id))?.proprietarioId).toBe(dono);
     expect(direcaoDe({ direcao: "", afeta: "proprietario", valor: -15000 })).toBe("proprietario_debito");
+  });
+
+  it("imóvel passou a outro dono: complementar mantém o proprietário gravado no ajuste", async () => {
+    const r = await registrarAjuste(db, org, dados({ direcao: "proprietario_debito" }), null);
+    if (!r.ok) throw new Error("x");
+    const [{ id: novoDono }] = await db.insert(proprietarios).values({ organizacaoId: org, nome: "Novo dono" }).returning();
+    await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, im));
+    await db.insert(proprietarioImoveis).values({ proprietarioId: novoDono, imovelId: im });
+    // O formulário de edição não manda proprietário: o valor muda, a dívida continua da dona original.
+    expect(await complementarAjuste(db, org, r.id, dados({ direcao: "proprietario_debito", motivo: "Dano", valor: 20000 }), null)).toMatchObject({ ok: true });
+    expect((await obterAjuste(db, org, r.id))?.proprietarioId).toBe(dono);
+    expect(await saldoAcerto(db, org, { proprietarioId: dono })).toBe(-20000);
+    expect(await saldoAcerto(db, org, { proprietarioId: novoDono })).toBe(0);
+    // Mudar a direção para a empresa tira o proprietário; voltar para ele usa o dono atual.
+    await complementarAjuste(db, org, r.id, dados({ direcao: "empresa_saida", motivo: "Dano" }), null);
+    expect((await obterAjuste(db, org, r.id))?.proprietarioId).toBeNull();
+    await complementarAjuste(db, org, r.id, dados({ direcao: "proprietario_debito", motivo: "Dano" }), null);
+    expect((await obterAjuste(db, org, r.id))?.proprietarioId).toBe(novoDono);
   });
 
   it("isolamento: reserva/imóvel de outra organização recusados", async () => {

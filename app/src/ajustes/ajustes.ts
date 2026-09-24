@@ -104,8 +104,17 @@ export function lerFormAjuste(e: Record<string, unknown>): { ok: true; dados: Da
 
 type Vinculos = { imovelId: string | null; reservaId: string | null; proprietarioId: string | null; reservaCodigo: string | null };
 
-/** Confere reserva/imóvel/proprietário na organização; a reserva define o imóvel. */
-async function resolverVinculos(tx: Db, org: string, d: DadosAjuste): Promise<Vinculos | ErrosAjuste> {
+/**
+ * Confere reserva/imóvel/proprietário na organização; a reserva define o imóvel.
+ * `manter`: proprietário já gravado no ajuste (complemento). Enquanto o imóvel não muda, ele
+ * continua sendo o do ajuste, mesmo que o imóvel tenha passado a outro proprietário depois.
+ */
+async function resolverVinculos(
+  tx: Db,
+  org: string,
+  d: DadosAjuste,
+  manter: { imovelId: string | null; proprietarioId: string | null } | null = null,
+): Promise<Vinculos | ErrosAjuste> {
   let imovelId = d.imovelId;
   let reservaCodigo: string | null = null;
   if (d.reservaId) {
@@ -130,6 +139,9 @@ async function resolverVinculos(tx: Db, org: string, d: DadosAjuste): Promise<Vi
   let proprietarioId = d.proprietarioId;
   if (DIRECOES[d.direcao].afeta === "proprietario") {
     if (!imovelId) return { imovelId: "Ajuste com o proprietário precisa do imóvel (ou da reserva)." };
+    if (manter?.proprietarioId && manter.imovelId === imovelId && (!proprietarioId || proprietarioId === manter.proprietarioId)) {
+      return { imovelId, reservaId: d.reservaId, proprietarioId: manter.proprietarioId, reservaCodigo };
+    }
     const donos = (await tx.select({ id: proprietarioImoveis.proprietarioId }).from(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, imovelId))).map((x) => x.id);
     if (proprietarioId && !donos.includes(proprietarioId)) return { proprietarioId: "Proprietário não vinculado ao imóvel." };
     if (!proprietarioId) {
@@ -226,7 +238,9 @@ export async function complementarAjuste(db: Db, org: string, id: string, d: Dad
       .for("update");
     if (!antes) return { ok: false as const, erros: { geral: "Ajuste não encontrado." } };
     if (antes.esclarecidoEm) return { ok: false as const, erros: { geral: "Ajuste já esclarecido: não muda mais. Se precisar, registre outro ajuste." } };
-    const v = await resolverVinculos(tx, org, d);
+    // Mesmo imóvel e ainda com o proprietário: fica o proprietário gravado (a dívida/crédito é de
+    // quem era dono na data do ajuste, não de quem comprou o imóvel depois).
+    const v = await resolverVinculos(tx, org, d, antes.afeta === "proprietario" ? { imovelId: antes.imovelId, proprietarioId: antes.proprietarioId } : null);
     if (ehErro(v)) return { ok: false as const, erros: v };
     const sinal = DIRECOES[d.direcao].sinal;
     const novo = {
