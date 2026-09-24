@@ -69,9 +69,10 @@ export async function resumoDoProprietario(
     .selectDistinct({ id: lancamentos.reservaId })
     .from(lancamentos)
     .where(and(base, eq(lancamentos.tipo, "direito_proprietario"), inArray(lancamentos.proprietarioId, donos), isNotNull(lancamentos.reservaId)));
-  // Contagem: reservas confirmadas dos imóveis dele no período (como no Início), inclusive as
-  // ainda sem cálculo no financeiro; fica de fora a que tem a parte lançada só para outra pessoa
-  // (ex.: de antes de o imóvel mudar de dono).
+  // Contagem: reservas confirmadas dos imóveis dele no período (como no Início). A que tem a
+  // parte lançada para ele conta; a lançada só para outra pessoa, não. A ainda sem cálculo no
+  // financeiro só conta se o imóvel nunca teve outro dono no livro: sem histórico de posse, não
+  // dá para saber de quem era, e o portal nunca mostra o histórico de outra pessoa.
   const direito = (deles: boolean) =>
     db
       .select({ um: sql`1` })
@@ -93,7 +94,20 @@ export async function resumoDoProprietario(
         inArray(reservas.imovelId, imoveis),
         lt(reservas.checkin, o.periodo.fim),
         gt(reservas.checkout, o.periodo.inicio),
-        or(exists(direito(true)), not(exists(direito(false)))),
+        or(
+          exists(direito(true)),
+          and(
+            not(exists(direito(false))),
+            not(
+              exists(
+                db
+                  .select({ um: sql`1` })
+                  .from(lancamentos)
+                  .where(and(eq(lancamentos.imovelId, reservas.imovelId), isNotNull(lancamentos.proprietarioId), notInArray(lancamentos.proprietarioId, donos))),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   const daReserva = await db

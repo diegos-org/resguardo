@@ -116,6 +116,13 @@ describe("resumo do portal", () => {
     expect(await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo })).toMatchObject({ reservas: 2, receitaBruta: 100000, suaParte: 72250 });
   });
 
+  it("reserva sem cálculo de antes da troca de dono não aparece para o novo dono", async () => {
+    await criarReserva(db, org, { ...reserva(a), checkin: "2026-10-20", checkout: "2026-10-22", valorBruto: null, taxaCanal: null }, null);
+    await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));
+    await db.insert(proprietarioImoveis).values({ proprietarioId: outro, imovelId: a });
+    expect((await resumoDoProprietario(db, org, { proprietarioIds: [outro], imovelIds: [a], periodo })).reservas).toBe(0);
+  });
+
   it("não vê imóvel de outro dono, nem 'todos' quando a lista vem vazia", async () => {
     expect(await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [b], periodo })).toMatchObject({ reservas: 0, receitaBruta: 0, suaParte: 0 });
     expect(await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [], periodo })).toMatchObject({ reservas: 0, receitaBruta: 0 });
