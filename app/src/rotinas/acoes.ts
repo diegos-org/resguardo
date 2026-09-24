@@ -29,7 +29,7 @@ export async function criarAcao(form: FormData) {
 
 export async function editarAcao(form: FormData) {
   const s = await sessao("configuracao:editar");
-  voltar(await editarRotina(getDb(), s.organizacaoId, campo(form, "id"), dados(form), s.usuarioId));
+  voltar(await editarRotina(getDb(), s.organizacaoId, campo(form, "id"), { ...dados(form), proximaAnterior: campo(form, "proximaAnterior") }, s.usuarioId));
 }
 
 export async function arquivarAcao(form: FormData) {

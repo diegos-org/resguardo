@@ -103,15 +103,22 @@ async function travar(tx: Db, organizacaoId: string, id: string): Promise<Rotina
 }
 
 /** Edita o cadastro (inclusive a próxima data: vale dali em diante; o histórico fica). */
-export async function editarRotina(db: Db, organizacaoId: string, id: string, d: DadosRotina, autorId: string | null): Promise<Resultado> {
+/**
+ * `proximaAnterior`: a próxima data que o formulário mostrava. Se a rotina andou nesse meio-tempo
+ * (alguém marcou como feita), a edição é recusada em vez de voltar a data para trás.
+ */
+export async function editarRotina(db: Db, organizacaoId: string, id: string, d: DadosRotina & { proximaAnterior: string }, autorId: string | null): Promise<Resultado> {
   const v = validar(d);
   if (!v.ok) return v;
   return db.transaction(async (tx) => {
     const antes = await travar(tx, organizacaoId, id);
     if (!antes) return { ok: false as const, erro: "Rotina não encontrada." };
+    if (antes.proximaData !== d.proximaAnterior) return { ok: false as const, erro: "A rotina mudou enquanto você editava (foi marcada como feita): abra de novo e confira." };
+    // A âncora do ritmo só muda quando muda a agenda (data ou frequência): editar o nome mantém o fim de mês.
+    const mudouAgenda = v.dados.proximaData !== antes.proximaData || v.dados.frequencia !== antes.frequencia;
     const [depois] = await tx
       .update(rotinas)
-      .set({ ...v.dados, atualizadoEm: new Date() })
+      .set({ ...v.dados, ancora: mudouAgenda ? v.dados.ancora : antes.ancora, atualizadoEm: new Date() })
       .where(eq(rotinas.id, id))
       .returning();
     const mudancas = calcularMudancas(antes, depois);

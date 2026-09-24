@@ -70,7 +70,7 @@ describe("cadastro e execução", () => {
     expect(await nova()).toEqual({ ok: true });
     const [r] = await listarRotinas(db, org, "2026-10-01");
     expect(r).toMatchObject({ titulo: "Conferência das faxinas", situacao: "esta_semana" });
-    expect(await editarRotina(db, org, r.id, { titulo: "Conferir faxinas", descricao: "Ver custos", frequencia: "quinzenal", proximaData: "2026-10-20" }, null)).toEqual({ ok: true });
+    expect(await editarRotina(db, org, r.id, { titulo: "Conferir faxinas", descricao: "Ver custos", frequencia: "quinzenal", proximaData: "2026-10-20", proximaAnterior: "2026-10-05" }, null)).toEqual({ ok: true });
     expect(await arquivarRotina(db, org, r.id, false, null)).toEqual({ ok: true });
     expect(await listarRotinas(db, org, "2026-10-01")).toEqual([]);
     expect((await listarRotinas(db, org, "2026-10-01", { incluirArquivadas: true }))[0]).toMatchObject({ titulo: "Conferir faxinas", frequencia: "quinzenal", situacao: "arquivada" });
@@ -98,7 +98,7 @@ describe("cadastro e execução", () => {
       ["2026-10-05", false],
     ]);
     // Próxima data editada de volta para um vencimento já registrado: avisa em vez de duplicar.
-    await editarRotina(db, org, r.id, { titulo: r.titulo, descricao: "", frequencia: "semanal", proximaData: "2026-10-05" }, null);
+    await editarRotina(db, org, r.id, { titulo: r.titulo, descricao: "", frequencia: "semanal", proximaData: "2026-10-05", proximaAnterior: "2026-11-09" }, null);
     expect(await registrarExecucao(db, org, r.id, { prevista: "2026-10-05", feitaEm: "2026-11-03", observacao: "", pulada: false }, "2026-11-03", null)).toMatchObject({ ok: false, erro: expect.stringContaining("já foi registrado") });
   });
 
@@ -117,6 +117,21 @@ describe("cadastro e execução", () => {
     expect((await achar("Quinzenal", "2026-10-01")).proximaData).toBe("2026-10-16");
   });
 
+  it("editar só o nome mantém o fim de mês; edição com a tela desatualizada é recusada", async () => {
+    await nova({ titulo: "Mensal", frequencia: "mensal", proximaData: "2026-01-31" });
+    const [r] = await listarRotinas(db, org, "2026-01-31");
+    await registrarExecucao(db, org, r.id, { prevista: "2026-01-31", feitaEm: "2026-01-31", observacao: "", pulada: false }, "2026-01-31", null);
+    // A tela de edição foi aberta antes de registrar: recusada (não volta a data para trás).
+    expect(await editarRotina(db, org, r.id, { titulo: "Outro nome", descricao: "", frequencia: "mensal", proximaData: "2026-01-31", proximaAnterior: "2026-01-31" }, null)).toMatchObject({
+      ok: false,
+      erro: expect.stringContaining("mudou enquanto"),
+    });
+    // Com a tela atual (28/02), mudar só o nome não mexe no ritmo: a seguinte continua 31/03.
+    expect(await editarRotina(db, org, r.id, { titulo: "Outro nome", descricao: "", frequencia: "mensal", proximaData: "2026-02-28", proximaAnterior: "2026-02-28" }, null)).toEqual({ ok: true });
+    await registrarExecucao(db, org, r.id, { prevista: "2026-02-28", feitaEm: "2026-02-28", observacao: "", pulada: false }, "2026-02-28", null);
+    expect((await listarRotinas(db, org, "2026-03-01"))[0]).toMatchObject({ titulo: "Outro nome", proximaData: "2026-03-31" });
+  });
+
   it("dois cliques ao mesmo tempo registram uma vez só", async () => {
     await nova();
     const [r] = await listarRotinas(db, org, "2026-10-05");
@@ -133,7 +148,7 @@ describe("cadastro e execução", () => {
     await nova();
     const [r] = await listarRotinas(db, org, "2026-10-05");
     expect(await listarRotinas(db, outra, "2026-10-05")).toEqual([]);
-    expect(await editarRotina(db, outra, r.id, { titulo: "x", descricao: "", frequencia: "semanal", proximaData: "2026-10-05" }, null)).toMatchObject({ ok: false });
+    expect(await editarRotina(db, outra, r.id, { titulo: "x", descricao: "", frequencia: "semanal", proximaData: "2026-10-05", proximaAnterior: "2026-10-05" }, null)).toMatchObject({ ok: false });
     expect(await registrarExecucao(db, outra, r.id, { prevista: "2026-10-05", feitaEm: "2026-10-05", observacao: "", pulada: false }, "2026-10-05", null)).toMatchObject({ ok: false });
     expect(await arquivarRotina(db, outra, r.id, false, null)).toMatchObject({ ok: false });
   });
