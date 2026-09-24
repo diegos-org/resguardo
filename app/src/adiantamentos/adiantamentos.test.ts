@@ -233,6 +233,23 @@ describe("contestação", () => {
     expect(a.contestacao?.motivo).toBe("Primeira");
   });
 
+  it("contestação reaberta só absorve o valor que contestou (não desfaz outra contestação mantida)", async () => {
+    await quitar(db, org, adiantamentoId, { forma: "reembolso", valor: 100000, data: "2026-10-20" }, null);
+    await contestar(db, org, adiantamentoId, "A", null); // contesta os R$ 3.000 restantes
+    await resolverContestacao(db, org, adiantamentoId, { resolucao: "empresa_assume", nota: "", data: "2026-10-25" }, null);
+    const reembolso = (await obterAdiantamento(db, org, adiantamentoId))!.quitacoes.find((x) => x.forma === "reembolso")!;
+    await desfazerQuitacao(db, org, reembolso.id, "Pix estornado", null);
+    await contestar(db, org, adiantamentoId, "B", null); // contesta os R$ 1.000 reabertos
+    await resolverContestacao(db, org, adiantamentoId, { resolucao: "mantida", nota: "", data: "2026-10-26" }, null);
+    const assumida = (await obterAdiantamento(db, org, adiantamentoId))!.quitacoes.find((x) => x.forma === "empresa_assume")!;
+    expect(await desfazerQuitacao(db, org, assumida.id, "Revisto", null)).toEqual({ ok: true });
+    expect((await obterAdiantamento(db, org, adiantamentoId))?.contestacao).toMatchObject({ motivo: "A", valor: 300000 });
+    // Reabrir A e assumir de novo: a empresa absorve R$ 3.000; os R$ 1.000 de B seguem cobrados.
+    await resolverContestacao(db, org, adiantamentoId, { resolucao: "empresa_assume", nota: "", data: "2026-10-27" }, null);
+    expect(await obterAdiantamento(db, org, adiantamentoId)).toMatchObject({ situacao: "parcial", aberto: 100000 });
+    expect(await saldo()).toBe(-100000);
+  });
+
   it("desfazer 'empresa assume' com outra contestação aberta é recusado", async () => {
     await quitar(db, org, adiantamentoId, { forma: "reembolso", valor: 100000, data: "2026-10-20" }, null);
     await contestar(db, org, adiantamentoId, "A", null);

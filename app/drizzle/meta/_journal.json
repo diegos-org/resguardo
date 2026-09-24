@@ -124,14 +124,14 @@
     {
       "idx": 17,
       "version": "7",
-      "when": 1790224047137,
+      "when": 1790224896094,
       "tag": "0017_adiantamentos",
       "breakpoints": true
     },
     {
       "idx": 18,
       "version": "7",
-      "when": 1790224334605,
+      "when": 1790225140831,
       "tag": "0018_ajustes",
       "breakpoints": true
     }
