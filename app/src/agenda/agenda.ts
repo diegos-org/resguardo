@@ -1,8 +1,12 @@
 /**
- * Agenda diária da equipe (M6.3). Todo dia às 20h: entradas, saídas e limpezas dos próximos
- * cinco dias, uma seção por cidade (Rio e Búzios separados, nunca somados), mais as reservas
- * novas desde a última agenda, mesmo fora da janela. A agenda só informa: não confirma limpeza
- * (a limpeza "pedida" aparece como "a confirmar").
+ * Agenda diária da equipe (M6.3). Todo dia às 20h, os próximos cinco dias, uma seção por cidade
+ * (Rio e Búzios separados, nunca somados), no modelo que Diego definiu em 23/09:
+ * - formato "limpezas" (Rio): um dia por linha só com as limpezas (dia de checkout), "nenhuma
+ *   limpeza" nos dias vazios, horário-limite quando alguém entra no mesmo dia, e as entradas num
+ *   parágrafo à parte (misturar entradas e limpezas confundiu a equipe);
+ * - formato "reservas" (Búzios): uma linha por reserva, com entrada, saída e nº de hóspedes.
+ * Mais as reservas novas desde a última agenda, mesmo fora da janela. A agenda só informa: não
+ * confirma limpeza nem preparação.
  *
  * Quem recebe e se a agenda está ligada fica em Configurações (config "agenda"), editável no
  * painel. Envio pelo mesmo adaptador de e-mail do login (M1.3); em teste, nada sai.
@@ -25,7 +29,34 @@ export const diaCurto = (d: string) => `${SEMANA[new Date(`${d}T12:00:00Z`).getU
 // ——— Configuração (editável no painel) ———
 
 export type Destinatario = { email: string; /** Vazio = todas as cidades. */ cidades: string[] };
-export type ConfigAgenda = { ativa: boolean; destinatarios: Destinatario[] };
+export const FORMATOS = ["limpezas", "reservas"] as const;
+export type Formato = (typeof FORMATOS)[number];
+export const NOMES_FORMATO: Record<Formato, string> = {
+  limpezas: "Limpezas por dia (entradas à parte)",
+  reservas: "Uma linha por reserva (entrada, saída e hóspedes)",
+};
+export type ConfigAgenda = {
+  ativa: boolean;
+  destinatarios: Destinatario[];
+  /** Formato de cada cidade; sem escolha, ver `formatoDa`. */
+  formatos: Record<string, Formato>;
+  /** Horários do check-in e do checkout, como aparecem no texto (ex.: "15h", "11h"). */
+  horaEntrada: string;
+  horaSaida: string;
+};
+
+/** Horários das regras de atendimento (Diego, 23/09); editáveis na tela da agenda. */
+export const HORA_ENTRADA_PADRAO = "15h";
+export const HORA_SAIDA_PADRAO = "11h";
+const HORA = /^([01]?\d|2[0-3])h([0-5]\d)?$/;
+
+/**
+ * Formato de uma cidade: o escolhido na tela; sem escolha, casa única (um imóvel na cidade) vai
+ * por reserva e cidade com vários apartamentos vai por limpezas. A tela mostra qual está valendo.
+ */
+export function formatoDa(c: Pick<ConfigAgenda, "formatos">, cidade: string, imoveisNaCidade: number): Formato {
+  return c.formatos[cidade] ?? (imoveisNaCidade === 1 ? "reservas" : "limpezas");
+}
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -35,7 +66,12 @@ export async function lerConfigAgenda(db: Db, organizacaoId: string): Promise<Co
   const destinatarios = lista
     .filter((d): d is Destinatario => !!d && typeof (d as Destinatario).email === "string" && Array.isArray((d as Destinatario).cidades))
     .map((d) => ({ email: d.email, cidades: d.cidades.filter((x) => typeof x === "string") }));
-  return { ativa: c?.ativa === true, destinatarios };
+  const formatos: Record<string, Formato> = {};
+  if (c?.formatos && typeof c.formatos === "object" && !Array.isArray(c.formatos)) {
+    for (const [cidade, f] of Object.entries(c.formatos as Record<string, unknown>)) if ((FORMATOS as readonly unknown[]).includes(f)) formatos[cidade] = f as Formato;
+  }
+  const hora = (v: unknown, padrao: string) => (typeof v === "string" && HORA.test(v) ? v : padrao);
+  return { ativa: c?.ativa === true, destinatarios, formatos, horaEntrada: hora(c?.horaEntrada, HORA_ENTRADA_PADRAO), horaSaida: hora(c?.horaSaida, HORA_SAIDA_PADRAO) };
 }
 
 /** Cidades dos imóveis ativos (a agenda separa por elas). */
@@ -48,7 +84,10 @@ export async function cidadesDosImoveis(db: Db, organizacaoId: string): Promise<
   return l.map((x) => x.cidade);
 }
 
-export async function salvarConfigAgenda(db: Db, organizacaoId: string, c: ConfigAgenda, autorId: string | null): Promise<{ ok: true } | { ok: false; erro: string }> {
+/** Formato e horários ausentes mantêm o que já estava salvo. */
+export type NovaConfigAgenda = Pick<ConfigAgenda, "ativa" | "destinatarios"> & Partial<Pick<ConfigAgenda, "formatos" | "horaEntrada" | "horaSaida">>;
+
+export async function salvarConfigAgenda(db: Db, organizacaoId: string, c: NovaConfigAgenda, autorId: string | null): Promise<{ ok: true } | { ok: false; erro: string }> {
   // Cidades válidas: as dos imóveis ativos e as já configuradas (imóvel renomeado ou inativado
   // não vira "todas as cidades" por engano: a escolha continua como estava).
   const anterior = await lerConfigAgenda(db, organizacaoId);
@@ -67,7 +106,17 @@ export async function salvarConfigAgenda(db: Db, organizacaoId: string, c: Confi
   }
   if (destinatarios.length > 30) return { ok: false, erro: "No máximo 30 destinatários." };
   if (c.ativa && !destinatarios.length) return { ok: false, erro: "Para ligar a agenda, informe pelo menos um destinatário." };
-  await db.transaction((tx) => gravarConfig(tx, organizacaoId, "agenda", { ativa: c.ativa, destinatarios }, autorId));
+  const horaEntrada = (c.horaEntrada ?? anterior.horaEntrada).trim().toLowerCase();
+  const horaSaida = (c.horaSaida ?? anterior.horaSaida).trim().toLowerCase();
+  if (!HORA.test(horaEntrada) || !HORA.test(horaSaida)) return { ok: false, erro: "Horário no formato 15h ou 15h30." };
+  const formatos: Record<string, Formato> = {};
+  for (const [cidade, f] of Object.entries(c.formatos ?? anterior.formatos)) {
+    if (!(FORMATOS as readonly string[]).includes(f)) return { ok: false, erro: `Formato inválido para ${cidade}.` };
+    // Cidade sem imóvel ativo nem destinatário: a escolha antiga fica (reativar o imóvel volta como estava).
+    formatos[cidade] = f;
+  }
+  const valor = { ativa: c.ativa, destinatarios, formatos, horaEntrada, horaSaida };
+  await db.transaction((tx) => gravarConfig(tx, organizacaoId, "agenda", valor, autorId));
   return { ok: true };
 }
 
@@ -77,9 +126,31 @@ export type ItemAgenda =
   | { tipo: "entrada" | "saida"; imovel: string; reserva: string; hospede: string; hospedes: number | null }
   | { tipo: "limpeza"; imovel: string; estado: string; profissional: string | null; avisos: string[] };
 
-export type NovaReserva = { id: string; imovel: string; reserva: string; hospede: string; hospedes: number | null; checkin: string; checkout: string; /** Quando entrou no sistema. */ registradaEm: string };
+export type NovaReserva = {
+  id: string;
+  /** Identifica o aviso (reserva + quando ficou nova): reconfirmar depois de cancelar é outro aviso. */
+  evento: string;
+  imovel: string;
+  reserva: string;
+  hospede: string;
+  hospedes: number | null;
+  checkin: string;
+  checkout: string;
+  /** Quando passou a ser nova (criada confirmada, ou a confirmação mais recente). */
+  registradaEm: string;
+};
 
-export type SecaoCidade = { cidade: string; dias: { data: string; itens: ItemAgenda[] }[]; novas: NovaReserva[] };
+/** Reserva com entrada ou saída dentro da janela (formato "reservas"). */
+export type ReservaDaJanela = { imovel: string; hospede: string; hospedes: number | null; checkin: string; checkout: string };
+
+export type SecaoCidade = {
+  cidade: string;
+  /** Imóveis ativos nesta cidade (define o formato quando não há escolha). */
+  imoveis: number;
+  dias: { data: string; itens: ItemAgenda[] }[];
+  reservas: ReservaDaJanela[];
+  novas: NovaReserva[];
+};
 
 export type Agenda = { hoje: string; dias: string[]; secoes: SecaoCidade[] };
 
@@ -147,17 +218,20 @@ export async function montarAgenda(db: Db, organizacaoId: string, hoje: string, 
   const porCidade = new Map<string, SecaoCidade>();
   const secao = (cidade: string) => {
     let s = porCidade.get(cidade);
-    if (!s) porCidade.set(cidade, (s = { cidade, dias: dias.map((data) => ({ data, itens: [] })), novas: [] }));
+    if (!s) porCidade.set(cidade, (s = { cidade, imoveis: 0, dias: dias.map((data) => ({ data, itens: [] })), reservas: [], novas: [] }));
     return s;
   };
-  for (const i of ativos) secao(i.cidade);
+  for (const i of ativos) secao(i.cidade).imoveis++;
   const noDia = (cidade: string, data: string) => secao(cidade).dias.find((d) => d.data === data);
 
   for (const r of daJanela) {
     const im = doImovel.get(r.imovelId)!;
     const base = { imovel: im.codigo, reserva: r.codigo, hospede: primeiroNome(r.hospedeNome), hospedes: r.hospedes };
-    noDia(im.cidade, r.checkin)?.itens.push({ tipo: "entrada", ...base });
-    noDia(im.cidade, r.checkout)?.itens.push({ tipo: "saida", ...base });
+    const entra = noDia(im.cidade, r.checkin);
+    const sai = noDia(im.cidade, r.checkout);
+    entra?.itens.push({ tipo: "entrada", ...base });
+    sai?.itens.push({ tipo: "saida", ...base });
+    if (entra || sai) secao(im.cidade).reservas.push({ imovel: im.codigo, hospede: base.hospede, hospedes: r.hospedes, checkin: r.checkin, checkout: r.checkout });
   }
   for (const l of limpezasDaJanela) {
     if (l.movida || l.estado === "cancelada") continue;
@@ -171,55 +245,127 @@ export async function montarAgenda(db: Db, organizacaoId: string, hoje: string, 
       avisos: l.avisos,
     });
   }
+  // Quando cada uma passou a ser "nova" nesta faixa: a confirmação mais recente registrada no
+  // histórico ou, sem ela, a criação. Uma reserva cancelada e reconfirmada é outro evento.
+  const confirmacoes =
+    novas.length && novasDesde
+      ? await db
+          .select({ id: auditoria.entidadeId, em: sql<string>`to_char(max(${auditoria.criadoEm}) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')` })
+          .from(auditoria)
+          .where(
+            and(
+              eq(auditoria.organizacaoId, organizacaoId),
+              eq(auditoria.entidade, "reserva"),
+              inArray(
+                auditoria.entidadeId,
+                novas.map((r) => r.id),
+              ),
+              gt(auditoria.criadoEm, novasDesde),
+              lte(auditoria.criadoEm, novasAte),
+              sql`${auditoria.mudancas} -> 'estado' ->> 1 = 'confirmada'`,
+            ),
+          )
+          .groupBy(auditoria.entidadeId)
+      : [];
   for (const r of novas) {
     const im = doImovel.get(r.imovelId)!;
-    secao(im.cidade).novas.push({ id: r.id, registradaEm: r.criadoEm.toISOString(), imovel: im.codigo, reserva: r.codigo, hospede: primeiroNome(r.hospedeNome), hospedes: r.hospedes, checkin: r.checkin, checkout: r.checkout });
+    const confirmada = confirmacoes.find((c) => c.id === r.id);
+    const registradaEm = confirmada ? new Date(confirmada.em).toISOString() : r.criadoEm.toISOString();
+    secao(im.cidade).novas.push({
+      id: r.id,
+      evento: `${r.id}@${registradaEm}`,
+      registradaEm,
+      imovel: im.codigo,
+      reserva: r.codigo,
+      hospede: primeiroNome(r.hospedeNome),
+      hospedes: r.hospedes,
+      checkin: r.checkin,
+      checkout: r.checkout,
+    });
   }
   const secoes = [...porCidade.values()].sort((a, b) => a.cidade.localeCompare(b.cidade, "pt-BR"));
-  for (const s of secoes) for (const d of s.dias) d.itens.sort((a, b) => ORDEM[a.tipo] - ORDEM[b.tipo] || a.imovel.localeCompare(b.imovel));
+  for (const s of secoes) {
+    for (const d of s.dias) d.itens.sort((a, b) => ORDEM[a.tipo] - ORDEM[b.tipo] || a.imovel.localeCompare(b.imovel));
+    s.reservas.sort((a, b) => a.checkin.localeCompare(b.checkin) || a.imovel.localeCompare(b.imovel));
+  }
   return { hoje, dias, secoes };
 }
 
-// ——— Texto do e-mail ———
+// ——— Texto (e-mail e prévia na tela) ———
 
-const pessoas = (n: number | null) => (n === null ? "nº de hóspedes não informado" : `${n} hóspede(s)`);
+const pessoas = (n: number | null) => (n === null ? "nº de hóspedes não informado" : `${n} hóspede${n === 1 ? "" : "s"}`);
+const maiuscula = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+/** "qui 24" (dia da semana e dia do mês). */
+const diaDoMes = (d: string) => `${SEMANA[new Date(`${d}T12:00:00Z`).getUTCDay()]} ${d.slice(8, 10)}`;
+const lista = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} e ${xs.at(-1)}`);
 
-export function textoDoItem(i: ItemAgenda): string {
-  if (i.tipo === "limpeza") {
-    const quem = i.profissional ? ` · ${i.profissional}` : " · sem profissional";
-    return `Limpeza ${i.imovel} — ${i.estado}${quem}${i.avisos.length ? ` · atenção: ${i.avisos.join(" ")}` : ""}`;
-  }
-  const nome = i.hospede || "hóspede sem nome";
-  return `${i.tipo === "entrada" ? "Entrada" : "Saída"} ${i.imovel} — ${nome}, ${pessoas(i.hospedes)} (${i.reserva})`;
-}
+export type OpcoesTexto = Pick<ConfigAgenda, "formatos" | "horaEntrada" | "horaSaida"> & { incertoAte?: Date | null };
+export const OPCOES_PADRAO: OpcoesTexto = { formatos: {}, horaEntrada: HORA_ENTRADA_PADRAO, horaSaida: HORA_SAIDA_PADRAO };
 
 export function textoDaNova(n: NovaReserva): string {
-  return `${n.imovel}: entrada ${diaCurto(n.checkin)}, saída ${diaCurto(n.checkout)} — ${n.hospede || "hóspede sem nome"}, ${pessoas(n.hospedes)} (${n.reserva})`;
+  return `${n.imovel}: entrada ${diaCurto(n.checkin)}, saída ${diaCurto(n.checkout)} — ${n.hospede || "hóspede sem nome"}, ${pessoas(n.hospedes)}`;
 }
 
-/** Texto simples do e-mail, só com as cidades pedidas (vazio = todas). */
-export function textoDaAgenda(a: Agenda, cidades: readonly string[] = [], o: { incertoAte?: Date | null } = {}): string {
-  const secoes = a.secoes.filter((s) => !cidades.length || cidades.includes(s.cidade));
-  const linhas = [`Agenda de ${diaCurto(a.dias[0])} a ${diaCurto(a.dias.at(-1)!)} (próximos ${a.dias.length} dias).`, "A agenda informa; não confirma limpeza.", ""];
-  for (const s of secoes) {
-    linhas.push(`=== ${s.cidade} ===`);
-    for (const d of s.dias) {
-      linhas.push(`${diaCurto(d.data)}:`);
-      if (!d.itens.length) linhas.push("  nada previsto");
-      for (const i of d.itens) linhas.push(`  - ${textoDoItem(i)}`);
-    }
-    if (s.novas.length) {
-      linhas.push("Reservas novas desde a última agenda:");
-      for (const n of s.novas) {
-        // Envio anterior sem confirmação de registro: pode ter chegado; avisa em vez de supor.
-        const talvez = o.incertoAte && Date.parse(n.registradaEm) <= o.incertoAte.getTime() ? " (pode já ter vindo numa agenda anterior, cujo envio não foi confirmado)" : "";
-        linhas.push(`  - ${textoDaNova(n)}${talvez}`);
-      }
-    }
-    linhas.push("");
+/** Rio: um dia por linha, só limpezas; entradas num parágrafo separado. */
+function linhasLimpezas(s: SecaoCidade, o: OpcoesTexto): string[] {
+  const linhas = ["Limpezas dos próximos dias:", ""];
+  for (const d of s.dias) {
+    const entradas = d.itens.filter((i) => i.tipo === "entrada");
+    const limpezas = d.itens.filter((i) => i.tipo === "limpeza");
+    const partes = limpezas.map((l) => {
+      // Alguém entra no mesmo imóvel no mesmo dia: a limpeza tem hora para acabar.
+      const entra = entradas.find((e) => e.imovel === l.imovel);
+      return entra && entra.tipo === "entrada" ? `${l.imovel} (pronto até ${o.horaEntrada}, entra ${entra.hospede || "hóspede sem nome"})` : l.imovel;
+    });
+    linhas.push(`🧹 ${maiuscula(diaCurto(d.data))}: ${partes.length ? partes.join(" · ") : "nenhuma limpeza"}`);
   }
-  if (!secoes.length) linhas.push("Nenhum imóvel ativo nas cidades deste destinatário.");
-  return linhas.join("\n").trimEnd() + "\n";
+  const entradas = s.dias
+    .map((d) => ({ d, e: d.itens.filter((i): i is Extract<ItemAgenda, { tipo: "entrada" | "saida" }> => i.tipo === "entrada") }))
+    .filter((x) => x.e.length)
+    .map((x) => `${diaDoMes(x.d.data)} — ${lista(x.e.map((e) => `${e.imovel} (${e.hospede || "hóspede sem nome"})`))}, ${o.horaEntrada}`);
+  if (entradas.length) linhas.push("", `Só para referência, as entradas do período: ${entradas.join("; ")}.`);
+  return linhas;
+}
+
+/** Búzios: uma linha por reserva, com entrada e saída (a equipe precisa estar nos dois momentos). */
+function linhasReservas(s: SecaoCidade, o: OpcoesTexto, fim: string): string[] {
+  if (!s.reservas.length) return [`Nenhuma entrada ou saída até ${diaCurto(fim)}.`];
+  const linhas = ["Próximas reservas:", ""];
+  for (const r of s.reservas) {
+    const quem = `${s.imoveis > 1 ? `${r.imovel} · ` : ""}${r.hospede || "hóspede sem nome"}`;
+    linhas.push(`• ${quem} — entrada ${diaCurto(r.checkin)} a partir das ${o.horaEntrada} · saída ${diaCurto(r.checkout)} até ${o.horaSaida} · ${pessoas(r.hospedes)}`);
+    // Outra reserva entra no dia da saída: limpeza entre uma e outra.
+    if (s.reservas.some((x) => x !== r && x.imovel === r.imovel && x.checkin === r.checkout)) linhas.push(`  (limpeza no dia ${r.checkout.slice(8, 10)} entre a saída e a entrada)`);
+  }
+  linhas.push("", `Nos outros dias até ${diaCurto(fim)} não há entradas nem saídas.`);
+  return linhas;
+}
+
+/** Texto de uma cidade (o mesmo da prévia na tela). */
+export function textoDaSecao(s: SecaoCidade, fim: string, o: OpcoesTexto = OPCOES_PADRAO): string[] {
+  const linhas = formatoDa(o, s.cidade, s.imoveis) === "reservas" ? linhasReservas(s, o, fim) : linhasLimpezas(s, o);
+  if (s.novas.length) {
+    linhas.push("", "Reservas novas desde a última agenda:");
+    for (const n of s.novas) {
+      // Envio anterior sem confirmação de registro: pode ter chegado; avisa em vez de supor.
+      const talvez = o.incertoAte && Date.parse(n.registradaEm) <= o.incertoAte.getTime() ? " (pode já ter vindo numa agenda anterior, cujo envio não foi confirmado)" : "";
+      linhas.push(`• ${textoDaNova(n)}${talvez}`);
+    }
+  }
+  return linhas;
+}
+
+export const FRASE_FINAL = "Essa é a agenda atual e ainda pode mudar com novas reservas ou cancelamentos.";
+
+/** Texto simples do e-mail, só com as cidades pedidas (vazio = todas). */
+export function textoDaAgenda(a: Agenda, cidades: readonly string[] = [], o: OpcoesTexto = OPCOES_PADRAO): string {
+  const secoes = a.secoes.filter((s) => !cidades.length || cidades.includes(s.cidade));
+  const fim = a.dias.at(-1)!;
+  const linhas = [`Boa noite! Agenda de ${diaCurto(a.dias[0])} a ${diaCurto(fim)} (próximos ${a.dias.length} dias).`, ""];
+  for (const s of secoes) linhas.push(`=== ${s.cidade} ===`, "", ...textoDaSecao(s, fim, o), "");
+  if (!secoes.length) linhas.push("Nenhum imóvel ativo nas cidades deste destinatário.", "");
+  linhas.push(FRASE_FINAL);
+  return linhas.join("\n") + "\n";
 }
 
 // ——— Envio ———
@@ -238,6 +384,7 @@ const chaveAvisadasDe = (org: string, email: string) => `agenda-diaria:avisadas:
  */
 const SOBREPOSICAO_MS = 10 * 60_000;
 
+/** `id`: o evento avisado (`NovaReserva.evento`), não só a reserva. */
 type Avisada = { id: string; corte: string };
 
 /** Reservas novas já avisadas a esta pessoa, com o corte do envio em que foram (para podar). */
@@ -262,7 +409,7 @@ function avisadasDepois(antes: readonly Avisada[], novas: readonly string[], cor
 function semAvisadas(a: Agenda, avisadas: readonly Avisada[]): Agenda {
   if (!avisadas.length) return a;
   const ids = new Set(avisadas.map((x) => x.id));
-  return { ...a, secoes: a.secoes.map((s) => ({ ...s, novas: s.novas.filter((n) => !ids.has(n.id)) })) };
+  return { ...a, secoes: a.secoes.map((s) => ({ ...s, novas: s.novas.filter((n) => !ids.has(n.evento)) })) };
 }
 
 async function lerMarco(db: Db, chave: string): Promise<Date | null> {
@@ -383,7 +530,7 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
       avisadas = await lerAvisadas(db, chaveAvisadasDe(organizacaoId, d.email));
       agenda = semAvisadas(await agendaDesde(desde, corte), avisadas);
       // A mesma chave do dia vai para o provedor: uma nova tentativa do mesmo envio não duplica.
-      await correio.enviar({ para: d.email, assunto: `Agenda SCL — ${diaCurto(agenda.dias[0])} a ${diaCurto(agenda.dias.at(-1)!)}`, texto: textoDaAgenda(agenda, d.cidades, { incertoAte }), chave });
+      await correio.enviar({ para: d.email, assunto: `Agenda SCL — ${diaCurto(agenda.dias[0])} a ${diaCurto(agenda.dias.at(-1)!)}`, texto: textoDaAgenda(agenda, d.cidades, { ...config, incertoAte }), chave });
     } catch (e) {
       // O provedor não aceitou: libera para tentar de novo.
       await db.delete(appSettings).where(eq(appSettings.key, chave));
@@ -404,7 +551,9 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
         await gravarMarco(tx, chaveUltimaDe(organizacaoId, d.email), marco);
         // As reservas novas deste envio: na próxima, a faixa de sobreposição não as repete.
         const atuais = await lerAvisadas(tx, chaveAvisadasDe(organizacaoId, d.email));
-        const value = { avisadas: avisadasDepois(atuais, agenda.secoes.flatMap((x) => x.novas.map((n) => n.id)), corte, marco) };
+        // Só o que foi no e-mail desta pessoa (as cidades dela); as outras cidades não contam como avisadas.
+        const noEmail = agenda.secoes.filter((x) => !d.cidades.length || d.cidades.includes(x.cidade));
+        const value = { avisadas: avisadasDepois(atuais, noEmail.flatMap((x) => x.novas.map((n) => n.evento)), corte, marco) };
         await tx
           .insert(appSettings)
           .values({ key: chaveAvisadasDe(organizacaoId, d.email), value })

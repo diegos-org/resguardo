@@ -6,7 +6,7 @@ import { exigir } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { getDb } from "@/db/client";
 import { correioDoAmbiente } from "@/email/correio";
-import { type Destinatario, resumoDoEnvio, salvarConfigAgenda } from "./agenda";
+import { type Destinatario, type Formato, resumoDoEnvio, salvarConfigAgenda } from "./agenda";
 import { agendaManual } from "./cron";
 
 function voltar(r: { ok: boolean; erro?: string; info?: string }): never {
@@ -30,7 +30,22 @@ export async function salvarAgendaAcao(form: FormData) {
   for (let i = 0; i < n; i++) {
     destinatarios.push({ email: String(form.get(`email_${i}`) ?? ""), cidades: form.getAll(`cidade_${i}`).map(String) });
   }
-  voltar(await salvarConfigAgenda(getDb(), s.organizacaoId, { ativa: form.get("ativa") === "sim", destinatarios }, s.usuarioId));
+  // Formato de cada cidade ("automático" = sem escolha).
+  const formatos: Record<string, Formato> = {};
+  const nc = Math.min(Number(form.get("cidades") ?? 0) || 0, 40);
+  for (let i = 0; i < nc; i++) {
+    const cidade = String(form.get(`formato_cidade_${i}`) ?? "");
+    const f = String(form.get(`formato_${i}`) ?? "");
+    if (cidade && f && f !== "automatico") formatos[cidade] = f as Formato;
+  }
+  voltar(
+    await salvarConfigAgenda(
+      getDb(),
+      s.organizacaoId,
+      { ativa: form.get("ativa") === "sim", destinatarios, formatos, horaEntrada: String(form.get("horaEntrada") ?? ""), horaSaida: String(form.get("horaSaida") ?? "") },
+      s.usuarioId,
+    ),
+  );
 }
 
 export async function enviarAgoraAcao() {

@@ -247,14 +247,24 @@
   As **profissionais** são cadastradas na própria tela (nome, telefone, observações) e
   arquivadas quando saem. A equipe de operação vê e registra as limpezas, sem ver custos.
 - M6.3: **agenda diária da equipe** (Painel → **Agenda**). Todo dia às **20h** quem você
-  escolher recebe por e-mail as **entradas, saídas e limpezas dos próximos 5 dias**, com
-  **Rio e Búzios separados** (cada seção é a cidade do cadastro do imóvel; nada é somado).
-  - Vêm também as **reservas novas desde a última agenda**, mesmo as de datas mais distantes.
-  - A agenda **só informa**: limpeza ainda não confirmada aparece como "a confirmar", e a
-    agenda não confirma nada sozinha.
-  - Do hóspede vai só o **primeiro nome** e o número de pessoas. Quando o número de pessoas
-    não está na reserva, a agenda avisa em vez de adivinhar.
-  - Na mesma tela você cadastra **quem recebe** e, para cada pessoa, as cidades que ela
+  escolher recebe por e-mail os **próximos 5 dias**, com **Rio e Búzios separados** (cada
+  seção é a cidade do cadastro do imóvel; nada é somado). O texto segue o **modelo que você
+  definiu em 23/09** (depois da confusão da Niedja):
+  - **Rio (vários apartamentos):** um dia por linha, **só com as limpezas** (limpeza = dia de
+    checkout). Nos dias vazios aparece "nenhuma limpeza". Quando alguém entra no mesmo dia, sai
+    o horário-limite ("pronto até 15h, entra Ana"). As entradas vão num parágrafo separado, só
+    para referência;
+  - **Búzios (casa única):** uma linha por reserva, com a entrada, a saída e o número de
+    hóspedes, e "limpeza entre a saída e a entrada" quando uma sai e outra entra no mesmo dia;
+  - o formato de cada cidade e os horários de entrada e saída (15h e 11h) **podem ser mudados
+    na tela**. Sem escolha, casa única vai por reserva e cidade com vários apartamentos vai
+    por limpezas. A tela mostra **o mesmo texto que a equipe vai receber**;
+  - vêm também as **reservas novas desde a última agenda**, mesmo as de datas mais distantes;
+  - termina com a frase padrão "Essa é a agenda atual e ainda pode mudar…". A agenda **só
+    informa**: não confirma limpeza nem preparação;
+  - do hóspede vai só o **primeiro nome** e o número de pessoas, **sem código de reserva**.
+    Quando o número de pessoas não está na reserva, a agenda avisa em vez de adivinhar;
+  - na mesma tela você cadastra **quem recebe** e, para cada pessoa, as cidades que ela
     recebe (sem cidade marcada = todas). Também liga ou desliga o envio das 20h e tem o botão
     **"Enviar agora"** (pede confirmação).
   - Cada pessoa recebe **uma vez por dia**. O envio das 20h aparece em **Sistema →
