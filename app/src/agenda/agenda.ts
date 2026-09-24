@@ -504,8 +504,15 @@ export async function previaDaAgenda(
       return { ...sec, novas };
     }),
   };
-  // O mesmo aviso do e-mail ("pode já ter vindo"), para quem o recebe.
-  return { agenda, ultima, talvezJaVeio: talvezJaVeioEm(porPessoa.flatMap((x) => x.incertos)) };
+  // O mesmo aviso do e-mail ("pode já ter vindo"): só quando, para alguém que recebe aquela cidade, a
+  // reserva estava num envio incerto dele.
+  const comAviso = new Set<string>();
+  for (const sec of agenda.secoes)
+    for (const x of porPessoa.filter((y) => !y.d.cidades.length || y.d.cidades.includes(sec.cidade))) {
+      const talvez = talvezJaVeioEm(x.incertos);
+      for (const n of x.agenda.secoes.find((y) => y.cidade === sec.cidade)?.novas ?? []) if (talvez(n)) comAviso.add(n.evento);
+    }
+  return { agenda, ultima, talvezJaVeio: (n) => comAviso.has(n.evento) };
 }
 
 /**

@@ -738,6 +738,28 @@ describe("configuração e envio", () => {
     expect(n && talvezJaVeio?.(n)).toBe(true);
   });
 
+  it("prévia: aviso 'pode já ter vindo' só de quem recebe a cidade", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }, { email: "b@example.com", cidades: [] }] }, null);
+    await nova(rio, "2029-02-05", "2029-02-07", new Date(AGORA.getTime() - 60_000).toISOString());
+    // "b" recebeu por último há 2h (a reserva está na janela dele).
+    await db.insert(appSettings).values({ key: `agenda-diaria:ultima:${org}:b@example.com`, value: { em: new Date(AGORA.getTime() - 2 * 3_600_000).toISOString() } });
+    // "a" fica com o envio incerto; "b" falha de vez.
+    const correio: Correio = {
+      nome: "misto",
+      enviar: async (m) => {
+        if (m.para === "a@example.com") throw new ErroEnvioIncerto("Sem resposta do provedor de e-mail");
+        throw new Error("Falha ao enviar e-mail (HTTP 422).");
+      },
+    };
+    await enviarAgenda(db, org, correio, AGORA);
+    // Agora "a" só recebe Búzios; "b" (Rio) ainda precisa da reserva, sem aviso para ele.
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: ["Armação dos Búzios"] }, { email: "b@example.com", cidades: [] }] }, null);
+    const { agenda, talvezJaVeio } = await previaDaAgenda(db, org, new Date("2026-10-02T23:00:00Z"));
+    const n = agenda.secoes.flatMap((x) => x.novas).find((x) => x.checkin === "2029-02-05");
+    expect(n).toBeTruthy();
+    expect(talvezJaVeio?.(n!)).toBe(false);
+  });
+
   it("um endereço cujo provedor demora não segura os outros (envio em paralelo)", async () => {
     await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }, { email: "b@example.com", cidades: [] }] }, null);
     let liberaA!: () => void;
