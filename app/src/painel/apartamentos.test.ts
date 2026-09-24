@@ -168,6 +168,24 @@ describe("aba Apartamentos", () => {
     ]);
   });
 
+  it("acerto de proprietário sem imóvel entra na linha Geral, separado por pessoa, e no total", async () => {
+    const [p1, p2] = await db.insert(proprietarios).values([{ organizacaoId: org, nome: "Credora" }, { organizacaoId: org, nome: "Devedor" }]).returning();
+    const ajuste = (proprietarioId: string, efeitoSaldo: number, competencia: string) =>
+      db.insert(lancamentos).values({ organizacaoId: org, tipo: "ajuste", descricao: "Acerto geral fictício", valor: 0, efeitoSaldo, competencia, estado: "realizado", imovelId: null, proprietarioId, origem: "manual" });
+    await ajuste(p1.id, 30000, "2026-10-15");
+    await ajuste(p2.id, -12000, "2026-09-10"); // mês anterior: só no saldo
+    const r = await carregar();
+    const geral = r.linhas.find((x) => x.codigo === "—")!;
+    expect(geral.anteriores.map((x) => [x.nome, x.acertoPeriodo, x.saldo]).sort()).toEqual([
+      ["Credora", 30000, 30000],
+      ["Devedor", 0, -12000],
+    ]);
+    expect(r.total.porSentido!.saldo).toMatchObject({ empresaDeve: 30000, proprietariosDevem: 12000 });
+    expect(r.total.porSentido!.acertoPeriodo).toMatchObject({ empresaDeve: 30000, proprietariosDevem: 0 });
+    // Filtro de imóvel: nada sem imóvel.
+    expect((await carregar("403")).total.anteriores).toEqual([]);
+  });
+
   it("arquivado só com movimento financeiro não entra na ocupação", async () => {
     await criarReserva(db, org, reserva(a, "2026-10-10", "2026-10-13"), null);
     await despesa({ responsavel: "empresa", valor: 5000, imovelId: b, descricao: "Lâmpada" });

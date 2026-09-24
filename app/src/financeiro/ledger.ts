@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, inArray, isNotNull, lt, sql, sum } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNotNull, isNull, lt, sql, sum } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import {
   categoriasDespesa,
@@ -343,6 +343,27 @@ export async function acertoPorImovelEDono(
     .where(and(condicoes(organizacaoId, { ...f, imovelIds: ids }), isNotNull(lancamentos.proprietarioId)))
     .groupBy(lancamentos.imovelId, lancamentos.proprietarioId);
   return linhas.map((l) => ({ imovelId: l.imovelId!, proprietarioId: l.proprietarioId!, total: Number(l.total ?? 0) }));
+}
+
+/**
+ * Lançamentos do proprietário sem imóvel (ex.: ajuste ou acerto geral), por proprietário:
+ * `acerto` soma o efeito no saldo; `despesas`, o montante das despesas do proprietário.
+ */
+export async function semImovelPorDono(
+  db: Db,
+  organizacaoId: string,
+  f: Omit<FiltroLancamentos, "imovelIds">,
+): Promise<{ proprietarioId: string; acerto: number; despesas: number }[]> {
+  const linhas = await db
+    .select({
+      proprietarioId: lancamentos.proprietarioId,
+      acerto: sum(lancamentos.efeitoSaldo),
+      despesas: sql<string>`coalesce(sum(${lancamentos.montante}) filter (where ${lancamentos.tipo} = 'despesa_proprietario'), 0)`,
+    })
+    .from(lancamentos)
+    .where(and(condicoes(organizacaoId, f), isNull(lancamentos.imovelId), isNotNull(lancamentos.proprietarioId)))
+    .groupBy(lancamentos.proprietarioId);
+  return linhas.map((l) => ({ proprietarioId: l.proprietarioId!, acerto: Number(l.acerto ?? 0), despesas: Number(l.despesas ?? 0) }));
 }
 
 /** Despesas do proprietário (montante) no período, por imóvel e proprietário. */
