@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 24/09/2026, documentos de portaria (M6.4).
+> **Última atualização:** 24/09/2026, rotinas recorrentes (M6.5).
 
 ---
 
@@ -314,6 +314,17 @@
     de meses (até 36). Intervalo inválido não é adivinhado: aparece um aviso e vale o filtro;
   - com "todos os imóveis", entra também uma linha **Geral da empresa** (despesas sem imóvel)
     e os imóveis arquivados que tiveram movimento, então o total bate com o Início.
+- M6.5: **rotinas recorrentes** (menu **Rotinas**). Tarefas que se repetem, cada uma com a
+  próxima data:
+  - já vêm as quatro que existiam na operação: **conferência das faxinas** (toda semana),
+    **consulta de manutenção e mídia** (a cada 15 dias), **lembrete administrativo** (todo mês)
+    e **caixinhas** (todo ano). Elas começam vencendo hoje: ajuste as datas na própria tela;
+  - você cria, edita (nome, o que fazer, frequência, próxima data) e **arquiva** (com
+    confirmação; o histórico fica). Arquivada não volta sozinha;
+  - a equipe marca **"feita"** (com a data e uma observação) ou **"pular desta vez"** (motivo
+    obrigatório). A próxima data vai para o vencimento seguinte depois do dia informado: quem
+    atrasou três semanas não fica devendo três conferências;
+  - nada fica "feito" sozinho: vencida e não registrada, a rotina aparece como **atrasada**.
 - M6.4: **documentos de portaria** (menu **Portaria**). É só uma lista de controle:
   **nenhum documento, número ou foto é guardado** no sistema.
   - você marca na própria tela quais imóveis exigem documentos (hoje, o 403). Nada fica fixo
@@ -440,9 +451,14 @@
 | Portaria (documentos: pedidos, encaminhamento e entrega) |
 |---|
 | ![Portaria](docs/telas/portaria.png) |
+
 | Apartamentos (resultado por imóvel) | Portal do proprietário no celular |
 |---|---|
 | ![Apartamentos](docs/telas/apartamentos.png) | ![Portal no celular](docs/telas/portal-celular.png) |
+
+| Rotinas | Rotinas no celular |
+|---|---|
+| ![Rotinas](docs/telas/rotinas.png) | ![Rotinas no celular](docs/telas/rotinas-celular.png) |
 
 | Portal do proprietário |
 |---|
@@ -567,10 +583,12 @@ ambiente).
 7. **Booking:** criar os anúncios (ver "Copiar anúncios do Airbnb para o Booking" na seção 7).
 8. **Portaria:** em Painel → **Portaria**, marque os imóveis que exigem documentos de
    portaria (hoje, o 403). Sem marcação, a tela só avisa e não lista nada.
-9. **Manutenção:** quando aparecer "aguardando aprovação" (no menu **Manutenção**), confira o
+9. **Rotinas:** em Painel → **Rotinas**, confira as quatro rotinas que já vêm prontas e
+   ajuste a próxima data de cada uma (elas começam vencendo hoje). Arquive a que não usar.
+10. **Manutenção:** quando aparecer "aguardando aprovação" (no menu **Manutenção**), confira o
    orçamento, escolha quem paga (empresa ou proprietário) e aprove, ou recuse com o motivo.
    Só você (administrador) vê esses botões.
-10. **Sistema antigo (referência):** mande o arquivo (zip) do sistema antigo — o jeito mais
+11. **Sistema antigo (referência):** mande o arquivo (zip) do sistema antigo — o jeito mais
    fácil é subir no seu **Google Drive** e me dizer o nome do arquivo (o Drive já está
    conectado aqui). Eu só leio para levantar todas as telas e capacidades e comparar com o
    plano; **nada dele vai para o GitHub**, e dados reais de clientes não são copiados.

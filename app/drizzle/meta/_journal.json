@@ -162,6 +162,13 @@
       "when": 1790259983800,
       "tag": "0022_portaria",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1790262039628,
+      "tag": "0023_rotinas",
+      "breakpoints": true
     }
   ]
 }

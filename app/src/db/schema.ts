@@ -844,3 +844,50 @@ export const portariaChecklists = pgTable("portaria_checklists", {
   criadoEm: criadoEm(),
   atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ---------------------------------------------------------------------------
+// Rotinas recorrentes (M6.5): tarefas que se repetem (conferência semanal das faxinas,
+// consulta quinzenal de manutenção, lembrete mensal…), editáveis no painel.
+// ---------------------------------------------------------------------------
+
+export const FREQUENCIAS_ROTINA = ["semanal", "quinzenal", "mensal", "anual"] as const;
+export type FrequenciaRotina = (typeof FREQUENCIAS_ROTINA)[number];
+
+export const rotinas = pgTable(
+  "rotinas",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    titulo: text("titulo").notNull(),
+    descricao: text("descricao").notNull().default(""),
+    frequencia: text("frequencia").$type<FrequenciaRotina>().notNull(),
+    /** Próxima vez que a rotina vence. */
+    proximaData: date("proxima_data", { mode: "string" }).notNull(),
+    /** Arquivada = não aparece mais como pendente; o histórico fica. */
+    ativa: boolean("ativa").notNull().default(true),
+    criadoEm: criadoEm(),
+    atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("rotinas_org_ativa").on(t.organizacaoId, t.ativa)],
+);
+
+/** Cada vez que uma rotina foi feita (ou pulada, com motivo): uma por vencimento. */
+export const rotinaExecucoes = pgTable(
+  "rotina_execucoes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    rotinaId: uuid("rotina_id")
+      .notNull()
+      .references(() => rotinas.id),
+    /** Vencimento que esta execução cobre. */
+    prevista: date("prevista", { mode: "string" }).notNull(),
+    /** Dia em que foi feita (ou em que se decidiu pular). */
+    feitaEm: date("feita_em", { mode: "string" }).notNull(),
+    pulada: boolean("pulada").notNull().default(false),
+    observacao: text("observacao").notNull().default(""),
+    usuarioId: uuid("usuario_id").references(() => usuarios.id),
+    criadoEm: criadoEm(),
+  },
+  (t) => [uniqueIndex("rotina_execucoes_prevista").on(t.rotinaId, t.prevista)],
+);
