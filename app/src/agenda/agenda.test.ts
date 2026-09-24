@@ -543,6 +543,49 @@ describe("configuração e envio", () => {
     expect(correio.enviadas[2].texto).toContain("entrada ter 02/05");
   });
 
+  it("envio agendado incerto: o 'enviar agora' do mesmo dia repete o mesmo pedido, sem segundo e-mail", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    await nova(rio, "2028-06-05", "2028-06-07", new Date(AGORA.getTime() - 60_000).toISOString());
+    const pedidos: Mensagem[] = [];
+    const caiu: Correio = { nome: "caiu", enviar: async (m) => { pedidos.push(m); throw new ErroEnvioIncerto("Sem resposta do provedor de e-mail"); } };
+    await enviarAgenda(db, org, caiu, AGORA);
+    const correio = new CorreioMemoria();
+    // Logo depois: não manda com outra chave; espera a retomada.
+    const cedo = await enviarAgenda(db, org, correio, new Date(AGORA.getTime() + 60_000), { manual: true });
+    expect(cedo.enviados).toBe(0);
+    expect(cedo.falhas[0]).toContain("ainda não foi confirmado");
+    expect(correio.enviadas).toHaveLength(0);
+    // Depois de 15 minutos: o manual retoma o pedido do agendado, com a mesma chave e o mesmo texto.
+    expect(await enviarAgenda(db, org, correio, new Date(AGORA.getTime() + 20 * 60_000), { manual: true })).toMatchObject({ enviados: 1 });
+    expect(correio.enviadas[0]).toMatchObject({ chave: pedidos[0].chave, texto: pedidos[0].texto });
+    const [marca] = await db.select().from(appSettings).where(eq(appSettings.key, `agenda-diaria:${org}:2026-10-01:a@example.com`));
+    expect((marca.value as { estado: string }).estado).toBe("enviado");
+  });
+
+  it("envio incerto só fica resolvido quando outro e-mail cobre todos os imóveis dele", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    const correio = new CorreioMemoria();
+    await enviarAgenda(db, org, correio, AGORA);
+    // Dia 2: reserva nova em Búzios e o envio fica incerto (pode não ter chegado).
+    const dia2 = new Date("2026-10-02T23:00:00Z");
+    await nova(buzios, "2028-07-03", "2028-07-05", new Date(dia2.getTime() - 3_600_000).toISOString());
+    const caiu: Correio = { nome: "caiu", enviar: async () => Promise.reject(new ErroEnvioIncerto("Sem resposta do provedor de e-mail")) };
+    await enviarAgenda(db, org, caiu, dia2);
+    // Dia 3: Búzios inativo; o e-mail sai sem Búzios e o incerto continua aberto.
+    await db.update(imoveis).set({ ativo: false }).where(eq(imoveis.id, buzios));
+    await enviarAgenda(db, org, correio, new Date("2026-10-03T23:00:00Z"));
+    expect(correio.enviadas[1].texto).not.toContain("entrada seg 03/07");
+    const chaveDia2 = `agenda-diaria:${org}:2026-10-02:a@example.com`;
+    const estado = async () => ((await db.select().from(appSettings).where(eq(appSettings.key, chaveDia2)))[0].value as { estado: string }).estado;
+    expect(await estado()).toBe("incerto");
+    // Dias depois (fora das 24h), Búzios volta: a reserva do envio incerto chega, e aí ele é resolvido.
+    await db.update(imoveis).set({ ativo: true }).where(eq(imoveis.id, buzios));
+    await enviarAgenda(db, org, correio, new Date("2026-10-05T23:00:00Z"));
+    expect(correio.enviadas[2].texto).toContain("entrada seg 03/07");
+    expect(correio.enviadas[2].texto).toContain("pode já ter vindo");
+    expect(await estado()).toBe("resolvido");
+  });
+
   it("envio incerto de outro dia continua avisado até um envio dar certo", async () => {
     await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
     await nova(rio, "2027-12-06", "2027-12-08", new Date(AGORA.getTime() - 60 * 60_000).toISOString());
