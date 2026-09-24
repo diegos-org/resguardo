@@ -19,6 +19,7 @@ CREATE TABLE "quitacoes_adiantamento" (
 	"lancamento_id" uuid,
 	"contestacao_id" uuid,
 	"nota" text DEFAULT '' NOT NULL,
+	"chave" text,
 	"criado_por" uuid,
 	"criado_em" timestamp with time zone DEFAULT now() NOT NULL,
 	"desfeita_em" timestamp with time zone
@@ -31,4 +32,5 @@ ALTER TABLE "quitacoes_adiantamento" ADD CONSTRAINT "quitacoes_adiantamento_adia
 ALTER TABLE "quitacoes_adiantamento" ADD CONSTRAINT "quitacoes_adiantamento_lancamento_id_lancamentos_id_fk" FOREIGN KEY ("lancamento_id") REFERENCES "public"."lancamentos"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "quitacoes_adiantamento" ADD CONSTRAINT "quitacoes_adiantamento_criado_por_usuarios_id_fk" FOREIGN KEY ("criado_por") REFERENCES "public"."usuarios"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "contestacao_aberta_unica" ON "contestacoes_adiantamento" USING btree ("adiantamento_id") WHERE "contestacoes_adiantamento"."resolvida_em" is null;--> statement-breakpoint
-CREATE INDEX "quitacoes_adiantamento_adiantamento" ON "quitacoes_adiantamento" USING btree ("adiantamento_id");
+CREATE INDEX "quitacoes_adiantamento_adiantamento" ON "quitacoes_adiantamento" USING btree ("adiantamento_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "quitacoes_adiantamento_chave" ON "quitacoes_adiantamento" USING btree ("adiantamento_id","chave");
