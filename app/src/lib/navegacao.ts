@@ -17,6 +17,7 @@ export const SECOES: readonly Secao[] = [
   { slug: "limpezas", titulo: "Limpezas", marco: "M6.1", descricao: "Faxinas por checkout: pedida, confirmada e realizada." },
   { slug: "manutencao", titulo: "Manutenção", marco: "M6.2", descricao: "Pedidos, orçamentos, aprovação e custos de manutenção." },
   { slug: "mensagens", titulo: "Mensagens", marco: "M10.1", descricao: "Caixa de entrada do WhatsApp e mensagens programadas." },
+  { slug: "sistema", titulo: "Sistema", marco: "M1.6", descricao: "Serviços ligados, automações e regras em vigor." },
   { slug: "configuracoes", titulo: "Configurações", marco: "M1.2", descricao: "Usuários, permissões e integrações." },
 ];
 

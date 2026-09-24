@@ -8,6 +8,7 @@
 import { getDb } from "../src/db/client";
 import { organizacoes } from "../src/db/schema";
 import { recalcularReservas } from "../src/financeiro/aplicar";
+import { registrarExecucao } from "../src/sistema/automacoes";
 
 async function main() {
   if (!process.env.DATABASE_URL) {
@@ -15,10 +16,16 @@ async function main() {
     return;
   }
   const db = getDb();
-  for (const org of await db.select({ id: organizacoes.id }).from(organizacoes)) {
-    const r = await recalcularReservas(db, org.id);
-    console.log(`[recalcular] ${r.reservas} reserva(s): ${r.criados} lançamento(s) novo(s), ${r.estornados} estornado(s).`);
-  }
+  // Registrado na página "Sistema" (M1.6): quando rodou, se deu certo e o resumo.
+  const resumo = await registrarExecucao(db, "recalculo-deploy", async () => {
+    const partes: string[] = [];
+    for (const org of await db.select({ id: organizacoes.id }).from(organizacoes)) {
+      const r = await recalcularReservas(db, org.id);
+      partes.push(`${r.reservas} reserva(s) conferida(s), ${r.criados} lançamento(s) novo(s), ${r.estornados} estornado(s)`);
+    }
+    return partes.join("; ") || "nenhuma organização";
+  });
+  console.log(`[recalcular] ${resumo}`);
 }
 
 main().then(
