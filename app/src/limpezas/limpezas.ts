@@ -7,11 +7,13 @@
  * cancela as de reserva cancelada — só enquanto a limpeza não foi realizada. Depois de
  * realizada, uma mudança na reserva vira aviso para conferência.
  */
-import { and, asc, eq, gte, inArray, isNotNull, lt, or } from "drizzle-orm";
+import { and, asc, eq, exists, gte, inArray, isNotNull, lt, or, sql } from "drizzle-orm";
 import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
 import type { ItemCalendario } from "@/calendario/grade";
-import { type EstadoLimpeza, imoveis, limpezas, profissionaisLimpeza, reservas } from "@/db/schema";
+import { type EstadoLimpeza, imoveis, lancamentos, limpezas, profissionaisLimpeza, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { garantirCategoriasIniciais, listarCategorias } from "@/despesas/categorias";
+import { estornarDespesa, obterDespesa, registrarDespesa } from "@/despesas/despesas";
 import { uuidValido } from "@/lib/ids";
 import { dataValida } from "@/reservas/regras";
 
@@ -143,6 +145,7 @@ export async function listarLimpezas(db: Db, organizacaoId: string, f: Periodo &
       reservaCheckout: reservas.checkout,
       reservaImovelId: reservas.imovelId,
       profissional: profissionaisLimpeza.nome,
+      despesaEstornada: exists(db.select({ um: sql`1` }).from(lancamentos).where(eq(lancamentos.estornoDe, limpezas.despesaId))),
     })
     .from(limpezas)
     .innerJoin(imoveis, eq(imoveis.id, limpezas.imovelId))
@@ -161,6 +164,7 @@ export async function listarLimpezas(db: Db, organizacaoId: string, f: Periodo &
       avisos.push("Cancelada à mão, mas a reserva continua confirmada: confira se a saída não precisa de limpeza.");
     if ((l.estado === "pedida" || l.estado === "confirmada") && l.data < f.hoje) avisos.push("A data já passou e a limpeza não foi registrada como realizada.");
     if (l.estado === "realizada" && l.custo === null) avisos.push("Custo não informado.");
+    if (l.estado === "realizada" && l.despesaId && x.despesaEstornada) avisos.push("A despesa desta limpeza foi estornada em Despesas: informe o custo de novo para lançar.");
     const movida = l.data < f.inicio || l.data >= f.fim || Boolean(f.imovelIds && !f.imovelIds.includes(l.imovelId));
     return { ...l, movida, imovelCodigo: x.imovelCodigo, reservaCodigo: x.reservaCodigo, profissional: x.profissional, avisos };
   });
@@ -205,6 +209,49 @@ async function profissionalAtivo(tx: Db, organizacaoId: string, id: string): Pro
 }
 
 /** Muda o estado com trava e histórico. `de` lista os estados de onde a mudança é permitida. */
+/**
+ * Deixa a despesa da limpeza de acordo com o custo: realizada com custo → uma despesa da empresa
+ * (categoria de limpeza, a pagar) com esse valor; sem custo ou reaberta → nenhuma. Troca de valor
+ * estorna a anterior e lança outra. Despesa já paga não é mexida automaticamente: vira aviso
+ * para corrigir em Despesas. Devolve o id da despesa em vigor (ou null), ou o erro.
+ */
+async function acertarDespesa(tx: Db, organizacaoId: string, l: Limpeza, autorId: string | null): Promise<{ id: string | null } | { erro: string }> {
+  const desejado = l.estado === "realizada" && l.custo !== null && l.custo > 0 ? l.custo : null;
+  const atual = l.despesaId ? await obterDespesa(tx, organizacaoId, l.despesaId) : null;
+  const vigente = atual && !atual.estornada ? atual : null;
+  if (vigente && desejado !== null && vigente.montante === desejado && vigente.imovelId === l.imovelId && vigente.competencia === l.data) return { id: vigente.id };
+  if (vigente) {
+    if (vigente.estado !== "previsto") return { erro: "A despesa desta limpeza já foi paga: para mudar o custo, estorne-a em Despesas primeiro." };
+    if ((await estornarDespesa(tx, organizacaoId, vigente.id, "Custo da limpeza mudou", autorId)) !== true) return { erro: "Não foi possível estornar a despesa anterior desta limpeza." };
+  }
+  if (desejado === null) return { id: null };
+  await garantirCategoriasIniciais(tx, organizacaoId);
+  const categoria = (await listarCategorias(tx, organizacaoId)).find((c) => /limpeza/i.test(c.nome));
+  if (!categoria) return { erro: "Não há categoria de despesa ativa com “Limpeza” no nome: crie ou reative uma em Despesas → Categorias." };
+  const [p] = l.profissionalId ? await tx.select({ nome: profissionaisLimpeza.nome }).from(profissionaisLimpeza).where(eq(profissionaisLimpeza.id, l.profissionalId)) : [];
+  const r = await registrarDespesa(
+    tx,
+    organizacaoId,
+    {
+      responsavel: "empresa",
+      pagoPor: "empresa",
+      categoriaId: categoria.id,
+      descricao: `Limpeza de ${l.data.split("-").reverse().join("/")}`,
+      valor: desejado,
+      data: l.data,
+      imovelId: l.imovelId,
+      proprietarioId: null,
+      fornecedor: p?.nome ?? "",
+      comprovante: "",
+      paga: false,
+      dataPagamento: null,
+    },
+    autorId,
+  );
+  if (!r.ok) return { erro: Object.values(r.erros)[0] ?? "Não foi possível lançar a despesa da limpeza." };
+  return { id: r.lancamento.id };
+}
+
 async function transicao(
   db: Db,
   organizacaoId: string,
@@ -220,6 +267,10 @@ async function transicao(
     if (!de.includes(l.estado)) return { ok: false as const, erro: `Não dá a partir de "${NOMES_ESTADO[l.estado]}".` };
     const novo = await mudar(l, tx);
     if (typeof novo === "string") return { ok: false as const, erro: novo };
+    // O custo da limpeza realizada vive no livro como despesa da empresa (uma regra, um lugar).
+    const despesa = await acertarDespesa(tx, organizacaoId, { ...l, ...novo }, autorId);
+    if ("erro" in despesa) return { ok: false as const, erro: despesa.erro };
+    novo.despesaId = despesa.id;
     const [depois] = await tx
       .update(limpezas)
       .set({ ...novo, atualizadoEm: new Date() })

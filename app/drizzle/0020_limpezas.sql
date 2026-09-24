@@ -9,6 +9,7 @@ CREATE TABLE "limpezas" (
 	"custo" integer,
 	"observacao" text DEFAULT '' NOT NULL,
 	"cancelada_manual" boolean DEFAULT false NOT NULL,
+	"despesa_id" uuid,
 	"confirmada_em" timestamp with time zone,
 	"realizada_em" timestamp with time zone,
 	"criado_em" timestamp with time zone DEFAULT now() NOT NULL,
@@ -29,6 +30,7 @@ ALTER TABLE "limpezas" ADD CONSTRAINT "limpezas_organizacao_id_organizacoes_id_f
 ALTER TABLE "limpezas" ADD CONSTRAINT "limpezas_imovel_id_imoveis_id_fk" FOREIGN KEY ("imovel_id") REFERENCES "public"."imoveis"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "limpezas" ADD CONSTRAINT "limpezas_reserva_id_reservas_id_fk" FOREIGN KEY ("reserva_id") REFERENCES "public"."reservas"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "limpezas" ADD CONSTRAINT "limpezas_profissional_id_profissionais_limpeza_id_fk" FOREIGN KEY ("profissional_id") REFERENCES "public"."profissionais_limpeza"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "limpezas" ADD CONSTRAINT "limpezas_despesa_id_lancamentos_id_fk" FOREIGN KEY ("despesa_id") REFERENCES "public"."lancamentos"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "profissionais_limpeza" ADD CONSTRAINT "profissionais_limpeza_organizacao_id_organizacoes_id_fk" FOREIGN KEY ("organizacao_id") REFERENCES "public"."organizacoes"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "limpezas_uma_por_reserva" ON "limpezas" USING btree ("reserva_id") WHERE "limpezas"."reserva_id" is not null;--> statement-breakpoint
 CREATE INDEX "limpezas_org_data" ON "limpezas" USING btree ("organizacao_id","data");--> statement-breakpoint

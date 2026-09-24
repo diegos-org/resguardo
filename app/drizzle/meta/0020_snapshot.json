@@ -1,5 +1,5 @@
 {
-  "id": "a8b1e263-4aeb-46e4-b54c-734d5d2c7be0",
+  "id": "02f67393-2098-41a3-ac61-e3c4328a66c1",
   "prevId": "8a52dda7-4680-47ac-a36f-a07701ba8fdd",
   "version": "7",
   "dialect": "postgresql",
@@ -2301,6 +2301,12 @@
           "notNull": true,
           "default": false
         },
+        "despesa_id": {
+          "name": "despesa_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "confirmada_em": {
           "name": "confirmada_em",
           "type": "timestamp with time zone",
@@ -2413,6 +2419,19 @@
           "tableTo": "profissionais_limpeza",
           "columnsFrom": [
             "profissional_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "limpezas_despesa_id_lancamentos_id_fk": {
+          "name": "limpezas_despesa_id_lancamentos_id_fk",
+          "tableFrom": "limpezas",
+          "tableTo": "lancamentos",
+          "columnsFrom": [
+            "despesa_id"
           ],
           "columnsTo": [
             "id"

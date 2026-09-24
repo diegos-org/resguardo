@@ -1,9 +1,11 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { historicoDe } from "@/auditoria/auditoria";
-import { imoveis, limpezas, organizacoes } from "@/db/schema";
+import { imoveis, lancamentos, limpezas, organizacoes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
+import { atualizarCategoria, listarCategorias } from "@/despesas/categorias";
+import { estornarDespesa, marcarDespesaPaga, obterDespesa } from "@/despesas/despesas";
 import type { DadosReserva } from "@/reservas/regras";
 import { cancelarReserva, criarReserva, sincronizarReserva } from "@/reservas/repositorio";
 import {
@@ -238,6 +240,52 @@ describe("cancelada à mão e mudança de imóvel", () => {
     const [depois] = await lista();
     expect(depois).toMatchObject({ imovelCodigo: "403", estado: "realizada" });
     expect(depois.avisos).toContain("A reserva mudou de imóvel depois da limpeza realizada: confira.");
+  });
+});
+
+describe("custo no livro", () => {
+  const despesasNoLivro = async () =>
+    (await db.select().from(lancamentos).where(and(eq(lancamentos.organizacaoId, org), eq(lancamentos.tipo, "despesa_empresa")))).reduce((t, l) => t + l.valor, 0);
+
+  it("custo vira despesa da empresa (a pagar); troca estorna e relança; reabrir estorna; já paga não muda sozinha", async () => {
+    await criarReserva(db, org, reserva(a, "2026-10-10", "2026-10-15"), null);
+    await sincronizarLimpezas(db, org, periodo);
+    const maria = await profissional();
+    const [l] = await lista();
+    expect(await realizarLimpeza(db, org, l.id, { profissionalId: maria, custo: 15000 }, "2026-10-15", null)).toEqual({ ok: true });
+    let [depois] = await lista();
+    const d = await obterDespesa(db, org, depois.despesaId!);
+    expect(d).toMatchObject({ tipo: "despesa_empresa", valor: -15000, imovelId: a, competencia: "2026-10-15", estado: "previsto", fornecedor: "Maria Fictícia", categoria: "Limpeza e lavanderia" });
+
+    expect(await informarCusto(db, org, l.id, 16000, null)).toEqual({ ok: true });
+    expect(await despesasNoLivro()).toBe(-16000);
+    expect(await reabrirLimpeza(db, org, l.id, null)).toEqual({ ok: true });
+    expect(await despesasNoLivro()).toBe(0);
+    expect((await lista())[0].despesaId).toBeNull();
+    // Realizada de novo sem custo no formulário: mantém 160 e relança.
+    await realizarLimpeza(db, org, l.id, { profissionalId: maria, custo: null }, "2026-10-15", null);
+    expect(await despesasNoLivro()).toBe(-16000);
+
+    [depois] = await lista();
+    expect(await marcarDespesaPaga(db, org, depois.despesaId!, "2026-10-16", null)).toBe(true);
+    expect(await informarCusto(db, org, l.id, 17000, null)).toMatchObject({ ok: false, erro: expect.stringContaining("já foi paga") });
+    expect(await despesasNoLivro()).toBe(-16000);
+  });
+
+  it("despesa estornada em Despesas: aviso e dá para lançar de novo; sem categoria de limpeza: avisa", async () => {
+    await criarReserva(db, org, reserva(a, "2026-10-10", "2026-10-15"), null);
+    await sincronizarLimpezas(db, org, periodo);
+    const maria = await profissional();
+    const [l] = await lista();
+    await realizarLimpeza(db, org, l.id, { profissionalId: maria, custo: 15000 }, "2026-10-15", null);
+    expect(await estornarDespesa(db, org, (await lista())[0].despesaId!, "lançado errado", null)).toBe(true);
+    expect((await lista())[0].avisos).toContain("A despesa desta limpeza foi estornada em Despesas: informe o custo de novo para lançar.");
+    expect(await informarCusto(db, org, l.id, 15000, null)).toEqual({ ok: true });
+    expect(await despesasNoLivro()).toBe(-15000);
+    expect((await lista())[0].avisos).toEqual([]);
+
+    for (const c of await listarCategorias(db, org)) if (/limpeza/i.test(c.nome)) await atualizarCategoria(db, org, c.id, { ativa: false }, null);
+    expect(await informarCusto(db, org, l.id, 18000, null)).toMatchObject({ ok: false, erro: expect.stringContaining("categoria") });
   });
 });
 

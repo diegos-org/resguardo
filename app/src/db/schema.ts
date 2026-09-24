@@ -761,6 +761,8 @@ export const limpezas = pgTable(
     observacao: text("observacao").notNull().default(""),
     /** Cancelada à mão (não pela reserva): a sincronização não a reabre. */
     canceladaManual: boolean("cancelada_manual").notNull().default(false),
+    /** Despesa da empresa com o custo desta limpeza (livro de lançamentos). */
+    despesaId: uuid("despesa_id").references(() => lancamentos.id),
     confirmadaEm: timestamp("confirmada_em", { withTimezone: true }),
     realizadaEm: timestamp("realizada_em", { withTimezone: true }),
     criadoEm: criadoEm(),
