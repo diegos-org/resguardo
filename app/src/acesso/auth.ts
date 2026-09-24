@@ -3,6 +3,7 @@ import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 import { getDb } from "@/db/client";
 import { correioDoAmbiente } from "@/email/correio";
+import { aceitarConviteDoCookie } from "@/convites/cookie";
 import { verificarCodigo } from "./codigo-email";
 import { decidirEntrada, lerAdminEmails } from "./entrada";
 
@@ -16,6 +17,16 @@ const configEntrada = () => ({
   adminEmails: lerAdminEmails(process.env.ADMIN_EMAILS),
   nomeOrganizacao: "Sua Casa Leblon",
 });
+
+/**
+ * E-mail já verificado → id do usuário. Se a pessoa veio de um link de convite (M1.4),
+ * aceita o convite (cria o acesso de proprietário ou liga a mais um proprietário).
+ */
+async function entrarOuAceitarConvite(db: ReturnType<typeof getDb>, email: string): Promise<string | null> {
+  const id = await decidirEntrada(db, email, configEntrada());
+  const aceito = await aceitarConviteDoCookie(db, email);
+  return id ?? aceito;
+}
 
 function emailVerificado(profile: unknown): string | null {
   const p = profile as { email?: unknown; email_verified?: unknown } | undefined;
@@ -34,8 +45,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const db = getDb();
         const r = await verificarCodigo(db, c.email, c.codigo, { segredo: process.env.AUTH_SECRET! });
         if (!r.ok) return null;
-        const id = await decidirEntrada(db, r.email, configEntrada());
-        return id ? { id, email: r.email } : null;
+        return entrarOuAceitarConvite(db, r.email).then((id) => (id ? { id, email: r.email } : null));
       },
     }),
   ],
@@ -48,7 +58,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (account?.provider === "codigo") return Boolean(user?.id);
       const email = emailVerificado(profile);
       if (!email) return "/entrar?erro=email-nao-verificado";
-      const id = await decidirEntrada(getDb(), email, configEntrada());
+      const id = await entrarOuAceitarConvite(getDb(), email);
       return id ? true : "/entrar?erro=nao-cadastrado";
     },
     async jwt({ token, profile, account, user }) {
