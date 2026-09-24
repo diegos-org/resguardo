@@ -2,10 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { podeFazer } from "@/acesso/politica";
 import * as aplicar from "@/financeiro/aplicar";
 import { ABAS_CONFIG } from "./abas";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { historicoDe } from "@/auditoria/auditoria";
 import { criarContrato } from "@/contratos/repositorio";
-import { configuracoes, imoveis, organizacoes, proprietarioImoveis, proprietarios, usuarios } from "@/db/schema";
+import { auditoria, configuracoes, imoveis, organizacoes, proprietarioImoveis, proprietarios, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { saldoAcerto } from "@/financeiro/ledger";
@@ -169,7 +169,7 @@ describe("regras financeiras", () => {
 });
 
 describe("empresa", () => {
-  const base = { nome: "Sua Casa Leblon", razaoSocial: "", cnpj: "", email: "", telefone: "", endereco: "", site: "" };
+  const base = { nome: "Sua Casa Leblon", razaoSocial: "", cnpj: "", email: "", telefone: "", endereco: "", site: "", chavePix: "" };
 
   it("valida nome, e-mail, CNPJ e site", () => {
     expect(validarEmpresa({ ...base, nome: " " })).toMatchObject({ ok: false, erros: { nome: expect.any(String) } });
@@ -180,10 +180,10 @@ describe("empresa", () => {
   });
 
   it("nome vai para a organização (onde o sistema já lê) e o resto para a configuração", async () => {
-    await salvarEmpresa(db, org, { ...base, nome: "SCL", telefone: "+55 21 0000-0000" }, admin);
+    await salvarEmpresa(db, org, { ...base, nome: "SCL", telefone: "+55 21 0000-0000", chavePix: "financeiro@example.com" }, admin);
     const [o] = await db.select().from(organizacoes).where(eq(organizacoes.id, org));
     expect(o.nome).toBe("SCL");
-    expect(await lerEmpresa(db, org)).toMatchObject({ nome: "SCL", telefone: "+55 21 0000-0000" });
+    expect(await lerEmpresa(db, org)).toMatchObject({ nome: "SCL", telefone: "+55 21 0000-0000", chavePix: "financeiro@example.com" });
     expect((await lerEmpresa(db, outraOrg)).telefone).toBe("");
     const [c] = await db.select().from(configuracoes).where(eq(configuracoes.organizacaoId, org));
     expect(c.valor).not.toHaveProperty("nome");
@@ -191,6 +191,17 @@ describe("empresa", () => {
     expect(await nomeDaEmpresa(db, org)).toBe("SCL");
     expect(await nomeDaEmpresaPorEmail(db, "ADMIN@example.com")).toBe("SCL");
     expect(["SCL", "B"]).toContain(await nomeDaEmpresaPorEmail(db, "ninguem@example.com")); // sem usuário: organização mais antiga
+  });
+
+  it("a chave Pix da empresa não fica em claro no histórico", async () => {
+    await salvarEmpresa(db, org, { ...base, chavePix: "financeiro@example.com", telefone: "1" }, admin);
+    await salvarEmpresa(db, org, { ...base, chavePix: "outra@example.com", telefone: "1" }, admin);
+    const h = await db.select().from(auditoria).where(and(eq(auditoria.organizacaoId, org), eq(auditoria.acao, "configuracao.empresa")));
+    expect(JSON.stringify(h.map((x) => x.mudancas))).not.toContain("example.com");
+    const comPix = h.filter((x) => (x.mudancas as Record<string, unknown>).chavePix);
+    expect(comPix.length).toBe(2);
+    expect(comPix.every((x) => JSON.stringify((x.mudancas as Record<string, unknown>).chavePix) === JSON.stringify(["(alterado)", "(alterado)"]))).toBe(true);
+    expect(h.some((x) => (x.mudancas as Record<string, unknown>).telefone)).toBe(true);
   });
 });
 

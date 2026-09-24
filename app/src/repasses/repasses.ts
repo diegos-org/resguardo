@@ -16,7 +16,7 @@
 import { and, asc, desc, eq, gt, inArray, isNull, lt, ne, or, sql, sum } from "drizzle-orm";
 import { desfazerCompensacoesDoRepasse, listarAdiantamentos, quitar } from "@/adiantamentos/adiantamentos";
 import { registrarAuditoria } from "@/auditoria/auditoria";
-import { ajustes, imoveis, lancamentos, proprietarioImoveis, proprietarios, repasses, type SituacaoRepasse } from "@/db/schema";
+import { ajustes, contestacoesAdiantamento, imoveis, lancamentos, quitacoesAdiantamento, proprietarioImoveis, proprietarios, repasses, type SituacaoRepasse } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { estornar, lancar, mudarEstado } from "@/financeiro/ledger";
 import { dataValida } from "@/reservas/regras";
@@ -87,6 +87,15 @@ export type PrevisaoRepasse = ReturnType<typeof calcularRepasse> & {
   bloqueios: string[];
   /** Não impedem, mas precisam ser vistos. */
   avisos: string[];
+  /** Há acerto pendente ou ajuste a esclarecer até este mês (o valor ainda não é definitivo). */
+  emConferencia: boolean;
+  /** Mês ("AAAA-MM") do primeiro repasse posterior em vigor, que levou o saldo deste mês; null = nenhum. */
+  repassePosterior: string | null;
+  /**
+   * Mudança no acerto depois do fechamento deste mês — ou, sem repasse próprio, depois do último
+   * repasse posterior (lançamento retroativo) — que vai para o próximo repasse; 0 = nenhuma.
+   */
+  diferencaPosFechamento: number;
   repasse: Repasse | null;
 };
 
@@ -139,6 +148,35 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
         ),
       ),
     );
+  // Para o portal ("em conferência"): o que não tem dono só conta se é do período em que o imóvel é
+  // dele (data do vínculo em diante). O bloqueio do fechamento continua olhando tudo acima.
+  const noPeriodoDele = (imovel: typeof lancamentos.imovelId | typeof ajustes.imovelId, data: typeof lancamentos.competencia | typeof ajustes.data) =>
+    sql`exists (select 1 from ${proprietarioImoveis} where ${proprietarioImoveis.imovelId} = ${imovel} and ${proprietarioImoveis.proprietarioId} = ${dono.id} and ${data} >= (${proprietarioImoveis.criadoEm} at time zone 'America/Sao_Paulo')::date)`;
+  const [pendentesDele] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(lancamentos)
+    .where(
+      and(
+        eq(lancamentos.organizacaoId, org),
+        eq(lancamentos.estado, "pendente"),
+        lt(lancamentos.competencia, lim.fim),
+        or(eq(lancamentos.proprietarioId, dono.id), and(isNull(lancamentos.proprietarioId), noPeriodoDele(lancamentos.imovelId, lancamentos.competencia))),
+        isNull(lancamentos.estornoDe),
+        sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`,
+      ),
+    );
+  const [ajustesDele] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(ajustes)
+    .where(
+      and(
+        eq(ajustes.organizacaoId, org),
+        eq(ajustes.afeta, "proprietario"),
+        isNull(ajustes.esclarecidoEm),
+        lt(ajustes.data, lim.fim),
+        or(eq(ajustes.proprietarioId, dono.id), and(isNull(ajustes.proprietarioId), noPeriodoDele(ajustes.imovelId, ajustes.data))),
+      ),
+    );
   const previstos = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(lancamentos)
@@ -158,12 +196,14 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
     .select()
     .from(repasses)
     .where(and(eq(repasses.organizacaoId, org), eq(repasses.proprietarioId, dono.id), eq(repasses.mes, lim.inicio), isNull(repasses.estornadoEm)));
-  const [posterior] = await db
-    .select({ mes: repasses.mes })
+  // Repasses de meses seguintes em vigor, do mais antigo ao mais recente.
+  const posteriores = await db
+    .select({ mes: repasses.mes, criadoEm: repasses.criadoEm })
     .from(repasses)
     .where(and(eq(repasses.organizacaoId, org), eq(repasses.proprietarioId, dono.id), gt(repasses.mes, lim.inicio), isNull(repasses.estornadoEm)))
-    .orderBy(desc(repasses.mes))
-    .limit(1);
+    .orderBy(asc(repasses.mes));
+  const primeiroPosterior = posteriores[0];
+  const posterior = posteriores.at(-1);
   // Só adiantamentos do mês ou anteriores (os de depois ainda não estão no saldo).
   const doMes = adiantamentos.filter((a) => a.data < lim.fim);
   const contestadoPorImovel = new Map<string | null, number>();
@@ -181,20 +221,81 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
   if (previstos[0]?.n) avisos.push(`${previstos[0].n} lançamento(s) ainda previsto(s), isto é, dinheiro que pode não ter entrado: confira antes de pagar.`);
   if (calc.valor > 0 && !dono.chavePix.trim()) avisos.push("Sem chave Pix no cadastro do proprietário.");
   if (calc.contestado > 0) avisos.push(`Adiantamentos contestados (${(calc.contestado / 100).toFixed(2).replace(".", ",")}) ficam fora do desconto até a contestação ser resolvida.`);
-  if (atual) {
+  let diferenca = 0;
+  if (atual && !posterior) {
     // O que vai para o próximo repasse é o saldo com os contestados somados de volta. Logo depois
     // do fechamento isso dá zero; se mudou (lançamento novo, contestação resolvida…), avisa.
-    const diferenca = calc.saldo + calc.contestado - (atual.saldo + atual.contestado - atual.valor);
+    diferenca = calc.saldo + calc.contestado - (atual.saldo + atual.contestado - atual.valor);
     if (diferenca !== 0) avisos.push(`Depois do fechamento, o acerto até este mês mudou em ${(diferenca / 100).toFixed(2).replace(".", ",")}: a diferença entra no próximo repasse.`);
   }
-  return { ...calc, proprietarioId: dono.id, nome: dono.nome, email: dono.email, chavePix: dono.chavePix, imoveis: vinculos.map((v) => v.codigo), bloqueios, avisos, repasse: atual ?? null };
+  if (posterior) {
+    // Há repasse de mês seguinte: o saldo até este mês (e o que mudou depois do fechamento dele)
+    // já foi levado por ele. O que foi lançado com data até este mês depois do último repasse
+    // seguinte ainda não foi levado por nenhum.
+    const [depois] = await db
+      .select({ total: sum(lancamentos.efeitoSaldo) })
+      .from(lancamentos)
+      .where(
+        and(
+          eq(lancamentos.organizacaoId, org),
+          eq(lancamentos.proprietarioId, dono.id),
+          lt(lancamentos.competencia, lim.fim),
+          gt(lancamentos.criadoEm, posterior.criadoEm),
+        ),
+      );
+    diferenca = Number(depois?.total ?? 0);
+    // Mudança só de situação (sem lançamento): adiantamento deste mês ou antes que estava
+    // contestado no último repasse (ficou fora do desconto) e deixou de estar — ou o contrário.
+    // Contestações dos adiantamentos dele com data até este mês — inclusive os já quitados ("empresa
+    // assume" quita e lança a compensação, que entra acima em `depois`) e os estornados (a despesa
+    // de origem estornada encerra a contestação e estorna o adiantamento): o que estava fora do
+    // desconto no repasse sai daqui, e o efeito líquido é zero.
+    const contestacoes = await db
+      .select({ id: contestacoesAdiantamento.id, adiantamentoId: contestacoesAdiantamento.adiantamentoId, valor: contestacoesAdiantamento.valor, abertaEm: contestacoesAdiantamento.abertaEm, resolvidaEm: contestacoesAdiantamento.resolvidaEm })
+      .from(contestacoesAdiantamento)
+      .innerJoin(lancamentos, eq(lancamentos.id, contestacoesAdiantamento.adiantamentoId))
+      .where(and(eq(contestacoesAdiantamento.organizacaoId, org), eq(lancamentos.proprietarioId, dono.id), lt(lancamentos.competencia, lim.fim)));
+    if (contestacoes.length) {
+      const corte = posterior.criadoEm.getTime();
+      // "Empresa assume" desfeito reabre a contestação (e apaga `resolvidaEm`): o período em que
+      // ela esteve resolvida vem da quitação dela (criada → desfeita).
+      const assumidas = await db
+        .select({ contestacaoId: quitacoesAdiantamento.contestacaoId, criadoEm: quitacoesAdiantamento.criadoEm, desfeitaEm: quitacoesAdiantamento.desfeitaEm })
+        .from(quitacoesAdiantamento)
+        .where(and(eq(quitacoesAdiantamento.organizacaoId, org), inArray(quitacoesAdiantamento.contestacaoId, contestacoes.map((c) => c.id))));
+      const abertaNoCorte = (c: (typeof contestacoes)[number]) =>
+        c.abertaEm.getTime() <= corte &&
+        !(c.resolvidaEm && c.resolvidaEm.getTime() <= corte) &&
+        !assumidas.some((q) => q.contestacaoId === c.id && q.criadoEm.getTime() <= corte && (!q.desfeitaEm || q.desfeitaEm.getTime() > corte));
+      const emAberto = new Map(doMes.map((a) => [a.id, a.aberto]));
+      for (const id of new Set(contestacoes.map((c) => c.adiantamentoId))) {
+        const dele = contestacoes.filter((c) => c.adiantamentoId === id);
+        // Contestação aberta no momento do repasse: o valor dela ficou fora do desconto.
+        const naquele = dele.find(abertaNoCorte);
+        const agora = dele.find((c) => !c.resolvidaEm);
+        // Contestado fica fora do desconto (volta ao saldo a favor do proprietário): a diferença é
+        // o que fica fora agora menos o que ficou fora no repasse (vale também para uma nova
+        // contestação de valor diferente, depois de um reembolso parcial).
+        const foraNoCorte = naquele ? naquele.valor : 0;
+        const foraAgora = agora ? (emAberto.get(id) ?? agora.valor) : 0;
+        diferenca += foraAgora - foraNoCorte;
+      }
+    }
+    if (diferenca !== 0) avisos.push(`Depois do repasse de ${nomeMes(posterior.mes.slice(0, 7))}, o acerto até este mês mudou em ${(diferenca / 100).toFixed(2).replace(".", ",")}: a diferença entra no próximo repasse.`);
+  }
+  return { ...calc, proprietarioId: dono.id, nome: dono.nome, email: dono.email, chavePix: dono.chavePix, imoveis: vinculos.map((v) => v.codigo), bloqueios, avisos, repasse: atual ?? null,
+    emConferencia: Boolean(pendentesDele?.n || ajustesDele?.n),
+    repassePosterior: primeiroPosterior ? primeiroPosterior.mes.slice(0, 7) : null,
+    diferencaPosFechamento: diferenca,
+  };
 }
 
 /**
  * Situação do mês para cada proprietário com algo a ver: saldo, adiantamentos em aberto ou
  * repasse já feito. `proprietarioIds` restringe (ex.: um só).
  */
-export async function preverRepasses(db: Db, org: string, mes: string, hoje: string, proprietarioIds?: string[]): Promise<PrevisaoRepasse[]> {
+/** `incluirVazios`: devolve também quem não tem saldo nem repasse (ex.: só um ajuste sem valor a esclarecer). */
+export async function preverRepasses(db: Db, org: string, mes: string, hoje: string, proprietarioIds?: string[], incluirVazios = false): Promise<PrevisaoRepasse[]> {
   if (!limitesDoMes(mes)) return [];
   const c = [eq(proprietarios.organizacaoId, org)];
   if (proprietarioIds) c.push(inArray(proprietarios.id, proprietarioIds.filter(uuidValido)));
@@ -205,7 +306,7 @@ export async function preverRepasses(db: Db, org: string, mes: string, hoje: str
     .where(and(...c))
     .orderBy(asc(proprietarios.nome));
   const lista = await Promise.all(donos.map((d) => calcularDono(db, org, d, mes, hoje)));
-  return lista.filter((p) => p.repasse || p.saldo !== 0 || p.contestado !== 0 || p.aDescontar !== 0);
+  return incluirVazios ? lista : lista.filter((p) => p.repasse || p.saldo !== 0 || p.contestado !== 0 || p.aDescontar !== 0);
 }
 
 type Resultado = { ok: true; id: string } | { ok: false; erro: string };

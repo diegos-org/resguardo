@@ -271,8 +271,20 @@
     comissão da empresa, **sua parte**, despesas atribuídas a ele e o acerto do período (quem
     passou a dever a quem). Se o imóvel trocou de dono, o novo proprietário não vê o histórico
     do anterior.
-  A lista de reservas, o calendário e o saldo com o Pix para copiar chegam no M5.2; o PDF no
-  M5.3.
+  O PDF chega no M5.3.
+- M5.2: **reservas, calendário e saldo no portal do proprietário:**
+  - **tabela de reservas** do período, com imóvel, entrada, saída, hóspede, valor bruto, a
+    parte dele, situação (definido, em conferência ou sem cálculo ainda), canal e a origem que
+    o hóspede informou. Origem não informada fica "não informada": o sistema não adivinha;
+  - **calendário do mês** com as reservas e os bloqueios dos imóveis dele. Tocar numa reserva
+    leva à linha dela na tabela, com os valores;
+  - **saldo com a empresa**, somando todos os imóveis dele e já com os repasses. Enquanto o mês
+    não terminou ou há algo em conferência, aparece como **parcial**, sem quem paga e sem Pix.
+    Com o mês terminado e sem pendências, mostra o **credor**:
+    - se a empresa deve, o valor e a chave Pix dele;
+    - se ele deve, o valor e a **chave Pix da empresa**, com botões para copiar a chave e o valor.
+    Depois do fechamento aparece "mês fechado" ou "pago em dd/mm". Tudo segue a mesma conta da
+    tela de Repasses.
 - M4.9: **repasse mensal aos proprietários** (Painel → **Financeiro** → Repasses). No dia 1º,
   a tela abre no mês anterior e mostra, para cada proprietário:
   - o **crédito dele até o fim do mês**, os **adiantamentos descontados** e os
@@ -458,9 +470,13 @@
 |---|---|
 | ![Apartamentos](docs/telas/apartamentos.png) | ![Portal no celular](docs/telas/portal-celular.png) |
 
-| Portal do proprietário |
+| Portal do proprietário | Portal no celular (reservas e saldo) |
+|---|---|
+| ![Portal](docs/telas/portal.png) | ![Portal com reservas no celular](docs/telas/portal-reservas-celular.png) |
+
+| Portal do proprietário: calendário, reservas e saldo |
 |---|
-| ![Portal](docs/telas/portal.png) |
+| ![Portal com reservas](docs/telas/portal-reservas.png) |
 
 | Limpezas | Limpezas no celular |
 |---|---|
@@ -586,9 +602,13 @@ ambiente).
    2. No painel, em **Agenda**, cadastre os e-mails da equipe (marque Rio ou Búzios para cada
       pessoa), marque "Enviar todo dia às 20h" e salve.
    3. Use "Enviar agora" uma vez para conferir como o e-mail chega.
-7. **Chave Pix dos proprietários:** confira no cadastro de cada proprietário (Painel →
-   Proprietários) se a chave Pix está preenchida — a tela de Repasses usa ela para o botão
-   "Copiar Pix" e avisa quando falta.
+7. **Chaves Pix:**
+   - confira no cadastro de cada proprietário (Painel → Proprietários) se a chave Pix está
+     preenchida. A tela de Repasses usa essa chave para o botão "Copiar Pix" e avisa quando
+     falta; o portal mostra ao proprietário a chave para onde vai o repasse;
+   - cadastre a **chave Pix da empresa** em Painel → Configurações → Empresa. Ela aparece no
+     portal para o proprietário que deve à empresa, depois do fechamento do mês. Sem ela, o
+     portal pede que ele fale com a empresa.
 8. **Booking:** criar os anúncios (ver "Copiar anúncios do Airbnb para o Booking" na seção 7).
 9. **Portaria:** em Painel → **Portaria**, marque os imóveis que exigem documentos de
    portaria (hoje, o 403). Sem marcação, a tela só avisa e não lista nada.
