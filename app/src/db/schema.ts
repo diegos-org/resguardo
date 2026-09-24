@@ -606,6 +606,8 @@ export const quitacoesAdiantamento = pgTable(
     lancamentoId: uuid("lancamento_id").references(() => lancamentos.id),
     /** Contestação cuja resolução ("empresa assume") gerou esta quitação — desfazer reabre essa. */
     contestacaoId: uuid("contestacao_id"),
+    /** Repasse mensal (M4.9) em que o valor foi descontado — só se desfaz estornando o repasse. */
+    repasseId: uuid("repasse_id"),
     nota: text("nota").notNull().default(""),
     /** Chave do envio do formulário: o mesmo envio repetido (clique duplo, reenvio) não duplica. */
     chave: text("chave"),
@@ -682,4 +684,41 @@ export const ajustes = pgTable(
     atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("ajustes_org_data").on(t.organizacaoId, t.data)],
+);
+
+export const SITUACOES_REPASSE = ["a_pagar", "pago", "estornado"] as const;
+export type SituacaoRepasse = (typeof SITUACOES_REPASSE)[number];
+
+/**
+ * Repasse mensal ao proprietário (M4.9): o fechamento de um mês. Os valores ficam gravados como
+ * foram calculados no fechamento; os lançamentos do livro (tipo "repasse") têm a chave
+ * `repasse:<id>:<imóvel>`. Um repasse ativo por proprietário e mês.
+ */
+export const repasses = pgTable(
+  "repasses",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    proprietarioId: uuid("proprietario_id").notNull().references(() => proprietarios.id),
+    /** Primeiro dia do mês fechado. */
+    mes: date("mes", { mode: "string" }).notNull(),
+    /** Saldo do acerto no fim do mês, antes do repasse (positivo: a empresa devia). */
+    saldo: integer("saldo").notNull(),
+    /** Adiantamentos descontados neste repasse. */
+    descontado: integer("descontado").notNull(),
+    /** Adiantamentos contestados, que ficaram de fora (não descontados). */
+    contestado: integer("contestado").notNull(),
+    /** Valor transferido ao proprietário. */
+    valor: integer("valor").notNull(),
+    situacao: text("situacao").$type<SituacaoRepasse>().notNull().default("a_pagar"),
+    dataPagamento: date("data_pagamento", { mode: "string" }),
+    motivoEstorno: text("motivo_estorno").notNull().default(""),
+    criadoPor: uuid("criado_por").references(() => usuarios.id),
+    criadoEm: criadoEm(),
+    estornadoEm: timestamp("estornado_em", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("repasses_um_por_mes").on(t.proprietarioId, t.mes).where(sql`${t.estornadoEm} is null`),
+    index("repasses_org_mes").on(t.organizacaoId, t.mes),
+  ],
 );
