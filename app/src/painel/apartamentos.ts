@@ -210,7 +210,8 @@ export async function carregarApartamentos(
       codigo,
       nome,
       ativo,
-      reservas: imovelId ? reservas.filter((r) => r.imovelId === imovelId).length : 0,
+      // Só confirmadas, como no Início, no portal e no relatório.
+      reservas: imovelId ? reservas.filter((r) => r.imovelId === imovelId && r.estado === "confirmada").length : 0,
       noitesVendidas: oc?.vendidas ?? 0,
       noitesDisponiveis: oc?.disponiveis ?? 0,
       ocupacao: oc?.taxa ?? null,

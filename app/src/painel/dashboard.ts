@@ -200,7 +200,8 @@ export async function carregarDashboard(
   return {
     ocupacao,
     ocupacaoTotal: ocupacaoTotal(ocupacao),
-    reservasNoPeriodo: reservas.length,
+    // Só confirmadas, como no portal e no relatório (pendente ainda não é venda).
+    reservasNoPeriodo: reservas.filter((r) => r.estado === "confirmada").length,
     proximasEntradas: proximas.filter((r) => r.checkin >= o.hoje && r.checkin < semana),
     proximasSaidas: proximas.filter((r) => r.checkout >= o.hoje && r.checkout < semana).sort((x, y) => x.checkout.localeCompare(y.checkout)),
     financeiro,

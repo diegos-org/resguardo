@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 24/09/2026, relatório mensal do proprietário em PDF (M5.3).
+> **Última atualização:** 24/09/2026, conferência de que todas as telas mostram os mesmos números (M4.8).
 
 ---
 
@@ -345,6 +345,18 @@
     de meses (até 36). Intervalo inválido não é adivinhado: aparece um aviso e vale o filtro;
   - com "todos os imóveis", entra também uma linha **Geral da empresa** (despesas sem imóvel)
     e os imóveis arquivados que tiveram movimento, então o total bate com o Início.
+- M4.8: **conferência dos números entre as telas.** Um teste automático monta um mês com os
+  casos que costumam dar diferença (estada que passa de um mês para o outro, reserva
+  cancelada, reserva pendente, venda direta, despesa do proprietário e imóvel de outro dono) e
+  confere que **Início, aba Apartamentos, portal do proprietário e PDF** mostram os mesmos
+  valores (bruto, taxas, comissão, parte do proprietário, despesas, acerto e número de
+  reservas). Ele achou uma diferença, já corrigida:
+  - **reserva pendente** (ainda não confirmada) entrava na receita e no acerto do painel, mas
+    não no portal. Agora ela **não entra em nenhum número** até ser confirmada; ao confirmar,
+    aparece em todas as telas ao mesmo tempo. Ela continua ocupando o calendário e a agenda
+    de limpezas, como antes;
+  - o contador de reservas do Início e da aba Apartamentos passou a contar **só as
+    confirmadas**, igual ao portal e ao relatório.
 - M6.5: **rotinas recorrentes** (menu **Rotinas**). Tarefas que se repetem, cada uma com a
   próxima data:
   - já vêm as cinco das regras de atendimento, nas datas combinadas:
