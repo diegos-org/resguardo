@@ -470,30 +470,73 @@ export function ultimaAgendaDe(db: Db, organizacaoId: string, email: string): Pr
  */
 export async function previaDaAgenda(db: Db, organizacaoId: string, agora: Date = new Date()): Promise<{ agenda: Agenda; ultima: Date | null }> {
   const [ultima, config] = await Promise.all([ultimaAgenda(db, organizacaoId), lerConfigAgenda(db, organizacaoId)]);
-  const umDia = new Date(agora.getTime() - 86_400_000);
-  const marcos = await Promise.all(config.destinatarios.map((d) => ultimaAgendaDe(db, organizacaoId, d.email)));
-  // Como no envio: imóvel que o marco não cobre (reativado, cidade nova) olha as últimas 24h, e um
-  // envio incerto ainda aberto olha as 24h antes do corte dele. A prévia parte do mais antigo de tudo.
+  const hoje = hojeISO("America/Sao_Paulo", agora);
+  if (!config.destinatarios.length) return { agenda: await montarAgenda(db, organizacaoId, hoje, ultima ?? new Date(agora.getTime() - 86_400_000), agora), ultima };
+  // A mesma conta do envio, pessoa por pessoa; cada cidade mostra o que alguém que a recebe vai receber.
+  const cache = new Map<string, Agenda>();
+  const montar = async (desde: Date, corte: Date) => {
+    const k = `${desde.toISOString()}|${corte.toISOString()}`;
+    if (!cache.has(k)) cache.set(k, await montarAgenda(db, organizacaoId, hoje, desde, corte));
+    return cache.get(k)!;
+  };
   const pendentes = await marcasPendentes(db, organizacaoId);
-  const cortesIncertos = pendentes
-    .map((l) => l.value as { corte?: string; em?: string })
-    .map((v) => Date.parse(v.corte ?? v.em ?? ""))
-    .filter((t) => !Number.isNaN(t))
-    .map((t) => t - 86_400_000 - SOBREPOSICAO_MS);
-  const inicios = [...marcos.map((m) => (m ? m.getTime() - SOBREPOSICAO_MS : umDia.getTime())), umDia.getTime(), ...cortesIncertos];
-  const desde = marcos.length ? new Date(Math.min(...inicios)) : (ultima ?? umDia);
-  const bruta = await montarAgenda(db, organizacaoId, hojeISO("America/Sao_Paulo", agora), desde, agora);
-  // Como no envio: reserva nova que todas as pessoas que recebem aquela cidade já receberam não
-  // aparece de novo (quem não recebe a cidade não conta).
-  const listas = await Promise.all(config.destinatarios.map(async (d) => ({ d, avisadas: new Set((await lerAvisadas(db, chaveAvisadasDe(organizacaoId, d.email))).map((x) => x.id)) })));
+  const porPessoa = await Promise.all(
+    config.destinatarios.map(async (d) => ({ d, agenda: await agendaDaPessoa(db, organizacaoId, d.email, agora, incertosDe(pendentes, d.email, hoje).lista, [], montar) })),
+  );
+  const base = porPessoa[0].agenda;
   const agenda: Agenda = {
-    ...bruta,
-    secoes: bruta.secoes.map((sec) => {
-      const recebem = listas.filter((x) => !x.d.cidades.length || x.d.cidades.includes(sec.cidade));
-      return { ...sec, novas: sec.novas.filter((n) => !recebem.length || !recebem.every((x) => x.avisadas.has(n.evento))) };
+    ...base,
+    secoes: base.secoes.map((sec) => {
+      const vistos = new Set<string>();
+      const novas = porPessoa
+        .filter((x) => !x.d.cidades.length || x.d.cidades.includes(sec.cidade))
+        .flatMap((x) => x.agenda.secoes.find((y) => y.cidade === sec.cidade)?.novas ?? [])
+        .filter((n) => (vistos.has(n.evento) ? false : (vistos.add(n.evento), true)))
+        .sort((x, y) => x.checkin.localeCompare(y.checkin));
+      return { ...sec, novas };
     }),
   };
   return { agenda, ultima };
+}
+
+/**
+ * O que uma pessoa recebe agora (uma regra, um lugar: o envio e a prévia da tela usam esta): os
+ * próximos dias e as reservas novas desde o marco dela (quem nunca recebeu, e imóvel que o marco não
+ * cobre: as 24h antes do corte; imóvel de envio incerto em aberto: as 24h antes do corte dele), sem
+ * as que ela já recebeu. `extras`: eventos a tratar como já avisados (de um manual ainda pendente).
+ * Não filtra as cidades da pessoa.
+ */
+async function agendaDaPessoa(
+  db: Db,
+  organizacaoId: string,
+  email: string,
+  corte: Date,
+  incertos: readonly Incerto[],
+  extras: readonly string[],
+  montar: (desde: Date, corte: Date) => Promise<Agenda>,
+): Promise<Agenda> {
+  const marco = await lerMarco(db, chaveUltimaDe(organizacaoId, email));
+  const umDia = new Date(corte.getTime() - 86_400_000);
+  const desde = marco ? new Date(marco.getTime() - SOBREPOSICAO_MS) : umDia;
+  const cobertas = marco ? await lerCobertura(db, chaveUltimaDe(organizacaoId, email)) : null;
+  const coberto = (imovelId: string) => cobertas === null || cobertas.includes(imovelId);
+  const inicioIncerto = (i: Incerto) => (i.corte ? new Date(i.corte.getTime() - 86_400_000 - SOBREPOSICAO_MS) : null);
+  const inicioDe = (imovelId: string) => {
+    let t = coberto(imovelId) ? desde : umDia;
+    for (const i of incertos) {
+      const ini = inicioIncerto(i);
+      if (ini && ini < t && (i.imoveis === null || i.imoveis.includes(imovelId))) t = ini;
+    }
+    return t;
+  };
+  let menor = desde < umDia ? desde : umDia;
+  for (const i of incertos) {
+    const ini = inicioIncerto(i);
+    if (ini && ini < menor) menor = ini;
+  }
+  const avisadas = [...(await lerAvisadas(db, chaveAvisadasDe(organizacaoId, email))), ...extras.map((id) => ({ id, corte: corte.toISOString() }))];
+  const bruta = await montar(menor, corte);
+  return semAvisadas({ ...bruta, secoes: bruta.secoes.map((x) => ({ ...x, novas: x.novas.filter((n) => Date.parse(n.registradaEm) > inicioDe(n.imovelId).getTime()) })) }, avisadas);
 }
 
 /**
@@ -508,20 +551,28 @@ export async function previaDaAgenda(db: Db, organizacaoId: string, agora: Date 
  */
 type Incerto = { chave: string; corte: Date | null; imoveis: string[] | null; eventos: string[] };
 
-async function reconciliarIncertos(db: Db, pendentes: readonly Marca[], email: string, hoje: string): Promise<{ ate: Date | null; lista: Incerto[] }> {
+/** Envios de dias anteriores desta pessoa ainda sem confirmação (sem mexer em nada). */
+function incertosDe(pendentes: readonly Marca[], email: string, hoje: string): { ate: Date | null; lista: Incerto[]; enviando: Marca[] } {
   let maior: Date | null = null;
   const lista: Incerto[] = [];
+  const enviando: Marca[] = [];
   for (const l of pendentes) {
     const m = l.key.match(/^agenda-diaria(?:-manual)?:[^:]+:(\d{4}-\d{2}-\d{2}):(.+)$/);
     if (!m || m[2] !== email || m[1] >= hoje) continue;
     const v = l.value as { corte?: string; em?: string; estado?: string; carga?: unknown };
     const corte = new Date(v.corte ?? v.em ?? "");
-    if (v.estado === "enviando") await db.update(appSettings).set({ value: { ...v, estado: "incerto" }, updatedAt: new Date() }).where(eq(appSettings.key, l.key));
+    if (v.estado === "enviando") enviando.push(l);
     const valido = !Number.isNaN(corte.getTime());
     lista.push({ chave: l.key, corte: valido ? corte : null, imoveis: cargaValida(v.carga) ? v.carga.imoveis : null, eventos: cargaValida(v.carga) ? v.carga.eventos : [] });
     if (valido && (!maior || corte > maior)) maior = corte;
   }
-  return { ate: maior, lista };
+  return { ate: maior, lista, enviando };
+}
+
+async function reconciliarIncertos(db: Db, pendentes: readonly Marca[], email: string, hoje: string): Promise<{ ate: Date | null; lista: Incerto[] }> {
+  const r = incertosDe(pendentes, email, hoje);
+  for (const l of r.enviando) await db.update(appSettings).set({ value: { ...(l.value as object), estado: "incerto" }, updatedAt: new Date() }).where(eq(appSettings.key, l.key));
+  return { ate: r.ate, lista: r.lista };
 }
 
 type Marca = { key: string; value: unknown };
@@ -614,19 +665,20 @@ const cargaValida = (c: unknown): c is Carga =>
   Array.isArray((c as Carga).eventos) &&
   Array.isArray((c as Carga).imoveis);
 
-async function reservarEnvio(db: Db, chave: string, agora: Date): Promise<{ corte: Date; carga: Carga | null; tentativa: string } | null> {
+async function reservarEnvio(db: Db, chave: string, agora: Date, instante: Date = agora): Promise<{ corte: Date; carga: Carga | null; tentativa: string } | null> {
   // `corte`: o limite das reservas novas desta tentativa. Uma retomada reaproveita o da tentativa
   // original e, se o pedido já tinha sido montado, o pedido inteiro: o provedor só ignora o reenvio
   // com a mesma chave se o conteúdo for idêntico, e o marco tem de ser o do e-mail que saiu.
   // `tentativa`: só a tentativa dona da marca a grava ou apaga (uma execução atrasada, cuja marca foi
   // retomada por outra, não mexe no estado da que a retomou).
   const tentativa = randomUUID();
-  const valor = { em: agora.toISOString(), estado: "enviando", corte: agora.toISOString(), tentativa };
+  // `em`: quando esta tentativa começou de fato (o relógio da execução, que anda); `corte`: o da execução.
+  const valor = { em: instante.toISOString(), estado: "enviando", corte: agora.toISOString(), tentativa };
   const [nova] = await db.insert(appSettings).values({ key: chave, value: valor }).onConflictDoNothing().returning();
   if (nova) return { corte: agora, carga: null, tentativa };
   const [l] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, chave));
   const v = (l?.value ?? {}) as { em?: string; estado?: string; corte?: string; carga?: unknown };
-  if (v.estado !== "enviando" || !v.em || agora.getTime() - Date.parse(v.em) < ENVIO_EXPIRA_MS) return null;
+  if (v.estado !== "enviando" || !v.em || instante.getTime() - Date.parse(v.em) < ENVIO_EXPIRA_MS) return null;
   const corte = v.corte && !Number.isNaN(Date.parse(v.corte)) ? v.corte : v.em;
   const carga = cargaValida(v.carga) ? v.carga : null;
   // Troca só se ninguém retomou antes (compara o valor antigo).
@@ -651,7 +703,7 @@ export async function enviarAgenda(
   organizacaoId: string,
   correio: Correio | null,
   agora: Date,
-  o: { manual?: boolean; /** Só para testes. */ prazoProvedorMs?: number } = {},
+  o: { manual?: boolean; /** Só para testes. */ prazoProvedorMs?: number; /** Só para testes: o relógio que anda durante a execução. */ relogio?: () => Date } = {},
 ): Promise<ResultadoEnvio> {
   const r: ResultadoEnvio = { enviados: 0, jaEnviados: 0, falhas: [], aviso: null };
   const config = await lerConfigAgenda(db, organizacaoId);
@@ -670,7 +722,7 @@ export async function enviarAgenda(
   // O relógio anda durante a execução: a trava de cada pessoa leva o horário de quando é tomada e de
   // quando é renovada (senão, depois de envios lentos, ela nasceria ou ficaria vencida).
   const inicio = Date.now();
-  const relogio = () => new Date(agora.getTime() + (Date.now() - inicio));
+  const relogio = o.relogio ?? (() => new Date(agora.getTime() + (Date.now() - inicio)));
   const enviarPara = async (d: Destinatario, trava: { chave: string; dono: string }, chaveForcada?: string): Promise<void> => {
     // Um envio de hoje do outro tipo ainda sem confirmação do provedor ("enviando"):
     // - "enviar agora" usa a marca e a chave do agendado (repete o mesmo pedido, que o provedor não
@@ -682,7 +734,10 @@ export async function enviarAgenda(
     // Reservas novas de um manual ainda sem confirmação: não vão de novo no das 20h (se o manual não
     // chegou, a agenda seguinte as manda pelo caminho do envio incerto, com o aviso).
     let doManualPendente: string[] = [];
-    if (!chaveForcada) {
+    // O manual que já tem a própria marca hoje segue por ela (retoma o próprio pedido pendente, ou já
+    // foi feito); só sem ela é que reaproveita o agendado pendente.
+    const [propria] = o.manual && !chaveForcada ? await db.select({ key: appSettings.key }).from(appSettings).where(eq(appSettings.key, chave)) : [];
+    if (!chaveForcada && !propria) {
       const outra = chaveEnvio(organizacaoId, hoje, d.email, !o.manual);
       const [daOutra] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, outra));
       const incerta = (daOutra?.value as { estado?: string } | undefined)?.estado === "enviando";
@@ -701,7 +756,7 @@ export async function enviarAgenda(
     }
     const incertos = await reconciliarIncertos(db, pendentes, d.email, hoje);
     const incertoAte = incertos.ate;
-    const reserva = await reservarEnvio(db, chave, agora);
+    const reserva = await reservarEnvio(db, chave, agora, relogio());
     if (!reserva) {
       // "Já enviado" só se a marca diz "enviado": uma tentativa ainda sem confirmação do provedor
       // (deste tipo ou do outro) continua como falha até a retomada dar certo.
@@ -716,35 +771,7 @@ export async function enviarAgenda(
     let carga = reserva.carga;
     try {
       if (!carga) {
-        // Sem marco próprio (primeira agenda desta pessoa): as reservas novas das 24h antes do corte.
-        const marco = await lerMarco(db, chaveUltimaDe(organizacaoId, d.email));
-        const umDia = new Date(corte.getTime() - 86_400_000);
-        const desde = marco ? new Date(marco.getTime() - SOBREPOSICAO_MS) : umDia;
-        // Imóveis que o marco não cobre (inativos no envio anterior, ou de cidade nova para a pessoa): desde 24h, como quem é novo.
-        const cobertas = marco ? await lerCobertura(db, chaveUltimaDe(organizacaoId, d.email)) : null;
-        const coberto = (imovelId: string) => cobertas === null || cobertas.includes(imovelId);
-        // Imóvel que estava num envio incerto ainda não coberto: a faixa dele começa nas 24h (mais a
-        // sobreposição) antes do corte daquele envio. Se ele não chegou, as reservas dele vão agora.
-        const inicioIncerto = (i: Incerto) => (i.corte ? new Date(i.corte.getTime() - 86_400_000 - SOBREPOSICAO_MS) : null);
-        const inicioDe = (imovelId: string) => {
-          let t = coberto(imovelId) ? desde : umDia;
-          for (const i of incertos.lista) {
-            const ini = inicioIncerto(i);
-            if (ini && ini < t && (i.imoveis === null || i.imoveis.includes(imovelId))) t = ini;
-          }
-          return t;
-        };
-        let menor = desde < umDia ? desde : umDia;
-        for (const i of incertos.lista) {
-          const ini = inicioIncerto(i);
-          if (ini && ini < menor) menor = ini;
-        }
-        const avisadas = [...(await lerAvisadas(db, chaveAvisadasDe(organizacaoId, d.email))), ...doManualPendente.map((id) => ({ id, corte: corte.toISOString() }))];
-        const bruta = await agendaDesde(menor, corte);
-        const agenda = semAvisadas(
-          { ...bruta, secoes: bruta.secoes.map((x) => ({ ...x, novas: x.novas.filter((n) => Date.parse(n.registradaEm) > inicioDe(n.imovelId).getTime()) })) },
-          avisadas,
-        );
+        const agenda = await agendaDaPessoa(db, organizacaoId, d.email, corte, incertos.lista, doManualPendente, agendaDesde);
         // Só o que vai no e-mail desta pessoa (as cidades dela) conta como avisado.
         const noEmail = agenda.secoes.filter((x) => !d.cidades.length || d.cidades.includes(x.cidade));
         carga = {
@@ -756,7 +783,7 @@ export async function enviarAgenda(
         // Guarda o pedido antes de enviar: uma retomada manda exatamente o mesmo.
         const [minha] = await db
           .update(appSettings)
-          .set({ value: { em: agora.toISOString(), estado: "enviando", corte: corte.toISOString(), tentativa, carga }, updatedAt: new Date() })
+          .set({ value: { em: relogio().toISOString(), estado: "enviando", corte: corte.toISOString(), tentativa, carga }, updatedAt: new Date() })
           .where(and(eq(appSettings.key, chave), daTentativa))
           .returning({ key: appSettings.key });
         if (!minha) {

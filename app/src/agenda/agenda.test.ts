@@ -584,6 +584,18 @@ describe("configuração e envio", () => {
     expect(correio.enviadas).toHaveLength(1);
   });
 
+  it("prévia da tela: cada cidade usa a janela de quem a recebe (marcos diferentes por pessoa)", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: ["Rio de Janeiro"] }, { email: "b@example.com", cidades: ["Armação dos Búzios"] }] }, null);
+    await db.insert(appSettings).values([
+      { key: `agenda-diaria:ultima:${org}:a@example.com`, value: { em: new Date(AGORA.getTime() - 3_600_000).toISOString() } },
+      { key: `agenda-diaria:ultima:${org}:b@example.com`, value: { em: new Date(AGORA.getTime() - 3 * 86_400_000).toISOString() } },
+    ]);
+    // Reserva do Rio de 2 dias atrás: antes do marco de quem recebe o Rio; ninguém vai recebê-la.
+    await nova(rio, "2028-10-09", "2028-10-11", new Date(AGORA.getTime() - 2 * 86_400_000).toISOString());
+    const { agenda } = await previaDaAgenda(db, org, AGORA);
+    expect(agenda.secoes.flatMap((x) => x.novas).map((n) => n.checkin)).not.toContain("2028-10-09");
+  });
+
   it("prévia da tela: imóvel reativado mostra as reservas das últimas 24h, como no envio", async () => {
     await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
     await db.update(imoveis).set({ ativo: false }).where(eq(imoveis.id, buzios));
@@ -674,6 +686,29 @@ describe("configuração e envio", () => {
     await enviarAgenda(db, org, correio, new Date("2026-10-02T23:00:00Z"));
     expect(correio.enviadas[1].texto).toContain("entrada seg 04/12");
     expect(correio.enviadas[1].texto).toContain("pode já ter vindo");
+  });
+
+  it("tentativa velha de verdade é retomada mesmo quando a execução começou antes (relógio que anda)", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    // Marca "enviando" de 10 minutos antes do início da execução; a execução já rodou 20 minutos.
+    await db.insert(appSettings).values({ key: `agenda-diaria:${org}:2026-10-01:a@example.com`, value: { em: new Date(AGORA.getTime() - 10 * 60_000).toISOString(), estado: "enviando", corte: AGORA.toISOString() } });
+    const correio = new CorreioMemoria();
+    const r = await enviarAgenda(db, org, correio, AGORA, { relogio: () => new Date(AGORA.getTime() + 20 * 60_000) });
+    expect(r).toMatchObject({ enviados: 1 });
+  });
+
+  it("'enviar agora' com o próprio pedido pendente retoma o dele, não o do agendado", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    await nova(rio, "2028-12-18", "2028-12-20", new Date(AGORA.getTime() - 60 * 60_000).toISOString());
+    const pedidos: Mensagem[] = [];
+    const caiu: Correio = { nome: "caiu", enviar: async (m) => { pedidos.push(m); throw new ErroEnvioIncerto("Sem resposta do provedor de e-mail"); } };
+    // Manual incerto; depois o agendado também incerto (o manual ainda recente: não fechou).
+    await enviarAgenda(db, org, caiu, new Date(AGORA.getTime() - 5 * 60_000), { manual: true });
+    await enviarAgenda(db, org, caiu, AGORA);
+    const manual = pedidos[0];
+    const correio = new CorreioMemoria();
+    await enviarAgenda(db, org, correio, new Date(AGORA.getTime() + 30 * 60_000), { manual: true });
+    expect(correio.enviadas[0]).toMatchObject({ chave: manual.chave, texto: manual.texto });
   });
 
   it("evento substituído por uma nova confirmação não segura o envio incerto", async () => {
