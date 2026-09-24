@@ -637,3 +637,49 @@ export const contestacoesAdiantamento = pgTable(
   },
   (t) => [uniqueIndex("contestacao_aberta_unica").on(t.adiantamentoId).where(sql`${t.resolvidaEm} is null`)],
 );
+
+// ---------------------------------------------------------------------------
+// Ajustes e divergências (M4.5): diferença encontrada, registrada no dia, sem inventar
+// ---------------------------------------------------------------------------
+
+export const ORIGENS_AJUSTE = ["airbnb", "booking", "site", "banco", "mercado_pago", "proprietario", "empresa", "outra", "desconhecida"] as const;
+export type OrigemAjuste = (typeof ORIGENS_AJUSTE)[number];
+
+/**
+ * Ocorrência de ajuste/divergência. Motivo ou valor desconhecidos ficam registrados como
+ * desconhecidos ("Ajuste de reserva — motivo não identificado"; valor null, sem lançamento),
+ * com a evidência consultada, e ficam pendentes até serem esclarecidos. A origem só é
+ * afirmada quando `origemComprovada`. Com valor, há um lançamento "ajuste" ligado
+ * (situação "pendente" até esclarecer; "realizado" depois).
+ */
+export const ajustes = pgTable(
+  "ajustes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    data: date("data", { mode: "string" }).notNull(),
+    imovelId: uuid("imovel_id").references(() => imoveis.id),
+    reservaId: uuid("reserva_id").references(() => reservas.id),
+    proprietarioId: uuid("proprietario_id").references(() => proprietarios.id),
+    /** Explicação conhecida; vazio = motivo não identificado. */
+    motivo: text("motivo").notNull().default(""),
+    origem: text("origem").$type<OrigemAjuste>().notNull().default("desconhecida"),
+    origemComprovada: boolean("origem_comprovada").notNull().default(false),
+    /** Fontes consultadas (extrato, painel do canal, conversa com o hóspede…). */
+    evidencia: text("evidencia").notNull().default(""),
+    /** Referência do comprovante privado (link/nome), nunca o arquivo no Git. */
+    comprovante: text("comprovante").notNull().default(""),
+    /** Centavos com sinal; null = valor ainda desconhecido. */
+    valor: integer("valor"),
+    /** "empresa" (resultado da empresa) ou "proprietario" (acerto com o proprietário). */
+    afeta: text("afeta").notNull().default("empresa"),
+    /** Efeito escolhido (entrada/saída; crédito/débito) — guardado mesmo sem valor conhecido. */
+    direcao: text("direcao").notNull().default("empresa_saida"),
+    esclarecidoEm: timestamp("esclarecido_em", { withTimezone: true }),
+    lancamentoId: uuid("lancamento_id").references(() => lancamentos.id),
+    criadoPor: uuid("criado_por").references(() => usuarios.id),
+    criadoEm: criadoEm(),
+    atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("ajustes_org_data").on(t.organizacaoId, t.data)],
+);
