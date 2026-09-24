@@ -3,8 +3,8 @@
  * rodapé), montados como textos da primeira página do PDF. Nada é recalculado aqui — uma regra,
  * um lugar: o PDF, o portal e o painel leem as mesmas funções.
  */
-import { and, asc, eq, inArray } from "drizzle-orm";
-import { imoveis, proprietarioImoveis, proprietarios, representantes } from "@/db/schema";
+import { and, asc, eq, gte, inArray, isNotNull, lt, or } from "drizzle-orm";
+import { imoveis, lancamentos, proprietarioImoveis, proprietarios, representantes } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { lerEmpresa, NOME_EMPRESA_INICIAL } from "@/configuracoes/empresa";
 import { periodoDosFiltros } from "@/lib/filtros";
@@ -38,16 +38,40 @@ export type DadosRelatorio = {
   rodape: Rodape[];
 };
 
-/** Imóveis ligados a um proprietário (painel: relatório de um proprietário). */
-export async function imoveisDoProprietario(db: Db, organizacaoId: string, proprietarioId: string): Promise<ImovelDoRelatorio[]> {
+/**
+ * Imóveis do relatório de um proprietário (painel): os ligados a ele hoje e, com um período, também
+ * os que têm lançamento dele no livro nesse período — o imóvel que já passou para outro dono continua
+ * no relatório dos meses em que foi dele (o vínculo atual é apagado na troca de dono).
+ */
+export async function imoveisDoProprietario(db: Db, organizacaoId: string, proprietarioId: string, periodo?: { inicio: string; fim: string }): Promise<ImovelDoRelatorio[]> {
   if (!uuidValido(proprietarioId)) return [];
+  const ligados = db
+    .select({ id: proprietarioImoveis.imovelId })
+    .from(proprietarioImoveis)
+    .where(eq(proprietarioImoveis.proprietarioId, proprietarioId));
+  const doLivro = periodo
+    ? db
+        .select({ id: lancamentos.imovelId })
+        .from(lancamentos)
+        .where(
+          and(
+            eq(lancamentos.organizacaoId, organizacaoId),
+            eq(lancamentos.proprietarioId, proprietarioId),
+            gte(lancamentos.competencia, periodo.inicio),
+            lt(lancamentos.competencia, periodo.fim),
+            isNotNull(lancamentos.imovelId),
+          ),
+        )
+    : null;
   return db
     .select({ id: imoveis.id, codigo: imoveis.codigo, nome: imoveis.nome })
-    .from(proprietarioImoveis)
-    .innerJoin(imoveis, and(eq(imoveis.id, proprietarioImoveis.imovelId), eq(imoveis.organizacaoId, organizacaoId)))
-    .where(eq(proprietarioImoveis.proprietarioId, proprietarioId))
+    .from(imoveis)
+    .where(and(eq(imoveis.organizacaoId, organizacaoId), doLivro ? or(inArray(imoveis.id, ligados), inArray(imoveis.id, doLivro)) : inArray(imoveis.id, ligados)))
     .orderBy(asc(imoveis.codigo));
 }
+
+/** Todo o histórico: para listar na tela os imóveis que já foram dele. */
+export const HISTORICO_TODO = { inicio: "2000-01-01", fim: "2101-01-01" } as const;
 
 /** Proprietário da organização (painel), mesmo arquivado: o relatório final ou de meses passados continua possível. */
 export async function donoDoRelatorio(db: Db, organizacaoId: string, proprietarioId: string): Promise<Dono | null> {

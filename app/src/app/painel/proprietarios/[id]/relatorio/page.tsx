@@ -5,7 +5,7 @@ import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import styles from "@/components/formularios.module.css";
 import { getDb } from "@/db/client";
 import { hojeISO } from "@/lib/datas";
-import { donoDoRelatorio, imoveisDoProprietario } from "@/relatorios/relatorio";
+import { donoDoRelatorio, HISTORICO_TODO, imoveisDoProprietario } from "@/relatorios/relatorio";
 
 /** Mês anterior ao de hoje (o fechamento que normalmente se envia). */
 function mesAnterior(hoje: string): string {
@@ -22,7 +22,8 @@ export default async function RelatorioDoProprietario({ params, searchParams }: 
   const db = getDb();
   const dono = await donoDoRelatorio(db, sessao.organizacaoId, id);
   if (!dono) notFound();
-  const imoveis = await imoveisDoProprietario(db, sessao.organizacaoId, dono.id);
+  // Os ligados hoje e os que já foram dele (com lançamento dele no livro).
+  const imoveis = await imoveisDoProprietario(db, sessao.organizacaoId, dono.id, HISTORICO_TODO);
   return (
     <>
       <p style={{ margin: 0 }}>
@@ -39,7 +40,7 @@ export default async function RelatorioDoProprietario({ params, searchParams }: 
         </p>
       )}
       {imoveis.length === 0 ? (
-        <p className={styles.alerta}>Este proprietário não tem imóvel ligado: ligue um imóvel na ficha dele antes de gerar o relatório.</p>
+        <p className={styles.alerta}>Este proprietário não tem imóvel ligado nem histórico no financeiro: ligue um imóvel na ficha dele antes de gerar o relatório.</p>
       ) : (
         <form method="post" action={`/painel/proprietarios/${dono.id}/relatorio/pdf`} encType="multipart/form-data" className={styles.form}>
           <label>
@@ -48,7 +49,7 @@ export default async function RelatorioDoProprietario({ params, searchParams }: 
           </label>
           {imoveis.length > 1 && (
             <fieldset style={{ border: 0, padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 4 }}>
-              <legend>Imóveis (nenhum marcado = todos)</legend>
+              <legend>Imóveis (nenhum marcado = todos os que eram dele no mês)</legend>
               {imoveis.map((i) => (
                 <label key={i.id} className={styles.check}>
                   <input type="checkbox" name="imovel" value={i.codigo} defaultChecked />

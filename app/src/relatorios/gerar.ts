@@ -10,10 +10,11 @@ import { registrarAuditoria } from "@/auditoria/auditoria";
 import { imoveis } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
+import { periodoDosFiltros } from "@/lib/filtros";
 import { lerPeriodoPortal } from "@/portal/periodo";
 import { proprietariosDoUsuario } from "@/portal/resumo";
 import { type Anexos, ErroRelatorio, gerarPdfRelatorio } from "./pdf";
-import { dadosDoRelatorio, donoDoRelatorio, imoveisDoProprietario, textosDoRelatorio } from "./relatorio";
+import { dadosDoRelatorio, donoDoRelatorio, HISTORICO_TODO, imoveisDoProprietario, textosDoRelatorio } from "./relatorio";
 
 export type Resultado = { ok: true; pdf: Uint8Array; arquivo: string } | { ok: false; status: number; erro: string };
 
@@ -67,15 +68,19 @@ export async function relatorioDoPainel(db: Db, sessao: Sessao | null, proprieta
   const ano = m ? Number(m[1]) : NaN;
   const mes = m ? Number(m[2]) : NaN;
   if (!m || ano < 2000 || ano > 2100 || mes < 1 || mes > 12) return { ok: false, status: 400, erro: "Escolha o mês do relatório." };
-  const todos = await imoveisDoProprietario(db, sessao.organizacaoId, dono.id);
-  if (!todos.length) return { ok: false, status: 400, erro: "Este proprietário não tem imóvel ligado." };
-  const desconhecidos = pedido.imoveis.filter((c) => !todos.some((i) => i.codigo === c));
+  // Do mês: os ligados hoje e os que têm lançamento dele no mês (imóvel que já passou para outro dono).
+  const doMes = await imoveisDoProprietario(db, sessao.organizacaoId, dono.id, periodoDosFiltros({ imoveis: [], ano, mes }));
+  if (!doMes.length) return { ok: false, status: 400, erro: "Este proprietário não tem imóvel ligado nem lançamentos neste mês." };
+  // A tela lista todos os que já foram dele; o que não é dele em nenhum momento é recusado.
+  const historico = pedido.imoveis.length ? await imoveisDoProprietario(db, sessao.organizacaoId, dono.id, HISTORICO_TODO) : doMes;
+  const desconhecidos = pedido.imoveis.filter((c) => !historico.some((i) => i.codigo === c));
   if (desconhecidos.length) return { ok: false, status: 400, erro: `Imóvel que não é deste proprietário: ${desconhecidos.join(", ")}.` };
-  const escolhidos = pedido.imoveis.length ? todos.filter((i) => pedido.imoveis.includes(i.codigo)) : todos;
+  const escolhidos = pedido.imoveis.length ? doMes.filter((i) => pedido.imoveis.includes(i.codigo)) : doMes;
+  if (!escolhidos.length) return { ok: false, status: 400, erro: "Nenhum dos imóveis escolhidos era deste proprietário neste mês." };
   const dados = await dadosDoRelatorio(db, sessao.organizacaoId, {
     donos: [dono],
     imoveis: escolhidos,
-    todosOsImoveis: escolhidos.length === todos.length,
+    todosOsImoveis: escolhidos.length === doMes.length,
     ano,
     mes,
     hoje: hojeISO("America/Sao_Paulo", agora),

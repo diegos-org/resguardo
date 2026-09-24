@@ -280,6 +280,19 @@ describe("dados e acesso", () => {
     expect(await relatorioDoPainel(db, admin(), dona, { mes: "2026-10", imoveis: [], anexos: {} }, AGORA)).toMatchObject({ ok: true });
   });
 
+  it("painel: ex-proprietário continua com o relatório dos meses em que o imóvel era dele", async () => {
+    // O 403 passa para outro dono: o vínculo da dona é apagado, o livro de outubro continua dela.
+    await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));
+    await db.insert(proprietarioImoveis).values({ proprietarioId: outro, imovelId: a });
+    const r = await relatorioDoPainel(db, admin(), dona, { mes: "2026-10", imoveis: ["403"], anexos: {} }, AGORA);
+    if (!r.ok) throw new Error(r.erro);
+    expect(r.arquivo).toBe("relatorio-2026-10-403.pdf");
+    // Num mês sem lançamento dela e sem vínculo: avisa em vez de gerar um relatório vazio.
+    expect(await relatorioDoPainel(db, admin(), dona, { mes: "2026-12", imoveis: [], anexos: {} }, AGORA)).toMatchObject({ ok: false, status: 400 });
+    // Imóvel que nunca foi dela continua recusado.
+    expect(await relatorioDoPainel(db, admin(), dona, { mes: "2026-10", imoveis: ["102"], anexos: {} }, AGORA)).toMatchObject({ ok: false, status: 400 });
+  });
+
   it("painel: gera com extrato, registra no histórico sem o conteúdo; extrato inválido não registra nada", async () => {
     const ruim = await relatorioDoPainel(db, admin(), dona, { mes: "2026-10", imoveis: [], anexos: { extrato: { bytes: new TextEncoder().encode("%PDF-xx") } } }, AGORA);
     expect(ruim).toMatchObject({ ok: false, status: 400 });
