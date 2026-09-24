@@ -2,7 +2,7 @@
  * Dados do painel inicial (M4.6), já filtrados pelo filtro global (imóveis + período). Cada
  * bloco vem da mesma função que alimenta a tela específica (reservas, despesas, ajustes…).
  */
-import { and, eq, gte, inArray, lt, sql, sum } from "drizzle-orm";
+import { and, eq, gte, inArray, lt, ne, sql, sum } from "drizzle-orm";
 import { listarAdiantamentos, totalACobrar } from "@/adiantamentos/adiantamentos";
 import { listarAjustes } from "@/ajustes/ajustes";
 import { lancamentos, type TipoLancamento } from "@/db/schema";
@@ -83,7 +83,8 @@ export async function carregarDashboard(
             eq(lancamentos.organizacaoId, organizacaoId),
             gte(lancamentos.competencia, inicioAno),
             lt(lancamentos.competencia, fimAno),
-            inArray(lancamentos.imovelId, ids),
+            // Mesmo recorte dos cartões: em "todos", entram também imóveis inativos.
+            o.todos ? undefined : inArray(lancamentos.imovelId, ids),
             inArray(lancamentos.tipo, ["receita_bruta", "comissao"]),
           ),
         )
@@ -99,6 +100,8 @@ export async function carregarDashboard(
           and(
             eq(lancamentos.organizacaoId, organizacaoId),
             eq(lancamentos.estado, "pendente"),
+            // Ajuste pendente já tem o seu alerta ("pendente de esclarecimento"): não conta duas vezes.
+            ne(lancamentos.tipo, "ajuste"),
             o.todos ? undefined : inArray(lancamentos.imovelId, ids),
             sql`${lancamentos.estornoDe} is null`,
             sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`,

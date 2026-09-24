@@ -1,7 +1,9 @@
+import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { criarContrato } from "@/contratos/repositorio";
 import { bloqueios, imoveis, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
+import { registrarAjuste } from "@/ajustes/ajustes";
 import { criarCategoria } from "@/despesas/categorias";
 import { registrarDespesa } from "@/despesas/despesas";
 import type { Db } from "@/db/types";
@@ -99,6 +101,27 @@ describe("painel inicial", () => {
     await registrarDespesa(db, org, { ...base, descricao: "Lâmpada", valor: 5000, data: "2026-10-05", imovelId: a }, null);
     expect((await carregar(true)).financeiro?.despesasEmpresa).toBe(35000);
     expect((await carregar(true, "403")).financeiro?.despesasEmpresa).toBe(5000);
+  });
+
+  it("todos os imóveis: gráfico do mês bate com os cartões mesmo com imóvel inativo", async () => {
+    await criarReserva(db, org, reserva(a, "2026-10-12", "2026-10-15"), null);
+    await db.update(imoveis).set({ ativo: false }).where(eq(imoveis.id, a));
+    const d = await carregar();
+    expect(d.financeiro).toMatchObject({ receitaBruta: 100000, comissoes: 12750 });
+    expect(d.porMes?.[9]).toEqual({ mes: 10, receitaBruta: 100000, comissoes: 12750 });
+  });
+
+  it("ajuste pendente aparece uma vez só nos alertas (não como acerto pendente)", async () => {
+    const r = await registrarAjuste(
+      db,
+      org,
+      { data: "2026-10-15", imovelId: a, reservaId: null, proprietarioId: null, motivo: "", origem: "desconhecida", origemComprovada: false, evidencia: "Extrato", comprovante: "", valor: 5000, direcao: "empresa_saida" },
+      null,
+    );
+    expect(r.ok).toBe(true);
+    const textos = (await carregar()).alertas.map((x) => x.texto);
+    expect(textos).toContain("1 ajuste(s) pendente(s) de esclarecimento.");
+    expect(textos.some((t) => t.includes("acerto pendente"))).toBe(false);
   });
 
   it("filtro de imóvel: números só do imóvel escolhido; sobreposição vira alerta", async () => {
