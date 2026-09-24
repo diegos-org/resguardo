@@ -7,7 +7,7 @@ import { and, eq, gt, gte, inArray, isNotNull, isNull, lt, notInArray, or, sql, 
 import { ajustes, lancamentos, proprietarios, proprietarioUsuarios, reservas, type TipoLancamento } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
-import { lancamentoEmVigor, reservaDosDonos } from "./posse";
+import { lancamentoEmVigor, noPeriodoDosDonos, reservaDosDonos } from "./posse";
 
 /** Proprietários (ativos) que este usuário pode ver no portal: ele mesmo ou quem ele representa. */
 export async function proprietariosDoUsuario(db: Db, organizacaoId: string, usuarioId: string): Promise<{ id: string; nome: string; chavePix: string }[]> {
@@ -84,7 +84,7 @@ export async function resumoDoProprietario(
         isNull(ajustes.esclarecidoEm),
         gte(ajustes.data, o.periodo.inicio),
         lt(ajustes.data, o.periodo.fim),
-        or(inArray(ajustes.proprietarioId, donos), and(isNull(ajustes.proprietarioId), inArray(ajustes.imovelId, imoveis))),
+        or(inArray(ajustes.proprietarioId, donos), and(isNull(ajustes.proprietarioId), inArray(ajustes.imovelId, imoveis), noPeriodoDosDonos(donos, ajustes.imovelId, ajustes.data))),
         o.semImovel ? undefined : inArray(ajustes.imovelId, imoveis),
       ),
     );
@@ -99,7 +99,7 @@ export async function resumoDoProprietario(
         base,
         // Dele, ou sem dono num imóvel dele (reserva calculada antes de o imóvel ter proprietário),
         // como no fechamento do mês.
-        or(inArray(lancamentos.proprietarioId, donos), and(isNull(lancamentos.proprietarioId), inArray(lancamentos.imovelId, imoveis))),
+        or(inArray(lancamentos.proprietarioId, donos), and(isNull(lancamentos.proprietarioId), inArray(lancamentos.imovelId, imoveis), noPeriodoDosDonos(donos, lancamentos.imovelId, lancamentos.competencia))),
         eq(lancamentos.estado, "pendente"),
         ativo,
       ),

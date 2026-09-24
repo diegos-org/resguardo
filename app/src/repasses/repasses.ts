@@ -148,6 +148,35 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
         ),
       ),
     );
+  // Para o portal ("em conferência"): o que não tem dono só conta se é do período em que o imóvel é
+  // dele (data do vínculo em diante). O bloqueio do fechamento continua olhando tudo acima.
+  const noPeriodoDele = (imovel: typeof lancamentos.imovelId | typeof ajustes.imovelId, data: typeof lancamentos.competencia | typeof ajustes.data) =>
+    sql`exists (select 1 from ${proprietarioImoveis} where ${proprietarioImoveis.imovelId} = ${imovel} and ${proprietarioImoveis.proprietarioId} = ${dono.id} and ${data} >= (${proprietarioImoveis.criadoEm} at time zone 'America/Sao_Paulo')::date)`;
+  const [pendentesDele] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(lancamentos)
+    .where(
+      and(
+        eq(lancamentos.organizacaoId, org),
+        eq(lancamentos.estado, "pendente"),
+        lt(lancamentos.competencia, lim.fim),
+        or(eq(lancamentos.proprietarioId, dono.id), and(isNull(lancamentos.proprietarioId), noPeriodoDele(lancamentos.imovelId, lancamentos.competencia))),
+        isNull(lancamentos.estornoDe),
+        sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`,
+      ),
+    );
+  const [ajustesDele] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(ajustes)
+    .where(
+      and(
+        eq(ajustes.organizacaoId, org),
+        eq(ajustes.afeta, "proprietario"),
+        isNull(ajustes.esclarecidoEm),
+        lt(ajustes.data, lim.fim),
+        or(eq(ajustes.proprietarioId, dono.id), and(isNull(ajustes.proprietarioId), noPeriodoDele(ajustes.imovelId, ajustes.data))),
+      ),
+    );
   const previstos = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(lancamentos)
@@ -255,7 +284,7 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
     if (diferenca !== 0) avisos.push(`Depois do repasse de ${nomeMes(posterior.mes.slice(0, 7))}, o acerto até este mês mudou em ${(diferenca / 100).toFixed(2).replace(".", ",")}: a diferença entra no próximo repasse.`);
   }
   return { ...calc, proprietarioId: dono.id, nome: dono.nome, email: dono.email, chavePix: dono.chavePix, imoveis: vinculos.map((v) => v.codigo), bloqueios, avisos, repasse: atual ?? null,
-    emConferencia: Boolean(pendentes[0]?.n || ajustesAbertos?.n),
+    emConferencia: Boolean(pendentesDele?.n || ajustesDele?.n),
     repassePosterior: primeiroPosterior ? primeiroPosterior.mes.slice(0, 7) : null,
     diferencaPosFechamento: diferenca,
   };

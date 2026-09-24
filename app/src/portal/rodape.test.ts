@@ -115,6 +115,20 @@ describe("rodapé do portal", () => {
     expect(await rodape("2026-11-02", { id: so.id, nome: "Só ajuste" })).toMatchObject({ situacao: "em_conferencia", valor: 0, chavePix: "" });
   });
 
+  it("pendência sem dono de antes do vínculo não deixa o mês do novo dono 'em conferência' (mas segura o fechamento)", async () => {
+    const [novo] = await db.insert(proprietarios).values({ organizacaoId: org, nome: "Novo" }).returning();
+    const [c] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "555", nome: "Cinco" }).returning();
+    await criarContrato(db, org, c.id, { tipo: "gestao_completa", comissao: "15", inicio: "2025-01-01" }, null);
+    // Reserva de setembro calculada sem dono (parte do proprietário pendente, sem proprietário).
+    await criarReserva(db, org, { ...reserva(c.id), checkin: "2026-09-10", checkout: "2026-09-13" }, null);
+    // O imóvel passa a ser do Novo em 01/10.
+    await db.insert(proprietarioImoveis).values({ proprietarioId: novo.id, imovelId: c.id, criadoEm: new Date("2026-10-01T12:00:00Z") });
+    await criarReserva(db, org, { ...reserva(c.id), checkin: "2026-10-10", checkout: "2026-10-13" }, null);
+    expect(await rodape("2026-11-02", { id: novo.id, nome: "Novo" })).toMatchObject({ situacao: "empresa_deve", emConferencia: false });
+    // A pendência de setembro continua segurando o fechamento (a equipe resolve no painel).
+    expect(await fecharMes(db, org, novo.id, MES, "2026-11-02", null)).toMatchObject({ ok: false });
+  });
+
   it("mês fechado e depois pago", async () => {
     const f = await fecharMes(db, org, dona, MES, "2026-11-02", null);
     if (!f.ok) throw new Error(f.erro);

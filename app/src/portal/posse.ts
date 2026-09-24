@@ -7,7 +7,7 @@
  * passou a ter o imóvel em diante (data do vínculo) e o imóvel não tem outro dono no livro: na
  * dúvida, o portal esconde — nunca mostra o histórico de outra pessoa.
  */
-import { and, eq, exists, isNotNull, isNull, not, notInArray, inArray, or, sql } from "drizzle-orm";
+import { type AnyColumn, and, eq, exists, isNotNull, isNull, not, notInArray, inArray, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { lancamentos, proprietarioImoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
@@ -45,4 +45,13 @@ export function reservaDosDonos(db: Db, donos: readonly string[]) {
       ),
     );
   return or(exists(direito(true)), and(not(exists(direito(false))), exists(donoDesde)));
+}
+
+/**
+ * Condição: a data (`data`) é do período em que o imóvel é de um destes donos (data do vínculo em
+ * diante, no fuso de São Paulo). Para o que não tem dono no livro: só conta para o dono atual o
+ * que é do tempo dele.
+ */
+export function noPeriodoDosDonos(donos: readonly string[], imovel: AnyColumn, data: AnyColumn) {
+  return sql`exists (select 1 from ${proprietarioImoveis} where ${proprietarioImoveis.imovelId} = ${imovel} and ${inArray(proprietarioImoveis.proprietarioId, [...donos])} and ${data} >= (${proprietarioImoveis.criadoEm} at time zone 'America/Sao_Paulo')::date)`;
 }
