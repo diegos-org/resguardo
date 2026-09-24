@@ -144,15 +144,13 @@ export async function importarCsv(db: Db, organizacaoId: string, texto: string, 
       r.comErro++;
       continue;
     }
-    // Igual ao que já está gravado: nada a fazer (e o arquivo grande não demora à toa).
-    if (l.situacao === "igual") {
-      r.iguais++;
-      continue;
-    }
+    // Mesmo a linha igual passa pela sincronização: o financeiro é conferido de novo (ex.: o
+    // imóvel ganhou proprietário ou contrato depois da primeira importação).
     const s = await sincronizarReserva(db, organizacaoId, FONTE_CSV, l.idFonte!, l.dados, autorId);
     if (!s.ok) r.comErro++;
     else {
       if (s.criada) r.criadas++;
+      else if (l.situacao === "igual") r.iguais++;
       else r.atualizadas++;
       if (s.financeiroNaoAtualizado) r.semRecalculo.push(l.numero);
       else if (s.avisosFinanceiro?.length) r.avisosFinanceiro.push({ linha: l.numero, avisos: s.avisosFinanceiro });
