@@ -12,6 +12,8 @@ import { type DadosReserva } from "./regras";
 import { sincronizarReserva } from "./repositorio";
 
 export const FONTE_CSV = "csv";
+/** Quantas reservas são gravadas ao mesmo tempo na importação. */
+const IMPORTACOES_SIMULTANEAS = 4;
 
 export type SituacaoLinha = "nova" | "atualiza" | "igual" | "erro";
 export type LinhaAnalise = {
@@ -139,23 +141,30 @@ export async function importarCsv(db: Db, organizacaoId: string, texto: string, 
   const a = await analisarCsv(db, organizacaoId, texto);
   const r: ResultadoImportacao = { erroGeral: a.erroGeral, criadas: 0, atualizadas: 0, iguais: 0, comErro: 0, semRecalculo: [], avisosFinanceiro: [] };
   if (a.erroGeral) return r;
-  for (const l of a.linhas) {
-    if (!l.dados) {
-      r.comErro++;
-      continue;
+  // Algumas reservas ao mesmo tempo (cada uma na sua transação e com a sua trava): um arquivo
+  // de 500 linhas não fica esperando uma por uma.
+  const fila = a.linhas.filter((l) => {
+    if (!l.dados) r.comErro++;
+    return Boolean(l.dados);
+  });
+  const trabalhar = async () => {
+    for (let l = fila.shift(); l; l = fila.shift()) {
+      // Mesmo a linha igual passa pela sincronização: o financeiro é conferido de novo (ex.: o
+      // imóvel ganhou proprietário ou contrato depois da primeira importação).
+      const s = await sincronizarReserva(db, organizacaoId, FONTE_CSV, l.idFonte!, l.dados!, autorId);
+      if (!s.ok) r.comErro++;
+      else {
+        if (s.criada) r.criadas++;
+        else if (l.situacao === "igual") r.iguais++;
+        else r.atualizadas++;
+        if (s.financeiroNaoAtualizado) r.semRecalculo.push(l.numero);
+        else if (s.avisosFinanceiro?.length) r.avisosFinanceiro.push({ linha: l.numero, avisos: s.avisosFinanceiro });
+      }
     }
-    // Mesmo a linha igual passa pela sincronização: o financeiro é conferido de novo (ex.: o
-    // imóvel ganhou proprietário ou contrato depois da primeira importação).
-    const s = await sincronizarReserva(db, organizacaoId, FONTE_CSV, l.idFonte!, l.dados, autorId);
-    if (!s.ok) r.comErro++;
-    else {
-      if (s.criada) r.criadas++;
-      else if (l.situacao === "igual") r.iguais++;
-      else r.atualizadas++;
-      if (s.financeiroNaoAtualizado) r.semRecalculo.push(l.numero);
-      else if (s.avisosFinanceiro?.length) r.avisosFinanceiro.push({ linha: l.numero, avisos: s.avisosFinanceiro });
-    }
-  }
+  };
+  await Promise.all(Array.from({ length: IMPORTACOES_SIMULTANEAS }, trabalhar));
+  r.semRecalculo.sort((x, y) => x - y);
+  r.avisosFinanceiro.sort((x, y) => x.linha - y.linha);
   await registrarAuditoria(db, {
     organizacaoId,
     usuarioId: autorId,

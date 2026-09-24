@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useActionState, useState } from "react";
-import type { EstadoImportacao } from "@/reservas/acoes";
+import type { EstadoConferencia, EstadoImportacao } from "@/reservas/acoes";
 import { LIMITE_BYTES, MODELO_CSV } from "@/reservas/csv-modelo";
 import styles from "../formularios.module.css";
 
@@ -23,14 +23,24 @@ async function lerArquivo(f: File): Promise<string> {
   }
 }
 
-export function ImportarCsv({ acao }: { acao: (a: EstadoImportacao, f: FormData) => Promise<EstadoImportacao> }) {
-  const [estado, enviar, enviando] = useActionState(acao, {});
+type Props = {
+  conferirAcao: (a: EstadoConferencia, f: FormData) => Promise<EstadoConferencia>;
+  importarAcao: (a: EstadoImportacao, f: FormData) => Promise<EstadoImportacao>;
+};
+
+export function ImportarCsv({ conferirAcao, importarAcao }: Props) {
+  const [estado, conferir, conferindo] = useActionState(conferirAcao, {});
+  const [importacao, importar, importando] = useActionState(importarAcao, {});
+  const enviando = conferindo || importando;
+  const [importadoCom, setImportadoCom] = useState<string | null>(null);
   const [texto, setTexto] = useState("");
   const [nome, setNome] = useState("");
   const [erroArquivo, setErroArquivo] = useState("");
   // Qual texto foi conferido (guardado aqui, não no estado do servidor, para o arquivo ir uma vez só).
   const [conferidoCom, setConferidoCom] = useState<string | null>(null);
-  const conferido = conferidoCom === texto && !estado.erroGeral && estado.linhas;
+  // Depois de importar, a conferência antiga some (confira de novo para ver o estado atual).
+  const resultado = importadoCom === texto && !importando ? importacao.resultado : undefined;
+  const conferido = conferidoCom === texto && !conferindo && !resultado && !estado.erroGeral && estado.linhas;
   const validas = estado.linhas?.filter((l) => l.situacao !== "erro").length ?? 0;
   const contagem = (s: keyof typeof SITUACAO) => estado.linhas?.filter((l) => l.situacao === s).length ?? 0;
 
@@ -67,37 +77,55 @@ export function ImportarCsv({ acao }: { acao: (a: EstadoImportacao, f: FormData)
           />
         </label>
         {erroArquivo && <p className={styles.alerta}>{erroArquivo}</p>}
-        <form action={enviar} className={styles.acoes}>
-          <input type="hidden" name="texto" value={texto} />
-          <button type="submit" name="op" value="conferir" disabled={!texto || enviando} onClick={() => setConferidoCom(texto)}>
-            {enviando ? "Aguarde…" : "Conferir (não grava nada)"}
-          </button>
-          {conferido && validas > 0 && (
-            <button type="submit" name="op" value="importar" disabled={enviando}>
-              Importar {validas} reserva(s)
+        <div className={styles.acoes}>
+          <form action={conferir}>
+            <input type="hidden" name="texto" value={texto} />
+            <button
+              type="submit"
+              disabled={!texto || enviando}
+              onClick={() => {
+                setConferidoCom(texto);
+                setImportadoCom(null);
+              }}
+            >
+              {conferindo ? "Conferindo…" : "Conferir (não grava nada)"}
             </button>
+          </form>
+          {conferido && validas > 0 && (
+            /* Marca no envio (não no clique): o formulário só some depois de a ação ter saído. */
+            <form action={importar} onSubmit={() => setImportadoCom(texto)}>
+              <input type="hidden" name="texto" value={texto} />
+              <button type="submit" disabled={enviando}>
+                {importando ? "Importando…" : `Importar ${validas} reserva(s)`}
+              </button>
+            </form>
           )}
-        </form>
-        {nome && !estado.resultado && <p style={{ margin: 0, fontSize: "0.875rem" }}>Arquivo: {nome}</p>}
+        </div>
+        {nome && !resultado && <p style={{ margin: 0, fontSize: "0.875rem" }}>Arquivo: {nome}</p>}
       </div>
 
-      {estado.erroGeral && (
+      {(conferidoCom === texto ? estado.erroGeral : undefined) && (
         <p role="alert" className={styles.alerta}>
           {estado.erroGeral}
         </p>
       )}
-
-      {estado.resultado && (
-        <p role="status" className={styles.sucesso}>
-          Importação concluída: {estado.resultado.criadas} nova(s), {estado.resultado.atualizadas} atualizada(s), {estado.resultado.iguais} já estavam iguais
-          {estado.resultado.comErro ? `, ${estado.resultado.comErro} com erro (ficaram de fora)` : ""}. <Link href="/painel/reservas">Ver reservas</Link>
+      {importadoCom === texto && importacao.erroGeral && (
+        <p role="alert" className={styles.alerta}>
+          {importacao.erroGeral}
         </p>
       )}
-      {estado.resultado && estado.resultado.avisosFinanceiro.length > 0 && (
+
+      {resultado && (
+        <p role="status" className={styles.sucesso}>
+          Importação concluída: {resultado.criadas} nova(s), {resultado.atualizadas} atualizada(s), {resultado.iguais} já estavam iguais
+          {resultado.comErro ? `, ${resultado.comErro} com erro (ficaram de fora)` : ""}. <Link href="/painel/reservas">Ver reservas</Link>
+        </p>
+      )}
+      {resultado && resultado.avisosFinanceiro.length > 0 && (
         <div className={styles.alerta}>
           <strong>Financeiro com pendências:</strong> estas reservas entraram, mas o cálculo avisou:
           <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
-            {estado.resultado.avisosFinanceiro.map((a) => (
+            {resultado.avisosFinanceiro.map((a) => (
               <li key={a.linha}>
                 Linha {a.linha}: {a.avisos.join(" ")}
               </li>
@@ -105,10 +133,10 @@ export function ImportarCsv({ acao }: { acao: (a: EstadoImportacao, f: FormData)
           </ul>
         </div>
       )}
-      {estado.resultado && estado.resultado.semRecalculo.length > 0 && (
+      {resultado && resultado.semRecalculo.length > 0 && (
         <p role="alert" className={styles.alerta}>
-          Atenção: {estado.resultado.semRecalculo.length === 1 ? "a reserva da linha" : "as reservas das linhas"} {estado.resultado.semRecalculo.join(", ")}{" "}
-          {estado.resultado.semRecalculo.length === 1 ? "foi atualizada" : "foram atualizadas"}, mas já tinha(m) dinheiro movimentado: o financeiro
+          Atenção: {resultado.semRecalculo.length === 1 ? "a reserva da linha" : "as reservas das linhas"} {resultado.semRecalculo.join(", ")}{" "}
+          {resultado.semRecalculo.length === 1 ? "foi atualizada" : "foram atualizadas"}, mas já tinha(m) dinheiro movimentado: o financeiro
           ficou como estava. Confira na ficha da reserva e, se precisar, faça um ajuste manual.
         </p>
       )}

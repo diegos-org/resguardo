@@ -40,13 +40,12 @@ export async function cancelar(form: FormData): Promise<void> {
 // --- Importação por CSV (M3.6) --------------------------------------------------------
 
 export type LinhaConferida = { numero: number; situacao: SituacaoLinha; resumo: string; erros: string[]; avisos: string[] };
-/** Sem o texto do arquivo: ele vai só no formulário (o estado volta ao servidor a cada envio). */
-export type EstadoImportacao = {
-  erroGeral?: string;
-  colunasIgnoradas?: string[];
-  linhas?: LinhaConferida[];
-  resultado?: Omit<ResultadoImportacao, "erroGeral">;
-};
+/**
+ * Conferência e importação são ações separadas, cada uma com o seu estado: a lista conferida
+ * nunca volta ao servidor junto com o arquivo (limite de 1 MB por envio).
+ */
+export type EstadoConferencia = { erroGeral?: string; colunasIgnoradas?: string[]; linhas?: LinhaConferida[] };
+export type EstadoImportacao = { erroGeral?: string; resultado?: Omit<ResultadoImportacao, "erroGeral"> };
 
 /** Importar mexe em valores (financeiro): só quem edita reservas E o financeiro. */
 async function sessaoImportacao() {
@@ -56,21 +55,21 @@ async function sessaoImportacao() {
   return sessao;
 }
 
-export async function importacaoAcao(_a: EstadoImportacao, form: FormData): Promise<EstadoImportacao> {
+export async function conferirCsvAcao(_a: EstadoConferencia, form: FormData): Promise<EstadoConferencia> {
   const sessao = await sessaoImportacao();
-  const texto = String(form.get("texto") ?? "");
-  const db = getDb();
-  if (form.get("op") === "importar") {
-    const r = await importarCsv(db, sessao.organizacaoId, texto, sessao.usuarioId);
-    if (r.erroGeral) return { erroGeral: r.erroGeral };
-    revalidatePath("/painel", "layout");
-    return { resultado: { criadas: r.criadas, atualizadas: r.atualizadas, iguais: r.iguais, comErro: r.comErro, semRecalculo: r.semRecalculo, avisosFinanceiro: r.avisosFinanceiro } };
-  }
-  const a = await analisarCsv(db, sessao.organizacaoId, texto);
+  const a = await analisarCsv(getDb(), sessao.organizacaoId, String(form.get("texto") ?? ""));
   // Só o necessário para a tela (os dados completos ficam no arquivo do próprio usuário).
   return {
     erroGeral: a.erroGeral,
     colunasIgnoradas: a.colunasIgnoradas,
     linhas: a.linhas.map(({ numero, situacao, resumo, erros, avisos }) => ({ numero, situacao, resumo, erros, avisos })),
   };
+}
+
+export async function importarCsvAcao(_a: EstadoImportacao, form: FormData): Promise<EstadoImportacao> {
+  const sessao = await sessaoImportacao();
+  const r = await importarCsv(getDb(), sessao.organizacaoId, String(form.get("texto") ?? ""), sessao.usuarioId);
+  if (r.erroGeral) return { erroGeral: r.erroGeral };
+  revalidatePath("/painel", "layout");
+  return { resultado: { criadas: r.criadas, atualizadas: r.atualizadas, iguais: r.iguais, comErro: r.comErro, semRecalculo: r.semRecalculo, avisosFinanceiro: r.avisosFinanceiro } };
 }
