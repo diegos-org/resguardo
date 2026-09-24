@@ -169,7 +169,7 @@ describe("regras financeiras", () => {
 });
 
 describe("empresa", () => {
-  const base = { nome: "Sua Casa Leblon", razaoSocial: "", cnpj: "", email: "", telefone: "", endereco: "", site: "" };
+  const base = { nome: "Sua Casa Leblon", razaoSocial: "", cnpj: "", email: "", telefone: "", endereco: "", site: "", chavePix: "" };
 
   it("valida nome, e-mail, CNPJ e site", () => {
     expect(validarEmpresa({ ...base, nome: " " })).toMatchObject({ ok: false, erros: { nome: expect.any(String) } });
@@ -180,10 +180,10 @@ describe("empresa", () => {
   });
 
   it("nome vai para a organização (onde o sistema já lê) e o resto para a configuração", async () => {
-    await salvarEmpresa(db, org, { ...base, nome: "SCL", telefone: "+55 21 0000-0000" }, admin);
+    await salvarEmpresa(db, org, { ...base, nome: "SCL", telefone: "+55 21 0000-0000", chavePix: "financeiro@example.com" }, admin);
     const [o] = await db.select().from(organizacoes).where(eq(organizacoes.id, org));
     expect(o.nome).toBe("SCL");
-    expect(await lerEmpresa(db, org)).toMatchObject({ nome: "SCL", telefone: "+55 21 0000-0000" });
+    expect(await lerEmpresa(db, org)).toMatchObject({ nome: "SCL", telefone: "+55 21 0000-0000", chavePix: "financeiro@example.com" });
     expect((await lerEmpresa(db, outraOrg)).telefone).toBe("");
     const [c] = await db.select().from(configuracoes).where(eq(configuracoes.organizacaoId, org));
     expect(c.valor).not.toHaveProperty("nome");

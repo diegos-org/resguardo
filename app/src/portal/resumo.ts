@@ -3,11 +3,11 @@
  * valores vêm do mesmo livro do painel (nada é recalculado aqui); a contagem de reservas vem das
  * reservas confirmadas dos imóveis dele no período.
  */
-import { and, eq, exists, gt, gte, inArray, isNotNull, isNull, lt, not, notInArray, or, sql, sum } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
+import { and, eq, gt, gte, inArray, isNotNull, isNull, lt, notInArray, or, sql, sum } from "drizzle-orm";
 import { ajustes, lancamentos, proprietarios, proprietarioUsuarios, reservas, type TipoLancamento } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
+import { lancamentoEmVigor, reservaDosDonos } from "./posse";
 
 /** Proprietários (ativos) que este usuário pode ver no portal: ele mesmo ou quem ele representa. */
 export async function proprietariosDoUsuario(db: Db, organizacaoId: string, usuarioId: string): Promise<{ id: string; nome: string; chavePix: string }[]> {
@@ -88,10 +88,7 @@ export async function resumoDoProprietario(
         o.semImovel ? undefined : inArray(ajustes.imovelId, imoveis),
       ),
     );
-  // A reserva é de quem tem a parte do proprietário *em vigor* (nem estorno, nem estornada):
-  // se o imóvel foi A→B→A, a parte antiga de A, já estornada, não faz a reserva de B ser de A.
-  const estorno = alias(lancamentos, "estorno");
-  const ativo = and(isNull(lancamentos.estornoDe), not(exists(db.select({ um: sql`1` }).from(estorno).where(eq(estorno.estornoDe, lancamentos.id)))));
+  const ativo = lancamentoEmVigor(db);
   // Em conferência: só o pendente em vigor (como no fechamento do mês). Um pendente já
   // estornado (ajuste complementado/esclarecido, reserva recalculada) não conta mais.
   const [pendente] = await db
@@ -112,22 +109,7 @@ export async function resumoDoProprietario(
     .selectDistinct({ id: lancamentos.reservaId })
     .from(lancamentos)
     .where(and(base, eq(lancamentos.tipo, "direito_proprietario"), ativo, inArray(lancamentos.proprietarioId, donos), isNotNull(lancamentos.reservaId)));
-  // Contagem: reservas confirmadas dos imóveis dele no período (como no Início). A que tem a
-  // parte lançada para ele conta; a lançada só para outra pessoa, não. A ainda sem cálculo no
-  // financeiro só conta se o imóvel nunca teve outro dono no livro: sem histórico de posse, não
-  // dá para saber de quem era, e o portal nunca mostra o histórico de outra pessoa.
-  const direito = (deles: boolean) =>
-    db
-      .select({ um: sql`1` })
-      .from(lancamentos)
-      .where(
-        and(
-          eq(lancamentos.reservaId, reservas.id),
-          eq(lancamentos.tipo, "direito_proprietario"),
-          ativo,
-          deles ? inArray(lancamentos.proprietarioId, donos) : and(isNotNull(lancamentos.proprietarioId), notInArray(lancamentos.proprietarioId, donos)),
-        ),
-      );
+  // Contagem: reservas confirmadas dos imóveis dele no período (como no Início), pela regra de posse.
   const [contagem] = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(reservas)
@@ -138,20 +120,7 @@ export async function resumoDoProprietario(
         inArray(reservas.imovelId, imoveis),
         lt(reservas.checkin, o.periodo.fim),
         gt(reservas.checkout, o.periodo.inicio),
-        or(
-          exists(direito(true)),
-          and(
-            not(exists(direito(false))),
-            not(
-              exists(
-                db
-                  .select({ um: sql`1` })
-                  .from(lancamentos)
-                  .where(and(eq(lancamentos.imovelId, reservas.imovelId), isNotNull(lancamentos.proprietarioId), notInArray(lancamentos.proprietarioId, donos))),
-              ),
-            ),
-          ),
-        ),
+        reservaDosDonos(db, donos),
       ),
     );
   const daReserva = await db
