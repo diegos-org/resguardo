@@ -22,7 +22,7 @@ export async function lerRecebimento(db: Db, organizacaoId: string, imovelId: st
 
 /**
  * Grava a configuração inteira do imóvel (origem → split/empresa; ausente = padrão do
- * sistema) e recalcula as reservas dele. Retorna false se o imóvel não é da organização.
+ * sistema) e recalcula as reservas dele, tudo-ou-nada. Retorna false se o imóvel não é da organização.
  */
 export async function salvarRecebimento(db: Db, organizacaoId: string, imovelId: string, nova: ConfigRecebimento, autorId: string | null): Promise<boolean> {
   if (!uuidValido(imovelId)) return false;
@@ -44,9 +44,10 @@ export async function salvarRecebimento(db: Db, organizacaoId: string, imovelId:
     const linhas = Object.entries(nova).map(([origem, recebimento]) => ({ organizacaoId, imovelId, origem: origem as OrigemReserva, recebimento: recebimento! }));
     if (linhas.length) await tx.insert(recebimentoPorCanal).values(linhas);
     await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "imovel.recebimento", entidade: "imovel", entidadeId: imovelId, mudancas });
+    // Na MESMA transação: se o recálculo falhar, a configuração também não é gravada
+    // (nada fica meio recalculado e salvar de novo refaz tudo).
+    await recalcularReservas(tx, organizacaoId, { imovelId }, autorId);
     return true;
   });
-  if (mudou === null) return false;
-  if (mudou) await recalcularReservas(db, organizacaoId, { imovelId }, autorId);
-  return true;
+  return mudou !== null;
 }
