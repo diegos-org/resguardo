@@ -123,7 +123,8 @@ describe("resumo do portal", () => {
   it("reserva sem cálculo de antes da troca de dono não aparece para o novo dono", async () => {
     await criarReserva(db, org, { ...reserva(a), checkin: "2026-10-20", checkout: "2026-10-22", valorBruto: null, taxaCanal: null }, null);
     await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));
-    await db.insert(proprietarioImoveis).values({ proprietarioId: outro, imovelId: a });
+    // O novo dono passou a ter o imóvel depois da entrada (25/10): a estada era do anterior.
+    await db.insert(proprietarioImoveis).values({ proprietarioId: outro, imovelId: a, criadoEm: new Date("2026-10-25T12:00:00Z") });
     expect((await resumoDoProprietario(db, org, { proprietarioIds: [outro], imovelIds: [a], periodo })).reservas).toBe(0);
   });
 

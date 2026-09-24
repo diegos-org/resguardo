@@ -16,7 +16,7 @@
 import { and, asc, desc, eq, gt, inArray, isNull, lt, ne, or, sql, sum } from "drizzle-orm";
 import { desfazerCompensacoesDoRepasse, listarAdiantamentos, quitar } from "@/adiantamentos/adiantamentos";
 import { registrarAuditoria } from "@/auditoria/auditoria";
-import { ajustes, contestacoesAdiantamento, imoveis, lancamentos, proprietarioImoveis, proprietarios, repasses, type SituacaoRepasse } from "@/db/schema";
+import { ajustes, contestacoesAdiantamento, imoveis, lancamentos, quitacoesAdiantamento, proprietarioImoveis, proprietarios, repasses, type SituacaoRepasse } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { estornar, lancar, mudarEstado } from "@/financeiro/ledger";
 import { dataValida } from "@/reservas/regras";
@@ -222,13 +222,25 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
     const deste = (await listarAdiantamentos(db, org, { proprietarioId: dono.id })).filter((a) => a.data < lim.fim);
     if (deste.length) {
       const contestacoes = await db
-        .select({ adiantamentoId: contestacoesAdiantamento.adiantamentoId, valor: contestacoesAdiantamento.valor, abertaEm: contestacoesAdiantamento.abertaEm, resolvidaEm: contestacoesAdiantamento.resolvidaEm })
+        .select({ id: contestacoesAdiantamento.id, adiantamentoId: contestacoesAdiantamento.adiantamentoId, valor: contestacoesAdiantamento.valor, abertaEm: contestacoesAdiantamento.abertaEm, resolvidaEm: contestacoesAdiantamento.resolvidaEm })
         .from(contestacoesAdiantamento)
         .where(and(eq(contestacoesAdiantamento.organizacaoId, org), inArray(contestacoesAdiantamento.adiantamentoId, deste.map((a) => a.id))));
       const corte = posterior.criadoEm.getTime();
+      // "Empresa assume" desfeito reabre a contestação (e apaga `resolvidaEm`): o período em que
+      // ela esteve resolvida vem da quitação dela (criada → desfeita).
+      const assumidas = contestacoes.length
+        ? await db
+            .select({ contestacaoId: quitacoesAdiantamento.contestacaoId, criadoEm: quitacoesAdiantamento.criadoEm, desfeitaEm: quitacoesAdiantamento.desfeitaEm })
+            .from(quitacoesAdiantamento)
+            .where(and(eq(quitacoesAdiantamento.organizacaoId, org), inArray(quitacoesAdiantamento.contestacaoId, contestacoes.map((c) => c.id))))
+        : [];
+      const abertaNoCorte = (c: (typeof contestacoes)[number]) =>
+        c.abertaEm.getTime() <= corte &&
+        !(c.resolvidaEm && c.resolvidaEm.getTime() <= corte) &&
+        !assumidas.some((q) => q.contestacaoId === c.id && q.criadoEm.getTime() <= corte && (!q.desfeitaEm || q.desfeitaEm.getTime() > corte));
       for (const a of deste) {
         // Contestação aberta no momento do repasse: o valor dela ficou fora do desconto.
-        const naquele = contestacoes.find((c) => c.adiantamentoId === a.id && c.abertaEm.getTime() <= corte && (!c.resolvidaEm || c.resolvidaEm.getTime() > corte));
+        const naquele = contestacoes.find((c) => c.adiantamentoId === a.id && abertaNoCorte(c));
         const agora = a.situacao === "contestado";
         // Contestado fica fora do desconto (volta ao saldo a favor do proprietário).
         if (naquele && !agora) diferenca -= naquele.valor;

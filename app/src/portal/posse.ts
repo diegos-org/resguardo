@@ -33,10 +33,6 @@ export function reservaDosDonos(db: Db, donos: readonly string[]) {
           deles ? inArray(lancamentos.proprietarioId, [...donos]) : and(isNotNull(lancamentos.proprietarioId), notInArray(lancamentos.proprietarioId, [...donos])),
         ),
       );
-  const outroDonoNoImovel = db
-    .select({ um: sql`1` })
-    .from(lancamentos)
-    .where(and(eq(lancamentos.imovelId, reservas.imovelId), isNotNull(lancamentos.proprietarioId), notInArray(lancamentos.proprietarioId, [...donos])));
   // Vínculo de um destes donos com o imóvel desde antes da entrada (data no fuso de São Paulo).
   const donoDesde = db
     .select({ um: sql`1` })
@@ -48,5 +44,5 @@ export function reservaDosDonos(db: Db, donos: readonly string[]) {
         sql`${reservas.checkin} >= (${proprietarioImoveis.criadoEm} at time zone 'America/Sao_Paulo')::date`,
       ),
     );
-  return or(exists(direito(true)), and(not(exists(direito(false))), not(exists(outroDonoNoImovel)), exists(donoDesde)));
+  return or(exists(direito(true)), and(not(exists(direito(false))), exists(donoDesde)));
 }

@@ -124,4 +124,15 @@ describe("reservas do portal", () => {
     expect((await lista([outro], [a])).map((x) => x.suaParte)).toEqual([72250]);
     expect(await lista([dona], [a])).toEqual([]);
   });
+
+  it("imóvel com histórico do dono anterior no livro: o novo dono vê a reserva sem cálculo do período dele", async () => {
+    // A dona teve reservas calculadas no 403 (lançamentos dela no livro).
+    await criarReserva(db, org, reserva(a, "2026-09-05", "2026-09-08"), null);
+    await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));
+    await db.insert(proprietarioImoveis).values({ proprietarioId: outro, imovelId: a, criadoEm: new Date("2026-10-10T12:00:00Z") });
+    await criarReserva(db, org, reserva(a, "2026-10-20", "2026-10-22", { valorBruto: null, taxaCanal: null }), null);
+    expect((await lista([outro], [a])).map((x) => [x.checkin, x.situacao])).toEqual([["2026-10-20", "sem_calculo"]]);
+    // A reserva de setembro (calculada para a dona) continua só dela.
+    expect((await lista([dona], [a])).map((x) => x.checkin)).toEqual([]);
+  });
 });

@@ -208,6 +208,20 @@ describe("fechamento do mês", () => {
     expect((await preverRepasses(db, org, MES, "2026-12-02"))[0]).toMatchObject({ repassePosterior: "2026-11", diferencaPosFechamento: 0 });
   });
 
+  it("mês sem repasse próprio: 'empresa assume' feito antes do repasse seguinte e desfeito depois não inventa diferença", async () => {
+    await reparo(40000);
+    const [adiant] = await listarAdiantamentos(db, org, { proprietarioId: dono });
+    await contestar(db, org, adiant.id, "Não autorizei", null);
+    expect((await resolverContestacao(db, org, adiant.id, { resolucao: "empresa_assume", nota: "", data: "2026-10-20" }, null)).ok).toBe(true);
+    await criarReserva(db, org, reserva(a, "2026-11-10", "2026-11-13"), null);
+    expect((await fecharMes(db, org, dono, "2026-11", "2026-12-01", null)).ok).toBe(true);
+    // Desfeito depois do repasse de novembro: a contestação reabre e o valor volta a ficar fora do desconto.
+    const q = (await obterAdiantamento(db, org, adiant.id))!.quitacoes.find((x) => x.forma === "empresa_assume")!;
+    expect((await desfazerQuitacao(db, org, q.id, "lançado errado", null)).ok).toBe(true);
+    expect(await obterAdiantamento(db, org, adiant.id)).toMatchObject({ situacao: "contestado" });
+    expect((await preverRepasses(db, org, MES, "2026-12-02"))[0]).toMatchObject({ repassePosterior: "2026-11", diferencaPosFechamento: 0 });
+  });
+
   it("imóvel devedor é compensado com o outro do mesmo proprietário; cada imóvel fica zerado", async () => {
     await reparo(10000, b); // o 102 não tem receita: só a dívida
     const p = await prever();
