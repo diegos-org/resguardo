@@ -124,7 +124,7 @@ export default async function Adiantamento({ params, searchParams }: PageProps<"
               <button type="submit">Registrar reembolso</button>
             </div>
             <p style={{ fontSize: "0.8125rem", color: "var(--scl-texto-2)", margin: 0 }}>
-              Se não houver reembolso, o valor em aberto é descontado automaticamente no repasse mensal (M4.9).
+              Sem reembolso, o valor continua em aberto aqui. O desconto no repasse mensal ainda não está pronto (vem no item M4.9): até lá, cobre o proprietário ou registre o reembolso quando ele pagar.
             </p>
           </form>
           <form action={contestarAcao} className={styles.form} aria-label="Registrar contestação">
