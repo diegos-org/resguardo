@@ -97,7 +97,16 @@ export async function resumoDoProprietario(
   const [pendente] = await db
     .select({ n: sql<number>`count(*)::int`, total: sum(lancamentos.efeitoSaldo) })
     .from(lancamentos)
-    .where(and(base, inArray(lancamentos.proprietarioId, donos), eq(lancamentos.estado, "pendente"), ativo));
+    .where(
+      and(
+        base,
+        // Dele, ou sem dono num imóvel dele (reserva calculada antes de o imóvel ter proprietário),
+        // como no fechamento do mês.
+        or(inArray(lancamentos.proprietarioId, donos), and(isNull(lancamentos.proprietarioId), inArray(lancamentos.imovelId, imoveis))),
+        eq(lancamentos.estado, "pendente"),
+        ativo,
+      ),
+    );
   // Valores das reservas: as que têm a parte do proprietário lançada para ele no período.
   const reservasDele = db
     .selectDistinct({ id: lancamentos.reservaId })
