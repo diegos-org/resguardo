@@ -12,6 +12,7 @@ import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
 import { gravarConfig, lerConfig } from "@/configuracoes/armazem";
 import { imoveis, portariaChecklists, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { dataValida } from "@/reservas/regras";
 
@@ -22,6 +23,9 @@ const dia = (d: string) => Date.parse(`${d}T00:00:00Z`);
 export const somaDias = (d: string, n: number) => new Date(dia(d) + n * 86_400_000).toISOString().slice(0, 10);
 const diasEntre = (de: string, ate: string) => Math.round((dia(ate) - dia(de)) / 86_400_000);
 const br = (d: string) => d.split("-").reverse().join("/");
+
+/** Dia (no fuso da operação) em que a reserva entrou no sistema. */
+const diaDaReserva = (criadoEm: Date) => hojeISO("America/Sao_Paulo", criadoEm);
 
 // ——— Quais imóveis exigem documentos (editável no painel; nada fixo no código) ———
 
@@ -126,7 +130,7 @@ export async function listarPortaria(db: Db, organizacaoId: string, f: { hoje: s
   return linhas.map(({ r, imovelCodigo, c }) => {
     const estado: EstadoPortaria = {
       checkin: r.checkin,
-      reservadaEm: r.criadoEm.toISOString().slice(0, 10),
+      reservadaEm: diaDaReserva(r.criadoEm),
       hospedes: r.hospedes,
       documentosRecebidos: c?.documentosRecebidos ?? 0,
       avisoInicialEm: c?.avisoInicialEm ?? null,
@@ -192,12 +196,22 @@ function foraDeOrdem(c: Checklist, tipo: keyof typeof CAMPO_DATA, data: string):
   return null;
 }
 
+/** Mensagem se a data do pedido está fora da janela do ritmo (aviso → 5 a 7 dias antes → véspera). */
+function foraDaJanela(tipo: "aviso_inicial" | "segundo_pedido" | "pedido_final", data: string, checkin: string, reservadaEm: string): string | null {
+  if (tipo === "aviso_inicial") return data < checkin ? null : "O aviso inicial é antes da entrada: depois dela não há cobrança, só a pendência.";
+  if (tipo === "pedido_final") return data === somaDias(checkin, -1) ? null : `O pedido final é na véspera da entrada (${br(somaDias(checkin, -1))}).`;
+  if (diasEntre(reservadaEm, checkin) <= 7) return "Reserva feita a 7 dias ou menos da entrada: não tem segundo pedido.";
+  const de = somaDias(checkin, -7);
+  const ate = somaDias(checkin, -5);
+  return data >= de && data <= ate ? null : `O segundo pedido é entre ${br(de)} e ${br(ate)} (5 a 7 dias antes da entrada).`;
+}
+
 /** Registra um passo da lista (cria a lista da reserva na primeira vez). Com trava e histórico. */
 export async function registrarPortaria(db: Db, organizacaoId: string, reservaId: string, reg: Registro, hoje: string, autorId: string | null): Promise<Resultado> {
   if (!uuidValido(reservaId)) return { ok: false, erro: "Reserva não encontrada." };
   return db.transaction(async (tx) => {
     const [r] = await tx
-      .select({ id: reservas.id, imovelId: reservas.imovelId, hospedes: reservas.hospedes, estado: reservas.estado })
+      .select({ id: reservas.id, imovelId: reservas.imovelId, hospedes: reservas.hospedes, estado: reservas.estado, checkin: reservas.checkin, criadoEm: reservas.criadoEm })
       .from(reservas)
       .where(and(eq(reservas.id, reservaId), eq(reservas.organizacaoId, organizacaoId)))
       .for("update");
@@ -224,6 +238,10 @@ export async function registrarPortaria(db: Db, organizacaoId: string, reservaId
         if (r.hospedes === null || antes.documentosRecebidos < r.hospedes) return { ok: false as const, erro: "Ainda faltam documentos (ou o número de hóspedes não está na reserva)." };
       }
       if (reg.tipo === "entrega_confirmada" && !antes.encaminhadoEm) return { ok: false as const, erro: "Registre o encaminhamento antes de confirmar a entrega." };
+      if (reg.tipo === "aviso_inicial" || reg.tipo === "segundo_pedido" || reg.tipo === "pedido_final") {
+        const janela = foraDaJanela(reg.tipo, reg.data, r.checkin, diaDaReserva(r.criadoEm));
+        if (janela) return { ok: false as const, erro: janela };
+      }
       const fora = foraDeOrdem(antes, reg.tipo, reg.data);
       if (fora) return { ok: false as const, erro: fora };
       novo = { [CAMPO_DATA[reg.tipo]]: reg.data };

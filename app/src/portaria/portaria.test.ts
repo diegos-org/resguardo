@@ -125,11 +125,44 @@ describe("lista de portaria", () => {
     expect(await reg({ tipo: "entrega_confirmada", data: "2026-10-04" })).toMatchObject({ ok: false, erro: expect.stringContaining("antes do encaminhamento") });
     expect(await reg({ tipo: "entrega_confirmada", data: hoje })).toEqual({ ok: true });
     expect(await reg({ tipo: "encaminhado", data: "2026-10-06" })).toMatchObject({ ok: false }); // futuro
-    expect(await reg({ tipo: "segundo_pedido", data: "2026-10-04" })).toMatchObject({ ok: false, erro: expect.stringContaining("antes do aviso inicial") });
     expect(await reg({ tipo: "pendencia", texto: "  Portaria pediu foto legível  " })).toEqual({ ok: true });
     const [l] = await listarPortaria(db, org, { hoje, ate: "2026-11-05" });
     expect(l).toMatchObject({ passo: "concluido", pendencia: "Portaria pediu foto legível", destinatarioConferido: true });
     expect((await historicoDe(db, org, "reserva", id)).filter((h) => h.acao.startsWith("portaria.")).length).toBeGreaterThanOrEqual(6);
+  });
+
+  it("cada pedido só na sua janela e em ordem: aviso antes da entrada, segundo 5 a 7 dias antes, final na véspera", async () => {
+    await salvarImoveisComPortaria(db, org, [a], null);
+    const r = await criarReserva(db, org, reserva(a), null);
+    if (!r.ok) throw new Error("reserva");
+    // Reserva feita bem antes (sem depender do relógio do teste).
+    await db.update(reservas).set({ criadoEm: new Date("2026-09-01T15:00:00Z") }).where(eq(reservas.id, r.reserva.id));
+    const reg = (x: Parameters<typeof registrarPortaria>[3], hoje = "2026-10-25") => registrarPortaria(db, org, r.reserva.id, x, hoje, null);
+    expect(await reg({ tipo: "aviso_inicial", data: "2026-10-20" })).toMatchObject({ ok: false, erro: expect.stringContaining("antes da entrada") });
+    expect(await reg({ tipo: "aviso_inicial", data: "2026-10-14" })).toEqual({ ok: true });
+    expect(await reg({ tipo: "segundo_pedido", data: "2026-10-12" })).toMatchObject({ ok: false, erro: expect.stringContaining("entre 13/10/2026 e 15/10/2026") });
+    expect(await reg({ tipo: "segundo_pedido", data: "2026-10-16" })).toMatchObject({ ok: false, erro: expect.stringContaining("entre 13/10/2026 e 15/10/2026") });
+    expect(await reg({ tipo: "segundo_pedido", data: "2026-10-13" })).toMatchObject({ ok: false, erro: expect.stringContaining("antes do aviso inicial") });
+    expect(await reg({ tipo: "segundo_pedido", data: "2026-10-15" })).toEqual({ ok: true });
+    expect(await reg({ tipo: "pedido_final", data: "2026-10-18" })).toMatchObject({ ok: false, erro: expect.stringContaining("véspera") });
+    expect(await reg({ tipo: "pedido_final", data: "2026-10-20" })).toMatchObject({ ok: false, erro: expect.stringContaining("véspera") });
+    expect(await reg({ tipo: "pedido_final", data: "2026-10-19" })).toEqual({ ok: true });
+  });
+
+  it("reserva de última hora não tem segundo pedido; dia da reserva no fuso de São Paulo", async () => {
+    await salvarImoveisComPortaria(db, org, [a], null);
+    const r = await criarReserva(db, org, reserva(a, { checkin: "2026-10-02", checkout: "2026-10-04" }), null);
+    if (!r.ok) throw new Error("reserva");
+    // 24/09 às 22:30 em São Paulo (já 25/09 em UTC): 8 dias de antecedência, tem segundo pedido.
+    await db.update(reservas).set({ criadoEm: new Date("2026-09-25T01:30:00Z") }).where(eq(reservas.id, r.reserva.id));
+    expect(await registrarPortaria(db, org, r.reserva.id, { tipo: "aviso_inicial", data: "2026-09-25" }, "2026-09-25", null)).toEqual({ ok: true });
+    expect((await listarPortaria(db, org, { hoje: "2026-09-26", ate: "2026-11-05" }))[0]).toMatchObject({ reservadaEm: "2026-09-24", passo: "segundo_pedido" });
+    expect(await registrarPortaria(db, org, r.reserva.id, { tipo: "segundo_pedido", data: "2026-09-26" }, "2026-09-26", null)).toEqual({ ok: true });
+    // Feita às 00:30 de 25/09 em São Paulo: 7 dias, sem segundo pedido.
+    const r2 = await criarReserva(db, org, reserva(a, { checkin: "2026-10-02", checkout: "2026-10-04", codigoCanal: "X2" }), null);
+    if (!r2.ok) throw new Error("reserva");
+    await db.update(reservas).set({ criadoEm: new Date("2026-09-25T03:30:00Z") }).where(eq(reservas.id, r2.reserva.id));
+    expect(await registrarPortaria(db, org, r2.reserva.id, { tipo: "segundo_pedido", data: "2026-09-26" }, "2026-09-26", null)).toMatchObject({ ok: false, erro: expect.stringContaining("não tem segundo pedido") });
   });
 
   it("imóvel sem portaria, reserva de outra organização e reserva cancelada", async () => {
