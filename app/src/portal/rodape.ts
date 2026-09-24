@@ -50,11 +50,13 @@ export async function rodapeDoPortal(
     o.mes,
     o.hoje,
     o.proprietarios.map((p) => p.id),
+    // Todos, mesmo sem saldo: um ajuste sem valor a esclarecer precisa deixar o mês em conferência.
+    true,
   );
   return o.proprietarios.map((dono) => {
     const p = previsoes.find((x) => x.proprietarioId === dono.id);
     const base = { proprietarioId: dono.id, nome: dono.nome, saldo: 0, descontado: 0, valor: 0, chavePix: "", dataPagamento: null };
-    if (!p) return { ...base, situacao: o.hoje < lim.fim ? "parcial" : "zerado" };
+    if (!p) return { ...base, situacao: "zerado" };
     const r = p.repasse;
     if (r) {
       return { ...base, saldo: r.saldo, descontado: r.descontado, valor: r.valor, chavePix: p.chavePix, situacao: r.situacao === "pago" ? "pago" : "fechado", dataPagamento: r.dataPagamento };

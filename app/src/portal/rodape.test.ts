@@ -100,6 +100,19 @@ describe("rodapé do portal", () => {
     expect(await rodape("2026-11-02")).toMatchObject({ situacao: "em_conferencia", chavePix: "" });
   });
 
+  it("só um ajuste sem valor a esclarecer: em conferência, não 'nada a pagar'", async () => {
+    const [so] = await db.insert(proprietarios).values({ organizacaoId: org, nome: "Só ajuste" }).returning();
+    const [c] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "777", nome: "Sete" }).returning();
+    await db.insert(proprietarioImoveis).values({ proprietarioId: so.id, imovelId: c.id });
+    await registrarAjuste(
+      db,
+      org,
+      { data: "2026-10-20", imovelId: c.id, reservaId: null, proprietarioId: null, motivo: "Vidro quebrado", origem: "desconhecida", origemComprovada: false, evidencia: "", comprovante: "", valor: null, direcao: "proprietario_debito" },
+      null,
+    );
+    expect(await rodape("2026-11-02", { id: so.id, nome: "Só ajuste" })).toMatchObject({ situacao: "em_conferencia", valor: 0, chavePix: "" });
+  });
+
   it("mês fechado e depois pago", async () => {
     const f = await fecharMes(db, org, dona, MES, "2026-11-02", null);
     if (!f.ok) throw new Error(f.erro);

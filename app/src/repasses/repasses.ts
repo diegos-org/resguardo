@@ -194,7 +194,8 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
  * Situação do mês para cada proprietário com algo a ver: saldo, adiantamentos em aberto ou
  * repasse já feito. `proprietarioIds` restringe (ex.: um só).
  */
-export async function preverRepasses(db: Db, org: string, mes: string, hoje: string, proprietarioIds?: string[]): Promise<PrevisaoRepasse[]> {
+/** `incluirVazios`: devolve também quem não tem saldo nem repasse (ex.: só um ajuste sem valor a esclarecer). */
+export async function preverRepasses(db: Db, org: string, mes: string, hoje: string, proprietarioIds?: string[], incluirVazios = false): Promise<PrevisaoRepasse[]> {
   if (!limitesDoMes(mes)) return [];
   const c = [eq(proprietarios.organizacaoId, org)];
   if (proprietarioIds) c.push(inArray(proprietarios.id, proprietarioIds.filter(uuidValido)));
@@ -205,7 +206,7 @@ export async function preverRepasses(db: Db, org: string, mes: string, hoje: str
     .where(and(...c))
     .orderBy(asc(proprietarios.nome));
   const lista = await Promise.all(donos.map((d) => calcularDono(db, org, d, mes, hoje)));
-  return lista.filter((p) => p.repasse || p.saldo !== 0 || p.contestado !== 0 || p.aDescontar !== 0);
+  return incluirVazios ? lista : lista.filter((p) => p.repasse || p.saldo !== 0 || p.contestado !== 0 || p.aDescontar !== 0);
 }
 
 type Resultado = { ok: true; id: string } | { ok: false; erro: string };
