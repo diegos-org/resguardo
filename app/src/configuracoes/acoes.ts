@@ -20,7 +20,9 @@ async function sessaoConfig() {
   return sessao;
 }
 
-const campos = (form: FormData) => Object.fromEntries([...form.entries()].filter((e): e is [string, string] => typeof e[1] === "string"));
+/** Campos de texto do formulário, sem os internos do Next.js ($ACTION_…). */
+const campos = (form: FormData) =>
+  Object.fromEntries([...form.entries()].filter((e): e is [string, string] => typeof e[1] === "string" && !e[0].startsWith("$ACTION")));
 
 export async function salvarEmpresaAcao(_a: EstadoForm<ErrosEmpresa>, form: FormData): Promise<EstadoForm<ErrosEmpresa>> {
   const sessao = await sessaoConfig();

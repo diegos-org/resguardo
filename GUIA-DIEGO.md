@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 24/09/2026, Configurações (M1.7).
+> **Última atualização:** 24/09/2026, cadastro completo do imóvel (M2.6).
 
 ---
 
@@ -120,6 +120,25 @@
   que mudou (ex.: "Diego alterou · Nome: Studio A → Studio B"). Aparece embaixo da ficha de
   cada imóvel e vai valer para todos os módulos (reservas, financeiro…). O histórico não pode
   ser apagado pelo sistema.
+- M2.6: **cadastro completo do imóvel**, na página de cada imóvel (Painel → Imóveis → abrir):
+  - **Endereço:** CEP, complemento e estado, além do que já existia.
+  - **Camas e comodidades:** quantas camas de cada tipo (casal, queen, king, solteiro,
+    sofá-cama, beliche, colchão extra) e a lista de comodidades para marcar, com espaço para
+    outras.
+  - **Regras da casa e horários:** animais, fumar, festas, texto de regras para o hóspede,
+    horário de entrada e de saída.
+  - **Preço e taxas:** preço base da noite, taxa de limpeza, hóspede extra (valor por noite e
+    a partir de qual hóspede) e **preço dinâmico** (liga/desliga, com preço mínimo e máximo —
+    o valor nunca sai dessa faixa; o cálculo dinâmico automático chega com o M3.7).
+  - **Regras de venda:** estadia mínima e máxima, antecedência mínima, até quantos dias à
+    frente aceita reserva, e em quais dias da semana pode entrar e sair.
+  - **Períodos especiais:** Réveillon, Carnaval etc., com preço da noite e/ou estadia mínima
+    próprios. Dois períodos não podem se cruzar; excluir pede confirmação.
+  - **Simular uma estadia:** escolha datas e hóspedes e veja se pode ser vendida (e por quê
+    não, se for o caso) e quanto dá: diárias, limpeza, hóspede extra e total. Se faltar preço
+    em alguma noite, o total fica "pendente" com aviso — o sistema não inventa valor.
+  Campo em branco significa "ainda não cadastrado". Tudo vai para o histórico do imóvel. O
+  site, o Beds24 (M3.7) e as cotações vão usar estas mesmas regras.
 - M2.2: **cadastro de proprietários** em Painel → Proprietários: nome/razão social, pessoa
   física ou jurídica, CPF/CNPJ (conferido automaticamente), e-mail, telefone, endereço,
   **chave Pix**, observações e **quais imóveis são dele**. Cada proprietário pode ter
@@ -235,9 +254,13 @@
 |---|---|
 | ![Sistema](docs/telas/sistema.png) | ![Regras financeiras](docs/telas/configuracoes-regras.png) |
 
-| Configurações · Modelos de mensagem |
+| Configurações · Modelos de mensagem | Imóvel · simular estadia |
+|---|---|
+| ![Modelos de mensagem](docs/telas/configuracoes-mensagens.png) | ![Simulador](docs/telas/imovel-simulador.png) |
+
+| Imóvel · cadastro completo |
 |---|
-| ![Modelos de mensagem](docs/telas/configuracoes-mensagens.png) |
+| ![Cadastro completo](docs/telas/imovel-cadastro-completo.png) |
 
 A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 

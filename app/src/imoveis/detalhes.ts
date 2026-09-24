@@ -1,0 +1,266 @@
+/**
+ * Cadastro completo do imóvel (M2.6): leitura, validação e gravação dos detalhes e dos
+ * períodos de exceção. Tudo com histórico e preso à organização.
+ */
+import { and, asc, eq, gte, lte } from "drizzle-orm";
+import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
+import { imoveis, imoveisDetalhes, imoveisPeriodos } from "@/db/schema";
+import type { Db } from "@/db/types";
+import { reaisParaCentavos } from "@/lib/dinheiro-form";
+import { uuidValido } from "@/lib/ids";
+import { dataValida } from "@/reservas/regras";
+import { COMODIDADES, TIPOS_CAMA } from "./cadastro-opcoes";
+import type { Periodo, RegrasVenda } from "./regras-venda";
+
+export { COMODIDADES, TIPOS_CAMA, type TipoCama } from "./cadastro-opcoes";
+
+export type Detalhes = Omit<typeof imoveisDetalhes.$inferSelect, "imovelId" | "organizacaoId" | "atualizadoEm">;
+export type ErrosDetalhes = Partial<Record<keyof Detalhes | "comodidadesOutras", string>>;
+
+export const DETALHES_VAZIOS: Detalhes = {
+  cep: "",
+  complemento: "",
+  estado: "",
+  camas: {},
+  comodidades: [],
+  regrasCasa: "",
+  aceitaAnimais: false,
+  permiteFumar: false,
+  permiteFestas: false,
+  checkinAPartirDe: "15:00",
+  checkoutAte: "11:00",
+  taxaLimpeza: null,
+  hospedeExtraValor: null,
+  hospedeExtraAPartirDe: null,
+  estadiaMinima: null,
+  estadiaMaxima: null,
+  antecedenciaMinima: null,
+  janelaMaxima: null,
+  diasChegada: [],
+  diasSaida: [],
+  precoBase: null,
+  precoDinamico: false,
+  precoMinimo: null,
+  precoMaximo: null,
+};
+
+export const regrasDeVenda = (d: Detalhes): RegrasVenda => ({
+  estadiaMinima: d.estadiaMinima,
+  estadiaMaxima: d.estadiaMaxima,
+  antecedenciaMinima: d.antecedenciaMinima,
+  janelaMaxima: d.janelaMaxima,
+  diasChegada: d.diasChegada,
+  diasSaida: d.diasSaida,
+  precoBase: d.precoBase,
+  precoDinamico: d.precoDinamico,
+  precoMinimo: d.precoMinimo,
+  precoMaximo: d.precoMaximo,
+  taxaLimpeza: d.taxaLimpeza,
+  hospedeExtraValor: d.hospedeExtraValor,
+  hospedeExtraAPartirDe: d.hospedeExtraAPartirDe,
+});
+
+type Entrada = Record<string, unknown>;
+/** R$ 1 milhão: bem abaixo do limite da coluna integer do Postgres (≈ R$ 21 milhões). */
+const VALOR_MAXIMO = 100_000_000;
+const txt = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+const lista = (v: unknown): string[] => (Array.isArray(v) ? v : v === undefined ? [] : [v]).filter((x): x is string => typeof x === "string");
+const marcado = (v: unknown) => v === "on" || v === "true" || v === true;
+
+/**
+ * Lê o formulário. Campos repetidos (comodidades, dias) chegam como lista. Números e
+ * valores vazios = "não cadastrado" (null), nunca zero.
+ */
+export function validarDetalhes(e: Entrada): { ok: true; dados: Detalhes } | { ok: false; erros: ErrosDetalhes } {
+  const erros: ErrosDetalhes = {};
+  const inteiro = (campo: keyof Detalhes, min: number, max: number): number | null => {
+    const v = txt(e[campo]);
+    if (v === "") return null;
+    if (!/^\d+$/.test(v) || Number(v) < min || Number(v) > max) {
+      erros[campo] = `Número inteiro entre ${min} e ${max}.`;
+      return null;
+    }
+    return Number(v);
+  };
+  const dinheiro = (campo: keyof Detalhes): number | null => {
+    const c = reaisParaCentavos(txt(e[campo]));
+    if (c === undefined) {
+      erros[campo] = "Valor inválido (ex.: 250,00).";
+      return null;
+    }
+    if (c !== null && c > VALOR_MAXIMO) erros[campo] = "Valor alto demais.";
+    return c;
+  };
+  const hora = (campo: "checkinAPartirDe" | "checkoutAte", padrao: string) => {
+    const v = txt(e[campo]) || padrao;
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(v)) erros[campo] = "Use HH:MM (ex.: 15:00).";
+    return v;
+  };
+  const dias = (campo: "diasChegada" | "diasSaida") => {
+    const v = lista(e[campo]);
+    if (v.some((d) => !/^[0-6]$/.test(d))) erros[campo] = "Dia da semana inválido.";
+    const ds = [...new Set(v.filter((d) => /^[0-6]$/.test(d)).map(Number))].sort();
+    // Todos marcados = sem restrição.
+    return ds.length === 7 ? [] : ds;
+  };
+
+  const camas: Record<string, number> = {};
+  for (const tipo of Object.keys(TIPOS_CAMA)) {
+    const v = txt(e[`cama_${tipo}`]);
+    if (v === "" || v === "0") continue;
+    if (!/^\d+$/.test(v) || Number(v) > 20) erros.camas = "Quantidade de camas: número de 0 a 20.";
+    else camas[tipo] = Number(v);
+  }
+  const outras = txt(e.comodidadesOutras)
+    .split(/[,;\n]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (outras.some((o) => o.length > 60)) erros.comodidadesOutras = "Cada comodidade com até 60 caracteres.";
+  const comodidades = [...new Set([...lista(e.comodidades).filter((c) => (COMODIDADES as readonly string[]).includes(c)), ...outras])];
+  if (comodidades.length > 60) erros.comodidades = "Comodidades demais (máx. 60).";
+
+  const estado = txt(e.estado).toUpperCase();
+  if (estado && !/^[A-Z]{2}$/.test(estado)) erros.estado = "Use a sigla (ex.: RJ).";
+  const cep = txt(e.cep);
+  if (cep && !/^\d{5}-?\d{3}$/.test(cep)) erros.cep = "CEP com 8 números (ex.: 22440-000).";
+  const complemento = txt(e.complemento);
+  if (complemento.length > 120) erros.complemento = "Máximo de 120 caracteres.";
+  const regrasCasa = txt(e.regrasCasa).replace(/\r\n/g, "\n");
+  if (regrasCasa.length > 4000) erros.regrasCasa = "Máximo de 4000 caracteres.";
+
+  const dados: Detalhes = {
+    cep: cep && cep.length === 8 ? `${cep.slice(0, 5)}-${cep.slice(5)}` : cep,
+    complemento,
+    estado,
+    camas,
+    comodidades,
+    regrasCasa,
+    aceitaAnimais: marcado(e.aceitaAnimais),
+    permiteFumar: marcado(e.permiteFumar),
+    permiteFestas: marcado(e.permiteFestas),
+    checkinAPartirDe: hora("checkinAPartirDe", "15:00"),
+    checkoutAte: hora("checkoutAte", "11:00"),
+    taxaLimpeza: dinheiro("taxaLimpeza"),
+    hospedeExtraValor: dinheiro("hospedeExtraValor"),
+    hospedeExtraAPartirDe: inteiro("hospedeExtraAPartirDe", 1, 50),
+    estadiaMinima: inteiro("estadiaMinima", 1, 365),
+    estadiaMaxima: inteiro("estadiaMaxima", 1, 365),
+    antecedenciaMinima: inteiro("antecedenciaMinima", 0, 365),
+    janelaMaxima: inteiro("janelaMaxima", 1, 1095),
+    diasChegada: dias("diasChegada"),
+    diasSaida: dias("diasSaida"),
+    precoBase: dinheiro("precoBase"),
+    precoDinamico: marcado(e.precoDinamico),
+    precoMinimo: dinheiro("precoMinimo"),
+    precoMaximo: dinheiro("precoMaximo"),
+  };
+  if (dados.estadiaMinima !== null && dados.estadiaMaxima !== null && dados.estadiaMaxima < dados.estadiaMinima) {
+    erros.estadiaMaxima = "A máxima não pode ser menor que a mínima.";
+  }
+  if (dados.precoMinimo !== null && dados.precoMaximo !== null && dados.precoMaximo < dados.precoMinimo) {
+    erros.precoMaximo = "O máximo não pode ser menor que o mínimo.";
+  }
+  if ((dados.hospedeExtraValor === null) !== (dados.hospedeExtraAPartirDe === null)) {
+    erros.hospedeExtraAPartirDe = "Preencha o valor e a partir de quantos hóspedes (ou deixe os dois em branco).";
+  }
+  if (dados.precoDinamico && (dados.precoMinimo === null || dados.precoMaximo === null)) {
+    erros.precoDinamico = "Com o preço dinâmico ligado, informe o preço mínimo e o máximo.";
+  }
+  return Object.keys(erros).length ? { ok: false, erros } : { ok: true, dados };
+}
+
+async function imovelDaOrg(db: Db, organizacaoId: string, imovelId: string, travar = false) {
+  if (!uuidValido(imovelId)) return false;
+  const q = db
+    .select({ id: imoveis.id })
+    .from(imoveis)
+    .where(and(eq(imoveis.id, imovelId), eq(imoveis.organizacaoId, organizacaoId)));
+  const [im] = travar ? await q.for("update") : await q;
+  return Boolean(im);
+}
+
+export async function lerDetalhes(db: Db, organizacaoId: string, imovelId: string): Promise<Detalhes> {
+  if (!uuidValido(imovelId)) return DETALHES_VAZIOS;
+  const [l] = await db
+    .select()
+    .from(imoveisDetalhes)
+    .where(and(eq(imoveisDetalhes.imovelId, imovelId), eq(imoveisDetalhes.organizacaoId, organizacaoId)));
+  if (!l) return DETALHES_VAZIOS;
+  return Object.fromEntries(Object.keys(DETALHES_VAZIOS).map((k) => [k, l[k as keyof typeof l]])) as Detalhes;
+}
+
+/** Grava os detalhes (cria na primeira vez). Retorna false se o imóvel não é da organização. */
+export async function salvarDetalhes(db: Db, organizacaoId: string, imovelId: string, dados: Detalhes, autorId: string | null): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    if (!(await imovelDaOrg(tx, organizacaoId, imovelId, true))) return false;
+    const antes = await lerDetalhes(tx, organizacaoId, imovelId);
+    const mudancas = calcularMudancas(antes, dados);
+    if (!Object.keys(mudancas).length) return true;
+    await tx
+      .insert(imoveisDetalhes)
+      .values({ ...dados, imovelId, organizacaoId })
+      .onConflictDoUpdate({ target: imoveisDetalhes.imovelId, set: { ...dados, atualizadoEm: new Date() } });
+    await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "imovel.detalhes", entidade: "imovel", entidadeId: imovelId, mudancas });
+    return true;
+  });
+}
+
+// --- Períodos de exceção ----------------------------------------------------------------
+
+export async function listarPeriodos(db: Db, organizacaoId: string, imovelId: string): Promise<(Periodo & { id: string })[]> {
+  if (!uuidValido(imovelId)) return [];
+  return db
+    .select({ id: imoveisPeriodos.id, nome: imoveisPeriodos.nome, inicio: imoveisPeriodos.inicio, fim: imoveisPeriodos.fim, precoNoite: imoveisPeriodos.precoNoite, estadiaMinima: imoveisPeriodos.estadiaMinima })
+    .from(imoveisPeriodos)
+    .where(and(eq(imoveisPeriodos.imovelId, imovelId), eq(imoveisPeriodos.organizacaoId, organizacaoId)))
+    .orderBy(asc(imoveisPeriodos.inicio));
+}
+
+export type ResultadoPeriodo = { ok: true } | { ok: false; erro: string };
+
+export function validarPeriodo(e: Entrada): { ok: true; dados: Omit<Periodo, "id"> } | { ok: false; erro: string } {
+  const nome = txt(e.nome);
+  const inicio = txt(e.inicio);
+  const fim = txt(e.fim);
+  if (!nome || nome.length > 60) return { ok: false, erro: "Dê um nome ao período (até 60 caracteres), ex.: Réveillon." };
+  if (!dataValida(inicio) || !dataValida(fim)) return { ok: false, erro: "Datas inválidas." };
+  if (fim < inicio) return { ok: false, erro: "A última noite não pode ser antes da primeira." };
+  const preco = reaisParaCentavos(txt(e.precoNoite));
+  if (preco === undefined) return { ok: false, erro: "Preço inválido (ex.: 900,00)." };
+  if (preco !== null && preco > VALOR_MAXIMO) return { ok: false, erro: "Preço alto demais." };
+  const m = txt(e.estadiaMinima);
+  if (m && (!/^\d+$/.test(m) || Number(m) < 1 || Number(m) > 365)) return { ok: false, erro: "Estadia mínima: número de 1 a 365." };
+  const estadiaMinima = m ? Number(m) : null;
+  if (preco === null && estadiaMinima === null) return { ok: false, erro: "Informe o preço da noite, a estadia mínima ou os dois." };
+  return { ok: true, dados: { nome, inicio, fim, precoNoite: preco, estadiaMinima } };
+}
+
+export async function criarPeriodo(db: Db, organizacaoId: string, imovelId: string, e: Entrada, autorId: string | null): Promise<ResultadoPeriodo> {
+  const v = validarPeriodo(e);
+  if (!v.ok) return v;
+  return db.transaction(async (tx) => {
+    // Trava o imóvel: dois períodos sobrepostos não entram ao mesmo tempo.
+    if (!(await imovelDaOrg(tx, organizacaoId, imovelId, true))) return { ok: false as const, erro: "Imóvel não encontrado." };
+    const [choque] = await tx
+      .select({ nome: imoveisPeriodos.nome })
+      .from(imoveisPeriodos)
+      .where(and(eq(imoveisPeriodos.imovelId, imovelId), lte(imoveisPeriodos.inicio, v.dados.fim), gte(imoveisPeriodos.fim, v.dados.inicio)));
+    if (choque) return { ok: false as const, erro: `Esse período cruza com "${choque.nome}". Ajuste as datas ou exclua o outro.` };
+    const [p] = await tx.insert(imoveisPeriodos).values({ organizacaoId, imovelId, ...v.dados }).returning();
+    await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "imovel.periodo.criar", entidade: "imovel", entidadeId: imovelId, mudancas: { [`período ${p.nome}`]: [null, `${p.inicio} a ${p.fim}`] } });
+    return { ok: true as const };
+  });
+}
+
+export async function excluirPeriodo(db: Db, organizacaoId: string, periodoId: string, autorId: string | null): Promise<boolean> {
+  if (!uuidValido(periodoId)) return false;
+  return db.transaction(async (tx) => {
+    const [p] = await tx
+      .delete(imoveisPeriodos)
+      .where(and(eq(imoveisPeriodos.id, periodoId), eq(imoveisPeriodos.organizacaoId, organizacaoId)))
+      .returning();
+    if (!p) return false;
+    await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "imovel.periodo.excluir", entidade: "imovel", entidadeId: p.imovelId, mudancas: { [`período ${p.nome}`]: [`${p.inicio} a ${p.fim}`, null] } });
+    return true;
+  });
+}
