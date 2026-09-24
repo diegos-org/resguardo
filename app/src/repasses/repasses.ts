@@ -193,15 +193,16 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
   if (calc.valor > 0 && !dono.chavePix.trim()) avisos.push("Sem chave Pix no cadastro do proprietário.");
   if (calc.contestado > 0) avisos.push(`Adiantamentos contestados (${(calc.contestado / 100).toFixed(2).replace(".", ",")}) ficam fora do desconto até a contestação ser resolvida.`);
   let diferenca = 0;
-  if (atual) {
+  if (atual && !posterior) {
     // O que vai para o próximo repasse é o saldo com os contestados somados de volta. Logo depois
     // do fechamento isso dá zero; se mudou (lançamento novo, contestação resolvida…), avisa.
     diferenca = calc.saldo + calc.contestado - (atual.saldo + atual.contestado - atual.valor);
     if (diferenca !== 0) avisos.push(`Depois do fechamento, o acerto até este mês mudou em ${(diferenca / 100).toFixed(2).replace(".", ",")}: a diferença entra no próximo repasse.`);
   }
-  if (!atual && posterior) {
-    // Sem repasse próprio: o saldo até este mês foi levado pelos repasses seguintes. O que foi
-    // lançado (com data até este mês) depois do último deles ainda não foi levado por nenhum.
+  if (posterior) {
+    // Há repasse de mês seguinte: o saldo até este mês (e o que mudou depois do fechamento dele)
+    // já foi levado por ele. O que foi lançado com data até este mês depois do último repasse
+    // seguinte ainda não foi levado por nenhum.
     const [depois] = await db
       .select({ total: sum(lancamentos.efeitoSaldo) })
       .from(lancamentos)

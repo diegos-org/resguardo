@@ -133,6 +133,19 @@ describe("rodapé do portal", () => {
       null,
     );
     expect(await rodape("2026-11-03")).toMatchObject({ situacao: "fechado", valor: 72250, diferenca: -5000, emConferencia: false });
+    // Novembro fechado depois: ele já levou a diferença de outubro — não aparece mais.
+    await criarReserva(db, org, { ...reserva(a), checkin: "2026-11-10", checkout: "2026-11-13" }, null);
+    const g = await fecharMes(db, org, dona, "2026-11", "2026-12-02", null);
+    if (!g.ok) throw new Error(g.erro);
+    expect(await rodape("2026-12-02")).toMatchObject({ situacao: "fechado", valor: 72250, diferenca: 0 });
+    // Lançamento com data de outubro depois do repasse de novembro: volta a aparecer.
+    await registrarDespesa(
+      db,
+      org,
+      { responsavel: "proprietario", pagoPor: "empresa", categoriaId: categoria, descricao: "Tranca", valor: 2000, data: "2026-10-29", imovelId: a, proprietarioId: null, fornecedor: "", comprovante: "", paga: true, dataPagamento: "2026-10-29" },
+      null,
+    );
+    expect(await rodape("2026-12-03")).toMatchObject({ situacao: "fechado", diferenca: -2000 });
   });
 
   it("mês sem repasse cujo saldo entrou num repasse posterior: não fica 'em conferência'", async () => {
