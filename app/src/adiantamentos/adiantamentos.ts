@@ -80,18 +80,17 @@ export async function listarAdiantamentos(
     .orderBy(desc(lancamentos.competencia), desc(lancamentos.criadoEm));
   if (!linhas.length) return [];
   const ids = linhas.map((x) => x.l.id);
-  const [quits, conts] = await Promise.all([
-    db
-      .select()
-      .from(quitacoesAdiantamento)
-      .where(and(eq(quitacoesAdiantamento.organizacaoId, organizacaoId), inArray(quitacoesAdiantamento.adiantamentoId, ids)))
-      .orderBy(asc(quitacoesAdiantamento.criadoEm)),
-    db
-      .select()
-      .from(contestacoesAdiantamento)
-      .where(and(eq(contestacoesAdiantamento.organizacaoId, organizacaoId), inArray(contestacoesAdiantamento.adiantamentoId, ids)))
-      .orderBy(desc(contestacoesAdiantamento.abertaEm)),
-  ]);
+  // Em sequência: dentro de uma transação (travar, fechar repasse) a conexão é uma só.
+  const quits = await db
+    .select()
+    .from(quitacoesAdiantamento)
+    .where(and(eq(quitacoesAdiantamento.organizacaoId, organizacaoId), inArray(quitacoesAdiantamento.adiantamentoId, ids)))
+    .orderBy(asc(quitacoesAdiantamento.criadoEm));
+  const conts = await db
+    .select()
+    .from(contestacoesAdiantamento)
+    .where(and(eq(contestacoesAdiantamento.organizacaoId, organizacaoId), inArray(contestacoesAdiantamento.adiantamentoId, ids)))
+    .orderBy(desc(contestacoesAdiantamento.abertaEm));
   const saida = linhas.map(({ l, imovel, proprietario }) => {
     const qs = quits.filter((q) => q.adiantamentoId === l.id);
     const quitado = qs.filter((q) => !q.desfeitaEm).reduce((s, q) => s + q.valor, 0);
@@ -153,7 +152,7 @@ export async function quitar(
   db: Db,
   organizacaoId: string,
   adiantamentoId: string,
-  q: { forma: FormaQuitacao; valor: number; data: string; nota?: string; chave?: string },
+  q: { forma: FormaQuitacao; valor: number; data: string; nota?: string; chave?: string; repasseId?: string },
   autorId: string | null,
   /** Uso interno de resolverContestacao: liga a quitação à contestação que a originou. */
   contestacaoId: string | null = null,
@@ -221,7 +220,7 @@ export async function quitar(
     }
     const [nova] = await tx
       .insert(quitacoesAdiantamento)
-      .values({ organizacaoId, adiantamentoId, forma: q.forma, valor: q.valor, data: q.data, lancamentoId, contestacaoId, nota, chave, criadoPor: autorId })
+      .values({ organizacaoId, adiantamentoId, forma: q.forma, valor: q.valor, data: q.data, lancamentoId, contestacaoId, repasseId: q.repasseId ?? null, nota, chave, criadoPor: autorId })
       .returning();
     await registrarAuditoria(tx, {
       organizacaoId,
@@ -380,4 +379,26 @@ export function resumoPorProprietario(lista: readonly Adiantamento[]) {
 /** Total ainda a cobrar dos proprietários: saldo em aberto dos adiantamentos, sem os contestados. */
 export function totalACobrar(lista: readonly Adiantamento[]): number {
   return lista.filter((a) => a.situacao === "a_cobrar" || a.situacao === "parcial").reduce((s, a) => s + a.aberto, 0);
+}
+
+/**
+ * Desfaz os descontos (compensações) feitos por um repasse, quando ele é estornado: os
+ * adiantamentos voltam a ficar em aberto. Uso interno de `estornarRepasse` (mesma transação).
+ */
+export async function desfazerCompensacoesDoRepasse(tx: Db, organizacaoId: string, repasseId: string, motivo: string, autorId: string | null): Promise<void> {
+  const qs = await tx
+    .update(quitacoesAdiantamento)
+    .set({ desfeitaEm: new Date() })
+    .where(and(eq(quitacoesAdiantamento.organizacaoId, organizacaoId), eq(quitacoesAdiantamento.repasseId, repasseId), isNull(quitacoesAdiantamento.desfeitaEm)))
+    .returning();
+  for (const q of qs) {
+    await registrarAuditoria(tx, {
+      organizacaoId,
+      usuarioId: autorId,
+      acao: "adiantamento.desfazer_quitacao",
+      entidade: "adiantamento",
+      entidadeId: q.adiantamentoId,
+      mudancas: { [NOMES_FORMA.compensacao]: [`${q.valor} em ${q.data}`, `repasse estornado: ${motivo}`] },
+    });
+  }
 }
