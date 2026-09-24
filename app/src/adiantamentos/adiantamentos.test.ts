@@ -83,6 +83,9 @@ describe("quitação sem dupla cobrança", () => {
     // Compensação não gera lançamento próprio (o repasse do M4.9 paga o líquido).
     expect(await saldo()).toBe(-250000);
     expect(await quitar(db, org, adiantamentoId, { forma: "reembolso", valor: 1, data: "2026-11-02" }, null)).toMatchObject({ ok: false });
+    // Compensação (repasse) não se desfaz por aqui: só estornando o repasse.
+    const comp = (await obterAdiantamento(db, org, adiantamentoId))!.quitacoes.find((x) => x.forma === "compensacao")!;
+    expect(await desfazerQuitacao(db, org, comp.id, "teste", null)).toMatchObject({ ok: false, erro: expect.stringContaining("repasse") });
   });
 
   it("duas quitações simultâneas não passam do valor", async () => {

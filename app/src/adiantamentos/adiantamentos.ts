@@ -228,6 +228,9 @@ export async function desfazerQuitacao(db: Db, organizacaoId: string, quitacaoId
       .from(quitacoesAdiantamento)
       .where(and(eq(quitacoesAdiantamento.id, quitacaoId), eq(quitacoesAdiantamento.organizacaoId, organizacaoId)));
     if (!q || q.desfeitaEm) return { ok: false as const, erro: "Quitação não encontrada." };
+    // Compensação vem do repasse mensal (M4.9), que já pagou o valor com o desconto: desfazê-la
+    // aqui reabriria a dívida e um repasse seguinte descontaria de novo. Só pelo estorno do repasse.
+    if (q.forma === "compensacao") return { ok: false as const, erro: "Descontos no repasse só são desfeitos estornando o repasse." };
     await travar(tx, organizacaoId, q.adiantamentoId);
     // Relê com a trava: outra requisição pode ter desfeito ao mesmo tempo.
     const [atual] = await tx.select().from(quitacoesAdiantamento).where(eq(quitacoesAdiantamento.id, quitacaoId)).for("update");
