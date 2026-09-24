@@ -63,6 +63,8 @@ export function lerIntervalo(params: Params): { periodo?: { inicio: string; fim:
   return { de, ate, periodo: { inicio: `${de}-01`, fim: `${anoFim}-${String(mesFim).padStart(2, "0")}-01` } };
 }
 
+export type Sentido = { empresaDeve: number; proprietariosDevem: number };
+
 export type DonoAnterior = { proprietarioId: string; nome: string; saldo: number; acertoPeriodo: number; aCobrar: number; contestados: number };
 
 export type LinhaApartamento = {
@@ -78,8 +80,15 @@ export type LinhaApartamento = {
   financeiro: Financeiro;
   despesasProprietario: number;
   acertoPeriodo: number;
+  /** Proprietário atual do imóvel (null: sem proprietário ou linha geral/total). */
+  proprietarioId: string | null;
   /** Acumulado até o fim do período, do proprietário atual. Positivo: a empresa deve a ele. */
   saldo: number;
+  /**
+   * Só no total: somas por sentido, com os valores de cada pessoa juntados antes (um credor e um
+   * devedor diferentes nunca se anulam).
+   */
+  porSentido?: { saldo: Sentido; acertoPeriodo: Sentido };
   /**
    * Proprietários anteriores do imóvel com algo em aberto ou movimento no período, um por pessoa
    * (não entram nos campos do dono atual e nunca se compensam entre si).
@@ -180,6 +189,7 @@ export async function carregarApartamentos(
       ocupacao: oc?.taxa ?? null,
       financeiro: resumoFinanceiro(t.valor),
       despesasProprietario: t.montante.despesa_proprietario ?? 0,
+      proprietarioId: dono ?? null,
       acertoPeriodo: imovelId && dono ? somaDe(acertoPeriodo, imovelId, dono) : 0,
       saldo: imovelId && dono ? somaDe(saldos, imovelId, dono) : 0,
       anteriores: imovelId ? anteriores(imovelId) : [],
@@ -196,6 +206,20 @@ export async function carregarApartamentos(
     if (temMovimento(geral)) linhas.push(geral);
   }
   return { linhas, total: somar(linhas) };
+}
+
+/**
+ * Junta por pessoa (dono atual de cada linha e donos anteriores) e só então separa quem a
+ * empresa deve de quem deve à empresa.
+ */
+function porSentido(linhas: readonly LinhaApartamento[], valor: (x: { saldo: number; acertoPeriodo: number }) => number): Sentido {
+  const porDono = new Map<string, number>();
+  for (const l of linhas) {
+    if (l.proprietarioId) porDono.set(l.proprietarioId, (porDono.get(l.proprietarioId) ?? 0) + valor(l));
+    for (const a of l.anteriores) porDono.set(a.proprietarioId, (porDono.get(a.proprietarioId) ?? 0) + valor(a));
+  }
+  const v = [...porDono.values()];
+  return { empresaDeve: v.filter((x) => x > 0).reduce((t, x) => t + x, 0), proprietariosDevem: -v.filter((x) => x < 0).reduce((t, x) => t + x, 0) };
 }
 
 /** Soma das linhas (a ocupação total é recalculada pelas noites, não pela média das taxas). */
@@ -224,8 +248,10 @@ export function somar(linhas: readonly LinhaApartamento[]): LinhaApartamento {
       resultadoEmpresa: comissoes - despesasEmpresa + ajustesEmpresa,
     },
     despesasProprietario: s((l) => l.despesasProprietario),
+    proprietarioId: null,
     acertoPeriodo: s((l) => l.acertoPeriodo),
     saldo: s((l) => l.saldo),
+    porSentido: { saldo: porSentido(linhas, (x) => x.saldo), acertoPeriodo: porSentido(linhas, (x) => x.acertoPeriodo) },
     // No total, somam-se só valores da mesma pessoa.
     anteriores: [
       ...linhas

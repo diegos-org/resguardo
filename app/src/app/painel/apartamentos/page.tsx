@@ -8,7 +8,7 @@ import { getDb } from "@/db/client";
 import { listarImoveis } from "@/imoveis/repositorio";
 import { descreverFiltros, lerFiltros, periodoDosFiltros } from "@/lib/filtros";
 import { formatBRL } from "@/lib/money";
-import { type ChaveColuna, carregarApartamentos, COLUNAS, type DonoAnterior, type LinhaApartamento, lerColunas, lerIntervalo } from "@/painel/apartamentos";
+import { type ChaveColuna, carregarApartamentos, COLUNAS, type DonoAnterior, type LinhaApartamento, lerColunas, lerIntervalo, type Sentido } from "@/painel/apartamentos";
 
 const pct = (t: number | null) => (t === null ? "—" : `${Math.round(t * 100)}%`);
 const mesBr = (m: string) => m.split("-").reverse().join("/");
@@ -21,6 +21,21 @@ function Saldo({ valor }: { valor: number }) {
       {formatBRL(Math.abs(valor))}
       <br />
       <small style={{ color: "var(--scl-texto-2)" }}>{valor > 0 ? "empresa deve" : "proprietário deve"}</small>
+    </>
+  );
+}
+
+/** Total do acerto por sentido: quanto a empresa deve (somando credores) e quanto devem a ela. */
+function PorSentido({ s }: { s: Sentido }) {
+  return (
+    <>
+      {formatBRL(s.empresaDeve)}
+      <br />
+      <small style={{ color: "var(--scl-texto-2)" }}>empresa deve</small>
+      <br />
+      {formatBRL(s.proprietariosDevem)}
+      <br />
+      <small style={{ color: "var(--scl-texto-2)" }}>proprietários devem</small>
     </>
   );
 }
@@ -75,6 +90,7 @@ function celula(l: LinhaApartamento, c: ChaveColuna): React.ReactNode {
     case "despesasProprietario":
       return formatBRL(l.despesasProprietario);
     case "acertoPeriodo":
+      if (l.porSentido) return <PorSentido s={l.porSentido.acertoPeriodo} />;
       return (
         <>
           <Saldo valor={l.acertoPeriodo} />
@@ -82,6 +98,7 @@ function celula(l: LinhaApartamento, c: ChaveColuna): React.ReactNode {
         </>
       );
     case "saldo":
+      if (l.porSentido) return <PorSentido s={l.porSentido.saldo} />;
       return (
         <>
           <Saldo valor={l.saldo} />
@@ -116,7 +133,9 @@ function celula(l: LinhaApartamento, c: ChaveColuna): React.ReactNode {
 
 export default async function Apartamentos({ searchParams }: PageProps<"/painel/apartamentos">) {
   const sessao = await exigirSessaoPainel();
-  if (!podeFazer(sessao.papel, "financeiro:ler")) redirect("/painel");
+  // Tela interna: mostra o acerto de todos os proprietários (inclusive anteriores). O proprietário
+  // vê só o dele no portal (M5).
+  if (!podeFazer(sessao.papel, "financeiro:ler") || sessao.papel === "proprietario") redirect("/painel");
   const params = await searchParams;
   const db = getDb();
   const imoveis = await listarImoveis(db, sessao.organizacaoId, { incluirInativos: true });
@@ -125,11 +144,8 @@ export default async function Apartamentos({ searchParams }: PageProps<"/painel/
   const intervalo = lerIntervalo(params);
   const periodo = intervalo.periodo ?? periodoDosFiltros(filtros);
   const colunas = lerColunas(params);
-  // Proprietário (defesa em profundidade; hoje ele vai para o portal): só os imóveis dele.
-  const dono = sessao.papel === "proprietario";
-  const permitidos = dono ? imoveis.filter((i) => sessao.imovelIds.includes(i.id)) : imoveis;
-  const todos = !dono && filtros.imoveis.length === 0;
-  const selecionados = filtros.imoveis.length ? permitidos.filter((i) => filtros.imoveis.includes(i.codigo)) : permitidos;
+  const todos = filtros.imoveis.length === 0;
+  const selecionados = filtros.imoveis.length ? imoveis.filter((i) => filtros.imoveis.includes(i.codigo)) : imoveis;
   const { linhas, total } = await carregarApartamentos(db, sessao.organizacaoId, { imoveis: selecionados, todos, periodo });
   const escolhidas = COLUNAS.filter((c) => colunas.includes(c.chave));
   const textoPeriodo = intervalo.periodo ? `${mesBr(intervalo.de!)} a ${mesBr(intervalo.ate!)}` : null;

@@ -178,6 +178,17 @@ describe("aba Apartamentos", () => {
     expect(total.noitesVendidas).toBe(3);
   });
 
+  it("total do acerto separa quem a empresa deve de quem deve, por pessoa", async () => {
+    // 403 (Dona): parte dela na reserva, a empresa deve 722,50. 102 (outro dono): deve 722,50.
+    await criarReserva(db, org, reserva(a, "2026-10-10", "2026-10-13"), null);
+    const [outro] = await db.insert(proprietarios).values({ organizacaoId: org, nome: "Outro" }).returning();
+    await db.insert(proprietarioImoveis).values({ proprietarioId: outro.id, imovelId: b });
+    await despesa({ responsavel: "proprietario", valor: 72250, imovelId: b, descricao: "Reparo" });
+    const { total } = await carregar();
+    expect(total.saldo).toBe(0); // a soma simples se anula…
+    expect(total.porSentido?.saldo).toEqual({ empresaDeve: 72250, proprietariosDevem: 72250 }); // …por sentido, não
+  });
+
   it("filtro sem imóvel nenhum não soma a organização inteira", async () => {
     await despesa({ responsavel: "empresa", valor: 30000, imovelId: null, descricao: "Contador" });
     const r = await carregarApartamentos(db, org, { imoveis: [], todos: false, periodo });
