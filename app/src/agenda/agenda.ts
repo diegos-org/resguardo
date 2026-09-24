@@ -7,7 +7,7 @@
  * Quem recebe e se a agenda está ligada fica em Configurações (config "agenda"), editável no
  * painel. Envio pelo mesmo adaptador de e-mail do login (M1.3); em teste, nada sai.
  */
-import { and, asc, eq, gt, gte, inArray, lt, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, lt, lte, or, sql } from "drizzle-orm";
 import { gravarConfig, lerConfig } from "@/configuracoes/armazem";
 import { appSettings, auditoria, imoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
@@ -92,7 +92,7 @@ const ORDEM: Record<ItemAgenda["tipo"], number> = { saida: 0, limpeza: 1, entrad
  * Agenda dos próximos `DIAS_AGENDA` dias a partir de amanhã. `novasDesde`: reservas confirmadas
  * criadas depois disso entram em "novas" (qualquer data futura).
  */
-export async function montarAgenda(db: Db, organizacaoId: string, hoje: string, novasDesde: Date | null): Promise<Agenda> {
+export async function montarAgenda(db: Db, organizacaoId: string, hoje: string, novasDesde: Date | null, novasAte: Date = new Date()): Promise<Agenda> {
   const inicio = somaDias(hoje, 1);
   const fim = somaDias(hoje, DIAS_AGENDA + 1);
   const dias = Array.from({ length: DIAS_AGENDA }, (_, i) => somaDias(inicio, i));
@@ -132,9 +132,10 @@ export async function montarAgenda(db: Db, organizacaoId: string, hoje: string, 
               inArray(reservas.imovelId, ids),
               // Nova = criada já confirmada depois do marco, ou que passou a confirmada depois dele
               // (pendente/cancelada que confirmou numa sincronização: registrada no histórico).
+              // Até `novasAte` (o corte gravado como marco): o que entrar depois fica para a próxima.
               or(
-                gt(reservas.criadoEm, novasDesde),
-                sql`${reservas.id}::text in (select ${auditoria.entidadeId} from ${auditoria} where ${auditoria.organizacaoId} = ${organizacaoId} and ${auditoria.entidade} = 'reserva' and ${auditoria.criadoEm} > ${novasDesde.toISOString()}::timestamptz and ${auditoria.mudancas} -> 'estado' ->> 1 = 'confirmada')`,
+                and(gt(reservas.criadoEm, novasDesde), lte(reservas.criadoEm, novasAte)),
+                sql`${reservas.id}::text in (select ${auditoria.entidadeId} from ${auditoria} where ${auditoria.organizacaoId} = ${organizacaoId} and ${auditoria.entidade} = 'reserva' and ${auditoria.criadoEm} > ${novasDesde.toISOString()}::timestamptz and ${auditoria.criadoEm} <= ${novasAte.toISOString()}::timestamptz and ${auditoria.mudancas} -> 'estado' ->> 1 = 'confirmada')`,
               ),
               gte(reservas.checkout, hoje),
             ),
@@ -253,6 +254,30 @@ export async function previaDaAgenda(db: Db, organizacaoId: string, agora: Date 
   return { agenda, ultima };
 }
 
+/** Tentativa "enviando" mais velha que isto (a execução caiu no meio) pode ser refeita. */
+const ENVIO_EXPIRA_MS = 15 * 60_000;
+
+/**
+ * Marca o envio do dia para este destinatário como "enviando". Devolve false se já foi enviado
+ * ou se há outra tentativa em andamento (recente); uma tentativa antiga que ficou pela metade
+ * (execução interrompida antes de confirmar) é retomada.
+ */
+async function reservarEnvio(db: Db, chave: string, agora: Date): Promise<boolean> {
+  const valor = { em: agora.toISOString(), estado: "enviando" };
+  const [nova] = await db.insert(appSettings).values({ key: chave, value: valor }).onConflictDoNothing().returning();
+  if (nova) return true;
+  const [l] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, chave));
+  const v = (l?.value ?? {}) as { em?: string; estado?: string };
+  if (v.estado !== "enviando" || !v.em || agora.getTime() - Date.parse(v.em) < ENVIO_EXPIRA_MS) return false;
+  // Troca só se ninguém retomou antes (compara o valor antigo).
+  const [retomada] = await db
+    .update(appSettings)
+    .set({ value: valor, updatedAt: new Date() })
+    .where(and(eq(appSettings.key, chave), sql`${appSettings.value} ->> 'em' = ${v.em}`, sql`${appSettings.value} ->> 'estado' = 'enviando'`))
+    .returning();
+  return Boolean(retomada);
+}
+
 export type ResultadoEnvio = { enviados: number; jaEnviados: number; falhas: string[]; aviso: string | null };
 
 /**
@@ -273,13 +298,12 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
   const agendas = new Map<string, Agenda>();
   const agendaDesde = async (desde: Date) => {
     const k = desde.toISOString();
-    if (!agendas.has(k)) agendas.set(k, await montarAgenda(db, organizacaoId, hoje, desde));
+    if (!agendas.has(k)) agendas.set(k, await montarAgenda(db, organizacaoId, hoje, desde, agora));
     return agendas.get(k)!;
   };
   for (const d of config.destinatarios) {
     const chave = chaveEnvio(organizacaoId, hoje, d.email, o.manual);
-    const [marca] = await db.insert(appSettings).values({ key: chave, value: { em: agora.toISOString() } }).onConflictDoNothing().returning();
-    if (!marca) {
+    if (!(await reservarEnvio(db, chave, agora))) {
       r.jaEnviados++;
       continue;
     }
@@ -288,6 +312,7 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
       const desde = (await lerMarco(db, chaveUltimaDe(organizacaoId, d.email))) ?? new Date(agora.getTime() - 86_400_000);
       const agenda = await agendaDesde(desde);
       await correio.enviar({ para: d.email, assunto: `Agenda SCL — ${diaCurto(agenda.dias[0])} a ${diaCurto(agenda.dias.at(-1)!)}`, texto: textoDaAgenda(agenda, d.cidades) });
+      await db.update(appSettings).set({ value: { em: agora.toISOString(), estado: "enviado" }, updatedAt: new Date() }).where(eq(appSettings.key, chave));
       await gravarMarco(db, chaveUltimaDe(organizacaoId, d.email), agora);
       r.enviados++;
     } catch (e) {

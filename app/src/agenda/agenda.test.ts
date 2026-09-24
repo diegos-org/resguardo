@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { execucoesAutomacao, imoveis, organizacoes, reservas } from "@/db/schema";
+import { appSettings, execucoesAutomacao, imoveis, organizacoes, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { type Correio, CorreioMemoria } from "@/email/correio";
@@ -94,7 +94,7 @@ describe("montagem da agenda", () => {
     await nova(rio, "2026-12-20", "2026-12-27", "2026-10-01T15:00:00Z");
     await nova(rio, "2026-11-01", "2026-11-03", "2026-09-30T15:00:00Z");
     await nova(buzios, "2026-12-01", "2026-12-03", "2026-10-01T15:00:00Z", { estado: "pendente" });
-    const a = await montarAgenda(db, org, "2026-10-01", new Date("2026-09-30T23:00:00Z"));
+    const a = await montarAgenda(db, org, "2026-10-01", new Date("2026-09-30T23:00:00Z"), AGORA);
     const rj = a.secoes.find((s) => s.cidade === "Rio de Janeiro")!;
     expect(rj.novas.map((n) => n.checkin)).toEqual(["2026-12-20"]);
     expect(a.secoes.find((s) => s.cidade === "Armação dos Búzios")!.novas).toEqual([]);
@@ -157,6 +157,25 @@ describe("configuração e envio", () => {
     expect(paraA).not.toContain("entrada dom 20/12");
     expect(amanha.enviadas.find((m) => m.para === "b@example.com")!.texto).not.toContain("Reservas novas");
     expect(await ultimaAgenda(db, org)).toEqual(new Date("2026-10-02T23:00:00Z"));
+  });
+
+  it("tentativa que caiu no meio (marca 'enviando' antiga) é refeita; em andamento recente, não", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    const chave = `agenda-diaria:${org}:2026-10-01:a@example.com`;
+    await db.insert(appSettings).values({ key: chave, value: { em: new Date(AGORA.getTime() - 5 * 60_000).toISOString(), estado: "enviando" } });
+    const correio = new CorreioMemoria();
+    expect(await enviarAgenda(db, org, correio, AGORA)).toMatchObject({ enviados: 0, jaEnviados: 1 });
+    await db.update(appSettings).set({ value: { em: new Date(AGORA.getTime() - 20 * 60_000).toISOString(), estado: "enviando" } }).where(eq(appSettings.key, chave));
+    expect(await enviarAgenda(db, org, correio, AGORA)).toMatchObject({ enviados: 1 });
+    expect(await enviarAgenda(db, org, correio, new Date(AGORA.getTime() + 60 * 60_000))).toMatchObject({ enviados: 0, jaEnviados: 1 });
+  });
+
+  it("reserva criada depois do corte fica para a próxima agenda (sem repetir)", async () => {
+    await nova(rio, "2026-12-20", "2026-12-27", "2026-10-01T23:00:30Z");
+    const antes = await montarAgenda(db, org, "2026-10-01", new Date("2026-10-01T22:00:00Z"), AGORA);
+    expect(antes.secoes.flatMap((x) => x.novas)).toEqual([]);
+    const depois = await montarAgenda(db, org, "2026-10-02", AGORA, new Date("2026-10-02T23:00:00Z"));
+    expect(depois.secoes.flatMap((x) => x.novas).map((n) => n.checkin)).toEqual(["2026-12-20"]);
   });
 
   it("reserva que passou a confirmada depois da última agenda conta como nova", async () => {
