@@ -55,9 +55,11 @@ beforeEach(async () => {
       { organizacaoId: org, nome: "Outro" },
     ])
     .returning();
+  // Donos desde 2025 (data do vínculo fixa: os testes não dependem do relógio).
+  const desde = new Date("2025-01-01T12:00:00Z");
   await db.insert(proprietarioImoveis).values([
-    { proprietarioId: dona, imovelId: a },
-    { proprietarioId: outro, imovelId: b },
+    { proprietarioId: dona, imovelId: a, criadoEm: desde },
+    { proprietarioId: outro, imovelId: b, criadoEm: desde },
   ]);
   for (const i of [a, b]) await criarContrato(db, org, i, { tipo: "gestao_completa", comissao: "15", inicio: "2025-01-01" }, null);
 });
@@ -97,6 +99,19 @@ describe("reservas do portal", () => {
       ["403", "sem_calculo", 0, 0],
       ["999", "em_conferencia", 100000, 0],
     ]);
+  });
+
+  it("reserva sem cálculo de antes da troca, num imóvel sem nada no livro: o novo dono não vê", async () => {
+    const [c] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "888", nome: "Sem contrato" }).returning();
+    await db.insert(proprietarioImoveis).values({ proprietarioId: dona, imovelId: c.id, criadoEm: new Date("2025-01-01T12:00:00Z") });
+    await criarReserva(db, org, reserva(c.id, "2026-10-05", "2026-10-08", { valorBruto: null, taxaCanal: null }), null);
+    expect((await lista([dona], [c.id])).map((x) => x.situacao)).toEqual(["sem_calculo"]);
+    await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, c.id));
+    await db.insert(proprietarioImoveis).values({ proprietarioId: outro, imovelId: c.id, criadoEm: new Date("2026-10-10T12:00:00Z") });
+    expect(await lista([outro], [c.id])).toEqual([]);
+    // Entrada depois do vínculo: é do dono atual, mesmo sem cálculo.
+    await criarReserva(db, org, reserva(c.id, "2026-10-20", "2026-10-22", { valorBruto: null, taxaCanal: null }), null);
+    expect((await lista([outro], [c.id])).map((x) => x.checkin)).toEqual(["2026-10-20"]);
   });
 
   it("imóvel que mudou de dono: o novo não vê as reservas do anterior; recalculada, passa a ver", async () => {

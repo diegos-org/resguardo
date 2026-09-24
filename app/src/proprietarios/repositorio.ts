@@ -125,8 +125,12 @@ export async function definirImoveis(db: Db, organizacaoId: string, id: string, 
     const conflitos = await imoveisDeOutroDono(tx, organizacaoId, novos, id);
     if (conflitos.length) return mensagemConflito(conflitos);
 
-    await tx.delete(proprietarioImoveis).where(eq(proprietarioImoveis.proprietarioId, id));
-    if (novos.length) await tx.insert(proprietarioImoveis).values(novos.map((imovelId) => ({ proprietarioId: id, imovelId })));
+    // Só tira os que saíram e põe os novos: o vínculo que continua mantém a data de início
+    // (o portal usa essa data para não mostrar ao dono novo o histórico do anterior).
+    const saem = atuais.filter((i) => !novos.includes(i));
+    const entram = novos.filter((i) => !atuais.includes(i));
+    if (saem.length) await tx.delete(proprietarioImoveis).where(and(eq(proprietarioImoveis.proprietarioId, id), inArray(proprietarioImoveis.imovelId, saem)));
+    if (entram.length) await tx.insert(proprietarioImoveis).values(entram.map((imovelId) => ({ proprietarioId: id, imovelId })));
     await auditar(tx, organizacaoId, autorId, "proprietario.imoveis", id, { imoveis: [atuais, novos] });
     return true;
   });

@@ -32,6 +32,8 @@ export type Rodape = {
   descontado: number;
   /** Valor a transferir (quem deve a quem conforme a situação). */
   valor: number;
+  /** A favor de quem está o valor (pelo líquido, já sem os contestados); null = zerado. */
+  aFavor: "proprietario" | "empresa" | null;
   /** Chave Pix de quem recebe; vazio = não cadastrada. */
   chavePix: string;
   dataPagamento: string | null;
@@ -55,13 +57,14 @@ export async function rodapeDoPortal(
   );
   return o.proprietarios.map((dono) => {
     const p = previsoes.find((x) => x.proprietarioId === dono.id);
-    const base = { proprietarioId: dono.id, nome: dono.nome, saldo: 0, descontado: 0, valor: 0, chavePix: "", dataPagamento: null };
+    const base = { proprietarioId: dono.id, nome: dono.nome, saldo: 0, descontado: 0, valor: 0, aFavor: null, chavePix: "", dataPagamento: null };
     if (!p) return { ...base, situacao: "zerado" };
     const r = p.repasse;
     if (r) {
-      return { ...base, saldo: r.saldo, descontado: r.descontado, valor: r.valor, chavePix: p.chavePix, situacao: r.situacao === "pago" ? "pago" : "fechado", dataPagamento: r.dataPagamento };
+      return { ...base, saldo: r.saldo, descontado: r.descontado, valor: r.valor, aFavor: "proprietario", chavePix: p.chavePix, situacao: r.situacao === "pago" ? "pago" : "fechado", dataPagamento: r.dataPagamento };
     }
-    const comum = { ...base, saldo: p.saldo, descontado: p.aDescontar };
+    const aFavor = p.valor > 0 ? ("proprietario" as const) : p.deve > 0 ? ("empresa" as const) : null;
+    const comum = { ...base, saldo: p.saldo, descontado: p.aDescontar, aFavor };
     if (o.hoje < lim.fim) return { ...comum, situacao: "parcial", valor: p.valor || p.deve };
     if (p.bloqueios.length) return { ...comum, situacao: "em_conferencia", valor: p.valor || p.deve };
     if (p.valor > 0) return { ...comum, situacao: "empresa_deve", valor: p.valor, chavePix: p.chavePix };

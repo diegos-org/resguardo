@@ -40,7 +40,15 @@ function TextoRodape({ r, empresa }: { r: Rodape; empresa: string }) {
       return (
         <p style={{ margin: 0 }}>
           Mês fechado: a {empresa} vai lhe transferir {valor}
-          {descontos}.
+          {descontos}
+          {r.chavePix ? (
+            <>
+              {" "}
+              para a sua chave Pix <code>{r.chavePix}</code>.
+            </>
+          ) : (
+            <>. Sua chave Pix não está cadastrada: fale com a {empresa}.</>
+          )}
         </p>
       );
     case "empresa_deve":
@@ -81,7 +89,7 @@ function TextoRodape({ r, empresa }: { r: Rodape; empresa: string }) {
       return (
         <p style={{ margin: 0 }}>
           Saldo parcial até o fim do período: {valor}
-          {r.saldo > 0 ? ` a seu favor` : r.saldo < 0 ? ` a favor da ${empresa}` : ""}. O valor final, quem paga e o Pix saem no fechamento, no dia 1º do mês
+          {r.aFavor === "proprietario" ? " a seu favor" : r.aFavor === "empresa" ? ` a favor da ${empresa}` : ""}. O valor final, quem paga e o Pix saem no fechamento, no dia 1º do mês
           seguinte.
         </p>
       );

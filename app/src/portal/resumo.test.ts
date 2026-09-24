@@ -58,9 +58,11 @@ beforeEach(async () => {
       { organizacaoId: org, nome: "Outro" },
     ])
     .returning();
+  // Donos desde 2025 (data do vínculo fixa: os testes não dependem do relógio).
+  const desde = new Date("2025-01-01T12:00:00Z");
   await db.insert(proprietarioImoveis).values([
-    { proprietarioId: dona, imovelId: a },
-    { proprietarioId: outro, imovelId: b },
+    { proprietarioId: dona, imovelId: a, criadoEm: desde },
+    { proprietarioId: outro, imovelId: b, criadoEm: desde },
   ]);
   for (const i of [a, b]) await criarContrato(db, org, i, { tipo: "gestao_completa", comissao: "15", inicio: "2025-01-01" }, null);
   const c = await criarCategoria(db, org, "Manutenção", null);

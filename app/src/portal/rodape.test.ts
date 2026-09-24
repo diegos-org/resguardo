@@ -82,7 +82,8 @@ const rodape = (hoje: string, quem = { id: dona, nome: "Dona" }) => rodapeDoPort
 
 describe("rodapé do portal", () => {
   it("mês ainda não terminou: saldo parcial, sem credor nem Pix", async () => {
-    expect(await rodape("2026-10-20")).toMatchObject({ situacao: "parcial", saldo: 72250, valor: 72250, chavePix: "" });
+    expect(await rodape("2026-10-20")).toMatchObject({ situacao: "parcial", saldo: 72250, valor: 72250, aFavor: "proprietario", chavePix: "" });
+    expect(await rodape("2026-10-20", { id: outro, nome: "Outro" })).toMatchObject({ situacao: "parcial", valor: 30000, aFavor: "empresa" });
   });
 
   it("mês terminado: a empresa deve (Pix do proprietário); o proprietário deve (Pix da empresa)", async () => {
@@ -116,7 +117,7 @@ describe("rodapé do portal", () => {
   it("mês fechado e depois pago", async () => {
     const f = await fecharMes(db, org, dona, MES, "2026-11-02", null);
     if (!f.ok) throw new Error(f.erro);
-    expect(await rodape("2026-11-02")).toMatchObject({ situacao: "fechado", valor: 72250 });
+    expect(await rodape("2026-11-02")).toMatchObject({ situacao: "fechado", valor: 72250, chavePix: "dona@example.com" });
     expect((await marcarRepassePago(db, org, f.id, "2026-11-03", "2026-11-03", null)).ok).toBe(true);
     expect(await rodape("2026-11-04")).toMatchObject({ situacao: "pago", valor: 72250, dataPagamento: "2026-11-03" });
   });
