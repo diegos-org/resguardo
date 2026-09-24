@@ -38,6 +38,8 @@ describe("operação", () => {
     expect(ok(operacao, "reserva:editar", "im-102")).toBe(true);
     expect(ok(operacao, "limpeza:editar", "im-102")).toBe(true);
     expect(ok(operacao, "financeiro:ler", "im-102")).toBe(false);
+    expect(ok(operacao, "manutencao:editar", "im-102")).toBe(true);
+    expect(ok(operacao, "manutencao:aprovar", "im-102")).toBe(false);
     expect(ok(operacao, "usuario:gerenciar")).toBe(false);
   });
 });

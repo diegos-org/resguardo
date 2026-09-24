@@ -10,6 +10,7 @@ import { hojeISO } from "@/lib/datas";
 import { filtrosParaQuery, lerFiltros, nomeDoMes, periodoDosFiltros } from "@/lib/filtros";
 import { conflitos, NOMES_ORIGEM } from "@/reservas/regras";
 import { itensDoCalendario, listarLimpezas, sincronizarLimpezas } from "@/limpezas/limpezas";
+import { itensDoCalendario as manutencoesDoCalendario } from "@/manutencao/manutencao";
 import { listarBloqueios, listarReservas } from "@/reservas/repositorio";
 
 const SEMANA = ["D", "S", "T", "Q", "Q", "S", "S"];
@@ -30,11 +31,14 @@ export default async function Calendario({ searchParams }: PageProps<"/painel/ca
   // Limpezas só para quem pode vê-las (o proprietário não vê); geradas antes, como na tela de Limpezas.
   const verLimpezas = podeFazer(sessao.papel, "limpeza:ler") && ids.length > 0;
   if (verLimpezas) await sincronizarLimpezas(db, sessao.organizacaoId, periodo, sessao.usuarioId);
+  // Manutenção feita só para quem pode ver manutenção (o proprietário não vê).
+  const verManutencao = podeFazer(sessao.papel, "manutencao:ler");
   const hoje = hojeISO();
-  const [reservas, bloqueios, limpezas] = await Promise.all([
+  const [reservas, bloqueios, limpezas, manutencoes] = await Promise.all([
     ids.length ? listarReservas(db, sessao.organizacaoId, { ...periodo, imovelIds: ids }) : [],
     ids.length ? listarBloqueios(db, sessao.organizacaoId, { ...periodo, imovelIds: ids }) : [],
     verLimpezas ? listarLimpezas(db, sessao.organizacaoId, { ...periodo, imovelIds: ids, hoje }) : [],
+    verManutencao ? manutencoesDoCalendario(db, sessao.organizacaoId, { ...periodo, imovelIds: ids }) : [],
   ]);
   const emConflito = new Set(conflitos(reservas).flat());
   const itens: ItemCalendario[] = [
@@ -59,6 +63,7 @@ export default async function Calendario({ searchParams }: PageProps<"/painel/ca
       categoria: "bloqueio",
     })),
     ...itensDoCalendario(limpezas),
+    ...manutencoes,
   ];
 
   const dias = diasDoPeriodo(periodo.inicio, periodo.fim);
@@ -94,6 +99,11 @@ export default async function Calendario({ searchParams }: PageProps<"/painel/ca
         {verLimpezas && (
           <span>
             <i className={styles.limpeza} /> Limpeza
+          </span>
+        )}
+        {verManutencao && (
+          <span>
+            <i className={styles.manutencao} /> Manutenção feita
           </span>
         )}
         <span>

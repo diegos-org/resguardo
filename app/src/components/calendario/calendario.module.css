@@ -119,6 +119,12 @@
   color: #2f5d8a;
 }
 
+.manutencao {
+  background: #fff;
+  border: 1px dashed #8a6d1c;
+  color: #8a6d1c;
+}
+
 .bloqueio {
   background: repeating-linear-gradient(135deg, #e6e2da, #e6e2da 6px, #d6d1c6 6px, #d6d1c6 12px);
   color: #4a4a44;
