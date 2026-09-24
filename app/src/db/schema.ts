@@ -627,6 +627,8 @@ export const contestacoesAdiantamento = pgTable(
     organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
     adiantamentoId: uuid("adiantamento_id").notNull().references(() => lancamentos.id),
     motivo: text("motivo").notNull(),
+    /** Quanto estava em aberto ao contestar: é o máximo que "empresa assume" absorve por esta contestação. */
+    valor: integer("valor").notNull(),
     abertaEm: timestamp("aberta_em", { withTimezone: true }).notNull().defaultNow(),
     resolvidaEm: timestamp("resolvida_em", { withTimezone: true }),
     /** "mantida" (volta a cobrar) | "empresa_assume" */

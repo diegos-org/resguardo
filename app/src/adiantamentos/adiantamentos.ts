@@ -296,7 +296,7 @@ export async function contestar(db: Db, organizacaoId: string, adiantamentoId: s
     if (!a) return { ok: false as const, erro: "Adiantamento não encontrado." };
     if (a.situacao === "contestado") return { ok: false as const, erro: "Já existe uma contestação aberta." };
     if (a.aberto === 0) return { ok: false as const, erro: "Adiantamento já quitado." };
-    await tx.insert(contestacoesAdiantamento).values({ organizacaoId, adiantamentoId, motivo: m });
+    await tx.insert(contestacoesAdiantamento).values({ organizacaoId, adiantamentoId, motivo: m, valor: a.aberto });
     await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "adiantamento.contestar", entidade: "adiantamento", entidadeId: adiantamentoId, mudancas: { contestacao: [null, m] } });
     return { ok: true as const };
   });
@@ -304,7 +304,7 @@ export async function contestar(db: Db, organizacaoId: string, adiantamentoId: s
 
 /**
  * Resolve a contestação aberta: `mantida` (volta a ser cobrado) ou `empresa_assume` (a
- * empresa absorve o que estava em aberto — quitação + ajuste, na mesma transação).
+ * empresa absorve o que estava em aberto e foi contestado — quitação + ajuste, na mesma transação).
  */
 export async function resolverContestacao(
   db: Db,
@@ -330,8 +330,11 @@ export async function resolverContestacao(
       entidadeId: adiantamentoId,
       mudancas: { contestacao: ["aberta", r.resolucao === "mantida" ? "mantida (volta a cobrar)" : "empresa assumiu"] },
     });
-    if (r.resolucao === "empresa_assume" && a.aberto > 0) {
-      const q = await quitar(tx, organizacaoId, adiantamentoId, { forma: "empresa_assume", valor: a.aberto, data: r.data, nota: r.nota }, autorId, a.contestacao.id);
+    // A empresa absorve só o que foi contestado: uma contestação reaberta (desfazer "empresa
+    // assume") não leva junto valor que outra contestação já decidiu manter em cobrança.
+    const assumir = Math.min(a.aberto, a.contestacao.valor);
+    if (r.resolucao === "empresa_assume" && assumir > 0) {
+      const q = await quitar(tx, organizacaoId, adiantamentoId, { forma: "empresa_assume", valor: assumir, data: r.data, nota: r.nota }, autorId, a.contestacao.id);
       if (!q.ok) throw new Error(q.erro);
     }
     return { ok: true as const };

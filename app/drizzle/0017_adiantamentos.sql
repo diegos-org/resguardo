@@ -3,6 +3,7 @@ CREATE TABLE "contestacoes_adiantamento" (
 	"organizacao_id" uuid NOT NULL,
 	"adiantamento_id" uuid NOT NULL,
 	"motivo" text NOT NULL,
+	"valor" integer NOT NULL,
 	"aberta_em" timestamp with time zone DEFAULT now() NOT NULL,
 	"resolvida_em" timestamp with time zone,
 	"resolucao" text,
