@@ -2,8 +2,8 @@
  * Tabela de reservas do portal (M5.2): as reservas confirmadas do proprietário no período, pela
  * mesma regra de posse do resumo (`posse.ts`), com os valores do livro que caem no período.
  */
-import { and, asc, eq, gt, gte, inArray, isNull, lt, or, sum } from "drizzle-orm";
-import { imoveis, lancamentos, type OrigemReserva, reservas } from "@/db/schema";
+import { and, asc, eq, gt, gte, inArray, isNull, lt, or, sql, sum } from "drizzle-orm";
+import { bloqueios, imoveis, lancamentos, type OrigemReserva, proprietarioImoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
 import { lancamentoEmVigor, reservaDosDonos } from "./posse";
@@ -98,4 +98,37 @@ export async function reservasDoPortal(
     return d.length ? "definido" : "sem_calculo";
   };
   return lista.map((r) => ({ ...r, bruto: valor(r.id, "receita_bruta"), suaParte: valor(r.id, "direito_proprietario"), situacao: situacao(r.id) }));
+}
+
+export type BloqueioPortal = { id: string; imovelId: string; inicio: string; fim: string };
+
+/**
+ * Bloqueios dos imóveis dele no período, só do tempo em que o imóvel é dele (da data do vínculo em
+ * diante, como as reservas sem cálculo): bloqueio do dono anterior não aparece, e o que atravessa
+ * a troca aparece só a partir da data do vínculo.
+ */
+export async function bloqueiosDoPortal(
+  db: Db,
+  organizacaoId: string,
+  o: { proprietarioIds: readonly string[]; imovelIds: readonly string[]; periodo: { inicio: string; fim: string } },
+): Promise<BloqueioPortal[]> {
+  const donos = o.proprietarioIds.filter(uuidValido);
+  const ids = o.imovelIds.filter(uuidValido);
+  if (!donos.length || !ids.length) return [];
+  const desde = sql<string>`(${proprietarioImoveis.criadoEm} at time zone 'America/Sao_Paulo')::date`;
+  const linhas = await db
+    .select({ id: bloqueios.id, imovelId: bloqueios.imovelId, inicio: bloqueios.inicio, fim: bloqueios.fim, desde: sql<string>`to_char(${desde}, 'YYYY-MM-DD')` })
+    .from(bloqueios)
+    .innerJoin(proprietarioImoveis, and(eq(proprietarioImoveis.imovelId, bloqueios.imovelId), inArray(proprietarioImoveis.proprietarioId, donos)))
+    .where(
+      and(
+        eq(bloqueios.organizacaoId, organizacaoId),
+        inArray(bloqueios.imovelId, ids),
+        lt(bloqueios.inicio, o.periodo.fim),
+        gt(bloqueios.fim, o.periodo.inicio),
+        sql`${bloqueios.fim} > ${desde}`,
+      ),
+    )
+    .orderBy(asc(bloqueios.inicio));
+  return linhas.map((b) => ({ id: b.id, imovelId: b.imovelId, inicio: b.inicio < b.desde ? b.desde : b.inicio, fim: b.fim }));
 }

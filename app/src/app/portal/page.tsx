@@ -14,12 +14,11 @@ import { centavosParaCampo } from "@/lib/dinheiro-form";
 import { nomeDoMes, periodoDosFiltros } from "@/lib/filtros";
 import { formatBRL } from "@/lib/money";
 import { janela, lerPeriodoPortal, nome, situacaoDoPeriodo, vizinhos } from "@/portal/periodo";
-import { reservasDoPortal, type SituacaoReserva } from "@/portal/reservas";
+import { bloqueiosDoPortal, reservasDoPortal, type SituacaoReserva } from "@/portal/reservas";
 import { proprietariosDoUsuario, resumoDoProprietario } from "@/portal/resumo";
 import { type Rodape, rodapeDoPortal } from "@/portal/rodape";
 import { nomeMes } from "@/repasses/repasses";
 import { NOMES_ORIGEM } from "@/reservas/regras";
-import { listarBloqueios } from "@/reservas/repositorio";
 
 const SITUACAO = {
   fechado: null,
@@ -180,7 +179,8 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
   });
   const lista = await reservasDoPortal(db, sessao.organizacaoId, { proprietarioIds: donos.map((d) => d.id), imovelIds: escolhidosIds, periodo });
   // Calendário só no mês (no ano inteiro, a tabela basta).
-  const bloqueios = filtros.mes !== null && escolhidosIds.length ? await listarBloqueios(db, sessao.organizacaoId, { ...periodo, imovelIds: escolhidosIds }) : [];
+  // Bloqueios só do tempo em que o imóvel é dele (os do dono anterior não aparecem).
+  const bloqueios = filtros.mes !== null && escolhidosIds.length ? await bloqueiosDoPortal(db, sessao.organizacaoId, { proprietarioIds: donos.map((d) => d.id), imovelIds: escolhidosIds, periodo }) : [];
   const itens: ItemCalendario[] = [
     ...lista.map((r) => ({
       id: r.id,

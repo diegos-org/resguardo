@@ -1,13 +1,13 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { criarContrato } from "@/contratos/repositorio";
-import { imoveis, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
+import { bloqueios, imoveis, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { aplicarMotor } from "@/financeiro/aplicar";
 import type { DadosReserva } from "@/reservas/regras";
 import { criarReserva } from "@/reservas/repositorio";
-import { reservasDoPortal } from "./reservas";
+import { bloqueiosDoPortal, reservasDoPortal } from "./reservas";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -123,6 +123,27 @@ describe("reservas do portal", () => {
     await aplicarMotor(db, org, r.reserva.id, null);
     expect((await lista([outro], [a])).map((x) => x.suaParte)).toEqual([72250]);
     expect(await lista([dona], [a])).toEqual([]);
+  });
+
+  it("bloqueios: só do tempo em que o imóvel é dele; o que atravessa a troca aparece a partir do vínculo", async () => {
+    await db.insert(bloqueios).values([
+      { organizacaoId: org, imovelId: a, inicio: "2026-10-02", fim: "2026-10-05", motivo: "uso da dona" },
+      { organizacaoId: org, imovelId: a, inicio: "2026-10-08", fim: "2026-10-14", motivo: "obra" },
+      { organizacaoId: org, imovelId: a, inicio: "2026-10-20", fim: "2026-10-22", motivo: "uso do novo" },
+    ]);
+    const blq = (donos: string[]) => bloqueiosDoPortal(db, org, { proprietarioIds: donos, imovelIds: [a], periodo });
+    expect((await blq([dona])).map((b) => [b.inicio, b.fim])).toEqual([
+      ["2026-10-02", "2026-10-05"],
+      ["2026-10-08", "2026-10-14"],
+      ["2026-10-20", "2026-10-22"],
+    ]);
+    await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));
+    await db.insert(proprietarioImoveis).values({ proprietarioId: outro, imovelId: a, criadoEm: new Date("2026-10-10T12:00:00Z") });
+    expect((await blq([outro])).map((b) => [b.inicio, b.fim])).toEqual([
+      ["2026-10-10", "2026-10-14"],
+      ["2026-10-20", "2026-10-22"],
+    ]);
+    expect(await blq([dona])).toEqual([]);
   });
 
   it("imóvel com histórico do dono anterior no livro: o novo dono vê a reserva sem cálculo do período dele", async () => {
