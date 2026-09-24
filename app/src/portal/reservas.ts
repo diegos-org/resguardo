@@ -58,7 +58,9 @@ export async function reservasDoPortal(
       and(
         eq(reservas.organizacaoId, organizacaoId),
         or(
-          eq(reservas.estado, "confirmada"),
+          // Confirmada: pela estada no período.
+          and(eq(reservas.estado, "confirmada"), lt(reservas.checkin, o.periodo.fim), gt(reservas.checkout, o.periodo.inicio)),
+          // Não confirmada com valores em vigor: pela competência dos valores (a estada pode ter mudado).
           inArray(
             reservas.id,
             db
@@ -76,8 +78,6 @@ export async function reservasDoPortal(
           ),
         ),
         inArray(reservas.imovelId, ids),
-        lt(reservas.checkin, o.periodo.fim),
-        gt(reservas.checkout, o.periodo.inicio),
         reservaDosDonos(db, donos),
       ),
     )

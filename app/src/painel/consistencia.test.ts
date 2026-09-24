@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { criarContrato } from "@/contratos/repositorio";
 import { recalcularPendentes } from "@/financeiro/aplicar";
+import { preverRepasses } from "@/repasses/repasses";
 import { lancamentos, imoveis, organizacoes, proprietarioImoveis, proprietarios, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
@@ -191,7 +192,8 @@ describe("consistência entre telas (M4.8)", () => {
     const inicio = await carregarDashboard(db, org, { imoveis: so403, todos: false, periodo: OUTUBRO, ano: 2026, hoje: "2026-11-10", verFinanceiro: true });
     const { linhas } = await carregarApartamentos(db, org, { imoveis: so403, todos: false, periodo: OUTUBRO });
     const portal = await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], semImovel: true, periodo: OUTUBRO });
-    return { inicio, brutos: [inicio.financeiro?.receitaBruta, linhas[0].financeiro.receitaBruta, portal.receitaBruta], acertos: [linhas[0].acertoPeriodo, portal.acerto] };
+    // O portal separa o que está em conferência (acertoPendente); o painel mostra o movimento todo.
+    return { inicio, brutos: [inicio.financeiro?.receitaBruta, linhas[0].financeiro.receitaBruta, portal.receitaBruta], acertos: [linhas[0].acertoPeriodo, portal.acerto + portal.acertoPendente] };
   };
 
   it("pendente calculada por versão antiga: o ajuste do deploy tira os lançamentos dela de todas as telas", async () => {
@@ -224,5 +226,21 @@ describe("consistência entre telas (M4.8)", () => {
     const portal = await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], semImovel: true, periodo: OUTUBRO });
     expect(lista.reduce((x, y) => x + y.bruto, 0)).toBe(portal.receitaBruta);
     expect(lista.find((x) => x.id === r.reserva.id)?.situacao).toBe("em_conferencia");
+    // Em conferência de verdade: o resumo avisa e o fechamento do mês não passa até alguém decidir.
+    expect(portal.emConferencia).toBe(true);
+    const [previsao] = await preverRepasses(db, org, "2026-10", "2026-11-10", [dona]);
+    expect(previsao.bloqueios.join(" ")).toContain("acerto pendente");
+  });
+
+  it("não confirmada que já movimentou dinheiro e mudou de mês: a tabela do mês dos valores continua mostrando a reserva", async () => {
+    const dados = reserva(a, "2026-10-01", "2026-10-03", { valorBruto: 50000, taxaCanal: 0 });
+    const r = await sincronizarReserva(db, org, "csv", "booking:R2", dados, null);
+    if (!r.ok) throw new Error("reserva");
+    await db.update(lancamentos).set({ estado: "realizado" }).where(and(eq(lancamentos.reservaId, r.reserva.id), eq(lancamentos.tipo, "receita_bruta")));
+    await sincronizarReserva(db, org, "csv", "booking:R2", { ...dados, estado: "cancelada", checkin: "2026-12-01", checkout: "2026-12-03" }, null);
+    const lista = await reservasDoPortal(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo: OUTUBRO });
+    const portal = await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], semImovel: true, periodo: OUTUBRO });
+    expect(lista.reduce((x, y) => x + y.bruto, 0)).toBe(portal.receitaBruta);
+    expect(lista.some((x) => x.id === r.reserva.id)).toBe(true);
   });
 });
