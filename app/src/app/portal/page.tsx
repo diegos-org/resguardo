@@ -17,6 +17,7 @@ import { janela, lerPeriodoPortal, nome, situacaoDoPeriodo, vizinhos } from "@/p
 import { bloqueiosDoPortal, reservasDoPortal, type SituacaoReserva } from "@/portal/reservas";
 import { proprietariosDoUsuario, resumoDoProprietario } from "@/portal/resumo";
 import { type Rodape, rodapeDoPortal } from "@/portal/rodape";
+import { donosDosEscolhidos } from "@/relatorios/gerar";
 import { nomeMes } from "@/repasses/repasses";
 import { NOMES_ORIGEM } from "@/reservas/regras";
 
@@ -170,17 +171,21 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
   const periodo = periodoDosFiltros(filtros);
   const hoje = hojeISO();
   const escolhidosIds = escolhidos.map((i) => i.id);
+  // Mesma regra do PDF: só os donos dos imóveis escolhidos; os lançamentos sem imóvel entram
+  // quando todos os imóveis desses donos estão escolhidos.
+  const selecao = await donosDosEscolhidos(db, donos, escolhidos);
+  const donosIds = selecao.donos.map((d) => d.id);
   const resumo = await resumoDoProprietario(db, sessao.organizacaoId, {
-    proprietarioIds: donos.map((d) => d.id),
+    proprietarioIds: donosIds,
     imovelIds: escolhidosIds,
     // Com todos os imóveis dele, entra também o que é dele sem imóvel (ajuste/acerto geral).
-    semImovel: escolhidos.length === meus.length,
+    semImovel: selecao.todosOsImoveis,
     periodo,
   });
-  const lista = await reservasDoPortal(db, sessao.organizacaoId, { proprietarioIds: donos.map((d) => d.id), imovelIds: escolhidosIds, periodo });
+  const lista = await reservasDoPortal(db, sessao.organizacaoId, { proprietarioIds: donosIds, imovelIds: escolhidosIds, periodo });
   // Calendário só no mês (no ano inteiro, a tabela basta).
   // Bloqueios só do tempo em que o imóvel é dele (os do dono anterior não aparecem).
-  const bloqueios = filtros.mes !== null && escolhidosIds.length ? await bloqueiosDoPortal(db, sessao.organizacaoId, { proprietarioIds: donos.map((d) => d.id), imovelIds: escolhidosIds, periodo }) : [];
+  const bloqueios = filtros.mes !== null && escolhidosIds.length ? await bloqueiosDoPortal(db, sessao.organizacaoId, { proprietarioIds: donosIds, imovelIds: escolhidosIds, periodo }) : [];
   const itens: ItemCalendario[] = [
     ...lista.map((r) => ({
       id: r.id,
@@ -196,7 +201,7 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
   ];
   // Saldo do acerto: o do repasse do mês (no ano inteiro, o de dezembro), com todos os imóveis dele.
   const mesSaldo = `${filtros.ano}-${String(filtros.mes ?? 12).padStart(2, "0")}`;
-  const rodape = await rodapeDoPortal(db, sessao.organizacaoId, { proprietarios: donos, mes: mesSaldo, hoje, pixEmpresa: (await lerEmpresa(db, sessao.organizacaoId)).chavePix });
+  const rodape = await rodapeDoPortal(db, sessao.organizacaoId, { proprietarios: selecao.donos, mes: mesSaldo, hoje, pixEmpresa: (await lerEmpresa(db, sessao.organizacaoId)).chavePix });
   const situacao = situacaoDoPeriodo(filtros);
   const { anterior, seguinte } = vizinhos(filtros);
   const j = janela();
