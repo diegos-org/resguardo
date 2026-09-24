@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { criarContrato } from "@/contratos/repositorio";
-import { imoveis, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
+import { imoveis, lancamentos, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { criarCategoria } from "@/despesas/categorias";
@@ -150,10 +150,22 @@ describe("aba Apartamentos", () => {
     await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));
     await db.insert(proprietarioImoveis).values({ proprietarioId: novo.id, imovelId: a });
     let l = (await carregar()).linhas.find((x) => x.codigo === "403")!;
-    expect(l).toMatchObject({ saldo: 0, acertoPeriodo: 0, saldoOutrosDonos: -40000, aCobrar: 0 });
+    expect(l).toMatchObject({ saldo: 0, acertoPeriodo: 0, saldosAnteriores: [{ nome: "Dona", total: -40000 }], aCobrar: 0 });
     await despesa({ responsavel: "proprietario", valor: 10000, imovelId: a, descricao: "Chave" }); // já do novo dono
     l = (await carregar()).linhas.find((x) => x.codigo === "403")!;
-    expect(l).toMatchObject({ saldo: -10000, acertoPeriodo: -10000, saldoOutrosDonos: -40000, aCobrar: 10000 });
+    expect(l).toMatchObject({ saldo: -10000, acertoPeriodo: -10000, saldosAnteriores: [{ nome: "Dona", total: -40000 }], aCobrar: 10000 });
+
+    // Terceiro dono: o crédito do segundo e a dívida da primeira ficam separados, sem se anular.
+    await db.insert(lancamentos).values({ organizacaoId: org, tipo: "ajuste", descricao: "Crédito fictício", valor: 0, efeitoSaldo: 50000, competencia: "2026-10-20", estado: "realizado", imovelId: a, proprietarioId: novo.id, origem: "manual" });
+    const [terceiro] = await db.insert(proprietarios).values({ organizacaoId: org, nome: "Terceiro" }).returning();
+    await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));
+    await db.insert(proprietarioImoveis).values({ proprietarioId: terceiro.id, imovelId: a });
+    l = (await carregar()).linhas.find((x) => x.codigo === "403")!;
+    expect(l.saldo).toBe(0);
+    expect(l.saldosAnteriores.map((x) => [x.nome, x.total]).sort()).toEqual([
+      ["Dona", -40000],
+      ["Novo dono", 40000],
+    ]);
   });
 
   it("filtro sem imóvel nenhum não soma a organização inteira", async () => {

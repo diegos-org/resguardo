@@ -62,14 +62,14 @@ function celula(l: LinhaApartamento, c: ChaveColuna): React.ReactNode {
       return (
         <>
           <Saldo valor={l.saldo} />
-          {l.saldoOutrosDonos !== 0 && (
-            <>
+          {l.saldosAnteriores.map((x) => (
+            <span key={x.proprietarioId}>
               <br />
               <small style={{ color: "#b3261e" }}>
-                + {formatBRL(Math.abs(l.saldoOutrosDonos))} com proprietário anterior ({l.saldoOutrosDonos > 0 ? "empresa deve" : "ele deve"})
+                + {formatBRL(Math.abs(x.total))} com {x.nome} ({x.total > 0 ? "empresa deve" : "ele deve"})
               </small>
-            </>
-          )}
+            </span>
+          ))}
         </>
       );
     case "aCobrar":

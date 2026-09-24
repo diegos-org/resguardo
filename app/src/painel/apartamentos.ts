@@ -6,7 +6,7 @@
  */
 import { inArray } from "drizzle-orm";
 import { listarAdiantamentos } from "@/adiantamentos/adiantamentos";
-import { proprietarioImoveis } from "@/db/schema";
+import { proprietarioImoveis, proprietarios } from "@/db/schema";
 import type { Imovel } from "@/imoveis/repositorio";
 import type { Db } from "@/db/types";
 import { acertoPorImovelEDono, type TotaisDoImovel, totaisPorImovel } from "@/financeiro/ledger";
@@ -78,8 +78,8 @@ export type LinhaApartamento = {
   acertoPeriodo: number;
   /** Acumulado até o fim do período, do proprietário atual. Positivo: a empresa deve a ele. */
   saldo: number;
-  /** Saldo que ficou com proprietários anteriores do imóvel (não entra em `saldo`). */
-  saldoOutrosDonos: number;
+  /** Saldos que ficaram com proprietários anteriores do imóvel, um por proprietário (não entram em `saldo`). */
+  saldosAnteriores: { proprietarioId: string; nome: string; total: number }[];
   aCobrar: number;
   contestados: number;
 };
@@ -88,7 +88,7 @@ const VAZIO: TotaisDoImovel = { valor: {}, montante: {}, acerto: 0 };
 
 function temMovimento(l: LinhaApartamento): boolean {
   const f = l.financeiro;
-  return Boolean(l.reservas || f.receitaBruta || f.comissoes || f.despesasEmpresa || f.ajustesEmpresa || l.despesasProprietario || l.acertoPeriodo || l.saldo || l.saldoOutrosDonos || l.aCobrar || l.contestados);
+  return Boolean(l.reservas || f.receitaBruta || f.comissoes || f.despesasEmpresa || f.ajustesEmpresa || l.despesasProprietario || l.acertoPeriodo || l.saldo || l.saldosAnteriores.length || l.aCobrar || l.contestados);
 }
 
 /**
@@ -126,8 +126,18 @@ export async function carregarApartamentos(
   // O acerto da linha é o do proprietário atual do imóvel; o de donos anteriores fica à parte
   // (um imóvel que trocou de dono não soma a dívida de um com o crédito do outro).
   const donoAtual = new Map(donos.map((d) => [d.imovelId, d.proprietarioId]));
+  const idsAnteriores = [...new Set(saldos.map((x) => x.proprietarioId))];
+  const nomes = new Map(
+    idsAnteriores.length
+      ? (await db.select({ id: proprietarios.id, nome: proprietarios.nome }).from(proprietarios).where(inArray(proprietarios.id, idsAnteriores))).map((p) => [p.id, p.nome])
+      : [],
+  );
   const doDono = (lista: typeof saldos, imovelId: string) => lista.filter((x) => x.imovelId === imovelId && x.proprietarioId === donoAtual.get(imovelId)).reduce((t, x) => t + x.total, 0);
-  const deOutros = (lista: typeof saldos, imovelId: string) => lista.filter((x) => x.imovelId === imovelId && x.proprietarioId !== donoAtual.get(imovelId)).reduce((t, x) => t + x.total, 0);
+  // Um por proprietário anterior: saldos de pessoas diferentes nunca se compensam.
+  const anteriores = (imovelId: string) =>
+    saldos
+      .filter((x) => x.imovelId === imovelId && x.proprietarioId !== donoAtual.get(imovelId) && x.total !== 0)
+      .map((x) => ({ proprietarioId: x.proprietarioId, nome: nomes.get(x.proprietarioId) ?? "Proprietário anterior", total: x.total }));
 
   const linha = (imovelId: string | null, codigo: string, nome: string, ativo: boolean): LinhaApartamento => {
     const t = totais.get(imovelId) ?? VAZIO;
@@ -146,7 +156,7 @@ export async function carregarApartamentos(
       despesasProprietario: t.montante.despesa_proprietario ?? 0,
       acertoPeriodo: imovelId ? doDono(acertoPeriodo, imovelId) : 0,
       saldo: imovelId ? doDono(saldos, imovelId) : 0,
-      saldoOutrosDonos: imovelId ? deOutros(saldos, imovelId) : 0,
+      saldosAnteriores: imovelId ? anteriores(imovelId) : [],
       aCobrar: adiant.filter((a) => a.situacao !== "contestado").reduce((s, a) => s + a.aberto, 0),
       contestados: adiant.filter((a) => a.situacao === "contestado").length,
     };
@@ -190,7 +200,12 @@ export function somar(linhas: readonly LinhaApartamento[]): LinhaApartamento {
     despesasProprietario: s((l) => l.despesasProprietario),
     acertoPeriodo: s((l) => l.acertoPeriodo),
     saldo: s((l) => l.saldo),
-    saldoOutrosDonos: s((l) => l.saldoOutrosDonos),
+    saldosAnteriores: [
+      ...linhas
+        .flatMap((l) => l.saldosAnteriores)
+        .reduce((m, x) => m.set(x.proprietarioId, { ...x, total: (m.get(x.proprietarioId)?.total ?? 0) + x.total }), new Map<string, { proprietarioId: string; nome: string; total: number }>())
+        .values(),
+    ].filter((x) => x.total !== 0),
     aCobrar: s((l) => l.aCobrar),
     contestados: s((l) => l.contestados),
   };
