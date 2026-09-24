@@ -262,20 +262,23 @@ const ENVIO_EXPIRA_MS = 15 * 60_000;
  * ou se há outra tentativa em andamento (recente); uma tentativa antiga que ficou pela metade
  * (execução interrompida antes de confirmar) é retomada.
  */
-async function reservarEnvio(db: Db, chave: string, agora: Date): Promise<boolean> {
-  const valor = { em: agora.toISOString(), estado: "enviando" };
+async function reservarEnvio(db: Db, chave: string, agora: Date): Promise<{ corte: Date } | null> {
+  // `corte`: o limite das reservas novas desta tentativa. Uma retomada reaproveita o da tentativa
+  // original (o provedor ignora o reenvio com a mesma chave; o marco tem de ser o do e-mail que saiu).
+  const valor = { em: agora.toISOString(), estado: "enviando", corte: agora.toISOString() };
   const [nova] = await db.insert(appSettings).values({ key: chave, value: valor }).onConflictDoNothing().returning();
-  if (nova) return true;
+  if (nova) return { corte: agora };
   const [l] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, chave));
-  const v = (l?.value ?? {}) as { em?: string; estado?: string };
-  if (v.estado !== "enviando" || !v.em || agora.getTime() - Date.parse(v.em) < ENVIO_EXPIRA_MS) return false;
+  const v = (l?.value ?? {}) as { em?: string; estado?: string; corte?: string };
+  if (v.estado !== "enviando" || !v.em || agora.getTime() - Date.parse(v.em) < ENVIO_EXPIRA_MS) return null;
+  const corte = v.corte && !Number.isNaN(Date.parse(v.corte)) ? v.corte : v.em;
   // Troca só se ninguém retomou antes (compara o valor antigo).
   const [retomada] = await db
     .update(appSettings)
-    .set({ value: valor, updatedAt: new Date() })
+    .set({ value: { ...valor, corte }, updatedAt: new Date() })
     .where(and(eq(appSettings.key, chave), sql`${appSettings.value} ->> 'em' = ${v.em}`, sql`${appSettings.value} ->> 'estado' = 'enviando'`))
     .returning();
-  return Boolean(retomada);
+  return retomada ? { corte: new Date(corte) } : null;
 }
 
 export type ResultadoEnvio = { enviados: number; jaEnviados: number; falhas: string[]; aviso: string | null };
@@ -296,21 +299,23 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
   // Cada destinatário tem o seu marco de "reservas novas": quem falhou (ou entrou depois) recebe
   // tudo desde o que recebeu por último, sem depender dos outros.
   const agendas = new Map<string, Agenda>();
-  const agendaDesde = async (desde: Date) => {
-    const k = desde.toISOString();
-    if (!agendas.has(k)) agendas.set(k, await montarAgenda(db, organizacaoId, hoje, desde, agora));
+  const agendaDesde = async (desde: Date, corte: Date) => {
+    const k = `${desde.toISOString()}|${corte.toISOString()}`;
+    if (!agendas.has(k)) agendas.set(k, await montarAgenda(db, organizacaoId, hoje, desde, corte));
     return agendas.get(k)!;
   };
   for (const d of config.destinatarios) {
     const chave = chaveEnvio(organizacaoId, hoje, d.email, o.manual);
-    if (!(await reservarEnvio(db, chave, agora))) {
+    const reserva = await reservarEnvio(db, chave, agora);
+    if (!reserva) {
       r.jaEnviados++;
       continue;
     }
+    const { corte } = reserva;
     try {
       // Sem marco próprio (primeira agenda desta pessoa): as reservas novas das últimas 24h.
       const desde = (await lerMarco(db, chaveUltimaDe(organizacaoId, d.email))) ?? new Date(agora.getTime() - 86_400_000);
-      const agenda = await agendaDesde(desde);
+      const agenda = await agendaDesde(desde, corte);
       // A mesma chave do dia vai para o provedor: uma nova tentativa do mesmo envio não duplica.
       await correio.enviar({ para: d.email, assunto: `Agenda SCL — ${diaCurto(agenda.dias[0])} a ${diaCurto(agenda.dias.at(-1)!)}`, texto: textoDaAgenda(agenda, d.cidades), chave });
     } catch (e) {
@@ -324,8 +329,8 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
     try {
       // Marca do dia e marco das reservas novas juntos: ou os dois, ou nenhum.
       await db.transaction(async (tx) => {
-        await tx.update(appSettings).set({ value: { em: agora.toISOString(), estado: "enviado" }, updatedAt: new Date() }).where(eq(appSettings.key, chave));
-        await gravarMarco(tx, chaveUltimaDe(organizacaoId, d.email), agora);
+        await tx.update(appSettings).set({ value: { em: agora.toISOString(), estado: "enviado", corte: corte.toISOString() }, updatedAt: new Date() }).where(eq(appSettings.key, chave));
+        await gravarMarco(tx, chaveUltimaDe(organizacaoId, d.email), corte);
       });
     } catch (e) {
       r.falhas.push(`${d.email}: enviada, mas não foi possível registrar o envio (${e instanceof Error ? e.message : String(e)})`);

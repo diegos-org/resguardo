@@ -197,6 +197,24 @@ describe("configuração e envio", () => {
     expect(enviadas).toHaveLength(1);
   });
 
+  it("retomada de tentativa interrompida usa o corte da tentativa original (reserva entre as duas vai na próxima)", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    const original = new Date(AGORA.getTime() - 20 * 60_000);
+    // A primeira tentativa (20 min atrás) caiu depois de o provedor aceitar: a marca ficou "enviando".
+    await db.insert(appSettings).values({ key: `agenda-diaria:${org}:2026-10-01:a@example.com`, value: { em: original.toISOString(), estado: "enviando", corte: original.toISOString() } });
+    // Reserva distante criada entre as tentativas.
+    await nova(rio, "2027-01-10", "2027-01-12", new Date(AGORA.getTime() - 10 * 60_000).toISOString());
+    const correio = new CorreioMemoria();
+    expect(await enviarAgenda(db, org, correio, AGORA)).toMatchObject({ enviados: 1 });
+    // O marco é o corte original: a reserva nova não é dada como avisada…
+    expect(await ultimaAgendaDe(db, org, "a@example.com")).toEqual(original);
+    expect(correio.enviadas[0].texto).not.toContain("10/01");
+    // …e chega na agenda seguinte.
+    const amanha = new CorreioMemoria();
+    await enviarAgenda(db, org, amanha, new Date("2026-10-02T23:00:00Z"));
+    expect(amanha.enviadas[0].texto).toContain("entrada dom 10/01");
+  });
+
   it("reserva criada depois do corte fica para a próxima agenda (sem repetir)", async () => {
     await nova(rio, "2026-12-20", "2026-12-27", "2026-10-01T23:00:30Z");
     const antes = await montarAgenda(db, org, "2026-10-01", new Date("2026-10-01T22:00:00Z"), AGORA);
