@@ -556,6 +556,14 @@ describe("configuração e envio", () => {
     expect(agenda.secoes.flatMap((x) => x.novas).map((n) => n.checkin)).toContain("2028-08-01");
   });
 
+  it("prévia da tela: reserva que todos já receberam não aparece de novo", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    await nova(rio, "2028-08-07", "2028-08-09", new Date(AGORA.getTime() - 60_000).toISOString());
+    await enviarAgenda(db, org, new CorreioMemoria(), AGORA);
+    const { agenda } = await previaDaAgenda(db, org, new Date(AGORA.getTime() + 60_000));
+    expect(agenda.secoes.flatMap((x) => x.novas).map((n) => n.checkin)).not.toContain("2028-08-07");
+  });
+
   it("prévia da tela: imóvel reativado mostra as reservas das últimas 24h, como no envio", async () => {
     await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
     await db.update(imoveis).set({ ativo: false }).where(eq(imoveis.id, buzios));

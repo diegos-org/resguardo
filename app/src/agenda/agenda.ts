@@ -482,7 +482,11 @@ export async function previaDaAgenda(db: Db, organizacaoId: string, agora: Date 
     .map((t) => t - 86_400_000 - SOBREPOSICAO_MS);
   const inicios = [...marcos.map((m) => (m ? m.getTime() - SOBREPOSICAO_MS : umDia.getTime())), umDia.getTime(), ...cortesIncertos];
   const desde = marcos.length ? new Date(Math.min(...inicios)) : (ultima ?? umDia);
-  const agenda = await montarAgenda(db, organizacaoId, hojeISO("America/Sao_Paulo", agora), desde, agora);
+  const bruta = await montarAgenda(db, organizacaoId, hojeISO("America/Sao_Paulo", agora), desde, agora);
+  // Como no envio: reserva nova que todos os destinatários já receberam não aparece de novo.
+  const listas = await Promise.all(config.destinatarios.map((d) => lerAvisadas(db, chaveAvisadasDe(organizacaoId, d.email))));
+  const deTodos = listas.length ? listas.reduce<Avisada[]>((comum, l) => comum.filter((x) => l.some((y) => y.id === x.id)), listas[0]) : [];
+  const agenda = semAvisadas(bruta, deTodos);
   return { agenda, ultima };
 }
 
