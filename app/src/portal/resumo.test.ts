@@ -7,7 +7,7 @@ import type { Db } from "@/db/types";
 import { criarCategoria } from "@/despesas/categorias";
 import { registrarDespesa } from "@/despesas/despesas";
 import type { DadosReserva } from "@/reservas/regras";
-import { criarReserva } from "@/reservas/repositorio";
+import { cancelarReserva, criarReserva } from "@/reservas/repositorio";
 import { proprietariosDoUsuario, resumoDoProprietario } from "./resumo";
 
 let db: Db;
@@ -80,6 +80,16 @@ describe("resumo do portal", () => {
     const r = await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo });
     // Bruto 1.000; taxa 150; comissão 15% de 850 = 127,50; parte dela 722,50; reparo 200 pago pela empresa.
     expect(r).toEqual({ reservas: 1, receitaBruta: 100000, taxasCanais: 15000, comissao: 12750, suaParte: 72250, despesas: 20000, acerto: 72250 - 20000 });
+  });
+
+  it("só reservas confirmadas: pendente não entra e cancelada sai da contagem", async () => {
+    await criarReserva(db, org, { ...reserva(a), checkin: "2026-10-20", checkout: "2026-10-22", estado: "pendente" }, null);
+    const r = await criarReserva(db, org, { ...reserva(a), checkin: "2026-10-25", checkout: "2026-10-27" }, null);
+    if (!r.ok) throw new Error("reserva");
+    expect((await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo })).reservas).toBe(2);
+    await cancelarReserva(db, org, r.reserva.id, null);
+    const depois = await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo });
+    expect(depois).toMatchObject({ reservas: 1, receitaBruta: 100000, suaParte: 72250 });
   });
 
   it("não vê imóvel de outro dono, nem 'todos' quando a lista vem vazia", async () => {
