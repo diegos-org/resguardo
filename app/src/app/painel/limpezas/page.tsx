@@ -40,6 +40,9 @@ export default async function Limpezas({ searchParams }: PageProps<"/painel/limp
   const salvo = params.salvo === "1";
   const erro = typeof params.erro === "string" ? params.erro : undefined;
   const conta = (e: EstadoLimpeza) => lista.filter((l) => l.estado === e).length;
+  // "Quem fez": as ativas e, se foi arquivada depois, a que já estava escolhida.
+  const opcoesDe = (l: (typeof lista)[number]) =>
+    l.profissionalId && !profissionais.some((p) => p.id === l.profissionalId) ? [...profissionais, { id: l.profissionalId, nome: `${l.profissional ?? "Profissional"} (arquivada)` }] : profissionais;
   const custoTotal = lista.filter((l) => l.estado === "realizada").reduce((t, l) => t + (l.custo ?? 0), 0);
 
   return (
@@ -133,7 +136,7 @@ export default async function Limpezas({ searchParams }: PageProps<"/painel/limp
                     Quem fez
                     <select name="profissionalId" defaultValue={l.profissionalId ?? ""} required>
                       <option value="">Escolha…</option>
-                      {profissionais.map((p) => (
+                      {opcoesDe(l).map((p) => (
                         <option key={p.id} value={p.id}>
                           {p.nome}
                         </option>

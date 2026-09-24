@@ -164,6 +164,44 @@ describe("cancelada à mão e mudança de imóvel", () => {
     expect(itens[0]).toMatchObject({ imovelId: a, inicio: "2026-10-15", fim: "2026-10-16", tipo: "limpeza", categoria: "limpeza" });
   });
 
+  it("reserva de volta a pendente: limpeza aberta sai; confirmada de novo, volta", async () => {
+    await sincronizarReserva(db, org, "csv", "booking:X1", reserva(a, "2026-10-10", "2026-10-15"), null);
+    await sincronizarLimpezas(db, org, periodo);
+    await sincronizarReserva(db, org, "csv", "booking:X1", reserva(a, "2026-10-10", "2026-10-15", { estado: "pendente" }), null);
+    expect((await sincronizarLimpezas(db, org, periodo)).canceladas).toBe(1);
+    expect((await lista())[0]).toMatchObject({ estado: "cancelada", canceladaManual: false });
+    await sincronizarReserva(db, org, "csv", "booking:X1", reserva(a, "2026-10-10", "2026-10-15"), null);
+    await sincronizarLimpezas(db, org, periodo);
+    expect((await lista())[0]).toMatchObject({ estado: "pedida" });
+  });
+
+  it("realizada cuja reserva mudou de mês aparece também no mês novo, com o aviso", async () => {
+    await sincronizarReserva(db, org, "csv", "booking:X1", reserva(a, "2026-10-25", "2026-10-30"), null);
+    await sincronizarLimpezas(db, org, periodo);
+    const maria = await profissional();
+    await realizarLimpeza(db, org, (await lista())[0].id, { profissionalId: maria, custo: null }, "2026-10-30", null);
+    await sincronizarReserva(db, org, "csv", "booking:X1", reserva(b, "2026-10-28", "2026-11-03"), null);
+    const novembro = { inicio: "2026-11-01", fim: "2026-12-01" };
+    await sincronizarLimpezas(db, org, novembro);
+    const [l] = await listarLimpezas(db, org, { ...novembro, hoje: "2026-11-05" });
+    expect(l).toMatchObject({ data: "2026-10-30", estado: "realizada", imovelCodigo: "403" });
+    expect(l.avisos.join(" ")).toContain("mudou para 03/11/2026");
+    expect(await listarLimpezas(db, org, { ...novembro, imovelIds: [b], hoje: "2026-11-05" })).toHaveLength(1);
+  });
+
+  it("profissional arquivada depois de escolhida ainda pode ser registrada como quem fez", async () => {
+    await criarReserva(db, org, reserva(a, "2026-10-10", "2026-10-15"), null);
+    await sincronizarLimpezas(db, org, periodo);
+    const maria = await profissional();
+    const joana = await profissional("Joana Fictícia");
+    const [l] = await lista();
+    await confirmarLimpeza(db, org, l.id, maria, null);
+    await editarProfissional(db, org, maria, { nome: "Maria Fictícia", telefone: "", observacoes: "", ativo: false }, null);
+    await editarProfissional(db, org, joana, { nome: "Joana Fictícia", telefone: "", observacoes: "", ativo: false }, null);
+    expect(await realizarLimpeza(db, org, l.id, { profissionalId: joana, custo: null }, "2026-10-15", null)).toMatchObject({ ok: false });
+    expect(await realizarLimpeza(db, org, l.id, { profissionalId: maria, custo: null }, "2026-10-15", null)).toEqual({ ok: true });
+  });
+
   it("cancelada pela reserva volta a pedida quando a reserva é reativada", async () => {
     await sincronizarReserva(db, org, "csv", "booking:X1", reserva(a, "2026-10-10", "2026-10-15"), null);
     await sincronizarLimpezas(db, org, periodo);

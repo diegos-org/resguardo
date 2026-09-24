@@ -90,7 +90,8 @@ export async function sincronizarLimpezas(db: Db, organizacaoId: string, periodo
           await registrarAuditoria(db, { organizacaoId, usuarioId: autorId, acao: "limpeza.reserva_mudou", entidade: "limpeza", entidadeId: l.id, mudancas: calcularMudancas(l, depois) });
         }
       }
-    } else if (res.estado === "cancelada" && aberta) {
+    } else if (aberta) {
+      // Reserva cancelada ou de volta a pendente: a limpeza aberta sai (e volta se ela confirmar de novo).
       const [depois] = await db
         .update(limpezas)
         .set({ estado: "cancelada", atualizadoEm: new Date() })
@@ -98,7 +99,7 @@ export async function sincronizarLimpezas(db: Db, organizacaoId: string, periodo
         .returning();
       if (depois) {
         r.canceladas++;
-        await registrarAuditoria(db, { organizacaoId, usuarioId: autorId, acao: "limpeza.cancelar", entidade: "limpeza", entidadeId: l!.id, mudancas: { estado: [l!.estado, "cancelada (reserva cancelada)"] } });
+        await registrarAuditoria(db, { organizacaoId, usuarioId: autorId, acao: "limpeza.cancelar", entidade: "limpeza", entidadeId: l!.id, mudancas: { estado: [l!.estado, `cancelada (reserva ${res.estado})`] } });
       }
     }
   }
@@ -116,11 +117,14 @@ const dataBr = (d: string) => d.split("-").reverse().join("/");
 
 /** Limpezas do período (por data), com avisos para conferência — nunca preenchidos por suposição. */
 export async function listarLimpezas(db: Db, organizacaoId: string, f: Periodo & { imovelIds?: string[]; hoje: string }): Promise<LinhaLimpeza[]> {
-  const c = [eq(limpezas.organizacaoId, organizacaoId), gte(limpezas.data, f.inicio), lt(limpezas.data, f.fim)];
+  // Realizada cuja reserva mudou de mês/imóvel aparece também no período/imóvel novo da reserva,
+  // com o aviso (a limpeza em si continua na data e no imóvel em que foi feita).
+  const realizadaMovida = and(eq(limpezas.estado, "realizada"), gte(reservas.checkout, f.inicio), lt(reservas.checkout, f.fim));
+  const c = [eq(limpezas.organizacaoId, organizacaoId), or(and(gte(limpezas.data, f.inicio), lt(limpezas.data, f.fim)), realizadaMovida)];
   if (f.imovelIds) {
     const ids = f.imovelIds.filter(uuidValido);
     if (!ids.length) return [];
-    c.push(inArray(limpezas.imovelId, ids));
+    c.push(or(inArray(limpezas.imovelId, ids), and(eq(limpezas.estado, "realizada"), inArray(reservas.imovelId, ids))));
   }
   const linhas = await db
     .select({
@@ -254,7 +258,8 @@ export function realizarLimpeza(
     ["pedida", "confirmada"],
     async (l, tx) => {
       if (l.data > hoje) return "A limpeza ainda não chegou: só dá para registrar como realizada a partir do dia dela.";
-      if (!(await profissionalAtivo(tx, organizacaoId, d.profissionalId))) return "Diga quem fez a limpeza.";
+      // A profissional já escolhida vale mesmo se foi arquivada depois (o trabalho é de antes).
+      if (d.profissionalId !== l.profissionalId && !(await profissionalAtivo(tx, organizacaoId, d.profissionalId))) return "Diga quem fez a limpeza.";
       // Sem custo no formulário, mantém o que já estava (ex.: reaberta e realizada de novo).
       return { estado: "realizada", profissionalId: d.profissionalId, custo: d.custo ?? l.custo, observacao: (d.observacao ?? l.observacao).trim().slice(0, 500), realizadaEm: new Date() };
     },
