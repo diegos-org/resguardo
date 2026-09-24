@@ -61,7 +61,12 @@ function TextoRodape({ r, empresa }: { r: Rodape; empresa: string }) {
         </>
       );
     case "no_repasse_posterior":
-      return <p style={{ margin: 0 }}>O saldo deste mês já entrou no repasse de {nomeMes(r.repassePosterior!)}: veja aquele mês.</p>;
+      return (
+        <>
+          <p style={{ margin: 0 }}>O saldo deste mês já entrou no repasse de {nomeMes(r.repassePosterior!)}: veja aquele mês.</p>
+          <DepoisDoFechamento r={r} empresa={empresa} />
+        </>
+      );
     case "fechado":
       return (
         <>

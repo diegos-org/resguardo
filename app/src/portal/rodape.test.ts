@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registrarAjuste } from "@/ajustes/ajustes";
 import { criarContrato } from "@/contratos/repositorio";
@@ -139,7 +140,21 @@ describe("rodapé do portal", () => {
     await criarReserva(db, org, { ...reserva(b), checkin: "2026-11-10", checkout: "2026-11-13" }, null);
     const f = await fecharMes(db, org, outro, "2026-11", "2026-12-02", null);
     if (!f.ok) throw new Error(f.erro);
-    expect(await rodape("2026-12-02", { id: outro, nome: "Outro" })).toMatchObject({ situacao: "no_repasse_posterior", repassePosterior: "2026-11", valor: 0 });
+    expect(await rodape("2026-12-02", { id: outro, nome: "Outro" })).toMatchObject({ situacao: "no_repasse_posterior", repassePosterior: "2026-11", valor: 0, diferenca: 0 });
+    // Com mais de um repasse depois, aponta o primeiro (o que levou o saldo deste mês).
+    await criarReserva(db, org, { ...reserva(b), checkin: "2026-12-10", checkout: "2026-12-13" }, null);
+    const g = await fecharMes(db, org, outro, "2026-12", "2027-01-02", null);
+    if (!g.ok) throw new Error(g.erro);
+    expect(await rodape("2027-01-02", { id: outro, nome: "Outro" })).toMatchObject({ situacao: "no_repasse_posterior", repassePosterior: "2026-11" });
+    // Lançamento retroativo em outubro depois dos repasses: não foi levado; aparece à parte.
+    const [vinculo] = await db.select().from(proprietarioImoveis).where(eq(proprietarioImoveis.proprietarioId, outro));
+    await registrarDespesa(
+      db,
+      org,
+      { responsavel: "proprietario", pagoPor: "empresa", categoriaId: categoria, descricao: "Conserto", valor: 3000, data: "2026-10-25", imovelId: vinculo.imovelId, proprietarioId: null, fornecedor: "", comprovante: "", paga: true, dataPagamento: "2026-10-25" },
+      null,
+    );
+    expect(await rodape("2027-01-03", { id: outro, nome: "Outro" })).toMatchObject({ situacao: "no_repasse_posterior", repassePosterior: "2026-11", diferenca: -3000 });
   });
 
   it("sem movimento: zerado; mês inválido ou sem proprietário: nada", async () => {

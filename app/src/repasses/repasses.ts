@@ -89,9 +89,12 @@ export type PrevisaoRepasse = ReturnType<typeof calcularRepasse> & {
   avisos: string[];
   /** Há acerto pendente ou ajuste a esclarecer até este mês (o valor ainda não é definitivo). */
   emConferencia: boolean;
-  /** Mês ("AAAA-MM") de um repasse posterior já fechado, que levou o saldo deste mês; null = nenhum. */
+  /** Mês ("AAAA-MM") do primeiro repasse posterior em vigor, que levou o saldo deste mês; null = nenhum. */
   repassePosterior: string | null;
-  /** Mudança no acerto depois do fechamento deste mês (vai para o próximo repasse); 0 = nenhuma. */
+  /**
+   * Mudança no acerto depois do fechamento deste mês — ou, sem repasse próprio, depois do último
+   * repasse posterior (lançamento retroativo) — que vai para o próximo repasse; 0 = nenhuma.
+   */
   diferencaPosFechamento: number;
   repasse: Repasse | null;
 };
@@ -164,12 +167,14 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
     .select()
     .from(repasses)
     .where(and(eq(repasses.organizacaoId, org), eq(repasses.proprietarioId, dono.id), eq(repasses.mes, lim.inicio), isNull(repasses.estornadoEm)));
-  const [posterior] = await db
-    .select({ mes: repasses.mes })
+  // Repasses de meses seguintes em vigor, do mais antigo ao mais recente.
+  const posteriores = await db
+    .select({ mes: repasses.mes, criadoEm: repasses.criadoEm })
     .from(repasses)
     .where(and(eq(repasses.organizacaoId, org), eq(repasses.proprietarioId, dono.id), gt(repasses.mes, lim.inicio), isNull(repasses.estornadoEm)))
-    .orderBy(desc(repasses.mes))
-    .limit(1);
+    .orderBy(asc(repasses.mes));
+  const primeiroPosterior = posteriores[0];
+  const posterior = posteriores.at(-1);
   // Só adiantamentos do mês ou anteriores (os de depois ainda não estão no saldo).
   const doMes = adiantamentos.filter((a) => a.data < lim.fim);
   const contestadoPorImovel = new Map<string | null, number>();
@@ -194,9 +199,26 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
     diferenca = calc.saldo + calc.contestado - (atual.saldo + atual.contestado - atual.valor);
     if (diferenca !== 0) avisos.push(`Depois do fechamento, o acerto até este mês mudou em ${(diferenca / 100).toFixed(2).replace(".", ",")}: a diferença entra no próximo repasse.`);
   }
+  if (!atual && posterior) {
+    // Sem repasse próprio: o saldo até este mês foi levado pelos repasses seguintes. O que foi
+    // lançado (com data até este mês) depois do último deles ainda não foi levado por nenhum.
+    const [depois] = await db
+      .select({ total: sum(lancamentos.efeitoSaldo) })
+      .from(lancamentos)
+      .where(
+        and(
+          eq(lancamentos.organizacaoId, org),
+          eq(lancamentos.proprietarioId, dono.id),
+          lt(lancamentos.competencia, lim.fim),
+          gt(lancamentos.criadoEm, posterior.criadoEm),
+        ),
+      );
+    diferenca = Number(depois?.total ?? 0);
+    if (diferenca !== 0) avisos.push(`Depois do repasse de ${nomeMes(posterior.mes.slice(0, 7))}, o acerto até este mês mudou em ${(diferenca / 100).toFixed(2).replace(".", ",")}: a diferença entra no próximo repasse.`);
+  }
   return { ...calc, proprietarioId: dono.id, nome: dono.nome, email: dono.email, chavePix: dono.chavePix, imoveis: vinculos.map((v) => v.codigo), bloqueios, avisos, repasse: atual ?? null,
     emConferencia: Boolean(pendentes[0]?.n || ajustesAbertos?.n),
-    repassePosterior: posterior ? posterior.mes.slice(0, 7) : null,
+    repassePosterior: primeiroPosterior ? primeiroPosterior.mes.slice(0, 7) : null,
     diferencaPosFechamento: diferenca,
   };
 }
