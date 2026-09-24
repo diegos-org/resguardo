@@ -171,7 +171,7 @@ export default async function Manutencao({ searchParams }: PageProps<"/painel/ma
               <input type="hidden" name="voltar" value={voltar} />
               <label style={{ flex: "0 1 200px" }}>
                 Data do serviço
-                <input type="date" name="data" defaultValue={hoje} max={hoje} required />
+                <input type="date" name="data" defaultValue={hoje} min={m.aprovadaEm ? hojeISO(undefined, m.aprovadaEm) : undefined} max={hoje} required />
               </label>
               <div className={styles.acoes}>
                 <button type="submit">Registrar como feita</button>

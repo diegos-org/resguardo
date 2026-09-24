@@ -12,6 +12,7 @@ import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
 import { type EstadoManutencao, imoveis, lancamentos, manutencoes, proprietarioImoveis } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { registrarDespesa, type Responsavel, RESPONSAVEIS } from "@/despesas/despesas";
+import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { formatBRL } from "@/lib/money";
 import { dataValida } from "@/reservas/regras";
@@ -39,17 +40,20 @@ export async function criarManutencao(db: Db, organizacaoId: string, d: { imovel
   const titulo = d.titulo.trim();
   if (!titulo || titulo.length > 200) return { ok: false, erro: "Diga o que precisa ser feito (até 200 caracteres)." };
   if (d.descricao.length > 1000) return { ok: false, erro: "Descrição longa demais (até 1000 caracteres)." };
-  const [im] = await db
-    .select({ id: imoveis.id })
-    .from(imoveis)
-    .where(and(eq(imoveis.id, d.imovelId), eq(imoveis.organizacaoId, organizacaoId)));
-  if (!im) return { ok: false, erro: "Imóvel não encontrado." };
-  const [m] = await db
-    .insert(manutencoes)
-    .values({ organizacaoId, imovelId: d.imovelId, titulo, descricao: d.descricao.trim(), criadoPor: autorId })
-    .returning();
-  await registrarAuditoria(db, { organizacaoId, usuarioId: autorId, acao: "manutencao.criar", entidade: "manutencao", entidadeId: m.id, mudancas: { titulo: [null, titulo] } });
-  return { ok: true, id: m.id };
+  // Pedido e histórico juntos: ou os dois ficam, ou nenhum.
+  return db.transaction(async (tx) => {
+    const [im] = await tx
+      .select({ id: imoveis.id })
+      .from(imoveis)
+      .where(and(eq(imoveis.id, d.imovelId), eq(imoveis.organizacaoId, organizacaoId)));
+    if (!im) return { ok: false as const, erro: "Imóvel não encontrado." };
+    const [m] = await tx
+      .insert(manutencoes)
+      .values({ organizacaoId, imovelId: d.imovelId, titulo, descricao: d.descricao.trim(), criadoPor: autorId })
+      .returning();
+    await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "manutencao.criar", entidade: "manutencao", entidadeId: m.id, mudancas: { titulo: [null, titulo] } });
+    return { ok: true as const, id: m.id };
+  });
 }
 
 async function travar(tx: Db, organizacaoId: string, id: string): Promise<Manutencao | null> {
@@ -140,11 +144,24 @@ export function cancelarManutencao(db: Db, organizacaoId: string, id: string, mo
   return transicao(db, organizacaoId, id, ABERTAS, async (m) => ({ estado: "cancelada", observacao: comMotivo("Cancelada", motivo, m) }), "manutencao.cancelar", autorId);
 }
 
-/** Registra que o serviço foi feito (só aprovada; a data não pode ser futura). */
+/** Registra que o serviço foi feito: só aprovada, e a data vai do dia da aprovação até hoje. */
 export function realizarManutencao(db: Db, organizacaoId: string, id: string, data: string, hoje: string, autorId: string | null): Promise<Resultado> {
   if (!dataValida(data)) return Promise.resolve({ ok: false, erro: "Data inválida." });
   if (data > hoje) return Promise.resolve({ ok: false, erro: "A data do serviço não pode ser no futuro." });
-  return transicao(db, organizacaoId, id, ["aprovada"], async () => ({ estado: "realizada", dataRealizada: data }), "manutencao.realizar", autorId);
+  return transicao(
+    db,
+    organizacaoId,
+    id,
+    ["aprovada"],
+    async (m) => {
+      const aprovadaEm = m.aprovadaEm ? hojeISO(undefined, m.aprovadaEm) : null;
+      if (!aprovadaEm) return "Manutenção sem aprovação registrada.";
+      if (data < aprovadaEm) return `A data do serviço não pode ser antes da aprovação (${aprovadaEm.split("-").reverse().join("/")}).`;
+      return { estado: "realizada", dataRealizada: data };
+    },
+    "manutencao.realizar",
+    autorId,
+  );
 }
 
 /** A despesa ligada já foi estornada (no livro)? */

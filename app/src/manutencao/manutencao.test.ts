@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { historicoDe } from "@/auditoria/auditoria";
-import { imoveis, lancamentos, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
+import { imoveis, lancamentos, manutencoes, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { criarCategoria } from "@/despesas/categorias";
@@ -53,6 +53,12 @@ async function nova(imovelId = a, titulo = "Trocar chuveiro") {
 }
 const custo = (over: Partial<DadosCusto> = {}): DadosCusto => ({ categoriaId: categoria, valor: 45000, paga: true, dataPagamento: "2026-10-09", pagoPor: "empresa", comprovante: "", ...over });
 const lista = () => listarManutencoes(db, org);
+/** Aprova e fixa a data da aprovação em 05/10 (o "hoje" dos testes é 10/10). */
+async function aprovar(id: string, responsavel: string, autor: string | null) {
+  const r = await aprovarManutencao(db, org, id, responsavel, autor);
+  if (r.ok) await db.update(manutencoes).set({ aprovadaEm: new Date("2026-10-05T15:00:00Z") }).where(eq(manutencoes.id, id));
+  return r;
+}
 
 describe("fluxo da manutenção", () => {
   it("pedido → orçamento → aprovação (proprietário paga) → feita → custo vira despesa do proprietário com adiantamento", async () => {
@@ -60,7 +66,7 @@ describe("fluxo da manutenção", () => {
     expect((await lista())[0]).toMatchObject({ estado: "pedida", imovelCodigo: "403", responsavel: null });
     expect(await registrarOrcamento(db, org, id, { fornecedor: "Eletricista Fictício", valor: 45000 }, null)).toMatchObject({ ok: true });
     expect((await lista())[0].avisos).toEqual(["Orçamento aguardando aprovação do Diego: não execute antes."]);
-    expect(await aprovarManutencao(db, org, id, "proprietario", null)).toMatchObject({ ok: true });
+    expect(await aprovar(id, "proprietario", null)).toMatchObject({ ok: true });
     expect(await realizarManutencao(db, org, id, "2026-10-08", HOJE, null)).toMatchObject({ ok: true });
     expect((await lista())[0]).toMatchObject({ estado: "realizada", custo: null, avisos: ["Custo ainda não lançado."] });
     // Feita sem custo continua pedindo ação; com o custo lançado, sai da lista "em aberto".
@@ -84,8 +90,8 @@ describe("fluxo da manutenção", () => {
     const id = await nova(b);
     await registrarOrcamento(db, org, id, { fornecedor: "Encanador", valor: 20000 }, null);
     // Imóvel sem proprietário: só a empresa pode pagar.
-    expect(await aprovarManutencao(db, org, id, "proprietario", null)).toMatchObject({ ok: false, erro: expect.stringContaining("não tem proprietário") });
-    expect(await aprovarManutencao(db, org, id, "empresa", null)).toMatchObject({ ok: true });
+    expect(await aprovar(id, "proprietario", null)).toMatchObject({ ok: false, erro: expect.stringContaining("não tem proprietário") });
+    expect(await aprovar(id, "empresa", null)).toMatchObject({ ok: true });
     await realizarManutencao(db, org, id, HOJE, HOJE, null);
     expect(await lancarCusto(db, org, id, custo({ valor: 20000, paga: false, dataPagamento: null }), null)).toMatchObject({ ok: true });
     const doLivro = await db.select().from(lancamentos).where(eq(lancamentos.organizacaoId, org));
@@ -94,11 +100,11 @@ describe("fluxo da manutenção", () => {
 
   it("orçamento não autoriza: não realiza sem aprovação; orçamento novo depois de aprovada exige aprovar de novo", async () => {
     const id = await nova();
-    expect(await aprovarManutencao(db, org, id, "empresa", null)).toMatchObject({ ok: false });
+    expect(await aprovar(id, "empresa", null)).toMatchObject({ ok: false });
     expect(await realizarManutencao(db, org, id, HOJE, HOJE, null)).toMatchObject({ ok: false });
     await registrarOrcamento(db, org, id, { fornecedor: "Eletricista", valor: 45000 }, null);
     expect(await realizarManutencao(db, org, id, HOJE, HOJE, null)).toMatchObject({ ok: false });
-    await aprovarManutencao(db, org, id, "empresa", null);
+    await aprovar(id, "empresa", null);
     await registrarOrcamento(db, org, id, { fornecedor: "Outro eletricista", valor: 60000 }, null);
     expect((await lista())[0]).toMatchObject({ estado: "orcada", orcamento: 60000, responsavel: null, aprovadaEm: null });
     expect(await realizarManutencao(db, org, id, HOJE, HOJE, null)).toMatchObject({ ok: false });
@@ -110,12 +116,18 @@ describe("fluxo da manutenção", () => {
     expect(await registrarOrcamento(db, org, id, { fornecedor: "X", valor: 0 }, null)).toMatchObject({ ok: false });
     expect(await registrarOrcamento(db, org, id, { fornecedor: "X", valor: 100_000_001 }, null)).toMatchObject({ ok: false });
     await registrarOrcamento(db, org, id, { fornecedor: "X", valor: 100 }, null);
-    expect(await aprovarManutencao(db, org, id, "a_definir", null)).toMatchObject({ ok: false });
-    await aprovarManutencao(db, org, id, "empresa", null);
+    expect(await aprovar(id, "a_definir", null)).toMatchObject({ ok: false });
+    await aprovar(id, "empresa", null);
     expect(await realizarManutencao(db, org, id, "2026-10-11", HOJE, null)).toMatchObject({ ok: false, erro: expect.stringContaining("futuro") });
-    expect(await cancelarManutencao(db, org, id, " ", null)).toMatchObject({ ok: false });
-    expect(await cancelarManutencao(db, org, id, "Proprietário resolveu", null)).toMatchObject({ ok: true });
-    expect((await lista())[0]).toMatchObject({ estado: "cancelada", observacao: "Cancelada: Proprietário resolveu" });
+    expect(await realizarManutencao(db, org, id, "2026-10-04", HOJE, null)).toMatchObject({ ok: false, erro: expect.stringContaining("antes da aprovação (05/10/2026)") });
+    expect(await realizarManutencao(db, org, id, "2026-10-05", HOJE, null)).toMatchObject({ ok: true });
+    expect(await cancelarManutencao(db, org, id, "x", null)).toMatchObject({ ok: false });
+    const id3 = await nova(a, "Trocar lâmpada");
+    await registrarOrcamento(db, org, id3, { fornecedor: "X", valor: 100 }, null);
+    await aprovar(id3, "empresa", null);
+    expect(await cancelarManutencao(db, org, id3, " ", null)).toMatchObject({ ok: false });
+    expect(await cancelarManutencao(db, org, id3, "Proprietário resolveu", null)).toMatchObject({ ok: true });
+    expect((await lista()).find((m) => m.id === id3)).toMatchObject({ estado: "cancelada", observacao: "Cancelada: Proprietário resolveu" });
 
     const id2 = await nova(b, "Pintura");
     expect(await recusarManutencao(db, org, id2, "", null)).toMatchObject({ ok: false });
@@ -126,7 +138,7 @@ describe("fluxo da manutenção", () => {
   it("despesa estornada em Despesas: aviso e dá para lançar de novo; custo acima do orçamento avisa", async () => {
     const id = await nova();
     await registrarOrcamento(db, org, id, { fornecedor: "Eletricista", valor: 40000 }, null);
-    await aprovarManutencao(db, org, id, "empresa", null);
+    await aprovar(id, "empresa", null);
     await realizarManutencao(db, org, id, HOJE, HOJE, null);
     await lancarCusto(db, org, id, custo({ valor: 45000, paga: false, dataPagamento: null }), null);
     let [m] = await lista();
@@ -138,6 +150,13 @@ describe("fluxo da manutenção", () => {
     expect(await lancarCusto(db, org, id, custo({ valor: 40000, paga: false, dataPagamento: null }), null)).toMatchObject({ ok: true });
     [m] = await lista();
     expect(m).toMatchObject({ custo: 40000, despesaEstornada: false, avisos: [] });
+  });
+
+  it("criar é atômico: imóvel de outra organização não deixa pedido nem histórico", async () => {
+    expect(await criarManutencao(db, org, { imovelId: "00000000-0000-4000-8000-000000000000", titulo: "X", descricao: "" }, null)).toMatchObject({ ok: false });
+    expect(await db.select().from(manutencoes)).toEqual([]);
+    const id = await nova();
+    expect(await historicoDe(db, org, "manutencao", id)).toHaveLength(1);
   });
 
   it("outra organização não vê nem mexe; imóvel de outra organização é recusado", async () => {
