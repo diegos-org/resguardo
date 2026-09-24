@@ -23,6 +23,8 @@ const NOME_ACAO: Record<(typeof ACOES)[number], string> = {
   "manutencao:ler": "Ver manutenção",
   "manutencao:editar": "Gerir manutenção",
   "manutencao:aprovar": "Aprovar orçamento de manutenção e decidir quem paga",
+  "rotina:ler": "Ver rotinas recorrentes",
+  "rotina:editar": "Marcar rotina como feita ou pulada",
   "mensagem:ler": "Ver mensagens",
   "mensagem:enviar": "Enviar mensagens",
   "usuario:gerenciar": "Gerir usuários",

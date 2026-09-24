@@ -25,6 +25,9 @@ export const ACOES = [
   "manutencao:editar",
   /** Aprovar orçamento de manutenção e decidir quem paga: só o admin (Diego). */
   "manutencao:aprovar",
+  /** Rotinas recorrentes: ver e registrar feita/pulada (criar e editar é configuração). */
+  "rotina:ler",
+  "rotina:editar",
   "mensagem:ler",
   "mensagem:enviar",
   "usuario:gerenciar",
@@ -41,6 +44,8 @@ const OPERACAO: readonly Acao[] = [
   "limpeza:editar",
   "manutencao:ler",
   "manutencao:editar",
+  "rotina:ler",
+  "rotina:editar",
   "mensagem:ler",
   "mensagem:enviar",
 ];
