@@ -10,6 +10,7 @@ import type { Db } from "@/db/types";
 import { listarImoveis } from "@/imoveis/repositorio";
 import type { DadosReserva } from "@/reservas/regras";
 import { criarReserva, listarReservas } from "@/reservas/repositorio";
+import { criarRotina } from "@/rotinas/rotinas";
 import { carregarDashboard } from "./dashboard";
 
 let db: Db;
@@ -235,5 +236,14 @@ describe("painel inicial", () => {
     expect(d.reservasNoPeriodo).toBe(2);
     expect(d.alertas[0]).toMatchObject({ nivel: "atencao", texto: expect.stringContaining("sobreposta") });
     expect(d.alertas.some((x) => x.texto.includes("102"))).toBe(false);
+  });
+
+  it("rotinas atrasadas ou para hoje viram alerta com link, só para quem vê rotinas", async () => {
+    await criarRotina(db, org, { titulo: "Conferir faxinas", descricao: "", frequencia: "semanal", proximaData: "2026-10-08" }, null);
+    await criarRotina(db, org, { titulo: "Caixinhas", descricao: "", frequencia: "anual", proximaData: "2026-12-01" }, null);
+    const lista = await listarImoveis(db, org);
+    const base = { imoveis: lista, todos: true, periodo: { inicio: "2026-10-01", fim: "2026-11-01" }, ano: 2026, hoje: "2026-10-09", verFinanceiro: true };
+    expect((await carregarDashboard(db, org, { ...base, verRotinas: true })).alertas).toContainEqual({ nivel: "atencao", texto: "1 rotina(s) atrasada(s) ou para hoje.", link: "/painel/rotinas" });
+    expect((await carregarDashboard(db, org, base)).alertas.some((x) => x.link === "/painel/rotinas")).toBe(false);
   });
 });
