@@ -24,8 +24,8 @@ export default async function Adiantamentos({ searchParams }: PageProps<"/painel
     <>
       <h1>Adiantamentos</h1>
       <p style={{ color: "var(--scl-texto-2)", fontSize: "0.875rem", maxWidth: 820, margin: 0 }}>
-        Despesas dos proprietários que a empresa pagou. Cada uma é quitada uma vez só: por reembolso do proprietário, descontada no repasse
-        mensal ou assumida pela empresa. O que estiver contestado não é cobrado até você resolver.
+        Despesas dos proprietários que a empresa pagou. Cada uma é quitada uma vez só: por reembolso do proprietário, desconto no repasse
+        mensal (quando o repasse estiver pronto, item M4.9) ou assumida pela empresa. O que estiver contestado não é cobrado até você resolver.
       </p>
       {resumo.length > 0 && (
         <div className={styles.rolagem}>

@@ -220,7 +220,9 @@
     depois você resolve: **manter a cobrança** ou **a empresa assume** o valor (vira custo da
     empresa e a dívida some);
   - **desfazer** uma quitação lançada errado (com motivo; o histórico fica).
-  O que não for reembolsado será **descontado no repasse mensal** (M4.9). **Sem dupla
+  O que não for reembolsado vai ser **descontado no repasse mensal** quando o repasse
+  existir (item M4.9, ainda não feito). Até lá, o valor fica em aberto e a cobrança é
+  com você. **Sem dupla
   cobrança:** nunca se quita mais do que o valor, duas pessoas quitando ao mesmo tempo não
   passam do total, e uma despesa cujo adiantamento já teve reembolso não pode ser estornada
   (desfaça a quitação antes).
