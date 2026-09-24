@@ -182,8 +182,9 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
   if (calc.valor > 0 && !dono.chavePix.trim()) avisos.push("Sem chave Pix no cadastro do proprietário.");
   if (calc.contestado > 0) avisos.push(`Adiantamentos contestados (${(calc.contestado / 100).toFixed(2).replace(".", ",")}) ficam fora do desconto até a contestação ser resolvida.`);
   if (atual) {
-    // Depois do fechamento, o saldo do mês deveria ser −contestado. Diferença = algo entrou depois.
-    const diferenca = calc.saldo - (atual.saldo - atual.valor);
+    // O que vai para o próximo repasse é o saldo com os contestados somados de volta. Logo depois
+    // do fechamento isso dá zero; se mudou (lançamento novo, contestação resolvida…), avisa.
+    const diferenca = calc.saldo + calc.contestado - (atual.saldo + atual.contestado - atual.valor);
     if (diferenca !== 0) avisos.push(`Depois do fechamento, o acerto até este mês mudou em ${(diferenca / 100).toFixed(2).replace(".", ",")}: a diferença entra no próximo repasse.`);
   }
   return { ...calc, proprietarioId: dono.id, nome: dono.nome, email: dono.email, chavePix: dono.chavePix, imoveis: vinculos.map((v) => v.codigo), bloqueios, avisos, repasse: atual ?? null };

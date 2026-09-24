@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { contestar, desfazerQuitacao, listarAdiantamentos, obterAdiantamento } from "@/adiantamentos/adiantamentos";
+import { contestar, desfazerQuitacao, listarAdiantamentos, obterAdiantamento, resolverContestacao } from "@/adiantamentos/adiantamentos";
 import { registrarAjuste } from "@/ajustes/ajustes";
 import { criarContrato } from "@/contratos/repositorio";
 import { imoveis, lancamentos, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
@@ -175,6 +175,10 @@ describe("fechamento do mês", () => {
     expect((await fecharMes(db, org, dono, MES, DEPOIS, null)).ok).toBe(true);
     expect(await saldo()).toBe(-40000);
     expect(await obterAdiantamento(db, org, adiant.id)).toMatchObject({ situacao: "contestado", aberto: 40000 });
+    expect((await prever()).avisos.join(" ")).not.toContain("próximo repasse");
+    // Contestação mantida depois do fechamento: a dívida passa a ser descontada no próximo repasse — avisa.
+    await resolverContestacao(db, org, adiant.id, { resolucao: "mantida", nota: "", data: "2026-11-02" }, null);
+    expect((await prever()).avisos.join(" ")).toContain("mudou em -400,00: a diferença entra no próximo repasse");
   });
 
   it("imóvel devedor é compensado com o outro do mesmo proprietário; cada imóvel fica zerado", async () => {
