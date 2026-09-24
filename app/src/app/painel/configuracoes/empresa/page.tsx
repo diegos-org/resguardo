@@ -14,6 +14,7 @@ const CAMPOS = [
   { nome: "telefone", rotulo: "Telefone / WhatsApp", limite: 30 },
   { nome: "endereco", rotulo: "Endereço", limite: 200 },
   { nome: "site", rotulo: "Site", limite: 200, dica: "Com https:// no começo." },
+  { nome: "chavePix", rotulo: "Chave Pix da empresa", limite: 140, dica: "Aparece no portal para o proprietário que deve à empresa, depois do fechamento do mês." },
 ];
 
 export default async function Empresa() {
