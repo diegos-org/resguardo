@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { podeFazer } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
@@ -32,6 +33,11 @@ export default async function EditarProprietario({ params, searchParams }: PageP
   return (
     <>
       <h1>{dono.nome}</h1>
+      {podeFazer(sessao.papel, "financeiro:ler") && (
+        <p style={{ margin: 0 }}>
+          <Link href={`/painel/proprietarios/${dono.id}/relatorio`}>Relatório do mês em PDF</Link>
+        </p>
+      )}
       {salvo && (
         <p role="status" className={styles.sucesso}>
           Proprietário salvo.
