@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { registrarAjuste } from "@/ajustes/ajustes";
 import { criarContrato } from "@/contratos/repositorio";
 import { imoveis, organizacoes, proprietarioImoveis, proprietarios, proprietarioUsuarios, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
@@ -87,9 +88,16 @@ describe("resumo do portal", () => {
     const r = await criarReserva(db, org, { ...reserva(a), checkin: "2026-10-25", checkout: "2026-10-27" }, null);
     if (!r.ok) throw new Error("reserva");
     expect((await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo })).reservas).toBe(2);
+    // Ajuste com a dona ligado a essa reserva continua valendo depois do cancelamento.
+    await registrarAjuste(
+      db,
+      org,
+      { data: "2026-10-26", imovelId: null, reservaId: r.reserva.id, proprietarioId: null, motivo: "Dano no imóvel", origem: "desconhecida", origemComprovada: false, evidencia: "Vistoria", comprovante: "", valor: 5000, direcao: "proprietario_credito" },
+      null,
+    );
     await cancelarReserva(db, org, r.reserva.id, null);
     const depois = await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo });
-    expect(depois).toMatchObject({ reservas: 1, receitaBruta: 100000, suaParte: 72250 });
+    expect(depois).toMatchObject({ reservas: 1, receitaBruta: 100000, suaParte: 72250, acerto: 72250 - 20000 + 5000 });
   });
 
   it("não vê imóvel de outro dono, nem 'todos' quando a lista vem vazia", async () => {

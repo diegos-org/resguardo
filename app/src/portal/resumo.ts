@@ -3,7 +3,7 @@
  * reservas contam pelos lançamentos "parte do proprietário" que têm o proprietário dele, e os
  * valores vêm do mesmo livro do painel (nada é recalculado aqui).
  */
-import { and, eq, gte, inArray, isNotNull, isNull, lt, or, sql, sum } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, isNull, lt, notInArray, or, sql, sum } from "drizzle-orm";
 import { lancamentos, proprietarios, proprietarioUsuarios, reservas, type TipoLancamento } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
@@ -31,6 +31,9 @@ export type ResumoPortal = {
   acerto: number;
 };
 
+/** Lançamentos que a própria reserva gera (motor e seus estornos). */
+const DA_RESERVA: TipoLancamento[] = ["receita_bruta", "taxa_canal", "comissao", "direito_proprietario"];
+
 const ZERO: ResumoPortal = { reservas: 0, receitaBruta: 0, taxasCanais: 0, comissao: 0, suaParte: 0, despesas: 0, acerto: 0 };
 
 export async function resumoDoProprietario(
@@ -43,14 +46,16 @@ export async function resumoDoProprietario(
   // Sem proprietário ou sem imóvel: nada (nunca "todos").
   if (!donos.length || !imoveis.length) return ZERO;
   // Só reservas confirmadas: consulta/pendente não é receita, e cancelada não conta como reserva
-  // (seus lançamentos já foram estornados, mas a contagem ficaria). Lançamento sem reserva passa.
+  // (seus lançamentos já foram estornados, mas a contagem ficaria).
   const confirmadas = db.select({ id: reservas.id }).from(reservas).where(and(eq(reservas.organizacaoId, organizacaoId), eq(reservas.estado, "confirmada")));
   const base = and(
     eq(lancamentos.organizacaoId, organizacaoId),
     gte(lancamentos.competencia, o.periodo.inicio),
     lt(lancamentos.competencia, o.periodo.fim),
     inArray(lancamentos.imovelId, imoveis),
-    or(isNull(lancamentos.reservaId), inArray(lancamentos.reservaId, confirmadas)),
+    // A restrição vale só para o que a reserva gera (bruto, taxa, comissão, parte do dono);
+    // ajuste, despesa e repasse ligados a uma reserva continuam valendo mesmo se ela cair.
+    or(notInArray(lancamentos.tipo, DA_RESERVA), isNull(lancamentos.reservaId), inArray(lancamentos.reservaId, confirmadas)),
   );
   // Linhas do próprio proprietário: parte dele, despesas, acerto.
   const dele = await db
