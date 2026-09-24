@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { autorizar, podeFazer } from "@/acesso/politica";
@@ -101,6 +102,8 @@ export default async function Adiantamento({ params, searchParams }: PageProps<"
             <h2 style={{ fontSize: "1.125rem", margin: 0 }}>Registrar reembolso do proprietário</h2>
             <input type="hidden" name="id" value={a.id} />
             <input type="hidden" name="forma" value="reembolso" />
+            {/* Uma chave por formulário exibido: reenviar o mesmo formulário não registra duas vezes. */}
+            <input type="hidden" name="chave" value={randomUUID()} />
             <div className={styles.linha}>
               <label>
                 Valor (R$)

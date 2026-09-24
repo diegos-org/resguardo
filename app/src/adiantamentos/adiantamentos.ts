@@ -59,7 +59,7 @@ const idDespesa = (chave: string) => chave.match(/^despesa:([0-9a-f-]{36}):pagam
 export async function listarAdiantamentos(
   db: Db,
   organizacaoId: string,
-  f: { proprietarioId?: string; imovelIds?: string[]; id?: string; somenteAbertos?: boolean } = {},
+  f: { proprietarioId?: string; imovelIds?: string[]; id?: string; despesaId?: string; somenteAbertos?: boolean } = {},
 ): Promise<Adiantamento[]> {
   const c = [
     eq(lancamentos.organizacaoId, organizacaoId),
@@ -68,6 +68,7 @@ export async function listarAdiantamentos(
     sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`,
   ];
   if (f.id) c.push(eq(lancamentos.id, f.id));
+  if (f.despesaId) c.push(eq(lancamentos.chaveOrigem, `despesa:${f.despesaId}:pagamento`));
   if (f.proprietarioId) c.push(eq(lancamentos.proprietarioId, f.proprietarioId));
   if (f.imovelIds) c.push(inArray(lancamentos.imovelId, f.imovelIds.filter(uuidValido)));
   const linhas = await db
@@ -123,6 +124,12 @@ export async function obterAdiantamento(db: Db, organizacaoId: string, id: strin
   return (await listarAdiantamentos(db, organizacaoId, { id }))[0] ?? null;
 }
 
+/** O adiantamento ativo gerado pelo pagamento de uma despesa do proprietário (se houver). */
+export async function adiantamentoDaDespesa(db: Db, organizacaoId: string, despesaId: string): Promise<Adiantamento | null> {
+  if (!uuidValido(despesaId)) return null;
+  return (await listarAdiantamentos(db, organizacaoId, { despesaId }))[0] ?? null;
+}
+
 /** Trava o adiantamento (linha do livro) até o fim da transação e devolve o estado atual. */
 async function travar(tx: Db, organizacaoId: string, id: string): Promise<Adiantamento | null> {
   if (!uuidValido(id)) return null;
@@ -146,7 +153,7 @@ export async function quitar(
   db: Db,
   organizacaoId: string,
   adiantamentoId: string,
-  q: { forma: FormaQuitacao; valor: number; data: string; nota?: string },
+  q: { forma: FormaQuitacao; valor: number; data: string; nota?: string; chave?: string },
   autorId: string | null,
   /** Uso interno de resolverContestacao: liga a quitação à contestação que a originou. */
   contestacaoId: string | null = null,
@@ -155,9 +162,19 @@ export async function quitar(
   if (!Number.isSafeInteger(q.valor) || q.valor <= 0) return { ok: false, erro: "Informe um valor maior que zero." };
   if (!dataValida(q.data)) return { ok: false, erro: "Data inválida." };
   const nota = (q.nota ?? "").trim().slice(0, 300);
+  const chave = q.chave?.trim().slice(0, 100) || null;
   return db.transaction(async (tx) => {
     const a = await travar(tx, organizacaoId, adiantamentoId);
     if (!a) return { ok: false as const, erro: "Adiantamento não encontrado." };
+    // Mesmo envio do formulário de novo (clique duplo, voltar e reenviar): já registrado, não
+    // duplica. A trava do adiantamento garante que o segundo envio só lê depois do primeiro gravar.
+    if (chave) {
+      const [repetida] = await tx
+        .select({ id: quitacoesAdiantamento.id })
+        .from(quitacoesAdiantamento)
+        .where(and(eq(quitacoesAdiantamento.adiantamentoId, adiantamentoId), eq(quitacoesAdiantamento.chave, chave)));
+      if (repetida) return { ok: true as const };
+    }
     // Nenhuma quitação com contestação aberta (nem "empresa assume"): resolverContestacao fecha a
     // contestação antes de quitar, então o estado nunca fica contraditório.
     if (a.situacao === "contestado") {
@@ -204,7 +221,7 @@ export async function quitar(
     }
     const [nova] = await tx
       .insert(quitacoesAdiantamento)
-      .values({ organizacaoId, adiantamentoId, forma: q.forma, valor: q.valor, data: q.data, lancamentoId, contestacaoId, nota, criadoPor: autorId })
+      .values({ organizacaoId, adiantamentoId, forma: q.forma, valor: q.valor, data: q.data, lancamentoId, contestacaoId, nota, chave, criadoPor: autorId })
       .returning();
     await registrarAuditoria(tx, {
       organizacaoId,

@@ -607,11 +607,16 @@ export const quitacoesAdiantamento = pgTable(
     /** Contestação cuja resolução ("empresa assume") gerou esta quitação — desfazer reabre essa. */
     contestacaoId: uuid("contestacao_id"),
     nota: text("nota").notNull().default(""),
+    /** Chave do envio do formulário: o mesmo envio repetido (clique duplo, reenvio) não duplica. */
+    chave: text("chave"),
     criadoPor: uuid("criado_por").references(() => usuarios.id),
     criadoEm: criadoEm(),
     desfeitaEm: timestamp("desfeita_em", { withTimezone: true }),
   },
-  (t) => [index("quitacoes_adiantamento_adiantamento").on(t.adiantamentoId)],
+  (t) => [
+    index("quitacoes_adiantamento_adiantamento").on(t.adiantamentoId),
+    uniqueIndex("quitacoes_adiantamento_chave").on(t.adiantamentoId, t.chave),
+  ],
 );
 
 /** Contestação do proprietário sobre um adiantamento: enquanto aberta, ele não é cobrado. */

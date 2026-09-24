@@ -28,7 +28,7 @@ export async function quitarAcao(form: FormData): Promise<void> {
   // "Empresa assume" só pela resolução de contestação ou explícito aqui; compensação é do repasse (M4.9).
   if (forma !== "reembolso" && forma !== "empresa_assume") return voltar(id, { ok: false, erro: "Forma inválida." });
   const r = valor
-    ? await quitar(getDb(), sessao.organizacaoId, id, { forma, valor, data: String(form.get("data") ?? ""), nota: String(form.get("nota") ?? "") }, sessao.usuarioId)
+    ? await quitar(getDb(), sessao.organizacaoId, id, { forma, valor, data: String(form.get("data") ?? ""), nota: String(form.get("nota") ?? ""), chave: String(form.get("chave") ?? "") }, sessao.usuarioId)
     : { ok: false, erro: "Valor inválido (ex.: 1.500,00)." };
   voltar(id, r);
 }

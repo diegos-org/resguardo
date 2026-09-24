@@ -9,7 +9,7 @@ import type { Db } from "@/db/types";
 import { criarCategoria } from "@/despesas/categorias";
 import { estornarDespesa, marcarDespesaPaga, registrarDespesa } from "@/despesas/despesas";
 import { saldoAcerto, totaisPorTipo } from "@/financeiro/ledger";
-import { contestar, desfazerQuitacao, listarAdiantamentos, obterAdiantamento, quitar, resolverContestacao, resumoPorProprietario, situacaoDe, totalACobrar } from "./adiantamentos";
+import { adiantamentoDaDespesa, contestar, desfazerQuitacao, listarAdiantamentos, obterAdiantamento, quitar, resolverContestacao, resumoPorProprietario, situacaoDe, totalACobrar } from "./adiantamentos";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -96,6 +96,28 @@ describe("quitação sem dupla cobrança", () => {
     ]);
     expect(r.filter((x) => x.ok)).toHaveLength(1);
     expect((await obterAdiantamento(db, org, adiantamentoId))?.quitado).toBe(300000);
+  });
+
+  it("o mesmo envio do formulário (mesma chave) registra uma vez só, mesmo em paralelo", async () => {
+    const q = { forma: "reembolso" as const, valor: 100000, data: "2026-10-20", chave: "envio-1" };
+    const rs = await Promise.all([quitar(db, org, adiantamentoId, q, null), quitar(db, org, adiantamentoId, q, null)]);
+    expect(rs).toEqual([{ ok: true }, { ok: true }]);
+    expect(await quitar(db, org, adiantamentoId, q, null)).toEqual({ ok: true });
+    const a = await obterAdiantamento(db, org, adiantamentoId);
+    expect(a?.quitacoes).toHaveLength(1);
+    expect(a?.aberto).toBe(300000);
+    expect(await saldo()).toBe(-300000);
+    // Outro envio (chave nova) é outra quitação.
+    expect(await quitar(db, org, adiantamentoId, { ...q, chave: "envio-2" }, null)).toEqual({ ok: true });
+    expect((await obterAdiantamento(db, org, adiantamentoId))?.aberto).toBe(200000);
+  });
+
+  it("a despesa mostra o que ainda está em aberto no adiantamento", async () => {
+    expect((await adiantamentoDaDespesa(db, org, despesaId))?.aberto).toBe(400000);
+    await quitar(db, org, adiantamentoId, { forma: "reembolso", valor: 150000, data: "2026-10-20" }, null);
+    expect(await adiantamentoDaDespesa(db, org, despesaId)).toMatchObject({ id: adiantamentoId, aberto: 250000, situacao: "parcial" });
+    expect(await adiantamentoDaDespesa(db, outraOrg, despesaId)).toBeNull();
+    expect(await adiantamentoDaDespesa(db, org, "nao-uuid")).toBeNull();
   });
 
   it("desfazer quitação estorna o reembolso e reabre o valor", async () => {
