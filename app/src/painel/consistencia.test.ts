@@ -7,7 +7,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { criarContrato } from "@/contratos/repositorio";
-import { recalcularPendentes, recalcularReservas } from "@/financeiro/aplicar";
+import { conferirMovimentadas, recalcularPendentes, recalcularReservas } from "@/financeiro/aplicar";
 import { preverRepasses } from "@/repasses/repasses";
 import { contratos, lancamentos, imoveis, organizacoes, proprietarioImoveis, proprietarios, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
@@ -396,5 +396,24 @@ describe("consistência entre telas (M4.8)", () => {
     // Em dezembro não há valores dela no livro: não aparece uma linha sem valores.
     const dezembro = await reservasDoPortal(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo: { inicio: "2026-12-01", fim: "2027-01-01" } });
     expect(dezembro.some((x) => x.id === r.reserva.id)).toBe(false);
+  });
+  it("deploy confere confirmadas antigas que já movimentaram dinheiro: marca a divergência sem recalcular o passado", async () => {
+    const pago = await criarReserva(db, org, reserva(a, "2026-08-01", "2026-08-03", { valorBruto: 50000, taxaCanal: 0 }), null);
+    const livre = await criarReserva(db, org, reserva(a, "2026-08-10", "2026-08-12", { valorBruto: 50000, taxaCanal: 0 }), null);
+    if (!pago.ok || !livre.ok) throw new Error("reserva");
+    await db.update(lancamentos).set({ estado: "realizado" }).where(and(eq(lancamentos.reservaId, pago.reserva.id), eq(lancamentos.tipo, "receita_bruta")));
+    // Versão antiga do motor: o cálculo de hoje é outro (aqui, a comissão mudou sem recálculo do passado).
+    await db.update(contratos).set({ comissaoBp: 2500 }).where(eq(contratos.imovelId, a));
+    const doLivro = async () => (await db.select({ id: lancamentos.id }).from(lancamentos)).length;
+    const antes = await doLivro();
+    const bloqueios = async () => (await preverRepasses(db, org, "2026-08", "2026-09-10", [dona]))[0].bloqueios.join(" ");
+    expect(await bloqueios()).not.toContain("acerto pendente");
+    expect(await conferirMovimentadas(db, org)).toEqual({ reservas: 1, divergentes: 1 });
+    expect(await bloqueios()).toContain("acerto pendente");
+    // Nada foi recalculado: nem a que movimentou dinheiro nem a que não movimentou.
+    expect(await doLivro()).toBe(antes);
+    // Rodar de novo não muda nada.
+    expect(await conferirMovimentadas(db, org)).toEqual({ reservas: 1, divergentes: 1 });
+    expect(await doLivro()).toBe(antes);
   });
 });
