@@ -60,6 +60,7 @@ item muda a linha para `feito` **no próprio PR do item**.
 | M2.3 | Contratos de gestão com vigência: gestão completa 15%/85%, online 10%, regra 102/303/399 → 15/85 a partir de 01/01/2027; marketplace como tipo separado (fórmula pendente) | feito | M2.2 |
 | M2.4 | IDs externos: mapeamento imóvel ↔ Beds24 / Airbnb / Booking | feito | M2.1 |
 | M2.5 | Script de carga inicial (seed) com dados fictícios para homologação | feito | M2.3 |
+| M2.6 | Cadastro completo do imóvel: endereço completo, camas/comodidades, regras da casa, horários de entrada/saída, taxas (limpeza, hóspede extra), regras de venda (estadia mínima/máxima com exceções por período, antecedência, dias de chegada/saída), preço base e preço dinâmico (liga/desliga); tudo editável no painel (Diego 24/09) | a fazer | M2.1 |
 
 ### M3 — Reservas e calendário
 
@@ -87,6 +88,7 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 | M4.6 | Dashboard da empresa (receitas próprias, despesas, 1–2 gráficos) | a fazer | M4.2, M4.3 |
 | M4.7 | Aba Apartamentos: tabela por imóvel com resultado da empresa, comissões, despesas, acertos | a fazer | M4.2, M4.4 |
 | M4.8 | Teste de consistência: mesma reserva = mesmos totais em dashboard, aba Apartamentos, portal e PDF | a fazer | M5.3 |
+| M4.9 | Repasse mensal ao proprietário (Booking, site, direta): fechamento no fim do mês, valor a repassar já descontado de despesas/adiantamentos, Pix para copiar, marcar pago; data a definir (último dia do mês ou dia 1º) | a fazer | M4.4 |
 
 ### M5 — Portal do proprietário
 
@@ -106,6 +108,7 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 | M6.3 | Agenda diária (20h, próximos 5 dias, Rio e Búzios separados) enviada para a equipe | a fazer | M6.1 |
 | M6.4 | Documentos de portaria (só 403): checklist de pedidos, sem armazenar documentos no Git | a fazer | M3.5 |
 | M6.5 | Rotinas recorrentes (manutenção quinzenal, faxinas semanal, lembrete mensal) | a fazer | M6.2 |
+| M6.6 | Equipe de limpeza: acesso próprio pelo celular (agenda, marcar faxina feita) e aviso por WhatsApp quando o M10 estiver ligado (e-mail enquanto isso) | a fazer | M6.1, M1.3 |
 
 ### M7 — Site público no novo app
 
@@ -119,6 +122,7 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 
 | ID | Item | Estado | Depende de |
 |---|---|---|---|
+| M8.0 | Decidir o recebimento do site: split automático (Mercado Pago marketplace ou Stripe Connect, como no Airbnb) × empresa recebe e repassa; comparar taxas, estorno, chargeback e impostos | a fazer | — |
 | M8.1 | Cotação persistida, revalidação e hold com controle de concorrência | a fazer | M7.2 |
 | M8.2 | Mercado Pago em **sandbox**: checkout, webhook assinado, idempotência, reconciliação | bloqueado | M8.1 + Diego: credenciais de teste Mercado Pago |
 | M8.3 | Criação da reserva no Beds24 após pagamento confirmado (escrita) | bloqueado | M8.2 + autorização explícita de escrita |
@@ -138,6 +142,15 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 | M10.2 | Respostas pelo painel, modelos aprovados (templates) para mensagens programadas | bloqueado | M10.1 |
 | M10.3 | Assistente de resposta sugerida (Claude) com revisão humana antes do envio | a fazer | M10.1 |
 
+### M12 — Marketplace (expansão: dono faz a operação física, SCL faz o online)
+
+| ID | Item | Estado | Depende de |
+|---|---|---|---|
+| M12.1 | Fórmula de cobrança do marketplace: hóspede paga menos que na OTA, proprietário ganha mais e a SCL também ganha — comparar as fórmulas do Diego com simulações | bloqueado | Diego: enviar as 3–4 fórmulas |
+| M12.2 | Motor de cálculo e repasse do contrato marketplace (inclui split automático, se o M8.0 decidir assim) | a fazer | M12.1, M4.2 |
+| M12.3 | Auto-cadastro do proprietário marketplace: cria conta, cadastra o imóvel (M2.6), escolhe "já anuncio"/"anúncio novo", revisão antes de publicar | a fazer | M1.4, M2.6 |
+| M12.4 | Portal do proprietário marketplace: calendário, preços e regras de venda, limpeza/manutenção por conta própria | a fazer | M12.3, M5.1 |
+
 ### M11 — Entrada em produção
 
 | ID | Item | Estado | Depende de |
@@ -148,15 +161,25 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 
 ## Ações de Diego (o que destrava o quê)
 
-1. **Revisar e mergear PRs** — tudo depende disso.
+1. **Revisar e mergear PRs** — por enquanto o Claude faz os merges (autorizado em 23/09).
 2. **Vercel:** importar o repositório `al-life/scl-reconstrucao` na Vercel, *root directory* `app`, e ligar a integração Neon. (destrava M0.5)
-3. **Chave API Beds24** → colocar como variável `BEDS24_API_KEY` nas configurações do ambiente do Claude e na Vercel; nunca no chat nem no Git. (destrava M3.3)
+3. **Chave API Beds24 (só leitura)** → variável `BEDS24_API_KEY` no ambiente do Claude e na Vercel; nunca no chat nem no Git. (destrava M3.3)
 4. **Meta / WhatsApp Business:** iniciar a verificação da empresa no Meta Business — leva dias. (destrava M10)
 5. **Mercado Pago:** credenciais de *teste*. (destrava M8.2)
-6. **Fórmula do marketplace:** confirmar quando lembrar. (refina M2.3)
+6. **Fórmulas do marketplace:** mandar as 3–4 fórmulas pensadas. (destrava M12.1)
+7. **Booking:** criar os anúncios (o Beds24 pode criar a partir dos dados já importados do Airbnb — ver guia). 
+8. **Data do repasse mensal:** último dia do mês ou dia 1º do mês seguinte. (refina M4.9)
+9. **E-mail do sistema (Resend):** conta e domínio. (liga o login por código e os convites por e-mail)
 
 ## Pendências de decisão (não bloqueiam o início)
 
-- Competência × caixa no financeiro; base de cálculo da comissão.
+- Competência × caixa no financeiro.
 - Inclusão de Búzios no sistema interno (modelado com `publico = false` até decidir).
 - Avaliações próprias × só Airbnb.
+
+## Decisões registradas
+
+- 24/09 (Diego): comissão sobre o valor que o canal repassa (depois da taxa do canal);
+  estadia entre meses rateada igualmente por noite (valor total, com limpeza); Airbnb faz
+  split automático (proprietário recebe direto); Booking/site/direta: empresa recebe tudo e
+  repassa uma vez por mês.

@@ -62,7 +62,7 @@ export async function encerrarContrato(
   contratoId: string,
   fim: string,
   autorId: string | null,
-): Promise<{ ok: true } | { ok: false; erro: string }> {
+): Promise<{ ok: true; imovelId: string } | { ok: false; erro: string }> {
   if (!uuidOk(contratoId)) return { ok: false, erro: "Contrato não encontrado." };
   return db.transaction(async (tx) => {
     const [previa] = await tx
@@ -87,6 +87,6 @@ export async function encerrarContrato(
       entidadeId: c.imovelId,
       mudancas: { contrato: [`${NOMES_TIPO[c.tipo]} até ${c.fim ?? "sem fim"}`, `até ${fim}`] },
     });
-    return { ok: true as const };
+    return { ok: true as const, imovelId: c.imovelId };
   });
 }

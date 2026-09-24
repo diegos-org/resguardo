@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 24/09/2026, PR do item M1.4 (convite de proprietário).
+> **Última atualização:** 24/09/2026, regras de comissão confirmadas por você e novos itens no plano.
 
 ---
 
@@ -140,14 +140,14 @@
 - M4.2: **cálculo automático de cada reserva.** Ao lançar, importar, alterar ou cancelar uma
   reserva, o sistema gera (ou corrige com estorno) os lançamentos: valor bruto, taxa do canal,
   **comissão SCL** pelo contrato vigente na data de entrada, e **parte do proprietário**. A
-  ficha da reserva mostra esse financeiro (só para o admin). Regras que adotei — **confirme ou
-  corrija** (seção 7): comissão sobre o valor **depois da taxa do canal**; estadia que atravessa
-  o mês é **dividida pelas noites**; no **Booking/site/direta** a empresa recebe tudo e fica
-  devendo a parte do proprietário. No **Airbnb** o sistema **não presume** que o repasse ao
-  proprietário é automático (split): cada reserva tem o campo "Quem recebe do canal"; enquanto
-  não for preenchido, a parte do proprietário fica **pendente** e fora do acerto. O mesmo vale
-  para imóvel com **mais de um proprietário** (ainda não há cadastro de cotas) ou sem
-  proprietário — nada é atribuído a alguém por chute.
+  ficha da reserva mostra esse financeiro (só para o admin). Regras **confirmadas por você em
+  24/09**: comissão sobre o valor que o canal repassa (depois da taxa do canal); estadia que
+  atravessa o mês é **dividida igualmente por noite** (valor total, com a limpeza); no
+  **Airbnb** o proprietário recebe a parte dele direto (split) e isso não entra no acerto; no
+  **Booking, site e direta** a empresa recebe tudo e repassa uma vez por mês. Dá para mudar
+  reserva a reserva no campo "Quem recebe do canal". Imóvel com **mais de um proprietário**
+  (ainda não há cadastro de cotas) ou sem proprietário fica com o acerto **pendente** — nada
+  é atribuído a alguém por chute.
 - M4.3: **despesas** (menu **Despesas**). Cada despesa tem categoria, valor, data, imóvel
   (opcional para as da empresa), fornecedor, comprovante (por enquanto um link ou referência,
   ex.: link do recibo no Drive — o envio de arquivo vem depois) e situação (a pagar / paga).
@@ -278,22 +278,62 @@ ambiente).
       (Cloudflare) — eu te guio nessa hora.
    2. Crie uma *API key* e coloque na Vercel como `RESEND_API_KEY`, e crie
       `EMAIL_REMETENTE` = `Sua Casa Leblon <acesso@seudominio.com.br>`. **Não cole no chat.**
+6. **Booking:** criar os anúncios (ver "Copiar anúncios do Airbnb para o Booking" na seção 7).
 
 ---
 
-## 7. Decisões pendentes (sem pressa, não travam o trabalho)
+## 7. Decisões pendentes e respostas às suas perguntas
 
-- Fórmula da comissão do **marketplace**: você não lembrava; quando lembrar, me conte.
-- **Regras do cálculo da comissão (adotei assim, confirme):**
-  1. comissão calculada sobre o valor **após a taxa do canal** (e não sobre o bruto);
-  2. estadia que atravessa a virada do mês é **dividida pelas noites** de cada mês;
-  3. **Booking, site e direta**: a empresa recebe tudo e repassa depois. **Airbnb**: fica
-     "a confirmar" em cada reserva (split ou empresa recebe). Se todas as suas do Airbnb forem
-     split, me diga e eu deixo isso como padrão.
-  4. Algum imóvel tem **mais de um proprietário**? Se sim, preciso da cota de cada um.
-  Qualquer uma delas muda com um ajuste simples — é só me dizer.
+**Preciso de você (sem pressa):**
+- **Fórmulas do marketplace:** procurei no repositório e no histórico antigo e a fórmula
+  **não está registrada** em lugar nenhum. Mande as 3–4 que você pensou (pode ser por áudio,
+  do jeito que lembrar). Eu monto uma simulação lado a lado — hóspede pagando menos que na
+  OTA, proprietário ganhando mais e a SCL também ganhando — para você escolher. (M12.1)
+- **Data do repasse mensal** (Booking/site/direta): último dia do mês ou dia 1º do mês
+  seguinte? (M4.9)
+- **Algum imóvel tem mais de um proprietário?** Se sim, a cota de cada um.
 - **Búzios** no sistema interno: por ora entra cadastrado, mas fora do site público.
 - **Avaliações**: só no Airbnb ou também próprias.
+
+**Respostas:**
+- **Recebimento do site com divisão automática (como o Airbnb):** existe. O **Mercado Pago**
+  tem o modelo "marketplace": cada proprietário liga a conta Mercado Pago dele ao nosso
+  sistema, e cada pagamento cai direto na conta dele com a comissão da SCL separada
+  automaticamente para a conta da empresa. O **Stripe** faz o mesmo (Stripe Connect). Pontos
+  de atenção: cada proprietário precisa ter conta própria; estorno e contestação de cartão
+  saem da conta dele; e a parte fiscal muda (ele recebe direto, como no Airbnb). Coloquei no
+  plano como **M8.0**: comparar as duas opções (e o "empresa recebe e repassa") antes de
+  ligar o pagamento, conferindo taxas e regras atuais na documentação de cada um.
+- **Copiar anúncios do Airbnb para o Booking:** é **semiautomático** pelo Beds24 — ele
+  reaproveita os dados e fotos que já importou do Airbnb e cria o anúncio no Booking. Mas
+  exige a conta Booking da empresa (com os dados da pessoa jurídica) conectada ao Beds24, e
+  depois é preciso conferir fotos, políticas, comodidades, camas e preços, porque o Booking
+  valida tudo e às vezes pede complemento na extranet. Minha sugestão: fazer **um apartamento
+  do Rio primeiro**, até ficar 100% aberto para reservas, e só depois repetir nos outros. Se
+  algum anúncio já existir no Booking, a gente **liga** em vez de criar outro. Quando você for
+  fazer, me chame que eu te guio tela a tela.
+- **Modelos de cliente:** o sistema já tem os dois tipos de contrato — **gestão completa**
+  (os cinco do Rio) e **marketplace** (tipo separado, esperando a fórmula). Agora o marketplace
+  ganhou um bloco próprio no plano (**M12**): fórmula, cálculo e repasse, auto-cadastro do
+  proprietário e portal dele com calendário e preços.
+- **Site público:** é a parte que estava mais adiantada, mas ainda como **protótipo
+  separado** (`prototipos/scl-publico`): home, catálogo dos 5 imóveis, página de cada um,
+  galeria, calendário, formulário de consulta e uma demonstração de checkout sem cobrança.
+  Não está no ar, não usa banco e está sem as fotos (faltava autorização de uso). No plano,
+  o **M7.1** traz esse site para dentro do sistema novo lendo os imóveis do banco; o **M7.2**
+  liga disponibilidade e preço reais (depois do Beds24); o **M7.3** coloca as fotos quando
+  você autorizar.
+- **Cadastro de apartamento novo:** hoje o cadastro tem código, nome, bairro, endereço,
+  capacidade, quartos, banheiros, descrição, se aparece no site, proprietário(s) com todos os
+  dados, contratos e os números nos canais. Criei o **M2.6** para o cadastro **completo**:
+  endereço completo, camas e comodidades, regras da casa, horários, taxas (limpeza, hóspede
+  extra), estadia mínima/máxima **com exceções por período**, antecedência, dias de
+  chegada/saída, preço base e **preço dinâmico liga/desliga** — tudo editável pelo painel,
+  como nas OTAs. O portal do proprietário puxa daí.
+- **Equipe de limpeza:** já estava a agenda diária para a equipe (M6.3); acrescentei o
+  **M6.6** — acesso próprio pelo celular (ver a agenda e marcar faxina feita) **e** aviso por
+  WhatsApp quando o WhatsApp estiver ligado (por e-mail enquanto isso). As duas formas
+  funcionando, como você sugeriu.
 
 ---
 

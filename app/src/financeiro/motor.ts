@@ -1,15 +1,17 @@
 /**
  * Motor de comissões (M4.2): transforma uma reserva em lançamentos, de forma pura e testável.
  *
- * Regras (parâmetros ajustáveis em REGRAS_PADRAO, a confirmar com Diego — ver GUIA-DIEGO):
+ * Regras (parâmetros em REGRAS_PADRAO; confirmadas por Diego em 24/09/2026):
  * - Contrato: o que estiver vigente na data de ENTRADA da reserva.
- * - Base da comissão: valor bruto − taxa do canal ("liquido_canal") ou o bruto ("bruto").
- * - Competência: rateio pelas noites de cada mês (estadia 29/10→02/11 = 3 noites em
- *   outubro, 1 em novembro); a soma dos meses é sempre exatamente o total.
+ * - Base da comissão: o valor que o canal repassa (bruto − taxa do canal, "liquido_canal").
+ * - Competência: rateio IGUAL por noite do valor total (diárias + limpeza), sem olhar a
+ *   diária de cada dia (estadia 29/10→02/11 = 3 noites em outubro, 1 em novembro); a soma
+ *   dos meses é sempre exatamente o total.
  * - Quem recebe o dinheiro: o que estiver gravado na reserva ("split" = o canal paga a parte
  *   do proprietário direto a ele → não gera dívida da empresa; "empresa" = a empresa recebe
- *   tudo e deve a parte do proprietário → entra no acerto). Sem isso, vale a regra da origem;
- *   no Airbnb não se presume split: fica "a_confirmar" e a parte do proprietário fica pendente.
+ *   tudo e deve a parte do proprietário → entra no acerto). Sem isso, vale a regra da origem:
+ *   Airbnb = split (configurado assim nas contas da SCL); Booking, site e direta = empresa
+ *   recebe e repassa no fechamento mensal. "a_confirmar" deixa o acerto pendente.
  * - Acerto pendente também quando o imóvel não tem proprietário ou tem mais de um (as cotas
  *   de cada um ainda não existem no cadastro) — nada é atribuído a um dono arbitrário.
  * - Arredondamento: comissão arredondada ao centavo mais próximo (meio centavo para cima),
@@ -27,7 +29,7 @@ export type RegrasMotor = {
 
 export const REGRAS_PADRAO: RegrasMotor = {
   base: "liquido_canal",
-  recebimento: { airbnb: "a_confirmar", booking: "empresa", site: "empresa", direta: "empresa", outro: "empresa" },
+  recebimento: { airbnb: "split", booking: "empresa", site: "empresa", direta: "empresa", outro: "empresa" },
 };
 
 export type ReservaParaMotor = {
