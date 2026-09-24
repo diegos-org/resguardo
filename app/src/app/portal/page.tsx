@@ -300,7 +300,7 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
               <span />
             )}
           </nav>
-          {filtros.mes !== null && (
+          {filtros.mes !== null && selecao.imoveis.length > 0 && (
             <p style={{ margin: 0, textAlign: "center" }}>
               <a href={link({ ano: filtros.ano, mes: filtros.mes }).replace("/portal?", "/portal/relatorio?")} download>
                 Baixar o relatório deste mês em PDF
