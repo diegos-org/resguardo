@@ -265,11 +265,12 @@
     (os mesmos do portal). O valor em destaque é a **parte do proprietário**, com a base
     escrita embaixo: não é o total do canal nem lucro. Depois vêm a tabela de reservas (do
     hóspede, só o primeiro nome) e o saldo com a empresa. No mês atual, o PDF diz que é
-    **parcial** e até que dia vale;
+    **parcial**, com a posição do dia, e que já inclui as reservas confirmadas até o fim do mês
+    (como no portal);
   - **extrato oficial do canal** nas páginas seguintes, copiado como veio, sem redesenhar. Dá
     para usar só algumas páginas (ex.: "1-2"), e a primeira página avisa quais foram usadas e
     quantas o extrato tem. Sem extrato anexado, avisa "não anexado a esta versão";
-  - **no painel:** na ficha do proprietário, o link **Relatório do mês em PDF**. Lá você
+  - **no painel:** na ficha do proprietário (mesmo arquivado), o link **Relatório do mês em PDF**. Lá você
     escolhe o mês e os imóveis, e pode anexar a **foto real** do imóvel e o **extrato** (até
     2 MB cada). Os arquivos servem só para montar o PDF: **não ficam guardados** no sistema.
     Cada PDF gerado fica registrado no histórico do proprietário (mês, imóveis e se levou foto

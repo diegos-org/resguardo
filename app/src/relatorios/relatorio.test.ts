@@ -103,8 +103,9 @@ describe("textos do relatório (primeira página)", () => {
 
   it("mês atual: parcial até hoje; mês futuro: previsto", () => {
     const p = textosDoRelatorio({ ...base, situacao: "parcial", ate: "2026-10-20" });
-    expect(p.periodo).toBe("De 1º/10/2026 a 20/10/2026 (parcial: o mês ainda não terminou)");
-    expect(p.aviso).toContain("parcial");
+    // O mês inteiro (como no portal), dizendo de quando é a posição e que inclui o que ainda vai acontecer.
+    expect(p.periodo).toBe("De 1º/10/2026 a 31/10/2026 (parcial: posição de 20/10/2026)");
+    expect(p.aviso).toContain("inclusive as que ainda não aconteceram");
     expect(textosDoRelatorio({ ...base, situacao: "futuro" }).periodo).toContain("previsto");
   });
 
@@ -274,6 +275,9 @@ describe("dados e acesso", () => {
     expect(await relatorioDoPainel(db, admin(), dona, { mes: "2026-10", imoveis: ["102"], anexos: {} }, AGORA)).toMatchObject({ ok: false, status: 400 });
     expect(await relatorioDoPainel(db, admin(), dona, { mes: "2026-13", imoveis: [], anexos: {} }, AGORA)).toMatchObject({ ok: false, status: 400 });
     expect(await relatorioDoPainel(db, admin(), "nao-e-uuid", { mes: "2026-10", imoveis: [], anexos: {} }, AGORA)).toMatchObject({ ok: false, status: 404 });
+    // Proprietário arquivado: o relatório de meses passados continua possível (o link aparece na ficha dele).
+    await db.update(proprietarios).set({ ativo: false }).where(eq(proprietarios.id, dona));
+    expect(await relatorioDoPainel(db, admin(), dona, { mes: "2026-10", imoveis: [], anexos: {} }, AGORA)).toMatchObject({ ok: true });
   });
 
   it("painel: gera com extrato, registra no histórico sem o conteúdo; extrato inválido não registra nada", async () => {

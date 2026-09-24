@@ -62,7 +62,7 @@ export type PedidoPainel = {
 export async function relatorioDoPainel(db: Db, sessao: Sessao | null, proprietarioId: string, pedido: PedidoPainel, agora: Date = new Date()): Promise<Resultado> {
   if (!sessao || !podeFazer(sessao.papel, "proprietario:ler") || !podeFazer(sessao.papel, "financeiro:ler")) return { ok: false, status: 403, erro: "Acesso negado." };
   const dono = await donoDoRelatorio(db, sessao.organizacaoId, proprietarioId);
-  if (!dono) return { ok: false, status: 404, erro: "Proprietário não encontrado (ou arquivado)." };
+  if (!dono) return { ok: false, status: 404, erro: "Proprietário não encontrado." };
   const m = /^(\d{4})-(\d{2})$/.exec(pedido.mes);
   const ano = m ? Number(m[1]) : NaN;
   const mes = m ? Number(m[2]) : NaN;

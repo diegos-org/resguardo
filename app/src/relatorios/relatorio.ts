@@ -49,13 +49,13 @@ export async function imoveisDoProprietario(db: Db, organizacaoId: string, propr
     .orderBy(asc(imoveis.codigo));
 }
 
-/** Proprietário ativo da organização (painel). */
+/** Proprietário da organização (painel), mesmo arquivado: o relatório final ou de meses passados continua possível. */
 export async function donoDoRelatorio(db: Db, organizacaoId: string, proprietarioId: string): Promise<Dono | null> {
   if (!uuidValido(proprietarioId)) return null;
   const [p] = await db
     .select({ id: proprietarios.id, nome: proprietarios.nome })
     .from(proprietarios)
-    .where(and(eq(proprietarios.id, proprietarioId), eq(proprietarios.organizacaoId, organizacaoId), eq(proprietarios.ativo, true)));
+    .where(and(eq(proprietarios.id, proprietarioId), eq(proprietarios.organizacaoId, organizacaoId)));
   return p ?? null;
 }
 
@@ -174,13 +174,13 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
   const inicio = `1º/${dd(d.mes)}/${d.ano}`;
   const periodo =
     d.situacao === "parcial"
-      ? `De ${inicio} a ${br(d.ate!)} (parcial: o mês ainda não terminou)`
+      ? `De ${inicio} a ${dd(fim)}/${dd(d.mes)}/${d.ano} (parcial: posição de ${br(d.ate!)})`
       : d.situacao === "futuro"
         ? `De ${inicio} a ${dd(fim)}/${dd(d.mes)}/${d.ano} (previsto: só reservas já confirmadas)`
         : `De ${inicio} a ${dd(fim)}/${dd(d.mes)}/${d.ano}`;
   const aviso =
     d.situacao === "parcial"
-      ? "Relatório parcial, para acompanhar o andamento do mês. Os números ainda podem mudar; o fechamento completo vem no início do mês seguinte."
+      ? `Relatório parcial, para acompanhar o andamento do mês, com a posição de ${br(d.ate!)}. Ele já inclui as reservas confirmadas até o fim do mês, inclusive as que ainda não aconteceram (como no portal): os números podem mudar. O fechamento completo vem no início do mês seguinte.`
       : d.situacao === "futuro"
         ? "Mês ainda não começou: só reservas já confirmadas, nada foi recebido ainda."
         : null;
