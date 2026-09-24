@@ -1,5 +1,5 @@
 {
-  "id": "bec6533f-690f-426b-8ed4-1aa9a9f7a637",
+  "id": "45aa1fff-4cb1-43aa-8e61-5b5387c6eefe",
   "prevId": "2541be5f-3fd3-4e39-8b56-c7cde0f9f346",
   "version": "7",
   "dialect": "postgresql",
@@ -589,6 +589,12 @@
         "motivo": {
           "name": "motivo",
           "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "valor": {
+          "name": "valor",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true
         },

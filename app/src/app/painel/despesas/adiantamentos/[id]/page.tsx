@@ -68,7 +68,9 @@ export default async function Adiantamento({ params, searchParams }: PageProps<"
       {a.contestacao && (
         <section className={styles.form} aria-label="Contestação">
           <h2 style={{ fontSize: "1.125rem", margin: 0 }}>Contestação {a.contestacao.resolvidaEm ? "(resolvida)" : "(aberta)"}</h2>
-          <p style={{ margin: 0 }}>{a.contestacao.motivo}</p>
+          <p style={{ margin: 0 }}>
+            {a.contestacao.motivo} <span style={{ color: "var(--scl-texto-2)" }}>(valor contestado: {formatBRL(a.contestacao.valor)})</span>
+          </p>
           {a.contestacao.resolvidaEm && (
             <p style={{ margin: 0, fontSize: "0.875rem" }}>
               Resolução: {a.contestacao.resolucao === "mantida" ? "mantida (voltou a ser cobrado)" : "a empresa assumiu"}
@@ -87,7 +89,7 @@ export default async function Adiantamento({ params, searchParams }: PageProps<"
                 <button type="submit" name="resolucao" value="mantida">
                   Manter a cobrança
                 </button>
-                <BotaoConfirmar name="resolucao" value="empresa_assume" pergunta={`A empresa assume ${formatBRL(a.aberto)}? O valor deixa de ser cobrado do proprietário e vira custo da empresa.`}>
+                <BotaoConfirmar name="resolucao" value="empresa_assume" pergunta={`A empresa assume ${formatBRL(Math.min(a.aberto, a.contestacao.valor))}? O valor deixa de ser cobrado do proprietário e vira custo da empresa.`}>
                   Empresa assume o valor
                 </BotaoConfirmar>
               </div>
