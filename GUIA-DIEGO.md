@@ -255,6 +255,20 @@
   Dá para completar depois (motivo, origem, valor, comprovante); o financeiro é corrigido
   sozinho e o histórico guarda cada mudança. A página Financeiro mostra quantos ajustes
   estão pendentes (o painel com os números do mês chega no M4.6).
+- M4.6: **tela inicial do painel** (Início) com os números do período escolhido no filtro
+  (imóveis + mês ou ano):
+  - **ocupação** (noites vendidas ÷ noites disponíveis; dias bloqueados não contam), total e
+    por imóvel, com barras;
+  - **receita bruta** das reservas, **taxas dos canais**, **comissões SCL**, **despesas da
+    empresa** e **resultado da empresa** (comissões − despesas, mais os ajustes que afetam a
+    empresa). O que é do proprietário e as taxas passam pela conta, mas não entram no resultado;
+  - **gráfico** de receita e comissões mês a mês no ano, com o mês escolhido em destaque;
+  - **entradas e saídas dos próximos 7 dias**, com link para a reserva;
+  - **pendências e alertas**: reservas sobrepostas, imóvel sem contrato ou sem proprietário,
+    reserva sem valor, acertos pendentes, ajustes a esclarecer, adiantamentos a cobrar ou
+    contestados e despesas a pagar — cada um com link.
+  A equipe de operação vê ocupação e entradas/saídas, sem valores. Os números vêm das mesmas
+  fontes das outras telas, então batem com Reservas, Despesas e Financeiro.
 - M4.1: **base do financeiro (o "livro" de lançamentos).** Cada fato financeiro vira um
   lançamento: valor bruto da reserva, taxa do canal, comissão SCL, parte do proprietário,
   recebimentos, repasses, despesas da empresa, despesas do proprietário, adiantamentos,
@@ -328,9 +342,13 @@
 |---|---|
 | ![Cadastro completo](docs/telas/imovel-cadastro-completo.png) | ![Adiantamento](docs/telas/adiantamento.png) |
 
-| Ajuste esclarecido | Repasses no celular |
+| Ajuste esclarecido | Início no celular |
 |---|---|
-| ![Ajuste](docs/telas/ajuste.png) | ![Repasses no celular](docs/telas/repasses-celular.png) |
+| ![Ajuste](docs/telas/ajuste.png) | ![Início no celular](docs/telas/inicio-dashboard-celular.png) |
+
+| Início (painel com números e alertas) | Repasses no celular |
+|---|---|
+| ![Início](docs/telas/inicio-dashboard.png) | ![Repasses no celular](docs/telas/repasses-celular.png) |
 
 | Repasses aos proprietários (fechamento do mês) |
 |---|
