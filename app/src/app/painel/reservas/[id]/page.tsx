@@ -41,7 +41,7 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
           ["Valor bruto", brl(r.valorBruto)],
           ["Taxa do canal", brl(r.taxaCanal)],
           ["Líquido recebido", brl(r.valorLiquido)],
-          ["Quem recebe do canal", r.recebimento ? NOMES_RECEBIMENTO[r.recebimento] : "a confirmar"],
+          ["Quem recebe do canal", r.recebimento ? NOMES_RECEBIMENTO[r.recebimento] : r.origem === "airbnb" ? "padrão do Airbnb (split)" : "padrão: empresa recebe e repassa"],
         ] as [string, string][])
       : []),
     ["Observações", r.observacoes || "—"],

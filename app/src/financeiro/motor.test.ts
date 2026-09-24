@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calcularReserva, comissao, noitesPorMes, ratear, type ReservaParaMotor } from "./motor";
+import { calcularReserva, comissao, noitesPorMes, ratear, REGRAS_PADRAO, type ReservaParaMotor } from "./motor";
 
 const reserva = (over: Partial<ReservaParaMotor> = {}): ReservaParaMotor => ({
   id: "r1",
@@ -61,10 +61,15 @@ describe("calcularReserva", () => {
     expect(direito.descricao).toContain("paga direto pelo canal");
   });
 
-  it("Airbnb sem confirmação: não presume split, deixa o acerto pendente e avisa", () => {
-    const { lancamentos, avisos } = calcularReserva(reserva({ origem: "airbnb" }), quinzePorCento, ["p1"]);
-    const direito = lancamentos.find((l) => l.tipo === "direito_proprietario")!;
-    expect(direito).toMatchObject({ efeitoSaldo: 0, estado: "pendente" });
+  it("Airbnb sem nada gravado na reserva: split por padrão (decisão de 24/09)", () => {
+    const { lancamentos } = calcularReserva(reserva({ origem: "airbnb" }), quinzePorCento, ["p1"]);
+    expect(lancamentos.find((l) => l.tipo === "direito_proprietario")).toMatchObject({ efeitoSaldo: 0, estado: "previsto" });
+  });
+
+  it("regra 'a confirmar' (para canal novo): acerto pendente e aviso", () => {
+    const regras = { ...REGRAS_PADRAO, recebimento: { ...REGRAS_PADRAO.recebimento, outro: "a_confirmar" as const } };
+    const { lancamentos, avisos } = calcularReserva(reserva({ origem: "outro" }), quinzePorCento, ["p1"], regras);
+    expect(lancamentos.find((l) => l.tipo === "direito_proprietario")).toMatchObject({ efeitoSaldo: 0, estado: "pendente" });
     expect(avisos.some((a) => a.includes("split"))).toBe(true);
   });
 

@@ -121,8 +121,6 @@ async function semear(db: Db) {
         taxaCanal: taxa,
         valorLiquido: bruto - taxa,
         codigoCanal: origem === "airbnb" ? `HMDEMO${n}` : "",
-        // Airbnb: a maioria com split confirmado; algumas "a confirmar" para mostrar o acerto pendente.
-        recebimento: origem === "airbnb" && n % 3 !== 0 ? "split" : null,
         observacoes: "Reserva fictícia.",
       });
       dia = somaDias(checkout, n % 3);

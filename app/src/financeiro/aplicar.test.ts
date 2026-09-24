@@ -110,9 +110,9 @@ describe("aplicarMotor", () => {
     expect(await saldoAcerto(db, org, { proprietarioId: dono })).toBe(0);
   });
 
-  it("Airbnb: pendente até confirmar; confirmado como empresa, entra no acerto", async () => {
+  it("Airbnb: split por padrão (fora do acerto); se a reserva disser que a empresa recebeu, entra no acerto", async () => {
     const id = await sinc({ origem: "airbnb" });
-    expect((await ativosDoMotor(id)).find((l) => l.tipo === "direito_proprietario")?.estado).toBe("pendente");
+    expect((await ativosDoMotor(id)).find((l) => l.tipo === "direito_proprietario")).toMatchObject({ estado: "previsto", efeitoSaldo: 0 });
     await sinc({ origem: "airbnb", recebimento: "empresa" });
     expect(await saldoAcerto(db, org, { proprietarioId: dono })).toBe(108375);
   });
