@@ -25,7 +25,7 @@
 | Etapa | O que entrega | Situação |
 |---|---|---|
 | M0 Fundação | Base do app, banco de dados, layout, publicação na Vercel | 🟡 só falta a Vercel |
-| M1 Acesso | Login (Google/código por e-mail), convites, permissões | 🟡 em andamento |
+| M1 Acesso | Login (Google/código por e-mail), convites, permissões | ✅ pronto |
 | M2 Cadastros | Imóveis, proprietários, contratos e comissões | ✅ pronto |
 | M3 Reservas | Reservas, calendário central, leitura do Beds24 | 🟡 em andamento |
 | M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | 🟡 em andamento |
@@ -64,6 +64,17 @@
   falhar), para ninguém descobrir quem tem acesso. Só recebe código quem está cadastrado e
   ativo; se o envio falhar, o código anterior continua valendo. Para funcionar na internet
   falta um serviço de envio de e-mail (seção 6, item 5).
+- M1.4: **convite de proprietário para o portal.** Na ficha do proprietário, seção
+  "Acesso ao portal": você digita o e-mail dele e clica em **Gerar convite**. Aparece um
+  link para copiar e mandar (por WhatsApp, por exemplo; se o e-mail do sistema estiver
+  ligado, ele também recebe por e-mail). O proprietário abre o link, clica em "Aceitar e
+  entrar" e entra com **aquele e-mail** (código ou Google) — só assim o convite é aceito.
+  O link vale **7 dias**, funciona **uma vez só** e você pode **cancelar** a qualquer
+  momento; a ficha mostra a situação (pendente, aceito, cancelado, vencido) e o histórico
+  registra quem convidou e quando foi aceito. Quem só tem o link, sem acesso ao e-mail,
+  não entra. Depois de entrar, o proprietário vê o **Portal do proprietário** (por
+  enquanto só os imóveis dele; relatórios e saldo chegam no M5) e **não** consegue abrir
+  o painel interno.
 - M2.1: **cadastro de imóveis** em Painel → Imóveis: código (102, 403, buzios…), nome
   comercial, bairro, endereço, capacidade, quartos, banheiros, descrição, se **aparece no site**
   e se está **em operação**. O filtro global do painel passa a usar essa lista. Búzios deve ser

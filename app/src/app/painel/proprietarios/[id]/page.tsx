@@ -5,7 +5,10 @@ import { historicoDe } from "@/auditoria/auditoria";
 import styles from "@/components/formularios.module.css";
 import { HistoricoAlteracoes } from "@/components/HistoricoAlteracoes";
 import { FormProprietario } from "@/components/proprietarios/FormProprietario";
+import { Convites } from "@/components/proprietarios/Convites";
 import { Representantes } from "@/components/proprietarios/Representantes";
+import { convidar, revogar } from "@/convites/acoes";
+import { listarConvites, situacao } from "@/convites/convites";
 import { getDb } from "@/db/client";
 import { listarImoveis } from "@/imoveis/repositorio";
 import { excluirRepresentante, salvarProprietario, salvarRepresentante } from "@/proprietarios/acoes";
@@ -20,10 +23,12 @@ export default async function EditarProprietario({ params, searchParams }: PageP
   const db = getDb();
   const dono = await obterProprietario(db, sessao.organizacaoId, id);
   if (!dono) notFound();
-  const [imoveis, historico] = await Promise.all([
+  const [imoveis, historico, convites] = await Promise.all([
     listarImoveis(db, sessao.organizacaoId, { incluirInativos: true }),
     historicoDe(db, sessao.organizacaoId, "proprietario", id),
+    listarConvites(db, sessao.organizacaoId, id),
   ]);
+  const agora = new Date();
   return (
     <>
       <h1>{dono.nome}</h1>
@@ -39,6 +44,20 @@ export default async function EditarProprietario({ params, searchParams }: PageP
         inicial={{ ...dono, documento: formatarDocumento(dono.documento) }}
       />
       <Representantes proprietarioId={dono.id} lista={dono.representantes} adicionar={salvarRepresentante} remover={excluirRepresentante} />
+      <Convites
+        proprietarioId={dono.id}
+        emailPadrao={dono.email}
+        convites={convites.map((c) => ({
+          id: c.id,
+          email: c.email,
+          situacao: situacao(c, agora),
+          criadoEm: c.criadoEm.toISOString(),
+          expiraEm: c.expiraEm.toISOString(),
+          aceitoEm: c.aceitoEm?.toISOString() ?? null,
+        }))}
+        convidar={convidar}
+        revogar={revogar}
+      />
       <HistoricoAlteracoes linhas={historico} />
     </>
   );

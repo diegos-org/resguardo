@@ -1,5 +1,5 @@
 {
-  "id": "6fc4788d-89ef-4c1c-bd21-719c60424c6e",
+  "id": "6b800474-dedd-411c-aed9-f6d6c99f332d",
   "prevId": "7891dfe4-de45-4625-a4ce-95665ca37f44",
   "version": "7",
   "dialect": "postgresql",
@@ -590,6 +590,190 @@
           "tableTo": "imoveis",
           "columnsFrom": [
             "imovel_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.convites": {
+      "name": "convites",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organizacao_id": {
+          "name": "organizacao_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "proprietario_id": {
+          "name": "proprietario_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expira_em": {
+          "name": "expira_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "criado_por": {
+          "name": "criado_por",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "criado_em": {
+          "name": "criado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "aceito_em": {
+          "name": "aceito_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "aceito_por": {
+          "name": "aceito_por",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revogado_em": {
+          "name": "revogado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revogado_por": {
+          "name": "revogado_por",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "convites_token": {
+          "name": "convites_token",
+          "columns": [
+            {
+              "expression": "token_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "convites_proprietario": {
+          "name": "convites_proprietario",
+          "columns": [
+            {
+              "expression": "proprietario_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "convites_organizacao_id_organizacoes_id_fk": {
+          "name": "convites_organizacao_id_organizacoes_id_fk",
+          "tableFrom": "convites",
+          "tableTo": "organizacoes",
+          "columnsFrom": [
+            "organizacao_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "convites_proprietario_id_proprietarios_id_fk": {
+          "name": "convites_proprietario_id_proprietarios_id_fk",
+          "tableFrom": "convites",
+          "tableTo": "proprietarios",
+          "columnsFrom": [
+            "proprietario_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "convites_criado_por_usuarios_id_fk": {
+          "name": "convites_criado_por_usuarios_id_fk",
+          "tableFrom": "convites",
+          "tableTo": "usuarios",
+          "columnsFrom": [
+            "criado_por"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "convites_aceito_por_usuarios_id_fk": {
+          "name": "convites_aceito_por_usuarios_id_fk",
+          "tableFrom": "convites",
+          "tableTo": "usuarios",
+          "columnsFrom": [
+            "aceito_por"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "convites_revogado_por_usuarios_id_fk": {
+          "name": "convites_revogado_por_usuarios_id_fk",
+          "tableFrom": "convites",
+          "tableTo": "usuarios",
+          "columnsFrom": [
+            "revogado_por"
           ],
           "columnsTo": [
             "id"
@@ -1266,23 +1450,7 @@
           "default": "now()"
         }
       },
-      "indexes": {
-        "proprietario_imoveis_um_dono": {
-          "name": "proprietario_imoveis_um_dono",
-          "columns": [
-            {
-              "expression": "imovel_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
         "proprietario_imoveis_proprietario_id_proprietarios_id_fk": {
           "name": "proprietario_imoveis_proprietario_id_proprietarios_id_fk",
@@ -1504,87 +1672,6 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.recebimento_por_canal": {
-      "name": "recebimento_por_canal",
-      "schema": "",
-      "columns": {
-        "organizacao_id": {
-          "name": "organizacao_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "imovel_id": {
-          "name": "imovel_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "origem": {
-          "name": "origem",
-          "type": "origem_reserva",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "recebimento": {
-          "name": "recebimento",
-          "type": "recebimento_reserva",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "atualizado_em": {
-          "name": "atualizado_em",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "recebimento_por_canal_organizacao_id_organizacoes_id_fk": {
-          "name": "recebimento_por_canal_organizacao_id_organizacoes_id_fk",
-          "tableFrom": "recebimento_por_canal",
-          "tableTo": "organizacoes",
-          "columnsFrom": [
-            "organizacao_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "recebimento_por_canal_imovel_id_imoveis_id_fk": {
-          "name": "recebimento_por_canal_imovel_id_imoveis_id_fk",
-          "tableFrom": "recebimento_por_canal",
-          "tableTo": "imoveis",
-          "columnsFrom": [
-            "imovel_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "recebimento_por_canal_imovel_id_origem_pk": {
-          "name": "recebimento_por_canal_imovel_id_origem_pk",
-          "columns": [
-            "imovel_id",
-            "origem"
-          ]
-        }
-      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
