@@ -77,6 +77,9 @@ export async function criarReserva(db: Db, organizacaoId: string, dados: DadosRe
  * Idempotente: rodar de novo com os mesmos dados não altera nada nem gera histórico.
  * Os lançamentos do motor de comissões são recalculados na mesma transação.
  */
+/** Campos da reserva que entram no cálculo do financeiro (motor) ou na situação dela. */
+const CAMPOS_DO_FINANCEIRO = ["estado", "imovelId", "checkin", "checkout", "valorBruto", "taxaCanal", "valorLiquido", "recebimento", "origem", "moeda"];
+
 export async function sincronizarReserva(
   db: Db,
   organizacaoId: string,
@@ -126,9 +129,10 @@ export async function sincronizarReserva(
     const canceladaEm = dados.estado !== "cancelada" ? null : existente.estado === "cancelada" ? existente.canceladaEm : new Date();
     const [reserva] = await tx
       .update(reservas)
-      // Qualquer mudança na reserva (situação, valores, datas, imóvel…): uma conferência dada por
-      // resolvida antes volta a valer (M4.8) — a decisão foi tomada sobre os dados de antes.
-      .set({ ...dados, canceladaEm, conferenciaResolvidaEm: null, atualizadoEm: new Date() })
+      // Mudou algo que pesa no financeiro (situação, valores, datas, imóvel, canal…): uma conferência
+      // dada por resolvida antes volta a valer (M4.8) — a decisão foi tomada sobre os dados de antes.
+      // Nome, contato ou observação do hóspede não reabrem.
+      .set({ ...dados, canceladaEm, conferenciaResolvidaEm: CAMPOS_DO_FINANCEIRO.some((c) => c in mudancas) ? null : existente.conferenciaResolvidaEm, atualizadoEm: new Date() })
       .where(eq(reservas.id, existente.id))
       .returning();
     await registrarAuditoria(tx, {
