@@ -759,3 +759,30 @@ export const manutencoes = pgTable(
   },
   (t) => [index("manutencoes_org_estado").on(t.organizacaoId, t.estado), index("manutencoes_imovel").on(t.imovelId)],
 );
+
+/**
+ * Documentos de portaria (M6.4): só a lista de controle por reserva — datas dos pedidos, quantos
+ * hóspedes já mandaram documento, encaminhamento e entrega. Nenhum documento, número ou foto é
+ * guardado aqui (nem no Git): eles ficam no canal privado.
+ */
+export const portariaChecklists = pgTable("portaria_checklists", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+  reservaId: uuid("reserva_id")
+    .notNull()
+    .unique()
+    .references(() => reservas.id),
+  avisoInicialEm: date("aviso_inicial_em", { mode: "string" }),
+  segundoPedidoEm: date("segundo_pedido_em", { mode: "string" }),
+  pedidoFinalEm: date("pedido_final_em", { mode: "string" }),
+  /** Quantos hóspedes já mandaram documento (só a contagem). */
+  documentosRecebidos: integer("documentos_recebidos").notNull().default(0),
+  /** Destinatário da portaria conferido antes de encaminhar (o contato fica em referência restrita). */
+  destinatarioConferido: boolean("destinatario_conferido").notNull().default(false),
+  encaminhadoEm: date("encaminhado_em", { mode: "string" }),
+  entregaConfirmadaEm: date("entrega_confirmada_em", { mode: "string" }),
+  /** Pendência concreta (falha de entrega, dúvida de correspondência…); vazio = nenhuma. */
+  pendencia: text("pendencia").notNull().default(""),
+  criadoEm: criadoEm(),
+  atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+});
