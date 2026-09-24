@@ -59,7 +59,19 @@ function celula(l: LinhaApartamento, c: ChaveColuna): React.ReactNode {
     case "acertoPeriodo":
       return <Saldo valor={l.acertoPeriodo} />;
     case "saldo":
-      return <Saldo valor={l.saldo} />;
+      return (
+        <>
+          <Saldo valor={l.saldo} />
+          {l.saldoOutrosDonos !== 0 && (
+            <>
+              <br />
+              <small style={{ color: "#b3261e" }}>
+                + {formatBRL(Math.abs(l.saldoOutrosDonos))} com proprietário anterior ({l.saldoOutrosDonos > 0 ? "empresa deve" : "ele deve"})
+              </small>
+            </>
+          )}
+        </>
+      );
     case "aCobrar":
       return (
         <>
@@ -194,7 +206,7 @@ export default async function Apartamentos({ searchParams }: PageProps<"/painel/
         </div>
       )}
       <p style={{ color: "var(--scl-texto-2)", fontSize: "0.8125rem", maxWidth: 820, margin: 0 }}>
-        Valores pelo mês de competência. &ldquo;Saldo do acerto&rdquo; é o acumulado até o fim do período; &ldquo;Adiantamentos a cobrar&rdquo; é o
+        Valores pelo mês de competência. &ldquo;Saldo do acerto&rdquo; é o acumulado até o fim do período, do proprietário atual (o de um dono anterior aparece à parte); &ldquo;Adiantamentos a cobrar&rdquo; é o
         de hoje e não inclui os contestados.
       </p>
     </>

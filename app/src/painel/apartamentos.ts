@@ -4,10 +4,12 @@
  * dele, movimento e saldo do acerto, adiantamentos a cobrar). Os números vêm das mesmas
  * funções do livro e do painel inicial: somando as linhas, o total bate com o Início.
  */
+import { inArray } from "drizzle-orm";
 import { listarAdiantamentos } from "@/adiantamentos/adiantamentos";
+import { proprietarioImoveis } from "@/db/schema";
 import type { Imovel } from "@/imoveis/repositorio";
 import type { Db } from "@/db/types";
-import { saldosAcertoPorImovel, type TotaisDoImovel, totaisPorImovel } from "@/financeiro/ledger";
+import { acertoPorImovelEDono, type TotaisDoImovel, totaisPorImovel } from "@/financeiro/ledger";
 import { listarBloqueios, listarReservas } from "@/reservas/repositorio";
 import { calcularOcupacao, type Financeiro, resumoFinanceiro } from "./indicadores";
 
@@ -74,8 +76,10 @@ export type LinhaApartamento = {
   financeiro: Financeiro;
   despesasProprietario: number;
   acertoPeriodo: number;
-  /** Acumulado até o fim do período. Positivo: a empresa deve ao proprietário. */
+  /** Acumulado até o fim do período, do proprietário atual. Positivo: a empresa deve a ele. */
   saldo: number;
+  /** Saldo que ficou com proprietários anteriores do imóvel (não entra em `saldo`). */
+  saldoOutrosDonos: number;
   aCobrar: number;
   contestados: number;
 };
@@ -84,7 +88,7 @@ const VAZIO: TotaisDoImovel = { valor: {}, montante: {}, acerto: 0 };
 
 function temMovimento(l: LinhaApartamento): boolean {
   const f = l.financeiro;
-  return Boolean(l.reservas || f.receitaBruta || f.comissoes || f.despesasEmpresa || f.ajustesEmpresa || l.despesasProprietario || l.acertoPeriodo || l.saldo || l.aCobrar || l.contestados);
+  return Boolean(l.reservas || f.receitaBruta || f.comissoes || f.despesasEmpresa || f.ajustesEmpresa || l.despesasProprietario || l.acertoPeriodo || l.saldo || l.saldoOutrosDonos || l.aCobrar || l.contestados);
 }
 
 /**
@@ -98,10 +102,14 @@ export async function carregarApartamentos(
 ): Promise<{ linhas: LinhaApartamento[]; total: LinhaApartamento }> {
   const candidatos = o.imoveis;
   const ids = candidatos.map((i) => i.id);
-  const [totais, saldos, reservas, bloqueios, adiantamentos] = await Promise.all([
+  const [totais, acertoPeriodo, saldos, donos, reservas, bloqueios, adiantamentos] = await Promise.all([
     // Filtro sem imóvel nenhum não vira "todos": nada a somar.
     o.todos ? totaisPorImovel(db, organizacaoId, o.periodo) : ids.length ? totaisPorImovel(db, organizacaoId, { ...o.periodo, imovelIds: ids }) : new Map<string | null, TotaisDoImovel>(),
-    saldosAcertoPorImovel(db, organizacaoId, o.periodo.fim, ids),
+    acertoPorImovelEDono(db, organizacaoId, { ...o.periodo, imovelIds: ids }),
+    acertoPorImovelEDono(db, organizacaoId, { fim: o.periodo.fim, imovelIds: ids }),
+    ids.length
+      ? db.select({ imovelId: proprietarioImoveis.imovelId, proprietarioId: proprietarioImoveis.proprietarioId }).from(proprietarioImoveis).where(inArray(proprietarioImoveis.imovelId, ids))
+      : [],
     ids.length ? listarReservas(db, organizacaoId, { ...o.periodo, imovelIds: ids }) : [],
     ids.length ? listarBloqueios(db, organizacaoId, { ...o.periodo, imovelIds: ids }) : [],
     ids.length ? listarAdiantamentos(db, organizacaoId, { imovelIds: ids, somenteAbertos: true }) : [],
@@ -115,10 +123,16 @@ export async function carregarApartamentos(
     ).map((x) => [x.imovelId, x]),
   );
 
+  // O acerto da linha é o do proprietário atual do imóvel; o de donos anteriores fica à parte
+  // (um imóvel que trocou de dono não soma a dívida de um com o crédito do outro).
+  const donoAtual = new Map(donos.map((d) => [d.imovelId, d.proprietarioId]));
+  const doDono = (lista: typeof saldos, imovelId: string) => lista.filter((x) => x.imovelId === imovelId && x.proprietarioId === donoAtual.get(imovelId)).reduce((t, x) => t + x.total, 0);
+  const deOutros = (lista: typeof saldos, imovelId: string) => lista.filter((x) => x.imovelId === imovelId && x.proprietarioId !== donoAtual.get(imovelId)).reduce((t, x) => t + x.total, 0);
+
   const linha = (imovelId: string | null, codigo: string, nome: string, ativo: boolean): LinhaApartamento => {
     const t = totais.get(imovelId) ?? VAZIO;
     const oc = imovelId ? ocupacao.get(imovelId) : undefined;
-    const adiant = adiantamentos.filter((a) => a.imovelId === imovelId);
+    const adiant = adiantamentos.filter((a) => a.imovelId === imovelId && imovelId !== null && a.proprietarioId === donoAtual.get(imovelId));
     return {
       imovelId,
       codigo,
@@ -130,8 +144,9 @@ export async function carregarApartamentos(
       ocupacao: oc?.taxa ?? null,
       financeiro: resumoFinanceiro(t.valor),
       despesasProprietario: t.montante.despesa_proprietario ?? 0,
-      acertoPeriodo: t.acerto,
-      saldo: imovelId ? (saldos.get(imovelId) ?? 0) : 0,
+      acertoPeriodo: imovelId ? doDono(acertoPeriodo, imovelId) : 0,
+      saldo: imovelId ? doDono(saldos, imovelId) : 0,
+      saldoOutrosDonos: imovelId ? deOutros(saldos, imovelId) : 0,
       aCobrar: adiant.filter((a) => a.situacao !== "contestado").reduce((s, a) => s + a.aberto, 0),
       contestados: adiant.filter((a) => a.situacao === "contestado").length,
     };
@@ -175,6 +190,7 @@ export function somar(linhas: readonly LinhaApartamento[]): LinhaApartamento {
     despesasProprietario: s((l) => l.despesasProprietario),
     acertoPeriodo: s((l) => l.acertoPeriodo),
     saldo: s((l) => l.saldo),
+    saldoOutrosDonos: s((l) => l.saldoOutrosDonos),
     aCobrar: s((l) => l.aCobrar),
     contestados: s((l) => l.contestados),
   };

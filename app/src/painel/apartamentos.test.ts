@@ -144,6 +144,18 @@ describe("aba Apartamentos", () => {
     ]);
   });
 
+  it("imóvel que trocou de dono: o saldo da linha é do dono atual; o do anterior aparece à parte", async () => {
+    await despesa({ responsavel: "proprietario", valor: 40000, imovelId: a, descricao: "Reparo" }); // dívida da Dona
+    const [novo] = await db.insert(proprietarios).values({ organizacaoId: org, nome: "Novo dono" }).returning();
+    await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));
+    await db.insert(proprietarioImoveis).values({ proprietarioId: novo.id, imovelId: a });
+    let l = (await carregar()).linhas.find((x) => x.codigo === "403")!;
+    expect(l).toMatchObject({ saldo: 0, acertoPeriodo: 0, saldoOutrosDonos: -40000, aCobrar: 0 });
+    await despesa({ responsavel: "proprietario", valor: 10000, imovelId: a, descricao: "Chave" }); // já do novo dono
+    l = (await carregar()).linhas.find((x) => x.codigo === "403")!;
+    expect(l).toMatchObject({ saldo: -10000, acertoPeriodo: -10000, saldoOutrosDonos: -40000, aCobrar: 10000 });
+  });
+
   it("filtro sem imóvel nenhum não soma a organização inteira", async () => {
     await despesa({ responsavel: "empresa", valor: 30000, imovelId: null, descricao: "Contador" });
     const r = await carregarApartamentos(db, org, { imoveis: [], todos: false, periodo });

@@ -326,14 +326,21 @@ export async function totaisPorImovel(db: Db, organizacaoId: string, f: FiltroLa
   return saida;
 }
 
-/** Saldo do acerto acumulado até `fim` (exclusivo), por imóvel. Mesma regra de `saldoAcerto`. */
-export async function saldosAcertoPorImovel(db: Db, organizacaoId: string, fim: string, imovelIds: string[]): Promise<Map<string, number>> {
-  const ids = imovelIds.filter(uuidValido);
-  if (!ids.length) return new Map();
+/**
+ * Acerto (soma de efeitoSaldo) por imóvel e proprietário, no filtro dado (ex.: só `fim` para o
+ * saldo acumulado). Separado por proprietário: um imóvel que trocou de dono não mistura as contas.
+ */
+export async function acertoPorImovelEDono(
+  db: Db,
+  organizacaoId: string,
+  f: FiltroLancamentos & { imovelIds: string[] },
+): Promise<{ imovelId: string; proprietarioId: string; total: number }[]> {
+  const ids = f.imovelIds.filter(uuidValido);
+  if (!ids.length) return [];
   const linhas = await db
-    .select({ imovelId: lancamentos.imovelId, total: sum(lancamentos.efeitoSaldo) })
+    .select({ imovelId: lancamentos.imovelId, proprietarioId: lancamentos.proprietarioId, total: sum(lancamentos.efeitoSaldo) })
     .from(lancamentos)
-    .where(and(condicoes(organizacaoId, { fim, imovelIds: ids }), isNotNull(lancamentos.proprietarioId)))
-    .groupBy(lancamentos.imovelId);
-  return new Map(linhas.map((l) => [l.imovelId!, Number(l.total ?? 0)]));
+    .where(and(condicoes(organizacaoId, { ...f, imovelIds: ids }), isNotNull(lancamentos.proprietarioId)))
+    .groupBy(lancamentos.imovelId, lancamentos.proprietarioId);
+  return linhas.map((l) => ({ imovelId: l.imovelId!, proprietarioId: l.proprietarioId!, total: Number(l.total ?? 0) }));
 }
