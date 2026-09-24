@@ -613,6 +613,40 @@ describe("configuração e envio", () => {
     expect(await estado()).toBe("resolvido");
   });
 
+  it("'enviar agora' incerto antes das 20h: o agendado fecha o manual (mesmo pedido) e manda a agenda do dia", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    await nova(rio, "2028-12-04", "2028-12-06", new Date(AGORA.getTime() - 60 * 60_000).toISOString());
+    const pedidos: Mensagem[] = [];
+    const caiu: Correio = { nome: "caiu", enviar: async (m) => { pedidos.push(m); throw new ErroEnvioIncerto("Sem resposta do provedor de e-mail"); } };
+    await enviarAgenda(db, org, caiu, new Date(AGORA.getTime() - 40 * 60_000), { manual: true });
+    // Depois do manual, uma reserva nova: tem de ir no e-mail das 20h.
+    await nova(rio, "2028-12-11", "2028-12-13", new Date(AGORA.getTime() - 10 * 60_000).toISOString());
+    const correio = new CorreioMemoria();
+    expect(await enviarAgenda(db, org, correio, AGORA)).toMatchObject({ enviados: 2 });
+    expect(correio.enviadas[0]).toMatchObject({ chave: pedidos[0].chave, texto: pedidos[0].texto });
+    expect(correio.enviadas[1].chave).not.toBe(pedidos[0].chave);
+    expect(correio.enviadas[1].texto).toContain("entrada seg 11/12");
+    // A reserva do manual não se repete no das 20h.
+    expect(correio.enviadas[1].texto).not.toContain("entrada seg 04/12");
+  });
+
+  it("evento substituído por uma nova confirmação não segura o envio incerto", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    const dados = reserva(rio, "2028-10-02", "2028-10-04", { codigoCanal: "HMSUB" });
+    const r = await sincronizarReserva(db, org, "beds24", "B-SUB", dados);
+    if (!r.ok) throw new Error("reserva");
+    const antigo = `${r.reserva.id}@${new Date(Date.now() - 3 * 86_400_000).toISOString()}`;
+    // Cancelada e confirmada de novo: a confirmação nova é outro evento.
+    await sincronizarReserva(db, org, "beds24", "B-SUB", { ...dados, estado: "cancelada" });
+    await sincronizarReserva(db, org, "beds24", "B-SUB", dados);
+    const ontem = new Date(Date.now() - 2 * 86_400_000);
+    const k = `agenda-diaria:${org}:${ontem.toISOString().slice(0, 10)}:a@example.com`;
+    await db.insert(appSettings).values({ key: k, value: { em: ontem.toISOString(), estado: "incerto", corte: ontem.toISOString(), carga: { assunto: "x", texto: "x", eventos: [antigo], imoveis: [] } } });
+    await enviarAgenda(db, org, new CorreioMemoria(), new Date());
+    const [marca] = await db.select().from(appSettings).where(eq(appSettings.key, k));
+    expect((marca.value as { estado: string }).estado).toBe("resolvido");
+  });
+
   it("envio incerto só é resolvido quando as reservas dele foram entregues ou não precisam mais de aviso", async () => {
     await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
     const futura = await nova(rio, "2028-10-02", "2028-10-04", new Date(AGORA.getTime() - 3_600_000).toISOString());

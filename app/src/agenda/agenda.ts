@@ -661,14 +661,24 @@ export async function enviarAgenda(
   // quando é renovada (senão, depois de envios lentos, ela nasceria ou ficaria vencida).
   const inicio = Date.now();
   const relogio = () => new Date(agora.getTime() + (Date.now() - inicio));
-  const enviarPara = async (d: Destinatario, trava: { chave: string; dono: string }): Promise<void> => {
-    // Um envio de hoje do outro tipo (agendado ou manual) ainda sem confirmação do provedor: esta
-    // tentativa usa a marca e a chave dele (repete o mesmo pedido, que o provedor não duplica) em vez
-    // de mandar outro e-mail com chave própria. Antes de 15 minutos, espera.
-    const outra = chaveEnvio(organizacaoId, hoje, d.email, !o.manual);
-    const [daOutra] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, outra));
-    const outraIncerta = (daOutra?.value as { estado?: string } | undefined)?.estado === "enviando";
-    const chave = outraIncerta ? outra : chaveEnvio(organizacaoId, hoje, d.email, o.manual);
+  const enviarPara = async (d: Destinatario, trava: { chave: string; dono: string }, chaveForcada?: string): Promise<void> => {
+    // Um envio de hoje do outro tipo ainda sem confirmação do provedor ("enviando"):
+    // - "enviar agora" usa a marca e a chave do agendado (repete o mesmo pedido, que o provedor não
+    //   duplica) em vez de mandar outro e-mail; antes de 15 minutos, espera;
+    // - o das 20h primeiro fecha o manual pendente (mesmo pedido, mesma chave) e depois manda a
+    //   agenda do dia com a própria chave: o pedido velho do manual não toma o lugar dela.
+    let outraIncerta = false;
+    let chave = chaveForcada ?? chaveEnvio(organizacaoId, hoje, d.email, o.manual);
+    if (!chaveForcada) {
+      const outra = chaveEnvio(organizacaoId, hoje, d.email, !o.manual);
+      const [daOutra] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, outra));
+      const incerta = (daOutra?.value as { estado?: string } | undefined)?.estado === "enviando";
+      if (incerta && !o.manual) await enviarPara(d, trava, outra);
+      else if (incerta) {
+        outraIncerta = true;
+        chave = outra;
+      }
+    }
     const incertos = await reconciliarIncertos(db, pendentes, d.email, hoje);
     const incertoAte = incertos.ate;
     const reserva = await reservarEnvio(db, chave, agora);
@@ -806,15 +816,38 @@ export async function enviarAgenda(
                 .from(reservas)
                 .where(and(inArray(reservas.id, ids), eq(reservas.estado, "confirmada"), gte(reservas.checkout, hoje)))
             : [];
-          if (!foraImoveis.length && !aindaValem.length) {
+          // Evento substituído (a reserva foi confirmada de novo depois dele: é outro evento, que segue o
+          // seu próprio caminho) não segura o incerto.
+          const reconfirmadas = aindaValem.length
+            ? await tx
+                .select({ id: auditoria.entidadeId, em: sql<string>`to_char(max(${auditoria.criadoEm}) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')` })
+                .from(auditoria)
+                .where(
+                  and(
+                    eq(auditoria.entidade, "reserva"),
+                    inArray(
+                      auditoria.entidadeId,
+                      aindaValem.map((x) => x.id),
+                    ),
+                    sql`${auditoria.mudancas} -> 'estado' ->> 1 = 'confirmada'`,
+                  ),
+                )
+                .groupBy(auditoria.entidadeId)
+            : [];
+          const eventos = faltam.filter((e) => {
+            const [id, em] = e.split("@");
+            if (!aindaValem.some((x) => x.id === id)) return false;
+            const ultima = reconfirmadas.find((x) => x.id === id)?.em;
+            return !(ultima && Date.parse(ultima) > Date.parse(em));
+          });
+          const pendentesIds = new Set(eventos.map((e) => e.split("@")[0]));
+          if (!foraImoveis.length && !eventos.length) {
             await tx.update(appSettings).set({ value: sql`jsonb_set(${appSettings.value}, '{estado}', '"resolvido"')`, updatedAt: new Date() }).where(eq(appSettings.key, i.chave));
             continue;
           }
           // Parcial: o incerto fica só com o que ainda falta (imóveis de fora e reservas não entregues).
           // O que este e-mail já entregou sai dele, para a faixa do incerto não o mandar de novo.
-          const restantes = new Set(aindaValem.map((x) => x.id));
-          const eventos = faltam.filter((e) => restantes.has(e.split("@")[0]));
-          const imoveisRestantes = [...new Set([...foraImoveis, ...aindaValem.map((x) => x.imovelId)])].sort();
+          const imoveisRestantes = [...new Set([...foraImoveis, ...aindaValem.filter((x) => pendentesIds.has(x.id)).map((x) => x.imovelId)])].sort();
           await tx
             .update(appSettings)
             .set({
