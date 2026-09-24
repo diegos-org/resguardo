@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 24/09/2026, portal do proprietário com reservas, calendário e saldo com Pix (M5.2).
+> **Última atualização:** 24/09/2026, relatório mensal do proprietário em PDF (M5.3).
 
 ---
 
@@ -257,7 +257,25 @@
     comissão da empresa, **sua parte**, despesas atribuídas a ele e o acerto do período (quem
     passou a dever a quem). Se o imóvel trocou de dono, o novo proprietário não vê o histórico
     do anterior.
-  O PDF chega no M5.3.
+  O PDF chegou no M5.3 (abaixo).
+- M5.3: **relatório do mês em PDF**, no modelo que você aprovou (verde sálvia, areia e
+  dourado, títulos com serifa):
+  - **primeira página:** nome da empresa e contatos, o mês, o nome comercial do imóvel (sem
+    código), o proprietário e o representante que recebe relatórios, o período, e os números
+    (os mesmos do portal). O valor em destaque é a **parte do proprietário**, com a base
+    escrita embaixo: não é o total do canal nem lucro. Depois vêm a tabela de reservas (do
+    hóspede, só o primeiro nome) e o saldo com a empresa. No mês atual, o PDF diz que é
+    **parcial** e até que dia vale;
+  - **extrato oficial do canal** nas páginas seguintes, copiado como veio, sem redesenhar. Dá
+    para usar só algumas páginas (ex.: "1-2"), e a primeira página avisa quais foram usadas e
+    quantas o extrato tem. Sem extrato anexado, avisa "não anexado a esta versão";
+  - **no painel:** na ficha do proprietário, o link **Relatório do mês em PDF**. Lá você
+    escolhe o mês e os imóveis, e pode anexar a **foto real** do imóvel e o **extrato** (até
+    2 MB cada). Os arquivos servem só para montar o PDF: **não ficam guardados** no sistema.
+    Cada PDF gerado fica registrado no histórico do proprietário (mês, imóveis e se levou foto
+    ou extrato; nunca o conteúdo);
+  - **no portal:** o proprietário baixa o PDF do mês que está vendo, só dos imóveis dele. Essa
+    versão não tem foto nem extrato.
 - M5.2: **reservas, calendário e saldo no portal do proprietário:**
   - **tabela de reservas** do período, com imóvel, entrada, saída, hóspede, valor bruto, a
     parte dele, situação (definido, em conferência ou sem cálculo ainda), canal e a origem que
@@ -460,9 +478,9 @@
 |---|---|
 | ![Portal](docs/telas/portal.png) | ![Portal com reservas no celular](docs/telas/portal-reservas-celular.png) |
 
-| Portal do proprietário: calendário, reservas e saldo |
-|---|
-| ![Portal com reservas](docs/telas/portal-reservas.png) |
+| Portal do proprietário: calendário, reservas e saldo | Relatório do mês em PDF (primeira página) |
+|---|---|
+| ![Portal com reservas](docs/telas/portal-reservas.png) | ![Relatório em PDF](docs/telas/relatorio-pdf.png) |
 
 | Limpezas | Limpezas no celular |
 |---|---|
@@ -585,12 +603,16 @@ ambiente).
      portal para o proprietário que deve à empresa, depois do fechamento do mês. Sem ela, o
      portal pede que ele fale com a empresa.
 7. **Booking:** criar os anúncios (ver "Copiar anúncios do Airbnb para o Booking" na seção 7).
-8. **Portaria:** em Painel → **Portaria**, marque os imóveis que exigem documentos de
+8. **Relatórios em PDF:** para o fechamento, gere o PDF na ficha do proprietário, anexando o
+   **extrato oficial** do canal e uma **foto real** do imóvel. Antes de mandar, abra o PDF e
+   confira se o extrato é só daquele imóvel e daquele mês. O envio automático por e-mail vem no
+   M5.4.
+9. **Portaria:** em Painel → **Portaria**, marque os imóveis que exigem documentos de
    portaria (hoje, o 403). Sem marcação, a tela só avisa e não lista nada.
-9. **Manutenção:** quando aparecer "aguardando aprovação" (no menu **Manutenção**), confira o
+10. **Manutenção:** quando aparecer "aguardando aprovação" (no menu **Manutenção**), confira o
    orçamento, escolha quem paga (empresa ou proprietário) e aprove, ou recuse com o motivo.
    Só você (administrador) vê esses botões.
-10. **Sistema antigo (referência):** mande o arquivo (zip) do sistema antigo — o jeito mais
+11. **Sistema antigo (referência):** mande o arquivo (zip) do sistema antigo — o jeito mais
    fácil é subir no seu **Google Drive** e me dizer o nome do arquivo (o Drive já está
    conectado aqui). Eu só leio para levantar todas as telas e capacidades e comparar com o
    plano; **nada dele vai para o GitHub**, e dados reais de clientes não são copiados.

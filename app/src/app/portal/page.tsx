@@ -295,6 +295,13 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
               <span />
             )}
           </nav>
+          {filtros.mes !== null && (
+            <p style={{ margin: 0, textAlign: "center" }}>
+              <a href={link({ ano: filtros.ano, mes: filtros.mes }).replace("/portal?", "/portal/relatorio?")} download>
+                Baixar o relatório deste mês em PDF
+              </a>
+            </p>
+          )}
           {SITUACAO[situacao] && (
             <p role="note" style={{ margin: 0, padding: "8px 12px", borderRadius: 6, background: "var(--scl-areia)", fontSize: "0.9375rem" }}>
               <strong>{SITUACAO[situacao].titulo}:</strong> {SITUACAO[situacao].texto}
