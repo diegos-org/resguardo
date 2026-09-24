@@ -232,13 +232,31 @@ export async function desfazerQuitacao(db: Db, organizacaoId: string, quitacaoId
     if (atual.desfeitaEm) return { ok: false as const, erro: "Quitação já desfeita." };
     if (q.lancamentoId) await estornar(tx, organizacaoId, q.lancamentoId, motivo.trim(), autorId);
     await tx.update(quitacoesAdiantamento).set({ desfeitaEm: new Date() }).where(eq(quitacoesAdiantamento.id, quitacaoId));
+    // "Empresa assume" que veio da resolução de uma contestação: desfazer reabre a contestação
+    // (senão o valor voltaria a ser cobrado com a tela dizendo que a empresa assumiu).
+    let reaberta = false;
+    if (q.forma === "empresa_assume") {
+      const [c] = await tx
+        .select({ id: contestacoesAdiantamento.id })
+        .from(contestacoesAdiantamento)
+        .where(and(eq(contestacoesAdiantamento.adiantamentoId, q.adiantamentoId), eq(contestacoesAdiantamento.resolucao, "empresa_assume")))
+        .orderBy(desc(contestacoesAdiantamento.resolvidaEm))
+        .limit(1);
+      if (c) {
+        await tx.update(contestacoesAdiantamento).set({ resolvidaEm: null, resolucao: null, notaResolucao: "" }).where(eq(contestacoesAdiantamento.id, c.id));
+        reaberta = true;
+      }
+    }
     await registrarAuditoria(tx, {
       organizacaoId,
       usuarioId: autorId,
       acao: "adiantamento.desfazer_quitacao",
       entidade: "adiantamento",
       entidadeId: q.adiantamentoId,
-      mudancas: { [NOMES_FORMA[q.forma as FormaQuitacao]]: [`${q.valor} em ${q.data}`, `desfeito: ${motivo.trim()}`] },
+      mudancas: {
+        [NOMES_FORMA[q.forma as FormaQuitacao]]: [`${q.valor} em ${q.data}`, `desfeito: ${motivo.trim()}`],
+        ...(reaberta ? { contestacao: ["empresa assumiu", "reaberta"] } : {}),
+      },
     });
     return { ok: true as const };
   });
@@ -316,4 +334,9 @@ export function resumoPorProprietario(lista: readonly Adiantamento[]) {
     m.set(a.proprietarioId, r);
   }
   return [...m.entries()].map(([proprietarioId, r]) => ({ proprietarioId, ...r })).sort((x, y) => x.proprietario.localeCompare(y.proprietario));
+}
+
+/** Total ainda a cobrar dos proprietários: saldo em aberto dos adiantamentos, sem os contestados. */
+export function totalACobrar(lista: readonly Adiantamento[]): number {
+  return lista.filter((a) => a.situacao === "a_cobrar" || a.situacao === "parcial").reduce((s, a) => s + a.aberto, 0);
 }
