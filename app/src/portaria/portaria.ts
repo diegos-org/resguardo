@@ -224,19 +224,22 @@ export async function registrarPortaria(db: Db, organizacaoId: string, reservaId
     const [antes] = await tx.select().from(portariaChecklists).where(eq(portariaChecklists.reservaId, reservaId)).for("update");
 
     let novo: Partial<Checklist>;
+    // Encaminhamento e entrega valem só com o destinatário conferido e os documentos completos:
+    // se uma correção desfaz isso, os dois saem (o histórico guarda as datas) e o passo volta.
+    const desfazEnvio = { encaminhadoEm: null, entregaConfirmadaEm: null };
     if (reg.tipo === "documentos") {
       if (!Number.isSafeInteger(reg.recebidos) || reg.recebidos < 0 || reg.recebidos > 50) return { ok: false as const, erro: "Quantidade inválida." };
       if (r.hospedes !== null && reg.recebidos > r.hospedes) return { ok: false as const, erro: `A reserva tem ${r.hospedes} hóspede(s): confira a quantidade.` };
-      novo = { documentosRecebidos: reg.recebidos };
+      novo = { documentosRecebidos: reg.recebidos, ...(r.hospedes === null || reg.recebidos < r.hospedes ? desfazEnvio : {}) };
     } else if (reg.tipo === "destinatario") {
-      novo = { destinatarioConferido: reg.conferido };
+      novo = { destinatarioConferido: reg.conferido, ...(reg.conferido ? {} : desfazEnvio) };
     } else if (reg.tipo === "pendencia") {
       if (reg.texto.length > 500) return { ok: false as const, erro: "Pendência longa demais (até 500 caracteres)." };
       novo = { pendencia: reg.texto.trim() };
     } else {
       if (!dataValida(reg.data) || reg.data > hoje) return { ok: false as const, erro: "Data inválida (não pode ser no futuro)." };
-      if (reg.tipo === "encaminhado") {
-        if (!antes.destinatarioConferido) return { ok: false as const, erro: "Confira o destinatário da portaria antes de encaminhar." };
+      if (reg.tipo === "encaminhado" || reg.tipo === "entrega_confirmada") {
+        if (!antes.destinatarioConferido) return { ok: false as const, erro: "Confira o destinatário da portaria antes de encaminhar ou confirmar a entrega." };
         if (r.hospedes === null || antes.documentosRecebidos < r.hospedes) return { ok: false as const, erro: "Ainda faltam documentos (ou o número de hóspedes não está na reserva)." };
       }
       if (reg.tipo === "entrega_confirmada" && !antes.encaminhadoEm) return { ok: false as const, erro: "Registre o encaminhamento antes de confirmar a entrega." };

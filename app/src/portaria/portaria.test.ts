@@ -126,6 +126,17 @@ describe("lista de portaria", () => {
     expect(await reg({ tipo: "entrega_confirmada", data: hoje })).toEqual({ ok: true });
     expect(await reg({ tipo: "encaminhado", data: "2026-10-06" })).toMatchObject({ ok: false }); // futuro
     expect(await reg({ tipo: "pendencia", texto: "  Portaria pediu foto legível  " })).toEqual({ ok: true });
+    // Correção que desfaz um pré-requisito tira o encaminhamento e a entrega (o passo volta).
+    expect(await reg({ tipo: "destinatario", conferido: false })).toEqual({ ok: true });
+    expect((await listarPortaria(db, org, { hoje, ate: "2026-11-05" }))[0]).toMatchObject({ passo: "encaminhar", encaminhadoEm: null, entregaConfirmadaEm: null });
+    expect(await reg({ tipo: "destinatario", conferido: true })).toEqual({ ok: true });
+    expect(await reg({ tipo: "encaminhado", data: hoje })).toEqual({ ok: true });
+    expect(await reg({ tipo: "documentos", recebidos: 1 })).toEqual({ ok: true });
+    expect((await listarPortaria(db, org, { hoje, ate: "2026-11-05" }))[0]).toMatchObject({ encaminhadoEm: null, destinatarioConferido: true });
+    expect(await reg({ tipo: "entrega_confirmada", data: hoje })).toMatchObject({ ok: false });
+    expect(await reg({ tipo: "documentos", recebidos: 2 })).toEqual({ ok: true });
+    expect(await reg({ tipo: "encaminhado", data: hoje })).toEqual({ ok: true });
+    expect(await reg({ tipo: "entrega_confirmada", data: hoje })).toEqual({ ok: true });
     const [l] = await listarPortaria(db, org, { hoje, ate: "2026-11-05" });
     expect(l).toMatchObject({ passo: "concluido", pendencia: "Portaria pediu foto legível", destinatarioConferido: true });
     expect((await historicoDe(db, org, "reserva", id)).filter((h) => h.acao.startsWith("portaria.")).length).toBeGreaterThanOrEqual(6);
