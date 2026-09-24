@@ -177,6 +177,29 @@ export async function carregarDashboard(
         texto: `${semCalculo.length} reserva(s) do período com valor mas sem cálculo no financeiro: confira o contrato na data da entrada.${notaArquivados(semCalculo.map((r) => r.imovelId))}`,
         link: "/painel/reservas",
       });
+    // Pendente que ainda tem lançamento do motor em vigor: já movimentou dinheiro (o recálculo não
+    // mexe nisso). Conta nos totais de todas as telas, mas não é venda confirmada: confira.
+    const pendentesDoPeriodo = doPeriodo.filter((r) => r.estado === "pendente");
+    const comDinheiro = pendentesDoPeriodo.length
+      ? await db
+          .selectDistinct({ reservaId: lancamentos.reservaId })
+          .from(lancamentos)
+          .where(
+            and(
+              eq(lancamentos.organizacaoId, organizacaoId),
+              inArray(lancamentos.reservaId, pendentesDoPeriodo.map((r) => r.id)),
+              eq(lancamentos.origem, "motor"),
+              isNull(lancamentos.estornoDe),
+              sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`,
+            ),
+          )
+      : [];
+    if (comDinheiro.length)
+      alertas.push({
+        nivel: "atencao",
+        texto: `${comDinheiro.length} reserva(s) pendente(s) com dinheiro já movimentado: os valores continuam no financeiro. Confirme a reserva ou faça um ajuste manual.`,
+        link: "/painel/reservas",
+      });
     const codigoDe = new Map(regras.map((r) => [r.imovelId, r.codigo]));
     const nPendentes = pendentes.reduce((t, x) => t + x.n, 0);
     if (nPendentes) {

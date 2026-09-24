@@ -3,7 +3,7 @@
  * valores vêm do mesmo livro do painel (nada é recalculado aqui); a contagem de reservas vem das
  * reservas confirmadas dos imóveis dele no período.
  */
-import { and, eq, gt, gte, inArray, isNotNull, isNull, lt, notInArray, or, sql, sum } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, isNotNull, isNull, lt, or, sql, sum } from "drizzle-orm";
 import { ajustes, lancamentos, proprietarios, proprietarioUsuarios, reservas, type TipoLancamento } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
@@ -39,8 +39,6 @@ export type ResumoPortal = {
   emConferencia: boolean;
 };
 
-/** Lançamentos que a própria reserva gera (motor e seus estornos). */
-const DA_RESERVA: TipoLancamento[] = ["receita_bruta", "taxa_canal", "comissao", "direito_proprietario"];
 
 const ZERO: ResumoPortal = { reservas: 0, receitaBruta: 0, taxasCanais: 0, comissao: 0, suaParte: 0, despesas: 0, acerto: 0, acertoPendente: 0, emConferencia: false };
 
@@ -53,19 +51,15 @@ export async function resumoDoProprietario(
   const imoveis = o.imovelIds.filter(uuidValido);
   // Sem proprietário ou sem imóvel: nada (nunca "todos").
   if (!donos.length || !imoveis.length) return ZERO;
-  // Reserva ainda pendente não é receita para o proprietário. Cancelada fica como está no livro:
-  // o cancelamento estorna os lançamentos (somam zero), e se já houve dinheiro movimentado eles
-  // continuam valendo, como no painel.
-  const pendentes = db.select({ id: reservas.id }).from(reservas).where(and(eq(reservas.organizacaoId, organizacaoId), eq(reservas.estado, "pendente")));
+  // O livro manda, como no painel (M4.8): reserva pendente não tem lançamentos (o motor só calcula
+  // a confirmada) e cancelada tem os seus estornados. Se uma delas já tinha movimentado dinheiro, os
+  // lançamentos continuam valendo aqui e no painel, e o Início avisa para conferir.
   const base = and(
     eq(lancamentos.organizacaoId, organizacaoId),
     gte(lancamentos.competencia, o.periodo.inicio),
     lt(lancamentos.competencia, o.periodo.fim),
     // Lançamento do proprietário sem imóvel (ajuste/acerto geral) só entra com todos os imóveis dele.
     o.semImovel ? or(inArray(lancamentos.imovelId, imoveis), and(isNull(lancamentos.imovelId), inArray(lancamentos.proprietarioId, donos))) : inArray(lancamentos.imovelId, imoveis),
-    // A restrição vale só para o que a reserva gera (bruto, taxa, comissão, parte do dono);
-    // ajuste, despesa e repasse ligados a uma reserva continuam valendo mesmo se ela cair.
-    or(notInArray(lancamentos.tipo, DA_RESERVA), isNull(lancamentos.reservaId), notInArray(lancamentos.reservaId, pendentes)),
   );
   // Linhas do próprio proprietário: parte dele, despesas, acerto.
   const dele = await db

@@ -354,7 +354,10 @@
   - **reserva pendente** (ainda não confirmada) entrava na receita e no acerto do painel, mas
     não no portal. Agora ela **não entra em nenhum número** até ser confirmada; ao confirmar,
     aparece em todas as telas ao mesmo tempo. Ela continua ocupando o calendário e a agenda
-    de limpezas, como antes;
+    de limpezas, como antes. Pendentes antigas, calculadas antes desta mudança, são acertadas
+    sozinhas na próxima publicação do sistema. Se uma reserva já tinha dinheiro recebido e
+    voltou a ficar pendente, os valores continuam (nada que já movimentou dinheiro é mexido
+    sozinho) e o Início mostra um aviso para você confirmar a reserva ou fazer um ajuste;
   - o contador de reservas do Início e da aba Apartamentos passou a contar **só as
     confirmadas**, igual ao portal e ao relatório.
 - M6.5: **rotinas recorrentes** (menu **Rotinas**). Tarefas que se repetem, cada uma com a

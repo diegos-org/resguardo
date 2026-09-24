@@ -165,3 +165,33 @@ export async function recalcularReservas(
   }
   return total;
 }
+
+/**
+ * Reservas pendentes com lançamentos do motor ainda em vigor (calculadas antes de o motor deixar
+ * pendente de fora, M4.8): passa o motor de novo, que estorna o que não movimentou dinheiro. Vale
+ * para qualquer data, porque pendente nunca foi receita; o que já movimentou dinheiro fica
+ * protegido e aparece como aviso no Início. Idempotente (sem lançamento em vigor, nada a fazer).
+ */
+export async function recalcularPendentes(db: Db, organizacaoId: string, autorId: string | null = null): Promise<ResultadoRecalculo & { protegidas: number }> {
+  const ids = await db
+    .selectDistinct({ id: reservas.id })
+    .from(reservas)
+    .innerJoin(lancamentos, eq(lancamentos.reservaId, reservas.id))
+    .where(
+      and(
+        eq(reservas.organizacaoId, organizacaoId),
+        eq(reservas.estado, "pendente"),
+        eq(lancamentos.origem, "motor"),
+        isNull(lancamentos.estornoDe),
+        sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`,
+      ),
+    );
+  const total = { reservas: ids.length, criados: 0, estornados: 0, protegidas: 0 };
+  for (const { id } of ids) {
+    const r = await aplicarMotor(db, organizacaoId, id, autorId);
+    total.criados += r?.criados ?? 0;
+    total.estornados += r?.estornados ?? 0;
+    if (r?.protegido) total.protegidas++;
+  }
+  return total;
+}

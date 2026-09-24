@@ -5,8 +5,10 @@
  * despesa do proprietário e venda direta.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { and, eq } from "drizzle-orm";
 import { criarContrato } from "@/contratos/repositorio";
-import { imoveis, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
+import { recalcularPendentes } from "@/financeiro/aplicar";
+import { lancamentos, imoveis, organizacoes, proprietarioImoveis, proprietarios, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { criarCategoria } from "@/despesas/categorias";
@@ -182,5 +184,40 @@ describe("consistência entre telas (M4.8)", () => {
     expect(inicio.alertas.map((x) => x.texto).join(" | ")).not.toContain("sem cálculo");
     await sincronizarReserva(db, org, "csv", "booking:P1", { ...pendente, estado: "confirmada" }, null);
     expect(await totais()).toEqual([310000, 4, 310000, 4, 310000, 4]);
+  });
+
+  const tresTelas = async () => {
+    const so403 = (await listarImoveis(db, org)).filter((i) => i.codigo === "403");
+    const inicio = await carregarDashboard(db, org, { imoveis: so403, todos: false, periodo: OUTUBRO, ano: 2026, hoje: "2026-11-10", verFinanceiro: true });
+    const { linhas } = await carregarApartamentos(db, org, { imoveis: so403, todos: false, periodo: OUTUBRO });
+    const portal = await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], semImovel: true, periodo: OUTUBRO });
+    return { inicio, brutos: [inicio.financeiro?.receitaBruta, linhas[0].financeiro.receitaBruta, portal.receitaBruta], acertos: [linhas[0].acertoPeriodo, portal.acerto] };
+  };
+
+  it("pendente calculada por versão antiga: o ajuste do deploy tira os lançamentos dela de todas as telas", async () => {
+    const r = await criarReserva(db, org, reserva(a, "2026-10-01", "2026-10-03", { valorBruto: 50000, taxaCanal: 0 }), null);
+    if (!r.ok) throw new Error("reserva");
+    // Como no banco de antes: pendente, mas com os lançamentos que o motor antigo criava.
+    await db.update(reservas).set({ estado: "pendente" }).where(eq(reservas.id, r.reserva.id));
+    const antes = await tresTelas();
+    expect(new Set(antes.brutos).size).toBe(1);
+    expect(await recalcularPendentes(db, org)).toMatchObject({ reservas: 1, protegidas: 0 });
+    const depois = await tresTelas();
+    expect(depois.brutos).toEqual([260000, 260000, 260000]);
+    expect(depois.acertos[0]).toBe(depois.acertos[1]);
+    // Idempotente: nada mais a fazer.
+    expect(await recalcularPendentes(db, org)).toMatchObject({ reservas: 0 });
+  });
+
+  it("confirmada que já movimentou dinheiro e volta a pendente: os valores ficam em todas as telas e o Início avisa", async () => {
+    const dados = reserva(a, "2026-10-01", "2026-10-03", { valorBruto: 50000, taxaCanal: 0 });
+    const r = await sincronizarReserva(db, org, "csv", "booking:R1", dados, null);
+    if (!r.ok) throw new Error("reserva");
+    await db.update(lancamentos).set({ estado: "realizado" }).where(and(eq(lancamentos.reservaId, r.reserva.id), eq(lancamentos.tipo, "receita_bruta")));
+    await sincronizarReserva(db, org, "csv", "booking:R1", { ...dados, estado: "pendente" }, null);
+    const t = await tresTelas();
+    expect(t.brutos).toEqual([310000, 310000, 310000]);
+    expect(t.acertos[0]).toBe(t.acertos[1]);
+    expect(t.inicio.alertas.map((x) => x.texto).join(" | ")).toContain("pendente(s) com dinheiro já movimentado");
   });
 });

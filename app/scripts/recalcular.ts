@@ -7,7 +7,7 @@
  */
 import { getDb } from "../src/db/client";
 import { organizacoes } from "../src/db/schema";
-import { recalcularReservas } from "../src/financeiro/aplicar";
+import { recalcularPendentes, recalcularReservas } from "../src/financeiro/aplicar";
 import { registrarExecucao } from "../src/sistema/automacoes";
 
 async function main() {
@@ -22,6 +22,9 @@ async function main() {
     for (const org of await db.select({ id: organizacoes.id }).from(organizacoes)) {
       const r = await recalcularReservas(db, org.id);
       partes.push(`${r.reservas} reserva(s) conferida(s), ${r.criados} lançamento(s) novo(s), ${r.estornados} estornado(s)`);
+      // Pendentes calculadas por versões antigas (de qualquer data): saem do financeiro até confirmar.
+      const p = await recalcularPendentes(db, org.id);
+      if (p.reservas) partes.push(`${p.reservas} pendente(s) com lançamentos antigos, ${p.estornados} estornado(s), ${p.protegidas} com dinheiro já movimentado (aviso no Início)`);
     }
     return partes.join("; ") || "nenhuma organização";
   });
