@@ -125,6 +125,8 @@ async function resolverVinculos(tx: Db, org: string, d: DadosAjuste): Promise<Vi
       .where(and(eq(imoveis.id, imovelId), eq(imoveis.organizacaoId, org)));
     if (!im) return { imovelId: "Imóvel não encontrado." };
   }
+  // Todo ajuste é de uma reserva ou de um imóvel (senão não aparece em nenhuma conciliação).
+  if (!imovelId) return { imovelId: "Informe a reserva ou o imóvel do ajuste." };
   let proprietarioId = d.proprietarioId;
   if (DIRECOES[d.direcao].afeta === "proprietario") {
     if (!imovelId) return { imovelId: "Ajuste com o proprietário precisa do imóvel (ou da reserva)." };

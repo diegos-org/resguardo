@@ -23,7 +23,7 @@ export default async function AjustePagina({ params, searchParams }: PageProps<"
   const db = getDb();
   const a = await obterAjuste(db, sessao.organizacaoId, id);
   if (!a) notFound();
-  const [historico, imoveis] = await Promise.all([historicoDe(db, sessao.organizacaoId, "ajuste", a.id), listarImoveis(db, sessao.organizacaoId)]);
+  const [historico, imoveis] = await Promise.all([historicoDe(db, sessao.organizacaoId, "ajuste", a.id), listarImoveis(db, sessao.organizacaoId, { incluirInativos: true })]);
   const editar = podeFazer(sessao.papel, "financeiro:editar") && !a.esclarecidoEm;
   const linhas: [string, React.ReactNode][] = [
     ["Descrição", descricaoAjuste(a)],

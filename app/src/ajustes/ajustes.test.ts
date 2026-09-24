@@ -131,5 +131,7 @@ describe("registro e esclarecimento", () => {
     expect(await registrarAjuste(db, outraOrg, dados(), null)).toMatchObject({ ok: false, erros: { reservaId: expect.any(String) } });
     expect(await listarAjustes(db, outraOrg)).toEqual([]);
     expect(await registrarAjuste(db, org, dados({ reservaId: null, direcao: "proprietario_credito" }), null)).toMatchObject({ ok: false, erros: { imovelId: expect.any(String) } });
+    expect(await registrarAjuste(db, org, dados({ reservaId: null, direcao: "empresa_saida" }), null)).toMatchObject({ ok: false, erros: { imovelId: "Informe a reserva ou o imóvel do ajuste." } });
+    expect(await registrarAjuste(db, org, dados({ reservaId: null, imovelId: im }), null)).toMatchObject({ ok: true });
   });
 });
