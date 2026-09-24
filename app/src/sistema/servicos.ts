@@ -31,6 +31,12 @@ export function situacaoServicos(env: NodeJS.ProcessEnv, bancoOk: boolean | null
       detalhe: tem("RESEND_API_KEY", "EMAIL_REMETENTE") ? "Configurado" : "Faltam RESEND_API_KEY e EMAIL_REMETENTE",
     },
     {
+      nome: "Agendador (Vercel Cron)",
+      paraQue: "Roda as automações no horário (agenda diária às 20h)",
+      situacao: tem("CRON_SECRET") ? "configurado" : "nao_configurado",
+      detalhe: tem("CRON_SECRET") ? "Configurado" : "Falta CRON_SECRET (sem ele, o agendador é recusado)",
+    },
+    {
       nome: "Beds24",
       paraQue: "Reservas, calendário e preços das OTAs",
       situacao: tem("BEDS24_API_KEY") ? "configurado" : "nao_configurado",

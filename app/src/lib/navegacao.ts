@@ -24,6 +24,7 @@ export const SECOES: readonly Secao[] = [
   { slug: "apartamentos", titulo: "Apartamentos", marco: "M4.7", descricao: "Resultado por imóvel: comissões, despesas e acertos com o proprietário." , exige: "financeiro:ler", interno: true },
   { slug: "despesas", titulo: "Despesas", marco: "M4.3", descricao: "Despesas da empresa e dos proprietários, com categorias editáveis." , exige: "financeiro:ler" },
   { slug: "limpezas", titulo: "Limpezas", marco: "M6.1", descricao: "Faxinas por checkout: pedida, confirmada e realizada." , exige: "limpeza:ler" },
+  { slug: "agenda", titulo: "Agenda", marco: "M6.3", descricao: "Agenda diária da equipe: entradas, saídas e limpezas dos próximos 5 dias, por cidade." , exige: "limpeza:ler", interno: true },
   { slug: "manutencao", titulo: "Manutenção", marco: "M6.2", descricao: "Pedidos, orçamentos, aprovação e custos de manutenção." , exige: "manutencao:ler" },
   { slug: "mensagens", titulo: "Mensagens", marco: "M10.1", descricao: "Caixa de entrada do WhatsApp e mensagens programadas." , exige: "mensagem:ler" },
   { slug: "sistema", titulo: "Sistema", marco: "M1.6", descricao: "Serviços ligados, automações e regras em vigor." , exige: "configuracao:editar" },

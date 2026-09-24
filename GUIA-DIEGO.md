@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 24/09/2026, limpezas (M6.1).
+> **Última atualização:** 24/09/2026, agenda diária da equipe (M6.3).
 
 ---
 
@@ -246,6 +246,19 @@
     já foi paga, o sistema não mexe e pede para corrigir em Despesas.
   As **profissionais** são cadastradas na própria tela (nome, telefone, observações) e
   arquivadas quando saem. A equipe de operação vê e registra as limpezas, sem ver custos.
+- M6.3: **agenda diária da equipe** (Painel → **Agenda**). Todo dia às **20h** quem você
+  escolher recebe por e-mail as **entradas, saídas e limpezas dos próximos 5 dias**, com
+  **Rio e Búzios separados** (cada seção é a cidade do cadastro do imóvel; nada é somado).
+  - Vêm também as **reservas novas desde a última agenda**, mesmo as de datas mais distantes.
+  - A agenda **só informa**: limpeza ainda não confirmada aparece como "a confirmar", e a
+    agenda não confirma nada sozinha.
+  - Do hóspede vai só o **primeiro nome** e o número de pessoas. Quando o número de pessoas
+    não está na reserva, a agenda avisa em vez de adivinhar.
+  - Na mesma tela você cadastra **quem recebe** e, para cada pessoa, as cidades que ela
+    recebe (sem cidade marcada = todas). Também liga ou desliga o envio das 20h e tem o botão
+    **"Enviar agora"** (pede confirmação).
+  - Cada pessoa recebe **uma vez por dia**. Cada envio aparece em **Sistema → Automações**,
+    com "falhou" quando não deu certo.
 - M5.1: **portal do proprietário** (o que o proprietário vê ao entrar com o e-mail dele):
   - escolhe os **imóveis dele** (quem tem mais de um marca quais quer ver), o **mês** ou o
     **ano inteiro**;
@@ -432,6 +445,10 @@
 |---|---|
 | ![Limpezas](docs/telas/limpezas.png) | ![Limpezas no celular](docs/telas/limpezas-celular.png) |
 
+| Agenda da equipe | Agenda no celular |
+|---|---|
+| ![Agenda](docs/telas/agenda.png) | ![Agenda no celular](docs/telas/agenda-celular.png) |
+
 A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 
 ---
@@ -491,7 +508,7 @@ e escreva normalmente.
 | **Mercado Pago** | Pagamentos da reserva direta | ⚪ não conectado | Credenciais de *teste*, mais adiante (M8) |
 | **Meta / WhatsApp Business** | Atendimento pelo WhatsApp da empresa | ⚪ não conectado | Verificação da empresa no Meta Business (demora dias) |
 | **Google Cloud (login)** | Botão "Entrar com Google" | ⚪ não configurado | Criar credenciais OAuth (seção 6) |
-| **Resend** (envio de e-mail) | E-mails do sistema: código de login, convites, relatórios | 🟡 conta criada (e conector no Claude) | Cadastrar o domínio e pôr a chave na Vercel (seção 6, item 5) |
+| **Resend** (envio de e-mail) | E-mails do sistema: código de login, convites, agenda da equipe, relatórios | 🟡 conta criada (e conector no Claude) | Cadastrar o domínio e pôr a chave na Vercel (seção 6, item 5) |
 | **Cloudflare** | Domínio e e-mail | ⚪ não conectado | Só no final (M11) |
 
 **Conector do Claude × chave do sistema:** os "conectores" que você liga no Claude (ex.: o
@@ -541,14 +558,21 @@ ambiente).
       (Cloudflare) — eu te guio nessa hora.
    2. Crie uma *API key* e coloque na Vercel como `RESEND_API_KEY`, e crie
       `EMAIL_REMETENTE` = `Sua Casa Leblon <acesso@seudominio.com.br>`. **Não cole no chat.**
-6. **Chave Pix dos proprietários:** confira no cadastro de cada proprietário (Painel →
+6. **Agenda da equipe (20h):** depois da Vercel e do Resend (itens 1 e 5):
+   1. Na Vercel, em *Settings → Environment Variables*, crie `CRON_SECRET` com um texto
+      longo e aleatório. É a senha que o agendador da Vercel usa para chamar a agenda; sem
+      ela, a chamada é recusada. **Não cole no chat.**
+   2. No painel, em **Agenda**, cadastre os e-mails da equipe (marque Rio ou Búzios para cada
+      pessoa), marque "Enviar todo dia às 20h" e salve.
+   3. Use "Enviar agora" uma vez para conferir como o e-mail chega.
+7. **Chave Pix dos proprietários:** confira no cadastro de cada proprietário (Painel →
    Proprietários) se a chave Pix está preenchida — a tela de Repasses usa ela para o botão
    "Copiar Pix" e avisa quando falta.
-7. **Booking:** criar os anúncios (ver "Copiar anúncios do Airbnb para o Booking" na seção 7).
-8. **Manutenção:** quando aparecer "aguardando aprovação" (no menu **Manutenção**), confira o
+8. **Booking:** criar os anúncios (ver "Copiar anúncios do Airbnb para o Booking" na seção 7).
+9. **Manutenção:** quando aparecer "aguardando aprovação" (no menu **Manutenção**), confira o
    orçamento, escolha quem paga (empresa ou proprietário) e aprove, ou recuse com o motivo.
    Só você (administrador) vê esses botões.
-9. **Sistema antigo (referência):** mande o arquivo (zip) do sistema antigo — o jeito mais
+10. **Sistema antigo (referência):** mande o arquivo (zip) do sistema antigo — o jeito mais
    fácil é subir no seu **Google Drive** e me dizer o nome do arquivo (o Drive já está
    conectado aqui). Eu só leio para levantar todas as telas e capacidades e comparar com o
    plano; **nada dele vai para o GitHub**, e dados reais de clientes não são copiados.

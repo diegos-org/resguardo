@@ -63,7 +63,7 @@ async function semear(db: Db) {
     { codigo: "303", nome: "Studio Demo 303", bairro: "Ipanema", capacidade: 2 },
     { codigo: "399", nome: "Studio Demo 399", bairro: "Leblon", capacidade: 4 },
     { codigo: "403", nome: "Studio Demo 403", bairro: "Ipanema", capacidade: 2 },
-    { codigo: "buzios", nome: "Casa Demo Búzios", bairro: "Geribá", capacidade: 6, publico: false },
+    { codigo: "buzios", nome: "Casa Demo Búzios", bairro: "Geribá", cidade: "Armação dos Búzios", capacidade: 6, publico: false },
   ];
   const criados = [];
   for (const i of lista) criados.push(await criarImovel(db, org.id, { ...base, ...i }, autor));

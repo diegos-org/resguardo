@@ -19,7 +19,7 @@ export const AUTOMACOES: readonly Automacao[] = [
   { id: "recalculo-deploy", nome: "Recálculo do financeiro (reservas de hoje em diante)", quando: "A cada versão publicada", situacao: "ativa", item: "M4.2c" },
   { id: "sync-beds24", nome: "Sincronização de reservas e calendário com o Beds24", quando: "A cada poucos minutos", situacao: "planejada", item: "M3.3" },
   { id: "envio-beds24", nome: "Envio de calendário e preços ao Beds24/OTAs", quando: "A cada mudança no SCL", situacao: "planejada", item: "M3.7" },
-  { id: "agenda-diaria", nome: "Agenda diária da equipe (próximos 5 dias)", quando: "Todo dia às 20h", situacao: "planejada", item: "M6.3" },
+  { id: "agenda-diaria", nome: "Agenda diária da equipe (próximos 5 dias)", quando: "Todo dia às 20h", situacao: "ativa", item: "M6.3" },
   { id: "fechamento-mensal", nome: "Fechamento, repasse e relatório mensal dos proprietários", quando: "Dia 1º de cada mês", situacao: "planejada", item: "M4.9 / M5.4" },
   { id: "mensagens-hospede", nome: "Mensagens programadas ao hóspede", quando: "Conforme a reserva (D-2, D-1, D+3)", situacao: "planejada", item: "M9.2" },
 ];
