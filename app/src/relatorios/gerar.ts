@@ -160,3 +160,21 @@ export async function relatorioDoPainel(db: Db, sessao: Sessao | null, proprieta
   });
   return { ok: true, pdf, arquivo: nomeArquivo(ano, mes, escolhidos) };
 }
+
+/**
+ * PDF do fechamento de um mês de um proprietário, com todos os imóveis dele no mês (M5.4: envio
+ * por e-mail). Sem sessão: quem chama já decidiu que pode (o envio do fechamento, no servidor).
+ */
+export async function relatorioDoFechamento(db: Db, organizacaoId: string, proprietarioId: string, mesISO: string, agora: Date): Promise<Resultado> {
+  const dono = await donoDoRelatorio(db, organizacaoId, proprietarioId);
+  if (!dono) return { ok: false, status: 404, erro: "Proprietário não encontrado." };
+  const m = /^(\d{4})-(\d{2})$/.exec(mesISO);
+  if (!m) return { ok: false, status: 400, erro: "Mês inválido." };
+  const ano = Number(m[1]);
+  const mes = Number(m[2]);
+  const doMes = await imoveisDoProprietario(db, organizacaoId, dono.id, periodoDosFiltros({ imoveis: [], ano, mes }));
+  if (!doMes.length) return { ok: false, status: 400, erro: "Este proprietário não tem imóvel ligado nem lançamentos neste mês." };
+  const dados = await dadosDoRelatorio(db, organizacaoId, { donos: [dono], imoveis: doMes, todosOsImoveis: true, ano, mes, hoje: hojeISO("America/Sao_Paulo", agora) });
+  const pdf = await gerarPdfRelatorio(textosDoRelatorio(dados), {}, agora);
+  return { ok: true, pdf, arquivo: nomeArquivo(ano, mes, doMes) };
+}

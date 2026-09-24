@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 24/09/2026, agenda diária da equipe (M6.3).
+> **Última atualização:** 24/09/2026, e-mail do fechamento mensal aos proprietários (M5.4).
 
 ---
 
@@ -270,6 +270,22 @@
   - Cada pessoa recebe **uma vez por dia**. O envio das 20h aparece em **Sistema →
     Automações**, com "falhou" quando não deu certo; o "Enviar agora" fica no histórico de
     alterações e mostra na tela quantos saíram e quantos falharam.
+- M5.4: **e-mail do fechamento aos proprietários** (Painel → Financeiro → **Repasses**, no
+  quadro "E-mail do fechamento"):
+  - a partir do **dia 1º**, todo dia às **9h**, cada proprietário recebe **uma vez** o
+    relatório do mês anterior em **PDF** (o mesmo do portal), com o valor do repasse no texto;
+  - só sai **depois que o mês dele está fechado**: repasse gerado, ou nada a repassar e sem
+    pendência. Quem ainda tem pendência (acerto a conferir, ajuste a esclarecer) espera, e a
+    tela mostra quem ficou; quem está **sem e-mail** no cadastro também aparece;
+  - o **assunto** e o **texto** são editáveis na tela (use {nome} e {mes}). Começa
+    **desligado**: você liga quando quiser;
+  - em cada proprietário há o botão **"Enviar e-mail do fechamento"** e, depois de enviado,
+    **"Enviar e-mail de novo"** (os dois pedem confirmação). Há também "Enviar agora para os
+    prontos";
+  - o envio das 9h aparece em **Sistema → Automações**; cada e-mail enviado fica no histórico
+    do proprietário;
+  - o PDF automático vai **sem o extrato do canal e sem a foto** (esses anexos continuam
+    manuais, na ficha do proprietário).
 - M5.1: **portal do proprietário** (o que o proprietário vê ao entrar com o e-mail dele):
   - escolhe os **imóveis dele** (quem tem mais de um marca quais quer ver), o **mês** ou o
     **ano inteiro**;
@@ -662,8 +678,11 @@ ambiente).
 8. **Booking:** criar os anúncios (ver "Copiar anúncios do Airbnb para o Booking" na seção 7).
 9. **Relatórios em PDF:** para o fechamento, gere o PDF na ficha do proprietário, anexando o
    **extrato oficial** do canal e uma **foto real** do imóvel. Antes de mandar, abra o PDF e
-   confira se o extrato é só daquele imóvel e daquele mês. O envio automático por e-mail vem no
-   M5.4.
+   confira se o extrato é só daquele imóvel e daquele mês. O **envio automático por e-mail**
+   (M5.4) está pronto em Financeiro → Repasses, mas começa desligado e manda o PDF **sem** o
+   extrato e sem a foto. Se quiser o automático, confira o texto, ligue e use "Enviar e-mail do
+   fechamento" em um proprietário primeiro. Ele depende do Resend e do `CRON_SECRET` (itens 5
+   e 6).
 10. **Portaria:** em Painel → **Portaria**, marque os imóveis que exigem documentos de
    portaria (hoje, o 403). Sem marcação, a tela só avisa e não lista nada.
 11. **Rotinas:** em Painel → **Rotinas**, confira as cinco rotinas que já vêm prontas, com as
