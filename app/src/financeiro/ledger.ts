@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, inArray, isNotNull, lt, sql, sum } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNotNull, isNull, lt, sql, sum } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import {
   categoriasDespesa,
@@ -288,4 +288,96 @@ export async function totaisPorTipo(db: Db, organizacaoId: string, f: FiltroLanc
     .where(condicoes(organizacaoId, f))
     .groupBy(lancamentos.tipo);
   return Object.fromEntries(linhas.map((l) => [l.tipo, Number(l.total ?? 0)]));
+}
+
+export type TotaisDoImovel = {
+  /** Soma de `valor` por tipo (o que mexe no resultado da empresa). */
+  valor: Partial<Record<TipoLancamento, number>>;
+  /** Soma de `montante` por tipo (valor de referência, ex.: despesa do proprietário). */
+  montante: Partial<Record<TipoLancamento, number>>;
+  /** Movimento do acerto com o proprietário no período (soma de efeitoSaldo). */
+  acerto: number;
+};
+
+/**
+ * Totais do período agrupados por imóvel (chave `null` = lançamentos sem imóvel), com o mesmo
+ * filtro de `totaisPorTipo`: somando todas as chaves, os números batem com os dele.
+ */
+export async function totaisPorImovel(db: Db, organizacaoId: string, f: FiltroLancamentos): Promise<Map<string | null, TotaisDoImovel>> {
+  const linhas = await db
+    .select({
+      imovelId: lancamentos.imovelId,
+      tipo: lancamentos.tipo,
+      valor: sum(lancamentos.valor),
+      montante: sum(lancamentos.montante),
+      acerto: sql<string>`sum(case when ${lancamentos.proprietarioId} is not null then ${lancamentos.efeitoSaldo} else 0 end)`,
+    })
+    .from(lancamentos)
+    .where(condicoes(organizacaoId, f))
+    .groupBy(lancamentos.imovelId, lancamentos.tipo);
+  const saida = new Map<string | null, TotaisDoImovel>();
+  for (const l of linhas) {
+    const t = saida.get(l.imovelId) ?? { valor: {}, montante: {}, acerto: 0 };
+    t.valor[l.tipo] = Number(l.valor ?? 0);
+    t.montante[l.tipo] = Number(l.montante ?? 0);
+    t.acerto += Number(l.acerto ?? 0);
+    saida.set(l.imovelId, t);
+  }
+  return saida;
+}
+
+/**
+ * Acerto (soma de efeitoSaldo) por imóvel e proprietário, no filtro dado (ex.: só `fim` para o
+ * saldo acumulado). Separado por proprietário: um imóvel que trocou de dono não mistura as contas.
+ */
+export async function acertoPorImovelEDono(
+  db: Db,
+  organizacaoId: string,
+  f: FiltroLancamentos & { imovelIds: string[] },
+): Promise<{ imovelId: string; proprietarioId: string; total: number }[]> {
+  const ids = f.imovelIds.filter(uuidValido);
+  if (!ids.length) return [];
+  const linhas = await db
+    .select({ imovelId: lancamentos.imovelId, proprietarioId: lancamentos.proprietarioId, total: sum(lancamentos.efeitoSaldo) })
+    .from(lancamentos)
+    .where(and(condicoes(organizacaoId, { ...f, imovelIds: ids }), isNotNull(lancamentos.proprietarioId)))
+    .groupBy(lancamentos.imovelId, lancamentos.proprietarioId);
+  return linhas.map((l) => ({ imovelId: l.imovelId!, proprietarioId: l.proprietarioId!, total: Number(l.total ?? 0) }));
+}
+
+/**
+ * Lançamentos do proprietário sem imóvel (ex.: ajuste ou acerto geral), por proprietário:
+ * `acerto` soma o efeito no saldo; `despesas`, o montante das despesas do proprietário.
+ */
+export async function semImovelPorDono(
+  db: Db,
+  organizacaoId: string,
+  f: Omit<FiltroLancamentos, "imovelIds">,
+): Promise<{ proprietarioId: string; acerto: number; despesas: number }[]> {
+  const linhas = await db
+    .select({
+      proprietarioId: lancamentos.proprietarioId,
+      acerto: sum(lancamentos.efeitoSaldo),
+      despesas: sql<string>`coalesce(sum(${lancamentos.montante}) filter (where ${lancamentos.tipo} = 'despesa_proprietario'), 0)`,
+    })
+    .from(lancamentos)
+    .where(and(condicoes(organizacaoId, f), isNull(lancamentos.imovelId), isNotNull(lancamentos.proprietarioId)))
+    .groupBy(lancamentos.proprietarioId);
+  return linhas.map((l) => ({ proprietarioId: l.proprietarioId!, acerto: Number(l.acerto ?? 0), despesas: Number(l.despesas ?? 0) }));
+}
+
+/** Despesas do proprietário (montante) no período, por imóvel e proprietário. */
+export async function despesasProprietarioPorDono(
+  db: Db,
+  organizacaoId: string,
+  f: FiltroLancamentos & { imovelIds: string[] },
+): Promise<{ imovelId: string; proprietarioId: string; total: number }[]> {
+  const ids = f.imovelIds.filter(uuidValido);
+  if (!ids.length) return [];
+  const linhas = await db
+    .select({ imovelId: lancamentos.imovelId, proprietarioId: lancamentos.proprietarioId, total: sum(lancamentos.montante) })
+    .from(lancamentos)
+    .where(and(condicoes(organizacaoId, { ...f, imovelIds: ids }), eq(lancamentos.tipo, "despesa_proprietario"), isNotNull(lancamentos.proprietarioId)))
+    .groupBy(lancamentos.imovelId, lancamentos.proprietarioId);
+  return linhas.map((l) => ({ imovelId: l.imovelId!, proprietarioId: l.proprietarioId!, total: Number(l.total ?? 0) }));
 }

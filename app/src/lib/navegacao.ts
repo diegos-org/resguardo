@@ -11,6 +11,8 @@ export type Secao = {
   marco: string;
   descricao: string;
   exige: Acao;
+  /** Só para a equipe interna (mostra dados de todos os proprietários): nunca para proprietário. */
+  interno?: boolean;
 };
 
 export const SECOES: readonly Secao[] = [
@@ -19,7 +21,7 @@ export const SECOES: readonly Secao[] = [
   { slug: "imoveis", titulo: "Imóveis", marco: "M2.1", descricao: "Cadastro dos imóveis, dados públicos e mapeamento com os canais." , exige: "imovel:ler" },
   { slug: "proprietarios", titulo: "Proprietários", marco: "M2.2", descricao: "Proprietários, representantes, contratos e convites para o portal." , exige: "proprietario:ler" },
   { slug: "financeiro", titulo: "Financeiro", marco: "M4.6", descricao: "Dashboard da empresa, comissões, repasses e conciliação." , exige: "financeiro:ler" },
-  { slug: "apartamentos", titulo: "Apartamentos", marco: "M4.7", descricao: "Resultado por imóvel: comissões, despesas e acertos com o proprietário." , exige: "financeiro:ler" },
+  { slug: "apartamentos", titulo: "Apartamentos", marco: "M4.7", descricao: "Resultado por imóvel: comissões, despesas e acertos com o proprietário." , exige: "financeiro:ler", interno: true },
   { slug: "despesas", titulo: "Despesas", marco: "M4.3", descricao: "Despesas da empresa e dos proprietários, com categorias editáveis." , exige: "financeiro:ler" },
   { slug: "limpezas", titulo: "Limpezas", marco: "M6.1", descricao: "Faxinas por checkout: pedida, confirmada e realizada." , exige: "limpeza:ler" },
   { slug: "manutencao", titulo: "Manutenção", marco: "M6.2", descricao: "Pedidos, orçamentos, aprovação e custos de manutenção." , exige: "manutencao:ler" },
@@ -30,7 +32,7 @@ export const SECOES: readonly Secao[] = [
 
 /** Só as seções que este papel pode abrir. */
 export function secoesPara(papel: Papel): Secao[] {
-  return SECOES.filter((s) => podeFazer(papel, s.exige));
+  return SECOES.filter((s) => podeFazer(papel, s.exige) && !(s.interno && papel === "proprietario"));
 }
 
 export function encontrarSecao(slug: string): Secao | undefined {
