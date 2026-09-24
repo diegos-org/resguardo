@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { contestar, desfazerQuitacao, listarAdiantamentos, obterAdiantamento, resolverContestacao } from "@/adiantamentos/adiantamentos";
+import { contestar, desfazerQuitacao, listarAdiantamentos, obterAdiantamento, quitar, resolverContestacao } from "@/adiantamentos/adiantamentos";
 import { registrarAjuste } from "@/ajustes/ajustes";
 import { criarContrato } from "@/contratos/repositorio";
 import { imoveis, lancamentos, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
@@ -231,6 +231,20 @@ describe("fechamento do mês", () => {
     // A despesa de origem é estornada: a contestação é encerrada e o adiantamento, estornado.
     expect(await estornarDespesa(db, org, adiant.despesaId!, "lançada errado", null)).toBe(true);
     expect(await listarAdiantamentos(db, org, { proprietarioId: dono })).toEqual([]);
+    expect((await preverRepasses(db, org, MES, "2026-12-02"))[0]).toMatchObject({ repassePosterior: "2026-11", diferencaPosFechamento: 0 });
+  });
+
+  it("mês sem repasse próprio: reembolso parcial e nova contestação do restante não inventam diferença", async () => {
+    await reparo(40000);
+    const [adiant] = await listarAdiantamentos(db, org, { proprietarioId: dono });
+    await contestar(db, org, adiant.id, "Não autorizei", null);
+    await criarReserva(db, org, reserva(a, "2026-11-10", "2026-11-13"), null);
+    expect((await fecharMes(db, org, dono, "2026-11", "2026-12-01", null)).ok).toBe(true);
+    // Mantida, reembolso parcial com data de outubro e nova contestação dos 300 restantes.
+    await resolverContestacao(db, org, adiant.id, { resolucao: "mantida", nota: "", data: "2026-12-02" }, null);
+    expect(await quitar(db, org, adiant.id, { forma: "reembolso", valor: 10000, data: "2026-10-25" }, null)).toEqual({ ok: true });
+    await contestar(db, org, adiant.id, "Restante também não", null);
+    // O que ficou fora do desconto caiu de 400 para 300, e o reembolso de 100 entrou: nada muda.
     expect((await preverRepasses(db, org, MES, "2026-12-02"))[0]).toMatchObject({ repassePosterior: "2026-11", diferencaPosFechamento: 0 });
   });
 

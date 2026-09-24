@@ -244,9 +244,12 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
         // Contestação aberta no momento do repasse: o valor dela ficou fora do desconto.
         const naquele = dele.find(abertaNoCorte);
         const agora = dele.find((c) => !c.resolvidaEm);
-        // Contestado fica fora do desconto (volta ao saldo a favor do proprietário).
-        if (naquele && !agora) diferenca -= naquele.valor;
-        if (!naquele && agora) diferenca += emAberto.get(id) ?? agora.valor;
+        // Contestado fica fora do desconto (volta ao saldo a favor do proprietário): a diferença é
+        // o que fica fora agora menos o que ficou fora no repasse (vale também para uma nova
+        // contestação de valor diferente, depois de um reembolso parcial).
+        const foraNoCorte = naquele ? naquele.valor : 0;
+        const foraAgora = agora ? (emAberto.get(id) ?? agora.valor) : 0;
+        diferenca += foraAgora - foraNoCorte;
       }
     }
     if (diferenca !== 0) avisos.push(`Depois do repasse de ${nomeMes(posterior.mes.slice(0, 7))}, o acerto até este mês mudou em ${(diferenca / 100).toFixed(2).replace(".", ",")}: a diferença entra no próximo repasse.`);
