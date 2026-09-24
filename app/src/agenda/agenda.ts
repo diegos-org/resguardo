@@ -311,13 +311,21 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
       // Sem marco próprio (primeira agenda desta pessoa): as reservas novas das últimas 24h.
       const desde = (await lerMarco(db, chaveUltimaDe(organizacaoId, d.email))) ?? new Date(agora.getTime() - 86_400_000);
       const agenda = await agendaDesde(desde);
-      await correio.enviar({ para: d.email, assunto: `Agenda SCL — ${diaCurto(agenda.dias[0])} a ${diaCurto(agenda.dias.at(-1)!)}`, texto: textoDaAgenda(agenda, d.cidades) });
-      await db.update(appSettings).set({ value: { em: agora.toISOString(), estado: "enviado" }, updatedAt: new Date() }).where(eq(appSettings.key, chave));
-      await gravarMarco(db, chaveUltimaDe(organizacaoId, d.email), agora);
-      r.enviados++;
+      // A mesma chave do dia vai para o provedor: uma nova tentativa do mesmo envio não duplica.
+      await correio.enviar({ para: d.email, assunto: `Agenda SCL — ${diaCurto(agenda.dias[0])} a ${diaCurto(agenda.dias.at(-1)!)}`, texto: textoDaAgenda(agenda, d.cidades), chave });
     } catch (e) {
+      // O provedor não aceitou: libera para tentar de novo.
       await db.delete(appSettings).where(eq(appSettings.key, chave));
       r.falhas.push(`${d.email}: ${e instanceof Error ? e.message : String(e)}`);
+      continue;
+    }
+    // Daqui em diante o e-mail já saiu: falha ao registrar não libera outro envio (a marca fica).
+    r.enviados++;
+    try {
+      await db.update(appSettings).set({ value: { em: agora.toISOString(), estado: "enviado" }, updatedAt: new Date() }).where(eq(appSettings.key, chave));
+      await gravarMarco(db, chaveUltimaDe(organizacaoId, d.email), agora);
+    } catch (e) {
+      r.falhas.push(`${d.email}: enviada, mas não foi possível registrar o envio (${e instanceof Error ? e.message : String(e)})`);
     }
   }
   // Para a tela: quando a agenda saiu por último (para alguém).

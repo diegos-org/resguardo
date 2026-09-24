@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { appSettings, execucoesAutomacao, imoveis, organizacoes, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
@@ -168,6 +168,20 @@ describe("configuração e envio", () => {
     await db.update(appSettings).set({ value: { em: new Date(AGORA.getTime() - 20 * 60_000).toISOString(), estado: "enviando" } }).where(eq(appSettings.key, chave));
     expect(await enviarAgenda(db, org, correio, AGORA)).toMatchObject({ enviados: 1 });
     expect(await enviarAgenda(db, org, correio, new Date(AGORA.getTime() + 60 * 60_000))).toMatchObject({ enviados: 0, jaEnviados: 1 });
+  });
+
+  it("e-mail aceito pelo provedor não é reenviado se o registro do envio falhar; o provedor recebe a chave do dia", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    const correio = new CorreioMemoria();
+    const espiao = vi.spyOn(db, "update").mockImplementationOnce(() => {
+      throw new Error("banco fora");
+    });
+    expect(await enviarAgenda(db, org, correio, AGORA)).toMatchObject({ enviados: 1, falhas: [expect.stringContaining("enviada, mas não foi possível registrar")] });
+    espiao.mockRestore();
+    expect(correio.enviadas[0].chave).toBe(`agenda-diaria:${org}:2026-10-01:a@example.com`);
+    // Nova execução no mesmo dia: a marca continua, nada é reenviado.
+    expect(await enviarAgenda(db, org, correio, new Date(AGORA.getTime() + 60_000))).toMatchObject({ enviados: 0, jaEnviados: 1 });
+    expect(correio.enviadas).toHaveLength(1);
   });
 
   it("reserva criada depois do corte fica para a próxima agenda (sem repetir)", async () => {

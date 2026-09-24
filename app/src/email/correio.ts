@@ -5,7 +5,13 @@
  *   existem no ambiente. O provedor definitivo é decisão do Diego (M11.2); trocar é
  *   escrever outro adaptador com o mesmo formato.
  */
-export type Mensagem = { para: string; assunto: string; texto: string };
+export type Mensagem = {
+  para: string;
+  assunto: string;
+  texto: string;
+  /** Chave de idempotência: o provedor ignora um segundo envio com a mesma chave (ex.: nova tentativa). */
+  chave?: string;
+};
 
 export interface Correio {
   readonly nome: string;
@@ -33,7 +39,7 @@ export class CorreioResend implements Correio {
   async enviar(m: Mensagem) {
     const r = await this.fetchImpl("https://api.resend.com/emails", {
       method: "POST",
-      headers: { Authorization: `Bearer ${this.chave}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${this.chave}`, "Content-Type": "application/json", ...(m.chave ? { "Idempotency-Key": m.chave.slice(0, 256) } : {}) },
       body: JSON.stringify({ from: this.remetente, to: [m.para], subject: m.assunto, text: m.texto }),
     });
     if (!r.ok) throw new Error(`Falha ao enviar e-mail (HTTP ${r.status}).`);

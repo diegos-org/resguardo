@@ -135,6 +135,9 @@ describe("correio", () => {
     await c.enviar({ para: "a@example.com", assunto: "Oi", texto: "t" });
     expect(chamadas[0][0]).toBe("https://api.resend.com/emails");
     expect(JSON.parse(String(chamadas[0][1].body))).toMatchObject({ to: ["a@example.com"], subject: "Oi" });
-    await expect(c.enviar({ para: "a@example.com", assunto: "Oi", texto: "t" })).rejects.toThrow("HTTP 500");
+    await expect(c.enviar({ para: "a@example.com", assunto: "Oi", texto: "t", chave: "agenda:1" })).rejects.toThrow("HTTP 500");
+    // Sem chave, sem cabeçalho; com chave, o provedor recebe a chave de idempotência.
+    expect(new Headers(chamadas[0][1].headers).get("Idempotency-Key")).toBeNull();
+    expect(new Headers(chamadas[1][1].headers).get("Idempotency-Key")).toBe("agenda:1");
   });
 });
