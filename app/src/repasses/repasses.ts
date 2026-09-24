@@ -217,34 +217,36 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
     diferenca = Number(depois?.total ?? 0);
     // Mudança só de situação (sem lançamento): adiantamento deste mês ou antes que estava
     // contestado no último repasse (ficou fora do desconto) e deixou de estar — ou o contrário.
-    // Inclui os já quitados: "empresa assume" quita o adiantamento e lança a compensação (que
-    // entra acima em `depois`); o que estava fora do desconto no repasse sai daqui, e o efeito é zero.
-    const deste = (await listarAdiantamentos(db, org, { proprietarioId: dono.id })).filter((a) => a.data < lim.fim);
-    if (deste.length) {
-      const contestacoes = await db
-        .select({ id: contestacoesAdiantamento.id, adiantamentoId: contestacoesAdiantamento.adiantamentoId, valor: contestacoesAdiantamento.valor, abertaEm: contestacoesAdiantamento.abertaEm, resolvidaEm: contestacoesAdiantamento.resolvidaEm })
-        .from(contestacoesAdiantamento)
-        .where(and(eq(contestacoesAdiantamento.organizacaoId, org), inArray(contestacoesAdiantamento.adiantamentoId, deste.map((a) => a.id))));
+    // Contestações dos adiantamentos dele com data até este mês — inclusive os já quitados ("empresa
+    // assume" quita e lança a compensação, que entra acima em `depois`) e os estornados (a despesa
+    // de origem estornada encerra a contestação e estorna o adiantamento): o que estava fora do
+    // desconto no repasse sai daqui, e o efeito líquido é zero.
+    const contestacoes = await db
+      .select({ id: contestacoesAdiantamento.id, adiantamentoId: contestacoesAdiantamento.adiantamentoId, valor: contestacoesAdiantamento.valor, abertaEm: contestacoesAdiantamento.abertaEm, resolvidaEm: contestacoesAdiantamento.resolvidaEm })
+      .from(contestacoesAdiantamento)
+      .innerJoin(lancamentos, eq(lancamentos.id, contestacoesAdiantamento.adiantamentoId))
+      .where(and(eq(contestacoesAdiantamento.organizacaoId, org), eq(lancamentos.proprietarioId, dono.id), lt(lancamentos.competencia, lim.fim)));
+    if (contestacoes.length) {
       const corte = posterior.criadoEm.getTime();
       // "Empresa assume" desfeito reabre a contestação (e apaga `resolvidaEm`): o período em que
       // ela esteve resolvida vem da quitação dela (criada → desfeita).
-      const assumidas = contestacoes.length
-        ? await db
-            .select({ contestacaoId: quitacoesAdiantamento.contestacaoId, criadoEm: quitacoesAdiantamento.criadoEm, desfeitaEm: quitacoesAdiantamento.desfeitaEm })
-            .from(quitacoesAdiantamento)
-            .where(and(eq(quitacoesAdiantamento.organizacaoId, org), inArray(quitacoesAdiantamento.contestacaoId, contestacoes.map((c) => c.id))))
-        : [];
+      const assumidas = await db
+        .select({ contestacaoId: quitacoesAdiantamento.contestacaoId, criadoEm: quitacoesAdiantamento.criadoEm, desfeitaEm: quitacoesAdiantamento.desfeitaEm })
+        .from(quitacoesAdiantamento)
+        .where(and(eq(quitacoesAdiantamento.organizacaoId, org), inArray(quitacoesAdiantamento.contestacaoId, contestacoes.map((c) => c.id))));
       const abertaNoCorte = (c: (typeof contestacoes)[number]) =>
         c.abertaEm.getTime() <= corte &&
         !(c.resolvidaEm && c.resolvidaEm.getTime() <= corte) &&
         !assumidas.some((q) => q.contestacaoId === c.id && q.criadoEm.getTime() <= corte && (!q.desfeitaEm || q.desfeitaEm.getTime() > corte));
-      for (const a of deste) {
+      const emAberto = new Map(doMes.map((a) => [a.id, a.aberto]));
+      for (const id of new Set(contestacoes.map((c) => c.adiantamentoId))) {
+        const dele = contestacoes.filter((c) => c.adiantamentoId === id);
         // Contestação aberta no momento do repasse: o valor dela ficou fora do desconto.
-        const naquele = contestacoes.find((c) => c.adiantamentoId === a.id && abertaNoCorte(c));
-        const agora = a.situacao === "contestado";
+        const naquele = dele.find(abertaNoCorte);
+        const agora = dele.find((c) => !c.resolvidaEm);
         // Contestado fica fora do desconto (volta ao saldo a favor do proprietário).
         if (naquele && !agora) diferenca -= naquele.valor;
-        if (!naquele && agora) diferenca += a.aberto;
+        if (!naquele && agora) diferenca += emAberto.get(id) ?? agora.valor;
       }
     }
     if (diferenca !== 0) avisos.push(`Depois do repasse de ${nomeMes(posterior.mes.slice(0, 7))}, o acerto até este mês mudou em ${(diferenca / 100).toFixed(2).replace(".", ",")}: a diferença entra no próximo repasse.`);

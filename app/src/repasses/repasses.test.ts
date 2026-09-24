@@ -7,7 +7,7 @@ import { imoveis, lancamentos, organizacoes, proprietarioImoveis, proprietarios 
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { criarCategoria } from "@/despesas/categorias";
-import { registrarDespesa } from "@/despesas/despesas";
+import { estornarDespesa, registrarDespesa } from "@/despesas/despesas";
 import { saldoAcerto } from "@/financeiro/ledger";
 import type { DadosReserva } from "@/reservas/regras";
 import { criarReserva } from "@/reservas/repositorio";
@@ -219,6 +219,18 @@ describe("fechamento do mês", () => {
     const q = (await obterAdiantamento(db, org, adiant.id))!.quitacoes.find((x) => x.forma === "empresa_assume")!;
     expect((await desfazerQuitacao(db, org, q.id, "lançado errado", null)).ok).toBe(true);
     expect(await obterAdiantamento(db, org, adiant.id)).toMatchObject({ situacao: "contestado" });
+    expect((await preverRepasses(db, org, MES, "2026-12-02"))[0]).toMatchObject({ repassePosterior: "2026-11", diferencaPosFechamento: 0 });
+  });
+
+  it("mês sem repasse próprio: despesa de adiantamento contestado estornada depois do repasse seguinte não inventa diferença", async () => {
+    await reparo(40000);
+    const [adiant] = await listarAdiantamentos(db, org, { proprietarioId: dono });
+    await contestar(db, org, adiant.id, "Não autorizei", null);
+    await criarReserva(db, org, reserva(a, "2026-11-10", "2026-11-13"), null);
+    expect((await fecharMes(db, org, dono, "2026-11", "2026-12-01", null)).ok).toBe(true);
+    // A despesa de origem é estornada: a contestação é encerrada e o adiantamento, estornado.
+    expect(await estornarDespesa(db, org, adiant.despesaId!, "lançada errado", null)).toBe(true);
+    expect(await listarAdiantamentos(db, org, { proprietarioId: dono })).toEqual([]);
     expect((await preverRepasses(db, org, MES, "2026-12-02"))[0]).toMatchObject({ repassePosterior: "2026-11", diferencaPosFechamento: 0 });
   });
 

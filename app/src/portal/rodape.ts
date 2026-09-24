@@ -88,7 +88,9 @@ export async function rodapeDoPortal(
     if (o.hoje < lim.fim) return { ...comum, situacao: "parcial", valor: p.valor || p.deve };
     // Só o que é conferência de verdade (pendente, ajuste a esclarecer) segura o credor e o Pix.
     if (p.emConferencia) return { ...comum, situacao: "em_conferencia", valor: p.valor || p.deve };
-    if (p.repassePosterior) return { ...comum, situacao: "no_repasse_posterior", valor: 0, aFavor: null, repassePosterior: p.repassePosterior, diferenca: p.diferencaPosFechamento };
+    // "Já entrou no repasse de…" só com algo a levar (saldo, adiantamento ou mudança); mês vazio fica zerado.
+    const houveAlgo = p.saldo !== 0 || p.aDescontar !== 0 || p.contestado !== 0 || p.diferencaPosFechamento !== 0;
+    if (p.repassePosterior && houveAlgo) return { ...comum, situacao: "no_repasse_posterior", valor: 0, aFavor: null, repassePosterior: p.repassePosterior, diferenca: p.diferencaPosFechamento };
     if (p.valor > 0) return { ...comum, situacao: "empresa_deve", valor: p.valor, chavePix: p.chavePix };
     if (p.deve > 0) return { ...comum, situacao: "proprietario_deve", valor: p.deve, chavePix: o.pixEmpresa };
     return { ...comum, situacao: "zerado" };
