@@ -225,6 +225,27 @@
   cobrança:** nunca se quita mais do que o valor, duas pessoas quitando ao mesmo tempo não
   passam do total, e uma despesa cujo adiantamento já teve reembolso não pode ser estornada
   (desfaça a quitação antes).
+- M6.1: **limpezas** (Painel → **Limpezas**). Toda reserva confirmada gera a limpeza **no dia
+  da saída**, mesmo sem nova entrada e em fim de semana. Cada limpeza passa por estados
+  separados, porque pedir não comprova que aconteceu:
+  - **Pedida** → **Confirmada** (com a profissional escolhida) → **Realizada** (quem fez e,
+    se quiser, o **custo**; o custo pode ficar para depois e aparece como pendente);
+  - se a reserva muda de data ou de imóvel, a limpeza acompanha e volta a "pedida" (precisa
+    confirmar de novo); se a reserva é cancelada, a limpeza é cancelada;
+  - depois de realizada, nada muda sozinho: se a reserva mudar ou for cancelada, aparece um
+    **aviso** para conferir;
+  - limpeza cuja data passou sem registro aparece com aviso — o sistema **não** marca como
+    feita por conta própria;
+  - dá para criar **limpeza avulsa** (ex.: antes do uso do proprietário), **cancelar** (com
+    motivo e confirmação) e **desfazer** um "feita" marcado por engano.
+  - nos imóveis de **gestão completa**, o **custo** informado vira uma **despesa da empresa**
+    (na categoria escolhida no fim da tela de Limpezas — começa em "Limpeza e lavanderia" e
+    pode ser renomeada à vontade em Despesas —, a pagar), no imóvel e no dia da limpeza, e entra no
+    resultado do Início e da aba Apartamentos. Em contrato online ou sem contrato, o sistema
+    não supõe quem paga: avisa para lançar em Despesas. Mudar o custo ou desfazer o "feita" corrige a despesa sozinho; se a despesa
+    já foi paga, o sistema não mexe e pede para corrigir em Despesas.
+  As **profissionais** são cadastradas na própria tela (nome, telefone, observações) e
+  arquivadas quando saem. A equipe de operação vê e registra as limpezas, sem ver custos.
 - M5.1: **portal do proprietário** (o que o proprietário vê ao entrar com o e-mail dele):
   - escolhe os **imóveis dele** (quem tem mais de um marca quais quer ver), o **mês** ou o
     **ano inteiro**;
@@ -422,6 +443,10 @@
 | Portal do proprietário: calendário, reservas e saldo |
 |---|
 | ![Portal com reservas](docs/telas/portal-reservas.png) |
+
+| Limpezas | Limpezas no celular |
+|---|---|
+| ![Limpezas](docs/telas/limpezas.png) | ![Limpezas no celular](docs/telas/limpezas-celular.png) |
 
 A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 

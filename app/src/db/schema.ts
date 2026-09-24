@@ -759,3 +759,54 @@ export const manutencoes = pgTable(
   },
   (t) => [index("manutencoes_org_estado").on(t.organizacaoId, t.estado), index("manutencoes_imovel").on(t.imovelId)],
 );
+
+/** Profissional de limpeza (M6.1), editável no painel. Não se apaga quem já fez limpeza: arquiva-se. */
+export const profissionaisLimpeza = pgTable(
+  "profissionais_limpeza",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    nome: text("nome").notNull(),
+    telefone: text("telefone").notNull().default(""),
+    observacoes: text("observacoes").notNull().default(""),
+    ativo: boolean("ativo").notNull().default(true),
+    criadoEm: criadoEm(),
+  },
+  (t) => [uniqueIndex("profissionais_limpeza_nome").on(t.organizacaoId, sql`lower(${t.nome})`)],
+);
+
+export const ESTADOS_LIMPEZA = ["pedida", "confirmada", "realizada", "cancelada"] as const;
+export type EstadoLimpeza = (typeof ESTADOS_LIMPEZA)[number];
+
+/**
+ * Limpeza (M6.1). A de reserva nasce "pedida" no dia do checkout; confirmar e realizar são
+ * registros separados (agendar não comprova execução). Uma por reserva.
+ */
+export const limpezas = pgTable(
+  "limpezas",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    imovelId: uuid("imovel_id").notNull().references(() => imoveis.id),
+    /** Reserva cujo checkout gerou a limpeza; null = limpeza avulsa. */
+    reservaId: uuid("reserva_id").references(() => reservas.id),
+    data: date("data", { mode: "string" }).notNull(),
+    estado: text("estado").$type<EstadoLimpeza>().notNull().default("pedida"),
+    profissionalId: uuid("profissional_id").references(() => profissionaisLimpeza.id),
+    /** Centavos; null = custo ainda não informado. */
+    custo: integer("custo"),
+    observacao: text("observacao").notNull().default(""),
+    /** Cancelada à mão (não pela reserva): a sincronização não a reabre. */
+    canceladaManual: boolean("cancelada_manual").notNull().default(false),
+    /** Despesa da empresa com o custo desta limpeza (livro de lançamentos). */
+    despesaId: uuid("despesa_id").references(() => lancamentos.id),
+    confirmadaEm: timestamp("confirmada_em", { withTimezone: true }),
+    realizadaEm: timestamp("realizada_em", { withTimezone: true }),
+    criadoEm: criadoEm(),
+    atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("limpezas_uma_por_reserva").on(t.reservaId).where(sql`${t.reservaId} is not null`),
+    index("limpezas_org_data").on(t.organizacaoId, t.data),
+  ],
+);
