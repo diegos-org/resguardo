@@ -85,6 +85,7 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 |---|---|---|---|
 | M4.1 | Ledger: lançamentos imutáveis (bruto, taxa do canal, líquido, comissão SCL, direito do proprietário, recebimento, adiantamento, liquidação, estorno); estados previsto/realizado/conciliado/pendente | feito | M3.1, M2.3 |
 | M4.2 | Motor de cálculo de comissão por contrato e vigência, com testes de arredondamento, estadia entre meses, cancelamento parcial | feito | M4.1 |
+| M4.2c | Mudança de regra vale daquela data para frente: recálculo só alcança reservas com entrada a partir da data da mudança (nunca antes de hoje) e nunca mexe em lançamento que já movimentou dinheiro | feito | M4.2 |
 | M4.3 | Despesas: da empresa × do proprietário, categorias editáveis (arquivar em vez de apagar), comprovante opcional | feito | M4.1 |
 | M4.4 | Adiantamentos e compensações (ex.: reparo de R$ 4.000 adiantado) sem dupla cobrança | a fazer | M4.3 |
 | M4.5 | Ajustes/divergências com motivo "não identificado" e evidência | a fazer | M4.1 |
@@ -193,3 +194,5 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
   proprietário edita o calendário no portal e a mudança segue pelo SCL (M5.5); repasse e
   relatório mensal no dia 1º do mês seguinte; e-mail obrigatório no cadastro de proprietários
   (e usado no de hóspedes).
+- 24/09 (Diego): mudança de regra vale daquela data para frente — o passado (e o dinheiro
+  que já movimentou) nunca é recalculado.

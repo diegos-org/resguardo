@@ -49,7 +49,11 @@ financeiro, portal do proprietário, portal do hóspede, site público e integra
   categorias) tem tela de edição — ninguém deve precisar mexer em código ou no banco.
 - **Uma regra, um lugar.** Cada regra/configuração vive num único lugar e o resto lê dali.
   Ao mudar, propaga (ex.: `recalcularReservas` depois de mudar contrato ou recebimento; o
-  deploy recalcula tudo). Nada de duas versões da mesma regra.
+  deploy recalcula). Nada de duas versões da mesma regra.
+- **Mudança vale daquela data para frente.** Recálculo nunca altera o passado: só alcança
+  reservas com entrada a partir da data da mudança (nunca antes de hoje), e o que já
+  movimentou dinheiro (lançamento realizado/conciliado) não é mexido automaticamente —
+  divergência vira aviso e ajuste manual.
 - **Excluir sempre com confirmação** (`BotaoConfirmar`), e preferir arquivar/estornar a
   apagar quando houver histórico.
 - **Um proprietário por imóvel** (pode ser pessoa ou empresa). Os imóveis do Diego são

@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 24/09/2026, decisões de 24/09 (Beds24 com escrita, repasse no dia 1º, e-mail obrigatório, proposta do marketplace).
+> **Última atualização:** 24/09/2026, mudança de regra vale só daquela data para frente (M4.2c).
 
 ---
 
@@ -157,6 +157,12 @@
   reserva a reserva no campo "Quem recebe do canal". Imóvel com **mais de um proprietário**
   (ainda não há cadastro de cotas) ou sem proprietário fica com o acerto **pendente** — nada
   é atribuído a alguém por chute.
+- M4.2c: **mudança vale só daquela data para frente.** Quando você muda uma regra (contrato,
+  percentual, quem recebe por canal) ou sai uma versão nova do sistema, o recálculo só
+  alcança as reservas com **entrada a partir da data da mudança** (nunca antes de hoje).
+  O passado fica exatamente como foi. E qualquer lançamento que **já movimentou dinheiro**
+  (pago ou conciliado) nunca é mexido automaticamente: se algo mudar numa reserva assim, o
+  sistema avisa e a correção vira um ajuste manual.
 - M4.3: **despesas** (menu **Despesas**). Cada despesa tem categoria, valor, data, imóvel
   (opcional para as da empresa), fornecedor, comprovante (por enquanto um link ou referência,
   ex.: link do recibo no Drive — o envio de arquivo vem depois) e situação (a pagar / paga).
@@ -337,7 +343,8 @@ ambiente).
   textos do site, modelos de mensagem, categorias — tudo com tela de edição. E **uma regra
   fica num lugar só**: quando você muda (um contrato, quem recebe num canal), o sistema
   recalcula o que depende dela na hora; a cada nova versão publicada, recalcula tudo. Não
-  ficam duas versões da mesma regra.
+  ficam duas versões da mesma regra. E a mudança vale **daquela data para frente**: o
+  passado e o dinheiro que já movimentou nunca são recalculados.
 - **Excluir com confirmação:** todo botão de excluir, remover, cancelar ou estornar agora
   pergunta "tem certeza?" antes. Onde há histórico (financeiro, reservas), o sistema
   prefere arquivar ou estornar em vez de apagar de vez.
