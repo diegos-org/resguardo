@@ -9,6 +9,7 @@ import { podeFazer, type Sessao } from "@/acesso/politica";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { imoveis, lancamentos, proprietarioImoveis } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { lancamentoEmVigor } from "@/portal/posse";
 import { hojeISO } from "@/lib/datas";
 import { periodoDosFiltros } from "@/lib/filtros";
 import { lerPeriodoPortal } from "@/portal/periodo";
@@ -57,6 +58,8 @@ export async function donosDosEscolhidos<D extends { id: string }, I extends { i
             gte(lancamentos.competencia, periodo.inicio),
             lt(lancamentos.competencia, periodo.fim),
             isNotNull(lancamentos.imovelId),
+            // Só lançamento em vigor: um estornado (ou o estorno) não prova de quem era o imóvel.
+            lancamentoEmVigor(db),
           ),
         )
     : [];

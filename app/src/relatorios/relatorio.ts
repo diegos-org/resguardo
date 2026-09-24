@@ -6,6 +6,7 @@
 import { and, asc, eq, gte, inArray, isNotNull, lt, or, sql } from "drizzle-orm";
 import { imoveis, lancamentos, proprietarioImoveis, proprietarios, representantes } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { lancamentoEmVigor } from "@/portal/posse";
 import { lerEmpresa, NOME_EMPRESA_INICIAL } from "@/configuracoes/empresa";
 import { periodoDosFiltros } from "@/lib/filtros";
 import { uuidValido } from "@/lib/ids";
@@ -68,6 +69,8 @@ export async function imoveisDoProprietario(db: Db, organizacaoId: string, propr
             gte(lancamentos.competencia, periodo.inicio),
             lt(lancamentos.competencia, periodo.fim),
             isNotNull(lancamentos.imovelId),
+            // Só lançamento em vigor: um estornado (ou o estorno) não prova de quem era o imóvel.
+            lancamentoEmVigor(db),
           ),
         )
     : null;

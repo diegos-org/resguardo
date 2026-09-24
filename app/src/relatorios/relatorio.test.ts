@@ -3,7 +3,7 @@ import { PDFDocument } from "pdf-lib";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Sessao } from "@/acesso/politica";
 import { criarContrato } from "@/contratos/repositorio";
-import { auditoria, imoveis, organizacoes, proprietarioImoveis, proprietarios, proprietarioUsuarios, representantes, usuarios } from "@/db/schema";
+import { auditoria, imoveis, lancamentos, organizacoes, proprietarioImoveis, proprietarios, proprietarioUsuarios, representantes, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { resumoDoProprietario } from "@/portal/resumo";
@@ -12,7 +12,7 @@ import type { DadosReserva } from "@/reservas/regras";
 import { criarReserva } from "@/reservas/repositorio";
 import { donosDosEscolhidos, relatorioDoPainel, relatorioDoPortal } from "./gerar";
 import { conferirAnexos, ErroRelatorio, gerarPdfRelatorio, lerPaginas } from "./pdf";
-import { type DadosRelatorio, dadosDoRelatorio, textoDoSaldo, textosDoRelatorio } from "./relatorio";
+import { type DadosRelatorio, dadosDoRelatorio, imoveisDoProprietario, textoDoSaldo, textosDoRelatorio } from "./relatorio";
 
 // PNG 1×1 (fictício, só para o teste).
 const PNG = Uint8Array.from(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"));
@@ -301,6 +301,21 @@ describe("dados e acesso", () => {
     const dezembro = { inicio: "2026-12-01", fim: "2027-01-01" };
     expect((await donosDosEscolhidos(db, donos, [{ id: a }], outubro)).donos).toEqual([donos[0]]);
     expect((await donosDosEscolhidos(db, donos, [{ id: a }], dezembro)).donos).toEqual([donos[1]]);
+  });
+
+  it("lançamento estornado (e o estorno) não provam de quem era o imóvel", async () => {
+    // Lançamento do outro no 403 em outubro, depois estornado (correção de dono).
+    const [l] = await db
+      .insert(lancamentos)
+      .values({ organizacaoId: org, tipo: "direito_proprietario", descricao: "x", valor: 100, competencia: "2026-10-05", imovelId: a, proprietarioId: outro })
+      .returning();
+    await db.insert(lancamentos).values({ organizacaoId: org, tipo: "direito_proprietario", descricao: "estorno", valor: -100, competencia: "2026-10-05", imovelId: a, proprietarioId: outro, estornoDe: l.id });
+    const donos = [
+      { id: dona, nome: "Dona Fictícia" },
+      { id: outro, nome: "Outro Fictício" },
+    ];
+    expect((await donosDosEscolhidos(db, donos, [{ id: a }], { inicio: "2026-10-01", fim: "2026-11-01" })).donos).toEqual([donos[0]]);
+    expect((await imoveisDoProprietario(db, org, outro, { inicio: "2026-10-01", fim: "2026-11-01" })).map((i) => i.codigo)).toEqual(["102"]);
   });
 
   it("portal: imóvel que ainda não era dele no mês sai do relatório daquele mês", async () => {
