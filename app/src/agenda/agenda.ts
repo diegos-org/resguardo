@@ -548,13 +548,16 @@ const cargaValida = (c: unknown): c is Carga =>
   Array.isArray((c as Carga).eventos) &&
   Array.isArray((c as Carga).cidades);
 
-async function reservarEnvio(db: Db, chave: string, agora: Date): Promise<{ corte: Date; carga: Carga | null } | null> {
+async function reservarEnvio(db: Db, chave: string, agora: Date): Promise<{ corte: Date; carga: Carga | null; tentativa: string } | null> {
   // `corte`: o limite das reservas novas desta tentativa. Uma retomada reaproveita o da tentativa
   // original e, se o pedido já tinha sido montado, o pedido inteiro: o provedor só ignora o reenvio
   // com a mesma chave se o conteúdo for idêntico, e o marco tem de ser o do e-mail que saiu.
-  const valor = { em: agora.toISOString(), estado: "enviando", corte: agora.toISOString() };
+  // `tentativa`: só a tentativa dona da marca a grava ou apaga (uma execução atrasada, cuja marca foi
+  // retomada por outra, não mexe no estado da que a retomou).
+  const tentativa = randomUUID();
+  const valor = { em: agora.toISOString(), estado: "enviando", corte: agora.toISOString(), tentativa };
   const [nova] = await db.insert(appSettings).values({ key: chave, value: valor }).onConflictDoNothing().returning();
-  if (nova) return { corte: agora, carga: null };
+  if (nova) return { corte: agora, carga: null, tentativa };
   const [l] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, chave));
   const v = (l?.value ?? {}) as { em?: string; estado?: string; corte?: string; carga?: unknown };
   if (v.estado !== "enviando" || !v.em || agora.getTime() - Date.parse(v.em) < ENVIO_EXPIRA_MS) return null;
@@ -566,7 +569,7 @@ async function reservarEnvio(db: Db, chave: string, agora: Date): Promise<{ cort
     .set({ value: { ...valor, corte, ...(carga ? { carga } : {}) }, updatedAt: new Date() })
     .where(and(eq(appSettings.key, chave), sql`${appSettings.value} ->> 'em' = ${v.em}`, sql`${appSettings.value} ->> 'estado' = 'enviando'`))
     .returning();
-  return retomada ? { corte: new Date(corte), carga } : null;
+  return retomada ? { corte: new Date(corte), carga, tentativa } : null;
 }
 
 export type ResultadoEnvio = { enviados: number; jaEnviados: number; falhas: string[]; aviso: string | null };
@@ -601,7 +604,8 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
       r.jaEnviados++;
       return;
     }
-    const { corte } = reserva;
+    const { corte, tentativa } = reserva;
+    const daTentativa = sql`${appSettings.value} ->> 'tentativa' = ${tentativa}`;
     let carga = reserva.carga;
     try {
       if (!carga) {
@@ -632,8 +636,8 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
         // Guarda o pedido antes de enviar: uma retomada manda exatamente o mesmo.
         await db
           .update(appSettings)
-          .set({ value: { em: agora.toISOString(), estado: "enviando", corte: corte.toISOString(), carga }, updatedAt: new Date() })
-          .where(and(eq(appSettings.key, chave), sql`${appSettings.value} ->> 'estado' = 'enviando'`));
+          .set({ value: { em: agora.toISOString(), estado: "enviando", corte: corte.toISOString(), tentativa, carga }, updatedAt: new Date() })
+          .where(and(eq(appSettings.key, chave), daTentativa));
       }
       // A mesma chave do dia vai para o provedor: uma nova tentativa do mesmo envio não duplica.
       await correio.enviar({ para: d.email, assunto: carga.assunto, texto: carga.texto, chave });
@@ -647,7 +651,7 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
         return;
       }
       // O provedor recusou (ou nem chegou a ser chamado): libera para tentar de novo.
-      await db.delete(appSettings).where(eq(appSettings.key, chave));
+      await db.delete(appSettings).where(and(eq(appSettings.key, chave), daTentativa));
       r.falhas.push(`${d.email}: ${msg}`);
       return;
     }
@@ -657,7 +661,13 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
     try {
       // Marca do dia e marco das reservas novas juntos: ou os dois, ou nenhum.
       await db.transaction(async (tx) => {
-        await tx.update(appSettings).set({ value: { em: agora.toISOString(), estado: "enviado", corte: corte.toISOString() }, updatedAt: new Date() }).where(eq(appSettings.key, chave));
+        const [dona] = await tx
+          .update(appSettings)
+          .set({ value: { em: agora.toISOString(), estado: "enviado", corte: corte.toISOString() }, updatedAt: new Date() })
+          .where(and(eq(appSettings.key, chave), daTentativa))
+          .returning({ key: appSettings.key });
+        // A marca foi retomada por outra tentativa (esta passou do prazo): ela repete o mesmo pedido e registra.
+        if (!dona) return;
         // Um envio por vez mexe no marco desta pessoa ("enviar agora" junto com o das 20h): relê com
         // trava, fica o maior corte e junta as avisadas dos dois.
         await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${chaveUltimaDe(organizacaoId, d.email)}))`);

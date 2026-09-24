@@ -454,6 +454,25 @@ describe("configuração e envio", () => {
     expect(await db.select().from(appSettings).where(eq(appSettings.key, chaveTrava))).toEqual([]);
   });
 
+  it("tentativa atrasada não apaga a marca de quem a retomou (sem reenvio no mesmo dia)", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    let libera!: () => void;
+    const espera = new Promise<void>((ok) => (libera = ok));
+    const saiu: string[] = [];
+    const atrasado: Correio = { nome: "atrasado", enviar: async () => { saiu.push("1"); await espera; throw new Error("Falha ao enviar e-mail (HTTP 422)."); } };
+    const p1 = enviarAgenda(db, org, atrasado, AGORA);
+    await vi.waitFor(() => expect(saiu).toEqual(["1"]));
+    // 20 minutos depois, outra execução retoma a marca e envia (o mesmo pedido).
+    const bom = new CorreioMemoria();
+    expect(await enviarAgenda(db, org, bom, new Date(AGORA.getTime() + 20 * 60_000))).toMatchObject({ enviados: 1 });
+    // A primeira recebe a recusa só agora: não apaga a marca "enviado" da outra.
+    libera();
+    await p1;
+    const [marca] = await db.select().from(appSettings).where(eq(appSettings.key, `agenda-diaria:${org}:2026-10-01:a@example.com`));
+    expect((marca.value as { estado: string }).estado).toBe("enviado");
+    expect(await enviarAgenda(db, org, bom, new Date(AGORA.getTime() + 21 * 60_000))).toMatchObject({ enviados: 0, jaEnviados: 1 });
+  });
+
   it("cidade sem imóvel ativo não fica coberta: ao reativar, a reserva feita nesse meio-tempo chega", async () => {
     await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
     await db.update(imoveis).set({ ativo: false }).where(eq(imoveis.id, buzios));
