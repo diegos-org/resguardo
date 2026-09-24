@@ -51,7 +51,12 @@ export async function salvarEmpresa(db: Db, organizacaoId: string, dados: DadosE
       await tx.update(organizacoes).set({ nome: dados.nome }).where(eq(organizacoes.id, organizacaoId));
       await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "configuracao.empresa", entidade: "configuracao", entidadeId: organizacaoId, mudancas: { nome: [org.nome, dados.nome] } });
     }
-    await gravarConfig(tx, organizacaoId, "empresa", Object.fromEntries(CAMPOS_CONFIG.map((k) => [k, dados[k]])), autorId);
+    // Histórico sem a chave Pix em claro (como a dos proprietários): registra só que mudou.
+    const mudancas = await gravarConfig(tx, organizacaoId, "empresa", Object.fromEntries(CAMPOS_CONFIG.map((k) => [k, dados[k]])), autorId, false);
+    if (mudancas.chavePix) mudancas.chavePix = ["(alterado)", "(alterado)"];
+    if (Object.keys(mudancas).length) {
+      await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "configuracao.empresa", entidade: "configuracao", entidadeId: organizacaoId, mudancas });
+    }
   });
 }
 
