@@ -553,6 +553,20 @@ describe("configuração e envio", () => {
     expect(agenda.secoes.flatMap((x) => x.novas).map((n) => n.checkin)).toContain("2028-08-01");
   });
 
+  it("prévia da tela: imóvel reativado mostra as reservas das últimas 24h, como no envio", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    await db.update(imoveis).set({ ativo: false }).where(eq(imoveis.id, buzios));
+    await nova(buzios, "2028-09-04", "2028-09-06", new Date(AGORA.getTime() - 12 * 3_600_000).toISOString());
+    await enviarAgenda(db, org, new CorreioMemoria(), AGORA);
+    await db.update(imoveis).set({ ativo: true }).where(eq(imoveis.id, buzios));
+    const agora = new Date(AGORA.getTime() + 60_000);
+    const { agenda } = await previaDaAgenda(db, org, agora);
+    expect(agenda.secoes.flatMap((x) => x.novas).map((n) => n.checkin)).toContain("2028-09-04");
+    const correio = new CorreioMemoria();
+    await enviarAgenda(db, org, correio, agora, { manual: true });
+    expect(correio.enviadas[0].texto).toContain("04/09");
+  });
+
   it("envio agendado incerto: o 'enviar agora' do mesmo dia repete o mesmo pedido, sem segundo e-mail", async () => {
     await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
     await nova(rio, "2028-06-05", "2028-06-07", new Date(AGORA.getTime() - 60_000).toISOString());

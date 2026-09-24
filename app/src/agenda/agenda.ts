@@ -463,16 +463,25 @@ export function ultimaAgendaDe(db: Db, organizacaoId: string, email: string): Pr
 }
 
 /**
- * Prévia para a tela: os próximos dias e as reservas novas desde o marco mais antigo entre os
- * destinatários (quem nunca recebeu conta as últimas 24h). É o máximo que alguém recebe agora; cada
- * pessoa recebe só o que ainda não recebeu e só as cidades dela.
+ * Prévia para a tela: os próximos dias e as reservas novas desde o início mais antigo que algum
+ * envio usaria agora (marco de cada destinatário, as últimas 24h de imóvel não coberto, envios
+ * incertos em aberto). É o máximo que alguém recebe; cada pessoa recebe só o que ainda não recebeu
+ * e só as cidades dela.
  */
 export async function previaDaAgenda(db: Db, organizacaoId: string, agora: Date = new Date()): Promise<{ agenda: Agenda; ultima: Date | null }> {
   const [ultima, config] = await Promise.all([ultimaAgenda(db, organizacaoId), lerConfigAgenda(db, organizacaoId)]);
   const umDia = new Date(agora.getTime() - 86_400_000);
   const marcos = await Promise.all(config.destinatarios.map((d) => ultimaAgendaDe(db, organizacaoId, d.email)));
-  const inicios = marcos.map((m) => (m ? m.getTime() - SOBREPOSICAO_MS : umDia.getTime()));
-  const desde = inicios.length ? new Date(Math.min(...inicios)) : (ultima ?? umDia);
+  // Como no envio: imóvel que o marco não cobre (reativado, cidade nova) olha as últimas 24h, e um
+  // envio incerto ainda aberto olha as 24h antes do corte dele. A prévia parte do mais antigo de tudo.
+  const pendentes = await marcasPendentes(db, organizacaoId);
+  const cortesIncertos = pendentes
+    .map((l) => l.value as { corte?: string; em?: string })
+    .map((v) => Date.parse(v.corte ?? v.em ?? ""))
+    .filter((t) => !Number.isNaN(t))
+    .map((t) => t - 86_400_000 - SOBREPOSICAO_MS);
+  const inicios = [...marcos.map((m) => (m ? m.getTime() - SOBREPOSICAO_MS : umDia.getTime())), umDia.getTime(), ...cortesIncertos];
+  const desde = marcos.length ? new Date(Math.min(...inicios)) : (ultima ?? umDia);
   const agenda = await montarAgenda(db, organizacaoId, hojeISO("America/Sao_Paulo", agora), desde, agora);
   return { agenda, ultima };
 }
