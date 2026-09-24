@@ -1,5 +1,5 @@
 {
-  "id": "28341581-5d25-4a0c-8ca8-0246a17520d7",
+  "id": "a8b1e263-4aeb-46e4-b54c-734d5d2c7be0",
   "prevId": "8a52dda7-4680-47ac-a36f-a07701ba8fdd",
   "version": "7",
   "dialect": "postgresql",
@@ -2293,6 +2293,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "''"
+        },
+        "cancelada_manual": {
+          "name": "cancelada_manual",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "confirmada_em": {
           "name": "confirmada_em",

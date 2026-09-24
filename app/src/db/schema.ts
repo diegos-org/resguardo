@@ -759,6 +759,8 @@ export const limpezas = pgTable(
     /** Centavos; null = custo ainda não informado. */
     custo: integer("custo"),
     observacao: text("observacao").notNull().default(""),
+    /** Cancelada à mão (não pela reserva): a sincronização não a reabre. */
+    canceladaManual: boolean("cancelada_manual").notNull().default(false),
     confirmadaEm: timestamp("confirmada_em", { withTimezone: true }),
     realizadaEm: timestamp("realizada_em", { withTimezone: true }),
     criadoEm: criadoEm(),

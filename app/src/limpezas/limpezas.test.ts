@@ -118,6 +118,42 @@ describe("geração no dia do checkout", () => {
   });
 });
 
+describe("cancelada à mão e mudança de imóvel", () => {
+  it("limpeza cancelada à mão com a reserva confirmada não é reaberta pela sincronização e fica com aviso", async () => {
+    await criarReserva(db, org, reserva(a, "2026-10-10", "2026-10-15"), null);
+    await sincronizarLimpezas(db, org, periodo);
+    const [l] = await lista();
+    expect(await cancelarLimpeza(db, org, l.id, "Proprietário vai ficar no imóvel", null)).toEqual({ ok: true });
+    expect(await sincronizarLimpezas(db, org, periodo)).toEqual({ criadas: 0, atualizadas: 0, canceladas: 0 });
+    const [depois] = await lista();
+    expect(depois).toMatchObject({ estado: "cancelada", canceladaManual: true });
+    expect(depois.avisos.join(" ")).toContain("Cancelada à mão");
+  });
+
+  it("cancelada pela reserva volta a pedida quando a reserva é reativada", async () => {
+    await sincronizarReserva(db, org, "csv", "booking:X1", reserva(a, "2026-10-10", "2026-10-15"), null);
+    await sincronizarLimpezas(db, org, periodo);
+    await sincronizarReserva(db, org, "csv", "booking:X1", reserva(a, "2026-10-10", "2026-10-15", { estado: "cancelada" }), null);
+    expect((await sincronizarLimpezas(db, org, periodo)).canceladas).toBe(1);
+    await sincronizarReserva(db, org, "csv", "booking:X1", reserva(a, "2026-10-10", "2026-10-15"), null);
+    expect((await sincronizarLimpezas(db, org, periodo)).atualizadas).toBe(1);
+    expect((await lista())[0]).toMatchObject({ estado: "pedida", canceladaManual: false });
+  });
+
+  it("reserva mudou de imóvel depois da limpeza realizada (mesma saída): avisa", async () => {
+    await sincronizarReserva(db, org, "csv", "booking:X1", reserva(a, "2026-10-10", "2026-10-15"), null);
+    await sincronizarLimpezas(db, org, periodo);
+    const maria = await profissional();
+    const [l] = await lista();
+    await realizarLimpeza(db, org, l.id, { profissionalId: maria, custo: 12000 }, "2026-10-15", null);
+    await sincronizarReserva(db, org, "csv", "booking:X1", reserva(b, "2026-10-10", "2026-10-15"), null);
+    await sincronizarLimpezas(db, org, periodo);
+    const [depois] = await lista();
+    expect(depois).toMatchObject({ imovelCodigo: "403", estado: "realizada" });
+    expect(depois.avisos).toContain("A reserva mudou de imóvel depois da limpeza realizada: confira.");
+  });
+});
+
 describe("estados e profissional", () => {
   it("confirmar exige profissional ativa; realizar exige quem fez e só a partir do dia", async () => {
     await criarReserva(db, org, reserva(a, "2026-10-10", "2026-10-15"), null);
@@ -135,6 +171,9 @@ describe("estados e profissional", () => {
     expect(await informarCusto(db, org, l.id, 16000, null)).toEqual({ ok: true });
     expect(await reabrirLimpeza(db, org, l.id, null)).toEqual({ ok: true });
     expect((await lista())[0]).toMatchObject({ estado: "confirmada", custo: 16000 });
+    // Realizada de novo sem custo no formulário: mantém o custo já informado.
+    expect(await realizarLimpeza(db, org, l.id, { profissionalId: maria, custo: null }, "2026-10-15", null)).toEqual({ ok: true });
+    expect((await lista())[0]).toMatchObject({ estado: "realizada", custo: 16000 });
   });
 
   it("data passou sem registro vira aviso (não é marcada como feita)", async () => {

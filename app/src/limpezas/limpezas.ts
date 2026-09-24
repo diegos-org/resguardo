@@ -63,13 +63,14 @@ export async function sincronizarLimpezas(db: Db, organizacaoId: string, periodo
           r.criadas++;
           await registrarAuditoria(db, { organizacaoId, usuarioId: autorId, acao: "limpeza.criar", entidade: "limpeza", entidadeId: nova.id, mudancas: { limpeza: [null, `saída da reserva ${res.codigo} em ${res.checkout}`] } });
         }
-      } else if (l.estado === "cancelada" || (aberta && (l.data !== res.checkout || l.imovelId !== res.imovelId))) {
+      } else if ((l.estado === "cancelada" && !l.canceladaManual) || (aberta && (l.data !== res.checkout || l.imovelId !== res.imovelId))) {
         // Reserva reativada ou com saída/imóvel mudados: volta a "pedida" (a confirmação era para outra data).
+        // Cancelada à mão fica cancelada: só a cancelada pela reserva volta.
         const novo = { data: res.checkout, imovelId: res.imovelId, estado: "pedida" as const, confirmadaEm: null };
         const [depois] = await db
           .update(limpezas)
           .set({ ...novo, atualizadoEm: new Date() })
-          .where(and(eq(limpezas.id, l.id), inArray(limpezas.estado, ["pedida", "confirmada", "cancelada"])))
+          .where(and(eq(limpezas.id, l.id), inArray(limpezas.estado, ["pedida", "confirmada", "cancelada"]), eq(limpezas.canceladaManual, false)))
           .returning();
         if (depois) {
           r.atualizadas++;
@@ -115,6 +116,7 @@ export async function listarLimpezas(db: Db, organizacaoId: string, f: Periodo &
       reservaCodigo: reservas.codigo,
       reservaEstado: reservas.estado,
       reservaCheckout: reservas.checkout,
+      reservaImovelId: reservas.imovelId,
       profissional: profissionaisLimpeza.nome,
     })
     .from(limpezas)
@@ -128,6 +130,9 @@ export async function listarLimpezas(db: Db, organizacaoId: string, f: Periodo &
     const l = x.l;
     if (l.estado === "realizada" && x.reservaEstado === "cancelada") avisos.push("A reserva foi cancelada depois da limpeza realizada: confira.");
     if (l.estado === "realizada" && x.reservaCheckout && x.reservaCheckout !== l.data) avisos.push(`A saída da reserva mudou para ${dataBr(x.reservaCheckout)} depois da limpeza: confira.`);
+    if (l.estado === "realizada" && x.reservaImovelId && x.reservaImovelId !== l.imovelId) avisos.push("A reserva mudou de imóvel depois da limpeza realizada: confira.");
+    if (l.estado === "cancelada" && l.canceladaManual && x.reservaEstado === "confirmada" && x.reservaCheckout && x.reservaCheckout >= f.hoje)
+      avisos.push("Cancelada à mão, mas a reserva continua confirmada: confira se a saída não precisa de limpeza.");
     if ((l.estado === "pedida" || l.estado === "confirmada") && l.data < f.hoje) avisos.push("A data já passou e a limpeza não foi registrada como realizada.");
     if (l.estado === "realizada" && l.custo === null) avisos.push("Custo não informado.");
     return { ...l, imovelCodigo: x.imovelCodigo, reservaCodigo: x.reservaCodigo, profissional: x.profissional, avisos };
@@ -218,7 +223,8 @@ export function realizarLimpeza(
     async (l, tx) => {
       if (l.data > hoje) return "A limpeza ainda não chegou: só dá para registrar como realizada a partir do dia dela.";
       if (!(await profissionalAtivo(tx, organizacaoId, d.profissionalId))) return "Diga quem fez a limpeza.";
-      return { estado: "realizada", profissionalId: d.profissionalId, custo: d.custo, observacao: (d.observacao ?? l.observacao).trim().slice(0, 500), realizadaEm: new Date() };
+      // Sem custo no formulário, mantém o que já estava (ex.: reaberta e realizada de novo).
+      return { estado: "realizada", profissionalId: d.profissionalId, custo: d.custo ?? l.custo, observacao: (d.observacao ?? l.observacao).trim().slice(0, 500), realizadaEm: new Date() };
     },
     "limpeza.realizar",
     autorId,
@@ -240,7 +246,7 @@ export function reabrirLimpeza(db: Db, organizacaoId: string, id: string, autorI
 export function cancelarLimpeza(db: Db, organizacaoId: string, id: string, motivo: string, autorId: string | null): Promise<Resultado> {
   const m = motivo.trim();
   if (!m) return Promise.resolve({ ok: false, erro: "Informe o motivo." });
-  return transicao(db, organizacaoId, id, ["pedida", "confirmada"], async (l) => ({ estado: "cancelada", observacao: `${l.observacao ? `${l.observacao} · ` : ""}Cancelada: ${m}`.slice(0, 500) }), "limpeza.cancelar", autorId);
+  return transicao(db, organizacaoId, id, ["pedida", "confirmada"], async (l) => ({ estado: "cancelada", canceladaManual: true, observacao: `${l.observacao ? `${l.observacao} · ` : ""}Cancelada: ${m}`.slice(0, 500) }), "limpeza.cancelar", autorId);
 }
 
 /** Limpeza fora de checkout (ex.: faxina extra, antes de uso do proprietário). */

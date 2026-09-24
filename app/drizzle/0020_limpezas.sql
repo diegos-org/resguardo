@@ -8,6 +8,7 @@ CREATE TABLE "limpezas" (
 	"profissional_id" uuid,
 	"custo" integer,
 	"observacao" text DEFAULT '' NOT NULL,
+	"cancelada_manual" boolean DEFAULT false NOT NULL,
 	"confirmada_em" timestamp with time zone,
 	"realizada_em" timestamp with time zone,
 	"criado_em" timestamp with time zone DEFAULT now() NOT NULL,
