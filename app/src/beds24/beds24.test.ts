@@ -85,10 +85,20 @@ describe("normalização", () => {
     expect(motivo(booking({ price: "mil" }))).toBe("valor inválido");
     expect(motivo(booking({ price: -1 }))).toBe("valor negativo");
     expect(motivo(booking({ id: "<script>" }))).toBe("sem id");
+    expect(motivo(booking({ numAdult: -1, numChild: 3 }))).toBe("número de hóspedes inválido");
+    expect(motivo(booking({ numAdult: 1.5 }))).toBe("número de hóspedes inválido");
   });
 
   it("dinheiro e canal", () => {
     expect(reaisParaCentavosApi(10.005)).toBe(1001);
+    expect(reaisParaCentavosApi("1.005")).toBe(101);
+    expect(reaisParaCentavosApi(1.005)).toBe(101);
+    expect(reaisParaCentavosApi(0.285)).toBe(29);
+    expect(reaisParaCentavosApi("1.004")).toBe(100);
+    expect(reaisParaCentavosApi(1500)).toBe(150000);
+    expect(reaisParaCentavosApi("-2.5")).toBe(-250);
+    expect(reaisParaCentavosApi(1e21)).toBeUndefined();
+    expect(reaisParaCentavosApi(Number.NaN)).toBeUndefined();
     expect(reaisParaCentavosApi("99.9")).toBe(9990);
     expect(reaisParaCentavosApi(null)).toBeNull();
     expect(reaisParaCentavosApi("1,5")).toBeUndefined();
@@ -104,6 +114,7 @@ describe("normalização", () => {
       [
         { roomId: 200, calendar: [{ from: "2026-10-01", to: "2026-10-03", numAvail: 1, price1: 450, minStay: 2 }, { from: "2026-10-04", price1: 500 }] },
         { roomId: 201, calendar: [{ from: "2026-10-05", to: "2026-10-01" }] },
+        { roomId: 202, calendar: [{ from: "2026-10-02", price1: -100 }, { from: "2026-10-02", minStay: -1 }, { from: "2026-10-02", numAvail: -1 }] },
         { semRoom: true },
       ],
       "2026-10-02",
@@ -114,7 +125,7 @@ describe("normalização", () => {
       { roomId: "200", data: "2026-10-03", livres: 1, preco: 45000, minimoNoites: 2 },
       { roomId: "200", data: "2026-10-04", livres: null, preco: 50000, minimoNoites: null },
     ]);
-    expect(divergencias).toHaveLength(2);
+    expect(divergencias).toHaveLength(5);
   });
 
   it("quartos por imóvel", () => {

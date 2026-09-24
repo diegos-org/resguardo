@@ -14,13 +14,21 @@ const id = (v: unknown) => {
   return /^[A-Za-z0-9._:-]{1,64}$/.test(t) ? t : "";
 };
 
-/** Valor em reais (número ou texto "1234.50") → centavos. Inválido → undefined. */
+/**
+ * Valor em reais (número ou texto "1234.50") → centavos, pelos DÍGITOS (sem conta em
+ * ponto flutuante: 1.005 vira 101, não 100). Meio centavo arredonda para longe do zero.
+ * Inválido → undefined.
+ */
 export function reaisParaCentavosApi(v: unknown): number | null | undefined {
   if (v === null || v === undefined || v === "") return null;
-  const n = typeof v === "number" ? v : typeof v === "string" && /^-?\d+(\.\d+)?$/.test(v.trim()) ? Number(v) : NaN;
-  if (!Number.isFinite(n)) return undefined;
-  const c = Math.round(n * 100);
-  return Number.isSafeInteger(c) ? c : undefined;
+  const t = typeof v === "number" ? (Number.isFinite(v) ? String(v) : "") : typeof v === "string" ? v.trim() : "";
+  const m = /^(-?)(\d+)(?:\.(\d+))?$/.exec(t);
+  if (!m) return undefined; // inclui notação científica (1e21) e vírgula
+  const [, sinal, inteiro, frac = ""] = m;
+  let centavos = Number(inteiro) * 100 + Number(frac.slice(0, 2).padEnd(2, "0"));
+  if (frac.length > 2 && frac[2] >= "5") centavos += 1;
+  if (!Number.isSafeInteger(centavos)) return undefined;
+  return sinal ? -centavos : centavos;
 }
 
 const ESTADOS: Record<string, EstadoBeds24> = {
@@ -62,7 +70,8 @@ export function normalizarReserva(b: unknown): { ok: true; r: ReservaBeds24 } | 
   if ((valorBruto ?? 0) < 0 || (comissaoCanal ?? 0) < 0) return falha("valor negativo");
   const adultos = Number(b.numAdult ?? 0);
   const criancas = Number(b.numChild ?? 0);
-  const hospedes = Number.isInteger(adultos) && Number.isInteger(criancas) && adultos + criancas > 0 ? adultos + criancas : null;
+  if (!Number.isInteger(adultos) || !Number.isInteger(criancas) || adultos < 0 || criancas < 0) return falha("número de hóspedes inválido");
+  const hospedes = adultos + criancas > 0 ? adultos + criancas : null;
   return {
     ok: true,
     r: {
@@ -103,7 +112,8 @@ export function normalizarCalendario(salas: unknown[], inicio: string, fim: stri
       const preco = reaisParaCentavosApi(faixa.price1);
       const livres = faixa.numAvail === undefined || faixa.numAvail === null ? null : Number(faixa.numAvail);
       const minimo = faixa.minStay === undefined || faixa.minStay === null ? null : Number(faixa.minStay);
-      if (preco === undefined || (livres !== null && !Number.isInteger(livres)) || (minimo !== null && !Number.isInteger(minimo))) {
+      const inteiroNaoNegativo = (x: number | null) => x === null || (Number.isInteger(x) && x >= 0);
+      if (preco === undefined || (preco !== null && preco < 0) || !inteiroNaoNegativo(livres) || !inteiroNaoNegativo(minimo)) {
         divergencias.push({ origem: "calendario", id: roomId, motivo: "valores inválidos" });
         continue;
       }
