@@ -150,19 +150,33 @@ export async function carregarDashboard(
     const semDono = regras.filter((r) => selecionados.has(r.imovelId) && !r.proprietario).map((r) => r.codigo);
     if (semContrato.length) alertas.push({ nivel: "atencao", texto: `Sem contrato vigente: ${semContrato.join(", ")}.`, link: "/painel/sistema" });
     if (semDono.length) alertas.push({ nivel: "atencao", texto: `Sem proprietário: ${semDono.join(", ")}.`, link: "/painel/sistema" });
-    const semValor = reservas.filter((r) => r.valorBruto === null).length;
-    if (semValor) alertas.push({ nivel: "atencao", texto: `${semValor} reserva(s) do período sem valor: financeiro pendente.`, link: "/painel/reservas" });
+    // Imóvel arquivado não aparece em Reservas nem em Sistema: o alerta diz qual é e como chegar lá.
+    const notaArquivados = (imovelIds: (string | null)[]) => {
+      const codigos = [...new Set(imovelIds.filter((i): i is string => Boolean(i) && porId.get(i!)?.ativo === false).map((i) => porId.get(i)!.codigo))];
+      return codigos.length ? ` Inclui imóvel arquivado (${codigos.join(", ")}): reative-o em Imóveis para ver e corrigir.` : "";
+    };
+    const semValorLista = doPeriodo.filter((r) => r.valorBruto === null);
+    if (semValorLista.length)
+      alertas.push({
+        nivel: "atencao",
+        texto: `${semValorLista.length} reserva(s) do período sem valor: financeiro pendente.${notaArquivados(semValorLista.map((r) => r.imovelId))}`,
+        link: "/painel/reservas",
+      });
     const comLancamento = new Set(calculadas.map((x) => x.reservaId));
-    const semCalculo = comValor.filter((r) => !comLancamento.has(r.id)).length;
-    if (semCalculo)
-      alertas.push({ nivel: "atencao", texto: `${semCalculo} reserva(s) do período com valor mas sem cálculo no financeiro: confira o contrato na data da entrada.`, link: "/painel/reservas" });
+    const semCalculo = comValor.filter((r) => !comLancamento.has(r.id));
+    if (semCalculo.length)
+      alertas.push({
+        nivel: "atencao",
+        texto: `${semCalculo.length} reserva(s) do período com valor mas sem cálculo no financeiro: confira o contrato na data da entrada.${notaArquivados(semCalculo.map((r) => r.imovelId))}`,
+        link: "/painel/reservas",
+      });
     const codigoDe = new Map(regras.map((r) => [r.imovelId, r.codigo]));
     const nPendentes = pendentes.reduce((t, x) => t + x.n, 0);
     if (nPendentes) {
       const codigos = [...new Set(pendentes.map((x) => (x.imovelId ? (porId.get(x.imovelId)?.codigo ?? codigoDe.get(x.imovelId)) : null)).filter(Boolean))];
       alertas.push({
         nivel: "info",
-        texto: `${nPendentes} lançamento(s) com acerto pendente${codigos.length ? ` (${codigos.join(", ")})` : ""}: falta proprietário ou confirmar quem recebe do canal.`,
+        texto: `${nPendentes} lançamento(s) com acerto pendente${codigos.length ? ` (${codigos.join(", ")})` : ""}: falta proprietário ou confirmar quem recebe do canal.${notaArquivados(pendentes.map((x) => x.imovelId))}`,
         link: "/painel/sistema",
       });
     }

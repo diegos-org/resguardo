@@ -190,8 +190,19 @@ describe("painel inicial", () => {
   it("em 'todos', reserva sem cálculo de imóvel arquivado também avisa", async () => {
     await criarReserva(db, org, reserva(b, "2026-10-12", "2026-10-15"), null); // 102 sem contrato
     await db.update(imoveis).set({ ativo: false }).where(eq(imoveis.id, b));
-    const textos = (await carregar()).alertas.map((x) => x.texto).join(" | ");
-    expect(textos).toContain("1 reserva(s) do período com valor mas sem cálculo");
+    // A página passa também os arquivados em "todos"; o alerta diz qual é e como chegar lá.
+    const todos = await listarImoveis(db, org, { incluirInativos: true });
+    const d = await carregarDashboard(db, org, { imoveis: todos, todos: true, periodo: { inicio: "2026-10-01", fim: "2026-11-01" }, ano: 2026, hoje: "2026-10-09", verFinanceiro: true });
+    const alerta = d.alertas.find((x) => x.texto.includes("1 reserva(s) do período com valor mas sem cálculo"));
+    expect(alerta?.texto).toContain("Inclui imóvel arquivado (102): reative-o em Imóveis");
+  });
+
+  it("em 'todos', reserva sem valor de imóvel arquivado também avisa", async () => {
+    await criarReserva(db, org, { ...reserva(b, "2026-10-12", "2026-10-15"), valorBruto: null }, null);
+    await db.update(imoveis).set({ ativo: false }).where(eq(imoveis.id, b));
+    const todos = await listarImoveis(db, org, { incluirInativos: true });
+    const d = await carregarDashboard(db, org, { imoveis: todos.filter((i) => i.ativo), todos: true, periodo: { inicio: "2026-10-01", fim: "2026-11-01" }, ano: 2026, hoje: "2026-10-09", verFinanceiro: true });
+    expect(d.alertas.map((x) => x.texto).join(" | ")).toContain("1 reserva(s) do período sem valor");
   });
 
   it("despesa a pagar entra no alerta do período dela (o mesmo recorte da tela Despesas)", async () => {
