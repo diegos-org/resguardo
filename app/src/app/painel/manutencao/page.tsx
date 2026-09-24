@@ -6,7 +6,7 @@ import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import styles from "@/components/formularios.module.css";
 import { getDb } from "@/db/client";
 import type { EstadoManutencao } from "@/db/schema";
-import { listarCategorias } from "@/despesas/categorias";
+import { garantirCategoriasIniciais, listarCategorias } from "@/despesas/categorias";
 import { listarImoveis } from "@/imoveis/repositorio";
 import { hojeISO } from "@/lib/datas";
 import { centavosParaCampo } from "@/lib/dinheiro-form";
@@ -32,6 +32,8 @@ export default async function Manutencao({ searchParams }: PageProps<"/painel/ma
   const aprovar = podeFazer(sessao.papel, "manutencao:aprovar");
   const lancar = editar && podeFazer(sessao.papel, "despesa:editar");
   const verCusto = podeFazer(sessao.papel, "financeiro:ler");
+  // Como nas telas de Despesas: as categorias iniciais nascem na primeira vez que alguém precisa delas.
+  if (lancar) await garantirCategoriasIniciais(db, sessao.organizacaoId);
   const [lista, categorias] = await Promise.all([
     listarManutencoes(db, sessao.organizacaoId, { emAberto: !todas, imovelIds: imovel ? [imovel.id] : undefined }),
     lancar ? listarCategorias(db, sessao.organizacaoId) : [],
@@ -179,7 +181,12 @@ export default async function Manutencao({ searchParams }: PageProps<"/painel/ma
             </form>
           )}
 
-          {lancar && m.estado === "realizada" && m.custo === null && (
+          {lancar && m.estado === "realizada" && m.custo === null && categorias.length === 0 && (
+            <p role="note" className={styles.alerta} style={{ margin: 0 }}>
+              Nenhuma categoria de despesa ativa: crie ou reative uma em <Link href="/painel/despesas/categorias">Despesas → Categorias</Link> para lançar o custo.
+            </p>
+          )}
+          {lancar && m.estado === "realizada" && m.custo === null && categorias.length > 0 && (
             <form action={custoAcao} className={styles.linha} style={{ alignItems: "flex-end" }}>
               <input type="hidden" name="id" value={m.id} />
               <input type="hidden" name="voltar" value={voltar} />
