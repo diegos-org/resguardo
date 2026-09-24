@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 24/09/2026, quem recebe por imóvel e canal, um proprietário por imóvel e confirmação ao excluir (M2.7).
+> **Última atualização:** 24/09/2026, decisões de 24/09 (Beds24 com escrita, repasse no dia 1º, e-mail obrigatório, proposta do marketplace).
 
 ---
 
@@ -119,7 +119,8 @@
 
 - M3.2: **leitura do Beds24 (só leitura).** O sistema já sabe ler do Beds24 as reservas,
   os bloqueios, o calendário (unidades livres, preço e estadia mínima) e a lista de
-  quartos. **Não escreve nada lá.** Cada reserva do Beds24 é ligada ao imóvel certo pelos
+  quartos. **Por enquanto não escreve nada lá** (a escrita de calendário e preços vem no
+  M3.7, ligada só quando você mandar). Cada reserva do Beds24 é ligada ao imóvel certo pelos
   "canais de cada imóvel" (na ficha do imóvel: canal Beds24, número do imóvel no Beds24 e,
   como detalhe, o número do quarto). Qualquer informação estranha vira uma
   **divergência** para conferir — nunca uma reserva inventada. Ainda falta a sua chave
@@ -241,13 +242,20 @@ e escreva normalmente.
 | **Claude Code** | Programa o sistema; rotina a cada 3h | ✅ ativo | — |
 | **Codex** (revisor automático) | Revisa cada PR | ✅ ativo no repositório | — |
 | **Neon** | Banco de dados (Postgres) | 🟡 sua conta existe e está paga | Ligar à Vercel (item abaixo) |
-| **Vercel** | Publica o sistema na internet (homologação e depois produção) | ⚪ não conectado | Importar o repositório (seção 6) |
-| **Beds24** | Channel manager (Airbnb/Booking), reservas e calendário | 🟡 conta criada; leitor pronto no sistema | Gerar a chave de API só de leitura (seção 6) |
+| **Vercel** | Publica o sistema na internet (homologação e depois produção) | 🟡 conector começado no Claude, mas incompleto | Terminar a conexão e importar o repositório (seção 6) |
+| **Beds24** | Channel manager (Airbnb/Booking), reservas, calendário e preços | 🟡 conta criada; leitor pronto no sistema | Gerar a chave de API **com leitura e escrita** (seção 6) |
 | **Mercado Pago** | Pagamentos da reserva direta | ⚪ não conectado | Credenciais de *teste*, mais adiante (M8) |
 | **Meta / WhatsApp Business** | Atendimento pelo WhatsApp da empresa | ⚪ não conectado | Verificação da empresa no Meta Business (demora dias) |
 | **Google Cloud (login)** | Botão "Entrar com Google" | ⚪ não configurado | Criar credenciais OAuth (seção 6) |
-| **Resend** (envio de e-mail) | E-mails do sistema: código de login, depois relatórios | ⚪ não conectado | Criar conta e chave (seção 6, item 5) — pode esperar o domínio |
+| **Resend** (envio de e-mail) | E-mails do sistema: código de login, convites, relatórios | 🟡 conta criada (e conector no Claude) | Cadastrar o domínio e pôr a chave na Vercel (seção 6, item 5) |
 | **Cloudflare** | Domínio e e-mail | ⚪ não conectado | Só no final (M11) |
+
+**Conector do Claude × chave do sistema:** os "conectores" que você liga no Claude (ex.: o
+do Resend) deixam **o Claude** usar aquele serviço nas conversas. O **sistema SCL**, rodando
+na Vercel, precisa da **sua própria chave** em *Settings → Environment Variables*. São duas
+coisas diferentes — as duas são úteis. Hoje, nesta sessão de trabalho, não aparecem os
+conectores do Resend nem do Neon, e o da Vercel está com a conexão incompleta; se você
+terminar a da Vercel, eu consigo acompanhar os deploys daqui.
 
 **Onde ficam senhas e chaves:** nunca no GitHub e nunca no chat. Elas ficam nas
 configurações da Vercel e nas configurações do ambiente do Claude Code (variáveis de
@@ -275,8 +283,11 @@ ambiente).
       `ADMIN_EMAILS` = seu e-mail do Google.
    4. Faça *Redeploy* e entre em `/entrar`. Se travar em algum passo, me chame que eu guio.
 3. **Beds24:** gere a chave de API (no painel do Beds24, na área de API, crie um
-   "long life token" marcando **só permissões de leitura** — o sistema não precisa escrever
-   nada lá por enquanto). **Não cole no chat.** Coloque nas configurações do
+   "long life token") com permissões de **leitura e escrita** de reservas, calendário
+   (inventário/preços) e imóveis — o SCL vai ser a fonte oficial do calendário e dos preços e
+   mandar as mudanças para o Beds24 e, dele, para as OTAs. Fica tranquilo: o sistema **só
+   escreve** quando o item M3.7 estiver pronto e **você ligar** (primeiro testando num
+   imóvel que você escolher). **Não cole no chat.** Coloque nas configurações do
    ambiente do Claude Code (menu do ambiente no topo da sessão → *Edit* → variável
    `BEDS24_API_KEY`) e também na Vercel (*Settings → Environment Variables*).
 4. **Meta Business:** comece a verificação da empresa, porque ela demora.
@@ -293,16 +304,34 @@ ambiente).
 ## 7. Decisões pendentes e respostas às suas perguntas
 
 **Preciso de você (sem pressa):**
-- **Fórmulas do marketplace:** procurei no repositório e no histórico antigo e a fórmula
-  **não está registrada** em lugar nenhum. Mande as 3–4 que você pensou (pode ser por áudio,
-  do jeito que lembrar). Eu monto uma simulação lado a lado — hóspede pagando menos que na
-  OTA, proprietário ganhando mais e a SCL também ganhando — para você escolher. (M12.1)
-- **Data do repasse mensal** (Booking/site/direta): último dia do mês ou dia 1º do mês
-  seguinte? (M4.9)
+- **Modelo do marketplace:** as fórmulas antigas não estão em lugar nenhum, então montei
+  uma proposta com as contas feitas: `requisitos/product/MARKETPLACE-PRECIFICACAO.md`.
+  Resumo, numa reserva de R$ 1.650 que no Airbnb custaria R$ 1.881 ao hóspede e daria
+  R$ 1.600 ao proprietário:
+  - **A — taxa de serviço menor (8%):** hóspede paga R$ 1.782, proprietário recebe
+    R$ 1.650, SCL fica com ~R$ 52;
+  - **B — dividir a economia em três (minha sugestão):** hóspede paga R$ 1.815,
+    proprietário recebe R$ 1.667, SCL fica com ~R$ 66;
+  - **C — mensalidade fixa + preço limpo:** hóspede paga R$ 1.728, proprietário recebe
+    R$ 1.650, SCL vive da mensalidade.
+  Os percentuais das OTAs e do pagamento são aproximados e precisam ser conferidos. A ideia
+  é ter uma **tela de simulação** com tudo editável para você testar com números reais antes
+  de decidir. Me diga qual modelo te agrada mais (ou o que mudar).
 - **Búzios:** fica no sistema interno para controle (combinado). No site público, a decidir.
 - **Avaliações**: só no Airbnb ou também próprias.
 
 **Respostas:**
+- **Beds24 só leitura?** Não — como o SCL vai ser a fonte oficial de calendário e preços, a
+  chave precisa de **leitura e escrita** (seção 6, item 3). Entrou no plano o **M3.7** (SCL
+  manda calendário, preços e regras para o Beds24 → OTAs) e o **M5.5** (proprietário mexe
+  no calendário do imóvel dele pelo portal; a mudança passa pelo SCL e segue para as OTAs).
+  A escrita fica **desligada** até você mandar ligar, depois de testarmos num imóvel.
+- **Repasse e relatório mensal:** combinado, **dia 1º do mês seguinte** (no último dia ainda
+  pode entrar reserva). Já está no plano (M4.9 e M5.4).
+- **E-mail no cadastro de todos:** o e-mail do proprietário passou a ser **obrigatório**
+  (convite do portal, relatórios, avisos, às vezes a chave Pix). Hóspedes entram no portal
+  pelo e-mail (M9.1). Nas reservas das OTAs o e-mail às vezes vem mascarado pelo canal; o
+  sistema guarda o que vier.
 - **Tudo editável por você, sem código nem banco:** virou regra do projeto (está no
   `CLAUDE.md`, que toda sessão do Claude segue): cadastros, contratos, taxas, regras de venda,
   textos do site, modelos de mensagem, categorias — tudo com tela de edição. E **uma regra

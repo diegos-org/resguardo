@@ -19,19 +19,26 @@ async function sessaoFinanceira() {
 export async function novoContrato(_a: EstadoContrato, form: FormData): Promise<EstadoContrato> {
   const sessao = await sessaoFinanceira();
   const imovelId = String(form.get("imovelId") ?? "");
-  const r = await criarContrato(getDb(), sessao.organizacaoId, imovelId, Object.fromEntries(form), sessao.usuarioId);
+  // Contrato novo muda a comissão das reservas desse imóvel: grava e recalcula juntos
+  // (tudo-ou-nada: se o recálculo falhar, o contrato também não é gravado).
+  const r = await getDb().transaction(async (tx) => {
+    const c = await criarContrato(tx, sessao.organizacaoId, imovelId, Object.fromEntries(form), sessao.usuarioId);
+    if (c.ok) await recalcularReservas(tx, sessao.organizacaoId, { imovelId: c.contrato.imovelId }, sessao.usuarioId);
+    return c;
+  });
   if (!r.ok) return { erros: r.erros };
-  // Contrato novo muda a comissão das reservas desse imóvel: recalcula (idempotente).
-  await recalcularReservas(getDb(), sessao.organizacaoId, { imovelId: r.contrato.imovelId }, sessao.usuarioId);
   revalidatePath(`/painel/imoveis/${imovelId}`);
   return { ok: true };
 }
 
 export async function encerrar(_a: EstadoContrato, form: FormData): Promise<EstadoContrato> {
   const sessao = await sessaoFinanceira();
-  const r = await encerrarContrato(getDb(), sessao.organizacaoId, String(form.get("contratoId") ?? ""), String(form.get("fim") ?? ""), sessao.usuarioId);
+  const r = await getDb().transaction(async (tx) => {
+    const e = await encerrarContrato(tx, sessao.organizacaoId, String(form.get("contratoId") ?? ""), String(form.get("fim") ?? ""), sessao.usuarioId);
+    if (e.ok) await recalcularReservas(tx, sessao.organizacaoId, { imovelId: e.imovelId }, sessao.usuarioId);
+    return e;
+  });
   if (!r.ok) return { mensagem: r.erro };
-  await recalcularReservas(getDb(), sessao.organizacaoId, { imovelId: r.imovelId }, sessao.usuarioId);
   revalidatePath(`/painel/imoveis/${r.imovelId}`);
   return { ok: true };
 }

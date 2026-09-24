@@ -173,6 +173,20 @@ describe("aplicarMotor", () => {
     expect(await lerRecebimento(db, org, im)).toEqual({});
   });
 
+  it("recebimento: gravar e recalcular é tudo-ou-nada", async () => {
+    await sinc({ origem: "booking" });
+    // Uma falha depois de gravar (simulada numa transação externa) desfaz a configuração e
+    // o recálculo juntos: nada fica meio aplicado.
+    await expect(
+      db.transaction(async (tx) => {
+        await salvarRecebimento(tx, org, im, { booking: "split" }, null);
+        throw new Error("falha simulada depois de salvar");
+      }),
+    ).rejects.toThrow("falha simulada");
+    expect(await lerRecebimento(db, org, im)).toEqual({});
+    expect(await saldoAcerto(db, org, { proprietarioId: dono })).toBe(108375);
+  });
+
   it("reserva de outra organização ou id inválido: nada acontece", async () => {
     expect(await aplicarMotor(db, org, "lixo", null)).toBeNull();
     expect(await aplicarMotor(db, org, "00000000-0000-4000-8000-000000000999", null)).toBeNull();

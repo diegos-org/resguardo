@@ -74,6 +74,7 @@ item muda a linha para `feito` **no próprio PR do item**.
 | M3.4 | Calendário central: todas as unidades, por imóvel, reservas/bloqueios/limpezas/manutenção, filtros global e local | feito | M3.1, M0.4 |
 | M3.5 | Lista de reservas com filtros e detalhe da reserva | feito | M3.1 |
 | M3.6 | Importação manual (CSV) de reservas como alternativa enquanto Beds24 não estiver ligado | a fazer | M3.1 |
+| M3.7 | **SCL como fonte oficial de calendário e preços** (Diego, 24/09): bloqueios, preços, estadia mínima e regras editados no SCL são enviados ao Beds24 e dele às OTAs; mudanças que chegarem do Beds24 são conferidas contra o SCL. Escrita autorizada por Diego, mas só é ligada (variável `BEDS24_ESCRITA=ligada`) depois de testada em um imóvel escolhido por ele | a fazer | M3.3, M2.6 |
 
 ### M4 — Financeiro (ledger)
 
@@ -90,7 +91,7 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 | M4.6 | Dashboard da empresa (receitas próprias, despesas, 1–2 gráficos) | a fazer | M4.2, M4.3 |
 | M4.7 | Aba Apartamentos: tabela por imóvel com resultado da empresa, comissões, despesas, acertos | a fazer | M4.2, M4.4 |
 | M4.8 | Teste de consistência: mesma reserva = mesmos totais em dashboard, aba Apartamentos, portal e PDF | a fazer | M5.3 |
-| M4.9 | Repasse mensal ao proprietário (Booking, site, direta): fechamento no fim do mês, valor a repassar já descontado de despesas/adiantamentos, Pix para copiar, marcar pago; data a definir (último dia do mês ou dia 1º) | a fazer | M4.4 |
+| M4.9 | Repasse mensal ao proprietário (Booking, site, direta): fechamento no fim do mês, valor a repassar já descontado de despesas/adiantamentos, Pix para copiar, marcar pago; feito no **dia 1º do mês seguinte** (Diego, 24/09: no último dia ainda pode entrar reserva) | a fazer | M4.4 |
 
 ### M5 — Portal do proprietário
 
@@ -99,7 +100,8 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 | M5.1 | Portal: filtros ano/mês/imóvel, mês atual marcado como parcial, navegação ±9 meses | a fazer | M1.4, M4.2 |
 | M5.2 | Tabela de reservas + calendário clicável + rodapé com saldo, credor/devedor e Pix (copiar) | a fazer | M5.1 |
 | M5.3 | PDF do relatório no modelo aprovado (duas páginas, cores SCL; ver `requisitos/operations/RELATORIOS-PROPRIETARIOS.md`) | a fazer | M5.2 |
-| M5.4 | Envio mensal por e-mail do fechamento (depois de conciliado) | a fazer | M5.3, M1.3 |
+| M5.4 | Envio mensal por e-mail do fechamento no dia 1º do mês seguinte (depois de conciliado) | a fazer | M5.3, M1.3 |
+| M5.5 | Proprietário edita o calendário do próprio imóvel no portal (bloqueio de uso próprio, liberar datas, conforme permissão do contrato); a mudança entra no SCL e segue para o Beds24/OTAs pelo M3.7 | a fazer | M5.1, M3.7 |
 
 ### M6 — Operação
 
@@ -133,7 +135,7 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 
 | ID | Item | Estado | Depende de |
 |---|---|---|---|
-| M9.1 | Portal do hóspede: acesso por código/magic link ao contato já associado; dados da própria reserva | a fazer | M1.3, M3.1 |
+| M9.1 | Portal do hóspede: acesso por código/magic link ao e-mail do hóspede (e-mail no cadastro de todos); dados da própria reserva | a fazer | M1.3, M3.1 |
 | M9.2 | Mensagens programadas (confirmação, check-in D-2 10h, checkout D-1 14h, agradecimento D+3 10h), jobs idempotentes; modelos de mensagem editáveis no painel | a fazer | M9.1 |
 
 ### M10 — WhatsApp (Meta Cloud API)
@@ -148,7 +150,7 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 
 | ID | Item | Estado | Depende de |
 |---|---|---|---|
-| M12.1 | Fórmula de cobrança do marketplace: hóspede paga menos que na OTA, proprietário ganha mais e a SCL também ganha — comparar as fórmulas do Diego com simulações | bloqueado | Diego: enviar as 3–4 fórmulas |
+| M12.1 | Fórmula de cobrança do marketplace: hóspede paga menos que na OTA, proprietário ganha mais e a SCL também ganha — proposta em `requisitos/product/MARKETPLACE-PRECIFICACAO.md` (3 modelos); tela de simulação com percentuais editáveis | bloqueado | Diego: escolher o modelo |
 | M12.2 | Motor de cálculo e repasse do contrato marketplace (inclui split automático, se o M8.0 decidir assim) | a fazer | M12.1, M4.2 |
 | M12.3 | Auto-cadastro do proprietário marketplace: cria conta, cadastra o imóvel (M2.6), escolhe "já anuncio"/"anúncio novo", revisão antes de publicar | a fazer | M1.4, M2.6 |
 | M12.4 | Portal do proprietário marketplace: calendário, preços e regras de venda, limpeza/manutenção por conta própria | a fazer | M12.3, M5.1 |
@@ -165,12 +167,11 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 
 1. **Revisar e mergear PRs** — por enquanto o Claude faz os merges (autorizado em 23/09).
 2. **Vercel:** importar o repositório `al-life/scl-reconstrucao` na Vercel, *root directory* `app`, e ligar a integração Neon. (destrava M0.5)
-3. **Chave API Beds24 (só leitura)** → variável `BEDS24_API_KEY` no ambiente do Claude e na Vercel; nunca no chat nem no Git. (destrava M3.3)
+3. **Chave API Beds24 (leitura e escrita)** → variável `BEDS24_API_KEY` no ambiente do Claude e na Vercel; nunca no chat nem no Git. A escrita só é usada quando o M3.7 for ligado. (destrava M3.3 e M3.7)
 4. **Meta / WhatsApp Business:** iniciar a verificação da empresa no Meta Business — leva dias. (destrava M10)
 5. **Mercado Pago:** credenciais de *teste*. (destrava M8.2)
-6. **Fórmulas do marketplace:** mandar as 3–4 fórmulas pensadas. (destrava M12.1)
+6. **Modelo do marketplace:** escolher entre os modelos propostos (ou ajustar). (destrava M12.1)
 7. **Booking:** criar os anúncios (o Beds24 pode criar a partir dos dados já importados do Airbnb — ver guia). 
-8. **Data do repasse mensal:** último dia do mês ou dia 1º do mês seguinte. (refina M4.9)
 9. **E-mail do sistema (Resend):** conta e domínio. (liga o login por código e os convites por e-mail)
 
 ## Pendências de decisão (não bloqueiam o início)
@@ -188,3 +189,7 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 - 24/09 (Diego): quem recebe é configurável por imóvel e por canal (padrão: Airbnb split);
   um proprietário por imóvel (pessoa ou empresa); imóveis do Diego são clientes normais;
   tudo editável pelo painel, uma regra num lugar só, exclusão com confirmação.
+- 24/09 (Diego): o SCL é a fonte oficial de calendário e preços e escreve no Beds24 (M3.7);
+  proprietário edita o calendário no portal e a mudança segue pelo SCL (M5.5); repasse e
+  relatório mensal no dia 1º do mês seguinte; e-mail obrigatório no cadastro de proprietários
+  (e usado no de hóspedes).

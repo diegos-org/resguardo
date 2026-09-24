@@ -78,7 +78,7 @@ async function semear(db: Db) {
     const p = await criarProprietario(
       db,
       org.id,
-      { nome: d.nome, tipo: "fisica", documento: "", email: "", telefone: "", endereco: "", chavePix: "", observacoes: "Cadastro fictício.", ativo: true },
+      { nome: d.nome, tipo: "fisica", documento: "", email: `proprietario${donos.indexOf(d) + 1}@example.com`, telefone: "", endereco: "", chavePix: "", observacoes: "Cadastro fictício.", ativo: true },
       autor,
     );
     await definirImoveis(db, org.id, p.id, d.imoveis.map((c) => porCodigo[c]), autor);

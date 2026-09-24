@@ -56,7 +56,7 @@ export function FormProprietario({ acao, imoveis, id, inicial = {} }: Props) {
       </div>
       <div className={styles.linha}>
         {campo("documento", "CPF / CNPJ", { inputMode: "numeric" })}
-        {campo("email", "E-mail", { type: "email" })}
+        {campo("email", "E-mail", { type: "email", required: true })}
         {campo("telefone", "Telefone", { type: "tel" })}
       </div>
       {campo("endereco", "Endereço")}

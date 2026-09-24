@@ -115,7 +115,7 @@ export function FormReserva({ acao, imoveis, comValores = true }: Props) {
           <label>
             Quem recebe do canal
             <select name="recebimento" defaultValue="" {...inv("recebimento")}>
-              <option value="">Padrão do canal (Airbnb: split; demais: empresa)</option>
+              <option value="">Usar a regra do imóvel para este canal</option>
               {Object.entries(NOMES_RECEBIMENTO).map(([valor, nome]) => (
                 <option key={valor} value={valor}>
                   {nome}
