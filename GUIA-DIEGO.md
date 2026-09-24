@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 24/09/2026, repasse mensal aos proprietários (M4.9).
+> **Última atualização:** 24/09/2026, portal do proprietário com filtros e números (M5.1).
 
 ---
 
@@ -29,7 +29,7 @@
 | M2 Cadastros | Imóveis, proprietários, contratos e comissões | ✅ pronto |
 | M3 Reservas | Reservas, calendário central, leitura do Beds24 | 🟡 em andamento |
 | M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | 🟡 em andamento |
-| M5 Portal do proprietário | Relatórios, saldos, PDF | ⚪ aguardando |
+| M5 Portal do proprietário | Relatórios, saldos, PDF | 🟡 em andamento |
 | M6 Operação | Limpezas, manutenção, agenda diária | ⚪ aguardando |
 | M7 Site público | Site novo com disponibilidade real | ⚪ aguardando |
 | M8 Reserva direta | Pagamento pelo Mercado Pago | ⚪ aguardando |
@@ -225,6 +225,19 @@
   cobrança:** nunca se quita mais do que o valor, duas pessoas quitando ao mesmo tempo não
   passam do total, e uma despesa cujo adiantamento já teve reembolso não pode ser estornada
   (desfaça a quitação antes).
+- M5.1: **portal do proprietário** (o que o proprietário vê ao entrar com o e-mail dele):
+  - escolhe os **imóveis dele** (quem tem mais de um marca quais quer ver), o **mês** ou o
+    **ano inteiro**;
+  - setas para o mês anterior e o seguinte, **até 9 meses para trás e 9 para a frente**; fora
+    disso aparece um aviso e a tela volta ao limite;
+  - o **mês atual aparece como "Parcial"** (ainda pode mudar) e os meses futuros como
+    **"Previsto"** (só reservas já confirmadas);
+  - números do período, **só com o que é dele**: reservas, valor bruto, taxas dos canais,
+    comissão da empresa, **sua parte**, despesas atribuídas a ele e o acerto do período (quem
+    passou a dever a quem). Se o imóvel trocou de dono, o novo proprietário não vê o histórico
+    do anterior.
+  A lista de reservas, o calendário e o saldo com o Pix para copiar chegam no M5.2; o PDF no
+  M5.3.
 - M4.9: **repasse mensal aos proprietários** (Painel → **Financeiro** → Repasses). No dia 1º,
   a tela abre no mês anterior e mostra, para cada proprietário:
   - o **crédito dele até o fim do mês**, os **adiantamentos descontados** e os
@@ -350,9 +363,13 @@
 |---|---|
 | ![Início](docs/telas/inicio-dashboard.png) | ![Repasses no celular](docs/telas/repasses-celular.png) |
 
-| Repasses aos proprietários (fechamento do mês) |
+| Repasses aos proprietários (fechamento do mês) | Portal do proprietário no celular |
+|---|---|
+| ![Repasses](docs/telas/repasses.png) | ![Portal no celular](docs/telas/portal-celular.png) |
+
+| Portal do proprietário |
 |---|
-| ![Repasses](docs/telas/repasses.png) |
+| ![Portal](docs/telas/portal.png) |
 
 A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 
