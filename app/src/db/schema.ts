@@ -745,6 +745,8 @@ export const manutencoes = pgTable(
     orcamento: integer("orcamento"),
     /** Definido por Diego na aprovação; null = a definir (nunca por suposição). */
     responsavel: text("responsavel").$type<"empresa" | "proprietario">(),
+    /** Proprietário que paga, gravado na aprovação (se o imóvel mudar de dono depois, não passa para o novo). */
+    proprietarioId: uuid("proprietario_id").references(() => proprietarios.id),
     aprovadaPor: uuid("aprovada_por").references(() => usuarios.id),
     aprovadaEm: timestamp("aprovada_em", { withTimezone: true }),
     dataRealizada: date("data_realizada", { mode: "string" }),

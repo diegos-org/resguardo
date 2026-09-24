@@ -135,6 +135,20 @@ describe("fluxo da manutenção", () => {
     expect(await registrarOrcamento(db, org, id2, { fornecedor: "X", valor: 100 }, null)).toMatchObject({ ok: false });
   });
 
+  it("dono gravado na aprovação: se o imóvel muda de dono, o custo não vai para o novo e a tela avisa", async () => {
+    const id = await nova();
+    await registrarOrcamento(db, org, id, { fornecedor: "Eletricista", valor: 40000 }, null);
+    await aprovar(id, "proprietario", null);
+    expect((await lista())[0]).toMatchObject({ proprietarioId: dona });
+    await realizarManutencao(db, org, id, HOJE, HOJE, null);
+    const [novo] = await db.insert(proprietarios).values({ organizacaoId: org, nome: "Novo dono fictício" }).returning();
+    await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));
+    await db.insert(proprietarioImoveis).values({ proprietarioId: novo.id, imovelId: a });
+    expect((await lista())[0].avisos.join(" ")).toContain("mudou de proprietário");
+    expect(await lancarCusto(db, org, id, custo(), null)).toMatchObject({ ok: false, erro: expect.stringContaining("mudou de proprietário") });
+    expect(await db.select().from(lancamentos).where(eq(lancamentos.organizacaoId, org))).toEqual([]);
+  });
+
   it("despesa estornada em Despesas: aviso e dá para lançar de novo; custo acima do orçamento avisa", async () => {
     const id = await nova();
     await registrarOrcamento(db, org, id, { fornecedor: "Eletricista", valor: 40000 }, null);

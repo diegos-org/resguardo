@@ -1,5 +1,5 @@
 {
-  "id": "3808d397-676f-4b0b-a2db-5bef129fff5c",
+  "id": "4a24bb95-2994-4a9e-a9dc-e4fa449a75cd",
   "prevId": "8a52dda7-4680-47ac-a36f-a07701ba8fdd",
   "version": "7",
   "dialect": "postgresql",
@@ -2295,6 +2295,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "proprietario_id": {
+          "name": "proprietario_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "aprovada_por": {
           "name": "aprovada_por",
           "type": "uuid",
@@ -2405,6 +2411,19 @@
           "tableTo": "imoveis",
           "columnsFrom": [
             "imovel_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "manutencoes_proprietario_id_proprietarios_id_fk": {
+          "name": "manutencoes_proprietario_id_proprietarios_id_fk",
+          "tableFrom": "manutencoes",
+          "tableTo": "proprietarios",
+          "columnsFrom": [
+            "proprietario_id"
           ],
           "columnsTo": [
             "id"

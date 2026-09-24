@@ -101,15 +101,15 @@ export function registrarOrcamento(db: Db, organizacaoId: string, id: string, d:
     organizacaoId,
     id,
     ["pedida", "orcada", "aprovada"],
-    async () => ({ estado: "orcada", fornecedor: texto(d.fornecedor, 200), orcamento: d.valor, responsavel: null, aprovadaPor: null, aprovadaEm: null }),
+    async () => ({ estado: "orcada", fornecedor: texto(d.fornecedor, 200), orcamento: d.valor, responsavel: null, proprietarioId: null, aprovadaPor: null, aprovadaEm: null }),
     "manutencao.orcamento",
     autorId,
   );
 }
 
-async function temDono(tx: Db, imovelId: string): Promise<boolean> {
+async function donoAtual(tx: Db, imovelId: string): Promise<string | null> {
   const [d] = await tx.select({ id: proprietarioImoveis.proprietarioId }).from(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, imovelId));
-  return Boolean(d);
+  return d?.id ?? null;
 }
 
 /** Aprovação de Diego: libera a execução e define quem paga. Só a partir de um orçamento. */
@@ -122,8 +122,10 @@ export function aprovarManutencao(db: Db, organizacaoId: string, id: string, res
     ["orcada"],
     async (m, tx) => {
       if (m.orcamento === null) return "Registre o orçamento antes de aprovar.";
-      if (responsavel === "proprietario" && !(await temDono(tx, m.imovelId))) return "O imóvel não tem proprietário vinculado: vincule antes de cobrar dele.";
-      return { estado: "aprovada", responsavel: responsavel as Responsavel, aprovadaPor: autorId, aprovadaEm: new Date() };
+      // Quem paga fica gravado na aprovação: se o imóvel mudar de dono depois, não passa para o novo.
+      const dono = responsavel === "proprietario" ? await donoAtual(tx, m.imovelId) : null;
+      if (responsavel === "proprietario" && !dono) return "O imóvel não tem proprietário vinculado: vincule antes de cobrar dele.";
+      return { estado: "aprovada", responsavel: responsavel as Responsavel, proprietarioId: dono, aprovadaPor: autorId, aprovadaEm: new Date() };
     },
     "manutencao.aprovar",
     autorId,
@@ -187,6 +189,8 @@ export function lancarCusto(db: Db, organizacaoId: string, id: string, d: DadosC
     async (m, tx) => {
       if (await despesaAtiva(tx, m.despesaId)) return "O custo já foi lançado. Para corrigir, estorne a despesa em Despesas e lance de novo.";
       if (!m.responsavel || !m.dataRealizada) return "Manutenção sem aprovação registrada: não dá para lançar o custo.";
+      if (m.responsavel === "proprietario" && (!m.proprietarioId || (await donoAtual(tx, m.imovelId)) !== m.proprietarioId))
+        return "O imóvel mudou de proprietário depois da aprovação: o custo não é lançado para o dono novo. Fale com o Diego para decidir como cobrar (ex.: ajuste com o dono da época).";
       const r = await registrarDespesa(
         tx,
         organizacaoId,
@@ -198,7 +202,7 @@ export function lancarCusto(db: Db, organizacaoId: string, id: string, d: DadosC
           valor: d.valor,
           data: m.dataRealizada,
           imovelId: m.imovelId,
-          proprietarioId: null,
+          proprietarioId: m.responsavel === "proprietario" ? m.proprietarioId : null,
           fornecedor: m.fornecedor,
           comprovante: d.comprovante,
           paga: d.paga,
@@ -239,11 +243,13 @@ export async function listarManutencoes(db: Db, organizacaoId: string, f: { imov
     .select({
       m: manutencoes,
       imovelCodigo: imoveis.codigo,
+      donoAtual: proprietarioImoveis.proprietarioId,
       despesaValor: lancamentos.montante,
       estornada: exists(db.select({ id: estorno.id }).from(estorno).where(eq(estorno.estornoDe, manutencoes.despesaId))),
     })
     .from(manutencoes)
     .innerJoin(imoveis, eq(imoveis.id, manutencoes.imovelId))
+    .leftJoin(proprietarioImoveis, eq(proprietarioImoveis.imovelId, manutencoes.imovelId))
     .leftJoin(lancamentos, eq(lancamentos.id, manutencoes.despesaId))
     .where(and(...c))
     .orderBy(desc(manutencoes.criadoEm));
@@ -254,6 +260,8 @@ export async function listarManutencoes(db: Db, organizacaoId: string, f: { imov
       const estornada = Boolean(m.despesaId && x.estornada);
       const custo = m.despesaId && !estornada ? (x.despesaValor ?? null) : null;
       const avisos: string[] = [];
+      if ((m.estado === "aprovada" || (m.estado === "realizada" && custo === null)) && m.responsavel === "proprietario" && m.proprietarioId !== x.donoAtual)
+        avisos.push("O imóvel mudou de proprietário depois da aprovação: o custo não vai para o dono novo. Decida com o Diego como cobrar.");
       if (m.estado === "orcada") avisos.push("Orçamento aguardando aprovação do Diego: não execute antes.");
       if (m.estado === "realizada" && estornada) avisos.push("A despesa desta manutenção foi estornada: lance o custo de novo, se for o caso.");
       else if (m.estado === "realizada" && custo === null) avisos.push("Custo ainda não lançado.");
