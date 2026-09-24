@@ -11,6 +11,8 @@ import { formatBRL } from "@/lib/money";
 import { cancelar } from "@/reservas/acoes";
 import { NOMES_ESTADO, NOMES_ORIGEM, NOMES_RECEBIMENTO, noites } from "@/reservas/regras";
 import { obterReserva } from "@/reservas/repositorio";
+import { REGRAS_PADRAO } from "@/financeiro/motor";
+import { lerRecebimento } from "@/imoveis/recebimento";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 
 const CAMPOS_FINANCEIROS = ["valorBruto", "taxaCanal", "valorLiquido", "moeda", "recebimento"];
@@ -28,6 +30,12 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
   const verValores = podeFazer(sessao.papel, "financeiro:ler");
   const lancs = verValores ? await listarLancamentos(db, sessao.organizacaoId, { reservaId: r.id }) : [];
 
+  // Mesma ordem do motor: reserva > configuração do imóvel para o canal > padrão do sistema.
+  const doImovel = verValores ? (await lerRecebimento(db, sessao.organizacaoId, r.imovelId))[r.origem] : undefined;
+  const efetivo = r.recebimento ?? doImovel ?? REGRAS_PADRAO.recebimento[r.origem];
+  const fonte = r.recebimento ? "definido nesta reserva" : doImovel ? "configuração do imóvel" : "padrão do sistema";
+  const quemRecebe = `${efetivo === "a_confirmar" ? "A confirmar" : NOMES_RECEBIMENTO[efetivo]} (${fonte})`;
+
   const linhas: [string, string][] = [
     ["Imóvel", imovel ? `${imovel.codigo} · ${imovel.nome}` : "—"],
     ["Origem", `${NOMES_ORIGEM[r.origem]}${r.codigoCanal ? ` (${r.codigoCanal})` : ""}`],
@@ -42,7 +50,7 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
           ["Valor bruto", brl(r.valorBruto)],
           ["Taxa do canal", brl(r.taxaCanal)],
           ["Líquido recebido", brl(r.valorLiquido)],
-          ["Quem recebe do canal", r.recebimento ? NOMES_RECEBIMENTO[r.recebimento] : r.origem === "airbnb" ? "padrão do Airbnb (split)" : "padrão: empresa recebe e repassa"],
+          ["Quem recebe do canal", quemRecebe],
         ] as [string, string][])
       : []),
     ["Observações", r.observacoes || "—"],
