@@ -1,9 +1,9 @@
 /**
- * Números do portal do proprietário (M5.1), do ponto de vista dele e só com o que é dele: as
- * reservas contam pelos lançamentos "parte do proprietário" que têm o proprietário dele, e os
- * valores vêm do mesmo livro do painel (nada é recalculado aqui).
+ * Números do portal do proprietário (M5.1), do ponto de vista dele e só com o que é dele. Os
+ * valores vêm do mesmo livro do painel (nada é recalculado aqui); a contagem de reservas vem das
+ * reservas confirmadas dos imóveis dele no período.
  */
-import { and, eq, gte, inArray, isNotNull, isNull, lt, notInArray, or, sql, sum } from "drizzle-orm";
+import { and, eq, exists, gt, gte, inArray, isNotNull, isNull, lt, not, notInArray, or, sql, sum } from "drizzle-orm";
 import { lancamentos, proprietarios, proprietarioUsuarios, reservas, type TipoLancamento } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
@@ -45,9 +45,10 @@ export async function resumoDoProprietario(
   const imoveis = o.imovelIds.filter(uuidValido);
   // Sem proprietário ou sem imóvel: nada (nunca "todos").
   if (!donos.length || !imoveis.length) return ZERO;
-  // Só reservas confirmadas: consulta/pendente não é receita, e cancelada não conta como reserva
-  // (seus lançamentos já foram estornados, mas a contagem ficaria).
-  const confirmadas = db.select({ id: reservas.id }).from(reservas).where(and(eq(reservas.organizacaoId, organizacaoId), eq(reservas.estado, "confirmada")));
+  // Reserva ainda pendente não é receita para o proprietário. Cancelada fica como está no livro:
+  // o cancelamento estorna os lançamentos (somam zero), e se já houve dinheiro movimentado eles
+  // continuam valendo, como no painel.
+  const pendentes = db.select({ id: reservas.id }).from(reservas).where(and(eq(reservas.organizacaoId, organizacaoId), eq(reservas.estado, "pendente")));
   const base = and(
     eq(lancamentos.organizacaoId, organizacaoId),
     gte(lancamentos.competencia, o.periodo.inicio),
@@ -55,7 +56,7 @@ export async function resumoDoProprietario(
     inArray(lancamentos.imovelId, imoveis),
     // A restrição vale só para o que a reserva gera (bruto, taxa, comissão, parte do dono);
     // ajuste, despesa e repasse ligados a uma reserva continuam valendo mesmo se ela cair.
-    or(notInArray(lancamentos.tipo, DA_RESERVA), isNull(lancamentos.reservaId), inArray(lancamentos.reservaId, confirmadas)),
+    or(notInArray(lancamentos.tipo, DA_RESERVA), isNull(lancamentos.reservaId), notInArray(lancamentos.reservaId, pendentes)),
   );
   // Linhas do próprio proprietário: parte dele, despesas, acerto.
   const dele = await db
@@ -63,12 +64,38 @@ export async function resumoDoProprietario(
     .from(lancamentos)
     .where(and(base, inArray(lancamentos.proprietarioId, donos)))
     .groupBy(lancamentos.tipo);
-  // Reservas dele no período: as que têm a parte do proprietário lançada para ele.
+  // Valores das reservas: as que têm a parte do proprietário lançada para ele no período.
   const reservasDele = db
     .selectDistinct({ id: lancamentos.reservaId })
     .from(lancamentos)
     .where(and(base, eq(lancamentos.tipo, "direito_proprietario"), inArray(lancamentos.proprietarioId, donos), isNotNull(lancamentos.reservaId)));
-  const [contagem] = await db.select({ n: sql<number>`count(*)::int` }).from(reservasDele.as("r"));
+  // Contagem: reservas confirmadas dos imóveis dele no período (como no Início), inclusive as
+  // ainda sem cálculo no financeiro; fica de fora a que tem a parte lançada só para outra pessoa
+  // (ex.: de antes de o imóvel mudar de dono).
+  const direito = (deles: boolean) =>
+    db
+      .select({ um: sql`1` })
+      .from(lancamentos)
+      .where(
+        and(
+          eq(lancamentos.reservaId, reservas.id),
+          eq(lancamentos.tipo, "direito_proprietario"),
+          deles ? inArray(lancamentos.proprietarioId, donos) : and(isNotNull(lancamentos.proprietarioId), notInArray(lancamentos.proprietarioId, donos)),
+        ),
+      );
+  const [contagem] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(reservas)
+    .where(
+      and(
+        eq(reservas.organizacaoId, organizacaoId),
+        eq(reservas.estado, "confirmada"),
+        inArray(reservas.imovelId, imoveis),
+        lt(reservas.checkin, o.periodo.fim),
+        gt(reservas.checkout, o.periodo.inicio),
+        or(exists(direito(true)), not(exists(direito(false)))),
+      ),
+    );
   const daReserva = await db
     .select({ tipo: lancamentos.tipo, valor: sum(lancamentos.valor) })
     .from(lancamentos)

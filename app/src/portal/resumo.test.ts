@@ -1,8 +1,8 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registrarAjuste } from "@/ajustes/ajustes";
 import { criarContrato } from "@/contratos/repositorio";
-import { imoveis, organizacoes, proprietarioImoveis, proprietarios, proprietarioUsuarios, usuarios } from "@/db/schema";
+import { imoveis, lancamentos, organizacoes, proprietarioImoveis, proprietarios, proprietarioUsuarios, reservas, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { criarCategoria } from "@/despesas/categorias";
@@ -98,6 +98,22 @@ describe("resumo do portal", () => {
     await cancelarReserva(db, org, r.reserva.id, null);
     const depois = await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo });
     expect(depois).toMatchObject({ reservas: 1, receitaBruta: 100000, suaParte: 72250, acerto: 72250 - 20000 + 5000 });
+  });
+
+  it("cancelada depois de dinheiro movimentado: os lançamentos protegidos continuam, como no livro", async () => {
+    const [r] = await db.select({ id: reservas.id }).from(reservas).where(eq(reservas.imovelId, a));
+    await db
+      .update(lancamentos)
+      .set({ estado: "realizado" })
+      .where(and(eq(lancamentos.reservaId, r.id), eq(lancamentos.origem, "motor")));
+    await cancelarReserva(db, org, r.id, null);
+    const depois = await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo });
+    expect(depois).toMatchObject({ reservas: 0, receitaBruta: 100000, comissao: 12750, suaParte: 72250, acerto: 72250 - 20000 });
+  });
+
+  it("reserva confirmada ainda sem cálculo no financeiro conta como reserva", async () => {
+    await criarReserva(db, org, { ...reserva(a), checkin: "2026-10-20", checkout: "2026-10-22", valorBruto: null, taxaCanal: null }, null);
+    expect(await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo })).toMatchObject({ reservas: 2, receitaBruta: 100000, suaParte: 72250 });
   });
 
   it("não vê imóvel de outro dono, nem 'todos' quando a lista vem vazia", async () => {
