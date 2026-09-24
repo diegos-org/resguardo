@@ -1,6 +1,9 @@
 /**
  * Tabela de reservas do portal (M5.2): as reservas confirmadas do proprietário no período, pela
  * mesma regra de posse do resumo (`posse.ts`), com os valores do livro que caem no período.
+ * Entra também a pendente ou cancelada que ainda tem valores em vigor no livro no período (já
+ * movimentou dinheiro): o resumo conta esses valores, então a tabela mostra de onde vêm, marcada
+ * "em conferência" (M4.8).
  */
 import { and, asc, eq, gt, gte, inArray, isNull, lt, or, sql, sum } from "drizzle-orm";
 import { bloqueios, imoveis, lancamentos, type OrigemReserva, proprietarioImoveis, reservas } from "@/db/schema";
@@ -47,13 +50,31 @@ export async function reservasDoPortal(
       hospede: reservas.hospedeNome,
       origemHospede: reservas.hospedeOrigem,
       canal: reservas.origem,
+      estado: reservas.estado,
     })
     .from(reservas)
     .innerJoin(imoveis, eq(imoveis.id, reservas.imovelId))
     .where(
       and(
         eq(reservas.organizacaoId, organizacaoId),
-        eq(reservas.estado, "confirmada"),
+        or(
+          eq(reservas.estado, "confirmada"),
+          inArray(
+            reservas.id,
+            db
+              .select({ id: lancamentos.reservaId })
+              .from(lancamentos)
+              .where(
+                and(
+                  eq(lancamentos.organizacaoId, organizacaoId),
+                  inArray(lancamentos.tipo, ["receita_bruta", "direito_proprietario"]),
+                  gte(lancamentos.competencia, o.periodo.inicio),
+                  lt(lancamentos.competencia, o.periodo.fim),
+                  lancamentoEmVigor(db),
+                ),
+              ),
+          ),
+        ),
         inArray(reservas.imovelId, ids),
         lt(reservas.checkin, o.periodo.fim),
         gt(reservas.checkout, o.periodo.inicio),
@@ -92,12 +113,14 @@ export async function reservasDoPortal(
       ),
     );
   const valor = (id: string, tipo: string) => Number(valores.find((v) => v.reservaId === id && v.tipo === tipo)?.valor ?? 0);
-  const situacao = (id: string): SituacaoReserva => {
+  const situacao = (id: string, estado: string): SituacaoReserva => {
+    // Não confirmada com valores em vigor: dinheiro já movimentado, a conferir no painel.
+    if (estado !== "confirmada") return "em_conferencia";
     const d = partes.filter((p) => p.reservaId === id);
     if (d.some((p) => p.estado === "pendente")) return "em_conferencia";
     return d.length ? "definido" : "sem_calculo";
   };
-  return lista.map((r) => ({ ...r, bruto: valor(r.id, "receita_bruta"), suaParte: valor(r.id, "direito_proprietario"), situacao: situacao(r.id) }));
+  return lista.map(({ estado, ...r }) => ({ ...r, bruto: valor(r.id, "receita_bruta"), suaParte: valor(r.id, "direito_proprietario"), situacao: situacao(r.id, estado) }));
 }
 
 export type BloqueioPortal = { id: string; imovelId: string; inicio: string; fim: string };

@@ -219,5 +219,10 @@ describe("consistência entre telas (M4.8)", () => {
     expect(t.brutos).toEqual([310000, 310000, 310000]);
     expect(t.acertos[0]).toBe(t.acertos[1]);
     expect(t.inicio.alertas.map((x) => x.texto).join(" | ")).toContain("pendente(s) com dinheiro já movimentado");
+    // O portal e o PDF mostram de onde vem o valor: a reserva aparece na tabela, "em conferência".
+    const lista = await reservasDoPortal(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo: OUTUBRO });
+    const portal = await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], semImovel: true, periodo: OUTUBRO });
+    expect(lista.reduce((x, y) => x + y.bruto, 0)).toBe(portal.receitaBruta);
+    expect(lista.find((x) => x.id === r.reserva.id)?.situacao).toBe("em_conferencia");
   });
 });
