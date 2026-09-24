@@ -39,11 +39,13 @@ export default async function Limpezas({ searchParams }: PageProps<"/painel/limp
   const voltar = q.slice(1);
   const salvo = params.salvo === "1";
   const erro = typeof params.erro === "string" ? params.erro : undefined;
-  const conta = (e: EstadoLimpeza) => lista.filter((l) => l.estado === e).length;
+  // Totais só com as limpezas deste período/imóvel (a que aparece por mudança da reserva fica de fora).
+  const doPeriodo = lista.filter((l) => !l.movida);
+  const conta = (e: EstadoLimpeza) => doPeriodo.filter((l) => l.estado === e).length;
   // "Quem fez": as ativas e, se foi arquivada depois, a que já estava escolhida.
   const opcoesDe = (l: (typeof lista)[number]) =>
     l.profissionalId && !profissionais.some((p) => p.id === l.profissionalId) ? [...profissionais, { id: l.profissionalId, nome: `${l.profissional ?? "Profissional"} (arquivada)` }] : profissionais;
-  const custoTotal = lista.filter((l) => l.estado === "realizada").reduce((t, l) => t + (l.custo ?? 0), 0);
+  const custoTotal = doPeriodo.filter((l) => l.estado === "realizada").reduce((t, l) => t + (l.custo ?? 0), 0);
 
   return (
     <>
@@ -108,7 +110,7 @@ export default async function Limpezas({ searchParams }: PageProps<"/painel/limp
             </p>
           ))}
 
-          {editar && (l.estado === "pedida" || l.estado === "confirmada") && profissionais.length > 0 && (
+          {editar && (l.estado === "pedida" || l.estado === "confirmada") && opcoesDe(l).length > 0 && (
             <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "flex-end" }}>
               <form action={confirmarAcao} className={styles.linha} style={{ alignItems: "flex-end", flex: "1 1 280px" }}>
                 <input type="hidden" name="id" value={l.id} />

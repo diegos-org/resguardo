@@ -51,62 +51,67 @@ export async function sincronizarLimpezas(db: Db, organizacaoId: string, periodo
   const porReserva = new Map(existentes.map((l) => [l.reservaId, l]));
 
   for (const res of lista) {
-    const l = porReserva.get(res.id);
-    const aberta = l && (l.estado === "pedida" || l.estado === "confirmada");
-    if (res.estado === "confirmada") {
-      if (!l) {
-        const [nova] = await db
-          .insert(limpezas)
-          .values({ organizacaoId, imovelId: res.imovelId, reservaId: res.id, data: res.checkout })
-          .onConflictDoNothing()
-          .returning();
-        if (nova) {
-          r.criadas++;
-          await registrarAuditoria(db, { organizacaoId, usuarioId: autorId, acao: "limpeza.criar", entidade: "limpeza", entidadeId: nova.id, mudancas: { limpeza: [null, `saída da reserva ${res.codigo} em ${res.checkout}`] } });
+    // Cada mudança e seu histórico na mesma transação: ou os dois ficam, ou nenhum.
+    await db.transaction(async (tx) => {
+      const l = porReserva.get(res.id);
+      const aberta = l && (l.estado === "pedida" || l.estado === "confirmada");
+      if (res.estado === "confirmada") {
+        if (!l) {
+          const [nova] = await tx
+            .insert(limpezas)
+            .values({ organizacaoId, imovelId: res.imovelId, reservaId: res.id, data: res.checkout })
+            .onConflictDoNothing()
+            .returning();
+          if (nova) {
+            r.criadas++;
+            await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "limpeza.criar", entidade: "limpeza", entidadeId: nova.id, mudancas: { limpeza: [null, `saída da reserva ${res.codigo} em ${res.checkout}`] } });
+          }
+        } else if ((l.estado === "cancelada" && !l.canceladaManual) || (aberta && (l.data !== res.checkout || l.imovelId !== res.imovelId))) {
+          // Reserva reativada ou com saída/imóvel mudados: volta a "pedida" (a confirmação era para outra data).
+          // Cancelada à mão fica cancelada: só a cancelada pela reserva volta.
+          const novo = { data: res.checkout, imovelId: res.imovelId, estado: "pedida" as const, confirmadaEm: null };
+          const [depois] = await tx
+            .update(limpezas)
+            .set({ ...novo, atualizadoEm: new Date() })
+            .where(and(eq(limpezas.id, l.id), inArray(limpezas.estado, ["pedida", "confirmada", "cancelada"]), eq(limpezas.canceladaManual, false)))
+            .returning();
+          if (depois) {
+            r.atualizadas++;
+            await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "limpeza.reserva_mudou", entidade: "limpeza", entidadeId: l.id, mudancas: calcularMudancas(l, depois) });
+          }
+        } else if (l.estado === "cancelada" && l.canceladaManual && (l.data !== res.checkout || l.imovelId !== res.imovelId)) {
+          // Cancelada à mão continua cancelada, mas acompanha a nova saída/imóvel da reserva
+          // (senão some do período da reserva e o aviso de conferência não aparece lá).
+          const [depois] = await tx
+            .update(limpezas)
+            .set({ data: res.checkout, imovelId: res.imovelId, atualizadoEm: new Date() })
+            .where(and(eq(limpezas.id, l.id), eq(limpezas.estado, "cancelada")))
+            .returning();
+          if (depois) {
+            r.atualizadas++;
+            await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "limpeza.reserva_mudou", entidade: "limpeza", entidadeId: l.id, mudancas: calcularMudancas(l, depois) });
+          }
         }
-      } else if ((l.estado === "cancelada" && !l.canceladaManual) || (aberta && (l.data !== res.checkout || l.imovelId !== res.imovelId))) {
-        // Reserva reativada ou com saída/imóvel mudados: volta a "pedida" (a confirmação era para outra data).
-        // Cancelada à mão fica cancelada: só a cancelada pela reserva volta.
-        const novo = { data: res.checkout, imovelId: res.imovelId, estado: "pedida" as const, confirmadaEm: null };
-        const [depois] = await db
+      } else if (aberta) {
+        // Reserva cancelada ou de volta a pendente: a limpeza aberta sai (e volta se ela confirmar de novo).
+        const [depois] = await tx
           .update(limpezas)
-          .set({ ...novo, atualizadoEm: new Date() })
-          .where(and(eq(limpezas.id, l.id), inArray(limpezas.estado, ["pedida", "confirmada", "cancelada"]), eq(limpezas.canceladaManual, false)))
+          .set({ estado: "cancelada", atualizadoEm: new Date() })
+          .where(and(eq(limpezas.id, l!.id), inArray(limpezas.estado, ["pedida", "confirmada"])))
           .returning();
         if (depois) {
-          r.atualizadas++;
-          await registrarAuditoria(db, { organizacaoId, usuarioId: autorId, acao: "limpeza.reserva_mudou", entidade: "limpeza", entidadeId: l.id, mudancas: calcularMudancas(l, depois) });
-        }
-      } else if (l.estado === "cancelada" && l.canceladaManual && (l.data !== res.checkout || l.imovelId !== res.imovelId)) {
-        // Cancelada à mão continua cancelada, mas acompanha a nova saída/imóvel da reserva
-        // (senão some do período da reserva e o aviso de conferência não aparece lá).
-        const [depois] = await db
-          .update(limpezas)
-          .set({ data: res.checkout, imovelId: res.imovelId, atualizadoEm: new Date() })
-          .where(and(eq(limpezas.id, l.id), eq(limpezas.estado, "cancelada")))
-          .returning();
-        if (depois) {
-          r.atualizadas++;
-          await registrarAuditoria(db, { organizacaoId, usuarioId: autorId, acao: "limpeza.reserva_mudou", entidade: "limpeza", entidadeId: l.id, mudancas: calcularMudancas(l, depois) });
+          r.canceladas++;
+          await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "limpeza.cancelar", entidade: "limpeza", entidadeId: l!.id, mudancas: { estado: [l!.estado, `cancelada (reserva ${res.estado})`] } });
         }
       }
-    } else if (aberta) {
-      // Reserva cancelada ou de volta a pendente: a limpeza aberta sai (e volta se ela confirmar de novo).
-      const [depois] = await db
-        .update(limpezas)
-        .set({ estado: "cancelada", atualizadoEm: new Date() })
-        .where(and(eq(limpezas.id, l!.id), inArray(limpezas.estado, ["pedida", "confirmada"])))
-        .returning();
-      if (depois) {
-        r.canceladas++;
-        await registrarAuditoria(db, { organizacaoId, usuarioId: autorId, acao: "limpeza.cancelar", entidade: "limpeza", entidadeId: l!.id, mudancas: { estado: [l!.estado, `cancelada (reserva ${res.estado})`] } });
-      }
-    }
+    });
   }
   return r;
 }
 
 export type LinhaLimpeza = Limpeza & {
+  /** Só está na lista porque a reserva mudou para este período/imóvel (a limpeza é de outro): fora dos totais. */
+  movida: boolean;
   imovelCodigo: string;
   reservaCodigo: string | null;
   profissional: string | null;
@@ -152,7 +157,8 @@ export async function listarLimpezas(db: Db, organizacaoId: string, f: Periodo &
       avisos.push("Cancelada à mão, mas a reserva continua confirmada: confira se a saída não precisa de limpeza.");
     if ((l.estado === "pedida" || l.estado === "confirmada") && l.data < f.hoje) avisos.push("A data já passou e a limpeza não foi registrada como realizada.");
     if (l.estado === "realizada" && l.custo === null) avisos.push("Custo não informado.");
-    return { ...l, imovelCodigo: x.imovelCodigo, reservaCodigo: x.reservaCodigo, profissional: x.profissional, avisos };
+    const movida = l.data < f.inicio || l.data >= f.fim || Boolean(f.imovelIds && !f.imovelIds.includes(l.imovelId));
+    return { ...l, movida, imovelCodigo: x.imovelCodigo, reservaCodigo: x.reservaCodigo, profissional: x.profissional, avisos };
   });
 }
 

@@ -184,7 +184,8 @@ describe("cancelada à mão e mudança de imóvel", () => {
     const novembro = { inicio: "2026-11-01", fim: "2026-12-01" };
     await sincronizarLimpezas(db, org, novembro);
     const [l] = await listarLimpezas(db, org, { ...novembro, hoje: "2026-11-05" });
-    expect(l).toMatchObject({ data: "2026-10-30", estado: "realizada", imovelCodigo: "403" });
+    expect(l).toMatchObject({ data: "2026-10-30", estado: "realizada", imovelCodigo: "403", movida: true });
+    expect((await lista("2026-11-05"))[0]).toMatchObject({ data: "2026-10-30", movida: false });
     expect(l.avisos.join(" ")).toContain("mudou para 03/11/2026");
     expect(await listarLimpezas(db, org, { ...novembro, imovelIds: [b], hoje: "2026-11-05" })).toHaveLength(1);
   });
