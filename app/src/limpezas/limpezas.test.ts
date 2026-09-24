@@ -175,6 +175,16 @@ describe("cancelada à mão e mudança de imóvel", () => {
     expect((await lista())[0]).toMatchObject({ estado: "pedida" });
   });
 
+  it("realizada e a reserva volta a pendente: não mexe e avisa", async () => {
+    await sincronizarReserva(db, org, "csv", "booking:X1", reserva(a, "2026-10-10", "2026-10-15"), null);
+    await sincronizarLimpezas(db, org, periodo);
+    const maria = await profissional();
+    await realizarLimpeza(db, org, (await lista())[0].id, { profissionalId: maria, custo: 10000 }, "2026-10-15", null);
+    await sincronizarReserva(db, org, "csv", "booking:X1", reserva(a, "2026-10-10", "2026-10-15", { estado: "pendente" }), null);
+    expect(await sincronizarLimpezas(db, org, periodo)).toEqual({ criadas: 0, atualizadas: 0, canceladas: 0 });
+    expect((await lista())[0]).toMatchObject({ estado: "realizada", avisos: ["A reserva voltou a pendente depois da limpeza realizada: confira."] });
+  });
+
   it("realizada cuja reserva mudou de mês aparece também no mês novo, com o aviso", async () => {
     await sincronizarReserva(db, org, "csv", "booking:X1", reserva(a, "2026-10-25", "2026-10-30"), null);
     await sincronizarLimpezas(db, org, periodo);

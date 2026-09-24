@@ -35,7 +35,7 @@ export async function sincronizarLimpezas(db: Db, organizacaoId: string, periodo
     .from(limpezas)
     .where(and(eq(limpezas.organizacaoId, organizacaoId), gte(limpezas.data, periodo.inicio), lt(limpezas.data, periodo.fim), isNotNull(limpezas.reservaId)));
   const lista = await db
-    .select({ id: reservas.id, imovelId: reservas.imovelId, checkout: reservas.checkout, estado: reservas.estado, codigo: reservas.codigo })
+    .select({ id: reservas.id })
     .from(reservas)
     .where(
       and(
@@ -44,16 +44,19 @@ export async function sincronizarLimpezas(db: Db, organizacaoId: string, periodo
       ),
     );
   if (!lista.length) return r;
-  const existentes = await db
-    .select()
-    .from(limpezas)
-    .where(and(eq(limpezas.organizacaoId, organizacaoId), inArray(limpezas.reservaId, lista.map((x) => x.id))));
-  const porReserva = new Map(existentes.map((l) => [l.reservaId, l]));
 
-  for (const res of lista) {
-    // Cada mudança e seu histórico na mesma transação: ou os dois ficam, ou nenhum.
+  for (const { id } of lista) {
+    // Cada mudança e seu histórico na mesma transação: ou os dois ficam, ou nenhum. A reserva e
+    // a limpeza são relidas e travadas aqui dentro (reserva primeiro): uma importação ou uma
+    // mudança de estado feita enquanto a sincronização roda não é sobrescrita com dado velho.
     await db.transaction(async (tx) => {
-      const l = porReserva.get(res.id);
+      const [res] = await tx
+        .select({ id: reservas.id, imovelId: reservas.imovelId, checkout: reservas.checkout, estado: reservas.estado, codigo: reservas.codigo })
+        .from(reservas)
+        .where(eq(reservas.id, id))
+        .for("update");
+      if (!res) return;
+      const [l] = await tx.select().from(limpezas).where(eq(limpezas.reservaId, id)).for("update");
       const aberta = l && (l.estado === "pedida" || l.estado === "confirmada");
       if (res.estado === "confirmada") {
         if (!l) {
@@ -151,6 +154,7 @@ export async function listarLimpezas(db: Db, organizacaoId: string, f: Periodo &
     const avisos: string[] = [];
     const l = x.l;
     if (l.estado === "realizada" && x.reservaEstado === "cancelada") avisos.push("A reserva foi cancelada depois da limpeza realizada: confira.");
+    if (l.estado === "realizada" && x.reservaEstado === "pendente") avisos.push("A reserva voltou a pendente depois da limpeza realizada: confira.");
     if (l.estado === "realizada" && x.reservaCheckout && x.reservaCheckout !== l.data) avisos.push(`A saída da reserva mudou para ${dataBr(x.reservaCheckout)} depois da limpeza: confira.`);
     if (l.estado === "realizada" && x.reservaImovelId && x.reservaImovelId !== l.imovelId) avisos.push("A reserva mudou de imóvel depois da limpeza realizada: confira.");
     if (l.estado === "cancelada" && l.canceladaManual && x.reservaEstado === "confirmada" && x.reservaCheckout && x.reservaCheckout >= f.hoje)
