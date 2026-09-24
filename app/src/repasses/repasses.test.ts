@@ -140,6 +140,31 @@ describe("fechamento do mês", () => {
     expect(await fecharMes(db, org, dono, MES, DEPOIS, null)).toMatchObject({ ok: false });
   });
 
+  it("ajuste com o proprietário sem valor (ainda sem lançamento) também bloqueia", async () => {
+    await registrarAjuste(
+      db,
+      org,
+      { data: "2026-10-15", imovelId: a, reservaId: null, proprietarioId: null, motivo: "", origem: "desconhecida", origemComprovada: false, evidencia: "Extrato", comprovante: "", valor: null, direcao: "proprietario_debito" },
+      null,
+    );
+    expect((await prever()).bloqueios.join(" ")).toContain("ajuste(s) com o proprietário ainda a esclarecer");
+    expect(await fecharMes(db, org, dono, MES, DEPOIS, null)).toMatchObject({ ok: false });
+  });
+
+  it("contestação durante o fechamento: o que foi descontado bate sempre com as compensações", async () => {
+    await reparo(40000);
+    const [adiant] = await listarAdiantamentos(db, org, { proprietarioId: dono });
+    const [fech] = await Promise.all([fecharMes(db, org, dono, MES, DEPOIS, null), contestar(db, org, adiant.id, "Não autorizei", null)]);
+    const [r] = await listarRepasses(db, org, dono);
+    const depois = await obterAdiantamento(db, org, adiant.id);
+    if (fech.ok) {
+      const compensado = depois!.quitacoes.filter((q) => q.forma === "compensacao" && !q.desfeitaEm).reduce((t, q) => t + q.valor, 0);
+      expect(compensado).toBe(r.descontado);
+    } else {
+      expect(r).toBeUndefined();
+    }
+  });
+
   it("adiantamento contestado não é descontado e continua devido depois do repasse", async () => {
     await reparo(40000);
     const [adiant] = await listarAdiantamentos(db, org, { proprietarioId: dono });

@@ -16,9 +16,9 @@
 import { and, asc, desc, eq, gt, inArray, isNull, lt, ne, or, sql, sum } from "drizzle-orm";
 import { desfazerCompensacoesDoRepasse, listarAdiantamentos, quitar } from "@/adiantamentos/adiantamentos";
 import { registrarAuditoria } from "@/auditoria/auditoria";
-import { imoveis, lancamentos, proprietarioImoveis, proprietarios, repasses, type SituacaoRepasse } from "@/db/schema";
+import { ajustes, imoveis, lancamentos, proprietarioImoveis, proprietarios, repasses, type SituacaoRepasse } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { estornar, lancar, LancamentoInvalido, mudarEstado } from "@/financeiro/ledger";
+import { estornar, lancar, mudarEstado } from "@/financeiro/ledger";
 import { dataValida } from "@/reservas/regras";
 import { uuidValido } from "@/lib/ids";
 
@@ -123,6 +123,22 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
         sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`,
       ),
     );
+  // Ajuste com o proprietário ainda não esclarecido — inclusive sem valor (que não tem lançamento).
+  const [ajustesAbertos] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(ajustes)
+    .where(
+      and(
+        eq(ajustes.organizacaoId, org),
+        eq(ajustes.afeta, "proprietario"),
+        isNull(ajustes.esclarecidoEm),
+        lt(ajustes.data, lim.fim),
+        or(
+          eq(ajustes.proprietarioId, dono.id),
+          sql`${ajustes.imovelId} in (select ${proprietarioImoveis.imovelId} from ${proprietarioImoveis} where ${proprietarioImoveis.proprietarioId} = ${dono.id})`,
+        ),
+      ),
+    );
   const previstos = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(lancamentos)
@@ -160,6 +176,7 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
   const avisos: string[] = [];
   if (hoje < lim.fim) bloqueios.push(`O mês ainda não terminou: o fechamento é a partir de ${lim.fim.split("-").reverse().join("/")}.`);
   if (pendentes[0]?.n) bloqueios.push(`${pendentes[0].n} lançamento(s) com acerto pendente até este mês (sem proprietário, quem recebe a confirmar ou ajuste a esclarecer): resolva antes de fechar.`);
+  if (ajustesAbertos?.n) bloqueios.push(`${ajustesAbertos.n} ajuste(s) com o proprietário ainda a esclarecer até este mês (com ou sem valor): esclareça antes de fechar.`);
   if (posterior) bloqueios.push(`Já existe repasse de ${nomeMes(posterior.mes.slice(0, 7))}: estorne-o antes de fechar um mês anterior.`);
   if (previstos[0]?.n) avisos.push(`${previstos[0].n} lançamento(s) ainda previsto(s), isto é, dinheiro que pode não ter entrado: confira antes de pagar.`);
   if (calc.valor > 0 && !dono.chavePix.trim()) avisos.push("Sem chave Pix no cadastro do proprietário.");
@@ -199,6 +216,31 @@ export async function fecharMes(db: Db, org: string, proprietarioId: string, mes
   const lim = limitesDoMes(mes);
   if (!lim) return { ok: false, erro: "Mês inválido." };
   if (!uuidValido(proprietarioId)) return { ok: false, erro: "Proprietário não encontrado." };
+  try {
+    return await fecharNaTransacao(db, org, proprietarioId, mes, lim, hoje, autorId);
+  } catch (e) {
+    if (e instanceof FechamentoMudou) return { ok: false, erro: e.message };
+    throw e;
+  }
+}
+
+/** Algo mudou nos adiantamentos entre o cálculo e o registro: nada é gravado. */
+class FechamentoMudou extends Error {
+  constructor() {
+    super("Os adiantamentos deste proprietário mudaram durante o fechamento. Nada foi gravado: confira e feche de novo.");
+    this.name = "FechamentoMudou";
+  }
+}
+
+async function fecharNaTransacao(
+  db: Db,
+  org: string,
+  proprietarioId: string,
+  mes: string,
+  lim: NonNullable<ReturnType<typeof limitesDoMes>>,
+  hoje: string,
+  autorId: string | null,
+): Promise<Resultado> {
   return db.transaction(async (tx) => {
     // Trava o proprietário: dois fechamentos ao mesmo tempo não passam daqui juntos.
     const [dono] = await tx
@@ -241,9 +283,12 @@ export async function fecharMes(db: Db, org: string, proprietarioId: string, mes
     );
     // Descontos: cada adiantamento em aberto (não contestado) do mês ou antes é quitado por compensação.
     const abertos = (await listarAdiantamentos(tx, org, { proprietarioId, somenteAbertos: true })).filter((a) => a.data < lim.fim && a.situacao !== "contestado");
+    // Os adiantamentos precisam ser os mesmos do cálculo: se algo mudou no meio (ex.: uma
+    // contestação), o fechamento inteiro é desfeito em vez de misturar duas situações.
+    if (abertos.reduce((t, a) => t + a.aberto, 0) !== p.aDescontar) throw new FechamentoMudou();
     for (const a of abertos) {
       const q = await quitar(tx, org, a.id, { forma: "compensacao", valor: a.aberto, data: lim.ultimoDia, nota: `Descontado no repasse de ${nomeDoMes}`, repasseId: r.id }, autorId);
-      if (!q.ok) throw new LancamentoInvalido(q.erro);
+      if (!q.ok) throw new FechamentoMudou();
     }
     await registrarAuditoria(tx, {
       organizacaoId: org,
