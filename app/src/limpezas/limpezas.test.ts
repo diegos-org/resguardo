@@ -5,13 +5,15 @@ import { contratos, imoveis, lancamentos, limpezas, organizacoes } from "@/db/sc
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { criarContrato } from "@/contratos/repositorio";
-import { atualizarCategoria, listarCategorias } from "@/despesas/categorias";
+import { atualizarCategoria, criarCategoria, listarCategorias } from "@/despesas/categorias";
 import { estornarDespesa, marcarDespesaPaga, obterDespesa } from "@/despesas/despesas";
 import type { DadosReserva } from "@/reservas/regras";
 import { cancelarReserva, criarReserva, sincronizarReserva } from "@/reservas/repositorio";
 import {
   cancelarLimpeza,
+  categoriaDasLimpezas,
   comMotivo,
+  escolherCategoriaDasLimpezas,
   itensDoCalendario,
   confirmarLimpeza,
   criarLimpezaAvulsa,
@@ -321,6 +323,30 @@ describe("custo no livro", () => {
     // Nada fica pela metade: a despesa anterior continua lançada e a limpeza com o custo antigo.
     expect(await despesasNoLivro()).toBe(-15000);
     expect((await lista())[0]).toMatchObject({ custo: 15000 });
+  });
+
+  it("categoria guardada pelo id: renomear não quebra; trocar vale para as próximas", async () => {
+    await criarReserva(db, org, reserva(a, "2026-10-10", "2026-10-15"), null);
+    await sincronizarLimpezas(db, org, periodo);
+    const maria = await profissional();
+    const [l] = await lista();
+    const inicial = await categoriaDasLimpezas(db, org);
+    expect(inicial).toMatchObject({ nome: "Limpeza e lavanderia", ativa: true });
+    // Renomear (mesmo sem "limpeza" no nome) não muda a categoria usada.
+    await atualizarCategoria(db, org, inicial!.id, { nome: "Faxinas" }, null);
+    expect(await realizarLimpeza(db, org, l.id, { profissionalId: maria, custo: 15000 }, "2026-10-15", null)).toEqual({ ok: true });
+    expect(await obterDespesa(db, org, (await lista())[0].despesaId!)).toMatchObject({ categoria: "Faxinas" });
+    // Outra categoria escolhida: vale para a próxima despesa.
+    const r = await criarCategoria(db, org, "Terceirizados", null);
+    if (!r.ok) throw new Error(r.erro);
+    expect(await escolherCategoriaDasLimpezas(db, org, r.categoria.id, null)).toEqual({ ok: true });
+    expect(await informarCusto(db, org, l.id, 18000, null)).toEqual({ ok: true });
+    expect(await obterDespesa(db, org, (await lista())[0].despesaId!)).toMatchObject({ categoria: "Terceirizados", montante: 18000 });
+    // Arquivada: não escolhe e, se já estava escolhida, avisa em vez de trocar sozinho.
+    await atualizarCategoria(db, org, r.categoria.id, { ativa: false }, null);
+    expect(await escolherCategoriaDasLimpezas(db, org, r.categoria.id, null)).toMatchObject({ ok: false });
+    expect(await informarCusto(db, org, l.id, 20000, null)).toMatchObject({ ok: false, erro: expect.stringContaining("Terceirizados") });
+    expect(await escolherCategoriaDasLimpezas(db, org, crypto.randomUUID(), null)).toMatchObject({ ok: false });
   });
 });
 

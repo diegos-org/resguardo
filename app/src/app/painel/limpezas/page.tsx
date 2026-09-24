@@ -7,13 +7,14 @@ import styles from "@/components/formularios.module.css";
 import { FiltroGlobal } from "@/components/painel/FiltroGlobal";
 import { getDb } from "@/db/client";
 import type { EstadoLimpeza } from "@/db/schema";
+import { listarCategorias } from "@/despesas/categorias";
 import { listarImoveis } from "@/imoveis/repositorio";
 import { hojeISO } from "@/lib/datas";
 import { centavosParaCampo } from "@/lib/dinheiro-form";
 import { descreverFiltros, lerFiltros, manterFiltros, periodoDosFiltros } from "@/lib/filtros";
 import { formatBRL } from "@/lib/money";
-import { avulsaAcao, cancelarAcao, confirmarAcao, custoAcao, realizarAcao, reabrirAcao } from "@/limpezas/acoes";
-import { listarLimpezas, listarProfissionais, NOMES_ESTADO, sincronizarLimpezas } from "@/limpezas/limpezas";
+import { avulsaAcao, cancelarAcao, categoriaAcao, confirmarAcao, custoAcao, realizarAcao, reabrirAcao } from "@/limpezas/acoes";
+import { categoriaDasLimpezas, listarLimpezas, listarProfissionais, NOMES_ESTADO, sincronizarLimpezas } from "@/limpezas/limpezas";
 
 const SEMANA = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 const dia = (d: string) => `${SEMANA[new Date(`${d}T12:00:00Z`).getUTCDay()]} ${d.split("-").reverse().slice(0, 2).join("/")}`;
@@ -31,6 +32,7 @@ export default async function Limpezas({ searchParams }: PageProps<"/painel/limp
   const periodo = periodoDosFiltros(filtros);
   const editar = podeFazer(sessao.papel, "limpeza:editar");
   const verCusto = podeFazer(sessao.papel, "financeiro:ler");
+  const editarCategoria = podeFazer(sessao.papel, "despesa:editar");
   // Gera/atualiza as limpezas das saídas deste período antes de mostrar (idempotente).
   await sincronizarLimpezas(db, sessao.organizacaoId, periodo, sessao.usuarioId);
   const imovelIds = filtros.imoveis.length ? imoveis.filter((i) => filtros.imoveis.includes(i.codigo)).map((i) => i.id) : undefined;
@@ -45,6 +47,10 @@ export default async function Limpezas({ searchParams }: PageProps<"/painel/limp
   // "Quem fez": as ativas e, se foi arquivada depois, a que já estava escolhida.
   const opcoesDe = (l: (typeof lista)[number]) =>
     l.profissionalId && !profissionais.some((p) => p.id === l.profissionalId) ? [...profissionais, { id: l.profissionalId, nome: `${l.profissional ?? "Profissional"} (arquivada)` }] : profissionais;
+  // Categoria das despesas de limpeza (pelo id): quem edita despesas vê e troca.
+  const [categoria, categorias] = editarCategoria
+    ? await Promise.all([categoriaDasLimpezas(db, sessao.organizacaoId, sessao.usuarioId), listarCategorias(db, sessao.organizacaoId)])
+    : [null, []];
   const custoTotal = doPeriodo.filter((l) => l.estado === "realizada").reduce((t, l) => t + (l.custo ?? 0), 0);
 
   return (
@@ -205,6 +211,30 @@ export default async function Limpezas({ searchParams }: PageProps<"/painel/limp
         </section>
       ))}
 
+      {editarCategoria && (!categoria || !categoria.ativa) && (
+        <p role="note" className={styles.alerta}>
+          {categoria
+            ? `A categoria de despesa das limpezas (“${categoria.nome}”) está arquivada: escolha outra abaixo.`
+            : "Escolha abaixo a categoria de despesa das limpezas: sem ela, o custo não vira despesa."}
+        </p>
+      )}
+      {editarCategoria && (
+        <form action={categoriaAcao} className={styles.linha} style={{ alignItems: "flex-end" }}>
+          <input type="hidden" name="voltar" value={voltar} />
+          <label>
+            Categoria de despesa das limpezas
+            <select name="categoriaId" required defaultValue={categoria?.ativa ? categoria.id : ""}>
+              <option value="">Escolha…</option>
+              {categorias.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nome}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="submit">Salvar categoria</button>
+        </form>
+      )}
       {editar && (
         <details>
           <summary style={{ cursor: "pointer" }}>Nova limpeza avulsa (fora de saída de reserva)</summary>

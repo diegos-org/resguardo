@@ -239,7 +239,8 @@
   - dá para criar **limpeza avulsa** (ex.: antes do uso do proprietário), **cancelar** (com
     motivo e confirmação) e **desfazer** um "feita" marcado por engano.
   - nos imóveis de **gestão completa**, o **custo** informado vira uma **despesa da empresa**
-    (categoria "Limpeza e lavanderia", a pagar), no imóvel e no dia da limpeza, e entra no
+    (na categoria escolhida no fim da tela de Limpezas — começa em "Limpeza e lavanderia" e
+    pode ser renomeada à vontade em Despesas —, a pagar), no imóvel e no dia da limpeza, e entra no
     resultado do Início e da aba Apartamentos. Em contrato online ou sem contrato, o sistema
     não supõe quem paga: avisa para lançar em Despesas. Mudar o custo ou desfazer o "feita" corrige a despesa sozinho; se a despesa
     já foi paga, o sistema não mexe e pede para corrigir em Despesas.

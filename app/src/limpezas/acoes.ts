@@ -13,6 +13,7 @@ import {
   criarLimpezaAvulsa,
   criarProfissional,
   editarProfissional,
+  escolherCategoriaDasLimpezas,
   informarCusto,
   realizarLimpeza,
   reabrirLimpeza,
@@ -112,4 +113,11 @@ export async function editarProfissionalAcao(form: FormData) {
     ),
     "/painel/limpezas/profissionais",
   );
+}
+
+/** Categoria de despesa das limpezas: só quem edita despesas. */
+export async function categoriaAcao(form: FormData) {
+  const s = await exigirSessaoPainel();
+  exigir(s, "despesa:editar", { organizacaoId: s.organizacaoId });
+  voltar(form, await escolherCategoriaDasLimpezas(getDb(), s.organizacaoId, String(form.get("categoriaId") ?? ""), s.usuarioId));
 }

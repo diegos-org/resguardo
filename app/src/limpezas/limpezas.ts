@@ -10,11 +10,12 @@
 import { and, asc, eq, exists, gte, inArray, isNotNull, lt, or, sql } from "drizzle-orm";
 import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
 import type { ItemCalendario } from "@/calendario/grade";
-import { type EstadoLimpeza, imoveis, lancamentos, limpezas, profissionaisLimpeza, reservas } from "@/db/schema";
+import { categoriasDespesa, type EstadoLimpeza, imoveis, lancamentos, limpezas, profissionaisLimpeza, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { listarContratos } from "@/contratos/repositorio";
 import { contratoVigente } from "@/contratos/regras";
-import { garantirCategoriasIniciais, listarCategorias } from "@/despesas/categorias";
+import { lerConfig, gravarConfig } from "@/configuracoes/armazem";
+import { CATEGORIAS_INICIAIS, garantirCategoriasIniciais } from "@/despesas/categorias";
 import { estornarDespesa, obterDespesa, registrarDespesa } from "@/despesas/despesas";
 import { uuidValido } from "@/lib/ids";
 import { dataValida } from "@/reservas/regras";
@@ -212,6 +213,50 @@ async function profissionalAtivo(tx: Db, organizacaoId: string, id: string): Pro
   return Boolean(p);
 }
 
+export type CategoriaLimpezas = { id: string; nome: string; ativa: boolean };
+
+/** Categoria guardada pelo id (config "limpezas"). */
+async function categoriaGuardada(db: Db, organizacaoId: string): Promise<CategoriaLimpezas | null> {
+  const id = (await lerConfig(db, organizacaoId, "limpezas"))?.categoriaDespesaId;
+  if (typeof id !== "string" || !uuidValido(id)) return null;
+  const [c] = await db
+    .select({ id: categoriasDespesa.id, nome: categoriasDespesa.nome, ativa: categoriasDespesa.ativa })
+    .from(categoriasDespesa)
+    .where(and(eq(categoriasDespesa.id, id), eq(categoriasDespesa.organizacaoId, organizacaoId)));
+  return c ?? null;
+}
+
+/**
+ * Categoria de despesa das limpezas, guardada pelo id: renomear a categoria em Despesas não muda
+ * nada. Na primeira vez, fica a categoria inicial “Limpeza e lavanderia” (se existir, ativa, com
+ * esse nome); fora isso, não se supõe: devolve null e a tela pede para escolher.
+ */
+export async function categoriaDasLimpezas(db: Db, organizacaoId: string, autorId: string | null = null): Promise<CategoriaLimpezas | null> {
+  const guardada = await categoriaGuardada(db, organizacaoId);
+  if (guardada) return guardada;
+  await garantirCategoriasIniciais(db, organizacaoId);
+  const inicial = CATEGORIAS_INICIAIS.find((n) => /limpeza/i.test(n)) ?? "";
+  const [c] = await db
+    .select({ id: categoriasDespesa.id, nome: categoriasDespesa.nome, ativa: categoriasDespesa.ativa })
+    .from(categoriasDespesa)
+    .where(and(eq(categoriasDespesa.organizacaoId, organizacaoId), eq(categoriasDespesa.ativa, true), sql`lower(${categoriasDespesa.nome}) = lower(${inicial})`));
+  if (!c) return null;
+  await gravarConfig(db, organizacaoId, "limpezas", { categoriaDespesaId: c.id }, autorId);
+  return c;
+}
+
+/** Troca a categoria de despesa das limpezas (vale para as próximas despesas; as lançadas ficam). */
+export async function escolherCategoriaDasLimpezas(db: Db, organizacaoId: string, categoriaId: string, autorId: string | null): Promise<Resultado> {
+  if (!uuidValido(categoriaId)) return { ok: false, erro: "Escolha uma categoria." };
+  const [c] = await db
+    .select({ id: categoriasDespesa.id })
+    .from(categoriasDespesa)
+    .where(and(eq(categoriasDespesa.id, categoriaId), eq(categoriasDespesa.organizacaoId, organizacaoId), eq(categoriasDespesa.ativa, true)));
+  if (!c) return { ok: false, erro: "Categoria não encontrada ou arquivada." };
+  await db.transaction((tx) => gravarConfig(tx, organizacaoId, "limpezas", { categoriaDespesaId: c.id }, autorId));
+  return { ok: true };
+}
+
 /** Muda o estado com trava e histórico. `de` lista os estados de onde a mudança é permitida. */
 /**
  * Deixa a despesa da limpeza de acordo com o custo: realizada com custo, em imóvel de gestão
@@ -237,9 +282,10 @@ async function acertarDespesa(tx: Db, organizacaoId: string, l: Limpeza, autorId
   if (vigente && vigente.estado !== "previsto") return { erro: "A despesa desta limpeza já foi paga: para mudar o custo, estorne-a em Despesas primeiro." };
   let categoria: { id: string } | undefined;
   if (lancar) {
-    await garantirCategoriasIniciais(tx, organizacaoId);
-    categoria = (await listarCategorias(tx, organizacaoId)).find((c) => /limpeza/i.test(c.nome));
-    if (!categoria) return { erro: "Não há categoria de despesa ativa com “Limpeza” no nome: crie ou reative uma em Despesas → Categorias." };
+    const c = await categoriaDasLimpezas(tx, organizacaoId, autorId);
+    if (!c) return { erro: "Escolha a categoria de despesa das limpezas (no fim da página de Limpezas)." };
+    if (!c.ativa) return { erro: `A categoria de despesa das limpezas (“${c.nome}”) está arquivada: escolha outra no fim da página de Limpezas.` };
+    categoria = c;
   }
   if (vigente && (await estornarDespesa(tx, organizacaoId, vigente.id, "Custo da limpeza mudou", autorId)) !== true) return { erro: "Não foi possível estornar a despesa anterior desta limpeza." };
   if (!lancar || !categoria || desejado === null) return { id: null };
