@@ -60,7 +60,10 @@ export async function carregarDashboard(
     reservas.map((r) => ({ imovelId: r.imovelId, inicio: r.checkin, fim: r.checkout })),
     bloqueios.map((b) => ({ imovelId: b.imovelId, inicio: b.inicio, fim: b.fim })),
     o.periodo,
-  ).map((x) => ({ ...x, codigo: porId.get(x.imovelId)!.codigo, nome: porId.get(x.imovelId)!.nome }));
+  )
+    .map((x) => ({ ...x, codigo: porId.get(x.imovelId)!.codigo, nome: porId.get(x.imovelId)!.nome }))
+    // Imóvel arquivado só aparece (e conta na ocupação) se teve reserva no período.
+    .filter((x) => porId.get(x.imovelId)!.ativo !== false || x.vendidas > 0);
 
   const alertas: Alerta[] = [];
   const sobrepostas = new Set(conflitos(reservas).flat()).size;

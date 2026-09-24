@@ -173,6 +173,20 @@ describe("painel inicial", () => {
     expect(d2.alertas.some((x) => x.texto.includes("1 reserva(s) do período com valor mas sem cálculo"))).toBe(true);
   });
 
+  it("em 'todos', imóvel arquivado com reserva entra na ocupação; sem reserva, some", async () => {
+    await criarReserva(db, org, reserva(a, "2026-10-12", "2026-10-15"), null);
+    await db.update(imoveis).set({ ativo: false }).where(eq(imoveis.id, a));
+    const todos = await listarImoveis(db, org, { incluirInativos: true });
+    const periodo = { inicio: "2026-10-01", fim: "2026-11-01" };
+    const d = await carregarDashboard(db, org, { imoveis: todos, todos: true, periodo, ano: 2026, hoje: "2026-10-09", verFinanceiro: true });
+    expect(d.ocupacao.map((x) => x.codigo)).toEqual(["102", "403"]);
+    expect(d.reservasNoPeriodo).toBe(1);
+    expect(d.financeiro?.receitaBruta).toBe(100000);
+    await db.update(imoveis).set({ ativo: false }).where(eq(imoveis.id, b));
+    const d2 = await carregarDashboard(db, org, { imoveis: todos.map((i) => ({ ...i, ativo: false })), todos: true, periodo, ano: 2026, hoje: "2026-10-09", verFinanceiro: true });
+    expect(d2.ocupacao.map((x) => x.codigo)).toEqual(["403"]);
+  });
+
   it("em 'todos', reserva sem cálculo de imóvel arquivado também avisa", async () => {
     await criarReserva(db, org, reserva(b, "2026-10-12", "2026-10-15"), null); // 102 sem contrato
     await db.update(imoveis).set({ ativo: false }).where(eq(imoveis.id, b));
