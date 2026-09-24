@@ -129,6 +129,7 @@ export type ItemAgenda =
 
 export type NovaReserva = {
   id: string;
+  imovelId: string;
   /** Identifica o aviso (reserva + quando ficou nova): reconfirmar depois de cancelar é outro aviso. */
   evento: string;
   imovel: string;
@@ -148,6 +149,8 @@ export type SecaoCidade = {
   cidade: string;
   /** Imóveis ativos nesta cidade (define o formato quando não há escolha). */
   imoveis: number;
+  /** Ids dos imóveis ativos nesta cidade (o que um envio "cobre"). */
+  imovelIds: string[];
   dias: { data: string; itens: ItemAgenda[] }[];
   reservas: ReservaDaJanela[];
   novas: NovaReserva[];
@@ -227,10 +230,14 @@ export async function montarAgenda(db: Db, organizacaoId: string, hoje: string, 
   const porCidade = new Map<string, SecaoCidade>();
   const secao = (cidade: string) => {
     let s = porCidade.get(cidade);
-    if (!s) porCidade.set(cidade, (s = { cidade, imoveis: 0, dias: dias.map((data) => ({ data, itens: [] })), reservas: [], novas: [] }));
+    if (!s) porCidade.set(cidade, (s = { cidade, imoveis: 0, imovelIds: [], dias: dias.map((data) => ({ data, itens: [] })), reservas: [], novas: [] }));
     return s;
   };
-  for (const i of ativos) secao(i.cidade).imoveis++;
+  for (const i of ativos) {
+    const x = secao(i.cidade);
+    x.imoveis++;
+    x.imovelIds.push(i.id);
+  }
   const noDia = (cidade: string, data: string) => secao(cidade).dias.find((d) => d.data === data);
 
   for (const r of daJanela) {
@@ -282,6 +289,7 @@ export async function montarAgenda(db: Db, organizacaoId: string, hoje: string, 
     const registradaEm = confirmada ? new Date(confirmada.em).toISOString() : r.criadoEm.toISOString();
     secao(im.cidade).novas.push({
       id: r.id,
+      imovelId: r.imovelId,
       evento: `${r.id}@${registradaEm}`,
       registradaEm,
       imovel: im.codigo,
@@ -429,17 +437,18 @@ async function lerMarco(db: Db, chave: string): Promise<Date | null> {
 }
 
 /**
- * Cidades que o marco da pessoa cobre (null = todas). Cidade que ela passou a receber depois não
- * está coberta: conta como destinatário novo para aquela cidade (reservas novas das últimas 24h).
+ * Imóveis que o marco da pessoa cobre (null = todos, marco antigo). Imóvel fora da cobertura (inativo
+ * no envio, ou de cidade que ela passou a receber depois) conta como novo para ela: reservas novas das
+ * últimas 24h daquele imóvel.
  */
 async function lerCobertura(db: Db, chave: string): Promise<string[] | null> {
   const [l] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, chave));
-  const c = (l?.value as { cidades?: unknown } | undefined)?.cidades;
+  const c = (l?.value as { imoveis?: unknown } | undefined)?.imoveis;
   return Array.isArray(c) ? c.filter((x): x is string => typeof x === "string") : null;
 }
 
-async function gravarMarco(db: Db, chave: string, em: Date, cidades?: string[] | null): Promise<void> {
-  const value = cidades === undefined ? { em: em.toISOString() } : { em: em.toISOString(), cidades };
+async function gravarMarco(db: Db, chave: string, em: Date, imoveis?: string[] | null): Promise<void> {
+  const value = imoveis === undefined ? { em: em.toISOString() } : { em: em.toISOString(), imoveis };
   await db.insert(appSettings).values({ key: chave, value }).onConflictDoUpdate({ target: appSettings.key, set: { value, updatedAt: new Date() } });
 }
 
@@ -563,15 +572,15 @@ const ENVIO_EXPIRA_MS = 15 * 60_000;
  * (execução interrompida antes de confirmar) é retomada.
  */
 /** O pedido exato feito ao provedor, guardado antes de enviar para uma retomada repetir igual. */
-/** `cidades`: as cidades que tiveram seção no e-mail (as cobertas por este envio). */
-type Carga = { assunto: string; texto: string; eventos: string[]; cidades: string[] };
+/** `imoveis`: os imóveis ativos das seções do e-mail (os cobertos por este envio). */
+type Carga = { assunto: string; texto: string; eventos: string[]; imoveis: string[] };
 
 const cargaValida = (c: unknown): c is Carga =>
   !!c &&
   typeof (c as Carga).assunto === "string" &&
   typeof (c as Carga).texto === "string" &&
   Array.isArray((c as Carga).eventos) &&
-  Array.isArray((c as Carga).cidades);
+  Array.isArray((c as Carga).imoveis);
 
 async function reservarEnvio(db: Db, chave: string, agora: Date): Promise<{ corte: Date; carga: Carga | null; tentativa: string } | null> {
   // `corte`: o limite das reservas novas desta tentativa. Uma retomada reaproveita o da tentativa
@@ -651,16 +660,16 @@ export async function enviarAgenda(
         const base = !marco && incertos.desde && incertos.desde < corte ? incertos.desde : corte;
         const umDia = new Date(base.getTime() - 86_400_000);
         const desde = marco ? new Date(marco.getTime() - SOBREPOSICAO_MS) : umDia;
-        // Cidades que o marco não cobre (a pessoa passou a recebê-las depois): desde 24h, como quem é novo.
+        // Imóveis que o marco não cobre (inativos no envio anterior, ou de cidade nova para a pessoa): desde 24h, como quem é novo.
         const cobertas = marco ? await lerCobertura(db, chaveUltimaDe(organizacaoId, d.email)) : null;
-        const coberta = (cidade: string) => cobertas === null || cobertas.includes(cidade);
+        const coberto = (imovelId: string) => cobertas === null || cobertas.includes(imovelId);
         const menor = desde < umDia ? desde : umDia;
         const avisadas = await lerAvisadas(db, chaveAvisadasDe(organizacaoId, d.email));
         const bruta = await agendaDesde(cobertas === null ? desde : menor, corte);
         const agenda = semAvisadas(
           cobertas === null
             ? bruta
-            : { ...bruta, secoes: bruta.secoes.map((x) => ({ ...x, novas: x.novas.filter((n) => Date.parse(n.registradaEm) > (coberta(x.cidade) ? desde : umDia).getTime()) })) },
+            : { ...bruta, secoes: bruta.secoes.map((x) => ({ ...x, novas: x.novas.filter((n) => Date.parse(n.registradaEm) > (coberto(n.imovelId) ? desde : umDia).getTime()) })) },
           avisadas,
         );
         // Só o que vai no e-mail desta pessoa (as cidades dela) conta como avisado.
@@ -669,7 +678,7 @@ export async function enviarAgenda(
           assunto: `Agenda SCL — ${diaCurto(agenda.dias[0])} a ${diaCurto(agenda.dias.at(-1)!)}`,
           texto: textoDaAgenda(agenda, d.cidades, { ...config, incertoAte }),
           eventos: noEmail.flatMap((x) => x.novas.map((n) => n.evento)),
-          cidades: noEmail.map((x) => x.cidade).sort(),
+          imoveis: noEmail.flatMap((x) => x.imovelIds).sort(),
         };
         // Guarda o pedido antes de enviar: uma retomada manda exatamente o mesmo.
         const [minha] = await db
@@ -726,13 +735,12 @@ export async function enviarAgenda(
         await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${chaveUltimaDe(organizacaoId, d.email)}))`);
         const marcoAtual = await lerMarco(tx, chaveUltimaDe(organizacaoId, d.email));
         const marco = marcoAtual && marcoAtual > corte ? marcoAtual : corte;
-        // Cobertura do marco que fica: a deste envio ou, se um envio mais novo já
-        // gravou, a dele. Nunca é somada: cidade que saiu da lista deixa de ser coberta, e ao
-        // voltar conta como nova para a pessoa (reservas novas das últimas 24h).
-        // Só as cidades que tiveram seção no e-mail: cidade sem imóvel ativo não fica "coberta".
-        const deste = enviada.cidades;
-        const cidades = marcoAtual && marcoAtual > corte ? await lerCobertura(tx, chaveUltimaDe(organizacaoId, d.email)) : deste;
-        await gravarMarco(tx, chaveUltimaDe(organizacaoId, d.email), marco, cidades);
+        // Cobertura do marco que fica: a deste envio ou, se um envio mais novo já gravou, a dele. Nunca
+        // é somada e é por imóvel: imóvel inativo, ou de cidade que saiu da lista, não fica coberto e,
+        // ao voltar, conta como novo para a pessoa (reservas novas das últimas 24h).
+        const deste = enviada.imoveis;
+        const cobertura = marcoAtual && marcoAtual > corte ? await lerCobertura(tx, chaveUltimaDe(organizacaoId, d.email)) : deste;
+        await gravarMarco(tx, chaveUltimaDe(organizacaoId, d.email), marco, cobertura);
         // As reservas novas deste envio: na próxima, a faixa de sobreposição não as repete.
         const atuais = await lerAvisadas(tx, chaveAvisadasDe(organizacaoId, d.email));
         const value = { avisadas: avisadasDepois(atuais, enviada.eventos, corte, marco) };

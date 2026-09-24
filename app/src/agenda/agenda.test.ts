@@ -242,7 +242,7 @@ describe("configuração e envio", () => {
   it("retomada manda exatamente o pedido guardado na tentativa original (mesmo com reservas novas no meio)", async () => {
     await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
     const original = new Date(AGORA.getTime() - 20 * 60_000);
-    const carga = { assunto: "Agenda SCL — original", texto: "texto original\n", eventos: ["ev-1"], cidades: ["Rio de Janeiro"] };
+    const carga = { assunto: "Agenda SCL — original", texto: "texto original\n", eventos: ["ev-1"], imoveis: [] };
     await db.insert(appSettings).values({ key: `agenda-diaria:${org}:2026-10-01:a@example.com`, value: { em: original.toISOString(), estado: "enviando", corte: original.toISOString(), carga } });
     await nova(rio, "2027-01-10", "2027-01-12", new Date(AGORA.getTime() - 10 * 60_000).toISOString());
     const correio = new CorreioMemoria();
@@ -525,6 +525,22 @@ describe("configuração e envio", () => {
     await enviarAgenda(db, org, correio, new Date("2026-10-02T23:00:00Z"));
     expect(correio.enviadas[0].texto).toContain("entrada seg 03/04");
     expect(correio.enviadas[0].texto).toContain("pode já ter vindo");
+  });
+
+  it("imóvel inativo numa cidade que continua na agenda: ao reativar, a reserva feita nesse meio-tempo chega", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    const [um] = await db.select().from(imoveis).where(eq(imoveis.codigo, "102"));
+    await db.update(imoveis).set({ ativo: false }).where(eq(imoveis.id, um.id));
+    const correio = new CorreioMemoria();
+    await enviarAgenda(db, org, correio, AGORA);
+    const dia2 = new Date("2026-10-02T23:00:00Z");
+    await nova(um.id, "2028-05-02", "2028-05-04", new Date(dia2.getTime() - 3_600_000).toISOString());
+    await enviarAgenda(db, org, correio, dia2);
+    expect(correio.enviadas[1].texto).not.toContain("entrada ter 02/05");
+    // Reativado: o Rio continuou coberto, mas o 102 não; a reserva de 1h atrás chega.
+    await db.update(imoveis).set({ ativo: true }).where(eq(imoveis.id, um.id));
+    await enviarAgenda(db, org, correio, new Date(dia2.getTime() + 60_000), { manual: true });
+    expect(correio.enviadas[2].texto).toContain("entrada ter 02/05");
   });
 
   it("envio incerto de outro dia continua avisado até um envio dar certo", async () => {
