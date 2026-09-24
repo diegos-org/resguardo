@@ -6,13 +6,15 @@ type Props = {
   /** Caminho da página atual; o formulário envia os filtros para ela mesma. */
   acao: string;
   opcoes?: readonly OpcaoImovel[];
+  /** Parâmetros locais da página que continuam valendo ao mudar o filtro (ex.: colunas). */
+  manter?: readonly [string, string][];
 };
 
 /**
  * Filtro global de imóveis e período. Funciona como formulário GET (sem JavaScript):
  * o resultado fica na URL e qualquer página do painel pode lê-lo com `lerFiltros`.
  */
-export function FiltroGlobal({ filtros, acao, opcoes = IMOVEIS_PROVISORIOS }: Props) {
+export function FiltroGlobal({ filtros, acao, opcoes = IMOVEIS_PROVISORIOS, manter = [] }: Props) {
   const todos = filtros.imoveis.length === 0;
   const anos = Array.from({ length: 5 }, (_, i) => filtros.ano - 2 + i);
   return (
@@ -48,6 +50,9 @@ export function FiltroGlobal({ filtros, acao, opcoes = IMOVEIS_PROVISORIOS }: Pr
           ))}
         </select>
       </label>
+      {manter.map(([nome, valor], i) => (
+        <input key={`${nome}-${i}`} type="hidden" name={nome} value={valor} />
+      ))}
       <button type="submit">Aplicar</button>
     </form>
   );

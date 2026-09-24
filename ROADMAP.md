@@ -93,7 +93,7 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 | M4.4 | Adiantamentos e compensações (ex.: reparo de R$ 4.000 adiantado) sem dupla cobrança | feito | M4.3 |
 | M4.5 | Ajustes/divergências com motivo "não identificado" e evidência | feito | M4.1 |
 | M4.6 | Dashboard inicial do painel (primeira tela): ocupação, receitas, comissões, despesas, próximas entradas/saídas, pendências e alertas, com gráficos e o filtro global | feito | M4.2, M4.3 |
-| M4.7 | Aba Apartamentos: tabela de todos os imóveis com resultado da empresa, comissões, despesas e acertos, com filtros para escolher como ver (mês, intervalo, ano, imóveis, colunas) | a fazer | M4.2, M4.4 |
+| M4.7 | Aba Apartamentos: tabela de todos os imóveis com resultado da empresa, comissões, despesas e acertos, com filtros para escolher como ver (mês, intervalo, ano, imóveis, colunas) | feito | M4.2, M4.4 |
 | M4.8 | Teste de consistência: mesma reserva = mesmos totais em dashboard, aba Apartamentos, portal e PDF | a fazer | M5.3 |
 | M4.9 | Repasse mensal ao proprietário (Booking, site, direta): fechamento no fim do mês, valor a repassar já descontado de despesas/adiantamentos, Pix para copiar, marcar pago; feito no **dia 1º do mês seguinte** (Diego, 24/09: no último dia ainda pode entrar reserva) | a fazer | M4.4 |
 

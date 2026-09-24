@@ -289,3 +289,51 @@ export async function totaisPorTipo(db: Db, organizacaoId: string, f: FiltroLanc
     .groupBy(lancamentos.tipo);
   return Object.fromEntries(linhas.map((l) => [l.tipo, Number(l.total ?? 0)]));
 }
+
+export type TotaisDoImovel = {
+  /** Soma de `valor` por tipo (o que mexe no resultado da empresa). */
+  valor: Partial<Record<TipoLancamento, number>>;
+  /** Soma de `montante` por tipo (valor de referência, ex.: despesa do proprietário). */
+  montante: Partial<Record<TipoLancamento, number>>;
+  /** Movimento do acerto com o proprietário no período (soma de efeitoSaldo). */
+  acerto: number;
+};
+
+/**
+ * Totais do período agrupados por imóvel (chave `null` = lançamentos sem imóvel), com o mesmo
+ * filtro de `totaisPorTipo`: somando todas as chaves, os números batem com os dele.
+ */
+export async function totaisPorImovel(db: Db, organizacaoId: string, f: FiltroLancamentos): Promise<Map<string | null, TotaisDoImovel>> {
+  const linhas = await db
+    .select({
+      imovelId: lancamentos.imovelId,
+      tipo: lancamentos.tipo,
+      valor: sum(lancamentos.valor),
+      montante: sum(lancamentos.montante),
+      acerto: sql<string>`sum(case when ${lancamentos.proprietarioId} is not null then ${lancamentos.efeitoSaldo} else 0 end)`,
+    })
+    .from(lancamentos)
+    .where(condicoes(organizacaoId, f))
+    .groupBy(lancamentos.imovelId, lancamentos.tipo);
+  const saida = new Map<string | null, TotaisDoImovel>();
+  for (const l of linhas) {
+    const t = saida.get(l.imovelId) ?? { valor: {}, montante: {}, acerto: 0 };
+    t.valor[l.tipo] = Number(l.valor ?? 0);
+    t.montante[l.tipo] = Number(l.montante ?? 0);
+    t.acerto += Number(l.acerto ?? 0);
+    saida.set(l.imovelId, t);
+  }
+  return saida;
+}
+
+/** Saldo do acerto acumulado até `fim` (exclusivo), por imóvel. Mesma regra de `saldoAcerto`. */
+export async function saldosAcertoPorImovel(db: Db, organizacaoId: string, fim: string, imovelIds: string[]): Promise<Map<string, number>> {
+  const ids = imovelIds.filter(uuidValido);
+  if (!ids.length) return new Map();
+  const linhas = await db
+    .select({ imovelId: lancamentos.imovelId, total: sum(lancamentos.efeitoSaldo) })
+    .from(lancamentos)
+    .where(and(condicoes(organizacaoId, { fim, imovelIds: ids }), isNotNull(lancamentos.proprietarioId)))
+    .groupBy(lancamentos.imovelId);
+  return new Map(linhas.map((l) => [l.imovelId!, Number(l.total ?? 0)]));
+}
