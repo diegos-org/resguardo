@@ -173,6 +173,27 @@ describe("painel inicial", () => {
     expect(d2.alertas.some((x) => x.texto.includes("1 reserva(s) do período com valor mas sem cálculo"))).toBe(true);
   });
 
+  it("em 'todos', reserva sem cálculo de imóvel arquivado também avisa", async () => {
+    await criarReserva(db, org, reserva(b, "2026-10-12", "2026-10-15"), null); // 102 sem contrato
+    await db.update(imoveis).set({ ativo: false }).where(eq(imoveis.id, b));
+    const textos = (await carregar()).alertas.map((x) => x.texto).join(" | ");
+    expect(textos).toContain("1 reserva(s) do período com valor mas sem cálculo");
+  });
+
+  it("despesa a pagar entra no alerta do período dela (o mesmo recorte da tela Despesas)", async () => {
+    const c = await criarCategoria(db, org, "Escritório", null);
+    if (!c.ok) throw new Error("categoria");
+    await registrarDespesa(
+      db,
+      org,
+      { responsavel: "empresa", pagoPor: "empresa", categoriaId: c.categoria.id, descricao: "Contador", valor: 30000, data: "2026-09-10", imovelId: null, proprietarioId: null, fornecedor: "", comprovante: "", paga: false, dataPagamento: "" },
+      null,
+    );
+    expect((await carregar()).alertas.some((x) => x.texto.includes("ainda a pagar"))).toBe(false);
+    const setembro = await carregarDashboard(db, org, { imoveis: await listarImoveis(db, org), todos: true, periodo: { inicio: "2026-09-01", fim: "2026-10-01" }, ano: 2026, hoje: "2026-10-09", verFinanceiro: true });
+    expect(setembro.alertas.find((x) => x.texto.includes("ainda a pagar"))?.texto).toContain("300,00");
+  });
+
   it("acerto pendente (imóvel sem proprietário) diz onde está e leva às regras", async () => {
     await criarContrato(db, org, b, { tipo: "gestao_completa", comissao: "15", inicio: "2025-01-01" }, null);
     await criarReserva(db, org, reserva(b, "2026-10-12", "2026-10-15"), null);

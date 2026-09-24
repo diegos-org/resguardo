@@ -74,7 +74,9 @@ export async function carregarDashboard(
     const f = o.todos ? o.periodo : { ...o.periodo, imovelIds: ids };
     const inicioAno = `${o.ano}-01-01`;
     const fimAno = `${o.ano + 1}-01-01`;
-    const comValor = reservas.filter((r) => r.valorBruto !== null);
+    // Em "todos", a conferência de cálculo olha também reservas de imóveis arquivados (como os totais).
+    const doPeriodo = o.todos ? await listarReservas(db, organizacaoId, o.periodo) : reservas;
+    const comValor = doPeriodo.filter((r) => r.valorBruto !== null);
     const [totais, mensal, regras, despesas, ajustesPendentes, adiantamentos, pendentes, calculadas] = await Promise.all([
       totaisPorTipo(db, organizacaoId, f),
       db
@@ -92,7 +94,8 @@ export async function carregarDashboard(
         )
         .groupBy(sql`to_char(${lancamentos.competencia}, 'YYYY-MM')`, lancamentos.tipo),
       regrasEmVigor(db, organizacaoId, o.hoje),
-      listarDespesas(db, organizacaoId, o.todos ? {} : { imovelIds: ids }),
+      // Mesmo recorte (período e imóveis) da tela Despesas, para onde o alerta leva.
+      listarDespesas(db, organizacaoId, o.todos ? o.periodo : { ...o.periodo, imovelIds: ids }),
       listarAjustes(db, organizacaoId, { pendentes: true }),
       listarAdiantamentos(db, organizacaoId, o.todos ? { somenteAbertos: true } : { imovelIds: ids, somenteAbertos: true }),
       db
@@ -168,7 +171,7 @@ export async function carregarDashboard(
     if (aCobrar) alertas.push({ nivel: "info", texto: `Adiantamentos a cobrar dos proprietários: ${(aCobrar / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.`, link: "/painel/despesas/adiantamentos" });
     if (contestados) alertas.push({ nivel: "atencao", texto: `${contestados} adiantamento(s) contestado(s) aguardando decisão.`, link: "/painel/despesas/adiantamentos" });
     const aPagar = totaisDespesas(despesas).aPagar;
-    if (aPagar) alertas.push({ nivel: "info", texto: `Despesas ainda a pagar: ${(aPagar / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.`, link: "/painel/despesas" });
+    if (aPagar) alertas.push({ nivel: "info", texto: `Despesas do período ainda a pagar: ${(aPagar / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.`, link: "/painel/despesas" });
   }
 
   return {
