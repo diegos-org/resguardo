@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 24/09/2026, repasse mensal aos proprietários (M4.9).
+> **Última atualização:** 24/09/2026, limpezas (M6.1).
 
 ---
 
@@ -30,7 +30,7 @@
 | M3 Reservas | Reservas, calendário central, leitura do Beds24 | 🟡 em andamento |
 | M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | 🟡 em andamento |
 | M5 Portal do proprietário | Relatórios, saldos, PDF | ⚪ aguardando |
-| M6 Operação | Limpezas, manutenção, agenda diária | ⚪ aguardando |
+| M6 Operação | Limpezas, manutenção, agenda diária | 🟡 em andamento |
 | M7 Site público | Site novo com disponibilidade real | ⚪ aguardando |
 | M8 Reserva direta | Pagamento pelo Mercado Pago | ⚪ aguardando |
 | M9 Portal do hóspede | Acesso do hóspede e mensagens automáticas | ⚪ aguardando |
@@ -225,6 +225,21 @@
   cobrança:** nunca se quita mais do que o valor, duas pessoas quitando ao mesmo tempo não
   passam do total, e uma despesa cujo adiantamento já teve reembolso não pode ser estornada
   (desfaça a quitação antes).
+- M6.1: **limpezas** (Painel → **Limpezas**). Toda reserva confirmada gera a limpeza **no dia
+  da saída**, mesmo sem nova entrada e em fim de semana. Cada limpeza passa por estados
+  separados, porque pedir não comprova que aconteceu:
+  - **Pedida** → **Confirmada** (com a profissional escolhida) → **Realizada** (quem fez e,
+    se quiser, o **custo**; o custo pode ficar para depois e aparece como pendente);
+  - se a reserva muda de data ou de imóvel, a limpeza acompanha e volta a "pedida" (precisa
+    confirmar de novo); se a reserva é cancelada, a limpeza é cancelada;
+  - depois de realizada, nada muda sozinho: se a reserva mudar ou for cancelada, aparece um
+    **aviso** para conferir;
+  - limpeza cuja data passou sem registro aparece com aviso — o sistema **não** marca como
+    feita por conta própria;
+  - dá para criar **limpeza avulsa** (ex.: antes do uso do proprietário), **cancelar** (com
+    motivo e confirmação) e **desfazer** um "feita" marcado por engano.
+  As **profissionais** são cadastradas na própria tela (nome, telefone, observações) e
+  arquivadas quando saem. A equipe de operação vê e registra as limpezas, sem ver custos.
 - M4.9: **repasse mensal aos proprietários** (Painel → **Financeiro** → Repasses). No dia 1º,
   a tela abre no mês anterior e mostra, para cada proprietário:
   - o **crédito dele até o fim do mês**, os **adiantamentos descontados** e os
@@ -353,6 +368,10 @@
 | Repasses aos proprietários (fechamento do mês) |
 |---|
 | ![Repasses](docs/telas/repasses.png) |
+
+| Limpezas | Limpezas no celular |
+|---|---|
+| ![Limpezas](docs/telas/limpezas.png) | ![Limpezas no celular](docs/telas/limpezas-celular.png) |
 
 A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 
