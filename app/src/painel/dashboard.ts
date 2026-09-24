@@ -2,7 +2,7 @@
  * Dados do painel inicial (M4.6), já filtrados pelo filtro global (imóveis + período). Cada
  * bloco vem da mesma função que alimenta a tela específica (reservas, despesas, ajustes…).
  */
-import { and, eq, gte, inArray, lt, ne, sql, sum } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, lt, ne, sql, sum } from "drizzle-orm";
 import { listarAdiantamentos, totalACobrar } from "@/adiantamentos/adiantamentos";
 import { listarAjustes } from "@/ajustes/ajustes";
 import { lancamentos, type TipoLancamento } from "@/db/schema";
@@ -116,7 +116,17 @@ export async function carregarDashboard(
         ? db
             .selectDistinct({ reservaId: lancamentos.reservaId })
             .from(lancamentos)
-            .where(and(eq(lancamentos.organizacaoId, organizacaoId), inArray(lancamentos.reservaId, comValor.map((r) => r.id))))
+            .where(
+              and(
+                eq(lancamentos.organizacaoId, organizacaoId),
+                inArray(lancamentos.reservaId, comValor.map((r) => r.id)),
+                // Só o cálculo do motor conta (um ajuste da reserva não é cálculo), e não estornado.
+                eq(lancamentos.origem, "motor"),
+                eq(lancamentos.tipo, "receita_bruta"),
+                isNull(lancamentos.estornoDe),
+                sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`,
+              ),
+            )
         : [],
     ]);
     financeiro = resumoFinanceiro(totais);

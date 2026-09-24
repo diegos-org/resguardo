@@ -9,7 +9,7 @@ import { registrarDespesa } from "@/despesas/despesas";
 import type { Db } from "@/db/types";
 import { listarImoveis } from "@/imoveis/repositorio";
 import type { DadosReserva } from "@/reservas/regras";
-import { criarReserva } from "@/reservas/repositorio";
+import { criarReserva, listarReservas } from "@/reservas/repositorio";
 import { carregarDashboard } from "./dashboard";
 
 let db: Db;
@@ -161,6 +161,16 @@ describe("painel inicial", () => {
     const textos = d.alertas.map((x) => x.texto).join(" | ");
     expect(textos).not.toContain("Sem contrato vigente");
     expect(d.alertas.find((x) => x.texto.includes("sem cálculo no financeiro"))).toMatchObject({ texto: expect.stringContaining("1 reserva(s)"), link: "/painel/reservas" });
+    // Um ajuste ligado à reserva não conta como cálculo: o aviso continua.
+    const r = (await listarReservas(db, org, { inicio: "2026-10-01", fim: "2026-11-01", imovelIds: [b] }))[0];
+    await registrarAjuste(
+      db,
+      org,
+      { data: "2026-10-15", imovelId: null, reservaId: r.id, proprietarioId: null, motivo: "Diferença", origem: "desconhecida", origemComprovada: false, evidencia: "Extrato", comprovante: "", valor: 5000, direcao: "empresa_entrada" },
+      null,
+    );
+    const d2 = await carregarDashboard(db, org, { imoveis: await listarImoveis(db, org), todos: true, periodo: { inicio: "2026-10-01", fim: "2026-11-01" }, ano: 2026, hoje: "2026-10-30", verFinanceiro: true });
+    expect(d2.alertas.some((x) => x.texto.includes("1 reserva(s) do período com valor mas sem cálculo"))).toBe(true);
   });
 
   it("acerto pendente (imóvel sem proprietário) diz onde está e leva às regras", async () => {
