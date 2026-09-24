@@ -95,7 +95,7 @@ describe("despesas", () => {
     expect(r).toMatchObject({ ok: true, lancamento: { tipo: "despesa_proprietario", valor: 0, montante: 80000, efeitoSaldo: 0, pagoPor: "empresa", proprietarioId: dono } });
     expect((await totaisPorTipo(db, org, {})).despesa_proprietario).toBe(0);
     expect(await saldoAcerto(db, org, { proprietarioId: dono })).toBe(0);
-    expect(totaisDespesas(await listarDespesas(db, org))).toMatchObject({ proprietarios: 80000, aCobrar: 0, aPagar: 80000 });
+    expect(totaisDespesas(await listarDespesas(db, org))).toMatchObject({ proprietarios: 80000, aPagar: 80000 });
     // Quando a empresa paga, nasce o adiantamento e a dívida do proprietário (uma vez só).
     const id = r.ok ? r.lancamento.id : "";
     expect(await marcarDespesaPaga(db, org, id, "2026-10-10", null)).toBe(true);
@@ -105,7 +105,7 @@ describe("despesas", () => {
     expect(adiant).toHaveLength(1);
     expect(adiant[0]).toMatchObject({ valor: 0, efeitoSaldo: -80000, estado: "realizado", dataCaixa: "2026-10-10" });
     expect((await totaisPorTipo(db, org, {})).adiantamento).toBe(0); // não vira despesa dupla da empresa
-    expect(totaisDespesas(await listarDespesas(db, org))).toMatchObject({ aCobrar: 80000, aPagar: 0 });
+    expect(totaisDespesas(await listarDespesas(db, org))).toMatchObject({ aPagar: 0 });
   });
 
   it("paga na hora pela empresa: dívida do proprietário imediata", async () => {
@@ -156,7 +156,7 @@ describe("despesas", () => {
     const lista = await listarDespesas(db, org, {});
     expect(lista).toHaveLength(1); // estornada some da lista padrão, espelho nunca aparece
     expect(await listarDespesas(db, org, { incluirEstornadas: true })).toHaveLength(2);
-    expect(totaisDespesas(await listarDespesas(db, org, { incluirEstornadas: true }))).toEqual({ empresa: 25000, proprietarios: 0, aCobrar: 0, aPagar: 0 });
+    expect(totaisDespesas(await listarDespesas(db, org, { incluirEstornadas: true }))).toEqual({ empresa: 25000, proprietarios: 0, aPagar: 0 });
   });
 
   it("outra organização não marca nem estorna", async () => {

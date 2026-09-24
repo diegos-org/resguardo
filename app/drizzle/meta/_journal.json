@@ -120,6 +120,13 @@
       "when": 1790216100008,
       "tag": "0016_cadastro_imovel",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790224896094,
+      "tag": "0017_adiantamentos",
+      "breakpoints": true
     }
   ]
 }

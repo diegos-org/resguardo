@@ -14,6 +14,7 @@ import { and, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { categoriasDespesa, imoveis, lancamentos, proprietarioImoveis } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { estornar, lancar, type Lancamento, mudarEstado } from "@/financeiro/ledger";
+import { encerrarContestacaoAberta, quitacaoAtiva } from "@/adiantamentos/adiantamentos";
 import { uuidValido } from "@/lib/ids";
 import { dataValida } from "@/reservas/regras";
 
@@ -181,13 +182,30 @@ export async function marcarDespesaPaga(db: Db, organizacaoId: string, id: strin
   });
 }
 
-/** Estorna a despesa e, junto, o adiantamento que ela gerou (se houver). */
-export async function estornarDespesa(db: Db, organizacaoId: string, id: string, motivo: string, autorId: string | null): Promise<boolean> {
+/**
+ * Estorna a despesa e, junto, o adiantamento que ela gerou (se houver). Se o adiantamento já
+ * teve quitação (reembolso, compensação…), recusa: desfazer primeiro, senão o proprietário
+ * ficaria com crédito indevido. Retorna "quitado" (desfazer em Adiantamentos) ou "compensacao"
+ * (descontado num repasse: só estornando o repasse) nesse caso.
+ */
+export async function estornarDespesa(db: Db, organizacaoId: string, id: string, motivo: string, autorId: string | null): Promise<boolean | "quitado" | "compensacao"> {
+  if (!uuidValido(id)) return false;
   return db.transaction(async (tx) => {
+    // Trava a despesa primeiro: um "marcar como paga" ao mesmo tempo (que também trava esta
+    // linha e cria o adiantamento) termina antes, e o adiantamento aparece na busca abaixo.
+    await tx.select({ id: lancamentos.id }).from(lancamentos).where(and(eq(lancamentos.id, id), eq(lancamentos.organizacaoId, organizacaoId))).for("update");
     const d = await obterDespesa(tx, organizacaoId, id);
     if (!d || d.estornada || !motivo.trim()) return false;
     const a = await adiantamentoAtivo(tx, organizacaoId, id);
-    if (a) await estornar(tx, organizacaoId, a.id, motivo, autorId);
+    if (a) {
+      // Trava o adiantamento: uma quitação ao mesmo tempo espera ou aparece aqui.
+      await tx.select({ id: lancamentos.id }).from(lancamentos).where(eq(lancamentos.id, a.id)).for("update");
+      const quitacao = await quitacaoAtiva(tx, organizacaoId, a);
+      if (quitacao) return quitacao;
+      await estornar(tx, organizacaoId, a.id, motivo, autorId);
+      // A dívida deixou de existir: uma contestação aberta sobre ela é encerrada junto.
+      await encerrarContestacaoAberta(tx, organizacaoId, a.id, `Despesa estornada: ${motivo}`);
+    }
     await estornar(tx, organizacaoId, id, motivo, autorId);
     return true;
   });
@@ -243,15 +261,16 @@ export async function obterDespesa(db: Db, organizacaoId: string, id: string): P
   return x ? { ...x.l, categoria: x.categoria, estornada: Boolean(x.estornada) } : null;
 }
 
-/** Totais das despesas ativas: da empresa, dos proprietários e quanto os proprietários devem por elas. */
+/**
+ * Totais das despesas ativas: da empresa, dos proprietários e o que ainda falta pagar. O que os
+ * proprietários devem sai dos adiantamentos em aberto (M4.4: `totalACobrar`), não daqui.
+ */
 export function totaisDespesas(linhas: readonly LinhaDespesa[]) {
   const ativas = linhas.filter((l) => !l.estornada);
   const soma = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
   return {
     empresa: soma(ativas.filter((l) => l.tipo === "despesa_empresa").map((l) => l.montante ?? -l.valor)),
     proprietarios: soma(ativas.filter((l) => l.tipo === "despesa_proprietario").map((l) => l.montante ?? 0)),
-    // Só o que a empresa já pagou por eles vira dívida do proprietário.
-    aCobrar: soma(ativas.filter((l) => l.tipo === "despesa_proprietario" && l.pagoPor === "empresa" && l.estado !== "previsto").map((l) => l.montante ?? 0)),
     aPagar: soma(ativas.filter((l) => l.estado === "previsto").map((l) => l.montante ?? 0)),
   };
 }

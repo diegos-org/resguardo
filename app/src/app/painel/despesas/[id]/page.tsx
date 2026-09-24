@@ -11,9 +11,28 @@ import { hojeISO } from "@/lib/datas";
 import { formatBRL } from "@/lib/money";
 import { obterProprietario } from "@/proprietarios/repositorio";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
+import { type Adiantamento, adiantamentoDaDespesa } from "@/adiantamentos/adiantamentos";
 
 const dataBr = (d: string | null) => (d ? d.split("-").reverse().join("/") : "—");
 const ehLink = (s: string) => /^https:\/\//i.test(s);
+
+/** Depois de paga pela empresa, o que o proprietário ainda deve vem do adiantamento (reembolsos, contestação). */
+function acertoDoAdiantamento(a: Adiantamento | null, montante: number): React.ReactNode {
+  if (!a) return `Empresa pagou: proprietário deve ${formatBRL(montante)}`;
+  const texto =
+    a.situacao === "quitado"
+      ? `Empresa pagou ${formatBRL(a.valor)}: adiantamento quitado`
+      : a.situacao === "contestado"
+        ? `Empresa pagou ${formatBRL(a.valor)}: contestado pelo proprietário (${formatBRL(a.aberto)} em aberto, sem cobrança até resolver)`
+        : a.situacao === "parcial"
+          ? `Empresa pagou ${formatBRL(a.valor)}: proprietário ainda deve ${formatBRL(a.aberto)} (já quitou ${formatBRL(a.quitado)})`
+          : `Empresa pagou: proprietário deve ${formatBRL(a.aberto)}`;
+  return (
+    <>
+      {texto} · <Link href={`/painel/despesas/adiantamentos/${a.id}`}>ver adiantamento</Link>
+    </>
+  );
+}
 
 export default async function DetalheDespesa({ params, searchParams }: PageProps<"/painel/despesas/[id]">) {
   const sessao = await exigirSessaoPainel();
@@ -23,9 +42,10 @@ export default async function DetalheDespesa({ params, searchParams }: PageProps
   const db = getDb();
   const d = await obterDespesa(db, sessao.organizacaoId, id);
   if (!d) notFound();
-  const [imovel, dono] = await Promise.all([
+  const [imovel, dono, adiantamento] = await Promise.all([
     d.imovelId ? obterImovel(db, sessao.organizacaoId, d.imovelId) : null,
     d.proprietarioId ? obterProprietario(db, sessao.organizacaoId, d.proprietarioId) : null,
+    d.tipo === "despesa_proprietario" && d.estado !== "previsto" && !d.estornada ? adiantamentoDaDespesa(db, sessao.organizacaoId, d.id) : null,
   ]);
   const editar = podeFazer(sessao.papel, "despesa:editar") && !d.estornada;
   const situacao = d.estornada ? "Estornada" : d.estado === "previsto" ? "A pagar" : `Paga em ${dataBr(d.dataCaixa)}`;
@@ -42,9 +62,9 @@ export default async function DetalheDespesa({ params, searchParams }: PageProps
               ? "Pago pelo proprietário (só registro)"
               : d.estado === "previsto"
                 ? `A empresa vai pagar: o proprietário passa a dever ${formatBRL(d.montante ?? 0)} quando for paga`
-                : `Empresa pagou: proprietário deve ${formatBRL(d.montante ?? 0)}`,
+                : acertoDoAdiantamento(adiantamento, d.montante ?? 0),
           ],
-        ] as [string, string][])
+        ] as [string, React.ReactNode][])
       : []),
     ["Categoria", d.categoria ?? "—"],
     ["Valor", formatBRL(d.montante ?? -d.valor)],
@@ -78,7 +98,13 @@ export default async function DetalheDespesa({ params, searchParams }: PageProps
       )}
       {erro && (
         <p role="alert" className={styles.alerta}>
-          {erro === "estorno" ? "Não foi possível estornar: informe o motivo." : "Não foi possível marcar como paga: confira a data."}
+          {erro === "estorno"
+            ? "Não foi possível estornar: informe o motivo."
+            : erro === "quitado"
+              ? "Não dá para estornar: o adiantamento desta despesa já teve reembolso ou foi assumido pela empresa. Desfaça a quitação em Adiantamentos antes."
+              : erro === "compensacao"
+                ? "Não dá para estornar: o valor desta despesa já foi descontado num repasse ao proprietário. Estorne o repasse antes."
+              : "Não foi possível marcar como paga: confira a data."}
         </p>
       )}
       <dl className={styles.form} style={{ display: "grid", gridTemplateColumns: "minmax(140px, max-content) 1fr", gap: "8px 16px" }}>
