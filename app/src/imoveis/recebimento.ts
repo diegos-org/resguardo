@@ -46,7 +46,7 @@ export async function salvarRecebimento(db: Db, organizacaoId: string, imovelId:
     await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "imovel.recebimento", entidade: "imovel", entidadeId: imovelId, mudancas });
     // Na MESMA transação: se o recálculo falhar, a configuração também não é gravada
     // (nada fica meio recalculado e salvar de novo refaz tudo).
-    await recalcularReservas(tx, organizacaoId, { imovelId }, autorId);
+    await recalcularReservas(tx, organizacaoId, { imovelId }, autorId); // de hoje em diante
     return true;
   });
   return mudou !== null;

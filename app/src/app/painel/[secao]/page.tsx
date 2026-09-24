@@ -1,4 +1,5 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { podeFazer } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { getDb } from "@/db/client";
 import { opcoesDeFiltro } from "@/imoveis/repositorio";
@@ -13,6 +14,7 @@ export default async function SecaoPainel({ params, searchParams }: PageProps<"/
   const { secao: slug } = await params;
   const secao = encontrarSecao(slug);
   if (!secao) notFound();
+  if (!podeFazer(sessao.papel, secao.exige)) redirect("/painel");
   const filtros = lerFiltros(await searchParams, opcoes);
   return (
     <>

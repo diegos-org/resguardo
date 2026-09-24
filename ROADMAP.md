@@ -40,6 +40,7 @@ item muda a linha para `feito` **no próprio PR do item**.
 | M0.3 | Drizzle + Neon: conexão por `DATABASE_URL`, pasta de migrações, helper de teste com PGlite | feito | M0.2 |
 | M0.4 | Layout base do painel (menu lateral, cabeçalho, filtro global de imóveis/período reutilizável) com identidade SCL | feito | M0.2 |
 | M0.5 | Deploy de homologação na Vercel conectado ao Neon (branch de banco `homolog`); migrações aplicadas no build (`vercel-build`, já pronto) | bloqueado | Diego: conectar repo na Vercel e Neon (ver "Ações de Diego") |
+| M0.6 | Referência do sistema antigo: levantar as telas e capacidades do sistema antigo (arquivo que o Diego vai mandar) e cruzar com este ROADMAP, sem copiar dados reais | bloqueado | Diego: mandar o arquivo do sistema antigo |
 
 ### M1 — Acesso e permissões
 
@@ -51,6 +52,7 @@ item muda a linha para `feito` **no próprio PR do item**.
 | M1.4 | Convite de proprietário: token único, validade, uso único, revogação, aceite registrado | feito | M1.3 |
 | M1.5 | Log de auditoria (quem alterou o quê, quando) usado por todos os módulos | feito | M1.1 |
 | M1.6 | Área "Sistema" no painel: serviços ligados (banco, Beds24, e-mail, WhatsApp, Mercado Pago) com situação, automações/rotinas com última execução, e as regras em vigor (comissões, recebimento, contratos) com atalho para editar | feito | M1.2 |
+| M1.7 | Configurações com sub-abas: empresa, usuários e permissões, integrações (Beds24, e-mail, WhatsApp, pagamento), regras financeiras, categorias, modelos de mensagem e textos do site — tudo editável | a fazer | M1.6 |
 
 ### M2 — Cadastros
 
@@ -63,6 +65,7 @@ item muda a linha para `feito` **no próprio PR do item**.
 | M2.5 | Script de carga inicial (seed) com dados fictícios para homologação | feito | M2.3 |
 | M2.6 | Cadastro completo do imóvel: endereço completo, camas/comodidades, regras da casa, horários de entrada/saída, taxas (limpeza, hóspede extra), regras de venda (estadia mínima/máxima com exceções por período, antecedência, dias de chegada/saída), preço base e preço dinâmico (liga/desliga); tudo editável no painel (Diego 24/09) | a fazer | M2.1 |
 | M2.7 | Quem recebe o pagamento por imóvel e por canal (Airbnb, Booking, site, direta/WhatsApp); um proprietário por imóvel; confirmação ao excluir; recálculo automático quando a regra muda | feito | M4.2 |
+| M2.9 | Aba Anúncios: por imóvel, o anúncio em cada canal (Airbnb, Booking, site) — situação, link, título, descrição, fotos, preço base — e alerta quando os canais estiverem diferentes | a fazer | M2.6, M3.3 |
 
 ### M3 — Reservas e calendário
 
@@ -85,11 +88,12 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 |---|---|---|---|
 | M4.1 | Ledger: lançamentos imutáveis (bruto, taxa do canal, líquido, comissão SCL, direito do proprietário, recebimento, adiantamento, liquidação, estorno); estados previsto/realizado/conciliado/pendente | feito | M3.1, M2.3 |
 | M4.2 | Motor de cálculo de comissão por contrato e vigência, com testes de arredondamento, estadia entre meses, cancelamento parcial | feito | M4.1 |
+| M4.2c | Mudança de regra vale daquela data para frente: recálculo só alcança reservas com entrada a partir da data da mudança (nunca antes de hoje) e nunca mexe em lançamento que já movimentou dinheiro | feito | M4.2 |
 | M4.3 | Despesas: da empresa × do proprietário, categorias editáveis (arquivar em vez de apagar), comprovante opcional | feito | M4.1 |
 | M4.4 | Adiantamentos e compensações (ex.: reparo de R$ 4.000 adiantado) sem dupla cobrança | a fazer | M4.3 |
 | M4.5 | Ajustes/divergências com motivo "não identificado" e evidência | a fazer | M4.1 |
-| M4.6 | Dashboard da empresa (receitas próprias, despesas, 1–2 gráficos) | a fazer | M4.2, M4.3 |
-| M4.7 | Aba Apartamentos: tabela por imóvel com resultado da empresa, comissões, despesas, acertos | a fazer | M4.2, M4.4 |
+| M4.6 | Dashboard inicial do painel (primeira tela): ocupação, receitas, comissões, despesas, próximas entradas/saídas, pendências e alertas, com gráficos e o filtro global | a fazer | M4.2, M4.3 |
+| M4.7 | Aba Apartamentos: tabela de todos os imóveis com resultado da empresa, comissões, despesas e acertos, com filtros para escolher como ver (mês, intervalo, ano, imóveis, colunas) | a fazer | M4.2, M4.4 |
 | M4.8 | Teste de consistência: mesma reserva = mesmos totais em dashboard, aba Apartamentos, portal e PDF | a fazer | M5.3 |
 | M4.9 | Repasse mensal ao proprietário (Booking, site, direta): fechamento no fim do mês, valor a repassar já descontado de despesas/adiantamentos, Pix para copiar, marcar pago; feito no **dia 1º do mês seguinte** (Diego, 24/09: no último dia ainda pode entrar reserva) | a fazer | M4.4 |
 
@@ -193,3 +197,5 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
   proprietário edita o calendário no portal e a mudança segue pelo SCL (M5.5); repasse e
   relatório mensal no dia 1º do mês seguinte; e-mail obrigatório no cadastro de proprietários
   (e usado no de hóspedes).
+- 24/09 (Diego): mudança de regra vale daquela data para frente — o passado (e o dinheiro
+  que já movimentou) nunca é recalculado.

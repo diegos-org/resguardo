@@ -22,7 +22,8 @@ describe("serviços", () => {
     for (const segredo of ["senha-secreta", "s3gr3do", "segredo-google", "chave-beds24", "id-google"]) expect(texto).not.toContain(segredo);
     const por = Object.fromEntries(s.map((x) => [x.nome, x]));
     expect(por["Banco de dados (Neon)"].situacao).toBe("ok");
-    expect(por["Login com Google"].situacao).toBe("ok");
+    expect(por["Login com Google"].situacao).toBe("configurado"); // chave existe, mas não foi testado
+    expect(por["Beds24"].situacao).toBe("configurado");
     expect(por["E-mail do sistema (Resend)"].situacao).toBe("nao_configurado");
     expect(por["Beds24"].detalhe).toContain("desligado");
     expect(por["WhatsApp (Meta)"].situacao).toBe("planejado");

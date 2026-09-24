@@ -3,18 +3,19 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { manterFiltros } from "@/lib/filtros";
-import { SECOES } from "@/lib/navegacao";
+import type { Papel } from "@/db/schema";
+import { secoesPara } from "@/lib/navegacao";
 import styles from "./painel.module.css";
 
-const ITENS = [{ slug: "", titulo: "Início" }, ...SECOES];
 
-export function Menu() {
+export function Menu({ papel }: { papel: Papel }) {
+  const itens = [{ slug: "", titulo: "Início" }, ...secoesPara(papel)];
   const atual = usePathname();
   const filtros = manterFiltros(useSearchParams());
   return (
     <nav aria-label="Menu do painel">
       <ul className={styles.menu}>
-        {ITENS.map((item) => {
+        {itens.map((item) => {
           const href = item.slug ? `/painel/${item.slug}` : "/painel";
           const ativo = atual === href;
           return (

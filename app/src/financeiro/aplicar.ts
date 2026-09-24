@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, gte, isNull, sql } from "drizzle-orm";
 import { listarContratos } from "@/contratos/repositorio";
 import { lancamentos, proprietarioImoveis, recebimentoPorCanal, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { estornar, lancar, type NovoLancamento } from "./ledger";
 import { calcularReserva, REGRAS_PADRAO, type RegrasMotor } from "./motor";
@@ -60,7 +61,7 @@ export async function aplicarMotor(
       .from(lancamentos)
       .where(and(eq(lancamentos.organizacaoId, organizacaoId), eq(lancamentos.reservaId, reservaId), eq(lancamentos.origem, "motor")));
     const ativos = await tx
-      .select({ id: lancamentos.id, chave: lancamentos.chaveOrigem })
+      .select({ id: lancamentos.id, chave: lancamentos.chaveOrigem, estado: lancamentos.estado })
       .from(lancamentos)
       .where(
         and(
@@ -70,8 +71,27 @@ export async function aplicarMotor(
           isNull(lancamentos.estornoDe),
           sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`,
         ),
-      );
+      )
+      // Trava os lançamentos enquanto decide: uma baixa ("realizado") feita ao mesmo tempo
+      // espera este cálculo terminar, ou já aparece aqui como realizada — nunca é estornada
+      // por engano depois da checagem.
+      .for("update");
     const desejadas = new Set(desejados.map((l) => l.chaveOrigem));
+
+    // O que já movimentou dinheiro (realizado/conciliado) nunca é mexido automaticamente
+    // (Diego, 24/09): se o cálculo novo divergir, a reserva fica como está e avisa — a
+    // correção vira um ajuste manual (M4.5).
+    const precisaMudar =
+      ativos.some((a) => !a.chave || !desejadas.has(baseDaChave(a.chave))) ||
+      desejados.some((l) => !ativos.some((a) => a.chave && baseDaChave(a.chave) === l.chaveOrigem));
+    if (precisaMudar && ativos.some((a) => a.estado === "realizado" || a.estado === "conciliado")) {
+      return {
+        criados: 0,
+        estornados: 0,
+        mantidos: ativos.length,
+        avisos: [...avisos, "Esta reserva já teve dinheiro movimentado: o cálculo novo não foi aplicado. Se precisar, faça um ajuste manual."],
+      };
+    }
 
     // Mantém um ativo por cálculo desejado; estorna o resto.
     const mantidas = new Set<string>();
@@ -105,22 +125,32 @@ export async function aplicarMotor(
 export type ResultadoRecalculo = { reservas: number; criados: number; estornados: number };
 
 /**
- * Passa o motor de novo nas reservas (todas da organização, ou só de um imóvel) para que
- * uma regra alterada — padrão de recebimento, contrato, configuração do imóvel — valha
- * também para o que já estava lançado. Idempotente: o que não mudou fica como está.
+ * Passa o motor de novo nas reservas para que uma regra alterada — padrão de recebimento,
+ * contrato, configuração do imóvel — valha **daquela data para frente** (Diego, 24/09): só
+ * reservas com entrada a partir de `aPartirDe` (padrão: hoje). O passado não é recalculado,
+ * e o que já movimentou dinheiro fica protegido em `aplicarMotor`. Idempotente.
  */
 export async function recalcularReservas(
   db: Db,
   organizacaoId: string,
-  f: { imovelId?: string } = {},
+  f: { imovelId?: string; aPartirDe?: string } = {},
   autorId: string | null = null,
   regras: RegrasMotor = REGRAS_PADRAO,
 ): Promise<ResultadoRecalculo> {
   if (f.imovelId && !uuidValido(f.imovelId)) return { reservas: 0, criados: 0, estornados: 0 };
+  // Nunca antes de hoje: mesmo uma regra com data no passado só vale daqui para frente.
+  const hoje = hojeISO();
+  const aPartirDe = f.aPartirDe && f.aPartirDe > hoje ? f.aPartirDe : hoje;
   const ids = await db
     .select({ id: reservas.id })
     .from(reservas)
-    .where(and(eq(reservas.organizacaoId, organizacaoId), f.imovelId ? eq(reservas.imovelId, f.imovelId) : undefined))
+    .where(
+      and(
+        eq(reservas.organizacaoId, organizacaoId),
+        f.imovelId ? eq(reservas.imovelId, f.imovelId) : undefined,
+        gte(reservas.checkin, aPartirDe),
+      ),
+    )
     .orderBy(asc(reservas.checkin), asc(reservas.id));
   const total: ResultadoRecalculo = { reservas: ids.length, criados: 0, estornados: 0 };
   for (const { id } of ids) {

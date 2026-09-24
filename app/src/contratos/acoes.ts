@@ -23,7 +23,8 @@ export async function novoContrato(_a: EstadoContrato, form: FormData): Promise<
   // (tudo-ou-nada: se o recálculo falhar, o contrato também não é gravado).
   const r = await getDb().transaction(async (tx) => {
     const c = await criarContrato(tx, sessao.organizacaoId, imovelId, Object.fromEntries(form), sessao.usuarioId);
-    if (c.ok) await recalcularReservas(tx, sessao.organizacaoId, { imovelId: c.contrato.imovelId }, sessao.usuarioId);
+    // Vale da data de início do contrato em diante (nunca antes de hoje).
+    if (c.ok) await recalcularReservas(tx, sessao.organizacaoId, { imovelId: c.contrato.imovelId, aPartirDe: c.contrato.inicio }, sessao.usuarioId);
     return c;
   });
   if (!r.ok) return { erros: r.erros };
@@ -35,7 +36,8 @@ export async function encerrar(_a: EstadoContrato, form: FormData): Promise<Esta
   const sessao = await sessaoFinanceira();
   const r = await getDb().transaction(async (tx) => {
     const e = await encerrarContrato(tx, sessao.organizacaoId, String(form.get("contratoId") ?? ""), String(form.get("fim") ?? ""), sessao.usuarioId);
-    if (e.ok) await recalcularReservas(tx, sessao.organizacaoId, { imovelId: e.imovelId }, sessao.usuarioId);
+    // Só as reservas depois do novo fim do contrato mudam (nunca antes de hoje).
+    if (e.ok) await recalcularReservas(tx, sessao.organizacaoId, { imovelId: e.imovelId, aPartirDe: e.fim }, sessao.usuarioId);
     return e;
   });
   if (!r.ok) return { mensagem: r.erro };

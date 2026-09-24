@@ -12,7 +12,8 @@ import { regrasEmVigor } from "@/sistema/regras";
 import { type SituacaoServico, situacaoServicos } from "@/sistema/servicos";
 
 const SELO: Record<SituacaoServico, { texto: string; cor: string }> = {
-  ok: { texto: "Funcionando", cor: "#e3efe0" },
+  ok: { texto: "Funcionando (testado agora)", cor: "#e3efe0" },
+  configurado: { texto: "Configurado", cor: "#e8eef7" },
   falha: { texto: "Com problema", cor: "#fbeaea" },
   nao_configurado: { texto: "Falta configurar", cor: "#fdf3dc" },
   planejado: { texto: "Ainda não construído", cor: "#eeeeee" },
@@ -38,7 +39,8 @@ export default async function Sistema() {
     <>
       <h1>Sistema</h1>
       <p style={{ color: "var(--scl-texto-2)", fontSize: "0.875rem", maxWidth: 820 }}>
-        O que está ligado, o que roda sozinho e as regras que valem agora. Nenhuma chave ou senha aparece aqui.
+        O que está ligado, o que roda sozinho e as regras que valem agora. Nenhuma chave ou senha aparece aqui. “Configurado” quer dizer
+        que a chave existe; o teste de conexão de cada serviço chega junto com a integração dele.
       </p>
 
       <section aria-label="Serviços" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
