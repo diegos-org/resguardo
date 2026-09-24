@@ -114,6 +114,8 @@ describe("períodos de exceção", () => {
     expect(validarPeriodo({ ...rev, precoNoite: "", estadiaMinima: "" }).ok).toBe(false);
     expect(validarPeriodo({ ...rev, nome: "" }).ok).toBe(false);
     expect(validarPeriodo({ ...rev, inicio: "2026-02-30" }).ok).toBe(false);
+    expect(validarPeriodo({ ...rev, precoNoite: "21474836,48" })).toEqual({ ok: false, erro: "Preço alto demais." });
+    expect(validarDetalhes({ precoBase: "21474836,48" })).toMatchObject({ ok: false, erros: { precoBase: "Valor alto demais." } });
   });
 
   it("cria, recusa sobreposição, lista em ordem e exclui", async () => {

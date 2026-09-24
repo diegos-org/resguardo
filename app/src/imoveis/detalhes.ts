@@ -61,6 +61,8 @@ export const regrasDeVenda = (d: Detalhes): RegrasVenda => ({
 });
 
 type Entrada = Record<string, unknown>;
+/** R$ 1 milhão: bem abaixo do limite da coluna integer do Postgres (≈ R$ 21 milhões). */
+const VALOR_MAXIMO = 100_000_000;
 const txt = (v: unknown) => (typeof v === "string" ? v.trim() : "");
 const lista = (v: unknown): string[] => (Array.isArray(v) ? v : v === undefined ? [] : [v]).filter((x): x is string => typeof x === "string");
 const marcado = (v: unknown) => v === "on" || v === "true" || v === true;
@@ -86,7 +88,7 @@ export function validarDetalhes(e: Entrada): { ok: true; dados: Detalhes } | { o
       erros[campo] = "Valor inválido (ex.: 250,00).";
       return null;
     }
-    if (c !== null && c > 100_000_000) erros[campo] = "Valor alto demais.";
+    if (c !== null && c > VALOR_MAXIMO) erros[campo] = "Valor alto demais.";
     return c;
   };
   const hora = (campo: "checkinAPartirDe" | "checkoutAte", padrao: string) => {
@@ -225,6 +227,7 @@ export function validarPeriodo(e: Entrada): { ok: true; dados: Omit<Periodo, "id
   if (fim < inicio) return { ok: false, erro: "A última noite não pode ser antes da primeira." };
   const preco = reaisParaCentavos(txt(e.precoNoite));
   if (preco === undefined) return { ok: false, erro: "Preço inválido (ex.: 900,00)." };
+  if (preco !== null && preco > VALOR_MAXIMO) return { ok: false, erro: "Preço alto demais." };
   const m = txt(e.estadiaMinima);
   if (m && (!/^\d+$/.test(m) || Number(m) < 1 || Number(m) > 365)) return { ok: false, erro: "Estadia mínima: número de 1 a 365." };
   const estadiaMinima = m ? Number(m) : null;

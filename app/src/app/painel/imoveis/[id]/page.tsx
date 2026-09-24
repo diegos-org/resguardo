@@ -44,7 +44,7 @@ export default async function EditarImovel({ params }: PageProps<"/painel/imovei
       <FormImovel acao={salvarImovel} id={imovel.id} inicial={imovel} />
       <FormDetalhes imovelId={imovel.id} inicial={detalhes} salvar={salvarDetalhesAcao} />
       <Periodos imovelId={imovel.id} periodos={periodos} criar={novoPeriodoAcao} excluir={excluirPeriodoAcao} />
-      <Simulador regras={regrasDeVenda(detalhes)} periodos={periodos} hoje={hojeISO()} />
+      <Simulador regras={regrasDeVenda(detalhes)} periodos={periodos} hoje={hojeISO(imovel.fuso)} />
       <IdsExternos imovelId={imovel.id} lista={ids} adicionar={novoIdExterno} remover={excluirIdExterno} />
       <Contratos
         imovelId={imovel.id}
