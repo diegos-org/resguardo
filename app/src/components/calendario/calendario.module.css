@@ -113,6 +113,12 @@
   background: #ecdcb8;
 }
 
+.limpeza {
+  background: #fff;
+  border: 1px dashed #2f5d8a;
+  color: #2f5d8a;
+}
+
 .bloqueio {
   background: repeating-linear-gradient(135deg, #e6e2da, #e6e2da 6px, #d6d1c6 6px, #d6d1c6 12px);
   color: #4a4a44;

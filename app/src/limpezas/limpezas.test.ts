@@ -8,6 +8,8 @@ import type { DadosReserva } from "@/reservas/regras";
 import { cancelarReserva, criarReserva, sincronizarReserva } from "@/reservas/repositorio";
 import {
   cancelarLimpeza,
+  comMotivo,
+  itensDoCalendario,
   confirmarLimpeza,
   criarLimpezaAvulsa,
   criarProfissional,
@@ -128,6 +130,38 @@ describe("cancelada à mão e mudança de imóvel", () => {
     const [depois] = await lista();
     expect(depois).toMatchObject({ estado: "cancelada", canceladaManual: true });
     expect(depois.avisos.join(" ")).toContain("Cancelada à mão");
+  });
+
+  it("cancelada à mão acompanha a nova saída/imóvel da reserva sem ser reaberta", async () => {
+    await sincronizarReserva(db, org, "csv", "booking:X1", reserva(a, "2026-10-10", "2026-10-15"), null);
+    await sincronizarLimpezas(db, org, periodo);
+    const [l] = await lista();
+    await cancelarLimpeza(db, org, l.id, "Proprietário vai ficar", null);
+    await sincronizarReserva(db, org, "csv", "booking:X1", reserva(b, "2026-10-10", "2026-10-18"), null);
+    expect((await sincronizarLimpezas(db, org, periodo)).atualizadas).toBe(1);
+    expect((await lista())[0]).toMatchObject({ data: "2026-10-18", imovelCodigo: "102", estado: "cancelada", canceladaManual: true });
+    expect(await sincronizarLimpezas(db, org, periodo)).toEqual({ criadas: 0, atualizadas: 0, canceladas: 0 });
+  });
+
+  it("o motivo do cancelamento nunca é cortado, mesmo com a observação cheia", async () => {
+    expect(comMotivo("", "Cancelada: x")).toBe("Cancelada: x");
+    const r = comMotivo("a".repeat(500), "Cancelada: dono desistiu");
+    expect(r).toHaveLength(500);
+    expect(r.endsWith(" · Cancelada: dono desistiu")).toBe(true);
+    await criarLimpezaAvulsa(db, org, { imovelId: a, data: "2026-10-20", observacao: "b".repeat(500) }, null);
+    await cancelarLimpeza(db, org, (await lista())[0].id, "Obra no prédio", null);
+    expect((await lista())[0].observacao.endsWith("Cancelada: Obra no prédio")).toBe(true);
+  });
+
+  it("calendário: uma limpeza ocupa o dia dela; cancelada não aparece", async () => {
+    await criarReserva(db, org, reserva(a, "2026-10-10", "2026-10-15"), null);
+    await criarReserva(db, org, reserva(b, "2026-10-10", "2026-10-12", { codigoCanal: "X2" }), null);
+    await sincronizarLimpezas(db, org, periodo);
+    const ls = await lista();
+    await cancelarLimpeza(db, org, ls.find((x) => x.imovelCodigo === "102")!.id, "sem necessidade", null);
+    const itens = itensDoCalendario(await lista());
+    expect(itens).toHaveLength(1);
+    expect(itens[0]).toMatchObject({ imovelId: a, inicio: "2026-10-15", fim: "2026-10-16", tipo: "limpeza", categoria: "limpeza" });
   });
 
   it("cancelada pela reserva volta a pedida quando a reserva é reativada", async () => {

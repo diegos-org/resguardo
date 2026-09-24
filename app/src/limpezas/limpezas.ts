@@ -9,6 +9,7 @@
  */
 import { and, asc, eq, gte, inArray, isNotNull, lt, or } from "drizzle-orm";
 import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
+import type { ItemCalendario } from "@/calendario/grade";
 import { type EstadoLimpeza, imoveis, limpezas, profissionaisLimpeza, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
@@ -76,6 +77,18 @@ export async function sincronizarLimpezas(db: Db, organizacaoId: string, periodo
           r.atualizadas++;
           await registrarAuditoria(db, { organizacaoId, usuarioId: autorId, acao: "limpeza.reserva_mudou", entidade: "limpeza", entidadeId: l.id, mudancas: calcularMudancas(l, depois) });
         }
+      } else if (l.estado === "cancelada" && l.canceladaManual && (l.data !== res.checkout || l.imovelId !== res.imovelId)) {
+        // Cancelada à mão continua cancelada, mas acompanha a nova saída/imóvel da reserva
+        // (senão some do período da reserva e o aviso de conferência não aparece lá).
+        const [depois] = await db
+          .update(limpezas)
+          .set({ data: res.checkout, imovelId: res.imovelId, atualizadoEm: new Date() })
+          .where(and(eq(limpezas.id, l.id), eq(limpezas.estado, "cancelada")))
+          .returning();
+        if (depois) {
+          r.atualizadas++;
+          await registrarAuditoria(db, { organizacaoId, usuarioId: autorId, acao: "limpeza.reserva_mudou", entidade: "limpeza", entidadeId: l.id, mudancas: calcularMudancas(l, depois) });
+        }
       }
     } else if (res.estado === "cancelada" && aberta) {
       const [depois] = await db
@@ -137,6 +150,25 @@ export async function listarLimpezas(db: Db, organizacaoId: string, f: Periodo &
     if (l.estado === "realizada" && l.custo === null) avisos.push("Custo não informado.");
     return { ...l, imovelCodigo: x.imovelCodigo, reservaCodigo: x.reservaCodigo, profissional: x.profissional, avisos };
   });
+}
+
+const diaSeguinte = (d: string) => new Date(Date.parse(`${d}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+
+/** Limpezas no calendário central: um dia (o da limpeza); as canceladas não aparecem. */
+export function itensDoCalendario(lista: readonly LinhaLimpeza[]): ItemCalendario[] {
+  return lista
+    .filter((l) => l.estado !== "cancelada")
+    .map((l) => ({
+      id: l.id,
+      imovelId: l.imovelId,
+      inicio: l.data,
+      fim: diaSeguinte(l.data),
+      tipo: "limpeza" as const,
+      rotulo: `Limpeza · ${NOMES_ESTADO[l.estado].toLowerCase()}${l.profissional ? ` · ${l.profissional}` : ""}`,
+      href: `/painel/limpezas?ano=${l.data.slice(0, 4)}&mes=${Number(l.data.slice(5, 7))}`,
+      categoria: "limpeza",
+      conflito: l.avisos.length > 0,
+    }));
 }
 
 async function travar(tx: Db, organizacaoId: string, id: string): Promise<Limpeza | null> {
@@ -243,10 +275,18 @@ export function reabrirLimpeza(db: Db, organizacaoId: string, id: string, autorI
   return transicao(db, organizacaoId, id, ["realizada"], async (l) => ({ estado: l.profissionalId ? "confirmada" : "pedida", realizadaEm: null }), "limpeza.reabrir", autorId);
 }
 
+/** Junta o motivo à observação sem cortá-lo: o que sobra do limite fica para a observação antiga. */
+export function comMotivo(observacao: string, motivo: string, limite = 500): string {
+  const m = motivo.slice(0, limite);
+  if (!observacao) return m;
+  const resto = limite - m.length - 3;
+  return resto > 0 ? `${observacao.slice(0, resto)} · ${m}` : m;
+}
+
 export function cancelarLimpeza(db: Db, organizacaoId: string, id: string, motivo: string, autorId: string | null): Promise<Resultado> {
   const m = motivo.trim();
   if (!m) return Promise.resolve({ ok: false, erro: "Informe o motivo." });
-  return transicao(db, organizacaoId, id, ["pedida", "confirmada"], async (l) => ({ estado: "cancelada", canceladaManual: true, observacao: `${l.observacao ? `${l.observacao} · ` : ""}Cancelada: ${m}`.slice(0, 500) }), "limpeza.cancelar", autorId);
+  return transicao(db, organizacaoId, id, ["pedida", "confirmada"], async (l) => ({ estado: "cancelada", canceladaManual: true, observacao: comMotivo(l.observacao, `Cancelada: ${m}`) }), "limpeza.cancelar", autorId);
 }
 
 /** Limpeza fora de checkout (ex.: faxina extra, antes de uso do proprietário). */

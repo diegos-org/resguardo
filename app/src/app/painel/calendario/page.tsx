@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { podeFazer } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { diasDoPeriodo, type ItemCalendario, mesesVizinhos, montarCalendario } from "@/calendario/grade";
 import styles from "@/components/calendario/calendario.module.css";
@@ -8,6 +9,7 @@ import { listarImoveis } from "@/imoveis/repositorio";
 import { hojeISO } from "@/lib/datas";
 import { filtrosParaQuery, lerFiltros, nomeDoMes, periodoDosFiltros } from "@/lib/filtros";
 import { conflitos, NOMES_ORIGEM } from "@/reservas/regras";
+import { itensDoCalendario, listarLimpezas, sincronizarLimpezas } from "@/limpezas/limpezas";
 import { listarBloqueios, listarReservas } from "@/reservas/repositorio";
 
 const SEMANA = ["D", "S", "T", "Q", "Q", "S", "S"];
@@ -25,9 +27,14 @@ export default async function Calendario({ searchParams }: PageProps<"/painel/ca
   const visiveis = filtros.imoveis.length ? imoveis.filter((i) => filtros.imoveis.includes(i.codigo)) : imoveis;
   const ids = visiveis.map((i) => i.id);
 
-  const [reservas, bloqueios] = await Promise.all([
+  // Limpezas só para quem pode vê-las (o proprietário não vê); geradas antes, como na tela de Limpezas.
+  const verLimpezas = podeFazer(sessao.papel, "limpeza:ler") && ids.length > 0;
+  if (verLimpezas) await sincronizarLimpezas(db, sessao.organizacaoId, periodo, sessao.usuarioId);
+  const hoje = hojeISO();
+  const [reservas, bloqueios, limpezas] = await Promise.all([
     ids.length ? listarReservas(db, sessao.organizacaoId, { ...periodo, imovelIds: ids }) : [],
     ids.length ? listarBloqueios(db, sessao.organizacaoId, { ...periodo, imovelIds: ids }) : [],
+    verLimpezas ? listarLimpezas(db, sessao.organizacaoId, { ...periodo, imovelIds: ids, hoje }) : [],
   ]);
   const emConflito = new Set(conflitos(reservas).flat());
   const itens: ItemCalendario[] = [
@@ -51,11 +58,11 @@ export default async function Calendario({ searchParams }: PageProps<"/painel/ca
       rotulo: b.motivo || "Bloqueado",
       categoria: "bloqueio",
     })),
+    ...itensDoCalendario(limpezas),
   ];
 
   const dias = diasDoPeriodo(periodo.inicio, periodo.fim);
   const linhas = montarCalendario(periodo, ids, itens);
-  const hoje = hojeISO();
   const { anterior, seguinte } = mesesVizinhos(filtros.ano, filtros.mes);
   const link = (ano: number, mes: number) => `/painel/calendario?${filtrosParaQuery({ ...filtros, ano, mes })}`;
   const colunas = `minmax(90px, max-content) repeat(${dias.length}, minmax(34px, 1fr))`;
@@ -84,8 +91,13 @@ export default async function Calendario({ searchParams }: PageProps<"/painel/ca
         <span>
           <i className={styles.bloqueio} /> Bloqueio
         </span>
+        {verLimpezas && (
+          <span>
+            <i className={styles.limpeza} /> Limpeza
+          </span>
+        )}
         <span>
-          <i style={{ outline: "2px solid #b3261e" }} /> Overbooking
+          <i style={{ outline: "2px solid #b3261e" }} /> Overbooking ou aviso
         </span>
       </div>
       {visiveis.length === 0 ? (
