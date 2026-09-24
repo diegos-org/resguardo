@@ -54,6 +54,13 @@ describe("linhas", () => {
     }
   });
 
+  it("texto longo demais vira erro da linha, sem cortar", () => {
+    const base = ["403", "airbnb", "X1", "", "2026-10-10", "2026-10-12", "", "", "", "", "", "", "x".repeat(2001)];
+    expect(lerLinha(base, cab, 2)).toMatchObject({ ok: false, erros: ["Texto longo demais em observações (máximo 2000 caracteres)."] });
+    const ok = lerLinha([...base.slice(0, 12), "x".repeat(2000)], cab, 2);
+    expect(ok.ok && ok.dados.observacoes.length).toBe(2000);
+  });
+
   it("situação em branco = confirmada; whatsapp = direta; saída antes da entrada é erro", () => {
     const base = ["403", "WhatsApp", "W1", "", "2026-10-10", "2026-10-12", "", "", "", "", "", "", ""];
     const ok = lerLinha(base, cab, 2);

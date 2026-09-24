@@ -160,6 +160,16 @@ export function lerLinha(celulas: string[], cab: Cabecalho, numero: number): Lin
     if (c === undefined) erros.push(`Valor inválido em ${campo === "valorBruto" ? "valor bruto" : campo === "taxaCanal" ? "taxa do canal" : "valor líquido"}: "${v(campo)}".`);
     else valores[campo] = c;
   }
+  // Texto longo demais é erro da linha — nunca cortado calado.
+  const limites: [string, string, number][] = [
+    ["hospedeNome", "nome", 120],
+    ["hospedeEmail", "e-mail", 200],
+    ["hospedeTelefone", "telefone", 40],
+    ["hospedeOrigem", "cidade/país", 120],
+    ["codigoCanal", "código da reserva", 80],
+    ["observacoes", "observações", 2000],
+  ];
+  for (const [campo, nome, max] of limites) if (v(campo).length > max) erros.push(`Texto longo demais em ${nome} (máximo ${max} caracteres).`);
   if (erros.length) return { ok: false, numero, erros };
   const dados: Omit<DadosReserva, "imovelId"> = {
     origem: origem!,
@@ -167,14 +177,14 @@ export function lerLinha(celulas: string[], cab: Cabecalho, numero: number): Lin
     checkin: checkin!,
     checkout: checkout!,
     hospedes: hospedes as number | null,
-    hospedeNome: v("hospedeNome").slice(0, 120),
-    hospedeEmail: v("hospedeEmail").toLowerCase().slice(0, 200),
-    hospedeTelefone: v("hospedeTelefone").slice(0, 40),
-    hospedeOrigem: v("hospedeOrigem").slice(0, 120),
+    hospedeNome: v("hospedeNome"),
+    hospedeEmail: v("hospedeEmail").toLowerCase(),
+    hospedeTelefone: v("hospedeTelefone"),
+    hospedeOrigem: v("hospedeOrigem"),
     moeda: "BRL",
     ...valores,
-    codigoCanal: codigoCanal.slice(0, 80),
-    observacoes: v("observacoes").slice(0, 2000),
+    codigoCanal: codigoCanal,
+    observacoes: v("observacoes"),
   };
   const regras = validarReserva({ ...dados, imovelId: "x" });
   if (Object.keys(regras).length) return { ok: false, numero, erros: Object.values(regras).filter((m): m is string => Boolean(m)) };

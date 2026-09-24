@@ -40,8 +40,8 @@ export async function cancelar(form: FormData): Promise<void> {
 // --- Importação por CSV (M3.6) --------------------------------------------------------
 
 export type LinhaConferida = { numero: number; situacao: SituacaoLinha; resumo: string; erros: string[]; avisos: string[] };
+/** Sem o texto do arquivo: ele vai só no formulário (o estado volta ao servidor a cada envio). */
 export type EstadoImportacao = {
-  texto?: string;
   erroGeral?: string;
   colunasIgnoradas?: string[];
   linhas?: LinhaConferida[];
@@ -62,14 +62,13 @@ export async function importacaoAcao(_a: EstadoImportacao, form: FormData): Prom
   const db = getDb();
   if (form.get("op") === "importar") {
     const r = await importarCsv(db, sessao.organizacaoId, texto, sessao.usuarioId);
-    if (r.erroGeral) return { texto, erroGeral: r.erroGeral };
+    if (r.erroGeral) return { erroGeral: r.erroGeral };
     revalidatePath("/painel", "layout");
     return { resultado: { criadas: r.criadas, atualizadas: r.atualizadas, iguais: r.iguais, comErro: r.comErro, semRecalculo: r.semRecalculo, avisosFinanceiro: r.avisosFinanceiro } };
   }
   const a = await analisarCsv(db, sessao.organizacaoId, texto);
   // Só o necessário para a tela (os dados completos ficam no arquivo do próprio usuário).
   return {
-    texto,
     erroGeral: a.erroGeral,
     colunasIgnoradas: a.colunasIgnoradas,
     linhas: a.linhas.map(({ numero, situacao, resumo, erros, avisos }) => ({ numero, situacao, resumo, erros, avisos })),

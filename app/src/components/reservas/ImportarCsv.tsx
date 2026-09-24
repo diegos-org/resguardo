@@ -28,9 +28,9 @@ export function ImportarCsv({ acao }: { acao: (a: EstadoImportacao, f: FormData)
   const [texto, setTexto] = useState("");
   const [nome, setNome] = useState("");
   const [erroArquivo, setErroArquivo] = useState("");
-  // O navegador envia o texto do formulário com quebras CRLF: compara sem elas.
-  const semCr = (t: string) => t.replace(/\r\n?/g, "\n");
-  const conferido = estado.texto !== undefined && semCr(estado.texto) === semCr(texto) && !estado.erroGeral && estado.linhas;
+  // Qual texto foi conferido (guardado aqui, não no estado do servidor, para o arquivo ir uma vez só).
+  const [conferidoCom, setConferidoCom] = useState<string | null>(null);
+  const conferido = conferidoCom === texto && !estado.erroGeral && estado.linhas;
   const validas = estado.linhas?.filter((l) => l.situacao !== "erro").length ?? 0;
   const contagem = (s: keyof typeof SITUACAO) => estado.linhas?.filter((l) => l.situacao === s).length ?? 0;
 
@@ -69,7 +69,7 @@ export function ImportarCsv({ acao }: { acao: (a: EstadoImportacao, f: FormData)
         {erroArquivo && <p className={styles.alerta}>{erroArquivo}</p>}
         <form action={enviar} className={styles.acoes}>
           <input type="hidden" name="texto" value={texto} />
-          <button type="submit" name="op" value="conferir" disabled={!texto || enviando}>
+          <button type="submit" name="op" value="conferir" disabled={!texto || enviando} onClick={() => setConferidoCom(texto)}>
             {enviando ? "Aguarde…" : "Conferir (não grava nada)"}
           </button>
           {conferido && validas > 0 && (
