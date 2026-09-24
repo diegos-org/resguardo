@@ -161,6 +161,42 @@ describe("lista de portaria", () => {
     expect(await reg({ tipo: "pedido_final", data: "2026-10-19" })).toEqual({ ok: true });
   });
 
+  it("entrada adiada depois dos pedidos: os pedidos da data antiga deixam de valer e o passo volta a pedir", async () => {
+    await salvarImoveisComPortaria(db, org, [a], null);
+    const r = await criarReserva(db, org, reserva(a), null);
+    if (!r.ok) throw new Error("reserva");
+    const id = r.reserva.id;
+    await db.update(reservas).set({ criadoEm: new Date("2026-09-01T15:00:00Z") }).where(eq(reservas.id, id));
+    const reg = (x: Parameters<typeof registrarPortaria>[3], hoje: string) => registrarPortaria(db, org, id, x, hoje, null);
+    expect(await reg({ tipo: "aviso_inicial", data: "2026-10-05" }, "2026-10-05")).toEqual({ ok: true });
+    expect(await reg({ tipo: "segundo_pedido", data: "2026-10-14" }, "2026-10-14")).toEqual({ ok: true });
+    expect(await reg({ tipo: "pedido_final", data: "2026-10-19" }, "2026-10-19")).toEqual({ ok: true });
+    // A sincronização adia a entrada de 20/10 para 30/10.
+    await db.update(reservas).set({ checkin: "2026-10-30", checkout: "2026-11-02" }).where(eq(reservas.id, id));
+    const [l] = await listarPortaria(db, org, { hoje: "2026-10-24", ate: "2026-11-30" });
+    expect(l).toMatchObject({ avisoInicialEm: "2026-10-05", segundoPedidoEm: null, pedidoFinalEm: null, passo: "segundo_pedido" });
+    // O segundo pedido novo não esbarra no pedido final antigo; o antigo sai da lista (fica no histórico).
+    expect(await reg({ tipo: "segundo_pedido", data: "2026-10-24" }, "2026-10-24")).toEqual({ ok: true });
+    expect((await listarPortaria(db, org, { hoje: "2026-10-29", ate: "2026-11-30" }))[0]).toMatchObject({ segundoPedidoEm: "2026-10-24", pedidoFinalEm: null, passo: "pedido_final" });
+    expect(await reg({ tipo: "pedido_final", data: "2026-10-29" }, "2026-10-29")).toEqual({ ok: true });
+  });
+
+  it("mais documentos depois do encaminhamento pedem novo encaminhamento", async () => {
+    await salvarImoveisComPortaria(db, org, [a], null);
+    const r = await criarReserva(db, org, reserva(a), null);
+    if (!r.ok) throw new Error("reserva");
+    const id = r.reserva.id;
+    const reg = (x: Parameters<typeof registrarPortaria>[3]) => registrarPortaria(db, org, id, x, "2026-10-05", null);
+    await reg({ tipo: "documentos", recebidos: 2 });
+    await reg({ tipo: "destinatario", conferido: true });
+    await reg({ tipo: "encaminhado", data: "2026-10-05" });
+    await reg({ tipo: "entrega_confirmada", data: "2026-10-05" });
+    // A reserva passa a 3 hóspedes e chega o terceiro documento.
+    await db.update(reservas).set({ hospedes: 3 }).where(eq(reservas.id, id));
+    expect(await reg({ tipo: "documentos", recebidos: 3 })).toEqual({ ok: true });
+    expect((await listarPortaria(db, org, { hoje: "2026-10-05", ate: "2026-11-05" }))[0]).toMatchObject({ passo: "encaminhar", encaminhadoEm: null, entregaConfirmadaEm: null });
+  });
+
   it("reserva de última hora não tem segundo pedido; dia da reserva no fuso de São Paulo", async () => {
     await salvarImoveisComPortaria(db, org, [a], null);
     const r = await criarReserva(db, org, reserva(a, { checkin: "2026-10-02", checkout: "2026-10-04" }), null);

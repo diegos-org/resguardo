@@ -133,9 +133,8 @@ export async function listarPortaria(db: Db, organizacaoId: string, f: { hoje: s
       reservadaEm: diaDaReserva(r.criadoEm),
       hospedes: r.hospedes,
       documentosRecebidos: c?.documentosRecebidos ?? 0,
-      avisoInicialEm: c?.avisoInicialEm ?? null,
-      segundoPedidoEm: c?.segundoPedidoEm ?? null,
-      pedidoFinalEm: c?.pedidoFinalEm ?? null,
+      // Pedido feito para uma entrada que mudou (reserva adiada/antecipada) não vale mais.
+      ...pedidosVigentes(c, r.checkin, diaDaReserva(r.criadoEm)),
       encaminhadoEm: c?.encaminhadoEm ?? null,
       entregaConfirmadaEm: c?.entregaConfirmadaEm ?? null,
     };
@@ -208,6 +207,23 @@ function foraDaJanela(tipo: "aviso_inicial" | "segundo_pedido" | "pedido_final",
   return data >= de && data <= ate ? null : `O segundo pedido é entre ${br(de)} e ${br(ate)} (5 a 7 dias antes da entrada).`;
 }
 
+/**
+ * Datas dos pedidos que ainda valem para a entrada atual: se a reserva mudou de data depois de um
+ * pedido, o que ficou fora da janela nova deixa de contar (e o passo volta a pedir).
+ */
+function pedidosVigentes(
+  c: Pick<Checklist, "avisoInicialEm" | "segundoPedidoEm" | "pedidoFinalEm"> | null,
+  checkin: string,
+  reservadaEm: string,
+): Pick<Checklist, "avisoInicialEm" | "segundoPedidoEm" | "pedidoFinalEm"> {
+  const vale = (tipo: "aviso_inicial" | "segundo_pedido" | "pedido_final", d: string | null | undefined) => (d && !foraDaJanela(tipo, d, checkin, reservadaEm) ? d : null);
+  return {
+    avisoInicialEm: vale("aviso_inicial", c?.avisoInicialEm),
+    segundoPedidoEm: vale("segundo_pedido", c?.segundoPedidoEm),
+    pedidoFinalEm: vale("pedido_final", c?.pedidoFinalEm),
+  };
+}
+
 /** Registra um passo da lista (cria a lista da reserva na primeira vez). Com trava e histórico. */
 export async function registrarPortaria(db: Db, organizacaoId: string, reservaId: string, reg: Registro, hoje: string, autorId: string | null): Promise<Resultado> {
   if (!uuidValido(reservaId)) return { ok: false, erro: "Reserva não encontrada." };
@@ -222,6 +238,9 @@ export async function registrarPortaria(db: Db, organizacaoId: string, reservaId
     if (!(await imoveisComPortaria(tx, organizacaoId)).includes(r.imovelId)) return { ok: false as const, erro: "Este imóvel não exige documentos de portaria." };
     await tx.insert(portariaChecklists).values({ organizacaoId, reservaId }).onConflictDoNothing();
     const [antes] = await tx.select().from(portariaChecklists).where(eq(portariaChecklists.reservaId, reservaId)).for("update");
+    // Pedidos feitos para uma entrada antiga saem (o histórico guarda as datas) e não contam na ordem.
+    const vigentes = pedidosVigentes(antes, r.checkin, diaDaReserva(r.criadoEm));
+    const atual: Checklist = { ...antes, ...vigentes };
 
     let novo: Partial<Checklist>;
     // Encaminhamento e entrega valem só com o destinatário conferido e os documentos completos:
@@ -230,7 +249,9 @@ export async function registrarPortaria(db: Db, organizacaoId: string, reservaId
     if (reg.tipo === "documentos") {
       if (!Number.isSafeInteger(reg.recebidos) || reg.recebidos < 0 || reg.recebidos > 50) return { ok: false as const, erro: "Quantidade inválida." };
       if (r.hospedes !== null && reg.recebidos > r.hospedes) return { ok: false as const, erro: `A reserva tem ${r.hospedes} hóspede(s): confira a quantidade.` };
-      novo = { documentosRecebidos: reg.recebidos, ...(r.hospedes === null || reg.recebidos < r.hospedes ? desfazEnvio : {}) };
+      // Qualquer mudança na contagem depois do encaminhamento pede novo encaminhamento (e entrega).
+      const mudou = reg.recebidos !== antes.documentosRecebidos && antes.encaminhadoEm !== null;
+      novo = { documentosRecebidos: reg.recebidos, ...(mudou || r.hospedes === null || reg.recebidos < r.hospedes ? desfazEnvio : {}) };
     } else if (reg.tipo === "destinatario") {
       novo = { destinatarioConferido: reg.conferido, ...(reg.conferido ? {} : desfazEnvio) };
     } else if (reg.tipo === "pendencia") {
@@ -247,13 +268,13 @@ export async function registrarPortaria(db: Db, organizacaoId: string, reservaId
         const janela = foraDaJanela(reg.tipo, reg.data, r.checkin, diaDaReserva(r.criadoEm));
         if (janela) return { ok: false as const, erro: janela };
       }
-      const fora = foraDeOrdem(antes, reg.tipo, reg.data);
+      const fora = foraDeOrdem(atual, reg.tipo, reg.data);
       if (fora) return { ok: false as const, erro: fora };
       novo = { [CAMPO_DATA[reg.tipo]]: reg.data };
     }
     const [depois] = await tx
       .update(portariaChecklists)
-      .set({ ...novo, atualizadoEm: new Date() })
+      .set({ ...vigentes, ...novo, atualizadoEm: new Date() })
       .where(eq(portariaChecklists.id, antes.id))
       .returning();
     await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: `portaria.${reg.tipo}`, entidade: "reserva", entidadeId: reservaId, mudancas: calcularMudancas(antes, depois) });
