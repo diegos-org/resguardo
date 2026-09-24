@@ -2,10 +2,16 @@
  * Regras financeiras da organização (M1.7): base da comissão e quem recebe, por canal, quando
  * o imóvel não tem configuração própria. Sem nada gravado, vale `REGRAS_PADRAO` (confirmado
  * por Diego em 24/09). O motor sempre lê daqui — uma regra, um lugar.
+ *
+ * Cada mudança vira uma VERSÃO com a data em que passa a valer ("desde"), e cada reserva usa
+ * a versão vigente na sua data de entrada. Assim, reprocessar uma reserva antiga (ex.: nova
+ * sincronização do Beds24) usa a regra da época, nunca a de hoje. Antes da primeira versão,
+ * vale `REGRAS_PADRAO`.
  */
 import { ORIGENS_RESERVA, type OrigemReserva } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { REGRAS_PADRAO, type RegrasMotor } from "@/financeiro/motor";
+import { hojeISO } from "@/lib/datas";
 import { lerConfig } from "./armazem";
 
 export const OPCOES_RECEBIMENTO = ["split", "empresa", "a_confirmar"] as const;
@@ -34,6 +40,28 @@ export function lerFormRegras(form: Record<string, unknown>): RegrasMotor | null
   return { base: base as RegrasMotor["base"], recebimento: recebimento as RegrasMotor["recebimento"] };
 }
 
-export async function lerRegrasFinanceiras(db: Db, organizacaoId: string): Promise<RegrasMotor> {
-  return normalizarRegras(await lerConfig(db, organizacaoId, "regras_financeiras"));
+export type VersaoRegras = RegrasMotor & { desde: string };
+
+/** Versões gravadas, em ordem de data (valores inválidos são descartados). */
+export function versoesDe(v: Record<string, unknown> | null): VersaoRegras[] {
+  const lista = Array.isArray(v?.versoes) ? (v!.versoes as Record<string, unknown>[]) : [];
+  return lista
+    .filter((x) => x && typeof x.desde === "string" && /^\d{4}-\d{2}-\d{2}$/.test(x.desde))
+    .map((x) => ({ desde: x.desde as string, ...normalizarRegras(x) }))
+    .sort((a, b) => a.desde.localeCompare(b.desde));
+}
+
+/** Regra vigente numa data: a última versão com `desde` ≤ data; antes de todas, o padrão. */
+export function regrasNaData(versoes: readonly VersaoRegras[], data: string): RegrasMotor {
+  const v = versoes.filter((x) => x.desde <= data).at(-1);
+  return v ? { base: v.base, recebimento: v.recebimento } : REGRAS_PADRAO;
+}
+
+/** Regras vigentes na data (padrão: hoje). O motor passa a data de entrada da reserva. */
+export async function lerRegrasFinanceiras(db: Db, organizacaoId: string, data: string = hojeISO()): Promise<RegrasMotor> {
+  return regrasNaData(await lerVersoesRegras(db, organizacaoId), data);
+}
+
+export async function lerVersoesRegras(db: Db, organizacaoId: string): Promise<VersaoRegras[]> {
+  return versoesDe(await lerConfig(db, organizacaoId, "regras_financeiras"));
 }

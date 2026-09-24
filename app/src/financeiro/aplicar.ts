@@ -31,7 +31,7 @@ export async function aplicarMotor(
   organizacaoId: string,
   reservaId: string,
   autorId: string | null,
-  /** Sem regras: usa as da organização (Configurações → Regras financeiras). */
+  /** Sem regras: usa as da organização vigentes na data de entrada (Configurações → Regras financeiras). */
   regras?: RegrasMotor,
 ): Promise<ResultadoAplicacao | null> {
   if (!uuidValido(reservaId)) return null;
@@ -55,7 +55,7 @@ export async function aplicarMotor(
       .from(recebimentoPorCanal)
       .where(and(eq(recebimentoPorCanal.imovelId, r.imovelId), eq(recebimentoPorCanal.organizacaoId, organizacaoId)));
     const recebimentoDoImovel = Object.fromEntries(config.map((c) => [c.origem, c.recebimento]));
-    const { lancamentos: calculados, avisos } = calcularReserva(r, contratos, donos.map((d) => d.id), regras ?? (await lerRegrasFinanceiras(tx, organizacaoId)), recebimentoDoImovel);
+    const { lancamentos: calculados, avisos } = calcularReserva(r, contratos, donos.map((d) => d.id), regras ?? (await lerRegrasFinanceiras(tx, organizacaoId, r.checkin)), recebimentoDoImovel);
     const desejados = calculados.map((l) => ({ ...l, chaveOrigem: `${l.chaveOrigem}:${assinatura(l)}` }));
 
     const doMotor = await tx
@@ -137,7 +137,7 @@ export async function recalcularReservas(
   organizacaoId: string,
   f: { imovelId?: string; aPartirDe?: string } = {},
   autorId: string | null = null,
-  /** Sem regras: usa as da organização (Configurações → Regras financeiras). */
+  /** Sem regras: usa as da organização vigentes na data de entrada (Configurações → Regras financeiras). */
   regras?: RegrasMotor,
 ): Promise<ResultadoRecalculo> {
   if (f.imovelId && !uuidValido(f.imovelId)) return { reservas: 0, criados: 0, estornados: 0 };
@@ -156,9 +156,8 @@ export async function recalcularReservas(
     )
     .orderBy(asc(reservas.checkin), asc(reservas.id));
   const total: ResultadoRecalculo = { reservas: ids.length, criados: 0, estornados: 0 };
-  const efetivas = regras ?? (await lerRegrasFinanceiras(db, organizacaoId));
   for (const { id } of ids) {
-    const r = await aplicarMotor(db, organizacaoId, id, autorId, efetivas);
+    const r = await aplicarMotor(db, organizacaoId, id, autorId, regras);
     total.criados += r?.criados ?? 0;
     total.estornados += r?.estornados ?? 0;
   }

@@ -87,7 +87,8 @@
     **Editar**. O que estiver faltando (imóvel sem contrato, sem proprietário) aparece em
     vermelho.
 - M1.7: **Configurações** (menu **Configurações**, só para você), com abas:
-  - **Empresa:** nome, razão social, CNPJ, e-mail, telefone/WhatsApp, endereço e site.
+  - **Empresa:** nome, razão social, CNPJ, e-mail, telefone/WhatsApp, endereço e site. O
+    nome aparece no painel, no portal do proprietário e nos e-mails de convite e de código.
   - **Usuários e permissões:** adicionar alguém da equipe (nome, e-mail e papel:
     Administrador ou Operação), trocar o papel, renomear, desativar (pede confirmação e
     corta o acesso na hora) e reativar. Você não consegue se desativar nem tirar o seu
@@ -97,7 +98,9 @@
     canal** (canal paga o proprietário direto, empresa recebe e repassa no mês, ou "a
     confirmar"). É o padrão da empresa; cada imóvel e cada reserva ainda podem ter a sua
     escolha. Ao salvar, pede confirmação e recalcula só as reservas com entrada **de hoje em
-    diante** — o passado não muda — e mostra quantas foram recalculadas.
+    diante**, e mostra quantas foram recalculadas. O sistema guarda cada versão da regra com
+    a data em que passou a valer: uma reserva antiga continua com a regra da época, mesmo que
+    o Beds24 a mande de novo.
   - **Integrações:** a situação de cada serviço e o nome exato da variável que vai na
     Vercel. Chaves e senhas nunca ficam no painel.
   - **Categorias de despesa:** as mesmas da tela de Despesas, também editáveis aqui.

@@ -12,9 +12,9 @@ import { saldoAcerto } from "@/financeiro/ledger";
 import { REGRAS_PADRAO } from "@/financeiro/motor";
 import type { DadosReserva } from "@/reservas/regras";
 import { sincronizarReserva } from "@/reservas/repositorio";
-import { lerEmpresa, salvarEmpresa, validarEmpresa } from "./empresa";
+import { lerEmpresa, nomeDaEmpresa, nomeDaEmpresaPorEmail, salvarEmpresa, validarEmpresa } from "./empresa";
 import { criarModelo, excluirModelo, garantirModelosIniciais, listarModelos, MODELOS_INICIAIS, preencherModelo, atualizarModelo, validarModelo } from "./modelos";
-import { lerFormRegras, lerRegrasFinanceiras, normalizarRegras } from "./regras-financeiras";
+import { lerFormRegras, lerRegrasFinanceiras, lerVersoesRegras, normalizarRegras, regrasNaData, versoesDe } from "./regras-financeiras";
 import { salvarRegrasFinanceiras } from "./salvar-regras";
 import { lerTextosSite, salvarTextosSite, TEXTOS_SITE_INICIAIS, validarTextosSite } from "./textos-site";
 import { alterarUsuario, criarUsuarioEquipe, listarUsuarios } from "./usuarios";
@@ -112,6 +112,40 @@ describe("regras financeiras", () => {
     expect(await historicoDe(db, org, "configuracao", org)).toHaveLength(1);
   });
 
+  it("sincronizar de novo uma reserva antiga usa a regra da época, não a de hoje", async () => {
+    const passada = await sinc("5", { checkin: "2025-11-10", checkout: "2025-11-12" });
+    const { listarLancamentos } = await import("@/financeiro/ledger");
+    const antes = await listarLancamentos(db, org, { reservaId: passada });
+    await salvarRegrasFinanceiras(db, org, { base: "bruto", recebimento: { ...REGRAS_PADRAO.recebimento, booking: "split" } }, admin);
+    await sinc("5", { checkin: "2025-11-10", checkout: "2025-11-12" }); // Beds24 manda de novo
+    const depois = await listarLancamentos(db, org, { reservaId: passada });
+    expect(depois).toHaveLength(antes.length);
+    expect(depois.some((l) => l.estornoDe)).toBe(false);
+    expect(await lerRegrasFinanceiras(db, org, "2025-11-10")).toEqual(REGRAS_PADRAO);
+  });
+
+  it("versões: cada data usa a vigente; salvar de novo no mesmo dia substitui a do dia", () => {
+    const v = versoesDe({
+      versoes: [
+        { desde: "2027-01-01", base: "bruto", recebimento: {} },
+        { desde: "2026-01-01", base: "liquido_canal", recebimento: { airbnb: "empresa" } },
+        { desde: "lixo", base: "bruto" },
+      ],
+    });
+    expect(v.map((x) => x.desde)).toEqual(["2026-01-01", "2027-01-01"]);
+    expect(regrasNaData(v, "2025-12-31")).toEqual(REGRAS_PADRAO);
+    expect(regrasNaData(v, "2026-06-01").recebimento.airbnb).toBe("empresa");
+    expect(regrasNaData(v, "2027-01-01").base).toBe("bruto");
+  });
+
+  it("duas mudanças no mesmo dia ficam numa versão só", async () => {
+    await salvarRegrasFinanceiras(db, org, { ...REGRAS_PADRAO, base: "bruto" }, admin);
+    await salvarRegrasFinanceiras(db, org, { ...REGRAS_PADRAO, recebimento: { ...REGRAS_PADRAO.recebimento, site: "split" } }, admin);
+    const v = await lerVersoesRegras(db, org);
+    expect(v).toHaveLength(1);
+    expect(v[0]).toMatchObject({ base: "liquido_canal", recebimento: { site: "split" } });
+  });
+
   it("reserva nova já nasce com a regra da empresa", async () => {
     await salvarRegrasFinanceiras(db, org, { ...REGRAS_PADRAO, recebimento: { ...REGRAS_PADRAO.recebimento, booking: "a_confirmar" } }, admin);
     const id = await sinc("3");
@@ -153,6 +187,10 @@ describe("empresa", () => {
     expect((await lerEmpresa(db, outraOrg)).telefone).toBe("");
     const [c] = await db.select().from(configuracoes).where(eq(configuracoes.organizacaoId, org));
     expect(c.valor).not.toHaveProperty("nome");
+    // O nome salvo é o que aparece no painel e nos e-mails.
+    expect(await nomeDaEmpresa(db, org)).toBe("SCL");
+    expect(await nomeDaEmpresaPorEmail(db, "ADMIN@example.com")).toBe("SCL");
+    expect(["SCL", "B"]).toContain(await nomeDaEmpresaPorEmail(db, "ninguem@example.com")); // sem usuário: organização mais antiga
   });
 });
 
@@ -217,6 +255,9 @@ describe("modelos de mensagem", () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.erros.texto).toContain("{hopede}");
     expect(validarModelo({ nome: "A", texto: "Olá {hospede}" }).ok).toBe(true);
+    for (const ruim of ["Olá {hospede }", "Olá { hospede}", "Olá {Hospede}", "Olá {hospede", "Olá hospede}", "Olá {{hospede}}", "Olá {}"]) {
+      expect(validarModelo({ nome: "A", texto: ruim }).ok, ruim).toBe(false);
+    }
   });
 
   it("modelos iniciais uma vez só; criar, editar, arquivar e excluir", async () => {

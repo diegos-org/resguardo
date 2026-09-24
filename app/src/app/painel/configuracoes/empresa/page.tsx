@@ -7,7 +7,7 @@ import { lerEmpresa } from "@/configuracoes/empresa";
 import { getDb } from "@/db/client";
 
 const CAMPOS = [
-  { nome: "nome", rotulo: "Nome da empresa (aparece no sistema e nos e-mails)", limite: 80, obrigatorio: true },
+  { nome: "nome", rotulo: "Nome da empresa (aparece no painel, no portal do proprietário e nos e-mails de convite e de código)", limite: 80, obrigatorio: true },
   { nome: "razaoSocial", rotulo: "Razão social", limite: 120 },
   { nome: "cnpj", rotulo: "CNPJ", limite: 18 },
   { nome: "email", rotulo: "E-mail de contato", limite: 200, tipo: "email" },

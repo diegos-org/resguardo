@@ -16,6 +16,7 @@ import { codigosLogin, usuarios } from "@/db/schema";
 import type { Db } from "@/db/types";
 import type { Correio } from "@/email/correio";
 import { temConvitePendente } from "@/convites/convites";
+import { nomeDaEmpresaPorEmail } from "@/configuracoes/empresa";
 import { normalizarEmail } from "./entrada";
 
 export const VALIDADE_MS = 10 * 60 * 1000;
@@ -71,11 +72,12 @@ export async function pedirCodigo(db: Db, correio: Correio, emailBruto: string, 
   if ((await contar()) >= MAX_CODIGOS_GERAL_POR_HORA) return "limite";
 
   const codigo = (o.gerar ?? gerarCodigoNumerico)();
+  const empresa = await nomeDaEmpresaPorEmail(db, email);
   // Envia primeiro: se falhar (lança), nada muda no banco.
   await correio.enviar({
     para: email,
     assunto: `Seu código de acesso: ${codigo}`,
-    texto: `Seu código para entrar no painel da Sua Casa Leblon é ${codigo}.\n\nEle vale por 10 minutos e só pode ser usado uma vez.\nSe você não pediu este código, ignore este e-mail.`,
+    texto: `Seu código para entrar no sistema da ${empresa} é ${codigo}.\n\nEle vale por 10 minutos e só pode ser usado uma vez.\nSe você não pediu este código, ignore este e-mail.`,
   });
   await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`codigo-login:${email}`}))`);

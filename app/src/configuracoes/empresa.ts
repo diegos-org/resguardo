@@ -2,9 +2,9 @@
  * Dados da empresa (M1.7). O nome fica em `organizacoes.nome` (onde o resto do sistema já
  * lê); os demais campos, na configuração "empresa".
  */
-import { eq } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
-import { organizacoes } from "@/db/schema";
+import { organizacoes, usuarios } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { gravarConfig, lerConfig } from "./armazem";
 
@@ -51,4 +51,28 @@ export async function salvarEmpresa(db: Db, organizacaoId: string, dados: DadosE
     }
     await gravarConfig(tx, organizacaoId, "empresa", Object.fromEntries(CAMPOS_CONFIG.map((k) => [k, dados[k]])), autorId);
   });
+}
+
+/** Nome usado quando ainda não há organização (primeiro acesso). */
+export const NOME_EMPRESA_INICIAL = "Sua Casa Leblon";
+
+/** Nome da empresa para cabeçalhos e e-mails — o mesmo que se edita em Configurações → Empresa. */
+export async function nomeDaEmpresa(db: Db, organizacaoId: string): Promise<string> {
+  const [o] = await db.select({ nome: organizacoes.nome }).from(organizacoes).where(eq(organizacoes.id, organizacaoId));
+  return o?.nome || NOME_EMPRESA_INICIAL;
+}
+
+/**
+ * Nome da empresa para um e-mail antes do login (código de acesso): a organização do usuário;
+ * sem usuário (primeiro acesso, convite), a organização mais antiga.
+ */
+export async function nomeDaEmpresaPorEmail(db: Db, email: string): Promise<string> {
+  const [u] = await db
+    .select({ nome: organizacoes.nome })
+    .from(usuarios)
+    .innerJoin(organizacoes, eq(organizacoes.id, usuarios.organizacaoId))
+    .where(eq(sql`lower(${usuarios.email})`, email.toLowerCase()));
+  if (u?.nome) return u.nome;
+  const [o] = await db.select({ nome: organizacoes.nome }).from(organizacoes).orderBy(asc(organizacoes.criadoEm), asc(organizacoes.id)).limit(1);
+  return o?.nome || NOME_EMPRESA_INICIAL;
 }

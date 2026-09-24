@@ -28,8 +28,9 @@ export const EXEMPLO: Record<Variavel, string> = {
   empresa: "Sua Casa Leblon",
 };
 
+/** Tudo o que está entre chaves, exatamente como escrito (inclusive com espaços). */
 export function variaveisDoTexto(texto: string): string[] {
-  return [...new Set([...texto.matchAll(/\{([^{}\s]*)\}/g)].map((m) => m[1]))];
+  return [...new Set([...texto.matchAll(/\{([^{}]*)\}/g)].map((m) => m[1]))];
 }
 
 export function preencherModelo(texto: string, dados: Partial<Record<Variavel, string>>): string {
@@ -47,7 +48,10 @@ export function validarModelo(bruto: Record<string, unknown>): { ok: true; dados
   else if (dados.texto.length > 2000) erros.texto = "Máximo de 2000 caracteres.";
   else {
     const desconhecidas = variaveisDoTexto(dados.texto).filter((v) => !Object.hasOwn(VARIAVEIS, v));
-    if (desconhecidas.length) erros.texto = `Variável desconhecida: ${desconhecidas.map((v) => `{${v}}`).join(", ")}. Use só as da lista.`;
+    // Chave sozinha, sem par (ex.: "{hospede" ou "hospede}"), também sairia assim para o hóspede.
+    const semPar = /[{}]/.test(dados.texto.replace(/\{[^{}]*\}/g, ""));
+    if (desconhecidas.length) erros.texto = `Variável desconhecida: ${desconhecidas.map((v) => `{${v}}`).join(", ")}. Use só as da lista, sem espaços dentro das chaves.`;
+    else if (semPar) erros.texto = "Há uma chave { ou } sem par. Variáveis são escritas assim: {hospede}.";
   }
   return Object.keys(erros).length ? { ok: false, erros } : { ok: true, dados };
 }
