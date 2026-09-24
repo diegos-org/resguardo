@@ -136,6 +136,40 @@ describe("painel inicial", () => {
     expect(textos.some((t) => t.includes("acerto pendente"))).toBe(false);
   });
 
+  it("ajuste pendente de imóvel arquivado continua no alerta de 'todos'", async () => {
+    await registrarAjuste(
+      db,
+      org,
+      { data: "2026-10-15", imovelId: b, reservaId: null, proprietarioId: null, motivo: "", origem: "desconhecida", origemComprovada: false, evidencia: "Extrato", comprovante: "", valor: 5000, direcao: "empresa_saida" },
+      null,
+    );
+    await db.update(imoveis).set({ ativo: false }).where(eq(imoveis.id, b));
+    expect((await carregar()).alertas.map((x) => x.texto)).toContain("1 ajuste(s) pendente(s) de esclarecimento.");
+  });
+
+  it("reserva sem contrato na data da entrada avisa mesmo com contrato vigente hoje", async () => {
+    await criarReserva(db, org, reserva(b, "2026-10-12", "2026-10-15"), null); // 102 sem contrato: nada calculado
+    await criarContrato(db, org, b, { tipo: "gestao_completa", comissao: "15", inicio: "2026-10-20" }, null);
+    const d = await carregarDashboard(db, org, {
+      imoveis: await listarImoveis(db, org),
+      todos: true,
+      periodo: { inicio: "2026-10-01", fim: "2026-11-01" },
+      ano: 2026,
+      hoje: "2026-10-30",
+      verFinanceiro: true,
+    });
+    const textos = d.alertas.map((x) => x.texto).join(" | ");
+    expect(textos).not.toContain("Sem contrato vigente");
+    expect(d.alertas.find((x) => x.texto.includes("sem cálculo no financeiro"))).toMatchObject({ texto: expect.stringContaining("1 reserva(s)"), link: "/painel/reservas" });
+  });
+
+  it("acerto pendente (imóvel sem proprietário) diz onde está e leva às regras", async () => {
+    await criarContrato(db, org, b, { tipo: "gestao_completa", comissao: "15", inicio: "2025-01-01" }, null);
+    await criarReserva(db, org, reserva(b, "2026-10-12", "2026-10-15"), null);
+    const alerta = (await carregar()).alertas.find((x) => x.texto.includes("acerto pendente"));
+    expect(alerta).toMatchObject({ texto: expect.stringContaining("(102)"), link: "/painel/sistema" });
+  });
+
   it("filtro de imóvel: números só do imóvel escolhido; sobreposição vira alerta", async () => {
     await criarReserva(db, org, reserva(a, "2026-10-12", "2026-10-15"), null);
     await criarReserva(db, org, reserva(a, "2026-10-14", "2026-10-16"), null);
