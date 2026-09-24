@@ -297,4 +297,20 @@ describe("consistência entre telas (M4.8)", () => {
     await sincronizarReserva(db, org, "csv", "booking:R5", dados, null);
     expect(await resolverConferencia(db, org, r.reserva.id, null)).toBe(false);
   });
+
+  it("resolvida vale também para a parte que já nasceu pendente (quem recebe a confirmar)", async () => {
+    const dados = reserva(a, "2026-10-01", "2026-10-03", { valorBruto: 50000, taxaCanal: 0 });
+    const r = await sincronizarReserva(db, org, "csv", "booking:R6", dados, null);
+    if (!r.ok) throw new Error("reserva");
+    await db.update(lancamentos).set({ estado: "realizado" }).where(and(eq(lancamentos.reservaId, r.reserva.id), eq(lancamentos.tipo, "receita_bruta")));
+    // Como o motor faz com "quem recebe a confirmar": a parte dela nasceu pendente.
+    await db.update(lancamentos).set({ estado: "pendente" }).where(and(eq(lancamentos.reservaId, r.reserva.id), eq(lancamentos.tipo, "direito_proprietario")));
+    await sincronizarReserva(db, org, "csv", "booking:R6", { ...dados, estado: "cancelada" }, null);
+    const bloqueios = async () => (await preverRepasses(db, org, "2026-10", "2026-11-10", [dona]))[0].bloqueios.join(" ");
+    expect(await bloqueios()).toContain("acerto pendente");
+    expect(await resolverConferencia(db, org, r.reserva.id, null)).toBe(true);
+    expect(await bloqueios()).not.toContain("acerto pendente");
+    const lista = await reservasDoPortal(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo: OUTUBRO });
+    expect(lista.find((x) => x.id === r.reserva.id)?.situacao).toBe("definido");
+  });
 });

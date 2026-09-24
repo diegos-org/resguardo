@@ -144,6 +144,8 @@ export async function reservasDoPortal(
     // Não confirmada com valores em vigor: dinheiro já movimentado, a conferir no painel (até ser dada por resolvida).
     if (estado !== "confirmada" && !resolvida) return "em_conferencia";
     const d = partes.filter((p) => p.reservaId === id);
+    // Não confirmada já dada por resolvida: a decisão vale para a parte dela, mesmo "pendente".
+    if (estado !== "confirmada") return d.length ? "definido" : "sem_calculo";
     if (d.some((p) => p.estado === "pendente")) return "em_conferencia";
     return d.length ? "definido" : "sem_calculo";
   };

@@ -25,13 +25,14 @@ export function lancamentoEmVigor(db: Db) {
  * novo ou quando alguém dá a conferência por resolvida no painel (depois do ajuste manual).
  */
 export function lancamentoEmConferencia() {
-  return or(
-    eq(lancamentos.estado, "pendente"),
+  const daReservaNaoConfirmada = (resolvida: boolean) =>
     and(
       eq(lancamentos.origem, "motor"),
-      sql`${lancamentos.reservaId} in (select ${reservas.id} from ${reservas} where ${reservas.estado} <> 'confirmada' and ${reservas.conferenciaResolvidaEm} is null)`,
-    ),
-  );
+      sql`${lancamentos.reservaId} in (select ${reservas.id} from ${reservas} where ${reservas.estado} <> 'confirmada' and ${reservas.conferenciaResolvidaEm} is ${sql.raw(resolvida ? "not null" : "null")})`,
+    );
+  // A decisão tomada na reserva vale para todos os lançamentos do motor dela, inclusive os que já
+  // nasceram "pendente" (ex.: quem recebe a confirmar); os pendentes de outras origens continuam.
+  return and(or(eq(lancamentos.estado, "pendente"), daReservaNaoConfirmada(false)), sql`not coalesce(${daReservaNaoConfirmada(true)}, false)`);
 }
 
 /** Condição sobre `reservas`: a reserva é de um destes proprietários (ver o topo do arquivo). */
