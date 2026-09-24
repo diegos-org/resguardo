@@ -284,6 +284,17 @@
     contestados e despesas a pagar — cada um com link.
   A equipe de operação vê ocupação e entradas/saídas, sem valores. Os números vêm das mesmas
   fontes das outras telas, então batem com Reservas, Despesas e Financeiro.
+- M4.7: **aba Apartamentos** (menu lateral): uma tabela com uma linha por imóvel e o total no
+  fim, para o período do filtro:
+  - do lado da **empresa**: reservas, ocupação, receita bruta, taxas, comissões, despesas da
+    empresa, ajustes e **resultado da empresa** daquele imóvel;
+  - do lado do **proprietário**, separado: despesas dele, o que mudou no acerto no período, o
+    **saldo do acerto** acumulado (com "empresa deve" ou "proprietário deve") e os
+    **adiantamentos a cobrar** (os contestados aparecem marcados);
+  - **você escolhe como ver:** marque as colunas que quer, ou use **De/Até** para um intervalo
+    de meses (até 36). Intervalo inválido não é adivinhado: aparece um aviso e vale o filtro;
+  - com "todos os imóveis", entra também uma linha **Geral da empresa** (despesas sem imóvel)
+    e os imóveis arquivados que tiveram movimento, então o total bate com o Início.
 - M4.1: **base do financeiro (o "livro" de lançamentos).** Cada fato financeiro vira um
   lançamento: valor bruto da reserva, taxa do canal, comissão SCL, parte do proprietário,
   recebimentos, repasses, despesas da empresa, despesas do proprietário, adiantamentos,
@@ -365,9 +376,13 @@
 |---|---|
 | ![Início](docs/telas/inicio-dashboard.png) | ![Repasses no celular](docs/telas/repasses-celular.png) |
 
-| Repasses aos proprietários (fechamento do mês) |
+| Repasses aos proprietários (fechamento do mês) | Apartamentos no celular |
+|---|---|
+| ![Repasses](docs/telas/repasses.png) | ![Apartamentos no celular](docs/telas/apartamentos-celular.png) |
+
+| Apartamentos (resultado por imóvel) |
 |---|
-| ![Repasses](docs/telas/repasses.png) |
+| ![Apartamentos](docs/telas/apartamentos.png) |
 
 | Limpezas | Limpezas no celular |
 |---|---|

@@ -35,6 +35,8 @@ describe("Menu por papel", () => {
   it("admin vê tudo; hóspede não vê nada", () => {
     expect(secoesPara("admin")).toHaveLength(SECOES.length);
     expect(secoesPara("hospede")).toHaveLength(0);
+    // Aba só da equipe interna: não aparece para proprietário.
+    expect(secoesPara("proprietario").map((x) => x.slug)).not.toContain("apartamentos");
   });
 });
 
