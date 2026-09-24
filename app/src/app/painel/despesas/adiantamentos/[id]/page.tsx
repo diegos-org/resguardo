@@ -161,7 +161,7 @@ export default async function Adiantamento({ params, searchParams }: PageProps<"
                     <td className={styles.numero}>{formatBRL(q.valor)}</td>
                     <td>{q.nota || "—"}</td>
                     <td>
-                      {editar && !q.desfeitaEm && (
+                      {editar && !q.desfeitaEm && q.forma !== "compensacao" && (
                         <form action={desfazerAcao} style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <input type="hidden" name="id" value={a.id} />
                           <input type="hidden" name="quitacaoId" value={q.id} />
