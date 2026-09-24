@@ -11,6 +11,7 @@ import { formatBRL } from "@/lib/money";
 import { cancelar } from "@/reservas/acoes";
 import { NOMES_ESTADO, NOMES_ORIGEM, NOMES_RECEBIMENTO, noites } from "@/reservas/regras";
 import { obterReserva } from "@/reservas/repositorio";
+import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 
 const CAMPOS_FINANCEIROS = ["valorBruto", "taxaCanal", "valorLiquido", "moeda", "recebimento"];
 const dataBr = (d: string) => d.split("-").reverse().join("/");
@@ -66,9 +67,12 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
       {r.estado !== "cancelada" && podeFazer(sessao.papel, "reserva:editar") && (
         <form action={cancelar}>
           <input type="hidden" name="id" value={r.id} />
-          <button type="submit" style={{ font: "inherit", padding: "8px 16px", borderRadius: 6, border: "1px solid #b3261e", color: "#b3261e", background: "#fff", cursor: "pointer" }}>
+          <BotaoConfirmar
+            pergunta={`Cancelar a reserva ${r.codigo}? O financeiro dela será estornado.`}
+            style={{ font: "inherit", padding: "8px 16px", borderRadius: 6, border: "1px solid #b3261e", color: "#b3261e", background: "#fff", cursor: "pointer" }}
+          >
             Cancelar reserva
-          </button>
+          </BotaoConfirmar>
         </form>
       )}
       {verValores && (

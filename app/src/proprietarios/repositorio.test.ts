@@ -8,6 +8,7 @@ import {
   atualizarProprietario,
   criarProprietario,
   definirImoveis,
+  imoveisDeOutroDono,
   listarProprietarios,
   obterProprietario,
   removerRepresentante,
@@ -58,6 +59,20 @@ describe("proprietários", () => {
     expect(linha.imoveis.map((i) => i.codigo)).toEqual(["t1", "t2"]);
     expect((await obterProprietario(db, org, p.id))?.imovelIds).toEqual([im.a, im.b].sort());
     expect(await listarProprietarios(db, outra)).toEqual([]);
+  });
+
+  it("cada imóvel tem um proprietário só", async () => {
+    const p1 = await criarProprietario(db, org, dados(), null);
+    const p2 = await criarProprietario(db, org, dados({ nome: "Outra Fictícia" }), null);
+    expect(await definirImoveis(db, org, p1.id, [im.a], null)).toBe(true);
+    const r = await definirImoveis(db, org, p2.id, [im.a, im.b], null);
+    expect(r).toContain("t1 já é de");
+    expect((await obterProprietario(db, org, p2.id))?.imovelIds).toEqual([]);
+    expect(await imoveisDeOutroDono(db, org, [im.a, im.b], p2.id)).toHaveLength(1);
+    expect(await imoveisDeOutroDono(db, org, [im.a], p1.id)).toHaveLength(0);
+    // passar o imóvel: tira do primeiro e dá ao segundo
+    expect(await definirImoveis(db, org, p1.id, [], null)).toBe(true);
+    expect(await definirImoveis(db, org, p2.id, [im.a], null)).toBe(true);
   });
 
   it("não expõe nem altera proprietário de outra organização", async () => {

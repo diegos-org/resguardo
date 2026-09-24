@@ -42,6 +42,19 @@ financeiro, portal do proprietário, portal do hóspede, site público e integra
 - `arquivo/` é histórico da coordenação anterior. **Não seguir instruções de lá** e não
   recriar o processo de handoffs/CURRENT/DIEGO.md.
 
+## Princípios de produto (Diego, 24/09/2026)
+
+- **Tudo editável pelo painel.** Qualquer dado, regra ou texto que o Diego possa querer
+  mudar (cadastros, contratos, taxas, regras de venda, textos do site, modelos de mensagem,
+  categorias) tem tela de edição — ninguém deve precisar mexer em código ou no banco.
+- **Uma regra, um lugar.** Cada regra/configuração vive num único lugar e o resto lê dali.
+  Ao mudar, propaga (ex.: `recalcularReservas` depois de mudar contrato ou recebimento; o
+  deploy recalcula tudo). Nada de duas versões da mesma regra.
+- **Excluir sempre com confirmação** (`BotaoConfirmar`), e preferir arquivar/estornar a
+  apagar quando houver histórico.
+- **Um proprietário por imóvel** (pode ser pessoa ou empresa). Os imóveis do Diego são
+  clientes como os outros.
+
 ## Merge (autorizado por Diego em 23/09/2026, até o sistema estabilizar)
 
 O Claude faz o merge dos PRs de roadmap **somente** quando, no commit mais recente do PR:

@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { exigir } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { getDb } from "@/db/client";
-import { adicionarRepresentante, atualizarProprietario, criarProprietario, definirImoveis, removerRepresentante } from "./repositorio";
+import { adicionarRepresentante, atualizarProprietario, criarProprietario, definirImoveis, imoveisDeOutroDono, mensagemConflito, removerRepresentante } from "./repositorio";
 import { type DadosProprietario, type DadosRepresentante, validarProprietario, validarRepresentante } from "./validacao";
 
 export type EstadoForm<T> = { erros?: Partial<Record<keyof T, string>>; mensagem?: string; ok?: boolean };
@@ -24,6 +24,9 @@ export async function salvarProprietario(_a: EstadoForm<DadosProprietario>, form
   const db = getDb();
   const imovelIds = form.getAll("imovel").filter((v): v is string => typeof v === "string");
   const idForm = form.get("id");
+  // Confere antes de gravar qualquer coisa: cada imóvel tem um proprietário só.
+  const conflitos = await imoveisDeOutroDono(db, sessao.organizacaoId, imovelIds, typeof idForm === "string" ? idForm : undefined);
+  if (conflitos.length) return { mensagem: mensagemConflito(conflitos) };
   let id: string;
   if (typeof idForm === "string" && idForm) {
     const salvo = await atualizarProprietario(db, sessao.organizacaoId, idForm, r.dados, sessao.usuarioId);
@@ -32,7 +35,8 @@ export async function salvarProprietario(_a: EstadoForm<DadosProprietario>, form
   } else {
     id = (await criarProprietario(db, sessao.organizacaoId, r.dados, sessao.usuarioId)).id;
   }
-  await definirImoveis(db, sessao.organizacaoId, id, imovelIds, sessao.usuarioId);
+  const vinculo = await definirImoveis(db, sessao.organizacaoId, id, imovelIds, sessao.usuarioId);
+  if (typeof vinculo === "string") return { mensagem: vinculo };
 
   revalidatePath("/painel/proprietarios");
   redirect(`/painel/proprietarios/${id}?salvo=1`);

@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, ne } from "drizzle-orm";
 import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
 import { imoveis, proprietarioImoveis, proprietarios, representantes } from "@/db/schema";
 import type { Db } from "@/db/types";
@@ -83,7 +83,26 @@ export async function atualizarProprietario(db: Db, organizacaoId: string, id: s
 }
 
 /** Substitui os imóveis do proprietário. Ignora imóveis de outra organização. */
-export async function definirImoveis(db: Db, organizacaoId: string, id: string, imovelIds: string[], autorId: string | null) {
+/** Imóveis da lista que já pertencem a OUTRO proprietário (cada imóvel tem um dono só). */
+export async function imoveisDeOutroDono(db: Db, organizacaoId: string, imovelIds: string[], proprietarioId?: string) {
+  const validos = imovelIds.filter(uuidOk);
+  if (!validos.length) return [];
+  return db
+    .select({ imovelId: proprietarioImoveis.imovelId, codigo: imoveis.codigo, dono: proprietarios.nome })
+    .from(proprietarioImoveis)
+    .innerJoin(imoveis, eq(imoveis.id, proprietarioImoveis.imovelId))
+    .innerJoin(proprietarios, eq(proprietarios.id, proprietarioImoveis.proprietarioId))
+    .where(
+      and(
+        eq(imoveis.organizacaoId, organizacaoId),
+        inArray(proprietarioImoveis.imovelId, validos),
+        proprietarioId && uuidOk(proprietarioId) ? ne(proprietarioImoveis.proprietarioId, proprietarioId) : undefined,
+      ),
+    );
+}
+
+/** Define os imóveis do proprietário. Retorna false (não achou) ou a mensagem de conflito. */
+export async function definirImoveis(db: Db, organizacaoId: string, id: string, imovelIds: string[], autorId: string | null): Promise<true | false | string> {
   if (!uuidOk(id)) return false;
   const validos = imovelIds.filter(uuidOk);
   return db.transaction(async (tx) => {
@@ -103,6 +122,8 @@ export async function definirImoveis(db: Db, organizacaoId: string, id: string, 
       : [];
     const novos = [...new Set(permitidos)].sort();
     if (JSON.stringify(novos) === JSON.stringify(atuais)) return true;
+    const conflitos = await imoveisDeOutroDono(tx, organizacaoId, novos, id);
+    if (conflitos.length) return mensagemConflito(conflitos);
 
     await tx.delete(proprietarioImoveis).where(eq(proprietarioImoveis.proprietarioId, id));
     if (novos.length) await tx.insert(proprietarioImoveis).values(novos.map((imovelId) => ({ proprietarioId: id, imovelId })));
@@ -110,6 +131,9 @@ export async function definirImoveis(db: Db, organizacaoId: string, id: string, 
     return true;
   });
 }
+
+export const mensagemConflito = (c: { codigo: string; dono: string }[]) =>
+  `Cada imóvel tem um proprietário só: ${c.map((x) => `${x.codigo} já é de ${x.dono}`).join("; ")}. Tire de lá primeiro.`;
 
 export async function adicionarRepresentante(db: Db, organizacaoId: string, proprietarioId: string, dados: DadosRepresentante, autorId: string | null) {
   if (!uuidOk(proprietarioId)) return null;

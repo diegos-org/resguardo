@@ -8,6 +8,8 @@ import type { DadosReserva } from "@/reservas/regras";
 import { cancelarReserva, criarReserva, sincronizarReserva } from "@/reservas/repositorio";
 import { aplicarMotor, recalcularReservas } from "./aplicar";
 import { REGRAS_PADRAO } from "./motor";
+import { lerRecebimento, salvarRecebimento } from "@/imoveis/recebimento";
+import { historicoDe } from "@/auditoria/auditoria";
 import { listarLancamentos, saldoAcerto, totaisPorTipo } from "./ledger";
 
 let db: Db;
@@ -103,13 +105,9 @@ describe("aplicarMotor", () => {
     expect((await totaisPorTipo(db, org, { imovelIds: [im] })).receita_bruta ?? 0).toBe(0);
   });
 
-  it("imóvel com dois proprietários: acerto pendente, sem escolher um deles", async () => {
+  it("um proprietário por imóvel: o banco não aceita um segundo dono", async () => {
     const [{ id: outro }] = await db.insert(proprietarios).values({ organizacaoId: org, nome: "Outro" }).returning();
-    await db.insert(proprietarioImoveis).values({ proprietarioId: outro, imovelId: im });
-    const id = await sinc();
-    const direito = (await ativosDoMotor(id)).find((l) => l.tipo === "direito_proprietario");
-    expect(direito).toMatchObject({ proprietarioId: null, efeitoSaldo: 0, estado: "pendente" });
-    expect(await saldoAcerto(db, org, { proprietarioId: dono })).toBe(0);
+    await expect(db.insert(proprietarioImoveis).values({ proprietarioId: outro, imovelId: im })).rejects.toThrow();
   });
 
   it("Airbnb: split por padrão (fora do acerto); se a reserva disser que a empresa recebeu, entra no acerto", async () => {
@@ -156,6 +154,23 @@ describe("aplicarMotor", () => {
     expect((await totaisPorTipo(db, org, {})).comissao).toBe(25500);
     expect(await ativosDoMotor(id)).toHaveLength(4);
     expect(await recalcularReservas(db, org, { imovelId: "lixo" })).toEqual({ reservas: 0, criados: 0, estornados: 0 });
+  });
+
+  it("configuração do imóvel (quem recebe por canal): salvar recalcula as reservas dele", async () => {
+    const id = await sinc({ origem: "booking" });
+    expect(await saldoAcerto(db, org, { proprietarioId: dono })).toBe(108375);
+    expect(await salvarRecebimento(db, org, im, { booking: "split" }, null)).toBe(true);
+    expect(await lerRecebimento(db, org, im)).toEqual({ booking: "split" });
+    expect(await saldoAcerto(db, org, { proprietarioId: dono })).toBe(0);
+    expect(await ativosDoMotor(id)).toHaveLength(4);
+    expect((await historicoDe(db, org, "imovel", im)).map((h) => h.acao)).toContain("imovel.recebimento");
+    expect(await salvarRecebimento(db, org, im, {}, null)).toBe(true); // volta ao padrão
+    expect(await saldoAcerto(db, org, { proprietarioId: dono })).toBe(108375);
+    // outra organização / valor inválido: nada muda
+    const [{ id: outra }] = await db.insert(organizacoes).values({ nome: "B" }).returning();
+    expect(await salvarRecebimento(db, outra, im, { booking: "split" }, null)).toBe(false);
+    expect(await salvarRecebimento(db, org, im, { booking: "qualquer" as "split" }, null)).toBe(false);
+    expect(await lerRecebimento(db, org, im)).toEqual({});
   });
 
   it("reserva de outra organização ou id inválido: nada acontece", async () => {
