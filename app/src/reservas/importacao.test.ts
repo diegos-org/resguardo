@@ -149,3 +149,27 @@ describe("linha igual reconfere o financeiro", () => {
     expect((await listarLancamentos(db, org, { reservaId: res.id })).length).toBeGreaterThan(0);
   });
 });
+
+describe("numeração e avisos", () => {
+  it("linha em branco no meio não muda o número das linhas seguintes", async () => {
+    const csv = ["imovel;origem;codigo_canal;entrada;saida", "403;airbnb;L1;10/10/2026;12/10/2026", ";;;;", "999;airbnb;L2;10/10/2026;12/10/2026", ""].join("\n");
+    const a = await analisarCsv(db, org, csv);
+    expect(a.linhas.map((l) => [l.numero, l.situacao])).toEqual([
+      [2, "nova"],
+      [4, "erro"],
+    ]);
+  });
+
+  it("linha protegida também mostra os outros avisos do cálculo", async () => {
+    await criarContrato(db, org, im403, { tipo: "gestao_completa", comissao: "15", inicio: "2025-01-01" }, null);
+    await importarCsv(db, org, "imovel;origem;codigo_canal;entrada;saida;valor_bruto;taxa_canal\n403;airbnb;P1;10/10/2030;12/10/2030;1.000,00;150,00", null);
+    const [res] = await db.select().from(reservas).where(eq(reservas.idFonte, "airbnb:P1"));
+    const [l] = await listarLancamentos(db, org, { reservaId: res.id });
+    await mudarEstado(db, org, l.id, "realizado", null);
+    const r = await importarCsv(db, org, "imovel;origem;codigo_canal;entrada;saida;valor_bruto;taxa_canal\n403;airbnb;P1;10/10/2030;12/10/2030;1.100,00;", null);
+    expect(r.semRecalculo).toEqual([2]);
+    expect(r.avisosFinanceiro.map((a) => a.linha)).toEqual([2]);
+    expect(r.avisosFinanceiro[0].avisos).toContain("Taxa do canal não informada: considerada zero.");
+    expect(r.avisosFinanceiro[0].avisos.join(" ")).not.toContain("dinheiro movimentado");
+  });
+});

@@ -7,7 +7,7 @@ import { and, eq, gt, inArray, lt, ne } from "drizzle-orm";
 import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
 import { imoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { CsvInvalido, LIMITE_BYTES, LIMITE_LINHAS, lerCabecalho, lerCsv, lerLinha } from "./csv";
+import { CsvInvalido, LIMITE_BYTES, LIMITE_LINHAS, lerCabecalho, lerCsv, lerLinha, linhaVazia } from "./csv";
 import { type DadosReserva } from "./regras";
 import { sincronizarReserva } from "./repositorio";
 
@@ -39,8 +39,8 @@ export async function analisarCsv(db: Db, organizacaoId: string, texto: string):
     if (e instanceof CsvInvalido) return { erroGeral: e.message, colunasIgnoradas: [], linhas: [] };
     throw e;
   }
-  if (tabela.length < 2) return { erroGeral: "O arquivo precisa ter o cabeçalho e pelo menos uma reserva.", colunasIgnoradas: [], linhas: [] };
-  if (tabela.length - 1 > LIMITE_LINHAS) return { erroGeral: `No máximo ${LIMITE_LINHAS} reservas por arquivo.`, colunasIgnoradas: [], linhas: [] };
+  if (tabela.filter((l) => !linhaVazia(l)).length < 2) return { erroGeral: "O arquivo precisa ter o cabeçalho e pelo menos uma reserva.", colunasIgnoradas: [], linhas: [] };
+  if (tabela.slice(1).filter((l) => !linhaVazia(l)).length > LIMITE_LINHAS) return { erroGeral: `No máximo ${LIMITE_LINHAS} reservas por arquivo.`, colunasIgnoradas: [], linhas: [] };
   const cab = lerCabecalho(tabela[0]);
   if (cab.faltando.length) {
     const nomes: Record<string, string> = { imovel: "imovel", origem: "origem", codigoCanal: "codigo_canal", checkin: "entrada", checkout: "saida" };
@@ -53,6 +53,7 @@ export async function analisarCsv(db: Db, organizacaoId: string, texto: string):
   const linhas: LinhaAnalise[] = [];
 
   for (let i = 1; i < tabela.length; i++) {
+    if (linhaVazia(tabela[i])) continue; // linha em branco na planilha: pula, sem renumerar as outras
     const l = lerLinha(tabela[i], cab, i + 1);
     if (!l.ok) {
       linhas.push({ numero: l.numero, situacao: "erro", resumo: "", erros: l.erros, avisos: [] });
@@ -158,7 +159,10 @@ export async function importarCsv(db: Db, organizacaoId: string, texto: string, 
         else if (l.situacao === "igual") r.iguais++;
         else r.atualizadas++;
         if (s.financeiroNaoAtualizado) r.semRecalculo.push(l.numero);
-        else if (s.avisosFinanceiro?.length) r.avisosFinanceiro.push({ linha: l.numero, avisos: s.avisosFinanceiro });
+        // Os demais avisos do cálculo aparecem sempre, inclusive nas linhas protegidas (o aviso de
+        // "dinheiro já movimentado" já vai em `semRecalculo`).
+        const outros = (s.avisosFinanceiro ?? []).filter((x) => !s.financeiroNaoAtualizado || !x.includes("dinheiro movimentado"));
+        if (outros.length) r.avisosFinanceiro.push({ linha: l.numero, avisos: outros });
       }
     }
   };

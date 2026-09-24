@@ -10,6 +10,8 @@ import { type DadosReserva, dataValida, validarReserva } from "./regras";
 
 export { LIMITE_BYTES, LIMITE_LINHAS, MODELO_CSV } from "./csv-modelo";
 
+export const linhaVazia = (l: string[]) => l.every((c) => c.trim() === "");
+
 /** Arquivo que não dá para ler com segurança (ex.: aspas abertas sem fechar). */
 export class CsvInvalido extends Error {}
 
@@ -48,7 +50,10 @@ export function lerCsv(texto: string): string[][] {
     linha.push(campo);
     linhas.push(linha);
   }
-  return linhas.filter((l) => l.some((c) => c.trim() !== ""));
+  // Linhas em branco no meio ficam (vazias) para a numeração continuar igual à da planilha;
+  // quem lê pula as vazias. Só as do fim são descartadas.
+  while (linhas.length && linhaVazia(linhas[linhas.length - 1])) linhas.pop();
+  return linhas;
 }
 
 const semAcento = (s: string) =>
