@@ -12,9 +12,15 @@ export function agendaDeTodas(db: Db, correio: Correio | null, agora: Date): Pro
     const partes: string[] = [];
     let erro = false;
     for (const org of await db.select({ id: organizacoes.id }).from(organizacoes)) {
-      const r = await enviarAgenda(db, org.id, correio, agora);
-      partes.push(resumoDoEnvio(r));
-      if (r.falhas.length || r.aviso?.startsWith("sem provedor")) erro = true;
+      // Um erro numa organização não impede as outras de receber a agenda.
+      try {
+        const r = await enviarAgenda(db, org.id, correio, agora);
+        partes.push(resumoDoEnvio(r));
+        if (r.falhas.length || r.aviso?.startsWith("sem provedor")) erro = true;
+      } catch (e) {
+        partes.push(`erro numa organização: ${e instanceof Error ? e.message : String(e)}`);
+        erro = true;
+      }
     }
     const resumo = partes.join("; ") || "nenhuma organização";
     if (erro) throw new Error(resumo);

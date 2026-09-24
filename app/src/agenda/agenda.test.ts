@@ -4,7 +4,7 @@ import { historicoDe } from "@/auditoria/auditoria";
 import { appSettings, execucoesAutomacao, imoveis, organizacoes, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
-import { type Correio, CorreioMemoria, type Mensagem } from "@/email/correio";
+import { type Correio, CorreioMemoria, ErroEnvioIncerto, type Mensagem } from "@/email/correio";
 import type { DadosReserva } from "@/reservas/regras";
 import { criarReserva, sincronizarReserva } from "@/reservas/repositorio";
 import { enviarAgenda, lerConfigAgenda, montarAgenda, salvarConfigAgenda, textoDaAgenda, ultimaAgenda, ultimaAgendaDe } from "./agenda";
@@ -371,6 +371,39 @@ describe("configuração e envio", () => {
     // A tela lista a cidade (formato salvo) e a manda de volta; a escolha continua.
     expect(await salvarConfigAgenda(db, org, { ativa: false, destinatarios: [{ email: "a@example.com", cidades: ["Armação dos Búzios"] }], formatos: { "Armação dos Búzios": "limpezas" } }, null)).toEqual({ ok: true });
     expect((await lerConfigAgenda(db, org)).formatos).toEqual({ "Armação dos Búzios": "limpezas" });
+  });
+
+  it("envio incerto (conexão caiu): a marca fica com o pedido e a retomada manda o mesmo e-mail", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    await nova(rio, "2027-09-01", "2027-09-03", new Date(AGORA.getTime() - 60_000).toISOString());
+    const caiu: Correio = { nome: "caiu", enviar: async () => Promise.reject(new ErroEnvioIncerto("Sem resposta do provedor de e-mail")) };
+    const r = await enviarAgenda(db, org, caiu, AGORA);
+    expect(r.falhas[0]).toContain("envio incerto");
+    const [marca] = await db.select().from(appSettings).where(eq(appSettings.key, `agenda-diaria:${org}:2026-10-01:a@example.com`));
+    expect((marca.value as { estado: string }).estado).toBe("enviando");
+    // Antes de 15 minutos não tenta de novo; depois, manda exatamente o mesmo texto.
+    const correio = new CorreioMemoria();
+    expect(await enviarAgenda(db, org, correio, new Date(AGORA.getTime() + 5 * 60_000))).toMatchObject({ enviados: 0, jaEnviados: 1 });
+    await nova(rio, "2027-09-10", "2027-09-12", new Date(AGORA.getTime() + 60_000).toISOString());
+    expect(await enviarAgenda(db, org, correio, new Date(AGORA.getTime() + 20 * 60_000))).toMatchObject({ enviados: 1 });
+    expect(correio.enviadas[0].texto).toContain("entrada qua 01/09");
+    expect(correio.enviadas[0].texto).not.toContain("10/09");
+  });
+
+  it("cidade que saiu da lista e voltou conta como nova para a pessoa", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    const correio = new CorreioMemoria();
+    await enviarAgenda(db, org, correio, AGORA);
+    // Passa a receber só o Rio; nesse tempo entra uma reserva distante em Búzios.
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: ["Rio de Janeiro"] }] }, null);
+    const dia2 = new Date("2026-10-02T23:00:00Z");
+    await nova(buzios, "2027-10-05", "2027-10-08", new Date(dia2.getTime() - 3_600_000).toISOString());
+    await enviarAgenda(db, org, correio, dia2);
+    expect(correio.enviadas[1].texto).not.toContain("entrada ter 05/10");
+    // Búzios volta: a reserva de 1h atrás chega (cidade não coberta pelo marco do Rio).
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    await enviarAgenda(db, org, correio, new Date(dia2.getTime() + 60_000), { manual: true });
+    expect(correio.enviadas[2].texto).toContain("entrada ter 05/10");
   });
 
   it("reserva avisada, cancelada e confirmada de novo depois é avisada outra vez (é outro evento)", async () => {
