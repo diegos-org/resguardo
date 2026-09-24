@@ -8,7 +8,7 @@ import { getDb } from "@/db/client";
 import { listarLancamentos } from "@/financeiro/ledger";
 import { obterImovel } from "@/imoveis/repositorio";
 import { formatBRL } from "@/lib/money";
-import { cancelar, resolverConferenciaAcao } from "@/reservas/acoes";
+import { cancelar, confirmar, resolverConferenciaAcao } from "@/reservas/acoes";
 import { NOMES_ESTADO, NOMES_ORIGEM, NOMES_RECEBIMENTO, noites } from "@/reservas/regras";
 import { obterReserva } from "@/reservas/repositorio";
 import { lerRegrasFinanceiras } from "@/configuracoes/regras-financeiras";
@@ -75,6 +75,18 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
           </div>
         ))}
       </dl>
+      {r.estado === "pendente" && podeFazer(sessao.papel, "reserva:editar") && (
+        <form action={confirmar}>
+          <input type="hidden" name="id" value={r.id} />
+          <p style={{ margin: "0 0 8px", color: "var(--scl-texto-2)", fontSize: "0.875rem" }}>Pendente: ainda não entra no financeiro. Ao confirmar, os valores entram em todas as telas.</p>
+          <BotaoConfirmar
+            pergunta={`Confirmar a reserva ${r.codigo}? Os valores dela entram no financeiro.`}
+            style={{ font: "inherit", padding: "8px 16px", borderRadius: 6, border: "1px solid var(--scl-verde, #2e6b4f)", color: "var(--scl-verde, #2e6b4f)", background: "#fff", cursor: "pointer" }}
+          >
+            Confirmar reserva
+          </BotaoConfirmar>
+        </form>
+      )}
       {r.estado !== "cancelada" && podeFazer(sessao.papel, "reserva:editar") && (
         <form action={cancelar}>
           <input type="hidden" name="id" value={r.id} />

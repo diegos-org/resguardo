@@ -171,6 +171,30 @@ export async function cancelarReserva(db: Db, organizacaoId: string, id: string,
   });
 }
 
+/** Confirma uma reserva pendente (feita no painel ou vinda de fora): a partir daí entra no financeiro. */
+export async function confirmarReserva(db: Db, organizacaoId: string, id: string, autorId: string | null): Promise<boolean> {
+  if (!uuidValido(id)) return false;
+  return db.transaction(async (tx) => {
+    const [r] = await tx
+      .select()
+      .from(reservas)
+      .where(and(eq(reservas.id, id), eq(reservas.organizacaoId, organizacaoId)))
+      .for("update");
+    if (!r || r.estado !== "pendente") return false;
+    await tx.update(reservas).set({ estado: "confirmada", conferenciaResolvidaEm: null, atualizadoEm: new Date() }).where(eq(reservas.id, id));
+    await registrarAuditoria(tx, {
+      organizacaoId,
+      usuarioId: autorId,
+      acao: "reserva.confirmar",
+      entidade: "reserva",
+      entidadeId: id,
+      mudancas: { estado: ["pendente", "confirmada"] },
+    });
+    await aplicarMotor(tx, organizacaoId, id, autorId);
+    return true;
+  });
+}
+
 /**
  * Dá por resolvida a conferência de uma reserva não confirmada que já movimentou dinheiro (M4.8),
  * depois do ajuste manual: os lançamentos dela deixam de travar o fechamento do mês. Só vale para

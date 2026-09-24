@@ -8,7 +8,7 @@ import { getDb } from "@/db/client";
 import { lerFormReserva } from "./formulario";
 import type { ErrosReserva } from "./regras";
 import { analisarCsv, importarCsv, type ResultadoImportacao, type SituacaoLinha } from "./importacao";
-import { cancelarReserva, criarReserva, resolverConferencia } from "./repositorio";
+import { cancelarReserva, confirmarReserva, criarReserva, resolverConferencia } from "./repositorio";
 
 export type EstadoFormReserva = { erros?: ErrosReserva; mensagem?: string };
 
@@ -33,6 +33,15 @@ export async function cancelar(form: FormData): Promise<void> {
   exigir(sessao, "reserva:editar", { organizacaoId: sessao.organizacaoId });
   const id = String(form.get("id") ?? "");
   await cancelarReserva(getDb(), sessao.organizacaoId, id, sessao.usuarioId);
+  revalidatePath(`/painel/reservas/${id}`);
+  revalidatePath("/painel/reservas");
+}
+
+export async function confirmar(form: FormData): Promise<void> {
+  const sessao = await exigirSessaoPainel();
+  exigir(sessao, "reserva:editar", { organizacaoId: sessao.organizacaoId });
+  const id = String(form.get("id") ?? "");
+  await confirmarReserva(getDb(), sessao.organizacaoId, id, sessao.usuarioId);
   revalidatePath(`/painel/reservas/${id}`);
   revalidatePath("/painel/reservas");
 }

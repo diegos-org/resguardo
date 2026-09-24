@@ -19,7 +19,7 @@ import { reservasDoPortal } from "@/portal/reservas";
 import { resumoDoProprietario } from "@/portal/resumo";
 import { dadosDoRelatorio, textosDoRelatorio } from "@/relatorios/relatorio";
 import type { DadosReserva } from "@/reservas/regras";
-import { cancelarReserva, criarReserva, resolverConferencia, sincronizarReserva } from "@/reservas/repositorio";
+import { cancelarReserva, confirmarReserva, criarReserva, resolverConferencia, sincronizarReserva } from "@/reservas/repositorio";
 import { formatBRL } from "@/lib/money";
 import { carregarApartamentos } from "./apartamentos";
 import { carregarDashboard } from "./dashboard";
@@ -318,5 +318,15 @@ describe("consistência entre telas (M4.8)", () => {
     // O Início também para de acusar "acerto pendente" dessa reserva.
     const t = await tresTelas();
     expect(t.inicio.alertas.map((x) => x.texto).join(" | ")).not.toContain("acerto pendente");
+  });
+
+  it("reserva pendente feita no painel é confirmada pelo botão e entra em todas as telas", async () => {
+    const r = await criarReserva(db, org, reserva(a, "2026-10-01", "2026-10-03", { estado: "pendente", origem: "direta", valorBruto: 50000, taxaCanal: 0 }), null);
+    if (!r.ok) throw new Error("reserva");
+    expect((await tresTelas()).brutos).toEqual([260000, 260000, 260000]);
+    expect(await confirmarReserva(db, org, r.reserva.id, null)).toBe(true);
+    expect((await tresTelas()).brutos).toEqual([310000, 310000, 310000]);
+    // Já confirmada: nada a fazer.
+    expect(await confirmarReserva(db, org, r.reserva.id, null)).toBe(false);
   });
 });
