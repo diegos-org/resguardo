@@ -324,9 +324,24 @@ describe("consistência entre telas (M4.8)", () => {
     const r = await criarReserva(db, org, reserva(a, "2026-10-01", "2026-10-03", { estado: "pendente", origem: "direta", valorBruto: 50000, taxaCanal: 0 }), null);
     if (!r.ok) throw new Error("reserva");
     expect((await tresTelas()).brutos).toEqual([260000, 260000, 260000]);
-    expect(await confirmarReserva(db, org, r.reserva.id, null)).toBe(true);
+    expect(await confirmarReserva(db, org, r.reserva.id, null)).toEqual({ ok: true });
     expect((await tresTelas()).brutos).toEqual([310000, 310000, 310000]);
     // Já confirmada: nada a fazer.
-    expect(await confirmarReserva(db, org, r.reserva.id, null)).toBe(false);
+    expect(await confirmarReserva(db, org, r.reserva.id, null)).toEqual({ ok: false });
+  });
+
+  it("confirmar não esconde divergência de reserva que já movimentou dinheiro: recusa e continua em conferência", async () => {
+    const dados = reserva(a, "2026-10-01", "2026-10-03", { valorBruto: 50000, taxaCanal: 0 });
+    const r = await sincronizarReserva(db, org, "csv", "booking:R7", dados, null);
+    if (!r.ok) throw new Error("reserva");
+    await db.update(lancamentos).set({ estado: "realizado" }).where(and(eq(lancamentos.reservaId, r.reserva.id), eq(lancamentos.tipo, "receita_bruta")));
+    // Volta a pendente com outro valor; confirmar recalcularia diferente do que está no livro.
+    await sincronizarReserva(db, org, "csv", "booking:R7", { ...dados, estado: "pendente", valorBruto: 70000 }, null);
+    const res = await confirmarReserva(db, org, r.reserva.id, null);
+    expect(res.ok).toBe(false);
+    expect(res.aviso).toContain("não batem");
+    const [depois] = await db.select().from(reservas).where(eq(reservas.id, r.reserva.id));
+    expect(depois.estado).toBe("pendente");
+    expect((await preverRepasses(db, org, "2026-10", "2026-11-10", [dona]))[0].bloqueios.join(" ")).toContain("acerto pendente");
   });
 });

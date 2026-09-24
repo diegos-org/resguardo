@@ -22,7 +22,7 @@ const brl = (c: number | null) => (c === null ? "não informado" : formatBRL(c))
 export default async function DetalheReserva({ params, searchParams }: PageProps<"/painel/reservas/[id]">) {
   const sessao = await exigirSessaoPainel();
   const { id } = await params;
-  const { salvo } = await searchParams;
+  const { salvo, erro } = await searchParams;
   const db = getDb();
   const r = await obterReserva(db, sessao.organizacaoId, id);
   if (!r) notFound();
@@ -62,6 +62,11 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
   return (
     <>
       <h1>Reserva {r.codigo}</h1>
+      {typeof erro === "string" && (
+        <p role="alert" className={styles.alerta}>
+          {erro}
+        </p>
+      )}
       {salvo && (
         <p role="status" className={styles.sucesso}>
           Reserva salva.

@@ -171,16 +171,31 @@ export async function cancelarReserva(db: Db, organizacaoId: string, id: string,
   });
 }
 
-/** Confirma uma reserva pendente (feita no painel ou vinda de fora): a partir daí entra no financeiro. */
-export async function confirmarReserva(db: Db, organizacaoId: string, id: string, autorId: string | null): Promise<boolean> {
-  if (!uuidValido(id)) return false;
+class ConfirmacaoRecusada extends Error {}
+
+/**
+ * Confirma uma reserva pendente (feita no painel ou vinda de fora): a partir daí entra no financeiro.
+ * Se ela já movimentou dinheiro e o cálculo novo não bate com o que ficou no livro (o motor não mexe
+ * nisso), não confirma: a conferência continua até o ajuste manual (avisar em vez de supor).
+ */
+export async function confirmarReserva(db: Db, organizacaoId: string, id: string, autorId: string | null): Promise<{ ok: boolean; aviso?: string }> {
+  if (!uuidValido(id)) return { ok: false };
+  try {
+    return await confirmarNaTransacao(db, organizacaoId, id, autorId);
+  } catch (e) {
+    if (e instanceof ConfirmacaoRecusada) return { ok: false, aviso: e.message };
+    throw e;
+  }
+}
+
+async function confirmarNaTransacao(db: Db, organizacaoId: string, id: string, autorId: string | null): Promise<{ ok: boolean }> {
   return db.transaction(async (tx) => {
     const [r] = await tx
       .select()
       .from(reservas)
       .where(and(eq(reservas.id, id), eq(reservas.organizacaoId, organizacaoId)))
       .for("update");
-    if (!r || r.estado !== "pendente") return false;
+    if (!r || r.estado !== "pendente") return { ok: false };
     await tx.update(reservas).set({ estado: "confirmada", conferenciaResolvidaEm: null, atualizadoEm: new Date() }).where(eq(reservas.id, id));
     await registrarAuditoria(tx, {
       organizacaoId,
@@ -190,8 +205,13 @@ export async function confirmarReserva(db: Db, organizacaoId: string, id: string
       entidadeId: id,
       mudancas: { estado: ["pendente", "confirmada"] },
     });
-    await aplicarMotor(tx, organizacaoId, id, autorId);
-    return true;
+    const m = await aplicarMotor(tx, organizacaoId, id, autorId);
+    // Desfaz tudo (a reserva continua pendente, em conferência).
+    if (m?.protegido)
+      throw new ConfirmacaoRecusada(
+        "Não confirmada: esta reserva já movimentou dinheiro e os valores atuais não batem com o que está no financeiro. Faça o ajuste manual e dê a conferência por resolvida.",
+      );
+    return { ok: true };
   });
 }
 

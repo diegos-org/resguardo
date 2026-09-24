@@ -41,9 +41,10 @@ export async function confirmar(form: FormData): Promise<void> {
   const sessao = await exigirSessaoPainel();
   exigir(sessao, "reserva:editar", { organizacaoId: sessao.organizacaoId });
   const id = String(form.get("id") ?? "");
-  await confirmarReserva(getDb(), sessao.organizacaoId, id, sessao.usuarioId);
+  const r = await confirmarReserva(getDb(), sessao.organizacaoId, id, sessao.usuarioId);
   revalidatePath(`/painel/reservas/${id}`);
   revalidatePath("/painel/reservas");
+  if (r.aviso) redirect(`/painel/reservas/${id}?erro=${encodeURIComponent(r.aviso)}`);
 }
 
 /** Dá por resolvida a conferência de reserva não confirmada com dinheiro movimentado (M4.8). */
