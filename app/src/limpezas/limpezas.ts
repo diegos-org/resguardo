@@ -222,22 +222,26 @@ async function profissionalAtivo(tx: Db, organizacaoId: string, id: string): Pro
  */
 async function acertarDespesa(tx: Db, organizacaoId: string, l: Limpeza, autorId: string | null): Promise<{ id: string | null } | { erro: string }> {
   const desejado = l.estado === "realizada" && l.custo !== null && l.custo > 0 ? l.custo : null;
+  // Trava a despesa antes de olhar se está paga: um "marcar como paga" ao mesmo tempo termina
+  // antes (e aparece aqui como paga) ou espera esta transação.
+  if (l.despesaId) await tx.select({ id: lancamentos.id }).from(lancamentos).where(eq(lancamentos.id, l.despesaId)).for("update");
   const atual = l.despesaId ? await obterDespesa(tx, organizacaoId, l.despesaId) : null;
   const vigente = atual && !atual.estornada ? atual : null;
   if (vigente && desejado !== null && vigente.montante === desejado && vigente.imovelId === l.imovelId && vigente.competencia === l.data) return { id: vigente.id };
-  if (vigente) {
-    if (vigente.estado !== "previsto") return { erro: "A despesa desta limpeza já foi paga: para mudar o custo, estorne-a em Despesas primeiro." };
-    if ((await estornarDespesa(tx, organizacaoId, vigente.id, "Custo da limpeza mudou", autorId)) !== true) return { erro: "Não foi possível estornar a despesa anterior desta limpeza." };
-  }
-  if (desejado === null) return { id: null };
+  if (vigente && vigente.estado !== "previsto") return { erro: "A despesa desta limpeza já foi paga: para mudar o custo, estorne-a em Despesas primeiro." };
   // Só na gestão completa a limpeza é custo interno da empresa (DECISOES-OPERACIONAIS): em
   // contrato online, marketplace ou sem contrato na data, não se supõe quem paga — fica o aviso
-  // na lista para lançar em Despesas.
-  const contrato = contratoVigente(await listarContratos(tx, organizacaoId, l.imovelId), l.data);
-  if (contrato?.tipo !== "gestao_completa") return { id: null };
-  await garantirCategoriasIniciais(tx, organizacaoId);
-  const categoria = (await listarCategorias(tx, organizacaoId)).find((c) => /limpeza/i.test(c.nome));
-  if (!categoria) return { erro: "Não há categoria de despesa ativa com “Limpeza” no nome: crie ou reative uma em Despesas → Categorias." };
+  // na lista para lançar em Despesas. Tudo é conferido antes de estornar a despesa anterior.
+  const contrato = desejado === null ? null : contratoVigente(await listarContratos(tx, organizacaoId, l.imovelId), l.data);
+  const lancar = desejado !== null && contrato?.tipo === "gestao_completa";
+  let categoria: { id: string } | undefined;
+  if (lancar) {
+    await garantirCategoriasIniciais(tx, organizacaoId);
+    categoria = (await listarCategorias(tx, organizacaoId)).find((c) => /limpeza/i.test(c.nome));
+    if (!categoria) return { erro: "Não há categoria de despesa ativa com “Limpeza” no nome: crie ou reative uma em Despesas → Categorias." };
+  }
+  if (vigente && (await estornarDespesa(tx, organizacaoId, vigente.id, "Custo da limpeza mudou", autorId)) !== true) return { erro: "Não foi possível estornar a despesa anterior desta limpeza." };
+  if (!lancar || !categoria || desejado === null) return { id: null };
   const [p] = l.profissionalId ? await tx.select({ nome: profissionaisLimpeza.nome }).from(profissionaisLimpeza).where(eq(profissionaisLimpeza.id, l.profissionalId)) : [];
   const r = await registrarDespesa(
     tx,
@@ -271,6 +275,26 @@ async function transicao(
   acao: string,
   autorId: string | null,
 ): Promise<Resultado> {
+  try {
+    return await transicaoNaTransacao(db, organizacaoId, id, de, mudar, acao, autorId);
+  } catch (e) {
+    if (e instanceof Desfazer) return { ok: false, erro: e.message };
+    throw e;
+  }
+}
+
+/** Erro que desfaz a transação inteira e vira mensagem para a tela. */
+class Desfazer extends Error {}
+
+function transicaoNaTransacao(
+  db: Db,
+  organizacaoId: string,
+  id: string,
+  de: readonly EstadoLimpeza[],
+  mudar: (l: Limpeza, tx: Db) => Promise<Partial<Limpeza> | string>,
+  acao: string,
+  autorId: string | null,
+): Promise<Resultado> {
   return db.transaction(async (tx) => {
     const l = await travar(tx, organizacaoId, id);
     if (!l) return { ok: false as const, erro: "Limpeza não encontrada." };
@@ -279,7 +303,8 @@ async function transicao(
     if (typeof novo === "string") return { ok: false as const, erro: novo };
     // O custo da limpeza realizada vive no livro como despesa da empresa (uma regra, um lugar).
     const despesa = await acertarDespesa(tx, organizacaoId, { ...l, ...novo }, autorId);
-    if ("erro" in despesa) return { ok: false as const, erro: despesa.erro };
+    // Erro depois de algo gravado no livro: desfaz a transação inteira (nada fica pela metade).
+    if ("erro" in despesa) throw new Desfazer(despesa.erro);
     novo.despesaId = despesa.id;
     const [depois] = await tx
       .update(limpezas)

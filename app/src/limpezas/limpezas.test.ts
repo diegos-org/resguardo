@@ -303,6 +303,9 @@ describe("custo no livro", () => {
 
     for (const c of await listarCategorias(db, org)) if (/limpeza/i.test(c.nome)) await atualizarCategoria(db, org, c.id, { ativa: false }, null);
     expect(await informarCusto(db, org, l.id, 18000, null)).toMatchObject({ ok: false, erro: expect.stringContaining("categoria") });
+    // Nada fica pela metade: a despesa anterior continua lançada e a limpeza com o custo antigo.
+    expect(await despesasNoLivro()).toBe(-15000);
+    expect((await lista())[0]).toMatchObject({ custo: 15000 });
   });
 });
 
