@@ -7,9 +7,9 @@
  * Quem recebe e se a agenda está ligada fica em Configurações (config "agenda"), editável no
  * painel. Envio pelo mesmo adaptador de e-mail do login (M1.3); em teste, nada sai.
  */
-import { and, asc, eq, gt, gte, inArray, lt } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, lt, or, sql } from "drizzle-orm";
 import { gravarConfig, lerConfig } from "@/configuracoes/armazem";
-import { appSettings, imoveis, reservas } from "@/db/schema";
+import { appSettings, auditoria, imoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import type { Correio } from "@/email/correio";
 import { hojeISO } from "@/lib/datas";
@@ -130,7 +130,12 @@ export async function montarAgenda(db: Db, organizacaoId: string, hoje: string, 
               eq(reservas.organizacaoId, organizacaoId),
               eq(reservas.estado, "confirmada"),
               inArray(reservas.imovelId, ids),
-              gt(reservas.criadoEm, novasDesde),
+              // Nova = criada já confirmada depois do marco, ou que passou a confirmada depois dele
+              // (pendente/cancelada que confirmou numa sincronização: registrada no histórico).
+              or(
+                gt(reservas.criadoEm, novasDesde),
+                sql`${reservas.id}::text in (select ${auditoria.entidadeId} from ${auditoria} where ${auditoria.organizacaoId} = ${organizacaoId} and ${auditoria.entidade} = 'reserva' and ${auditoria.criadoEm} > ${novasDesde.toISOString()}::timestamptz and ${auditoria.mudancas} -> 'estado' ->> 1 = 'confirmada')`,
+              ),
               gte(reservas.checkout, hoje),
             ),
           )
@@ -217,11 +222,27 @@ export function textoDaAgenda(a: Agenda, cidades: readonly string[] = []): strin
 const chaveUltima = (org: string) => `agenda-diaria:ultima:${org}`;
 const chaveEnvio = (org: string, data: string, email: string) => `agenda-diaria:${org}:${data}:${email}`;
 
-/** Quando a última agenda foi enviada (para as "reservas novas"). */
-export async function ultimaAgenda(db: Db, organizacaoId: string): Promise<Date | null> {
-  const [l] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, chaveUltima(organizacaoId)));
+const chaveUltimaDe = (org: string, email: string) => `agenda-diaria:ultima:${org}:${email}`;
+
+async function lerMarco(db: Db, chave: string): Promise<Date | null> {
+  const [l] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, chave));
   const em = (l?.value as { em?: unknown } | undefined)?.em;
   return typeof em === "string" && !Number.isNaN(Date.parse(em)) ? new Date(em) : null;
+}
+
+async function gravarMarco(db: Db, chave: string, em: Date): Promise<void> {
+  const value = { em: em.toISOString() };
+  await db.insert(appSettings).values({ key: chave, value }).onConflictDoUpdate({ target: appSettings.key, set: { value, updatedAt: new Date() } });
+}
+
+/** Quando a última agenda foi enviada (para alguém). */
+export function ultimaAgenda(db: Db, organizacaoId: string): Promise<Date | null> {
+  return lerMarco(db, chaveUltima(organizacaoId));
+}
+
+/** Quando este destinatário recebeu a agenda por último (marco das reservas novas dele). */
+export function ultimaAgendaDe(db: Db, organizacaoId: string, email: string): Promise<Date | null> {
+  return lerMarco(db, chaveUltimaDe(organizacaoId, email));
 }
 
 /** O que a agenda mandaria agora (para a tela): novas desde a última agenda, ou das últimas 24h. */
@@ -245,9 +266,14 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
   if (!config.destinatarios.length) return { ...r, aviso: "sem destinatários" };
   if (!correio) return { ...r, aviso: "sem provedor de e-mail configurado: nada enviado" };
   const hoje = hojeISO("America/Sao_Paulo", agora);
-  const desde = (await ultimaAgenda(db, organizacaoId)) ?? new Date(agora.getTime() - 86_400_000);
-  const agenda = await montarAgenda(db, organizacaoId, hoje, desde);
-  const assunto = `Agenda SCL — ${diaCurto(agenda.dias[0])} a ${diaCurto(agenda.dias.at(-1)!)}`;
+  // Cada destinatário tem o seu marco de "reservas novas": quem falhou (ou entrou depois) recebe
+  // tudo desde o que recebeu por último, sem depender dos outros.
+  const agendas = new Map<string, Agenda>();
+  const agendaDesde = async (desde: Date) => {
+    const k = desde.toISOString();
+    if (!agendas.has(k)) agendas.set(k, await montarAgenda(db, organizacaoId, hoje, desde));
+    return agendas.get(k)!;
+  };
   for (const d of config.destinatarios) {
     const chave = chaveEnvio(organizacaoId, hoje, d.email);
     if (!o.manual) {
@@ -258,21 +284,19 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
       }
     }
     try {
-      await correio.enviar({ para: d.email, assunto, texto: textoDaAgenda(agenda, d.cidades) });
+      // Sem marco próprio (primeira agenda desta pessoa): as reservas novas das últimas 24h.
+      const desde = (await lerMarco(db, chaveUltimaDe(organizacaoId, d.email))) ?? new Date(agora.getTime() - 86_400_000);
+      const agenda = await agendaDesde(desde);
+      await correio.enviar({ para: d.email, assunto: `Agenda SCL — ${diaCurto(agenda.dias[0])} a ${diaCurto(agenda.dias.at(-1)!)}`, texto: textoDaAgenda(agenda, d.cidades) });
+      await gravarMarco(db, chaveUltimaDe(organizacaoId, d.email), agora);
       r.enviados++;
     } catch (e) {
       if (!o.manual) await db.delete(appSettings).where(eq(appSettings.key, chave));
       r.falhas.push(`${d.email}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
-  // O marco das "reservas novas" só anda quando todos receberam: quem falhou recebe, na nova
-  // tentativa, as mesmas reservas novas.
-  if (r.enviados && !r.falhas.length) {
-    await db
-      .insert(appSettings)
-      .values({ key: chaveUltima(organizacaoId), value: { em: agora.toISOString() } })
-      .onConflictDoUpdate({ target: appSettings.key, set: { value: { em: agora.toISOString() }, updatedAt: new Date() } });
-  }
+  // Para a tela: quando a agenda saiu por último (para alguém).
+  if (r.enviados) await gravarMarco(db, chaveUltima(organizacaoId), agora);
   return r;
 }
 

@@ -5,8 +5,8 @@ import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { type Correio, CorreioMemoria } from "@/email/correio";
 import type { DadosReserva } from "@/reservas/regras";
-import { criarReserva } from "@/reservas/repositorio";
-import { enviarAgenda, lerConfigAgenda, montarAgenda, salvarConfigAgenda, textoDaAgenda, ultimaAgenda } from "./agenda";
+import { criarReserva, sincronizarReserva } from "@/reservas/repositorio";
+import { enviarAgenda, lerConfigAgenda, montarAgenda, salvarConfigAgenda, textoDaAgenda, ultimaAgenda, ultimaAgendaDe } from "./agenda";
 import { agendaDeTodas } from "./cron";
 
 let db: Db;
@@ -128,26 +128,49 @@ describe("configuração e envio", () => {
     expect(correio.enviadas[0].texto).toContain("Nenhum imóvel ativo nas cidades deste destinatário.");
   });
 
-  it("o marco das reservas novas só anda quando todos receberam", async () => {
+  it("cada destinatário tem o seu marco: quem falhou recebe as mesmas novas; reserva criada entre tentativas chega a todos", async () => {
     await nova(rio, "2026-12-20", "2026-12-27", "2026-10-01T15:00:00Z");
     await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }, { email: "b@example.com", cidades: [] }] }, null);
-    const enviadas: string[] = [];
     const meioQuebrado: Correio = {
       nome: "meio",
       enviar: async (m) => {
         if (m.para === "b@example.com") throw new Error("HTTP 500");
-        enviadas.push(m.texto);
       },
     };
     expect(await enviarAgenda(db, org, meioQuebrado, AGORA)).toMatchObject({ enviados: 1, falhas: [expect.stringContaining("b@example.com")] });
-    expect(await ultimaAgenda(db, org)).toBeNull();
+    expect(await ultimaAgendaDe(db, org, "a@example.com")).toEqual(AGORA);
+    expect(await ultimaAgendaDe(db, org, "b@example.com")).toBeNull();
+    // Entre as tentativas entra outra reserva distante.
+    await nova(rio, "2027-01-10", "2027-01-12", "2026-10-01T23:05:00Z");
     const correio = new CorreioMemoria();
-    expect(await enviarAgenda(db, org, correio, new Date(AGORA.getTime() + 600_000))).toMatchObject({ enviados: 1, jaEnviados: 1 });
-    // Quem falhou recebe as mesmas reservas novas.
+    const retry = new Date(AGORA.getTime() + 600_000);
+    expect(await enviarAgenda(db, org, correio, retry)).toMatchObject({ enviados: 1, jaEnviados: 1 });
+    // Quem falhou recebe as duas.
     expect(correio.enviadas[0]).toMatchObject({ para: "b@example.com" });
     expect(correio.enviadas[0].texto).toContain("entrada dom 20/12");
-    expect(await ultimaAgenda(db, org)).not.toBeNull();
+    expect(correio.enviadas[0].texto).toContain("entrada dom 10/01");
+    // No dia seguinte, quem já tinha recebido ganha a reserva que entrou depois do envio dele.
+    const amanha = new CorreioMemoria();
+    await enviarAgenda(db, org, amanha, new Date("2026-10-02T23:00:00Z"));
+    const paraA = amanha.enviadas.find((m) => m.para === "a@example.com")!.texto;
+    expect(paraA).toContain("entrada dom 10/01");
+    expect(paraA).not.toContain("entrada dom 20/12");
+    expect(amanha.enviadas.find((m) => m.para === "b@example.com")!.texto).not.toContain("Reservas novas");
+    expect(await ultimaAgenda(db, org)).toEqual(new Date("2026-10-02T23:00:00Z"));
   });
+
+  it("reserva que passou a confirmada depois da última agenda conta como nova", async () => {
+    const dados = reserva(rio, "2026-12-01", "2026-12-05", { estado: "pendente", codigoCanal: "HMNOVA" });
+    const r = await sincronizarReserva(db, org, "beds24", "B-1", dados);
+    if (!r.ok) throw new Error("reserva");
+    await db.update(reservas).set({ criadoEm: new Date("2026-09-01T12:00:00Z") }).where(eq(reservas.id, r.reserva.id));
+    const desde = new Date(Date.now() - 60_000);
+    expect((await montarAgenda(db, org, "2026-10-01", desde)).secoes.flatMap((s) => s.novas)).toEqual([]);
+    expect((await sincronizarReserva(db, org, "beds24", "B-1", { ...dados, estado: "confirmada" })).ok).toBe(true);
+    const novas = (await montarAgenda(db, org, "2026-10-01", desde)).secoes.flatMap((s) => s.novas);
+    expect(novas.map((n) => n.checkin)).toEqual(["2026-12-01"]);
+  });
+
 
   it("envia uma vez por dia a cada destinatário, com as cidades dele; manual não bloqueia o das 20h", async () => {
     await nova(buzios, "2026-10-03", "2026-10-05", "2026-09-01T12:00:00Z");
