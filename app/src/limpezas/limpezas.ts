@@ -227,13 +227,14 @@ async function acertarDespesa(tx: Db, organizacaoId: string, l: Limpeza, autorId
   if (l.despesaId) await tx.select({ id: lancamentos.id }).from(lancamentos).where(eq(lancamentos.id, l.despesaId)).for("update");
   const atual = l.despesaId ? await obterDespesa(tx, organizacaoId, l.despesaId) : null;
   const vigente = atual && !atual.estornada ? atual : null;
-  if (vigente && desejado !== null && vigente.montante === desejado && vigente.imovelId === l.imovelId && vigente.competencia === l.data) return { id: vigente.id };
-  if (vigente && vigente.estado !== "previsto") return { erro: "A despesa desta limpeza já foi paga: para mudar o custo, estorne-a em Despesas primeiro." };
   // Só na gestão completa a limpeza é custo interno da empresa (DECISOES-OPERACIONAIS): em
   // contrato online, marketplace ou sem contrato na data, não se supõe quem paga — fica o aviso
-  // na lista para lançar em Despesas. Tudo é conferido antes de estornar a despesa anterior.
+  // na lista para lançar em Despesas. O contrato é conferido sempre (ele pode ter sido corrigido
+  // depois), e tudo antes de estornar a despesa anterior.
   const contrato = desejado === null ? null : contratoVigente(await listarContratos(tx, organizacaoId, l.imovelId), l.data);
   const lancar = desejado !== null && contrato?.tipo === "gestao_completa";
+  if (vigente && lancar && vigente.montante === desejado && vigente.imovelId === l.imovelId && vigente.competencia === l.data) return { id: vigente.id };
+  if (vigente && vigente.estado !== "previsto") return { erro: "A despesa desta limpeza já foi paga: para mudar o custo, estorne-a em Despesas primeiro." };
   let categoria: { id: string } | undefined;
   if (lancar) {
     await garantirCategoriasIniciais(tx, organizacaoId);

@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { historicoDe } from "@/auditoria/auditoria";
-import { imoveis, lancamentos, limpezas, organizacoes } from "@/db/schema";
+import { contratos, imoveis, lancamentos, limpezas, organizacoes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { criarContrato } from "@/contratos/repositorio";
@@ -287,6 +287,21 @@ describe("custo no livro", () => {
     const depois = (await lista()).find((x) => x.imovelCodigo === "555")!;
     expect(depois).toMatchObject({ custo: 15000, despesaId: null });
     expect(depois.avisos.join(" ")).toContain("não estava em gestão completa");
+  });
+
+  it("contrato corrigido depois (a data passa a ser de gestão online): salvar o custo tira a despesa e avisa", async () => {
+    await criarReserva(db, org, reserva(a, "2026-10-10", "2026-10-15"), null);
+    await sincronizarLimpezas(db, org, periodo);
+    const maria = await profissional();
+    const [l] = await lista();
+    await realizarLimpeza(db, org, l.id, { profissionalId: maria, custo: 15000 }, "2026-10-15", null);
+    expect(await despesasNoLivro()).toBe(-15000);
+    // O contrato de gestão completa termina antes da limpeza; um online cobre a data.
+    await db.update(contratos).set({ fim: "2026-09-30" }).where(eq(contratos.imovelId, a));
+    await criarContrato(db, org, a, { tipo: "gestao_online", comissao: "10", inicio: "2026-10-01" }, null);
+    expect(await informarCusto(db, org, l.id, 15000, null)).toEqual({ ok: true });
+    expect(await despesasNoLivro()).toBe(0);
+    expect((await lista())[0].avisos.join(" ")).toContain("não estava em gestão completa");
   });
 
   it("despesa estornada em Despesas: aviso e dá para lançar de novo; sem categoria de limpeza: avisa", async () => {
