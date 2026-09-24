@@ -56,6 +56,9 @@ financeiro, portal do proprietário, portal do hóspede, site público e integra
   divergência vira aviso e ajuste manual.
 - **Excluir sempre com confirmação** (`BotaoConfirmar`), e preferir arquivar/estornar a
   apagar quando houver histórico.
+- **Avisar em vez de supor.** Faltou um dado ou algo não bate (cadastro incompleto, valor
+  estranho, regra ausente)? O sistema mostra um aviso claro e deixa pendente — nunca
+  preenche com um palpite.
 - **Um proprietário por imóvel** (pode ser pessoa ou empresa). Os imóveis do Diego são
   clientes como os outros.
 
