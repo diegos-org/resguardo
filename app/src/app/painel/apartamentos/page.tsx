@@ -88,7 +88,21 @@ function celula(l: LinhaApartamento, c: ChaveColuna): React.ReactNode {
     case "resultado":
       return <strong>{formatBRL(f.resultadoEmpresa)}</strong>;
     case "despesasProprietario":
-      return formatBRL(l.despesasProprietario);
+      return (
+        <>
+          {formatBRL(l.despesasProprietario)}
+          {l.anteriores
+            .filter((x) => x.despesas)
+            .map((x) => (
+              <span key={x.proprietarioId}>
+                <br />
+                <small style={{ color: "#b3261e" }}>
+                  + {formatBRL(x.despesas)} de {x.nome}
+                </small>
+              </span>
+            ))}
+        </>
+      );
     case "acertoPeriodo":
       if (l.porSentido) return <PorSentido s={l.porSentido.acertoPeriodo} />;
       return (

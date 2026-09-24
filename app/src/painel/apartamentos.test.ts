@@ -150,10 +150,10 @@ describe("aba Apartamentos", () => {
     await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));
     await db.insert(proprietarioImoveis).values({ proprietarioId: novo.id, imovelId: a });
     let l = (await carregar()).linhas.find((x) => x.codigo === "403")!;
-    expect(l).toMatchObject({ saldo: 0, acertoPeriodo: 0, aCobrar: 0, anteriores: [{ nome: "Dona", saldo: -40000, acertoPeriodo: -40000, aCobrar: 40000, contestados: 0 }] });
+    expect(l).toMatchObject({ saldo: 0, acertoPeriodo: 0, aCobrar: 0, despesasProprietario: 0, anteriores: [{ nome: "Dona", despesas: 40000, saldo: -40000, acertoPeriodo: -40000, aCobrar: 40000, contestados: 0 }] });
     await despesa({ responsavel: "proprietario", valor: 10000, imovelId: a, descricao: "Chave" }); // já do novo dono
     l = (await carregar()).linhas.find((x) => x.codigo === "403")!;
-    expect(l).toMatchObject({ saldo: -10000, acertoPeriodo: -10000, aCobrar: 10000, anteriores: [{ nome: "Dona", saldo: -40000, aCobrar: 40000 }] });
+    expect(l).toMatchObject({ saldo: -10000, acertoPeriodo: -10000, aCobrar: 10000, despesasProprietario: 10000, anteriores: [{ nome: "Dona", despesas: 40000, saldo: -40000, aCobrar: 40000 }] });
 
     // Terceiro dono: o crédito do segundo e a dívida da primeira ficam separados, sem se anular.
     await db.insert(lancamentos).values({ organizacaoId: org, tipo: "ajuste", descricao: "Crédito fictício", valor: 0, efeitoSaldo: 50000, competencia: "2026-10-20", estado: "realizado", imovelId: a, proprietarioId: novo.id, origem: "manual" });

@@ -344,3 +344,19 @@ export async function acertoPorImovelEDono(
     .groupBy(lancamentos.imovelId, lancamentos.proprietarioId);
   return linhas.map((l) => ({ imovelId: l.imovelId!, proprietarioId: l.proprietarioId!, total: Number(l.total ?? 0) }));
 }
+
+/** Despesas do proprietário (montante) no período, por imóvel e proprietário. */
+export async function despesasProprietarioPorDono(
+  db: Db,
+  organizacaoId: string,
+  f: FiltroLancamentos & { imovelIds: string[] },
+): Promise<{ imovelId: string; proprietarioId: string; total: number }[]> {
+  const ids = f.imovelIds.filter(uuidValido);
+  if (!ids.length) return [];
+  const linhas = await db
+    .select({ imovelId: lancamentos.imovelId, proprietarioId: lancamentos.proprietarioId, total: sum(lancamentos.montante) })
+    .from(lancamentos)
+    .where(and(condicoes(organizacaoId, { ...f, imovelIds: ids }), eq(lancamentos.tipo, "despesa_proprietario"), isNotNull(lancamentos.proprietarioId)))
+    .groupBy(lancamentos.imovelId, lancamentos.proprietarioId);
+  return linhas.map((l) => ({ imovelId: l.imovelId!, proprietarioId: l.proprietarioId!, total: Number(l.total ?? 0) }));
+}
