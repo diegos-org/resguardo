@@ -11,6 +11,7 @@
  * Quem recebe e se a agenda está ligada fica em Configurações (config "agenda"), editável no
  * painel. Envio pelo mesmo adaptador de e-mail do login (M1.3); em teste, nada sai.
  */
+import { randomUUID } from "node:crypto";
 import { and, asc, eq, gt, gte, inArray, lt, lte, or, sql } from "drizzle-orm";
 import { gravarConfig, lerConfig } from "@/configuracoes/armazem";
 import { appSettings, auditoria, imoveis, reservas } from "@/db/schema";
@@ -481,19 +482,24 @@ async function reconciliarIncertos(db: Db, organizacaoId: string, email: string,
  * do e-mail até o registro, para que os dois não leiam as mesmas avisadas e repitam a reserva.
  * Trava mais velha que ENVIO_EXPIRA_MS (execução que caiu) pode ser tomada.
  */
-async function travarPessoa(db: Db, chave: string, agora: Date): Promise<boolean> {
-  const valor = { em: agora.toISOString() };
+async function travarPessoa(db: Db, chave: string, agora: Date): Promise<string | null> {
+  // `dono`: só quem tomou a trava a solta (uma execução atrasada não solta a de quem a retomou).
+  const valor = { em: agora.toISOString(), dono: randomUUID() };
   const [nova] = await db.insert(appSettings).values({ key: chave, value: valor }).onConflictDoNothing().returning();
-  if (nova) return true;
+  if (nova) return valor.dono;
   const [l] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, chave));
   const em = (l?.value as { em?: string } | undefined)?.em;
-  if (em && agora.getTime() - Date.parse(em) < ENVIO_EXPIRA_MS) return false;
+  if (em && agora.getTime() - Date.parse(em) < ENVIO_EXPIRA_MS) return null;
   const [tomada] = await db
     .update(appSettings)
     .set({ value: valor, updatedAt: new Date() })
     .where(and(eq(appSettings.key, chave), em ? sql`${appSettings.value} ->> 'em' = ${em}` : sql`true`))
     .returning();
-  return !!tomada;
+  return tomada ? valor.dono : null;
+}
+
+async function soltarPessoa(db: Db, chave: string, dono: string): Promise<void> {
+  await db.delete(appSettings).where(and(eq(appSettings.key, chave), sql`${appSettings.value} ->> 'dono' = ${dono}`));
 }
 
 /** Tentativa "enviando" mais velha que isto (a execução caiu no meio) pode ser refeita. */
@@ -505,10 +511,15 @@ const ENVIO_EXPIRA_MS = 15 * 60_000;
  * (execução interrompida antes de confirmar) é retomada.
  */
 /** O pedido exato feito ao provedor, guardado antes de enviar para uma retomada repetir igual. */
-type Carga = { assunto: string; texto: string; eventos: string[] };
+/** `cidades`: as cidades que tiveram seção no e-mail (as cobertas por este envio). */
+type Carga = { assunto: string; texto: string; eventos: string[]; cidades: string[] };
 
 const cargaValida = (c: unknown): c is Carga =>
-  !!c && typeof (c as Carga).assunto === "string" && typeof (c as Carga).texto === "string" && Array.isArray((c as Carga).eventos);
+  !!c &&
+  typeof (c as Carga).assunto === "string" &&
+  typeof (c as Carga).texto === "string" &&
+  Array.isArray((c as Carga).eventos) &&
+  Array.isArray((c as Carga).cidades);
 
 async function reservarEnvio(db: Db, chave: string, agora: Date): Promise<{ corte: Date; carga: Carga | null } | null> {
   // `corte`: o limite das reservas novas desta tentativa. Uma retomada reaproveita o da tentativa
@@ -589,6 +600,7 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
           assunto: `Agenda SCL — ${diaCurto(agenda.dias[0])} a ${diaCurto(agenda.dias.at(-1)!)}`,
           texto: textoDaAgenda(agenda, d.cidades, { ...config, incertoAte }),
           eventos: noEmail.flatMap((x) => x.novas.map((n) => n.evento)),
+          cidades: noEmail.map((x) => x.cidade).sort(),
         };
         // Guarda o pedido antes de enviar: uma retomada manda exatamente o mesmo.
         await db
@@ -624,10 +636,11 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
         await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${chaveUltimaDe(organizacaoId, d.email)}))`);
         const marcoAtual = await lerMarco(tx, chaveUltimaDe(organizacaoId, d.email));
         const marco = marcoAtual && marcoAtual > corte ? marcoAtual : corte;
-        // Cobertura do marco que fica: a deste envio (vazio = todas) ou, se um envio mais novo já
+        // Cobertura do marco que fica: a deste envio ou, se um envio mais novo já
         // gravou, a dele. Nunca é somada: cidade que saiu da lista deixa de ser coberta, e ao
         // voltar conta como nova para a pessoa (reservas novas das últimas 24h).
-        const deste = d.cidades.length ? [...d.cidades].sort() : null;
+        // Só as cidades que tiveram seção no e-mail: cidade sem imóvel ativo não fica "coberta".
+        const deste = enviada.cidades;
         const cidades = marcoAtual && marcoAtual > corte ? await lerCobertura(tx, chaveUltimaDe(organizacaoId, d.email)) : deste;
         await gravarMarco(tx, chaveUltimaDe(organizacaoId, d.email), marco, cidades);
         // As reservas novas deste envio: na próxima, a faixa de sobreposição não as repete.
@@ -648,14 +661,15 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
   };
   for (const d of config.destinatarios) {
     const trava = chaveTravaDe(organizacaoId, d.email);
-    if (!(await travarPessoa(db, trava, agora))) {
+    const dono = await travarPessoa(db, trava, agora);
+    if (!dono) {
       r.falhas.push(`${d.email}: outro envio para esta pessoa está em andamento; tente de novo em alguns minutos`);
       continue;
     }
     try {
       await enviarPara(d);
     } finally {
-      await db.delete(appSettings).where(eq(appSettings.key, trava));
+      await soltarPessoa(db, trava, dono);
     }
   }
 

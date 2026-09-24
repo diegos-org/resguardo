@@ -242,7 +242,7 @@ describe("configuração e envio", () => {
   it("retomada manda exatamente o pedido guardado na tentativa original (mesmo com reservas novas no meio)", async () => {
     await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
     const original = new Date(AGORA.getTime() - 20 * 60_000);
-    const carga = { assunto: "Agenda SCL — original", texto: "texto original\n", eventos: ["ev-1"] };
+    const carga = { assunto: "Agenda SCL — original", texto: "texto original\n", eventos: ["ev-1"], cidades: ["Rio de Janeiro"] };
     await db.insert(appSettings).values({ key: `agenda-diaria:${org}:2026-10-01:a@example.com`, value: { em: original.toISOString(), estado: "enviando", corte: original.toISOString(), carga } });
     await nova(rio, "2027-01-10", "2027-01-12", new Date(AGORA.getTime() - 10 * 60_000).toISOString());
     const correio = new CorreioMemoria();
@@ -426,6 +426,47 @@ describe("configuração e envio", () => {
     const correio = new CorreioMemoria();
     expect(await enviarAgenda(db, org, correio, new Date(AGORA.getTime() + 2_000), { manual: true })).toMatchObject({ enviados: 1 });
     expect(await db.select().from(appSettings).where(eq(appSettings.key, `agenda-diaria:trava:${org}:a@example.com`))).toEqual([]);
+  });
+
+  it("trava tomada de uma execução atrasada não é solta por ela", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    const chaveTrava = `agenda-diaria:trava:${org}:a@example.com`;
+    let libera1!: () => void;
+    let libera2!: () => void;
+    const espera1 = new Promise<void>((ok) => (libera1 = ok));
+    const espera2 = new Promise<void>((ok) => (libera2 = ok));
+    const saiu: string[] = [];
+    const primeiro: Correio = { nome: "1", enviar: async () => { saiu.push("1"); await espera1; } };
+    const segundo: Correio = { nome: "2", enviar: async () => { saiu.push("2"); await espera2; } };
+    // A primeira execução trava e fica presa no provedor; 20 min depois, outra toma a trava vencida.
+    const p1 = enviarAgenda(db, org, primeiro, AGORA);
+    await vi.waitFor(() => expect(saiu).toEqual(["1"]));
+    const p2 = enviarAgenda(db, org, segundo, new Date(AGORA.getTime() + 20 * 60_000), { manual: true });
+    await vi.waitFor(() => expect(saiu).toEqual(["1", "2"]));
+    const [dela] = await db.select().from(appSettings).where(eq(appSettings.key, chaveTrava));
+    // A primeira termina: a trava da segunda continua lá.
+    libera1();
+    await p1;
+    const [depois] = await db.select().from(appSettings).where(eq(appSettings.key, chaveTrava));
+    expect(depois.value).toEqual(dela.value);
+    libera2();
+    await p2;
+    expect(await db.select().from(appSettings).where(eq(appSettings.key, chaveTrava))).toEqual([]);
+  });
+
+  it("cidade sem imóvel ativo não fica coberta: ao reativar, a reserva feita nesse meio-tempo chega", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    await db.update(imoveis).set({ ativo: false }).where(eq(imoveis.id, buzios));
+    const correio = new CorreioMemoria();
+    await enviarAgenda(db, org, correio, AGORA);
+    expect(correio.enviadas[0].texto).not.toContain("Búzios");
+    const dia2 = new Date("2026-10-02T23:00:00Z");
+    await nova(buzios, "2028-01-10", "2028-01-12", new Date(dia2.getTime() - 3_600_000).toISOString());
+    await enviarAgenda(db, org, correio, dia2);
+    // Reativada logo depois: a reserva de 1h atrás chega (a cidade não estava coberta).
+    await db.update(imoveis).set({ ativo: true }).where(eq(imoveis.id, buzios));
+    await enviarAgenda(db, org, correio, new Date(dia2.getTime() + 60_000), { manual: true });
+    expect(correio.enviadas[2].texto).toContain("entrada seg 10/01");
   });
 
   it("envio incerto de outro dia continua avisado até um envio dar certo", async () => {
