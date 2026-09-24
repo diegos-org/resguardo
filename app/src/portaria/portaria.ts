@@ -7,7 +7,7 @@
  * recebe os três pedidos comprimidos. Depois da entrada, nada de cobrança: só o registro factual
  * do que falta. Encaminhar exige o destinatário conferido; entrega não é aprovação da portaria.
  */
-import { and, asc, eq, gte, inArray, lt } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, lt } from "drizzle-orm";
 import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
 import { gravarConfig, lerConfig } from "@/configuracoes/armazem";
 import { imoveis, portariaChecklists, reservas } from "@/db/schema";
@@ -122,7 +122,8 @@ export async function listarPortaria(db: Db, organizacaoId: string, f: { hoje: s
         eq(reservas.organizacaoId, organizacaoId),
         eq(reservas.estado, "confirmada"),
         inArray(reservas.imovelId, ids),
-        gte(reservas.checkout, f.hoje),
+        // Saída é exclusiva: no dia da saída o hóspede já não está (como nas outras consultas).
+        gt(reservas.checkout, f.hoje),
         lt(reservas.checkin, f.ate),
       ),
     )
@@ -135,7 +136,8 @@ export async function listarPortaria(db: Db, organizacaoId: string, f: { hoje: s
       // Hóspedes mudaram (nome do titular ou quantidade): os documentos contados eram de outra lista.
       documentosRecebidos: hospedesMudaram(c, r) ? 0 : (c?.documentosRecebidos ?? 0),
       // Pedido feito para uma entrada que mudou (reserva adiada/antecipada) não vale mais.
-      ...pedidosVigentes(c, r.checkin, diaDaReserva(r.criadoEm)),
+      // Hóspedes mudaram: os pedidos foram feitos a outra pessoa, recomeçam.
+      ...(hospedesMudaram(c, r) ? SEM_PEDIDOS : pedidosVigentes(c, r.checkin, diaDaReserva(r.criadoEm))),
       // Encaminhado para outras datas da estada: precisa encaminhar de novo.
       ...envioVigente(c, r),
     };
@@ -210,6 +212,8 @@ function foraDaJanela(tipo: "aviso_inicial" | "segundo_pedido" | "pedido_final",
   return data >= de && data <= ate ? null : `O segundo pedido é entre ${br(de)} e ${br(ate)} (5 a 7 dias antes da entrada).`;
 }
 
+const SEM_PEDIDOS = { avisoInicialEm: null, segundoPedidoEm: null, pedidoFinalEm: null };
+
 /**
  * Datas dos pedidos que ainda valem para a entrada atual: se a reserva mudou de data depois de um
  * pedido, o que ficou fora da janela nova deixa de contar (e o passo volta a pedir).
@@ -271,7 +275,7 @@ export async function registrarPortaria(db: Db, organizacaoId: string, reservaId
     // Idem para o encaminhamento feito para outras datas da estada.
     // E o que foi conferido/encaminhado com a reserva em outro imóvel. A lista passa a ser deste imóvel.
     const vigentes = {
-      ...pedidosVigentes(antes, r.checkin, diaDaReserva(r.criadoEm)),
+      ...(hospedesMudaram(antes, r) ? SEM_PEDIDOS : pedidosVigentes(antes, r.checkin, diaDaReserva(r.criadoEm))),
       ...envioVigente(antes, r),
       destinatarioConferido: destinatarioVigente(antes, r),
       documentosRecebidos: hospedesMudaram(antes, r) ? 0 : antes.documentosRecebidos,

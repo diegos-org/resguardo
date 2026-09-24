@@ -1,5 +1,5 @@
 {
-  "id": "a4768465-6a64-40dd-b40d-ccea28972319",
+  "id": "ec2c1158-a90e-428b-a761-b09ab528c686",
   "prevId": "1bb34636-9628-4142-9b15-98ec8127e825",
   "version": "7",
   "dialect": "postgresql",
@@ -30,12 +30,6 @@
         "imovel_id": {
           "name": "imovel_id",
           "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "hospedes_referencia": {
-          "name": "hospedes_referencia",
-          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -1929,12 +1923,6 @@
         "imovel_id": {
           "name": "imovel_id",
           "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "hospedes_referencia": {
-          "name": "hospedes_referencia",
-          "type": "text",
           "primaryKey": false,
           "notNull": false
         },

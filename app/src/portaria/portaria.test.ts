@@ -95,6 +95,13 @@ beforeEach(async () => {
 afterEach(() => close());
 
 describe("lista de portaria", () => {
+  it("no dia da saída a reserva sai da lista (saída exclusiva)", async () => {
+    await salvarImoveisComPortaria(db, org, [a], null);
+    await criarReserva(db, org, reserva(a), null);
+    expect(await listarPortaria(db, org, { hoje: "2026-10-22", ate: "2026-11-30" })).toHaveLength(1);
+    expect(await listarPortaria(db, org, { hoje: "2026-10-23", ate: "2026-11-30" })).toEqual([]);
+  });
+
   it("só imóveis marcados no painel (nada fixo); sem marcação, lista vazia", async () => {
     await criarReserva(db, org, reserva(a), null);
     await criarReserva(db, org, reserva(b, { checkin: "2026-10-10", checkout: "2026-10-12" }), null);
@@ -228,6 +235,7 @@ describe("lista de portaria", () => {
     if (!r.ok) throw new Error("reserva");
     const id = r.reserva.id;
     const reg = (x: Parameters<typeof registrarPortaria>[3]) => registrarPortaria(db, org, id, x, "2026-10-05", null);
+    await reg({ tipo: "aviso_inicial", data: "2026-10-05" });
     await reg({ tipo: "documentos", recebidos: 3 });
     await reg({ tipo: "destinatario", conferido: true });
     await reg({ tipo: "encaminhado", data: "2026-10-05" });
@@ -235,7 +243,8 @@ describe("lista de portaria", () => {
     // A sincronização reduz para 2 hóspedes: os 3 documentos eram da lista anterior.
     await db.update(reservas).set({ hospedes: 2 }).where(eq(reservas.id, id));
     let [l] = await listarPortaria(db, org, { hoje: "2026-10-05", ate: "2026-11-05" });
-    expect(l).toMatchObject({ documentosRecebidos: 0, encaminhadoEm: null, entregaConfirmadaEm: null, destinatarioConferido: true });
+    // Pedidos também recomeçam: foram feitos a outra lista de hóspedes.
+    expect(l).toMatchObject({ documentosRecebidos: 0, avisoInicialEm: null, encaminhadoEm: null, entregaConfirmadaEm: null, destinatarioConferido: true });
     expect(l.texto).toContain("Os hóspedes da reserva mudaram");
     expect(await reg({ tipo: "encaminhado", data: "2026-10-05" })).toMatchObject({ ok: false, erro: expect.stringContaining("faltam documentos") });
     await reg({ tipo: "documentos", recebidos: 2 });
