@@ -8,6 +8,7 @@ import type { Db } from "@/db/types";
 import { criarCategoria } from "@/despesas/categorias";
 import { registrarDespesa } from "@/despesas/despesas";
 import type { DadosReserva } from "@/reservas/regras";
+import { aplicarMotor } from "@/financeiro/aplicar";
 import { cancelarReserva, criarReserva } from "@/reservas/repositorio";
 import { proprietariosDoUsuario, resumoDoProprietario } from "./resumo";
 
@@ -121,6 +122,25 @@ describe("resumo do portal", () => {
     await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));
     await db.insert(proprietarioImoveis).values({ proprietarioId: outro, imovelId: a });
     expect((await resumoDoProprietario(db, org, { proprietarioIds: [outro], imovelIds: [a], periodo })).reservas).toBe(0);
+  });
+
+  it("imóvel A→B (recalculado) e de volta a A: a reserva é de quem tem a parte em vigor", async () => {
+    const [r] = await db.select({ id: reservas.id }).from(reservas).where(eq(reservas.imovelId, a));
+    await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));
+    await db.insert(proprietarioImoveis).values({ proprietarioId: outro, imovelId: a });
+    await aplicarMotor(db, org, r.id, null);
+    expect(await resumoDoProprietario(db, org, { proprietarioIds: [outro], imovelIds: [a], periodo })).toMatchObject({ reservas: 1, receitaBruta: 100000, suaParte: 72250 });
+    // Volta para a dona sem recalcular: a parte dela está estornada, a reserva segue do outro.
+    await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));
+    await db.insert(proprietarioImoveis).values({ proprietarioId: dona, imovelId: a });
+    expect(await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo })).toMatchObject({ reservas: 0, receitaBruta: 0, comissao: 0, suaParte: 0 });
+  });
+
+  it("com todos os imóveis dele, entra o acerto sem imóvel; com filtro de imóvel, não", async () => {
+    await db.insert(lancamentos).values({ organizacaoId: org, tipo: "ajuste", descricao: "Acerto geral fictício", valor: 0, efeitoSaldo: 3000, competencia: "2026-10-20", estado: "realizado", imovelId: null, proprietarioId: dona, origem: "manual" });
+    await db.insert(lancamentos).values({ organizacaoId: org, tipo: "ajuste", descricao: "De outra pessoa", valor: 0, efeitoSaldo: 9000, competencia: "2026-10-20", estado: "realizado", imovelId: null, proprietarioId: outro, origem: "manual" });
+    expect((await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], semImovel: true, periodo })).acerto).toBe(72250 - 20000 + 3000);
+    expect((await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo })).acerto).toBe(72250 - 20000);
   });
 
   it("não vê imóvel de outro dono, nem 'todos' quando a lista vem vazia", async () => {

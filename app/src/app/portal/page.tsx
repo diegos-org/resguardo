@@ -54,6 +54,8 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
   const resumo = await resumoDoProprietario(db, sessao.organizacaoId, {
     proprietarioIds: donos.map((d) => d.id),
     imovelIds: escolhidos.map((i) => i.id),
+    // Com todos os imóveis dele, entra também o que é dele sem imóvel (ajuste/acerto geral).
+    semImovel: escolhidos.length === meus.length,
     periodo: periodoDosFiltros(filtros),
   });
   const situacao = situacaoDoPeriodo(filtros);

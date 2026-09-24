@@ -4,6 +4,7 @@
  * reservas confirmadas dos imóveis dele no período.
  */
 import { and, eq, exists, gt, gte, inArray, isNotNull, isNull, lt, not, notInArray, or, sql, sum } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { lancamentos, proprietarios, proprietarioUsuarios, reservas, type TipoLancamento } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
@@ -39,7 +40,7 @@ const ZERO: ResumoPortal = { reservas: 0, receitaBruta: 0, taxasCanais: 0, comis
 export async function resumoDoProprietario(
   db: Db,
   organizacaoId: string,
-  o: { proprietarioIds: readonly string[]; imovelIds: readonly string[]; periodo: { inicio: string; fim: string } },
+  o: { proprietarioIds: readonly string[]; imovelIds: readonly string[]; semImovel?: boolean; periodo: { inicio: string; fim: string } },
 ): Promise<ResumoPortal> {
   const donos = o.proprietarioIds.filter(uuidValido);
   const imoveis = o.imovelIds.filter(uuidValido);
@@ -53,7 +54,8 @@ export async function resumoDoProprietario(
     eq(lancamentos.organizacaoId, organizacaoId),
     gte(lancamentos.competencia, o.periodo.inicio),
     lt(lancamentos.competencia, o.periodo.fim),
-    inArray(lancamentos.imovelId, imoveis),
+    // Lançamento do proprietário sem imóvel (ajuste/acerto geral) só entra com todos os imóveis dele.
+    o.semImovel ? or(inArray(lancamentos.imovelId, imoveis), and(isNull(lancamentos.imovelId), inArray(lancamentos.proprietarioId, donos))) : inArray(lancamentos.imovelId, imoveis),
     // A restrição vale só para o que a reserva gera (bruto, taxa, comissão, parte do dono);
     // ajuste, despesa e repasse ligados a uma reserva continuam valendo mesmo se ela cair.
     or(notInArray(lancamentos.tipo, DA_RESERVA), isNull(lancamentos.reservaId), notInArray(lancamentos.reservaId, pendentes)),
@@ -64,11 +66,15 @@ export async function resumoDoProprietario(
     .from(lancamentos)
     .where(and(base, inArray(lancamentos.proprietarioId, donos)))
     .groupBy(lancamentos.tipo);
+  // A reserva é de quem tem a parte do proprietário *em vigor* (nem estorno, nem estornada):
+  // se o imóvel foi A→B→A, a parte antiga de A, já estornada, não faz a reserva de B ser de A.
+  const estorno = alias(lancamentos, "estorno");
+  const ativo = and(isNull(lancamentos.estornoDe), not(exists(db.select({ um: sql`1` }).from(estorno).where(eq(estorno.estornoDe, lancamentos.id)))));
   // Valores das reservas: as que têm a parte do proprietário lançada para ele no período.
   const reservasDele = db
     .selectDistinct({ id: lancamentos.reservaId })
     .from(lancamentos)
-    .where(and(base, eq(lancamentos.tipo, "direito_proprietario"), inArray(lancamentos.proprietarioId, donos), isNotNull(lancamentos.reservaId)));
+    .where(and(base, eq(lancamentos.tipo, "direito_proprietario"), ativo, inArray(lancamentos.proprietarioId, donos), isNotNull(lancamentos.reservaId)));
   // Contagem: reservas confirmadas dos imóveis dele no período (como no Início). A que tem a
   // parte lançada para ele conta; a lançada só para outra pessoa, não. A ainda sem cálculo no
   // financeiro só conta se o imóvel nunca teve outro dono no livro: sem histórico de posse, não
@@ -81,6 +87,7 @@ export async function resumoDoProprietario(
         and(
           eq(lancamentos.reservaId, reservas.id),
           eq(lancamentos.tipo, "direito_proprietario"),
+          ativo,
           deles ? inArray(lancamentos.proprietarioId, donos) : and(isNotNull(lancamentos.proprietarioId), notInArray(lancamentos.proprietarioId, donos)),
         ),
       );
