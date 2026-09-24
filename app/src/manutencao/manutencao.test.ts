@@ -10,6 +10,7 @@ import {
   aprovarManutencao,
   cancelarManutencao,
   criarManutencao,
+  itensDoCalendario,
   type DadosCusto,
   lancarCusto,
   listarManutencoes,
@@ -171,6 +172,20 @@ describe("fluxo da manutenção", () => {
     expect(await db.select().from(manutencoes)).toEqual([]);
     const id = await nova();
     expect(await historicoDe(db, org, "manutencao", id)).toHaveLength(1);
+  });
+
+  it("calendário: só as feitas no período e nos imóveis pedidos, no dia do serviço", async () => {
+    const id = await nova();
+    await registrarOrcamento(db, org, id, { fornecedor: "X", valor: 100 }, null);
+    await aprovar(id, "empresa", null);
+    expect(await itensDoCalendario(db, org, { inicio: "2026-10-01", fim: "2026-11-01", imovelIds: [a] })).toEqual([]);
+    await realizarManutencao(db, org, id, "2026-10-08", HOJE, null);
+    expect(await itensDoCalendario(db, org, { inicio: "2026-10-01", fim: "2026-11-01", imovelIds: [a] })).toMatchObject([
+      { imovelId: a, inicio: "2026-10-08", fim: "2026-10-09", tipo: "manutencao", rotulo: "Manutenção · Trocar chuveiro" },
+    ]);
+    expect(await itensDoCalendario(db, org, { inicio: "2026-10-01", fim: "2026-11-01", imovelIds: [b] })).toEqual([]);
+    expect(await itensDoCalendario(db, org, { inicio: "2026-11-01", fim: "2026-12-01", imovelIds: [a] })).toEqual([]);
+    expect(await itensDoCalendario(db, outraOrg, { inicio: "2026-10-01", fim: "2026-11-01", imovelIds: [a] })).toEqual([]);
   });
 
   it("outra organização não vê nem mexe; imóvel de outra organização é recusado", async () => {

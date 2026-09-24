@@ -6,9 +6,10 @@
  * feita, e um orçamento novo depois da aprovação volta para "orçada" (precisa aprovar de novo).
  * Quem paga (empresa ou proprietário) é sempre escolha explícita na aprovação, nunca pelo valor.
  */
-import { and, desc, eq, exists, inArray } from "drizzle-orm";
+import { and, desc, eq, exists, gte, inArray, lt } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
+import type { ItemCalendario } from "@/calendario/grade";
 import { type EstadoManutencao, imoveis, lancamentos, manutencoes, proprietarioImoveis } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { registrarDespesa, type Responsavel, RESPONSAVEIS } from "@/despesas/despesas";
@@ -216,6 +217,36 @@ export function lancarCusto(db: Db, organizacaoId: string, id: string, d: DadosC
     "manutencao.custo",
     autorId,
   );
+}
+
+const diaSeguinte = (d: string) => new Date(Date.parse(`${d}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+
+/** Manutenções feitas no período, para o calendário central (um dia: o do serviço). */
+export async function itensDoCalendario(db: Db, organizacaoId: string, f: { inicio: string; fim: string; imovelIds: string[] }): Promise<ItemCalendario[]> {
+  const ids = f.imovelIds.filter(uuidValido);
+  if (!ids.length) return [];
+  const linhas = await db
+    .select({ id: manutencoes.id, imovelId: manutencoes.imovelId, titulo: manutencoes.titulo, data: manutencoes.dataRealizada })
+    .from(manutencoes)
+    .where(
+      and(
+        eq(manutencoes.organizacaoId, organizacaoId),
+        eq(manutencoes.estado, "realizada"),
+        inArray(manutencoes.imovelId, ids),
+        gte(manutencoes.dataRealizada, f.inicio),
+        lt(manutencoes.dataRealizada, f.fim),
+      ),
+    );
+  return linhas.map((m) => ({
+    id: m.id,
+    imovelId: m.imovelId,
+    inicio: m.data!,
+    fim: diaSeguinte(m.data!),
+    tipo: "manutencao" as const,
+    rotulo: `Manutenção · ${m.titulo}`,
+    href: "/painel/manutencao?estado=todas",
+    categoria: "manutencao",
+  }));
 }
 
 export type LinhaManutencao = Manutencao & {
