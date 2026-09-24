@@ -79,13 +79,14 @@ function validar(d: DadosRotina): { ok: true; dados: Pick<Rotina, "titulo" | "de
 const auditar = (tx: Db, organizacaoId: string, autorId: string | null, acao: string, id: string, mudancas: Record<string, [unknown, unknown]>) =>
   registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: `rotina.${acao}`, entidade: "rotina", entidadeId: id, mudancas });
 
-export async function criarRotina(db: Db, organizacaoId: string, d: DadosRotina, autorId: string | null): Promise<Resultado> {
+/** `ancora`: referência do ritmo, se não for a própria próxima data (rotinas iniciais). */
+export async function criarRotina(db: Db, organizacaoId: string, d: DadosRotina, autorId: string | null, o: { ancora?: string } = {}): Promise<Resultado> {
   const v = validar(d);
   if (!v.ok) return v;
   return db.transaction(async (tx) => {
     const [r] = await tx
       .insert(rotinas)
-      .values({ organizacaoId, ...v.dados })
+      .values({ organizacaoId, ...v.dados, ancora: o.ancora ?? v.dados.ancora })
       .returning();
     await auditar(tx, organizacaoId, autorId, "criar", r.id, calcularMudancas(null, r));
     return { ok: true as const };
@@ -104,16 +105,26 @@ async function travar(tx: Db, organizacaoId: string, id: string): Promise<Rotina
 
 /** Edita o cadastro (inclusive a próxima data: vale dali em diante; o histórico fica). */
 /**
- * `proximaAnterior`: a próxima data que o formulário mostrava. Se a rotina andou nesse meio-tempo
- * (alguém marcou como feita), a edição é recusada em vez de voltar a data para trás.
+ * `proximaAnterior` e `frequenciaAnterior`: o que o formulário mostrava. Se a rotina andou nesse
+ * meio-tempo (alguém marcou como feita ou mudou a frequência), a edição é recusada em vez de desfazer.
  */
-export async function editarRotina(db: Db, organizacaoId: string, id: string, d: DadosRotina & { proximaAnterior: string }, autorId: string | null): Promise<Resultado> {
+export async function editarRotina(
+  db: Db,
+  organizacaoId: string,
+  id: string,
+  d: DadosRotina & { proximaAnterior: string; frequenciaAnterior?: string },
+  autorId: string | null,
+): Promise<Resultado> {
   const v = validar(d);
   if (!v.ok) return v;
   return db.transaction(async (tx) => {
     const antes = await travar(tx, organizacaoId, id);
     if (!antes) return { ok: false as const, erro: "Rotina não encontrada." };
     if (antes.proximaData !== d.proximaAnterior) return { ok: false as const, erro: "A rotina mudou enquanto você editava (foi marcada como feita): abra de novo e confira." };
+    // Outra pessoa mudou só a frequência nesse meio-tempo: salvar o formulário antigo desfaria isso.
+    if (d.frequenciaAnterior !== undefined && antes.frequencia !== d.frequenciaAnterior) {
+      return { ok: false as const, erro: "A frequência da rotina mudou enquanto você editava: abra de novo e confira." };
+    }
     // A âncora do ritmo só muda quando muda a agenda (data ou frequência): editar o nome mantém o fim de mês.
     const mudouAgenda = v.dados.proximaData !== antes.proximaData || v.dados.frequencia !== antes.frequencia;
     const [depois] = await tx
@@ -211,15 +222,47 @@ export async function rotinasPendentes(db: Db, organizacaoId: string, hoje: stri
 // ——— Rotinas iniciais ———
 
 /** As rotinas que já existiam na operação (CONSOLIDACAO, 21/09): sugestões editáveis. */
-export const ROTINAS_INICIAIS: { titulo: string; descricao: string; frequencia: FrequenciaRotina }[] = [
-  { titulo: "Conferência das faxinas", descricao: "Conferir as limpezas da semana: feitas, custos e pendências.", frequencia: "semanal" },
-  { titulo: "Consulta de manutenção e mídia", descricao: "Perguntar aos imóveis o que precisa de manutenção e se há fotos/vídeos a atualizar.", frequencia: "quinzenal" },
-  { titulo: "Lembrete administrativo", descricao: "Conferir contas, documentos e pendências administrativas do mês.", frequencia: "mensal" },
-  { titulo: "Caixinhas", descricao: "Conferir e acertar as caixinhas do ano.", frequencia: "anual" },
+/**
+ * Rotinas das regras de atendimento (Diego, 19–20/09/2026). `serie` é uma data do ritmo combinado:
+ * a primeira data é a próxima da série a partir de hoje (faxinas às segundas; manutenção de 15 em
+ * 15 dias a partir de 21/09, separada para Rio e Búzios; lembrete no dia 30, em fevereiro no último
+ * dia; caixinhas em 1º de dezembro). Tudo editável depois na tela.
+ */
+export const ROTINAS_INICIAIS: { titulo: string; descricao: string; frequencia: FrequenciaRotina; serie: string }[] = [
+  {
+    titulo: "Conferência das faxinas",
+    descricao: "Toda segunda: conferir com o Diego as faxinas dos 7 dias anteriores (feitas, custos e lacunas), levando o que já se sabe.",
+    frequencia: "semanal",
+    serie: "2026-09-21",
+  },
+  {
+    titulo: "Consulta de manutenção — Rio",
+    descricao: "Perguntar à equipe do Rio se algum apartamento precisa de manutenção, reposição ou outra providência. Registrar a resposta; não aprovar gasto.",
+    frequencia: "quinzenal",
+    serie: "2026-09-21",
+  },
+  {
+    titulo: "Consulta de manutenção — Búzios",
+    descricao: "Perguntar à equipe de Búzios se a casa está em ordem ou tem pendências. Registrar a resposta; não aprovar gasto.",
+    frequencia: "quinzenal",
+    serie: "2026-09-21",
+  },
+  {
+    titulo: "Lembrete do dia 30",
+    descricao: "Pagar quem recebe fixo e o contador, emitir as notas e pagar os condomínios. É só lembrete: o sistema não paga nada.",
+    frequencia: "mensal",
+    serie: "2026-01-30",
+  },
+  {
+    titulo: "Caixinhas de fim de ano",
+    descricao: "Organizar as caixinhas da equipe e dos porteiros dos prédios. Valores e divisão ficam com o Diego.",
+    frequencia: "anual",
+    serie: "2025-12-01",
+  },
 ];
 
 /**
- * Cria as rotinas iniciais uma única vez por organização, vencendo hoje (a equipe ajusta as datas).
+ * Cria as rotinas iniciais uma única vez por organização, nas datas das regras (ver acima).
  * Se o administrador depois arquivar ou mudar, elas não voltam sozinhas.
  */
 export async function garantirRotinasIniciais(db: Db, organizacaoId: string, hoje: string): Promise<void> {
@@ -232,6 +275,10 @@ export async function garantirRotinasIniciais(db: Db, organizacaoId: string, hoj
     if (!marca) return;
     const [existente] = await tx.select({ id: rotinas.id }).from(rotinas).where(eq(rotinas.organizacaoId, organizacaoId)).limit(1);
     if (existente) return;
-    for (const r of ROTINAS_INICIAIS) await criarRotina(tx, organizacaoId, { ...r, proximaData: hoje }, null);
+    for (const { serie, ...r } of ROTINAS_INICIAIS) {
+      // Primeira data da série a partir de hoje; a âncora fica na série (dia 30 volta a 30 depois de fevereiro).
+      const ontem = iso(new Date(dia(hoje).getTime() - 86_400_000));
+      await criarRotina(tx, organizacaoId, { ...r, proximaData: proximaDepois(serie, r.frequencia, ontem) }, null, { ancora: serie });
+    }
   });
 }

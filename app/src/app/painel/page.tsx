@@ -43,6 +43,7 @@ export default async function PainelInicio({ searchParams }: PageProps<"/painel"
     ano: filtros.ano,
     hoje,
     verFinanceiro,
+    verRotinas: podeFazer(sessao.papel, "rotina:ler"),
   });
   const porId = new Map(imoveis.map((i) => [i.id, i]));
 

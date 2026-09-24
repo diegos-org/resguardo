@@ -92,6 +92,7 @@ function Cartao({ r, hoje, registrar, configurar }: { r: LinhaRotina; hoje: stri
           <form action={editarAcao} className={styles.form} style={{ marginTop: 8 }}>
             <input type="hidden" name="id" value={r.id} />
             <input type="hidden" name="proximaAnterior" value={r.proximaData} />
+            <input type="hidden" name="frequenciaAnterior" value={r.frequencia} />
             <Campos r={r} hoje={hoje} />
             <div className={styles.acoes}>
               <button type="submit">Salvar</button>

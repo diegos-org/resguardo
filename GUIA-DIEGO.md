@@ -328,9 +328,14 @@
     e os imóveis arquivados que tiveram movimento, então o total bate com o Início.
 - M6.5: **rotinas recorrentes** (menu **Rotinas**). Tarefas que se repetem, cada uma com a
   próxima data:
-  - já vêm as quatro que existiam na operação: **conferência das faxinas** (toda semana),
-    **consulta de manutenção e mídia** (a cada 15 dias), **lembrete administrativo** (todo mês)
-    e **caixinhas** (todo ano). Elas começam vencendo hoje: ajuste as datas na própria tela;
+  - já vêm as cinco das regras de atendimento, nas datas combinadas:
+    - **conferência das faxinas** toda segunda;
+    - **consulta de manutenção**, separada para **Rio** e **Búzios**, de 15 em 15 dias contando
+      de 21/09 (a próxima é 06/10);
+    - **lembrete do dia 30**: fixos, contador, notas e condomínios. Em fevereiro cai no último
+      dia e em março volta ao dia 30;
+    - **caixinhas de fim de ano** em 1º de dezembro.
+    Dá para mudar tudo na própria tela;
   - você cria, edita (nome, o que fazer, frequência, próxima data) e **arquiva** (com
     confirmação; o histórico fica). Arquivada não volta sozinha;
   - a equipe marca **"feita"** (com a data e uma observação) ou **"pular desta vez"** (motivo
@@ -603,8 +608,8 @@ ambiente).
 7. **Booking:** criar os anúncios (ver "Copiar anúncios do Airbnb para o Booking" na seção 7).
 8. **Portaria:** em Painel → **Portaria**, marque os imóveis que exigem documentos de
    portaria (hoje, o 403). Sem marcação, a tela só avisa e não lista nada.
-9. **Rotinas:** em Painel → **Rotinas**, confira as quatro rotinas que já vêm prontas e
-   ajuste a próxima data de cada uma (elas começam vencendo hoje). Arquive a que não usar.
+9. **Rotinas:** em Painel → **Rotinas**, confira as cinco rotinas que já vêm prontas, com as
+   datas das suas regras. Arquive a que não usar.
 10. **Manutenção:** quando aparecer "aguardando aprovação" (no menu **Manutenção**), confira o
    orçamento, escolha quem paga (empresa ou proprietário) e aprove, ou recuse com o motivo.
    Só você (administrador) vê esses botões.

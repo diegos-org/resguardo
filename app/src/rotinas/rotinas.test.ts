@@ -153,14 +153,42 @@ describe("cadastro e execução", () => {
     expect(await arquivarRotina(db, outra, r.id, false, null)).toMatchObject({ ok: false });
   });
 
-  it("rotinas iniciais: criadas uma vez, vencendo hoje; se arquivadas, não voltam", async () => {
+  it("edição com o formulário antigo não desfaz uma frequência mudada por outra pessoa", async () => {
+    await criarRotina(db, org, { titulo: "Faxinas", descricao: "", frequencia: "semanal", proximaData: "2026-10-05" }, null);
+    const [r] = await listarRotinas(db, org, "2026-10-01");
+    // A: só muda a frequência (a data fica).
+    expect(await editarRotina(db, org, r.id, { titulo: "Faxinas", descricao: "", frequencia: "quinzenal", proximaData: "2026-10-05", proximaAnterior: "2026-10-05", frequenciaAnterior: "semanal" }, null)).toEqual({ ok: true });
+    // B: salva o formulário aberto antes, ainda com "semanal".
+    expect(await editarRotina(db, org, r.id, { titulo: "Faxinas (B)", descricao: "", frequencia: "semanal", proximaData: "2026-10-05", proximaAnterior: "2026-10-05", frequenciaAnterior: "semanal" }, null)).toMatchObject({
+      ok: false,
+      erro: expect.stringContaining("frequência"),
+    });
+    expect((await listarRotinas(db, org, "2026-10-01"))[0]).toMatchObject({ titulo: "Faxinas", frequencia: "quinzenal" });
+  });
+
+  it("rotinas iniciais: nas datas das regras (segunda, 15 em 15 dias desde 21/09, dia 30, 1º/12); criadas uma vez; se arquivadas, não voltam", async () => {
     await garantirRotinasIniciais(db, org, "2026-10-01");
     const lista = await listarRotinas(db, org, "2026-10-01");
     expect(lista.map((r) => r.titulo).sort()).toEqual(ROTINAS_INICIAIS.map((r) => r.titulo).sort());
-    expect(lista.every((r) => r.proximaData === "2026-10-01" && r.situacao === "hoje")).toBe(true);
+    expect(Object.fromEntries(lista.map((r) => [r.titulo, r.proximaData]))).toEqual({
+      "Conferência das faxinas": "2026-10-05",
+      "Consulta de manutenção — Rio": "2026-10-06",
+      "Consulta de manutenção — Búzios": "2026-10-06",
+      "Lembrete do dia 30": "2026-10-30",
+      "Caixinhas de fim de ano": "2026-12-01",
+    });
     for (const r of lista) await arquivarRotina(db, org, r.id, false, null);
     await garantirRotinasIniciais(db, org, "2026-10-02");
     expect(await listarRotinas(db, org, "2026-10-02")).toEqual([]);
-    expect(await db.select().from(rotinas).where(eq(rotinas.organizacaoId, org))).toHaveLength(4);
+    expect(await db.select().from(rotinas).where(eq(rotinas.organizacaoId, org))).toHaveLength(5);
+  });
+
+  it("lembrete do dia 30: em fevereiro no último dia, e volta ao dia 30 em março", async () => {
+    await garantirRotinasIniciais(db, org, "2027-02-10");
+    const [l] = (await listarRotinas(db, org, "2027-02-10")).filter((r) => r.titulo === "Lembrete do dia 30");
+    expect(l.proximaData).toBe("2027-02-28");
+    expect(await registrarExecucao(db, org, l.id, { prevista: "2027-02-28", feitaEm: "2027-02-28", observacao: "", pulada: false }, "2027-02-28", null)).toMatchObject({ ok: true });
+    const [depois] = (await listarRotinas(db, org, "2027-02-28")).filter((r) => r.titulo === "Lembrete do dia 30");
+    expect(depois.proximaData).toBe("2027-03-30");
   });
 });
