@@ -722,3 +722,40 @@ export const repasses = pgTable(
     index("repasses_org_mes").on(t.organizacaoId, t.mes),
   ],
 );
+
+export const ESTADOS_MANUTENCAO = ["pedida", "orcada", "aprovada", "realizada", "recusada", "cancelada"] as const;
+export type EstadoManutencao = (typeof ESTADOS_MANUTENCAO)[number];
+
+/**
+ * Manutenção (M6.2): pedido → orçamento → aprovação de Diego (com quem paga) → execução →
+ * custo lançado como despesa (M4.3). Receber orçamento não autoriza executar.
+ */
+export const manutencoes = pgTable(
+  "manutencoes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    imovelId: uuid("imovel_id").notNull().references(() => imoveis.id),
+    titulo: text("titulo").notNull(),
+    descricao: text("descricao").notNull().default(""),
+    estado: text("estado").$type<EstadoManutencao>().notNull().default("pedida"),
+    /** Quem vai fazer (orçamento). */
+    fornecedor: text("fornecedor").notNull().default(""),
+    /** Centavos; null = sem orçamento ainda. */
+    orcamento: integer("orcamento"),
+    /** Definido por Diego na aprovação; null = a definir (nunca por suposição). */
+    responsavel: text("responsavel").$type<"empresa" | "proprietario">(),
+    /** Proprietário que paga, gravado na aprovação (se o imóvel mudar de dono depois, não passa para o novo). */
+    proprietarioId: uuid("proprietario_id").references(() => proprietarios.id),
+    aprovadaPor: uuid("aprovada_por").references(() => usuarios.id),
+    aprovadaEm: timestamp("aprovada_em", { withTimezone: true }),
+    dataRealizada: date("data_realizada", { mode: "string" }),
+    /** Despesa lançada com o custo final (livro de lançamentos). */
+    despesaId: uuid("despesa_id").references(() => lancamentos.id),
+    observacao: text("observacao").notNull().default(""),
+    criadoPor: uuid("criado_por").references(() => usuarios.id),
+    criadoEm: criadoEm(),
+    atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("manutencoes_org_estado").on(t.organizacaoId, t.estado), index("manutencoes_imovel").on(t.imovelId)],
+);
