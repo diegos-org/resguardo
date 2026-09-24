@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { criarContrato, encerrarContrato } from "@/contratos/repositorio";
-import { contratos, imoveis, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
+import { contratos, imoveis, organizacoes, proprietarioImoveis, proprietarios, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import type { DadosReserva } from "@/reservas/regras";
@@ -10,7 +10,7 @@ import { aplicarMotor, recalcularReservas } from "./aplicar";
 import { REGRAS_PADRAO } from "./motor";
 import { lerRecebimento, salvarRecebimento } from "@/imoveis/recebimento";
 import { historicoDe } from "@/auditoria/auditoria";
-import { listarLancamentos, saldoAcerto, totaisPorTipo } from "./ledger";
+import { listarLancamentos, mudarEstado, saldoAcerto, totaisPorTipo } from "./ledger";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -22,8 +22,9 @@ const dados = (over: Partial<DadosReserva> = {}): DadosReserva => ({
   imovelId: im,
   origem: "booking",
   estado: "confirmada",
-  checkin: "2026-10-10",
-  checkout: "2026-10-13",
+  // Datas no futuro: o recálculo por mudança de regra só alcança reservas de hoje em diante.
+  checkin: "2030-10-10",
+  checkout: "2030-10-13",
   hospedes: 2,
   hospedeNome: "Teste",
   hospedeEmail: "",
@@ -145,11 +146,11 @@ describe("aplicarMotor", () => {
   });
 
   it("contrato novo: recalcular o imóvel aplica a nova comissão", async () => {
-    const id = await sinc({ checkin: "2027-02-10", checkout: "2027-02-13" });
+    const id = await sinc({ checkin: "2031-02-10", checkout: "2031-02-13" });
     expect((await totaisPorTipo(db, org, {})).comissao).toBe(19125);
     const [c] = await db.select().from(contratos).where(eq(contratos.imovelId, im));
-    await encerrarContrato(db, org, c.id, "2026-12-31", null);
-    await criarContrato(db, org, im, { tipo: "gestao_completa", comissao: "20", inicio: "2027-01-01" }, null);
+    await encerrarContrato(db, org, c.id, "2030-12-31", null);
+    await criarContrato(db, org, im, { tipo: "gestao_completa", comissao: "20", inicio: "2031-01-01" }, null);
     expect(await recalcularReservas(db, org, { imovelId: im })).toMatchObject({ reservas: 1 });
     expect((await totaisPorTipo(db, org, {})).comissao).toBe(25500);
     expect(await ativosDoMotor(id)).toHaveLength(4);
@@ -185,6 +186,46 @@ describe("aplicarMotor", () => {
     ).rejects.toThrow("falha simulada");
     expect(await lerRecebimento(db, org, im)).toEqual({});
     expect(await saldoAcerto(db, org, { proprietarioId: dono })).toBe(108375);
+  });
+
+  it("mudança de regra só vale daquela data para frente: reserva passada não é recalculada", async () => {
+    const passada = await sinc({ checkin: "2025-03-10", checkout: "2025-03-13" });
+    const r = await sincronizarReserva(db, org, "beds24", "2", dados()); // futura
+    const futura = r.ok ? r.reserva.id : "";
+    expect(await saldoAcerto(db, org, { proprietarioId: dono })).toBe(2 * 108375);
+    await salvarRecebimento(db, org, im, { booking: "split" }, null);
+    // a futura mudou (split: fora do acerto); a passada ficou exatamente como estava
+    expect(await saldoAcerto(db, org, { proprietarioId: dono })).toBe(108375);
+    expect((await ativosDoMotor(passada)).find((l) => l.tipo === "direito_proprietario")?.efeitoSaldo).toBe(108375);
+    expect((await ativosDoMotor(futura)).find((l) => l.tipo === "direito_proprietario")?.efeitoSaldo).toBe(0);
+    // mesmo pedindo uma data no passado, o recálculo começa hoje
+    expect(await recalcularReservas(db, org, { aPartirDe: "2000-01-01" })).toMatchObject({ reservas: 1 });
+  });
+
+  it("o que já movimentou dinheiro não é mexido automaticamente: fica como está e avisa", async () => {
+    const id = await sinc();
+    const direito = (await ativosDoMotor(id)).find((l) => l.tipo === "direito_proprietario")!;
+    await mudarEstado(db, org, direito.id, "realizado", null, "2030-10-14");
+    await sinc({ valorBruto: 200000, taxaCanal: 30000 }); // o canal mudou o valor depois
+    const res = await aplicarMotor(db, org, id, null);
+    expect(res).toMatchObject({ criados: 0, estornados: 0 });
+    expect(res?.avisos.some((a) => a.includes("dinheiro movimentado"))).toBe(true);
+    expect((await totaisPorTipo(db, org, {})).receita_bruta).toBe(150000); // intacto
+    expect(await listarLancamentos(db, org, { reservaId: id })).toHaveLength(4);
+  });
+
+  it("baixa e recálculo ao mesmo tempo: nunca sobra lançamento pago que foi estornado", async () => {
+    const id = await sinc();
+    const direito = (await ativosDoMotor(id)).find((l) => l.tipo === "direito_proprietario")!;
+    await sincronizarReserva(db, org, "beds24", "x", dados({ checkin: "2030-11-10", checkout: "2030-11-12" })); // outra, só para ter movimento
+    // Muda o valor sem recalcular ainda (atualização direta), depois dispara baixa e recálculo juntos.
+    await db.update(reservas).set({ valorBruto: 200000 }).where(eq(reservas.id, id));
+    const [baixa] = await Promise.allSettled([mudarEstado(db, org, direito.id, "realizado", null, "2030-10-14"), aplicarMotor(db, org, id, null)]);
+    const todos = await listarLancamentos(db, org, { reservaId: id });
+    const estornados = new Set(todos.map((l) => l.estornoDe).filter(Boolean));
+    expect(todos.some((l) => l.estado === "realizado" && estornados.has(l.id))).toBe(false);
+    // ou a baixa entrou primeiro (e o recálculo não mexeu), ou foi recusada porque o valor já tinha sido estornado
+    if (baixa.status === "rejected") expect(String(baixa.reason)).toContain("estornado");
   });
 
   it("reserva de outra organização ou id inválido: nada acontece", async () => {

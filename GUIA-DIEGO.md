@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 24/09/2026, decisões de 24/09 (Beds24 com escrita, repasse no dia 1º, e-mail obrigatório, proposta do marketplace).
+> **Última atualização:** 24/09/2026, mudança de regra vale só daquela data para frente (M4.2c).
 
 ---
 
@@ -157,6 +157,12 @@
   reserva a reserva no campo "Quem recebe do canal". Imóvel com **mais de um proprietário**
   (ainda não há cadastro de cotas) ou sem proprietário fica com o acerto **pendente** — nada
   é atribuído a alguém por chute.
+- M4.2c: **mudança vale só daquela data para frente.** Quando você muda uma regra (contrato,
+  percentual, quem recebe por canal) ou sai uma versão nova do sistema, o recálculo só
+  alcança as reservas com **entrada a partir da data da mudança** (nunca antes de hoje).
+  O passado fica exatamente como foi. E qualquer lançamento que **já movimentou dinheiro**
+  (pago ou conciliado) nunca é mexido automaticamente: se algo mudar numa reserva assim, o
+  sistema avisa e a correção vira um ajuste manual.
 - M4.3: **despesas** (menu **Despesas**). Cada despesa tem categoria, valor, data, imóvel
   (opcional para as da empresa), fornecedor, comprovante (por enquanto um link ou referência,
   ex.: link do recibo no Drive — o envio de arquivo vem depois) e situação (a pagar / paga).
@@ -298,6 +304,10 @@ ambiente).
    2. Crie uma *API key* e coloque na Vercel como `RESEND_API_KEY`, e crie
       `EMAIL_REMETENTE` = `Sua Casa Leblon <acesso@seudominio.com.br>`. **Não cole no chat.**
 6. **Booking:** criar os anúncios (ver "Copiar anúncios do Airbnb para o Booking" na seção 7).
+7. **Sistema antigo (referência):** mande o arquivo (zip) do sistema antigo — o jeito mais
+   fácil é subir no seu **Google Drive** e me dizer o nome do arquivo (o Drive já está
+   conectado aqui). Eu só leio para levantar todas as telas e capacidades e comparar com o
+   plano; **nada dele vai para o GitHub**, e dados reais de clientes não são copiados.
 
 ---
 
@@ -321,6 +331,13 @@ ambiente).
 - **Avaliações**: só no Airbnb ou também próprias.
 
 **Respostas:**
+- **Telas do sistema antigo:** o **dashboard** inicial com vários indicadores (M4.6) e a aba
+  **Apartamentos** com tabela de todos e filtros para escolher como ver (M4.7) já estavam
+  no plano — deixei as descrições mais completas. A aba **Anúncios** (M2.9) e as
+  **Configurações com sub-abas** (M1.7) entraram agora. Quando você mandar o zip do sistema
+  antigo, eu cruzo tudo com o plano (M0.6) e acrescento o que faltar.
+- **Avisar em vez de supor:** virou regra do projeto — faltou um dado ou algo não bate, o
+  sistema avisa e deixa pendente; nunca preenche com um palpite.
 - **Beds24 só leitura?** Não — como o SCL vai ser a fonte oficial de calendário e preços, a
   chave precisa de **leitura e escrita** (seção 6, item 3). Entrou no plano o **M3.7** (SCL
   manda calendário, preços e regras para o Beds24 → OTAs) e o **M5.5** (proprietário mexe
@@ -337,7 +354,8 @@ ambiente).
   textos do site, modelos de mensagem, categorias — tudo com tela de edição. E **uma regra
   fica num lugar só**: quando você muda (um contrato, quem recebe num canal), o sistema
   recalcula o que depende dela na hora; a cada nova versão publicada, recalcula tudo. Não
-  ficam duas versões da mesma regra.
+  ficam duas versões da mesma regra. E a mudança vale **daquela data para frente**: o
+  passado e o dinheiro que já movimentou nunca são recalculados.
 - **Excluir com confirmação:** todo botão de excluir, remover, cancelar ou estornar agora
   pergunta "tem certeza?" antes. Onde há histórico (financeiro, reservas), o sistema
   prefere arquivar ou estornar em vez de apagar de vez.
