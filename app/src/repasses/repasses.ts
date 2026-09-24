@@ -282,6 +282,9 @@ export async function marcarRepassePago(db: Db, org: string, id: string, data: s
     const r = await travarRepasse(tx, org, id);
     if (!r || r.estornadoEm) return { ok: false as const, erro: "Repasse não encontrado." };
     if (r.situacao !== "a_pagar") return { ok: false as const, erro: "Este repasse já está pago." };
+    // O Pix só pode ter sido feito depois do fim do mês fechado (a partir do dia 1º seguinte).
+    const lim = limitesDoMes(r.mes.slice(0, 7))!;
+    if (data < lim.fim) return { ok: false as const, erro: `A data do pagamento não pode ser antes de ${lim.fim.split("-").reverse().join("/")}.` };
     for (const l of await lancamentosDoRepasse(tx, org, id)) await mudarEstado(tx, org, l.id, "realizado", autorId, data);
     await tx.update(repasses).set({ situacao: "pago" as SituacaoRepasse, dataPagamento: data }).where(eq(repasses.id, id));
     await registrarAuditoria(tx, { organizacaoId: org, usuarioId: autorId, acao: "repasse.pagar", entidade: "repasse", entidadeId: id, mudancas: { situacao: ["a pagar", `pago em ${data}`] } });
@@ -298,6 +301,12 @@ export async function estornarRepasse(db: Db, org: string, id: string, motivo: s
   const m = motivo.trim();
   if (!m) return { ok: false, erro: "Informe o motivo do estorno." };
   return db.transaction(async (tx) => {
+    if (!uuidValido(id)) return { ok: false as const, erro: "Repasse não encontrado." };
+    // Mesma ordem de trava do fechamento (primeiro o proprietário): um estorno e um fechamento de
+    // mês seguinte ao mesmo tempo não se cruzam.
+    const [dono] = await tx.select({ proprietarioId: repasses.proprietarioId }).from(repasses).where(and(eq(repasses.id, id), eq(repasses.organizacaoId, org)));
+    if (!dono) return { ok: false as const, erro: "Repasse não encontrado." };
+    await tx.select({ id: proprietarios.id }).from(proprietarios).where(eq(proprietarios.id, dono.proprietarioId)).for("update");
     const r = await travarRepasse(tx, org, id);
     if (!r || r.estornadoEm) return { ok: false as const, erro: "Repasse não encontrado." };
     const [posterior] = await tx

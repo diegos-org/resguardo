@@ -172,6 +172,7 @@ describe("pagamento e estorno", () => {
     const r = await fecharMes(db, org, dono, MES, DEPOIS, null);
     if (!r.ok) throw new Error(r.erro);
     expect(await marcarRepassePago(db, org, r.id, "2026-11-05", DEPOIS, null)).toMatchObject({ ok: false, erro: expect.stringContaining("futuro") });
+    expect(await marcarRepassePago(db, org, r.id, "2026-10-31", DEPOIS, null)).toMatchObject({ ok: false, erro: expect.stringContaining("antes de 01/11/2026") });
     expect((await marcarRepassePago(db, org, r.id, DEPOIS, DEPOIS, null)).ok).toBe(true);
     const [l] = await db.select().from(lancamentos).where(eq(lancamentos.tipo, "repasse"));
     expect(l).toMatchObject({ estado: "realizado", dataCaixa: DEPOIS });
@@ -197,6 +198,18 @@ describe("pagamento e estorno", () => {
     expect(adiant).toMatchObject({ situacao: "a_cobrar", aberto: 40000 });
     expect((await listarRepasses(db, org, dono)).map((x) => x.situacao)).toEqual(["estornado", "estornado"]);
     expect((await fecharMes(db, org, dono, MES, "2026-12-01", null)).ok).toBe(true);
+  });
+
+  it("estornar outubro e fechar novembro ao mesmo tempo nunca deixam novembro ativo com outubro estornado", async () => {
+    const out = await fecharMes(db, org, dono, MES, DEPOIS, null);
+    if (!out.ok) throw new Error(out.erro);
+    await criarReserva(db, org, reserva(a, "2026-11-10", "2026-11-13"), null);
+    const [est, nov] = await Promise.all([estornarRepasse(db, org, out.id, "Refazer", "2026-12-01", null), fecharMes(db, org, dono, "2026-11", "2026-12-01", null)]);
+    const ativos = (await listarRepasses(db, org, dono)).filter((x) => !x.estornadoEm).map((x) => x.mes);
+    // Ou o estorno venceu (e novembro fecha sobre outubro reaberto), ou novembro venceu (e o estorno foi recusado).
+    if (est.ok) expect(ativos).toEqual(nov.ok ? ["2026-11-01"] : []);
+    else expect(ativos).toEqual(["2026-11-01", "2026-10-01"]);
+    if (est.ok && nov.ok) expect((await listarRepasses(db, org, dono)).find((x) => x.mes === "2026-11-01")?.valor).toBe(72250 * 2);
   });
 
   it("dois fechamentos ao mesmo tempo gravam um só; outra organização não vê nem fecha", async () => {

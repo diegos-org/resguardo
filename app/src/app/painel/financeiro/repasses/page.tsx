@@ -133,7 +133,7 @@ export default async function Repasses({ searchParams }: PageProps<"/painel/fina
                   <input type="hidden" name="id" value={r.id} />
                   <label style={{ flex: "0 1 220px" }}>
                     Data do Pix
-                    <input type="date" name="data" defaultValue={hoje} max={hoje} required />
+                    <input type="date" name="data" defaultValue={hoje} min={limitesDoMes(mes)!.fim} max={hoje} required />
                   </label>
                   <div className={styles.acoes}>
                     <button type="submit">Marcar como pago</button>
