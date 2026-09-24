@@ -797,17 +797,31 @@ export async function enviarAgenda(
         // E só se cada reserva nova daquele envio foi entregue (neste ou antes) ou já não precisa de
         // aviso (saída já passou, ou deixou de estar confirmada).
         for (const i of incertos.lista) {
-          if (i.imoveis !== null && !i.imoveis.every((x) => enviada.imoveis.includes(x))) continue;
+          const foraImoveis = i.imoveis === null ? [] : i.imoveis.filter((x) => !enviada.imoveis.includes(x));
           const faltam = i.eventos.filter((e) => !enviada.eventos.includes(e) && !atuais.some((a) => a.id === e));
           const ids = [...new Set(faltam.map((e) => e.split("@")[0]).filter((x) => /^[0-9a-f-]{36}$/i.test(x)))];
-          if (ids.length) {
-            const aindaValem = await tx
-              .select({ id: reservas.id })
-              .from(reservas)
-              .where(and(inArray(reservas.id, ids), eq(reservas.estado, "confirmada"), gte(reservas.checkout, hoje)));
-            if (aindaValem.length) continue;
+          const aindaValem = ids.length
+            ? await tx
+                .select({ id: reservas.id, imovelId: reservas.imovelId })
+                .from(reservas)
+                .where(and(inArray(reservas.id, ids), eq(reservas.estado, "confirmada"), gte(reservas.checkout, hoje)))
+            : [];
+          if (!foraImoveis.length && !aindaValem.length) {
+            await tx.update(appSettings).set({ value: sql`jsonb_set(${appSettings.value}, '{estado}', '"resolvido"')`, updatedAt: new Date() }).where(eq(appSettings.key, i.chave));
+            continue;
           }
-          await tx.update(appSettings).set({ value: sql`jsonb_set(${appSettings.value}, '{estado}', '"resolvido"')`, updatedAt: new Date() }).where(eq(appSettings.key, i.chave));
+          // Parcial: o incerto fica só com o que ainda falta (imóveis de fora e reservas não entregues).
+          // O que este e-mail já entregou sai dele, para a faixa do incerto não o mandar de novo.
+          const restantes = new Set(aindaValem.map((x) => x.id));
+          const eventos = faltam.filter((e) => restantes.has(e.split("@")[0]));
+          const imoveisRestantes = [...new Set([...foraImoveis, ...aindaValem.map((x) => x.imovelId)])].sort();
+          await tx
+            .update(appSettings)
+            .set({
+              value: sql`jsonb_set(jsonb_set(${appSettings.value}, '{carga,eventos}', ${JSON.stringify(eventos)}::jsonb, true), '{carga,imoveis}', ${JSON.stringify(imoveisRestantes)}::jsonb, true)`,
+              updatedAt: new Date(),
+            })
+            .where(eq(appSettings.key, i.chave));
         }
       });
     } catch (e) {

@@ -631,6 +631,32 @@ describe("configuração e envio", () => {
     expect(await estado("2026-09-30")).toBe("resolvido");
   });
 
+  it("envio incerto aberto por um imóvel de fora não reenvia a cada dia o que já foi entregue", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    // Marco antigo e um incerto de ontem com Rio e Búzios; hoje Búzios está inativo.
+    const reservaRio = await nova(rio, "2028-11-06", "2028-11-08", new Date(AGORA.getTime() - 25 * 3_600_000).toISOString());
+    await db.insert(appSettings).values([
+      { key: `agenda-diaria:ultima:${org}:a@example.com`, value: { em: new Date(AGORA.getTime() - 26 * 3_600_000).toISOString() } },
+      {
+        key: `agenda-diaria:${org}:2026-09-30:a@example.com`,
+        value: { em: "2026-09-30T23:00:00.000Z", estado: "incerto", corte: "2026-09-30T23:00:00.000Z", carga: { assunto: "x", texto: "x", eventos: [], imoveis: [rio, buzios].sort() } },
+      },
+    ]);
+    await db.update(imoveis).set({ ativo: false }).where(eq(imoveis.id, buzios));
+    const correio = new CorreioMemoria();
+    await enviarAgenda(db, org, correio, AGORA);
+    expect(correio.enviadas[0].texto).toContain("entrada seg 06/11");
+    // O incerto continua aberto (Búzios de fora), mas agora só com Búzios.
+    const [marca] = await db.select().from(appSettings).where(eq(appSettings.key, `agenda-diaria:${org}:2026-09-30:a@example.com`));
+    expect(marca.value).toMatchObject({ estado: "incerto", carga: { imoveis: [buzios] } });
+    // Dias seguintes: a reserva do Rio já entregue não volta.
+    await enviarAgenda(db, org, correio, new Date("2026-10-02T23:00:00Z"));
+    await enviarAgenda(db, org, correio, new Date("2026-10-03T23:00:00Z"));
+    expect(correio.enviadas[1].texto).not.toContain("06/11");
+    expect(correio.enviadas[2].texto).not.toContain("06/11");
+    expect(reservaRio.id).toBeTruthy();
+  });
+
   it("envio incerto de outro dia continua avisado até um envio dar certo", async () => {
     await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
     await nova(rio, "2027-12-06", "2027-12-08", new Date(AGORA.getTime() - 60 * 60_000).toISOString());
