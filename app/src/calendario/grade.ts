@@ -8,10 +8,10 @@ export type ItemCalendario = {
   imovelId: string;
   inicio: string; // entrada / início
   fim: string; // saída / fim (exclusivo)
-  tipo: "reserva" | "bloqueio" | "manutencao";
+  tipo: "reserva" | "bloqueio" | "limpeza" | "manutencao";
   rotulo: string;
   href?: string;
-  categoria: string; // origem da reserva, "bloqueio" ou "manutencao"
+  categoria: string; // origem da reserva, "bloqueio", "limpeza" ou "manutencao"
   conflito?: boolean;
 };
 
