@@ -91,7 +91,7 @@ export async function salvarConfigAgenda(db: Db, organizacaoId: string, c: NovaC
   // Cidades válidas: as dos imóveis ativos e as já configuradas (imóvel renomeado ou inativado
   // não vira "todas as cidades" por engano: a escolha continua como estava).
   const anterior = await lerConfigAgenda(db, organizacaoId);
-  const cidades = [...(await cidadesDosImoveis(db, organizacaoId)), ...anterior.destinatarios.flatMap((d) => d.cidades)];
+  const cidades = [...(await cidadesDosImoveis(db, organizacaoId)), ...anterior.destinatarios.flatMap((d) => d.cidades), ...Object.keys(anterior.formatos)];
   const vistos = new Set<string>();
   const destinatarios: Destinatario[] = [];
   for (const d of c.destinatarios) {
@@ -418,8 +418,18 @@ async function lerMarco(db: Db, chave: string): Promise<Date | null> {
   return typeof em === "string" && !Number.isNaN(Date.parse(em)) ? new Date(em) : null;
 }
 
-async function gravarMarco(db: Db, chave: string, em: Date): Promise<void> {
-  const value = { em: em.toISOString() };
+/**
+ * Cidades que o marco da pessoa cobre (null = todas). Cidade que ela passou a receber depois não
+ * está coberta: conta como destinatário novo para aquela cidade (reservas novas das últimas 24h).
+ */
+async function lerCobertura(db: Db, chave: string): Promise<string[] | null> {
+  const [l] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, chave));
+  const c = (l?.value as { cidades?: unknown } | undefined)?.cidades;
+  return Array.isArray(c) ? c.filter((x): x is string => typeof x === "string") : null;
+}
+
+async function gravarMarco(db: Db, chave: string, em: Date, cidades?: string[] | null): Promise<void> {
+  const value = cidades === undefined ? { em: em.toISOString() } : { em: em.toISOString(), cidades };
   await db.insert(appSettings).values({ key: chave, value }).onConflictDoUpdate({ target: appSettings.key, set: { value, updatedAt: new Date() } });
 }
 
@@ -526,9 +536,20 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
     try {
       // Sem marco próprio (primeira agenda desta pessoa): as reservas novas das últimas 24h.
       const marco = await lerMarco(db, chaveUltimaDe(organizacaoId, d.email));
-      const desde = marco ? new Date(marco.getTime() - SOBREPOSICAO_MS) : new Date(agora.getTime() - 86_400_000);
+      const umDia = new Date(agora.getTime() - 86_400_000);
+      const desde = marco ? new Date(marco.getTime() - SOBREPOSICAO_MS) : umDia;
+      // Cidades que o marco não cobre (a pessoa passou a recebê-las depois): desde 24h, como quem é novo.
+      const cobertas = marco ? await lerCobertura(db, chaveUltimaDe(organizacaoId, d.email)) : null;
+      const coberta = (cidade: string) => cobertas === null || cobertas.includes(cidade);
+      const menor = desde < umDia ? desde : umDia;
       avisadas = await lerAvisadas(db, chaveAvisadasDe(organizacaoId, d.email));
-      agenda = semAvisadas(await agendaDesde(desde, corte), avisadas);
+      const bruta = await agendaDesde(cobertas === null ? desde : menor, corte);
+      agenda = semAvisadas(
+        cobertas === null
+          ? bruta
+          : { ...bruta, secoes: bruta.secoes.map((x) => ({ ...x, novas: x.novas.filter((n) => Date.parse(n.registradaEm) > (coberta(x.cidade) ? desde : umDia).getTime()) })) },
+        avisadas,
+      );
       // A mesma chave do dia vai para o provedor: uma nova tentativa do mesmo envio não duplica.
       await correio.enviar({ para: d.email, assunto: `Agenda SCL — ${diaCurto(agenda.dias[0])} a ${diaCurto(agenda.dias.at(-1)!)}`, texto: textoDaAgenda(agenda, d.cidades, { ...config, incertoAte }), chave });
     } catch (e) {
@@ -548,7 +569,11 @@ export async function enviarAgenda(db: Db, organizacaoId: string, correio: Corre
         await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${chaveUltimaDe(organizacaoId, d.email)}))`);
         const marcoAtual = await lerMarco(tx, chaveUltimaDe(organizacaoId, d.email));
         const marco = marcoAtual && marcoAtual > corte ? marcoAtual : corte;
-        await gravarMarco(tx, chaveUltimaDe(organizacaoId, d.email), marco);
+        // Cobertura: as cidades deste envio (vazio = todas), somadas às de um envio mais novo que já gravou.
+        const deste = d.cidades.length ? d.cidades : null;
+        const antes = marcoAtual && marcoAtual > corte ? await lerCobertura(tx, chaveUltimaDe(organizacaoId, d.email)) : [];
+        const cidades = deste === null || antes === null ? null : [...new Set([...antes, ...deste])].sort();
+        await gravarMarco(tx, chaveUltimaDe(organizacaoId, d.email), marco, cidades);
         // As reservas novas deste envio: na próxima, a faixa de sobreposição não as repete.
         const atuais = await lerAvisadas(tx, chaveAvisadasDe(organizacaoId, d.email));
         // Só o que foi no e-mail desta pessoa (as cidades dela); as outras cidades não contam como avisadas.

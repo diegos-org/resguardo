@@ -21,7 +21,10 @@ export default async function Agenda({ searchParams }: PageProps<"/painel/agenda
   const salvo = typeof params.salvo === "string" ? params.salvo : undefined;
   const erro = typeof params.erro === "string" ? params.erro : undefined;
   // Cidades já escolhidas continuam na tela mesmo sem imóvel ativo (senão salvar viraria "todas").
-  const cidades = [...new Set([...ativas, ...config.destinatarios.flatMap((d) => d.cidades)])].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  // Idem para o formato escolhido de uma cidade que ficou sem imóvel ativo (não volta a "automático" ao salvar).
+  const cidades = [...new Set([...ativas, ...config.destinatarios.flatMap((d) => d.cidades), ...Object.keys(config.formatos)])].sort((a, b) =>
+    a.localeCompare(b, "pt-BR"),
+  );
   // Linhas do formulário: os destinatários atuais e duas em branco para acrescentar.
   const linhas = [...config.destinatarios, { email: "", cidades: [] }, { email: "", cidades: [] }];
 

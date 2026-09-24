@@ -321,6 +321,29 @@ describe("configuração e envio", () => {
     expect(correio.enviadas[1].texto).toContain("entrada ter 01/06");
   });
 
+  it("cidade que a pessoa passou a receber conta como nova para ela: reservas novas das últimas 24h dessa cidade", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: ["Rio de Janeiro"] }] }, null);
+    // Criada 2h antes do envio só do Rio (fora da sobreposição de 10 min), longe da janela de 5 dias.
+    await nova(buzios, "2027-08-02", "2027-08-05", new Date(AGORA.getTime() - 2 * 3_600_000).toISOString());
+    await nova(rio, "2027-08-10", "2027-08-12", new Date(AGORA.getTime() - 2 * 3_600_000).toISOString());
+    const correio = new CorreioMemoria();
+    await enviarAgenda(db, org, correio, AGORA);
+    expect(correio.enviadas[0].texto).toContain("entrada ter 10/08");
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    await enviarAgenda(db, org, correio, new Date(AGORA.getTime() + 60_000), { manual: true });
+    // Búzios chega (nunca foi para ela); o Rio já avisado não se repete.
+    expect(correio.enviadas[1].texto).toContain("entrada seg 02/08");
+    expect(correio.enviadas[1].texto).not.toContain("entrada ter 10/08");
+  });
+
+  it("formato escolhido de cidade sem imóvel ativo continua salvo", async () => {
+    await salvarConfigAgenda(db, org, { ativa: false, destinatarios: [], formatos: { "Armação dos Búzios": "limpezas" } }, null);
+    await db.update(imoveis).set({ ativo: false }).where(eq(imoveis.id, buzios));
+    // A tela lista a cidade (formato salvo) e a manda de volta; a escolha continua.
+    expect(await salvarConfigAgenda(db, org, { ativa: false, destinatarios: [{ email: "a@example.com", cidades: ["Armação dos Búzios"] }], formatos: { "Armação dos Búzios": "limpezas" } }, null)).toEqual({ ok: true });
+    expect((await lerConfigAgenda(db, org)).formatos).toEqual({ "Armação dos Búzios": "limpezas" });
+  });
+
   it("reserva avisada, cancelada e confirmada de novo depois é avisada outra vez (é outro evento)", async () => {
     await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
     const dados = reserva(rio, "2027-07-01", "2027-07-05", { codigoCanal: "HMVOLTA" });
