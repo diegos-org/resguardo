@@ -12,6 +12,7 @@ import { totaisPorTipo } from "@/financeiro/ledger";
 import type { Imovel } from "@/imoveis/repositorio";
 import { conflitos } from "@/reservas/regras";
 import { listarBloqueios, listarReservas, type Reserva } from "@/reservas/repositorio";
+import { rotinasPendentes } from "@/rotinas/rotinas";
 import { regrasEmVigor } from "@/sistema/regras";
 import { calcularOcupacao, type Financeiro, mesesDoAno, type OcupacaoImovel, ocupacaoTotal, resumoFinanceiro } from "./indicadores";
 
@@ -41,6 +42,8 @@ export async function carregarDashboard(
     ano: number;
     hoje: string;
     verFinanceiro: boolean;
+    /** Quem vê rotinas recebe o aviso das atrasadas ou que vencem hoje. */
+    verRotinas?: boolean;
   },
 ): Promise<Dashboard> {
   const ids = o.imoveis.map((i) => i.id);
@@ -68,6 +71,9 @@ export async function carregarDashboard(
   const alertas: Alerta[] = [];
   const sobrepostas = new Set(conflitos(reservas).flat()).size;
   if (sobrepostas) alertas.push({ nivel: "atencao", texto: `${sobrepostas} reserva(s) sobreposta(s) no mesmo imóvel (possível overbooking).`, link: "/painel/reservas" });
+  // Rotinas são da organização (não dependem do filtro de imóveis).
+  const rotinas = o.verRotinas ? await rotinasPendentes(db, organizacaoId, o.hoje) : 0;
+  if (rotinas) alertas.push({ nivel: "atencao", texto: `${rotinas} rotina(s) atrasada(s) ou para hoje.`, link: "/painel/rotinas" });
 
   let financeiro: Financeiro | null = null;
   let porMes: Dashboard["porMes"] = null;

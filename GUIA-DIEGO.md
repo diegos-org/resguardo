@@ -345,6 +345,22 @@
     de meses (até 36). Intervalo inválido não é adivinhado: aparece um aviso e vale o filtro;
   - com "todos os imóveis", entra também uma linha **Geral da empresa** (despesas sem imóvel)
     e os imóveis arquivados que tiveram movimento, então o total bate com o Início.
+- M6.5: **rotinas recorrentes** (menu **Rotinas**). Tarefas que se repetem, cada uma com a
+  próxima data:
+  - já vêm as cinco das regras de atendimento, nas datas combinadas:
+    - **conferência das faxinas** toda segunda;
+    - **consulta de manutenção**, separada para **Rio** e **Búzios**, de 15 em 15 dias contando
+      de 21/09 (a próxima é 06/10);
+    - **lembrete do dia 30**: fixos, contador, notas e condomínios. Em fevereiro cai no último
+      dia e em março volta ao dia 30;
+    - **caixinhas de fim de ano** em 1º de dezembro.
+    Dá para mudar tudo na própria tela;
+  - você cria, edita (nome, o que fazer, frequência, próxima data) e **arquiva** (com
+    confirmação; o histórico fica). Arquivada não volta sozinha;
+  - a equipe marca **"feita"** (com a data e uma observação) ou **"pular desta vez"** (motivo
+    obrigatório). A próxima data vai para o vencimento seguinte depois do dia informado: quem
+    atrasou três semanas não fica devendo três conferências;
+  - nada fica "feito" sozinho: vencida e não registrada, a rotina aparece como **atrasada**.
 - M6.4: **documentos de portaria** (menu **Portaria**). É só uma lista de controle:
   **nenhum documento, número ou foto é guardado** no sistema.
   - você marca na própria tela quais imóveis exigem documentos (hoje, o 403). Nada fica fixo
@@ -471,9 +487,14 @@
 | Portaria (documentos: pedidos, encaminhamento e entrega) |
 |---|
 | ![Portaria](docs/telas/portaria.png) |
+
 | Apartamentos (resultado por imóvel) | Portal do proprietário no celular |
 |---|---|
 | ![Apartamentos](docs/telas/apartamentos.png) | ![Portal no celular](docs/telas/portal-celular.png) |
+
+| Rotinas | Rotinas no celular |
+|---|---|
+| ![Rotinas](docs/telas/rotinas.png) | ![Rotinas no celular](docs/telas/rotinas-celular.png) |
 
 | Portal do proprietário | Portal no celular (reservas e saldo) |
 |---|---|
@@ -610,10 +631,12 @@ ambiente).
    M5.4.
 9. **Portaria:** em Painel → **Portaria**, marque os imóveis que exigem documentos de
    portaria (hoje, o 403). Sem marcação, a tela só avisa e não lista nada.
-10. **Manutenção:** quando aparecer "aguardando aprovação" (no menu **Manutenção**), confira o
+10. **Rotinas:** em Painel → **Rotinas**, confira as cinco rotinas que já vêm prontas, com as
+   datas das suas regras. Arquive a que não usar.
+11. **Manutenção:** quando aparecer "aguardando aprovação" (no menu **Manutenção**), confira o
    orçamento, escolha quem paga (empresa ou proprietário) e aprove, ou recuse com o motivo.
    Só você (administrador) vê esses botões.
-11. **Sistema antigo (referência):** mande o arquivo (zip) do sistema antigo — o jeito mais
+12. **Sistema antigo (referência):** mande o arquivo (zip) do sistema antigo — o jeito mais
    fácil é subir no seu **Google Drive** e me dizer o nome do arquivo (o Drive já está
    conectado aqui). Eu só leio para levantar todas as telas e capacidades e comparar com o
    plano; **nada dele vai para o GitHub**, e dados reais de clientes não são copiados.
