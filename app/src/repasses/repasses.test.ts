@@ -197,6 +197,17 @@ describe("fechamento do mês", () => {
     expect(await outubro()).toMatchObject({ diferencaPosFechamento: 0 });
   });
 
+  it("mês sem repasse próprio: 'empresa assume' depois do repasse seguinte não inventa diferença", async () => {
+    await reparo(40000);
+    const [adiant] = await listarAdiantamentos(db, org, { proprietarioId: dono });
+    await contestar(db, org, adiant.id, "Não autorizei", null);
+    await criarReserva(db, org, reserva(a, "2026-11-10", "2026-11-13"), null);
+    expect((await fecharMes(db, org, dono, "2026-11", "2026-12-01", null)).ok).toBe(true);
+    // A empresa assume com data de outubro: o adiantamento sai quitado e a compensação entra no livro.
+    expect((await resolverContestacao(db, org, adiant.id, { resolucao: "empresa_assume", nota: "", data: "2026-10-20" }, null)).ok).toBe(true);
+    expect((await preverRepasses(db, org, MES, "2026-12-02"))[0]).toMatchObject({ repassePosterior: "2026-11", diferencaPosFechamento: 0 });
+  });
+
   it("imóvel devedor é compensado com o outro do mesmo proprietário; cada imóvel fica zerado", async () => {
     await reparo(10000, b); // o 102 não tem receita: só a dívida
     const p = await prever();
