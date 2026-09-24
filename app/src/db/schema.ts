@@ -518,3 +518,64 @@ export const modelosMensagem = pgTable(
   },
   (t) => [uniqueIndex("modelos_mensagem_nome").on(t.organizacaoId, sql`lower(${t.nome})`)],
 );
+
+// ---------------------------------------------------------------------------
+// Cadastro completo do imóvel (M2.6): endereço, camas, comodidades, regras da casa,
+// horários, taxas, regras de venda e preço. Dinheiro em centavos.
+// ---------------------------------------------------------------------------
+
+export const imoveisDetalhes = pgTable("imoveis_detalhes", {
+  imovelId: uuid("imovel_id").primaryKey().references(() => imoveis.id),
+  organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+  cep: text("cep").notNull().default(""),
+  complemento: text("complemento").notNull().default(""),
+  estado: text("estado").notNull().default(""),
+  /** Quantidade por tipo de cama: { casal: 1, solteiro: 2 }. */
+  camas: jsonb("camas").$type<Record<string, number>>().notNull().default({}),
+  comodidades: jsonb("comodidades").$type<string[]>().notNull().default([]),
+  regrasCasa: text("regras_casa").notNull().default(""),
+  aceitaAnimais: boolean("aceita_animais").notNull().default(false),
+  permiteFumar: boolean("permite_fumar").notNull().default(false),
+  permiteFestas: boolean("permite_festas").notNull().default(false),
+  /** "HH:MM" */
+  checkinAPartirDe: text("checkin_a_partir_de").notNull().default("15:00"),
+  checkoutAte: text("checkout_ate").notNull().default("11:00"),
+  taxaLimpeza: integer("taxa_limpeza"),
+  hospedeExtraValor: integer("hospede_extra_valor"),
+  /** Cobra hóspede extra a partir deste número de hóspedes (inclusive). */
+  hospedeExtraAPartirDe: integer("hospede_extra_a_partir_de"),
+  estadiaMinima: integer("estadia_minima"),
+  estadiaMaxima: integer("estadia_maxima"),
+  /** Dias de antecedência mínima para a entrada (0 = pode entrar hoje). */
+  antecedenciaMinima: integer("antecedencia_minima"),
+  /** Até quantos dias à frente aceita reservas. */
+  janelaMaxima: integer("janela_maxima"),
+  /** Dias da semana permitidos (0 = domingo … 6 = sábado). Vazio = todos. */
+  diasChegada: jsonb("dias_chegada").$type<number[]>().notNull().default([]),
+  diasSaida: jsonb("dias_saida").$type<number[]>().notNull().default([]),
+  precoBase: integer("preco_base"),
+  precoDinamico: boolean("preco_dinamico").notNull().default(false),
+  precoMinimo: integer("preco_minimo"),
+  precoMaximo: integer("preco_maximo"),
+  atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Exceção por período (M2.6): preço da noite e/ou estadia mínima diferentes entre `inicio` e
+ * `fim` (noites, inclusive) — ex.: Réveillon, Carnaval. Períodos do mesmo imóvel não se sobrepõem.
+ */
+export const imoveisPeriodos = pgTable(
+  "imoveis_periodos",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    imovelId: uuid("imovel_id").notNull().references(() => imoveis.id),
+    nome: text("nome").notNull(),
+    inicio: date("inicio", { mode: "string" }).notNull(),
+    fim: date("fim", { mode: "string" }).notNull(),
+    precoNoite: integer("preco_noite"),
+    estadiaMinima: integer("estadia_minima"),
+    criadoEm: criadoEm(),
+  },
+  (t) => [index("imoveis_periodos_imovel").on(t.imovelId, t.inicio)],
+);
