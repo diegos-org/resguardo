@@ -8,7 +8,7 @@ import { getDb } from "@/db/client";
 import { listarLancamentos } from "@/financeiro/ledger";
 import { obterImovel } from "@/imoveis/repositorio";
 import { formatBRL } from "@/lib/money";
-import { cancelar } from "@/reservas/acoes";
+import { cancelar, resolverConferenciaAcao } from "@/reservas/acoes";
 import { NOMES_ESTADO, NOMES_ORIGEM, NOMES_RECEBIMENTO, noites } from "@/reservas/regras";
 import { obterReserva } from "@/reservas/repositorio";
 import { lerRegrasFinanceiras } from "@/configuracoes/regras-financeiras";
@@ -29,6 +29,9 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
   const [imovel, historico] = await Promise.all([obterImovel(db, sessao.organizacaoId, r.imovelId), historicoDe(db, sessao.organizacaoId, "reserva", r.id)]);
   const verValores = podeFazer(sessao.papel, "financeiro:ler");
   const lancs = verValores ? await listarLancamentos(db, sessao.organizacaoId, { reservaId: r.id }) : [];
+  // Não confirmada com lançamento do motor ainda em vigor: já movimentou dinheiro, em conferência (M4.8).
+  const emVigor = lancs.filter((l) => l.origem === "motor" && !l.estornoDe && !lancs.some((e) => e.estornoDe === l.id));
+  const emConferencia = r.estado !== "confirmada" && !r.conferenciaResolvidaEm && emVigor.length > 0;
 
   // Mesma ordem do motor: reserva > configuração do imóvel para o canal > padrão do sistema.
   const doImovel = verValores ? (await lerRecebimento(db, sessao.organizacaoId, r.imovelId))[r.origem] : undefined;
@@ -82,6 +85,22 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
             Cancelar reserva
           </BotaoConfirmar>
         </form>
+      )}
+      {emConferencia && (
+        <section aria-label="Em conferência" className={styles.alerta} style={{ maxWidth: 820 }}>
+          <p style={{ margin: 0 }}>
+            Esta reserva não está confirmada, mas já movimentou dinheiro: os valores continuam no financeiro, em conferência, e o fechamento do mês do
+            proprietário espera. Confirme a reserva de novo ou faça o ajuste manual e depois dê a conferência por resolvida.
+          </p>
+          {podeFazer(sessao.papel, "financeiro:editar") && (
+            <form action={resolverConferenciaAcao} style={{ marginTop: 8 }}>
+              <input type="hidden" name="id" value={r.id} />
+              <BotaoConfirmar pergunta="Dar a conferência desta reserva por resolvida? Faça antes o ajuste manual, se precisar: os valores atuais passam a contar como definitivos no fechamento do mês.">
+                Dar a conferência por resolvida
+              </BotaoConfirmar>
+            </form>
+          )}
+        </section>
       )}
       {verValores && (
         <section aria-label="Lançamentos financeiros" style={{ maxWidth: 820, display: "flex", flexDirection: "column", gap: 8 }}>

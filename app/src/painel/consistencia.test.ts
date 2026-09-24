@@ -19,7 +19,7 @@ import { reservasDoPortal } from "@/portal/reservas";
 import { resumoDoProprietario } from "@/portal/resumo";
 import { dadosDoRelatorio, textosDoRelatorio } from "@/relatorios/relatorio";
 import type { DadosReserva } from "@/reservas/regras";
-import { cancelarReserva, criarReserva, sincronizarReserva } from "@/reservas/repositorio";
+import { cancelarReserva, criarReserva, resolverConferencia, sincronizarReserva } from "@/reservas/repositorio";
 import { formatBRL } from "@/lib/money";
 import { carregarApartamentos } from "./apartamentos";
 import { carregarDashboard } from "./dashboard";
@@ -268,5 +268,29 @@ describe("consistência entre telas (M4.8)", () => {
     const portal = await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], semImovel: true, periodo: OUTUBRO });
     expect(lista.some((x) => x.id === r.reserva.id)).toBe(true);
     expect(lista.reduce((x, y) => x + y.bruto, 0)).toBe(portal.receitaBruta);
+    // A linha mostra o imóvel do livro (o dela), não o novo imóvel de outro dono.
+    expect(lista.find((x) => x.id === r.reserva.id)).toMatchObject({ imovelId: a, imovelCodigo: "403" });
+  });
+
+  it("conferência dada por resolvida no painel libera o fechamento; mudar a situação reabre", async () => {
+    const dados = reserva(a, "2026-10-01", "2026-10-03", { valorBruto: 50000, taxaCanal: 0 });
+    const r = await sincronizarReserva(db, org, "csv", "booking:R5", dados, null);
+    if (!r.ok) throw new Error("reserva");
+    await db.update(lancamentos).set({ estado: "realizado" }).where(and(eq(lancamentos.reservaId, r.reserva.id), eq(lancamentos.tipo, "receita_bruta")));
+    await sincronizarReserva(db, org, "csv", "booking:R5", { ...dados, estado: "pendente" }, null);
+    const bloqueios = async () => (await preverRepasses(db, org, "2026-10", "2026-11-10", [dona]))[0].bloqueios.join(" ");
+    expect(await bloqueios()).toContain("acerto pendente");
+    expect(await resolverConferencia(db, org, r.reserva.id, null)).toBe(true);
+    expect(await bloqueios()).not.toContain("acerto pendente");
+    const t = await tresTelas();
+    expect(t.inicio.alertas.map((x) => x.texto).join(" | ")).not.toContain("com dinheiro já movimentado");
+    const lista = await reservasDoPortal(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo: OUTUBRO });
+    expect(lista.find((x) => x.id === r.reserva.id)?.situacao).toBe("definido");
+    // Cancelada depois: a situação mudou, a conferência volta.
+    await sincronizarReserva(db, org, "csv", "booking:R5", { ...dados, estado: "cancelada" }, null);
+    expect(await bloqueios()).toContain("acerto pendente");
+    // Confirmada não tem o que resolver.
+    await sincronizarReserva(db, org, "csv", "booking:R5", dados, null);
+    expect(await resolverConferencia(db, org, r.reserva.id, null)).toBe(false);
   });
 });

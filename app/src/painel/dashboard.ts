@@ -187,6 +187,7 @@ export async function carregarDashboard(
         and(
           eq(lancamentos.organizacaoId, organizacaoId),
           ne(reservasTabela.estado, "confirmada"),
+          isNull(reservasTabela.conferenciaResolvidaEm),
           eq(lancamentos.origem, "motor"),
           gte(lancamentos.competencia, o.periodo.inicio),
           lt(lancamentos.competencia, o.periodo.fim),
@@ -198,7 +199,7 @@ export async function carregarDashboard(
     if (comDinheiro.length)
       alertas.push({
         nivel: "atencao",
-        texto: `${comDinheiro.length} reserva(s) pendente(s) ou cancelada(s) com dinheiro já movimentado: os valores continuam no financeiro, em conferência. Confirme a reserva ou faça um ajuste manual.`,
+        texto: `${comDinheiro.length} reserva(s) pendente(s) ou cancelada(s) com dinheiro já movimentado: os valores continuam no financeiro, em conferência. Confirme a reserva, ou faça o ajuste manual e dê a conferência por resolvida na reserva.`,
         link: "/painel/reservas",
       });
     const codigoDe = new Map(regras.map((r) => [r.imovelId, r.codigo]));

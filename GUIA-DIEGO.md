@@ -359,7 +359,9 @@
     voltou a ficar pendente, os valores continuam (nada que já movimentou dinheiro é mexido
     sozinho), mas ficam **em conferência**: o Início avisa, o portal e o PDF mostram a reserva
     marcada assim, e o fechamento do mês espera até você confirmar a reserva de novo (aí sai da
-    conferência sozinha) ou fazer um ajuste. Vale também para reserva cancelada nessa situação;
+    conferência sozinha) ou fazer o ajuste manual e apertar **"Dar a conferência por resolvida"**
+    na página da reserva (com confirmação; fica no histórico). Vale também para reserva cancelada
+    nessa situação, e se a reserva mudar de situação de novo, a conferência volta;
   - o contador de reservas do Início e da aba Apartamentos passou a contar **só as
     confirmadas**, igual ao portal e ao relatório.
 - M6.5: **rotinas recorrentes** (menu **Rotinas**). Tarefas que se repetem, cada uma com a

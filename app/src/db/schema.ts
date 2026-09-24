@@ -318,6 +318,11 @@ export const reservas = pgTable(
     codigoCanal: text("codigo_canal").notNull().default(""),
     observacoes: text("observacoes").notNull().default(""),
     canceladaEm: timestamp("cancelada_em", { withTimezone: true }),
+    /**
+     * Reserva não confirmada que já movimentou dinheiro fica "em conferência" (M4.8) até alguém da
+     * equipe dar por resolvida (depois do ajuste manual). Volta a vazio quando a situação muda.
+     */
+    conferenciaResolvidaEm: timestamp("conferencia_resolvida_em", { withTimezone: true }),
     criadoEm: criadoEm(),
     atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
   },

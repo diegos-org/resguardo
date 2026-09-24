@@ -126,7 +126,8 @@ export async function sincronizarReserva(
     const canceladaEm = dados.estado !== "cancelada" ? null : existente.estado === "cancelada" ? existente.canceladaEm : new Date();
     const [reserva] = await tx
       .update(reservas)
-      .set({ ...dados, canceladaEm, atualizadoEm: new Date() })
+      // Mudou a situação: uma conferência dada por resolvida antes volta a valer (M4.8).
+      .set({ ...dados, canceladaEm, conferenciaResolvidaEm: dados.estado !== existente.estado ? null : existente.conferenciaResolvidaEm, atualizadoEm: new Date() })
       .where(eq(reservas.id, existente.id))
       .returning();
     await registrarAuditoria(tx, {
@@ -151,7 +152,7 @@ export async function cancelarReserva(db: Db, organizacaoId: string, id: string,
       .where(and(eq(reservas.id, id), eq(reservas.organizacaoId, organizacaoId)))
       .for("update");
     if (!r || r.estado === "cancelada") return false;
-    await tx.update(reservas).set({ estado: "cancelada", canceladaEm: new Date(), atualizadoEm: new Date() }).where(eq(reservas.id, id));
+    await tx.update(reservas).set({ estado: "cancelada", canceladaEm: new Date(), conferenciaResolvidaEm: null, atualizadoEm: new Date() }).where(eq(reservas.id, id));
     await registrarAuditoria(tx, {
       organizacaoId,
       usuarioId: autorId,
@@ -161,6 +162,34 @@ export async function cancelarReserva(db: Db, organizacaoId: string, id: string,
       mudancas: { estado: [r.estado, "cancelada"] },
     });
     await aplicarMotor(tx, organizacaoId, id, autorId);
+    return true;
+  });
+}
+
+/**
+ * Dá por resolvida a conferência de uma reserva não confirmada que já movimentou dinheiro (M4.8),
+ * depois do ajuste manual: os lançamentos dela deixam de travar o fechamento do mês. Só vale para
+ * reserva não confirmada; se a situação mudar de novo, a conferência volta.
+ */
+export async function resolverConferencia(db: Db, organizacaoId: string, id: string, autorId: string | null): Promise<boolean> {
+  if (!uuidValido(id)) return false;
+  return db.transaction(async (tx) => {
+    const [r] = await tx
+      .select()
+      .from(reservas)
+      .where(and(eq(reservas.id, id), eq(reservas.organizacaoId, organizacaoId)))
+      .for("update");
+    if (!r || r.estado === "confirmada" || r.conferenciaResolvidaEm) return false;
+    const agora = new Date();
+    await tx.update(reservas).set({ conferenciaResolvidaEm: agora, atualizadoEm: agora }).where(eq(reservas.id, id));
+    await registrarAuditoria(tx, {
+      organizacaoId,
+      usuarioId: autorId,
+      acao: "reserva.conferencia_resolvida",
+      entidade: "reserva",
+      entidadeId: id,
+      mudancas: { conferenciaResolvidaEm: [null, agora.toISOString()] },
+    });
     return true;
   });
 }

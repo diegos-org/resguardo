@@ -21,12 +21,16 @@ export function lancamentoEmVigor(db: Db) {
 /**
  * Lançamento em conferência (uma regra, um lugar: portal, PDF, fechamento do mês e Início): o
  * pendente, e o do motor de uma reserva que deixou de estar confirmada (pendente/cancelada) mas
- * ficou em vigor porque já movimentou dinheiro. Reconfirmada a reserva, sai da conferência sozinho.
+ * ficou em vigor porque já movimentou dinheiro. Sai da conferência quando a reserva é confirmada de
+ * novo ou quando alguém dá a conferência por resolvida no painel (depois do ajuste manual).
  */
 export function lancamentoEmConferencia() {
   return or(
     eq(lancamentos.estado, "pendente"),
-    and(eq(lancamentos.origem, "motor"), sql`${lancamentos.reservaId} in (select ${reservas.id} from ${reservas} where ${reservas.estado} <> 'confirmada')`),
+    and(
+      eq(lancamentos.origem, "motor"),
+      sql`${lancamentos.reservaId} in (select ${reservas.id} from ${reservas} where ${reservas.estado} <> 'confirmada' and ${reservas.conferenciaResolvidaEm} is null)`,
+    ),
   );
 }
 

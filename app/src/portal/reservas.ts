@@ -51,6 +51,7 @@ export async function reservasDoPortal(
       origemHospede: reservas.hospedeOrigem,
       canal: reservas.origem,
       estado: reservas.estado,
+      resolvida: reservas.conferenciaResolvidaEm,
     })
     .from(reservas)
     .innerJoin(imoveis, eq(imoveis.id, reservas.imovelId))
@@ -89,6 +90,27 @@ export async function reservasDoPortal(
     .orderBy(asc(reservas.checkin), asc(imoveis.codigo));
   if (!lista.length) return [];
   const reservaIds = lista.map((r) => r.id);
+  // Não confirmada: o imóvel mostrado é o do livro (o da parte dele), não o atual da reserva — ela
+  // pode ter passado para imóvel de outro dono depois de movimentar dinheiro.
+  const naoConfirmadas = lista.filter((r) => r.estado !== "confirmada").map((r) => r.id);
+  const doLivro = naoConfirmadas.length
+    ? await db
+        .selectDistinct({ reservaId: lancamentos.reservaId, imovelId: imoveis.id, imovelCodigo: imoveis.codigo })
+        .from(lancamentos)
+        .innerJoin(imoveis, eq(imoveis.id, lancamentos.imovelId))
+        .where(
+          and(
+            eq(lancamentos.organizacaoId, organizacaoId),
+            inArray(lancamentos.reservaId, naoConfirmadas),
+            eq(lancamentos.tipo, "direito_proprietario"),
+            inArray(lancamentos.proprietarioId, donos),
+            inArray(lancamentos.imovelId, ids),
+            gte(lancamentos.competencia, o.periodo.inicio),
+            lt(lancamentos.competencia, o.periodo.fim),
+            lancamentoEmVigor(db),
+          ),
+        )
+    : [];
 
   // Valores no período: bruto da reserva e a parte dele (só a lançada para ele).
   const valores = await db
@@ -118,14 +140,23 @@ export async function reservasDoPortal(
       ),
     );
   const valor = (id: string, tipo: string) => Number(valores.find((v) => v.reservaId === id && v.tipo === tipo)?.valor ?? 0);
-  const situacao = (id: string, estado: string): SituacaoReserva => {
-    // Não confirmada com valores em vigor: dinheiro já movimentado, a conferir no painel.
-    if (estado !== "confirmada") return "em_conferencia";
+  const situacao = (id: string, estado: string, resolvida: Date | null): SituacaoReserva => {
+    // Não confirmada com valores em vigor: dinheiro já movimentado, a conferir no painel (até ser dada por resolvida).
+    if (estado !== "confirmada" && !resolvida) return "em_conferencia";
     const d = partes.filter((p) => p.reservaId === id);
     if (d.some((p) => p.estado === "pendente")) return "em_conferencia";
     return d.length ? "definido" : "sem_calculo";
   };
-  return lista.map(({ estado, ...r }) => ({ ...r, bruto: valor(r.id, "receita_bruta"), suaParte: valor(r.id, "direito_proprietario"), situacao: situacao(r.id, estado) }));
+  return lista.map(({ estado, resolvida, ...r }) => {
+    const livro = estado !== "confirmada" ? doLivro.find((x) => x.reservaId === r.id) : undefined;
+    return {
+      ...r,
+      ...(livro ? { imovelId: livro.imovelId, imovelCodigo: livro.imovelCodigo } : {}),
+      bruto: valor(r.id, "receita_bruta"),
+      suaParte: valor(r.id, "direito_proprietario"),
+      situacao: situacao(r.id, estado, resolvida),
+    };
+  });
 }
 
 export type BloqueioPortal = { id: string; imovelId: string; inicio: string; fim: string };
