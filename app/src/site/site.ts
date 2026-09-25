@@ -150,7 +150,7 @@ export async function imovelDoSite(db: Db, organizacaoId: string, codigo: string
   return l ? publico(l) : null;
 }
 
-export type PedidoConsulta = { imovel: string; entrada: string; saida: string; hospedes: string; nome: string; mensagem: string };
+export type PedidoConsulta = { imovel: string; entrada: string; saida: string; hospedes: string };
 export type ErrosConsulta = Partial<Record<keyof PedidoConsulta, string>>;
 
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
@@ -175,14 +175,10 @@ export function montarConsulta(
   const hospedes = Number(p.hospedes);
   if (!Number.isInteger(hospedes) || hospedes < 1) erros.hospedes = "Informe quantas pessoas.";
   else if (imovel?.capacidade && hospedes > imovel.capacidade) erros.hospedes = `Este apartamento recebe até ${imovel.capacidade} pessoas.`;
-  const nome = p.nome.trim().slice(0, 80);
-  const mensagem = p.mensagem.trim().slice(0, 500);
   if (Object.keys(erros).length || !imovel) return { ok: false, erros };
   const linhas = [
     `Olá! Gostaria de consultar a disponibilidade do ${imovel.nome} (${imovel.codigo}).`,
     `Entrada: ${dataBr(p.entrada)} · Saída: ${dataBr(p.saida)} · ${hospedes} ${hospedes === 1 ? "pessoa" : "pessoas"}.`,
-    ...(nome ? [`Meu nome: ${nome}.`] : []),
-    ...(mensagem ? [mensagem] : []),
   ];
   return { ok: true, texto: linhas.join("\n") };
 }

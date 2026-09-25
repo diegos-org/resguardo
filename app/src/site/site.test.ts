@@ -79,11 +79,11 @@ describe("site público (M7.1)", () => {
 
   it("consulta: confere datas e hóspedes e monta a mensagem; nada é gravado", async () => {
     const imovel = await imovelDoSite(db, org, "403");
-    const base = { imovel: "403", entrada: "2026-10-10", saida: "2026-10-13", hospedes: "2", nome: "Visitante Fictício", mensagem: "Chegamos à noite." };
+    const base = { imovel: "403", entrada: "2026-10-10", saida: "2026-10-13", hospedes: "2" };
     const r = montarConsulta(base, imovel, "2026-09-25");
     expect(r).toEqual({
       ok: true,
-      texto: "Olá! Gostaria de consultar a disponibilidade do Studio Exemplo Leblon (403).\nEntrada: 10/10/2026 · Saída: 13/10/2026 · 2 pessoas.\nMeu nome: Visitante Fictício.\nChegamos à noite.",
+      texto: "Olá! Gostaria de consultar a disponibilidade do Studio Exemplo Leblon (403).\nEntrada: 10/10/2026 · Saída: 13/10/2026 · 2 pessoas.",
     });
     expect(montarConsulta({ ...base, entrada: "2026-09-01" }, imovel, "2026-09-25")).toMatchObject({ ok: false, erros: { entrada: expect.any(String) } });
     expect(montarConsulta({ ...base, saida: "2026-10-10" }, imovel, "2026-09-25")).toMatchObject({ ok: false, erros: { saida: expect.any(String) } });

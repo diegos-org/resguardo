@@ -60,5 +60,8 @@ describe("site público (M7.1)", () => {
     expect(form.getAttribute("method")).toBe("get");
     expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("403");
     expect(screen.getByText("A saída precisa ser depois da entrada.")).toBeTruthy();
+    // Nada pessoal no endereço: só apartamento, datas e pessoas; limite de pessoas pela maior capacidade.
+    expect([...form.querySelectorAll("[name]")].map((e) => e.getAttribute("name"))).toEqual(["imovel", "entrada", "saida", "hospedes"]);
+    expect(form.querySelector('[name="hospedes"]')!.getAttribute("max")).toBe("4");
   });
 });

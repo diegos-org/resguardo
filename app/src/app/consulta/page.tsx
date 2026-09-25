@@ -8,7 +8,8 @@ import { imovelDoSite, imoveisDoSite, linkWhatsapp, montarConsulta, type PedidoC
 
 export const metadata: Metadata = { title: "Consulta — Sua Casa Leblon" };
 
-const CAMPOS = ["imovel", "entrada", "saida", "hospedes", "nome", "mensagem"] as const;
+// Só o que não é pessoal vai no endereço da página (nome e mensagem, o visitante escreve no WhatsApp).
+const CAMPOS = ["imovel", "entrada", "saida", "hospedes"] as const;
 
 export default async function Consulta({ searchParams }: PageProps<"/consulta">) {
   const sp = await searchParams;
