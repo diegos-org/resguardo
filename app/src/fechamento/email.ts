@@ -20,9 +20,10 @@ import { hojeISO } from "@/lib/datas";
 import { formatBRL } from "@/lib/money";
 import { relatorioDoFechamento } from "@/relatorios/gerar";
 import { imoveisDoProprietario } from "@/relatorios/relatorio";
-import { limitesDoMes, mesAFechar, nomeMes, preverRepasses, type PrevisaoRepasse } from "@/repasses/repasses";
+import { limitesDoMes, mesAFechar, nomeMes, preverRepasses, type PrevisaoRepasse, somarMes } from "@/repasses/repasses";
 
-export type ConfigFechamentoEmail = { ativo: boolean; assunto: string; texto: string };
+/** `ativoDesde`: o primeiro mês que o envio automático cobre (o mês a fechar quando foi ligado). */
+export type ConfigFechamentoEmail = { ativo: boolean; assunto: string; texto: string; ativoDesde?: string };
 
 export const ASSUNTO_PADRAO = "Fechamento de {mes} — Sua Casa Leblon";
 export const TEXTO_PADRAO =
@@ -30,21 +31,39 @@ export const TEXTO_PADRAO =
 
 /** Uma retomada só depois deste tempo sem confirmação (a tentativa pode ainda estar em andamento). */
 const RETOMADA_MS = 15 * 60_000;
+/**
+ * A chave de idempotência do provedor vale 24h a partir do primeiro pedido: depois disso, repetir
+ * poderia mandar o PDF de novo. Tentativa sem confirmação mais velha que isso vira "incerto" e não é
+ * repetida sozinha (o painel mostra; quem decide reenviar é a pessoa).
+ */
+const JANELA_PROVEDOR_MS = 23 * 3_600_000;
+/** Quantos meses para trás o envio automático ainda tenta (mês fechado com atraso). */
+const MESES_PARA_TRAS = 12;
 
 export async function lerConfigFechamentoEmail(db: Db, organizacaoId: string): Promise<ConfigFechamentoEmail> {
   const c = await lerConfig(db, organizacaoId, "fechamento_email");
   const texto = (v: unknown, padrao: string) => (typeof v === "string" && v.trim() ? v : padrao);
-  return { ativo: c?.ativo === true, assunto: texto(c?.assunto, ASSUNTO_PADRAO), texto: texto(c?.texto, TEXTO_PADRAO) };
+  const ativoDesde = typeof c?.ativoDesde === "string" && limitesDoMes(c.ativoDesde) ? c.ativoDesde : undefined;
+  return { ativo: c?.ativo === true, assunto: texto(c?.assunto, ASSUNTO_PADRAO), texto: texto(c?.texto, TEXTO_PADRAO), ...(ativoDesde ? { ativoDesde } : {}) };
 }
 
-export async function salvarConfigFechamentoEmail(db: Db, organizacaoId: string, c: ConfigFechamentoEmail, autorId: string | null): Promise<{ ok: true } | { ok: false; erro: string }> {
+export async function salvarConfigFechamentoEmail(
+  db: Db,
+  organizacaoId: string,
+  c: Omit<ConfigFechamentoEmail, "ativoDesde">,
+  autorId: string | null,
+  agora: Date = new Date(),
+): Promise<{ ok: true } | { ok: false; erro: string }> {
   const assunto = c.assunto.trim();
   const texto = c.texto.replace(/\r\n/g, "\n").trim();
   if (!assunto || assunto.length > 200) return { ok: false, erro: "Assunto obrigatório, até 200 caracteres." };
   if (!texto || texto.length > 4000) return { ok: false, erro: "Texto obrigatório, até 4000 caracteres." };
   const desconhecida = [...`${assunto} ${texto}`.matchAll(/\{([^}]*)\}/g)].map((m) => m[1]).find((x) => !["nome", "mes"].includes(x));
   if (desconhecida !== undefined) return { ok: false, erro: `Campo desconhecido: {${desconhecida}}. Use {nome} e {mes}.` };
-  await db.transaction((tx) => gravarConfig(tx, organizacaoId, "fechamento_email", { ativo: c.ativo, assunto, texto }, autorId));
+  // Ligado agora: o automático cobre do mês a fechar em diante (não manda meses antigos de uma vez).
+  const anterior = await lerConfigFechamentoEmail(db, organizacaoId);
+  const ativoDesde = c.ativo ? (anterior.ativo && anterior.ativoDesde ? anterior.ativoDesde : mesAFechar(hojeISO("America/Sao_Paulo", agora))) : undefined;
+  await db.transaction((tx) => gravarConfig(tx, organizacaoId, "fechamento_email", { ativo: c.ativo, assunto, texto, ...(ativoDesde ? { ativoDesde } : {}) }, autorId));
   return { ok: true };
 }
 
@@ -58,7 +77,8 @@ function linhaDoValor(p: PrevisaoRepasse): string {
   return "Não há valor a repassar neste mês.";
 }
 
-export type Situacao = "pronto" | "enviado" | "pendente" | "sem_email";
+/** incerto: tentativa sem confirmação do provedor por mais tempo do que a chave dele vale (pode ter chegado). */
+export type Situacao = "pronto" | "enviado" | "incerto" | "pendente" | "sem_email";
 
 /**
  * Situação do e-mail de cada proprietário no mês (a tela e o envio usam a mesma regra). Entra quem
@@ -95,7 +115,7 @@ export async function situacaoDosFechamentos(
     const destinos = [...new Set([email, ...reps.filter((r) => r.proprietarioId === p.proprietarioId).map((r) => r.email.trim())].filter(Boolean))];
     const fechado = !!p.repasse || (p.valor <= 0 && p.bloqueios.length === 0);
     const enviado = marca?.estado === "enviado";
-    const situacao: Situacao = !fechado ? "pendente" : enviado ? "enviado" : !destinos.length ? "sem_email" : "pronto";
+    const situacao: Situacao = !fechado ? "pendente" : enviado ? "enviado" : marca?.estado === "incerto" ? "incerto" : !destinos.length ? "sem_email" : "pronto";
     // Para quem foi, como gravado no envio (não o cadastro de hoje).
     const enviadoPara = enviado && Array.isArray(marca.destinos) ? marca.destinos.filter((x): x is string => typeof x === "string") : [];
     return { ...p, email, destinos, situacao, enviadoEm: enviado ? (marca.em ?? null) : null, enviadoPara };
@@ -118,26 +138,50 @@ const cargaValida = (c: unknown): c is Carga =>
  * Toma a marca do envio: nova, ou uma tentativa sem confirmação há mais de 15 minutos (retomada,
  * com o pedido guardado). Devolve null se já foi enviado ou se outra tentativa está em andamento.
  */
-async function reservar(db: Db, chave: string, agora: Date): Promise<{ tentativa: string; carga: Carga | null } | null> {
+async function reservar(db: Db, chave: string, agora: Date): Promise<{ tentativa: string; carga: Carga | null } | "ocupado" | "incerto"> {
   const tentativa = crypto.randomUUID();
   const [nova] = await db
     .insert(appSettings)
-    .values({ key: chave, value: { estado: "enviando", em: agora.toISOString(), tentativa } })
+    .values({ key: chave, value: { estado: "enviando", em: agora.toISOString(), primeira: agora.toISOString(), tentativa } })
     .onConflictDoNothing()
     .returning({ key: appSettings.key });
   if (nova) return { tentativa, carga: null };
+  // Passou da janela da chave do provedor: não repete sozinho (poderia chegar duas vezes).
+  const janela = new Date(agora.getTime() - JANELA_PROVEDOR_MS).toISOString();
+  const [vencida] = await db
+    .update(appSettings)
+    .set({ value: sql`jsonb_set(${appSettings.value}, '{estado}', '"incerto"')`, updatedAt: new Date() })
+    .where(
+      and(
+        eq(appSettings.key, chave),
+        sql`${appSettings.value} ->> 'estado' = 'enviando'`,
+        sql`coalesce(${appSettings.value} ->> 'primeira', ${appSettings.value} ->> 'em')::timestamptz < ${janela}::timestamptz`,
+      ),
+    )
+    .returning({ key: appSettings.key });
+  if (vencida) return "incerto";
   const limite = new Date(agora.getTime() - RETOMADA_MS).toISOString();
   const [velha] = await db
     .update(appSettings)
     .set({ value: sql`jsonb_set(jsonb_set(${appSettings.value}, '{tentativa}', ${JSON.stringify(tentativa)}::jsonb), '{em}', ${JSON.stringify(agora.toISOString())}::jsonb)`, updatedAt: new Date() })
     .where(and(eq(appSettings.key, chave), sql`${appSettings.value} ->> 'estado' = 'enviando'`, sql`(${appSettings.value} ->> 'em')::timestamptz < ${limite}::timestamptz`))
     .returning({ value: appSettings.value });
-  if (!velha) return null;
+  if (!velha) return "ocupado";
   const carga = (velha.value as { carga?: unknown }).carga;
   return { tentativa, carga: cargaValida(carga) ? carga : null };
 }
 
-export type ResultadoFechamentoEmail = { mes: string; enviados: number; jaEnviados: number; pendentes: string[]; semEmail: string[]; falhas: string[]; aviso: string | null };
+export type ResultadoFechamentoEmail = {
+  mes: string;
+  enviados: number;
+  jaEnviados: number;
+  pendentes: string[];
+  semEmail: string[];
+  /** Sem confirmação do provedor e fora da janela da chave: pode ter chegado; conferir no painel. */
+  incertos: string[];
+  falhas: string[];
+  aviso: string | null;
+};
 
 /**
  * Envia o fechamento do mês (padrão: o mês anterior a hoje) a cada proprietário pronto.
@@ -153,7 +197,7 @@ export async function enviarFechamentos(
 ): Promise<ResultadoFechamentoEmail> {
   const hoje = hojeISO("America/Sao_Paulo", agora);
   const mes = o.mes ?? mesAFechar(hoje);
-  const r: ResultadoFechamentoEmail = { mes, enviados: 0, jaEnviados: 0, pendentes: [], semEmail: [], falhas: [], aviso: null };
+  const r: ResultadoFechamentoEmail = { mes, enviados: 0, jaEnviados: 0, pendentes: [], semEmail: [], incertos: [], falhas: [], aviso: null };
   const config = await lerConfigFechamentoEmail(db, organizacaoId);
   if (!config.ativo && !o.manual) return { ...r, aviso: "envio do fechamento desligado" };
   if (!correio) return { ...r, aviso: "sem provedor de e-mail configurado: nada enviado" };
@@ -168,6 +212,10 @@ export async function enviarFechamentos(
       r.pendentes.push(p.nome);
       continue;
     }
+    if (p.situacao === "incerto" && !o.reenviar) {
+      r.incertos.push(p.nome);
+      continue;
+    }
     if (p.situacao === "sem_email") {
       r.semEmail.push(p.nome);
       continue;
@@ -175,7 +223,7 @@ export async function enviarFechamentos(
     const base = chaveDoEnvio(organizacaoId, p.proprietarioId, mes);
     // Reenvio: retoma um reenvio ainda sem confirmação (mesma chave), em vez de abrir outro.
     let chave = base;
-    if (o.reenviar && p.situacao === "enviado") {
+    if (o.reenviar && (p.situacao === "enviado" || p.situacao === "incerto")) {
       const [aberto] = await db
         .select({ key: appSettings.key })
         .from(appSettings)
@@ -185,7 +233,11 @@ export async function enviarFechamentos(
       chave = aberto?.key ?? `${base}:reenvio:${agora.getTime()}`;
     }
     const reserva = await reservar(db, chave, agora);
-    if (!reserva) {
+    if (reserva === "incerto") {
+      r.incertos.push(p.nome);
+      continue;
+    }
+    if (reserva === "ocupado") {
       r.falhas.push(`${p.nome}: o envio anterior ainda não foi confirmado pelo provedor; nova tentativa com o mesmo e-mail depois de 15 minutos`);
       continue;
     }
@@ -244,6 +296,28 @@ export function resumoDoFechamentoEmail(r: ResultadoFechamentoEmail): string {
   if (r.jaEnviados) partes.push(`${r.jaEnviados} já enviado(s)`);
   if (r.pendentes.length) partes.push(`${r.pendentes.length} com o mês ainda não fechado`);
   if (r.semEmail.length) partes.push(`${r.semEmail.length} sem e-mail cadastrado`);
+  if (r.incertos.length) partes.push(`${r.incertos.length} sem confirmação do provedor (conferir no painel)`);
   if (r.falhas.length) partes.push(`${r.falhas.length} falha(s)`);
   return partes.join(", ");
+}
+
+/**
+ * O envio automático (agendador): o mês a fechar e os anteriores ainda não enviados, desde o mês em
+ * que o envio foi ligado (no máximo 12 meses): mês fechado com atraso também sai. Um resultado por
+ * mês com algo a dizer (o mês a fechar sempre).
+ */
+export async function enviarFechamentosAutomaticos(db: Db, organizacaoId: string, correio: Correio | null, agora: Date): Promise<ResultadoFechamentoEmail[]> {
+  const hoje = hojeISO("America/Sao_Paulo", agora);
+  const atual = mesAFechar(hoje);
+  const config = await lerConfigFechamentoEmail(db, organizacaoId);
+  if (!config.ativo || !config.ativoDesde) return [await enviarFechamentos(db, organizacaoId, correio, agora, { mes: atual })];
+  const limite = somarMes(atual, -(MESES_PARA_TRAS - 1));
+  const meses: string[] = [];
+  for (let m = config.ativoDesde > limite ? config.ativoDesde : limite; m <= atual; m = somarMes(m, 1)) meses.push(m);
+  const resultados: ResultadoFechamentoEmail[] = [];
+  for (const mes of meses) {
+    const r = await enviarFechamentos(db, organizacaoId, correio, agora, { mes });
+    if (mes === atual || r.enviados || r.falhas.length || r.incertos.length || r.aviso) resultados.push(r);
+  }
+  return resultados;
 }

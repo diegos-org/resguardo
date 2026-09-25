@@ -155,7 +155,9 @@ export default async function Repasses({ searchParams }: PageProps<"/painel/fina
               E-mail do fechamento:{" "}
               {p.situacao === "enviado"
                 ? `enviado${p.enviadoEm ? ` em ${new Date(p.enviadoEm).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" })}` : ""} para ${p.enviadoPara.join(", ") || "—"}`
-                : p.situacao === "pronto"
+                : p.situacao === "incerto"
+                  ? "sem confirmação do provedor há mais de um dia: pode ter chegado. Confira com o proprietário; se não chegou, use \"Enviar e-mail de novo\""
+                  : p.situacao === "pronto"
                   ? `pronto para enviar a ${p.destinos.join(", ")}`
                   : p.situacao === "sem_email"
                     ? "sem e-mail cadastrado — cadastre no proprietário"
@@ -163,16 +165,16 @@ export default async function Repasses({ searchParams }: PageProps<"/painel/fina
                       ? "mês reaberto: espera ser fechado de novo (depois, use \"Enviar e-mail de novo\")"
                       : "espera o mês ser fechado"}
             </p>
-            {editar && (p.situacao === "pronto" || (p.situacao === "enviado" && p.destinos.length > 0)) && (
+            {editar && (p.situacao === "pronto" || ((p.situacao === "enviado" || p.situacao === "incerto") && p.destinos.length > 0)) && (
               <form action={enviarFechamentoAcao} className={styles.acoes}>
                 <input type="hidden" name="mes" value={mes} />
                 <input type="hidden" name="proprietarioId" value={p.proprietarioId} />
-                {p.situacao === "enviado" && <input type="hidden" name="reenviar" value="sim" />}
+                {(p.situacao === "enviado" || p.situacao === "incerto") && <input type="hidden" name="reenviar" value="sim" />}
                 <BotaoConfirmar
-                  pergunta={`${p.situacao === "enviado" ? "Enviar de novo" : "Enviar"} o fechamento de ${nomeMes(mes)} para ${p.nome} (${p.destinos.join(", ")})?`}
+                  pergunta={`${p.situacao === "pronto" ? "Enviar" : "Enviar de novo"} o fechamento de ${nomeMes(mes)} para ${p.nome} (${p.destinos.join(", ")})?`}
                   className={styles.pequeno}
                 >
-                  {p.situacao === "enviado" ? "Enviar e-mail de novo" : "Enviar e-mail do fechamento"}
+                  {p.situacao === "pronto" ? "Enviar e-mail do fechamento" : "Enviar e-mail de novo"}
                 </BotaoConfirmar>
               </form>
             )}

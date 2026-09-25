@@ -11,7 +11,7 @@ import type { DadosReserva } from "@/reservas/regras";
 import { criarReserva } from "@/reservas/repositorio";
 import { estornarRepasse, fecharMes, listarRepasses } from "@/repasses/repasses";
 import { fechamentoDeTodas, fechamentoManual } from "./cron";
-import { chaveDoEnvio, enviarFechamentos, lerConfigFechamentoEmail, salvarConfigFechamentoEmail, situacaoDosFechamentos } from "./email";
+import { chaveDoEnvio, enviarFechamentos, enviarFechamentosAutomaticos, lerConfigFechamentoEmail, salvarConfigFechamentoEmail, situacaoDosFechamentos } from "./email";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -278,5 +278,38 @@ describe("e-mail do fechamento (M5.4)", () => {
     await db.update(proprietarios).set({ email: "trocado@example.com" }).where(eq(proprietarios.id, dona));
     const [p] = (await situacaoDosFechamentos(db, org, MES, "2026-11-02")).filter((x) => x.proprietarioId === dona);
     expect(p).toMatchObject({ situacao: "enviado", enviadoPara: ["dona@example.com"], destinos: ["trocado@example.com"] });
+  });
+
+  it("sem confirmação por mais de um dia (fora da janela da chave do provedor): não repete sozinho; o painel decide", async () => {
+    await ligar();
+    await fechar();
+    const caiu: Correio = { nome: "caiu", enviar: async () => Promise.reject(new ErroEnvioIncerto("Sem resposta do provedor de e-mail")) };
+    await enviarFechamentos(db, org, caiu, DIA1);
+    const correio = new CorreioMemoria();
+    const depois = new Date(DIA1.getTime() + 25 * 3_600_000);
+    expect(await enviarFechamentos(db, org, correio, depois)).toMatchObject({ enviados: 0, incertos: ["Dona Exemplo"], falhas: [] });
+    expect(correio.enviadas).toHaveLength(0);
+    const [p] = (await situacaoDosFechamentos(db, org, MES, "2026-11-02")).filter((x) => x.proprietarioId === dona);
+    expect(p.situacao).toBe("incerto");
+    // Nos dias seguintes continua sem repetir.
+    expect(await enviarFechamentos(db, org, correio, new Date(depois.getTime() + 86_400_000))).toMatchObject({ enviados: 0, incertos: ["Dona Exemplo"] });
+    // "Enviar de novo" no painel: outra chave.
+    expect(await fechamentoManual(db, org, correio, depois, { mes: MES, proprietarioId: dona, reenviar: true }, null)).toMatchObject({ enviados: 1 });
+    expect(correio.enviadas[0].chave).not.toBe(chaveDoEnvio(org, dona, MES));
+    const [q] = (await situacaoDosFechamentos(db, org, MES, "2026-11-02")).filter((x) => x.proprietarioId === dona);
+    expect(q.situacao).toBe("enviado");
+  });
+
+  it("automático: mês fechado com atraso ainda sai, mas nada de antes de o envio ser ligado", async () => {
+    // Ligado em 01/11: cobre de outubro em diante.
+    await salvarConfigFechamentoEmail(db, org, { ativo: true, assunto: "Fechamento de {mes}", texto: "Olá, {nome}." }, null, DIA1);
+    expect((await lerConfigFechamentoEmail(db, org)).ativoDesde).toBe("2026-10");
+    // Outubro só é fechado em 05/12, quando o mês a fechar já é novembro.
+    await fecharMes(db, org, dona, MES, "2026-12-05", null);
+    const correio = new CorreioMemoria();
+    const rs = await enviarFechamentosAutomaticos(db, org, correio, new Date("2026-12-05T12:00:00Z"));
+    expect(rs.map((r) => r.mes)).toContain("2026-10");
+    expect(correio.enviadas.some((m) => m.para === "dona@example.com" && m.assunto === "Fechamento de outubro de 2026")).toBe(true);
+    expect(correio.enviadas.some((m) => m.assunto.includes("setembro"))).toBe(false);
   });
 });

@@ -4,7 +4,7 @@ import { organizacoes } from "@/db/schema";
 import type { Db } from "@/db/types";
 import type { Correio } from "@/email/correio";
 import { registrarExecucao } from "@/sistema/automacoes";
-import { enviarFechamentos, type ResultadoFechamentoEmail, resumoDoFechamentoEmail } from "./email";
+import { enviarFechamentos, enviarFechamentosAutomaticos, type ResultadoFechamentoEmail, resumoDoFechamentoEmail } from "./email";
 
 const ORGS_SIMULTANEAS = 3;
 
@@ -19,9 +19,9 @@ export function fechamentoDeTodas(db: Db, correio: Correio | null, agora: Date):
     const umaOrg = async () => {
       for (let i = proxima++; i < orgs.length; i = proxima++) {
         try {
-          const r = await enviarFechamentos(db, orgs[i].id, correio, agora);
-          partes[i] = resumoDoFechamentoEmail(r);
-          if (r.falhas.length || r.aviso?.startsWith("sem provedor")) erro = true;
+          const rs = await enviarFechamentosAutomaticos(db, orgs[i].id, correio, agora);
+          partes[i] = rs.map(resumoDoFechamentoEmail).join(" / ");
+          if (rs.some((r) => r.falhas.length || r.aviso?.startsWith("sem provedor"))) erro = true;
         } catch (e) {
           partes[i] = `erro numa organização: ${e instanceof Error ? e.message : String(e)}`;
           erro = true;

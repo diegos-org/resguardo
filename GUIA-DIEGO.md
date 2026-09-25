@@ -276,6 +276,9 @@
     relatório do mês anterior em **PDF** (o mesmo do portal), com o valor do repasse no texto.
     Os **representantes** marcados para receber relatórios vão em cópia. Quem tem imóvel mas
     ficou com saldo zero no mês também recebe;
+  - mês fechado **com atraso** também sai (o envio olha os meses desde que foi ligado, até 12
+    para trás). Se o provedor não confirmar um envio por mais de um dia, o sistema **não repete
+    sozinho** (poderia chegar duas vezes): a tela mostra "sem confirmação" e você decide se envia de novo;
   - só sai **depois que o mês dele está fechado**: repasse gerado, ou nada a repassar e sem
     pendência. Quem ainda tem pendência (acerto a conferir, ajuste a esclarecer) espera, e a
     tela mostra quem ficou; quem está **sem e-mail** no cadastro também aparece;

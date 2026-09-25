@@ -49,6 +49,7 @@ export async function enviarFechamentoAcao(form: FormData): Promise<void> {
     ...r.falhas,
     ...(r.pendentes.length ? [`mês ainda não fechado: ${r.pendentes.join(", ")}`] : []),
     ...(r.semEmail.length ? [`sem e-mail cadastrado: ${r.semEmail.join(", ")}`] : []),
+    ...(r.incertos.length ? [`sem confirmação do provedor (pode ter chegado; confira antes de reenviar): ${r.incertos.join(", ")}`] : []),
   ];
   if (r.falhas.length || (proprietarioId && !r.enviados)) voltar(mes, { ok: false, erro: `${resumoDoFechamentoEmail(r)} — ${faltam.join("; ")}` });
   voltar(mes, { ok: true, info: `${resumoDoFechamentoEmail(r)}${faltam.length ? ` — ${faltam.join("; ")}` : ""}.` });
