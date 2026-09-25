@@ -203,4 +203,27 @@ export function tituloDoSite(conteudo: Pick<ConteudoSite, "nomeEmpresa"> | null,
   return [pagina, nome].filter(Boolean).join(" — ");
 }
 
+/**
+ * Links antigos do site (`/property/<código>?checkin=…&checkout=…&guests=…`, do contrato de links
+ * já divulgado): levam à página do imóvel com só os critérios de estadia, conferidos. Critério
+ * inválido, incompleto ou repetido: avisa (400) em vez de supor; outros parâmetros são descartados.
+ */
+export function destinoDoLinkAntigo(
+  sp: URLSearchParams,
+  imovel: ImovelPublico | null,
+  hoje: string,
+): { status: 308; destino: string } | { status: 400; erro: string } | { status: 404 } {
+  if (!imovel) return { status: 404 };
+  const base = `/imoveis/${encodeURIComponent(imovel.codigo)}`;
+  const chaves = ["checkin", "checkout", "guests"] as const;
+  const criterios = new URLSearchParams();
+  for (const k of chaves) for (const v of sp.getAll(k)) criterios.append(k, v);
+  if (!criterios.size) return { status: 308, destino: base };
+  if (chaves.some((k) => criterios.getAll(k).length !== 1)) return { status: 400, erro: "Informe uma vez a entrada, a saída e o número de pessoas." };
+  if (!/^\d+$/.test(criterios.get("guests")!)) return { status: 400, erro: "Informe quantas pessoas." };
+  const r = montarConsulta({ imovel: imovel.codigo, entrada: criterios.get("checkin")!, saida: criterios.get("checkout")!, hospedes: criterios.get("guests")! }, imovel, hoje);
+  if (!r.ok) return { status: 400, erro: Object.values(r.erros).join(" ") };
+  return { status: 308, destino: `${base}?${criterios}` };
+}
+
 export const linkWhatsapp = (numero: string, texto: string) => `https://wa.me/${numero}?text=${encodeURIComponent(texto)}`;

@@ -5,7 +5,7 @@ import { imoveis, organizacoes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { DETALHES_VAZIOS, salvarDetalhes } from "@/imoveis/detalhes";
-import { conteudoDoSite, imovelDoSite, imoveisDoSite, lerPedidoConsulta, tituloDoSite, linkWhatsapp, montarConsulta, numeroWhatsapp, organizacaoDoSite } from "./site";
+import { conteudoDoSite, destinoDoLinkAntigo, imovelDoSite, imoveisDoSite, lerPedidoConsulta, tituloDoSite, linkWhatsapp, montarConsulta, numeroWhatsapp, organizacaoDoSite } from "./site";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -104,5 +104,21 @@ describe("site público (M7.1)", () => {
     expect(tituloDoSite({ nomeEmpresa: "Empresa Exemplo" }, "Apartamentos")).toBe("Apartamentos — Empresa Exemplo");
     expect(tituloDoSite({ nomeEmpresa: "Empresa Exemplo" })).toBe("Empresa Exemplo");
     expect(tituloDoSite(null, "Consulta")).toBe("Consulta");
+  });
+
+  it("links antigos /property/<código>: levam à página do imóvel só com os critérios de estadia válidos", async () => {
+    const imovel = await imovelDoSite(db, org, "403");
+    const q = (o: Record<string, string>) => new URLSearchParams(o);
+    const valido = { checkin: "2026-10-10", checkout: "2026-10-12", guests: "2" };
+    expect(destinoDoLinkAntigo(q({ ...valido, email: "x@example.com", token: "t", property: "102" }), imovel, "2026-09-25")).toEqual({
+      status: 308,
+      destino: "/imoveis/403?checkin=2026-10-10&checkout=2026-10-12&guests=2",
+    });
+    expect(destinoDoLinkAntigo(q({ email: "x@example.com" }), imovel, "2026-09-25")).toEqual({ status: 308, destino: "/imoveis/403" });
+    for (const ruim of [{ guests: "5" }, { checkin: "2026-02-30" }, { checkout: "2026-10-10" }, { guests: "2e0" }, { checkin: "2020-01-01" }])
+      expect(destinoDoLinkAntigo(q({ ...valido, ...ruim }), imovel, "2026-09-25")).toMatchObject({ status: 400 });
+    expect(destinoDoLinkAntigo(q({ guests: "2" }), imovel, "2026-09-25")).toMatchObject({ status: 400 });
+    expect(destinoDoLinkAntigo(new URLSearchParams(`${q(valido)}&guests=3`), imovel, "2026-09-25")).toMatchObject({ status: 400 });
+    expect(destinoDoLinkAntigo(q(valido), null, "2026-09-25")).toEqual({ status: 404 });
   });
 });
