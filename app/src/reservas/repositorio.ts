@@ -119,6 +119,8 @@ export async function sincronizarReserva(
       return { ok: true as const, reserva, criada: true, avisosFinanceiro: m?.avisos };
     }
 
+    // E-mail corrigido à mão no painel vale sobre o da fonte (M9.1).
+    if (existente.hospedeEmailManualEm) dados = { ...dados, hospedeEmail: existente.hospedeEmail };
     const novo = { ...existente, ...dados };
     const mudancas = calcularMudancas(existente, novo);
     if (Object.keys(mudancas).length === 0) {
@@ -151,7 +153,8 @@ export async function sincronizarReserva(
 
 /**
  * E-mail do hóspede (M9.1): é por ele que o hóspede entra no portal. Corrigir aqui tira o acesso
- * do e-mail antigo na hora. Vazio = sem acesso ao portal (o detalhe da reserva avisa).
+ * do e-mail antigo na hora e vale sobre o que vier da planilha ou do Beds24 depois.
+ * Vazio = sem acesso ao portal (o detalhe da reserva avisa).
  */
 export async function salvarEmailHospede(
   db: Db,
@@ -170,8 +173,10 @@ export async function salvarEmailHospede(
       .where(and(eq(reservas.id, id), eq(reservas.organizacaoId, organizacaoId)))
       .for("update");
     if (!r) return { ok: false as const, erro: "Reserva não encontrada." };
+    const agora = new Date();
+    // Mesmo sem mudar o valor, fica marcado como conferido à mão: a sincronização não troca mais.
+    await tx.update(reservas).set({ hospedeEmail: email, hospedeEmailManualEm: agora, atualizadoEm: agora }).where(eq(reservas.id, id));
     if (r.hospedeEmail === email) return { ok: true as const };
-    await tx.update(reservas).set({ hospedeEmail: email, atualizadoEm: new Date() }).where(eq(reservas.id, id));
     await registrarAuditoria(tx, {
       organizacaoId,
       usuarioId: autorId,

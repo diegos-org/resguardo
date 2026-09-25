@@ -623,7 +623,8 @@
   - a permissão é conferida a cada acesso: **trocar o e-mail da reserva ou cancelá-la tira
     o acesso na hora**. O acesso dura até 7 dias no mesmo aparelho, com botão "Sair";
   - no painel, o detalhe da reserva agora tem o campo **"E-mail do hóspede"** para cadastrar
-    ou corrigir, e um **aviso** quando a reserva está sem e-mail. As mensagens automáticas
+    ou corrigir, e um **aviso** quando a reserva está sem e-mail. O e-mail salvo ali **vale
+    sobre o da planilha ou do Beds24** (a próxima importação não desfaz a correção). As mensagens automáticas
     (confirmação, check-in, check-out, agradecimento) são o M9.2.
 
 A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).

@@ -308,6 +308,12 @@ export const reservas = pgTable(
     hospedes: integer("hospedes"),
     hospedeNome: text("hospede_nome").notNull().default(""),
     hospedeEmail: text("hospede_email").notNull().default(""),
+    /**
+     * E-mail do hóspede cadastrado/corrigido à mão no painel (M9.1): a partir daí a sincronização
+     * (planilha, Beds24) não troca mais o e-mail — senão uma correção feita para tirar o acesso
+     * de alguém seria desfeita na próxima importação.
+     */
+    hospedeEmailManualEm: timestamp("hospede_email_manual_em", { withTimezone: true }),
     hospedeTelefone: text("hospede_telefone").notNull().default(""),
     /** Cidade/país informados pelo hóspede — nunca inferidos. */
     hospedeOrigem: text("hospede_origem").notNull().default(""),
