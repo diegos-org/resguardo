@@ -53,41 +53,71 @@ export type ResultadoPedido = "enviado" | "limite" | "sem-acesso" | "invalido";
 
 export async function pedirCodigo(db: Db, correio: Correio, emailBruto: string, o: OpcoesCodigo): Promise<ResultadoPedido> {
   const email = normalizarEmail(emailBruto);
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 200) return "invalido";
+  if (!emailValido(email)) return "invalido";
+  return emitirCodigo(db, correio, email, o, {
+    autorizado: () => podeEntrar(db, email, o.adminEmails),
+    mensagem: async (codigo) => {
+      const empresa = await nomeDaEmpresaPorEmail(db, email);
+      return {
+        assunto: `Seu código de acesso: ${codigo}`,
+        texto: `Seu código para entrar no sistema da ${empresa} é ${codigo}.\n\nEle vale por 10 minutos e só pode ser usado uma vez.\nSe você não pediu este código, ignore este e-mail.`,
+      };
+    },
+  });
+}
+
+/** Sem ":" — o escopo vai na frente do e-mail ("hospede:<e-mail>"), então um e-mail nunca pode imitar outro escopo. */
+export const emailValido = (email: string) => /^[^\s@:]+@[^\s@:]+\.[^\s@:]+$/.test(email) && email.length <= 200;
+
+/**
+ * Escopo do código: o login da equipe/proprietários (sem escopo) e o portal do hóspede (M9.1)
+ * guardam códigos separados — um não serve para entrar no outro, e cada um tem seu limite.
+ */
+export type EscopoCodigo = "hospede";
+const chaveDoCodigo = (email: string, escopo?: EscopoCodigo) => (escopo ? `${escopo}:${email}` : email);
+
+/**
+ * Parte comum do envio do código (e-mail já normalizado e válido): retenção, quem pode receber,
+ * limites, envio e troca do código anterior.
+ */
+export async function emitirCodigo(
+  db: Db,
+  correio: Correio,
+  email: string,
+  o: Pick<OpcoesCodigo, "segredo" | "agora" | "gerar"> & { escopo?: EscopoCodigo },
+  c: { autorizado: () => Promise<boolean>; mensagem: (codigo: string) => Promise<{ assunto: string; texto: string }> },
+): Promise<ResultadoPedido> {
   const agora = o.agora ?? new Date();
   const umaHoraAtras = new Date(agora.getTime() - 60 * 60 * 1000);
+  const chave = chaveDoCodigo(email, o.escopo);
 
   // Retenção: códigos antigos não servem para nada.
   await db.delete(codigosLogin).where(lt(codigosLogin.criadoEm, new Date(agora.getTime() - RETENCAO_MS)));
-  if (!(await podeEntrar(db, email, o.adminEmails))) return "sem-acesso";
+  if (!(await c.autorizado())) return "sem-acesso";
 
-  const contar = async (c?: ReturnType<typeof eq>) =>
+  const contar = async (f?: ReturnType<typeof eq>) =>
     (
       await db
         .select({ n: sql<number>`count(*)::int` })
         .from(codigosLogin)
-        .where(and(gte(codigosLogin.criadoEm, umaHoraAtras), c))
+        .where(and(gte(codigosLogin.criadoEm, umaHoraAtras), f))
     )[0].n;
-  if ((await contar(eq(codigosLogin.email, email))) >= MAX_CODIGOS_POR_HORA) return "limite";
+  if ((await contar(eq(codigosLogin.email, chave))) >= MAX_CODIGOS_POR_HORA) return "limite";
   if ((await contar()) >= MAX_CODIGOS_GERAL_POR_HORA) return "limite";
 
   const codigo = (o.gerar ?? gerarCodigoNumerico)();
-  const empresa = await nomeDaEmpresaPorEmail(db, email);
+  const { assunto, texto } = await c.mensagem(codigo);
   // Envia primeiro: se falhar (lança), nada muda no banco.
-  await correio.enviar({
-    para: email,
-    assunto: `Seu código de acesso: ${codigo}`,
-    texto: `Seu código para entrar no sistema da ${empresa} é ${codigo}.\n\nEle vale por 10 minutos e só pode ser usado uma vez.\nSe você não pediu este código, ignore este e-mail.`,
-  });
+  await correio.enviar({ para: email, assunto, texto });
   await db.transaction(async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`codigo-login:${email}`}))`);
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`codigo-login:${chave}`}))`);
     await tx
       .update(codigosLogin)
       .set({ invalidadoEm: agora })
-      .where(and(eq(codigosLogin.email, email), isNull(codigosLogin.usadoEm), isNull(codigosLogin.invalidadoEm)));
+      .where(and(eq(codigosLogin.email, chave), isNull(codigosLogin.usadoEm), isNull(codigosLogin.invalidadoEm)));
     await tx.insert(codigosLogin).values({
-      email,
-      codigoHash: hmac(o.segredo, email, codigo),
+      email: chave,
+      codigoHash: hmac(o.segredo, chave, codigo),
       expiraEm: new Date(agora.getTime() + VALIDADE_MS),
       criadoEm: agora,
     });
@@ -98,15 +128,22 @@ export async function pedirCodigo(db: Db, correio: Correio, emailBruto: string, 
 export type ResultadoVerificacao = { ok: true; email: string } | { ok: false; motivo: "invalido" | "expirado" | "bloqueado" };
 
 /** Confere o código. Acertou: marca como usado. Errou: conta tentativa; na 5ª, invalida. */
-export async function verificarCodigo(db: Db, emailBruto: string, codigoBruto: string, o: Pick<OpcoesCodigo, "segredo" | "agora">): Promise<ResultadoVerificacao> {
+export async function verificarCodigo(
+  db: Db,
+  emailBruto: string,
+  codigoBruto: string,
+  o: Pick<OpcoesCodigo, "segredo" | "agora"> & { escopo?: EscopoCodigo },
+): Promise<ResultadoVerificacao> {
   const email = normalizarEmail(emailBruto);
+  if (!emailValido(email)) return { ok: false, motivo: "invalido" };
+  const chave = chaveDoCodigo(email, o.escopo);
   const codigo = codigoBruto.replace(/\s/g, "");
   const agora = o.agora ?? new Date();
   return db.transaction(async (tx) => {
     const [atual] = await tx
       .select()
       .from(codigosLogin)
-      .where(and(eq(codigosLogin.email, email), isNull(codigosLogin.usadoEm), isNull(codigosLogin.invalidadoEm)))
+      .where(and(eq(codigosLogin.email, chave), isNull(codigosLogin.usadoEm), isNull(codigosLogin.invalidadoEm)))
       .orderBy(desc(codigosLogin.criadoEm))
       .limit(1)
       .for("update");
@@ -116,7 +153,7 @@ export async function verificarCodigo(db: Db, emailBruto: string, codigoBruto: s
       return { ok: false as const, motivo: "expirado" as const };
     }
     const esperado = Buffer.from(atual.codigoHash, "hex");
-    const recebido = Buffer.from(hmac(o.segredo, email, codigo), "hex");
+    const recebido = Buffer.from(hmac(o.segredo, chave, codigo), "hex");
     if (/^\d{6}$/.test(codigo) && esperado.length === recebido.length && timingSafeEqual(esperado, recebido)) {
       await tx.update(codigosLogin).set({ usadoEm: agora }).where(eq(codigosLogin.id, atual.id));
       return { ok: true as const, email };

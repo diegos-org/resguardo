@@ -1,4 +1,5 @@
 import { and, asc, eq, gt, inArray, lt, ne, sql } from "drizzle-orm";
+import { emailValido } from "@/acesso/codigo-email";
 import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
 import { violouUnicidade } from "@/db/erros";
 import { bloqueios, imoveis, reservas } from "@/db/schema";
@@ -145,6 +146,41 @@ export async function sincronizarReserva(
     });
     const m = await aplicarMotor(tx, organizacaoId, reserva.id, autorId);
     return { ok: true as const, reserva, criada: false, financeiroNaoAtualizado: m?.protegido, avisosFinanceiro: m?.avisos };
+  });
+}
+
+/**
+ * E-mail do hóspede (M9.1): é por ele que o hóspede entra no portal. Corrigir aqui tira o acesso
+ * do e-mail antigo na hora. Vazio = sem acesso ao portal (o detalhe da reserva avisa).
+ */
+export async function salvarEmailHospede(
+  db: Db,
+  organizacaoId: string,
+  id: string,
+  emailBruto: string,
+  autorId: string | null,
+): Promise<{ ok: true } | { ok: false; erro: string }> {
+  const email = emailBruto.trim().toLowerCase();
+  if (email && !emailValido(email)) return { ok: false, erro: "E-mail inválido." };
+  if (!uuidValido(id)) return { ok: false, erro: "Reserva não encontrada." };
+  return db.transaction(async (tx) => {
+    const [r] = await tx
+      .select({ hospedeEmail: reservas.hospedeEmail })
+      .from(reservas)
+      .where(and(eq(reservas.id, id), eq(reservas.organizacaoId, organizacaoId)))
+      .for("update");
+    if (!r) return { ok: false as const, erro: "Reserva não encontrada." };
+    if (r.hospedeEmail === email) return { ok: true as const };
+    await tx.update(reservas).set({ hospedeEmail: email, atualizadoEm: new Date() }).where(eq(reservas.id, id));
+    await registrarAuditoria(tx, {
+      organizacaoId,
+      usuarioId: autorId,
+      acao: "reserva.email_hospede",
+      entidade: "reserva",
+      entidadeId: id,
+      mudancas: semContato({ hospedeEmail: [r.hospedeEmail, email] }),
+    });
+    return { ok: true as const };
   });
 }
 

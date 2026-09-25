@@ -15,6 +15,7 @@ export function Moldura({ conteudo, children }: { conteudo: ConteudoSite | null;
         <nav className={styles.menu} aria-label="Principal">
           <Link href="/imoveis">Apartamentos</Link>
           <Link href="/consulta">Consulta</Link>
+          <Link href="/hospede">Minha reserva</Link>
         </nav>
       </header>
       <main className={styles.conteudo}>{children}</main>

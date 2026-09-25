@@ -56,6 +56,7 @@ export const codigosLogin = pgTable(
   "codigos_login",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    /** E-mail normalizado; códigos do portal do hóspede (M9.1) vêm como "hospede:<e-mail>". */
     email: text("email").notNull(),
     codigoHash: text("codigo_hash").notNull(),
     expiraEm: timestamp("expira_em", { withTimezone: true }).notNull(),
