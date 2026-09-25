@@ -156,7 +156,7 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 |---|---|---|---|
 | M12.1 | Fórmula de cobrança do marketplace: hóspede paga menos que na OTA, proprietário ganha mais e a SCL também ganha — proposta em `requisitos/product/MARKETPLACE-PRECIFICACAO.md` (3 modelos); tela de simulação com percentuais editáveis | bloqueado | Diego: escolher o modelo |
 | M12.2 | Motor de cálculo e repasse do contrato marketplace (inclui split automático, se o M8.0 decidir assim) | a fazer | M12.1, M4.2 |
-| M12.3 | Auto-cadastro do proprietário marketplace: cria conta, cadastra o imóvel (M2.6), escolhe "já anuncio"/"anúncio novo", revisão antes de publicar | a fazer | M1.4, M2.6 |
+| M12.3 | Auto-cadastro do proprietário marketplace: cria conta, cadastra o imóvel (M2.6), escolhe "já anuncio"/"anúncio novo", revisão antes de publicar | feito | M1.4, M2.6 |
 | M12.4 | Portal do proprietário marketplace: calendário, preços e regras de venda, limpeza/manutenção por conta própria | a fazer | M12.3, M5.1 |
 
 ### M11 — Entrada em produção

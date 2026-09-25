@@ -11,7 +11,7 @@
  * código anterior continua valendo e o pedido não conta no limite.
  */
 import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
-import { and, desc, eq, gte, isNull, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, lt, type SQL, sql } from "drizzle-orm";
 import { codigosLogin, usuarios } from "@/db/schema";
 import type { Db } from "@/db/types";
 import type { Correio } from "@/email/correio";
@@ -70,10 +70,11 @@ export async function pedirCodigo(db: Db, correio: Correio, emailBruto: string, 
 export const emailValido = (email: string) => /^[^\s@:]+@[^\s@:]+\.[^\s@:]+$/.test(email) && email.length <= 200;
 
 /**
- * Escopo do código: o login da equipe/proprietários (sem escopo) e o portal do hóspede (M9.1)
- * guardam códigos separados — um não serve para entrar no outro, e cada um tem seu limite.
+ * Escopo do código: o login da equipe/proprietários (sem escopo), o portal do hóspede (M9.1) e o
+ * cadastro público do marketplace (M12.3) guardam códigos separados — um não serve para entrar no
+ * outro, e cada um tem seu limite (inclusive o teto geral por hora: abuso num não trava o outro).
  */
-export type EscopoCodigo = "hospede";
+export type EscopoCodigo = "hospede" | "cadastro";
 const chaveDoCodigo = (email: string, escopo?: EscopoCodigo) => (escopo ? `${escopo}:${email}` : email);
 
 /**
@@ -84,7 +85,7 @@ export async function emitirCodigo(
   db: Db,
   correio: Correio,
   email: string,
-  o: Pick<OpcoesCodigo, "segredo" | "agora" | "gerar"> & { escopo?: EscopoCodigo },
+  o: Pick<OpcoesCodigo, "segredo" | "agora" | "gerar"> & { escopo?: EscopoCodigo; maxGeralPorHora?: number },
   c: { autorizado: () => Promise<boolean>; mensagem: (codigo: string) => Promise<{ assunto: string; texto: string }> },
 ): Promise<ResultadoPedido> {
   const agora = o.agora ?? new Date();
@@ -95,7 +96,7 @@ export async function emitirCodigo(
   await db.delete(codigosLogin).where(lt(codigosLogin.criadoEm, new Date(agora.getTime() - RETENCAO_MS)));
   if (!(await c.autorizado())) return "sem-acesso";
 
-  const contar = async (f?: ReturnType<typeof eq>) =>
+  const contar = async (f?: SQL) =>
     (
       await db
         .select({ n: sql<number>`count(*)::int` })
@@ -103,7 +104,9 @@ export async function emitirCodigo(
         .where(and(gte(codigosLogin.criadoEm, umaHoraAtras), f))
     )[0].n;
   if ((await contar(eq(codigosLogin.email, chave))) >= MAX_CODIGOS_POR_HORA) return "limite";
-  if ((await contar()) >= MAX_CODIGOS_GERAL_POR_HORA) return "limite";
+  // Teto geral por escopo: códigos do mesmo tipo ("hospede:…", "cadastro:…" ou sem prefixo).
+  const doEscopo = o.escopo ? sql`${codigosLogin.email} like ${`${o.escopo}:%`}` : sql`${codigosLogin.email} not like ${"%:%"}`;
+  if ((await contar(doEscopo)) >= (o.maxGeralPorHora ?? MAX_CODIGOS_GERAL_POR_HORA)) return "limite";
 
   const codigo = (o.gerar ?? gerarCodigoNumerico)();
   const { assunto, texto } = await c.mensagem(codigo);

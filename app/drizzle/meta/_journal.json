@@ -218,6 +218,13 @@
       "when": 1790346206595,
       "tag": "0030_mensagens_hospede",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1790349529778,
+      "tag": "0031_cadastro_marketplace",
+      "breakpoints": true
     }
   ]
 }
