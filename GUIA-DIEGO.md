@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 25/09/2026, site público novo lendo os imóveis do sistema (M7.1), depois do e-mail do fechamento mensal aos proprietários (M5.4).
+> **Última atualização:** 25/09/2026, comparação de como receber as reservas do site (M8.0), depois do site público novo (M7.1).
 
 ---
 
@@ -757,12 +757,27 @@ ambiente).
    WhatsApp** da consulta; e, em cada imóvel, marque **público** só nos que devem aparecer e
    confira a descrição, as camas e as comodidades. O site ainda não substitui o atual: o
    domínio só muda na entrada em uso (M11).
+16. **Recebimento do site:** leia a comparação na seção 7 ("Como receber as reservas do
+   site"), leve a pergunta ao contador e me diga o modelo escolhido.
 
 ---
 
 ## 7. Decisões pendentes e respostas às suas perguntas
 
 **Preciso de você (sem pressa):**
+- **Como receber as reservas do site (M8.0):** comparei as opções em
+  `requisitos/product/RECEBIMENTO-SITE.md`. Resumo:
+  - **empresa recebe e repassa (minha sugestão para começar):** o hóspede paga à SCL pelo
+    Mercado Pago (cartão ~4–5%, Pix ~1%), a SCL repassa ao proprietário no dia 1º, como já
+    faz com Booking e diretas. O sistema já está pronto para isso e o proprietário não
+    precisa abrir conta nenhuma;
+  - **split automático no Mercado Pago (como no Airbnb):** a parte do proprietário cai
+    direto na conta dele, mas **cada proprietário precisa de conta no Mercado Pago** ligada
+    ao sistema. Faz mais sentido no marketplace (M12);
+  - **Stripe:** mais caro no Brasil e Pix só por convite; não recomendo agora.
+  **Antes de decidir, pergunte ao contador:** "a SCL recebendo o valor total da reserva e
+  repassando ao proprietário, com contrato de intermediação, paga imposto só sobre a
+  comissão?". E diga quem paga a taxa do cartão/Pix (SCL, proprietário ou dividida).
 - **Modelo do marketplace:** as fórmulas antigas não estão em lugar nenhum, então montei
   uma proposta com as contas feitas: `requisitos/product/MARKETPLACE-PRECIFICACAO.md`.
   Resumo, numa reserva de R$ 1.650 que no Airbnb custaria R$ 1.881 ao hóspede e daria

@@ -130,7 +130,7 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 
 | ID | Item | Estado | Depende de |
 |---|---|---|---|
-| M8.0 | Decidir o recebimento do site: split automático (Mercado Pago marketplace ou Stripe Connect, como no Airbnb) × empresa recebe e repassa; comparar taxas, estorno, chargeback e impostos | a fazer | — |
+| M8.0 | Decidir o recebimento do site: split automático (Mercado Pago marketplace ou Stripe Connect, como no Airbnb) × empresa recebe e repassa; comparar taxas, estorno, chargeback e impostos — comparação e recomendação em `requisitos/product/RECEBIMENTO-SITE.md` | bloqueado | Diego: escolher o modelo (e confirmar impostos com o contador) |
 | M8.1 | Cotação persistida, revalidação e hold com controle de concorrência | a fazer | M7.2 |
 | M8.2 | Mercado Pago em **sandbox**: checkout, webhook assinado, idempotência, reconciliação | bloqueado | M8.1 + Diego: credenciais de teste Mercado Pago |
 | M8.3 | Criação da reserva no Beds24 após pagamento confirmado (escrita) | bloqueado | M8.2 + autorização explícita de escrita |
@@ -177,6 +177,7 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 6. **Modelo do marketplace:** escolher entre os modelos propostos (ou ajustar). (destrava M12.1)
 7. **Booking:** criar os anúncios (o Beds24 pode criar a partir dos dados já importados do Airbnb — ver guia). 
 9. **E-mail do sistema (Resend):** conta e domínio. (liga o login por código e os convites por e-mail)
+10. **Recebimento do site:** escolher entre "empresa recebe e repassa" (recomendado para começar) e split automático, e confirmar com o contador a tributação só sobre a comissão — ver `requisitos/product/RECEBIMENTO-SITE.md`. (destrava M8.0 e orienta o M8.2)
 
 ## Pendências de decisão (não bloqueiam o início)
 
