@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { exigir } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { getDb } from "@/db/client";
+import { TIPOS_MENSAGEM_HOSPEDE } from "@/db/schema";
+import { salvarConfigMensagens } from "@/mensagens/hospede";
 import { type ErrosEmpresa, salvarEmpresa, validarEmpresa } from "./empresa";
 import { atualizarModelo, criarModelo, type ErrosModelo, excluirModelo } from "./modelos";
 import { lerFormRegras } from "./regras-financeiras";
@@ -110,4 +112,19 @@ export async function editarModeloAcao(_a: EstadoForm<ErrosModelo>, form: FormDa
   );
   revalidatePath("/painel/configuracoes/mensagens");
   return r.ok ? { ok: true, aviso: "Salvo." } : { erros: r.erros, mensagem: "Confira os campos destacados.", valores: campos(form) };
+}
+
+// --- Mensagens automáticas ao hóspede (M9.2) --------------------------------------------
+
+export async function salvarMensagensAcao(_a: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const sessao = await sessaoConfig();
+  const modelos = Object.fromEntries(TIPOS_MENSAGEM_HOSPEDE.map((t) => [t, String(form.get(`modelo_${t}`) ?? "")]));
+  const r = await salvarConfigMensagens(
+    getDb(),
+    sessao.organizacaoId,
+    { ativo: form.get("ativo") === "on", origens: form.getAll("origens").map(String), modelos },
+    sessao.usuarioId,
+  );
+  revalidatePath("/painel/configuracoes/mensagens");
+  return r.ok ? { ok: true, aviso: "Mensagens automáticas salvas." } : { mensagem: r.erro };
 }
