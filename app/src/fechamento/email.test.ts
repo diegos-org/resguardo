@@ -9,7 +9,7 @@ import { registrarDespesa } from "@/despesas/despesas";
 import { type Correio, CorreioMemoria, ErroEnvioIncerto, type Mensagem } from "@/email/correio";
 import type { DadosReserva } from "@/reservas/regras";
 import { criarReserva } from "@/reservas/repositorio";
-import { estornarRepasse, fecharMes, listarRepasses } from "@/repasses/repasses";
+import { estornarRepasse, fecharMes, listarRepasses, marcarRepassePago } from "@/repasses/repasses";
 import { fechamentoDeTodas, fechamentoManual } from "./cron";
 import { chaveDoEnvio, chaveDoReenvio, enviarFechamentos, enviarFechamentosAutomaticos, lerConfigFechamentoEmail, salvarConfigFechamentoEmail, situacaoDosFechamentos } from "./email";
 
@@ -545,5 +545,29 @@ describe("e-mail do fechamento (M5.4)", () => {
     const t = new Date(DIA1.getTime() + 30 * 60_000);
     const [p] = (await situacaoDosFechamentos(db, org, MES, "2026-11-01", t)).filter((x) => x.proprietarioId === dona);
     expect(p.situacao).toBe("incerto");
+  });
+
+  it("repasse marcado como pago depois de uma tentativa incerta: o pedido antigo (\"a pagar\") não é retomado", async () => {
+    await ligar();
+    await fechar();
+    const caiu: Correio = { nome: "caiu", enviar: async () => Promise.reject(new ErroEnvioIncerto("Sem resposta do provedor de e-mail")) };
+    await enviarFechamentos(db, org, caiu, DIA1);
+    const [rep] = await listarRepasses(db, org, dona);
+    expect((await marcarRepassePago(db, org, rep.id, "2026-11-01", "2026-11-01", null)).ok).toBe(true);
+    const t = new Date(DIA1.getTime() + 30 * 60_000);
+    const [p] = (await situacaoDosFechamentos(db, org, MES, "2026-11-01", t)).filter((x) => x.proprietarioId === dona);
+    expect(p.situacao).toBe("incerto");
+  });
+
+  it("reserva que nunca chegou ao provedor e cadastro sem e-mail: fica \"sem e-mail\" (não tenta mandar para ninguém)", async () => {
+    await ligar();
+    await fechar();
+    await db.insert(appSettings).values({ key: chaveDoEnvio(org, dona, MES), value: { estado: "enviando", em: DIA1.toISOString(), tentativa: "t-caiu" } });
+    await db.update(proprietarios).set({ email: "" }).where(eq(proprietarios.id, dona));
+    const t = new Date(DIA1.getTime() + 30 * 60_000);
+    const [p] = (await situacaoDosFechamentos(db, org, MES, "2026-11-01", t)).filter((x) => x.proprietarioId === dona);
+    expect(p.situacao).toBe("sem_email");
+    const r = await enviarFechamentos(db, org, new CorreioMemoria(), t, { proprietarioId: dona });
+    expect(r).toMatchObject({ falhas: [], semEmail: ["Dona Exemplo"] });
   });
 });
