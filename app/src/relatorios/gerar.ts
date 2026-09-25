@@ -165,11 +165,18 @@ export async function relatorioDoPainel(db: Db, sessao: Sessao | null, proprieta
  * PDF do fechamento de um mês de um proprietário, com todos os imóveis dele no mês (M5.4: envio
  * por e-mail). Sem sessão: quem chama já decidiu que pode (o envio do fechamento, no servidor).
  */
-export async function relatorioDoFechamento(db: Db, organizacaoId: string, proprietarioId: string, mesISO: string, agora: Date): Promise<Resultado> {
-  const c = await conteudoDoFechamento(db, organizacaoId, proprietarioId, mesISO, agora);
+export async function relatorioDoFechamento(
+  db: Db,
+  organizacaoId: string,
+  proprietarioId: string,
+  mesISO: string,
+  agora: Date,
+  hoje?: string,
+): Promise<(Resultado & { ok: false }) | { ok: true; pdf: Uint8Array; arquivo: string; textos: ReturnType<typeof textosDoRelatorio> }> {
+  const c = await conteudoDoFechamento(db, organizacaoId, proprietarioId, mesISO, agora, hoje);
   if (!c.ok) return c;
   const pdf = await gerarPdfRelatorio(c.textos, {}, agora);
-  return { ok: true, pdf, arquivo: c.arquivo };
+  return { ok: true, pdf, arquivo: c.arquivo, textos: c.textos };
 }
 
 /** O que o PDF do fechamento mostra (sem gerar o PDF): usado também para saber se ele mudou. */

@@ -570,4 +570,18 @@ describe("e-mail do fechamento (M5.4)", () => {
     const r = await enviarFechamentos(db, org, new CorreioMemoria(), t, { proprietarioId: dona });
     expect(r).toMatchObject({ falhas: [], semEmail: ["Dona Exemplo"] });
   });
+
+  it("botão \"enviar todos\" manda só os prontos; tentativa em aberto fica para o agendador ou o botão dela", async () => {
+    await ligar();
+    await fechar();
+    const [{ id: c }] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "303", nome: "Três" }).returning();
+    const [{ id: terceira }] = await db.insert(proprietarios).values({ organizacaoId: org, nome: "Terceira Exemplo", email: "terceira@example.com" }).returning();
+    await db.insert(proprietarioImoveis).values({ proprietarioId: terceira, imovelId: c });
+    const caiu: Correio = { nome: "caiu", enviar: async () => Promise.reject(new ErroEnvioIncerto("Sem resposta do provedor de e-mail")) };
+    await enviarFechamentos(db, org, caiu, DIA1, { proprietarioId: dona });
+    const correio = new CorreioMemoria();
+    const r = await fechamentoManual(db, org, correio, new Date(DIA1.getTime() + 20 * 60_000), { mes: MES }, null);
+    expect(correio.enviadas.map((m) => m.para)).toEqual(["terceira@example.com"]);
+    expect(r).toMatchObject({ enviados: 1, falhas: [] });
+  });
 });

@@ -205,8 +205,12 @@ type Carga = { destinos: string[]; assunto: string; texto: string; arquivo: stri
 export async function versaoDoConteudo(db: Db, organizacaoId: string, p: PrevisaoRepasse, mes: string, agora: Date): Promise<string> {
   const fimDoMes = limitesDoMes(mes)?.fim;
   const c = await conteudoDoFechamento(db, organizacaoId, p.proprietarioId, mes.slice(0, 7), agora, fimDoMes);
-  const partes = [p.repasse?.id ?? null, linhaDoValor(p), c.ok ? c.textos : null];
-  return createHash("sha256").update(JSON.stringify(partes)).digest("hex").slice(0, 32);
+  return versaoDe(p, c.ok ? c.textos : null);
+}
+
+/** A versão a partir do conteúdo já montado (o mesmo objeto que gerou o PDF). */
+function versaoDe(p: PrevisaoRepasse, textos: unknown): string {
+  return createHash("sha256").update(JSON.stringify([p.repasse?.id ?? null, linhaDoValor(p), textos])).digest("hex").slice(0, 32);
 }
 /**
  * O pedido guardado já foi entregue ao provedor (`primeira`) com outra versão do fechamento: não é
@@ -343,6 +347,9 @@ export async function enviarFechamentos(
   if (!correio) return { ...r, aviso: "sem provedor de e-mail configurado: nada enviado" };
   const lista = (await situacaoDosFechamentos(db, organizacaoId, mes, hoje, agora)).filter((p) => !o.proprietarioId || p.proprietarioId === o.proprietarioId);
   for (const p of lista) {
+    // "Enviar todos" do painel: só os prontos (é o que a confirmação conta). Tentativas em aberto
+    // ficam para o agendador ou para o botão de cada proprietário.
+    if (o.manual && !o.proprietarioId && p.situacao === "aguardando") continue;
     if (p.situacao === "enviado" && !o.reenviar) {
       r.jaEnviados++;
       continue;
@@ -396,7 +403,8 @@ export async function enviarFechamentos(
     let carga = reserva.carga;
     try {
       if (!carga) {
-        const pdf = await relatorioDoFechamento(db, organizacaoId, p.proprietarioId, mes.slice(0, 7), agora);
+        // O PDF e a versão saem do mesmo conteúdo (visto no fim do mês).
+        const pdf = await relatorioDoFechamento(db, organizacaoId, p.proprietarioId, mes.slice(0, 7), agora, limitesDoMes(mes)?.fim);
         if (!pdf.ok) throw new Error(pdf.erro);
         carga = {
           destinos: p.destinos,
@@ -404,7 +412,7 @@ export async function enviarFechamentos(
           texto: `${preencher(config.texto, p.nome, mes)}\n\n${linhaDoValor(p)}\n`,
           arquivo: pdf.arquivo,
           pdf: Buffer.from(pdf.pdf).toString("base64"),
-          versao: await versaoDoConteudo(db, organizacaoId, p, mes, agora),
+          versao: versaoDe(p, pdf.textos),
         };
         // Guarda o pedido antes de enviar: uma retomada manda exatamente o mesmo.
         await db
