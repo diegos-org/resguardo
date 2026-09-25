@@ -11,6 +11,7 @@ import { getDb } from "@/db/client";
 import { correioDoAmbiente } from "@/email/correio";
 import { criarConvite, lerConvite, revogarConvite } from "./convites";
 import { guardarTokenConvite } from "./cookie";
+import { enderecoDaRequisicao, enviarEmailConvite } from "./email";
 
 export type EstadoConvite = { erro?: string; link?: string; email?: string; enviadoPorEmail?: boolean };
 
@@ -21,10 +22,7 @@ async function sessaoEditora() {
 }
 
 async function endereco(caminho: string) {
-  const h = await headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  return `${proto}://${host}${caminho}`;
+  return enderecoDaRequisicao(await headers(), caminho);
 }
 
 export async function convidar(_a: EstadoConvite, form: FormData): Promise<EstadoConvite> {
@@ -38,11 +36,7 @@ export async function convidar(_a: EstadoConvite, form: FormData): Promise<Estad
   if (correio) {
     after(async () => {
       try {
-        await correio.enviar({
-          para: r.convite.email,
-          assunto: `Convite para o portal da ${empresa}`,
-          texto: `Olá! Você foi convidado para acompanhar seus imóveis no portal da ${empresa}.\n\nAbra o link abaixo e entre com este e-mail (${r.convite.email}). O convite vale por 7 dias e só pode ser usado uma vez.\n\n${link}\n\nSe você não esperava este convite, ignore este e-mail.`,
-        });
+        await enviarEmailConvite(correio, r.convite.email, empresa, link);
       } catch (e) {
         console.error("[convite] falha ao enviar e-mail", e);
       }

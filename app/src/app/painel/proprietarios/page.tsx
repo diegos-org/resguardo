@@ -5,6 +5,7 @@ import styles from "@/components/formularios.module.css";
 import { getDb } from "@/db/client";
 import { mascararDocumento } from "@/proprietarios/documento";
 import { listarProprietarios } from "@/proprietarios/repositorio";
+import { contarPendentes } from "@/marketplace/cadastro";
 
 export default async function ListaProprietarios() {
   const sessao = await exigirSessaoPainel();
@@ -16,15 +17,18 @@ export default async function ListaProprietarios() {
       </>
     );
   }
-  const lista = await listarProprietarios(getDb(), sessao.organizacaoId);
+  const [lista, pendentes] = await Promise.all([listarProprietarios(getDb(), sessao.organizacaoId), contarPendentes(getDb(), sessao.organizacaoId)]);
   return (
     <>
       <div className={styles.topo}>
         <h1>Proprietários</h1>
         {podeFazer(sessao.papel, "proprietario:editar") && (
-          <Link href="/painel/proprietarios/novo" className={styles.botao}>
-            Novo proprietário
-          </Link>
+          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            <Link href="/painel/proprietarios/cadastros">Cadastros pelo site{pendentes ? ` (${pendentes} esperando análise)` : ""}</Link>
+            <Link href="/painel/proprietarios/novo" className={styles.botao}>
+              Novo proprietário
+            </Link>
+          </div>
         )}
       </div>
       {lista.length === 0 ? (
