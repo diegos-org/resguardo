@@ -59,7 +59,7 @@ export async function criarReserva(db: Db, organizacaoId: string, dados: DadosRe
   if (Object.keys(erros).length) return { ok: false, erros };
   return db.transaction(async (tx) => {
     if (!(await imovelDaOrganizacao(tx, organizacaoId, dados.imovelId))) return { ok: false as const, erros: { imovelId: "Imóvel não encontrado." } };
-    const reserva = await inserirComCodigo(tx, { ...dados, organizacaoId, codigo: "", fonte: "manual" });
+    const reserva = await inserirComCodigo(tx, { ...dados, organizacaoId, codigo: "", fonte: "manual", confirmadaEm: dados.estado === "confirmada" ? new Date() : null });
     await registrarAuditoria(tx, {
       organizacaoId,
       usuarioId: autorId,
@@ -106,7 +106,7 @@ export async function sincronizarReserva(
 
     if (!existente) {
       const canceladaEm = dados.estado === "cancelada" ? new Date() : null;
-      const reserva = await inserirComCodigo(tx, { ...dados, organizacaoId, codigo: "", fonte, idFonte, canceladaEm });
+      const reserva = await inserirComCodigo(tx, { ...dados, organizacaoId, codigo: "", fonte, idFonte, canceladaEm, confirmadaEm: dados.estado === "confirmada" ? new Date() : null });
       await registrarAuditoria(tx, {
         organizacaoId,
         usuarioId: autorId,
@@ -130,12 +130,14 @@ export async function sincronizarReserva(
     }
     // Cancelou agora → data de agora; continua cancelada → mantém; voltou a valer → limpa.
     const canceladaEm = dados.estado !== "cancelada" ? null : existente.estado === "cancelada" ? existente.canceladaEm : new Date();
+    // Passou a confirmada agora → data de agora; continua confirmada → mantém; deixou de ser → limpa.
+    const confirmadaEm = dados.estado !== "confirmada" ? null : existente.estado === "confirmada" ? existente.confirmadaEm : new Date();
     const [reserva] = await tx
       .update(reservas)
       // Mudou algo que pesa no financeiro (situação, valores, datas, imóvel, canal…): uma conferência
       // dada por resolvida antes volta a valer (M4.8) — a decisão foi tomada sobre os dados de antes.
       // Nome, contato ou observação do hóspede não reabrem.
-      .set({ ...dados, canceladaEm, conferenciaResolvidaEm: CAMPOS_DO_FINANCEIRO.some((c) => c in mudancas) ? null : existente.conferenciaResolvidaEm, atualizadoEm: new Date() })
+      .set({ ...dados, canceladaEm, confirmadaEm, conferenciaResolvidaEm: CAMPOS_DO_FINANCEIRO.some((c) => c in mudancas) ? null : existente.conferenciaResolvidaEm, atualizadoEm: new Date() })
       .where(eq(reservas.id, existente.id))
       .returning();
     await registrarAuditoria(tx, {
@@ -198,7 +200,7 @@ export async function cancelarReserva(db: Db, organizacaoId: string, id: string,
       .where(and(eq(reservas.id, id), eq(reservas.organizacaoId, organizacaoId)))
       .for("update");
     if (!r || r.estado === "cancelada") return false;
-    await tx.update(reservas).set({ estado: "cancelada", canceladaEm: new Date(), conferenciaResolvidaEm: null, atualizadoEm: new Date() }).where(eq(reservas.id, id));
+    await tx.update(reservas).set({ estado: "cancelada", canceladaEm: new Date(), confirmadaEm: null, conferenciaResolvidaEm: null, atualizadoEm: new Date() }).where(eq(reservas.id, id));
     await registrarAuditoria(tx, {
       organizacaoId,
       usuarioId: autorId,
@@ -237,7 +239,7 @@ async function confirmarNaTransacao(db: Db, organizacaoId: string, id: string, a
       .where(and(eq(reservas.id, id), eq(reservas.organizacaoId, organizacaoId)))
       .for("update");
     if (!r || r.estado !== "pendente") return { ok: false };
-    await tx.update(reservas).set({ estado: "confirmada", conferenciaResolvidaEm: null, atualizadoEm: new Date() }).where(eq(reservas.id, id));
+    await tx.update(reservas).set({ estado: "confirmada", confirmadaEm: new Date(), conferenciaResolvidaEm: null, atualizadoEm: new Date() }).where(eq(reservas.id, id));
     await registrarAuditoria(tx, {
       organizacaoId,
       usuarioId: autorId,

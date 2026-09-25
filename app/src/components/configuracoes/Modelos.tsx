@@ -95,7 +95,7 @@ export function Modelos({ lista, criar, editar }: { lista: Modelo[]; criar: Acao
             <code>{`{${v}}`}</code> {d.toLowerCase()}
           </span>
         ))}
-        . O envio automático chega nas mensagens programadas (M9.2) e no WhatsApp (M10).
+        . As mensagens automáticas por e-mail usam estes modelos (acima); o WhatsApp chega no M10.
       </p>
       {lista.map((m) => (
         <Editar key={`${m.id}:${m.ativo}:${m.nome}:${m.texto}:${m.quando}`} m={m} editar={editar} />

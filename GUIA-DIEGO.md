@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 25/09/2026, comparação de como receber as reservas do site (M8.0), depois do portal do hóspede — "Minha reserva" (M9.1).
+> **Última atualização:** 25/09/2026, comparação de como receber as reservas do site (M8.0), depois das mensagens automáticas ao hóspede (M9.2).
 
 ---
 
@@ -33,7 +33,7 @@
 | M6 Operação | Limpezas, manutenção, agenda diária | 🟡 em andamento |
 | M7 Site público | Site novo com disponibilidade real | 🟡 em andamento |
 | M8 Reserva direta | Pagamento pelo Mercado Pago | ⚪ aguardando |
-| M9 Portal do hóspede | Acesso do hóspede e mensagens automáticas | 🟡 em andamento |
+| M9 Portal do hóspede | Acesso do hóspede e mensagens automáticas | ✅ pronto |
 | M10 WhatsApp | Caixa de entrada do WhatsApp no painel | ⚪ aguardando |
 | M11 Produção | Dados reais, domínio, entrada em uso | ⚪ aguardando |
 
@@ -626,8 +626,29 @@
     o acesso na hora**. O acesso dura até 7 dias no mesmo aparelho, com botão "Sair";
   - no painel, o detalhe da reserva agora tem o campo **"E-mail do hóspede"** para cadastrar
     ou corrigir, e um **aviso** quando a reserva está sem e-mail. O e-mail salvo ali **vale
-    sobre o da planilha ou do Beds24** (a próxima importação não desfaz a correção). As mensagens automáticas
-    (confirmação, check-in, check-out, agradecimento) são o M9.2.
+    sobre o da planilha ou do Beds24** (a próxima importação não desfaz a correção).
+- M9.2: **mensagens automáticas ao hóspede, por e-mail** (Configurações → Modelos de mensagem,
+  no alto da página):
+  - quatro mensagens, cada uma com o **modelo que você escolher** (os modelos continuam
+    editáveis ali mesmo): **confirmação** (logo depois de confirmada), **check-in** (2 dias
+    antes da entrada, às 10h — o mesmo momento em que o endereço aparece em "Minha reserva"),
+    **check-out** (1 dia antes da saída, às 14h) e **agradecimento** (3 dias depois da saída,
+    às 10h). Horário de São Paulo; o sistema confere de hora em hora (cada mensagem sai até
+    cerca de 1 hora depois do momento previsto);
+  - vem **desligado**: você liga com a caixinha "Envio automático ligado". Vale **daquele
+    momento em diante** — nada previsto para antes é mandado atrasado;
+  - escolha as **origens**: vem marcado só **site e direta** (o Airbnb e o Booking já mandam as
+    mensagens deles). Dá para deixar uma mensagem sem modelo ("não enviar");
+  - **cada mensagem sai uma vez só**. Reserva cancelada não recebe; se a data mudar, vale a
+    nova. Reserva feita em cima da hora recebe a confirmação e o check-in logo, mas nunca
+    depois da entrada;
+  - **avisar em vez de supor:** se faltar algo que o modelo usa (e-mail, nome do hóspede,
+    endereço do imóvel…), ou o modelo tiver sido arquivado, a mensagem **não sai** e o motivo
+    aparece na página **Sistema**. A confirmação **não pode usar {endereco}** (o endereço só vai
+    2 dias antes da entrada);
+  - no fim da seção aparecem as **últimas mensagens** com a situação: enviada, recusada pelo
+    provedor (o sistema tenta de novo, até 3 vezes) ou **sem confirmação — confira** (quando
+    o provedor não respondeu: não é repetida sozinha, para não mandar duas vezes).
 
 A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 
@@ -688,7 +709,7 @@ e escreva normalmente.
 | **Mercado Pago** | Pagamentos da reserva direta | ⚪ não conectado | Credenciais de *teste* do provedor escolhido no M8.0 (Mercado Pago, se for a escolha), mais adiante (M8) |
 | **Meta / WhatsApp Business** | Atendimento pelo WhatsApp da empresa | ⚪ não conectado | Verificação da empresa no Meta Business (demora dias) |
 | **Google Cloud (login)** | Botão "Entrar com Google" | ⚪ não configurado | Criar credenciais OAuth (seção 6) |
-| **Resend** (envio de e-mail) | E-mails do sistema: código de login, convites, agenda da equipe, relatórios | 🟡 conta criada (e conector no Claude) | Cadastrar o domínio e pôr a chave na Vercel (seção 6, item 5) |
+| **Resend** (envio de e-mail) | E-mails do sistema: código de login, convites, agenda da equipe, relatórios, mensagens ao hóspede | 🟡 conta criada (e conector no Claude) | Cadastrar o domínio e pôr a chave na Vercel (seção 6, item 5) |
 | **Cloudflare** | Domínio e e-mail | ⚪ não conectado | Só no final (M11) |
 
 **Conector do Claude × chave do sistema:** os "conectores" que você liga no Claude (ex.: o
@@ -783,7 +804,10 @@ ambiente).
    código não sai. Confira se as reservas têm o **e-mail do hóspede** (o detalhe da reserva
    avisa quando falta) e se o **endereço e o complemento** de cada imóvel estão no cadastro,
    porque é isso que o hóspede vê 2 dias antes da entrada.
-17. **Recebimento do site:** leia a comparação na seção 7 ("Como receber as reservas do
+17. **Mensagens automáticas ao hóspede:** depois do Resend (item 5), em **Configurações →
+   Modelos de mensagem**, confira o texto de cada modelo, escolha as origens (vem site e
+   direta) e marque "Envio automático ligado". Até lá, nada é enviado.
+18. **Recebimento do site:** leia a comparação na seção 7 ("Como receber as reservas do
    site"), leve a pergunta ao contador e me diga se mantém "empresa recebe e repassa" ou muda.
 
 ---
