@@ -204,6 +204,13 @@
       "when": 1790307678185,
       "tag": "0028_sessao_valida_desde",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1790342676729,
+      "tag": "0029_email_hospede_manual",
+      "breakpoints": true
     }
   ]
 }

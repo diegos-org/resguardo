@@ -4,7 +4,7 @@ import { bloqueios, imoveis, organizacoes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import type { DadosReserva } from "./regras";
-import { cancelarReserva, criarReserva, listarBloqueios, listarReservas, obterReserva, sincronizarReserva } from "./repositorio";
+import { cancelarReserva, criarReserva, listarBloqueios, listarReservas, obterReserva, salvarEmailHospede, sincronizarReserva } from "./repositorio";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -51,6 +51,21 @@ beforeEach(async () => {
 afterEach(() => close());
 
 describe("reservas", () => {
+  it("e-mail do hóspede corrigido no painel vale sobre o da fonte na próxima sincronização (M9.1)", async () => {
+    const r1 = await sincronizarReserva(db, org, "beds24", "777", dados({ hospedeEmail: "errado@example.com" }));
+    const id = r1.ok ? r1.reserva.id : "";
+    // Sem correção manual: a fonte manda.
+    await sincronizarReserva(db, org, "beds24", "777", dados({ hospedeEmail: "outro@example.com" }));
+    expect((await obterReserva(db, org, id))?.hospedeEmail).toBe("outro@example.com");
+    expect(await salvarEmailHospede(db, org, id, "certo@example.com", null)).toEqual({ ok: true });
+    const r2 = await sincronizarReserva(db, org, "beds24", "777", dados({ hospedeEmail: "outro@example.com", hospedes: 3 }));
+    expect(r2.ok && r2.reserva).toMatchObject({ hospedeEmail: "certo@example.com", hospedes: 3 });
+    // Apagar à mão (tirar o acesso) também vale sobre a fonte.
+    await salvarEmailHospede(db, org, id, "", null);
+    await sincronizarReserva(db, org, "beds24", "777", dados({ hospedeEmail: "outro@example.com" }));
+    expect((await obterReserva(db, org, id))?.hospedeEmail).toBe("");
+  });
+
   it("cria reserva manual com código SCL e histórico sem e-mail por extenso", async () => {
     const r = await criarReserva(db, org, dados(), null);
     expect(r.ok && r.reserva.codigo).toMatch(/^SCL-/);
