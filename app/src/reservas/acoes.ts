@@ -8,7 +8,7 @@ import { getDb } from "@/db/client";
 import { lerFormReserva } from "./formulario";
 import type { ErrosReserva } from "./regras";
 import { analisarCsv, importarCsv, type ResultadoImportacao, type SituacaoLinha } from "./importacao";
-import { cancelarReserva, confirmarReserva, criarReserva, resolverConferencia } from "./repositorio";
+import { cancelarReserva, confirmarReserva, criarReserva, resolverConferencia, salvarEmailHospede } from "./repositorio";
 
 export type EstadoFormReserva = { erros?: ErrosReserva; mensagem?: string };
 
@@ -45,6 +45,16 @@ export async function confirmar(form: FormData): Promise<void> {
   revalidatePath(`/painel/reservas/${id}`);
   revalidatePath("/painel/reservas");
   if (r.aviso) redirect(`/painel/reservas/${id}?erro=${encodeURIComponent(r.aviso)}`);
+}
+
+/** Cadastra ou corrige o e-mail do hóspede (é por ele que o hóspede entra no portal, M9.1). */
+export async function salvarEmailHospedeAcao(form: FormData): Promise<void> {
+  const sessao = await exigirSessaoPainel();
+  exigir(sessao, "reserva:editar", { organizacaoId: sessao.organizacaoId });
+  const id = String(form.get("id") ?? "");
+  const r = await salvarEmailHospede(getDb(), sessao.organizacaoId, id, String(form.get("hospedeEmail") ?? "").slice(0, 300), sessao.usuarioId);
+  revalidatePath(`/painel/reservas/${id}`);
+  redirect(`/painel/reservas/${encodeURIComponent(id)}?${r.ok ? "salvo=1" : `erro=${encodeURIComponent(r.erro)}`}`);
 }
 
 /** Dá por resolvida a conferência de reserva não confirmada com dinheiro movimentado (M4.8). */

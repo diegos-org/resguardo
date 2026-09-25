@@ -1,0 +1,1 @@
+ALTER TABLE "reservas" ADD COLUMN "hospede_email_manual_em" timestamp with time zone;

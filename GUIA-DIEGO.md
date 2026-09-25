@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 25/09/2026, site público novo lendo os imóveis do sistema (M7.1), depois do e-mail do fechamento mensal aos proprietários (M5.4).
+> **Última atualização:** 25/09/2026, portal do hóspede — "Minha reserva" no site (M9.1), depois do site público novo (M7.1).
 
 ---
 
@@ -33,7 +33,7 @@
 | M6 Operação | Limpezas, manutenção, agenda diária | 🟡 em andamento |
 | M7 Site público | Site novo com disponibilidade real | 🟡 em andamento |
 | M8 Reserva direta | Pagamento pelo Mercado Pago | ⚪ aguardando |
-| M9 Portal do hóspede | Acesso do hóspede e mensagens automáticas | ⚪ aguardando |
+| M9 Portal do hóspede | Acesso do hóspede e mensagens automáticas | 🟡 em andamento |
 | M10 WhatsApp | Caixa de entrada do WhatsApp no painel | ⚪ aguardando |
 | M11 Produção | Dados reais, domínio, entrada em uso | ⚪ aguardando |
 
@@ -49,7 +49,7 @@
   - **operação** (equipe): reservas, calendário, limpezas, manutenção e mensagens, mas **não vê o financeiro**;
   - **proprietário**: só **lê** (imóvel, reservas, calendário e financeiro), e **só dos imóveis dele**. Representantes
     autorizados veem o mesmo que o proprietário que representam;
-  - **hóspede**: sem acesso por enquanto (o portal do hóspede é o M9).
+  - **hóspede**: não entra no painel; vê só a própria reserva em "Minha reserva" no site (M9.1).
 
   O vínculo proprietário ↔ imóvel é sempre cadastrado explicitamente, nunca deduzido por e-mail ou CPF.
   Tudo o que não está permitido é bloqueado.
@@ -606,6 +606,26 @@
   - **fotos:** enquanto os direitos de uso não forem liberados (M7.3), aparece um quadro
     com o nome do apartamento no lugar de cada foto;
   - há um link discreto **"Área da equipe"** no rodapé, que leva ao login do painel.
+- M9.1: **portal do hóspede — "Minha reserva"** (link no topo do site):
+  - o hóspede digita o **e-mail que está na reserva** e recebe um **código de 6 dígitos**
+    (vale 10 minutos, uso único, até 5 tentativas e 5 códigos por hora — as mesmas regras
+    do login da equipe). O código da reserva sozinho **não** dá acesso;
+  - a tela responde sempre igual, tenha ou não reserva com aquele e-mail (ninguém descobre
+    quem está hospedado). Só recebe código quem tem reserva **confirmada** que ainda não
+    terminou há mais de 30 dias. O código do hóspede não serve para entrar no painel;
+  - ele vê **só as próprias reservas**: apartamento, bairro, datas, horários de entrada e
+    saída, noites, pessoas e o contato da empresa (WhatsApp/e-mail de Configurações →
+    Empresa). **Valores e dados de outras pessoas nunca aparecem**;
+  - o **endereço completo** (com complemento) só aparece **2 dias antes da entrada, às 10h**
+    (horário de São Paulo), e some no horário de saída do imóvel. Estar logado não antecipa;
+  - só contam as reservas da empresa do site (se um dia houver outra empresa no sistema, uma
+    não vê as reservas da outra);
+  - a permissão é conferida a cada acesso: **trocar o e-mail da reserva ou cancelá-la tira
+    o acesso na hora**. O acesso dura até 7 dias no mesmo aparelho, com botão "Sair";
+  - no painel, o detalhe da reserva agora tem o campo **"E-mail do hóspede"** para cadastrar
+    ou corrigir, e um **aviso** quando a reserva está sem e-mail. O e-mail salvo ali **vale
+    sobre o da planilha ou do Beds24** (a próxima importação não desfaz a correção). As mensagens automáticas
+    (confirmação, check-in, check-out, agradecimento) são o M9.2.
 
 A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 
@@ -757,6 +777,10 @@ ambiente).
    WhatsApp** da consulta; e, em cada imóvel, marque **público** só nos que devem aparecer e
    confira a descrição, as camas e as comodidades. O site ainda não substitui o atual: o
    domínio só muda na entrada em uso (M11).
+16. **Minha reserva (hóspede):** depende do e-mail do sistema (Resend, item 5) — sem ele o
+   código não sai. Confira se as reservas têm o **e-mail do hóspede** (o detalhe da reserva
+   avisa quando falta) e se o **endereço e o complemento** de cada imóvel estão no cadastro,
+   porque é isso que o hóspede vê 2 dias antes da entrada.
 
 ---
 

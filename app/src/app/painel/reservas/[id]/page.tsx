@@ -8,7 +8,7 @@ import { getDb } from "@/db/client";
 import { listarLancamentos } from "@/financeiro/ledger";
 import { obterImovel } from "@/imoveis/repositorio";
 import { formatBRL } from "@/lib/money";
-import { cancelar, confirmar, resolverConferenciaAcao } from "@/reservas/acoes";
+import { cancelar, confirmar, resolverConferenciaAcao, salvarEmailHospedeAcao } from "@/reservas/acoes";
 import { NOMES_ESTADO, NOMES_ORIGEM, NOMES_RECEBIMENTO, noites } from "@/reservas/regras";
 import { obterReserva } from "@/reservas/repositorio";
 import { lerRegrasFinanceiras } from "@/configuracoes/regras-financeiras";
@@ -80,6 +80,23 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
           </div>
         ))}
       </dl>
+      {r.estado !== "cancelada" && !r.hospedeEmail && (
+        <p role="note" className={styles.alerta} style={{ maxWidth: 820 }}>
+          Sem e-mail do hóspede: ele não consegue entrar em &ldquo;Minha reserva&rdquo; no site. Cadastre o e-mail abaixo.
+        </p>
+      )}
+      {podeFazer(sessao.papel, "reserva:editar") && (
+        <form action={salvarEmailHospedeAcao} className={styles.form} aria-label="E-mail do hóspede" style={{ maxWidth: 480 }}>
+          <input type="hidden" name="id" value={r.id} />
+          <label>
+            E-mail do hóspede (acesso a &ldquo;Minha reserva&rdquo;)
+            <input name="hospedeEmail" type="email" defaultValue={r.hospedeEmail} maxLength={200} />
+          </label>
+          <button type="submit" className={styles.botao}>
+            Salvar e-mail
+          </button>
+        </form>
+      )}
       {r.estado === "pendente" && podeFazer(sessao.papel, "reserva:editar") && (
         <form action={confirmar}>
           <input type="hidden" name="id" value={r.id} />
