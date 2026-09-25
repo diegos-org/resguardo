@@ -19,7 +19,8 @@ import { type Correio, ErroEnvioIncerto } from "@/email/correio";
 import { hojeISO } from "@/lib/datas";
 import { formatBRL } from "@/lib/money";
 import { relatorioDoFechamento } from "@/relatorios/gerar";
-import { mesAFechar, nomeMes, preverRepasses, type PrevisaoRepasse } from "@/repasses/repasses";
+import { imoveisDoProprietario } from "@/relatorios/relatorio";
+import { limitesDoMes, mesAFechar, nomeMes, preverRepasses, type PrevisaoRepasse } from "@/repasses/repasses";
 
 export type ConfigFechamentoEmail = { ativo: boolean; assunto: string; texto: string };
 
@@ -61,18 +62,21 @@ export type Situacao = "pronto" | "enviado" | "pendente" | "sem_email";
 
 /**
  * Situação do e-mail de cada proprietário no mês (a tela e o envio usam a mesma regra). Entra quem
- * tem imóvel ou movimento no mês, mesmo com saldo zero (o relatório sai assim mesmo). Destinos: o
- * e-mail do proprietário e, em cópia, os representantes que recebem os relatórios.
+ * tinha imóvel ou movimento naquele mês (o mesmo critério do PDF), mesmo com saldo zero. Destinos: o
+ * e-mail do proprietário e, em cópia, os representantes que recebem os relatórios. Mês reaberto
+ * (repasse estornado) volta a "pendente", mesmo já enviado: só sai de novo depois de fechado.
  */
 export async function situacaoDosFechamentos(
   db: Db,
   organizacaoId: string,
   mes: string,
   hoje: string,
-): Promise<(PrevisaoRepasse & { email: string; destinos: string[]; situacao: Situacao; enviadoEm: string | null })[]> {
-  const lista = (await preverRepasses(db, organizacaoId, mes, hoje, undefined, true)).filter(
-    (p) => p.repasse || p.saldo !== 0 || p.contestado !== 0 || p.aDescontar !== 0 || p.imoveis.length > 0,
-  );
+): Promise<(PrevisaoRepasse & { email: string; destinos: string[]; situacao: Situacao; enviadoEm: string | null; enviadoPara: string[] })[]> {
+  const periodo = limitesDoMes(mes);
+  if (!periodo) return [];
+  const todos = await preverRepasses(db, organizacaoId, mes, hoje, undefined, true);
+  const doMes = await Promise.all(todos.map(async (p) => (await imoveisDoProprietario(db, organizacaoId, p.proprietarioId, periodo)).length > 0));
+  const lista = todos.filter((p, i) => p.repasse || p.saldo !== 0 || p.contestado !== 0 || p.aDescontar !== 0 || doMes[i]);
   const [marcas, reps] = lista.length
     ? await Promise.all([
         db
@@ -86,12 +90,15 @@ export async function situacaoDosFechamentos(
       ])
     : [[], []];
   return lista.map((p) => {
-    const marca = marcas.find((m) => m.key === chaveDoEnvio(organizacaoId, p.proprietarioId, mes))?.value as { estado?: string; em?: string } | undefined;
+    const marca = marcas.find((m) => m.key === chaveDoEnvio(organizacaoId, p.proprietarioId, mes))?.value as { estado?: string; em?: string; destinos?: unknown } | undefined;
     const email = (p.email ?? "").trim();
     const destinos = [...new Set([email, ...reps.filter((r) => r.proprietarioId === p.proprietarioId).map((r) => r.email.trim())].filter(Boolean))];
     const fechado = !!p.repasse || (p.valor <= 0 && p.bloqueios.length === 0);
-    const situacao: Situacao = marca?.estado === "enviado" ? "enviado" : !fechado ? "pendente" : !destinos.length ? "sem_email" : "pronto";
-    return { ...p, email, destinos, situacao, enviadoEm: marca?.estado === "enviado" ? (marca.em ?? null) : null };
+    const enviado = marca?.estado === "enviado";
+    const situacao: Situacao = !fechado ? "pendente" : enviado ? "enviado" : !destinos.length ? "sem_email" : "pronto";
+    // Para quem foi, como gravado no envio (não o cadastro de hoje).
+    const enviadoPara = enviado && Array.isArray(marca.destinos) ? marca.destinos.filter((x): x is string => typeof x === "string") : [];
+    return { ...p, email, destinos, situacao, enviadoEm: enviado ? (marca.em ?? null) : null, enviadoPara };
   });
 }
 
@@ -166,7 +173,17 @@ export async function enviarFechamentos(
       continue;
     }
     const base = chaveDoEnvio(organizacaoId, p.proprietarioId, mes);
-    const chave = o.reenviar && p.situacao === "enviado" ? `${base}:reenvio:${agora.getTime()}` : base;
+    // Reenvio: retoma um reenvio ainda sem confirmação (mesma chave), em vez de abrir outro.
+    let chave = base;
+    if (o.reenviar && p.situacao === "enviado") {
+      const [aberto] = await db
+        .select({ key: appSettings.key })
+        .from(appSettings)
+        .where(and(sql`${appSettings.key} like ${`${base}:reenvio:%`}`, sql`${appSettings.value} ->> 'estado' = 'enviando'`))
+        .orderBy(appSettings.key)
+        .limit(1);
+      chave = aberto?.key ?? `${base}:reenvio:${agora.getTime()}`;
+    }
     const reserva = await reservar(db, chave, agora);
     if (!reserva) {
       r.falhas.push(`${p.nome}: o envio anterior ainda não foi confirmado pelo provedor; nova tentativa com o mesmo e-mail depois de 15 minutos`);
@@ -205,7 +222,7 @@ export async function enviarFechamentos(
     }
     r.enviados++;
     // Enviado: a marca fica sem o pedido (o PDF não precisa ficar guardado).
-    const feito = { estado: "enviado", em: agora.toISOString() };
+    const feito = { estado: "enviado", em: agora.toISOString(), destinos: carga.destinos };
     await db.update(appSettings).set({ value: feito, updatedAt: new Date() }).where(and(eq(appSettings.key, chave), daTentativa));
     // Reenvio: a marca do mês continua "enviado", com a data do último envio.
     if (chave !== base) await db.update(appSettings).set({ value: feito, updatedAt: new Date() }).where(eq(appSettings.key, base));

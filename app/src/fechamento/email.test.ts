@@ -9,7 +9,7 @@ import { registrarDespesa } from "@/despesas/despesas";
 import { type Correio, CorreioMemoria, ErroEnvioIncerto, type Mensagem } from "@/email/correio";
 import type { DadosReserva } from "@/reservas/regras";
 import { criarReserva } from "@/reservas/repositorio";
-import { fecharMes } from "@/repasses/repasses";
+import { estornarRepasse, fecharMes, listarRepasses } from "@/repasses/repasses";
 import { fechamentoDeTodas, fechamentoManual } from "./cron";
 import { chaveDoEnvio, enviarFechamentos, lerConfigFechamentoEmail, salvarConfigFechamentoEmail, situacaoDosFechamentos } from "./email";
 
@@ -102,7 +102,7 @@ describe("e-mail do fechamento (M5.4)", () => {
     expect(await enviarFechamentos(db, org, correio, new Date("2026-11-02T12:00:00Z"))).toMatchObject({ enviados: 0, jaEnviados: 1 });
     expect(correio.enviadas).toHaveLength(1);
     const [marca] = await db.select().from(appSettings).where(eq(appSettings.key, chaveDoEnvio(org, dona, MES)));
-    expect(marca.value).toEqual({ estado: "enviado", em: DIA1.toISOString() });
+    expect(marca.value).toEqual({ estado: "enviado", em: DIA1.toISOString(), destinos: ["dona@example.com"] });
   });
 
   it("mês ainda não fechado não sai: avisa quem ficou; sai quando fechar", async () => {
@@ -224,5 +224,59 @@ describe("e-mail do fechamento (M5.4)", () => {
     const correio = new CorreioMemoria();
     expect(await enviarFechamentos(db, org, correio, new Date(DIA1.getTime() + 20 * 60_000))).toMatchObject({ enviados: 1 });
     expect(correio.enviadas[0].para).toBe("dona@example.com");
+  });
+
+  it("proprietário ligado ao imóvel só depois do mês, com saldo zero: fica fora do e-mail daquele mês", async () => {
+    await ligar();
+    const [{ id: c }] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "303", nome: "Três" }).returning();
+    const [{ id: novo }] = await db.insert(proprietarios).values({ organizacaoId: org, nome: "Nova Exemplo", email: "nova@example.com" }).returning();
+    await db.insert(proprietarioImoveis).values({ proprietarioId: novo, imovelId: c, criadoEm: new Date("2026-11-15T12:00:00Z") });
+    expect((await situacaoDosFechamentos(db, org, MES, "2026-11-20")).some((x) => x.proprietarioId === novo)).toBe(false);
+  });
+
+  it("mês reaberto (repasse estornado) depois do envio: não reenvia até fechar de novo", async () => {
+    await ligar();
+    await fechar();
+    const correio = new CorreioMemoria();
+    await enviarFechamentos(db, org, correio, DIA1);
+    const [rep] = await listarRepasses(db, org, dona);
+    expect((await estornarRepasse(db, org, rep.id, "refazer", "2026-11-02", null)).ok).toBe(true);
+    const [p] = (await situacaoDosFechamentos(db, org, MES, "2026-11-02")).filter((x) => x.proprietarioId === dona);
+    expect(p.situacao).toBe("pendente");
+    expect(await fechamentoManual(db, org, correio, new Date("2026-11-02T12:00:00Z"), { mes: MES, proprietarioId: dona, reenviar: true }, null)).toMatchObject({ enviados: 0, pendentes: ["Dona Exemplo"] });
+    expect(correio.enviadas).toHaveLength(1);
+    // Fechado de novo: "enviar de novo" manda.
+    await fecharMes(db, org, dona, MES, "2026-11-02", null);
+    expect(await fechamentoManual(db, org, correio, new Date("2026-11-02T13:00:00Z"), { mes: MES, proprietarioId: dona, reenviar: true }, null)).toMatchObject({ enviados: 1 });
+  });
+
+  it("reenvio incerto: o clique seguinte retoma o mesmo pedido, com a mesma chave", async () => {
+    await ligar();
+    await fechar();
+    await enviarFechamentos(db, org, new CorreioMemoria(), DIA1);
+    const pedidos: Mensagem[] = [];
+    const caiu: Correio = {
+      nome: "caiu",
+      enviar: async (m) => {
+        pedidos.push(m);
+        throw new ErroEnvioIncerto("Sem resposta do provedor de e-mail");
+      },
+    };
+    const t1 = new Date(DIA1.getTime() + 3_600_000);
+    await fechamentoManual(db, org, caiu, t1, { mes: MES, proprietarioId: dona, reenviar: true }, null);
+    const correio = new CorreioMemoria();
+    // Antes de 15 minutos: espera; depois: o mesmo pedido.
+    expect(await fechamentoManual(db, org, correio, new Date(t1.getTime() + 5 * 60_000), { mes: MES, proprietarioId: dona, reenviar: true }, null)).toMatchObject({ enviados: 0 });
+    expect(await fechamentoManual(db, org, correio, new Date(t1.getTime() + 20 * 60_000), { mes: MES, proprietarioId: dona, reenviar: true }, null)).toMatchObject({ enviados: 1 });
+    expect(correio.enviadas[0].chave).toBe(pedidos[0].chave);
+  });
+
+  it("a tela mostra para quem o e-mail foi, como gravado no envio", async () => {
+    await ligar();
+    await fechar();
+    await enviarFechamentos(db, org, new CorreioMemoria(), DIA1);
+    await db.update(proprietarios).set({ email: "trocado@example.com" }).where(eq(proprietarios.id, dona));
+    const [p] = (await situacaoDosFechamentos(db, org, MES, "2026-11-02")).filter((x) => x.proprietarioId === dona);
+    expect(p).toMatchObject({ situacao: "enviado", enviadoPara: ["dona@example.com"], destinos: ["trocado@example.com"] });
   });
 });

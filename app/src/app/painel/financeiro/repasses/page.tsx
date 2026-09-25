@@ -154,12 +154,14 @@ export default async function Repasses({ searchParams }: PageProps<"/painel/fina
             <p style={{ margin: 0, fontSize: "0.875rem", color: "var(--scl-texto-2)" }}>
               E-mail do fechamento:{" "}
               {p.situacao === "enviado"
-                ? `enviado${p.enviadoEm ? ` em ${new Date(p.enviadoEm).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" })}` : ""} para ${p.destinos.join(", ") || "—"}`
+                ? `enviado${p.enviadoEm ? ` em ${new Date(p.enviadoEm).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" })}` : ""} para ${p.enviadoPara.join(", ") || "—"}`
                 : p.situacao === "pronto"
                   ? `pronto para enviar a ${p.destinos.join(", ")}`
                   : p.situacao === "sem_email"
                     ? "sem e-mail cadastrado — cadastre no proprietário"
-                    : "espera o mês ser fechado"}
+                    : p.enviadoEm
+                      ? "mês reaberto: espera ser fechado de novo (depois, use \"Enviar e-mail de novo\")"
+                      : "espera o mês ser fechado"}
             </p>
             {editar && (p.situacao === "pronto" || (p.situacao === "enviado" && p.destinos.length > 0)) && (
               <form action={enviarFechamentoAcao} className={styles.acoes}>
