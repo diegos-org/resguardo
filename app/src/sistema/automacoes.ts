@@ -20,7 +20,8 @@ export const AUTOMACOES: readonly Automacao[] = [
   { id: "sync-beds24", nome: "Sincronização de reservas e calendário com o Beds24", quando: "A cada poucos minutos", situacao: "planejada", item: "M3.3" },
   { id: "envio-beds24", nome: "Envio de calendário e preços ao Beds24/OTAs", quando: "A cada mudança no SCL", situacao: "planejada", item: "M3.7" },
   { id: "agenda-diaria", nome: "Agenda diária da equipe (próximos 5 dias)", quando: "Todo dia às 20h", situacao: "ativa", item: "M6.3" },
-  { id: "fechamento-mensal", nome: "Fechamento, repasse e relatório mensal dos proprietários", quando: "Dia 1º de cada mês", situacao: "planejada", item: "M4.9 / M5.4" },
+  { id: "fechamento-email", nome: "E-mail do fechamento mensal aos proprietários (relatório em PDF)", quando: "Todo dia às 9h, do dia 1º até o mês ser fechado e enviado", situacao: "ativa", item: "M5.4" },
+  { id: "fechamento-mensal", nome: "Fechamento e repasse automáticos do mês", quando: "Dia 1º de cada mês", situacao: "planejada", item: "M4.9" },
   { id: "mensagens-hospede", nome: "Mensagens programadas ao hóspede", quando: "Conforme a reserva (D-2, D-1, D+3)", situacao: "planejada", item: "M9.2" },
 ];
 
