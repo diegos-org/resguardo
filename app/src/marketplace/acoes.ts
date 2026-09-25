@@ -82,7 +82,8 @@ async function sessaoRevisora() {
   return sessao;
 }
 
-export type EstadoDecisao = { erro?: string; ok?: string };
+/** `link`: convite para enviar à mão (sem e-mail do sistema) — o token não fica guardado, então é mostrado só agora. */
+export type EstadoDecisao = { erro?: string; ok?: string; link?: string };
 
 export async function aprovarCadastroAcao(_a: EstadoDecisao, form: FormData): Promise<EstadoDecisao> {
   const sessao = await sessaoRevisora();
@@ -101,13 +102,14 @@ export async function aprovarCadastroAcao(_a: EstadoDecisao, form: FormData): Pr
       }
     });
   }
-  revalidatePath("/painel/proprietarios/cadastros");
   revalidatePath("/painel/proprietarios");
-  return {
-    ok: correio
-      ? `Aprovado. O convite do portal foi enviado para ${r.email}.`
-      : `Aprovado. O e-mail do sistema não está configurado: envie este link para ${r.email}: ${link}`,
-  };
+  if (correio) {
+    revalidatePath("/painel/proprietarios/cadastros");
+    return { ok: `Aprovado. O convite do portal foi enviado para ${r.email}.` };
+  }
+  // Sem e-mail do sistema: a tela NÃO é recarregada, para o link continuar visível até ser copiado
+  // (o banco guarda só o hash do convite; se o link se perder, crie outro convite na ficha).
+  return { ok: `Aprovado. O e-mail do sistema não está configurado: copie o link abaixo agora e envie para ${r.email}.`, link };
 }
 
 export async function recusarCadastroAcao(_a: EstadoDecisao, form: FormData): Promise<EstadoDecisao> {

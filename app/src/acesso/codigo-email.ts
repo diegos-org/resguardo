@@ -96,34 +96,47 @@ export async function emitirCodigo(
   await db.delete(codigosLogin).where(lt(codigosLogin.criadoEm, new Date(agora.getTime() - RETENCAO_MS)));
   if (!(await c.autorizado())) return "sem-acesso";
 
-  const contar = async (f?: SQL) =>
-    (
-      await db
-        .select({ n: sql<number>`count(*)::int` })
-        .from(codigosLogin)
-        .where(and(gte(codigosLogin.criadoEm, umaHoraAtras), f))
-    )[0].n;
-  if ((await contar(eq(codigosLogin.email, chave))) >= MAX_CODIGOS_POR_HORA) return "limite";
+  const codigo = (o.gerar ?? gerarCodigoNumerico)();
   // Teto geral por escopo: códigos do mesmo tipo ("hospede:…", "cadastro:…" ou sem prefixo).
   const doEscopo = o.escopo ? sql`${codigosLogin.email} like ${`${o.escopo}:%`}` : sql`${codigosLogin.email} not like ${"%:%"}`;
-  if ((await contar(doEscopo)) >= (o.maxGeralPorHora ?? MAX_CODIGOS_GERAL_POR_HORA)) return "limite";
+  // Reserva a vaga ANTES de chamar o provedor, sob uma trava do escopo: pedidos simultâneos são
+  // contados um depois do outro e não passam dos limites. A reserva nasce inválida (não serve para
+  // entrar) e só vale depois que o e-mail sai; se o envio falhar, ela é apagada — o código anterior
+  // continua valendo e o pedido não conta no limite.
+  const reserva = await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`codigo-escopo:${o.escopo ?? "login"}`}))`);
+    const contar = async (f: SQL) =>
+      (
+        await tx
+          .select({ n: sql<number>`count(*)::int` })
+          .from(codigosLogin)
+          .where(and(gte(codigosLogin.criadoEm, umaHoraAtras), f))
+      )[0].n;
+    if ((await contar(eq(codigosLogin.email, chave))) >= MAX_CODIGOS_POR_HORA) return null;
+    if ((await contar(doEscopo)) >= (o.maxGeralPorHora ?? MAX_CODIGOS_GERAL_POR_HORA)) return null;
+    const [r] = await tx
+      .insert(codigosLogin)
+      .values({ email: chave, codigoHash: hmac(o.segredo, chave, codigo), expiraEm: new Date(agora.getTime() + VALIDADE_MS), criadoEm: agora, invalidadoEm: agora })
+      .returning({ id: codigosLogin.id });
+    return r.id;
+  });
+  if (!reserva) return "limite";
 
-  const codigo = (o.gerar ?? gerarCodigoNumerico)();
   const { assunto, texto } = await c.mensagem(codigo);
-  // Envia primeiro: se falhar (lança), nada muda no banco.
-  await correio.enviar({ para: email, assunto, texto });
+  try {
+    await correio.enviar({ para: email, assunto, texto });
+  } catch (e) {
+    await db.delete(codigosLogin).where(eq(codigosLogin.id, reserva));
+    throw e;
+  }
   await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`codigo-login:${chave}`}))`);
+    // O novo passa a valer; os anteriores ainda válidos deixam de valer.
     await tx
       .update(codigosLogin)
       .set({ invalidadoEm: agora })
       .where(and(eq(codigosLogin.email, chave), isNull(codigosLogin.usadoEm), isNull(codigosLogin.invalidadoEm)));
-    await tx.insert(codigosLogin).values({
-      email: chave,
-      codigoHash: hmac(o.segredo, chave, codigo),
-      expiraEm: new Date(agora.getTime() + VALIDADE_MS),
-      criadoEm: agora,
-    });
+    await tx.update(codigosLogin).set({ invalidadoEm: null }).where(eq(codigosLogin.id, reserva));
   });
   return "enviado";
 }

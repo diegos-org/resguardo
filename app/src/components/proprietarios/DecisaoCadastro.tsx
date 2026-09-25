@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
+import { BotaoCopiar } from "@/components/BotaoCopiar";
 import type { EstadoDecisao } from "@/marketplace/acoes";
 import styles from "../formularios.module.css";
 
@@ -14,9 +15,15 @@ export function DecisaoCadastro({ id, nome, aprovar, recusar }: { id: string; no
   const feito = ea.ok ?? er.ok;
   if (feito)
     return (
-      <p role="status" className={styles.sucesso}>
-        {feito}
-      </p>
+      <div role="status" className={styles.sucesso} style={{ display: "grid", gap: 6 }}>
+        <span>{feito}</span>
+        {ea.link && (
+          <span style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <code style={{ wordBreak: "break-all" }}>{ea.link}</code>
+            <BotaoCopiar texto={ea.link} rotulo="Copiar link" />
+          </span>
+        )}
+      </div>
     );
   return (
     <div style={{ display: "grid", gap: 8 }}>

@@ -98,6 +98,26 @@ describe("código de confirmação do e-mail (M12.3)", () => {
     expect(await pedirCodigo(db, correio, "equipe@example.com", { segredo, agora, adminEmails: [] })).toBe("enviado");
   });
 
+  it("pedidos simultâneos não passam do limite (reserva antes de enviar)", async () => {
+    let soltar: () => void = () => undefined;
+    const portao = new Promise<void>((r) => (soltar = r));
+    let enviados = 0;
+    const lento = { nome: "lento", enviar: async () => { enviados++; await portao; } };
+    // Mesmo e-mail: no máximo 5 por hora.
+    const mesmos = Array.from({ length: 12 }, (_, i) => pedirCodigoCadastro(db, lento, org, "alvo@example.com", { segredo, agora, gerar: () => String(100000 + i) }));
+    // Muitos e-mails: no máximo 50 por hora no total do cadastro.
+    const varios = Array.from({ length: 70 }, (_, i) => pedirCodigoCadastro(db, lento, org, `v${i}@example.com`, { segredo, agora }));
+    await new Promise((r) => setTimeout(r, 200));
+    soltar();
+    const rs = await Promise.all([...mesmos, ...varios]);
+    expect(rs.slice(0, 12).filter((r) => r === "enviado").length).toBeLessThanOrEqual(5);
+    expect(rs.filter((r) => r === "enviado").length).toBeLessThanOrEqual(MAX_CODIGOS_CADASTRO_POR_HORA);
+    expect(enviados).toBeLessThanOrEqual(MAX_CODIGOS_CADASTRO_POR_HORA);
+    // O último código válido do alvo funciona; só um fica valendo.
+    const ativos = (await db.select().from(codigosLogin).where(eq(codigosLogin.email, "cadastro:alvo@example.com"))).filter((c) => !c.invalidadoEm);
+    expect(ativos).toHaveLength(1);
+  });
+
   it("sessão do cadastro não vale como sessão do hóspede (e vice-versa)", () => {
     const t = criarToken("cadastro-marketplace:sessao:v1", "maria@example.com", segredo, agora, 60_000);
     expect(lerToken("cadastro-marketplace:sessao:v1", t, segredo, agora)).toBe("maria@example.com");
