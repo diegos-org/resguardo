@@ -85,7 +85,10 @@ regra** a decidir — a comparação abaixo vale igual.
 Qualquer que seja a escolha, **antes de implementar o M8.2** as regras "a conferir" da tabela
 (como o provedor desconta a taxa, estorno parcial e contestação — no split, quanto sai de
 cada parte) precisam ser confirmadas com o próprio provedor, para o financeiro lançar os
-valores certos.
+valores certos. Se a escolha for **split** (Mercado Pago ou Stripe), também é preciso confirmar
+a **verificação de identidade (KYC)** de cada proprietário no provedor — se aceita pessoa
+física e empresa, quais documentos pede, como a conta fica ativa e como se renova a
+autorização — de preferência abrindo a conta de um proprietário real antes de programar.
 
 O sistema já guarda, por reserva, "quem recebe do canal" (`split` ou `empresa`): as duas
 formas cabem no financeiro sem mudança de regra — a escolha define **com qual provedor** e
