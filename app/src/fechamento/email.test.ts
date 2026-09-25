@@ -332,4 +332,15 @@ describe("e-mail do fechamento (M5.4)", () => {
     expect(a.enviados + b.enviados).toBe(1);
     expect(enviadas).toHaveLength(1);
   });
+
+  it("retomadas dentro de cada 23h não esticam a janela: conta desde o primeiro pedido", async () => {
+    await ligar();
+    await fechar();
+    const caiu: Correio = { nome: "caiu", enviar: async () => Promise.reject(new ErroEnvioIncerto("Sem resposta do provedor de e-mail")) };
+    await enviarFechamentos(db, org, caiu, DIA1);
+    await enviarFechamentos(db, org, caiu, new Date(DIA1.getTime() + 20 * 3_600_000));
+    const correio = new CorreioMemoria();
+    expect(await enviarFechamentos(db, org, correio, new Date(DIA1.getTime() + 40 * 3_600_000))).toMatchObject({ enviados: 0, incertos: ["Dona Exemplo"] });
+    expect(correio.enviadas).toHaveLength(0);
+  });
 });

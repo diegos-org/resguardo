@@ -273,7 +273,8 @@ export async function enviarFechamentos(
         // Guarda o pedido antes de enviar: uma retomada manda exatamente o mesmo.
         await db
           .update(appSettings)
-          .set({ value: { estado: "enviando", em: agora.toISOString(), tentativa: reserva.tentativa, carga }, updatedAt: new Date() })
+          // Junta ao que já está na marca: `primeira` (hora do primeiro pedido) fica como está.
+          .set({ value: sql`${appSettings.value} || ${JSON.stringify({ estado: "enviando", em: agora.toISOString(), tentativa: reserva.tentativa, carga })}::jsonb`, updatedAt: new Date() })
           .where(and(eq(appSettings.key, chave), daTentativa));
       }
       const [para, ...copias] = carga.destinos;
