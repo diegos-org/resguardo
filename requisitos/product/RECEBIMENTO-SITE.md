@@ -13,7 +13,9 @@ Quando o hóspede paga uma reserva no site (M8), para onde vai o dinheiro?
 2. **Split automático (como no Airbnb):** no momento do pagamento, o próprio meio de
    pagamento divide: a parte do proprietário cai na conta dele e a comissão, na da SCL.
    - 2a. **Mercado Pago "split de pagamentos" (marketplace).**
-   - 2b. **Stripe Connect.**
+   - 2b. **Stripe Connect** ("destination charges"): parecido, mas o pagamento entra primeiro
+     na conta da SCL no Stripe e a parte do proprietário é transferida automaticamente em
+     seguida — ou seja, o dinheiro passa pela SCL.
 
 ## Exemplo
 
@@ -37,7 +39,7 @@ regra** a decidir — a comparação abaixo vale igual.
 | Taxa do cartão (aprox.) | 3,98% (recebe em 30 dias) a 4,98% (na hora) ≈ R$ 66–82 | igual ao lado ≈ R$ 66–82 | 3,99% + R$ 0,39 ≈ R$ 66, mais custos do Connect (a conferir) |
 | Taxa no Pix (aprox.) | 0,99% ≈ R$ 16 | 0,99% ≈ R$ 16 | 1,19% ≈ R$ 20 — **Pix no Stripe Brasil é só por convite** |
 | Quem paga a taxa | Pela regra atual, sai antes da divisão (na proporção, como acima) | A regra atual vale igual; **a conferir** como o MP desconta a taxa no split | O Stripe cobra da SCL (plataforma); a SCL desconta do proprietário na proporção |
-| Dinheiro de terceiros passa pela SCL? | **Sim** (tudo entra na conta da SCL) | **Não** (a parte do proprietário vai direto para ele) | Não, mas a SCL é a "vendedora" perante o Stripe |
+| Dinheiro de terceiros passa pela SCL? | **Sim** (tudo entra na conta da SCL) | **Não** (a parte do proprietário vai direto para ele) | **Sim**, com "destination charges": a cobrança entra na conta da SCL no Stripe e o Stripe transfere, automaticamente, a parte do proprietário para a conta dele |
 | O proprietário precisa de… | Nada (só a chave Pix, que já está no cadastro) | **Conta Mercado Pago** ligada ao sistema (autorização renovada a cada 6 meses) | **Conta Stripe** (cadastro com documentos no Stripe) |
 | Estorno / cancelamento | SCL devolve ao hóspede e desconta do repasse (o sistema já faz estorno e ajuste) | Precisa definir no split quanto volta de cada parte; **a conferir** o comportamento em estorno parcial | SCL devolve e recupera do proprietário pela transferência reversa |
 | Chargeback (contestação no cartão) | Cai na SCL; a SCL cobra do proprietário pelo repasse | **A conferir** como o MP divide; exige regra no contrato | Cai na SCL (ela é a responsável perante o Stripe) |
@@ -73,7 +75,9 @@ regra** a decidir — a comparação abaixo vale igual.
    no Brasil ele é mais caro, o Pix é só por convite e a SCL responde pelos chargebacks do mesmo jeito.
 
 O sistema já guarda, por reserva, "quem recebe do canal" (`split` ou `empresa`): as duas
-formas cabem no financeiro sem mudança de regra — a escolha define como o M8.2 é construído.
+formas cabem no financeiro sem mudança de regra — a escolha define **com qual provedor** e
+**de que jeito** o M8.2 é construído (e de quem são as credenciais de teste que Diego precisa
+criar).
 
 ## O que Diego precisa decidir
 

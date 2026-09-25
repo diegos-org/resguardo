@@ -663,7 +663,7 @@ e escreva normalmente.
 | **Neon** | Banco de dados (Postgres) | 🟡 sua conta existe e está paga | Ligar à Vercel (item abaixo) |
 | **Vercel** | Publica o sistema na internet (homologação e depois produção) | 🟡 conector começado no Claude, mas incompleto | Terminar a conexão e importar o repositório (seção 6) |
 | **Beds24** | Channel manager (Airbnb/Booking), reservas, calendário e preços | 🟡 conta criada; leitor pronto no sistema | Gerar a chave de API **com leitura e escrita** (seção 6) |
-| **Mercado Pago** | Pagamentos da reserva direta | ⚪ não conectado | Credenciais de *teste*, mais adiante (M8) |
+| **Mercado Pago** | Pagamentos da reserva direta | ⚪ não conectado | Credenciais de *teste* do provedor escolhido no M8.0 (Mercado Pago, se for a escolha), mais adiante (M8) |
 | **Meta / WhatsApp Business** | Atendimento pelo WhatsApp da empresa | ⚪ não conectado | Verificação da empresa no Meta Business (demora dias) |
 | **Google Cloud (login)** | Botão "Entrar com Google" | ⚪ não configurado | Criar credenciais OAuth (seção 6) |
 | **Resend** (envio de e-mail) | E-mails do sistema: código de login, convites, agenda da equipe, relatórios | 🟡 conta criada (e conector no Claude) | Cadastrar o domínio e pôr a chave na Vercel (seção 6, item 5) |
@@ -775,7 +775,8 @@ ambiente).
   - **split automático no Mercado Pago (como no Airbnb):** a parte do proprietário cai
     direto na conta dele, mas **cada proprietário precisa de conta no Mercado Pago** ligada
     ao sistema. Faz mais sentido no marketplace (M12);
-  - **Stripe:** mais caro no Brasil e Pix só por convite; não recomendo agora.
+  - **Stripe:** mais caro no Brasil, Pix só por convite e o dinheiro também passa pela conta
+    da SCL antes de ir ao proprietário; não recomendo agora.
   **Antes de decidir, pergunte ao contador:** "a SCL recebendo o valor total da reserva e
   repassando ao proprietário, com contrato de intermediação, paga imposto só sobre a
   comissão?". E diga se a taxa do cartão/Pix segue a regra de hoje (sai antes da divisão,
@@ -833,7 +834,8 @@ ambiente).
 - **Recebimento do site com divisão automática (como o Airbnb):** existe. O **Mercado Pago**
   tem o modelo "marketplace": cada proprietário liga a conta Mercado Pago dele ao nosso
   sistema, e cada pagamento cai direto na conta dele com a comissão da SCL separada
-  automaticamente para a conta da empresa. O **Stripe** faz algo parecido (Stripe Connect).
+  automaticamente para a conta da empresa. O **Stripe** faz algo parecido (Stripe Connect), mas o
+  pagamento entra primeiro na conta da SCL e depois é transferido ao proprietário.
   Pontos de atenção: cada proprietário precisa ter conta própria e a parte fiscal muda (ele
   recebe direto, como no Airbnb). Quem arca com estorno e contestação de cartão depende do
   provedor — no Stripe a SCL responde e depois desconta do proprietário; no Mercado Pago
