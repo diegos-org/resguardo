@@ -2,8 +2,10 @@ import Link from "next/link";
 import { CartaoImovel } from "@/components/site/CartaoImovel";
 import { Moldura, SiteEmConfiguracao } from "@/components/site/Moldura";
 import styles from "@/components/site/site.module.css";
-import { carregarSite } from "@/site/pagina";
+import { carregarSite, metadadosDoSite } from "@/site/pagina";
 import { imoveisDoSite } from "@/site/site";
+
+export const generateMetadata = () => metadadosDoSite();
 
 export default async function Inicio() {
   const { db, conteudo } = await carregarSite();

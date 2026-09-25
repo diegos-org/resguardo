@@ -197,4 +197,10 @@ export function montarConsulta(
   return { ok: true, texto: linhas.join("\n") };
 }
 
+/** Título da aba/busca: "Página — Nome da empresa" (o nome vem do cadastro da empresa no painel). */
+export function tituloDoSite(conteudo: Pick<ConteudoSite, "nomeEmpresa"> | null, pagina?: string): string {
+  const nome = conteudo?.nomeEmpresa.trim() ?? "";
+  return [pagina, nome].filter(Boolean).join(" — ");
+}
+
 export const linkWhatsapp = (numero: string, texto: string) => `https://wa.me/${numero}?text=${encodeURIComponent(texto)}`;

@@ -6,17 +6,19 @@ import { FotoProvisoria, Moldura, SiteEmConfiguracao } from "@/components/site/M
 import styles from "@/components/site/site.module.css";
 import { hojeISO } from "@/lib/datas";
 import { carregarSite } from "@/site/pagina";
-import { imovelDoSite, imoveisDoSite } from "@/site/site";
+import { imovelDoSite, imoveisDoSite, lerPedidoConsulta, tituloDoSite } from "@/site/site";
 
 export async function generateMetadata({ params }: PageProps<"/imoveis/[codigo]">): Promise<Metadata> {
   const { codigo } = await params;
   const { db, conteudo } = await carregarSite();
   const i = conteudo ? await imovelDoSite(db, conteudo.organizacaoId, codigo) : null;
-  return { title: i ? `${i.nome} — Sua Casa Leblon` : "Sua Casa Leblon" };
+  return { title: tituloDoSite(conteudo, i?.nome) || "Site em configuração" };
 }
 
-export default async function PaginaImovel({ params }: PageProps<"/imoveis/[codigo]">) {
+export default async function PaginaImovel({ params, searchParams }: PageProps<"/imoveis/[codigo]">) {
   const { codigo } = await params;
+  // Link com datas e pessoas (ex.: ?checkin=…&checkout=…&guests=2) já preenche o formulário.
+  const pedido = lerPedidoConsulta(await searchParams);
   const { db, conteudo } = await carregarSite();
   if (!conteudo) return <SiteEmConfiguracao />;
   const [imovel, todos] = await Promise.all([imovelDoSite(db, conteudo.organizacaoId, codigo), imoveisDoSite(db, conteudo.organizacaoId)]);
@@ -78,7 +80,7 @@ export default async function PaginaImovel({ params }: PageProps<"/imoveis/[codi
             )}
           </section>
         </div>
-        <FormConsulta imoveis={todos} valores={{ imovel: imovel.codigo }} hoje={hojeISO("America/Sao_Paulo")} canal={canalDeContato(conteudo)} />
+        <FormConsulta imoveis={todos} valores={{ ...pedido, imovel: imovel.codigo }} hoje={hojeISO("America/Sao_Paulo")} canal={canalDeContato(conteudo)} />
       </div>
     </Moldura>
   );

@@ -67,4 +67,9 @@ describe("site público (M7.1)", () => {
     expect(form.textContent).toContain("por e-mail");
     expect(form.textContent).not.toContain("WhatsApp");
   });
+
+  it("sem capacidade informada em algum apartamento, o formulário não limita o número de pessoas", () => {
+    render(<FormConsulta imoveis={[imovel, { ...imovel, codigo: "102", capacidade: null }]} valores={{}} hoje="2026-09-25" canal="whatsapp" />);
+    expect(document.querySelector('[name="hospedes"]')!.hasAttribute("max")).toBe(false);
+  });
 });

@@ -1,12 +1,11 @@
-import type { Metadata } from "next";
 import { canalDeContato, FormConsulta } from "@/components/site/FormConsulta";
 import { Moldura, SiteEmConfiguracao } from "@/components/site/Moldura";
 import styles from "@/components/site/site.module.css";
 import { hojeISO } from "@/lib/datas";
-import { carregarSite } from "@/site/pagina";
+import { carregarSite, metadadosDoSite } from "@/site/pagina";
 import { imovelDoSite, imoveisDoSite, lerPedidoConsulta, linkWhatsapp, montarConsulta } from "@/site/site";
 
-export const metadata: Metadata = { title: "Consulta — Sua Casa Leblon" };
+export const generateMetadata = () => metadadosDoSite("Consulta");
 
 export default async function Consulta({ searchParams }: PageProps<"/consulta">) {
   const sp = await searchParams;

@@ -67,7 +67,7 @@ export function FormConsulta({
       </div>
       <label>
         Pessoas
-        <input type="number" name="hospedes" min={1} max={Math.max(1, ...imoveis.map((i) => i.capacidade ?? 1))} defaultValue={valores.hospedes ?? "2"} required />
+        <input type="number" name="hospedes" min={1} max={imoveis.length && imoveis.every((i) => i.capacidade) ? Math.max(...imoveis.map((i) => i.capacidade ?? 0)) : undefined} defaultValue={valores.hospedes ?? "2"} required />
         {erro("hospedes")}
       </label>
       <button type="submit" className={styles.botao}>

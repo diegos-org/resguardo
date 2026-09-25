@@ -5,7 +5,7 @@ import { imoveis, organizacoes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { DETALHES_VAZIOS, salvarDetalhes } from "@/imoveis/detalhes";
-import { conteudoDoSite, imovelDoSite, imoveisDoSite, lerPedidoConsulta, linkWhatsapp, montarConsulta, numeroWhatsapp, organizacaoDoSite } from "./site";
+import { conteudoDoSite, imovelDoSite, imoveisDoSite, lerPedidoConsulta, tituloDoSite, linkWhatsapp, montarConsulta, numeroWhatsapp, organizacaoDoSite } from "./site";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -98,5 +98,11 @@ describe("site público (M7.1)", () => {
     expect(lerPedidoConsulta({ imovel: "102", entrada: "2026-10-10", saida: "2026-10-12", hospedes: "2" })).toEqual(esperado);
     expect(lerPedidoConsulta({ property: "102", checkin: "2026-10-10", checkout: "2026-10-12", guests: "2", scenario: "x" })).toEqual(esperado);
     expect(lerPedidoConsulta({ imovel: ["a", "b"] })).toEqual({ imovel: "", entrada: "", saida: "", hospedes: "" });
+  });
+
+  it("título da aba usa o nome da empresa do site", () => {
+    expect(tituloDoSite({ nomeEmpresa: "Empresa Exemplo" }, "Apartamentos")).toBe("Apartamentos — Empresa Exemplo");
+    expect(tituloDoSite({ nomeEmpresa: "Empresa Exemplo" })).toBe("Empresa Exemplo");
+    expect(tituloDoSite(null, "Consulta")).toBe("Consulta");
   });
 });
