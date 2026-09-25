@@ -199,7 +199,9 @@ async function chaveDoReenvio(db: Db, base: string, agora: Date): Promise<string
     const atual = await ler();
     if (atual) {
       const [m] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, atual));
-      if ((m?.value as { estado?: string } | undefined)?.estado !== "incerto") return atual;
+      // Só um reenvio ainda em andamento é retomado; concluído (a marca do mês não foi atualizada a
+      // tempo), recusado ou incerto: abre outra chave.
+      if ((m?.value as { estado?: string } | undefined)?.estado === "enviando") return atual;
     }
     const nova = `${base}:reenvio:${agora.getTime()}`;
     const [trocada] = await db

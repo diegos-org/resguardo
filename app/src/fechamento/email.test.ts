@@ -357,4 +357,18 @@ describe("e-mail do fechamento (M5.4)", () => {
     await fechamentoManual(db, org, new CorreioMemoria(), new Date(t1.getTime() + 25 * 3_600_000), { mes: MES, proprietarioId: dona, reenviar: true }, null);
     expect((await situacao()).reenvioPendente).toMatchObject({ estado: "incerto" });
   });
+
+  it("reenvio concluído sem a marca do mês atualizada (queda no meio): o próximo abre outra chave", async () => {
+    await ligar();
+    await fechar();
+    await enviarFechamentos(db, org, new CorreioMemoria(), DIA1);
+    // Como se o reenvio tivesse terminado e a marca do mês ainda apontasse para ele.
+    const base = chaveDoEnvio(org, dona, MES);
+    const velha = `${base}:reenvio:1`;
+    await db.insert(appSettings).values({ key: velha, value: { estado: "enviado", em: DIA1.toISOString() } });
+    await db.update(appSettings).set({ value: { estado: "enviado", em: DIA1.toISOString(), destinos: ["dona@example.com"], reenvio: velha } }).where(eq(appSettings.key, base));
+    const correio = new CorreioMemoria();
+    expect(await fechamentoManual(db, org, correio, new Date(DIA1.getTime() + 3_600_000), { mes: MES, proprietarioId: dona, reenviar: true }, null)).toMatchObject({ enviados: 1 });
+    expect(correio.enviadas[0].chave).not.toBe(velha);
+  });
 });
