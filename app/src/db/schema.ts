@@ -19,7 +19,8 @@ export const appSettings = pgTable("app_settings", {
 // Acesso (M1.1): organização → usuários → proprietários → imóveis
 // ---------------------------------------------------------------------------
 
-export const PAPEIS = ["admin", "operacao", "proprietario", "hospede"] as const;
+/** limpeza: profissional de limpeza com acesso próprio pelo celular (M6.6): só as limpezas dela. */
+export const PAPEIS = ["admin", "operacao", "proprietario", "hospede", "limpeza"] as const;
 export type Papel = (typeof PAPEIS)[number];
 export const papelEnum = pgEnum("papel", PAPEIS);
 
@@ -783,9 +784,11 @@ export const profissionaisLimpeza = pgTable(
     telefone: text("telefone").notNull().default(""),
     observacoes: text("observacoes").notNull().default(""),
     ativo: boolean("ativo").notNull().default(true),
+    /** Acesso próprio pelo celular (M6.6): o usuário (papel "limpeza") desta profissional. */
+    usuarioId: uuid("usuario_id").references(() => usuarios.id),
     criadoEm: criadoEm(),
   },
-  (t) => [uniqueIndex("profissionais_limpeza_nome").on(t.organizacaoId, sql`lower(${t.nome})`)],
+  (t) => [uniqueIndex("profissionais_limpeza_nome").on(t.organizacaoId, sql`lower(${t.nome})`), uniqueIndex("profissionais_limpeza_usuario").on(t.usuarioId)],
 );
 
 export const ESTADOS_LIMPEZA = ["pedida", "confirmada", "realizada", "cancelada"] as const;

@@ -21,6 +21,8 @@ export const ACOES = [
   "despesa:editar",
   "limpeza:ler",
   "limpeza:editar",
+  /** Profissional de limpeza (M6.6): ver as próprias limpezas e marcar como feita. */
+  "limpeza:propria",
   "manutencao:ler",
   "manutencao:editar",
   /** Aprovar orçamento de manutenção e decidir quem paga: só o admin (Diego). */
@@ -59,6 +61,8 @@ export const PERMISSOES: Readonly<Record<Papel, readonly Acao[]>> = Object.freez
   proprietario: PROPRIETARIO,
   // Hóspede ganha acesso à própria reserva no M9; até lá, nada.
   hospede: [],
+  // Só as limpezas atribuídas a ela (a posse é conferida no servidor, pela profissional da sessão).
+  limpeza: ["limpeza:propria"],
 });
 
 export type Sessao = {
@@ -67,6 +71,8 @@ export type Sessao = {
   papel: Papel;
   /** Para proprietários: imóveis vinculados, resolvidos no servidor. */
   imovelIds: readonly string[];
+  /** Para o papel "limpeza": a profissional (ativa) ligada a este usuário, resolvida no servidor. */
+  profissionalId?: string | null;
 };
 
 export type Recurso = {

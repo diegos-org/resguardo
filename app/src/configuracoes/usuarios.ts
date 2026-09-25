@@ -14,7 +14,7 @@ import { uuidValido } from "@/lib/ids";
 
 export const PAPEIS_EQUIPE = ["admin", "operacao"] as const;
 export type PapelEquipe = (typeof PAPEIS_EQUIPE)[number];
-export const NOMES_PAPEL: Record<string, string> = { admin: "Administrador", operacao: "Operação", proprietario: "Proprietário", hospede: "Hóspede" };
+export const NOMES_PAPEL: Record<string, string> = { admin: "Administrador", operacao: "Operação", proprietario: "Proprietário", hospede: "Hóspede", limpeza: "Limpeza" };
 
 export type Usuario = typeof usuarios.$inferSelect;
 export type Resultado = { ok: true } | { ok: false; erro: string };

@@ -20,6 +20,7 @@ const NOME_ACAO: Record<(typeof ACOES)[number], string> = {
   "despesa:editar": "Lançar despesas",
   "limpeza:ler": "Ver limpezas",
   "limpeza:editar": "Gerir limpezas",
+  "limpeza:propria": "Ver as próprias limpezas e marcar como feita (pelo celular)",
   "manutencao:ler": "Ver manutenção",
   "manutencao:editar": "Gerir manutenção",
   "manutencao:aprovar": "Aprovar orçamento de manutenção e decidir quem paga",
@@ -30,7 +31,7 @@ const NOME_ACAO: Record<(typeof ACOES)[number], string> = {
   "usuario:gerenciar": "Gerir usuários",
   "configuracao:editar": "Mudar configurações",
 };
-const PAPEIS_TABELA = ["admin", "operacao", "proprietario"] as const;
+const PAPEIS_TABELA = ["admin", "operacao", "proprietario", "limpeza"] as const;
 
 export default async function PaginaUsuarios() {
   const sessao = await exigirSessaoPainel();
@@ -48,7 +49,8 @@ export default async function PaginaUsuarios() {
           alterar={alterarUsuarioAcao}
         />
         <p style={{ fontSize: "0.875rem", color: "var(--scl-texto-2)", margin: 0 }}>
-          Proprietários entram por convite, na página de cada proprietário ({donos.length} com acesso hoje).
+          Proprietários entram por convite, na página de cada proprietário ({donos.length} com acesso hoje). As profissionais de limpeza
+          ganham acesso em Limpezas → Profissionais.
         </p>
       </section>
       <section aria-label="Permissões" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
