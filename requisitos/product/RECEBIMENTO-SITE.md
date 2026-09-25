@@ -46,7 +46,8 @@ regra** a decidir — a comparação abaixo vale igual.
 | Estorno / cancelamento | SCL devolve ao hóspede e desconta do repasse (o sistema já faz estorno e ajuste) | Precisa definir no split quanto volta de cada parte; **a conferir** o comportamento em estorno parcial | SCL devolve e recupera do proprietário pela transferência reversa |
 | Chargeback (contestação no cartão) | O provedor debita da SCL; **se** ela repassa a perda ao proprietário (pelo repasse) é decisão de Diego, a pôr no contrato | **A conferir** como o MP divide; exige regra no contrato | O Stripe debita da SCL (ela é a responsável perante o Stripe); repassar ao proprietário é a mesma decisão |
 | Trabalho no sistema | **Parte financeira pronta** (comissão, repasse mensal com Pix para copiar — M4.9, estorno no financeiro e conferência — M4.8). Falta, como em qualquer opção, o pagamento em si (M8.2): checkout, aviso de pagamento, devolução ao hóspede pelo Mercado Pago, conciliação e o fluxo de contestação (chargeback) no financeiro | Tudo do M8.2 **e mais**: ligar a conta de cada proprietário, comissão em cada pagamento, estorno dividido, conciliação por proprietário | Tudo do M8.2 **e mais** a integração Connect; mais cara e menos usada no Brasil |
-| Repasse ao proprietário | Mensal, dia 1º (feito à mão, com Pix para copiar) | Automático, a cada pagamento | Automático |
+| Repasse ao proprietário | Mensal, dia 1º (feito à mão, com Pix para copiar) — mas o dinheiro do cartão em 30 dias pode ainda não ter sido liberado pelo provedor (ver pergunta 6) | Automático, quando o provedor libera | Automático, quando o provedor libera |
+| Quando o dinheiro fica disponível | Pix: no mesmo dia. Cartão: na hora (taxa ~4,98%) ou em 30 dias (~3,98%) | Igual ao lado | Conforme o prazo do Stripe (a conferir) |
 
 ## Impostos (para o contador confirmar)
 
@@ -111,8 +112,13 @@ criar).
 5. Política de cancelamento das reservas do site: reembolso total, parcial ou nenhum conforme
    a antecedência, e quem arca com a taxa do pagamento que não volta. Sem ela, o sistema não
    calcula reembolso sozinho.
+6. Cartão com recebimento em 30 dias: uma reserva paga no fim do mês entraria no repasse do
+   dia 1º antes de o Mercado Pago liberar o dinheiro. Opções: (a) repassar só quando o
+   dinheiro for liberado (a parte do proprietário vai para o repasse seguinte), (b) a SCL
+   adianta, ou (c) usar o recebimento na hora e pagar a taxa maior. Sem decisão, o sistema faz
+   (a).
 
-As perguntas 4 e 5 não impedem montar o pagamento em teste (M8.2 em sandbox), mas precisam estar
+As perguntas 4, 5 e 6 não impedem montar o pagamento em teste (M8.2 em sandbox), mas precisam estar
 respondidas antes de o site receber pagamentos de verdade.
 
 ## Fontes consultadas (setembro/2026)

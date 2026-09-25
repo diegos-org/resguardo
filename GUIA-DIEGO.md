@@ -811,8 +811,9 @@ ambiente).
   cada um na proporção, como a do Airbnb/Booking) ou se muda; quem arca com uma contestação
   de cartão perdida (SCL, proprietário ou os dois na proporção); e a **política de
   cancelamento** das reservas do site (reembolso total, parcial ou nenhum, conforme a
-  antecedência). Essas duas últimas só precisam estar decididas antes de o site receber
-  pagamentos de verdade.
+  antecedência); e, no cartão com recebimento em 30 dias, se o repasse espera o Mercado Pago
+  liberar o dinheiro, se a SCL adianta, ou se usa o recebimento na hora (taxa maior). Essas
+  três últimas só precisam estar decididas antes de o site receber pagamentos de verdade.
 - **Modelo do marketplace:** as fórmulas antigas não estão em lugar nenhum, então montei
   uma proposta com as contas feitas: `requisitos/product/MARKETPLACE-PRECIFICACAO.md`.
   Resumo, numa reserva de R$ 1.650 que no Airbnb custaria R$ 1.881 ao hóspede e daria
