@@ -104,7 +104,7 @@ export async function situacaoDosFechamentos(
     enviadoEm: string | null;
     enviadoPara: string[];
     /** Um "enviar de novo" ainda sem confirmação do provedor (a marca do mês continua "enviado"). */
-    reenvioPendente: { estado: "enviando" | "incerto"; em: string | null } | null;
+    reenvioPendente: { estado: "enviando" | "incerto"; em: string | null; destinos: string[] } | null;
   })[]
 > {
   const periodo = limitesDoMes(mes);
@@ -132,8 +132,12 @@ export async function situacaoDosFechamentos(
   return lista.map((p) => {
     const marca = marcas.find((m) => m.key === chaveDoEnvio(organizacaoId, p.proprietarioId, mes))?.value as { estado?: string; em?: string; destinos?: unknown; reenvio?: unknown } | undefined;
     const doReenvio = typeof marca?.reenvio === "string" ? (reenvios.find((x) => x.key === marca.reenvio)?.value as ValorMarca | undefined) : undefined;
+    // Os destinos do reenvio são os do pedido guardado (a retomada vai para eles), não os do cadastro.
+    const cargaReenvio = (doReenvio as { carga?: unknown } | undefined)?.carga;
     const reenvioPendente =
-      doReenvio && (doReenvio.estado === "enviando" || doReenvio.estado === "incerto") ? { estado: estadoVisto(doReenvio, agora), em: doReenvio.em ?? null } : null;
+      doReenvio && (doReenvio.estado === "enviando" || doReenvio.estado === "incerto")
+        ? { estado: estadoVisto(doReenvio, agora), em: doReenvio.em ?? null, destinos: cargaValida(cargaReenvio) ? cargaReenvio.destinos : [] }
+        : null;
     const email = (p.email ?? "").trim();
     const destinos = [...new Set([email, ...reps.filter((r) => r.proprietarioId === p.proprietarioId).map((r) => r.email.trim())].filter(Boolean))];
     // Sem repasse próprio e sem valor a pagar, o mês está fechado quando nada o impede. "Já existe
@@ -146,7 +150,8 @@ export async function situacaoDosFechamentos(
     const situacao: Situacao = !fechado ? "pendente" : enviado ? "enviado" : incerto ? "incerto" : aguardando ? "aguardando" : !destinos.length ? "sem_email" : "pronto";
     // Tentativa em aberto: os destinos são os do pedido guardado (a retomada vai para eles).
     const guardada = (marca as { carga?: unknown } | undefined)?.carga;
-    const destinosDoPedido = aguardando && cargaValida(guardada) ? guardada.destinos : null;
+    const destinosDoPedido =
+      aguardando && cargaValida(guardada) ? guardada.destinos : reenvioPendente?.estado === "enviando" && reenvioPendente.destinos.length ? reenvioPendente.destinos : null;
     // Para quem foi, como gravado no envio (não o cadastro de hoje).
     const enviadoPara = enviado && Array.isArray(marca.destinos) ? marca.destinos.filter((x): x is string => typeof x === "string") : [];
     return { ...p, email, destinos: destinosDoPedido ?? destinos, situacao, enviadoEm: enviado ? (marca.em ?? null) : null, enviadoPara, reenvioPendente };

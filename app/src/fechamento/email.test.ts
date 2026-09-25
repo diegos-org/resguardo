@@ -413,4 +413,21 @@ describe("e-mail do fechamento (M5.4)", () => {
     // Um segundo pedido logo em seguida (antes do envio do primeiro) fica com a mesma chave, sem reserva.
     expect(await chaveDoReenvio(db, base, new Date(depois.getTime() + 1))).toEqual({ chave: primeira.chave, tentativa: null });
   });
+
+  it("\"enviar de novo\" sem confirmação: a tela e a retomada usam os destinos do pedido guardado", async () => {
+    await ligar();
+    await fechar();
+    await enviarFechamentos(db, org, new CorreioMemoria(), DIA1);
+    const caiu: Correio = { nome: "caiu", enviar: async () => Promise.reject(new ErroEnvioIncerto("Sem resposta do provedor de e-mail")) };
+    const t1 = new Date(DIA1.getTime() + 3_600_000);
+    await fechamentoManual(db, org, caiu, t1, { mes: MES, proprietarioId: dona, reenviar: true }, null);
+    // O cadastro perde o e-mail: o reenvio em aberto continua visível, com os destinos guardados.
+    await db.update(proprietarios).set({ email: "" }).where(eq(proprietarios.id, dona));
+    const t2 = new Date(t1.getTime() + 20 * 60_000);
+    const [p] = (await situacaoDosFechamentos(db, org, MES, "2026-11-02", t2)).filter((x) => x.proprietarioId === dona);
+    expect(p).toMatchObject({ situacao: "enviado", destinos: ["dona@example.com"], reenvioPendente: { estado: "enviando", destinos: ["dona@example.com"] } });
+    const correio = new CorreioMemoria();
+    expect(await fechamentoManual(db, org, correio, t2, { mes: MES, proprietarioId: dona, reenviar: true }, null)).toMatchObject({ enviados: 1 });
+    expect(correio.enviadas[0].para).toBe("dona@example.com");
+  });
 });
