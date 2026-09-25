@@ -132,7 +132,7 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 |---|---|---|---|
 | M8.0 | Decidir o recebimento do site: split automático (Mercado Pago marketplace ou Stripe Connect, como no Airbnb) × empresa recebe e repassa; comparar taxas, estorno, chargeback e impostos — comparação e recomendação em `requisitos/product/RECEBIMENTO-SITE.md` | bloqueado | Diego: escolher o modelo (e confirmar impostos com o contador) |
 | M8.1 | Cotação persistida, revalidação e hold com controle de concorrência | a fazer | M7.2 |
-| M8.2 | Pagamento no provedor escolhido no M8.0 (Mercado Pago, se confirmado) em **sandbox**: checkout, webhook assinado, idempotência, reconciliação, devolução ao hóspede | bloqueado | M8.0, M8.1 + Diego: credenciais de teste do provedor escolhido |
+| M8.2 | Pagamento no provedor escolhido no M8.0 (Mercado Pago, se confirmado) em **sandbox**: checkout, webhook assinado, idempotência, reconciliação, devolução ao hóspede e **contestação (chargeback)**: eventos de disputa registrados com situação, lançamento no financeiro que desconta a parte do proprietário, aviso e repasse afetado segurado até a decisão | bloqueado | M8.0, M8.1 + Diego: credenciais de teste do provedor escolhido |
 | M8.3 | Criação da reserva no Beds24 após pagamento confirmado (escrita) | bloqueado | M8.2 + autorização explícita de escrita |
 
 ### M9 — Portal do hóspede e mensagens
