@@ -136,7 +136,7 @@ export async function situacaoDosFechamentos(
     const cargaReenvio = (doReenvio as { carga?: unknown } | undefined)?.carga;
     const reenvioPendente =
       doReenvio && (doReenvio.estado === "enviando" || doReenvio.estado === "incerto")
-        ? { estado: estadoVisto(doReenvio, agora), em: doReenvio.em ?? null, destinos: cargaValida(cargaReenvio) ? cargaReenvio.destinos : [] }
+        ? { estado: cargaSuperada(cargaReenvio, p.repasse?.id ?? null) ? ("incerto" as const) : estadoVisto(doReenvio, agora), em: doReenvio.em ?? null, destinos: cargaValida(cargaReenvio) ? cargaReenvio.destinos : [] }
         : null;
     const email = (p.email ?? "").trim();
     const destinos = [...new Set([email, ...reps.filter((r) => r.proprietarioId === p.proprietarioId).map((r) => r.email.trim())].filter(Boolean))];
@@ -145,11 +145,12 @@ export async function situacaoDosFechamentos(
     const impedimentos = p.bloqueios.length - (p.repassePosterior ? 1 : 0);
     const fechado = !!p.repasse || (p.valor <= 0 && impedimentos === 0);
     const enviado = marca?.estado === "enviado";
-    const incerto = marca?.estado === "incerto" || (marca?.estado === "enviando" && estadoVisto(marca, agora) === "incerto");
+    const guardada = (marca as { carga?: unknown } | undefined)?.carga;
+    const incerto =
+      marca?.estado === "incerto" || (marca?.estado === "enviando" && (estadoVisto(marca, agora) === "incerto" || cargaSuperada(guardada, p.repasse?.id ?? null)));
     const aguardando = !incerto && marca?.estado === "enviando";
     const situacao: Situacao = !fechado ? "pendente" : enviado ? "enviado" : incerto ? "incerto" : aguardando ? "aguardando" : !destinos.length ? "sem_email" : "pronto";
     // Tentativa em aberto: os destinos são os do pedido guardado (a retomada vai para eles).
-    const guardada = (marca as { carga?: unknown } | undefined)?.carga;
     const destinosDoPedido =
       aguardando && cargaValida(guardada) ? guardada.destinos : reenvioPendente?.estado === "enviando" && reenvioPendente.destinos.length ? reenvioPendente.destinos : null;
     // Para quem foi, como gravado no envio (não o cadastro de hoje).
@@ -169,7 +170,12 @@ function estadoVisto(v: ValorMarca, agora: Date): "enviando" | "incerto" {
 export const chaveDoEnvio = (organizacaoId: string, proprietarioId: string, mes: string) => `fechamento-email:${organizacaoId}:${proprietarioId}:${mes}`;
 
 /** O pedido guardado: uma retomada manda exatamente o mesmo, para os mesmos endereços. */
-type Carga = { destinos: string[]; assunto: string; texto: string; arquivo: string; pdf: string };
+type Carga = { destinos: string[]; assunto: string; texto: string; arquivo: string; pdf: string; repasse?: string | null };
+/**
+ * O pedido guardado foi feito com outro fechamento (o mês foi reaberto e fechado de novo): não é
+ * retomado, o PDF dele é de antes. Fica "incerto" (pode ter chegado) e o painel decide.
+ */
+const cargaSuperada = (c: unknown, repasseId: string | null) => cargaValida(c) && (c.repasse ?? null) !== repasseId;
 const cargaValida = (c: unknown): c is Carga =>
   !!c &&
   typeof c === "object" &&
@@ -221,7 +227,7 @@ async function reservar(db: Db, chave: string, agora: Date): Promise<{ tentativa
  * ponteiro sempre acha a marca e usa a mesma chave. `tentativa` vem preenchida quando este pedido já
  * reservou a chave nova; null quando é a de um reenvio em andamento (o chamador tenta reservar).
  */
-export async function chaveDoReenvio(db: Db, base: string, agora: Date): Promise<{ chave: string; tentativa: string | null }> {
+export async function chaveDoReenvio(db: Db, base: string, agora: Date, repasseId: string | null = null): Promise<{ chave: string; tentativa: string | null }> {
   const ler = async () => {
     const [b] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, base));
     const atual = (b?.value as { reenvio?: unknown } | undefined)?.reenvio;
@@ -233,8 +239,10 @@ export async function chaveDoReenvio(db: Db, base: string, agora: Date): Promise
       const [m] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, atual));
       // Só um reenvio ainda em andamento é retomado; concluído (a marca do mês não foi atualizada a
       // tempo), recusado ou incerto: abre outra chave.
-      if (m && (m.value as ValorMarca).estado === "enviando" && estadoVisto(m.value as ValorMarca, agora) === "enviando") return { chave: atual, tentativa: null };
-      // Passou da janela sem confirmação: fica "incerto" (não é repetido) e abre outra chave.
+      const superada = cargaSuperada((m?.value as { carga?: unknown } | undefined)?.carga, repasseId);
+      if (m && (m.value as ValorMarca).estado === "enviando" && !superada && estadoVisto(m.value as ValorMarca, agora) === "enviando") return { chave: atual, tentativa: null };
+      // Passou da janela sem confirmação, ou o pedido é de um fechamento anterior: fica "incerto" (não
+      // é repetido) e abre outra chave.
       if (m && (m.value as ValorMarca).estado === "enviando")
         await db
           .update(appSettings)
@@ -320,7 +328,7 @@ export async function enviarFechamentos(
     let doReenvio: { chave: string; tentativa: string | null } | null = null;
     if (o.reenviar && (p.situacao === "enviado" || p.situacao === "incerto")) {
       try {
-        doReenvio = await chaveDoReenvio(db, base, agora);
+        doReenvio = await chaveDoReenvio(db, base, agora, p.repasse?.id ?? null);
       } catch (e) {
         r.falhas.push(`${p.nome}: ${e instanceof Error ? e.message : String(e)}`);
         continue;
@@ -348,6 +356,7 @@ export async function enviarFechamentos(
           texto: `${preencher(config.texto, p.nome, mes)}\n\n${linhaDoValor(p)}\n`,
           arquivo: pdf.arquivo,
           pdf: Buffer.from(pdf.pdf).toString("base64"),
+          repasse: p.repasse?.id ?? null,
         };
         // Guarda o pedido antes de enviar: uma retomada manda exatamente o mesmo.
         await db
@@ -373,7 +382,12 @@ export async function enviarFechamentos(
     const feito = { estado: "enviado", em: agora.toISOString(), destinos: carga.destinos };
     await db.update(appSettings).set({ value: feito, updatedAt: new Date() }).where(and(eq(appSettings.key, chave), daTentativa));
     // Reenvio: a marca do mês continua "enviado", com a data do último envio.
-    if (chave !== base) await db.update(appSettings).set({ value: feito, updatedAt: new Date() }).where(eq(appSettings.key, base));
+    // Só se o ponteiro ainda é deste reenvio: um mais novo (em andamento) continua visível.
+    if (chave !== base)
+      await db
+        .update(appSettings)
+        .set({ value: feito, updatedAt: new Date() })
+        .where(and(eq(appSettings.key, base), sql`${appSettings.value} ->> 'reenvio' = ${chave}`));
     await registrarAuditoria(db, {
       organizacaoId,
       usuarioId: null,

@@ -430,4 +430,43 @@ describe("e-mail do fechamento (M5.4)", () => {
     expect(await fechamentoManual(db, org, correio, t2, { mes: MES, proprietarioId: dona, reenviar: true }, null)).toMatchObject({ enviados: 1 });
     expect(correio.enviadas[0].para).toBe("dona@example.com");
   });
+
+  it("envio incerto e mês reaberto e fechado de novo: o pedido antigo (PDF de antes) não é retomado", async () => {
+    await ligar();
+    await fechar();
+    const caiu: Correio = { nome: "caiu", enviar: async () => Promise.reject(new ErroEnvioIncerto("Sem resposta do provedor de e-mail")) };
+    await enviarFechamentos(db, org, caiu, DIA1);
+    const [rep] = await listarRepasses(db, org, dona);
+    expect((await estornarRepasse(db, org, rep.id, "refazer", "2026-11-01", null)).ok).toBe(true);
+    await fecharMes(db, org, dona, MES, "2026-11-01", null);
+    const t = new Date(DIA1.getTime() + 30 * 60_000);
+    const [p] = (await situacaoDosFechamentos(db, org, MES, "2026-11-01", t)).filter((x) => x.proprietarioId === dona);
+    expect(p.situacao).toBe("incerto");
+    // O automático não repete o pedido velho; o "enviar de novo" gera o relatório de agora, com outra chave.
+    const correio = new CorreioMemoria();
+    expect(await enviarFechamentos(db, org, correio, t)).toMatchObject({ enviados: 0, incertos: ["Dona Exemplo"] });
+    expect(await fechamentoManual(db, org, correio, t, { mes: MES, proprietarioId: dona, reenviar: true }, null)).toMatchObject({ enviados: 1 });
+    expect(correio.enviadas).toHaveLength(1);
+    expect(correio.enviadas[0].chave).not.toBe(chaveDoEnvio(org, dona, MES));
+  });
+
+  it("reenvio concluído não apaga o ponteiro de um reenvio mais novo", async () => {
+    await ligar();
+    await fechar();
+    await enviarFechamentos(db, org, new CorreioMemoria(), DIA1);
+    const base = chaveDoEnvio(org, dona, MES);
+    const outra = `${base}:reenvio:outro`;
+    // Enquanto o reenvio A está no provedor, outro pedido (B) troca o ponteiro.
+    const troca: Correio = {
+      nome: "troca",
+      enviar: async () => {
+        await db.insert(appSettings).values({ key: outra, value: { estado: "enviando", em: DIA1.toISOString() } });
+        const [b] = await db.select().from(appSettings).where(eq(appSettings.key, base));
+        await db.update(appSettings).set({ value: { ...(b.value as object), reenvio: outra } }).where(eq(appSettings.key, base));
+      },
+    };
+    await fechamentoManual(db, org, troca, new Date(DIA1.getTime() + 3_600_000), { mes: MES, proprietarioId: dona, reenviar: true }, null);
+    const [b] = await db.select().from(appSettings).where(eq(appSettings.key, base));
+    expect(b.value).toMatchObject({ reenvio: outra });
+  });
 });
