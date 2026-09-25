@@ -512,4 +512,38 @@ describe("e-mail do fechamento (M5.4)", () => {
     expect(r.semRelatorio).toEqual(["Antiga Exemplo"]);
     expect(correio.enviadas.filter((m) => m.para === "antiga@example.com")).toHaveLength(0);
   });
+
+  it("pedido guardado que nunca chegou ao provedor (sem \"primeira\"): a retomada monta de novo, com o cadastro de hoje", async () => {
+    await ligar();
+    await fechar();
+    const velha = { destinos: ["antigo@example.com"], assunto: "velho", texto: "velho", arquivo: "velho.pdf", pdf: Buffer.from("x").toString("base64") };
+    await db.insert(appSettings).values({ key: chaveDoEnvio(org, dona, MES), value: { estado: "enviando", em: DIA1.toISOString(), tentativa: "t-caiu", carga: velha } });
+    const correio = new CorreioMemoria();
+    await enviarFechamentos(db, org, correio, new Date(DIA1.getTime() + 30 * 60_000));
+    const dela = correio.enviadas.filter((m) => m.chave === chaveDoEnvio(org, dona, MES));
+    expect(dela).toHaveLength(1);
+    expect(dela[0]).toMatchObject({ para: "dona@example.com" });
+    expect(dela[0].assunto).not.toBe("velho");
+  });
+
+  it("mês sem repasse corrigido depois de uma tentativa incerta: o pedido antigo não é retomado", async () => {
+    await ligar();
+    const c = await criarCategoria(db, org, "Manutenção", null);
+    if (!c.ok) throw new Error("categoria");
+    const despesa = (valor: number, dia: string) =>
+      registrarDespesa(
+        db,
+        org,
+        { responsavel: "proprietario", pagoPor: "empresa", categoriaId: c.categoria.id, descricao: "Reparo", valor, data: dia, imovelId: a, proprietarioId: null, fornecedor: "", comprovante: "", paga: true, dataPagamento: dia },
+        null,
+      );
+    await despesa(500000, "2026-10-05");
+    const caiu: Correio = { nome: "caiu", enviar: async () => Promise.reject(new ErroEnvioIncerto("Sem resposta do provedor de e-mail")) };
+    await enviarFechamentos(db, org, caiu, DIA1, { proprietarioId: dona });
+    // Correção no mês (outra despesa): o PDF guardado ficou velho.
+    await despesa(10000, "2026-10-06");
+    const t = new Date(DIA1.getTime() + 30 * 60_000);
+    const [p] = (await situacaoDosFechamentos(db, org, MES, "2026-11-01", t)).filter((x) => x.proprietarioId === dona);
+    expect(p.situacao).toBe("incerto");
+  });
 });
