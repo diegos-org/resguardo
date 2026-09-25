@@ -82,7 +82,8 @@ function linhaDoValor(p: PrevisaoRepasse): string {
  * aguardando: tentativa sem confirmação do provedor, ainda dentro da janela da chave (o mesmo e-mail é
  * repetido depois de 15 minutos, para os destinos guardados).
  */
-export type Situacao = "pronto" | "enviado" | "aguardando" | "incerto" | "pendente" | "sem_email";
+/** "sem_relatorio": tem saldo, mas nenhum imóvel ligado nem lançamento no mês — não há PDF a mandar. */
+export type Situacao = "pronto" | "enviado" | "aguardando" | "incerto" | "pendente" | "sem_email" | "sem_relatorio";
 
 /**
  * Situação do e-mail de cada proprietário no mês (a tela e o envio usam a mesma regra). Entra quem
@@ -151,7 +152,19 @@ export async function situacaoDosFechamentos(
     const incerto =
       marca?.estado === "incerto" || (marca?.estado === "enviando" && (estadoVisto(marca, agora) === "incerto" || cargaSuperada(guardada, p.repasse?.id ?? null)));
     const aguardando = !incerto && marca?.estado === "enviando";
-    const situacao: Situacao = !fechado ? "pendente" : enviado ? "enviado" : incerto ? "incerto" : aguardando ? "aguardando" : !destinos.length ? "sem_email" : "pronto";
+    const situacao: Situacao = !fechado
+      ? "pendente"
+      : enviado
+        ? "enviado"
+        : incerto
+          ? "incerto"
+          : aguardando
+            ? "aguardando"
+            : !doMes[todos.indexOf(p)]
+              ? "sem_relatorio"
+              : !destinos.length
+                ? "sem_email"
+                : "pronto";
     // Tentativa em aberto: os destinos são os do pedido guardado (a retomada vai para eles).
     const destinosDoPedido =
       aguardando && cargaValida(guardada) ? guardada.destinos : reenvioPendente?.estado === "enviando" && reenvioPendente.destinos.length ? reenvioPendente.destinos : null;
@@ -166,7 +179,8 @@ type ValorMarca = { estado?: string; em?: string; primeira?: string };
 /** Como a tela vê uma tentativa: "enviando" que passou da janela da chave do provedor já é "incerto". */
 function estadoVisto(v: ValorMarca, agora: Date): "enviando" | "incerto" {
   if (v.estado === "incerto") return "incerto";
-  const desde = Date.parse(v.primeira ?? v.em ?? "");
+  // A janela conta desde a primeira entrega ao provedor; sem ela, nada foi mandado ainda.
+  const desde = Date.parse(v.primeira ?? "");
   return !Number.isNaN(desde) && agora.getTime() - desde > JANELA_PROVEDOR_MS ? "incerto" : "enviando";
 }
 
@@ -195,7 +209,8 @@ async function reservar(db: Db, chave: string, agora: Date): Promise<{ tentativa
   const tentativa = crypto.randomUUID();
   const [nova] = await db
     .insert(appSettings)
-    .values({ key: chave, value: { estado: "enviando", em: agora.toISOString(), primeira: agora.toISOString(), tentativa } })
+    // Sem `primeira`: ela só é marcada logo antes de chamar o provedor.
+    .values({ key: chave, value: { estado: "enviando", em: agora.toISOString(), tentativa } })
     .onConflictDoNothing()
     .returning({ key: appSettings.key });
   if (nova) return { tentativa, carga: null };
@@ -208,7 +223,7 @@ async function reservar(db: Db, chave: string, agora: Date): Promise<{ tentativa
       and(
         eq(appSettings.key, chave),
         sql`${appSettings.value} ->> 'estado' = 'enviando'`,
-        sql`coalesce(${appSettings.value} ->> 'primeira', ${appSettings.value} ->> 'em')::timestamptz < ${janela}::timestamptz`,
+        sql`(${appSettings.value} ->> 'primeira')::timestamptz < ${janela}::timestamptz`,
       ),
     )
     .returning({ key: appSettings.key });
@@ -255,7 +270,7 @@ export async function chaveDoReenvio(db: Db, base: string, agora: Date, repasseI
     const nova = `${base}:reenvio:${agora.getTime()}:${crypto.randomUUID().slice(0, 8)}`;
     const tentativa = crypto.randomUUID();
     // Primeiro a marca da chave nova; depois o ponteiro.
-    await db.insert(appSettings).values({ key: nova, value: { estado: "enviando", em: agora.toISOString(), primeira: agora.toISOString(), tentativa } });
+    await db.insert(appSettings).values({ key: nova, value: { estado: "enviando", em: agora.toISOString(), tentativa } });
     const [trocada] = await db
       .update(appSettings)
       .set({ value: sql`jsonb_set(${appSettings.value}, '{reenvio}', ${JSON.stringify(nova)}::jsonb)`, updatedAt: new Date() })
@@ -276,6 +291,8 @@ export type ResultadoFechamentoEmail = {
   jaEnviados: number;
   pendentes: string[];
   semEmail: string[];
+  /** Com saldo, mas sem imóvel nem lançamento no mês: não há relatório para mandar. */
+  semRelatorio: string[];
   /** Sem confirmação do provedor e fora da janela da chave: pode ter chegado; conferir no painel. */
   incertos: string[];
   falhas: string[];
@@ -296,7 +313,7 @@ export async function enviarFechamentos(
 ): Promise<ResultadoFechamentoEmail> {
   const hoje = hojeISO("America/Sao_Paulo", agora);
   const mes = o.mes ?? mesAFechar(hoje);
-  const r: ResultadoFechamentoEmail = { mes, enviados: 0, jaEnviados: 0, pendentes: [], semEmail: [], incertos: [], falhas: [], aviso: null };
+  const r: ResultadoFechamentoEmail = { mes, enviados: 0, jaEnviados: 0, pendentes: [], semEmail: [], semRelatorio: [], incertos: [], falhas: [], aviso: null };
   const config = await lerConfigFechamentoEmail(db, organizacaoId);
   if (!config.ativo && !o.manual) return { ...r, aviso: "envio do fechamento desligado" };
   if (!correio) return { ...r, aviso: "sem provedor de e-mail configurado: nada enviado" };
@@ -318,6 +335,10 @@ export async function enviarFechamentos(
         .set({ value: sql`jsonb_set(${appSettings.value}, '{estado}', '"incerto"')`, updatedAt: new Date() })
         .where(and(eq(appSettings.key, chaveDoEnvio(organizacaoId, p.proprietarioId, mes)), sql`${appSettings.value} ->> 'estado' = 'enviando'`));
       r.incertos.push(p.nome);
+      continue;
+    }
+    if (p.situacao === "sem_relatorio") {
+      r.semRelatorio.push(p.nome);
       continue;
     }
     if (p.situacao === "sem_email") {
@@ -364,10 +385,15 @@ export async function enviarFechamentos(
         // Guarda o pedido antes de enviar: uma retomada manda exatamente o mesmo.
         await db
           .update(appSettings)
-          // Junta ao que já está na marca: `primeira` (hora do primeiro pedido) fica como está.
+          // Junta ao que já está na marca: `primeira` (hora da primeira entrega ao provedor) fica como está.
           .set({ value: sql`${appSettings.value} || ${JSON.stringify({ estado: "enviando", em: agora.toISOString(), tentativa: reserva.tentativa, carga })}::jsonb`, updatedAt: new Date() })
           .where(and(eq(appSettings.key, chave), daTentativa));
       }
+      // A janela de incerteza começa agora, na primeira entrega ao provedor (e não conta de novo).
+      await db
+        .update(appSettings)
+        .set({ value: sql`case when ${appSettings.value} ->> 'primeira' is null then ${appSettings.value} || ${JSON.stringify({ primeira: agora.toISOString() })}::jsonb else ${appSettings.value} end`, updatedAt: new Date() })
+        .where(and(eq(appSettings.key, chave), daTentativa));
       const [para, ...copias] = carga.destinos;
       await correio.enviar({ para, copias, assunto: carga.assunto, texto: carga.texto, chave, anexos: [{ nome: carga.arquivo, conteudo: Buffer.from(carga.pdf, "base64") }] });
     } catch (e) {
@@ -417,6 +443,7 @@ export function resumoDoFechamentoEmail(r: ResultadoFechamentoEmail): string {
   if (r.jaEnviados) partes.push(`${r.jaEnviados} já enviado(s)`);
   if (r.pendentes.length) partes.push(`${r.pendentes.length} com o mês ainda não fechado`);
   if (r.semEmail.length) partes.push(`${r.semEmail.length} sem e-mail cadastrado`);
+  if (r.semRelatorio.length) partes.push(`${r.semRelatorio.length} sem imóvel nem lançamento no mês (sem relatório)`);
   if (r.incertos.length) partes.push(`${r.incertos.length} sem confirmação do provedor (conferir no painel)`);
   if (r.falhas.length) partes.push(`${r.falhas.length} falha(s)`);
   return partes.join(", ");

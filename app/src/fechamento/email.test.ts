@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { criarContrato } from "@/contratos/repositorio";
-import { appSettings, auditoria, execucoesAutomacao, imoveis, organizacoes, proprietarioImoveis, proprietarios, representantes } from "@/db/schema";
+import { appSettings, auditoria, execucoesAutomacao, lancamentos, imoveis, organizacoes, proprietarioImoveis, proprietarios, representantes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { criarCategoria } from "@/despesas/categorias";
@@ -486,5 +486,30 @@ describe("e-mail do fechamento (M5.4)", () => {
     expect(await fechamentoManual(db, org, new CorreioMemoria(), DIA1, { mes: MES, proprietarioId: dona }, null)).toMatchObject({ enviados: 0, pendentes: ["Dona Exemplo"] });
     const [a] = await db.select().from(auditoria).where(eq(auditoria.acao, "fechamento.email_manual"));
     expect(JSON.stringify(a.mudancas)).toContain("falhou");
+  });
+
+  it("queda antes de chamar o provedor (reservado, sem envio): no dia seguinte envia, não vira \"incerto\"", async () => {
+    await ligar();
+    await fechar();
+    // Como o reservar grava: tentativa em andamento, ainda sem hora de envio ao provedor.
+    await db.insert(appSettings).values({ key: chaveDoEnvio(org, dona, MES), value: { estado: "enviando", em: DIA1.toISOString(), tentativa: "t-caiu" } });
+    const correio = new CorreioMemoria();
+    const r = await enviarFechamentos(db, org, correio, new Date(DIA1.getTime() + 24 * 3_600_000));
+    expect(r).toMatchObject({ incertos: [] });
+    expect(correio.enviadas.filter((m) => m.para === "dona@example.com")).toHaveLength(1);
+  });
+
+  it("proprietário sem imóvel nem lançamento no mês, mas com saldo: avisa \"sem relatório\" e não vira falha diária", async () => {
+    await ligar();
+    const [{ id: antiga }] = await db.insert(proprietarios).values({ organizacaoId: org, nome: "Antiga Exemplo", email: "antiga@example.com" }).returning();
+    // Dívida de setembro direto no proprietário (sem imóvel); em outubro não há nada dela.
+    await db.insert(lancamentos).values({ organizacaoId: org, proprietarioId: antiga, tipo: "ajuste", descricao: "Acerto fictício", valor: 0, efeitoSaldo: -10000, competencia: "2026-09-05", estado: "realizado" });
+    const [p] = (await situacaoDosFechamentos(db, org, MES, "2026-11-01")).filter((x) => x.proprietarioId === antiga);
+    expect(p?.situacao).toBe("sem_relatorio");
+    const correio = new CorreioMemoria();
+    const r = await enviarFechamentos(db, org, correio, DIA1);
+    expect(r.falhas).toEqual([]);
+    expect(r.semRelatorio).toEqual(["Antiga Exemplo"]);
+    expect(correio.enviadas.filter((m) => m.para === "antiga@example.com")).toHaveLength(0);
   });
 });

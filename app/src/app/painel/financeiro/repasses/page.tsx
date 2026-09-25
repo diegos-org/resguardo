@@ -161,6 +161,8 @@ export default async function Repasses({ searchParams }: PageProps<"/painel/fina
                   ? `sem confirmação do provedor há mais de um dia${p.destinosTentados.length ? ` (tentativa para ${p.destinosTentados.join(", ")})` : ""}: pode ter chegado. Confira com o proprietário; se não chegou, use "Enviar e-mail de novo"`
                   : p.situacao === "pronto"
                   ? `pronto para enviar a ${p.destinos.join(", ")}`
+                  : p.situacao === "sem_relatorio"
+                    ? "sem imóvel ligado nem lançamento neste mês: não há relatório para enviar"
                   : p.situacao === "sem_email"
                     ? "sem e-mail cadastrado — cadastre no proprietário"
                     : p.enviadoEm
