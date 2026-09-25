@@ -26,7 +26,7 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
   const regras = [
     `Entrada a partir das ${imovel.checkinAPartirDe}`,
     `Saída até as ${imovel.checkoutAte}`,
-    imovel.estadiaMinima ? `Mínimo de ${imovel.estadiaMinima} ${imovel.estadiaMinima === 1 ? "noite" : "noites"}` : null,
+    imovel.estadiaMinima ? `Em geral, mínimo de ${imovel.estadiaMinima} ${imovel.estadiaMinima === 1 ? "noite" : "noites"} (datas especiais podem ter outro mínimo)` : null,
     imovel.aceitaAnimais ? "Aceita animais" : "Não aceita animais",
     imovel.permiteFumar ? null : "Proibido fumar",
     imovel.permiteFestas ? null : "Sem festas ou eventos",
