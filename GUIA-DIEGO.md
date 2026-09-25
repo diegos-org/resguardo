@@ -273,7 +273,9 @@
 - M5.4: **e-mail do fechamento aos proprietários** (Painel → Financeiro → **Repasses**, no
   quadro "E-mail do fechamento"):
   - a partir do **dia 1º**, todo dia às **9h**, cada proprietário recebe **uma vez** o
-    relatório do mês anterior em **PDF** (o mesmo do portal), com o valor do repasse no texto;
+    relatório do mês anterior em **PDF** (o mesmo do portal), com o valor do repasse no texto.
+    Os **representantes** marcados para receber relatórios vão em cópia. Quem tem imóvel mas
+    ficou com saldo zero no mês também recebe;
   - só sai **depois que o mês dele está fechado**: repasse gerado, ou nada a repassar e sem
     pendência. Quem ainda tem pendência (acerto a conferir, ajuste a esclarecer) espera, e a
     tela mostra quem ficou; quem está **sem e-mail** no cadastro também aparece;

@@ -13,7 +13,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { gravarConfig, lerConfig } from "@/configuracoes/armazem";
-import { appSettings } from "@/db/schema";
+import { appSettings, representantes } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { type Correio, ErroEnvioIncerto } from "@/email/correio";
 import { hojeISO } from "@/lib/datas";
@@ -59,29 +59,53 @@ function linhaDoValor(p: PrevisaoRepasse): string {
 
 export type Situacao = "pronto" | "enviado" | "pendente" | "sem_email";
 
-/** Situação do e-mail de cada proprietário no mês (a tela e o envio usam a mesma regra). */
-export async function situacaoDosFechamentos(db: Db, organizacaoId: string, mes: string, hoje: string): Promise<(PrevisaoRepasse & { email: string; situacao: Situacao; enviadoEm: string | null })[]> {
-  const lista = await preverRepasses(db, organizacaoId, mes, hoje);
-  const marcas = lista.length
-    ? await db
-        .select({ key: appSettings.key, value: appSettings.value })
-        .from(appSettings)
-        .where(inArray(appSettings.key, lista.map((p) => chaveDoEnvio(organizacaoId, p.proprietarioId, mes))))
-    : [];
+/**
+ * Situação do e-mail de cada proprietário no mês (a tela e o envio usam a mesma regra). Entra quem
+ * tem imóvel ou movimento no mês, mesmo com saldo zero (o relatório sai assim mesmo). Destinos: o
+ * e-mail do proprietário e, em cópia, os representantes que recebem os relatórios.
+ */
+export async function situacaoDosFechamentos(
+  db: Db,
+  organizacaoId: string,
+  mes: string,
+  hoje: string,
+): Promise<(PrevisaoRepasse & { email: string; destinos: string[]; situacao: Situacao; enviadoEm: string | null })[]> {
+  const lista = (await preverRepasses(db, organizacaoId, mes, hoje, undefined, true)).filter(
+    (p) => p.repasse || p.saldo !== 0 || p.contestado !== 0 || p.aDescontar !== 0 || p.imoveis.length > 0,
+  );
+  const [marcas, reps] = lista.length
+    ? await Promise.all([
+        db
+          .select({ key: appSettings.key, value: appSettings.value })
+          .from(appSettings)
+          .where(inArray(appSettings.key, lista.map((p) => chaveDoEnvio(organizacaoId, p.proprietarioId, mes)))),
+        db
+          .select({ proprietarioId: representantes.proprietarioId, email: representantes.email })
+          .from(representantes)
+          .where(and(inArray(representantes.proprietarioId, lista.map((p) => p.proprietarioId)), eq(representantes.recebeRelatorios, true))),
+      ])
+    : [[], []];
   return lista.map((p) => {
     const marca = marcas.find((m) => m.key === chaveDoEnvio(organizacaoId, p.proprietarioId, mes))?.value as { estado?: string; em?: string } | undefined;
     const email = (p.email ?? "").trim();
+    const destinos = [...new Set([email, ...reps.filter((r) => r.proprietarioId === p.proprietarioId).map((r) => r.email.trim())].filter(Boolean))];
     const fechado = !!p.repasse || (p.valor <= 0 && p.bloqueios.length === 0);
-    const situacao: Situacao = marca?.estado === "enviado" ? "enviado" : !fechado ? "pendente" : !email ? "sem_email" : "pronto";
-    return { ...p, email, situacao, enviadoEm: marca?.estado === "enviado" ? (marca.em ?? null) : null };
+    const situacao: Situacao = marca?.estado === "enviado" ? "enviado" : !fechado ? "pendente" : !destinos.length ? "sem_email" : "pronto";
+    return { ...p, email, destinos, situacao, enviadoEm: marca?.estado === "enviado" ? (marca.em ?? null) : null };
   });
 }
 
 export const chaveDoEnvio = (organizacaoId: string, proprietarioId: string, mes: string) => `fechamento-email:${organizacaoId}:${proprietarioId}:${mes}`;
 
-type Carga = { assunto: string; texto: string; arquivo: string; pdf: string };
+/** O pedido guardado: uma retomada manda exatamente o mesmo, para os mesmos endereços. */
+type Carga = { destinos: string[]; assunto: string; texto: string; arquivo: string; pdf: string };
 const cargaValida = (c: unknown): c is Carga =>
-  !!c && typeof c === "object" && ["assunto", "texto", "arquivo", "pdf"].every((k) => typeof (c as Record<string, unknown>)[k] === "string");
+  !!c &&
+  typeof c === "object" &&
+  ["assunto", "texto", "arquivo", "pdf"].every((k) => typeof (c as Record<string, unknown>)[k] === "string") &&
+  Array.isArray((c as Carga).destinos) &&
+  (c as Carga).destinos.length > 0 &&
+  (c as Carga).destinos.every((d) => typeof d === "string");
 
 /**
  * Toma a marca do envio: nova, ou uma tentativa sem confirmação há mais de 15 minutos (retomada,
@@ -155,6 +179,7 @@ export async function enviarFechamentos(
         const pdf = await relatorioDoFechamento(db, organizacaoId, p.proprietarioId, mes.slice(0, 7), agora);
         if (!pdf.ok) throw new Error(pdf.erro);
         carga = {
+          destinos: p.destinos,
           assunto: preencher(config.assunto, p.nome, mes),
           texto: `${preencher(config.texto, p.nome, mes)}\n\n${linhaDoValor(p)}\n`,
           arquivo: pdf.arquivo,
@@ -166,7 +191,8 @@ export async function enviarFechamentos(
           .set({ value: { estado: "enviando", em: agora.toISOString(), tentativa: reserva.tentativa, carga }, updatedAt: new Date() })
           .where(and(eq(appSettings.key, chave), daTentativa));
       }
-      await correio.enviar({ para: p.email, assunto: carga.assunto, texto: carga.texto, chave, anexos: [{ nome: carga.arquivo, conteudo: Buffer.from(carga.pdf, "base64") }] });
+      const [para, ...copias] = carga.destinos;
+      await correio.enviar({ para, copias, assunto: carga.assunto, texto: carga.texto, chave, anexos: [{ nome: carga.arquivo, conteudo: Buffer.from(carga.pdf, "base64") }] });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (e instanceof ErroEnvioIncerto) {

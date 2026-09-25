@@ -154,20 +154,20 @@ export default async function Repasses({ searchParams }: PageProps<"/painel/fina
             <p style={{ margin: 0, fontSize: "0.875rem", color: "var(--scl-texto-2)" }}>
               E-mail do fechamento:{" "}
               {p.situacao === "enviado"
-                ? `enviado${p.enviadoEm ? ` em ${new Date(p.enviadoEm).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" })}` : ""} para ${p.email || "—"}`
+                ? `enviado${p.enviadoEm ? ` em ${new Date(p.enviadoEm).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" })}` : ""} para ${p.destinos.join(", ") || "—"}`
                 : p.situacao === "pronto"
-                  ? `pronto para enviar a ${p.email}`
+                  ? `pronto para enviar a ${p.destinos.join(", ")}`
                   : p.situacao === "sem_email"
                     ? "sem e-mail cadastrado — cadastre no proprietário"
                     : "espera o mês ser fechado"}
             </p>
-            {editar && (p.situacao === "pronto" || (p.situacao === "enviado" && p.email)) && (
+            {editar && (p.situacao === "pronto" || (p.situacao === "enviado" && p.destinos.length > 0)) && (
               <form action={enviarFechamentoAcao} className={styles.acoes}>
                 <input type="hidden" name="mes" value={mes} />
                 <input type="hidden" name="proprietarioId" value={p.proprietarioId} />
                 {p.situacao === "enviado" && <input type="hidden" name="reenviar" value="sim" />}
                 <BotaoConfirmar
-                  pergunta={`${p.situacao === "enviado" ? "Enviar de novo" : "Enviar"} o fechamento de ${nomeMes(mes)} para ${p.nome} (${p.email})?`}
+                  pergunta={`${p.situacao === "enviado" ? "Enviar de novo" : "Enviar"} o fechamento de ${nomeMes(mes)} para ${p.nome} (${p.destinos.join(", ")})?`}
                   className={styles.pequeno}
                 >
                   {p.situacao === "enviado" ? "Enviar e-mail de novo" : "Enviar e-mail do fechamento"}

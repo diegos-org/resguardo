@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { criarContrato } from "@/contratos/repositorio";
-import { appSettings, execucoesAutomacao, imoveis, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
+import { appSettings, execucoesAutomacao, imoveis, organizacoes, proprietarioImoveis, proprietarios, representantes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { criarCategoria } from "@/despesas/categorias";
@@ -188,5 +188,41 @@ describe("e-mail do fechamento (M5.4)", () => {
     await expect(fechamentoDeTodas(db, null, DIA1)).rejects.toThrow("sem provedor");
     const [e] = await db.select().from(execucoesAutomacao);
     expect(e).toMatchObject({ nome: "fechamento-email" });
+  });
+
+  it("proprietário com imóvel e saldo zero no mês também recebe o relatório", async () => {
+    await ligar();
+    const [{ id: c }] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "303", nome: "Três" }).returning();
+    const [{ id: terceiro }] = await db.insert(proprietarios).values({ organizacaoId: org, nome: "Terceira Exemplo", email: "terceira@example.com" }).returning();
+    await db.insert(proprietarioImoveis).values({ proprietarioId: terceiro, imovelId: c });
+    const [p] = (await situacaoDosFechamentos(db, org, MES, "2026-11-01")).filter((x) => x.proprietarioId === terceiro);
+    expect(p.situacao).toBe("pronto");
+    const correio = new CorreioMemoria();
+    await enviarFechamentos(db, org, correio, DIA1, { proprietarioId: terceiro });
+    expect(correio.enviadas[0]).toMatchObject({ para: "terceira@example.com" });
+    expect(correio.enviadas[0].texto).toContain("Não há valor a repassar neste mês.");
+  });
+
+  it("representantes que recebem os relatórios vão em cópia; os outros não", async () => {
+    await ligar();
+    await fechar();
+    await db.insert(representantes).values([
+      { proprietarioId: dona, nome: "Rep Fictício", email: "rep@example.com", recebeRelatorios: true },
+      { proprietarioId: dona, nome: "Outro Rep", email: "nao@example.com", recebeRelatorios: false },
+    ]);
+    const correio = new CorreioMemoria();
+    await enviarFechamentos(db, org, correio, DIA1);
+    expect(correio.enviadas[0]).toMatchObject({ para: "dona@example.com", copias: ["rep@example.com"] });
+  });
+
+  it("retomada de envio incerto vai para os mesmos endereços, mesmo se o cadastro mudou", async () => {
+    await ligar();
+    await fechar();
+    const caiu: Correio = { nome: "caiu", enviar: async () => Promise.reject(new ErroEnvioIncerto("Sem resposta do provedor de e-mail")) };
+    await enviarFechamentos(db, org, caiu, DIA1);
+    await db.update(proprietarios).set({ email: "novo@example.com" }).where(eq(proprietarios.id, dona));
+    const correio = new CorreioMemoria();
+    expect(await enviarFechamentos(db, org, correio, new Date(DIA1.getTime() + 20 * 60_000))).toMatchObject({ enviados: 1 });
+    expect(correio.enviadas[0].para).toBe("dona@example.com");
   });
 });

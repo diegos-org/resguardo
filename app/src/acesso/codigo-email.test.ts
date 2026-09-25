@@ -146,7 +146,7 @@ describe("correio", () => {
     expect(chaveIdempotencia(`agenda:${longo}1@example.com`)).toHaveLength(64);
   });
 
-  it("Resend: anexo vai em base64 com o nome do arquivo", async () => {
+  it("Resend: cópias em cc e anexo em base64 com o nome do arquivo", async () => {
     let corpo: Record<string, unknown> = {};
     const falso = (async (_url: string, init: RequestInit) => {
       corpo = JSON.parse(String(init.body));
@@ -156,8 +156,10 @@ describe("correio", () => {
       para: "a@example.com",
       assunto: "Fechamento",
       texto: "t",
+      copias: ["rep@example.com"],
       anexos: [{ nome: "relatorio.pdf", conteudo: new TextEncoder().encode("%PDF-teste") }],
     });
+    expect(corpo.cc).toEqual(["rep@example.com"]);
     expect(corpo.attachments).toEqual([{ filename: "relatorio.pdf", content: Buffer.from("%PDF-teste").toString("base64") }]);
   });
 });

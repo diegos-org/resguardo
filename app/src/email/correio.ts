@@ -13,6 +13,8 @@ export type Mensagem = {
   texto: string;
   /** Chave de idempotência: o provedor ignora um segundo envio com a mesma chave (ex.: nova tentativa). */
   chave?: string;
+  /** Cópias (ex.: representantes que recebem os relatórios do proprietário). */
+  copias?: string[];
   /** Arquivos anexados (ex.: o PDF do fechamento). */
   anexos?: { nome: string; conteudo: Uint8Array }[];
 };
@@ -60,6 +62,7 @@ export class CorreioResend implements Correio {
         body: JSON.stringify({
           from: this.remetente,
           to: [m.para],
+          ...(m.copias?.length ? { cc: m.copias } : {}),
           subject: m.assunto,
           text: m.texto,
           ...(m.anexos?.length ? { attachments: m.anexos.map((a) => ({ filename: a.nome, content: Buffer.from(a.conteudo).toString("base64") })) } : {}),
