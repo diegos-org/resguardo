@@ -478,6 +478,25 @@ export function ultimaAgendaDe(db: Db, organizacaoId: string, email: string): Pr
 }
 
 /**
+ * Montagem da agenda por janela (desde, corte), guardada enquanto ainda está em andamento: pessoas com
+ * a mesma janela, ao mesmo tempo, esperam a mesma montagem em vez de repeti-la. Se falhar, sai do
+ * guardado (a próxima tenta de novo).
+ */
+function montagemCompartilhada(db: Db, organizacaoId: string, hoje: string): (desde: Date, corte: Date) => Promise<Agenda> {
+  const guardadas = new Map<string, Promise<Agenda>>();
+  return (desde, corte) => {
+    const k = `${desde.toISOString()}|${corte.toISOString()}`;
+    let p = guardadas.get(k);
+    if (!p) {
+      p = montarAgenda(db, organizacaoId, hoje, desde, corte);
+      guardadas.set(k, p);
+      p.catch(() => guardadas.delete(k));
+    }
+    return p;
+  };
+}
+
+/**
  * Prévia para a tela: os próximos dias e as reservas novas desde o início mais antigo que algum
  * envio usaria agora (marco de cada destinatário, as últimas 24h de imóvel não coberto, envios
  * incertos em aberto). É o máximo que alguém recebe; cada pessoa recebe só o que ainda não recebeu
@@ -492,12 +511,7 @@ export async function previaDaAgenda(
   const hoje = hojeISO("America/Sao_Paulo", agora);
   if (!config.destinatarios.length) return { agenda: await montarAgenda(db, organizacaoId, hoje, ultima ?? new Date(agora.getTime() - 86_400_000), agora), ultima };
   // A mesma conta do envio, pessoa por pessoa; cada cidade mostra o que alguém que a recebe vai receber.
-  const cache = new Map<string, Agenda>();
-  const montar = async (desde: Date, corte: Date) => {
-    const k = `${desde.toISOString()}|${corte.toISOString()}`;
-    if (!cache.has(k)) cache.set(k, await montarAgenda(db, organizacaoId, hoje, desde, corte));
-    return cache.get(k)!;
-  };
+  const montar = montagemCompartilhada(db, organizacaoId, hoje);
   const pendentes = await marcasPendentes(db, organizacaoId);
   const porPessoa = await Promise.all(
     config.destinatarios.map(async (d) => {
@@ -506,9 +520,11 @@ export async function previaDaAgenda(
     }),
   );
   const base = porPessoa[0].agenda;
+  // Só as cidades que alguém recebe: a prévia é o que vai nos e-mails.
+  const recebe = (cidade: string) => porPessoa.some((x) => !x.d.cidades.length || x.d.cidades.includes(cidade));
   const agenda: Agenda = {
     ...base,
-    secoes: base.secoes.map((sec) => {
+    secoes: base.secoes.filter((sec) => recebe(sec.cidade)).map((sec) => {
       const vistos = new Set<string>();
       const novas = porPessoa
         .filter((x) => !x.d.cidades.length || x.d.cidades.includes(sec.cidade))
@@ -793,12 +809,7 @@ export async function enviarAgenda(
   const hoje = hojeISO("America/Sao_Paulo", agora);
   // Cada destinatário tem o seu marco de "reservas novas": quem falhou (ou entrou depois) recebe
   // tudo desde o que recebeu por último, sem depender dos outros.
-  const agendas = new Map<string, Agenda>();
-  const agendaDesde = async (desde: Date, corte: Date) => {
-    const k = `${desde.toISOString()}|${corte.toISOString()}`;
-    if (!agendas.has(k)) agendas.set(k, await montarAgenda(db, organizacaoId, hoje, desde, corte));
-    return agendas.get(k)!;
-  };
+  const agendaDesde = montagemCompartilhada(db, organizacaoId, hoje);
   // O relógio anda durante a execução: a trava de cada pessoa leva o horário de quando é tomada e de
   // quando é renovada (senão, depois de envios lentos, ela nasceria ou ficaria vencida).
   const inicio = Date.now();

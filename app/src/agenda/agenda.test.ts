@@ -889,6 +889,12 @@ describe("configuração e envio", () => {
     expect(correio.enviadas.at(-1)!.texto).not.toContain("04/09");
   });
 
+  it("prévia sem a cidade que ninguém recebe", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "rio@example.com", cidades: ["Rio de Janeiro"] }] }, null);
+    const { agenda } = await previaDaAgenda(db, org, AGORA);
+    expect(agenda.secoes.map((x) => x.cidade)).toEqual(["Rio de Janeiro"]);
+  });
+
   it("marca pendente resolvida por outra execução enquanto esta esperava a trava não volta a ser incerta", async () => {
     const chave = `agenda-diaria:${org}:2026-09-30:a@example.com`;
     const carga = { assunto: "x", texto: "x", eventos: ["ev-1"], imoveis: [rio] };
