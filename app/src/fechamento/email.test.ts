@@ -375,4 +375,14 @@ describe("e-mail do fechamento (M5.4)", () => {
     expect(await fechamentoManual(db, org, correio, new Date(DIA1.getTime() + 3_600_000), { mes: MES, proprietarioId: dona, reenviar: true }, null)).toMatchObject({ enviados: 1 });
     expect(correio.enviadas[0].chave).not.toBe(velha);
   });
+
+  it("tentativa sem confirmação dentro da janela: fica \"aguardando\", com os destinos do pedido guardado", async () => {
+    await ligar();
+    await fechar();
+    const caiu: Correio = { nome: "caiu", enviar: async () => Promise.reject(new ErroEnvioIncerto("Sem resposta do provedor de e-mail")) };
+    await enviarFechamentos(db, org, caiu, DIA1);
+    await db.update(proprietarios).set({ email: "novo@example.com" }).where(eq(proprietarios.id, dona));
+    const [p] = (await situacaoDosFechamentos(db, org, MES, "2026-11-01", new Date(DIA1.getTime() + 60_000))).filter((x) => x.proprietarioId === dona);
+    expect(p).toMatchObject({ situacao: "aguardando", destinos: ["dona@example.com"] });
+  });
 });

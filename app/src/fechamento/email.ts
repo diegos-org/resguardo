@@ -78,7 +78,11 @@ function linhaDoValor(p: PrevisaoRepasse): string {
 }
 
 /** incerto: tentativa sem confirmação do provedor por mais tempo do que a chave dele vale (pode ter chegado). */
-export type Situacao = "pronto" | "enviado" | "incerto" | "pendente" | "sem_email";
+/**
+ * aguardando: tentativa sem confirmação do provedor, ainda dentro da janela da chave (o mesmo e-mail é
+ * repetido depois de 15 minutos, para os destinos guardados).
+ */
+export type Situacao = "pronto" | "enviado" | "aguardando" | "incerto" | "pendente" | "sem_email";
 
 /**
  * Situação do e-mail de cada proprietário no mês (a tela e o envio usam a mesma regra). Entra quem
@@ -135,10 +139,14 @@ export async function situacaoDosFechamentos(
     const fechado = !!p.repasse || (p.valor <= 0 && p.bloqueios.length === 0);
     const enviado = marca?.estado === "enviado";
     const incerto = marca?.estado === "incerto" || (marca?.estado === "enviando" && estadoVisto(marca, agora) === "incerto");
-    const situacao: Situacao = !fechado ? "pendente" : enviado ? "enviado" : incerto ? "incerto" : !destinos.length ? "sem_email" : "pronto";
+    const aguardando = !incerto && marca?.estado === "enviando";
+    const situacao: Situacao = !fechado ? "pendente" : enviado ? "enviado" : incerto ? "incerto" : aguardando ? "aguardando" : !destinos.length ? "sem_email" : "pronto";
+    // Tentativa em aberto: os destinos são os do pedido guardado (a retomada vai para eles).
+    const guardada = (marca as { carga?: unknown } | undefined)?.carga;
+    const destinosDoPedido = aguardando && cargaValida(guardada) ? guardada.destinos : null;
     // Para quem foi, como gravado no envio (não o cadastro de hoje).
     const enviadoPara = enviado && Array.isArray(marca.destinos) ? marca.destinos.filter((x): x is string => typeof x === "string") : [];
-    return { ...p, email, destinos, situacao, enviadoEm: enviado ? (marca.em ?? null) : null, enviadoPara, reenvioPendente };
+    return { ...p, email, destinos: destinosDoPedido ?? destinos, situacao, enviadoEm: enviado ? (marca.em ?? null) : null, enviadoPara, reenvioPendente };
   });
 }
 
