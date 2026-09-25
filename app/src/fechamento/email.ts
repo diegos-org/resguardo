@@ -91,6 +91,7 @@ export async function situacaoDosFechamentos(
   organizacaoId: string,
   mes: string,
   hoje: string,
+  agora: Date = new Date(),
 ): Promise<
   (PrevisaoRepasse & {
     email: string;
@@ -126,18 +127,27 @@ export async function situacaoDosFechamentos(
     : [];
   return lista.map((p) => {
     const marca = marcas.find((m) => m.key === chaveDoEnvio(organizacaoId, p.proprietarioId, mes))?.value as { estado?: string; em?: string; destinos?: unknown; reenvio?: unknown } | undefined;
-    const doReenvio = typeof marca?.reenvio === "string" ? (reenvios.find((x) => x.key === marca.reenvio)?.value as { estado?: string; em?: string } | undefined) : undefined;
+    const doReenvio = typeof marca?.reenvio === "string" ? (reenvios.find((x) => x.key === marca.reenvio)?.value as ValorMarca | undefined) : undefined;
     const reenvioPendente =
-      doReenvio && (doReenvio.estado === "enviando" || doReenvio.estado === "incerto") ? { estado: doReenvio.estado as "enviando" | "incerto", em: doReenvio.em ?? null } : null;
+      doReenvio && (doReenvio.estado === "enviando" || doReenvio.estado === "incerto") ? { estado: estadoVisto(doReenvio, agora), em: doReenvio.em ?? null } : null;
     const email = (p.email ?? "").trim();
     const destinos = [...new Set([email, ...reps.filter((r) => r.proprietarioId === p.proprietarioId).map((r) => r.email.trim())].filter(Boolean))];
     const fechado = !!p.repasse || (p.valor <= 0 && p.bloqueios.length === 0);
     const enviado = marca?.estado === "enviado";
-    const situacao: Situacao = !fechado ? "pendente" : enviado ? "enviado" : marca?.estado === "incerto" ? "incerto" : !destinos.length ? "sem_email" : "pronto";
+    const incerto = marca?.estado === "incerto" || (marca?.estado === "enviando" && estadoVisto(marca, agora) === "incerto");
+    const situacao: Situacao = !fechado ? "pendente" : enviado ? "enviado" : incerto ? "incerto" : !destinos.length ? "sem_email" : "pronto";
     // Para quem foi, como gravado no envio (não o cadastro de hoje).
     const enviadoPara = enviado && Array.isArray(marca.destinos) ? marca.destinos.filter((x): x is string => typeof x === "string") : [];
     return { ...p, email, destinos, situacao, enviadoEm: enviado ? (marca.em ?? null) : null, enviadoPara, reenvioPendente };
   });
+}
+
+type ValorMarca = { estado?: string; em?: string; primeira?: string };
+/** Como a tela vê uma tentativa: "enviando" que passou da janela da chave do provedor já é "incerto". */
+function estadoVisto(v: ValorMarca, agora: Date): "enviando" | "incerto" {
+  if (v.estado === "incerto") return "incerto";
+  const desde = Date.parse(v.primeira ?? v.em ?? "");
+  return !Number.isNaN(desde) && agora.getTime() - desde > JANELA_PROVEDOR_MS ? "incerto" : "enviando";
 }
 
 export const chaveDoEnvio = (organizacaoId: string, proprietarioId: string, mes: string) => `fechamento-email:${organizacaoId}:${proprietarioId}:${mes}`;
@@ -201,7 +211,13 @@ async function chaveDoReenvio(db: Db, base: string, agora: Date): Promise<string
       const [m] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, atual));
       // Só um reenvio ainda em andamento é retomado; concluído (a marca do mês não foi atualizada a
       // tempo), recusado ou incerto: abre outra chave.
-      if ((m?.value as { estado?: string } | undefined)?.estado === "enviando") return atual;
+      if (m && (m.value as ValorMarca).estado === "enviando" && estadoVisto(m.value as ValorMarca, agora) === "enviando") return atual;
+      // Passou da janela sem confirmação: fica "incerto" (não é repetido) e abre outra chave.
+      if (m && (m.value as ValorMarca).estado === "enviando")
+        await db
+          .update(appSettings)
+          .set({ value: sql`jsonb_set(${appSettings.value}, '{estado}', '"incerto"')`, updatedAt: new Date() })
+          .where(and(eq(appSettings.key, atual), sql`${appSettings.value} ->> 'estado' = 'enviando'`));
     }
     const nova = `${base}:reenvio:${agora.getTime()}`;
     const [trocada] = await db
@@ -244,7 +260,7 @@ export async function enviarFechamentos(
   const config = await lerConfigFechamentoEmail(db, organizacaoId);
   if (!config.ativo && !o.manual) return { ...r, aviso: "envio do fechamento desligado" };
   if (!correio) return { ...r, aviso: "sem provedor de e-mail configurado: nada enviado" };
-  const lista = (await situacaoDosFechamentos(db, organizacaoId, mes, hoje)).filter((p) => !o.proprietarioId || p.proprietarioId === o.proprietarioId);
+  const lista = (await situacaoDosFechamentos(db, organizacaoId, mes, hoje, agora)).filter((p) => !o.proprietarioId || p.proprietarioId === o.proprietarioId);
   for (const p of lista) {
     if (p.situacao === "enviado" && !o.reenviar) {
       r.jaEnviados++;
@@ -256,6 +272,11 @@ export async function enviarFechamentos(
       continue;
     }
     if (p.situacao === "incerto" && !o.reenviar) {
+      // Grava o que a tela já mostra: "enviando" fora da janela vira "incerto" (não é repetido).
+      await db
+        .update(appSettings)
+        .set({ value: sql`jsonb_set(${appSettings.value}, '{estado}', '"incerto"')`, updatedAt: new Date() })
+        .where(and(eq(appSettings.key, chaveDoEnvio(organizacaoId, p.proprietarioId, mes)), sql`${appSettings.value} ->> 'estado' = 'enviando'`));
       r.incertos.push(p.nome);
       continue;
     }

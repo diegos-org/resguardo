@@ -353,9 +353,13 @@ describe("e-mail do fechamento (M5.4)", () => {
     await fechamentoManual(db, org, caiu, t1, { mes: MES, proprietarioId: dona, reenviar: true }, null);
     const situacao = async () => (await situacaoDosFechamentos(db, org, MES, "2026-11-02")).find((x) => x.proprietarioId === dona)!;
     expect(await situacao()).toMatchObject({ situacao: "enviado", reenvioPendente: { estado: "enviando" } });
-    // Mais de um dia depois, a tentativa seguinte o marca como incerto.
-    await fechamentoManual(db, org, new CorreioMemoria(), new Date(t1.getTime() + 25 * 3_600_000), { mes: MES, proprietarioId: dona, reenviar: true }, null);
-    expect((await situacao()).reenvioPendente).toMatchObject({ estado: "incerto" });
+    // Mais de um dia depois, sem ninguém clicar: a tela já mostra "incerto".
+    const depois = new Date(t1.getTime() + 25 * 3_600_000);
+    const [q] = (await situacaoDosFechamentos(db, org, MES, "2026-11-03", depois)).filter((x) => x.proprietarioId === dona);
+    expect(q.reenvioPendente).toMatchObject({ estado: "incerto" });
+    // E o próximo clique já manda (com outra chave), sem um clique perdido só para marcar.
+    const correio = new CorreioMemoria();
+    expect(await fechamentoManual(db, org, correio, depois, { mes: MES, proprietarioId: dona, reenviar: true }, null)).toMatchObject({ enviados: 1 });
   });
 
   it("reenvio concluído sem a marca do mês atualizada (queda no meio): o próximo abre outra chave", async () => {
