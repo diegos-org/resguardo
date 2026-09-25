@@ -112,7 +112,8 @@ describe("resumo do portal", () => {
       .where(and(eq(lancamentos.reservaId, r.id), eq(lancamentos.origem, "motor")));
     await cancelarReserva(db, org, r.id, null);
     const depois = await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo });
-    expect(depois).toMatchObject({ reservas: 0, receitaBruta: 100000, comissao: 12750, suaParte: 72250, acerto: 72250 - 20000 });
+    // Os valores continuam (o livro manda), mas a parte dela fica em conferência até alguém decidir (M4.8).
+    expect(depois).toMatchObject({ reservas: 0, receitaBruta: 100000, comissao: 12750, suaParte: 72250, acerto: -20000, acertoPendente: 72250, emConferencia: true });
   });
 
   it("reserva confirmada ainda sem cálculo no financeiro conta como reserva", async () => {

@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 24/09/2026, e-mail do fechamento mensal aos proprietários (M5.4).
+> **Última atualização:** 25/09/2026, e-mail do fechamento mensal aos proprietários (M5.4).
 
 ---
 
@@ -387,6 +387,27 @@
     de meses (até 36). Intervalo inválido não é adivinhado: aparece um aviso e vale o filtro;
   - com "todos os imóveis", entra também uma linha **Geral da empresa** (despesas sem imóvel)
     e os imóveis arquivados que tiveram movimento, então o total bate com o Início.
+- M4.8: **conferência dos números entre as telas.** Um teste automático monta um mês com os
+  casos que costumam dar diferença (estada que passa de um mês para o outro, reserva
+  cancelada, reserva pendente, venda direta, despesa do proprietário e imóvel de outro dono) e
+  confere que **Início, aba Apartamentos, portal do proprietário e PDF** mostram os mesmos
+  valores (bruto, taxas, comissão, parte do proprietário, despesas, acerto e número de
+  reservas). Ele achou uma diferença, já corrigida:
+  - **reserva pendente** (ainda não confirmada) entrava na receita e no acerto do painel, mas
+    não no portal. Agora ela **não entra em nenhum número** até ser confirmada; ao confirmar,
+    aparece em todas as telas ao mesmo tempo. Reserva pendente feita no painel tem o botão
+    **"Confirmar reserva"** na página dela. Ela continua ocupando o calendário e a agenda
+    de limpezas, como antes. Pendentes antigas, calculadas antes desta mudança, são acertadas
+    sozinhas na próxima publicação do sistema. Se uma reserva já tinha dinheiro recebido e
+    voltou a ficar pendente, os valores continuam (nada que já movimentou dinheiro é mexido
+    sozinho), mas ficam **em conferência**: o Início avisa, o portal e o PDF mostram a reserva
+    marcada assim, e o fechamento do mês espera até você confirmar a reserva de novo (aí sai da
+    conferência sozinha) ou fazer o ajuste manual e apertar **"Dar a conferência por resolvida"**
+    na página da reserva (com confirmação; fica no histórico). Vale também para reserva cancelada
+    nessa situação, e se a reserva mudar de novo em algo que pesa no dinheiro (situação, valor,
+    datas, imóvel), a conferência volta; mudar só o nome ou contato do hóspede não reabre;
+  - o contador de reservas do Início e da aba Apartamentos passou a contar **só as
+    confirmadas**, igual ao portal e ao relatório.
 - M6.5: **rotinas recorrentes** (menu **Rotinas**). Tarefas que se repetem, cada uma com a
   próxima data:
   - já vêm as cinco das regras de atendimento, nas datas combinadas:

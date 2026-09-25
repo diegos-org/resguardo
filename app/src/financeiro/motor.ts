@@ -94,6 +94,9 @@ export function calcularReserva(
 ): ResultadoMotor {
   const avisos: string[] = [];
   if (r.estado === "cancelada") return { lancamentos: [], avisos: ["Reserva cancelada: sem lançamentos."] };
+  // Pendente ainda não é receita (nem dívida com o proprietário): assim o painel, o portal e o
+  // PDF contam a mesma coisa (M4.8). Ao confirmar, a reserva é calculada.
+  if (r.estado === "pendente") return { lancamentos: [], avisos: ["Reserva pendente: os valores entram quando ela for confirmada."] };
   if (r.valorBruto === null) return { lancamentos: [], avisos: ["Valor bruto não informado: cálculo pendente."] };
   const contrato = contratoVigente(contratos, r.checkin);
   if (!contrato) return { lancamentos: [], avisos: [`Sem contrato vigente em ${r.checkin} para este imóvel.`] };

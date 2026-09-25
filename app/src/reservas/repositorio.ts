@@ -77,6 +77,9 @@ export async function criarReserva(db: Db, organizacaoId: string, dados: DadosRe
  * Idempotente: rodar de novo com os mesmos dados não altera nada nem gera histórico.
  * Os lançamentos do motor de comissões são recalculados na mesma transação.
  */
+/** Campos da reserva que entram no cálculo do financeiro (motor) ou na situação dela. */
+const CAMPOS_DO_FINANCEIRO = ["estado", "imovelId", "checkin", "checkout", "valorBruto", "taxaCanal", "valorLiquido", "recebimento", "origem", "moeda"];
+
 export async function sincronizarReserva(
   db: Db,
   organizacaoId: string,
@@ -126,7 +129,10 @@ export async function sincronizarReserva(
     const canceladaEm = dados.estado !== "cancelada" ? null : existente.estado === "cancelada" ? existente.canceladaEm : new Date();
     const [reserva] = await tx
       .update(reservas)
-      .set({ ...dados, canceladaEm, atualizadoEm: new Date() })
+      // Mudou algo que pesa no financeiro (situação, valores, datas, imóvel, canal…): uma conferência
+      // dada por resolvida antes volta a valer (M4.8) — a decisão foi tomada sobre os dados de antes.
+      // Nome, contato ou observação do hóspede não reabrem.
+      .set({ ...dados, canceladaEm, conferenciaResolvidaEm: CAMPOS_DO_FINANCEIRO.some((c) => c in mudancas) ? null : existente.conferenciaResolvidaEm, atualizadoEm: new Date() })
       .where(eq(reservas.id, existente.id))
       .returning();
     await registrarAuditoria(tx, {
@@ -151,7 +157,7 @@ export async function cancelarReserva(db: Db, organizacaoId: string, id: string,
       .where(and(eq(reservas.id, id), eq(reservas.organizacaoId, organizacaoId)))
       .for("update");
     if (!r || r.estado === "cancelada") return false;
-    await tx.update(reservas).set({ estado: "cancelada", canceladaEm: new Date(), atualizadoEm: new Date() }).where(eq(reservas.id, id));
+    await tx.update(reservas).set({ estado: "cancelada", canceladaEm: new Date(), conferenciaResolvidaEm: null, atualizadoEm: new Date() }).where(eq(reservas.id, id));
     await registrarAuditoria(tx, {
       organizacaoId,
       usuarioId: autorId,
@@ -161,6 +167,78 @@ export async function cancelarReserva(db: Db, organizacaoId: string, id: string,
       mudancas: { estado: [r.estado, "cancelada"] },
     });
     await aplicarMotor(tx, organizacaoId, id, autorId);
+    return true;
+  });
+}
+
+class ConfirmacaoRecusada extends Error {}
+
+/**
+ * Confirma uma reserva pendente (feita no painel ou vinda de fora): a partir daí entra no financeiro.
+ * Se ela já movimentou dinheiro e o cálculo novo não bate com o que ficou no livro (o motor não mexe
+ * nisso), não confirma: a conferência continua até o ajuste manual (avisar em vez de supor).
+ */
+export async function confirmarReserva(db: Db, organizacaoId: string, id: string, autorId: string | null): Promise<{ ok: boolean; aviso?: string }> {
+  if (!uuidValido(id)) return { ok: false };
+  try {
+    return await confirmarNaTransacao(db, organizacaoId, id, autorId);
+  } catch (e) {
+    if (e instanceof ConfirmacaoRecusada) return { ok: false, aviso: e.message };
+    throw e;
+  }
+}
+
+async function confirmarNaTransacao(db: Db, organizacaoId: string, id: string, autorId: string | null): Promise<{ ok: boolean }> {
+  return db.transaction(async (tx) => {
+    const [r] = await tx
+      .select()
+      .from(reservas)
+      .where(and(eq(reservas.id, id), eq(reservas.organizacaoId, organizacaoId)))
+      .for("update");
+    if (!r || r.estado !== "pendente") return { ok: false };
+    await tx.update(reservas).set({ estado: "confirmada", conferenciaResolvidaEm: null, atualizadoEm: new Date() }).where(eq(reservas.id, id));
+    await registrarAuditoria(tx, {
+      organizacaoId,
+      usuarioId: autorId,
+      acao: "reserva.confirmar",
+      entidade: "reserva",
+      entidadeId: id,
+      mudancas: { estado: ["pendente", "confirmada"] },
+    });
+    const m = await aplicarMotor(tx, organizacaoId, id, autorId);
+    // Desfaz tudo (a reserva continua pendente, em conferência).
+    if (m?.protegido)
+      throw new ConfirmacaoRecusada(
+        "Não confirmada: esta reserva já movimentou dinheiro e os valores atuais não batem com o que está no financeiro. Faça o ajuste manual e dê a conferência por resolvida.",
+      );
+    return { ok: true };
+  });
+}
+
+/**
+ * Dá por resolvida a conferência de uma reserva não confirmada que já movimentou dinheiro (M4.8),
+ * depois do ajuste manual: os lançamentos dela deixam de travar o fechamento do mês. Só vale para
+ * reserva não confirmada; se a situação mudar de novo, a conferência volta.
+ */
+export async function resolverConferencia(db: Db, organizacaoId: string, id: string, autorId: string | null): Promise<boolean> {
+  if (!uuidValido(id)) return false;
+  return db.transaction(async (tx) => {
+    const [r] = await tx
+      .select()
+      .from(reservas)
+      .where(and(eq(reservas.id, id), eq(reservas.organizacaoId, organizacaoId)))
+      .for("update");
+    if (!r || (r.estado === "confirmada" && !r.divergenciaEm) || r.conferenciaResolvidaEm) return false;
+    const agora = new Date();
+    await tx.update(reservas).set({ conferenciaResolvidaEm: agora, atualizadoEm: agora }).where(eq(reservas.id, id));
+    await registrarAuditoria(tx, {
+      organizacaoId,
+      usuarioId: autorId,
+      acao: "reserva.conferencia_resolvida",
+      entidade: "reserva",
+      entidadeId: id,
+      mudancas: { conferenciaResolvidaEm: [null, agora.toISOString()] },
+    });
     return true;
   });
 }
