@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 25/09/2026, mensagens automáticas ao hóspede por e-mail (M9.2), depois do portal do hóspede — "Minha reserva" (M9.1).
+> **Última atualização:** 25/09/2026, cadastro de proprietários marketplace pelo site (M12.3), depois das mensagens automáticas ao hóspede (M9.2).
 
 ---
 
@@ -36,6 +36,7 @@
 | M9 Portal do hóspede | Acesso do hóspede e mensagens automáticas | ✅ pronto |
 | M10 WhatsApp | Caixa de entrada do WhatsApp no painel | ⚪ aguardando |
 | M11 Produção | Dados reais, domínio, entrada em uso | ⚪ aguardando |
+| M12 Marketplace | Proprietário que opera o próprio imóvel; SCL cuida do online | 🟡 em andamento |
 
 **Itens já prontos (na `main`):**
 - M0.1: repositório limpo, plano único (ROADMAP) e regras para o Claude.
@@ -647,6 +648,24 @@
   - no fim da seção aparecem as **últimas mensagens** com a situação: enviada, recusada pelo
     provedor (o sistema tenta de novo, até 3 vezes) ou **sem confirmação — confira** (quando
     o provedor não respondeu: não é repetida sozinha, para não mandar duas vezes).
+- M12.3: **cadastro de proprietários marketplace pelo site** ("Anuncie seu imóvel", no topo
+  do site):
+  - a pessoa confirma o **e-mail com um código** (as mesmas regras do login; um abuso aqui não
+    atrapalha o login da equipe) e preenche os dados dela (nome, pessoa física ou empresa,
+    telefone) e do imóvel (nome, bairro, cidade, endereço, pessoas, quartos, banheiros,
+    descrição). Diz se **já anuncia** em outra plataforma (cola até 3 links) ou se quer um
+    **anúncio novo**, e autoriza o uso dos dados para a análise;
+  - o pedido fica **esperando análise** — nada é criado nem publicado sozinho. Cada e-mail
+    pode ter até 3 pedidos em análise, e o site para de aceitar pedidos novos se houver 100
+    esperando;
+  - em **Proprietários → "Cadastros pelo site"** você vê cada pedido com todos os dados e
+    decide: **Aprovar** (você dá o código do imóvel no sistema) cria de uma vez o
+    proprietário, o imóvel (**não público** — publicar continua sendo no cadastro do imóvel)
+    e manda o **convite do portal** para o e-mail confirmado; **Recusar** pede um motivo, que
+    fica registrado. Se algo impedir (código de imóvel repetido, e-mail que já é da equipe),
+    nada é criado e a tela avisa;
+  - depois de aprovar, complete na ficha do proprietário o **documento, o Pix e o contrato**
+    (o contrato marketplace depende do modelo de cobrança, M12.1).
 
 A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 
@@ -805,6 +824,9 @@ ambiente).
 17. **Mensagens automáticas ao hóspede:** depois do Resend (item 5), em **Configurações →
    Modelos de mensagem**, confira o texto de cada modelo, escolha as origens (vem site e
    direta) e marque "Envio automático ligado". Até lá, nada é enviado.
+18. **Cadastros pelo site (marketplace):** de vez em quando, abra **Proprietários → Cadastros
+   pelo site** e aprove ou recuse os pedidos. O código de confirmação depende do Resend
+   (item 5). Quem é recusado ainda não recebe e-mail automático — responda você mesmo.
 
 ---
 

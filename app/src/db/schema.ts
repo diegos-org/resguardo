@@ -953,3 +953,50 @@ export const mensagensHospede = pgTable(
   },
   (t) => [uniqueIndex("mensagens_hospede_unica").on(t.reservaId, t.tipo, t.referencia), index("mensagens_hospede_org").on(t.organizacaoId, t.criadoEm)],
 );
+
+// ---------------------------------------------------------------------------
+// Cadastro público do marketplace (M12.3): o proprietário confirma o e-mail, manda os dados dele
+// e do imóvel, e fica "pendente" até a equipe revisar. Aprovar cria o proprietário, o imóvel (não
+// público) e o convite do portal; nada é publicado sem essa revisão.
+// ---------------------------------------------------------------------------
+
+export const SITUACOES_CADASTRO = ["pendente", "aprovado", "recusado"] as const;
+export type SituacaoCadastro = (typeof SITUACOES_CADASTRO)[number];
+export const ANUNCIO_CADASTRO = ["ja_anuncio", "novo"] as const;
+export type AnuncioCadastro = (typeof ANUNCIO_CADASTRO)[number];
+
+export type ImovelCadastro = {
+  nome: string;
+  bairro: string;
+  cidade: string;
+  endereco: string;
+  capacidade: number;
+  quartos: number | null;
+  banheiros: number | null;
+  descricao: string;
+};
+
+export const cadastrosMarketplace = pgTable(
+  "cadastros_marketplace",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    /** E-mail confirmado por código antes do envio. */
+    email: text("email").notNull(),
+    nome: text("nome").notNull(),
+    tipo: tipoPessoaEnum("tipo").notNull().default("fisica"),
+    telefone: text("telefone").notNull(),
+    imovel: jsonb("imovel").$type<ImovelCadastro>().notNull(),
+    anuncio: text("anuncio").$type<AnuncioCadastro>().notNull(),
+    /** Links dos anúncios que já existem (Airbnb, Booking…), quando "já anuncio". */
+    links: jsonb("links").$type<string[]>().notNull().default([]),
+    situacao: text("situacao").$type<SituacaoCadastro>().notNull().default("pendente"),
+    motivoRecusa: text("motivo_recusa").notNull().default(""),
+    decididoEm: timestamp("decidido_em", { withTimezone: true }),
+    decididoPor: uuid("decidido_por").references(() => usuarios.id),
+    proprietarioId: uuid("proprietario_id").references(() => proprietarios.id),
+    imovelId: uuid("imovel_id").references(() => imoveis.id),
+    criadoEm: criadoEm(),
+  },
+  (t) => [index("cadastros_marketplace_org").on(t.organizacaoId, t.situacao, t.criadoEm), index("cadastros_marketplace_email").on(t.email)],
+);

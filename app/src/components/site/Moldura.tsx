@@ -16,6 +16,7 @@ export function Moldura({ conteudo, children }: { conteudo: ConteudoSite | null;
           <Link href="/imoveis">Apartamentos</Link>
           <Link href="/consulta">Consulta</Link>
           <Link href="/hospede">Minha reserva</Link>
+          <Link href="/anunciar">Anuncie seu imóvel</Link>
         </nav>
       </header>
       <main className={styles.conteudo}>{children}</main>
