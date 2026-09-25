@@ -171,6 +171,29 @@ async function reservar(db: Db, chave: string, agora: Date): Promise<{ tentativa
   return { tentativa, carga: cargaValida(carga) ? carga : null };
 }
 
+async function chaveDoReenvio(db: Db, base: string, agora: Date): Promise<string> {
+  const ler = async () => {
+    const [b] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, base));
+    const atual = (b?.value as { reenvio?: unknown } | undefined)?.reenvio;
+    return typeof atual === "string" ? atual : null;
+  };
+  for (let i = 0; i < 3; i++) {
+    const atual = await ler();
+    if (atual) {
+      const [m] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, atual));
+      if ((m?.value as { estado?: string } | undefined)?.estado !== "incerto") return atual;
+    }
+    const nova = `${base}:reenvio:${agora.getTime()}`;
+    const [trocada] = await db
+      .update(appSettings)
+      .set({ value: sql`jsonb_set(${appSettings.value}, '{reenvio}', ${JSON.stringify(nova)}::jsonb)`, updatedAt: new Date() })
+      .where(and(eq(appSettings.key, base), sql`coalesce(${appSettings.value} ->> 'reenvio', '') = ${atual ?? ""}`))
+      .returning({ key: appSettings.key });
+    if (trocada) return nova;
+  }
+  return (await ler()) ?? `${base}:reenvio:${agora.getTime()}`;
+}
+
 export type ResultadoFechamentoEmail = {
   mes: string;
   enviados: number;
@@ -221,17 +244,10 @@ export async function enviarFechamentos(
       continue;
     }
     const base = chaveDoEnvio(organizacaoId, p.proprietarioId, mes);
-    // Reenvio: retoma um reenvio ainda sem confirmação (mesma chave), em vez de abrir outro.
-    let chave = base;
-    if (o.reenviar && (p.situacao === "enviado" || p.situacao === "incerto")) {
-      const [aberto] = await db
-        .select({ key: appSettings.key })
-        .from(appSettings)
-        .where(and(sql`${appSettings.key} like ${`${base}:reenvio:%`}`, sql`${appSettings.value} ->> 'estado' = 'enviando'`))
-        .orderBy(appSettings.key)
-        .limit(1);
-      chave = aberto?.key ?? `${base}:reenvio:${agora.getTime()}`;
-    }
+    // Reenvio: uma chave por vez, guardada na marca do mês (troca atômica). Cliques ao mesmo tempo, ou
+    // um reenvio ainda sem confirmação, usam a mesma chave; só um reenvio que virou "incerto" (fora da
+    // janela do provedor) abre outra.
+    const chave = o.reenviar && (p.situacao === "enviado" || p.situacao === "incerto") ? await chaveDoReenvio(db, base, agora) : base;
     const reserva = await reservar(db, chave, agora);
     if (reserva === "incerto") {
       r.incertos.push(p.nome);

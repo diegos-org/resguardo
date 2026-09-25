@@ -312,4 +312,24 @@ describe("e-mail do fechamento (M5.4)", () => {
     expect(correio.enviadas.some((m) => m.para === "dona@example.com" && m.assunto === "Fechamento de outubro de 2026")).toBe(true);
     expect(correio.enviadas.some((m) => m.assunto.includes("setembro"))).toBe(false);
   });
+
+  it("dois cliques de \"enviar de novo\" ao mesmo tempo: uma chave só, um e-mail só", async () => {
+    await ligar();
+    await fechar();
+    await enviarFechamentos(db, org, new CorreioMemoria(), DIA1);
+    const enviadas: Mensagem[] = [];
+    const lento: Correio = {
+      nome: "lento",
+      enviar: async (m) => {
+        await new Promise((ok) => setTimeout(ok, 50));
+        enviadas.push(m);
+      },
+    };
+    const [a, b] = await Promise.all([
+      fechamentoManual(db, org, lento, new Date(DIA1.getTime() + 3_600_000), { mes: MES, proprietarioId: dona, reenviar: true }, null),
+      fechamentoManual(db, org, lento, new Date(DIA1.getTime() + 3_600_001), { mes: MES, proprietarioId: dona, reenviar: true }, null),
+    ]);
+    expect(a.enviados + b.enviados).toBe(1);
+    expect(enviadas).toHaveLength(1);
+  });
 });
