@@ -356,7 +356,7 @@ describe("e-mail do fechamento (M5.4)", () => {
     // Mais de um dia depois, sem ninguém clicar: a tela já mostra "incerto".
     const depois = new Date(t1.getTime() + 25 * 3_600_000);
     const [q] = (await situacaoDosFechamentos(db, org, MES, "2026-11-03", depois)).filter((x) => x.proprietarioId === dona);
-    expect(q.reenvioPendente).toMatchObject({ estado: "incerto" });
+    expect(q.reenvioPendente).toMatchObject({ estado: "incerto", destinos: ["dona@example.com"] });
     // E o próximo clique já manda (com outra chave), sem um clique perdido só para marcar.
     const correio = new CorreioMemoria();
     expect(await fechamentoManual(db, org, correio, depois, { mes: MES, proprietarioId: dona, reenviar: true }, null)).toMatchObject({ enviados: 1 });

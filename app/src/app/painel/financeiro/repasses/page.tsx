@@ -170,7 +170,7 @@ export default async function Repasses({ searchParams }: PageProps<"/painel/fina
             {p.reenvioPendente && (
               <p role="note" className={styles.alerta} style={{ margin: 0 }}>
                 {p.reenvioPendente.estado === "incerto"
-                  ? "O último \"enviar de novo\" ficou sem confirmação do provedor por mais de um dia: pode ter chegado. Confira com o proprietário antes de enviar outra vez."
+                  ? `O último "enviar de novo"${p.reenvioPendente.destinos.length ? ` (para ${p.reenvioPendente.destinos.join(", ")})` : ""} ficou sem confirmação do provedor: pode ter chegado. Confira com o proprietário antes de enviar outra vez.`
                   : `Há um "enviar de novo" ainda sem confirmação do provedor${p.reenvioPendente.destinos.length ? ` (para ${p.reenvioPendente.destinos.join(", ")})` : ""}: o sistema tenta o mesmo e-mail de novo depois de 15 minutos (clique em enviar de novo).`}
               </p>
             )}
