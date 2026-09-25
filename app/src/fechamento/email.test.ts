@@ -11,7 +11,7 @@ import type { DadosReserva } from "@/reservas/regras";
 import { criarReserva } from "@/reservas/repositorio";
 import { estornarRepasse, fecharMes, listarRepasses, marcarRepassePago } from "@/repasses/repasses";
 import { fechamentoDeTodas, fechamentoManual } from "./cron";
-import { chaveDoEnvio, chaveDoReenvio, enviarFechamentos, enviarFechamentosAutomaticos, lerConfigFechamentoEmail, salvarConfigFechamentoEmail, situacaoDosFechamentos } from "./email";
+import { chaveDoEnvio, chaveDoReenvio, enviarFechamentos, fechamentoAindaVale, versaoDoConteudo, enviarFechamentosAutomaticos, lerConfigFechamentoEmail, salvarConfigFechamentoEmail, situacaoDosFechamentos } from "./email";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -583,5 +583,16 @@ describe("e-mail do fechamento (M5.4)", () => {
     const r = await fechamentoManual(db, org, correio, new Date(DIA1.getTime() + 20 * 60_000), { mes: MES }, null);
     expect(correio.enviadas.map((m) => m.para)).toEqual(["terceira@example.com"]);
     expect(r).toMatchObject({ enviados: 1, falhas: [] });
+  });
+
+  it("conferência logo antes de enviar: mês reaberto ou conteúdo mudado depois de montar o pedido não sai", async () => {
+    await ligar();
+    await fechar();
+    const [p] = (await situacaoDosFechamentos(db, org, MES, "2026-11-01", DIA1)).filter((x) => x.proprietarioId === dona);
+    const versao = await versaoDoConteudo(db, org, p, MES, DIA1);
+    expect(await fechamentoAindaVale(db, org, p.proprietarioId, MES, "2026-11-01", DIA1, versao)).toBe(true);
+    const [rep] = await listarRepasses(db, org, dona);
+    expect((await estornarRepasse(db, org, rep.id, "refazer", "2026-11-01", null)).ok).toBe(true);
+    expect(await fechamentoAindaVale(db, org, p.proprietarioId, MES, "2026-11-01", DIA1, versao)).toBe(false);
   });
 });

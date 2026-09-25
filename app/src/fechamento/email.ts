@@ -149,8 +149,7 @@ export async function situacaoDosFechamentos(
     const destinos = [...new Set([email, ...reps.filter((r) => r.proprietarioId === p.proprietarioId).map((r) => r.email.trim())].filter(Boolean))];
     // Sem repasse próprio e sem valor a pagar, o mês está fechado quando nada o impede. "Já existe
     // repasse de um mês seguinte" só impede criar um repasse retroativo: não reabre este mês.
-    const impedimentos = p.bloqueios.length - (p.repassePosterior ? 1 : 0);
-    const fechado = !!p.repasse || (p.valor <= 0 && impedimentos === 0);
+    const fechado = mesFechado(p);
     const enviado = marca?.estado === "enviado";
     const guardada = (marca as { carga?: unknown } | undefined)?.carga;
     const incerto =
@@ -206,6 +205,24 @@ export async function versaoDoConteudo(db: Db, organizacaoId: string, p: Previsa
   const fimDoMes = limitesDoMes(mes)?.fim;
   const c = await conteudoDoFechamento(db, organizacaoId, p.proprietarioId, mes.slice(0, 7), agora, fimDoMes);
   return versaoDe(p, c.ok ? c.textos : null);
+}
+
+/**
+ * Mês fechado para o e-mail: tem repasse, ou não há valor a pagar e nada impede. "Já existe repasse
+ * de um mês seguinte" só impede criar um repasse retroativo: não reabre este mês.
+ */
+function mesFechado(p: PrevisaoRepasse): boolean {
+  const impedimentos = p.bloqueios.length - (p.repassePosterior ? 1 : 0);
+  return !!p.repasse || (p.valor <= 0 && impedimentos === 0);
+}
+
+/**
+ * Logo antes de chamar o provedor: o mês continua fechado e o conteúdo é o mesmo do pedido montado?
+ * (Estorno ou lançamento feitos enquanto o PDF era gerado não saem num e-mail misturado.)
+ */
+export async function fechamentoAindaVale(db: Db, organizacaoId: string, proprietarioId: string, mes: string, hoje: string, agora: Date, versao: string): Promise<boolean> {
+  const [atual] = await preverRepasses(db, organizacaoId, mes, hoje, [proprietarioId], true);
+  return !!atual && mesFechado(atual) && (await versaoDoConteudo(db, organizacaoId, atual, mes, agora)) === versao;
 }
 
 /** A versão a partir do conteúdo já montado (o mesmo objeto que gerou o PDF). */
@@ -414,6 +431,10 @@ export async function enviarFechamentos(
           pdf: Buffer.from(pdf.pdf).toString("base64"),
           versao: versaoDe(p, pdf.textos),
         };
+        // Estorno ou lançamento feito enquanto o pedido era montado: não manda um e-mail misturado
+        // (a marca sai e a próxima execução monta de novo).
+        if (!(await fechamentoAindaVale(db, organizacaoId, p.proprietarioId, mes, hoje, agora, carga.versao!)))
+          throw new Error("o fechamento mudou durante o envio; nada foi enviado");
         // Guarda o pedido antes de enviar: uma retomada manda exatamente o mesmo.
         await db
           .update(appSettings)
