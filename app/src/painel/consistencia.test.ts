@@ -193,7 +193,11 @@ describe("consistência entre telas (M4.8)", () => {
     const { linhas } = await carregarApartamentos(db, org, { imoveis: so403, todos: false, periodo: OUTUBRO });
     const portal = await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], semImovel: true, periodo: OUTUBRO });
     // O portal separa o que está em conferência (acertoPendente); o painel mostra o movimento todo.
-    return { inicio, brutos: [inicio.financeiro?.receitaBruta, linhas[0].financeiro.receitaBruta, portal.receitaBruta], acertos: [linhas[0].acertoPeriodo, portal.acerto + portal.acertoPendente] };
+    return {
+      inicio,
+      contagens: [inicio.reservasNoPeriodo, linhas[0].reservas, portal.reservas],
+      brutos: [inicio.financeiro?.receitaBruta, linhas[0].financeiro.receitaBruta, portal.receitaBruta],
+      acertos: [linhas[0].acertoPeriodo, portal.acerto + portal.acertoPendente] };
   };
 
   it("pendente calculada por versão antiga: o ajuste do deploy tira os lançamentos dela de todas as telas", async () => {
@@ -415,5 +419,20 @@ describe("consistência entre telas (M4.8)", () => {
     // Rodar de novo não muda nada.
     expect(await conferirMovimentadas(db, org)).toEqual({ reservas: 1, divergentes: 1 });
     expect(await doLivro()).toBe(antes);
+  });
+  it("confirmada com divergência que mudou de imóvel: conta para o imóvel e o dono do livro, igual em todas as telas", async () => {
+    const antes = (await tresTelas()).contagens;
+    const dados = reserva(a, "2026-10-01", "2026-10-03", { valorBruto: 50000, taxaCanal: 0 });
+    const r = await sincronizarReserva(db, org, "csv", "booking:R11", dados, null);
+    if (!r.ok) throw new Error("reserva");
+    await db.update(lancamentos).set({ estado: "realizado" }).where(and(eq(lancamentos.reservaId, r.reserva.id), eq(lancamentos.tipo, "receita_bruta")));
+    // Continua confirmada, mas foi para o 102 (de outro dono): os valores protegidos ficam no 403.
+    await sincronizarReserva(db, org, "csv", "booking:R11", { ...dados, imovelId: b }, null);
+    const depois = (await tresTelas()).contagens;
+    expect(depois).toEqual(antes.map((n) => n + 1));
+    // No 102 ela não conta (não há valor dela lá).
+    const so102 = (await listarImoveis(db, org)).filter((i) => i.codigo === "102");
+    const inicio102 = await carregarDashboard(db, org, { imoveis: so102, todos: false, periodo: OUTUBRO, ano: 2026, hoje: "2026-11-10", verFinanceiro: true });
+    expect(inicio102.reservasNoPeriodo).toBe(1);
   });
 });

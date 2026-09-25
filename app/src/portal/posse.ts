@@ -7,7 +7,7 @@
  * passou a ter o imóvel em diante (data do vínculo) e o imóvel não tem outro dono no livro: na
  * dúvida, o portal esconde — nunca mostra o histórico de outra pessoa.
  */
-import { type AnyColumn, and, eq, exists, isNotNull, isNull, not, notInArray, inArray, or, sql } from "drizzle-orm";
+import { type AnyColumn, and, eq, exists, gt, gte, isNotNull, isNull, lt, not, notInArray, inArray, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { lancamentos, proprietarioImoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
@@ -77,4 +77,54 @@ export function reservaDosDonos(db: Db, donos: readonly string[]) {
  */
 export function noPeriodoDosDonos(donos: readonly string[], imovel: AnyColumn, data: AnyColumn) {
   return sql`exists (select 1 from ${proprietarioImoveis} where ${proprietarioImoveis.imovelId} = ${imovel} and ${inArray(proprietarioImoveis.proprietarioId, [...donos])} and ${data} >= (${proprietarioImoveis.criadoEm} at time zone 'America/Sao_Paulo')::date)`;
+}
+
+/**
+ * Reservas que contam no período, com o imóvel em que contam (a mesma regra no Início, na aba
+ * Apartamentos, no portal e no PDF): confirmadas pela estada e pelo imóvel atual; confirmada com
+ * divergência entre o cálculo e o dinheiro já movimentado (M4.8) conta pelo livro — imóvel e mês
+ * dos valores em vigor —, porque é lá que os valores dela estão. Com `donos`, só as deles (regra de
+ * posse; divergente: a parte deles no livro).
+ */
+export async function reservasQueContam(
+  db: Db,
+  organizacaoId: string,
+  o: { imovelIds: readonly string[]; periodo: { inicio: string; fim: string }; donos?: readonly string[] },
+): Promise<{ id: string; imovelId: string }[]> {
+  if (!o.imovelIds.length || (o.donos && !o.donos.length)) return [];
+  const ids = [...o.imovelIds];
+  const [pelaEstada, peloLivro] = await Promise.all([
+    db
+      .select({ id: reservas.id, imovelId: reservas.imovelId })
+      .from(reservas)
+      .where(
+        and(
+          eq(reservas.organizacaoId, organizacaoId),
+          eq(reservas.estado, "confirmada"),
+          isNull(reservas.divergenciaEm),
+          inArray(reservas.imovelId, ids),
+          lt(reservas.checkin, o.periodo.fim),
+          gt(reservas.checkout, o.periodo.inicio),
+          o.donos ? reservaDosDonos(db, o.donos) : undefined,
+        ),
+      ),
+    db
+      .selectDistinct({ id: reservas.id, imovelId: lancamentos.imovelId })
+      .from(lancamentos)
+      .innerJoin(reservas, eq(reservas.id, lancamentos.reservaId))
+      .where(
+        and(
+          eq(lancamentos.organizacaoId, organizacaoId),
+          eq(reservas.estado, "confirmada"),
+          isNotNull(reservas.divergenciaEm),
+          o.donos ? and(eq(lancamentos.tipo, "direito_proprietario"), inArray(lancamentos.proprietarioId, [...o.donos])) : eq(lancamentos.tipo, "receita_bruta"),
+          inArray(lancamentos.imovelId, ids),
+          gte(lancamentos.competencia, o.periodo.inicio),
+          lt(lancamentos.competencia, o.periodo.fim),
+          lancamentoEmVigor(db),
+        ),
+      ),
+  ]);
+  const vistas = new Set<string>();
+  return [...pelaEstada, ...peloLivro.map((x) => ({ id: x.id, imovelId: x.imovelId as string }))].filter((x) => !vistas.has(x.id) && vistas.add(x.id));
 }

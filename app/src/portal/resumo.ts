@@ -3,11 +3,11 @@
  * valores vêm do mesmo livro do painel (nada é recalculado aqui); a contagem de reservas vem das
  * reservas confirmadas dos imóveis dele no período.
  */
-import { and, eq, gt, gte, inArray, isNotNull, isNull, lt, or, sql, sum } from "drizzle-orm";
-import { ajustes, lancamentos, proprietarios, proprietarioUsuarios, reservas, type TipoLancamento } from "@/db/schema";
+import { and, eq, gte, inArray, isNotNull, isNull, lt, or, sql, sum } from "drizzle-orm";
+import { ajustes, lancamentos, proprietarios, proprietarioUsuarios, type TipoLancamento } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
-import { lancamentoEmConferencia, lancamentoEmVigor, noPeriodoDosDonos, reservaDosDonos } from "./posse";
+import { lancamentoEmConferencia, lancamentoEmVigor, noPeriodoDosDonos, reservasQueContam } from "./posse";
 
 /** Proprietários (ativos) que este usuário pode ver no portal: ele mesmo ou quem ele representa. */
 export async function proprietariosDoUsuario(db: Db, organizacaoId: string, usuarioId: string): Promise<{ id: string; nome: string; chavePix: string }[]> {
@@ -106,20 +106,8 @@ export async function resumoDoProprietario(
     .selectDistinct({ id: lancamentos.reservaId })
     .from(lancamentos)
     .where(and(base, eq(lancamentos.tipo, "direito_proprietario"), ativo, inArray(lancamentos.proprietarioId, donos), isNotNull(lancamentos.reservaId)));
-  // Contagem: reservas confirmadas dos imóveis dele no período (como no Início), pela regra de posse.
-  const [contagem] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(reservas)
-    .where(
-      and(
-        eq(reservas.organizacaoId, organizacaoId),
-        eq(reservas.estado, "confirmada"),
-        inArray(reservas.imovelId, imoveis),
-        lt(reservas.checkin, o.periodo.fim),
-        gt(reservas.checkout, o.periodo.inicio),
-        reservaDosDonos(db, donos),
-      ),
-    );
+  // Contagem: a mesma regra do Início e da aba Apartamentos (confirmadas; divergente pelo livro).
+  const contagem = await reservasQueContam(db, organizacaoId, { imovelIds: imoveis, periodo: o.periodo, donos });
   const daReserva = await db
     .select({ tipo: lancamentos.tipo, valor: sum(lancamentos.valor) })
     .from(lancamentos)
@@ -129,7 +117,7 @@ export async function resumoDoProprietario(
   const v = (lista: { tipo: TipoLancamento; valor: string | null }[], t: TipoLancamento) => lista.filter((x) => x.tipo === t).reduce((s, x) => s + Number(x.valor ?? 0), 0);
   const neg = (x: number) => (x === 0 ? 0 : -x);
   return {
-    reservas: contagem?.n ?? 0,
+    reservas: contagem.length,
     receitaBruta: v(daReserva, "receita_bruta"),
     taxasCanais: neg(v(daReserva, "taxa_canal")),
     comissao: v(daReserva, "comissao"),

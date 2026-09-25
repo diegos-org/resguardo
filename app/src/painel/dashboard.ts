@@ -9,7 +9,7 @@ import { lancamentos, reservas as reservasTabela, type TipoLancamento } from "@/
 import type { Db } from "@/db/types";
 import { listarDespesas, totaisDespesas } from "@/despesas/despesas";
 import { totaisPorTipo } from "@/financeiro/ledger";
-import { lancamentoDeConferenciaResolvida } from "@/portal/posse";
+import { lancamentoDeConferenciaResolvida, reservasQueContam } from "@/portal/posse";
 import type { Imovel } from "@/imoveis/repositorio";
 import { conflitos } from "@/reservas/regras";
 import { listarBloqueios, listarReservas, type Reserva } from "@/reservas/repositorio";
@@ -57,6 +57,8 @@ export async function carregarDashboard(
         // Desde ontem: quem sai hoje também aparece.
         listarReservas(db, organizacaoId, { inicio: somaDias(o.hoje, -1), fim: somaDias(o.hoje, 8), imovelIds: ids }),
       ]);
+  // Só confirmadas, como no portal e no relatório (pendente ainda não é venda); divergente pelo livro.
+  const contam = vazio ? [] : await reservasQueContam(db, organizacaoId, { imovelIds: ids, periodo: o.periodo });
   const semana = somaDias(o.hoje, 7);
   const porId = new Map(o.imoveis.map((i) => [i.id, i]));
   const ocupacao = calcularOcupacao(
@@ -229,8 +231,7 @@ export async function carregarDashboard(
   return {
     ocupacao,
     ocupacaoTotal: ocupacaoTotal(ocupacao),
-    // Só confirmadas, como no portal e no relatório (pendente ainda não é venda).
-    reservasNoPeriodo: reservas.filter((r) => r.estado === "confirmada").length,
+    reservasNoPeriodo: contam.length,
     proximasEntradas: proximas.filter((r) => r.checkin >= o.hoje && r.checkin < semana),
     proximasSaidas: proximas.filter((r) => r.checkout >= o.hoje && r.checkout < semana).sort((x, y) => x.checkout.localeCompare(y.checkout)),
     financeiro,

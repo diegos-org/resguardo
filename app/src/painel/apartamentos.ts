@@ -10,6 +10,7 @@ import { proprietarioImoveis, proprietarios } from "@/db/schema";
 import type { Imovel } from "@/imoveis/repositorio";
 import type { Db } from "@/db/types";
 import { acertoPorImovelEDono, despesasProprietarioPorDono, semImovelPorDono, type TotaisDoImovel, totaisPorImovel } from "@/financeiro/ledger";
+import { reservasQueContam } from "@/portal/posse";
 import { listarBloqueios, listarReservas } from "@/reservas/repositorio";
 import { calcularOcupacao, type Financeiro, resumoFinanceiro } from "./indicadores";
 
@@ -133,6 +134,8 @@ export async function carregarApartamentos(
     o.todos ? semImovelPorDono(db, organizacaoId, o.periodo) : [],
     o.todos ? semImovelPorDono(db, organizacaoId, { fim: o.periodo.fim }) : [],
   ]);
+  // Só confirmadas, como no Início, no portal e no relatório; divergente pelo livro.
+  const contam = await reservasQueContam(db, organizacaoId, { imovelIds: ids, periodo: o.periodo });
   const ocupacao = new Map(
     calcularOcupacao(
       ids,
@@ -210,8 +213,7 @@ export async function carregarApartamentos(
       codigo,
       nome,
       ativo,
-      // Só confirmadas, como no Início, no portal e no relatório.
-      reservas: imovelId ? reservas.filter((r) => r.imovelId === imovelId && r.estado === "confirmada").length : 0,
+      reservas: imovelId ? contam.filter((r) => r.imovelId === imovelId).length : 0,
       noitesVendidas: oc?.vendidas ?? 0,
       noitesDisponiveis: oc?.disponiveis ?? 0,
       ocupacao: oc?.taxa ?? null,
