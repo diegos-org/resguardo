@@ -631,7 +631,8 @@
     editáveis ali mesmo): **confirmação** (logo depois de confirmada), **check-in** (2 dias
     antes da entrada, às 10h — o mesmo momento em que o endereço aparece em "Minha reserva"),
     **check-out** (1 dia antes da saída, às 14h) e **agradecimento** (3 dias depois da saída,
-    às 10h). Horário de São Paulo; o sistema roda às 10h e às 14h;
+    às 10h). Horário de São Paulo; o sistema confere de hora em hora (cada mensagem sai até
+    cerca de 1 hora depois do momento previsto);
   - vem **desligado**: você liga com a caixinha "Envio automático ligado". Vale **daquele
     momento em diante** — nada previsto para antes é mandado atrasado;
   - escolha as **origens**: vem marcado só **site e direta** (o Airbnb e o Booking já mandam as

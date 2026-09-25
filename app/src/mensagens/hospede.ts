@@ -5,7 +5,7 @@
  *   "Minha reserva");
  * - check-out: 1 dia antes da saída, às 14h;
  * - agradecimento: 3 dias depois da saída, às 10h.
- * Horários no fuso do imóvel. Cada execução (agendador) calcula o que está no prazo a partir dos
+ * Horários no fuso do imóvel; o agendador roda de hora em hora. Cada execução calcula o que está no prazo a partir dos
  * dados atuais: cancelou, a mensagem não sai; mudou a data, vale a nova.
  *
  * Regras:
@@ -23,6 +23,7 @@ import { gravarConfig, lerConfig } from "@/configuracoes/armazem";
 import { lerEmpresa } from "@/configuracoes/empresa";
 import { preencherModelo, type Variavel, variaveisDoTexto } from "@/configuracoes/modelos-texto";
 import {
+  appSettings,
   imoveis,
   imoveisDetalhes,
   mensagensHospede,
@@ -256,13 +257,20 @@ export async function enviarMensagensHospede(db: Db, organizacaoId: string, corr
         })
         .returning({ id: mensagensHospede.id, tentativas: mensagensHospede.tentativas });
       if (!marca) continue;
+      let falha: unknown = null;
       try {
         await correio.enviar({ para, assunto, texto, chave: `mensagem-hospede:${marca.id}:${marca.tentativas}` });
+      } catch (e) {
+        falha = e ?? new Error("falha no envio");
+      }
+      if (falha === null) {
+        // Se gravar o sucesso falhar, o registro fica "enviando" (aparece como incerto) e nunca é
+        // tentado de novo: o provedor já aceitou.
         await db.update(mensagensHospede).set({ estado: "enviado", enviadoEm: new Date(), atualizadoEm: new Date() }).where(eq(mensagensHospede.id, marca.id));
         res.enviadas++;
-      } catch (e) {
-        const incerto = e instanceof ErroEnvioIncerto;
-        const erro = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+      } else {
+        const incerto = falha instanceof ErroEnvioIncerto;
+        const erro = (falha instanceof Error ? falha.message : String(falha)).slice(0, 300);
         await db.update(mensagensHospede).set({ estado: incerto ? "incerto" : "falhou", erro, atualizadoEm: new Date() }).where(eq(mensagensHospede.id, marca.id));
         if (incerto) res.incertas++;
         else res.falhas++;
@@ -272,14 +280,38 @@ export async function enviarMensagensHospede(db: Db, organizacaoId: string, corr
   return res;
 }
 
-export function resumoMensagens(r: ResultadoMensagens): string {
+/**
+ * Resumo de uma execução. `detalhes`: com os códigos das reservas não enviadas — só para a tela da
+ * própria organização; o registro geral (página Sistema) leva só as contagens.
+ */
+export function resumoMensagens(r: ResultadoMensagens, detalhes = true): string {
   if (r.desligado) return "desligado";
   if (r.semProvedor) return "sem provedor de e-mail configurado";
   const partes = [`${r.enviadas} enviada(s)`];
   if (r.falhas) partes.push(`${r.falhas} recusada(s) pelo provedor`);
   if (r.incertas) partes.push(`${r.incertas} sem confirmação do provedor`);
-  if (r.avisos.length) partes.push(`${r.avisos.length} não enviada(s): ${r.avisos.slice(0, 5).join("; ")}${r.avisos.length > 5 ? "…" : ""}`);
+  if (r.avisos.length)
+    partes.push(
+      detalhes
+        ? `${r.avisos.length} não enviada(s): ${r.avisos.slice(0, 5).join("; ")}${r.avisos.length > 5 ? "…" : ""}`
+        : `${r.avisos.length} não enviada(s) por falta de dado (detalhes em Configurações → Modelos de mensagem)`,
+    );
   return partes.join(", ");
+}
+
+const chaveUltima = (organizacaoId: string) => `mensagens-hospede:ultima:${organizacaoId}`;
+
+/** Guarda o resultado da última execução desta organização (com os detalhes dela). */
+export async function registrarUltimaExecucao(db: Db, organizacaoId: string, agora: Date, resumo: string, ok: boolean): Promise<void> {
+  const value = { quando: agora.toISOString(), resumo: resumo.slice(0, 2000), ok };
+  await db.insert(appSettings).values({ key: chaveUltima(organizacaoId), value }).onConflictDoUpdate({ target: appSettings.key, set: { value, updatedAt: new Date() } });
+}
+
+export async function ultimaExecucaoDaOrganizacao(db: Db, organizacaoId: string): Promise<{ quando: Date; resumo: string; ok: boolean } | null> {
+  const [l] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, chaveUltima(organizacaoId)));
+  const v = l?.value as { quando?: unknown; resumo?: unknown; ok?: unknown } | undefined;
+  if (!v || typeof v.quando !== "string" || typeof v.resumo !== "string") return null;
+  return { quando: new Date(v.quando), resumo: v.resumo, ok: v.ok === true };
 }
 
 export type EnvioListado = {

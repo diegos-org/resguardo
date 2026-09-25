@@ -1,6 +1,7 @@
 /**
- * Mensagens programadas ao hóspede (M9.2), chamado pelo agendador da Vercel às 10h e às 14h
- * (13h e 17h UTC; ver `vercel.json`). Só roda com o segredo do agendador (`CRON_SECRET`).
+ * Mensagens programadas ao hóspede (M9.2), chamado pelo agendador da Vercel de hora em hora (24
+ * agendamentos diários em `vercel.json`, um por hora — vale em qualquer plano da Vercel e cobre o
+ * fuso de cada imóvel). Só roda com o segredo do agendador (`CRON_SECRET`).
  */
 import { getDb } from "@/db/client";
 import { correioDoAmbiente } from "@/email/correio";

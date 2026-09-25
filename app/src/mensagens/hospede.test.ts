@@ -2,14 +2,15 @@ import { eq as eq_ } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { salvarEmpresa } from "@/configuracoes/empresa";
 import { atualizarModelo, garantirModelosIniciais, listarModelos } from "@/configuracoes/modelos";
-import { imoveis, mensagensHospede, organizacoes, reservas } from "@/db/schema";
+import { execucoesAutomacao, imoveis, mensagensHospede, organizacoes, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { type Correio, CorreioMemoria, ErroEnvioIncerto } from "@/email/correio";
 import { DETALHES_VAZIOS, salvarDetalhes } from "@/imoveis/detalhes";
 import { cancelarReserva, confirmarReserva, criarReserva, sincronizarReserva } from "@/reservas/repositorio";
 import type { DadosReserva } from "@/reservas/regras";
-import { enviarMensagensHospede, lerConfigMensagens, MAX_TENTATIVAS, prazoDaMensagem, resumoMensagens, salvarConfigMensagens, ultimosEnvios } from "./hospede";
+import { mensagensDeTodas } from "./cron";
+import { enviarMensagensHospede, lerConfigMensagens, MAX_TENTATIVAS, prazoDaMensagem, resumoMensagens, salvarConfigMensagens, ultimaExecucaoDaOrganizacao, ultimosEnvios } from "./hospede";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -185,6 +186,42 @@ describe("envio (M9.2)", () => {
     // Um pedido que ficou "enviando" há muito tempo aparece como incerto.
     await db.update(mensagensHospede).set({ estado: "enviando" }).where(eq_(mensagensHospede.estado, "incerto"));
     expect((await ultimosEnvios(db, org, new Date(Date.now() + 3_600_000))).find((e) => e.codigo === "SCL-0002")?.estado).toBe("incerto");
+  });
+
+  it("provedor aceitou mas o registro do sucesso falhou: não é tratado como recusa nem reenviado", async () => {
+    await ligar();
+    await db.insert(reservas).values(reserva());
+    let quebrar = false;
+    const dbQuebrado = new Proxy(db, {
+      get(t, p) {
+        // Só a primeira gravação depois do envio falha (falha passageira).
+        if (p === "update" && quebrar) {
+          quebrar = false;
+          return () => { throw new Error("banco caiu"); };
+        }
+        const v = Reflect.get(t, p);
+        return typeof v === "function" ? v.bind(t) : v;
+      },
+    }) as Db;
+    const aceita: Correio = { nome: "aceita", enviar: async (m) => { await correio.enviar(m); quebrar = true; } };
+    await expect(enviarMensagensHospede(dbQuebrado, org, aceita, sp("2026-09-20", "14:00"))).rejects.toThrow("banco caiu");
+    quebrar = false;
+    const [linha] = await db.select().from(mensagensHospede);
+    expect(linha).toMatchObject({ estado: "enviando", tentativas: 1 });
+    await enviarMensagensHospede(db, org, correio, sp("2026-09-20", "16:00"));
+    expect(correio.enviadas).toHaveLength(1);
+  });
+
+  it("resumo geral (página Sistema) sem códigos de reserva; detalhe fica só na organização", async () => {
+    await ligar();
+    const [{ id: outra }] = await db.insert(organizacoes).values({ nome: "Outra" }).returning();
+    await db.insert(reservas).values(reserva({ hospedeEmail: "" }));
+    await mensagensDeTodas(db, correio, sp("2026-09-20", "14:00"));
+    const [exec] = await db.select().from(execucoesAutomacao);
+    expect(exec.resumo).not.toContain("SCL-0001");
+    expect(exec.resumo).toContain("1 não enviada(s)");
+    expect((await ultimaExecucaoDaOrganizacao(db, org))?.resumo).toContain("SCL-0001");
+    expect(await ultimaExecucaoDaOrganizacao(db, outra)).toMatchObject({ resumo: "desligado" });
   });
 
   it("sem provedor de e-mail com o envio ligado: avisa", async () => {
