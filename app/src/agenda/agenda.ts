@@ -450,8 +450,20 @@ async function lerCobertura(db: Db, chave: string): Promise<string[] | null> {
   return Array.isArray(c) ? c.filter((x): x is string => typeof x === "string") : null;
 }
 
-async function gravarMarco(db: Db, chave: string, em: Date, imoveis?: string[] | null): Promise<void> {
-  const value = imoveis === undefined ? { em: em.toISOString() } : { em: em.toISOString(), imoveis };
+/**
+ * Quando cada imóvel entrou por último num e-mail que chegou a esta pessoa. Imóvel que ficou de fora
+ * (inativo, ou de cidade que ela deixou de receber) volta a partir daí: nada do intervalo se perde.
+ * null = marco antigo, sem o registro por imóvel (vale `lerCobertura`).
+ */
+async function lerPorImovel(db: Db, chave: string): Promise<Record<string, string> | null> {
+  const [l] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, chave));
+  const m = (l?.value as { porImovel?: unknown } | undefined)?.porImovel;
+  if (!m || typeof m !== "object" || Array.isArray(m)) return null;
+  return Object.fromEntries(Object.entries(m as Record<string, unknown>).filter((e): e is [string, string] => typeof e[1] === "string" && !Number.isNaN(Date.parse(e[1]))));
+}
+
+async function gravarMarco(db: Db, chave: string, em: Date, imoveis?: string[] | null, porImovel?: Record<string, string>): Promise<void> {
+  const value = imoveis === undefined ? { em: em.toISOString() } : { em: em.toISOString(), imoveis, ...(porImovel ? { porImovel } : {}) };
   await db.insert(appSettings).values({ key: chave, value }).onConflictDoUpdate({ target: appSettings.key, set: { value, updatedAt: new Date() } });
 }
 
@@ -536,8 +548,14 @@ async function agendaDaPessoa(
   const marco = await lerMarco(db, chaveUltimaDe(organizacaoId, email));
   const umDia = new Date(corte.getTime() - 86_400_000);
   const desde = marco ? new Date(marco.getTime() - SOBREPOSICAO_MS) : umDia;
-  const cobertas = marco ? await lerCobertura(db, chaveUltimaDe(organizacaoId, email)) : null;
+  const porImovel = marco ? await lerPorImovel(db, chaveUltimaDe(organizacaoId, email)) : null;
+  const cobertas = marco && !porImovel ? await lerCobertura(db, chaveUltimaDe(organizacaoId, email)) : null;
   const coberto = (imovelId: string) => cobertas === null || cobertas.includes(imovelId);
+  // Desde quando o imóvel está sem entrar num e-mail desta pessoa (nunca entrou: as 24h antes do corte).
+  const inicioCoberto = (imovelId: string) => {
+    if (porImovel) return porImovel[imovelId] ? new Date(Date.parse(porImovel[imovelId]) - SOBREPOSICAO_MS) : umDia;
+    return coberto(imovelId) ? desde : umDia;
+  };
   // Janela de um incerto: as 24h antes do corte dele e, se o pedido guardado levava reserva mais
   // antiga (a pessoa estava dias sem receber), desde a mais antiga delas (o evento traz a data).
   const inicioIncerto = (i: Incerto) => {
@@ -550,7 +568,7 @@ async function agendaDaPessoa(
     return new Date(t);
   };
   const inicioDe = (imovelId: string) => {
-    let t = coberto(imovelId) ? desde : umDia;
+    let t = inicioCoberto(imovelId);
     for (const i of incertos) {
       const ini = inicioIncerto(i);
       if (ini && ini < t && (i.imoveis === null || i.imoveis.includes(imovelId))) t = ini;
@@ -558,6 +576,10 @@ async function agendaDaPessoa(
     return t;
   };
   let menor = desde < umDia ? desde : umDia;
+  for (const em of Object.values(porImovel ?? {})) {
+    const ini = new Date(Date.parse(em) - SOBREPOSICAO_MS);
+    if (ini < menor) menor = ini;
+  }
   for (const i of incertos) {
     const ini = inicioIncerto(i);
     if (ini && ini < menor) menor = ini;
@@ -606,20 +628,38 @@ function incertosDe(pendentes: readonly Marca[], email: string, hoje: string): {
   return { ate: maior, lista, enviando };
 }
 
-async function reconciliarIncertos(db: Db, pendentes: readonly Marca[], email: string, hoje: string): Promise<{ ate: Date | null; lista: Incerto[] }> {
-  const r = incertosDe(pendentes, email, hoje);
-  for (const l of r.enviando) await db.update(appSettings).set({ value: { ...(l.value as object), estado: "incerto" }, updatedAt: new Date() }).where(eq(appSettings.key, l.key));
+/**
+ * Com a trava da pessoa já tomada: relê as marcas dela (a lista da execução pode estar velha — outra
+ * execução pode ter resolvido ou aparado uma delas enquanto esta esperava) e passa para "incerto" só
+ * as que continuam "enviando", sem regravar o resto do valor.
+ * Exportada só para testes.
+ */
+export async function reconciliarIncertos(db: Db, pendentes: readonly Marca[], email: string, hoje: string): Promise<{ ate: Date | null; lista: Incerto[] }> {
+  const chaves = incertosDe(pendentes, email, hoje).lista.map((i) => i.chave);
+  const atuais = chaves.length
+    ? await db
+        .select({ key: appSettings.key, value: appSettings.value })
+        .from(appSettings)
+        .where(and(inArray(appSettings.key, chaves), sql`${appSettings.value} ->> 'estado' in ('enviando', 'incerto')`))
+    : [];
+  const r = incertosDe(atuais, email, hoje);
+  for (const l of r.enviando)
+    await db
+      .update(appSettings)
+      .set({ value: sql`jsonb_set(${appSettings.value}, '{estado}', '"incerto"')`, updatedAt: new Date() })
+      .where(and(eq(appSettings.key, l.key), sql`${appSettings.value} ->> 'estado' = 'enviando'`));
   return { ate: r.ate, lista: r.lista };
 }
 
-type Marca = { key: string; value: unknown };
+export type Marca = { key: string; value: unknown };
 
 /** Faixa de chaves das marcas diárias de uma organização (agendado e manual), consultada pelo índice da chave. */
 const faixas = (org: string) => [`agenda-diaria:${org}:`, `agenda-diaria-manual:${org}:`];
 const naFaixa = (prefixo: string, ate = "\uffff") => and(gte(appSettings.key, prefixo), lt(appSettings.key, prefixo + ate));
 
 /** Marcas ainda não resolvidas desta organização ("enviando" ou "incerto"), lidas uma vez por execução. */
-async function marcasPendentes(db: Db, org: string): Promise<Marca[]> {
+/** Exportada também para testes. */
+export async function marcasPendentes(db: Db, org: string): Promise<Marca[]> {
   return db
     .select({ key: appSettings.key, value: appSettings.value })
     .from(appSettings)
@@ -887,7 +927,13 @@ export async function enviarAgenda(
         // ao voltar, conta como novo para a pessoa (reservas novas das últimas 24h).
         const deste = enviada.imoveis;
         const cobertura = marcoAtual && marcoAtual > corte ? await lerCobertura(tx, chaveUltimaDe(organizacaoId, d.email)) : deste;
-        await gravarMarco(tx, chaveUltimaDe(organizacaoId, d.email), marco, cobertura);
+        // Por imóvel: cada um fica com a última vez em que entrou num e-mail que chegou (o maior corte).
+        // Marco antigo sem esse registro: os imóveis que ele cobria valem desde ele.
+        const anterior = (await lerPorImovel(tx, chaveUltimaDe(organizacaoId, d.email))) ?? {};
+        if (marcoAtual && !Object.keys(anterior).length) for (const id of (await lerCobertura(tx, chaveUltimaDe(organizacaoId, d.email))) ?? []) anterior[id] = marcoAtual.toISOString();
+        const porImovel = { ...anterior };
+        for (const id of deste) if (!porImovel[id] || Date.parse(porImovel[id]) < corte.getTime()) porImovel[id] = corte.toISOString();
+        await gravarMarco(tx, chaveUltimaDe(organizacaoId, d.email), marco, cobertura, porImovel);
         // As reservas novas deste envio: na próxima, a faixa de sobreposição não as repete.
         const atuais = await lerAvisadas(tx, chaveAvisadasDe(organizacaoId, d.email));
         const value = { avisadas: avisadasDepois(atuais, enviada.eventos, corte, marco) };

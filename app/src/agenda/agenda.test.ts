@@ -7,7 +7,7 @@ import type { Db } from "@/db/types";
 import { type Correio, CorreioMemoria, ErroEnvioIncerto, type Mensagem } from "@/email/correio";
 import type { DadosReserva } from "@/reservas/regras";
 import { criarReserva, sincronizarReserva } from "@/reservas/repositorio";
-import { enviarAgenda, lerConfigAgenda, montarAgenda, previaDaAgenda, salvarConfigAgenda, textoDaAgenda, ultimaAgenda, ultimaAgendaDe } from "./agenda";
+import { enviarAgenda, lerConfigAgenda, marcasPendentes, montarAgenda, previaDaAgenda, reconciliarIncertos, salvarConfigAgenda, textoDaAgenda, ultimaAgenda, ultimaAgendaDe } from "./agenda";
 import { agendaDeTodas, agendaManual } from "./cron";
 
 let db: Db;
@@ -869,6 +869,44 @@ describe("configuração e envio", () => {
     expect(correio.enviadas[1].texto).toContain("entrada seg 07/08");
     expect(correio.enviadas[1].texto).toContain("pode já ter vindo");
     expect((await marca()).estado).toBe("resolvido");
+  });
+
+  it("imóvel inativo por mais de um dia: ao voltar, chega a reserva confirmada no começo do intervalo", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    const correio = new CorreioMemoria();
+    await enviarAgenda(db, org, correio, AGORA);
+    // Dia 2: Búzios inativo; uma reserva de Búzios entra logo no começo do dia.
+    await db.update(imoveis).set({ ativo: false }).where(eq(imoveis.id, buzios));
+    await nova(buzios, "2028-09-04", "2028-09-06", "2026-10-02T01:00:00.000Z");
+    await enviarAgenda(db, org, correio, new Date("2026-10-02T23:00:00Z"));
+    await enviarAgenda(db, org, correio, new Date("2026-10-03T23:00:00Z"));
+    // Dia 4: Búzios volta (mais de 24h depois da reserva): ela ainda chega.
+    await db.update(imoveis).set({ ativo: true }).where(eq(imoveis.id, buzios));
+    await enviarAgenda(db, org, correio, new Date("2026-10-04T23:00:00Z"));
+    expect(correio.enviadas.at(-1)!.texto).toContain("entrada seg 04/09");
+    // E só uma vez.
+    await enviarAgenda(db, org, correio, new Date("2026-10-05T23:00:00Z"));
+    expect(correio.enviadas.at(-1)!.texto).not.toContain("04/09");
+  });
+
+  it("marca pendente resolvida por outra execução enquanto esta esperava a trava não volta a ser incerta", async () => {
+    const chave = `agenda-diaria:${org}:2026-09-30:a@example.com`;
+    const carga = { assunto: "x", texto: "x", eventos: ["ev-1"], imoveis: [rio] };
+    await db.insert(appSettings).values({ key: chave, value: { em: "2026-09-30T23:00:00.000Z", estado: "enviando", corte: "2026-09-30T23:00:00.000Z", carga } });
+    // A lista da execução foi lida antes; outra execução resolve a marca antes de esta tomar a trava.
+    const lidas = await marcasPendentes(db, org);
+    await db.update(appSettings).set({ value: { em: "2026-09-30T23:00:00.000Z", estado: "resolvido" } }).where(eq(appSettings.key, chave));
+    const r = await reconciliarIncertos(db, lidas, "a@example.com", "2026-10-01");
+    expect(r.lista).toEqual([]);
+    const [m] = await db.select().from(appSettings).where(eq(appSettings.key, chave));
+    expect(m.value).toEqual({ em: "2026-09-30T23:00:00.000Z", estado: "resolvido" });
+    // Uma ainda "enviando" vira "incerto", com o resto do valor como está no banco.
+    await db.update(appSettings).set({ value: { em: "2026-09-30T23:00:00.000Z", estado: "enviando", corte: "2026-09-30T23:00:00.000Z", carga: { ...carga, eventos: [] } } }).where(eq(appSettings.key, chave));
+    const velhas = [{ key: chave, value: { estado: "enviando", corte: "2026-09-30T23:00:00.000Z", carga } }];
+    const r2 = await reconciliarIncertos(db, velhas, "a@example.com", "2026-10-01");
+    expect(r2.lista[0].eventos).toEqual([]);
+    const [m2] = await db.select().from(appSettings).where(eq(appSettings.key, chave));
+    expect(m2.value).toMatchObject({ estado: "incerto", carga: { eventos: [] } });
   });
 
   it("envio incerto aberto por um imóvel de fora não reenvia a cada dia o que já foi entregue", async () => {
