@@ -9,8 +9,10 @@ import { getDb } from "@/db/client";
 import { hojeISO } from "@/lib/datas";
 import { centavosParaCampo } from "@/lib/dinheiro-form";
 import { formatBRL } from "@/lib/money";
+import { enviarFechamentoAcao, salvarFechamentoEmailAcao } from "@/fechamento/acoes";
+import { lerConfigFechamentoEmail, situacaoDosFechamentos } from "@/fechamento/email";
 import { estornarRepasseAcao, fecharMesAcao, pagarRepasseAcao } from "@/repasses/acoes";
-import { limitesDoMes, mesAFechar, nomeMes, type PrevisaoRepasse, preverRepasses, somarMes } from "@/repasses/repasses";
+import { limitesDoMes, mesAFechar, nomeMes, type PrevisaoRepasse, somarMes } from "@/repasses/repasses";
 
 const dataBr = (d: string) => d.split("-").reverse().join("/");
 const SUCESSO: Record<string, string> = { fechado: "Mês fechado: repasse gerado.", pago: "Repasse marcado como pago.", estornado: "Repasse estornado." };
@@ -43,8 +45,9 @@ export default async function Repasses({ searchParams }: PageProps<"/painel/fina
   const pedido = typeof params.mes === "string" ? params.mes : "";
   const mes = limitesDoMes(pedido) ? pedido : mesAFechar(hoje);
   const editar = podeFazer(sessao.papel, "financeiro:editar");
-  const lista = await preverRepasses(getDb(), sessao.organizacaoId, mes, hoje);
-  const salvo = typeof params.salvo === "string" ? SUCESSO[params.salvo] : undefined;
+  const [lista, configEmail] = await Promise.all([situacaoDosFechamentos(getDb(), sessao.organizacaoId, mes, hoje), lerConfigFechamentoEmail(getDb(), sessao.organizacaoId)]);
+  const salvo = typeof params.salvo === "string" ? SUCESSO[params.salvo] : typeof params.info === "string" ? params.info : undefined;
+  const prontos = lista.filter((p) => p.situacao === "pronto").length;
   const erro = typeof params.erro === "string" ? params.erro : undefined;
   const aPagar = lista.reduce((s, p) => s + (p.repasse ? (p.repasse.situacao === "a_pagar" ? p.repasse.valor : 0) : p.valor), 0);
 
@@ -73,6 +76,45 @@ export default async function Repasses({ searchParams }: PageProps<"/painel/fina
       <p className={styles.etiqueta} style={{ alignSelf: "flex-start" }}>
         {lista.length} proprietário(s) com acerto · a transferir: {formatBRL(aPagar)}
       </p>
+
+      <details className={styles.form} aria-label="E-mail do fechamento">
+        <summary style={{ cursor: "pointer", fontWeight: 600 }}>
+          E-mail do fechamento aos proprietários · {configEmail.ativo ? "ligado (todo dia às 9h, a partir do dia 1º)" : "desligado"}
+        </summary>
+        <p style={{ color: "var(--scl-texto-2)", fontSize: "0.875rem", margin: 0 }}>
+          Cada proprietário recebe o relatório do mês em PDF, uma vez, depois de o mês dele ser fechado (repasse gerado, ou nada a repassar e sem
+          pendências). Quem ainda tem pendência ou está sem e-mail fica de fora e aparece aqui. Use {"{nome}"} e {"{mes}"} no texto.
+        </p>
+        {editar ? (
+          <form action={salvarFechamentoEmailAcao} className={styles.form} style={{ padding: 0, border: 0 }}>
+            <input type="hidden" name="mes" value={mes} />
+            <label style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <input type="checkbox" name="ativo" value="sim" defaultChecked={configEmail.ativo} /> Enviar automaticamente
+            </label>
+            <label>
+              Assunto
+              <input name="assunto" defaultValue={configEmail.assunto} maxLength={200} required />
+            </label>
+            <label>
+              Texto
+              <textarea name="texto" defaultValue={configEmail.texto} rows={6} maxLength={4000} required />
+            </label>
+            <div className={styles.acoes}>
+              <button type="submit">Salvar</button>
+            </div>
+          </form>
+        ) : (
+          <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>{`${configEmail.assunto}\n\n${configEmail.texto}`}</pre>
+        )}
+        {editar && prontos > 0 && (
+          <form action={enviarFechamentoAcao} className={styles.acoes}>
+            <input type="hidden" name="mes" value={mes} />
+            <BotaoConfirmar pergunta={`Enviar agora o fechamento de ${nomeMes(mes)} por e-mail a ${prontos} proprietário(s) pronto(s)?`}>
+              Enviar agora para os prontos ({prontos})
+            </BotaoConfirmar>
+          </form>
+        )}
+      </details>
 
       {lista.length === 0 && <p>Nenhum proprietário com acerto até o fim deste mês.</p>}
       {lista.map((p) => {
@@ -108,6 +150,45 @@ export default async function Repasses({ searchParams }: PageProps<"/painel/fina
                 {t}
               </p>
             ))}
+
+            <p style={{ margin: 0, fontSize: "0.875rem", color: "var(--scl-texto-2)" }}>
+              E-mail do fechamento:{" "}
+              {p.situacao === "enviado"
+                ? `enviado${p.enviadoEm ? ` em ${new Date(p.enviadoEm).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" })}` : ""} para ${p.enviadoPara.join(", ") || "—"}`
+                : p.situacao === "aguardando"
+                  ? `tentativa sem confirmação do provedor para ${p.destinos.join(", ")}: o mesmo e-mail é repetido depois de 15 minutos`
+                  : p.situacao === "incerto"
+                  ? `sem confirmação do provedor há mais de um dia${p.destinosTentados.length ? ` (tentativa para ${p.destinosTentados.join(", ")})` : ""}: pode ter chegado. Confira com o proprietário; se não chegou, use "Enviar e-mail de novo"`
+                  : p.situacao === "pronto"
+                  ? `pronto para enviar a ${p.destinos.join(", ")}`
+                  : p.situacao === "sem_relatorio"
+                    ? "sem imóvel ligado nem lançamento neste mês: não há relatório para enviar"
+                  : p.situacao === "sem_email"
+                    ? "sem e-mail cadastrado — cadastre no proprietário"
+                    : p.enviadoEm
+                      ? "mês reaberto: espera ser fechado de novo (depois, use \"Enviar e-mail de novo\")"
+                      : "espera o mês ser fechado"}
+            </p>
+            {p.reenvioPendente && (
+              <p role="note" className={styles.alerta} style={{ margin: 0 }}>
+                {p.reenvioPendente.estado === "incerto"
+                  ? `O último "enviar de novo"${p.reenvioPendente.destinos.length ? ` (para ${p.reenvioPendente.destinos.join(", ")})` : ""} ficou sem confirmação do provedor: pode ter chegado. Confira com o proprietário antes de enviar outra vez.`
+                  : `Há um "enviar de novo" ainda sem confirmação do provedor${p.reenvioPendente.destinos.length ? ` (para ${p.reenvioPendente.destinos.join(", ")})` : ""}: o sistema tenta o mesmo e-mail de novo depois de 15 minutos (clique em enviar de novo).`}
+              </p>
+            )}
+            {editar && (p.situacao === "pronto" || p.situacao === "aguardando" || ((p.situacao === "enviado" || p.situacao === "incerto") && p.destinos.length > 0)) && (
+              <form action={enviarFechamentoAcao} className={styles.acoes}>
+                <input type="hidden" name="mes" value={mes} />
+                <input type="hidden" name="proprietarioId" value={p.proprietarioId} />
+                {(p.situacao === "enviado" || p.situacao === "incerto") && <input type="hidden" name="reenviar" value="sim" />}
+                <BotaoConfirmar
+                  pergunta={`${p.situacao === "pronto" ? "Enviar" : p.situacao === "aguardando" ? "Tentar de novo (o mesmo e-mail)" : "Enviar de novo"} o fechamento de ${nomeMes(mes)} para ${p.nome} (${p.destinos.join(", ")})?`}
+                  className={styles.pequeno}
+                >
+                  {p.situacao === "pronto" ? "Enviar e-mail do fechamento" : p.situacao === "aguardando" ? "Tentar de novo agora" : "Enviar e-mail de novo"}
+                </BotaoConfirmar>
+              </form>
+            )}
 
             {editar && !r && p.valor > 0 && p.bloqueios.length === 0 && (
               <form action={fecharMesAcao} className={styles.acoes}>

@@ -13,6 +13,10 @@ export type Mensagem = {
   texto: string;
   /** Chave de idempotência: o provedor ignora um segundo envio com a mesma chave (ex.: nova tentativa). */
   chave?: string;
+  /** Cópias (ex.: representantes que recebem os relatórios do proprietário). */
+  copias?: string[];
+  /** Arquivos anexados (ex.: o PDF do fechamento). */
+  anexos?: { nome: string; conteudo: Uint8Array }[];
 };
 
 /** Chave de idempotência com tamanho fixo: hash da chave inteira (cortar poderia juntar e-mails diferentes). */
@@ -55,7 +59,14 @@ export class CorreioResend implements Correio {
       r = await this.fetchImpl("https://api.resend.com/emails", {
         method: "POST",
         headers: { Authorization: `Bearer ${this.chave}`, "Content-Type": "application/json", ...(m.chave ? { "Idempotency-Key": chaveIdempotencia(m.chave) } : {}) },
-        body: JSON.stringify({ from: this.remetente, to: [m.para], subject: m.assunto, text: m.texto }),
+        body: JSON.stringify({
+          from: this.remetente,
+          to: [m.para],
+          ...(m.copias?.length ? { cc: m.copias } : {}),
+          subject: m.assunto,
+          text: m.texto,
+          ...(m.anexos?.length ? { attachments: m.anexos.map((a) => ({ filename: a.nome, content: Buffer.from(a.conteudo).toString("base64") })) } : {}),
+        }),
         // Não fica pendurada: sem resposta em 50s, vira envio incerto.
         signal: AbortSignal.timeout(50_000),
       });

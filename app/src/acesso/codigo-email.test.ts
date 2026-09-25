@@ -135,6 +135,7 @@ describe("correio", () => {
     await c.enviar({ para: "a@example.com", assunto: "Oi", texto: "t" });
     expect(chamadas[0][0]).toBe("https://api.resend.com/emails");
     expect(JSON.parse(String(chamadas[0][1].body))).toMatchObject({ to: ["a@example.com"], subject: "Oi" });
+    expect(JSON.parse(String(chamadas[0][1].body)).attachments).toBeUndefined();
     await expect(c.enviar({ para: "a@example.com", assunto: "Oi", texto: "t", chave: "agenda:1" })).rejects.toThrow("HTTP 500");
     // Sem chave, sem cabeçalho; com chave, o provedor recebe a chave de idempotência.
     expect(new Headers(chamadas[0][1].headers).get("Idempotency-Key")).toBeNull();
@@ -143,5 +144,22 @@ describe("correio", () => {
     const longo = "a".repeat(190);
     expect(chaveIdempotencia(`agenda:${longo}1@example.com`)).not.toBe(chaveIdempotencia(`agenda:${longo}2@example.com`));
     expect(chaveIdempotencia(`agenda:${longo}1@example.com`)).toHaveLength(64);
+  });
+
+  it("Resend: cópias em cc e anexo em base64 com o nome do arquivo", async () => {
+    let corpo: Record<string, unknown> = {};
+    const falso = (async (_url: string, init: RequestInit) => {
+      corpo = JSON.parse(String(init.body));
+      return new Response("{}", { status: 200 });
+    }) as unknown as typeof fetch;
+    await new CorreioResend("chave-falsa", "SCL <no-reply@example.com>", falso).enviar({
+      para: "a@example.com",
+      assunto: "Fechamento",
+      texto: "t",
+      copias: ["rep@example.com"],
+      anexos: [{ nome: "relatorio.pdf", conteudo: new TextEncoder().encode("%PDF-teste") }],
+    });
+    expect(corpo.cc).toEqual(["rep@example.com"]);
+    expect(corpo.attachments).toEqual([{ filename: "relatorio.pdf", content: Buffer.from("%PDF-teste").toString("base64") }]);
   });
 });
