@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { criarContrato } from "@/contratos/repositorio";
-import { appSettings, execucoesAutomacao, imoveis, organizacoes, proprietarioImoveis, proprietarios, representantes } from "@/db/schema";
+import { appSettings, auditoria, execucoesAutomacao, imoveis, organizacoes, proprietarioImoveis, proprietarios, representantes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { criarCategoria } from "@/despesas/categorias";
@@ -468,5 +468,23 @@ describe("e-mail do fechamento (M5.4)", () => {
     await fechamentoManual(db, org, troca, new Date(DIA1.getTime() + 3_600_000), { mes: MES, proprietarioId: dona, reenviar: true }, null);
     const [b] = await db.select().from(appSettings).where(eq(appSettings.key, base));
     expect(b.value).toMatchObject({ reenvio: outra });
+  });
+
+  it("sem confirmação há mais de um dia: a tela mostra para onde a tentativa foi, separado do cadastro de hoje", async () => {
+    await ligar();
+    await fechar();
+    const caiu: Correio = { nome: "caiu", enviar: async () => Promise.reject(new ErroEnvioIncerto("Sem resposta do provedor de e-mail")) };
+    await enviarFechamentos(db, org, caiu, DIA1);
+    await db.update(proprietarios).set({ email: "novo@example.com" }).where(eq(proprietarios.id, dona));
+    const depois = new Date(DIA1.getTime() + 25 * 3_600_000);
+    const [p] = (await situacaoDosFechamentos(db, org, MES, "2026-11-02", depois)).filter((x) => x.proprietarioId === dona);
+    expect(p).toMatchObject({ situacao: "incerto", destinos: ["novo@example.com"], destinosTentados: ["dona@example.com"] });
+  });
+
+  it("botão de um proprietário que não enviou nada fica como falha no histórico", async () => {
+    await ligar();
+    expect(await fechamentoManual(db, org, new CorreioMemoria(), DIA1, { mes: MES, proprietarioId: dona }, null)).toMatchObject({ enviados: 0, pendentes: ["Dona Exemplo"] });
+    const [a] = await db.select().from(auditoria).where(eq(auditoria.acao, "fechamento.email_manual"));
+    expect(JSON.stringify(a.mudancas)).toContain("falhou");
   });
 });

@@ -104,6 +104,8 @@ export async function situacaoDosFechamentos(
     enviadoEm: string | null;
     enviadoPara: string[];
     /** Um "enviar de novo" ainda sem confirmação do provedor (a marca do mês continua "enviado"). */
+    /** Para onde foi a tentativa sem confirmação (pode ter chegado), como gravada no pedido. */
+    destinosTentados: string[];
     reenvioPendente: { estado: "enviando" | "incerto"; em: string | null; destinos: string[] } | null;
   })[]
 > {
@@ -155,7 +157,8 @@ export async function situacaoDosFechamentos(
       aguardando && cargaValida(guardada) ? guardada.destinos : reenvioPendente?.estado === "enviando" && reenvioPendente.destinos.length ? reenvioPendente.destinos : null;
     // Para quem foi, como gravado no envio (não o cadastro de hoje).
     const enviadoPara = enviado && Array.isArray(marca.destinos) ? marca.destinos.filter((x): x is string => typeof x === "string") : [];
-    return { ...p, email, destinos: destinosDoPedido ?? destinos, situacao, enviadoEm: enviado ? (marca.em ?? null) : null, enviadoPara, reenvioPendente };
+    const destinosTentados = (incerto || aguardando) && cargaValida(guardada) ? guardada.destinos : [];
+    return { ...p, email, destinos: destinosDoPedido ?? destinos, destinosTentados, situacao, enviadoEm: enviado ? (marca.em ?? null) : null, enviadoPara, reenvioPendente };
   });
 }
 
@@ -398,6 +401,14 @@ export async function enviarFechamentos(
     });
   }
   return r;
+}
+
+/**
+ * O pedido manual não deu certo? Uma regra só para o histórico e para a tela: falha ou aviso; e,
+ * no botão de um proprietário, nada enviado (mês reaberto, sem e-mail, sem confirmação…).
+ */
+export function envioManualFalhou(r: ResultadoFechamentoEmail, umProprietario: boolean): boolean {
+  return r.falhas.length > 0 || !!r.aviso || (umProprietario && r.enviados === 0);
 }
 
 export function resumoDoFechamentoEmail(r: ResultadoFechamentoEmail): string {

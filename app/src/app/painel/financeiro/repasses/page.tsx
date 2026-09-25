@@ -158,7 +158,7 @@ export default async function Repasses({ searchParams }: PageProps<"/painel/fina
                 : p.situacao === "aguardando"
                   ? `tentativa sem confirmação do provedor para ${p.destinos.join(", ")}: o mesmo e-mail é repetido depois de 15 minutos`
                   : p.situacao === "incerto"
-                  ? "sem confirmação do provedor há mais de um dia: pode ter chegado. Confira com o proprietário; se não chegou, use \"Enviar e-mail de novo\""
+                  ? `sem confirmação do provedor há mais de um dia${p.destinosTentados.length ? ` (tentativa para ${p.destinosTentados.join(", ")})` : ""}: pode ter chegado. Confira com o proprietário; se não chegou, use "Enviar e-mail de novo"`
                   : p.situacao === "pronto"
                   ? `pronto para enviar a ${p.destinos.join(", ")}`
                   : p.situacao === "sem_email"

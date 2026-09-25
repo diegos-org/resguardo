@@ -8,7 +8,7 @@ import { getDb } from "@/db/client";
 import { correioDoAmbiente } from "@/email/correio";
 import { limitesDoMes } from "@/repasses/repasses";
 import { fechamentoManual } from "./cron";
-import { resumoDoFechamentoEmail, salvarConfigFechamentoEmail } from "./email";
+import { envioManualFalhou, resumoDoFechamentoEmail, salvarConfigFechamentoEmail } from "./email";
 
 async function sessaoEditora() {
   const sessao = await exigirSessaoPainel();
@@ -51,6 +51,6 @@ export async function enviarFechamentoAcao(form: FormData): Promise<void> {
     ...(r.semEmail.length ? [`sem e-mail cadastrado: ${r.semEmail.join(", ")}`] : []),
     ...(r.incertos.length ? [`sem confirmação do provedor (pode ter chegado; confira antes de reenviar): ${r.incertos.join(", ")}`] : []),
   ];
-  if (r.falhas.length || (proprietarioId && !r.enviados)) voltar(mes, { ok: false, erro: `${resumoDoFechamentoEmail(r)} — ${faltam.join("; ")}` });
+  if (envioManualFalhou(r, !!proprietarioId)) voltar(mes, { ok: false, erro: `${resumoDoFechamentoEmail(r)} — ${faltam.join("; ")}` });
   voltar(mes, { ok: true, info: `${resumoDoFechamentoEmail(r)}${faltam.length ? ` — ${faltam.join("; ")}` : ""}.` });
 }

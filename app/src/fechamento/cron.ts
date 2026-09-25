@@ -4,7 +4,7 @@ import { organizacoes } from "@/db/schema";
 import type { Db } from "@/db/types";
 import type { Correio } from "@/email/correio";
 import { registrarExecucao } from "@/sistema/automacoes";
-import { enviarFechamentos, enviarFechamentosAutomaticos, type ResultadoFechamentoEmail, resumoDoFechamentoEmail } from "./email";
+import { enviarFechamentos, enviarFechamentosAutomaticos, envioManualFalhou, type ResultadoFechamentoEmail, resumoDoFechamentoEmail } from "./email";
 
 const ORGS_SIMULTANEAS = 3;
 
@@ -51,7 +51,7 @@ export async function fechamentoManual(
     acao: "fechamento.email_manual",
     entidade: "configuracao",
     entidadeId: organizacaoId,
-    mudancas: { envio: [null, `${r.falhas.length || r.aviso ? "falhou" : "ok"}: ${resumoDoFechamentoEmail(r)}`] },
+    mudancas: { envio: [null, `${envioManualFalhou(r, !!o.proprietarioId) ? "falhou" : "ok"}: ${resumoDoFechamentoEmail(r)}`] },
   });
   return r;
 }
