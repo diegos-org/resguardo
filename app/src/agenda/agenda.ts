@@ -606,20 +606,38 @@ function incertosDe(pendentes: readonly Marca[], email: string, hoje: string): {
   return { ate: maior, lista, enviando };
 }
 
-async function reconciliarIncertos(db: Db, pendentes: readonly Marca[], email: string, hoje: string): Promise<{ ate: Date | null; lista: Incerto[] }> {
-  const r = incertosDe(pendentes, email, hoje);
-  for (const l of r.enviando) await db.update(appSettings).set({ value: { ...(l.value as object), estado: "incerto" }, updatedAt: new Date() }).where(eq(appSettings.key, l.key));
+/**
+ * Com a trava da pessoa já tomada: relê as marcas dela (a lista da execução pode estar velha — outra
+ * execução pode ter resolvido ou aparado uma delas enquanto esta esperava) e passa para "incerto" só
+ * as que continuam "enviando", sem regravar o resto do valor.
+ * Exportada só para testes.
+ */
+export async function reconciliarIncertos(db: Db, pendentes: readonly Marca[], email: string, hoje: string): Promise<{ ate: Date | null; lista: Incerto[] }> {
+  const chaves = incertosDe(pendentes, email, hoje).lista.map((i) => i.chave);
+  const atuais = chaves.length
+    ? await db
+        .select({ key: appSettings.key, value: appSettings.value })
+        .from(appSettings)
+        .where(and(inArray(appSettings.key, chaves), sql`${appSettings.value} ->> 'estado' in ('enviando', 'incerto')`))
+    : [];
+  const r = incertosDe(atuais, email, hoje);
+  for (const l of r.enviando)
+    await db
+      .update(appSettings)
+      .set({ value: sql`jsonb_set(${appSettings.value}, '{estado}', '"incerto"')`, updatedAt: new Date() })
+      .where(and(eq(appSettings.key, l.key), sql`${appSettings.value} ->> 'estado' = 'enviando'`));
   return { ate: r.ate, lista: r.lista };
 }
 
-type Marca = { key: string; value: unknown };
+export type Marca = { key: string; value: unknown };
 
 /** Faixa de chaves das marcas diárias de uma organização (agendado e manual), consultada pelo índice da chave. */
 const faixas = (org: string) => [`agenda-diaria:${org}:`, `agenda-diaria-manual:${org}:`];
 const naFaixa = (prefixo: string, ate = "\uffff") => and(gte(appSettings.key, prefixo), lt(appSettings.key, prefixo + ate));
 
 /** Marcas ainda não resolvidas desta organização ("enviando" ou "incerto"), lidas uma vez por execução. */
-async function marcasPendentes(db: Db, org: string): Promise<Marca[]> {
+/** Exportada também para testes. */
+export async function marcasPendentes(db: Db, org: string): Promise<Marca[]> {
   return db
     .select({ key: appSettings.key, value: appSettings.value })
     .from(appSettings)
