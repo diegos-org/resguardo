@@ -11,7 +11,7 @@ import type { DadosReserva } from "@/reservas/regras";
 import { criarReserva } from "@/reservas/repositorio";
 import { estornarRepasse, fecharMes, listarRepasses } from "@/repasses/repasses";
 import { fechamentoDeTodas, fechamentoManual } from "./cron";
-import { chaveDoEnvio, enviarFechamentos, enviarFechamentosAutomaticos, lerConfigFechamentoEmail, salvarConfigFechamentoEmail, situacaoDosFechamentos } from "./email";
+import { chaveDoEnvio, chaveDoReenvio, enviarFechamentos, enviarFechamentosAutomaticos, lerConfigFechamentoEmail, salvarConfigFechamentoEmail, situacaoDosFechamentos } from "./email";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -384,5 +384,33 @@ describe("e-mail do fechamento (M5.4)", () => {
     await db.update(proprietarios).set({ email: "novo@example.com" }).where(eq(proprietarios.id, dona));
     const [p] = (await situacaoDosFechamentos(db, org, MES, "2026-11-01", new Date(DIA1.getTime() + 60_000))).filter((x) => x.proprietarioId === dona);
     expect(p).toMatchObject({ situacao: "aguardando", destinos: ["dona@example.com"] });
+  });
+
+  it("mês sem nada a repassar e não enviado continua fechado depois do repasse de um mês seguinte", async () => {
+    await ligar();
+    const [{ id: c }] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "303", nome: "Três" }).returning();
+    const [{ id: terceira }] = await db.insert(proprietarios).values({ organizacaoId: org, nome: "Terceira Exemplo", email: "" }).returning();
+    await db.insert(proprietarioImoveis).values({ proprietarioId: terceira, imovelId: c });
+    await criarContrato(db, org, c, { tipo: "gestao_completa", comissao: "15", inicio: "2025-01-01" }, null);
+    await criarReserva(db, org, reserva(c, "2026-11-05", "2026-11-10"), null);
+    // Outubro: saldo zero, sem e-mail cadastrado (não sai). Novembro é pago.
+    expect(await fecharMes(db, org, terceira, "2026-11", "2026-12-01", null)).toMatchObject({ ok: true });
+    await db.update(proprietarios).set({ email: "terceira@example.com" }).where(eq(proprietarios.id, terceira));
+    const [p] = (await situacaoDosFechamentos(db, org, MES, "2026-12-02")).filter((x) => x.proprietarioId === terceira);
+    expect(p.situacao).toBe("pronto");
+  });
+
+  it("\"enviar de novo\": a chave nova só é publicada já com a marca dela (outro clique no meio usa a mesma)", async () => {
+    await ligar();
+    await fechar();
+    await enviarFechamentos(db, org, new CorreioMemoria(), DIA1);
+    const base = chaveDoEnvio(org, dona, MES);
+    const depois = new Date(DIA1.getTime() + 3_600_000);
+    const primeira = await chaveDoReenvio(db, base, depois);
+    expect(primeira.tentativa).toEqual(expect.any(String));
+    const [marca] = await db.select().from(appSettings).where(eq(appSettings.key, primeira.chave));
+    expect(marca?.value).toMatchObject({ estado: "enviando", tentativa: primeira.tentativa });
+    // Um segundo pedido logo em seguida (antes do envio do primeiro) fica com a mesma chave, sem reserva.
+    expect(await chaveDoReenvio(db, base, new Date(depois.getTime() + 1))).toEqual({ chave: primeira.chave, tentativa: null });
   });
 });

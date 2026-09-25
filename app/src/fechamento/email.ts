@@ -136,7 +136,10 @@ export async function situacaoDosFechamentos(
       doReenvio && (doReenvio.estado === "enviando" || doReenvio.estado === "incerto") ? { estado: estadoVisto(doReenvio, agora), em: doReenvio.em ?? null } : null;
     const email = (p.email ?? "").trim();
     const destinos = [...new Set([email, ...reps.filter((r) => r.proprietarioId === p.proprietarioId).map((r) => r.email.trim())].filter(Boolean))];
-    const fechado = !!p.repasse || (p.valor <= 0 && p.bloqueios.length === 0);
+    // Sem repasse próprio e sem valor a pagar, o mês está fechado quando nada o impede. "Já existe
+    // repasse de um mês seguinte" só impede criar um repasse retroativo: não reabre este mês.
+    const impedimentos = p.bloqueios.length - (p.repassePosterior ? 1 : 0);
+    const fechado = !!p.repasse || (p.valor <= 0 && impedimentos === 0);
     const enviado = marca?.estado === "enviado";
     const incerto = marca?.estado === "incerto" || (marca?.estado === "enviando" && estadoVisto(marca, agora) === "incerto");
     const aguardando = !incerto && marca?.estado === "enviando";
@@ -207,7 +210,13 @@ async function reservar(db: Db, chave: string, agora: Date): Promise<{ tentativa
   return { tentativa, carga: cargaValida(carga) ? carga : null };
 }
 
-async function chaveDoReenvio(db: Db, base: string, agora: Date): Promise<string> {
+/**
+ * A chave do "enviar de novo". Uma chave nova nasce já com a marca dela ("enviando", com a tentativa
+ * deste pedido) e só depois é publicada na marca do mês (troca atômica): um pedido que leia o
+ * ponteiro sempre acha a marca e usa a mesma chave. `tentativa` vem preenchida quando este pedido já
+ * reservou a chave nova; null quando é a de um reenvio em andamento (o chamador tenta reservar).
+ */
+export async function chaveDoReenvio(db: Db, base: string, agora: Date): Promise<{ chave: string; tentativa: string | null }> {
   const ler = async () => {
     const [b] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, base));
     const atual = (b?.value as { reenvio?: unknown } | undefined)?.reenvio;
@@ -219,7 +228,7 @@ async function chaveDoReenvio(db: Db, base: string, agora: Date): Promise<string
       const [m] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, atual));
       // Só um reenvio ainda em andamento é retomado; concluído (a marca do mês não foi atualizada a
       // tempo), recusado ou incerto: abre outra chave.
-      if (m && (m.value as ValorMarca).estado === "enviando" && estadoVisto(m.value as ValorMarca, agora) === "enviando") return atual;
+      if (m && (m.value as ValorMarca).estado === "enviando" && estadoVisto(m.value as ValorMarca, agora) === "enviando") return { chave: atual, tentativa: null };
       // Passou da janela sem confirmação: fica "incerto" (não é repetido) e abre outra chave.
       if (m && (m.value as ValorMarca).estado === "enviando")
         await db
@@ -227,15 +236,22 @@ async function chaveDoReenvio(db: Db, base: string, agora: Date): Promise<string
           .set({ value: sql`jsonb_set(${appSettings.value}, '{estado}', '"incerto"')`, updatedAt: new Date() })
           .where(and(eq(appSettings.key, atual), sql`${appSettings.value} ->> 'estado' = 'enviando'`));
     }
-    const nova = `${base}:reenvio:${agora.getTime()}`;
+    const nova = `${base}:reenvio:${agora.getTime()}:${crypto.randomUUID().slice(0, 8)}`;
+    const tentativa = crypto.randomUUID();
+    // Primeiro a marca da chave nova; depois o ponteiro.
+    await db.insert(appSettings).values({ key: nova, value: { estado: "enviando", em: agora.toISOString(), primeira: agora.toISOString(), tentativa } });
     const [trocada] = await db
       .update(appSettings)
       .set({ value: sql`jsonb_set(${appSettings.value}, '{reenvio}', ${JSON.stringify(nova)}::jsonb)`, updatedAt: new Date() })
       .where(and(eq(appSettings.key, base), sql`coalesce(${appSettings.value} ->> 'reenvio', '') = ${atual ?? ""}`))
       .returning({ key: appSettings.key });
-    if (trocada) return nova;
+    if (trocada) return { chave: nova, tentativa };
+    // Outro pedido publicou antes: a marca que criamos não é de ninguém.
+    await db.delete(appSettings).where(and(eq(appSettings.key, nova), sql`${appSettings.value} ->> 'tentativa' = ${tentativa}`));
   }
-  return (await ler()) ?? `${base}:reenvio:${agora.getTime()}`;
+  const atual = await ler();
+  if (!atual) throw new Error("não foi possível reservar o reenvio; tente de novo");
+  return { chave: atual, tentativa: null };
 }
 
 export type ResultadoFechamentoEmail = {
@@ -296,8 +312,17 @@ export async function enviarFechamentos(
     // Reenvio: uma chave por vez, guardada na marca do mês (troca atômica). Cliques ao mesmo tempo, ou
     // um reenvio ainda sem confirmação, usam a mesma chave; só um reenvio que virou "incerto" (fora da
     // janela do provedor) abre outra.
-    const chave = o.reenviar && (p.situacao === "enviado" || p.situacao === "incerto") ? await chaveDoReenvio(db, base, agora) : base;
-    const reserva = await reservar(db, chave, agora);
+    let doReenvio: { chave: string; tentativa: string | null } | null = null;
+    if (o.reenviar && (p.situacao === "enviado" || p.situacao === "incerto")) {
+      try {
+        doReenvio = await chaveDoReenvio(db, base, agora);
+      } catch (e) {
+        r.falhas.push(`${p.nome}: ${e instanceof Error ? e.message : String(e)}`);
+        continue;
+      }
+    }
+    const chave = doReenvio?.chave ?? base;
+    const reserva = doReenvio?.tentativa ? { tentativa: doReenvio.tentativa, carga: null } : await reservar(db, chave, agora);
     if (reserva === "incerto") {
       r.incertos.push(p.nome);
       continue;
