@@ -97,7 +97,8 @@ export default async function PortalHospede() {
   const email = await emailDoHospede();
   if (!email) redirect("/hospede/entrar");
   const { db, conteudo } = await carregarSite();
-  const lista = await reservasDoHospede(db, email, new Date());
+  // Só reservas da empresa deste site; sem empresa definida, nenhuma.
+  const lista = conteudo ? await reservasDoHospede(db, conteudo.organizacaoId, email, new Date()) : [];
 
   return (
     <Moldura conteudo={conteudo}>

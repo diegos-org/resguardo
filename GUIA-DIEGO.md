@@ -617,7 +617,9 @@
     saída, noites, pessoas e o contato da empresa (WhatsApp/e-mail de Configurações →
     Empresa). **Valores e dados de outras pessoas nunca aparecem**;
   - o **endereço completo** (com complemento) só aparece **2 dias antes da entrada, às 10h**
-    (horário de São Paulo), e some depois da saída. Estar logado não antecipa;
+    (horário de São Paulo), e some no horário de saída do imóvel. Estar logado não antecipa;
+  - só contam as reservas da empresa do site (se um dia houver outra empresa no sistema, uma
+    não vê as reservas da outra);
   - a permissão é conferida a cada acesso: **trocar o e-mail da reserva ou cancelá-la tira
     o acesso na hora**. O acesso dura até 7 dias no mesmo aparelho, com botão "Sair";
   - no painel, o detalhe da reserva agora tem o campo **"E-mail do hóspede"** para cadastrar

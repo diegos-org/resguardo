@@ -7,7 +7,8 @@
  * - A autorização é refeita a cada acesso pelo e-mail: trocar o e-mail da reserva no painel ou
  *   cancelá-la tira o acesso na hora (é a revogação).
  * - Instruções de chegada (endereço completo) só a partir de 2 dias antes da entrada, às 10h no
- *   fuso do imóvel. Estar logado não antecipa a liberação.
+ *   fuso do imóvel, até o horário de saída. Estar logado não antecipa a liberação.
+ * - Tudo restrito à organização do site: reserva de outra empresa no mesmo banco não conta.
  */
 import { and, asc, eq, gte, sql } from "drizzle-orm";
 import { emitirCodigo, emailValido, type OpcoesCodigo, type ResultadoPedido, verificarCodigo } from "@/acesso/codigo-email";
@@ -52,27 +53,33 @@ export function instanteLocal(dataISO: string, hora: string, fuso: string): Date
 
 export const liberacaoDasInstrucoes = (checkin: string, fuso: string) => instanteLocal(somarDias(checkin, -INSTRUCOES_DIAS_ANTES), INSTRUCOES_HORA, fuso);
 
-const doEmail = (email: string) => eq(sql`lower(trim(${reservas.hospedeEmail}))`, email);
+/** Reservas daquele e-mail, só da organização do site (nunca de outra empresa no mesmo banco). */
+const doEmail = (organizacaoId: string, email: string) => and(eq(reservas.organizacaoId, organizacaoId), eq(sql`lower(trim(${reservas.hospedeEmail}))`, email));
 const vigentes = (hoje: string) => and(eq(reservas.estado, "confirmada"), gte(reservas.checkout, somarDias(hoje, -DIAS_APOS_SAIDA)));
 
 /** O e-mail tem alguma reserva que dá acesso ao portal agora? */
-export async function hospedeTemAcesso(db: Db, email: string, agora: Date): Promise<boolean> {
+export async function hospedeTemAcesso(db: Db, organizacaoId: string, email: string, agora: Date): Promise<boolean> {
   const e = normalizarEmail(email);
   if (!emailValido(e)) return false;
-  const [r] = await db.select({ id: reservas.id }).from(reservas).where(and(doEmail(e), vigentes(hojeISO(undefined, agora)))).limit(1);
+  const [r] = await db.select({ id: reservas.id }).from(reservas).where(and(doEmail(organizacaoId, e), vigentes(hojeISO(undefined, agora)))).limit(1);
   return Boolean(r);
 }
 
 /** Envia o código de acesso ao portal (mesmas regras do login: validade, tentativas e limites). */
-export async function pedirCodigoHospede(db: Db, correio: Correio, emailBruto: string, o: Pick<OpcoesCodigo, "segredo" | "agora" | "gerar">): Promise<ResultadoPedido> {
+export async function pedirCodigoHospede(
+  db: Db,
+  correio: Correio,
+  organizacaoId: string,
+  emailBruto: string,
+  o: Pick<OpcoesCodigo, "segredo" | "agora" | "gerar">,
+): Promise<ResultadoPedido> {
   const email = normalizarEmail(emailBruto);
   if (!emailValido(email)) return "invalido";
   const agora = o.agora ?? new Date();
   return emitirCodigo(db, correio, email, { ...o, agora, escopo: "hospede" }, {
-    autorizado: () => hospedeTemAcesso(db, email, agora),
+    autorizado: () => hospedeTemAcesso(db, organizacaoId, email, agora),
     mensagem: async (codigo) => {
-      const [r] = await db.select({ org: reservas.organizacaoId }).from(reservas).where(doEmail(email)).limit(1);
-      const empresa = r ? (await lerEmpresa(db, r.org)).nome : "";
+      const empresa = (await lerEmpresa(db, organizacaoId)).nome;
       return {
         assunto: `Seu código para ver a reserva: ${codigo}`,
         texto: `Seu código para ver sua reserva${empresa ? ` na ${empresa}` : ""} é ${codigo}.\n\nEle vale por 10 minutos e só pode ser usado uma vez.\nSe você não pediu este código, ignore este e-mail.`,
@@ -82,10 +89,10 @@ export async function pedirCodigoHospede(db: Db, correio: Correio, emailBruto: s
 }
 
 /** Confere o código do portal: só vale o código pedido pelo portal do hóspede, e só se o acesso continua. */
-export async function verificarCodigoHospede(db: Db, email: string, codigo: string, o: { segredo: string; agora?: Date }) {
+export async function verificarCodigoHospede(db: Db, organizacaoId: string, email: string, codigo: string, o: { segredo: string; agora?: Date }) {
   const agora = o.agora ?? new Date();
   const r = await verificarCodigo(db, email, codigo, { segredo: o.segredo, agora, escopo: "hospede" });
-  if (r.ok && !(await hospedeTemAcesso(db, r.email, agora))) return { ok: false as const, motivo: "invalido" as const };
+  if (r.ok && !(await hospedeTemAcesso(db, organizacaoId, r.email, agora))) return { ok: false as const, motivo: "invalido" as const };
   return r;
 }
 
@@ -110,13 +117,12 @@ export type ReservaDoHospede = {
 };
 
 /** As reservas do hóspede logado, com as instruções de chegada só depois da liberação. */
-export async function reservasDoHospede(db: Db, email: string, agora: Date): Promise<ReservaDoHospede[]> {
+export async function reservasDoHospede(db: Db, organizacaoId: string, email: string, agora: Date): Promise<ReservaDoHospede[]> {
   const e = normalizarEmail(email);
   if (!emailValido(e)) return [];
   const hoje = hojeISO(undefined, agora);
   const linhas = await db
     .select({
-      organizacaoId: reservas.organizacaoId,
       codigo: reservas.codigo,
       checkin: reservas.checkin,
       checkout: reservas.checkout,
@@ -134,15 +140,17 @@ export async function reservasDoHospede(db: Db, email: string, agora: Date): Pro
     .from(reservas)
     .innerJoin(imoveis, and(eq(imoveis.id, reservas.imovelId), eq(imoveis.organizacaoId, reservas.organizacaoId)))
     .leftJoin(imoveisDetalhes, eq(imoveisDetalhes.imovelId, imoveis.id))
-    .where(and(doEmail(e), vigentes(hoje)))
+    .where(and(doEmail(organizacaoId, e), vigentes(hoje)))
     .orderBy(asc(reservas.checkin), asc(reservas.codigo));
 
-  const empresas = new Map<string, Awaited<ReturnType<typeof lerEmpresa>>>();
-  for (const l of linhas) if (!empresas.has(l.organizacaoId)) empresas.set(l.organizacaoId, await lerEmpresa(db, l.organizacaoId));
+  const empresa = linhas.length ? await lerEmpresa(db, organizacaoId) : null;
 
   return linhas.map((l) => {
-    const liberaEm = liberacaoDasInstrucoes(l.checkin, l.fuso || "America/Sao_Paulo");
-    const empresa = empresas.get(l.organizacaoId)!;
+    const fuso = l.fuso || "America/Sao_Paulo";
+    const liberaEm = liberacaoDasInstrucoes(l.checkin, fuso);
+    const saidaAte = l.saidaAte ?? "11:00";
+    // A estadia acaba no horário de saída do imóvel (não à meia-noite): daí em diante, sem endereço.
+    const encerrada = agora.getTime() >= instanteLocal(l.checkout, saidaAte, fuso).getTime();
     return {
       codigo: l.codigo,
       imovel: l.imovel,
@@ -154,13 +162,13 @@ export async function reservasDoHospede(db: Db, email: string, agora: Date): Pro
       hospedes: l.hospedes,
       nomeHospede: l.nomeHospede,
       entradaAPartirDe: l.entradaAPartirDe ?? "15:00",
-      saidaAte: l.saidaAte ?? "11:00",
-      encerrada: l.checkout < hoje,
+      saidaAte,
+      encerrada,
       instrucoes:
-        agora.getTime() >= liberaEm.getTime() && l.checkout >= hoje
+        agora.getTime() >= liberaEm.getTime() && !encerrada
           ? { liberadas: true, endereco: l.endereco, complemento: l.complemento ?? "" }
           : { liberadas: false, liberaEm, dia: somarDias(l.checkin, -INSTRUCOES_DIAS_ANTES) },
-      contato: { empresa: empresa.nome, whatsapp: numeroWhatsapp(empresa.telefone), email: empresa.email },
+      contato: { empresa: empresa!.nome, whatsapp: numeroWhatsapp(empresa!.telefone), email: empresa!.email },
     };
   });
 }
