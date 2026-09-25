@@ -1,0 +1,1 @@
+ALTER TABLE "reservas" ADD COLUMN "divergencia_calculo" text;

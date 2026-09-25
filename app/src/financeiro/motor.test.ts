@@ -116,6 +116,12 @@ describe("calcularReserva", () => {
     expect(lancamentos.find((l) => l.tipo === "comissao")!.valor).toBe(22500);
   });
 
+  it("reserva pendente não gera lançamentos até ser confirmada (M4.8)", () => {
+    const r = calcularReserva(reserva({ estado: "pendente" }), quinzePorCento, ["p1"]);
+    expect(r.lancamentos).toEqual([]);
+    expect(r.avisos[0]).toContain("confirmada");
+  });
+
   it("não inventa: cancelada, sem valor, sem contrato ou marketplace pendente não geram lançamentos", () => {
     expect(calcularReserva(reserva({ estado: "cancelada" }), quinzePorCento, ["p1"]).lancamentos).toEqual([]);
     expect(calcularReserva(reserva({ valorBruto: null }), quinzePorCento, ["p1"]).avisos[0]).toContain("pendente");

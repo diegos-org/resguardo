@@ -7,7 +7,7 @@
  * passou a ter o imóvel em diante (data do vínculo) e o imóvel não tem outro dono no livro: na
  * dúvida, o portal esconde — nunca mostra o histórico de outra pessoa.
  */
-import { type AnyColumn, and, eq, exists, isNotNull, isNull, not, notInArray, inArray, or, sql } from "drizzle-orm";
+import { type AnyColumn, and, eq, exists, gt, gte, isNotNull, isNull, lt, not, notInArray, inArray, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { lancamentos, proprietarioImoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
@@ -16,6 +16,29 @@ import type { Db } from "@/db/types";
 export function lancamentoEmVigor(db: Db) {
   const estorno = alias(lancamentos, "estorno");
   return and(isNull(lancamentos.estornoDe), not(exists(db.select({ um: sql`1` }).from(estorno).where(eq(estorno.estornoDe, lancamentos.id)))));
+}
+
+/**
+ * Lançamento em conferência (uma regra, um lugar: portal, PDF, fechamento do mês e Início): o
+ * pendente, e o do motor de uma reserva que deixou de estar confirmada (pendente/cancelada) mas
+ * ficou em vigor porque já movimentou dinheiro. Sai da conferência quando a reserva é confirmada de
+ * novo ou quando alguém dá a conferência por resolvida no painel (depois do ajuste manual).
+ */
+const daReservaNaoConfirmada = (resolvida: boolean) =>
+  and(
+    eq(lancamentos.origem, "motor"),
+    sql`${lancamentos.reservaId} in (select ${reservas.id} from ${reservas} where (${reservas.estado} <> 'confirmada' or ${reservas.divergenciaEm} is not null) and ${reservas.conferenciaResolvidaEm} is ${sql.raw(resolvida ? "not null" : "null")})`,
+  );
+
+/** Lançamento do motor de reserva não confirmada cuja conferência foi dada por resolvida. */
+export function lancamentoDeConferenciaResolvida() {
+  return sql`coalesce(${daReservaNaoConfirmada(true)}, false)`;
+}
+
+export function lancamentoEmConferencia() {
+  // A decisão tomada na reserva vale para todos os lançamentos do motor dela, inclusive os que já
+  // nasceram "pendente" (ex.: quem recebe a confirmar); os pendentes de outras origens continuam.
+  return and(or(eq(lancamentos.estado, "pendente"), daReservaNaoConfirmada(false)), sql`not ${lancamentoDeConferenciaResolvida()}`);
 }
 
 /** Condição sobre `reservas`: a reserva é de um destes proprietários (ver o topo do arquivo). */
@@ -54,4 +77,54 @@ export function reservaDosDonos(db: Db, donos: readonly string[]) {
  */
 export function noPeriodoDosDonos(donos: readonly string[], imovel: AnyColumn, data: AnyColumn) {
   return sql`exists (select 1 from ${proprietarioImoveis} where ${proprietarioImoveis.imovelId} = ${imovel} and ${inArray(proprietarioImoveis.proprietarioId, [...donos])} and ${data} >= (${proprietarioImoveis.criadoEm} at time zone 'America/Sao_Paulo')::date)`;
+}
+
+/**
+ * Reservas que contam no período, com o imóvel em que contam (a mesma regra no Início, na aba
+ * Apartamentos, no portal e no PDF): confirmadas pela estada e pelo imóvel atual; confirmada com
+ * divergência entre o cálculo e o dinheiro já movimentado (M4.8) conta pelo livro — imóvel e mês
+ * dos valores em vigor —, porque é lá que os valores dela estão. Com `donos`, só as deles (regra de
+ * posse; divergente: a parte deles no livro).
+ */
+export async function reservasQueContam(
+  db: Db,
+  organizacaoId: string,
+  o: { imovelIds: readonly string[]; periodo: { inicio: string; fim: string }; donos?: readonly string[] },
+): Promise<{ id: string; imovelId: string }[]> {
+  if (!o.imovelIds.length || (o.donos && !o.donos.length)) return [];
+  const ids = [...o.imovelIds];
+  const [pelaEstada, peloLivro] = await Promise.all([
+    db
+      .select({ id: reservas.id, imovelId: reservas.imovelId })
+      .from(reservas)
+      .where(
+        and(
+          eq(reservas.organizacaoId, organizacaoId),
+          eq(reservas.estado, "confirmada"),
+          isNull(reservas.divergenciaEm),
+          inArray(reservas.imovelId, ids),
+          lt(reservas.checkin, o.periodo.fim),
+          gt(reservas.checkout, o.periodo.inicio),
+          o.donos ? reservaDosDonos(db, o.donos) : undefined,
+        ),
+      ),
+    db
+      .selectDistinct({ id: reservas.id, imovelId: lancamentos.imovelId })
+      .from(lancamentos)
+      .innerJoin(reservas, eq(reservas.id, lancamentos.reservaId))
+      .where(
+        and(
+          eq(lancamentos.organizacaoId, organizacaoId),
+          eq(reservas.estado, "confirmada"),
+          isNotNull(reservas.divergenciaEm),
+          o.donos ? and(eq(lancamentos.tipo, "direito_proprietario"), inArray(lancamentos.proprietarioId, [...o.donos])) : eq(lancamentos.tipo, "receita_bruta"),
+          inArray(lancamentos.imovelId, ids),
+          gte(lancamentos.competencia, o.periodo.inicio),
+          lt(lancamentos.competencia, o.periodo.fim),
+          lancamentoEmVigor(db),
+        ),
+      ),
+  ]);
+  const vistas = new Set<string>();
+  return [...pelaEstada, ...peloLivro.map((x) => ({ id: x.id, imovelId: x.imovelId as string }))].filter((x) => !vistas.has(x.id) && vistas.add(x.id));
 }

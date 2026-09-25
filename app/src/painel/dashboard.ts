@@ -2,13 +2,14 @@
  * Dados do painel inicial (M4.6), já filtrados pelo filtro global (imóveis + período). Cada
  * bloco vem da mesma função que alimenta a tela específica (reservas, despesas, ajustes…).
  */
-import { and, eq, gte, inArray, isNull, lt, ne, sql, sum } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, isNull, lt, ne, or, sql, sum } from "drizzle-orm";
 import { listarAdiantamentos, totalACobrar } from "@/adiantamentos/adiantamentos";
 import { listarAjustes } from "@/ajustes/ajustes";
-import { lancamentos, type TipoLancamento } from "@/db/schema";
+import { lancamentos, reservas as reservasTabela, type TipoLancamento } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { listarDespesas, totaisDespesas } from "@/despesas/despesas";
 import { totaisPorTipo } from "@/financeiro/ledger";
+import { lancamentoDeConferenciaResolvida, reservasQueContam } from "@/portal/posse";
 import type { Imovel } from "@/imoveis/repositorio";
 import { conflitos } from "@/reservas/regras";
 import { listarBloqueios, listarReservas, type Reserva } from "@/reservas/repositorio";
@@ -56,6 +57,8 @@ export async function carregarDashboard(
         // Desde ontem: quem sai hoje também aparece.
         listarReservas(db, organizacaoId, { inicio: somaDias(o.hoje, -1), fim: somaDias(o.hoje, 8), imovelIds: ids }),
       ]);
+  // Só confirmadas, como no portal e no relatório (pendente ainda não é venda); divergente pelo livro.
+  const contam = vazio ? [] : await reservasQueContam(db, organizacaoId, { imovelIds: ids, periodo: o.periodo });
   const semana = somaDias(o.hoje, 7);
   const porId = new Map(o.imoveis.map((i) => [i.id, i]));
   const ocupacao = calcularOcupacao(
@@ -85,7 +88,8 @@ export async function carregarDashboard(
     const fimAno = `${o.ano + 1}-01-01`;
     // Em "todos", a conferência de cálculo olha também reservas de imóveis arquivados (como os totais).
     const doPeriodo = o.todos ? await listarReservas(db, organizacaoId, o.periodo) : reservas;
-    const comValor = doPeriodo.filter((r) => r.valorBruto !== null);
+    // Pendente não é calculada até confirmar (M4.8): não entra no aviso de "sem cálculo".
+    const comValor = doPeriodo.filter((r) => r.valorBruto !== null && r.estado === "confirmada");
     const [totais, mensal, regras, despesas, ajustesPendentes, adiantamentos, pendentes, calculadas] = await Promise.all([
       totaisPorTipo(db, organizacaoId, f),
       db
@@ -114,6 +118,8 @@ export async function carregarDashboard(
           and(
             eq(lancamentos.organizacaoId, organizacaoId),
             eq(lancamentos.estado, "pendente"),
+            // Reserva com a conferência dada por resolvida: a decisão vale para os pendentes dela.
+            sql`not ${lancamentoDeConferenciaResolvida()}`,
             // Ajuste pendente já tem o seu alerta ("pendente de esclarecimento"): não conta duas vezes.
             ne(lancamentos.tipo, "ajuste"),
             o.todos ? undefined : inArray(lancamentos.imovelId, ids),
@@ -176,6 +182,31 @@ export async function carregarDashboard(
         texto: `${semCalculo.length} reserva(s) do período com valor mas sem cálculo no financeiro: confira o contrato na data da entrada.${notaArquivados(semCalculo.map((r) => r.imovelId))}`,
         link: "/painel/reservas",
       });
+    // Reserva que deixou de estar confirmada (pendente/cancelada) e ainda tem lançamento do motor em
+    // vigor no período: já movimentou dinheiro (o recálculo não mexe nisso) e fica em conferência.
+    const comDinheiro = await db
+      .selectDistinct({ reservaId: lancamentos.reservaId })
+      .from(lancamentos)
+      .innerJoin(reservasTabela, eq(reservasTabela.id, lancamentos.reservaId))
+      .where(
+        and(
+          eq(lancamentos.organizacaoId, organizacaoId),
+          or(ne(reservasTabela.estado, "confirmada"), isNotNull(reservasTabela.divergenciaEm)),
+          isNull(reservasTabela.conferenciaResolvidaEm),
+          eq(lancamentos.origem, "motor"),
+          gte(lancamentos.competencia, o.periodo.inicio),
+          lt(lancamentos.competencia, o.periodo.fim),
+          o.todos ? undefined : inArray(lancamentos.imovelId, ids),
+          isNull(lancamentos.estornoDe),
+          sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`,
+        ),
+      );
+    if (comDinheiro.length)
+      alertas.push({
+        nivel: "atencao",
+        texto: `${comDinheiro.length} reserva(s) pendente(s) ou cancelada(s) com dinheiro já movimentado: os valores continuam no financeiro, em conferência. Confirme a reserva, ou faça o ajuste manual e dê a conferência por resolvida na reserva.`,
+        link: "/painel/reservas",
+      });
     const codigoDe = new Map(regras.map((r) => [r.imovelId, r.codigo]));
     const nPendentes = pendentes.reduce((t, x) => t + x.n, 0);
     if (nPendentes) {
@@ -200,7 +231,7 @@ export async function carregarDashboard(
   return {
     ocupacao,
     ocupacaoTotal: ocupacaoTotal(ocupacao),
-    reservasNoPeriodo: reservas.length,
+    reservasNoPeriodo: contam.length,
     proximasEntradas: proximas.filter((r) => r.checkin >= o.hoje && r.checkin < semana),
     proximasSaidas: proximas.filter((r) => r.checkout >= o.hoje && r.checkout < semana).sort((x, y) => x.checkout.localeCompare(y.checkout)),
     financeiro,

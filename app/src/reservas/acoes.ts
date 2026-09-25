@@ -8,7 +8,7 @@ import { getDb } from "@/db/client";
 import { lerFormReserva } from "./formulario";
 import type { ErrosReserva } from "./regras";
 import { analisarCsv, importarCsv, type ResultadoImportacao, type SituacaoLinha } from "./importacao";
-import { cancelarReserva, criarReserva } from "./repositorio";
+import { cancelarReserva, confirmarReserva, criarReserva, resolverConferencia } from "./repositorio";
 
 export type EstadoFormReserva = { erros?: ErrosReserva; mensagem?: string };
 
@@ -35,6 +35,26 @@ export async function cancelar(form: FormData): Promise<void> {
   await cancelarReserva(getDb(), sessao.organizacaoId, id, sessao.usuarioId);
   revalidatePath(`/painel/reservas/${id}`);
   revalidatePath("/painel/reservas");
+}
+
+export async function confirmar(form: FormData): Promise<void> {
+  const sessao = await exigirSessaoPainel();
+  exigir(sessao, "reserva:editar", { organizacaoId: sessao.organizacaoId });
+  const id = String(form.get("id") ?? "");
+  const r = await confirmarReserva(getDb(), sessao.organizacaoId, id, sessao.usuarioId);
+  revalidatePath(`/painel/reservas/${id}`);
+  revalidatePath("/painel/reservas");
+  if (r.aviso) redirect(`/painel/reservas/${id}?erro=${encodeURIComponent(r.aviso)}`);
+}
+
+/** Dá por resolvida a conferência de reserva não confirmada com dinheiro movimentado (M4.8). */
+export async function resolverConferenciaAcao(form: FormData): Promise<void> {
+  const sessao = await exigirSessaoPainel();
+  exigir(sessao, "financeiro:editar", { organizacaoId: sessao.organizacaoId });
+  const id = String(form.get("id") ?? "");
+  await resolverConferencia(getDb(), sessao.organizacaoId, id, sessao.usuarioId);
+  revalidatePath(`/painel/reservas/${id}`);
+  revalidatePath("/painel");
 }
 
 // --- Importação por CSV (M3.6) --------------------------------------------------------

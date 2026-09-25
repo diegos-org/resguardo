@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, asc, eq, gte, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { listarContratos } from "@/contratos/repositorio";
 import { lancamentos, proprietarioImoveis, recebimentoPorCanal, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
@@ -34,6 +34,8 @@ export async function aplicarMotor(
   autorId: string | null,
   /** Sem regras: usa as da organização vigentes na data de entrada (Configurações → Regras financeiras). */
   regras?: RegrasMotor,
+  /** Só confere: marca a divergência com o dinheiro já movimentado, sem mexer no livro (reserva do passado). */
+  o: { soConferir?: boolean } = {},
 ): Promise<ResultadoAplicacao | null> {
   if (!uuidValido(reservaId)) return null;
   return db.transaction(async (tx) => {
@@ -88,6 +90,16 @@ export async function aplicarMotor(
       ativos.some((a) => !a.chave || !desejadas.has(baseDaChave(a.chave))) ||
       desejados.some((l) => !ativos.some((a) => a.chave && baseDaChave(a.chave) === l.chaveOrigem));
     if (precisaMudar && ativos.some((a) => a.estado === "realizado" || a.estado === "conciliado")) {
+      // Divergência entre o cálculo e o dinheiro já movimentado: a reserva fica em conferência (M4.8),
+      // qualquer que seja a situação dela, até bater de novo ou alguém dar por resolvida.
+      // Um cálculo divergente diferente do que já estava em conferência (contrato, recebimento ou regra
+      // mudou depois) reabre a conferência, mesmo que a anterior tenha sido dada por resolvida.
+      const calculo = createHash("sha1").update(JSON.stringify([...desejadas].sort())).digest("hex").slice(0, 16);
+      if (!r.divergenciaEm || r.divergenciaCalculo !== calculo)
+        await tx
+          .update(reservas)
+          .set({ divergenciaEm: r.divergenciaEm ?? new Date(), divergenciaCalculo: calculo, conferenciaResolvidaEm: null })
+          .where(eq(reservas.id, r.id));
       return {
         criados: 0,
         estornados: 0,
@@ -96,6 +108,9 @@ export async function aplicarMotor(
         avisos: [...avisos, "Esta reserva já teve dinheiro movimentado: o cálculo novo não foi aplicado. Se precisar, faça um ajuste manual."],
       };
     }
+
+    // Só conferência: o passado não é recalculado (o que não movimentou dinheiro fica como está).
+    if (o.soConferir && precisaMudar) return { criados: 0, estornados: 0, mantidos: ativos.length, avisos };
 
     // Mantém um ativo por cálculo desejado; estorna o resto.
     const mantidas = new Set<string>();
@@ -122,6 +137,8 @@ export async function aplicarMotor(
         return { ...l, chaveOrigem: chave };
       });
     if (novos.length) await lancar(tx, organizacaoId, novos, autorId);
+    // O cálculo e o livro batem de novo: acabou a divergência.
+    if (r.divergenciaEm || r.divergenciaCalculo) await tx.update(reservas).set({ divergenciaEm: null, divergenciaCalculo: null }).where(eq(reservas.id, r.id));
     return { criados: novos.length, estornados, mantidos: mantidas.size, avisos };
   });
 }
@@ -164,4 +181,62 @@ export async function recalcularReservas(
     total.estornados += r?.estornados ?? 0;
   }
   return total;
+}
+
+/**
+ * Reservas pendentes com lançamentos do motor ainda em vigor (calculadas antes de o motor deixar
+ * pendente de fora, M4.8): passa o motor de novo, que estorna o que não movimentou dinheiro. Vale
+ * para qualquer data, porque pendente nunca foi receita; o que já movimentou dinheiro fica
+ * protegido e aparece como aviso no Início. Idempotente (sem lançamento em vigor, nada a fazer).
+ */
+export async function recalcularPendentes(db: Db, organizacaoId: string, autorId: string | null = null): Promise<ResultadoRecalculo & { protegidas: number }> {
+  const ids = await db
+    .selectDistinct({ id: reservas.id })
+    .from(reservas)
+    .innerJoin(lancamentos, eq(lancamentos.reservaId, reservas.id))
+    .where(
+      and(
+        eq(reservas.organizacaoId, organizacaoId),
+        eq(reservas.estado, "pendente"),
+        eq(lancamentos.origem, "motor"),
+        isNull(lancamentos.estornoDe),
+        sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`,
+      ),
+    );
+  const total = { reservas: ids.length, criados: 0, estornados: 0, protegidas: 0 };
+  for (const { id } of ids) {
+    const r = await aplicarMotor(db, organizacaoId, id, autorId);
+    total.criados += r?.criados ?? 0;
+    total.estornados += r?.estornados ?? 0;
+    if (r?.protegido) total.protegidas++;
+  }
+  return total;
+}
+
+/**
+ * Confirmadas de qualquer data que já movimentaram dinheiro: confere o cálculo atual com o livro e
+ * marca em conferência a que diverge (M4.8), sem recalcular nada — o passado não muda, e a
+ * divergência vira aviso e ajuste manual. Roda no deploy. Idempotente.
+ */
+export async function conferirMovimentadas(db: Db, organizacaoId: string): Promise<{ reservas: number; divergentes: number }> {
+  const ids = await db
+    .selectDistinct({ id: reservas.id })
+    .from(reservas)
+    .innerJoin(lancamentos, eq(lancamentos.reservaId, reservas.id))
+    .where(
+      and(
+        eq(reservas.organizacaoId, organizacaoId),
+        eq(reservas.estado, "confirmada"),
+        eq(lancamentos.origem, "motor"),
+        inArray(lancamentos.estado, ["realizado", "conciliado"]),
+        isNull(lancamentos.estornoDe),
+        sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`,
+      ),
+    );
+  let divergentes = 0;
+  for (const { id } of ids) {
+    const r = await aplicarMotor(db, organizacaoId, id, null, undefined, { soConferir: true });
+    if (r?.protegido) divergentes++;
+  }
+  return { reservas: ids.length, divergentes };
 }
