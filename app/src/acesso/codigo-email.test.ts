@@ -3,7 +3,7 @@ import { codigosLogin, organizacoes, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { chaveIdempotencia, type Correio, CorreioMemoria, CorreioResend, correioDoAmbiente } from "@/email/correio";
-import { MAX_CODIGOS_GERAL_POR_HORA, MAX_CODIGOS_POR_HORA, pedirCodigo, verificarCodigo } from "./codigo-email";
+import { emitirCodigo, MAX_CODIGOS_GERAL_POR_HORA, MAX_CODIGOS_POR_HORA, pedirCodigo, verificarCodigo } from "./codigo-email";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -52,6 +52,15 @@ describe("pedir código", () => {
     }
     expect(await db.select().from(codigosLogin)).toHaveLength(1);
     expect(await verificarCodigo(db, "equipe@example.com", "123456", opcoes({ agora: mais(2) }))).toMatchObject({ ok: true });
+  });
+
+  it("falha ao montar a mensagem: a reserva é apagada e não conta no limite", async () => {
+    const quebrada = { autorizado: async () => true, mensagem: async () => Promise.reject(new Error("banco fora")) };
+    for (let i = 0; i < MAX_CODIGOS_POR_HORA + 2; i++) {
+      await expect(emitirCodigo(db, correio, "equipe@example.com", opcoes(), quebrada)).rejects.toThrow("banco fora");
+    }
+    expect(await db.select().from(codigosLogin)).toHaveLength(0);
+    expect(await pedirCodigo(db, correio, "equipe@example.com", opcoes())).toBe("enviado");
   });
 
   it("apaga códigos com mais de 1 dia", async () => {

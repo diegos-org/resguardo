@@ -70,7 +70,7 @@ export function validarCadastro(e: Entrada): { ok: true; dados: DadosCadastro } 
   if (!nome) erros.nome = "Informe seu nome completo ou a razão social.";
   else if (nome.length > 150) erros.nome = "Máximo de 150 caracteres.";
   const tel = soDigitos(telefone);
-  if (tel.length < 10 || tel.length > 13) erros.telefone = "Telefone com DDD (10 a 13 dígitos).";
+  if (tel.length < 10 || tel.length > 13 || telefone.length > 20) erros.telefone = "Telefone com DDD (10 a 13 dígitos, até 20 caracteres).";
   if (e.consentimento !== "on" && e.consentimento !== true) erros.consentimento = "É preciso autorizar o uso dos dados para a análise.";
 
   const limites: [keyof ImovelCadastro, number, string][] = [

@@ -122,8 +122,8 @@ export async function emitirCodigo(
   });
   if (!reserva) return "limite";
 
-  const { assunto, texto } = await c.mensagem(codigo);
   try {
+    const { assunto, texto } = await c.mensagem(codigo);
     await correio.enviar({ para: email, assunto, texto });
   } catch (e) {
     await db.delete(codigosLogin).where(eq(codigosLogin.id, reserva));

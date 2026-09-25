@@ -93,22 +93,20 @@ export async function aprovarCadastroAcao(_a: EstadoDecisao, form: FormData): Pr
   const link = enderecoDaRequisicao(await headers(), `/convite/${r.token}`);
   const correio = correioDoAmbiente();
   const empresa = await nomeDaEmpresa(db, sessao.organizacaoId);
-  if (correio) {
-    after(async () => {
-      try {
-        await enviarEmailConvite(correio, r.email, empresa, link);
-      } catch (e) {
-        console.error("[cadastro] falha ao enviar convite", e);
-      }
-    });
-  }
   revalidatePath("/painel/proprietarios");
+  // O banco guarda só o hash do convite: a tela de cadastros só é recarregada quando o e-mail saiu
+  // de fato. Sem e-mail do sistema, ou se o envio falhar, o link fica na tela para ser copiado
+  // (se ainda assim se perder, crie outro convite na ficha).
   if (correio) {
-    revalidatePath("/painel/proprietarios/cadastros");
-    return { ok: `Aprovado. O convite do portal foi enviado para ${r.email}.` };
+    try {
+      await enviarEmailConvite(correio, r.email, empresa, link);
+      revalidatePath("/painel/proprietarios/cadastros");
+      return { ok: `Aprovado. O convite do portal foi enviado para ${r.email}.` };
+    } catch (e) {
+      console.error("[cadastro] falha ao enviar convite", e);
+      return { ok: `Aprovado, mas o e-mail do convite não saiu: copie o link abaixo agora e envie para ${r.email}.`, link };
+    }
   }
-  // Sem e-mail do sistema: a tela NÃO é recarregada, para o link continuar visível até ser copiado
-  // (o banco guarda só o hash do convite; se o link se perder, crie outro convite na ficha).
   return { ok: `Aprovado. O e-mail do sistema não está configurado: copie o link abaixo agora e envie para ${r.email}.`, link };
 }
 
