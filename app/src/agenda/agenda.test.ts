@@ -889,6 +889,20 @@ describe("configuração e envio", () => {
     expect(correio.enviadas.at(-1)!.texto).not.toContain("04/09");
   });
 
+  it("reserva avisada logo antes de o imóvel sair não se repete quando ele volta", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    // Registrada 5 minutos antes do corte: cai na faixa de sobreposição do marco de Búzios.
+    await nova(buzios, "2028-10-02", "2028-10-04", new Date(AGORA.getTime() - 5 * 60_000).toISOString());
+    const correio = new CorreioMemoria();
+    await enviarAgenda(db, org, correio, AGORA);
+    expect(correio.enviadas[0].texto).toContain("entrada seg 02/10");
+    await db.update(imoveis).set({ ativo: false }).where(eq(imoveis.id, buzios));
+    await enviarAgenda(db, org, correio, new Date("2026-10-02T23:00:00Z"));
+    await db.update(imoveis).set({ ativo: true }).where(eq(imoveis.id, buzios));
+    await enviarAgenda(db, org, correio, new Date("2026-10-03T23:00:00Z"));
+    expect(correio.enviadas[2].texto).not.toContain("02/10");
+  });
+
   it("prévia sem a cidade que ninguém recebe", async () => {
     await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "rio@example.com", cidades: ["Rio de Janeiro"] }] }, null);
     const { agenda } = await previaDaAgenda(db, org, AGORA);

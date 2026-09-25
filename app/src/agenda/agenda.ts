@@ -417,12 +417,15 @@ async function lerAvisadas(db: Db, chave: string): Promise<Avisada[]> {
 
 /**
  * Lista a guardar depois de um envio: as de antes que ainda podem cair na faixa de sobreposição do
- * próximo envio (corte até SOBREPOSICAO antes deste) mais as deste envio. As mais antigas não voltam
- * a aparecer (o horário delas é anterior à faixa), então saem.
+ * próximo envio (corte até SOBREPOSICAO antes deste) mais as deste envio. Um imóvel que ficou de fora
+ * volta a partir do marco dele (`porImovel`), com a mesma sobreposição: as avisadas dessa faixa ficam
+ * guardadas enquanto ele não voltar. As mais antigas não voltam a aparecer, então saem.
  */
-function avisadasDepois(antes: readonly Avisada[], novas: readonly string[], corte: Date, marco: Date): Avisada[] {
+function avisadasDepois(antes: readonly Avisada[], novas: readonly string[], corte: Date, marco: Date, marcosDosImoveis: readonly string[] = []): Avisada[] {
   const limite = marco.getTime() - SOBREPOSICAO_MS;
-  const ficam = antes.filter((a) => Date.parse(a.corte) >= limite && !novas.includes(a.id));
+  const faixas = [...new Set(marcosDosImoveis)].map((m) => Date.parse(m)).filter((m) => !Number.isNaN(m) && m - SOBREPOSICAO_MS < limite);
+  const naFaixa = (t: number) => t >= limite || faixas.some((m) => t >= m - SOBREPOSICAO_MS && t <= m);
+  const ficam = antes.filter((a) => naFaixa(Date.parse(a.corte)) && !novas.includes(a.id));
   return [...ficam, ...novas.map((id) => ({ id, corte: corte.toISOString() }))];
 }
 
@@ -947,7 +950,7 @@ export async function enviarAgenda(
         await gravarMarco(tx, chaveUltimaDe(organizacaoId, d.email), marco, cobertura, porImovel);
         // As reservas novas deste envio: na próxima, a faixa de sobreposição não as repete.
         const atuais = await lerAvisadas(tx, chaveAvisadasDe(organizacaoId, d.email));
-        const value = { avisadas: avisadasDepois(atuais, enviada.eventos, corte, marco) };
+        const value = { avisadas: avisadasDepois(atuais, enviada.eventos, corte, marco, Object.values(porImovel)) };
         await tx
           .insert(appSettings)
           .values({ key: chaveAvisadasDe(organizacaoId, d.email), value })
