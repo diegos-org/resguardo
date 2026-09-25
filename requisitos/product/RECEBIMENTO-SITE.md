@@ -53,7 +53,11 @@ regra** a decidir — a comparação abaixo vale igual.
   bem documentada (contrato de administração/intermediação, repasse identificado, nota fiscal
   só da comissão), a empresa costuma tributar **só a comissão**. É isso que o contador precisa
   confirmar para o caso da SCL.
-- No **split**, isso fica mais claro por natureza: a parte do proprietário nunca é da SCL.
+- No **split do Mercado Pago**, a parte do proprietário cai direto na conta dele — a
+  separação fica mais clara (ainda assim, confirmar com o contador).
+- No **Stripe Connect com "destination charges"**, a cobrança entra na conta da SCL antes da
+  transferência ao proprietário: a dúvida é a mesma do "empresa recebe e repassa" e precisa
+  da mesma confirmação do contador.
 - **Reforma tributária (IBS/CBS):** as regras para locação por temporada e intermediação
   imobiliária estão mudando a partir de 2026–2027; vale perguntar ao contador como fica cada
   modelo nos próximos anos.
@@ -84,7 +88,9 @@ criar).
 1. Modelo: **empresa recebe e repassa** (recomendado para começar) × **split Mercado Pago** ×
    **Stripe Connect**.
 2. Levar ao contador: "a SCL recebendo o valor total da reserva do site e repassando ao
-   proprietário, com contrato de intermediação, tributa só a comissão?".
+   proprietário, com contrato de intermediação, tributa só a comissão?" — a mesma pergunta
+   vale para o Stripe Connect (o dinheiro também passa pela SCL); no split do Mercado Pago,
+   pedir que confirme que a parte do proprietário não conta como receita da SCL.
 3. Taxa do cartão/Pix nas reservas do site: manter a regra atual (sai antes da divisão, cada
    um na proporção — como a taxa do Airbnb/Booking) ou mudar (só SCL ou só proprietário).
 
