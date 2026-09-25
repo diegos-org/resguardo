@@ -538,7 +538,17 @@ async function agendaDaPessoa(
   const desde = marco ? new Date(marco.getTime() - SOBREPOSICAO_MS) : umDia;
   const cobertas = marco ? await lerCobertura(db, chaveUltimaDe(organizacaoId, email)) : null;
   const coberto = (imovelId: string) => cobertas === null || cobertas.includes(imovelId);
-  const inicioIncerto = (i: Incerto) => (i.corte ? new Date(i.corte.getTime() - 86_400_000 - SOBREPOSICAO_MS) : null);
+  // Janela de um incerto: as 24h antes do corte dele e, se o pedido guardado levava reserva mais
+  // antiga (a pessoa estava dias sem receber), desde a mais antiga delas (o evento traz a data).
+  const inicioIncerto = (i: Incerto) => {
+    if (!i.corte) return null;
+    let t = i.corte.getTime() - 86_400_000 - SOBREPOSICAO_MS;
+    for (const e of i.eventos) {
+      const em = Date.parse(e.split("@")[1] ?? "");
+      if (!Number.isNaN(em) && em - 1 < t) t = em - 1;
+    }
+    return new Date(t);
+  };
   const inicioDe = (imovelId: string) => {
     let t = coberto(imovelId) ? desde : umDia;
     for (const i of incertos) {
