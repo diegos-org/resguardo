@@ -6,22 +6,31 @@ import { registrarAuditoria } from "@/auditoria/auditoria";
 import { registrarExecucao } from "@/sistema/automacoes";
 import { enviarAgenda, type ResultadoEnvio, resumoDoEnvio } from "./agenda";
 
+const ORGS_SIMULTANEAS = 3;
+
 /** Envia a agenda de cada organização. Falha de envio ou falta de provedor (com a agenda ligada) fica como erro. */
 export function agendaDeTodas(db: Db, correio: Correio | null, agora: Date): Promise<string> {
   return registrarExecucao(db, "agenda-diaria", async () => {
-    const partes: string[] = [];
+    // Algumas organizações ao mesmo tempo: uma lenta (provedor fora do ar) não segura as outras até o
+    // fim do tempo da execução. O resumo fica na ordem das organizações.
+    const orgs = await db.select({ id: organizacoes.id }).from(organizacoes);
+    const partes: string[] = new Array(orgs.length);
     let erro = false;
-    for (const org of await db.select({ id: organizacoes.id }).from(organizacoes)) {
-      // Um erro numa organização não impede as outras de receber a agenda.
-      try {
-        const r = await enviarAgenda(db, org.id, correio, agora);
-        partes.push(resumoDoEnvio(r));
-        if (r.falhas.length || r.aviso?.startsWith("sem provedor")) erro = true;
-      } catch (e) {
-        partes.push(`erro numa organização: ${e instanceof Error ? e.message : String(e)}`);
-        erro = true;
+    let proxima = 0;
+    const umaOrg = async () => {
+      for (let i = proxima++; i < orgs.length; i = proxima++) {
+        // Um erro numa organização não impede as outras de receber a agenda.
+        try {
+          const r = await enviarAgenda(db, orgs[i].id, correio, agora);
+          partes[i] = resumoDoEnvio(r);
+          if (r.falhas.length || r.aviso?.startsWith("sem provedor")) erro = true;
+        } catch (e) {
+          partes[i] = `erro numa organização: ${e instanceof Error ? e.message : String(e)}`;
+          erro = true;
+        }
       }
-    }
+    };
+    await Promise.all(Array.from({ length: Math.min(ORGS_SIMULTANEAS, orgs.length) }, umaOrg));
     const resumo = partes.join("; ") || "nenhuma organização";
     if (erro) throw new Error(resumo);
     return resumo;
