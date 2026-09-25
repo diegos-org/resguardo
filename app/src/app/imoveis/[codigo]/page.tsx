@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { resumoImovel } from "@/components/site/CartaoImovel";
-import { FormConsulta } from "@/components/site/FormConsulta";
+import { canalDeContato, FormConsulta } from "@/components/site/FormConsulta";
 import { FotoProvisoria, Moldura, SiteEmConfiguracao } from "@/components/site/Moldura";
 import styles from "@/components/site/site.module.css";
 import { hojeISO } from "@/lib/datas";
@@ -78,7 +78,7 @@ export default async function PaginaImovel({ params }: PageProps<"/imoveis/[codi
             )}
           </section>
         </div>
-        <FormConsulta imoveis={todos} valores={{ imovel: imovel.codigo }} hoje={hojeISO("America/Sao_Paulo")} />
+        <FormConsulta imoveis={todos} valores={{ imovel: imovel.codigo }} hoje={hojeISO("America/Sao_Paulo")} canal={canalDeContato(conteudo)} />
       </div>
     </Moldura>
   );

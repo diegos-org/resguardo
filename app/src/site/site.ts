@@ -151,6 +151,20 @@ export async function imovelDoSite(db: Db, organizacaoId: string, codigo: string
 }
 
 export type PedidoConsulta = { imovel: string; entrada: string; saida: string; hospedes: string };
+/** Nomes aceitos no endereço: os do site e os do contrato de links já divulgado (`property`, `checkin`…). */
+const APELIDOS: Record<keyof PedidoConsulta, string[]> = { imovel: ["imovel", "property"], entrada: ["entrada", "checkin"], saida: ["saida", "checkout"], hospedes: ["hospedes", "guests"] };
+
+export function lerPedidoConsulta(sp: Record<string, string | string[] | undefined>): PedidoConsulta {
+  const ler = (k: keyof PedidoConsulta) => {
+    for (const nome of APELIDOS[k]) {
+      const v = sp[nome];
+      if (typeof v === "string" && v) return v.slice(0, 40);
+    }
+    return "";
+  };
+  return { imovel: ler("imovel"), entrada: ler("entrada"), saida: ler("saida"), hospedes: ler("hospedes") };
+}
+
 export type ErrosConsulta = Partial<Record<keyof PedidoConsulta, string>>;
 
 const DATA = /^\d{4}-\d{2}-\d{2}$/;

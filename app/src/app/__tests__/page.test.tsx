@@ -54,7 +54,7 @@ describe("site público (M7.1)", () => {
   });
 
   it("formulário de consulta vai para /consulta por GET, com o imóvel escolhido e os erros", () => {
-    render(<FormConsulta imoveis={[imovel]} valores={{ imovel: "403" }} erros={{ saida: "A saída precisa ser depois da entrada." }} hoje="2026-09-25" />);
+    render(<FormConsulta imoveis={[imovel]} valores={{ imovel: "403" }} erros={{ saida: "A saída precisa ser depois da entrada." }} hoje="2026-09-25" canal="email" />);
     const form = document.querySelector("form")!;
     expect(form.getAttribute("action")).toBe("/consulta");
     expect(form.getAttribute("method")).toBe("get");
@@ -63,5 +63,8 @@ describe("site público (M7.1)", () => {
     // Nada pessoal no endereço: só apartamento, datas e pessoas; limite de pessoas pela maior capacidade.
     expect([...form.querySelectorAll("[name]")].map((e) => e.getAttribute("name"))).toEqual(["imovel", "entrada", "saida", "hospedes"]);
     expect(form.querySelector('[name="hospedes"]')!.getAttribute("max")).toBe("4");
+    // O texto fala do canal que existe no cadastro (aqui, só e-mail): nada de prometer WhatsApp.
+    expect(form.textContent).toContain("por e-mail");
+    expect(form.textContent).not.toContain("WhatsApp");
   });
 });

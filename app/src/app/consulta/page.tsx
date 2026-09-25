@@ -1,22 +1,19 @@
 import type { Metadata } from "next";
-import { FormConsulta } from "@/components/site/FormConsulta";
+import { canalDeContato, FormConsulta } from "@/components/site/FormConsulta";
 import { Moldura, SiteEmConfiguracao } from "@/components/site/Moldura";
 import styles from "@/components/site/site.module.css";
 import { hojeISO } from "@/lib/datas";
 import { carregarSite } from "@/site/pagina";
-import { imovelDoSite, imoveisDoSite, linkWhatsapp, montarConsulta, type PedidoConsulta } from "@/site/site";
+import { imovelDoSite, imoveisDoSite, lerPedidoConsulta, linkWhatsapp, montarConsulta } from "@/site/site";
 
 export const metadata: Metadata = { title: "Consulta — Sua Casa Leblon" };
-
-// Só o que não é pessoal vai no endereço da página (nome e mensagem, o visitante escreve no WhatsApp).
-const CAMPOS = ["imovel", "entrada", "saida", "hospedes"] as const;
 
 export default async function Consulta({ searchParams }: PageProps<"/consulta">) {
   const sp = await searchParams;
   const { db, conteudo } = await carregarSite();
   if (!conteudo) return <SiteEmConfiguracao />;
   const hoje = hojeISO("America/Sao_Paulo");
-  const pedido = Object.fromEntries(CAMPOS.map((k) => [k, typeof sp[k] === "string" ? (sp[k] as string) : ""])) as PedidoConsulta;
+  const pedido = lerPedidoConsulta(sp);
   const enviado = !!(pedido.entrada || pedido.saida);
   const todos = await imoveisDoSite(db, conteudo.organizacaoId);
   const r = enviado ? montarConsulta(pedido, pedido.imovel ? await imovelDoSite(db, conteudo.organizacaoId, pedido.imovel) : null, hoje) : null;
@@ -53,10 +50,10 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
               </p>
             </section>
           ) : (
-            <p className={styles.texto}>{conteudo.textos.comoReservar || "Escolha o apartamento, as datas e quantas pessoas. A conversa continua pelo WhatsApp."}</p>
+            <p className={styles.texto}>{conteudo.textos.comoReservar || "Escolha o apartamento, as datas e quantas pessoas."}</p>
           )}
         </div>
-        <FormConsulta imoveis={todos} valores={pedido} erros={r && !r.ok ? r.erros : {}} hoje={hoje} />
+        <FormConsulta imoveis={todos} valores={pedido} erros={r && !r.ok ? r.erros : {}} hoje={hoje} canal={canalDeContato(conteudo)} />
       </div>
     </Moldura>
   );

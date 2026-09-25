@@ -5,7 +5,7 @@ import { imoveis, organizacoes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { DETALHES_VAZIOS, salvarDetalhes } from "@/imoveis/detalhes";
-import { conteudoDoSite, imovelDoSite, imoveisDoSite, linkWhatsapp, montarConsulta, numeroWhatsapp, organizacaoDoSite } from "./site";
+import { conteudoDoSite, imovelDoSite, imoveisDoSite, lerPedidoConsulta, linkWhatsapp, montarConsulta, numeroWhatsapp, organizacaoDoSite } from "./site";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -91,5 +91,12 @@ describe("site público (M7.1)", () => {
     expect(montarConsulta({ ...base, hospedes: "5" }, imovel, "2026-09-25")).toMatchObject({ ok: false, erros: { hospedes: "Este apartamento recebe até 4 pessoas." } });
     expect(montarConsulta(base, null, "2026-09-25")).toMatchObject({ ok: false, erros: { imovel: expect.any(String) } });
     expect(linkWhatsapp("5521900000000", "a b&c")).toBe("https://wa.me/5521900000000?text=a%20b%26c");
+  });
+
+  it("link da consulta: aceita os nomes em português e os do contrato de links (property, checkin, checkout, guests)", () => {
+    const esperado = { imovel: "102", entrada: "2026-10-10", saida: "2026-10-12", hospedes: "2" };
+    expect(lerPedidoConsulta({ imovel: "102", entrada: "2026-10-10", saida: "2026-10-12", hospedes: "2" })).toEqual(esperado);
+    expect(lerPedidoConsulta({ property: "102", checkin: "2026-10-10", checkout: "2026-10-12", guests: "2", scenario: "x" })).toEqual(esperado);
+    expect(lerPedidoConsulta({ imovel: ["a", "b"] })).toEqual({ imovel: "", entrada: "", saida: "", hospedes: "" });
   });
 });

@@ -1,12 +1,35 @@
-import type { ErrosConsulta, ImovelPublico, PedidoConsulta } from "@/site/site";
+import type { ConteudoSite, ErrosConsulta, ImovelPublico, PedidoConsulta } from "@/site/site";
 import styles from "./site.module.css";
 
 /**
- * Formulário da consulta (GET para /consulta): nada é gravado; vira uma mensagem de WhatsApp.
+ * Formulário da consulta (GET para /consulta): nada é gravado; vira uma mensagem para o contato da
+ * empresa (WhatsApp ou e-mail).
  * Só apartamento, datas e pessoas vão no endereço da página — nome e mensagem o visitante escreve
- * direto no WhatsApp (dado pessoal não fica no endereço, no histórico nem em registro de acesso).
+ * direto na conversa (dado pessoal não fica no endereço, no histórico nem em registro de acesso).
  */
-export function FormConsulta({ imoveis, valores, erros = {}, hoje }: { imoveis: ImovelPublico[]; valores: Partial<PedidoConsulta>; erros?: ErrosConsulta; hoje: string }) {
+export type CanalContato = "whatsapp" | "email" | null;
+/** Por onde a conversa continua: o que está no cadastro da empresa (WhatsApp antes do e-mail). */
+export const canalDeContato = (c: Pick<ConteudoSite, "whatsapp" | "email">): CanalContato => (c.whatsapp ? "whatsapp" : c.email ? "email" : null);
+
+const TEXTO_CANAL: Record<"whatsapp" | "email" | "nenhum", string> = {
+  whatsapp: "A conversa continua no WhatsApp da Sua Casa Leblon, onde você pode se apresentar e contar mais.",
+  email: "A conversa continua por e-mail com a Sua Casa Leblon, onde você pode se apresentar e contar mais.",
+  nenhum: "Confira os dados antes de continuar.",
+};
+
+export function FormConsulta({
+  imoveis,
+  valores,
+  erros = {},
+  hoje,
+  canal,
+}: {
+  imoveis: ImovelPublico[];
+  valores: Partial<PedidoConsulta>;
+  erros?: ErrosConsulta;
+  hoje: string;
+  canal: CanalContato;
+}) {
   const erro = (k: keyof PedidoConsulta) =>
     erros[k] ? (
       <span className={styles.erro} id={`erro-${k}`}>
@@ -50,7 +73,7 @@ export function FormConsulta({ imoveis, valores, erros = {}, hoje }: { imoveis: 
       <button type="submit" className={styles.botao}>
         Continuar
       </button>
-      <span className={styles.miudo}>A conversa continua no WhatsApp da Sua Casa Leblon, onde você pode se apresentar e contar mais. Nenhum pagamento é feito aqui.</span>
+      <span className={styles.miudo}>{TEXTO_CANAL[canal ?? "nenhum"]} Nenhum pagamento é feito aqui.</span>
     </form>
   );
 }
