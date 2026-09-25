@@ -9,6 +9,7 @@ import { and, asc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { imoveis, limpezas, profissionaisLimpeza, reservas, usuarios } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { temConvitePendente, travarEmail } from "@/convites/convites";
 import type { Correio } from "@/email/correio";
 import { uuidValido } from "@/lib/ids";
 import { realizarPelaProfissional, type Resultado } from "@/limpezas/limpezas";
@@ -117,6 +118,8 @@ export async function darAcesso(db: Db, organizacaoId: string, profissionalId: s
   if (!EMAIL.test(email) || email.length > 200) return { ok: false, erro: "Informe um e-mail válido." };
   if (!uuidValido(profissionalId)) return { ok: false, erro: "Profissional não encontrada." };
   return db.transaction(async (tx) => {
+    // Mesma trava do convite de proprietário: os dois não nascem ao mesmo tempo para o mesmo e-mail.
+    await travarEmail(tx, email);
     const [p] = await tx
       .select()
       .from(profissionaisLimpeza)
@@ -124,6 +127,7 @@ export async function darAcesso(db: Db, organizacaoId: string, profissionalId: s
       .for("update");
     if (!p) return { ok: false as const, erro: "Profissional não encontrada." };
     if (!p.ativo) return { ok: false as const, erro: "Profissional arquivada: reative antes de dar acesso." };
+    if (await temConvitePendente(tx, email)) return { ok: false as const, erro: "Este e-mail tem um convite de proprietário pendente. Cancele o convite antes, ou use outro e-mail." };
     const [doEmail] = await tx.select().from(usuarios).where(eq(sql`lower(${usuarios.email})`, email));
     if (doEmail && doEmail.id !== p.usuarioId) return { ok: false as const, erro: "Esse e-mail já é de outra pessoa do sistema." };
     let usuarioId = p.usuarioId;
@@ -177,8 +181,8 @@ export async function tirarAcesso(db: Db, organizacaoId: string, profissionalId:
 
 /**
  * Aviso de limpeza atribuída (e-mail enquanto não há WhatsApp). Só para quem tem acesso ativo.
- * A chave de idempotência é da limpeza, da profissional e da data: confirmar de novo não repete o
- * aviso. Falha no envio não desfaz a atribuição: vira aviso na tela.
+ * A chave de idempotência é da limpeza, da profissional, da data e do imóvel: confirmar de novo
+ * não repete o aviso. Falha no envio não desfaz a atribuição: vira aviso na tela.
  */
 export async function avisarAtribuicao(
   db: Db,
@@ -193,6 +197,7 @@ export async function avisarAtribuicao(
       data: limpezas.data,
       estado: limpezas.estado,
       profissionalId: limpezas.profissionalId,
+      imovelId: limpezas.imovelId,
       imovelCodigo: imoveis.codigo,
       imovelNome: imoveis.nome,
       email: usuarios.email,
@@ -212,7 +217,8 @@ export async function avisarAtribuicao(
       para: l.email,
       assunto: `Limpeza ${diaBr(l.data)} — ${l.imovelCodigo}`,
       texto: `Olá, ${l.nome.split(" ")[0]}.\n\nVocê tem uma limpeza no ${l.imovelCodigo} (${l.imovelNome}) no dia ${diaBr(l.data)}.\n\nVeja as suas limpezas e marque como feita em: ${link}\n`,
-      chave: `limpeza-aviso:${limpezaId}:${l.profissionalId}:${l.data}`,
+      // Mudou de imóvel ou de data e foi confirmada de novo: é outro aviso (chave nova).
+      chave: `limpeza-aviso:${limpezaId}:${l.profissionalId}:${l.data}:${l.imovelId}`,
     });
     return { enviado: true, aviso: null };
   } catch (e) {

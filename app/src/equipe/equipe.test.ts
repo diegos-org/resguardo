@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { destinoPainel } from "@/acesso/painel";
 import { autorizar, podeFazer } from "@/acesso/politica";
 import { carregarSessao } from "@/acesso/sessao";
-import { imoveis, limpezas, organizacoes, profissionaisLimpeza, usuarios } from "@/db/schema";
+import { criarConvite } from "@/convites/convites";
+import { imoveis, limpezas, organizacoes, profissionaisLimpeza, proprietarios, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { type Correio, CorreioMemoria } from "@/email/correio";
@@ -116,7 +117,7 @@ describe("aviso de limpeza atribuída (M6.6)", () => {
     const id = await limpeza("2026-10-12", ana);
     const correio = new CorreioMemoria();
     expect(await avisarAtribuicao(db, org, id, correio, "https://exemplo.test/equipe")).toEqual({ enviado: true, aviso: null });
-    expect(correio.enviadas[0]).toMatchObject({ para: "ana@example.com", assunto: "Limpeza 12/10 — 403", chave: `limpeza-aviso:${id}:${ana}:2026-10-12` });
+    expect(correio.enviadas[0]).toMatchObject({ para: "ana@example.com", assunto: "Limpeza 12/10 — 403", chave: `limpeza-aviso:${id}:${ana}:2026-10-12:${casa}` });
     expect(correio.enviadas[0].texto).toContain("https://exemplo.test/equipe");
     expect(correio.enviadas[0].texto).not.toMatch(/R\$|custo/i);
     const daBia = await limpeza("2026-10-13", bia);
@@ -164,5 +165,25 @@ describe("revisão do Codex (M6.6)", () => {
     expect(await marcarFeitaPelaProfissional(db, org, ana, mudou, HOJE, usuarioId)).toEqual({ ok: false, erro: "Limpeza não encontrada." });
     const [l] = await db.select().from(limpezas).where(eq(limpezas.id, mudou));
     expect(l.estado).toBe("pedida");
+  });
+
+  it("e-mail com convite de proprietário pendente é recusado (o convite continua valendo)", async () => {
+    const [{ id: dono }] = await db.insert(proprietarios).values({ organizacaoId: org, nome: "Dono Fictício", email: "" }).returning();
+    expect(await criarConvite(db, org, dono, "convidado@example.com", null)).toMatchObject({ ok: true });
+    expect(await darAcesso(db, org, ana, "Convidado@example.com", null)).toMatchObject({ ok: false, erro: expect.stringContaining("convite de proprietário pendente") });
+    expect(await db.select().from(usuarios).where(eq(usuarios.email, "convidado@example.com"))).toHaveLength(0);
+  });
+
+  it("limpeza que mudou de imóvel e foi confirmada de novo com a mesma profissional: aviso novo (chave diferente)", async () => {
+    await darAcesso(db, org, ana, "ana@example.com", null);
+    const id = await limpeza("2026-10-12", ana);
+    const correio = new CorreioMemoria();
+    await avisarAtribuicao(db, org, id, correio, "x");
+    const [{ id: outra }] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "102", nome: "Um", endereco: "Rua Fictícia, 2" }).returning();
+    await db.update(limpezas).set({ imovelId: outra }).where(eq(limpezas.id, id));
+    await avisarAtribuicao(db, org, id, correio, "x");
+    expect(correio.enviadas).toHaveLength(2);
+    expect(correio.enviadas[1].assunto).toContain("102");
+    expect(correio.enviadas[1].chave).not.toBe(correio.enviadas[0].chave);
   });
 });
