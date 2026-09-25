@@ -488,7 +488,9 @@
   24/09**: comissão sobre o valor que o canal repassa (depois da taxa do canal); estadia que
   atravessa o mês é **dividida igualmente por noite** (valor total, com a limpeza); no
   **Airbnb** o proprietário recebe a parte dele direto (split) e isso não entra no acerto; no
-  **Booking, site e direta** a empresa recebe tudo e repassa uma vez por mês. Dá para mudar
+  **Booking, site e direta** a empresa recebe tudo e repassa uma vez por mês (para o site, você
+  pediu para rever com a opção de split — ver "Como receber as reservas do site"; até lá, vale
+  esta). Dá para mudar
   reserva a reserva no campo "Quem recebe do canal". Imóvel com **mais de um proprietário**
   (ainda não há cadastro de cotas) ou sem proprietário fica com o acerto **pendente** — nada
   é atribuído a alguém por chute.
@@ -782,16 +784,18 @@ ambiente).
    avisa quando falta) e se o **endereço e o complemento** de cada imóvel estão no cadastro,
    porque é isso que o hóspede vê 2 dias antes da entrada.
 17. **Recebimento do site:** leia a comparação na seção 7 ("Como receber as reservas do
-   site"), leve a pergunta ao contador e me diga o modelo escolhido.
+   site"), leve a pergunta ao contador e me diga se mantém "empresa recebe e repassa" ou muda.
 
 ---
 
 ## 7. Decisões pendentes e respostas às suas perguntas
 
 **Preciso de você (sem pressa):**
-- **Como receber as reservas do site (M8.0):** comparei as opções em
-  `requisitos/product/RECEBIMENTO-SITE.md`. Resumo:
-  - **empresa recebe e repassa (minha sugestão para começar):** o hóspede paga à SCL pelo
+- **Como receber as reservas do site (M8.0):** em 24/09 você decidiu que no site a empresa
+  recebe e repassa; depois perguntou se dava para fazer como o Airbnb (split). Comparei as
+  opções em `requisitos/product/RECEBIMENTO-SITE.md` — até você dizer outra coisa, vale a de
+  24/09. Resumo:
+  - **empresa recebe e repassa (a de 24/09; minha sugestão é manter):** o hóspede paga à SCL pelo
     Mercado Pago (cartão ~4–5%, Pix ~1%), a SCL repassa ao proprietário no dia 1º, como já
     faz com Booking e diretas. A parte financeira do sistema já está pronta para isso (falta,
     em qualquer opção, ligar o pagamento em si — M8.2) e o proprietário não precisa abrir

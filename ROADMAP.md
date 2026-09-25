@@ -130,9 +130,9 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 
 | ID | Item | Estado | Depende de |
 |---|---|---|---|
-| M8.0 | Decidir o recebimento do site: split automático (Mercado Pago marketplace ou Stripe Connect, como no Airbnb) × empresa recebe e repassa; comparar taxas, estorno, chargeback e impostos — comparação e recomendação em `requisitos/product/RECEBIMENTO-SITE.md` | bloqueado | Diego: escolher o modelo (e confirmar impostos com o contador) |
+| M8.0 | Rever a decisão de 24/09 sobre o recebimento do site (hoje: **empresa recebe e repassa**, que continua valendo até Diego decidir outra coisa), a pedido de Diego: split automático (Mercado Pago marketplace ou Stripe Connect, como no Airbnb) × empresa recebe e repassa; comparar taxas, estorno, chargeback e impostos — comparação e recomendação (manter) em `requisitos/product/RECEBIMENTO-SITE.md` | bloqueado | Diego: escolher o modelo (e confirmar impostos com o contador) |
 | M8.1 | Cotação persistida, revalidação e hold com controle de concorrência | a fazer | M7.2 |
-| M8.2 | Pagamento no provedor escolhido no M8.0 (Mercado Pago, se confirmado) em **sandbox**: checkout, webhook assinado, idempotência, reconciliação, devolução ao hóspede e **contestação (chargeback)**: eventos de disputa registrados com situação, lançamento no financeiro que desconta a parte do proprietário, aviso e repasse afetado segurado até a decisão | bloqueado | M8.0, M8.1 + Diego: credenciais de teste do provedor escolhido |
+| M8.2 | Pagamento no provedor escolhido no M8.0 (Mercado Pago, se confirmado) em **sandbox**: checkout, webhook assinado, idempotência, reconciliação, devolução ao hóspede e **contestação (chargeback)**: eventos de disputa registrados com situação, lançamento no financeiro que desconta a parte do proprietário, aviso e repasse afetado segurado até a decisão; **ganhou** → o desconto é estornado e o repasse liberado; **perdeu** → o desconto fica definitivo e o repasse sai já descontado. Antes de implementar: confirmar com o provedor (documentação/suporte) as regras de taxa, estorno parcial e contestação — em especial no split, quanto sai de cada parte | bloqueado | M8.0, M8.1 + Diego: credenciais de teste do provedor escolhido |
 | M8.3 | Criação da reserva no Beds24 após pagamento confirmado (escrita) | bloqueado | M8.2 + autorização explícita de escrita |
 
 ### M9 — Portal do hóspede e mensagens
@@ -177,7 +177,7 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 6. **Modelo do marketplace:** escolher entre os modelos propostos (ou ajustar). (destrava M12.1)
 7. **Booking:** criar os anúncios (o Beds24 pode criar a partir dos dados já importados do Airbnb — ver guia). 
 9. **E-mail do sistema (Resend):** conta e domínio. (liga o login por código e os convites por e-mail)
-10. **Recebimento do site:** escolher entre "empresa recebe e repassa" (recomendado para começar) e split automático, e confirmar com o contador a tributação só sobre a comissão — ver `requisitos/product/RECEBIMENTO-SITE.md`. (destrava M8.0 e orienta o M8.2)
+10. **Recebimento do site:** dizer se mantém a decisão de 24/09 ("empresa recebe e repassa", recomendado) ou muda para split automático, e confirmar com o contador a tributação só sobre a comissão — ver `requisitos/product/RECEBIMENTO-SITE.md`. (destrava M8.0 e orienta o M8.2)
 
 ## Pendências de decisão (não bloqueiam o início)
 
@@ -190,7 +190,8 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 - 24/09 (Diego): comissão sobre o valor que o canal repassa (depois da taxa do canal);
   estadia entre meses rateada igualmente por noite (valor total, com limpeza); Airbnb faz
   split automático (proprietário recebe direto); Booking/site/direta: empresa recebe tudo e
-  repassa uma vez por mês.
+  repassa uma vez por mês. (Para o site, Diego pediu para rever com a opção de split: M8.0;
+  até lá, vale esta.)
 - 24/09 (Diego): quem recebe é configurável por imóvel e por canal (padrão: Airbnb split);
   um proprietário por imóvel (pessoa ou empresa); imóveis do Diego são clientes normais;
   tudo editável pelo painel, uma regra num lugar só, exclusão com confirmação.

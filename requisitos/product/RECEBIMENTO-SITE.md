@@ -1,6 +1,8 @@
 # Recebimento das reservas do site — comparação para Diego decidir (M8.0)
 
-**Situação:** proposta do Claude em 25/09/2026. **Nada disto é decisão ainda.** Taxas tiradas de
+**Situação:** proposta do Claude em 25/09/2026. Em 24/09 Diego decidiu que, no site, **a empresa recebe e
+repassa**; depois perguntou se dava para fazer como o Airbnb (split). Este documento **revê
+aquela decisão** — ela continua valendo até Diego escolher outra coisa. Taxas tiradas de
 fontes públicas em setembro/2026 e **a conferir** na hora de abrir a conta (mudam por plano,
 prazo de recebimento e negociação). A parte de impostos **precisa do contador**.
 
@@ -80,6 +82,11 @@ regra** a decidir — a comparação abaixo vale igual.
 3. **Stripe Connect só se** um dia houver hóspedes/proprietários de fora do Brasil em volume:
    no Brasil ele é mais caro, o Pix é só por convite e a SCL responde pelos chargebacks do mesmo jeito.
 
+Qualquer que seja a escolha, **antes de implementar o M8.2** as regras "a conferir" da tabela
+(como o provedor desconta a taxa, estorno parcial e contestação — no split, quanto sai de
+cada parte) precisam ser confirmadas com o próprio provedor, para o financeiro lançar os
+valores certos.
+
 O sistema já guarda, por reserva, "quem recebe do canal" (`split` ou `empresa`): as duas
 formas cabem no financeiro sem mudança de regra — a escolha define **com qual provedor** e
 **de que jeito** o M8.2 é construído (e de quem são as credenciais de teste que Diego precisa
@@ -87,8 +94,8 @@ criar).
 
 ## O que Diego precisa decidir
 
-1. Modelo: **empresa recebe e repassa** (recomendado para começar) × **split Mercado Pago** ×
-   **Stripe Connect**.
+1. Modelo: **manter "empresa recebe e repassa"** (decisão de 24/09, recomendado) × mudar para
+   **split Mercado Pago** × **Stripe Connect**.
 2. Levar ao contador: "a SCL recebendo o valor total da reserva do site e repassando ao
    proprietário, com contrato de intermediação, tributa só a comissão?" — a mesma pergunta
    vale para o Stripe Connect (o dinheiro também passa pela SCL); no split do Mercado Pago,
