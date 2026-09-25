@@ -7,7 +7,7 @@
  */
 import { getDb } from "../src/db/client";
 import { organizacoes } from "../src/db/schema";
-import { recalcularReservas } from "../src/financeiro/aplicar";
+import { conferirMovimentadas, recalcularPendentes, recalcularReservas } from "../src/financeiro/aplicar";
 import { registrarExecucao } from "../src/sistema/automacoes";
 
 async function main() {
@@ -22,6 +22,12 @@ async function main() {
     for (const org of await db.select({ id: organizacoes.id }).from(organizacoes)) {
       const r = await recalcularReservas(db, org.id);
       partes.push(`${r.reservas} reserva(s) conferida(s), ${r.criados} lançamento(s) novo(s), ${r.estornados} estornado(s)`);
+      // Pendentes calculadas por versões antigas (de qualquer data): saem do financeiro até confirmar.
+      const p = await recalcularPendentes(db, org.id);
+      if (p.reservas) partes.push(`${p.reservas} pendente(s) com lançamentos antigos, ${p.estornados} estornado(s), ${p.protegidas} com dinheiro já movimentado (aviso no Início)`);
+      // Confirmadas de qualquer data que já movimentaram dinheiro: só confere (não recalcula o passado).
+      const c = await conferirMovimentadas(db, org.id);
+      if (c.divergentes) partes.push(`${c.divergentes} confirmada(s) com dinheiro já movimentado diferente do cálculo (em conferência)`);
     }
     return partes.join("; ") || "nenhuma organização";
   });

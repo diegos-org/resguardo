@@ -21,6 +21,7 @@ import type { Db } from "@/db/types";
 import { estornar, lancar, mudarEstado } from "@/financeiro/ledger";
 import { dataValida } from "@/reservas/regras";
 import { uuidValido } from "@/lib/ids";
+import { lancamentoEmConferencia } from "@/portal/posse";
 
 export type Repasse = typeof repasses.$inferSelect;
 
@@ -122,7 +123,7 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
     .where(
       and(
         eq(lancamentos.organizacaoId, org),
-        eq(lancamentos.estado, "pendente"),
+        lancamentoEmConferencia(),
         lt(lancamentos.competencia, lim.fim),
         or(
           eq(lancamentos.proprietarioId, dono.id),
@@ -158,7 +159,7 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
     .where(
       and(
         eq(lancamentos.organizacaoId, org),
-        eq(lancamentos.estado, "pendente"),
+        lancamentoEmConferencia(),
         lt(lancamentos.competencia, lim.fim),
         or(eq(lancamentos.proprietarioId, dono.id), and(isNull(lancamentos.proprietarioId), noPeriodoDele(lancamentos.imovelId, lancamentos.competencia))),
         isNull(lancamentos.estornoDe),
@@ -215,7 +216,7 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
   const bloqueios: string[] = [];
   const avisos: string[] = [];
   if (hoje < lim.fim) bloqueios.push(`O mês ainda não terminou: o fechamento é a partir de ${lim.fim.split("-").reverse().join("/")}.`);
-  if (pendentes[0]?.n) bloqueios.push(`${pendentes[0].n} lançamento(s) com acerto pendente até este mês (sem proprietário, quem recebe a confirmar ou ajuste a esclarecer): resolva antes de fechar.`);
+  if (pendentes[0]?.n) bloqueios.push(`${pendentes[0].n} lançamento(s) com acerto pendente até este mês (sem proprietário, quem recebe a confirmar, ajuste a esclarecer ou reserva que deixou de estar confirmada com dinheiro já movimentado): resolva antes de fechar.`);
   if (ajustesAbertos?.n) bloqueios.push(`${ajustesAbertos.n} ajuste(s) com o proprietário ainda a esclarecer até este mês (com ou sem valor): esclareça antes de fechar.`);
   if (posterior) bloqueios.push(`Já existe repasse de ${nomeMes(posterior.mes.slice(0, 7))}: estorne-o antes de fechar um mês anterior.`);
   if (previstos[0]?.n) avisos.push(`${previstos[0].n} lançamento(s) ainda previsto(s), isto é, dinheiro que pode não ter entrado: confira antes de pagar.`);
