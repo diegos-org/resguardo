@@ -840,6 +840,37 @@ describe("configuração e envio", () => {
     expect(await estado("2026-09-30")).toBe("resolvido");
   });
 
+  it("envio incerto com reserva mais antiga que 24h antes do corte dele: ao voltar o imóvel, ela ainda chega", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    // A pessoa ficou dias sem receber: o envio incerto de 30/09 levava uma reserva de Búzios de 29/09 (mais de 24h antes do corte).
+    const antiga = await nova(buzios, "2028-08-07", "2028-08-09", "2026-09-29T12:00:00.000Z");
+    await db.insert(appSettings).values([
+      { key: `agenda-diaria:ultima:${org}:a@example.com`, value: { em: "2026-09-27T23:00:00.000Z" } },
+      {
+        key: `agenda-diaria:${org}:2026-09-30:a@example.com`,
+        value: {
+          em: "2026-09-30T23:00:00.000Z",
+          estado: "incerto",
+          corte: "2026-09-30T23:00:00.000Z",
+          carga: { assunto: "x", texto: "x", eventos: [`${antiga.id}@2026-09-29T12:00:00.000Z`], imoveis: [rio, buzios].sort() },
+        },
+      },
+    ]);
+    // Hoje Búzios está inativo: o e-mail sai sem Búzios e o incerto continua aberto só com Búzios.
+    await db.update(imoveis).set({ ativo: false }).where(eq(imoveis.id, buzios));
+    const correio = new CorreioMemoria();
+    await enviarAgenda(db, org, correio, AGORA);
+    const chave = `agenda-diaria:${org}:2026-09-30:a@example.com`;
+    const marca = async () => (await db.select().from(appSettings).where(eq(appSettings.key, chave)))[0].value as { estado: string };
+    expect((await marca()).estado).toBe("incerto");
+    // Búzios volta dias depois: a reserva de 29/09 chega com o aviso, e o incerto é resolvido.
+    await db.update(imoveis).set({ ativo: true }).where(eq(imoveis.id, buzios));
+    await enviarAgenda(db, org, correio, new Date("2026-10-03T23:00:00Z"));
+    expect(correio.enviadas[1].texto).toContain("entrada seg 07/08");
+    expect(correio.enviadas[1].texto).toContain("pode já ter vindo");
+    expect((await marca()).estado).toBe("resolvido");
+  });
+
   it("envio incerto aberto por um imóvel de fora não reenvia a cada dia o que já foi entregue", async () => {
     await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
     // Marco antigo e um incerto de ontem com Rio e Búzios; hoje Búzios está inativo.
