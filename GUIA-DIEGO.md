@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 25/09/2026, e-mail do fechamento mensal aos proprietários (M5.4), depois do acesso das profissionais de limpeza pelo celular (M6.6).
+> **Última atualização:** 25/09/2026, site público novo lendo os imóveis do sistema (M7.1), depois do e-mail do fechamento mensal aos proprietários (M5.4).
 
 ---
 
@@ -31,7 +31,7 @@
 | M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | 🟡 em andamento |
 | M5 Portal do proprietário | Relatórios, saldos, PDF | 🟡 em andamento |
 | M6 Operação | Limpezas, manutenção, agenda diária | 🟡 em andamento |
-| M7 Site público | Site novo com disponibilidade real | ⚪ aguardando |
+| M7 Site público | Site novo com disponibilidade real | 🟡 em andamento |
 | M8 Reserva direta | Pagamento pelo Mercado Pago | ⚪ aguardando |
 | M9 Portal do hóspede | Acesso do hóspede e mensagens automáticas | ⚪ aguardando |
 | M10 WhatsApp | Caixa de entrada do WhatsApp no painel | ⚪ aguardando |
@@ -589,6 +589,24 @@
 |---|---|
 | ![Agenda](docs/telas/agenda.png) | ![Agenda no celular](docs/telas/agenda-celular.png) |
 
+- M7.1: **site público novo, dentro do sistema** (o endereço principal, sem login). Tem a
+  página inicial, a lista de apartamentos, a página de cada apartamento e a **consulta**:
+  - aparecem **só os imóveis marcados como "público" e ativos** no cadastro (Búzios fica de
+    fora enquanto não for público). Nome, bairro, capacidade, quartos, banheiros, descrição,
+    camas, comodidades, horários de entrada e saída, mínimo de noites e regras da casa vêm
+    do **cadastro do imóvel** — mudou lá, o site mostra na hora. **Endereço exato,
+    proprietário, preços e reservas nunca aparecem**;
+  - os textos da página inicial (título, subtítulo, "Sobre", "Como reservar", contato e
+    rodapé) ficam em **Configurações → Site**;
+  - **consulta:** o visitante escolhe o apartamento, as datas e quantas pessoas; o sistema
+    confere (datas no futuro, saída depois da entrada, pessoas dentro da capacidade) e monta
+    uma mensagem pronta que ele envia pelo **WhatsApp da empresa** (o telefone em
+    Configurações → Empresa; sem telefone, vai por e-mail). **Nada é gravado nem cobrado**:
+    disponibilidade e valor são combinados na conversa (a cotação automática é o M7.2);
+  - **fotos:** enquanto os direitos de uso não forem liberados (M7.3), aparece um quadro
+    com o nome do apartamento no lugar de cada foto;
+  - há um link discreto **"Área da equipe"** no rodapé, que leva ao login do painel.
+
 A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 
 ---
@@ -734,6 +752,11 @@ ambiente).
    fácil é subir no seu **Google Drive** e me dizer o nome do arquivo (o Drive já está
    conectado aqui). Eu só leio para levantar todas as telas e capacidades e comparar com o
    plano; **nada dele vai para o GitHub**, e dados reais de clientes não são copiados.
+15. **Site novo:** em **Configurações → Site**, escreva os textos (título, "Sobre", "Como
+   reservar", contato, rodapé); em **Configurações → Empresa**, confira o **telefone do
+   WhatsApp** da consulta; e, em cada imóvel, marque **público** só nos que devem aparecer e
+   confira a descrição, as camas e as comodidades. O site ainda não substitui o atual: o
+   domínio só muda na entrada em uso (M11).
 
 ---
 
