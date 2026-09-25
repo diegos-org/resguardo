@@ -41,6 +41,8 @@ export const usuarios = pgTable(
     nome: text("nome").notNull(),
     papel: papelEnum("papel").notNull(),
     ativo: boolean("ativo").notNull().default(true),
+    /** Sessões abertas antes disso não valem mais (e-mail trocado, acesso devolvido). */
+    sessaoValidaDesde: timestamp("sessao_valida_desde", { withTimezone: true }),
     criadoEm: criadoEm(),
   },
   (t) => [uniqueIndex("usuarios_email_unico").on(sql`lower(${t.email})`)],

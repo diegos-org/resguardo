@@ -22,7 +22,7 @@ export async function obterSessao(): Promise<Sessao | null> {
   const s = await auth();
   const id = s?.user?.id;
   if (!id) return null;
-  return carregarSessao(getDb(), id);
+  return carregarSessao(getDb(), id, { emitidaEm: typeof s?.desde === "number" ? s.desde : null });
 }
 
 /**

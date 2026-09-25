@@ -1,0 +1,1 @@
+ALTER TABLE "usuarios" ADD COLUMN "sessao_valida_desde" timestamp with time zone;

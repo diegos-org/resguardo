@@ -126,3 +126,43 @@ describe("aviso de limpeza atribuída (M6.6)", () => {
     expect(await avisarAtribuicao(db, org, id, falha, "x")).toMatchObject({ enviado: false, aviso: expect.stringContaining("falhou") });
   });
 });
+
+describe("revisão do Codex (M6.6)", () => {
+  it("trocar o e-mail ou devolver o acesso invalida as sessões abertas antes; entrar de novo funciona", async () => {
+    await darAcesso(db, org, ana, "ana@example.com", null);
+    const usuarioId = await usuarioDe(ana);
+    const antes = Date.now() - 1000;
+    expect(await carregarSessao(db, usuarioId, { emitidaEm: antes })).toMatchObject({ profissionalId: ana });
+    expect(await darAcesso(db, org, ana, "ana.nova@example.com", null)).toEqual({ ok: true });
+    expect(await carregarSessao(db, usuarioId, { emitidaEm: antes })).toBeNull();
+    expect(await carregarSessao(db, usuarioId, { emitidaEm: null })).toBeNull();
+    await new Promise((ok) => setTimeout(ok, 5));
+    const depois = Date.now();
+    expect(await carregarSessao(db, usuarioId, { emitidaEm: depois })).toMatchObject({ profissionalId: ana });
+    // Tirar e dar de novo (mesmo e-mail): a sessão de antes não volta a valer.
+    await tirarAcesso(db, org, ana, null);
+    await new Promise((ok) => setTimeout(ok, 5));
+    expect(await darAcesso(db, org, ana, "ana.nova@example.com", null)).toEqual({ ok: true });
+    expect(await carregarSessao(db, usuarioId, { emitidaEm: depois })).toBeNull();
+    // Dar de novo o mesmo e-mail com o acesso ativo não derruba ninguém.
+    await new Promise((ok) => setTimeout(ok, 5));
+    const agora = Date.now();
+    expect(await darAcesso(db, org, ana, "ana.nova@example.com", null)).toEqual({ ok: true });
+    expect(await carregarSessao(db, usuarioId, { emitidaEm: agora })).toMatchObject({ profissionalId: ana });
+  });
+
+  it("limpeza voltada a \"pedida\" (reserva mudou) some da tela dela e não pode ser marcada; as feitas continuam no histórico", async () => {
+    await darAcesso(db, org, ana, "ana@example.com", null);
+    const usuarioId = await usuarioDe(ana);
+    const mudou = await limpeza("2026-10-09", ana);
+    const feita = await limpeza("2026-10-08", ana);
+    expect(await marcarFeitaPelaProfissional(db, org, ana, feita, HOJE, usuarioId)).toEqual({ ok: true });
+    // Como faz sincronizarLimpezas: volta a pedida, mantendo a profissional anterior.
+    await db.update(limpezas).set({ estado: "pedida" }).where(eq(limpezas.id, mudou));
+    const lista = await limpezasDaProfissional(db, org, ana, HOJE);
+    expect(lista.map((l) => l.id)).toEqual([feita]);
+    expect(await marcarFeitaPelaProfissional(db, org, ana, mudou, HOJE, usuarioId)).toEqual({ ok: false, erro: "Limpeza não encontrada." });
+    const [l] = await db.select().from(limpezas).where(eq(limpezas.id, mudou));
+    expect(l.estado).toBe("pedida");
+  });
+});

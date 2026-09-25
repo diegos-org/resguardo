@@ -8,9 +8,11 @@ import type { Sessao } from "./politica";
  * inexistente → null. Para proprietários, resolve os imóveis pelos vínculos
  * explícitos usuário → proprietário ATIVO → imóvel (só da mesma organização).
  */
-export async function carregarSessao(db: Db, usuarioId: string): Promise<Sessao | null> {
+export async function carregarSessao(db: Db, usuarioId: string, o?: { emitidaEm: number | null }): Promise<Sessao | null> {
   const [u] = await db.select().from(usuarios).where(eq(usuarios.id, usuarioId));
   if (!u || !u.ativo) return null;
+  // Login de antes de o acesso mudar (e-mail trocado, acesso devolvido): não vale mais.
+  if (o && u.sessaoValidaDesde && (o.emitidaEm === null || o.emitidaEm < u.sessaoValidaDesde.getTime())) return null;
 
   let imovelIds: string[] = [];
   if (u.papel === "proprietario") {

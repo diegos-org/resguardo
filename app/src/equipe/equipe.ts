@@ -5,13 +5,13 @@
  *
  * Aviso de limpeza nova: por e-mail enquanto o WhatsApp (M10) não está ligado.
  */
-import { and, asc, eq, gte, inArray, lt, ne, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { imoveis, limpezas, profissionaisLimpeza, reservas, usuarios } from "@/db/schema";
 import type { Db } from "@/db/types";
 import type { Correio } from "@/email/correio";
 import { uuidValido } from "@/lib/ids";
-import { realizarLimpeza, type Resultado } from "@/limpezas/limpezas";
+import { realizarPelaProfissional, type Resultado } from "@/limpezas/limpezas";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const somaDias = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
@@ -34,8 +34,8 @@ export type LimpezaDaEquipe = {
 };
 
 /**
- * Limpezas atribuídas a esta profissional, de alguns dias atrás até as próximas duas semanas. As
- * canceladas não aparecem. Não traz custo nem nada do financeiro.
+ * Limpezas confirmadas com esta profissional (e as que ela já fez), de alguns dias atrás até as
+ * próximas duas semanas. Pedidas (em recombinação) e canceladas não aparecem. Não traz custo nem nada do financeiro.
  */
 export async function limpezasDaProfissional(db: Db, organizacaoId: string, profissionalId: string, hoje: string): Promise<LimpezaDaEquipe[]> {
   if (!uuidValido(profissionalId)) return [];
@@ -56,7 +56,8 @@ export async function limpezasDaProfissional(db: Db, organizacaoId: string, prof
       and(
         eq(limpezas.organizacaoId, organizacaoId),
         eq(limpezas.profissionalId, profissionalId),
-        ne(limpezas.estado, "cancelada"),
+        // Só o que está confirmado com ela (ou já feito): "pedida" está sendo recombinada.
+        inArray(limpezas.estado, ["confirmada", "realizada"]),
         gte(limpezas.data, somaDias(hoje, -DIAS_ANTES)),
         lt(limpezas.data, somaDias(hoje, DIAS_DEPOIS + 1)),
       ),
@@ -86,18 +87,12 @@ export async function limpezasDaProfissional(db: Db, organizacaoId: string, prof
 }
 
 /**
- * A profissional marca como feita. Só a limpeza atribuída a ela (a posse vem da sessão, no
- * servidor), a partir do dia dela. O custo fica como está (quem informa é o painel).
+ * A profissional marca como feita. Só a limpeza confirmada com ela (a posse vem da sessão, no
+ * servidor, e é conferida com a limpeza travada), a partir do dia dela. O custo fica como está.
  */
 export async function marcarFeitaPelaProfissional(db: Db, organizacaoId: string, profissionalId: string, limpezaId: string, hoje: string, autorId: string): Promise<Resultado> {
   if (!uuidValido(limpezaId) || !uuidValido(profissionalId)) return { ok: false, erro: "Limpeza não encontrada." };
-  const [l] = await db
-    .select({ profissionalId: limpezas.profissionalId })
-    .from(limpezas)
-    .where(and(eq(limpezas.id, limpezaId), eq(limpezas.organizacaoId, organizacaoId)));
-  // Limpeza de outra profissional (ou que não existe): a mesma resposta, sem dizer qual.
-  if (!l || l.profissionalId !== profissionalId) return { ok: false, erro: "Limpeza não encontrada." };
-  return realizarLimpeza(db, organizacaoId, limpezaId, { profissionalId, custo: null }, hoje, autorId);
+  return realizarPelaProfissional(db, organizacaoId, limpezaId, profissionalId, hoje, autorId);
 }
 
 export type SituacaoAcesso = { usuarioId: string; email: string; ativo: boolean } | null;
@@ -133,8 +128,14 @@ export async function darAcesso(db: Db, organizacaoId: string, profissionalId: s
     if (doEmail && doEmail.id !== p.usuarioId) return { ok: false as const, erro: "Esse e-mail já é de outra pessoa do sistema." };
     let usuarioId = p.usuarioId;
     if (usuarioId) {
-      // Já tinha acesso: reativa e, se mudou, troca o e-mail.
-      await tx.update(usuarios).set({ email, ativo: true, nome: p.nome }).where(and(eq(usuarios.id, usuarioId), eq(usuarios.organizacaoId, organizacaoId)));
+      // Já tinha acesso: reativa e, se mudou, troca o e-mail. E-mail trocado ou acesso devolvido:
+      // quem tinha entrado antes (com o e-mail antigo) precisa entrar de novo.
+      const [u] = await tx.select({ email: usuarios.email, ativo: usuarios.ativo }).from(usuarios).where(eq(usuarios.id, usuarioId));
+      const mudou = !u || !u.ativo || u.email.toLowerCase() !== email;
+      await tx
+        .update(usuarios)
+        .set({ email, ativo: true, nome: p.nome, ...(mudou ? { sessaoValidaDesde: new Date() } : {}) })
+        .where(and(eq(usuarios.id, usuarioId), eq(usuarios.organizacaoId, organizacaoId)));
     } else {
       const [u] = await tx.insert(usuarios).values({ organizacaoId, email, nome: p.nome, papel: "limpeza" }).returning({ id: usuarios.id });
       usuarioId = u.id;

@@ -411,6 +411,28 @@ export function realizarLimpeza(
   );
 }
 
+/**
+ * A profissional marca como feita pelo celular (M6.6). A posse e o estado são conferidos com a
+ * limpeza travada: reatribuída a outra ou voltada a "pedida" no meio, não passa. O custo fica como
+ * está (quem informa é o painel).
+ */
+export function realizarPelaProfissional(db: Db, organizacaoId: string, id: string, profissionalId: string, hoje: string, autorId: string | null): Promise<Resultado> {
+  return transicao(
+    db,
+    organizacaoId,
+    id,
+    ["pedida", "confirmada", "realizada", "cancelada"],
+    async (l) => {
+      // De outra profissional, ou fora de "confirmada": a mesma resposta, sem dizer por quê.
+      if (l.profissionalId !== profissionalId || l.estado !== "confirmada") return "Limpeza não encontrada.";
+      if (l.data > hoje) return "A limpeza ainda não chegou: só dá para registrar como realizada a partir do dia dela.";
+      return { estado: "realizada", realizadaEm: new Date() };
+    },
+    "limpeza.realizar",
+    autorId,
+  );
+}
+
 /** Corrige o custo de uma limpeza realizada. */
 export function informarCusto(db: Db, organizacaoId: string, id: string, custo: number | null, autorId: string | null): Promise<Resultado> {
   const erroCusto = validarCusto(custo);
