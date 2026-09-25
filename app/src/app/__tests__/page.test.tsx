@@ -66,6 +66,8 @@ describe("site público (M7.1)", () => {
     // O texto fala do canal que existe no cadastro (aqui, só e-mail): nada de prometer WhatsApp.
     expect(form.textContent).toContain("por e-mail");
     expect(form.textContent).not.toContain("WhatsApp");
+    // Sem marca fixa no texto (o site pode ser de outra empresa do cadastro).
+    expect(form.textContent).not.toContain("Sua Casa Leblon");
   });
 
   it("sem capacidade informada em algum apartamento, o formulário não limita o número de pessoas", () => {

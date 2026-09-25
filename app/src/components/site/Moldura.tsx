@@ -5,7 +5,7 @@ import styles from "./site.module.css";
 
 /** Cabeçalho e rodapé do site público. */
 export function Moldura({ conteudo, children }: { conteudo: ConteudoSite | null; children: ReactNode }) {
-  const nome = conteudo?.nomeEmpresa || "Sua Casa Leblon";
+  const nome = conteudo?.nomeEmpresa.trim() || "Início";
   return (
     <div className={styles.pagina}>
       <header className={styles.topo}>

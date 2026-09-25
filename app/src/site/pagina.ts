@@ -14,5 +14,7 @@ export const carregarSite = cache(async () => {
 /** Metadados de uma página do site (nome da empresa do site, lido uma vez por requisição). */
 export async function metadadosDoSite(pagina?: string) {
   const { conteudo } = await carregarSite();
-  return { title: tituloDoSite(conteudo, pagina) || "Site em configuração" };
+  // Descrição pública (a do layout é a do painel interno): o subtítulo do site, editável no painel.
+  const description = conteudo ? conteudo.textos.subtitulo.trim() || tituloDoSite(conteudo) : "Site em configuração.";
+  return { title: tituloDoSite(conteudo, pagina) || "Site em configuração", description };
 }

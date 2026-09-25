@@ -12,8 +12,8 @@ export type CanalContato = "whatsapp" | "email" | null;
 export const canalDeContato = (c: Pick<ConteudoSite, "whatsapp" | "email">): CanalContato => (c.whatsapp ? "whatsapp" : c.email ? "email" : null);
 
 const TEXTO_CANAL: Record<"whatsapp" | "email" | "nenhum", string> = {
-  whatsapp: "A conversa continua no WhatsApp da Sua Casa Leblon, onde você pode se apresentar e contar mais.",
-  email: "A conversa continua por e-mail com a Sua Casa Leblon, onde você pode se apresentar e contar mais.",
+  whatsapp: "A conversa continua pelo WhatsApp, onde você pode se apresentar e contar mais.",
+  email: "A conversa continua por e-mail, onde você pode se apresentar e contar mais.",
   nenhum: "Confira os dados antes de continuar.",
 };
 
