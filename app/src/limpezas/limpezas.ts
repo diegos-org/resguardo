@@ -10,7 +10,7 @@
 import { and, asc, eq, exists, gte, inArray, isNotNull, lt, or, sql } from "drizzle-orm";
 import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
 import type { ItemCalendario } from "@/calendario/grade";
-import { categoriasDespesa, type EstadoLimpeza, imoveis, lancamentos, limpezas, profissionaisLimpeza, reservas } from "@/db/schema";
+import { categoriasDespesa, type EstadoLimpeza, imoveis, lancamentos, limpezas, profissionaisLimpeza, reservas, usuarios } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { listarContratos } from "@/contratos/repositorio";
 import { contratoVigente } from "@/contratos/regras";
@@ -370,7 +370,13 @@ export function confirmarLimpeza(db: Db, organizacaoId: string, id: string, prof
     organizacaoId,
     id,
     ["pedida", "confirmada"],
-    async (_l, tx) => ((await profissionalAtivo(tx, organizacaoId, profissionalId)) ? { estado: "confirmada", profissionalId, confirmadaEm: new Date() } : "Escolha uma profissional ativa."),
+    async (l, tx) => {
+      if (!(await profissionalAtivo(tx, organizacaoId, profissionalId))) return "Escolha uma profissional ativa.";
+      // Mesma profissional de uma já confirmada (duplo clique, nova tentativa): a confirmação é a
+      // mesma — a hora fica, e o aviso a ela não se repete.
+      const mesma = l.estado === "confirmada" && l.profissionalId === profissionalId && l.confirmadaEm;
+      return { estado: "confirmada", profissionalId, confirmadaEm: mesma ? l.confirmadaEm : new Date() };
+    },
     "limpeza.confirmar",
     autorId,
   );
@@ -405,6 +411,28 @@ export function realizarLimpeza(
       if (d.profissionalId !== l.profissionalId && !(await profissionalAtivo(tx, organizacaoId, d.profissionalId))) return "Diga quem fez a limpeza.";
       // Sem custo no formulário, mantém o que já estava (ex.: reaberta e realizada de novo).
       return { estado: "realizada", profissionalId: d.profissionalId, custo: d.custo ?? l.custo, observacao: (d.observacao ?? l.observacao).trim().slice(0, 500), realizadaEm: new Date() };
+    },
+    "limpeza.realizar",
+    autorId,
+  );
+}
+
+/**
+ * A profissional marca como feita pelo celular (M6.6). A posse e o estado são conferidos com a
+ * limpeza travada: reatribuída a outra ou voltada a "pedida" no meio, não passa. O custo fica como
+ * está (quem informa é o painel).
+ */
+export function realizarPelaProfissional(db: Db, organizacaoId: string, id: string, profissionalId: string, hoje: string, autorId: string | null): Promise<Resultado> {
+  return transicao(
+    db,
+    organizacaoId,
+    id,
+    ["pedida", "confirmada", "realizada", "cancelada"],
+    async (l) => {
+      // De outra profissional, ou fora de "confirmada": a mesma resposta, sem dizer por quê.
+      if (l.profissionalId !== profissionalId || l.estado !== "confirmada") return "Limpeza não encontrada.";
+      if (l.data > hoje) return "A limpeza ainda não chegou: só dá para registrar como realizada a partir do dia dela.";
+      return { estado: "realizada", realizadaEm: new Date() };
     },
     "limpeza.realizar",
     autorId,
@@ -514,6 +542,9 @@ export async function editarProfissional(db: Db, organizacaoId: string, id: stri
         .set({ nome: d.nome.trim(), telefone: d.telefone.trim(), observacoes: d.observacoes.trim(), ativo: d.ativo })
         .where(eq(profissionaisLimpeza.id, id))
         .returning();
+      // Arquivada ou reativada: quem tinha entrado pelo celular antes precisa entrar de novo.
+      if (antes.ativo !== depois.ativo && depois.usuarioId)
+        await tx.update(usuarios).set({ sessaoValidaDesde: new Date() }).where(and(eq(usuarios.id, depois.usuarioId), eq(usuarios.organizacaoId, organizacaoId)));
       const mudancas = calcularMudancas(antes, depois);
       if (Object.keys(mudancas).length)
         await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "profissional_limpeza.editar", entidade: "profissional_limpeza", entidadeId: id, mudancas });

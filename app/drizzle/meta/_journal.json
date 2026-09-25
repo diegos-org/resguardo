@@ -190,6 +190,20 @@
       "when": 1790292358869,
       "tag": "0026_divergencia_calculo",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1790306117906,
+      "tag": "0027_equipe_limpeza",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1790307678185,
+      "tag": "0028_sessao_valida_desde",
+      "breakpoints": true
     }
   ]
 }

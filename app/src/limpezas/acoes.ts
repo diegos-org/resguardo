@@ -1,10 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { exigir, podeFazer } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { getDb } from "@/db/client";
+import { correioDoAmbiente } from "@/email/correio";
+import { avisarAtribuicao, darAcesso, tirarAcesso } from "@/equipe/equipe";
 import { hojeISO } from "@/lib/datas";
 import { reaisParaCentavos } from "@/lib/dinheiro-form";
 import {
@@ -26,13 +29,15 @@ async function sessaoEditora() {
 }
 
 /** Volta para a lista mantendo o filtro que estava na tela. */
-function voltar(form: FormData, r: { ok: boolean; erro?: string }, caminho = "/painel/limpezas"): never {
+function voltar(form: FormData, r: { ok: boolean; erro?: string; aviso?: string | null }, caminho = "/painel/limpezas"): never {
   revalidatePath("/painel/limpezas", "layout");
   const q = new URLSearchParams(String(form.get("voltar") ?? ""));
   q.delete("salvo");
   q.delete("erro");
   if (r.ok) q.set("salvo", "1");
   else q.set("erro", r.erro ?? "Não foi possível.");
+  // Deu certo, mas com algo a dizer (ex.: o e-mail para a profissional falhou).
+  if (r.ok && r.aviso) q.set("erro", r.aviso);
   redirect(`${caminho}?${q}`);
 }
 
@@ -43,9 +48,32 @@ function lerCusto(form: FormData, podeCusto: boolean): number | null | "invalido
   return reaisParaCentavos(t) ?? "invalido";
 }
 
+/** Endereço da tela da equipe no mesmo site em que o painel está. */
+async function linkDaEquipe() {
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  return `${proto}://${host}/equipe`;
+}
+
 export async function confirmarAcao(form: FormData) {
   const s = await sessaoEditora();
-  voltar(form, await confirmarLimpeza(getDb(), s.organizacaoId, String(form.get("id") ?? ""), String(form.get("profissionalId") ?? ""), s.usuarioId));
+  const id = String(form.get("id") ?? "");
+  const r = await confirmarLimpeza(getDb(), s.organizacaoId, id, String(form.get("profissionalId") ?? ""), s.usuarioId);
+  // A profissional com acesso pelo celular é avisada por e-mail (WhatsApp quando o M10 estiver ligado).
+  const aviso = r.ok ? (await avisarAtribuicao(getDb(), s.organizacaoId, id, correioDoAmbiente(), await linkDaEquipe())).aviso : null;
+  voltar(form, { ...r, aviso });
+}
+
+/** Acesso pelo celular da profissional: dar (com o e-mail) ou tirar. */
+export async function acessoProfissionalAcao(form: FormData) {
+  const s = await sessaoEditora();
+  const id = String(form.get("id") ?? "");
+  const r =
+    form.get("op") === "tirar"
+      ? await tirarAcesso(getDb(), s.organizacaoId, id, s.usuarioId)
+      : await darAcesso(getDb(), s.organizacaoId, id, String(form.get("email") ?? ""), s.usuarioId);
+  voltar(form, r, "/painel/limpezas/profissionais");
 }
 
 export async function realizarAcao(form: FormData) {
