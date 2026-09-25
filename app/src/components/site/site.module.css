@@ -1,0 +1,242 @@
+/* Site público (M7.1): identidade SCL, pensado primeiro para o celular. */
+.pagina {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  max-width: 1080px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.marca {
+  font-family: var(--font-serif);
+  font-size: 1.25rem;
+  color: var(--scl-salvia);
+  text-decoration: none;
+}
+
+.menu {
+  display: flex;
+  gap: 16px;
+  font-size: 0.9375rem;
+}
+
+.menu a {
+  text-decoration: none;
+  color: var(--scl-texto-2);
+}
+
+.conteudo {
+  flex: 1;
+  width: 100%;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 0 16px 48px;
+}
+
+.heroi {
+  background: var(--scl-areia);
+  border-radius: 12px;
+  padding: 40px 20px;
+  margin-bottom: 32px;
+}
+
+.heroi h1 {
+  font-size: clamp(1.75rem, 5vw, 2.75rem);
+  line-height: 1.15;
+  margin-bottom: 12px;
+}
+
+.heroi p {
+  color: var(--scl-texto-2);
+  max-width: 640px;
+  font-size: 1.0625rem;
+}
+
+.secao {
+  margin: 32px 0;
+}
+
+.secao h2 {
+  font-size: 1.5rem;
+  margin-bottom: 12px;
+}
+
+.texto {
+  white-space: pre-line;
+  max-width: 720px;
+  color: var(--scl-texto);
+}
+
+.grade {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 20px;
+}
+
+.cartao {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #e4dccb;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+  text-decoration: none;
+  color: inherit;
+}
+
+.cartao:hover {
+  border-color: var(--scl-dourado);
+}
+
+.cartaoCorpo {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cartaoCorpo h3 {
+  font-size: 1.25rem;
+}
+
+.foto {
+  aspect-ratio: 4 / 3;
+  background: linear-gradient(135deg, var(--scl-salvia), #7c8a6d);
+  color: var(--scl-areia);
+  display: flex;
+  align-items: flex-end;
+  padding: 12px 16px;
+  font-family: var(--font-serif);
+  font-size: 1.5rem;
+}
+
+.galeria {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.galeria .foto:first-child {
+  grid-row: span 2;
+  aspect-ratio: auto;
+  min-height: 240px;
+}
+
+.miudo {
+  font-size: 0.875rem;
+  color: var(--scl-texto-2);
+}
+
+.fichas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  list-style: none;
+}
+
+.fichas li {
+  background: var(--scl-areia);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 0.875rem;
+}
+
+.colunas {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 32px;
+}
+
+@media (min-width: 860px) {
+  .colunas {
+    grid-template-columns: 1.6fr 1fr;
+  }
+}
+
+.formulario {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: #fff;
+  border: 1px solid #e4dccb;
+  border-radius: 12px;
+  padding: 20px;
+  align-self: start;
+}
+
+.formulario label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.875rem;
+  color: var(--scl-texto-2);
+}
+
+.formulario input,
+.formulario select,
+.formulario textarea {
+  font: inherit;
+  padding: 10px 12px;
+  border: 1px solid #d9cfbb;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--scl-texto);
+}
+
+.linha {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.botao {
+  display: inline-block;
+  text-align: center;
+  background: var(--scl-salvia);
+  color: #fff;
+  border: 0;
+  border-radius: 8px;
+  padding: 12px 18px;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.erro {
+  color: #9b2c2c;
+  font-size: 0.8125rem;
+}
+
+.aviso {
+  background: var(--scl-areia);
+  border-left: 4px solid var(--scl-dourado);
+  padding: 12px 16px;
+  border-radius: 8px;
+}
+
+.rodape {
+  border-top: 1px solid #e4dccb;
+  padding: 24px 16px;
+  font-size: 0.875rem;
+  color: var(--scl-texto-2);
+}
+
+.rodapeDentro {
+  max-width: 1080px;
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+}

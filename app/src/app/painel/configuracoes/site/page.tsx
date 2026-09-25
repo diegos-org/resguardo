@@ -13,8 +13,8 @@ export default async function TextosSite() {
   return (
     <>
       <p style={{ fontSize: "0.875rem", color: "var(--scl-texto-2)", margin: 0, maxWidth: 820 }}>
-        Os textos do site público. O site novo (item M7.1) lê daqui; até ele entrar no ar, dá para deixar tudo pronto. Os textos de cada
-        apartamento ficam na página do imóvel.
+        Os textos do site público (página inicial, consulta e rodapé). O que aparece de cada apartamento vem do cadastro do imóvel
+        (marcado como público); o WhatsApp da consulta é o telefone em Empresa.
       </p>
       <FormCampos
         titulo="Textos do site"
