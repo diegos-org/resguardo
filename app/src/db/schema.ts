@@ -328,6 +328,8 @@ export const reservas = pgTable(
     codigoCanal: text("codigo_canal").notNull().default(""),
     observacoes: text("observacoes").notNull().default(""),
     canceladaEm: timestamp("cancelada_em", { withTimezone: true }),
+    /** Quando passou a confirmada (M9.2: a mensagem de confirmação sai a partir daí). Vazio se não está confirmada. */
+    confirmadaEm: timestamp("confirmada_em", { withTimezone: true }),
     /**
      * Reserva não confirmada que já movimentou dinheiro fica "em conferência" (M4.8) até alguém da
      * equipe dar por resolvida (depois do ajuste manual). Volta a vazio quando a situação muda.
@@ -917,4 +919,37 @@ export const rotinaExecucoes = pgTable(
     criadoEm: criadoEm(),
   },
   (t) => [uniqueIndex("rotina_execucoes_prevista").on(t.rotinaId, t.prevista)],
+);
+
+// ---------------------------------------------------------------------------
+// Mensagens programadas ao hóspede (M9.2): um registro por mensagem (reserva + tipo + datas),
+// gravado antes de chamar o provedor — é ele que impede mandar a mesma mensagem duas vezes.
+// ---------------------------------------------------------------------------
+
+export const TIPOS_MENSAGEM_HOSPEDE = ["confirmacao", "checkin", "checkout", "agradecimento"] as const;
+export type TipoMensagemHospede = (typeof TIPOS_MENSAGEM_HOSPEDE)[number];
+/** enviando: pedido em curso (se ficar assim, não se sabe se saiu); incerto: sem confirmação do provedor. */
+export const ESTADOS_ENVIO_HOSPEDE = ["enviando", "enviado", "falhou", "incerto"] as const;
+export type EstadoEnvioHospede = (typeof ESTADOS_ENVIO_HOSPEDE)[number];
+
+export const mensagensHospede = pgTable(
+  "mensagens_hospede",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    reservaId: uuid("reserva_id").notNull().references(() => reservas.id),
+    tipo: text("tipo").$type<TipoMensagemHospede>().notNull(),
+    /** Datas da reserva a que a mensagem se refere: mudou a data, é outra mensagem. */
+    referencia: text("referencia").notNull(),
+    estado: text("estado").$type<EstadoEnvioHospede>().notNull(),
+    tentativas: integer("tentativas").notNull().default(1),
+    para: text("para").notNull(),
+    /** Nome do modelo usado (o modelo pode ser editado ou arquivado depois). */
+    modeloNome: text("modelo_nome").notNull(),
+    erro: text("erro").notNull().default(""),
+    enviadoEm: timestamp("enviado_em", { withTimezone: true }),
+    criadoEm: criadoEm(),
+    atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("mensagens_hospede_unica").on(t.reservaId, t.tipo, t.referencia), index("mensagens_hospede_org").on(t.organizacaoId, t.criadoEm)],
 );
