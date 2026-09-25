@@ -132,7 +132,7 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 |---|---|---|---|
 | M8.0 | Rever a decisão de 24/09 sobre o recebimento do site (hoje: **empresa recebe e repassa**, que continua valendo até Diego decidir outra coisa), a pedido de Diego: split automático (Mercado Pago marketplace ou Stripe Connect, como no Airbnb) × empresa recebe e repassa; comparar taxas, estorno, chargeback e impostos — comparação e recomendação (manter) em `requisitos/product/RECEBIMENTO-SITE.md` | bloqueado | Diego: escolher o modelo (e confirmar impostos com o contador) |
 | M8.1 | Cotação persistida, revalidação e hold com controle de concorrência | a fazer | M7.2 |
-| M8.2 | Pagamento no provedor escolhido no M8.0 (Mercado Pago, se confirmado) em **sandbox**: checkout, webhook assinado, idempotência, reconciliação, devolução ao hóspede e **contestação (chargeback)**: eventos de disputa registrados com situação, lançamento no financeiro que desconta a parte do proprietário, aviso e repasse afetado segurado até a decisão; **ganhou** → o desconto é estornado e o repasse liberado; **perdeu** → o desconto fica definitivo e o repasse sai já descontado. Antes de implementar: confirmar com o provedor (documentação/suporte) as regras de taxa, estorno parcial e contestação — em especial no split, quanto sai de cada parte | bloqueado | M8.0, M8.1 + Diego: credenciais de teste do provedor escolhido |
+| M8.2 | Pagamento no provedor escolhido no M8.0 (Mercado Pago, se confirmado) em **sandbox**: checkout, webhook assinado, idempotência, reconciliação, devolução ao hóspede e **contestação (chargeback)**: eventos de disputa registrados com situação, aviso e reserva em conferência até a decisão da disputa. **Quem arca com a contestação perdida (SCL, proprietário ou na proporção) é decisão de Diego** (pendente): até ela existir, o sistema registra e avisa, sem descontar de ninguém automaticamente; se a regra for descontar do proprietário, o desconto fica segurado durante a disputa, é estornado se a SCL ganhar e vira definitivo se perder. Antes de implementar: confirmar com o provedor (documentação/suporte) as regras de taxa, estorno parcial e contestação — em especial no split, quanto sai de cada parte | bloqueado | M8.0, M8.1 + Diego: credenciais de teste do provedor escolhido |
 | M8.3 | Criação da reserva no Beds24 após pagamento confirmado (escrita) | bloqueado | M8.2 + autorização explícita de escrita |
 
 ### M9 — Portal do hóspede e mensagens
@@ -184,6 +184,7 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 - Competência × caixa no financeiro.
 - Búzios: fica no sistema interno para controle (decidido 24/09); se entra no site público, a decidir.
 - Avaliações próprias × só Airbnb.
+- Contestação de cartão (chargeback) perdida numa reserva do site: quem arca — SCL, proprietário ou os dois na proporção (precisa estar no contrato; necessário antes do M8.2).
 
 ## Decisões registradas
 

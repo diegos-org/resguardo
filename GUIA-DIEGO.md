@@ -808,7 +808,8 @@ ambiente).
   **Antes de decidir, pergunte ao contador:** "a SCL recebendo o valor total da reserva e
   repassando ao proprietário, com contrato de intermediação, paga imposto só sobre a
   comissão?". E diga se a taxa do cartão/Pix segue a regra de hoje (sai antes da divisão,
-  cada um na proporção, como a do Airbnb/Booking) ou se muda.
+  cada um na proporção, como a do Airbnb/Booking) ou se muda; e quem arca com uma contestação
+  de cartão perdida (SCL, proprietário ou os dois na proporção).
 - **Modelo do marketplace:** as fórmulas antigas não estão em lugar nenhum, então montei
   uma proposta com as contas feitas: `requisitos/product/MARKETPLACE-PRECIFICACAO.md`.
   Resumo, numa reserva de R$ 1.650 que no Airbnb custaria R$ 1.881 ao hóspede e daria
@@ -866,8 +867,8 @@ ambiente).
   pagamento entra primeiro na conta da SCL e depois é transferido ao proprietário.
   Pontos de atenção: cada proprietário precisa ter conta própria e a parte fiscal muda (ele
   recebe direto, como no Airbnb). Quem arca com estorno e contestação de cartão depende do
-  provedor — no Stripe a SCL responde e depois desconta do proprietário; no Mercado Pago
-  ainda é **a conferir**. A comparação completa (M8.0) está em "Como receber as reservas do
+  provedor — no Stripe o dinheiro sai da conta da SCL; no Mercado Pago ainda é **a conferir**.
+  Se a SCL repassa essa perda ao proprietário é decisão sua (pergunta 4 da comparação). A comparação completa (M8.0) está em "Como receber as reservas do
   site", acima, e em `requisitos/product/RECEBIMENTO-SITE.md`.
 - **Copiar anúncios do Airbnb para o Booking:** é **semiautomático** pelo Beds24 — ele
   reaproveita os dados e fotos que já importou do Airbnb e cria o anúncio no Booking. Mas

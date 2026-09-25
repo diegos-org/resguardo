@@ -44,7 +44,7 @@ regra** a decidir — a comparação abaixo vale igual.
 | Dinheiro de terceiros passa pela SCL? | **Sim** (tudo entra na conta da SCL) | **Não** (a parte do proprietário vai direto para ele) | **Sim**, com "destination charges": a cobrança entra na conta da SCL no Stripe e o Stripe transfere, automaticamente, a parte do proprietário para a conta dele |
 | O proprietário precisa de… | Nada (só a chave Pix, que já está no cadastro) | **Conta Mercado Pago** ligada ao sistema (autorização renovada a cada 6 meses) | **Conta Stripe** (cadastro com documentos no Stripe) |
 | Estorno / cancelamento | SCL devolve ao hóspede e desconta do repasse (o sistema já faz estorno e ajuste) | Precisa definir no split quanto volta de cada parte; **a conferir** o comportamento em estorno parcial | SCL devolve e recupera do proprietário pela transferência reversa |
-| Chargeback (contestação no cartão) | Cai na SCL; a SCL cobra do proprietário pelo repasse | **A conferir** como o MP divide; exige regra no contrato | Cai na SCL (ela é a responsável perante o Stripe) |
+| Chargeback (contestação no cartão) | O provedor debita da SCL; **se** ela repassa a perda ao proprietário (pelo repasse) é decisão de Diego, a pôr no contrato | **A conferir** como o MP divide; exige regra no contrato | O Stripe debita da SCL (ela é a responsável perante o Stripe); repassar ao proprietário é a mesma decisão |
 | Trabalho no sistema | **Parte financeira pronta** (comissão, repasse mensal com Pix para copiar — M4.9, estorno no financeiro e conferência — M4.8). Falta, como em qualquer opção, o pagamento em si (M8.2): checkout, aviso de pagamento, devolução ao hóspede pelo Mercado Pago, conciliação e o fluxo de contestação (chargeback) no financeiro | Tudo do M8.2 **e mais**: ligar a conta de cada proprietário, comissão em cada pagamento, estorno dividido, conciliação por proprietário | Tudo do M8.2 **e mais** a integração Connect; mais cara e menos usada no Brasil |
 | Repasse ao proprietário | Mensal, dia 1º (feito à mão, com Pix para copiar) | Automático, a cada pagamento | Automático |
 
@@ -102,6 +102,9 @@ criar).
    pedir que confirme que a parte do proprietário não conta como receita da SCL.
 3. Taxa do cartão/Pix nas reservas do site: manter a regra atual (sai antes da divisão, cada
    um na proporção — como a taxa do Airbnb/Booking) ou mudar (só SCL ou só proprietário).
+4. Contestação de cartão (chargeback) perdida: quem arca — a SCL, o proprietário ou os dois na
+   proporção. O provedor só diz de que conta sai o dinheiro; quem assume a perda é regra de
+   negócio (vai no contrato). Até decidir, o sistema só registra e avisa.
 
 ## Fontes consultadas (setembro/2026)
 
