@@ -871,6 +871,24 @@ describe("configuração e envio", () => {
     expect((await marca()).estado).toBe("resolvido");
   });
 
+  it("imóvel inativo por mais de um dia: ao voltar, chega a reserva confirmada no começo do intervalo", async () => {
+    await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
+    const correio = new CorreioMemoria();
+    await enviarAgenda(db, org, correio, AGORA);
+    // Dia 2: Búzios inativo; uma reserva de Búzios entra logo no começo do dia.
+    await db.update(imoveis).set({ ativo: false }).where(eq(imoveis.id, buzios));
+    await nova(buzios, "2028-09-04", "2028-09-06", "2026-10-02T01:00:00.000Z");
+    await enviarAgenda(db, org, correio, new Date("2026-10-02T23:00:00Z"));
+    await enviarAgenda(db, org, correio, new Date("2026-10-03T23:00:00Z"));
+    // Dia 4: Búzios volta (mais de 24h depois da reserva): ela ainda chega.
+    await db.update(imoveis).set({ ativo: true }).where(eq(imoveis.id, buzios));
+    await enviarAgenda(db, org, correio, new Date("2026-10-04T23:00:00Z"));
+    expect(correio.enviadas.at(-1)!.texto).toContain("entrada seg 04/09");
+    // E só uma vez.
+    await enviarAgenda(db, org, correio, new Date("2026-10-05T23:00:00Z"));
+    expect(correio.enviadas.at(-1)!.texto).not.toContain("04/09");
+  });
+
   it("marca pendente resolvida por outra execução enquanto esta esperava a trava não volta a ser incerta", async () => {
     const chave = `agenda-diaria:${org}:2026-09-30:a@example.com`;
     const carga = { assunto: "x", texto: "x", eventos: ["ev-1"], imoveis: [rio] };
