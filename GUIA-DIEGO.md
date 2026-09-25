@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 25/09/2026, site público novo lendo os imóveis do sistema (M7.1).
+> **Última atualização:** 25/09/2026, site público novo lendo os imóveis do sistema (M7.1), depois do acesso das profissionais de limpeza pelo celular (M6.6).
 
 ---
 
@@ -246,6 +246,17 @@
     já foi paga, o sistema não mexe e pede para corrigir em Despesas.
   As **profissionais** são cadastradas na própria tela (nome, telefone, observações) e
   arquivadas quando saem. A equipe de operação vê e registra as limpezas, sem ver custos.
+- M6.6: **profissionais de limpeza pelo celular**. Em Limpezas → **Profissionais**, você põe o
+  e-mail da profissional e aperta **"Liberar acesso"** (pede confirmação):
+  - ela entra no sistema com o e-mail dela (recebe um código por e-mail) e cai direto na tela
+    **"Minhas limpezas"**: só as limpezas confirmadas com ela, de alguns dias atrás até as próximas
+    duas semanas, com o imóvel, o endereço, o horário de saída e, quando alguém entra no mesmo dia,
+    o horário-limite para deixar pronto;
+  - ela aperta **"Marcar como feita"** (pede confirmação) a partir do dia da limpeza. O custo
+    continua sendo informado por você no painel: ela **não vê custo**, proprietário nem financeiro;
+  - quando você confirma uma limpeza com ela, ela recebe um **e-mail** avisando (o WhatsApp entra
+    quando o M10 estiver ligado);
+  - **"Tirar acesso"** (ou arquivar a profissional) corta a entrada na hora.
 - M6.3: **agenda diária da equipe** (Painel → **Agenda**). Todo dia às **20h** quem você
   escolher recebe por e-mail os **próximos 5 dias**, com **Rio e Búzios separados** (cada
   seção é a cidade do cadastro do imóvel; nada é somado). O texto segue o **modelo que você
@@ -691,30 +702,33 @@ ambiente).
    2. No painel, em **Agenda**, cadastre os e-mails da equipe (marque Rio ou Búzios para cada
       pessoa), marque "Enviar todo dia às 20h" e salve.
    3. Use "Enviar agora" uma vez para conferir como o e-mail chega.
-7. **Chaves Pix:**
+7. **Profissionais de limpeza pelo celular:** depois do Resend (item 5), em Limpezas →
+   Profissionais, ponha o e-mail de cada profissional e aperte "Liberar acesso". Ela entra em
+   `/entrar` com esse e-mail (código por e-mail).
+8. **Chaves Pix:**
    - confira no cadastro de cada proprietário (Painel → Proprietários) se a chave Pix está
      preenchida. A tela de Repasses usa essa chave para o botão "Copiar Pix" e avisa quando
      falta; o portal mostra ao proprietário a chave para onde vai o repasse;
    - cadastre a **chave Pix da empresa** em Painel → Configurações → Empresa. Ela aparece no
      portal para o proprietário que deve à empresa, depois do fechamento do mês. Sem ela, o
      portal pede que ele fale com a empresa.
-8. **Booking:** criar os anúncios (ver "Copiar anúncios do Airbnb para o Booking" na seção 7).
-9. **Relatórios em PDF:** para o fechamento, gere o PDF na ficha do proprietário, anexando o
+9. **Booking:** criar os anúncios (ver "Copiar anúncios do Airbnb para o Booking" na seção 7).
+10. **Relatórios em PDF:** para o fechamento, gere o PDF na ficha do proprietário, anexando o
    **extrato oficial** do canal e uma **foto real** do imóvel. Antes de mandar, abra o PDF e
    confira se o extrato é só daquele imóvel e daquele mês. O envio automático por e-mail vem no
    M5.4.
-10. **Portaria:** em Painel → **Portaria**, marque os imóveis que exigem documentos de
+11. **Portaria:** em Painel → **Portaria**, marque os imóveis que exigem documentos de
    portaria (hoje, o 403). Sem marcação, a tela só avisa e não lista nada.
-11. **Rotinas:** em Painel → **Rotinas**, confira as cinco rotinas que já vêm prontas, com as
+12. **Rotinas:** em Painel → **Rotinas**, confira as cinco rotinas que já vêm prontas, com as
    datas das suas regras. Arquive a que não usar.
-12. **Manutenção:** quando aparecer "aguardando aprovação" (no menu **Manutenção**), confira o
+13. **Manutenção:** quando aparecer "aguardando aprovação" (no menu **Manutenção**), confira o
    orçamento, escolha quem paga (empresa ou proprietário) e aprove, ou recuse com o motivo.
    Só você (administrador) vê esses botões.
-13. **Sistema antigo (referência):** mande o arquivo (zip) do sistema antigo — o jeito mais
+14. **Sistema antigo (referência):** mande o arquivo (zip) do sistema antigo — o jeito mais
    fácil é subir no seu **Google Drive** e me dizer o nome do arquivo (o Drive já está
    conectado aqui). Eu só leio para levantar todas as telas e capacidades e comparar com o
    plano; **nada dele vai para o GitHub**, e dados reais de clientes não são copiados.
-14. **Site novo:** em **Configurações → Site**, escreva os textos (título, "Sobre", "Como
+15. **Site novo:** em **Configurações → Site**, escreva os textos (título, "Sobre", "Como
    reservar", contato, rodapé); em **Configurações → Empresa**, confira o **telefone do
    WhatsApp** da consulta; e, em cada imóvel, marque **público** só nos que devem aparecer e
    confira a descrição, as camas e as comodidades. O site ainda não substitui o atual: o

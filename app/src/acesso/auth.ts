@@ -62,6 +62,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return id ? true : "/entrar?erro=nao-cadastrado";
     },
     async jwt({ token, profile, account, user }) {
+      // Hora do login (fica no token enquanto a sessão durar): acesso mudado depois derruba a sessão.
+      if (account) token.desde = Date.now();
       if (account?.provider === "codigo") {
         token.uid = user?.id;
       } else if (profile) {
@@ -72,6 +74,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
     async session({ session, token }) {
       if (typeof token.uid === "string") session.user.id = token.uid;
+      if (typeof token.desde === "number") session.desde = token.desde;
       return session;
     },
   },
@@ -80,5 +83,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 declare module "@auth/core/jwt" {
   interface JWT {
     uid?: string;
+    desde?: number;
+  }
+}
+
+declare module "next-auth" {
+  interface Session {
+    desde?: number;
   }
 }
