@@ -769,15 +769,17 @@ ambiente).
   `requisitos/product/RECEBIMENTO-SITE.md`. Resumo:
   - **empresa recebe e repassa (minha sugestão para começar):** o hóspede paga à SCL pelo
     Mercado Pago (cartão ~4–5%, Pix ~1%), a SCL repassa ao proprietário no dia 1º, como já
-    faz com Booking e diretas. O sistema já está pronto para isso e o proprietário não
-    precisa abrir conta nenhuma;
+    faz com Booking e diretas. A parte financeira do sistema já está pronta para isso (falta,
+    em qualquer opção, ligar o pagamento em si — M8.2) e o proprietário não precisa abrir
+    conta nenhuma;
   - **split automático no Mercado Pago (como no Airbnb):** a parte do proprietário cai
     direto na conta dele, mas **cada proprietário precisa de conta no Mercado Pago** ligada
     ao sistema. Faz mais sentido no marketplace (M12);
   - **Stripe:** mais caro no Brasil e Pix só por convite; não recomendo agora.
   **Antes de decidir, pergunte ao contador:** "a SCL recebendo o valor total da reserva e
   repassando ao proprietário, com contrato de intermediação, paga imposto só sobre a
-  comissão?". E diga quem paga a taxa do cartão/Pix (SCL, proprietário ou dividida).
+  comissão?". E diga se a taxa do cartão/Pix segue a regra de hoje (sai antes da divisão,
+  cada um na proporção, como a do Airbnb/Booking) ou se muda.
 - **Modelo do marketplace:** as fórmulas antigas não estão em lugar nenhum, então montei
   uma proposta com as contas feitas: `requisitos/product/MARKETPLACE-PRECIFICACAO.md`.
   Resumo, numa reserva de R$ 1.650 que no Airbnb custaria R$ 1.881 ao hóspede e daria
@@ -831,11 +833,12 @@ ambiente).
 - **Recebimento do site com divisão automática (como o Airbnb):** existe. O **Mercado Pago**
   tem o modelo "marketplace": cada proprietário liga a conta Mercado Pago dele ao nosso
   sistema, e cada pagamento cai direto na conta dele com a comissão da SCL separada
-  automaticamente para a conta da empresa. O **Stripe** faz o mesmo (Stripe Connect). Pontos
-  de atenção: cada proprietário precisa ter conta própria; estorno e contestação de cartão
-  saem da conta dele; e a parte fiscal muda (ele recebe direto, como no Airbnb). Coloquei no
-  plano como **M8.0**: comparar as duas opções (e o "empresa recebe e repassa") antes de
-  ligar o pagamento, conferindo taxas e regras atuais na documentação de cada um.
+  automaticamente para a conta da empresa. O **Stripe** faz algo parecido (Stripe Connect).
+  Pontos de atenção: cada proprietário precisa ter conta própria e a parte fiscal muda (ele
+  recebe direto, como no Airbnb). Quem arca com estorno e contestação de cartão depende do
+  provedor — no Stripe a SCL responde e depois desconta do proprietário; no Mercado Pago
+  ainda é **a conferir**. A comparação completa (M8.0) está em "Como receber as reservas do
+  site", acima, e em `requisitos/product/RECEBIMENTO-SITE.md`.
 - **Copiar anúncios do Airbnb para o Booking:** é **semiautomático** pelo Beds24 — ele
   reaproveita os dados e fotos que já importou do Airbnb e cria o anúncio no Booking. Mas
   exige a conta Booking da empresa (com os dados da pessoa jurídica) conectada ao Beds24, e
