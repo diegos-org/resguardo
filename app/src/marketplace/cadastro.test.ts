@@ -74,6 +74,8 @@ describe("formulário do cadastro (M12.3)", () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(Object.keys(r.erros).sort()).toEqual(["anuncio", "consentimento", "imovel_bairro", "imovel_capacidade", "imovel_quartos", "nome", "telefone"]);
     expect(validarCadastro(form({ telefone: `(21) 90000-0000${" -".repeat(500)}` }))).toMatchObject({ ok: false, erros: { telefone: expect.any(String) } });
+    expect(validarCadastro(form({ telefone: "abcdefghij1234567890" }))).toMatchObject({ ok: false, erros: { telefone: expect.any(String) } });
+    expect(validarCadastro(form({ telefone: "+55 (21) 90000-0000" })).ok).toBe(true);
     expect(validarCadastro(form({ links: "" }))).toMatchObject({ ok: false, erros: { links: expect.any(String) } });
     expect(validarCadastro(form({ links: "http://inseguro.example.com/x" }))).toMatchObject({ ok: false, erros: { links: expect.any(String) } });
     expect(validarCadastro(form({ links: "https://a.example/1 https://a.example/2 https://a.example/3 https://a.example/4" }))).toMatchObject({ ok: false });
