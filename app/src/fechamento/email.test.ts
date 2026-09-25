@@ -595,4 +595,46 @@ describe("e-mail do fechamento (M5.4)", () => {
     expect((await estornarRepasse(db, org, rep.id, "refazer", "2026-11-01", null)).ok).toBe(true);
     expect(await fechamentoAindaVale(db, org, p.proprietarioId, MES, "2026-11-01", DIA1, versao)).toBe(false);
   });
+
+  it("destinos relidos na hora de montar: e-mail trocado durante uma rodada vai para o endereço novo", async () => {
+    await ligar();
+    await fechar();
+    const [{ id: c }] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "303", nome: "Três" }).returning();
+    const [{ id: terceira }] = await db.insert(proprietarios).values({ organizacaoId: org, nome: "Terceira Exemplo", email: "terceira@example.com" }).returning();
+    await db.insert(proprietarioImoveis).values({ proprietarioId: terceira, imovelId: c });
+    const enviadas: Mensagem[] = [];
+    // Enquanto a rodada manda para a Dona, o cadastro da Terceira muda.
+    const correio: Correio = {
+      nome: "troca",
+      enviar: async (m) => {
+        enviadas.push(m);
+        if (m.para === "dona@example.com") await db.update(proprietarios).set({ email: "terceira.nova@example.com" }).where(eq(proprietarios.id, terceira));
+      },
+    };
+    await enviarFechamentos(db, org, correio, DIA1);
+    expect(enviadas.map((m) => m.para)).toEqual(["dona@example.com", "terceira.nova@example.com"]);
+  });
+
+  it("retomada de pedido guardado: confere de novo, logo antes do provedor, que o mês segue fechado", async () => {
+    await ligar();
+    await fechar();
+    const [{ id: c }] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "303", nome: "Três" }).returning();
+    const [{ id: antes }] = await db.insert(proprietarios).values({ organizacaoId: org, nome: "Aaa Exemplo", email: "aaa@example.com" }).returning();
+    await db.insert(proprietarioImoveis).values({ proprietarioId: antes, imovelId: c });
+    const caiu: Correio = { nome: "caiu", enviar: async () => Promise.reject(new ErroEnvioIncerto("Sem resposta do provedor de e-mail")) };
+    await enviarFechamentos(db, org, caiu, DIA1, { proprietarioId: dona });
+    const [rep] = await listarRepasses(db, org, dona);
+    const enviadas: Mensagem[] = [];
+    // O e-mail da primeira da fila (Aaa) sai; nesse meio tempo o repasse da Dona é estornado.
+    const correio: Correio = {
+      nome: "estorna",
+      enviar: async (m) => {
+        enviadas.push(m);
+        if (m.para === "aaa@example.com") await estornarRepasse(db, org, rep.id, "refazer", "2026-11-01", null);
+      },
+    };
+    const r = await enviarFechamentos(db, org, correio, new Date(DIA1.getTime() + 20 * 60_000));
+    expect(enviadas.map((m) => m.para)).toEqual(["aaa@example.com"]);
+    expect(r.incertos).toContain("Dona Exemplo");
+  });
 });

@@ -14,7 +14,7 @@ import { createHash } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { gravarConfig, lerConfig } from "@/configuracoes/armazem";
-import { appSettings, representantes } from "@/db/schema";
+import { appSettings, proprietarios, representantes } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { type Correio, ErroEnvioIncerto } from "@/email/correio";
 import { hojeISO } from "@/lib/datas";
@@ -225,6 +225,19 @@ export async function fechamentoAindaVale(db: Db, organizacaoId: string, proprie
   return !!atual && mesFechado(atual) && (await versaoDoConteudo(db, organizacaoId, atual, mes, agora)) === versao;
 }
 
+/** Destinos de hoje: o e-mail do proprietário e, em cópia, os representantes que recebem relatórios. */
+export async function destinosAtuais(db: Db, organizacaoId: string, proprietarioId: string): Promise<string[]> {
+  const [dono] = await db
+    .select({ email: proprietarios.email })
+    .from(proprietarios)
+    .where(and(eq(proprietarios.id, proprietarioId), eq(proprietarios.organizacaoId, organizacaoId)));
+  const reps = await db
+    .select({ email: representantes.email })
+    .from(representantes)
+    .where(and(eq(representantes.proprietarioId, proprietarioId), eq(representantes.recebeRelatorios, true)));
+  return [...new Set([(dono?.email ?? "").trim(), ...reps.map((r) => r.email.trim())].filter(Boolean))];
+}
+
 /** A versão a partir do conteúdo já montado (o mesmo objeto que gerou o PDF). */
 function versaoDe(p: PrevisaoRepasse, textos: unknown): string {
   return createHash("sha256").update(JSON.stringify([p.repasse?.id ?? null, linhaDoValor(p), textos])).digest("hex").slice(0, 32);
@@ -418,13 +431,30 @@ export async function enviarFechamentos(
     }
     const daTentativa = sql`${appSettings.value} ->> 'tentativa' = ${reserva.tentativa}`;
     let carga = reserva.carga;
+    // Retomada de um pedido já entregue: o mesmo pedido só sai se o mês segue fechado e o conteúdo é
+    // o mesmo; senão fica "incerto" (pode ter chegado) e o painel decide.
+    if (carga && !(await fechamentoAindaVale(db, organizacaoId, p.proprietarioId, mes, hoje, agora, carga.versao ?? ""))) {
+      await db
+        .update(appSettings)
+        .set({ value: sql`jsonb_set(${appSettings.value}, '{estado}', '"incerto"')`, updatedAt: new Date() })
+        .where(and(eq(appSettings.key, chave), daTentativa));
+      r.incertos.push(p.nome);
+      continue;
+    }
     try {
       if (!carga) {
+        // Destinos relidos agora (o cadastro pode ter mudado desde a lista da rodada).
+        const destinos = await destinosAtuais(db, organizacaoId, p.proprietarioId);
+        if (!destinos.length) {
+          await db.delete(appSettings).where(and(eq(appSettings.key, chave), daTentativa));
+          r.semEmail.push(p.nome);
+          continue;
+        }
         // O PDF e a versão saem do mesmo conteúdo (visto no fim do mês).
         const pdf = await relatorioDoFechamento(db, organizacaoId, p.proprietarioId, mes.slice(0, 7), agora, limitesDoMes(mes)?.fim);
         if (!pdf.ok) throw new Error(pdf.erro);
         carga = {
-          destinos: p.destinos,
+          destinos,
           assunto: preencher(config.assunto, p.nome, mes),
           texto: `${preencher(config.texto, p.nome, mes)}\n\n${linhaDoValor(p)}\n`,
           arquivo: pdf.arquivo,
