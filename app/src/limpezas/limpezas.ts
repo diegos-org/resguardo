@@ -370,7 +370,13 @@ export function confirmarLimpeza(db: Db, organizacaoId: string, id: string, prof
     organizacaoId,
     id,
     ["pedida", "confirmada"],
-    async (_l, tx) => ((await profissionalAtivo(tx, organizacaoId, profissionalId)) ? { estado: "confirmada", profissionalId, confirmadaEm: new Date() } : "Escolha uma profissional ativa."),
+    async (l, tx) => {
+      if (!(await profissionalAtivo(tx, organizacaoId, profissionalId))) return "Escolha uma profissional ativa.";
+      // Mesma profissional de uma já confirmada (duplo clique, nova tentativa): a confirmação é a
+      // mesma — a hora fica, e o aviso a ela não se repete.
+      const mesma = l.estado === "confirmada" && l.profissionalId === profissionalId && l.confirmadaEm;
+      return { estado: "confirmada", profissionalId, confirmadaEm: mesma ? l.confirmadaEm : new Date() };
+    },
     "limpeza.confirmar",
     autorId,
   );

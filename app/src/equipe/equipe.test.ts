@@ -224,4 +224,15 @@ describe("revisão do Codex (M6.6)", () => {
     await new Promise((ok) => setTimeout(ok, 5));
     expect(await carregarSessao(db, usuarioId, { emitidaEm: Date.now() })).toMatchObject({ profissionalId: ana });
   });
+
+  it("confirmar de novo com a mesma profissional (duplo clique, nova tentativa) mantém a chave do aviso", async () => {
+    await darAcesso(db, org, ana, "ana@example.com", null);
+    const id = await limpeza("2026-10-12", ana);
+    const correio = new CorreioMemoria();
+    await avisarAtribuicao(db, org, id, correio, "x");
+    await new Promise((ok) => setTimeout(ok, 5));
+    expect(await confirmarLimpeza(db, org, id, ana, null)).toEqual({ ok: true });
+    await avisarAtribuicao(db, org, id, correio, "x");
+    expect(new Set(correio.enviadas.map((m) => m.chave)).size).toBe(1);
+  });
 });
