@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 25/09/2026, cadastro de proprietários marketplace pelo site (M12.3), depois das mensagens automáticas ao hóspede (M9.2).
+> **Última atualização:** 25/09/2026, comparação de como receber as reservas do site (M8.0), depois do cadastro de proprietários marketplace pelo site (M12.3).
 
 ---
 
@@ -489,7 +489,9 @@
   24/09**: comissão sobre o valor que o canal repassa (depois da taxa do canal); estadia que
   atravessa o mês é **dividida igualmente por noite** (valor total, com a limpeza); no
   **Airbnb** o proprietário recebe a parte dele direto (split) e isso não entra no acerto; no
-  **Booking, site e direta** a empresa recebe tudo e repassa uma vez por mês. Dá para mudar
+  **Booking, site e direta** a empresa recebe tudo e repassa uma vez por mês (para o site, você
+  pediu para rever com a opção de split — ver "Como receber as reservas do site"; até lá, vale
+  esta). Dá para mudar
   reserva a reserva no campo "Quem recebe do canal". Imóvel com **mais de um proprietário**
   (ainda não há cadastro de cotas) ou sem proprietário fica com o acerto **pendente** — nada
   é atribuído a alguém por chute.
@@ -723,7 +725,7 @@ e escreva normalmente.
 | **Neon** | Banco de dados (Postgres) | 🟡 sua conta existe e está paga | Ligar à Vercel (item abaixo) |
 | **Vercel** | Publica o sistema na internet (homologação e depois produção) | 🟡 conector começado no Claude, mas incompleto | Terminar a conexão e importar o repositório (seção 6) |
 | **Beds24** | Channel manager (Airbnb/Booking), reservas, calendário e preços | 🟡 conta criada; leitor pronto no sistema | Gerar a chave de API **com leitura e escrita** (seção 6) |
-| **Mercado Pago** | Pagamentos da reserva direta | ⚪ não conectado | Credenciais de *teste*, mais adiante (M8) |
+| **Mercado Pago** | Pagamentos da reserva direta | ⚪ não conectado | Credenciais de *teste* do provedor escolhido no M8.0 (Mercado Pago, se for a escolha), mais adiante (M8) |
 | **Meta / WhatsApp Business** | Atendimento pelo WhatsApp da empresa | ⚪ não conectado | Verificação da empresa no Meta Business (demora dias) |
 | **Google Cloud (login)** | Botão "Entrar com Google" | ⚪ não configurado | Criar credenciais OAuth (seção 6) |
 | **Resend** (envio de e-mail) | E-mails do sistema: código de login, convites, agenda da equipe, relatórios, mensagens ao hóspede | 🟡 conta criada (e conector no Claude) | Cadastrar o domínio e pôr a chave na Vercel (seção 6, item 5) |
@@ -827,12 +829,37 @@ ambiente).
 18. **Cadastros pelo site (marketplace):** de vez em quando, abra **Proprietários → Cadastros
    pelo site** e aprove ou recuse os pedidos. O código de confirmação depende do Resend
    (item 5). Quem é recusado ainda não recebe e-mail automático — responda você mesmo.
+19. **Recebimento do site:** leia a comparação na seção 7 ("Como receber as reservas do
+   site"), leve a pergunta ao contador e me diga se mantém "empresa recebe e repassa" ou muda.
 
 ---
 
 ## 7. Decisões pendentes e respostas às suas perguntas
 
 **Preciso de você (sem pressa):**
+- **Como receber as reservas do site (M8.0):** em 24/09 você decidiu que no site a empresa
+  recebe e repassa; depois perguntou se dava para fazer como o Airbnb (split). Comparei as
+  opções em `requisitos/product/RECEBIMENTO-SITE.md` — até você dizer outra coisa, vale a de
+  24/09. Resumo:
+  - **empresa recebe e repassa (a de 24/09; minha sugestão é manter):** o hóspede paga à SCL pelo
+    Mercado Pago (cartão ~4–5%, Pix ~1%), a SCL repassa ao proprietário no dia 1º, como já
+    faz com Booking e diretas. A parte financeira do sistema já está pronta para isso (falta,
+    em qualquer opção, ligar o pagamento em si — M8.2) e o proprietário não precisa abrir
+    conta nenhuma;
+  - **split automático no Mercado Pago (como no Airbnb):** a parte do proprietário cai
+    direto na conta dele, mas **cada proprietário precisa de conta no Mercado Pago** ligada
+    ao sistema. Faz mais sentido no marketplace (M12);
+  - **Stripe:** mais caro no Brasil, Pix só por convite e o dinheiro também passa pela conta
+    da SCL antes de ir ao proprietário; não recomendo agora.
+  **Antes de decidir, pergunte ao contador:** "a SCL recebendo o valor total da reserva e
+  repassando ao proprietário, com contrato de intermediação, paga imposto só sobre a
+  comissão?". E diga se a taxa do cartão/Pix segue a regra de hoje (sai antes da divisão,
+  cada um na proporção, como a do Airbnb/Booking) ou se muda; quem arca com uma contestação
+  de cartão perdida (SCL, proprietário ou os dois na proporção); e a **política de
+  cancelamento** das reservas do site (reembolso total, parcial ou nenhum, conforme a
+  antecedência); e, no cartão com recebimento em 30 dias, se o repasse espera o Mercado Pago
+  liberar o dinheiro, se a SCL adianta, ou se usa o recebimento na hora (taxa maior). Essas
+  três últimas só precisam estar decididas antes de o site receber pagamentos de verdade.
 - **Modelo do marketplace:** as fórmulas antigas não estão em lugar nenhum, então montei
   uma proposta com as contas feitas: `requisitos/product/MARKETPLACE-PRECIFICACAO.md`.
   Resumo, numa reserva de R$ 1.650 que no Airbnb custaria R$ 1.881 ao hóspede e daria
@@ -886,11 +913,13 @@ ambiente).
 - **Recebimento do site com divisão automática (como o Airbnb):** existe. O **Mercado Pago**
   tem o modelo "marketplace": cada proprietário liga a conta Mercado Pago dele ao nosso
   sistema, e cada pagamento cai direto na conta dele com a comissão da SCL separada
-  automaticamente para a conta da empresa. O **Stripe** faz o mesmo (Stripe Connect). Pontos
-  de atenção: cada proprietário precisa ter conta própria; estorno e contestação de cartão
-  saem da conta dele; e a parte fiscal muda (ele recebe direto, como no Airbnb). Coloquei no
-  plano como **M8.0**: comparar as duas opções (e o "empresa recebe e repassa") antes de
-  ligar o pagamento, conferindo taxas e regras atuais na documentação de cada um.
+  automaticamente para a conta da empresa. O **Stripe** faz algo parecido (Stripe Connect), mas o
+  pagamento entra primeiro na conta da SCL e depois é transferido ao proprietário.
+  Pontos de atenção: cada proprietário precisa ter conta própria e a parte fiscal muda (ele
+  recebe direto, como no Airbnb). Quem arca com estorno e contestação de cartão depende do
+  provedor — no Stripe o dinheiro sai da conta da SCL; no Mercado Pago ainda é **a conferir**.
+  Se a SCL repassa essa perda ao proprietário é decisão sua (pergunta 4 da comparação). A comparação completa (M8.0) está em "Como receber as reservas do
+  site", acima, e em `requisitos/product/RECEBIMENTO-SITE.md`.
 - **Copiar anúncios do Airbnb para o Booking:** é **semiautomático** pelo Beds24 — ele
   reaproveita os dados e fotos que já importou do Airbnb e cria o anúncio no Booking. Mas
   exige a conta Booking da empresa (com os dados da pessoa jurídica) conectada ao Beds24, e
