@@ -91,7 +91,17 @@ export async function situacaoDosFechamentos(
   organizacaoId: string,
   mes: string,
   hoje: string,
-): Promise<(PrevisaoRepasse & { email: string; destinos: string[]; situacao: Situacao; enviadoEm: string | null; enviadoPara: string[] })[]> {
+): Promise<
+  (PrevisaoRepasse & {
+    email: string;
+    destinos: string[];
+    situacao: Situacao;
+    enviadoEm: string | null;
+    enviadoPara: string[];
+    /** Um "enviar de novo" ainda sem confirmação do provedor (a marca do mês continua "enviado"). */
+    reenvioPendente: { estado: "enviando" | "incerto"; em: string | null } | null;
+  })[]
+> {
   const periodo = limitesDoMes(mes);
   if (!periodo) return [];
   const todos = await preverRepasses(db, organizacaoId, mes, hoje, undefined, true);
@@ -109,8 +119,16 @@ export async function situacaoDosFechamentos(
           .where(and(inArray(representantes.proprietarioId, lista.map((p) => p.proprietarioId)), eq(representantes.recebeRelatorios, true))),
       ])
     : [[], []];
+  // Reenvios em andamento guardados nas marcas do mês.
+  const chavesReenvio = marcas.map((m) => (m.value as { reenvio?: unknown }).reenvio).filter((x): x is string => typeof x === "string");
+  const reenvios = chavesReenvio.length
+    ? await db.select({ key: appSettings.key, value: appSettings.value }).from(appSettings).where(inArray(appSettings.key, chavesReenvio))
+    : [];
   return lista.map((p) => {
-    const marca = marcas.find((m) => m.key === chaveDoEnvio(organizacaoId, p.proprietarioId, mes))?.value as { estado?: string; em?: string; destinos?: unknown } | undefined;
+    const marca = marcas.find((m) => m.key === chaveDoEnvio(organizacaoId, p.proprietarioId, mes))?.value as { estado?: string; em?: string; destinos?: unknown; reenvio?: unknown } | undefined;
+    const doReenvio = typeof marca?.reenvio === "string" ? (reenvios.find((x) => x.key === marca.reenvio)?.value as { estado?: string; em?: string } | undefined) : undefined;
+    const reenvioPendente =
+      doReenvio && (doReenvio.estado === "enviando" || doReenvio.estado === "incerto") ? { estado: doReenvio.estado as "enviando" | "incerto", em: doReenvio.em ?? null } : null;
     const email = (p.email ?? "").trim();
     const destinos = [...new Set([email, ...reps.filter((r) => r.proprietarioId === p.proprietarioId).map((r) => r.email.trim())].filter(Boolean))];
     const fechado = !!p.repasse || (p.valor <= 0 && p.bloqueios.length === 0);
@@ -118,7 +136,7 @@ export async function situacaoDosFechamentos(
     const situacao: Situacao = !fechado ? "pendente" : enviado ? "enviado" : marca?.estado === "incerto" ? "incerto" : !destinos.length ? "sem_email" : "pronto";
     // Para quem foi, como gravado no envio (não o cadastro de hoje).
     const enviadoPara = enviado && Array.isArray(marca.destinos) ? marca.destinos.filter((x): x is string => typeof x === "string") : [];
-    return { ...p, email, destinos, situacao, enviadoEm: enviado ? (marca.em ?? null) : null, enviadoPara };
+    return { ...p, email, destinos, situacao, enviadoEm: enviado ? (marca.em ?? null) : null, enviadoPara, reenvioPendente };
   });
 }
 

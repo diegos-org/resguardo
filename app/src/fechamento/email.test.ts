@@ -343,4 +343,18 @@ describe("e-mail do fechamento (M5.4)", () => {
     expect(await enviarFechamentos(db, org, correio, new Date(DIA1.getTime() + 40 * 3_600_000))).toMatchObject({ enviados: 0, incertos: ["Dona Exemplo"] });
     expect(correio.enviadas).toHaveLength(0);
   });
+
+  it("\"enviar de novo\" sem confirmação aparece na situação do mês", async () => {
+    await ligar();
+    await fechar();
+    await enviarFechamentos(db, org, new CorreioMemoria(), DIA1);
+    const caiu: Correio = { nome: "caiu", enviar: async () => Promise.reject(new ErroEnvioIncerto("Sem resposta do provedor de e-mail")) };
+    const t1 = new Date(DIA1.getTime() + 3_600_000);
+    await fechamentoManual(db, org, caiu, t1, { mes: MES, proprietarioId: dona, reenviar: true }, null);
+    const situacao = async () => (await situacaoDosFechamentos(db, org, MES, "2026-11-02")).find((x) => x.proprietarioId === dona)!;
+    expect(await situacao()).toMatchObject({ situacao: "enviado", reenvioPendente: { estado: "enviando" } });
+    // Mais de um dia depois, a tentativa seguinte o marca como incerto.
+    await fechamentoManual(db, org, new CorreioMemoria(), new Date(t1.getTime() + 25 * 3_600_000), { mes: MES, proprietarioId: dona, reenviar: true }, null);
+    expect((await situacao()).reenvioPendente).toMatchObject({ estado: "incerto" });
+  });
 });
