@@ -108,6 +108,12 @@ criar).
 4. Contestação de cartão (chargeback) perdida: quem arca — a SCL, o proprietário ou os dois na
    proporção. O provedor só diz de que conta sai o dinheiro; quem assume a perda é regra de
    negócio (vai no contrato). Até decidir, o sistema só registra e avisa.
+5. Política de cancelamento das reservas do site: reembolso total, parcial ou nenhum conforme
+   a antecedência, e quem arca com a taxa do pagamento que não volta. Sem ela, o sistema não
+   calcula reembolso sozinho.
+
+As perguntas 4 e 5 não impedem montar o pagamento em teste (M8.2 em sandbox), mas precisam estar
+respondidas antes de o site receber pagamentos de verdade.
 
 ## Fontes consultadas (setembro/2026)
 

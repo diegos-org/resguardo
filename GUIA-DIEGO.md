@@ -808,8 +808,11 @@ ambiente).
   **Antes de decidir, pergunte ao contador:** "a SCL recebendo o valor total da reserva e
   repassando ao proprietário, com contrato de intermediação, paga imposto só sobre a
   comissão?". E diga se a taxa do cartão/Pix segue a regra de hoje (sai antes da divisão,
-  cada um na proporção, como a do Airbnb/Booking) ou se muda; e quem arca com uma contestação
-  de cartão perdida (SCL, proprietário ou os dois na proporção).
+  cada um na proporção, como a do Airbnb/Booking) ou se muda; quem arca com uma contestação
+  de cartão perdida (SCL, proprietário ou os dois na proporção); e a **política de
+  cancelamento** das reservas do site (reembolso total, parcial ou nenhum, conforme a
+  antecedência). Essas duas últimas só precisam estar decididas antes de o site receber
+  pagamentos de verdade.
 - **Modelo do marketplace:** as fórmulas antigas não estão em lugar nenhum, então montei
   uma proposta com as contas feitas: `requisitos/product/MARKETPLACE-PRECIFICACAO.md`.
   Resumo, numa reserva de R$ 1.650 que no Airbnb custaria R$ 1.881 ao hóspede e daria
