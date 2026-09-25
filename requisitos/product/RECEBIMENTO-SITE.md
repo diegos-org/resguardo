@@ -69,9 +69,9 @@ regra** a decidir — a comparação abaixo vale igual.
 
 1. **Começar com "empresa recebe e repassa", pelo Mercado Pago** (Checkout Pro, cartão e
    Pix). Motivos: a parte financeira já existe (é o mesmo caminho do Booking e das diretas:
-   comissão, repasse mensal, Pix para copiar, estorno no financeiro e conferência), o
+   comissão, repasse mensal, Pix para copiar e conferência), o
    proprietário não precisa abrir conta em lugar nenhum, e a integração do pagamento (M8.2 —
-   checkout, aviso de pagamento, devolução ao hóspede e conciliação, que qualquer opção
+   checkout, aviso de pagamento, devolução ao hóspede com os lançamentos da devolução e conciliação, que qualquer opção
    exige) fica menor, então dá para começar a vender pelo site mais cedo.
    Condição: o **contador confirmar** que, com o contrato e as notas certas, a SCL tributa só
    a comissão.
