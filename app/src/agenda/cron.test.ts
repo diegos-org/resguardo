@@ -12,19 +12,26 @@ vi.mock("./agenda", async (original) => {
     ...real,
     enviarAgenda: vi.fn(async (_db: Db, org: string) => {
       if (org === quebrada) throw new Error("banco caiu");
+      // A lenta só termina depois que outra organização recebeu (ou desiste em 3s).
+      if (org === lenta) await Promise.race([new Promise<void>((ok) => (liberar = ok)), new Promise((ok) => setTimeout(ok, 3000))]);
       enviadas.push(org);
+      if (org !== lenta) liberar();
       return { enviados: 1, jaEnviados: 0, falhas: [], aviso: null };
     }),
   };
 });
 
 let quebrada = "";
+let lenta = "";
+let liberar: () => void = () => {};
 let db: Db;
 let close: () => Promise<void>;
 
 beforeEach(async () => {
   ({ db, close } = await createTestDb());
   enviadas.length = 0;
+  quebrada = "";
+  lenta = "";
 });
 afterEach(() => close());
 
@@ -37,5 +44,13 @@ describe("agenda de todas as organizações", () => {
     expect(enviadas).toEqual([b.id]);
     const [exec] = await db.select().from(execucoesAutomacao);
     expect(exec.resumo).toContain("1 enviada(s)");
+  });
+
+  it("uma organização lenta não segura as outras (várias ao mesmo tempo)", async () => {
+    const { agendaDeTodas } = await import("./cron");
+    const [a, b] = await db.insert(organizacoes).values([{ nome: "A" }, { nome: "B" }]).returning();
+    lenta = a.id;
+    await agendaDeTodas(db, new CorreioMemoria(), new Date("2026-10-01T23:00:00Z"));
+    expect(enviadas).toEqual([b.id, a.id]);
   });
 });
