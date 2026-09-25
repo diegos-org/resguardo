@@ -181,8 +181,8 @@ export async function tirarAcesso(db: Db, organizacaoId: string, profissionalId:
 
 /**
  * Aviso de limpeza atribuída (e-mail enquanto não há WhatsApp). Só para quem tem acesso ativo.
- * A chave de idempotência é da limpeza, da profissional, da data e do imóvel: confirmar de novo
- * não repete o aviso. Falha no envio não desfaz a atribuição: vira aviso na tela.
+ * A chave de idempotência é da confirmação e do destinatário: repetir o mesmo aviso não manda duas
+ * vezes; uma nova confirmação ou um e-mail corrigido é outro aviso. Falha no envio não desfaz a atribuição: vira aviso na tela.
  */
 export async function avisarAtribuicao(
   db: Db,
@@ -197,7 +197,7 @@ export async function avisarAtribuicao(
       data: limpezas.data,
       estado: limpezas.estado,
       profissionalId: limpezas.profissionalId,
-      imovelId: limpezas.imovelId,
+      confirmadaEm: limpezas.confirmadaEm,
       imovelCodigo: imoveis.codigo,
       imovelNome: imoveis.nome,
       email: usuarios.email,
@@ -217,8 +217,9 @@ export async function avisarAtribuicao(
       para: l.email,
       assunto: `Limpeza ${diaBr(l.data)} — ${l.imovelCodigo}`,
       texto: `Olá, ${l.nome.split(" ")[0]}.\n\nVocê tem uma limpeza no ${l.imovelCodigo} (${l.imovelNome}) no dia ${diaBr(l.data)}.\n\nVeja as suas limpezas e marque como feita em: ${link}\n`,
-      // Mudou de imóvel ou de data e foi confirmada de novo: é outro aviso (chave nova).
-      chave: `limpeza-aviso:${limpezaId}:${l.profissionalId}:${l.data}:${l.imovelId}`,
+      // Uma chave por confirmação e destinatário: confirmada de novo (mudou imóvel ou data, A→B→A) ou
+      // e-mail de acesso corrigido é outro aviso; repetir o mesmo aviso não manda duas vezes.
+      chave: `limpeza-aviso:${limpezaId}:${l.profissionalId}:${l.confirmadaEm?.getTime() ?? 0}:${l.email.toLowerCase()}`,
     });
     return { enviado: true, aviso: null };
   } catch (e) {

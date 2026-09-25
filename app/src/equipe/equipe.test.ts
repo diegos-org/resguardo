@@ -117,7 +117,7 @@ describe("aviso de limpeza atribuída (M6.6)", () => {
     const id = await limpeza("2026-10-12", ana);
     const correio = new CorreioMemoria();
     expect(await avisarAtribuicao(db, org, id, correio, "https://exemplo.test/equipe")).toEqual({ enviado: true, aviso: null });
-    expect(correio.enviadas[0]).toMatchObject({ para: "ana@example.com", assunto: "Limpeza 12/10 — 403", chave: `limpeza-aviso:${id}:${ana}:2026-10-12:${casa}` });
+    expect(correio.enviadas[0]).toMatchObject({ para: "ana@example.com", assunto: "Limpeza 12/10 — 403", chave: expect.stringMatching(new RegExp(`^limpeza-aviso:${id}:${ana}:\\d+:ana@example\\.com$`)) });
     expect(correio.enviadas[0].texto).toContain("https://exemplo.test/equipe");
     expect(correio.enviadas[0].texto).not.toMatch(/R\$|custo/i);
     const daBia = await limpeza("2026-10-13", bia);
@@ -180,10 +180,48 @@ describe("revisão do Codex (M6.6)", () => {
     const correio = new CorreioMemoria();
     await avisarAtribuicao(db, org, id, correio, "x");
     const [{ id: outra }] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "102", nome: "Um", endereco: "Rua Fictícia, 2" }).returning();
-    await db.update(limpezas).set({ imovelId: outra }).where(eq(limpezas.id, id));
+    // Como faz sincronizarLimpezas: volta a pedida no outro imóvel; depois é confirmada de novo.
+    await db.update(limpezas).set({ imovelId: outra, estado: "pedida", confirmadaEm: null }).where(eq(limpezas.id, id));
+    await new Promise((ok) => setTimeout(ok, 5));
+    expect(await confirmarLimpeza(db, org, id, ana, null)).toEqual({ ok: true });
     await avisarAtribuicao(db, org, id, correio, "x");
     expect(correio.enviadas).toHaveLength(2);
     expect(correio.enviadas[1].assunto).toContain("102");
     expect(correio.enviadas[1].chave).not.toBe(correio.enviadas[0].chave);
+  });
+
+  it("aviso novo a cada confirmação (A→B→A) e quando o e-mail de acesso é corrigido", async () => {
+    await darAcesso(db, org, ana, "ana.errado@example.com", null);
+    await darAcesso(db, org, bia, "bia@example.com", null);
+    const id = await limpeza("2026-10-12", ana);
+    const correio = new CorreioMemoria();
+    await avisarAtribuicao(db, org, id, correio, "x");
+    // Repetir sem mudança (mesma confirmação): mesma chave.
+    await avisarAtribuicao(db, org, id, correio, "x");
+    expect(new Set(correio.enviadas.map((m) => m.chave)).size).toBe(1);
+    await darAcesso(db, org, ana, "ana@example.com", null);
+    await avisarAtribuicao(db, org, id, correio, "x");
+    expect(correio.enviadas.at(-1)).toMatchObject({ para: "ana@example.com" });
+    await new Promise((ok) => setTimeout(ok, 5));
+    await confirmarLimpeza(db, org, id, bia, null);
+    await avisarAtribuicao(db, org, id, correio, "x");
+    await new Promise((ok) => setTimeout(ok, 5));
+    await confirmarLimpeza(db, org, id, ana, null);
+    await avisarAtribuicao(db, org, id, correio, "x");
+    const chaves = correio.enviadas.map((m) => m.chave);
+    expect(new Set(chaves).size).toBe(4);
+    expect(correio.enviadas.at(-1)).toMatchObject({ para: "ana@example.com" });
+  });
+
+  it("arquivar e reativar a profissional: a sessão de antes não volta a valer", async () => {
+    await darAcesso(db, org, ana, "ana@example.com", null);
+    const usuarioId = await usuarioDe(ana);
+    const antes = Date.now();
+    await new Promise((ok) => setTimeout(ok, 5));
+    await editarProfissional(db, org, ana, { nome: "Ana Fictícia", telefone: "", observacoes: "", ativo: false }, null);
+    await editarProfissional(db, org, ana, { nome: "Ana Fictícia", telefone: "", observacoes: "", ativo: true }, null);
+    expect(await carregarSessao(db, usuarioId, { emitidaEm: antes })).toBeNull();
+    await new Promise((ok) => setTimeout(ok, 5));
+    expect(await carregarSessao(db, usuarioId, { emitidaEm: Date.now() })).toMatchObject({ profissionalId: ana });
   });
 });

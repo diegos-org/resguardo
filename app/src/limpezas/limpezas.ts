@@ -10,7 +10,7 @@
 import { and, asc, eq, exists, gte, inArray, isNotNull, lt, or, sql } from "drizzle-orm";
 import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
 import type { ItemCalendario } from "@/calendario/grade";
-import { categoriasDespesa, type EstadoLimpeza, imoveis, lancamentos, limpezas, profissionaisLimpeza, reservas } from "@/db/schema";
+import { categoriasDespesa, type EstadoLimpeza, imoveis, lancamentos, limpezas, profissionaisLimpeza, reservas, usuarios } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { listarContratos } from "@/contratos/repositorio";
 import { contratoVigente } from "@/contratos/regras";
@@ -536,6 +536,9 @@ export async function editarProfissional(db: Db, organizacaoId: string, id: stri
         .set({ nome: d.nome.trim(), telefone: d.telefone.trim(), observacoes: d.observacoes.trim(), ativo: d.ativo })
         .where(eq(profissionaisLimpeza.id, id))
         .returning();
+      // Arquivada ou reativada: quem tinha entrado pelo celular antes precisa entrar de novo.
+      if (antes.ativo !== depois.ativo && depois.usuarioId)
+        await tx.update(usuarios).set({ sessaoValidaDesde: new Date() }).where(and(eq(usuarios.id, depois.usuarioId), eq(usuarios.organizacaoId, organizacaoId)));
       const mudancas = calcularMudancas(antes, depois);
       if (Object.keys(mudancas).length)
         await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "profissional_limpeza.editar", entidade: "profissional_limpeza", entidadeId: id, mudancas });
