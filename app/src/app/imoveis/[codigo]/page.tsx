@@ -5,14 +5,14 @@ import { canalDeContato, FormConsulta } from "@/components/site/FormConsulta";
 import { FotoProvisoria, Moldura, SiteEmConfiguracao } from "@/components/site/Moldura";
 import styles from "@/components/site/site.module.css";
 import { hojeISO } from "@/lib/datas";
-import { carregarSite } from "@/site/pagina";
-import { imovelDoSite, imoveisDoSite, lerPedidoConsulta, tituloDoSite } from "@/site/site";
+import { carregarSite, metadadosDoSite } from "@/site/pagina";
+import { imovelDoSite, imoveisDoSite, lerPedidoConsulta } from "@/site/site";
 
 export async function generateMetadata({ params }: PageProps<"/imoveis/[codigo]">): Promise<Metadata> {
   const { codigo } = await params;
   const { db, conteudo } = await carregarSite();
   const i = conteudo ? await imovelDoSite(db, conteudo.organizacaoId, codigo) : null;
-  return { title: tituloDoSite(conteudo, i?.nome) || "Site em configuração" };
+  return metadadosDoSite(i?.nome);
 }
 
 export default async function PaginaImovel({ params, searchParams }: PageProps<"/imoveis/[codigo]">) {
