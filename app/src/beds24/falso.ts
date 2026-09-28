@@ -28,6 +28,8 @@ export class Beds24Falso implements LeitorBeds24 {
       const chegada = String(b.arrival ?? "");
       if (f.chegadaDe && chegada < f.chegadaDe) return false;
       if (f.chegadaAte && chegada > f.chegadaAte) return false;
+      if (f.saidaDe && String(b.departure ?? "") < f.saidaDe) return false;
+      if (f.ids?.length && !f.ids.includes(String(b.id))) return false;
       if (f.modificadasDesde && String(b.modifiedTime ?? "") < f.modificadasDesde) return false;
       if (f.propertyIds?.length && !f.propertyIds.includes(String(b.propertyId))) return false;
       return true;
@@ -53,3 +55,4 @@ export class Beds24Falso implements LeitorBeds24 {
     return { ...normalizarQuartos(this.properties), lidoEm: this.agora().toISOString() };
   }
 }
+

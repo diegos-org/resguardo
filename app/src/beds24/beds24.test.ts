@@ -156,7 +156,7 @@ describe("cliente HTTP (rede simulada)", () => {
       json({ success: true, data: [booking({ id: 5550002 }), { lixo: true }], pages: { nextPageExists: false } }),
     ]);
     const c = new ClienteBeds24Http({ token: "chave-falsa", fetchImpl: f, agora: () => new Date("2026-09-23T12:00:00Z") });
-    const r = await c.reservas({ chegadaDe: "2026-10-01", chegadaAte: "2026-10-31", propertyIds: ["100", "101"] });
+    const r = await c.reservas({ chegadaDe: "2026-10-01", chegadaAte: "2026-10-31", saidaDe: "2026-10-02", ids: ["5550001", "5550002"], propertyIds: ["100", "101"] });
     expect(r.itens.map((x) => x.idExterno)).toEqual(["5550001", "5550002"]);
     expect(r.divergencias).toHaveLength(1);
     expect(r.lidoEm).toBe("2026-09-23T12:00:00.000Z");
@@ -168,6 +168,9 @@ describe("cliente HTTP (rede simulada)", () => {
     expect(chamadas[0].url.pathname).toBe("/api/v2/bookings");
     expect(chamadas[0].url.searchParams.get("arrivalFrom")).toBe("2026-10-01");
     expect(chamadas[0].url.searchParams.getAll("propertyId")).toEqual(["100", "101"]);
+    expect(chamadas[0].url.searchParams.getAll("status")).toEqual(["confirmed", "new", "request", "inquiry", "black", "cancelled"]);
+    expect(chamadas[0].url.searchParams.getAll("id")).toEqual(["5550001", "5550002"]);
+    expect(chamadas[0].url.searchParams.get("departureFrom")).toBe("2026-10-02");
     expect(chamadas[1].url.searchParams.get("page")).toBe("2");
   });
 
@@ -263,3 +266,4 @@ describe("conversão para reserva SCL", () => {
     expect(n.ok && paraDadosReserva(n.r, im)).toBeNull();
   });
 });
+

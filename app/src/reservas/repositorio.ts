@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, inArray, lt, ne, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, lt, ne, or, sql } from "drizzle-orm";
 import { emailValido } from "@/acesso/codigo-email";
 import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
 import { violouUnicidade } from "@/db/erros";
@@ -6,6 +6,7 @@ import { bloqueios, imoveis, reservas } from "@/db/schema";
 import { aplicarMotor } from "@/financeiro/aplicar";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
+import { hojeISO } from "@/lib/datas";
 import { type DadosReserva, type ErrosReserva, gerarCodigo, validarReserva } from "./regras";
 
 export type Reserva = typeof reservas.$inferSelect;
@@ -31,7 +32,7 @@ async function imovelDaOrganizacao(tx: Db, organizacaoId: string, imovelId: stri
  * financeiro ficou como estava (precisa de ajuste manual) — quem chamou deve avisar.
  */
 export type ResultadoReserva =
-  | { ok: true; reserva: Reserva; criada: boolean; financeiroNaoAtualizado?: boolean; avisosFinanceiro?: string[] }
+  | { ok: true; reserva: Reserva; criada: boolean; alterada?: boolean; financeiroNaoAtualizado?: boolean; avisosFinanceiro?: string[] }
   | { ok: false; erros: ErrosReserva };
 
 async function inserirComCodigo(tx: Db, valores: typeof reservas.$inferInsert): Promise<Reserva> {
@@ -95,18 +96,53 @@ export async function sincronizarReserva(
   if (Object.keys(erros).length) return { ok: false, erros };
   return db.transaction(async (tx) => {
     if (!(await imovelDaOrganizacao(tx, organizacaoId, dados.imovelId))) return { ok: false as const, erros: { imovelId: "Imóvel não encontrado." } };
-    // Trava por chave de sincronização: duas execuções simultâneas para a mesma reserva
-    // (cron sobreposto, reenvio) são processadas uma depois da outra, mesmo antes de a linha existir.
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`reserva:${organizacaoId}:${fonte}:${idFonte}`}))`);
-    const [existente] = await tx
+    // CSV e Beds24 podem ter IDs distintos para a mesma reserva. Serializar as
+    // importações da organização impede duas fontes de criarem a mesma reserva juntas.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`reservas-importacao:${organizacaoId}`}))`);
+    let [existente] = await tx
       .select()
       .from(reservas)
-      .where(and(eq(reservas.organizacaoId, organizacaoId), eq(reservas.fonte, fonte), eq(reservas.idFonte, idFonte)))
+      .where(and(eq(reservas.organizacaoId, organizacaoId), or(
+        and(eq(reservas.fonte, fonte), eq(reservas.idFonte, idFonte)),
+        fonte === "beds24" ? eq(reservas.beds24Id, idFonte) : undefined,
+      )))
       .for("update");
+
+    if (!existente && (fonte === "beds24" || fonte === "csv") && dados.codigoCanal && ["airbnb", "booking"].includes(dados.origem)) {
+      const candidatas = await tx.select().from(reservas).where(and(
+        eq(reservas.organizacaoId, organizacaoId), eq(reservas.origem, dados.origem),
+        eq(reservas.codigoCanal, dados.codigoCanal), inArray(reservas.fonte, ["csv", "beds24"]),
+      )).for("update");
+      if (candidatas.length > 1) return { ok: false as const, erros: { geral: "Mais de uma reserva com esse canal e código. Confira a duplicidade antes de sincronizar." } };
+      existente = candidatas[0];
+      if (existente && existente.imovelId !== dados.imovelId) return { ok: false as const, erros: { geral: "O código do canal já existe em outro imóvel. Confira o mapeamento." } };
+    }
+    if (fonte === "csv" && existente && (existente.beds24Id || existente.fonte === "beds24")) {
+      return { ok: false as const, erros: { geral: "Esta reserva já é atualizada pelo Beds24. A planilha não substituiu os dados sincronizados." } };
+    }
+    if (fonte === "beds24" && existente && ((existente.beds24Id && existente.beds24Id !== idFonte) || (existente.fonte === "beds24" && existente.idFonte !== idFonte))) {
+      return { ok: false as const, erros: { geral: "Dois IDs do Beds24 usam o mesmo código de reserva no canal. Confira no Beds24." } };
+    }
+    // Conserva a origem CSV e seu identificador; guarda também o ID do Beds24.
+    // Assim referências, lançamentos, códigos públicos e histórico continuam os mesmos.
+    const vinculo = fonte === "beds24" ? { beds24Id: idFonte } : {};
+    if (existente && fonte === "beds24") {
+      dados = { ...dados, observacoes: existente.observacoes, hospedeOrigem: existente.hospedeOrigem };
+      // Escopos limitados da API podem omitir contato/valores. Ausência não apaga
+      // informação já conferida/importada, nem transforma valor desconhecido em zero.
+      dados.hospedeNome ||= existente.hospedeNome;
+      dados.hospedeEmail ||= existente.hospedeEmail;
+      dados.hospedeTelefone ||= existente.hospedeTelefone;
+      dados.valorBruto ??= existente.valorBruto;
+      dados.taxaCanal ??= existente.taxaCanal;
+      dados.valorLiquido = dados.valorBruto === existente.valorBruto && dados.taxaCanal === existente.taxaCanal ? existente.valorLiquido : null;
+      dados.codigoCanal ||= existente.codigoCanal;
+      dados.hospedes ??= existente.hospedes;
+    }
 
     if (!existente) {
       const canceladaEm = dados.estado === "cancelada" ? new Date() : null;
-      const reserva = await inserirComCodigo(tx, { ...dados, organizacaoId, codigo: "", fonte, idFonte, canceladaEm, confirmadaEm: dados.estado === "confirmada" ? new Date() : null });
+      const reserva = await inserirComCodigo(tx, { ...dados, ...vinculo, organizacaoId, codigo: "", fonte, idFonte, canceladaEm, confirmadaEm: dados.estado === "confirmada" && fonte !== "beds24" ? new Date() : null });
       await registrarAuditoria(tx, {
         organizacaoId,
         usuarioId: autorId,
@@ -121,23 +157,26 @@ export async function sincronizarReserva(
 
     // E-mail corrigido à mão no painel vale sobre o da fonte (M9.1).
     if (existente.hospedeEmailManualEm) dados = { ...dados, hospedeEmail: existente.hospedeEmail };
-    const novo = { ...existente, ...dados };
+    const novo = { ...existente, ...dados, ...vinculo };
     const mudancas = calcularMudancas(existente, novo);
+    const preservarPassado = fonte === "beds24" && existente.checkin < hojeISO();
+    const avisoPassado = preservarPassado && CAMPOS_DO_FINANCEIRO.some(c => c in mudancas)
+      ? ["Reserva já iniciada: o financeiro anterior foi preservado. Confira se é necessário um ajuste manual."] : [];
     if (Object.keys(mudancas).length === 0) {
       // Reserva igual: o financeiro só muda se o contrato mudou (idempotente).
-      const m = await aplicarMotor(tx, organizacaoId, existente.id, autorId);
+      const m = await aplicarMotor(tx, organizacaoId, existente.id, autorId, undefined, { soConferir: preservarPassado });
       return { ok: true as const, reserva: existente, criada: false, financeiroNaoAtualizado: m?.protegido, avisosFinanceiro: m?.avisos };
     }
     // Cancelou agora → data de agora; continua cancelada → mantém; voltou a valer → limpa.
     const canceladaEm = dados.estado !== "cancelada" ? null : existente.estado === "cancelada" ? existente.canceladaEm : new Date();
     // Passou a confirmada agora → data de agora; continua confirmada → mantém; deixou de ser → limpa.
-    const confirmadaEm = dados.estado !== "confirmada" ? null : existente.estado === "confirmada" ? existente.confirmadaEm : new Date();
+    const confirmadaEm = dados.estado !== "confirmada" ? null : existente.estado === "confirmada" ? existente.confirmadaEm : fonte === "beds24" ? null : new Date();
     const [reserva] = await tx
       .update(reservas)
       // Mudou algo que pesa no financeiro (situação, valores, datas, imóvel, canal…): uma conferência
       // dada por resolvida antes volta a valer (M4.8) — a decisão foi tomada sobre os dados de antes.
       // Nome, contato ou observação do hóspede não reabrem.
-      .set({ ...dados, canceladaEm, confirmadaEm, conferenciaResolvidaEm: CAMPOS_DO_FINANCEIRO.some((c) => c in mudancas) ? null : existente.conferenciaResolvidaEm, atualizadoEm: new Date() })
+      .set({ ...dados, ...vinculo, canceladaEm, confirmadaEm, conferenciaResolvidaEm: CAMPOS_DO_FINANCEIRO.some((c) => c in mudancas) ? null : existente.conferenciaResolvidaEm, atualizadoEm: new Date() })
       .where(eq(reservas.id, existente.id))
       .returning();
     await registrarAuditoria(tx, {
@@ -148,8 +187,8 @@ export async function sincronizarReserva(
       entidadeId: reserva.id,
       mudancas: semContato(mudancas),
     });
-    const m = await aplicarMotor(tx, organizacaoId, reserva.id, autorId);
-    return { ok: true as const, reserva, criada: false, financeiroNaoAtualizado: m?.protegido, avisosFinanceiro: m?.avisos };
+    const m = await aplicarMotor(tx, organizacaoId, reserva.id, autorId, undefined, { soConferir: preservarPassado });
+    return { ok: true as const, reserva, criada: false, alterada: true, financeiroNaoAtualizado: m?.protegido, avisosFinanceiro: [...(m?.avisos ?? []), ...avisoPassado] };
   });
 }
 
@@ -318,3 +357,4 @@ export async function listarBloqueios(db: Db, organizacaoId: string, f: FiltroPe
     .where(and(...condicoes))
     .orderBy(asc(bloqueios.inicio));
 }
+

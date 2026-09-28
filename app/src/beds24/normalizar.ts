@@ -112,13 +112,16 @@ export function normalizarCalendario(salas: unknown[], inicio: string, fim: stri
       const preco = reaisParaCentavosApi(faixa.price1);
       const livres = faixa.numAvail === undefined || faixa.numAvail === null ? null : Number(faixa.numAvail);
       const minimo = faixa.minStay === undefined || faixa.minStay === null ? null : Number(faixa.minStay);
-      const inteiroNaoNegativo = (x: number | null) => x === null || (Number.isInteger(x) && x >= 0);
-      if (preco === undefined || (preco !== null && preco < 0) || !inteiroNaoNegativo(livres) || !inteiroNaoNegativo(minimo)) {
+      const inteiroNaoNegativo = (x: number | null) => x === null || (Number.isInteger(x) && x >= 0 && x <= 2_147_483_647);
+      if (preco === undefined || !inteiroNaoNegativo(preco) || !inteiroNaoNegativo(livres) || !inteiroNaoNegativo(minimo)) {
         divergencias.push({ origem: "calendario", id: roomId, motivo: "valores inválidos" });
         continue;
       }
       // Faixa inclusiva [from, to]: expande em dias, recortando ao período pedido [inicio, fim).
-      for (let t = Date.parse(`${texto(faixa.from)}T00:00:00Z`); t <= Date.parse(`${texto(faixa.to ?? faixa.from)}T00:00:00Z`); t += 86_400_000) {
+      // Recorta antes de expandir: uma faixa absurda não pode monopolizar o processo.
+      const de = texto(faixa.from) < inicio ? inicio : texto(faixa.from);
+      const ate = texto(faixa.to ?? faixa.from) > fim ? fim : texto(faixa.to ?? faixa.from);
+      for (let t = Date.parse(`${de}T00:00:00Z`); t <= Date.parse(`${ate}T00:00:00Z`); t += 86_400_000) {
         const data = new Date(t).toISOString().slice(0, 10);
         if (data >= inicio && data < fim) itens.push({ roomId, data, livres, preco, minimoNoites: minimo });
       }
@@ -140,8 +143,9 @@ export function normalizarQuartos(props: unknown[]): { itens: QuartoBeds24[]; di
         divergencias.push({ origem: "quarto", id: id(p.id), motivo: "quarto sem id" });
         continue;
       }
-      itens.push({ propertyId: id(p.id), roomId: id(q.id), nome: texto(q.name || p.name).slice(0, 200) });
+      itens.push({ propertyId: id(p.id), roomId: id(q.id), nome: texto(q.name || p.name).slice(0, 200), ...(p.currency ? { moeda: texto(p.currency).toUpperCase() } : {}) });
     }
   }
   return { itens, divergencias };
 }
+

@@ -324,6 +324,8 @@ export const reservas = pgTable(
     recebimento: recebimentoReservaEnum("recebimento"),
     fonte: text("fonte").notNull().default("manual"),
     idFonte: text("id_fonte").notNull().default(""),
+    /** Identidade Beds24, inclusive quando a reserva nasceu de uma planilha. */
+    beds24Id: text("beds24_id"),
     /** Código da reserva no canal (ex.: HMXXXX do Airbnb). */
     codigoCanal: text("codigo_canal").notNull().default(""),
     observacoes: text("observacoes").notNull().default(""),
@@ -349,6 +351,7 @@ export const reservas = pgTable(
   (t) => [
     uniqueIndex("reservas_codigo").on(t.organizacaoId, t.codigo),
     uniqueIndex("reservas_fonte").on(t.organizacaoId, t.fonte, t.idFonte).where(sql`${t.idFonte} <> ''`),
+    uniqueIndex("reservas_beds24").on(t.organizacaoId, t.beds24Id),
     index("reservas_imovel_periodo").on(t.imovelId, t.checkin, t.checkout),
   ],
 );
@@ -389,6 +392,28 @@ export const bloqueios = pgTable(
     index("bloqueios_imovel_periodo").on(t.imovelId, t.inicio, t.fim),
   ],
 );
+
+/** Observação do calendário externo; não é cotação nem autorização de venda. */
+export const beds24Calendario = pgTable("beds24_calendario", {
+  organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+  imovelId: uuid("imovel_id").notNull().references(() => imoveis.id),
+  data: date("data", { mode: "string" }).notNull(),
+  livres: integer("livres"),
+  preco: integer("preco"),
+  minimoNoites: integer("minimo_noites"),
+  observadoEm: timestamp("observado_em", { withTimezone: true }).notNull(),
+}, t => [primaryKey({ columns: [t.organizacaoId, t.imovelId, t.data] })]);
+
+/** Execuções por organização, sem payloads do provedor nem contato de hóspedes. */
+export const beds24Execucoes = pgTable("beds24_execucoes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+  iniciadoEm: timestamp("iniciado_em", { withTimezone: true }).notNull().defaultNow(),
+  terminadoEm: timestamp("terminado_em", { withTimezone: true }),
+  situacao: text("situacao").notNull().default("executando"),
+  resumo: text("resumo").notNull().default(""),
+  divergencias: jsonb("divergencias").$type<string[]>().notNull().default([]),
+}, t => [index("beds24_execucoes_org").on(t.organizacaoId, t.iniciadoEm)]);
 
 // ---------------------------------------------------------------------------
 // Financeiro — ledger (M4.1)
@@ -1000,3 +1025,4 @@ export const cadastrosMarketplace = pgTable(
   },
   (t) => [index("cadastros_marketplace_org").on(t.organizacaoId, t.situacao, t.criadoEm), index("cadastros_marketplace_email").on(t.email)],
 );
+

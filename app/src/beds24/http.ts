@@ -80,6 +80,9 @@ export class ClienteBeds24Http implements LeitorBeds24 {
     const brutos = await this.todas("/bookings", {
       arrivalFrom: f.chegadaDe,
       arrivalTo: f.chegadaAte,
+      departureFrom: f.saidaDe,
+      id: f.ids,
+      status: ["confirmed", "new", "request", "inquiry", "black", "cancelled"],
       modifiedFrom: f.modificadasDesde,
       propertyId: f.propertyIds,
     });
@@ -128,4 +131,14 @@ export function leitorDoAmbiente(env: NodeJS.ProcessEnv = process.env): LeitorBe
     clienteDoProcesso = { refreshToken, token, cliente: new ClienteBeds24Http({ refreshToken, token }) };
   }
   return clienteDoProcesso.cliente;
+}
+
+/** Limite total de rede por execução, além do timeout individual e da paginação. */
+export function leitorParaSincronizacao(env: NodeJS.ProcessEnv = process.env): LeitorBeds24 | null {
+  const refreshToken = env.BEDS24_REFRESH_TOKEN?.trim() || undefined;
+  const token = refreshToken ? undefined : env.BEDS24_API_KEY?.trim() || undefined;
+  if (!refreshToken && !token) return null;
+  const limite = AbortSignal.timeout(180_000);
+  return new ClienteBeds24Http({ refreshToken, token, maxPaginas: 10, fetchImpl: (url, init) =>
+    fetch(url, { ...init, signal: AbortSignal.any([limite, ...(init?.signal ? [init.signal] : [])]) }) });
 }
