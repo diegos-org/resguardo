@@ -72,8 +72,8 @@ item muda a linha para `feito` **no próprio PR do item**.
 | ID | Item | Estado | Depende de |
 |---|---|---|---|
 | M3.1 | Modelo de reserva: canal, datas, hóspede (mínimo necessário), valores brutos/taxas/líquido, estados, ID interno + ID externo | feito | M2.4 |
-| M3.2 | Cliente Beds24 API v2 **somente leitura** (reservas, bloqueios, preços) com adaptador falso para testes | feito | M3.1 |
-| M3.3 | Sincronização Beds24 → banco: idempotente, agendada (cron Vercel), registro de divergências; reconhecer como a mesma reserva a que já veio por planilha (M3.6), pela origem + código do canal | bloqueado | M3.2 + Diego: chave API Beds24 no ambiente |
+| M3.2 | Cliente Beds24 API v2 **somente leitura** (reservas, bloqueios, preços), com renovação por `BEDS24_REFRESH_TOKEN`, teste manual de conexão no painel e adaptador falso para testes | feito | M3.1 |
+| M3.3 | Sincronização Beds24 → banco: idempotente, agendada (cron Vercel), registro de divergências; reconhecer como a mesma reserva a que já veio por planilha (M3.6), pela origem + código do canal | bloqueado | M3.2 + validar acesso real: Diego informou refresh token cadastrado na Vercel em 27/09; sincronização ainda não implementada |
 | M3.4 | Calendário central: todas as unidades, por imóvel, reservas/bloqueios/limpezas/manutenção, filtros global e local | feito | M3.1, M0.4 |
 | M3.5 | Lista de reservas com filtros e detalhe da reserva | feito | M3.1 |
 | M3.6 | Importação manual (CSV) de reservas como alternativa enquanto Beds24 não estiver ligado | feito | M3.1 |
@@ -171,7 +171,7 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 
 1. **Revisar e mergear PRs** — por enquanto o Claude faz os merges (autorizado em 23/09).
 2. **Vercel:** importar o repositório `al-life/scl-reconstrucao` na Vercel, *root directory* `app`, e ligar a integração Neon. (destrava M0.5)
-3. **Chave API Beds24 (leitura e escrita)** → variável `BEDS24_API_KEY` no ambiente do Claude e na Vercel; nunca no chat nem no Git. A escrita só é usada quando o M3.7 for ligado. (destrava M3.3 e M3.7)
+3. **Beds24:** Diego informou em 27/09 que conectou/mapeou o Airbnb e cadastrou `BEDS24_REFRESH_TOKEN` na Vercel. Após publicar a correção M3.2, usar **Configurações → Integrações → Testar conexão com Beds24**. Validar permissões e mapeamento antes de implementar/ligar M3.3. O cliente continua somente leitura; escrita depende do M3.7.
 4. **Meta / WhatsApp Business:** iniciar a verificação da empresa no Meta Business — leva dias. (destrava M10)
 5. **Pagamento do site:** credenciais de *teste* do provedor escolhido no M8.0 (Mercado Pago, se for a escolha). (destrava M8.2)
 6. **Modelo do marketplace:** escolher entre os modelos propostos (ou ajustar). (destrava M12.1)
@@ -204,3 +204,4 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
   (e usado no de hóspedes).
 - 24/09 (Diego): mudança de regra vale daquela data para frente — o passado (e o dinheiro
   que já movimentou) nunca é recalculado.
+

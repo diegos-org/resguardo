@@ -1,17 +1,18 @@
 /**
  * Cliente HTTP do Beds24 API v2 — SOMENTE LEITURA (só existe `GET` aqui).
- * Autenticação: cabeçalho `token` com a chave de longa duração em BEDS24_API_KEY
- * (configurada na Vercel/ambiente, nunca no Git).
+ * BEDS24_REFRESH_TOKEN gera e renova o token de acesso. BEDS24_API_KEY continua
+ * aceitando token direto (long life somente leitura), nunca convite/refresh token.
  *
  * Endpoints e parâmetros seguem a documentação pública da API v2 (Swagger em
  * beds24.com/api/v2). Antes da sincronização real (M3.3), conferir com a conta do Diego:
  * nomes de campos, filtro de canceladas e paginação.
  */
+import { AutenticacaoBeds24, buscarBeds24 } from "./autenticacao";
 import { normalizarCalendario, normalizarQuartos, normalizarReserva } from "./normalizar";
 import { type DiaCalendario, ErroBeds24, type FiltroCalendario, type FiltroReservas, type LeitorBeds24, type Lido, type QuartoBeds24, type ReservaBeds24 } from "./tipos";
 
 type Parametros = Record<string, string | string[] | undefined>;
-type Opcoes = { token: string; fetchImpl?: typeof fetch; baseUrl?: string; timeoutMs?: number; maxPaginas?: number; agora?: () => Date };
+type Opcoes = { token?: string; refreshToken?: string; fetchImpl?: typeof fetch; baseUrl?: string; timeoutMs?: number; maxPaginas?: number; agora?: () => Date };
 
 export class ClienteBeds24Http implements LeitorBeds24 {
   private readonly fetchImpl: typeof fetch;
@@ -19,14 +20,18 @@ export class ClienteBeds24Http implements LeitorBeds24 {
   private readonly timeoutMs: number;
   private readonly maxPaginas: number;
   private readonly agora: () => Date;
+  private readonly autenticacao: AutenticacaoBeds24;
 
   constructor(private readonly o: Opcoes) {
-    if (!o.token) throw new ErroBeds24("Chave do Beds24 não configurada.", "configuracao");
     this.fetchImpl = o.fetchImpl ?? fetch;
     this.baseUrl = (o.baseUrl ?? "https://beds24.com/api/v2").replace(/\/$/, "");
     this.timeoutMs = o.timeoutMs ?? 15_000;
     this.maxPaginas = o.maxPaginas ?? 50;
     this.agora = o.agora ?? (() => new Date());
+    this.autenticacao = new AutenticacaoBeds24({
+      token: o.token, refreshToken: o.refreshToken,
+      fetchImpl: this.fetchImpl, baseUrl: this.baseUrl, timeoutMs: this.timeoutMs, agora: this.agora,
+    });
   }
 
   /** Única forma de falar com o Beds24: GET, com tempo-limite. */
@@ -36,12 +41,13 @@ export class ClienteBeds24Http implements LeitorBeds24 {
       if (v === undefined) continue;
       for (const item of Array.isArray(v) ? v : [v]) url.searchParams.append(k, item);
     }
-    let resposta: Response;
-    try {
-      resposta = await this.fetchImpl(url, { method: "GET", headers: { token: this.o.token, accept: "application/json" }, signal: AbortSignal.timeout(this.timeoutMs) });
-    } catch (e) {
-      const tempo = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
-      throw new ErroBeds24(tempo ? "Beds24 não respondeu a tempo." : "Falha de rede ao falar com o Beds24.", tempo ? "tempo" : "rede");
+    const token = await this.autenticacao.obter();
+    let resposta = await buscarBeds24(this.fetchImpl, url, { token }, this.timeoutMs);
+    if (resposta.status === 401 && this.o.refreshToken) {
+      await resposta.body?.cancel();
+      const renovado = await this.autenticacao.obter(token);
+      // Uma única repetição, apenas para GET. 403/429/5xx não provocam renovação.
+      resposta = await buscarBeds24(this.fetchImpl, url, { token: renovado }, this.timeoutMs);
     }
     if (!resposta.ok) throw new ErroBeds24(`Beds24 respondeu HTTP ${resposta.status}.`, "http");
     let corpo: unknown;
@@ -108,7 +114,18 @@ export class ClienteBeds24Http implements LeitorBeds24 {
   }
 }
 
-/** Cliente do ambiente, ou null enquanto a chave não existir (M3.3 fica bloqueado). */
+let clienteDoProcesso: { refreshToken?: string; token?: string; cliente: ClienteBeds24Http } | null = null;
+
+/** Reutiliza o cliente/cache no processo; muda o cliente quando as credenciais mudam. */
 export function leitorDoAmbiente(env: NodeJS.ProcessEnv = process.env): LeitorBeds24 | null {
-  return env.BEDS24_API_KEY ? new ClienteBeds24Http({ token: env.BEDS24_API_KEY }) : null;
+  const refreshToken = env.BEDS24_REFRESH_TOKEN?.trim() || undefined;
+  const token = refreshToken ? undefined : env.BEDS24_API_KEY?.trim() || undefined;
+  if (!refreshToken && !token) {
+    clienteDoProcesso = null;
+    return null;
+  }
+  if (!clienteDoProcesso || clienteDoProcesso.refreshToken !== refreshToken || clienteDoProcesso.token !== token) {
+    clienteDoProcesso = { refreshToken, token, cliente: new ClienteBeds24Http({ refreshToken, token }) };
+  }
+  return clienteDoProcesso.cliente;
 }

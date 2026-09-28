@@ -9,6 +9,12 @@ import { regrasEmVigor } from "./regras";
 import { situacaoServicos } from "./servicos";
 
 describe("serviços", () => {
+  it("refresh token configura Beds24 sem afirmar conexão testada nem expor o valor", () => {
+    const s = situacaoServicos({ NODE_ENV: "test", BEDS24_REFRESH_TOKEN: "refresh-secreto" }, null);
+    expect(s.find((x) => x.nome === "Beds24")).toMatchObject({ situacao: "configurado", detalhe: expect.stringContaining("não testada") });
+    expect(JSON.stringify(s)).not.toContain("refresh-secreto");
+    expect(situacaoServicos({ NODE_ENV: "test", BEDS24_REFRESH_TOKEN: "  " }, null).find((x) => x.nome === "Beds24")?.situacao).toBe("nao_configurado");
+  });
   it("mostra a situação sem nunca expor chaves", () => {
     const env = {
       DATABASE_URL: "postgres://u:senha-secreta@ep-x.neon.tech/db",

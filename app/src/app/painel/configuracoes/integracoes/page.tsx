@@ -2,13 +2,14 @@ import { redirect } from "next/navigation";
 import { podeFazer } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import styles from "@/components/formularios.module.css";
+import { TestarBeds24 } from "@/components/configuracoes/TestarBeds24";
 import { situacaoServicos } from "@/sistema/servicos";
 
 const ONDE: Record<string, string> = {
   "Banco de dados (Neon)": "DATABASE_URL",
   "Login com Google": "AUTH_SECRET, AUTH_GOOGLE_ID, AUTH_GOOGLE_SECRET",
   "E-mail do sistema (Resend)": "RESEND_API_KEY, EMAIL_REMETENTE",
-  Beds24: "BEDS24_API_KEY (e BEDS24_ESCRITA=ligada para enviar ao Beds24)",
+  Beds24: "BEDS24_REFRESH_TOKEN (recomendado) ou BEDS24_API_KEY (token direto). Cliente atual: somente leitura.",
 };
 
 export default async function Integracoes() {
@@ -45,6 +46,7 @@ export default async function Integracoes() {
           </tbody>
         </table>
       </div>
+      <TestarBeds24 />
     </>
   );
 }
