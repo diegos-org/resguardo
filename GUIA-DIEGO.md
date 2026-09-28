@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 27/09/2026, correção da autenticação Beds24 por refresh token e teste de conexão no painel. Diego confirmou Vercel e login Google funcionando; conexão real SCL → Beds24 ainda por validar.
+> **Última atualização:** 27/09/2026, diagnóstico da falha de conexão Beds24. Diego confirmou Vercel e login Google funcionando, mas o teste SCL → Beds24 retornou falha de rede. A causa ainda não foi identificada; o diagnóstico agora distingue problemas de credencial, rede e certificado, sem mostrar segredos.
 
 ---
 
@@ -784,6 +784,11 @@ ambiente).
      deploy. Chaves nunca vão no chat, Git ou tela do sistema.
    - O cliente continua **somente leitura**, mesmo que a credencial tenha outras permissões.
      Escrita depende do M3.7 e da ativação explícita depois dos testes.
+   - **Teste de 27/09:** retornou “Falha de rede ao falar com o Beds24”. Depois de publicar
+     a melhoria do diagnóstico, repita o botão e informe somente a mensagem. Ela indica se
+     falhou ao renovar o token ou consultar os dados e, quando disponível, mostra um código
+     de DNS, conexão ou certificado. Isso ainda não significa que o token esteja errado.
+     Não gere outra chave sem identificar a causa. Nenhum segredo aparece no diagnóstico.
 4. **Meta Business:** comece a verificação da empresa, porque ela demora.
 5. **E-mail do sistema (Resend)** — sem pressa; enquanto isso, o login com Google funciona:
    1. Crie conta grátis em resend.com e cadastre o domínio de onde os e-mails vão sair
@@ -977,4 +982,3 @@ ambiente).
 - **Homologação:** versão de teste no ar, com dados fictícios, antes da versão real.
 - **Migração de banco:** um arquivo que cria ou altera tabelas do banco de dados de
   forma controlada.
-
