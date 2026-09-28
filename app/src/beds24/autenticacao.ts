@@ -1,7 +1,16 @@
 import { ErroBeds24 } from "./tipos";
+import { diagnosticarFalhaBeds24 } from "./diagnostico";
 
 /** GET sem cache persistente nem redirecionamento de cabeçalhos com segredos. */
 export async function buscarBeds24(fetchImpl: typeof fetch, url: URL, headers: Record<string, string>, timeoutMs: number): Promise<Response> {
+  const renovacao = Object.hasOwn(headers, "refreshToken");
+  const credencial = renovacao ? headers.refreshToken : headers.token;
+  // Falhas de construção do cabeçalho não são falhas de rede. Não alterar o
+  // conteúdo silenciosamente nem devolver o valor que não passou na validação.
+  if (!credencial || !/^[\x21-\x7E]+$/.test(credencial)) {
+    const nome = renovacao ? "BEDS24_REFRESH_TOKEN" : "token de acesso";
+    throw new ErroBeds24(`O ${nome} está vazio ou contém espaços, quebras de linha ou caracteres inválidos. Confira o valor salvo; cole somente o token em uma linha.`, "configuracao");
+  }
   try {
     return await fetchImpl(url, {
       method: "GET",
@@ -11,9 +20,7 @@ export async function buscarBeds24(fetchImpl: typeof fetch, url: URL, headers: R
       redirect: "error",
     });
   } catch (e) {
-    const tempo = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
-    // Não propagar mensagens do provedor/fetch: podem conter credenciais.
-    throw new ErroBeds24(tempo ? "Beds24 não respondeu a tempo." : "Falha de rede ao falar com o Beds24.", tempo ? "tempo" : "rede");
+    throw diagnosticarFalhaBeds24(e, renovacao);
   }
 }
 
