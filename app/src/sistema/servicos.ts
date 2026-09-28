@@ -11,6 +11,7 @@ export function situacaoServicos(env: NodeJS.ProcessEnv, bancoOk: boolean | null
   const tem = (...chaves: string[]) => chaves.every((c) => Boolean(env[c]));
   const banco = env.DATABASE_URL ?? "";
   const bancoLocal = /@(localhost|127\.0\.0\.1)[:/]/.test(banco);
+  const beds24 = Boolean(env.BEDS24_REFRESH_TOKEN?.trim() || env.BEDS24_API_KEY?.trim());
   return [
     {
       nome: "Banco de dados (Neon)",
@@ -39,12 +40,12 @@ export function situacaoServicos(env: NodeJS.ProcessEnv, bancoOk: boolean | null
     {
       nome: "Beds24",
       paraQue: "Reservas, calendário e preços das OTAs",
-      situacao: tem("BEDS24_API_KEY") ? "configurado" : "nao_configurado",
-      detalhe: !tem("BEDS24_API_KEY")
-        ? "Falta a chave BEDS24_API_KEY"
+      situacao: beds24 ? "configurado" : "nao_configurado",
+      detalhe: !beds24
+        ? "Falta BEDS24_REFRESH_TOKEN (ou BEDS24_API_KEY para token direto)"
         : env.BEDS24_ESCRITA === "ligada"
-          ? "Chave configurada · envio para o Beds24 LIGADO"
-          : "Chave configurada · envio para o Beds24 desligado",
+          ? "Credencial configurada, conexão não testada · sinal de escrita LIGADO, mas o cliente atual só faz leitura"
+          : "Credencial configurada, conexão não testada · envio para o Beds24 desligado",
     },
     { nome: "WhatsApp (Meta)", paraQue: "Atendimento e mensagens", situacao: "planejado", detalhe: "Chega no M10 (depende da verificação no Meta)" },
     { nome: "Pagamentos (Mercado Pago)", paraQue: "Reserva direta no site", situacao: "planejado", detalhe: "Chega no M8" },

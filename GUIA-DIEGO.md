@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 25/09/2026, comparação de como receber as reservas do site (M8.0), depois do cadastro de proprietários marketplace pelo site (M12.3).
+> **Última atualização:** 27/09/2026, correção da autenticação Beds24 por refresh token e teste de conexão no painel. Diego confirmou Vercel e login Google funcionando; conexão real SCL → Beds24 ainda por validar.
 
 ---
 
@@ -180,8 +180,10 @@
   M3.7, ligada só quando você mandar). Cada reserva do Beds24 é ligada ao imóvel certo pelos
   "canais de cada imóvel" (na ficha do imóvel: canal Beds24, número do imóvel no Beds24 e,
   como detalhe, o número do quarto). Qualquer informação estranha vira uma
-  **divergência** para conferir — nunca uma reserva inventada. Ainda falta a sua chave
-  de API para ligar de verdade (próximo item, M3.3).
+  **divergência** para conferir — nunca uma reserva inventada. O refresh token cadastrado
+  na Vercel agora gera e renova automaticamente o token de acesso. Em **Configurações →
+  Integrações → Testar conexão com Beds24**, o administrador confere a leitura dos imóveis.
+  Esse teste não importa reservas; a sincronização automática continua pendente no M3.3.
 - M2.7: **quem recebe o pagamento, por imóvel e por canal.** Na ficha de cada imóvel, seção
   "Quem recebe o pagamento": para Airbnb, Booking, site, direta (WhatsApp, indicação) e
   outros, você escolhe "canal paga o proprietário direto" ou "empresa recebe e repassa" (ou
@@ -723,20 +725,20 @@ e escreva normalmente.
 | **Claude Code** | Programa o sistema; rotina a cada 3h | ✅ ativo | — |
 | **Codex** (revisor automático) | Revisa cada PR | ✅ ativo no repositório | — |
 | **Neon** | Banco de dados (Postgres) | 🟡 sua conta existe e está paga | Ligar à Vercel (item abaixo) |
-| **Vercel** | Publica o sistema na internet (homologação e depois produção) | 🟡 conector começado no Claude, mas incompleto | Terminar a conexão e importar o repositório (seção 6) |
-| **Beds24** | Channel manager (Airbnb/Booking), reservas, calendário e preços | 🟡 conta criada; leitor pronto no sistema | Gerar a chave de API **com leitura e escrita** (seção 6) |
+| **Vercel** | Publica o sistema na internet (homologação e depois produção) | ✅ site acessível, confirmado por Diego em 27/09 | Confirmar isolamento do banco de homologação; acesso pelo conector é separado |
+| **Beds24** | Channel manager (Airbnb/Booking), reservas, calendário e preços | 🟡 Airbnb mapeado e refresh token na Vercel, segundo Diego (27/09) | Publicar a correção e testar a conexão SCL → Beds24; sincronização M3.3 ainda pendente |
 | **Mercado Pago** | Pagamentos da reserva direta | ⚪ não conectado | Credenciais de *teste* do provedor escolhido no M8.0 (Mercado Pago, se for a escolha), mais adiante (M8) |
 | **Meta / WhatsApp Business** | Atendimento pelo WhatsApp da empresa | ⚪ não conectado | Verificação da empresa no Meta Business (demora dias) |
-| **Google Cloud (login)** | Botão "Entrar com Google" | ⚪ não configurado | Criar credenciais OAuth (seção 6) |
+| **Google Cloud (login)** | Botão "Entrar com Google" | ✅ login confirmado por Diego em 27/09 | — |
 | **Resend** (envio de e-mail) | E-mails do sistema: código de login, convites, agenda da equipe, relatórios, mensagens ao hóspede | 🟡 conta criada (e conector no Claude) | Cadastrar o domínio e pôr a chave na Vercel (seção 6, item 5) |
 | **Cloudflare** | Domínio e e-mail | ⚪ não conectado | Só no final (M11) |
 
 **Conector do Claude × chave do sistema:** os "conectores" que você liga no Claude (ex.: o
 do Resend) deixam **o Claude** usar aquele serviço nas conversas. O **sistema SCL**, rodando
 na Vercel, precisa da **sua própria chave** em *Settings → Environment Variables*. São duas
-coisas diferentes — as duas são úteis. Hoje, nesta sessão de trabalho, não aparecem os
-conectores do Resend nem do Neon, e o da Vercel está com a conexão incompleta; se você
-terminar a da Vercel, eu consigo acompanhar os deploys daqui.
+coisas diferentes — as duas são úteis. Em 27/09, o conector Vercel no ChatGPT encontra a
+equipe AL Apps, mas não enxerga seus projetos, mesmo após reconexão. Isso não impede o
+site de funcionar nem o teste manual de conexão pelo painel.
 
 **Onde ficam senhas e chaves:** nunca no GitHub e nunca no chat. Elas ficam nas
 configurações da Vercel e nas configurações do ambiente do Claude Code (variáveis de
@@ -746,31 +748,42 @@ ambiente).
 
 ## 6. O que você precisa fazer agora
 
-1. **Vercel + Neon** (uns 5 minutos, dá para fazer pelo computador):
+1. **Vercel + Neon:** site já publicado, segundo Diego (27/09). Conferir ainda o banco
+   isolado de homologação. Passos abaixo ficam como referência de configuração:
    1. Entre em vercel.com → *Add New… → Project* → escolha `al-life/scl-reconstrucao`.
    2. Em **Root Directory**, escolha `app`. Clique em *Deploy*.
    3. No projeto criado: *Storage* (ou *Integrations*) → **Neon** → conecte sua conta
       Neon. Isso cria a variável `DATABASE_URL` automaticamente.
    4. Me avise aqui na conversa: eu confiro se o site de homologação abriu.
-2. **Login com Google** (uns 10 minutos, junto com a Vercel):
+2. **Login com Google:** funcionando, confirmado por Diego (27/09). Referência para reconfigurar:
    1. Em console.cloud.google.com → crie um projeto "SCL" → *APIs e serviços → Tela de
       consentimento OAuth* (tipo "Externo", nome "Sua Casa Leblon").
    2. *Credenciais → Criar credenciais → ID do cliente OAuth → Aplicativo da Web*.
       Em "URIs de redirecionamento autorizados" coloque
-      `https://SEU-ENDERECO.vercel.app/api/auth/callback/google` (o endereço que a Vercel der).
+      `https://scl-reconstrucao.vercel.app/api/auth/callback/google` (o endereço que a Vercel der).
    3. Na Vercel, em *Settings → Environment Variables*, crie:
       `AUTH_GOOGLE_ID` e `AUTH_GOOGLE_SECRET` (os dois valores que o Google mostrar),
       `AUTH_SECRET` (qualquer texto longo e aleatório, ex.: gerado em 1password ou similar) e
       `ADMIN_EMAILS` = seu e-mail do Google.
    4. Faça *Redeploy* e entre em `/entrar`. Se travar em algum passo, me chame que eu guio.
-3. **Beds24:** gere a chave de API (no painel do Beds24, na área de API, crie um
-   "long life token") com permissões de **leitura e escrita** de reservas, calendário
-   (inventário/preços) e imóveis — o SCL vai ser a fonte oficial do calendário e dos preços e
-   mandar as mudanças para o Beds24 e, dele, para as OTAs. Fica tranquilo: o sistema **só
-   escreve** quando o item M3.7 estiver pronto e **você ligar** (primeiro testando num
-   imóvel que você escolher). **Não cole no chat.** Coloque nas configurações do
-   ambiente do Claude Code (menu do ambiente no topo da sessão → *Edit* → variável
-   `BEDS24_API_KEY`) e também na Vercel (*Settings → Environment Variables*).
+3. **Beds24:** o Airbnb já está conectado/mapeado e o refresh token já foi cadastrado
+   na Vercel, segundo Diego (27/09). Não precisa gerar outra credencial só por esta correção.
+   - Use **`BEDS24_REFRESH_TOKEN`** para o refresh token. O sistema o troca por um token de
+     acesso e renova quando necessário. Um **invite code** precisa ser trocado primeiro;
+     ele não pode ser colocado nessa variável.
+   - **`BEDS24_API_KEY`** fica como alternativa para um token de acesso direto. Um *long life
+     token* só permite leitura; nunca colocar refresh token nesse campo. Se as duas
+     variáveis existirem, o sistema usa `BEDS24_REFRESH_TOKEN`.
+   - Depois de publicar esta correção, entre em **Configurações → Integrações → Testar
+     conexão com Beds24**. O teste consulta somente imóveis/quartos, mostra a contagem ou
+     um erro, e não importa reservas, hóspedes nem preços. Lista vazia pede conferir as
+     permissões e os imóveis acessíveis pela credencial. Sucesso neste teste confirma só
+     essa leitura; não confirma todos os acessos que a sincronização M3.3 precisará.
+   - As variáveis precisam estar no ambiente do deploy que será testado (Production no
+     endereço principal; Preview se for testar um PR). Alteração de variável exige novo
+     deploy. Chaves nunca vão no chat, Git ou tela do sistema.
+   - O cliente continua **somente leitura**, mesmo que a credencial tenha outras permissões.
+     Escrita depende do M3.7 e da ativação explícita depois dos testes.
 4. **Meta Business:** comece a verificação da empresa, porque ela demora.
 5. **E-mail do sistema (Resend)** — sem pressa; enquanto isso, o login com Google funciona:
    1. Crie conta grátis em resend.com e cadastre o domínio de onde os e-mails vão sair
@@ -964,3 +977,4 @@ ambiente).
 - **Homologação:** versão de teste no ar, com dados fictícios, antes da versão real.
 - **Migração de banco:** um arquivo que cria ou altera tabelas do banco de dados de
   forma controlada.
+
