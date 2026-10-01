@@ -134,3 +134,12 @@ Diego autorizou substituir no399 a promoção19%/14dias pela regra15%/25% e desl
 Envio de mensagem porBeds24 foi posteriormente confirmado na conversa originalAirbnb. Isso valida os envios observados, não cobertura integral do histórico nem todos os anexos.
 
 Regras de limpeza, porteiros e chaves, incluindo alternativa comum103/399, estão em [PORTARIA-CHAVES-LIMPEZA.md](PORTARIA-CHAVES-LIMPEZA.md). Contatos reais permanecem fora deste documento; cadastro restrito na nuvem ainda pendente.
+
+
+## Retirada do desconto semanal e contingência — decisão direta de 1/10/2026
+
+Diego autorizou retirar o desconto automático de 10% para estadias de sete ou mais noites dos anúncios em que estiver configurado. Reservas existentes são preservadas. Desconto mensal e outros benefícios não estão revogados por essa decisão. Aplicação anúncio por anúncio em andamento; não confundir autorização com confirmação de propagação.
+
+Se o Beds24 não conseguir impor sozinho piso/teto depois de todas as combinações, Diego autorizou ativar as regras de desconto mesmo assim e registrar como pendência a implementação de **verificação e correção diária automatizada**. Os limites continuam sendo a regra desejada; podem ocorrer desvios enquanto essa proteção não estiver implementada e testada. Esta decisão supera a orientação anterior de aguardar trava final para ativar, mas não comprova que a automação já foi ligada.
+
+A rotina pendente deve comparar tarifa original, preço enviado, descontos aplicáveis e resultado final; corrigir sem acumular reduções e guardar histórico, fonte e motivo. Teto geral não limita tarifas explícitas de eventos autorizados; não inventar teto novo nem reduzir um evento por engano. Respeitar reservas/bloqueios e o responsável único pela escrita (Beds24 nesta rodada, futuro SCL somente após implementação/ativação). Falta definir e validar execução na nuvem e leitura do resultado nas OTAs; documentação não equivale a rotina funcionando.
