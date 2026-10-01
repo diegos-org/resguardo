@@ -150,7 +150,7 @@ A rotina pendente deve comparar tarifa original, preço enviado, descontos aplic
 - Desconto semanal10%: removido e relido noBeds24 nos seis imóveis; Update retornouSuccess em todos. Consulta de conteúdo retornado peloAirbnb confirmou ausência de regra7dias em399 eBúzios. A respostaSuccess dos demais não substitui uma conferência independente do conteúdo final.
 -399: DailyPrice2 aplica−15% na antecedência3–7 eDailyPrice3 aplica−25% na antecedência0–2, ambas vinculadas diretamente àDailyPrice1 do próprio imóvel. Airbnb habilitado, reservas existentes preservadas. Conteúdo retornado peloAirbnb confirma remoção da promoção antiga19%/14dias e do semanal; mensal15%/28dias mantido.
 - PriceData do399 confirma que as faixas alteram as noites correspondentes. Isso confirma o cálculo preparado para exportação, não todas as cotações finais de hóspedes.
-- A proteção final de piso/teto **não está implementada nem agendada**. Há desvios observados; ativação permitida pela contingência expressa deDiego. Não apresentar toda a precificação como concluída. As faixas não foram replicadas aos demais imóveis nesta etapa.
+- A proteção final de piso/teto **não está implementada nem agendada**. Há desvios observados; ativação permitida pela contingência expressa deDiego. Não apresentar toda a precificação como concluída. Essa limitação permaneceu após a extensão das faixas aos demais imóveis descrita abaixo.
 
 ### Rotina diária a implementar
 
@@ -166,3 +166,16 @@ Responsável funcional: motor de preços doSCL, com execução na nuvem quando i
 ### Critérios para considerar a rotina pronta
 
 Testar: passagemD−3→D−2; desconto de duração combinado; referência já reduzida; evento acima do teto geral autorizado; arredondamento; reserva/bloqueio; mudança concorrente; falha deAPI e repetição após interrupção. Exigir teste controlado, correção verificada na fonte e no destino, execução diária comprovada e histórico privado. Esta lista é uma pendência de implementação, não prova de testes executados.
+
+
+## Extensão concluída aos demais imóveis — 1/10/2026
+
+Por pedido direto deDiego, as faixas nativas de15% (D3–7) e25% (D0–2) também foram configuradas no102,103,303,403 eBúzios. O399 já estava configurado e não recebeu duplicatas. Cada par usa aDailyPrice1 do próprio imóvel, preservando as tarifas específicas de origem; não usa a base de outro imóvel nem acumula15% e25%. CanalAirbnb ativo, Direct/Agents desativados nas novas faixas, mínimo1 e máximo27.
+
+Búzios recebeu os mesmos percentuais sobre suas próprias tarifas. A promoção antiga13%/14dias foi zerada, salva, relida e enviada comUpdateSuccess. Isso não transfere bases, multiplicadores de eventos ou limites dos estúdios para a casa.
+
+Listas de regras reabertas confirmaram os dois percentuais e vínculo em cada imóvel. PriceData confirmou cálculo das faixas para envio aoAirbnb. O conteúdo retornado peloAirbnb confirmou ausência das promoções antigas de última hora e do semanal10% nos seis imóveis; mensal15%/28dias preservado. PriceData não equivale a verificação de todas as cotações finais de hóspedes.
+
+A configuração solicitada está aplicada nos seis imóveis, mas **a proteção final e correção diária de piso/teto continuam pendentes**. Foram observadas diárias abaixo dos pisos nos apartamentos doLeblon; não foi feita correção automática nem criada tarefa de execução diária. A contingência autorizada continua explícita. Preservar os resultados e registros privados antes/depois; não declarar revisão ampla de nove meses concluída por ter configurado estas faixas.
+
+Esta atualização está noPR74 e em cópia local conferida; main só receberá após merge humano. PR73 não foi alterado por esta configuração.
