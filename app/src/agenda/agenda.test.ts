@@ -1,7 +1,7 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { historicoDe } from "@/auditoria/auditoria";
-import { appSettings, execucoesAutomacao, imoveis, organizacoes, reservas } from "@/db/schema";
+import { appSettings, auditoria, execucoesAutomacao, imoveis, organizacoes, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { type Correio, CorreioMemoria, ErroEnvioIncerto, type Mensagem } from "@/email/correio";
@@ -39,7 +39,14 @@ const reserva = (imovelId: string, checkin: string, checkout: string, over: Part
 async function nova(imovelId: string, checkin: string, checkout: string, criadoEm: string, over: Partial<DadosReserva> = {}) {
   const r = await criarReserva(db, org, reserva(imovelId, checkin, checkout, over), null);
   if (!r.ok) throw new Error("reserva");
-  await db.update(reservas).set({ criadoEm: new Date(criadoEm) }).where(eq(reservas.id, r.reserva.id));
+  const instante = new Date(criadoEm);
+  await db.update(reservas).set({ criadoEm: instante, confirmadaEm: r.reserva.confirmadaEm ? instante : null }).where(eq(reservas.id, r.reserva.id));
+  // A reserva fictícia e o evento que a criou pertencem ao mesmo instante.
+  // Sem isso, a data real da execução pode simular uma reconfirmação posterior
+  // e fazer a agenda repetir uma reserva antiga apenas em certos dias.
+  await db.update(auditoria).set({ criadoEm: instante }).where(and(
+    eq(auditoria.organizacaoId, org), eq(auditoria.entidadeId, r.reserva.id), eq(auditoria.acao, "reserva.criar"),
+  ));
   return r.reserva;
 }
 
