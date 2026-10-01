@@ -1019,3 +1019,8 @@ ambiente).
 - **Homologação:** versão de teste no ar, com dados fictícios, antes da versão real.
 - **Migração de banco:** um arquivo que cria ou altera tabelas do banco de dados de
   forma controlada.
+
+
+## Calendário e preços — referência operacional de 1/10/2026
+
+As regras aprovadas de mínimos, feriadões, temporada, multiplicadores, última hora e sobras estão reunidas em [Calendário, preços e duração](requisitos/operations/CALENDARIO-PRECOS-OPERACAO.md), com as exceções e decisões ainda pendentes. O documento distingue regra aprovada de função já implementada. Enquanto o envio do painel SCL não estiver pronto e ativado, a rodada autorizada em 1/10 usa o Beds24 conectado, com conferência no Airbnb. Não aplicar descontos repetidos sobre diárias já reduzidas.
