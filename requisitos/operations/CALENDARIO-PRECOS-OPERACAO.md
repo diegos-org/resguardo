@@ -115,3 +115,11 @@ A função `precoDaNoite` atualmente limita também tarifas explícitas de event
 ## Compatibilidade dos PRs73 e74
 
 Conferência em 1/10: PR73 (`codex/m3.3-beds24-sincronizacao`, head `c583e8de7b9255b5e839eaefa02c6185457fbd50`) implementa leitura Beds24 → SCL. PR74 acrescenta esta documentação e uma seção no fim de `GUIA-DIEGO.md`. O único arquivo compartilhado é o guia; os trechos alterados no PR73 e a seção acrescentada no PR74 são distintos. Ambos partiam da mesma main `73f14d89f7fd616ada889ca175730ab42dba28b0` e estavam integráveis na consulta. Não substituir o guia inteiro pela cópia de outra branch. Após o primeiro merge humano, revalidar o diff do segundo contra a nova main; preservar ambos os conjuntos de mudanças. A inspeção documental não constitui revisão ou aprovação integral do código do PR73.
+
+## Atendimento pela conexão — autorização de 1/10/2026
+
+Diego autorizou incluir consultas e pedidos de todos os seis imóveis no Beds24. Configuração `Inquiry and Requests = Import all` salva e relida após recarga em 102, 103, 303, 399 e Búzios; 403 já estava nessa opção e foi reconferido. Foram preservados mapeamentos e modo Limited. Consultas não equivalem a reservas confirmadas e não devem ocupar inventário por inferência. A configuração não comprova que todo histórico antigo foi importado; conferir conversas, anexos e vínculo da reserva antes de responder. Não ativar respondedor automático nem duplicar mensagens programadas.
+
+A caixa de mensagens e um histórico de reserva do Airbnb foram acessados no Beds24. Leitura confirmada; envio pela conexão ainda não testado nesta rodada. Enquanto houver lacunas, consultar o inbox original Airbnb para garantir cobertura. WhatsApp continua no aplicativo/Web vinculado; Diego informou que ainda não cadastrou Meta. Esta mudança não liga o importador Beds24 → SCL do PR73 nem cria rotinas no painel.
+
+O mapeamento do403 foi conferido e as reservas existentes reconciliadas pela função oficial de importação, preservando o cadastro atual. Novas reservas, alterações e cancelamentos são previstos pela conexão; o próximo evento real ainda precisa ser observado para validar o fluxo automático. Não repetir importação manual como agendamento nem atribuir a falha anterior à duplicata sem evidência.
