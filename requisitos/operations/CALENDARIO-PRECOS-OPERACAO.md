@@ -129,7 +129,7 @@ O mapeamento do403 foi conferido e as reservas existentes reconciliadas pela fun
 
 Os pisos de última hora devem valer no valor final da diária após todos os descontos, inclusive semanal: estúdios350/300 e303700/650 nas respectivas faixas. Taxas e limpeza não compensam diária abaixo do piso. Exemplo:393×0,85×0,90=300,645, inferior ao piso350. Não ativar combinação que viole o limite. Antecedência da noite e antecedência do check-in não são automaticamente equivalentes; a tradução nativa precisa preservar essa semântica.
 
-Diego autorizou substituir no399 a promoção19%/14dias pela regra15%/25% e desligar Preços Inteligentes, se ativos. Na interfaceAPI não houve interruptor ativo desligado; origem dos19% não comprovada. A regra nova criada noBeds24 está em preparação, sem preço/vínculo/canais ativos; a promoção antiga ainda não substituída. Automação com piso final continua pendente, não concluída.
+Diego autorizou substituir no399 a promoção19%/14dias pela regra15%/25% e desligar Preços Inteligentes, se ativos. Na interfaceAPI não houve interruptor ativo desligado; origem dos19% não comprovada. Atualização desta mesma rodada: no399, a promoção antiga foi zerada e as faixas nativas15%/25% foram ativadas; ver estado verificado abaixo. Automação com piso final continua pendente, não concluída.
 
 Envio de mensagem porBeds24 foi posteriormente confirmado na conversa originalAirbnb. Isso valida os envios observados, não cobertura integral do histórico nem todos os anexos.
 
@@ -143,3 +143,26 @@ Diego autorizou retirar o desconto automático de 10% para estadias de sete ou m
 Se o Beds24 não conseguir impor sozinho piso/teto depois de todas as combinações, Diego autorizou ativar as regras de desconto mesmo assim e registrar como pendência a implementação de **verificação e correção diária automatizada**. Os limites continuam sendo a regra desejada; podem ocorrer desvios enquanto essa proteção não estiver implementada e testada. Esta decisão supera a orientação anterior de aguardar trava final para ativar, mas não comprova que a automação já foi ligada.
 
 A rotina pendente deve comparar tarifa original, preço enviado, descontos aplicáveis e resultado final; corrigir sem acumular reduções e guardar histórico, fonte e motivo. Teto geral não limita tarifas explícitas de eventos autorizados; não inventar teto novo nem reduzir um evento por engano. Respeitar reservas/bloqueios e o responsável único pela escrita (Beds24 nesta rodada, futuro SCL somente após implementação/ativação). Falta definir e validar execução na nuvem e leitura do resultado nas OTAs; documentação não equivale a rotina funcionando.
+
+
+## Estado verificado e pendência executável — 1/10/2026
+
+- Desconto semanal10%: removido e relido noBeds24 nos seis imóveis; Update retornouSuccess em todos. Consulta de conteúdo retornado peloAirbnb confirmou ausência de regra7dias em399 eBúzios. A respostaSuccess dos demais não substitui uma conferência independente do conteúdo final.
+-399: DailyPrice2 aplica−15% na antecedência3–7 eDailyPrice3 aplica−25% na antecedência0–2, ambas vinculadas diretamente àDailyPrice1 do próprio imóvel. Airbnb habilitado, reservas existentes preservadas. Conteúdo retornado peloAirbnb confirma remoção da promoção antiga19%/14dias e do semanal; mensal15%/28dias mantido.
+- PriceData do399 confirma que as faixas alteram as noites correspondentes. Isso confirma o cálculo preparado para exportação, não todas as cotações finais de hóspedes.
+- A proteção final de piso/teto **não está implementada nem agendada**. Há desvios observados; ativação permitida pela contingência expressa deDiego. Não apresentar toda a precificação como concluída. As faixas não foram replicadas aos demais imóveis nesta etapa.
+
+### Rotina diária a implementar
+
+Responsável funcional: motor de preços doSCL, com execução na nuvem quando implementado; até lá, item pendente. Não criar um segundo escritor concorrente com oBeds24.
+
+1. Ler a referência original persistida e as regras vigentes por imóvel/data, tarifa preparada noBeds24, descontos por duração/antecedência ainda vigentes nasOTAs e disponibilidade. Não assumir que salvar noBeds24 prova preço final noAirbnb.
+2. Avaliar hoje, amanhã e próximos sete dias, além de alterações de regras que possam afetar o horizonte configurado. Executar no fusoAmerica/Sao_Paulo. Usar somente diárias livres; não alterar valores de reservas existentes nem liberar bloqueios.
+3. Recalcular o resultado final após descontos, respeitando os pisos de cada faixa. Detectar referências ausentes, percentuais sobrepostos e regras conflitantes. Não reaplicar25% sobre preço já reduzido15%.
+4. Validar teto vigente com fonte identificada; preservar exceções expressas de eventos. Se um limite ou o tratamento do evento estiver indefinido, registrar e avisar em vez de inventar uma correção.
+5. Corrigir na fonte autorizada e de forma persistente: uma correção pontual que a regra nativa sobrescreverá de novo não basta. Se a combinação não puder ser representada no provedor, registrar conflito e a alternativa técnica necessária.
+6. Reconsultar o destino e guardar antes/depois, regra, horário, tentativa e resultado em registro privado. Repetir uma execução não pode acumular cortes ou produzir mensagens duplicadas. AlertarDiego sobre falha, conflito sem solução ou desvio persistente; não afirmar conformidade quando a leitura falhar.
+
+### Critérios para considerar a rotina pronta
+
+Testar: passagemD−3→D−2; desconto de duração combinado; referência já reduzida; evento acima do teto geral autorizado; arredondamento; reserva/bloqueio; mudança concorrente; falha deAPI e repetição após interrupção. Exigir teste controlado, correção verificada na fonte e no destino, execução diária comprovada e histórico privado. Esta lista é uma pendência de implementação, não prova de testes executados.
