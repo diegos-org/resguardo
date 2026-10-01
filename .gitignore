@@ -1,0 +1,3 @@
+# Registros operacionais privados: contatos, documentos e dados pessoais.
+# Manter fora do Git mesmo quando copiados para o checkout local.
+/outputs/privado/
