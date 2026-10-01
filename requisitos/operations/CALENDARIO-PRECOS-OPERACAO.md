@@ -53,7 +53,7 @@ Quarta, sábado ou domingo não ativam uma janela extra. Se dois feriados prolon
 
 ## Base, preços existentes e pisos
 
-B é a referência geral confirmada do anúncio antes do acréscimo, não a diária já multiplicada. Em 15/9 havia B=450 nos quatro estúdios e B=800 no 303, mas **isso é referência histórica, não confirmação da configuração atual**. Conferir base e intervenções posteriores antes de aplicar.
+B é a referência geral confirmada do anúncio antes do acréscimo, não a diária já multiplicada. Diego reconfirmou em 1/10/2026 **B=R$450 nos quatro estúdios e B=R$800 no 303** para o cálculo dos multiplicadores. Essa decisão não significa que todas as diárias específicas sejam iguais à base. Conferir intervenções e descontos existentes antes de aplicar, preservando a referência original.
 
 As tarifas manuais de evento podem ultrapassar o teto do Preço Inteligente: essa exceção foi aprovada, preservando o teto geral. Não limitar silenciosamente o preço especial ao teto nem mudar o teto para acomodá-lo.
 
@@ -107,3 +107,11 @@ Segundo a documentação oficial consultada em1/10, o modo Limited inclui preço
 ### Confirmação direta de Diego — 1/10/2026
 
 Diego confirmou: base padrão do303 = R$800 e autorizou corrigir o R$1000 observado noBeds24. Não atribuiu origem ao valor divergente. Preservar tarifas especiais, reservas e intervenções manuais específicas. A gravação e a propagação devem ser verificadas e registradas separadamente.
+
+## Limitação identificada na revisão do PR74
+
+A função `precoDaNoite` atualmente limita também tarifas explícitas de eventos ao teto geral quando o preço dinâmico está ligado. Isso contradiz a exceção aprovada acima e pode reduzir uma cotação do simulador mesmo antes do M3.7. Antes de considerar essa regra implementada, é necessário corrigir a isenção dos preços explícitos de evento e testá-la, mantendo a limitação para as tarifas às quais ela realmente se aplica. Esta rodada documental não altera o motor, não aprova publicação nem comprova cotações corretas.
+
+## Compatibilidade dos PRs73 e74
+
+Conferência em 1/10: PR73 (`codex/m3.3-beds24-sincronizacao`, head `c583e8de7b9255b5e839eaefa02c6185457fbd50`) implementa leitura Beds24 → SCL. PR74 acrescenta esta documentação e uma seção no fim de `GUIA-DIEGO.md`. O único arquivo compartilhado é o guia; os trechos alterados no PR73 e a seção acrescentada no PR74 são distintos. Ambos partiam da mesma main `73f14d89f7fd616ada889ca175730ab42dba28b0` e estavam integráveis na consulta. Não substituir o guia inteiro pela cópia de outra branch. Após o primeiro merge humano, revalidar o diff do segundo contra a nova main; preservar ambos os conjuntos de mudanças. A inspeção documental não constitui revisão ou aprovação integral do código do PR73.
