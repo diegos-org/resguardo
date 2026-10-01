@@ -102,3 +102,8 @@ O documento `requisitos/product/MARKETPLACE-PRECIFICACAO.md` trata de propostas 
 ## Tradução para a conexão Beds24 vigente
 
 Segundo a documentação oficial consultada em1/10, o modo Limited inclui preços, disponibilidade e mínimos, além de configurações de preços. O nome não significa ausência de envio. Airbnb aplica o mínimo à data de entrada. Preço Inteligente não está disponível para anúncios conectados por API: preservar as regras históricas como origem, mas não presumir esse motor ativo na configuração atual. Conferir tarifas diárias, descontos e base de cada anúncio antes de traduzir regras. Referência: https://wiki.beds24.com/index.php/Airbnb_Mapping.
+
+
+### Confirmação direta de Diego — 1/10/2026
+
+Diego confirmou: base padrão do303 = R$800 e autorizou corrigir o R$1000 observado noBeds24. Não atribuiu origem ao valor divergente. Preservar tarifas especiais, reservas e intervenções manuais específicas. A gravação e a propagação devem ser verificadas e registradas separadamente.
