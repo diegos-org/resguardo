@@ -7,6 +7,7 @@ import { aplicarMotor } from "@/financeiro/aplicar";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
 import { hojeISO } from "@/lib/datas";
+import { chavesDaImportacao } from "./travas-importacao";
 import { type DadosReserva, type ErrosReserva, gerarCodigo, validarReserva } from "./regras";
 
 export type Reserva = typeof reservas.$inferSelect;
@@ -96,9 +97,12 @@ export async function sincronizarReserva(
   if (Object.keys(erros).length) return { ok: false, erros };
   return db.transaction(async (tx) => {
     if (!(await imovelDaOrganizacao(tx, organizacaoId, dados.imovelId))) return { ok: false as const, erros: { imovelId: "Imóvel não encontrado." } };
-    // CSV e Beds24 podem ter IDs distintos para a mesma reserva. Serializar as
-    // importações da organização impede duas fontes de criarem a mesma reserva juntas.
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`reservas-importacao:${organizacaoId}`}))`);
+    // Serializa somente identidades que podem representar a mesma reserva.
+    // CSV e Beds24 compartilham a chave canal/código; reservas independentes
+    // continuam em paralelo. A ordem estável evita inversão entre as travas.
+    for (const chave of chavesDaImportacao(organizacaoId, fonte, idFonte, dados)) {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${chave}))`);
+    }
     let [existente] = await tx
       .select()
       .from(reservas)
