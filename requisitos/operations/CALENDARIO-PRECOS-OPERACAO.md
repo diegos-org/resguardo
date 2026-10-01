@@ -123,3 +123,14 @@ Diego autorizou incluir consultas e pedidos de todos os seis imóveis no Beds24.
 A caixa de mensagens e um histórico de reserva do Airbnb foram acessados no Beds24. Leitura confirmada; envio pela conexão ainda não testado nesta rodada. Enquanto houver lacunas, consultar o inbox original Airbnb para garantir cobertura. WhatsApp continua no aplicativo/Web vinculado; Diego informou que ainda não cadastrou Meta. Esta mudança não liga o importador Beds24 → SCL do PR73 nem cria rotinas no painel.
 
 O mapeamento do403 foi conferido e as reservas existentes reconciliadas pela função oficial de importação, preservando o cadastro atual. Novas reservas, alterações e cancelamentos são previstos pela conexão; o próximo evento real ainda precisa ser observado para validar o fluxo automático. Não repetir importação manual como agendamento nem atribuir a falha anterior à duplicata sem evidência.
+
+
+## Decisões e verificação complementares — 1/10/2026
+
+Os pisos de última hora devem valer no valor final da diária após todos os descontos, inclusive semanal: estúdios350/300 e303700/650 nas respectivas faixas. Taxas e limpeza não compensam diária abaixo do piso. Exemplo:393×0,85×0,90=300,645, inferior ao piso350. Não ativar combinação que viole o limite. Antecedência da noite e antecedência do check-in não são automaticamente equivalentes; a tradução nativa precisa preservar essa semântica.
+
+Diego autorizou substituir no399 a promoção19%/14dias pela regra15%/25% e desligar Preços Inteligentes, se ativos. Na interfaceAPI não houve interruptor ativo desligado; origem dos19% não comprovada. A regra nova criada noBeds24 está em preparação, sem preço/vínculo/canais ativos; a promoção antiga ainda não substituída. Automação com piso final continua pendente, não concluída.
+
+Envio de mensagem porBeds24 foi posteriormente confirmado na conversa originalAirbnb. Isso valida os envios observados, não cobertura integral do histórico nem todos os anexos.
+
+Regras de limpeza, porteiros e chaves, incluindo alternativa comum103/399, estão em [PORTARIA-CHAVES-LIMPEZA.md](PORTARIA-CHAVES-LIMPEZA.md). Contatos reais permanecem fora deste documento; cadastro restrito na nuvem ainda pendente.
