@@ -85,9 +85,9 @@ describe("reservas", () => {
     expect(r3.ok && r3.reserva.canceladaEm).toBeInstanceOf(Date);
     const id = r1.ok ? r1.reserva.id : "";
     expect((await historicoDe(db, org, "reserva", id)).map((h) => h.acao)).toEqual(["reserva.sincronizar", "reserva.importar"]);
-    // o mesmo id em outra fonte é outra reserva
+    // Outra fonte com o mesmo canal+código não duplica a reserva já ligada ao Beds24.
     const r4 = await sincronizarReserva(db, org, "csv", "555", dados());
-    expect(r4.ok && r4.reserva.id).not.toBe(id);
+    expect(r4).toMatchObject({ ok: false, erros: { geral: expect.stringContaining("já é atualizada") } });
   });
 
   it("sincronizações simultâneas da mesma reserva não duplicam nem falham", async () => {
@@ -144,3 +144,4 @@ describe("reservas", () => {
     expect(await listarBloqueios(db, org, { inicio: "2026-10-03", fim: "2026-10-05" })).toHaveLength(0);
   });
 });
+

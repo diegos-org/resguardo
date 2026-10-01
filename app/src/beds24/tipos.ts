@@ -36,14 +36,14 @@ export type DiaCalendario = {
   minimoNoites: number | null;
 };
 
-export type QuartoBeds24 = { propertyId: string; roomId: string; nome: string };
+export type QuartoBeds24 = { propertyId: string; roomId: string; nome: string; moeda?: string };
 
 /** Linha recebida que não passou na validação: nunca vira dado, vira divergência. */
 export type Divergencia = { origem: "reserva" | "calendario" | "quarto"; id: string; motivo: string };
 
 export type Lido<T> = { itens: T[]; divergencias: Divergencia[]; lidoEm: string };
 
-export type FiltroReservas = { chegadaDe?: string; chegadaAte?: string; modificadasDesde?: string; propertyIds?: string[] };
+export type FiltroReservas = { chegadaDe?: string; chegadaAte?: string; saidaDe?: string; ids?: string[]; modificadasDesde?: string; propertyIds?: string[] };
 export type FiltroCalendario = { roomIds: string[]; inicio: string; fim: string };
 
 /** Contrato de leitura. Implementações: HTTP (real) e falsa (testes/desenvolvimento). */
@@ -62,3 +62,4 @@ export class ErroBeds24 extends Error {
     this.name = "ErroBeds24";
   }
 }
+

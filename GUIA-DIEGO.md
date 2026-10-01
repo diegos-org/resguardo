@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 27/09/2026, diagnóstico da falha de conexão Beds24. Diego confirmou Vercel e login Google funcionando, mas o teste SCL → Beds24 retornou falha de rede. A causa ainda não foi identificada; o diagnóstico agora distingue problemas de credencial, rede e certificado, sem mostrar segredos.
+> **Última atualização:** 28/09/2026, importação Beds24 → SCL (M3.3). Diego confirmou a leitura dos quartos e removeu o 403 duplicado. O painel agora permite conferir os vínculos e importar reservas manualmente; a rotina diária começa desligada. A primeira importação real ainda precisa ser feita e conferida após a publicação. A causa da falha anterior não foi comprovada.
 
 ---
 
@@ -24,10 +24,10 @@
 
 | Etapa | O que entrega | Situação |
 |---|---|---|
-| M0 Fundação | Base do app, banco de dados, layout, publicação na Vercel | 🟡 só falta a Vercel |
+| M0 Fundação | Base do app, banco de dados, layout, publicação na Vercel | 🟡 Vercel e login funcionando; isolamento do banco de homologação ainda a conferir |
 | M1 Acesso | Login (Google/código por e-mail), convites, permissões | ✅ pronto |
 | M2 Cadastros | Imóveis, proprietários, contratos e comissões | ✅ pronto |
-| M3 Reservas | Reservas, calendário central, leitura do Beds24 | 🟡 em andamento |
+| M3 Reservas | Reservas, calendário central e importação do Beds24 | 🟡 importação pronta; primeira conferência real pendente |
 | M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | 🟡 em andamento |
 | M5 Portal do proprietário | Relatórios, saldos, PDF | 🟡 em andamento |
 | M6 Operação | Limpezas, manutenção, agenda diária | 🟡 em andamento |
@@ -183,7 +183,35 @@
   **divergência** para conferir — nunca uma reserva inventada. O refresh token cadastrado
   na Vercel agora gera e renova automaticamente o token de acesso. Em **Configurações →
   Integrações → Testar conexão com Beds24**, o administrador confere a leitura dos imóveis.
-  Esse teste não importa reservas; a sincronização automática continua pendente no M3.3.
+  Esse teste não importa reservas; a importação é feita na seção abaixo, entregue no M3.3.
+- M3.3: **trazer os dados do Beds24 para o SCL.** Em **Configurações → Integrações**,
+  busque os quartos e escolha o imóvel SCL correspondente a cada um. O vínculo precisa
+  dos números do imóvel e do quarto Beds24; a tela preenche esses números pela sua escolha.
+  Salve a data inicial das reservas e quantos dias de calendário quer consultar (até 365).
+  Depois, confira os vínculos, marque a confirmação e clique em **Importar agora**.
+  - A mesma reserva não é criada de novo a cada execução. Se já veio por planilha, é
+    reconhecida pelo canal Airbnb/Booking e pelo código da reserva, preservando o código
+    SCL e o histórico. Sem código comum não há como reconhecer automaticamente; confira
+    possíveis duplicidades antes do primeiro teste. Depois de vinculada ao Beds24, a
+    planilha não substitui seus dados.
+  - Cancelamentos precisam vir explicitamente do Beds24. Reserva ou bloqueio que não
+    aparece na consulta fica como estava e gera aviso. Quartos sem vínculo não são
+    importados. Moeda diferente de real, ou não informada, impede a importação financeira.
+  - Valores realizados/conciliados não são reescritos. Alterações em reservas já iniciadas
+    também preservam o financeiro anterior; divergências pedem conferência e ajuste manual.
+    Contato corrigido no painel e anotações são preservados. A importação não dispara uma
+    confirmação atrasada de reserva; as demais regras de mensagens continuam valendo.
+  - Preço, estadia mínima e unidades livres ficam guardados como **observações** do calendário
+    do Beds24. Dia não retornado é desconhecido. Isso ainda não liga cotações ou vendas no site.
+  - O histórico mostra as últimas dez execuções e até cem avisos por execução. Uma falha
+    técnica durante o processamento desfaz a transação; registros inválidos são separados
+    para conferência, sem inventar dados.
+  - A rotina automática começa **desligada**. Depois da conferência manual, pode ser ligada
+    no mesmo painel. Roda uma vez por dia, entre **6h15 e 7h15**, horário de Brasília,
+    com o agendamento configurado na Vercel. Pode importar manualmente entre as execuções.
+    Essa frequência inicial não garante disponibilidade atualizada para vendas; uma rotina
+    mais frequente precisa ser definida antes de usar a disponibilidade real do M7.2.
+  - Nenhuma mudança é enviada ao Beds24 ou ao Airbnb nesta etapa. O envio é o M3.7.
 - M2.7: **quem recebe o pagamento, por imóvel e por canal.** Na ficha de cada imóvel, seção
   "Quem recebe o pagamento": para Airbnb, Booking, site, direta (WhatsApp, indicação) e
   outros, você escolhe "canal paga o proprietário direto" ou "empresa recebe e repassa" (ou
@@ -726,7 +754,7 @@ e escreva normalmente.
 | **Codex** (revisor automático) | Revisa cada PR | ✅ ativo no repositório | — |
 | **Neon** | Banco de dados (Postgres) | 🟡 sua conta existe e está paga | Ligar à Vercel (item abaixo) |
 | **Vercel** | Publica o sistema na internet (homologação e depois produção) | ✅ site acessível, confirmado por Diego em 27/09 | Confirmar isolamento do banco de homologação; acesso pelo conector é separado |
-| **Beds24** | Channel manager (Airbnb/Booking), reservas, calendário e preços | 🟡 Airbnb mapeado e refresh token na Vercel, segundo Diego (27/09) | Publicar a correção e testar a conexão SCL → Beds24; sincronização M3.3 ainda pendente |
+| **Beds24** | Channel manager (Airbnb/Booking), reservas, calendário e preços | 🟡 leitura dos quartos confirmada por Diego (28/09) | Publicar M3.3, conferir os seis vínculos e fazer a primeira importação manual no SCL antes de ligar a rotina diária |
 | **Mercado Pago** | Pagamentos da reserva direta | ⚪ não conectado | Credenciais de *teste* do provedor escolhido no M8.0 (Mercado Pago, se for a escolha), mais adiante (M8) |
 | **Meta / WhatsApp Business** | Atendimento pelo WhatsApp da empresa | ⚪ não conectado | Verificação da empresa no Meta Business (demora dias) |
 | **Google Cloud (login)** | Botão "Entrar com Google" | ✅ login confirmado por Diego em 27/09 | — |
@@ -766,29 +794,38 @@ ambiente).
       `AUTH_SECRET` (qualquer texto longo e aleatório, ex.: gerado em 1password ou similar) e
       `ADMIN_EMAILS` = seu e-mail do Google.
    4. Faça *Redeploy* e entre em `/entrar`. Se travar em algum passo, me chame que eu guio.
-3. **Beds24:** o Airbnb já está conectado/mapeado e o refresh token já foi cadastrado
-   na Vercel, segundo Diego (27/09). Não precisa gerar outra credencial só por esta correção.
+3. **Beds24:** o Airbnb já está conectado/mapeado e a leitura dos quartos pelo SCL foi
+   confirmada por Diego em 28/09. O 403 duplicado foi removido. Não precisa gerar outra credencial.
    - Use **`BEDS24_REFRESH_TOKEN`** para o refresh token. O sistema o troca por um token de
      acesso e renova quando necessário. Um **invite code** precisa ser trocado primeiro;
      ele não pode ser colocado nessa variável.
    - **`BEDS24_API_KEY`** fica como alternativa para um token de acesso direto. Um *long life
      token* só permite leitura; nunca colocar refresh token nesse campo. Se as duas
      variáveis existirem, o sistema usa `BEDS24_REFRESH_TOKEN`.
-   - Depois de publicar esta correção, entre em **Configurações → Integrações → Testar
-     conexão com Beds24**. O teste consulta somente imóveis/quartos, mostra a contagem ou
-     um erro, e não importa reservas, hóspedes nem preços. Lista vazia pede conferir as
-     permissões e os imóveis acessíveis pela credencial. Sucesso neste teste confirma só
-     essa leitura; não confirma todos os acessos que a sincronização M3.3 precisará.
+   - Após publicar M3.3, abra **Configurações → Integrações → Buscar quartos para vincular**.
+     Confira os seis quartos e escolha o imóvel SCL de cada um. Para corrigir um vínculo,
+     abra a ficha do imóvel e a seção **Canais e IDs externos**. Não deduza o imóvel pelo
+     proprietário ou pelo e-mail do hóspede.
+   - Deixe a importação automática desligada, escolha a data inicial e **salve a configuração**.
+     Para o primeiro teste, escolha um período que você consiga conferir. Marque a confirmação
+     dos vínculos e clique em **Importar agora**. Confira a contagem, os avisos, **Reservas** e
+     **Calendário**, comparando com o Beds24. Confira também códigos de reservas que já vieram
+     por planilha. Repita a importação: não deve criar cópias.
+   - Só depois dessa conferência, ligue a rotina diária se quiser. Ela usa a variável
+     **`CRON_SECRET`**, já usada pelas outras rotinas. O botão manual não depende dela.
+     Se o banco tiver mais de uma empresa, **`BEDS24_ORGANIZACAO_ID`** precisa apontar a
+     empresa atendida pela credencial; o sistema recusa copiar reservas para várias empresas.
+   - O teste **Testar conexão com Beds24** continua disponível e apenas lê quartos. Não
+     comprova importação de reservas nem execução do agendamento. Os e-mails recebidos do
+     Beds24 também não comprovam que as reservas chegaram ao SCL.
    - As variáveis precisam estar no ambiente do deploy que será testado (Production no
      endereço principal; Preview se for testar um PR). Alteração de variável exige novo
      deploy. Chaves nunca vão no chat, Git ou tela do sistema.
    - O cliente continua **somente leitura**, mesmo que a credencial tenha outras permissões.
      Escrita depende do M3.7 e da ativação explícita depois dos testes.
-   - **Teste de 27/09:** retornou “Falha de rede ao falar com o Beds24”. Depois de publicar
-     a melhoria do diagnóstico, repita o botão e informe somente a mensagem. Ela indica se
-     falhou ao renovar o token ou consultar os dados e, quando disponível, mostra um código
-     de DNS, conexão ou certificado. Isso ainda não significa que o token esteja errado.
-     Não gere outra chave sem identificar a causa. Nenhum segredo aparece no diagnóstico.
+   - **Histórico do acesso:** o teste de 27/09 falhou; após salvar novamente a variável,
+     Diego confirmou a leitura. Isso não comprova qual foi a causa da falha anterior.
+     Caso reapareça, informe só a mensagem sanitizada do painel, nunca a chave.
 4. **Meta Business:** comece a verificação da empresa, porque ela demora.
 5. **E-mail do sistema (Resend)** — sem pressa; enquanto isso, o login com Google funciona:
    1. Crie conta grátis em resend.com e cadastre o domínio de onde os e-mails vão sair

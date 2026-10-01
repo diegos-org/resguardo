@@ -14,7 +14,7 @@ function estavel(v: unknown): string {
   return JSON.stringify(v ?? null);
 }
 
-export type ChaveConfig = "empresa" | "regras_financeiras" | "textos_site" | "limpezas" | "agenda" | "portaria" | "fechamento_email" | "mensagens_hospede";
+export type ChaveConfig = "empresa" | "regras_financeiras" | "textos_site" | "limpezas" | "agenda" | "portaria" | "fechamento_email" | "mensagens_hospede" | "beds24";
 
 export async function lerConfig(db: Db, organizacaoId: string, chave: ChaveConfig): Promise<Record<string, unknown> | null> {
   const [l] = await db
@@ -61,3 +61,4 @@ export async function gravarConfig(
   if (auditar) await registrarAuditoria(db, { organizacaoId, usuarioId: autorId, acao: `configuracao.${chave}`, entidade: "configuracao", entidadeId: organizacaoId, mudancas });
   return mudancas;
 }
+

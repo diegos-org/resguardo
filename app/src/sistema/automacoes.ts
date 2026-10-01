@@ -17,7 +17,7 @@ export type Automacao = {
 
 export const AUTOMACOES: readonly Automacao[] = [
   { id: "recalculo-deploy", nome: "Recálculo do financeiro (reservas de hoje em diante)", quando: "A cada versão publicada", situacao: "ativa", item: "M4.2c" },
-  { id: "sync-beds24", nome: "Sincronização de reservas e calendário com o Beds24", quando: "A cada poucos minutos", situacao: "planejada", item: "M3.3" },
+  { id: "sync-beds24", nome: "Sincronização de reservas e calendário com o Beds24", quando: "Diária, entre 6h15 e 7h15, quando ligada em Integrações; também manual", situacao: "ativa", item: "M3.3" },
   { id: "envio-beds24", nome: "Envio de calendário e preços ao Beds24/OTAs", quando: "A cada mudança no SCL", situacao: "planejada", item: "M3.7" },
   { id: "agenda-diaria", nome: "Agenda diária da equipe (próximos 5 dias)", quando: "Todo dia às 20h", situacao: "ativa", item: "M6.3" },
   { id: "fechamento-email", nome: "E-mail do fechamento mensal aos proprietários (relatório em PDF)", quando: "Todo dia às 9h, do dia 1º até o mês ser fechado e enviado", situacao: "ativa", item: "M5.4" },
@@ -48,3 +48,4 @@ export async function ultimasExecucoes(db: Db): Promise<Map<string, Execucao>> {
   for (const l of linhas) if (!m.has(l.nome)) m.set(l.nome, l);
   return m;
 }
+

@@ -4,6 +4,14 @@ import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import styles from "@/components/formularios.module.css";
 import { TestarBeds24 } from "@/components/configuracoes/TestarBeds24";
 import { situacaoServicos } from "@/sistema/servicos";
+import { and, asc, eq } from "drizzle-orm";
+import { getDb } from "@/db/client";
+import { imoveis } from "@/db/schema";
+import { lerConfigBeds24, listarMapeamentosBeds24 } from "@/beds24/configuracao";
+import { ultimasSincronizacoes } from "@/beds24/sincronizacao";
+import { SincronizarBeds24 } from "@/components/configuracoes/SincronizarBeds24";
+
+export const maxDuration = 300;
 
 const ONDE: Record<string, string> = {
   "Banco de dados (Neon)": "DATABASE_URL",
@@ -15,8 +23,14 @@ const ONDE: Record<string, string> = {
 export default async function Integracoes() {
   const sessao = await exigirSessaoPainel();
   if (!podeFazer(sessao.papel, "configuracao:editar")) redirect("/painel/configuracoes");
-  // Aqui não testa o banco (a página Sistema testa); só mostra o que está configurado.
   const servicos = situacaoServicos(process.env, null);
+  const db = getDb();
+  const org = sessao.organizacaoId;
+  const [config, mapas, locais, execucoes] = await Promise.all([
+    lerConfigBeds24(db, org), listarMapeamentosBeds24(db, org),
+    db.select({ id: imoveis.id, codigo: imoveis.codigo }).from(imoveis).where(and(eq(imoveis.organizacaoId, org), eq(imoveis.ativo, true))).orderBy(asc(imoveis.codigo)),
+    ultimasSincronizacoes(db, org),
+  ]);
   return (
     <>
       <p style={{ fontSize: "0.875rem", color: "var(--scl-texto-2)", margin: 0, maxWidth: 820 }}>
@@ -47,6 +61,7 @@ export default async function Integracoes() {
         </table>
       </div>
       <TestarBeds24 />
+      <SincronizarBeds24 config={config} mapas={mapas} imoveis={locais} execucoes={execucoes.map(e => ({ id: e.id, quando: e.iniciadoEm.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }), situacao: e.situacao, resumo: e.resumo, divergencias: e.divergencias }))} />
     </>
   );
 }
