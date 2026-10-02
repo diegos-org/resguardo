@@ -1110,6 +1110,8 @@ export const beds24CalendarioEnviado = pgTable("beds24_calendario_enviado", {
   minimo: integer("minimo"),
   maximo: integer("maximo"),
   bloqueio: text("bloqueio"),
+  /** Restrição que o Beds24 tinha antes do blackout do SCL (noCheckIn etc.), devolvida na reabertura. */
+  bloqueioAnterior: text("bloqueio_anterior"),
   enviadoEm: timestamp("enviado_em", { withTimezone: true }).notNull(),
   confirmado: boolean("confirmado").notNull().default(false),
   envioId: uuid("envio_id").references(() => beds24Envios.id),

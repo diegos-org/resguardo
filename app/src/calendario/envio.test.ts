@@ -69,7 +69,8 @@ describe("envio ao Beds24 (M3.7)", () => {
     expect(est[1]).toMatchObject({ data: "2026-10-02", preco: 45000, minimo: 2, maximo: 27, bloqueio: null, confirmado: true });
     const n = await noitesDoEnvio(db, org, r.envioId!);
     expect(n).toHaveLength(10);
-    expect(n[0]).toMatchObject({ codigo: "103", data: "2026-10-01", precoAntes: null, precoEnviado: 45000, minimoEnviado: 1, resultado: "confirmado" });
+    // "Antes" vem da leitura feita no início do envio (R$ 400 no Beds24 falso), não da última importação.
+    expect(n[0]).toMatchObject({ codigo: "103", data: "2026-10-01", precoAntes: 40000, precoEnviado: 45000, minimoEnviado: 1, resultado: "confirmado" });
     expect(n[0].regra).toContain("Preço base");
     expect(n[0].regra).toContain("Beds24 aplica 25%");
     expect((await historicoDe(db, org, "integracao", org))[0].acao).toBe("beds24.enviar");
@@ -135,6 +136,8 @@ describe("envio ao Beds24 (M3.7)", () => {
     expect(registradas).toHaveLength(10);
     expect(registradas.every(n => n.resultado === "falhou" && n.detalhe.includes("HTTP 403"))).toBe(true);
     expect((await enviados()).every(e => !e.confirmado)).toBe(true);
+    // O histórico conta as noites registradas mesmo sem nenhuma aceita: a tela mostra o detalhe.
+    expect((await ultimosEnvios(db, org))[0]).toMatchObject({ situacao: "erro", noitesEnviadas: 0, noites: 10 });
     beds.falharEscrita = null;
     beds.recusarQuartos = ["20"];
     expect(await enviar()).toMatchObject({ situacao: "erro", imoveis: [{ falha: "Quarto recusado pelo serviço falso.", confirmadas: 0 }] });
@@ -153,17 +156,51 @@ describe("envio ao Beds24 (M3.7)", () => {
     expect((await enviar()).imoveis[0].resumo.enviar).toBe(0);
   });
 
-  it("releitura que falha deixa as noites sem confirmação (incerto) e a próxima execução confirma sem acumular", async () => {
+  it("leitura do Beds24 antes do envio falhou: nada é escrito; a simulação segue com a última leitura guardada, avisando", async () => {
     const leitorFalho: LeitorBeds24 = { reservas: f => beds.reservas(f), quartos: () => beds.quartos(), calendario: async () => { throw new ErroBeds24("Beds24 não respondeu a tempo.", "tempo"); } };
+    const r = await enviar("envio", { leitor: leitorFalho });
+    expect(r).toMatchObject({ ok: false, situacao: "erro" });
+    expect(r.mensagem).toContain("Leitura do Beds24 antes do envio falhou");
+    expect(r.mensagem).toContain("Nada foi enviado");
+    expect(beds.escritas).toHaveLength(0);
+    expect(await noites()).toHaveLength(0);
+    expect(await enviados()).toHaveLength(0);
+    const s = await enviar("simulacao", { leitor: leitorFalho });
+    expect(s).toMatchObject({ ok: true, situacao: "simulacao", imoveis: [{ resumo: { enviar: 10 } }] });
+    expect(s.avisos.some(a => a.startsWith("Leitura do Beds24 falhou"))).toBe(true);
+  });
+
+  it("releitura que falha deixa as noites sem confirmação (incerto) e a próxima execução confirma sem acumular", async () => {
+    // A leitura inicial funciona; só a releitura depois da escrita falha.
+    let leituras = 0;
+    const leitorFalho: LeitorBeds24 = { reservas: f => beds.reservas(f), quartos: () => beds.quartos(), calendario: async f => { if (leituras++ === 0) return beds.calendario(f); throw new ErroBeds24("Beds24 não respondeu a tempo.", "tempo"); } };
     const r = await enviar("envio", { leitor: leitorFalho });
     expect(r).toMatchObject({ ok: false, situacao: "incerto", imoveis: [{ enviadas: 10, confirmadas: 0 }] });
     expect((await noites()).every(n => n.resultado === "enviado")).toBe(true);
     expect((await enviados()).every(e => !e.confirmado)).toBe(true);
-    expect(await observacoes()).toHaveLength(0);
+    // Fica a leitura inicial (valores de antes da escrita), nunca o que o SCL pretendia gravar.
+    expect((await observacoes()).every(o => o.preco === 40000 && o.observadoEm.getTime() === agora.getTime())).toBe(true);
+    // A leitura inicial da execução seguinte já mostra o Beds24 igual: nada é reenviado e as noites são confirmadas tarde.
     const depois = await enviar();
-    expect(depois).toMatchObject({ situacao: "ok", imoveis: [{ enviadas: 10, confirmadas: 10 }] });
+    expect(depois).toMatchObject({ situacao: "ok", imoveis: [{ enviadas: 0, resumo: { iguais: 10 } }] });
+    expect(depois.avisos).toContain("Imóvel 103: 10 noite(s) de envio anterior confirmada(s) pela leitura de agora.");
+    expect((await enviados()).every(e => e.confirmado)).toBe(true);
     expect(diaFalso("2026-10-02")).toMatchObject({ price1: 450, minStay: 2 });
+    expect(beds.escritas).toHaveLength(1);
+  });
+
+  it("blackout enviado sem confirmação (releitura falhou) passa a ser do SCL quando a leitura seguinte o mostra; depois pode ser reaberto", async () => {
+    await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-10-03", fim: "2026-10-04", motivo: "Uso próprio" });
+    let leituras = 0;
+    const leitorFalho: LeitorBeds24 = { reservas: f => beds.reservas(f), quartos: () => beds.quartos(), calendario: async f => { if (leituras++ === 0) return beds.calendario(f); throw new ErroBeds24("Beds24 não respondeu a tempo.", "tempo"); } };
+    expect((await enviar("envio", { leitor: leitorFalho })).situacao).toBe("incerto");
+    expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ bloqueio: null, confirmado: false });
     expect((await enviar()).imoveis[0].enviadas).toBe(0);
+    expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ bloqueio: "blackout", confirmado: true });
+    await db.delete(bloqueios).where(eq(bloqueios.fonte, "manual"));
+    expect((await enviar()).situacao).toBe("ok");
+    expect(beds.escritas.at(-1)![0].faixas.find(f => f.from === "2026-10-03")?.bloqueio).toBe("none");
+    expect(diaFalso("2026-10-03")).toMatchObject({ override: "none", numAvail: 1 });
   });
 
   it("valores diferentes na releitura viram divergência com aviso, sem fingir sucesso", async () => {
@@ -204,17 +241,14 @@ describe("envio ao Beds24 (M3.7)", () => {
     expect((await enviar()).imoveis[0].enviadas).toBe(0);
   });
 
-  it("reabertura recusada ou não confirmada mantém a posse do blackout; a próxima execução tenta de novo", async () => {
+  it("reabertura aceita mas não aplicada mantém a posse do blackout; a próxima execução tenta de novo", async () => {
     await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-10-03", fim: "2026-10-04", motivo: "Uso próprio" });
     expect((await enviar()).situacao).toBe("ok");
     await db.delete(bloqueios).where(eq(bloqueios.fonte, "manual"));
-    // O Beds24 "aceita" mas a releitura ainda mostra o blackout (ex.: escrita não aplicada).
-    const leitorTeimoso: LeitorBeds24 = { reservas: f => beds.reservas(f), quartos: () => beds.quartos(), calendario: async f => {
-      const l = await beds.calendario(f);
-      return { ...l, itens: l.itens.map(d => d.data === "2026-10-03" ? { ...d, bloqueio: "blackout", livres: 0 } : d) };
-    } };
-    const r = await enviar("envio", { leitor: leitorTeimoso });
-    expect(r).toMatchObject({ situacao: "parcial", imoveis: [{ divergentes: 1 }] });
+    // O Beds24 "aceita" mas não aplica: a releitura ainda mostra o blackout (e o mínimo antigo em 2/10).
+    const escritorMudo = { escreverCalendario: async (itens: Parameters<typeof beds.escreverCalendario>[0]) => itens.map(i => ({ roomId: i.roomId, ok: true, erro: "" })) };
+    const r = await enviarCalendarioBeds24(db, org, beds, escritorMudo, { modo: "envio", agora, autorId: null });
+    expect(r).toMatchObject({ situacao: "parcial", imoveis: [{ divergentes: 2 }] });
     expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ bloqueio: "blackout", confirmado: false });
     // Com a leitura normal, o SCL reenvia "none", confirma e só então registra a reabertura.
     const r2 = await enviar();
@@ -241,6 +275,42 @@ describe("envio ao Beds24 (M3.7)", () => {
     const r2 = await enviar();
     expect(r2.avisos).toContain("Imóvel 103, noite 03/10/2026: Beds24 tem bloqueio (blackout) sem bloqueio no SCL: o SCL não reabre o que não fechou; confira.");
     expect(diaFalso("2026-10-03")).toMatchObject({ override: "blackout" });
+  });
+
+  it("antes de escrever, o envio relê o Beds24: restrição posta depois da última leitura não é apagada ao reabrir", async () => {
+    await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-10-03", fim: "2026-10-04", motivo: "Uso próprio" });
+    expect((await enviar()).situacao).toBe("ok");
+    // Alguém troca a noite para noCheckIn direto no Beds24; a observação local ainda mostra o blackout.
+    diaFalso("2026-10-03")!.override = "noCheckIn";
+    await db.delete(bloqueios).where(eq(bloqueios.fonte, "manual"));
+    expect((await observacoes()).find(o => o.data === "2026-10-03")?.bloqueio).toBe("blackout");
+    const r = await enviar();
+    expect(beds.escritas.at(-1)?.[0]?.faixas.some(f => f.bloqueio !== undefined) ?? false).toBe(false);
+    expect(diaFalso("2026-10-03")).toMatchObject({ override: "noCheckIn" });
+    expect(r.avisos.some(a => a.includes('restrição "noCheckIn"') && a.includes("deixa de considerar"))).toBe(true);
+    expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ bloqueio: null });
+    expect((await observacoes()).find(o => o.data === "2026-10-03")?.bloqueio).toBe("noCheckIn");
+  });
+
+  it("restrição que já existia no Beds24 volta quando o bloqueio do SCL é removido, em vez de \"none\"", async () => {
+    beds.calendarios = [{ roomId: 20, calendar: [
+      { from: "2026-10-01", to: "2026-10-04", numAvail: 1, price1: 450, minStay: 1, maxStay: 27, override: "none" },
+      { from: "2026-10-05", to: "2026-10-05", numAvail: 1, price1: 450, minStay: 1, maxStay: 27, override: "noCheckIn" },
+      { from: "2026-10-06", to: "2026-10-10", numAvail: 1, price1: 450, minStay: 1, maxStay: 27, override: "none" },
+    ] }];
+    await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-10-05", fim: "2026-10-06", motivo: "Manutenção" });
+    const r = await enviar();
+    expect(r.situacao).toBe("ok");
+    expect(diaFalso("2026-10-05")).toMatchObject({ override: "blackout", numAvail: 0 });
+    expect((await enviados()).find(e => e.data === "2026-10-05")).toMatchObject({ bloqueio: "blackout", bloqueioAnterior: "noCheckIn", confirmado: true });
+    expect((await noitesDoEnvio(db, org, r.envioId!)).find(n => n.data === "2026-10-05")?.regra).toContain('bloqueio do SCL (antes: "noCheckIn")');
+    await db.delete(bloqueios).where(eq(bloqueios.fonte, "manual"));
+    const r2 = await enviar();
+    expect(r2.situacao).toBe("ok");
+    expect(beds.escritas.at(-1)![0].faixas.find(f => f.from === "2026-10-05")?.bloqueio).toBe("noCheckIn");
+    expect(diaFalso("2026-10-05")).toMatchObject({ override: "noCheckIn", numAvail: 1 });
+    expect((await enviados()).find(e => e.data === "2026-10-05")).toMatchObject({ bloqueio: "noCheckIn", bloqueioAnterior: null, confirmado: true });
+    expect((await enviar()).imoveis[0].enviadas).toBe(0);
   });
 
   it("bloqueio que só existe no Beds24 nunca é reaberto pelo SCL, mesmo sem bloqueio local", async () => {

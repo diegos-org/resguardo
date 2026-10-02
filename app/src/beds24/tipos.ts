@@ -58,8 +58,14 @@ export interface LeitorBeds24 {
   quartos(): Promise<Lido<QuartoBeds24>>;
 }
 
-/** Bloqueio por noite enviado ao Beds24: "blackout" fecha a noite; "none" reabre o que o SCL fechou. */
-export type BloqueioEnvio = "blackout" | "none";
+/** Valores de `override` do calendário Beds24 que o SCL sabe ler e escrever. */
+export const BLOQUEIOS_BEDS24 = ["none", "blackout", "exception", "noCheckIn", "noCheckOut", "noCheckInOrCheckOut"] as const;
+/**
+ * Bloqueio por noite enviado ao Beds24: "blackout" fecha a noite; "none" reabre o que o SCL fechou;
+ * os demais devolvem a restrição que já existia no Beds24 antes do bloqueio do SCL.
+ */
+export type BloqueioEnvio = (typeof BLOQUEIOS_BEDS24)[number];
+export const ehBloqueioEnvio = (b: unknown): b is BloqueioEnvio => typeof b === "string" && (BLOQUEIOS_BEDS24 as readonly string[]).includes(b);
 /** Faixa de noites [from, to] (inclusive) com os mesmos valores. Campo ausente = não alterar. */
 export type FaixaEnvio = { from: string; to: string; preco?: number; minimo?: number; maximo?: number; bloqueio?: BloqueioEnvio };
 export type EnvioCalendario = { roomId: string; faixas: FaixaEnvio[] };

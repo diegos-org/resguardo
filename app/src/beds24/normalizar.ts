@@ -4,7 +4,7 @@
  * documentação pública da API v2; confirmar com a conta real antes de sincronizar (M3.3).
  */
 import { dataValida } from "@/reservas/regras";
-import type { CanalBeds24, DiaCalendario, Divergencia, EstadoBeds24, QuartoBeds24, ReservaBeds24 } from "./tipos";
+import { BLOQUEIOS_BEDS24, type CanalBeds24, type DiaCalendario, type Divergencia, type EstadoBeds24, type QuartoBeds24, type ReservaBeds24 } from "./tipos";
 
 type Obj = Record<string, unknown>;
 const ehObj = (v: unknown): v is Obj => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -102,7 +102,7 @@ export function normalizarReserva(b: unknown): { ok: true; r: ReservaBeds24 } | 
   };
 }
 
-const OVERRIDES = new Set(["none", "blackout", "exception", "noCheckIn", "noCheckOut", "noCheckInOrCheckOut"]);
+const OVERRIDES = new Set<string>(BLOQUEIOS_BEDS24);
 
 /** Calendário: `data` = [{ roomId, calendar: [{ from, to, numAvail, price1, minStay, maxStay, override }] }]. */
 export function normalizarCalendario(salas: unknown[], inicio: string, fim: string): { itens: DiaCalendario[]; divergencias: Divergencia[] } {

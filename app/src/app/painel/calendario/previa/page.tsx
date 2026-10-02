@@ -23,7 +23,7 @@ const numero = (v: number | null | undefined) => v === null || v === undefined ?
 const dataBr = (d: string) => d.split("-").reverse().join("/");
 const instante = (d: Date, fuso: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, dateStyle: "short", timeStyle: "short" }).format(d);
 const ACOES: Record<LinhaPlano["acao"], string> = { enviar: "Enviar (diferente ou sem leitura)", igual: "Igual: nada a enviar", sem_dados: "Nada a enviar" };
-const BLOQUEIO: Record<string, string> = { blackout: "fechado", none: "aberto" };
+const BLOQUEIO: Record<string, string> = { blackout: "fechado", none: "aberto", exception: "exceção", noCheckIn: "sem entrada", noCheckOut: "sem saída", noCheckInOrCheckOut: "sem entrada nem saída" };
 
 export default async function Previa({ searchParams }: PageProps<"/painel/calendario/previa">) {
   const s = await exigirSessaoPainel();
@@ -101,7 +101,7 @@ export default async function Previa({ searchParams }: PageProps<"/painel/calend
         {!envios.length ? <p>Nenhum envio registrado.</p> : <ul>{envios.map(e => <li key={e.id} style={{ marginBottom: 8 }}>
           <strong>{instante(e.iniciadoEm, escolhido.fuso)} — {nomeSituacaoEnvio(e.situacao)}{e.automatica ? " (automático)" : ""}</strong>
           <p>{e.resumo || "Em andamento ou interrompido. Se continuar assim por mais de cinco minutos, confira antes de tentar de novo."}</p>
-          {e.modo === "envio" && e.noitesEnviadas > 0 && <p><Link href={`/painel/calendario/previa?imovel=${escolhido.id}&inicio=${inicio}&fim=${fim}&execucao=${e.id}`}>Ver noites deste envio</Link></p>}
+          {e.modo === "envio" && e.noites > 0 && <p><Link href={`/painel/calendario/previa?imovel=${escolhido.id}&inicio=${inicio}&fim=${fim}&execucao=${e.id}`}>Ver noites deste envio</Link></p>}
           {e.avisos.length > 0 && <details><summary>Avisos (até 100)</summary><ul>{e.avisos.map((a, i) => <li key={i}>{a}</li>)}</ul></details>}
         </li>)}</ul>}
         {noitesExecucao.length > 0 && <div className={styles.rolagem}><table className={styles.tabela}>

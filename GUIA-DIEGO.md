@@ -93,18 +93,21 @@ marcado para envio. Quatro lugares novos:
    onde estavam; o preço explícito de um período substitui qualquer regra automática.
 3. **Calendário → Bloquear datas:** bloqueio manual (uso próprio, manutenção) com imóvel,
    primeira noite, dia da liberação e motivo. Vale no SCL na hora e vai ao Beds24 como
-   "fechado" no próximo envio; remover (com confirmação) reabre no próximo envio. Bloqueios
-   que vieram do Beds24 aparecem, mas mudam lá. O SCL **nunca reabre** um bloqueio que ele
-   mesmo não fechou.
+   "fechado" no próximo envio; remover (com confirmação) reabre no próximo envio, devolvendo
+   a noite ao que ela tinha antes (se o Beds24 já restringia a entrada ou a saída naquela
+   data, essa restrição volta). Bloqueios que vieram do Beds24 aparecem, mas mudam lá. O SCL
+   **nunca reabre** um bloqueio que ele mesmo não fechou, e só reabre o seu se a leitura
+   feita na hora ainda mostrar esse bloqueio lá.
 4. **Calendário → Conferir calendário e preços:** a prévia agora mostra, por noite, o preço
    de referência, o preço que seria enviado, o preço final esperado depois da última hora,
    o mínimo pela regra e o mínimo ajustado às **sobras** (se sobram 3 noites até a próxima
    reserva num período de mínimo 5, as entradas ficam com mínimo 3, 2 e 1), o máximo, o
    bloqueio e a última leitura do Beds24 — e a ação (enviar ou já igual). Embaixo, só para
    você: **Simular envio** (não grava nada; diz quantas noites iriam) e **Enviar agora**
-   (pede confirmação e cobre todo o horizonte do imóvel). Depois de enviar, o SCL relê o
-   Beds24 e marca cada noite como confirmada ou divergente; o histórico guarda antes/depois,
-   regra usada e resultado.
+   (pede confirmação e cobre todo o horizonte do imóvel). Todo envio (e toda simulação)
+   começa lendo o Beds24 na hora: se essa leitura falhar, nada é enviado. Depois de enviar,
+   o SCL relê o Beds24 e marca cada noite como confirmada ou divergente; o histórico guarda
+   antes/depois, regra usada e resultado, inclusive quando o Beds24 recusou o envio.
 
 Regras de segurança: só vão as noites diferentes do que o Beds24 já tem (repetir o envio
 não muda nada nem acumula desconto, porque a referência é sempre recalculada do cadastro);

@@ -202,6 +202,34 @@ describe("bloqueios e conferência com o Beds24", () => {
     expect(reaberto).toMatchObject({ bloqueioEnviar: undefined, posseBloqueioEncerrada: true, acao: "igual" });
     expect(reaberto.avisos).toContain("Bloqueio do SCL removido e já reaberto no Beds24: nada a enviar; o SCL deixa de considerar esse bloqueio como seu.");
   });
+  it("restrição que já existia no Beds24 (noCheckIn etc.) é guardada ao bloquear e devolvida ao reabrir, em vez de \"none\"", () => {
+    const enviadoEm = new Date("2026-09-30T10:00:00Z");
+    const bloqueio = [{ inicio: "2026-10-01", fim: "2026-10-02", fonte: "manual" }];
+    const enviado = (over: Partial<EntradaPlano["enviados"][number]> = {}) => ({ data: "2026-10-01", preco: 40000, minimo: 1, maximo: 27, bloqueio: "blackout", confirmado: true, enviadoEm, ...over });
+    // Bloqueio novo sobre noite com noCheckIn: envia blackout e guarda a restrição anterior.
+    const [novo] = planejarCalendario(entrada({ fim: "2026-10-01", bloqueios: bloqueio, observacoes: [obs("2026-10-01", { bloqueio: "noCheckIn" })] }));
+    expect([novo.bloqueioEnviar, novo.bloqueioAnterior]).toEqual(["blackout", "noCheckIn"]);
+    expect(novo.regra).toContain('bloqueio do SCL (antes: "noCheckIn")');
+    // Blackout já do SCL reenviado (ex.: preço mudou): mantém a restrição guardada, não a leitura (blackout).
+    const [mantido] = planejarCalendario(entrada({ fim: "2026-10-01", bloqueios: bloqueio, enviados: [enviado({ bloqueioAnterior: "noCheckOut" })], observacoes: [obs("2026-10-01", { preco: 40000, livres: 0, bloqueio: "blackout" })] }));
+    expect([mantido.bloqueioEnviar, mantido.bloqueioAnterior, mantido.acao]).toEqual(["blackout", "noCheckOut", "enviar"]);
+    // Sem leitura nova, vale o último envio confirmado (uma restrição devolvida antes); sem nada, null.
+    const [doEnvio] = planejarCalendario(entrada({ fim: "2026-10-01", bloqueios: bloqueio, enviados: [enviado({ bloqueio: "noCheckInOrCheckOut" })] }));
+    expect(doEnvio.bloqueioAnterior).toBe("noCheckInOrCheckOut");
+    expect(planejarCalendario(entrada({ fim: "2026-10-01", bloqueios: bloqueio }))[0].bloqueioAnterior).toBeNull();
+    // Reabertura: devolve a restrição guardada (vai no payload); sem registro, "none".
+    const [devolve] = planejarCalendario(entrada({ fim: "2026-10-01", enviados: [enviado({ bloqueioAnterior: "noCheckIn" })], observacoes: [obs("2026-10-01", { livres: 0, bloqueio: "blackout" })] }));
+    expect([devolve.bloqueioEnviar, devolve.bloqueioAnterior, devolve.acao]).toEqual(["noCheckIn", null, "enviar"]);
+    expect(devolve.regra).toContain('reabre bloqueio do SCL e devolve "noCheckIn"');
+    expect(faixasDeEnvio([devolve])[0].bloqueio).toBe("noCheckIn");
+    const [semRegistro] = planejarCalendario(entrada({ fim: "2026-10-01", enviados: [enviado()], observacoes: [obs("2026-10-01", { livres: 0, bloqueio: "blackout" })] }));
+    expect(semRegistro.bloqueioEnviar).toBe("none");
+    // Restrição devolvida que a leitura nova já mostra: posse encerrada sem alarme de "troca externa".
+    const [devolvida] = planejarCalendario(entrada({ fim: "2026-10-01", enviados: [enviado({ bloqueioAnterior: "noCheckIn" })], observacoes: [obs("2026-10-01", { bloqueio: "noCheckIn" })] }));
+    expect([devolvida.bloqueioEnviar, devolvida.posseBloqueioEncerrada]).toEqual([undefined, true]);
+    expect(devolvida.avisos).toContain('Bloqueio do SCL removido e a restrição anterior ("noCheckIn") já está de volta no Beds24: nada a enviar.');
+  });
+
   it("igual quando a observação (mais recente que o último envio) já tem os valores; senão vale o envio confirmado", () => {
     const quando = new Date("2026-10-01T08:00:00Z");
     const enviadoIgual = { data: "2026-10-05", preco: 45000, minimo: 1, maximo: 27, bloqueio: null, confirmado: true, enviadoEm: quando };

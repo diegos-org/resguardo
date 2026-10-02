@@ -90,8 +90,9 @@ export class Beds24Falso implements LeitorBeds24, EscritorBeds24 {
           if (f.maximo !== undefined) atual.maxStay = f.maximo;
           if (f.bloqueio !== undefined) {
             atual.override = f.bloqueio;
+            // Aproximação do serviço falso: blackout fecha a unidade; qualquer outro override a devolve.
             if (f.bloqueio === "blackout") atual.numAvail = 0;
-            else if (atual.override === "none" && atual.numAvail === 0) atual.numAvail = 1;
+            else if (atual.numAvail === 0) atual.numAvail = 1;
           }
           porDia.set(d, atual);
         }
