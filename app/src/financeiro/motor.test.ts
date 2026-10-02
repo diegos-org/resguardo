@@ -141,3 +141,8 @@ describe("calcularReserva", () => {
     expect(lancamentos.find((l) => l.tipo === "direito_proprietario")).toMatchObject({ proprietarioId: null, efeitoSaldo: 0, estado: "pendente" });
   });
 });
+
+
+it.each(["consulta", "pedido"] as const)("%s não gera receita, comissão ou repasse", estado => {
+  expect(calcularReserva(reserva({ estado }), quinzePorCento, ["p1"]).lancamentos).toEqual([]);
+});

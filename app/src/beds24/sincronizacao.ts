@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
-import { beds24Calendario, beds24Execucoes, bloqueios, reservas } from "@/db/schema";
+import { beds24Calendario, beds24Execucoes, beds24ExecucaoReservas, bloqueios, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
 import { sincronizarReserva } from "@/reservas/repositorio";
@@ -75,7 +75,7 @@ export async function sincronizarBeds24(db: Db, org: string, leitor: LeitorBeds2
         if (Date.now() > limite) throw new ErroBeds24("A importação excedeu o tempo disponível e foi desfeita. Reduza o período ou solicite processamento em lotes.", "tempo");
         const m = mapas.find(m => m.propertyId === b.propertyId && m.roomId === b.roomId);
         if (!m) { aviso(res, `Reserva ${referencia(b.idExterno)}: quarto sem vínculo ativo e exato no SCL. Nenhuma alteração aplicada a esse registro.`); continue; }
-        await aplicarRegistro(tx, org, b, m.imovelId, res, o.autorId ?? null);
+        await aplicarRegistro(tx, org, b, m.imovelId, res, o.autorId ?? null, exec.id);
       }
 
       // Substitui apenas a observação dos imóveis mapeados. Dias não retornados
@@ -95,7 +95,7 @@ export async function sincronizarBeds24(db: Db, org: string, leitor: LeitorBeds2
       for (let i = 0; i < valores.length; i += 250) await tx.insert(beds24Calendario).values(valores.slice(i, i + 250));
       res.diasCalendario = valores.length;
       res.situacao = res.totalDivergencias ? "parcial" : "ok";
-      res.mensagem = `${res.criadas} reserva(s) nova(s), ${res.atualizadas} atualizada(s), ${res.iguais} sem alteração, ${res.bloqueios} bloqueio(s), ${res.diasCalendario} dia(s) de calendário; ${res.totalDivergencias} aviso(s) para conferir.`;
+      res.mensagem = `${res.criadas} registro(s) adicionado(s) ao SCL, ${res.atualizadas} atualizada(s), ${res.iguais} sem alteração, ${res.bloqueios} bloqueio(s), ${res.diasCalendario} dia(s) de calendário; ${res.totalDivergencias} aviso(s) para conferir.`;
       await registrarAuditoria(tx, { organizacaoId: org, usuarioId: o.autorId ?? null, acao: "beds24.sincronizar", entidade: "integracao", entidadeId: org, mudancas: { resultado: [null, res.mensagem] } });
       return res;
     });
@@ -106,7 +106,7 @@ export async function sincronizarBeds24(db: Db, org: string, leitor: LeitorBeds2
   return r;
 }
 
-async function aplicarRegistro(tx: Db, org: string, b: ReservaBeds24, imovelId: string, r: ResultadoSync, autorId: string | null) {
+async function aplicarRegistro(tx: Db, org: string, b: ReservaBeds24, imovelId: string, r: ResultadoSync, autorId: string | null, execucaoId: string) {
   const ondeBloqueio = and(eq(bloqueios.organizacaoId, org), eq(bloqueios.fonte, "beds24"), eq(bloqueios.idFonte, b.idExterno));
   const [bl] = await tx.select().from(bloqueios).where(ondeBloqueio);
   if (b.estado === "bloqueio") {
@@ -114,6 +114,7 @@ async function aplicarRegistro(tx: Db, org: string, b: ReservaBeds24, imovelId: 
     if (antiga) {
       const s = await sincronizarReserva(tx, org, "beds24", b.idExterno, { ...antiga, estado: "cancelada" }, autorId);
       if (!s.ok) { aviso(r, `Registro ${referencia(b.idExterno)}: não foi possível converter a reserva em bloqueio.`); return; }
+      if (s.alterada) await tx.insert(beds24ExecucaoReservas).values({ organizacaoId: org, execucaoId, reservaId: s.reserva.id, tipo: "cancelada" });
       if (s.financeiroNaoAtualizado) aviso(r, `Registro ${referencia(b.idExterno)}: financeiro protegido; confira o ajuste manual.`);
     }
     const dados = { imovelId, inicio: b.checkin, fim: b.checkout, motivo: "Bloqueio importado do Beds24" };
@@ -129,6 +130,7 @@ async function aplicarRegistro(tx: Db, org: string, b: ReservaBeds24, imovelId: 
   }
   const s = await sincronizarReserva(tx, org, "beds24", b.idExterno, paraDadosReserva(b, imovelId)!, autorId);
   if (!s.ok) { aviso(r, `Reserva ${referencia(b.idExterno)}: ${Object.values(s.erros).join(" ")}`); return; }
+  if (s.criada || s.alterada) await tx.insert(beds24ExecucaoReservas).values({ organizacaoId: org, execucaoId, reservaId: s.reserva.id, tipo: s.criada ? "adicionada" : s.reserva.estado === "cancelada" ? "cancelada" : "alterada" });
   if (bl) await tx.delete(bloqueios).where(ondeBloqueio);
   if (s.criada) r.criadas++; else if (s.alterada) r.atualizadas++; else r.iguais++;
   for (const a of s.avisosFinanceiro ?? []) aviso(r, `Reserva ${referencia(b.idExterno)}: ${a}`);

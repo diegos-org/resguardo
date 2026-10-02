@@ -105,6 +105,7 @@ export async function analisarCsv(db: Db, organizacaoId: string, texto: string):
             eq(reservas.organizacaoId, organizacaoId),
             inArray(reservas.imovelId, [...new Set(ativas.map((l) => l.dados!.imovelId))]),
             ne(reservas.estado, "cancelada"),
+            ne(reservas.estado, "consulta"),
             lt(reservas.checkin, ativas.reduce((m, l) => (l.dados!.checkout > m ? l.dados!.checkout : m), "")),
             gt(reservas.checkout, ativas.reduce((m, l) => (l.dados!.checkin < m ? l.dados!.checkin : m), "9999-12-31")),
           ),
@@ -179,3 +180,4 @@ export async function importarCsv(db: Db, organizacaoId: string, texto: string, 
   });
   return r;
 }
+

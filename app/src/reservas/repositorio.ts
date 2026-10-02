@@ -142,6 +142,7 @@ export async function sincronizarReserva(
       dados.valorLiquido = dados.valorBruto === existente.valorBruto && dados.taxaCanal === existente.taxaCanal ? existente.valorLiquido : null;
       dados.codigoCanal ||= existente.codigoCanal;
       dados.hospedes ??= existente.hospedes;
+      dados.reservadaEm ??= existente.reservadaEm;
     }
 
     if (!existente) {
@@ -338,13 +339,14 @@ export async function obterReserva(db: Db, organizacaoId: string, id: string): P
   return r ?? null;
 }
 
-export type FiltroPeriodo = { inicio: string; fim: string; imovelIds?: string[]; incluirCanceladas?: boolean };
+export type FiltroPeriodo = { inicio: string; fim: string; imovelIds?: string[]; incluirCanceladas?: boolean; incluirConsultas?: boolean };
 
 /** Reservas que ocupam algum dia de [inicio, fim), ordenadas por check-in. */
 export async function listarReservas(db: Db, organizacaoId: string, f: FiltroPeriodo): Promise<Reserva[]> {
   const condicoes = [eq(reservas.organizacaoId, organizacaoId), lt(reservas.checkin, f.fim), gt(reservas.checkout, f.inicio)];
   if (f.imovelIds?.length) condicoes.push(inArray(reservas.imovelId, f.imovelIds.filter(uuidValido)));
   if (!f.incluirCanceladas) condicoes.push(ne(reservas.estado, "cancelada"));
+  if (!f.incluirConsultas) condicoes.push(ne(reservas.estado, "consulta"));
   return db
     .select()
     .from(reservas)

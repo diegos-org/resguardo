@@ -75,3 +75,10 @@ describe("gerarCodigo", () => {
     for (let i = 0; i < 50; i++) expect(gerarCodigo()).toMatch(/^SCL-[A-HJ-NP-Z2-9]{6}$/);
   });
 });
+
+
+it("consulta sobreposta não é overbooking; pedido conserva a restrição", () => {
+  const r = { imovelId: "x", checkin: "2027-06-01", checkout: "2027-06-05" };
+  expect(conflitos([{ ...r, id: "a", estado: "confirmada" }, { ...r, id: "b", estado: "consulta" }])).toEqual([]);
+  expect(conflitos([{ ...r, id: "a", estado: "confirmada" }, { ...r, id: "b", estado: "pedido" }])).toEqual([["a", "b"]]);
+});

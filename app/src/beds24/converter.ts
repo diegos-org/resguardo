@@ -18,6 +18,7 @@ export function paraDadosReserva(r: ReservaBeds24, imovelId: string): DadosReser
     imovelId,
     origem: ORIGEM[r.canal],
     estado: r.estado,
+    reservadaEm: r.reservadaEm ? new Date(r.reservadaEm) : null,
     checkin: r.checkin,
     checkout: r.checkout,
     hospedes: r.hospedes !== null && r.hospedes <= 50 ? r.hospedes : null,
@@ -62,3 +63,4 @@ export async function converterLote(
   }
   return { prontas, bloqueios, divergencias };
 }
+

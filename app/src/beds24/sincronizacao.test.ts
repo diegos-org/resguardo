@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { historicoDe } from "@/auditoria/auditoria";
 import { gravarConfig } from "@/configuracoes/armazem";
 import { criarContrato } from "@/contratos/repositorio";
-import { beds24Calendario, beds24Execucoes, bloqueios, idsExternos, imoveis, organizacoes, proprietarioImoveis, proprietarios, reservas } from "@/db/schema";
+import { beds24Calendario, beds24Execucoes, beds24ExecucaoReservas, bloqueios, idsExternos, imoveis, organizacoes, proprietarioImoveis, proprietarios, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { listarLancamentos, mudarEstado } from "@/financeiro/ledger";
@@ -227,4 +227,39 @@ describe("Beds24 → banco (M3.3)", () => {
     expect(await rodar()).toMatchObject({ ok: false, mensagem: expect.stringContaining("repetidos") });
     expect(await linhas()).toHaveLength(0);
   });
+});
+
+it("releitura corrige consulta legada, preserva identidade/data original e registra mudanças uma vez", async () => {
+  const legado = await csv({ status: "request" });
+  if (!legado.ok) throw new Error("fixture");
+  await db.update(reservas).set({ estado: "pendente" }).where(eq(reservas.id, legado.reserva.id));
+  leitor.bookings = [booking({ status: "inquiry", bookingTime: "2026-08-10T10:00:00Z" })];
+  expect(await rodar()).toMatchObject({ criadas: 0, atualizadas: 1 });
+  const [r] = await linhas();
+  expect(r).toMatchObject({ id: legado.reserva.id, codigo: legado.reserva.codigo, estado: "consulta", reservadaEm: new Date("2026-08-10T10:00:00Z") });
+  expect(await listarLancamentos(db, org, { reservaId: r.id })).toEqual([]);
+  const eventos = () => db.select().from(beds24ExecucaoReservas).where(eq(beds24ExecucaoReservas.organizacaoId, org));
+  expect(await eventos()).toHaveLength(1);
+  expect(await rodar()).toMatchObject({ iguais: 1, atualizadas: 0 });
+  expect(await eventos()).toHaveLength(1);
+  leitor.bookings = [booking({ status: "inquiry" })];
+  expect(await rodar()).toMatchObject({ iguais: 1 });
+  expect((await linhas())[0].reservadaEm).toEqual(r.reservadaEm);
+  leitor.bookings = [booking({ status: "confirmed" })];
+  expect(await rodar()).toMatchObject({ atualizadas: 1 });
+  expect((await linhas())[0]).toMatchObject({ estado: "confirmada", confirmadaEm: null });
+  leitor.bookings = [booking({ status: "cancelled" })];
+  await rodar();
+  expect((await eventos()).map(e => e.tipo).sort()).toEqual(["alterada", "alterada", "cancelada"]);
+});
+
+it("eventos de uma execução que falha são desfeitos junto com as reservas", async () => {
+  leitor.bookings = [booking({ status: "inquiry" })];
+  leitor.calendarios = [{ roomId: 20, calendar: [
+    { from: "2026-09-28", to: "2026-09-29", numAvail: 1 },
+    { from: "2026-09-28", numAvail: 1 },
+  ] }];
+  expect(await rodar()).toMatchObject({ situacao: "erro" });
+  expect(await linhas()).toHaveLength(0);
+  expect(await db.select().from(beds24ExecucaoReservas).where(eq(beds24ExecucaoReservas.organizacaoId, org))).toHaveLength(0);
 });

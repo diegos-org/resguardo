@@ -73,11 +73,12 @@ item muda a linha para `feito` **no próprio PR do item**.
 |---|---|---|---|
 | M3.1 | Modelo de reserva: canal, datas, hóspede (mínimo necessário), valores brutos/taxas/líquido, estados, ID interno + ID externo | feito | M2.4 |
 | M3.2 | Cliente Beds24 API v2 **somente leitura** (reservas, bloqueios, preços), com renovação por `BEDS24_REFRESH_TOKEN`, teste manual de conexão no painel e adaptador falso para testes | feito | M3.1 |
-| M3.3 | Sincronização Beds24 → banco: importação manual e cron diário opt-in, idempotência, calendário observado e divergências; reaproveita reserva de planilha por origem + código do canal | feito | M3.2; leitura de quartos confirmada por Diego em 28/09. Primeira importação real e conferência dos seis vínculos ainda pendentes; atualização diária não é disponibilidade para venda em tempo real |
+| M3.3 | Sincronização Beds24 → banco: importação manual e cron diário opt-in, idempotência, calendário observado e divergências; reaproveita reserva de planilha por origem + código do canal | feito | M3.2; leitura de quartos confirmada por Diego em 28/09. Seis vínculos e primeira importação realizados por Diego em 1/10; conferência parcial das reservas, não auditoria integral; atualização diária não é disponibilidade para venda em tempo real |
 | M3.4 | Calendário central: todas as unidades, por imóvel, reservas/bloqueios/limpezas/manutenção, filtros global e local | feito | M3.1, M0.4 |
 | M3.5 | Lista de reservas com filtros e detalhe da reserva | feito | M3.1 |
 | M3.6 | Importação manual (CSV) de reservas como alternativa enquanto Beds24 não estiver ligado | feito | M3.1 |
 | M3.7 | **SCL como fonte oficial de calendário e preços** (Diego, 24/09): bloqueios, preços, estadia mínima e regras editados no SCL são enviados ao Beds24 e dele às OTAs; mudanças que chegarem do Beds24 são conferidas contra o SCL. Escrita autorizada por Diego, mas só é ligada (variável `BEDS24_ESCRITA=ligada`) depois de testada em um imóvel escolhido por ele | a fazer | M3.3, M2.6 |
+| M3.8 | Conferência das reservas importadas: consultas separadas de pedidos e fora da ocupação, data original, busca, situação, histórico completo, paginação e registros alterados por execução (pedido de Diego em 1/10) | feito | M3.3, M3.5; após publicar, reimportar para recuperar status/data dos registros existentes |
 
 ### M4 — Financeiro (ledger)
 
@@ -171,7 +172,7 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 
 1. **Revisar e mergear PRs** — por enquanto o Claude faz os merges (autorizado em 23/09).
 2. **Vercel:** importar o repositório `al-life/scl-reconstrucao` na Vercel, *root directory* `app`, e ligar a integração Neon. (destrava M0.5)
-3. **Beds24:** leitura de quartos confirmada por Diego em 28/09; quarto 403 duplicado removido por ele. Após publicar M3.3, usar **Configurações → Integrações** para buscar os quartos, conferir os seis vínculos com os imóveis SCL, salvar o período e fazer a primeira importação manual. Conferir reservas, bloqueios e avisos antes de ligar a rotina diária (requer `CRON_SECRET`). O mapeamento Airbnb → Beds24 não cria os vínculos Beds24 → SCL. Nenhuma importação real foi feita durante a implementação. O cliente continua somente leitura; escrita depende do M3.7, cotação e disponibilidade de venda dependem do M7.2.
+3. **Beds24:** leitura de quartos confirmada por Diego em 28/09; quarto 403 duplicado removido por ele. Diego cadastrou e vinculou os seis imóveis e fez a primeira importação em 1/10. Após publicar M3.8, usar **Configurações → Integrações → Importar agora** para reler status e datas originais, preservando IDs e códigos SCL. Conferir reservas, bloqueios e avisos antes de ligar a rotina diária (requer `CRON_SECRET`). O mapeamento Airbnb → Beds24 não cria os vínculos Beds24 → SCL. Nenhuma importação real foi feita durante a implementação. O cliente continua somente leitura; escrita depende do M3.7, cotação e disponibilidade de venda dependem do M7.2.
 4. **Meta / WhatsApp Business:** iniciar a verificação da empresa no Meta Business — leva dias. (destrava M10)
 5. **Pagamento do site:** credenciais de *teste* do provedor escolhido no M8.0 (Mercado Pago, se for a escolha). (destrava M8.2)
 6. **Modelo do marketplace:** escolher entre os modelos propostos (ou ajustar). (destrava M12.1)
