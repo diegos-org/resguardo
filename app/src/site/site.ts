@@ -191,7 +191,8 @@ export function montarConsulta(
   else if (p.entrada < hoje) erros.entrada = "A entrada não pode ser antes de hoje.";
   if (!dataValida(p.saida)) erros.saida = "Informe a data de saída.";
   else if (dataValida(p.entrada) && p.saida <= p.entrada) erros.saida = "A saída precisa ser depois da entrada.";
-  const hospedes = Number(p.hospedes);
+  // Só dígitos: a mesma regra da disponibilidade (M7.2), para "2e0" não virar "2 pessoas".
+  const hospedes = /^\d+$/.test(p.hospedes) ? Number(p.hospedes) : NaN;
   if (!Number.isInteger(hospedes) || hospedes < 1) erros.hospedes = "Informe quantas pessoas.";
   else if (imovel?.capacidade && hospedes > imovel.capacidade) erros.hospedes = `Este apartamento recebe até ${imovel.capacidade} pessoas.`;
   if (Object.keys(erros).length || !imovel) return { ok: false, erros };

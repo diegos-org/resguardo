@@ -22,14 +22,16 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
   const previa = enviado ? montarConsulta(pedido, imovel, hoje) : null;
   const disponibilidade = previa?.ok ? await consultarDisponibilidade(db, conteudo.organizacaoId, pedido) : null;
   const r = enviado ? montarConsulta(pedido, imovel, hoje, disponibilidade && { situacao: disponibilidade.situacao, noites: disponibilidade.noites, total: disponibilidade.cotacao?.total ?? null }) : null;
+  // Se a disponibilidade recusar o pedido, a mensagem não é oferecida: vale a conferência mais estrita.
+  const prontoParaEnviar = r?.ok === true && disponibilidade?.situacao !== "invalida";
   return (
     <Moldura conteudo={conteudo}>
       <h1 style={{ fontSize: "2rem", margin: "8px 0 16px" }}>Consulta</h1>
       <div className={styles.colunas}>
         <div>
-          {r?.ok ? (
+          {disponibilidade && <Disponibilidade resultado={disponibilidade} entrada={pedido.entrada} saida={pedido.saida} />}
+          {prontoParaEnviar && r?.ok ? (
             <>
-              {disponibilidade && <Disponibilidade resultado={disponibilidade} entrada={pedido.entrada} saida={pedido.saida} />}
               <section className={styles.secao}>
                 <h2>Sua mensagem</h2>
                 <p className={styles.texto} style={{ background: "#fff", border: "1px solid #e4dccb", borderRadius: 8, padding: 16, whiteSpace: "pre-line" }}>
@@ -57,7 +59,7 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
                 </p>
               </section>
             </>
-          ) : (
+          ) : !disponibilidade && (
             <p className={styles.texto}>{conteudo.textos.comoReservar || "Escolha o apartamento, as datas e quantas pessoas."}</p>
           )}
         </div>

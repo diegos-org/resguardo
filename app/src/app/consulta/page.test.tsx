@@ -41,6 +41,14 @@ it("indisponível explica os motivos, não mostra valor nem o põe na mensagem",
   expect(h).not.toContain("Total");
   expect(h).not.toContain("O site mostrou");
 });
+it("disponibilidade inválida não oferece a mensagem, mesmo que a conferência básica tenha passado", async () => {
+  m.disponibilidade.mockResolvedValue({ situacao: "invalida", motivos: ["Escolha um apartamento."], noites: 0, cotacao: null, leituraEm: null });
+  const h = await html({ imovel: "403", entrada: "2099-10-12", saida: "2099-10-15", hospedes: "2" });
+  expect(h).toContain("Confira os dados");
+  expect(h).toContain("Escolha um apartamento.");
+  expect(h).not.toContain("Sua mensagem");
+  expect(h).not.toContain("wa.me");
+});
 it("pedido inválido (pessoas acima da capacidade) nem chega à disponibilidade", async () => {
   const h = await html({ imovel: "403", entrada: "2099-10-12", saida: "2099-10-15", hospedes: "9" });
   expect(m.disponibilidade).not.toHaveBeenCalled();
