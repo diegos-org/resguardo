@@ -9,7 +9,7 @@
 import { and, eq } from "drizzle-orm";
 import { planejarImovel } from "@/calendario/envio";
 import { lerRegrasCalendario } from "@/calendario/regras-config";
-import { imoveis } from "@/db/schema";
+import { beds24Calendario, imoveis } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { listarPeriodos } from "@/imoveis/detalhes";
 import { type Cotacao, cotarNoites, diasEntre, somarDias, verificarEstadia } from "@/imoveis/regras-venda";
@@ -62,8 +62,15 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   if (entrada && noites > entrada.maximoEnviar) motivos.add(`Máximo de ${entrada.maximoEnviar} noites por estadia.`);
   for (const problema of verificarEstadia({ ...plano.regras, estadiaMinima: null, estadiaMaxima: null }, periodos.map((x) => ({ ...x, estadiaMinima: null })), p.entrada, p.saida, hoje)) motivos.add(problema);
 
-  // Ocupação e leitura do Beds24, noite a noite.
+  // Restrições de entrada/saída do calendário Beds24: valem na data de entrada e na de saída.
+  const entradaObs = entrada?.observacao ?? null;
+  if (entradaObs && (entradaObs.bloqueio === "noCheckIn" || entradaObs.bloqueio === "noCheckInOrCheckOut")) motivos.add(`Entrada não permitida em ${dataBr(p.entrada)}.`);
+  const [saidaObs] = await db.select({ bloqueio: beds24Calendario.bloqueio }).from(beds24Calendario).where(and(eq(beds24Calendario.organizacaoId, organizacaoId), eq(beds24Calendario.imovelId, imovel.id), eq(beds24Calendario.data, p.saida)));
+  if (saidaObs && (saidaObs.bloqueio === "noCheckOut" || saidaObs.bloqueio === "noCheckInOrCheckOut")) motivos.add(`Saída não permitida em ${dataBr(p.saida)}.`);
+
+  // Ocupação e leitura do Beds24, noite a noite. Restrição desconhecida nunca vira "disponível".
   const limite = agora.getTime() - regras.site.validadeLeituraHoras * 3_600_000;
+  const conhecidas = new Set([null, "none", "noCheckIn", "noCheckOut", "noCheckInOrCheckOut"]);
   let leituraEm: Date | null = null;
   let semLeitura = false;
   const ocupadas: string[] = [];
@@ -74,6 +81,7 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
       if (!o) semLeitura = true;
       aConfirmar = true;
     } else if (o.livres === 0 || o.bloqueio === "blackout") ocupadas.push(l.data);
+    else if (!conhecidas.has(o.bloqueio)) aConfirmar = true;
     if (o && !semLeitura && (!leituraEm || o.observadoEm < leituraEm)) leituraEm = o.observadoEm;
   }
   if (ocupadas.length) motivos.add(ocupadas.length === noites ? "Essas datas já estão reservadas." : `Há noites já reservadas nessas datas (${[...new Set(ocupadas)].slice(0, 3).map(dataBr).join(", ")}${ocupadas.length > 3 ? "…" : ""}).`);

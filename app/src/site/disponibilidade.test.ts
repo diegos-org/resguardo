@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import { gravarConfig } from "@/configuracoes/armazem";
 import { REGRAS_CALENDARIO_PADRAO } from "@/calendario/regras-config";
 import { beds24Calendario, bloqueios, imoveis, imoveisDetalhes, organizacoes, reservas } from "@/db/schema";
@@ -57,6 +58,21 @@ describe("disponibilidade e cotação do site (M7.2)", () => {
     expect(await consultar()).toMatchObject({ situacao: "indisponivel", motivos: ["Essas datas já estão reservadas."] });
     await db.update(beds24Calendario).set({ livres: 1, bloqueio: "blackout" });
     expect((await consultar()).situacao).toBe("indisponivel");
+  });
+
+  it("restrições de entrada/saída do Beds24 valem nas datas certas; restrição desconhecida fica a confirmar", async () => {
+    await observar(dias("2026-10-12", 4));
+    await db.update(beds24Calendario).set({ bloqueio: "noCheckIn" }).where(eq(beds24Calendario.data, "2026-10-13"));
+    // noCheckIn numa noite intermediária não impede a estadia de 12 a 15.
+    expect((await consultar()).situacao).toBe("disponivel");
+    expect(await consultar({ entrada: "2026-10-13", saida: "2026-10-15" })).toMatchObject({ situacao: "indisponivel", motivos: ["Entrada não permitida em 13/10/2026."] });
+    await db.update(beds24Calendario).set({ bloqueio: "noCheckOut" }).where(eq(beds24Calendario.data, "2026-10-15"));
+    expect(await consultar()).toMatchObject({ situacao: "indisponivel", motivos: ["Saída não permitida em 15/10/2026."] });
+    expect((await consultar({ saida: "2026-10-14" })).situacao).toBe("disponivel");
+    await db.update(beds24Calendario).set({ bloqueio: "noCheckInOrCheckOut" }).where(eq(beds24Calendario.data, "2026-10-12"));
+    expect((await consultar()).motivos).toContain("Entrada não permitida em 12/10/2026.");
+    await db.update(beds24Calendario).set({ bloqueio: "exception" }).where(eq(beds24Calendario.data, "2026-10-13"));
+    expect(await consultar({ entrada: "2026-10-13", saida: "2026-10-14" })).toMatchObject({ situacao: "a_confirmar" });
   });
 
   it("sem leitura, leitura velha ou sem unidades informadas: a confirmar, com o valor", async () => {
