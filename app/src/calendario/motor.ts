@@ -23,7 +23,7 @@ import { centesimosParaMultiplicador, type Feriado, type RegrasCalendario } from
 
 export type ImovelPlano = { id: string; regras: RegrasVenda; periodos: readonly Periodo[]; pisos: readonly [number | null, number | null] };
 export type ObservacaoPlano = { data: string; preco: number | null; minimoNoites: number | null; maximoNoites: number | null; livres: number | null; bloqueio: string | null; observadoEm: Date };
-export type EnviadoPlano = { data: string; preco: number | null; minimo: number | null; maximo: number | null; bloqueio: string | null; bloqueioAnterior?: string | null; confirmado: boolean; enviadoEm: Date };
+export type EnviadoPlano = { data: string; preco: number | null; minimo: number | null; maximo: number | null; bloqueio: string | null; bloqueioAnterior?: string | null; confirmado: boolean; enviadoEm: Date; envioId?: string | null };
 export type OcupacaoPlano = { checkin: string; checkout: string; estado: EstadoReserva };
 export type BloqueioPlano = { inicio: string; fim: string; fonte: string };
 export type Janela = { nome: string; inicio: string; fim: string };

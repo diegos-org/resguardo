@@ -5,7 +5,7 @@
  * sem ela nada é escrito. Sem escritor (BEDS24_ESCRITA desligada) só simula. Nunca cria,
  * altera ou cancela reservas; nunca reabre bloqueio que o SCL não fez.
  */
-import { and, asc, count, desc, eq, getTableColumns, gt, gte, inArray, lt, lte, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, getTableColumns, gt, gte, inArray, lt, lte, ne, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { listarMapeamentosBeds24 } from "@/beds24/configuracao";
 import { mensagemSeguraBeds24 } from "@/beds24/sincronizacao";
@@ -64,17 +64,43 @@ const igualAoLido = (l: LinhaPlano, d: DiaCalendario | undefined) => d !== undef
   && (l.precoEnviar === null || d.preco === l.precoEnviar) && (l.minimoEnviar === null || d.minimoNoites === l.minimoEnviar) && d.maximoNoites === l.maximoEnviar
   && (l.bloqueioEnviar === undefined || (d.bloqueio ?? "none") === l.bloqueioEnviar);
 
+/** Execução "executando" mais nova que isto bloqueia outra; mais velha é considerada interrompida. */
+const JANELA_EM_ANDAMENTO_MS = 10 * 60_000;
+
+type Fase1 = { pronto: ResultadoEnvio } | {
+  planos: Plano[]; tentados: Plano[]; resultadoImoveis: ImovelEnviado[]; motivosSemEscrita: Map<string, string>; leituraIncompleta: Set<string>;
+  inicioLeitura: string; fimLeitura: string;
+};
+
+/**
+ * Três fases: (1) transação com conferências, leitura atual do destino, plano, confirmações tardias
+ * e — no envio real — a intenção durável do que vai ser escrito; (2) a escrita externa, fora de
+ * transação; (3) transação com a releitura e o registro final. Se o banco falhar depois da escrita,
+ * a intenção gravada na fase 1 permite à execução seguinte assumir a posse pela leitura.
+ */
 export async function enviarCalendarioBeds24(db: Db, org: string, leitor: LeitorBeds24, escritor: EscritorBeds24 | null, o: OpcoesEnvio): Promise<ResultadoEnvio> {
   const agora = o.agora ?? new Date();
   const base = (situacao: SituacaoEnvio, mensagem: string): ResultadoEnvio => ({ ok: situacao === "ok" || situacao === "simulacao", situacao, mensagem, envioId: null, imoveis: [], avisos: [], totalAvisos: 0 });
   if (o.modo === "envio" && !escritor) return base("desligada", "Envio desligado: BEDS24_ESCRITA não está \"ligada\" na Vercel (só o Diego liga, depois do teste). Use a simulação.");
-  const [exec] = await db.insert(beds24Envios).values({ organizacaoId: org, iniciadoEm: agora, modo: o.modo, automatica: o.automatica === true }).returning({ id: beds24Envios.id });
+  // Registro da execução fora das transações: sobrevive a qualquer falha e marca "em andamento".
+  const [exec] = await db.insert(beds24Envios).values({ organizacaoId: org, iniciadoEm: agora, modo: o.modo, automatica: o.automatica === true, situacao: "iniciando" }).returning({ id: beds24Envios.id });
+  const avisos: string[] = [];
+  let totalAvisos = 0;
+  const aviso = (s: string) => { totalAvisos++; if (avisos.length < 100) avisos.push(s.slice(0, 300)); };
+  const dataBr = (d: string) => d.split("-").reverse().join("/");
+  const chaveTrava = `envio-beds24:${org}`;
   let r: ResultadoEnvio;
   try {
-    r = await db.transaction(async tx => {
+    const fase1 = await db.transaction(async (tx): Promise<Fase1> => {
       await tx.execute(sql`set local lock_timeout = '15s'`);
-      const trava = await tx.execute(sql`select pg_try_advisory_xact_lock(hashtext(${`envio-beds24:${org}`})) as obtida`);
-      if (!(trava as { rows: { obtida: boolean }[] }).rows[0]?.obtida) return { ...base("ocupada", "Já há um envio em andamento. Aguarde e atualize a página."), ok: false };
+      const trava = await tx.execute(sql`select pg_try_advisory_xact_lock(hashtext(${chaveTrava})) as obtida`);
+      if (!(trava as { rows: { obtida: boolean }[] }).rows[0]?.obtida) return { pronto: { ...base("ocupada", "Já há um envio em andamento. Aguarde e atualize a página."), ok: false } };
+      // Outra execução entre a escrita externa e o registro final (ou interrompida há pouco) também bloqueia.
+      const emAndamento = await tx.select({ id: beds24Envios.id }).from(beds24Envios)
+        .where(and(eq(beds24Envios.organizacaoId, org), eq(beds24Envios.situacao, "executando"), ne(beds24Envios.id, exec.id), gt(beds24Envios.iniciadoEm, new Date(agora.getTime() - JANELA_EM_ANDAMENTO_MS)))).limit(1);
+      if (emAndamento.length) return { pronto: { ...base("ocupada", "Já há um envio em andamento. Aguarde e atualize a página."), ok: false } };
+      await tx.update(beds24Envios).set({ situacao: "executando" }).where(eq(beds24Envios.id, exec.id));
+
       const regras = await lerRegrasCalendario(tx, org);
       const mapas = (await listarMapeamentosBeds24(tx, org)).filter(m => m.ativo && /^\d+$/.test(m.propertyId) && /^\d+$/.test(m.roomId));
       const pedidos = o.imovelIds ? [...new Set(o.imovelIds)] : null;
@@ -85,38 +111,51 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
       if (new Set(escolhidos.map(m => m.imovelId)).size !== escolhidos.length || new Set(escolhidos.map(m => m.roomId)).size !== escolhidos.length) throw new ErroBeds24("Cada imóvel deve estar ligado a um único quarto Beds24. Remova os vínculos duplicados antes de enviar.", "configuracao");
       const fusos = new Map((await tx.select({ id: imoveis.id, fuso: imoveis.fuso }).from(imoveis).where(and(eq(imoveis.organizacaoId, org), inArray(imoveis.id, escolhidos.map(m => m.imovelId))))).map(i => [i.id, i.fuso]));
 
-      const avisos: string[] = [];
-      let totalAvisos = 0;
-      const aviso = (s: string) => { totalAvisos++; if (avisos.length < 100) avisos.push(s.slice(0, 300)); };
-
       // Como na importação: a credencial atual precisa enxergar exatamente o par propriedade/quarto
       // de cada imóvel, em BRL. Um vínculo digitado errado nunca recebe preços de outro imóvel.
       const quartos = await leitor.quartos();
-      const inacessiveis = new Map<string, string>();
+      const motivosSemEscrita = new Map<string, string>();
       for (const m of escolhidos) {
         const q = quartos.itens.find(q => q.propertyId === m.propertyId && q.roomId === m.roomId);
-        if (!q) inacessiveis.set(m.imovelId, `O quarto vinculado ao imóvel ${m.codigo} (propriedade ${m.propertyId}, quarto ${m.roomId}) não está acessível nesta credencial. Confira o vínculo em Integrações antes de enviar.`);
-        else if (q.moeda !== "BRL") inacessiveis.set(m.imovelId, `A moeda do imóvel ${m.codigo} precisa estar confirmada como BRL no Beds24 antes do envio de preços.`);
+        if (!q) motivosSemEscrita.set(m.imovelId, `O quarto vinculado ao imóvel ${m.codigo} (propriedade ${m.propertyId}, quarto ${m.roomId}) não está acessível nesta credencial. Confira o vínculo em Integrações antes de enviar.`);
+        else if (q.moeda !== "BRL") motivosSemEscrita.set(m.imovelId, `A moeda do imóvel ${m.codigo} precisa estar confirmada como BRL no Beds24 antes do envio de preços.`);
       }
-      for (const [, motivo] of inacessiveis) aviso(`${motivo} Nenhum valor é enviado para esse imóvel.`);
+      for (const [, motivo] of motivosSemEscrita) aviso(`${motivo} Nenhum valor é enviado para esse imóvel.`);
 
       // Leitura atual do destino antes de planejar: o plano (inclusive reabrir um blackout do SCL)
-      // nunca se apoia só na última importação. Sem essa leitura, o envio real não escreve nada.
-      const acessiveis = escolhidos.filter(m => !inacessiveis.has(m.imovelId));
+      // nunca se apoia só na última importação. Sem essa leitura, o envio real não escreve nada; um
+      // imóvel cuja leitura não cobriu todo o horizonte (ou veio com dados inválidos) também fica de fora.
+      const acessiveis = escolhidos.filter(m => !motivosSemEscrita.has(m.imovelId));
+      const leituraIncompleta = new Set<string>();
       if (acessiveis.length) {
-        const hojes = acessiveis.map(m => hojeISO(fusos.get(m.imovelId) ?? "America/Sao_Paulo", agora));
+        const hojeDe = (m: { imovelId: string }) => hojeISO(fusos.get(m.imovelId) ?? "America/Sao_Paulo", agora);
+        const hojes = acessiveis.map(hojeDe);
         const inicio = hojes.reduce((a, b) => (a < b ? a : b));
         const fim = somarDias(hojes.reduce((a, b) => (a > b ? a : b)), regras.horizonteDias - 1);
         try {
           const l = await leitor.calendario({ roomIds: acessiveis.map(m => m.roomId), inicio, fim: somarDias(fim, 1) });
+          const comDivergencia = new Set(l.divergencias.map(d => d.id));
           for (const d of l.divergencias) aviso(`Leitura do quarto ${d.id}: formato inválido; conferir manualmente.`);
-          for (const m of acessiveis) await gravarObservacoes(tx, org, m.imovelId, l.itens.filter(d => d.roomId === m.roomId), agora);
+          for (const m of acessiveis) {
+            const dias = l.itens.filter(d => d.roomId === m.roomId);
+            await gravarObservacoes(tx, org, m.imovelId, dias, agora);
+            const datas = new Set(dias.map(d => d.data));
+            let faltam = 0;
+            for (let d = hojeDe(m), fimImovel = somarDias(d, regras.horizonteDias - 1); d <= fimImovel; d = somarDias(d, 1)) if (!datas.has(d)) faltam++;
+            if (faltam || comDivergencia.has(m.roomId)) {
+              leituraIncompleta.add(m.imovelId);
+              const motivo = `A leitura do Beds24 do imóvel ${m.codigo} ficou incompleta (${faltam} noite(s) do horizonte sem retorno${comDivergencia.has(m.roomId) ? ", dados inválidos" : ""}): nada é enviado para esse imóvel nesta execução.`;
+              motivosSemEscrita.set(m.imovelId, motivo);
+              aviso(motivo);
+            }
+          }
         } catch (e) {
           const motivo = mensagemSeguraBeds24(e);
           if (o.modo === "envio") throw new ErroBeds24(`Leitura do Beds24 antes do envio falhou: ${motivo} Nada foi enviado: o SCL só escreve a partir de uma leitura atual do destino.`, "rede");
           aviso(`Leitura do Beds24 falhou: ${motivo} A simulação usa a última leitura guardada.`);
         }
       }
+
       const planos: Plano[] = [];
       let inicioLeitura = "9999-12-31";
       let fimLeitura = "0000-01-01";
@@ -127,118 +166,148 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
         if (p.fim > fimLeitura) fimLeitura = p.fim;
         const semPreco = p.linhas.filter(l => l.precoReferencia === null).length;
         if (semPreco) aviso(`Imóvel ${m.codigo}: ${semPreco} noite(s) sem preço no SCL; o preço dessas noites não é enviado.`);
-        for (const l of p.linhas) for (const a of l.avisos) if (!a.startsWith("Sem leitura do Beds24")) aviso(`Imóvel ${m.codigo}, noite ${l.data.split("-").reverse().join("/")}: ${a}`);
+        for (const l of p.linhas) for (const a of l.avisos) if (!a.startsWith("Sem leitura do Beds24")) aviso(`Imóvel ${m.codigo}, noite ${dataBr(l.data)}: ${a}`);
         const semLeitura = p.linhas.filter(l => !l.observacao).length;
         if (semLeitura) aviso(`Imóvel ${m.codigo}: ${semLeitura} noite(s) sem leitura anterior do Beds24; serão enviadas e conferidas pela releitura.`);
-        // Envio anterior sem confirmação (releitura falhou) que a leitura de agora mostra igual ao plano:
-        // confirma tarde e assume a posse do bloqueio enviado, sem escrever nada.
+        // Envio anterior cuja releitura não aconteceu (resultado "enviado") e que a leitura de agora
+        // mostra igual ao plano: confirma tarde e assume a posse do bloqueio enviado, sem escrever.
+        // Tentativa que a releitura já desmentiu ("falhou"/"divergente") nunca ganha posse assim: um
+        // blackout igual que apareça depois pode ser de terceiros.
         let tardias = 0;
-        for (const l of p.linhas) {
-          if (l.acao !== "igual" || !l.enviado || l.enviado.confirmado) continue;
+        const candidatas = leituraIncompleta.has(m.imovelId) ? [] : p.linhas.filter(l => l.acao === "igual" && l.enviado && !l.enviado.confirmado && l.enviado.envioId);
+        const semReleitura = new Set(candidatas.length ? (await tx.select({ envioId: beds24EnvioNoites.envioId, data: beds24EnvioNoites.data }).from(beds24EnvioNoites)
+          .where(and(eq(beds24EnvioNoites.organizacaoId, org), eq(beds24EnvioNoites.imovelId, m.imovelId), inArray(beds24EnvioNoites.envioId, [...new Set(candidatas.map(l => l.enviado!.envioId!))]), eq(beds24EnvioNoites.resultado, "enviado")))).map(n => `${n.envioId}/${n.data}`) : []);
+        for (const l of candidatas) {
+          if (!semReleitura.has(`${l.enviado!.envioId}/${l.data}`)) continue;
           await tx.update(beds24CalendarioEnviado).set({
             confirmado: true,
-            bloqueio: l.posseBloqueioEncerrada ? null : (l.bloqueioEnviar ?? l.enviado.bloqueio),
-            bloqueioAnterior: l.posseBloqueioEncerrada ? null : l.bloqueioEnviar === "blackout" ? l.bloqueioAnterior : l.bloqueioEnviar !== undefined ? null : (l.enviado.bloqueioAnterior ?? null),
+            bloqueio: l.posseBloqueioEncerrada ? null : (l.bloqueioEnviar ?? l.enviado!.bloqueio),
+            bloqueioAnterior: l.posseBloqueioEncerrada ? null : l.bloqueioEnviar === "blackout" ? l.bloqueioAnterior : l.bloqueioEnviar !== undefined ? null : (l.enviado!.bloqueioAnterior ?? null),
           }).where(and(eq(beds24CalendarioEnviado.organizacaoId, org), eq(beds24CalendarioEnviado.imovelId, m.imovelId), eq(beds24CalendarioEnviado.data, l.data)));
           tardias++;
         }
         if (tardias) aviso(`Imóvel ${m.codigo}: ${tardias} noite(s) de envio anterior confirmada(s) pela leitura de agora.`);
       }
-      const resultadoImoveis: ImovelEnviado[] = planos.map(p => ({ imovelId: p.imovelId, codigo: p.codigo, resumo: resumirPlano(p.linhas), enviadas: 0, confirmadas: 0, divergentes: 0, falha: "" }));
+      const resultadoImoveis: ImovelEnviado[] = planos.map(p => ({ imovelId: p.imovelId, codigo: p.codigo, resumo: resumirPlano(p.linhas), enviadas: 0, confirmadas: 0, divergentes: 0, falha: motivosSemEscrita.get(p.imovelId) ?? "" }));
       const totalEnviar = resultadoImoveis.reduce((s, i) => s + i.resumo.enviar, 0);
 
       if (o.modo === "simulacao" || !escritor) {
         const mensagem = `Simulação: ${totalEnviar} noite(s) seriam enviadas em ${planos.length} imóvel(is); ${resultadoImoveis.reduce((s, i) => s + i.resumo.iguais, 0)} já iguais; ${totalAvisos} aviso(s). Nada foi gravado no Beds24.`;
-        return { ok: true, situacao: "simulacao", mensagem, envioId: exec.id, imoveis: resultadoImoveis, avisos, totalAvisos };
+        return { pronto: { ok: true, situacao: "simulacao", mensagem, envioId: exec.id, imoveis: resultadoImoveis.map(i => ({ ...i, falha: "" })), avisos, totalAvisos } };
       }
 
-      // Escrita: um pedido por imóvel; falha de um não impede os outros. Todo quarto em que
-      // houve tentativa é relido depois: uma recusa (ou queda de rede) não prova que nada mudou.
-      const tentados: Plano[] = [];
-      for (const p of planos) {
-        const faixas = faixasDeEnvio(p.linhas);
-        const r = resultadoImoveis.find(i => i.imovelId === p.imovelId)!;
-        if (inacessiveis.has(p.imovelId)) { r.falha = inacessiveis.get(p.imovelId)!; continue; }
-        if (!faixas.length) continue;
-        tentados.push(p);
-        try {
-          const [res] = await escritor.escreverCalendario([{ roomId: p.roomId, faixas }]);
-          if (!res?.ok) r.falha = res?.erro || "Beds24 recusou a escrita.";
-          else r.enviadas = p.linhas.filter(l => l.acao === "enviar").length;
-        } catch (e) {
-          r.falha = mensagemSeguraBeds24(e);
-        }
-        if (r.falha) aviso(`Imóvel ${p.codigo}: envio falhou — ${r.falha}. O quarto foi relido para registrar o que ficou gravado.`);
-      }
-
-      // Releitura do destino: confirma noite a noite e atualiza a observação local.
-      let releituraFalhou = "";
-      let lidos: DiaCalendario[] = [];
-      if (tentados.length) {
-        try {
-          const l = await leitor.calendario({ roomIds: tentados.map(p => p.roomId), inicio: inicioLeitura, fim: somarDias(fimLeitura, 1) });
-          lidos = l.itens;
-          for (const d of l.divergencias) aviso(`Releitura do quarto ${d.id}: formato inválido; conferir manualmente.`);
-        } catch (e) {
-          releituraFalhou = mensagemSeguraBeds24(e);
-          aviso(`Releitura do Beds24 falhou: ${releituraFalhou}. As noites enviadas ficam sem confirmação até a próxima importação ou envio.`);
-        }
-      }
-      const noites: typeof beds24EnvioNoites.$inferInsert[] = [];
-      const estado: typeof beds24CalendarioEnviado.$inferInsert[] = [];
+      // Intenção durável antes da escrita externa: cada noite a enviar fica registrada como "enviado"
+      // (ainda sem releitura) e o estado enviado passa a apontar para esta execução, sem mudar a posse.
+      const tentados = planos.filter(p => !motivosSemEscrita.has(p.imovelId) && faixasDeEnvio(p.linhas).length);
+      const intencao: typeof beds24EnvioNoites.$inferInsert[] = [];
       for (const p of tentados) {
-        const r = resultadoImoveis.find(i => i.imovelId === p.imovelId)!;
-        const porData = new Map(lidos.filter(d => d.roomId === p.roomId).map(d => [d.data, d]));
         for (const l of p.linhas) {
           if (l.acao !== "enviar") continue;
-          const lido = porData.get(l.data);
-          // Num quarto com falha, só a releitura decide: igual = confirmado; diferente = falhou (nada se supõe).
-          const resultado = releituraFalhou ? (r.falha ? "falhou" : "enviado") : igualAoLido(l, lido) ? "confirmado" : r.falha ? "falhou" : "divergente";
-          if (resultado === "confirmado") r.confirmadas++;
-          if (resultado === "divergente") { r.divergentes++; aviso(`Imóvel ${p.codigo}, noite ${l.data.split("-").reverse().join("/")}: o Beds24 devolveu valores diferentes do enviado; conferir no Beds24.`); }
-          const lidoTexto = lido ? `Beds24: preço ${lido.preco ?? "—"}, mín. ${lido.minimoNoites ?? "—"}, máx. ${lido.maximoNoites ?? "—"}, bloqueio ${lido.bloqueio ?? "—"}` : "Noite não retornou na releitura";
-          noites.push({
+          intencao.push({
             organizacaoId: org, envioId: exec.id, imovelId: p.imovelId, data: l.data,
             precoAntes: l.observacao?.preco ?? null, precoEnviado: l.precoEnviar, minimoAntes: l.observacao?.minimoNoites ?? null, minimoEnviado: l.minimoEnviar, maximoEnviado: l.maximoEnviar,
-            bloqueioAntes: l.observacao?.bloqueio ?? null, bloqueioEnviado: l.bloqueioEnviar ?? null, regra: l.regra.slice(0, 300), resultado,
-            detalhe: (resultado === "divergente" ? lidoTexto : resultado === "falhou" ? `${r.falha}${releituraFalhou ? "" : ` · ${lidoTexto}`}` : "").slice(0, 300),
+            bloqueioAntes: l.observacao?.bloqueio ?? null, bloqueioEnviado: l.bloqueioEnviar ?? null, regra: l.regra.slice(0, 300), resultado: "enviado", detalhe: "Escrita em andamento; releitura ainda não registrada.",
           });
-          // A posse do bloqueio (blackout/none/restrição devolvida) só muda quando a releitura confirma;
-          // até lá vale a anterior. A restrição anterior ao blackout fica guardada enquanto o SCL fecha.
-          const confirmouBloqueio = resultado === "confirmado" && l.bloqueioEnviar !== undefined;
-          estado.push({
+          const v = {
             organizacaoId: org, imovelId: p.imovelId, data: l.data, preco: l.precoEnviar, minimo: l.minimoEnviar, maximo: l.maximoEnviar,
-            bloqueio: confirmouBloqueio ? l.bloqueioEnviar! : (l.enviado?.bloqueio ?? null),
-            bloqueioAnterior: l.bloqueioEnviar === "blackout" ? l.bloqueioAnterior : confirmouBloqueio ? null : (l.enviado?.bloqueioAnterior ?? null),
-            enviadoEm: agora, confirmado: resultado === "confirmado", envioId: exec.id,
-          });
+            bloqueio: l.enviado?.bloqueio ?? null, bloqueioAnterior: l.bloqueioEnviar === "blackout" ? l.bloqueioAnterior : (l.enviado?.bloqueioAnterior ?? null),
+            enviadoEm: agora, confirmado: false, envioId: exec.id,
+          };
+          await tx.insert(beds24CalendarioEnviado).values(v).onConflictDoUpdate({ target: [beds24CalendarioEnviado.organizacaoId, beds24CalendarioEnviado.imovelId, beds24CalendarioEnviado.data], set: { preco: v.preco, minimo: v.minimo, maximo: v.maximo, bloqueio: v.bloqueio, bloqueioAnterior: v.bloqueioAnterior, enviadoEm: v.enviadoEm, confirmado: v.confirmado, envioId: v.envioId } });
         }
-        // Observação nova para todas as noites relidas deste imóvel (mais recente que o envio).
-        await gravarObservacoes(tx, org, p.imovelId, porData.values(), new Date(agora.getTime() + 1));
       }
-      for (let i = 0; i < noites.length; i += 250) await tx.insert(beds24EnvioNoites).values(noites.slice(i, i + 250));
-      for (const v of estado) {
-        await tx.insert(beds24CalendarioEnviado).values(v).onConflictDoUpdate({ target: [beds24CalendarioEnviado.organizacaoId, beds24CalendarioEnviado.imovelId, beds24CalendarioEnviado.data], set: { preco: v.preco, minimo: v.minimo, maximo: v.maximo, bloqueio: v.bloqueio, bloqueioAnterior: v.bloqueioAnterior, enviadoEm: v.enviadoEm, confirmado: v.confirmado, envioId: v.envioId } });
-      }
-      // Blackout do SCL que a leitura mais nova mostra trocado ou removido no Beds24: a posse acaba (sem escrita).
-      for (const p of planos) {
-        for (const l of p.linhas) {
-          if (!l.posseBloqueioEncerrada) continue;
-          await tx.update(beds24CalendarioEnviado).set({ bloqueio: null, bloqueioAnterior: null }).where(and(eq(beds24CalendarioEnviado.organizacaoId, org), eq(beds24CalendarioEnviado.imovelId, p.imovelId), eq(beds24CalendarioEnviado.data, l.data)));
+      for (let i = 0; i < intencao.length; i += 250) await tx.insert(beds24EnvioNoites).values(intencao.slice(i, i + 250));
+      return { planos, tentados, resultadoImoveis, motivosSemEscrita, leituraIncompleta, inicioLeitura, fimLeitura };
+    });
+
+    if ("pronto" in fase1) r = fase1.pronto;
+    else {
+      const { planos, tentados, resultadoImoveis, leituraIncompleta, inicioLeitura, fimLeitura } = fase1;
+      // Fase 2, fora de transação: um pedido por imóvel; falha de um não impede os outros. Todo quarto
+      // em que houve tentativa é relido depois: uma recusa (ou queda de rede) não prova que nada mudou.
+      for (const p of tentados) {
+        const res = resultadoImoveis.find(i => i.imovelId === p.imovelId)!;
+        try {
+          const [resposta] = await escritor!.escreverCalendario([{ roomId: p.roomId, faixas: faixasDeEnvio(p.linhas) }]);
+          if (!resposta?.ok) res.falha = resposta?.erro || "Beds24 recusou a escrita.";
+          else res.enviadas = p.linhas.filter(l => l.acao === "enviar").length;
+        } catch (e) {
+          res.falha = mensagemSeguraBeds24(e);
         }
+        if (res.falha) aviso(`Imóvel ${p.codigo}: envio falhou — ${res.falha}. O quarto foi relido para registrar o que ficou gravado.`);
       }
 
-      const enviadas = resultadoImoveis.reduce((s, i) => s + i.enviadas, 0);
-      const confirmadas = resultadoImoveis.reduce((s, i) => s + i.confirmadas, 0);
-      const divergentes = resultadoImoveis.reduce((s, i) => s + i.divergentes, 0);
-      const falhas = resultadoImoveis.filter(i => i.falha).length;
-      const situacao: SituacaoEnvio = falhas && !enviadas && !confirmadas && falhas === planos.filter(p => inacessiveis.has(p.imovelId) || faixasDeEnvio(p.linhas).length).length ? "erro" : releituraFalhou ? "incerto" : falhas || divergentes ? "parcial" : "ok";
-      const mensagem = `${enviadas} noite(s) enviada(s) em ${tentados.filter(p => !resultadoImoveis.find(i => i.imovelId === p.imovelId)?.falha).length} imóvel(is), ${confirmadas} confirmada(s) na releitura, ${divergentes} divergente(s), ${falhas} imóvel(is) com falha; ${resultadoImoveis.reduce((s, i) => s + i.resumo.iguais, 0)} noite(s) já iguais não foram reenviadas; ${totalAvisos} aviso(s).`;
-      await registrarAuditoria(tx, { organizacaoId: org, usuarioId: o.autorId ?? null, acao: "beds24.enviar", entidade: "integracao", entidadeId: org, mudancas: { resultado: [null, mensagem] } });
-      return { ok: situacao === "ok", situacao, mensagem, envioId: exec.id, imoveis: resultadoImoveis, avisos, totalAvisos };
-    });
+      // Fase 3 (transação): releitura do destino, registro noite a noite e observação nova.
+      r = await db.transaction(async tx => {
+        await tx.execute(sql`set local lock_timeout = '15s'`);
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${chaveTrava}))`);
+        let releituraFalhou = "";
+        let lidos: DiaCalendario[] = [];
+        if (tentados.length) {
+          try {
+            const l = await leitor.calendario({ roomIds: tentados.map(p => p.roomId), inicio: inicioLeitura, fim: somarDias(fimLeitura, 1) });
+            lidos = l.itens;
+            for (const d of l.divergencias) aviso(`Releitura do quarto ${d.id}: formato inválido; conferir manualmente.`);
+          } catch (e) {
+            releituraFalhou = mensagemSeguraBeds24(e);
+            aviso(`Releitura do Beds24 falhou: ${releituraFalhou}. As noites enviadas ficam sem confirmação até a próxima importação ou envio.`);
+          }
+        }
+        for (const p of tentados) {
+          const res = resultadoImoveis.find(i => i.imovelId === p.imovelId)!;
+          const porData = new Map(lidos.filter(d => d.roomId === p.roomId).map(d => [d.data, d]));
+          const grupos = new Map<string, { resultado: typeof beds24EnvioNoites.$inferInsert["resultado"]; detalhe: string; datas: string[] }>();
+          for (const l of p.linhas) {
+            if (l.acao !== "enviar") continue;
+            const lido = porData.get(l.data);
+            // Num quarto com falha, só a releitura decide: igual = confirmado; diferente = falhou (nada se supõe).
+            const resultado = releituraFalhou ? (res.falha ? "falhou" : "enviado") : igualAoLido(l, lido) ? "confirmado" : res.falha ? "falhou" : "divergente";
+            if (resultado === "confirmado") res.confirmadas++;
+            if (resultado === "divergente") { res.divergentes++; aviso(`Imóvel ${p.codigo}, noite ${dataBr(l.data)}: o Beds24 devolveu valores diferentes do enviado; conferir no Beds24.`); }
+            const lidoTexto = lido ? `Beds24: preço ${lido.preco ?? "—"}, mín. ${lido.minimoNoites ?? "—"}, máx. ${lido.maximoNoites ?? "—"}, bloqueio ${lido.bloqueio ?? "—"}` : "Noite não retornou na releitura";
+            const detalhe = (resultado === "divergente" ? lidoTexto : resultado === "falhou" ? `${res.falha}${releituraFalhou ? "" : ` · ${lidoTexto}`}` : resultado === "enviado" ? "Sem releitura: confirmação pendente." : "").slice(0, 300);
+            const chave = `${resultado}\u0000${detalhe}`;
+            const grupo = grupos.get(chave) ?? { resultado, detalhe, datas: [] };
+            grupo.datas.push(l.data);
+            grupos.set(chave, grupo);
+            // A posse do bloqueio (blackout/none/restrição devolvida) só muda quando a releitura confirma;
+            // até lá vale a anterior. A restrição anterior ao blackout fica guardada enquanto o SCL fecha.
+            const confirmouBloqueio = resultado === "confirmado" && l.bloqueioEnviar !== undefined;
+            const v = {
+              organizacaoId: org, imovelId: p.imovelId, data: l.data, preco: l.precoEnviar, minimo: l.minimoEnviar, maximo: l.maximoEnviar,
+              bloqueio: confirmouBloqueio ? l.bloqueioEnviar! : (l.enviado?.bloqueio ?? null),
+              bloqueioAnterior: l.bloqueioEnviar === "blackout" ? l.bloqueioAnterior : confirmouBloqueio ? null : (l.enviado?.bloqueioAnterior ?? null),
+              enviadoEm: agora, confirmado: resultado === "confirmado", envioId: exec.id,
+            };
+            await tx.insert(beds24CalendarioEnviado).values(v).onConflictDoUpdate({ target: [beds24CalendarioEnviado.organizacaoId, beds24CalendarioEnviado.imovelId, beds24CalendarioEnviado.data], set: { preco: v.preco, minimo: v.minimo, maximo: v.maximo, bloqueio: v.bloqueio, bloqueioAnterior: v.bloqueioAnterior, enviadoEm: v.enviadoEm, confirmado: v.confirmado, envioId: v.envioId } });
+          }
+          for (const g of grupos.values()) {
+            await tx.update(beds24EnvioNoites).set({ resultado: g.resultado, detalhe: g.detalhe }).where(and(eq(beds24EnvioNoites.envioId, exec.id), eq(beds24EnvioNoites.imovelId, p.imovelId), inArray(beds24EnvioNoites.data, g.datas)));
+          }
+          // Observação nova para todas as noites relidas deste imóvel (mais recente que o envio).
+          await gravarObservacoes(tx, org, p.imovelId, porData.values(), new Date(agora.getTime() + 1));
+        }
+        // Blackout do SCL que a leitura mais nova mostra trocado ou removido no Beds24: a posse acaba (sem escrita).
+        for (const p of planos) {
+          if (leituraIncompleta.has(p.imovelId)) continue;
+          for (const l of p.linhas) {
+            if (!l.posseBloqueioEncerrada) continue;
+            await tx.update(beds24CalendarioEnviado).set({ bloqueio: null, bloqueioAnterior: null }).where(and(eq(beds24CalendarioEnviado.organizacaoId, org), eq(beds24CalendarioEnviado.imovelId, p.imovelId), eq(beds24CalendarioEnviado.data, l.data)));
+          }
+        }
+
+        const enviadas = resultadoImoveis.reduce((s, i) => s + i.enviadas, 0);
+        const confirmadas = resultadoImoveis.reduce((s, i) => s + i.confirmadas, 0);
+        const divergentes = resultadoImoveis.reduce((s, i) => s + i.divergentes, 0);
+        const falhas = resultadoImoveis.filter(i => i.falha).length;
+        const situacao: SituacaoEnvio = falhas && !enviadas && !confirmadas && falhas === planos.filter(p => fase1.motivosSemEscrita.has(p.imovelId) || faixasDeEnvio(p.linhas).length).length ? "erro" : releituraFalhou ? "incerto" : falhas || divergentes ? "parcial" : "ok";
+        const mensagem = `${enviadas} noite(s) enviada(s) em ${tentados.filter(p => !resultadoImoveis.find(i => i.imovelId === p.imovelId)?.falha).length} imóvel(is), ${confirmadas} confirmada(s) na releitura, ${divergentes} divergente(s), ${falhas} imóvel(is) com falha; ${resultadoImoveis.reduce((s, i) => s + i.resumo.iguais, 0)} noite(s) já iguais não foram reenviadas; ${totalAvisos} aviso(s).`;
+        await registrarAuditoria(tx, { organizacaoId: org, usuarioId: o.autorId ?? null, acao: "beds24.enviar", entidade: "integracao", entidadeId: org, mudancas: { resultado: [null, mensagem] } });
+        return { ok: situacao === "ok", situacao, mensagem, envioId: exec.id, imoveis: resultadoImoveis, avisos, totalAvisos };
+      });
+    }
   } catch (e) {
-    r = { ...base("erro", mensagemSeguraBeds24(e)), ok: false, envioId: exec.id };
+    r = { ...base("erro", mensagemSeguraBeds24(e)), ok: false, envioId: exec.id, avisos, totalAvisos };
   }
   await db.update(beds24Envios).set({
     terminadoEm: new Date(), situacao: r.situacao, resumo: r.mensagem.slice(0, 1000), avisos: r.avisos,
