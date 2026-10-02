@@ -1,10 +1,11 @@
 /**
  * Envio controlado de calendário e preços ao Beds24 (M3.7). Uma execução por organização:
  * planeja cada imóvel com envio ligado (motor puro), manda só as noites diferentes, relê o
- * destino e registra antes/depois por noite. Sem escritor (BEDS24_ESCRITA desligada) só
- * simula. Nunca cria, altera ou cancela reservas; nunca reabre bloqueio que o SCL não fez.
+ * destino e registra antes/depois por noite. Todo envio parte de uma leitura atual do Beds24:
+ * sem ela nada é escrito. Sem escritor (BEDS24_ESCRITA desligada) só simula. Nunca cria,
+ * altera ou cancela reservas; nunca reabre bloqueio que o SCL não fez.
  */
-import { and, asc, desc, eq, gt, gte, inArray, lt, lte, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, getTableColumns, gt, gte, inArray, lt, lte, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { listarMapeamentosBeds24 } from "@/beds24/configuracao";
 import { mensagemSeguraBeds24 } from "@/beds24/sincronizacao";
@@ -51,6 +52,14 @@ export async function planejarImovel(db: Db, org: string, regras: RegrasCalendar
   return { hoje, inicio, fim, linhas, regras: regrasDeVenda(detalhes), pisos: [detalhes.pisoUltimaHora1, detalhes.pisoUltimaHora2] as const };
 }
 
+/** Grava a leitura do calendário como observação local das noites (a mais nova vale). */
+async function gravarObservacoes(tx: Db, org: string, imovelId: string, dias: Iterable<DiaCalendario>, observadoEm: Date) {
+  for (const d of dias) {
+    await tx.insert(beds24Calendario).values({ organizacaoId: org, imovelId, data: d.data, livres: d.livres, preco: d.preco, minimoNoites: d.minimoNoites, maximoNoites: d.maximoNoites, bloqueio: d.bloqueio, observadoEm })
+      .onConflictDoUpdate({ target: [beds24Calendario.organizacaoId, beds24Calendario.imovelId, beds24Calendario.data], set: { livres: d.livres, preco: d.preco, minimoNoites: d.minimoNoites, maximoNoites: d.maximoNoites, bloqueio: d.bloqueio, observadoEm } });
+  }
+}
+
 const igualAoLido = (l: LinhaPlano, d: DiaCalendario | undefined) => d !== undefined
   && (l.precoEnviar === null || d.preco === l.precoEnviar) && (l.minimoEnviar === null || d.minimoNoites === l.minimoEnviar) && d.maximoNoites === l.maximoEnviar
   && (l.bloqueioEnviar === undefined || (d.bloqueio ?? "none") === l.bloqueioEnviar);
@@ -90,6 +99,24 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
         else if (q.moeda !== "BRL") inacessiveis.set(m.imovelId, `A moeda do imóvel ${m.codigo} precisa estar confirmada como BRL no Beds24 antes do envio de preços.`);
       }
       for (const [, motivo] of inacessiveis) aviso(`${motivo} Nenhum valor é enviado para esse imóvel.`);
+
+      // Leitura atual do destino antes de planejar: o plano (inclusive reabrir um blackout do SCL)
+      // nunca se apoia só na última importação. Sem essa leitura, o envio real não escreve nada.
+      const acessiveis = escolhidos.filter(m => !inacessiveis.has(m.imovelId));
+      if (acessiveis.length) {
+        const hojes = acessiveis.map(m => hojeISO(fusos.get(m.imovelId) ?? "America/Sao_Paulo", agora));
+        const inicio = hojes.reduce((a, b) => (a < b ? a : b));
+        const fim = somarDias(hojes.reduce((a, b) => (a > b ? a : b)), regras.horizonteDias - 1);
+        try {
+          const l = await leitor.calendario({ roomIds: acessiveis.map(m => m.roomId), inicio, fim: somarDias(fim, 1) });
+          for (const d of l.divergencias) aviso(`Leitura do quarto ${d.id}: formato inválido; conferir manualmente.`);
+          for (const m of acessiveis) await gravarObservacoes(tx, org, m.imovelId, l.itens.filter(d => d.roomId === m.roomId), agora);
+        } catch (e) {
+          const motivo = mensagemSeguraBeds24(e);
+          if (o.modo === "envio") throw new ErroBeds24(`Leitura do Beds24 antes do envio falhou: ${motivo} Nada foi enviado: o SCL só escreve a partir de uma leitura atual do destino.`, "rede");
+          aviso(`Leitura do Beds24 falhou: ${motivo} A simulação usa a última leitura guardada.`);
+        }
+      }
       const planos: Plano[] = [];
       let inicioLeitura = "9999-12-31";
       let fimLeitura = "0000-01-01";
@@ -103,6 +130,19 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
         for (const l of p.linhas) for (const a of l.avisos) if (!a.startsWith("Sem leitura do Beds24")) aviso(`Imóvel ${m.codigo}, noite ${l.data.split("-").reverse().join("/")}: ${a}`);
         const semLeitura = p.linhas.filter(l => !l.observacao).length;
         if (semLeitura) aviso(`Imóvel ${m.codigo}: ${semLeitura} noite(s) sem leitura anterior do Beds24; serão enviadas e conferidas pela releitura.`);
+        // Envio anterior sem confirmação (releitura falhou) que a leitura de agora mostra igual ao plano:
+        // confirma tarde e assume a posse do bloqueio enviado, sem escrever nada.
+        let tardias = 0;
+        for (const l of p.linhas) {
+          if (l.acao !== "igual" || !l.enviado || l.enviado.confirmado) continue;
+          await tx.update(beds24CalendarioEnviado).set({
+            confirmado: true,
+            bloqueio: l.posseBloqueioEncerrada ? null : (l.bloqueioEnviar ?? l.enviado.bloqueio),
+            bloqueioAnterior: l.posseBloqueioEncerrada ? null : l.bloqueioEnviar === "blackout" ? l.bloqueioAnterior : l.bloqueioEnviar !== undefined ? null : (l.enviado.bloqueioAnterior ?? null),
+          }).where(and(eq(beds24CalendarioEnviado.organizacaoId, org), eq(beds24CalendarioEnviado.imovelId, m.imovelId), eq(beds24CalendarioEnviado.data, l.data)));
+          tardias++;
+        }
+        if (tardias) aviso(`Imóvel ${m.codigo}: ${tardias} noite(s) de envio anterior confirmada(s) pela leitura de agora.`);
       }
       const resultadoImoveis: ImovelEnviado[] = planos.map(p => ({ imovelId: p.imovelId, codigo: p.codigo, resumo: resumirPlano(p.linhas), enviadas: 0, confirmadas: 0, divergentes: 0, falha: "" }));
       const totalEnviar = resultadoImoveis.reduce((s, i) => s + i.resumo.enviar, 0);
@@ -163,28 +203,28 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
             bloqueioAntes: l.observacao?.bloqueio ?? null, bloqueioEnviado: l.bloqueioEnviar ?? null, regra: l.regra.slice(0, 300), resultado,
             detalhe: (resultado === "divergente" ? lidoTexto : resultado === "falhou" ? `${r.falha}${releituraFalhou ? "" : ` · ${lidoTexto}`}` : "").slice(0, 300),
           });
-          // A posse do bloqueio (blackout/none) só muda quando a releitura confirma; até lá vale a anterior.
+          // A posse do bloqueio (blackout/none/restrição devolvida) só muda quando a releitura confirma;
+          // até lá vale a anterior. A restrição anterior ao blackout fica guardada enquanto o SCL fecha.
+          const confirmouBloqueio = resultado === "confirmado" && l.bloqueioEnviar !== undefined;
           estado.push({
             organizacaoId: org, imovelId: p.imovelId, data: l.data, preco: l.precoEnviar, minimo: l.minimoEnviar, maximo: l.maximoEnviar,
-            bloqueio: resultado === "confirmado" && l.bloqueioEnviar !== undefined ? l.bloqueioEnviar : (l.enviado?.bloqueio ?? null), enviadoEm: agora, confirmado: resultado === "confirmado", envioId: exec.id,
+            bloqueio: confirmouBloqueio ? l.bloqueioEnviar! : (l.enviado?.bloqueio ?? null),
+            bloqueioAnterior: l.bloqueioEnviar === "blackout" ? l.bloqueioAnterior : confirmouBloqueio ? null : (l.enviado?.bloqueioAnterior ?? null),
+            enviadoEm: agora, confirmado: resultado === "confirmado", envioId: exec.id,
           });
         }
         // Observação nova para todas as noites relidas deste imóvel (mais recente que o envio).
-        const observadoEm = new Date(agora.getTime() + 1);
-        for (const d of porData.values()) {
-          await tx.insert(beds24Calendario).values({ organizacaoId: org, imovelId: p.imovelId, data: d.data, livres: d.livres, preco: d.preco, minimoNoites: d.minimoNoites, maximoNoites: d.maximoNoites, bloqueio: d.bloqueio, observadoEm })
-            .onConflictDoUpdate({ target: [beds24Calendario.organizacaoId, beds24Calendario.imovelId, beds24Calendario.data], set: { livres: d.livres, preco: d.preco, minimoNoites: d.minimoNoites, maximoNoites: d.maximoNoites, bloqueio: d.bloqueio, observadoEm } });
-        }
+        await gravarObservacoes(tx, org, p.imovelId, porData.values(), new Date(agora.getTime() + 1));
       }
       for (let i = 0; i < noites.length; i += 250) await tx.insert(beds24EnvioNoites).values(noites.slice(i, i + 250));
       for (const v of estado) {
-        await tx.insert(beds24CalendarioEnviado).values(v).onConflictDoUpdate({ target: [beds24CalendarioEnviado.organizacaoId, beds24CalendarioEnviado.imovelId, beds24CalendarioEnviado.data], set: { preco: v.preco, minimo: v.minimo, maximo: v.maximo, bloqueio: v.bloqueio, enviadoEm: v.enviadoEm, confirmado: v.confirmado, envioId: v.envioId } });
+        await tx.insert(beds24CalendarioEnviado).values(v).onConflictDoUpdate({ target: [beds24CalendarioEnviado.organizacaoId, beds24CalendarioEnviado.imovelId, beds24CalendarioEnviado.data], set: { preco: v.preco, minimo: v.minimo, maximo: v.maximo, bloqueio: v.bloqueio, bloqueioAnterior: v.bloqueioAnterior, enviadoEm: v.enviadoEm, confirmado: v.confirmado, envioId: v.envioId } });
       }
       // Blackout do SCL que a leitura mais nova mostra trocado ou removido no Beds24: a posse acaba (sem escrita).
       for (const p of planos) {
         for (const l of p.linhas) {
           if (!l.posseBloqueioEncerrada) continue;
-          await tx.update(beds24CalendarioEnviado).set({ bloqueio: null }).where(and(eq(beds24CalendarioEnviado.organizacaoId, org), eq(beds24CalendarioEnviado.imovelId, p.imovelId), eq(beds24CalendarioEnviado.data, l.data)));
+          await tx.update(beds24CalendarioEnviado).set({ bloqueio: null, bloqueioAnterior: null }).where(and(eq(beds24CalendarioEnviado.organizacaoId, org), eq(beds24CalendarioEnviado.imovelId, p.imovelId), eq(beds24CalendarioEnviado.data, l.data)));
         }
       }
 
@@ -207,8 +247,11 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
   return r;
 }
 
+/** Últimas execuções com o número de noites registradas (há registro mesmo quando o Beds24 recusou). */
 export function ultimosEnvios(db: Db, org: string, limite = 10) {
-  return db.select().from(beds24Envios).where(eq(beds24Envios.organizacaoId, org)).orderBy(desc(beds24Envios.iniciadoEm)).limit(limite);
+  return db.select({ ...getTableColumns(beds24Envios), noites: count(beds24EnvioNoites.id) }).from(beds24Envios)
+    .leftJoin(beds24EnvioNoites, eq(beds24EnvioNoites.envioId, beds24Envios.id))
+    .where(eq(beds24Envios.organizacaoId, org)).groupBy(beds24Envios.id).orderBy(desc(beds24Envios.iniciadoEm)).limit(limite);
 }
 
 /** Noites de uma execução (até `limite`), com o código do imóvel; só da organização. */

@@ -24,7 +24,7 @@ beforeEach(() => {
   m.imoveis.mockResolvedValue([{ ...imovel, id: "i403", codigo: "403" }, imovel]);
   m.regras.mockResolvedValue({ ...REGRAS_CALENDARIO_PADRAO, envio: { imoveis: ["i103"], automatico: false } });
   m.mapas.mockResolvedValue([{ id: "m", imovelId: "i103", codigo: "103", ativo: true, propertyId: "10", roomId: "20" }]);
-  m.envios.mockResolvedValue([{ id: "e1", iniciadoEm: new Date("2026-10-02T12:00:00Z"), situacao: "ok", modo: "envio", automatica: false, resumo: "10 noite(s) enviada(s)", avisos: ["aviso de teste"], noitesEnviadas: 10 }]);
+  m.envios.mockResolvedValue([{ id: "e1", iniciadoEm: new Date("2026-10-02T12:00:00Z"), situacao: "ok", modo: "envio", automatica: false, resumo: "10 noite(s) enviada(s)", avisos: ["aviso de teste"], noitesEnviadas: 10, noites: 10 }]);
   m.noites.mockResolvedValue([]);
   m.planejar.mockResolvedValue({ hoje: "2026-10-02", inicio: "2026-10-02", fim: "2026-10-03", linhas, regras, pisos: [35000, 30000] });
 });

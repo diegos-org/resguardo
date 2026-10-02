@@ -18,12 +18,12 @@ import type { EstadoReserva } from "@/db/schema";
 import { diaDaSemana, diasEntre, periodoDaNoite, precoDaNoite, somarDias, type Periodo, type RegrasVenda } from "@/imoveis/regras-venda";
 import { formatBRL } from "@/lib/money";
 import { ocupaInventario } from "@/reservas/regras";
-import type { BloqueioEnvio, FaixaEnvio } from "@/beds24/tipos";
+import { type BloqueioEnvio, ehBloqueioEnvio, type FaixaEnvio } from "@/beds24/tipos";
 import { centesimosParaMultiplicador, type Feriado, type RegrasCalendario } from "./regras-config";
 
 export type ImovelPlano = { id: string; regras: RegrasVenda; periodos: readonly Periodo[]; pisos: readonly [number | null, number | null] };
 export type ObservacaoPlano = { data: string; preco: number | null; minimoNoites: number | null; maximoNoites: number | null; livres: number | null; bloqueio: string | null; observadoEm: Date };
-export type EnviadoPlano = { data: string; preco: number | null; minimo: number | null; maximo: number | null; bloqueio: string | null; confirmado: boolean; enviadoEm: Date };
+export type EnviadoPlano = { data: string; preco: number | null; minimo: number | null; maximo: number | null; bloqueio: string | null; bloqueioAnterior?: string | null; confirmado: boolean; enviadoEm: Date };
 export type OcupacaoPlano = { checkin: string; checkout: string; estado: EstadoReserva };
 export type BloqueioPlano = { inicio: string; fim: string; fonte: string };
 export type Janela = { nome: string; inicio: string; fim: string };
@@ -51,6 +51,8 @@ export type LinhaPlano = {
   reservas: number;
   bloqueioScl: boolean;
   bloqueioEnviar: BloqueioEnvio | undefined;
+  /** Restrição que o Beds24 tinha antes do blackout do SCL (noCheckIn etc.), devolvida na reabertura. */
+  bloqueioAnterior: string | null;
   /** O blackout que o SCL aplicou sumiu ou foi trocado no Beds24: o SCL deixa de considerá-lo seu. */
   posseBloqueioEncerrada: boolean;
   observacao: ObservacaoPlano | null;
@@ -226,20 +228,30 @@ export function planejarCalendario(e: EntradaPlano): LinhaPlano[] {
     const bloqueioScl = bloqueioSclNaNoite(data);
     const observacao = observadas.get(data) ?? null;
     const enviado = enviadas.get(data) ?? null;
-    // Reabrir ("none") só quando a leitura atual ainda mostra o blackout que o SCL aplicou: uma
-    // restrição posta no Beds24 depois (noCheckIn etc.) ou a falta de leitura nunca é apagada.
+    // Bloqueio do SCL: fecha ("blackout") e, ao ser removido, devolve a noite ao que havia antes — a
+    // restrição que já existia no Beds24 (noCheckIn etc.) ou "none". Reabrir só quando a leitura atual
+    // ainda mostra o blackout que o SCL aplicou: uma restrição posta no Beds24 depois ou a falta de
+    // leitura nunca é apagada.
     let bloqueioEnviar: BloqueioEnvio | undefined;
+    let bloqueioAnterior: string | null = null;
     let posseBloqueioEncerrada = false;
-    if (bloqueioScl) bloqueioEnviar = "blackout";
-    else if (enviado?.bloqueio === "blackout") {
-      const atual = observacao && observacao.observadoEm.getTime() >= enviado.enviadoEm.getTime() ? observacao.bloqueio : undefined;
-      if (atual === "blackout") bloqueioEnviar = "none";
+    const leituraAposEnvio = observacao !== null && (enviado === null || observacao.observadoEm.getTime() >= enviado.enviadoEm.getTime());
+    if (bloqueioScl) {
+      bloqueioEnviar = "blackout";
+      // O que havia antes: a leitura mais nova que o último envio, senão o último envio confirmado;
+      // se isso já é o blackout do SCL (ou nada), vale o que o SCL guardou ao fechar.
+      const atual = normalizarBloqueio(leituraAposEnvio ? observacao!.bloqueio : enviado?.confirmado ? enviado.bloqueio : null);
+      bloqueioAnterior = ehBloqueioEnvio(atual) && atual !== "none" && atual !== "blackout" ? atual : (enviado?.bloqueioAnterior ?? null);
+    } else if (enviado?.bloqueio === "blackout") {
+      const atual = leituraAposEnvio ? observacao!.bloqueio : undefined;
+      if (atual === "blackout") bloqueioEnviar = ehBloqueioEnvio(enviado.bloqueioAnterior) && enviado.bloqueioAnterior !== "blackout" ? enviado.bloqueioAnterior : "none";
       else if (atual === undefined) avisos.push("Bloqueio do SCL removido, mas sem leitura recente do Beds24: a reabertura espera a próxima leitura.");
       else {
         // Leitura mais nova mostra que o blackout do SCL já não está lá: a posse acaba aqui, e um
         // blackout futuro nessa noite é tratado como externo (nunca reaberto pelo SCL).
         posseBloqueioEncerrada = true;
         if (normalizarBloqueio(atual) === "none") avisos.push("Bloqueio do SCL removido e já reaberto no Beds24: nada a enviar; o SCL deixa de considerar esse bloqueio como seu.");
+        else if (atual === enviado.bloqueioAnterior) avisos.push(`Bloqueio do SCL removido e a restrição anterior ("${atual}") já está de volta no Beds24: nada a enviar.`);
         else avisos.push(`Bloqueio do SCL removido, mas o Beds24 tem a restrição "${atual}" nesta noite: não é apagada, e o SCL deixa de considerar o bloqueio como seu; confira no Beds24.`);
       }
     }
@@ -262,11 +274,13 @@ export function planejarCalendario(e: EntradaPlano): LinhaPlano[] {
     const acao: AcaoNoite = nadaAEnviar ? "sem_dados" : igualObs || (observacaoValida === null && igualEnviado) ? "igual" : "enviar";
     if (acao === "enviar" && observacaoValida && igualEnviado) avisos.push("Beds24 difere do último envio confirmado pelo SCL: o SCL reenvia o valor oficial.");
 
-    const regra = [motivoPreco, motivoUltimaHora, `mín. ${minimoEnviar ?? "—"} (${motivoMinimo})`, `máx. ${maximo}`, bloqueioEnviar === "blackout" ? "bloqueio do SCL" : bloqueioEnviar === "none" ? "reabre bloqueio do SCL" : ""].filter(Boolean).join(" · ");
+    const textoBloqueio = bloqueioEnviar === "blackout" ? (bloqueioAnterior ? `bloqueio do SCL (antes: "${bloqueioAnterior}")` : "bloqueio do SCL")
+      : bloqueioEnviar === "none" ? "reabre bloqueio do SCL" : bloqueioEnviar ? `reabre bloqueio do SCL e devolve "${bloqueioEnviar}"` : "";
+    const regra = [motivoPreco, motivoUltimaHora, `mín. ${minimoEnviar ?? "—"} (${motivoMinimo})`, `máx. ${maximo}`, textoBloqueio].filter(Boolean).join(" · ");
     linhas.push({
       data, antecedencia, fontePreco, motivoPreco, precoReferencia, faixaUltimaHora: faixa >= 0 ? faixa : null, percentualUltimaHora: pct, piso,
       precoEnviar, precoFinalEsperado, minimoRegra, motivoMinimo, livresSeguidas, minimoEnviar, maximoEnviar: maximo,
-      reservas, bloqueioScl, bloqueioEnviar, posseBloqueioEncerrada, observacao, enviado, acao, regra, avisos,
+      reservas, bloqueioScl, bloqueioEnviar, bloqueioAnterior, posseBloqueioEncerrada, observacao, enviado, acao, regra, avisos,
     });
   }
   return linhas;
