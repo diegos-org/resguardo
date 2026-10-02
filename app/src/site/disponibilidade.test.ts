@@ -117,6 +117,28 @@ describe("disponibilidade e cotação do site (M7.2)", () => {
     expect((await consultar()).situacao).toBe("a_confirmar");
   });
 
+  it("leitura sem o campo de restrição (override ausente) não vale como liberada: fica a confirmar", async () => {
+    await observar(dias("2026-10-12", 4), { bloqueio: null });
+    const r = await consultar();
+    expect(r.situacao).toBe("a_confirmar");
+    expect(r.motivos).toContain("Ainda não conferimos a agenda mais recente para essas datas: confirmamos na conversa.");
+    // Só o dia de saída sem o campo também basta.
+    await db.update(beds24Calendario).set({ bloqueio: "none" });
+    await db.update(beds24Calendario).set({ bloqueio: null }).where(eq(beds24Calendario.data, "2026-10-15"));
+    expect((await consultar()).situacao).toBe("a_confirmar");
+    await db.update(beds24Calendario).set({ bloqueio: "none" });
+    expect((await consultar()).situacao).toBe("disponivel");
+  });
+
+  it("preço zero numa noite não vira diária grátis: diárias e total ficam a confirmar", async () => {
+    await observar(dias("2026-10-12", 4));
+    await db.update(imoveisDetalhes).set({ precoBase: 0 });
+    const r = await consultar();
+    expect(r.situacao).toBe("disponivel");
+    expect(r.cotacao).toMatchObject({ diarias: null, total: null });
+    expect(r.motivos).toContain("O valor dessas datas é confirmado na conversa.");
+  });
+
   it("sem preço ou sem taxa de limpeza cadastrados a disponibilidade aparece, mas o total fica para a conversa", async () => {
     await observar(dias("2026-10-12", 4));
     await db.update(imoveisDetalhes).set({ taxaLimpeza: null });

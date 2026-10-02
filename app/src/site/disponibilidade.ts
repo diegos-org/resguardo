@@ -64,9 +64,9 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
 
   // Restrições de entrada/saída do calendário Beds24: valem na data de entrada e na de saída,
   // só com leitura dentro da validade (leitura velha vira "a confirmar", como nas noites).
-  // Restrição desconhecida (ex.: "exception") nunca vira "disponível".
+  // Restrição desconhecida (ex.: "exception") ou não informada na leitura (null) nunca vira "disponível".
   const limite = agora.getTime() - regras.site.validadeLeituraHoras * 3_600_000;
-  const conhecidas = new Set([null, "none", "noCheckIn", "noCheckOut", "noCheckInOrCheckOut"]);
+  const conhecidas = new Set<string | null>(["none", "noCheckIn", "noCheckOut", "noCheckInOrCheckOut"]);
   const restricao = (o: { bloqueio: string | null; observadoEm: Date } | null | undefined, fecha: readonly string[], motivo: string) => {
     if (!o || o.observadoEm.getTime() < limite) { aConfirmar = true; return; }
     if (fecha.includes(o.bloqueio ?? "")) motivos.add(motivo);
@@ -98,8 +98,11 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   if (motivos.size) return { situacao: "indisponivel", motivos: [...motivos], noites, cotacao: null, leituraEm: semLeitura ? null : leituraEm };
 
   const cot = cotarNoites(plano.regras, plano.linhas.map((l) => ({ data: l.data, valor: l.precoFinalEsperado, fonte: l.fontePreco })), hospedes);
-  // Taxa de limpeza não cadastrada não vira zero para o visitante: o total fica a confirmar.
-  const total = cot.total !== null && plano.regras.taxaLimpeza !== null ? cot.total : null;
+  // Preço zero numa noite é aviso do motor ("conferir"), não diária grátis; taxa de limpeza não
+  // cadastrada também não vira zero para o visitante. Nos dois casos o valor fica a confirmar.
+  const comValor = plano.linhas.every((l) => l.precoFinalEsperado !== null && l.precoFinalEsperado > 0);
+  const diarias = comValor ? cot.diarias : null;
+  const total = comValor && cot.total !== null && plano.regras.taxaLimpeza !== null ? cot.total : null;
   const avisos: string[] = [];
   if (aConfirmar) avisos.push("Ainda não conferimos a agenda mais recente para essas datas: confirmamos na conversa.");
   if (total === null) avisos.push("O valor dessas datas é confirmado na conversa.");
@@ -107,7 +110,7 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
     situacao: aConfirmar ? "a_confirmar" : "disponivel",
     motivos: avisos,
     noites,
-    cotacao: { diarias: cot.diarias, limpeza: cot.limpeza, hospedeExtra: cot.hospedeExtra, total },
+    cotacao: { diarias, limpeza: cot.limpeza, hospedeExtra: cot.hospedeExtra, total },
     leituraEm: semLeitura ? null : leituraEm,
   };
 }
