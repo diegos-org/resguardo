@@ -31,10 +31,13 @@ describe("formulário das regras", () => {
     expect(r.regras.eventos).toBe(atual.eventos);
   });
   it("recusa valores fora do limite, feriado mal escrito, faixas cruzadas e modo desconhecido", () => {
-    const r = validarFormRegras(form({ minimo_5: "0", estadiaMaxima: "400", horizonteDias: "3", feriados: "32/13/2026 Nada", feriadoMultiplicador: "0,5", faixa1De: "8", faixa1Ate: "7", faixa2De: "1", faixa2Ate: "9", ultimaHoraModo: "x", siteValidadeHoras: "0", siteMaximoNoites: "400" }), REGRAS_CALENDARIO_PADRAO, [IM]);
+    const r = validarFormRegras(form({ minimo_5: "0", estadiaMaxima: "400", horizonteDias: "3", feriados: "32/13/2026 Nada", feriadoMinimo: "", feriadoMultiplicador: "0,5", faixa1De: "8", faixa1Ate: "7", faixa2De: "1", faixa2Ate: "9", ultimaHoraModo: "x", siteValidadeHoras: "0", siteMaximoNoites: "400" }), REGRAS_CALENDARIO_PADRAO, [IM]);
     expect(r.ok).toBe(false);
     if (r.ok) return;
-    expect(Object.keys(r.erros).sort()).toEqual(["estadiaMaxima", "faixa1Ate", "feriadoMultiplicador", "feriados", "horizonteDias", "minimo_5", "siteMaximoNoites", "siteValidadeHoras", "ultimaHoraModo"]);
+    expect(Object.keys(r.erros).sort()).toEqual(["estadiaMaxima", "faixa1Ate", "feriadoMinimo", "feriadoMultiplicador", "feriados", "horizonteDias", "minimo_5", "siteMaximoNoites", "siteValidadeHoras", "ultimaHoraModo"]);
+    // Mínimo do feriadão fora da faixa nunca é salvo como 1 em silêncio.
+    const soMinimo = validarFormRegras(form({ feriadoMinimo: "40" }), REGRAS_CALENDARIO_PADRAO, [IM]);
+    expect(soMinimo).toMatchObject({ ok: false, erros: { feriadoMinimo: expect.stringContaining("entre 1 e 30") } });
     const cruzadas = validarFormRegras(form({ faixa1De: "2", faixa1Ate: "7", faixa2De: "0", faixa2Ate: "2" }), REGRAS_CALENDARIO_PADRAO, [IM]);
     expect(cruzadas.ok).toBe(false);
     if (!cruzadas.ok) expect(cruzadas.erros.faixa2De).toContain("não podem se cruzar");

@@ -178,6 +178,7 @@ export function validarFormRegras(e: Entrada, atual: RegrasCalendario, imoveisDa
   if (!erros.faixa1Ate && !erros.faixa2Ate && faixas[0].deDias <= faixas[1].ateDias && faixas[1].deDias <= faixas[0].ateDias) erros.faixa2De = "As duas faixas não podem se cruzar.";
   const aplicadoPor = txt(e.ultimaHoraModo);
   if (!(aplicadoPor in APLICACOES_ULTIMA_HORA)) erros.ultimaHoraModo = "Escolha quem aplica a última hora.";
+  // Todo campo numérico é lido antes da checagem de erros: nenhum volta ao padrão em silêncio.
   const feriadoMinimo = inteiro("feriadoMinimo", LIMITES.minimo);
   const siteValidadeHoras = inteiro("siteValidadeHoras", LIMITES.validadeHoras);
   const siteMaximoNoites = inteiro("siteMaximoNoites", LIMITES.noitesConsulta);

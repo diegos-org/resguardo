@@ -155,9 +155,14 @@ describe("estadia mínima, máxima e sobras", () => {
     const semFim = planejarCalendario(entrada({ imovel: imovel({}, { estadiaMinima: 4 }), fim: "2026-10-10" }));
     expect(semFim.map((l) => l.minimoEnviar)).toEqual(Array(10).fill(4));
   });
-  it("avisa quando o mínimo supera o máximo", () => {
+  it("mínimo acima do máximo nunca é enviado: vai o máximo como mínimo, com aviso", () => {
     const [l] = planejarCalendario(entrada({ imovel: imovel({}, { estadiaMinima: 30, estadiaMaxima: 10 }), fim: "2026-10-01" }));
-    expect(l.avisos).toContain("Mínimo (30) acima do máximo (10): conferir o cadastro.");
+    expect(l.avisos).toContain("Mínimo (30) acima do máximo (10): enviado mínimo igual ao máximo; conferir o cadastro.");
+    expect(l).toMatchObject({ minimoRegra: 30, minimoEnviar: 10, maximoEnviar: 10 });
+    expect(faixasDeEnvio([l])).toEqual([{ from: "2026-10-01", to: "2026-10-01", preco: 45000, minimo: 10, maximo: 10 }]);
+    // Máximo 1 com mínimo de sexta 2: enviado 1/1.
+    const sexta = porData(planejarCalendario(entrada({ imovel: imovel({}, { estadiaMaxima: 1 }) })), "2026-10-02");
+    expect(sexta).toMatchObject({ minimoEnviar: 1, maximoEnviar: 1 });
   });
 });
 
