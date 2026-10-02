@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 2/10/2026, conferência de reservas (M3.8) e correções da revisão. Diego cadastrou e vinculou os seis imóveis, incluindo Búzios (BZS), e fez a primeira importação. A conferência foi parcial. Este PR separa consultas de pedidos e melhora a navegação; depois de publicado, uma nova importação recupera status e datas originais dos registros já existentes.
+> **Última atualização:** 2/10/2026, aba Anúncios (M2.9). Diego confirmou o merge da conferência de reservas (M3.8) e uma nova importação do Beds24. A conferência continua parcial; agosto/setembro podem ter histórico incompleto na origem. Para o futuro teste de envio ao Beds24, Diego escolheu um dos próprios imóveis: 103 como primeira opção, 403 como alternativa.
 
 ---
 
@@ -26,8 +26,8 @@
 |---|---|---|
 | M0 Fundação | Base do app, banco de dados, layout, publicação na Vercel | 🟡 Vercel e login funcionando; isolamento do banco de homologação ainda a conferir |
 | M1 Acesso | Login (Google/código por e-mail), convites, permissões | ✅ pronto |
-| M2 Cadastros | Imóveis, proprietários, contratos e comissões | ✅ pronto |
-| M3 Reservas | Reservas, calendário central e importação do Beds24 | 🟡 seis imóveis importados; conferência parcial e melhorias M3.8 nesta atualização |
+| M2 Cadastros | Imóveis, proprietários, contratos e aba Anúncios | ✅ implementado; referências dos canais precisam ser preenchidas/conferidas |
+| M3 Reservas | Reservas, calendário central e importação do Beds24 | 🟡 M3.8 publicado e reimportado por Diego; conferência parcial; envio ao Beds24 ainda pendente |
 | M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | 🟡 em andamento |
 | M5 Portal do proprietário | Relatórios, saldos, PDF | 🟡 em andamento |
 | M6 Operação | Limpezas, manutenção, agenda diária | 🟡 em andamento |
@@ -37,6 +37,38 @@
 | M10 WhatsApp | Caixa de entrada do WhatsApp no painel | ⚪ aguardando |
 | M11 Produção | Dados reais, domínio, entrada em uso | ⚪ aguardando |
 | M12 Marketplace | Proprietário que opera o próprio imóvel; SCL cuida do online | 🟡 em andamento |
+
+### Anúncios — atualização M2.9
+
+Em **Painel → Anúncios**, cada imóvel tem um quadro com **Site, Airbnb e Booking.com**.
+O filtro de imóveis do painel vale aqui; mês e ano não alteram anúncios. Por padrão aparecem
+os ativos; é possível incluir arquivados ou selecioná-los explicitamente.
+
+- **Site:** título, descrição e preço base vêm do cadastro do imóvel. O atalho leva ao mesmo
+  cadastro para editar; não há uma segunda cópia. A situação respeita a empresa configurada
+  para o site, a marcação público e o imóvel ativo. O preço base é referência interna: a
+  cotação pública ainda depende do M7.2. As fotos reais continuam pendentes no M7.3.
+- **Airbnb e Booking:** o administrador abre “Editar referência”, informa situação, link,
+  título, descrição, preço base em reais e até 30 links de fotos. Pode marcar que conferiu no
+  canal agora; a tela guarda a data e mostra no horário de Brasília. Ao editar sem marcar,
+  a referência volta a aguardar conferência. A equipe de operação pode consultar, mas não editar.
+- **Diferenças:** a tela compara os valores conhecidos de cada par de canais. Ausência não
+  vira zero nem prova igualdade. Preços diferentes podem refletir taxas/regras do canal;
+  links ou ordem de fotos diferentes pedem conferência visual, não provam imagens diferentes.
+- **Limite:** são referências manuais, não uma leitura automática das OTAs. A importação de
+  reservas do Beds24 não preenche estas fichas. Os IDs existentes são mostrados sem alterá-los
+  e não comprovam publicação. Com vários IDs no mesmo canal, a tela avisa que a ficha é uma
+  referência principal e que os demais anúncios precisam ser conferidos no canal.
+- **Salvar** altera só a referência interna e registra histórico na ficha do imóvel. Não
+  publica anúncios, não troca preços nas OTAs e não copia fotos para o site. Uma ficha que
+  mudou em outra aba não é sobrescrita: a tela pede para recarregar e conferir.
+
+**Como conferir:** escolha um imóvel, abra o anúncio no canal, preencha uma referência e
+salve com a confirmação manual. Verifique a data, os links e os alertas. Reabra a tela para
+confirmar que os dados persistiram. A operação deve conseguir ler, sem botões de edição.
+
+**Próximo teste de envio (M3.7):** usar o 103; o 403 fica como alternativa autorizada por
+Diego em 2/10. A implementação e a ativação do envio ainda estão pendentes.
 
 ### Conferência das reservas — atualização M3.8
 

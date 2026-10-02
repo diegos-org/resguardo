@@ -19,6 +19,7 @@ export const SECOES: readonly Secao[] = [
   { slug: "calendario", titulo: "Calendário", marco: "M3.4", descricao: "Ocupação de todas as unidades, reservas, bloqueios, limpezas e manutenção." , exige: "calendario:ler" },
   { slug: "reservas", titulo: "Reservas", marco: "M3.5", descricao: "Lista de reservas de todos os canais, com filtros e detalhe." , exige: "reserva:ler" },
   { slug: "imoveis", titulo: "Imóveis", marco: "M2.1", descricao: "Cadastro dos imóveis, dados públicos e mapeamento com os canais." , exige: "imovel:ler" },
+  { slug: "anuncios", titulo: "Anúncios", marco: "M2.9", descricao: "Referências dos anúncios no Airbnb, Booking e site, com diferenças para conferir.", exige: "imovel:ler", interno: true },
   { slug: "proprietarios", titulo: "Proprietários", marco: "M2.2", descricao: "Proprietários, representantes, contratos e convites para o portal." , exige: "proprietario:ler" },
   { slug: "financeiro", titulo: "Financeiro", marco: "M4.6", descricao: "Dashboard da empresa, comissões, repasses e conciliação." , exige: "financeiro:ler" },
   { slug: "apartamentos", titulo: "Apartamentos", marco: "M4.7", descricao: "Resultado por imóvel: comissões, despesas e acertos com o proprietário." , exige: "financeiro:ler", interno: true },

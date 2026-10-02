@@ -98,6 +98,23 @@ export const imoveis = pgTable(
   (t) => [uniqueIndex("imoveis_codigo_por_org").on(t.organizacaoId, t.codigo)],
 );
 
+/** Referência manual do anúncio externo; não é o estado sincronizado da OTA. */
+export const anuncios = pgTable("anuncios", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+  imovelId: uuid("imovel_id").notNull().references(() => imoveis.id, { onDelete: "cascade" }),
+  canal: text("canal").notNull(),
+  situacao: text("situacao").notNull().default("nao_conferido"),
+  url: text("url").notNull().default(""),
+  titulo: text("titulo").notNull().default(""),
+  descricao: text("descricao").notNull().default(""),
+  fotos: jsonb("fotos").$type<string[]>().notNull().default([]),
+  precoBase: integer("preco_base"),
+  conferidoEm: timestamp("conferido_em", { withTimezone: true }),
+  atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+  versao: integer("versao").notNull().default(1),
+}, (t) => [uniqueIndex("anuncios_imovel_canal").on(t.imovelId, t.canal)]);
+
 export const TIPOS_PESSOA = ["fisica", "juridica"] as const;
 export const tipoPessoaEnum = pgEnum("tipo_pessoa", TIPOS_PESSOA);
 
