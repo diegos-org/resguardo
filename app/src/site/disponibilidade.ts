@@ -62,15 +62,21 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   if (entrada && noites > entrada.maximoEnviar) motivos.add(`Máximo de ${entrada.maximoEnviar} noites por estadia.`);
   for (const problema of verificarEstadia({ ...plano.regras, estadiaMinima: null, estadiaMaxima: null }, periodos.map((x) => ({ ...x, estadiaMinima: null })), p.entrada, p.saida, hoje)) motivos.add(problema);
 
-  // Restrições de entrada/saída do calendário Beds24: valem na data de entrada e na de saída.
-  const entradaObs = entrada?.observacao ?? null;
-  if (entradaObs && (entradaObs.bloqueio === "noCheckIn" || entradaObs.bloqueio === "noCheckInOrCheckOut")) motivos.add(`Entrada não permitida em ${dataBr(p.entrada)}.`);
-  const [saidaObs] = await db.select({ bloqueio: beds24Calendario.bloqueio }).from(beds24Calendario).where(and(eq(beds24Calendario.organizacaoId, organizacaoId), eq(beds24Calendario.imovelId, imovel.id), eq(beds24Calendario.data, p.saida)));
-  if (saidaObs && (saidaObs.bloqueio === "noCheckOut" || saidaObs.bloqueio === "noCheckInOrCheckOut")) motivos.add(`Saída não permitida em ${dataBr(p.saida)}.`);
-
-  // Ocupação e leitura do Beds24, noite a noite. Restrição desconhecida nunca vira "disponível".
+  // Restrições de entrada/saída do calendário Beds24: valem na data de entrada e na de saída,
+  // só com leitura dentro da validade (leitura velha vira "a confirmar", como nas noites).
+  // Restrição desconhecida (ex.: "exception") nunca vira "disponível".
   const limite = agora.getTime() - regras.site.validadeLeituraHoras * 3_600_000;
   const conhecidas = new Set([null, "none", "noCheckIn", "noCheckOut", "noCheckInOrCheckOut"]);
+  const restricao = (o: { bloqueio: string | null; observadoEm: Date } | null | undefined, fecha: readonly string[], motivo: string) => {
+    if (!o || o.observadoEm.getTime() < limite) { aConfirmar = true; return; }
+    if (fecha.includes(o.bloqueio ?? "")) motivos.add(motivo);
+    else if (!conhecidas.has(o.bloqueio) && o.bloqueio !== "blackout") aConfirmar = true;
+  };
+  restricao(entrada?.observacao, ["noCheckIn", "noCheckInOrCheckOut"], `Entrada não permitida em ${dataBr(p.entrada)}.`);
+  const [saidaObs] = await db.select({ bloqueio: beds24Calendario.bloqueio, observadoEm: beds24Calendario.observadoEm }).from(beds24Calendario).where(and(eq(beds24Calendario.organizacaoId, organizacaoId), eq(beds24Calendario.imovelId, imovel.id), eq(beds24Calendario.data, p.saida)));
+  restricao(saidaObs, ["noCheckOut", "noCheckInOrCheckOut"], `Saída não permitida em ${dataBr(p.saida)}.`);
+
+  // Ocupação e leitura do Beds24, noite a noite.
   let leituraEm: Date | null = null;
   let semLeitura = false;
   const ocupadas: string[] = [];

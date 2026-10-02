@@ -26,20 +26,20 @@ beforeEach(async () => {
 });
 
 describe("disponibilidade e cotação do site (M7.2)", () => {
-  it("disponível com leitura recente e sem ocupação: valor pelas noites do motor mais limpeza e hóspede extra", async () => {
-    await observar(dias("2026-10-12", 3));
+  it("disponível com leitura recente (noites e dia de saída) e sem ocupação: valor pelas noites do motor mais limpeza e hóspede extra", async () => {
+    await observar(dias("2026-10-12", 4));
     const r = await consultar({ hospedes: "4" });
     expect(r).toMatchObject({ situacao: "disponivel", motivos: [], noites: 3, cotacao: { diarias: 135000, limpeza: 25000, hospedeExtra: 30000, total: 190000 } });
     expect(r.leituraEm?.toISOString()).toBe("2026-10-01T09:15:00.000Z");
   });
 
   it("última hora entra no valor (D−2: 25%, piso respeitado) e eventos também, como no envio ao Beds24", async () => {
-    await observar(dias("2026-10-01", 10));
+    await observar(dias("2026-10-01", 11));
     // Quinta 1/10 (hoje, D0): 25% sobre 450 = 337,50 (piso 300 respeitado); sábado exige 2 noites.
-    expect((await consultar({ entrada: "2026-10-01", saida: "2026-10-02" })).cotacao).toMatchObject({ diarias: 33750, total: 58750 });
+    expect(await consultar({ entrada: "2026-10-01", saida: "2026-10-02" })).toMatchObject({ situacao: "disponivel", cotacao: { diarias: 33750, total: 58750 } });
     expect(await consultar({ entrada: "2026-10-03", saida: "2026-10-04" })).toMatchObject({ situacao: "indisponivel", motivos: ["Para entrada em 03/10/2026, o mínimo é de 2 noites."] });
     await db.transaction((tx) => gravarConfig(tx, org, "calendario_regras", { ...REGRAS_CALENDARIO_PADRAO, eventos: [{ id: im, nome: "Evento", inicio: "2026-10-09", fim: "2026-10-10", multiplicador: 300, estadiaMinima: 2, todosImoveis: true, imoveis: [] }] }, null));
-    expect((await consultar({ entrada: "2026-10-09", saida: "2026-10-11" })).cotacao).toMatchObject({ diarias: 270000, total: 295000 });
+    expect(await consultar({ entrada: "2026-10-09", saida: "2026-10-11" })).toMatchObject({ situacao: "disponivel", cotacao: { diarias: 270000, total: 295000 } });
     const curta = await consultar({ entrada: "2026-10-09", saida: "2026-10-10" });
     expect(curta).toMatchObject({ situacao: "indisponivel", motivos: ["Para entrada em 09/10/2026, o mínimo é de 2 noites."], cotacao: null });
   });
@@ -73,11 +73,30 @@ describe("disponibilidade e cotação do site (M7.2)", () => {
     expect((await consultar()).motivos).toContain("Entrada não permitida em 12/10/2026.");
     await db.update(beds24Calendario).set({ bloqueio: "exception" }).where(eq(beds24Calendario.data, "2026-10-13"));
     expect(await consultar({ entrada: "2026-10-13", saida: "2026-10-14" })).toMatchObject({ situacao: "a_confirmar" });
+    // Dia de saída: restrição desconhecida fica a confirmar; blackout no dia de saída não impede sair.
+    await db.update(beds24Calendario).set({ bloqueio: "exception" }).where(eq(beds24Calendario.data, "2026-10-15"));
+    expect(await consultar({ entrada: "2026-10-14", saida: "2026-10-15" })).toMatchObject({ situacao: "a_confirmar", motivos: ["Ainda não conferimos a agenda mais recente para essas datas: confirmamos na conversa."] });
+    await db.update(beds24Calendario).set({ bloqueio: "blackout", livres: 0 }).where(eq(beds24Calendario.data, "2026-10-15"));
+    expect((await consultar({ entrada: "2026-10-14", saida: "2026-10-15" })).situacao).toBe("disponivel");
+    // Sem leitura do dia de saída: a confirmar, nunca disponível.
+    await db.update(beds24Calendario).set({ bloqueio: "none", livres: 1 }).where(eq(beds24Calendario.data, "2026-10-15"));
+    expect(await consultar({ entrada: "2026-10-14", saida: "2026-10-16" })).toMatchObject({ situacao: "a_confirmar", motivos: ["Ainda não conferimos a agenda mais recente para essas datas: confirmamos na conversa."] });
+  });
+
+  it("restrição de entrada/saída com leitura vencida não bloqueia: vira a confirmar", async () => {
+    await observar(dias("2026-10-12", 4), { observadoEm: new Date("2026-09-20T09:00:00Z") });
+    await db.update(beds24Calendario).set({ bloqueio: "noCheckIn" }).where(eq(beds24Calendario.data, "2026-10-12"));
+    await db.update(beds24Calendario).set({ bloqueio: "noCheckOut" }).where(eq(beds24Calendario.data, "2026-10-15"));
+    expect(await consultar()).toMatchObject({ situacao: "a_confirmar", cotacao: { total: 160000 } });
+    await db.update(beds24Calendario).set({ observadoEm: new Date("2026-10-01T09:15:00Z") });
+    const r = await consultar();
+    expect(r.situacao).toBe("indisponivel");
+    expect(r.motivos).toEqual(["Entrada não permitida em 12/10/2026.", "Saída não permitida em 15/10/2026."]);
   });
 
   it("sem leitura, leitura velha ou sem unidades informadas: a confirmar, com o valor", async () => {
     expect(await consultar()).toMatchObject({ situacao: "a_confirmar", motivos: ["Ainda não conferimos a agenda mais recente para essas datas: confirmamos na conversa."], cotacao: { total: 160000 }, leituraEm: null });
-    await observar(dias("2026-10-12", 3), { observadoEm: new Date("2026-09-29T09:00:00Z") });
+    await observar(dias("2026-10-12", 4), { observadoEm: new Date("2026-09-29T09:00:00Z") });
     const velha = await consultar();
     expect(velha.situacao).toBe("a_confirmar");
     expect(velha.leituraEm?.toISOString()).toBe("2026-09-29T09:00:00.000Z");
@@ -88,7 +107,7 @@ describe("disponibilidade e cotação do site (M7.2)", () => {
   });
 
   it("sem preço ou sem taxa de limpeza cadastrados a disponibilidade aparece, mas o total fica para a conversa", async () => {
-    await observar(dias("2026-10-12", 3));
+    await observar(dias("2026-10-12", 4));
     await db.update(imoveisDetalhes).set({ taxaLimpeza: null });
     expect(await consultar()).toMatchObject({ situacao: "disponivel", motivos: ["O valor dessas datas é confirmado na conversa."], cotacao: { diarias: 135000, limpeza: 0, total: null } });
     await db.update(imoveisDetalhes).set({ precoBase: null, taxaLimpeza: 25000 });
