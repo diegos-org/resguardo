@@ -60,6 +60,17 @@ describe("disponibilidade e cotação do site (M7.2)", () => {
     expect((await consultar()).situacao).toBe("indisponivel");
   });
 
+  it("data ocupada no SCL e no Beds24 ao mesmo tempo conta uma vez: só as noites realmente tomadas aparecem", async () => {
+    await observar(dias("2026-10-12", 4));
+    // Reserva importada: existe no SCL e o Beds24 mostra 0 unidades na mesma noite (13/10).
+    await db.insert(reservas).values({ organizacaoId: org, imovelId: im, codigo: "SCL-TESTE3", origem: "airbnb", estado: "confirmada", checkin: "2026-10-13", checkout: "2026-10-14", hospedeNome: "Hóspede Fictício", hospedeEmail: "fake@example.com", fonte: "beds24", idFonte: "999" });
+    await db.update(beds24Calendario).set({ livres: 0 }).where(eq(beds24Calendario.data, "2026-10-13"));
+    // Duas noites (12 e 13), uma ocupada: não pode virar "essas datas já estão reservadas".
+    expect(await consultar({ saida: "2026-10-14" })).toMatchObject({ situacao: "indisponivel", motivos: ["Há noites já reservadas nessas datas (13/10/2026)."] });
+    // Quatro noites, uma ocupada em dobro: a lista não repete a data nem ganha reticências.
+    expect(await consultar({ saida: "2026-10-16" })).toMatchObject({ situacao: "indisponivel", motivos: ["Há noites já reservadas nessas datas (13/10/2026)."] });
+  });
+
   it("restrições de entrada/saída do Beds24 valem nas datas certas; restrição desconhecida fica a confirmar", async () => {
     await observar(dias("2026-10-12", 4));
     await db.update(beds24Calendario).set({ bloqueio: "noCheckIn" }).where(eq(beds24Calendario.data, "2026-10-13"));

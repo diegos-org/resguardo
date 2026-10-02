@@ -79,18 +79,22 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   // Ocupação e leitura do Beds24, noite a noite.
   let leituraEm: Date | null = null;
   let semLeitura = false;
-  const ocupadas: string[] = [];
+  // Uma data pode estar ocupada no SCL e no Beds24 ao mesmo tempo (reserva importada): conta uma vez.
+  const ocupadas = new Set<string>();
   for (const l of plano.linhas) {
-    if (l.livresSeguidas === 0) ocupadas.push(l.data);
+    if (l.livresSeguidas === 0) ocupadas.add(l.data);
     const o = l.observacao;
     if (!o || o.observadoEm.getTime() < limite || o.livres === null) {
       if (!o) semLeitura = true;
       aConfirmar = true;
-    } else if (o.livres === 0 || o.bloqueio === "blackout") ocupadas.push(l.data);
+    } else if (o.livres === 0 || o.bloqueio === "blackout") ocupadas.add(l.data);
     else if (!conhecidas.has(o.bloqueio)) aConfirmar = true;
     if (o && !semLeitura && (!leituraEm || o.observadoEm < leituraEm)) leituraEm = o.observadoEm;
   }
-  if (ocupadas.length) motivos.add(ocupadas.length === noites ? "Essas datas já estão reservadas." : `Há noites já reservadas nessas datas (${[...new Set(ocupadas)].slice(0, 3).map(dataBr).join(", ")}${ocupadas.length > 3 ? "…" : ""}).`);
+  if (ocupadas.size) {
+    const lista = [...ocupadas];
+    motivos.add(lista.length === noites ? "Essas datas já estão reservadas." : `Há noites já reservadas nessas datas (${lista.slice(0, 3).map(dataBr).join(", ")}${lista.length > 3 ? "…" : ""}).`);
+  }
   if (motivos.size) return { situacao: "indisponivel", motivos: [...motivos], noites, cotacao: null, leituraEm: semLeitura ? null : leituraEm };
 
   const cot = cotarNoites(plano.regras, plano.linhas.map((l) => ({ data: l.data, valor: l.precoFinalEsperado, fonte: l.fontePreco })), hospedes);
