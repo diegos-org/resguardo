@@ -96,6 +96,11 @@ describe("com banco", () => {
     expect(lidas.eventos).toHaveLength(1);
     expect(lidas.eventos[0]).toMatchObject({ nome: "Réveillon", multiplicador: 400, imoveis: [im] });
     expect(lidas.envio.imoveis).toEqual([im]);
+    // Salvar as regras gerais com uma leitura antiga (sem o evento) preserva o evento gravado depois.
+    expect(await salvarRegrasCalendario(db, org, { ...v.regras, horizonteDias: 120, eventos: [] }, null)).toBe(true);
+    const depois = await lerRegrasCalendario(db, org);
+    expect(depois.horizonteDias).toBe(120);
+    expect(depois.eventos).toHaveLength(1);
     expect(await removerEvento(db, outra, lidas.eventos[0].id, null)).toBe(false);
     expect(await removerEvento(db, org, "nao-uuid", null)).toBe(false);
     expect(await removerEvento(db, org, lidas.eventos[0].id, null)).toBe(true);

@@ -79,6 +79,17 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
       const avisos: string[] = [];
       let totalAvisos = 0;
       const aviso = (s: string) => { totalAvisos++; if (avisos.length < 100) avisos.push(s.slice(0, 300)); };
+
+      // Como na importação: a credencial atual precisa enxergar exatamente o par propriedade/quarto
+      // de cada imóvel, em BRL. Um vínculo digitado errado nunca recebe preços de outro imóvel.
+      const quartos = await leitor.quartos();
+      const inacessiveis = new Map<string, string>();
+      for (const m of escolhidos) {
+        const q = quartos.itens.find(q => q.propertyId === m.propertyId && q.roomId === m.roomId);
+        if (!q) inacessiveis.set(m.imovelId, `O quarto vinculado ao imóvel ${m.codigo} (propriedade ${m.propertyId}, quarto ${m.roomId}) não está acessível nesta credencial. Confira o vínculo em Integrações antes de enviar.`);
+        else if (q.moeda !== "BRL") inacessiveis.set(m.imovelId, `A moeda do imóvel ${m.codigo} precisa estar confirmada como BRL no Beds24 antes do envio de preços.`);
+      }
+      for (const [, motivo] of inacessiveis) aviso(`${motivo} Nenhum valor é enviado para esse imóvel.`);
       const planos: Plano[] = [];
       let inicioLeitura = "9999-12-31";
       let fimLeitura = "0000-01-01";
@@ -106,6 +117,7 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
       for (const p of planos) {
         const faixas = faixasDeEnvio(p.linhas);
         const r = resultadoImoveis.find(i => i.imovelId === p.imovelId)!;
+        if (inacessiveis.has(p.imovelId)) { r.falha = inacessiveis.get(p.imovelId)!; continue; }
         if (!faixas.length) continue;
         try {
           const [res] = await escritor.escreverCalendario([{ roomId: p.roomId, faixas }]);
@@ -168,7 +180,7 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
       const confirmadas = resultadoImoveis.reduce((s, i) => s + i.confirmadas, 0);
       const divergentes = resultadoImoveis.reduce((s, i) => s + i.divergentes, 0);
       const falhas = resultadoImoveis.filter(i => i.falha).length;
-      const situacao: SituacaoEnvio = falhas && falhas === planos.filter(p => faixasDeEnvio(p.linhas).length).length && !enviadas ? "erro" : releituraFalhou ? "incerto" : falhas || divergentes ? "parcial" : "ok";
+      const situacao: SituacaoEnvio = falhas && !enviadas && falhas === planos.filter(p => inacessiveis.has(p.imovelId) || faixasDeEnvio(p.linhas).length).length ? "erro" : releituraFalhou ? "incerto" : falhas || divergentes ? "parcial" : "ok";
       const mensagem = `${enviadas} noite(s) enviada(s) em ${escritos.length} imóvel(is), ${confirmadas} confirmada(s) na releitura, ${divergentes} divergente(s), ${falhas} imóvel(is) com falha; ${resultadoImoveis.reduce((s, i) => s + i.resumo.iguais, 0)} noite(s) já iguais não foram reenviadas; ${totalAvisos} aviso(s).`;
       await registrarAuditoria(tx, { organizacaoId: org, usuarioId: o.autorId ?? null, acao: "beds24.enviar", entidade: "integracao", entidadeId: org, mudancas: { resultado: [null, mensagem] } });
       return { ok: situacao === "ok", situacao, mensagem, envioId: exec.id, imoveis: resultadoImoveis, avisos, totalAvisos };
