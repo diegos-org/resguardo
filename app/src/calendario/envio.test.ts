@@ -5,7 +5,7 @@ import { executarCronEnvioBeds24 } from "@/beds24/cron-envio";
 import { Beds24Falso } from "@/beds24/falso";
 import { ErroBeds24, type LeitorBeds24 } from "@/beds24/tipos";
 import { gravarConfig } from "@/configuracoes/armazem";
-import { beds24Calendario, beds24CalendarioEnviado, beds24EnvioNoites, bloqueios, idsExternos, imoveis, imoveisDetalhes, organizacoes, reservas } from "@/db/schema";
+import { beds24Calendario, beds24CalendarioEnviado, beds24EnvioNoites, beds24Envios, bloqueios, idsExternos, imoveis, imoveisDetalhes, organizacoes, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { ultimasExecucoes } from "@/sistema/automacoes";
@@ -357,6 +357,49 @@ describe("envio ao Beds24 (M3.7)", () => {
     expect(diaFalso("2026-10-05")).toMatchObject({ override: "noCheckIn", numAvail: 1 });
     expect((await enviados()).find(e => e.data === "2026-10-05")).toMatchObject({ bloqueio: "noCheckIn", bloqueioAnterior: null, confirmado: true });
     expect((await enviar()).imoveis[0].enviadas).toBe(0);
+  });
+
+  it("banco falha depois da escrita no Beds24: a intenção gravada antes permite à execução seguinte assumir a posse pela leitura", async () => {
+    await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-10-03", fim: "2026-10-04", motivo: "Uso próprio" });
+    // A segunda transação (releitura e registro final) cai; a escrita externa já aconteceu.
+    let transacoes = 0;
+    const dbFalho = new Proxy(db, {
+      get(alvo, prop, receptor) {
+        if (prop === "transaction") {
+          const original = alvo.transaction.bind(alvo) as (...a: unknown[]) => Promise<unknown>;
+          return async (...a: unknown[]) => { if (++transacoes === 2) throw new Error("banco indisponível"); return original(...a); };
+        }
+        const v = Reflect.get(alvo, prop, receptor);
+        return typeof v === "function" ? v.bind(alvo) : v;
+      },
+    }) as Db;
+    const r = await enviarCalendarioBeds24(dbFalho, org, beds, beds, { modo: "envio", agora, autorId: null });
+    expect(r).toMatchObject({ ok: false, situacao: "erro", mensagem: expect.stringContaining("Não foi possível confirmar o resultado") });
+    expect(beds.escritas).toHaveLength(1);
+    expect(diaFalso("2026-10-03")).toMatchObject({ override: "blackout" });
+    const registradas = await noites();
+    expect(registradas).toHaveLength(10);
+    expect(registradas.every(n => n.resultado === "enviado" && n.detalhe.startsWith("Escrita em andamento"))).toBe(true);
+    expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ bloqueio: null, confirmado: false, envioId: r.envioId });
+    expect((await ultimosEnvios(db, org))[0]).toMatchObject({ situacao: "erro", noites: 10 });
+    // Execução seguinte: a leitura mostra tudo igual ao plano; a intenção vira confirmação e posse.
+    const depois = await enviar();
+    expect(depois).toMatchObject({ situacao: "ok", imoveis: [{ enviadas: 0, resumo: { iguais: 10 } }] });
+    expect(depois.avisos).toContain("Imóvel 103: 10 noite(s) de envio anterior confirmada(s) pela leitura de agora.");
+    expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ bloqueio: "blackout", confirmado: true });
+    await db.delete(bloqueios).where(eq(bloqueios.fonte, "manual"));
+    expect((await enviar()).situacao).toBe("ok");
+    expect(diaFalso("2026-10-03")).toMatchObject({ override: "none", numAvail: 1 });
+  });
+
+  it("execução em andamento (entre a escrita e o registro) bloqueia outra; execução interrompida há mais de 10 minutos não", async () => {
+    const [outra] = await db.insert(beds24Envios).values({ organizacaoId: org, iniciadoEm: new Date(agora.getTime() - 60_000), modo: "envio", situacao: "executando" }).returning({ id: beds24Envios.id });
+    const r = await enviar();
+    expect(r).toMatchObject({ ok: false, situacao: "ocupada", mensagem: expect.stringContaining("em andamento") });
+    expect(beds.escritas).toHaveLength(0);
+    expect((await ultimosEnvios(db, org)).find(e => e.id !== outra.id)).toMatchObject({ situacao: "ocupada" });
+    await db.update(beds24Envios).set({ iniciadoEm: new Date(agora.getTime() - 11 * 60_000) }).where(eq(beds24Envios.id, outra.id));
+    expect((await enviar()).situacao).toBe("ok");
   });
 
   it("bloqueio que só existe no Beds24 nunca é reaberto pelo SCL, mesmo sem bloqueio local", async () => {

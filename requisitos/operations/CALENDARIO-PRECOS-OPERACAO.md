@@ -221,7 +221,9 @@ Implementado no painel (um só lugar por regra; `app/src/calendario/`):
 - **Envio controlado** (`POST /inventory/rooms/calendar`, price1/minStay/maxStay/override):
   por imóvel, a partir de uma leitura atual do destino feita no início de cada execução
   (sem ela, ou com ela incompleta para o imóvel, nada é escrito), só noites diferentes dessa leitura (ou do último envio
-  confirmado), com simulação prévia, releitura noite a noite (confirmada/divergente), histórico
+  confirmado), com simulação prévia, intenção gravada antes da escrita externa (se o banco
+  falhar depois da escrita, a execução seguinte assume a posse pela leitura), releitura noite
+  a noite (confirmada/divergente), histórico
   antes/depois com a regra usada, trava contra execução simultânea e rotina diária opt-in
   (7h, após a importação). Só funciona com `BEDS24_ESCRITA=ligada` e imóvel marcado; o
   refresh token precisa do escopo `inventory`.
