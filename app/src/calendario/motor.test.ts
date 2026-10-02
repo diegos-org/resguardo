@@ -181,6 +181,22 @@ describe("bloqueios e conferência com o Beds24", () => {
     expect(porData(linhas, "2026-10-07").avisos).toContain("Beds24 tem bloqueio (blackout) sem bloqueio no SCL: o SCL não reabre o que não fechou; confira.");
     expect(porData(linhas, "2026-10-08").avisos).toContain("Beds24 informa 0 unidades sem reserva ou bloqueio no SCL: confira a importação antes de vender.");
   });
+  it("reabertura do bloqueio do SCL só quando a leitura atual ainda mostra o blackout; restrição externa ou falta de leitura não são apagadas", () => {
+    const enviadoEm = new Date("2026-09-30T10:00:00Z");
+    const enviado = (data: string) => ({ data, preco: 45000, minimo: 1, maximo: 27, bloqueio: "blackout", confirmado: true, enviadoEm });
+    const linhas = planejarCalendario(entrada({
+      enviados: [enviado("2026-10-02"), enviado("2026-10-03"), enviado("2026-10-04"), enviado("2026-10-05")],
+      observacoes: [obs("2026-10-02", { livres: 0, bloqueio: "blackout" }), obs("2026-10-03", { bloqueio: "noCheckIn" }), obs("2026-10-05", { bloqueio: "blackout", observadoEm: new Date("2026-09-29T00:00:00Z") })],
+    }));
+    expect(porData(linhas, "2026-10-02")).toMatchObject({ bloqueioEnviar: "none", acao: "enviar" });
+    expect(porData(linhas, "2026-10-03").bloqueioEnviar).toBeUndefined();
+    expect(porData(linhas, "2026-10-03").avisos).toContain('Bloqueio do SCL removido, mas o Beds24 tem a restrição "noCheckIn" nesta noite: não reaberta automaticamente; confira no Beds24.');
+    expect(porData(linhas, "2026-10-04").bloqueioEnviar).toBeUndefined();
+    expect(porData(linhas, "2026-10-04").avisos).toContain("Bloqueio do SCL removido, mas sem leitura recente do Beds24: a reabertura espera a próxima leitura.");
+    // Observação mais antiga que o último envio não vale como leitura atual.
+    expect(porData(linhas, "2026-10-05").bloqueioEnviar).toBeUndefined();
+    expect(faixasDeEnvio(linhas).filter(f => f.bloqueio)).toEqual([{ from: "2026-10-02", to: "2026-10-02", preco: 45000, minimo: 2, maximo: 27, bloqueio: "none" }]);
+  });
   it("igual quando a observação (mais recente que o último envio) já tem os valores; senão vale o envio confirmado", () => {
     const quando = new Date("2026-10-01T08:00:00Z");
     const enviadoIgual = { data: "2026-10-05", preco: 45000, minimo: 1, maximo: 27, bloqueio: null, confirmado: true, enviadoEm: quando };

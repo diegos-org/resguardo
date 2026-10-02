@@ -224,7 +224,16 @@ export function planejarCalendario(e: EntradaPlano): LinhaPlano[] {
     const bloqueioScl = bloqueioSclNaNoite(data);
     const observacao = observadas.get(data) ?? null;
     const enviado = enviadas.get(data) ?? null;
-    const bloqueioEnviar: BloqueioEnvio | undefined = bloqueioScl ? "blackout" : enviado?.bloqueio === "blackout" ? "none" : undefined;
+    // Reabrir ("none") só quando a leitura atual ainda mostra o blackout que o SCL aplicou: uma
+    // restrição posta no Beds24 depois (noCheckIn etc.) ou a falta de leitura nunca é apagada.
+    let bloqueioEnviar: BloqueioEnvio | undefined;
+    if (bloqueioScl) bloqueioEnviar = "blackout";
+    else if (enviado?.bloqueio === "blackout") {
+      const atual = observacao && (!enviado || observacao.observadoEm.getTime() >= enviado.enviadoEm.getTime()) ? observacao.bloqueio : undefined;
+      if (atual === "blackout") bloqueioEnviar = "none";
+      else if (atual === undefined) avisos.push("Bloqueio do SCL removido, mas sem leitura recente do Beds24: a reabertura espera a próxima leitura.");
+      else if (normalizarBloqueio(atual) !== "none") avisos.push(`Bloqueio do SCL removido, mas o Beds24 tem a restrição "${atual}" nesta noite: não reaberta automaticamente; confira no Beds24.`);
+    }
     if (reservas > 1) avisos.push("Mais de uma reserva ocupa esta noite.");
     if (reservas > 0 && bloqueioScl) avisos.push("Reserva e bloqueio se sobrepõem nesta noite.");
     if (!observacao) avisos.push("Sem leitura do Beds24 para esta noite.");
