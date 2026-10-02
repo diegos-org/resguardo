@@ -65,7 +65,7 @@ item muda a linha para `feito` **no próprio PR do item**.
 | M2.5 | Script de carga inicial (seed) com dados fictícios para homologação | feito | M2.3 |
 | M2.6 | Cadastro completo do imóvel: endereço completo, camas/comodidades, regras da casa, horários de entrada/saída, taxas (limpeza, hóspede extra), regras de venda (estadia mínima/máxima com exceções por período, antecedência, dias de chegada/saída), preço base e preço dinâmico (liga/desliga); tudo editável no painel (Diego 24/09) | feito | M2.1 |
 | M2.7 | Quem recebe o pagamento por imóvel e por canal (Airbnb, Booking, site, direta/WhatsApp); um proprietário por imóvel; confirmação ao excluir; recálculo automático quando a regra muda | feito | M4.2 |
-| M2.9 | Aba Anúncios: por imóvel, o anúncio em cada canal (Airbnb, Booking, site) — situação, link, título, descrição, fotos, preço base — e alerta quando os canais estiverem diferentes | a fazer | M2.6, M3.3 |
+| M2.9 | Aba Anúncios: por imóvel, referências manuais de Airbnb/Booking (situação, link, título, descrição, links de fotos, preço base e conferência), dados atuais do site e alertas de diferenças entre valores conhecidos; edição administrativa com histórico | feito | M2.6, M3.3; não lê anúncios automaticamente nas OTAs, não publica conteúdo, fotos do site continuam no M7.3 |
 
 ### M3 — Reservas e calendário
 
@@ -77,7 +77,7 @@ item muda a linha para `feito` **no próprio PR do item**.
 | M3.4 | Calendário central: todas as unidades, por imóvel, reservas/bloqueios/limpezas/manutenção, filtros global e local | feito | M3.1, M0.4 |
 | M3.5 | Lista de reservas com filtros e detalhe da reserva | feito | M3.1 |
 | M3.6 | Importação manual (CSV) de reservas como alternativa enquanto Beds24 não estiver ligado | feito | M3.1 |
-| M3.7 | **SCL como fonte oficial de calendário e preços** (Diego, 24/09): bloqueios, preços, estadia mínima e regras editados no SCL são enviados ao Beds24 e dele às OTAs; mudanças que chegarem do Beds24 são conferidas contra o SCL. Escrita autorizada por Diego, mas só é ligada (variável `BEDS24_ESCRITA=ligada`) depois de testada em um imóvel escolhido por ele | a fazer | M3.3, M2.6 |
+| M3.7 | **SCL como fonte oficial de calendário e preços** (Diego, 24/09): bloqueios, preços, estadia mínima e regras editados no SCL são enviados ao Beds24 e dele às OTAs; mudanças que chegarem do Beds24 são conferidas contra o SCL. Escrita autorizada por Diego, mas só é ligada (variável `BEDS24_ESCRITA=ligada`) depois de testada em um imóvel escolhido por ele | a fazer | M3.3, M2.6; Diego autorizou 103 ou 403 em 2/10 para o futuro teste: usar 103 primeiro, 403 como alternativa; ativação continua pendente |
 | M3.8 | Conferência das reservas importadas: consultas separadas de pedidos e fora da ocupação, data original, busca, situação, histórico completo, paginação e registros alterados por execução (pedido de Diego em 1/10) | feito | M3.3, M3.5; após publicar, reimportar para recuperar status/data dos registros existentes |
 
 ### M4 — Financeiro (ledger)
@@ -172,7 +172,7 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 
 1. **Revisar e mergear PRs** — por enquanto o Claude faz os merges (autorizado em 23/09).
 2. **Vercel:** importar o repositório `al-life/scl-reconstrucao` na Vercel, *root directory* `app`, e ligar a integração Neon. (destrava M0.5)
-3. **Beds24:** leitura de quartos confirmada por Diego em 28/09; quarto 403 duplicado removido por ele. Diego cadastrou e vinculou os seis imóveis e fez a primeira importação em 1/10. Após publicar M3.8, usar **Configurações → Integrações → Importar agora** para reler status e datas originais, preservando IDs e códigos SCL. Conferir reservas, bloqueios e avisos antes de ligar a rotina diária (requer `CRON_SECRET`). O mapeamento Airbnb → Beds24 não cria os vínculos Beds24 → SCL. Nenhuma importação real foi feita durante a implementação. O cliente continua somente leitura; escrita depende do M3.7, cotação e disponibilidade de venda dependem do M7.2.
+3. **Beds24:** leitura de quartos confirmada por Diego em 28/09; quarto 403 duplicado removido por ele. Diego cadastrou e vinculou os seis imóveis e fez a primeira importação em 1/10. Diego confirmou o merge do M3.8 e uma nova importação em 2/10. Agosto/setembro podem estar incompletos: uma reserva antiga ausente no SCL também não foi encontrada por ele no Beds24; a causa histórica é hipótese, não auditoria concluída. A conferência de outubro em diante permanece pendente. Conferir reservas, bloqueios e avisos antes de ligar a rotina diária (requer `CRON_SECRET`). O mapeamento Airbnb → Beds24 não cria os vínculos Beds24 → SCL. Nenhuma importação real foi feita durante a implementação. O cliente continua somente leitura; escrita depende do M3.7, cotação e disponibilidade de venda dependem do M7.2.
 4. **Meta / WhatsApp Business:** iniciar a verificação da empresa no Meta Business — leva dias. (destrava M10)
 5. **Pagamento do site:** credenciais de *teste* do provedor escolhido no M8.0 (Mercado Pago, se for a escolha). (destrava M8.2)
 6. **Modelo do marketplace:** escolher entre os modelos propostos (ou ajustar). (destrava M12.1)
@@ -205,4 +205,3 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
   (e usado no de hóspedes).
 - 24/09 (Diego): mudança de regra vale daquela data para frente — o passado (e o dinheiro
   que já movimentou) nunca é recalculado.
-
