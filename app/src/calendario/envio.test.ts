@@ -130,14 +130,27 @@ describe("envio ao Beds24 (M3.7)", () => {
     const r = await enviar();
     expect(r).toMatchObject({ ok: false, situacao: "erro", imoveis: [{ enviadas: 0, falha: expect.stringContaining("HTTP 403") }] });
     expect(r.avisos.some(a => a.includes("envio falhou"))).toBe(true);
-    expect(await noites()).toHaveLength(0);
-    expect(await enviados()).toHaveLength(0);
+    // Mesmo com falha, o quarto é relido: as noites ficam registradas como "falhou" e nada é confirmado.
+    const registradas = await noites();
+    expect(registradas).toHaveLength(10);
+    expect(registradas.every(n => n.resultado === "falhou" && n.detalhe.includes("HTTP 403"))).toBe(true);
+    expect((await enviados()).every(e => !e.confirmado)).toBe(true);
     beds.falharEscrita = null;
     beds.recusarQuartos = ["20"];
-    expect(await enviar()).toMatchObject({ situacao: "erro", imoveis: [{ falha: "Quarto recusado pelo serviço falso." }] });
+    expect(await enviar()).toMatchObject({ situacao: "erro", imoveis: [{ falha: "Quarto recusado pelo serviço falso.", confirmadas: 0 }] });
     beds.recusarQuartos = [];
     expect(await enviar()).toMatchObject({ situacao: "ok", imoveis: [{ enviadas: 10, confirmadas: 10 }] });
     expect(beds.escritas).toHaveLength(2);
+  });
+
+  it("recusa parcial do Beds24 (success:false com faixas já aplicadas) é relida: o que ficou gravado conta como confirmado", async () => {
+    const escritorParcial = { escreverCalendario: async (itens: Parameters<typeof beds.escreverCalendario>[0]) => { await beds.escreverCalendario(itens); return itens.map(i => ({ roomId: i.roomId, ok: false, erro: "Uma faixa foi recusada." })); } };
+    const r = await enviarCalendarioBeds24(db, org, beds, escritorParcial, { modo: "envio", agora, autorId: null });
+    expect(r).toMatchObject({ situacao: "parcial", imoveis: [{ enviadas: 0, confirmadas: 10, falha: "Uma faixa foi recusada." }] });
+    expect((await noites()).every(n => n.resultado === "confirmado")).toBe(true);
+    expect((await enviados()).every(e => e.confirmado)).toBe(true);
+    // Nada a reenviar: a releitura já mostrou o Beds24 igual ao SCL.
+    expect((await enviar()).imoveis[0].resumo.enviar).toBe(0);
   });
 
   it("releitura que falha deixa as noites sem confirmação (incerto) e a próxima execução confirma sem acumular", async () => {
