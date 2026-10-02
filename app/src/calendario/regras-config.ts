@@ -170,13 +170,15 @@ export function validarFormRegras(e: Entrada, atual: RegrasCalendario, imoveisDa
   if (!erros.faixa1Ate && !erros.faixa2Ate && faixas[0].deDias <= faixas[1].ateDias && faixas[1].deDias <= faixas[0].ateDias) erros.faixa2De = "As duas faixas não podem se cruzar.";
   const aplicadoPor = txt(e.ultimaHoraModo);
   if (!(aplicadoPor in APLICACOES_ULTIMA_HORA)) erros.ultimaHoraModo = "Escolha quem aplica a última hora.";
+  // Todo campo numérico é lido antes da checagem de erros: nenhum volta ao padrão em silêncio.
+  const feriadoMinimo = inteiro("feriadoMinimo", LIMITES.minimo);
   if (Object.keys(erros).length) return { ok: false, erros };
   return {
     ok: true,
     regras: {
       minimoPorDia, estadiaMaxima, horizonteDias,
       feriados: feriados.sort((a, b) => a.data.localeCompare(b.data)),
-      janelaFeriado: { estadiaMinima: inteiro("feriadoMinimo", LIMITES.minimo), multiplicador: multiplicador!, todosImoveis: marcado(e.feriadoTodos), imoveis: ids(e.feriadoImoveis, imoveisDaOrg) },
+      janelaFeriado: { estadiaMinima: feriadoMinimo, multiplicador: multiplicador!, todosImoveis: marcado(e.feriadoTodos), imoveis: ids(e.feriadoImoveis, imoveisDaOrg) },
       eventos: atual.eventos,
       ultimaHora: { aplicadoPor: aplicadoPor as AplicacaoUltimaHora, faixas },
       envio: { imoveis: ids(e.envioImoveis, imoveisDaOrg), automatico: marcado(e.envioAutomatico) },

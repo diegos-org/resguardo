@@ -213,7 +213,11 @@ export function planejarCalendario(e: EntradaPlano): LinhaPlano[] {
       minimoEnviar = livresSeguidas;
       motivoMinimo += `; sobra de ${livresSeguidas} noite(s) até a próxima reserva/bloqueio`;
     }
-    if (minimoEnviar !== null && minimoEnviar > maximo) avisos.push(`Mínimo (${minimoEnviar}) acima do máximo (${maximo}): conferir o cadastro.`);
+    // Mínimo acima do máximo é impossível de cumprir (e o Beds24 pode recusar): envia o máximo como mínimo e avisa.
+    if (minimoEnviar !== null && minimoEnviar > maximo) {
+      avisos.push(`Mínimo (${minimoEnviar}) acima do máximo (${maximo}): enviado mínimo igual ao máximo; conferir o cadastro.`);
+      minimoEnviar = maximo;
+    }
 
     // Ocupação, bloqueio e observação externa.
     const reservas = reservasNaNoite(data);
