@@ -71,9 +71,11 @@ describe("disponibilidade e cotação do site (M7.2)", () => {
     expect((await consultar()).situacao).toBe("a_confirmar");
   });
 
-  it("sem preço cadastrado a disponibilidade aparece, mas o valor fica para a conversa", async () => {
-    await db.update(imoveisDetalhes).set({ precoBase: null });
+  it("sem preço ou sem taxa de limpeza cadastrados a disponibilidade aparece, mas o total fica para a conversa", async () => {
     await observar(dias("2026-10-12", 3));
+    await db.update(imoveisDetalhes).set({ taxaLimpeza: null });
+    expect(await consultar()).toMatchObject({ situacao: "disponivel", motivos: ["O valor dessas datas é confirmado na conversa."], cotacao: { diarias: 135000, limpeza: 0, total: null } });
+    await db.update(imoveisDetalhes).set({ precoBase: null, taxaLimpeza: 25000 });
     expect(await consultar()).toMatchObject({ situacao: "disponivel", motivos: ["O valor dessas datas é confirmado na conversa."], cotacao: { diarias: null, total: null, limpeza: 25000 } });
   });
 
