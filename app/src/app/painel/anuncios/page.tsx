@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { exigir, podeFazer } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { listarAnuncios } from "@/anuncios/repositorio";
@@ -9,6 +10,8 @@ import { organizacaoDoSite } from "@/site/site";
 
 export default async function Anuncios({ searchParams }: PageProps<"/painel/anuncios">) {
   const s = await exigirSessaoPainel();
+  // Tela interna: acesso direto de outros perfis volta ao painel antes de consultar os anúncios.
+  if (s.papel !== "admin" && s.papel !== "operacao") redirect("/painel");
   exigir(s, "imovel:ler", { organizacaoId: s.organizacaoId });
   const sp = await searchParams;
   const db = getDb();

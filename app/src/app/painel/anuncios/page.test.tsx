@@ -1,14 +1,17 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, it, vi } from "vitest";
 import Page from "./page";
-const m = vi.hoisted(() => ({ sessao: vi.fn(), listar: vi.fn(), site: vi.fn() }));
+const m = vi.hoisted(() => ({ sessao: vi.fn(), listar: vi.fn(), site: vi.fn(), db: vi.fn(), redirect: vi.fn() }));
+vi.mock("next/navigation", () => ({ redirect: m.redirect }));
 vi.mock("@/acesso/sessao-atual", () => ({ exigirSessaoPainel: m.sessao }));
-vi.mock("@/db/client", () => ({ getDb: () => ({}) }));
+vi.mock("@/db/client", () => ({ getDb: m.db }));
 vi.mock("@/anuncios/repositorio", () => ({ listarAnuncios: m.listar }));
 vi.mock("@/anuncios/acoes", () => ({ salvarAnuncioAcao: async () => ({ ok: true }) }));
 vi.mock("@/site/site", () => ({ organizacaoDoSite: m.site }));
 beforeEach(() => {
   vi.clearAllMocks();
+  m.db.mockReturnValue({});
+  m.redirect.mockImplementation(() => { throw new Error("NEXT_REDIRECT"); });
   m.sessao.mockResolvedValue({ papel: "operacao", usuarioId: "u", organizacaoId: "org" });
   m.site.mockResolvedValue("org");
   m.listar.mockResolvedValue([
@@ -17,6 +20,14 @@ beforeEach(() => {
   ]);
 });
 const html = async (params = {}) => renderToStaticMarkup(await Page({ params: Promise.resolve({}), searchParams: Promise.resolve(params) }));
+it.each(["proprietario", "hospede", "limpeza"])("acesso direto de %s redireciona antes de consultar dados internos", async (papel) => {
+  m.sessao.mockResolvedValue({ papel, usuarioId: "u", organizacaoId: "org", imovelIds: ["im"] });
+  await expect(html()).rejects.toThrow("NEXT_REDIRECT");
+  expect(m.redirect).toHaveBeenCalledWith("/painel");
+  expect(m.db).not.toHaveBeenCalled();
+  expect(m.listar).not.toHaveBeenCalled();
+  expect(m.site).not.toHaveBeenCalled();
+});
 it("operação lê sem formulários de edição; ID não significa publicação", async () => {
   const h = await html();
   expect(h).toContain("Anúncios T1"); expect(h).not.toContain("Anúncios ARQ");
