@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { resumoImovel } from "@/components/site/CartaoImovel";
+import { Disponibilidade } from "@/components/site/Disponibilidade";
 import { canalDeContato, FormConsulta } from "@/components/site/FormConsulta";
 import { FotoProvisoria, Moldura, SiteEmConfiguracao } from "@/components/site/Moldura";
 import styles from "@/components/site/site.module.css";
 import { hojeISO } from "@/lib/datas";
+import { consultarDisponibilidade } from "@/site/disponibilidade";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
-import { imovelDoSite, imoveisDoSite, lerPedidoConsulta } from "@/site/site";
+import { imovelDoSite, imoveisDoSite, lerPedidoConsulta, montarConsulta } from "@/site/site";
 
 export async function generateMetadata({ params }: PageProps<"/imoveis/[codigo]">): Promise<Metadata> {
   const { codigo } = await params;
@@ -23,6 +25,10 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
   if (!conteudo) return <SiteEmConfiguracao />;
   const [imovel, todos] = await Promise.all([imovelDoSite(db, conteudo.organizacaoId, codigo), imoveisDoSite(db, conteudo.organizacaoId)]);
   if (!imovel) notFound();
+  const hoje = hojeISO("America/Sao_Paulo");
+  // Com datas no link, mostra disponibilidade e valor reais (M7.2) antes do formulário.
+  const consulta = { ...pedido, imovel: imovel.codigo };
+  const disponibilidade = pedido.entrada && pedido.saida && montarConsulta(consulta, imovel, hoje).ok ? await consultarDisponibilidade(db, conteudo.organizacaoId, consulta) : null;
   const regras = [
     `Entrada a partir das ${imovel.checkinAPartirDe}`,
     `Saída até as ${imovel.checkoutAte}`,
@@ -45,6 +51,7 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
       </div>
       <div className={styles.colunas}>
         <div>
+          {disponibilidade && <Disponibilidade resultado={disponibilidade} entrada={pedido.entrada} saida={pedido.saida} />}
           {imovel.descricao && <p className={styles.texto}>{imovel.descricao}</p>}
           {imovel.camas.length > 0 && (
             <section className={styles.secao}>
@@ -80,7 +87,7 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
             )}
           </section>
         </div>
-        <FormConsulta imoveis={todos} valores={{ ...pedido, imovel: imovel.codigo }} hoje={hojeISO("America/Sao_Paulo")} canal={canalDeContato(conteudo)} />
+        <FormConsulta imoveis={todos} valores={consulta} hoje={hoje} canal={canalDeContato(conteudo)} />
       </div>
     </Moldura>
   );

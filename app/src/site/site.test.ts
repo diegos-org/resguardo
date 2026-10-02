@@ -90,6 +90,10 @@ describe("site público (M7.1)", () => {
     expect(montarConsulta({ ...base, entrada: "2026-02-30" }, imovel, "2026-01-01")).toMatchObject({ ok: false, erros: { entrada: expect.any(String) } });
     expect(montarConsulta({ ...base, hospedes: "5" }, imovel, "2026-09-25")).toMatchObject({ ok: false, erros: { hospedes: "Este apartamento recebe até 4 pessoas." } });
     expect(montarConsulta(base, null, "2026-09-25")).toMatchObject({ ok: false, erros: { imovel: expect.any(String) } });
+    // Com o resultado do site (M7.2), a mensagem traz o valor como referência; indisponível ou sem valor, não.
+    expect(montarConsulta(base, imovel, "2026-09-25", { situacao: "disponivel", noites: 3, total: 160000 })).toMatchObject({ ok: true, texto: expect.stringContaining("O site mostrou R$ 1.600,00 para 3 noites.") });
+    expect(montarConsulta(base, imovel, "2026-09-25", { situacao: "a_confirmar", noites: 1, total: 58750 })).toMatchObject({ texto: expect.stringContaining("R$ 587,50 para 1 noite (disponibilidade a confirmar).") });
+    expect(montarConsulta(base, imovel, "2026-09-25", { situacao: "indisponivel", noites: 3, total: null })).toMatchObject({ texto: expect.not.stringContaining("O site mostrou") });
     expect(linkWhatsapp("5521900000000", "a b&c")).toBe("https://wa.me/5521900000000?text=a%20b%26c");
   });
 

@@ -170,15 +170,20 @@ export type ErrosConsulta = Partial<Record<keyof PedidoConsulta, string>>;
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
 const dataValida = (d: string) => DATA.test(d) && !Number.isNaN(Date.parse(`${d}T00:00:00Z`)) && new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) === d;
 const dataBr = (d: string) => d.split("-").reverse().join("/");
+const brl = (c: number) => `R$ ${(c / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /**
  * Confere a consulta do visitante (datas, hóspedes dentro da capacidade) e monta a mensagem de
  * WhatsApp. Nada é gravado nem enviado pelo sistema: o visitante abre a conversa e manda.
  */
+export type ResumoCotacao = { situacao: "disponivel" | "indisponivel" | "a_confirmar" | "invalida"; noites: number; total: number | null };
+
 export function montarConsulta(
   p: PedidoConsulta,
   imovel: ImovelPublico | null,
   hoje: string,
+  /** Resultado da disponibilidade (M7.2): entra na mensagem como referência, nunca como preço garantido. */
+  cotacao?: ResumoCotacao | null,
 ): { ok: true; texto: string } | { ok: false; erros: ErrosConsulta } {
   const erros: ErrosConsulta = {};
   if (!imovel) erros.imovel = "Escolha um apartamento.";
@@ -194,6 +199,9 @@ export function montarConsulta(
     `Olá! Gostaria de consultar a disponibilidade do ${imovel.nome} (${imovel.codigo}).`,
     `Entrada: ${dataBr(p.entrada)} · Saída: ${dataBr(p.saida)} · ${hospedes} ${hospedes === 1 ? "pessoa" : "pessoas"}.`,
   ];
+  if (cotacao && cotacao.total !== null && (cotacao.situacao === "disponivel" || cotacao.situacao === "a_confirmar")) {
+    linhas.push(`O site mostrou ${brl(cotacao.total)} para ${cotacao.noites} ${cotacao.noites === 1 ? "noite" : "noites"}${cotacao.situacao === "a_confirmar" ? " (disponibilidade a confirmar)" : ""}.`);
+  }
   return { ok: true, texto: linhas.join("\n") };
 }
 

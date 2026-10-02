@@ -1,7 +1,9 @@
+import { Disponibilidade } from "@/components/site/Disponibilidade";
 import { canalDeContato, FormConsulta } from "@/components/site/FormConsulta";
 import { Moldura, SiteEmConfiguracao } from "@/components/site/Moldura";
 import styles from "@/components/site/site.module.css";
 import { hojeISO } from "@/lib/datas";
+import { consultarDisponibilidade } from "@/site/disponibilidade";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
 import { imovelDoSite, imoveisDoSite, lerPedidoConsulta, linkWhatsapp, montarConsulta } from "@/site/site";
 
@@ -15,39 +17,46 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
   const pedido = lerPedidoConsulta(sp);
   const enviado = !!(pedido.entrada || pedido.saida);
   const todos = await imoveisDoSite(db, conteudo.organizacaoId);
-  const r = enviado ? montarConsulta(pedido, pedido.imovel ? await imovelDoSite(db, conteudo.organizacaoId, pedido.imovel) : null, hoje) : null;
+  // Disponibilidade e valor reais (M7.2): só depois de o pedido passar na conferência básica.
+  const imovel = enviado && pedido.imovel ? await imovelDoSite(db, conteudo.organizacaoId, pedido.imovel) : null;
+  const previa = enviado ? montarConsulta(pedido, imovel, hoje) : null;
+  const disponibilidade = previa?.ok ? await consultarDisponibilidade(db, conteudo.organizacaoId, pedido) : null;
+  const r = enviado ? montarConsulta(pedido, imovel, hoje, disponibilidade && { situacao: disponibilidade.situacao, noites: disponibilidade.noites, total: disponibilidade.cotacao?.total ?? null }) : null;
   return (
     <Moldura conteudo={conteudo}>
       <h1 style={{ fontSize: "2rem", margin: "8px 0 16px" }}>Consulta</h1>
       <div className={styles.colunas}>
         <div>
           {r?.ok ? (
-            <section className={styles.secao} style={{ marginTop: 0 }}>
-              <h2>Sua mensagem</h2>
-              <p className={styles.texto} style={{ background: "#fff", border: "1px solid #e4dccb", borderRadius: 8, padding: 16 }}>
-                {r.texto}
-              </p>
-              {conteudo.whatsapp ? (
-                <p style={{ marginTop: 16 }}>
-                  <a href={linkWhatsapp(conteudo.whatsapp, r.texto)} className={styles.botao} target="_blank" rel="noopener noreferrer">
-                    Enviar pelo WhatsApp
-                  </a>
+            <>
+              {disponibilidade && <Disponibilidade resultado={disponibilidade} entrada={pedido.entrada} saida={pedido.saida} />}
+              <section className={styles.secao}>
+                <h2>Sua mensagem</h2>
+                <p className={styles.texto} style={{ background: "#fff", border: "1px solid #e4dccb", borderRadius: 8, padding: 16, whiteSpace: "pre-line" }}>
+                  {r.texto}
                 </p>
-              ) : conteudo.email ? (
-                <p style={{ marginTop: 16 }}>
-                  <a href={`mailto:${conteudo.email}?subject=${encodeURIComponent("Consulta de disponibilidade")}&body=${encodeURIComponent(r.texto)}`} className={styles.botao}>
-                    Enviar por e-mail
-                  </a>
+                {conteudo.whatsapp ? (
+                  <p style={{ marginTop: 16 }}>
+                    <a href={linkWhatsapp(conteudo.whatsapp, r.texto)} className={styles.botao} target="_blank" rel="noopener noreferrer">
+                      Enviar pelo WhatsApp
+                    </a>
+                  </p>
+                ) : conteudo.email ? (
+                  <p style={{ marginTop: 16 }}>
+                    <a href={`mailto:${conteudo.email}?subject=${encodeURIComponent("Consulta de disponibilidade")}&body=${encodeURIComponent(r.texto)}`} className={styles.botao}>
+                      Enviar por e-mail
+                    </a>
+                  </p>
+                ) : (
+                  <p className={styles.aviso} role="note" style={{ marginTop: 16 }}>
+                    O contato ainda não foi configurado. Volte em breve.
+                  </p>
+                )}
+                <p className={styles.miudo} style={{ marginTop: 12 }}>
+                  A reserva é confirmada na conversa. Nenhuma reserva ou pagamento é feito aqui.
                 </p>
-              ) : (
-                <p className={styles.aviso} role="note" style={{ marginTop: 16 }}>
-                  O contato ainda não foi configurado. Volte em breve.
-                </p>
-              )}
-              <p className={styles.miudo} style={{ marginTop: 12 }}>
-                A disponibilidade e o valor são confirmados na conversa. Nenhuma reserva ou pagamento é feito aqui.
-              </p>
-            </section>
+              </section>
+            </>
           ) : (
             <p className={styles.texto}>{conteudo.textos.comoReservar || "Escolha o apartamento, as datas e quantas pessoas."}</p>
           )}
