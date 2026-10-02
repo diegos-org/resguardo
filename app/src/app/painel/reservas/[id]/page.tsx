@@ -43,6 +43,8 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
     ["Imóvel", imovel ? `${imovel.codigo} · ${imovel.nome}` : "—"],
     ["Origem", `${NOMES_ORIGEM[r.origem]}${r.codigoCanal ? ` (${r.codigoCanal})` : ""}`],
     ["Situação", NOMES_ESTADO[r.estado]],
+    ["Feita em (data da origem)", r.reservadaEm ? r.reservadaEm.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "Não informada pela origem"],
+    ["Cadastrada no SCL em", r.criadoEm.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })],
     ["Entrada → saída", `${dataBr(r.checkin)} → ${dataBr(r.checkout)} · ${noites(r.checkin, r.checkout)} noite(s)`],
     ["Hóspedes", r.hospedes === null ? "—" : String(r.hospedes)],
     ["Hóspede", r.hospedeNome || "—"],
@@ -62,6 +64,8 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
   return (
     <>
       <h1>Reserva {r.codigo}</h1>
+      {r.estado === "consulta" && <p role="note">Consulta: não é uma reserva confirmada, não ocupa o calendário e não entra como receita. A situação será atualizada na próxima importação do Beds24.</p>}
+      {r.estado === "pedido" && <p role="note">Pedido de reserva: ainda aguarda confirmação na origem e não entra como receita. Confira a situação no canal antes de tratar como reserva confirmada.</p>}
       {typeof erro === "string" && (
         <p role="alert" className={styles.alerta}>
           {erro}
@@ -176,3 +180,4 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
     </>
   );
 }
+

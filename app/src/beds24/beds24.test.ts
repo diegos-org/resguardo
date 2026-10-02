@@ -52,6 +52,7 @@ describe("normalização", () => {
         canal: "airbnb",
         codigoCanal: "HMFAKE123",
         modificadoEm: "2026-09-20T10:00:00Z",
+        reservadaEm: null,
       },
     });
   });
@@ -64,8 +65,8 @@ describe("normalização", () => {
     expect([estado("new"), estado("confirmed"), estado("request"), estado("inquiry"), estado("cancelled"), estado("black")]).toEqual([
       "confirmada",
       "confirmada",
-      "pendente",
-      "pendente",
+      "pedido",
+      "consulta",
       "cancelada",
       "bloqueio",
     ]);

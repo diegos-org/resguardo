@@ -5,10 +5,10 @@ import styles from "@/components/formularios.module.css";
 import { FiltroGlobal } from "@/components/painel/FiltroGlobal";
 import { getDb } from "@/db/client";
 import { listarImoveis } from "@/imoveis/repositorio";
-import { descreverFiltros, lerFiltros, manterFiltros, periodoDosFiltros } from "@/lib/filtros";
+import { descreverFiltros, lerFiltros, lerImoveisSelecionados, periodoDosFiltros } from "@/lib/filtros";
 import { formatBRL } from "@/lib/money";
-import { conflitos, NOMES_ESTADO, NOMES_ORIGEM, noites } from "@/reservas/regras";
-import { listarReservas } from "@/reservas/repositorio";
+import { NOMES_ESTADO, NOMES_ORIGEM, noites } from "@/reservas/regras";
+import { lerFiltrosLista, linkLista, listarReservasPaginadas, resumoImportacao, TAMANHO_PAGINA } from "@/reservas/listagem";
 
 const dataBr = (d: string) => d.split("-").reverse().join("/");
 
@@ -16,19 +16,26 @@ export default async function ListaReservas({ searchParams }: PageProps<"/painel
   const sessao = await exigirSessaoPainel();
   const params = await searchParams;
   const db = getDb();
-  const imoveis = await listarImoveis(db, sessao.organizacaoId);
-  const opcoes = imoveis.map((i) => ({ codigo: i.codigo, nome: i.nome }));
+  const imoveis = await listarImoveis(db, sessao.organizacaoId, { incluirInativos: true });
+  const opcoes = imoveis.map((i) => ({ codigo: i.codigo, nome: i.nome + (i.ativo ? "" : " (arquivado)") }));
   const filtros = lerFiltros(params, opcoes);
   const periodo = periodoDosFiltros(filtros);
-  // "Todos" = todos os imóveis ativos (reservas de imóvel inativo não aparecem).
-  const idsFiltro = (filtros.imoveis.length ? imoveis.filter((i) => filtros.imoveis.includes(i.codigo)) : imoveis).map((i) => i.id);
+  const local = lerFiltrosLista(params);
+  const selecionados = lerImoveisSelecionados(params, opcoes);
+  const somenteAtivos = selecionados.length === 0 && local.escopo !== "historico";
+  const efetivos = imoveis.filter(i => selecionados.length ? selecionados.includes(i.codigo) : !somenteAtivos || i.ativo);
+  const idsFiltro = efetivos.map(i => i.id);
+  const descricao = descreverFiltros({ ...filtros, imoveis: efetivos.map(i => i.codigo) }, opcoes);
   const verCanceladas = params.canceladas === "1";
-  const lista = idsFiltro.length
-    ? await listarReservas(db, sessao.organizacaoId, { ...periodo, imovelIds: idsFiltro, incluirCanceladas: verCanceladas })
-    : [];
-
+  const [resultado, ultima] = await Promise.all([
+    listarReservasPaginadas(db, sessao.organizacaoId, local, { periodo, imovelIds: idsFiltro, incluirCanceladas: verCanceladas }),
+    resumoImportacao(db, sessao.organizacaoId, local.execucao || undefined),
+  ]);
+  const lista = resultado.itens;
   const porId = new Map(imoveis.map((i) => [i.id, i]));
-  const emConflito = new Set(conflitos(lista).flat());
+  const emConflito = new Set(lista.filter(r => r.conflito).map(r => r.id));
+  const manterLocal = Object.entries(local).filter(([k]) => k !== "pagina").map(([k, v]) => [k, String(v)] as [string, string]);
+  const pagina = (n: number) => linkLista(params, { pagina: String(n) });
   const verValores = podeFazer(sessao.papel, "financeiro:ler");
 
   return (
@@ -48,9 +55,30 @@ export default async function ListaReservas({ searchParams }: PageProps<"/painel
           )}
         </span>
       </div>
-      <FiltroGlobal filtros={filtros} opcoes={opcoes} acao="/painel/reservas" />
+      <p><Link href={linkLista({}, { escopo: "historico", ordem: "origem" })}>Ver reservas mais recentes na origem</Link> · <Link href={linkLista({}, { escopo: "historico", situacao: "consulta" })}>Ver consultas</Link></p>
+      {ultima && <section aria-label="Mudanças da importação" className={styles.alerta}>
+        <strong>{local.execucao ? "Importação selecionada" : "Última importação concluída"} · {ultima.execucao.iniciadoEm.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}</strong>
+        <p>{ultima.execucao.resumo}</p>
+        <p>{ultima.totais.length ? ultima.totais.map(t => <span key={t.tipo} style={{ marginRight: 16 }}><Link href={linkLista({}, { escopo: "historico", ordem: "origem", execucao: ultima.execucao.id, mudanca: t.tipo })}>{t.total} {t.tipo === "adicionada" ? "adicionadas ao SCL" : t.tipo === "alterada" ? "alteradas" : "canceladas"}</Link></span>) : "Sem registros detalhados nesta execução. Importações antigas não têm esta lista de mudanças."}</p>
+        <p>Adicionada ao SCL não significa vendida agora. A data da origem aparece separadamente. Os detalhes mostram a situação atual.</p>
+      </section>}
+      <FiltroGlobal filtros={filtros} opcoes={opcoes} imoveisSelecionados={efetivos.map(i => i.codigo)} acao="/painel/reservas" manter={[...manterLocal, ...(verCanceladas ? [["canceladas", "1"] as [string, string]] : [])]} />
+      <form method="get" action="/painel/reservas" className={styles.form} aria-label="Buscar reservas" style={{ maxWidth: 1000, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
+        {selecionados.map(i => <input key={i} type="hidden" name="imovel" value={i} />)}
+        <input type="hidden" name="mes" value={filtros.mes ?? "todos"} /><input type="hidden" name="ano" value={filtros.ano} />
+        {verCanceladas && <input type="hidden" name="canceladas" value="1" />}
+        {local.execucao && <><input type="hidden" name="execucao" value={local.execucao} /><input type="hidden" name="mudanca" value={local.mudanca} /></>}
+        <label>Buscar por código SCL, código do canal ou hóspede<input name="busca" maxLength={100} defaultValue={local.busca} /></label>
+        <label>Consultar<select name="escopo" defaultValue={local.escopo}><option value="periodo">Estadias no período acima</option><option value="historico">Todo o histórico importado/cadastrado</option></select></label>
+        <label>Situação<select name="situacao" defaultValue={local.situacao}><option value="todas">Todas</option>{Object.entries(NOMES_ESTADO).map(([v, nome]) => <option key={v} value={v}>{nome}</option>)}</select></label>
+        <label>Ordenar por<select name="ordem" defaultValue={local.ordem}><option value="checkin">Data de entrada</option><option value="origem">Mais recentes na origem</option></select></label>
+        <label>Feitas na origem<select name="recentes" defaultValue={local.recentes}><option value="0">Qualquer data</option><option value="7">Últimos 7 dias</option><option value="30">Últimos 30 dias</option></select></label>
+        <button type="submit">Buscar reservas</button>
+      </form>
+      {local.execucao && <p>Mostrando mudanças da importação selecionada. <Link href={linkLista(params, { execucao: null, mudanca: null })}>Ver todas as importações</Link></p>}
+      <p>Consultas não ocupam datas. A data da origem é a informada pelo Beds24. Datas ausentes ficam como “Não informada” e no fim da ordenação por mais recentes; não entram nos filtros de 7 ou 30 dias.</p>
       <p className={styles.etiqueta} style={{ alignSelf: "flex-start" }}>
-        {descreverFiltros(filtros, opcoes)} · {lista.length} reserva(s)
+        {local.escopo === "historico" ? "Todo o histórico · imóveis selecionados" : efetivos.length ? descricao : "Nenhum imóvel ativo selecionado"} · {resultado.total} registro(s) · página {resultado.pagina} de {resultado.paginas}
       </p>
       {emConflito.size > 0 && (
         <p role="alert" className={styles.alerta}>
@@ -58,7 +86,7 @@ export default async function ListaReservas({ searchParams }: PageProps<"/painel
         </p>
       )}
       {lista.length === 0 ? (
-        <p>Nenhuma reserva neste período.</p>
+        <p>Nenhum registro corresponde aos filtros. Experimente “Todo o histórico” ou remova a busca e o filtro de situação.</p>
       ) : (
         <div className={styles.rolagem}>
           <table className={styles.tabela}>
@@ -67,6 +95,7 @@ export default async function ListaReservas({ searchParams }: PageProps<"/painel
                 <th>Código</th>
                 <th>Imóvel</th>
                 <th>Origem</th>
+                <th>Feita em (origem)</th>
                 <th>Entrada</th>
                 <th>Saída</th>
                 <th>Noites</th>
@@ -83,6 +112,7 @@ export default async function ListaReservas({ searchParams }: PageProps<"/painel
                   </td>
                   <td>{porId.get(r.imovelId)?.codigo ?? "—"}</td>
                   <td>{NOMES_ORIGEM[r.origem]}</td>
+                  <td>{r.reservadaEm ? r.reservadaEm.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "Não informada"}</td>
                   <td>{dataBr(r.checkin)}</td>
                   <td>{dataBr(r.checkout)}</td>
                   <td>{noites(r.checkin, r.checkout)}</td>
@@ -97,13 +127,12 @@ export default async function ListaReservas({ searchParams }: PageProps<"/painel
           </table>
         </div>
       )}
-      <p style={{ fontSize: "0.875rem" }}>
-        {verCanceladas ? (
-          <Link href={`/painel/reservas${manterFiltros(params)}`}>Esconder canceladas</Link>
-        ) : (
-          <Link href={`/painel/reservas${manterFiltros(params) || "?"}${manterFiltros(params) ? "&" : ""}canceladas=1`}>Mostrar canceladas</Link>
-        )}
-      </p>
+      <nav aria-label="Páginas de reservas" style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+        {resultado.pagina > 1 && <><Link href={pagina(1)}>Primeira</Link><Link href={pagina(resultado.pagina - 1)}>Anterior</Link></>}
+        <span>{resultado.total ? (resultado.pagina - 1) * TAMANHO_PAGINA + 1 : 0}–{Math.min(resultado.pagina * TAMANHO_PAGINA, resultado.total)} de {resultado.total}</span>
+        {resultado.pagina < resultado.paginas && <><Link href={pagina(resultado.pagina + 1)}>Próxima</Link><Link href={pagina(resultado.paginas)}>Última</Link></>}
+      </nav>
+      {local.situacao === "todas" && !local.execucao && <p><Link href={linkLista(params, { canceladas: verCanceladas ? null : "1" })}>{verCanceladas ? "Esconder canceladas" : "Mostrar canceladas"}</Link></p>}
     </>
   );
 }

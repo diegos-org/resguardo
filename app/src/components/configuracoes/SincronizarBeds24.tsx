@@ -74,6 +74,7 @@ export function SincronizarBeds24({ config, mapas, imoveis, execucoes }: { confi
     <h3>Últimas importações</h3>
     {!execucoes.length ? <p>Nenhuma importação registrada.</p> : <ul>{execucoes.map(e => <li key={e.id} style={{ marginBottom: 12 }}>
       <strong>{e.quando} — {SITUACOES[e.situacao] ?? e.situacao}</strong>
+      <p><Link href={`/painel/reservas?escopo=historico&ordem=origem&execucao=${e.id}`}>Ver registros desta importação</Link></p>
       <p>{e.resumo || "Aguarde a conclusão e atualize a página. Se permanecer em andamento por mais de cinco minutos, confira antes de tentar novamente."}</p>
       {!!e.divergencias.length && <details><summary>Avisos (até 100)</summary><ul>{e.divergencias.map((d, i) => <li key={i}>{d}</li>)}</ul></details>}
     </li>)}</ul>}

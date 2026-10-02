@@ -1,5 +1,5 @@
 import { randomInt } from "node:crypto";
-import { ORIGENS_RESERVA, RECEBIMENTOS_RESERVA, type EstadoReserva, type OrigemReserva, type RecebimentoReserva } from "@/db/schema";
+import { ESTADOS_RESERVA, ORIGENS_RESERVA, RECEBIMENTOS_RESERVA, type EstadoReserva, type OrigemReserva, type RecebimentoReserva } from "@/db/schema";
 
 /** Regras puras de reservas. Datas "AAAA-MM-DD"; checkout/fim são exclusivos (dia de saída). */
 
@@ -16,7 +16,7 @@ export const NOMES_ORIGEM: Record<OrigemReserva, string> = {
   outro: "Outro",
 };
 
-export const NOMES_ESTADO: Record<EstadoReserva, string> = { pendente: "Pendente", confirmada: "Confirmada", cancelada: "Cancelada" };
+export const NOMES_ESTADO: Record<EstadoReserva, string> = { pendente: "Pendente", confirmada: "Confirmada", cancelada: "Cancelada", consulta: "Consulta", pedido: "Pedido de reserva" };
 
 export function dataValida(d: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
@@ -35,9 +35,15 @@ export function periodosCruzam(a: { inicio: string; fim: string }, b: { inicio: 
 
 export type ReservaParaConflito = { id: string; imovelId: string; checkin: string; checkout: string; estado: EstadoReserva };
 
-/** Pares de reservas ativas (não canceladas) do mesmo imóvel que se sobrepõem — overbooking. */
+/** Consulta não ocupa datas. Pedidos mantêm a restrição anterior até confirmação/cancelamento. */
+export const ESTADOS_OCUPANTES = ["confirmada", "pendente", "pedido"] as const;
+export function ocupaInventario(estado: EstadoReserva): boolean {
+  return (ESTADOS_OCUPANTES as readonly EstadoReserva[]).includes(estado);
+}
+
+/** Pares de reservas ativas (que ocupam inventário) do mesmo imóvel que se sobrepõem — overbooking. */
 export function conflitos(lista: readonly ReservaParaConflito[]): [string, string][] {
-  const ativas = lista.filter((r) => r.estado !== "cancelada").sort((a, b) => a.checkin.localeCompare(b.checkin));
+  const ativas = lista.filter((r) => ocupaInventario(r.estado)).sort((a, b) => a.checkin.localeCompare(b.checkin));
   const pares: [string, string][] = [];
   for (let i = 0; i < ativas.length; i++) {
     for (let j = i + 1; j < ativas.length; j++) {
@@ -64,6 +70,7 @@ export type DadosReserva = {
   imovelId: string;
   origem: OrigemReserva;
   estado: EstadoReserva;
+  reservadaEm?: Date | null;
   checkin: string;
   checkout: string;
   hospedes: number | null;
@@ -90,6 +97,8 @@ const centavosOk = (v: number | null) => v === null || (Number.isSafeInteger(v) 
 /** Valida dados já tipados (vindos de formulário, CSV ou Beds24). */
 export function validarReserva(d: DadosReserva): ErrosReserva {
   const erros: ErrosReserva = {};
+  if (!ESTADOS_RESERVA.includes(d.estado)) erros.estado = "Situação inválida.";
+  if (d.reservadaEm != null && (!(d.reservadaEm instanceof Date) || !Number.isFinite(d.reservadaEm.getTime()))) erros.reservadaEm = "Data original inválida.";
   if (!ORIGENS_RESERVA.includes(d.origem)) erros.origem = "Origem inválida.";
   if (!dataValida(d.checkin)) erros.checkin = "Data de entrada inválida.";
   if (!dataValida(d.checkout)) erros.checkout = "Data de saída inválida.";
@@ -103,3 +112,4 @@ export function validarReserva(d: DadosReserva): ErrosReserva {
   if (!/^[A-Z]{3}$/.test(d.moeda)) erros.moeda = "Moeda com 3 letras (ex.: BRL).";
   return erros;
 }
+

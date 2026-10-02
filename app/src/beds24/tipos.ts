@@ -3,7 +3,7 @@
  * o formato da API fica isolado em `http.ts`. Somente leitura: não existe operação de
  * escrita neste módulo (criar reserva no Beds24 é o M8.3, com autorização explícita).
  */
-export type EstadoBeds24 = "confirmada" | "pendente" | "cancelada" | "bloqueio";
+export type EstadoBeds24 = "confirmada" | "pendente" | "cancelada" | "bloqueio" | "consulta" | "pedido";
 export type CanalBeds24 = "airbnb" | "booking" | "direta" | "outro";
 
 export type ReservaBeds24 = {
@@ -24,6 +24,7 @@ export type ReservaBeds24 = {
   /** Código no canal (ex.: HM… do Airbnb), quando vier. */
   codigoCanal: string;
   modificadoEm: string | null;
+  reservadaEm?: string | null;
 };
 
 export type DiaCalendario = {

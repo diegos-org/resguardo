@@ -18,7 +18,7 @@
  * - Arredondamento: comissão arredondada ao centavo mais próximo (meio centavo para cima),
  *   calculada sobre o total e depois rateada.
  */
-import type { OrigemReserva, RecebimentoReserva, TipoContrato } from "@/db/schema";
+import type { EstadoReserva, OrigemReserva, RecebimentoReserva, TipoContrato } from "@/db/schema";
 import { contratoVigente } from "@/contratos/regras";
 import { noites } from "@/reservas/regras";
 import type { NovoLancamento } from "./ledger";
@@ -38,7 +38,7 @@ export type ReservaParaMotor = {
   codigo: string;
   imovelId: string;
   origem: OrigemReserva;
-  estado: "pendente" | "confirmada" | "cancelada";
+  estado: EstadoReserva;
   checkin: string;
   checkout: string;
   valorBruto: number | null;
@@ -96,6 +96,7 @@ export function calcularReserva(
   if (r.estado === "cancelada") return { lancamentos: [], avisos: ["Reserva cancelada: sem lançamentos."] };
   // Pendente ainda não é receita (nem dívida com o proprietário): assim o painel, o portal e o
   // PDF contam a mesma coisa (M4.8). Ao confirmar, a reserva é calculada.
+  if (r.estado === "consulta" || r.estado === "pedido") return { lancamentos: [], avisos: [] };
   if (r.estado === "pendente") return { lancamentos: [], avisos: ["Reserva pendente: os valores entram quando ela for confirmada."] };
   if (r.valorBruto === null) return { lancamentos: [], avisos: ["Valor bruto não informado: cálculo pendente."] };
   const contrato = contratoVigente(contratos, r.checkin);
@@ -159,3 +160,4 @@ export function calcularReserva(
   });
   return { lancamentos, avisos };
 }
+

@@ -34,8 +34,8 @@ export function reaisParaCentavosApi(v: unknown): number | null | undefined {
 const ESTADOS: Record<string, EstadoBeds24> = {
   confirmed: "confirmada",
   new: "confirmada",
-  request: "pendente",
-  inquiry: "pendente",
+  request: "pedido",
+  inquiry: "consulta",
   cancelled: "cancelada",
   black: "bloqueio",
 };
@@ -47,6 +47,13 @@ export function canalDe(...fontes: unknown[]): CanalBeds24 {
   if (t.includes("booking")) return "booking";
   if (/\b(direct|direto|direta|website|site)\b/.test(t)) return "direta";
   return "outro";
+}
+
+/** API v2 bookingTime é ISO com fuso explícito. Ausência/formato inválido = desconhecido. */
+export function instanteDaReserva(v: unknown): string | null {
+  if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(v) || !dataValida(v.slice(0, 10))) return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
 export function normalizarReserva(b: unknown): { ok: true; r: ReservaBeds24 } | { ok: false; d: Divergencia } {
@@ -90,6 +97,7 @@ export function normalizarReserva(b: unknown): { ok: true; r: ReservaBeds24 } | 
       canal: canalDe(b.channel, b.referer),
       codigoCanal: id(b.apiReference),
       modificadoEm: texto(b.modifiedTime) || null,
+      reservadaEm: instanteDaReserva(b.bookingTime),
     },
   };
 }

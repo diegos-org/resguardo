@@ -275,7 +275,7 @@ export const ORIGENS_RESERVA = ["airbnb", "booking", "site", "direta", "outro"] 
 export type OrigemReserva = (typeof ORIGENS_RESERVA)[number];
 export const origemReservaEnum = pgEnum("origem_reserva", ORIGENS_RESERVA);
 
-export const ESTADOS_RESERVA = ["pendente", "confirmada", "cancelada"] as const;
+export const ESTADOS_RESERVA = ["pendente", "confirmada", "cancelada", "consulta", "pedido"] as const;
 export type EstadoReserva = (typeof ESTADOS_RESERVA)[number];
 export const estadoReservaEnum = pgEnum("estado_reserva", ESTADOS_RESERVA);
 
@@ -326,6 +326,8 @@ export const reservas = pgTable(
     idFonte: text("id_fonte").notNull().default(""),
     /** Identidade Beds24, inclusive quando a reserva nasceu de uma planilha. */
     beds24Id: text("beds24_id"),
+    /** Data original informada pela fonte; nunca substituir pela data de importação. */
+    reservadaEm: timestamp("reservada_em", { withTimezone: true }),
     /** Código da reserva no canal (ex.: HMXXXX do Airbnb). */
     codigoCanal: text("codigo_canal").notNull().default(""),
     observacoes: text("observacoes").notNull().default(""),
@@ -1026,3 +1028,12 @@ export const cadastrosMarketplace = pgTable(
   (t) => [index("cadastros_marketplace_org").on(t.organizacaoId, t.situacao, t.criadoEm), index("cadastros_marketplace_email").on(t.email)],
 );
 
+
+/** Registros efetivamente alterados por execução; gravados na mesma transação da importação. */
+export const beds24ExecucaoReservas = pgTable("beds24_execucao_reservas", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+  execucaoId: uuid("execucao_id").notNull().references(() => beds24Execucoes.id),
+  reservaId: uuid("reserva_id").notNull().references(() => reservas.id),
+  tipo: text("tipo").$type<"adicionada" | "alterada" | "cancelada">().notNull(),
+}, t => [uniqueIndex("beds24_execucao_reserva_unica").on(t.execucaoId, t.reservaId), index("beds24_execucao_reservas_org").on(t.organizacaoId, t.execucaoId)]);

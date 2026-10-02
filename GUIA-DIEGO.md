@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 28/09/2026, importação Beds24 → SCL (M3.3). Diego confirmou a leitura dos quartos e removeu o 403 duplicado. O painel agora permite conferir os vínculos e importar reservas manualmente; a rotina diária começa desligada. A primeira importação real ainda precisa ser feita e conferida após a publicação. A causa da falha anterior não foi comprovada.
+> **Última atualização:** 2/10/2026, conferência de reservas (M3.8) e correções da revisão. Diego cadastrou e vinculou os seis imóveis, incluindo Búzios (BZS), e fez a primeira importação. A conferência foi parcial. Este PR separa consultas de pedidos e melhora a navegação; depois de publicado, uma nova importação recupera status e datas originais dos registros já existentes.
 
 ---
 
@@ -27,7 +27,7 @@
 | M0 Fundação | Base do app, banco de dados, layout, publicação na Vercel | 🟡 Vercel e login funcionando; isolamento do banco de homologação ainda a conferir |
 | M1 Acesso | Login (Google/código por e-mail), convites, permissões | ✅ pronto |
 | M2 Cadastros | Imóveis, proprietários, contratos e comissões | ✅ pronto |
-| M3 Reservas | Reservas, calendário central e importação do Beds24 | 🟡 importação pronta; primeira conferência real pendente |
+| M3 Reservas | Reservas, calendário central e importação do Beds24 | 🟡 seis imóveis importados; conferência parcial e melhorias M3.8 nesta atualização |
 | M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | 🟡 em andamento |
 | M5 Portal do proprietário | Relatórios, saldos, PDF | 🟡 em andamento |
 | M6 Operação | Limpezas, manutenção, agenda diária | 🟡 em andamento |
@@ -37,6 +37,19 @@
 | M10 WhatsApp | Caixa de entrada do WhatsApp no painel | ⚪ aguardando |
 | M11 Produção | Dados reais, domínio, entrada em uso | ⚪ aguardando |
 | M12 Marketplace | Proprietário que opera o próprio imóvel; SCL cuida do online | 🟡 em andamento |
+
+### Conferência das reservas — atualização M3.8
+
+Depois de publicar esta atualização:
+
+1. Em **Configurações → Integrações**, faça **Importar agora** novamente. Não é preciso refazer vínculos: os mesmos registros e códigos SCL são preservados. O SCL continua apenas lendo o Beds24.
+2. Em **Reservas**, há atalhos para **reservas mais recentes na origem** e **consultas**. A lista por período começa apenas com imóveis ativos. Use **Todo o histórico importado/cadastrado** para pesquisar sem o recorte de mês/ano da estadia; sem uma seleção de imóveis, inclui também os arquivados. Eles continuam identificados no filtro e podem ser selecionados explicitamente em qualquer escopo.
+3. Busque por código SCL, código do canal ou nome; escolha situação, data de entrada ou mais recentes na origem, e opcionalmente últimos 7 ou 30 dias. A lista mostra 25 registros por página, total, primeira/anterior/próxima/última página, mantendo os filtros.
+4. **Feita em (origem)** usa a data informada pelo Beds24, exibida no horário de Brasília. É diferente de **Cadastrada no SCL em**, no detalhe. Data não informada fica explícita, no fim da ordenação por mais recentes e fora dos filtros de 7/30 dias. Não usamos a importação como substituta. Na primeira conferência, compare uma data conhecida com o canal original.
+5. **Consulta** não é reserva confirmada, não ocupa o calendário, não cria alerta de sobreposição e não gera receita. **Pedido de reserva** ainda não é receita e mantém a restrição de datas anterior até o status mudar na origem. Pendentes antigas só são distinguidas quando o Beds24 devolve o status; não se transforma todo registro pendente em consulta por suposição.
+6. O resumo da última importação separa **adicionadas ao SCL**, **alteradas** e **canceladas**, com links para os registros. Cancelada significa que uma reserva existente mudou para esse estado naquela importação. Atualizar dados de uma reserva que já estava cancelada conta como alteração; trazer uma reserva cancelada pela primeira vez conta como adicionada ao SCL. A lista de cada execução começa nesta atualização; importações anteriores não ganham histórico inventado. Os detalhes dos registros mostram o estado atual; o histórico individual registra as alterações.
+
+Não precisa preencher descrições dos apartamentos para importar. A melhoria não ativa a rotina diária, não envia mudanças às OTAs e não altera a configuração dos canais. Para conferir: encontre uma consulta pelo código, confirme seu rótulo após reimportar e confira as mesmas datas no calendário; repita a importação e verifique que não surgiram duplicatas. A primeira releitura pode aparecer como alteração apenas por recuperar a data original/status.
 
 **Itens já prontos (na `main`):**
 - M0.1: repositório limpo, plano único (ROADMAP) e regras para o Claude.
