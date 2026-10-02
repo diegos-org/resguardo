@@ -50,6 +50,12 @@ function inteiro(valor: string | undefined): number | undefined {
   return Number(valor);
 }
 
+/** Seleção explícita e validada, inclusive quando todos os imóveis foram marcados. */
+export function lerImoveisSelecionados(params: Params, opcoes: readonly OpcaoImovel[]): string[] {
+  const validos = new Set(opcoes.map((o) => o.codigo));
+  return [...new Set(lista(params.imovel))].filter((c) => validos.has(c));
+}
+
 /** Lê os filtros da URL. Valores inválidos ou desconhecidos são ignorados. */
 export function lerFiltros(
   params: Params,
@@ -58,7 +64,7 @@ export function lerFiltros(
 ): Filtros {
   const hoje = hojeNoFuso(agora);
   const validos = new Set(opcoes.map((o) => o.codigo));
-  const imoveis = [...new Set(lista(params.imovel))].filter((c) => validos.has(c));
+  const imoveis = lerImoveisSelecionados(params, opcoes);
 
   const ano = inteiro(primeiro(params.ano));
   const anoOk = ano !== undefined && ano >= 2000 && ano <= 2100 ? ano : hoje.ano;

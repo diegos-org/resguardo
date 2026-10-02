@@ -5,7 +5,7 @@ import styles from "@/components/formularios.module.css";
 import { FiltroGlobal } from "@/components/painel/FiltroGlobal";
 import { getDb } from "@/db/client";
 import { listarImoveis } from "@/imoveis/repositorio";
-import { descreverFiltros, lerFiltros, periodoDosFiltros } from "@/lib/filtros";
+import { descreverFiltros, lerFiltros, lerImoveisSelecionados, periodoDosFiltros } from "@/lib/filtros";
 import { formatBRL } from "@/lib/money";
 import { NOMES_ESTADO, NOMES_ORIGEM, noites } from "@/reservas/regras";
 import { lerFiltrosLista, linkLista, listarReservasPaginadas, resumoImportacao, TAMANHO_PAGINA } from "@/reservas/listagem";
@@ -20,8 +20,12 @@ export default async function ListaReservas({ searchParams }: PageProps<"/painel
   const opcoes = imoveis.map((i) => ({ codigo: i.codigo, nome: i.nome + (i.ativo ? "" : " (arquivado)") }));
   const filtros = lerFiltros(params, opcoes);
   const periodo = periodoDosFiltros(filtros);
-  const idsFiltro = (filtros.imoveis.length ? imoveis.filter((i) => filtros.imoveis.includes(i.codigo)) : imoveis).map((i) => i.id);
   const local = lerFiltrosLista(params);
+  const selecionados = lerImoveisSelecionados(params, opcoes);
+  const somenteAtivos = selecionados.length === 0 && local.escopo !== "historico";
+  const efetivos = imoveis.filter(i => selecionados.length ? selecionados.includes(i.codigo) : !somenteAtivos || i.ativo);
+  const idsFiltro = efetivos.map(i => i.id);
+  const descricao = descreverFiltros({ ...filtros, imoveis: efetivos.map(i => i.codigo) }, opcoes);
   const verCanceladas = params.canceladas === "1";
   const [resultado, ultima] = await Promise.all([
     listarReservasPaginadas(db, sessao.organizacaoId, local, { periodo, imovelIds: idsFiltro, incluirCanceladas: verCanceladas }),
@@ -58,9 +62,9 @@ export default async function ListaReservas({ searchParams }: PageProps<"/painel
         <p>{ultima.totais.length ? ultima.totais.map(t => <span key={t.tipo} style={{ marginRight: 16 }}><Link href={linkLista({}, { escopo: "historico", ordem: "origem", execucao: ultima.execucao.id, mudanca: t.tipo })}>{t.total} {t.tipo === "adicionada" ? "adicionadas ao SCL" : t.tipo === "alterada" ? "alteradas" : "canceladas"}</Link></span>) : "Sem registros detalhados nesta execução. Importações antigas não têm esta lista de mudanças."}</p>
         <p>Adicionada ao SCL não significa vendida agora. A data da origem aparece separadamente. Os detalhes mostram a situação atual.</p>
       </section>}
-      <FiltroGlobal filtros={filtros} opcoes={opcoes} acao="/painel/reservas" manter={[...manterLocal, ...(verCanceladas ? [["canceladas", "1"] as [string, string]] : [])]} />
+      <FiltroGlobal filtros={filtros} opcoes={opcoes} imoveisSelecionados={efetivos.map(i => i.codigo)} acao="/painel/reservas" manter={[...manterLocal, ...(verCanceladas ? [["canceladas", "1"] as [string, string]] : [])]} />
       <form method="get" action="/painel/reservas" className={styles.form} aria-label="Buscar reservas" style={{ maxWidth: 1000, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
-        {filtros.imoveis.map(i => <input key={i} type="hidden" name="imovel" value={i} />)}
+        {selecionados.map(i => <input key={i} type="hidden" name="imovel" value={i} />)}
         <input type="hidden" name="mes" value={filtros.mes ?? "todos"} /><input type="hidden" name="ano" value={filtros.ano} />
         {verCanceladas && <input type="hidden" name="canceladas" value="1" />}
         {local.execucao && <><input type="hidden" name="execucao" value={local.execucao} /><input type="hidden" name="mudanca" value={local.mudanca} /></>}
@@ -74,7 +78,7 @@ export default async function ListaReservas({ searchParams }: PageProps<"/painel
       {local.execucao && <p>Mostrando mudanças da importação selecionada. <Link href={linkLista(params, { execucao: null, mudanca: null })}>Ver todas as importações</Link></p>}
       <p>Consultas não ocupam datas. A data da origem é a informada pelo Beds24. Datas ausentes ficam como “Não informada” e no fim da ordenação por mais recentes; não entram nos filtros de 7 ou 30 dias.</p>
       <p className={styles.etiqueta} style={{ alignSelf: "flex-start" }}>
-        {local.escopo === "historico" ? "Todo o histórico · imóveis selecionados" : descreverFiltros(filtros, opcoes)} · {resultado.total} registro(s) · página {resultado.pagina} de {resultado.paginas}
+        {local.escopo === "historico" ? "Todo o histórico · imóveis selecionados" : efetivos.length ? descricao : "Nenhum imóvel ativo selecionado"} · {resultado.total} registro(s) · página {resultado.pagina} de {resultado.paginas}
       </p>
       {emConflito.size > 0 && (
         <p role="alert" className={styles.alerta}>

@@ -114,7 +114,7 @@ async function aplicarRegistro(tx: Db, org: string, b: ReservaBeds24, imovelId: 
     if (antiga) {
       const s = await sincronizarReserva(tx, org, "beds24", b.idExterno, { ...antiga, estado: "cancelada" }, autorId);
       if (!s.ok) { aviso(r, `Registro ${referencia(b.idExterno)}: não foi possível converter a reserva em bloqueio.`); return; }
-      if (s.alterada) await tx.insert(beds24ExecucaoReservas).values({ organizacaoId: org, execucaoId, reservaId: s.reserva.id, tipo: "cancelada" });
+      if (s.alterada) await tx.insert(beds24ExecucaoReservas).values({ organizacaoId: org, execucaoId, reservaId: s.reserva.id, tipo: s.canceladaAgora ? "cancelada" : "alterada" });
       if (s.financeiroNaoAtualizado) aviso(r, `Registro ${referencia(b.idExterno)}: financeiro protegido; confira o ajuste manual.`);
     }
     const dados = { imovelId, inicio: b.checkin, fim: b.checkout, motivo: "Bloqueio importado do Beds24" };
@@ -130,7 +130,7 @@ async function aplicarRegistro(tx: Db, org: string, b: ReservaBeds24, imovelId: 
   }
   const s = await sincronizarReserva(tx, org, "beds24", b.idExterno, paraDadosReserva(b, imovelId)!, autorId);
   if (!s.ok) { aviso(r, `Reserva ${referencia(b.idExterno)}: ${Object.values(s.erros).join(" ")}`); return; }
-  if (s.criada || s.alterada) await tx.insert(beds24ExecucaoReservas).values({ organizacaoId: org, execucaoId, reservaId: s.reserva.id, tipo: s.criada ? "adicionada" : s.reserva.estado === "cancelada" ? "cancelada" : "alterada" });
+  if (s.criada || s.alterada) await tx.insert(beds24ExecucaoReservas).values({ organizacaoId: org, execucaoId, reservaId: s.reserva.id, tipo: s.criada ? "adicionada" : s.canceladaAgora ? "cancelada" : "alterada" });
   if (bl) await tx.delete(bloqueios).where(ondeBloqueio);
   if (s.criada) r.criadas++; else if (s.alterada) r.atualizadas++; else r.iguais++;
   for (const a of s.avisosFinanceiro ?? []) aviso(r, `Reserva ${referencia(b.idExterno)}: ${a}`);

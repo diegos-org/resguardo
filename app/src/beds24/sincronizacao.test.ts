@@ -263,3 +263,27 @@ it("eventos de uma execução que falha são desfeitos junto com as reservas", a
   expect(await linhas()).toHaveLength(0);
   expect(await db.select().from(beds24ExecucaoReservas).where(eq(beds24ExecucaoReservas.organizacaoId, org))).toHaveLength(0);
 });
+
+it("atualizar dados de uma reserva já cancelada registra alteração, sem novo cancelamento", async () => {
+  const eventos = () => db.select().from(beds24ExecucaoReservas).where(eq(beds24ExecucaoReservas.organizacaoId, org));
+  leitor.bookings = [booking({ status: "cancelled" })];
+  expect(await rodar()).toMatchObject({ criadas: 1 });
+  const [antes] = await linhas();
+  expect((await eventos()).map(e => e.tipo)).toEqual(["adicionada"]);
+  leitor.bookings = [booking({ status: "cancelled", bookingTime: "2026-08-10T10:00:00Z", firstName: "Nome atualizado fictício" })];
+  expect(await rodar()).toMatchObject({ atualizadas: 1 });
+  expect((await linhas())[0]).toMatchObject({ estado: "cancelada", canceladaEm: antes.canceladaEm, reservadaEm: new Date("2026-08-10T10:00:00Z") });
+  expect((await eventos()).map(e => e.tipo).sort()).toEqual(["adicionada", "alterada"]);
+  expect(await rodar()).toMatchObject({ iguais: 1 });
+  expect(await eventos()).toHaveLength(2);
+});
+
+it("vincular uma reserva CSV já cancelada ao Beds24 conta como alteração", async () => {
+  const legado = await csv({ status: "cancelled" });
+  if (!legado.ok) throw new Error("fixture");
+  leitor.bookings = [booking({ status: "cancelled" })];
+  expect(await rodar()).toMatchObject({ atualizadas: 1, criadas: 0 });
+  expect((await linhas())[0]).toMatchObject({ id: legado.reserva.id, estado: "cancelada", beds24Id: "123" });
+  const eventos = await db.select().from(beds24ExecucaoReservas).where(eq(beds24ExecucaoReservas.organizacaoId, org));
+  expect(eventos.map(e => e.tipo)).toEqual(["alterada"]);
+});

@@ -31,9 +31,11 @@ async function imovelDaOrganizacao(tx: Db, organizacaoId: string, imovelId: stri
 /**
  * `financeiroNaoAtualizado`: a reserva mudou, mas já tinha dinheiro movimentado, então o
  * financeiro ficou como estava (precisa de ajuste manual) — quem chamou deve avisar.
+ * `canceladaAgora`: a sincronização mudou o estado de uma reserva existente para cancelada,
+ * comparando o registro anterior dentro da transação, com o bloqueio de linha.
  */
 export type ResultadoReserva =
-  | { ok: true; reserva: Reserva; criada: boolean; alterada?: boolean; financeiroNaoAtualizado?: boolean; avisosFinanceiro?: string[] }
+  | { ok: true; reserva: Reserva; criada: boolean; alterada?: boolean; canceladaAgora?: boolean; financeiroNaoAtualizado?: boolean; avisosFinanceiro?: string[] }
   | { ok: false; erros: ErrosReserva };
 
 async function inserirComCodigo(tx: Db, valores: typeof reservas.$inferInsert): Promise<Reserva> {
@@ -193,7 +195,7 @@ export async function sincronizarReserva(
       mudancas: semContato(mudancas),
     });
     const m = await aplicarMotor(tx, organizacaoId, reserva.id, autorId, undefined, { soConferir: preservarPassado });
-    return { ok: true as const, reserva, criada: false, alterada: true, financeiroNaoAtualizado: m?.protegido, avisosFinanceiro: [...(m?.avisos ?? []), ...avisoPassado] };
+    return { ok: true as const, reserva, criada: false, alterada: true, canceladaAgora: existente.estado !== "cancelada" && reserva.estado === "cancelada", financeiroNaoAtualizado: m?.protegido, avisosFinanceiro: [...(m?.avisos ?? []), ...avisoPassado] };
   });
 }
 
@@ -363,4 +365,3 @@ export async function listarBloqueios(db: Db, organizacaoId: string, f: FiltroPe
     .where(and(...condicoes))
     .orderBy(asc(bloqueios.inicio));
 }
-

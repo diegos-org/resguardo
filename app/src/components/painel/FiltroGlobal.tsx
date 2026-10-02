@@ -6,6 +6,8 @@ type Props = {
   /** Caminho da página atual; o formulário envia os filtros para ela mesma. */
   acao: string;
   opcoes?: readonly OpcaoImovel[];
+  /** Seleção efetiva quando o padrão da página abrange apenas parte das opções. */
+  imoveisSelecionados?: readonly string[];
   /** Parâmetros locais da página que continuam valendo ao mudar o filtro (ex.: colunas). */
   manter?: readonly [string, string][];
 };
@@ -14,7 +16,7 @@ type Props = {
  * Filtro global de imóveis e período. Funciona como formulário GET (sem JavaScript):
  * o resultado fica na URL e qualquer página do painel pode lê-lo com `lerFiltros`.
  */
-export function FiltroGlobal({ filtros, acao, opcoes = IMOVEIS_PROVISORIOS, manter = [] }: Props) {
+export function FiltroGlobal({ filtros, acao, opcoes = IMOVEIS_PROVISORIOS, manter = [], imoveisSelecionados }: Props) {
   const todos = filtros.imoveis.length === 0;
   const anos = Array.from({ length: 5 }, (_, i) => filtros.ano - 2 + i);
   return (
@@ -24,7 +26,7 @@ export function FiltroGlobal({ filtros, acao, opcoes = IMOVEIS_PROVISORIOS, mant
         {opcoes.length === 0 && <span>Nenhum imóvel cadastrado ainda.</span>}
         {opcoes.map((o) => (
           <label key={o.codigo}>
-            <input type="checkbox" name="imovel" value={o.codigo} defaultChecked={todos || filtros.imoveis.includes(o.codigo)} />
+            <input type="checkbox" name="imovel" value={o.codigo} defaultChecked={imoveisSelecionados ? imoveisSelecionados.includes(o.codigo) : todos || filtros.imoveis.includes(o.codigo)} />
             {o.nome}
           </label>
         ))}

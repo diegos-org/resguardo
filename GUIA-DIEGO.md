@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 1/10/2026, conferência de reservas (M3.8). Diego cadastrou e vinculou os seis imóveis, incluindo Búzios (BZS), e fez a primeira importação. A conferência foi parcial. Este PR separa consultas de pedidos e melhora a navegação; depois de publicado, uma nova importação recupera status e datas originais dos registros já existentes.
+> **Última atualização:** 2/10/2026, conferência de reservas (M3.8) e correções da revisão. Diego cadastrou e vinculou os seis imóveis, incluindo Búzios (BZS), e fez a primeira importação. A conferência foi parcial. Este PR separa consultas de pedidos e melhora a navegação; depois de publicado, uma nova importação recupera status e datas originais dos registros já existentes.
 
 ---
 
@@ -43,11 +43,11 @@
 Depois de publicar esta atualização:
 
 1. Em **Configurações → Integrações**, faça **Importar agora** novamente. Não é preciso refazer vínculos: os mesmos registros e códigos SCL são preservados. O SCL continua apenas lendo o Beds24.
-2. Em **Reservas**, há atalhos para **reservas mais recentes na origem** e **consultas**. Use **Todo o histórico importado/cadastrado** para pesquisar sem o recorte de mês/ano da estadia; também inclui imóveis arquivados, identificados no filtro.
+2. Em **Reservas**, há atalhos para **reservas mais recentes na origem** e **consultas**. A lista por período começa apenas com imóveis ativos. Use **Todo o histórico importado/cadastrado** para pesquisar sem o recorte de mês/ano da estadia; sem uma seleção de imóveis, inclui também os arquivados. Eles continuam identificados no filtro e podem ser selecionados explicitamente em qualquer escopo.
 3. Busque por código SCL, código do canal ou nome; escolha situação, data de entrada ou mais recentes na origem, e opcionalmente últimos 7 ou 30 dias. A lista mostra 25 registros por página, total, primeira/anterior/próxima/última página, mantendo os filtros.
 4. **Feita em (origem)** usa a data informada pelo Beds24, exibida no horário de Brasília. É diferente de **Cadastrada no SCL em**, no detalhe. Data não informada fica explícita, no fim da ordenação por mais recentes e fora dos filtros de 7/30 dias. Não usamos a importação como substituta. Na primeira conferência, compare uma data conhecida com o canal original.
 5. **Consulta** não é reserva confirmada, não ocupa o calendário, não cria alerta de sobreposição e não gera receita. **Pedido de reserva** ainda não é receita e mantém a restrição de datas anterior até o status mudar na origem. Pendentes antigas só são distinguidas quando o Beds24 devolve o status; não se transforma todo registro pendente em consulta por suposição.
-6. O resumo da última importação separa **adicionadas ao SCL**, **alteradas** e **canceladas**, com links para os registros. A lista de cada execução começa nesta atualização; importações anteriores não ganham histórico inventado. Os detalhes dos registros mostram o estado atual; o histórico individual registra as alterações.
+6. O resumo da última importação separa **adicionadas ao SCL**, **alteradas** e **canceladas**, com links para os registros. Cancelada significa que uma reserva existente mudou para esse estado naquela importação. Atualizar dados de uma reserva que já estava cancelada conta como alteração; trazer uma reserva cancelada pela primeira vez conta como adicionada ao SCL. A lista de cada execução começa nesta atualização; importações anteriores não ganham histórico inventado. Os detalhes dos registros mostram o estado atual; o histórico individual registra as alterações.
 
 Não precisa preencher descrições dos apartamentos para importar. A melhoria não ativa a rotina diária, não envia mudanças às OTAs e não altera a configuração dos canais. Para conferir: encontre uma consulta pelo código, confirme seu rótulo após reimportar e confira as mesmas datas no calendário; repita a importação e verifique que não surgiram duplicatas. A primeira releitura pode aparecer como alteração apenas por recuperar a data original/status.
 
