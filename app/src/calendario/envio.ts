@@ -101,22 +101,37 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
       for (const [, motivo] of inacessiveis) aviso(`${motivo} Nenhum valor é enviado para esse imóvel.`);
 
       // Leitura atual do destino antes de planejar: o plano (inclusive reabrir um blackout do SCL)
-      // nunca se apoia só na última importação. Sem essa leitura, o envio real não escreve nada.
+      // nunca se apoia só na última importação. Sem essa leitura, o envio real não escreve nada; um
+      // imóvel cuja leitura não cobriu todo o horizonte (ou veio com dados inválidos) também fica de fora.
       const acessiveis = escolhidos.filter(m => !inacessiveis.has(m.imovelId));
+      const leituraIncompleta = new Map<string, string>();
       if (acessiveis.length) {
-        const hojes = acessiveis.map(m => hojeISO(fusos.get(m.imovelId) ?? "America/Sao_Paulo", agora));
+        const hojeDe = (m: { imovelId: string }) => hojeISO(fusos.get(m.imovelId) ?? "America/Sao_Paulo", agora);
+        const hojes = acessiveis.map(hojeDe);
         const inicio = hojes.reduce((a, b) => (a < b ? a : b));
         const fim = somarDias(hojes.reduce((a, b) => (a > b ? a : b)), regras.horizonteDias - 1);
         try {
           const l = await leitor.calendario({ roomIds: acessiveis.map(m => m.roomId), inicio, fim: somarDias(fim, 1) });
+          const comDivergencia = new Set(l.divergencias.map(d => d.id));
           for (const d of l.divergencias) aviso(`Leitura do quarto ${d.id}: formato inválido; conferir manualmente.`);
-          for (const m of acessiveis) await gravarObservacoes(tx, org, m.imovelId, l.itens.filter(d => d.roomId === m.roomId), agora);
+          for (const m of acessiveis) {
+            const dias = l.itens.filter(d => d.roomId === m.roomId);
+            await gravarObservacoes(tx, org, m.imovelId, dias, agora);
+            const datas = new Set(dias.map(d => d.data));
+            let faltam = 0;
+            for (let d = hojeDe(m), fimImovel = somarDias(d, regras.horizonteDias - 1); d <= fimImovel; d = somarDias(d, 1)) if (!datas.has(d)) faltam++;
+            if (faltam || comDivergencia.has(m.roomId)) {
+              leituraIncompleta.set(m.imovelId, `A leitura do Beds24 do imóvel ${m.codigo} ficou incompleta (${faltam} noite(s) do horizonte sem retorno${comDivergencia.has(m.roomId) ? ", dados inválidos" : ""}): nada é enviado para esse imóvel nesta execução.`);
+            }
+          }
         } catch (e) {
           const motivo = mensagemSeguraBeds24(e);
           if (o.modo === "envio") throw new ErroBeds24(`Leitura do Beds24 antes do envio falhou: ${motivo} Nada foi enviado: o SCL só escreve a partir de uma leitura atual do destino.`, "rede");
           aviso(`Leitura do Beds24 falhou: ${motivo} A simulação usa a última leitura guardada.`);
         }
       }
+      for (const [, motivo] of leituraIncompleta) aviso(motivo);
+      const semEscrita = (imovelId: string) => inacessiveis.get(imovelId) ?? leituraIncompleta.get(imovelId);
       const planos: Plano[] = [];
       let inicioLeitura = "9999-12-31";
       let fimLeitura = "0000-01-01";
@@ -130,15 +145,20 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
         for (const l of p.linhas) for (const a of l.avisos) if (!a.startsWith("Sem leitura do Beds24")) aviso(`Imóvel ${m.codigo}, noite ${l.data.split("-").reverse().join("/")}: ${a}`);
         const semLeitura = p.linhas.filter(l => !l.observacao).length;
         if (semLeitura) aviso(`Imóvel ${m.codigo}: ${semLeitura} noite(s) sem leitura anterior do Beds24; serão enviadas e conferidas pela releitura.`);
-        // Envio anterior sem confirmação (releitura falhou) que a leitura de agora mostra igual ao plano:
-        // confirma tarde e assume a posse do bloqueio enviado, sem escrever nada.
+        // Envio anterior cuja releitura não aconteceu (resultado "enviado") e que a leitura de agora
+        // mostra igual ao plano: confirma tarde e assume a posse do bloqueio enviado, sem escrever.
+        // Tentativa que a releitura já desmentiu ("falhou"/"divergente") nunca ganha posse assim: um
+        // blackout igual que apareça depois pode ser de terceiros.
         let tardias = 0;
-        for (const l of p.linhas) {
-          if (l.acao !== "igual" || !l.enviado || l.enviado.confirmado) continue;
+        const candidatas = leituraIncompleta.has(m.imovelId) ? [] : p.linhas.filter(l => l.acao === "igual" && l.enviado && !l.enviado.confirmado && l.enviado.envioId);
+        const semReleitura = new Set(candidatas.length ? (await tx.select({ envioId: beds24EnvioNoites.envioId, data: beds24EnvioNoites.data }).from(beds24EnvioNoites)
+          .where(and(eq(beds24EnvioNoites.organizacaoId, org), eq(beds24EnvioNoites.imovelId, m.imovelId), inArray(beds24EnvioNoites.envioId, [...new Set(candidatas.map(l => l.enviado!.envioId!))]), eq(beds24EnvioNoites.resultado, "enviado")))).map(n => `${n.envioId}/${n.data}`) : []);
+        for (const l of candidatas) {
+          if (!semReleitura.has(`${l.enviado!.envioId}/${l.data}`)) continue;
           await tx.update(beds24CalendarioEnviado).set({
             confirmado: true,
-            bloqueio: l.posseBloqueioEncerrada ? null : (l.bloqueioEnviar ?? l.enviado.bloqueio),
-            bloqueioAnterior: l.posseBloqueioEncerrada ? null : l.bloqueioEnviar === "blackout" ? l.bloqueioAnterior : l.bloqueioEnviar !== undefined ? null : (l.enviado.bloqueioAnterior ?? null),
+            bloqueio: l.posseBloqueioEncerrada ? null : (l.bloqueioEnviar ?? l.enviado!.bloqueio),
+            bloqueioAnterior: l.posseBloqueioEncerrada ? null : l.bloqueioEnviar === "blackout" ? l.bloqueioAnterior : l.bloqueioEnviar !== undefined ? null : (l.enviado!.bloqueioAnterior ?? null),
           }).where(and(eq(beds24CalendarioEnviado.organizacaoId, org), eq(beds24CalendarioEnviado.imovelId, m.imovelId), eq(beds24CalendarioEnviado.data, l.data)));
           tardias++;
         }
@@ -158,7 +178,8 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
       for (const p of planos) {
         const faixas = faixasDeEnvio(p.linhas);
         const r = resultadoImoveis.find(i => i.imovelId === p.imovelId)!;
-        if (inacessiveis.has(p.imovelId)) { r.falha = inacessiveis.get(p.imovelId)!; continue; }
+        const motivo = semEscrita(p.imovelId);
+        if (motivo) { r.falha = motivo; continue; }
         if (!faixas.length) continue;
         tentados.push(p);
         try {
@@ -222,6 +243,7 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
       }
       // Blackout do SCL que a leitura mais nova mostra trocado ou removido no Beds24: a posse acaba (sem escrita).
       for (const p of planos) {
+        if (leituraIncompleta.has(p.imovelId)) continue;
         for (const l of p.linhas) {
           if (!l.posseBloqueioEncerrada) continue;
           await tx.update(beds24CalendarioEnviado).set({ bloqueio: null, bloqueioAnterior: null }).where(and(eq(beds24CalendarioEnviado.organizacaoId, org), eq(beds24CalendarioEnviado.imovelId, p.imovelId), eq(beds24CalendarioEnviado.data, l.data)));
@@ -232,7 +254,7 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
       const confirmadas = resultadoImoveis.reduce((s, i) => s + i.confirmadas, 0);
       const divergentes = resultadoImoveis.reduce((s, i) => s + i.divergentes, 0);
       const falhas = resultadoImoveis.filter(i => i.falha).length;
-      const situacao: SituacaoEnvio = falhas && !enviadas && !confirmadas && falhas === planos.filter(p => inacessiveis.has(p.imovelId) || faixasDeEnvio(p.linhas).length).length ? "erro" : releituraFalhou ? "incerto" : falhas || divergentes ? "parcial" : "ok";
+      const situacao: SituacaoEnvio = falhas && !enviadas && !confirmadas && falhas === planos.filter(p => semEscrita(p.imovelId) || faixasDeEnvio(p.linhas).length).length ? "erro" : releituraFalhou ? "incerto" : falhas || divergentes ? "parcial" : "ok";
       const mensagem = `${enviadas} noite(s) enviada(s) em ${tentados.filter(p => !resultadoImoveis.find(i => i.imovelId === p.imovelId)?.falha).length} imóvel(is), ${confirmadas} confirmada(s) na releitura, ${divergentes} divergente(s), ${falhas} imóvel(is) com falha; ${resultadoImoveis.reduce((s, i) => s + i.resumo.iguais, 0)} noite(s) já iguais não foram reenviadas; ${totalAvisos} aviso(s).`;
       await registrarAuditoria(tx, { organizacaoId: org, usuarioId: o.autorId ?? null, acao: "beds24.enviar", entidade: "integracao", entidadeId: org, mudancas: { resultado: [null, mensagem] } });
       return { ok: situacao === "ok", situacao, mensagem, envioId: exec.id, imoveis: resultadoImoveis, avisos, totalAvisos };

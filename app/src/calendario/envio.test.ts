@@ -170,6 +170,29 @@ describe("envio ao Beds24 (M3.7)", () => {
     expect(s.avisos.some(a => a.startsWith("Leitura do Beds24 falhou"))).toBe(true);
   });
 
+  it("leitura inicial incompleta (noite do horizonte sem retorno ou dados inválidos): o imóvel fica de fora do envio, com aviso", async () => {
+    let leituras = 0;
+    const leitorCurto: LeitorBeds24 = { reservas: f => beds.reservas(f), quartos: () => beds.quartos(), calendario: async f => {
+      const l = await beds.calendario(f);
+      return leituras++ === 0 ? { ...l, itens: l.itens.filter(d => d.data !== "2026-10-03") } : l;
+    } };
+    const r = await enviar("envio", { leitor: leitorCurto });
+    expect(r).toMatchObject({ ok: false, situacao: "erro", imoveis: [{ enviadas: 0, falha: expect.stringContaining("ficou incompleta (1 noite(s)") }] });
+    expect(beds.escritas).toHaveLength(0);
+    expect(await noites()).toHaveLength(0);
+    leituras = 0;
+    const s = await enviar("simulacao", { leitor: leitorCurto });
+    expect(s.situacao).toBe("simulacao");
+    expect(s.avisos.some(a => a.includes("ficou incompleta") && a.includes("nada é enviado"))).toBe(true);
+    // Dados inválidos no quarto também contam como leitura incompleta.
+    const leitorTorto: LeitorBeds24 = { reservas: f => beds.reservas(f), quartos: () => beds.quartos(), calendario: async f => {
+      const l = await beds.calendario(f);
+      return { ...l, divergencias: [{ origem: "calendario", id: "20", motivo: "faixa de datas inválida" }] };
+    } };
+    expect((await enviar("envio", { leitor: leitorTorto })).imoveis[0].falha).toContain("dados inválidos");
+    expect(beds.escritas).toHaveLength(0);
+  });
+
   it("releitura que falha deixa as noites sem confirmação (incerto) e a próxima execução confirma sem acumular", async () => {
     // A leitura inicial funciona; só a releitura depois da escrita falha.
     let leituras = 0;
@@ -239,6 +262,29 @@ describe("envio ao Beds24 (M3.7)", () => {
     expect(diaFalso("2026-10-03")).toMatchObject({ override: "none", numAvail: 1 });
     expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ bloqueio: "none" });
     expect((await enviar()).imoveis[0].enviadas).toBe(0);
+  });
+
+  it("blackout que a releitura desmentiu nunca ganha posse tarde: um blackout igual visto depois não é tratado como do SCL", async () => {
+    await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-10-03", fim: "2026-10-04", motivo: "Uso próprio" });
+    // A escrita acontece, mas a releitura (segunda leitura) mostra a noite aberta: "divergente", sem posse.
+    let leituras = 0;
+    const leitorDesmente: LeitorBeds24 = { reservas: f => beds.reservas(f), quartos: () => beds.quartos(), calendario: async f => {
+      const l = await beds.calendario(f);
+      return leituras++ === 0 ? l : { ...l, itens: l.itens.map(d => d.data === "2026-10-03" ? { ...d, bloqueio: "none", livres: 1 } : d) };
+    } };
+    expect((await enviar("envio", { leitor: leitorDesmente })).imoveis[0]).toMatchObject({ divergentes: 1 });
+    expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ bloqueio: null, confirmado: false });
+    expect((await noites()).find(n => n.data === "2026-10-03")?.resultado).toBe("divergente");
+    // A leitura seguinte mostra o blackout igual ao plano: nada a enviar, mas a posse não é assumida.
+    const r = await enviar();
+    expect(r.imoveis[0].resumo.enviar).toBe(0);
+    expect(r.avisos.some(a => a.includes("confirmada(s) pela leitura de agora"))).toBe(false);
+    expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ bloqueio: null, confirmado: false });
+    // Removido o bloqueio local, o SCL não reabre um blackout que não sabe ser seu.
+    await db.delete(bloqueios).where(eq(bloqueios.fonte, "manual"));
+    const r2 = await enviar();
+    expect(r2.avisos).toContain("Imóvel 103, noite 03/10/2026: Beds24 tem bloqueio (blackout) sem bloqueio no SCL: o SCL não reabre o que não fechou; confira.");
+    expect(diaFalso("2026-10-03")).toMatchObject({ override: "blackout" });
   });
 
   it("reabertura aceita mas não aplicada mantém a posse do blackout; a próxima execução tenta de novo", async () => {
