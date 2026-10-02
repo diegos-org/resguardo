@@ -163,9 +163,10 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
             bloqueioAntes: l.observacao?.bloqueio ?? null, bloqueioEnviado: l.bloqueioEnviar ?? null, regra: l.regra.slice(0, 300), resultado,
             detalhe: (resultado === "divergente" ? lidoTexto : resultado === "falhou" ? `${r.falha}${releituraFalhou ? "" : ` · ${lidoTexto}`}` : "").slice(0, 300),
           });
+          // A posse do bloqueio (blackout/none) só muda quando a releitura confirma; até lá vale a anterior.
           estado.push({
             organizacaoId: org, imovelId: p.imovelId, data: l.data, preco: l.precoEnviar, minimo: l.minimoEnviar, maximo: l.maximoEnviar,
-            bloqueio: l.bloqueioEnviar ?? l.enviado?.bloqueio ?? null, enviadoEm: agora, confirmado: resultado === "confirmado", envioId: exec.id,
+            bloqueio: resultado === "confirmado" && l.bloqueioEnviar !== undefined ? l.bloqueioEnviar : (l.enviado?.bloqueio ?? null), enviadoEm: agora, confirmado: resultado === "confirmado", envioId: exec.id,
           });
         }
         // Observação nova para todas as noites relidas deste imóvel (mais recente que o envio).
@@ -178,6 +179,13 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
       for (let i = 0; i < noites.length; i += 250) await tx.insert(beds24EnvioNoites).values(noites.slice(i, i + 250));
       for (const v of estado) {
         await tx.insert(beds24CalendarioEnviado).values(v).onConflictDoUpdate({ target: [beds24CalendarioEnviado.organizacaoId, beds24CalendarioEnviado.imovelId, beds24CalendarioEnviado.data], set: { preco: v.preco, minimo: v.minimo, maximo: v.maximo, bloqueio: v.bloqueio, enviadoEm: v.enviadoEm, confirmado: v.confirmado, envioId: v.envioId } });
+      }
+      // Blackout do SCL que a leitura mais nova mostra trocado ou removido no Beds24: a posse acaba (sem escrita).
+      for (const p of planos) {
+        for (const l of p.linhas) {
+          if (!l.posseBloqueioEncerrada) continue;
+          await tx.update(beds24CalendarioEnviado).set({ bloqueio: null }).where(and(eq(beds24CalendarioEnviado.organizacaoId, org), eq(beds24CalendarioEnviado.imovelId, p.imovelId), eq(beds24CalendarioEnviado.data, l.data)));
+        }
       }
 
       const enviadas = resultadoImoveis.reduce((s, i) => s + i.enviadas, 0);

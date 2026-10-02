@@ -204,6 +204,45 @@ describe("envio ao Beds24 (M3.7)", () => {
     expect((await enviar()).imoveis[0].enviadas).toBe(0);
   });
 
+  it("reabertura recusada ou não confirmada mantém a posse do blackout; a próxima execução tenta de novo", async () => {
+    await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-10-03", fim: "2026-10-04", motivo: "Uso próprio" });
+    expect((await enviar()).situacao).toBe("ok");
+    await db.delete(bloqueios).where(eq(bloqueios.fonte, "manual"));
+    // O Beds24 "aceita" mas a releitura ainda mostra o blackout (ex.: escrita não aplicada).
+    const leitorTeimoso: LeitorBeds24 = { reservas: f => beds.reservas(f), quartos: () => beds.quartos(), calendario: async f => {
+      const l = await beds.calendario(f);
+      return { ...l, itens: l.itens.map(d => d.data === "2026-10-03" ? { ...d, bloqueio: "blackout", livres: 0 } : d) };
+    } };
+    const r = await enviar("envio", { leitor: leitorTeimoso });
+    expect(r).toMatchObject({ situacao: "parcial", imoveis: [{ divergentes: 1 }] });
+    expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ bloqueio: "blackout", confirmado: false });
+    // Com a leitura normal, o SCL reenvia "none", confirma e só então registra a reabertura.
+    const r2 = await enviar();
+    expect(beds.escritas.at(-1)![0].faixas.some(f => f.bloqueio === "none" && f.from === "2026-10-03")).toBe(true);
+    expect(r2.situacao).toBe("ok");
+    expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ bloqueio: "none", confirmado: true });
+  });
+
+  it("blackout do SCL trocado ou removido no Beds24 encerra a posse: um blackout externo posterior nunca é reaberto", async () => {
+    await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-10-03", fim: "2026-10-04", motivo: "Uso próprio" });
+    expect((await enviar()).situacao).toBe("ok");
+    expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ bloqueio: "blackout", confirmado: true });
+    // Alguém troca a noite para noCheckIn no Beds24 (leitura mais nova) e o bloqueio local é removido.
+    await db.delete(bloqueios).where(eq(bloqueios.fonte, "manual"));
+    (beds.calendarios[0].calendar as Record<string, unknown>[]).find(d => d.from === "2026-10-03")!.override = "noCheckIn";
+    await db.update(beds24Calendario).set({ bloqueio: "noCheckIn", observadoEm: new Date(agora.getTime() + 60_000) }).where(and(eq(beds24Calendario.imovelId, im), eq(beds24Calendario.data, "2026-10-03")));
+    const r = await enviar();
+    expect(r.avisos.some(a => a.includes('restrição "noCheckIn"') && a.includes("deixa de considerar"))).toBe(true);
+    expect(beds.escritas.at(-1)?.[0]?.faixas.some(f => f.bloqueio !== undefined) ?? false).toBe(false);
+    expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ bloqueio: null });
+    // Depois, um blackout externo na mesma noite: o SCL não o reabre.
+    (beds.calendarios[0].calendar as Record<string, unknown>[]).find(d => d.from === "2026-10-03")!.override = "blackout";
+    await db.update(beds24Calendario).set({ bloqueio: "blackout", livres: 0, observadoEm: new Date(agora.getTime() + 120_000) }).where(and(eq(beds24Calendario.imovelId, im), eq(beds24Calendario.data, "2026-10-03")));
+    const r2 = await enviar();
+    expect(r2.avisos).toContain("Imóvel 103, noite 03/10/2026: Beds24 tem bloqueio (blackout) sem bloqueio no SCL: o SCL não reabre o que não fechou; confira.");
+    expect(diaFalso("2026-10-03")).toMatchObject({ override: "blackout" });
+  });
+
   it("bloqueio que só existe no Beds24 nunca é reaberto pelo SCL, mesmo sem bloqueio local", async () => {
     beds.calendarios = [{ roomId: 20, calendar: [{ from: "2026-10-01", to: "2026-10-10", numAvail: 1, price1: 450, minStay: 1, maxStay: 27, override: "none" }, { from: "2026-10-06", to: "2026-10-06", numAvail: 0, price1: 450, minStay: 1, maxStay: 27, override: "blackout" }] }];
     await db.insert(beds24Calendario).values({ organizacaoId: org, imovelId: im, data: "2026-10-06", preco: 45000, minimoNoites: 1, maximoNoites: 27, livres: 0, bloqueio: "blackout", observadoEm: new Date("2026-10-01T10:00:00Z") });
