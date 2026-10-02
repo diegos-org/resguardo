@@ -203,8 +203,16 @@ export function validarEvento(e: Entrada, imoveisDaOrg: readonly string[]): { ok
   return { ok: true, evento: { nome, inicio, fim, multiplicador, estadiaMinima: m ? Number(m) : null, todosImoveis, imoveis } };
 }
 
+/**
+ * Grava as regras gerais. Os eventos são relidos sob a trava e preservados: o formulário geral
+ * nunca desfaz um evento adicionado ou removido em outra aba entre a leitura e o salvamento.
+ */
 export async function salvarRegrasCalendario(db: Db, organizacaoId: string, regras: RegrasCalendario, autorId: string | null): Promise<boolean> {
-  return db.transaction(async (tx) => Object.keys(await gravarConfig(tx, organizacaoId, "calendario_regras", { ...regras }, autorId)).length > 0);
+  return db.transaction(async (tx) => {
+    await travarConfig(tx, organizacaoId, "calendario_regras");
+    const atual = await lerRegrasCalendario(tx, organizacaoId);
+    return Object.keys(await gravarConfig(tx, organizacaoId, "calendario_regras", { ...regras, eventos: atual.eventos }, autorId)).length > 0;
+  });
 }
 
 export async function adicionarEvento(db: Db, organizacaoId: string, evento: Omit<Evento, "id">, autorId: string | null): Promise<{ ok: true; id: string } | { ok: false; erro: string }> {

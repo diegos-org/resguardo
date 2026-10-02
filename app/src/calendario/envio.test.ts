@@ -108,6 +108,23 @@ describe("envio ao Beds24 (M3.7)", () => {
     expect((await ultimosEnvios(db, org)).filter(e => e.situacao === "erro")).toHaveLength(3);
   });
 
+  it("vínculo que a credencial não enxerga, ou moeda diferente de BRL, nunca recebe escrita", async () => {
+    await db.update(idsExternos).set({ detalhe: "21" }).where(eq(idsExternos.organizacaoId, org));
+    const s = await enviar("simulacao");
+    expect(s.situacao).toBe("simulacao");
+    expect(s.avisos.some(a => a.includes("quarto 21) não está acessível"))).toBe(true);
+    const r = await enviar();
+    expect(r).toMatchObject({ ok: false, situacao: "erro", imoveis: [{ codigo: "103", enviadas: 0, falha: expect.stringContaining("não está acessível nesta credencial") }] });
+    expect(beds.escritas).toHaveLength(0);
+    expect(await noites()).toHaveLength(0);
+    await db.update(idsExternos).set({ detalhe: "20" }).where(eq(idsExternos.organizacaoId, org));
+    beds.properties = [{ id: 10, currency: "USD", roomTypes: [{ id: 20, name: "Quarto fictício" }] }];
+    expect(await enviar()).toMatchObject({ situacao: "erro", imoveis: [{ falha: expect.stringContaining("BRL") }] });
+    expect(beds.escritas).toHaveLength(0);
+    beds.properties = [{ id: 10, currency: "BRL", roomTypes: [{ id: 20, name: "Quarto fictício" }] }];
+    expect((await enviar()).situacao).toBe("ok");
+  });
+
   it("falha na escrita não confirma nada e a próxima execução reenvia; quarto recusado vira falha do imóvel", async () => {
     beds.falharEscrita = new ErroBeds24("Beds24 recusou a escrita (HTTP 403): a credencial não tem permissão de inventário.", "http");
     const r = await enviar();
