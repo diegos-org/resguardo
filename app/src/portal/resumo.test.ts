@@ -174,9 +174,13 @@ describe("resumo do portal", () => {
     const [c] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "999", nome: "Sem dono" }).returning();
     await criarContrato(db, org, c.id, { tipo: "gestao_completa", comissao: "15", inicio: "2025-01-01" }, null);
     await criarReserva(db, org, reserva(c.id), null);
-    await db.insert(proprietarioImoveis).values({ proprietarioId: dona, imovelId: c.id });
+    // O vínculo começa na competência do lançamento (1/10), independentemente de hoje.
+    await db.insert(proprietarioImoveis).values({ proprietarioId: dona, imovelId: c.id, criadoEm: new Date("2026-10-01T12:00:00Z") });
     expect(await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a, c.id], periodo })).toMatchObject({ emConferencia: true });
     expect(await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo })).toMatchObject({ emConferencia: false });
+    // Começar depois da competência não dá acesso à pendência anterior ao vínculo.
+    await db.update(proprietarioImoveis).set({ criadoEm: new Date("2026-10-02T12:00:00Z") }).where(eq(proprietarioImoveis.imovelId, c.id));
+    expect(await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a, c.id], periodo })).toMatchObject({ emConferencia: false });
   });
 
   it("não vê imóvel de outro dono, nem 'todos' quando a lista vem vazia", async () => {

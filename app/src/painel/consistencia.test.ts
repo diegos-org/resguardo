@@ -4,7 +4,7 @@
  * estada entre dois meses, reserva cancelada, reserva pendente, imóvel de outro dono,
  * despesa do proprietário e venda direta.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { criarContrato } from "@/contratos/repositorio";
 import { conferirMovimentadas, recalcularPendentes, recalcularReservas } from "@/financeiro/aplicar";
@@ -21,6 +21,7 @@ import { dadosDoRelatorio, textosDoRelatorio } from "@/relatorios/relatorio";
 import type { DadosReserva } from "@/reservas/regras";
 import { cancelarReserva, confirmarReserva, criarReserva, resolverConferencia, sincronizarReserva } from "@/reservas/repositorio";
 import { formatBRL } from "@/lib/money";
+import * as datas from "@/lib/datas";
 import { carregarApartamentos } from "./apartamentos";
 import { carregarDashboard } from "./dashboard";
 
@@ -99,7 +100,10 @@ beforeEach(async () => {
     null,
   );
 });
-afterEach(() => close());
+afterEach(async () => {
+  vi.restoreAllMocks();
+  await close();
+});
 
 describe("consistência entre telas (M4.8)", () => {
   it("mesma reserva, mesmos totais no Início, em Apartamentos, no portal e no PDF", async () => {
@@ -370,6 +374,8 @@ describe("consistência entre telas (M4.8)", () => {
     expect(depois.divergenciaEm).toBeNull();
   });
   it("conferência resolvida reabre quando o contrato muda e o cálculo novo diverge de outro jeito", async () => {
+    // O cenário exige uma entrada futura; o recálculo real nunca alcança o passado.
+    vi.spyOn(datas, "hojeISO").mockReturnValue("2026-09-24");
     const dados = reserva(a, "2026-10-01", "2026-10-03", { valorBruto: 50000, taxaCanal: 0 });
     const r = await sincronizarReserva(db, org, "csv", "booking:R9", dados, null);
     if (!r.ok) throw new Error("reserva");
