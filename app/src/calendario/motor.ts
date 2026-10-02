@@ -51,6 +51,8 @@ export type LinhaPlano = {
   reservas: number;
   bloqueioScl: boolean;
   bloqueioEnviar: BloqueioEnvio | undefined;
+  /** O blackout que o SCL aplicou sumiu ou foi trocado no Beds24: o SCL deixa de considerá-lo seu. */
+  posseBloqueioEncerrada: boolean;
   observacao: ObservacaoPlano | null;
   enviado: EnviadoPlano | null;
   acao: AcaoNoite;
@@ -227,12 +229,19 @@ export function planejarCalendario(e: EntradaPlano): LinhaPlano[] {
     // Reabrir ("none") só quando a leitura atual ainda mostra o blackout que o SCL aplicou: uma
     // restrição posta no Beds24 depois (noCheckIn etc.) ou a falta de leitura nunca é apagada.
     let bloqueioEnviar: BloqueioEnvio | undefined;
+    let posseBloqueioEncerrada = false;
     if (bloqueioScl) bloqueioEnviar = "blackout";
     else if (enviado?.bloqueio === "blackout") {
-      const atual = observacao && (!enviado || observacao.observadoEm.getTime() >= enviado.enviadoEm.getTime()) ? observacao.bloqueio : undefined;
+      const atual = observacao && observacao.observadoEm.getTime() >= enviado.enviadoEm.getTime() ? observacao.bloqueio : undefined;
       if (atual === "blackout") bloqueioEnviar = "none";
       else if (atual === undefined) avisos.push("Bloqueio do SCL removido, mas sem leitura recente do Beds24: a reabertura espera a próxima leitura.");
-      else if (normalizarBloqueio(atual) !== "none") avisos.push(`Bloqueio do SCL removido, mas o Beds24 tem a restrição "${atual}" nesta noite: não reaberta automaticamente; confira no Beds24.`);
+      else {
+        // Leitura mais nova mostra que o blackout do SCL já não está lá: a posse acaba aqui, e um
+        // blackout futuro nessa noite é tratado como externo (nunca reaberto pelo SCL).
+        posseBloqueioEncerrada = true;
+        if (normalizarBloqueio(atual) === "none") avisos.push("Bloqueio do SCL removido e já reaberto no Beds24: nada a enviar; o SCL deixa de considerar esse bloqueio como seu.");
+        else avisos.push(`Bloqueio do SCL removido, mas o Beds24 tem a restrição "${atual}" nesta noite: não é apagada, e o SCL deixa de considerar o bloqueio como seu; confira no Beds24.`);
+      }
     }
     if (reservas > 1) avisos.push("Mais de uma reserva ocupa esta noite.");
     if (reservas > 0 && bloqueioScl) avisos.push("Reserva e bloqueio se sobrepõem nesta noite.");
@@ -257,7 +266,7 @@ export function planejarCalendario(e: EntradaPlano): LinhaPlano[] {
     linhas.push({
       data, antecedencia, fontePreco, motivoPreco, precoReferencia, faixaUltimaHora: faixa >= 0 ? faixa : null, percentualUltimaHora: pct, piso,
       precoEnviar, precoFinalEsperado, minimoRegra, motivoMinimo, livresSeguidas, minimoEnviar, maximoEnviar: maximo,
-      reservas, bloqueioScl, bloqueioEnviar, observacao, enviado, acao, regra, avisos,
+      reservas, bloqueioScl, bloqueioEnviar, posseBloqueioEncerrada, observacao, enviado, acao, regra, avisos,
     });
   }
   return linhas;

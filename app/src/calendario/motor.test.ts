@@ -189,13 +189,18 @@ describe("bloqueios e conferência com o Beds24", () => {
       observacoes: [obs("2026-10-02", { livres: 0, bloqueio: "blackout" }), obs("2026-10-03", { bloqueio: "noCheckIn" }), obs("2026-10-05", { bloqueio: "blackout", observadoEm: new Date("2026-09-29T00:00:00Z") })],
     }));
     expect(porData(linhas, "2026-10-02")).toMatchObject({ bloqueioEnviar: "none", acao: "enviar" });
-    expect(porData(linhas, "2026-10-03").bloqueioEnviar).toBeUndefined();
-    expect(porData(linhas, "2026-10-03").avisos).toContain('Bloqueio do SCL removido, mas o Beds24 tem a restrição "noCheckIn" nesta noite: não reaberta automaticamente; confira no Beds24.');
-    expect(porData(linhas, "2026-10-04").bloqueioEnviar).toBeUndefined();
+    expect(porData(linhas, "2026-10-02").posseBloqueioEncerrada).toBe(false);
+    expect(porData(linhas, "2026-10-03")).toMatchObject({ bloqueioEnviar: undefined, posseBloqueioEncerrada: true });
+    expect(porData(linhas, "2026-10-03").avisos).toContain('Bloqueio do SCL removido, mas o Beds24 tem a restrição "noCheckIn" nesta noite: não é apagada, e o SCL deixa de considerar o bloqueio como seu; confira no Beds24.');
+    expect(porData(linhas, "2026-10-04")).toMatchObject({ bloqueioEnviar: undefined, posseBloqueioEncerrada: false });
     expect(porData(linhas, "2026-10-04").avisos).toContain("Bloqueio do SCL removido, mas sem leitura recente do Beds24: a reabertura espera a próxima leitura.");
-    // Observação mais antiga que o último envio não vale como leitura atual.
-    expect(porData(linhas, "2026-10-05").bloqueioEnviar).toBeUndefined();
+    // Observação mais antiga que o último envio não vale como leitura atual: posse mantida, nada enviado.
+    expect(porData(linhas, "2026-10-05")).toMatchObject({ bloqueioEnviar: undefined, posseBloqueioEncerrada: false });
     expect(faixasDeEnvio(linhas).filter(f => f.bloqueio)).toEqual([{ from: "2026-10-02", to: "2026-10-02", preco: 45000, minimo: 2, maximo: 27, bloqueio: "none" }]);
+    // Já reaberto no Beds24 por alguém: nada a enviar e a posse acaba.
+    const [reaberto] = planejarCalendario(entrada({ fim: "2026-10-01", enviados: [enviado("2026-10-01")], observacoes: [obs("2026-10-01", { bloqueio: "none" })] }));
+    expect(reaberto).toMatchObject({ bloqueioEnviar: undefined, posseBloqueioEncerrada: true, acao: "igual" });
+    expect(reaberto.avisos).toContain("Bloqueio do SCL removido e já reaberto no Beds24: nada a enviar; o SCL deixa de considerar esse bloqueio como seu.");
   });
   it("igual quando a observação (mais recente que o último envio) já tem os valores; senão vale o envio confirmado", () => {
     const quando = new Date("2026-10-01T08:00:00Z");
