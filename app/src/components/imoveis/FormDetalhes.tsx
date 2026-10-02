@@ -151,7 +151,7 @@ export function FormDetalhes({ imovelId, inicial, salvar }: Props) {
             </label>
           </div>
           <label className={styles.check}>
-            <input type="checkbox" name="precoDinamico" defaultChecked={marcado("precoDinamico")} /> Preço dinâmico ligado (o valor fica sempre entre o mínimo e o máximo)
+            <input type="checkbox" name="precoDinamico" defaultChecked={marcado("precoDinamico")} /> Aplicar limites ao preço base (preços explícitos dos períodos são preservados)
           </label>
           {erro("precoDinamico")}
           <div className={styles.linha}>

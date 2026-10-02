@@ -75,6 +75,7 @@ export default async function Calendario({ searchParams }: PageProps<"/painel/ca
   return (
     <>
       <h1>Calendário</h1>
+      {(sessao.papel === "admin" || sessao.papel === "operacao") && <p><Link href="/painel/calendario/previa">Conferir calendário e preços com o Beds24</Link></p>}
       <FiltroGlobal filtros={filtros} opcoes={opcoes} acao="/painel/calendario" />
       <nav className={styles.navegacao} aria-label="Mês">
         <Link href={link(anterior.ano, anterior.mes)} aria-label="Mês anterior">

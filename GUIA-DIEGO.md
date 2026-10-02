@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 2/10/2026, aba Anúncios (M2.9). Diego confirmou o merge da conferência de reservas (M3.8) e uma nova importação do Beds24. A conferência continua parcial; agosto/setembro podem ter histórico incompleto na origem. Para o futuro teste de envio ao Beds24, Diego escolheu um dos próprios imóveis: 103 como primeira opção, 403 como alternativa.
+> **Última atualização:** 2/10/2026, prévia de calendário e preços (M3.7a), após o merge de Anúncios confirmado por Diego. O envio ao Beds24 continua pendente. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem. Para o futuro teste de envio: 103 como primeira opção, 403 como alternativa.
 
 ---
 
@@ -27,7 +27,7 @@
 | M0 Fundação | Base do app, banco de dados, layout, publicação na Vercel | 🟡 Vercel e login funcionando; isolamento do banco de homologação ainda a conferir |
 | M1 Acesso | Login (Google/código por e-mail), convites, permissões | ✅ pronto |
 | M2 Cadastros | Imóveis, proprietários, contratos e aba Anúncios | ✅ implementado; referências dos canais precisam ser preenchidas/conferidas |
-| M3 Reservas | Reservas, calendário central e importação do Beds24 | 🟡 M3.8 publicado e reimportado por Diego; conferência parcial; envio ao Beds24 ainda pendente |
+| M3 Reservas | Reservas, calendário central e importação do Beds24 | 🟡 prévia de calendário/preços implementada; conferência das reservas parcial; motor operacional e envio ao Beds24 ainda pendentes |
 | M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | 🟡 em andamento |
 | M5 Portal do proprietário | Relatórios, saldos, PDF | 🟡 em andamento |
 | M6 Operação | Limpezas, manutenção, agenda diária | 🟡 em andamento |
@@ -37,6 +37,35 @@
 | M10 WhatsApp | Caixa de entrada do WhatsApp no painel | ⚪ aguardando |
 | M11 Produção | Dados reais, domínio, entrada em uso | ⚪ aguardando |
 | M12 Marketplace | Proprietário que opera o próprio imóvel; SCL cuida do online | 🟡 em andamento |
+
+### Conferir calendário e preços — preparação M3.7a
+
+Em **Painel → Calendário → Conferir calendário e preços com o Beds24**, escolha um imóvel
+e a primeira/última noite. O 103 vem selecionado se existir e estiver ativo; na ausência
+dele, o 403. É possível consultar qualquer imóvel da empresa, inclusive arquivado, sem reativá-lo.
+Administrador e operação podem consultar; proprietário, hóspede e limpeza não acessam a tela.
+
+- Até **92 noites por consulta**, contando a primeira e a última. O resumo diz quantas
+  noites têm leitura do Beds24; avance as datas para conferir o restante do horizonte.
+- Por noite: preço calculado com o cadastro SCL, preço registrado no Beds24, mínimos,
+  reservas/bloqueios locais e horário da leitura externa no fuso do imóvel.
+- Valor ausente é mostrado como não informado. Mesmo valor não prova igualdade atual
+  no Airbnb/Booking; zero ou ausência de reservas locais não prova disponibilidade.
+- O administrador tem atalhos para o cadastro e a importação existente. A prévia lê apenas
+  o que já foi importado; não faz uma nova consulta ao Beds24 ao abrir a página.
+- **Preços explícitos de períodos especiais são preservados**, inclusive acima do teto
+  geral ou abaixo do piso. Os limites se aplicam ao preço base quando habilitados. Isso
+  corrige também o simulador; não altera valores de reservas ou tarifas dos canais.
+
+**O que você pode conferir agora:** comece pelo 103, compare algumas noites normais e de
+evento com o Beds24 e veja se o cadastro representa o que você pretende usar. A cobertura
+depende do intervalo importado; a prévia mostra suas lacunas.
+
+**O que falta antes do envio:** automatizar as regras operacionais (semana normal,
+feriados/eventos, última hora e sobras), resolver a combinação com os descontos nativos
+já ativos, implementar envio e retorno de conferência e realizar o teste no imóvel escolhido.
+Esta entrega não muda credenciais nem ativa rotina. Nenhuma nova conta ou configuração
+externa é necessária para abrir a prévia; o cliente Beds24 continua somente leitura.
 
 ### Anúncios — atualização M2.9
 
