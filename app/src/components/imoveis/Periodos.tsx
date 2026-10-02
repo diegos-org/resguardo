@@ -24,7 +24,7 @@ export function Periodos({ imovelId, periodos, criar, excluir }: Props) {
     <section aria-label="Períodos especiais" style={{ maxWidth: 820, display: "flex", flexDirection: "column", gap: 12 }}>
       <h2 style={{ fontSize: "1.25rem" }}>Períodos especiais</h2>
       <p style={{ fontSize: "0.875rem", color: "var(--scl-texto-2)", margin: 0 }}>
-        Preço da noite e/ou estadia mínima diferentes em datas específicas. As datas são das noites (a primeira e a última noite do período).
+        Preço da noite e/ou estadia mínima diferentes em datas específicas. As datas são das noites (a primeira e a última noite do período). O preço explícito do período é preservado, mesmo fora dos limites gerais do preço base.
       </p>
       {periodos.length > 0 && (
         <div className={styles.rolagem}>

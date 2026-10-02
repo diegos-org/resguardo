@@ -77,7 +77,8 @@ item muda a linha para `feito` **no próprio PR do item**.
 | M3.4 | Calendário central: todas as unidades, por imóvel, reservas/bloqueios/limpezas/manutenção, filtros global e local | feito | M3.1, M0.4 |
 | M3.5 | Lista de reservas com filtros e detalhe da reserva | feito | M3.1 |
 | M3.6 | Importação manual (CSV) de reservas como alternativa enquanto Beds24 não estiver ligado | feito | M3.1 |
-| M3.7 | **SCL como fonte oficial de calendário e preços** (Diego, 24/09): bloqueios, preços, estadia mínima e regras editados no SCL são enviados ao Beds24 e dele às OTAs; mudanças que chegarem do Beds24 são conferidas contra o SCL. Escrita autorizada por Diego, mas só é ligada (variável `BEDS24_ESCRITA=ligada`) depois de testada em um imóvel escolhido por ele | a fazer | M3.3, M2.6; Diego autorizou 103 ou 403 em 2/10 para o futuro teste: usar 103 primeiro, 403 como alternativa; ativação continua pendente |
+| M3.7a | Prévia de conferência por noite: cadastro SCL × última observação do Beds24, preço/mínimo, cobertura, horário, reservas e bloqueios; preservar preço explícito de período fora dos limites gerais | feito | M3.3, M2.6; etapa de preparação somente leitura, não é envio nem cotação final dos canais |
+| M3.7 | **SCL como fonte oficial de calendário e preços** (Diego, 24/09): bloqueios, preços, estadia mínima e regras editados no SCL são enviados ao Beds24 e dele às OTAs; mudanças que chegarem do Beds24 são conferidas contra o SCL. Escrita autorizada por Diego, mas só é ligada (variável `BEDS24_ESCRITA=ligada`) depois de testada em um imóvel escolhido por ele | a fazer | M3.7a, M3.3, M2.6; faltam motor das regras operacionais, compatibilidade com descontos nativos, envio controlado e conferência do destino. Diego autorizou 103 ou 403 em 2/10 para o futuro teste: usar 103 primeiro, 403 como alternativa; ativação continua pendente |
 | M3.8 | Conferência das reservas importadas: consultas separadas de pedidos e fora da ocupação, data original, busca, situação, histórico completo, paginação e registros alterados por execução (pedido de Diego em 1/10) | feito | M3.3, M3.5; após publicar, reimportar para recuperar status/data dos registros existentes |
 
 ### M4 — Financeiro (ledger)
@@ -205,3 +206,4 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
   (e usado no de hóspedes).
 - 24/09 (Diego): mudança de regra vale daquela data para frente — o passado (e o dinheiro
   que já movimentou) nunca é recalculado.
+

@@ -34,12 +34,23 @@ describe("preço da noite", () => {
     expect(precoDaNoite({ ...base, precoBase: null }, [], "2026-10-10")).toEqual({ data: "2026-10-10", valor: null, fonte: "sem_preco" });
   });
 
-  it("preço dinâmico ligado limita ao mínimo e ao máximo; desligado, não", () => {
+  it("limita o preço base, preservando a exceção manual do período", () => {
     const din = { ...base, precoDinamico: true, precoMinimo: 60000, precoMaximo: 120000 };
     expect(precoDaNoite(din, [], "2026-10-10")).toMatchObject({ valor: 60000, ajustado: true });
-    expect(precoDaNoite(din, [reveillon], "2026-12-29")).toMatchObject({ valor: 120000, ajustado: true });
+    expect(precoDaNoite(din, [reveillon], "2026-12-29")).toMatchObject({ valor: 150000, ajustado: undefined });
+    expect(precoDaNoite({ ...din, precoBase: 200000 }, [], "2026-12-29")).toMatchObject({ valor: 120000, ajustado: true });
+    expect(precoDaNoite(din, [{ ...reveillon, precoNoite: 40000 }], "2026-12-29").valor).toBe(40000);
+    expect(precoDaNoite(din, [{ ...reveillon, precoNoite: null }], "2026-12-29").valor).toBe(60000);
     expect(precoDaNoite({ ...din, precoDinamico: false }, [reveillon], "2026-12-29").valor).toBe(150000);
   });
+});
+
+it("cotação conserva todas as diárias explícitas de evento acima do teto", () => {
+  const r = { ...base, precoDinamico: true, precoMaximo: 120000 };
+  const c = cotarEstadia(r, [reveillon], "2026-12-28", "2027-01-02", 2);
+  expect(c.diarias).toBe(750000);
+  expect(c.total).toBe(775000);
+  expect(c.noites.every(n => n.fonte === "periodo" && !n.ajustado)).toBe(true);
 });
 
 describe("verificar estadia", () => {

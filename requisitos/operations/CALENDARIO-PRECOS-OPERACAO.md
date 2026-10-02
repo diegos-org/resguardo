@@ -112,6 +112,19 @@ Diego confirmou: base padrão do303 = R$800 e autorizou corrigir o R$1000 observ
 
 A função `precoDaNoite` atualmente limita também tarifas explícitas de eventos ao teto geral quando o preço dinâmico está ligado. Isso contradiz a exceção aprovada acima e pode reduzir uma cotação do simulador mesmo antes do M3.7. Antes de considerar essa regra implementada, é necessário corrigir a isenção dos preços explícitos de evento e testá-la, mantendo a limitação para as tarifas às quais ela realmente se aplica. Esta rodada documental não altera o motor, não aprova publicação nem comprova cotações corretas.
 
+## Atualização de implementação — M3.7a, 2/10/2026
+
+A prévia em `/painel/calendario/previa` compara o cadastro atual com observações já
+importadas, por imóvel e intervalo (até 92 noites inclusivas). Exibe lacunas, horários,
+ocupação local e diferenças conhecidas. Não faz consulta remota, não envia valores e não
+valida preço final das OTAs. A semântica do mínimo mostrado pelo SCL é a data de entrada;
+o mínimo observado do Beds24 ainda requer conferência das regras do canal.
+
+Corrigida a limitação descrita acima: `precoDaNoite` preserva preços explícitos de períodos,
+inclusive fora do piso/teto geral; somente o preço base passa pelos limites quando
+habilitados. O simulador usa a mesma função. Nenhum preço de reserva ou canal é alterado.
+As demais lacunas do motor e a proteção diária de piso/teto continuam pendentes no M3.7.
+
 ## Compatibilidade dos PRs73 e74
 
 Conferência em 1/10: PR73 (`codex/m3.3-beds24-sincronizacao`, head `c583e8de7b9255b5e839eaefa02c6185457fbd50`) implementa leitura Beds24 → SCL. PR74 acrescenta esta documentação e uma seção no fim de `GUIA-DIEGO.md`. O único arquivo compartilhado é o guia; os trechos alterados no PR73 e a seção acrescentada no PR74 são distintos. Ambos partiam da mesma main `73f14d89f7fd616ada889ca175730ab42dba28b0` e estavam integráveis na consulta. Não substituir o guia inteiro pela cópia de outra branch. Após o primeiro merge humano, revalidar o diff do segundo contra a nova main; preservar ambos os conjuntos de mudanças. A inspeção documental não constitui revisão ou aprovação integral do código do PR73.

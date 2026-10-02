@@ -40,14 +40,15 @@ export type PrecoNoite = { data: string; valor: number | null; fonte: "periodo" 
 
 /**
  * Preço de uma noite: exceção do período, senão o preço base. Com o preço dinâmico ligado, o
- * valor é mantido entre o mínimo e o máximo (o cálculo dinâmico em si chega com o M3.7).
+ * preço base é mantido entre o mínimo e o máximo. Preço explícito de período é uma
+ * exceção manual e preserva seu valor, inclusive acima do teto geral.
  */
 export function precoDaNoite(r: RegrasVenda, periodos: readonly Periodo[], noite: string): PrecoNoite {
   const p = periodoDaNoite(periodos, noite);
   const bruto = p?.precoNoite ?? r.precoBase;
   if (bruto === null) return { data: noite, valor: null, fonte: "sem_preco" };
   let valor = bruto;
-  if (r.precoDinamico) {
+  if (r.precoDinamico && p?.precoNoite == null) {
     if (r.precoMinimo !== null && valor < r.precoMinimo) valor = r.precoMinimo;
     if (r.precoMaximo !== null && valor > r.precoMaximo) valor = r.precoMaximo;
   }
