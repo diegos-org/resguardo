@@ -1,8 +1,13 @@
 import { ErroBeds24 } from "./tipos";
 import { diagnosticarFalhaBeds24 } from "./diagnostico";
 
-/** GET sem cache persistente nem redirecionamento de cabeçalhos com segredos. */
-export async function buscarBeds24(fetchImpl: typeof fetch, url: URL, headers: Record<string, string>, timeoutMs: number): Promise<Response> {
+export type CorpoBeds24 = { method: "POST"; body: string } | undefined;
+
+/**
+ * Chamada sem cache persistente nem redirecionamento de cabeçalhos com segredos. GET por
+ * padrão; POST só com `corpo` explícito (escrita do calendário, M3.7).
+ */
+export async function buscarBeds24(fetchImpl: typeof fetch, url: URL, headers: Record<string, string>, timeoutMs: number, corpo?: CorpoBeds24): Promise<Response> {
   const renovacao = Object.hasOwn(headers, "refreshToken");
   const credencial = renovacao ? headers.refreshToken : headers.token;
   // Falhas de construção do cabeçalho não são falhas de rede. Não alterar o
@@ -13,8 +18,9 @@ export async function buscarBeds24(fetchImpl: typeof fetch, url: URL, headers: R
   }
   try {
     return await fetchImpl(url, {
-      method: "GET",
-      headers: { accept: "application/json", ...headers },
+      method: corpo?.method ?? "GET",
+      headers: { accept: "application/json", ...(corpo ? { "content-type": "application/json" } : {}), ...headers },
+      ...(corpo ? { body: corpo.body } : {}),
       signal: AbortSignal.timeout(timeoutMs),
       cache: "no-store",
       redirect: "error",

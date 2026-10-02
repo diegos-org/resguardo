@@ -89,7 +89,7 @@ export async function sincronizarBeds24(db: Db, org: string, leitor: LeitorBeds2
         const chave = `${m.imovelId}/${d.data}`;
         if (vistos.has(chave)) throw new ErroBeds24("Calendário com datas repetidas. Nenhuma mudança desta execução foi aplicada.", "formato");
         vistos.add(chave);
-        valores.push({ organizacaoId: org, imovelId: m.imovelId, data: d.data, livres: d.livres, preco: d.preco, minimoNoites: d.minimoNoites, observadoEm: agora });
+        valores.push({ organizacaoId: org, imovelId: m.imovelId, data: d.data, livres: d.livres, preco: d.preco, minimoNoites: d.minimoNoites, maximoNoites: d.maximoNoites, bloqueio: d.bloqueio, observadoEm: agora });
       }
       for (const m of mapas) if (valores.filter(v => v.imovelId === m.imovelId).length < c.diasCalendario) aviso(res, `Imóvel ${m.codigo}: há dias sem observação de calendário; disponibilidade e preço desses dias seguem desconhecidos.`);
       for (let i = 0; i < valores.length; i += 250) await tx.insert(beds24Calendario).values(valores.slice(i, i + 250));

@@ -50,6 +50,11 @@ const ACOES: Record<string, string> = {
   "reserva.importar": "importou a reserva",
   "reserva.sincronizar": "atualizou pela sincronização",
   "reserva.cancelar": "cancelou a reserva",
+  "bloqueio.criar": "bloqueou datas",
+  "bloqueio.remover": "removeu o bloqueio",
+  "configuracao.calendario_regras": "alterou calendário e preços",
+  "beds24.sincronizar": "importou do Beds24",
+  "beds24.enviar": "enviou calendário e preços ao Beds24",
 };
 
 function valor(v: unknown): string {

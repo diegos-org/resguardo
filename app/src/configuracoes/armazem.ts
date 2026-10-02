@@ -14,7 +14,7 @@ function estavel(v: unknown): string {
   return JSON.stringify(v ?? null);
 }
 
-export type ChaveConfig = "empresa" | "regras_financeiras" | "textos_site" | "limpezas" | "agenda" | "portaria" | "fechamento_email" | "mensagens_hospede" | "beds24";
+export type ChaveConfig = "empresa" | "regras_financeiras" | "textos_site" | "limpezas" | "agenda" | "portaria" | "fechamento_email" | "mensagens_hospede" | "beds24" | "calendario_regras";
 
 export async function lerConfig(db: Db, organizacaoId: string, chave: ChaveConfig): Promise<Record<string, unknown> | null> {
   const [l] = await db

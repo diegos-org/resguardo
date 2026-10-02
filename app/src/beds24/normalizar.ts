@@ -102,7 +102,9 @@ export function normalizarReserva(b: unknown): { ok: true; r: ReservaBeds24 } | 
   };
 }
 
-/** Calendário: `data` = [{ roomId, calendar: [{ from, to, numAvail, price1, minStay }] }]. */
+const OVERRIDES = new Set(["none", "blackout", "exception", "noCheckIn", "noCheckOut", "noCheckInOrCheckOut"]);
+
+/** Calendário: `data` = [{ roomId, calendar: [{ from, to, numAvail, price1, minStay, maxStay, override }] }]. */
 export function normalizarCalendario(salas: unknown[], inicio: string, fim: string): { itens: DiaCalendario[]; divergencias: Divergencia[] } {
   const itens: DiaCalendario[] = [];
   const divergencias: Divergencia[] = [];
@@ -120,8 +122,10 @@ export function normalizarCalendario(salas: unknown[], inicio: string, fim: stri
       const preco = reaisParaCentavosApi(faixa.price1);
       const livres = faixa.numAvail === undefined || faixa.numAvail === null ? null : Number(faixa.numAvail);
       const minimo = faixa.minStay === undefined || faixa.minStay === null ? null : Number(faixa.minStay);
+      const maximo = faixa.maxStay === undefined || faixa.maxStay === null ? null : Number(faixa.maxStay);
+      const bloqueio = faixa.override === undefined || faixa.override === null ? null : texto(faixa.override);
       const inteiroNaoNegativo = (x: number | null) => x === null || (Number.isInteger(x) && x >= 0 && x <= 2_147_483_647);
-      if (preco === undefined || !inteiroNaoNegativo(preco) || !inteiroNaoNegativo(livres) || !inteiroNaoNegativo(minimo)) {
+      if (preco === undefined || !inteiroNaoNegativo(preco) || !inteiroNaoNegativo(livres) || !inteiroNaoNegativo(minimo) || !inteiroNaoNegativo(maximo) || (bloqueio !== null && !OVERRIDES.has(bloqueio))) {
         divergencias.push({ origem: "calendario", id: roomId, motivo: "valores inválidos" });
         continue;
       }
@@ -131,7 +135,7 @@ export function normalizarCalendario(salas: unknown[], inicio: string, fim: stri
       const ate = texto(faixa.to ?? faixa.from) > fim ? fim : texto(faixa.to ?? faixa.from);
       for (let t = Date.parse(`${de}T00:00:00Z`); t <= Date.parse(`${ate}T00:00:00Z`); t += 86_400_000) {
         const data = new Date(t).toISOString().slice(0, 10);
-        if (data >= inicio && data < fim) itens.push({ roomId, data, livres, preco, minimoNoites: minimo });
+        if (data >= inicio && data < fim) itens.push({ roomId, data, livres, preco, minimoNoites: minimo, maximoNoites: maximo, bloqueio });
       }
     }
   }
