@@ -220,7 +220,8 @@ Implementado no painel (um só lugar por regra; `app/src/calendario/`):
   Reservas nunca são criadas, alteradas ou canceladas pelo envio.
 - **Envio controlado** (`POST /inventory/rooms/calendar`, price1/minStay/maxStay/override):
   por imóvel, a partir de uma leitura atual do destino feita no início de cada execução
-  (sem ela, ou com ela incompleta para o imóvel, nada é escrito), só noites diferentes dessa leitura (ou do último envio
+  (sem ela, ou com ela incompleta ou inválida para o imóvel, nada é escrito nem guardado; um registro
+  inválido sem quarto identificável invalida a leitura de todos os quartos pedidos), só noites diferentes dessa leitura (ou do último envio
   confirmado), com simulação prévia, intenção gravada antes da escrita externa (se o banco
   falhar depois da escrita, a execução seguinte assume a posse pela leitura), releitura noite
   a noite (confirmada/divergente), histórico

@@ -9,7 +9,7 @@ import { and, asc, count, desc, eq, getTableColumns, gt, gte, inArray, isNotNull
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { listarMapeamentosBeds24 } from "@/beds24/configuracao";
 import { mensagemSeguraBeds24 } from "@/beds24/sincronizacao";
-import { type DiaCalendario, ErroBeds24, type EscritorBeds24, type LeitorBeds24 } from "@/beds24/tipos";
+import { type DiaCalendario, type Divergencia, ErroBeds24, type EscritorBeds24, type LeitorBeds24 } from "@/beds24/tipos";
 import { beds24Calendario, beds24CalendarioEnviado, beds24EnvioNoites, beds24Envios, bloqueios, imoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { lerDetalhes, listarPeriodos, regrasDeVenda } from "@/imoveis/detalhes";
@@ -62,6 +62,17 @@ async function gravarObservacoes(tx: Db, org: string, imovelId: string, dias: It
     await tx.insert(beds24Calendario).values({ organizacaoId: org, imovelId, data: d.data, livres: d.livres, preco: d.preco, minimoNoites: d.minimoNoites, maximoNoites: d.maximoNoites, bloqueio: d.bloqueio, observadoEm })
       .onConflictDoUpdate({ target: [beds24Calendario.organizacaoId, beds24Calendario.imovelId, beds24Calendario.data], set: { livres: d.livres, preco: d.preco, minimoNoites: d.minimoNoites, maximoNoites: d.maximoNoites, bloqueio: d.bloqueio, observadoEm } });
   }
+}
+
+/**
+ * Quartos cuja leitura não pode ser aproveitada. Uma divergência atribuída a um quarto pedido invalida só
+ * esse quarto; uma divergência sem quarto identificável (registro malformado, id fora do pedido) não tem
+ * dono, então invalida todos os quartos do pedido: a resposta inteira é ambígua.
+ */
+function quartosInvalidos(divergencias: Divergencia[], roomIdsPedidos: string[]): { quartos: Set<string>; semDono: boolean } {
+  const pedidos = new Set(roomIdsPedidos);
+  const semDono = divergencias.some(d => !pedidos.has(d.id));
+  return { quartos: new Set(semDono ? roomIdsPedidos : divergencias.map(d => d.id)), semDono };
 }
 
 const igualAoLido = (l: LinhaPlano, d: DiaCalendario | undefined) => d !== undefined
@@ -180,31 +191,32 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
         const fim = somarDias(hojes.reduce((a, b) => (a > b ? a : b)), regras.horizonteDias - 1);
         try {
           const l = await leitor.calendario({ roomIds: acessiveis.map(m => m.roomId), inicio, fim: somarDias(fim, 1) });
-          const comDivergencia = new Set(l.divergencias.map(d => d.id));
+          const invalidos = quartosInvalidos(l.divergencias, acessiveis.map(m => m.roomId));
           for (const d of l.divergencias) aviso(`Leitura do quarto ${d.id}: formato inválido; conferir manualmente.`);
+          if (invalidos.semDono) aviso("A leitura do Beds24 trouxe registro inválido sem quarto identificável: a leitura de todos os quartos pedidos é tratada como inválida nesta execução.");
           for (const m of acessiveis) {
             const dias = l.itens.filter(d => d.roomId === m.roomId);
-            // Datas repetidas (faixas sobrepostas) tornam a leitura ambígua: como na importação, nada é
-            // guardado nem enviado para o imóvel nesta execução.
+            // A leitura só é guardada e usada quando está íntegra para o imóvel: sem datas repetidas (faixas
+            // sobrepostas), sem dados inválidos no quarto e cobrindo todo o horizonte. Como na importação, uma
+            // leitura ambígua ou incompleta não substitui a última leitura confiável nem autoriza envio.
             const datas = new Set<string>();
             let repetidas = 0;
             for (const d of dias) { if (datas.has(d.data)) repetidas++; else datas.add(d.data); }
-            if (repetidas) {
+            let faltam = 0;
+            for (let d = hojeDe(m), fimImovel = somarDias(d, regras.horizonteDias - 1); d <= fimImovel; d = somarDias(d, 1)) if (!datas.has(d)) faltam++;
+            const problemas = [
+              repetidas ? `${repetidas} data(s) repetida(s)` : "",
+              invalidos.quartos.has(m.roomId) ? "dados inválidos" : "",
+              faltam ? `${faltam} noite(s) do horizonte sem retorno` : "",
+            ].filter(Boolean);
+            if (problemas.length) {
               leituraIncompleta.add(m.imovelId);
-              const motivo = `A leitura do Beds24 do imóvel ${m.codigo} veio com ${repetidas} data(s) repetida(s): a leitura não foi guardada e nada é enviado para esse imóvel nesta execução.`;
+              const motivo = `A leitura do Beds24 do imóvel ${m.codigo} ficou incompleta (${problemas.join(", ")}): a leitura não foi guardada e nada é enviado para esse imóvel nesta execução.`;
               motivosSemEscrita.set(m.imovelId, motivo);
               aviso(motivo);
               continue;
             }
             await gravarObservacoes(tx, org, m.imovelId, dias, agora);
-            let faltam = 0;
-            for (let d = hojeDe(m), fimImovel = somarDias(d, regras.horizonteDias - 1); d <= fimImovel; d = somarDias(d, 1)) if (!datas.has(d)) faltam++;
-            if (faltam || comDivergencia.has(m.roomId)) {
-              leituraIncompleta.add(m.imovelId);
-              const motivo = `A leitura do Beds24 do imóvel ${m.codigo} ficou incompleta (${faltam} noite(s) do horizonte sem retorno${comDivergencia.has(m.roomId) ? ", dados inválidos" : ""}): nada é enviado para esse imóvel nesta execução.`;
-              motivosSemEscrita.set(m.imovelId, motivo);
-              aviso(motivo);
-            }
           }
         } catch (e) {
           const motivo = mensagemSeguraBeds24(e);
@@ -295,12 +307,15 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
         await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${chaveTrava}))`);
         let releituraFalhou = "";
         let lidos: DiaCalendario[] = [];
-        const releituraInvalida = new Set<string>();
+        let releituraInvalida = new Set<string>();
         if (tentados.length) {
           try {
             const l = await leitor.calendario({ roomIds: tentados.map(p => p.roomId), inicio: inicioLeitura, fim: somarDias(fimLeitura, 1) });
             lidos = l.itens;
-            for (const d of l.divergencias) { releituraInvalida.add(d.id); aviso(`Releitura do quarto ${d.id}: formato inválido; conferir manualmente.`); }
+            const invalidos = quartosInvalidos(l.divergencias, tentados.map(p => p.roomId));
+            releituraInvalida = invalidos.quartos;
+            for (const d of l.divergencias) aviso(`Releitura do quarto ${d.id}: formato inválido; conferir manualmente.`);
+            if (invalidos.semDono) aviso("A releitura do Beds24 trouxe registro inválido sem quarto identificável: a releitura de todos os quartos é tratada como inválida.");
           } catch (e) {
             releituraFalhou = mensagemSeguraBeds24(e);
             aviso(`Releitura do Beds24 falhou: ${releituraFalhou}. As noites enviadas ficam sem confirmação até a próxima importação ou envio.`);
