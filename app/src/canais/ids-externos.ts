@@ -1,5 +1,6 @@
 import { and, asc, eq } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
+import { esperarEnvioBeds24 } from "@/beds24/trava";
 import { violouUnicidade } from "@/db/erros";
 import { type Canal, CANAIS, idsExternos, imoveis } from "@/db/schema";
 import type { Db } from "@/db/types";
@@ -11,6 +12,7 @@ export const NOMES_CANAL: Record<Canal, string> = { beds24: "Beds24", airbnb: "A
 
 export type EntradaIdExterno = { canal: string; idExterno: string; detalhe?: string };
 export type ResultadoId = { ok: true; registro: IdExterno } | { ok: false; erro: string };
+export type ResultadoRemocaoId = { ok: true } | { ok: false; erro: string };
 
 export function validarIdExterno(e: EntradaIdExterno): { ok: true; canal: Canal; idExterno: string; detalhe: string } | { ok: false; erro: string } {
   const canal = e.canal as Canal;
@@ -46,6 +48,9 @@ export async function adicionarIdExterno(
   if (!uuidValido(imovelId)) return { ok: false, erro: "Imóvel não encontrado." };
   try {
     return await db.transaction(async (tx) => {
+      // O vínculo Beds24 é o alvo do envio de calendário: não muda enquanto um envio está no meio da escrita.
+      const ocupado = v.canal === "beds24" ? await esperarEnvioBeds24(tx, organizacaoId) : null;
+      if (ocupado) return { ok: false as const, erro: ocupado };
       const [im] = await tx
         .select({ id: imoveis.id })
         .from(imoveis)
@@ -71,14 +76,23 @@ export async function adicionarIdExterno(
   }
 }
 
-export async function removerIdExterno(db: Db, organizacaoId: string, registroId: string, autorId: string | null): Promise<boolean> {
-  if (!uuidValido(registroId)) return false;
+export async function removerIdExterno(db: Db, organizacaoId: string, registroId: string, autorId: string | null): Promise<ResultadoRemocaoId> {
+  const naoEncontrado = { ok: false as const, erro: "Ligação não encontrada." };
+  if (!uuidValido(registroId)) return naoEncontrado;
   return db.transaction(async (tx) => {
+    const [atual] = await tx
+      .select({ canal: idsExternos.canal })
+      .from(idsExternos)
+      .where(and(eq(idsExternos.id, registroId), eq(idsExternos.organizacaoId, organizacaoId)))
+      .for("update");
+    if (!atual) return naoEncontrado;
+    const ocupado = atual.canal === "beds24" ? await esperarEnvioBeds24(tx, organizacaoId) : null;
+    if (ocupado) return { ok: false as const, erro: ocupado };
     const [removido] = await tx
       .delete(idsExternos)
       .where(and(eq(idsExternos.id, registroId), eq(idsExternos.organizacaoId, organizacaoId)))
       .returning();
-    if (!removido) return false;
+    if (!removido) return naoEncontrado;
     await registrarAuditoria(tx, {
       organizacaoId,
       usuarioId: autorId,
@@ -87,7 +101,7 @@ export async function removerIdExterno(db: Db, organizacaoId: string, registroId
       entidadeId: removido.imovelId,
       mudancas: { idExterno: [rotulo(removido), null] },
     });
-    return true;
+    return { ok: true as const };
   });
 }
 

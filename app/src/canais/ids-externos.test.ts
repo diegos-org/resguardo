@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import { historicoDe } from "@/auditoria/auditoria";
-import { imoveis, organizacoes } from "@/db/schema";
+import { beds24Envios, imoveis, organizacoes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { adicionarIdExterno, listarIdsExternos, removerIdExterno, resolverImovel, validarIdExterno } from "./ids-externos";
@@ -51,8 +52,8 @@ describe("IDs externos", () => {
     expect(await resolverImovel(db, outra, "airbnb", "999")).toBeNull();
 
     const [primeiro] = await listarIdsExternos(db, org, a);
-    expect(await removerIdExterno(db, outra, primeiro.id, null)).toBe(false);
-    expect(await removerIdExterno(db, org, primeiro.id, null)).toBe(true);
+    expect((await removerIdExterno(db, outra, primeiro.id, null)).ok).toBe(false);
+    expect(await removerIdExterno(db, org, primeiro.id, null)).toEqual({ ok: true });
     const acoes = (await historicoDe(db, org, "imovel", a)).map((h) => h.acao);
     expect(acoes.filter((x) => x.startsWith("idexterno"))).toHaveLength(3);
   });
@@ -65,4 +66,16 @@ describe("IDs externos", () => {
   it("não liga em imóvel de outra organização", async () => {
     expect(await adicionarIdExterno(db, outra, a, { canal: "airbnb", idExterno: "5" }, null)).toEqual({ ok: false, erro: "Imóvel não encontrado." });
   });
+});
+
+it("vínculo Beds24 não é criado nem removido enquanto um envio de calendário está entre a escrita e o registro; outros canais seguem", async () => {
+  const antes = await adicionarIdExterno(db, org, a, { canal: "beds24", idExterno: "100", detalhe: "1" }, null);
+  if (!antes.ok) throw new Error(antes.erro);
+  const [envio] = await db.insert(beds24Envios).values({ organizacaoId: org, iniciadoEm: new Date(Date.now() - 60_000), modo: "envio", situacao: "executando" }).returning({ id: beds24Envios.id });
+  expect(await adicionarIdExterno(db, org, b, { canal: "beds24", idExterno: "100", detalhe: "2" }, null)).toMatchObject({ ok: false, erro: expect.stringContaining("envio de calendário") });
+  expect(await removerIdExterno(db, org, antes.registro.id, null)).toMatchObject({ ok: false, erro: expect.stringContaining("envio de calendário") });
+  expect((await adicionarIdExterno(db, org, a, { canal: "airbnb", idExterno: "999" }, null)).ok).toBe(true);
+  expect(await listarIdsExternos(db, org, a)).toHaveLength(2);
+  await db.update(beds24Envios).set({ iniciadoEm: new Date(Date.now() - 11 * 60_000) }).where(eq(beds24Envios.id, envio.id));
+  expect(await removerIdExterno(db, org, antes.registro.id, null)).toEqual({ ok: true });
 });

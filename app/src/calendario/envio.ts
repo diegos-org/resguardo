@@ -31,7 +31,7 @@ const NOMES_SITUACAO: Record<SituacaoEnvio, string> = {
 };
 export const nomeSituacaoEnvio = (s: string) => NOMES_SITUACAO[s as SituacaoEnvio] ?? s;
 
-type Plano = { imovelId: string; codigo: string; roomId: string; linhas: LinhaPlano[] };
+type Plano = { imovelId: string; codigo: string; propertyId: string; roomId: string; linhas: LinhaPlano[] };
 
 /** Quarto Beds24 vinculado ao imóvel (vínculo ativo com propriedade e quarto numéricos), ou null. */
 async function quartoVinculado(db: Db, org: string, imovelId: string): Promise<string | null> {
@@ -239,8 +239,11 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
         } catch (e) {
           const motivo = mensagemSeguraBeds24(e);
           if (o.modo === "envio") throw new ErroBeds24(`Leitura do Beds24 antes do envio falhou: ${motivo} Nada foi enviado: o SCL só escreve a partir de uma leitura atual do destino.`, "rede");
+          // A simulação espelha o envio real: sem leitura atual, nenhum imóvel seria enviado. O plano ainda é
+          // mostrado pela última leitura guardada, mas cada imóvel fica marcado como fora do envio.
           leituraAtualFalhou = true;
           aviso(`Leitura do Beds24 falhou: ${motivo} A simulação usa a última leitura guardada.`);
+          for (const m of acessiveis) motivosSemEscrita.set(m.imovelId, `Leitura do Beds24 falhou: ${motivo} Sem leitura atual, nada seria enviado para o imóvel ${m.codigo}.`);
         }
       }
 
@@ -258,7 +261,7 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
           if (c.divergentes) aviso(`Imóvel ${m.codigo}: ${c.divergentes} noite(s) de envio anterior sem releitura diferem da leitura de agora; o plano decide se reenvia.`);
         }
         const p = await planejarImovel(tx, org, regras, { id: m.imovelId, fuso: fusos.get(m.imovelId) ?? "America/Sao_Paulo", roomId: m.roomId }, agora);
-        planos.push({ imovelId: m.imovelId, codigo: m.codigo, roomId: m.roomId, linhas: p.linhas });
+        planos.push({ imovelId: m.imovelId, codigo: m.codigo, propertyId: m.propertyId, roomId: m.roomId, linhas: p.linhas });
         if (p.inicio < inicioLeitura) inicioLeitura = p.inicio;
         if (p.fim > fimLeitura) fimLeitura = p.fim;
         const semPreco = p.linhas.filter(l => l.precoReferencia === null).length;
@@ -309,6 +312,14 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
       // em que houve tentativa é relido depois: uma recusa (ou queda de rede) não prova que nada mudou.
       for (const p of tentados) {
         const res = resultadoImoveis.find(i => i.imovelId === p.imovelId)!;
+        // Conferência final do vínculo: mudar o vínculo Beds24 espera o envio (mesma trava), mas se mesmo assim
+        // o par propriedade/quarto do imóvel não é mais exatamente o planejado, nada é escrito para ele.
+        const vinculos = (await listarMapeamentosBeds24(db, org)).filter(m => m.imovelId === p.imovelId && m.ativo && /^\d+$/.test(m.propertyId) && /^\d+$/.test(m.roomId));
+        if (vinculos.length !== 1 || vinculos[0].propertyId !== p.propertyId || vinculos[0].roomId !== p.roomId) {
+          res.falha = "Vínculo Beds24 do imóvel alterado durante o envio: nada foi escrito para este imóvel nesta execução; o próximo envio replaneja.";
+          aviso(`Imóvel ${p.codigo}: ${res.falha}`);
+          continue;
+        }
         // Conferência final dos bloqueios locais: criar/remover bloqueio espera o envio (mesma trava), mas se
         // mesmo assim um bloqueio mudou entre o plano e a escrita, nada é escrito para o imóvel nesta execução.
         const comBloqueio = p.linhas.filter(l => l.acao === "enviar" && l.bloqueioEnviar !== undefined);

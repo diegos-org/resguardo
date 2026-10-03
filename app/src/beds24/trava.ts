@@ -25,3 +25,16 @@ export async function envioEmAndamento(tx: Db, org: string, agora: Date, excetoE
   const emAndamento = await tx.select({ id: beds24Envios.id }).from(beds24Envios).where(and(...condicoes)).limit(1);
   return emAndamento.length > 0;
 }
+
+export const MENSAGEM_ENVIO_EM_ANDAMENTO = "Há um envio de calendário e preços em andamento. Aguarde alguns minutos e tente de novo.";
+
+/**
+ * Para edições locais que o envio planeja a partir delas (bloqueios manuais, vínculo Beds24): espera a trava
+ * do Beds24 dentro da transação atual e devolve a mensagem de recusa se um envio está entre a escrita externa
+ * e o registro final (fase sem trava); null quando pode seguir.
+ */
+export async function esperarEnvioBeds24(tx: Db, org: string, agora = new Date()): Promise<string | null> {
+  await tx.execute(sql`set local lock_timeout = '15s'`);
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${chaveTravaBeds24(org)}))`);
+  return (await envioEmAndamento(tx, org, agora)) ? MENSAGEM_ENVIO_EM_ANDAMENTO : null;
+}

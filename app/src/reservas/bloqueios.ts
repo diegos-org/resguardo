@@ -3,9 +3,9 @@
  * Beds24 como "blackout" pelo envio de calendário; os importados do Beds24 (fonte "beds24")
  * não são editados aqui — mudam na origem.
  */
-import { and, eq, gt, lt, sql } from "drizzle-orm";
+import { and, eq, gt, lt } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
-import { chaveTravaBeds24, envioEmAndamento } from "@/beds24/trava";
+import { esperarEnvioBeds24 } from "@/beds24/trava";
 import { bloqueios, imoveis } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
@@ -15,15 +15,9 @@ export type EntradaBloqueio = { imovelId: string; inicio: string; fim: string; m
 export type ResultadoBloqueio = { ok: true; id: string } | { ok: false; erro: string };
 export type ResultadoRemocao = { ok: true } | { ok: false; erro: string };
 
-/**
- * Criar ou remover bloqueio espera o envio de calendário (mesma trava do Beds24) e recusa enquanto um
- * envio está entre a escrita externa e o registro final: o que o envio planejou não pode mudar por baixo.
- */
-async function esperarEnvio(tx: Db, organizacaoId: string): Promise<string | null> {
-  await tx.execute(sql`set local lock_timeout = '15s'`);
-  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${chaveTravaBeds24(organizacaoId)}))`);
-  return (await envioEmAndamento(tx, organizacaoId, new Date())) ? "Há um envio de calendário e preços em andamento. Aguarde alguns minutos e tente de novo." : null;
-}
+// Criar ou remover bloqueio espera o envio de calendário (mesma trava do Beds24) e recusa enquanto um
+// envio está entre a escrita externa e o registro final: o que o envio planejou não pode mudar por baixo.
+const esperarEnvio = esperarEnvioBeds24;
 
 export function validarBloqueio(e: EntradaBloqueio): { ok: true; dados: EntradaBloqueio } | { ok: false; erro: string } {
   if (!uuidValido(e.imovelId)) return { ok: false, erro: "Escolha o imóvel." };
