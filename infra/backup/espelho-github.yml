@@ -270,34 +270,28 @@ jobs:
             a=$(git rev-parse -q --verify "${ref}" 2>/dev/null || true)
             g=$(git rev-parse -q --verify "refs/guardado/${ref#refs/}" 2>/dev/null || true)
             esperado=$(awk -v r="${ref}" '$3 == r {print $2}' anterior-espelho.txt | head -n1)
-            # Alteração = o backup tem algo que não é o esperado NEM o que a origem tem agora (nem um avanço
-            # legítimo entre os dois). Espelho igual à origem é retomada de rodada que avançou o espelho e
-            # falhou antes do marco, não adulteração.
+            # Alteração = o backup tem algo diferente do esperado que o push do próprio robô NÃO poderia ter
+            # produzido. O robô só avança branch por fast-forward e nunca muda tag espelhada; então retomada
+            # (rodada que avançou o espelho e falhou antes do marco) é só: branch, esperado antepassado do que
+            # está no backup, e o que está no backup igual à origem, antepassado dela, ou origem já apagada
+            # (aí o avanço é a única cópia dessa versão; o esperado continua alcançável pelo retrato anterior).
+            # Tag espelhada diferente do esperado é alteração mesmo que seja igual ao que a origem tem agora:
+            # depois de uma reescrita na origem, mover o espelho à mão para a versão nova esconderia a reescrita.
             retomada=0
             if [ -n "${g}" ] && [ -n "${esperado}" ] && [ "${g}" != "${esperado}" ]; then
-              if [ -n "${a}" ] && [ "${g}" = "${a}" ]; then retomada=1
-              elif [ -n "${a}" ]; then
-                case "${ref}" in
-                  refs/tags/*) ;;
-                  *)
-                    ec=$(git rev-parse -q --verify "${esperado}^{commit}" 2>/dev/null || true)
-                    gc=$(git rev-parse -q --verify "${g}^{commit}" 2>/dev/null || true)
-                    ac=$(git rev-parse -q --verify "${a}^{commit}" 2>/dev/null || true)
-                    if [ -n "${ec}" ] && [ -n "${gc}" ] && [ -n "${ac}" ] && git merge-base --is-ancestor "${ec}" "${gc}" && git merge-base --is-ancestor "${gc}" "${ac}"; then retomada=1; fi ;;
-                esac
-              else
-                # A origem já apagou a ref. Se o espelho AVANÇOU a partir do esperado (rodada que avançou o
-                # espelho, falhou antes do marco e depois a origem apagou a branch), ele é a única cópia dessa
-                # versão: fica e passa a ser o esperado. O que era esperado continua alcançável pelo retrato
-                # anterior, então nada se perde em nenhum dos casos. Tag não avança: diferença é alteração.
-                case "${ref}" in
-                  refs/tags/*) ;;
-                  *)
-                    ec=$(git rev-parse -q --verify "${esperado}^{commit}" 2>/dev/null || true)
-                    gc=$(git rev-parse -q --verify "${g}^{commit}" 2>/dev/null || true)
-                    if [ -n "${ec}" ] && [ -n "${gc}" ] && git merge-base --is-ancestor "${ec}" "${gc}"; then retomada=1; fi ;;
-                esac
-              fi
+              case "${ref}" in
+                refs/tags/*) ;;
+                *)
+                  ec=$(git rev-parse -q --verify "${esperado}^{commit}" 2>/dev/null || true)
+                  gc=$(git rev-parse -q --verify "${g}^{commit}" 2>/dev/null || true)
+                  if [ -n "${ec}" ] && [ -n "${gc}" ] && git merge-base --is-ancestor "${ec}" "${gc}"; then
+                    if [ -z "${a}" ] || [ "${g}" = "${a}" ]; then retomada=1
+                    else
+                      ac=$(git rev-parse -q --verify "${a}^{commit}" 2>/dev/null || true)
+                      if [ -n "${ac}" ] && git merge-base --is-ancestor "${gc}" "${ac}"; then retomada=1; fi
+                    fi
+                  fi ;;
+              esac
             fi
             if [ -n "${g}" ] && [ -n "${esperado}" ] && [ "${g}" != "${esperado}" ] && [ "${retomada}" -eq 0 ]; then
               echo "${ref} (esperado ${esperado}, encontrado ${g})" >> espelho-adulterado.txt

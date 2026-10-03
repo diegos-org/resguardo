@@ -94,11 +94,15 @@ repositório principal não sabe que o backup existe.
    - o inventário também anota o objeto esperado de cada ref `espelho/...`. Se alguém alterar
      uma dessas refs no backup (mesmo nome, outro objeto, sem a origem ter mudado), a rodada
      avisa a cada vez até a ref ser apagada (aí é regravada a partir da origem) e salva o
-     objeto exato de novo quando a origem ainda o tem. Espelho igual ao que a origem tem
-     agora (ou um avanço legítimo entre o esperado e a origem) não é alteração: é a retomada
-     de uma rodada que avançou o espelho e falhou antes de gravar o marco; se a origem apagou
-     a branch logo depois, o espelho avançado é a única cópia daquela versão e fica (o que era
-     esperado continua alcançável pelo retrato anterior). O mesmo vale para
+     objeto exato de novo quando a origem ainda o tem. Só não é alteração o que o próprio robô
+     poderia ter feito: uma **branch** que avançou do esperado (sem reescrever) até o que a
+     origem tem agora, ou até um ponto no caminho, é a retomada de uma rodada que avançou o
+     espelho e falhou antes de gravar o marco; se a origem apagou a branch logo depois, o
+     espelho avançado é a única cópia daquela versão e fica (o que era esperado continua
+     alcançável pelo retrato anterior). Uma **tag** espelhada nunca muda pelo robô, então
+     qualquer diferença numa tag é alteração, mesmo igual ao que a origem tem agora (depois de
+     uma reescrita na origem, mover o espelho à mão para a versão nova esconderia a reescrita;
+     é avisado). O mesmo vale para
      a branch `backup-marcos` movida à força (a rodada usa o marco íntegro mais novo como
      base, guarda o commit apontado como pai do retrato para nada se perder, não mexe no
      ponteiro e avisa até ele ser apagado), para `backup-marcos` **recuada** a um marco antigo
@@ -136,7 +140,7 @@ repositório principal não sabe que o backup existe.
    robô: ele nunca apaga nem reescreve e avisa quando o backup perde algo. A trava cobre a
    mais só o erro manual de quem tem acesso à conta de backup, que é só o Diego.
 
-Testado em 3/10 rodando o script exato do robô contra repositórios locais, cinquenta e nove rodadas:
+Testado em 3/10 rodando o script exato do robô contra repositórios locais, sessenta e cinco rodadas:
 origem só com `main`; novas branches e tags; origem avança; origem apaga uma branch (o backup
 a mantém e avisa uma vez); nada muda (sem aviso repetido); origem reescreve uma branch e uma
 tag anotada (o backup mantém as versões antigas em `espelho/`, guarda as novas em
@@ -167,8 +171,10 @@ cópia `espelho/` apagada no backup na mesma rodada, mantém o arquivo antigo gu
 refs são comparados ao pé da letra (uma `release/1.2` apagada e recriada com outro conteúdo é
 reescrita, mesmo existindo uma `release/1x2`); `backup-marcos` movida para um commit forjado que
 cita um marco futuro inexistente é dada como sem âncora (não vira base, o commit fica como pai, o
-ponteiro avança, aviso uma vez); e as tags do backup não voltam para a origem nem se duplicam com
-o prefixo. O passo de batimento não entrou na simulação (é uma chamada HTTP
+ponteiro avança, aviso uma vez); depois de uma reescrita na origem, mover à mão `espelho/` da
+branch e da tag para a versão nova da origem é avisado como alteração em toda rodada (não passa
+por retomada), e apagar as refs alteradas as regrava da origem; e as tags do backup não voltam
+para a origem nem se duplicam com o prefixo. O passo de batimento não entrou na simulação (é uma chamada HTTP
 simples a um serviço externo, só com a URL configurada); foi conferido na sintaxe e no caso sem
 URL.
 
