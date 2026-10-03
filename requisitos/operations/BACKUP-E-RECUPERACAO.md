@@ -72,10 +72,13 @@ repositório principal não sabe que o backup existe.
    - o inventário também anota o objeto esperado de cada ref `espelho/...`. Se alguém alterar
      uma dessas refs no backup (mesmo nome, outro objeto, sem a origem ter mudado), a rodada
      avisa a cada vez até a ref ser apagada (aí é regravada a partir da origem) e salva o
-     objeto exato de novo quando a origem ainda o tem. O mesmo vale para a branch
-     `backup-marcos` movida à força (a rodada usa o marco íntegro mais novo como base, não
-     mexe no ponteiro e avisa até ele ser apagado) e para uma tag `backup/` movida para um
-     commit que não é o seu retrato;
+     objeto exato de novo quando a origem ainda o tem. Espelho igual ao que a origem tem
+     agora (ou um avanço legítimo entre o esperado e a origem) não é alteração: é a retomada
+     de uma rodada que avançou o espelho e falhou antes de gravar o marco. O mesmo vale para
+     a branch `backup-marcos` movida à força (a rodada usa o marco íntegro mais novo como
+     base, guarda o commit apontado como pai do retrato para nada se perder, não mexe no
+     ponteiro e avisa até ele ser apagado) e para uma tag `backup/` movida para um commit que
+     não é o seu retrato (a tag é que é dada como inválida; o ponteiro continua sendo a base);
    - no push do espelho, só a recusa por divergência da origem é aceita (e vira aviso
      amarelo), e só para refs que a base já conhecia, com espelho íntegro, ou que foram
      tratadas como reescritas na rodada; qualquer outra recusa (regra do repositório, falha
@@ -96,7 +99,7 @@ repositório principal não sabe que o backup existe.
    robô: ele nunca apaga nem reescreve e avisa quando o backup perde algo. A trava cobre a
    mais só o erro manual de quem tem acesso à conta de backup, que é só o Diego.
 
-Testado em 3/10 rodando o script exato do robô contra repositórios locais, trinta e oito rodadas:
+Testado em 3/10 rodando o script exato do robô contra repositórios locais, quarenta e duas rodadas:
 origem só com `main`; novas branches e tags; origem avança; origem apaga uma branch (o backup
 a mantém e avisa uma vez); nada muda (sem aviso repetido); origem reescreve uma branch e uma
 tag anotada (o backup mantém as versões antigas em `espelho/`, guarda as novas em
@@ -113,9 +116,11 @@ como perdida quando a origem já mudou de novo; uma cópia alterada no backup é
 toda rodada, o objeto exato é salvo de novo sob a data da rodada e, apagada a cópia alterada,
 ela é regravada; `backup-marcos` movida à força é avisada em toda rodada, sem o robô forçar
 nada, e recriada quando apagada; refs `espelho/` alteradas no backup (tag e branch) são
-avisadas em toda rodada e regravadas da origem quando apagadas; uma tag `backup/` movida
-para outro commit é avisada; e as tags do backup não voltam para a origem nem se duplicam
-com o prefixo.
+avisadas em toda rodada e regravadas da origem quando apagadas; espelho que avançou numa
+rodada que falhou antes do marco é retomado sem aviso; uma tag `backup/` movida para outro
+commit é avisada, inclusive a do marco mais novo, sem que o ponteiro perca a base e com o
+retrato legítimo preservado como pai; e as tags do backup não voltam para a origem nem se
+duplicam com o prefixo.
 
 ### Por que assim
 
