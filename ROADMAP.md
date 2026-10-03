@@ -144,6 +144,8 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 | M9.1 | Portal do hóspede: acesso por código/magic link ao e-mail do hóspede (e-mail no cadastro de todos); dados da própria reserva | feito | M1.3, M3.1 |
 | M9.2 | Mensagens programadas (confirmação, check-in D-2 10h, checkout D-1 14h, agradecimento D+3 10h), jobs idempotentes; modelos de mensagem editáveis no painel | feito | M9.1 |
 
+**Nota de planejamento solicitada por Diego:** M9.2 cobre mensagens por e-mail, opt-in (origens padrão site/direta), não comprova migração das automáticas Airbnb. Planejar a consolidação dos modelos por imóvel no sistema/site, conferindo textos ativos, campos, horários, canais e prevenção de duplicidade; validar destino e transição antes de substituir/desativar qualquer automação Airbnb. Sem nova fase, data ou ativação definida. Diretriz de chegada 399 e possível aplicação ao 103, com contatos/janelas ainda a conferir: [Guia Lia](requisitos/operations/GUIA-LIA-ATENDIMENTO.md). Prioridade atual: concluir atendimento e listas.
+
 ### M10 — WhatsApp (Meta Cloud API)
 
 | ID | Item | Estado | Depende de |
