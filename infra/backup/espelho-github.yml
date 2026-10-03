@@ -266,7 +266,9 @@ jobs:
             src="refs/${ref#refs/tags/recusadas/*/}"
             novo_dest="refs/tags/recusadas/${marco#backup/}/${src#refs/}"
             atual_sha=$(git rev-parse -q --verify "${src}" 2>/dev/null || true)
-            if [ "${atual_sha}" = "${sha}" ] && ! printf '%s' "${copias_novas}" | awk -v d="${novo_dest}" 'NF == 2 && $2 == d {ok = 1} END {exit ok ? 0 : 1}'; then
+            # Um destino só: várias cópias alteradas com o mesmo objeto (ref que voltou a um valor antigo) geram
+            # uma única regravação sob a data de hoje.
+            if [ "${atual_sha}" = "${sha}" ] && ! printf '%s%s' "${copias_novas}" "${copias_recriadas}" | awk -v d="${novo_dest}" 'NF == 2 && $2 == d {ok = 1} END {exit ok ? 0 : 1}'; then
               recriadas+=("${src}:${novo_dest}"); copias_recriadas="${copias_recriadas}${sha} ${novo_dest}"$'\n'
             fi
           done < <(awk '$1 == "recusada" && NF == 3' anterior.txt)

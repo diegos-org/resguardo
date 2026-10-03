@@ -149,7 +149,7 @@ repositório principal não sabe que o backup existe.
    robô: ele nunca apaga nem reescreve e avisa quando o backup perde algo. A trava cobre a
    mais só o erro manual de quem tem acesso à conta de backup, que é só o Diego.
 
-Testado em 3/10 rodando o script exato do robô contra repositórios locais, setenta e nove rodadas:
+Testado em 3/10 rodando o script exato do robô contra repositórios locais, oitenta e seis rodadas:
 origem só com `main`; novas branches e tags; origem avança; origem apaga uma branch (o backup
 a mantém e avisa uma vez); nada muda (sem aviso repetido); origem reescreve uma branch e uma
 tag anotada (o backup mantém as versões antigas em `espelho/`, guarda as novas em
@@ -192,8 +192,11 @@ retomada (a reescrita é avisada e copiada em `recusadas/`), sem aviso de altera
 batimento é marcado quando a rodada grava o retrato, inclusive vermelha por aviso, e não é marcado
 quando a rodada para antes de gravar; uma branch que só existe no backup (avanço retomado, origem
 já apagada) continua alcançável pelos retratos mesmo depois de alguém apagar a ref `espelho/` dela
-(o sumiço é avisado; a ref não pode ser regravada porque a origem não a tem mais); e as tags do
-backup não voltam para a origem nem se duplicam com o prefixo. O passo de batimento não entrou na simulação (é uma chamada HTTP
+(o sumiço é avisado; a ref não pode ser regravada porque a origem não a tem mais); uma tag que
+volta a um valor antigo na origem (A, B, C, B de novo) deixa duas cópias `recusadas/` com o mesmo
+objeto, e alterar as duas no backup gera um só re-salvamento sob a data do dia (sem envio duplicado),
+com as duas regravadas quando apagadas; e as tags do backup não voltam para a origem nem se duplicam
+com o prefixo. O passo de batimento não entrou na simulação (é uma chamada HTTP
 simples a um serviço externo, só com a URL configurada); foi conferido na sintaxe e no caso sem
 URL.
 
