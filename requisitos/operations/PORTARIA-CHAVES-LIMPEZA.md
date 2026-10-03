@@ -2,6 +2,10 @@
 
 Decisões diretas de Diego em 1/10/2026. Regras compartilháveis; telefones, endereços privados alternativos e códigos ficam no cadastro operacional restrito, fora deste arquivo.
 
+## Versão e agenda vigente
+
+Complemento candidato de 2/10/2026, branch `docs/consolidar-guias-lia`, ainda não mesclado. Para atendimento, janelas da agenda, dados operacionais e horários acordados, começar pelo [Guia Lia consolidado](GUIA-LIA-ATENDIMENTO.md). Rio mantém cinco dias, com limpezas por dia separadas de entradas/chaves; Búzios passa a todas as reservas relevantes em 30 dias. Primeiro nome e quantidade de hóspedes em ambos; telefone operacional quando disponível e autorizado. Esses requisitos não comprovam implementação ou envio. As evidências de 1/10 abaixo são preservadas.
+
 ## Limpeza antes da entrada
 Antes de indicar ou pedir limpeza, conferir a última limpeza efetivamente confirmada e se houve ocupação ou uso posterior. Se já estiver limpo e sem novo uso, indicar somente check-in e logística de chaves. Se faltar confirmação, registrar estado a confirmar e consultar histórico/equipe antes de convocar deslocamento. Checkout, escala e calendário vazio não comprovam limpeza executada.
 
