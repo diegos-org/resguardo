@@ -238,11 +238,14 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
         if (semLeitura) aviso(`Imóvel ${m.codigo}: ${semLeitura} noite(s) sem leitura anterior do Beds24; serão enviadas e conferidas pela releitura.`);
       }
       const resultadoImoveis: ImovelEnviado[] = planos.map(p => ({ imovelId: p.imovelId, codigo: p.codigo, resumo: resumirPlano(p.linhas), enviadas: 0, confirmadas: 0, divergentes: 0, pendentes: 0, falha: motivosSemEscrita.get(p.imovelId) ?? "" }));
-      const totalEnviar = resultadoImoveis.reduce((s, i) => s + i.resumo.enviar, 0);
 
       if (o.modo === "simulacao" || !escritor) {
-        const mensagem = `Simulação: ${totalEnviar} noite(s) seriam enviadas em ${planos.length} imóvel(is); ${resultadoImoveis.reduce((s, i) => s + i.resumo.iguais, 0)} já iguais; ${totalAvisos} aviso(s). Nada foi gravado no Beds24.`;
-        return { pronto: { ok: true, situacao: "simulacao", mensagem, envioId: exec.id, imoveis: resultadoImoveis.map(i => ({ ...i, falha: "" })), avisos, totalAvisos } };
+        // A simulação espelha o envio real: imóvel que ficaria de fora (vínculo, moeda, leitura) não conta
+        // como "seria enviado" e mantém o motivo.
+        const foraDoEnvio = resultadoImoveis.filter(i => i.falha).length;
+        const seriamEnviadas = resultadoImoveis.filter(i => !i.falha).reduce((s, i) => s + i.resumo.enviar, 0);
+        const mensagem = `Simulação: ${seriamEnviadas} noite(s) seriam enviadas em ${planos.length - foraDoEnvio} imóvel(is); ${resultadoImoveis.reduce((s, i) => s + i.resumo.iguais, 0)} já iguais; ${foraDoEnvio ? `${foraDoEnvio} imóvel(is) ficariam de fora (ver avisos); ` : ""}${totalAvisos} aviso(s). Nada foi gravado no Beds24.`;
+        return { pronto: { ok: true, situacao: "simulacao", mensagem, envioId: exec.id, imoveis: resultadoImoveis, avisos, totalAvisos } };
       }
 
       // Intenção durável antes da escrita externa: cada noite a enviar fica registrada como "enviado"
@@ -292,11 +295,12 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
         await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${chaveTrava}))`);
         let releituraFalhou = "";
         let lidos: DiaCalendario[] = [];
+        const releituraInvalida = new Set<string>();
         if (tentados.length) {
           try {
             const l = await leitor.calendario({ roomIds: tentados.map(p => p.roomId), inicio: inicioLeitura, fim: somarDias(fimLeitura, 1) });
             lidos = l.itens;
-            for (const d of l.divergencias) aviso(`Releitura do quarto ${d.id}: formato inválido; conferir manualmente.`);
+            for (const d of l.divergencias) { releituraInvalida.add(d.id); aviso(`Releitura do quarto ${d.id}: formato inválido; conferir manualmente.`); }
           } catch (e) {
             releituraFalhou = mensagemSeguraBeds24(e);
             aviso(`Releitura do Beds24 falhou: ${releituraFalhou}. As noites enviadas ficam sem confirmação até a próxima importação ou envio.`);
@@ -305,10 +309,12 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
         for (const p of tentados) {
           const res = resultadoImoveis.find(i => i.imovelId === p.imovelId)!;
           const lidosQuarto = lidos.filter(d => d.roomId === p.roomId);
-          // Releitura com datas repetidas é ambígua: nenhuma noite do quarto é julgada nem observada por ela.
+          // Releitura com datas repetidas ou com dados inválidos no quarto é ambígua: nenhuma noite do
+          // quarto é julgada nem observada por ela.
           const repetida = new Set(lidosQuarto.map(d => d.data)).size !== lidosQuarto.length;
-          if (repetida) aviso(`Imóvel ${p.codigo}: releitura com datas repetidas; as noites enviadas ficam pendentes até a próxima leitura.`);
-          const porData = new Map(repetida ? [] : lidosQuarto.map(d => [d.data, d] as const));
+          const ambigua = repetida ? "Releitura com datas repetidas" : releituraInvalida.has(p.roomId) ? "Releitura com dados inválidos" : "";
+          if (ambigua) aviso(`Imóvel ${p.codigo}: ${ambigua.toLowerCase()}; as noites enviadas ficam pendentes até a próxima leitura.`);
+          const porData = new Map(ambigua ? [] : lidosQuarto.map(d => [d.data, d] as const));
           const grupos = new Map<string, { resultado: typeof beds24EnvioNoites.$inferInsert["resultado"]; detalhe: string; datas: string[] }>();
           for (const l of p.linhas) {
             if (l.acao !== "enviar") continue;
@@ -321,7 +327,7 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
             if (resultado === "enviado") res.pendentes++;
             if (resultado === "divergente") { res.divergentes++; aviso(`Imóvel ${p.codigo}, noite ${dataBr(l.data)}: o Beds24 devolveu valores diferentes do enviado; conferir no Beds24.`); }
             const lidoTexto = lido ? `Beds24: preço ${lido.preco ?? "—"}, mín. ${lido.minimoNoites ?? "—"}, máx. ${lido.maximoNoites ?? "—"}, bloqueio ${lido.bloqueio ?? "—"}` : "Noite não retornou na releitura";
-            const detalhe = (resultado === "divergente" ? lidoTexto : resultado === "falhou" ? `${res.falha}${releituraFalhou ? "" : ` · ${lidoTexto}`}` : resultado === "enviado" ? `${res.falha ? `${res.falha} · ` : ""}${releituraFalhou ? "Sem releitura" : repetida ? "Releitura com datas repetidas" : "Noite não retornou na releitura"}: confirmação pendente.` : "").slice(0, 300);
+            const detalhe = (resultado === "divergente" ? lidoTexto : resultado === "falhou" ? `${res.falha}${releituraFalhou ? "" : ` · ${lidoTexto}`}` : resultado === "enviado" ? `${res.falha ? `${res.falha} · ` : ""}${releituraFalhou ? "Sem releitura" : ambigua || "Noite não retornou na releitura"}: confirmação pendente.` : "").slice(0, 300);
             const chave = `${resultado}\u0000${detalhe}`;
             const grupo = grupos.get(chave) ?? { resultado, detalhe, datas: [] };
             grupo.datas.push(l.data);

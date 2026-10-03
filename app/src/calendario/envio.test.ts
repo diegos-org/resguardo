@@ -118,6 +118,10 @@ describe("envio ao Beds24 (M3.7)", () => {
     const s = await enviar("simulacao");
     expect(s.situacao).toBe("simulacao");
     expect(s.avisos.some(a => a.includes("quarto 21) não está acessível"))).toBe(true);
+    // A simulação espelha o envio real: o imóvel fora do envio não conta como "seria enviado" e mantém o motivo.
+    expect(s.imoveis[0].falha).toContain("não está acessível nesta credencial");
+    expect(s.mensagem).toContain("0 noite(s) seriam enviadas em 0 imóvel(is)");
+    expect(s.mensagem).toContain("1 imóvel(is) ficariam de fora");
     const r = await enviar();
     expect(r).toMatchObject({ ok: false, situacao: "erro", imoveis: [{ codigo: "103", enviadas: 0, falha: expect.stringContaining("não está acessível nesta credencial") }] });
     expect(beds.escritas).toHaveLength(0);
@@ -214,6 +218,20 @@ describe("envio ao Beds24 (M3.7)", () => {
     expect((await noites()).every(n => n.resultado === "enviado" && n.detalhe.includes("datas repetidas"))).toBe(true);
     expect((await observacoes()).every(o => o.preco === 40000)).toBe(true);
     // A leitura seguinte, limpa, confirma tudo.
+    expect((await enviar()).avisos).toContain("Imóvel 103: 10 noite(s) de envio anterior confirmada(s) pela leitura de agora.");
+  });
+
+  it("releitura com divergência de formato no quarto deixa as noites pendentes, mesmo com linhas aproveitáveis", async () => {
+    let leituras = 0;
+    const leitorTorto: LeitorBeds24 = { reservas: f => beds.reservas(f), quartos: () => beds.quartos(), calendario: async f => {
+      const l = await beds.calendario(f);
+      return leituras++ === 1 ? { ...l, divergencias: [{ origem: "calendario", id: "20", motivo: "faixa de datas inválida" }] } : l;
+    } };
+    const r = await enviar("envio", { leitor: leitorTorto });
+    expect(r).toMatchObject({ situacao: "incerto", imoveis: [{ enviadas: 10, confirmadas: 0, pendentes: 10 }] });
+    expect(r.avisos.some(a => a.includes("releitura com dados inválidos"))).toBe(true);
+    expect((await noites()).every(n => n.resultado === "enviado" && n.detalhe.includes("dados inválidos"))).toBe(true);
+    expect((await observacoes()).every(o => o.preco === 40000)).toBe(true);
     expect((await enviar()).avisos).toContain("Imóvel 103: 10 noite(s) de envio anterior confirmada(s) pela leitura de agora.");
   });
 
