@@ -309,6 +309,19 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
       // em que houve tentativa é relido depois: uma recusa (ou queda de rede) não prova que nada mudou.
       for (const p of tentados) {
         const res = resultadoImoveis.find(i => i.imovelId === p.imovelId)!;
+        // Conferência final dos bloqueios locais: criar/remover bloqueio espera o envio (mesma trava), mas se
+        // mesmo assim um bloqueio mudou entre o plano e a escrita, nada é escrito para o imóvel nesta execução.
+        const comBloqueio = p.linhas.filter(l => l.acao === "enviar" && l.bloqueioEnviar !== undefined);
+        if (comBloqueio.length) {
+          const locais = await db.select({ inicio: bloqueios.inicio, fim: bloqueios.fim }).from(bloqueios)
+            .where(and(eq(bloqueios.organizacaoId, org), eq(bloqueios.imovelId, p.imovelId), ne(bloqueios.fonte, "beds24"), lt(bloqueios.inicio, somarDias(comBloqueio[comBloqueio.length - 1].data, 1)), gt(bloqueios.fim, comBloqueio[0].data)));
+          const bloqueadaAgora = (d: string) => locais.some(b => b.inicio <= d && d < b.fim);
+          if (comBloqueio.some(l => bloqueadaAgora(l.data) !== l.bloqueioScl)) {
+            res.falha = "Bloqueio local alterado durante o envio: nada foi escrito para este imóvel nesta execução; o próximo envio replaneja.";
+            aviso(`Imóvel ${p.codigo}: ${res.falha}`);
+            continue;
+          }
+        }
         try {
           const [resposta] = await escritor!.escreverCalendario([{ roomId: p.roomId, faixas: faixasDeEnvio(p.linhas) }]);
           if (!resposta?.ok) res.falha = resposta?.erro || "Beds24 recusou a escrita.";

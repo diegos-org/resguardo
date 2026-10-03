@@ -12,12 +12,14 @@ const dataBr = (d: string) => d.split("-").reverse().join("/");
 /** Bloqueios manuais do período visível. Os importados do Beds24 aparecem, mas mudam na origem. */
 export function Bloqueios({ imoveis, bloqueios }: { imoveis: Imovel[]; bloqueios: Bloqueio[] }) {
   const [estado, enviar, enviando] = useActionState(novoBloqueioAcao, {} as EstadoBloqueio);
+  const [remocao, remover] = useActionState(removerBloqueioAcao, {} as EstadoBloqueio);
   const v = estado.valores ?? {};
   return <section aria-label="Bloqueios manuais" style={{ display: "grid", gap: 12, maxWidth: 820 }}>
     <h2 style={{ fontSize: "1.25rem", margin: 0 }}>Bloquear datas</h2>
     <p style={{ fontSize: "0.875rem", color: "var(--scl-texto-2)", margin: 0 }}>
       Uso próprio, manutenção ou qualquer motivo para não vender. O bloqueio vale no SCL na hora e segue ao Beds24 (e às OTAs) no próximo envio de calendário, quando o envio estiver ligado. Remover o bloqueio reabre as datas no próximo envio.
     </p>
+    {remocao.erro && <p role="alert" className={styles.alerta}>{remocao.erro}</p>}
     {bloqueios.length > 0 && <div className={styles.rolagem}><table className={styles.tabela}>
       <caption>Bloqueios no mês visível</caption>
       <thead><tr><th>Imóvel</th><th>Primeira noite</th><th>Liberado em</th><th>Motivo</th><th>Origem</th><th /></tr></thead>
@@ -27,7 +29,7 @@ export function Bloqueios({ imoveis, bloqueios }: { imoveis: Imovel[]; bloqueios
         <td>{dataBr(b.fim)}</td>
         <td>{b.motivo || "—"}</td>
         <td>{b.fonte === "beds24" ? "Beds24 (mude lá)" : "SCL"}</td>
-        <td>{b.fonte !== "beds24" && <form action={removerBloqueioAcao}><input type="hidden" name="id" value={b.id} /><BotaoConfirmar className={styles.pequeno} pergunta={`Remover o bloqueio de ${dataBr(b.inicio)} a ${dataBr(b.fim)}? As datas voltam a ficar à venda no próximo envio.`}>Remover</BotaoConfirmar></form>}</td>
+        <td>{b.fonte !== "beds24" && <form action={remover}><input type="hidden" name="id" value={b.id} /><BotaoConfirmar className={styles.pequeno} pergunta={`Remover o bloqueio de ${dataBr(b.inicio)} a ${dataBr(b.fim)}? As datas voltam a ficar à venda no próximo envio.`}>Remover</BotaoConfirmar></form>}</td>
       </tr>)}</tbody>
     </table></div>}
     <form key={bloqueios.length} action={enviar} className={styles.form} aria-label="Novo bloqueio">

@@ -78,6 +78,10 @@ export function lerData(texto: string): string | null {
 }
 export const dataBr = (iso: string) => iso.split("-").reverse().join("/");
 
+/** Par de faixas só vale com a 2ª mais perto da data que a 1ª; senão volta ao padrão (nunca troca pisos em silêncio). */
+function sanearFaixas(f: [FaixaUltimaHora, FaixaUltimaHora], padrao: [FaixaUltimaHora, FaixaUltimaHora]): [FaixaUltimaHora, FaixaUltimaHora] {
+  return f[1].ateDias < f[0].deDias ? f : [{ ...padrao[0] }, { ...padrao[1] }];
+}
 function sanearFaixa(v: unknown, padrao: FaixaUltimaHora): FaixaUltimaHora {
   const f = v as Partial<FaixaUltimaHora> | null;
   const ok = f && inteiroEntre(f.deDias, LIMITES.dias) && inteiroEntre(f.ateDias, LIMITES.dias) && inteiroEntre(f.percentual, LIMITES.percentual) && f.deDias! <= f.ateDias!;
@@ -124,7 +128,7 @@ export function regrasDeJson(valor: unknown): RegrasCalendario {
     eventos: eventos.sort((a, b) => a.inicio.localeCompare(b.inicio)).slice(0, LIMITES.eventos),
     ultimaHora: {
       aplicadoPor: uh.aplicadoPor === "scl" || uh.aplicadoPor === "desligada" ? uh.aplicadoPor : "beds24",
-      faixas: [sanearFaixa(faixas[0], P.ultimaHora.faixas[0]), sanearFaixa(faixas[1], P.ultimaHora.faixas[1])],
+      faixas: sanearFaixas([sanearFaixa(faixas[0], P.ultimaHora.faixas[0]), sanearFaixa(faixas[1], P.ultimaHora.faixas[1])], P.ultimaHora.faixas),
     },
     envio: { imoveis: ids(env.imoveis), automatico: env.automatico === true },
     site: {
@@ -175,7 +179,9 @@ export function validarFormRegras(e: Entrada, atual: RegrasCalendario, imoveisDa
     return f;
   };
   const faixas: [FaixaUltimaHora, FaixaUltimaHora] = [faixa(1), faixa(2)];
-  if (!erros.faixa1Ate && !erros.faixa2Ate && faixas[0].deDias <= faixas[1].ateDias && faixas[1].deDias <= faixas[0].ateDias) erros.faixa2De = "As duas faixas não podem se cruzar.";
+  // A faixa 2 é a mais próxima da data (o 2º piso da ficha do imóvel é o "mais perto da data"): precisa terminar
+  // antes do início da faixa 1. Ordem trocada ou cruzamento trocaria os pisos em silêncio.
+  if (!erros.faixa1Ate && !erros.faixa2Ate && faixas[1].ateDias >= faixas[0].deDias) erros.faixa2Ate = "A 2ª faixa é a mais próxima da data: precisa terminar antes do início da 1ª (ex.: 1ª de 3 a 7 dias, 2ª de 0 a 2).";
   const aplicadoPor = txt(e.ultimaHoraModo);
   if (!(aplicadoPor in APLICACOES_ULTIMA_HORA)) erros.ultimaHoraModo = "Escolha quem aplica a última hora.";
   // Todo campo numérico é lido antes da checagem de erros: nenhum volta ao padrão em silêncio.

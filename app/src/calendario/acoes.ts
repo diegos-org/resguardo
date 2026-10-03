@@ -98,10 +98,11 @@ export async function novoBloqueioAcao(_a: EstadoBloqueio, form: FormData): Prom
   return r.ok ? { ok: true } : { erro: r.erro, valores };
 }
 
-export async function removerBloqueioAcao(form: FormData): Promise<void> {
+export async function removerBloqueioAcao(_a: EstadoBloqueio, form: FormData): Promise<EstadoBloqueio> {
   const sessao = await exigirSessaoPainel();
   exigir(sessao, "reserva:editar", { organizacaoId: sessao.organizacaoId });
-  await excluirBloqueio(getDb(), sessao.organizacaoId, String(form.get("id") ?? ""), sessao.usuarioId);
+  const r = await excluirBloqueio(getDb(), sessao.organizacaoId, String(form.get("id") ?? ""), sessao.usuarioId);
   revalidatePath("/painel/calendario");
   revalidatePath("/painel/calendario/previa");
+  return r.ok ? { ok: true } : { erro: r.erro };
 }
