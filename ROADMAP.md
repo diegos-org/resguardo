@@ -107,7 +107,7 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 | M5.2 | Tabela de reservas + calendário clicável + rodapé com saldo, credor/devedor e Pix (copiar) | feito | M5.1 |
 | M5.3 | PDF do relatório no modelo aprovado (duas páginas, cores SCL; ver `requisitos/operations/RELATORIOS-PROPRIETARIOS.md`) | feito | M5.2 |
 | M5.4 | Envio mensal por e-mail do fechamento no dia 1º do mês seguinte (depois de conciliado) | feito | M5.3, M1.3 |
-| M5.5 | Proprietário edita o calendário do próprio imóvel no portal (bloqueio de uso próprio, liberar datas, conforme permissão do contrato); a mudança entra no SCL e segue para o Beds24/OTAs pelo M3.7 | a fazer | M5.1, M3.7 |
+| M5.5 | Proprietário edita o calendário do próprio imóvel no portal (bloqueio de uso próprio, liberar datas, conforme permissão do contrato); a mudança entra no SCL e segue para o Beds24/OTAs pelo M3.7 | feito | M5.1, M3.7 |
 
 ### M6 — Operação
 
@@ -206,4 +206,13 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
   (e usado no de hóspedes).
 - 24/09 (Diego): mudança de regra vale daquela data para frente — o passado (e o dinheiro
   que já movimentou) nunca é recalculado.
+- 2/10 (Diego): os seis imóveis nunca mudaram de proprietário, então a **data de início do
+  contrato** de cada um é a data da **primeira reserva** daquele imóvel — a registrar na carga
+  de dados reais (M11.1), não antes. **1/10/2026 é o marco oficial**: preços e reservas passam
+  a valer pelo Beds24 e pelo sistema a partir dessa data; o histórico anterior à conexão do
+  Airbnb ao Beds24 não vem pela API (limitação do canal) e fica fora da conferência.
+- 3/10 (M5.5, pela decisão de 24/09): o bloqueio pelo portal é uma **permissão do contrato**
+  (ligada por padrão; a empresa desliga contrato a contrato no painel); o proprietário só
+  bloqueia de hoje em diante, nunca por cima de reserva, e só libera o que ele mesmo bloqueou
+  — bloqueio da empresa ou do Beds24 é pedido à empresa.
 

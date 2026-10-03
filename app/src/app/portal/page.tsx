@@ -7,12 +7,15 @@ import { getDb } from "@/db/client";
 import { imoveis } from "@/db/schema";
 import type { ItemCalendario } from "@/calendario/grade";
 import { BotaoCopiar } from "@/components/BotaoCopiar";
+import { BloqueiosProprietario } from "@/components/portal/BloqueiosProprietario";
 import { CalendarioPortal } from "@/components/portal/CalendarioPortal";
 import { lerEmpresa, nomeDaEmpresa } from "@/configuracoes/empresa";
 import { hojeISO } from "@/lib/datas";
 import { centavosParaCampo } from "@/lib/dinheiro-form";
 import { nomeDoMes, periodoDosFiltros } from "@/lib/filtros";
 import { formatBRL } from "@/lib/money";
+import { bloquearDatasAcao, liberarDatasAcao } from "@/portal/acoes";
+import { bloqueiosDoProprietario, permissoesDeBloqueio } from "@/portal/bloqueios";
 import { janela, lerPeriodoPortal, nome, situacaoDoPeriodo, vizinhos } from "@/portal/periodo";
 import { bloqueiosDoPortal, reservasDoPortal, type SituacaoReserva } from "@/portal/reservas";
 import { proprietariosDoUsuario, resumoDoProprietario } from "@/portal/resumo";
@@ -170,6 +173,8 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
   const escolhidos = filtros.imoveis.length ? meus.filter((i) => filtros.imoveis.includes(i.codigo)) : meus;
   const periodo = periodoDosFiltros(filtros);
   const hoje = hojeISO();
+  // Uso próprio (M5.5): permissão do contrato em vigor hoje, por imóvel, e os bloqueios atuais/futuros dos imóveis dele.
+  const [permissoes, meusBloqueios] = await Promise.all([permissoesDeBloqueio(db, sessao.organizacaoId, sessao.imovelIds, hoje), bloqueiosDoProprietario(db, sessao)]);
   // Mesma regra do PDF: só os donos dos imóveis escolhidos (no período) e só os imóveis que eram
   // deles no período; os lançamentos sem imóvel entram quando todos os imóveis desses donos estão escolhidos.
   const selecao = await donosDosEscolhidos(db, donos, escolhidos, periodo);
@@ -197,7 +202,7 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
       href: `#reserva-${r.id}`,
       categoria: r.canal,
     })),
-    ...bloqueios.map((b) => ({ id: b.id, imovelId: b.imovelId, inicio: b.inicio, fim: b.fim, tipo: "bloqueio" as const, rotulo: "Bloqueado", categoria: "bloqueio" })),
+    ...bloqueios.map((b) => ({ id: b.id, imovelId: b.imovelId, inicio: b.inicio, fim: b.fim, tipo: "bloqueio" as const, rotulo: b.fonte === "proprietario" ? "Uso próprio" : "Bloqueado", categoria: "bloqueio" })),
   ];
   // Saldo do acerto: o do repasse do mês (no ano inteiro, o de dezembro), com todos os imóveis dele.
   const mesSaldo = `${filtros.ano}-${String(filtros.mes ?? 12).padStart(2, "0")}`;
@@ -340,6 +345,15 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
               <CalendarioPortal periodo={periodo} imoveis={selecao.imoveis} itens={itens} hoje={hoje} />
             </section>
           )}
+
+          <BloqueiosProprietario
+            imoveis={meus.map((i) => ({ id: i.id, codigo: i.codigo, nome: i.nome, permissao: permissoes.get(i.id) ?? null }))}
+            bloqueios={meusBloqueios}
+            empresa={empresa}
+            hoje={hoje}
+            bloquear={bloquearDatasAcao}
+            liberar={liberarDatasAcao}
+          />
 
           <section aria-label="Reservas" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <h2 style={{ fontSize: "1.125rem", margin: 0 }}>Reservas</h2>

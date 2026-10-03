@@ -3,7 +3,7 @@ import { historicoDe } from "@/auditoria/auditoria";
 import { imoveis, organizacoes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
-import { criarContrato, encerrarContrato, listarContratos } from "./repositorio";
+import { alterarBloqueioPortal, criarContrato, encerrarContrato, listarContratos } from "./repositorio";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -21,6 +21,28 @@ beforeEach(async () => {
 afterEach(() => close());
 
 describe("contratos", () => {
+  it("bloqueio pelo portal (M5.5): 'sim' por padrão, 'nao' desliga, valor estranho é recusado", async () => {
+    const padrao = await criarContrato(db, org, imovel, { tipo: "gestao_completa", comissao: "20", inicio: "2025-01-01", fim: "2025-12-31" }, null);
+    expect(padrao.ok && padrao.contrato.proprietarioBloqueia).toBe(true);
+    const sem = await criarContrato(db, org, imovel, { tipo: "gestao_completa", comissao: "20", inicio: "2026-01-01", fim: "2026-12-31", proprietarioBloqueia: "nao" }, null);
+    expect(sem.ok && sem.contrato.proprietarioBloqueia).toBe(false);
+    expect(await criarContrato(db, org, imovel, { tipo: "gestao_completa", comissao: "20", inicio: "2027-01-01", proprietarioBloqueia: "talvez" }, null)).toMatchObject({ ok: false, erros: { proprietarioBloqueia: expect.stringContaining("Escolha") } });
+  });
+
+  it("bloqueio pelo portal pode ser ligado/desligado no contrato existente, com histórico; outra organização não mexe", async () => {
+    const r = await criarContrato(db, org, imovel, { tipo: "gestao_completa", comissao: "20", inicio: "2025-01-01" }, null);
+    if (!r.ok) throw new Error("contrato");
+    expect(await alterarBloqueioPortal(db, org, r.contrato.id, false, null)).toEqual({ ok: true, imovelId: imovel });
+    expect((await listarContratos(db, org, imovel))[0].proprietarioBloqueia).toBe(false);
+    // Repetir o mesmo valor não gera histórico; voltar a ligar gera.
+    expect(await alterarBloqueioPortal(db, org, r.contrato.id, false, null)).toEqual({ ok: true, imovelId: imovel });
+    expect(await alterarBloqueioPortal(db, org, r.contrato.id, true, null)).toEqual({ ok: true, imovelId: imovel });
+    expect((await historicoDe(db, org, "imovel", imovel)).filter((h) => h.acao === "contrato.bloqueio_portal")).toHaveLength(2);
+    expect(await alterarBloqueioPortal(db, outra, r.contrato.id, false, null)).toEqual({ ok: false, erro: "Contrato não encontrado." });
+    expect(await alterarBloqueioPortal(db, org, "nao-e-uuid", false, null)).toEqual({ ok: false, erro: "Contrato não encontrado." });
+    expect((await listarContratos(db, org, imovel))[0].proprietarioBloqueia).toBe(true);
+  });
+
   it("troca de percentual: encerra o atual e cria o novo, com histórico no imóvel", async () => {
     const r1 = await criarContrato(db, org, imovel, { tipo: "gestao_completa", comissao: "20", inicio: "2025-01-01" }, null);
     expect(r1.ok).toBe(true);

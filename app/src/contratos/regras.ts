@@ -53,12 +53,12 @@ export function bpParaTexto(bp: number | null): string {
   return `${(bp / 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`;
 }
 
-export type ErrosContrato = Partial<Record<"tipo" | "comissao" | "inicio" | "fim" | "geral", string>>;
+export type ErrosContrato = Partial<Record<"tipo" | "comissao" | "inicio" | "fim" | "proprietarioBloqueia" | "geral", string>>;
 
 export function validarContrato(
   entrada: Record<string, FormDataEntryValue | undefined>,
   existentes: readonly ContratoVigencia[],
-): { ok: true; dados: ContratoVigencia & { observacoes: string } } | { ok: false; erros: ErrosContrato } {
+): { ok: true; dados: ContratoVigencia & { observacoes: string; proprietarioBloqueia: boolean } } | { ok: false; erros: ErrosContrato } {
   const erros: ErrosContrato = {};
   const txt = (k: string) => (typeof entrada[k] === "string" ? (entrada[k] as string).trim() : "");
   const tipo = txt("tipo") as TipoContrato;
@@ -78,6 +78,9 @@ export function validarContrato(
   if (!dataOk(inicio)) erros.inicio = "Data de início inválida.";
   if (fim !== null && !dataOk(fim)) erros.fim = "Data de fim inválida.";
   if (!erros.inicio && !erros.fim && fim !== null && fim < inicio) erros.fim = "O fim deve ser igual ou depois do início.";
+  // Bloqueio de datas pelo portal (M5.5): "sim" por padrão (decisão de Diego, 24/09); só "nao" desliga.
+  const bloqueia = txt("proprietarioBloqueia");
+  if (!["", "sim", "nao"].includes(bloqueia)) erros.proprietarioBloqueia = "Escolha se o proprietário pode bloquear datas pelo portal.";
 
   if (Object.keys(erros).length === 0) {
     const novo = { tipo, comissaoBp, inicio, fim };
@@ -87,5 +90,5 @@ export function validarContrato(
     }
   }
   if (Object.keys(erros).length) return { ok: false, erros };
-  return { ok: true, dados: { tipo, comissaoBp, inicio, fim, observacoes: txt("observacoes") } };
+  return { ok: true, dados: { tipo, comissaoBp, inicio, fim, observacoes: txt("observacoes"), proprietarioBloqueia: bloqueia !== "nao" } };
 }

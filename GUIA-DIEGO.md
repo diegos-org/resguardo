@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 2/10/2026, disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
+> **Última atualização:** 3/10/2026, proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
 
 ---
 
@@ -29,7 +29,7 @@
 | M2 Cadastros | Imóveis, proprietários, contratos e aba Anúncios | ✅ implementado; referências dos canais precisam ser preenchidas/conferidas |
 | M3 Reservas | Reservas, calendário central, importação e envio de calendário/preços ao Beds24 | 🟡 importação e envio implementados; o envio começa desligado e espera o seu teste no 103; conferência das reservas parcial |
 | M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | 🟡 em andamento |
-| M5 Portal do proprietário | Relatórios, saldos, PDF | 🟡 em andamento |
+| M5 Portal do proprietário | Relatórios, saldos, PDF, bloqueio de uso próprio | 🟡 relatórios, PDF, e-mail do fechamento e bloqueio de datas prontos |
 | M6 Operação | Limpezas, manutenção, agenda diária | 🟡 em andamento |
 | M7 Site público | Site novo com disponibilidade e valor reais | 🟡 disponibilidade e valor prontos; fotos reais (M7.3) dependem de você |
 | M8 Reserva direta | Pagamento pelo Mercado Pago | ⚪ aguardando |
@@ -37,6 +37,29 @@
 | M10 WhatsApp | Caixa de entrada do WhatsApp no painel | ⚪ aguardando |
 | M11 Produção | Dados reais, domínio, entrada em uso | ⚪ aguardando |
 | M12 Marketplace | Proprietário que opera o próprio imóvel; SCL cuida do online | 🟡 em andamento |
+
+### Portal do proprietário: bloqueio de uso próprio — M5.5
+
+O proprietário passa a cuidar do próprio calendário no portal, sem precisar pedir à equipe:
+
+- **Bloquear datas:** no portal, na seção "Bloquear datas para uso próprio", ele escolhe o
+  imóvel (só os dele), a primeira noite, o dia em que o imóvel volta a ficar livre e um motivo
+  (opcional; sem motivo fica "Uso próprio"). As datas saem de venda no sistema na hora e fecham
+  no Beds24 e nos canais no próximo envio de calendário (M3.7) — como qualquer bloqueio, só
+  quando o envio estiver ligado.
+- **Liberar datas:** só o que ele mesmo bloqueou e que ainda não passou, sempre com
+  confirmação. Bloqueio feito pela empresa ou que veio do Beds24 aparece na lista com "quem
+  bloqueou", mas só a empresa libera.
+- **Limites:** nunca no passado e nunca por cima de uma reserva — o portal avisa em vez de
+  deixar passar.
+- **Permissão por contrato:** cada contrato (ficha do imóvel → Contratos) tem a opção
+  **"Bloqueio pelo portal"**, que vem como **Sim**. Dá para **ligar ou desligar na própria
+  linha do contrato**, a qualquer momento, e vale daí para frente (o que o proprietário já
+  bloqueou fica; a equipe remove no Calendário, se for o caso). Com "Não", o proprietário vê o
+  calendário mas não bloqueia (o portal explica que precisa falar com a empresa). Sem contrato
+  em vigor nas datas, também não dá.
+- **No painel:** o bloqueio aparece no Calendário com a origem "Proprietário (portal)" e fica no
+  histórico do imóvel, como os da equipe.
 
 ### Site: disponibilidade e valor reais — M7.2
 
@@ -1074,6 +1097,18 @@ ambiente).
    (item 5). Quem é recusado ainda não recebe e-mail automático — responda você mesmo.
 19. **Recebimento do site:** leia a comparação na seção 7 ("Como receber as reservas do
    site"), leve a pergunta ao contador e me diga se mantém "empresa recebe e repassa" ou muda.
+
+20. **Bloqueio pelo portal (M5.5):** confira em cada contrato (ficha do imóvel → Contratos) se
+   "Bloqueio pelo portal" deve ficar em Sim (como vem) ou Não — o botão Ligar/Desligar fica na
+   própria linha —, e avise os proprietários que já podem bloquear datas de uso próprio pelo
+   portal. As datas só fecham nos canais quando o envio
+   de calendário ao Beds24 estiver ligado (item 3).
+21. **Data de início dos contratos (registrado em 2/10):** nada a fazer agora. Na carga de dados
+   reais (M11.1), o início do contrato de cada um dos seis imóveis será a data da primeira
+   reserva dele (nunca mudaram de proprietário), e **1/10/2026** fica como o marco oficial de
+   preços e reservas pelo Beds24 e pelo sistema. O histórico anterior à conexão do Airbnb ao
+   Beds24 não vem pela API do Beds24 — é limitação do canal, não do sistema — e fica fora da
+   conferência.
 
 ---
 

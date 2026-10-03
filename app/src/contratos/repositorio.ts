@@ -55,6 +55,39 @@ export async function criarContrato(
   });
 }
 
+/**
+ * Liga ou desliga o bloqueio de datas pelo portal neste contrato (M5.5). Vale daí para frente: o que o
+ * proprietário já bloqueou fica como está (a empresa remove no Calendário, se for o caso).
+ */
+export async function alterarBloqueioPortal(
+  db: Db,
+  organizacaoId: string,
+  contratoId: string,
+  permitir: boolean,
+  autorId: string | null,
+): Promise<{ ok: true; imovelId: string } | { ok: false; erro: string }> {
+  if (!uuidOk(contratoId)) return { ok: false, erro: "Contrato não encontrado." };
+  return db.transaction(async (tx) => {
+    const [c] = await tx
+      .select({ id: contratos.id, imovelId: contratos.imovelId, atual: contratos.proprietarioBloqueia })
+      .from(contratos)
+      .where(and(eq(contratos.id, contratoId), eq(contratos.organizacaoId, organizacaoId)))
+      .for("update");
+    if (!c) return { ok: false as const, erro: "Contrato não encontrado." };
+    if (c.atual === permitir) return { ok: true as const, imovelId: c.imovelId };
+    await tx.update(contratos).set({ proprietarioBloqueia: permitir }).where(eq(contratos.id, c.id));
+    await registrarAuditoria(tx, {
+      organizacaoId,
+      usuarioId: autorId,
+      acao: "contrato.bloqueio_portal",
+      entidade: "imovel",
+      entidadeId: c.imovelId,
+      mudancas: { bloqueioPeloPortal: [c.atual ? "sim" : "não", permitir ? "sim" : "não"] },
+    });
+    return { ok: true as const, imovelId: c.imovelId };
+  });
+}
+
 /** Encerra um contrato numa data (último dia de vigência). */
 export async function encerrarContrato(
   db: Db,

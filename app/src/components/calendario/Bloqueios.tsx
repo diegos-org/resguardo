@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import { novoBloqueioAcao, removerBloqueioAcao, type EstadoBloqueio } from "@/calendario/acoes";
+import { NOMES_FONTE_BLOQUEIO } from "@/reservas/bloqueios";
 import styles from "../formularios.module.css";
 
 type Imovel = { id: string; codigo: string };
@@ -28,7 +29,7 @@ export function Bloqueios({ imoveis, bloqueios }: { imoveis: Imovel[]; bloqueios
         <td>{dataBr(b.inicio)}</td>
         <td>{dataBr(b.fim)}</td>
         <td>{b.motivo || "—"}</td>
-        <td>{b.fonte === "beds24" ? "Beds24 (mude lá)" : "SCL"}</td>
+        <td>{NOMES_FONTE_BLOQUEIO[b.fonte] ?? b.fonte}</td>
         <td>{b.fonte !== "beds24" && <form action={remover}><input type="hidden" name="id" value={b.id} /><BotaoConfirmar className={styles.pequeno} pergunta={`Remover o bloqueio de ${dataBr(b.inicio)} a ${dataBr(b.fim)}? As datas voltam a ficar à venda no próximo envio.`}>Remover</BotaoConfirmar></form>}</td>
       </tr>)}</tbody>
     </table></div>}
