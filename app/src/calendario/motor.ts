@@ -238,10 +238,14 @@ export function planejarCalendario(e: EntradaPlano): LinhaPlano[] {
     const leituraAposEnvio = observacao !== null && (enviado === null || observacao.observadoEm.getTime() >= enviado.enviadoEm.getTime());
     if (bloqueioScl) {
       bloqueioEnviar = "blackout";
-      // O que havia antes: a leitura mais nova que o último envio, senão o último envio confirmado;
-      // se isso já é o blackout do SCL (ou nada), vale o que o SCL guardou ao fechar.
+      // O que havia antes: a restrição da leitura mais nova que o último envio (senão a do último envio
+      // confirmado). Se o que se vê é um blackout (o do SCL, ou uma tentativa ainda em aberto), ou não há
+      // leitura nova de uma tentativa em aberto, vale o que o SCL guardou ao fechar. Leitura "none" zera:
+      // a restrição antiga já não existe, e não deve voltar num ciclo novo de bloqueio.
       const atual = normalizarBloqueio(leituraAposEnvio ? observacao!.bloqueio : enviado?.confirmado ? enviado.bloqueio : null);
-      bloqueioAnterior = ehBloqueioEnvio(atual) && atual !== "none" && atual !== "blackout" ? atual : (enviado?.bloqueioAnterior ?? null);
+      if (ehBloqueioEnvio(atual) && atual !== "none" && atual !== "blackout") bloqueioAnterior = atual;
+      else if (atual === "blackout" || (!leituraAposEnvio && enviado !== null && !enviado.confirmado)) bloqueioAnterior = enviado?.bloqueioAnterior ?? null;
+      else bloqueioAnterior = null;
     } else if (enviado?.bloqueio === "blackout") {
       const atual = leituraAposEnvio ? observacao!.bloqueio : undefined;
       if (atual === "blackout") bloqueioEnviar = ehBloqueioEnvio(enviado.bloqueioAnterior) && enviado.bloqueioAnterior !== "blackout" ? enviado.bloqueioAnterior : "none";

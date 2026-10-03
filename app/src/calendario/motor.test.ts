@@ -224,6 +224,11 @@ describe("bloqueios e conferência com o Beds24", () => {
     expect(faixasDeEnvio([devolve])[0].bloqueio).toBe("noCheckIn");
     const [semRegistro] = planejarCalendario(entrada({ fim: "2026-10-01", enviados: [enviado()], observacoes: [obs("2026-10-01", { livres: 0, bloqueio: "blackout" })] }));
     expect(semRegistro.bloqueioEnviar).toBe("none");
+    // Registro de uma tentativa em aberto só é reaproveitado enquanto a leitura mostra blackout; leitura "none" zera.
+    const emAberto = enviado({ bloqueio: null, bloqueioAnterior: "noCheckIn", confirmado: false });
+    expect(planejarCalendario(entrada({ fim: "2026-10-01", bloqueios: bloqueio, enviados: [emAberto], observacoes: [obs("2026-10-01", { livres: 0, bloqueio: "blackout" })] }))[0].bloqueioAnterior).toBe("noCheckIn");
+    expect(planejarCalendario(entrada({ fim: "2026-10-01", bloqueios: bloqueio, enviados: [emAberto] }))[0].bloqueioAnterior).toBe("noCheckIn");
+    expect(planejarCalendario(entrada({ fim: "2026-10-01", bloqueios: bloqueio, enviados: [emAberto], observacoes: [obs("2026-10-01", { bloqueio: "none" })] }))[0].bloqueioAnterior).toBeNull();
     // Restrição devolvida que a leitura nova já mostra: posse encerrada sem alarme de "troca externa".
     const [devolvida] = planejarCalendario(entrada({ fim: "2026-10-01", enviados: [enviado({ bloqueioAnterior: "noCheckIn" })], observacoes: [obs("2026-10-01", { bloqueio: "noCheckIn" })] }));
     expect([devolvida.bloqueioEnviar, devolvida.posseBloqueioEncerrada]).toEqual([undefined, true]);

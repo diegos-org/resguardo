@@ -402,6 +402,45 @@ describe("envio ao Beds24 (M3.7)", () => {
     expect((await enviar()).situacao).toBe("ok");
   });
 
+  it("confirmação tardia exige a mesma carga registrada: tentativa só de preço não assume um blackout que apareceu depois", async () => {
+    let leituras = 0;
+    const leitorFalho: LeitorBeds24 = { reservas: f => beds.reservas(f), quartos: () => beds.quartos(), calendario: async f => { if (leituras++ === 0) return beds.calendario(f); throw new ErroBeds24("Beds24 não respondeu a tempo.", "tempo"); } };
+    expect((await enviar("envio", { leitor: leitorFalho })).situacao).toBe("incerto");
+    // Antes da execução seguinte: bloqueio local novo em 3/10 e alguém fecha a mesma noite no Beds24 com os mesmos valores.
+    await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-10-03", fim: "2026-10-04", motivo: "Uso próprio" });
+    Object.assign(diaFalso("2026-10-03")!, { override: "blackout", numAvail: 0 });
+    const r = await enviar();
+    expect(r.avisos).toContain("Imóvel 103: 8 noite(s) de envio anterior confirmada(s) pela leitura de agora.");
+    expect((await enviados()).find(e => e.data === "2026-10-05")).toMatchObject({ confirmado: true });
+    expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ bloqueio: null, confirmado: false });
+    // Removido o bloqueio local, o blackout de terceiros não é reaberto.
+    await db.delete(bloqueios).where(eq(bloqueios.fonte, "manual"));
+    const r2 = await enviar();
+    expect(r2.avisos).toContain("Imóvel 103, noite 03/10/2026: Beds24 tem bloqueio (blackout) sem bloqueio no SCL: o SCL não reabre o que não fechou; confira.");
+    expect(diaFalso("2026-10-03")).toMatchObject({ override: "blackout" });
+  });
+
+  it("tentativa de blackout desmentida não guarda a restrição anterior: num ciclo novo, depois de a restrição sumir, a reabertura é \"none\"", async () => {
+    beds.calendarios = [{ roomId: 20, calendar: [
+      { from: "2026-10-01", to: "2026-10-04", numAvail: 1, price1: 450, minStay: 1, maxStay: 27, override: "none" },
+      { from: "2026-10-05", to: "2026-10-05", numAvail: 1, price1: 450, minStay: 1, maxStay: 27, override: "noCheckIn" },
+      { from: "2026-10-06", to: "2026-10-10", numAvail: 1, price1: 450, minStay: 1, maxStay: 27, override: "none" },
+    ] }];
+    await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-10-05", fim: "2026-10-06", motivo: "Manutenção" });
+    // Escrita aceita mas não aplicada: a releitura desmente o blackout.
+    const escritorMudo = { escreverCalendario: async (itens: Parameters<typeof beds.escreverCalendario>[0]) => itens.map(i => ({ roomId: i.roomId, ok: true, erro: "" })) };
+    expect((await enviarCalendarioBeds24(db, org, beds, escritorMudo, { modo: "envio", agora, autorId: null })).situacao).toBe("parcial");
+    expect((await enviados()).find(e => e.data === "2026-10-05")).toMatchObject({ bloqueio: null, bloqueioAnterior: null, confirmado: false });
+    // A restrição some no Beds24; o blackout vai de verdade e, removido o bloqueio, a noite volta a "none".
+    (beds.calendarios[0].calendar as Record<string, unknown>[]).find(d => d.from === "2026-10-05")!.override = "none";
+    expect((await enviar()).situacao).toBe("ok");
+    expect((await enviados()).find(e => e.data === "2026-10-05")).toMatchObject({ bloqueio: "blackout", bloqueioAnterior: null, confirmado: true });
+    await db.delete(bloqueios).where(eq(bloqueios.fonte, "manual"));
+    expect((await enviar()).situacao).toBe("ok");
+    expect(beds.escritas.at(-1)![0].faixas.find(f => f.from === "2026-10-05")?.bloqueio).toBe("none");
+    expect(diaFalso("2026-10-05")).toMatchObject({ override: "none", numAvail: 1 });
+  });
+
   it("bloqueio que só existe no Beds24 nunca é reaberto pelo SCL, mesmo sem bloqueio local", async () => {
     beds.calendarios = [{ roomId: 20, calendar: [{ from: "2026-10-01", to: "2026-10-10", numAvail: 1, price1: 450, minStay: 1, maxStay: 27, override: "none" }, { from: "2026-10-06", to: "2026-10-06", numAvail: 0, price1: 450, minStay: 1, maxStay: 27, override: "blackout" }] }];
     await db.insert(beds24Calendario).values({ organizacaoId: org, imovelId: im, data: "2026-10-06", preco: 45000, minimoNoites: 1, maximoNoites: 27, livres: 0, bloqueio: "blackout", observadoEm: new Date("2026-10-01T10:00:00Z") });

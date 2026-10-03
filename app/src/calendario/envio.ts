@@ -175,10 +175,13 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
         // blackout igual que apareça depois pode ser de terceiros.
         let tardias = 0;
         const candidatas = leituraIncompleta.has(m.imovelId) ? [] : p.linhas.filter(l => l.acao === "igual" && l.enviado && !l.enviado.confirmado && l.enviado.envioId);
-        const semReleitura = new Set(candidatas.length ? (await tx.select({ envioId: beds24EnvioNoites.envioId, data: beds24EnvioNoites.data }).from(beds24EnvioNoites)
-          .where(and(eq(beds24EnvioNoites.organizacaoId, org), eq(beds24EnvioNoites.imovelId, m.imovelId), inArray(beds24EnvioNoites.envioId, [...new Set(candidatas.map(l => l.enviado!.envioId!))]), eq(beds24EnvioNoites.resultado, "enviado")))).map(n => `${n.envioId}/${n.data}`) : []);
+        const pendentes = new Map(candidatas.length ? (await tx.select({ envioId: beds24EnvioNoites.envioId, data: beds24EnvioNoites.data, preco: beds24EnvioNoites.precoEnviado, minimo: beds24EnvioNoites.minimoEnviado, maximo: beds24EnvioNoites.maximoEnviado, bloqueio: beds24EnvioNoites.bloqueioEnviado }).from(beds24EnvioNoites)
+          .where(and(eq(beds24EnvioNoites.organizacaoId, org), eq(beds24EnvioNoites.imovelId, m.imovelId), inArray(beds24EnvioNoites.envioId, [...new Set(candidatas.map(l => l.enviado!.envioId!))]), eq(beds24EnvioNoites.resultado, "enviado")))).map(n => [`${n.envioId}/${n.data}`, n] as const) : []);
         for (const l of candidatas) {
-          if (!semReleitura.has(`${l.enviado!.envioId}/${l.data}`)) continue;
+          // Só confirma o que aquela tentativa de fato mandou: mesma carga do plano atual, bloqueio incluído.
+          // Uma tentativa só de preço nunca assume um blackout que apareceu depois.
+          const pendente = pendentes.get(`${l.enviado!.envioId}/${l.data}`);
+          if (!pendente || pendente.preco !== l.precoEnviar || pendente.minimo !== l.minimoEnviar || pendente.maximo !== l.maximoEnviar || (pendente.bloqueio ?? null) !== (l.bloqueioEnviar ?? null)) continue;
           await tx.update(beds24CalendarioEnviado).set({
             confirmado: true,
             bloqueio: l.posseBloqueioEncerrada ? null : (l.bloqueioEnviar ?? l.enviado!.bloqueio),
@@ -273,10 +276,13 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
             // A posse do bloqueio (blackout/none/restrição devolvida) só muda quando a releitura confirma;
             // até lá vale a anterior. A restrição anterior ao blackout fica guardada enquanto o SCL fecha.
             const confirmouBloqueio = resultado === "confirmado" && l.bloqueioEnviar !== undefined;
+            // Restrição anterior: fica com o blackout confirmado ou ainda em aberto (sem releitura); uma tentativa
+            // desmentida sem posse anterior não guarda nada, para não devolver a restrição num ciclo futuro.
+            const guardaAnterior = resultado === "confirmado" || resultado === "enviado" || l.enviado?.bloqueio === "blackout";
             const v = {
               organizacaoId: org, imovelId: p.imovelId, data: l.data, preco: l.precoEnviar, minimo: l.minimoEnviar, maximo: l.maximoEnviar,
               bloqueio: confirmouBloqueio ? l.bloqueioEnviar! : (l.enviado?.bloqueio ?? null),
-              bloqueioAnterior: l.bloqueioEnviar === "blackout" ? l.bloqueioAnterior : confirmouBloqueio ? null : (l.enviado?.bloqueioAnterior ?? null),
+              bloqueioAnterior: l.bloqueioEnviar === "blackout" ? (guardaAnterior ? l.bloqueioAnterior : null) : confirmouBloqueio ? null : (l.enviado?.bloqueioAnterior ?? null),
               enviadoEm: agora, confirmado: resultado === "confirmado", envioId: exec.id,
             };
             await tx.insert(beds24CalendarioEnviado).values(v).onConflictDoUpdate({ target: [beds24CalendarioEnviado.organizacaoId, beds24CalendarioEnviado.imovelId, beds24CalendarioEnviado.data], set: { preco: v.preco, minimo: v.minimo, maximo: v.maximo, bloqueio: v.bloqueio, bloqueioAnterior: v.bloqueioAnterior, enviadoEm: v.enviadoEm, confirmado: v.confirmado, envioId: v.envioId } });
