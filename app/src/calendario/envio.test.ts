@@ -188,17 +188,41 @@ describe("envio ao Beds24 (M3.7)", () => {
     expect(r).toMatchObject({ ok: false, situacao: "erro", imoveis: [{ enviadas: 0, falha: expect.stringContaining("ficou incompleta (1 noite(s)") }] });
     expect(beds.escritas).toHaveLength(0);
     expect(await noites()).toHaveLength(0);
+    // Leitura incompleta não substitui a última leitura guardada.
+    expect(await observacoes()).toHaveLength(0);
     leituras = 0;
     const s = await enviar("simulacao", { leitor: leitorCurto });
     expect(s.situacao).toBe("simulacao");
     expect(s.avisos.some(a => a.includes("ficou incompleta") && a.includes("nada é enviado"))).toBe(true);
-    // Dados inválidos no quarto também contam como leitura incompleta.
+    // Dados inválidos no quarto também contam como leitura incompleta: as linhas aproveitáveis não são guardadas.
     const leitorTorto: LeitorBeds24 = { reservas: f => beds.reservas(f), quartos: () => beds.quartos(), calendario: async f => {
       const l = await beds.calendario(f);
       return { ...l, divergencias: [{ origem: "calendario", id: "20", motivo: "faixa de datas inválida" }] };
     } };
     expect((await enviar("envio", { leitor: leitorTorto })).imoveis[0].falha).toContain("dados inválidos");
     expect(beds.escritas).toHaveLength(0);
+    expect(await observacoes()).toHaveLength(0);
+  });
+
+  it("divergência sem quarto identificável (registro malformado) invalida a leitura de todos os quartos pedidos, na leitura e na releitura", async () => {
+    // O normalizador atribui "?" a um registro de calendário sem roomId aproveitável: nenhum quarto o reivindica.
+    const semDono = (l: Awaited<ReturnType<LeitorBeds24["calendario"]>>) => ({ ...l, divergencias: [{ origem: "calendario" as const, id: "?", motivo: "quarto sem calendário" }] });
+    let leituras = 0;
+    const leitorInicial: LeitorBeds24 = { reservas: f => beds.reservas(f), quartos: () => beds.quartos(), calendario: async f => { const l = await beds.calendario(f); return leituras++ === 0 ? semDono(l) : l; } };
+    const r = await enviar("envio", { leitor: leitorInicial });
+    expect(r).toMatchObject({ ok: false, situacao: "erro", imoveis: [{ enviadas: 0, falha: expect.stringContaining("dados inválidos") }] });
+    expect(r.avisos.some(a => a.includes("sem quarto identificável"))).toBe(true);
+    expect(beds.escritas).toHaveLength(0);
+    expect(await observacoes()).toHaveLength(0);
+    // Só na releitura: a escrita aconteceu, mas nenhuma noite é confirmada por uma releitura ambígua.
+    leituras = 0;
+    const leitorReleitura: LeitorBeds24 = { reservas: f => beds.reservas(f), quartos: () => beds.quartos(), calendario: async f => { const l = await beds.calendario(f); return leituras++ === 1 ? semDono(l) : l; } };
+    const r2 = await enviar("envio", { leitor: leitorReleitura });
+    expect(r2).toMatchObject({ situacao: "incerto", imoveis: [{ enviadas: 10, confirmadas: 0, pendentes: 10 }] });
+    expect((await noites()).every(n => n.resultado === "enviado" && n.detalhe.includes("dados inválidos"))).toBe(true);
+    expect((await enviados()).every(e => !e.confirmado)).toBe(true);
+    expect((await observacoes()).every(o => o.preco === 40000)).toBe(true);
+    expect((await enviar()).avisos).toContain("Imóvel 103: 10 noite(s) de envio anterior confirmada(s) pela leitura de agora.");
   });
 
   it("datas repetidas na leitura (faixas sobrepostas) invalidam a leitura do imóvel: nada é guardado nem enviado; na releitura, deixam tudo pendente", async () => {
