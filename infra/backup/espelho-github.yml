@@ -94,6 +94,20 @@ jobs:
           marco="backup/$(TZ=America/Sao_Paulo date +%Y-%m-%d-%H%M)"
           robo() { git -c user.name=robo -c user.email=robo@backup.invalid "$@"; }
           no_destino() { git -c "http.extraheader=${auth}" "$@"; }
+          # Mensagem do COMMIT apontado (não a de uma tag anotada): é nela que fica o inventário do retrato.
+          mensagem() { git log -1 --format=%B "$1^{commit}" 2>/dev/null || true; }
+          # Retrato de verdade tem inventário: pelo menos a linha da main da origem.
+          tem_inventario() { [ -n "$(mensagem "$1" | grep -E '^origem [0-9a-f]{40} refs/heads/main$')" ]; }
+
+          # Nomes reservados: no inventário, refs da origem são citadas pelo nome original, então tags backup/,
+          # recusadas/ e objetos/ ou uma branch backup-marcos na origem se confundiriam com as do próprio
+          # backup. Nunca existem na origem de verdade; se aparecerem, a rodada para antes de gravar.
+          reservadas=$(git for-each-ref --format='%(refname)' refs/tags/backup refs/tags/recusadas refs/tags/objetos refs/heads/backup-marcos)
+          if [ -n "${reservadas}" ]; then
+            echo "::error::A origem tem refs com nomes reservados ao backup (tags backup/, recusadas/, objetos/ ou a branch backup-marcos). Renomeie-as na origem; até lá nada é gravado:"
+            echo "${reservadas}"
+            exit 1
+          fi
 
           # O que este repositório já guarda, trazido para refs/guardado/ (traz também a história
           # antiga, para reconhecer uma reescrita na origem). Se a leitura falhar, a rodada para:
@@ -119,8 +133,8 @@ jobs:
           : > marcos-validos.refs
           while read -r t; do
             [ -z "${t}" ] && continue
-            m=$(git for-each-ref --format='%(contents)' "refs/guardado/backup/${t#refs/tags/backup/}" | awk '$1 == "marco" && NF == 2 {print $2}' | head -n1)
-            if [ "${m}" = "${t}" ]; then echo "${t}" >> marcos-validos.refs; fi
+            m=$(mensagem "refs/guardado/backup/${t#refs/tags/backup/}" | awk '$1 == "marco" && NF == 2 {print $2}' | head -n1)
+            if [ "${m}" = "${t}" ] && tem_inventario "refs/guardado/backup/${t#refs/tags/backup/}"; then echo "${t}" >> marcos-validos.refs; fi
           done < marcos.refs
           marcos_invalidos=$(comm -23 marcos.refs marcos-validos.refs || true)
           # O ponteiro só serve de base se estiver ANCORADO: aponta para um retrato (commit com inventário que
@@ -130,8 +144,8 @@ jobs:
           ponteiro_adulterado=0; ponteiro_recuado=0; ponteiro_sem_ancora=0; ponteiro_commit=""
           if [ -n "${ponteiro}" ]; then
             ponteiro_commit=$(git rev-parse -q --verify 'refs/guardado/marcos^{commit}' 2>/dev/null || true)
-            m=$(git for-each-ref --format='%(contents)' refs/guardado/marcos | awk '$1 == "marco" && NF == 2 {print $2}' | head -n1)
-            if ! echo "${m}" | grep -Eq '^refs/tags/backup/[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{4}$'; then
+            m=$(mensagem refs/guardado/marcos | awk '$1 == "marco" && NF == 2 {print $2}' | head -n1)
+            if ! echo "${m}" | grep -Eq '^refs/tags/backup/[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{4}$' || ! tem_inventario refs/guardado/marcos; then
               ponteiro_adulterado=1
             else
               tag_commit=$(git rev-parse -q --verify "refs/guardado/backup/${m#refs/tags/backup/}^{commit}" 2>/dev/null || true)
@@ -173,7 +187,7 @@ jobs:
           sumiram_da_origem=""; sumiram_do_backup=""; reescritas=""
           : > anterior.txt; : > anterior-origem.refs; : > anterior-backup.refs
           if [ -n "${anterior}" ]; then
-            git for-each-ref --format='%(contents)' "${anterior}" > anterior.txt
+            mensagem "${anterior}" > anterior.txt
             awk '$1 == "origem" && NF == 3 {print $3}' anterior.txt | sort > anterior-origem.refs
             awk '($1 == "backup" && NF == 2) {print $2} ($1 == "recusada" && NF == 3) {print $3}' anterior.txt | sort > anterior-backup.refs
             sumiram_da_origem=$(comm -23 anterior-origem.refs atual.refs || true)

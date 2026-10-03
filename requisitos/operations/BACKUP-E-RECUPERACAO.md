@@ -127,6 +127,11 @@ repositório principal não sabe que o backup existe.
      do dia não puder ser gravada (duas rodadas no mesmo minuto, ou uma regra do repositório
      recusou), a rodada falha com a mensagem. Se o robô não conseguir ler o que o backup já
      guarda, a rodada para antes de gravar qualquer coisa, para não tomar o vazio por base;
+   - a validade de um marco ou do ponteiro é lida na mensagem do **commit** apontado (não na de
+     uma tag anotada criada por cima), e exige inventário de verdade (ao menos a linha da `main`
+     da origem). **Nomes reservados:** se a origem tiver tags `backup/`, `recusadas/`, `objetos/`
+     ou uma branch `backup-marcos` (nunca existem no SCL), a rodada para antes de gravar e diz
+     para renomear, porque no inventário elas se confundiriam com as refs do próprio backup;
    - **batimento (opcional):** ao terminar bem, chama a URL guardada no segredo `BATIMENTO_URL`,
      de um serviço gratuito de monitoramento do tipo "me avise se eu ficar sem sinal" (por
      exemplo, healthchecks.io, com período de 3 dias e tolerância de 1 dia). Se o robô for
@@ -140,7 +145,7 @@ repositório principal não sabe que o backup existe.
    robô: ele nunca apaga nem reescreve e avisa quando o backup perde algo. A trava cobre a
    mais só o erro manual de quem tem acesso à conta de backup, que é só o Diego.
 
-Testado em 3/10 rodando o script exato do robô contra repositórios locais, sessenta e cinco rodadas:
+Testado em 3/10 rodando o script exato do robô contra repositórios locais, setenta e uma rodadas:
 origem só com `main`; novas branches e tags; origem avança; origem apaga uma branch (o backup
 a mantém e avisa uma vez); nada muda (sem aviso repetido); origem reescreve uma branch e uma
 tag anotada (o backup mantém as versões antigas em `espelho/`, guarda as novas em
@@ -173,8 +178,11 @@ reescrita, mesmo existindo uma `release/1x2`); `backup-marcos` movida para um co
 cita um marco futuro inexistente é dada como sem âncora (não vira base, o commit fica como pai, o
 ponteiro avança, aviso uma vez); depois de uma reescrita na origem, mover à mão `espelho/` da
 branch e da tag para a versão nova da origem é avisado como alteração em toda rodada (não passa
-por retomada), e apagar as refs alteradas as regrava da origem; e as tags do backup não voltam
-para a origem nem se duplicam com o prefixo. O passo de batimento não entrou na simulação (é uma chamada HTTP
+por retomada), e apagar as refs alteradas as regrava da origem; uma tag `backup/` anotada criada à
+mão com o texto de marco por cima de um commit comum é dada como inválida e não vira base nem quando
+é a mais nova pelo nome e o ponteiro foi apagado; uma tag `recusadas/exemplo` na origem para a
+rodada antes de gravar, e a rodada seguinte, com a tag removida, fica verde; e as tags do backup
+não voltam para a origem nem se duplicam com o prefixo. O passo de batimento não entrou na simulação (é uma chamada HTTP
 simples a um serviço externo, só com a URL configurada); foi conferido na sintaxe e no caso sem
 URL.
 
