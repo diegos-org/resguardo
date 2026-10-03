@@ -94,7 +94,7 @@ Aplicar [portaria, chaves e limpeza](PORTARIA-CHAVES-LIMPEZA.md) para 103/399: f
 
 Encaminhamento de documentos à portaria: somente 403, com reserva, pessoas, datas e destinatário conferidos. Pedidos inicial, D-7 a D-5 e véspera apenas quando faltarem, sem cobranças horárias ou três mensagens comprimidas em reserva de última hora. Entrega confirmada encerra encaminhamento; não prova cadastro ou aprovação de entrada. Alterações posteriores exigem tratar a mudança, sem reenviar fotos desnecessárias.
 
-**Decisão pendente — 303 Rita:** guias locais de 6/9 e consolidação Claude de 23/9 registram solicitação de documentos no 303, mas encaminhamento exclusivamente do 403. O repositório detalha apenas o 403. Finalidade/destino atual da coleta do 303 foi perguntada a Diego; não ampliar coleta nem inventar destino com esta consolidação. Não confundir 303 Rita com unidade física 303 do Orgânico/399.
+**Decisão atual de Diego — documentos somente 403, até segunda ordem:** substitui a solicitação de documentos do 303 Rita registrada nos guias locais de setembro. O 303 não tem exigência nem decisão pendente de coleta neste guia. Diego relata pouca ou nenhuma cobrança pela portaria do 403; esse relato não dispensa a regra do 403 nem autoriza criar cobranças extras. Manter o fluxo acima, sem repetição desnecessária. Não confundir 303 Rita com unidade física 303 do Orgânico/399.
 
 ## Comparação e origem
 
@@ -106,7 +106,7 @@ Encaminhamento de documentos à portaria: somente 403, com reserva, pessoas, dat
 | Limpeza já realizada | Guia/protocolo locais de 1/10 e PR74 mesclado | Fontes concordam; manter vedação de faxina repetida sem uso posterior |
 | Porteiros e chaves | Claude tem expedientes de 23/9; repo PR74 confirma atualização dos modelos em 1/10; local ainda registra etapa pendente | Usar repo para estado verificado e alternativa condicionada; preservar contatos em cadastro restrito |
 | Dados e horários | Locais esclarecem D-2 às 10h; produto descreve padrões; decisão de 2/10 exige acordo e fonte | Não confundir envio com entrada; hóspedes/telefone operacional; registro manual na candidata PR81; sem implantação comprovada |
-| Documentos | Local distingue coleta 403/303 e encaminhamento 403; repo detalha só 403 | Manter encaminhamento 403; esclarecer coleta 303 antes de consolidar como regra ativa |
+| Documentos | Locais antigos pediam 403/303; repo detalha 403; Diego esclareceu nesta revisão: somente 403 até segunda ordem | Regra 403 mantida; coleta 303 retirada como exigência e pendência, sem cobranças extras |
 | Capacidade atual | Guia Diego/roadmap mais novos que inventário local de setembro | Referenciar produto; não transportar status antigo de integração para o presente nem equiparar e-mail a WhatsApp |
 
 Fontes locais consultadas, preservadas sem alteração:
