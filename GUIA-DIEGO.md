@@ -76,8 +76,9 @@ marcado para envio. Quatro lugares novos:
    **nunca reabre** um bloqueio que ele mesmo não fechou, e só reabre o seu se a leitura
    feita na hora ainda mostrar esse bloqueio lá. Se um dia o quarto Beds24 vinculado a um
    imóvel for trocado, o SCL avisa e não mexe no quarto antigo: o que ele tinha fechado lá
-   precisa ser reaberto à mão no Beds24. Se, ao bloquear ou remover, aparecer "há um envio
-   de calendário em andamento", é só esperar um minuto e tentar de novo.
+   precisa ser reaberto à mão no Beds24. Se, ao bloquear, remover um bloqueio ou mudar o
+   vínculo Beds24 de um imóvel, aparecer "há um envio de calendário em andamento", é só
+   esperar um minuto e tentar de novo.
 4. **Calendário → Conferir calendário e preços:** a prévia agora mostra, por noite, o preço
    de referência, o preço que seria enviado, o preço final esperado depois da última hora,
    o mínimo pela regra e o mínimo ajustado às **sobras** (se sobram 3 noites até a próxima

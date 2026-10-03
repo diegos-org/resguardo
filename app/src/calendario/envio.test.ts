@@ -174,8 +174,11 @@ describe("envio ao Beds24 (M3.7)", () => {
     expect(await noites()).toHaveLength(0);
     expect(await enviados()).toHaveLength(0);
     const s = await enviar("simulacao", { leitor: leitorFalho });
-    expect(s).toMatchObject({ ok: true, situacao: "simulacao", imoveis: [{ resumo: { enviar: 10 } }] });
+    // O plano aparece pela última leitura guardada, mas o imóvel conta como fora do envio, como no envio real.
+    expect(s).toMatchObject({ ok: true, situacao: "simulacao", imoveis: [{ resumo: { enviar: 10 }, falha: expect.stringContaining("Leitura do Beds24 falhou") }] });
     expect(s.avisos.some(a => a.startsWith("Leitura do Beds24 falhou"))).toBe(true);
+    expect(s.mensagem).toContain("0 noite(s) seriam enviadas em 0 imóvel(is)");
+    expect(s.mensagem).toContain("1 imóvel(is) ficariam de fora");
   });
 
   it("leitura inicial incompleta (noite do horizonte sem retorno ou dados inválidos): o imóvel fica de fora do envio, com aviso", async () => {
@@ -452,6 +455,27 @@ describe("envio ao Beds24 (M3.7)", () => {
     expect(diaFalso("2026-10-05")).toMatchObject({ override: "noCheckIn", numAvail: 1 });
     expect((await enviados()).find(e => e.data === "2026-10-05")).toMatchObject({ bloqueio: "noCheckIn", bloqueioAnterior: null, confirmado: true });
     expect((await enviar()).imoveis[0].enviadas).toBe(0);
+  });
+
+  it("vínculo Beds24 trocado entre o plano e a escrita: nada é escrito para o imóvel; restaurado, o próximo envio segue", async () => {
+    let transacoes = 0;
+    const dbCorrida = new Proxy(db, {
+      get(alvo, prop, receptor) {
+        if (prop === "transaction") {
+          const original = alvo.transaction.bind(alvo) as (...a: unknown[]) => Promise<unknown>;
+          return async (...a: unknown[]) => { const r = await original(...a); if (++transacoes === 1) await alvo.update(idsExternos).set({ detalhe: "21" }).where(eq(idsExternos.imovelId, im)); return r; };
+        }
+        const v = Reflect.get(alvo, prop, receptor);
+        return typeof v === "function" ? v.bind(alvo) : v;
+      },
+    }) as Db;
+    const r = await enviarCalendarioBeds24(dbCorrida, org, beds, beds, { modo: "envio", agora: proximoAgora(), autorId: null });
+    expect(r).toMatchObject({ ok: false, situacao: "erro", imoveis: [{ enviadas: 0, confirmadas: 0, falha: expect.stringContaining("Vínculo Beds24 do imóvel alterado") }] });
+    expect(beds.escritas).toHaveLength(0);
+    expect((await noites()).every(n => n.resultado === "falhou")).toBe(true);
+    await db.update(idsExternos).set({ detalhe: "20" }).where(eq(idsExternos.imovelId, im));
+    expect((await enviar()).situacao).toBe("ok");
+    expect(beds.escritas[0][0].roomId).toBe("20");
   });
 
   it("bloqueio removido entre o plano e a escrita: nada é escrito para o imóvel, sem posse; o próximo envio replaneja", async () => {
