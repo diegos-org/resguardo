@@ -121,11 +121,10 @@ jobs:
             marcos_apagados=1
           fi
 
-          # Inventário desta rodada: qual é o marco, a origem (commit e nome) e o que o backup guarda.
+          # Inventário desta rodada, parte 1: qual é o marco e a origem (commit e nome de cada ref).
           echo "marco refs/tags/${marco}" > inventario.txt
           git for-each-ref --format='origem %(objectname) %(refname)' refs/heads refs/tags >> inventario.txt
           awk '$1 == "origem" {print $3}' inventario.txt | sort > atual.refs
-          { cat guardado.refs atual.refs; echo "refs/tags/${marco}"; echo refs/heads/backup-marcos; } | sort -u | sed 's/^/backup /' >> inventario.txt
 
           # Comparação com o inventário do retrato anterior.
           sumiram_da_origem=""; sumiram_do_backup=""; reescritas=""
@@ -152,6 +151,29 @@ jobs:
             done < <(awk '$1 == "origem" && NF == 3' anterior.txt)
           fi
 
+          # Destinos das refs reescritas (gravados nesta rodada, antes da base avançar).
+          recusadas_destinos=""
+          if [ -n "${reescritas}" ]; then
+            recusadas_destinos=$(printf '%s' "${reescritas}" | sed '/^$/d' | sed "s#^refs/#refs/tags/recusadas/${marco#backup/}/#")
+          fi
+          # Cópias recusadas/ que sumiram deste backup: regravar a partir da origem, se ela ainda tiver a ref.
+          recriadas=()
+          if [ -n "${sumiram_do_backup}" ]; then
+            while read -r dest; do
+              case "${dest}" in refs/tags/recusadas/*/heads/*|refs/tags/recusadas/*/tags/*) ;; *) continue ;; esac
+              src="refs/${dest#refs/tags/recusadas/*/}"
+              if git rev-parse -q --verify "${src}" >/dev/null; then recriadas+=("${src}:${dest}"); fi
+            done <<< "${sumiram_do_backup}"
+          fi
+          # Inventário, parte 2: o que este backup guarda depois desta rodada (inclusive o que ela cria).
+          {
+            cat guardado.refs atual.refs
+            echo "refs/tags/${marco}"
+            echo refs/heads/backup-marcos
+            if [ -n "${recusadas_destinos}" ]; then echo "${recusadas_destinos}"; fi
+            for spec in "${recriadas[@]}"; do echo "${spec#*:}"; done
+          } | sort -u | sed 's/^/backup /' >> inventario.txt
+
           # Retrato da rodada: árvore da main; pais = retrato anterior, main e todas as outras pontas
           # (commits); mensagem = inventário. Tudo o que o inventário cita fica alcançável por aqui.
           main=$(git rev-parse "refs/heads/main^{commit}")
@@ -176,6 +198,9 @@ jobs:
             done <<< "${reescritas}"
             no_destino push -q "${destino}" "${specs[@]}"
           fi
+          if [ "${#recriadas[@]}" -gt 0 ]; then
+            no_destino push -q "${destino}" "${recriadas[@]}"
+          fi
 
           # 2) Espelho, sem --force e sem --prune: só avança. O que a origem apagou continua aqui; o que
           #    ela reescreveu é recusado (linha começando com "!") e fica como estava.
@@ -190,6 +215,15 @@ jobs:
             cat push.err
             echo "::error::O push do espelho para este repositório falhou (código ${codigo})."
             exit "${codigo}"
+          fi
+          # Só se aceita recusa por divergência da origem (non-fast-forward, fetch first, already exists).
+          # Qualquer outra (regra do repositório, hook, falha do servidor) para a rodada antes de avançar a base.
+          inesperadas=$(awk -F'\t' '$1 == "!" && $3 !~ /^\[rejected\] \((non-fast-forward|fetch first|already exists)\)/' push.log || true)
+          if [ -n "${inesperadas}" ]; then
+            cat push.err || true
+            echo "::error::Recusas inesperadas no push do espelho (não são divergência da origem). A base de comparação não mudou; o espelho pode estar incompleto:"
+            echo "${inesperadas}"
+            exit 1
           fi
           if grep -q '^!' push.log; then
             echo "::warning::Refs recusadas (a origem diverge do que está guardado): este backup manteve a versão anterior em espelho/...; a versão atual da origem está alcançável pela tag ${marco}."

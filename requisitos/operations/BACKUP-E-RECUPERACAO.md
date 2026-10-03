@@ -61,7 +61,11 @@ repositório principal não sabe que o backup existe.
      `recusadas/<data>/...`, uma vez por reescrita, para o objeto exato (inclusive uma tag
      anotada) continuar alcançável; a versão antiga continua em `espelho/...`. Essa gravação
      vem antes da tag do dia e do ponteiro (que entram juntos, ou nenhum): a base de
-     comparação nunca avança sem que o que ela cita esteja guardado;
+     comparação nunca avança sem que o que ela cita esteja guardado. Se uma dessas cópias
+     for apagada do backup, a rodada seguinte avisa e a regrava a partir da origem;
+   - no push do espelho, só a recusa por divergência da origem é aceita (e vira aviso
+     amarelo); qualquer outra recusa (regra do repositório, falha do servidor) para a rodada
+     antes de avançar a base, porque o espelho pode ter ficado incompleto;
    - compara com o inventário do retrato anterior e **falha, o que gera e-mail para a conta
      de backup**, quando algo sumiu da origem, foi reescrito na origem ou sumiu do próprio
      backup (inclusive uma tag `backup/`, mesmo a mais nova, e a branch `backup-marcos`; se
@@ -77,7 +81,7 @@ repositório principal não sabe que o backup existe.
    robô: ele nunca apaga nem reescreve e avisa quando o backup perde algo. A trava cobre a
    mais só o erro manual de quem tem acesso à conta de backup, que é só o Diego.
 
-Testado em 3/10 rodando o script exato do robô contra repositórios locais, dezessete rodadas:
+Testado em 3/10 rodando o script exato do robô contra repositórios locais, vinte rodadas:
 origem só com `main`; novas branches e tags; origem avança; origem apaga uma branch (o backup
 a mantém e avisa uma vez); nada muda (sem aviso repetido); origem reescreve uma branch e uma
 tag anotada (o backup mantém as versões antigas em `espelho/`, guarda as novas em
@@ -86,8 +90,10 @@ o aviso amarelo); alguém apaga uma branch no backup (avisa uma vez); alguém ap
 `backup/` antiga (avisa uma vez); alguém apaga a tag `backup/` mais nova (avisa uma vez); nada
 muda; alguém apaga a branch `backup-marcos` (avisa e recria); nada muda; rodada repetida no
 mesmo minuto (falha com a mensagem); alguém apaga todas as tags `backup/` e o ponteiro
-(avisa); nada muda; backup inacessível (a rodada para antes de gravar). Também se conferiu que
-as tags do backup não voltam para a origem nem se duplicam com o prefixo.
+(avisa); nada muda; uma regra do destino recusa uma branch (a rodada falha e a base não
+avança); backup inacessível (a rodada para antes de gravar). Também: a cópia `recusadas/` da
+tag anotada apagada do backup é avisada e regravada; e as tags do backup não voltam para a
+origem nem se duplicam com o prefixo.
 
 ### Por que assim
 
