@@ -97,7 +97,9 @@ marcado para envio. Quatro lugares novos:
    a noite ao que ela tinha antes (se o Beds24 já restringia a entrada ou a saída naquela
    data, essa restrição volta). Bloqueios que vieram do Beds24 aparecem, mas mudam lá. O SCL
    **nunca reabre** um bloqueio que ele mesmo não fechou, e só reabre o seu se a leitura
-   feita na hora ainda mostrar esse bloqueio lá.
+   feita na hora ainda mostrar esse bloqueio lá. Se um dia o quarto Beds24 vinculado a um
+   imóvel for trocado, o SCL avisa e não mexe no quarto antigo: o que ele tinha fechado lá
+   precisa ser reaberto à mão no Beds24.
 4. **Calendário → Conferir calendário e preços:** a prévia agora mostra, por noite, o preço
    de referência, o preço que seria enviado, o preço final esperado depois da última hora,
    o mínimo pela regra e o mínimo ajustado às **sobras** (se sobram 3 noites até a próxima
