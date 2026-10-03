@@ -96,7 +96,8 @@ jobs:
           # sem essa visão a comparação ficaria cega e a rodada seguinte tomaria o vazio por base.
           no_destino fetch -q --no-tags "${destino}" \
             '+refs/heads/espelho/*:refs/guardado/heads/*' '+refs/tags/espelho/*:refs/guardado/tags/*' \
-            '+refs/tags/backup/*:refs/guardado/backup/*' '+refs/tags/recusadas/*:refs/guardado/recusadas/*'
+            '+refs/tags/backup/*:refs/guardado/backup/*' '+refs/tags/recusadas/*:refs/guardado/recusadas/*' \
+            '+refs/tags/objetos/*:refs/guardado/objetos/*'
           ponteiro=$(no_destino ls-remote "${destino}" refs/heads/backup-marcos | awk '{print $1}')
           if [ -n "${ponteiro}" ]; then
             no_destino fetch -q --no-tags "${destino}" '+refs/heads/backup-marcos:refs/guardado/marcos'
@@ -105,6 +106,7 @@ jobs:
             git for-each-ref --format='%(refname)' refs/guardado/heads refs/guardado/tags | sed 's#^refs/guardado/#refs/#'
             git for-each-ref --format='%(refname)' refs/guardado/backup | sed 's#^refs/guardado/backup/#refs/tags/backup/#'
             git for-each-ref --format='%(refname)' refs/guardado/recusadas | sed 's#^refs/guardado/recusadas/#refs/tags/recusadas/#'
+            git for-each-ref --format='%(refname)' refs/guardado/objetos | sed 's#^refs/guardado/objetos/#refs/tags/objetos/#'
             if [ -n "${ponteiro}" ]; then echo refs/heads/backup-marcos; fi
           } | sort > guardado.refs
           # Marcos datados existentes (só os do formato backup/AAAA-MM-DD-HHMM).
@@ -120,7 +122,7 @@ jobs:
           # O ponteiro só vale se apontar para um retrato (commit com inventário que nomeia um marco) e, se a tag
           # desse marco ainda existir, ela precisa apontar para o mesmo commit. Tag apagada não é adulteração
           # (já é cobrada como sumiço); commit sem inventário ou tag em outro commit é.
-          ponteiro_adulterado=0; ponteiro_commit=""
+          ponteiro_adulterado=0; ponteiro_recuado=0; ponteiro_commit=""
           if [ -n "${ponteiro}" ]; then
             ponteiro_commit=$(git rev-parse 'refs/guardado/marcos^{commit}')
             m=$(git for-each-ref --format='%(contents)' refs/guardado/marcos | awk '$1 == "marco" && NF == 2 {print $2}' | head -n1)
@@ -132,13 +134,17 @@ jobs:
                 # A TAG do marco é que foi movida; o ponteiro guarda o retrato legítimo e continua sendo a base.
                 marcos_invalidos=$(printf '%s\n%s' "${marcos_invalidos}" "${m}" | sed '/^$/d' | sort -u)
               fi
+              # Ponteiro RECUADO: aponta para um retrato íntegro, mas há marco íntegro mais novo. A base passa
+              # a ser o mais novo e o ponteiro é avançado de novo (fast-forward) pela rodada.
+              mais_novo=$(tail -n1 marcos-validos.refs 2>/dev/null || true)
+              if [ -n "${mais_novo}" ] && [ "${m}" \< "${mais_novo}" ]; then ponteiro_recuado=1; fi
             fi
           fi
 
           # Rodada anterior = retrato apontado por backup-marcos, se íntegro. Senão, o marco íntegro mais novo
           # (e avisa); sem marco algum mas com conteúdo espelhado, todos os marcos foram apagados.
           anterior=""; ponteiro_apagado=0; marcos_apagados=0
-          if [ -n "${ponteiro}" ] && [ "${ponteiro_adulterado}" -eq 0 ]; then
+          if [ -n "${ponteiro}" ] && [ "${ponteiro_adulterado}" -eq 0 ] && [ "${ponteiro_recuado}" -eq 0 ]; then
             anterior=refs/guardado/marcos
           elif [ -s marcos-validos.refs ]; then
             anterior=$(tail -n1 marcos-validos.refs | sed 's#^refs/tags/backup/#refs/guardado/backup/#')
@@ -298,12 +304,26 @@ jobs:
             done < espelho-resalvar.refs
           fi
 
+          # Objetos de tag (anotadas, de blob ou de árvore) da origem: cada um ganha uma ref durável
+          # objetos/<sha>, uma vez, para o objeto exato nunca depender de espelho/ ou recusadas/.
+          objetos_novos=(); objetos_alterados=""
+          while read -r sha ref; do
+            [ -z "${sha}" ] && continue
+            [ "$(git cat-file -t "${sha}")" = "tag" ] || continue
+            if ! git rev-parse -q --verify "refs/guardado/objetos/${sha}" >/dev/null 2>&1; then objetos_novos+=("${sha}:refs/tags/objetos/${sha}"); fi
+          done < <(git for-each-ref --format='%(objectname) %(refname)' refs/tags)
+          while read -r sha ref; do
+            [ -z "${ref}" ] && continue
+            if [ "${sha}" != "${ref#refs/guardado/objetos/}" ]; then objetos_alterados="${objetos_alterados}refs/tags/objetos/${ref#refs/guardado/objetos/} (aponta para ${sha})"$'\n'; fi
+          done < <(git for-each-ref --format='%(objectname) %(refname)' refs/guardado/objetos)
+
           # Inventário, parte 2: o que este backup guarda depois desta rodada. As cópias recusadas/ vão com o
           # objeto esperado (o já inventariado, ou o desta rodada); o espelho, com o objeto esperado; o resto, pelo nome.
           {
             cat guardado.refs atual.refs
             echo "refs/tags/${marco}"
             echo refs/heads/backup-marcos
+            for spec in "${objetos_novos[@]}"; do echo "${spec#*:}"; done
           } | grep -v '^refs/tags/recusadas/' | sort -u | sed 's/^/backup /' >> inventario.txt
           sort -u espelho.inv | sed 's/^/espelho /' >> inventario.txt
           {
@@ -350,6 +370,9 @@ jobs:
           fi
           if [ "${#recriadas[@]}" -gt 0 ]; then
             no_destino push -q "${destino}" "${recriadas[@]}"
+          fi
+          if [ "${#objetos_novos[@]}" -gt 0 ]; then
+            no_destino push -q "${destino}" "${objetos_novos[@]}"
           fi
 
           # 2) Espelho, sem --force e sem --prune: só avança. O que a origem apagou continua aqui; o que
@@ -445,6 +468,15 @@ jobs:
           fi
           if [ "${ponteiro_adulterado}" -eq 1 ]; then
             echo "::error::A branch backup-marcos NÃO aponta para um retrato íntegro (foi movida à força). Esta rodada usou o marco íntegro mais novo como base, guardou o commit apontado como pai do retrato e não mexeu no ponteiro. Apague a branch backup-marcos para o robô recriá-la na rodada seguinte; até lá este aviso se repete."
+            falhou=1
+          fi
+          if [ -n "${objetos_alterados}" ]; then
+            echo "::error::Refs objetos/<sha> ALTERADAS neste backup (não apontam para o objeto do próprio nome). Apague-as; o robô as recria a partir da origem quando ela ainda tiver o objeto:"
+            printf '%s' "${objetos_alterados}"
+            falhou=1
+          fi
+          if [ "${ponteiro_recuado}" -eq 1 ]; then
+            echo "::error::A branch backup-marcos havia RECUADO para um marco antigo (foi movida à força). Esta rodada usou o marco íntegro mais novo como base e avançou o ponteiro de novo."
             falhou=1
           fi
           if [ "${ponteiro_apagado}" -eq 1 ]; then

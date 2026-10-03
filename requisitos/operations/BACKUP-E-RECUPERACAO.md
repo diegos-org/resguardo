@@ -69,6 +69,12 @@ repositório principal não sabe que o backup existe.
      rodada até ela ser apagada, e o objeto exato é salvo de novo sob a data da rodada quando
      a origem ainda o tem. Uma ref apagada na origem e recriada depois com outro conteúdo
      também conta como reescrita;
+   - cada **objeto de tag** da origem (tag anotada, ou tag que aponta para um arquivo ou uma
+     pasta) ganha ainda uma ref durável `objetos/<código do objeto>`, gravada uma vez, para o
+     objeto exato continuar guardado mesmo que a tag seja reescrita na origem e a cópia
+     `espelho/` seja apagada no backup na mesma rodada. Uma ref `objetos/` alterada no backup
+     (o nome deixa de bater com o objeto) é avisada a cada rodada até ser apagada; aí é
+     regravada a partir da origem, se ela ainda tiver o objeto;
    - o inventário também anota o objeto esperado de cada ref `espelho/...`. Se alguém alterar
      uma dessas refs no backup (mesmo nome, outro objeto, sem a origem ter mudado), a rodada
      avisa a cada vez até a ref ser apagada (aí é regravada a partir da origem) e salva o
@@ -77,8 +83,10 @@ repositório principal não sabe que o backup existe.
      de uma rodada que avançou o espelho e falhou antes de gravar o marco. O mesmo vale para
      a branch `backup-marcos` movida à força (a rodada usa o marco íntegro mais novo como
      base, guarda o commit apontado como pai do retrato para nada se perder, não mexe no
-     ponteiro e avisa até ele ser apagado) e para uma tag `backup/` movida para um commit que
-     não é o seu retrato (a tag é que é dada como inválida; o ponteiro continua sendo a base);
+     ponteiro e avisa até ele ser apagado), para `backup-marcos` **recuada** a um marco antigo
+     íntegro (a base passa a ser o marco íntegro mais novo, o ponteiro é avançado de novo e o
+     aviso sai uma vez) e para uma tag `backup/` movida para um commit que não é o seu
+     retrato (a tag é que é dada como inválida; o ponteiro continua sendo a base);
    - no push do espelho, só a recusa por divergência da origem é aceita (e vira aviso
      amarelo), e só para refs que a base já conhecia, com espelho íntegro, ou que foram
      tratadas como reescritas na rodada; qualquer outra recusa (regra do repositório, falha
@@ -99,7 +107,7 @@ repositório principal não sabe que o backup existe.
    robô: ele nunca apaga nem reescreve e avisa quando o backup perde algo. A trava cobre a
    mais só o erro manual de quem tem acesso à conta de backup, que é só o Diego.
 
-Testado em 3/10 rodando o script exato do robô contra repositórios locais, quarenta e duas rodadas:
+Testado em 3/10 rodando o script exato do robô contra repositórios locais, quarenta e sete rodadas:
 origem só com `main`; novas branches e tags; origem avança; origem apaga uma branch (o backup
 a mantém e avisa uma vez); nada muda (sem aviso repetido); origem reescreve uma branch e uma
 tag anotada (o backup mantém as versões antigas em `espelho/`, guarda as novas em
@@ -119,8 +127,11 @@ nada, e recriada quando apagada; refs `espelho/` alteradas no backup (tag e bran
 avisadas em toda rodada e regravadas da origem quando apagadas; espelho que avançou numa
 rodada que falhou antes do marco é retomado sem aviso; uma tag `backup/` movida para outro
 commit é avisada, inclusive a do marco mais novo, sem que o ponteiro perca a base e com o
-retrato legítimo preservado como pai; e as tags do backup não voltam para a origem nem se
-duplicam com o prefixo.
+retrato legítimo preservado como pai; `backup-marcos` recuada à força para um marco antigo é
+avisada uma vez, a base passa a ser o marco mais novo e o ponteiro avança de novo; uma tag
+anotada reescrita na origem com a cópia `espelho/` apagada do backup na mesma rodada continua
+com o objeto antigo guardado em `objetos/`; uma ref `objetos/` alterada no backup é avisada; e
+as tags do backup não voltam para a origem nem se duplicam com o prefixo.
 
 ### Por que assim
 
@@ -190,7 +201,8 @@ aqui com a data.
   backup segue íntegro.
 - **Quando a mensagem falar em ref ALTERADA ou ponteiro movido** (só acontece se alguém com
   acesso à conta de backup mexer à mão): a correção é apagar aquela ref no repositório de
-  backup; na rodada seguinte o robô a regrava a partir da origem (ou recria o ponteiro). O
+  backup; na rodada seguinte o robô a regrava a partir da origem (ou recria o ponteiro). Se o
+  ponteiro só tiver **recuado** para um marco antigo, o robô já o avança de novo sozinho. O
   robô nunca força nada por conta própria.
 - **Anual (antes da validade do token):** gerar um token novo só de leitura na conta principal
   e trocar o segredo `ORIGEM_TOKEN` no repositório de backup. A data de validade fica anotada
