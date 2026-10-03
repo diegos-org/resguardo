@@ -11,6 +11,8 @@ export type Mensagem = {
   para: string;
   assunto: string;
   texto: string;
+  /** Conteúdo operacional privado: nunca imprimir no terminal de desenvolvimento. */
+  conteudoRestrito?: boolean;
   /** Chave de idempotência: o provedor ignora um segundo envio com a mesma chave (ex.: nova tentativa). */
   chave?: string;
   /** Cópias (ex.: representantes que recebem os relatórios do proprietário). */
@@ -36,7 +38,7 @@ export class CorreioMemoria implements Correio {
   async enviar(m: Mensagem) {
     this.enviadas.push(m);
     // Só em `next dev`: mostra o e-mail no terminal para quem está testando no computador.
-    if (this.mostrarNoConsole) console.info(`[e-mail de desenvolvimento] para ${m.para}: ${m.assunto}\n${m.texto}`);
+    if (this.mostrarNoConsole) console.info(m.conteudoRestrito ? "[e-mail de desenvolvimento] conteúdo restrito omitido" : `[e-mail de desenvolvimento] para ${m.para}: ${m.assunto}\n${m.texto}`);
   }
 }
 

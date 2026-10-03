@@ -517,19 +517,30 @@ Não precisa preencher descrições dos apartamentos para importar. A melhoria n
   - quando você confirma uma limpeza com ela, ela recebe um **e-mail** avisando (o WhatsApp entra
     quando o M10 estiver ligado);
   - **"Tirar acesso"** (ou arquivar a profissional) corta a entrada na hora.
-- M6.3: **agenda diária da equipe** (Painel → **Agenda**). Todo dia às **20h** quem você
-  escolher recebe por e-mail os **próximos 5 dias**, com **Rio e Búzios separados** (cada
-  seção é a cidade do cadastro do imóvel; nada é somado). O texto segue o **modelo que você
-  definiu em 23/09** (depois da confusão da Niedja):
-  - **Rio (vários apartamentos):** um dia por linha, **só com as limpezas** (limpeza = dia de
-    checkout). Nos dias vazios aparece "nenhuma limpeza". Quando alguém entra no mesmo dia, sai
-    o horário-limite ("pronto até 15h, entra Ana"). As entradas vão num parágrafo separado, só
-    para referência;
-  - **Búzios (casa única):** uma linha por reserva, com a entrada, a saída e o número de
-    hóspedes, e "limpeza entre a saída e a entrada" quando uma sai e outra entra no mesmo dia;
-  - o formato de cada cidade e os horários de entrada e saída (15h e 11h) **podem ser mudados
-    na tela**. Sem escolha, casa única vai por reserva e cidade com vários apartamentos vai
-    por limpezas. A tela mostra **o mesmo texto que a equipe vai receber**;
+- M6.3 e M6.7: **agenda diária da equipe** (Painel → **Agenda**). Todo dia às **20h** quem você
+  escolher recebe por e-mail a agenda, com **Rio e Búzios separados** (cada seção é a cidade do
+  cadastro do imóvel; nada é somado). O texto segue o **modelo que você definiu em 23/09** e o
+  **pedido de 2/10** (Rio 5 dias, Búzios 30 dias):
+  - **Rio (vários apartamentos), 5 dias:** um dia por linha, **só com as limpezas** (limpeza =
+    dia de checkout). Nos dias vazios aparece "nenhuma limpeza". Limpeza já marcada como
+    realizada, sem uso do imóvel depois, não volta para a lista. Quando alguém entra no mesmo
+    dia, sai o horário-limite ("pronto até 15h, entra Ana, 2 hóspedes"). As **entradas, saídas e
+    chaves** vão num bloco separado, com primeiro nome, nº de hóspedes, horários e telefone
+    operacional do hóspede (só quando está no cadastro da reserva; nunca tirado da conversa);
+  - **Búzios (casa única), 30 dias:** todas as reservas do período, uma por linha, com entrada,
+    saída, horários, nº de hóspedes e telefone, e "troca no mesmo dia: conferir limpeza" quando
+    uma sai e outra entra no mesmo dia;
+  - **horários combinados com o hóspede (M6.7):** na ficha da reserva, a equipe registra um
+    **pedido** de horário de entrada ou saída (canal e referência da conversa) e, depois do
+    aceite do hóspede, o **acordo confirmado**. A agenda mostra "13:30 (confirmado com
+    hóspede)" em vez do padrão; sem acordo, vale o horário do cadastro do imóvel ou o padrão da
+    agenda. Mudou data ou imóvel, o acordo precisa ser refeito. Nada é lido das conversas
+    automaticamente nem enviado ao hóspede;
+  - **Rio e Búzios têm formato fixo** pela sua decisão de 2/10 (a tela mostra os dois travados);
+    outra cidade que venha a existir pode ter o formato escolhido na tela (sem escolha, casa
+    única vai por reserva e vários apartamentos por limpezas). Os horários padrão de entrada e
+    saída (15h e 11h) continuam editáveis e valem só quando o imóvel não tem horário no
+    cadastro. A tela mostra **o mesmo texto que a equipe vai receber**;
   - vêm também as **reservas novas desde a última agenda**, mesmo as de datas mais distantes;
   - termina com a frase padrão "Essa é a agenda atual e ainda pode mudar…". A agenda **só
     informa**: não confirma limpeza nem preparação;

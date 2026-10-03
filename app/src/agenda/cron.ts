@@ -24,8 +24,9 @@ export function agendaDeTodas(db: Db, correio: Correio | null, agora: Date): Pro
           const r = await enviarAgenda(db, orgs[i].id, correio, agora);
           partes[i] = resumoDoEnvio(r);
           if (r.falhas.length || r.aviso?.startsWith("sem provedor")) erro = true;
-        } catch (e) {
-          partes[i] = `erro numa organização: ${e instanceof Error ? e.message : String(e)}`;
+        } catch {
+          // Falha de banco/adaptador pode conter a carga privada da agenda.
+          partes[i] = "erro ao montar ou enviar a agenda de uma organização";
           erro = true;
         }
       }
