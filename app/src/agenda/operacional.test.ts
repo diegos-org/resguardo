@@ -90,6 +90,24 @@ it("uso posterior ou bloqueio impedem afirmar preparação confirmada", async ()
   expect(await texto()).toContain("preparação sem confirmação suficiente");
 });
 
+it("estadia cancelada depois de começada e bloqueio removido depois de começado continuam contando como uso", async () => {
+  await db.insert(limpezas).values({ organizacaoId: org, imovelId: rio, data: "2026-09-28", estado: "realizada", realizadaEm: new Date("2026-09-28T16:00:00Z") });
+  await reserva();
+  // Cancelada depois de ter começado (no-show registrado tarde, saída antecipada…): pode ter usado o imóvel.
+  const [c] = await db.insert(reservas).values({ organizacaoId: org, imovelId: rio, codigo: randomUUID(), origem: "airbnb", checkin: "2026-09-29", checkout: "2026-10-01",
+    hospedeNome: "Cancelada Depois", hospedes: 2, hospedeTelefone: "", estado: "cancelada", canceladaEm: new Date("2026-09-30T15:00:00Z") }).returning();
+  expect(await texto()).toContain("preparação sem confirmação suficiente");
+  // Cancelada antes do dia da entrada: ninguém usou.
+  await db.update(reservas).set({ canceladaEm: new Date("2026-09-25T15:00:00Z") }).where(eq(reservas.id, c.id));
+  expect(await texto()).toContain("sem uso posterior registrado — conferir chaves");
+  // Bloqueio já removido da tabela, mas removido depois de começado: o histórico guarda o período.
+  await db.insert(auditoria).values({ organizacaoId: org, entidade: "imovel", entidadeId: rio, acao: "bloqueio.remover", mudancas: { bloqueio: ["2026-09-29 a 2026-10-01 (uso próprio)", null] }, criadoEm: new Date("2026-09-30T12:00:00Z") });
+  expect(await texto()).toContain("preparação sem confirmação suficiente");
+  // Removido antes de começar: plano desfeito, não conta como uso.
+  await db.update(auditoria).set({ criadoEm: new Date("2026-09-20T12:00:00Z") }).where(eq(auditoria.acao, "bloqueio.remover"));
+  expect(await texto()).toContain("sem uso posterior registrado — conferir chaves");
+});
+
 it("pedido não altera padrão do imóvel; aceite explícito muda só o tipo confirmado e limite da troca", async () => {
   await reserva(rio, "2026-09-28", "2026-10-02", "Saindo");
   const r = await reserva();

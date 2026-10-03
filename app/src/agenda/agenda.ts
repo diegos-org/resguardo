@@ -12,11 +12,12 @@
  * painel. Envio pelo mesmo adaptador de e-mail do login (M1.3); em teste, nada sai.
  */
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, gt, gte, inArray, lt, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, lt, lte, ne, or, sql } from "drizzle-orm";
 import { gravarConfig, lerConfig } from "@/configuracoes/armazem";
 import { appSettings, auditoria, bloqueios, imoveis, imoveisDetalhes, limpezas, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { type Correio, ErroEnvioIncerto } from "@/email/correio";
+import { periodoDoBloqueio } from "@/reservas/bloqueios";
 import { horarioEfetivo, lerHorariosReservas } from "@/reservas/horarios";
 import { hojeISO } from "@/lib/datas";
 import { listarLimpezas, NOMES_ESTADO, sincronizarLimpezas } from "@/limpezas/limpezas";
@@ -241,21 +242,39 @@ export async function montarAgenda(db: Db, organizacaoId: string, hoje: string, 
       : Promise.resolve([]),
   ]);
 
-  const [config, detalhes, horarios, realizadas, usos, bloqueados] = await Promise.all([
+  const [config, detalhes, horarios, realizadas, usos, bloqueados, remocoes] = await Promise.all([
     lerConfigAgenda(db, organizacaoId),
     db.select().from(imoveisDetalhes).where(and(eq(imoveisDetalhes.organizacaoId, organizacaoId), inArray(imoveisDetalhes.imovelId, ids))),
     lerHorariosReservas(db, organizacaoId, [...daJanela, ...novas].map((r) => r.id)),
     db.select().from(limpezas).where(and(eq(limpezas.organizacaoId, organizacaoId), inArray(limpezas.imovelId, ids), eq(limpezas.estado, "realizada"), lte(limpezas.data, hoje))).orderBy(asc(limpezas.data)),
-    db.select({ id: reservas.id, imovelId: reservas.imovelId, checkin: reservas.checkin, checkout: reservas.checkout }).from(reservas)
-      .where(and(eq(reservas.organizacaoId, organizacaoId), inArray(reservas.imovelId, ids), inArray(reservas.estado, ["confirmada", "pedido"]), lt(reservas.checkin, fim))),
+    // Uso que pode ter acontecido: qualquer reserva que não seja consulta (pendente e pedido contam), inclusive
+    // cancelada — o cancelamento só prova que ninguém usou se veio antes do dia da entrada (`podeTerUsado`).
+    db.select({ id: reservas.id, imovelId: reservas.imovelId, checkin: reservas.checkin, checkout: reservas.checkout, estado: reservas.estado, canceladaEm: reservas.canceladaEm }).from(reservas)
+      .where(and(eq(reservas.organizacaoId, organizacaoId), inArray(reservas.imovelId, ids), ne(reservas.estado, "consulta"), lt(reservas.checkin, fim))),
     db.select().from(bloqueios).where(and(eq(bloqueios.organizacaoId, organizacaoId), inArray(bloqueios.imovelId, ids), lt(bloqueios.inicio, fim))),
+    // Bloqueio removido (painel, portal do proprietário ou Beds24) sai da tabela, mas o histórico guarda o
+    // período: a remoção não apaga um uso que já aconteceu.
+    db.select({ imovelId: auditoria.entidadeId, em: auditoria.criadoEm, mudancas: auditoria.mudancas }).from(auditoria)
+      .where(and(eq(auditoria.organizacaoId, organizacaoId), eq(auditoria.entidade, "imovel"), inArray(auditoria.entidadeId, ids), eq(auditoria.acao, "bloqueio.remover"))),
   ]);
+  // Dia (no fuso da operação) em que algo aconteceu, para comparar com as datas da estadia.
+  const diaDe = (d: Date) => hojeISO("America/Sao_Paulo", d);
+  // Cancelada antes do dia da entrada: ninguém usou. Cancelada depois, ou sem data: pode ter usado.
+  const podeTerUsado = (u: { estado: string; checkin: string; canceladaEm: Date | null }) => u.estado !== "cancelada" || !u.canceladaEm || diaDe(u.canceladaEm) >= u.checkin;
+  // Bloqueio removido antes de começar foi plano desfeito; removido depois de começado continua contando.
+  const ocupacoes = [
+    ...bloqueados.map((b) => ({ imovelId: b.imovelId, inicio: b.inicio, fim: b.fim })),
+    ...remocoes.flatMap((a) => {
+      const periodo = periodoDoBloqueio((a.mudancas as { bloqueio?: unknown[] } | null)?.bloqueio?.[0]);
+      return periodo && diaDe(a.em) >= periodo.inicio ? [{ imovelId: a.imovelId, ...periodo }] : [];
+    }),
+  ];
   const operacional = (r: typeof reservas.$inferSelect): DetalhesOperacionais => {
     const detalhe = detalhes.find((d) => d.imovelId === r.imovelId);
     const ultima = realizadas.filter((l) => l.imovelId === r.imovelId && l.realizadaEm && l.data <= r.checkin).at(-1);
     // Datas não demonstram a ordem de eventos no mesmo dia: nesse caso, pedir conferência.
-    const semUso = ultima && !usos.some((u) => u.id !== r.id && u.imovelId === r.imovelId && u.checkout >= ultima.data && u.checkin < r.checkin && !(u.id === ultima.reservaId && u.checkout === ultima.data)) &&
-      !bloqueados.some((b) => b.imovelId === r.imovelId && b.fim >= ultima.data && b.inicio < r.checkin);
+    const semUso = ultima && !usos.some((u) => u.id !== r.id && u.imovelId === r.imovelId && podeTerUsado(u) && u.checkout >= ultima.data && u.checkin < r.checkin && !(u.id === ultima.reservaId && u.checkout === ultima.data)) &&
+      !ocupacoes.some((b) => b.imovelId === r.imovelId && b.fim >= ultima.data && b.inicio < r.checkin);
     const preparacao = semUso ? "limpeza realizada registrada; sem uso posterior registrado — conferir chaves" : "preparação sem confirmação suficiente; conferir histórico/equipe antes de pedir limpeza";
     // Campo estruturado do cadastro/importação; nunca extrai telefone de observações/conversas.
     const telefone = /^[+\d][\d ()+.-]{6,39}$/.test(r.hospedeTelefone.trim()) ? r.hospedeTelefone.trim() : undefined;
