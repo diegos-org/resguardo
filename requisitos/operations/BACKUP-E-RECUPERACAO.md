@@ -80,7 +80,9 @@ repositório principal não sabe que o backup existe.
      avisa a cada vez até a ref ser apagada (aí é regravada a partir da origem) e salva o
      objeto exato de novo quando a origem ainda o tem. Espelho igual ao que a origem tem
      agora (ou um avanço legítimo entre o esperado e a origem) não é alteração: é a retomada
-     de uma rodada que avançou o espelho e falhou antes de gravar o marco. O mesmo vale para
+     de uma rodada que avançou o espelho e falhou antes de gravar o marco; se a origem apagou
+     a branch logo depois, o espelho avançado é a única cópia daquela versão e fica (o que era
+     esperado continua alcançável pelo retrato anterior). O mesmo vale para
      a branch `backup-marcos` movida à força (a rodada usa o marco íntegro mais novo como
      base, guarda o commit apontado como pai do retrato para nada se perder, não mexe no
      ponteiro e avisa até ele ser apagado), para `backup-marcos` **recuada** a um marco antigo
@@ -107,7 +109,7 @@ repositório principal não sabe que o backup existe.
    robô: ele nunca apaga nem reescreve e avisa quando o backup perde algo. A trava cobre a
    mais só o erro manual de quem tem acesso à conta de backup, que é só o Diego.
 
-Testado em 3/10 rodando o script exato do robô contra repositórios locais, cinquenta e cinco rodadas:
+Testado em 3/10 rodando o script exato do robô contra repositórios locais, cinquenta e sete rodadas:
 origem só com `main`; novas branches e tags; origem avança; origem apaga uma branch (o backup
 a mantém e avisa uma vez); nada muda (sem aviso repetido); origem reescreve uma branch e uma
 tag anotada (o backup mantém as versões antigas em `espelho/`, guarda as novas em
@@ -125,7 +127,8 @@ toda rodada, o objeto exato é salvo de novo sob a data da rodada e, apagada a c
 ela é regravada; `backup-marcos` movida à força é avisada em toda rodada, sem o robô forçar
 nada, e recriada quando apagada; refs `espelho/` alteradas no backup (tag e branch) são
 avisadas em toda rodada e regravadas da origem quando apagadas; espelho que avançou numa
-rodada que falhou antes do marco é retomado sem aviso; uma tag `backup/` movida para outro
+rodada que falhou antes do marco é retomado sem aviso, inclusive quando a origem apagou a
+branch em seguida (o avanço fica como única cópia, com só o aviso de sumiço); uma tag `backup/` movida para outro
 commit é avisada, inclusive a do marco mais novo, sem que o ponteiro perca a base e com o
 retrato legítimo preservado como pai; `backup-marcos` recuada à força para um marco antigo é
 avisada uma vez, a base passa a ser o marco mais novo e o ponteiro avança de novo; uma tag

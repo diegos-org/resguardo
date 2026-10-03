@@ -124,7 +124,7 @@ jobs:
           # (já é cobrada como sumiço); commit sem inventário ou tag em outro commit é.
           ponteiro_adulterado=0; ponteiro_recuado=0; ponteiro_commit=""
           if [ -n "${ponteiro}" ]; then
-            ponteiro_commit=$(git rev-parse 'refs/guardado/marcos^{commit}')
+            ponteiro_commit=$(git rev-parse -q --verify 'refs/guardado/marcos^{commit}' 2>/dev/null || true)
             m=$(git for-each-ref --format='%(contents)' refs/guardado/marcos | awk '$1 == "marco" && NF == 2 {print $2}' | head -n1)
             if ! echo "${m}" | grep -Eq '^refs/tags/backup/[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{4}$'; then
               ponteiro_adulterado=1
@@ -274,6 +274,18 @@ jobs:
                     ac=$(git rev-parse -q --verify "${a}^{commit}" 2>/dev/null || true)
                     if [ -n "${ec}" ] && [ -n "${gc}" ] && [ -n "${ac}" ] && git merge-base --is-ancestor "${ec}" "${gc}" && git merge-base --is-ancestor "${gc}" "${ac}"; then retomada=1; fi ;;
                 esac
+              else
+                # A origem já apagou a ref. Se o espelho AVANÇOU a partir do esperado (rodada que avançou o
+                # espelho, falhou antes do marco e depois a origem apagou a branch), ele é a única cópia dessa
+                # versão: fica e passa a ser o esperado. O que era esperado continua alcançável pelo retrato
+                # anterior, então nada se perde em nenhum dos casos. Tag não avança: diferença é alteração.
+                case "${ref}" in
+                  refs/tags/*) ;;
+                  *)
+                    ec=$(git rev-parse -q --verify "${esperado}^{commit}" 2>/dev/null || true)
+                    gc=$(git rev-parse -q --verify "${g}^{commit}" 2>/dev/null || true)
+                    if [ -n "${ec}" ] && [ -n "${gc}" ] && git merge-base --is-ancestor "${ec}" "${gc}"; then retomada=1; fi ;;
+                esac
               fi
             fi
             if [ -n "${g}" ] && [ -n "${esperado}" ] && [ "${g}" != "${esperado}" ] && [ "${retomada}" -eq 0 ]; then
@@ -355,7 +367,7 @@ jobs:
           while read -r c; do
             if [ -n "${c}" ] && [ "${c}" != "${main}" ]; then pais+=(-p "${c}"); fi
           done < <(git for-each-ref --format='%(objectname)' refs/heads refs/tags \
-            | while read -r o; do git rev-parse -q --verify "${o}^{commit}" || true; done | sort -u)
+            | while read -r o; do git rev-parse -q --verify "${o}^{commit}" 2>/dev/null || true; done | sort -u)
           retrato=$(robo commit-tree "${main}^{tree}" "${pais[@]}" -F inventario.txt)
           git update-ref "refs/marcos/${marco}" "${retrato}"
 
