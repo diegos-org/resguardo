@@ -423,6 +423,8 @@ export const beds24Calendario = pgTable("beds24_calendario", {
   maximoNoites: integer("maximo_noites"),
   /** `override` do calendário Beds24 ("none", "blackout", "noCheckIn"…); null = não informado. */
   bloqueio: text("bloqueio"),
+  /** Quarto Beds24 lido: a observação só descreve o imóvel enquanto este for o quarto vinculado. */
+  roomId: text("room_id"),
   observadoEm: timestamp("observado_em", { withTimezone: true }).notNull(),
 }, t => [primaryKey({ columns: [t.organizacaoId, t.imovelId, t.data] })]);
 

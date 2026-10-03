@@ -11,7 +11,7 @@ const form = (over: Record<string, unknown> = {}) => ({
   estadiaMaxima: "27", horizonteDias: "270", feriados: "02/11/2026 Finados\n2026-11-20 Consciência Negra\n02/11/2026 repetido",
   feriadoMinimo: "3", feriadoMultiplicador: "2", feriadoTodos: "", feriadoImoveis: [IM, "lixo"],
   ultimaHoraModo: "beds24", faixa1De: "3", faixa1Ate: "7", faixa1Pct: "15", faixa2De: "0", faixa2Ate: "2", faixa2Pct: "25",
-  envioImoveis: IM, envioAutomatico: "on", ...over,
+  envioImoveis: IM, envioAutomatico: "on", siteValidadeHoras: "36", siteMaximoNoites: "90", ...over,
 });
 
 describe("formulário das regras", () => {
@@ -26,14 +26,15 @@ describe("formulário das regras", () => {
       janelaFeriado: { estadiaMinima: 3, multiplicador: 200, todosImoveis: false, imoveis: [IM] },
       ultimaHora: { aplicadoPor: "beds24", faixas: [{ deDias: 3, ateDias: 7, percentual: 15 }, { deDias: 0, ateDias: 2, percentual: 25 }] },
       envio: { imoveis: [IM], automatico: true },
+      site: { validadeLeituraHoras: 36, maximoNoitesConsulta: 90 },
     });
     expect(r.regras.eventos).toBe(atual.eventos);
   });
   it("recusa valores fora do limite, feriado mal escrito, faixas cruzadas e modo desconhecido", () => {
-    const r = validarFormRegras(form({ minimo_5: "0", estadiaMaxima: "400", horizonteDias: "3", feriados: "32/13/2026 Nada", feriadoMinimo: "", feriadoMultiplicador: "0,5", faixa1De: "8", faixa1Ate: "7", faixa2De: "1", faixa2Ate: "9", ultimaHoraModo: "x" }), REGRAS_CALENDARIO_PADRAO, [IM]);
+    const r = validarFormRegras(form({ minimo_5: "0", estadiaMaxima: "400", horizonteDias: "3", feriados: "32/13/2026 Nada", feriadoMinimo: "", feriadoMultiplicador: "0,5", faixa1De: "8", faixa1Ate: "7", faixa2De: "1", faixa2Ate: "9", ultimaHoraModo: "x", siteValidadeHoras: "0", siteMaximoNoites: "400" }), REGRAS_CALENDARIO_PADRAO, [IM]);
     expect(r.ok).toBe(false);
     if (r.ok) return;
-    expect(Object.keys(r.erros).sort()).toEqual(["estadiaMaxima", "faixa1Ate", "feriadoMinimo", "feriadoMultiplicador", "feriados", "horizonteDias", "minimo_5", "ultimaHoraModo"]);
+    expect(Object.keys(r.erros).sort()).toEqual(["estadiaMaxima", "faixa1Ate", "feriadoMinimo", "feriadoMultiplicador", "feriados", "horizonteDias", "minimo_5", "siteMaximoNoites", "siteValidadeHoras", "ultimaHoraModo"]);
     // Mínimo do feriadão fora da faixa nunca é salvo como 1 em silêncio.
     const soMinimo = validarFormRegras(form({ feriadoMinimo: "40" }), REGRAS_CALENDARIO_PADRAO, [IM]);
     expect(soMinimo).toMatchObject({ ok: false, erros: { feriadoMinimo: expect.stringContaining("entre 1 e 30") } });
@@ -64,13 +65,14 @@ describe("formulário das regras", () => {
   });
   it("JSON gravado inválido volta ao padrão sem inventar feriados ou eventos", () => {
     expect(regrasDeJson(null)).toEqual(REGRAS_CALENDARIO_PADRAO);
-    const r = regrasDeJson({ minimoPorDia: [1, 2], estadiaMaxima: "x", horizonteDias: 900, feriados: [{ data: "2026-02-30", nome: "falsa" }, { data: "2026-12-25", nome: 7 }, { data: "2026-12-25" }], eventos: [{ id: "sem-uuid" }, { id: IM, nome: "Ok", inicio: "2026-12-25", fim: "2027-01-01", multiplicador: 400, estadiaMinima: 99, imoveis: ["lixo", IM] }], janelaFeriado: { multiplicador: 50 }, ultimaHora: { aplicadoPor: "scl", faixas: [{ deDias: 9, ateDias: 3, percentual: 15 }] }, envio: { imoveis: [IM], automatico: "sim" } });
+    const r = regrasDeJson({ minimoPorDia: [1, 2], estadiaMaxima: "x", horizonteDias: 900, feriados: [{ data: "2026-02-30", nome: "falsa" }, { data: "2026-12-25", nome: 7 }, { data: "2026-12-25" }], eventos: [{ id: "sem-uuid" }, { id: IM, nome: "Ok", inicio: "2026-12-25", fim: "2027-01-01", multiplicador: 400, estadiaMinima: 99, imoveis: ["lixo", IM] }], janelaFeriado: { multiplicador: 50 }, ultimaHora: { aplicadoPor: "scl", faixas: [{ deDias: 9, ateDias: 3, percentual: 15 }] }, envio: { imoveis: [IM], automatico: "sim" }, site: { validadeLeituraHoras: 12, maximoNoitesConsulta: "x" } });
     expect(r).toEqual({
       ...REGRAS_CALENDARIO_PADRAO,
       feriados: [{ data: "2026-12-25", nome: "" }],
       eventos: [{ id: IM, nome: "Ok", inicio: "2026-12-25", fim: "2027-01-01", multiplicador: 400, estadiaMinima: null, todosImoveis: false, imoveis: [IM] }],
       ultimaHora: { ...REGRAS_CALENDARIO_PADRAO.ultimaHora, aplicadoPor: "scl" },
       envio: { imoveis: [IM], automatico: false },
+      site: { validadeLeituraHoras: 12, maximoNoitesConsulta: 90 },
     });
   });
 });

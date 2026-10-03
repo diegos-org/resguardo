@@ -220,7 +220,8 @@ Implementado no painel (um só lugar por regra; `app/src/calendario/`):
   leitura seguinte), mesmo que preço, mínimo ou máximo tenham sido recusados na mesma noite.
   A posse vale para o quarto Beds24 que recebeu o envio: trocado o
   vínculo do imóvel, o estado do quarto antigo é descartado com aviso (o que o SCL fechou lá é
-  reaberto manualmente). Bloqueios e 0 unidades que só existem no Beds24 viram aviso.
+  reaberto manualmente). As observações do calendário também guardam o quarto lido: leitura
+  de outro quarto não descreve o imóvel (plano, prévia e site a tratam como ausente). Bloqueios e 0 unidades que só existem no Beds24 viram aviso.
   Reservas nunca são criadas, alteradas ou canceladas pelo envio.
 - **Envio controlado** (`POST /inventory/rooms/calendar`, price1/minStay/maxStay/override):
   por imóvel, a partir de uma leitura atual do destino feita no início de cada execução

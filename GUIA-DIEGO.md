@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 2/10/2026, envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
+> **Última atualização:** 2/10/2026, disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
 
 ---
 
@@ -31,12 +31,35 @@
 | M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | 🟡 em andamento |
 | M5 Portal do proprietário | Relatórios, saldos, PDF | 🟡 em andamento |
 | M6 Operação | Limpezas, manutenção, agenda diária | 🟡 em andamento |
-| M7 Site público | Site novo com disponibilidade real | 🟡 em andamento |
+| M7 Site público | Site novo com disponibilidade e valor reais | 🟡 disponibilidade e valor prontos; fotos reais (M7.3) dependem de você |
 | M8 Reserva direta | Pagamento pelo Mercado Pago | ⚪ aguardando |
 | M9 Portal do hóspede | Acesso do hóspede e mensagens automáticas | ✅ pronto |
 | M10 WhatsApp | Caixa de entrada do WhatsApp no painel | ⚪ aguardando |
 | M11 Produção | Dados reais, domínio, entrada em uso | ⚪ aguardando |
 | M12 Marketplace | Proprietário que opera o próprio imóvel; SCL cuida do online | 🟡 em andamento |
+
+### Site: disponibilidade e valor reais — M7.2
+
+Na **Consulta** do site e na página de cada apartamento (quando o link traz as datas), o
+visitante passa a ver, antes de mandar a mensagem:
+
+- **Disponível**, **Indisponível nessas datas** ou **Disponibilidade a confirmar**. Uma noite
+  só conta como disponível quando não há reserva nem bloqueio no SCL **e** a última leitura do
+  Beds24 é recente (padrão: até 36 horas; ajustável em Configurações → Calendário e preços →
+  Site público) e informa unidade livre. Sem leitura, ou leitura velha, o site diz "a
+  confirmar" — nunca "disponível" por falta de informação.
+- O **motivo**, em linguagem simples: datas já reservadas, mínimo de noites para aquela entrada
+  (o mesmo mínimo que vai ao Beds24, inclusive em eventos e sobras), máximo, antecedência, dia
+  de entrada/saída, pessoas acima da capacidade.
+- O **valor por partes** (diárias, limpeza, hóspede extra e total), usando os mesmos preços por
+  noite que o SCL envia ao Beds24 (eventos, feriadões e última hora incluídos) e as taxas do
+  cadastro do imóvel. Sem preço cadastrado, o valor fica "a confirmar".
+- A mensagem do WhatsApp passa a trazer "O site mostrou R$ … para N noites" como referência.
+
+Nada é reservado nem cobrado pelo site; cotação guardada e reserva com hold vêm no M8.1 e o
+pagamento no M8.2. A precisão da disponibilidade depende da frequência da importação do Beds24
+(hoje, uma vez por dia quando ligada): consultas feitas de tarde já podem estar "a confirmar"
+se a importação não rodou. Estadias acima de 90 noites (ajustável) pedem contato com a equipe.
 
 ### Calendário e preços no Beds24 — M3.7
 
@@ -1034,8 +1057,11 @@ ambiente).
 15. **Site novo:** em **Configurações → Site**, escreva os textos (título, "Sobre", "Como
    reservar", contato, rodapé); em **Configurações → Empresa**, confira o **telefone do
    WhatsApp** da consulta; e, em cada imóvel, marque **público** só nos que devem aparecer e
-   confira a descrição, as camas e as comodidades. O site ainda não substitui o atual: o
-   domínio só muda na entrada em uso (M11).
+   confira a descrição, as camas e as comodidades. Para a disponibilidade e o valor reais
+   (M7.2) funcionarem: preço base, taxa de limpeza e hóspede extra no cadastro de cada imóvel
+   público, e a importação do Beds24 rodando (manual ou diária); confira em Configurações →
+   Calendário e preços → Site público a validade da leitura. O site ainda não substitui o
+   atual: o domínio só muda na entrada em uso (M11).
 16. **Minha reserva (hóspede):** depende do e-mail do sistema (Resend, item 5) — sem ele o
    código não sai. Confira se as reservas têm o **e-mail do hóspede** (o detalhe da reserva
    avisa quando falta) e se o **endereço e o complemento** de cada imóvel estão no cadastro,

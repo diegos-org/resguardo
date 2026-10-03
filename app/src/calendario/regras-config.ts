@@ -35,6 +35,8 @@ export type RegrasCalendario = {
   eventos: Evento[];
   ultimaHora: { aplicadoPor: AplicacaoUltimaHora; faixas: [FaixaUltimaHora, FaixaUltimaHora] };
   envio: { imoveis: string[]; automatico: boolean };
+  /** Site público (M7.2): por quantas horas uma leitura do Beds24 vale como disponibilidade; máximo de noites cotadas online. */
+  site: { validadeLeituraHoras: number; maximoNoitesConsulta: number };
 };
 
 export const REGRAS_CALENDARIO_PADRAO: RegrasCalendario = {
@@ -46,9 +48,10 @@ export const REGRAS_CALENDARIO_PADRAO: RegrasCalendario = {
   eventos: [],
   ultimaHora: { aplicadoPor: "beds24", faixas: [{ deDias: 3, ateDias: 7, percentual: 15 }, { deDias: 0, ateDias: 2, percentual: 25 }] },
   envio: { imoveis: [], automatico: false },
+  site: { validadeLeituraHoras: 36, maximoNoitesConsulta: 90 },
 };
 
-const LIMITES = { minimo: [1, 30], estadiaMaxima: [1, 364], horizonte: [7, 540], multiplicador: [100, 1000], percentual: [0, 90], dias: [0, 60], feriados: 200, eventos: 100 } as const;
+const LIMITES = { minimo: [1, 30], estadiaMaxima: [1, 364], horizonte: [7, 540], multiplicador: [100, 1000], percentual: [0, 90], dias: [0, 60], feriados: 200, eventos: 100, validadeHoras: [1, 720], noitesConsulta: [1, 364] } as const;
 
 type Entrada = Record<string, unknown>;
 const txt = (v: unknown) => (typeof v === "string" ? v.trim() : "");
@@ -94,6 +97,7 @@ export function regrasDeJson(valor: unknown): RegrasCalendario {
   const uh = (c.ultimaHora ?? {}) as Record<string, unknown>;
   const faixas = Array.isArray(uh.faixas) ? uh.faixas : [];
   const env = (c.envio ?? {}) as Record<string, unknown>;
+  const site = (c.site ?? {}) as Record<string, unknown>;
   const feriados: Feriado[] = [];
   for (const f of Array.isArray(c.feriados) ? c.feriados : []) {
     const o = f as Partial<Feriado> | null;
@@ -127,6 +131,10 @@ export function regrasDeJson(valor: unknown): RegrasCalendario {
       faixas: sanearFaixas([sanearFaixa(faixas[0], P.ultimaHora.faixas[0]), sanearFaixa(faixas[1], P.ultimaHora.faixas[1])], P.ultimaHora.faixas),
     },
     envio: { imoveis: ids(env.imoveis), automatico: env.automatico === true },
+    site: {
+      validadeLeituraHoras: inteiroEntre(site.validadeLeituraHoras, LIMITES.validadeHoras) ? (site.validadeLeituraHoras as number) : P.site.validadeLeituraHoras,
+      maximoNoitesConsulta: inteiroEntre(site.maximoNoitesConsulta, LIMITES.noitesConsulta) ? (site.maximoNoitesConsulta as number) : P.site.maximoNoitesConsulta,
+    },
   };
 }
 
@@ -178,6 +186,8 @@ export function validarFormRegras(e: Entrada, atual: RegrasCalendario, imoveisDa
   if (!(aplicadoPor in APLICACOES_ULTIMA_HORA)) erros.ultimaHoraModo = "Escolha quem aplica a última hora.";
   // Todo campo numérico é lido antes da checagem de erros: nenhum volta ao padrão em silêncio.
   const feriadoMinimo = inteiro("feriadoMinimo", LIMITES.minimo);
+  const siteValidadeHoras = inteiro("siteValidadeHoras", LIMITES.validadeHoras);
+  const siteMaximoNoites = inteiro("siteMaximoNoites", LIMITES.noitesConsulta);
   if (Object.keys(erros).length) return { ok: false, erros };
   return {
     ok: true,
@@ -188,6 +198,7 @@ export function validarFormRegras(e: Entrada, atual: RegrasCalendario, imoveisDa
       eventos: atual.eventos,
       ultimaHora: { aplicadoPor: aplicadoPor as AplicacaoUltimaHora, faixas },
       envio: { imoveis: ids(e.envioImoveis, imoveisDaOrg), automatico: marcado(e.envioAutomatico) },
+      site: { validadeLeituraHoras: siteValidadeHoras, maximoNoitesConsulta: siteMaximoNoites },
     },
   };
 }

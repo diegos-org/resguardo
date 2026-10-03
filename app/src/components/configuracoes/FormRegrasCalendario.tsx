@@ -72,6 +72,14 @@ export function FormRegrasCalendario({ regras, imoveis, salvar }: Props) {
       <label className={styles.check}><input type="checkbox" name="envioAutomatico" defaultChecked={marcado("envioAutomatico", regras.envio.automatico)} /> Enviar automaticamente todo dia às 7h (depois da importação do Beds24)</label>
       <p style={nota}>Deixe desligado até o teste manual no imóvel escolhido estar conferido. O envio automático respeita a mesma lista de imóveis e o mesmo sinal da Vercel.</p>
     </fieldset>
+    <fieldset style={grupo}>
+      <legend style={legenda}>Site público (disponibilidade e cotação)</legend>
+      <p style={nota}>O site considera uma noite disponível só com leitura recente do Beds24 (unidades livres) e sem reserva ou bloqueio no SCL. Leitura mais antiga que o prazo abaixo vira &quot;a confirmar&quot;. O valor mostrado usa os mesmos preços que vão ao Beds24 (com última hora e taxas do imóvel).</p>
+      <div className={styles.linha}>
+        <label>Validade da leitura do Beds24 (horas)<input name="siteValidadeHoras" type="number" min={1} max={720} defaultValue={campo("siteValidadeHoras", String(regras.site.validadeLeituraHoras))} {...invalido("siteValidadeHoras")} />{erro("siteValidadeHoras")}</label>
+        <label>Máximo de noites por consulta online<input name="siteMaximoNoites" type="number" min={1} max={364} defaultValue={campo("siteMaximoNoites", String(regras.site.maximoNoitesConsulta))} {...invalido("siteMaximoNoites")} />{erro("siteMaximoNoites")}</label>
+      </div>
+    </fieldset>
     {estado.ok && <p role="status" className={styles.sucesso}>{estado.aviso ?? "Salvo."}</p>}
     <div className={styles.acoes}><button type="submit" disabled={enviando}>{enviando ? "Salvando…" : "Salvar regras"}</button></div>
   </form>;

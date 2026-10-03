@@ -125,7 +125,7 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 | ID | Item | Estado | Depende de |
 |---|---|---|---|
 | M7.1 | Migrar `prototipos/scl-publico` para o app (home, catálogo 5 imóveis, página, galeria, consulta) lendo imóveis do banco; textos do site editáveis no painel | feito | M2.1 |
-| M7.2 | Disponibilidade e cotação reais a partir das reservas/preços sincronizados | a fazer | M7.1, M3.3 |
+| M7.2 | Disponibilidade e cotação reais a partir das reservas/preços sincronizados | feito | M7.1, M3.3 (e M3.7, de onde vêm os preços por noite). Entregue em 2/10: o site responde disponível / indisponível / a confirmar por noite (reservas e bloqueios do SCL + última leitura do Beds24 dentro da validade configurável; sem leitura nunca é "disponível") e mostra o valor (diárias do motor de calendário, limpeza, hóspede extra) na consulta e na página do imóvel; a mensagem do WhatsApp leva o valor como referência. Nada é gravado nem reservado: cotação persistida e hold são o M8.1; a validade da leitura depende da frequência da importação do Beds24 |
 | M7.3 | Fotos reais (upload privado → Vercel Blob) quando Diego liberar os direitos de uso | bloqueado | Diego: autorizar fotos |
 
 ### M8 — Reserva direta e pagamento

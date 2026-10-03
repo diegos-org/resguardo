@@ -13,10 +13,13 @@ import { lerTextosSite, type TextosSite } from "@/configuracoes/textos-site";
 import { imoveis, imoveisDetalhes, organizacoes } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { TIPOS_CAMA, type TipoCama } from "@/imoveis/cadastro-opcoes";
+import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 
 export type ImovelPublico = {
   codigo: string;
+  /** Fuso do imóvel: as datas da consulta são conferidas nele, como na disponibilidade. */
+  fuso: string;
   nome: string;
   bairro: string;
   cidade: string;
@@ -86,6 +89,7 @@ const descreverCamas = (camas: Record<string, number>): string[] =>
 
 const colunasPublicas = {
   codigo: imoveis.codigo,
+  fuso: imoveis.fuso,
   nome: imoveis.nome,
   bairro: imoveis.bairro,
   cidade: imoveis.cidade,
@@ -109,6 +113,7 @@ type Linha = { [K in keyof typeof colunasPublicas]: (typeof colunasPublicas)[K][
 function publico(l: Linha): ImovelPublico {
   return {
     codigo: l.codigo ?? "",
+    fuso: l.fuso ?? "America/Sao_Paulo",
     nome: l.nome ?? "",
     bairro: l.bairro ?? "",
     cidade: l.cidade ?? "",
@@ -170,15 +175,20 @@ export type ErrosConsulta = Partial<Record<keyof PedidoConsulta, string>>;
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
 const dataValida = (d: string) => DATA.test(d) && !Number.isNaN(Date.parse(`${d}T00:00:00Z`)) && new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) === d;
 const dataBr = (d: string) => d.split("-").reverse().join("/");
+const brl = (c: number) => `R$ ${(c / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /**
  * Confere a consulta do visitante (datas, hóspedes dentro da capacidade) e monta a mensagem de
  * WhatsApp. Nada é gravado nem enviado pelo sistema: o visitante abre a conversa e manda.
  */
+export type ResumoCotacao = { situacao: "disponivel" | "indisponivel" | "a_confirmar" | "invalida"; noites: number; total: number | null };
+
 export function montarConsulta(
   p: PedidoConsulta,
   imovel: ImovelPublico | null,
   hoje: string,
+  /** Resultado da disponibilidade (M7.2): entra na mensagem como referência, nunca como preço garantido. */
+  cotacao?: ResumoCotacao | null,
 ): { ok: true; texto: string } | { ok: false; erros: ErrosConsulta } {
   const erros: ErrosConsulta = {};
   if (!imovel) erros.imovel = "Escolha um apartamento.";
@@ -186,7 +196,8 @@ export function montarConsulta(
   else if (p.entrada < hoje) erros.entrada = "A entrada não pode ser antes de hoje.";
   if (!dataValida(p.saida)) erros.saida = "Informe a data de saída.";
   else if (dataValida(p.entrada) && p.saida <= p.entrada) erros.saida = "A saída precisa ser depois da entrada.";
-  const hospedes = Number(p.hospedes);
+  // Só dígitos: a mesma regra da disponibilidade (M7.2), para "2e0" não virar "2 pessoas".
+  const hospedes = /^\d+$/.test(p.hospedes) ? Number(p.hospedes) : NaN;
   if (!Number.isInteger(hospedes) || hospedes < 1) erros.hospedes = "Informe quantas pessoas.";
   else if (imovel?.capacidade && hospedes > imovel.capacidade) erros.hospedes = `Este apartamento recebe até ${imovel.capacidade} pessoas.`;
   if (Object.keys(erros).length || !imovel) return { ok: false, erros };
@@ -194,6 +205,9 @@ export function montarConsulta(
     `Olá! Gostaria de consultar a disponibilidade do ${imovel.nome} (${imovel.codigo}).`,
     `Entrada: ${dataBr(p.entrada)} · Saída: ${dataBr(p.saida)} · ${hospedes} ${hospedes === 1 ? "pessoa" : "pessoas"}.`,
   ];
+  if (cotacao && cotacao.total !== null && (cotacao.situacao === "disponivel" || cotacao.situacao === "a_confirmar")) {
+    linhas.push(`O site mostrou ${brl(cotacao.total)} para ${cotacao.noites} ${cotacao.noites === 1 ? "noite" : "noites"}${cotacao.situacao === "a_confirmar" ? " (disponibilidade a confirmar)" : ""}.`);
+  }
   return { ok: true, texto: linhas.join("\n") };
 }
 
@@ -211,9 +225,11 @@ export function tituloDoSite(conteudo: Pick<ConteudoSite, "nomeEmpresa"> | null,
 export function destinoDoLinkAntigo(
   sp: URLSearchParams,
   imovel: ImovelPublico | null,
-  hoje: string,
+  agora: Date = new Date(),
 ): { status: 308; destino: string } | { status: 400; erro: string } | { status: 404 } {
   if (!imovel) return { status: 404 };
+  // "Hoje" no fuso do imóvel, como a página do imóvel e a consulta: uma entrada válida em fuso mais atrasado não vira erro.
+  const hoje = hojeISO(imovel.fuso, agora);
   const base = `/imoveis/${encodeURIComponent(imovel.codigo)}`;
   const chaves = ["checkin", "checkout", "guests"] as const;
   const criterios = new URLSearchParams();
@@ -227,3 +243,12 @@ export function destinoDoLinkAntigo(
 }
 
 export const linkWhatsapp = (numero: string, texto: string) => `https://wa.me/${numero}?text=${encodeURIComponent(texto)}`;
+
+/**
+ * Mínimo do campo de data quando o formulário lista vários imóveis: o "hoje" mais cedo entre os fusos.
+ * O navegador não pode recusar uma entrada válida para um imóvel em fuso mais atrasado; a conferência
+ * por imóvel (no fuso dele) continua decidindo no servidor.
+ */
+export function hojeMaisCedo(imoveis: { fuso: string }[], agora = new Date()): string {
+  return imoveis.map((i) => hojeISO(i.fuso, agora)).reduce((a, b) => (a < b ? a : b), hojeISO("America/Sao_Paulo", agora));
+}
