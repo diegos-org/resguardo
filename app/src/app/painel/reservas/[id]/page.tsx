@@ -14,6 +14,8 @@ import { obterReserva } from "@/reservas/repositorio";
 import { lerRegrasFinanceiras } from "@/configuracoes/regras-financeiras";
 import { lerRecebimento } from "@/imoveis/recebimento";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
+import { Horarios } from "@/components/reservas/Horarios";
+import { acordoVigente, lerHorariosReservas } from "@/reservas/horarios";
 
 const CAMPOS_FINANCEIROS = ["valorBruto", "taxaCanal", "valorLiquido", "moeda", "recebimento"];
 const dataBr = (d: string) => d.split("-").reverse().join("/");
@@ -26,6 +28,7 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
   const db = getDb();
   const r = await obterReserva(db, sessao.organizacaoId, id);
   if (!r) notFound();
+  const horarios = (await lerHorariosReservas(db, sessao.organizacaoId, [r.id])).get(r.id);
   const [imovel, historico] = await Promise.all([obterImovel(db, sessao.organizacaoId, r.imovelId), historicoDe(db, sessao.organizacaoId, "reserva", r.id)]);
   const verValores = podeFazer(sessao.papel, "financeiro:ler");
   const lancs = verValores ? await listarLancamentos(db, sessao.organizacaoId, { reservaId: r.id }) : [];
@@ -180,8 +183,8 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
           )}
         </section>
       )}
+      <Horarios id={r.id} horarios={horarios} vigentes={{ entrada: acordoVigente(horarios, "entrada", r), saida: acordoVigente(horarios, "saida", r) }} editar={r.estado === "confirmada" && podeFazer(sessao.papel, "reserva:editar")} />
       <HistoricoAlteracoes linhas={verValores ? historico : ocultarCampos(historico, CAMPOS_FINANCEIROS)} />
     </>
   );
 }
-

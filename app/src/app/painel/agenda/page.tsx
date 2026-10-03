@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { podeFazer } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { enviarAgoraAcao, salvarAgendaAcao } from "@/agenda/acoes";
-import { cidadesDosImoveis, DIAS_AGENDA, FORMATOS, FRASE_FINAL, formatoDa, lerConfigAgenda, NOMES_FORMATO, previaDaAgenda, textoDaSecao } from "@/agenda/agenda";
+import { cidadesDosImoveis, DIAS_AGENDA, DIAS_BUZIOS, diasDaCidade, FORMATOS, FRASE_FINAL, formatoDa, lerConfigAgenda, NOMES_FORMATO, previaDaAgenda, textoDaSecao } from "@/agenda/agenda";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import styles from "@/components/formularios.module.css";
 import { getDb } from "@/db/client";
@@ -32,8 +32,8 @@ export default async function Agenda({ searchParams }: PageProps<"/painel/agenda
     <>
       <h1>Agenda da equipe</h1>
       <p style={{ color: "var(--scl-texto-2)", fontSize: "0.875rem", maxWidth: 820, margin: 0 }}>
-        Todo dia às 20h a equipe recebe por e-mail os próximos {DIAS_AGENDA} dias, separados por cidade, no modelo de 23/09: no Rio, só as limpezas de cada
-        dia (com horário-limite quando alguém entra no mesmo dia) e as entradas à parte; em Búzios, uma linha por reserva. Vão também as reservas novas desde a
+        Todo dia às 20h a equipe recebe por e-mail os próximos {DIAS_AGENDA} dias no Rio e {DIAS_BUZIOS} dias em Búzios. No Rio, as limpezas de cada
+        dia (com horário-limite quando alguém entra no mesmo dia) ficam separadas das entradas e chaves; em Búzios, todas as reservas relevantes, inclusive em andamento. Vão também as reservas novas desde a
         última agenda (mesmo fora dessa janela). A agenda só informa: não confirma limpeza. Abaixo, uma prévia do texto: cada pessoa recebe só as cidades
         dela e só as reservas novas que ainda não recebeu.
       </p>
@@ -61,7 +61,7 @@ export default async function Agenda({ searchParams }: PageProps<"/painel/agenda
         <section key={s.cidade} className={styles.form} aria-label={`Agenda ${s.cidade}`} style={{ gap: 8 }}>
           <h2 style={{ margin: 0 }}>{s.cidade}</h2>
           <p className={styles.pequeno} style={{ margin: 0 }}>
-            Formato: {NOMES_FORMATO[formatoDa(config, s.cidade, s.imoveis)].toLowerCase()}
+            Período: {s.dias.length} dias. Formato: {NOMES_FORMATO[formatoDa(config, s.cidade, s.imoveis)].toLowerCase()}
             {config.formatos[s.cidade] ? "" : " (automático)"}
           </p>
           {/* O mesmo texto que a equipe recebe. */}
@@ -101,7 +101,7 @@ export default async function Agenda({ searchParams }: PageProps<"/painel/agenda
               <label key={c}>
                 {c}
                 <input type="hidden" name={`formato_cidade_${k}`} value={c} />
-                <select name={`formato_${k}`} defaultValue={config.formatos[c] ?? "automatico"}>
+                <select name={`formato_${k}`} disabled={diasDaCidade(c) === DIAS_BUZIOS || c.trim().toLowerCase() === "rio de janeiro"} defaultValue={diasDaCidade(c) === DIAS_BUZIOS ? "reservas" : c.trim().toLowerCase() === "rio de janeiro" ? "limpezas" : config.formatos[c] ?? "automatico"}>
                   <option value="automatico">Automático (casa única: por reserva; vários apartamentos: por limpezas)</option>
                   {FORMATOS.map((f) => (
                     <option key={f} value={f}>
@@ -113,11 +113,11 @@ export default async function Agenda({ searchParams }: PageProps<"/painel/agenda
             ))}
             <div className={styles.linha}>
               <label>
-                Horário de entrada
+                Horário padrão de entrada (quando o imóvel não tem cadastro)
                 <input name="horaEntrada" defaultValue={config.horaEntrada} maxLength={5} required placeholder="15h" />
               </label>
               <label>
-                Horário de saída
+                Horário padrão de saída (quando o imóvel não tem cadastro)
                 <input name="horaSaida" defaultValue={config.horaSaida} maxLength={5} required placeholder="11h" />
               </label>
             </div>
@@ -133,3 +133,4 @@ export default async function Agenda({ searchParams }: PageProps<"/painel/agenda
     </>
   );
 }
+

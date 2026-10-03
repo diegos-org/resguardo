@@ -3,6 +3,7 @@ import { registrarAuditoria } from "@/auditoria/auditoria";
 import { beds24Calendario, beds24Execucoes, beds24ExecucaoReservas, bloqueios, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
+import { registrarRemocaoDeBloqueio } from "@/reservas/bloqueios";
 import { sincronizarReserva } from "@/reservas/repositorio";
 import { lerConfigBeds24, listarMapeamentosBeds24 } from "./configuracao";
 import { paraDadosReserva } from "./converter";
@@ -126,15 +127,20 @@ async function aplicarRegistro(tx: Db, org: string, b: ReservaBeds24, imovelId: 
     r.bloqueios++;
     return;
   }
-  // Cancelamento de um bloqueio não deve criar uma reserva fictícia.
+  // Cancelamento de um bloqueio não deve criar uma reserva fictícia. A remoção fica no histórico, como as do
+  // painel: a agenda consulta esse registro para não dar como livre um período que foi usado.
   if (bl && b.estado === "cancelada") {
     await tx.delete(bloqueios).where(ondeBloqueio);
+    await registrarRemocaoDeBloqueio(tx, org, bl, autorId);
     return;
   }
   const s = await sincronizarReserva(tx, org, "beds24", b.idExterno, paraDadosReserva(b, imovelId)!, autorId);
   if (!s.ok) { aviso(r, `Reserva ${referencia(b.idExterno)}: ${Object.values(s.erros).join(" ")}`); return; }
   if (s.criada || s.alterada) await tx.insert(beds24ExecucaoReservas).values({ organizacaoId: org, execucaoId, reservaId: s.reserva.id, tipo: s.criada ? "adicionada" : s.canceladaAgora ? "cancelada" : "alterada" });
-  if (bl) await tx.delete(bloqueios).where(ondeBloqueio);
+  if (bl) {
+    await tx.delete(bloqueios).where(ondeBloqueio);
+    await registrarRemocaoDeBloqueio(tx, org, bl, autorId);
+  }
   if (s.criada) r.criadas++; else if (s.alterada) r.atualizadas++; else r.iguais++;
   for (const a of s.avisosFinanceiro ?? []) aviso(r, `Reserva ${referencia(b.idExterno)}: ${a}`);
 }

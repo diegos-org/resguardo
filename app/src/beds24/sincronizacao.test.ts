@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { historicoDe } from "@/auditoria/auditoria";
 import { gravarConfig } from "@/configuracoes/armazem";
 import { criarContrato } from "@/contratos/repositorio";
-import { beds24Calendario, beds24Envios, beds24Execucoes, beds24ExecucaoReservas, bloqueios, idsExternos, imoveis, organizacoes, proprietarioImoveis, proprietarios, reservas } from "@/db/schema";
+import { auditoria, beds24Calendario, beds24Envios, beds24Execucoes, beds24ExecucaoReservas, bloqueios, idsExternos, imoveis, organizacoes, proprietarioImoveis, proprietarios, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { listarLancamentos, mudarEstado } from "@/financeiro/ledger";
@@ -123,6 +123,10 @@ describe("Beds24 → banco (M3.3)", () => {
     await rodar();
     expect(await listaBloqueios()).toHaveLength(0);
     expect(await linhas()).toHaveLength(0);
+    // A remoção fica no histórico (a agenda consulta o período para não dar o imóvel como livre), sem dados de hóspede.
+    const remocoes = await db.select().from(auditoria).where(and(eq(auditoria.organizacaoId, org), eq(auditoria.acao, "bloqueio.remover")));
+    expect(remocoes).toHaveLength(1);
+    expect(remocoes[0].mudancas).toEqual({ bloqueio: ["2030-10-10 a 2030-10-13 (Bloqueio importado do Beds24)", null] });
   });
 
   it("converte reserva em bloqueio e de volta mantendo a identidade", async () => {

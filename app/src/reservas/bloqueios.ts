@@ -37,6 +37,18 @@ export type OpcoesRemocao = {
 // envio está entre a escrita externa e o registro final: o que o envio planejou não pode mudar por baixo.
 const esperarEnvio = esperarEnvioBeds24;
 
+/** Texto do histórico ("início a fim (motivo)"). `periodoDoBloqueio` lê de volta: a agenda usa o período de
+ * bloqueios já removidos para não dar como livre um imóvel que foi usado. */
+export const descricaoDoBloqueio = (b: { inicio: string; fim: string; motivo: string | null }) => `${b.inicio} a ${b.fim}${b.motivo ? ` (${b.motivo})` : ""}`;
+export function periodoDoBloqueio(texto: unknown): { inicio: string; fim: string } | null {
+  const m = typeof texto === "string" ? /^(\d{4}-\d{2}-\d{2}) a (\d{4}-\d{2}-\d{2})/.exec(texto) : null;
+  return m ? { inicio: m[1], fim: m[2] } : null;
+}
+/** Toda remoção de bloqueio (painel, portal do proprietário, Beds24) passa por aqui: um só registro no histórico. */
+export function registrarRemocaoDeBloqueio(tx: Db, organizacaoId: string, b: { imovelId: string; inicio: string; fim: string; motivo: string | null }, autorId: string | null) {
+  return registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "bloqueio.remover", entidade: "imovel", entidadeId: b.imovelId, mudancas: { bloqueio: [descricaoDoBloqueio(b), null] } });
+}
+
 export function validarBloqueio(e: EntradaBloqueio): { ok: true; dados: EntradaBloqueio } | { ok: false; erro: string } {
   if (!uuidValido(e.imovelId)) return { ok: false, erro: "Escolha o imóvel." };
   if (!dataValida(e.inicio) || !dataValida(e.fim)) return { ok: false, erro: "Datas inválidas." };
@@ -64,7 +76,7 @@ export async function criarBloqueio(db: Db, organizacaoId: string, e: EntradaBlo
       if (reserva) return { ok: false as const, erro: "Há reserva nessas datas: não dá para bloquear por cima de um hóspede." };
     }
     const [b] = await tx.insert(bloqueios).values({ organizacaoId, ...v.dados, fonte, proprietarioId: opcoes.proprietarioId ?? null }).returning({ id: bloqueios.id });
-    await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "bloqueio.criar", entidade: "imovel", entidadeId: im.id, mudancas: { bloqueio: [null, `${v.dados.inicio} a ${v.dados.fim}${v.dados.motivo ? ` (${v.dados.motivo})` : ""}${fonte === "proprietario" ? " · pelo proprietário" : ""}`] } });
+    await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "bloqueio.criar", entidade: "imovel", entidadeId: im.id, mudancas: { bloqueio: [null, `${descricaoDoBloqueio(v.dados)}${fonte === "proprietario" ? " · pelo proprietário" : ""}`] } });
     return { ok: true as const, id: b.id };
   });
 }
@@ -83,7 +95,7 @@ export async function excluirBloqueio(db: Db, organizacaoId: string, id: string,
       return { ok: false as const, erro: "Este bloqueio foi feito por outro proprietário (titular anterior do imóvel): fale com a empresa para liberar as datas." };
     }
     await tx.delete(bloqueios).where(eq(bloqueios.id, id));
-    await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "bloqueio.remover", entidade: "imovel", entidadeId: b.imovelId, mudancas: { bloqueio: [`${b.inicio} a ${b.fim}${b.motivo ? ` (${b.motivo})` : ""}`, null] } });
+    await registrarRemocaoDeBloqueio(tx, organizacaoId, b, autorId);
     return { ok: true as const };
   });
 }
