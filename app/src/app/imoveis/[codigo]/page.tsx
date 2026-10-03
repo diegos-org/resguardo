@@ -25,7 +25,8 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
   if (!conteudo) return <SiteEmConfiguracao />;
   const [imovel, todos] = await Promise.all([imovelDoSite(db, conteudo.organizacaoId, codigo), imoveisDoSite(db, conteudo.organizacaoId)]);
   if (!imovel) notFound();
-  const hoje = hojeISO("America/Sao_Paulo");
+  // "Hoje" no fuso do imóvel, o mesmo que a disponibilidade usa.
+  const hoje = hojeISO(imovel.fuso);
   // Com datas no link, mostra disponibilidade e valor reais (M7.2) antes do formulário.
   const consulta = { ...pedido, imovel: imovel.codigo };
   const disponibilidade = pedido.entrada && pedido.saida && montarConsulta(consulta, imovel, hoje).ok ? await consultarDisponibilidade(db, conteudo.organizacaoId, consulta) : null;

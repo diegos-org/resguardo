@@ -13,12 +13,13 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
   const sp = await searchParams;
   const { db, conteudo } = await carregarSite();
   if (!conteudo) return <SiteEmConfiguracao />;
-  const hoje = hojeISO("America/Sao_Paulo");
   const pedido = lerPedidoConsulta(sp);
   const enviado = !!(pedido.entrada || pedido.saida);
   const todos = await imoveisDoSite(db, conteudo.organizacaoId);
   // Disponibilidade e valor reais (M7.2): só depois de o pedido passar na conferência básica.
   const imovel = enviado && pedido.imovel ? await imovelDoSite(db, conteudo.organizacaoId, pedido.imovel) : null;
+  // "Hoje" no fuso do imóvel escolhido, o mesmo que a disponibilidade usa; sem imóvel, São Paulo.
+  const hoje = hojeISO(imovel?.fuso ?? "America/Sao_Paulo");
   const previa = enviado ? montarConsulta(pedido, imovel, hoje) : null;
   const disponibilidade = previa?.ok ? await consultarDisponibilidade(db, conteudo.organizacaoId, pedido) : null;
   const r = enviado ? montarConsulta(pedido, imovel, hoje, disponibilidade && { situacao: disponibilidade.situacao, noites: disponibilidade.noites, total: disponibilidade.cotacao?.total ?? null }) : null;

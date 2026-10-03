@@ -9,6 +9,7 @@ import type { ImovelPublico } from "@/site/site";
 
 const imovel: ImovelPublico = {
   codigo: "403",
+  fuso: "America/Sao_Paulo",
   nome: "Studio Exemplo",
   bairro: "Leblon",
   cidade: "Rio de Janeiro",

@@ -6,7 +6,7 @@ vi.mock("@/site/pagina", () => ({ carregarSite: m.site, metadadosDoSite: vi.fn()
 vi.mock("@/site/disponibilidade", () => ({ consultarDisponibilidade: m.disponibilidade }));
 vi.mock("@/site/site", async (orig) => ({ ...(await orig<typeof import("@/site/site")>()), imoveisDoSite: m.imoveis, imovelDoSite: m.imovel }));
 vi.mock("next/link", () => ({ default: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a> }));
-const imovel = { codigo: "403", nome: "Studio Exemplo", bairro: "Leblon", cidade: "Rio de Janeiro", capacidade: 4, quartos: 0, banheiros: 1, descricao: "", camas: [], comodidades: [], regrasCasa: "", aceitaAnimais: false, permiteFumar: false, permiteFestas: false, checkinAPartirDe: "15:00", checkoutAte: "11:00", estadiaMinima: null };
+const imovel = { codigo: "403", fuso: "America/Sao_Paulo", nome: "Studio Exemplo", bairro: "Leblon", cidade: "Rio de Janeiro", capacidade: 4, quartos: 0, banheiros: 1, descricao: "", camas: [], comodidades: [], regrasCasa: "", aceitaAnimais: false, permiteFumar: false, permiteFestas: false, checkinAPartirDe: "15:00", checkoutAte: "11:00", estadiaMinima: null };
 const conteudo = { organizacaoId: "org", nomeEmpresa: "Sua Casa Exemplo", textos: { titulo: "T", subtitulo: "", sobre: "", comoReservar: "", contato: "", rodape: "" }, whatsapp: "5521900000000", email: "" };
 beforeEach(() => {
   vi.clearAllMocks();
@@ -48,6 +48,21 @@ it("disponibilidade inválida não oferece a mensagem, mesmo que a conferência 
   expect(h).toContain("Escolha um apartamento.");
   expect(h).not.toContain("Sua mensagem");
   expect(h).not.toContain("wa.me");
+});
+it("as datas são conferidas no fuso do imóvel escolhido, não no de São Paulo", async () => {
+  // 00:30 de 12/10 em São Paulo, mas ainda 22:30 de 11/10 em Rio Branco: entrada em 11/10 vale para o imóvel de lá.
+  vi.useFakeTimers({ now: new Date("2026-10-12T03:30:00Z"), toFake: ["Date"] });
+  try {
+    m.imovel.mockResolvedValue({ ...imovel, fuso: "America/Rio_Branco" });
+    await html({ imovel: "403", entrada: "2026-10-11", saida: "2026-10-13", hospedes: "2" });
+    expect(m.disponibilidade).toHaveBeenCalledTimes(1);
+    m.disponibilidade.mockClear();
+    m.imovel.mockResolvedValue(imovel);
+    await html({ imovel: "403", entrada: "2026-10-11", saida: "2026-10-13", hospedes: "2" });
+    expect(m.disponibilidade).not.toHaveBeenCalled();
+  } finally {
+    vi.useRealTimers();
+  }
 });
 it("pedido inválido (pessoas acima da capacidade) nem chega à disponibilidade", async () => {
   const h = await html({ imovel: "403", entrada: "2099-10-12", saida: "2099-10-15", hospedes: "9" });

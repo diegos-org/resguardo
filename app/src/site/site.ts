@@ -17,6 +17,8 @@ import { uuidValido } from "@/lib/ids";
 
 export type ImovelPublico = {
   codigo: string;
+  /** Fuso do imóvel: as datas da consulta são conferidas nele, como na disponibilidade. */
+  fuso: string;
   nome: string;
   bairro: string;
   cidade: string;
@@ -86,6 +88,7 @@ const descreverCamas = (camas: Record<string, number>): string[] =>
 
 const colunasPublicas = {
   codigo: imoveis.codigo,
+  fuso: imoveis.fuso,
   nome: imoveis.nome,
   bairro: imoveis.bairro,
   cidade: imoveis.cidade,
@@ -109,6 +112,7 @@ type Linha = { [K in keyof typeof colunasPublicas]: (typeof colunasPublicas)[K][
 function publico(l: Linha): ImovelPublico {
   return {
     codigo: l.codigo ?? "",
+    fuso: l.fuso ?? "America/Sao_Paulo",
     nome: l.nome ?? "",
     bairro: l.bairro ?? "",
     cidade: l.cidade ?? "",
