@@ -69,7 +69,7 @@ export function BloqueiosProprietario({ imoveis, bloqueios, empresa, hoje, bloqu
         <p role="note" style={{ margin: 0, padding: "8px 12px", borderRadius: 6, background: "var(--scl-areia)", fontSize: "0.9375rem" }}>
           {imoveis.some((i) => i.permissao === false)
             ? `Seu contrato não prevê bloqueio de datas pelo portal. Para usar o apartamento, fale com a ${empresa}.`
-            : `Não há contrato em vigor cadastrado para os seus imóveis: fale com a ${empresa} para bloquear datas.`}
+            : `Não há contrato em vigor (nem futuro) cadastrado para os seus imóveis: fale com a ${empresa} para bloquear datas.`}
         </p>
       ) : (
         <form key={bloqueios.length} action={enviar} className={styles.form} aria-label="Bloquear datas">
@@ -107,7 +107,7 @@ export function BloqueiosProprietario({ imoveis, bloqueios, empresa, hoje, bloqu
       )}
       {imoveis.some((i) => i.permissao !== true) && permitidos.length > 0 && (
         <p style={{ margin: 0, fontSize: "0.875rem", color: "var(--scl-texto-2)" }}>
-          Imóveis sem a opção acima não têm contrato em vigor com bloqueio pelo portal: fale com a {empresa}.
+          Imóveis que não aparecem acima não têm contrato, de hoje em diante, com bloqueio pelo portal: fale com a {empresa}.
         </p>
       )}
     </section>

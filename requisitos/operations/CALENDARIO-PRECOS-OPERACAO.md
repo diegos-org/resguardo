@@ -225,7 +225,7 @@ Implementado no painel (um só lugar por regra; `app/src/calendario/`):
   Reservas nunca são criadas, alteradas ou canceladas pelo envio.
 - **Bloqueio pelo proprietário (M5.5, 3/10):** o portal grava um bloqueio comum com fonte
   "proprietario", que segue ao Beds24 pelo mesmo envio (mesma posse, mesma reabertura). Só com
-  contrato em vigor nas datas e com a permissão "bloqueio pelo portal" do contrato (ligada por
+  um só contrato cobrindo todas as noites pedidas e com a permissão "bloqueio pelo portal" do contrato (ligada por
   padrão; a empresa liga/desliga por contrato no painel, valendo daí para frente); só de hoje em diante (no fuso do imóvel), nunca sobre
   reserva não cancelada; o proprietário só libera o que ele mesmo bloqueou e que ainda não
   passou. Bloqueio da empresa ou lido do Beds24 aparece a ele, mas não é liberável no portal.

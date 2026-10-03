@@ -6,8 +6,8 @@
  */
 import { and, asc, eq, gte, inArray } from "drizzle-orm";
 import { exigir, type Sessao } from "@/acesso/politica";
-import { contratoVigente } from "@/contratos/regras";
-import { contratos, bloqueios, imoveis } from "@/db/schema";
+import { contratoVigente, vigenteEm } from "@/contratos/regras";
+import { contratos, bloqueios, imoveis, type TipoContrato } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
@@ -17,26 +17,46 @@ export type EntradaBloqueioPortal = { imovelId: string; inicio: string; fim: str
 export type BloqueioDoProprietario = { id: string; imovelId: string; codigo: string; inicio: string; fim: string; motivo: string; fonte: string; liberavel: boolean };
 
 const SEM_PERMISSAO = "Seu contrato não prevê bloqueio de datas pelo portal. Fale com a empresa.";
-const SEM_CONTRATO = "Não há contrato em vigor para essas datas. Fale com a empresa.";
+const SEM_CONTRATO = "Não há contrato em vigor cobrindo todas essas datas. Fale com a empresa.";
 
-/**
- * Permissão do contrato em vigor em `dia` para cada imóvel: `true` (pode bloquear), `false` (contrato
- * em vigor sem a permissão) ou `null` (sem contrato em vigor). Uma regra, um lugar: o portal mostra e o
- * servidor decide com a mesma função.
- */
-export async function permissoesDeBloqueio(db: Db, organizacaoId: string, imovelIds: readonly string[], dia: string): Promise<Map<string, boolean | null>> {
-  const ids = imovelIds.filter(uuidValido);
-  const mapa = new Map<string, boolean | null>(ids.map((id) => [id, null]));
-  if (!ids.length) return mapa;
-  const lista = await db
+type ContratoDoImovel = { imovelId: string; tipo: TipoContrato; comissaoBp: number | null; inicio: string; fim: string | null; proprietarioBloqueia: boolean };
+
+async function contratosDosImoveis(db: Db, organizacaoId: string, imovelIds: readonly string[]): Promise<ContratoDoImovel[]> {
+  if (!imovelIds.length) return [];
+  return db
     .select({ imovelId: contratos.imovelId, tipo: contratos.tipo, comissaoBp: contratos.comissaoBp, inicio: contratos.inicio, fim: contratos.fim, proprietarioBloqueia: contratos.proprietarioBloqueia })
     .from(contratos)
-    .where(and(eq(contratos.organizacaoId, organizacaoId), inArray(contratos.imovelId, ids)));
-  for (const id of ids) {
-    const vigente = contratoVigente(lista.filter((c) => c.imovelId === id), dia);
-    mapa.set(id, vigente ? vigente.proprietarioBloqueia : null);
-  }
-  return mapa;
+    .where(and(eq(contratos.organizacaoId, organizacaoId), inArray(contratos.imovelId, [...imovelIds])));
+}
+
+/**
+ * Permissão para bloquear da primeira à última noite: **um só** contrato precisa cobrir todas as noites
+ * (contratos não se sobrepõem, então o que vale na primeira noite tem de valer ainda na última). `null` =
+ * nenhum contrato cobre todas as noites (buraco entre contratos conta como sem contrato); `false` = o
+ * contrato cobre mas não permite.
+ */
+export function permissaoNoIntervalo(lista: readonly ContratoDoImovel[], inicio: string, ultimaNoite: string): boolean | null {
+  const c = contratoVigente(lista, inicio);
+  if (!c || !vigenteEm(c, ultimaNoite)) return null;
+  return c.proprietarioBloqueia;
+}
+
+/**
+ * Pode bloquear alguma data de `hoje` em diante? `true` se algum contrato em vigor ou futuro permite,
+ * `false` se há contrato daí em diante mas nenhum permite, `null` se não há contrato daí em diante. Serve
+ * para montar a lista de imóveis do formulário; a data pedida é conferida no servidor por `permissaoNoIntervalo`.
+ */
+export function permissaoAPartirDe(lista: readonly ContratoDoImovel[], hoje: string): boolean | null {
+  const adiante = lista.filter((c) => c.fim === null || c.fim >= hoje);
+  if (!adiante.length) return null;
+  return adiante.some((c) => c.proprietarioBloqueia);
+}
+
+/** `permissaoAPartirDe` por imóvel (uma regra, um lugar: o portal monta a lista e o servidor decide pela mesma tabela). */
+export async function permissoesDeBloqueio(db: Db, organizacaoId: string, imovelIds: readonly string[], hoje: string): Promise<Map<string, boolean | null>> {
+  const ids = imovelIds.filter(uuidValido);
+  const lista = await contratosDosImoveis(db, organizacaoId, ids);
+  return new Map(ids.map((id) => [id, permissaoAPartirDe(lista.filter((c) => c.imovelId === id), hoje)]));
 }
 
 /** Bloqueia datas de uso próprio num imóvel do proprietário da sessão. Exige `bloqueio:proprio` no imóvel. */
@@ -48,11 +68,11 @@ export async function bloquearPeloProprietario(db: Db, sessao: Sessao, e: Entrad
   if (!im) return { ok: false, erro: "Imóvel não encontrado." };
   // Nunca no passado: o passado não é recalculado nem enviado (data no fuso do imóvel).
   if (v.dados.inicio < hojeISO(im.fuso, agora)) return { ok: false, erro: "Só é possível bloquear a partir de hoje." };
-  // Permissão do contrato em vigor na primeira noite bloqueada (e ainda em vigor na última).
+  // Um só contrato tem de cobrir todas as noites (da primeira à última) e permitir o bloqueio.
   const ultimaNoite = new Date(Date.parse(`${v.dados.fim}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
-  const [noInicio, noFim] = await Promise.all([permissoesDeBloqueio(db, sessao.organizacaoId, [im.id], v.dados.inicio), permissoesDeBloqueio(db, sessao.organizacaoId, [im.id], ultimaNoite)]);
-  if (noInicio.get(im.id) === null || noFim.get(im.id) === null) return { ok: false, erro: SEM_CONTRATO };
-  if (!noInicio.get(im.id) || !noFim.get(im.id)) return { ok: false, erro: SEM_PERMISSAO };
+  const permissao = permissaoNoIntervalo(await contratosDosImoveis(db, sessao.organizacaoId, [im.id]), v.dados.inicio, ultimaNoite);
+  if (permissao === null) return { ok: false, erro: SEM_CONTRATO };
+  if (!permissao) return { ok: false, erro: SEM_PERMISSAO };
   return criarBloqueio(db, sessao.organizacaoId, { ...v.dados, motivo: v.dados.motivo || "Uso próprio" }, sessao.usuarioId, { fonte: "proprietario", semReserva: true });
 }
 
@@ -70,16 +90,23 @@ export async function liberarPeloProprietario(db: Db, sessao: Sessao, bloqueioId
   return excluirBloqueio(db, sessao.organizacaoId, bloqueioId, sessao.usuarioId, { somenteFonte: "proprietario", imovelIds: sessao.imovelIds });
 }
 
-/** Bloqueios atuais e futuros dos imóveis do proprietário, com quem fez cada um; só os dele são liberáveis. */
+/**
+ * Bloqueios atuais e futuros dos imóveis do proprietário, com quem fez cada um; só os dele, e só os que ainda
+ * não acabaram, são liberáveis. "Hoje" é o de cada imóvel (fuso do imóvel), a mesma data que a liberação usa.
+ */
 export async function bloqueiosDoProprietario(db: Db, sessao: Sessao, agora = new Date()): Promise<BloqueioDoProprietario[]> {
   const ids = sessao.imovelIds.filter(uuidValido);
   if (!ids.length) return [];
-  const hoje = hojeISO("America/Sao_Paulo", agora);
+  // Filtro largo no banco (um dia antes da data UTC cobre qualquer fuso); a data certa de cada imóvel decide abaixo.
+  const limite = new Date(agora.getTime() - 86_400_000).toISOString().slice(0, 10);
   const linhas = await db
-    .select({ id: bloqueios.id, imovelId: bloqueios.imovelId, codigo: imoveis.codigo, inicio: bloqueios.inicio, fim: bloqueios.fim, motivo: bloqueios.motivo, fonte: bloqueios.fonte })
+    .select({ id: bloqueios.id, imovelId: bloqueios.imovelId, codigo: imoveis.codigo, fuso: imoveis.fuso, inicio: bloqueios.inicio, fim: bloqueios.fim, motivo: bloqueios.motivo, fonte: bloqueios.fonte })
     .from(bloqueios)
     .innerJoin(imoveis, eq(imoveis.id, bloqueios.imovelId))
-    .where(and(eq(bloqueios.organizacaoId, sessao.organizacaoId), inArray(bloqueios.imovelId, ids), gte(bloqueios.fim, hoje)))
+    .where(and(eq(bloqueios.organizacaoId, sessao.organizacaoId), inArray(bloqueios.imovelId, ids), gte(bloqueios.fim, limite)))
     .orderBy(asc(bloqueios.inicio), asc(imoveis.codigo));
-  return linhas.map((b) => ({ ...b, liberavel: b.fonte === "proprietario" && b.fim > hoje }));
+  return linhas.flatMap(({ fuso, ...b }) => {
+    const hoje = hojeISO(fuso, agora);
+    return b.fim >= hoje ? [{ ...b, liberavel: b.fonte === "proprietario" && b.fim > hoje }] : [];
+  });
 }

@@ -7,7 +7,7 @@ import { beds24Envios, bloqueios, imoveis, organizacoes, proprietarioImoveis, pr
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { criarBloqueio } from "@/reservas/bloqueios";
-import { bloqueiosDoProprietario, bloquearPeloProprietario, liberarPeloProprietario, permissoesDeBloqueio } from "./bloqueios";
+import { bloqueiosDoProprietario, bloquearPeloProprietario, liberarPeloProprietario, permissaoAPartirDe, permissaoNoIntervalo, permissoesDeBloqueio } from "./bloqueios";
 
 let db: Db, close: () => Promise<void>, org: string, a: string, b: string, c: string, d: string, usuario: string;
 // 3/10/2026, 12:00 em São Paulo.
@@ -67,6 +67,57 @@ describe("calendário do proprietário (M5.5)", () => {
     expect(await bloquear(d, "2026-10-14", "2026-10-18", "", s)).toMatchObject({ ok: false, erro: expect.stringContaining("contrato em vigor") });
     expect(await bloquear(d, "2026-10-14", "2026-10-16", "", s)).toMatchObject({ ok: true });
     expect(await lista()).toHaveLength(1);
+    // Dois contratos com permissão, com um buraco entre eles (16 a 19/10): um só contrato precisa cobrir todas as noites.
+    await criarContrato(db, org, d, { tipo: "gestao_completa", comissao: "15", inicio: "2026-10-20" }, null);
+    expect(await bloquear(d, "2026-10-14", "2026-10-22", "", s)).toMatchObject({ ok: false, erro: expect.stringContaining("contrato em vigor") });
+    expect(await bloquear(d, "2026-10-20", "2026-10-22", "", s)).toMatchObject({ ok: true });
+    expect(await lista()).toHaveLength(2);
+  });
+
+  it("regras puras: um só contrato cobre o intervalo; a lista do formulário conta contrato futuro, o servidor confere as datas", async () => {
+    const c = (inicio: string, fim: string | null, proprietarioBloqueia = true) => ({ imovelId: d, tipo: "gestao_completa" as const, comissaoBp: 1500, inicio, fim, proprietarioBloqueia });
+    expect(permissaoNoIntervalo([c("2025-01-01", "2026-10-12"), c("2026-10-15", null)], "2026-10-11", "2026-10-17")).toBeNull();
+    expect(permissaoNoIntervalo([c("2025-01-01", "2026-10-12"), c("2026-10-15", null)], "2026-10-11", "2026-10-12")).toBe(true);
+    expect(permissaoNoIntervalo([c("2025-01-01", "2026-10-12", false)], "2026-10-11", "2026-10-12")).toBe(false);
+    expect(permissaoNoIntervalo([], "2026-10-11", "2026-10-12")).toBeNull();
+    expect(permissaoAPartirDe([c("2025-01-01", "2026-10-02")], "2026-10-03")).toBeNull(); // só contrato encerrado
+    expect(permissaoAPartirDe([c("2025-01-01", "2026-10-02"), c("2026-11-01", null)], "2026-10-03")).toBe(true); // futuro com permissão
+    expect(permissaoAPartirDe([c("2025-01-01", null, false)], "2026-10-03")).toBe(false);
+    expect(permissaoAPartirDe([c("2025-01-01", null, false), c("2027-01-01", null)], "2026-10-03")).toBe(true); // hoje não, mas o futuro permite
+    // No banco: d só com contrato futuro aparece no formulário, mas só as datas dele passam.
+    await criarContrato(db, org, d, { tipo: "gestao_completa", comissao: "15", inicio: "2026-11-01" }, null);
+    expect((await permissoesDeBloqueio(db, org, [d], "2026-10-03")).get(d)).toBe(true);
+    const s = sessao([d]);
+    expect(await bloquear(d, "2026-10-10", "2026-10-12", "", s)).toMatchObject({ ok: false, erro: expect.stringContaining("contrato em vigor") });
+    expect(await bloquear(d, "2026-10-30", "2026-11-02", "", s)).toMatchObject({ ok: false, erro: expect.stringContaining("contrato em vigor") });
+    expect(await bloquear(d, "2026-11-02", "2026-11-04", "", s)).toMatchObject({ ok: true });
+  });
+
+  it("lista do portal usa o 'hoje' de cada imóvel (fuso do imóvel), igual à liberação", async () => {
+    // 03:30Z de 3/10: 00:30 de 3/10 em São Paulo e 22:30 de 2/10 em Rio Branco.
+    const meiaNoite = new Date("2026-10-03T03:30:00Z");
+    const [{ id: e }] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "505", nome: "Acre", fuso: "America/Rio_Branco" }).returning();
+    const [{ id: dona }] = await db.select({ id: proprietarioImoveis.proprietarioId }).from(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));
+    await db.insert(proprietarioImoveis).values({ proprietarioId: dona, imovelId: e });
+    const [spHoje, spOntem, rbHoje, rbOntem] = await db
+      .insert(bloqueios)
+      .values([
+        { organizacaoId: org, imovelId: a, inicio: "2026-10-01", fim: "2026-10-03", motivo: "", fonte: "proprietario" },
+        { organizacaoId: org, imovelId: a, inicio: "2026-09-30", fim: "2026-10-02", motivo: "", fonte: "proprietario" },
+        { organizacaoId: org, imovelId: e, inicio: "2026-10-01", fim: "2026-10-03", motivo: "", fonte: "proprietario" },
+        { organizacaoId: org, imovelId: e, inicio: "2026-09-30", fim: "2026-10-02", motivo: "", fonte: "proprietario" },
+      ])
+      .returning({ id: bloqueios.id });
+    const s = sessao([a, e]);
+    const vistos = await bloqueiosDoProprietario(db, s, meiaNoite);
+    expect(vistos.map((b) => [b.id, b.liberavel])).toEqual([
+      [rbOntem.id, false], // em Rio Branco ainda é 2/10: acaba hoje, aparece mas não libera
+      [spHoje.id, false], // em São Paulo já é 3/10: acaba hoje
+      [rbHoje.id, true], // em Rio Branco ainda falta uma noite
+    ]);
+    expect(vistos.some((b) => b.id === spOntem.id)).toBe(false);
+    expect(await liberarPeloProprietario(db, s, spHoje.id, meiaNoite)).toMatchObject({ ok: false, erro: expect.stringContaining("já passou") });
+    expect(await liberarPeloProprietario(db, s, rbHoje.id, meiaNoite)).toEqual({ ok: true });
   });
 
   it("libera só o que ele mesmo bloqueou e que ainda não passou; o bloqueio da empresa e o de outro dono ficam", async () => {

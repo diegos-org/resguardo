@@ -23,7 +23,7 @@ it("lista os bloqueios com quem fez cada um e só deixa liberar os do proprietá
   expect(screen.getAllByRole("button", { name: "Liberar" })).toHaveLength(1);
   // Só o imóvel com permissão entra no formulário; o outro é explicado.
   expect(screen.queryByRole("option", { name: /303/ })).toBeNull();
-  expect(screen.getByText(/Imóveis sem a opção acima/)).toBeTruthy();
+  expect(screen.getByText(/Imóveis que não aparecem acima/)).toBeTruthy();
 });
 
 it("bloquear envia imóvel, datas e motivo; a recusa aparece como aviso; liberar pede confirmação", async () => {
