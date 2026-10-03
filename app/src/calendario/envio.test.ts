@@ -402,7 +402,7 @@ describe("envio ao Beds24 (M3.7)", () => {
     expect((await enviar()).situacao).toBe("ok");
   });
 
-  it("confirmação tardia exige a mesma carga registrada: tentativa só de preço não assume um blackout que apareceu depois", async () => {
+  it("tentativa só de preço é confirmada pela leitura seguinte sem assumir um blackout que apareceu depois", async () => {
     let leituras = 0;
     const leitorFalho: LeitorBeds24 = { reservas: f => beds.reservas(f), quartos: () => beds.quartos(), calendario: async f => { if (leituras++ === 0) return beds.calendario(f); throw new ErroBeds24("Beds24 não respondeu a tempo.", "tempo"); } };
     expect((await enviar("envio", { leitor: leitorFalho })).situacao).toBe("incerto");
@@ -410,9 +410,10 @@ describe("envio ao Beds24 (M3.7)", () => {
     await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-10-03", fim: "2026-10-04", motivo: "Uso próprio" });
     Object.assign(diaFalso("2026-10-03")!, { override: "blackout", numAvail: 0 });
     const r = await enviar();
-    expect(r.avisos).toContain("Imóvel 103: 8 noite(s) de envio anterior confirmada(s) pela leitura de agora.");
+    expect(r.avisos).toContain("Imóvel 103: 10 noite(s) de envio anterior confirmada(s) pela leitura de agora.");
     expect((await enviados()).find(e => e.data === "2026-10-05")).toMatchObject({ confirmado: true });
-    expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ bloqueio: null, confirmado: false });
+    // A noite 3/10 confirma o preço enviado, mas o blackout que apareceu não é do SCL.
+    expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ bloqueio: null, confirmado: true });
     // Removido o bloqueio local, o blackout de terceiros não é reaberto.
     await db.delete(bloqueios).where(eq(bloqueios.fonte, "manual"));
     const r2 = await enviar();
@@ -439,6 +440,41 @@ describe("envio ao Beds24 (M3.7)", () => {
     expect((await enviar()).situacao).toBe("ok");
     expect(beds.escritas.at(-1)![0].faixas.find(f => f.from === "2026-10-05")?.bloqueio).toBe("none");
     expect(diaFalso("2026-10-05")).toMatchObject({ override: "none", numAvail: 1 });
+  });
+
+  it("blackout enviado sem releitura e bloqueio local removido antes da execução seguinte: a leitura confirma a posse e a noite é reaberta", async () => {
+    await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-10-03", fim: "2026-10-04", motivo: "Uso próprio" });
+    let leituras = 0;
+    const leitorFalho: LeitorBeds24 = { reservas: f => beds.reservas(f), quartos: () => beds.quartos(), calendario: async f => { if (leituras++ === 0) return beds.calendario(f); throw new ErroBeds24("Beds24 não respondeu a tempo.", "tempo"); } };
+    expect((await enviar("envio", { leitor: leitorFalho })).situacao).toBe("incerto");
+    expect(diaFalso("2026-10-03")).toMatchObject({ override: "blackout" });
+    await db.delete(bloqueios).where(eq(bloqueios.fonte, "manual"));
+    const r = await enviar();
+    expect(r.avisos).toContain("Imóvel 103: 10 noite(s) de envio anterior confirmada(s) pela leitura de agora.");
+    expect(beds.escritas.at(-1)![0].faixas.find(f => f.from === "2026-10-03")?.bloqueio).toBe("none");
+    expect(diaFalso("2026-10-03")).toMatchObject({ override: "none", numAvail: 1 });
+    expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ bloqueio: "none", confirmado: true });
+    expect((await noites()).filter(n => n.data === "2026-10-03").map(n => n.resultado).sort()).toEqual(["confirmado", "confirmado"]);
+  });
+
+  it("noite que não volta na releitura fica pendente, não divergente; a leitura seguinte decide e a posse vem com ela", async () => {
+    await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-10-03", fim: "2026-10-04", motivo: "Uso próprio" });
+    let leituras = 0;
+    const leitorCurto: LeitorBeds24 = { reservas: f => beds.reservas(f), quartos: () => beds.quartos(), calendario: async f => {
+      const l = await beds.calendario(f);
+      return leituras++ === 1 ? { ...l, itens: l.itens.filter(d => d.data !== "2026-10-03") } : l;
+    } };
+    const r = await enviar("envio", { leitor: leitorCurto });
+    expect(r).toMatchObject({ situacao: "incerto", imoveis: [{ confirmadas: 9, divergentes: 0, pendentes: 1 }] });
+    expect(r.mensagem).toContain("1 noite(s) sem releitura");
+    expect((await noites()).find(n => n.data === "2026-10-03")).toMatchObject({ resultado: "enviado", detalhe: expect.stringContaining("não retornou na releitura") });
+    expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ bloqueio: null, confirmado: false });
+    // Execução seguinte: a leitura mostra o blackout aplicado → confirmação e posse; removido o bloqueio, reabre.
+    expect((await enviar()).avisos).toContain("Imóvel 103: 1 noite(s) de envio anterior confirmada(s) pela leitura de agora.");
+    expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ bloqueio: "blackout", confirmado: true });
+    await db.delete(bloqueios).where(eq(bloqueios.fonte, "manual"));
+    expect((await enviar()).situacao).toBe("ok");
+    expect(diaFalso("2026-10-03")).toMatchObject({ override: "none" });
   });
 
   it("bloqueio que só existe no Beds24 nunca é reaberto pelo SCL, mesmo sem bloqueio local", async () => {
