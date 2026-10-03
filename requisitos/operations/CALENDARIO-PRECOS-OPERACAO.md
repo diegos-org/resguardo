@@ -192,3 +192,52 @@ Listas de regras reabertas confirmaram os dois percentuais e vínculo em cada im
 A configuração solicitada está aplicada nos seis imóveis, mas **a proteção final e correção diária de piso/teto continuam pendentes**. Foram observadas diárias abaixo dos pisos nos apartamentos doLeblon; não foi feita correção automática nem criada tarefa de execução diária. A contingência autorizada continua explícita. Preservar os resultados e registros privados antes/depois; não declarar revisão ampla de nove meses concluída por ter configurado estas faixas.
 
 Esta atualização está noPR74 e em cópia local conferida; main só receberá após merge humano. PR73 não foi alterado por esta configuração.
+
+## Atualização de implementação — M3.7, 2/10/2026
+
+Implementado no painel (um só lugar por regra; `app/src/calendario/`):
+
+- **Regras operacionais editáveis** em Configurações → Calendário e preços: mínimo por dia da
+  semana da entrada (padrão dom–qui 1, sex–sáb 2), máximo (27), horizonte do envio (270
+  noites), feriados (lista por data; a janela do feriadão segue a tabela acima, com união de
+  janelas vizinhas; mínimo 3 e 2×B por padrão, nos imóveis escolhidos), eventos/temporadas
+  com multiplicador e mínimo por imóvel (vale o maior multiplicador, nunca a soma), última
+  hora com duas faixas (padrão D−7..D−3 15%, D−2..D0 25%) e modo "Beds24 aplica" (padrão,
+  compatível com as DailyPrice2/3 configuradas em 1/10), "SCL aplica" ou desligada.
+- **Pisos de última hora por imóvel** (ficha do imóvel). No modo "Beds24 aplica", o SCL envia a
+  referência e a eleva só quando o desconto nativo cairia abaixo do piso (ex.: B=393 →
+  envia 411,77 para a faixa de 15% resultar em 350,00); no modo "SCL aplica", envia o preço
+  final limitado ao piso. Sem piso cadastrado, avisa e não reduz por conta própria. A
+  referência é sempre recalculada do cadastro: repetir a execução nunca acumula cortes.
+- **Sobras:** mínimo da entrada = menor entre o mínimo aplicável e as noites livres seguidas
+  até a próxima reserva ou bloqueio (3, 2, 1). Período explícito do imóvel (preço e/ou
+  mínimo) substitui as regras automáticas, inclusive acima do teto.
+- **Bloqueios manuais** (Calendário → Bloquear datas) vão como `override: blackout`; o SCL só
+  reabre o que ele mesmo fechou, e devolve a noite ao que havia antes: a restrição que já
+  existia no Beds24 (`noCheckIn` etc., guardada ao fechar) ou `none`. A reabertura só sai
+  quando a leitura atual ainda mostra o blackout do SCL; se o Beds24 mostrar outra coisa, a
+  posse acaba sem escrita. A posse é confirmada pelo campo de bloqueio da releitura (ou da
+  leitura seguinte), mesmo que preço, mínimo ou máximo tenham sido recusados na mesma noite.
+  A posse vale para o quarto Beds24 que recebeu o envio: trocado o
+  vínculo do imóvel, o estado do quarto antigo é descartado com aviso (o que o SCL fechou lá é
+  reaberto manualmente). Bloqueios e 0 unidades que só existem no Beds24 viram aviso.
+  Reservas nunca são criadas, alteradas ou canceladas pelo envio.
+- **Envio controlado** (`POST /inventory/rooms/calendar`, price1/minStay/maxStay/override):
+  por imóvel, a partir de uma leitura atual do destino feita no início de cada execução
+  (sem ela, ou com ela incompleta ou inválida para o imóvel, nada é escrito nem guardado; um registro
+  inválido sem quarto identificável invalida a leitura de todos os quartos pedidos), só noites diferentes dessa leitura (ou do último envio
+  confirmado), com simulação prévia, intenção gravada antes da escrita externa (se o banco
+  falhar depois da escrita, a execução seguinte assume a posse pela leitura), releitura noite
+  a noite (confirmada/divergente), histórico
+  antes/depois com a regra usada, trava contra execução simultânea (a mesma da importação, dos
+  bloqueios manuais e do vínculo Beds24: nada disso muda junto com um envio; e antes de
+  escrever o envio confere de novo o vínculo exato e os bloqueios locais) e rotina diária opt-in
+  (7h, após a importação). Só funciona com `BEDS24_ESCRITA=ligada` e imóvel marcado; o
+  refresh token precisa do escopo `inventory`.
+
+Continuam pendentes (decisão de Diego, não automatizadas): tarifas próprias de Búzios,
+tratamento de última hora em grandes eventos (hoje as faixas valem em todas as noites, como
+as regras nativas), reprecificação de sobras de Réveillon/Carnaval, validação de mercado e
+piso líquido. A releitura comprova o que o Beds24 gravou, não a cotação final nas OTAs. Dias
+de entrada/saída restritos no cadastro ainda não são enviados. O teste no 103 e a ativação
+(variável na Vercel) não foram feitos nesta implementação.

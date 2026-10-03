@@ -6,7 +6,7 @@ import type { Db } from "@/db/types";
 import { sincronizarReserva } from "@/reservas/repositorio";
 import { converterLote, paraDadosReserva } from "./converter";
 import { Beds24Falso } from "./falso";
-import { ClienteBeds24Http, leitorDoAmbiente } from "./http";
+import { ClienteBeds24Http, escritaBeds24Ligada, escritorDoAmbiente, leitorDoAmbiente } from "./http";
 import { canalDe, normalizarCalendario, normalizarQuartos, normalizarReserva, reaisParaCentavosApi } from "./normalizar";
 import { ErroBeds24 } from "./tipos";
 
@@ -113,20 +113,20 @@ describe("normalização", () => {
   it("calendário: faixas expandidas em dias, recortadas ao período; sem numAvail = desconhecido", () => {
     const { itens, divergencias } = normalizarCalendario(
       [
-        { roomId: 200, calendar: [{ from: "2026-10-01", to: "2026-10-03", numAvail: 1, price1: 450, minStay: 2 }, { from: "2026-10-04", price1: 500 }] },
+        { roomId: 200, calendar: [{ from: "2026-10-01", to: "2026-10-03", numAvail: 1, price1: 450, minStay: 2, maxStay: 27, override: "blackout" }, { from: "2026-10-04", price1: 500 }] },
         { roomId: 201, calendar: [{ from: "2026-10-05", to: "2026-10-01" }] },
-        { roomId: 202, calendar: [{ from: "2026-10-02", price1: -100 }, { from: "2026-10-02", minStay: -1 }, { from: "2026-10-02", numAvail: -1 }] },
+        { roomId: 202, calendar: [{ from: "2026-10-02", price1: -100 }, { from: "2026-10-02", minStay: -1 }, { from: "2026-10-02", numAvail: -1 }, { from: "2026-10-02", maxStay: 1.5 }, { from: "2026-10-02", override: "voodoo" }] },
         { semRoom: true },
       ],
       "2026-10-02",
       "2026-10-05",
     );
     expect(itens).toEqual([
-      { roomId: "200", data: "2026-10-02", livres: 1, preco: 45000, minimoNoites: 2 },
-      { roomId: "200", data: "2026-10-03", livres: 1, preco: 45000, minimoNoites: 2 },
-      { roomId: "200", data: "2026-10-04", livres: null, preco: 50000, minimoNoites: null },
+      { roomId: "200", data: "2026-10-02", livres: 1, preco: 45000, minimoNoites: 2, maximoNoites: 27, bloqueio: "blackout" },
+      { roomId: "200", data: "2026-10-03", livres: 1, preco: 45000, minimoNoites: 2, maximoNoites: 27, bloqueio: "blackout" },
+      { roomId: "200", data: "2026-10-04", livres: null, preco: 50000, minimoNoites: null, maximoNoites: null, bloqueio: null },
     ]);
-    expect(divergencias).toHaveLength(5);
+    expect(divergencias).toHaveLength(7);
   });
 
   it("quartos por imóvel", () => {
@@ -182,11 +182,14 @@ describe("cliente HTTP (rede simulada)", () => {
     ]);
     const c = new ClienteBeds24Http({ token: "k", fetchImpl: f });
     expect((await c.calendario({ roomIds: ["200"], inicio: "2026-10-01", fim: "2026-10-02" })).itens).toEqual([
-      { roomId: "200", data: "2026-10-01", livres: 0, preco: 40000, minimoNoites: null },
+      { roomId: "200", data: "2026-10-01", livres: 0, preco: 40000, minimoNoites: null, maximoNoites: null, bloqueio: null },
     ]);
     expect((await c.quartos()).itens).toHaveLength(1);
     expect(chamadas.map((x) => x.url.pathname)).toEqual(["/api/v2/inventory/rooms/calendar", "/api/v2/properties"]);
     expect(chamadas[0].url.searchParams.get("includeNumAvail")).toBe("true");
+    expect(chamadas[0].url.searchParams.get("includeMaxStay")).toBe("true");
+    expect(chamadas[0].url.searchParams.get("includeOverride")).toBe("true");
+    expect(chamadas.every((x) => x.init.method === "GET")).toBe(true);
     expect(await c.calendario({ roomIds: [], inicio: "2026-10-01", fim: "2026-10-02" })).toMatchObject({ itens: [] });
   });
 
@@ -217,10 +220,52 @@ describe("cliente HTTP (rede simulada)", () => {
     expect(leitorDoAmbiente({ BEDS24_API_KEY: "k" } as unknown as NodeJS.ProcessEnv)).toBeInstanceOf(ClienteBeds24Http);
   });
 
-  it("não existe método de escrita", () => {
-    const c = new ClienteBeds24Http({ token: "k", fetchImpl: fetchFalso([]).f });
-    const metodos = Object.getOwnPropertyNames(Object.getPrototypeOf(c));
-    expect(metodos.sort()).toEqual(["calendario", "constructor", "get", "quartos", "reservas", "todas"]);
+  it("a única escrita é o calendário por noite: POST com faixas, preço em reais e resposta por quarto", async () => {
+    const { f, chamadas } = fetchFalso([json([{ success: true }, { success: false, errors: [{ action: "update", field: "price1", message: "Preço inválido" }] }], 201)]);
+    const c = new ClienteBeds24Http({ token: "k", fetchImpl: f });
+    const metodos = Object.getOwnPropertyNames(Object.getPrototypeOf(c)).filter((m) => !m.startsWith("constructor"));
+    expect(metodos.sort()).toEqual(["calendario", "chamar", "escreverCalendario", "get", "quartos", "reservas", "todas"]);
+    const r = await c.escreverCalendario([
+      { roomId: "200", faixas: [{ from: "2026-10-01", to: "2026-10-03", preco: 45050, minimo: 2, maximo: 27 }, { from: "2026-10-04", to: "2026-10-04", bloqueio: "blackout" }] },
+      { roomId: "201", faixas: [{ from: "2026-10-01", to: "2026-10-01", preco: 100 }] },
+    ]);
+    expect(r).toEqual([{ roomId: "200", ok: true, erro: "" }, { roomId: "201", ok: false, erro: "Preço inválido" }]);
+    expect(chamadas).toHaveLength(1);
+    expect(chamadas[0].init.method).toBe("POST");
+    expect(chamadas[0].url.pathname).toBe("/api/v2/inventory/rooms/calendar");
+    expect((chamadas[0].init.headers as Record<string, string>).token).toBe("k");
+    expect(JSON.parse(String(chamadas[0].init.body))).toEqual([
+      { roomId: 200, calendar: [{ from: "2026-10-01", to: "2026-10-03", price1: 450.5, minStay: 2, maxStay: 27 }, { from: "2026-10-04", to: "2026-10-04", override: "blackout" }] },
+      { roomId: 201, calendar: [{ from: "2026-10-01", to: "2026-10-01", price1: 1 }] },
+    ]);
+    expect(await c.escreverCalendario([])).toEqual([]);
+  });
+
+  it("escrita recusada, sem permissão ou com resposta estranha nunca passa por sucesso", async () => {
+    const tentar = async (r: Response | Error) => {
+      const c = new ClienteBeds24Http({ token: "k", fetchImpl: fetchFalso([r]).f });
+      try {
+        return await c.escreverCalendario([{ roomId: "200", faixas: [{ from: "2026-10-01", to: "2026-10-01", preco: 100 }] }]);
+      } catch (e) {
+        return e instanceof ErroBeds24 ? `${e.tipo}: ${e.message}` : "outro";
+      }
+    };
+    expect(await tentar(json({ success: false }, 403))).toContain("http: Beds24 recusou a escrita (HTTP 403)");
+    expect(await tentar(json([], 500))).toContain("http:");
+    expect(await tentar(json({ success: true }, 201))).toEqual([{ roomId: "200", ok: false, erro: expect.stringContaining("inesperado") }]);
+    expect(await tentar(json([{ success: false }], 201))).toEqual([{ roomId: "200", ok: false, erro: "Beds24 recusou a escrita deste quarto." }]);
+    expect(await tentar(new TypeError("fetch failed"))).toContain("rede:");
+  });
+
+  it("o escritor só sai do ambiente com credencial e BEDS24_ESCRITA exatamente 'ligada'", () => {
+    const env = (o: Record<string, string>) => o as unknown as NodeJS.ProcessEnv;
+    expect(escritorDoAmbiente(env({ BEDS24_API_KEY: "k" }))).toBeNull();
+    expect(escritorDoAmbiente(env({ BEDS24_API_KEY: "k", BEDS24_ESCRITA: "true" }))).toBeNull();
+    expect(escritorDoAmbiente(env({ BEDS24_API_KEY: "k", BEDS24_ESCRITA: "LIGADA" }))).toBeNull();
+    expect(escritorDoAmbiente(env({ BEDS24_ESCRITA: "ligada" }))).toBeNull();
+    expect(escritorDoAmbiente(env({ BEDS24_REFRESH_TOKEN: "r", BEDS24_ESCRITA: "ligada" }))).toBeInstanceOf(ClienteBeds24Http);
+    expect(escritaBeds24Ligada(env({ BEDS24_ESCRITA: " ligada " }))).toBe(true);
+    expect(escritaBeds24Ligada(env({}))).toBe(false);
   });
 });
 
@@ -232,6 +277,27 @@ describe("Beds24 falso", () => {
     expect((await b.reservas({ propertyIds: ["101"] })).itens.map((r) => r.idExterno)).toEqual(["2"]);
     b.falhar = new ErroBeds24("fora do ar", "rede");
     await expect(b.reservas({})).rejects.toThrow("fora do ar");
+  });
+
+  it("escrita falsa altera o calendário em memória, dia a dia, e a releitura reflete o gravado", async () => {
+    const b = new Beds24Falso();
+    b.calendarios = [{ roomId: 200, calendar: [{ from: "2026-10-01", to: "2026-10-05", numAvail: 1, price1: 400, minStay: 1 }] }];
+    const r = await b.escreverCalendario([
+      { roomId: "200", faixas: [{ from: "2026-10-02", to: "2026-10-03", preco: 45050, minimo: 2, maximo: 27 }, { from: "2026-10-04", to: "2026-10-04", bloqueio: "blackout" }] },
+      { roomId: "300", faixas: [{ from: "2026-10-01", to: "2026-10-01", preco: 10000 }] },
+    ]);
+    expect(r).toEqual([{ roomId: "200", ok: true, erro: "" }, { roomId: "300", ok: true, erro: "" }]);
+    const lido = (await b.calendario({ roomIds: ["200", "300"], inicio: "2026-10-01", fim: "2026-10-06" })).itens;
+    expect(lido.find((d) => d.data === "2026-10-01")).toMatchObject({ preco: 40000, minimoNoites: 1, maximoNoites: null, bloqueio: null, livres: 1 });
+    expect(lido.find((d) => d.data === "2026-10-02")).toMatchObject({ preco: 45050, minimoNoites: 2, maximoNoites: 27, livres: 1 });
+    expect(lido.find((d) => d.data === "2026-10-04")).toMatchObject({ preco: 40000, bloqueio: "blackout", livres: 0 });
+    expect(lido.find((d) => d.roomId === "300")).toMatchObject({ data: "2026-10-01", preco: 10000 });
+    expect(b.escritas).toHaveLength(1);
+    b.recusarQuartos = ["200"];
+    expect((await b.escreverCalendario([{ roomId: "200", faixas: [] }]))[0].ok).toBe(false);
+    b.falharEscrita = new ErroBeds24("sem permissão", "http");
+    await expect(b.escreverCalendario([])).rejects.toThrow("sem permissão");
+    expect((await b.calendario({ roomIds: ["200"], inicio: "2026-10-01", fim: "2026-10-02" })).itens).toHaveLength(1);
   });
 });
 

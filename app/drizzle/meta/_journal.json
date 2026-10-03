@@ -246,6 +246,27 @@
       "when": 1790948129371,
       "tag": "0034_anuncios",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1790974503890,
+      "tag": "0035_envio_beds24",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1790980352244,
+      "tag": "0036_bloqueio_anterior",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1790991097429,
+      "tag": "0037_quarto_envio",
+      "breakpoints": true
     }
   ]
 }

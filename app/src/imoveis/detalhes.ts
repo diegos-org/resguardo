@@ -42,6 +42,8 @@ export const DETALHES_VAZIOS: Detalhes = {
   precoDinamico: false,
   precoMinimo: null,
   precoMaximo: null,
+  pisoUltimaHora1: null,
+  pisoUltimaHora2: null,
 };
 
 export const regrasDeVenda = (d: Detalhes): RegrasVenda => ({
@@ -153,6 +155,8 @@ export function validarDetalhes(e: Entrada): { ok: true; dados: Detalhes } | { o
     precoDinamico: marcado(e.precoDinamico),
     precoMinimo: dinheiro("precoMinimo"),
     precoMaximo: dinheiro("precoMaximo"),
+    pisoUltimaHora1: dinheiro("pisoUltimaHora1"),
+    pisoUltimaHora2: dinheiro("pisoUltimaHora2"),
   };
   if (dados.estadiaMinima !== null && dados.estadiaMaxima !== null && dados.estadiaMaxima < dados.estadiaMinima) {
     erros.estadiaMaxima = "A máxima não pode ser menor que a mínima.";
@@ -162,6 +166,9 @@ export function validarDetalhes(e: Entrada): { ok: true; dados: Detalhes } | { o
   }
   if ((dados.hospedeExtraValor === null) !== (dados.hospedeExtraAPartirDe === null)) {
     erros.hospedeExtraAPartirDe = "Preencha o valor e a partir de quantos hóspedes (ou deixe os dois em branco).";
+  }
+  if (dados.pisoUltimaHora1 !== null && dados.pisoUltimaHora2 !== null && dados.pisoUltimaHora2 > dados.pisoUltimaHora1) {
+    erros.pisoUltimaHora2 = "O piso da 2ª faixa (mais perto da data) não pode ser maior que o da 1ª.";
   }
   if (dados.precoDinamico && (dados.precoMinimo === null || dados.precoMaximo === null)) {
     erros.precoDinamico = "Com o preço dinâmico ligado, informe o preço mínimo e o máximo.";

@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 2/10/2026, prévia de calendário e preços (M3.7a), após o merge de Anúncios confirmado por Diego. O envio ao Beds24 continua pendente. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem. Para o futuro teste de envio: 103 como primeira opção, 403 como alternativa.
+> **Última atualização:** 2/10/2026, envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
 
 ---
 
@@ -27,7 +27,7 @@
 | M0 Fundação | Base do app, banco de dados, layout, publicação na Vercel | 🟡 Vercel e login funcionando; isolamento do banco de homologação ainda a conferir |
 | M1 Acesso | Login (Google/código por e-mail), convites, permissões | ✅ pronto |
 | M2 Cadastros | Imóveis, proprietários, contratos e aba Anúncios | ✅ implementado; referências dos canais precisam ser preenchidas/conferidas |
-| M3 Reservas | Reservas, calendário central e importação do Beds24 | 🟡 prévia de calendário/preços implementada; conferência das reservas parcial; motor operacional e envio ao Beds24 ainda pendentes |
+| M3 Reservas | Reservas, calendário central, importação e envio de calendário/preços ao Beds24 | 🟡 importação e envio implementados; o envio começa desligado e espera o seu teste no 103; conferência das reservas parcial |
 | M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | 🟡 em andamento |
 | M5 Portal do proprietário | Relatórios, saldos, PDF | 🟡 em andamento |
 | M6 Operação | Limpezas, manutenção, agenda diária | 🟡 em andamento |
@@ -37,6 +37,92 @@
 | M10 WhatsApp | Caixa de entrada do WhatsApp no painel | ⚪ aguardando |
 | M11 Produção | Dados reais, domínio, entrada em uso | ⚪ aguardando |
 | M12 Marketplace | Proprietário que opera o próprio imóvel; SCL cuida do online | 🟡 em andamento |
+
+### Calendário e preços no Beds24 — M3.7
+
+O SCL passa a ser a fonte oficial de calendário e preços: o que você cadastra aqui vai ao
+Beds24 e dele ao Airbnb/Booking. Tudo está pronto, mas **desligado**: nada sai enquanto a
+variável `BEDS24_ESCRITA` não estiver com o valor `ligada` na Vercel e o imóvel não estiver
+marcado para envio. Quatro lugares novos:
+
+1. **Configurações → Calendário e preços** (só você): as regras da operação, editáveis:
+   - mínimo de noites por dia da semana da entrada (padrão: domingo a quinta 1, sexta e
+     sábado 2), máximo de noites (27) e o horizonte do envio (270 noites ≈ 9 meses);
+   - **feriados**, um por linha (data e nome). O sistema monta o feriadão sozinho pela regra
+     aprovada: feriado na quinta → quarta a domingo; sexta → quinta a domingo; segunda → sexta
+     a segunda; terça → sexta a terça; quarta, sábado e domingo não criam feriadão. No
+     feriadão: mínimo 3 noites e preço = 2× o preço base (os dois editáveis), só nos imóveis
+     que você marcar (Búzios pode ficar de fora). **Os feriados começam vazios**: você
+     cadastra as datas de cada ano depois de conferir;
+   - **temporadas e eventos** (alta temporada, Réveillon, Carnaval, Rock in Rio): noites,
+     multiplicador do preço base (2×, 3×, 4×…), mínimo de noites e imóveis. Dois eventos na
+     mesma noite nunca somam: vale o maior. Também começam vazios;
+   - **última hora**: duas faixas pela antecedência da noite (padrão: 7 a 3 dias antes 15%,
+     2 dias antes até o próprio dia 25%) e quem aplica o desconto. O padrão é **"Beds24
+     aplica"**, porque as regras nativas já estão configuradas nos seis imóveis: o SCL envia
+     o preço de referência e, quando o desconto do Beds24 deixaria a diária abaixo do piso,
+     envia um valor maior para que o resultado fique exatamente no piso. Se um dia você
+     desligar as regras nativas, troque para "SCL aplica" e o SCL manda o preço já reduzido;
+   - **imóveis com envio ligado** e o **envio automático diário** (7h, depois da importação).
+2. **Ficha do imóvel → Preço e taxas:** dois campos novos, os **pisos de última hora** de cada
+   faixa (ex.: 350 e 300 nos estúdios; 700 e 650 no 303). Sem piso cadastrado o sistema
+   avisa e não reduz por conta própria. O preço base (B) e os períodos especiais continuam
+   onde estavam; o preço explícito de um período substitui qualquer regra automática.
+3. **Calendário → Bloquear datas:** bloqueio manual (uso próprio, manutenção) com imóvel,
+   primeira noite, dia da liberação e motivo. Vale no SCL na hora e vai ao Beds24 como
+   "fechado" no próximo envio; remover (com confirmação) reabre no próximo envio, devolvendo
+   a noite ao que ela tinha antes (se o Beds24 já restringia a entrada ou a saída naquela
+   data, essa restrição volta). Bloqueios que vieram do Beds24 aparecem, mas mudam lá. O SCL
+   **nunca reabre** um bloqueio que ele mesmo não fechou, e só reabre o seu se a leitura
+   feita na hora ainda mostrar esse bloqueio lá. Se um dia o quarto Beds24 vinculado a um
+   imóvel for trocado, o SCL avisa e não mexe no quarto antigo: o que ele tinha fechado lá
+   precisa ser reaberto à mão no Beds24. Se, ao bloquear, remover um bloqueio ou mudar o
+   vínculo Beds24 de um imóvel, aparecer "há um envio de calendário em andamento", é só
+   esperar um minuto e tentar de novo.
+4. **Calendário → Conferir calendário e preços:** a prévia agora mostra, por noite, o preço
+   de referência, o preço que seria enviado, o preço final esperado depois da última hora,
+   o mínimo pela regra e o mínimo ajustado às **sobras** (se sobram 3 noites até a próxima
+   reserva num período de mínimo 5, as entradas ficam com mínimo 3, 2 e 1), o máximo, o
+   bloqueio e a última leitura do Beds24 — e a ação (enviar ou já igual). Embaixo, só para
+   você: **Simular envio** (não grava nada; diz quantas noites iriam) e **Enviar agora**
+   (pede confirmação e cobre todo o horizonte do imóvel). Todo envio (e toda simulação)
+   começa lendo o Beds24 na hora: se essa leitura falhar, nada é enviado. Depois de enviar,
+   o SCL relê o Beds24 e marca cada noite como confirmada ou divergente; o histórico guarda
+   antes/depois, regra usada e resultado, inclusive quando o Beds24 recusou o envio.
+
+Regras de segurança: só vão as noites diferentes do que o Beds24 já tem (repetir o envio
+não muda nada nem acumula desconto, porque a referência é sempre recalculada do cadastro);
+reservas nunca são criadas, alteradas ou canceladas por aqui; se o Beds24 mudar um valor
+depois do envio, a prévia avisa e o SCL reenvia o valor oficial; o que não tem preço
+cadastrado não vai; o que o SCL não entende (0 unidades livres sem reserva conhecida,
+bloqueio só no Beds24) vira aviso, não ação.
+
+**Como testar no 103 (ordem sugerida):**
+
+1. Em Configurações → Calendário e preços, confira os mínimos e cadastre os feriados do
+   restante de 2026 e de 2027 e os eventos (alta temporada 15/12 ao fim de fevereiro 2×;
+   Réveillon 25/12 a 1/1 mínimo 5 e 4×; Carnaval mínimo 5 e 4×; Rock in Rio 3×), marcando os
+   imóveis do Leblon. Marque o **103** em "imóveis com envio ligado". Deixe o automático
+   desligado.
+2. Na ficha do 103, confira o preço base (450) e cadastre os pisos (350 e 300).
+3. Em Calendário → Conferir, escolha o 103, leia a prévia e clique em **Simular envio**.
+   Confira os números e os avisos. Repita com datas de evento e com uma sobra entre reservas.
+4. Na Vercel, crie `BEDS24_ESCRITA` = `ligada` (exatamente assim) e confira que o
+   `BEDS24_REFRESH_TOKEN` foi gerado com o escopo **inventory** (um token só de leitura
+   recebe "sem permissão de escrita"). Faça Redeploy.
+5. Volte à prévia e clique em **Enviar agora** (marque a confirmação). Veja o resultado
+   (enviadas × confirmadas), abra o Beds24 e o Airbnb e confira algumas noites normais, um
+   fim de semana, um evento e a última hora de hoje/amanhã.
+6. Teste um bloqueio: bloqueie 2 noites no Calendário, envie, confira no Beds24; remova o
+   bloqueio, envie de novo, confira que reabriu.
+7. Só então ligue o **envio automático diário** e, se quiser, marque os outros imóveis.
+
+**Limites:** a releitura confirma o que o Beds24 gravou, não a cotação final no Airbnb
+(taxas, limpeza, descontos por duração ficam fora). Última hora em grandes eventos,
+reprecificação de sobras de Réveillon/Carnaval e as tarifas próprias de Búzios continuam
+decisões suas: o sistema aplica as faixas em todas as noites, como as regras nativas fazem
+hoje, e não inventa preço para Búzios (cadastre eventos próprios ou deixe fora). Dias de
+entrada/saída restritos no cadastro ainda não são enviados.
 
 ### Conferir calendário e preços — preparação M3.7a
 
@@ -61,11 +147,8 @@ Administrador e operação podem consultar; proprietário, hóspede e limpeza n�
 evento com o Beds24 e veja se o cadastro representa o que você pretende usar. A cobertura
 depende do intervalo importado; a prévia mostra suas lacunas.
 
-**O que falta antes do envio:** automatizar as regras operacionais (semana normal,
-feriados/eventos, última hora e sobras), resolver a combinação com os descontos nativos
-já ativos, implementar envio e retorno de conferência e realizar o teste no imóvel escolhido.
-Esta entrega não muda credenciais nem ativa rotina. Nenhuma nova conta ou configuração
-externa é necessária para abrir a prévia; o cliente Beds24 continua somente leitura.
+**Atualização M3.7:** as regras operacionais, o envio com conferência e o histórico estão
+implementados (seção acima). O teste no imóvel escolhido e a ativação continuam com você.
 
 ### Anúncios — atualização M2.9
 
@@ -828,7 +911,7 @@ e escreva normalmente.
 | **Codex** (revisor automático) | Revisa cada PR | ✅ ativo no repositório | — |
 | **Neon** | Banco de dados (Postgres) | 🟡 sua conta existe e está paga | Ligar à Vercel (item abaixo) |
 | **Vercel** | Publica o sistema na internet (homologação e depois produção) | ✅ site acessível, confirmado por Diego em 27/09 | Confirmar isolamento do banco de homologação; acesso pelo conector é separado |
-| **Beds24** | Channel manager (Airbnb/Booking), reservas, calendário e preços | 🟡 leitura dos quartos confirmada por Diego (28/09) | Publicar M3.3, conferir os seis vínculos e fazer a primeira importação manual no SCL antes de ligar a rotina diária |
+| **Beds24** | Channel manager (Airbnb/Booking), reservas, calendário e preços | 🟡 importação feita por Diego (1 e 2/10); envio de calendário/preços pronto e **desligado** | Testar o envio no 103 (simular → `BEDS24_ESCRITA=ligada` com refresh token de inventário → enviar → conferir no Beds24/Airbnb) e só então ligar o automático (seção 6, item 3) |
 | **Mercado Pago** | Pagamentos da reserva direta | ⚪ não conectado | Credenciais de *teste* do provedor escolhido no M8.0 (Mercado Pago, se for a escolha), mais adiante (M8) |
 | **Meta / WhatsApp Business** | Atendimento pelo WhatsApp da empresa | ⚪ não conectado | Verificação da empresa no Meta Business (demora dias) |
 | **Google Cloud (login)** | Botão "Entrar com Google" | ✅ login confirmado por Diego em 27/09 | — |
@@ -895,8 +978,13 @@ ambiente).
    - As variáveis precisam estar no ambiente do deploy que será testado (Production no
      endereço principal; Preview se for testar um PR). Alteração de variável exige novo
      deploy. Chaves nunca vão no chat, Git ou tela do sistema.
-   - O cliente continua **somente leitura**, mesmo que a credencial tenha outras permissões.
-     Escrita depende do M3.7 e da ativação explícita depois dos testes.
+   - **Envio de calendário e preços (M3.7):** pronto e desligado. O passo a passo do teste no
+     103 está na seção 2 ("Calendário e preços no Beds24"). Resumo: regras e feriados em
+     Configurações → Calendário e preços; pisos na ficha do imóvel; simular na prévia; só
+     depois criar `BEDS24_ESCRITA` = `ligada` na Vercel (o refresh token precisa do escopo
+     **inventory**; um token só de leitura recebe "sem permissão de escrita") e fazer
+     Redeploy; enviar; conferir no Beds24 e no Airbnb; por último ligar o automático diário.
+     Sem a variável, nenhum caminho do sistema escreve no Beds24.
    - **Histórico do acesso:** o teste de 27/09 falhou; após salvar novamente a variável,
      Diego confirmou a leitura. Isso não comprova qual foi a causa da falha anterior.
      Caso reapareça, informe só a mensagem sanitizada do painel, nunca a chave.
@@ -1097,4 +1185,4 @@ ambiente).
 
 ## Calendário e preços — referência operacional de 1/10/2026
 
-As regras aprovadas de mínimos, feriadões, temporada, multiplicadores, última hora e sobras estão reunidas em [Calendário, preços e duração](requisitos/operations/CALENDARIO-PRECOS-OPERACAO.md), com as exceções e decisões ainda pendentes. O documento distingue regra aprovada de função já implementada. Enquanto o envio do painel SCL não estiver pronto e ativado, a rodada autorizada em 1/10 usa o Beds24 conectado, com conferência no Airbnb. Não aplicar descontos repetidos sobre diárias já reduzidas.
+As regras aprovadas de mínimos, feriadões, temporada, multiplicadores, última hora e sobras estão reunidas em [Calendário, preços e duração](requisitos/operations/CALENDARIO-PRECOS-OPERACAO.md), com as exceções e decisões ainda pendentes. Desde 2/10 (M3.7) elas vivem no painel, em Configurações → Calendário e preços, e o envio ao Beds24 existe, mas só é ativado por você. Enquanto o envio do SCL não estiver ligado, a rodada autorizada em 1/10 continua usando o Beds24 conectado, com conferência no Airbnb — e não deve haver dois responsáveis escrevendo no mesmo calendário: ao ligar o SCL, pare de editar preços à mão no Beds24. Não aplicar descontos repetidos sobre diárias já reduzidas.

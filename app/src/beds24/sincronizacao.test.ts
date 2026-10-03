@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { historicoDe } from "@/auditoria/auditoria";
 import { gravarConfig } from "@/configuracoes/armazem";
 import { criarContrato } from "@/contratos/repositorio";
-import { beds24Calendario, beds24Execucoes, beds24ExecucaoReservas, bloqueios, idsExternos, imoveis, organizacoes, proprietarioImoveis, proprietarios, reservas } from "@/db/schema";
+import { beds24Calendario, beds24Envios, beds24Execucoes, beds24ExecucaoReservas, bloqueios, idsExternos, imoveis, organizacoes, proprietarioImoveis, proprietarios, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { listarLancamentos, mudarEstado } from "@/financeiro/ledger";
@@ -41,6 +41,14 @@ beforeEach(async () => {
 });
 
 describe("Beds24 → banco (M3.3)", () => {
+  it("não importa enquanto um envio de calendário está entre a escrita e o registro; envio interrompido há mais de 10 minutos não impede", async () => {
+    const [envio] = await db.insert(beds24Envios).values({ organizacaoId: org, iniciadoEm: new Date(agora.getTime() - 60_000), modo: "envio", situacao: "executando" }).returning({ id: beds24Envios.id });
+    expect(await rodar()).toMatchObject({ ok: false, situacao: "ocupada", mensagem: expect.stringContaining("envio de calendário") });
+    expect(await linhas()).toHaveLength(0);
+    await db.update(beds24Envios).set({ iniciadoEm: new Date(agora.getTime() - 11 * 60_000) }).where(eq(beds24Envios.id, envio.id));
+    expect(await rodar()).toMatchObject({ ok: true, criadas: 1 });
+  });
+
   it("importa, repete sem duplicar ou alterar a reserva e lê preço/mínimo em centavos", async () => {
     expect(await rodar()).toMatchObject({ ok: true, criadas: 1, diasCalendario: 2 });
     const [r] = await linhas();

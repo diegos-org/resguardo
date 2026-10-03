@@ -420,6 +420,9 @@ export const beds24Calendario = pgTable("beds24_calendario", {
   livres: integer("livres"),
   preco: integer("preco"),
   minimoNoites: integer("minimo_noites"),
+  maximoNoites: integer("maximo_noites"),
+  /** `override` do calendário Beds24 ("none", "blackout", "noCheckIn"…); null = não informado. */
+  bloqueio: text("bloqueio"),
   observadoEm: timestamp("observado_em", { withTimezone: true }).notNull(),
 }, t => [primaryKey({ columns: [t.organizacaoId, t.imovelId, t.data] })]);
 
@@ -626,6 +629,9 @@ export const imoveisDetalhes = pgTable("imoveis_detalhes", {
   precoDinamico: boolean("preco_dinamico").notNull().default(false),
   precoMinimo: integer("preco_minimo"),
   precoMaximo: integer("preco_maximo"),
+  /** Pisos (centavos) da diária final nas faixas de última hora (M3.7); null = não cadastrado. */
+  pisoUltimaHora1: integer("piso_ultima_hora_1"),
+  pisoUltimaHora2: integer("piso_ultima_hora_2"),
   atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -1054,3 +1060,61 @@ export const beds24ExecucaoReservas = pgTable("beds24_execucao_reservas", {
   reservaId: uuid("reserva_id").notNull().references(() => reservas.id),
   tipo: text("tipo").$type<"adicionada" | "alterada" | "cancelada">().notNull(),
 }, t => [uniqueIndex("beds24_execucao_reserva_unica").on(t.execucaoId, t.reservaId), index("beds24_execucao_reservas_org").on(t.organizacaoId, t.execucaoId)]);
+
+// ---------------------------------------------------------------------------
+// Envio de calendário e preços ao Beds24 (M3.7): histórico privado antes/depois
+// ---------------------------------------------------------------------------
+
+/** Uma execução de envio (manual, simulação ou automática), sem payload do provedor. */
+export const beds24Envios = pgTable("beds24_envios", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+  iniciadoEm: timestamp("iniciado_em", { withTimezone: true }).notNull().defaultNow(),
+  terminadoEm: timestamp("terminado_em", { withTimezone: true }),
+  /** "simulacao" não grava nada no Beds24. */
+  modo: text("modo").$type<"simulacao" | "envio">().notNull(),
+  automatica: boolean("automatica").notNull().default(false),
+  situacao: text("situacao").notNull().default("executando"),
+  resumo: text("resumo").notNull().default(""),
+  avisos: jsonb("avisos").$type<string[]>().notNull().default([]),
+  noitesEnviadas: integer("noites_enviadas").notNull().default(0),
+  noitesConfirmadas: integer("noites_confirmadas").notNull().default(0),
+  noitesDivergentes: integer("noites_divergentes").notNull().default(0),
+}, t => [index("beds24_envios_org").on(t.organizacaoId, t.iniciadoEm)]);
+
+/** Antes/depois de cada noite enviada: regra usada e resultado da conferência. */
+export const beds24EnvioNoites = pgTable("beds24_envio_noites", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+  envioId: uuid("envio_id").notNull().references(() => beds24Envios.id),
+  imovelId: uuid("imovel_id").notNull().references(() => imoveis.id),
+  data: date("data", { mode: "string" }).notNull(),
+  precoAntes: integer("preco_antes"),
+  precoEnviado: integer("preco_enviado"),
+  minimoAntes: integer("minimo_antes"),
+  minimoEnviado: integer("minimo_enviado"),
+  maximoEnviado: integer("maximo_enviado"),
+  bloqueioAntes: text("bloqueio_antes"),
+  bloqueioEnviado: text("bloqueio_enviado"),
+  regra: text("regra").notNull().default(""),
+  resultado: text("resultado").$type<"enviado" | "confirmado" | "divergente" | "falhou">().notNull(),
+  detalhe: text("detalhe").notNull().default(""),
+}, t => [index("beds24_envio_noites_envio").on(t.envioId), index("beds24_envio_noites_imovel").on(t.organizacaoId, t.imovelId, t.data)]);
+
+/** Último valor que o SCL enviou por noite: idempotência e liberação só do que o SCL bloqueou. */
+export const beds24CalendarioEnviado = pgTable("beds24_calendario_enviado", {
+  organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+  imovelId: uuid("imovel_id").notNull().references(() => imoveis.id),
+  data: date("data", { mode: "string" }).notNull(),
+  preco: integer("preco"),
+  minimo: integer("minimo"),
+  maximo: integer("maximo"),
+  bloqueio: text("bloqueio"),
+  /** Restrição que o Beds24 tinha antes do blackout do SCL (noCheckIn etc.), devolvida na reabertura. */
+  bloqueioAnterior: text("bloqueio_anterior"),
+  /** Quarto Beds24 que recebeu o envio: a posse de um bloqueio vale só para esse quarto; vínculo trocado descarta o estado. */
+  roomId: text("room_id"),
+  enviadoEm: timestamp("enviado_em", { withTimezone: true }).notNull(),
+  confirmado: boolean("confirmado").notNull().default(false),
+  envioId: uuid("envio_id").references(() => beds24Envios.id),
+}, t => [primaryKey({ columns: [t.organizacaoId, t.imovelId, t.data] })]);
