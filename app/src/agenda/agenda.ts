@@ -60,9 +60,12 @@ const HORA = /^([01]?\d|2[0-3])h([0-5]\d)?$/;
  * por reserva e cidade com vários apartamentos vai por limpezas. A tela mostra qual está valendo.
  */
 export function formatoDa(c: Pick<ConfigAgenda, "formatos">, cidade: string, imoveisNaCidade: number): Formato {
+  // A escolha feita na tela vale sempre (tudo editável pelo painel); sem escolha, Búzios vai por
+  // reservas (30 dias), Rio por limpezas, e as demais cidades pelo número de imóveis.
+  if (c.formatos[cidade]) return c.formatos[cidade];
   if (diasDaCidade(cidade) === DIAS_BUZIOS) return "reservas";
   if (cidade.trim().toLowerCase() === "rio de janeiro") return "limpezas";
-  return c.formatos[cidade] ?? (imoveisNaCidade === 1 ? "reservas" : "limpezas");
+  return imoveisNaCidade === 1 ? "reservas" : "limpezas";
 }
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

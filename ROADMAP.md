@@ -119,6 +119,7 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 | M6.4 | Documentos de portaria (só 403): checklist de pedidos, sem armazenar documentos no Git | feito | M3.5 |
 | M6.5 | Rotinas recorrentes (manutenção quinzenal, faxinas semanal, lembrete mensal) | feito | M6.2 |
 | M6.6 | Equipe de limpeza: acesso próprio pelo celular (agenda, marcar faxina feita) e aviso por WhatsApp quando o M10 estiver ligado (e-mail enquanto isso) | feito | M6.1, M1.3 |
+| M6.7 | Agenda por cidade e horários combinados (pedido de Diego em 2/10): Búzios lista todas as reservas dos próximos 30 dias; Rio mantém 5 dias com as limpezas por dia (limpeza já realizada sem uso posterior não volta) e as entradas/saídas/chaves em bloco separado; primeiro nome, nº de hóspedes, horários e telefone operacional em ambos. Ficha da reserva → "Horários combinados com o hóspede": pedido pendente e acordo confirmado (canal, referência, aceite explícito), com prioridade acordo → cadastro do imóvel → padrão da agenda; mudança de datas/imóvel exige novo acordo. Entregue em 3/10 (PR do Codex #81, levado à main pelo processo) | feito | M6.3 |
 
 ### M7 — Site público no novo app
 
