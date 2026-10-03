@@ -6,6 +6,8 @@ import { auditoria, bloqueios, configuracoes, imoveis, imoveisDetalhes, limpezas
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { alterarHorario, horarioEfetivo, lerHorariosReservas } from "@/reservas/horarios";
+import type { DadosReserva } from "@/reservas/regras";
+import { sincronizarReserva } from "@/reservas/repositorio";
 import { CorreioMemoria } from "@/email/correio";
 import { enviarAgenda, montarAgenda, salvarConfigAgenda, textoDaAgenda } from "./agenda";
 
@@ -155,11 +157,33 @@ it("JSON sem prova de confirmação nunca é tratado como acordo", async () => {
   expect(horarioEfetivo(h, "entrada", r, "15h")).toBe("15h (padrão)");
 });
 
-it("cancelamento e reconfirmação não ressuscitam um horário aceito anteriormente", async () => {
+it("cancelamento e reconfirmação pelo Beds24 não ressuscitam um horário aceito anteriormente", async () => {
+  // Pelo Beds24 a reconfirmação deixa `confirmadaEm` vazio de propósito: o que invalida o acordo é o histórico.
+  const dados: DadosReserva = { imovelId: rio, origem: "airbnb", estado: "confirmada", checkin: "2026-10-02", checkout: "2026-10-04", hospedes: 3,
+    hospedeNome: "Ana Fictícia", hospedeEmail: "", hospedeTelefone: "+55 00 00000-0000", hospedeOrigem: "", moeda: "BRL", valorBruto: 100000, taxaCanal: 15000, valorLiquido: null, codigoCanal: "", observacoes: "" };
+  const criada = await sincronizarReserva(db, org, "beds24", "B-1", dados);
+  if (!criada.ok) throw new Error("reserva");
+  const id = criada.reserva.id;
+  await pedido(id); await confirmar(id);
+  expect(await texto()).toContain("13:30 (confirmado com hóspede)");
+  expect((await sincronizarReserva(db, org, "beds24", "B-1", { ...dados, estado: "cancelada" })).ok).toBe(true);
+  expect(await pedido(id, "saida", 2)).toMatchObject({ ok: false });
+  expect((await sincronizarReserva(db, org, "beds24", "B-1", dados)).ok).toBe(true);
+  const [r] = await db.select().from(reservas).where(eq(reservas.id, id));
+  expect(r).toMatchObject({ estado: "confirmada", confirmadaEm: null });
+  expect(await texto()).toContain("acordo anterior precisa reconfirmação");
+  expect(await texto()).not.toContain("13:30 (confirmado");
+  // Novo pedido e novo aceite valem para a reserva reconfirmada.
+  expect(await pedido(id, "entrada", 2)).toEqual({ ok: true });
+  expect(await confirmar(id, "entrada", 3)).toEqual({ ok: true });
+  expect(await texto()).toContain("13:30 (confirmado com hóspede)");
+});
+
+it("reconfirmação pelo painel (pendente → confirmada) também exige acordo novo", async () => {
   const r = await reserva();
   await pedido(r.id); await confirmar(r.id);
-  await db.update(reservas).set({ estado: "cancelada" }).where(eq(reservas.id, r.id));
-  expect(await pedido(r.id, "saida", 2)).toMatchObject({ ok: false });
+  await db.update(reservas).set({ estado: "pendente" }).where(eq(reservas.id, r.id));
+  await db.insert(auditoria).values({ organizacaoId: org, entidade: "reserva", entidadeId: r.id, acao: "reserva.confirmar", mudancas: { estado: ["pendente", "confirmada"] } });
   await db.update(reservas).set({ estado: "confirmada", confirmadaEm: new Date("2026-10-01T18:00:00Z") }).where(eq(reservas.id, r.id));
   expect(await texto()).toContain("acordo anterior precisa reconfirmação");
   expect(await texto()).not.toContain("13:30 (confirmado");

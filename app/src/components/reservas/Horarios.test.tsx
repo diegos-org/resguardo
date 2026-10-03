@@ -4,8 +4,8 @@ import type { HorariosReserva, RegistroHorario } from "@/reservas/horarios";
 import { Horarios } from "./Horarios";
 vi.mock("@/reservas/horarios-acoes", () => ({ alterarHorarioAcao: vi.fn() }));
 const registro: RegistroHorario = { id: "pedido-ficticio", hora: "13:30", canal: "Airbnb", referencia: "pedido fictício", registradoEm: "2026-10-01T10:00:00Z",
-  registradoPor: "equipe", imovelId: "imovel", checkin: "2026-10-02", checkout: "2026-10-04", confirmacaoReserva: null };
-const horarios: HorariosReserva = { versao: 1, entrada: { pedido: registro }, saida: {} };
+  registradoPor: "equipe", imovelId: "imovel", checkin: "2026-10-02", checkout: "2026-10-04", confirmacaoReserva: 1 };
+const horarios: HorariosReserva = { versao: 1, entrada: { pedido: registro }, saida: {}, confirmacoes: 1 };
 it("pedido é mostrado como pendente e exige referência e aceite para confirmar", () => {
   const h = renderToStaticMarkup(<Horarios id="reserva" horarios={horarios} editar vigentes={{ entrada: false, saida: false }} />);
   expect(h).toContain("Pedido pendente: 13:30");
