@@ -14,9 +14,11 @@
 - **Revalidação** a cada abertura da página: cotação aberta é recalculada; se a situação (disponível × a
   confirmar) ou os valores não batem, a página diz o que mudou e oferece nova consulta — leitura do Beds24 que
   venceu ou sumiu conta como mudança. Nada é gravado só por visitar.
-- **Freios do site público:** repetir a mesma consulta (mesmo imóvel, datas, pessoas e valores) em 24 h
-  reaproveita a cotação aberta em vez de criar outra; cada imóvel aceita até 100 cotações abertas por 24 h
+- **Freios do site público:** repetir a mesma consulta (mesmo imóvel, datas, pessoas, situação e valores) em
+  24 h reaproveita a cotação aberta em vez de criar outra; cada imóvel aceita até 100 cotações abertas por 24 h
   (acima disso, "fale com a equipe"); cotação que nunca virou pedido é apagada pela rotina depois de 30 dias.
+  Reaproveitamento, contagem e inserção correm em série por imóvel (trava consultiva na transação), para
+  consultas simultâneas não furarem o teto.
 
 ## Segurar as datas (hold)
 

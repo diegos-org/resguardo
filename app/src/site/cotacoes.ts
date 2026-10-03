@@ -83,65 +83,75 @@ export async function criarCotacao(db: Db, organizacaoId: string, p: PedidoConsu
   if (!d.cotacao || d.cotacao.diarias === null || d.cotacao.total === null) return { ok: false, erro: "O valor dessas datas ainda precisa ser confirmado pela equipe: fale com a gente.", disponibilidade: d };
   const [im] = await db.select({ id: imoveis.id }).from(imoveis).where(and(eq(imoveis.organizacaoId, organizacaoId), eq(imoveis.codigo, p.imovel)));
   if (!im) return { ok: false, erro: "Escolha um apartamento.", disponibilidade: d };
-  // A mesma consulta repetida (mesmo imóvel, datas, pessoas e valores) reaproveita a cotação aberta recente:
-  // recarregar ou reenviar a página não cria linhas novas.
   const hospedes = Number(p.hospedes);
-  const [igual] = await db
-    .select()
-    .from(cotacoes)
-    .where(
-      and(
-        eq(cotacoes.organizacaoId, organizacaoId),
-        eq(cotacoes.imovelId, im.id),
-        eq(cotacoes.estado, "aberta"),
-        eq(cotacoes.checkin, p.entrada),
-        eq(cotacoes.checkout, p.saida),
-        eq(cotacoes.hospedes, hospedes),
-        eq(cotacoes.diarias, d.cotacao.diarias),
-        eq(cotacoes.limpeza, d.cotacao.limpeza),
-        eq(cotacoes.hospedeExtra, d.cotacao.hospedeExtra),
-        eq(cotacoes.total, d.cotacao.total),
-        gte(cotacoes.criadaEm, new Date(agora.getTime() - REAPROVEITAR_COTACAO_MS)),
-      ),
-    )
-    .orderBy(desc(cotacoes.criadaEm))
-    .limit(1);
-  if (igual) return { ok: true, cotacao: igual, disponibilidade: d };
-  // Freio: o site é público, então o número de cotações abertas por imóvel nas últimas 24 h tem teto.
-  const [{ abertas }] = await db
-    .select({ abertas: count() })
-    .from(cotacoes)
-    .where(and(eq(cotacoes.organizacaoId, organizacaoId), eq(cotacoes.imovelId, im.id), eq(cotacoes.estado, "aberta"), gte(cotacoes.criadaEm, new Date(agora.getTime() - 24 * 3_600_000))));
-  if (Number(abertas) >= MAXIMO_COTACOES_ABERTAS_POR_IMOVEL) return { ok: false, erro: "Há muitas consultas em andamento neste apartamento agora. Tente de novo em alguns minutos ou fale com a equipe.", disponibilidade: d };
-  for (let tentativa = 0; ; tentativa++) {
-    try {
-      const [c] = await db
-        .insert(cotacoes)
-        .values({
-          organizacaoId,
-          imovelId: im.id,
-          codigo: gerarCodigoCotacao(),
-          estado: "aberta",
-          checkin: p.entrada,
-          checkout: p.saida,
-          hospedes,
-          noites: d.noites,
-          situacao: d.situacao,
-          diarias: d.cotacao.diarias,
-          limpeza: d.cotacao.limpeza,
-          hospedeExtra: d.cotacao.hospedeExtra,
-          total: d.cotacao.total,
-          leituraEm: d.leituraEm,
-          criadaEm: agora,
-          atualizadaEm: agora,
-        })
-        .returning();
-      return { ok: true, cotacao: c, disponibilidade: d };
-    } catch (e) {
-      // Colisão do código público: raríssima; tenta de novo.
-      if (!violouUnicidade(e, "cotacoes_codigo") || tentativa >= 3) throw e;
+  const valores = { diarias: d.cotacao.diarias, limpeza: d.cotacao.limpeza, hospedeExtra: d.cotacao.hospedeExtra, total: d.cotacao.total };
+  return db.transaction(async (tx) => {
+    // Reaproveitamento, teto e inserção em série por imóvel: pedidos simultâneos não furam o teto nem duplicam.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`cotacao-imovel:${im.id}`}))`);
+    // A mesma consulta repetida (mesmo imóvel, datas, pessoas, situação e valores) reaproveita a cotação
+    // aberta recente: recarregar ou reenviar a página não cria linhas novas.
+    const [igual] = await tx
+      .select()
+      .from(cotacoes)
+      .where(
+        and(
+          eq(cotacoes.organizacaoId, organizacaoId),
+          eq(cotacoes.imovelId, im.id),
+          eq(cotacoes.estado, "aberta"),
+          eq(cotacoes.checkin, p.entrada),
+          eq(cotacoes.checkout, p.saida),
+          eq(cotacoes.hospedes, hospedes),
+          eq(cotacoes.situacao, d.situacao),
+          eq(cotacoes.diarias, valores.diarias),
+          eq(cotacoes.limpeza, valores.limpeza),
+          eq(cotacoes.hospedeExtra, valores.hospedeExtra),
+          eq(cotacoes.total, valores.total),
+          gte(cotacoes.criadaEm, new Date(agora.getTime() - REAPROVEITAR_COTACAO_MS)),
+        ),
+      )
+      .orderBy(desc(cotacoes.criadaEm))
+      .limit(1);
+    if (igual) return { ok: true as const, cotacao: igual, disponibilidade: d };
+    // Freio: o site é público, então o número de cotações abertas por imóvel nas últimas 24 h tem teto.
+    const [{ abertas }] = await tx
+      .select({ abertas: count() })
+      .from(cotacoes)
+      .where(and(eq(cotacoes.organizacaoId, organizacaoId), eq(cotacoes.imovelId, im.id), eq(cotacoes.estado, "aberta"), gte(cotacoes.criadaEm, new Date(agora.getTime() - 24 * 3_600_000))));
+    if (Number(abertas) >= MAXIMO_COTACOES_ABERTAS_POR_IMOVEL) return { ok: false as const, erro: "Há muitas consultas em andamento neste apartamento agora. Tente de novo em alguns minutos ou fale com a equipe.", disponibilidade: d };
+    for (let tentativa = 0; ; tentativa++) {
+      try {
+        // Savepoint: se o código público colidir, só esta tentativa é desfeita.
+        const c = await tx.transaction(async (sp) => {
+          const [linha] = await sp
+            .insert(cotacoes)
+            .values({
+              organizacaoId,
+              imovelId: im.id,
+              codigo: gerarCodigoCotacao(),
+              estado: "aberta",
+              checkin: p.entrada,
+              checkout: p.saida,
+              hospedes,
+              noites: d.noites,
+              situacao: d.situacao,
+              diarias: valores.diarias,
+              limpeza: valores.limpeza,
+              hospedeExtra: valores.hospedeExtra,
+              total: valores.total,
+              leituraEm: d.leituraEm,
+              criadaEm: agora,
+              atualizadaEm: agora,
+            })
+            .returning();
+          return linha;
+        });
+        return { ok: true as const, cotacao: c, disponibilidade: d };
+      } catch (e) {
+        // Colisão do código público: raríssima; tenta de novo.
+        if (!violouUnicidade(e, "cotacoes_codigo") || tentativa >= 3) throw e;
+      }
     }
-  }
+  });
 }
 
 export async function obterCotacao(db: Db, organizacaoId: string, codigo: string): Promise<(Cotacao & { imovelCodigo: string; imovelNome: string; fuso: string }) | null> {

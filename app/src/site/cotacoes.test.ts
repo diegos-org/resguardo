@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { REGRAS_CALENDARIO_PADRAO } from "@/calendario/regras-config";
 import { gravarConfig } from "@/configuracoes/armazem";
@@ -81,6 +81,27 @@ describe("cotação do site (M8.1)", () => {
     ]);
     expect(await expirarHoldsVencidos(db, org, agora)).toEqual({ expiradas: 0, convertidas: 0, canceladas: 0, removidas: 2 });
     expect(await db.select().from(cotacoes).where(eq(cotacoes.organizacaoId, org))).toHaveLength(2 + MAXIMO_COTACOES_ABERTAS_POR_IMOVEL);
+  });
+
+  it("reaproveitar exige a mesma situação; o teto vale mesmo com pedidos simultâneos", async () => {
+    const a = await cotar();
+    expect(a.situacao).toBe("disponivel");
+    // Leitura de uma noite some: mesma estadia e valor, mas "a confirmar" → cotação nova, não a antiga.
+    await db.delete(beds24Calendario).where(eq(beds24Calendario.data, "2026-10-13"));
+    const b = await cotar();
+    expect(b.id).not.toBe(a.id);
+    expect(b.situacao).toBe("a_confirmar");
+    expect((await cotar()).id).toBe(b.id);
+    // Falta uma vaga para o teto: três consultas distintas ao mesmo tempo → só uma entra.
+    await db.insert(cotacoes).values(
+      Array.from({ length: MAXIMO_COTACOES_ABERTAS_POR_IMOVEL - 3 }, (_, i) => ({
+        organizacaoId: org, imovelId: im, codigo: `COT-SIMUL${String(i).padStart(3, "0")}`, estado: "aberta", checkin: "2026-11-01", checkout: "2026-11-02", hospedes: 1, noites: 1, situacao: "disponivel", diarias: 1, limpeza: 0, hospedeExtra: 0, total: 1, criadaEm: agora, atualizadaEm: agora,
+      })),
+    );
+    const r = await Promise.all([criarCotacao(db, org, pedido({ hospedes: "1" }), agora), criarCotacao(db, org, pedido({ hospedes: "2" }), agora), criarCotacao(db, org, pedido({ hospedes: "3" }), agora)]);
+    expect(r.filter((x) => x.ok)).toHaveLength(1);
+    expect(r.filter((x) => !x.ok).map((x) => !x.ok && x.erro)).toEqual([expect.stringContaining("muitas consultas"), expect.stringContaining("muitas consultas")]);
+    expect((await db.select().from(cotacoes).where(and(eq(cotacoes.organizacaoId, org), eq(cotacoes.estado, "aberta"))))).toHaveLength(MAXIMO_COTACOES_ABERTAS_POR_IMOVEL);
   });
 
   it("segurar: cria o pedido do site com o contato, ocupa as noites, revalida a outra cotação e não repete", async () => {
@@ -223,7 +244,7 @@ describe("cotação do site (M8.1)", () => {
   });
 
   it("dois visitantes nas mesmas noites ao mesmo tempo: só um segura", async () => {
-    const [a, b] = await Promise.all([cotar(), cotar()]);
+    const [a, b] = await Promise.all([cotar(), cotar({ hospedes: "3" })]);
     const [ra, rb] = await Promise.all([segurarDatas(db, org, a.codigo, contato({ email: "a@example.com" }), agora), segurarDatas(db, org, b.codigo, contato({ email: "b@example.com" }), agora)]);
     expect([ra.ok, rb.ok].filter(Boolean)).toHaveLength(1);
     expect((await minhasReservas()).filter((r) => r.estado === "pedido")).toHaveLength(1);
