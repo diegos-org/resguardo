@@ -416,6 +416,47 @@ export const bloqueios = pgTable(
   ],
 );
 
+/**
+ * Cotação do site (M8.1): o que o visitante viu (datas, pessoas, valor por partes e situação), com código
+ * público. "Segurar as datas" cria um pedido de reserva (`reservas`, estado `pedido`, origem `site`) ligado
+ * aqui, que ocupa o calendário até `holdAte`; depois vence sozinho. Estados: aberta → segurada → convertida
+ * (equipe confirmou) | expirada (venceu) | cancelada (equipe cancelou); aberta → desatualizada (valor ou
+ * disponibilidade mudaram na hora de segurar).
+ */
+export const ESTADOS_COTACAO = ["aberta", "segurada", "expirada", "convertida", "desatualizada", "cancelada"] as const;
+export type EstadoCotacao = (typeof ESTADOS_COTACAO)[number];
+export const cotacoes = pgTable(
+  "cotacoes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    imovelId: uuid("imovel_id").notNull().references(() => imoveis.id),
+    /** Código público da cotação (ex.: COT-7K3M9QX2); não é credencial. */
+    codigo: text("codigo").notNull(),
+    estado: text("estado").notNull().default("aberta"),
+    checkin: date("checkin", { mode: "string" }).notNull(),
+    checkout: date("checkout", { mode: "string" }).notNull(),
+    hospedes: integer("hospedes").notNull(),
+    noites: integer("noites").notNull(),
+    /** Situação mostrada ao visitante quando a cotação foi feita: disponivel ou a_confirmar. */
+    situacao: text("situacao").notNull(),
+    /** Valor por partes, em centavos, como mostrado (diárias e total nunca nulos numa cotação gravada). */
+    diarias: integer("diarias").notNull(),
+    limpeza: integer("limpeza").notNull(),
+    hospedeExtra: integer("hospede_extra").notNull(),
+    total: integer("total").notNull(),
+    /** Leitura do Beds24 mais antiga usada na decisão (null = sem leitura em alguma data). */
+    leituraEm: timestamp("leitura_em", { withTimezone: true }),
+    /** Pedido de reserva criado ao segurar as datas. */
+    reservaId: uuid("reserva_id").references(() => reservas.id),
+    /** Até quando as datas ficam seguradas; depois o pedido vence sozinho. */
+    holdAte: timestamp("hold_ate", { withTimezone: true }),
+    criadaEm: timestamp("criada_em", { withTimezone: true }).notNull().defaultNow(),
+    atualizadaEm: timestamp("atualizada_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("cotacoes_codigo").on(t.organizacaoId, t.codigo), index("cotacoes_imovel_estado").on(t.imovelId, t.estado)],
+);
+
 /** Observação do calendário externo; não é cotação nem autorização de venda. */
 export const beds24Calendario = pgTable("beds24_calendario", {
   organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),

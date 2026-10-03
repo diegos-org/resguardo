@@ -4,6 +4,7 @@
     { "path": "/api/cron/beds24", "schedule": "15 9 * * *" },
     { "path": "/api/cron/beds24-envio", "schedule": "0 10 * * *" },
     { "path": "/api/cron/agenda", "schedule": "0 23 * * *" },
+    { "path": "/api/cron/cotacoes", "schedule": "*/10 * * * *" },
     { "path": "/api/cron/fechamento", "schedule": "0 12 * * *" },
     { "path": "/api/cron/mensagens", "schedule": "0 0 * * *" },
     { "path": "/api/cron/mensagens", "schedule": "0 1 * * *" },

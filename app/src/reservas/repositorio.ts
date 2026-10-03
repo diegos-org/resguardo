@@ -263,7 +263,8 @@ export async function cancelarReserva(db: Db, organizacaoId: string, id: string,
 class ConfirmacaoRecusada extends Error {}
 
 /**
- * Confirma uma reserva pendente (feita no painel ou vinda de fora): a partir daí entra no financeiro.
+ * Confirma uma reserva pendente ou um pedido (feito no painel, vindo de fora ou segurado pelo site): a
+ * partir daí entra no financeiro.
  * Se ela já movimentou dinheiro e o cálculo novo não bate com o que ficou no livro (o motor não mexe
  * nisso), não confirma: a conferência continua até o ajuste manual (avisar em vez de supor).
  */
@@ -284,7 +285,8 @@ async function confirmarNaTransacao(db: Db, organizacaoId: string, id: string, a
       .from(reservas)
       .where(and(eq(reservas.id, id), eq(reservas.organizacaoId, organizacaoId)))
       .for("update");
-    if (!r || r.estado !== "pendente") return { ok: false };
+    // Pendente (painel/fora) ou pedido (hold do site, M8.1; pedido vindo do Beds24 também): vira confirmada.
+    if (!r || (r.estado !== "pendente" && r.estado !== "pedido")) return { ok: false };
     await tx.update(reservas).set({ estado: "confirmada", confirmadaEm: new Date(), conferenciaResolvidaEm: null, atualizadoEm: new Date() }).where(eq(reservas.id, id));
     await registrarAuditoria(tx, {
       organizacaoId,
@@ -292,7 +294,7 @@ async function confirmarNaTransacao(db: Db, organizacaoId: string, id: string, a
       acao: "reserva.confirmar",
       entidade: "reserva",
       entidadeId: id,
-      mudancas: { estado: ["pendente", "confirmada"] },
+      mudancas: { estado: [r.estado, "confirmada"] },
     });
     const m = await aplicarMotor(tx, organizacaoId, id, autorId);
     // Desfaz tudo (a reserva continua pendente, em conferência).

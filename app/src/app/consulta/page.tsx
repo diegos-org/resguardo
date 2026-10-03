@@ -1,8 +1,11 @@
 import { Disponibilidade } from "@/components/site/Disponibilidade";
+import { SegurarDatas } from "@/components/site/SegurarDatas";
 import { canalDeContato, FormConsulta } from "@/components/site/FormConsulta";
 import { Moldura, SiteEmConfiguracao } from "@/components/site/Moldura";
 import styles from "@/components/site/site.module.css";
 import { hojeISO } from "@/lib/datas";
+import { criarCotacaoAcao } from "@/site/acoes";
+import { podeSegurar } from "@/site/cotacoes";
 import { consultarDisponibilidade } from "@/site/disponibilidade";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
 import { hojeMaisCedo, imoveisDoSite, imovelDoSite, lerPedidoConsulta, linkWhatsapp, montarConsulta } from "@/site/site";
@@ -33,7 +36,13 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
       <h1 style={{ fontSize: "2rem", margin: "8px 0 16px" }}>Consulta</h1>
       <div className={styles.colunas}>
         <div>
+          {sp.aviso === "mudou" && (
+            <p className={styles.aviso} role="alert">
+              A disponibilidade ou o valor mudaram desde a sua consulta anterior. Confira a situação atual abaixo.
+            </p>
+          )}
           {disponibilidade && <Disponibilidade resultado={disponibilidade} entrada={pedido.entrada} saida={pedido.saida} fuso={imovel?.fuso ?? "America/Sao_Paulo"} />}
+          {disponibilidade && podeSegurar(disponibilidade) && <SegurarDatas pedido={pedido} aConfirmar={disponibilidade.situacao === "a_confirmar"} acao={criarCotacaoAcao} />}
           {prontoParaEnviar && r?.ok ? (
             <>
               <section className={styles.secao}>

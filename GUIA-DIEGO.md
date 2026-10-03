@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 3/10/2026, proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
+> **Última atualização:** 3/10/2026, cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
 
 ---
 
@@ -24,7 +24,7 @@
 
 | Etapa | O que entrega | Situação |
 |---|---|---|
-| M0 Fundação | Base do app, banco de dados, layout, publicação na Vercel | 🟡 Vercel e login funcionando; isolamento do banco de homologação ainda a conferir |
+| M0 Fundação | Base do app, banco de dados, layout, publicação na Vercel | 🟡 Vercel e login funcionando; banco de homologação separado conferido em 3/10 (falta só você dar o M0.5 por fechado e mandar a referência do sistema antigo, M0.6) |
 | M1 Acesso | Login (Google/código por e-mail), convites, permissões | ✅ pronto |
 | M2 Cadastros | Imóveis, proprietários, contratos e aba Anúncios | ✅ implementado; referências dos canais precisam ser preenchidas/conferidas |
 | M3 Reservas | Reservas, calendário central, importação e envio de calendário/preços ao Beds24 | 🟡 importação e envio implementados; o envio começa desligado e espera o seu teste no 103; conferência das reservas parcial |
@@ -32,11 +32,35 @@
 | M5 Portal do proprietário | Relatórios, saldos, PDF, bloqueio de uso próprio | 🟡 relatórios, PDF, e-mail do fechamento e bloqueio de datas prontos |
 | M6 Operação | Limpezas, manutenção, agenda diária | 🟡 em andamento |
 | M7 Site público | Site novo com disponibilidade e valor reais | 🟡 disponibilidade e valor prontos; fotos reais (M7.3) dependem de você |
-| M8 Reserva direta | Pagamento pelo Mercado Pago | ⚪ aguardando |
+| M8 Reserva direta | Cotação, datas seguradas e pagamento pelo Mercado Pago | 🟡 cotação e "segurar as datas" prontos; pagamento (M8.2) espera a decisão do M8.0 e as credenciais de teste |
 | M9 Portal do hóspede | Acesso do hóspede e mensagens automáticas | ✅ pronto |
 | M10 WhatsApp | Caixa de entrada do WhatsApp no painel | ⚪ aguardando |
 | M11 Produção | Dados reais, domínio, entrada em uso | ⚪ aguardando |
 | M12 Marketplace | Proprietário que opera o próprio imóvel; SCL cuida do online | 🟡 em andamento |
+
+### Site: cotação e "segurar as datas" — M8.1
+
+Depois de ver "Disponível" (ou "a confirmar") com valor, o visitante pode **segurar as datas**:
+
+- **Cotação com código:** o site grava o que mostrou (datas, pessoas, diárias, limpeza, hóspede
+  extra e total) e abre uma página própria, com um código tipo COT-XXXXXXXX. Cada vez que a página
+  abre, o sistema confere de novo: se o valor ou a disponibilidade mudaram, avisa e manda fazer
+  nova consulta em vez de deixar passar.
+- **Segurar as datas:** o visitante informa nome, e-mail e WhatsApp e as datas ficam reservadas
+  para ele por **30 minutos** (você muda em Configurações → Calendário e preços → Site público).
+  Isso cria um **pedido** em Reservas (origem "site", situação "pedido"), que ocupa o calendário
+  como qualquer reserva, mas **não entra no financeiro** até ser confirmado. Dois visitantes nas
+  mesmas noites ao mesmo tempo: só o primeiro consegue; o segundo vê "acabaram de ficar
+  indisponíveis".
+- **O que a equipe faz:** o pedido aparece em Reservas com o contato do visitante e o código da
+  cotação nas observações. Na ficha, **Confirmar reserva** transforma em reserva confirmada (aí
+  entra no financeiro) e **Cancelar** libera as datas. Se ninguém fizer nada até o prazo, o pedido
+  **vence sozinho** (uma rotina roda a cada 10 minutos) e as datas voltam à venda.
+- **Freios contra abuso:** um pedido em andamento por e-mail e no máximo cinco por imóvel.
+- **O que ainda não acontece:** nenhum pagamento (M8.2) e nenhuma escrita no Beds24 (M8.3). Até
+  lá, o visitante fecha a reserva com a equipe pelo WhatsApp, usando o botão da página da cotação,
+  e o Airbnb/Booking só fecham as datas quando a reserva confirmada for enviada (M8.3) — por isso,
+  confirme ou cancele os pedidos do site com rapidez.
 
 ### Portal do proprietário: bloqueio de uso próprio — M5.5
 
@@ -79,8 +103,8 @@ visitante passa a ver, antes de mandar a mensagem:
   cadastro do imóvel. Sem preço cadastrado, o valor fica "a confirmar".
 - A mensagem do WhatsApp passa a trazer "O site mostrou R$ … para N noites" como referência.
 
-Nada é reservado nem cobrado pelo site; cotação guardada e reserva com hold vêm no M8.1 e o
-pagamento no M8.2. A precisão da disponibilidade depende da frequência da importação do Beds24
+Nada é cobrado pelo site; a cotação guardada e o "segurar as datas" já existem (M8.1, abaixo) e o
+pagamento vem no M8.2. A precisão da disponibilidade depende da frequência da importação do Beds24
 (hoje, uma vez por dia quando ligada): consultas feitas de tarde já podem estar "a confirmar"
 se a importação não rodou. Estadias acima de 90 noites (ajustável) pedem contato com a equipe.
 
@@ -955,8 +979,8 @@ e escreva normalmente.
 | **GitHub** (`al-life/scl-reconstrucao`) | Guarda o código e o histórico | ✅ conectado | — |
 | **Claude Code** | Programa o sistema; rotina a cada 3h | ✅ ativo | — |
 | **Codex** (revisor automático) | Revisa cada PR | ✅ ativo no repositório | — |
-| **Neon** | Banco de dados (Postgres) | 🟡 sua conta existe e está paga | Ligar à Vercel (item abaixo) |
-| **Vercel** | Publica o sistema na internet (homologação e depois produção) | ✅ site acessível, confirmado por Diego em 27/09 | Confirmar isolamento do banco de homologação; acesso pelo conector é separado |
+| **Neon** | Banco de dados (Postgres) | ✅ projeto `scl-sistema` com duas branches: `main` (produção) e `preview` (versões de teste dos PRs); as 41 migrações até o M5.5 aplicadas nas duas, conferido em 3/10 | Nada agora. Backup e checklist ficam para o M11.3 |
+| **Vercel** | Publica o sistema na internet (homologação e depois produção) | ✅ site acessível (27/09); conferido em 3/10 que produção usa a branch `main` do Neon e as previews dos PRs usam a branch `preview` — bancos separados | Variáveis já presentes: banco, login Google, Beds24 (leitura), Resend, agendador. Faltam só as que ligam coisas novas (`BEDS24_ESCRITA`, item 3) |
 | **Beds24** | Channel manager (Airbnb/Booking), reservas, calendário e preços | 🟡 importação feita por Diego (1 e 2/10); envio de calendário/preços pronto e **desligado** | Testar o envio no 103 (simular → `BEDS24_ESCRITA=ligada` com refresh token de inventário → enviar → conferir no Beds24/Airbnb) e só então ligar o automático (seção 6, item 3) |
 | **Mercado Pago** | Pagamentos da reserva direta | ⚪ não conectado | Credenciais de *teste* do provedor escolhido no M8.0 (Mercado Pago, se for a escolha), mais adiante (M8) |
 | **Meta / WhatsApp Business** | Atendimento pelo WhatsApp da empresa | ⚪ não conectado | Verificação da empresa no Meta Business (demora dias) |
@@ -1109,6 +1133,11 @@ ambiente).
    preços e reservas pelo Beds24 e pelo sistema. O histórico anterior à conexão do Airbnb ao
    Beds24 não vem pela API do Beds24 — é limitação do canal, não do sistema — e fica fora da
    conferência.
+
+22. **Pedidos do site (M8.1):** quando aparecer em **Reservas** uma linha com origem "site" e
+   situação "pedido", é um visitante que segurou datas pela cotação. Fale com ele (contato na
+   ficha) e **confirme ou cancele antes do prazo** das observações; se não, o pedido vence sozinho.
+   O prazo padrão é de 30 minutos, em Configurações → Calendário e preços → Site público.
 
 ---
 
