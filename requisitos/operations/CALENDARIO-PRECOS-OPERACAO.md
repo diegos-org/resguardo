@@ -216,7 +216,9 @@ Implementado no painel (um só lugar por regra; `app/src/calendario/`):
   reabre o que ele mesmo fechou, e devolve a noite ao que havia antes: a restrição que já
   existia no Beds24 (`noCheckIn` etc., guardada ao fechar) ou `none`. A reabertura só sai
   quando a leitura atual ainda mostra o blackout do SCL; se o Beds24 mostrar outra coisa, a
-  posse acaba sem escrita. Bloqueios e 0 unidades que só existem no Beds24 viram aviso.
+  posse acaba sem escrita. A posse vale para o quarto Beds24 que recebeu o envio: trocado o
+  vínculo do imóvel, o estado do quarto antigo é descartado com aviso (o que o SCL fechou lá é
+  reaberto manualmente). Bloqueios e 0 unidades que só existem no Beds24 viram aviso.
   Reservas nunca são criadas, alteradas ou canceladas pelo envio.
 - **Envio controlado** (`POST /inventory/rooms/calendar`, price1/minStay/maxStay/override):
   por imóvel, a partir de uma leitura atual do destino feita no início de cada execução
@@ -225,7 +227,8 @@ Implementado no painel (um só lugar por regra; `app/src/calendario/`):
   confirmado), com simulação prévia, intenção gravada antes da escrita externa (se o banco
   falhar depois da escrita, a execução seguinte assume a posse pela leitura), releitura noite
   a noite (confirmada/divergente), histórico
-  antes/depois com a regra usada, trava contra execução simultânea e rotina diária opt-in
+  antes/depois com a regra usada, trava contra execução simultânea (a mesma da importação: as
+  duas nunca rodam juntas) e rotina diária opt-in
   (7h, após a importação). Só funciona com `BEDS24_ESCRITA=ligada` e imóvel marcado; o
   refresh token precisa do escopo `inventory`.
 

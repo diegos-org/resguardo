@@ -389,6 +389,35 @@ describe("envio ao Beds24 (M3.7)", () => {
     expect(diaFalso("2026-10-03")).toMatchObject({ override: "blackout" });
   });
 
+  it("vínculo trocado para outro quarto: o estado de envio do quarto antigo é descartado com aviso e a posse do blackout não passa ao quarto novo", async () => {
+    await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-10-03", fim: "2026-10-04", motivo: "Uso próprio" });
+    expect((await enviar()).situacao).toBe("ok");
+    expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ bloqueio: "blackout", confirmado: true, roomId: "20" });
+    // O vínculo do imóvel passa ao quarto 21, que tem um blackout próprio em 3/10; o bloqueio local é removido.
+    beds.properties = [{ id: 10, currency: "BRL", roomTypes: [{ id: 20, name: "Quarto fictício" }, { id: 21, name: "Outro quarto" }] }];
+    beds.calendarios.push({ roomId: 21, calendar: [
+      { from: "2026-10-01", to: "2026-10-02", numAvail: 1, price1: 400, minStay: 1, maxStay: 27, override: "none" },
+      { from: "2026-10-03", to: "2026-10-03", numAvail: 0, price1: 400, minStay: 1, maxStay: 27, override: "blackout" },
+      { from: "2026-10-04", to: "2026-10-10", numAvail: 1, price1: 400, minStay: 1, maxStay: 27, override: "none" },
+    ] });
+    await db.update(idsExternos).set({ detalhe: "21" }).where(eq(idsExternos.imovelId, im));
+    await db.delete(bloqueios).where(eq(bloqueios.fonte, "manual"));
+    // A simulação avisa, mas não descarta nada.
+    const s = await enviar("simulacao");
+    expect(s.avisos.some(a => a.includes("estado de envio de outro quarto") && a.includes("serão descartadas no envio"))).toBe(true);
+    expect((await enviados()).some(e => e.roomId === "20")).toBe(true);
+    // O envio real descarta o estado antigo e não reabre o blackout do quarto 21: o SCL não fechou aquele.
+    const r = await enviar();
+    expect(r.avisos.some(a => a.includes("10 noite(s) com estado de envio de outro quarto") && a.includes("foram descartadas"))).toBe(true);
+    expect(r.avisos).toContain("Imóvel 103, noite 03/10/2026: Beds24 tem bloqueio (blackout) sem bloqueio no SCL: o SCL não reabre o que não fechou; confira.");
+    expect(beds.escritas.at(-1)![0].roomId).toBe("21");
+    expect(beds.escritas.at(-1)![0].faixas.every(f => f.bloqueio === undefined)).toBe(true);
+    expect((beds.calendarios.find(c => c.roomId === 21)!.calendar as Record<string, unknown>[]).find(d => d.from === "2026-10-03")).toMatchObject({ override: "blackout" });
+    expect((await enviados()).every(e => e.roomId === "21")).toBe(true);
+    // O blackout deixado no quarto antigo fica como está: reabertura é manual.
+    expect(diaFalso("2026-10-03")).toMatchObject({ override: "blackout" });
+  });
+
   it("antes de escrever, o envio relê o Beds24: restrição posta depois da última leitura não é apagada ao reabrir", async () => {
     await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-10-03", fim: "2026-10-04", motivo: "Uso próprio" });
     expect((await enviar()).situacao).toBe("ok");

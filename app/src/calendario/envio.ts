@@ -5,10 +5,11 @@
  * sem ela nada é escrito. Sem escritor (BEDS24_ESCRITA desligada) só simula. Nunca cria,
  * altera ou cancela reservas; nunca reabre bloqueio que o SCL não fez.
  */
-import { and, asc, count, desc, eq, getTableColumns, gt, gte, inArray, isNotNull, lt, lte, ne, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, getTableColumns, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { listarMapeamentosBeds24 } from "@/beds24/configuracao";
 import { mensagemSeguraBeds24 } from "@/beds24/sincronizacao";
+import { chaveTravaBeds24, envioEmAndamento, tentarTravaBeds24 } from "@/beds24/trava";
 import { type DiaCalendario, type Divergencia, ErroBeds24, type EscritorBeds24, type LeitorBeds24 } from "@/beds24/tipos";
 import { beds24Calendario, beds24CalendarioEnviado, beds24EnvioNoites, beds24Envios, bloqueios, imoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
@@ -32,9 +33,20 @@ export const nomeSituacaoEnvio = (s: string) => NOMES_SITUACAO[s as SituacaoEnvi
 
 type Plano = { imovelId: string; codigo: string; roomId: string; linhas: LinhaPlano[] };
 
-/** Planeja um imóvel a partir do banco (cadastro, períodos, ocupação, observações e último envio). */
-export async function planejarImovel(db: Db, org: string, regras: RegrasCalendario, imovel: { id: string; fuso: string }, agora: Date, intervalo?: { inicio: string; fim: string }) {
+/** Quarto Beds24 vinculado ao imóvel (vínculo ativo com propriedade e quarto numéricos), ou null. */
+async function quartoVinculado(db: Db, org: string, imovelId: string): Promise<string | null> {
+  const m = (await listarMapeamentosBeds24(db, org)).find(m => m.imovelId === imovelId && m.ativo && /^\d+$/.test(m.propertyId) && /^\d+$/.test(m.roomId));
+  return m?.roomId ?? null;
+}
+
+/**
+ * Planeja um imóvel a partir do banco (cadastro, períodos, ocupação, observações e último envio).
+ * O estado enviado vale só para o quarto Beds24 vinculado agora (`roomId`; sem informar, é lido do vínculo):
+ * o que foi enviado a outro quarto não dá posse de bloqueio neste.
+ */
+export async function planejarImovel(db: Db, org: string, regras: RegrasCalendario, imovel: { id: string; fuso: string; roomId?: string | null }, agora: Date, intervalo?: { inicio: string; fim: string }) {
   const hoje = hojeISO(imovel.fuso, agora);
+  const roomId = imovel.roomId !== undefined ? imovel.roomId : await quartoVinculado(db, org, imovel.id);
   const inicio = intervalo?.inicio && intervalo.inicio > hoje ? intervalo.inicio : hoje;
   const fim = intervalo?.fim ?? somarDias(hoje, regras.horizonteDias - 1);
   const [detalhes, periodos] = await Promise.all([lerDetalhes(db, org, imovel.id), listarPeriodos(db, org, imovel.id)]);
@@ -47,7 +59,7 @@ export async function planejarImovel(db: Db, org: string, regras: RegrasCalendar
     db.select({ checkin: reservas.checkin, checkout: reservas.checkout, estado: reservas.estado }).from(reservas).where(and(eq(reservas.organizacaoId, org), eq(reservas.imovelId, imovel.id), lt(reservas.checkin, somarDias(fimDados, 1)), gt(reservas.checkout, inicio))),
     db.select({ inicio: bloqueios.inicio, fim: bloqueios.fim, fonte: bloqueios.fonte }).from(bloqueios).where(and(eq(bloqueios.organizacaoId, org), eq(bloqueios.imovelId, imovel.id), lt(bloqueios.inicio, somarDias(fimDados, 1)), gt(bloqueios.fim, inicio))),
     db.select().from(beds24Calendario).where(and(eq(beds24Calendario.organizacaoId, org), eq(beds24Calendario.imovelId, imovel.id), gte(beds24Calendario.data, inicio), lte(beds24Calendario.data, fim))).orderBy(asc(beds24Calendario.data)),
-    db.select().from(beds24CalendarioEnviado).where(and(eq(beds24CalendarioEnviado.organizacaoId, org), eq(beds24CalendarioEnviado.imovelId, imovel.id), gte(beds24CalendarioEnviado.data, inicio), lte(beds24CalendarioEnviado.data, fim))),
+    roomId === null ? [] : db.select().from(beds24CalendarioEnviado).where(and(eq(beds24CalendarioEnviado.organizacaoId, org), eq(beds24CalendarioEnviado.imovelId, imovel.id), eq(beds24CalendarioEnviado.roomId, roomId), gte(beds24CalendarioEnviado.data, inicio), lte(beds24CalendarioEnviado.data, fim))),
   ]);
   const linhas = planejarCalendario({
     imovel: { id: imovel.id, regras: regrasVenda, periodos, pisos: [detalhes.pisoUltimaHora1, detalhes.pisoUltimaHora2] },
@@ -85,10 +97,10 @@ const igualAoLido = (l: LinhaPlano, d: DiaCalendario | undefined) => d !== undef
  * a valer); diferente → divergente, sem posse. Sem observação nova, a noite continua pendente.
  * Não roda quando a leitura atual falhou: a observação guardada pode ser anterior à escrita.
  */
-async function conciliarPendentes(tx: Db, org: string, imovelId: string): Promise<{ confirmadas: number; divergentes: number }> {
+async function conciliarPendentes(tx: Db, org: string, imovelId: string, roomId: string): Promise<{ confirmadas: number; divergentes: number }> {
   const r = { confirmadas: 0, divergentes: 0 };
   const pendentes = await tx.select({ data: beds24CalendarioEnviado.data, enviadoEm: beds24CalendarioEnviado.enviadoEm, envioId: beds24CalendarioEnviado.envioId, bloqueio: beds24CalendarioEnviado.bloqueio, bloqueioAnterior: beds24CalendarioEnviado.bloqueioAnterior })
-    .from(beds24CalendarioEnviado).where(and(eq(beds24CalendarioEnviado.organizacaoId, org), eq(beds24CalendarioEnviado.imovelId, imovelId), eq(beds24CalendarioEnviado.confirmado, false), isNotNull(beds24CalendarioEnviado.envioId)));
+    .from(beds24CalendarioEnviado).where(and(eq(beds24CalendarioEnviado.organizacaoId, org), eq(beds24CalendarioEnviado.imovelId, imovelId), eq(beds24CalendarioEnviado.roomId, roomId), eq(beds24CalendarioEnviado.confirmado, false), isNotNull(beds24CalendarioEnviado.envioId)));
   if (!pendentes.length) return r;
   const datas = pendentes.map(e => e.data);
   const registros = await tx.select({ envioId: beds24EnvioNoites.envioId, data: beds24EnvioNoites.data, preco: beds24EnvioNoites.precoEnviado, minimo: beds24EnvioNoites.minimoEnviado, maximo: beds24EnvioNoites.maximoEnviado, bloqueio: beds24EnvioNoites.bloqueioEnviado })
@@ -116,8 +128,6 @@ async function conciliarPendentes(tx: Db, org: string, imovelId: string): Promis
   return r;
 }
 
-/** Execução "executando" mais nova que isto bloqueia outra; mais velha é considerada interrompida. */
-const JANELA_EM_ANDAMENTO_MS = 10 * 60_000;
 
 type Fase1 = { pronto: ResultadoEnvio } | {
   planos: Plano[]; tentados: Plano[]; resultadoImoveis: ImovelEnviado[]; motivosSemEscrita: Map<string, string>; leituraIncompleta: Set<string>;
@@ -140,7 +150,7 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
   let totalAvisos = 0;
   const aviso = (s: string) => { totalAvisos++; if (avisos.length < 100) avisos.push(s.slice(0, 300)); };
   const dataBr = (d: string) => d.split("-").reverse().join("/");
-  const chaveTrava = `envio-beds24:${org}`;
+  const ocupada = () => ({ pronto: { ...base("ocupada", "Já há um envio ou uma importação do Beds24 em andamento. Aguarde e atualize a página."), ok: false } });
   // Instantes distintos dentro da execução: leitura inicial (agora) < envio (agora+1) < releitura (agora+2).
   // Assim a leitura feita antes da escrita nunca passa por leitura posterior ao envio.
   const instanteEnvio = new Date(agora.getTime() + 1);
@@ -150,12 +160,10 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
   try {
     const fase1 = await db.transaction(async (tx): Promise<Fase1> => {
       await tx.execute(sql`set local lock_timeout = '15s'`);
-      const trava = await tx.execute(sql`select pg_try_advisory_xact_lock(hashtext(${chaveTrava})) as obtida`);
-      if (!(trava as { rows: { obtida: boolean }[] }).rows[0]?.obtida) return { pronto: { ...base("ocupada", "Já há um envio em andamento. Aguarde e atualize a página."), ok: false } };
+      // Mesma trava da importação: importação e envio nunca rodam ao mesmo tempo sobre o calendário local.
+      if (!(await tentarTravaBeds24(tx, org))) return ocupada();
       // Outra execução entre a escrita externa e o registro final (ou interrompida há pouco) também bloqueia.
-      const emAndamento = await tx.select({ id: beds24Envios.id }).from(beds24Envios)
-        .where(and(eq(beds24Envios.organizacaoId, org), eq(beds24Envios.situacao, "executando"), ne(beds24Envios.id, exec.id), gt(beds24Envios.iniciadoEm, new Date(agora.getTime() - JANELA_EM_ANDAMENTO_MS)))).limit(1);
-      if (emAndamento.length) return { pronto: { ...base("ocupada", "Já há um envio em andamento. Aguarde e atualize a página."), ok: false } };
+      if (await envioEmAndamento(tx, org, agora, exec.id)) return ocupada();
       await tx.update(beds24Envios).set({ situacao: "executando" }).where(eq(beds24Envios.id, exec.id));
 
       const regras = await lerRegrasCalendario(tx, org);
@@ -167,6 +175,16 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
       if (!escolhidos.length) throw new ErroBeds24("Nenhum imóvel com envio ligado e vínculo Beds24 ativo. Ligue o envio por imóvel em Configurações → Calendário e preços.", "configuracao");
       if (new Set(escolhidos.map(m => m.imovelId)).size !== escolhidos.length || new Set(escolhidos.map(m => m.roomId)).size !== escolhidos.length) throw new ErroBeds24("Cada imóvel deve estar ligado a um único quarto Beds24. Remova os vínculos duplicados antes de enviar.", "configuracao");
       const fusos = new Map((await tx.select({ id: imoveis.id, fuso: imoveis.fuso }).from(imoveis).where(and(eq(imoveis.organizacaoId, org), inArray(imoveis.id, escolhidos.map(m => m.imovelId))))).map(i => [i.id, i.fuso]));
+
+      // Estado enviado de outro quarto (vínculo trocado) não vale para o quarto atual: a posse de um bloqueio
+      // não passa de um quarto para outro. No envio real esse estado é descartado; o histórico por execução fica.
+      for (const m of escolhidos) {
+        const deOutroQuarto = and(eq(beds24CalendarioEnviado.organizacaoId, org), eq(beds24CalendarioEnviado.imovelId, m.imovelId), or(isNull(beds24CalendarioEnviado.roomId), ne(beds24CalendarioEnviado.roomId, m.roomId)));
+        const [{ n }] = await tx.select({ n: count() }).from(beds24CalendarioEnviado).where(deOutroQuarto);
+        if (!n) continue;
+        aviso(`Imóvel ${m.codigo}: ${n} noite(s) com estado de envio de outro quarto Beds24 (vínculo anterior) ${o.modo === "envio" ? "foram descartadas" : "serão descartadas no envio"}; a posse de bloqueios não passa para o quarto ${m.roomId}. Se o SCL tinha fechado noites no quarto antigo, reabra-as manualmente no Beds24.`);
+        if (o.modo === "envio") await tx.delete(beds24CalendarioEnviado).where(deOutroQuarto);
+      }
 
       // Como na importação: a credencial atual precisa enxergar exatamente o par propriedade/quarto
       // de cada imóvel, em BRL. Um vínculo digitado errado nunca recebe preços de outro imóvel.
@@ -235,11 +253,11 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
         // Assim um blackout gravado sem releitura tem dono mesmo que o bloqueio local já tenha sido
         // removido, e a reabertura sai nesta mesma execução.
         if (!leituraIncompleta.has(m.imovelId) && !leituraAtualFalhou) {
-          const c = await conciliarPendentes(tx, org, m.imovelId);
+          const c = await conciliarPendentes(tx, org, m.imovelId, m.roomId);
           if (c.confirmadas) aviso(`Imóvel ${m.codigo}: ${c.confirmadas} noite(s) de envio anterior confirmada(s) pela leitura de agora.`);
           if (c.divergentes) aviso(`Imóvel ${m.codigo}: ${c.divergentes} noite(s) de envio anterior sem releitura diferem da leitura de agora; o plano decide se reenvia.`);
         }
-        const p = await planejarImovel(tx, org, regras, { id: m.imovelId, fuso: fusos.get(m.imovelId) ?? "America/Sao_Paulo" }, agora);
+        const p = await planejarImovel(tx, org, regras, { id: m.imovelId, fuso: fusos.get(m.imovelId) ?? "America/Sao_Paulo", roomId: m.roomId }, agora);
         planos.push({ imovelId: m.imovelId, codigo: m.codigo, roomId: m.roomId, linhas: p.linhas });
         if (p.inicio < inicioLeitura) inicioLeitura = p.inicio;
         if (p.fim > fimLeitura) fimLeitura = p.fim;
@@ -273,11 +291,11 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
             bloqueioAntes: l.observacao?.bloqueio ?? null, bloqueioEnviado: l.bloqueioEnviar ?? null, regra: l.regra.slice(0, 300), resultado: "enviado", detalhe: "Escrita em andamento; releitura ainda não registrada.",
           });
           const v = {
-            organizacaoId: org, imovelId: p.imovelId, data: l.data, preco: l.precoEnviar, minimo: l.minimoEnviar, maximo: l.maximoEnviar,
+            organizacaoId: org, imovelId: p.imovelId, data: l.data, roomId: p.roomId, preco: l.precoEnviar, minimo: l.minimoEnviar, maximo: l.maximoEnviar,
             bloqueio: l.enviado?.bloqueio ?? null, bloqueioAnterior: l.bloqueioEnviar === "blackout" ? l.bloqueioAnterior : (l.enviado?.bloqueioAnterior ?? null),
             enviadoEm: instanteEnvio, confirmado: false, envioId: exec.id,
           };
-          await tx.insert(beds24CalendarioEnviado).values(v).onConflictDoUpdate({ target: [beds24CalendarioEnviado.organizacaoId, beds24CalendarioEnviado.imovelId, beds24CalendarioEnviado.data], set: { preco: v.preco, minimo: v.minimo, maximo: v.maximo, bloqueio: v.bloqueio, bloqueioAnterior: v.bloqueioAnterior, enviadoEm: v.enviadoEm, confirmado: v.confirmado, envioId: v.envioId } });
+          await tx.insert(beds24CalendarioEnviado).values(v).onConflictDoUpdate({ target: [beds24CalendarioEnviado.organizacaoId, beds24CalendarioEnviado.imovelId, beds24CalendarioEnviado.data], set: { roomId: v.roomId, preco: v.preco, minimo: v.minimo, maximo: v.maximo, bloqueio: v.bloqueio, bloqueioAnterior: v.bloqueioAnterior, enviadoEm: v.enviadoEm, confirmado: v.confirmado, envioId: v.envioId } });
         }
       }
       for (let i = 0; i < intencao.length; i += 250) await tx.insert(beds24EnvioNoites).values(intencao.slice(i, i + 250));
@@ -304,7 +322,7 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
       // Fase 3 (transação): releitura do destino, registro noite a noite e observação nova.
       r = await db.transaction(async tx => {
         await tx.execute(sql`set local lock_timeout = '15s'`);
-        await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${chaveTrava}))`);
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${chaveTravaBeds24(org)}))`);
         let releituraFalhou = "";
         let lidos: DiaCalendario[] = [];
         let releituraInvalida = new Set<string>();
@@ -354,12 +372,12 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
             // desmentida sem posse anterior não guarda nada, para não devolver a restrição num ciclo futuro.
             const guardaAnterior = resultado === "confirmado" || resultado === "enviado" || l.enviado?.bloqueio === "blackout";
             const v = {
-              organizacaoId: org, imovelId: p.imovelId, data: l.data, preco: l.precoEnviar, minimo: l.minimoEnviar, maximo: l.maximoEnviar,
+              organizacaoId: org, imovelId: p.imovelId, data: l.data, roomId: p.roomId, preco: l.precoEnviar, minimo: l.minimoEnviar, maximo: l.maximoEnviar,
               bloqueio: confirmouBloqueio ? l.bloqueioEnviar! : (l.enviado?.bloqueio ?? null),
               bloqueioAnterior: l.bloqueioEnviar === "blackout" ? (guardaAnterior ? l.bloqueioAnterior : null) : confirmouBloqueio ? null : (l.enviado?.bloqueioAnterior ?? null),
               enviadoEm: instanteEnvio, confirmado: resultado === "confirmado", envioId: exec.id,
             };
-            await tx.insert(beds24CalendarioEnviado).values(v).onConflictDoUpdate({ target: [beds24CalendarioEnviado.organizacaoId, beds24CalendarioEnviado.imovelId, beds24CalendarioEnviado.data], set: { preco: v.preco, minimo: v.minimo, maximo: v.maximo, bloqueio: v.bloqueio, bloqueioAnterior: v.bloqueioAnterior, enviadoEm: v.enviadoEm, confirmado: v.confirmado, envioId: v.envioId } });
+            await tx.insert(beds24CalendarioEnviado).values(v).onConflictDoUpdate({ target: [beds24CalendarioEnviado.organizacaoId, beds24CalendarioEnviado.imovelId, beds24CalendarioEnviado.data], set: { roomId: v.roomId, preco: v.preco, minimo: v.minimo, maximo: v.maximo, bloqueio: v.bloqueio, bloqueioAnterior: v.bloqueioAnterior, enviadoEm: v.enviadoEm, confirmado: v.confirmado, envioId: v.envioId } });
           }
           for (const g of grupos.values()) {
             await tx.update(beds24EnvioNoites).set({ resultado: g.resultado, detalhe: g.detalhe }).where(and(eq(beds24EnvioNoites.envioId, exec.id), eq(beds24EnvioNoites.imovelId, p.imovelId), inArray(beds24EnvioNoites.data, g.datas)));
@@ -372,7 +390,7 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
           if (leituraIncompleta.has(p.imovelId)) continue;
           for (const l of p.linhas) {
             if (!l.posseBloqueioEncerrada) continue;
-            await tx.update(beds24CalendarioEnviado).set({ bloqueio: null, bloqueioAnterior: null }).where(and(eq(beds24CalendarioEnviado.organizacaoId, org), eq(beds24CalendarioEnviado.imovelId, p.imovelId), eq(beds24CalendarioEnviado.data, l.data)));
+            await tx.update(beds24CalendarioEnviado).set({ bloqueio: null, bloqueioAnterior: null }).where(and(eq(beds24CalendarioEnviado.organizacaoId, org), eq(beds24CalendarioEnviado.imovelId, p.imovelId), eq(beds24CalendarioEnviado.roomId, p.roomId), eq(beds24CalendarioEnviado.data, l.data)));
           }
         }
 
