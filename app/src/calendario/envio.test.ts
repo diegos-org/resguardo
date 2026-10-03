@@ -534,6 +534,14 @@ describe("envio ao Beds24 (M3.7)", () => {
     const q = await planejarImovel(db, org, r, { id: im, fuso: "America/Sao_Paulo" }, agora, { inicio: "2026-09-20", fim: "2026-10-03" });
     expect([q.inicio, q.fim, q.linhas.length]).toEqual(["2026-10-01", "2026-10-03", 3]);
   });
+
+  it("planejarImovel carrega a ocupação até onde o maior mínimo alcança: reserva a 80 dias ainda encurta a sobra de um mínimo de 90", async () => {
+    await db.update(imoveisDetalhes).set({ estadiaMinima: 90, estadiaMaxima: 120 });
+    await db.insert(reservas).values({ organizacaoId: org, imovelId: im, codigo: "SCL-TESTE9", origem: "airbnb", estado: "confirmada", checkin: "2026-12-20", checkout: "2026-12-22", hospedeNome: "Hóspede Fictício", fonte: "manual", idFonte: "" });
+    const r = await lerRegrasCalendario(db, org);
+    const p = await planejarImovel(db, org, r, { id: im, fuso: "America/Sao_Paulo" }, agora);
+    expect(p.linhas[0]).toMatchObject({ data: "2026-10-01", minimoRegra: 90, livresSeguidas: 80, minimoEnviar: 80 });
+  });
 });
 
 describe("rotina diária de envio", () => {
