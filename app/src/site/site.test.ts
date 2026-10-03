@@ -5,7 +5,7 @@ import { imoveis, organizacoes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { DETALHES_VAZIOS, salvarDetalhes } from "@/imoveis/detalhes";
-import { conteudoDoSite, destinoDoLinkAntigo, imovelDoSite, imoveisDoSite, lerPedidoConsulta, tituloDoSite, linkWhatsapp, montarConsulta, numeroWhatsapp, organizacaoDoSite } from "./site";
+import { conteudoDoSite, destinoDoLinkAntigo, hojeMaisCedo, imovelDoSite, imoveisDoSite, lerPedidoConsulta, tituloDoSite, linkWhatsapp, montarConsulta, numeroWhatsapp, organizacaoDoSite } from "./site";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -126,5 +126,15 @@ describe("site público (M7.1)", () => {
     expect(destinoDoLinkAntigo(q({ guests: "2" }), imovel, "2026-09-25")).toMatchObject({ status: 400 });
     expect(destinoDoLinkAntigo(new URLSearchParams(`${q(valido)}&guests=3`), imovel, "2026-09-25")).toMatchObject({ status: 400 });
     expect(destinoDoLinkAntigo(q(valido), null, "2026-09-25")).toEqual({ status: 404 });
+  });
+});
+
+describe("hojeMaisCedo", () => {
+  it("é o \"hoje\" mais cedo entre os fusos dos imóveis listados (nunca recusa uma entrada válida em fuso mais atrasado)", () => {
+    // 00:30 em São Paulo (03:30Z) ainda é dia 11 em Rio Branco (22:30 local).
+    const agora = new Date("2026-10-12T03:30:00Z");
+    expect(hojeMaisCedo([{ fuso: "America/Sao_Paulo" }, { fuso: "America/Rio_Branco" }], agora)).toBe("2026-10-11");
+    expect(hojeMaisCedo([{ fuso: "America/Sao_Paulo" }], agora)).toBe("2026-10-12");
+    expect(hojeMaisCedo([], agora)).toBe("2026-10-12");
   });
 });

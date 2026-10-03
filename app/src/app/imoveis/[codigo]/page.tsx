@@ -8,7 +8,7 @@ import styles from "@/components/site/site.module.css";
 import { hojeISO } from "@/lib/datas";
 import { consultarDisponibilidade } from "@/site/disponibilidade";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
-import { imovelDoSite, imoveisDoSite, lerPedidoConsulta, montarConsulta } from "@/site/site";
+import { hojeMaisCedo, imovelDoSite, imoveisDoSite, lerPedidoConsulta, montarConsulta } from "@/site/site";
 
 export async function generateMetadata({ params }: PageProps<"/imoveis/[codigo]">): Promise<Metadata> {
   const { codigo } = await params;
@@ -88,7 +88,7 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
             )}
           </section>
         </div>
-        <FormConsulta imoveis={todos} valores={consulta} hoje={hoje} canal={canalDeContato(conteudo)} />
+        <FormConsulta imoveis={todos} valores={consulta} hoje={hojeMaisCedo([imovel, ...todos])} canal={canalDeContato(conteudo)} />
       </div>
     </Moldura>
   );

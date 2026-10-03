@@ -13,7 +13,7 @@ const agora = new Date("2026-10-01T15:00:00Z");
 const pedido = (over: Partial<{ imovel: string; entrada: string; saida: string; hospedes: string }> = {}) => ({ imovel: "403", entrada: "2026-10-12", saida: "2026-10-15", hospedes: "2", ...over });
 const consultar = (over = {}) => consultarDisponibilidade(db, org, pedido(over), agora);
 const observar = (datas: string[], over: Partial<typeof beds24Calendario.$inferInsert> = {}) =>
-  db.insert(beds24Calendario).values(datas.map((data) => ({ organizacaoId: org, imovelId: im, data, livres: 1, preco: 45000, minimoNoites: 1, maximoNoites: 27, bloqueio: "none", observadoEm: new Date("2026-10-01T09:15:00Z"), ...over })));
+  db.insert(beds24Calendario).values(datas.map((data) => ({ organizacaoId: org, imovelId: im, data, roomId: "20", livres: 1, preco: 45000, minimoNoites: 1, maximoNoites: 27, bloqueio: "none", observadoEm: new Date("2026-10-01T09:15:00Z"), ...over })));
 const dias = (de: string, n: number) => Array.from({ length: n }, (_, i) => new Date(Date.parse(`${de}T00:00:00Z`) + i * 86_400_000).toISOString().slice(0, 10));
 
 beforeAll(async () => { ({ db, close } = await createTestDb()); });
@@ -119,6 +119,16 @@ describe("disponibilidade e cotação do site (M7.2)", () => {
     // Estado enviado a outro quarto Beds24 não conta: o vínculo atual é o quarto 20.
     await db.update(beds24CalendarioEnviado).set({ roomId: "21", enviadoEm: new Date("2026-10-01T12:00:00Z") }).where(eq(beds24CalendarioEnviado.data, "2026-10-13"));
     expect((await consultar()).situacao).toBe("disponivel");
+  });
+
+  it("leitura de outro quarto Beds24 (vínculo trocado ou removido) não vale: a confirmar, sem hora de leitura", async () => {
+    await observar(dias("2026-10-12", 4), { roomId: "21" });
+    expect(await consultar()).toMatchObject({ situacao: "a_confirmar", motivos: ["Ainda não conferimos a agenda mais recente para essas datas: confirmamos na conversa."], cotacao: { total: 160000 }, leituraEm: null });
+    await db.update(beds24Calendario).set({ roomId: "20" });
+    expect((await consultar()).situacao).toBe("disponivel");
+    // Sem vínculo Beds24, nenhuma leitura descreve o imóvel.
+    await db.delete(idsExternos).where(eq(idsExternos.imovelId, im));
+    expect(await consultar()).toMatchObject({ situacao: "a_confirmar", leituraEm: null });
   });
 
   it("restrição de entrada/saída com leitura vencida não bloqueia: vira a confirmar", async () => {

@@ -51,6 +51,7 @@ describe("Beds24 → banco (M3.3)", () => {
 
   it("importa, repete sem duplicar ou alterar a reserva e lê preço/mínimo em centavos", async () => {
     expect(await rodar()).toMatchObject({ ok: true, criadas: 1, diasCalendario: 2 });
+    expect((await calendario()).map(c => c.roomId)).toEqual(["20", "20"]);
     const [r] = await linhas();
     expect(r).toMatchObject({ beds24Id: "123", valorBruto: 150000, confirmadaEm: null });
     const h = await historicoDe(db, org, "reserva", r.id);

@@ -5,7 +5,7 @@ import styles from "@/components/site/site.module.css";
 import { hojeISO } from "@/lib/datas";
 import { consultarDisponibilidade } from "@/site/disponibilidade";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
-import { imovelDoSite, imoveisDoSite, lerPedidoConsulta, linkWhatsapp, montarConsulta } from "@/site/site";
+import { hojeMaisCedo, imoveisDoSite, imovelDoSite, lerPedidoConsulta, linkWhatsapp, montarConsulta } from "@/site/site";
 
 export const generateMetadata = () => metadadosDoSite("Consulta");
 
@@ -22,7 +22,7 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
   const hoje = hojeISO(imovel?.fuso ?? "America/Sao_Paulo");
   // O mínimo do formulário vale para qualquer imóvel da lista: o "hoje" mais cedo entre os fusos deles.
   // A conferência por imóvel (acima) continua sendo a que decide.
-  const hojeMinimo = [hoje, ...todos.map((i) => hojeISO(i.fuso))].reduce((a, b) => (a < b ? a : b));
+  const hojeMinimo = hojeMaisCedo(imovel ? [imovel, ...todos] : todos);
   const previa = enviado ? montarConsulta(pedido, imovel, hoje) : null;
   const disponibilidade = previa?.ok ? await consultarDisponibilidade(db, conteudo.organizacaoId, pedido) : null;
   const r = enviado ? montarConsulta(pedido, imovel, hoje, disponibilidade && { situacao: disponibilidade.situacao, noites: disponibilidade.noites, total: disponibilidade.cotacao?.total ?? null }) : null;

@@ -13,6 +13,7 @@ import { lerTextosSite, type TextosSite } from "@/configuracoes/textos-site";
 import { imoveis, imoveisDetalhes, organizacoes } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { TIPOS_CAMA, type TipoCama } from "@/imoveis/cadastro-opcoes";
+import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 
 export type ImovelPublico = {
@@ -240,3 +241,12 @@ export function destinoDoLinkAntigo(
 }
 
 export const linkWhatsapp = (numero: string, texto: string) => `https://wa.me/${numero}?text=${encodeURIComponent(texto)}`;
+
+/**
+ * Mínimo do campo de data quando o formulário lista vários imóveis: o "hoje" mais cedo entre os fusos.
+ * O navegador não pode recusar uma entrada válida para um imóvel em fuso mais atrasado; a conferência
+ * por imóvel (no fuso dele) continua decidindo no servidor.
+ */
+export function hojeMaisCedo(imoveis: { fuso: string }[], agora = new Date()): string {
+  return imoveis.map((i) => hojeISO(i.fuso, agora)).reduce((a, b) => (a < b ? a : b), hojeISO("America/Sao_Paulo", agora));
+}

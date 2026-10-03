@@ -640,7 +640,7 @@ describe("envio ao Beds24 (M3.7)", () => {
       { from: "2026-10-06", to: "2026-10-06", numAvail: 0, price1: 450, minStay: 1, maxStay: 27, override: "blackout" },
       { from: "2026-10-07", to: "2026-10-10", numAvail: 1, price1: 450, minStay: 1, maxStay: 27, override: "none" },
     ] }];
-    await db.insert(beds24Calendario).values({ organizacaoId: org, imovelId: im, data: "2026-10-06", preco: 45000, minimoNoites: 1, maximoNoites: 27, livres: 0, bloqueio: "blackout", observadoEm: new Date("2026-10-01T10:00:00Z") });
+    await db.insert(beds24Calendario).values({ organizacaoId: org, imovelId: im, data: "2026-10-06", roomId: "20", preco: 45000, minimoNoites: 1, maximoNoites: 27, livres: 0, bloqueio: "blackout", observadoEm: new Date("2026-10-01T10:00:00Z") });
     const r = await enviar();
     expect(beds.escritas[0][0].faixas.every(f => f.bloqueio === undefined)).toBe(true);
     expect(r.avisos).toContain("Imóvel 103, noite 06/10/2026: Beds24 tem bloqueio (blackout) sem bloqueio no SCL: o SCL não reabre o que não fechou; confira.");

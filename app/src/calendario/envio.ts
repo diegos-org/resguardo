@@ -58,7 +58,7 @@ export async function planejarImovel(db: Db, org: string, regras: RegrasCalendar
   const [ocupantes, impedimentos, observacoes, enviados] = await Promise.all([
     db.select({ checkin: reservas.checkin, checkout: reservas.checkout, estado: reservas.estado }).from(reservas).where(and(eq(reservas.organizacaoId, org), eq(reservas.imovelId, imovel.id), lt(reservas.checkin, somarDias(fimDados, 1)), gt(reservas.checkout, inicio))),
     db.select({ inicio: bloqueios.inicio, fim: bloqueios.fim, fonte: bloqueios.fonte }).from(bloqueios).where(and(eq(bloqueios.organizacaoId, org), eq(bloqueios.imovelId, imovel.id), lt(bloqueios.inicio, somarDias(fimDados, 1)), gt(bloqueios.fim, inicio))),
-    db.select().from(beds24Calendario).where(and(eq(beds24Calendario.organizacaoId, org), eq(beds24Calendario.imovelId, imovel.id), gte(beds24Calendario.data, inicio), lte(beds24Calendario.data, fim))).orderBy(asc(beds24Calendario.data)),
+    roomId === null ? [] : db.select().from(beds24Calendario).where(and(eq(beds24Calendario.organizacaoId, org), eq(beds24Calendario.imovelId, imovel.id), eq(beds24Calendario.roomId, roomId), gte(beds24Calendario.data, inicio), lte(beds24Calendario.data, fim))).orderBy(asc(beds24Calendario.data)),
     roomId === null ? [] : db.select().from(beds24CalendarioEnviado).where(and(eq(beds24CalendarioEnviado.organizacaoId, org), eq(beds24CalendarioEnviado.imovelId, imovel.id), eq(beds24CalendarioEnviado.roomId, roomId), gte(beds24CalendarioEnviado.data, inicio), lte(beds24CalendarioEnviado.data, fim))),
   ]);
   const linhas = planejarCalendario({
@@ -68,11 +68,11 @@ export async function planejarImovel(db: Db, org: string, regras: RegrasCalendar
   return { hoje, inicio, fim, linhas, regras: regrasVenda, pisos: [detalhes.pisoUltimaHora1, detalhes.pisoUltimaHora2] as const };
 }
 
-/** Grava a leitura do calendário como observação local das noites (a mais nova vale). */
-async function gravarObservacoes(tx: Db, org: string, imovelId: string, dias: Iterable<DiaCalendario>, observadoEm: Date) {
+/** Grava a leitura do calendário como observação local das noites (a mais nova vale), presa ao quarto lido. */
+async function gravarObservacoes(tx: Db, org: string, imovelId: string, roomId: string, dias: Iterable<DiaCalendario>, observadoEm: Date) {
   for (const d of dias) {
-    await tx.insert(beds24Calendario).values({ organizacaoId: org, imovelId, data: d.data, livres: d.livres, preco: d.preco, minimoNoites: d.minimoNoites, maximoNoites: d.maximoNoites, bloqueio: d.bloqueio, observadoEm })
-      .onConflictDoUpdate({ target: [beds24Calendario.organizacaoId, beds24Calendario.imovelId, beds24Calendario.data], set: { livres: d.livres, preco: d.preco, minimoNoites: d.minimoNoites, maximoNoites: d.maximoNoites, bloqueio: d.bloqueio, observadoEm } });
+    await tx.insert(beds24Calendario).values({ organizacaoId: org, imovelId, data: d.data, roomId, livres: d.livres, preco: d.preco, minimoNoites: d.minimoNoites, maximoNoites: d.maximoNoites, bloqueio: d.bloqueio, observadoEm })
+      .onConflictDoUpdate({ target: [beds24Calendario.organizacaoId, beds24Calendario.imovelId, beds24Calendario.data], set: { roomId, livres: d.livres, preco: d.preco, minimoNoites: d.minimoNoites, maximoNoites: d.maximoNoites, bloqueio: d.bloqueio, observadoEm } });
   }
 }
 
@@ -106,7 +106,7 @@ async function conciliarPendentes(tx: Db, org: string, imovelId: string, roomId:
   const registros = await tx.select({ envioId: beds24EnvioNoites.envioId, data: beds24EnvioNoites.data, preco: beds24EnvioNoites.precoEnviado, minimo: beds24EnvioNoites.minimoEnviado, maximo: beds24EnvioNoites.maximoEnviado, bloqueio: beds24EnvioNoites.bloqueioEnviado })
     .from(beds24EnvioNoites).where(and(eq(beds24EnvioNoites.organizacaoId, org), eq(beds24EnvioNoites.imovelId, imovelId), inArray(beds24EnvioNoites.envioId, [...new Set(pendentes.map(e => e.envioId!))]), inArray(beds24EnvioNoites.data, datas), eq(beds24EnvioNoites.resultado, "enviado")));
   const porChave = new Map(registros.map(n => [`${n.envioId}/${n.data}`, n]));
-  const observacoes = new Map((await tx.select().from(beds24Calendario).where(and(eq(beds24Calendario.organizacaoId, org), eq(beds24Calendario.imovelId, imovelId), inArray(beds24Calendario.data, datas)))).map(o => [o.data, o]));
+  const observacoes = new Map((await tx.select().from(beds24Calendario).where(and(eq(beds24Calendario.organizacaoId, org), eq(beds24Calendario.imovelId, imovelId), eq(beds24Calendario.roomId, roomId), inArray(beds24Calendario.data, datas)))).map(o => [o.data, o]));
   for (const e of pendentes) {
     const n = porChave.get(`${e.envioId}/${e.data}`);
     const o = observacoes.get(e.data);
@@ -234,7 +234,7 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
               aviso(motivo);
               continue;
             }
-            await gravarObservacoes(tx, org, m.imovelId, dias, agora);
+            await gravarObservacoes(tx, org, m.imovelId, m.roomId, dias, agora);
           }
         } catch (e) {
           const motivo = mensagemSeguraBeds24(e);
@@ -396,7 +396,7 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
             await tx.update(beds24EnvioNoites).set({ resultado: g.resultado, detalhe: g.detalhe }).where(and(eq(beds24EnvioNoites.envioId, exec.id), eq(beds24EnvioNoites.imovelId, p.imovelId), inArray(beds24EnvioNoites.data, g.datas)));
           }
           // Observação nova para todas as noites relidas deste imóvel (mais recente que o envio).
-          await gravarObservacoes(tx, org, p.imovelId, porData.values(), instanteReleitura);
+          await gravarObservacoes(tx, org, p.imovelId, p.roomId, porData.values(), instanteReleitura);
         }
         // Blackout do SCL que a leitura mais nova mostra trocado ou removido no Beds24: a posse acaba (sem escrita).
         for (const p of planos) {
