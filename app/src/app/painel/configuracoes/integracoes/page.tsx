@@ -17,7 +17,7 @@ const ONDE: Record<string, string> = {
   "Banco de dados (Neon)": "DATABASE_URL",
   "Login com Google": "AUTH_SECRET, AUTH_GOOGLE_ID, AUTH_GOOGLE_SECRET",
   "E-mail do sistema (Resend)": "RESEND_API_KEY, EMAIL_REMETENTE",
-  Beds24: "BEDS24_REFRESH_TOKEN (recomendado) ou BEDS24_API_KEY (token direto). Cliente atual: somente leitura.",
+  Beds24: "BEDS24_REFRESH_TOKEN (recomendado) ou BEDS24_API_KEY (token direto). Envio de calendário/preços só com BEDS24_ESCRITA=ligada (o refresh token precisa do escopo de inventário).",
 };
 
 export default async function Integracoes() {

@@ -34,7 +34,7 @@ jobs:
   app:
     name: SCL app (lint, typecheck, testes, build)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: app

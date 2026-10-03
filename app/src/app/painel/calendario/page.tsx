@@ -11,6 +11,7 @@ import { filtrosParaQuery, lerFiltros, nomeDoMes, periodoDosFiltros } from "@/li
 import { conflitos, NOMES_ORIGEM } from "@/reservas/regras";
 import { itensDoCalendario, listarLimpezas, sincronizarLimpezas } from "@/limpezas/limpezas";
 import { itensDoCalendario as manutencoesDoCalendario } from "@/manutencao/manutencao";
+import { Bloqueios } from "@/components/calendario/Bloqueios";
 import { listarBloqueios, listarReservas } from "@/reservas/repositorio";
 
 const SEMANA = ["D", "S", "T", "Q", "Q", "S", "S"];
@@ -164,6 +165,9 @@ export default async function Calendario({ searchParams }: PageProps<"/painel/ca
             })}
           </div>
         </div>
+      )}
+      {podeFazer(sessao.papel, "reserva:editar") && (
+        <Bloqueios imoveis={imoveis.map((i) => ({ id: i.id, codigo: i.codigo }))} bloqueios={bloqueios.filter((b) => ids.includes(b.imovelId)).map((b) => ({ id: b.id, imovelId: b.imovelId, inicio: b.inicio, fim: b.fim, motivo: b.motivo, fonte: b.fonte }))} />
       )}
     </>
   );

@@ -1,0 +1,2 @@
+ALTER TABLE "bloqueios" ADD COLUMN "proprietario_id" uuid;--> statement-breakpoint
+ALTER TABLE "bloqueios" ADD CONSTRAINT "bloqueios_proprietario_id_proprietarios_id_fk" FOREIGN KEY ("proprietario_id") REFERENCES "public"."proprietarios"("id") ON DELETE no action ON UPDATE no action;

@@ -8,7 +8,7 @@ import styles from "../formularios.module.css";
 import { BotaoConfirmar } from "../BotaoConfirmar";
 
 type Acao = (a: EstadoContrato, f: FormData) => Promise<EstadoContrato>;
-type Props = { imovelId: string; lista: Contrato[]; hoje: string; criar: Acao; encerrar: Acao; podeEditar: boolean };
+type Props = { imovelId: string; lista: Contrato[]; hoje: string; criar: Acao; encerrar: Acao; bloqueioPortal: Acao; podeEditar: boolean };
 
 const dataBr = (d: string) => d.split("-").reverse().join("/");
 
@@ -31,7 +31,27 @@ function Encerrar({ c, imovelId, acao }: { c: Contrato; imovelId: string; acao: 
   );
 }
 
-export function Contratos({ imovelId, lista, hoje, criar, encerrar, podeEditar }: Props) {
+/** Liga/desliga o bloqueio de datas pelo portal neste contrato (M5.5): vale daí para frente. */
+function BloqueioPortal({ c, acao }: { c: Contrato; acao: Acao }) {
+  const [estado, enviar, enviando] = useActionState(acao, {});
+  return (
+    <form action={enviar} style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+      <input type="hidden" name="contratoId" value={c.id} />
+      <input type="hidden" name="permitir" value={c.proprietarioBloqueia ? "nao" : "sim"} />
+      <button
+        type="submit"
+        disabled={enviando}
+        aria-label={c.proprietarioBloqueia ? "Desligar o bloqueio pelo portal neste contrato" : "Ligar o bloqueio pelo portal neste contrato"}
+        style={{ font: "inherit", fontSize: "0.8125rem", padding: "2px 8px", borderRadius: 6, border: "1px solid #d8d0c0", background: "#fff", cursor: "pointer" }}
+      >
+        {enviando ? "Salvando…" : c.proprietarioBloqueia ? "Desligar" : "Ligar"}
+      </button>
+      {estado.mensagem && <span className={styles.erro}>{estado.mensagem}</span>}
+    </form>
+  );
+}
+
+export function Contratos({ imovelId, lista, hoje, criar, encerrar, bloqueioPortal, podeEditar }: Props) {
   const [estado, enviar, enviando] = useActionState(criar, {});
   const form = useRef<HTMLFormElement>(null);
   useEffect(() => {
@@ -55,6 +75,7 @@ export function Contratos({ imovelId, lista, hoje, criar, encerrar, podeEditar }
                 <th>Tipo</th>
                 <th>Empresa / proprietário</th>
                 <th>Vigência</th>
+                <th>Bloqueio pelo portal</th>
                 <th>Situação</th>
                 {podeEditar && <th>Encerrar</th>}
               </tr>
@@ -69,6 +90,9 @@ export function Contratos({ imovelId, lista, hoje, criar, encerrar, podeEditar }
                     <td>{c.comissaoBp === null ? "fórmula a definir" : `${bpParaTexto(c.comissaoBp)} / ${bpParaTexto(10000 - c.comissaoBp)}`}</td>
                     <td>
                       {dataBr(c.inicio)} → {c.fim ? dataBr(c.fim) : "sem fim"}
+                    </td>
+                    <td style={{ whiteSpace: "nowrap" }}>
+                      {c.proprietarioBloqueia ? "Sim" : "Não"} {podeEditar && (c.fim === null || c.fim >= hoje) && <BloqueioPortal c={c} acao={bloqueioPortal} />}
                     </td>
                     <td>
                       <span className={styles.etiqueta}>{vigente ? "Em vigor" : futuro ? "Futuro" : "Encerrado"}</span>
@@ -120,6 +144,14 @@ export function Contratos({ imovelId, lista, hoje, criar, encerrar, podeEditar }
           <label>
             Observações
             <input name="observacoes" />
+          </label>
+          <label>
+            Proprietário pode bloquear datas de uso próprio pelo portal
+            <select name="proprietarioBloqueia" defaultValue="sim" aria-invalid={e.proprietarioBloqueia ? true : undefined}>
+              <option value="sim">Sim (padrão): ele bloqueia e libera datas no portal, e a mudança vai ao Beds24</option>
+              <option value="nao">Não: só a empresa mexe no calendário</option>
+            </select>
+            {e.proprietarioBloqueia && <span className={styles.erro}>{e.proprietarioBloqueia}</span>}
           </label>
           <div className={styles.acoes}>
             <button type="submit" disabled={enviando}>

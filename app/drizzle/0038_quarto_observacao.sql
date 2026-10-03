@@ -1,0 +1,1 @@
+ALTER TABLE "beds24_calendario" ADD COLUMN "room_id" text;

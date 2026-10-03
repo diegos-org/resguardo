@@ -7,7 +7,7 @@ import { listarIdsExternos } from "@/canais/ids-externos";
 import { IdsExternos } from "@/components/canais/IdsExternos";
 import { Contratos } from "@/components/contratos/Contratos";
 import { HistoricoAlteracoes } from "@/components/HistoricoAlteracoes";
-import { encerrar, novoContrato } from "@/contratos/acoes";
+import { bloqueioPortal, encerrar, novoContrato } from "@/contratos/acoes";
 import { listarContratos } from "@/contratos/repositorio";
 import { hojeISO } from "@/lib/datas";
 import { FormImovel } from "@/components/imoveis/FormImovel";
@@ -52,6 +52,7 @@ export default async function EditarImovel({ params }: PageProps<"/painel/imovei
         hoje={hojeISO()}
         criar={novoContrato}
         encerrar={encerrar}
+        bloqueioPortal={bloqueioPortal}
         podeEditar={podeFazer(sessao.papel, "financeiro:editar")}
       />
       {podeFazer(sessao.papel, "financeiro:editar") && (

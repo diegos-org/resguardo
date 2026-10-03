@@ -7,6 +7,7 @@ import { sincronizarReserva } from "@/reservas/repositorio";
 import { lerConfigBeds24, listarMapeamentosBeds24 } from "./configuracao";
 import { paraDadosReserva } from "./converter";
 import { ErroBeds24, type LeitorBeds24, type ReservaBeds24 } from "./tipos";
+import { envioEmAndamento, tentarTravaBeds24 } from "./trava";
 
 export type ResultadoSync = {
   ok: boolean; situacao: "ok" | "parcial" | "erro" | "ocupada" | "desligada";
@@ -32,8 +33,10 @@ export async function sincronizarBeds24(db: Db, org: string, leitor: LeitorBeds2
   try {
     r = await db.transaction(async tx => {
       await tx.execute(sql`set local lock_timeout = '15s'`);
-      const trava = await tx.execute(sql`select pg_try_advisory_xact_lock(hashtext(${`sync-beds24:${org}`})) as obtida`);
-      if (!(trava as { rows: { obtida: boolean }[] }).rows[0]?.obtida) return { ...resultado(), ok: false, situacao: "ocupada" as const, mensagem: "Já há uma sincronização em andamento. Aguarde e atualize a página." };
+      // Mesma trava do envio de calendário: importação e envio nunca rodam ao mesmo tempo. Um envio entre a
+      // escrita externa e o registro final (fase sem trava) também faz a importação esperar.
+      if (!(await tentarTravaBeds24(tx, org))) return { ...resultado(), ok: false, situacao: "ocupada" as const, mensagem: "Já há uma sincronização ou um envio de calendário em andamento. Aguarde e atualize a página." };
+      if (await envioEmAndamento(tx, org, agora)) return { ...resultado(), ok: false, situacao: "ocupada" as const, mensagem: "Há um envio de calendário e preços em andamento. Aguarde alguns minutos e tente de novo." };
       const c = await lerConfigBeds24(tx, org);
       if (o.automatica && !c.automatica) return { ...resultado(), situacao: "desligada" as const, mensagem: "Sincronização automática desligada no painel." };
       const mapas = (await listarMapeamentosBeds24(tx, org)).filter(m => m.ativo);
@@ -89,7 +92,7 @@ export async function sincronizarBeds24(db: Db, org: string, leitor: LeitorBeds2
         const chave = `${m.imovelId}/${d.data}`;
         if (vistos.has(chave)) throw new ErroBeds24("Calendário com datas repetidas. Nenhuma mudança desta execução foi aplicada.", "formato");
         vistos.add(chave);
-        valores.push({ organizacaoId: org, imovelId: m.imovelId, data: d.data, livres: d.livres, preco: d.preco, minimoNoites: d.minimoNoites, observadoEm: agora });
+        valores.push({ organizacaoId: org, imovelId: m.imovelId, data: d.data, roomId: m.roomId, livres: d.livres, preco: d.preco, minimoNoites: d.minimoNoites, maximoNoites: d.maximoNoites, bloqueio: d.bloqueio, observadoEm: agora });
       }
       for (const m of mapas) if (valores.filter(v => v.imovelId === m.imovelId).length < c.diasCalendario) aviso(res, `Imóvel ${m.codigo}: há dias sem observação de calendário; disponibilidade e preço desses dias seguem desconhecidos.`);
       for (let i = 0; i < valores.length; i += 250) await tx.insert(beds24Calendario).values(valores.slice(i, i + 250));

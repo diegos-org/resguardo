@@ -36,7 +36,7 @@ export function periodoDaNoite(periodos: readonly Periodo[], noite: string): Per
   return periodos.find((p) => p.inicio <= noite && noite <= p.fim);
 }
 
-export type PrecoNoite = { data: string; valor: number | null; fonte: "periodo" | "base" | "sem_preco"; periodo?: string; ajustado?: boolean };
+export type PrecoNoite = { data: string; valor: number | null; fonte: "periodo" | "base" | "evento" | "feriado" | "sem_preco"; periodo?: string; ajustado?: boolean };
 
 /**
  * Preço de uma noite: exceção do período, senão o preço base. Com o preço dinâmico ligado, o
@@ -93,10 +93,18 @@ export type Cotacao = {
   avisos: string[];
 };
 
-/** Valor da estadia: diárias + limpeza + hóspede extra por noite. Sem preço em alguma noite → total null. */
+/** Valor da estadia pelo cadastro (base e períodos): diárias + limpeza + hóspede extra por noite. */
 export function cotarEstadia(r: RegrasVenda, periodos: readonly Periodo[], checkin: string, checkout: string, hospedes: number): Cotacao {
   const n = Math.max(0, diasEntre(checkin, checkout));
-  const noites = Array.from({ length: n }, (_, i) => precoDaNoite(r, periodos, somarDias(checkin, i)));
+  return cotarNoites(r, Array.from({ length: n }, (_, i) => precoDaNoite(r, periodos, somarDias(checkin, i))), hospedes);
+}
+
+/**
+ * Valor da estadia a partir dos preços já decididos de cada noite (ex.: os do motor de
+ * calendário, com eventos e última hora). Sem preço em alguma noite → total null.
+ */
+export function cotarNoites(r: RegrasVenda, noites: readonly PrecoNoite[], hospedes: number): Cotacao {
+  const n = noites.length;
   const avisos: string[] = [];
   const semPreco = noites.filter((x) => x.valor === null);
   if (semPreco.length) avisos.push(`Sem preço definido para ${semPreco.length} noite(s): cadastre o preço base ou um período.`);
@@ -108,5 +116,5 @@ export function cotarEstadia(r: RegrasVenda, periodos: readonly Periodo[], check
     hospedeExtra = (hospedes - r.hospedeExtraAPartirDe + 1) * r.hospedeExtraValor * n;
   }
   if (noites.some((x) => x.ajustado)) avisos.push("Algumas noites foram ajustadas ao preço mínimo/máximo.");
-  return { noites, diarias, limpeza, hospedeExtra, total: diarias === null ? null : diarias + limpeza + hospedeExtra, avisos };
+  return { noites: [...noites], diarias, limpeza, hospedeExtra, total: diarias === null ? null : diarias + limpeza + hospedeExtra, avisos };
 }

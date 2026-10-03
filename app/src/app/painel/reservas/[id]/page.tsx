@@ -104,10 +104,14 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
           </button>
         </form>
       )}
-      {r.estado === "pendente" && podeFazer(sessao.papel, "reserva:editar") && (
+      {(r.estado === "pendente" || r.estado === "pedido") && podeFazer(sessao.papel, "reserva:editar") && (
         <form action={confirmar}>
           <input type="hidden" name="id" value={r.id} />
-          <p style={{ margin: "0 0 8px", color: "var(--scl-texto-2)", fontSize: "0.875rem" }}>Pendente: ainda não entra no financeiro. Ao confirmar, os valores entram em todas as telas.</p>
+          <p style={{ margin: "0 0 8px", color: "var(--scl-texto-2)", fontSize: "0.875rem" }}>
+            {r.estado === "pedido"
+              ? "Pedido: ocupa as datas mas ainda não entra no financeiro. Pedido do site vence sozinho no prazo indicado nas observações; ao confirmar, vira reserva e os valores entram em todas as telas."
+              : "Pendente: ainda não entra no financeiro. Ao confirmar, os valores entram em todas as telas."}
+          </p>
           <BotaoConfirmar
             pergunta={`Confirmar a reserva ${r.codigo}? Os valores dela entram no financeiro.`}
             style={{ font: "inherit", padding: "8px 16px", borderRadius: 6, border: "1px solid var(--scl-verde, #2e6b4f)", color: "var(--scl-verde, #2e6b4f)", background: "#fff", cursor: "pointer" }}

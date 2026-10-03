@@ -24,9 +24,10 @@ export async function novoIdExterno(_a: EstadoIdExterno, form: FormData): Promis
   return { ok: true };
 }
 
-export async function excluirIdExterno(form: FormData): Promise<void> {
+export async function excluirIdExterno(_a: EstadoIdExterno, form: FormData): Promise<EstadoIdExterno> {
   const sessao = await exigirSessaoPainel();
   exigir(sessao, "imovel:editar", { organizacaoId: sessao.organizacaoId });
-  await removerIdExterno(getDb(), sessao.organizacaoId, String(form.get("registroId") ?? ""), sessao.usuarioId);
+  const r = await removerIdExterno(getDb(), sessao.organizacaoId, String(form.get("registroId") ?? ""), sessao.usuarioId);
   revalidatePath(`/painel/imoveis/${String(form.get("imovelId") ?? "")}`);
+  return r.ok ? { ok: true } : { erro: r.erro };
 }
