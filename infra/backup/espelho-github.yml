@@ -378,20 +378,21 @@ jobs:
           # Retrato da rodada: árvore da main; pais = retrato anterior, main e todas as outras pontas
           # (commits); mensagem = inventário. Tudo o que o inventário cita fica alcançável por aqui.
           main=$(git rev-parse "refs/heads/main^{commit}")
-          pais=()
-          if [ -n "${anterior}" ]; then pais+=(-p "$(git rev-parse "${anterior}^{commit}")"); fi
-          # Ponteiro adulterado: o commit para onde ele aponta vira pai também, para nada se perder antes
-          # de a pessoa apagar a branch e o robô recriá-la.
-          # O mesmo para o ponteiro sem âncora: se era um retrato legítimo de tag apagada, continua alcançável.
-          if { [ "${ponteiro_adulterado}" -eq 1 ] || [ "${ponteiro_sem_ancora}" -eq 1 ]; } && [ -n "${ponteiro_commit}" ]; then
-            if [ -z "${anterior}" ] || [ "${ponteiro_commit}" != "$(git rev-parse "${anterior}^{commit}")" ]; then pais+=(-p "${ponteiro_commit}"); fi
-          fi
-          pais+=(-p "${main}")
-          # Pontas convertidas em commit (tag anotada vira o commit apontado) e sem repetição.
-          while read -r c; do
-            if [ -n "${c}" ] && [ "${c}" != "${main}" ]; then pais+=(-p "${c}"); fi
-          done < <(git for-each-ref --format='%(objectname)' refs/heads refs/tags \
-            | while read -r o; do git rev-parse -q --verify "${o}^{commit}" 2>/dev/null || true; done | sort -u)
+          pais=(); : > pais.lst
+          pai() { if [ -n "$1" ] && ! grep -qxF "$1" pais.lst; then pais+=(-p "$1"); echo "$1" >> pais.lst; fi; }
+          if [ -n "${anterior}" ]; then pai "$(git rev-parse "${anterior}^{commit}")"; fi
+          # Ponteiro adulterado ou sem âncora: o commit para onde ele aponta vira pai também, para nada se
+          # perder antes de a pessoa apagar a branch (se era um retrato legítimo, continua alcançável).
+          if { [ "${ponteiro_adulterado}" -eq 1 ] || [ "${ponteiro_sem_ancora}" -eq 1 ]; } && [ -n "${ponteiro_commit}" ]; then pai "${ponteiro_commit}"; fi
+          pai "${main}"
+          # Pontas da origem (tag anotada vira o commit apontado) E as pontas espelhadas que este backup guarda
+          # (o que está em espelho/ agora e o que o inventário espera depois desta rodada): inclui avanços
+          # retomados e branches que a origem apagou ou reescreveu, para tudo o que o inventário cita continuar
+          # alcançável pelo retrato mesmo se uma ref espelho/ for apagada depois. Sem repetição.
+          while read -r c; do pai "${c}"; done < <(
+            { git for-each-ref --format='%(objectname)' refs/heads refs/tags refs/guardado/heads
+              awk 'NF == 2 {print $1}' espelho.inv
+            } | while read -r o; do git rev-parse -q --verify "${o}^{commit}" 2>/dev/null || true; done | sort -u)
           retrato=$(robo commit-tree "${main}^{tree}" "${pais[@]}" -F inventario.txt)
           git update-ref "refs/marcos/${marco}" "${retrato}"
 

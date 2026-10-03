@@ -65,8 +65,10 @@ repositório principal não sabe que o backup existe.
      nunca apagar nem reescrever**: branch apagada na origem continua lá; branch reescrita na
      origem fica como estava (a versão nova fica guardada na tag datada da rodada);
    - cria uma tag `backup/AAAA-MM-DD-HHMM` apontando para um **retrato** da rodada: um commit
-     com os arquivos da `main` daquele momento, que tem como "pais" o retrato anterior e
-     **todas** as pontas da origem (cada branch e cada tag) e, como mensagem, o **inventário**:
+     com os arquivos da `main` daquele momento, que tem como "pais" o retrato anterior,
+     **todas** as pontas da origem (cada branch e cada tag) e as pontas espelhadas que o backup
+     guarda (inclusive avanços retomados e branches que a origem apagou ou reescreveu) e, como
+     mensagem, o **inventário**:
      cada branch e tag da origem com o seu commit, e tudo o que o backup guarda. A branch
      `backup-marcos` aponta sempre para o último retrato: é a linha do tempo dos retratos e a
      base da comparação. Assim nada do que o inventário cita fica solto para o Git limpar. É
@@ -147,7 +149,7 @@ repositório principal não sabe que o backup existe.
    robô: ele nunca apaga nem reescreve e avisa quando o backup perde algo. A trava cobre a
    mais só o erro manual de quem tem acesso à conta de backup, que é só o Diego.
 
-Testado em 3/10 rodando o script exato do robô contra repositórios locais, setenta e sete rodadas:
+Testado em 3/10 rodando o script exato do robô contra repositórios locais, setenta e nove rodadas:
 origem só com `main`; novas branches e tags; origem avança; origem apaga uma branch (o backup
 a mantém e avisa uma vez); nada muda (sem aviso repetido); origem reescreve uma branch e uma
 tag anotada (o backup mantém as versões antigas em `espelho/`, guarda as novas em
@@ -188,8 +190,10 @@ origem no mesmo arquivo solto geram uma só ref `objetos/` (sem duplicar o envio
 avançou no espelho numa rodada incompleta e depois foi reescrita na origem fica no backup como
 retomada (a reescrita é avisada e copiada em `recusadas/`), sem aviso de alteração; o sinal de
 batimento é marcado quando a rodada grava o retrato, inclusive vermelha por aviso, e não é marcado
-quando a rodada para antes de gravar; e as tags do backup não voltam para a origem nem se duplicam
-com o prefixo. O passo de batimento não entrou na simulação (é uma chamada HTTP
+quando a rodada para antes de gravar; uma branch que só existe no backup (avanço retomado, origem
+já apagada) continua alcançável pelos retratos mesmo depois de alguém apagar a ref `espelho/` dela
+(o sumiço é avisado; a ref não pode ser regravada porque a origem não a tem mais); e as tags do
+backup não voltam para a origem nem se duplicam com o prefixo. O passo de batimento não entrou na simulação (é uma chamada HTTP
 simples a um serviço externo, só com a URL configurada); foi conferido na sintaxe e no caso sem
 URL.
 
