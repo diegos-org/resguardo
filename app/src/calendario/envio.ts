@@ -68,6 +68,7 @@ const igualAoLido = (l: LinhaPlano, d: DiaCalendario | undefined) => d !== undef
  * Concilia, por imóvel, as noites de envios anteriores que ficaram sem releitura ("enviado") com a
  * observação mais nova que o envio: igual ao enviado → confirmada (e a posse do bloqueio enviado passa
  * a valer); diferente → divergente, sem posse. Sem observação nova, a noite continua pendente.
+ * Não roda quando a leitura atual falhou: a observação guardada pode ser anterior à escrita.
  */
 async function conciliarPendentes(tx: Db, org: string, imovelId: string): Promise<{ confirmadas: number; divergentes: number }> {
   const r = { confirmadas: 0, divergentes: 0 };
@@ -82,7 +83,8 @@ async function conciliarPendentes(tx: Db, org: string, imovelId: string): Promis
   for (const e of pendentes) {
     const n = porChave.get(`${e.envioId}/${e.data}`);
     const o = observacoes.get(e.data);
-    if (!n || !o || o.observadoEm.getTime() < e.enviadoEm.getTime()) continue;
+    // Só uma observação estritamente posterior ao envio decide; a leitura feita antes da escrita não conta.
+    if (!n || !o || o.observadoEm.getTime() <= e.enviadoEm.getTime()) continue;
     const igual = (n.preco === null || o.preco === n.preco) && (n.minimo === null || o.minimoNoites === n.minimo) && (n.maximo === null || o.maximoNoites === n.maximo) && (n.bloqueio === null || (o.bloqueio ?? "none") === n.bloqueio);
     const onde = and(eq(beds24CalendarioEnviado.organizacaoId, org), eq(beds24CalendarioEnviado.imovelId, imovelId), eq(beds24CalendarioEnviado.data, e.data));
     const ondeNoite = and(eq(beds24EnvioNoites.envioId, e.envioId!), eq(beds24EnvioNoites.imovelId, imovelId), eq(beds24EnvioNoites.data, e.data));
@@ -124,6 +126,11 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
   const aviso = (s: string) => { totalAvisos++; if (avisos.length < 100) avisos.push(s.slice(0, 300)); };
   const dataBr = (d: string) => d.split("-").reverse().join("/");
   const chaveTrava = `envio-beds24:${org}`;
+  // Instantes distintos dentro da execução: leitura inicial (agora) < envio (agora+1) < releitura (agora+2).
+  // Assim a leitura feita antes da escrita nunca passa por leitura posterior ao envio.
+  const instanteEnvio = new Date(agora.getTime() + 1);
+  const instanteReleitura = new Date(agora.getTime() + 2);
+  let leituraAtualFalhou = false;
   let r: ResultadoEnvio;
   try {
     const fase1 = await db.transaction(async (tx): Promise<Fase1> => {
@@ -187,6 +194,7 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
         } catch (e) {
           const motivo = mensagemSeguraBeds24(e);
           if (o.modo === "envio") throw new ErroBeds24(`Leitura do Beds24 antes do envio falhou: ${motivo} Nada foi enviado: o SCL só escreve a partir de uma leitura atual do destino.`, "rede");
+          leituraAtualFalhou = true;
           aviso(`Leitura do Beds24 falhou: ${motivo} A simulação usa a última leitura guardada.`);
         }
       }
@@ -199,7 +207,7 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
         // igual ao enviado vira confirmação (e a posse do bloqueio passa a valer); diferente vira divergência.
         // Assim um blackout gravado sem releitura tem dono mesmo que o bloqueio local já tenha sido
         // removido, e a reabertura sai nesta mesma execução.
-        if (!leituraIncompleta.has(m.imovelId)) {
+        if (!leituraIncompleta.has(m.imovelId) && !leituraAtualFalhou) {
           const c = await conciliarPendentes(tx, org, m.imovelId);
           if (c.confirmadas) aviso(`Imóvel ${m.codigo}: ${c.confirmadas} noite(s) de envio anterior confirmada(s) pela leitura de agora.`);
           if (c.divergentes) aviso(`Imóvel ${m.codigo}: ${c.divergentes} noite(s) de envio anterior sem releitura diferem da leitura de agora; o plano decide se reenvia.`);
@@ -237,7 +245,7 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
           const v = {
             organizacaoId: org, imovelId: p.imovelId, data: l.data, preco: l.precoEnviar, minimo: l.minimoEnviar, maximo: l.maximoEnviar,
             bloqueio: l.enviado?.bloqueio ?? null, bloqueioAnterior: l.bloqueioEnviar === "blackout" ? l.bloqueioAnterior : (l.enviado?.bloqueioAnterior ?? null),
-            enviadoEm: agora, confirmado: false, envioId: exec.id,
+            enviadoEm: instanteEnvio, confirmado: false, envioId: exec.id,
           };
           await tx.insert(beds24CalendarioEnviado).values(v).onConflictDoUpdate({ target: [beds24CalendarioEnviado.organizacaoId, beds24CalendarioEnviado.imovelId, beds24CalendarioEnviado.data], set: { preco: v.preco, minimo: v.minimo, maximo: v.maximo, bloqueio: v.bloqueio, bloqueioAnterior: v.bloqueioAnterior, enviadoEm: v.enviadoEm, confirmado: v.confirmado, envioId: v.envioId } });
         }
@@ -287,13 +295,14 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
             if (l.acao !== "enviar") continue;
             const lido = porData.get(l.data);
             // Só a releitura decide: igual = confirmado; diferente = divergente (falhou, num quarto com falha).
-            // Noite que não voltou na releitura não prova nada: fica pendente para a leitura seguinte decidir.
-            const resultado = releituraFalhou ? (res.falha ? "falhou" : "enviado") : !lido ? "enviado" : igualAoLido(l, lido) ? "confirmado" : res.falha ? "falhou" : "divergente";
+            // Releitura que falhou, ou noite que não voltou nela, não prova nada — nem com a escrita recusada:
+            // a noite fica pendente para a leitura seguinte decidir.
+            const resultado = releituraFalhou || !lido ? "enviado" : igualAoLido(l, lido) ? "confirmado" : res.falha ? "falhou" : "divergente";
             if (resultado === "confirmado") res.confirmadas++;
             if (resultado === "enviado") res.pendentes++;
             if (resultado === "divergente") { res.divergentes++; aviso(`Imóvel ${p.codigo}, noite ${dataBr(l.data)}: o Beds24 devolveu valores diferentes do enviado; conferir no Beds24.`); }
             const lidoTexto = lido ? `Beds24: preço ${lido.preco ?? "—"}, mín. ${lido.minimoNoites ?? "—"}, máx. ${lido.maximoNoites ?? "—"}, bloqueio ${lido.bloqueio ?? "—"}` : "Noite não retornou na releitura";
-            const detalhe = (resultado === "divergente" ? lidoTexto : resultado === "falhou" ? `${res.falha}${releituraFalhou ? "" : ` · ${lidoTexto}`}` : resultado === "enviado" ? (releituraFalhou ? "Sem releitura: confirmação pendente." : `${res.falha ? `${res.falha} · ` : ""}Noite não retornou na releitura: confirmação pendente.`) : "").slice(0, 300);
+            const detalhe = (resultado === "divergente" ? lidoTexto : resultado === "falhou" ? `${res.falha}${releituraFalhou ? "" : ` · ${lidoTexto}`}` : resultado === "enviado" ? `${res.falha ? `${res.falha} · ` : ""}${releituraFalhou ? "Sem releitura" : "Noite não retornou na releitura"}: confirmação pendente.` : "").slice(0, 300);
             const chave = `${resultado}\u0000${detalhe}`;
             const grupo = grupos.get(chave) ?? { resultado, detalhe, datas: [] };
             grupo.datas.push(l.data);
@@ -308,7 +317,7 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
               organizacaoId: org, imovelId: p.imovelId, data: l.data, preco: l.precoEnviar, minimo: l.minimoEnviar, maximo: l.maximoEnviar,
               bloqueio: confirmouBloqueio ? l.bloqueioEnviar! : (l.enviado?.bloqueio ?? null),
               bloqueioAnterior: l.bloqueioEnviar === "blackout" ? (guardaAnterior ? l.bloqueioAnterior : null) : confirmouBloqueio ? null : (l.enviado?.bloqueioAnterior ?? null),
-              enviadoEm: agora, confirmado: resultado === "confirmado", envioId: exec.id,
+              enviadoEm: instanteEnvio, confirmado: resultado === "confirmado", envioId: exec.id,
             };
             await tx.insert(beds24CalendarioEnviado).values(v).onConflictDoUpdate({ target: [beds24CalendarioEnviado.organizacaoId, beds24CalendarioEnviado.imovelId, beds24CalendarioEnviado.data], set: { preco: v.preco, minimo: v.minimo, maximo: v.maximo, bloqueio: v.bloqueio, bloqueioAnterior: v.bloqueioAnterior, enviadoEm: v.enviadoEm, confirmado: v.confirmado, envioId: v.envioId } });
           }
@@ -316,7 +325,7 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
             await tx.update(beds24EnvioNoites).set({ resultado: g.resultado, detalhe: g.detalhe }).where(and(eq(beds24EnvioNoites.envioId, exec.id), eq(beds24EnvioNoites.imovelId, p.imovelId), inArray(beds24EnvioNoites.data, g.datas)));
           }
           // Observação nova para todas as noites relidas deste imóvel (mais recente que o envio).
-          await gravarObservacoes(tx, org, p.imovelId, porData.values(), new Date(agora.getTime() + 1));
+          await gravarObservacoes(tx, org, p.imovelId, porData.values(), instanteReleitura);
         }
         // Blackout do SCL que a leitura mais nova mostra trocado ou removido no Beds24: a posse acaba (sem escrita).
         for (const p of planos) {

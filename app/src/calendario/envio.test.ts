@@ -17,8 +17,11 @@ let db: Db, close: () => Promise<void>, org: string, im: string, beds: Beds24Fal
 const agora = new Date("2026-10-01T12:00:00Z");
 const regras = (over: Partial<RegrasCalendario> = {}): RegrasCalendario => ({ ...REGRAS_CALENDARIO_PADRAO, horizonteDias: 10, envio: { imoveis: [im], automatico: false }, ...over });
 const salvarRegras = (r: RegrasCalendario) => db.transaction(tx => gravarConfig(tx, org, "calendario_regras", { ...r }, null));
+// Cada execução acontece um minuto depois da anterior, como na vida real; a primeira, em `agora`.
+let relogio = agora.getTime() - 60_000;
+const proximoAgora = () => new Date((relogio += 60_000));
 const enviar = (modo: "simulacao" | "envio" = "envio", o: { imovelIds?: string[]; semEscritor?: boolean; leitor?: LeitorBeds24 } = {}) =>
-  enviarCalendarioBeds24(db, org, o.leitor ?? beds, o.semEscritor ? null : beds, { modo, imovelIds: o.imovelIds, agora, autorId: null });
+  enviarCalendarioBeds24(db, org, o.leitor ?? beds, o.semEscritor ? null : beds, { modo, imovelIds: o.imovelIds, agora: proximoAgora(), autorId: null });
 const observacoes = () => db.select().from(beds24Calendario).where(and(eq(beds24Calendario.organizacaoId, org), eq(beds24Calendario.imovelId, im))).orderBy(beds24Calendario.data);
 const enviados = () => db.select().from(beds24CalendarioEnviado).where(eq(beds24CalendarioEnviado.organizacaoId, org)).orderBy(beds24CalendarioEnviado.data);
 const noites = () => db.select().from(beds24EnvioNoites).where(eq(beds24EnvioNoites.organizacaoId, org));
@@ -27,6 +30,7 @@ const diaFalso = (data: string) => (beds.calendarios[0].calendar as Record<strin
 beforeAll(async () => { ({ db, close } = await createTestDb()); });
 afterAll(() => close());
 beforeEach(async () => {
+  relogio = agora.getTime() - 60_000;
   [{ id: org }] = await db.insert(organizacoes).values({ nome: "Organização de teste" }).returning();
   [{ id: im }] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "103", nome: "Boutique fictício" }).returning();
   await db.insert(imoveisDetalhes).values({ imovelId: im, organizacaoId: org, precoBase: 45000, pisoUltimaHora1: 35000, pisoUltimaHora2: 30000 });
@@ -148,7 +152,7 @@ describe("envio ao Beds24 (M3.7)", () => {
 
   it("recusa parcial do Beds24 (success:false com faixas já aplicadas) é relida: o que ficou gravado conta como confirmado", async () => {
     const escritorParcial = { escreverCalendario: async (itens: Parameters<typeof beds.escreverCalendario>[0]) => { await beds.escreverCalendario(itens); return itens.map(i => ({ roomId: i.roomId, ok: false, erro: "Uma faixa foi recusada." })); } };
-    const r = await enviarCalendarioBeds24(db, org, beds, escritorParcial, { modo: "envio", agora, autorId: null });
+    const r = await enviarCalendarioBeds24(db, org, beds, escritorParcial, { modo: "envio", agora: proximoAgora(), autorId: null });
     expect(r).toMatchObject({ situacao: "parcial", imoveis: [{ enviadas: 0, confirmadas: 10, falha: "Uma faixa foi recusada." }] });
     expect((await noites()).every(n => n.resultado === "confirmado")).toBe(true);
     expect((await enviados()).every(e => e.confirmado)).toBe(true);
@@ -293,7 +297,7 @@ describe("envio ao Beds24 (M3.7)", () => {
     await db.delete(bloqueios).where(eq(bloqueios.fonte, "manual"));
     // O Beds24 "aceita" mas não aplica: a releitura ainda mostra o blackout (e o mínimo antigo em 2/10).
     const escritorMudo = { escreverCalendario: async (itens: Parameters<typeof beds.escreverCalendario>[0]) => itens.map(i => ({ roomId: i.roomId, ok: true, erro: "" })) };
-    const r = await enviarCalendarioBeds24(db, org, beds, escritorMudo, { modo: "envio", agora, autorId: null });
+    const r = await enviarCalendarioBeds24(db, org, beds, escritorMudo, { modo: "envio", agora: proximoAgora(), autorId: null });
     expect(r).toMatchObject({ situacao: "parcial", imoveis: [{ divergentes: 2 }] });
     expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ bloqueio: "blackout", confirmado: false });
     // Com a leitura normal, o SCL reenvia "none", confirma e só então registra a reabertura.
@@ -373,7 +377,7 @@ describe("envio ao Beds24 (M3.7)", () => {
         return typeof v === "function" ? v.bind(alvo) : v;
       },
     }) as Db;
-    const r = await enviarCalendarioBeds24(dbFalho, org, beds, beds, { modo: "envio", agora, autorId: null });
+    const r = await enviarCalendarioBeds24(dbFalho, org, beds, beds, { modo: "envio", agora: proximoAgora(), autorId: null });
     expect(r).toMatchObject({ ok: false, situacao: "erro", mensagem: expect.stringContaining("Não foi possível confirmar o resultado") });
     expect(beds.escritas).toHaveLength(1);
     expect(diaFalso("2026-10-03")).toMatchObject({ override: "blackout" });
@@ -430,7 +434,7 @@ describe("envio ao Beds24 (M3.7)", () => {
     await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-10-05", fim: "2026-10-06", motivo: "Manutenção" });
     // Escrita aceita mas não aplicada: a releitura desmente o blackout.
     const escritorMudo = { escreverCalendario: async (itens: Parameters<typeof beds.escreverCalendario>[0]) => itens.map(i => ({ roomId: i.roomId, ok: true, erro: "" })) };
-    expect((await enviarCalendarioBeds24(db, org, beds, escritorMudo, { modo: "envio", agora, autorId: null })).situacao).toBe("parcial");
+    expect((await enviarCalendarioBeds24(db, org, beds, escritorMudo, { modo: "envio", agora: proximoAgora(), autorId: null })).situacao).toBe("parcial");
     expect((await enviados()).find(e => e.data === "2026-10-05")).toMatchObject({ bloqueio: null, bloqueioAnterior: null, confirmado: false });
     // A restrição some no Beds24; o blackout vai de verdade e, removido o bloqueio, a noite volta a "none".
     (beds.calendarios[0].calendar as Record<string, unknown>[]).find(d => d.from === "2026-10-05")!.override = "none";
@@ -471,6 +475,43 @@ describe("envio ao Beds24 (M3.7)", () => {
     expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ bloqueio: null, confirmado: false });
     // Execução seguinte: a leitura mostra o blackout aplicado → confirmação e posse; removido o bloqueio, reabre.
     expect((await enviar()).avisos).toContain("Imóvel 103: 1 noite(s) de envio anterior confirmada(s) pela leitura de agora.");
+    expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ bloqueio: "blackout", confirmado: true });
+    await db.delete(bloqueios).where(eq(bloqueios.fonte, "manual"));
+    expect((await enviar()).situacao).toBe("ok");
+    expect(diaFalso("2026-10-03")).toMatchObject({ override: "none" });
+  });
+
+  it("simulação com leitura atual falha não concilia pendências pela observação guardada (que pode ser anterior à escrita)", async () => {
+    await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-10-03", fim: "2026-10-04", motivo: "Uso próprio" });
+    let leituras = 0;
+    const leitorFalho: LeitorBeds24 = { reservas: f => beds.reservas(f), quartos: () => beds.quartos(), calendario: async f => { if (leituras++ === 0) return beds.calendario(f); throw new ErroBeds24("Beds24 não respondeu a tempo.", "tempo"); } };
+    expect((await enviar("envio", { leitor: leitorFalho })).situacao).toBe("incerto");
+    // Fica só a leitura feita antes da escrita (preço 400, sem blackout), com instante anterior ao envio.
+    const antes = (await observacoes()).find(o => o.data === "2026-10-03")!;
+    const pendente = (await enviados()).find(e => e.data === "2026-10-03")!;
+    expect(antes.observadoEm.getTime()).toBeLessThan(pendente.enviadoEm.getTime());
+    const semLeitura: LeitorBeds24 = { reservas: f => beds.reservas(f), quartos: () => beds.quartos(), calendario: async () => { throw new ErroBeds24("Beds24 não respondeu a tempo.", "tempo"); } };
+    const s = await enviar("simulacao", { leitor: semLeitura });
+    expect(s.situacao).toBe("simulacao");
+    expect((await noites()).find(n => n.data === "2026-10-03")?.resultado).toBe("enviado");
+    expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ bloqueio: null, confirmado: false });
+    // A leitura seguinte (posterior ao envio) confirma e dá a posse.
+    expect((await enviar()).avisos).toContain("Imóvel 103: 10 noite(s) de envio anterior confirmada(s) pela leitura de agora.");
+    expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ bloqueio: "blackout", confirmado: true });
+  });
+
+  it("escrita que falha com a releitura também falhando deixa as noites pendentes, não falhadas; a leitura seguinte decide", async () => {
+    await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-10-03", fim: "2026-10-04", motivo: "Uso próprio" });
+    // O Beds24 aplica a escrita, mas a resposta cai (tempo esgotado); a releitura também cai.
+    const escritorLento = { escreverCalendario: async (itens: Parameters<typeof beds.escreverCalendario>[0]) => { await beds.escreverCalendario(itens); throw new ErroBeds24("Beds24 não respondeu a tempo.", "tempo"); } };
+    let leituras = 0;
+    const leitorFalho: LeitorBeds24 = { reservas: f => beds.reservas(f), quartos: () => beds.quartos(), calendario: async f => { if (leituras++ === 0) return beds.calendario(f); throw new ErroBeds24("Beds24 não respondeu a tempo.", "tempo"); } };
+    const r = await enviarCalendarioBeds24(db, org, leitorFalho, escritorLento, { modo: "envio", agora: proximoAgora(), autorId: null });
+    expect(r.situacao).toBe("erro");
+    expect((await noites()).every(n => n.resultado === "enviado" && n.detalhe.includes("não respondeu") && n.detalhe.includes("pendente"))).toBe(true);
+    expect((await enviados()).every(e => !e.confirmado)).toBe(true);
+    // Execução seguinte: a leitura mostra tudo aplicado → confirmação e posse do blackout; removido o bloqueio, reabre.
+    expect((await enviar()).avisos).toContain("Imóvel 103: 10 noite(s) de envio anterior confirmada(s) pela leitura de agora.");
     expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ bloqueio: "blackout", confirmado: true });
     await db.delete(bloqueios).where(eq(bloqueios.fonte, "manual"));
     expect((await enviar()).situacao).toBe("ok");
