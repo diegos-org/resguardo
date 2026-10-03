@@ -1,6 +1,6 @@
 # Lia — atendimento e agenda das equipes
 
-Versão candidata de 2/10/2026, preparada em 3/10 UTC. Branch `docs/consolidar-guias-lia`, ainda não mesclada. Base comparada: `main@623859697b0c873de92decd45fdae8879ec4d443`.
+Versão de 2/10/2026, preparada em 3/10 UTC a partir da `main@623859697b0c873de92decd45fdae8879ec4d443`. A situação deste texto (candidato ou aprovado) é a do GitHub: o arquivo que está na `main` é a versão aprovada; uma cópia local vale pelo commit de onde foi baixada, não por esta frase.
 
 Este é o ponto de entrada da consolidação de regras de atendimento, WhatsApp e agenda. Preserva regras úteis dos guias locais e decisões mais recentes de Diego, sem declarar o acervo inteiro migrado. Não substitui registros privados, fichas completas, autorizações da conversa ou estado real dos canais. Por decisão de Diego nesta revisão, os guias locais não foram substituídos: ele avisará a Lia para trazer esta versão à máquina depois de identificar o arquivo ativo.
 
@@ -44,7 +44,7 @@ Padrão local de early/late: confirmar na véspera conforme disponibilidade; gar
 
 Reservas existentes no Airbnb permanecem na plataforma. Atendimento operacional por WhatsApp não autoriza campanhas com contatos obtidos do Airbnb, desvio de reserva, cobrança improvisada ou coleta de cartão. Comprovante enviado pelo hóspede não comprova crédito. Venda direta depende de disponibilidade, preço e fluxo de checkout efetivamente validados; intenção de produto não é serviço pronto.
 
-Telefone pessoal de Diego, códigos, documentos, finanças e contatos de terceiros ficam fora de guias compartilháveis e agendas. Exceções históricas para a presença dele em grupos de equipes/proprietários não autorizam redistribuir o número; participação em grupos com hóspedes é decisão específica.
+Telefone pessoal de Diego, códigos, documentos, finanças e contatos de terceiros ficam fora de guias compartilháveis e agendas. **Exceção autorizada por Diego em 2/10:** o telefone operacional do hóspede, vindo do campo estruturado da reserva (cadastro ou importação), entra na agenda interna da equipe — prévia no painel e e-mail dos destinatários da cidade — para orientar contato e chegada; continua fora de guias compartilháveis, site, logs e exemplos. Exceções históricas para a presença dele em grupos de equipes/proprietários não autorizam redistribuir o número; participação em grupos com hóspedes é decisão específica.
 
 ## Exemplos úteis por imóvel
 
@@ -109,7 +109,7 @@ Manter aviso de mudanças: “Essa é a agenda atual e ainda pode mudar com nova
 4. Usar na agenda somente o acordo válido confirmado. Sem acordo, usar padrão configurado do imóvel, identificado como padrão; se o padrão faltar, marcar a confirmar. Nunca preencher horário pelo primeiro número encontrado na conversa.
 5. Conflito, pedido sem resposta ou fonte inacessível fica pendente. Registro manual verificado é o caminho mínimo em avaliação; extração automática futura poderá sugerir preenchimento, sem converter sugestão em confirmação.
 
-**Implementação candidata, ainda fora de produção:** o [PR81](https://github.com/al-life/scl-reconstrucao/pull/81), commit [6c241ec](https://github.com/al-life/scl-reconstrucao/commit/6c241ec721cf22f12cd01910e7ff9fd3159f7e1e), implementa o fluxo manual abaixo na branch `codex/agenda-horarios-equipe`. Ainda não mesclado/publicado; CI pendente na conferência desta atualização. A base main comparada continua sem esse registro por reserva. Testes locais reportados no PR: suíte de 848 testes antes dos casos finais; 15 testes direcionados finais, lint, typecheck e build aprovados. Isso não comprova implantação ou envio.
+**Implementação:** o [PR81](https://github.com/al-life/scl-reconstrucao/pull/81) (item **M6.7** do roadmap) implementa o fluxo manual abaixo. Se ele está mesclado e publicado, quem diz é o GitHub e o roadmap, não este texto; testes do PR não comprovam envio real.
 
 - **Ficha da reserva → Horários combinados com o hóspede:** em reserva confirmada, registrar pedido pendente de entrada ou saída, hora, canal e referência. O pedido sozinho não altera a agenda.
 - Depois de conferir a conversa, preencher canal e referência do **aceite**, marcar a declaração de acordo explícito e usar **Registrar acordo confirmado**. Referência: data/hora e identificador ou trecho mínimo, sem telefone ou documentos. Canais manuais: Airbnb, WhatsApp, Booking.com, Inbox SCL e Outro; o canal do aceite pode diferir do pedido.
@@ -149,4 +149,4 @@ Fontes locais consultadas, preservadas sem alteração:
 
 Lia deve identificar seu índice ativo antes de substituir qualquer arquivo. Preservar cópia recuperável anterior e registros privados; baixar **este guia e PORTARIA-CHAVES-LIMPEZA.md do mesmo commit/PR**, manter os nomes/links relativos e apontar o índice ativo para eles. Não substituir o guia histórico completo por este recorte: ele ainda guarda fichas, preços e exceções fora do escopo.
 
-Conferir igualdade dos arquivos baixados com os blobs do commit (SHA-256 local ou comparação byte a byte), registrar commit/PR e estado candidato/mesclado. Enquanto o PR aguardar revisão, não dizer que main contém estas mudanças. Se houver edição local posterior, comparar por assunto antes de sobrescrever; não criar sincronização automática ou outra automação de envio.
+Conferir igualdade dos arquivos baixados com os blobs do commit (SHA-256 local ou comparação byte a byte) e registrar o commit de origem. Baixar sempre da `main`: o que está lá é o aprovado. Se houver edição local posterior, comparar por assunto antes de sobrescrever; não criar sincronização automática ou outra automação de envio.
