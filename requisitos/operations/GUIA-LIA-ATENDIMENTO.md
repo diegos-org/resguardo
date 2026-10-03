@@ -54,13 +54,13 @@ Reunir aqui mensagens adaptáveis com informações novas fornecidas por Diego, 
 
 **Fonte:** descrição fornecida pelo proprietário Diego em **02/10/2026**. Informou prédio pequeno de três andares, fachada toda revestida de pequenos azulejos, grade e recuo em relação à calçada, com porteiro em horário comercial. Para expediente exato, almoço, folgas e chaves, consultar [portaria, chaves e limpeza](PORTARIA-CHAVES-LIMPEZA.md); “horário comercial” não garante presença em qualquer horário de chegada.
 
-**Foto:** Diego disse que acha que há uma foto da fachada no anúncio e que costumava haver. A existência atual da foto **não foi verificada**. Conferir o anúncio antes de dizer ao hóspede que a foto está lá; se não for localizada, usar apenas a descrição. Grade, recuo e porteiro não são garantia de segurança.
+**Foto — esclarecimento de Diego em 02/10/2026:** a foto da fachada existia, mas ele a removeu intencionalmente por considerar que não agrega valor visual ao anúncio. Segundo Diego, o anúncio não tem essa foto de propósito. Não tratar a ausência como erro ou pendência e **não recolocar a foto sem pedido**. Este esclarecimento substitui a hipótese anterior de que talvez a foto ainda estivesse no anúncio. Grade, recuo e porteiro não são garantia de segurança.
 
 **Modelo adaptável, sem depender da foto:**
 
 > Para ajudar a reconhecer o prédio: é pequeno, de três andares, com a fachada toda revestida de pequenos azulejos. Tem grade e fica recuado em relação à calçada. Há porteiro em horários específicos; vamos conferir o expediente e a retirada das chaves para a sua chegada.
 
-Se a foto for encontrada e conferida no anúncio atual, pode complementar com a indicação de onde ela está. Não afirmar que há foto sem essa conferência nem prometer presença de porteiro fora do expediente confirmado.
+A descrição factual acima permanece válida para responder quando perguntado como reconhecer o prédio, sem sugerir que há foto da fachada no anúncio. Não prometer presença de porteiro fora do expediente confirmado.
 
 ### 399 — combinar a chegada e a entrega das chaves
 
