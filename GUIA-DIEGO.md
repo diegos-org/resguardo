@@ -1229,7 +1229,16 @@ ambiente).
       o que sumiu, foi reescrito ou foi alterado, e onde (é aviso, não perda), ou que a chave
       venceu. Se a mensagem falar em algo "alterado" ou "movido" no backup, a correção é
       apagar aquela ref lá; o robô regrava sozinho na rodada seguinte. Antes de a chave
-      vencer, gere outra (passo 3) e troque o segredo `ORIGEM_TOKEN` (passo 4).
+      vencer, gere outra (passo 3) e troque o segredo `ORIGEM_TOKEN` (passo 4). **Confira
+      também a data da última rodada:** se o próprio robô for apagado ou desligado, ele não
+      roda e, sem rodar, não avisa nada. O passo 9 cobre isso.
+   9. **Batimento (opcional, recomendado, grátis, 5 minutos):** um serviço que espera um sinal
+      do robô a cada rodada e te manda e-mail se o sinal faltar. Crie uma conta em
+      healthchecks.io (ou serviço parecido) com o e-mail da conta nova; *New check*, nome
+      "backup", *Period* 3 dias, *Grace* 1 dia; copie a URL de *ping*. No repositório de
+      backup, crie o segredo `BATIMENTO_URL` com essa URL (como no passo 4). Pronto: se o
+      backup parar por qualquer motivo, você recebe um e-mail em até 4 dias. O serviço só
+      recebe o sinal, não tem acesso a nada.
 
 23b. **Backup do banco (Neon) — me diga se posso fazer.** Hoje o Neon guarda só **1 dia** de
    histórico para voltar no tempo e não tem nenhum snapshot. Proposta: aumentar o histórico

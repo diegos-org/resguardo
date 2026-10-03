@@ -31,6 +31,14 @@ de backup. Por isso o backup do banco é assunto do Neon, não do Git.
 Não protege contra: dados do banco (seção 5) e indisponibilidade do GitHub em si (os dois
 repositórios estão no GitHub; um clone local ocasional cobre isso, se um dia for preciso).
 
+**O robô não tem como avisar a própria ausência.** Se alguém com acesso à conta de backup
+apagar o arquivo do robô, desligar as Actions ou reescrever a branch principal do repositório
+de backup sem ele, simplesmente não há rodada, e portanto nenhum e-mail: o backup para em
+silêncio. O que detecta isso é a **conferência mensal** da aba *Actions* (seção 6) ou, melhor,
+o **batimento** opcional da seção 3: um serviço externo gratuito que espera um sinal do robô a
+cada rodada e avisa por e-mail quando o sinal falta. Sem o batimento, o pior caso é descobrir
+na conferência mensal que o backup parou há até um mês; o que já foi guardado continua lá.
+
 ## 3. Como o espelho funciona
 
 O desenho é **puxar, não empurrar**: a conta de backup busca o repositório principal; o
@@ -102,7 +110,14 @@ repositório principal não sabe que o backup existe.
      branch guardada, as rodadas seguintes só mostram um aviso amarelo, sem falhar. Se a tag
      do dia não puder ser gravada (duas rodadas no mesmo minuto, ou uma regra do repositório
      recusou), a rodada falha com a mensagem. Se o robô não conseguir ler o que o backup já
-     guarda, a rodada para antes de gravar qualquer coisa, para não tomar o vazio por base.
+     guarda, a rodada para antes de gravar qualquer coisa, para não tomar o vazio por base;
+   - **batimento (opcional):** ao terminar bem, chama a URL guardada no segredo `BATIMENTO_URL`,
+     de um serviço gratuito de monitoramento do tipo "me avise se eu ficar sem sinal" (por
+     exemplo, healthchecks.io, com período de 3 dias e tolerância de 1 dia). Se o robô for
+     apagado, desligado ou parar de rodar por qualquer motivo, inclusive rodadas vermelhas
+     seguidas, o serviço avisa por e-mail. É a única forma de o sistema avisar que o backup
+     **parou**, porque o robô não roda para avisar a própria ausência. O serviço só recebe o
+     sinal; não tem acesso a nada.
 4. **Proteção extra no repositório de backup** (rulesets: proibido apagar branches ou tags e
    reescrever histórico, para todo mundo, inclusive o robô). **Só existe em repositório privado
    com plano pago do GitHub (Pro ou superior).** No plano Free, fica a proteção do próprio
@@ -139,7 +154,9 @@ para um arquivo solto (não para um commit) ganha ref `objetos/` e, reapontada n
 cópia `espelho/` apagada no backup na mesma rodada, mantém o arquivo antigo guardado; nomes de
 refs são comparados ao pé da letra (uma `release/1.2` apagada e recriada com outro conteúdo é
 reescrita, mesmo existindo uma `release/1x2`); e as tags do backup não voltam para a origem nem
-se duplicam com o prefixo.
+se duplicam com o prefixo. O passo de batimento não entrou na simulação (é uma chamada HTTP
+simples a um serviço externo, só com a URL configurada); foi conferido na sintaxe e no caso sem
+URL.
 
 ### Por que assim
 
@@ -203,10 +220,11 @@ aqui com a data.
 ## 6. Rotina de manutenção (Diego)
 
 - **Mensal:** abrir a aba *Actions* do repositório de backup e conferir que a última rodada
-  está verde. Rodada vermelha = ler a mensagem: ela diz exatamente o que sumiu, foi
-  reescrito ou foi alterado, e onde (é aviso, não perda), ou que o token venceu. Aviso
-  amarelo de "refs recusadas" = a origem continua divergente de uma branch guardada; o
-  backup segue íntegro.
+  está verde **e recente** (menos de 3 dias). Rodada vermelha = ler a mensagem: ela diz
+  exatamente o que sumiu, foi reescrito ou foi alterado, e onde (é aviso, não perda), ou que
+  o token venceu. Nenhuma rodada recente = o robô parou (arquivo apagado, Actions desligadas)
+  e ninguém avisou, a não ser que o batimento esteja configurado. Aviso amarelo de "refs
+  recusadas" = a origem continua divergente de uma branch guardada; o backup segue íntegro.
 - **Quando a mensagem falar em ref ALTERADA ou ponteiro movido** (só acontece se alguém com
   acesso à conta de backup mexer à mão): a correção é apagar aquela ref no repositório de
   backup; na rodada seguinte o robô a regrava a partir da origem (ou recria o ponteiro). Se o
