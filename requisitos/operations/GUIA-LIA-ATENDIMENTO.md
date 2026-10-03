@@ -97,7 +97,7 @@ A agenda diária tem referência de 20h, America/Sao_Paulo; esta regra não ativ
 
 ### Em ambos
 
-Nas duas listas, incluir sempre primeiro nome, telefone operacional e total de hóspedes, para orientar contato e arrumação. Se nome ou quantidade faltarem, marcar “não informado”; se telefone faltar ou não houver fonte confiável, marcar “telefone não informado”, sem adivinhar. Compartilhar telefone somente com acesso autorizado e com a equipe responsável. Não colocar telefones reais em exemplos, GitHub, páginas públicas ou logs. Não trocar destinatários/permissões por esta regra.
+Nas duas listas, o sistema (M6.7) inclui primeiro nome, total de hóspedes e telefone operacional, para orientar contato e arrumação. O telefone vem só do campo estruturado da reserva (cadastro/importação) e só aparece quando está em formato válido; **quando não está, a linha sai sem telefone** — isso significa “não consta no cadastro”, não esquecimento, e o sistema nunca busca número em observações ou conversas. Ao repassar, resumir ou responder sobre a agenda, Lia marca explicitamente “telefone não informado” (e “não informado” para nome ou quantidade ausentes), sem adivinhar, e orienta a conferir a ficha da reserva no painel. Compartilhar telefone somente com acesso autorizado e com a equipe responsável. Não colocar telefones reais em exemplos, GitHub, páginas públicas ou logs. Não trocar destinatários/permissões por esta regra.
 
 Manter aviso de mudanças: “Essa é a agenda atual e ainda pode mudar com novas reservas ou cancelamentos. Quando eu identificar alguma mudança, aviso aqui.” Equipe verificada pode pedir horizonte maior da própria operação; declarar intervalo e consultar dados atuais. Não prometer detecção instantânea nem repetir avisos já confirmados.
 
