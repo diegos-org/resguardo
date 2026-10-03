@@ -51,11 +51,26 @@ const MENSAGEM_ESTADO: Record<EstadoCotacao, string> = {
 /** O site pode oferecer "segurar as datas": estadia possível (disponível ou a confirmar) e valor completo. */
 export const podeSegurar = (d: Disponibilidade) => (d.situacao === "disponivel" || d.situacao === "a_confirmar") && !!d.cotacao && d.cotacao.diarias !== null && d.cotacao.total !== null;
 
-/** A cotação ainda descreve o que o site mostraria agora: mesma situação possível e mesmos valores. */
-export function cotacaoBate(c: Pick<Cotacao, "diarias" | "limpeza" | "hospedeExtra" | "total">, d: Disponibilidade): boolean {
+/**
+ * A cotação ainda descreve o que o site mostraria agora: mesma situação (disponível × a confirmar) e mesmos
+ * valores. Leitura do Beds24 que venceu ou sumiu muda a situação e, portanto, a cotação.
+ */
+export function cotacaoBate(c: Pick<Cotacao, "situacao" | "diarias" | "limpeza" | "hospedeExtra" | "total">, d: Disponibilidade): boolean {
   if (d.situacao !== "disponivel" && d.situacao !== "a_confirmar") return false;
+  if (d.situacao !== c.situacao) return false;
   const v = d.cotacao;
   return !!v && v.diarias === c.diarias && v.limpeza === c.limpeza && v.hospedeExtra === c.hospedeExtra && v.total === c.total;
+}
+
+/** Em linguagem simples, o que mudou entre a cotação e a disponibilidade de agora (para avisos). */
+export function motivoDaMudanca(c: Pick<Cotacao, "situacao" | "total">, d: Disponibilidade): string {
+  if (d.situacao === "indisponivel") return "Essas datas acabaram de ficar indisponíveis.";
+  if (d.situacao === "invalida") return "Esta cotação não vale mais para estes dados. Faça uma nova consulta.";
+  if (!d.cotacao || d.cotacao.total === null) return "O valor dessas datas agora precisa ser confirmado pela equipe. Faça uma nova consulta.";
+  if (d.cotacao.total !== c.total) return "O valor mudou desde esta cotação. Faça uma nova consulta para ver o valor atual.";
+  return d.situacao === "a_confirmar"
+    ? "A disponibilidade dessas datas agora precisa ser confirmada pela equipe (a agenda mais recente ainda não foi conferida). Faça uma nova consulta."
+    : "A disponibilidade dessas datas foi confirmada desde a cotação. Faça uma nova consulta para seguir com a situação atual.";
 }
 
 export type ResultadoCotacao = { ok: true; cotacao: Cotacao; disponibilidade: Disponibilidade } | { ok: false; erro: string; disponibilidade: Disponibilidade };
@@ -203,17 +218,21 @@ export async function segurarDatas(db: Db, organizacaoId: string, codigo: string
   return db.transaction(async (tx) => {
     const [c] = await tx.select().from(cotacoes).where(and(eq(cotacoes.organizacaoId, organizacaoId), eq(cotacoes.codigo, codigo))).for("update");
     if (!c) return { ok: false as const, erro: "Cotação não encontrada." };
+    // Só cotação aberta segue: decidido antes de vencer holds, para esta transação nunca segurar uma cotação
+    // já segurada e depois pedir a reserva dela (a confirmação no painel trava reserva → cotação).
+    if (c.estado !== "aberta") {
+      const efetivo: EstadoCotacao = c.estado === "segurada" && c.holdAte && c.holdAte.getTime() <= agora.getTime() ? "expirada" : (c.estado as EstadoCotacao);
+      return { ok: false as const, erro: MENSAGEM_ESTADO[efetivo], estado: efetivo };
+    }
     // Trava do imóvel (a mesma dos bloqueios): dois visitantes não seguram as mesmas noites ao mesmo tempo.
     const [im] = await tx.select({ id: imoveis.id, codigo: imoveis.codigo, fuso: imoveis.fuso }).from(imoveis).where(and(eq(imoveis.id, c.imovelId), eq(imoveis.organizacaoId, organizacaoId))).for("update");
     if (!im) return { ok: false as const, erro: "Imóvel não encontrado." };
     // Holds vencidos deste imóvel liberam as noites antes da conferência.
     await expirarHoldsVencidos(tx, organizacaoId, agora, im.id);
-    if (c.estado !== "aberta") return { ok: false as const, erro: MENSAGEM_ESTADO[c.estado as EstadoCotacao], estado: c.estado as EstadoCotacao };
     const d = await consultarDisponibilidade(tx, organizacaoId, { imovel: im.codigo, entrada: c.checkin, saida: c.checkout, hospedes: String(c.hospedes) }, agora);
     if (!cotacaoBate(c, d)) {
       await tx.update(cotacoes).set({ estado: "desatualizada", atualizadaEm: agora }).where(eq(cotacoes.id, c.id));
-      const possivel = d.situacao === "disponivel" || d.situacao === "a_confirmar";
-      return { ok: false as const, erro: possivel ? "O valor mudou desde esta cotação. Faça uma nova consulta para ver o valor atual." : "Essas datas acabaram de ficar indisponíveis.", motivos: d.motivos, estado: "desatualizada" };
+      return { ok: false as const, erro: motivoDaMudanca(c, d), motivos: d.motivos, estado: "desatualizada" };
     }
     // Freios contra abuso: poucos pedidos em andamento por imóvel e um por e-mail. A trava do imóvel não
     // serializa o mesmo e-mail em imóveis diferentes, então o e-mail ganha a própria trava (na transação,
@@ -271,8 +290,10 @@ export type ResumoExpiracao = { expiradas: number; convertidas: number; cancelad
  */
 export async function expirarHoldsVencidos(db: Db, organizacaoId: string | null, agora = new Date(), imovelId?: string): Promise<ResumoExpiracao> {
   return db.transaction(async (tx) => {
-    const lista = await tx
-      .select({ id: cotacoes.id, organizacaoId: cotacoes.organizacaoId, reservaId: reservas.id, estadoReserva: reservas.estado, holdAte: cotacoes.holdAte })
+    // Candidatas sem trava; cada uma é travada em seguida na ordem reserva → cotação, a mesma da confirmação
+    // no painel, para as duas transações nunca esperarem uma pela outra em círculo.
+    const candidatas = await tx
+      .select({ id: cotacoes.id, organizacaoId: cotacoes.organizacaoId, reservaId: reservas.id })
       .from(cotacoes)
       .innerJoin(reservas, eq(reservas.id, cotacoes.reservaId))
       .where(
@@ -282,16 +303,20 @@ export async function expirarHoldsVencidos(db: Db, organizacaoId: string | null,
           imovelId ? eq(cotacoes.imovelId, imovelId) : undefined,
           or(lte(cotacoes.holdAte, agora), ne(reservas.estado, "pedido")),
         ),
-      )
-      .for("update");
+      );
     const resumo: ResumoExpiracao = { expiradas: 0, convertidas: 0, canceladas: 0, removidas: 0 };
-    for (const c of lista) {
+    for (const c of candidatas) {
+      const [r] = await tx.select({ estado: reservas.estado }).from(reservas).where(eq(reservas.id, c.reservaId)).for("update");
+      const [cot] = await tx.select({ estado: cotacoes.estado, holdAte: cotacoes.holdAte }).from(cotacoes).where(eq(cotacoes.id, c.id)).for("update");
+      // Relê depois das travas: outra transação pode ter fechado esta cotação no meio.
+      if (!r || !cot || cot.estado !== "segurada") continue;
       let estado: EstadoCotacao;
-      if (c.estadoReserva === "pedido") {
+      if (r.estado === "pedido") {
+        if (!cot.holdAte || cot.holdAte.getTime() > agora.getTime()) continue;
         await cancelarReserva(tx, c.organizacaoId, c.reservaId, null);
         estado = "expirada";
         resumo.expiradas++;
-      } else if (c.estadoReserva === "cancelada") {
+      } else if (r.estado === "cancelada") {
         estado = "cancelada";
         resumo.canceladas++;
       } else {

@@ -6,7 +6,7 @@ import { beds24Calendario, bloqueios, cotacoes, idsExternos, imoveis, imoveisDet
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { cancelarReserva, confirmarReserva } from "@/reservas/repositorio";
-import { codigoCotacaoValido, criarCotacao, expirarHoldsVencidos, MAXIMO_COTACOES_ABERTAS_POR_IMOVEL, MAXIMO_HOLDS_POR_IMOVEL, segurarDatas, textoDaCotacao, validarContato, verCotacao } from "./cotacoes";
+import { codigoCotacaoValido, criarCotacao, expirarHoldsVencidos, MAXIMO_COTACOES_ABERTAS_POR_IMOVEL, MAXIMO_HOLDS_POR_IMOVEL, motivoDaMudanca, segurarDatas, textoDaCotacao, validarContato, verCotacao } from "./cotacoes";
 import { consultarDisponibilidade } from "./disponibilidade";
 
 let db: Db, close: () => Promise<void>, org: string, im: string;
@@ -167,6 +167,32 @@ describe("cotação do site (M8.1)", () => {
     expect(await segurarDatas(db, org, sexta.codigo, contato({ email: "v9@example.com" }), depois(6))).toMatchObject({ ok: false, erro: expect.stringContaining("muitas reservas em andamento") });
     expect(MAXIMO_HOLDS_POR_IMOVEL).toBe(5);
     expect((await minhasReservas()).filter((r) => r.estado === "pedido")).toHaveLength(5);
+  });
+
+  it("leitura do Beds24 que vence ou some muda a situação e, portanto, a cotação: a página avisa e segurar recusa", async () => {
+    const c = await cotar();
+    expect(c.situacao).toBe("disponivel");
+    // Leitura das noites some: mesma estadia, mesmo valor, mas agora "a confirmar".
+    await db.delete(beds24Calendario).where(eq(beds24Calendario.data, "2026-10-13"));
+    const v = await verCotacao(db, org, c.codigo, agora);
+    expect(v).toMatchObject({ estado: "aberta", mudou: true });
+    expect(v?.atual?.situacao).toBe("a_confirmar");
+    expect(v?.atual?.cotacao?.total).toBe(190000);
+    expect(motivoDaMudanca(c, v!.atual!)).toContain("precisa ser confirmada pela equipe");
+    expect(await segurarDatas(db, org, c.codigo, contato(), agora)).toMatchObject({ ok: false, erro: expect.stringContaining("precisa ser confirmada pela equipe"), estado: "desatualizada" });
+    expect(await minhasReservas()).toEqual([]);
+    // O contrário também: cotada "a confirmar", a leitura chega e fica disponível → mudou.
+    const ac = await cotar({ entrada: "2026-12-10", saida: "2026-12-12" });
+    expect(ac.situacao).toBe("a_confirmar");
+    await db.insert(beds24Calendario).values(dias("2026-12-10", 3).map((data) => ({ organizacaoId: org, imovelId: im, data, roomId: "20", livres: 1, preco: 45000, minimoNoites: 1, maximoNoites: 27, bloqueio: "none", observadoEm: agora })));
+    expect((await verCotacao(db, org, ac.codigo, agora))?.mudou).toBe(true);
+    expect(motivoDaMudanca(ac, (await verCotacao(db, org, ac.codigo, agora))!.atual!)).toContain("foi confirmada desde a cotação");
+    // Segurar uma cotação segurada e vencida (antes da rotina) diz que o tempo acabou, sem mexer no pedido dela.
+    const c3 = await cotar({ entrada: "2026-11-02", saida: "2026-11-04" });
+    const h3 = await segurarDatas(db, org, c3.codigo, contato(), agora);
+    if (!h3.ok) throw new Error(h3.erro);
+    expect(await segurarDatas(db, org, c3.codigo, contato(), depois(31))).toMatchObject({ ok: false, erro: expect.stringContaining("tempo desta cotação acabou"), estado: "expirada" });
+    expect((await db.select().from(cotacoes).where(eq(cotacoes.id, c3.id)))[0].estado).toBe("segurada");
   });
 
   it("a equipe não confirma um pedido do site vencido antes da rotina: ele vence na hora e as datas voltam", async () => {

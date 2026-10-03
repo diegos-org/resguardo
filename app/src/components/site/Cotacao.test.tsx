@@ -34,9 +34,15 @@ it("cotação que mudou: aviso com o valor atual e nova consulta com os mesmos d
   const atual = { situacao: "disponivel" as const, motivos: [], noites: 3, cotacao: { diarias: 150000, limpeza: 25000, hospedeExtra: 30000, total: 205000 }, leituraEm: null };
   render(<Cotacao vista={vista({ mudou: true, atual })} whatsapp={null} email="" formulario={<p>FORMULARIO</p>} />);
   expect(screen.getByRole("heading", { name: "Esta cotação mudou" })).toBeTruthy();
-  expect(screen.getByRole("alert").textContent).toContain("agora R$ 2.050,00");
+  expect(screen.getByRole("alert").textContent).toContain("O valor mudou desde esta cotação");
+  expect(screen.getByRole("alert").textContent).toContain("Valor atual: R$ 2.050,00");
   expect(screen.queryByText("FORMULARIO")).toBeNull();
   expect(screen.getByRole("link", { name: "Fazer uma nova consulta" }).getAttribute("href")).toBe("/consulta?imovel=403&entrada=2026-10-12&saida=2026-10-15&hospedes=4");
+  cleanup();
+  // Só a situação mudou (mesmo valor): o aviso fala da disponibilidade, não do valor.
+  render(<Cotacao vista={vista({ mudou: true, atual: { ...atual, situacao: "a_confirmar", cotacao: { ...atual.cotacao, diarias: 135000, total: 190000 }, motivos: ["Ainda não conferimos a agenda mais recente para essas datas: confirmamos na conversa."] } })} whatsapp={null} email="" />);
+  expect(screen.getByRole("alert").textContent).toContain("precisa ser confirmada pela equipe");
+  expect(screen.getByRole("alert").textContent).not.toContain("Valor atual");
 });
 
 it("datas seguradas: prazo no fuso do imóvel, pedido e botão do WhatsApp com a mensagem; expirada e convertida", () => {

@@ -11,8 +11,9 @@
 - Guarda datas, pessoas, noites, situação, diárias, limpeza, hóspede extra, total, a leitura do Beds24
   usada e um **código público** (`COT-` + 8 caracteres sem 0/O/1/I). O código não é credencial: quem o
   tem vê a cotação, sem dado pessoal (o contato fica só na reserva, no painel).
-- **Revalidação** a cada abertura da página: cotação aberta é recalculada; se situação possível e valores
-  não batem, a página diz "mudou" e oferece nova consulta. Nada é gravado só por visitar.
+- **Revalidação** a cada abertura da página: cotação aberta é recalculada; se a situação (disponível × a
+  confirmar) ou os valores não batem, a página diz o que mudou e oferece nova consulta — leitura do Beds24 que
+  venceu ou sumiu conta como mudança. Nada é gravado só por visitar.
 - **Freios do site público:** repetir a mesma consulta (mesmo imóvel, datas, pessoas e valores) em 24 h
   reaproveita a cotação aberta em vez de criar outra; cada imóvel aceita até 100 cotações abertas por 24 h
   (acima disso, "fale com a equipe"); cotação que nunca virou pedido é apagada pela rotina depois de 30 dias.
@@ -33,6 +34,9 @@
 
 ## Fim do hold
 
+- Ordem das travas, igual nos dois caminhos (vencimento e confirmação no painel): **reserva → cotação**; o
+  hold só vence outros holds depois de saber que a própria cotação está aberta. Assim nenhuma transação espera
+  pela outra em círculo.
 - Rotina `/api/cron/cotacoes` a cada 10 minutos (e antes de qualquer novo hold no imóvel): pedido ainda
   `pedido` com prazo vencido → reserva **cancelada** (histórico "sistema") e cotação **expirada**; pedido
   que a equipe **confirmou** → cotação **convertida**; que a equipe **cancelou** → cotação **cancelada**.

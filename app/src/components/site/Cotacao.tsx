@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { type CotacaoVista, textoDaCotacao } from "@/site/cotacoes";
+import { type CotacaoVista, motivoDaMudanca, textoDaCotacao } from "@/site/cotacoes";
 import { linkWhatsapp } from "@/site/site";
 import styles from "./site.module.css";
 
@@ -79,9 +79,8 @@ export function Cotacao({ vista, whatsapp, email, formulario }: { vista: Cotacao
       {vista.estado === "aberta" && vista.mudou && (
         <>
           <p className={styles.aviso} role="alert" style={{ marginTop: 12 }}>
-            {vista.atual && (vista.atual.situacao === "disponivel" || vista.atual.situacao === "a_confirmar")
-              ? `O valor mudou desde esta cotação${vista.atual.cotacao?.total !== null && vista.atual.cotacao?.total !== undefined ? ` (agora ${brl(vista.atual.cotacao.total)})` : ""}.`
-              : "Essas datas não estão mais disponíveis."}
+            {vista.atual ? motivoDaMudanca(c, vista.atual) : "Esta cotação mudou."}
+            {vista.atual?.cotacao?.total != null && vista.atual.cotacao.total !== c.total ? ` Valor atual: ${brl(vista.atual.cotacao.total)}.` : ""}
             {vista.atual?.motivos.length ? ` ${vista.atual.motivos.join(" ")}` : ""}
           </p>
           <p style={{ marginTop: 12 }}>
