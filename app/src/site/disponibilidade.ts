@@ -121,9 +121,12 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   const total = comValor && cot.total !== null && plano.regras.taxaLimpeza !== null ? cot.total : null;
   const avisos: string[] = [];
   if (aConfirmar) avisos.push("Ainda não conferimos a agenda mais recente para essas datas: confirmamos na conversa.");
+  // Capacidade não cadastrada: não dá para saber se as pessoas cabem, então nada é confirmado por omissão.
+  const semCapacidade = !imovel.capacidade;
+  if (semCapacidade) avisos.push("A capacidade deste apartamento ainda não foi cadastrada: confirmamos na conversa se o número de pessoas cabe.");
   if (total === null) avisos.push("O valor dessas datas é confirmado na conversa.");
   return {
-    situacao: aConfirmar ? "a_confirmar" : "disponivel",
+    situacao: aConfirmar || semCapacidade ? "a_confirmar" : "disponivel",
     motivos: avisos,
     noites,
     cotacao: { diarias, limpeza: cot.limpeza, hospedeExtra: cot.hospedeExtra, total },

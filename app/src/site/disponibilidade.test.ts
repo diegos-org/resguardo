@@ -121,6 +121,14 @@ describe("disponibilidade e cotação do site (M7.2)", () => {
     expect((await consultar()).situacao).toBe("disponivel");
   });
 
+  it("imóvel sem capacidade cadastrada nunca fica disponível: a confirmar, com o valor", async () => {
+    await observar(dias("2026-10-12", 4));
+    await db.update(imoveis).set({ capacidade: null }).where(eq(imoveis.id, im));
+    expect(await consultar({ hospedes: "6" })).toMatchObject({ situacao: "a_confirmar", motivos: [expect.stringContaining("capacidade deste apartamento ainda não foi cadastrada")], cotacao: { hospedeExtra: 60000, total: 220000 } });
+    await db.update(imoveis).set({ capacidade: 4 }).where(eq(imoveis.id, im));
+    expect(await consultar({ hospedes: "6" })).toMatchObject({ situacao: "invalida", motivos: ["Este apartamento recebe até 4 pessoas."] });
+  });
+
   it("leitura de outro quarto Beds24 (vínculo trocado ou removido) não vale: a confirmar, sem hora de leitura", async () => {
     await observar(dias("2026-10-12", 4), { roomId: "21" });
     expect(await consultar()).toMatchObject({ situacao: "a_confirmar", motivos: ["Ainda não conferimos a agenda mais recente para essas datas: confirmamos na conversa."], cotacao: { total: 160000 }, leituraEm: null });
