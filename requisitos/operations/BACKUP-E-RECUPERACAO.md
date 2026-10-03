@@ -49,33 +49,43 @@ repositório principal não sabe que o backup existe.
      nunca apagar nem reescrever**: branch apagada na origem continua lá; branch reescrita na
      origem fica como estava (a versão nova fica guardada na tag datada da rodada);
    - cria uma tag `backup/AAAA-MM-DD-HHMM` apontando para um **retrato** da rodada: um commit
-     com os arquivos da `main` daquele momento, que tem como "pais" **todas** as pontas da
-     origem (cada branch e cada tag) e, como mensagem, o **inventário**: cada branch e tag da
-     origem com o seu commit, e tudo o que o backup guarda. Assim nada do que o inventário
-     cita fica solto para o Git limpar, mesmo o que o push recusou. É um ponto de restauração
-     imutável por rodada e a lista do que existia naquele dia. Como o Git guarda o histórico
-     inteiro, **todas as versões ficam**, indefinidamente, e o repositório continua pequeno;
-   - compara com o inventário da rodada anterior e **falha, o que gera e-mail para a conta
+     com os arquivos da `main` daquele momento, que tem como "pais" o retrato anterior e
+     **todas** as pontas da origem (cada branch e cada tag) e, como mensagem, o **inventário**:
+     cada branch e tag da origem com o seu commit, e tudo o que o backup guarda. A branch
+     `backup-marcos` aponta sempre para o último retrato: é a linha do tempo dos retratos e a
+     base da comparação. Assim nada do que o inventário cita fica solto para o Git limpar. É
+     um ponto de restauração imutável por rodada e a lista do que existia naquele dia. Como o
+     Git guarda o histórico inteiro, **todas as versões ficam**, indefinidamente;
+   - uma branch ou tag **reescrita** na origem (branch cujo commit anterior deixou de ser
+     antepassado; tag que mudou de objeto) é guardada tal como está sob
+     `recusadas/<data>/...`, uma vez por reescrita, para o objeto exato (inclusive uma tag
+     anotada) continuar alcançável; a versão antiga continua em `espelho/...`;
+   - compara com o inventário do retrato anterior e **falha, o que gera e-mail para a conta
      de backup**, quando algo sumiu da origem, foi reescrito na origem ou sumiu do próprio
-     backup (inclusive uma tag `backup/`; se todas sumirem, avisa também). Cada ocorrência
-     avisa **uma vez só** (o inventário novo já reflete a mudança); enquanto a origem
-     continuar divergente de uma branch guardada, as rodadas seguintes só mostram um aviso
-     amarelo, sem falhar. Se o robô não conseguir ler o que o backup já guarda, a rodada
-     para antes de gravar qualquer coisa, para não tomar o vazio por base.
+     backup (inclusive uma tag `backup/`, mesmo a mais nova, e a branch `backup-marcos`; se
+     todos os marcos sumirem, avisa também). Cada ocorrência avisa **uma vez só** (o
+     inventário novo já reflete a mudança); enquanto a origem continuar divergente de uma
+     branch guardada, as rodadas seguintes só mostram um aviso amarelo, sem falhar. Se a tag
+     do dia não puder ser gravada (duas rodadas no mesmo minuto, ou uma regra do repositório
+     recusou), a rodada falha com a mensagem. Se o robô não conseguir ler o que o backup já
+     guarda, a rodada para antes de gravar qualquer coisa, para não tomar o vazio por base.
 4. **Proteção extra no repositório de backup** (rulesets: proibido apagar branches ou tags e
    reescrever histórico, para todo mundo, inclusive o robô). **Só existe em repositório privado
    com plano pago do GitHub (Pro ou superior).** No plano Free, fica a proteção do próprio
    robô: ele nunca apaga nem reescreve e avisa quando o backup perde algo. A trava cobre a
    mais só o erro manual de quem tem acesso à conta de backup, que é só o Diego.
 
-Testado em 3/10 rodando o script exato do robô contra repositórios locais, doze rodadas:
-primeira cópia; origem avança; origem apaga uma branch (o backup a mantém e avisa uma vez);
-nada muda (sem aviso repetido); origem reescreve uma branch que não é a `main` (o backup
-mantém a história antiga, a ponta nova fica alcançável pelo retrato datado, o robô avisa uma
-vez); nada muda (só o aviso amarelo); alguém apaga uma branch no backup (avisa uma vez);
-alguém apaga uma tag `backup/` no backup (avisa uma vez); nada muda; alguém apaga todas as
-tags `backup/` (avisa); nada muda; backup inacessível (a rodada para antes de gravar). Também
-se conferiu que as tags do backup não voltam para a origem nem se duplicam com o prefixo.
+Testado em 3/10 rodando o script exato do robô contra repositórios locais, dezessete rodadas:
+origem só com `main`; novas branches e tags; origem avança; origem apaga uma branch (o backup
+a mantém e avisa uma vez); nada muda (sem aviso repetido); origem reescreve uma branch e uma
+tag anotada (o backup mantém as versões antigas em `espelho/`, guarda as novas em
+`recusadas/<data>/`, a ponta nova fica alcançável pelo retrato, avisa uma vez); nada muda (só
+o aviso amarelo); alguém apaga uma branch no backup (avisa uma vez); alguém apaga uma tag
+`backup/` antiga (avisa uma vez); alguém apaga a tag `backup/` mais nova (avisa uma vez); nada
+muda; alguém apaga a branch `backup-marcos` (avisa e recria); nada muda; rodada repetida no
+mesmo minuto (falha com a mensagem); alguém apaga todas as tags `backup/` e o ponteiro
+(avisa); nada muda; backup inacessível (a rodada para antes de gravar). Também se conferiu que
+as tags do backup não voltam para a origem nem se duplicam com o prefixo.
 
 ### Por que assim
 
@@ -93,7 +103,8 @@ se conferiu que as tags do backup não voltam para a origem nem se duplicam com 
 **Ver como estava em uma data:** no repositório de backup, abrir a lista de tags e escolher
 `backup/AAAA-MM-DD-HHMM`: são os arquivos da `main` daquele dia, legíveis ali mesmo, no
 navegador. A mensagem do commit lista as branches e tags que a origem tinha naquele dia, com
-o commit de cada uma, e todas elas continuam alcançáveis a partir dessa tag.
+o commit de cada uma, e todas elas continuam alcançáveis a partir dessa tag. A branch
+`backup-marcos` percorre todos os retratos, do mais novo ao primeiro.
 
 **Recriar o repositório principal** (perda da conta ou do repositório):
 
