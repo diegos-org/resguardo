@@ -107,7 +107,7 @@ repositório principal não sabe que o backup existe.
    robô: ele nunca apaga nem reescreve e avisa quando o backup perde algo. A trava cobre a
    mais só o erro manual de quem tem acesso à conta de backup, que é só o Diego.
 
-Testado em 3/10 rodando o script exato do robô contra repositórios locais, quarenta e sete rodadas:
+Testado em 3/10 rodando o script exato do robô contra repositórios locais, cinquenta e cinco rodadas:
 origem só com `main`; novas branches e tags; origem avança; origem apaga uma branch (o backup
 a mantém e avisa uma vez); nada muda (sem aviso repetido); origem reescreve uma branch e uma
 tag anotada (o backup mantém as versões antigas em `espelho/`, guarda as novas em
@@ -130,8 +130,13 @@ commit é avisada, inclusive a do marco mais novo, sem que o ponteiro perca a ba
 retrato legítimo preservado como pai; `backup-marcos` recuada à força para um marco antigo é
 avisada uma vez, a base passa a ser o marco mais novo e o ponteiro avança de novo; uma tag
 anotada reescrita na origem com a cópia `espelho/` apagada do backup na mesma rodada continua
-com o objeto antigo guardado em `objetos/`; uma ref `objetos/` alterada no backup é avisada; e
-as tags do backup não voltam para a origem nem se duplicam com o prefixo.
+com o objeto antigo guardado em `objetos/`; uma ref `objetos/` alterada no backup é avisada e,
+apagada quando a origem já não tem o objeto, é dada como sumida uma vez; uma tag leve apontando
+para um arquivo solto (não para um commit) ganha ref `objetos/` e, reapontada na origem com a
+cópia `espelho/` apagada no backup na mesma rodada, mantém o arquivo antigo guardado; nomes de
+refs são comparados ao pé da letra (uma `release/1.2` apagada e recriada com outro conteúdo é
+reescrita, mesmo existindo uma `release/1x2`); e as tags do backup não voltam para a origem nem
+se duplicam com o prefixo.
 
 ### Por que assim
 

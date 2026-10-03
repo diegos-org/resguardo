@@ -187,7 +187,7 @@ jobs:
           # existe com outro objeto: também é reescrita (cópia exata + aviso), senão o objeto novo se perderia.
           while read -r ref; do
             [ -z "${ref}" ] && continue
-            grep -qx "${ref}" anterior-origem.refs && continue
+            grep -qxF "${ref}" anterior-origem.refs && continue
             g=$(git rev-parse -q --verify "refs/guardado/${ref#refs/}" 2>/dev/null || true)
             [ -z "${g}" ] && continue
             a=$(git rev-parse -q --verify "${ref}" 2>/dev/null || true)
@@ -240,7 +240,7 @@ jobs:
             src="refs/${ref#refs/tags/recusadas/*/}"
             novo_dest="refs/tags/recusadas/${marco#backup/}/${src#refs/}"
             atual_sha=$(git rev-parse -q --verify "${src}" 2>/dev/null || true)
-            if [ "${atual_sha}" = "${sha}" ] && ! printf '%s' "${copias_novas}" | grep -q " ${novo_dest}$"; then
+            if [ "${atual_sha}" = "${sha}" ] && ! printf '%s' "${copias_novas}" | awk -v d="${novo_dest}" 'NF == 2 && $2 == d {ok = 1} END {exit ok ? 0 : 1}'; then
               recriadas+=("${src}:${novo_dest}"); copias_recriadas="${copias_recriadas}${sha} ${novo_dest}"$'\n'
             fi
           done < <(awk '$1 == "recusada" && NF == 3' anterior.txt)
@@ -298,18 +298,19 @@ jobs:
             while read -r ref; do
               [ -z "${ref}" ] && continue
               novo_dest="refs/tags/recusadas/${marco#backup/}/${ref#refs/}"
-              if ! printf '%s%s' "${copias_novas}" "${copias_recriadas}" | grep -q " ${novo_dest}$"; then
+              if ! printf '%s%s' "${copias_novas}" "${copias_recriadas}" | awk -v d="${novo_dest}" 'NF == 2 && $2 == d {ok = 1} END {exit ok ? 0 : 1}'; then
                 recriadas+=("${ref}:${novo_dest}"); copias_recriadas="${copias_recriadas}$(git rev-parse "${ref}") ${novo_dest}"$'\n'
               fi
             done < espelho-resalvar.refs
           fi
 
-          # Objetos de tag (anotadas, de blob ou de árvore) da origem: cada um ganha uma ref durável
-          # objetos/<sha>, uma vez, para o objeto exato nunca depender de espelho/ ou recusadas/.
+          # Pontas de tag que não são commit (tag anotada; tag leve para um arquivo ou uma árvore): cada
+          # objeto ganha uma ref durável objetos/<sha>, uma vez, para nunca depender de espelho/ ou
+          # recusadas/ (um commit já fica alcançável como pai do retrato; esses objetos não podem ser pais).
           objetos_novos=(); objetos_alterados=""
           while read -r sha ref; do
             [ -z "${sha}" ] && continue
-            [ "$(git cat-file -t "${sha}")" = "tag" ] || continue
+            [ "$(git cat-file -t "${sha}")" != "commit" ] || continue
             if ! git rev-parse -q --verify "refs/guardado/objetos/${sha}" >/dev/null 2>&1; then objetos_novos+=("${sha}:refs/tags/objetos/${sha}"); fi
           done < <(git for-each-ref --format='%(objectname) %(refname)' refs/tags)
           while read -r sha ref; do
@@ -335,7 +336,7 @@ jobs:
             # presentes no backup sem constar da base (ex.: base perdida): entram como estão
             while read -r sha ref; do
               [ -z "${ref}" ] && continue
-              if ! awk '$1 == "recusada" && NF == 3 {print $3}' anterior.txt | grep -qx "${ref}"; then echo "${sha} ${ref}"; fi
+              if ! awk '$1 == "recusada" && NF == 3 {print $3}' anterior.txt | grep -qxF "${ref}"; then echo "${sha} ${ref}"; fi
             done < <(git for-each-ref --format='%(objectname) refs/tags/recusadas/%(refname:strip=3)' refs/guardado/recusadas)
             printf '%s' "${copias_novas}"
             printf '%s' "${copias_recriadas}"
@@ -397,10 +398,10 @@ jobs:
               "[rejected] (non-fast-forward)"|"[rejected] (fetch first)"|"[rejected] (already exists)") ;;
               *) echo "${src}: ${motivo}"; continue ;;
             esac
-            if printf '%s' "${reescritas}" | grep -qx "${src}"; then continue; fi
-            if ! grep -qx "${src}" anterior-origem.refs; then
+            if printf '%s' "${reescritas}" | grep -qxF "${src}"; then continue; fi
+            if ! grep -qxF "${src}" anterior-origem.refs; then
               echo "${src}: recusada sem reescrita detectada (${motivo})"
-            elif grep -qx "${src}" espelho-adulterado.refs; then
+            elif grep -qxF "${src}" espelho-adulterado.refs; then
               echo "${src}: recusada porque o espelho desta ref foi alterado neste backup (${motivo})"
             fi
           done || true)
