@@ -59,7 +59,9 @@ repositório principal não sabe que o backup existe.
    - uma branch ou tag **reescrita** na origem (branch cujo commit anterior deixou de ser
      antepassado; tag que mudou de objeto) é guardada tal como está sob
      `recusadas/<data>/...`, uma vez por reescrita, para o objeto exato (inclusive uma tag
-     anotada) continuar alcançável; a versão antiga continua em `espelho/...`;
+     anotada) continuar alcançável; a versão antiga continua em `espelho/...`. Essa gravação
+     vem antes da tag do dia e do ponteiro (que entram juntos, ou nenhum): a base de
+     comparação nunca avança sem que o que ela cita esteja guardado;
    - compara com o inventário do retrato anterior e **falha, o que gera e-mail para a conta
      de backup**, quando algo sumiu da origem, foi reescrito na origem ou sumiu do próprio
      backup (inclusive uma tag `backup/`, mesmo a mais nova, e a branch `backup-marcos`; se

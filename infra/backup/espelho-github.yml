@@ -166,37 +166,9 @@ jobs:
           retrato=$(robo commit-tree "${main}^{tree}" "${pais[@]}" -F inventario.txt)
           git update-ref "refs/marcos/${marco}" "${retrato}"
 
-          # Sem --force e sem --prune: só avança. O que a origem apagou continua aqui; o que ela
-          # reescreveu é recusado (linha começando com "!") e fica como estava.
-          set +e
-          no_destino push --porcelain "${destino}" \
-            'refs/heads/*:refs/heads/espelho/*' \
-            'refs/tags/*:refs/tags/espelho/*' \
-            "refs/marcos/${marco}:refs/tags/${marco}" \
-            "refs/marcos/${marco}:refs/heads/backup-marcos" > push.log 2> push.err
-          codigo=$?
-          set -e
-          grep -v '^To ' push.log || true
-          if [ "${codigo}" -ne 0 ] && ! grep -q '^!' push.log; then
-            cat push.err
-            echo "::error::O push para este repositório falhou (código ${codigo})."
-            exit "${codigo}"
-          fi
-          # O marco e o ponteiro desta rodada precisam ter entrado; "!" neles não é divergência da origem.
-          for essencial in "refs/tags/${marco}" refs/heads/backup-marcos; do
-            if grep -q "^![[:space:]][^:]*:${essencial}[[:space:]]" push.log; then
-              cat push.err || true
-              echo "::error::Não foi possível gravar ${essencial} (já existe uma rodada neste mesmo minuto, ou uma regra do repositório recusou). Rode de novo em outro minuto."
-              exit 1
-            fi
-          done
-          echo "Marco desta rodada: ${marco}"
-
-          if grep -q '^!' push.log; then
-            echo "::warning::Refs recusadas (a origem diverge do que está guardado): este backup manteve a versão anterior em espelho/...; a versão atual da origem está alcançável pela tag ${marco}."
-          fi
-          # Refs reescritas nesta rodada: guardar o objeto exato (inclusive tag anotada ou de blob) sob
-          # recusadas/<data>/..., uma vez por reescrita; os commits já estão nos pais do retrato.
+          # 1) Refs reescritas nesta rodada: guardar o objeto exato (inclusive tag anotada ou de blob) sob
+          #    recusadas/<data>/..., ANTES de avançar a base de comparação. Se falhar, a rodada para aqui e a
+          #    próxima tenta de novo (a ref continua "reescrita" frente à base antiga).
           if [ -n "${reescritas}" ]; then
             specs=()
             while read -r ref; do
@@ -204,6 +176,34 @@ jobs:
             done <<< "${reescritas}"
             no_destino push -q "${destino}" "${specs[@]}"
           fi
+
+          # 2) Espelho, sem --force e sem --prune: só avança. O que a origem apagou continua aqui; o que
+          #    ela reescreveu é recusado (linha começando com "!") e fica como estava.
+          set +e
+          no_destino push --porcelain "${destino}" \
+            'refs/heads/*:refs/heads/espelho/*' \
+            'refs/tags/*:refs/tags/espelho/*' > push.log 2> push.err
+          codigo=$?
+          set -e
+          grep -v '^To ' push.log || true
+          if [ "${codigo}" -ne 0 ] && ! grep -q '^!' push.log; then
+            cat push.err
+            echo "::error::O push do espelho para este repositório falhou (código ${codigo})."
+            exit "${codigo}"
+          fi
+          if grep -q '^!' push.log; then
+            echo "::warning::Refs recusadas (a origem diverge do que está guardado): este backup manteve a versão anterior em espelho/...; a versão atual da origem está alcançável pela tag ${marco}."
+          fi
+
+          # 3) Marco e ponteiro juntos (--atomic): ou os dois entram, ou nenhum. A base de comparação nunca
+          #    fica à frente do que já foi guardado.
+          if ! no_destino push -q --atomic "${destino}" \
+            "refs/marcos/${marco}:refs/tags/${marco}" \
+            "refs/marcos/${marco}:refs/heads/backup-marcos"; then
+            echo "::error::Não foi possível gravar ${marco} e backup-marcos (já existe uma rodada neste mesmo minuto, ou uma regra do repositório recusou). A base de comparação não mudou; rode de novo em outro minuto."
+            exit 1
+          fi
+          echo "Marco desta rodada: ${marco}"
 
           # Avisos (a rodada falha, e o GitHub manda e-mail para a conta de backup). Cada mudança
           # avisa uma vez só: o inventário novo já a reflete.
