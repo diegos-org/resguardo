@@ -184,8 +184,19 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
           for (const d of l.divergencias) aviso(`Leitura do quarto ${d.id}: formato inválido; conferir manualmente.`);
           for (const m of acessiveis) {
             const dias = l.itens.filter(d => d.roomId === m.roomId);
+            // Datas repetidas (faixas sobrepostas) tornam a leitura ambígua: como na importação, nada é
+            // guardado nem enviado para o imóvel nesta execução.
+            const datas = new Set<string>();
+            let repetidas = 0;
+            for (const d of dias) { if (datas.has(d.data)) repetidas++; else datas.add(d.data); }
+            if (repetidas) {
+              leituraIncompleta.add(m.imovelId);
+              const motivo = `A leitura do Beds24 do imóvel ${m.codigo} veio com ${repetidas} data(s) repetida(s): a leitura não foi guardada e nada é enviado para esse imóvel nesta execução.`;
+              motivosSemEscrita.set(m.imovelId, motivo);
+              aviso(motivo);
+              continue;
+            }
             await gravarObservacoes(tx, org, m.imovelId, dias, agora);
-            const datas = new Set(dias.map(d => d.data));
             let faltam = 0;
             for (let d = hojeDe(m), fimImovel = somarDias(d, regras.horizonteDias - 1); d <= fimImovel; d = somarDias(d, 1)) if (!datas.has(d)) faltam++;
             if (faltam || comDivergencia.has(m.roomId)) {
@@ -293,7 +304,11 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
         }
         for (const p of tentados) {
           const res = resultadoImoveis.find(i => i.imovelId === p.imovelId)!;
-          const porData = new Map(lidos.filter(d => d.roomId === p.roomId).map(d => [d.data, d]));
+          const lidosQuarto = lidos.filter(d => d.roomId === p.roomId);
+          // Releitura com datas repetidas é ambígua: nenhuma noite do quarto é julgada nem observada por ela.
+          const repetida = new Set(lidosQuarto.map(d => d.data)).size !== lidosQuarto.length;
+          if (repetida) aviso(`Imóvel ${p.codigo}: releitura com datas repetidas; as noites enviadas ficam pendentes até a próxima leitura.`);
+          const porData = new Map(repetida ? [] : lidosQuarto.map(d => [d.data, d] as const));
           const grupos = new Map<string, { resultado: typeof beds24EnvioNoites.$inferInsert["resultado"]; detalhe: string; datas: string[] }>();
           for (const l of p.linhas) {
             if (l.acao !== "enviar") continue;
@@ -306,7 +321,7 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
             if (resultado === "enviado") res.pendentes++;
             if (resultado === "divergente") { res.divergentes++; aviso(`Imóvel ${p.codigo}, noite ${dataBr(l.data)}: o Beds24 devolveu valores diferentes do enviado; conferir no Beds24.`); }
             const lidoTexto = lido ? `Beds24: preço ${lido.preco ?? "—"}, mín. ${lido.minimoNoites ?? "—"}, máx. ${lido.maximoNoites ?? "—"}, bloqueio ${lido.bloqueio ?? "—"}` : "Noite não retornou na releitura";
-            const detalhe = (resultado === "divergente" ? lidoTexto : resultado === "falhou" ? `${res.falha}${releituraFalhou ? "" : ` · ${lidoTexto}`}` : resultado === "enviado" ? `${res.falha ? `${res.falha} · ` : ""}${releituraFalhou ? "Sem releitura" : "Noite não retornou na releitura"}: confirmação pendente.` : "").slice(0, 300);
+            const detalhe = (resultado === "divergente" ? lidoTexto : resultado === "falhou" ? `${res.falha}${releituraFalhou ? "" : ` · ${lidoTexto}`}` : resultado === "enviado" ? `${res.falha ? `${res.falha} · ` : ""}${releituraFalhou ? "Sem releitura" : repetida ? "Releitura com datas repetidas" : "Noite não retornou na releitura"}: confirmação pendente.` : "").slice(0, 300);
             const chave = `${resultado}\u0000${detalhe}`;
             const grupo = grupos.get(chave) ?? { resultado, detalhe, datas: [] };
             grupo.datas.push(l.data);
