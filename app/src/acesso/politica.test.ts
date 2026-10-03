@@ -26,10 +26,15 @@ describe("proprietário", () => {
     expect(ok({ ...dono, imovelIds: ["*"] }, "financeiro:ler", "im-102")).toBe(false);
   });
 
-  it("não edita nada", () => {
-    for (const acao of ACOES.filter((a) => !a.endsWith(":ler"))) {
+  it("não edita nada além do próprio calendário (bloqueio de uso próprio, só nos seus imóveis)", () => {
+    for (const acao of ACOES.filter((a) => !a.endsWith(":ler") && a !== "bloqueio:proprio")) {
       expect(ok(dono, acao, "im-403")).toBe(false);
     }
+    expect(ok(dono, "bloqueio:proprio", "im-403")).toBe(true);
+    expect(ok(dono, "bloqueio:proprio", "im-102")).toBe(false);
+    expect(ok(dono, "bloqueio:proprio")).toBe(false);
+    expect(ok(operacao, "bloqueio:proprio", "im-403")).toBe(false);
+    expect(ok(hospede, "bloqueio:proprio", "im-403")).toBe(false);
   });
 });
 

@@ -252,6 +252,8 @@ export const contratos = pgTable(
     inicio: date("inicio", { mode: "string" }).notNull(),
     fim: date("fim", { mode: "string" }),
     observacoes: text("observacoes").notNull().default(""),
+    /** M5.5: o proprietário pode bloquear datas de uso próprio (e liberá-las) pelo portal enquanto este contrato vale. */
+    proprietarioBloqueia: boolean("proprietario_bloqueia").notNull().default(true),
     criadoEm: criadoEm(),
   },
   (t) => [index("contratos_imovel_inicio").on(t.imovelId, t.inicio)],
@@ -404,12 +406,55 @@ export const bloqueios = pgTable(
     motivo: text("motivo").notNull().default(""),
     fonte: text("fonte").notNull().default("manual"),
     idFonte: text("id_fonte").notNull().default(""),
+    /** M5.5: titular (proprietário) que fez o bloqueio pelo portal — só ele libera. Nulo nos bloqueios da equipe e do Beds24. */
+    proprietarioId: uuid("proprietario_id").references(() => proprietarios.id),
     criadoEm: criadoEm(),
   },
   (t) => [
     uniqueIndex("bloqueios_fonte").on(t.organizacaoId, t.fonte, t.idFonte).where(sql`${t.idFonte} <> ''`),
     index("bloqueios_imovel_periodo").on(t.imovelId, t.inicio, t.fim),
   ],
+);
+
+/**
+ * Cotação do site (M8.1): o que o visitante viu (datas, pessoas, valor por partes e situação), com código
+ * público. "Segurar as datas" cria um pedido de reserva (`reservas`, estado `pedido`, origem `site`) ligado
+ * aqui, que ocupa o calendário até `holdAte`; depois vence sozinho. Estados: aberta → segurada → convertida
+ * (equipe confirmou) | expirada (venceu) | cancelada (equipe cancelou); aberta → desatualizada (valor ou
+ * disponibilidade mudaram na hora de segurar).
+ */
+export const ESTADOS_COTACAO = ["aberta", "segurada", "expirada", "convertida", "desatualizada", "cancelada"] as const;
+export type EstadoCotacao = (typeof ESTADOS_COTACAO)[number];
+export const cotacoes = pgTable(
+  "cotacoes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    imovelId: uuid("imovel_id").notNull().references(() => imoveis.id),
+    /** Código público da cotação (ex.: COT-7K3M9QX2); não é credencial. */
+    codigo: text("codigo").notNull(),
+    estado: text("estado").notNull().default("aberta"),
+    checkin: date("checkin", { mode: "string" }).notNull(),
+    checkout: date("checkout", { mode: "string" }).notNull(),
+    hospedes: integer("hospedes").notNull(),
+    noites: integer("noites").notNull(),
+    /** Situação mostrada ao visitante quando a cotação foi feita: disponivel ou a_confirmar. */
+    situacao: text("situacao").notNull(),
+    /** Valor por partes, em centavos, como mostrado (diárias e total nunca nulos numa cotação gravada). */
+    diarias: integer("diarias").notNull(),
+    limpeza: integer("limpeza").notNull(),
+    hospedeExtra: integer("hospede_extra").notNull(),
+    total: integer("total").notNull(),
+    /** Leitura do Beds24 mais antiga usada na decisão (null = sem leitura em alguma data). */
+    leituraEm: timestamp("leitura_em", { withTimezone: true }),
+    /** Pedido de reserva criado ao segurar as datas. */
+    reservaId: uuid("reserva_id").references(() => reservas.id),
+    /** Até quando as datas ficam seguradas; depois o pedido vence sozinho. */
+    holdAte: timestamp("hold_ate", { withTimezone: true }),
+    criadaEm: timestamp("criada_em", { withTimezone: true }).notNull().defaultNow(),
+    atualizadaEm: timestamp("atualizada_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("cotacoes_codigo").on(t.organizacaoId, t.codigo), index("cotacoes_imovel_estado").on(t.imovelId, t.estado)],
 );
 
 /** Observação do calendário externo; não é cotação nem autorização de venda. */
@@ -420,6 +465,11 @@ export const beds24Calendario = pgTable("beds24_calendario", {
   livres: integer("livres"),
   preco: integer("preco"),
   minimoNoites: integer("minimo_noites"),
+  maximoNoites: integer("maximo_noites"),
+  /** `override` do calendário Beds24 ("none", "blackout", "noCheckIn"…); null = não informado. */
+  bloqueio: text("bloqueio"),
+  /** Quarto Beds24 lido: a observação só descreve o imóvel enquanto este for o quarto vinculado. */
+  roomId: text("room_id"),
   observadoEm: timestamp("observado_em", { withTimezone: true }).notNull(),
 }, t => [primaryKey({ columns: [t.organizacaoId, t.imovelId, t.data] })]);
 
@@ -626,6 +676,9 @@ export const imoveisDetalhes = pgTable("imoveis_detalhes", {
   precoDinamico: boolean("preco_dinamico").notNull().default(false),
   precoMinimo: integer("preco_minimo"),
   precoMaximo: integer("preco_maximo"),
+  /** Pisos (centavos) da diária final nas faixas de última hora (M3.7); null = não cadastrado. */
+  pisoUltimaHora1: integer("piso_ultima_hora_1"),
+  pisoUltimaHora2: integer("piso_ultima_hora_2"),
   atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -1054,3 +1107,61 @@ export const beds24ExecucaoReservas = pgTable("beds24_execucao_reservas", {
   reservaId: uuid("reserva_id").notNull().references(() => reservas.id),
   tipo: text("tipo").$type<"adicionada" | "alterada" | "cancelada">().notNull(),
 }, t => [uniqueIndex("beds24_execucao_reserva_unica").on(t.execucaoId, t.reservaId), index("beds24_execucao_reservas_org").on(t.organizacaoId, t.execucaoId)]);
+
+// ---------------------------------------------------------------------------
+// Envio de calendário e preços ao Beds24 (M3.7): histórico privado antes/depois
+// ---------------------------------------------------------------------------
+
+/** Uma execução de envio (manual, simulação ou automática), sem payload do provedor. */
+export const beds24Envios = pgTable("beds24_envios", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+  iniciadoEm: timestamp("iniciado_em", { withTimezone: true }).notNull().defaultNow(),
+  terminadoEm: timestamp("terminado_em", { withTimezone: true }),
+  /** "simulacao" não grava nada no Beds24. */
+  modo: text("modo").$type<"simulacao" | "envio">().notNull(),
+  automatica: boolean("automatica").notNull().default(false),
+  situacao: text("situacao").notNull().default("executando"),
+  resumo: text("resumo").notNull().default(""),
+  avisos: jsonb("avisos").$type<string[]>().notNull().default([]),
+  noitesEnviadas: integer("noites_enviadas").notNull().default(0),
+  noitesConfirmadas: integer("noites_confirmadas").notNull().default(0),
+  noitesDivergentes: integer("noites_divergentes").notNull().default(0),
+}, t => [index("beds24_envios_org").on(t.organizacaoId, t.iniciadoEm)]);
+
+/** Antes/depois de cada noite enviada: regra usada e resultado da conferência. */
+export const beds24EnvioNoites = pgTable("beds24_envio_noites", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+  envioId: uuid("envio_id").notNull().references(() => beds24Envios.id),
+  imovelId: uuid("imovel_id").notNull().references(() => imoveis.id),
+  data: date("data", { mode: "string" }).notNull(),
+  precoAntes: integer("preco_antes"),
+  precoEnviado: integer("preco_enviado"),
+  minimoAntes: integer("minimo_antes"),
+  minimoEnviado: integer("minimo_enviado"),
+  maximoEnviado: integer("maximo_enviado"),
+  bloqueioAntes: text("bloqueio_antes"),
+  bloqueioEnviado: text("bloqueio_enviado"),
+  regra: text("regra").notNull().default(""),
+  resultado: text("resultado").$type<"enviado" | "confirmado" | "divergente" | "falhou">().notNull(),
+  detalhe: text("detalhe").notNull().default(""),
+}, t => [index("beds24_envio_noites_envio").on(t.envioId), index("beds24_envio_noites_imovel").on(t.organizacaoId, t.imovelId, t.data)]);
+
+/** Último valor que o SCL enviou por noite: idempotência e liberação só do que o SCL bloqueou. */
+export const beds24CalendarioEnviado = pgTable("beds24_calendario_enviado", {
+  organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+  imovelId: uuid("imovel_id").notNull().references(() => imoveis.id),
+  data: date("data", { mode: "string" }).notNull(),
+  preco: integer("preco"),
+  minimo: integer("minimo"),
+  maximo: integer("maximo"),
+  bloqueio: text("bloqueio"),
+  /** Restrição que o Beds24 tinha antes do blackout do SCL (noCheckIn etc.), devolvida na reabertura. */
+  bloqueioAnterior: text("bloqueio_anterior"),
+  /** Quarto Beds24 que recebeu o envio: a posse de um bloqueio vale só para esse quarto; vínculo trocado descarta o estado. */
+  roomId: text("room_id"),
+  enviadoEm: timestamp("enviado_em", { withTimezone: true }).notNull(),
+  confirmado: boolean("confirmado").notNull().default(false),
+  envioId: uuid("envio_id").references(() => beds24Envios.id),
+}, t => [primaryKey({ columns: [t.organizacaoId, t.imovelId, t.data] })]);

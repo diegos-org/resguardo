@@ -1,19 +1,27 @@
 /**
  * Beds24 FALSO para testes e desenvolvimento: guarda registros no formato da API e passa
- * pela mesma normalização do cliente real. Nunca usa rede.
+ * pela mesma normalização do cliente real. Nunca usa rede. A escrita de calendário aplica
+ * as faixas ao calendário em memória, para a releitura refletir o que foi "gravado".
  */
 import { normalizarCalendario, normalizarQuartos, normalizarReserva } from "./normalizar";
-import type { DiaCalendario, FiltroCalendario, FiltroReservas, LeitorBeds24, Lido, QuartoBeds24, ReservaBeds24 } from "./tipos";
+import type { DiaCalendario, EnvioCalendario, EscritorBeds24, FiltroCalendario, FiltroReservas, LeitorBeds24, Lido, QuartoBeds24, ReservaBeds24, ResultadoEscrita } from "./tipos";
 
 type Obj = Record<string, unknown>;
+const somarDias = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 
-export class Beds24Falso implements LeitorBeds24 {
+export class Beds24Falso implements LeitorBeds24, EscritorBeds24 {
   bookings: Obj[] = [];
   calendarios: Obj[] = [];
   properties: Obj[] = [];
   /** Para simular falhas do serviço. */
   falhar: Error | null = null;
+  /** Para simular falha só na escrita (a leitura segue funcionando). */
+  falharEscrita: Error | null = null;
+  /** Quartos que o serviço "recusa" na escrita (resposta success:false). */
+  recusarQuartos: string[] = [];
   chamadas = 0;
+  /** Tudo o que foi enviado para escrita, na ordem. */
+  escritas: EnvioCalendario[][] = [];
 
   constructor(private readonly agora: () => Date = () => new Date()) {}
 
@@ -54,5 +62,43 @@ export class Beds24Falso implements LeitorBeds24 {
     this.checar();
     return { ...normalizarQuartos(this.properties), lidoEm: this.agora().toISOString() };
   }
-}
 
+  /** Aplica cada faixa dia a dia sobre o calendário do quarto (campo ausente = não altera). */
+  async escreverCalendario(itens: EnvioCalendario[]): Promise<ResultadoEscrita[]> {
+    this.checar();
+    if (this.falharEscrita) throw this.falharEscrita;
+    this.escritas.push(itens);
+    return itens.map((i) => {
+      if (this.recusarQuartos.includes(i.roomId)) return { roomId: i.roomId, ok: false, erro: "Quarto recusado pelo serviço falso." };
+      let sala = this.calendarios.find((c) => String(c.roomId) === i.roomId);
+      if (!sala) {
+        sala = { roomId: i.roomId, calendar: [] };
+        this.calendarios.push(sala);
+      }
+      // Expande o calendário atual em dias, aplica as faixas e guarda um registro por dia.
+      const porDia = new Map<string, Obj>();
+      for (const faixa of (sala.calendar as Obj[])) {
+        const de = String(faixa.from);
+        const ate = String(faixa.to ?? faixa.from);
+        for (let d = de; d <= ate; d = somarDias(d, 1)) porDia.set(d, { ...(porDia.get(d) ?? {}), ...faixa, from: d, to: d });
+      }
+      for (const f of i.faixas) {
+        for (let d = f.from; d <= f.to; d = somarDias(d, 1)) {
+          const atual = porDia.get(d) ?? { from: d, to: d };
+          if (f.preco !== undefined) atual.price1 = f.preco / 100;
+          if (f.minimo !== undefined) atual.minStay = f.minimo;
+          if (f.maximo !== undefined) atual.maxStay = f.maximo;
+          if (f.bloqueio !== undefined) {
+            atual.override = f.bloqueio;
+            // Aproximação do serviço falso: blackout fecha a unidade; qualquer outro override a devolve.
+            if (f.bloqueio === "blackout") atual.numAvail = 0;
+            else if (atual.numAvail === 0) atual.numAvail = 1;
+          }
+          porDia.set(d, atual);
+        }
+      }
+      sala.calendar = [...porDia.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, v]) => v);
+      return { roomId: i.roomId, ok: true, erro: "" };
+    });
+  }
+}

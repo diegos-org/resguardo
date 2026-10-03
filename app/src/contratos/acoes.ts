@@ -6,7 +6,7 @@ import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { getDb } from "@/db/client";
 import { recalcularReservas } from "@/financeiro/aplicar";
 import type { ErrosContrato } from "./regras";
-import { criarContrato, encerrarContrato } from "./repositorio";
+import { alterarBloqueioPortal, criarContrato, encerrarContrato } from "./repositorio";
 
 export type EstadoContrato = { erros?: ErrosContrato; ok?: boolean; mensagem?: string };
 
@@ -40,6 +40,17 @@ export async function encerrar(_a: EstadoContrato, form: FormData): Promise<Esta
     if (e.ok) await recalcularReservas(tx, sessao.organizacaoId, { imovelId: e.imovelId, aPartirDe: e.fim }, sessao.usuarioId);
     return e;
   });
+  if (!r.ok) return { mensagem: r.erro };
+  revalidatePath(`/painel/imoveis/${r.imovelId}`);
+  return { ok: true };
+}
+
+/** Liga/desliga o bloqueio de datas pelo portal num contrato (M5.5). Não mexe em comissão: nada a recalcular. */
+export async function bloqueioPortal(_a: EstadoContrato, form: FormData): Promise<EstadoContrato> {
+  const sessao = await sessaoFinanceira();
+  const valor = String(form.get("permitir") ?? "");
+  if (valor !== "sim" && valor !== "nao") return { mensagem: "Escolha se o proprietário pode bloquear datas pelo portal." };
+  const r = await alterarBloqueioPortal(getDb(), sessao.organizacaoId, String(form.get("contratoId") ?? ""), valor === "sim", sessao.usuarioId);
   if (!r.ok) return { mensagem: r.erro };
   revalidatePath(`/painel/imoveis/${r.imovelId}`);
   return { ok: true };

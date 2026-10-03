@@ -39,7 +39,7 @@ describe("validarContrato", () => {
   it("aceita contrato válido", () => {
     expect(validarContrato({ tipo: "gestao_online", comissao: "10", inicio: "2026-10-01" }, [])).toEqual({
       ok: true,
-      dados: { tipo: "gestao_online", comissaoBp: 1000, inicio: "2026-10-01", fim: null, observacoes: "" },
+      dados: { tipo: "gestao_online", comissaoBp: 1000, inicio: "2026-10-01", fim: null, observacoes: "", proprietarioBloqueia: true },
     });
   });
 

@@ -1,7 +1,8 @@
 /**
- * Beds24 (M3.2) — tipos INTERNOS, já normalizados. O resto do sistema só enxerga isto;
- * o formato da API fica isolado em `http.ts`. Somente leitura: não existe operação de
- * escrita neste módulo (criar reserva no Beds24 é o M8.3, com autorização explícita).
+ * Beds24 (M3.2/M3.7) — tipos INTERNOS, já normalizados. O resto do sistema só enxerga isto;
+ * o formato da API fica isolado em `http.ts`. A única escrita é a do calendário (preço,
+ * mínimo/máximo e bloqueio por noite — M3.7), atrás de `BEDS24_ESCRITA=ligada`. Criar
+ * reserva no Beds24 continua sendo o M8.3, com autorização explícita.
  */
 export type EstadoBeds24 = "confirmada" | "pendente" | "cancelada" | "bloqueio" | "consulta" | "pedido";
 export type CanalBeds24 = "airbnb" | "booking" | "direta" | "outro";
@@ -35,6 +36,9 @@ export type DiaCalendario = {
   /** Centavos; null = sem preço informado. */
   preco: number | null;
   minimoNoites: number | null;
+  maximoNoites: number | null;
+  /** `override` do calendário ("none", "blackout", "noCheckIn"…); null = não informado. */
+  bloqueio: string | null;
 };
 
 export type QuartoBeds24 = { propertyId: string; roomId: string; nome: string; moeda?: string };
@@ -52,6 +56,27 @@ export interface LeitorBeds24 {
   reservas(f: FiltroReservas): Promise<Lido<ReservaBeds24>>;
   calendario(f: FiltroCalendario): Promise<Lido<DiaCalendario>>;
   quartos(): Promise<Lido<QuartoBeds24>>;
+}
+
+/** Valores de `override` do calendário Beds24 que o SCL sabe ler e escrever. */
+export const BLOQUEIOS_BEDS24 = ["none", "blackout", "exception", "noCheckIn", "noCheckOut", "noCheckInOrCheckOut"] as const;
+/**
+ * Bloqueio por noite enviado ao Beds24: "blackout" fecha a noite; "none" reabre o que o SCL fechou;
+ * os demais devolvem a restrição que já existia no Beds24 antes do bloqueio do SCL.
+ */
+export type BloqueioEnvio = (typeof BLOQUEIOS_BEDS24)[number];
+export const ehBloqueioEnvio = (b: unknown): b is BloqueioEnvio => typeof b === "string" && (BLOQUEIOS_BEDS24 as readonly string[]).includes(b);
+/** Faixa de noites [from, to] (inclusive) com os mesmos valores. Campo ausente = não alterar. */
+export type FaixaEnvio = { from: string; to: string; preco?: number; minimo?: number; maximo?: number; bloqueio?: BloqueioEnvio };
+export type EnvioCalendario = { roomId: string; faixas: FaixaEnvio[] };
+export type ResultadoEscrita = { roomId: string; ok: boolean; erro: string };
+
+/**
+ * Contrato de escrita (M3.7): só o calendário por noite. Nunca cria/altera reservas.
+ * Só sai do ambiente com `BEDS24_ESCRITA=ligada` (ver `escritorDoAmbiente`).
+ */
+export interface EscritorBeds24 {
+  escreverCalendario(itens: EnvioCalendario[]): Promise<ResultadoEscrita[]>;
 }
 
 export class ErroBeds24 extends Error {

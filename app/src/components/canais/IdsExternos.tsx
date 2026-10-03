@@ -10,11 +10,12 @@ type Props = {
   imovelId: string;
   lista: IdExterno[];
   adicionar: (a: EstadoIdExterno, f: FormData) => Promise<EstadoIdExterno>;
-  remover: (f: FormData) => Promise<void>;
+  remover: (a: EstadoIdExterno, f: FormData) => Promise<EstadoIdExterno>;
 };
 
 export function IdsExternos({ imovelId, lista, adicionar, remover }: Props) {
   const [estado, enviar, enviando] = useActionState(adicionar, {});
+  const [remocao, removerRegistro] = useActionState(remover, {});
   const form = useRef<HTMLFormElement>(null);
   useEffect(() => {
     if (estado.ok) form.current?.reset();
@@ -26,6 +27,11 @@ export function IdsExternos({ imovelId, lista, adicionar, remover }: Props) {
       <p style={{ fontSize: "0.875rem", color: "var(--scl-texto-2)" }}>
         Números deste imóvel no Beds24, Airbnb e Booking. É assim que a sincronização sabe a qual imóvel cada reserva pertence.
       </p>
+      {remocao.erro && (
+        <p role="alert" className={styles.alerta}>
+          {remocao.erro}
+        </p>
+      )}
       {lista.length === 0 ? (
         <p>Nenhum canal ligado ainda.</p>
       ) : (
@@ -36,7 +42,7 @@ export function IdsExternos({ imovelId, lista, adicionar, remover }: Props) {
                 <strong>{NOMES_CANAL[r.canal]}</strong> · {r.idExterno}
                 {r.detalhe && ` / ${r.detalhe}`}
               </span>
-              <form action={remover}>
+              <form action={removerRegistro}>
                 <input type="hidden" name="imovelId" value={imovelId} />
                 <input type="hidden" name="registroId" value={r.id} />
                 <BotaoConfirmar

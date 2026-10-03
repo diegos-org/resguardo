@@ -22,6 +22,7 @@ Interpretação contextual: as métricas de receita pedidas no início referem-s
 - Rodapé: receitas, despesas atribuídas ao proprietário, saldo a pagar/receber, credor/devedor identificado e chave Pix do credor com copiar. Dados bancários somente no sistema privado e conferidos antes da apresentação.
 - Métricas e um ou dois gráficos úteis, sem sacrificar legibilidade mobile.
 - Emitir PDF abre modal com período/imóvel; gerar da mesma base e usando modelo da Lia, respeitando filtros, autorização e isolamento por proprietário. Nenhum PDF financeiro real no GitHub.
+- Bloqueio de uso próprio (M5.5, 3/10): o proprietário bloqueia e libera datas dos próprios imóveis no portal, conforme a permissão "bloqueio pelo portal" do contrato em vigor; a regra completa (posse, limites, envio ao Beds24) está em `CALENDARIO-PRECOS-OPERACAO.md` — uma regra, um lugar.
 
 ## Despesas, adiantamentos e aba Apartamentos
 - Despesas pequenas, produtos de limpeza e outras despesas assumidas pela empresa aparecem na visão empresarial, não são cobradas do proprietário por inferência.

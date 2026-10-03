@@ -166,6 +166,21 @@ export function FormDetalhes({ imovelId, inicial, salvar }: Props) {
               {erro("precoMaximo")}
             </label>
           </div>
+          <p style={{ fontSize: "0.875rem", color: "var(--scl-texto-2)", margin: 0 }}>
+            Pisos de última hora: a diária final (depois do desconto de última hora) nunca fica abaixo deles. As faixas (dias de antecedência e percentual) ficam em Configurações → Calendário e preços. Em branco = sem piso: o sistema avisa e não aplica a redução por conta própria.
+          </p>
+          <div className={styles.linha}>
+            <label>
+              Piso da 1ª faixa de última hora (R$)
+              <input name="pisoUltimaHora1" inputMode="decimal" defaultValue={dinheiro("pisoUltimaHora1")} placeholder="ex.: 350,00" {...invalido("pisoUltimaHora1")} />
+              {erro("pisoUltimaHora1")}
+            </label>
+            <label>
+              Piso da 2ª faixa (mais perto da data) (R$)
+              <input name="pisoUltimaHora2" inputMode="decimal" defaultValue={dinheiro("pisoUltimaHora2")} placeholder="ex.: 300,00" {...invalido("pisoUltimaHora2")} />
+              {erro("pisoUltimaHora2")}
+            </label>
+          </div>
         </fieldset>
 
         <fieldset style={grupo}>

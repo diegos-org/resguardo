@@ -43,9 +43,9 @@ export function situacaoServicos(env: NodeJS.ProcessEnv, bancoOk: boolean | null
       situacao: beds24 ? "configurado" : "nao_configurado",
       detalhe: !beds24
         ? "Falta BEDS24_REFRESH_TOKEN (ou BEDS24_API_KEY para token direto)"
-        : env.BEDS24_ESCRITA === "ligada"
-          ? "Credencial configurada, conexão não testada · sinal de escrita LIGADO, mas o cliente atual só faz leitura"
-          : "Credencial configurada, conexão não testada · envio para o Beds24 desligado",
+        : env.BEDS24_ESCRITA?.trim() === "ligada"
+          ? "Credencial configurada, conexão não testada · envio para o Beds24 LIGADO (só para os imóveis marcados em Configurações → Calendário e preços)"
+          : "Credencial configurada, conexão não testada · envio para o Beds24 desligado (BEDS24_ESCRITA)",
     },
     { nome: "WhatsApp (Meta)", paraQue: "Atendimento e mensagens", situacao: "planejado", detalhe: "Chega no M10 (depende da verificação no Meta)" },
     { nome: "Pagamentos (Mercado Pago)", paraQue: "Reserva direta no site", situacao: "planejado", detalhe: "Chega no M8" },
