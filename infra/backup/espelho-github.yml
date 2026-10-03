@@ -123,10 +123,11 @@ jobs:
             if [ "${m}" = "${t}" ]; then echo "${t}" >> marcos-validos.refs; fi
           done < marcos.refs
           marcos_invalidos=$(comm -23 marcos.refs marcos-validos.refs || true)
-          # O ponteiro só vale se apontar para um retrato (commit com inventário que nomeia um marco) e, se a tag
-          # desse marco ainda existir, ela precisa apontar para o mesmo commit. Tag apagada não é adulteração
-          # (já é cobrada como sumiço); commit sem inventário ou tag em outro commit é.
-          ponteiro_adulterado=0; ponteiro_recuado=0; ponteiro_commit=""
+          # O ponteiro só serve de base se estiver ANCORADO: aponta para um retrato (commit com inventário que
+          # nomeia um marco) e a tag desse marco existe e aponta para o mesmo commit. Commit sem inventário é
+          # adulteração; tag ausente ou em outro commit deixa o ponteiro sem âncora (a base cai para o marco
+          # íntegro mais novo e o commit apontado é preservado como pai do retrato).
+          ponteiro_adulterado=0; ponteiro_recuado=0; ponteiro_sem_ancora=0; ponteiro_commit=""
           if [ -n "${ponteiro}" ]; then
             ponteiro_commit=$(git rev-parse -q --verify 'refs/guardado/marcos^{commit}' 2>/dev/null || true)
             m=$(git for-each-ref --format='%(contents)' refs/guardado/marcos | awk '$1 == "marco" && NF == 2 {print $2}' | head -n1)
@@ -134,21 +135,27 @@ jobs:
               ponteiro_adulterado=1
             else
               tag_commit=$(git rev-parse -q --verify "refs/guardado/backup/${m#refs/tags/backup/}^{commit}" 2>/dev/null || true)
-              if [ -n "${tag_commit}" ] && [ "${tag_commit}" != "${ponteiro_commit}" ]; then
-                # A TAG do marco é que foi movida; o ponteiro guarda o retrato legítimo e continua sendo a base.
+              if [ -z "${tag_commit}" ]; then
+                # SEM ÂNCORA: a tag do marco citado não existe. Pode ser um retrato legítimo cuja tag foi apagada
+                # ou um commit forjado com um nome de marco qualquer; sozinho, o ponteiro não serve de base.
+                ponteiro_sem_ancora=1
+              elif [ "${tag_commit}" != "${ponteiro_commit}" ]; then
+                # A tag do marco aponta para outro commit: a tag é inválida e o ponteiro fica sem âncora.
                 marcos_invalidos=$(printf '%s\n%s' "${marcos_invalidos}" "${m}" | sed '/^$/d' | sort -u)
+                ponteiro_sem_ancora=1
+              else
+                # Ancorado. Ponteiro RECUADO: aponta para um retrato íntegro, mas há marco íntegro mais novo.
+                # A base passa a ser o mais novo e o ponteiro é avançado de novo (fast-forward) pela rodada.
+                mais_novo=$(tail -n1 marcos-validos.refs 2>/dev/null || true)
+                if [ -n "${mais_novo}" ] && [ "${m}" \< "${mais_novo}" ]; then ponteiro_recuado=1; fi
               fi
-              # Ponteiro RECUADO: aponta para um retrato íntegro, mas há marco íntegro mais novo. A base passa
-              # a ser o mais novo e o ponteiro é avançado de novo (fast-forward) pela rodada.
-              mais_novo=$(tail -n1 marcos-validos.refs 2>/dev/null || true)
-              if [ -n "${mais_novo}" ] && [ "${m}" \< "${mais_novo}" ]; then ponteiro_recuado=1; fi
             fi
           fi
 
           # Rodada anterior = retrato apontado por backup-marcos, se íntegro. Senão, o marco íntegro mais novo
           # (e avisa); sem marco algum mas com conteúdo espelhado, todos os marcos foram apagados.
           anterior=""; ponteiro_apagado=0; marcos_apagados=0
-          if [ -n "${ponteiro}" ] && [ "${ponteiro_adulterado}" -eq 0 ] && [ "${ponteiro_recuado}" -eq 0 ]; then
+          if [ -n "${ponteiro}" ] && [ "${ponteiro_adulterado}" -eq 0 ] && [ "${ponteiro_recuado}" -eq 0 ] && [ "${ponteiro_sem_ancora}" -eq 0 ]; then
             anterior=refs/guardado/marcos
           elif [ -s marcos-validos.refs ]; then
             anterior=$(tail -n1 marcos-validos.refs | sed 's#^refs/tags/backup/#refs/guardado/backup/#')
@@ -365,7 +372,10 @@ jobs:
           if [ -n "${anterior}" ]; then pais+=(-p "$(git rev-parse "${anterior}^{commit}")"); fi
           # Ponteiro adulterado: o commit para onde ele aponta vira pai também, para nada se perder antes
           # de a pessoa apagar a branch e o robô recriá-la.
-          if [ "${ponteiro_adulterado}" -eq 1 ] && [ -n "${ponteiro_commit}" ]; then pais+=(-p "${ponteiro_commit}"); fi
+          # O mesmo para o ponteiro sem âncora: se era um retrato legítimo de tag apagada, continua alcançável.
+          if { [ "${ponteiro_adulterado}" -eq 1 ] || [ "${ponteiro_sem_ancora}" -eq 1 ]; } && [ -n "${ponteiro_commit}" ]; then
+            if [ -z "${anterior}" ] || [ "${ponteiro_commit}" != "$(git rev-parse "${anterior}^{commit}")" ]; then pais+=(-p "${ponteiro_commit}"); fi
+          fi
           pais+=(-p "${main}")
           # Pontas convertidas em commit (tag anotada vira o commit apontado) e sem repetição.
           while read -r c; do
@@ -490,6 +500,10 @@ jobs:
           if [ -n "${objetos_alterados}" ]; then
             echo "::error::Refs objetos/<sha> ALTERADAS neste backup (não apontam para o objeto do próprio nome). Apague-as; o robô as recria a partir da origem quando ela ainda tiver o objeto:"
             printf '%s' "${objetos_alterados}"
+            falhou=1
+          fi
+          if [ "${ponteiro_sem_ancora}" -eq 1 ]; then
+            echo "::error::A branch backup-marcos apontava para um retrato SEM ÂNCORA: a tag do marco que ele cita não existe ou aponta para outro commit. Sozinho, ele não serve de base (poderia ser um commit forjado). Esta rodada usou o marco íntegro mais novo como base, guardou o commit apontado como pai do retrato e avançou o ponteiro para o retrato de hoje. Se a tag foi apagada por engano, nada se perdeu; se foi movida, apague-a (o aviso de marco inválido se repete até isso)."
             falhou=1
           fi
           if [ "${ponteiro_recuado}" -eq 1 ]; then

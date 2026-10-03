@@ -39,6 +39,14 @@ o **batimento** opcional da seção 3: um serviço externo gratuito que espera u
 cada rodada e avisa por e-mail quando o sinal falta. Sem o batimento, o pior caso é descobrir
 na conferência mensal que o backup parou há até um mês; o que já foi guardado continua lá.
 
+**Quem tem acesso de escrita à conta de backup pode forjar um marco inteiro** (tag `backup/`
+mais retrato com inventário combinando), e o robô não distingue isso de um marco legítimo: toda
+a comparação parte do que está guardado lá. O robô detecta e avisa o que é **inconsistente**
+(ponteiro sem âncora ou movido, tag de marco movida, ref alterada, cópia alterada), não o que
+foi forjado de forma consistente. A defesa é a conta de backup ser só do Diego, com 2FA, senha
+própria e nenhum outro acesso; no plano pago, as rulesets (seção 3, item 4) impedem apagar e
+forçar, inclusive para o robô.
+
 ## 3. Como o espelho funciona
 
 O desenho é **puxar, não empurrar**: a conta de backup busca o repositório principal; o
@@ -95,8 +103,12 @@ repositório principal não sabe que o backup existe.
      base, guarda o commit apontado como pai do retrato para nada se perder, não mexe no
      ponteiro e avisa até ele ser apagado), para `backup-marcos` **recuada** a um marco antigo
      íntegro (a base passa a ser o marco íntegro mais novo, o ponteiro é avançado de novo e o
-     aviso sai uma vez) e para uma tag `backup/` movida para um commit que não é o seu
-     retrato (a tag é que é dada como inválida; o ponteiro continua sendo a base);
+     aviso sai uma vez), para `backup-marcos` **sem âncora** (aponta para um retrato cuja tag
+     de marco não existe ou foi movida: sozinho não serve de base, porque poderia ser um commit
+     forjado com um nome de marco qualquer; a base passa a ser o marco íntegro mais novo, o
+     commit apontado fica preservado como pai, o ponteiro avança e o aviso sai uma vez; avisos
+     daquela rodada podem repetir uma vez) e para uma tag `backup/` movida para um commit que
+     não é o seu retrato (a tag é dada como inválida);
    - no push do espelho, só a recusa por divergência da origem é aceita (e vira aviso
      amarelo), e só para refs que a base já conhecia, com espelho íntegro, ou que foram
      tratadas como reescritas na rodada; qualquer outra recusa (regra do repositório, falha
@@ -124,7 +136,7 @@ repositório principal não sabe que o backup existe.
    robô: ele nunca apaga nem reescreve e avisa quando o backup perde algo. A trava cobre a
    mais só o erro manual de quem tem acesso à conta de backup, que é só o Diego.
 
-Testado em 3/10 rodando o script exato do robô contra repositórios locais, cinquenta e sete rodadas:
+Testado em 3/10 rodando o script exato do robô contra repositórios locais, cinquenta e nove rodadas:
 origem só com `main`; novas branches e tags; origem avança; origem apaga uma branch (o backup
 a mantém e avisa uma vez); nada muda (sem aviso repetido); origem reescreve uma branch e uma
 tag anotada (o backup mantém as versões antigas em `espelho/`, guarda as novas em
@@ -144,8 +156,8 @@ nada, e recriada quando apagada; refs `espelho/` alteradas no backup (tag e bran
 avisadas em toda rodada e regravadas da origem quando apagadas; espelho que avançou numa
 rodada que falhou antes do marco é retomado sem aviso, inclusive quando a origem apagou a
 branch em seguida (o avanço fica como única cópia, com só o aviso de sumiço); uma tag `backup/` movida para outro
-commit é avisada, inclusive a do marco mais novo, sem que o ponteiro perca a base e com o
-retrato legítimo preservado como pai; `backup-marcos` recuada à força para um marco antigo é
+commit é avisada, inclusive a do marco mais novo (aí o ponteiro fica sem âncora, a base cai para
+o marco íntegro anterior e o retrato legítimo fica preservado como pai); `backup-marcos` recuada à força para um marco antigo é
 avisada uma vez, a base passa a ser o marco mais novo e o ponteiro avança de novo; uma tag
 anotada reescrita na origem com a cópia `espelho/` apagada do backup na mesma rodada continua
 com o objeto antigo guardado em `objetos/`; uma ref `objetos/` alterada no backup é avisada e,
@@ -153,8 +165,10 @@ apagada quando a origem já não tem o objeto, é dada como sumida uma vez; uma 
 para um arquivo solto (não para um commit) ganha ref `objetos/` e, reapontada na origem com a
 cópia `espelho/` apagada no backup na mesma rodada, mantém o arquivo antigo guardado; nomes de
 refs são comparados ao pé da letra (uma `release/1.2` apagada e recriada com outro conteúdo é
-reescrita, mesmo existindo uma `release/1x2`); e as tags do backup não voltam para a origem nem
-se duplicam com o prefixo. O passo de batimento não entrou na simulação (é uma chamada HTTP
+reescrita, mesmo existindo uma `release/1x2`); `backup-marcos` movida para um commit forjado que
+cita um marco futuro inexistente é dada como sem âncora (não vira base, o commit fica como pai, o
+ponteiro avança, aviso uma vez); e as tags do backup não voltam para a origem nem se duplicam com
+o prefixo. O passo de batimento não entrou na simulação (é uma chamada HTTP
 simples a um serviço externo, só com a URL configurada); foi conferido na sintaxe e no caso sem
 URL.
 
