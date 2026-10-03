@@ -22,6 +22,10 @@
 # - ORIGEM_REPO  = dono/repositorio da origem (ex.: empresa/sistema)
 # - ORIGEM_TOKEN = fine-grained token da conta principal: só este repositório, só leitura
 #                  (Contents: Read-only). Nada de escrita, nada de administração.
+# - BATIMENTO_URL (opcional) = URL de "ping" de um serviço gratuito de batimento (dead man's switch).
+#                  Chamada só quando a rodada termina bem; se o robô for apagado, desligado ou parar
+#                  de rodar, a URL fica sem chamadas e o serviço avisa por e-mail. Sem ela, o robô
+#                  não tem como avisar a própria ausência: vale a conferência mensal da aba Actions.
 # Nenhum dado da conta de backup aparece neste arquivo nem no repositório de origem.
 name: Backup do repositório de origem
 
@@ -501,3 +505,21 @@ jobs:
             falhou=1
           fi
           exit "${falhou}"
+
+      # Batimento (opcional): o robô só consegue avisar o que vê numa rodada; se ele mesmo for apagado,
+      # desligado ou deixar de rodar, não há rodada para avisar. Um serviço externo que espera este
+      # sinal a cada rodada cobre exatamente esse caso.
+      - name: Batimento (opcional)
+        if: success()
+        env:
+          BATIMENTO_URL: ${{ secrets.BATIMENTO_URL }}
+        run: |
+          if [ -z "${BATIMENTO_URL}" ]; then
+            echo "Sem BATIMENTO_URL: nenhum serviço de batimento configurado (a conferência mensal da aba Actions é o que detecta um robô parado)."
+            exit 0
+          fi
+          if curl -fsS -m 15 --retry 3 -o /dev/null "${BATIMENTO_URL}"; then
+            echo "Batimento enviado."
+          else
+            echo "::warning::Não consegui chamar a URL de batimento; se isso se repetir, o serviço de monitoramento vai avisar ausência de sinal."
+          fi
