@@ -274,6 +274,20 @@
       "when": 1790992249667,
       "tag": "0038_quarto_observacao",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1790997605529,
+      "tag": "0039_proprietario_bloqueia",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1790999465287,
+      "tag": "0040_bloqueio_proprietario",
+      "breakpoints": true
     }
   ]
 }

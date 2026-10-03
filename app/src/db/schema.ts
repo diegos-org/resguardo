@@ -252,6 +252,8 @@ export const contratos = pgTable(
     inicio: date("inicio", { mode: "string" }).notNull(),
     fim: date("fim", { mode: "string" }),
     observacoes: text("observacoes").notNull().default(""),
+    /** M5.5: o proprietário pode bloquear datas de uso próprio (e liberá-las) pelo portal enquanto este contrato vale. */
+    proprietarioBloqueia: boolean("proprietario_bloqueia").notNull().default(true),
     criadoEm: criadoEm(),
   },
   (t) => [index("contratos_imovel_inicio").on(t.imovelId, t.inicio)],
@@ -404,6 +406,8 @@ export const bloqueios = pgTable(
     motivo: text("motivo").notNull().default(""),
     fonte: text("fonte").notNull().default("manual"),
     idFonte: text("id_fonte").notNull().default(""),
+    /** M5.5: titular (proprietário) que fez o bloqueio pelo portal — só ele libera. Nulo nos bloqueios da equipe e do Beds24. */
+    proprietarioId: uuid("proprietario_id").references(() => proprietarios.id),
     criadoEm: criadoEm(),
   },
   (t) => [

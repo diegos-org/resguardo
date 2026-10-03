@@ -164,7 +164,7 @@ export async function reservasDoPortal(
   });
 }
 
-export type BloqueioPortal = { id: string; imovelId: string; inicio: string; fim: string };
+export type BloqueioPortal = { id: string; imovelId: string; inicio: string; fim: string; fonte: string };
 
 /**
  * Bloqueios dos imóveis dele no período, só do tempo em que o imóvel é dele (da data do vínculo em
@@ -181,7 +181,7 @@ export async function bloqueiosDoPortal(
   if (!donos.length || !ids.length) return [];
   const desde = sql<string>`(${proprietarioImoveis.criadoEm} at time zone 'America/Sao_Paulo')::date`;
   const linhas = await db
-    .select({ id: bloqueios.id, imovelId: bloqueios.imovelId, inicio: bloqueios.inicio, fim: bloqueios.fim, desde: sql<string>`to_char(${desde}, 'YYYY-MM-DD')` })
+    .select({ id: bloqueios.id, imovelId: bloqueios.imovelId, inicio: bloqueios.inicio, fim: bloqueios.fim, fonte: bloqueios.fonte, desde: sql<string>`to_char(${desde}, 'YYYY-MM-DD')` })
     .from(bloqueios)
     .innerJoin(proprietarioImoveis, and(eq(proprietarioImoveis.imovelId, bloqueios.imovelId), inArray(proprietarioImoveis.proprietarioId, donos)))
     .where(
@@ -194,5 +194,5 @@ export async function bloqueiosDoPortal(
       ),
     )
     .orderBy(asc(bloqueios.inicio));
-  return linhas.map((b) => ({ id: b.id, imovelId: b.imovelId, inicio: b.inicio < b.desde ? b.desde : b.inicio, fim: b.fim }));
+  return linhas.map((b) => ({ id: b.id, imovelId: b.imovelId, inicio: b.inicio < b.desde ? b.desde : b.inicio, fim: b.fim, fonte: b.fonte }));
 }

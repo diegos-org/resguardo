@@ -1,0 +1,1 @@
+ALTER TABLE "contratos" ADD COLUMN "proprietario_bloqueia" boolean DEFAULT true NOT NULL;

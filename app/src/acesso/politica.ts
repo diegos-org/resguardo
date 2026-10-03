@@ -16,6 +16,8 @@ export const ACOES = [
   "reserva:ler",
   "reserva:editar",
   "calendario:ler",
+  /** Proprietário (M5.5): bloquear datas de uso próprio e liberá-las nos seus imóveis, conforme o contrato. */
+  "bloqueio:proprio",
   "financeiro:ler",
   "financeiro:editar",
   "despesa:editar",
@@ -52,8 +54,8 @@ const OPERACAO: readonly Acao[] = [
   "mensagem:enviar",
 ];
 
-/** Proprietário só lê, e só o que é dos seus imóveis. */
-const PROPRIETARIO: readonly Acao[] = ["imovel:ler", "reserva:ler", "calendario:ler", "financeiro:ler"];
+/** Proprietário lê o que é dos seus imóveis e só edita o próprio calendário (bloqueio de uso próprio, M5.5). */
+const PROPRIETARIO: readonly Acao[] = ["imovel:ler", "reserva:ler", "calendario:ler", "financeiro:ler", "bloqueio:proprio"];
 
 export const PERMISSOES: Readonly<Record<Papel, readonly Acao[]>> = Object.freeze({
   admin: ACOES,
