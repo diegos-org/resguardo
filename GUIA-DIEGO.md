@@ -1226,8 +1226,10 @@ ambiente).
         permissions* escolha *Read and write permissions* e rode de novo.
    8. **Depois:** o robô roda sozinho a cada 3 dias, às 03:17. Uma vez por mês, dê uma olhada
       na aba *Actions* (verde). Rodada vermelha gera e-mail para a conta nova e diz exatamente
-      o que sumiu ou foi reescrito, e onde (é aviso, não perda), ou que a chave venceu. Antes
-      de a chave vencer, gere outra (passo 3) e troque o segredo `ORIGEM_TOKEN` (passo 4).
+      o que sumiu, foi reescrito ou foi alterado, e onde (é aviso, não perda), ou que a chave
+      venceu. Se a mensagem falar em algo "alterado" ou "movido" no backup, a correção é
+      apagar aquela ref lá; o robô regrava sozinho na rodada seguinte. Antes de a chave
+      vencer, gere outra (passo 3) e troque o segredo `ORIGEM_TOKEN` (passo 4).
 
 23b. **Backup do banco (Neon) — me diga se posso fazer.** Hoje o Neon guarda só **1 dia** de
    histórico para voltar no tempo e não tem nenhum snapshot. Proposta: aumentar o histórico

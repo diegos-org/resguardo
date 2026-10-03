@@ -109,14 +109,36 @@ jobs:
           } | sort > guardado.refs
           # Marcos datados existentes (só os do formato backup/AAAA-MM-DD-HHMM).
           grep -E '^refs/tags/backup/[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{4}$' guardado.refs | sort > marcos.refs || true
+          # Só vale como base um retrato íntegro: o inventário na mensagem nomeia a própria tag.
+          : > marcos-validos.refs
+          while read -r t; do
+            [ -z "${t}" ] && continue
+            m=$(git for-each-ref --format='%(contents)' "refs/guardado/backup/${t#refs/tags/backup/}" | awk '$1 == "marco" && NF == 2 {print $2}' | head -n1)
+            if [ "${m}" = "${t}" ]; then echo "${t}" >> marcos-validos.refs; fi
+          done < marcos.refs
+          marcos_invalidos=$(comm -23 marcos.refs marcos-validos.refs || true)
+          # O ponteiro só vale se apontar para um retrato (commit com inventário que nomeia um marco) e, se a tag
+          # desse marco ainda existir, ela precisa apontar para o mesmo commit. Tag apagada não é adulteração
+          # (já é cobrada como sumiço); commit sem inventário ou tag em outro commit é.
+          ponteiro_adulterado=0
+          if [ -n "${ponteiro}" ]; then
+            m=$(git for-each-ref --format='%(contents)' refs/guardado/marcos | awk '$1 == "marco" && NF == 2 {print $2}' | head -n1)
+            if ! echo "${m}" | grep -Eq '^refs/tags/backup/[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{4}$'; then
+              ponteiro_adulterado=1
+            else
+              tag_commit=$(git rev-parse -q --verify "refs/guardado/backup/${m#refs/tags/backup/}^{commit}" 2>/dev/null || true)
+              if [ -n "${tag_commit}" ] && [ "${tag_commit}" != "$(git rev-parse 'refs/guardado/marcos^{commit}')" ]; then ponteiro_adulterado=1; fi
+            fi
+          fi
 
-          # Rodada anterior = retrato apontado por backup-marcos. Sem o ponteiro, o marco mais novo
+          # Rodada anterior = retrato apontado por backup-marcos, se íntegro. Senão, o marco íntegro mais novo
           # (e avisa); sem marco algum mas com conteúdo espelhado, todos os marcos foram apagados.
           anterior=""; ponteiro_apagado=0; marcos_apagados=0
-          if [ -n "${ponteiro}" ]; then
+          if [ -n "${ponteiro}" ] && [ "${ponteiro_adulterado}" -eq 0 ]; then
             anterior=refs/guardado/marcos
-          elif [ -s marcos.refs ]; then
-            anterior=$(tail -n1 marcos.refs | sed 's#^refs/tags/backup/#refs/guardado/backup/#'); ponteiro_apagado=1
+          elif [ -s marcos-validos.refs ]; then
+            anterior=$(tail -n1 marcos-validos.refs | sed 's#^refs/tags/backup/#refs/guardado/backup/#')
+            if [ -z "${ponteiro}" ]; then ponteiro_apagado=1; fi
           elif [ -s guardado.refs ]; then
             marcos_apagados=1
           fi
@@ -213,13 +235,56 @@ jobs:
             fi
           done < <(awk '$1 == "recusada" && NF == 3' anterior.txt)
 
+          # Espelho: objeto esperado de cada ref espelho/... depois desta rodada (regra do push sem force), e refs
+          # cujo espelho foi ALTERADO neste backup (objeto diferente do inventariado). Nessas, o inventário mantém
+          # o esperado (avisa a cada rodada até a ref ser apagada ou corrigida) e, se a origem ainda tiver o objeto
+          # exato, ele é salvo de novo sob recusadas/<data>/....
+          awk '$1 == "espelho" && NF == 3' anterior.txt > anterior-espelho.txt
+          espelho_adulterado=""; : > espelho.inv; : > espelho-adulterado.refs
+          {
+            cat atual.refs
+            grep -E '^refs/(heads|tags)/' guardado.refs | grep -v -E '^refs/tags/(backup|recusadas)/|^refs/heads/backup-marcos$' || true
+          } | sort -u | while read -r ref; do
+            [ -z "${ref}" ] && continue
+            a=$(git rev-parse -q --verify "${ref}" 2>/dev/null || true)
+            g=$(git rev-parse -q --verify "refs/guardado/${ref#refs/}" 2>/dev/null || true)
+            esperado=$(awk -v r="${ref}" '$3 == r {print $2}' anterior-espelho.txt | head -n1)
+            if [ -n "${g}" ] && [ -n "${esperado}" ] && [ "${g}" != "${esperado}" ]; then
+              echo "${ref} (esperado ${esperado}, encontrado ${g})" >> espelho-adulterado.txt
+              echo "${ref}" >> espelho-adulterado.refs
+              echo "${esperado} ${ref}" >> espelho.inv
+              if [ -n "${a}" ] && [ "${a}" = "${esperado}" ]; then echo "${ref}" >> espelho-resalvar.refs; fi
+              continue
+            fi
+            if [ -z "${a}" ]; then echo "${g} ${ref}" >> espelho.inv; continue; fi
+            if [ -z "${g}" ] || [ "${g}" = "${a}" ]; then echo "${a} ${ref}" >> espelho.inv; continue; fi
+            case "${ref}" in
+              refs/tags/*) echo "${g} ${ref}" >> espelho.inv ;;
+              *)
+                gc=$(git rev-parse -q --verify "${g}^{commit}" 2>/dev/null || true)
+                ac=$(git rev-parse -q --verify "${a}^{commit}" 2>/dev/null || true)
+                if [ -n "${gc}" ] && [ -n "${ac}" ] && git merge-base --is-ancestor "${gc}" "${ac}"; then echo "${a} ${ref}" >> espelho.inv; else echo "${g} ${ref}" >> espelho.inv; fi ;;
+            esac
+          done
+          [ -f espelho-adulterado.txt ] && espelho_adulterado=$(cat espelho-adulterado.txt) || true
+          if [ -f espelho-resalvar.refs ]; then
+            while read -r ref; do
+              [ -z "${ref}" ] && continue
+              novo_dest="refs/tags/recusadas/${marco#backup/}/${ref#refs/}"
+              if ! printf '%s%s' "${copias_novas}" "${copias_recriadas}" | grep -q " ${novo_dest}$"; then
+                recriadas+=("${ref}:${novo_dest}"); copias_recriadas="${copias_recriadas}$(git rev-parse "${ref}") ${novo_dest}"$'\n'
+              fi
+            done < espelho-resalvar.refs
+          fi
+
           # Inventário, parte 2: o que este backup guarda depois desta rodada. As cópias recusadas/ vão com o
-          # objeto esperado (o já inventariado, ou o desta rodada); o resto, pelo nome.
+          # objeto esperado (o já inventariado, ou o desta rodada); o espelho, com o objeto esperado; o resto, pelo nome.
           {
             cat guardado.refs atual.refs
             echo "refs/tags/${marco}"
             echo refs/heads/backup-marcos
           } | grep -v '^refs/tags/recusadas/' | sort -u | sed 's/^/backup /' >> inventario.txt
+          sort -u espelho.inv | sed 's/^/espelho /' >> inventario.txt
           {
             # já inventariadas e ainda presentes: mantém o objeto esperado
             while read -r _ sha ref; do
@@ -285,8 +350,11 @@ jobs:
               "[rejected] (non-fast-forward)"|"[rejected] (fetch first)"|"[rejected] (already exists)") ;;
               *) echo "${src}: ${motivo}"; continue ;;
             esac
-            if ! grep -qx "${src}" anterior-origem.refs && ! printf '%s' "${reescritas}" | grep -qx "${src}"; then
+            if printf '%s' "${reescritas}" | grep -qx "${src}"; then continue; fi
+            if ! grep -qx "${src}" anterior-origem.refs; then
               echo "${src}: recusada sem reescrita detectada (${motivo})"
+            elif grep -qx "${src}" espelho-adulterado.refs; then
+              echo "${src}: recusada porque o espelho desta ref foi alterado neste backup (${motivo})"
             fi
           done || true)
           if [ -n "${inesperadas}" ]; then
@@ -300,10 +368,14 @@ jobs:
           fi
 
           # 3) Marco e ponteiro juntos (--atomic): ou os dois entram, ou nenhum. A base de comparação nunca
-          #    fica à frente do que já foi guardado.
-          if ! no_destino push -q --atomic "${destino}" \
-            "refs/marcos/${marco}:refs/tags/${marco}" \
-            "refs/marcos/${marco}:refs/heads/backup-marcos"; then
+          #    fica à frente do que já foi guardado. Ponteiro adulterado: grava só o marco (o robô não força
+          #    nada); o aviso abaixo diz como corrigir.
+          if [ "${ponteiro_adulterado}" -eq 1 ]; then
+            specs=("refs/marcos/${marco}:refs/tags/${marco}")
+          else
+            specs=("refs/marcos/${marco}:refs/tags/${marco}" "refs/marcos/${marco}:refs/heads/backup-marcos")
+          fi
+          if ! no_destino push -q --atomic "${destino}" "${specs[@]}"; then
             echo "::error::Não foi possível gravar ${marco} e backup-marcos (já existe uma rodada neste mesmo minuto, ou uma regra do repositório recusou). A base de comparação não mudou; rode de novo em outro minuto."
             exit 1
           fi
@@ -335,6 +407,20 @@ jobs:
           if [ -n "${perdidas}" ]; then
             echo "::error::Cópias recusadas/ que SUMIRAM DESTE BACKUP e não puderam ser regravadas (a origem já não tem aquele objeto exato):"
             printf '%s' "${perdidas}"
+            falhou=1
+          fi
+          if [ -n "${espelho_adulterado}" ]; then
+            echo "::error::Refs espelho/... ALTERADAS neste backup (objeto diferente do inventariado; a origem não mudou). Apague a ref alterada para o robô regravá-la a partir da origem na rodada seguinte; até lá este aviso se repete. O objeto exato foi salvo de novo sob recusadas/ quando a origem ainda o tinha:"
+            printf '%s\n' "${espelho_adulterado}"
+            falhou=1
+          fi
+          if [ -n "${marcos_invalidos}" ]; then
+            echo "::error::Tags backup/ que NÃO apontam para um retrato íntegro (foram movidas ou criadas à mão). Não servem de base; confira e apague-as:"
+            echo "${marcos_invalidos}"
+            falhou=1
+          fi
+          if [ "${ponteiro_adulterado}" -eq 1 ]; then
+            echo "::error::A branch backup-marcos NÃO aponta para um retrato íntegro (foi movida à força). Esta rodada usou o marco íntegro mais novo como base e não mexeu no ponteiro. Apague a branch backup-marcos para o robô recriá-la na rodada seguinte; até lá este aviso se repete."
             falhou=1
           fi
           if [ "${ponteiro_apagado}" -eq 1 ]; then

@@ -69,11 +69,18 @@ repositório principal não sabe que o backup existe.
      rodada até ela ser apagada, e o objeto exato é salvo de novo sob a data da rodada quando
      a origem ainda o tem. Uma ref apagada na origem e recriada depois com outro conteúdo
      também conta como reescrita;
+   - o inventário também anota o objeto esperado de cada ref `espelho/...`. Se alguém alterar
+     uma dessas refs no backup (mesmo nome, outro objeto, sem a origem ter mudado), a rodada
+     avisa a cada vez até a ref ser apagada (aí é regravada a partir da origem) e salva o
+     objeto exato de novo quando a origem ainda o tem. O mesmo vale para a branch
+     `backup-marcos` movida à força (a rodada usa o marco íntegro mais novo como base, não
+     mexe no ponteiro e avisa até ele ser apagado) e para uma tag `backup/` movida para um
+     commit que não é o seu retrato;
    - no push do espelho, só a recusa por divergência da origem é aceita (e vira aviso
-     amarelo), e só para refs que a base já conhecia ou que foram tratadas como reescritas
-     na rodada; qualquer outra recusa (regra do repositório, falha do servidor, ref
-     desconhecida) para a rodada antes de avançar a base, porque o espelho pode ter ficado
-     incompleto;
+     amarelo), e só para refs que a base já conhecia, com espelho íntegro, ou que foram
+     tratadas como reescritas na rodada; qualquer outra recusa (regra do repositório, falha
+     do servidor, ref desconhecida, espelho alterado) para a rodada antes de avançar a base
+     ou é cobrada como alteração;
    - compara com o inventário do retrato anterior e **falha, o que gera e-mail para a conta
      de backup**, quando algo sumiu da origem, foi reescrito na origem ou sumiu do próprio
      backup (inclusive uma tag `backup/`, mesmo a mais nova, e a branch `backup-marcos`; se
@@ -89,7 +96,7 @@ repositório principal não sabe que o backup existe.
    robô: ele nunca apaga nem reescreve e avisa quando o backup perde algo. A trava cobre a
    mais só o erro manual de quem tem acesso à conta de backup, que é só o Diego.
 
-Testado em 3/10 rodando o script exato do robô contra repositórios locais, vinte e nove rodadas:
+Testado em 3/10 rodando o script exato do robô contra repositórios locais, trinta e oito rodadas:
 origem só com `main`; novas branches e tags; origem avança; origem apaga uma branch (o backup
 a mantém e avisa uma vez); nada muda (sem aviso repetido); origem reescreve uma branch e uma
 tag anotada (o backup mantém as versões antigas em `espelho/`, guarda as novas em
@@ -104,7 +111,11 @@ backup inacessível (a rodada para antes de gravar). Também: a cópia `recusada
 anotada apagada do backup é avisada e regravada quando a origem ainda tem o objeto, e dada
 como perdida quando a origem já mudou de novo; uma cópia alterada no backup é avisada em
 toda rodada, o objeto exato é salvo de novo sob a data da rodada e, apagada a cópia alterada,
-ela é regravada; e as tags do backup não voltam para a origem nem se duplicam com o prefixo.
+ela é regravada; `backup-marcos` movida à força é avisada em toda rodada, sem o robô forçar
+nada, e recriada quando apagada; refs `espelho/` alteradas no backup (tag e branch) são
+avisadas em toda rodada e regravadas da origem quando apagadas; uma tag `backup/` movida
+para outro commit é avisada; e as tags do backup não voltam para a origem nem se duplicam
+com o prefixo.
 
 ### Por que assim
 
@@ -168,9 +179,14 @@ aqui com a data.
 ## 6. Rotina de manutenção (Diego)
 
 - **Mensal:** abrir a aba *Actions* do repositório de backup e conferir que a última rodada
-  está verde. Rodada vermelha = ler a mensagem: ela diz exatamente o que sumiu ou foi
-  reescrito, e onde (é aviso, não perda), ou que o token venceu. Aviso amarelo de "refs
-  recusadas" = a origem continua divergente de uma branch guardada; o backup segue íntegro.
+  está verde. Rodada vermelha = ler a mensagem: ela diz exatamente o que sumiu, foi
+  reescrito ou foi alterado, e onde (é aviso, não perda), ou que o token venceu. Aviso
+  amarelo de "refs recusadas" = a origem continua divergente de uma branch guardada; o
+  backup segue íntegro.
+- **Quando a mensagem falar em ref ALTERADA ou ponteiro movido** (só acontece se alguém com
+  acesso à conta de backup mexer à mão): a correção é apagar aquela ref no repositório de
+  backup; na rodada seguinte o robô a regrava a partir da origem (ou recria o ponteiro). O
+  robô nunca força nada por conta própria.
 - **Anual (antes da validade do token):** gerar um token novo só de leitura na conta principal
   e trocar o segredo `ORIGEM_TOKEN` no repositório de backup. A data de validade fica anotada
   no gerenciador de senhas junto com o token.
