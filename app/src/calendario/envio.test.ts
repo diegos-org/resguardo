@@ -425,6 +425,21 @@ describe("envio ao Beds24 (M3.7)", () => {
     expect(diaFalso("2026-10-03")).toMatchObject({ override: "blackout" });
   });
 
+  it("vínculo Beds24 repetido ou ambíguo: nenhum quarto conta como vinculado, e o plano fica sem leitura nem estado enviado", async () => {
+    expect((await enviar()).situacao).toBe("ok");
+    const regrasAtuais = await lerRegrasCalendario(db, org);
+    const plano = () => planejarImovel(db, org, regrasAtuais, { id: im, fuso: "America/Sao_Paulo" }, proximoAgora());
+    expect((await plano()).linhas.every(l => l.enviado !== null)).toBe(true);
+    // Segundo vínculo Beds24 no mesmo imóvel (gravado por fora da validação): ambíguo, nenhum estado enviado vale.
+    const [extra] = await db.insert(idsExternos).values({ organizacaoId: org, imovelId: im, canal: "beds24", idExterno: "10", detalhe: "21" }).returning({ id: idsExternos.id });
+    expect((await plano()).linhas.every(l => l.enviado === null)).toBe(true);
+    await db.delete(idsExternos).where(eq(idsExternos.id, extra.id));
+    // O mesmo quarto ligado a outro imóvel (sob outra propriedade digitada) também torna o vínculo ambíguo.
+    const [{ id: outro }] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "104", nome: "Outro fictício" }).returning({ id: imoveis.id });
+    await db.insert(idsExternos).values({ organizacaoId: org, imovelId: outro, canal: "beds24", idExterno: "11", detalhe: "20" });
+    expect((await plano()).linhas.every(l => l.enviado === null)).toBe(true);
+  });
+
   it("vínculo trocado para outro quarto: o estado de envio do quarto antigo é descartado com aviso e a posse do blackout não passa ao quarto novo", async () => {
     await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-10-03", fim: "2026-10-04", motivo: "Uso próprio" });
     expect((await enviar()).situacao).toBe("ok");

@@ -33,10 +33,16 @@ export const nomeSituacaoEnvio = (s: string) => NOMES_SITUACAO[s as SituacaoEnvi
 
 type Plano = { imovelId: string; codigo: string; propertyId: string; roomId: string; linhas: LinhaPlano[] };
 
-/** Quarto Beds24 vinculado ao imóvel (vínculo ativo com propriedade e quarto numéricos), ou null. */
+/**
+ * Quarto Beds24 vinculado ao imóvel: exatamente um vínculo ativo com propriedade e quarto numéricos, e esse
+ * quarto não ligado a outro imóvel — a mesma regra da importação. Vínculo ausente, repetido ou ambíguo = null:
+ * nenhuma leitura nem estado enviado descreve o imóvel até o cadastro ser corrigido.
+ */
 async function quartoVinculado(db: Db, org: string, imovelId: string): Promise<string | null> {
-  const m = (await listarMapeamentosBeds24(db, org)).find(m => m.imovelId === imovelId && m.ativo && /^\d+$/.test(m.propertyId) && /^\d+$/.test(m.roomId));
-  return m?.roomId ?? null;
+  const validos = (await listarMapeamentosBeds24(db, org)).filter(m => m.ativo && /^\d+$/.test(m.propertyId) && /^\d+$/.test(m.roomId));
+  const doImovel = validos.filter(m => m.imovelId === imovelId);
+  if (doImovel.length !== 1) return null;
+  return validos.some(m => m.imovelId !== imovelId && m.roomId === doImovel[0].roomId) ? null : doImovel[0].roomId;
 }
 
 /**

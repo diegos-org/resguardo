@@ -48,9 +48,14 @@ export async function adicionarIdExterno(
   if (!uuidValido(imovelId)) return { ok: false, erro: "Imóvel não encontrado." };
   try {
     return await db.transaction(async (tx) => {
-      // O vínculo Beds24 é o alvo do envio de calendário: não muda enquanto um envio está no meio da escrita.
+      // O vínculo Beds24 é o alvo do envio de calendário: não muda enquanto um envio está no meio da escrita,
+      // e cada imóvel tem no máximo um quarto Beds24 (a importação e o envio recusam vínculo repetido).
       const ocupado = v.canal === "beds24" ? await esperarEnvioBeds24(tx, organizacaoId) : null;
       if (ocupado) return { ok: false as const, erro: ocupado };
+      if (v.canal === "beds24") {
+        const [existente] = await tx.select({ id: idsExternos.id }).from(idsExternos).where(and(eq(idsExternos.organizacaoId, organizacaoId), eq(idsExternos.imovelId, imovelId), eq(idsExternos.canal, "beds24"))).limit(1);
+        if (existente) return { ok: false as const, erro: "Este imóvel já tem um quarto Beds24 vinculado. Remova o vínculo atual antes de ligar outro." };
+      }
       const [im] = await tx
         .select({ id: imoveis.id })
         .from(imoveis)
