@@ -134,6 +134,13 @@ repositório principal não sabe que o backup existe.
      da origem). **Nomes reservados:** se a origem tiver tags `backup/`, `recusadas/`, `objetos/`
      ou uma branch `backup-marcos` (nunca existem no SCL), a rodada para antes de gravar e diz
      para renomear, porque no inventário elas se confundiriam com as refs do próprio backup;
+   - na **primeira rodada** o robô grava um arquivo-marcador (`.backup/iniciado`) na branch
+     principal do repositório de backup, num commit único, fora de todas as refs que ele
+     gerencia. Se um dia **todas** as refs do backup sumirem mas o marcador existir, a rodada
+     avisa que o backup foi zerado (e recomeça o espelho), em vez de tratar como primeira rodada
+     e ficar verde. Se apagarem também o marcador, isso já exige apagar ou reescrever a branch
+     principal, onde mora o próprio robô: aí vale o limite da seção 2 (o robô não avisa a
+     própria ausência; o batimento cobre);
    - **batimento (opcional):** ao terminar bem, chama a URL guardada no segredo `BATIMENTO_URL`,
      de um serviço gratuito de monitoramento do tipo "me avise se eu ficar sem sinal" (por
      exemplo, healthchecks.io, com período de 3 dias e tolerância de 1 dia). Se o robô for
@@ -149,7 +156,7 @@ repositório principal não sabe que o backup existe.
    robô: ele nunca apaga nem reescreve e avisa quando o backup perde algo. A trava cobre a
    mais só o erro manual de quem tem acesso à conta de backup, que é só o Diego.
 
-Testado em 3/10 rodando o script exato do robô contra repositórios locais, oitenta e seis rodadas:
+Testado em 3/10 rodando o script exato do robô contra repositórios locais, oitenta e oito rodadas:
 origem só com `main`; novas branches e tags; origem avança; origem apaga uma branch (o backup
 a mantém e avisa uma vez); nada muda (sem aviso repetido); origem reescreve uma branch e uma
 tag anotada (o backup mantém as versões antigas em `espelho/`, guarda as novas em
@@ -195,8 +202,10 @@ já apagada) continua alcançável pelos retratos mesmo depois de alguém apagar
 (o sumiço é avisado; a ref não pode ser regravada porque a origem não a tem mais); uma tag que
 volta a um valor antigo na origem (A, B, C, B de novo) deixa duas cópias `recusadas/` com o mesmo
 objeto, e alterar as duas no backup gera um só re-salvamento sob a data do dia (sem envio duplicado),
-com as duas regravadas quando apagadas; e as tags do backup não voltam para a origem nem se duplicam
-com o prefixo. O passo de batimento não entrou na simulação (é uma chamada HTTP
+com as duas regravadas quando apagadas; a primeira rodada grava o marcador `.backup/iniciado` na
+branch principal, e apagar todas as refs do backup com o marcador presente é avisado como "apagaram
+tudo" (o espelho recomeça), em vez de passar por primeira rodada; e as tags do backup não voltam para
+a origem nem se duplicam com o prefixo. O passo de batimento não entrou na simulação (é uma chamada HTTP
 simples a um serviço externo, só com a URL configurada); foi conferido na sintaxe e no caso sem
 URL.
 
@@ -212,6 +221,12 @@ URL.
   repositório de backup) e evita qualquer conflito de nomes.
 
 ## 4. Como recuperar
+
+**Se a mensagem disser que apagaram tudo** (todas as refs sumiram, marcador presente): o GitHub
+ainda guarda por algum tempo os objetos que ficaram sem referência. Abra o repositório de backup
+na aba *Activity* (ou *Insights → Network*) para achar o commit do último retrato e crie uma
+branch ou tag apontando para ele o quanto antes; a partir dele todos os retratos anteriores e
+tudo o que eles citam voltam a ficar alcançáveis.
 
 **Ver como estava em uma data:** no repositório de backup, abrir a lista de tags e escolher
 `backup/AAAA-MM-DD-HHMM`: são os arquivos da `main` daquele dia, legíveis ali mesmo, no

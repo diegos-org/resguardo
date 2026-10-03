@@ -1220,7 +1220,8 @@ ambiente).
    7. **Primeira rodada à mão:** aba *Actions* → "Backup do repositório de origem" → *Run
       workflow* → *Run workflow*. Em um ou dois minutos deve ficar verde. Confira em *Code* que
       apareceram as branches `espelho/main` (e as outras) e `backup-marcos`, e, em *Tags*, uma
-      `backup/` com a data de hoje. Se ficar vermelho, abra a rodada e me mande **só o texto da mensagem de erro**
+      `backup/` com a data de hoje. Na branch principal vai aparecer também um commit do robô
+      com um arquivo `.backup/iniciado`: é o marcador de que o backup já existe; não apague. Se ficar vermelho, abra a rodada e me mande **só o texto da mensagem de erro**
       (ela não contém chave).
       - Se o erro falar de permissão para escrever, em *Settings → Actions → General → Workflow
         permissions* escolha *Read and write permissions* e rode de novo.
