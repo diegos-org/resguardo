@@ -11,7 +11,7 @@ const form = (over: Record<string, unknown> = {}) => ({
   estadiaMaxima: "27", horizonteDias: "270", feriados: "02/11/2026 Finados\n2026-11-20 Consciência Negra\n02/11/2026 repetido",
   feriadoMinimo: "3", feriadoMultiplicador: "2", feriadoTodos: "", feriadoImoveis: [IM, "lixo"],
   ultimaHoraModo: "beds24", faixa1De: "3", faixa1Ate: "7", faixa1Pct: "15", faixa2De: "0", faixa2Ate: "2", faixa2Pct: "25",
-  envioImoveis: IM, envioAutomatico: "on", siteValidadeHoras: "36", siteMaximoNoites: "90", ...over,
+  envioImoveis: IM, envioAutomatico: "on", siteValidadeHoras: "36", siteMaximoNoites: "90", siteMinutosHold: "30", ...over,
 });
 
 describe("formulário das regras", () => {
@@ -26,7 +26,7 @@ describe("formulário das regras", () => {
       janelaFeriado: { estadiaMinima: 3, multiplicador: 200, todosImoveis: false, imoveis: [IM] },
       ultimaHora: { aplicadoPor: "beds24", faixas: [{ deDias: 3, ateDias: 7, percentual: 15 }, { deDias: 0, ateDias: 2, percentual: 25 }] },
       envio: { imoveis: [IM], automatico: true },
-      site: { validadeLeituraHoras: 36, maximoNoitesConsulta: 90 },
+      site: { validadeLeituraHoras: 36, maximoNoitesConsulta: 90, minutosHold: 30 },
     });
     expect(r.regras.eventos).toBe(atual.eventos);
   });
@@ -72,7 +72,7 @@ describe("formulário das regras", () => {
       eventos: [{ id: IM, nome: "Ok", inicio: "2026-12-25", fim: "2027-01-01", multiplicador: 400, estadiaMinima: null, todosImoveis: false, imoveis: [IM] }],
       ultimaHora: { ...REGRAS_CALENDARIO_PADRAO.ultimaHora, aplicadoPor: "scl" },
       envio: { imoveis: [IM], automatico: false },
-      site: { validadeLeituraHoras: 12, maximoNoitesConsulta: 90 },
+      site: { validadeLeituraHoras: 12, maximoNoitesConsulta: 90, minutosHold: 30 },
     });
   });
 });

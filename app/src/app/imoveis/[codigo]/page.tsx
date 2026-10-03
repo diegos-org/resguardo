@@ -2,10 +2,13 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { resumoImovel } from "@/components/site/CartaoImovel";
 import { Disponibilidade } from "@/components/site/Disponibilidade";
+import { SegurarDatas } from "@/components/site/SegurarDatas";
 import { canalDeContato, FormConsulta } from "@/components/site/FormConsulta";
 import { FotoProvisoria, Moldura, SiteEmConfiguracao } from "@/components/site/Moldura";
 import styles from "@/components/site/site.module.css";
 import { hojeISO } from "@/lib/datas";
+import { criarCotacaoAcao } from "@/site/acoes";
+import { podeSegurar } from "@/site/cotacoes";
 import { consultarDisponibilidade } from "@/site/disponibilidade";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
 import { hojeMaisCedo, imovelDoSite, imoveisDoSite, lerPedidoConsulta, montarConsulta } from "@/site/site";
@@ -53,6 +56,7 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
       <div className={styles.colunas}>
         <div>
           {disponibilidade && <Disponibilidade resultado={disponibilidade} entrada={pedido.entrada} saida={pedido.saida} fuso={imovel.fuso} />}
+          {disponibilidade && podeSegurar(disponibilidade) && <SegurarDatas pedido={consulta} aConfirmar={disponibilidade.situacao === "a_confirmar"} acao={criarCotacaoAcao} />}
           {imovel.descricao && <p className={styles.texto}>{imovel.descricao}</p>}
           {imovel.camas.length > 0 && (
             <section className={styles.secao}>

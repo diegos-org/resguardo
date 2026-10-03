@@ -35,8 +35,11 @@ export type RegrasCalendario = {
   eventos: Evento[];
   ultimaHora: { aplicadoPor: AplicacaoUltimaHora; faixas: [FaixaUltimaHora, FaixaUltimaHora] };
   envio: { imoveis: string[]; automatico: boolean };
-  /** Site público (M7.2): por quantas horas uma leitura do Beds24 vale como disponibilidade; máximo de noites cotadas online. */
-  site: { validadeLeituraHoras: number; maximoNoitesConsulta: number };
+  /**
+   * Site público (M7.2/M8.1): por quantas horas uma leitura do Beds24 vale como disponibilidade; máximo de
+   * noites cotadas online; por quantos minutos "segurar as datas" ocupa o calendário antes de vencer.
+   */
+  site: { validadeLeituraHoras: number; maximoNoitesConsulta: number; minutosHold: number };
 };
 
 export const REGRAS_CALENDARIO_PADRAO: RegrasCalendario = {
@@ -48,10 +51,10 @@ export const REGRAS_CALENDARIO_PADRAO: RegrasCalendario = {
   eventos: [],
   ultimaHora: { aplicadoPor: "beds24", faixas: [{ deDias: 3, ateDias: 7, percentual: 15 }, { deDias: 0, ateDias: 2, percentual: 25 }] },
   envio: { imoveis: [], automatico: false },
-  site: { validadeLeituraHoras: 36, maximoNoitesConsulta: 90 },
+  site: { validadeLeituraHoras: 36, maximoNoitesConsulta: 90, minutosHold: 30 },
 };
 
-const LIMITES = { minimo: [1, 30], estadiaMaxima: [1, 364], horizonte: [7, 540], multiplicador: [100, 1000], percentual: [0, 90], dias: [0, 60], feriados: 200, eventos: 100, validadeHoras: [1, 720], noitesConsulta: [1, 364] } as const;
+const LIMITES = { minimo: [1, 30], estadiaMaxima: [1, 364], horizonte: [7, 540], multiplicador: [100, 1000], percentual: [0, 90], dias: [0, 60], feriados: 200, eventos: 100, validadeHoras: [1, 720], noitesConsulta: [1, 364], minutosHold: [5, 240] } as const;
 
 type Entrada = Record<string, unknown>;
 const txt = (v: unknown) => (typeof v === "string" ? v.trim() : "");
@@ -134,6 +137,7 @@ export function regrasDeJson(valor: unknown): RegrasCalendario {
     site: {
       validadeLeituraHoras: inteiroEntre(site.validadeLeituraHoras, LIMITES.validadeHoras) ? (site.validadeLeituraHoras as number) : P.site.validadeLeituraHoras,
       maximoNoitesConsulta: inteiroEntre(site.maximoNoitesConsulta, LIMITES.noitesConsulta) ? (site.maximoNoitesConsulta as number) : P.site.maximoNoitesConsulta,
+      minutosHold: inteiroEntre(site.minutosHold, LIMITES.minutosHold) ? (site.minutosHold as number) : P.site.minutosHold,
     },
   };
 }
@@ -188,6 +192,7 @@ export function validarFormRegras(e: Entrada, atual: RegrasCalendario, imoveisDa
   const feriadoMinimo = inteiro("feriadoMinimo", LIMITES.minimo);
   const siteValidadeHoras = inteiro("siteValidadeHoras", LIMITES.validadeHoras);
   const siteMaximoNoites = inteiro("siteMaximoNoites", LIMITES.noitesConsulta);
+  const siteMinutosHold = inteiro("siteMinutosHold", LIMITES.minutosHold);
   if (Object.keys(erros).length) return { ok: false, erros };
   return {
     ok: true,
@@ -198,7 +203,7 @@ export function validarFormRegras(e: Entrada, atual: RegrasCalendario, imoveisDa
       eventos: atual.eventos,
       ultimaHora: { aplicadoPor: aplicadoPor as AplicacaoUltimaHora, faixas },
       envio: { imoveis: ids(e.envioImoveis, imoveisDaOrg), automatico: marcado(e.envioAutomatico) },
-      site: { validadeLeituraHoras: siteValidadeHoras, maximoNoitesConsulta: siteMaximoNoites },
+      site: { validadeLeituraHoras: siteValidadeHoras, maximoNoitesConsulta: siteMaximoNoites, minutosHold: siteMinutosHold },
     },
   };
 }

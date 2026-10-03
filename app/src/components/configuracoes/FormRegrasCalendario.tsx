@@ -78,7 +78,9 @@ export function FormRegrasCalendario({ regras, imoveis, salvar }: Props) {
       <div className={styles.linha}>
         <label>Validade da leitura do Beds24 (horas)<input name="siteValidadeHoras" type="number" min={1} max={720} defaultValue={campo("siteValidadeHoras", String(regras.site.validadeLeituraHoras))} {...invalido("siteValidadeHoras")} />{erro("siteValidadeHoras")}</label>
         <label>Máximo de noites por consulta online<input name="siteMaximoNoites" type="number" min={1} max={364} defaultValue={campo("siteMaximoNoites", String(regras.site.maximoNoitesConsulta))} {...invalido("siteMaximoNoites")} />{erro("siteMaximoNoites")}</label>
+        <label>Minutos que &quot;segurar as datas&quot; reserva no site<input name="siteMinutosHold" type="number" min={5} max={240} defaultValue={campo("siteMinutosHold", String(regras.site.minutosHold))} {...invalido("siteMinutosHold")} />{erro("siteMinutosHold")}</label>
       </div>
+      <p style={nota}>Ao segurar as datas, o visitante cria um pedido que ocupa o calendário por esse tempo (padrão 30 minutos). Se a equipe não confirmar nem o pagamento acontecer até lá, o pedido vence sozinho e as noites voltam à venda.</p>
     </fieldset>
     {estado.ok && <p role="status" className={styles.sucesso}>{estado.aviso ?? "Salvo."}</p>}
     <div className={styles.acoes}><button type="submit" disabled={enviando}>{enviando ? "Salvando…" : "Salvar regras"}</button></div>

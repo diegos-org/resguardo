@@ -288,6 +288,13 @@
       "when": 1790999465287,
       "tag": "0040_bloqueio_proprietario",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1791039211151,
+      "tag": "0041_cotacoes",
+      "breakpoints": true
     }
   ]
 }
