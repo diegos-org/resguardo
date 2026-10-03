@@ -79,7 +79,14 @@ Manter aviso de mudanças: “Essa é a agenda atual e ainda pode mudar com nova
 4. Usar na agenda somente o acordo válido confirmado. Sem acordo, usar padrão configurado do imóvel, identificado como padrão; se o padrão faltar, marcar a confirmar. Nunca preencher horário pelo primeiro número encontrado na conversa.
 5. Conflito, pedido sem resposta ou fonte inacessível fica pendente. Registro manual verificado é o caminho mínimo em avaliação; extração automática futura poderá sugerir preenchimento, sem converter sugestão em confirmação.
 
-**Estado desta revisão:** base main comparada tem agenda prévia/e-mail e cadastro de horários padrão; não tem registro de horário acordado por reserva. O fluxo manual com canal/evidência/confirmação está em implementação separada, ainda sem resultado validado nesta consolidação. Nenhuma varredura automática Airbnb/WhatsApp/Booking, integração de inbox ou envio foi ativado por este guia.
+**Implementação candidata, ainda fora de produção:** o [PR81](https://github.com/al-life/scl-reconstrucao/pull/81), commit [6c241ec](https://github.com/al-life/scl-reconstrucao/commit/6c241ec721cf22f12cd01910e7ff9fd3159f7e1e), implementa o fluxo manual abaixo na branch `codex/agenda-horarios-equipe`. Ainda não mesclado/publicado; CI pendente na conferência desta atualização. A base main comparada continua sem esse registro por reserva. Testes locais reportados no PR: suíte de 848 testes antes dos casos finais; 15 testes direcionados finais, lint, typecheck e build aprovados. Isso não comprova implantação ou envio.
+
+- **Ficha da reserva → Horários combinados com o hóspede:** em reserva confirmada, registrar pedido pendente de entrada ou saída, hora, canal e referência. O pedido sozinho não altera a agenda.
+- Depois de conferir a conversa, preencher canal e referência do **aceite**, marcar a declaração de acordo explícito e usar **Registrar acordo confirmado**. Referência: data/hora e identificador ou trecho mínimo, sem telefone ou documentos. Canais manuais: Airbnb, WhatsApp, Booking.com, Inbox SCL e Outro; o canal do aceite pode diferir do pedido.
+- **Descartar pedido** preserva acordo já vigente; **Revogar acordo** remove o acordo. Novo pedido também preserva o acordo vigente até sua substituição. Mudança nas datas, imóvel ou reconfirmação da reserva invalida a vigência anterior e exige novo registro/aceite.
+- Prioridade efetiva na candidata: **acordo vigente → horário cadastrado no imóvel → padrão da agenda**. Pedido sem aceite não substitui padrão nem acordo vigente. O registro usa a permissão existente de edição de reserva, isolamento por organização e controle de versão para impedir sobrescrita por formulário desatualizado.
+- A agenda candidata cobre amanhã a D+5 no Rio e amanhã a D+30 em Búzios, inclusive reservas em andamento/atravessando a janela. Telefone vem do campo estruturado da reserva, com validação de formato, **sem verificação externa de titularidade**: aparece só na prévia operacional interna e no e-mail dos destinatários já configurados por cidade. Não é extraído da conversa nem publicado no site/logs.
+- Não há leitura/extração automática nem conexão de canais. O caminho do aplicativo continua cron/botão manual → gerador da agenda → adaptador de e-mail. WhatsApp é fluxo separado; o PR81 não comprovou nem corrigiu a origem da mensagem antiga enviada pela Lia.
 
 ## Portaria e documentos
 
@@ -98,7 +105,7 @@ Encaminhamento de documentos à portaria: somente 403, com reserva, pessoas, dat
 | Janela e conteúdo da agenda | Locais e consolidação repo: cinco dias; pedido direto de 2/10: Rio 5/Búzios 30 | Pedido novo prevalece; não limitar quantidade de reservas, separar limpezas e entradas |
 | Limpeza já realizada | Guia/protocolo locais de 1/10 e PR74 mesclado | Fontes concordam; manter vedação de faxina repetida sem uso posterior |
 | Porteiros e chaves | Claude tem expedientes de 23/9; repo PR74 confirma atualização dos modelos em 1/10; local ainda registra etapa pendente | Usar repo para estado verificado e alternativa condicionada; preservar contatos em cadastro restrito |
-| Dados e horários | Locais esclarecem D-2 às 10h; produto descreve padrões; decisão de 2/10 exige acordo e fonte | Não confundir envio com entrada; hóspedes/telefone operacional; confirmação estruturada ainda em implementação |
+| Dados e horários | Locais esclarecem D-2 às 10h; produto descreve padrões; decisão de 2/10 exige acordo e fonte | Não confundir envio com entrada; hóspedes/telefone operacional; registro manual na candidata PR81; sem implantação comprovada |
 | Documentos | Local distingue coleta 403/303 e encaminhamento 403; repo detalha só 403 | Manter encaminhamento 403; esclarecer coleta 303 antes de consolidar como regra ativa |
 | Capacidade atual | Guia Diego/roadmap mais novos que inventário local de setembro | Referenciar produto; não transportar status antigo de integração para o presente nem equiparar e-mail a WhatsApp |
 
