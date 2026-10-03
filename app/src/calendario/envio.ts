@@ -37,19 +37,23 @@ export async function planejarImovel(db: Db, org: string, regras: RegrasCalendar
   const hoje = hojeISO(imovel.fuso, agora);
   const inicio = intervalo?.inicio && intervalo.inicio > hoje ? intervalo.inicio : hoje;
   const fim = intervalo?.fim ?? somarDias(hoje, regras.horizonteDias - 1);
-  const fimDados = somarDias(fim, 60);
-  const [detalhes, periodos, ocupantes, impedimentos, observacoes, enviados] = await Promise.all([
-    lerDetalhes(db, org, imovel.id), listarPeriodos(db, org, imovel.id),
+  const [detalhes, periodos] = await Promise.all([lerDetalhes(db, org, imovel.id), listarPeriodos(db, org, imovel.id)]);
+  const regrasVenda = regrasDeVenda(detalhes);
+  // Ocupação carregada até onde o maior mínimo aplicável alcança (mínimo 60 dias): uma reserva distante
+  // ainda encurta as sobras; sem isso uma noite sairia com o mínimo cheio apesar de a janela livre ser menor.
+  const maiorMinimo = Math.max(...regras.minimoPorDia, regrasVenda.estadiaMinima ?? 0, regras.janelaFeriado.estadiaMinima, ...regras.eventos.map(e => e.estadiaMinima ?? 0), ...periodos.map(x => x.estadiaMinima ?? 0));
+  const fimDados = somarDias(fim, Math.min(400, Math.max(60, maiorMinimo)));
+  const [ocupantes, impedimentos, observacoes, enviados] = await Promise.all([
     db.select({ checkin: reservas.checkin, checkout: reservas.checkout, estado: reservas.estado }).from(reservas).where(and(eq(reservas.organizacaoId, org), eq(reservas.imovelId, imovel.id), lt(reservas.checkin, somarDias(fimDados, 1)), gt(reservas.checkout, inicio))),
     db.select({ inicio: bloqueios.inicio, fim: bloqueios.fim, fonte: bloqueios.fonte }).from(bloqueios).where(and(eq(bloqueios.organizacaoId, org), eq(bloqueios.imovelId, imovel.id), lt(bloqueios.inicio, somarDias(fimDados, 1)), gt(bloqueios.fim, inicio))),
     db.select().from(beds24Calendario).where(and(eq(beds24Calendario.organizacaoId, org), eq(beds24Calendario.imovelId, imovel.id), gte(beds24Calendario.data, inicio), lte(beds24Calendario.data, fim))).orderBy(asc(beds24Calendario.data)),
     db.select().from(beds24CalendarioEnviado).where(and(eq(beds24CalendarioEnviado.organizacaoId, org), eq(beds24CalendarioEnviado.imovelId, imovel.id), gte(beds24CalendarioEnviado.data, inicio), lte(beds24CalendarioEnviado.data, fim))),
   ]);
   const linhas = planejarCalendario({
-    imovel: { id: imovel.id, regras: regrasDeVenda(detalhes), periodos, pisos: [detalhes.pisoUltimaHora1, detalhes.pisoUltimaHora2] },
+    imovel: { id: imovel.id, regras: regrasVenda, periodos, pisos: [detalhes.pisoUltimaHora1, detalhes.pisoUltimaHora2] },
     regras, hoje, inicio, fim, fimDados, reservas: ocupantes, bloqueios: impedimentos, observacoes, enviados,
   });
-  return { hoje, inicio, fim, linhas, regras: regrasDeVenda(detalhes), pisos: [detalhes.pisoUltimaHora1, detalhes.pisoUltimaHora2] as const };
+  return { hoje, inicio, fim, linhas, regras: regrasVenda, pisos: [detalhes.pisoUltimaHora1, detalhes.pisoUltimaHora2] as const };
 }
 
 /** Grava a leitura do calendário como observação local das noites (a mais nova vale). */
