@@ -44,6 +44,8 @@ describe("IDs externos", () => {
     await adicionarIdExterno(db, org, a, { canal: "beds24", idExterno: "100", detalhe: "1" }, null);
     await adicionarIdExterno(db, org, b, { canal: "beds24", idExterno: "100", detalhe: "2" }, null);
     await adicionarIdExterno(db, org, a, { canal: "airbnb", idExterno: "999" }, null);
+    // Um só quarto Beds24 por imóvel: o segundo é recusado (a importação e o envio não aceitam vínculo repetido).
+    expect(await adicionarIdExterno(db, org, a, { canal: "beds24", idExterno: "100", detalhe: "3" }, null)).toMatchObject({ ok: false, erro: expect.stringContaining("já tem um quarto Beds24") });
 
     expect(await resolverImovel(db, org, "beds24", "100", "1")).toBe(a);
     expect(await resolverImovel(db, org, "beds24", "100", "2")).toBe(b);
