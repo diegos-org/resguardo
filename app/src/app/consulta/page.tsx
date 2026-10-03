@@ -33,7 +33,7 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
       <h1 style={{ fontSize: "2rem", margin: "8px 0 16px" }}>Consulta</h1>
       <div className={styles.colunas}>
         <div>
-          {disponibilidade && <Disponibilidade resultado={disponibilidade} entrada={pedido.entrada} saida={pedido.saida} />}
+          {disponibilidade && <Disponibilidade resultado={disponibilidade} entrada={pedido.entrada} saida={pedido.saida} fuso={imovel?.fuso ?? "America/Sao_Paulo"} />}
           {prontoParaEnviar && r?.ok ? (
             <>
               <section className={styles.secao}>

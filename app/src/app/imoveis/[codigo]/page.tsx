@@ -52,7 +52,7 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
       </div>
       <div className={styles.colunas}>
         <div>
-          {disponibilidade && <Disponibilidade resultado={disponibilidade} entrada={pedido.entrada} saida={pedido.saida} />}
+          {disponibilidade && <Disponibilidade resultado={disponibilidade} entrada={pedido.entrada} saida={pedido.saida} fuso={imovel.fuso} />}
           {imovel.descricao && <p className={styles.texto}>{imovel.descricao}</p>}
           {imovel.camas.length > 0 && (
             <section className={styles.secao}>

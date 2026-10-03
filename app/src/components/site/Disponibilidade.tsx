@@ -3,10 +3,10 @@ import styles from "./site.module.css";
 
 const brl = (c: number) => `R$ ${(c / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const TITULO: Record<Resultado["situacao"], string> = { disponivel: "Disponível", indisponivel: "Indisponível nessas datas", a_confirmar: "Disponibilidade a confirmar", invalida: "Confira os dados" };
-const quando = (d: Date) => new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" }).format(d);
+const quando = (d: Date, fuso: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, dateStyle: "short", timeStyle: "short" }).format(d);
 
 /** Resultado da consulta no site: situação em linguagem simples, valor por partes e o aviso de que a reserva se confirma na conversa. */
-export function Disponibilidade({ resultado, entrada, saida }: { resultado: Resultado; entrada: string; saida: string }) {
+export function Disponibilidade({ resultado, entrada, saida, fuso }: { resultado: Resultado; entrada: string; saida: string; /** Fuso do imóvel: a hora da leitura é mostrada nele. */ fuso: string }) {
   const r = resultado;
   const dataBr = (d: string) => d.split("-").reverse().join("/");
   return (
@@ -15,7 +15,7 @@ export function Disponibilidade({ resultado, entrada, saida }: { resultado: Resu
       {r.noites > 0 && (
         <p className={styles.miudo}>
           {dataBr(entrada)} a {dataBr(saida)} · {r.noites} {r.noites === 1 ? "noite" : "noites"}
-          {r.leituraEm ? ` · agenda conferida em ${quando(r.leituraEm)}` : ""}
+          {r.leituraEm ? ` · agenda conferida em ${quando(r.leituraEm, fuso)}` : ""}
         </p>
       )}
       {r.motivos.length > 0 && (
