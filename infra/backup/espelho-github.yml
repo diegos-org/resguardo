@@ -6,9 +6,13 @@
 # - A cada 3 dias (e quando acionado à mão), baixa todas as branches e tags da origem com um
 #   token SÓ DE LEITURA e grava neste repositório sob o prefixo `espelho/`.
 # - Nunca apaga nem reescreve o que já está aqui: só avança. Branch apagada na origem continua
-#   aqui; branch reescrita na origem é recusada, e o robô falha para avisar.
-# - Cada rodada cria uma tag `backup/AAAA-MM-DD-HHMM` apontando para a `main` da origem:
-#   um ponto de restauração imutável. Todas as versões ficam guardadas, indefinidamente.
+#   aqui; branch reescrita na origem fica como estava aqui (a versão nova fica na tag datada).
+# - Cada rodada cria uma tag `backup/AAAA-MM-DD-HHMM` apontando para a `main` da origem, com um
+#   inventário na mensagem: todas as branches e tags da origem (com seus commits) e tudo o que
+#   este repositório guarda. Ponto de restauração imutável; todas as versões ficam, para sempre.
+# - Comparando com o inventário da rodada anterior, o robô falha (o GitHub manda e-mail para a
+#   conta de backup) quando: algo sumiu da origem; algo foi reescrito na origem; algo sumiu deste
+#   backup. Cada ocorrência avisa uma vez só: o inventário novo já reflete a mudança.
 #
 # Segredos deste repositório de backup (Settings → Secrets and variables → Actions):
 # - ORIGEM_REPO  = dono/repositorio da origem (ex.: empresa/sistema)
@@ -60,9 +64,10 @@ jobs:
           set -euo pipefail
           # Credencial vai no cabeçalho HTTP, nunca na URL: não aparece em mensagens de erro.
           auth="AUTHORIZATION: basic $(printf '%s' "x-access-token:${ORIGEM_TOKEN}" | base64 -w0)"
+          origem="${ORIGEM_URL:-https://github.com/${ORIGEM_REPO}.git}"
           git init -q --bare espelho.git
           cd espelho.git
-          git -c "http.extraheader=${auth}" fetch -q "https://github.com/${ORIGEM_REPO}.git" \
+          git -c "http.extraheader=${auth}" fetch -q --no-tags "${origem}" \
             '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*'
           echo "Branches baixadas: $(git for-each-ref refs/heads | wc -l); tags: $(git for-each-ref refs/tags | wc -l)"
           if ! git rev-parse --verify -q refs/heads/main >/dev/null; then
@@ -77,26 +82,83 @@ jobs:
           set -euo pipefail
           cd espelho.git
           auth="AUTHORIZATION: basic $(printf '%s' "x-access-token:${DESTINO_TOKEN}" | base64 -w0)"
+          destino="${DESTINO_URL:-https://github.com/${GITHUB_REPOSITORY}.git}"
           marco="backup/$(TZ=America/Sao_Paulo date +%Y-%m-%d-%H%M)"
-          # O marco fica fora de refs/tags/ até o push, para não ser copiado também como espelho/backup/...
-          git update-ref "refs/marcos/${marco}" refs/heads/main
+          fetch_destino() { git -c "http.extraheader=${auth}" fetch -q --no-tags "${destino}" "$@"; }
+
+          # O que este repositório já guarda, trazido para refs/guardado/ (sem o prefixo espelho/).
+          # Traz também a história antiga, para reconhecer uma reescrita na origem.
+          fetch_destino '+refs/heads/espelho/*:refs/guardado/heads/*' '+refs/tags/espelho/*:refs/guardado/tags/*' \
+            '+refs/tags/backup/*:refs/guardado/backup/*' 2>/dev/null || true
+          git for-each-ref --format='%(refname)' refs/guardado/heads refs/guardado/tags | sed 's#^refs/guardado/#refs/#' | sort > guardado.refs
+          anterior=$(git for-each-ref --format='%(refname)' refs/guardado/backup | sort | tail -n1 || true)
+
+          # Inventário desta rodada: origem (commit e nome) e o que este backup vai guardar.
+          git for-each-ref --format='origem %(objectname) %(refname)' refs/heads refs/tags > inventario.txt
+          awk '{print $3}' inventario.txt | sort > atual.refs
+          sort -u guardado.refs atual.refs | sed 's/^/backup /' >> inventario.txt
+
+          # Comparação com o inventário da rodada anterior (gravado na última tag backup/).
+          sumiram_da_origem=""; sumiram_do_backup=""; reescritas=""
+          if [ -n "${anterior}" ]; then
+            git for-each-ref --format='%(contents)' "${anterior}" > anterior.txt
+            awk '$1 == "origem" && NF == 3 {print $3}' anterior.txt | sort > anterior-origem.refs
+            awk '$1 == "backup" && NF == 2 {print $2}' anterior.txt | sort > anterior-backup.refs
+            sumiram_da_origem=$(comm -23 anterior-origem.refs atual.refs || true)
+            sumiram_do_backup=$(comm -23 anterior-backup.refs guardado.refs || true)
+            # Reescrita: o commit de antes não é antepassado do commit de agora.
+            while read -r _ sha_antes ref; do
+              sha_agora=$(git rev-parse -q --verify "${ref}^{commit}" 2>/dev/null || true)
+              [ -z "${sha_agora}" ] && continue
+              antes=$(git rev-parse -q --verify "${sha_antes}^{commit}" 2>/dev/null || true)
+              if [ -z "${antes}" ] || ! git merge-base --is-ancestor "${antes}" "${sha_agora}"; then
+                reescritas="${reescritas}${ref}"$'\n'
+              fi
+            done < <(awk '$1 == "origem" && NF == 3' anterior.txt)
+          fi
+
+          # Tag datada apontando para a main da origem, com o inventário na mensagem. Fica fora de
+          # refs/tags/ até o push, para não ser copiada também como espelho/backup/...
+          git -c user.name=robo -c user.email=robo@backup.invalid tag -a "${marco}" refs/heads/main -F inventario.txt
+          git update-ref "refs/marcos/${marco}" "refs/tags/${marco}"
+          git update-ref -d "refs/tags/${marco}"
+
           # Sem --force e sem --prune: só avança. O que a origem apagou continua aqui; o que ela
-          # reescreveu é recusado (linha começando com "!") e o robô falha para avisar.
+          # reescreveu é recusado (linha começando com "!") e fica como estava.
           set +e
-          git -c "http.extraheader=${auth}" push --porcelain "https://github.com/${GITHUB_REPOSITORY}.git" \
+          git -c "http.extraheader=${auth}" push --porcelain "${destino}" \
             'refs/heads/*:refs/heads/espelho/*' \
             'refs/tags/*:refs/tags/espelho/*' \
             "refs/marcos/${marco}:refs/tags/${marco}" > push.log 2> push.err
           codigo=$?
           set -e
           grep -v '^To ' push.log || true
-          if grep -q '^!' push.log; then
-            echo "::error::Alguma branch ou tag da origem foi reescrita ou apagada. O backup manteve a versão anterior; veja as linhas com '!'."
-            exit 1
-          fi
-          if [ "${codigo}" -ne 0 ]; then
+          if [ "${codigo}" -ne 0 ] && ! grep -q '^!' push.log; then
             cat push.err
             echo "::error::O push para este repositório falhou (código ${codigo})."
             exit "${codigo}"
           fi
+          if grep -q '^!' push.log; then
+            echo "::warning::Refs recusadas (a origem diverge do que está guardado): este backup manteve a versão anterior; a versão atual da origem está na tag ${marco}."
+          fi
           echo "Marco desta rodada: ${marco}"
+
+          # Avisos (a rodada falha, e o GitHub manda e-mail para a conta de backup). Cada mudança
+          # avisa uma vez só: o inventário novo já a reflete.
+          falhou=0
+          if [ -n "${reescritas}" ]; then
+            echo "::error::Branches/tags REESCRITAS na origem desde a rodada anterior (este backup manteve a história antiga em espelho/...; a nova está na tag ${marco}):"
+            printf '%s' "${reescritas}"
+            falhou=1
+          fi
+          if [ -n "${sumiram_da_origem}" ]; then
+            echo "::error::Branches/tags que SUMIRAM DA ORIGEM desde a rodada anterior (continuam guardadas aqui como espelho/...):"
+            echo "${sumiram_da_origem}"
+            falhou=1
+          fi
+          if [ -n "${sumiram_do_backup}" ]; then
+            echo "::error::Branches/tags que SUMIRAM DESTE BACKUP desde a rodada anterior (alguém apagou aqui; o que a origem ainda tem foi gravado de novo):"
+            echo "${sumiram_do_backup}"
+            falhou=1
+          fi
+          exit "${falhou}"

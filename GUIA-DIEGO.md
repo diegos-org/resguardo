@@ -45,9 +45,10 @@ que ficou pronto:
 
 - **Um robô de backup** que vai morar numa **segunda conta do GitHub**, só sua, com e-mail e
   senha diferentes. A cada 3 dias ele copia **todo** o repositório (todas as branches, tags e
-  o histórico inteiro) para um repositório privado nessa conta e marca a cópia com a data.
-  Nada é apagado, nunca: se alguém apagar ou reescrever algo no repositório principal, o
-  backup guarda a versão anterior e te avisa por e-mail. Todas as versões ficam, para sempre.
+  o histórico inteiro) para um repositório privado nessa conta e marca a cópia com a data e
+  a lista do que existia naquele dia. Nada é apagado, nunca: se alguém apagar ou reescrever
+  algo no repositório principal, ou apagar algo no próprio backup, o backup guarda a versão
+  anterior e te avisa por e-mail (uma vez por ocorrência). Todas as versões ficam, para sempre.
 - **O repositório principal não sabe que o backup existe.** A única ligação é uma "chave só
   de leitura" criada na sua conta principal e guardada dentro do repositório de backup. Se
   invadirem a conta principal, não há nenhum caminho até o backup. Se a chave vazar, ela só
@@ -1197,11 +1198,14 @@ ambiente).
       *Raw* (ou no botão de copiar o arquivo) e copie **tudo**. No repositório de backup:
       *Add file → Create new file*, nome do arquivo exatamente
       `.github/workflows/backup.yml`, cole o conteúdo, *Commit changes* (na `main`).
-   6. **Proteção contra apagar e reescrever** (no repositório de backup): *Settings → Rules →
-      Rulesets → New ruleset → New branch ruleset*. Nome "nunca apagar"; *Enforcement status*:
-      **Active**; *Target branches → Add target → Include all branches*; em *Rules*, marque
-      **só** *Restrict deletions* e *Block force pushes*; *Create*. Repita com *New tag
-      ruleset* → *Include all tags*, as mesmas duas regras.
+   6. **Proteção extra contra apagar e reescrever** (opcional). **Só existe em repositório
+      privado com plano pago do GitHub** (Pro, cerca de US$ 4 por mês, na conta nova). No plano
+      Free, **pule este passo**: o robô já nunca apaga nem reescreve e te avisa se o backup
+      perder algo; a trava só protege a mais contra um erro manual seu. Se assinar o Pro:
+      *Settings → Rules → Rulesets → New ruleset → New branch ruleset*. Nome "nunca apagar";
+      *Enforcement status*: **Active**; *Target branches → Add target → Include all branches*;
+      em *Rules*, marque **só** *Restrict deletions* e *Block force pushes*; *Create*. Repita
+      com *New tag ruleset* → *Include all tags*, as mesmas duas regras.
    7. **Primeira rodada à mão:** aba *Actions* → "Backup do repositório de origem" → *Run
       workflow* → *Run workflow*. Em um ou dois minutos deve ficar verde. Confira em *Code* que
       apareceram as branches `espelho/main` (e as outras) e, em *Tags*, uma `backup/` com a data
@@ -1210,8 +1214,9 @@ ambiente).
       - Se o erro falar de permissão para escrever, em *Settings → Actions → General → Workflow
         permissions* escolha *Read and write permissions* e rode de novo.
    8. **Depois:** o robô roda sozinho a cada 3 dias, às 03:17. Uma vez por mês, dê uma olhada
-      na aba *Actions* (verde). Falha gera e-mail para a conta nova. Antes de a chave vencer,
-      gere outra (passo 3) e troque o segredo `ORIGEM_TOKEN` (passo 4).
+      na aba *Actions* (verde). Rodada vermelha gera e-mail para a conta nova e diz exatamente
+      o que sumiu ou foi reescrito, e onde (é aviso, não perda), ou que a chave venceu. Antes
+      de a chave vencer, gere outra (passo 3) e troque o segredo `ORIGEM_TOKEN` (passo 4).
 
 23b. **Backup do banco (Neon) — me diga se posso fazer.** Hoje o Neon guarda só **1 dia** de
    histórico para voltar no tempo e não tem nenhum snapshot. Proposta: aumentar o histórico

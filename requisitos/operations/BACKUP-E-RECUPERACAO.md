@@ -47,16 +47,29 @@ repositório principal não sabe que o backup existe.
    - baixa **todas** as branches e tags da origem;
    - grava no repositório de backup sob o prefixo `espelho/` (ex.: `espelho/main`), **sem
      nunca apagar nem reescrever**: branch apagada na origem continua lá; branch reescrita na
-     origem é recusada e o robô falha, o que gera e-mail de aviso para a conta de backup;
-   - cria uma tag `backup/AAAA-MM-DD-HHMM` apontando para a `main` daquele momento — um ponto
-     de restauração imutável por rodada. Como o Git guarda o histórico inteiro, **todas as
-     versões ficam**, indefinidamente, e o repositório continua pequeno (código e texto).
-4. **Proteção no repositório de backup** (rulesets): proibido apagar branches ou tags e
-   proibido reescrever histórico, para todo mundo — inclusive o próprio robô.
+     origem fica como estava (a versão nova fica guardada na tag datada da rodada);
+   - cria uma tag `backup/AAAA-MM-DD-HHMM` apontando para a `main` daquele momento, com um
+     **inventário** na mensagem: todas as branches e tags da origem, com o commit de cada uma,
+     e tudo o que o backup guarda. É um ponto de restauração imutável por rodada e a lista
+     do que existia naquele dia. Como o Git guarda o histórico inteiro, **todas as versões
+     ficam**, indefinidamente, e o repositório continua pequeno (código e texto);
+   - compara com o inventário da rodada anterior e **falha, o que gera e-mail para a conta
+     de backup**, quando algo sumiu da origem, foi reescrito na origem ou sumiu do próprio
+     backup. Cada ocorrência avisa **uma vez só** (o inventário novo já reflete a mudança);
+     enquanto a origem continuar divergente de uma branch guardada, as rodadas seguintes só
+     mostram um aviso amarelo, sem falhar.
+4. **Proteção extra no repositório de backup** (rulesets: proibido apagar branches ou tags e
+   reescrever histórico, para todo mundo, inclusive o robô). **Só existe em repositório privado
+   com plano pago do GitHub (Pro ou superior).** No plano Free, fica a proteção do próprio
+   robô: ele nunca apaga nem reescreve e avisa quando o backup perde algo. A trava cobre a
+   mais só o erro manual de quem tem acesso à conta de backup, que é só o Diego.
 
-Testado em 3/10 numa simulação local com três rodadas: origem avança e apaga uma branch (o
-backup avança e mantém a branch), origem reescreve a `main` (o backup recusa, mantém a
-versão anterior e ainda guarda a versão reescrita na tag datada), e o robô falha para avisar.
+Testado em 3/10 rodando o script exato do robô contra repositórios locais, oito rodadas:
+primeira cópia; origem avança; origem apaga uma branch (o backup a mantém e avisa uma vez);
+nada muda (sem aviso repetido); origem reescreve a `main` (o backup mantém a história antiga,
+a tag datada guarda a nova, o robô avisa uma vez); nada muda (só o aviso amarelo); alguém
+apaga uma branch no backup (avisa uma vez); nada muda. Também se conferiu que as tags do
+backup não voltam para a origem nem se duplicam com o prefixo.
 
 ### Por que assim
 
@@ -72,7 +85,8 @@ versão anterior e ainda guarda a versão reescrita na tag datada), e o robô fa
 ## 4. Como recuperar
 
 **Ver como estava em uma data:** no repositório de backup, abrir a lista de tags e escolher
-`backup/AAAA-MM-DD-HHMM`. Qualquer arquivo pode ser lido ali mesmo, no navegador.
+`backup/AAAA-MM-DD-HHMM`. Qualquer arquivo pode ser lido ali mesmo, no navegador. A mensagem
+da tag lista as branches e tags que a origem tinha naquele dia, com o commit de cada uma.
 
 **Recriar o repositório principal** (perda da conta ou do repositório):
 
@@ -117,8 +131,9 @@ aqui com a data.
 ## 6. Rotina de manutenção (Diego)
 
 - **Mensal:** abrir a aba *Actions* do repositório de backup e conferir que a última rodada
-  está verde. Rodada vermelha = ler a mensagem (quase sempre: token vencido ou branch
-  reescrita na origem, que é um aviso, não uma perda).
+  está verde. Rodada vermelha = ler a mensagem: ela diz exatamente o que sumiu ou foi
+  reescrito, e onde (é aviso, não perda), ou que o token venceu. Aviso amarelo de "refs
+  recusadas" = a origem continua divergente de uma branch guardada; o backup segue íntegro.
 - **Anual (antes da validade do token):** gerar um token novo só de leitura na conta principal
   e trocar o segredo `ORIGEM_TOKEN` no repositório de backup. A data de validade fica anotada
   no gerenciador de senhas junto com o token.
