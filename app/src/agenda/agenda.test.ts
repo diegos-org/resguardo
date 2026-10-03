@@ -96,17 +96,17 @@ describe("montagem da agenda", () => {
         "Limpezas dos próximos dias:",
         "",
         "🧹 Sex 02/10: nenhuma limpeza",
-        "🧹 Sáb 03/10: 403 (pronto até 15h, entra Bruno)",
+        "🧹 Sáb 03/10: 403 (a confirmar; pronto até 15h (padrão), entra Bruno, nº de hóspedes não informado)",
         "🧹 Dom 04/10: nenhuma limpeza",
-        "🧹 Seg 05/10: 403",
+        "🧹 Seg 05/10: 403 (a confirmar)",
         "🧹 Ter 06/10: nenhuma limpeza",
         "",
-        "Só para referência, as entradas do período: sáb 03 — 403 (Bruno), 15h.",
+        "Entradas, saídas e chaves (separadas das limpezas):",
       ].join("\n"),
     );
     // Búzios: uma linha por reserva, com entrada, saída e hóspedes.
-    expect(texto).toContain("Próximas reservas:\n\n• Ana — entrada ter 06/10 a partir das 15h · saída sex 09/10 até 11h · 2 hóspedes");
-    expect(texto).toContain("Nos outros dias até ter 06/10 não há entradas nem saídas.");
+    expect(texto).toContain("Próximas reservas:\n\n• Ana — entrada ter 06/10 às 15h (padrão) · saída sex 09/10 às 11h (padrão) · 2 hóspedes");
+    expect(texto).toContain("Nos outros dias até sáb 31/10 não há entradas nem saídas.");
     expect(texto.trimEnd().endsWith("Essa é a agenda atual e ainda pode mudar com novas reservas ou cancelamentos.")).toBe(true);
     // Só o primeiro nome; sem código de reserva.
     expect(texto).not.toContain("Fictício");
@@ -121,17 +121,18 @@ describe("montagem da agenda", () => {
     await nova(buzios, "2026-10-01", "2026-10-03", "2026-09-01T12:00:00Z", { hospedes: null, hospedeNome: "Caio" });
     await nova(buzios, "2026-10-03", "2026-10-05", "2026-09-01T12:00:00Z", { hospedeNome: "Duda" });
     await nova(rio, "2026-10-02", "2026-10-04", "2026-09-01T12:00:00Z", { hospedeNome: "Eva" });
+    await salvarConfigAgenda(db, org, { ativa: false, destinatarios: [], horaEntrada: "14h", horaSaida: "10h30" }, null);
     const a = await montarAgenda(db, org, "2026-10-01", null);
     const texto = textoDaAgenda(a, [], { formatos: { "Rio de Janeiro": "reservas" }, horaEntrada: "14h", horaSaida: "10h30" });
-    expect(texto).toContain("• Caio — entrada qui 01/10 a partir das 14h · saída sáb 03/10 até 10h30 · nº de hóspedes não informado\n  (limpeza no dia 03 entre a saída e a entrada)");
+    expect(texto).toContain("• Caio — entrada qui 01/10 às 14h (padrão) · saída sáb 03/10 às 10h30 (padrão) · nº de hóspedes não informado\n  (troca no mesmo dia 03: conferir limpeza entre saída e entrada)");
     expect(texto).toContain("• Duda — entrada sáb 03/10");
-    // Rio com mais de um imóvel no formato por reserva: o código do imóvel aparece.
-    expect(texto).toContain("• 403 · Eva — entrada sex 02/10 a partir das 14h");
-    expect(texto).not.toContain("🧹");
-    // Estada que começa antes da janela e termina depois dela não aparece (nenhum movimento nos 5 dias).
+    // Rio preserva limpezas por dia, mesmo com configuração antiga de formato.
+    expect(texto).toContain("Entrada/chaves 403: Eva, 2 hóspedes · entrada sex 02/10 às 14h (padrão)");
+    expect(texto).toContain("🧹");
+    // Búzios inclui estadias em andamento na janela de 30 dias.
     await nova(buzios, "2026-09-20", "2026-10-20", "2026-09-01T12:00:00Z", { hospedeNome: "Longa" });
     const b = await montarAgenda(db, org, "2026-10-05", null);
-    expect(textoDaAgenda(b)).not.toContain("Longa");
+    expect(textoDaAgenda(b)).toContain("Longa");
   });
 
   it("reservas novas desde a última agenda aparecem mesmo fora da janela; pendentes e canceladas não", async () => {
@@ -142,7 +143,7 @@ describe("montagem da agenda", () => {
     const rj = a.secoes.find((s) => s.cidade === "Rio de Janeiro")!;
     expect(rj.novas.map((n) => n.checkin)).toEqual(["2026-12-20"]);
     expect(a.secoes.find((s) => s.cidade === "Armação dos Búzios")!.novas).toEqual([]);
-    expect(textoDaAgenda(a)).toContain("Reservas novas desde a última agenda:\n• 403: entrada dom 20/12, saída dom 27/12 — Ana, 2 hóspedes");
+    expect(textoDaAgenda(a)).toContain("Reservas novas desde a última agenda:\n• 403: entrada dom 20/12 às 15h (padrão) · saída dom 27/12 às 11h (padrão) — Ana, 2 hóspedes");
   });
 });
 
@@ -521,7 +522,7 @@ describe("configuração e envio", () => {
     await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
     const preso: Correio = { nome: "preso", enviar: () => new Promise(() => {}) };
     const r = await enviarAgenda(db, org, preso, AGORA, { prazoProvedorMs: 50 });
-    expect(r.falhas[0]).toContain("não respondeu");
+    expect(r.falhas[0]).toContain("envio incerto");
     const [marca] = await db.select().from(appSettings).where(eq(appSettings.key, `agenda-diaria:${org}:2026-10-01:a@example.com`));
     expect((marca.value as { estado: string }).estado).toBe("enviando");
   });
@@ -1087,9 +1088,9 @@ describe("configuração e envio", () => {
     expect(await enviarAgenda(db, org, correio, AGORA)).toMatchObject({ enviados: 0, jaEnviados: 2 });
     expect(correio.enviadas).toHaveLength(4);
     const paraRio = correio.enviadas.find((m) => m.para === "rio@example.com")!;
-    expect(paraRio.assunto).toBe("Agenda SCL — sex 02/10 a ter 06/10");
+    expect(paraRio.assunto).toBe("Agenda SCL — Rio de Janeiro: 5 dias");
     expect(paraRio.texto).not.toContain("Búzios");
-    expect(correio.enviadas.find((m) => m.para === "buzios@example.com")!.texto).toContain("• Ana — entrada sáb 03/10 a partir das 15h");
+    expect(correio.enviadas.find((m) => m.para === "buzios@example.com")!.texto).toContain("• Ana — entrada sáb 03/10 às 15h (padrão)");
     // Dia seguinte: envia de novo.
     expect(await enviarAgenda(db, org, correio, new Date("2026-10-02T23:00:00Z"))).toMatchObject({ enviados: 2 });
   });
@@ -1105,7 +1106,7 @@ describe("configuração e envio", () => {
         throw new Error("HTTP 500");
       },
     };
-    expect(await enviarAgenda(db, org, quebrado, AGORA)).toMatchObject({ enviados: 0, falhas: ["equipe@example.com: HTTP 500"] });
+    expect(await enviarAgenda(db, org, quebrado, AGORA)).toMatchObject({ enviados: 0, falhas: ["equipe@example.com: não foi possível enviar a agenda"] });
     expect(await enviarAgenda(db, org, correio, AGORA)).toMatchObject({ enviados: 1 });
   });
 

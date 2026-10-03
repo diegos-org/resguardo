@@ -2,6 +2,10 @@
 
 Decisões diretas de Diego em 1/10/2026. Regras compartilháveis; telefones, endereços privados alternativos e códigos ficam no cadastro operacional restrito, fora deste arquivo.
 
+## Versão e agenda vigente
+
+Complemento de 2/10/2026 (a versão na `main` é a aprovada). Para atendimento, janelas da agenda, dados operacionais e horários acordados, começar pelo [Guia Lia consolidado](GUIA-LIA-ATENDIMENTO.md). Rio mantém cinco dias, com limpezas por dia separadas de entradas/chaves; Búzios passa a todas as reservas relevantes em 30 dias. Primeiro nome e quantidade de hóspedes em ambos; telefone operacional quando disponível e autorizado. O [PR81](https://github.com/al-life/scl-reconstrucao/pull/81) (item M6.7 do roadmap) implementa a agenda e o registro manual de pedido/aceite na ficha da reserva; o estado de mesclagem é o do GitHub. Fluxo, prioridade dos horários e limites de telefone/canais estão no guia; nenhum envio ou integração automática é comprovado por isso. As evidências de 1/10 abaixo são preservadas.
+
 ## Limpeza antes da entrada
 Antes de indicar ou pedir limpeza, conferir a última limpeza efetivamente confirmada e se houve ocupação ou uso posterior. Se já estiver limpo e sem novo uso, indicar somente check-in e logística de chaves. Se faltar confirmação, registrar estado a confirmar e consultar histórico/equipe antes de convocar deslocamento. Checkout, escala e calendário vazio não comprovam limpeza executada.
 
@@ -23,6 +27,10 @@ Em1/10 foram salvos e reabertos no Airbnb:
 - “02 F - Checkin 399 - Studio Orgânico Leblon”: telefone confirmado, expediente e alternativa Aristides Espínola.
 Mantidos campos dinâmicos e programação de dois dias antes do check-in às10h. A revisão não prova disparo futuro, não reenvia mensagens antigas e não cria automação paralela Beds24.
 No103, o texto antigo afirmava ausência de porteiro para toda chegada; no399, não explicitava expediente. Corrigidos. Pedido de previsão de chegada passou a tratar organização da chegada, sem presumir faxina necessária.
+
+## Documentos — esclarecimento de Diego nesta revisão
+
+Até segunda ordem, solicitar e encaminhar documentos somente no 403. O 303 Rita deixa de constar como exigência ou pendência de coleta. Diego relata pouca ou nenhuma cobrança pela portaria do 403; isso não dispensa a regra do 403 nem cria cobranças extras. Preservar o fluxo e os limites de repetição do [Guia Lia](GUIA-LIA-ATENDIMENTO.md#portaria-e-documentos). Este registro não realiza envios.
 
 ## Cadastro na nuvem — pendência explícita
 Preferência aprovada: cadastro restrito do sistema SCL, com imóvel, função, telefone, expediente, exceções, fonte/data e última conferência. GitHub documenta regra e referência, não armazena os telefones em documentação geral.

@@ -121,6 +121,7 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 | M6.4 | Documentos de portaria (só 403): checklist de pedidos, sem armazenar documentos no Git | feito | M3.5 |
 | M6.5 | Rotinas recorrentes (manutenção quinzenal, faxinas semanal, lembrete mensal) | feito | M6.2 |
 | M6.6 | Equipe de limpeza: acesso próprio pelo celular (agenda, marcar faxina feita) e aviso por WhatsApp quando o M10 estiver ligado (e-mail enquanto isso) | feito | M6.1, M1.3 |
+| M6.7 | Agenda por cidade e horários combinados (pedido de Diego em 2/10): Búzios lista todas as reservas dos próximos 30 dias; Rio mantém 5 dias com as limpezas por dia (limpeza já realizada sem uso posterior não volta) e as entradas/saídas/chaves em bloco separado; primeiro nome, nº de hóspedes, horários e telefone operacional em ambos. Ficha da reserva → "Horários combinados com o hóspede": pedido pendente e acordo confirmado (canal, referência, aceite explícito), com prioridade acordo → cadastro do imóvel → padrão da agenda; mudança de datas/imóvel exige novo acordo. Entregue em 3/10 (PR do Codex #81, levado à main pelo processo) | feito | M6.3 |
 
 ### M7 — Site público no novo app
 
@@ -145,6 +146,8 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 |---|---|---|---|
 | M9.1 | Portal do hóspede: acesso por código/magic link ao e-mail do hóspede (e-mail no cadastro de todos); dados da própria reserva | feito | M1.3, M3.1 |
 | M9.2 | Mensagens programadas (confirmação, check-in D-2 10h, checkout D-1 14h, agradecimento D+3 10h), jobs idempotentes; modelos de mensagem editáveis no painel | feito | M9.1 |
+
+**Nota de planejamento solicitada por Diego:** M9.2 cobre mensagens por e-mail, opt-in (origens padrão site/direta), não comprova migração das automáticas Airbnb. Planejar a consolidação dos modelos por imóvel no sistema/site, conferindo textos ativos, campos, horários, canais e prevenção de duplicidade; validar destino e transição antes de substituir/desativar qualquer automação Airbnb. Sem nova fase, data ou ativação definida. Diretriz de chegada 399 e possível aplicação ao 103, com contatos/janelas ainda a conferir: [Guia Lia](requisitos/operations/GUIA-LIA-ATENDIMENTO.md). Prioridade atual: concluir atendimento e listas.
 
 ### M10 — WhatsApp (Meta Cloud API)
 
