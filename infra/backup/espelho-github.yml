@@ -128,10 +128,11 @@ jobs:
 
           # Comparação com o inventário do retrato anterior.
           sumiram_da_origem=""; sumiram_do_backup=""; reescritas=""
+          : > anterior.txt; : > anterior-origem.refs; : > anterior-backup.refs
           if [ -n "${anterior}" ]; then
             git for-each-ref --format='%(contents)' "${anterior}" > anterior.txt
             awk '$1 == "origem" && NF == 3 {print $3}' anterior.txt | sort > anterior-origem.refs
-            awk '$1 == "backup" && NF == 2 {print $2}' anterior.txt | sort > anterior-backup.refs
+            awk '($1 == "backup" && NF == 2) {print $2} ($1 == "recusada" && NF == 3) {print $3}' anterior.txt | sort > anterior-backup.refs
             sumiram_da_origem=$(comm -23 anterior-origem.refs atual.refs || true)
             sumiram_do_backup=$(comm -23 anterior-backup.refs guardado.refs || true)
             # Reescrita: branch cujo commit de antes não é antepassado do de agora; tag que mudou de objeto.
@@ -150,29 +151,62 @@ jobs:
               esac
             done < <(awk '$1 == "origem" && NF == 3' anterior.txt)
           fi
+          # Ref que a base anterior não conhecia (nova, ou apagada e recriada na origem) mas cujo espelho já
+          # existe com outro objeto: também é reescrita (cópia exata + aviso), senão o objeto novo se perderia.
+          while read -r ref; do
+            [ -z "${ref}" ] && continue
+            grep -qx "${ref}" anterior-origem.refs && continue
+            g=$(git rev-parse -q --verify "refs/guardado/${ref#refs/}" 2>/dev/null || true)
+            [ -z "${g}" ] && continue
+            a=$(git rev-parse -q --verify "${ref}" 2>/dev/null || true)
+            [ "${g}" = "${a}" ] && continue
+            case "${ref}" in
+              refs/tags/*) reescritas="${reescritas}${ref}"$'\n' ;;
+              *)
+                gc=$(git rev-parse -q --verify "${g}^{commit}" 2>/dev/null || true)
+                ac=$(git rev-parse -q --verify "${a}^{commit}" 2>/dev/null || true)
+                if [ -z "${gc}" ] || [ -z "${ac}" ] || ! git merge-base --is-ancestor "${gc}" "${ac}"; then
+                  reescritas="${reescritas}${ref}"$'\n'
+                fi ;;
+            esac
+          done < atual.refs
 
-          # Destinos das refs reescritas (gravados nesta rodada, antes da base avançar).
-          recusadas_destinos=""
+          # Cópias desta rodada: objeto exato de cada ref reescrita, sob recusadas/<data>/... ("recusada <sha> <ref>").
+          copias_novas=""
           if [ -n "${reescritas}" ]; then
-            recusadas_destinos=$(printf '%s' "${reescritas}" | sed '/^$/d' | sed "s#^refs/#refs/tags/recusadas/${marco#backup/}/#")
+            while read -r ref; do
+              [ -z "${ref}" ] && continue
+              copias_novas="${copias_novas}$(git rev-parse "${ref}") refs/tags/recusadas/${marco#backup/}/${ref#refs/}"$'\n'
+            done <<< "${reescritas}"
           fi
-          # Cópias recusadas/ que sumiram deste backup: regravar a partir da origem, se ela ainda tiver a ref.
-          recriadas=()
+          # Cópias recusadas/ que sumiram deste backup: regravar só se a origem ainda tiver exatamente aquele
+          # objeto (o inventário anterior guarda o sha); senão, é perda, e fica dito.
+          recriadas=(); copias_recriadas=""; perdidas=""
           if [ -n "${sumiram_do_backup}" ]; then
             while read -r dest; do
               case "${dest}" in refs/tags/recusadas/*/heads/*|refs/tags/recusadas/*/tags/*) ;; *) continue ;; esac
+              esperado=$(awk -v d="${dest}" '$1 == "recusada" && $3 == d {print $2}' anterior.txt | head -n1)
               src="refs/${dest#refs/tags/recusadas/*/}"
-              if git rev-parse -q --verify "${src}" >/dev/null; then recriadas+=("${src}:${dest}"); fi
+              atual_sha=$(git rev-parse -q --verify "${src}" 2>/dev/null || true)
+              if [ -n "${esperado}" ] && [ -n "${atual_sha}" ] && [ "${atual_sha}" = "${esperado}" ]; then
+                recriadas+=("${src}:${dest}"); copias_recriadas="${copias_recriadas}${esperado} ${dest}"$'\n'
+              else
+                perdidas="${perdidas}${dest} (objeto ${esperado:-desconhecido}; a origem tem ${atual_sha:-nada})"$'\n'
+              fi
             done <<< "${sumiram_do_backup}"
           fi
-          # Inventário, parte 2: o que este backup guarda depois desta rodada (inclusive o que ela cria).
+          # Inventário, parte 2: o que este backup guarda depois desta rodada. As cópias recusadas/ vão com o
+          # objeto esperado; o resto, pelo nome.
           {
             cat guardado.refs atual.refs
             echo "refs/tags/${marco}"
             echo refs/heads/backup-marcos
-            if [ -n "${recusadas_destinos}" ]; then echo "${recusadas_destinos}"; fi
-            for spec in "${recriadas[@]}"; do echo "${spec#*:}"; done
-          } | sort -u | sed 's/^/backup /' >> inventario.txt
+          } | grep -v '^refs/tags/recusadas/' | sort -u | sed 's/^/backup /' >> inventario.txt
+          {
+            git for-each-ref --format='%(objectname) refs/tags/recusadas/%(refname:strip=3)' refs/guardado/recusadas
+            printf '%s' "${copias_novas}"
+            printf '%s' "${copias_recriadas}"
+          } | sed '/^$/d' | sort -u | sed 's/^/recusada /' >> inventario.txt
 
           # Retrato da rodada: árvore da main; pais = retrato anterior, main e todas as outras pontas
           # (commits); mensagem = inventário. Tudo o que o inventário cita fica alcançável por aqui.
@@ -216,9 +250,18 @@ jobs:
             echo "::error::O push do espelho para este repositório falhou (código ${codigo})."
             exit "${codigo}"
           fi
-          # Só se aceita recusa por divergência da origem (non-fast-forward, fetch first, already exists).
-          # Qualquer outra (regra do repositório, hook, falha do servidor) para a rodada antes de avançar a base.
-          inesperadas=$(awk -F'\t' '$1 == "!" && $3 !~ /^\[rejected\] \((non-fast-forward|fetch first|already exists)\)/' push.log || true)
+          # Só se aceita recusa por divergência da origem (non-fast-forward, fetch first, already exists) de uma
+          # ref que a base já conhecia ou que foi tratada como reescrita nesta rodada. Qualquer outra (regra do
+          # repositório, hook, falha do servidor, ref desconhecida) para a rodada antes de avançar a base.
+          inesperadas=$(awk -F'\t' '$1 == "!" {split($2, a, ":"); print a[1] "\t" $3}' push.log | while IFS=$'\t' read -r src motivo; do
+            case "${motivo}" in
+              "[rejected] (non-fast-forward)"|"[rejected] (fetch first)"|"[rejected] (already exists)") ;;
+              *) echo "${src}: ${motivo}"; continue ;;
+            esac
+            if ! grep -qx "${src}" anterior-origem.refs && ! printf '%s' "${reescritas}" | grep -qx "${src}"; then
+              echo "${src}: recusada sem reescrita detectada (${motivo})"
+            fi
+          done || true)
           if [ -n "${inesperadas}" ]; then
             cat push.err || true
             echo "::error::Recusas inesperadas no push do espelho (não são divergência da origem). A base de comparação não mudou; o espelho pode estar incompleto:"
@@ -255,6 +298,11 @@ jobs:
           if [ -n "${sumiram_do_backup}" ]; then
             echo "::error::Branches/tags que SUMIRAM DESTE BACKUP desde a rodada anterior (alguém apagou aqui; o que a origem ainda tem foi gravado de novo):"
             echo "${sumiram_do_backup}"
+            falhou=1
+          fi
+          if [ -n "${perdidas}" ]; then
+            echo "::error::Cópias recusadas/ que SUMIRAM DESTE BACKUP e não puderam ser regravadas (a origem já não tem aquele objeto exato):"
+            printf '%s' "${perdidas}"
             falhou=1
           fi
           if [ "${ponteiro_apagado}" -eq 1 ]; then

@@ -61,11 +61,16 @@ repositório principal não sabe que o backup existe.
      `recusadas/<data>/...`, uma vez por reescrita, para o objeto exato (inclusive uma tag
      anotada) continuar alcançável; a versão antiga continua em `espelho/...`. Essa gravação
      vem antes da tag do dia e do ponteiro (que entram juntos, ou nenhum): a base de
-     comparação nunca avança sem que o que ela cita esteja guardado. Se uma dessas cópias
-     for apagada do backup, a rodada seguinte avisa e a regrava a partir da origem;
+     comparação nunca avança sem que o que ela cita esteja guardado. O inventário anota o
+     objeto exato de cada cópia; se uma for apagada do backup, a rodada seguinte avisa e a
+     regrava a partir da origem só se a origem ainda tiver exatamente aquele objeto (senão,
+     diz que a cópia se perdeu, em vez de rotular outro objeto com a data antiga). Uma ref
+     apagada na origem e recriada depois com outro conteúdo também conta como reescrita;
    - no push do espelho, só a recusa por divergência da origem é aceita (e vira aviso
-     amarelo); qualquer outra recusa (regra do repositório, falha do servidor) para a rodada
-     antes de avançar a base, porque o espelho pode ter ficado incompleto;
+     amarelo), e só para refs que a base já conhecia ou que foram tratadas como reescritas
+     na rodada; qualquer outra recusa (regra do repositório, falha do servidor, ref
+     desconhecida) para a rodada antes de avançar a base, porque o espelho pode ter ficado
+     incompleto;
    - compara com o inventário do retrato anterior e **falha, o que gera e-mail para a conta
      de backup**, quando algo sumiu da origem, foi reescrito na origem ou sumiu do próprio
      backup (inclusive uma tag `backup/`, mesmo a mais nova, e a branch `backup-marcos`; se
@@ -81,7 +86,7 @@ repositório principal não sabe que o backup existe.
    robô: ele nunca apaga nem reescreve e avisa quando o backup perde algo. A trava cobre a
    mais só o erro manual de quem tem acesso à conta de backup, que é só o Diego.
 
-Testado em 3/10 rodando o script exato do robô contra repositórios locais, vinte rodadas:
+Testado em 3/10 rodando o script exato do robô contra repositórios locais, vinte e cinco rodadas:
 origem só com `main`; novas branches e tags; origem avança; origem apaga uma branch (o backup
 a mantém e avisa uma vez); nada muda (sem aviso repetido); origem reescreve uma branch e uma
 tag anotada (o backup mantém as versões antigas em `espelho/`, guarda as novas em
@@ -91,9 +96,11 @@ o aviso amarelo); alguém apaga uma branch no backup (avisa uma vez); alguém ap
 muda; alguém apaga a branch `backup-marcos` (avisa e recria); nada muda; rodada repetida no
 mesmo minuto (falha com a mensagem); alguém apaga todas as tags `backup/` e o ponteiro
 (avisa); nada muda; uma regra do destino recusa uma branch (a rodada falha e a base não
-avança); backup inacessível (a rodada para antes de gravar). Também: a cópia `recusadas/` da
-tag anotada apagada do backup é avisada e regravada; e as tags do backup não voltam para a
-origem nem se duplicam com o prefixo.
+avança); tag apagada na origem e recriada com outro conteúdo (reescrita, com cópia exata);
+backup inacessível (a rodada para antes de gravar). Também: a cópia `recusadas/` da tag
+anotada apagada do backup é avisada e regravada quando a origem ainda tem o objeto, e dada
+como perdida quando a origem já mudou de novo; e as tags do backup não voltam para a origem
+nem se duplicam com o prefixo.
 
 ### Por que assim
 
