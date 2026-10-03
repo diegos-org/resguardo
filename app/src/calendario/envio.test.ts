@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { historicoDe } from "@/auditoria/auditoria";
 import { executarCronEnvioBeds24 } from "@/beds24/cron-envio";
 import { Beds24Falso } from "@/beds24/falso";
-import { ErroBeds24, type LeitorBeds24 } from "@/beds24/tipos";
+import { ErroBeds24, type EscritorBeds24, type LeitorBeds24 } from "@/beds24/tipos";
 import { gravarConfig } from "@/configuracoes/armazem";
 import { beds24Calendario, beds24CalendarioEnviado, beds24EnvioNoites, beds24Envios, bloqueios, idsExternos, imoveis, imoveisDetalhes, organizacoes, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
@@ -369,6 +369,39 @@ describe("envio ao Beds24 (M3.7)", () => {
     const r2 = await enviar();
     expect(beds.escritas.at(-1)![0].faixas.some(f => f.bloqueio === "none" && f.from === "2026-10-03")).toBe(true);
     expect(r2.situacao).toBe("ok");
+    expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ bloqueio: "none", confirmado: true });
+  });
+
+  it("blackout aplicado com preço recusado: a posse do bloqueio é confirmada pela releitura mesmo com a noite divergente; removido o bloqueio, reabre", async () => {
+    await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-10-03", fim: "2026-10-04", motivo: "Uso próprio" });
+    // Escritor que aplica bloqueio, mínimo e máximo, mas ignora o preço (um campo recusado ou normalizado pelo Beds24).
+    const semPreco: EscritorBeds24 = { escreverCalendario: itens => beds.escreverCalendario(itens.map(i => ({ ...i, faixas: i.faixas.map(f => ({ ...f, preco: undefined })) }))) };
+    const r = await enviarCalendarioBeds24(db, org, beds, semPreco, { modo: "envio", agora: proximoAgora(), autorId: null });
+    expect(r).toMatchObject({ situacao: "parcial", imoveis: [{ enviadas: 10, confirmadas: 0, divergentes: 10 }] });
+    expect(diaFalso("2026-10-03")).toMatchObject({ override: "blackout", price1: 400 });
+    expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ bloqueio: "blackout", confirmado: false });
+    // Bloqueio local removido antes de um reenvio completo: o SCL continua dono do blackout e reabre.
+    await db.delete(bloqueios).where(eq(bloqueios.fonte, "manual"));
+    const r2 = await enviar();
+    expect(r2.situacao).toBe("ok");
+    expect(beds.escritas.at(-1)![0].faixas.some(f => f.from === "2026-10-03" && f.bloqueio === "none")).toBe(true);
+    expect(diaFalso("2026-10-03")).toMatchObject({ override: "none", numAvail: 1 });
+  });
+
+  it("confirmação tardia: bloqueio igual na leitura seguinte dá a posse mesmo com o preço diferente do enviado", async () => {
+    await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-10-03", fim: "2026-10-04", motivo: "Uso próprio" });
+    let leituras = 0;
+    const leitorFalho: LeitorBeds24 = { reservas: f => beds.reservas(f), quartos: () => beds.quartos(), calendario: async f => { if (leituras++ === 1) throw new ErroBeds24("Beds24 não respondeu a tempo.", "tempo"); return beds.calendario(f); } };
+    const semPreco: EscritorBeds24 = { escreverCalendario: itens => beds.escreverCalendario(itens.map(i => ({ ...i, faixas: i.faixas.map(f => ({ ...f, preco: undefined })) }))) };
+    const r = await enviarCalendarioBeds24(db, org, leitorFalho, semPreco, { modo: "envio", agora: proximoAgora(), autorId: null });
+    expect(r.situacao).toBe("incerto");
+    expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ bloqueio: null, confirmado: false });
+    // A leitura seguinte mostra o blackout igual ao enviado e o preço diferente: noite divergente, posse assumida; o bloqueio removido reabre na mesma execução.
+    await db.delete(bloqueios).where(eq(bloqueios.fonte, "manual"));
+    const r2 = await enviar();
+    expect(r2.avisos.some(a => a.includes("de envio anterior sem releitura diferem da leitura de agora"))).toBe(true);
+    expect(beds.escritas.at(-1)![0].faixas.some(f => f.from === "2026-10-03" && f.bloqueio === "none")).toBe(true);
+    expect(diaFalso("2026-10-03")).toMatchObject({ override: "none" });
     expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ bloqueio: "none", confirmado: true });
   });
 

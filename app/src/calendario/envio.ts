@@ -112,7 +112,9 @@ async function conciliarPendentes(tx: Db, org: string, imovelId: string, roomId:
     const o = observacoes.get(e.data);
     // Só uma observação estritamente posterior ao envio decide; a leitura feita antes da escrita não conta.
     if (!n || !o || o.observadoEm.getTime() <= e.enviadoEm.getTime()) continue;
-    const igual = (n.preco === null || o.preco === n.preco) && (n.minimo === null || o.minimoNoites === n.minimo) && (n.maximo === null || o.maximoNoites === n.maximo) && (n.bloqueio === null || (o.bloqueio ?? "none") === n.bloqueio);
+    // O bloqueio é conferido pelo próprio campo: a posse vale mesmo que preço, mínimo ou máximo tenham divergido.
+    const bloqueioConfirmado = n.bloqueio !== null && (o.bloqueio ?? "none") === n.bloqueio;
+    const igual = (n.preco === null || o.preco === n.preco) && (n.minimo === null || o.minimoNoites === n.minimo) && (n.maximo === null || o.maximoNoites === n.maximo) && (n.bloqueio === null || bloqueioConfirmado);
     const onde = and(eq(beds24CalendarioEnviado.organizacaoId, org), eq(beds24CalendarioEnviado.imovelId, imovelId), eq(beds24CalendarioEnviado.data, e.data));
     const ondeNoite = and(eq(beds24EnvioNoites.envioId, e.envioId!), eq(beds24EnvioNoites.imovelId, imovelId), eq(beds24EnvioNoites.data, e.data));
     if (igual) {
@@ -120,7 +122,10 @@ async function conciliarPendentes(tx: Db, org: string, imovelId: string, roomId:
       await tx.update(beds24EnvioNoites).set({ resultado: "confirmado", detalhe: "Confirmado pela leitura de uma execução seguinte." }).where(ondeNoite);
       r.confirmadas++;
     } else {
-      await tx.update(beds24CalendarioEnviado).set({ bloqueioAnterior: e.bloqueio === "blackout" ? e.bloqueioAnterior : null }).where(onde);
+      await tx.update(beds24CalendarioEnviado).set({
+        bloqueio: bloqueioConfirmado ? n.bloqueio : e.bloqueio,
+        bloqueioAnterior: bloqueioConfirmado ? (n.bloqueio === "blackout" ? e.bloqueioAnterior : null) : (e.bloqueio === "blackout" ? e.bloqueioAnterior : null),
+      }).where(onde);
       await tx.update(beds24EnvioNoites).set({ resultado: "divergente", detalhe: `Leitura seguinte: preço ${o.preco ?? "—"}, mín. ${o.minimoNoites ?? "—"}, máx. ${o.maximoNoites ?? "—"}, bloqueio ${o.bloqueio ?? "—"}`.slice(0, 300) }).where(ondeNoite);
       r.divergentes++;
     }
@@ -391,10 +396,13 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
             grupos.set(chave, grupo);
             // A posse do bloqueio (blackout/none/restrição devolvida) só muda quando a releitura confirma;
             // até lá vale a anterior. A restrição anterior ao blackout fica guardada enquanto o SCL fecha.
-            const confirmouBloqueio = resultado === "confirmado" && l.bloqueioEnviar !== undefined;
+            // A posse do bloqueio é confirmada pelo campo de bloqueio da releitura, independentemente de preço,
+            // mínimo e máximo: o Beds24 pode aplicar o override e recusar ou normalizar outro campo. Sem essa posse,
+            // um blackout aplicado ficaria sem dono e nunca seria reaberto.
+            const confirmouBloqueio = l.bloqueioEnviar !== undefined && lido !== undefined && (lido.bloqueio ?? "none") === l.bloqueioEnviar;
             // Restrição anterior: fica com o blackout confirmado ou ainda em aberto (sem releitura); uma tentativa
             // desmentida sem posse anterior não guarda nada, para não devolver a restrição num ciclo futuro.
-            const guardaAnterior = resultado === "confirmado" || resultado === "enviado" || l.enviado?.bloqueio === "blackout";
+            const guardaAnterior = confirmouBloqueio || resultado === "enviado" || l.enviado?.bloqueio === "blackout";
             const v = {
               organizacaoId: org, imovelId: p.imovelId, data: l.data, roomId: p.roomId, preco: l.precoEnviar, minimo: l.minimoEnviar, maximo: l.maximoEnviar,
               bloqueio: confirmouBloqueio ? l.bloqueioEnviar! : (l.enviado?.bloqueio ?? null),

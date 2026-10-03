@@ -216,7 +216,9 @@ Implementado no painel (um só lugar por regra; `app/src/calendario/`):
   reabre o que ele mesmo fechou, e devolve a noite ao que havia antes: a restrição que já
   existia no Beds24 (`noCheckIn` etc., guardada ao fechar) ou `none`. A reabertura só sai
   quando a leitura atual ainda mostra o blackout do SCL; se o Beds24 mostrar outra coisa, a
-  posse acaba sem escrita. A posse vale para o quarto Beds24 que recebeu o envio: trocado o
+  posse acaba sem escrita. A posse é confirmada pelo campo de bloqueio da releitura (ou da
+  leitura seguinte), mesmo que preço, mínimo ou máximo tenham sido recusados na mesma noite.
+  A posse vale para o quarto Beds24 que recebeu o envio: trocado o
   vínculo do imóvel, o estado do quarto antigo é descartado com aviso (o que o SCL fechou lá é
   reaberto manualmente). Bloqueios e 0 unidades que só existem no Beds24 viram aviso.
   Reservas nunca são criadas, alteradas ou canceladas pelo envio.
