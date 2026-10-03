@@ -9,10 +9,10 @@
 import { and, eq } from "drizzle-orm";
 import { planejarImovel } from "@/calendario/envio";
 import { lerRegrasCalendario } from "@/calendario/regras-config";
-import { beds24Calendario, imoveis } from "@/db/schema";
+import { imoveis } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { listarPeriodos } from "@/imoveis/detalhes";
-import { type Cotacao, cotarNoites, diasEntre, somarDias, verificarEstadia } from "@/imoveis/regras-venda";
+import { type Cotacao, cotarNoites, diasEntre, verificarEstadia } from "@/imoveis/regras-venda";
 import { hojeISO } from "@/lib/datas";
 import { dataValida } from "@/reservas/regras";
 import type { PedidoConsulta } from "./site";
@@ -51,13 +51,17 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   const noites = diasEntre(p.entrada, p.saida);
   const regras = await lerRegrasCalendario(db, organizacaoId);
   if (noites > regras.site.maximoNoitesConsulta) return vazio("a_confirmar", [`Para estadias acima de ${regras.site.maximoNoitesConsulta} noites, fale com a equipe.`], noites);
-  const [plano, periodos] = await Promise.all([planejarImovel(db, organizacaoId, regras, imovel, agora, { inicio: p.entrada, fim: somarDias(p.saida, -1) }), listarPeriodos(db, organizacaoId, imovel.id)]);
+  // O plano cobre as noites e o dia de saída: a restrição de saída e o último envio do SCL daquela data
+  // vêm do mesmo lugar que os das noites.
+  const [plano, periodos] = await Promise.all([planejarImovel(db, organizacaoId, regras, imovel, agora, { inicio: p.entrada, fim: p.saida }), listarPeriodos(db, organizacaoId, imovel.id)]);
+  const linhas = plano.linhas.slice(0, noites);
+  const saida = plano.linhas[noites];
   const motivos = new Set<string>();
   let aConfirmar = false;
 
   // Regras de venda: mínimo/máximo vêm do motor (já considera semana normal, eventos e sobras);
   // antecedência, horizonte e dias de entrada/saída vêm do cadastro.
-  const entrada = plano.linhas[0];
+  const entrada = linhas[0];
   // Mínimo de negócio: o do motor (semana normal, eventos, sobras). Se a regra supera o máximo, o motor
   // manda o máximo ao Beds24 e avisa no painel; para o site vale a regra original, e a estadia fica
   // impossível até o cadastro ser corrigido — nunca "disponível" por causa do ajuste de envio.
@@ -67,32 +71,36 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   for (const problema of verificarEstadia({ ...plano.regras, estadiaMinima: null, estadiaMaxima: null }, periodos.map((x) => ({ ...x, estadiaMinima: null })), p.entrada, p.saida, hoje)) motivos.add(problema);
 
   // Restrições de entrada/saída do calendário Beds24: valem na data de entrada e na de saída,
-  // só com leitura dentro da validade (leitura velha vira "a confirmar", como nas noites).
+  // só com leitura atual (leitura velha vira "a confirmar", como nas noites).
   // Restrição desconhecida (ex.: "exception") ou não informada na leitura (null) nunca vira "disponível".
   const limite = agora.getTime() - regras.site.validadeLeituraHoras * 3_600_000;
   const conhecidas = new Set<string | null>(["none", "noCheckIn", "noCheckOut", "noCheckInOrCheckOut"]);
-  const restricao = (o: { bloqueio: string | null; observadoEm: Date } | null | undefined, fecha: readonly string[], motivo: string) => {
-    if (!o || o.observadoEm.getTime() < limite) { aConfirmar = true; return; }
-    if (fecha.includes(o.bloqueio ?? "")) motivos.add(motivo);
-    else if (!conhecidas.has(o.bloqueio) && o.bloqueio !== "blackout") aConfirmar = true;
+  // Leitura atual: dentro da validade e não anterior ao último envio do SCL para a data (como no motor):
+  // depois de uma escrita sem releitura, a leitura anterior já não descreve o Beds24.
+  const atual = (l: { observacao: { observadoEm: Date } | null; enviado: { enviadoEm: Date } | null } | undefined) =>
+    !!l?.observacao && l.observacao.observadoEm.getTime() >= limite && (!l.enviado || l.observacao.observadoEm.getTime() >= l.enviado.enviadoEm.getTime());
+  const restricao = (l: { observacao: { bloqueio: string | null; observadoEm: Date } | null; enviado: { enviadoEm: Date } | null } | undefined, fecha: readonly string[], motivo: string) => {
+    if (!atual(l)) { aConfirmar = true; return; }
+    const bloqueio = l!.observacao!.bloqueio;
+    if (fecha.includes(bloqueio ?? "")) motivos.add(motivo);
+    else if (!conhecidas.has(bloqueio) && bloqueio !== "blackout") aConfirmar = true;
   };
-  restricao(entrada?.observacao, ["noCheckIn", "noCheckInOrCheckOut"], `Entrada não permitida em ${dataBr(p.entrada)}.`);
-  const [saidaObs] = await db.select({ bloqueio: beds24Calendario.bloqueio, observadoEm: beds24Calendario.observadoEm }).from(beds24Calendario).where(and(eq(beds24Calendario.organizacaoId, organizacaoId), eq(beds24Calendario.imovelId, imovel.id), eq(beds24Calendario.data, p.saida)));
-  restricao(saidaObs, ["noCheckOut", "noCheckInOrCheckOut"], `Saída não permitida em ${dataBr(p.saida)}.`);
+  restricao(entrada, ["noCheckIn", "noCheckInOrCheckOut"], `Entrada não permitida em ${dataBr(p.entrada)}.`);
+  restricao(saida, ["noCheckOut", "noCheckInOrCheckOut"], `Saída não permitida em ${dataBr(p.saida)}.`);
 
   // Ocupação e leitura do Beds24, noite a noite. "Agenda conferida em" é a leitura mais antiga que
   // participou da decisão: as noites e o dia de saída (a restrição de saída também conta). Sem leitura
   // de qualquer um deles, não há hora a mostrar.
   let leituraEm: Date | null = null;
-  let semLeitura = !saidaObs;
+  let semLeitura = !saida?.observacao;
   const maisAntiga = (o: { observadoEm: Date } | null | undefined) => { if (o && (!leituraEm || o.observadoEm < leituraEm)) leituraEm = o.observadoEm; };
-  maisAntiga(saidaObs);
+  maisAntiga(saida?.observacao);
   // Uma data pode estar ocupada no SCL e no Beds24 ao mesmo tempo (reserva importada): conta uma vez.
   const ocupadas = new Set<string>();
-  for (const l of plano.linhas) {
+  for (const l of linhas) {
     if (l.livresSeguidas === 0) ocupadas.add(l.data);
     const o = l.observacao;
-    if (!o || o.observadoEm.getTime() < limite) {
+    if (!o || !atual(l)) {
       if (!o) semLeitura = true;
       aConfirmar = true;
     } else if (o.bloqueio === "blackout" || o.livres === 0) ocupadas.add(l.data); // blackout fecha mesmo sem unidades informadas
@@ -105,10 +113,10 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   }
   if (motivos.size) return { situacao: "indisponivel", motivos: [...motivos], noites, cotacao: null, leituraEm: semLeitura ? null : leituraEm };
 
-  const cot = cotarNoites(plano.regras, plano.linhas.map((l) => ({ data: l.data, valor: l.precoFinalEsperado, fonte: l.fontePreco })), hospedes);
+  const cot = cotarNoites(plano.regras, linhas.map((l) => ({ data: l.data, valor: l.precoFinalEsperado, fonte: l.fontePreco })), hospedes);
   // Preço zero numa noite é aviso do motor ("conferir"), não diária grátis; taxa de limpeza não
   // cadastrada também não vira zero para o visitante. Nos dois casos o valor fica a confirmar.
-  const comValor = plano.linhas.every((l) => l.precoFinalEsperado !== null && l.precoFinalEsperado > 0);
+  const comValor = linhas.every((l) => l.precoFinalEsperado !== null && l.precoFinalEsperado > 0);
   const diarias = comValor ? cot.diarias : null;
   const total = comValor && cot.total !== null && plano.regras.taxaLimpeza !== null ? cot.total : null;
   const avisos: string[] = [];

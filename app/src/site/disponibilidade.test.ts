@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { gravarConfig } from "@/configuracoes/armazem";
 import { REGRAS_CALENDARIO_PADRAO } from "@/calendario/regras-config";
-import { beds24Calendario, bloqueios, imoveis, imoveisDetalhes, organizacoes, reservas } from "@/db/schema";
+import { beds24Calendario, beds24CalendarioEnviado, bloqueios, idsExternos, imoveis, imoveisDetalhes, organizacoes, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { consultarDisponibilidade } from "./disponibilidade";
@@ -23,6 +23,7 @@ beforeEach(async () => {
   [{ id: im }] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "403", nome: "Studio Exemplo", publico: true, capacidade: 4 }).returning();
   await db.insert(imoveis).values({ organizacaoId: org, codigo: "buzios", nome: "Casa", publico: false, capacidade: 8 });
   await db.insert(imoveisDetalhes).values({ imovelId: im, organizacaoId: org, precoBase: 45000, taxaLimpeza: 25000, hospedeExtraValor: 5000, hospedeExtraAPartirDe: 3, pisoUltimaHora1: 35000, pisoUltimaHora2: 30000 });
+  await db.insert(idsExternos).values({ organizacaoId: org, imovelId: im, canal: "beds24", idExterno: "10", detalhe: "20" });
 });
 
 describe("disponibilidade e cotação do site (M7.2)", () => {
@@ -100,6 +101,24 @@ describe("disponibilidade e cotação do site (M7.2)", () => {
     // Sem leitura do dia de saída: a confirmar, nunca disponível.
     await db.update(beds24Calendario).set({ bloqueio: "none", livres: 1 }).where(eq(beds24Calendario.data, "2026-10-15"));
     expect(await consultar({ entrada: "2026-10-14", saida: "2026-10-16" })).toMatchObject({ situacao: "a_confirmar", motivos: ["Ainda não conferimos a agenda mais recente para essas datas: confirmamos na conversa."] });
+  });
+
+  it("leitura anterior ao último envio do SCL não vale (numa noite ou no dia de saída): a confirmar até uma leitura posterior à escrita", async () => {
+    await observar(dias("2026-10-12", 4));
+    const enviado = (data: string, enviadoEm: string) => db.insert(beds24CalendarioEnviado).values({ organizacaoId: org, imovelId: im, data, roomId: "20", preco: null, minimo: null, maximo: 27, bloqueio: null, enviadoEm: new Date(enviadoEm), confirmado: false });
+    // Escrita do SCL em 13/10 depois da leitura (releitura falhou): a leitura guardada ainda mostra "aberto", mas já não descreve o Beds24.
+    await enviado("2026-10-13", "2026-10-01T10:00:00Z");
+    expect(await consultar()).toMatchObject({ situacao: "a_confirmar", motivos: ["Ainda não conferimos a agenda mais recente para essas datas: confirmamos na conversa."], cotacao: { total: 160000 } });
+    await db.update(beds24Calendario).set({ observadoEm: new Date("2026-10-01T10:00:00Z") }).where(eq(beds24Calendario.data, "2026-10-13"));
+    expect((await consultar()).situacao).toBe("disponivel");
+    // O mesmo no dia de saída: a restrição de saída só vale com leitura posterior à escrita.
+    await enviado("2026-10-15", "2026-10-01T11:00:00Z");
+    expect((await consultar()).situacao).toBe("a_confirmar");
+    await db.update(beds24Calendario).set({ observadoEm: new Date("2026-10-01T11:00:00Z") }).where(eq(beds24Calendario.data, "2026-10-15"));
+    expect((await consultar()).situacao).toBe("disponivel");
+    // Estado enviado a outro quarto Beds24 não conta: o vínculo atual é o quarto 20.
+    await db.update(beds24CalendarioEnviado).set({ roomId: "21", enviadoEm: new Date("2026-10-01T12:00:00Z") }).where(eq(beds24CalendarioEnviado.data, "2026-10-13"));
+    expect((await consultar()).situacao).toBe("disponivel");
   });
 
   it("restrição de entrada/saída com leitura vencida não bloqueia: vira a confirmar", async () => {
