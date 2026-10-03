@@ -197,6 +197,26 @@ describe("envio ao Beds24 (M3.7)", () => {
     expect(beds.escritas).toHaveLength(0);
   });
 
+  it("datas repetidas na leitura (faixas sobrepostas) invalidam a leitura do imóvel: nada é guardado nem enviado; na releitura, deixam tudo pendente", async () => {
+    let leituras = 0;
+    const duplicar = (l: Awaited<ReturnType<LeitorBeds24["calendario"]>>) => ({ ...l, itens: [...l.itens, { ...l.itens.find(d => d.data === "2026-10-03")!, preco: 99900 }] });
+    const leitorRepetido: LeitorBeds24 = { reservas: f => beds.reservas(f), quartos: () => beds.quartos(), calendario: async f => { const l = await beds.calendario(f); return leituras++ === 0 ? duplicar(l) : l; } };
+    const r = await enviar("envio", { leitor: leitorRepetido });
+    expect(r).toMatchObject({ ok: false, situacao: "erro", imoveis: [{ enviadas: 0, falha: expect.stringContaining("1 data(s) repetida(s)") }] });
+    expect(beds.escritas).toHaveLength(0);
+    expect(await observacoes()).toHaveLength(0);
+    // Repetição só na releitura: a escrita aconteceu, mas nenhuma noite é julgada nem observada por ela.
+    leituras = 0;
+    const leitorReleituraRepetida: LeitorBeds24 = { reservas: f => beds.reservas(f), quartos: () => beds.quartos(), calendario: async f => { const l = await beds.calendario(f); return leituras++ === 1 ? duplicar(l) : l; } };
+    const r2 = await enviar("envio", { leitor: leitorReleituraRepetida });
+    expect(r2).toMatchObject({ situacao: "incerto", imoveis: [{ enviadas: 10, confirmadas: 0, pendentes: 10 }] });
+    expect(r2.avisos.some(a => a.includes("releitura com datas repetidas"))).toBe(true);
+    expect((await noites()).every(n => n.resultado === "enviado" && n.detalhe.includes("datas repetidas"))).toBe(true);
+    expect((await observacoes()).every(o => o.preco === 40000)).toBe(true);
+    // A leitura seguinte, limpa, confirma tudo.
+    expect((await enviar()).avisos).toContain("Imóvel 103: 10 noite(s) de envio anterior confirmada(s) pela leitura de agora.");
+  });
+
   it("releitura que falha deixa as noites sem confirmação (incerto) e a próxima execução confirma sem acumular", async () => {
     // A leitura inicial funciona; só a releitura depois da escrita falha.
     let leituras = 0;
@@ -519,7 +539,11 @@ describe("envio ao Beds24 (M3.7)", () => {
   });
 
   it("bloqueio que só existe no Beds24 nunca é reaberto pelo SCL, mesmo sem bloqueio local", async () => {
-    beds.calendarios = [{ roomId: 20, calendar: [{ from: "2026-10-01", to: "2026-10-10", numAvail: 1, price1: 450, minStay: 1, maxStay: 27, override: "none" }, { from: "2026-10-06", to: "2026-10-06", numAvail: 0, price1: 450, minStay: 1, maxStay: 27, override: "blackout" }] }];
+    beds.calendarios = [{ roomId: 20, calendar: [
+      { from: "2026-10-01", to: "2026-10-05", numAvail: 1, price1: 450, minStay: 1, maxStay: 27, override: "none" },
+      { from: "2026-10-06", to: "2026-10-06", numAvail: 0, price1: 450, minStay: 1, maxStay: 27, override: "blackout" },
+      { from: "2026-10-07", to: "2026-10-10", numAvail: 1, price1: 450, minStay: 1, maxStay: 27, override: "none" },
+    ] }];
     await db.insert(beds24Calendario).values({ organizacaoId: org, imovelId: im, data: "2026-10-06", preco: 45000, minimoNoites: 1, maximoNoites: 27, livres: 0, bloqueio: "blackout", observadoEm: new Date("2026-10-01T10:00:00Z") });
     const r = await enviar();
     expect(beds.escritas[0][0].faixas.every(f => f.bloqueio === undefined)).toBe(true);
