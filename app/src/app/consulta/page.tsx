@@ -20,6 +20,9 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
   const imovel = enviado && pedido.imovel ? await imovelDoSite(db, conteudo.organizacaoId, pedido.imovel) : null;
   // "Hoje" no fuso do imóvel escolhido, o mesmo que a disponibilidade usa; sem imóvel, São Paulo.
   const hoje = hojeISO(imovel?.fuso ?? "America/Sao_Paulo");
+  // O mínimo do formulário vale para qualquer imóvel da lista: o "hoje" mais cedo entre os fusos deles.
+  // A conferência por imóvel (acima) continua sendo a que decide.
+  const hojeMinimo = [hoje, ...todos.map((i) => hojeISO(i.fuso))].reduce((a, b) => (a < b ? a : b));
   const previa = enviado ? montarConsulta(pedido, imovel, hoje) : null;
   const disponibilidade = previa?.ok ? await consultarDisponibilidade(db, conteudo.organizacaoId, pedido) : null;
   const r = enviado ? montarConsulta(pedido, imovel, hoje, disponibilidade && { situacao: disponibilidade.situacao, noites: disponibilidade.noites, total: disponibilidade.cotacao?.total ?? null }) : null;
@@ -64,7 +67,7 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
             <p className={styles.texto}>{conteudo.textos.comoReservar || "Escolha o apartamento, as datas e quantas pessoas."}</p>
           )}
         </div>
-        <FormConsulta imoveis={todos} valores={pedido} erros={r && !r.ok ? r.erros : {}} hoje={hoje} canal={canalDeContato(conteudo)} />
+        <FormConsulta imoveis={todos} valores={pedido} erros={r && !r.ok ? r.erros : {}} hoje={hojeMinimo} canal={canalDeContato(conteudo)} />
       </div>
     </Moldura>
   );

@@ -60,6 +60,11 @@ it("as datas são conferidas no fuso do imóvel escolhido, não no de São Paulo
     m.imovel.mockResolvedValue(imovel);
     await html({ imovel: "403", entrada: "2026-10-11", saida: "2026-10-13", hospedes: "2" });
     expect(m.disponibilidade).not.toHaveBeenCalled();
+    // Sem imóvel escolhido, o mínimo do formulário é o "hoje" mais cedo entre os imóveis da lista.
+    m.imoveis.mockResolvedValue([imovel, { ...imovel, codigo: "901", fuso: "America/Rio_Branco" }]);
+    expect(await html()).toContain('min="2026-10-11"');
+    m.imoveis.mockResolvedValue([imovel]);
+    expect(await html()).toContain('min="2026-10-12"');
   } finally {
     vi.useRealTimers();
   }
