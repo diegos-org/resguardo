@@ -40,7 +40,7 @@ describe("agenda de todas as organizações", () => {
     const { agendaDeTodas } = await import("./cron");
     const [a, b] = await db.insert(organizacoes).values([{ nome: "A" }, { nome: "B" }]).returning();
     quebrada = a.id;
-    await expect(agendaDeTodas(db, new CorreioMemoria(), new Date("2026-10-01T23:00:00Z"))).rejects.toThrow("erro numa organização: banco caiu");
+    await expect(agendaDeTodas(db, new CorreioMemoria(), new Date("2026-10-01T23:00:00Z"))).rejects.toThrow("erro ao montar ou enviar a agenda de uma organização");
     expect(enviadas).toEqual([b.id]);
     const [exec] = await db.select().from(execucoesAutomacao);
     expect(exec.resumo).toContain("1 enviada(s)");

@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { Sessao } from "@/acesso/politica";
 import { auditoria, bloqueios, configuracoes, imoveis, imoveisDetalhes, limpezas, organizacoes, reservas, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { alterarHorario, horarioEfetivo, lerHorariosReservas } from "@/reservas/horarios";
-import { montarAgenda, textoDaAgenda } from "./agenda";
+import { CorreioMemoria } from "@/email/correio";
+import { enviarAgenda, montarAgenda, salvarConfigAgenda, textoDaAgenda } from "./agenda";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -169,4 +170,22 @@ it("limpeza realizada da saída não é repetida na lista de tarefas", async () 
   await db.insert(limpezas).values({ organizacaoId: org, imovelId: rio, reservaId: r.id, data: "2026-10-02", estado: "realizada", realizadaEm: new Date("2026-10-02T17:00:00Z") });
   expect(await texto()).toContain("🧹 Sex 02/10: nenhuma limpeza");
   expect((await db.select().from(limpezas))).toHaveLength(1);
+});
+
+it("agenda não imprime contatos nem conteúdo no console de desenvolvimento ou em falhas", async () => {
+  await reserva();
+  await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "equipe@example.com", cidades: [] }] }, sessao.usuarioId);
+  const agora = new Date("2026-10-01T23:00:00Z");
+  const erro = await enviarAgenda(db, org, { nome: "falso", enviar: async (m) => { throw new Error(m.texto); } }, agora);
+  expect(erro.falhas.join(" ")).not.toContain("00000-0000");
+  expect(erro.falhas.join(" ")).not.toContain("Ana");
+  const log = vi.spyOn(console, "info").mockImplementation(() => {});
+  try {
+    const correio = new CorreioMemoria(true);
+    expect((await enviarAgenda(db, org, correio, agora)).enviados).toBe(1);
+    expect(correio.enviadas[0].texto).toContain("00000-0000");
+    expect(correio.enviadas[0].conteudoRestrito).toBe(true);
+    expect(log).toHaveBeenCalledWith("[e-mail de desenvolvimento] conteúdo restrito omitido");
+    expect(JSON.stringify(log.mock.calls)).not.toContain("00000-0000");
+  } finally { log.mockRestore(); }
 });

@@ -931,19 +931,18 @@ export async function enviarAgenda(
       // A mesma chave do dia vai para o provedor: uma nova tentativa do mesmo envio não duplica.
       // Com prazo bem menor que o da trava: uma chamada presa vira "incerta" (a marca e o pedido ficam
       // para a retomada), em vez de continuar depois que outra execução pode ter tomado a trava.
-      await comPrazo(correio.enviar({ para: d.email, assunto: carga.assunto, texto: carga.texto, chave }), o.prazoProvedorMs ?? PRAZO_PROVEDOR_MS);
+      await comPrazo(correio.enviar({ para: d.email, assunto: carga.assunto, texto: carga.texto, chave, conteudoRestrito: true }), o.prazoProvedorMs ?? PRAZO_PROVEDOR_MS);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
       if (e instanceof ErroEnvioIncerto) {
         // Pode ter saído: a marca fica "enviando" com o pedido guardado. Uma retomada depois de 15
         // minutos repete o mesmo pedido com a mesma chave; se virar o dia, vira "incerto" e a agenda
         // seguinte avisa que as reservas podem já ter vindo.
-        r.falhas.push(`${d.email}: envio incerto (${msg}); nova tentativa com o mesmo e-mail depois de 15 minutos`);
+        r.falhas.push(`${d.email}: envio incerto; nova tentativa com o mesmo e-mail depois de 15 minutos`);
         return false;
       }
       // O provedor recusou (ou nem chegou a ser chamado): libera para tentar de novo.
       await db.delete(appSettings).where(and(eq(appSettings.key, chave), daTentativa));
-      r.falhas.push(`${d.email}: ${msg}`);
+      r.falhas.push(`${d.email}: não foi possível enviar a agenda`);
       return false;
     }
     // Daqui em diante o e-mail já saiu: falha ao registrar não libera outro envio (a marca fica).
@@ -1048,8 +1047,8 @@ export async function enviarAgenda(
         }
         return true;
       });
-    } catch (e) {
-      r.falhas.push(`${d.email}: enviada, mas não foi possível registrar o envio (${e instanceof Error ? e.message : String(e)})`);
+    } catch {
+      r.falhas.push(`${d.email}: enviada, mas não foi possível registrar o envio`);
       return false;
     }
   };

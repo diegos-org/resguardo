@@ -522,7 +522,7 @@ describe("configuração e envio", () => {
     await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "a@example.com", cidades: [] }] }, null);
     const preso: Correio = { nome: "preso", enviar: () => new Promise(() => {}) };
     const r = await enviarAgenda(db, org, preso, AGORA, { prazoProvedorMs: 50 });
-    expect(r.falhas[0]).toContain("não respondeu");
+    expect(r.falhas[0]).toContain("envio incerto");
     const [marca] = await db.select().from(appSettings).where(eq(appSettings.key, `agenda-diaria:${org}:2026-10-01:a@example.com`));
     expect((marca.value as { estado: string }).estado).toBe("enviando");
   });
@@ -1106,7 +1106,7 @@ describe("configuração e envio", () => {
         throw new Error("HTTP 500");
       },
     };
-    expect(await enviarAgenda(db, org, quebrado, AGORA)).toMatchObject({ enviados: 0, falhas: ["equipe@example.com: HTTP 500"] });
+    expect(await enviarAgenda(db, org, quebrado, AGORA)).toMatchObject({ enviados: 0, falhas: ["equipe@example.com: não foi possível enviar a agenda"] });
     expect(await enviarAgenda(db, org, correio, AGORA)).toMatchObject({ enviados: 1 });
   });
 
@@ -1144,4 +1144,3 @@ describe("configuração e envio", () => {
     expect(execucoes.every((e) => !e.resumo.includes("@"))).toBe(true);
   });
 });
-
