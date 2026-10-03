@@ -46,6 +46,22 @@ Reservas existentes no Airbnb permanecem na plataforma. Atendimento operacional 
 
 Telefone pessoal de Diego, códigos, documentos, finanças e contatos de terceiros ficam fora de guias compartilháveis e agendas. Exceções históricas para a presença dele em grupos de equipes/proprietários não autorizam redistribuir o número; participação em grupos com hóspedes é decisão específica.
 
+## Exemplos úteis por imóvel
+
+Reunir aqui mensagens adaptáveis com informações novas fornecidas por Diego, organizadas por imóvel. Acrescentar exemplos dos demais imóveis conforme surgirem, no mesmo guia. Cada exemplo deve registrar fonte/data, distinguir fato informado de hipótese e indicar o que precisa ser conferido antes de usar. Não extrapolar características entre imóveis nem transformar um exemplo em autorização de envio.
+
+### 399 — como reconhecer a fachada
+
+**Fonte:** descrição fornecida pelo proprietário Diego em **02/10/2026**. Informou prédio pequeno de três andares, fachada toda revestida de pequenos azulejos, grade e recuo em relação à calçada, com porteiro em horário comercial. Para expediente exato, almoço, folgas e chaves, consultar [portaria, chaves e limpeza](PORTARIA-CHAVES-LIMPEZA.md); “horário comercial” não garante presença em qualquer horário de chegada.
+
+**Foto:** Diego disse que acha que há uma foto da fachada no anúncio e que costumava haver. A existência atual da foto **não foi verificada**. Conferir o anúncio antes de dizer ao hóspede que a foto está lá; se não for localizada, usar apenas a descrição. Grade, recuo e porteiro não são garantia de segurança.
+
+**Modelo adaptável, sem depender da foto:**
+
+> Para ajudar a reconhecer o prédio: é pequeno, de três andares, com a fachada toda revestida de pequenos azulejos. Tem grade e fica recuado em relação à calçada. Há porteiro em horários específicos; vamos conferir o expediente e a retirada das chaves para a sua chegada.
+
+Se a foto for encontrada e conferida no anúncio atual, pode complementar com a indicação de onde ela está. Não afirmar que há foto sem essa conferência nem prometer presença de porteiro fora do expediente confirmado.
+
 ## Agenda — decisões diretas de Diego em 2/10/2026
 
 A agenda diária tem referência de 20h, America/Sao_Paulo; esta regra não ativa envio. Exibir datas inicial/final e cobertura consultada. No produto, prévia/e-mail e WhatsApp local são caminhos diferentes: a prévia do aplicativo não comprova que Lia enviou aquele texto.
@@ -67,7 +83,7 @@ A agenda diária tem referência de 20h, America/Sao_Paulo; esta regra não ativ
 
 ### Em ambos
 
-Primeiro nome e quantidade de hóspedes para orientar arrumação; se ausentes, marcar “não informado”, sem adivinhar. Incluir telefone operacional do hóspede quando houver fonte confiável e acesso autorizado, somente para a equipe responsável. Não colocar telefones reais em exemplos, GitHub, páginas públicas ou logs. Não trocar destinatários/permissões por esta regra.
+Nas duas listas, incluir sempre primeiro nome, telefone operacional e total de hóspedes, para orientar contato e arrumação. Se nome ou quantidade faltarem, marcar “não informado”; se telefone faltar ou não houver fonte confiável, marcar “telefone não informado”, sem adivinhar. Compartilhar telefone somente com acesso autorizado e com a equipe responsável. Não colocar telefones reais em exemplos, GitHub, páginas públicas ou logs. Não trocar destinatários/permissões por esta regra.
 
 Manter aviso de mudanças: “Essa é a agenda atual e ainda pode mudar com novas reservas ou cancelamentos. Quando eu identificar alguma mudança, aviso aqui.” Equipe verificada pode pedir horizonte maior da própria operação; declarar intervalo e consultar dados atuais. Não prometer detecção instantânea nem repetir avisos já confirmados.
 
