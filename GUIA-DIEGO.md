@@ -48,8 +48,8 @@ O proprietário passa a cuidar do próprio calendário no portal, sem precisar p
   no Beds24 e nos canais no próximo envio de calendário (M3.7) — como qualquer bloqueio, só
   quando o envio estiver ligado.
 - **Liberar datas:** só o que ele mesmo bloqueou e que ainda não passou, sempre com
-  confirmação. Bloqueio feito pela empresa ou que veio do Beds24 aparece na lista com "quem
-  bloqueou", mas só a empresa libera.
+  confirmação. Bloqueio feito pela empresa, pelo titular anterior do imóvel ou que veio do
+  Beds24 aparece na lista com "quem bloqueou", mas só a empresa libera.
 - **Limites:** nunca no passado e nunca por cima de uma reserva — o portal avisa em vez de
   deixar passar.
 - **Permissão por contrato:** cada contrato (ficha do imóvel → Contratos) tem a opção

@@ -8,8 +8,9 @@ const imoveis = [
   { id: "i303", codigo: "303", nome: "Três", permissao: false as boolean | null },
 ];
 const bloqueios = [
-  { id: "b1", imovelId: "i403", codigo: "403", inicio: "2026-10-10", fim: "2026-10-12", motivo: "Uso próprio", fonte: "proprietario", liberavel: true },
-  { id: "b2", imovelId: "i403", codigo: "403", inicio: "2026-11-10", fim: "2026-11-12", motivo: "Manutenção", fonte: "manual", liberavel: false },
+  { id: "b1", imovelId: "i403", codigo: "403", inicio: "2026-10-10", fim: "2026-10-12", motivo: "Uso próprio", fonte: "proprietario", proprio: true, liberavel: true },
+  { id: "b2", imovelId: "i403", codigo: "403", inicio: "2026-11-10", fim: "2026-11-12", motivo: "Manutenção", fonte: "manual", proprio: false, liberavel: false },
+  { id: "b3", imovelId: "i403", codigo: "403", inicio: "2026-12-10", fim: "2026-12-12", motivo: "Uso próprio", fonte: "proprietario", proprio: false, liberavel: false },
 ];
 const bloquear = vi.fn();
 const liberar = vi.fn();
@@ -19,6 +20,7 @@ afterEach(cleanup);
 it("lista os bloqueios com quem fez cada um e só deixa liberar os do proprietário", () => {
   render(<BloqueiosProprietario imoveis={imoveis} bloqueios={bloqueios} empresa="Sua Casa Exemplo" hoje="2026-10-03" bloquear={bloquear} liberar={liberar} />);
   expect(screen.getByText("Você")).toBeTruthy();
+  expect(screen.getByText("Proprietário anterior")).toBeTruthy();
   expect(screen.getByText("Sua Casa Exemplo")).toBeTruthy();
   expect(screen.getAllByRole("button", { name: "Liberar" })).toHaveLength(1);
   // Só o imóvel com permissão entra no formulário; o outro é explicado.

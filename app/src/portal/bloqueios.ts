@@ -7,16 +7,24 @@
 import { and, asc, eq, gte, inArray } from "drizzle-orm";
 import { exigir, type Sessao } from "@/acesso/politica";
 import { contratoVigente, vigenteEm } from "@/contratos/regras";
-import { contratos, bloqueios, imoveis, type TipoContrato } from "@/db/schema";
+import { contratos, bloqueios, imoveis, proprietarioImoveis, type TipoContrato } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { criarBloqueio, excluirBloqueio, type ResultadoBloqueio, type ResultadoRemocao, validarBloqueio } from "@/reservas/bloqueios";
+import { proprietariosDoUsuario } from "./resumo";
 
 export type EntradaBloqueioPortal = { imovelId: string; inicio: string; fim: string; motivo: string };
-export type BloqueioDoProprietario = { id: string; imovelId: string; codigo: string; inicio: string; fim: string; motivo: string; fonte: string; liberavel: boolean };
+/** `proprio`: feito por um titular da conta dele (não pelo titular anterior do imóvel). */
+export type BloqueioDoProprietario = { id: string; imovelId: string; codigo: string; inicio: string; fim: string; motivo: string; fonte: string; proprio: boolean; liberavel: boolean };
 
 const SEM_PERMISSAO = "Seu contrato não prevê bloqueio de datas pelo portal. Fale com a empresa.";
+const SEM_TITULAR = "Não foi possível identificar o titular deste imóvel na sua conta. Fale com a empresa.";
+
+/** Titulares (proprietários ativos) ligados ao usuário da sessão. */
+async function titularesDaSessao(db: Db, sessao: Sessao): Promise<string[]> {
+  return (await proprietariosDoUsuario(db, sessao.organizacaoId, sessao.usuarioId)).map((p) => p.id);
+}
 const SEM_CONTRATO = "Não há contrato em vigor cobrindo todas essas datas. Fale com a empresa.";
 
 type ContratoDoImovel = { imovelId: string; tipo: TipoContrato; comissaoBp: number | null; inicio: string; fim: string | null; proprietarioBloqueia: boolean };
@@ -73,7 +81,14 @@ export async function bloquearPeloProprietario(db: Db, sessao: Sessao, e: Entrad
   const permissao = permissaoNoIntervalo(await contratosDosImoveis(db, sessao.organizacaoId, [im.id]), v.dados.inicio, ultimaNoite);
   if (permissao === null) return { ok: false, erro: SEM_CONTRATO };
   if (!permissao) return { ok: false, erro: SEM_PERMISSAO };
-  return criarBloqueio(db, sessao.organizacaoId, { ...v.dados, motivo: v.dados.motivo || "Uso próprio" }, sessao.usuarioId, { fonte: "proprietario", semReserva: true });
+  // O bloqueio fica ligado ao titular (proprietário) do imóvel na conta dele: só esse titular libera depois
+  // (uma troca de titular não passa os bloqueios do anterior ao novo). Sem titular único identificável, avisa.
+  const meus = await titularesDaSessao(db, sessao);
+  const titulares = meus.length
+    ? await db.select({ id: proprietarioImoveis.proprietarioId }).from(proprietarioImoveis).where(and(eq(proprietarioImoveis.imovelId, im.id), inArray(proprietarioImoveis.proprietarioId, meus)))
+    : [];
+  if (titulares.length !== 1) return { ok: false, erro: SEM_TITULAR };
+  return criarBloqueio(db, sessao.organizacaoId, { ...v.dados, motivo: v.dados.motivo || "Uso próprio" }, sessao.usuarioId, { fonte: "proprietario", semReserva: true, proprietarioId: titulares[0].id });
 }
 
 /** Libera datas que o próprio proprietário bloqueou (bloqueio da empresa ou do Beds24 não é dele para liberar). */
@@ -87,7 +102,7 @@ export async function liberarPeloProprietario(db: Db, sessao: Sessao, bloqueioId
   if (!b) return { ok: false, erro: "Bloqueio não encontrado." };
   exigir(sessao, "bloqueio:proprio", { organizacaoId: sessao.organizacaoId, imovelId: b.imovelId });
   if (b.fim <= hojeISO(b.fuso, agora)) return { ok: false, erro: "Esse bloqueio já passou; não há datas a liberar." };
-  return excluirBloqueio(db, sessao.organizacaoId, bloqueioId, sessao.usuarioId, { somenteFonte: "proprietario", imovelIds: sessao.imovelIds });
+  return excluirBloqueio(db, sessao.organizacaoId, bloqueioId, sessao.usuarioId, { somenteFonte: "proprietario", imovelIds: sessao.imovelIds, proprietarioIds: await titularesDaSessao(db, sessao) });
 }
 
 /**
@@ -99,14 +114,16 @@ export async function bloqueiosDoProprietario(db: Db, sessao: Sessao, agora = ne
   if (!ids.length) return [];
   // Filtro largo no banco (um dia antes da data UTC cobre qualquer fuso); a data certa de cada imóvel decide abaixo.
   const limite = new Date(agora.getTime() - 86_400_000).toISOString().slice(0, 10);
+  const meus = await titularesDaSessao(db, sessao);
   const linhas = await db
-    .select({ id: bloqueios.id, imovelId: bloqueios.imovelId, codigo: imoveis.codigo, fuso: imoveis.fuso, inicio: bloqueios.inicio, fim: bloqueios.fim, motivo: bloqueios.motivo, fonte: bloqueios.fonte })
+    .select({ id: bloqueios.id, imovelId: bloqueios.imovelId, codigo: imoveis.codigo, fuso: imoveis.fuso, inicio: bloqueios.inicio, fim: bloqueios.fim, motivo: bloqueios.motivo, fonte: bloqueios.fonte, proprietarioId: bloqueios.proprietarioId })
     .from(bloqueios)
     .innerJoin(imoveis, eq(imoveis.id, bloqueios.imovelId))
     .where(and(eq(bloqueios.organizacaoId, sessao.organizacaoId), inArray(bloqueios.imovelId, ids), gte(bloqueios.fim, limite)))
     .orderBy(asc(bloqueios.inicio), asc(imoveis.codigo));
-  return linhas.flatMap(({ fuso, ...b }) => {
+  return linhas.flatMap(({ fuso, proprietarioId, ...b }) => {
     const hoje = hojeISO(fuso, agora);
-    return b.fim >= hoje ? [{ ...b, liberavel: b.fonte === "proprietario" && b.fim > hoje }] : [];
+    const proprio = b.fonte === "proprietario" && proprietarioId !== null && meus.includes(proprietarioId);
+    return b.fim >= hoje ? [{ ...b, proprio, liberavel: proprio && b.fim > hoje }] : [];
   });
 }

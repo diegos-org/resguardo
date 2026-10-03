@@ -48,7 +48,7 @@ export function BloqueiosProprietario({ imoveis, bloqueios, empresa, hoje, bloqu
                   <td>{dataBr(b.inicio)}</td>
                   <td>{dataBr(b.fim)}</td>
                   <td>{b.motivo || "—"}</td>
-                  <td>{b.fonte === "proprietario" ? "Você" : b.fonte === "beds24" ? "Canal (Beds24)" : empresa}</td>
+                  <td>{b.fonte === "proprietario" ? (b.proprio ? "Você" : "Proprietário anterior") : b.fonte === "beds24" ? "Canal (Beds24)" : empresa}</td>
                   <td>
                     {b.liberavel && (
                       <form action={remover}>

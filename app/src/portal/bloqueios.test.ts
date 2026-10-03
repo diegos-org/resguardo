@@ -3,13 +3,13 @@ import { eq } from "drizzle-orm";
 import { AcessoNegado, type Sessao } from "@/acesso/politica";
 import { historicoDe } from "@/auditoria/auditoria";
 import { criarContrato } from "@/contratos/repositorio";
-import { beds24Envios, bloqueios, imoveis, organizacoes, proprietarioImoveis, proprietarios, reservas, usuarios } from "@/db/schema";
+import { beds24Envios, bloqueios, imoveis, organizacoes, proprietarioImoveis, proprietarios, proprietarioUsuarios, reservas, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { criarBloqueio } from "@/reservas/bloqueios";
 import { bloqueiosDoProprietario, bloquearPeloProprietario, liberarPeloProprietario, permissaoAPartirDe, permissaoNoIntervalo, permissoesDeBloqueio } from "./bloqueios";
 
-let db: Db, close: () => Promise<void>, org: string, a: string, b: string, c: string, d: string, usuario: string;
+let db: Db, close: () => Promise<void>, org: string, a: string, b: string, c: string, d: string, usuario: string, dona: string, outro: string;
 // 3/10/2026, 12:00 em São Paulo.
 const agora = new Date("2026-10-03T15:00:00Z");
 const sessao = (imovelIds = [a]): Sessao => ({ usuarioId: usuario, organizacaoId: org, papel: "proprietario", imovelIds });
@@ -26,9 +26,11 @@ beforeEach(async () => {
     { organizacaoId: org, codigo: "303", nome: "Três" },
     { organizacaoId: org, codigo: "103", nome: "Boutique" },
   ]).returning();
-  const [{ id: dona }, { id: outro }] = await db.insert(proprietarios).values([{ organizacaoId: org, nome: "Dona" }, { organizacaoId: org, nome: "Outro" }]).returning();
+  [{ id: dona }, { id: outro }] = await db.insert(proprietarios).values([{ organizacaoId: org, nome: "Dona" }, { organizacaoId: org, nome: "Outro" }]).returning();
   await db.insert(proprietarioImoveis).values([{ proprietarioId: dona, imovelId: a }, { proprietarioId: outro, imovelId: b }, { proprietarioId: dona, imovelId: c }, { proprietarioId: dona, imovelId: d }]);
   [{ id: usuario }] = await db.insert(usuarios).values({ organizacaoId: org, email: "dona@example.com", nome: "Dona", papel: "proprietario" }).returning();
+  // O usuário do portal representa a titular "Dona" (é daí que a sessão real tira os imóveis).
+  await db.insert(proprietarioUsuarios).values({ proprietarioId: dona, usuarioId: usuario });
   for (const i of [a, b]) await criarContrato(db, org, i, { tipo: "gestao_completa", comissao: "15", inicio: "2025-01-01" }, null);
   await criarContrato(db, org, c, { tipo: "gestao_completa", comissao: "15", inicio: "2025-01-01", proprietarioBloqueia: "nao" }, null);
 });
@@ -52,6 +54,39 @@ describe("calendário do proprietário (M5.5)", () => {
     expect(await bloquear(a, "2026-10-22", "2026-10-24")).toMatchObject({ ok: false, erro: expect.stringContaining("reserva") });
     expect(await bloquear(a, "2026-11-01", "2026-11-02")).toMatchObject({ ok: true });
     expect(await bloquear(a, "2026-11-10", "2026-11-09")).toMatchObject({ ok: false, erro: expect.stringContaining("depois") });
+    // Consulta não ocupa inventário (não impede); pedido ocupa (impede) — a mesma regra do calendário.
+    await db.insert(reservas).values([
+      { organizacaoId: org, imovelId: a, codigo: "SCL-T3", origem: "site", estado: "consulta", checkin: "2026-11-20", checkout: "2026-11-22", hospedeNome: "Curioso Fictício", fonte: "manual", idFonte: "" },
+      { organizacaoId: org, imovelId: a, codigo: "SCL-T4", origem: "site", estado: "pedido", checkin: "2026-11-25", checkout: "2026-11-27", hospedeNome: "Pedido Fictício", fonte: "manual", idFonte: "" },
+    ]);
+    expect(await bloquear(a, "2026-11-20", "2026-11-22")).toMatchObject({ ok: true });
+    expect(await bloquear(a, "2026-11-26", "2026-11-28")).toMatchObject({ ok: false, erro: expect.stringContaining("reserva") });
+    // O bloqueio guarda a titular que o fez.
+    expect((await lista()).every((x) => x.proprietarioId === dona)).toBe(true);
+  });
+
+  it("troca de titular: o novo proprietário vê o bloqueio do anterior, mas não libera; sem titular identificável na conta, avisa", async () => {
+    const meu = await bloquear(a, "2026-10-10", "2026-10-12");
+    if (!meu.ok) throw new Error(meu.erro);
+    // O imóvel passa para "Outro", representado por outro usuário.
+    await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));
+    await db.insert(proprietarioImoveis).values({ proprietarioId: outro, imovelId: a });
+    const [{ id: usuario2 }] = await db.insert(usuarios).values({ organizacaoId: org, email: "outro@example.com", nome: "Outro", papel: "proprietario" }).returning();
+    await db.insert(proprietarioUsuarios).values({ proprietarioId: outro, usuarioId: usuario2 });
+    const s2: Sessao = { usuarioId: usuario2, organizacaoId: org, papel: "proprietario", imovelIds: [a] };
+    expect(await bloqueiosDoProprietario(db, s2, agora)).toMatchObject([{ id: meu.id, fonte: "proprietario", proprio: false, liberavel: false }]);
+    expect(await liberarPeloProprietario(db, s2, meu.id, agora)).toMatchObject({ ok: false, erro: expect.stringContaining("outro proprietário") });
+    // O novo titular bloqueia normalmente (fica ligado a ele) e libera o dele.
+    const dele = await bloquearPeloProprietario(db, s2, { imovelId: a, inicio: "2026-12-01", fim: "2026-12-03", motivo: "" }, agora);
+    expect(dele).toMatchObject({ ok: true });
+    expect(await bloqueiosDoProprietario(db, s2, agora)).toMatchObject([{ id: meu.id, proprio: false }, { proprio: true, liberavel: true }]);
+    if (dele.ok) expect(await liberarPeloProprietario(db, s2, dele.id, agora)).toEqual({ ok: true });
+    expect((await lista()).map((x) => x.id)).toEqual([meu.id]);
+    // Usuário com acesso ao imóvel mas sem titular ligado na conta: não dá para registrar quem bloqueou → avisa, nada gravado.
+    const [{ id: usuario3 }] = await db.insert(usuarios).values({ organizacaoId: org, email: "solto@example.com", nome: "Solto", papel: "proprietario" }).returning();
+    const s3: Sessao = { usuarioId: usuario3, organizacaoId: org, papel: "proprietario", imovelIds: [a] };
+    expect(await bloquearPeloProprietario(db, s3, { imovelId: a, inicio: "2026-12-10", fim: "2026-12-12", motivo: "" }, agora)).toMatchObject({ ok: false, erro: expect.stringContaining("titular") });
+    expect(await lista()).toHaveLength(1);
   });
 
   it("só nos imóveis dele e conforme o contrato: outro dono é negado; contrato sem permissão e imóvel sem contrato são recusados", async () => {
@@ -97,15 +132,14 @@ describe("calendário do proprietário (M5.5)", () => {
     // 03:30Z de 3/10: 00:30 de 3/10 em São Paulo e 22:30 de 2/10 em Rio Branco.
     const meiaNoite = new Date("2026-10-03T03:30:00Z");
     const [{ id: e }] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "505", nome: "Acre", fuso: "America/Rio_Branco" }).returning();
-    const [{ id: dona }] = await db.select({ id: proprietarioImoveis.proprietarioId }).from(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));
     await db.insert(proprietarioImoveis).values({ proprietarioId: dona, imovelId: e });
     const [spHoje, spOntem, rbHoje, rbOntem] = await db
       .insert(bloqueios)
       .values([
-        { organizacaoId: org, imovelId: a, inicio: "2026-10-01", fim: "2026-10-03", motivo: "", fonte: "proprietario" },
-        { organizacaoId: org, imovelId: a, inicio: "2026-09-30", fim: "2026-10-02", motivo: "", fonte: "proprietario" },
-        { organizacaoId: org, imovelId: e, inicio: "2026-10-01", fim: "2026-10-03", motivo: "", fonte: "proprietario" },
-        { organizacaoId: org, imovelId: e, inicio: "2026-09-30", fim: "2026-10-02", motivo: "", fonte: "proprietario" },
+        { organizacaoId: org, imovelId: a, inicio: "2026-10-01", fim: "2026-10-03", motivo: "", fonte: "proprietario", proprietarioId: dona },
+        { organizacaoId: org, imovelId: a, inicio: "2026-09-30", fim: "2026-10-02", motivo: "", fonte: "proprietario", proprietarioId: dona },
+        { organizacaoId: org, imovelId: e, inicio: "2026-10-01", fim: "2026-10-03", motivo: "", fonte: "proprietario", proprietarioId: dona },
+        { organizacaoId: org, imovelId: e, inicio: "2026-09-30", fim: "2026-10-02", motivo: "", fonte: "proprietario", proprietarioId: dona },
       ])
       .returning({ id: bloqueios.id });
     const s = sessao([a, e]);
