@@ -195,15 +195,42 @@ jobs:
               fi
             done <<< "${sumiram_do_backup}"
           fi
+          # Cópias recusadas/ ALTERADAS neste backup (ainda existem, mas com outro objeto): o inventário continua
+          # cobrando o objeto esperado em toda rodada, até a cópia ser apagada (aí vale a regra acima). Se a origem
+          # ainda tiver o objeto exato, ele é salvo de novo sob a data desta rodada.
+          alteradas=""
+          while read -r _ sha ref; do
+            [ -z "${ref}" ] && continue
+            g=$(git rev-parse -q --verify "refs/guardado/recusadas/${ref#refs/tags/recusadas/}" 2>/dev/null || true)
+            [ -z "${g}" ] && continue
+            [ "${g}" = "${sha}" ] && continue
+            alteradas="${alteradas}${ref} (esperado ${sha}, encontrado ${g})"$'\n'
+            src="refs/${ref#refs/tags/recusadas/*/}"
+            novo_dest="refs/tags/recusadas/${marco#backup/}/${src#refs/}"
+            atual_sha=$(git rev-parse -q --verify "${src}" 2>/dev/null || true)
+            if [ "${atual_sha}" = "${sha}" ] && ! printf '%s' "${copias_novas}" | grep -q " ${novo_dest}$"; then
+              recriadas+=("${src}:${novo_dest}"); copias_recriadas="${copias_recriadas}${sha} ${novo_dest}"$'\n'
+            fi
+          done < <(awk '$1 == "recusada" && NF == 3' anterior.txt)
+
           # Inventário, parte 2: o que este backup guarda depois desta rodada. As cópias recusadas/ vão com o
-          # objeto esperado; o resto, pelo nome.
+          # objeto esperado (o já inventariado, ou o desta rodada); o resto, pelo nome.
           {
             cat guardado.refs atual.refs
             echo "refs/tags/${marco}"
             echo refs/heads/backup-marcos
           } | grep -v '^refs/tags/recusadas/' | sort -u | sed 's/^/backup /' >> inventario.txt
           {
-            git for-each-ref --format='%(objectname) refs/tags/recusadas/%(refname:strip=3)' refs/guardado/recusadas
+            # já inventariadas e ainda presentes: mantém o objeto esperado
+            while read -r _ sha ref; do
+              [ -z "${ref}" ] && continue
+              if git rev-parse -q --verify "refs/guardado/recusadas/${ref#refs/tags/recusadas/}" >/dev/null 2>&1; then echo "${sha} ${ref}"; fi
+            done < <(awk '$1 == "recusada" && NF == 3' anterior.txt)
+            # presentes no backup sem constar da base (ex.: base perdida): entram como estão
+            while read -r sha ref; do
+              [ -z "${ref}" ] && continue
+              if ! awk '$1 == "recusada" && NF == 3 {print $3}' anterior.txt | grep -qx "${ref}"; then echo "${sha} ${ref}"; fi
+            done < <(git for-each-ref --format='%(objectname) refs/tags/recusadas/%(refname:strip=3)' refs/guardado/recusadas)
             printf '%s' "${copias_novas}"
             printf '%s' "${copias_recriadas}"
           } | sed '/^$/d' | sort -u | sed 's/^/recusada /' >> inventario.txt
@@ -298,6 +325,11 @@ jobs:
           if [ -n "${sumiram_do_backup}" ]; then
             echo "::error::Branches/tags que SUMIRAM DESTE BACKUP desde a rodada anterior (alguém apagou aqui; o que a origem ainda tem foi gravado de novo):"
             echo "${sumiram_do_backup}"
+            falhou=1
+          fi
+          if [ -n "${alteradas}" ]; then
+            echo "::error::Cópias recusadas/ ALTERADAS neste backup (o objeto não é o inventariado; a cópia histórica pode ter se perdido). Apague a cópia alterada para o robô regravá-la a partir da origem, se ela ainda tiver o objeto; até lá este aviso se repete:"
+            printf '%s' "${alteradas}"
             falhou=1
           fi
           if [ -n "${perdidas}" ]; then
