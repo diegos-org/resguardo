@@ -13,13 +13,17 @@
   tem vê a cotação, sem dado pessoal (o contato fica só na reserva, no painel).
 - **Revalidação** a cada abertura da página: cotação aberta é recalculada; se situação possível e valores
   não batem, a página diz "mudou" e oferece nova consulta. Nada é gravado só por visitar.
+- **Freios do site público:** repetir a mesma consulta (mesmo imóvel, datas, pessoas e valores) em 24 h
+  reaproveita a cotação aberta em vez de criar outra; cada imóvel aceita até 100 cotações abertas por 24 h
+  (acima disso, "fale com a equipe"); cotação que nunca virou pedido é apagada pela rotina depois de 30 dias.
 
 ## Segurar as datas (hold)
 
 - Exige nome, e-mail e telefone válidos. Numa só transação: trava a linha do imóvel (`FOR UPDATE`, a mesma
   dos bloqueios), vence os holds atrasados daquele imóvel, exige cotação **aberta**, reconfere disponibilidade
   e valor (se mudaram: cotação **desatualizada**, nada gravado) e aplica os freios: **um** pedido em andamento
-  por e-mail e **cinco** por imóvel.
+  por e-mail (com trava própria por e-mail, já que a do imóvel não serializa o mesmo e-mail em imóveis
+  diferentes) e **cinco** por imóvel.
 - Cria a reserva pela mesma porta das importações (`sincronizarReserva`, fonte `site`, idFonte = id da
   cotação, idempotente): estado **pedido**, origem **site**, valor bruto = total da cotação, taxa do canal
   desconhecida (null), observações com o código e o prazo. Pedido **ocupa inventário** (regra do M3.8) e
@@ -33,7 +37,9 @@
   `pedido` com prazo vencido → reserva **cancelada** (histórico "sistema") e cotação **expirada**; pedido
   que a equipe **confirmou** → cotação **convertida**; que a equipe **cancelou** → cotação **cancelada**.
 - A página da cotação reflete o vencimento mesmo antes da rotina (compara `holdAte` com agora).
-- `confirmarReserva` aceita `pedido` além de `pendente` (painel: botão Confirmar na ficha do pedido).
+- `confirmarReserva` aceita `pedido` além de `pendente` (painel: botão Confirmar na ficha do pedido). Pedido do
+  site com o prazo vencido **não confirma**: vence na hora (reserva cancelada, cotação expirada) e a equipe
+  pede uma cotação nova ao hóspede — a rotina de 10 minutos não é pré-requisito.
 
 ## Limites conhecidos
 

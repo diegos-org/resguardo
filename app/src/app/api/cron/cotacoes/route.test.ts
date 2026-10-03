@@ -20,10 +20,10 @@ it("recusa execução agendada na preview", async () => {
   expect(m.db).not.toHaveBeenCalled();
 });
 it("vence os holds de todas as empresas e falha sem expor o erro", async () => {
-  m.expirar.mockResolvedValue({ expiradas: 2, convertidas: 1, canceladas: 0 });
+  m.expirar.mockResolvedValue({ expiradas: 2, convertidas: 1, canceladas: 0, removidas: 3 });
   const r = await GET(req("cron-teste"));
   expect(r.status).toBe(200);
-  expect(await r.json()).toEqual({ ok: true, resumo: { expiradas: 2, convertidas: 1, canceladas: 0 } });
+  expect(await r.json()).toEqual({ ok: true, resumo: { expiradas: 2, convertidas: 1, canceladas: 0, removidas: 3 } });
   expect(m.expirar).toHaveBeenCalledWith(undefined, null, expect.any(Date));
   m.expirar.mockRejectedValue(new Error("SEGREDO"));
   const f = await GET(req("cron-teste"));

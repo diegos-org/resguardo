@@ -7,7 +7,7 @@
  * usar este mesmo hold. Nada é escrito no Beds24 aqui (M8.3).
  */
 import { randomInt } from "node:crypto";
-import { and, eq, gt, lte, ne, or } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { lerRegrasCalendario } from "@/calendario/regras-config";
 import { violouUnicidade } from "@/db/erros";
@@ -23,6 +23,12 @@ export type ErrosContato = Partial<Record<keyof Contato, string>>;
 
 /** Quantos pedidos do site podem estar em andamento ao mesmo tempo num imóvel (freio contra abuso). */
 export const MAXIMO_HOLDS_POR_IMOVEL = 5;
+/** Quantas cotações abertas (sem pedido) um imóvel aceita em 24 h; acima disso, o site pede para falar com a equipe. */
+export const MAXIMO_COTACOES_ABERTAS_POR_IMOVEL = 100;
+/** Repetir a mesma consulta (mesmo imóvel, datas, pessoas e valores) dentro deste prazo reaproveita a cotação aberta. */
+export const REAPROVEITAR_COTACAO_MS = 24 * 3_600_000;
+/** Cotação que nunca virou pedido é apagada depois deste prazo (não há histórico a preservar). */
+export const GUARDAR_COTACAO_SEM_PEDIDO_DIAS = 30;
 
 const ALFABETO = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sem 0/O/1/I
 /** Código público da cotação, ex.: COT-7K2QXM9A. Não é credencial. */
@@ -62,6 +68,36 @@ export async function criarCotacao(db: Db, organizacaoId: string, p: PedidoConsu
   if (!d.cotacao || d.cotacao.diarias === null || d.cotacao.total === null) return { ok: false, erro: "O valor dessas datas ainda precisa ser confirmado pela equipe: fale com a gente.", disponibilidade: d };
   const [im] = await db.select({ id: imoveis.id }).from(imoveis).where(and(eq(imoveis.organizacaoId, organizacaoId), eq(imoveis.codigo, p.imovel)));
   if (!im) return { ok: false, erro: "Escolha um apartamento.", disponibilidade: d };
+  // A mesma consulta repetida (mesmo imóvel, datas, pessoas e valores) reaproveita a cotação aberta recente:
+  // recarregar ou reenviar a página não cria linhas novas.
+  const hospedes = Number(p.hospedes);
+  const [igual] = await db
+    .select()
+    .from(cotacoes)
+    .where(
+      and(
+        eq(cotacoes.organizacaoId, organizacaoId),
+        eq(cotacoes.imovelId, im.id),
+        eq(cotacoes.estado, "aberta"),
+        eq(cotacoes.checkin, p.entrada),
+        eq(cotacoes.checkout, p.saida),
+        eq(cotacoes.hospedes, hospedes),
+        eq(cotacoes.diarias, d.cotacao.diarias),
+        eq(cotacoes.limpeza, d.cotacao.limpeza),
+        eq(cotacoes.hospedeExtra, d.cotacao.hospedeExtra),
+        eq(cotacoes.total, d.cotacao.total),
+        gte(cotacoes.criadaEm, new Date(agora.getTime() - REAPROVEITAR_COTACAO_MS)),
+      ),
+    )
+    .orderBy(desc(cotacoes.criadaEm))
+    .limit(1);
+  if (igual) return { ok: true, cotacao: igual, disponibilidade: d };
+  // Freio: o site é público, então o número de cotações abertas por imóvel nas últimas 24 h tem teto.
+  const [{ abertas }] = await db
+    .select({ abertas: count() })
+    .from(cotacoes)
+    .where(and(eq(cotacoes.organizacaoId, organizacaoId), eq(cotacoes.imovelId, im.id), eq(cotacoes.estado, "aberta"), gte(cotacoes.criadaEm, new Date(agora.getTime() - 24 * 3_600_000))));
+  if (Number(abertas) >= MAXIMO_COTACOES_ABERTAS_POR_IMOVEL) return { ok: false, erro: "Há muitas consultas em andamento neste apartamento agora. Tente de novo em alguns minutos ou fale com a equipe.", disponibilidade: d };
   for (let tentativa = 0; ; tentativa++) {
     try {
       const [c] = await db
@@ -73,7 +109,7 @@ export async function criarCotacao(db: Db, organizacaoId: string, p: PedidoConsu
           estado: "aberta",
           checkin: p.entrada,
           checkout: p.saida,
-          hospedes: Number(p.hospedes),
+          hospedes,
           noites: d.noites,
           situacao: d.situacao,
           diarias: d.cotacao.diarias,
@@ -179,7 +215,10 @@ export async function segurarDatas(db: Db, organizacaoId: string, codigo: string
       const possivel = d.situacao === "disponivel" || d.situacao === "a_confirmar";
       return { ok: false as const, erro: possivel ? "O valor mudou desde esta cotação. Faça uma nova consulta para ver o valor atual." : "Essas datas acabaram de ficar indisponíveis.", motivos: d.motivos, estado: "desatualizada" };
     }
-    // Freios contra abuso: poucos pedidos em andamento por imóvel e um por e-mail.
+    // Freios contra abuso: poucos pedidos em andamento por imóvel e um por e-mail. A trava do imóvel não
+    // serializa o mesmo e-mail em imóveis diferentes, então o e-mail ganha a própria trava (na transação,
+    // sempre depois da do imóvel, para não haver espera cruzada).
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`cotacao-email:${organizacaoId}:${v.dados.email}`}))`);
     const ativos = await tx
       .select({ imovelId: cotacoes.imovelId, email: reservas.hospedeEmail })
       .from(cotacoes)
@@ -222,11 +261,12 @@ export async function segurarDatas(db: Db, organizacaoId: string, codigo: string
   });
 }
 
-export type ResumoExpiracao = { expiradas: number; convertidas: number; canceladas: number };
+export type ResumoExpiracao = { expiradas: number; convertidas: number; canceladas: number; removidas: number };
 
 /**
  * Fecha o ciclo dos holds: pedido vencido é cancelado (as noites voltam à venda) e a cotação fica expirada;
- * pedido que a equipe já confirmou vira cotação convertida; pedido que a equipe cancelou, cancelada.
+ * pedido que a equipe já confirmou vira cotação convertida; pedido que a equipe cancelou, cancelada. Sem
+ * `imovelId` (rotina), também apaga cotações que nunca viraram pedido depois de 30 dias.
  * `organizacaoId` null = todas as empresas (rotina); `imovelId` restringe a um imóvel (antes de segurar).
  */
 export async function expirarHoldsVencidos(db: Db, organizacaoId: string | null, agora = new Date(), imovelId?: string): Promise<ResumoExpiracao> {
@@ -244,7 +284,7 @@ export async function expirarHoldsVencidos(db: Db, organizacaoId: string | null,
         ),
       )
       .for("update");
-    const resumo: ResumoExpiracao = { expiradas: 0, convertidas: 0, canceladas: 0 };
+    const resumo: ResumoExpiracao = { expiradas: 0, convertidas: 0, canceladas: 0, removidas: 0 };
     for (const c of lista) {
       let estado: EstadoCotacao;
       if (c.estadoReserva === "pedido") {
@@ -259,6 +299,20 @@ export async function expirarHoldsVencidos(db: Db, organizacaoId: string | null,
         resumo.convertidas++;
       }
       await tx.update(cotacoes).set({ estado, atualizadaEm: agora }).where(eq(cotacoes.id, c.id));
+    }
+    if (!imovelId) {
+      const antigas = await tx
+        .delete(cotacoes)
+        .where(
+          and(
+            organizacaoId ? eq(cotacoes.organizacaoId, organizacaoId) : undefined,
+            inArray(cotacoes.estado, ["aberta", "desatualizada"]),
+            isNull(cotacoes.reservaId),
+            lt(cotacoes.criadaEm, new Date(agora.getTime() - GUARDAR_COTACAO_SEM_PEDIDO_DIAS * 86_400_000)),
+          ),
+        )
+        .returning({ id: cotacoes.id });
+      resumo.removidas = antigas.length;
     }
     return resumo;
   });

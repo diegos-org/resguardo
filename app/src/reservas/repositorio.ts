@@ -2,7 +2,7 @@ import { and, asc, eq, gt, inArray, lt, ne, or, sql } from "drizzle-orm";
 import { emailValido } from "@/acesso/codigo-email";
 import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
 import { violouUnicidade } from "@/db/erros";
-import { bloqueios, imoveis, reservas } from "@/db/schema";
+import { bloqueios, imoveis, reservas, cotacoes } from "@/db/schema";
 import { aplicarMotor } from "@/financeiro/aplicar";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
@@ -268,17 +268,17 @@ class ConfirmacaoRecusada extends Error {}
  * Se ela já movimentou dinheiro e o cálculo novo não bate com o que ficou no livro (o motor não mexe
  * nisso), não confirma: a conferência continua até o ajuste manual (avisar em vez de supor).
  */
-export async function confirmarReserva(db: Db, organizacaoId: string, id: string, autorId: string | null): Promise<{ ok: boolean; aviso?: string }> {
+export async function confirmarReserva(db: Db, organizacaoId: string, id: string, autorId: string | null, agora = new Date()): Promise<{ ok: boolean; aviso?: string }> {
   if (!uuidValido(id)) return { ok: false };
   try {
-    return await confirmarNaTransacao(db, organizacaoId, id, autorId);
+    return await confirmarNaTransacao(db, organizacaoId, id, autorId, agora);
   } catch (e) {
     if (e instanceof ConfirmacaoRecusada) return { ok: false, aviso: e.message };
     throw e;
   }
 }
 
-async function confirmarNaTransacao(db: Db, organizacaoId: string, id: string, autorId: string | null): Promise<{ ok: boolean }> {
+async function confirmarNaTransacao(db: Db, organizacaoId: string, id: string, autorId: string | null, agora: Date): Promise<{ ok: boolean; aviso?: string }> {
   return db.transaction(async (tx) => {
     const [r] = await tx
       .select()
@@ -287,6 +287,18 @@ async function confirmarNaTransacao(db: Db, organizacaoId: string, id: string, a
       .for("update");
     // Pendente (painel/fora) ou pedido (hold do site, M8.1; pedido vindo do Beds24 também): vira confirmada.
     if (!r || (r.estado !== "pendente" && r.estado !== "pedido")) return { ok: false };
+    // Pedido do site com o prazo vencido (a rotina ainda não passou): não confirma — vence agora, como a
+    // rotina faria, e a equipe pede uma cotação nova ao hóspede. A página da cotação já o mostra vencido.
+    if (r.estado === "pedido" && r.fonte === "site") {
+      const [cot] = await tx.select({ id: cotacoes.id, estado: cotacoes.estado, holdAte: cotacoes.holdAte }).from(cotacoes).where(eq(cotacoes.reservaId, r.id)).for("update");
+      if (cot && (cot.estado !== "segurada" || !cot.holdAte || cot.holdAte.getTime() <= agora.getTime())) {
+        await tx.update(reservas).set({ estado: "cancelada", canceladaEm: new Date(), confirmadaEm: null, conferenciaResolvidaEm: null, atualizadoEm: new Date() }).where(eq(reservas.id, id));
+        await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "reserva.cancelar", entidade: "reserva", entidadeId: id, mudancas: { estado: [r.estado, "cancelada"], motivo: [null, "prazo do pedido do site vencido"] } });
+        if (cot.estado === "segurada") await tx.update(cotacoes).set({ estado: "expirada", atualizadaEm: new Date() }).where(eq(cotacoes.id, cot.id));
+        await aplicarMotor(tx, organizacaoId, id, autorId);
+        return { ok: false, aviso: "Não confirmada: o prazo deste pedido do site já passou e as datas voltaram à venda. Peça ao hóspede uma nova cotação pelo site." };
+      }
+    }
     await tx.update(reservas).set({ estado: "confirmada", confirmadaEm: new Date(), conferenciaResolvidaEm: null, atualizadoEm: new Date() }).where(eq(reservas.id, id));
     await registrarAuditoria(tx, {
       organizacaoId,

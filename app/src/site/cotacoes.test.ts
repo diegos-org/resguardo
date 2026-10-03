@@ -6,7 +6,7 @@ import { beds24Calendario, bloqueios, cotacoes, idsExternos, imoveis, imoveisDet
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { cancelarReserva, confirmarReserva } from "@/reservas/repositorio";
-import { codigoCotacaoValido, criarCotacao, expirarHoldsVencidos, MAXIMO_HOLDS_POR_IMOVEL, segurarDatas, textoDaCotacao, validarContato, verCotacao } from "./cotacoes";
+import { codigoCotacaoValido, criarCotacao, expirarHoldsVencidos, MAXIMO_COTACOES_ABERTAS_POR_IMOVEL, MAXIMO_HOLDS_POR_IMOVEL, segurarDatas, textoDaCotacao, validarContato, verCotacao } from "./cotacoes";
 import { consultarDisponibilidade } from "./disponibilidade";
 
 let db: Db, close: () => Promise<void>, org: string, im: string;
@@ -59,9 +59,33 @@ describe("cotação do site (M8.1)", () => {
     expect(await verCotacao(db, org, "COT-ABCDEFGH", agora)).toBeNull();
   });
 
+  it("repetir a mesma consulta reaproveita a cotação aberta; há teto de cotações abertas por imóvel; as antigas sem pedido são apagadas", async () => {
+    const a = await cotar();
+    const b = await cotar();
+    expect(b.id).toBe(a.id);
+    const c = await cotar({ hospedes: "2" }); // valores diferentes: outra cotação
+    expect(c.id).not.toBe(a.id);
+    expect(await db.select().from(cotacoes).where(eq(cotacoes.organizacaoId, org))).toHaveLength(2);
+    // Teto: muitas cotações abertas nas últimas 24 h → recusa com aviso (as já abertas continuam valendo).
+    await db.insert(cotacoes).values(
+      Array.from({ length: MAXIMO_COTACOES_ABERTAS_POR_IMOVEL }, (_, i) => ({
+        organizacaoId: org, imovelId: im, codigo: `COT-TESTE${String(i).padStart(3, "0")}`, estado: "aberta", checkin: "2026-11-01", checkout: "2026-11-02", hospedes: 1, noites: 1, situacao: "disponivel", diarias: 1, limpeza: 0, hospedeExtra: 0, total: 1, criadaEm: agora, atualizadaEm: agora,
+      })),
+    );
+    expect(await criarCotacao(db, org, pedido({ hospedes: "3" }), agora)).toMatchObject({ ok: false, erro: expect.stringContaining("muitas consultas") });
+    expect((await criarCotacao(db, org, pedido(), agora))).toMatchObject({ ok: true, cotacao: { id: a.id } }); // a repetida ainda é reaproveitada
+    // Limpeza da rotina: aberta/desatualizada sem pedido com mais de 30 dias somem; recentes e com pedido ficam.
+    await db.insert(cotacoes).values([
+      { organizacaoId: org, imovelId: im, codigo: "COT-VELHA001", estado: "aberta", checkin: "2026-11-01", checkout: "2026-11-02", hospedes: 1, noites: 1, situacao: "disponivel", diarias: 1, limpeza: 0, hospedeExtra: 0, total: 1, criadaEm: new Date(agora.getTime() - 40 * 86_400_000), atualizadaEm: agora },
+      { organizacaoId: org, imovelId: im, codigo: "COT-VELHA002", estado: "desatualizada", checkin: "2026-11-01", checkout: "2026-11-02", hospedes: 1, noites: 1, situacao: "disponivel", diarias: 1, limpeza: 0, hospedeExtra: 0, total: 1, criadaEm: new Date(agora.getTime() - 40 * 86_400_000), atualizadaEm: agora },
+    ]);
+    expect(await expirarHoldsVencidos(db, org, agora)).toEqual({ expiradas: 0, convertidas: 0, canceladas: 0, removidas: 2 });
+    expect(await db.select().from(cotacoes).where(eq(cotacoes.organizacaoId, org))).toHaveLength(2 + MAXIMO_COTACOES_ABERTAS_POR_IMOVEL);
+  });
+
   it("segurar: cria o pedido do site com o contato, ocupa as noites, revalida a outra cotação e não repete", async () => {
     const c1 = await cotar();
-    const c2 = await cotar(); // outro visitante, mesma estadia
+    const c2 = await cotar({ hospedes: "3" }); // outro visitante, mesma estadia (valores diferentes: outra cotação)
     const h = await segurarDatas(db, org, c1.codigo, contato(), agora);
     expect(h.ok).toBe(true);
     if (!h.ok) return;
@@ -96,10 +120,10 @@ describe("cotação do site (M8.1)", () => {
     // Antes da rotina, a página já mostra o vencimento.
     expect((await verCotacao(db, org, c.codigo, depois(29)))?.estado).toBe("segurada");
     expect((await verCotacao(db, org, c.codigo, depois(31)))?.estado).toBe("expirada");
-    expect(await expirarHoldsVencidos(db, org, depois(29))).toEqual({ expiradas: 0, convertidas: 0, canceladas: 0 });
+    expect(await expirarHoldsVencidos(db, org, depois(29))).toEqual({ expiradas: 0, convertidas: 0, canceladas: 0, removidas: 0 });
     // Sem empresa (rotina): cobre todas — inclusive holds de outros testes neste banco compartilhado.
     expect((await expirarHoldsVencidos(db, null, depois(31))).expiradas).toBeGreaterThanOrEqual(1);
-    expect(await expirarHoldsVencidos(db, org, depois(31))).toEqual({ expiradas: 0, convertidas: 0, canceladas: 0 });
+    expect(await expirarHoldsVencidos(db, org, depois(31))).toEqual({ expiradas: 0, convertidas: 0, canceladas: 0, removidas: 0 });
     expect((await db.select().from(reservas).where(eq(reservas.id, h.cotacao.reservaId!)))[0].estado).toBe("cancelada");
     expect(await verCotacao(db, org, c.codigo, depois(31))).toMatchObject({ estado: "expirada", atual: null });
     expect((await consultarDisponibilidade(db, org, pedido(), depois(31))).situacao).toBe("disponivel");
@@ -108,11 +132,11 @@ describe("cotação do site (M8.1)", () => {
     const c2 = await cotar({}, depois(40));
     const h2 = await segurarDatas(db, org, c2.codigo, contato(), depois(40));
     if (!h2.ok) throw new Error(h2.erro);
-    expect(await confirmarReserva(db, org, h2.cotacao.reservaId!, null)).toEqual({ ok: true });
+    expect(await confirmarReserva(db, org, h2.cotacao.reservaId!, null, depois(41))).toEqual({ ok: true });
     expect(await verCotacao(db, org, c2.codigo, depois(41))).toMatchObject({ estado: "convertida", reserva: { estado: "confirmada" } });
-    expect(await expirarHoldsVencidos(db, org, depois(41))).toEqual({ expiradas: 0, convertidas: 1, canceladas: 0 });
+    expect(await expirarHoldsVencidos(db, org, depois(41))).toEqual({ expiradas: 0, convertidas: 1, canceladas: 0, removidas: 0 });
     expect((await db.select().from(cotacoes).where(eq(cotacoes.id, c2.id)))[0].estado).toBe("convertida");
-    expect(await expirarHoldsVencidos(db, org, depois(200))).toEqual({ expiradas: 0, convertidas: 0, canceladas: 0 });
+    expect(await expirarHoldsVencidos(db, org, depois(200))).toEqual({ expiradas: 0, convertidas: 0, canceladas: 0, removidas: 0 });
     expect((await db.select().from(reservas).where(eq(reservas.id, h2.cotacao.reservaId!)))[0].estado).toBe("confirmada");
     // Equipe cancela o pedido: cotação cancelada, noites livres.
     const c3 = await cotar({ entrada: "2026-11-02", saida: "2026-11-04" }, depois(50));
@@ -120,7 +144,7 @@ describe("cotação do site (M8.1)", () => {
     if (!h3.ok) throw new Error(h3.erro);
     expect(await cancelarReserva(db, org, h3.cotacao.reservaId!, null)).toBe(true);
     expect((await verCotacao(db, org, c3.codigo, depois(51)))?.estado).toBe("cancelada");
-    expect(await expirarHoldsVencidos(db, org, depois(51))).toEqual({ expiradas: 0, convertidas: 0, canceladas: 1 });
+    expect(await expirarHoldsVencidos(db, org, depois(51))).toEqual({ expiradas: 0, convertidas: 0, canceladas: 1, removidas: 0 });
     expect((await consultarDisponibilidade(db, org, pedido({ entrada: "2026-11-02", saida: "2026-11-04" }), depois(51))).situacao).toBe("disponivel");
   });
 
@@ -143,6 +167,33 @@ describe("cotação do site (M8.1)", () => {
     expect(await segurarDatas(db, org, sexta.codigo, contato({ email: "v9@example.com" }), depois(6))).toMatchObject({ ok: false, erro: expect.stringContaining("muitas reservas em andamento") });
     expect(MAXIMO_HOLDS_POR_IMOVEL).toBe(5);
     expect((await minhasReservas()).filter((r) => r.estado === "pedido")).toHaveLength(5);
+  });
+
+  it("a equipe não confirma um pedido do site vencido antes da rotina: ele vence na hora e as datas voltam", async () => {
+    const c = await cotar();
+    const h = await segurarDatas(db, org, c.codigo, contato(), agora);
+    if (!h.ok) throw new Error(h.erro);
+    // Prazo venceu há um minuto (a rotina de 10 min ainda não passou).
+    expect(await confirmarReserva(db, org, h.cotacao.reservaId!, null, depois(31))).toMatchObject({ ok: false, aviso: expect.stringContaining("prazo deste pedido do site já passou") });
+    expect((await db.select().from(reservas).where(eq(reservas.id, h.cotacao.reservaId!)))[0].estado).toBe("cancelada");
+    expect((await db.select().from(cotacoes).where(eq(cotacoes.id, c.id)))[0].estado).toBe("expirada");
+    expect((await consultarDisponibilidade(db, org, pedido(), agora)).situacao).toBe("disponivel");
+    // Dentro do prazo, confirma normalmente.
+    const c2 = await cotar();
+    const h2 = await segurarDatas(db, org, c2.codigo, contato(), agora);
+    if (!h2.ok) throw new Error(h2.erro);
+    expect(await confirmarReserva(db, org, h2.cotacao.reservaId!, null, depois(29))).toEqual({ ok: true });
+  });
+
+  it("o mesmo e-mail em dois imóveis ao mesmo tempo: só um pedido fica em andamento", async () => {
+    const [{ id: im2 }] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "303", nome: "Outro Exemplo", publico: true, capacidade: 4 }).returning();
+    await db.insert(imoveisDetalhes).values({ imovelId: im2, organizacaoId: org, precoBase: 40000, taxaLimpeza: 20000, hospedeExtraValor: 0, hospedeExtraAPartirDe: 3 });
+    await db.insert(idsExternos).values({ organizacaoId: org, imovelId: im2, canal: "beds24", idExterno: "10", detalhe: "21" });
+    await db.insert(beds24Calendario).values(dias("2026-10-01", 61).map((data) => ({ organizacaoId: org, imovelId: im2, data, roomId: "21", livres: 1, preco: 40000, minimoNoites: 1, maximoNoites: 27, bloqueio: "none", observadoEm: new Date("2026-10-01T09:15:00Z") })));
+    const [a, b] = await Promise.all([cotar(), cotar({ imovel: "303" })]);
+    const [ra, rb] = await Promise.all([segurarDatas(db, org, a.codigo, contato(), agora), segurarDatas(db, org, b.codigo, contato(), agora)]);
+    expect([ra.ok, rb.ok].filter(Boolean)).toHaveLength(1);
+    expect([ra, rb].find((r) => !r.ok)).toMatchObject({ erro: expect.stringContaining("este e-mail") });
   });
 
   it("dois visitantes nas mesmas noites ao mesmo tempo: só um segura", async () => {

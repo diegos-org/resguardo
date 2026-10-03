@@ -56,7 +56,9 @@ Depois de ver "Disponível" (ou "a confirmar") com valor, o visitante pode **seg
   cotação nas observações. Na ficha, **Confirmar reserva** transforma em reserva confirmada (aí
   entra no financeiro) e **Cancelar** libera as datas. Se ninguém fizer nada até o prazo, o pedido
   **vence sozinho** (uma rotina roda a cada 10 minutos) e as datas voltam à venda.
-- **Freios contra abuso:** um pedido em andamento por e-mail e no máximo cinco por imóvel.
+- **Freios contra abuso:** um pedido em andamento por e-mail e no máximo cinco por imóvel; repetir a
+  mesma consulta não cria cotação nova, e cotações que nunca viraram pedido somem depois de 30 dias.
+  Pedido do site com o prazo vencido não pode mais ser confirmado: a ficha avisa e as datas voltam à venda.
 - **O que ainda não acontece:** nenhum pagamento (M8.2) e nenhuma escrita no Beds24 (M8.3). Até
   lá, o visitante fecha a reserva com a equipe pelo WhatsApp, usando o botão da página da cotação,
   e o Airbnb/Booking só fecham as datas quando a reserva confirmada for enviada (M8.3) — por isso,
