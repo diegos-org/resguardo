@@ -80,9 +80,13 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   const [saidaObs] = await db.select({ bloqueio: beds24Calendario.bloqueio, observadoEm: beds24Calendario.observadoEm }).from(beds24Calendario).where(and(eq(beds24Calendario.organizacaoId, organizacaoId), eq(beds24Calendario.imovelId, imovel.id), eq(beds24Calendario.data, p.saida)));
   restricao(saidaObs, ["noCheckOut", "noCheckInOrCheckOut"], `Saída não permitida em ${dataBr(p.saida)}.`);
 
-  // Ocupação e leitura do Beds24, noite a noite.
+  // Ocupação e leitura do Beds24, noite a noite. "Agenda conferida em" é a leitura mais antiga que
+  // participou da decisão: as noites e o dia de saída (a restrição de saída também conta). Sem leitura
+  // de qualquer um deles, não há hora a mostrar.
   let leituraEm: Date | null = null;
-  let semLeitura = false;
+  let semLeitura = !saidaObs;
+  const maisAntiga = (o: { observadoEm: Date } | null | undefined) => { if (o && (!leituraEm || o.observadoEm < leituraEm)) leituraEm = o.observadoEm; };
+  maisAntiga(saidaObs);
   // Uma data pode estar ocupada no SCL e no Beds24 ao mesmo tempo (reserva importada): conta uma vez.
   const ocupadas = new Set<string>();
   for (const l of plano.linhas) {
@@ -93,7 +97,7 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
       aConfirmar = true;
     } else if (o.bloqueio === "blackout" || o.livres === 0) ocupadas.add(l.data); // blackout fecha mesmo sem unidades informadas
     else if (o.livres === null || !conhecidas.has(o.bloqueio)) aConfirmar = true;
-    if (o && !semLeitura && (!leituraEm || o.observadoEm < leituraEm)) leituraEm = o.observadoEm;
+    maisAntiga(o);
   }
   if (ocupadas.size) {
     const lista = [...ocupadas];

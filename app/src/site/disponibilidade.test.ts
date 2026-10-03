@@ -31,6 +31,14 @@ describe("disponibilidade e cotação do site (M7.2)", () => {
     const r = await consultar({ hospedes: "4" });
     expect(r).toMatchObject({ situacao: "disponivel", motivos: [], noites: 3, cotacao: { diarias: 135000, limpeza: 25000, hospedeExtra: 30000, total: 190000 } });
     expect(r.leituraEm?.toISOString()).toBe("2026-10-01T09:15:00.000Z");
+    // A hora mostrada é a leitura mais antiga usada na decisão: o dia de saída também conta.
+    await db.update(beds24Calendario).set({ observadoEm: new Date("2026-09-30T20:00:00Z") }).where(eq(beds24Calendario.data, "2026-10-15"));
+    const comSaidaAntiga = await consultar({ hospedes: "4" });
+    expect(comSaidaAntiga.situacao).toBe("disponivel");
+    expect(comSaidaAntiga.leituraEm?.toISOString()).toBe("2026-09-30T20:00:00.000Z");
+    // Sem leitura do dia de saída não há hora a mostrar, como quando falta a de uma noite.
+    await db.delete(beds24Calendario).where(eq(beds24Calendario.data, "2026-10-15"));
+    expect(await consultar({ hospedes: "4" })).toMatchObject({ situacao: "a_confirmar", leituraEm: null });
   });
 
   it("última hora entra no valor (D−2: 25%, piso respeitado) e eventos também, como no envio ao Beds24", async () => {
