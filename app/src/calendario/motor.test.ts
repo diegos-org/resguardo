@@ -77,6 +77,11 @@ describe("preço de referência", () => {
     const [l] = planejarCalendario(entrada({ imovel: imovel({}, { precoBase: null }), fim: "2026-10-01" }));
     expect(l).toMatchObject({ fontePreco: "sem_preco", precoReferencia: null, precoEnviar: null, acao: "enviar", minimoEnviar: 1 });
     expect(l.avisos).toContain("Preço não cadastrado no SCL: nenhum preço será enviado para esta noite.");
+    // Sem preço a enviar, o preço do Beds24 não entra na comparação: mínimo e máximo iguais → "igual", sem reenvio eterno.
+    const [igual] = planejarCalendario(entrada({ imovel: imovel({}, { precoBase: null }), fim: "2026-10-01", observacoes: [obs("2026-10-01", { preco: 40000, minimoNoites: 1, maximoNoites: 27 })] }));
+    expect(igual.acao).toBe("igual");
+    const [diferente] = planejarCalendario(entrada({ imovel: imovel({}, { precoBase: null }), fim: "2026-10-01", observacoes: [obs("2026-10-01", { preco: 40000, minimoNoites: 2, maximoNoites: 27 })] }));
+    expect(diferente.acao).toBe("enviar");
   });
 });
 

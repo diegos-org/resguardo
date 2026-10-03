@@ -270,9 +270,10 @@ export function planejarCalendario(e: EntradaPlano): LinhaPlano[] {
 
     // Comparação: observação mais recente que o último envio vale; senão vale o envio confirmado.
     const observacaoValida = observacao && (!enviado || observacao.observadoEm.getTime() >= enviado.enviadoEm.getTime()) ? observacao : null;
-    const igualObs = observacaoValida !== null && observacaoValida.preco === precoEnviar && observacaoValida.minimoNoites === minimoEnviar && observacaoValida.maximoNoites === maximo
+    // Campo que não vai (preço ou mínimo ausentes) não entra na comparação: senão a noite ficaria "enviar" para sempre.
+    const igualObs = observacaoValida !== null && (precoEnviar === null || observacaoValida.preco === precoEnviar) && (minimoEnviar === null || observacaoValida.minimoNoites === minimoEnviar) && observacaoValida.maximoNoites === maximo
       && (bloqueioEnviar === undefined || normalizarBloqueio(observacaoValida.bloqueio) === bloqueioEnviar);
-    const igualEnviado = enviado !== null && enviado.confirmado && enviado.preco === precoEnviar && enviado.minimo === minimoEnviar && enviado.maximo === maximo
+    const igualEnviado = enviado !== null && enviado.confirmado && (precoEnviar === null || enviado.preco === precoEnviar) && (minimoEnviar === null || enviado.minimo === minimoEnviar) && enviado.maximo === maximo
       && (bloqueioEnviar === undefined || normalizarBloqueio(enviado.bloqueio) === bloqueioEnviar);
     const nadaAEnviar = precoEnviar === null && minimoEnviar === null && bloqueioEnviar === undefined;
     const acao: AcaoNoite = nadaAEnviar ? "sem_dados" : igualObs || (observacaoValida === null && igualEnviado) ? "igual" : "enviar";
