@@ -225,9 +225,11 @@ export function tituloDoSite(conteudo: Pick<ConteudoSite, "nomeEmpresa"> | null,
 export function destinoDoLinkAntigo(
   sp: URLSearchParams,
   imovel: ImovelPublico | null,
-  hoje: string,
+  agora: Date = new Date(),
 ): { status: 308; destino: string } | { status: 400; erro: string } | { status: 404 } {
   if (!imovel) return { status: 404 };
+  // "Hoje" no fuso do imóvel, como a página do imóvel e a consulta: uma entrada válida em fuso mais atrasado não vira erro.
+  const hoje = hojeISO(imovel.fuso, agora);
   const base = `/imoveis/${encodeURIComponent(imovel.codigo)}`;
   const chaves = ["checkin", "checkout", "guests"] as const;
   const criterios = new URLSearchParams();

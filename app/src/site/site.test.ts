@@ -116,16 +116,23 @@ describe("site público (M7.1)", () => {
     const imovel = await imovelDoSite(db, org, "403");
     const q = (o: Record<string, string>) => new URLSearchParams(o);
     const valido = { checkin: "2026-10-10", checkout: "2026-10-12", guests: "2" };
-    expect(destinoDoLinkAntigo(q({ ...valido, email: "x@example.com", token: "t", property: "102" }), imovel, "2026-09-25")).toEqual({
+    // 25/09/2026, 12:00 em São Paulo.
+    const agora = new Date("2026-09-25T15:00:00Z");
+    expect(destinoDoLinkAntigo(q({ ...valido, email: "x@example.com", token: "t", property: "102" }), imovel, agora)).toEqual({
       status: 308,
       destino: "/imoveis/403?checkin=2026-10-10&checkout=2026-10-12&guests=2",
     });
-    expect(destinoDoLinkAntigo(q({ email: "x@example.com" }), imovel, "2026-09-25")).toEqual({ status: 308, destino: "/imoveis/403" });
+    expect(destinoDoLinkAntigo(q({ email: "x@example.com" }), imovel, agora)).toEqual({ status: 308, destino: "/imoveis/403" });
     for (const ruim of [{ guests: "5" }, { checkin: "2026-02-30" }, { checkout: "2026-10-10" }, { guests: "2e0" }, { checkin: "2020-01-01" }])
-      expect(destinoDoLinkAntigo(q({ ...valido, ...ruim }), imovel, "2026-09-25")).toMatchObject({ status: 400 });
-    expect(destinoDoLinkAntigo(q({ guests: "2" }), imovel, "2026-09-25")).toMatchObject({ status: 400 });
-    expect(destinoDoLinkAntigo(new URLSearchParams(`${q(valido)}&guests=3`), imovel, "2026-09-25")).toMatchObject({ status: 400 });
-    expect(destinoDoLinkAntigo(q(valido), null, "2026-09-25")).toEqual({ status: 404 });
+      expect(destinoDoLinkAntigo(q({ ...valido, ...ruim }), imovel, agora)).toMatchObject({ status: 400 });
+    expect(destinoDoLinkAntigo(q({ guests: "2" }), imovel, agora)).toMatchObject({ status: 400 });
+    expect(destinoDoLinkAntigo(new URLSearchParams(`${q(valido)}&guests=3`), imovel, agora)).toMatchObject({ status: 400 });
+    expect(destinoDoLinkAntigo(q(valido), null, agora)).toEqual({ status: 404 });
+    // "Hoje" no fuso do imóvel: 00:30 em São Paulo (03:30Z) ainda é dia 9 em Rio Branco, então entrada em 9/10 é válida lá.
+    const madrugada = new Date("2026-10-10T03:30:00Z");
+    const hojeLink = { checkin: "2026-10-09", checkout: "2026-10-12", guests: "2" };
+    expect(destinoDoLinkAntigo(q(hojeLink), imovel, madrugada)).toMatchObject({ status: 400 });
+    expect(destinoDoLinkAntigo(q(hojeLink), { ...imovel!, fuso: "America/Rio_Branco" }, madrugada)).toMatchObject({ status: 308 });
   });
 });
 
