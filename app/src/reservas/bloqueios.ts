@@ -3,8 +3,9 @@
  * Beds24 como "blackout" pelo envio de calendário; os importados do Beds24 (fonte "beds24")
  * não são editados aqui — mudam na origem.
  */
-import { and, eq, gt, lt } from "drizzle-orm";
+import { and, eq, gt, lt, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
+import { chaveTravaBeds24, envioEmAndamento } from "@/beds24/trava";
 import { bloqueios, imoveis } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
@@ -12,6 +13,17 @@ import { dataValida } from "./regras";
 
 export type EntradaBloqueio = { imovelId: string; inicio: string; fim: string; motivo: string };
 export type ResultadoBloqueio = { ok: true; id: string } | { ok: false; erro: string };
+export type ResultadoRemocao = { ok: true } | { ok: false; erro: string };
+
+/**
+ * Criar ou remover bloqueio espera o envio de calendário (mesma trava do Beds24) e recusa enquanto um
+ * envio está entre a escrita externa e o registro final: o que o envio planejou não pode mudar por baixo.
+ */
+async function esperarEnvio(tx: Db, organizacaoId: string): Promise<string | null> {
+  await tx.execute(sql`set local lock_timeout = '15s'`);
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${chaveTravaBeds24(organizacaoId)}))`);
+  return (await envioEmAndamento(tx, organizacaoId, new Date())) ? "Há um envio de calendário e preços em andamento. Aguarde alguns minutos e tente de novo." : null;
+}
 
 export function validarBloqueio(e: EntradaBloqueio): { ok: true; dados: EntradaBloqueio } | { ok: false; erro: string } {
   if (!uuidValido(e.imovelId)) return { ok: false, erro: "Escolha o imóvel." };
@@ -27,6 +39,8 @@ export async function criarBloqueio(db: Db, organizacaoId: string, e: EntradaBlo
   const v = validarBloqueio(e);
   if (!v.ok) return v;
   return db.transaction(async (tx) => {
+    const ocupado = await esperarEnvio(tx, organizacaoId);
+    if (ocupado) return { ok: false as const, erro: ocupado };
     const [im] = await tx.select({ id: imoveis.id }).from(imoveis).where(and(eq(imoveis.id, v.dados.imovelId), eq(imoveis.organizacaoId, organizacaoId))).for("update");
     if (!im) return { ok: false as const, erro: "Imóvel não encontrado." };
     const [choque] = await tx.select({ id: bloqueios.id }).from(bloqueios).where(and(eq(bloqueios.imovelId, im.id), lt(bloqueios.inicio, v.dados.fim), gt(bloqueios.fim, v.dados.inicio)));
@@ -38,13 +52,16 @@ export async function criarBloqueio(db: Db, organizacaoId: string, e: EntradaBlo
 }
 
 /** Só bloqueios criados no SCL; os importados do Beds24 ficam como estão. */
-export async function excluirBloqueio(db: Db, organizacaoId: string, id: string, autorId: string | null): Promise<boolean> {
-  if (!uuidValido(id)) return false;
+export async function excluirBloqueio(db: Db, organizacaoId: string, id: string, autorId: string | null): Promise<ResultadoRemocao> {
+  const naoEncontrado = { ok: false as const, erro: "Bloqueio não encontrado ou importado do Beds24 (mude lá)." };
+  if (!uuidValido(id)) return naoEncontrado;
   return db.transaction(async (tx) => {
+    const ocupado = await esperarEnvio(tx, organizacaoId);
+    if (ocupado) return { ok: false as const, erro: ocupado };
     const [b] = await tx.select().from(bloqueios).where(and(eq(bloqueios.id, id), eq(bloqueios.organizacaoId, organizacaoId))).for("update");
-    if (!b || b.fonte === "beds24") return false;
+    if (!b || b.fonte === "beds24") return naoEncontrado;
     await tx.delete(bloqueios).where(eq(bloqueios.id, id));
     await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "bloqueio.remover", entidade: "imovel", entidadeId: b.imovelId, mudancas: { bloqueio: [`${b.inicio} a ${b.fim}${b.motivo ? ` (${b.motivo})` : ""}`, null] } });
-    return true;
+    return { ok: true as const };
   });
 }

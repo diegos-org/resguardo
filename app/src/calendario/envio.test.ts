@@ -454,6 +454,31 @@ describe("envio ao Beds24 (M3.7)", () => {
     expect((await enviar()).imoveis[0].enviadas).toBe(0);
   });
 
+  it("bloqueio removido entre o plano e a escrita: nada é escrito para o imóvel, sem posse; o próximo envio replaneja", async () => {
+    const [b] = await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-10-03", fim: "2026-10-04", motivo: "Uso próprio" }).returning({ id: bloqueios.id });
+    // Depois da primeira transação (plano e intenção), o bloqueio some por fora da trava.
+    let transacoes = 0;
+    const dbCorrida = new Proxy(db, {
+      get(alvo, prop, receptor) {
+        if (prop === "transaction") {
+          const original = alvo.transaction.bind(alvo) as (...a: unknown[]) => Promise<unknown>;
+          return async (...a: unknown[]) => { const r = await original(...a); if (++transacoes === 1) await alvo.delete(bloqueios).where(eq(bloqueios.id, b.id)); return r; };
+        }
+        const v = Reflect.get(alvo, prop, receptor);
+        return typeof v === "function" ? v.bind(alvo) : v;
+      },
+    }) as Db;
+    const r = await enviarCalendarioBeds24(dbCorrida, org, beds, beds, { modo: "envio", agora: proximoAgora(), autorId: null });
+    expect(r).toMatchObject({ ok: false, situacao: "erro", imoveis: [{ enviadas: 0, confirmadas: 0, falha: expect.stringContaining("alterado durante o envio") }] });
+    expect(beds.escritas).toHaveLength(0);
+    expect((await noites()).every(n => n.resultado === "falhou")).toBe(true);
+    expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ bloqueio: null, confirmado: false });
+    // Sem o bloqueio, o envio seguinte não fecha nada.
+    const r2 = await enviar();
+    expect(r2.situacao).toBe("ok");
+    expect(beds.escritas[0][0].faixas.every(f => f.bloqueio === undefined)).toBe(true);
+  });
+
   it("banco falha depois da escrita no Beds24: a intenção gravada antes permite à execução seguinte assumir a posse pela leitura", async () => {
     await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-10-03", fim: "2026-10-04", motivo: "Uso próprio" });
     // A segunda transação (releitura e registro final) cai; a escrita externa já aconteceu.

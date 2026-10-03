@@ -39,7 +39,13 @@ describe("formulário das regras", () => {
     expect(soMinimo).toMatchObject({ ok: false, erros: { feriadoMinimo: expect.stringContaining("entre 1 e 30") } });
     const cruzadas = validarFormRegras(form({ faixa1De: "2", faixa1Ate: "7", faixa2De: "0", faixa2Ate: "2" }), REGRAS_CALENDARIO_PADRAO, [IM]);
     expect(cruzadas.ok).toBe(false);
-    if (!cruzadas.ok) expect(cruzadas.erros.faixa2De).toContain("não podem se cruzar");
+    if (!cruzadas.ok) expect(cruzadas.erros.faixa2Ate).toContain("mais próxima da data");
+    // Ordem trocada (1ª faixa perto da data, 2ª longe) trocaria os pisos da ficha do imóvel em silêncio: recusada.
+    const trocadas = validarFormRegras(form({ faixa1De: "0", faixa1Ate: "2", faixa2De: "3", faixa2Ate: "7" }), REGRAS_CALENDARIO_PADRAO, [IM]);
+    expect(trocadas.ok).toBe(false);
+    if (!trocadas.ok) expect(Object.keys(trocadas.erros)).toEqual(["faixa2Ate"]);
+    // Guardado com a ordem trocada (fora do formulário): volta ao padrão, nunca aplica pisos trocados.
+    expect(regrasDeJson({ ultimaHora: { aplicadoPor: "scl", faixas: [{ deDias: 0, ateDias: 2, percentual: 25 }, { deDias: 3, ateDias: 7, percentual: 15 }] } }).ultimaHora).toEqual({ aplicadoPor: "scl", faixas: REGRAS_CALENDARIO_PADRAO.ultimaHora.faixas });
   });
   it("multiplicador e data aceitam a grafia brasileira", () => {
     expect([multiplicadorParaCentesimos("2"), multiplicadorParaCentesimos("2,5"), multiplicadorParaCentesimos("4.00"), multiplicadorParaCentesimos("3x"), multiplicadorParaCentesimos("0,99"), multiplicadorParaCentesimos("11"), multiplicadorParaCentesimos("abc")]).toEqual([200, 250, 400, 300, undefined, undefined, undefined]);

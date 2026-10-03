@@ -35,3 +35,12 @@ it("remover pede confirmação; o formulário de novo bloqueio envia imóvel, da
   const form = m.novo.mock.calls[0][1] as FormData;
   expect([form.get("imovelId"), form.get("inicio"), form.get("fim"), form.get("motivo")]).toEqual(["i103", "2026-10-03", "2026-10-04", "x"]);
 });
+
+it("remoção recusada (envio em andamento) mostra o aviso", async () => {
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  m.remover.mockResolvedValue({ erro: "Há um envio de calendário e preços em andamento. Aguarde alguns minutos e tente de novo." });
+  render(<Bloqueios imoveis={imoveis} bloqueios={bloqueios} />);
+  fireEvent.click(screen.getByRole("button", { name: "Remover" }));
+  await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("envio de calendário"));
+  expect((m.remover.mock.calls[0][1] as FormData).get("id")).toBe("b1");
+});

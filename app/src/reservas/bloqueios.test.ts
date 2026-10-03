@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { historicoDe } from "@/auditoria/auditoria";
-import { bloqueios, imoveis, organizacoes } from "@/db/schema";
+import { beds24Envios, bloqueios, imoveis, organizacoes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { criarBloqueio, excluirBloqueio, validarBloqueio } from "./bloqueios";
@@ -30,12 +30,23 @@ it("cria com histórico, recusa sobreposição e imóvel de outra empresa; só r
   expect(await criarBloqueio(db, org, { imovelId: im, inicio: "2026-10-05", fim: "2026-10-06", motivo: "" }, null)).toMatchObject({ ok: true });
   expect(await criarBloqueio(db, outra, { imovelId: im, inicio: "2026-11-01", fim: "2026-11-02", motivo: "" }, null)).toMatchObject({ ok: false, erro: "Imóvel não encontrado." });
   const [{ id: importado }] = await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-12-01", fim: "2026-12-02", fonte: "beds24", idFonte: "77" }).returning();
-  expect(await excluirBloqueio(db, org, importado, null)).toBe(false);
+  expect((await excluirBloqueio(db, org, importado, null)).ok).toBe(false);
   if (!r.ok) throw new Error("fixture");
-  expect(await excluirBloqueio(db, outra, r.id, null)).toBe(false);
-  expect(await excluirBloqueio(db, org, r.id, null)).toBe(true);
+  expect((await excluirBloqueio(db, outra, r.id, null)).ok).toBe(false);
+  expect(await excluirBloqueio(db, org, r.id, null)).toEqual({ ok: true });
   expect(await db.select().from(bloqueios).where(eq(bloqueios.organizacaoId, org))).toHaveLength(2);
   const h = await historicoDe(db, org, "imovel", im);
   expect(h.map((l) => l.acao)).toEqual(["bloqueio.remover", "bloqueio.criar", "bloqueio.criar"]);
   expect(JSON.stringify(h)).toContain("Uso próprio");
+});
+
+it("não cria nem remove bloqueio enquanto um envio de calendário está entre a escrita e o registro; envio interrompido há mais de 10 minutos não impede", async () => {
+  const r = await criarBloqueio(db, org, { imovelId: im, inicio: "2026-10-03", fim: "2026-10-05", motivo: "Uso próprio" }, null);
+  if (!r.ok) throw new Error(r.erro);
+  const [envio] = await db.insert(beds24Envios).values({ organizacaoId: org, iniciadoEm: new Date(Date.now() - 60_000), modo: "envio", situacao: "executando" }).returning({ id: beds24Envios.id });
+  expect(await criarBloqueio(db, org, { imovelId: im, inicio: "2026-10-10", fim: "2026-10-11", motivo: "" }, null)).toMatchObject({ ok: false, erro: expect.stringContaining("envio de calendário") });
+  expect(await excluirBloqueio(db, org, r.id, null)).toMatchObject({ ok: false, erro: expect.stringContaining("envio de calendário") });
+  expect(await db.select().from(bloqueios).where(eq(bloqueios.organizacaoId, org))).toHaveLength(1);
+  await db.update(beds24Envios).set({ iniciadoEm: new Date(Date.now() - 11 * 60_000) }).where(eq(beds24Envios.id, envio.id));
+  expect(await excluirBloqueio(db, org, r.id, null)).toEqual({ ok: true });
 });
