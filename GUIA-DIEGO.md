@@ -536,9 +536,11 @@ Não precisa preencher descrições dos apartamentos para importar. A melhoria n
     hóspede)" em vez do padrão; sem acordo, vale o horário do cadastro do imóvel ou o padrão da
     agenda. Mudou data ou imóvel, o acordo precisa ser refeito. Nada é lido das conversas
     automaticamente nem enviado ao hóspede;
-  - o formato de cada cidade e os horários de entrada e saída (15h e 11h) **podem ser mudados
-    na tela**. Sem escolha, casa única vai por reserva e cidade com vários apartamentos vai
-    por limpezas. A tela mostra **o mesmo texto que a equipe vai receber**;
+  - **Rio e Búzios têm formato fixo** pela sua decisão de 2/10 (a tela mostra os dois travados);
+    outra cidade que venha a existir pode ter o formato escolhido na tela (sem escolha, casa
+    única vai por reserva e vários apartamentos por limpezas). Os horários padrão de entrada e
+    saída (15h e 11h) continuam editáveis e valem só quando o imóvel não tem horário no
+    cadastro. A tela mostra **o mesmo texto que a equipe vai receber**;
   - vêm também as **reservas novas desde a última agenda**, mesmo as de datas mais distantes;
   - termina com a frase padrão "Essa é a agenda atual e ainda pode mudar…". A agenda **só
     informa**: não confirma limpeza nem preparação;
