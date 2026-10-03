@@ -28,6 +28,10 @@ Em1/10 foram salvos e reabertos no Airbnb:
 Mantidos campos dinâmicos e programação de dois dias antes do check-in às10h. A revisão não prova disparo futuro, não reenvia mensagens antigas e não cria automação paralela Beds24.
 No103, o texto antigo afirmava ausência de porteiro para toda chegada; no399, não explicitava expediente. Corrigidos. Pedido de previsão de chegada passou a tratar organização da chegada, sem presumir faxina necessária.
 
+## Documentos — esclarecimento de Diego nesta revisão
+
+Até segunda ordem, solicitar e encaminhar documentos somente no 403. O 303 Rita deixa de constar como exigência ou pendência de coleta. Diego relata pouca ou nenhuma cobrança pela portaria do 403; isso não dispensa a regra do 403 nem cria cobranças extras. Preservar o fluxo e os limites de repetição do [Guia Lia](GUIA-LIA-ATENDIMENTO.md#portaria-e-documentos). Este registro não realiza envios.
+
 ## Cadastro na nuvem — pendência explícita
 Preferência aprovada: cadastro restrito do sistema SCL, com imóvel, função, telefone, expediente, exceções, fonte/data e última conferência. GitHub documenta regra e referência, não armazena os telefones em documentação geral.
 Alternativa autorizada por Diego: variáveis internas de ambiente na Vercel, se cadastro ainda não disponível. Não usar prefixos públicos, não enviar valores ao frontend/logs e não confundir variável criada com aplicação lendo-a. Conferir projeto, ambiente e consumo pelo código antes de afirmar integração.
