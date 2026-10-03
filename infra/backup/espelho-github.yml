@@ -1,0 +1,102 @@
+# Robô de backup do repositório do SCL. Este arquivo é copiado para o repositório de backup,
+# em OUTRA conta do GitHub, no caminho .github/workflows/backup.yml. Aqui, em infra/backup/,
+# ele é só o original guardado: não roda neste repositório.
+#
+# Como funciona (detalhes em requisitos/operations/BACKUP-E-RECUPERACAO.md):
+# - A cada 3 dias (e quando acionado à mão), baixa todas as branches e tags da origem com um
+#   token SÓ DE LEITURA e grava neste repositório sob o prefixo `espelho/`.
+# - Nunca apaga nem reescreve o que já está aqui: só avança. Branch apagada na origem continua
+#   aqui; branch reescrita na origem é recusada, e o robô falha para avisar.
+# - Cada rodada cria uma tag `backup/AAAA-MM-DD-HHMM` apontando para a `main` da origem:
+#   um ponto de restauração imutável. Todas as versões ficam guardadas, indefinidamente.
+#
+# Segredos deste repositório de backup (Settings → Secrets and variables → Actions):
+# - ORIGEM_REPO  = dono/repositorio da origem (ex.: empresa/sistema)
+# - ORIGEM_TOKEN = fine-grained token da conta principal: só este repositório, só leitura
+#                  (Contents: Read-only). Nada de escrita, nada de administração.
+# Nenhum dado da conta de backup aparece neste arquivo nem no repositório de origem.
+name: Backup do repositório de origem
+
+on:
+  schedule:
+    - cron: "17 6 */3 * *" # a cada 3 dias, 03:17 em Brasília (06:17 UTC)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  espelhar:
+    name: Espelhar a origem neste repositório
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GIT_TERMINAL_PROMPT: "0"
+    steps:
+      - name: Conferir segredos
+        env:
+          ORIGEM_REPO: ${{ secrets.ORIGEM_REPO }}
+          ORIGEM_TOKEN: ${{ secrets.ORIGEM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ORIGEM_REPO}" ] || [ -z "${ORIGEM_TOKEN}" ]; then
+            echo "::error::Faltam os segredos ORIGEM_REPO e/ou ORIGEM_TOKEN neste repositório."
+            exit 1
+          fi
+          case "${ORIGEM_REPO}" in
+            */*) ;;
+            *) echo "::error::ORIGEM_REPO deve ter o formato dono/repositorio."; exit 1 ;;
+          esac
+
+      - name: Baixar tudo da origem (só leitura)
+        env:
+          ORIGEM_REPO: ${{ secrets.ORIGEM_REPO }}
+          ORIGEM_TOKEN: ${{ secrets.ORIGEM_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Credencial vai no cabeçalho HTTP, nunca na URL: não aparece em mensagens de erro.
+          auth="AUTHORIZATION: basic $(printf '%s' "x-access-token:${ORIGEM_TOKEN}" | base64 -w0)"
+          git init -q --bare espelho.git
+          cd espelho.git
+          git -c "http.extraheader=${auth}" fetch -q "https://github.com/${ORIGEM_REPO}.git" \
+            '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*'
+          echo "Branches baixadas: $(git for-each-ref refs/heads | wc -l); tags: $(git for-each-ref refs/tags | wc -l)"
+          if ! git rev-parse --verify -q refs/heads/main >/dev/null; then
+            echo "::error::A origem não tem a branch main."
+            exit 1
+          fi
+
+      - name: Gravar neste repositório sem apagar nem reescrever nada
+        env:
+          DESTINO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd espelho.git
+          auth="AUTHORIZATION: basic $(printf '%s' "x-access-token:${DESTINO_TOKEN}" | base64 -w0)"
+          marco="backup/$(TZ=America/Sao_Paulo date +%Y-%m-%d-%H%M)"
+          # O marco fica fora de refs/tags/ até o push, para não ser copiado também como espelho/backup/...
+          git update-ref "refs/marcos/${marco}" refs/heads/main
+          # Sem --force e sem --prune: só avança. O que a origem apagou continua aqui; o que ela
+          # reescreveu é recusado (linha começando com "!") e o robô falha para avisar.
+          set +e
+          git -c "http.extraheader=${auth}" push --porcelain "https://github.com/${GITHUB_REPOSITORY}.git" \
+            'refs/heads/*:refs/heads/espelho/*' \
+            'refs/tags/*:refs/tags/espelho/*' \
+            "refs/marcos/${marco}:refs/tags/${marco}" > push.log 2> push.err
+          codigo=$?
+          set -e
+          grep -v '^To ' push.log || true
+          if grep -q '^!' push.log; then
+            echo "::error::Alguma branch ou tag da origem foi reescrita ou apagada. O backup manteve a versão anterior; veja as linhas com '!'."
+            exit 1
+          fi
+          if [ "${codigo}" -ne 0 ]; then
+            cat push.err
+            echo "::error::O push para este repositório falhou (código ${codigo})."
+            exit "${codigo}"
+          fi
+          echo "Marco desta rodada: ${marco}"
