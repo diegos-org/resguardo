@@ -62,6 +62,20 @@ Reunir aqui mensagens adaptáveis com informações novas fornecidas por Diego, 
 
 Se a foto for encontrada e conferida no anúncio atual, pode complementar com a indicação de onde ela está. Não afirmar que há foto sem essa conferência nem prometer presença de porteiro fora do expediente confirmado.
 
+### 399 — combinar a chegada e a entrega das chaves
+
+**Fonte:** orientação direta de Diego nesta revisão. Dar uma ação clara assim que o hóspede souber a previsão de chegada: ligar para Marluce nos dias úteis, Niedja nos fins de semana/feriados, ou procurar a equipe Sua Casa Leblon em qualquer dia. “Qualquer dia” não significa atendimento 24h; conferir janelas de atendimento e telefones em fonte restrita verificada. A aplicação desta orientação ao **103 ainda precisa ser confirmada**, sem copiar automaticamente o modelo.
+
+**Redação candidata, a preencher e conferir antes de publicar:**
+
+> Assim que souber seu horário previsto de chegada, ligue para combinar a entrega das chaves: Marluce nos dias úteis, pelo [telefone verificado]; Niedja nos fins de semana e feriados, pelo [telefone verificado]. Você também pode falar com a equipe Sua Casa Leblon pelo [telefone verificado]. Avise com antecedência e aguarde a confirmação do combinado.
+
+**Pendente antes de publicar em qualquer canal:** conferir os textos ativos, quais imóveis recebem cada modelo (399 e eventual 103), números, responsáveis e janelas de atendimento. Conferir também a logística já combinada com a reserva e as regras de [portaria e chaves](PORTARIA-CHAVES-LIMPEZA.md). A previsão informada não confirma early check-in, presença da equipe ou entrega das chaves; a logística precisa ser confirmada. Não transferir responsabilidade absoluta ao hóspede nem tratar atraso/ausência como “problema dele”. Nenhuma mensagem automática real foi alterada nesta revisão.
+
+## Mensagens automáticas — migração a planejar
+
+O [roadmap, M9.2](../../ROADMAP.md) já contempla mensagens programadas editáveis; o Guia Diego descreve envio por e-mail, opt-in, com origens padrão site/direta. Isso não comprova migração ou substituição das automáticas Airbnb. Foi registrada nota de planejamento no M9 para conferir modelos por imóvel, campos, horários, canais e prevenção de duplicidade antes de uma migração futura, sem fase/data nova nem ativação. M10 continua dependente da integração WhatsApp. Concluir atendimento e listas é a prioridade atual; esta nota não inicia implementação nem desliga automações existentes.
+
 ## Agenda — decisões diretas de Diego em 2/10/2026
 
 A agenda diária tem referência de 20h, America/Sao_Paulo; esta regra não ativa envio. Exibir datas inicial/final e cobertura consultada. No produto, prévia/e-mail e WhatsApp local são caminhos diferentes: a prévia do aplicativo não comprova que Lia enviou aquele texto.
