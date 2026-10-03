@@ -130,6 +130,20 @@ describe("disponibilidade e cotação do site (M7.2)", () => {
     expect((await consultar()).situacao).toBe("disponivel");
   });
 
+  it("blackout recente fecha a noite mesmo sem unidades informadas na leitura", async () => {
+    await observar(dias("2026-10-12", 4));
+    await db.update(beds24Calendario).set({ bloqueio: "blackout", livres: null }).where(eq(beds24Calendario.data, "2026-10-13"));
+    expect(await consultar()).toMatchObject({ situacao: "indisponivel", motivos: ["Há noites já reservadas nessas datas (13/10/2026)."], cotacao: null });
+  });
+
+  it("mínimo do cadastro acima do máximo: o site não oferece a estadia, mesmo com o envio ao Beds24 ajustado ao máximo", async () => {
+    await observar(dias("2026-10-12", 4));
+    await db.update(imoveisDetalhes).set({ estadiaMinima: 30, estadiaMaxima: 2 });
+    const r = await consultar({ saida: "2026-10-14" });
+    expect(r.situacao).toBe("indisponivel");
+    expect(r.motivos).toContain("Para entrada em 12/10/2026, o mínimo é de 30 noites.");
+  });
+
   it("preço zero numa noite não vira diária grátis: diárias e total ficam a confirmar", async () => {
     await observar(dias("2026-10-12", 4));
     await db.update(imoveisDetalhes).set({ precoBase: 0 });

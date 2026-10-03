@@ -58,7 +58,11 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   // Regras de venda: mínimo/máximo vêm do motor (já considera semana normal, eventos e sobras);
   // antecedência, horizonte e dias de entrada/saída vêm do cadastro.
   const entrada = plano.linhas[0];
-  if (entrada?.minimoEnviar !== null && entrada?.minimoEnviar !== undefined && noites < entrada.minimoEnviar) motivos.add(`Para entrada em ${dataBr(p.entrada)}, o mínimo é de ${entrada.minimoEnviar} ${entrada.minimoEnviar === 1 ? "noite" : "noites"}.`);
+  // Mínimo de negócio: o do motor (semana normal, eventos, sobras). Se a regra supera o máximo, o motor
+  // manda o máximo ao Beds24 e avisa no painel; para o site vale a regra original, e a estadia fica
+  // impossível até o cadastro ser corrigido — nunca "disponível" por causa do ajuste de envio.
+  const minimo = entrada ? (entrada.minimoRegra !== null && entrada.minimoRegra > entrada.maximoEnviar ? entrada.minimoRegra : entrada.minimoEnviar) : null;
+  if (minimo !== null && noites < minimo) motivos.add(`Para entrada em ${dataBr(p.entrada)}, o mínimo é de ${minimo} ${minimo === 1 ? "noite" : "noites"}.`);
   if (entrada && noites > entrada.maximoEnviar) motivos.add(`Máximo de ${entrada.maximoEnviar} noites por estadia.`);
   for (const problema of verificarEstadia({ ...plano.regras, estadiaMinima: null, estadiaMaxima: null }, periodos.map((x) => ({ ...x, estadiaMinima: null })), p.entrada, p.saida, hoje)) motivos.add(problema);
 
@@ -84,11 +88,11 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   for (const l of plano.linhas) {
     if (l.livresSeguidas === 0) ocupadas.add(l.data);
     const o = l.observacao;
-    if (!o || o.observadoEm.getTime() < limite || o.livres === null) {
+    if (!o || o.observadoEm.getTime() < limite) {
       if (!o) semLeitura = true;
       aConfirmar = true;
-    } else if (o.livres === 0 || o.bloqueio === "blackout") ocupadas.add(l.data);
-    else if (!conhecidas.has(o.bloqueio)) aConfirmar = true;
+    } else if (o.bloqueio === "blackout" || o.livres === 0) ocupadas.add(l.data); // blackout fecha mesmo sem unidades informadas
+    else if (o.livres === null || !conhecidas.has(o.bloqueio)) aConfirmar = true;
     if (o && !semLeitura && (!leituraEm || o.observadoEm < leituraEm)) leituraEm = o.observadoEm;
   }
   if (ocupadas.size) {
