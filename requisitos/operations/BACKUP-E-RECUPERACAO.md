@@ -95,11 +95,11 @@ repositório principal não sabe que o backup existe.
      uma dessas refs no backup (mesmo nome, outro objeto, sem a origem ter mudado), a rodada
      avisa a cada vez até a ref ser apagada (aí é regravada a partir da origem) e salva o
      objeto exato de novo quando a origem ainda o tem. Só não é alteração o que o próprio robô
-     poderia ter feito: uma **branch** que avançou do esperado (sem reescrever) até o que a
-     origem tem agora, ou até um ponto no caminho, é a retomada de uma rodada que avançou o
-     espelho e falhou antes de gravar o marco; se a origem apagou a branch logo depois, o
-     espelho avançado é a única cópia daquela versão e fica (o que era esperado continua
-     alcançável pelo retrato anterior). Uma **tag** espelhada nunca muda pelo robô, então
+     poderia ter feito: uma **branch** que avançou do esperado sem reescrever é a retomada de
+     uma rodada que avançou o espelho e falhou antes de gravar o marco, e fica, mesmo que a
+     origem já tenha mudado de novo (reescrita ou apagada): o avanço pode ser a única cópia
+     daquela versão, e o que era esperado continua alcançável pelo retrato anterior. Se o avanço
+     for além do que a origem tem agora, sai um aviso amarelo. Uma **tag** espelhada nunca muda pelo robô, então
      qualquer diferença numa tag é alteração, mesmo igual ao que a origem tem agora (depois de
      uma reescrita na origem, mover o espelho à mão para a versão nova esconderia a reescrita;
      é avisado). O mesmo vale para
@@ -135,17 +135,19 @@ repositório principal não sabe que o backup existe.
    - **batimento (opcional):** ao terminar bem, chama a URL guardada no segredo `BATIMENTO_URL`,
      de um serviço gratuito de monitoramento do tipo "me avise se eu ficar sem sinal" (por
      exemplo, healthchecks.io, com período de 3 dias e tolerância de 1 dia). Se o robô for
-     apagado, desligado ou parar de rodar por qualquer motivo, inclusive rodadas vermelhas
-     seguidas, o serviço avisa por e-mail. É a única forma de o sistema avisar que o backup
-     **parou**, porque o robô não roda para avisar a própria ausência. O serviço só recebe o
-     sinal; não tem acesso a nada.
+     apagado, desligado ou parar de gravar por qualquer motivo, o serviço avisa por e-mail. O
+     sinal sai sempre que a rodada **gravou o retrato**, inclusive quando termina vermelha por
+     aviso (sumiço, reescrita, alteração): aviso não é robô parado. Fica sem sinal só a rodada
+     que não gravou nada (chave vencida, backup inacessível, nome reservado) ou que não rodou.
+     É a única forma de o sistema avisar que o backup **parou**, porque o robô não roda para
+     avisar a própria ausência. O serviço só recebe o sinal; não tem acesso a nada.
 4. **Proteção extra no repositório de backup** (rulesets: proibido apagar branches ou tags e
    reescrever histórico, para todo mundo, inclusive o robô). **Só existe em repositório privado
    com plano pago do GitHub (Pro ou superior).** No plano Free, fica a proteção do próprio
    robô: ele nunca apaga nem reescreve e avisa quando o backup perde algo. A trava cobre a
    mais só o erro manual de quem tem acesso à conta de backup, que é só o Diego.
 
-Testado em 3/10 rodando o script exato do robô contra repositórios locais, setenta e uma rodadas:
+Testado em 3/10 rodando o script exato do robô contra repositórios locais, setenta e sete rodadas:
 origem só com `main`; novas branches e tags; origem avança; origem apaga uma branch (o backup
 a mantém e avisa uma vez); nada muda (sem aviso repetido); origem reescreve uma branch e uma
 tag anotada (o backup mantém as versões antigas em `espelho/`, guarda as novas em
@@ -181,8 +183,13 @@ branch e da tag para a versão nova da origem é avisado como alteração em tod
 por retomada), e apagar as refs alteradas as regrava da origem; uma tag `backup/` anotada criada à
 mão com o texto de marco por cima de um commit comum é dada como inválida e não vira base nem quando
 é a mais nova pelo nome e o ponteiro foi apagado; uma tag `recusadas/exemplo` na origem para a
-rodada antes de gravar, e a rodada seguinte, com a tag removida, fica verde; e as tags do backup
-não voltam para a origem nem se duplicam com o prefixo. O passo de batimento não entrou na simulação (é uma chamada HTTP
+rodada antes de gravar, e a rodada seguinte, com a tag removida, fica verde; duas tags leves da
+origem no mesmo arquivo solto geram uma só ref `objetos/` (sem duplicar o envio); uma branch que
+avançou no espelho numa rodada incompleta e depois foi reescrita na origem fica no backup como
+retomada (a reescrita é avisada e copiada em `recusadas/`), sem aviso de alteração; o sinal de
+batimento é marcado quando a rodada grava o retrato, inclusive vermelha por aviso, e não é marcado
+quando a rodada para antes de gravar; e as tags do backup não voltam para a origem nem se duplicam
+com o prefixo. O passo de batimento não entrou na simulação (é uma chamada HTTP
 simples a um serviço externo, só com a URL configurada); foi conferido na sintaxe e no caso sem
 URL.
 

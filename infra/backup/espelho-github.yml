@@ -84,6 +84,7 @@ jobs:
           fi
 
       - name: Gravar neste repositório sem apagar nem reescrever nada
+        id: gravar
         env:
           DESTINO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -286,9 +287,10 @@ jobs:
             esperado=$(awk -v r="${ref}" '$3 == r {print $2}' anterior-espelho.txt | head -n1)
             # Alteração = o backup tem algo diferente do esperado que o push do próprio robô NÃO poderia ter
             # produzido. O robô só avança branch por fast-forward e nunca muda tag espelhada; então retomada
-            # (rodada que avançou o espelho e falhou antes do marco) é só: branch, esperado antepassado do que
-            # está no backup, e o que está no backup igual à origem, antepassado dela, ou origem já apagada
-            # (aí o avanço é a única cópia dessa versão; o esperado continua alcançável pelo retrato anterior).
+            # (rodada que avançou o espelho e falhou antes do marco) é: branch cujo esperado é antepassado do
+            # que está no backup. Vale mesmo que a origem já tenha mudado de novo (reescrita ou apagada): o
+            # avanço pode ser a única cópia daquela versão, e o esperado continua alcançável pelo retrato
+            # anterior, então nada se perde; se o avanço for além do que a origem tem agora, sai aviso amarelo.
             # Tag espelhada diferente do esperado é alteração mesmo que seja igual ao que a origem tem agora:
             # depois de uma reescrita na origem, mover o espelho à mão para a versão nova esconderia a reescrita.
             retomada=0
@@ -299,10 +301,10 @@ jobs:
                   ec=$(git rev-parse -q --verify "${esperado}^{commit}" 2>/dev/null || true)
                   gc=$(git rev-parse -q --verify "${g}^{commit}" 2>/dev/null || true)
                   if [ -n "${ec}" ] && [ -n "${gc}" ] && git merge-base --is-ancestor "${ec}" "${gc}"; then
-                    if [ -z "${a}" ] || [ "${g}" = "${a}" ]; then retomada=1
-                    else
-                      ac=$(git rev-parse -q --verify "${a}^{commit}" 2>/dev/null || true)
-                      if [ -n "${ac}" ] && git merge-base --is-ancestor "${gc}" "${ac}"; then retomada=1; fi
+                    retomada=1
+                    ac=$(git rev-parse -q --verify "${a}^{commit}" 2>/dev/null || true)
+                    if [ -n "${a}" ] && [ "${g}" != "${a}" ] && { [ -z "${ac}" ] || ! git merge-base --is-ancestor "${gc}" "${ac}"; }; then
+                      echo "::warning::${ref}: o espelho avançou (${g}) além do que a origem tem agora (${a}); retomada de rodada incompleta ou avanço manual. Mantido como está; a origem divergente fica alcançável pelo retrato."
                     fi
                   fi ;;
               esac
@@ -343,7 +345,7 @@ jobs:
             [ -z "${sha}" ] && continue
             [ "$(git cat-file -t "${sha}")" != "commit" ] || continue
             if ! git rev-parse -q --verify "refs/guardado/objetos/${sha}" >/dev/null 2>&1; then objetos_novos+=("${sha}:refs/tags/objetos/${sha}"); fi
-          done < <(git for-each-ref --format='%(objectname) %(refname)' refs/tags)
+          done < <(git for-each-ref --format='%(objectname) %(refname)' refs/tags | sort -u -k1,1)
           while read -r sha ref; do
             [ -z "${ref}" ] && continue
             if [ "${sha}" != "${ref#refs/guardado/objetos/}" ]; then objetos_alterados="${objetos_alterados}refs/tags/objetos/${ref#refs/guardado/objetos/} (aponta para ${sha})"$'\n'; fi
@@ -462,6 +464,9 @@ jobs:
             exit 1
           fi
           echo "Marco desta rodada: ${marco}"
+          # Retrato gravado: o batimento (passo seguinte) manda o sinal mesmo que a rodada termine vermelha
+          # por aviso; sem sinal fica só a rodada que não gravou nada, ou que não rodou.
+          echo "marco_gravado=1" >> "${GITHUB_OUTPUT:-/dev/null}"
 
           # Avisos (a rodada falha, e o GitHub manda e-mail para a conta de backup). Cada mudança
           # avisa uma vez só: o inventário novo já a reflete.
@@ -530,9 +535,10 @@ jobs:
 
       # Batimento (opcional): o robô só consegue avisar o que vê numa rodada; se ele mesmo for apagado,
       # desligado ou deixar de rodar, não há rodada para avisar. Um serviço externo que espera este
-      # sinal a cada rodada cobre exatamente esse caso.
+      # sinal a cada rodada cobre exatamente esse caso. O sinal sai sempre que a rodada GRAVOU o retrato,
+      # inclusive quando termina vermelha por aviso (sumiço, reescrita, alteração): aviso não é robô parado.
       - name: Batimento (opcional)
-        if: success()
+        if: always() && steps.gravar.outputs.marco_gravado == '1'
         env:
           BATIMENTO_URL: ${{ secrets.BATIMENTO_URL }}
         run: |

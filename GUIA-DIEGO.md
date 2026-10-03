@@ -1237,8 +1237,9 @@ ambiente).
       healthchecks.io (ou serviço parecido) com o e-mail da conta nova; *New check*, nome
       "backup", *Period* 3 dias, *Grace* 1 dia; copie a URL de *ping*. No repositório de
       backup, crie o segredo `BATIMENTO_URL` com essa URL (como no passo 4). Pronto: se o
-      backup parar por qualquer motivo, você recebe um e-mail em até 4 dias. O serviço só
-      recebe o sinal, não tem acesso a nada.
+      backup parar por qualquer motivo, você recebe um e-mail em até 4 dias. Rodada vermelha
+      por aviso ainda manda o sinal; e-mail do serviço quer dizer que o robô não rodou ou não
+      conseguiu gravar. O serviço só recebe o sinal, não tem acesso a nada.
 
 23b. **Backup do banco (Neon) — me diga se posso fazer.** Hoje o Neon guarda só **1 dia** de
    histórico para voltar no tempo e não tem nenhum snapshot. Proposta: aumentar o histórico
