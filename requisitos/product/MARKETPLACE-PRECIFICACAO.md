@@ -98,7 +98,9 @@ fechar. Se a margem ficar baixa, dá para combinar B com uma mensalidade pequena
   cobra nada** sobre as reservas que o proprietário do marketplace vende nas OTAs dele (anunciadas
   por ele ou pela SCL via Beds24); o modelo B vale só para o que o site vende. Motivo: quem vende
   1 pelo SCL e 15 pelo Airbnb sairia no mês seguinte se fosse cobrado pelas 15. O M12.2 calcula só
-  as reservas do site; as das OTAs ficam no calendário e no extrato como informação. Ideia de
+  as reservas do site; as das OTAs ficam no calendário e no extrato sem comissão — se o dinheiro
+  delas passar pela empresa (quem recebe = empresa, M2.7), o valor é repassado integral pelo
+  M4.10; se o canal pagar o proprietário direto, é só informação. Ideia de
   Diego para estudo (não é compromisso): **assinatura modular** — uma base e serviços opcionais
   que o proprietário escolhe e paga à parte (ex.: motor de preços da SCL, M3.9) — registrada em
   `requisitos/growth/ROADMAP.md`.

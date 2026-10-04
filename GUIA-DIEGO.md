@@ -104,7 +104,8 @@ peço na hora.
   gestão total recebe R$ 784 (contra R$ 714 no Airbnb) e a SCL R$ 138 (contra R$ 126): o site
   é melhor para os três sem regra nova. **Você decidiu em 4/10:** a SCL não cobra nada sobre
   as reservas que o dono do marketplace vende nas OTAs dele (o modelo B vale só para o que o
-  site vende). A sua ideia de uma assinatura modular — uma base e serviços opcionais, como o
+  site vende). Se o dinheiro dessas reservas passar pela empresa, ele é repassado inteiro ao
+  dono; se o canal pagar o dono direto, aparece só como informação no extrato. A sua ideia de uma assinatura modular — uma base e serviços opcionais, como o
   motor de preços, cada um com um valor a mais — ficou registrada como ideia para estudo, sem
   compromisso.
 - **Fonte de preços por imóvel (pedido de 4/10):** virou o item M3.9. Cada imóvel vai ter, com
