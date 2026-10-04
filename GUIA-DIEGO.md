@@ -85,7 +85,7 @@ e/ou anexa o comprovante do banco (PDF, PNG ou JPG até 5 MB; fica guardado no p
 dados, só você e o proprietário baixam). Com o comprovante, sai na hora o e-mail ao proprietário
 (e aos representantes com cópia) com valor, data, reservas pagas — integral ou parcial — e o
 arquivo anexado; sem comprovante, o repasse fica "pago sem comprovante" e o e-mail espera você
-anexar. Uma vez por repasse; precisa do Resend configurado (ação 9).
+anexar. Uma vez por repasse; precisa do Resend configurado (ação 9). Se o provedor de e-mail não confirmar o envio, o sistema repete o mesmo e-mail de hora em hora ao longo do dia (sem risco de duplicar); passado um dia sem confirmação, ele para e espera você decidir reenviar.
 
 Decisões que tomei sozinho, com a sua autorização de 4/10 (dá para mudar): o fechamento do dia 1º
 continua disparado por você no painel (a rotina só gera antecipados), para você conferir antes;

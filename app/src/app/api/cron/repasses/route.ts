@@ -1,7 +1,8 @@
 /**
  * Repasses por periodicidade (M4.10), chamado pelo agendador da Vercel todo dia às 8h (11h UTC; ver
  * `vercel.json`): gera os repasses antecipados do dia e manda os e-mails dos repasses pagos com
- * comprovante. Só roda com o segredo do agendador (`CRON_SECRET`): sem ele, recusa.
+ * comprovante. A repetição dos e-mails sem confirmação roda de hora em hora em `/api/cron/repasses-emails`.
+ * Só roda com o segredo do agendador (`CRON_SECRET`): sem ele, recusa.
  */
 import { getDb } from "@/db/client";
 import { correioDoAmbiente } from "@/email/correio";

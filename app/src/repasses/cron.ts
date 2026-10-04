@@ -1,8 +1,11 @@
 /**
- * Rotina diária dos repasses (M4.10), chamada pelo agendador às 8h de São Paulo: gera o repasse
- * antecipado de quem tem periodicidade quinzenal, semanal ou "assim que disponível" quando a data
- * bate (nunca no dia 1º: o fechamento é o único repasse do dia) e manda os e-mails dos repasses
- * pagos com comprovante que ainda não saíram. Registrada na página "Sistema".
+ * Rotinas dos repasses (M4.10), registradas na página "Sistema":
+ * - diária, às 8h de São Paulo: gera o repasse antecipado de quem tem periodicidade quinzenal,
+ *   semanal ou "assim que disponível" quando a data bate (nunca no dia 1º: o fechamento é o único
+ *   repasse do dia) e manda os e-mails dos repasses pagos com comprovante que ainda não saíram;
+ * - de hora em hora: só os e-mails — manda os que faltam e repete, com a mesma chave, a tentativa
+ *   sem confirmação do provedor enquanto a chave vale (15 min a 23 h). Uma rotina só diária não
+ *   alcançaria essa janela: no dia seguinte a chave já expirou e o e-mail ficaria "incerto" à toa.
  */
 import { and, eq } from "drizzle-orm";
 import { organizacoes, proprietarios } from "@/db/schema";
@@ -50,6 +53,32 @@ export function resumoDaRotina(r: ResultadoRotinaRepasses): string {
   ]
     .filter(Boolean)
     .join(", ");
+}
+
+export function resumoDosEmails(e: ResultadoRotinaRepasses["emails"]): string {
+  return resumoDaRotina({ gerados: 0, semDisponivel: 0, falhas: [], emails: e }).replace(/^0 repasse\(s\) antecipado\(s\) gerado\(s\),? ?/, "") || "nada a enviar";
+}
+
+/** Só os e-mails, de todas as organizações (rotina de hora em hora). E-mail recusado fica como erro na execução. */
+export function emailsDeRepassesDeTodas(db: Db, correio: Correio | null, agora: Date): Promise<string> {
+  return registrarExecucao(db, "repasses-emails", async () => {
+    const orgs = await db.select({ id: organizacoes.id }).from(organizacoes);
+    const partes: string[] = [];
+    let erro = false;
+    for (const o of orgs) {
+      try {
+        const e = await enviarEmailsDeRepasses(db, o.id, correio, agora);
+        partes.push(resumoDosEmails(e));
+        if (e.falhas) erro = true;
+      } catch {
+        partes.push("erro ao enviar e-mails de uma organização");
+        erro = true;
+      }
+    }
+    const resumo = partes.join("; ") || "nenhuma organização";
+    if (erro) throw new Error(resumo);
+    return resumo;
+  });
 }
 
 /** Todas as organizações; uma falha não impede as outras. Falha ou e-mail recusado fica como erro na execução. */

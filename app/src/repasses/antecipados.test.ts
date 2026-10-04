@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { saldoAcerto } from "@/financeiro/ledger";
 import type { DadosReserva } from "@/reservas/regras";
 import { criarReserva } from "@/reservas/repositorio";
-import { repassesDeTodas, rotinaDeRepasses } from "./cron";
+import { emailsDeRepassesDeTodas, repassesDeTodas, rotinaDeRepasses } from "./cron";
 import { enviarEmailDoRepasse, enviarEmailsDeRepasses, textoDoEmailDoRepasse } from "./email";
 import { partesDisponiveis, partesDoProprietario, resumirPartes } from "./extrato";
 
@@ -334,7 +334,9 @@ describe("periodicidade do proprietário e rotina diária (M4.10)", () => {
     expect(await enviarEmailDoRepasse(db, org, id, correio, new Date(t0.getTime() + 60_000))).toBe("aguardando");
     await db.update(proprietarios).set({ email: "novo@example.com" }).where(eq(proprietarios.id, dono));
     falhar = null;
-    expect(await enviarEmailDoRepasse(db, org, id, correio, new Date(t0.getTime() + 20 * 60_000))).toBe("enviado");
+    // É a rotina de hora em hora (só e-mails, registrada na página Sistema) que faz essa retomada dentro da janela da chave.
+    expect(await emailsDeRepassesDeTodas(db, correio, new Date(t0.getTime() + 20 * 60_000))).toBe("1 e-mail(s) enviado(s)");
+    expect(await enviarEmailDoRepasse(db, org, id, correio, new Date(t0.getTime() + 20 * 60_000))).toBe("ja_enviado");
     expect(enviadas[0]).toMatchObject({ chave: `repasse:${id}:email`, para: "dona@example.com" });
     expect((await obterRepasse(db, org, id))!.emailPara).toBe("dona@example.com");
     // Fora da janela: fica incerto até alguém reenviar; o reenvio (tentativa nova) já vai para o endereço atual.
