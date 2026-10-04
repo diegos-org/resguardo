@@ -12,6 +12,7 @@ import { saldoAcerto } from "@/financeiro/ledger";
 import type { DadosReserva } from "@/reservas/regras";
 import { criarReserva } from "@/reservas/repositorio";
 import { calcularRepasse, estornarRepasse, fecharMes, limitesDoMes, listarRepasses, marcarRepassePago, mesAFechar, preverRepasses, somarMes } from "./repasses";
+import { receberTudo } from "./testes";
 
 describe("regras puras", () => {
   it("limites do mês, mês a fechar e navegação", () => {
@@ -73,6 +74,15 @@ const reparo = (valor: number, imovelId = a) =>
     null,
   );
 
+
+/** Cria a reserva e registra o recebimento integral (M4.10: só o dinheiro já com a empresa entra no repasse). */
+async function criarRecebida(dados: Parameters<typeof criarReserva>[2]) {
+  const r = await criarReserva(db, org, dados, null);
+  if (!r.ok) throw new Error(JSON.stringify(r.erros));
+  await receberTudo(db, org, r.reserva.id, dados.checkin);
+  return r.reserva;
+}
+
 beforeEach(async () => {
   ({ db, close } = await createTestDb());
   [{ id: org }, { id: outraOrg }] = await db.insert(organizacoes).values([{ nome: "A" }, { nome: "B" }]).returning();
@@ -93,7 +103,7 @@ beforeEach(async () => {
   if (!c.ok) throw new Error("categoria");
   categoria = c.categoria.id;
   // Booking: a empresa recebe. Bruto 1.000, taxa 150, comissão 15% de 850 = 127,50 → proprietário 722,50.
-  await criarReserva(db, org, reserva(a, "2026-10-10", "2026-10-13"), null);
+  await criarRecebida(reserva(a, "2026-10-10", "2026-10-13"));
 });
 afterEach(() => close());
 
@@ -185,7 +195,7 @@ describe("fechamento do mês", () => {
     await reparo(40000);
     const [adiant] = await listarAdiantamentos(db, org, { proprietarioId: dono });
     await contestar(db, org, adiant.id, "Não autorizei", null);
-    await criarReserva(db, org, reserva(a, "2026-11-10", "2026-11-13"), null);
+    await criarRecebida(reserva(a, "2026-11-10", "2026-11-13"));
     expect((await fecharMes(db, org, dono, "2026-11", "2026-12-01", null)).ok).toBe(true);
     const outubro = async () => (await preverRepasses(db, org, MES, "2026-12-02"))[0];
     expect(await outubro()).toMatchObject({ repasse: null, repassePosterior: "2026-11", diferencaPosFechamento: 0 });
@@ -201,7 +211,7 @@ describe("fechamento do mês", () => {
     await reparo(40000);
     const [adiant] = await listarAdiantamentos(db, org, { proprietarioId: dono });
     await contestar(db, org, adiant.id, "Não autorizei", null);
-    await criarReserva(db, org, reserva(a, "2026-11-10", "2026-11-13"), null);
+    await criarRecebida(reserva(a, "2026-11-10", "2026-11-13"));
     expect((await fecharMes(db, org, dono, "2026-11", "2026-12-01", null)).ok).toBe(true);
     // A empresa assume com data de outubro: o adiantamento sai quitado e a compensação entra no livro.
     expect((await resolverContestacao(db, org, adiant.id, { resolucao: "empresa_assume", nota: "", data: "2026-10-20" }, null)).ok).toBe(true);
@@ -213,7 +223,7 @@ describe("fechamento do mês", () => {
     const [adiant] = await listarAdiantamentos(db, org, { proprietarioId: dono });
     await contestar(db, org, adiant.id, "Não autorizei", null);
     expect((await resolverContestacao(db, org, adiant.id, { resolucao: "empresa_assume", nota: "", data: "2026-10-20" }, null)).ok).toBe(true);
-    await criarReserva(db, org, reserva(a, "2026-11-10", "2026-11-13"), null);
+    await criarRecebida(reserva(a, "2026-11-10", "2026-11-13"));
     expect((await fecharMes(db, org, dono, "2026-11", "2026-12-01", null)).ok).toBe(true);
     // Desfeito depois do repasse de novembro: a contestação reabre e o valor volta a ficar fora do desconto.
     const q = (await obterAdiantamento(db, org, adiant.id))!.quitacoes.find((x) => x.forma === "empresa_assume")!;
@@ -226,7 +236,7 @@ describe("fechamento do mês", () => {
     await reparo(40000);
     const [adiant] = await listarAdiantamentos(db, org, { proprietarioId: dono });
     await contestar(db, org, adiant.id, "Não autorizei", null);
-    await criarReserva(db, org, reserva(a, "2026-11-10", "2026-11-13"), null);
+    await criarRecebida(reserva(a, "2026-11-10", "2026-11-13"));
     expect((await fecharMes(db, org, dono, "2026-11", "2026-12-01", null)).ok).toBe(true);
     // A despesa de origem é estornada: a contestação é encerrada e o adiantamento, estornado.
     expect(await estornarDespesa(db, org, adiant.despesaId!, "lançada errado", null)).toBe(true);
@@ -238,7 +248,7 @@ describe("fechamento do mês", () => {
     await reparo(40000);
     const [adiant] = await listarAdiantamentos(db, org, { proprietarioId: dono });
     await contestar(db, org, adiant.id, "Não autorizei", null);
-    await criarReserva(db, org, reserva(a, "2026-11-10", "2026-11-13"), null);
+    await criarRecebida(reserva(a, "2026-11-10", "2026-11-13"));
     expect((await fecharMes(db, org, dono, "2026-11", "2026-12-01", null)).ok).toBe(true);
     // Mantida, reembolso parcial com data de outubro e nova contestação dos 300 restantes.
     await resolverContestacao(db, org, adiant.id, { resolucao: "mantida", nota: "", data: "2026-12-02" }, null);
@@ -280,7 +290,7 @@ describe("pagamento e estorno", () => {
     const r = await fecharMes(db, org, dono, MES, DEPOIS, null);
     if (!r.ok) throw new Error(r.erro);
     // Novembro: mais uma reserva, fecha depois de outubro.
-    await criarReserva(db, org, reserva(a, "2026-11-10", "2026-11-13"), null);
+    await criarRecebida(reserva(a, "2026-11-10", "2026-11-13"));
     const nov = await fecharMes(db, org, dono, "2026-11", "2026-12-01", null);
     if (!nov.ok) throw new Error(nov.erro);
     expect(await estornarRepasse(db, org, r.id, "Valor errado", DEPOIS, null)).toMatchObject({ ok: false, erro: expect.stringContaining("posterior") });
@@ -299,7 +309,7 @@ describe("pagamento e estorno", () => {
   it("estornar outubro e fechar novembro ao mesmo tempo nunca deixam novembro ativo com outubro estornado", async () => {
     const out = await fecharMes(db, org, dono, MES, DEPOIS, null);
     if (!out.ok) throw new Error(out.erro);
-    await criarReserva(db, org, reserva(a, "2026-11-10", "2026-11-13"), null);
+    await criarRecebida(reserva(a, "2026-11-10", "2026-11-13"));
     const [est, nov] = await Promise.all([estornarRepasse(db, org, out.id, "Refazer", "2026-12-01", null), fecharMes(db, org, dono, "2026-11", "2026-12-01", null)]);
     const ativos = (await listarRepasses(db, org, dono)).filter((x) => !x.estornadoEm).map((x) => x.mes);
     // Ou o estorno venceu (e novembro fecha sobre outubro reaberto), ou novembro venceu (e o estorno foi recusado).
@@ -319,7 +329,7 @@ describe("pagamento e estorno", () => {
 
   it("entrada depois do fechamento vira aviso e vai para o próximo repasse", async () => {
     expect((await fecharMes(db, org, dono, MES, DEPOIS, null)).ok).toBe(true);
-    await criarReserva(db, org, reserva(a, "2026-10-20", "2026-10-22"), null); // reserva de outubro lançada tarde
+    await criarRecebida(reserva(a, "2026-10-20", "2026-10-22")); // reserva de outubro lançada tarde
     const p = await prever();
     expect(p.avisos.join(" ")).toContain("entra no próximo repasse");
     const nov = (await preverRepasses(db, org, "2026-11", "2026-12-01"))[0];

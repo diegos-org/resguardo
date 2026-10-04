@@ -1,6 +1,6 @@
 {
-  "id": "bd4e279d-866c-4434-b78a-318454c1c0e2",
-  "prevId": "d8667a59-6e97-4ddd-8822-61f625e96095",
+  "id": "f3aaf93c-12bd-4025-b40a-4867396fc20b",
+  "prevId": "8ce218ae-a17b-4fed-a8e0-293afe19f15e",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -422,6 +422,96 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.arquivos": {
+      "name": "arquivos",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organizacao_id": {
+          "name": "organizacao_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nome": {
+          "name": "nome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tipo": {
+          "name": "tipo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tamanho": {
+          "name": "tamanho",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "conteudo": {
+          "name": "conteudo",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "criado_por": {
+          "name": "criado_por",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "criado_em": {
+          "name": "criado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "arquivos_organizacao_id_organizacoes_id_fk": {
+          "name": "arquivos_organizacao_id_organizacoes_id_fk",
+          "tableFrom": "arquivos",
+          "tableTo": "organizacoes",
+          "columnsFrom": [
+            "organizacao_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "arquivos_criado_por_usuarios_id_fk": {
+          "name": "arquivos_criado_por_usuarios_id_fk",
+          "tableFrom": "arquivos",
+          "tableTo": "usuarios",
+          "columnsFrom": [
+            "criado_por"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.auditoria": {
       "name": "auditoria",
       "schema": "",
@@ -786,142 +876,6 @@
           ]
         }
       },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.beds24_envio_imoveis": {
-      "name": "beds24_envio_imoveis",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "organizacao_id": {
-          "name": "organizacao_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "envio_id": {
-          "name": "envio_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "imovel_id": {
-          "name": "imovel_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "property_id": {
-          "name": "property_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "''"
-        },
-        "room_id": {
-          "name": "room_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "''"
-        },
-        "falha": {
-          "name": "falha",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "''"
-        }
-      },
-      "indexes": {
-        "beds24_envio_imoveis_imovel": {
-          "name": "beds24_envio_imoveis_imovel",
-          "columns": [
-            {
-              "expression": "organizacao_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "imovel_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "beds24_envio_imoveis_envio": {
-          "name": "beds24_envio_imoveis_envio",
-          "columns": [
-            {
-              "expression": "envio_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "beds24_envio_imoveis_organizacao_id_organizacoes_id_fk": {
-          "name": "beds24_envio_imoveis_organizacao_id_organizacoes_id_fk",
-          "tableFrom": "beds24_envio_imoveis",
-          "tableTo": "organizacoes",
-          "columnsFrom": [
-            "organizacao_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "beds24_envio_imoveis_envio_id_beds24_envios_id_fk": {
-          "name": "beds24_envio_imoveis_envio_id_beds24_envios_id_fk",
-          "tableFrom": "beds24_envio_imoveis",
-          "tableTo": "beds24_envios",
-          "columnsFrom": [
-            "envio_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "beds24_envio_imoveis_imovel_id_imoveis_id_fk": {
-          "name": "beds24_envio_imoveis_imovel_id_imoveis_id_fk",
-          "tableFrom": "beds24_envio_imoveis",
-          "tableTo": "imoveis",
-          "columnsFrom": [
-            "imovel_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
@@ -3841,13 +3795,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "sem_custo": {
-          "name": "sem_custo",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
         "observacao": {
           "name": "observacao",
           "type": "text",
@@ -4098,13 +4045,6 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
-        },
-        "sem_custo": {
-          "name": "sem_custo",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
         },
         "observacao": {
           "name": "observacao",
@@ -5094,6 +5034,12 @@
           "notNull": true,
           "default": true
         },
+        "periodicidade_repasse": {
+          "name": "periodicidade_repasse",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "criado_em": {
           "name": "criado_em",
           "type": "timestamp with time zone",
@@ -5402,6 +5348,194 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.repasse_itens": {
+      "name": "repasse_itens",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organizacao_id": {
+          "name": "organizacao_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "repasse_id": {
+          "name": "repasse_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lancamento_id": {
+          "name": "lancamento_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reserva_id": {
+          "name": "reserva_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "imovel_id": {
+          "name": "imovel_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "competencia": {
+          "name": "competencia",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "valor": {
+          "name": "valor",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "criado_em": {
+          "name": "criado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "liberado_em": {
+          "name": "liberado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "repasse_itens_lancamento_unico": {
+          "name": "repasse_itens_lancamento_unico",
+          "columns": [
+            {
+              "expression": "lancamento_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"repasse_itens\".\"liberado_em\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "repasse_itens_repasse": {
+          "name": "repasse_itens_repasse",
+          "columns": [
+            {
+              "expression": "repasse_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "repasse_itens_reserva": {
+          "name": "repasse_itens_reserva",
+          "columns": [
+            {
+              "expression": "reserva_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "repasse_itens_organizacao_id_organizacoes_id_fk": {
+          "name": "repasse_itens_organizacao_id_organizacoes_id_fk",
+          "tableFrom": "repasse_itens",
+          "tableTo": "organizacoes",
+          "columnsFrom": [
+            "organizacao_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "repasse_itens_repasse_id_repasses_id_fk": {
+          "name": "repasse_itens_repasse_id_repasses_id_fk",
+          "tableFrom": "repasse_itens",
+          "tableTo": "repasses",
+          "columnsFrom": [
+            "repasse_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "repasse_itens_lancamento_id_lancamentos_id_fk": {
+          "name": "repasse_itens_lancamento_id_lancamentos_id_fk",
+          "tableFrom": "repasse_itens",
+          "tableTo": "lancamentos",
+          "columnsFrom": [
+            "lancamento_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "repasse_itens_reserva_id_reservas_id_fk": {
+          "name": "repasse_itens_reserva_id_reservas_id_fk",
+          "tableFrom": "repasse_itens",
+          "tableTo": "reservas",
+          "columnsFrom": [
+            "reserva_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "repasse_itens_imovel_id_imoveis_id_fk": {
+          "name": "repasse_itens_imovel_id_imoveis_id_fk",
+          "tableFrom": "repasse_itens",
+          "tableTo": "imoveis",
+          "columnsFrom": [
+            "imovel_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.repasses": {
       "name": "repasses",
       "schema": "",
@@ -5425,8 +5559,21 @@
           "primaryKey": false,
           "notNull": true
         },
+        "tipo": {
+          "name": "tipo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'fechamento'"
+        },
         "mes": {
           "name": "mes",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "data": {
+          "name": "data",
           "type": "date",
           "primaryKey": false,
           "notNull": true
@@ -5455,6 +5602,20 @@
           "primaryKey": false,
           "notNull": true
         },
+        "fora_do_fechamento": {
+          "name": "fora_do_fechamento",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "antecipado": {
+          "name": "antecipado",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
         "situacao": {
           "name": "situacao",
           "type": "text",
@@ -5465,6 +5626,71 @@
         "data_pagamento": {
           "name": "data_pagamento",
           "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "comprovante": {
+          "name": "comprovante",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "comprovante_arquivo_id": {
+          "name": "comprovante_arquivo_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "email_situacao": {
+          "name": "email_situacao",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pendente'"
+        },
+        "email_em": {
+          "name": "email_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "email_para": {
+          "name": "email_para",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "email_chave": {
+          "name": "email_chave",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "email_tentativa_em": {
+          "name": "email_tentativa_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "email_pedido": {
+          "name": "email_pedido",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "chave_pix_paga": {
+          "name": "chave_pix_paga",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "pedido_em": {
+          "name": "pedido_em",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },
@@ -5513,7 +5739,29 @@
             }
           ],
           "isUnique": true,
-          "where": "\"repasses\".\"estornado_em\" is null",
+          "where": "\"repasses\".\"estornado_em\" is null and \"repasses\".\"tipo\" = 'fechamento'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "repasses_um_antecipado_por_dia": {
+          "name": "repasses_um_antecipado_por_dia",
+          "columns": [
+            {
+              "expression": "proprietario_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "data",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"repasses\".\"estornado_em\" is null and \"repasses\".\"tipo\" = 'antecipado'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -5560,6 +5808,19 @@
           "tableTo": "proprietarios",
           "columnsFrom": [
             "proprietario_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "repasses_comprovante_arquivo_id_arquivos_id_fk": {
+          "name": "repasses_comprovante_arquivo_id_arquivos_id_fk",
+          "tableFrom": "repasses",
+          "tableTo": "arquivos",
+          "columnsFrom": [
+            "comprovante_arquivo_id"
           ],
           "columnsTo": [
             "id"

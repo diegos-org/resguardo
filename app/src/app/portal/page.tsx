@@ -10,6 +10,7 @@ import { BotaoCopiar } from "@/components/BotaoCopiar";
 import { BloqueiosProprietario } from "@/components/portal/BloqueiosProprietario";
 import { type ImovelOperavel, OperacaoMarketplace } from "@/components/portal/OperacaoMarketplace";
 import { CalendarioPortal } from "@/components/portal/CalendarioPortal";
+import { ExtratoRepasses } from "@/components/portal/ExtratoRepasses";
 import { MolduraPortal } from "@/components/portal/MolduraPortal";
 import styles from "@/components/portal/portal.module.css";
 import { lerEmpresa, nomeDaEmpresa } from "@/configuracoes/empresa";
@@ -19,7 +20,11 @@ import { hojeISO } from "@/lib/datas";
 import { centavosParaCampo } from "@/lib/dinheiro-form";
 import { nomeDoMes, periodoDosFiltros } from "@/lib/filtros";
 import { formatBRL } from "@/lib/money";
-import { bloquearDatasAcao, excluirPeriodoPortalAcao, liberarDatasAcao, marcarLimpezaFeitaPortalAcao, novoPeriodoPortalAcao, registrarManutencaoPortalAcao, salvarPrecosPortalAcao } from "@/portal/acoes";
+import { bloquearDatasAcao, escolherPeriodicidadeAcao, excluirPeriodoPortalAcao, liberarDatasAcao, marcarLimpezaFeitaPortalAcao, novoPeriodoPortalAcao, pedirRepasseAcao, registrarManutencaoPortalAcao, salvarPrecosPortalAcao } from "@/portal/acoes";
+import { partesDoProprietario } from "@/repasses/extrato";
+import { periodicidadeDoProprietario } from "@/repasses/proprietario";
+import { lerRegrasRepasses } from "@/repasses/regras-config";
+import { itensDoRepasse, listarRepasses } from "@/repasses/repasses";
 import { bloqueiosDoProprietario, permissoesDeBloqueio } from "@/portal/bloqueios";
 import { imoveisMarketplaceDaSessao, limpezasDoProprietario, manutencoesDoProprietario, precosDoMarketplace } from "@/portal/marketplace";
 import { janela, lerPeriodoPortal, nome, situacaoDoPeriodo, vizinhos } from "@/portal/periodo";
@@ -247,6 +252,23 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
   // Saldo do acerto: o do repasse do mês (no ano inteiro, o de dezembro), com todos os imóveis dele.
   const mesSaldo = `${filtros.ano}-${String(filtros.mes ?? 12).padStart(2, "0")}`;
   const rodape = await rodapeDoPortal(db, sessao.organizacaoId, { proprietarios: selecao.donos, mes: mesSaldo, hoje, pixEmpresa: (await lerEmpresa(db, sessao.organizacaoId)).chavePix });
+  // Extrato e repasses (M4.10), de todos os proprietários do usuário: as partes do período (ou ainda não repassadas) e os repasses do período (ou a pagar).
+  const regrasRepasses = await lerRegrasRepasses(db, sessao.organizacaoId);
+  const agora = new Date();
+  const periodicidades = (await Promise.all(donos.map((d) => periodicidadeDoProprietario(db, sessao.organizacaoId, d.id, hoje, regrasRepasses)))).filter((x) => x !== null);
+  const partes = (await Promise.all(donos.map((d) => partesDoProprietario(db, sessao.organizacaoId, d.id, agora)))).flat().filter((x) => (x.competencia >= periodo.inicio && x.competencia < periodo.fim) || x.situacao === "disponivel" || x.situacao === "a_liberar");
+  // Estornados ficam no histórico do período (o proprietário viu o repasse aparecer, talvez até pago): a situação explica.
+  const repassesDoPortal = (await Promise.all(donos.map((d) => listarRepasses(db, sessao.organizacaoId, d.id)))).flat().filter((r) => (r.data >= periodo.inicio && r.data < periodo.fim) || r.situacao === "a_pagar");
+  // As reservas que cada repasse cobriu (itens): o detalhe oficial do que foi pago, mesmo com partes do mesmo período em repasses diferentes.
+  const itensDosRepasses = Object.fromEntries(await Promise.all(repassesDoPortal.map(async (r) => [r.id, await itensDoRepasse(db, sessao.organizacaoId, r.id)] as const)));
+  const mensagemRepasses =
+    typeof params.erro === "string"
+      ? { tipo: "erro" as const, texto: params.erro }
+      : params.salvo === "periodicidade"
+        ? { tipo: "ok" as const, texto: "Sua escolha foi salva: vale a partir do próximo repasse." }
+        : params.salvo === "repasse"
+          ? { tipo: "ok" as const, texto: `Pedido registrado: o repasse aparece abaixo como a pagar. A ${empresa} faz o Pix e você recebe o comprovante por e-mail.` }
+          : null;
   const situacao = situacaoDoPeriodo(filtros);
   const { anterior, seguinte } = vizinhos(filtros);
   const j = janela();
@@ -472,6 +494,20 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
               hóspede informou.
             </p>
           </section>
+
+          <ExtratoRepasses
+            donos={donos}
+            periodicidades={periodicidades}
+            partes={partes}
+            repasses={repassesDoPortal}
+            itens={itensDosRepasses}
+            regras={regrasRepasses}
+            hoje={hoje}
+            empresa={empresa}
+            escolher={escolherPeriodicidadeAcao}
+            pedir={pedirRepasseAcao}
+            mensagem={mensagemRepasses}
+          />
 
           <section aria-label="Saldo e Pix" className={`${styles.caixa} ${styles.secao}`}>
             <h2>Saldo com a {empresa}</h2>

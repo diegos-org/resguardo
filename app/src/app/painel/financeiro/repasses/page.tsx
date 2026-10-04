@@ -1,29 +1,42 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { and, asc, eq } from "drizzle-orm";
 import { podeFazer } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
-import { BotaoCopiar } from "@/components/BotaoCopiar";
 import styles from "@/components/formularios.module.css";
+import { CartaoRepasse } from "@/components/repasses/CartaoRepasse";
+import { type DonoAntecipavel, RepassesAntecipados } from "@/components/repasses/RepassesAntecipados";
 import { getDb } from "@/db/client";
+import { proprietarios } from "@/db/schema";
 import { hojeISO } from "@/lib/datas";
-import { centavosParaCampo } from "@/lib/dinheiro-form";
 import { formatBRL } from "@/lib/money";
 import { enviarFechamentoAcao, salvarFechamentoEmailAcao } from "@/fechamento/acoes";
 import { lerConfigFechamentoEmail, situacaoDosFechamentos } from "@/fechamento/email";
-import { estornarRepasseAcao, fecharMesAcao, pagarRepasseAcao } from "@/repasses/acoes";
-import { limitesDoMes, mesAFechar, nomeMes, type PrevisaoRepasse, somarMes } from "@/repasses/repasses";
+import { fecharMesAcao } from "@/repasses/acoes";
+import { partesDoProprietario, resumirPartes } from "@/repasses/extrato";
+import { periodicidadeDoProprietario } from "@/repasses/proprietario";
+import { lerRegrasRepasses } from "@/repasses/regras-config";
+import { itensDoRepasse, limitesDoMes, listarRepassesDaOrganizacao, meioDiaDe, mesAFechar, nomeMes, type PrevisaoRepasse, somarMes } from "@/repasses/repasses";
 
 const dataBr = (d: string) => d.split("-").reverse().join("/");
-const SUCESSO: Record<string, string> = { fechado: "Mês fechado: repasse gerado.", pago: "Repasse marcado como pago.", estornado: "Repasse estornado." };
+const SUCESSO: Record<string, string> = {
+  fechado: "Mês fechado: repasse gerado.",
+  pago: "Repasse marcado como pago.",
+  estornado: "Repasse estornado.",
+  antecipado: "Repasse antecipado gerado: a pagar.",
+  comprovante: "Comprovante registrado.",
+};
 
 function Numeros({ p }: { p: PrevisaoRepasse }) {
   // Os adiantamentos já estão no saldo do acerto: "a receber" os soma de volta para mostrar a conta.
-  const [saldo, descontado, contestado] = p.repasse ? [p.repasse.saldo, p.repasse.descontado, p.repasse.contestado] : [p.saldo, p.aDescontar, p.contestado];
+  const [saldo, descontado, contestado, fora, antecipado] = p.repasse ? [p.repasse.saldo, p.repasse.descontado, p.repasse.contestado, p.repasse.foraDoFechamento, p.repasse.antecipado] : [p.saldo, p.aDescontar, p.contestado, p.fora, p.antecipado];
   const itens: [string, string][] = [
     ["Crédito do proprietário até o fim do mês (antes dos descontos)", formatBRL(saldo + descontado + contestado)],
     ["− Adiantamentos descontados", formatBRL(descontado)],
     ["Contestados (não descontados)", formatBRL(contestado)],
+    ...(fora ? ([["− Fora do fechamento (dinheiro ainda não com a empresa)", formatBRL(fora)]] as [string, string][]) : []),
+    ...(antecipado ? ([["+ Noites de meses seguintes já disponíveis (adiantamento)", formatBRL(antecipado)]] as [string, string][]) : []),
   ];
   return (
     <dl style={{ display: "flex", gap: "8px 24px", flexWrap: "wrap", margin: 0 }}>
@@ -45,7 +58,32 @@ export default async function Repasses({ searchParams }: PageProps<"/painel/fina
   const pedido = typeof params.mes === "string" ? params.mes : "";
   const mes = limitesDoMes(pedido) ? pedido : mesAFechar(hoje);
   const editar = podeFazer(sessao.papel, "financeiro:editar");
-  const [lista, configEmail] = await Promise.all([situacaoDosFechamentos(getDb(), sessao.organizacaoId, mes, hoje), lerConfigFechamentoEmail(getDb(), sessao.organizacaoId)]);
+  const db = getDb();
+  const lim = limitesDoMes(mes)!;
+  const agora = meioDiaDe(hoje);
+  const [lista, configEmail, regrasRepasses, antecipadosLista] = await Promise.all([
+    situacaoDosFechamentos(db, sessao.organizacaoId, mes, hoje),
+    lerConfigFechamentoEmail(db, sessao.organizacaoId),
+    lerRegrasRepasses(db, sessao.organizacaoId),
+    listarRepassesDaOrganizacao(db, sessao.organizacaoId, { tipo: "antecipado", de: lim.inicio, ate: lim.fim }),
+  ]);
+  // M4.10: partes disponíveis agora (para o antecipado avulso) e periodicidade de cada proprietário. Todos os
+  // proprietários ativos, não só os do mês a fechar: quem entrou neste mês e já tem parte disponível também aparece.
+  const ativos = await db
+    .select({ id: proprietarios.id, nome: proprietarios.nome })
+    .from(proprietarios)
+    .where(and(eq(proprietarios.organizacaoId, sessao.organizacaoId), eq(proprietarios.ativo, true)))
+    .orderBy(asc(proprietarios.nome));
+  const candidatos = [...new Map([...ativos.map((p) => [p.id, p.nome] as const), ...lista.map((p) => [p.proprietarioId, p.nome] as const)])];
+  const donosAntecipaveis: DonoAntecipavel[] = await Promise.all(
+    candidatos.map(async ([proprietarioId, nome]) => {
+      const [partes, periodicidade] = await Promise.all([partesDoProprietario(db, sessao.organizacaoId, proprietarioId, agora), periodicidadeDoProprietario(db, sessao.organizacaoId, proprietarioId, hoje, regrasRepasses)]);
+      const r = resumirPartes(partes);
+      return { proprietarioId, nome, disponivel: r.disponivel, aLiberar: r.aLiberar, periodicidade };
+    }),
+  );
+  const antecipados = await Promise.all(antecipadosLista.map(async (r) => ({ ...r, itens: await itensDoRepasse(db, sessao.organizacaoId, r.id) })));
+  const itensFechamento = new Map(await Promise.all(lista.filter((p) => p.repasse).map(async (p) => [p.repasse!.id, await itensDoRepasse(db, sessao.organizacaoId, p.repasse!.id)] as const)));
   const salvo = typeof params.salvo === "string" ? SUCESSO[params.salvo] : typeof params.info === "string" ? params.info : undefined;
   const prontos = lista.filter((p) => p.situacao === "pronto").length;
   const erro = typeof params.erro === "string" ? params.erro : undefined;
@@ -55,8 +93,10 @@ export default async function Repasses({ searchParams }: PageProps<"/painel/fina
     <>
       <h1>Repasses aos proprietários</h1>
       <p style={{ color: "var(--scl-texto-2)", fontSize: "0.875rem", maxWidth: 820, margin: 0 }}>
-        No dia 1º, feche o mês anterior de cada proprietário. O valor é o saldo do acerto no fim do mês, já com os adiantamentos descontados. Os
-        contestados ficam de fora até você resolver. Depois de fazer o Pix, marque como pago. Errou? Estorne o repasse: tudo volta como estava.
+        No dia 1º, feche o mês anterior de cada proprietário. O valor é o saldo do acerto no fim do mês, já com os adiantamentos descontados; só entra o que
+        já está <strong>disponível</strong> (check-in passado e dinheiro recebido pela empresa — registre o recebimento na página da reserva); o resto fica para o
+        repasse seguinte, e noites de meses seguintes já disponíveis entram como adiantamento. Os contestados ficam de fora até você resolver. Depois de fazer o
+        Pix, marque como pago com o comprovante: o e-mail ao proprietário sai com ele. Errou? Estorne o repasse: tudo volta como estava.
       </p>
       <nav aria-label="Mês" style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
         <Link href={`/painel/financeiro/repasses?mes=${somarMes(mes, -1)}`}>← {nomeMes(somarMes(mes, -1))}</Link>
@@ -76,6 +116,8 @@ export default async function Repasses({ searchParams }: PageProps<"/painel/fina
       <p className={styles.etiqueta} style={{ alignSelf: "flex-start" }}>
         {lista.length} proprietário(s) com acerto · a transferir: {formatBRL(aPagar)}
       </p>
+
+      <RepassesAntecipados repasses={antecipados} donos={donosAntecipaveis} mes={mes} hoje={hoje} editar={editar} />
 
       <details className={styles.form} aria-label="E-mail do fechamento">
         <summary style={{ cursor: "pointer", fontWeight: 600 }}>
@@ -200,49 +242,11 @@ export default async function Repasses({ searchParams }: PageProps<"/painel/fina
               </form>
             )}
 
-            {editar && r?.situacao === "a_pagar" && (
-              <>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                  <span>
-                    Chave Pix: <code>{p.chavePix || "não cadastrada"}</code>
-                  </span>
-                  {p.chavePix && <BotaoCopiar texto={p.chavePix} rotulo="Copiar Pix" className={styles.pequeno} />}
-                  <BotaoCopiar texto={centavosParaCampo(r.valor)} rotulo="Copiar valor" className={styles.pequeno} />
-                </div>
-                <form action={pagarRepasseAcao} className={styles.linha} style={{ alignItems: "flex-end" }}>
-                  <input type="hidden" name="mes" value={mes} />
-                  <input type="hidden" name="id" value={r.id} />
-                  <label style={{ flex: "0 1 220px" }}>
-                    Data do Pix
-                    <input type="date" name="data" defaultValue={hoje} min={limitesDoMes(mes)!.fim} max={hoje} required />
-                  </label>
-                  <div className={styles.acoes}>
-                    <button type="submit">Marcar como pago</button>
-                  </div>
-                </form>
-              </>
-            )}
-
-            {editar && r && (
-              <details>
-                <summary style={{ cursor: "pointer", fontSize: "0.875rem" }}>Estornar este repasse</summary>
-                <form action={estornarRepasseAcao} className={styles.linha} style={{ alignItems: "flex-end", marginTop: 8 }}>
-                  <input type="hidden" name="mes" value={mes} />
-                  <input type="hidden" name="id" value={r.id} />
-                  <label>
-                    Motivo
-                    <input name="motivo" required maxLength={300} placeholder="ex.: valor errado, refazer o fechamento" />
-                  </label>
-                  <div className={styles.acoes}>
-                    <BotaoConfirmar
-                      pergunta={`Estornar o repasse de ${nomeMes(mes)} de ${p.nome}? Os lançamentos são estornados e os adiantamentos descontados voltam a ficar em aberto.${r.situacao === "pago" ? " O Pix já feito precisa ser devolvido ou acertado à parte." : ""}`}
-                      style={{ background: "var(--scl-erro)" }}
-                    >
-                      Estornar
-                    </BotaoConfirmar>
-                  </div>
-                </form>
-              </details>
+            {r && <CartaoRepasse r={r} nome={p.nome} chavePix={p.chavePix} itens={itensFechamento.get(r.id) ?? []} mes={mes} hoje={hoje} editar={editar} />}
+            {!r && p.itens.length > 0 && (
+              <p style={{ margin: 0, fontSize: "0.875rem", color: "var(--scl-texto-2)" }}>
+                {p.itens.length} parte(s) de reserva entram neste fechamento{p.foraDoFechamento.length ? `; ${p.foraDoFechamento.length} ficam fora (dinheiro ainda não registrado: registre o recebimento na página da reserva)` : ""}.
+              </p>
             )}
           </section>
         );

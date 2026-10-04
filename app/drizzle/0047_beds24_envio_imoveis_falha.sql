@@ -1,1 +1,0 @@
-ALTER TABLE "beds24_envio_imoveis" ADD COLUMN "falha" text DEFAULT '' NOT NULL;

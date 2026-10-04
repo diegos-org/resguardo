@@ -13,6 +13,7 @@ import { criarReserva } from "@/reservas/repositorio";
 import { donosDosEscolhidos, relatorioDoPainel, relatorioDoPortal } from "./gerar";
 import { conferirAnexos, ErroRelatorio, gerarPdfRelatorio, lerPaginas } from "./pdf";
 import { type DadosRelatorio, dadosDoRelatorio, imoveisDoProprietario, textoDoSaldo, textosDoRelatorio } from "./relatorio";
+import { receberTudo } from "@/repasses/testes";
 
 // PNG 1×1 (fictício, só para o teste).
 const PNG = Uint8Array.from(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"));
@@ -218,6 +219,15 @@ describe("dados e acesso", () => {
   const admin = (): Sessao => ({ usuarioId: donaUsuario.usuarioId, organizacaoId: org, papel: "admin", imovelIds: [] });
   const AGORA = new Date("2026-11-02T15:00:00Z");
 
+
+  /** Cria a reserva e registra o recebimento integral (M4.10: só o dinheiro já com a empresa entra no repasse). */
+  async function criarRecebida(dados: Parameters<typeof criarReserva>[2]) {
+    const r = await criarReserva(db, org, dados, null);
+    if (!r.ok) throw new Error(JSON.stringify(r.erros));
+    await receberTudo(db, org, r.reserva.id, dados.checkin);
+    return r.reserva;
+  }
+
   beforeEach(async () => {
     ({ db, close } = await createTestDb());
     [{ id: org }] = await db.insert(organizacoes).values({ nome: "Sua Casa Leblon" }).returning();
@@ -244,8 +254,8 @@ describe("dados e acesso", () => {
       { proprietarioId: dona, nome: "Rep Sem Relatório", recebeRelatorios: false },
     ]);
     await criarContrato(db, org, a, { tipo: "gestao_completa", comissao: "15", inicio: "2025-01-01" }, null);
-    await criarReserva(db, org, reserva(a), null);
-    await criarReserva(db, org, reserva(b, { hospedeNome: "Outra Pessoa" }), null);
+    await criarRecebida(reserva(a));
+    await criarRecebida(reserva(b, { hospedeNome: "Outra Pessoa" }));
     const [u] = await db.insert(usuarios).values({ organizacaoId: org, email: "dona@example.com", nome: "Dona", papel: "proprietario" }).returning();
     await db.insert(proprietarioUsuarios).values({ proprietarioId: dona, usuarioId: u.id });
     donaUsuario = { usuarioId: u.id, organizacaoId: org, papel: "proprietario", imovelIds: [a] };

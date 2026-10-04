@@ -1,1 +1,0 @@
-ALTER TABLE "manutencoes" ADD COLUMN "sem_custo" boolean DEFAULT false NOT NULL;

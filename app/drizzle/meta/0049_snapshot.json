@@ -1,6 +1,6 @@
 {
-  "id": "00530dc9-7427-41da-a759-5ea828e5c7ed",
-  "prevId": "bd4e279d-866c-4434-b78a-318454c1c0e2",
+  "id": "0d785209-dc5a-4ee4-a2e8-3ab2cb400263",
+  "prevId": "f3aaf93c-12bd-4025-b40a-4867396fc20b",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -151,89 +151,89 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "ajustes_organizacao_id_organizacoes_id_fk": {
           "name": "ajustes_organizacao_id_organizacoes_id_fk",
           "tableFrom": "ajustes",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "ajustes_imovel_id_imoveis_id_fk": {
           "name": "ajustes_imovel_id_imoveis_id_fk",
           "tableFrom": "ajustes",
-          "tableTo": "imoveis",
           "columnsFrom": [
             "imovel_id"
           ],
+          "tableTo": "imoveis",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "ajustes_reserva_id_reservas_id_fk": {
           "name": "ajustes_reserva_id_reservas_id_fk",
           "tableFrom": "ajustes",
-          "tableTo": "reservas",
           "columnsFrom": [
             "reserva_id"
           ],
+          "tableTo": "reservas",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "ajustes_proprietario_id_proprietarios_id_fk": {
           "name": "ajustes_proprietario_id_proprietarios_id_fk",
           "tableFrom": "ajustes",
-          "tableTo": "proprietarios",
           "columnsFrom": [
             "proprietario_id"
           ],
+          "tableTo": "proprietarios",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "ajustes_lancamento_id_lancamentos_id_fk": {
           "name": "ajustes_lancamento_id_lancamentos_id_fk",
           "tableFrom": "ajustes",
-          "tableTo": "lancamentos",
           "columnsFrom": [
             "lancamento_id"
           ],
+          "tableTo": "lancamentos",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "ajustes_criado_por_usuarios_id_fk": {
           "name": "ajustes_criado_por_usuarios_id_fk",
           "tableFrom": "ajustes",
-          "tableTo": "usuarios",
           "columnsFrom": [
             "criado_por"
           ],
+          "tableTo": "usuarios",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -351,37 +351,37 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "anuncios_organizacao_id_organizacoes_id_fk": {
           "name": "anuncios_organizacao_id_organizacoes_id_fk",
           "tableFrom": "anuncios",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "anuncios_imovel_id_imoveis_id_fk": {
           "name": "anuncios_imovel_id_imoveis_id_fk",
           "tableFrom": "anuncios",
-          "tableTo": "imoveis",
           "columnsFrom": [
             "imovel_id"
           ],
+          "tableTo": "imoveis",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -416,6 +416,96 @@
       },
       "indexes": {},
       "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.arquivos": {
+      "name": "arquivos",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organizacao_id": {
+          "name": "organizacao_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nome": {
+          "name": "nome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tipo": {
+          "name": "tipo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tamanho": {
+          "name": "tamanho",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "conteudo": {
+          "name": "conteudo",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "criado_por": {
+          "name": "criado_por",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "criado_em": {
+          "name": "criado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "arquivos_organizacao_id_organizacoes_id_fk": {
+          "name": "arquivos_organizacao_id_organizacoes_id_fk",
+          "tableFrom": "arquivos",
+          "columnsFrom": [
+            "organizacao_id"
+          ],
+          "tableTo": "organizacoes",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "arquivos_criado_por_usuarios_id_fk": {
+          "name": "arquivos_criado_por_usuarios_id_fk",
+          "tableFrom": "arquivos",
+          "columnsFrom": [
+            "criado_por"
+          ],
+          "tableTo": "usuarios",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
@@ -508,37 +598,37 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "auditoria_organizacao_id_organizacoes_id_fk": {
           "name": "auditoria_organizacao_id_organizacoes_id_fk",
           "tableFrom": "auditoria",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "auditoria_usuario_id_usuarios_id_fk": {
           "name": "auditoria_usuario_id_usuarios_id_fk",
           "tableFrom": "auditoria",
-          "tableTo": "usuarios",
           "columnsFrom": [
             "usuario_id"
           ],
+          "tableTo": "usuarios",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -617,28 +707,28 @@
         "beds24_calendario_organizacao_id_organizacoes_id_fk": {
           "name": "beds24_calendario_organizacao_id_organizacoes_id_fk",
           "tableFrom": "beds24_calendario",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "beds24_calendario_imovel_id_imoveis_id_fk": {
           "name": "beds24_calendario_imovel_id_imoveis_id_fk",
           "tableFrom": "beds24_calendario",
-          "tableTo": "imoveis",
           "columnsFrom": [
             "imovel_id"
           ],
+          "tableTo": "imoveis",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -739,41 +829,41 @@
         "beds24_calendario_enviado_organizacao_id_organizacoes_id_fk": {
           "name": "beds24_calendario_enviado_organizacao_id_organizacoes_id_fk",
           "tableFrom": "beds24_calendario_enviado",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "beds24_calendario_enviado_imovel_id_imoveis_id_fk": {
           "name": "beds24_calendario_enviado_imovel_id_imoveis_id_fk",
           "tableFrom": "beds24_calendario_enviado",
-          "tableTo": "imoveis",
           "columnsFrom": [
             "imovel_id"
           ],
+          "tableTo": "imoveis",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "beds24_calendario_enviado_envio_id_beds24_envios_id_fk": {
           "name": "beds24_calendario_enviado_envio_id_beds24_envios_id_fk",
           "tableFrom": "beds24_calendario_enviado",
-          "tableTo": "beds24_envios",
           "columnsFrom": [
             "envio_id"
           ],
+          "tableTo": "beds24_envios",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -786,142 +876,6 @@
           ]
         }
       },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.beds24_envio_imoveis": {
-      "name": "beds24_envio_imoveis",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "organizacao_id": {
-          "name": "organizacao_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "envio_id": {
-          "name": "envio_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "imovel_id": {
-          "name": "imovel_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "property_id": {
-          "name": "property_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "''"
-        },
-        "room_id": {
-          "name": "room_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "''"
-        },
-        "falha": {
-          "name": "falha",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "''"
-        }
-      },
-      "indexes": {
-        "beds24_envio_imoveis_imovel": {
-          "name": "beds24_envio_imoveis_imovel",
-          "columns": [
-            {
-              "expression": "organizacao_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "imovel_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "beds24_envio_imoveis_envio": {
-          "name": "beds24_envio_imoveis_envio",
-          "columns": [
-            {
-              "expression": "envio_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "beds24_envio_imoveis_organizacao_id_organizacoes_id_fk": {
-          "name": "beds24_envio_imoveis_organizacao_id_organizacoes_id_fk",
-          "tableFrom": "beds24_envio_imoveis",
-          "tableTo": "organizacoes",
-          "columnsFrom": [
-            "organizacao_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "beds24_envio_imoveis_envio_id_beds24_envios_id_fk": {
-          "name": "beds24_envio_imoveis_envio_id_beds24_envios_id_fk",
-          "tableFrom": "beds24_envio_imoveis",
-          "tableTo": "beds24_envios",
-          "columnsFrom": [
-            "envio_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "beds24_envio_imoveis_imovel_id_imoveis_id_fk": {
-          "name": "beds24_envio_imoveis_imovel_id_imoveis_id_fk",
-          "tableFrom": "beds24_envio_imoveis",
-          "tableTo": "imoveis",
-          "columnsFrom": [
-            "imovel_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
@@ -1037,9 +991,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "beds24_envio_noites_imovel": {
           "name": "beds24_envio_noites_imovel",
@@ -1064,50 +1018,50 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "beds24_envio_noites_organizacao_id_organizacoes_id_fk": {
           "name": "beds24_envio_noites_organizacao_id_organizacoes_id_fk",
           "tableFrom": "beds24_envio_noites",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "beds24_envio_noites_envio_id_beds24_envios_id_fk": {
           "name": "beds24_envio_noites_envio_id_beds24_envios_id_fk",
           "tableFrom": "beds24_envio_noites",
-          "tableTo": "beds24_envios",
           "columnsFrom": [
             "envio_id"
           ],
+          "tableTo": "beds24_envios",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "beds24_envio_noites_imovel_id_imoveis_id_fk": {
           "name": "beds24_envio_noites_imovel_id_imoveis_id_fk",
           "tableFrom": "beds24_envio_noites",
-          "tableTo": "imoveis",
           "columnsFrom": [
             "imovel_id"
           ],
+          "tableTo": "imoveis",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1200,13 +1154,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": 0
-        },
-        "credencial": {
-          "name": "credencial",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "''"
         }
       },
       "indexes": {
@@ -1227,24 +1174,24 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "beds24_envios_organizacao_id_organizacoes_id_fk": {
           "name": "beds24_envios_organizacao_id_organizacoes_id_fk",
           "tableFrom": "beds24_envios",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1307,9 +1254,9 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "beds24_execucao_reservas_org": {
           "name": "beds24_execucao_reservas_org",
@@ -1328,50 +1275,50 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "beds24_execucao_reservas_organizacao_id_organizacoes_id_fk": {
           "name": "beds24_execucao_reservas_organizacao_id_organizacoes_id_fk",
           "tableFrom": "beds24_execucao_reservas",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "beds24_execucao_reservas_execucao_id_beds24_execucoes_id_fk": {
           "name": "beds24_execucao_reservas_execucao_id_beds24_execucoes_id_fk",
           "tableFrom": "beds24_execucao_reservas",
-          "tableTo": "beds24_execucoes",
           "columnsFrom": [
             "execucao_id"
           ],
+          "tableTo": "beds24_execucoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "beds24_execucao_reservas_reserva_id_reservas_id_fk": {
           "name": "beds24_execucao_reservas_reserva_id_reservas_id_fk",
           "tableFrom": "beds24_execucao_reservas",
-          "tableTo": "reservas",
           "columnsFrom": [
             "reserva_id"
           ],
+          "tableTo": "reservas",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1450,24 +1397,24 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "beds24_execucoes_organizacao_id_organizacoes_id_fk": {
           "name": "beds24_execucoes_organizacao_id_organizacoes_id_fk",
           "tableFrom": "beds24_execucoes",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1570,10 +1517,10 @@
             }
           ],
           "isUnique": true,
-          "where": "\"bloqueios\".\"id_fonte\" <> ''",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"bloqueios\".\"id_fonte\" <> ''",
+          "concurrently": false
         },
         "bloqueios_imovel_periodo": {
           "name": "bloqueios_imovel_periodo",
@@ -1598,50 +1545,50 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "bloqueios_organizacao_id_organizacoes_id_fk": {
           "name": "bloqueios_organizacao_id_organizacoes_id_fk",
           "tableFrom": "bloqueios",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "bloqueios_imovel_id_imoveis_id_fk": {
           "name": "bloqueios_imovel_id_imoveis_id_fk",
           "tableFrom": "bloqueios",
-          "tableTo": "imoveis",
           "columnsFrom": [
             "imovel_id"
           ],
+          "tableTo": "imoveis",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "bloqueios_proprietario_id_proprietarios_id_fk": {
           "name": "bloqueios_proprietario_id_proprietarios_id_fk",
           "tableFrom": "bloqueios",
-          "tableTo": "proprietarios",
           "columnsFrom": [
             "proprietario_id"
           ],
+          "tableTo": "proprietarios",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1782,9 +1729,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "cadastros_marketplace_email": {
           "name": "cadastros_marketplace_email",
@@ -1797,63 +1744,63 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "cadastros_marketplace_organizacao_id_organizacoes_id_fk": {
           "name": "cadastros_marketplace_organizacao_id_organizacoes_id_fk",
           "tableFrom": "cadastros_marketplace",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "cadastros_marketplace_decidido_por_usuarios_id_fk": {
           "name": "cadastros_marketplace_decidido_por_usuarios_id_fk",
           "tableFrom": "cadastros_marketplace",
-          "tableTo": "usuarios",
           "columnsFrom": [
             "decidido_por"
           ],
+          "tableTo": "usuarios",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "cadastros_marketplace_proprietario_id_proprietarios_id_fk": {
           "name": "cadastros_marketplace_proprietario_id_proprietarios_id_fk",
           "tableFrom": "cadastros_marketplace",
-          "tableTo": "proprietarios",
           "columnsFrom": [
             "proprietario_id"
           ],
+          "tableTo": "proprietarios",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "cadastros_marketplace_imovel_id_imoveis_id_fk": {
           "name": "cadastros_marketplace_imovel_id_imoveis_id_fk",
           "tableFrom": "cadastros_marketplace",
-          "tableTo": "imoveis",
           "columnsFrom": [
             "imovel_id"
           ],
+          "tableTo": "imoveis",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1912,30 +1859,30 @@
             },
             {
               "expression": "lower(\"nome\")",
-              "asc": true,
               "isExpression": true,
+              "asc": true,
               "nulls": "last"
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "categorias_despesa_organizacao_id_organizacoes_id_fk": {
           "name": "categorias_despesa_organizacao_id_organizacoes_id_fk",
           "tableFrom": "categorias_despesa",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2018,9 +1965,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {},
@@ -2071,28 +2018,28 @@
         "configuracoes_organizacao_id_organizacoes_id_fk": {
           "name": "configuracoes_organizacao_id_organizacoes_id_fk",
           "tableFrom": "configuracoes",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "configuracoes_atualizado_por_usuarios_id_fk": {
           "name": "configuracoes_atualizado_por_usuarios_id_fk",
           "tableFrom": "configuracoes",
-          "tableTo": "usuarios",
           "columnsFrom": [
             "atualizado_por"
           ],
+          "tableTo": "usuarios",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -2183,38 +2130,38 @@
             }
           ],
           "isUnique": true,
-          "where": "\"contestacoes_adiantamento\".\"resolvida_em\" is null",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"contestacoes_adiantamento\".\"resolvida_em\" is null",
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "contestacoes_adiantamento_organizacao_id_organizacoes_id_fk": {
           "name": "contestacoes_adiantamento_organizacao_id_organizacoes_id_fk",
           "tableFrom": "contestacoes_adiantamento",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "contestacoes_adiantamento_adiantamento_id_lancamentos_id_fk": {
           "name": "contestacoes_adiantamento_adiantamento_id_lancamentos_id_fk",
           "tableFrom": "contestacoes_adiantamento",
-          "tableTo": "lancamentos",
           "columnsFrom": [
             "adiantamento_id"
           ],
+          "tableTo": "lancamentos",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2311,37 +2258,37 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "contratos_organizacao_id_organizacoes_id_fk": {
           "name": "contratos_organizacao_id_organizacoes_id_fk",
           "tableFrom": "contratos",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "contratos_imovel_id_imoveis_id_fk": {
           "name": "contratos_imovel_id_imoveis_id_fk",
           "tableFrom": "contratos",
-          "tableTo": "imoveis",
           "columnsFrom": [
             "imovel_id"
           ],
+          "tableTo": "imoveis",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2441,9 +2388,9 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "convites_proprietario": {
           "name": "convites_proprietario",
@@ -2456,76 +2403,76 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "convites_organizacao_id_organizacoes_id_fk": {
           "name": "convites_organizacao_id_organizacoes_id_fk",
           "tableFrom": "convites",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "convites_proprietario_id_proprietarios_id_fk": {
           "name": "convites_proprietario_id_proprietarios_id_fk",
           "tableFrom": "convites",
-          "tableTo": "proprietarios",
           "columnsFrom": [
             "proprietario_id"
           ],
+          "tableTo": "proprietarios",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "convites_criado_por_usuarios_id_fk": {
           "name": "convites_criado_por_usuarios_id_fk",
           "tableFrom": "convites",
-          "tableTo": "usuarios",
           "columnsFrom": [
             "criado_por"
           ],
+          "tableTo": "usuarios",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "convites_aceito_por_usuarios_id_fk": {
           "name": "convites_aceito_por_usuarios_id_fk",
           "tableFrom": "convites",
-          "tableTo": "usuarios",
           "columnsFrom": [
             "aceito_por"
           ],
+          "tableTo": "usuarios",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "convites_revogado_por_usuarios_id_fk": {
           "name": "convites_revogado_por_usuarios_id_fk",
           "tableFrom": "convites",
-          "tableTo": "usuarios",
           "columnsFrom": [
             "revogado_por"
           ],
+          "tableTo": "usuarios",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2688,9 +2635,9 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "cotacoes_imovel_estado": {
           "name": "cotacoes_imovel_estado",
@@ -2709,50 +2656,50 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "cotacoes_organizacao_id_organizacoes_id_fk": {
           "name": "cotacoes_organizacao_id_organizacoes_id_fk",
           "tableFrom": "cotacoes",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "cotacoes_imovel_id_imoveis_id_fk": {
           "name": "cotacoes_imovel_id_imoveis_id_fk",
           "tableFrom": "cotacoes",
-          "tableTo": "imoveis",
           "columnsFrom": [
             "imovel_id"
           ],
+          "tableTo": "imoveis",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "cotacoes_reserva_id_reservas_id_fk": {
           "name": "cotacoes_reserva_id_reservas_id_fk",
           "tableFrom": "cotacoes",
-          "tableTo": "reservas",
           "columnsFrom": [
             "reserva_id"
           ],
+          "tableTo": "reservas",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2823,9 +2770,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {},
@@ -2916,37 +2863,37 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "ids_externos_organizacao_id_organizacoes_id_fk": {
           "name": "ids_externos_organizacao_id_organizacoes_id_fk",
           "tableFrom": "ids_externos",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "ids_externos_imovel_id_imoveis_id_fk": {
           "name": "ids_externos_imovel_id_imoveis_id_fk",
           "tableFrom": "ids_externos",
-          "tableTo": "imoveis",
           "columnsFrom": [
             "imovel_id"
           ],
+          "tableTo": "imoveis",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -3084,24 +3031,24 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "imoveis_organizacao_id_organizacoes_id_fk": {
           "name": "imoveis_organizacao_id_organizacoes_id_fk",
           "tableFrom": "imoveis",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -3316,28 +3263,28 @@
         "imoveis_detalhes_imovel_id_imoveis_id_fk": {
           "name": "imoveis_detalhes_imovel_id_imoveis_id_fk",
           "tableFrom": "imoveis_detalhes",
-          "tableTo": "imoveis",
           "columnsFrom": [
             "imovel_id"
           ],
+          "tableTo": "imoveis",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "imoveis_detalhes_organizacao_id_organizacoes_id_fk": {
           "name": "imoveis_detalhes_organizacao_id_organizacoes_id_fk",
           "tableFrom": "imoveis_detalhes",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -3425,37 +3372,37 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "imoveis_periodos_organizacao_id_organizacoes_id_fk": {
           "name": "imoveis_periodos_organizacao_id_organizacoes_id_fk",
           "tableFrom": "imoveis_periodos",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "imoveis_periodos_imovel_id_imoveis_id_fk": {
           "name": "imoveis_periodos_imovel_id_imoveis_id_fk",
           "tableFrom": "imoveis_periodos",
-          "tableTo": "imoveis",
           "columnsFrom": [
             "imovel_id"
           ],
+          "tableTo": "imoveis",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -3629,10 +3576,10 @@
             }
           ],
           "isUnique": true,
-          "where": "\"lancamentos\".\"chave_origem\" <> ''",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"lancamentos\".\"chave_origem\" <> ''",
+          "concurrently": false
         },
         "lancamentos_estorno_unico": {
           "name": "lancamentos_estorno_unico",
@@ -3645,10 +3592,10 @@
             }
           ],
           "isUnique": true,
-          "where": "\"lancamentos\".\"estorno_de\" is not null",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"lancamentos\".\"estorno_de\" is not null",
+          "concurrently": false
         },
         "lancamentos_competencia": {
           "name": "lancamentos_competencia",
@@ -3667,9 +3614,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "lancamentos_proprietario": {
           "name": "lancamentos_proprietario",
@@ -3688,9 +3635,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "lancamentos_reserva": {
           "name": "lancamentos_reserva",
@@ -3703,89 +3650,89 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "lancamentos_organizacao_id_organizacoes_id_fk": {
           "name": "lancamentos_organizacao_id_organizacoes_id_fk",
           "tableFrom": "lancamentos",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "lancamentos_imovel_id_imoveis_id_fk": {
           "name": "lancamentos_imovel_id_imoveis_id_fk",
           "tableFrom": "lancamentos",
-          "tableTo": "imoveis",
           "columnsFrom": [
             "imovel_id"
           ],
+          "tableTo": "imoveis",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "lancamentos_proprietario_id_proprietarios_id_fk": {
           "name": "lancamentos_proprietario_id_proprietarios_id_fk",
           "tableFrom": "lancamentos",
-          "tableTo": "proprietarios",
           "columnsFrom": [
             "proprietario_id"
           ],
+          "tableTo": "proprietarios",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "lancamentos_reserva_id_reservas_id_fk": {
           "name": "lancamentos_reserva_id_reservas_id_fk",
           "tableFrom": "lancamentos",
-          "tableTo": "reservas",
           "columnsFrom": [
             "reserva_id"
           ],
+          "tableTo": "reservas",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "lancamentos_categoria_id_categorias_despesa_id_fk": {
           "name": "lancamentos_categoria_id_categorias_despesa_id_fk",
           "tableFrom": "lancamentos",
-          "tableTo": "categorias_despesa",
           "columnsFrom": [
             "categoria_id"
           ],
+          "tableTo": "categorias_despesa",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "lancamentos_criado_por_usuarios_id_fk": {
           "name": "lancamentos_criado_por_usuarios_id_fk",
           "tableFrom": "lancamentos",
-          "tableTo": "usuarios",
           "columnsFrom": [
             "criado_por"
           ],
+          "tableTo": "usuarios",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -3848,13 +3795,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "sem_custo": {
-          "name": "sem_custo",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
         "observacao": {
           "name": "observacao",
           "type": "text",
@@ -3914,10 +3854,10 @@
             }
           ],
           "isUnique": true,
-          "where": "\"limpezas\".\"reserva_id\" is not null",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"limpezas\".\"reserva_id\" is not null",
+          "concurrently": false
         },
         "limpezas_org_data": {
           "name": "limpezas_org_data",
@@ -3936,76 +3876,76 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "limpezas_organizacao_id_organizacoes_id_fk": {
           "name": "limpezas_organizacao_id_organizacoes_id_fk",
           "tableFrom": "limpezas",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "limpezas_imovel_id_imoveis_id_fk": {
           "name": "limpezas_imovel_id_imoveis_id_fk",
           "tableFrom": "limpezas",
-          "tableTo": "imoveis",
           "columnsFrom": [
             "imovel_id"
           ],
+          "tableTo": "imoveis",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "limpezas_reserva_id_reservas_id_fk": {
           "name": "limpezas_reserva_id_reservas_id_fk",
           "tableFrom": "limpezas",
-          "tableTo": "reservas",
           "columnsFrom": [
             "reserva_id"
           ],
+          "tableTo": "reservas",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "limpezas_profissional_id_profissionais_limpeza_id_fk": {
           "name": "limpezas_profissional_id_profissionais_limpeza_id_fk",
           "tableFrom": "limpezas",
-          "tableTo": "profissionais_limpeza",
           "columnsFrom": [
             "profissional_id"
           ],
+          "tableTo": "profissionais_limpeza",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "limpezas_despesa_id_lancamentos_id_fk": {
           "name": "limpezas_despesa_id_lancamentos_id_fk",
           "tableFrom": "limpezas",
-          "tableTo": "lancamentos",
           "columnsFrom": [
             "despesa_id"
           ],
+          "tableTo": "lancamentos",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -4106,13 +4046,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "sem_custo": {
-          "name": "sem_custo",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
         "observacao": {
           "name": "observacao",
           "type": "text",
@@ -4159,9 +4092,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "manutencoes_imovel": {
           "name": "manutencoes_imovel",
@@ -4174,89 +4107,89 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "manutencoes_organizacao_id_organizacoes_id_fk": {
           "name": "manutencoes_organizacao_id_organizacoes_id_fk",
           "tableFrom": "manutencoes",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "manutencoes_imovel_id_imoveis_id_fk": {
           "name": "manutencoes_imovel_id_imoveis_id_fk",
           "tableFrom": "manutencoes",
-          "tableTo": "imoveis",
           "columnsFrom": [
             "imovel_id"
           ],
+          "tableTo": "imoveis",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "manutencoes_proprietario_id_proprietarios_id_fk": {
           "name": "manutencoes_proprietario_id_proprietarios_id_fk",
           "tableFrom": "manutencoes",
-          "tableTo": "proprietarios",
           "columnsFrom": [
             "proprietario_id"
           ],
+          "tableTo": "proprietarios",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "manutencoes_aprovada_por_usuarios_id_fk": {
           "name": "manutencoes_aprovada_por_usuarios_id_fk",
           "tableFrom": "manutencoes",
-          "tableTo": "usuarios",
           "columnsFrom": [
             "aprovada_por"
           ],
+          "tableTo": "usuarios",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "manutencoes_despesa_id_lancamentos_id_fk": {
           "name": "manutencoes_despesa_id_lancamentos_id_fk",
           "tableFrom": "manutencoes",
-          "tableTo": "lancamentos",
           "columnsFrom": [
             "despesa_id"
           ],
+          "tableTo": "lancamentos",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "manutencoes_criado_por_usuarios_id_fk": {
           "name": "manutencoes_criado_por_usuarios_id_fk",
           "tableFrom": "manutencoes",
-          "tableTo": "usuarios",
           "columnsFrom": [
             "criado_por"
           ],
+          "tableTo": "usuarios",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -4377,9 +4310,9 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "mensagens_hospede_org": {
           "name": "mensagens_hospede_org",
@@ -4398,37 +4331,37 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "mensagens_hospede_organizacao_id_organizacoes_id_fk": {
           "name": "mensagens_hospede_organizacao_id_organizacoes_id_fk",
           "tableFrom": "mensagens_hospede",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "mensagens_hospede_reserva_id_reservas_id_fk": {
           "name": "mensagens_hospede_reserva_id_reservas_id_fk",
           "tableFrom": "mensagens_hospede",
-          "tableTo": "reservas",
           "columnsFrom": [
             "reserva_id"
           ],
+          "tableTo": "reservas",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -4507,30 +4440,30 @@
             },
             {
               "expression": "lower(\"nome\")",
-              "asc": true,
               "isExpression": true,
+              "asc": true,
               "nulls": "last"
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "modelos_mensagem_organizacao_id_organizacoes_id_fk": {
           "name": "modelos_mensagem_organizacao_id_organizacoes_id_fk",
           "tableFrom": "modelos_mensagem",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -4690,51 +4623,51 @@
         "portaria_checklists_organizacao_id_organizacoes_id_fk": {
           "name": "portaria_checklists_organizacao_id_organizacoes_id_fk",
           "tableFrom": "portaria_checklists",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "portaria_checklists_reserva_id_reservas_id_fk": {
           "name": "portaria_checklists_reserva_id_reservas_id_fk",
           "tableFrom": "portaria_checklists",
-          "tableTo": "reservas",
           "columnsFrom": [
             "reserva_id"
           ],
+          "tableTo": "reservas",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "portaria_checklists_imovel_id_imoveis_id_fk": {
           "name": "portaria_checklists_imovel_id_imoveis_id_fk",
           "tableFrom": "portaria_checklists",
-          "tableTo": "imoveis",
           "columnsFrom": [
             "imovel_id"
           ],
+          "tableTo": "imoveis",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "portaria_checklists_reserva_id_unique": {
           "name": "portaria_checklists_reserva_id_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "reserva_id"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -4811,15 +4744,15 @@
             },
             {
               "expression": "lower(\"nome\")",
-              "asc": true,
               "isExpression": true,
+              "asc": true,
               "nulls": "last"
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "profissionais_limpeza_usuario": {
           "name": "profissionais_limpeza_usuario",
@@ -4832,37 +4765,37 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "profissionais_limpeza_organizacao_id_organizacoes_id_fk": {
           "name": "profissionais_limpeza_organizacao_id_organizacoes_id_fk",
           "tableFrom": "profissionais_limpeza",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "profissionais_limpeza_usuario_id_usuarios_id_fk": {
           "name": "profissionais_limpeza_usuario_id_usuarios_id_fk",
           "tableFrom": "profissionais_limpeza",
-          "tableTo": "usuarios",
           "columnsFrom": [
             "usuario_id"
           ],
+          "tableTo": "usuarios",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -4907,37 +4840,37 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "proprietario_imoveis_proprietario_id_proprietarios_id_fk": {
           "name": "proprietario_imoveis_proprietario_id_proprietarios_id_fk",
           "tableFrom": "proprietario_imoveis",
-          "tableTo": "proprietarios",
           "columnsFrom": [
             "proprietario_id"
           ],
+          "tableTo": "proprietarios",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "proprietario_imoveis_imovel_id_imoveis_id_fk": {
           "name": "proprietario_imoveis_imovel_id_imoveis_id_fk",
           "tableFrom": "proprietario_imoveis",
-          "tableTo": "imoveis",
           "columnsFrom": [
             "imovel_id"
           ],
+          "tableTo": "imoveis",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {
@@ -4983,28 +4916,28 @@
         "proprietario_usuarios_proprietario_id_proprietarios_id_fk": {
           "name": "proprietario_usuarios_proprietario_id_proprietarios_id_fk",
           "tableFrom": "proprietario_usuarios",
-          "tableTo": "proprietarios",
           "columnsFrom": [
             "proprietario_id"
           ],
+          "tableTo": "proprietarios",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "proprietario_usuarios_usuario_id_usuarios_id_fk": {
           "name": "proprietario_usuarios_usuario_id_usuarios_id_fk",
           "tableFrom": "proprietario_usuarios",
-          "tableTo": "usuarios",
           "columnsFrom": [
             "usuario_id"
           ],
+          "tableTo": "usuarios",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {
@@ -5101,6 +5034,12 @@
           "notNull": true,
           "default": true
         },
+        "periodicidade_repasse": {
+          "name": "periodicidade_repasse",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "criado_em": {
           "name": "criado_em",
           "type": "timestamp with time zone",
@@ -5121,15 +5060,15 @@
         "proprietarios_organizacao_id_organizacoes_id_fk": {
           "name": "proprietarios_organizacao_id_organizacoes_id_fk",
           "tableFrom": "proprietarios",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -5242,9 +5181,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "quitacoes_adiantamento_chave": {
           "name": "quitacoes_adiantamento_chave",
@@ -5263,63 +5202,63 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "quitacoes_adiantamento_organizacao_id_organizacoes_id_fk": {
           "name": "quitacoes_adiantamento_organizacao_id_organizacoes_id_fk",
           "tableFrom": "quitacoes_adiantamento",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "quitacoes_adiantamento_adiantamento_id_lancamentos_id_fk": {
           "name": "quitacoes_adiantamento_adiantamento_id_lancamentos_id_fk",
           "tableFrom": "quitacoes_adiantamento",
-          "tableTo": "lancamentos",
           "columnsFrom": [
             "adiantamento_id"
           ],
+          "tableTo": "lancamentos",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "quitacoes_adiantamento_lancamento_id_lancamentos_id_fk": {
           "name": "quitacoes_adiantamento_lancamento_id_lancamentos_id_fk",
           "tableFrom": "quitacoes_adiantamento",
-          "tableTo": "lancamentos",
           "columnsFrom": [
             "lancamento_id"
           ],
+          "tableTo": "lancamentos",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "quitacoes_adiantamento_criado_por_usuarios_id_fk": {
           "name": "quitacoes_adiantamento_criado_por_usuarios_id_fk",
           "tableFrom": "quitacoes_adiantamento",
-          "tableTo": "usuarios",
           "columnsFrom": [
             "criado_por"
           ],
+          "tableTo": "usuarios",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -5371,28 +5310,28 @@
         "recebimento_por_canal_organizacao_id_organizacoes_id_fk": {
           "name": "recebimento_por_canal_organizacao_id_organizacoes_id_fk",
           "tableFrom": "recebimento_por_canal",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "recebimento_por_canal_imovel_id_imoveis_id_fk": {
           "name": "recebimento_por_canal_imovel_id_imoveis_id_fk",
           "tableFrom": "recebimento_por_canal",
-          "tableTo": "imoveis",
           "columnsFrom": [
             "imovel_id"
           ],
+          "tableTo": "imoveis",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {
@@ -5404,6 +5343,194 @@
           ]
         }
       },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.repasse_itens": {
+      "name": "repasse_itens",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organizacao_id": {
+          "name": "organizacao_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "repasse_id": {
+          "name": "repasse_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lancamento_id": {
+          "name": "lancamento_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reserva_id": {
+          "name": "reserva_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "imovel_id": {
+          "name": "imovel_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "competencia": {
+          "name": "competencia",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "valor": {
+          "name": "valor",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "criado_em": {
+          "name": "criado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "liberado_em": {
+          "name": "liberado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "repasse_itens_lancamento_unico": {
+          "name": "repasse_itens_lancamento_unico",
+          "columns": [
+            {
+              "expression": "lancamento_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "where": "\"repasse_itens\".\"liberado_em\" is null",
+          "concurrently": false
+        },
+        "repasse_itens_repasse": {
+          "name": "repasse_itens_repasse",
+          "columns": [
+            {
+              "expression": "repasse_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "repasse_itens_reserva": {
+          "name": "repasse_itens_reserva",
+          "columns": [
+            {
+              "expression": "reserva_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "repasse_itens_organizacao_id_organizacoes_id_fk": {
+          "name": "repasse_itens_organizacao_id_organizacoes_id_fk",
+          "tableFrom": "repasse_itens",
+          "columnsFrom": [
+            "organizacao_id"
+          ],
+          "tableTo": "organizacoes",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "repasse_itens_repasse_id_repasses_id_fk": {
+          "name": "repasse_itens_repasse_id_repasses_id_fk",
+          "tableFrom": "repasse_itens",
+          "columnsFrom": [
+            "repasse_id"
+          ],
+          "tableTo": "repasses",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "repasse_itens_lancamento_id_lancamentos_id_fk": {
+          "name": "repasse_itens_lancamento_id_lancamentos_id_fk",
+          "tableFrom": "repasse_itens",
+          "columnsFrom": [
+            "lancamento_id"
+          ],
+          "tableTo": "lancamentos",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "repasse_itens_reserva_id_reservas_id_fk": {
+          "name": "repasse_itens_reserva_id_reservas_id_fk",
+          "tableFrom": "repasse_itens",
+          "columnsFrom": [
+            "reserva_id"
+          ],
+          "tableTo": "reservas",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "repasse_itens_imovel_id_imoveis_id_fk": {
+          "name": "repasse_itens_imovel_id_imoveis_id_fk",
+          "tableFrom": "repasse_itens",
+          "columnsFrom": [
+            "imovel_id"
+          ],
+          "tableTo": "imoveis",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
@@ -5432,8 +5559,21 @@
           "primaryKey": false,
           "notNull": true
         },
+        "tipo": {
+          "name": "tipo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'fechamento'"
+        },
         "mes": {
           "name": "mes",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "data": {
+          "name": "data",
           "type": "date",
           "primaryKey": false,
           "notNull": true
@@ -5462,6 +5602,20 @@
           "primaryKey": false,
           "notNull": true
         },
+        "fora_do_fechamento": {
+          "name": "fora_do_fechamento",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "antecipado": {
+          "name": "antecipado",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
         "situacao": {
           "name": "situacao",
           "type": "text",
@@ -5472,6 +5626,71 @@
         "data_pagamento": {
           "name": "data_pagamento",
           "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "comprovante": {
+          "name": "comprovante",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "comprovante_arquivo_id": {
+          "name": "comprovante_arquivo_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "email_situacao": {
+          "name": "email_situacao",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pendente'"
+        },
+        "email_em": {
+          "name": "email_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "email_para": {
+          "name": "email_para",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "email_chave": {
+          "name": "email_chave",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "email_tentativa_em": {
+          "name": "email_tentativa_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "email_pedido": {
+          "name": "email_pedido",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "chave_pix_paga": {
+          "name": "chave_pix_paga",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "pedido_em": {
+          "name": "pedido_em",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },
@@ -5520,10 +5739,32 @@
             }
           ],
           "isUnique": true,
-          "where": "\"repasses\".\"estornado_em\" is null",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"repasses\".\"estornado_em\" is null and \"repasses\".\"tipo\" = 'fechamento'",
+          "concurrently": false
+        },
+        "repasses_um_antecipado_por_dia": {
+          "name": "repasses_um_antecipado_por_dia",
+          "columns": [
+            {
+              "expression": "proprietario_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "data",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "where": "\"repasses\".\"estornado_em\" is null and \"repasses\".\"tipo\" = 'antecipado'",
+          "concurrently": false
         },
         "repasses_org_mes": {
           "name": "repasses_org_mes",
@@ -5542,50 +5783,63 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "repasses_organizacao_id_organizacoes_id_fk": {
           "name": "repasses_organizacao_id_organizacoes_id_fk",
           "tableFrom": "repasses",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "repasses_proprietario_id_proprietarios_id_fk": {
           "name": "repasses_proprietario_id_proprietarios_id_fk",
           "tableFrom": "repasses",
-          "tableTo": "proprietarios",
           "columnsFrom": [
             "proprietario_id"
           ],
+          "tableTo": "proprietarios",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "repasses_comprovante_arquivo_id_arquivos_id_fk": {
+          "name": "repasses_comprovante_arquivo_id_arquivos_id_fk",
+          "tableFrom": "repasses",
+          "columnsFrom": [
+            "comprovante_arquivo_id"
+          ],
+          "tableTo": "arquivos",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "repasses_criado_por_usuarios_id_fk": {
           "name": "repasses_criado_por_usuarios_id_fk",
           "tableFrom": "repasses",
-          "tableTo": "usuarios",
           "columnsFrom": [
             "criado_por"
           ],
+          "tableTo": "usuarios",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -5658,15 +5912,15 @@
         "representantes_proprietario_id_proprietarios_id_fk": {
           "name": "representantes_proprietario_id_proprietarios_id_fk",
           "tableFrom": "representantes",
-          "tableTo": "proprietarios",
           "columnsFrom": [
             "proprietario_id"
           ],
+          "tableTo": "proprietarios",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -5906,9 +6160,9 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "reservas_fonte": {
           "name": "reservas_fonte",
@@ -5933,10 +6187,10 @@
             }
           ],
           "isUnique": true,
-          "where": "\"reservas\".\"id_fonte\" <> ''",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"reservas\".\"id_fonte\" <> ''",
+          "concurrently": false
         },
         "reservas_beds24": {
           "name": "reservas_beds24",
@@ -5955,9 +6209,9 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "reservas_imovel_periodo": {
           "name": "reservas_imovel_periodo",
@@ -5982,37 +6236,37 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "reservas_organizacao_id_organizacoes_id_fk": {
           "name": "reservas_organizacao_id_organizacoes_id_fk",
           "tableFrom": "reservas",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "reservas_imovel_id_imoveis_id_fk": {
           "name": "reservas_imovel_id_imoveis_id_fk",
           "tableFrom": "reservas",
-          "tableTo": "imoveis",
           "columnsFrom": [
             "imovel_id"
           ],
+          "tableTo": "imoveis",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -6102,50 +6356,50 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "rotina_execucoes_organizacao_id_organizacoes_id_fk": {
           "name": "rotina_execucoes_organizacao_id_organizacoes_id_fk",
           "tableFrom": "rotina_execucoes",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "rotina_execucoes_rotina_id_rotinas_id_fk": {
           "name": "rotina_execucoes_rotina_id_rotinas_id_fk",
           "tableFrom": "rotina_execucoes",
-          "tableTo": "rotinas",
           "columnsFrom": [
             "rotina_id"
           ],
+          "tableTo": "rotinas",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "rotina_execucoes_usuario_id_usuarios_id_fk": {
           "name": "rotina_execucoes_usuario_id_usuarios_id_fk",
           "tableFrom": "rotina_execucoes",
-          "tableTo": "usuarios",
           "columnsFrom": [
             "usuario_id"
           ],
+          "tableTo": "usuarios",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -6242,24 +6496,24 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "rotinas_organizacao_id_organizacoes_id_fk": {
           "name": "rotinas_organizacao_id_organizacoes_id_fk",
           "tableFrom": "rotinas",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -6331,30 +6585,30 @@
           "columns": [
             {
               "expression": "lower(\"email\")",
-              "asc": true,
               "isExpression": true,
+              "asc": true,
               "nulls": "last"
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "usuarios_organizacao_id_organizacoes_id_fk": {
           "name": "usuarios_organizacao_id_organizacoes_id_fk",
           "tableFrom": "usuarios",
-          "tableTo": "organizacoes",
           "columnsFrom": [
             "organizacao_id"
           ],
+          "tableTo": "organizacoes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -6461,10 +6715,10 @@
     }
   },
   "schemas": {},
+  "views": {},
   "sequences": {},
   "roles": {},
   "policies": {},
-  "views": {},
   "_meta": {
     "columns": {},
     "schemas": {},
