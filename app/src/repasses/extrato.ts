@@ -12,7 +12,7 @@
  *   empresa; entra no próximo repasse e ainda não compôs nenhum.
  * - **repassado**: já saiu num repasse (fechamento ou antecipado) que está em vigor. Se a parte foi
  *   recalculada depois de um fechamento antigo (migração 0049), o repasse incluiu o valor de então
- *   (`repasse.valor`) e a `diferenca` entra, ou é descontada, no próximo fechamento mensal pelo acerto.
+ *   (`repasse.valor`) e a `diferenca` é acertada, ou descontada, pelo fechamento mensal (pelo acerto).
  */
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { type EstadoLancamento, imoveis, lancamentos, repasseItens, repasses, reservas, type SituacaoRepasse, type TipoRepasse } from "@/db/schema";
@@ -65,7 +65,7 @@ export type Parte = ParteBruta & {
   quemRecebe: QuemRecebeParte;
   situacao: SituacaoParte;
   motivo: string;
-  /** Repassada: valor atual menos o que o repasse incluiu (recálculo depois do repasse). Positiva entra, negativa é descontada, no próximo fechamento mensal. */
+  /** Repassada: valor atual menos o que o repasse incluiu (recálculo depois do repasse). Positiva é acertada, negativa descontada, pelo fechamento mensal. */
   diferenca: number;
 };
 
@@ -81,7 +81,7 @@ export function classificarParte(p: ParteBruta): Parte {
     // Parte recalculada depois do repasse (só por fechamento antigo, migração 0049): o repasse incluiu o valor de
     // então; a diferença não fica escondida — está no acerto do mês e vai para o próximo fechamento mensal.
     const diferenca = p.valor - r.valor;
-    const recalculo = diferenca === 0 ? "" : ` Recalculada depois: o repasse incluiu ${formatBRL(r.valor)}; ${formatBRL(Math.abs(diferenca))} ${diferenca > 0 ? "a mais entram" : "a menos são descontados"} no próximo fechamento mensal.`;
+    const recalculo = diferenca === 0 ? "" : ` Recalculada depois: o repasse incluiu ${formatBRL(r.valor)}; a diferença de ${formatBRL(Math.abs(diferenca))} ${diferenca > 0 ? "a mais é acertada" : "a menos é descontada"} pelo fechamento mensal.`;
     return com("repassado", `${r.tipo === "fechamento" ? "No fechamento" : "Repasse"} de ${dataBr(r.data)}${pago}.${recalculo}`, diferenca);
   }
   if (quemRecebe === "a_confirmar") return com("a_liberar", "Quem recebe o dinheiro desta reserva ainda está a confirmar pela empresa: fica fora de qualquer repasse até definir.");

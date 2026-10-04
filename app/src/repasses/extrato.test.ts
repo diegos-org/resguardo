@@ -53,9 +53,9 @@ describe("situação da parte do proprietário (M4.10, regra pura)", () => {
   it("parte recalculada depois de um fechamento antigo: repassada pelo valor que o fechamento incluiu, e a diferença vai ao próximo fechamento mensal", () => {
     const rep = { id: "y", tipo: "fechamento" as const, data: "2026-11-01", situacao: "pago" as const, dataPagamento: "2026-11-01", valor: 72250 };
     const aMais = classificarParte({ ...base, valor: 80000, repasse: rep });
-    expect(aMais).toMatchObject({ situacao: "repassado", diferenca: 7750, motivo: "No fechamento de 01/11/2026 (pago em 01/11/2026). Recalculada depois: o repasse incluiu R$ 722,50; R$ 77,50 a mais entram no próximo fechamento mensal." });
+    expect(aMais).toMatchObject({ situacao: "repassado", diferenca: 7750, motivo: "No fechamento de 01/11/2026 (pago em 01/11/2026). Recalculada depois: o repasse incluiu R$ 722,50; a diferença de R$ 77,50 a mais é acertada pelo fechamento mensal." });
     const aMenos = classificarParte({ ...base, valor: 70000, repasse: rep });
-    expect(aMenos).toMatchObject({ diferenca: -2250, motivo: expect.stringContaining("R$ 22,50 a menos são descontados no próximo fechamento mensal") });
+    expect(aMenos).toMatchObject({ diferenca: -2250, motivo: expect.stringContaining("a diferença de R$ 22,50 a menos é descontada pelo fechamento mensal") });
     // O resumo conta como repassado o que o repasse incluiu e separa o ajuste.
     expect(resumirPartes([aMais, aMenos])).toEqual({ disponivel: 0, aLiberar: 0, informacao: 0, repassadoAPagar: 0, repassadoPago: 144500, ajusteNoFechamento: 5500 });
   });

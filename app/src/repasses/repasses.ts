@@ -522,15 +522,15 @@ async function vincularItens(tx: Db, org: string, repasseId: string, partes: rea
 /**
  * Item de repasse com a reserva e o imóvel (para o painel, o portal e o e-mail). `parcial`: a reserva tem outra parte
  * em outro repasse, ou o item não cobre o valor atual da parte. `diferenca`: valor atual da parte menos o do item
- * (recálculo depois de um fechamento antigo, migrações 0049–0051): positiva entra, negativa é descontada, no próximo
+ * (recálculo depois de um fechamento antigo, migrações 0049–0052): positiva é acertada, negativa descontada, pelo
  * fechamento mensal.
  */
 export type ItemDoRepasse = RepasseItem & { codigoReserva: string; codigoImovel: string; checkin: string; checkout: string; hospede: string; parcial: boolean; diferenca: number };
 
 /** Como descrever o item (integral, parte de um mês, ou recalculado — com a direção certa): a mesma frase no painel, no portal e no e-mail. */
 export function descricaoDoItem(i: Pick<ItemDoRepasse, "parcial" | "diferenca" | "competencia">): string {
-  if (i.diferenca > 0) return `parte recalculada depois: ${formatBRL(i.diferenca)} a mais entram no próximo fechamento mensal`;
-  if (i.diferenca < 0) return `parte recalculada depois: ${formatBRL(-i.diferenca)} a menos são descontados no próximo fechamento mensal`;
+  if (i.diferenca > 0) return `parte recalculada depois: ${formatBRL(i.diferenca)} a mais, acertados pelo fechamento mensal`;
+  if (i.diferenca < 0) return `parte recalculada depois: ${formatBRL(-i.diferenca)} a menos, descontados pelo fechamento mensal`;
   return i.parcial ? `parte de ${nomeMes(i.competencia.slice(0, 7))}; o restante vem em outro repasse` : "integral";
 }
 
@@ -546,7 +546,7 @@ export async function itensDoRepasse(db: Db, org: string, repasseId: string): Pr
     .orderBy(asc(reservasRef.checkin), asc(repasseItens.competencia));
   if (!linhas.length) return [];
   // Parcial: a reserva tem outra parte (outro mês) em vigor que não está neste repasse, ou o item não cobre o valor
-  // atual da parte (recalculada depois de um fechamento antigo, migrações 0049–0051: a diferença vai ao próximo fechamento).
+  // atual da parte (recalculada depois de um fechamento antigo, migrações 0049–0052: a diferença passa pelo fechamento mensal).
   const outras = await db
     .select({ reservaId: lancamentos.reservaId, n: sql<number>`count(*)::int` })
     .from(lancamentos)
