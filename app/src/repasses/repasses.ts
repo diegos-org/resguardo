@@ -16,6 +16,7 @@
 import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, or, sql, sum } from "drizzle-orm";
 import { desfazerCompensacoesDoRepasse, listarAdiantamentos, quitar } from "@/adiantamentos/adiantamentos";
 import { registrarAuditoria } from "@/auditoria/auditoria";
+import { travarConfig } from "@/configuracoes/armazem";
 import { violouUnicidade } from "@/db/erros";
 import { ajustes, arquivos, contestacoesAdiantamento, imoveis, lancamentos, quitacoesAdiantamento, proprietarioImoveis, proprietarios, repasseItens, repasses, type SituacaoRepasse, type TipoRepasse } from "@/db/schema";
 import type { Db } from "@/db/types";
@@ -432,6 +433,9 @@ async function fecharNaTransacao(
     // Trava o proprietário: dois fechamentos ao mesmo tempo não passam daqui juntos.
     const dono = await travarDono(tx, org, proprietarioId);
     if (!dono) return { ok: false as const, erro: "Proprietário não encontrado." };
+    // M4.11: o início do sistema é lido (pelas partes e pelo bloqueio) sob a mesma trava que a configuração e a marcação
+    // usam — uma mudança da data não se encaixa entre a leitura e a gravação deste fechamento.
+    await travarConfig(tx, org, "inicio_sistema");
     // Toda reserva de que o cálculo depende (partes pagas, fora, só informação e qualquer lançamento até o mês)
     // fica travada para o motor até o fim: saldo e partes vêm da mesma foto, e o que se paga é o que foi lido com a trava.
     const p = await lerComReservasTravadas(tx, org, () => calcularDono(tx, org, dono, mes, hoje, agora), (x) => x.reservasDoCalculo);
@@ -591,6 +595,8 @@ export async function gerarAntecipado(db: Db, org: string, proprietarioId: strin
     return await db.transaction(async (tx) => {
       const dono = await travarDono(tx, org, proprietarioId);
       if (!dono) return { ok: false as const, erro: "Proprietário não encontrado." };
+      // M4.11: a mesma trava da configuração do início do sistema (ver fecharNaTransacao).
+      await travarConfig(tx, org, "inicio_sistema");
       const [jaHoje] = await tx
         .select({ id: repasses.id })
         .from(repasses)

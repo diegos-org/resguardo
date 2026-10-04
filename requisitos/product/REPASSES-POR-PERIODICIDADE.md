@@ -134,7 +134,8 @@ reserva de cada imóvel, pela regra de 2/10 para o início dos contratos).
   início do sistema: aguarda a marcação"), então antecipado e pedido pelo portal nunca a pagam; e o
   fechamento bloqueia enquanto o proprietário tiver parte de antes fora de repasse ou mês de antes com
   acerto diferente de zero — inclusive uma reserva antiga importada depois da marcação. A marcação
-  manual não precisa vencer corrida nenhuma.
+  manual não precisa vencer corrida nenhuma: antecipado e fechamento tomam a mesma trava da
+  configuração do início antes de ler as partes, então a data não muda entre a leitura e a gravação.
 - **Estorno** como qualquer repasse (só o mais recente do proprietário): as partes voltam ao extrato
   (a liberar ou disponível) e o acerto de antes volta.
 - **Extrato:** a parte aparece "Repassada" com o motivo "Acertada por fora, antes do início do

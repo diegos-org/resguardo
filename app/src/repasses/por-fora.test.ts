@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { listarAdiantamentos, quitar } from "@/adiantamentos/adiantamentos";
+import { travarConfig } from "@/configuracoes/armazem";
 import { criarContrato } from "@/contratos/repositorio";
 import { ajustes, imoveis, lancamentos, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
@@ -15,6 +16,17 @@ import { descreverAcertoPorFora, marcarAcertoPorFora, situacaoAntesDoInicio, ves
 import { lerInicioDoSistema, salvarInicioDoSistema } from "./regras-config";
 import { estornarRepasse, fecharMes, gerarAntecipado, itensDoRepasse, listarRepasses, listarRepassesDaOrganizacao, obterRepasse, preverRepasses } from "./repasses";
 import { receberTudo } from "./testes";
+
+// A trava da configuração é espiada para conferir que antecipado e fechamento a tomam antes de ler o início do sistema.
+vi.mock("@/configuracoes/armazem", async (orig) => {
+  const m = await orig<typeof import("@/configuracoes/armazem")>();
+  return { ...m, travarConfig: vi.fn(m.travarConfig) };
+});
+vi.mock("./extrato", async (orig) => {
+  const m = await orig<typeof import("./extrato")>();
+  // Chamadas internas do módulo não passam pelo espião: o antecipado lê por `partesDisponiveis`, o fechamento por `partesDoProprietario`.
+  return { ...m, partesDoProprietario: vi.fn(m.partesDoProprietario), partesDisponiveis: vi.fn(m.partesDisponiveis) };
+});
 
 let db: Db, close: () => Promise<void>, org: string, a: string, b: string, dono: string, outro: string;
 let setembro: string, atravessa: string, outubro: string;
@@ -303,6 +315,31 @@ describe("acerto por fora de antes do início do sistema (M4.11)", () => {
     expect((await preverRepasses(db, org, "2026-10", "2026-11-01", [dono]))[0].bloqueios).toEqual([]);
     expect(await fecharMes(db, org, dono, "2026-10", "2026-11-01", null)).toMatchObject({ ok: true });
     expect(await saldo("2026-11-01")).toBe(0);
+  });
+
+  it("antecipado e fechamento tomam a trava do início do sistema antes de ler as partes: a data não muda no meio deles", async () => {
+    const trava = vi.mocked(travarConfig);
+    const leituras = [vi.mocked(partesDoProprietario), vi.mocked(partesDisponiveis)];
+    const limpar = () => {
+      trava.mockClear();
+      for (const l of leituras) l.mockClear();
+    };
+    const ordem = (chave: string) => {
+      const t = trava.mock.calls.findIndex((c) => c[2] === chave);
+      expect(t).toBeGreaterThanOrEqual(0);
+      const primeiraLeitura = Math.min(...leituras.flatMap((l) => l.mock.invocationCallOrder));
+      expect(Number.isFinite(primeiraLeitura)).toBe(true);
+      expect(trava.mock.invocationCallOrder[t]).toBeLessThan(primeiraLeitura);
+    };
+    await marcar();
+    await receberTudo(db, org, atravessa, "2026-10-03");
+    limpar();
+    expect(await gerarAntecipado(db, org, dono, "2026-10-06", null)).toMatchObject({ ok: true });
+    ordem("inicio_sistema");
+    await receberTudo(db, org, outubro, "2026-10-12");
+    limpar();
+    expect(await fecharMes(db, org, dono, "2026-10", "2026-11-01", null)).toMatchObject({ ok: true });
+    ordem("inicio_sistema");
   });
 
   it("o repasse por fora não entra na rotina de e-mails nem aceita envio: nada foi pago pelo sistema", async () => {
