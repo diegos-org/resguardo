@@ -75,9 +75,11 @@ assim como o tom de `requisitos/operations/RELATORIOS-E-TOM.md`.
    aparecem só para as vendas do site (ver "Variantes").
 6. **Avisos** (só se houver): pendências que mudam a leitura (recebimento não registrado,
    lançamento em conferência, compensação pendente), uma linha cada, com o que acontece depois.
-7. Rodapé: "Os números são os mesmos do portal; o extrato oficial de cada canal está no fim,
-   como emitido." Página N de M. A capa cabe numa folha A4: foto, resultado, "como chega" e a
-   tabela do bruto ao resultado; os números do mês ficam na página 2.
+7. Rodapé: "Os números são os mesmos do portal." e, **só quando há anexos** (PDF do painel e do
+   e-mail), "O extrato oficial de cada canal está no fim, como emitido."; no PDF do portal, que
+   sai sem anexos, a frase é "Os extratos oficiais dos canais ficam com a equipe: peça se
+   precisar." Página N de M (M conta só as páginas que existem). A capa cabe numa folha A4: foto,
+   resultado, "como chega" e a tabela do bruto ao resultado; os números do mês ficam na página 2.
 
 ### 2. Números e reservas do mês
 Em cima, **Números do mês** — quatro quadros e um gráfico (ver "Métricas"). Embaixo, as reservas:
@@ -101,7 +103,8 @@ mês entra só com as noites do mês, rateio igual por noite (regra de 24/09). O
 ### 4. Anexos
 Extratos oficiais dos canais, **como emitidos, sem alterações**, um bloco por canal (Airbnb; Booking e
 outros quando houver), com a nota "páginas X a Y do extrato completo" quando for parcial. Sem anexo no
-PDF do portal (como hoje); no painel, anexados na hora.
+PDF do portal (como hoje): a página 4 não existe nele, o rodapé da capa diz onde pedir os extratos e
+a numeração conta só as páginas que existem; no painel e no e-mail do dia 1º, anexados na hora.
 
 ## Métricas e gráfico (página 2)
 
@@ -109,8 +112,8 @@ Todas vêm do livro e do calendário do SCL; nenhuma é estimada.
 
 | Quadro | Definição | Quando aparece |
 |---|---|---|
-| **Noites e ocupação** | noites ocupadas no mês (reservas confirmadas, rateio por noite) e ocupação = noites ocupadas ÷ noites disponíveis, onde disponíveis = noites do mês − noites bloqueadas pelo proprietário para uso próprio (M5.5). Mostra "{n} de {d} disponíveis" e as bloqueadas | sempre |
-| **Diária média** | bruto do mês ÷ noites ocupadas no mês; rótulo "por noite, com limpeza" (o bruto do livro inclui a limpeza) | se houver noite ocupada |
+| **Noites e ocupação** | noites ocupadas no mês (reservas confirmadas, rateio por noite) e ocupação = noites ocupadas ÷ noites disponíveis, onde disponíveis = noites do mês − noites bloqueadas pelo proprietário para uso próprio (M5.5). Mostra "{n} de {d} disponíveis" e as bloqueadas. Com zero noites disponíveis (mês inteiro bloqueado para uso próprio), a ocupação é "não se aplica", com a nota "mês bloqueado para seu uso"; nunca 0 ÷ 0 | sempre (a ocupação, "não se aplica" sem noite disponível) |
+| **Diária média** | bruto do mês ÷ noites ocupadas no mês; rótulo "por noite, com limpeza" (o bruto do livro inclui a limpeza) | se houver noite ocupada; senão "sem reserva no mês" |
 | **Comparado ao mês anterior** | variação % do resultado e ocupação "de X% para Y%" | só se o mês anterior estiver inteiro no sistema (depois do início do sistema, M4.11, ou do histórico importado) |
 | **Mesmo mês do ano anterior** | variação % do resultado | idem; senão "sem dado no sistema" |
 | **Acumulado do ano** | soma do resultado de janeiro até o mês — ou "desde {mês/ano}" quando o dado começa depois de janeiro, escrito no rótulo | sempre que houver ao menos um mês |
