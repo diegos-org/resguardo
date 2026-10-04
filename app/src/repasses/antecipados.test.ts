@@ -5,6 +5,7 @@ import { imoveis, lancamentos, organizacoes, proprietarioImoveis, proprietarios,
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { CorreioMemoria, ErroEnvioIncerto, type Mensagem } from "@/email/correio";
+import { aplicarMotor } from "@/financeiro/aplicar";
 import { saldoAcerto } from "@/financeiro/ledger";
 import type { DadosReserva } from "@/reservas/regras";
 import { criarReserva } from "@/reservas/repositorio";
@@ -206,6 +207,32 @@ describe("repasse antecipado (M4.10)", () => {
     // Liberada, a parte entra no próximo antecipado.
     expect(await gerarAntecipado(db, org, dono, "2026-10-14", null)).toMatchObject({ ok: true });
     expect(await saldo("2026-11-01")).toBe(0);
+  });
+});
+
+describe("recálculo do motor com parte já em repasse (M4.10)", () => {
+  it("parte vinculada a um repasse a pagar fica protegida: o cálculo novo não é aplicado, a reserva vai para conferência e o repasse ainda pode ser pago", async () => {
+    await receberTudo(db, org, reservaBase, "2026-10-10");
+    const g = await gerarAntecipado(db, org, dono, "2026-10-11", null);
+    expect(g.ok).toBe(true);
+    const id = (g as { id: string }).id;
+    const antes = await direitos(reservaBase);
+    // Regra diferente (base bruta em vez de líquida) mudaria a parte do proprietário: com a parte em repasse, nada muda.
+    const r = await aplicarMotor(db, org, reservaBase, null, { base: "bruto", recebimento: { airbnb: "split", booking: "empresa", site: "empresa", direta: "empresa", outro: "empresa" } });
+    expect(r).toMatchObject({ protegido: true, criados: 0, estornados: 0 });
+    expect(r!.avisos.join(" ")).toContain("já compõe um repasse");
+    expect(await direitos(reservaBase)).toEqual(antes);
+    expect((await partes("2026-10-12"))[0]).toMatchObject({ situacao: "repassado", emConferencia: true });
+    // A conferência (M4.8) segura o fechamento, mas o repasse já gerado segue o fluxo normal.
+    expect((await preverRepasses(db, org, "2026-10", "2026-11-01", undefined, true))[0].bloqueios.join(" ")).toContain("acerto pendente");
+    expect(await marcarRepassePago(db, org, id, "2026-10-11", "2026-10-12", null, comprovante)).toMatchObject({ ok: true });
+    expect((await direitos(reservaBase))[0].estado).toBe("realizado");
+    // Estornado o repasse, a parte volta a previsto e o recálculo passa a valer.
+    expect(await estornarRepasse(db, org, id, "refazer", "2026-10-12", null)).toMatchObject({ ok: true });
+    const r2 = await aplicarMotor(db, org, reservaBase, null, { base: "bruto", recebimento: { airbnb: "split", booking: "empresa", site: "empresa", direta: "empresa", outro: "empresa" } });
+    expect(r2!.protegido).toBeFalsy();
+    expect(r2!.estornados).toBeGreaterThan(0);
+    expect(r2!.criados).toBeGreaterThan(0);
   });
 });
 

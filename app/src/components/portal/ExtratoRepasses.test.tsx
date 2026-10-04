@@ -6,7 +6,7 @@ import type { Repasse } from "@/repasses/repasses";
 import { ExtratoRepasses } from "./ExtratoRepasses";
 
 const parte = (over: Partial<ParteBruta> = {}): ParteBruta => ({
-  lancamentoId: Math.random().toString(36).slice(2), reservaId: "r1", codigoReserva: "R-1", imovelId: "i1", codigoImovel: "403", competencia: "2026-10-01", valor: 72250, efeitoSaldo: 72250, estado: "previsto",
+  lancamentoId: Math.random().toString(36).slice(2), proprietarioId: "d1", reservaId: "r1", codigoReserva: "R-1", imovelId: "i1", codigoImovel: "403", competencia: "2026-10-01", valor: 72250, efeitoSaldo: 72250, estado: "previsto",
   checkin: "2026-10-10", checkout: "2026-10-13", hospede: "Hóspede Fictício", hoje: "2026-10-12", recebido: { recebido: 85000, devido: 85000 }, emConferencia: false, repasse: null, ...over,
 });
 const repasse = (over: Partial<Repasse> = {}): Repasse => ({
@@ -50,5 +50,18 @@ describe("extrato e repasses no portal (M4.10)", () => {
     expect(render({ hoje: "2026-11-01" })).toContain("Hoje é dia 1º");
     expect(render({ partes: [] })).not.toContain("Pedir repasse agora");
     expect(render({ mensagem: { tipo: "ok", texto: "Salvo." } })).toContain('role="status"');
+  });
+  it("usuário com dois proprietários: o botão de pedir só aparece para quem tem valor disponível", () => {
+    const h = render({
+      donos: [{ id: "d1", nome: "Dona" }, { id: "d2", nome: "Empresa Dela" }],
+      periodicidades: [
+        { proprietarioId: "d1", escolha: null, efetiva: "mensal", nome: "Mensal, no dia 1º (padrão)", descricao: "mensal", tiposContrato: ["gestao_completa"], proximaData: "2026-11-01" },
+        { proprietarioId: "d2", escolha: "semanal", efetiva: "semanal", nome: "Semanal", descricao: "semanal", tiposContrato: ["marketplace"], proximaData: "2026-10-19" },
+      ],
+      partes: [classificarParte(parte({ proprietarioId: "d1" })), classificarParte(parte({ lancamentoId: "l2", proprietarioId: "d2", recebido: { recebido: 0, devido: 85000 } }))],
+    });
+    expect(h).toContain("Pedir repasse agora (R$ 722,50 · Dona)");
+    expect(h).not.toContain("Empresa Dela)");
+    expect(h.match(/Pedir repasse agora/g)).toHaveLength(1);
   });
 });

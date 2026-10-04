@@ -39,8 +39,10 @@ export function situacaoNoPortal(r: Pick<Repasse, "situacao" | "dataPagamento">)
 export function ExtratoRepasses({ donos, periodicidades, partes, repasses, regras, hoje, empresa, escolher, pedir, mensagem }: Props) {
   const resumo = resumirPartes(partes);
   const diaPrimeiro = hoje.endsWith("-01");
+  // Disponível por proprietário: o botão de pedir só aparece para quem tem valor a repassar.
   const disponivelPorDono = new Map<string, number>();
-  for (const p of partes) if (p.situacao === "disponivel") disponivelPorDono.set(p.lancamentoId, 0);
+  for (const p of partes) if (p.situacao === "disponivel") disponivelPorDono.set(p.proprietarioId, (disponivelPorDono.get(p.proprietarioId) ?? 0) + p.valor);
+  const comDisponivel = donos.filter((d) => (disponivelPorDono.get(d.id) ?? 0) > 0);
   return (
     <section id="repasses" aria-label="Extrato e repasses" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <h2 style={{ fontSize: "1.125rem", margin: 0 }}>Extrato e repasses</h2>
@@ -99,33 +101,20 @@ export function ExtratoRepasses({ donos, periodicidades, partes, repasses, regra
         ))}
       </section>
 
-      {resumo.disponivel > 0 &&
-        donos.map((d) => {
-          const dele = partes.filter((p) => p.situacao === "disponivel" && periodicidades.some((x) => x.proprietarioId === d.id)).reduce((t, p) => t + p.valor, 0);
-          if (dele <= 0 || donos.length > 1) return null;
-          return (
-            <form key={d.id} action={pedir}>
-              <input type="hidden" name="proprietarioId" value={d.id} />
-              {diaPrimeiro ? (
-                <p style={{ ...rotulo, margin: 0 }}>Hoje é dia 1º: o fechamento do mês é o repasse do dia e inclui o que está disponível.</p>
-              ) : (
-                <BotaoConfirmar pergunta={`Pedir agora o repasse de ${formatBRL(dele)} (o que está disponível até ontem)? A ${empresa} faz o Pix e você recebe o comprovante por e-mail.`} style={botao}>
-                  Pedir repasse agora ({formatBRL(dele)})
-                </BotaoConfirmar>
-              )}
-            </form>
-          );
-        })}
-      {donos.length > 1 && resumo.disponivel > 0 && !diaPrimeiro && (
+      {comDisponivel.length > 0 && diaPrimeiro && <p style={{ ...rotulo, margin: 0 }}>Hoje é dia 1º: o fechamento do mês é o repasse do dia e inclui o que está disponível.</p>}
+      {comDisponivel.length > 0 && !diaPrimeiro && (
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          {donos.map((d) => (
-            <form key={d.id} action={pedir}>
-              <input type="hidden" name="proprietarioId" value={d.id} />
-              <BotaoConfirmar pergunta={`Pedir agora o repasse do que está disponível para ${d.nome}?`} style={botao}>
-                Pedir repasse agora ({d.nome})
-              </BotaoConfirmar>
-            </form>
-          ))}
+          {comDisponivel.map((d) => {
+            const dele = disponivelPorDono.get(d.id) ?? 0;
+            return (
+              <form key={d.id} action={pedir}>
+                <input type="hidden" name="proprietarioId" value={d.id} />
+                <BotaoConfirmar pergunta={`Pedir agora o repasse de ${formatBRL(dele)}${donos.length > 1 ? ` para ${d.nome}` : ""} (o que está disponível até ontem)? A ${empresa} faz o Pix e você recebe o comprovante por e-mail.`} style={botao}>
+                  Pedir repasse agora ({formatBRL(dele)}{donos.length > 1 ? ` · ${d.nome}` : ""})
+                </BotaoConfirmar>
+              </form>
+            );
+          })}
         </div>
       )}
 

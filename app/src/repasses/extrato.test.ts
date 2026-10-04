@@ -3,6 +3,7 @@ import { classificarParte, type ParteBruta, resumirPartes } from "./extrato";
 
 const base: ParteBruta = {
   lancamentoId: "l1",
+  proprietarioId: "d1",
   reservaId: "r1",
   codigoReserva: "R-1",
   imovelId: "i1",

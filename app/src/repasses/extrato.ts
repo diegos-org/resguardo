@@ -29,6 +29,7 @@ export type RepasseDaParte = { id: string; tipo: TipoRepasse; data: string; situ
 
 export type ParteBruta = {
   lancamentoId: string;
+  proprietarioId: string;
   reservaId: string;
   codigoReserva: string;
   imovelId: string;
@@ -141,6 +142,7 @@ export async function partesDoProprietario(db: Db, organizacaoId: string, propri
   return linhas.map((l) =>
     classificarParte({
       lancamentoId: l.lancamentoId,
+      proprietarioId,
       reservaId: l.reservaId!,
       codigoReserva: l.codigoReserva,
       imovelId: l.imovelId!,
