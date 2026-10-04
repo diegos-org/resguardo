@@ -21,15 +21,21 @@ decisões de 4/10.
 | `--scl-creme` | fundo geral das páginas | `#e8ddc9` | **`#f3eee3`** | "bege um pouco mais branco": off-white de papel |
 | `--scl-papel` | cartões, formulários, blocos de texto | `#f0e7d7` | **`#f8f4ea`** | sobe junto com o creme, mantendo contraste |
 | `--scl-areia` | seção "por que reservar direto" e faixas de apoio | `#e1d3bb` | `#e6dcc8` | um tom abaixo do creme novo |
-| `--scl-dourado` | itálico do logotipo, destaques pequenos | `#c9a96e` | `#c9a96e` | nunca em texto corrido |
+| `--scl-dourado` | só decoração: itálico do logotipo (≥ 24px, sobre floresta/profundo), filetes, ícones sem significado | `#c9a96e` | `#c9a96e` | contraste 3,2:1 sobre floresta e 2,0:1 sobre papel: **nunca em texto pequeno, nunca em texto sobre fundos claros** |
+| `--scl-dourado-claro` | texto dourado pequeno sobre os verdes ("olhos", rótulos, destaques) | `#ecd8b0` (itálico da capa) | `#ecd8b0` | 5,1:1 sobre floresta, 7,0:1 sobre profundo; sobre musgo (4,3:1) só em texto grande |
+| `--scl-dourado-escuro` | texto dourado pequeno sobre creme, papel e areia | — | **`#75592a`** | 5,9:1 sobre papel, 5,6:1 sobre creme, 4,8:1 sobre areia |
 | `--scl-tinta` | texto principal | `#252b23` | `#252b23` | |
 | `--scl-texto-2` | texto secundário | `#5b604f` | `#5b604f` | contraste ≥ 4,5:1 sobre o papel |
 | `--scl-borda` | bordas de cartões e campos | `#cfc1a9` | `#cfc1a9` | |
 | `--scl-foco` | contorno de foco do teclado | `#b66630` | `#b66630` | 3px, deslocado 5px |
 
 Contraste: todo texto sobre `--scl-creme`/`--scl-papel` usa `--scl-tinta` ou `--scl-texto-2`;
-sobre os verdes, `--scl-creme` ou branco. Conferir com ferramenta de contraste antes de fechar o
-PR (mínimo 4,5:1 em texto normal, 3:1 em texto grande e ícones).
+sobre os verdes, `--scl-creme` ou branco. O dourado do estudo (`#c9a96e`) não alcança 4,5:1 em
+fundo nenhum da paleta, por isso fica restrito à decoração e ao logotipo grande: texto dourado
+pequeno usa `--scl-dourado-claro` sobre os verdes e `--scl-dourado-escuro` sobre os fundos
+claros (os "olhos" dourados da seção de casas do estudo, a 10px sobre floresta, passam para
+`--scl-dourado-claro`). Conferir com ferramenta de contraste antes de fechar o PR (mínimo 4,5:1
+em texto normal, 3:1 em texto grande — a partir de 24px, ou 18,7px em negrito — e ícones).
 
 ## Textura de papel (decisão de 4/10)
 
@@ -48,9 +54,13 @@ texto corrido**.
 
 - **Títulos (h1, h2, logotipo):** serifa `Georgia, "Times New Roman", serif`, peso 400,
   `letter-spacing: -0.04em`; h1 `clamp(2.6rem, 5.7vw, 5.5rem)`, h2 `clamp(2rem, 3.8vw, 3.5rem)`.
-  Itálico dourado para a palavra de destaque ("Um lugar *seu*", "Sua Casa *Leblon*").
+  Itálico para a palavra de destaque ("Um lugar *seu*", "Sua Casa *Leblon*"): `--scl-dourado-claro`
+  na capa e `--scl-dourado` no logotipo (24px ou mais, sobre floresta/profundo); em título sobre
+  fundo claro, `--scl-dourado-escuro`.
 - **Texto:** `Arial, Helvetica, sans-serif`, 13–17px, `line-height 1.7`.
-- **Rótulos de campo e "olhos" de seção:** 9–10px, maiúsculas, `letter-spacing 0.06–0.19em`.
+- **Rótulos de campo e "olhos" de seção:** 9–10px, maiúsculas, `letter-spacing 0.06–0.19em`, em
+  `--scl-tinta`/`--scl-texto-2` sobre fundos claros e `--scl-creme`/`--scl-dourado-claro` sobre os
+  verdes; nunca `--scl-dourado` nesse tamanho.
 - Sem fontes externas (privacidade e velocidade): as famílias do sistema bastam. Se um dia Diego
   quiser uma serifa própria, ela entra por arquivo local, não por CDN.
 
@@ -66,7 +76,7 @@ texto corrido**.
 
 ## Componentes do site (referência: `prototipos/acervo-visual-2026-10/site-publico`)
 
-- **Cabeçalho** verde-floresta com logotipo (ícone + "Sua Casa *Leblon*"), "Nossas casas" e o
+- **Cabeçalho** verde-floresta com logotipo (ícone + "Sua Casa *Leblon*", itálico em `--scl-dourado` a 24px), "Nossas casas" e o
   botão contornado "Planeje sua estadia ↗". Faixa fina acima quando for prévia privada.
 - **Capa** com foto do Leblon, gradiente escuro à direita, "olho" pequeno em maiúsculas, título em
   duas linhas e frase curta.

@@ -74,7 +74,7 @@ document.querySelectorAll('.search-form').forEach(form=>{
  dialog.querySelector('[aria-label="Mês anterior"]').addEventListener('click',()=>{month.setMonth(month.getMonth()-1);render();});dialog.querySelector('[aria-label="Próximo mês"]').addEventListener('click',()=>{month.setMonth(month.getMonth()+1);render();});dialog.querySelector('.calendar-close').addEventListener('click',()=>dialog.close());dialog.addEventListener('close',()=>opener?.focus());window.addEventListener('resize',position);
  dialog.querySelector('.calendar-grid').addEventListener('keydown',e=>{if(!e.target.dataset.date)return;const steps={ArrowLeft:-1,ArrowRight:1,ArrowUp:-7,ArrowDown:7};if(!(e.key in steps))return;e.preventDefault();const d=localDate(e.target.dataset.date);d.setDate(d.getDate()+steps[e.key]);if(iso(d)<active.min)return;month=new Date(d.getFullYear(),d.getMonth(),1,12);render();dialog.querySelector(`[data-date="${iso(d)}"]`)?.focus();});
  refresh();
- if(form.dataset.propertyNavigation)form.elements.property.addEventListener('change',()=>{const code=form.elements.property.value;if(!code)return;const params=new URLSearchParams();for(const key of ['checkin','checkout','guests'])if(form.elements[key].value)params.set(key,form.elements[key].value);location.assign(`/imoveis/${encodeURIComponent(code)}?${params}`);});
+ if(form.dataset.propertyNavigation)form.elements.property.addEventListener('change',()=>{const code=form.elements.property.value;if(!code)return;const params=new URLSearchParams();for(const key of ['checkin','checkout','guests'])if(form.elements[key].value)params.set(key,form.elements[key].value);location.assign(`imovel-${encodeURIComponent(code)}.html?${params}`);});
 });
 
 async function submitLocalForm(form,status) {

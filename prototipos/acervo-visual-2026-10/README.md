@@ -19,6 +19,12 @@ que aprovou adotar este visual no site, nos portais e no painel.
   inicial (comparação entre versões), não capturas novas.
 - `LEIA-ME-original.txt` — a nota que veio junto com o arquivo.
 
+Ajustes feitos ao arquivar, só para o acervo abrir inteiro em qualquer máquina: os links entre as
+páginas e para as fotos são relativos (em `comparacao-home.html`, os caminhos que apontavam para
+o computador de origem passaram a apontar para `site-publico/images/`), e o seletor "Seu lugar"
+da página de cada imóvel abre a página local do imóvel escolhido (`imovel-<código>.html`) em vez
+do endereço do site de produção. Nada do visual mudou.
+
 ## O que **não** é
 
 - Não há disponibilidade, cotação, reserva nem pagamento reais: formulários não enviam nada.
