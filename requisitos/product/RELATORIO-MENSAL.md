@@ -56,8 +56,10 @@ assim como o tom de `requisitos/operations/RELATORIOS-E-TOM.md`.
   foto só real e autorizada (M7.3) — até lá, o quadro "foto em breve", nunca imagem genérica.
 - **Autorização no servidor** como hoje (`relatorios/gerar.ts`): portal só o próprio dono, dentro da
   janela, sem anexos; painel com foto e extrato anexados na hora, com histórico.
-- **Legível em A4, na tela e no celular**: uma coluna, tabelas com números alinhados à direita,
-  texto 11–13 pt, nada de cor fixa no código (tokens do M7.5). Cada página cabe numa folha A4
+- **Legível em A4, na tela e no celular**: uma coluna, tabelas com números alinhados à direita;
+  texto do corpo de 9,5 a 11 pt (13–15 px na tela), tabelas densas (reservas e conciliação) no mínimo
+  9 pt (12 px), notas de rodapé e etiquetas no mínimo 8 pt (11 px); nada de cor fixa no código
+  (tokens do M7.5 para cor e fonte; os tamanhos são os deste documento, não os do site). Cada página cabe numa folha A4
   (no PDF nada é cortado). Na tela do celular (a partir de 360 px de largura), **nada rola de lado**:
   a página encolhe como uma folha; a tabela de reservas e a de canais viram uma lista empilhada
   (um bloco por reserva, rótulo e valor em cada linha) e os quadros ficam um embaixo do outro
@@ -122,7 +124,8 @@ mês entra só com as noites do mês, rateio igual por noite (regra de 24/09). O
 Extratos oficiais dos canais, **como emitidos, sem alterações**, um bloco por canal (Airbnb; Booking e
 outros quando houver), com a nota "páginas X a Y do extrato completo" quando for parcial. Sem anexo no
 PDF do portal (como hoje): a página 4 não existe nele, o rodapé da capa diz onde pedir os extratos e
-a numeração conta só as páginas que existem; no painel e no e-mail do dia 1º, anexados na hora.
+a numeração conta só as páginas que existem; no painel, anexados na hora; no e-mail, os guardados por
+imóvel e mês (ver "Portal × painel/e-mail").
 
 ## Métricas e gráfico (página 2)
 
@@ -132,8 +135,8 @@ Todas vêm do livro e do calendário do SCL; nenhuma é estimada.
 |---|---|---|
 | **Noites e ocupação** | noites ocupadas no mês (reservas confirmadas, rateio por noite) e ocupação = noites ocupadas ÷ noites disponíveis, onde disponíveis = noites do mês − noites bloqueadas pelo proprietário para uso próprio (M5.5). Mostra "{n} de {d} disponíveis" e as bloqueadas. Com zero noites disponíveis (mês inteiro bloqueado para uso próprio), a ocupação é "não se aplica", com a nota "mês bloqueado para seu uso"; nunca 0 ÷ 0 | sempre (a ocupação, "não se aplica" sem noite disponível) |
 | **Diária média** | bruto do mês ÷ noites ocupadas no mês; rótulo "por noite, com limpeza" (o bruto do livro inclui a limpeza) | se houver noite ocupada; senão "sem reserva no mês" |
-| **Comparado ao mês anterior** | variação % do resultado e ocupação "de X% para Y%" | só se o mês anterior estiver inteiro no sistema (depois do início do sistema, M4.11, ou do histórico importado) |
-| **Mesmo mês do ano anterior** | variação % do resultado | idem; senão "sem dado no sistema" |
+| **Comparado ao mês anterior** | variação % do resultado e ocupação "de X% para Y%"; se o resultado do mês de comparação for zero (mês sem reserva e sem despesa), mostra a diferença em R$ ("+ R$ X; setembro sem resultado"), nunca % | só se o mês anterior estiver inteiro no sistema (depois do início do sistema, M4.11, ou do histórico importado) |
+| **Mesmo mês do ano anterior** | variação % do resultado; base zero, a mesma regra do mês anterior (diferença em R$) | idem; senão "sem dado no sistema" |
 | **Acumulado do ano** | soma do resultado de janeiro até o mês — ou "desde {mês/ano}" quando o dado começa depois de janeiro, escrito no rótulo | sempre que houver ao menos um mês |
 | **Gráfico** | barras dos últimos 12 meses do resultado (sua parte − despesas); meses sem dado em hachura, com legenda "sem dado no sistema"; eixo em R$ mil; o mês atual destacado | sempre |
 
@@ -146,7 +149,14 @@ comparação mostraria queda falsa).
 ## Variantes
 
 - **Portal × painel/e-mail.** Mesmo PDF; o do portal sai sem anexos e só dentro da janela do portal
-  (como hoje); o do painel e o do e-mail do dia 1º (M5.4) levam a foto e os extratos.
+  (como hoje); o do painel e o do e-mail do dia do fechamento (M5.4) levam a foto e os extratos. **De
+  onde vêm os anexos do e-mail** (hoje `relatorioDoFechamento` gera sem anexos e só o painel aceita
+  upload na hora): a equipe guarda, por imóvel e mês, os extratos oficiais dos canais — upload em
+  Financeiro → Fechamento, antes do dia do fechamento, em armazenamento privado como o comprovante
+  do Pix do M4.10 —, e a foto vem da ficha do imóvel (M7.3); o e-mail anexa o que estiver guardado
+  e, sem arquivo guardado, sai sem anexos, com o rodapé "ficam com a equipe" e um aviso no painel
+  ("relatório de {mês} enviado sem o extrato do Airbnb"). Importação automática do extrato do canal
+  fica para o M4.4.
 - **Gestão completa × marketplace.** No marketplace, a capa diz "contrato marketplace"; "Do bruto ao
   resultado" separa **vendas pelo site SCL** (valor cheio, desconto do hóspede, taxa do pagamento,
   parte da SCL, sua parte — modelo B, M12.1/M12.2) de **vendas suas nas OTAs** (comissão da SCL
@@ -202,12 +212,15 @@ com pdf-lib; `gerar.ts` decide quem pode gerar) e troca o desenho:
 3. **Páginas** 1–4 como acima, cada uma numa folha A4; gráfico desenhado com retângulos (sem imagem); hachura para "sem dado".
 4. **Variante marketplace** pelo tipo de contrato; linhas do modelo B só com o M12.2 pronto (até lá,
    as vendas do site aparecem com a comissão do contrato, como hoje).
-5. **E-mails** do fechamento e do repasse ganham o esqueleto da seção anterior (HTML + texto); os
+5. **Extratos guardados por imóvel e mês:** tabela e armazenamento privado (como o comprovante do
+   Pix), tela de upload em Financeiro → Fechamento, e `relatorioDoFechamento` anexando o que houver
+   (sem arquivo, PDF sem anexos com o rodapé certo e aviso no painel).
+6. **E-mails** do fechamento e do repasse ganham o esqueleto da seção anterior (HTML + texto); os
    modelos existentes continuam editáveis.
-6. **Testes:** métricas puras; extração de texto do PDF (como `relatorio.test.ts` faz hoje) para a
+7. **Testes:** métricas puras; extração de texto do PDF (como `relatorio.test.ts` faz hoje) para a
    presença de cada bloco, da base do destaque e das frases de aviso; isolamento de dados (dono,
    imóvel, favorecido); mês parcial; "sem dado".
-7. Documentação: ROADMAP (M5.7 feito), GUIA-DIEGO (seção 2 e "como está ficando" com prints
+8. Documentação: ROADMAP (M5.7 feito), GUIA-DIEGO (seção 2 e "como está ficando" com prints
    fictícios), este arquivo (situação).
 
 ## Fora do escopo do M5.7
