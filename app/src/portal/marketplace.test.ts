@@ -243,6 +243,14 @@ describe("portal do proprietário marketplace (M12.4)", () => {
     expect(await situacaoDoEnvio(db, org, regras, a, escritaPronta)).toEqual({ naLista: true, vinculado: true, escritaPronta: true, automatico: true, ultimo: null });
     // Sinal ligado sem credencial: o escritor do ambiente é nulo e nada sai — o portal não pode prometer envio.
     expect((await situacaoDoEnvio(db, org, regras, a, soSinal)).escritaPronta).toBe(false);
+    // A régua que aborta o envio: segundo vínculo válido no mesmo imóvel, ou o mesmo quarto em outro imóvel da lista, desfaz o "vinculado".
+    const [duplicado] = await db.insert(idsExternos).values({ organizacaoId: org, imovelId: a, canal: "beds24", idExterno: "11", detalhe: "21" }).returning();
+    expect((await situacaoDoEnvio(db, org, regras, a, escritaPronta)).vinculado).toBe(false);
+    await db.delete(idsExternos).where(eq(idsExternos.id, duplicado.id));
+    await db.insert(idsExternos).values({ organizacaoId: org, imovelId: b, canal: "beds24", idExterno: "12", detalhe: "20" });
+    expect((await situacaoDoEnvio(db, org, { ...regras, envio: { imoveis: [a, b], automatico: true } }, a, escritaPronta)).vinculado).toBe(false);
+    // Fora da lista de envio, o outro imóvel não entra no envio e não cria ambiguidade.
+    expect((await situacaoDoEnvio(db, org, regras, a, escritaPronta)).vinculado).toBe(true);
     const [sim] = await db.insert(beds24Envios).values({ organizacaoId: org, modo: "simulacao", situacao: "simulacao", iniciadoEm: new Date("2026-10-02T10:00:00Z") }).returning();
     const [real] = await db.insert(beds24Envios).values({ organizacaoId: org, modo: "envio", situacao: "ok", iniciadoEm: new Date("2026-10-01T10:00:00Z") }).returning();
     await db.insert(beds24EnvioNoites).values([

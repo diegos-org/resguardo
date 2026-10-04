@@ -10,6 +10,7 @@ import { and, asc, desc, eq, exists, gte, inArray, lt, sql } from "drizzle-orm";
 import { exigir, type Sessao } from "@/acesso/politica";
 import { listarMapeamentosBeds24, organizacaoBeds24 } from "@/beds24/configuracao";
 import { escritaBeds24Pronta } from "@/beds24/http";
+import { vinculoUnicoParaEnvio } from "@/calendario/envio";
 import { lerRegrasCalendario, type RegrasCalendario } from "@/calendario/regras-config";
 import { type ContratoVigencia, contratoVigente } from "@/contratos/regras";
 import { listarContratos } from "@/contratos/repositorio";
@@ -121,8 +122,8 @@ async function credencialAtendeOrganizacao(db: Db, organizacaoId: string, env: N
 
 /** Situação do envio ao Beds24 para um imóvel: na lista? vinculado? escrita pronta (sinal, credencial e credencial desta empresa)? automático? último envio real que o tocou. */
 export async function situacaoDoEnvio(db: Db, organizacaoId: string, regras: RegrasCalendario, imovelId: string, env: NodeJS.ProcessEnv = process.env): Promise<SituacaoEnvio> {
-  // A mesma régua do envio (`calendario/envio.ts`): vínculo ativo com propriedade e quarto numéricos.
-  const vinculado = (await listarMapeamentosBeds24(db, organizacaoId)).some((m) => m.imovelId === imovelId && m.ativo && /^\d+$/.test(m.propertyId) && /^\d+$/.test(m.roomId));
+  // A mesma régua que aborta o envio (`calendario/envio.ts`): um único vínculo válido e quarto não repetido na lista.
+  const vinculado = vinculoUnicoParaEnvio(await listarMapeamentosBeds24(db, organizacaoId), imovelId, regras.envio.imoveis);
   const [ultimo] = await db
     .select({ em: beds24Envios.iniciadoEm, situacao: beds24Envios.situacao })
     .from(beds24Envios)

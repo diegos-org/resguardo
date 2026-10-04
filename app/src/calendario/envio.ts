@@ -26,6 +26,20 @@ export type ImovelEnviado = { imovelId: string; codigo: string; resumo: ResumoPl
 export type ResultadoEnvio = { ok: boolean; situacao: SituacaoEnvio; mensagem: string; envioId: string | null; imoveis: ImovelEnviado[]; avisos: string[]; totalAvisos: number };
 export type OpcoesEnvio = { modo: ModoEnvio; imovelIds?: string[]; autorId?: string | null; automatica?: boolean; agora?: Date };
 
+type VinculoBeds24 = { imovelId: string; ativo: boolean; propertyId: string; roomId: string };
+/** Vínculo Beds24 que vale para o envio: ativo, com propriedade e quarto numéricos. */
+export const vinculoValidoParaEnvio = (m: Pick<VinculoBeds24, "ativo" | "propertyId" | "roomId">) => m.ativo && /^\d+$/.test(m.propertyId) && /^\d+$/.test(m.roomId);
+/**
+ * O imóvel está pronto para o envio pela régua que aborta o envio inteiro: exatamente um vínculo válido, e o quarto
+ * dele não ligado a outro imóvel da lista de envio. O portal lê daqui para nunca prometer o que o envio recusaria.
+ */
+export function vinculoUnicoParaEnvio(mapas: readonly VinculoBeds24[], imovelId: string, listaDeEnvio: readonly string[]): boolean {
+  const validos = mapas.filter(vinculoValidoParaEnvio);
+  const meus = validos.filter((m) => m.imovelId === imovelId);
+  if (meus.length !== 1) return false;
+  return !validos.some((m) => m.imovelId !== imovelId && listaDeEnvio.includes(m.imovelId) && m.roomId === meus[0].roomId);
+}
+
 const NOMES_SITUACAO: Record<SituacaoEnvio, string> = {
   ok: "Enviado e conferido", parcial: "Enviado com divergências ou falhas", erro: "Falhou", ocupada: "Outra execução em andamento",
   desligada: "Envio desligado", simulacao: "Simulação (nada enviado)", incerto: "Enviado, sem confirmação da releitura",
@@ -179,7 +193,7 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
       await tx.update(beds24Envios).set({ situacao: "executando" }).where(eq(beds24Envios.id, exec.id));
 
       const regras = await lerRegrasCalendario(tx, org);
-      const mapas = (await listarMapeamentosBeds24(tx, org)).filter(m => m.ativo && /^\d+$/.test(m.propertyId) && /^\d+$/.test(m.roomId));
+      const mapas = (await listarMapeamentosBeds24(tx, org)).filter(vinculoValidoParaEnvio);
       const pedidos = o.imovelIds ? [...new Set(o.imovelIds)] : null;
       if (pedidos?.some(id => !regras.envio.imoveis.includes(id))) throw new ErroBeds24("Este imóvel não está com envio ligado em Configurações → Calendário e preços.", "configuracao");
       const escolhidos = mapas.filter(m => regras.envio.imoveis.includes(m.imovelId) && (!pedidos || pedidos.includes(m.imovelId)));
