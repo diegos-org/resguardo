@@ -53,8 +53,9 @@ describe("portal marketplace (M12.4): seção do proprietário", () => {
     // Digitou outro preço: a simulação acompanha.
     fireEvent.change(within(form).getByLabelText(/Preço da noite/), { target: { value: "500,00" } });
     expect(form.textContent).toContain(textoDaSimulacao(50000, PRECOS_MARKETPLACE_PADRAO, "Sua Casa Exemplo"));
-    // Períodos reaproveitam o componente do painel.
+    // Períodos reaproveitam o componente do painel (com preço, porque os preços são do SCL).
     expect(screen.getByText("Réveillon")).toBeTruthy();
+    expect(within(screen.getByRole("region", { name: "Períodos especiais" })).getByLabelText(/Preço da noite/)).toBeTruthy();
     // Limpezas: a atrasada e a futura com entrada no dia têm situação clara; só a que já chegou tem o botão.
     const limpezas = screen.getByRole("region", { name: "Limpezas" });
     expect(limpezas.textContent).toContain("A fazer · atrasada");
@@ -72,6 +73,11 @@ describe("portal marketplace (M12.4): seção do proprietário", () => {
     cleanup();
     render_({ imoveis: [{ ...imovel, fontePrecos: "beds24" }] });
     const form = screen.getByRole("form", { name: "Preços e regras de venda do 403" });
+    // Período especial sem campo de preço: só estadia mínima (o servidor recusaria qualquer preço).
+    const periodos = screen.getByRole("region", { name: "Períodos especiais" });
+    expect(within(periodos).queryByLabelText(/Preço da noite/)).toBeNull();
+    expect((within(periodos).getByLabelText(/Estadia mínima/) as HTMLInputElement).required).toBe(true);
+    expect(periodos.textContent).toContain("O preço da noite é definido no Beds24");
     const campo = within(form).getByLabelText(/Preço da noite/) as HTMLInputElement;
     expect(campo.readOnly).toBe(true);
     expect(screen.getByText(/definidos no Beds24/)).toBeTruthy();
@@ -84,8 +90,12 @@ describe("portal marketplace (M12.4): seção do proprietário", () => {
   });
 
   it("depois de salvar, só promete Airbnb e Booking quando o imóvel está na lista de envio", () => {
-    expect(textoSalvo(true, "SCL")).toContain("chega ao Airbnb e ao Booking no próximo envio");
-    expect(textoSalvo(false, "SCL")).toContain("continuam com os valores anteriores até a SCL incluir este imóvel no envio");
+    // E só para o que o envio de calendário carrega (preço e estadias); o resto é só do site.
+    expect(textoSalvo(true, "SCL")).toContain("Preço da noite e estadias mínima e máxima chegam ao Airbnb e ao Booking no próximo envio");
+    expect(textoSalvo(true, "SCL")).toContain("taxa de limpeza, hóspede extra, antecedência, janela de reservas, dias e horários de entrada e saída valem só no site");
+    expect(textoSalvo(false, "SCL")).toContain("continuam com o preço e as estadias anteriores até a SCL incluir este imóvel no envio");
+    expect(textoSalvo(false, "SCL")).toContain("valem só no site");
     expect(textoSalvo(false, "SCL")).not.toContain("próximo envio");
+    expect(textoDoEnvio({ naLista: true, automatico: true, ultimo: null }, "SCL")).toContain("leva preço da noite e estadias mínima e máxima ao Airbnb e ao Booking; taxa de limpeza");
   });
 });

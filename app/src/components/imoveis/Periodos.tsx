@@ -15,17 +15,21 @@ type Props = {
   periodos: (Periodo & { id: string })[];
   criar: (a: EstadoPeriodo, f: FormData) => Promise<EstadoPeriodo>;
   excluir: (f: FormData) => Promise<void>;
+  /** Preços definidos no Beds24 (M3.9): o período só leva estadia mínima — o campo de preço nem aparece. */
+  semPreco?: boolean;
 };
 
 /** Exceções por período: preço da noite e/ou estadia mínima diferentes (Réveillon, Carnaval…). */
-export function Periodos({ imovelId, periodos, criar, excluir }: Props) {
+export function Periodos({ imovelId, periodos, criar, excluir, semPreco = false }: Props) {
   const [estado, enviar, enviando] = useActionState(criar, {});
   const v = estado.valores ?? {};
   return (
     <section aria-label="Períodos especiais" style={{ maxWidth: 820, display: "flex", flexDirection: "column", gap: 12 }}>
       <h2 style={{ fontSize: "1.25rem" }}>Períodos especiais</h2>
       <p style={{ fontSize: "0.875rem", color: "var(--scl-texto-2)", margin: 0 }}>
-        Preço da noite e/ou estadia mínima diferentes em datas específicas. As datas são das noites (a primeira e a última noite do período). O preço explícito do período é preservado, mesmo fora dos limites gerais do preço base.
+        {semPreco
+          ? "Estadia mínima diferente em datas específicas. As datas são das noites (a primeira e a última noite do período). O preço da noite é definido no Beds24, então aqui o período não tem preço."
+          : "Preço da noite e/ou estadia mínima diferentes em datas específicas. As datas são das noites (a primeira e a última noite do período). O preço explícito do período é preservado, mesmo fora dos limites gerais do preço base."}
       </p>
       {periodos.length > 0 && (
         <div className={styles.rolagem}>
@@ -80,13 +84,15 @@ export function Periodos({ imovelId, periodos, criar, excluir }: Props) {
           </label>
         </div>
         <div className={styles.linha}>
-          <label>
-            Preço da noite (R$)
-            <input name="precoNoite" inputMode="decimal" placeholder="em branco = preço base" defaultValue={v.precoNoite} />
-          </label>
+          {!semPreco && (
+            <label>
+              Preço da noite (R$)
+              <input name="precoNoite" inputMode="decimal" placeholder="em branco = preço base" defaultValue={v.precoNoite} />
+            </label>
+          )}
           <label>
             Estadia mínima (noites)
-            <input name="estadiaMinima" type="number" min={1} max={365} placeholder="em branco = a geral" defaultValue={v.estadiaMinima} />
+            <input name="estadiaMinima" type="number" min={1} max={365} placeholder={semPreco ? "ex.: 5" : "em branco = a geral"} defaultValue={v.estadiaMinima} required={semPreco} />
           </label>
         </div>
         {estado.erro && (

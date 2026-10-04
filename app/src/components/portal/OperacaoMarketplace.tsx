@@ -60,18 +60,22 @@ const quando = (d: Date) => new Intl.DateTimeFormat("pt-BR", { timeZone: "Americ
 const NOMES_SITUACAO_ENVIO: Record<string, string> = { ok: "concluído", parcial: "concluído com pendências", erro: "com erro", ocupada: "não rodou (ocupado)", desligada: "desligado", incerto: "incerto", executando: "em andamento" };
 const ESTADO_LIMPEZA = { pedida: "A fazer", confirmada: "A fazer", realizada: "Feita" } as const;
 
-/** Explica, sem supor, se o que o proprietário mudou chega às OTAs. */
-/** Mensagem depois de salvar: só promete Airbnb/Booking quando o imóvel está na lista de envio. */
+/** O envio de calendário (M3.7) leva só isto às OTAs; o resto do cadastro vale apenas no site. */
+const VAI_AS_OTAS = "preço da noite e estadias mínima e máxima";
+const SO_NO_SITE = "taxa de limpeza, hóspede extra, antecedência, janela de reservas, dias e horários de entrada e saída valem só no site";
+
+/** Mensagem depois de salvar: promete Airbnb/Booking só para o que o envio carrega, e só se o imóvel está na lista. */
 export function textoSalvo(naLista: boolean, empresa: string): string {
   return naLista
-    ? `Salvo. Vale no site da ${empresa} agora e chega ao Airbnb e ao Booking no próximo envio de calendário.`
-    : `Salvo. Vale no site da ${empresa} agora. Airbnb e Booking continuam com os valores anteriores até a ${empresa} incluir este imóvel no envio de calendário.`;
+    ? `Salvo. Vale no site da ${empresa} agora. ${VAI_AS_OTAS[0].toUpperCase()}${VAI_AS_OTAS.slice(1)} chegam ao Airbnb e ao Booking no próximo envio de calendário; ${SO_NO_SITE}.`
+    : `Salvo. Vale no site da ${empresa} agora. Airbnb e Booking continuam com o preço e as estadias anteriores até a ${empresa} incluir este imóvel no envio de calendário; ${SO_NO_SITE}.`;
 }
 
+/** Explica, sem supor, se (e o que) do que o proprietário mudou chega às OTAs. */
 export function textoDoEnvio(e: SituacaoEnvio, empresa: string): string {
-  if (!e.naLista) return `Este imóvel ainda não está na lista de envio ao Beds24 da ${empresa}: o que você mudar aqui vale no site da ${empresa}, mas o Airbnb e o Booking continuam com o calendário e os preços anteriores até a ${empresa} incluir o imóvel no envio.`;
+  if (!e.naLista) return `Este imóvel ainda não está na lista de envio ao Beds24 da ${empresa}: o que você mudar aqui vale no site da ${empresa}, mas o Airbnb e o Booking continuam com o calendário, o preço e as estadias anteriores até a ${empresa} incluir o imóvel no envio. Em qualquer caso, ${SO_NO_SITE}.`;
   const ultimo = e.ultimo ? ` Último envio: ${quando(e.ultimo.em)} (${NOMES_SITUACAO_ENVIO[e.ultimo.situacao] ?? e.ultimo.situacao}).` : " Ainda não houve envio para este imóvel.";
-  return `${e.automatico ? "O envio ao Beds24 roda todo dia e leva o que você mudar aqui ao Airbnb e ao Booking" : `O envio ao Beds24 é feito pela ${empresa}: até ele rodar, o Airbnb e o Booking continuam com os valores anteriores`}.${ultimo}`;
+  return `${e.automatico ? `O envio ao Beds24 roda todo dia e leva ${VAI_AS_OTAS} ao Airbnb e ao Booking` : `O envio ao Beds24 é feito pela ${empresa}: até ele rodar, o Airbnb e o Booking continuam com o preço e as estadias anteriores`}; ${SO_NO_SITE}.${ultimo}`;
 }
 
 /** Linha da simulação do modelo B (M12.1) para o preço de uma noite. */
@@ -345,7 +349,7 @@ export function OperacaoMarketplace({ imoveis, precos, limpezas, manutencoes, em
             {textoDoEnvio(i.envio, empresa)}
           </p>
           <FormPrecos imovel={i} precos={precos} empresa={empresa} salvar={salvarPrecos} />
-          <Periodos imovelId={i.id} periodos={i.periodos} criar={novoPeriodo} excluir={excluirPeriodo} />
+          <Periodos imovelId={i.id} periodos={i.periodos} criar={novoPeriodo} excluir={excluirPeriodo} semPreco={i.fontePrecos === "beds24"} />
         </article>
       ))}
       <Limpezas limpezas={limpezas} marcar={marcarLimpeza} />
