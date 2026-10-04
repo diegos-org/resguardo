@@ -32,7 +32,7 @@ assim como o tom de `requisitos/operations/RELATORIOS-E-TOM.md`.
 | Página "Detalhamento das reservas": N reservas, N noites; um cartão por reserva (primeiro nome, código, datas, noites, bruto, taxa do canal, limpeza, gestão, proprietário) | Mantida. Entra o **canal** de cada reserva e a **situação** da parte (paga pelo canal, já repassada, a transferir, a liberar — M4.10). Estadia que atravessa o mês mostra só as noites do mês, com nota |
 | Página "Conciliação — do extrato ao mês completo": total do PDF oficial "pago", parcelas em espera, total apurado; distribuição proprietário/empresa | Mantida e ampliada: **do extrato de cada canal ao resultado** (Airbnb paga direto; Booking, site e direta passam pela empresa), **repasses feitos no mês** (antecipados, com comprovante) e **o que vai no fechamento, com quem paga quem e o Pix**; despesas do imóvel listadas |
 | Extrato oficial do Airbnb como anexo (páginas copiadas) | Mantido: **sempre no fim**, como emitido, um bloco por canal (Booking quando houver). Só páginas daquele imóvel e daqueles favorecidos |
-| — | **Novo:** bloco de métricas do mês e gráfico de barras de 12 meses (abaixo) |
+| — | **Novo:** bloco de métricas do mês e gráfico de barras de 12 meses, na página das reservas (abaixo) |
 
 ## Princípios
 
@@ -49,8 +49,9 @@ assim como o tom de `requisitos/operations/RELATORIOS-E-TOM.md`.
 - **Autorização no servidor** como hoje (`relatorios/gerar.ts`): portal só o próprio dono, dentro da
   janela, sem anexos; painel com foto e extrato anexados na hora, com histórico.
 - **Legível em A4 e na tela**: uma coluna, tabelas com números alinhados à direita, texto 11–13 pt,
-  nada de cor fixa no código (tokens do M7.5). Bonito e relevante, sem ser exaustivo: no máximo um
-  gráfico e um bloco de quatro números na capa; o detalhe fica nas páginas seguintes.
+  nada de cor fixa no código (tokens do M7.5). Bonito e relevante, sem ser exaustivo: um gráfico e
+  um bloco de quatro números (página 2), e cada página cabe numa folha; o detalhe fica nas páginas
+  seguintes.
 
 ## Estrutura (página a página)
 
@@ -72,13 +73,14 @@ assim como o tom de `requisitos/operations/RELATORIOS-E-TOM.md`.
    na página 3); ajuste "responsabilidade da empresa" quando houver, com o estado; **seu resultado**.
    No marketplace, as linhas do modelo B (desconto do hóspede, taxa do pagamento, parte da SCL)
    aparecem só para as vendas do site (ver "Variantes").
-6. **Números do mês** — quatro quadros e um gráfico (ver "Métricas").
-7. **Avisos** (só se houver): pendências que mudam a leitura (recebimento não registrado,
+6. **Avisos** (só se houver): pendências que mudam a leitura (recebimento não registrado,
    lançamento em conferência, compensação pendente), uma linha cada, com o que acontece depois.
-8. Rodapé: "Os números são os mesmos do portal; o extrato oficial de cada canal está no fim,
-   como emitido." Página N de M.
+7. Rodapé: "Os números são os mesmos do portal; o extrato oficial de cada canal está no fim,
+   como emitido." Página N de M. A capa cabe numa folha A4: foto, resultado, "como chega" e a
+   tabela do bruto ao resultado; os números do mês ficam na página 2.
 
-### 2. Reservas do mês
+### 2. Números e reservas do mês
+Em cima, **Números do mês** — quatro quadros e um gráfico (ver "Métricas"). Embaixo, as reservas:
 "{N} reservas · {n} noites em {mês}". Uma linha (ou cartão) por reserva: primeiro nome do hóspede,
 canal, código do canal, entrada → saída, noites no mês, bruto, taxa do canal, limpeza (quando o
 componente existir no livro), comissão da gestão, **sua parte** e situação da parte (paga pelo canal /
@@ -101,7 +103,7 @@ Extratos oficiais dos canais, **como emitidos, sem alterações**, um bloco por 
 outros quando houver), com a nota "páginas X a Y do extrato completo" quando for parcial. Sem anexo no
 PDF do portal (como hoje); no painel, anexados na hora.
 
-## Métricas e gráfico (capa)
+## Métricas e gráfico (página 2)
 
 Todas vêm do livro e do calendário do SCL; nenhuma é estimada.
 
@@ -166,7 +168,7 @@ com pdf-lib; `gerar.ts` decide quem pode gerar) e troca o desenho:
    do mês; `metricas` (módulo puro `relatorios/metricas.ts` com testes: noites, ocupação, diária
    média, variações, acumulado, série de 12 meses, regras de "sem dado"); por reserva, canal, código
    e os componentes do livro (taxa, limpeza, comissão) já existentes por lançamento (M4.2).
-3. **Páginas** 1–4 como acima; gráfico desenhado com retângulos (sem imagem); hachura para "sem dado".
+3. **Páginas** 1–4 como acima, cada uma numa folha A4; gráfico desenhado com retângulos (sem imagem); hachura para "sem dado".
 4. **Variante marketplace** pelo tipo de contrato; linhas do modelo B só com o M12.2 pronto (até lá,
    as vendas do site aparecem com a comissão do contrato, como hoje).
 5. **E-mails** do fechamento e do repasse ganham o esqueleto da seção anterior (HTML + texto); os
