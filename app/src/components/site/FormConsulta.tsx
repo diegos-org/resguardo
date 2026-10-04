@@ -17,18 +17,25 @@ const TEXTO_CANAL: Record<"whatsapp" | "email" | "nenhum", string> = {
   nenhum: "Confira os dados antes de continuar.",
 };
 
+/**
+ * `variante`: "busca" é a caixa translúcida sob a capa (campos em linha, sem título); "lateral" é o
+ * cartão "Planeje sua estadia" da página do imóvel (o título fica fora do formulário); o padrão é o
+ * cartão papel com título, usado na página de consulta.
+ */
 export function FormConsulta({
   imoveis,
   valores,
   erros = {},
   hoje,
   canal,
+  variante = "padrao",
 }: {
   imoveis: ImovelPublico[];
   valores: Partial<PedidoConsulta>;
   erros?: ErrosConsulta;
   hoje: string;
   canal: CanalContato;
+  variante?: "padrao" | "busca" | "lateral";
 }) {
   const erro = (k: keyof PedidoConsulta) =>
     erros[k] ? (
@@ -36,11 +43,13 @@ export function FormConsulta({
         {erros[k]}
       </span>
     ) : null;
+  const classe = variante === "busca" ? styles.buscaForm : `${styles.formulario} ${styles.duasColunas}`;
+  const dica = variante === "busca" ? "Escolha o lugar e as datas. A disponibilidade e o valor aparecem na próxima tela, antes de qualquer reserva." : `${TEXTO_CANAL[canal ?? "nenhum"]} Nenhum pagamento é feito aqui.`;
   return (
-    <form action="/consulta" method="get" className={styles.formulario}>
-      <strong>Consultar disponibilidade</strong>
-      <label>
-        Apartamento
+    <form action="/consulta" method="get" className={classe} aria-label="Consultar disponibilidade">
+      {variante === "padrao" && <strong>Consultar disponibilidade</strong>}
+      <label className={styles.campoLargo}>
+        Seu lugar
         <select name="imovel" defaultValue={valores.imovel ?? ""} required aria-describedby={erros.imovel ? "erro-imovel" : undefined}>
           <option value="" disabled>
             Escolha
@@ -53,27 +62,26 @@ export function FormConsulta({
         </select>
         {erro("imovel")}
       </label>
-      <div className={styles.linha}>
-        <label>
-          Entrada
-          <input type="date" name="entrada" min={hoje} defaultValue={valores.entrada ?? ""} required />
-          {erro("entrada")}
-        </label>
-        <label>
-          Saída
-          <input type="date" name="saida" min={hoje} defaultValue={valores.saida ?? ""} required />
-          {erro("saida")}
-        </label>
-      </div>
       <label>
-        Pessoas
-        <input type="number" name="hospedes" min={1} max={imoveis.length && imoveis.every((i) => i.capacidade) ? Math.max(...imoveis.map((i) => i.capacidade ?? 0)) : undefined} defaultValue={valores.hospedes ?? "2"} required />
+        Entrada
+        <input type="date" name="entrada" min={hoje} defaultValue={valores.entrada ?? ""} required />
+        {erro("entrada")}
+      </label>
+      <label>
+        Saída
+        <input type="date" name="saida" min={hoje} defaultValue={valores.saida ?? ""} required />
+        {erro("saida")}
+      </label>
+      <label className={variante === "busca" ? undefined : styles.campoLargo}>
+        Hóspedes
+        <input type="number" name="hospedes" min={1} max={imoveis.length && imoveis.every((i) => i.capacidade) ? Math.max(...imoveis.map((i) => i.capacidade ?? 0)) : undefined} defaultValue={valores.hospedes || "2"} required />
         {erro("hospedes")}
       </label>
       <button type="submit" className={styles.botao}>
-        Continuar
+        {variante === "busca" ? "Consultar" : "Continuar"}
+        <span aria-hidden="true">↗</span>
       </button>
-      <span className={styles.miudo}>{TEXTO_CANAL[canal ?? "nenhum"]} Nenhum pagamento é feito aqui.</span>
+      <p className={styles.dica}>{dica}</p>
     </form>
   );
 }

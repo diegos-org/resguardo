@@ -23,8 +23,8 @@ export function Abas({ abas }: { abas: { slug: string; titulo: string }[] }) {
                   fontSize: "0.875rem",
                   textDecoration: "none",
                   border: "1px solid var(--scl-areia)",
-                  background: ativa ? "var(--scl-salvia)" : "#fff",
-                  color: ativa ? "#fff" : "var(--scl-texto)",
+                  background: ativa ? "var(--scl-musgo)" : "var(--scl-papel)",
+                  color: ativa ? "var(--scl-branco)" : "var(--scl-texto)",
                 }}
               >
                 {a.titulo}

@@ -1,8 +1,8 @@
 .lista { display: grid; gap: 28px; }
-.imovel { border: 1px solid var(--scl-areia); border-radius: 12px; background: #fff; padding: 20px; min-width: 0; }
+.imovel { border: 1px solid var(--scl-borda); border-radius: var(--scl-raio-cartao); background: var(--scl-papel); padding: 20px; min-width: 0; }
 .topo { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
 .canais { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-.canal { padding: 16px; background: #faf9f5; border: 1px solid var(--scl-areia); border-radius: 8px; display: flex; flex-direction: column; gap: 12px; min-width: 0; overflow-wrap: anywhere; }
+.canal { padding: 16px; background: var(--scl-creme); border: 1px solid var(--scl-areia); border-radius: 8px; display: flex; flex-direction: column; gap: 12px; min-width: 0; overflow-wrap: anywhere; }
 .canal h3 { font-size: 1.1rem; }
 .canal dl { display: grid; gap: 5px; }
 .canal dt { font-size: .8rem; color: var(--scl-texto-2); margin-top: 8px; }
@@ -13,11 +13,11 @@
 .canal input[type=checkbox] { width: auto; }
 .canal ul, .avisos ul { padding-left: 20px; }
 .miudo { font-size: .85rem; color: var(--scl-texto-2); }
-.avisos { margin-bottom: 16px; border-left: 3px solid #aa7839; background: #fbf5e9; padding: 12px 16px; }
+.avisos { margin-bottom: 16px; border-left: 3px solid var(--scl-dourado-escuro); background: var(--scl-aviso-fundo); padding: 12px 16px; }
 .filtros { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 18px 0; }
 .filtros label { display: grid; gap: 4px; }
 .filtros fieldset { flex-basis: 100%; border: 1px solid var(--scl-areia); padding: 12px; display: flex; flex-wrap: wrap; gap: 12px; }
 .filtros fieldset p { flex-basis: 100%; }
 .filtros fieldset label { display: flex; align-items: center; gap: 6px; }
-.filtros select, .filtros button { font: inherit; padding: 6px 12px; border: 1px solid var(--scl-areia); border-radius: 6px; background: #fff; }
+.filtros select, .filtros button { font: inherit; padding: 6px 12px; border: 1px solid var(--scl-borda); border-radius: var(--scl-raio-campo); background: var(--scl-papel); }
 @media (max-width: 1050px) { .canais { grid-template-columns: 1fr; } }

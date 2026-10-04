@@ -109,7 +109,7 @@ export default async function Calendario({ searchParams }: PageProps<"/painel/ca
           </span>
         )}
         <span>
-          <i style={{ outline: "2px solid #b3261e" }} /> Overbooking ou aviso
+          <i style={{ outline: "2px solid var(--scl-erro)" }} /> Overbooking ou aviso
         </span>
       </div>
       {visiveis.length === 0 ? (

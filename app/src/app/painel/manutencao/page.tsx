@@ -14,7 +14,7 @@ import { formatBRL } from "@/lib/money";
 import { aprovarAcao, cancelarAcao, criarAcao, custoAcao, orcamentoAcao, realizarAcao, recusarAcao } from "@/manutencao/acoes";
 import { listarManutencoes, NOMES_ESTADO } from "@/manutencao/manutencao";
 
-const COR: Record<EstadoManutencao, string> = { pedida: "#8a6d1c", orcada: "#b3261e", aprovada: "#2f5d8a", realizada: "#2e6b3f", recusada: "#777", cancelada: "#777" };
+const COR: Record<EstadoManutencao, string> = { pedida: "var(--scl-aviso)", orcada: "var(--scl-erro)", aprovada: "var(--scl-info)", realizada: "var(--scl-ok)", recusada: "var(--scl-texto-2)", cancelada: "var(--scl-texto-2)" };
 const dataBr = (d: string) => d.split("-").reverse().join("/");
 const QUEM: Record<string, string> = { empresa: "empresa paga", proprietario: "proprietário paga" };
 
@@ -269,7 +269,7 @@ export default async function Manutencao({ searchParams }: PageProps<"/painel/ma
                       <input name="motivo" required maxLength={300} />
                     </label>
                     <div className={styles.acoes}>
-                      <BotaoConfirmar pergunta={`Recusar ${m.titulo} (${m.imovelCodigo})?`} style={{ background: "#b3261e" }}>
+                      <BotaoConfirmar pergunta={`Recusar ${m.titulo} (${m.imovelCodigo})?`} style={{ background: "var(--scl-erro)" }}>
                         Recusar
                       </BotaoConfirmar>
                     </div>
@@ -284,7 +284,7 @@ export default async function Manutencao({ searchParams }: PageProps<"/painel/ma
                       <input name="motivo" required maxLength={300} />
                     </label>
                     <div className={styles.acoes}>
-                      <BotaoConfirmar pergunta={`Cancelar ${m.titulo} (${m.imovelCodigo})?`} style={{ background: "#b3261e" }}>
+                      <BotaoConfirmar pergunta={`Cancelar ${m.titulo} (${m.imovelCodigo})?`} style={{ background: "var(--scl-erro)" }}>
                         Cancelar
                       </BotaoConfirmar>
                     </div>

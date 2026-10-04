@@ -86,15 +86,15 @@ export function FormCadastro({ enviar }: { enviar: Acao }) {
         {erro("imovel_descricao")}
       </label>
 
-      <fieldset style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: 6 }}>
+      <fieldset style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: 10 }}>
         <legend>
           <strong>Anúncio</strong>
         </legend>
-        <label>
+        <label className={styles.opcao}>
           <input type="radio" name="anuncio" value="ja_anuncio" defaultChecked={anuncio === "ja_anuncio"} onChange={() => setAnuncio("ja_anuncio")} /> Já
           anuncio em outra plataforma (Airbnb, Booking…)
         </label>
-        <label>
+        <label className={styles.opcao}>
           <input type="radio" name="anuncio" value="novo" defaultChecked={anuncio === "novo"} onChange={() => setAnuncio("novo")} /> Quero um anúncio novo
         </label>
         {erro("anuncio")}
@@ -107,7 +107,7 @@ export function FormCadastro({ enviar }: { enviar: Acao }) {
         </label>
       )}
 
-      <label>
+      <label className={styles.opcao}>
         <input type="checkbox" name="consentimento" defaultChecked={v("consentimento") === "on"} /> Autorizo a equipe a usar estes dados para analisar o
         cadastro e entrar em contato comigo.
         {erro("consentimento")}

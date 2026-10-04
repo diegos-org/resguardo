@@ -23,8 +23,11 @@ export default async function EntrarHospede({ searchParams }: PageProps<"/hosped
 
   return (
     <Moldura conteudo={conteudo}>
-      <section className={styles.secao} style={{ maxWidth: 460 }}>
-        <h1>Minha reserva</h1>
+      <section className={styles.estreito}>
+        <header className={styles.cabecalhoPagina}>
+          <p className={styles.olho}>Portal do hóspede</p>
+          <h1>Minha reserva</h1>
+        </header>
         {mensagem && (
           <p role="alert" className={styles.erro}>
             {mensagem}

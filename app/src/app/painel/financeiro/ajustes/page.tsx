@@ -52,7 +52,7 @@ export default async function Ajustes() {
                   </td>
                   <td className={styles.numero}>{a.valor === null ? "desconhecido" : formatBRL(a.valor)}</td>
                   <td>
-                    <span className={styles.etiqueta} style={{ background: a.esclarecidoEm ? "#e3efe0" : "#fdf3dc" }}>
+                    <span className={styles.etiqueta} style={{ background: a.esclarecidoEm ? "var(--scl-ok-fundo)" : "var(--scl-aviso-fundo)" }}>
                       {a.esclarecidoEm ? "Esclarecido" : "Pendente"}
                     </span>
                   </td>

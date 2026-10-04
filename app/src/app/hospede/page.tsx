@@ -47,7 +47,7 @@ function Reserva({ r }: { r: ReservaDoHospede }) {
           {r.bairro ? ` · ${r.bairro}, ${r.cidade}` : ""}
           {r.encerrada ? " · estadia encerrada" : ""}
         </span>
-        <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 16px", margin: "12px 0" }}>
+        <dl className={styles.detalhes}>
           <dt>Entrada</dt>
           <dd style={{ margin: 0 }}>
             {data(r.checkin)}, a partir das {hora(r.entradaAPartirDe)}
@@ -102,9 +102,12 @@ export default async function PortalHospede() {
 
   return (
     <Moldura conteudo={conteudo}>
-      <section className={styles.secao}>
-        <h1>Minha reserva</h1>
-        <p className={styles.miudo}>Entrou como {email}.</p>
+      <section aria-labelledby="titulo-reserva">
+        <header className={styles.cabecalhoPagina}>
+          <p className={styles.olho}>Portal do hóspede</p>
+          <h1 id="titulo-reserva">Minha reserva</h1>
+          <p>Entrou como {email}.</p>
+        </header>
         {lista.length ? (
           <div className={styles.grade}>
             {lista.map((r) => (
@@ -116,8 +119,8 @@ export default async function PortalHospede() {
             Não encontramos uma reserva ativa com este e-mail. Se você acabou de reservar ou mudou de e-mail, fale com a gente.
           </p>
         )}
-        <form action={sairHospede}>
-          <button type="submit" className={styles.botao}>
+        <form action={sairHospede} style={{ marginTop: 24 }}>
+          <button type="submit" className={`${styles.botao} ${styles.botaoContorno}`}>
             Sair
           </button>
         </form>

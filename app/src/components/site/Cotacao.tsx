@@ -36,7 +36,7 @@ export function Cotacao({ vista, whatsapp, email, formulario }: { vista: Cotacao
   ) : null;
   const titulo = vista.estado === "aberta" && vista.mudou ? TITULO_COTACAO.desatualizada : TITULO_COTACAO[vista.estado];
   return (
-    <section className={styles.secao} style={{ marginTop: 0 }} aria-label="Cotação">
+    <section className={styles.bloco} aria-label="Cotação">
       <h2>{titulo}</h2>
       <p className={styles.miudo}>
         Cotação <strong>{c.codigo}</strong> · {c.imovelNome} ({c.imovelCodigo})
@@ -45,7 +45,7 @@ export function Cotacao({ vista, whatsapp, email, formulario }: { vista: Cotacao
         {dataBr(c.checkin)} a {dataBr(c.checkout)} · {c.noites} {c.noites === 1 ? "noite" : "noites"} · {c.hospedes} {c.hospedes === 1 ? "pessoa" : "pessoas"}
         {c.situacao === "a_confirmar" ? " · disponibilidade a confirmar pela equipe" : ""}
       </p>
-      <dl style={{ display: "grid", gridTemplateColumns: "max-content auto", gap: "4px 16px", marginTop: 12, background: "#fff", border: "1px solid #e4dccb", borderRadius: 8, padding: 16 }}>
+      <dl className={styles.resumo}>
         <dt>Diárias</dt>
         <dd>{brl(c.diarias)}</dd>
         {c.limpeza > 0 && (

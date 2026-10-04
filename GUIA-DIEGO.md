@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 4/10/2026, **acervo visual do Sage guardado e especificação de design escrita (M7.5):** o visual que você aprovou está em `prototipos/acervo-visual-2026-10` (e o código dele já estava em `prototipos/scl-publico`); os tokens e os ajustes combinados estão em `requisitos/product/DESIGN.md`; falta só implementar; **fonte de preços por imóvel pronta (M3.9):** cada imóvel escolhe, na ficha, se os preços são automáticos do SCL, definidos no Beds24 (o SCL só lê) ou digitados no cadastro; site, envio ao Beds24, prévia e portal seguem a escolha (seção 2); item novo de **identidade visual** (M7.5, aprovado por você); **referência do sistema antigo cruzada com o plano (M0.6):** o museu que você mandou foi percorrido tela a tela e comparado com o que já existe, com uma lista de ideias para você decidir (seção 2 e `arquivo/sistema-antigo`); **desconto do site e simulação do marketplace prontos (M12.1):** nova aba Configurações → Marketplace e desconto do site, com as taxas de referência e os três pesos editáveis e a simulação Airbnb × Booking × site; o site passa a mostrar valor cheio, desconto e total em toda consulta e cotação (seção 2); recebimento do site decidido (M8.0: empresa recebe e repassa, Mercado Pago; repasse na periodicidade que o proprietário escolher, item novo M4.10), modelo do marketplace decidido (B, partes iguais; M12.1 liberado), marketplace recebendo pela empresa como o site, fonte de preços por imóvel no plano (M3.9), backup do repositório ativado por você (M0.7), publicação de homologação dada por fechada por você (M0.5), pedido do checkout com Pix e cartão registrado (M8.2, com parcelamento pago pelo hóspede) e decisão de não cobrar nada sobre as reservas das OTAs do dono do marketplace; correção do robô de backup depois da sua primeira rodada (ele passa a gravar com uma chave da própria conta de backup e guarda o que vem da origem fora de branches e tags, onde nenhuma automação roda; item 23, passos 4, 5 e 7) e passo a passo mais detalhado (passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório ativo na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
+> **Última atualização:** 4/10/2026, **identidade visual nova implementada (M7.5):** site, portais e painel estão no visual do estudo que você aprovou (verdes, off-white de papel, grão sutil nos fundos, busca translúcida, serifa nos títulos; painel mais denso), com três textos novos da capa editáveis em Configurações → Site (seção 2); **acervo visual do Sage guardado e especificação de design escrita (M7.5):** o visual que você aprovou está em `prototipos/acervo-visual-2026-10` (e o código dele já estava em `prototipos/scl-publico`); os tokens e os ajustes combinados estão em `requisitos/product/DESIGN.md`; **fonte de preços por imóvel pronta (M3.9):** cada imóvel escolhe, na ficha, se os preços são automáticos do SCL, definidos no Beds24 (o SCL só lê) ou digitados no cadastro; site, envio ao Beds24, prévia e portal seguem a escolha (seção 2); item novo de **identidade visual** (M7.5, aprovado por você); **referência do sistema antigo cruzada com o plano (M0.6):** o museu que você mandou foi percorrido tela a tela e comparado com o que já existe, com uma lista de ideias para você decidir (seção 2 e `arquivo/sistema-antigo`); **desconto do site e simulação do marketplace prontos (M12.1):** nova aba Configurações → Marketplace e desconto do site, com as taxas de referência e os três pesos editáveis e a simulação Airbnb × Booking × site; o site passa a mostrar valor cheio, desconto e total em toda consulta e cotação (seção 2); recebimento do site decidido (M8.0: empresa recebe e repassa, Mercado Pago; repasse na periodicidade que o proprietário escolher, item novo M4.10), modelo do marketplace decidido (B, partes iguais; M12.1 liberado), marketplace recebendo pela empresa como o site, fonte de preços por imóvel no plano (M3.9), backup do repositório ativado por você (M0.7), publicação de homologação dada por fechada por você (M0.5), pedido do checkout com Pix e cartão registrado (M8.2, com parcelamento pago pelo hóspede) e decisão de não cobrar nada sobre as reservas das OTAs do dono do marketplace; correção do robô de backup depois da sua primeira rodada (ele passa a gravar com uma chave da própria conta de backup e guarda o que vem da origem fora de branches e tags, onde nenhuma automação roda; item 23, passos 4, 5 e 7) e passo a passo mais detalhado (passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório ativo na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
 
 ---
 
@@ -31,12 +31,38 @@
 | M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | 🟡 em andamento; extrato e repasses por periodicidade (M4.10) a fazer |
 | M5 Portal do proprietário | Relatórios, saldos, PDF, bloqueio de uso próprio | 🟡 relatórios, PDF, e-mail do fechamento e bloqueio de datas prontos; documento "como funciona" para o proprietário (M5.6) a fazer |
 | M6 Operação | Limpezas, manutenção, agenda diária | 🟡 em andamento |
-| M7 Site público | Site novo com disponibilidade e valor reais | 🟡 disponibilidade e valor prontos; páginas legais do site (M7.4) a fazer; fotos reais (M7.3) dependem de você |
+| M7 Site público | Site novo com disponibilidade e valor reais | 🟡 disponibilidade e valor prontos; visual novo do site, dos portais e do painel pronto (M7.5, 4/10); páginas legais do site (M7.4) a fazer; fotos reais (M7.3) dependem de você |
 | M8 Reserva direta | Cotação, datas seguradas e pagamento pelo Mercado Pago | 🟡 cotação e "segurar as datas" prontos; recebimento decidido em 4/10 (empresa recebe e repassa); pagamento (M8.2) espera só as credenciais de teste do Mercado Pago |
 | M9 Portal do hóspede | Acesso do hóspede e mensagens automáticas | ✅ pronto |
 | M10 WhatsApp | Caixa de entrada do WhatsApp no painel | ⚪ aguardando |
 | M11 Produção | Dados reais, domínio, entrada em uso | ⚪ aguardando |
 | M12 Marketplace | Proprietário que opera o próprio imóvel; SCL cuida do online | 🟡 cadastro pelo site pronto; modelo de cobrança (B, partes iguais) com pesos editáveis, simulação e desconto único do site prontos (M12.1); cálculo e repasse no financeiro (M12.2) dependem do pagamento (M8.2) e do extrato (M4.10) |
+
+### Identidade visual nova — M7.5 (4/10)
+
+O site, o portal do proprietário, a tela da equipe de limpeza, a entrada (login), o convite e o
+painel inteiro passaram para o visual do estudo que você aprovou em 4/10, com os ajustes que
+você pediu: os verdes ficaram, o bege virou um off-white de papel, o grão de papel aparece só
+nos fundos (nunca atrás de texto corrido), a busca da capa é translúcida com desfoque, e os
+títulos são em serifa. O painel usa a mesma paleta, só mais compacto (tabelas e formulários
+menores) por ser lugar de trabalho.
+
+O que você consegue mexer sozinho, em Configurações → Site: além do título, do subtítulo, do
+"sobre", do "como reservar", do contato e do rodapé, agora há o **olho da capa** (a linha pequena
+acima do título, ex.: "RIO DE JANEIRO · BRASIL") e a **chamada final** (o título da faixa verde
+antes do rodapé, ex.: "O Rio está logo ali."). No título e na chamada, a palavra entre
+asteriscos sai em itálico dourado ("Um lugar *seu*."). O texto "sobre" virou a seção "Por que
+reservar direto": cada bloco separado por uma linha em branco vira uma coluna numerada, e a
+primeira linha do bloco é o título dela. O nome da empresa (Empresa → nome) aparece no
+logotipo com a última palavra em itálico ("Sua Casa *Leblon*").
+
+O que ficou de fora: as fotos (capa, cartões e galeria) continuam como quadros "foto em breve"
+até você liberar os direitos (M7.3); o botão flutuante do WhatsApp só aparece quando há telefone
+no cadastro da empresa; o PDF do relatório mensal manteve a paleta anterior (parecida), fica
+para quando o relatório for revisto. Todas as cores vêm de um único arquivo de tokens: nenhuma
+tela tem cor digitada à mão, então uma mudança de paleta é feita num lugar só. O contraste dos
+pares de cores usados foi conferido (mínimo 4,5:1 em texto normal; o dourado só em decoração e
+em texto grande).
 
 ### Fonte de preços por imóvel — M3.9 (4/10)
 
@@ -1529,13 +1555,14 @@ ambiente).
    imóvel de marketplace em que o dono ou a ferramenta dele define os preços no Beds24, escolha
    "definidos no Beds24": aí ele pode entrar na lista de envio sem risco de o SCL sobrescrever
    preço. Depois, na prévia de calendário, confira a coluna "Site (≈)" contra o anúncio.
-26. **Identidade visual (M7.5) — acervo recebido em 4/10:** o zip do Sage está guardado em
+26. **Identidade visual (M7.5) — implementada em 4/10:** o zip do Sage está guardado em
    `prototipos/acervo-visual-2026-10` e a especificação (cores, fontes, espaçamentos, busca
-   translúcida, grão sutil, painel mais denso) em `requisitos/product/DESIGN.md`. Curiosidade:
-   o código desse site já estava no repositório desde 21/09, em `prototipos/scl-publico`; o
-   que faltava eram as fotos e a versão renderizada. Se encontrar mais imagens no Google Fotos,
-   mande que eu acrescento. Nada a fazer agora além disso: a implementação é o próximo passo
-   depois do M4.10, ou antes, se você preferir (me diga).
+   translúcida, grão sutil, painel mais denso) em `requisitos/product/DESIGN.md`; o site, os
+   portais e o painel já estão nesse visual (seção 2). O que é seu: abrir a preview, olhar o
+   site no celular e no computador e me dizer o que destoa; preencher em Configurações → Site
+   o olho da capa, a chamada final e os blocos de "Por que reservar direto" (cada bloco
+   separado por linha em branco; a primeira linha é o título). As fotos entram no M7.3, quando
+   você liberar os direitos. Se encontrar mais imagens no Google Fotos, mande que eu acrescento.
 
 ---
 

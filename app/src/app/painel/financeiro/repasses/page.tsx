@@ -236,7 +236,7 @@ export default async function Repasses({ searchParams }: PageProps<"/painel/fina
                   <div className={styles.acoes}>
                     <BotaoConfirmar
                       pergunta={`Estornar o repasse de ${nomeMes(mes)} de ${p.nome}? Os lançamentos são estornados e os adiantamentos descontados voltam a ficar em aberto.${r.situacao === "pago" ? " O Pix já feito precisa ser devolvido ou acertado à parte." : ""}`}
-                      style={{ background: "#b3261e" }}
+                      style={{ background: "var(--scl-erro)" }}
                     >
                       Estornar
                     </BotaoConfirmar>
