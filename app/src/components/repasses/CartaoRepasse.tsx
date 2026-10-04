@@ -25,12 +25,15 @@ const dataBr = (d: string) => d.split("-").reverse().join("/");
 const quando = (d: Date | null) => (d ? d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" }) : "");
 
 export function nomeDoRepasse(r: Pick<Repasse, "tipo" | "mes" | "data">): string {
-  return r.tipo === "fechamento" ? `Fechamento de ${nomeMes(r.mes.slice(0, 7))}` : `Repasse antecipado de ${dataBr(r.data)}`;
+  if (r.tipo === "fechamento") return `Fechamento de ${nomeMes(r.mes.slice(0, 7))}`;
+  if (r.tipo === "por_fora") return `Acerto por fora até ${dataBr(r.data)}`;
+  return `Repasse antecipado de ${dataBr(r.data)}`;
 }
 
-export function situacaoDoRepasse(r: Pick<Repasse, "situacao" | "dataPagamento" | "comprovante" | "comprovanteArquivoId">): string {
+export function situacaoDoRepasse(r: Pick<Repasse, "tipo" | "situacao" | "dataPagamento" | "comprovante" | "comprovanteArquivoId">): string {
   if (r.situacao === "estornado") return "Estornado";
   if (r.situacao === "a_pagar") return "A pagar";
+  if (r.tipo === "por_fora") return "Acertado fora do sistema";
   return `Pago em ${dataBr(r.dataPagamento!)}${r.comprovante || r.comprovanteArquivoId ? "" : " · sem comprovante"}`;
 }
 
@@ -54,7 +57,7 @@ export function CartaoRepasse({ r, nome, chavePix, itens, mes, hoje, editar }: P
       {itens.length > 0 && (
         <details>
           <summary style={{ cursor: "pointer", fontSize: "0.875rem" }}>
-            {itens.length} parte(s) de reserva neste repasse{r.tipo === "fechamento" ? " (disponíveis da competência e antecipadas)" : ""}
+            {itens.length} parte(s) de reserva neste repasse{r.tipo === "fechamento" ? " (disponíveis da competência e antecipadas)" : r.tipo === "por_fora" ? " (anteriores ao início do sistema)" : ""}
           </summary>
           <div className={styles.rolagem}>
             <table className={styles.tabela}>
@@ -89,7 +92,14 @@ export function CartaoRepasse({ r, nome, chavePix, itens, mes, hoje, editar }: P
         </details>
       )}
 
-      {r.situacao === "pago" && (
+      {r.tipo === "por_fora" && (
+        <p style={{ margin: 0, fontSize: "0.875rem", color: "var(--scl-texto-2)" }}>
+          Acertado fora do sistema, antes do início ({dataBr(r.data)} é o último dia coberto): sem Pix nem e-mail pelo sistema. As partes de reserva acima nunca entram em outro repasse, e o
+          acerto desses meses ficou em zero.
+        </p>
+      )}
+
+      {r.situacao === "pago" && r.tipo !== "por_fora" && (
         <p style={{ margin: 0, fontSize: "0.875rem", color: "var(--scl-texto-2)" }}>
           Comprovante:{" "}
           {comComprovante ? (
@@ -136,7 +146,7 @@ export function CartaoRepasse({ r, nome, chavePix, itens, mes, hoje, editar }: P
         </>
       )}
 
-      {editar && r.situacao === "pago" && !comComprovante && (
+      {editar && r.situacao === "pago" && r.tipo !== "por_fora" && !comComprovante && (
         <form action={anexarComprovanteAcao} className={styles.linha} style={{ alignItems: "flex-end" }} aria-label={`Anexar comprovante: ${nomeDoRepasse(r)} de ${nome}`}>
           <input type="hidden" name="mes" value={mes} />
           <input type="hidden" name="id" value={r.id} />
@@ -170,7 +180,11 @@ export function CartaoRepasse({ r, nome, chavePix, itens, mes, hoje, editar }: P
             </label>
             <div className={styles.acoes}>
               <BotaoConfirmar
-                pergunta={`Estornar o ${nomeDoRepasse(r).toLowerCase()} de ${nome}? Os lançamentos são estornados${r.tipo === "fechamento" ? ", os adiantamentos descontados voltam a ficar em aberto" : ""} e as partes de reserva voltam a ficar disponíveis.${r.situacao === "pago" ? " O Pix já feito precisa ser devolvido ou acertado à parte." : ""}`}
+                pergunta={
+                  r.tipo === "por_fora"
+                    ? `Estornar o ${nomeDoRepasse(r).toLowerCase()} de ${nome}? Os lançamentos de acerto são estornados e as partes de reserva de antes do início voltam ao extrato (a liberar ou disponível) — e podem entrar em repasse de novo. Use só se a marcação foi errada.`
+                    : `Estornar o ${nomeDoRepasse(r).toLowerCase()} de ${nome}? Os lançamentos são estornados${r.tipo === "fechamento" ? ", os adiantamentos descontados voltam a ficar em aberto" : ""} e as partes de reserva voltam a ficar disponíveis.${r.situacao === "pago" ? " O Pix já feito precisa ser devolvido ou acertado à parte." : ""}`
+                }
                 style={{ background: "var(--scl-erro)" }}
               >
                 Estornar

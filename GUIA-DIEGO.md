@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 4/10/2026, **modelo oficial do relatório mensal especificado (M5.7, a implementar):** o relatório de setembro que a Lia montou com você virou o padrão, no visual novo, com números do mês e os extratos das OTAs no fim — veja o protótipo com dados fictícios e me diga o que mudar (seção 2 e seção 7); **portal do proprietário marketplace pronto (M12.4):** quem tem contrato marketplace edita no portal os preços e as regras de venda do próprio imóvel (com a conta do site ao vivo), vê se a mudança já foi ao Beds24, marca as limpezas como feitas e registra os consertos por conta própria (seção 2); **atenção ao fechamento de outubro — o primeiro no sistema: checklist no item 29 da seção 6 (setembro já acertado por fora não pode entrar de novo);** **extrato e repasses por periodicidade prontos (M4.10):** o proprietário vê no portal a parte dele em cada reserva (a liberar, disponível, repassada), escolhe como quer receber (mensal, quinzenal, semanal, assim que disponível) e pode pedir um repasse; você registra o recebimento do canal na reserva, marca o repasse pago com o comprovante e o e-mail sai sozinho (seção 2); **identidade visual nova implementada (M7.5):** site, portais e painel estão no visual do estudo que você aprovou (verdes, off-white de papel, grão sutil nos fundos, busca translúcida, serifa nos títulos; painel mais denso), com três textos novos da capa editáveis em Configurações → Site (seção 2); **acervo visual do Sage guardado e especificação de design escrita (M7.5):** o visual que você aprovou está em `prototipos/acervo-visual-2026-10` (e o código dele já estava em `prototipos/scl-publico`); os tokens e os ajustes combinados estão em `requisitos/product/DESIGN.md`; falta só implementar; **fonte de preços por imóvel pronta (M3.9):** cada imóvel escolhe, na ficha, se os preços são automáticos do SCL, definidos no Beds24 (o SCL só lê) ou digitados no cadastro; site, envio ao Beds24, prévia e portal seguem a escolha (seção 2); item novo de **identidade visual** (M7.5, aprovado por você); **referência do sistema antigo cruzada com o plano (M0.6):** o museu que você mandou foi percorrido tela a tela e comparado com o que já existe, com uma lista de ideias para você decidir (seção 2 e `arquivo/sistema-antigo`); **desconto do site e simulação do marketplace prontos (M12.1):** nova aba Configurações → Marketplace e desconto do site, com as taxas de referência e os três pesos editáveis e a simulação Airbnb × Booking × site; o site passa a mostrar valor cheio, desconto e total em toda consulta e cotação (seção 2); recebimento do site decidido (M8.0: empresa recebe e repassa, Mercado Pago; repasse na periodicidade que o proprietário escolher, item novo M4.10), modelo do marketplace decidido (B, partes iguais; M12.1 liberado), marketplace recebendo pela empresa como o site, fonte de preços por imóvel no plano (M3.9), backup do repositório ativado por você (M0.7), publicação de homologação dada por fechada por você (M0.5), pedido do checkout com Pix e cartão registrado (M8.2, com parcelamento pago pelo hóspede) e decisão de não cobrar nada sobre as reservas das OTAs do dono do marketplace; correção do robô de backup depois da sua primeira rodada (ele passa a gravar com uma chave da própria conta de backup e guarda o que vem da origem fora de branches e tags, onde nenhuma automação roda; item 23, passos 4, 5 e 7) e passo a passo mais detalhado (passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório ativo na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
+> **Última atualização:** 4/10/2026, **antes do fechamento de outubro (o primeiro no sistema), faça o item 29 da seção 6: defina o início do sistema (1/10/2026) em Configurações → Repasses e clique em "Marcar como acertado por fora" em Financeiro → Repasses (M4.11) — nada de setembro entra de novo e o fechamento sai sem tratamento à mão;** **modelo oficial do relatório mensal especificado (M5.7, a implementar):** o relatório de setembro que a Lia montou com você virou o padrão, no visual novo, com números do mês e os extratos das OTAs no fim — veja o protótipo com dados fictícios e me diga o que mudar (seção 2 e seção 7); **portal do proprietário marketplace pronto (M12.4):** quem tem contrato marketplace edita no portal os preços e as regras de venda do próprio imóvel (com a conta do site ao vivo), vê se a mudança já foi ao Beds24, marca as limpezas como feitas e registra os consertos por conta própria (seção 2); **atenção ao fechamento de outubro — o primeiro no sistema: checklist no item 29 da seção 6 (setembro já acertado por fora não pode entrar de novo);** **extrato e repasses por periodicidade prontos (M4.10):** o proprietário vê no portal a parte dele em cada reserva (a liberar, disponível, repassada), escolhe como quer receber (mensal, quinzenal, semanal, assim que disponível) e pode pedir um repasse; você registra o recebimento do canal na reserva, marca o repasse pago com o comprovante e o e-mail sai sozinho (seção 2); **identidade visual nova implementada (M7.5):** site, portais e painel estão no visual do estudo que você aprovou (verdes, off-white de papel, grão sutil nos fundos, busca translúcida, serifa nos títulos; painel mais denso), com três textos novos da capa editáveis em Configurações → Site (seção 2); **acervo visual do Sage guardado e especificação de design escrita (M7.5):** o visual que você aprovou está em `prototipos/acervo-visual-2026-10` (e o código dele já estava em `prototipos/scl-publico`); os tokens e os ajustes combinados estão em `requisitos/product/DESIGN.md`; falta só implementar; **fonte de preços por imóvel pronta (M3.9):** cada imóvel escolhe, na ficha, se os preços são automáticos do SCL, definidos no Beds24 (o SCL só lê) ou digitados no cadastro; site, envio ao Beds24, prévia e portal seguem a escolha (seção 2); item novo de **identidade visual** (M7.5, aprovado por você); **referência do sistema antigo cruzada com o plano (M0.6):** o museu que você mandou foi percorrido tela a tela e comparado com o que já existe, com uma lista de ideias para você decidir (seção 2 e `arquivo/sistema-antigo`); **desconto do site e simulação do marketplace prontos (M12.1):** nova aba Configurações → Marketplace e desconto do site, com as taxas de referência e os três pesos editáveis e a simulação Airbnb × Booking × site; o site passa a mostrar valor cheio, desconto e total em toda consulta e cotação (seção 2); recebimento do site decidido (M8.0: empresa recebe e repassa, Mercado Pago; repasse na periodicidade que o proprietário escolher, item novo M4.10), modelo do marketplace decidido (B, partes iguais; M12.1 liberado), marketplace recebendo pela empresa como o site, fonte de preços por imóvel no plano (M3.9), backup do repositório ativado por você (M0.7), publicação de homologação dada por fechada por você (M0.5), pedido do checkout com Pix e cartão registrado (M8.2, com parcelamento pago pelo hóspede) e decisão de não cobrar nada sobre as reservas das OTAs do dono do marketplace; correção do robô de backup depois da sua primeira rodada (ele passa a gravar com uma chave da própria conta de backup e guarda o que vem da origem fora de branches e tags, onde nenhuma automação roda; item 23, passos 4, 5 e 7) e passo a passo mais detalhado (passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório ativo na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
 
 ---
 
@@ -28,7 +28,7 @@
 | M1 Acesso | Login (Google/código por e-mail), convites, permissões | ✅ pronto |
 | M2 Cadastros | Imóveis, proprietários, contratos e aba Anúncios | ✅ implementado; referências dos canais precisam ser preenchidas/conferidas |
 | M3 Reservas | Reservas, calendário central, importação e envio de calendário/preços ao Beds24 | 🟡 importação e envio implementados; o envio começa desligado e espera o seu teste no 103; conferência das reservas parcial; fonte de preços por imóvel escolhida na ficha de cada imóvel (M3.9) pronta |
-| M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | 🟡 em andamento; extrato e repasses por periodicidade prontos (M4.10); conciliação do extrato bancário (M4.4b) e Pix automático dependem do banco/Mercado Pago; reserva paga antes do início acertada inteira por fora (M4.12) e dia do fechamento configurável (M4.13) a fazer |
+| M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | 🟡 em andamento; extrato e repasses por periodicidade prontos (M4.10); início do sistema e acerto por fora do que é de antes (M4.11); conciliação do extrato bancário (M4.4b) e Pix automático dependem do banco/Mercado Pago; reserva paga antes do início acertada inteira por fora (M4.12) e dia do fechamento configurável (M4.13) a fazer |
 | M5 Portal do proprietário | Relatórios, saldos, PDF, bloqueio de uso próprio | 🟡 relatórios, PDF, e-mail do fechamento e bloqueio de datas prontos; documento "como funciona" para o proprietário (M5.6) a fazer; modelo oficial do relatório mensal especificado em 4/10 (M5.7, a implementar) |
 | M6 Operação | Limpezas, manutenção, agenda diária | 🟡 em andamento |
 | M7 Site público | Site novo com disponibilidade e valor reais | 🟡 disponibilidade e valor prontos; visual novo do site, dos portais e do painel pronto (M7.5, 4/10); páginas legais do site (M7.4) a fazer; fotos reais (M7.3) dependem de você |
@@ -168,9 +168,48 @@ entregou por fora, e o primeiro fechamento feito aqui será o de outubro, já co
 reserva registrada. Por isso o sistema não tenta reconstruir fechamentos antigos de verdade: isso só
 existe na homologação, com dados fictícios, e lá um caso raro (parte de reserva recalculada depois de
 dois fechamentos antigos) fica com uma trava de segurança a menos no estorno de recebimento — aceito
-como limite documentado. Na operação real nada muda: no fechamento de outubro (dia 1º de novembro),
-confira as reservas de outubro que porventura você já tenha acertado por fora e trate essas, se
-houver, à mão.
+como limite documentado. Na operação real, você decidiu (também em 4/10) que o sistema vale a partir
+de 1/10/2026 e que tudo de antes já foi acertado por fora: o bloco seguinte (M4.11) marca isso de uma
+vez, e o fechamento de outubro sai sem tratamento à mão.
+
+### Início do sistema e acerto por fora — M4.11 (4/10)
+
+Você decidiu: **o sistema vale a partir de 1º de outubro de 2026**, e tudo o que é de antes — a parte
+dos proprietários em cada reserva, comissões, despesas, ajustes — já foi acertado fora dele. Para
+o sistema não pagar nem cobrar nada disso de novo, ele agora tem:
+
+- **Configurações → Repasses → "Início do sistema para valer":** a data (1/10/2026). É sempre o
+  dia 1º de um mês, porque a parte de cada reserva é contada por mês, e nunca no futuro.
+- **Financeiro → Repasses → "Antes do início do sistema":** uma lista, por proprietário, de quantas
+  partes de reserva anteriores ao início ainda estão fora de repasse e de quanto é o acerto em
+  aberto até a véspera (30/9). O botão **"Marcar como acertado por fora"** cria, para cada
+  proprietário, um repasse chamado "acerto por fora até 30/09/2026", já pago, sem Pix e sem e-mail,
+  com a parte dele em cada reserva de setembro e antes, e deixa o acerto daqueles meses em zero.
+- **O que isso garante:** essas partes nunca entram em repasse antecipado (nem pedido pelo portal)
+  nem em fechamento; uma reserva que atravessa setembro e outubro (entrada 29/9, saída 2/10) passa a
+  pagar só a parte de outubro quando você registrar o recebimento; o extrato do proprietário mostra
+  a parte de setembro como **"acertada por fora, antes do início do sistema"**, separada do que o
+  sistema pagou.
+- **Pode repetir:** o botão só marca o que ainda não foi marcado. Se surgir algo novo de antes de
+  1/10 (uma reserva importada atrasada), a lista mostra de novo e você clica de novo. Se um
+  proprietário tiver um bloqueio (lançamento em conferência, ajuste a esclarecer ou adiantamento em
+  aberto de antes de 1/10), ele fica de fora com o motivo escrito, e os outros são marcados.
+- **Errou?** O repasse "acerto por fora" se estorna como qualquer outro: as partes voltam ao extrato.
+- **A data não passa por cima de repasse:** enquanto houver acerto por fora em vigor, o sistema não
+  deixa mudar o início para antes dele nem apagá-lo; e não deixa colocar o início depois de uma parte
+  que um repasse normal (fechamento ou antecipado) em vigor já pagou, nem de um mês já fechado, nem de
+  um acerto de antes que um fechamento posterior já quitou (o fechamento de outubro paga tudo o que
+  estava em aberto na hora dele, inclusive um ajuste de setembro; parte de reserva que ficou fora do
+  fechamento e lançamento feito depois dele não contam, e crédito e débito de antes que se anulam
+  também não) — senão a data diria "acertado por fora"
+  sobre algo que o sistema pagou, e a marcação acertaria de novo. Em todos os casos, estorne primeiro.
+- **Nada de antes passa pelos repasses normais:** com a data definida, a parte de reserva de antes
+  do início nunca fica "disponível" (o extrato diz "anterior ao início do sistema: aguarda a
+  marcação"), então nem antecipado nem pedido pelo portal a pagam; e o fechamento não roda enquanto
+  houver algo de antes sem marcar — ele avisa e pede a marcação. Isso vale também para uma reserva
+  antiga que apareça depois (importação atrasada): basta marcar de novo.
+
+Passo a passo na seção 6, item 29.
 ### Identidade visual nova — M7.5 (4/10)
 
 O site, o portal do proprietário, a tela da equipe de limpeza, a entrada (login), o convite e o
@@ -1700,65 +1739,44 @@ ambiente).
    reserva cujo dinheiro você registrou como recebido. Antes do próximo dia 1º, abra as reservas
    de Booking, site e direta já recebidas e clique em "Registrar recebimento" (o valor vem
    preenchido). Sem isso, a parte fica "a liberar", fora do repasse, com aviso no painel e no
-   portal. O Airbnb (paga direto) não precisa. O fechamento de outubro é o primeiro feito no sistema: os de
-   setembro ficaram por fora, e reserva de outubro que você já tenha acertado por fora deve ser
-   tratada à mão nesse fechamento (seção 2, M4.10).
+   portal. O Airbnb (paga direto) não precisa. O fechamento de outubro é o primeiro feito no sistema:
+   antes dele, faça o item 29 (início do sistema e acerto por fora), que tira setembro e antes do
+   caminho de uma vez.
 28. **Periodicidade dos repasses (M4.10):** confira **Configurações → Repasses** (padrão mensal
    para todos; segunda-feira no semanal; dias 1 e 16 no quinzenal) e avise os proprietários que
    eles podem escolher no portal. Se quiser outro padrão para o marketplace (ex.: semanal),
    mude ali. E, ao marcar um repasse pago, anexe o comprovante: é ele que libera o e-mail.
-29. **Fechamento de outubro — o primeiro feito no sistema (decisão sua, 4/10). Leia antes do dia 1º/11.**
-   Nada é pago sozinho: o fechamento só acontece quando você clica em Financeiro → Repasses. Mas o
-   que ele calcula depende do que estiver no sistema, então:
-   - **Como ele conta:** soma o acerto de cada proprietário até 31/10 — tudo o que estiver no sistema
-     até essa data, inclusive setembro e antes, porque o contrato de cada imóvel começa na primeira
-     reserva dele (sua regra de 2/10). Paga só a parte de reserva **disponível** (check-in passado e
-     recebimento registrado na página da reserva); o resto fica "fora do fechamento", com aviso, e
-     passa para o repasse seguinte.
-   - **Setembro e antes já foram acertados por fora, então não podem entrar de novo.** Não registre
-     recebimento de reserva inteiramente de setembro ou anterior: ela fica "a liberar", fora do
-     fechamento, e o aviso "fora do fechamento" vai listar essas reservas — para elas, o aviso é
-     esperado. Anote a lista para não confundir com reserva de outubro que falta receber.
-   - **Reserva que atravessa setembro e outubro** (ex.: entrada 29/9, saída 2/10): o sistema separa
-     por noite — noites de setembro são a parte de setembro; noites de outubro, a parte de outubro —
-     mas um recebimento só libera as duas partes. Se setembro já foi pago por fora, faça **na ordem e
-     no dia certos**: (1) lance em Financeiro → **Ajustes** um ajuste negativo do valor da parte de
-     setembro (o valor aparece no extrato do proprietário, mês a mês), com a descrição "setembro
-     acertado por fora" e **a data em que você pagou por fora — até 31/10, nunca 1/11**: o fechamento
-     de outubro só considera lançamentos datados até 31/10, e o formulário vem com a data de hoje;
-     (2) **só no dia 1º/11, pouco antes de clicar no fechamento**, registre o recebimento e **feche na
-     mesma sentada**. **Nunca registre esse recebimento antes do dia 1º:** para proprietário semanal,
-     quinzenal ou "assim que disponível" — ou se alguém gerar um repasse antecipado à mão, ou se o
-     próprio proprietário clicar em "Pedir repasse agora" no portal (isso não depende da
-     periodicidade dele) — a parte de setembro ficaria disponível e o antecipado a pagaria de novo (o
-     antecipado não aplica ajustes; só o fechamento). No dia 1º nenhum antecipado sai, nem pedido
-     pelo portal, por isso é o dia seguro. **Se o fechamento não sair no próprio dia 1º** (algum
-     bloqueio, falta de tempo), **estorne o recebimento ainda no dia 1º** (na página da reserva,
-     "estornar" ao lado do recebimento). **O ajuste fica — não o lance de novo:** repetido, o valor
-     seria descontado duas vezes. A partir do dia 2 o pedido do proprietário no portal já funciona de
-     novo, então, no dia em que for fechar: confira em Financeiro → Repasses que esse proprietário não
-     tem repasse antecipado a pagar; registre **só o recebimento** e clique no fechamento em seguida;
-     depois de fechar, confira de novo. Se nesse intervalo apareceu um antecipado dele (pedido pelo
-     portal), ele levou as partes disponíveis, inclusive a de setembro: **antes de pagar qualquer
-     coisa**, estorne primeiro **esse antecipado** e depois **o fechamento** — o sistema só deixa
-     estornar o repasse mais recente do proprietário, e o antecipado (datado do dia em que foi pedido)
-     é mais recente que o fechamento de outubro (datado de 1º/11) — e feche de novo na mesma hora; o
-     ajuste continua lá e desconta a parte de setembro. Só pague depois dessa conferência.
-   - **Reserva de outubro que você já tenha acertado por fora** (se houver): mesmo caminho e mesma
-     ordem — ajuste negativo do valor pago, datado do dia do pagamento por fora (até 31/10), e o
-     recebimento registrado só no dia 1º/11, antes de clicar.
-   - **Até o fechamento de outubro estar feito**, não gere repasse antecipado à mão para ninguém.
-     Manter todos no padrão mensal ajuda, mas não basta: o proprietário ainda pode pedir um repasse
-     pelo portal. A proteção de verdade é a ordem acima — recebimento das reservas já pagas por fora
-     só no dia 1º, com o fechamento na mesma sentada.
-   - **Despesas e adiantamentos de setembro já acertados por fora:** não lance no sistema. Só o que
-     for de outubro em diante.
-   - **Antes de clicar:** registre o recebimento de todas as reservas de outubro de Booking, site e
-     direta já pagas pelo canal (Airbnb não precisa); confira no cartão de cada proprietário os
-     avisos ("fora do fechamento", "diferença de recálculo"); depois do Pix, marque pago com o
-     comprovante — é ele que dispara o e-mail.
-   - **Para não repetir isso todo mês:** a forma definitiva é a carga de dados reais (M11.1) marcar
-     como "acertado por fora" tudo o que é de antes de 1/10. Está na seção 7 para você decidir.
+29. **Antes do fechamento de outubro — o primeiro feito no sistema (decisão sua, 4/10): marque o que é
+   de antes como acertado por fora (M4.11).** Faça uma vez, antes do dia 1º/11 (pode ser hoje):
+   1. **Configurações → Repasses → "Início do sistema para valer":** informe **1/10/2026** e salve
+      (é sempre dia 1º de um mês).
+   2. **Financeiro → Repasses → "Antes do início do sistema":** a lista mostra, por proprietário, as
+      partes de reserva de antes de 1/10 que estão fora de repasse e o acerto em aberto até 30/9.
+      Clique em **"Marcar como acertado por fora"** e confirme. Para cada proprietário nasce um
+      repasse "acerto por fora até 30/09/2026", já pago, sem Pix nem e-mail, com a parte dele em
+      cada reserva de setembro e antes; o acerto desses meses fica em zero. Essas partes nunca mais
+      entram em antecipado (nem pedido pelo portal) nem em fechamento, e a reserva que atravessa
+      setembro/outubro (ex.: entrada 29/9, saída 2/10) paga só a parte de outubro quando você
+      registrar o recebimento dela — sem ajuste à mão e sem data especial para registrar.
+   3. Se um proprietário aparecer com **bloqueio** (lançamento em conferência, ajuste a esclarecer
+      ou adiantamento em aberto de antes de 1/10), resolva o que o texto pedir e clique de novo: o
+      botão só marca o que ainda não foi marcado. Se depois surgir algo novo de antes de 1/10 (uma
+      importação atrasada, por exemplo), a lista volta a mostrar e você clica de novo — até lá essa
+      parte fica "a liberar" (nunca entra em antecipado) e o fechamento desse proprietário avisa e
+      espera a marcação.
+   4. Errou? O repasse "acerto por fora" se estorna como qualquer outro (Financeiro → Repasses, na
+      própria seção): as partes voltam ao extrato. Se já houver um repasse mais novo do mesmo
+      proprietário, o sistema pede para estornar esse primeiro.
+   - **Daí em diante o fechamento de outubro é o normal:** registre o recebimento das reservas de
+     outubro de Booking, site e direta já pagas pelo canal (Airbnb não precisa), confira os avisos no
+     cartão de cada proprietário ("fora do fechamento", "diferença de recálculo") e, depois do Pix,
+     marque pago com o comprovante — é ele que dispara o e-mail.
+   - **Despesas e adiantamentos de setembro já acertados por fora:** não lance no sistema (um
+     adiantamento de antes de 1/10 em aberto trava a marcação até ser quitado). Só o que for de
+     outubro em diante.
+   - **Reserva de outubro que você já tenha acertado por fora** (pelo que você disse em 4/10, não
+     há): se existir, me avise antes do fechamento e não registre o recebimento dela até a gente
+     combinar o ajuste — ela é de depois do início, então a marcação acima não a cobre.
 30. **Marketplace no portal (M12.4):** para cada imóvel marketplace, confira três coisas: o
    contrato está como "marketplace" (é isso que libera a seção no portal); a fonte de preços na
    ficha do imóvel está certa ("automáticos do SCL" ou "digitados no cadastro" deixam o
@@ -1815,11 +1833,6 @@ ambiente).
   de decidir. Decidido: B, em partes iguais.
 - **Ideias do sistema antigo (M0.6):** diga quais das nove ideias da seção 2 viram item do
   plano, e em que ordem. Nenhuma entra sem a sua decisão.
-- **Partes anteriores a 1/10 na carga de dados reais (M11.1):** o primeiro fechamento no sistema é o
-  de outubro, mas o acerto soma tudo desde a primeira reserva de cada imóvel. Para setembro e antes
-  (já acertados por fora) não dependerem de ajuste à mão a cada mês, a carga de dados reais deveria
-  marcar essas partes como "acertadas por fora". Precisa da sua palavra: entra no M11.1? Até lá vale
-  o checklist do item 29 da seção 6.
 - **Repasses (M4.10):** três escolhas minhas que você pode mudar — o fechamento do dia 1º
   continua manual (você clica, depois de conferir); o repasse antecipado não desconta
   adiantamentos nem despesas (ficam para o fechamento); e o adiantamento das noites de meses

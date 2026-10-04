@@ -16,6 +16,7 @@
 import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, or, sql, sum } from "drizzle-orm";
 import { desfazerCompensacoesDoRepasse, listarAdiantamentos, quitar } from "@/adiantamentos/adiantamentos";
 import { registrarAuditoria } from "@/auditoria/auditoria";
+import { travarConfig } from "@/configuracoes/armazem";
 import { violouUnicidade } from "@/db/erros";
 import { ajustes, arquivos, contestacoesAdiantamento, imoveis, lancamentos, quitacoesAdiantamento, proprietarioImoveis, proprietarios, repasseItens, repasses, type SituacaoRepasse, type TipoRepasse } from "@/db/schema";
 import type { Db } from "@/db/types";
@@ -27,6 +28,7 @@ import { uuidValido } from "@/lib/ids";
 import { lancamentoEmConferencia } from "@/portal/posse";
 import { reservas as reservasRef } from "@/db/schema";
 import { type Parte, partesDisponiveis, partesDoProprietario } from "./extrato";
+import { lerInicioDoSistema } from "./regras-config";
 
 export type Repasse = typeof repasses.$inferSelect;
 export type RepasseItem = typeof repasseItens.$inferSelect;
@@ -271,6 +273,23 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
   if (pendentes[0]?.n) bloqueios.push(`${pendentes[0].n} lançamento(s) com acerto pendente até este mês (sem proprietário, quem recebe a confirmar, ajuste a esclarecer ou reserva que deixou de estar confirmada com dinheiro já movimentado): resolva antes de fechar.`);
   if (ajustesAbertos?.n) bloqueios.push(`${ajustesAbertos.n} ajuste(s) com o proprietário ainda a esclarecer até este mês (com ou sem valor): esclareça antes de fechar.`);
   if (posterior) bloqueios.push(`Já existe repasse de ${nomeMes(posterior.mes.slice(0, 7))}: estorne-o antes de fechar um mês anterior.`);
+  // M4.11: nada anterior ao início do sistema passa por um fechamento. Parte de antes ainda fora de repasse, ou mês de antes
+  // com acerto diferente de zero (uma reserva antiga importada depois da marcação), trava até ser marcado como acertado por fora.
+  const inicio = await lerInicioDoSistema(db, org);
+  if (inicio) {
+    const partesAntes = partes.filter((x) => x.competencia < inicio && x.quemRecebe === "empresa" && x.situacao !== "repassado");
+    const mesDe = sql<string>`to_char(${lancamentos.competencia}, 'YYYY-MM')`;
+    const gruposAbertos = await db
+      .select({ imovelId: lancamentos.imovelId, mes: mesDe })
+      .from(lancamentos)
+      .where(and(eq(lancamentos.organizacaoId, org), eq(lancamentos.proprietarioId, dono.id), lt(lancamentos.competencia, inicio)))
+      .groupBy(lancamentos.imovelId, mesDe)
+      .having(sql`sum(${lancamentos.efeitoSaldo}) <> 0`);
+    if (partesAntes.length || gruposAbertos.length) {
+      const o = [partesAntes.length ? `${partesAntes.length} parte(s) de reserva` : "", gruposAbertos.length ? `${gruposAbertos.length} mês(es) com acerto em aberto` : ""].filter(Boolean).join(" e ");
+      bloqueios.push(`${o} anterior(es) ao início do sistema (${dataBr(inicio)}) ainda sem marcar como acertado por fora: marque em Financeiro → Repasses ("Antes do início do sistema") antes de fechar.`);
+    }
+  }
   if (previstos[0]?.n) avisos.push(`${previstos[0].n} lançamento(s) ainda previsto(s), isto é, dinheiro que pode não ter entrado: confira antes de pagar.`);
   if (!atual && calc.fora > 0) avisos.push(`${brl(calc.fora)} da competência ficam fora deste repasse e passam para o seguinte: dinheiro ainda não registrado com a empresa (reservas ${codigosDe(foraDoFechamento)}). Registre o recebimento na reserva quando o canal pagar.`);
   if (!atual && calc.antecipado > 0) avisos.push(`${brl(calc.antecipado)} de noites de ${mesesDe(antecipadas)} entram neste repasse como adiantamento (reservas ${codigosDe(antecipadas)}): já disponíveis, a reserva é paga inteira.`);
@@ -352,7 +371,7 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
 
 const atualOuNada = (partes: Parte[]) => partes;
 const brl = (c: number) => `R$ ${(c / 100).toFixed(2).replace(".", ",")}`;
-const codigosDe = (partes: readonly Parte[]) => [...new Set(partes.map((x) => x.codigoReserva))].join(", ");
+export const codigosDe = (partes: readonly Parte[]) => [...new Set(partes.map((x) => x.codigoReserva))].join(", ");
 const mesesDe = (partes: readonly Parte[]) => [...new Set(partes.map((x) => nomeMes(x.competencia.slice(0, 7))))].join(" e ");
 
 /**
@@ -376,7 +395,8 @@ export async function preverRepasses(db: Db, org: string, mes: string, hoje: str
 
 type Resultado = { ok: true; id: string } | { ok: false; erro: string };
 
-const chavePrefixo = (repasseId: string) => `repasse:${repasseId}:`;
+/** Prefixo da chave de origem dos lançamentos de um repasse (fechamento, antecipado ou acerto por fora): o estorno acha todos por ele. */
+export const chavePrefixo = (repasseId: string) => `repasse:${repasseId}:`;
 
 /** Fecha o mês de um proprietário: grava o repasse, os lançamentos e os descontos. */
 export async function fecharMes(db: Db, org: string, proprietarioId: string, mes: string, hoje: string, autorId: string | null, agora: Date = meioDiaDe(hoje)): Promise<Resultado> {
@@ -413,6 +433,9 @@ async function fecharNaTransacao(
     // Trava o proprietário: dois fechamentos ao mesmo tempo não passam daqui juntos.
     const dono = await travarDono(tx, org, proprietarioId);
     if (!dono) return { ok: false as const, erro: "Proprietário não encontrado." };
+    // M4.11: o início do sistema é lido (pelas partes e pelo bloqueio) sob a mesma trava que a configuração e a marcação
+    // usam — uma mudança da data não se encaixa entre a leitura e a gravação deste fechamento.
+    await travarConfig(tx, org, "inicio_sistema");
     // Toda reserva de que o cálculo depende (partes pagas, fora, só informação e qualquer lançamento até o mês)
     // fica travada para o motor até o fim: saldo e partes vêm da mesma foto, e o que se paga é o que foi lido com a trava.
     const p = await lerComReservasTravadas(tx, org, () => calcularDono(tx, org, dono, mes, hoje, agora), (x) => x.reservasDoCalculo);
@@ -474,7 +497,7 @@ async function fecharNaTransacao(
   });
 }
 
-async function travarDono(tx: Db, org: string, proprietarioId: string): Promise<Dono | null> {
+export async function travarDono(tx: Db, org: string, proprietarioId: string): Promise<Dono | null> {
   if (!uuidValido(proprietarioId)) return null;
   const [dono] = await tx
     .select({ id: proprietarios.id, nome: proprietarios.nome, email: proprietarios.email, chavePix: proprietarios.chavePix })
@@ -512,7 +535,7 @@ function lancamentosAntecipados(repasseId: string, proprietarioId: string, parte
 }
 
 /** Vínculo único: a mesma parte nunca compõe dois repasses em vigor (índice único por lançamento). */
-async function vincularItens(tx: Db, org: string, repasseId: string, partes: readonly Parte[]) {
+export async function vincularItens(tx: Db, org: string, repasseId: string, partes: readonly Parte[]) {
   if (!partes.length) return;
   await tx.insert(repasseItens).values(partes.map((x) => ({ organizacaoId: org, repasseId, lancamentoId: x.lancamentoId, reservaId: x.reservaId, imovelId: x.imovelId, competencia: x.competencia, valor: x.valor })));
 }
@@ -572,6 +595,8 @@ export async function gerarAntecipado(db: Db, org: string, proprietarioId: strin
     return await db.transaction(async (tx) => {
       const dono = await travarDono(tx, org, proprietarioId);
       if (!dono) return { ok: false as const, erro: "Proprietário não encontrado." };
+      // M4.11: a mesma trava da configuração do início do sistema (ver fecharNaTransacao).
+      await travarConfig(tx, org, "inicio_sistema");
       const [jaHoje] = await tx
         .select({ id: repasses.id })
         .from(repasses)

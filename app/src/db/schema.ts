@@ -820,7 +820,8 @@ export const ajustes = pgTable(
 
 export const SITUACOES_REPASSE = ["a_pagar", "pago", "estornado"] as const;
 export type SituacaoRepasse = (typeof SITUACOES_REPASSE)[number];
-export const TIPOS_REPASSE = ["fechamento", "antecipado"] as const;
+/** "por_fora" (M4.11): acerto feito fora do sistema, antes do início dele — já pago, sem Pix nem e-mail; só marca o que não pode entrar de novo. */
+export const TIPOS_REPASSE = ["fechamento", "antecipado", "por_fora"] as const;
 export type TipoRepasse = (typeof TIPOS_REPASSE)[number];
 export const SITUACOES_EMAIL_REPASSE = ["pendente", "enviado", "incerto"] as const;
 export type SituacaoEmailRepasse = (typeof SITUACOES_EMAIL_REPASSE)[number];
