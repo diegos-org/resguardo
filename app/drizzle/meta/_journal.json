@@ -358,6 +358,13 @@
       "when": 1791131344975,
       "tag": "0050_repasse_itens_substituidos_outro_mes",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1791131828589,
+      "tag": "0051_repasse_itens_substituidos_varios_fechamentos",
+      "breakpoints": true
     }
   ]
 }

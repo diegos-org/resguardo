@@ -18,7 +18,7 @@ import { type PedidoEmailRepasse, proprietarios, repasses, representantes, type 
 import type { Db } from "@/db/types";
 import { type Correio, ErroEnvioIncerto } from "@/email/correio";
 import { formatBRL } from "@/lib/money";
-import { arquivoPorId, itensDoRepasse, JANELA_TENTATIVA_EMAIL_MS, nomeMes, obterRepasse, type RepasseListado } from "./repasses";
+import { arquivoPorId, itensDoRepasse, JANELA_TENTATIVA_EMAIL_MS, nomeMes, obterRepasse, type RepasseListado, descricaoDoItem } from "./repasses";
 
 export type SituacaoEnvioRepasse = "enviado" | "ja_enviado" | "nao_pago" | "sem_comprovante" | "sem_email" | "sem_provedor" | "incerto" | "aguardando" | "em_andamento" | "falhou" | "nao_encontrado";
 
@@ -49,7 +49,7 @@ export function textoDoEmailDoRepasse(r: RepasseListado, itens: readonly Item[],
   }
   if (itens.length) {
     linhas.push("", "Reservas pagas neste repasse:");
-    for (const i of itens) linhas.push(`- ${i.codigoImovel} · ${i.hospede || i.codigoReserva} · ${dataBr(i.checkin)} a ${dataBr(i.checkout)} · ${formatBRL(i.valor)} (${i.parcial ? `parte de ${nomeMes(i.competencia.slice(0, 7))}; o restante vem em outro repasse` : "integral"})`);
+    for (const i of itens) linhas.push(`- ${i.codigoImovel} · ${i.hospede || i.codigoReserva} · ${dataBr(i.checkin)} a ${dataBr(i.checkout)} · ${formatBRL(i.valor)} (${descricaoDoItem(i)})`);
   }
   linhas.push("", "O extrato completo está no portal do proprietário. Qualquer dúvida, é só responder este e-mail.");
   return { assunto, texto: linhas.join("\n") };

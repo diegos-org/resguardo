@@ -15,7 +15,7 @@ const repasse = (over: Partial<Repasse> = {}): Repasse => ({
 });
 const item = (over: Partial<ItemDoRepasse> = {}): ItemDoRepasse => ({
   id: "it1", organizacaoId: "org", repasseId: "rep1", lancamentoId: "l1", reservaId: "r1", imovelId: "i1", competencia: "2026-10-01", valor: 72250, criadoEm: new Date("2026-10-11T10:00:00Z"), liberadoEm: null,
-  codigoReserva: "R-1", codigoImovel: "403", checkin: "2026-10-10", checkout: "2026-10-13", hospede: "Hóspede Fictício", parcial: false, ...over,
+  codigoReserva: "R-1", codigoImovel: "403", checkin: "2026-10-10", checkout: "2026-10-13", hospede: "Hóspede Fictício", parcial: false, diferenca: 0, ...over,
 });
 const acao = async () => {};
 const render = (props: Partial<Parameters<typeof ExtratoRepasses>[0]> = {}) =>
@@ -61,7 +61,7 @@ describe("extrato e repasses no portal (M4.10)", () => {
       itens: { rep1: [item({ parcial: true, competencia: "2026-11-01" })], rep2: [item({ id: "it2", repasseId: "rep2", liberadoEm: new Date("2026-10-12T15:00:00Z") })] },
     });
     expect(h).toContain("Estornado pela empresa em 12/10/2026: as reservas voltaram ao extrato");
-    expect(h).toContain("R$ 722,50 (parte de novembro de 2026)");
+    expect(h).toContain("R$ 722,50 (parte de novembro de 2026; o restante vem em outro repasse)");
     expect(h).toContain("Fechamento de setembro de 2026");
     expect(h).toContain("sem detalhe por reserva (fechamento antigo)");
     expect(h.match(/<summary/g)).toHaveLength(2);

@@ -7,6 +7,7 @@ import type { Db } from "@/db/types";
 import { CorreioMemoria, ErroEnvioIncerto, type Mensagem } from "@/email/correio";
 import { aplicarMotor } from "@/financeiro/aplicar";
 import { chaveTravaMotor, lerComReservasTravadas, travarMotorDaReserva } from "@/financeiro/trava";
+import { formatBRL } from "@/lib/money";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { saldoAcerto } from "@/financeiro/ledger";
@@ -30,7 +31,7 @@ vi.mock("./extrato", async (orig) => {
 import { escolherPeriodicidade, periodicidadeDoProprietario } from "./proprietario";
 import { estornarRecebimento, recebimentosDaReserva, registrarRecebimento } from "./recebimentos";
 import { lerRegrasRepasses, salvarRegrasRepasses } from "./regras-config";
-import { anexarComprovante, arquivoDoComprovante, estornarRepasse, fecharMes, gerarAntecipado, itensDoRepasse, listarRepasses, listarRepassesDaOrganizacao, marcarRepassePago, obterRepasse, preverRepasses } from "./repasses";
+import { anexarComprovante, arquivoDoComprovante, descricaoDoItem, estornarRepasse, fecharMes, gerarAntecipado, itensDoRepasse, listarRepasses, listarRepassesDaOrganizacao, marcarRepassePago, obterRepasse, preverRepasses } from "./repasses";
 import { receberTudo } from "./testes";
 
 let db: Db, close: () => Promise<void>, org: string, a: string, b: string, dono: string, outro: string, reservaBase: string;
@@ -524,9 +525,18 @@ describe("3ª rodada do Codex: fechamentos antigos sem itens, trava no estorno d
     await db.execute(sql.raw(sqlDaMigracao("0049_repasse_itens_substituidos.sql")));
     await db.execute(sql.raw(sqlDaMigracao("0050_repasse_itens_substituidos_outro_mes.sql")));
     expect(await db.select().from(repasseItens)).toHaveLength(2);
-    // No painel, no portal e no e-mail o item recalculado é "parcial" (o item não cobre o valor atual); o movido, integral.
+    // A 0051 (distribuição global) não mexe no que já está ligado.
+    await db.execute(sql.raw(sqlDaMigracao("0051_repasse_itens_substituidos_varios_fechamentos.sql")));
+    expect(await db.select().from(repasseItens)).toHaveLength(2);
+    // No painel, no portal e no e-mail o item recalculado é "parcial" com a direção certa (a mais entra no próximo fechamento); o movido, integral.
     const doFechamento = await itensDoRepasse(db, org, outubro.id);
-    expect(doFechamento.map((i) => [i.reservaId, i.parcial])).toEqual(expect.arrayContaining([[reservaBase, true], [movida.id, false]]));
+    expect(doFechamento.map((i) => [i.reservaId, i.parcial, i.diferenca, descricaoDoItem(i)])).toEqual(
+      expect.arrayContaining([
+        [reservaBase, true, substituto.valor - 72250, `parte recalculada depois: ${formatBRL(substituto.valor - 72250)} a mais entram no próximo fechamento mensal`],
+        [movida.id, false, 0, "integral"],
+      ]),
+    );
+    expect(descricaoDoItem({ parcial: true, diferenca: -1000, competencia: "2026-10-01" })).toBe("parte recalculada depois: R$ 10,00 a menos são descontados no próximo fechamento mensal");
     // Com o item, registrar o recebimento não torna o substituto disponível de novo: repassado pelo valor que o fechamento
     // incluiu, com a diferença do recálculo explícita (vai ao próximo fechamento mensal pelo acerto); nada a antecipar.
     await receberTudo(db, org, reservaBase, "2026-10-10");
@@ -535,6 +545,36 @@ describe("3ª rodada do Codex: fechamentos antigos sem itens, trava no estorno d
     expect(todas.find((p) => p.reservaId === movida.id)).toMatchObject({ situacao: "repassado", competencia: "2026-11-01", repasse: { id: outubro.id }, diferenca: 0 });
     expect(resumirPartes(todas).ajusteNoFechamento).toBe(substituto.valor - 72250);
     expect(await gerarAntecipado(db, org, dono, "2026-10-12", null)).toMatchObject({ ok: false, erro: expect.stringContaining("Nada disponível") });
+  });
+
+  it("migração 0051: reserva de dois meses coberta por dois fechamentos antigos e recalculada para outros meses — cada substituto fica com o fechamento certo, na ordem, sem sobrar parte solta", async () => {
+    const sqlDaMigracao = (arquivo: string) => readFileSync(join(process.cwd(), "drizzle", arquivo), "utf8").split("\n").filter((l) => !l.startsWith("--")).join("\n");
+    const dupla = await criar(reserva(a, "2026-10-30", "2026-11-02"));
+    const [l1out, l1nov] = await direitos(dupla.id);
+    expect([l1out.valor, l1nov.valor]).toEqual([48167, 24083]);
+    const base = { organizacaoId: org, proprietarioId: dono, tipo: "fechamento" as const, saldo: 0, descontado: 0, contestado: 0, valor: 0 };
+    const [outubro] = await db.insert(repasses).values({ ...base, mes: "2026-10-01", data: "2026-11-01", valor: 48167 + 72250 }).returning();
+    const [novembro] = await db.insert(repasses).values({ ...base, mes: "2026-11-01", data: "2026-12-01", valor: 24083 }).returning();
+    // Depois dos dois fechamentos, a reserva é corrigida para dezembro–janeiro: os dois substitutos nascem em meses sem original.
+    await db.update(reservas).set({ checkin: "2026-12-30", checkout: "2027-01-02" }).where(eq(reservas.id, dupla.id));
+    expect((await aplicarMotor(db, org, dupla.id, null))!.estornados).toBeGreaterThan(0);
+    const [l2dez, l2jan] = (await direitos(dupla.id)).filter((l) => !l.estornoDe && l.competencia >= "2026-12-01");
+    expect([l2dez.competencia, l2dez.valor, l2jan.competencia, l2jan.valor]).toEqual(["2026-12-01", 48167, "2027-01-01", 24083]);
+    // 0045 e 0049 não ligam nada (originais estornados; competências novas). A 0051 sozinha distribui pelas faixas dos fechamentos.
+    await db.execute(sql.raw(sqlDaMigracao("0045_repasse_itens_antigos.sql")));
+    await db.execute(sql.raw(sqlDaMigracao("0049_repasse_itens_substituidos.sql")));
+    expect((await db.select().from(repasseItens)).filter((i) => i.reservaId === dupla.id)).toHaveLength(0);
+    await db.execute(sql.raw(sqlDaMigracao("0051_repasse_itens_substituidos_varios_fechamentos.sql")));
+    const itens = (await db.select().from(repasseItens)).filter((i) => i.reservaId === dupla.id);
+    expect(itens.map((i) => [i.lancamentoId, i.repasseId, i.valor]).sort()).toEqual([[l2dez.id, outubro.id, 48167], [l2jan.id, novembro.id, 24083]].sort());
+    // Rodar a 0050 e a 0051 de novo não muda nada.
+    await db.execute(sql.raw(sqlDaMigracao("0050_repasse_itens_substituidos_outro_mes.sql")));
+    await db.execute(sql.raw(sqlDaMigracao("0051_repasse_itens_substituidos_varios_fechamentos.sql")));
+    expect((await db.select().from(repasseItens)).filter((i) => i.reservaId === dupla.id)).toHaveLength(2);
+    // Nada da reserva volta a ficar disponível depois do recebimento.
+    await receberTudo(db, org, dupla.id, "2026-10-10");
+    const partesDupla = (await partes("2027-01-05")).filter((p) => p.reservaId === dupla.id);
+    expect(partesDupla.map((p) => [p.competencia, p.situacao, p.repasse?.id, p.diferenca])).toEqual([["2026-12-01", "repassado", outubro.id, 0], ["2027-01-01", "repassado", novembro.id, 0]]);
   });
 
   it("reenvio incerto é retomado com a chave do reenvio (não a do primeiro e-mail); o e-mail cita a chave Pix usada no pagamento, não a atual", async () => {

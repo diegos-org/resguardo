@@ -19,6 +19,7 @@ import { registrarAuditoria } from "@/auditoria/auditoria";
 import { violouUnicidade } from "@/db/erros";
 import { ajustes, arquivos, contestacoesAdiantamento, imoveis, lancamentos, quitacoesAdiantamento, proprietarioImoveis, proprietarios, repasseItens, repasses, type SituacaoRepasse, type TipoRepasse } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { formatBRL } from "@/lib/money";
 import { estornar, lancar, mudarEstado } from "@/financeiro/ledger";
 import { lerComReservasTravadas } from "@/financeiro/trava";
 import { dataValida } from "@/reservas/regras";
@@ -518,7 +519,20 @@ async function vincularItens(tx: Db, org: string, repasseId: string, partes: rea
 
 /** Itens de um repasse em vigor (as partes de reserva que ele paga), com os códigos para mostrar. */
 /** Item de repasse com a reserva e o imóvel (para o painel, o portal e o e-mail). */
-export type ItemDoRepasse = RepasseItem & { codigoReserva: string; codigoImovel: string; checkin: string; checkout: string; hospede: string; parcial: boolean };
+/**
+ * Item de repasse com a reserva e o imóvel (para o painel, o portal e o e-mail). `parcial`: a reserva tem outra parte
+ * em outro repasse, ou o item não cobre o valor atual da parte. `diferenca`: valor atual da parte menos o do item
+ * (recálculo depois de um fechamento antigo, migrações 0049–0051): positiva entra, negativa é descontada, no próximo
+ * fechamento mensal.
+ */
+export type ItemDoRepasse = RepasseItem & { codigoReserva: string; codigoImovel: string; checkin: string; checkout: string; hospede: string; parcial: boolean; diferenca: number };
+
+/** Como descrever o item (integral, parte de um mês, ou recalculado — com a direção certa): a mesma frase no painel, no portal e no e-mail. */
+export function descricaoDoItem(i: Pick<ItemDoRepasse, "parcial" | "diferenca" | "competencia">): string {
+  if (i.diferenca > 0) return `parte recalculada depois: ${formatBRL(i.diferenca)} a mais entram no próximo fechamento mensal`;
+  if (i.diferenca < 0) return `parte recalculada depois: ${formatBRL(-i.diferenca)} a menos são descontados no próximo fechamento mensal`;
+  return i.parcial ? `parte de ${nomeMes(i.competencia.slice(0, 7))}; o restante vem em outro repasse` : "integral";
+}
 
 export async function itensDoRepasse(db: Db, org: string, repasseId: string): Promise<ItemDoRepasse[]> {
   if (!uuidValido(repasseId)) return [];
@@ -532,7 +546,7 @@ export async function itensDoRepasse(db: Db, org: string, repasseId: string): Pr
     .orderBy(asc(reservasRef.checkin), asc(repasseItens.competencia));
   if (!linhas.length) return [];
   // Parcial: a reserva tem outra parte (outro mês) em vigor que não está neste repasse, ou o item não cobre o valor
-  // atual da parte (recalculada depois de um fechamento antigo, migrações 0049/0050: a diferença vai ao próximo fechamento).
+  // atual da parte (recalculada depois de um fechamento antigo, migrações 0049–0051: a diferença vai ao próximo fechamento).
   const outras = await db
     .select({ reservaId: lancamentos.reservaId, n: sql<number>`count(*)::int` })
     .from(lancamentos)
@@ -541,7 +555,7 @@ export async function itensDoRepasse(db: Db, org: string, repasseId: string): Pr
   const totalPartes = new Map(outras.map((o) => [o.reservaId!, o.n]));
   const nesteRepasse = new Map<string, number>();
   for (const l of linhas) nesteRepasse.set(l.item.reservaId, (nesteRepasse.get(l.item.reservaId) ?? 0) + 1);
-  return linhas.map((l) => ({ ...l.item, codigoReserva: l.codigoReserva, codigoImovel: l.codigoImovel, checkin: l.checkin, checkout: l.checkout, hospede: l.hospede, parcial: (totalPartes.get(l.item.reservaId) ?? 1) > (nesteRepasse.get(l.item.reservaId) ?? 0) || l.item.valor !== l.valorAtual }));
+  return linhas.map((l) => ({ ...l.item, codigoReserva: l.codigoReserva, codigoImovel: l.codigoImovel, checkin: l.checkin, checkout: l.checkout, hospede: l.hospede, parcial: (totalPartes.get(l.item.reservaId) ?? 1) > (nesteRepasse.get(l.item.reservaId) ?? 0) || l.item.valor !== l.valorAtual, diferenca: l.valorAtual - l.item.valor }));
 }
 
 /**

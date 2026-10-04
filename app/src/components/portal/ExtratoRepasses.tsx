@@ -4,7 +4,7 @@ import { NOMES_SITUACAO_EMAIL } from "@/repasses/email";
 import { NOMES_SITUACAO_PARTE, type Parte, resumirPartes } from "@/repasses/extrato";
 import { NOMES_PERIODICIDADE, PERIODICIDADES, type PeriodicidadeRepasse, type RegrasRepasses } from "@/repasses/periodicidade";
 import type { PeriodicidadeDoDono } from "@/repasses/proprietario";
-import { type ItemDoRepasse, nomeMes, type Repasse } from "@/repasses/repasses";
+import { type ItemDoRepasse, nomeMes, type Repasse, descricaoDoItem } from "@/repasses/repasses";
 
 type Props = {
   donos: readonly { id: string; nome: string }[];
@@ -40,7 +40,7 @@ export function situacaoNoPortal(r: Pick<Repasse, "situacao" | "dataPagamento" |
 
 /** Uma linha por reserva coberta pelo repasse (integral ou a parte de um mês). */
 export function textoDoItemNoPortal(i: ItemDoRepasse): string {
-  return `${i.codigoImovel} · ${i.hospede || i.codigoReserva} · ${dataBr(i.checkin)} → ${dataBr(i.checkout)} · ${formatBRL(i.valor)} (${i.parcial ? `parte de ${nomeMes(i.competencia.slice(0, 7))}` : "integral"})`;
+  return `${i.codigoImovel} · ${i.hospede || i.codigoReserva} · ${dataBr(i.checkin)} → ${dataBr(i.checkout)} · ${formatBRL(i.valor)} (${descricaoDoItem(i)})`;
 }
 
 /** Seção "Extrato e repasses" do portal (M4.10): como quer receber, a parte de cada reserva e os repasses. */

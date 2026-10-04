@@ -6,7 +6,7 @@ import { centavosParaCampo } from "@/lib/dinheiro-form";
 import { formatBRL } from "@/lib/money";
 import { anexarComprovanteAcao, enviarEmailRepasseAcao, estornarRepasseAcao, pagarRepasseAcao } from "@/repasses/acoes";
 import { NOMES_SITUACAO_EMAIL } from "@/repasses/email";
-import { type itensDoRepasse, nomeMes, type Repasse } from "@/repasses/repasses";
+import { type itensDoRepasse, nomeMes, type Repasse, descricaoDoItem } from "@/repasses/repasses";
 
 export type ItemDoRepasse = Awaited<ReturnType<typeof itensDoRepasse>>[number];
 
@@ -80,7 +80,7 @@ export function CartaoRepasse({ r, nome, chavePix, itens, mes, hoje, editar }: P
                     </td>
                     <td>{nomeMes(i.competencia.slice(0, 7))}</td>
                     <td className={styles.numero}>{formatBRL(i.valor)}</td>
-                    <td>{i.parcial ? "parcial (o resto em outro repasse)" : "integral"}</td>
+                    <td>{descricaoDoItem(i)}</td>
                   </tr>
                 ))}
               </tbody>
