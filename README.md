@@ -11,6 +11,7 @@ Reconstrução do sistema de gestão da Sua Casa Leblon.
   - operação: [CONSOLIDACAO-2026-09-21.md](requisitos/operations/CONSOLIDACAO-2026-09-21.md), [DECISOES-OPERACIONAIS-2026-09-21.md](requisitos/operations/DECISOES-OPERACIONAIS-2026-09-21.md)
   - relatórios: [RELATORIOS-PROPRIETARIOS.md](requisitos/operations/RELATORIOS-PROPRIETARIOS.md)
   - relatório mensal, modelo oficial (M5.7): [RELATORIO-MENSAL.md](requisitos/product/RELATORIO-MENSAL.md)
+  - "como funciona" para o proprietário, com versões e aceite (M5.6): [COMO-FUNCIONA-PROPRIETARIO.md](requisitos/product/COMO-FUNCIONA-PROPRIETARIO.md)
 - **Protótipos anteriores** (referência, sem banco nem login): [prototipos/](prototipos/)
 - **Histórico da coordenação anterior** (somente consulta): [arquivo/](arquivo/)
 

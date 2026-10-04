@@ -1,5 +1,6 @@
 "use server";
 
+import { lerComoFunciona, versaoAtual } from "@/configuracoes/como-funciona";
 import { nomeDaEmpresa } from "@/configuracoes/empresa";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
@@ -56,8 +57,12 @@ export async function revogar(form: FormData): Promise<void> {
 /** Botão da página do link: lembra o convite (cookie curto) e leva para o login com o e-mail. */
 export async function seguirConvite(form: FormData): Promise<void> {
   const token = String(form.get("token") ?? "");
-  const r = await lerConvite(getDb(), token);
+  const db = getDb();
+  const r = await lerConvite(db, token);
   if (!r.ok) redirect(`/convite/${encodeURIComponent(token)}`);
-  await guardarTokenConvite(token);
+  // M5.6: com o "Como funciona" publicado, só segue quem marcou que leu e aceita a versão mostrada.
+  const atual = versaoAtual(await lerComoFunciona(db, r.convite.organizacaoId));
+  if (atual && (form.get("aceite") !== "on" || String(form.get("versao") ?? "") !== String(atual.numero))) redirect(`/convite/${encodeURIComponent(token)}?erro=aceite`);
+  await guardarTokenConvite(token, atual ? atual.numero : null);
   redirect(`/entrar?email=${encodeURIComponent(r.convite.email)}`);
 }

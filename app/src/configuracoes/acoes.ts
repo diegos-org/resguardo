@@ -4,12 +4,14 @@ import { revalidatePath } from "next/cache";
 import { exigir } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { getDb } from "@/db/client";
+import { hojeISO } from "@/lib/datas";
 import { TIPOS_MENSAGEM_HOSPEDE } from "@/db/schema";
 import { salvarConfigMensagens } from "@/mensagens/hospede";
 import { type ErrosEmpresa, salvarEmpresa, validarEmpresa } from "./empresa";
 import { atualizarModelo, criarModelo, type ErrosModelo, excluirModelo } from "./modelos";
 import { lerFormRegras } from "./regras-financeiras";
 import { salvarRegrasFinanceiras } from "./salvar-regras";
+import { publicarComoFunciona, validarSecoes } from "./como-funciona";
 import { salvarTextosSite, type TextosSite, validarTextosSite } from "./textos-site";
 import { alterarUsuario, criarUsuarioEquipe } from "./usuarios";
 
@@ -52,6 +54,18 @@ export async function salvarTextosAcao(_a: EstadoForm<Partial<TextosSite>>, form
   const mudou = await salvarTextosSite(getDb(), sessao.organizacaoId, v.textos, sessao.usuarioId);
   revalidatePath("/painel/configuracoes/site");
   return { ok: true, aviso: mudou ? "Salvo." : "Nada mudou." };
+}
+
+/** "Como funciona" para o proprietário (M5.6): publica uma versão nova quando o texto mudou. */
+export async function publicarComoFuncionaAcao(_a: EstadoForm<Record<string, string>>, form: FormData): Promise<EstadoForm<Record<string, string>>> {
+  const sessao = await sessaoConfig();
+  const v = validarSecoes(campos(form));
+  if (!v.ok) return { erros: v.erros, mensagem: v.mensagem, valores: campos(form) };
+  const r = await publicarComoFunciona(getDb(), sessao.organizacaoId, v.secoes, sessao.usuarioId, hojeISO());
+  revalidatePath("/painel/configuracoes/como-funciona");
+  revalidatePath("/portal", "layout");
+  const data = r.versao.data.split("-").reverse().join("/");
+  return { ok: true, aviso: r.mudou ? `Versão ${r.versao.numero} publicada em ${data}. Cada proprietário vai ler e aceitar no portal; quem já tinha aceitado a anterior precisa aceitar de novo.` : `Nada mudou no texto: a versão ${r.versao.numero}, de ${data}, continua valendo.` };
 }
 
 // --- Usuários ------------------------------------------------------------------------
