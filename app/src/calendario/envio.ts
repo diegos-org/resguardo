@@ -13,7 +13,8 @@ import { chaveTravaBeds24, envioEmAndamento, tentarTravaBeds24 } from "@/beds24/
 import { type DiaCalendario, type Divergencia, ErroBeds24, type EscritorBeds24, type LeitorBeds24 } from "@/beds24/tipos";
 import { beds24Calendario, beds24CalendarioEnviado, beds24EnvioNoites, beds24Envios, bloqueios, imoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { lerDetalhes, listarPeriodos, regrasDeVenda } from "@/imoveis/detalhes";
+import { fontesDePrecosDosImoveis, lerDetalhes, listarPeriodos, regrasDeVenda } from "@/imoveis/detalhes";
+import type { FontePrecos } from "@/imoveis/fonte-precos";
 import { somarDias } from "@/imoveis/regras-venda";
 import { hojeISO } from "@/lib/datas";
 import { faixasDeEnvio, type LinhaPlano, planejarCalendario, resumirPlano, type ResumoPlano } from "./motor";
@@ -31,7 +32,7 @@ const NOMES_SITUACAO: Record<SituacaoEnvio, string> = {
 };
 export const nomeSituacaoEnvio = (s: string) => NOMES_SITUACAO[s as SituacaoEnvio] ?? s;
 
-type Plano = { imovelId: string; codigo: string; propertyId: string; roomId: string; linhas: LinhaPlano[] };
+type Plano = { imovelId: string; codigo: string; propertyId: string; roomId: string; fontePrecos: FontePrecos; linhas: LinhaPlano[] };
 
 /**
  * Quarto Beds24 vinculado ao imóvel: exatamente um vínculo ativo com propriedade e quarto numéricos, e esse
@@ -68,10 +69,10 @@ export async function planejarImovel(db: Db, org: string, regras: RegrasCalendar
     roomId === null ? [] : db.select().from(beds24CalendarioEnviado).where(and(eq(beds24CalendarioEnviado.organizacaoId, org), eq(beds24CalendarioEnviado.imovelId, imovel.id), eq(beds24CalendarioEnviado.roomId, roomId), gte(beds24CalendarioEnviado.data, inicio), lte(beds24CalendarioEnviado.data, fim))),
   ]);
   const linhas = planejarCalendario({
-    imovel: { id: imovel.id, regras: regrasVenda, periodos, pisos: [detalhes.pisoUltimaHora1, detalhes.pisoUltimaHora2] },
+    imovel: { id: imovel.id, regras: regrasVenda, periodos, pisos: [detalhes.pisoUltimaHora1, detalhes.pisoUltimaHora2], fontePrecos: detalhes.fontePrecos },
     regras, hoje, inicio, fim, fimDados, reservas: ocupantes, bloqueios: impedimentos, observacoes, enviados,
   });
-  return { hoje, inicio, fim, linhas, regras: regrasVenda, pisos: [detalhes.pisoUltimaHora1, detalhes.pisoUltimaHora2] as const };
+  return { hoje, inicio, fim, linhas, regras: regrasVenda, pisos: [detalhes.pisoUltimaHora1, detalhes.pisoUltimaHora2] as const, fontePrecos: detalhes.fontePrecos };
 }
 
 /** Grava a leitura do calendário como observação local das noites (a mais nova vale), presa ao quarto lido. */
@@ -272,7 +273,7 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
           if (c.divergentes) aviso(`Imóvel ${m.codigo}: ${c.divergentes} noite(s) de envio anterior sem releitura diferem da leitura de agora; o plano decide se reenvia.`);
         }
         const p = await planejarImovel(tx, org, regras, { id: m.imovelId, fuso: fusos.get(m.imovelId) ?? "America/Sao_Paulo", roomId: m.roomId }, agora);
-        planos.push({ imovelId: m.imovelId, codigo: m.codigo, propertyId: m.propertyId, roomId: m.roomId, linhas: p.linhas });
+        planos.push({ imovelId: m.imovelId, codigo: m.codigo, propertyId: m.propertyId, roomId: m.roomId, fontePrecos: p.fontePrecos, linhas: p.linhas });
         if (p.inicio < inicioLeitura) inicioLeitura = p.inicio;
         if (p.fim > fimLeitura) fimLeitura = p.fim;
         const semPreco = p.linhas.filter(l => l.precoReferencia === null).length;
@@ -328,6 +329,15 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
         const vinculos = (await listarMapeamentosBeds24(db, org)).filter(m => m.imovelId === p.imovelId && m.ativo && /^\d+$/.test(m.propertyId) && /^\d+$/.test(m.roomId));
         if (vinculos.length !== 1 || vinculos[0].propertyId !== p.propertyId || vinculos[0].roomId !== p.roomId) {
           res.falha = "Vínculo Beds24 do imóvel alterado durante o envio: nada foi escrito para este imóvel nesta execução; o próximo envio replaneja.";
+          aviso(`Imóvel ${p.codigo}: ${res.falha}`);
+          continue;
+        }
+        // Conferência final da fonte de preços (M3.9): a ficha do imóvel não espera o envio, então a fonte pode ter
+        // mudado entre o plano e a escrita — por exemplo para "preços definidos no Beds24", quando a carga planejada
+        // ainda traz preços e sobrescreveria os do proprietário. Fonte diferente da planejada: nada é escrito.
+        const fonteAgora = (await fontesDePrecosDosImoveis(db, org, [p.imovelId])).get(p.imovelId) ?? "scl";
+        if (fonteAgora !== p.fontePrecos) {
+          res.falha = "Fonte de preços do imóvel alterada durante o envio: nada foi escrito para este imóvel nesta execução; o próximo envio replaneja.";
           aviso(`Imóvel ${p.codigo}: ${res.falha}`);
           continue;
         }

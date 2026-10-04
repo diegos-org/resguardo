@@ -10,6 +10,8 @@ import { BotaoCopiar } from "@/components/BotaoCopiar";
 import { BloqueiosProprietario } from "@/components/portal/BloqueiosProprietario";
 import { CalendarioPortal } from "@/components/portal/CalendarioPortal";
 import { lerEmpresa, nomeDaEmpresa } from "@/configuracoes/empresa";
+import { fontesDePrecosDosImoveis } from "@/imoveis/detalhes";
+import { EXPLICACAO_FONTE_PRECOS, NOMES_FONTE_PRECOS } from "@/imoveis/fonte-precos";
 import { hojeISO } from "@/lib/datas";
 import { centavosParaCampo } from "@/lib/dinheiro-form";
 import { nomeDoMes, periodoDosFiltros } from "@/lib/filtros";
@@ -178,7 +180,7 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
   // atuais/futuros dos imóveis dele. "Hoje" é o mais cedo entre os fusos dos imóveis dele (o servidor confere
   // cada pedido no fuso do imóvel escolhido).
   const hojeUsoProprio = hojeMaisCedo(meus);
-  const [permissoes, meusBloqueios] = await Promise.all([permissoesDeBloqueio(db, sessao.organizacaoId, sessao.imovelIds, hojeUsoProprio), bloqueiosDoProprietario(db, sessao)]);
+  const [permissoes, meusBloqueios, fontesPrecos] = await Promise.all([permissoesDeBloqueio(db, sessao.organizacaoId, sessao.imovelIds, hojeUsoProprio), bloqueiosDoProprietario(db, sessao), fontesDePrecosDosImoveis(db, sessao.organizacaoId, meus.map((i) => i.id))]);
   // Mesma regra do PDF: só os donos dos imóveis escolhidos (no período) e só os imóveis que eram
   // deles no período; os lançamentos sem imóvel entram quando todos os imóveis desses donos estão escolhidos.
   const selecao = await donosDosEscolhidos(db, donos, escolhidos, periodo);
@@ -358,6 +360,28 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
             bloquear={bloquearDatasAcao}
             liberar={liberarDatasAcao}
           />
+
+          {meus.length > 0 && (
+            <section aria-label="De onde vêm os preços" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <h2 style={{ fontSize: "1.125rem", margin: 0 }}>De onde vêm os preços</h2>
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {meus.map((i) => {
+                  const f = fontesPrecos.get(i.id) ?? "scl";
+                  return (
+                    <li key={i.id}>
+                      <strong>
+                        {i.codigo} · {i.nome}:
+                      </strong>{" "}
+                      {NOMES_FONTE_PRECOS[f]}. <span style={rotulo}>{EXPLICACAO_FONTE_PRECOS[f]}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+              <p style={{ ...rotulo, margin: 0 }}>
+                O calendário, as estadias mínimas e os bloqueios são sempre do SCL. O site da {empresa} vende pelo mesmo preço do canal, com o desconto do site por cima. Para mudar a fonte de preços, fale com a {empresa}.
+              </p>
+            </section>
+          )}
 
           <section aria-label="Reservas" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <h2 style={{ fontSize: "1.125rem", margin: 0 }}>Reservas</h2>

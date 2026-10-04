@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import type { EstadoPeriodo } from "@/imoveis/acoes";
+import type { FontePrecos } from "@/imoveis/fonte-precos";
 import { cotarEstadia, type Periodo, type RegrasVenda, verificarEstadia } from "@/imoveis/regras-venda";
 import styles from "../formularios.module.css";
 
@@ -103,18 +104,28 @@ export function Periodos({ imovelId, periodos, criar, excluir }: Props) {
   );
 }
 
-/** Simulador: confere regras e valor de uma estadia com o cadastro salvo (nada é gravado). */
-export function Simulador({ regras, periodos, hoje }: { regras: RegrasVenda; periodos: Periodo[]; hoje: string }) {
+/**
+ * Simulador: confere regras e valor de uma estadia com o cadastro salvo (nada é gravado). Segue a fonte
+ * de preços do imóvel (M3.9): com preços digitados, sem os limites do preço dinâmico; com preços do
+ * Beds24, só as regras de estadia — o valor vem da leitura do Beds24 (prévia de calendário e site).
+ */
+export function Simulador({ regras, periodos, hoje, fontePrecos = "scl" }: { regras: RegrasVenda; periodos: Periodo[]; hoje: string; fontePrecos?: FontePrecos }) {
   const [checkin, setCheckin] = useState("");
   const [checkout, setCheckout] = useState("");
   const [hospedes, setHospedes] = useState("2");
   const pronto = /^\d{4}-\d{2}-\d{2}$/.test(checkin) && /^\d{4}-\d{2}-\d{2}$/.test(checkout);
-  const problemas = pronto ? verificarEstadia(regras, periodos, checkin, checkout, hoje) : [];
-  const cot = pronto && checkout > checkin ? cotarEstadia(regras, periodos, checkin, checkout, Number(hospedes) || 1) : null;
+  const regrasDaFonte = fontePrecos === "manual" ? { ...regras, precoDinamico: false } : regras;
+  const problemas = pronto ? verificarEstadia(regrasDaFonte, periodos, checkin, checkout, hoje) : [];
+  const cot = pronto && checkout > checkin && fontePrecos !== "beds24" ? cotarEstadia(regrasDaFonte, periodos, checkin, checkout, Number(hospedes) || 1) : null;
   return (
     <section aria-label="Simular estadia" style={{ maxWidth: 820, display: "flex", flexDirection: "column", gap: 12 }}>
       <h2 style={{ fontSize: "1.25rem" }}>Simular uma estadia</h2>
-      <p style={{ fontSize: "0.875rem", color: "var(--scl-texto-2)", margin: 0 }}>Usa o cadastro salvo acima. Não cria reserva.</p>
+      <p style={{ fontSize: "0.875rem", color: "var(--scl-texto-2)", margin: 0 }}>
+        Usa o cadastro salvo acima. Não cria reserva.
+        {fontePrecos === "manual" ? " Preços digitados: vale o preço base e os períodos como estão, sem eventos, feriadões, última hora nem os limites do preço dinâmico." : ""}
+        {fontePrecos === "beds24" ? " Preços definidos no Beds24: aqui só as regras de estadia são conferidas; o valor da noite é o lido do Beds24 e aparece na prévia de calendário e no site." : ""}
+        {fontePrecos === "scl" ? " O valor abaixo é o do cadastro (base, períodos e limites); eventos, feriadões e última hora entram na prévia de calendário." : ""}
+      </p>
       <div className={styles.form}>
         <div className={styles.linha}>
           <label>
