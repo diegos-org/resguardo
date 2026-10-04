@@ -113,6 +113,7 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 | M5.4 | Envio mensal por e-mail do fechamento no dia 1º do mês seguinte (depois de conciliado) | feito | M5.3, M1.3 |
 | M5.5 | Proprietário edita o calendário do próprio imóvel no portal (bloqueio de uso próprio, liberar datas, conforme permissão do contrato); a mudança entra no SCL e segue para o Beds24/OTAs pelo M3.7 | feito | M5.1, M3.7 |
 | M5.6 | "Como funciona" para o proprietário: documento de consulta no portal (gestão total e marketplace: o que a SCL faz, comissão e taxas, quando e como ele recebe — a periodicidade que ele escolheu (mensal no dia 1º por padrão, quinzenal, semanal ou assim que disponível) e a regra de que uma reserva do site só fica disponível depois do check-in e da liberação do dinheiro pelo provedor (M4.10) —, relatórios, cancelamentos e, quando decididas, contestações), com texto editável no painel, versão datada e **aceite registrado** no convite/cadastro (quem, quando, qual versão); mudança de texto gera nova versão e pede novo aceite. Pedido de Diego em 4/10 | a fazer | M5.1, M12.3, M8.0, M4.10 (o documento descreve a periodicidade que o proprietário escolheu, que só existe com o M4.10) |
+| M5.7 | Relatório mensal no **modelo oficial** (pedido de Diego em 4/10, a partir do modelo que a Lia/Codex montou com ele para setembro/2026, adaptado ao visual do M7.5): capa com marca, mês, imóvel, foto e nomes (proprietário e representante autorizado); **resultado do mês** em destaque com a base escrita (nunca o total do canal como lucro); **como chega até você** (pago pelo canal, já repassado no mês, a transferir no fechamento com quem paga quem e o Pix, a liberar com o motivo); do bruto ao resultado linha a linha; **números do mês** (noites e ocupação, diária média, comparação com o mês anterior e com o mesmo mês do ano anterior, acumulado do ano) e barras dos últimos 12 meses — só com dado no sistema, senão "sem dado"; cada reserva descrita (primeiro nome, canal, código, datas, noites, bruto, taxa, gestão, sua parte, situação); conciliação (do extrato de cada canal ao resultado, repasses do mês, despesas); extratos oficiais das OTAs no fim, como emitidos. Um modelo para o PDF do portal, o envio mensal (M5.4) e, adaptado, o marketplace (vendas do site com o modelo B separadas das vendas do dono nas OTAs); e-mails e WhatsApp com a mesma família (ordem e tom). Especificação em `requisitos/product/RELATORIO-MENSAL.md` e protótipo navegável com dados fictícios em `prototipos/relatorio-mensal/` (feitos em 4/10) | a fazer | M5.3, M4.10, M7.5; validação do protótipo por Diego; a foto da capa depende das fotos reais (M7.3); as linhas do modelo B no marketplace dependem do M12.2; comparações com meses anteriores a 1/10/2026 dependem do histórico (M11.1) |
 
 ### M6 — Operação
 
@@ -276,6 +277,11 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
   proprietário, com explicação (M3.9): preços automáticos da SCL, preços do Beds24 (dele ou de
   uma ferramenta de precificação) ou preços digitados no portal; calendário sempre
   sincronizado pelo Beds24.
+- 4/10 (Diego): **relatório mensal do proprietário** no modelo que a Lia (Codex) montou com ele
+  para setembro/2026, adaptado ao visual do M7.5, com métricas leves (mês, mês anterior, ano
+  anterior, acumulado) e os extratos das OTAs no fim; um modelo só para o PDF do portal, o envio
+  mensal e, adaptado, o marketplace; e-mails e WhatsApp seguem a mesma linguagem (M5.7,
+  `requisitos/product/RELATORIO-MENSAL.md`). O PDF de referência tem dados reais e ficou fora do Git.
 - 4/10 (Diego): **parcelamento no cartão do site**: sim, com os juros pagos pelo hóspede (a SCL
   não assume "sem juros"); número máximo de parcelas configurável no painel (M8.2). **Reservas
   que o proprietário do marketplace vende nas OTAs dele**: a SCL não cobra nada sobre elas — o
