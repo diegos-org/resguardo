@@ -879,6 +879,10 @@ export const repasses = pgTable(
     emailSituacao: text("email_situacao").$type<SituacaoEmailRepasse>().notNull().default("pendente"),
     emailEm: timestamp("email_em", { withTimezone: true }),
     emailPara: text("email_para").notNull().default(""),
+    /** Chave de idempotência usada na última tentativa de e-mail (uma retomada repete exatamente esta chave). */
+    emailChave: text("email_chave").notNull().default(""),
+    /** Chave Pix do proprietário no momento do pagamento (o e-mail e o histórico mostram a que foi usada, não a atual). */
+    chavePixPaga: text("chave_pix_paga").notNull().default(""),
     /** Antecipado avulso pedido pelo proprietário no portal (null = programado ou gerado no painel). */
     pedidoEm: timestamp("pedido_em", { withTimezone: true }),
     motivoEstorno: text("motivo_estorno").notNull().default(""),

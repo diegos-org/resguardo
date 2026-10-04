@@ -35,7 +35,8 @@ type Item = Awaited<ReturnType<typeof itensDoRepasse>>[number];
 export function textoDoEmailDoRepasse(r: RepasseListado, itens: readonly Item[], empresa: string): { assunto: string; texto: string } {
   const quando = dataBr(r.dataPagamento ?? r.data);
   const assunto = `${r.tipo === "fechamento" ? `Repasse do fechamento de ${nomeMes(r.mes.slice(0, 7))}` : `Repasse de ${dataBr(r.data)}`} — ${empresa}`;
-  const linhas = [`Olá, ${r.nome}.`, "", `Fizemos o repasse de ${formatBRL(r.valor)} em ${quando}${r.chavePix ? ` para a chave Pix ${r.chavePix}` : ""}.${r.comprovante ? ` Identificador do Pix: ${r.comprovante}.` : ""}${r.comprovanteArquivoId ? " O comprovante do banco vai em anexo." : ""}`];
+  // A chave Pix é a usada no pagamento (guardada ao marcar pago), nunca a atual do cadastro; sem registro, não se cita.
+  const linhas = [`Olá, ${r.nome}.`, "", `Fizemos o repasse de ${formatBRL(r.valor)} em ${quando}${r.chavePixPaga ? ` para a chave Pix ${r.chavePixPaga}` : ""}.${r.comprovante ? ` Identificador do Pix: ${r.comprovante}.` : ""}${r.comprovanteArquivoId ? " O comprovante do banco vai em anexo." : ""}`];
   if (r.tipo === "fechamento") {
     linhas.push("", `Fechamento de ${nomeMes(r.mes.slice(0, 7))}: saldo do mês ${formatBRL(r.saldo + r.descontado + r.contestado)}${r.descontado ? `, adiantamentos descontados ${formatBRL(r.descontado)}` : ""}${r.contestado ? `, contestados fora ${formatBRL(r.contestado)}` : ""}${r.foraDoFechamento ? `, ${formatBRL(r.foraDoFechamento)} ficaram para o próximo repasse (dinheiro ainda não recebido pela empresa)` : ""}${r.antecipado ? `, ${formatBRL(r.antecipado)} de noites de meses seguintes já pagos` : ""}.`);
   }
@@ -66,11 +67,12 @@ export async function enviarEmailDoRepasse(db: Db, organizacaoId: string, repass
   const destinos = await destinosDoRepasse(db, organizacaoId, r.proprietarioId);
   if (!destinos.length) return "sem_email";
   // Marca a tentativa antes de chamar o provedor (quem ler vê "incerto" até a confirmação). Uma retomada
-  // dentro da janela repete a mesma chave (o provedor não duplica); um reenvio pedido por pessoa usa
-  // chave nova. A hora da primeira tentativa fica guardada para a janela.
+  // dentro da janela repete exatamente a chave da tentativa incerta (guardada no repasse: um reenvio
+  // incerto é retomado com a chave do reenvio, não com a do primeiro e-mail, que o provedor já consumiu);
+  // um reenvio pedido por pessoa usa chave nova. A hora da primeira tentativa fica guardada para a janela.
   const retomada = r.emailSituacao === "incerto" && !o.reenviar && r.emailEm !== null;
-  const chave = o.reenviar ? `repasse:${r.id}:email:${agora.getTime()}` : `repasse:${r.id}:email`;
-  await db.update(repasses).set({ emailSituacao: "incerto" as SituacaoEmailRepasse, emailEm: retomada ? r.emailEm : agora, emailPara: destinos.join(", ") }).where(eq(repasses.id, r.id));
+  const chave = retomada ? r.emailChave || `repasse:${r.id}:email` : o.reenviar ? `repasse:${r.id}:email:${agora.getTime()}` : `repasse:${r.id}:email`;
+  await db.update(repasses).set({ emailSituacao: "incerto" as SituacaoEmailRepasse, emailEm: retomada ? r.emailEm : agora, emailPara: destinos.join(", "), emailChave: chave }).where(eq(repasses.id, r.id));
   const [empresa, itens, arquivo] = await Promise.all([nomeDaEmpresa(db, organizacaoId), itensDoRepasse(db, organizacaoId, r.id), r.comprovanteArquivoId ? arquivoDoComprovante(db, organizacaoId, r.id) : Promise.resolve(null)]);
   const { assunto, texto } = textoDoEmailDoRepasse(r, itens, empresa);
   try {

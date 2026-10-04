@@ -427,6 +427,8 @@ describe("3ª rodada do Codex: fechamentos antigos sem itens, trava no estorno d
     const [novembro] = await db.insert(repasses).values({ ...base, mes: "2026-11-01", data: "2026-12-01", valor: 0, saldo: 0 }).returning();
     // Reserva de novembro de outro dono: competência depois de outubro, só o fechamento de novembro dele (não há) alcançaria.
     const deOutro = await criar(reserva(b, "2026-11-10", "2026-11-12"));
+    // Lançamento criado depois do fechamento (reserva lançada com atraso): o valor do fechamento não o incluiu, então não ganha item.
+    const atrasada = await criar(reserva(a, "2026-10-20", "2026-10-22"));
     const sqlDaMigracao = readFileSync(join(process.cwd(), "drizzle", "0045_repasse_itens_antigos.sql"), "utf8")
       .split("\n")
       .filter((l) => !l.startsWith("--"))
@@ -438,6 +440,18 @@ describe("3ª rodada do Codex: fechamentos antigos sem itens, trava no estorno d
     expect(itens[0]).toMatchObject({ repasseId: outubro.id, reservaId: reservaBase, competencia: "2026-10-01", valor: 72250, liberadoEm: null });
     expect(itens[0].repasseId).not.toBe(estornado.id);
     expect(itens[0].repasseId).not.toBe(novembro.id);
+    expect(itens.some((i) => i.reservaId === atrasada.id)).toBe(false);
+    // A 0046 limpa o que uma 0045 antiga tivesse ligado por engano (item de lançamento criado depois do fechamento).
+    const [dAtrasada] = await direitos(atrasada.id);
+    await db.insert(repasseItens).values({ organizacaoId: org, repasseId: outubro.id, lancamentoId: dAtrasada.id, reservaId: atrasada.id, imovelId: a, competencia: dAtrasada.competencia, valor: dAtrasada.valor });
+    const sql0046 = readFileSync(join(process.cwd(), "drizzle", "0046_repasses_email_chave_pix_paga.sql"), "utf8")
+      .split("--> statement-breakpoint")
+      .find((t) => t.includes("DELETE FROM"))!
+      .split("\n")
+      .filter((l) => !l.startsWith("--"))
+      .join("\n");
+    await db.execute(sql.raw(sql0046));
+    expect((await db.select().from(repasseItens)).map((i) => i.reservaId)).toEqual([reservaBase]);
     expect((await partes("2026-10-12", outro)).find((p) => p.reservaId === deOutro.id)?.situacao).not.toBe("repassado");
     // Rodar de novo não duplica.
     await db.execute(sql.raw(sqlDaMigracao));
@@ -447,5 +461,40 @@ describe("3ª rodada do Codex: fechamentos antigos sem itens, trava no estorno d
     const [p] = await partes("2026-10-12");
     expect(p).toMatchObject({ situacao: "repassado", repasse: { id: outubro.id, tipo: "fechamento" } });
     expect(await gerarAntecipado(db, org, dono, "2026-10-12", null)).toMatchObject({ ok: false, erro: expect.stringContaining("Nada disponível") });
+  });
+
+  it("reenvio incerto é retomado com a chave do reenvio (não a do primeiro e-mail); o e-mail cita a chave Pix usada no pagamento, não a atual", async () => {
+    await receberTudo(db, org, reservaBase, "2026-10-10");
+    const g = await gerarAntecipado(db, org, dono, "2026-10-11", null);
+    const id = (g as { id: string }).id;
+    expect(await marcarRepassePago(db, org, id, "2026-10-11", "2026-10-12", null, comprovante)).toMatchObject({ ok: true });
+    // A chave Pix muda depois do pagamento: o repasse guarda a usada, e é ela que o e-mail cita.
+    await db.update(proprietarios).set({ chavePix: "nova@example.com" }).where(eq(proprietarios.id, dono));
+    expect((await obterRepasse(db, org, id))!).toMatchObject({ chavePixPaga: "dona@example.com", chavePix: "nova@example.com" });
+    let falhar = false;
+    const enviadas: Mensagem[] = [];
+    const correio = {
+      nome: "teste",
+      async enviar(m: Mensagem) {
+        if (falhar) throw new ErroEnvioIncerto("caiu");
+        enviadas.push(m);
+      },
+    };
+    const t0 = new Date("2026-10-12T12:00:00Z");
+    expect(await enviarEmailDoRepasse(db, org, id, correio, t0)).toBe("enviado");
+    expect(enviadas[0].texto).toContain("para a chave Pix dona@example.com");
+    expect(enviadas[0].texto).not.toContain("nova@example.com");
+    expect((await obterRepasse(db, org, id))!).toMatchObject({ emailChave: `repasse:${id}:email` });
+    // Reenvio pedido por pessoa cai em "incerto": a chave nova fica guardada, e a retomada da rotina repete essa chave
+    // (a do primeiro e-mail o provedor já consumiu: repeti-la seria "enviado" sem e-mail nenhum).
+    falhar = true;
+    const t1 = new Date("2026-10-13T12:00:00Z");
+    expect(await enviarEmailDoRepasse(db, org, id, correio, t1, { reenviar: true })).toBe("incerto");
+    const chaveReenvio = `repasse:${id}:email:${t1.getTime()}`;
+    expect((await obterRepasse(db, org, id))!).toMatchObject({ emailSituacao: "incerto", emailChave: chaveReenvio });
+    falhar = false;
+    expect(await enviarEmailDoRepasse(db, org, id, correio, new Date(t1.getTime() + 20 * 60_000))).toBe("enviado");
+    expect(enviadas[1].chave).toBe(chaveReenvio);
+    expect(enviadas).toHaveLength(2);
   });
 });

@@ -640,7 +640,9 @@ export async function marcarRepassePago(db: Db, org: string, id: string, data: s
     for (const l of await lancamentosDoRepasse(tx, org, id)) await mudarEstado(tx, org, l.id, "realizado", autorId, data);
     for (const i of await itensEmVigor(tx, org, id)) await mudarEstado(tx, org, i.lancamentoId, "realizado", autorId, data);
     const arquivoId = comprovante?.arquivo ? await guardarArquivo(tx, org, comprovante.arquivo, autorId) : null;
-    await tx.update(repasses).set({ situacao: "pago" as SituacaoRepasse, dataPagamento: data, comprovante: comprovante?.texto.trim() ?? "", comprovanteArquivoId: arquivoId }).where(eq(repasses.id, id));
+    // A chave Pix de agora fica gravada no repasse: o e-mail e o histórico mostram a usada no pagamento, mesmo que o cadastro mude depois.
+    const [dono] = await tx.select({ chavePix: proprietarios.chavePix }).from(proprietarios).where(eq(proprietarios.id, r.proprietarioId));
+    await tx.update(repasses).set({ situacao: "pago" as SituacaoRepasse, dataPagamento: data, comprovante: comprovante?.texto.trim() ?? "", comprovanteArquivoId: arquivoId, chavePixPaga: dono?.chavePix.trim() ?? "" }).where(eq(repasses.id, id));
     await registrarAuditoria(tx, { organizacaoId: org, usuarioId: autorId, acao: "repasse.pagar", entidade: "repasse", entidadeId: id, mudancas: { situacao: ["a pagar", `pago em ${data}${temComprovante(comprovante) ? ", com comprovante" : ", sem comprovante"}`] } });
     return { ok: true as const, id };
   });
