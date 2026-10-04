@@ -164,7 +164,7 @@ repositório principal não sabe que o backup existe.
    robô: ele nunca apaga nem reescreve e avisa quando o backup perde algo. A trava cobre a
    mais só o erro manual de quem tem acesso à conta de backup, que é só o Diego.
 
-Testado em 3/10 rodando o script exato do robô contra repositórios locais, cem rodadas:
+Testado em 3/10 rodando o script exato do robô contra repositórios locais, cento e uma rodadas:
 origem só com `main`; novas branches e tags; origem avança; origem apaga uma branch (o backup
 a mantém e avisa uma vez); nada muda (sem aviso repetido); origem reescreve uma branch e uma
 tag anotada (o backup mantém as versões antigas em `espelho/`, guarda as novas em
@@ -219,8 +219,9 @@ batimento, e volta ao normal (marcador regravado, verde) quando o push é libera
 como "apagaram tudo" (a variável não é recriável pelo robô), e a rodada seguinte regrava o marcador
 e fica verde; uma ref `objetos/` apagada é regravada na própria rodada a partir das cópias
 `recusadas/` que ainda têm o objeto (sumiço avisado uma vez), e uma `objetos/` que era o único lugar
-do objeto é avisada e não regravada; e as tags do backup não voltam para a origem nem se duplicam
-com o prefixo. O passo de batimento não entrou na simulação (é uma chamada HTTP
+do objeto é avisada e não regravada; o inventário não traz linha `espelho` para refs `objetos/` (só
+para refs espelhadas de verdade, sempre com o objeto esperado); e as tags do backup não voltam para
+a origem nem se duplicam com o prefixo. O passo de batimento não entrou na simulação (é uma chamada HTTP
 simples a um serviço externo, só com a URL configurada); foi conferido na sintaxe e no caso sem
 URL.
 
@@ -253,8 +254,13 @@ o commit de cada uma, e todas elas continuam alcançáveis a partir dessa tag. A
 
 1. Criar um repositório novo (na conta que for) e importar a partir do repositório de backup
    — pelo GitHub (*Import repository*) ou por um clone local.
-2. A branch `espelho/main` do backup vira a `main` do repositório novo; as outras
-   `espelho/<nome>` voltam ao nome original se forem necessárias.
+2. Escolher o retrato confiável (a tag `backup/AAAA-MM-DD-HHMM` do dia desejado, normalmente o
+   mais recente) e ler, na mensagem do commit dele, a linha `origem <código> refs/heads/main`:
+   a `main` nova nasce **desse commit** (ele é um dos pais do retrato, então está no backup).
+   As outras branches e tags, se forem necessárias, idem: cada uma tem a sua linha `origem`.
+   Não usar `espelho/main` como fonte sem conferir: se a `main` tiver sido reescrita algum dia
+   na origem, `espelho/main` ficou de propósito na história antiga (a versão nova está no
+   retrato e em `recusadas/`), e seria a versão errada para recomeçar.
 3. Reconectar a Vercel ao repositório novo (mesmo projeto; só muda a origem do código) e o
    Codex/Claude Code, se forem continuar.
 4. Criar um token novo só de leitura na conta nova e trocar o segredo no repositório de backup,
