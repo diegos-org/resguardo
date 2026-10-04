@@ -83,8 +83,12 @@ export async function enviarEmailDoRepasse(db: Db, organizacaoId: string, repass
   // da empresa, itens, comprovante trocado) mudaria o pedido sob a mesma chave — o provedor poderia descartá-lo
   // como repetido enquanto aqui ficaria "enviado" com um conteúdo que nunca saiu. Só uma tentativa nova remonta.
   let pedido: PedidoEmailRepasse;
-  if (retomada && r.emailPedido) pedido = r.emailPedido;
-  else {
+  if (retomada) {
+    // Retomada só com o pedido guardado. Sem ele (tentativa anterior à coluna `email_pedido`), não há como repetir a
+    // mesma requisição sob a mesma chave: fica incerto e espera uma pessoa reenviar, com chave nova.
+    if (!r.emailPedido) return "incerto";
+    pedido = r.emailPedido;
+  } else {
     const destinos = await destinosDoRepasse(db, organizacaoId, r.proprietarioId);
     if (!destinos.length) return "sem_email";
     const [empresa, itens] = await Promise.all([nomeDaEmpresa(db, organizacaoId), itensDoRepasse(db, organizacaoId, r.id)]);

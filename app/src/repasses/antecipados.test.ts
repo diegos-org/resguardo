@@ -576,5 +576,13 @@ describe("3ª rodada do Codex: fechamentos antigos sem itens, trava no estorno d
     await db.update(repasses).set({ emailSituacao: "incerto", emailEm: antiga, emailTentativaEm: t4 }).where(eq(repasses.id, id));
     expect(await enviarEmailDoRepasse(db, org, id, correio, new Date(t4.getTime() + 60_000), { reenviar: true })).toBe("em_andamento");
     expect(enviadas).toHaveLength(4);
+    // Linha antiga (anterior à coluna `email_pedido`): sem o pedido guardado, a retomada não remonta nada sob a mesma
+    // chave — fica incerta até uma pessoa reenviar (chave nova).
+    const t5 = new Date("2026-10-17T12:00:00Z");
+    await db.update(repasses).set({ emailSituacao: "incerto", emailEm: t5, emailTentativaEm: t5, emailPedido: null }).where(eq(repasses.id, id));
+    expect(await enviarEmailDoRepasse(db, org, id, correio, new Date(t5.getTime() + 20 * 60_000))).toBe("incerto");
+    expect(enviadas).toHaveLength(4);
+    expect(await enviarEmailDoRepasse(db, org, id, correio, new Date(t5.getTime() + 20 * 60_000), { reenviar: true })).toBe("enviado");
+    expect(enviadas).toHaveLength(5);
   });
 });
