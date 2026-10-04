@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 3/10/2026, cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
+> **Última atualização:** 3/10/2026, backup automático do repositório pronto para você ativar na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
 
 ---
 
@@ -24,7 +24,7 @@
 
 | Etapa | O que entrega | Situação |
 |---|---|---|
-| M0 Fundação | Base do app, banco de dados, layout, publicação na Vercel | 🟡 Vercel e login funcionando; banco de homologação separado conferido em 3/10 (falta só você dar o M0.5 por fechado e mandar a referência do sistema antigo, M0.6) |
+| M0 Fundação | Base do app, banco de dados, layout, publicação na Vercel, backup | 🟡 Vercel e login funcionando; banco de homologação separado conferido em 3/10; **backup automático do repositório pronto, falta você ativar na conta separada** (M0.7, seção 6, item 23); falta só você dar o M0.5 por fechado e mandar a referência do sistema antigo (M0.6) |
 | M1 Acesso | Login (Google/código por e-mail), convites, permissões | ✅ pronto |
 | M2 Cadastros | Imóveis, proprietários, contratos e aba Anúncios | ✅ implementado; referências dos canais precisam ser preenchidas/conferidas |
 | M3 Reservas | Reservas, calendário central, importação e envio de calendário/preços ao Beds24 | 🟡 importação e envio implementados; o envio começa desligado e espera o seu teste no 103; conferência das reservas parcial |
@@ -37,6 +37,35 @@
 | M10 WhatsApp | Caixa de entrada do WhatsApp no painel | ⚪ aguardando |
 | M11 Produção | Dados reais, domínio, entrada em uso | ⚪ aguardando |
 | M12 Marketplace | Proprietário que opera o próprio imóvel; SCL cuida do online | 🟡 em andamento |
+
+### Backup do repositório — M0.7
+
+Você pediu em 3/10 um backup automático de tudo, "para caso algum dia algo dê problema". O
+que ficou pronto:
+
+- **Um robô de backup** que vai morar numa **segunda conta do GitHub**, só sua, com e-mail e
+  senha diferentes. A cada 3 dias ele copia **todo** o repositório (todas as branches, tags e
+  o histórico inteiro) para um repositório privado nessa conta e marca a cópia com a data e
+  a lista do que existia naquele dia. Nada é apagado, nunca: se alguém apagar ou reescrever
+  algo no repositório principal, ou apagar algo no próprio backup, o backup guarda a versão
+  anterior e te avisa por e-mail (uma vez por ocorrência). Todas as versões ficam, para sempre.
+- **O repositório principal não sabe que o backup existe.** A única ligação é uma "chave só
+  de leitura" criada na sua conta principal e guardada dentro do repositório de backup. Se
+  invadirem a conta principal, não há nenhum caminho até o backup. Se a chave vazar, ela só
+  permite ler o código e você a cancela em um clique.
+- **Aqui no repositório fica só o registro** de que o backup existe, como funciona e por quê
+  (`requisitos/operations/BACKUP-E-RECUPERACAO.md`, com o passo de recuperação). Nenhum nome
+  de usuário, repositório ou e-mail da conta de backup aparece em lugar nenhum — isso fica só
+  com você, no gerenciador de senhas. Avaliei e manter esse registro não abre brecha: saber
+  que existe um backup em algum lugar não dá acesso a nada.
+- **O que falta é só você:** criar a conta, o repositório, a chave e colar dois segredos. O
+  passo a passo com os cliques exatos está na seção 6, item 23. Leva uns 15 minutos.
+
+**Atenção, isso protege o código e os documentos, não os dados.** Reservas, proprietários e
+financeiro vivem no banco (Neon), e dados reais nunca podem ir para o GitHub. O backup do banco
+é do próprio Neon: em 3/10, com o seu "pode fazer", a restauração por ponto no tempo passou de 1
+para **7 dias** e entraram snapshots **diário** (guardado 14 dias) e **semanal** (35 dias) do
+banco de produção, tudo dentro do Neon (detalhes na seção 6, item 23b). Nada para você fazer aí.
 
 ### Site: cotação e "segurar as datas" — M8.1
 
@@ -982,6 +1011,8 @@ e escreva normalmente.
 | `arquivo/` | Papelada dos agentes antigos (Rivers, Lia, Sage...), guardada como histórico | ❌ não |
 | `CLAUDE.md` | Regras que o Claude segue ao programar | ❌ não |
 | `.github/workflows/` | Configuração dos testes automáticos (CI) | ❌ não |
+| `infra/backup/espelho-github.yml` | O robô de backup (o arquivo que você copia para a conta de backup) | Só na hora de ativar (seção 6, item 23) |
+| `requisitos/operations/BACKUP-E-RECUPERACAO.md` | Como o backup funciona, por quê, e como recuperar | Se um dia precisar restaurar |
 
 ---
 
@@ -989,10 +1020,10 @@ e escreva normalmente.
 
 | Serviço | Para que serve | Situação | O que falta |
 |---|---|---|---|
-| **GitHub** (`al-life/scl-reconstrucao`) | Guarda o código e o histórico | ✅ conectado | — |
+| **GitHub** (`al-life/scl-reconstrucao`) | Guarda o código e o histórico | ✅ conectado; robô de backup pronto (M0.7) | Ativar o backup na conta separada (seção 6, item 23) |
 | **Claude Code** | Programa o sistema; rotina a cada 3h | ✅ ativo | — |
 | **Codex** (revisor automático) | Revisa cada PR | ✅ ativo no repositório | — |
-| **Neon** | Banco de dados (Postgres) | ✅ projeto `scl-sistema` com duas branches: `main` (produção) e `preview` (versões de teste dos PRs); as 41 migrações até o M5.5 aplicadas nas duas, conferido em 3/10 | Nada agora. Backup e checklist ficam para o M11.3 |
+| **Neon** | Banco de dados (Postgres) | ✅ projeto `scl-sistema` com duas branches: `main` (produção) e `preview` (versões de teste dos PRs); as 41 migrações até o M5.5 aplicadas nas duas, conferido em 3/10 | **Backup:** desde 3/10, 7 dias de histórico e snapshots diário (14 dias) e semanal (35 dias) da `main`, dentro do Neon (seção 6, item 23b). Cópia fora do Neon e checklist ficam para o M11.3 |
 | **Vercel** | Publica o sistema na internet (homologação e depois produção) | ✅ site acessível (27/09); conferido em 3/10 que produção usa a branch `main` do Neon e as previews dos PRs usam a branch `preview` — bancos separados | Variáveis já presentes: banco, login Google, Beds24 (leitura), Resend, agendador. Faltam só as que ligam coisas novas (`BEDS24_ESCRITA`, item 3) |
 | **Beds24** | Channel manager (Airbnb/Booking), reservas, calendário e preços | 🟡 importação feita por Diego (1 e 2/10); envio de calendário/preços pronto e **desligado** | Testar o envio no 103 (simular → `BEDS24_ESCRITA=ligada` com refresh token de inventário → enviar → conferir no Beds24/Airbnb) e só então ligar o automático (seção 6, item 3) |
 | **Mercado Pago** | Pagamentos da reserva direta | ⚪ não conectado | Credenciais de *teste* do provedor escolhido no M8.0 (Mercado Pago, se for a escolha), mais adiante (M8) |
@@ -1151,6 +1182,83 @@ ambiente).
    situação "pedido", é um visitante que segurou datas pela cotação. Fale com ele (contato na
    ficha) e **confirme ou cancele antes do prazo** das observações; se não, o pedido vence sozinho.
    O prazo padrão é de 30 minutos, em Configurações → Calendário e preços → Site público.
+
+23. **Backup do repositório (M0.7) — ativar na conta separada.** Pode fazer pelo celular. Guarde
+   cada senha e chave no gerenciador de senhas na hora em que criar; **nada vai para o chat**.
+   Nunca me passe o nome da conta nova nem do repositório de backup: não preciso deles e é
+   melhor que fiquem só com você.
+   1. **Conta nova no GitHub** com outro e-mail seu, senha própria e **2FA** ligado
+      (*Settings → Password and authentication → Two-factor authentication*). Salve os
+      **códigos de recuperação** no gerenciador de senhas. Não use o nome da empresa na conta.
+   2. **Repositório privado** nessa conta: *New repository*, qualquer nome discreto, visibilidade
+      **Private**, marque *Add a README file*, *Create repository*.
+   3. **Chave só de leitura, na sua conta principal** (a do `al-life`): *Settings → Developer
+      settings → Personal access tokens → Fine-grained tokens → Generate new token*.
+      - *Token name*: algo como "leitura para espelho"; *Expiration*: o máximo (1 ano);
+        anote a data de validade no gerenciador de senhas.
+      - *Resource owner*: **al-life** (se não aparecer, em *al-life → Settings → Personal
+        access tokens* permita tokens fine-grained e volte aqui).
+      - *Repository access*: **Only select repositories** → `scl-reconstrucao`.
+      - *Permissions → Repository permissions → Contents*: **Read-only**. Nada mais.
+      - *Generate token* e copie a chave (ela aparece uma vez só).
+   4. **Dois segredos no repositório de backup** (na conta nova): *Settings → Secrets and
+      variables → Actions → New repository secret*:
+      - `ORIGEM_REPO` = `al-life/scl-reconstrucao`
+      - `ORIGEM_TOKEN` = a chave do passo 3.
+   5. **O robô:** no repositório principal, abra `infra/backup/espelho-github.yml`, toque em
+      *Raw* (ou no botão de copiar o arquivo) e copie **tudo**. No repositório de backup:
+      *Add file → Create new file*, nome do arquivo exatamente
+      `.github/workflows/backup.yml`, cole o conteúdo, *Commit changes* (na `main`).
+   6. **Proteção extra contra apagar e reescrever** (opcional). **Só existe em repositório
+      privado com plano pago do GitHub** (Pro, cerca de US$ 4 por mês, na conta nova). No plano
+      Free, **pule este passo**: o robô já nunca apaga nem reescreve e te avisa se o backup
+      perder algo; a trava só protege a mais contra um erro manual seu. Se assinar o Pro:
+      *Settings → Rules → Rulesets → New ruleset → New branch ruleset*. Nome "nunca apagar";
+      *Enforcement status*: **Active**; *Target branches → Add target → Include all branches*;
+      em *Rules*, marque **só** *Restrict deletions* e *Block force pushes*; *Create*. Repita
+      com *New tag ruleset* → *Include all tags*, as mesmas duas regras.
+   7. **Primeira rodada à mão:** aba *Actions* → "Backup do repositório de origem" → *Run
+      workflow* → *Run workflow*. Em um ou dois minutos deve ficar verde. Confira em *Code* que
+      apareceram as branches `espelho/main` (e as outras) e `backup-marcos`, e, em *Tags*, uma
+      `backup/` com a data de hoje. Na branch principal vai aparecer também um commit do robô
+      com um arquivo `.backup/iniciado`: é o marcador de que o backup já existe; não apague.
+      **Depois dessa primeira rodada verde**, crie uma variável no repositório de backup:
+      *Settings → Secrets and variables → Actions → aba Variables → New repository variable*,
+      nome `BACKUP_INICIADO`, valor `sim`. É um registro que o robô só lê e nunca cria: se um
+      dia alguém apagar tudo (até o marcador), o robô ainda vai saber que o backup já existia e
+      avisar, em vez de recomeçar em silêncio. Se ficar vermelho, abra a rodada e me mande **só o texto da mensagem de erro**
+      (ela não contém chave).
+      - Se o erro falar de permissão para escrever, em *Settings → Actions → General → Workflow
+        permissions* escolha *Read and write permissions* e rode de novo.
+      - Se o erro falar do marcador `.backup/iniciado`, é a branch principal recusando o commit
+        do robô (alguma regra de "só por pull request"): em *Settings → Branches* (ou *Rules*)
+        tire essa exigência da branch principal e rode de novo. Até resolver, a rodada fica
+        vermelha de propósito.
+   8. **Depois:** o robô roda sozinho a cada 3 dias, às 03:17. Uma vez por mês, dê uma olhada
+      na aba *Actions* (verde). Rodada vermelha gera e-mail para a conta nova e diz exatamente
+      o que sumiu, foi reescrito ou foi alterado, e onde (é aviso, não perda), ou que a chave
+      venceu. Se a mensagem falar em algo "alterado" ou "movido" no backup, a correção é
+      apagar aquela ref lá; o robô regrava sozinho na rodada seguinte. Antes de a chave
+      vencer, gere outra (passo 3) e troque o segredo `ORIGEM_TOKEN` (passo 4). **Confira
+      também a data da última rodada:** se o próprio robô for apagado ou desligado, ele não
+      roda e, sem rodar, não avisa nada. O passo 9 cobre isso.
+   9. **Batimento (opcional, recomendado, grátis, 5 minutos):** um serviço que espera um sinal
+      do robô a cada rodada e te manda e-mail se o sinal faltar. Crie uma conta em
+      healthchecks.io (ou serviço parecido) com o e-mail da conta nova; *New check*, nome
+      "backup", *Period* 3 dias, *Grace* 1 dia; copie a URL de *ping*. No repositório de
+      backup, crie o segredo `BATIMENTO_URL` com essa URL (como no passo 4). Pronto: se o
+      backup parar por qualquer motivo, você recebe um e-mail em até 4 dias. Rodada vermelha
+      por aviso ainda manda o sinal; e-mail do serviço quer dizer que o robô não rodou ou não
+      conseguiu gravar. O serviço só recebe o sinal, não tem acesso a nada.
+
+23b. **Backup do banco (Neon) — feito em 3/10, com o seu "pode fazer".** O Neon agora guarda
+   **7 dias** de histórico para voltar no tempo (antes era 1 dia) e tira um **snapshot diário**
+   do banco de produção às 3h (guardado 14 dias) e um **semanal** (guardado 35 dias). Esses
+   backups ficam **dentro do próprio Neon**, na mesma conta e projeto, guardados à parte do banco
+   vivo: protegem contra erro nos dados (apagar algo sem querer, migração ruim), não contra
+   perder a conta do Neon. A cópia **fora** do Neon (despejo cifrado num lugar privado, nunca no
+   GitHub) fica para o M11.3, quando houver volume de dados reais. Nada para você fazer agora;
+   custa um pouco de armazenamento a mais (o banco tem poucos megabytes).
 
 ---
 

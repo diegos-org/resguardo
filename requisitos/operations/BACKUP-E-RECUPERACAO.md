@@ -1,0 +1,335 @@
+# Backup e recuperação
+
+Registro de como o SCL é protegido contra perda do repositório, da conta ou do banco, por que
+foi feito assim e como recuperar. Decidido por Diego em 3/10/2026 ("essa reconstrução nasceu
+com princípio zero de segurança"). Linguagem simples; sem código além do nome dos arquivos.
+
+**Regra de privacidade deste documento e do repositório inteiro:** nenhum dado da conta de
+backup aparece aqui — nem nome de usuário, nem nome do repositório, nem e-mail. Fica só o
+registro de que o backup existe, como funciona e por quê. Os dados ficam com o Diego, no
+gerenciador de senhas.
+
+## 1. O que está protegido e o que não está
+
+| O quê | Onde vive | Como está protegido | Situação |
+|---|---|---|---|
+| Código, documentação, histórico de decisões | GitHub (`al-life/scl-reconstrucao`) | Espelho automático em **outra conta** do GitHub, a cada 3 dias, guardando todas as versões (M0.7) | Pronto no repositório; Diego ativa na conta separada |
+| Dados reais (reservas, proprietários, financeiro) | Neon (projeto `scl-sistema`, branch `main`) | Restauração por ponto no tempo e snapshots do próprio Neon | **7 dias** de histórico e snapshots **diário** (14 dias) e **semanal** (35 dias), desde 3/10 (seção 5). Cópia fora do Neon fica para o M11.3 |
+| Chaves e senhas do sistema | Variáveis da Vercel | Não têm backup automático e não devem ter cópia em lugar nenhum além do gerenciador de senhas | Diego guarda uma cópia no gerenciador de senhas |
+| Configuração da Vercel, do Beds24, do Google (login) | Painéis de cada serviço | Reconstruível a partir deste guia e do `GUIA-DIEGO.md` | Documentado |
+
+Dados reais **nunca** vão para o GitHub (regra do `CLAUDE.md`), inclusive para o repositório
+de backup. Por isso o backup do banco é assunto do Neon, não do Git.
+
+## 2. Contra o que o espelho do repositório protege
+
+- Perda da senha ou da conta principal do GitHub, ou bloqueio da conta.
+- Invasão da conta principal: quem invade não encontra nenhum caminho até o backup.
+- Repositório apagado, branch apagada ou histórico reescrito por engano ou por má-fé.
+- Erro grave de uma ferramenta automática (Claude, Codex) que apague ou reescreva algo.
+
+Não protege contra: dados do banco (seção 5) e indisponibilidade do GitHub em si (os dois
+repositórios estão no GitHub; um clone local ocasional cobre isso, se um dia for preciso).
+
+**O robô não tem como avisar a própria ausência.** Se alguém com acesso à conta de backup
+apagar o arquivo do robô, desligar as Actions ou reescrever a branch principal do repositório
+de backup sem ele, simplesmente não há rodada, e portanto nenhum e-mail: o backup para em
+silêncio. O que detecta isso é a **conferência mensal** da aba *Actions* (seção 6) ou, melhor,
+o **batimento** opcional da seção 3: um serviço externo gratuito que espera um sinal do robô a
+cada rodada e avisa por e-mail quando o sinal falta. Sem o batimento, o pior caso é descobrir
+na conferência mensal que o backup parou há até um mês; o que já foi guardado continua lá.
+
+**Quem tem acesso de escrita à conta de backup pode forjar um marco inteiro** (tag `backup/`
+mais retrato com inventário combinando), e o robô não distingue isso de um marco legítimo: toda
+a comparação parte do que está guardado lá. O robô detecta e avisa o que é **inconsistente**
+(ponteiro sem âncora ou movido, tag de marco movida, ref alterada, cópia alterada), não o que
+foi forjado de forma consistente. A defesa é a conta de backup ser só do Diego, com 2FA, senha
+própria e nenhum outro acesso; no plano pago, as rulesets (seção 3, item 4) impedem apagar e
+forçar, inclusive para o robô.
+
+## 3. Como o espelho funciona
+
+O desenho é **puxar, não empurrar**: a conta de backup busca o repositório principal; o
+repositório principal não sabe que o backup existe.
+
+1. **Conta separada do GitHub**, com e-mail, senha e 2FA próprios, códigos de recuperação no
+   gerenciador de senhas. Nela, um repositório **privado**.
+2. **Token só de leitura** criado na conta principal (fine-grained), restrito ao repositório
+   `scl-reconstrucao`, permissão *Contents: Read-only*, com validade de até 1 ano. É a única
+   ponte entre as contas e fica guardado como segredo dentro do repositório de backup.
+3. **Robô agendado** no repositório de backup (arquivo original em `infra/backup/espelho-github.yml`
+   deste repositório; copiado para `.github/workflows/backup.yml` lá). A cada 3 dias, às 03:17
+   de Brasília, e quando acionado à mão:
+   - baixa **todas** as branches e tags da origem;
+   - grava no repositório de backup sob o prefixo `espelho/` (ex.: `espelho/main`), **sem
+     nunca apagar nem reescrever**: branch apagada na origem continua lá; branch reescrita na
+     origem fica como estava (a versão nova fica guardada na tag datada da rodada);
+   - cria uma tag `backup/AAAA-MM-DD-HHMM` apontando para um **retrato** da rodada: um commit
+     com os arquivos da `main` daquele momento, que tem como "pais" o retrato anterior,
+     **todas** as pontas da origem (cada branch e cada tag) e as pontas espelhadas que o backup
+     guarda (inclusive avanços retomados e branches que a origem apagou ou reescreveu) e, como
+     mensagem, o **inventário**:
+     cada branch e tag da origem com o seu commit, e tudo o que o backup guarda. A branch
+     `backup-marcos` aponta sempre para o último retrato: é a linha do tempo dos retratos e a
+     base da comparação. Assim nada do que o inventário cita fica solto para o Git limpar. É
+     um ponto de restauração imutável por rodada e a lista do que existia naquele dia. Como o
+     Git guarda o histórico inteiro, **todas as versões ficam**, indefinidamente;
+   - uma branch ou tag **reescrita** na origem (branch cujo commit anterior deixou de ser
+     antepassado; tag que mudou de objeto) é guardada tal como está sob
+     `recusadas/<data>/...`, uma vez por reescrita, para o objeto exato (inclusive uma tag
+     anotada) continuar alcançável; a versão antiga continua em `espelho/...`. Essa gravação
+     vem antes da tag do dia e do ponteiro (que entram juntos, ou nenhum): a base de
+     comparação nunca avança sem que o que ela cita esteja guardado. O inventário anota o
+     objeto exato de cada cópia; se uma for apagada do backup, a rodada seguinte avisa e a
+     regrava a partir da origem só se a origem ainda tiver exatamente aquele objeto (senão,
+     diz que a cópia se perdeu, em vez de rotular outro objeto com a data antiga). Se uma
+     cópia for **alterada** no backup (mesmo nome, outro objeto), o aviso se repete a cada
+     rodada até ela ser apagada, e o objeto exato é salvo de novo sob a data da rodada quando
+     a origem ainda o tem. Uma ref apagada na origem e recriada depois com outro conteúdo
+     também conta como reescrita;
+   - cada **objeto de tag** da origem (tag anotada, ou tag que aponta para um arquivo ou uma
+     pasta) ganha ainda uma ref durável `objetos/<código do objeto>`, gravada uma vez, para o
+     objeto exato continuar guardado mesmo que a tag seja reescrita na origem e a cópia
+     `espelho/` seja apagada no backup na mesma rodada. Uma ref `objetos/` alterada no backup
+     (o nome deixa de bater com o objeto) é avisada a cada rodada até ser apagada; apagada, é
+     regravada enquanto o objeto ainda estiver na origem ou em alguma cópia que o backup guarda
+     (`espelho/` ou `recusadas/`). Se `objetos/` era o único lugar que ainda apontava para o
+     objeto, o sumiço é avisado uma vez e o objeto fica sem referência (recuperável só enquanto
+     o Git não o limpar);
+   - o inventário também anota o objeto esperado de cada ref `espelho/...`. Se alguém alterar
+     uma dessas refs no backup (mesmo nome, outro objeto, sem a origem ter mudado), a rodada
+     avisa a cada vez até a ref ser apagada (aí é regravada a partir da origem) e salva o
+     objeto exato de novo quando a origem ainda o tem. Só não é alteração o que o próprio robô
+     poderia ter feito: uma **branch** que avançou do esperado sem reescrever é a retomada de
+     uma rodada que avançou o espelho e falhou antes de gravar o marco, e fica, mesmo que a
+     origem já tenha mudado de novo (reescrita ou apagada): o avanço pode ser a única cópia
+     daquela versão, e o que era esperado continua alcançável pelo retrato anterior. Se o avanço
+     for além do que a origem tem agora, sai um aviso amarelo. Uma **tag** espelhada nunca muda pelo robô, então
+     qualquer diferença numa tag é alteração, mesmo igual ao que a origem tem agora (depois de
+     uma reescrita na origem, mover o espelho à mão para a versão nova esconderia a reescrita;
+     é avisado). O mesmo vale para
+     a branch `backup-marcos` movida à força (a rodada usa o marco íntegro mais novo como
+     base, guarda o commit apontado como pai do retrato para nada se perder, não mexe no
+     ponteiro e avisa até ele ser apagado), para `backup-marcos` **recuada** a um marco antigo
+     íntegro (a base passa a ser o marco íntegro mais novo, o ponteiro é avançado de novo e o
+     aviso sai uma vez), para `backup-marcos` **sem âncora** (aponta para um retrato cuja tag
+     de marco não existe ou foi movida: sozinho não serve de base, porque poderia ser um commit
+     forjado com um nome de marco qualquer; a base passa a ser o marco íntegro mais novo, o
+     commit apontado fica preservado como pai, o ponteiro avança e o aviso sai uma vez; avisos
+     daquela rodada podem repetir uma vez) e para uma tag `backup/` movida para um commit que
+     não é o seu retrato (a tag é dada como inválida);
+   - no push do espelho, só a recusa por divergência da origem é aceita (e vira aviso
+     amarelo), e só para refs que a base já conhecia, com espelho íntegro, ou que foram
+     tratadas como reescritas na rodada; qualquer outra recusa (regra do repositório, falha
+     do servidor, ref desconhecida, espelho alterado) para a rodada antes de avançar a base
+     ou é cobrada como alteração;
+   - compara com o inventário do retrato anterior e **falha, o que gera e-mail para a conta
+     de backup**, quando algo sumiu da origem, foi reescrito na origem ou sumiu do próprio
+     backup (inclusive uma tag `backup/`, mesmo a mais nova, e a branch `backup-marcos`; se
+     todos os marcos sumirem, avisa também). Cada ocorrência avisa **uma vez só** (o
+     inventário novo já reflete a mudança); enquanto a origem continuar divergente de uma
+     branch guardada, as rodadas seguintes só mostram um aviso amarelo, sem falhar. Se a tag
+     do dia não puder ser gravada (duas rodadas no mesmo minuto, ou uma regra do repositório
+     recusou), a rodada falha com a mensagem. Se o robô não conseguir ler o que o backup já
+     guarda, a rodada para antes de gravar qualquer coisa, para não tomar o vazio por base;
+   - a validade de um marco ou do ponteiro é lida na mensagem do **commit** apontado (não na de
+     uma tag anotada criada por cima), e exige inventário de verdade (ao menos a linha da `main`
+     da origem). **Nomes reservados:** se a origem tiver tags `backup/`, `recusadas/`, `objetos/`
+     ou uma branch `backup-marcos` (nunca existem no SCL), a rodada para antes de gravar e diz
+     para renomear, porque no inventário elas se confundiriam com as refs do próprio backup;
+   - "backup já existe" fica registrado em **dois lugares**, fora de todas as refs que o robô
+     gerencia. (1) Na **primeira rodada** o robô grava um arquivo-marcador (`.backup/iniciado`)
+     na branch principal do repositório de backup, num commit único; se o marcador não puder ser
+     gravado (por exemplo, a branch principal exige pull request e bloqueia o push do robô), a
+     rodada fica vermelha e sem batimento até isso ser resolvido. (2) Depois da primeira rodada
+     verde, **Diego cria a variável** `BACKUP_INICIADO` no repositório de backup (passo 7 do
+     guia); o robô só lê essa variável, nunca a cria, então é o único registro que uma rodada não
+     consegue recriar sozinha. Se um dia **todas** as refs do backup sumirem e qualquer um dos
+     dois registros existir, a rodada avisa que o backup foi zerado (e recomeça o espelho), em
+     vez de tratar como primeira rodada e ficar verde. Só apagar as refs, o marcador **e** a
+     variável, mantendo o robô, passaria por primeira rodada: isso exige a senha da conta de
+     backup e intenção, e cai no limite da seção 2 (forja consistente);
+   - **batimento (opcional):** ao terminar bem, chama a URL guardada no segredo `BATIMENTO_URL`,
+     de um serviço gratuito de monitoramento do tipo "me avise se eu ficar sem sinal" (por
+     exemplo, healthchecks.io, com período de 3 dias e tolerância de 1 dia). Se o robô for
+     apagado, desligado ou parar de gravar por qualquer motivo, o serviço avisa por e-mail. O
+     sinal sai sempre que a rodada **gravou o retrato**, inclusive quando termina vermelha por
+     aviso (sumiço, reescrita, alteração): aviso não é robô parado. Fica sem sinal só a rodada
+     que não gravou nada (chave vencida, backup inacessível, nome reservado) ou que não rodou.
+     É a única forma de o sistema avisar que o backup **parou**, porque o robô não roda para
+     avisar a própria ausência. O serviço só recebe o sinal; não tem acesso a nada.
+4. **Proteção extra no repositório de backup** (rulesets: proibido apagar branches ou tags e
+   reescrever histórico, para todo mundo, inclusive o robô). **Só existe em repositório privado
+   com plano pago do GitHub (Pro ou superior).** No plano Free, fica a proteção do próprio
+   robô: ele nunca apaga nem reescreve e avisa quando o backup perde algo. A trava cobre a
+   mais só o erro manual de quem tem acesso à conta de backup, que é só o Diego.
+
+Testado em 3/10 rodando o script exato do robô contra repositórios locais, cento e uma rodadas:
+origem só com `main`; novas branches e tags; origem avança; origem apaga uma branch (o backup
+a mantém e avisa uma vez); nada muda (sem aviso repetido); origem reescreve uma branch e uma
+tag anotada (o backup mantém as versões antigas em `espelho/`, guarda as novas em
+`recusadas/<data>/`, a ponta nova fica alcançável pelo retrato, avisa uma vez); nada muda (só
+o aviso amarelo); alguém apaga uma branch no backup (avisa uma vez); alguém apaga uma tag
+`backup/` antiga (avisa uma vez); alguém apaga a tag `backup/` mais nova (avisa uma vez); nada
+muda; alguém apaga a branch `backup-marcos` (avisa e recria); nada muda; rodada repetida no
+mesmo minuto (falha com a mensagem); alguém apaga todas as tags `backup/` e o ponteiro
+(avisa); nada muda; uma regra do destino recusa uma branch (a rodada falha e a base não
+avança); tag apagada na origem e recriada com outro conteúdo (reescrita, com cópia exata);
+backup inacessível (a rodada para antes de gravar). Também: a cópia `recusadas/` da tag
+anotada apagada do backup é avisada e regravada quando a origem ainda tem o objeto, e dada
+como perdida quando a origem já mudou de novo; uma cópia alterada no backup é avisada em
+toda rodada, o objeto exato é salvo de novo sob a data da rodada e, apagada a cópia alterada,
+ela é regravada; `backup-marcos` movida à força é avisada em toda rodada, sem o robô forçar
+nada, e recriada quando apagada; refs `espelho/` alteradas no backup (tag e branch) são
+avisadas em toda rodada e regravadas da origem quando apagadas; espelho que avançou numa
+rodada que falhou antes do marco é retomado sem aviso, inclusive quando a origem apagou a
+branch em seguida (o avanço fica como única cópia, com só o aviso de sumiço); uma tag `backup/` movida para outro
+commit é avisada, inclusive a do marco mais novo (aí o ponteiro fica sem âncora, a base cai para
+o marco íntegro anterior e o retrato legítimo fica preservado como pai); `backup-marcos` recuada à força para um marco antigo é
+avisada uma vez, a base passa a ser o marco mais novo e o ponteiro avança de novo; uma tag
+anotada reescrita na origem com a cópia `espelho/` apagada do backup na mesma rodada continua
+com o objeto antigo guardado em `objetos/`; uma ref `objetos/` alterada no backup é avisada e,
+apagada quando a origem já não tem o objeto, é dada como sumida uma vez; uma tag leve apontando
+para um arquivo solto (não para um commit) ganha ref `objetos/` e, reapontada na origem com a
+cópia `espelho/` apagada no backup na mesma rodada, mantém o arquivo antigo guardado; nomes de
+refs são comparados ao pé da letra (uma `release/1.2` apagada e recriada com outro conteúdo é
+reescrita, mesmo existindo uma `release/1x2`); `backup-marcos` movida para um commit forjado que
+cita um marco futuro inexistente é dada como sem âncora (não vira base, o commit fica como pai, o
+ponteiro avança, aviso uma vez); depois de uma reescrita na origem, mover à mão `espelho/` da
+branch e da tag para a versão nova da origem é avisado como alteração em toda rodada (não passa
+por retomada), e apagar as refs alteradas as regrava da origem; uma tag `backup/` anotada criada à
+mão com o texto de marco por cima de um commit comum é dada como inválida e não vira base nem quando
+é a mais nova pelo nome e o ponteiro foi apagado; uma tag `recusadas/exemplo` na origem para a
+rodada antes de gravar, e a rodada seguinte, com a tag removida, fica verde; duas tags leves da
+origem no mesmo arquivo solto geram uma só ref `objetos/` (sem duplicar o envio); uma branch que
+avançou no espelho numa rodada incompleta e depois foi reescrita na origem fica no backup como
+retomada (a reescrita é avisada e copiada em `recusadas/`), sem aviso de alteração; o sinal de
+batimento é marcado quando a rodada grava o retrato, inclusive vermelha por aviso, e não é marcado
+quando a rodada para antes de gravar; uma branch que só existe no backup (avanço retomado, origem
+já apagada) continua alcançável pelos retratos mesmo depois de alguém apagar a ref `espelho/` dela
+(o sumiço é avisado; a ref não pode ser regravada porque a origem não a tem mais); uma tag que
+volta a um valor antigo na origem (A, B, C, B de novo) deixa duas cópias `recusadas/` com o mesmo
+objeto, e alterar as duas no backup gera um só re-salvamento sob a data do dia (sem envio duplicado),
+com as duas regravadas quando apagadas; a primeira rodada grava o marcador `.backup/iniciado` na
+branch principal, e apagar todas as refs do backup com o marcador presente é avisado como "apagaram
+tudo" (o espelho recomeça), em vez de passar por primeira rodada; se o marcador for removido e a
+branch principal recusar o push do robô, a rodada grava o retrato mas fica vermelha e sem sinal de
+batimento, e volta ao normal (marcador regravado, verde) quando o push é liberado; com a variável
+`BACKUP_INICIADO` definida, apagar todas as refs **e** o marcador da branch principal ainda é avisado
+como "apagaram tudo" (a variável não é recriável pelo robô), e a rodada seguinte regrava o marcador
+e fica verde; uma ref `objetos/` apagada é regravada na própria rodada a partir das cópias
+`recusadas/` que ainda têm o objeto (sumiço avisado uma vez), e uma `objetos/` que era o único lugar
+do objeto é avisada e não regravada; o inventário não traz linha `espelho` para refs `objetos/` (só
+para refs espelhadas de verdade, sempre com o objeto esperado); e as tags do backup não voltam para
+a origem nem se duplicam com o prefixo. O passo de batimento não entrou na simulação (é uma chamada HTTP
+simples a um serviço externo, só com a URL configurada); foi conferido na sintaxe e no caso sem
+URL.
+
+### Por que assim
+
+- **Direção puxar:** se a conta principal for invadida, o invasor não encontra senha, nome
+  ou endereço do backup — ele simplesmente não está lá. Se o token vazar, só permite **ler**
+  o código e é revogado em um clique.
+- **Sem `--mirror`:** um espelho exato copiaria também as exclusões e as reescritas, isto é,
+  copiaria o estrago. Aqui só se acrescenta.
+- **Tags datadas:** restaurar "como estava em tal dia" sem depender de nenhuma branch.
+- **Prefixo `espelho/`:** separa o conteúdo copiado do próprio robô (que vive na `main` do
+  repositório de backup) e evita qualquer conflito de nomes.
+
+## 4. Como recuperar
+
+**Se a mensagem disser que apagaram tudo** (todas as refs sumiram, marcador presente): o GitHub
+ainda guarda por algum tempo os objetos que ficaram sem referência. Abra o repositório de backup
+na aba *Activity* (ou *Insights → Network*) para achar o commit do último retrato e crie uma
+branch ou tag apontando para ele o quanto antes; a partir dele todos os retratos anteriores e
+tudo o que eles citam voltam a ficar alcançáveis.
+
+**Ver como estava em uma data:** no repositório de backup, abrir a lista de tags e escolher
+`backup/AAAA-MM-DD-HHMM`: são os arquivos da `main` daquele dia, legíveis ali mesmo, no
+navegador. A mensagem do commit lista as branches e tags que a origem tinha naquele dia, com
+o commit de cada uma, e todas elas continuam alcançáveis a partir dessa tag. A branch
+`backup-marcos` percorre todos os retratos, do mais novo ao primeiro.
+
+**Recriar o repositório principal** (perda da conta ou do repositório):
+
+1. Criar um repositório novo (na conta que for) e importar a partir do repositório de backup
+   — pelo GitHub (*Import repository*) ou por um clone local.
+2. Escolher o retrato confiável (a tag `backup/AAAA-MM-DD-HHMM` do dia desejado, normalmente o
+   mais recente) e ler, na mensagem do commit dele, a linha `origem <código> refs/heads/main`:
+   a `main` nova nasce **desse commit** (ele é um dos pais do retrato, então está no backup).
+   As outras branches e tags, se forem necessárias, idem: cada uma tem a sua linha `origem`.
+   Não usar `espelho/main` como fonte sem conferir: se a `main` tiver sido reescrita algum dia
+   na origem, `espelho/main` ficou de propósito na história antiga (a versão nova está no
+   retrato e em `recusadas/`), e seria a versão errada para recomeçar.
+3. Reconectar a Vercel ao repositório novo (mesmo projeto; só muda a origem do código) e o
+   Codex/Claude Code, se forem continuar.
+4. Criar um token novo só de leitura na conta nova e trocar o segredo no repositório de backup,
+   para o robô seguir copiando.
+
+Quem faz isso precisa saber o endereço do repositório de backup, que está só com o Diego.
+
+## 5. Banco de dados (Neon) — situação e o que foi feito
+
+Conferido em 3/10/2026 pelo conector do Neon e **ajustado na mesma data, à noite, com o "pode
+fazer" de Diego**:
+
+| Item | Antes (3/10, de manhã) | Agora (3/10, à noite) |
+|---|---|---|
+| Plano | Launch | Launch |
+| Restauração por ponto no tempo (histórico) | **1 dia** | **7 dias** (o máximo do plano) |
+| Snapshots (cópias congeladas) da branch `main` | **nenhum**, sem agendamento | **diário** às 3h de Brasília, guardado por **14 dias**; **semanal** (segunda, 4h), guardado por **35 dias** (o máximo) |
+| Branches | `main` (produção) e `preview` (testes dos PRs) | iguais |
+
+**Onde ficam esses backups:** dentro do próprio Neon, no mesmo projeto e na mesma conta,
+guardados pela Neon separadamente do banco vivo (não ocupam a branch `main`; a Neon cobra o
+espaço como armazenamento). Isso protege contra erro **nos dados** (apagar algo por engano,
+migração ruim, sincronização errada): dá para voltar a qualquer instante dos últimos 7 dias e,
+além disso, a qualquer dia das últimas 2 semanas e a qualquer semana dos últimos 35 dias. **Não**
+protege contra perder a conta do Neon ou contra uma falha da própria Neon; para isso é a cópia
+fora do Neon, item 3 abaixo.
+
+Risco que ficou coberto: antes, um erro percebido depois de 24 horas não tinha mais para onde
+voltar.
+
+O que ainda falta:
+
+1. ~~Histórico de 7 dias~~ feito em 3/10.
+2. ~~Snapshot diário e semanal~~ feito em 3/10.
+3. Mais adiante (M11.3), uma **cópia fora do Neon**: um despejo cifrado do banco guardado
+   num lugar privado (nunca no GitHub). Precisa de uma conta de armazenamento e de uma chave
+   de cifra guardada no gerenciador de senhas. Fica para quando houver dados reais em volume.
+
+**Como restaurar o banco** (quando precisar): no painel do Neon, projeto `scl-sistema`, branch
+`main` → *Restore*: escolher um instante (até 7 dias atrás) ou um dos snapshots. O Neon cria a
+restauração sem apagar o estado atual (que vira uma branch de segurança); conferir antes de
+descartar. Fazer isso com o sistema parado, para ninguém gravar no meio.
+
+## 6. Rotina de manutenção (Diego)
+
+- **Mensal:** abrir a aba *Actions* do repositório de backup e conferir que a última rodada
+  está verde **e recente** (menos de 3 dias). Rodada vermelha = ler a mensagem: ela diz
+  exatamente o que sumiu, foi reescrito ou foi alterado, e onde (é aviso, não perda), ou que
+  o token venceu. Nenhuma rodada recente = o robô parou (arquivo apagado, Actions desligadas)
+  e ninguém avisou, a não ser que o batimento esteja configurado. Aviso amarelo de "refs
+  recusadas" = a origem continua divergente de uma branch guardada; o backup segue íntegro.
+- **Quando a mensagem falar em ref ALTERADA ou ponteiro movido** (só acontece se alguém com
+  acesso à conta de backup mexer à mão): a correção é apagar aquela ref no repositório de
+  backup; na rodada seguinte o robô a regrava a partir da origem (ou recria o ponteiro). Se o
+  ponteiro só tiver **recuado** para um marco antigo, o robô já o avança de novo sozinho. O
+  robô nunca força nada por conta própria.
+- **Anual (antes da validade do token):** gerar um token novo só de leitura na conta principal
+  e trocar o segredo `ORIGEM_TOKEN` no repositório de backup. A data de validade fica anotada
+  no gerenciador de senhas junto com o token.
+- **Nunca:** colar o token em chat, e-mail, Git ou tela do sistema; dar ao token qualquer
+  permissão além de leitura do repositório; apontar o robô para uma conta que alguém mais
+  acesse.
+
+## 7. Histórico
+
+- 3/10/2026 — Diego decide ter backup automático do repositório a cada 3 dias, em conta
+  separada do GitHub, guardando todas as versões, sem nenhuma referência à conta de backup no
+  repositório principal. Pede também avaliação do backup do Neon. Robô, documentação e passo a
+  passo entregues no M0.7; ativação pelo Diego.
+- 3/10/2026 (noite) — Diego autoriza ("pode fazer sim") o ajuste do Neon: histórico de 7 dias e
+  snapshots diário (14 dias) e semanal (35 dias) na branch `main`. Feito pelo conector do Neon
+  e conferido em seguida.
