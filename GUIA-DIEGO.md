@@ -1225,6 +1225,10 @@ ambiente).
       (ela não contém chave).
       - Se o erro falar de permissão para escrever, em *Settings → Actions → General → Workflow
         permissions* escolha *Read and write permissions* e rode de novo.
+      - Se o erro falar do marcador `.backup/iniciado`, é a branch principal recusando o commit
+        do robô (alguma regra de "só por pull request"): em *Settings → Branches* (ou *Rules*)
+        tire essa exigência da branch principal e rode de novo. Até resolver, a rodada fica
+        vermelha de propósito.
    8. **Depois:** o robô roda sozinho a cada 3 dias, às 03:17. Uma vez por mês, dê uma olhada
       na aba *Actions* (verde). Rodada vermelha gera e-mail para a conta nova e diz exatamente
       o que sumiu, foi reescrito ou foi alterado, e onde (é aviso, não perda), ou que a chave

@@ -480,9 +480,10 @@ jobs:
           echo "Marco desta rodada: ${marco}"
           # Retrato gravado: o batimento (passo seguinte) manda o sinal mesmo que a rodada termine vermelha
           # por aviso; sem sinal fica só a rodada que não gravou nada, ou que não rodou.
-          echo "marco_gravado=1" >> "${GITHUB_OUTPUT:-/dev/null}"
           # Primeira rodada (ou backup iniciado antes de existir o marcador): grava .backup/iniciado na branch
-          # principal, com um commit do robô, sem mexer em mais nada dela.
+          # principal, com um commit do robô, sem mexer em mais nada dela. Sem o marcador gravado a proteção
+          # contra "apagaram tudo" não existe, então a rodada fica vermelha e sem batimento até ele entrar.
+          sentinela_ok="${sentinela}"; sentinela_falhou=0
           if [ "${sentinela}" -eq 0 ] && [ -n "${padrao}" ]; then
             blob=$(printf 'Backup iniciado em %s (marco %s).\nNao apague: este arquivo diz ao robo que o backup ja existia, para ele avisar se um dia todas as refs sumirem.\n' "$(date -u +%Y-%m-%d)" "${marco}" | git hash-object -w --stdin)
             export GIT_INDEX_FILE="${PWD}/sentinela.idx"
@@ -491,11 +492,19 @@ jobs:
             arvore=$(git write-tree)
             unset GIT_INDEX_FILE
             c=$(robo commit-tree "${arvore}" -p "$(git rev-parse 'refs/guardado/padrao^{commit}')" -m "backup: marcador de backup iniciado (${marco})")
-            if no_destino push -q "${destino}" "${c}:${padrao}"; then
+            if no_destino push -q "${destino}" "${c}:${padrao}" 2>sentinela.err; then
               echo "Marcador .backup/iniciado gravado na branch principal."
+              sentinela_ok=1
             else
-              echo "::warning::Não consegui gravar o marcador .backup/iniciado na branch principal; tento de novo na próxima rodada."
+              cat sentinela.err || true
             fi
+          fi
+          if [ "${sentinela_ok}" -eq 1 ]; then
+            # Retrato gravado e marcador presente: o batimento (passo seguinte) manda o sinal mesmo que a rodada
+            # termine vermelha por aviso.
+            echo "marco_gravado=1" >> "${GITHUB_OUTPUT:-/dev/null}"
+          else
+            sentinela_falhou=1
           fi
 
           # Avisos (a rodada falha, e o GitHub manda e-mail para a conta de backup). Cada mudança
@@ -555,6 +564,10 @@ jobs:
           fi
           if [ "${ponteiro_apagado}" -eq 1 ]; then
             echo "::error::A branch backup-marcos (ponteiro para o último retrato) havia sido apagada deste repositório. Foi recriada a partir do marco mais novo que restou; confira se algum marco também sumiu."
+            falhou=1
+          fi
+          if [ "${sentinela_falhou}" -eq 1 ]; then
+            echo "::error::O marcador .backup/iniciado NÃO está gravado na branch principal (${padrao:-branch principal não encontrada}) e não consegui gravá-lo nesta rodada. Sem ele, apagar todas as refs do backup passaria por primeira rodada. Se a branch principal exige pull request ou bloqueia push direto, libere o push para o robô (Settings → Branches/Rules) ou crie o arquivo .backup/iniciado à mão; até lá a rodada fica vermelha e o batimento não é enviado."
             falhou=1
           fi
           if [ "${tudo_apagado}" -eq 1 ]; then
