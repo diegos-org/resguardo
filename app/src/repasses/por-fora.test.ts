@@ -342,8 +342,8 @@ describe("acerto por fora de antes do início do sistema (M4.11)", () => {
     // Dona: setembro não recebido fica fora do fechamento de outubro (não foi quitado por ele).
     await receberTudo(db, org, outubro, "2026-10-12");
     expect(await fecharMes(db, org, dono, "2026-10", "2026-11-01", null)).toMatchObject({ ok: true });
-    const { set } = await partesDaQueAtravessa();
-    expect(await saldo("2026-10-31")).toBe(72250 + set);
+    // Pagou só outubro; setembro e a reserva que atravessa (não recebidas) ficaram fora do fechamento.
+    expect((await listarRepasses(db, org, dono))[0]).toMatchObject({ tipo: "fechamento", valor: 72250 });
     // Dois proprietários novos, só com reserva de outubro: um tem também um ajuste de setembro sem item de reserva; o outro, nada de antes.
     const [{ id: c }, { id: d }] = await db.insert(imoveis).values([{ organizacaoId: org, codigo: "305", nome: "Três" }, { organizacaoId: org, codigo: "506", nome: "Cinco" }]).returning();
     const [{ id: terceiro }, { id: quarto }] = await db
