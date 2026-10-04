@@ -75,6 +75,11 @@ describe("portal marketplace (M12.4): seção do proprietário", () => {
     cleanup();
     render_({ imoveis: [{ ...imovel, fontePrecos: "beds24" }] });
     const form = screen.getByRole("form", { name: "Preços e regras de venda do 403" });
+    // Sem simulação com o preço base antigo (o site lê o preço de cada noite do Beds24), e o aviso do envio não promete preço.
+    expect(form.textContent).not.toContain("no Airbnb você receberia");
+    expect(form.textContent).toContain("não dá para simular aqui");
+    expect(screen.getByRole("note").textContent).not.toContain("preço da noite e estadias");
+    expect(screen.getByRole("note").textContent).toContain("preço da noite é definido no Beds24");
     // Período especial sem campo de preço: só estadia mínima (o servidor recusaria qualquer preço).
     const periodos = screen.getByRole("region", { name: "Períodos especiais" });
     expect(within(periodos).queryByLabelText(/Preço da noite/)).toBeNull();
@@ -99,5 +104,12 @@ describe("portal marketplace (M12.4): seção do proprietário", () => {
     expect(textoSalvo(false, "SCL")).toContain("valem só no site");
     expect(textoSalvo(false, "SCL")).not.toContain("próximo envio");
     expect(textoDoEnvio({ naLista: true, automatico: true, ultimo: null }, "SCL")).toContain("leva preço da noite e estadias mínima e máxima ao Airbnb e ao Booking; taxa de limpeza");
+    // Preços no Beds24: o envio não leva preço (só lê de lá), então nem o texto do envio nem o de "salvo" prometem preço às OTAs.
+    expect(textoDoEnvio({ naLista: true, automatico: true, ultimo: null }, "SCL", "beds24")).toContain("leva estadias mínima e máxima ao Airbnb e ao Booking");
+    expect(textoDoEnvio({ naLista: true, automatico: true, ultimo: null }, "SCL", "beds24")).not.toContain("preço da noite e estadias");
+    expect(textoDoEnvio({ naLista: false, automatico: true, ultimo: null }, "SCL", "beds24")).toContain("continuam com o calendário e as estadias anteriores");
+    expect(textoSalvo(true, "SCL", "beds24")).toContain("Estadias mínima e máxima chegam ao Airbnb e ao Booking");
+    expect(textoSalvo(true, "SCL", "beds24")).toContain("o preço da noite é definido no Beds24");
+    expect(textoSalvo(false, "SCL", "beds24")).toContain("continuam com as estadias anteriores");
   });
 });

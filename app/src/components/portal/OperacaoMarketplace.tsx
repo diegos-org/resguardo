@@ -62,22 +62,30 @@ const quando = (d: Date) => new Intl.DateTimeFormat("pt-BR", { timeZone: "Americ
 const NOMES_SITUACAO_ENVIO: Record<string, string> = { ok: "concluído", parcial: "concluído com pendências", erro: "com erro", ocupada: "não rodou (ocupado)", desligada: "desligado", incerto: "incerto", executando: "em andamento" };
 const ESTADO_LIMPEZA = { pedida: "A fazer", confirmada: "A fazer", realizada: "Feita" } as const;
 
-/** O envio de calendário (M3.7) leva só isto às OTAs; o resto do cadastro vale apenas no site. */
-const VAI_AS_OTAS = "preço da noite e estadias mínima e máxima";
+/**
+ * O envio de calendário (M3.7) leva só isto às OTAs; o resto do cadastro vale apenas no site. Com os preços
+ * definidos no Beds24 (M3.9), o envio não manda preço nenhum (a SCL só lê os preços de lá): vão só as estadias.
+ */
+const vaiAsOtas = (fonte: FontePrecos) => (fonte === "beds24" ? "estadias mínima e máxima" : "preço da noite e estadias mínima e máxima");
+const oQueFica = (fonte: FontePrecos) => (fonte === "beds24" ? "as estadias anteriores" : "o preço e as estadias anteriores");
 const SO_NO_SITE = "taxa de limpeza, hóspede extra, antecedência, janela de reservas, dias e horários de entrada e saída valem só no site";
+const PRECO_NO_BEDS24 = "o preço da noite é definido no Beds24 e vem de lá para o site e para as OTAs";
+const maiuscula = (t: string) => `${t[0].toUpperCase()}${t.slice(1)}`;
 
-/** Mensagem depois de salvar: promete Airbnb/Booking só para o que o envio carrega, e só se o imóvel está na lista. */
-export function textoSalvo(naLista: boolean, empresa: string): string {
+/** Mensagem depois de salvar: promete Airbnb/Booking só para o que o envio carrega para esta fonte de preços, e só se o imóvel está na lista. */
+export function textoSalvo(naLista: boolean, empresa: string, fonte: FontePrecos = "scl"): string {
+  const extra = fonte === "beds24" ? `; ${PRECO_NO_BEDS24}` : "";
   return naLista
-    ? `Salvo. Vale no site da ${empresa} agora. ${VAI_AS_OTAS[0].toUpperCase()}${VAI_AS_OTAS.slice(1)} chegam ao Airbnb e ao Booking no próximo envio de calendário; ${SO_NO_SITE}.`
-    : `Salvo. Vale no site da ${empresa} agora. Airbnb e Booking continuam com o preço e as estadias anteriores até a ${empresa} incluir este imóvel no envio de calendário; ${SO_NO_SITE}.`;
+    ? `Salvo. Vale no site da ${empresa} agora. ${maiuscula(vaiAsOtas(fonte))} chegam ao Airbnb e ao Booking no próximo envio de calendário; ${SO_NO_SITE}${extra}.`
+    : `Salvo. Vale no site da ${empresa} agora. Airbnb e Booking continuam com ${oQueFica(fonte)} até a ${empresa} incluir este imóvel no envio de calendário; ${SO_NO_SITE}${extra}.`;
 }
 
-/** Explica, sem supor, se (e o que) do que o proprietário mudou chega às OTAs. */
-export function textoDoEnvio(e: SituacaoEnvio, empresa: string): string {
-  if (!e.naLista) return `Este imóvel ainda não está na lista de envio ao Beds24 da ${empresa}: o que você mudar aqui vale no site da ${empresa}, mas o Airbnb e o Booking continuam com o calendário, o preço e as estadias anteriores até a ${empresa} incluir o imóvel no envio. Em qualquer caso, ${SO_NO_SITE}.`;
+/** Explica, sem supor, se (e o que) do que o proprietário mudou chega às OTAs, conforme a fonte de preços. */
+export function textoDoEnvio(e: SituacaoEnvio, empresa: string, fonte: FontePrecos = "scl"): string {
+  const extra = fonte === "beds24" ? ` ${maiuscula(PRECO_NO_BEDS24)}.` : "";
+  if (!e.naLista) return `Este imóvel ainda não está na lista de envio ao Beds24 da ${empresa}: o que você mudar aqui vale no site da ${empresa}, mas o Airbnb e o Booking continuam com o calendário e ${oQueFica(fonte)} até a ${empresa} incluir o imóvel no envio. Em qualquer caso, ${SO_NO_SITE}.${extra}`;
   const ultimo = e.ultimo ? ` Último envio: ${quando(e.ultimo.em)} (${NOMES_SITUACAO_ENVIO[e.ultimo.situacao] ?? e.ultimo.situacao}).` : " Ainda não houve envio para este imóvel.";
-  return `${e.automatico ? `O envio ao Beds24 roda todo dia e leva ${VAI_AS_OTAS} ao Airbnb e ao Booking` : `O envio ao Beds24 é feito pela ${empresa}: até ele rodar, o Airbnb e o Booking continuam com o preço e as estadias anteriores`}; ${SO_NO_SITE}.${ultimo}`;
+  return `${e.automatico ? `O envio ao Beds24 roda todo dia e leva ${vaiAsOtas(fonte)} ao Airbnb e ao Booking` : `O envio ao Beds24 é feito pela ${empresa}: até ele rodar, o Airbnb e o Booking continuam com ${oQueFica(fonte)}`}; ${SO_NO_SITE}.${extra}${ultimo}`;
 }
 
 /** Linha da simulação do modelo B (M12.1) para o preço de uma noite. */
@@ -113,7 +121,7 @@ function FormPrecos({ imovel, precos, empresa, salvar }: { imovel: ImovelOperave
       )}
       {estado.ok && (
         <p role="status" className={f.sucesso}>
-          {textoSalvo(imovel.envio.naLista, empresa)}
+          {textoSalvo(imovel.envio.naLista, empresa, imovel.fontePrecos)}
         </p>
       )}
       <div className={f.linha}>
@@ -139,7 +147,11 @@ function FormPrecos({ imovel, precos, empresa, salvar }: { imovel: ImovelOperave
         </label>
       </div>
       <p className={styles.miudo} aria-live="polite">
-        {centavos ? textoDaSimulacao(centavos, precos, empresa) : "Informe o preço da noite para ver o que o hóspede paga e o que você recebe no site."}
+        {precoNoBeds24
+          ? `Com os preços definidos no Beds24, o site da ${empresa} lê o preço de cada noite de lá — a conta do que o hóspede paga e do que você recebe não dá para simular aqui com um preço fixo.`
+          : centavos
+            ? textoDaSimulacao(centavos, precos, empresa)
+            : "Informe o preço da noite para ver o que o hóspede paga e o que você recebe no site."}
       </p>
       <div className={f.linha}>
         <label>
@@ -350,7 +362,7 @@ export function OperacaoMarketplace({ imoveis, precos, limpezas, manutencoes, em
           <p className={styles.olho}>{i.codigo}</p>
           <h3 style={{ margin: "4px 0 8px" }}>{i.nome}</h3>
           <p className={styles.miudo} role="note">
-            {textoDoEnvio(i.envio, empresa)}
+            {textoDoEnvio(i.envio, empresa, i.fontePrecos)}
           </p>
           <FormPrecos imovel={i} precos={precos} empresa={empresa} salvar={salvarPrecos} />
           <Periodos imovelId={i.id} periodos={i.periodos} criar={novoPeriodo} excluir={excluirPeriodo} semPreco={i.fontePrecos === "beds24"} />
