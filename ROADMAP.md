@@ -42,7 +42,7 @@ item muda a linha para `feito` **no próprio PR do item**.
 | M0.5 | Deploy de homologação na Vercel conectado ao Neon (branch de banco `homolog`); migrações aplicadas no build (`vercel-build`, já pronto) | bloqueado | Diego: conectar repo na Vercel e Neon (ver "Ações de Diego") |
 | M0.6 | Referência do sistema antigo: levantar as telas e capacidades do sistema antigo (arquivo que o Diego vai mandar) e cruzar com este ROADMAP, sem copiar dados reais | bloqueado | Diego: mandar o arquivo do sistema antigo |
 | M0.7 | Backup automático do repositório: robô de espelho em conta separada do GitHub (puxa a origem com token só de leitura, nunca apaga nem reescreve, tag datada a cada 3 dias, todas as versões guardadas); documentação de recuperação e passo a passo para o Diego ativar; situação do backup do Neon levantada | feito | M0.1 |
-| M0.8 | CI mais rápido: banco de teste pré-migrado reaproveitado pelos arquivos de teste (mesmos testes, sem migrar 100 vezes) e PR só de documentação não roda a suíte do app | a fazer | M0.3 |
+| M0.8 | CI mais rápido: banco de teste pré-migrado reaproveitado pelos arquivos de teste (mesmos testes, sem migrar 100 vezes) e PR só de documentação não roda a suíte do app | feito | M0.3 |
 
 ### M1 — Acesso e permissões
 

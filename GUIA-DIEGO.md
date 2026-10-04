@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 3/10/2026, backup automático do repositório pronto para você ativar na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
+> **Última atualização:** 3/10/2026, conferência automática de cada PR mais rápida (M0.8); backup automático do repositório pronto para você ativar na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
 
 ---
 
@@ -24,7 +24,7 @@
 
 | Etapa | O que entrega | Situação |
 |---|---|---|
-| M0 Fundação | Base do app, banco de dados, layout, publicação na Vercel, backup | 🟡 Vercel e login funcionando; banco de homologação separado conferido em 3/10; **backup automático do repositório pronto, falta você ativar na conta separada** (M0.7, seção 6, item 23); falta só você dar o M0.5 por fechado e mandar a referência do sistema antigo (M0.6) |
+| M0 Fundação | Base do app, banco de dados, layout, publicação na Vercel, backup | 🟡 Vercel e login funcionando; banco de homologação separado conferido em 3/10; **backup automático do repositório pronto, falta você ativar na conta separada** (M0.7, seção 6, item 23); conferência automática dos PRs mais rápida (M0.8); falta só você dar o M0.5 por fechado e mandar a referência do sistema antigo (M0.6) |
 | M1 Acesso | Login (Google/código por e-mail), convites, permissões | ✅ pronto |
 | M2 Cadastros | Imóveis, proprietários, contratos e aba Anúncios | ✅ implementado; referências dos canais precisam ser preenchidas/conferidas |
 | M3 Reservas | Reservas, calendário central, importação e envio de calendário/preços ao Beds24 | 🟡 importação e envio implementados; o envio começa desligado e espera o seu teste no 103; conferência das reservas parcial |
@@ -37,6 +37,21 @@
 | M10 WhatsApp | Caixa de entrada do WhatsApp no painel | ⚪ aguardando |
 | M11 Produção | Dados reais, domínio, entrada em uso | ⚪ aguardando |
 | M12 Marketplace | Proprietário que opera o próprio imóvel; SCL cuida do online | 🟡 em andamento |
+
+### Conferência automática dos PRs mais rápida — M0.8
+
+Você perguntou em 3/10 se dava para reduzir, com segurança, o tempo da conferência automática
+que roda a cada PR (quase 20 minutos, a maior parte nos testes). Ficou assim:
+
+- **Os testes continuam todos iguais, nenhum foi pulado.** O que mudou é que o banco de dados
+  de teste, que era montado do zero a cada teste (uns 600 bancos por rodada), agora é montado
+  **uma vez** e cada teste parte de uma cópia pronta. Mesmo isolamento, só sem repetir o
+  trabalho. Medido: no GitHub, os testes de cada PR caíram de 20 minutos para menos de 7
+  (a conferência inteira, de 22 para cerca de 8 minutos).
+- **PR que não mexe no app** (só documentação, roadmap, este guia, o robô de backup) não roda
+  lint, testes e build do app, porque nada deles poderia ter mudado. A conferência aparece
+  verde do mesmo jeito. Qualquer mudança dentro de `app/` roda tudo, como antes.
+- Nada muda para você: a revisão de cada PR fica pronta em menos tempo.
 
 ### Backup do repositório — M0.7
 
@@ -1012,6 +1027,7 @@ e escreva normalmente.
 | `CLAUDE.md` | Regras que o Claude segue ao programar | ❌ não |
 | `.github/workflows/` | Configuração dos testes automáticos (CI) | ❌ não |
 | `infra/backup/espelho-github.yml` | O robô de backup (o arquivo que você copia para a conta de backup) | Só na hora de ativar (seção 6, item 23) |
+| `.github/workflows/scl-tests.yml` | A conferência automática que roda em cada PR (lint, tipos, testes, build) | Só se um PR ficar vermelho e você quiser ver o motivo |
 | `requisitos/operations/BACKUP-E-RECUPERACAO.md` | Como o backup funciona, por quê, e como recuperar | Se um dia precisar restaurar |
 
 ---

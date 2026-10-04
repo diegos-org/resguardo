@@ -10,5 +10,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.{ts,tsx}"],
+    // Gera o banco de teste migrado uma vez por rodada (M0.8); cada teste parte desse retrato.
+    globalSetup: ["src/db/testing.setup.ts"],
   },
 });
