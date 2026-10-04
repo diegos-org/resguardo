@@ -91,8 +91,11 @@ repositório principal não sabe que o backup existe.
      pasta) ganha ainda uma ref durável `objetos/<código do objeto>`, gravada uma vez, para o
      objeto exato continuar guardado mesmo que a tag seja reescrita na origem e a cópia
      `espelho/` seja apagada no backup na mesma rodada. Uma ref `objetos/` alterada no backup
-     (o nome deixa de bater com o objeto) é avisada a cada rodada até ser apagada; aí é
-     regravada a partir da origem, se ela ainda tiver o objeto;
+     (o nome deixa de bater com o objeto) é avisada a cada rodada até ser apagada; apagada, é
+     regravada enquanto o objeto ainda estiver na origem ou em alguma cópia que o backup guarda
+     (`espelho/` ou `recusadas/`). Se `objetos/` era o único lugar que ainda apontava para o
+     objeto, o sumiço é avisado uma vez e o objeto fica sem referência (recuperável só enquanto
+     o Git não o limpar);
    - o inventário também anota o objeto esperado de cada ref `espelho/...`. Se alguém alterar
      uma dessas refs no backup (mesmo nome, outro objeto, sem a origem ter mudado), a rodada
      avisa a cada vez até a ref ser apagada (aí é regravada a partir da origem) e salva o
@@ -161,7 +164,7 @@ repositório principal não sabe que o backup existe.
    robô: ele nunca apaga nem reescreve e avisa quando o backup perde algo. A trava cobre a
    mais só o erro manual de quem tem acesso à conta de backup, que é só o Diego.
 
-Testado em 3/10 rodando o script exato do robô contra repositórios locais, noventa e duas rodadas:
+Testado em 3/10 rodando o script exato do robô contra repositórios locais, cem rodadas:
 origem só com `main`; novas branches e tags; origem avança; origem apaga uma branch (o backup
 a mantém e avisa uma vez); nada muda (sem aviso repetido); origem reescreve uma branch e uma
 tag anotada (o backup mantém as versões antigas em `espelho/`, guarda as novas em
@@ -214,7 +217,10 @@ branch principal recusar o push do robô, a rodada grava o retrato mas fica verm
 batimento, e volta ao normal (marcador regravado, verde) quando o push é liberado; com a variável
 `BACKUP_INICIADO` definida, apagar todas as refs **e** o marcador da branch principal ainda é avisado
 como "apagaram tudo" (a variável não é recriável pelo robô), e a rodada seguinte regrava o marcador
-e fica verde; e as tags do backup não voltam para a origem nem se duplicam com o prefixo. O passo de batimento não entrou na simulação (é uma chamada HTTP
+e fica verde; uma ref `objetos/` apagada é regravada na própria rodada a partir das cópias
+`recusadas/` que ainda têm o objeto (sumiço avisado uma vez), e uma `objetos/` que era o único lugar
+do objeto é avisada e não regravada; e as tags do backup não voltam para a origem nem se duplicam
+com o prefixo. O passo de batimento não entrou na simulação (é uma chamada HTTP
 simples a um serviço externo, só com a URL configurada); foi conferido na sintaxe e no caso sem
 URL.
 

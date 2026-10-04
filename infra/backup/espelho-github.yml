@@ -360,12 +360,14 @@ jobs:
           # Pontas de tag que não são commit (tag anotada; tag leve para um arquivo ou uma árvore): cada
           # objeto ganha uma ref durável objetos/<sha>, uma vez, para nunca depender de espelho/ ou
           # recusadas/ (um commit já fica alcançável como pai do retrato; esses objetos não podem ser pais).
+          # Entram as pontas da origem e também as das cópias que este backup guarda (espelho/ e recusadas/):
+          # uma objetos/ apagada é regravada enquanto alguma dessas cópias ainda tiver o objeto.
           objetos_novos=(); objetos_alterados=""
           while read -r sha ref; do
             [ -z "${sha}" ] && continue
             [ "$(git cat-file -t "${sha}")" != "commit" ] || continue
             if ! git rev-parse -q --verify "refs/guardado/objetos/${sha}" >/dev/null 2>&1; then objetos_novos+=("${sha}:refs/tags/objetos/${sha}"); fi
-          done < <(git for-each-ref --format='%(objectname) %(refname)' refs/tags | sort -u -k1,1)
+          done < <(git for-each-ref --format='%(objectname) %(refname)' refs/tags refs/guardado/tags refs/guardado/recusadas | sort -u -k1,1)
           while read -r sha ref; do
             [ -z "${ref}" ] && continue
             if [ "${sha}" != "${ref#refs/guardado/objetos/}" ]; then objetos_alterados="${objetos_alterados}refs/tags/objetos/${ref#refs/guardado/objetos/} (aponta para ${sha})"$'\n'; fi
