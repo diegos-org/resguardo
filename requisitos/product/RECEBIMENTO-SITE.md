@@ -1,10 +1,14 @@
 # Recebimento das reservas do site — comparação (M8.0; decidido em 4/10/2026, ver "Decisão de Diego")
 
-**Situação:** proposta do Claude em 25/09/2026. Em 24/09 Diego decidiu que, no site, **a empresa recebe e
-repassa**; depois perguntou se dava para fazer como o Airbnb (split). Este documento **revê
-aquela decisão** — ela continua valendo até Diego escolher outra coisa. Taxas tiradas de
-fontes públicas em setembro/2026 e **a conferir** na hora de abrir a conta (mudam por plano,
-prazo de recebimento e negociação). A parte de impostos **precisa do contador**.
+**Situação:** proposta do Claude em 25/09/2026; **decidido por Diego em 4/10/2026** (ver "Decisão
+de Diego"): mantém "empresa recebe e repassa", pelo Mercado Pago com o checkout no próprio site; o
+contador confirmou que só a comissão é receita da SCL; o repasse segue a periodicidade escolhida
+pelo proprietário (M4.10). Histórico: em 24/09 Diego decidiu que, no site, a empresa recebe e
+repassa; depois perguntou se dava para fazer como o Airbnb (split), e este documento comparou as
+opções. Taxas tiradas de fontes públicas (setembro e 4/10/2026), **a conferir** na hora de abrir
+a conta (mudam por plano, prazo de recebimento e negociação). Continuam pendentes só as perguntas
+3, 4 e 5 (taxa do pagamento, contestação perdida, política de cancelamento), antes do pagamento de
+verdade.
 
 ## A pergunta
 
