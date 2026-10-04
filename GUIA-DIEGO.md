@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 4/10/2026, **desconto do site e simulação do marketplace prontos (M12.1):** nova aba Configurações → Marketplace e desconto do site, com as taxas de referência e os três pesos editáveis e a simulação Airbnb × Booking × site; o site passa a mostrar valor cheio, desconto e total em toda consulta e cotação (seção 2); recebimento do site decidido (M8.0: empresa recebe e repassa, Mercado Pago; repasse na periodicidade que o proprietário escolher, item novo M4.10), modelo do marketplace decidido (B, partes iguais; M12.1 liberado), marketplace recebendo pela empresa como o site, fonte de preços por imóvel no plano (M3.9), backup do repositório ativado por você (M0.7), publicação de homologação dada por fechada por você (M0.5), pedido do checkout com Pix e cartão registrado (M8.2, com parcelamento pago pelo hóspede) e decisão de não cobrar nada sobre as reservas das OTAs do dono do marketplace; correção do robô de backup depois da sua primeira rodada (ele passa a gravar com uma chave da própria conta de backup e guarda o que vem da origem fora de branches e tags, onde nenhuma automação roda; item 23, passos 4, 5 e 7) e passo a passo mais detalhado (passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório ativo na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
+> **Última atualização:** 4/10/2026, **referência do sistema antigo cruzada com o plano (M0.6):** o museu que você mandou foi percorrido tela a tela e comparado com o que já existe, com uma lista de ideias para você decidir (seção 2 e `arquivo/sistema-antigo`); **desconto do site e simulação do marketplace prontos (M12.1):** nova aba Configurações → Marketplace e desconto do site, com as taxas de referência e os três pesos editáveis e a simulação Airbnb × Booking × site; o site passa a mostrar valor cheio, desconto e total em toda consulta e cotação (seção 2); recebimento do site decidido (M8.0: empresa recebe e repassa, Mercado Pago; repasse na periodicidade que o proprietário escolher, item novo M4.10), modelo do marketplace decidido (B, partes iguais; M12.1 liberado), marketplace recebendo pela empresa como o site, fonte de preços por imóvel no plano (M3.9), backup do repositório ativado por você (M0.7), publicação de homologação dada por fechada por você (M0.5), pedido do checkout com Pix e cartão registrado (M8.2, com parcelamento pago pelo hóspede) e decisão de não cobrar nada sobre as reservas das OTAs do dono do marketplace; correção do robô de backup depois da sua primeira rodada (ele passa a gravar com uma chave da própria conta de backup e guarda o que vem da origem fora de branches e tags, onde nenhuma automação roda; item 23, passos 4, 5 e 7) e passo a passo mais detalhado (passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório ativo na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
 
 ---
 
@@ -24,7 +24,7 @@
 
 | Etapa | O que entrega | Situação |
 |---|---|---|
-| M0 Fundação | Base do app, banco de dados, layout, publicação na Vercel, backup | 🟡 Vercel e login funcionando; banco de homologação separado conferido em 3/10; backup automático do repositório **ativo desde 4/10** em conta separada (M0.7, seção 6, item 23); conferência automática dos PRs mais rápida (M0.8); M0.5 fechado por você em 4/10; falta só mandar a referência do sistema antigo (M0.6) |
+| M0 Fundação | Base do app, banco de dados, layout, publicação na Vercel, backup | 🟡 Vercel e login funcionando; banco de homologação separado conferido em 3/10; backup automático do repositório **ativo desde 4/10** em conta separada (M0.7, seção 6, item 23); conferência automática dos PRs mais rápida (M0.8); M0.5 fechado por você em 4/10; referência do sistema antigo cruzada com o plano em 4/10 (M0.6). **M0 concluído** |
 | M1 Acesso | Login (Google/código por e-mail), convites, permissões | ✅ pronto |
 | M2 Cadastros | Imóveis, proprietários, contratos e aba Anúncios | ✅ implementado; referências dos canais precisam ser preenchidas/conferidas |
 | M3 Reservas | Reservas, calendário central, importação e envio de calendário/preços ao Beds24 | 🟡 importação e envio implementados; o envio começa desligado e espera o seu teste no 103; conferência das reservas parcial; fonte de preços por imóvel (M3.9) a fazer |
@@ -37,6 +37,34 @@
 | M10 WhatsApp | Caixa de entrada do WhatsApp no painel | ⚪ aguardando |
 | M11 Produção | Dados reais, domínio, entrada em uso | ⚪ aguardando |
 | M12 Marketplace | Proprietário que opera o próprio imóvel; SCL cuida do online | 🟡 cadastro pelo site pronto; modelo de cobrança (B, partes iguais) com pesos editáveis, simulação e desconto único do site prontos (M12.1); cálculo e repasse no financeiro (M12.2) dependem do pagamento (M8.2) e do extrato (M4.10) |
+
+### Sistema antigo cruzado com o plano — M0.6 (4/10)
+
+Você mandou o "acervo isolado" do sistema de julho (um arquivo só, dados fictícios, integrações
+desligadas) e eu percorri as 37 telas: painel financeiro, conversas, assistente e "Franco",
+apartamentos, reservas diretas, hóspedes, limpezas, contador, despesas, docs de condomínio,
+dynamic pricing, prospecção, marketing, campanhas, cupons, configurações, reconciliação,
+relatórios, e-mails, importação, integrações, site público, landing para proprietários, portal
+do proprietário e as telas de celular. O inventário completo e a tabela de comparação estão em
+`arquivo/sistema-antigo` (só texto; nenhuma credencial, foto ou dado real foi copiado).
+
+- **Minha leitura:** o sistema de julho era amplo e cheio de intenção, mas boa parte era casca
+  (as próprias telas dizem "entra no próximo PR", "pendente até termos API confiável"). O SCL
+  2.0 é mais estreito e mais fundo: regras de dinheiro testadas, histórico de tudo, permissões,
+  "avisar em vez de supor". Não vale portar código; vale portar ideias.
+- **O que o plano já cobre:** financeiro, despesas, reservas diretas e cotação, portal do
+  proprietário, limpezas e equipe, site com disponibilidade real, portal do hóspede e mensagens
+  automáticas, importação do Beds24, calendário e preços, cadastro marketplace, WhatsApp com
+  revisão humana (M10).
+- **Ideias que não estão no plano, para você decidir** (em ordem de valor, na minha opinião):
+  reconciliação do CSV de ganhos do Airbnb com as reservas e o site; "recusado pelo dono" nas
+  reservas do site para o marketplace; formulário público de cadastro no condomínio para o
+  hóspede; exportação para o contador; recomendador de preço com dados de mercado e preço para
+  "buraco de uma noite" (depois do M3.9); cupons; importação de extrato bancário e fatura;
+  papel "convidado só leitura". Prospecção de anúncios fracos, gerador de posts e campanhas
+  ficaram anotados como ideias de crescimento.
+- **O que não veio:** fotos reais (aparecem como "imagem omitida"), o código de julho e os
+  dados de produção. O site antigo não está mais no ar.
 
 ### Marketplace e desconto do site — M12.1 (4/10)
 
@@ -1279,10 +1307,13 @@ ambiente).
 13. **Manutenção:** quando aparecer "aguardando aprovação" (no menu **Manutenção**), confira o
    orçamento, escolha quem paga (empresa ou proprietário) e aprove, ou recuse com o motivo.
    Só você (administrador) vê esses botões.
-14. **Sistema antigo (referência):** mande o arquivo (zip) do sistema antigo — o jeito mais
-   fácil é subir no seu **Google Drive** e me dizer o nome do arquivo (o Drive já está
-   conectado aqui). Eu só leio para levantar todas as telas e capacidades e comparar com o
-   plano; **nada dele vai para o GitHub**, e dados reais de clientes não são copiados.
+14. **Sistema antigo (referência) — feito em 4/10:** você mandou o museu e eu cruzei com o
+   plano (seção 2). Falta só você dizer **quais das ideias listadas viram item do plano**. Se
+   um dia quiser que eu veja o código de julho ou as fotos reais, os caminhos são liberar o
+   repositório antigo para o Claude no GitHub ou mandar o zip; não é necessário para o plano.
+   O visual novo do site que você me mostrou em capturas (verde e bege, "Um pouco de Rio. Um
+   lugar seu.") não está em lugar nenhum do repositório: quando você reunir as imagens do
+   ChatGPT e do Google Fotos numa pasta, eu guardo em `prototipos/` como referência.
 15. **Site novo:** em **Configurações → Site**, escreva os textos (título, "Sobre", "Como
    reservar", contato, rodapé); em **Configurações → Empresa**, confira o **telefone do
    WhatsApp** da consulta; e, em cada imóvel, marque **público** só nos que devem aparecer e
@@ -1492,6 +1523,8 @@ ambiente).
   Os percentuais das OTAs e do pagamento são aproximados e precisam ser conferidos. A ideia
   é ter uma **tela de simulação** com tudo editável para você testar com números reais antes
   de decidir. Decidido: B, em partes iguais.
+- **Ideias do sistema antigo (M0.6):** diga quais das oito ideias da seção 2 viram item do
+  plano, e em que ordem. Nenhuma entra sem a sua decisão.
 - **Búzios:** fica no sistema interno para controle (combinado). No site público, a decidir.
 - **Avaliações**: só no Airbnb ou também próprias.
 
@@ -1499,8 +1532,9 @@ ambiente).
 - **Telas do sistema antigo:** o **dashboard** inicial com vários indicadores (M4.6) e a aba
   **Apartamentos** com tabela de todos e filtros para escolher como ver (M4.7) já estavam
   no plano — deixei as descrições mais completas. A aba **Anúncios** (M2.9) e as
-  **Configurações com sub-abas** (M1.7) entraram agora. Quando você mandar o zip do sistema
-  antigo, eu cruzo tudo com o plano (M0.6) e acrescento o que faltar.
+  **Configurações com sub-abas** (M1.7) entraram agora. O cruzamento completo foi feito em
+  4/10 com o museu que você mandou (M0.6): a lista do que faltava está na seção 2 e em
+  `arquivo/sistema-antigo`.
 - **Avisar em vez de supor:** virou regra do projeto — faltou um dado ou algo não bate, o
   sistema avisa e deixa pendente; nunca preenche com um palpite.
 - **Beds24 só leitura?** Não — como o SCL vai ser a fonte oficial de calendário e preços (para
