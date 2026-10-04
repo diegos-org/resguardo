@@ -117,6 +117,17 @@ export async function publicarComoFunciona(db: Db, organizacaoId: string, secoes
   });
 }
 
+/**
+ * Versão que o formulário declara como base ao publicar: a que ele mostrava quando foi preenchido. Depois de uma recusa,
+ * a ação devolve os valores enviados (com `versaoBase`), e é essa base — não a publicada agora — que o formulário mantém:
+ * reenviar o texto velho sem recarregar a página é recusado de novo, em vez de passar por cima da versão nova.
+ */
+export function versaoBaseDoFormulario(valores: Record<string, string> | undefined, atual: { numero: number } | null): number {
+  const enviada = valores?.versaoBase;
+  if (enviada !== undefined && /^\d{1,6}$/.test(enviada)) return Number(enviada);
+  return atual?.numero ?? 0;
+}
+
 /** `{empresa}` no texto vira o nome da empresa. */
 export const preencherEmpresa = (texto: string, empresa: string): string => texto.replaceAll("{empresa}", empresa.trim() || "empresa");
 

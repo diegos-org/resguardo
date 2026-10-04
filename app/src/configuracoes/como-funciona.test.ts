@@ -3,7 +3,7 @@ import { historicoDe } from "@/auditoria/auditoria";
 import { organizacoes, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
-import { lerComoFunciona, normalizarSecoes, paragrafos, preencherEmpresa, publicarComoFunciona, RASCUNHO_COMO_FUNCIONA, SECOES_COMO_FUNCIONA, secoesParaMostrar, validarSecoes, versaoAtual, versoesComoFuncionaDe } from "./como-funciona";
+import { lerComoFunciona, normalizarSecoes, paragrafos, preencherEmpresa, publicarComoFunciona, RASCUNHO_COMO_FUNCIONA, SECOES_COMO_FUNCIONA, secoesParaMostrar, validarSecoes, versaoAtual, versaoBaseDoFormulario, versoesComoFuncionaDe } from "./como-funciona";
 
 let db: Db, close: () => Promise<void>, org: string, admin: string;
 
@@ -62,6 +62,17 @@ describe("documento 'Como funciona' para o proprietário (M5.6)", () => {
     // Outra organização não vê nada.
     const [{ id: outra }] = await db.insert(organizacoes).values({ nome: "B" }).returning();
     expect(await lerComoFunciona(db, outra)).toEqual([]);
+  });
+
+  it("versão base do formulário: a publicada agora ao abrir; depois de uma recusa, a que foi enviada (texto velho reenviado sem recarregar é recusado de novo)", () => {
+    expect(versaoBaseDoFormulario(undefined, null)).toBe(0);
+    expect(versaoBaseDoFormulario(undefined, { numero: 2 })).toBe(2);
+    // Formulário aberto na versão 1, recusado porque a 2 saiu no meio: a base continua 1 até recarregar, mesmo com a 2 publicada.
+    expect(versaoBaseDoFormulario({ versaoBase: "1", duvidas: "texto velho" }, { numero: 2 })).toBe(1);
+    expect(versaoBaseDoFormulario({ versaoBase: "0" }, { numero: 1 })).toBe(0);
+    // Valores sem a base (ou inválida): vale a publicada agora.
+    expect(versaoBaseDoFormulario({ duvidas: "x" }, { numero: 3 })).toBe(3);
+    expect(versaoBaseDoFormulario({ versaoBase: "abc" }, { numero: 3 })).toBe(3);
   });
 
   it("texto para mostrar: {empresa} vira o nome, parágrafos por linha em branco, seção vazia não aparece", () => {

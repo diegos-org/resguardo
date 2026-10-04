@@ -65,9 +65,12 @@ export async function publicarComoFuncionaAcao(_a: EstadoForm<Record<string, str
   const base = String(form.get("versaoBase") ?? "");
   if (!/^\d{1,6}$/.test(base)) return { mensagem: "Recarregue a página e tente de novo.", valores: campos(form) };
   const r = await publicarComoFunciona(getDb(), sessao.organizacaoId, v.secoes, sessao.usuarioId, hojeISO(), Number(base));
+  // Recusado (outra pessoa publicou no meio): a página não é revalidada — o texto digitado e a versão base que o formulário
+  // declarava ficam como estavam (os valores devolvidos trazem `versaoBase`), e reenviar sem recarregar é recusado de novo.
+  // Só a recarga explícita troca o texto e a base pela versão nova (4ª rodada do Codex).
+  if (!r.ok) return { mensagem: r.erro, valores: campos(form) };
   revalidatePath("/painel/configuracoes/como-funciona");
   revalidatePath("/portal", "layout");
-  if (!r.ok) return { mensagem: r.erro, valores: campos(form) };
   const data = r.versao.data.split("-").reverse().join("/");
   return { ok: true, aviso: r.mudou ? `Versão ${r.versao.numero} publicada em ${data}. Cada proprietário vai ler e aceitar no portal; quem já tinha aceitado a anterior precisa aceitar de novo.` : `Nada mudou no texto: a versão ${r.versao.numero}, de ${data}, continua valendo.` };
 }
