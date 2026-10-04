@@ -52,6 +52,10 @@ peço na hora.
   e 16), semanalmente (às segundas) ou assim que o dinheiro estiver disponível (dia seguinte ao check-in, com o
   Mercado Pago já tendo liberado). Uma reserva do site só conta como disponível depois do
   check-in e da liberação, para não pagar e depois ter de pedir de volta num cancelamento.
+  Para Booking e reservas diretas, a reserva fica disponível depois do check-in e de o dinheiro
+  ter entrado e sido registrado no financeiro; o que ainda não entrou não é repassado. Se uma
+  reserva começa no último dia do mês e o dono recebe assim que disponível, o repasse do dia 1º
+  paga a reserva inteira junto com o fechamento, numa só transferência.
   Cada repasse manda um e-mail ao proprietário com o comprovante e a lista das reservas (no
   Pix manual, você anexa o comprovante ao marcar pago; sem ele, o e-mail espera e o repasse
   fica com aviso). O sistema de hoje só sabe fechar uma vez por mês; o resto entrou no plano como o item
