@@ -10,7 +10,9 @@
  *   empresa (recebimento da reserva, M4.4/M8.2 ou à mão). Cada caso com o motivo escrito.
  * - **disponível**: check-in já passou (entrada ≤ ontem, no fuso do imóvel) e o dinheiro está com a
  *   empresa; entra no próximo repasse e ainda não compôs nenhum.
- * - **repassado**: já saiu num repasse (fechamento ou antecipado) que está em vigor.
+ * - **repassado**: já saiu num repasse (fechamento ou antecipado) que está em vigor. Se a parte foi
+ *   recalculada depois de um fechamento antigo (migração 0049), o repasse incluiu o valor de então
+ *   (`repasse.valor`) e a `diferenca` entra, ou é descontada, no próximo fechamento mensal pelo acerto.
  */
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { type EstadoLancamento, imoveis, lancamentos, repasseItens, repasses, reservas, type SituacaoRepasse, type TipoRepasse } from "@/db/schema";
@@ -25,7 +27,15 @@ export type QuemRecebeParte = "empresa" | "split" | "a_confirmar";
 export type SituacaoParte = "informacao" | "a_liberar" | "disponivel" | "repassado";
 export const NOMES_SITUACAO_PARTE: Record<SituacaoParte, string> = { informacao: "Paga pelo canal", a_liberar: "A liberar", disponivel: "Disponível", repassado: "Repassada" };
 
-export type RepasseDaParte = { id: string; tipo: TipoRepasse; data: string; situacao: SituacaoRepasse; dataPagamento: string | null };
+export type RepasseDaParte = {
+  id: string;
+  tipo: TipoRepasse;
+  data: string;
+  situacao: SituacaoRepasse;
+  dataPagamento: string | null;
+  /** O que este repasse incluiu desta parte (o item). Igual ao valor da parte, salvo recálculo depois de fechamento antigo. */
+  valor: number;
+};
 
 export type ParteBruta = {
   lancamentoId: string;
@@ -51,18 +61,28 @@ export type ParteBruta = {
   repasse: RepasseDaParte | null;
 };
 
-export type Parte = ParteBruta & { quemRecebe: QuemRecebeParte; situacao: SituacaoParte; motivo: string };
+export type Parte = ParteBruta & {
+  quemRecebe: QuemRecebeParte;
+  situacao: SituacaoParte;
+  motivo: string;
+  /** Repassada: valor atual menos o que o repasse incluiu (recálculo depois do repasse). Positiva entra, negativa é descontada, no próximo fechamento mensal. */
+  diferenca: number;
+};
 
 const dataBr = (d: string) => d.split("-").reverse().join("/");
 
 /** A regra única de disponibilidade (pura). */
 export function classificarParte(p: ParteBruta): Parte {
   const quemRecebe: QuemRecebeParte = p.estado === "pendente" ? "a_confirmar" : p.efeitoSaldo === 0 ? "split" : "empresa";
-  const com = (situacao: SituacaoParte, motivo: string): Parte => ({ ...p, quemRecebe, situacao, motivo });
+  const com = (situacao: SituacaoParte, motivo: string, diferenca = 0): Parte => ({ ...p, quemRecebe, situacao, motivo, diferenca });
   if (p.repasse) {
     const r = p.repasse;
     const pago = r.situacao === "pago" ? ` (pago${r.dataPagamento ? ` em ${dataBr(r.dataPagamento)}` : ""})` : r.situacao === "a_pagar" ? " (a pagar)" : "";
-    return com("repassado", `${r.tipo === "fechamento" ? "No fechamento" : "Repasse"} de ${dataBr(r.data)}${pago}.`);
+    // Parte recalculada depois do repasse (só por fechamento antigo, migração 0049): o repasse incluiu o valor de
+    // então; a diferença não fica escondida — está no acerto do mês e vai para o próximo fechamento mensal.
+    const diferenca = p.valor - r.valor;
+    const recalculo = diferenca === 0 ? "" : ` Recalculada depois: o repasse incluiu ${formatBRL(r.valor)}; ${formatBRL(Math.abs(diferenca))} ${diferenca > 0 ? "a mais entram" : "a menos são descontados"} no próximo fechamento mensal.`;
+    return com("repassado", `${r.tipo === "fechamento" ? "No fechamento" : "Repasse"} de ${dataBr(r.data)}${pago}.${recalculo}`, diferenca);
   }
   if (quemRecebe === "a_confirmar") return com("a_liberar", "Quem recebe o dinheiro desta reserva ainda está a confirmar pela empresa: fica fora de qualquer repasse até definir.");
   if (quemRecebe === "split") return com("informacao", "O canal paga sua parte direto a você: não entra em repasse.");
@@ -79,16 +99,21 @@ export function classificarParte(p: ParteBruta): Parte {
   return com("disponivel", "Disponível para o próximo repasse.");
 }
 
-export type ResumoPartes = { aLiberar: number; disponivel: number; repassadoAPagar: number; repassadoPago: number; informacao: number };
+/** `ajusteNoFechamento`: soma das diferenças de recálculo das partes repassadas (entra, ou é descontada, no próximo fechamento mensal). */
+export type ResumoPartes = { aLiberar: number; disponivel: number; repassadoAPagar: number; repassadoPago: number; informacao: number; ajusteNoFechamento: number };
 
 export function resumirPartes(partes: readonly Parte[]): ResumoPartes {
-  const r: ResumoPartes = { aLiberar: 0, disponivel: 0, repassadoAPagar: 0, repassadoPago: 0, informacao: 0 };
+  const r: ResumoPartes = { aLiberar: 0, disponivel: 0, repassadoAPagar: 0, repassadoPago: 0, informacao: 0, ajusteNoFechamento: 0 };
   for (const p of partes) {
     if (p.situacao === "a_liberar") r.aLiberar += p.valor;
     else if (p.situacao === "disponivel") r.disponivel += p.valor;
     else if (p.situacao === "informacao") r.informacao += p.valor;
-    else if (p.repasse?.situacao === "pago") r.repassadoPago += p.valor;
-    else r.repassadoAPagar += p.valor;
+    else {
+      // Repassado conta o que o repasse incluiu; a diferença do recálculo vai à parte.
+      if (p.repasse?.situacao === "pago") r.repassadoPago += p.valor - p.diferenca;
+      else r.repassadoAPagar += p.valor - p.diferenca;
+      r.ajusteNoFechamento += p.diferenca;
+    }
   }
   return r;
 }
@@ -133,11 +158,11 @@ export async function partesDoProprietario(db: Db, organizacaoId: string, propri
     .orderBy(asc(reservas.checkin), asc(reservas.codigo), asc(lancamentos.competencia));
   if (!linhas.length) return [];
   const itens = await db
-    .select({ lancamentoId: repasseItens.lancamentoId, id: repasses.id, tipo: repasses.tipo, data: repasses.data, situacao: repasses.situacao, dataPagamento: repasses.dataPagamento })
+    .select({ lancamentoId: repasseItens.lancamentoId, id: repasses.id, tipo: repasses.tipo, data: repasses.data, situacao: repasses.situacao, dataPagamento: repasses.dataPagamento, valor: repasseItens.valor })
     .from(repasseItens)
     .innerJoin(repasses, eq(repasses.id, repasseItens.repasseId))
     .where(and(eq(repasseItens.organizacaoId, organizacaoId), inArray(repasseItens.lancamentoId, linhas.map((l) => l.lancamentoId)), isNull(repasseItens.liberadoEm)));
-  const porLancamento = new Map(itens.map((i) => [i.lancamentoId, { id: i.id, tipo: i.tipo, data: i.data, situacao: i.situacao, dataPagamento: i.dataPagamento } satisfies RepasseDaParte]));
+  const porLancamento = new Map(itens.map((i) => [i.lancamentoId, { id: i.id, tipo: i.tipo, data: i.data, situacao: i.situacao, dataPagamento: i.dataPagamento, valor: i.valor } satisfies RepasseDaParte]));
   const recebidos = await recebidoPorReserva(db, organizacaoId, [...new Set(linhas.map((l) => l.reservaId!))]);
   return linhas.map((l) =>
     classificarParte({

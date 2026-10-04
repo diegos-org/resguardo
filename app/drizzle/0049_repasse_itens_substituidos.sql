@@ -5,7 +5,8 @@
 -- fechamento), e o substituto voltaria a contar como "disponível" assim que o recebimento fosse registrado:
 -- pago de novo. Aqui o substituto em vigor ganha o item do fechamento mais antigo que cobriu o original, com
 -- o valor que aquele fechamento incluiu (o do original). A diferença de valor entre os dois já aparece no
--- acerto do mês ("o acerto até este mês mudou em…") e entra no próximo repasse. Lançamento criado depois do
+-- acerto do mês ("o acerto até este mês mudou em…"), entra no próximo fechamento mensal e aparece no extrato do
+-- proprietário ("Recalculada depois: … a mais entram no próximo fechamento mensal"). Lançamento criado depois do
 -- fechamento sem original coberto continua livre (entrada atrasada, como na 0045). Idempotente.
 WITH "cobertos" AS (
   SELECT r."id" AS "repasse_id", r."mes", r."criado_em" AS "fechado_em", o."organizacao_id", o."proprietario_id", o."reserva_id", o."competencia", o."valor"

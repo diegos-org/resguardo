@@ -509,9 +509,12 @@ describe("3ª rodada do Codex: fechamentos antigos sem itens, trava no estorno d
     // Rodar de novo não duplica.
     await db.execute(sql.raw(sqlDaMigracao("0049_repasse_itens_substituidos.sql")));
     expect(await db.select().from(repasseItens)).toHaveLength(1);
-    // Com o item, registrar o recebimento não torna o substituto disponível de novo: repassado, nada a antecipar da reserva base.
+    // Com o item, registrar o recebimento não torna o substituto disponível de novo: repassado pelo valor que o fechamento
+    // incluiu, com a diferença do recálculo explícita (vai ao próximo fechamento mensal pelo acerto); nada a antecipar.
     await receberTudo(db, org, reservaBase, "2026-10-10");
-    expect((await partes("2026-10-12")).find((p) => p.reservaId === reservaBase)).toMatchObject({ situacao: "repassado", repasse: { id: outubro.id, tipo: "fechamento" } });
+    const todas = await partes("2026-10-12");
+    expect(todas.find((p) => p.reservaId === reservaBase)).toMatchObject({ situacao: "repassado", repasse: { id: outubro.id, tipo: "fechamento", valor: 72250 }, diferenca: substituto.valor - 72250, motivo: expect.stringContaining("Recalculada depois") });
+    expect(resumirPartes(todas).ajusteNoFechamento).toBe(substituto.valor - 72250);
     expect(await gerarAntecipado(db, org, dono, "2026-10-12", null)).toMatchObject({ ok: false, erro: expect.stringContaining("Nada disponível") });
   });
 
