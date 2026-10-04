@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 4/10/2026, passo a passo do backup mais detalhado (item 23, passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório pronto para você ativar na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
+> **Última atualização:** 4/10/2026, correção do robô de backup depois da sua primeira rodada (ele passa a gravar com uma chave da própria conta de backup e guarda o que vem da origem fora de branches e tags, onde nenhuma automação roda; item 23, passos 4, 5 e 7) e passo a passo mais detalhado (passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório pronto para você ativar na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
 
 ---
 
@@ -67,14 +67,22 @@ que ficou pronto:
 - **O repositório principal não sabe que o backup existe.** A única ligação é uma "chave só
   de leitura" criada na sua conta principal e guardada dentro do repositório de backup. Se
   invadirem a conta principal, não há nenhum caminho até o backup. Se a chave vazar, ela só
-  permite ler o código e você a cancela em um clique.
+  permite ler o código e você a cancela em um clique. Há uma segunda chave, de **escrita**,
+  mas ela é criada na própria conta de backup, só vale para o repositório de backup e nunca
+  sai de lá: não liga uma conta à outra. Ela existe porque o GitHub não deixa a chave
+  automática dos robôs gravar arquivos de workflow, e o SCL tem um em todas as branches (foi
+  o que travou a sua primeira rodada, em 4/10). Como essa chave faz o GitHub rodar automações
+  que estejam no que o robô grava, nada que vem da origem vira branch ou tag no repositório de
+  backup: fica numa área interna que o site não lista e onde nada roda, e o retrato de cada
+  rodada sai sem a pasta de automações. Assim, mesmo que alguém invada a origem e plante uma
+  automação maliciosa, ela não roda na conta de backup (apontamento do Codex em 4/10).
 - **Aqui no repositório fica só o registro** de que o backup existe, como funciona e por quê
   (`requisitos/operations/BACKUP-E-RECUPERACAO.md`, com o passo de recuperação). Nenhum nome
   de usuário, repositório ou e-mail da conta de backup aparece em lugar nenhum — isso fica só
   com você, no gerenciador de senhas. Avaliei e manter esse registro não abre brecha: saber
   que existe um backup em algum lugar não dá acesso a nada.
-- **O que falta é só você:** criar a conta, o repositório, a chave e colar dois segredos. O
-  passo a passo com os cliques exatos está na seção 6, item 23. Leva uns 15 minutos.
+- **O que falta é só você:** criar a conta, o repositório, as duas chaves e colar três segredos.
+  O passo a passo com os cliques exatos está na seção 6, item 23. Leva uns 20 minutos.
 
 **Atenção, isso protege o código e os documentos, não os dados.** Reservas, proprietários e
 financeiro vivem no banco (Neon), e dados reais nunca podem ir para o GitHub. O backup do banco
@@ -1217,10 +1225,25 @@ ambiente).
       - *Repository access*: **Only select repositories** → `scl-reconstrucao`.
       - *Permissions → Repository permissions → Contents*: **Read-only**. Nada mais.
       - *Generate token* e copie a chave (ela aparece uma vez só).
-   4. **Dois segredos no repositório de backup** (na conta nova): *Settings → Secrets and
-      variables → Actions → New repository secret*:
-      - `ORIGEM_REPO` = `al-life/scl-reconstrucao`
-      - `ORIGEM_TOKEN` = a chave do passo 3.
+   4. **Chave de escrita, na conta nova, e os três segredos.** O robô grava no repositório de
+      backup com uma chave da própria conta nova. A chave automática que o GitHub dá aos robôs
+      não serve: o GitHub não a deixa criar nem atualizar arquivos de workflow
+      (`.github/workflows/`), e o SCL tem um em todas as branches, então toda branch seria
+      recusada (foi exatamente o erro da sua primeira rodada, em 4/10: "Recusas inesperadas no
+      push do espelho"). Essa chave não liga as contas: só vale dentro da conta nova, para o
+      repositório de backup.
+      - **Criar a chave:** logado na **conta nova**, *Settings → Developer settings → Personal
+        access tokens → Fine-grained tokens → Generate new token*. *Token name*: algo como "robô
+        de backup"; *Expiration*: o máximo (1 ano), anote a validade no gerenciador de senhas;
+        *Resource owner*: a própria conta nova; *Repository access*: **Only select
+        repositories** → o repositório de backup; *Permissions → Repository permissions*:
+        **Contents: Read and write** e **Workflows: Read and write**. Nada mais. *Generate
+        token* e copie a chave (aparece uma vez só).
+      - **Os três segredos**, no repositório de backup: *Settings → Secrets and variables →
+        Actions → New repository secret*, um de cada vez, nomes exatamente assim, em maiúsculas:
+        - `ORIGEM_REPO` = `al-life/scl-reconstrucao`
+        - `ORIGEM_TOKEN` = a chave só de leitura do passo 3
+        - `DESTINO_TOKEN` = a chave de escrita criada logo acima.
    5. **O robô.** É este passo que faz o robô aparecer na aba *Actions* do repositório de
       backup: enquanto o arquivo não existir lá, a aba *Actions* só mostra modelos do GitHub
       ("Get started with GitHub Actions"), e não há nada para escolher. Nada é digitado à mão:
@@ -1245,6 +1268,10 @@ ambiente).
       - Conferir: em *Code* deve existir a pasta `.github`, dentro dela `workflows`, dentro dela
         `backup.yml`; e a aba *Actions* passa a listar, à esquerda, "Backup do repositório de
         origem" (o nome vem de dentro do arquivo).
+      - **Se você já tinha copiado o robô antes de 4/10/2026**, atualize-o: no repositório de
+        backup, abra `.github/workflows/backup.yml`, toque no lápis (*Edit this file*), selecione
+        tudo (Ctrl+A), cole o conteúdo novo copiado do repositório principal e confirme em *Commit
+        changes*. A versão nova é a que usa o segredo `DESTINO_TOKEN` do passo 4.
    6. **Proteção extra contra apagar e reescrever** (opcional). **Só existe em repositório
       privado com plano pago do GitHub** (Pro, cerca de US$ 4 por mês, na conta nova). No plano
       Free, **pule este passo**: o robô já nunca apaga nem reescreve e te avisa se o backup
@@ -1257,8 +1284,12 @@ ambiente).
       esquerda, "Backup do repositório de origem" (esse nome só existe depois do passo 5; se
       não aparecer, volte lá) → botão *Run workflow* (à direita, na faixa azul) → botão verde
       *Run workflow*. Em um ou dois minutos deve ficar verde. Confira em *Code* que
-      apareceram as branches `espelho/main` (e as outras) e `backup-marcos`, e, em *Tags*, uma
-      `backup/` com a data de hoje. Na branch principal vai aparecer também um commit do robô
+      apareceu a branch `backup-marcos` e, em *Tags*, uma `backup/` com a data de hoje (abra
+      a tag: são os arquivos do sistema naquele momento, e o texto do commit lista todas as
+      branches e tags da origem com o código de cada uma). As branches e tags copiadas da
+      origem ficam numa área interna que o site do GitHub não lista, de propósito: assim
+      nenhuma automação vinda da origem roda na conta de backup. Na branch principal vai
+      aparecer também um commit do robô
       com um arquivo `.backup/iniciado`: é o marcador de que o backup já existe; não apague.
       **Depois dessa primeira rodada verde**, crie uma variável no repositório de backup:
       *Settings → Secrets and variables → Actions → aba Variables → New repository variable*,
@@ -1266,8 +1297,15 @@ ambiente).
       dia alguém apagar tudo (até o marcador), o robô ainda vai saber que o backup já existia e
       avisar, em vez de recomeçar em silêncio. Se ficar vermelho, abra a rodada e me mande **só o texto da mensagem de erro**
       (ela não contém chave).
-      - Se o erro falar de permissão para escrever, em *Settings → Actions → General → Workflow
-        permissions* escolha *Read and write permissions* e rode de novo.
+      - Se o erro for "Faltam segredos neste repositório", ele lista quais: confira os nomes
+        no passo 4 (maiúsculas, sem espaço).
+      - Se o erro for "Recusas inesperadas no push do espelho" e citar *workflow* ou
+        *permission*, falta o segredo `DESTINO_TOKEN` ou a chave dele está sem **Workflows: Read
+        and write** (passo 4). Também acontece se o `backup.yml` do repositório de backup ainda
+        for a versão anterior a 4/10 (passo 5, último item).
+      - Se o erro for "O push do espelho para este repositório falhou", a chave `DESTINO_TOKEN`
+        não serve para gravar: confira se ela é da conta nova, se inclui o repositório de backup,
+        se tem **Contents: Read and write** e se não venceu.
       - Se o erro falar do marcador `.backup/iniciado`, é a branch principal recusando o commit
         do robô (alguma regra de "só por pull request"): em *Settings → Branches* (ou *Rules*)
         tire essa exigência da branch principal e rode de novo. Até resolver, a rodada fica
@@ -1276,8 +1314,9 @@ ambiente).
       na aba *Actions* (verde). Rodada vermelha gera e-mail para a conta nova e diz exatamente
       o que sumiu, foi reescrito ou foi alterado, e onde (é aviso, não perda), ou que a chave
       venceu. Se a mensagem falar em algo "alterado" ou "movido" no backup, a correção é
-      apagar aquela ref lá; o robô regrava sozinho na rodada seguinte. Antes de a chave
-      vencer, gere outra (passo 3) e troque o segredo `ORIGEM_TOKEN` (passo 4). **Confira
+      apagar aquela ref lá; o robô regrava sozinho na rodada seguinte. Antes de cada chave
+      vencer, gere outra (leitura: passo 3; escrita: passo 4) e troque o segredo
+      correspondente (`ORIGEM_TOKEN` ou `DESTINO_TOKEN`). **Confira
       também a data da última rodada:** se o próprio robô for apagado ou desligado, ele não
       roda e, sem rodar, não avisa nada. O passo 9 cobre isso.
    9. **Batimento (opcional, recomendado, grátis, 5 minutos):** um serviço que espera um sinal

@@ -45,7 +45,9 @@ a comparação parte do que está guardado lá. O robô detecta e avisa o que é
 (ponteiro sem âncora ou movido, tag de marco movida, ref alterada, cópia alterada), não o que
 foi forjado de forma consistente. A defesa é a conta de backup ser só do Diego, com 2FA, senha
 própria e nenhum outro acesso; no plano pago, as rulesets (seção 3, item 4) impedem apagar e
-forçar, inclusive para o robô.
+forçar, inclusive para o robô. A chave de escrita do robô (seção 3, item 2) fica como segredo
+dentro do repositório de backup, só vale para ele e não é legível pela interface: quem a
+obtivesse já teria de ter a conta.
 
 ## 3. Como o espelho funciona
 
@@ -54,18 +56,44 @@ repositório principal não sabe que o backup existe.
 
 1. **Conta separada do GitHub**, com e-mail, senha e 2FA próprios, códigos de recuperação no
    gerenciador de senhas. Nela, um repositório **privado**.
-2. **Token só de leitura** criado na conta principal (fine-grained), restrito ao repositório
-   `scl-reconstrucao`, permissão *Contents: Read-only*, com validade de até 1 ano. É a única
-   ponte entre as contas e fica guardado como segredo dentro do repositório de backup.
+2. **Duas chaves**, guardadas como segredos dentro do repositório de backup:
+   - **Token só de leitura** criado na conta principal (fine-grained), restrito ao repositório
+     `scl-reconstrucao`, permissão *Contents: Read-only*, com validade de até 1 ano
+     (`ORIGEM_TOKEN`). É a única ponte entre as contas.
+   - **Token de escrita** criado na própria conta de backup (fine-grained), restrito ao
+     repositório de backup, permissões *Contents: Read and write* e *Workflows: Read and
+     write*, validade de até 1 ano (`DESTINO_TOKEN`). É com ele que o robô grava. O token
+     automático do GitHub Actions não serve: o GitHub não o deixa criar nem atualizar arquivos em
+     `.github/workflows/`, e todas as branches da origem têm o workflow de testes, então toda
+     branch era recusada (primeira rodada real, 4/10/2026). Esse token não cruza contas: dá ao
+     robô, dentro da conta de backup, só o que a própria conta já tem sobre o próprio
+     repositório. Consequência importante: gravações feitas com ele **disparam os workflows**
+     do repositório de backup (ao contrário do token automático). Por isso nada vindo da origem
+     vira branch ou tag aqui (item 3) e o `backup.yml` não pode ter gatilho de *push*.
 3. **Robô agendado** no repositório de backup (arquivo original em `infra/backup/espelho-github.yml`
    deste repositório; copiado para `.github/workflows/backup.yml` lá). A cada 3 dias, às 03:17
    de Brasília, e quando acionado à mão:
    - baixa **todas** as branches e tags da origem;
-   - grava no repositório de backup sob o prefixo `espelho/` (ex.: `espelho/main`), **sem
-     nunca apagar nem reescrever**: branch apagada na origem continua lá; branch reescrita na
-     origem fica como estava (a versão nova fica guardada na tag datada da rodada);
+   - grava no repositório de backup numa **área interna de refs** (`refs/backup/espelho/heads/<branch>`
+     e `refs/backup/espelho/tags/<tag>`; neste documento, `espelho/...`), que o GitHub não lista
+     como branch nem tag, **sem nunca apagar nem reescrever**: branch apagada na origem continua
+     lá; branch reescrita na origem fica como estava (a versão nova fica guardada na tag datada
+     da rodada). Fora de `refs/tags` o servidor não aplica a regra "tag existente nunca muda",
+     então o robô só envia as tags que o backup ainda não tem; tag conhecida com outro objeto
+     nunca é empurrada por cima;
+   - **nada vindo da origem vira branch ou tag no repositório de backup.** Um workflow
+     (`.github/workflows/`) que esteja numa branch ou tag roda no repositório onde ela é
+     gravada, com acesso aos segredos dele; como o robô grava com uma chave pessoal (item 2),
+     esses disparos aconteceriam, e uma origem invadida poderia plantar um workflow para ler a
+     chave de escrita e apagar ou alterar o backup, justamente o que o backup existe para
+     suportar. Na área interna nenhum workflow dispara. Pelo mesmo motivo as cópias
+     `recusadas/` e `objetos/` também vivem lá (`refs/backup/recusadas/...`,
+     `refs/backup/objetos/...`), e o retrato de cada rodada traz os arquivos da `main` **sem a
+     pasta `.github/workflows`** (o conteúdo completo continua em `espelho/main`, que é pai do
+     retrato). Apontamento do Codex em 4/10/2026, na revisão da correção da chave;
    - cria uma tag `backup/AAAA-MM-DD-HHMM` apontando para um **retrato** da rodada: um commit
-     com os arquivos da `main` daquele momento, que tem como "pais" o retrato anterior,
+     com os arquivos da `main` daquele momento (menos a pasta `.github/workflows`, ver acima),
+     que tem como "pais" o retrato anterior,
      **todas** as pontas da origem (cada branch e cada tag) e as pontas espelhadas que o backup
      guarda (inclusive avanços retomados e branches que a origem apagou ou reescreveu) e, como
      mensagem, o **inventário**:
@@ -134,9 +162,10 @@ repositório principal não sabe que o backup existe.
      guarda, a rodada para antes de gravar qualquer coisa, para não tomar o vazio por base;
    - a validade de um marco ou do ponteiro é lida na mensagem do **commit** apontado (não na de
      uma tag anotada criada por cima), e exige inventário de verdade (ao menos a linha da `main`
-     da origem). **Nomes reservados:** se a origem tiver tags `backup/`, `recusadas/`, `objetos/`
-     ou uma branch `backup-marcos` (nunca existem no SCL), a rodada para antes de gravar e diz
-     para renomear, porque no inventário elas se confundiriam com as refs do próprio backup;
+     da origem). **Nomes reservados:** se a origem tiver tags `backup/` ou uma branch
+     `backup-marcos` (nunca existem no SCL), a rodada para antes de gravar e diz para renomear,
+     porque no inventário elas se confundiriam com os marcos e o ponteiro do próprio backup
+     (as cópias `recusadas/` e `objetos/` vivem fora de `refs/tags` e não se confundem);
    - "backup já existe" fica registrado em **dois lugares**, fora de todas as refs que o robô
      gerencia. (1) Na **primeira rodada** o robô grava um arquivo-marcador (`.backup/iniciado`)
      na branch principal do repositório de backup, num commit único; se o marcador não puder ser
@@ -164,7 +193,7 @@ repositório principal não sabe que o backup existe.
    robô: ele nunca apaga nem reescreve e avisa quando o backup perde algo. A trava cobre a
    mais só o erro manual de quem tem acesso à conta de backup, que é só o Diego.
 
-Testado em 3/10 rodando o script exato do robô contra repositórios locais, cento e uma rodadas:
+Testado em 3/10 e 4/10 rodando o script exato do robô contra repositórios locais, cento e dez rodadas:
 origem só com `main`; novas branches e tags; origem avança; origem apaga uma branch (o backup
 a mantém e avisa uma vez); nada muda (sem aviso repetido); origem reescreve uma branch e uma
 tag anotada (o backup mantém as versões antigas em `espelho/`, guarda as novas em
@@ -199,8 +228,14 @@ ponteiro avança, aviso uma vez); depois de uma reescrita na origem, mover à m�
 branch e da tag para a versão nova da origem é avisado como alteração em toda rodada (não passa
 por retomada), e apagar as refs alteradas as regrava da origem; uma tag `backup/` anotada criada à
 mão com o texto de marco por cima de um commit comum é dada como inválida e não vira base nem quando
-é a mais nova pelo nome e o ponteiro foi apagado; uma tag `recusadas/exemplo` na origem para a
-rodada antes de gravar, e a rodada seguinte, com a tag removida, fica verde; duas tags leves da
+é a mais nova pelo nome e o ponteiro foi apagado; uma tag `backup/falsa` na origem para a rodada
+antes de gravar, e a rodada seguinte, com a tag removida, fica verde (uma tag `recusadas/exemplo`
+é espelhada normalmente, e apagada na origem é avisada uma vez); a origem com uma pasta
+`.github/workflows` (o retrato sai sem ela, `espelho/main` fica completa, e nenhuma ref vinda da
+origem aparece em `refs/heads` ou `refs/tags` do backup); o destino recusando toda branch com a
+mensagem que o GitHub dá a uma chave sem permissão de workflows (rodada vermelha com a dica do
+`DESTINO_TOKEN`, base não avança; recusa removida, verde); a conferência dos três segredos à parte
+(falta um, falta todos, os três presentes, `ORIGEM_REPO` sem barra); duas tags leves da
 origem no mesmo arquivo solto geram uma só ref `objetos/` (sem duplicar o envio); uma branch que
 avançou no espelho numa rodada incompleta e depois foi reescrita na origem fica no backup como
 retomada (a reescrita é avisada e copiada em `recusadas/`), sem aviso de alteração; o sinal de
@@ -233,8 +268,12 @@ URL.
 - **Sem `--mirror`:** um espelho exato copiaria também as exclusões e as reescritas, isto é,
   copiaria o estrago. Aqui só se acrescenta.
 - **Tags datadas:** restaurar "como estava em tal dia" sem depender de nenhuma branch.
-- **Prefixo `espelho/`:** separa o conteúdo copiado do próprio robô (que vive na `main` do
-  repositório de backup) e evita qualquer conflito de nomes.
+- **Área interna `refs/backup/`:** separa o conteúdo copiado do próprio robô (que vive na
+  `main` do repositório de backup), evita conflito de nomes e, principalmente, impede que
+  qualquer workflow vindo da origem rode no repositório de backup (seção 3, item 3). O preço é
+  que essas refs não aparecem no site do GitHub; o que aparece são os retratos (`backup/...`),
+  que listam e alcançam tudo. Um clone as traz com
+  `git fetch <repositório de backup> '+refs/backup/*:refs/backup/*'`.
 
 ## 4. Como recuperar
 
@@ -245,8 +284,8 @@ branch ou tag apontando para ele o quanto antes; a partir dele todos os retratos
 tudo o que eles citam voltam a ficar alcançáveis.
 
 **Ver como estava em uma data:** no repositório de backup, abrir a lista de tags e escolher
-`backup/AAAA-MM-DD-HHMM`: são os arquivos da `main` daquele dia, legíveis ali mesmo, no
-navegador. A mensagem do commit lista as branches e tags que a origem tinha naquele dia, com
+`backup/AAAA-MM-DD-HHMM`: são os arquivos da `main` daquele dia (menos a pasta
+`.github/workflows`, que fica só em `espelho/main`), legíveis ali mesmo, no navegador. A mensagem do commit lista as branches e tags que a origem tinha naquele dia, com
 o commit de cada uma, e todas elas continuam alcançáveis a partir dessa tag. A branch
 `backup-marcos` percorre todos os retratos, do mais novo ao primeiro.
 
@@ -260,7 +299,11 @@ o commit de cada uma, e todas elas continuam alcançáveis a partir dessa tag. A
    As outras branches e tags, se forem necessárias, idem: cada uma tem a sua linha `origem`.
    Não usar `espelho/main` como fonte sem conferir: se a `main` tiver sido reescrita algum dia
    na origem, `espelho/main` ficou de propósito na história antiga (a versão nova está no
-   retrato e em `recusadas/`), e seria a versão errada para recomeçar.
+   retrato e em `recusadas/`), e seria a versão errada para recomeçar. As refs internas não
+   aparecem no site do GitHub, mas um clone as traz com
+   `git fetch <repositório de backup> '+refs/backup/*:refs/backup/*'`; e, como o commit citado
+   na linha `origem` é pai do retrato, `git fetch <repositório de backup> <código>` também
+   funciona.
 3. Reconectar a Vercel ao repositório novo (mesmo projeto; só muda a origem do código) e o
    Codex/Claude Code, se forem continuar.
 4. Criar um token novo só de leitura na conta nova e trocar o segredo no repositório de backup,
@@ -314,15 +357,18 @@ descartar. Fazer isso com o sistema parado, para ninguém gravar no meio.
   recusadas" = a origem continua divergente de uma branch guardada; o backup segue íntegro.
 - **Quando a mensagem falar em ref ALTERADA ou ponteiro movido** (só acontece se alguém com
   acesso à conta de backup mexer à mão): a correção é apagar aquela ref no repositório de
-  backup; na rodada seguinte o robô a regrava a partir da origem (ou recria o ponteiro). Se o
+  backup; na rodada seguinte o robô a regrava a partir da origem (ou recria o ponteiro). As
+  refs internas (`refs/backup/...`) não aparecem no site: apagar uma é, num clone,
+  `git push <repositório de backup> --delete <ref>`. Se o
   ponteiro só tiver **recuado** para um marco antigo, o robô já o avança de novo sozinho. O
   robô nunca força nada por conta própria.
-- **Anual (antes da validade do token):** gerar um token novo só de leitura na conta principal
-  e trocar o segredo `ORIGEM_TOKEN` no repositório de backup. A data de validade fica anotada
-  no gerenciador de senhas junto com o token.
-- **Nunca:** colar o token em chat, e-mail, Git ou tela do sistema; dar ao token qualquer
-  permissão além de leitura do repositório; apontar o robô para uma conta que alguém mais
-  acesse.
+- **Anual (antes da validade de cada token):** gerar um token novo e trocar o segredo
+  correspondente no repositório de backup: leitura (conta principal, `ORIGEM_TOKEN`) e
+  escrita (conta de backup, `DESTINO_TOKEN`). As datas de validade ficam anotadas no
+  gerenciador de senhas junto com os tokens.
+- **Nunca:** colar um token em chat, e-mail, Git ou tela do sistema; dar ao token de leitura
+  qualquer permissão além de leitura do repositório, nem ao de escrita qualquer repositório além
+  do de backup; apontar o robô para uma conta que alguém mais acesse.
 
 ## 7. Histórico
 
@@ -333,3 +379,17 @@ descartar. Fazer isso com o sistema parado, para ninguém gravar no meio.
 - 3/10/2026 (noite) — Diego autoriza ("pode fazer sim") o ajuste do Neon: histórico de 7 dias e
   snapshots diário (14 dias) e semanal (35 dias) na branch `main`. Feito pelo conector do Neon
   e conferido em seguida.
+- 4/10/2026 — Primeira rodada real do robô, feita pelo Diego, fica vermelha: "Recusas
+  inesperadas no push do espelho". Causa: o token automático do GitHub Actions não pode criar
+  nem atualizar arquivos em `.github/workflows/`, e todas as branches da origem têm o workflow
+  de testes. A simulação local não podia pegar isso (Git puro não tem essa regra); o robô se
+  comportou como desenhado (parou antes de avançar a base). Correção: o robô grava com uma chave
+  de escrita da própria conta de backup (`DESTINO_TOKEN`), conferida no início da rodada e com
+  mensagem direcionada quando a recusa cita workflow; simulação da recusa acrescentada.
+- 4/10/2026 — Na revisão dessa correção, o Codex aponta que gravar com chave pessoal faz os
+  workflows das branches espelhadas rodarem no repositório de backup, com acesso aos segredos:
+  uma origem invadida poderia plantar um workflow e alcançar o backup. Redesenho na mesma
+  correção: tudo o que vem da origem passa a ficar numa área interna de refs
+  (`refs/backup/...`), fora de branches e tags, onde nenhum workflow dispara; o retrato sai sem
+  `.github/workflows`; o robô só envia tags que o backup ainda não tem (fora de `refs/tags` o
+  servidor não protege tag existente). Simulação refeita: cento e dez rodadas.
