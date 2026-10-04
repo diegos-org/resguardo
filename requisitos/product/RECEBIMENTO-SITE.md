@@ -76,12 +76,11 @@ regra** a decidir — a comparação abaixo vale igual.
    exige) fica menor, então dá para começar a vender pelo site mais cedo.
    Condição (cumprida em 4/10/2026): o contador confirmou que, com o contrato e as notas
    certas, a SCL tributa só a comissão.
-2. **Deixar o split do Mercado Pago para o marketplace (M12)** — superado em 4/10/2026: Diego
-   decidiu que o marketplace também será "empresa recebe e repassa", sem split —, quando entrarem proprietários
-   que cuidam da própria operação e esperam receber na hora — aí o split compensa o trabalho
-   extra de ligar a conta de cada um. Essa escolha do marketplace é **separada** desta: fica no
-   M12.2 (decidida junto com o modelo do M12.1), então escolher "empresa recebe e repassa"
-   agora não descarta o split depois.
+2. **Marketplace: "empresa recebe e repassa" também, sem split** (decisão de Diego em
+   4/10/2026). Histórico: a recomendação de 24/09 era deixar o split do Mercado Pago para o
+   marketplace, quando entrassem proprietários que cuidam da própria operação e esperam
+   receber na hora; com o extrato e as periodicidades do M4.10 (inclusive "assim que
+   disponível"), esse motivo deixou de existir, e o split fica descartado por ora.
 3. **Stripe Connect só se** um dia houver hóspedes/proprietários de fora do Brasil em volume:
    no Brasil ele é mais caro, o Pix é só por convite e a SCL responde pelos chargebacks do mesmo jeito.
 
