@@ -75,7 +75,13 @@ export async function enviarEmailDoRepasse(db: Db, organizacaoId: string, repass
   // Reenvio pedido enquanto uma tentativa acabou de começar: não abre outra (seria o segundo e-mail); a rotina retoma a atual.
   if (recente && o.reenviar) return "em_andamento";
   if (!correio) return "sem_provedor";
-  const destinos = await destinosDoRepasse(db, organizacaoId, r.proprietarioId);
+  const base = `repasse:${r.id}:email`;
+  const retomada = r.emailSituacao === "incerto" && !o.reenviar && r.emailEm !== null;
+  // A retomada repete a MESMA requisição da tentativa incerta: chave e destinatários guardados nela (`emailPara`).
+  // Recarregar os endereços mudaria o pedido sob a mesma chave — o provedor poderia descartá-lo como repetido
+  // enquanto aqui ficaria "enviado" para um endereço que nunca recebeu. Só uma tentativa nova relê o cadastro.
+  const guardados = retomada ? r.emailPara.split(", ").filter(Boolean) : [];
+  const destinos = guardados.length ? guardados : await destinosDoRepasse(db, organizacaoId, r.proprietarioId);
   if (!destinos.length) return "sem_email";
   // Marca a tentativa antes de chamar o provedor (quem ler vê "incerto" até a confirmação). Uma retomada
   // dentro da janela repete exatamente a chave da tentativa incerta (guardada no repasse: um reenvio
@@ -83,8 +89,6 @@ export async function enviarEmailDoRepasse(db: Db, organizacaoId: string, repass
   // Qualquer outra tentativa depois da primeira (reenvio pedido por pessoa, nova tentativa depois de uma
   // recusa certa) usa chave nova: a guardada já foi consumida ou recusada pelo provedor, e repeti-la
   // seria "enviado" sem e-mail nenhum. A hora da primeira tentativa fica guardada para a janela.
-  const base = `repasse:${r.id}:email`;
-  const retomada = r.emailSituacao === "incerto" && !o.reenviar && r.emailEm !== null;
   const chave = retomada ? r.emailChave || base : o.reenviar || r.emailChave ? `${base}:${agora.getTime()}` : base;
   // Reivindicação atômica: só avança quem encontrar o repasse exatamente como leu (situação, chave e carimbo da
   // última tentativa), e toda reivindicação muda o carimbo — inclusive a retomada, que repete situação e chave.

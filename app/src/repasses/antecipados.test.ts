@@ -329,15 +329,19 @@ describe("periodicidade do proprietário e rotina diária (M4.10)", () => {
     const t0 = new Date("2026-10-12T12:00:00Z");
     expect(await enviarEmailDoRepasse(db, org, id, correio, t0)).toBe("incerto");
     expect((await obterRepasse(db, org, id))!).toMatchObject({ emailSituacao: "incerto", emailEm: t0 });
-    // Logo depois: aguarda; 20 minutos depois, dentro da janela, repete com a mesma chave.
+    // Logo depois: aguarda; 20 minutos depois, dentro da janela, repete com a mesma chave — e os MESMOS destinatários
+    // da tentativa incerta, mesmo que o cadastro tenha mudado no meio (a mesma chave exige a mesma requisição).
     expect(await enviarEmailDoRepasse(db, org, id, correio, new Date(t0.getTime() + 60_000))).toBe("aguardando");
+    await db.update(proprietarios).set({ email: "novo@example.com" }).where(eq(proprietarios.id, dono));
     falhar = null;
     expect(await enviarEmailDoRepasse(db, org, id, correio, new Date(t0.getTime() + 20 * 60_000))).toBe("enviado");
-    expect(enviadas[0].chave).toBe(`repasse:${id}:email`);
-    // Fora da janela: fica incerto até alguém reenviar.
+    expect(enviadas[0]).toMatchObject({ chave: `repasse:${id}:email`, para: "dona@example.com" });
+    expect((await obterRepasse(db, org, id))!.emailPara).toBe("dona@example.com");
+    // Fora da janela: fica incerto até alguém reenviar; o reenvio (tentativa nova) já vai para o endereço atual.
     await db.update((await import("@/db/schema")).repasses).set({ emailSituacao: "incerto", emailEm: new Date(t0.getTime() - 30 * 3_600_000), emailTentativaEm: new Date(t0.getTime() - 30 * 3_600_000) }).where(eq((await import("@/db/schema")).repasses.id, id));
     expect(await enviarEmailDoRepasse(db, org, id, correio, t0)).toBe("incerto");
     expect(await enviarEmailDoRepasse(db, org, id, correio, t0, { reenviar: true })).toBe("enviado");
+    expect(enviadas[1].para).toBe("novo@example.com");
     // Recusa certa: volta a pendente.
     await db.update((await import("@/db/schema")).repasses).set({ emailSituacao: "pendente" }).where(eq((await import("@/db/schema")).repasses.id, id));
     falhar = "recusa";
