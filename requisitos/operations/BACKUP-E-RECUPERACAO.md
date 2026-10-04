@@ -247,32 +247,41 @@ o commit de cada uma, e todas elas continuam alcançáveis a partir dessa tag. A
 
 Quem faz isso precisa saber o endereço do repositório de backup, que está só com o Diego.
 
-## 5. Banco de dados (Neon) — situação e proposta
+## 5. Banco de dados (Neon) — situação e o que foi feito
 
-Conferido em 3/10/2026, só leitura, pelo conector do Neon:
+Conferido em 3/10/2026 pelo conector do Neon e **ajustado na mesma data, à noite, com o "pode
+fazer" de Diego**:
 
-| Item | Hoje | O que o plano permite |
+| Item | Antes (3/10, de manhã) | Agora (3/10, à noite) |
 |---|---|---|
-| Plano | Launch | — |
-| Restauração por ponto no tempo (histórico) | **1 dia** | até 7 dias no Launch |
-| Snapshots (cópias congeladas) | **nenhum**, sem agendamento | agendamento diário/semanal, com retenção configurável |
-| Branches | `main` (produção) e `preview` (testes dos PRs) | — |
+| Plano | Launch | Launch |
+| Restauração por ponto no tempo (histórico) | **1 dia** | **7 dias** (o máximo do plano) |
+| Snapshots (cópias congeladas) da branch `main` | **nenhum**, sem agendamento | **diário** às 3h de Brasília, guardado por **14 dias**; **semanal** (segunda, 4h), guardado por **35 dias** (o máximo) |
+| Branches | `main` (produção) e `preview` (testes dos PRs) | iguais |
 
-Risco de hoje: um erro percebido depois de 24 horas (dado apagado por engano, migração ruim,
-sincronização errada) não tem mais para onde voltar.
+**Onde ficam esses backups:** dentro do próprio Neon, no mesmo projeto e na mesma conta,
+guardados pela Neon separadamente do banco vivo (não ocupam a branch `main`; a Neon cobra o
+espaço como armazenamento). Isso protege contra erro **nos dados** (apagar algo por engano,
+migração ruim, sincronização errada): dá para voltar a qualquer instante dos últimos 7 dias e,
+além disso, a qualquer dia das últimas 2 semanas e a qualquer semana dos últimos 35 dias. **Não**
+protege contra perder a conta do Neon ou contra uma falha da própria Neon; para isso é a cópia
+fora do Neon, item 3 abaixo.
 
-Proposta (a decidir por Diego; mexe no custo de armazenamento, pequeno para o tamanho atual do
-banco, que é de poucos megabytes):
+Risco que ficou coberto: antes, um erro percebido depois de 24 horas não tinha mais para onde
+voltar.
 
-1. **Histórico de 7 dias** na branch `main`.
-2. **Snapshot diário** com retenção de algumas semanas, e um semanal com retenção maior,
-   para ter pontos fixos além dos 7 dias.
+O que ainda falta:
+
+1. ~~Histórico de 7 dias~~ feito em 3/10.
+2. ~~Snapshot diário e semanal~~ feito em 3/10.
 3. Mais adiante (M11.3), uma **cópia fora do Neon**: um despejo cifrado do banco guardado
    num lugar privado (nunca no GitHub). Precisa de uma conta de armazenamento e de uma chave
    de cifra guardada no gerenciador de senhas. Fica para quando houver dados reais em volume.
 
-Essas mudanças são feitas no Neon, não no código; quando Diego autorizar, ficam registradas
-aqui com a data.
+**Como restaurar o banco** (quando precisar): no painel do Neon, projeto `scl-sistema`, branch
+`main` → *Restore*: escolher um instante (até 7 dias atrás) ou um dos snapshots. O Neon cria a
+restauração sem apagar o estado atual (que vira uma branch de segurança); conferir antes de
+descartar. Fazer isso com o sistema parado, para ninguém gravar no meio.
 
 ## 6. Rotina de manutenção (Diego)
 
@@ -300,3 +309,6 @@ aqui com a data.
   separada do GitHub, guardando todas as versões, sem nenhuma referência à conta de backup no
   repositório principal. Pede também avaliação do backup do Neon. Robô, documentação e passo a
   passo entregues no M0.7; ativação pelo Diego.
+- 3/10/2026 (noite) — Diego autoriza ("pode fazer sim") o ajuste do Neon: histórico de 7 dias e
+  snapshots diário (14 dias) e semanal (35 dias) na branch `main`. Feito pelo conector do Neon
+  e conferido em seguida.

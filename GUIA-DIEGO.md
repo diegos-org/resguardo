@@ -1023,7 +1023,7 @@ e escreva normalmente.
 | **GitHub** (`al-life/scl-reconstrucao`) | Guarda o código e o histórico | ✅ conectado; robô de backup pronto (M0.7) | Ativar o backup na conta separada (seção 6, item 23) |
 | **Claude Code** | Programa o sistema; rotina a cada 3h | ✅ ativo | — |
 | **Codex** (revisor automático) | Revisa cada PR | ✅ ativo no repositório | — |
-| **Neon** | Banco de dados (Postgres) | ✅ projeto `scl-sistema` com duas branches: `main` (produção) e `preview` (versões de teste dos PRs); as 41 migrações até o M5.5 aplicadas nas duas, conferido em 3/10 | **Backup:** hoje a restauração por ponto no tempo cobre só 1 dia e não há snapshot (conferido em 3/10). Proposta de 7 dias + snapshot diário na seção 6, item 23b. Cópia fora do Neon e checklist ficam para o M11.3 |
+| **Neon** | Banco de dados (Postgres) | ✅ projeto `scl-sistema` com duas branches: `main` (produção) e `preview` (versões de teste dos PRs); as 41 migrações até o M5.5 aplicadas nas duas, conferido em 3/10 | **Backup:** desde 3/10, 7 dias de histórico e snapshots diário (14 dias) e semanal (35 dias) da `main`, dentro do Neon (seção 6, item 23b). Cópia fora do Neon e checklist ficam para o M11.3 |
 | **Vercel** | Publica o sistema na internet (homologação e depois produção) | ✅ site acessível (27/09); conferido em 3/10 que produção usa a branch `main` do Neon e as previews dos PRs usam a branch `preview` — bancos separados | Variáveis já presentes: banco, login Google, Beds24 (leitura), Resend, agendador. Faltam só as que ligam coisas novas (`BEDS24_ESCRITA`, item 3) |
 | **Beds24** | Channel manager (Airbnb/Booking), reservas, calendário e preços | 🟡 importação feita por Diego (1 e 2/10); envio de calendário/preços pronto e **desligado** | Testar o envio no 103 (simular → `BEDS24_ESCRITA=ligada` com refresh token de inventário → enviar → conferir no Beds24/Airbnb) e só então ligar o automático (seção 6, item 3) |
 | **Mercado Pago** | Pagamentos da reserva direta | ⚪ não conectado | Credenciais de *teste* do provedor escolhido no M8.0 (Mercado Pago, se for a escolha), mais adiante (M8) |
@@ -1242,13 +1242,14 @@ ambiente).
       por aviso ainda manda o sinal; e-mail do serviço quer dizer que o robô não rodou ou não
       conseguiu gravar. O serviço só recebe o sinal, não tem acesso a nada.
 
-23b. **Backup do banco (Neon) — me diga se posso fazer.** Hoje o Neon guarda só **1 dia** de
-   histórico para voltar no tempo e não tem nenhum snapshot. Proposta: aumentar o histórico
-   para **7 dias** (o máximo do plano Launch) e agendar um **snapshot diário**, com retenção de
-   algumas semanas. Custa um pouco de armazenamento a mais (o banco tem poucos megabytes; o
-   acréscimo é pequeno). Nada de código muda; eu faço pelo conector do Neon e registro no
-   documento de backup. Uma cópia **fora** do Neon (despejo cifrado num lugar privado, nunca
-   no GitHub) fica para o M11.3, quando houver volume de dados reais.
+23b. **Backup do banco (Neon) — feito em 3/10, com o seu "pode fazer".** O Neon agora guarda
+   **7 dias** de histórico para voltar no tempo (antes era 1 dia) e tira um **snapshot diário**
+   do banco de produção às 3h (guardado 14 dias) e um **semanal** (guardado 35 dias). Esses
+   backups ficam **dentro do próprio Neon**, na mesma conta e projeto, guardados à parte do banco
+   vivo: protegem contra erro nos dados (apagar algo sem querer, migração ruim), não contra
+   perder a conta do Neon. A cópia **fora** do Neon (despejo cifrado num lugar privado, nunca no
+   GitHub) fica para o M11.3, quando houver volume de dados reais. Nada para você fazer agora;
+   custa um pouco de armazenamento a mais (o banco tem poucos megabytes).
 
 ---
 
