@@ -14,7 +14,7 @@ import { vinculoUnicoParaEnvio } from "@/calendario/envio";
 import { lerRegrasCalendario, type RegrasCalendario } from "@/calendario/regras-config";
 import { type ContratoVigencia, contratoVigente } from "@/contratos/regras";
 import { listarContratos } from "@/contratos/repositorio";
-import { beds24Envios, beds24EnvioNoites, imoveis, imoveisPeriodos, limpezas, proprietarioImoveis, proprietarios, proprietarioUsuarios, reservas } from "@/db/schema";
+import { beds24EnvioImoveis, beds24Envios, imoveis, imoveisPeriodos, limpezas, proprietarioImoveis, proprietarios, proprietarioUsuarios, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { type Detalhes, type ErrosDetalhes, criarPeriodo, entradaDeDetalhes, excluirPeriodo, lerDetalhes, listarPeriodos, salvarDetalhesComLeitura, validarDetalhes } from "@/imoveis/detalhes";
 import type { FontePrecos } from "@/imoveis/fonte-precos";
@@ -94,15 +94,17 @@ async function imovelOperavel(db: Db, sessao: Sessao, imovelId: string, quando: 
   const [im] = await db.select({ id: imoveis.id, codigo: imoveis.codigo, fuso: imoveis.fuso }).from(imoveis).where(and(eq(imoveis.id, imovelId), eq(imoveis.organizacaoId, sessao.organizacaoId)));
   if (!im) return { ok: false, erro: SEM_IMOVEL };
   const dia = typeof quando === "string" ? quando : hojeISO(im.fuso, quando);
+  const posse = (await posseDesde(db, [im.id])).get(im.id) ?? null;
   if (!emMarketplaceEm(await listarContratos(db, sessao.organizacaoId, im.id), dia)) return { ok: false, erro: NAO_MARKETPLACE };
-  return { ok: true, imovel: im, dia, posseDesde: (await posseDesde(db, [im.id])).get(im.id) ?? null };
+  return { ok: true, imovel: im, dia, posseDesde: posse };
 }
 
 /**
  * Reconfere a autorização DENTRO da transação que grava, com a linha do imóvel e o vínculo de posse travados: o que
  * foi lido antes (`imovelOperavel`, a sessão) pode ter mudado no meio — contrato encerrado ou trocado, imóvel
  * transferido para outro dono ou desvinculado no painel. A posse vale a do banco agora, não a da sessão: o usuário
- * precisa representar o proprietário atual do imóvel (ativo, da organização). Toda escrita do portal passa por aqui.
+ * precisa representar o proprietário atual do imóvel (ativo, da organização) e a data do serviço não pode ser de antes
+ * desse vínculo. Toda escrita do portal passa por aqui.
  */
 async function conferirNaTransacao(tx: Db, sessao: Sessao, imovelId: string, dia: string): Promise<string | null> {
   await tx
@@ -111,8 +113,11 @@ async function conferirNaTransacao(tx: Db, sessao: Sessao, imovelId: string, dia
     .where(and(eq(imoveis.id, imovelId), eq(imoveis.organizacaoId, sessao.organizacaoId)))
     .for("update");
   // O vínculo travado é o mesmo que `donoAtual` lê depois: quem grava a manutenção é o dono deste instante.
-  const [vinculo] = await tx.select({ proprietarioId: proprietarioImoveis.proprietarioId }).from(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, imovelId)).for("update");
+  const [vinculo] = await tx.select({ proprietarioId: proprietarioImoveis.proprietarioId, criadoEm: proprietarioImoveis.criadoEm }).from(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, imovelId)).for("update");
   if (!vinculo) return NAO_DONO;
+  // A data do serviço é conferida contra a posse DESTE vínculo (a lida antes pode ser de um vínculo anterior).
+  const posse = hojeISO("America/Sao_Paulo", vinculo.criadoEm);
+  if (dia < posse) return ANTES_DA_POSSE(posse);
   const [meu] = await tx
     .select({ id: proprietarioUsuarios.proprietarioId })
     .from(proprietarioUsuarios)
@@ -142,7 +147,8 @@ export async function situacaoDoEnvio(db: Db, organizacaoId: string, regras: Reg
       and(
         eq(beds24Envios.organizacaoId, organizacaoId),
         eq(beds24Envios.modo, "envio"),
-        exists(db.select({ um: sql`1` }).from(beds24EnvioNoites).where(and(eq(beds24EnvioNoites.envioId, beds24Envios.id), eq(beds24EnvioNoites.imovelId, imovelId)))),
+        // Execução que incluiu o imóvel (mesmo sem noite a mudar): não vale olhar só as noites gravadas.
+        exists(db.select({ um: sql`1` }).from(beds24EnvioImoveis).where(and(eq(beds24EnvioImoveis.envioId, beds24Envios.id), eq(beds24EnvioImoveis.imovelId, imovelId)))),
       ),
     )
     .orderBy(desc(beds24Envios.iniciadoEm))

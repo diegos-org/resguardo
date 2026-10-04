@@ -5,7 +5,7 @@ import { executarCronEnvioBeds24 } from "@/beds24/cron-envio";
 import { Beds24Falso } from "@/beds24/falso";
 import { ErroBeds24, type EscritorBeds24, type LeitorBeds24 } from "@/beds24/tipos";
 import { gravarConfig } from "@/configuracoes/armazem";
-import { beds24Calendario, beds24CalendarioEnviado, beds24EnvioNoites, beds24Envios, bloqueios, idsExternos, imoveis, imoveisDetalhes, organizacoes, reservas } from "@/db/schema";
+import { beds24Calendario, beds24CalendarioEnviado, beds24EnvioNoites, beds24Envios, bloqueios, idsExternos, imoveis, imoveisDetalhes, organizacoes, reservas, beds24EnvioImoveis } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { ultimasExecucoes } from "@/sistema/automacoes";
@@ -108,8 +108,10 @@ describe("envio ao Beds24 (M3.7)", () => {
     expect((await enviar("envio", { imovelIds: [outro] })).mensagem).toContain("não está com envio ligado");
     await salvarRegras(regras({ envio: { imoveis: [im, outro], automatico: false } }));
     expect((await enviar("envio", { imovelIds: [outro] })).mensagem).toContain("sem vínculo Beds24");
-    // Pedir só o 103 ignora o 403 sem vínculo.
-    expect((await enviar("envio", { imovelIds: [im] })).imoveis.map(i => i.codigo)).toEqual(["103"]);
+    // Pedir só o 103 ignora o 403 sem vínculo; a execução registra que incluiu o 103 (mesmo sem noite a mudar).
+    const soCento = await enviar("envio", { imovelIds: [im] });
+    expect(soCento.imoveis.map(i => i.codigo)).toEqual(["103"]);
+    expect((await db.select().from(beds24EnvioImoveis).where(eq(beds24EnvioImoveis.envioId, soCento.envioId!))).map(x => x.imovelId)).toEqual([im]);
     expect((await ultimosEnvios(db, org)).filter(e => e.situacao === "erro")).toHaveLength(3);
   });
 

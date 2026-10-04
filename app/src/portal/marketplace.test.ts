@@ -4,7 +4,7 @@ import { AcessoNegado, type Sessao } from "@/acesso/politica";
 import { historicoDe } from "@/auditoria/auditoria";
 import { REGRAS_CALENDARIO_PADRAO, salvarRegrasCalendario } from "@/calendario/regras-config";
 import { criarContrato, listarContratos } from "@/contratos/repositorio";
-import { beds24Envios, beds24EnvioNoites, idsExternos, imoveis, limpezas, manutencoes, organizacoes, profissionaisLimpeza, proprietarioImoveis, proprietarios, proprietarioUsuarios, reservas, usuarios } from "@/db/schema";
+import { beds24EnvioImoveis, beds24Envios, beds24EnvioNoites, idsExternos, imoveis, limpezas, manutencoes, organizacoes, profissionaisLimpeza, proprietarioImoveis, proprietarios, proprietarioUsuarios, reservas, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { DETALHES_VAZIOS, entradaDeDetalhes, lerDetalhes, listarPeriodos, salvarDetalhes, validarDetalhes } from "@/imoveis/detalhes";
@@ -259,12 +259,17 @@ describe("portal do proprietário marketplace (M12.4)", () => {
     expect((await situacaoDoEnvio(db, org, regras, a, escritaPronta)).vinculado).toBe(true);
     const [sim] = await db.insert(beds24Envios).values({ organizacaoId: org, modo: "simulacao", situacao: "simulacao", iniciadoEm: new Date("2026-10-02T10:00:00Z") }).returning();
     const [real] = await db.insert(beds24Envios).values({ organizacaoId: org, modo: "envio", situacao: "ok", iniciadoEm: new Date("2026-10-01T10:00:00Z") }).returning();
+    await db.insert(beds24EnvioImoveis).values([{ organizacaoId: org, envioId: sim.id, imovelId: a }, { organizacaoId: org, envioId: real.id, imovelId: a }]);
     await db.insert(beds24EnvioNoites).values([
       { organizacaoId: org, envioId: sim.id, imovelId: a, data: "2026-10-10", resultado: "enviado" },
       { organizacaoId: org, envioId: real.id, imovelId: a, data: "2026-10-10", resultado: "confirmado" },
     ]);
     expect(await situacaoDoEnvio(db, org, regras, a, semEnv)).toMatchObject({ naLista: true, vinculado: true, escritaPronta: false, automatico: true, ultimo: { em: new Date("2026-10-01T10:00:00Z"), situacao: "ok" } });
     expect(await situacaoDoEnvio(db, org, regras, b, semEnv)).toMatchObject({ naLista: false, vinculado: false, ultimo: null });
+    // Execução real que incluiu o imóvel sem nenhuma noite a mudar (tudo já igual) também é "último envio".
+    const [igual] = await db.insert(beds24Envios).values({ organizacaoId: org, modo: "envio", situacao: "ok", iniciadoEm: new Date("2026-10-03T10:00:00Z") }).returning();
+    await db.insert(beds24EnvioImoveis).values({ organizacaoId: org, envioId: igual.id, imovelId: a });
+    expect((await situacaoDoEnvio(db, org, regras, a, semEnv)).ultimo).toEqual({ em: new Date("2026-10-03T10:00:00Z"), situacao: "ok" });
   });
 
   it("escrita pronta exige que a credencial Beds24 atenda esta organização: com mais de uma empresa, só a de BEDS24_ORGANIZACAO_ID", async () => {
@@ -304,6 +309,33 @@ describe("portal do proprietário marketplace (M12.4)", () => {
       expect((await db.select().from(limpezas).where(eq(limpezas.id, l.id)))[0].estado).toBe("pedida");
       acabouNoMeio();
       expect(await registrarManutencaoPeloProprietario(db, sessao(), { imovelId: a, titulo: "Pintura", descricao: "", data: "2026-10-01" }, agora)).toEqual({ ok: false, erro: NAO_MARKETPLACE });
+      expect(await db.select().from(manutencoes)).toEqual([]);
+    } finally {
+      vi.mocked(listarContratos).mockImplementation(real);
+    }
+  });
+
+  it("a posse é reconferida dentro da transação: imóvel que passou a outro dono do mesmo usuário no meio não aceita data de antes do vínculo novo", async () => {
+    const real = vi.mocked(listarContratos).getMockImplementation()!;
+    const [{ id: nova }] = await db.insert(proprietarios).values({ organizacaoId: org, nome: "Nova Dona" }).returning();
+    await db.insert(proprietarioUsuarios).values({ proprietarioId: nova, usuarioId: usuario });
+    const [l] = await db.insert(limpezas).values({ organizacaoId: org, imovelId: a, data: "2026-10-02", estado: "pedida" }).returning();
+    // Entre a conferência inicial (posse desde sempre) e a transação, o imóvel passa à nova dona a partir de 3/10.
+    const troca = () =>
+      vi.mocked(listarContratos).mockImplementationOnce(async (...args) => {
+        await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));
+        await db.insert(proprietarioImoveis).values({ proprietarioId: nova, imovelId: a, criadoEm: new Date("2026-10-03T15:00:00Z") });
+        return real(...args);
+      });
+    try {
+      troca();
+      expect(await marcarLimpezaFeitaPeloProprietario(db, sessao([a]), l.id, agora)).toEqual({ ok: false, erro: ANTES_DA_POSSE("2026-10-03") });
+      expect((await db.select().from(limpezas).where(eq(limpezas.id, l.id)))[0].estado).toBe("pedida");
+      // De volta à posse antiga; a manutenção retroativa passa pelo mesmo caminho.
+      await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));
+      await db.insert(proprietarioImoveis).values({ proprietarioId: dona, imovelId: a, criadoEm: desdeSempre });
+      troca();
+      expect(await registrarManutencaoPeloProprietario(db, sessao([a]), { imovelId: a, titulo: "Retroativa", descricao: "", data: "2026-10-02" }, agora)).toEqual({ ok: false, erro: ANTES_DA_POSSE("2026-10-03") });
       expect(await db.select().from(manutencoes)).toEqual([]);
     } finally {
       vi.mocked(listarContratos).mockImplementation(real);

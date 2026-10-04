@@ -1159,6 +1159,14 @@ export const beds24EnvioNoites = pgTable("beds24_envio_noites", {
   detalhe: text("detalhe").notNull().default(""),
 }, t => [index("beds24_envio_noites_envio").on(t.envioId), index("beds24_envio_noites_imovel").on(t.organizacaoId, t.imovelId, t.data)]);
 
+/** Imóveis incluídos em cada execução (mesmo sem noite a enviar): o "último envio" por imóvel lê daqui, não das noites. */
+export const beds24EnvioImoveis = pgTable("beds24_envio_imoveis", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+  envioId: uuid("envio_id").notNull().references(() => beds24Envios.id),
+  imovelId: uuid("imovel_id").notNull().references(() => imoveis.id),
+}, t => [index("beds24_envio_imoveis_imovel").on(t.organizacaoId, t.imovelId), index("beds24_envio_imoveis_envio").on(t.envioId)]);
+
 /** Último valor que o SCL enviou por noite: idempotência e liberação só do que o SCL bloqueou. */
 export const beds24CalendarioEnviado = pgTable("beds24_calendario_enviado", {
   organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),

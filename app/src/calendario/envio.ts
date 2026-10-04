@@ -11,7 +11,7 @@ import { listarMapeamentosBeds24 } from "@/beds24/configuracao";
 import { mensagemSeguraBeds24 } from "@/beds24/sincronizacao";
 import { chaveTravaBeds24, envioEmAndamento, tentarTravaBeds24 } from "@/beds24/trava";
 import { type DiaCalendario, type Divergencia, ErroBeds24, type EscritorBeds24, type LeitorBeds24 } from "@/beds24/tipos";
-import { beds24Calendario, beds24CalendarioEnviado, beds24EnvioNoites, beds24Envios, bloqueios, imoveis, reservas } from "@/db/schema";
+import { beds24Calendario, beds24CalendarioEnviado, beds24EnvioImoveis, beds24EnvioNoites, beds24Envios, bloqueios, imoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { fontesDePrecosDosImoveis, lerDetalhes, listarPeriodos, regrasDeVenda } from "@/imoveis/detalhes";
 import type { FontePrecos } from "@/imoveis/fonte-precos";
@@ -202,6 +202,8 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
       if (pedidos?.some(id => !escolhidos.some(m => m.imovelId === id))) throw new ErroBeds24("Imóvel sem vínculo Beds24 ativo (propriedade e quarto numéricos). Confira em Integrações.", "configuracao");
       if (!escolhidos.length) throw new ErroBeds24("Nenhum imóvel com envio ligado e vínculo Beds24 ativo. Ligue o envio por imóvel em Configurações → Calendário e preços.", "configuracao");
       if (vinculosAmbiguos(escolhidos)) throw new ErroBeds24("Cada imóvel deve estar ligado a um único quarto Beds24. Remova os vínculos duplicados antes de enviar.", "configuracao");
+      // Quais imóveis esta execução incluiu, mesmo que nenhuma noite precise mudar: é o que conta como "último envio" por imóvel.
+      await tx.insert(beds24EnvioImoveis).values(escolhidos.map(m => ({ organizacaoId: org, envioId: exec.id, imovelId: m.imovelId })));
       const fusos = new Map((await tx.select({ id: imoveis.id, fuso: imoveis.fuso }).from(imoveis).where(and(eq(imoveis.organizacaoId, org), inArray(imoveis.id, escolhidos.map(m => m.imovelId))))).map(i => [i.id, i.fuso]));
 
       // Estado enviado de outro quarto (vínculo trocado) não vale para o quarto atual: a posse de um bloqueio
