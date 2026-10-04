@@ -1,10 +1,18 @@
 # Extrato do proprietário e repasses por periodicidade (M4.10)
 
-**Situação:** especificação de implementação escrita pelo Claude em 4/10/2026 a partir do item
-M4.10 do ROADMAP (decisões de Diego de 4/10) e do que já existe no sistema (fechamento mensal
-do M4.9, livro do M4.1, "quem recebe" do M2.7). As escolhas marcadas como *decisão do Claude*
-foram tomadas com a autorização prévia de Diego para seguir sozinho; ele pode mudar qualquer uma
-pelo painel ou pedindo.
+**Situação:** implementado em 4/10/2026 (PR do M4.10) conforme esta especificação, escrita pelo
+Claude a partir do item M4.10 do ROADMAP (decisões de Diego de 4/10) e do que já existia
+(fechamento mensal do M4.9, livro do M4.1, "quem recebe" do M2.7). As escolhas marcadas como
+*decisão do Claude* foram tomadas com a autorização prévia de Diego para seguir sozinho; ele pode
+mudar qualquer uma pelo painel ou pedindo.
+
+**Onde está no código:** `app/src/repasses/` — `periodicidade.ts` (regras puras), `extrato.ts`
+(classificação das partes e leitura), `recebimentos.ts` (recebimento do canal), `repasses.ts`
+(fechamento com disponibilidade, antecipado, itens, comprovante, estorno), `email.ts`,
+`cron.ts` (rotina das 8h), `proprietario.ts` e `regras-config.ts` (escolha e padrão); telas em
+Financeiro → Repasses, Configurações → Repasses, página da reserva, cadastro do proprietário e
+portal. Tabelas novas: `repasse_itens` e `arquivos`; colunas novas em `repasses` e
+`proprietarios` (migração 0044).
 
 ## O que o proprietário vê e escolhe
 
@@ -45,8 +53,12 @@ empresa ainda não recebeu").
 
 - **Antecipado** (programado ou avulso): reúne tudo o que está disponível até o dia anterior e
   ainda não compôs repasse. É um adiantamento vinculado às reservas que o compõem: entra no livro
-  como "repasse" (efeito no acerto) na data do repasse, e o fechamento mensal o desconta
-  naturalmente, porque soma o acerto acumulado.
+  como "repasse" (efeito no acerto), **um lançamento por imóvel e por mês de competência das
+  partes, na competência delas** (*decisão do Claude* na implementação: assim o mês de cada noite
+  fecha zerado e a reserva que atravessa o mês não vira "dívida" no fechamento do primeiro mês;
+  o ROADMAP descrevia o saldo negativo, o efeito final é o mesmo e mais legível). O fechamento
+  mensal o desconta naturalmente, porque soma o acerto acumulado. O antecipado não desconta
+  adiantamentos nem despesas: isso continua no fechamento (decisão de Diego).
 - **Programado:** a rotina diária (8h) gera, para cada proprietário, o repasse do dia quando a
   data bate com a periodicidade efetiva dele (segunda-feira no semanal; dias 1 e 16 no
   quinzenal; todo dia no "assim que disponível"). No **dia 1º** a rotina não gera antecipado: o
@@ -62,7 +74,10 @@ empresa ainda não recebeu").
 - **Vínculo único e idempotente:** cada parte disponível só pode compor um repasse (tabela de
   itens com índice único por lançamento). A rotina e o botão do painel podem rodar no mesmo dia
   sem pagar duas vezes: no máximo um repasse antecipado por proprietário por dia, e o item já
-  usado nunca entra de novo. Estornar um repasse libera os itens dele.
+  usado nunca entra de novo. Estornar um repasse libera os itens dele (só o repasse mais recente
+  do proprietário, de qualquer tipo, para a sequência continuar certa). Ao marcar pago, as partes
+  pagas passam a "realizado" no livro: o recálculo do motor não mexe mais nelas (divergência vira
+  conferência, como no M4.8).
 - **Pagamento:** o sistema gera o repasse "a pagar" na data; o Pix sai pela equipe (manual) e,
   depois, por lote diário automático (API do banco ou do Mercado Pago), com o comprovante vindo do
   provedor.

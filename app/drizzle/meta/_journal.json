@@ -309,6 +309,13 @@
       "when": 1791111172363,
       "tag": "0043_fonte_precos",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1791114259509,
+      "tag": "0044_repasses_periodicidade",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
-import { boolean, date, index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, customType, date, index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type { FontePrecos } from "@/imoveis/fonte-precos";
+import type { PeriodicidadeRepasse } from "@/repasses/periodicidade";
 
 /**
  * Esquema do banco (Drizzle). Novas tabelas entram aqui e geram migração com
@@ -136,6 +137,8 @@ export const proprietarios = pgTable("proprietarios", {
   chavePix: text("chave_pix").notNull().default(""),
   observacoes: text("observacoes").notNull().default(""),
   ativo: boolean("ativo").notNull().default(true),
+  /** M4.10: como quer receber (mensal, quinzenal, semanal, assim que disponível); null = padrão do tipo de contrato (Configurações → Repasses). */
+  periodicidadeRepasse: text("periodicidade_repasse").$type<PeriodicidadeRepasse>(),
   criadoEm: criadoEm(),
   atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -817,11 +820,32 @@ export const ajustes = pgTable(
 
 export const SITUACOES_REPASSE = ["a_pagar", "pago", "estornado"] as const;
 export type SituacaoRepasse = (typeof SITUACOES_REPASSE)[number];
+export const TIPOS_REPASSE = ["fechamento", "antecipado"] as const;
+export type TipoRepasse = (typeof TIPOS_REPASSE)[number];
+export const SITUACOES_EMAIL_REPASSE = ["pendente", "enviado", "incerto"] as const;
+export type SituacaoEmailRepasse = (typeof SITUACOES_EMAIL_REPASSE)[number];
+
+/** Arquivo guardado no banco (M4.10): comprovante do Pix de um repasse. Privado: só o painel e o dono baixam. */
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
+
+export const arquivos = pgTable("arquivos", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+  nome: text("nome").notNull(),
+  /** Tipo do conteúdo (application/pdf, image/png, image/jpeg). */
+  tipo: text("tipo").notNull(),
+  tamanho: integer("tamanho").notNull(),
+  conteudo: bytea("conteudo").notNull(),
+  criadoPor: uuid("criado_por").references(() => usuarios.id),
+  criadoEm: criadoEm(),
+});
 
 /**
- * Repasse mensal ao proprietário (M4.9): o fechamento de um mês. Os valores ficam gravados como
- * foram calculados no fechamento; os lançamentos do livro (tipo "repasse") têm a chave
- * `repasse:<id>:<imóvel>`. Um repasse ativo por proprietário e mês.
+ * Repasse ao proprietário. `fechamento` (M4.9): o fechamento de um mês, por competência, com os
+ * valores gravados como foram calculados; um ativo por proprietário e mês. `antecipado` (M4.10):
+ * repasse programado ou avulso com o que ficou disponível até o dia anterior — um adiantamento
+ * vinculado às reservas que o compõem (`repasse_itens`), descontado pelo fechamento porque entra no
+ * acerto como lançamento "repasse". Os lançamentos do livro têm a chave `repasse:<id>:<imóvel>[:<mês>]`.
  */
 export const repasses = pgTable(
   "repasses",
@@ -829,8 +853,11 @@ export const repasses = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
     proprietarioId: uuid("proprietario_id").notNull().references(() => proprietarios.id),
-    /** Primeiro dia do mês fechado. */
+    tipo: text("tipo").$type<TipoRepasse>().notNull().default("fechamento"),
+    /** Fechamento: primeiro dia do mês fechado. Antecipado: primeiro dia do mês da data do repasse. */
     mes: date("mes", { mode: "string" }).notNull(),
+    /** Data do repasse (fechamento: o dia 1º seguinte ao mês fechado; antecipado: o dia em que foi gerado). */
+    data: date("data", { mode: "string" }).notNull(),
     /** Saldo do acerto no fim do mês, antes do repasse (positivo: a empresa devia). */
     saldo: integer("saldo").notNull(),
     /** Adiantamentos descontados neste repasse. */
@@ -839,16 +866,57 @@ export const repasses = pgTable(
     contestado: integer("contestado").notNull(),
     /** Valor transferido ao proprietário. */
     valor: integer("valor").notNull(),
+    /** M4.10, fechamento: parte da competência que ficou fora (dinheiro ainda não com a empresa); vai para o repasse seguinte. */
+    foraDoFechamento: integer("fora_do_fechamento").notNull().default(0),
+    /** M4.10, fechamento: partes já disponíveis com noites fora do mês fechado, pagas neste repasse como adiantamento vinculado. */
+    antecipado: integer("antecipado").notNull().default(0),
     situacao: text("situacao").$type<SituacaoRepasse>().notNull().default("a_pagar"),
     dataPagamento: date("data_pagamento", { mode: "string" }),
+    /** M4.10: identificador da transação Pix (ou nota) e/ou arquivo do comprovante do banco. */
+    comprovante: text("comprovante").notNull().default(""),
+    comprovanteArquivoId: uuid("comprovante_arquivo_id").references(() => arquivos.id),
+    /** M4.10: e-mail ao proprietário com o comprovante e as reservas (sai uma vez, depois de pago com comprovante). */
+    emailSituacao: text("email_situacao").$type<SituacaoEmailRepasse>().notNull().default("pendente"),
+    emailEm: timestamp("email_em", { withTimezone: true }),
+    emailPara: text("email_para").notNull().default(""),
+    /** Antecipado avulso pedido pelo proprietário no portal (null = programado ou gerado no painel). */
+    pedidoEm: timestamp("pedido_em", { withTimezone: true }),
     motivoEstorno: text("motivo_estorno").notNull().default(""),
     criadoPor: uuid("criado_por").references(() => usuarios.id),
     criadoEm: criadoEm(),
     estornadoEm: timestamp("estornado_em", { withTimezone: true }),
   },
   (t) => [
-    uniqueIndex("repasses_um_por_mes").on(t.proprietarioId, t.mes).where(sql`${t.estornadoEm} is null`),
+    uniqueIndex("repasses_um_por_mes").on(t.proprietarioId, t.mes).where(sql`${t.estornadoEm} is null and ${t.tipo} = 'fechamento'`),
+    uniqueIndex("repasses_um_antecipado_por_dia").on(t.proprietarioId, t.data).where(sql`${t.estornadoEm} is null and ${t.tipo} = 'antecipado'`),
     index("repasses_org_mes").on(t.organizacaoId, t.mes),
+  ],
+);
+
+/**
+ * Parte de reserva que compõe um repasse (M4.10): o lançamento "direito_proprietario" de um mês de
+ * competência, pago (inteiro) por este repasse. Vínculo único enquanto o repasse vale: o mesmo
+ * lançamento nunca compõe dois repasses; estornar o repasse libera os itens (`liberadoEm`).
+ */
+export const repasseItens = pgTable(
+  "repasse_itens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    repasseId: uuid("repasse_id").notNull().references(() => repasses.id),
+    lancamentoId: uuid("lancamento_id").notNull().references(() => lancamentos.id),
+    reservaId: uuid("reserva_id").notNull().references(() => reservas.id),
+    imovelId: uuid("imovel_id").notNull().references(() => imoveis.id),
+    /** Mês de competência da parte ("AAAA-MM-01"). */
+    competencia: date("competencia", { mode: "string" }).notNull(),
+    valor: integer("valor").notNull(),
+    criadoEm: criadoEm(),
+    liberadoEm: timestamp("liberado_em", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("repasse_itens_lancamento_unico").on(t.lancamentoId).where(sql`${t.liberadoEm} is null`),
+    index("repasse_itens_repasse").on(t.repasseId),
+    index("repasse_itens_reserva").on(t.reservaId),
   ],
 );
 
