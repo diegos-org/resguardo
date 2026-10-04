@@ -254,6 +254,19 @@ describe("acerto por fora de antes do início do sistema (M4.11; M4.12: 'de ante
     expect(r4.ok && r4.recusados).toEqual([]);
   });
 
+  it("reserva paga antes do início com noite depois dele em conferência: a marcação recusa o proprietário até resolver (a noite de outubro não pode ser dada como acertada)", async () => {
+    await receberTudo(db, org, atravessa, "2026-09-30");
+    const [, outubroDaQueAtravessa] = await direitos(atravessa);
+    await db.update(lancamentos).set({ estado: "pendente" }).where(eq(lancamentos.id, outubroDaQueAtravessa.id));
+    const r = await marcar();
+    expect(r.ok && r.marcados.map((m) => m.nome)).toEqual(["Outro Dono"]);
+    expect(r.ok && r.recusados).toEqual([{ nome: "Dona Exemplo", motivo: expect.stringContaining("1 lançamento(s) em conferência antes do início") }]);
+    expect((await situacaoAntesDoInicio(db, org, INICIO, agora)).find((s) => s.proprietarioId === dono)?.bloqueios).toEqual([expect.stringContaining("em conferência")]);
+    await db.update(lancamentos).set({ estado: "previsto" }).where(eq(lancamentos.id, outubroDaQueAtravessa.id));
+    expect(await marcadoDe()).toMatchObject({ partes: 3, valor: 144500 });
+    expect(await saldo("2026-11-01")).toBe(72250);
+  });
+
   it("estornar o repasse por fora devolve as partes ao extrato e o acerto de antes volta; marcar de novo refaz", async () => {
     const { set } = await partesDaQueAtravessa();
     await receberTudo(db, org, atravessa, "2026-09-30");

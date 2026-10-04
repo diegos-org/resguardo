@@ -92,11 +92,13 @@ async function levantar(db: Db, org: string, donoId: string, inicio: string, ago
   // marca por cima — a equipe estorna o acerto por fora e marca de novo.
   const desalinhadas = [...new Map(todas.filter((p) => p.repasse?.tipo === "por_fora" && lados.get(p.reservaId)?.lado !== "antes").map((p) => [p.reservaId, p.codigoReserva])).values()];
   if (desalinhadas.length) bloqueios.push(`${desalinhadas.length} reserva(s) marcada(s) como acertada(s) por fora cuja data de pagamento agora é a partir do início do sistema, ou desconhecida (${desalinhadas.join(", ")}): estorne o acerto por fora dela(s) em Financeiro → Repasses e marque de novo.`);
+  // Em conferência no livro de antes (M4.12: inclui a parte de mês a partir do início de reserva paga antes dele — uma
+  // reserva cancelada ou divergente depois de paga não pode ser dada como acertada): recusa até resolver.
   const emVigor = [isNull(lancamentos.estornoDe), sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`];
   const [conferencia] = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(lancamentos)
-    .where(and(eq(lancamentos.organizacaoId, org), lancamentoEmConferencia(), lt(lancamentos.competencia, inicio), or(eq(lancamentos.proprietarioId, donoId), dosImoveisDele(lancamentos.imovelId, donoId)), ...emVigor));
+    .where(and(eq(lancamentos.organizacaoId, org), lancamentoEmConferencia(), livroDeAntes(inicio, lados), or(eq(lancamentos.proprietarioId, donoId), dosImoveisDele(lancamentos.imovelId, donoId)), ...emVigor));
   if (conferencia?.n) bloqueios.push(`${conferencia.n} lançamento(s) em conferência antes do início (quem recebe a confirmar, ajuste a esclarecer ou reserva que deixou de estar confirmada): resolva antes.`);
   const [abertos] = await db
     .select({ n: sql<number>`count(*)::int` })
