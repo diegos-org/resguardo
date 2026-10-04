@@ -28,7 +28,7 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
   const hojeMinimo = hojeMaisCedo(imovel ? [imovel, ...todos] : todos);
   const previa = enviado ? montarConsulta(pedido, imovel, hoje) : null;
   const disponibilidade = previa?.ok ? await consultarDisponibilidade(db, conteudo.organizacaoId, pedido) : null;
-  const r = enviado ? montarConsulta(pedido, imovel, hoje, disponibilidade && { situacao: disponibilidade.situacao, noites: disponibilidade.noites, total: disponibilidade.cotacao?.total ?? null }) : null;
+  const r = enviado ? montarConsulta(pedido, imovel, hoje, disponibilidade && { situacao: disponibilidade.situacao, noites: disponibilidade.noites, total: disponibilidade.cotacao?.total ?? null, desconto: disponibilidade.cotacao?.desconto ?? 0 }) : null;
   // Se a disponibilidade recusar o pedido, a mensagem não é oferecida: vale a conferência mais estrita.
   const prontoParaEnviar = r?.ok === true && disponibilidade?.situacao !== "invalida";
   return (

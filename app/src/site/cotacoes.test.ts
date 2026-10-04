@@ -5,6 +5,7 @@ import { gravarConfig } from "@/configuracoes/armazem";
 import { beds24Calendario, bloqueios, cotacoes, idsExternos, imoveis, imoveisDetalhes, lancamentos, organizacoes, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
+import { PRECOS_MARKETPLACE_PADRAO } from "@/marketplace/precos";
 import { cancelarReserva, confirmarReserva } from "@/reservas/repositorio";
 import { codigoCotacaoValido, criarCotacao, expirarHoldsVencidos, MAXIMO_COTACOES_ABERTAS_POR_IMOVEL, MAXIMO_HOLDS_POR_IMOVEL, motivoDaMudanca, segurarDatas, textoDaCotacao, validarContato, verCotacao } from "./cotacoes";
 import { consultarDisponibilidade } from "./disponibilidade";
@@ -39,13 +40,13 @@ describe("cotação do site (M8.1)", () => {
     const r = await criarCotacao(db, org, pedido(), agora);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.cotacao).toMatchObject({ estado: "aberta", situacao: "disponivel", noites: 3, hospedes: 4, diarias: 135000, limpeza: 25000, hospedeExtra: 30000, total: 190000, checkin: "2026-10-12", checkout: "2026-10-15", reservaId: null, holdAte: null });
+    expect(r.cotacao).toMatchObject({ estado: "aberta", situacao: "disponivel", noites: 3, hospedes: 4, diarias: 135000, limpeza: 25000, hospedeExtra: 30000, valorCheio: 190000, desconto: 7600, total: 182400, checkin: "2026-10-12", checkout: "2026-10-15", reservaId: null, holdAte: null });
     expect(codigoCotacaoValido(r.cotacao.codigo)).toBe(true);
     expect(r.cotacao.leituraEm?.toISOString()).toBe("2026-10-01T09:15:00.000Z");
     const v = await verCotacao(db, org, r.cotacao.codigo, agora);
     expect(v).toMatchObject({ estado: "aberta", mudou: false, reserva: null, cotacao: { imovelCodigo: "403", imovelNome: "Studio Exemplo", fuso: "America/Sao_Paulo" } });
     expect(v?.atual?.situacao).toBe("disponivel");
-    expect(textoDaCotacao(v!)).toContain("R$ 1.900,00 por 3 noites");
+    expect(textoDaCotacao(v!)).toContain("R$ 1.824,00 por 3 noites (valor cheio R$ 1.900,00, já com o desconto do site de R$ 76,00).");
     // Sem leitura do Beds24 nas datas: "a confirmar", mas com valor — pode ser cotada.
     const ac = await criarCotacao(db, org, pedido({ entrada: "2026-12-10", saida: "2026-12-12" }), agora);
     expect(ac.ok && ac.cotacao.situacao).toBe("a_confirmar");
@@ -69,15 +70,15 @@ describe("cotação do site (M8.1)", () => {
     // Teto: muitas cotações abertas nas últimas 24 h → recusa com aviso (as já abertas continuam valendo).
     await db.insert(cotacoes).values(
       Array.from({ length: MAXIMO_COTACOES_ABERTAS_POR_IMOVEL }, (_, i) => ({
-        organizacaoId: org, imovelId: im, codigo: `COT-TESTE${String(i).padStart(3, "0")}`, estado: "aberta", checkin: "2026-11-01", checkout: "2026-11-02", hospedes: 1, noites: 1, situacao: "disponivel", diarias: 1, limpeza: 0, hospedeExtra: 0, total: 1, criadaEm: agora, atualizadaEm: agora,
+        organizacaoId: org, imovelId: im, codigo: `COT-TESTE${String(i).padStart(3, "0")}`, estado: "aberta", checkin: "2026-11-01", checkout: "2026-11-02", hospedes: 1, noites: 1, situacao: "disponivel", diarias: 1, limpeza: 0, hospedeExtra: 0, valorCheio: 1, total: 1, criadaEm: agora, atualizadaEm: agora,
       })),
     );
     expect(await criarCotacao(db, org, pedido({ hospedes: "3" }), agora)).toMatchObject({ ok: false, erro: expect.stringContaining("muitas consultas") });
     expect((await criarCotacao(db, org, pedido(), agora))).toMatchObject({ ok: true, cotacao: { id: a.id } }); // a repetida ainda é reaproveitada
     // Limpeza da rotina: aberta/desatualizada sem pedido com mais de 30 dias somem; recentes e com pedido ficam.
     await db.insert(cotacoes).values([
-      { organizacaoId: org, imovelId: im, codigo: "COT-VELHA001", estado: "aberta", checkin: "2026-11-01", checkout: "2026-11-02", hospedes: 1, noites: 1, situacao: "disponivel", diarias: 1, limpeza: 0, hospedeExtra: 0, total: 1, criadaEm: new Date(agora.getTime() - 40 * 86_400_000), atualizadaEm: agora },
-      { organizacaoId: org, imovelId: im, codigo: "COT-VELHA002", estado: "desatualizada", checkin: "2026-11-01", checkout: "2026-11-02", hospedes: 1, noites: 1, situacao: "disponivel", diarias: 1, limpeza: 0, hospedeExtra: 0, total: 1, criadaEm: new Date(agora.getTime() - 40 * 86_400_000), atualizadaEm: agora },
+      { organizacaoId: org, imovelId: im, codigo: "COT-VELHA001", estado: "aberta", checkin: "2026-11-01", checkout: "2026-11-02", hospedes: 1, noites: 1, situacao: "disponivel", diarias: 1, limpeza: 0, hospedeExtra: 0, valorCheio: 1, total: 1, criadaEm: new Date(agora.getTime() - 40 * 86_400_000), atualizadaEm: agora },
+      { organizacaoId: org, imovelId: im, codigo: "COT-VELHA002", estado: "desatualizada", checkin: "2026-11-01", checkout: "2026-11-02", hospedes: 1, noites: 1, situacao: "disponivel", diarias: 1, limpeza: 0, hospedeExtra: 0, valorCheio: 1, total: 1, criadaEm: new Date(agora.getTime() - 40 * 86_400_000), atualizadaEm: agora },
     ]);
     expect(await expirarHoldsVencidos(db, org, agora)).toEqual({ expiradas: 0, convertidas: 0, canceladas: 0, removidas: 2 });
     expect(await db.select().from(cotacoes).where(eq(cotacoes.organizacaoId, org))).toHaveLength(2 + MAXIMO_COTACOES_ABERTAS_POR_IMOVEL);
@@ -95,7 +96,7 @@ describe("cotação do site (M8.1)", () => {
     // Falta uma vaga para o teto: três consultas distintas ao mesmo tempo → só uma entra.
     await db.insert(cotacoes).values(
       Array.from({ length: MAXIMO_COTACOES_ABERTAS_POR_IMOVEL - 3 }, (_, i) => ({
-        organizacaoId: org, imovelId: im, codigo: `COT-SIMUL${String(i).padStart(3, "0")}`, estado: "aberta", checkin: "2026-11-01", checkout: "2026-11-02", hospedes: 1, noites: 1, situacao: "disponivel", diarias: 1, limpeza: 0, hospedeExtra: 0, total: 1, criadaEm: agora, atualizadaEm: agora,
+        organizacaoId: org, imovelId: im, codigo: `COT-SIMUL${String(i).padStart(3, "0")}`, estado: "aberta", checkin: "2026-11-01", checkout: "2026-11-02", hospedes: 1, noites: 1, situacao: "disponivel", diarias: 1, limpeza: 0, hospedeExtra: 0, valorCheio: 1, total: 1, criadaEm: agora, atualizadaEm: agora,
       })),
     );
     const r = await Promise.all([criarCotacao(db, org, pedido({ hospedes: "1" }), agora), criarCotacao(db, org, pedido({ hospedes: "2" }), agora), criarCotacao(db, org, pedido({ hospedes: "3" }), agora)]);
@@ -113,8 +114,9 @@ describe("cotação do site (M8.1)", () => {
     expect(h.holdAte.toISOString()).toBe(depois(30).toISOString());
     expect(h.reservaCodigo).toMatch(/^SCL-/);
     const [r] = await minhasReservas();
-    expect(r).toMatchObject({ estado: "pedido", origem: "site", fonte: "site", idFonte: c1.id, checkin: "2026-10-12", checkout: "2026-10-15", hospedes: 4, hospedeNome: "Visitante Fictício", hospedeEmail: "visitante@example.com", hospedeTelefone: "(21) 99999-0000", valorBruto: 190000, taxaCanal: null, codigoCanal: c1.codigo });
+    expect(r).toMatchObject({ estado: "pedido", origem: "site", fonte: "site", idFonte: c1.id, checkin: "2026-10-12", checkout: "2026-10-15", hospedes: 4, hospedeNome: "Visitante Fictício", hospedeEmail: "visitante@example.com", hospedeTelefone: "(21) 99999-0000", valorBruto: 182400, taxaCanal: null, codigoCanal: c1.codigo });
     expect(r.observacoes).toContain(c1.codigo);
+    expect(r.observacoes).toContain("valor cheio R$ 1.900,00, desconto do site R$ 76,00");
     // Pedido não entra no financeiro.
     expect(await db.select().from(lancamentos).where(eq(lancamentos.organizacaoId, org))).toEqual([]);
     // As noites ficam ocupadas para o site…
@@ -198,7 +200,7 @@ describe("cotação do site (M8.1)", () => {
     const v = await verCotacao(db, org, c.codigo, agora);
     expect(v).toMatchObject({ estado: "aberta", mudou: true });
     expect(v?.atual?.situacao).toBe("a_confirmar");
-    expect(v?.atual?.cotacao?.total).toBe(190000);
+    expect(v?.atual?.cotacao?.total).toBe(182400);
     expect(motivoDaMudanca(c, v!.atual!)).toContain("precisa ser confirmada pela equipe");
     expect(await segurarDatas(db, org, c.codigo, contato(), agora)).toMatchObject({ ok: false, erro: expect.stringContaining("precisa ser confirmada pela equipe"), estado: "desatualizada" });
     expect(await minhasReservas()).toEqual([]);
@@ -214,6 +216,23 @@ describe("cotação do site (M8.1)", () => {
     if (!h3.ok) throw new Error(h3.erro);
     expect(await segurarDatas(db, org, c3.codigo, contato(), depois(31))).toMatchObject({ ok: false, erro: expect.stringContaining("tempo desta cotação acabou"), estado: "expirada" });
     expect((await db.select().from(cotacoes).where(eq(cotacoes.id, c3.id)))[0].estado).toBe("segurada");
+  });
+
+  it("mudar a regra do desconto do site depois da cotação: a cotação guarda o que mostrou, a página avisa que o valor mudou e segurar recusa", async () => {
+    const c = await cotar();
+    expect(c).toMatchObject({ valorCheio: 190000, desconto: 7600, total: 182400 });
+    // Diego tira a margem (taxa do pagamento = taxa da OTA): o site passa a mostrar o valor cheio.
+    await db.transaction((tx) => gravarConfig(tx, org, "marketplace_precos", { ...PRECOS_MARKETPLACE_PADRAO, taxaPagamentoBp: 1600 }, null));
+    const v = await verCotacao(db, org, c.codigo, agora);
+    expect(v).toMatchObject({ estado: "aberta", mudou: true, atual: { cotacao: { valorCheio: 190000, desconto: 0, total: 190000 } } });
+    expect(motivoDaMudanca(c, v!.atual!)).toContain("O valor mudou desde esta cotação");
+    expect(await segurarDatas(db, org, c.codigo, contato(), agora)).toMatchObject({ ok: false, erro: expect.stringContaining("O valor mudou"), estado: "desatualizada" });
+    // A cotação gravada não é reescrita: continua com o valor cheio e o desconto que o visitante viu.
+    expect((await db.select().from(cotacoes).where(eq(cotacoes.id, c.id)))[0]).toMatchObject({ estado: "desatualizada", valorCheio: 190000, desconto: 7600, total: 182400 });
+    // Uma consulta nova cota pelo valor cheio e é outra cotação.
+    const nova = await cotar();
+    expect(nova.id).not.toBe(c.id);
+    expect(nova).toMatchObject({ valorCheio: 190000, desconto: 0, total: 190000 });
   });
 
   it("a equipe não confirma um pedido do site vencido antes da rotina: ele vence na hora e as datas voltam", async () => {

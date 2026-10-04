@@ -87,7 +87,7 @@ export function Contratos({ imovelId, lista, hoje, criar, encerrar, bloqueioPort
                 return (
                   <tr key={c.id}>
                     <td>{NOMES_TIPO[c.tipo]}</td>
-                    <td>{c.comissaoBp === null ? "fórmula a definir" : `${bpParaTexto(c.comissaoBp)} / ${bpParaTexto(10000 - c.comissaoBp)}`}</td>
+                    <td>{c.comissaoBp === null ? "modelo B (Configurações → Marketplace)" : `${bpParaTexto(c.comissaoBp)} / ${bpParaTexto(10000 - c.comissaoBp)}`}</td>
                     <td>
                       {dataBr(c.inicio)} → {c.fim ? dataBr(c.fim) : "sem fim"}
                     </td>

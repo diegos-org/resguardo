@@ -41,6 +41,14 @@ export function Disponibilidade({ resultado, entrada, saida, fuso }: { resultado
               <dd>{brl(r.cotacao.hospedeExtra)}</dd>
             </>
           )}
+          {r.cotacao.desconto > 0 && r.cotacao.valorCheio !== null && (
+            <>
+              <dt>Valor cheio</dt>
+              <dd>{brl(r.cotacao.valorCheio)}</dd>
+              <dt>Desconto do site</dt>
+              <dd>− {brl(r.cotacao.desconto)}</dd>
+            </>
+          )}
           <dt>
             <strong>Total</strong>
           </dt>

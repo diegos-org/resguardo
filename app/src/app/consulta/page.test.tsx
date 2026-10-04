@@ -13,7 +13,7 @@ beforeEach(() => {
   m.site.mockResolvedValue({ db: {}, conteudo });
   m.imoveis.mockResolvedValue([imovel]);
   m.imovel.mockResolvedValue(imovel);
-  m.disponibilidade.mockResolvedValue({ situacao: "disponivel", motivos: [], noites: 3, cotacao: { diarias: 135000, limpeza: 25000, hospedeExtra: 0, total: 160000 }, leituraEm: new Date("2026-10-01T09:15:00Z") });
+  m.disponibilidade.mockResolvedValue({ situacao: "disponivel", motivos: [], noites: 3, cotacao: { diarias: 135000, limpeza: 25000, hospedeExtra: 0, valorCheio: 160000, desconto: 6400, total: 153600 }, leituraEm: new Date("2026-10-01T09:15:00Z") });
 });
 const html = async (params: Record<string, string> = {}) => renderToStaticMarkup(await Page({ params: Promise.resolve({}), searchParams: Promise.resolve(params) }));
 
@@ -28,8 +28,10 @@ it("pedido válido mostra disponibilidade, valor por partes e a mensagem com o v
   expect(h).toContain("Disponível");
   expect(h).toContain("agenda conferida em 01/10/2026, 06:15");
   expect(h).toContain("R$ 1.350,00");
-  expect(h).toContain("R$ 1.600,00");
-  expect(h).toContain("O site mostrou R$ 1.600,00 para 3 noites.");
+  expect(h).toContain("R$ 1.600,00"); // valor cheio
+  expect(h).toContain("R$ 64,00"); // desconto do site
+  expect(h).toContain("R$ 1.536,00");
+  expect(h).toContain("O site mostrou R$ 1.536,00 para 3 noites (já com o desconto do site de R$ 64,00).");
   expect(h).toContain("wa.me/5521900000000");
   expect(h).toContain("Nenhuma data fica reservada pela consulta.");
 });

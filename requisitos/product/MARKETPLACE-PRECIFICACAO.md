@@ -1,7 +1,37 @@
-# Marketplace — proposta de precificação (para Diego decidir)
+# Marketplace — precificação (decidido por Diego em 4/10/2026: modelo B, partes iguais)
 
-**Situação:** proposta do Claude em 24/09/2026. Nada disto é decisão ainda. As fórmulas
-antigas do Diego não foram encontradas no repositório nem no histórico.
+**Situação:** proposta do Claude em 24/09/2026; **decisão de Diego em 4/10/2026: modelo B, em
+partes iguais** (a margem, taxa do Airbnb menos a taxa do pagamento, dividida igualmente entre
+desconto ao hóspede, ganho do proprietário e SCL), com os três pesos e as taxas de referência
+editáveis no painel e a tela de simulação (item M12.1 do ROADMAP, **entregue em 4/10/2026** —
+ver "Como está implementado", abaixo). Diego pode ajustar pesos e taxas a qualquer momento no
+painel. As fórmulas antigas do Diego não foram encontradas no repositório nem no histórico.
+
+## Como está implementado (M12.1, 4/10/2026)
+
+- **Onde se edita:** Painel → Configurações → **Marketplace e desconto do site** (permissão
+  `configuracao:editar`). Taxas de referência em percentual (Airbnb só do anfitrião, Booking só
+  para comparação, pagamento no site) e pesos inteiros (hóspede / proprietário / SCL). Gravado
+  na configuração da organização (chave `marketplace_precos`), com auditoria. Padrão: 16% /
+  15% / 4% e 1/1/1.
+- **A conta (centavos inteiros, `app/src/marketplace/precos.ts`):** para o valor cheio P
+  (diárias + limpeza + hóspede extra):
+  margem = P × taxa do Airbnb − P × taxa do pagamento (zero se negativa);
+  partes = rateio da margem pelos pesos (sem perder centavo);
+  desconto do site = parte do hóspede; hóspede paga = P − desconto;
+  taxa do pagamento real = (hóspede paga) × taxa do pagamento;
+  SCL = parte da SCL; proprietário recebe = hóspede paga − taxa real − SCL.
+  Como a taxa real incide sobre um valor menor que P, a diferença fica com o proprietário
+  (ele recebe um pouco mais que a parte dele). Identidade: hóspede paga = taxa + SCL +
+  proprietário.
+- **Regra única do site:** o desconto vale para qualquer imóvel e qualquer contrato (gestão
+  total inclusive). A consulta e a cotação mostram valor cheio, desconto e total; a cotação
+  persistida guarda `valor_cheio`, `desconto` e `total` como calculados na hora (mudar a regra
+  depois não mexe nela; a revalidação detecta a diferença e pede nova consulta). O pedido de
+  "segurar as datas" entra com o total com desconto.
+- **Fora do M12.1:** a divisão proprietário/SCL no financeiro do contrato marketplace (M12.2) e
+  qualquer escrita em OTA ou provedor de pagamento. A comissão do contrato de gestão total
+  continua sendo a do contrato (M4), sobre o que entra.
 
 ## Objetivo (Diego)
 
@@ -83,11 +113,27 @@ Começar pelo **Modelo B**, com os pesos e percentuais **editáveis no painel** 
 "tudo editável"), e uma tela de **simulação**: você digita a diária, as noites e a limpeza e
 vê lado a lado Airbnb, Booking e SCL. Assim dá para testar com números reais antes de
 fechar. Se a margem ficar baixa, dá para combinar B com uma mensalidade pequena (C).
+**Adotada por Diego em 4/10/2026**, com partes iguais.
 
-## Antes de decidir
+## Conferências que continuam pendentes (não impedem o M12.1, porque tudo fica editável)
 
 - Conferir os percentuais reais das contas (Airbnb, Booking, Mercado Pago/Stripe).
 - Conferir nos contratos das OTAs se há regra de **paridade de preço** (preço mais baixo
   no site próprio) que se aplique aos anúncios.
-- Decidir se proprietários do marketplace também anunciam nas OTAs pela SCL (Beds24) e se
-  a SCL cobra algo sobre essas reservas.
+- **Reservas das OTAs do próprio proprietário — decidido por Diego em 4/10/2026:** a SCL **não
+  cobra nada** sobre as reservas que o proprietário do marketplace vende nas OTAs dele (anunciadas
+  por ele ou pela SCL via Beds24); o modelo B vale só para o que o site vende. Motivo: quem vende
+  1 pelo SCL e 15 pelo Airbnb sairia no mês seguinte se fosse cobrado pelas 15. O M12.2 calcula só
+  as reservas do site; as das OTAs ficam no calendário e no extrato sem comissão — se o dinheiro
+  delas passar pela empresa (quem recebe = empresa, M2.7), o valor é repassado integral pelo
+  M4.10; se o canal pagar o proprietário direto, é só informação. Ideia de
+  Diego para estudo (não é compromisso): **assinatura modular** — uma base e serviços opcionais
+  que o proprietário escolhe e paga à parte (ex.: motor de preços da SCL, M3.9) — registrada em
+  `requisitos/growth/ROADMAP.md`.
+- **Forma de recebimento do marketplace:** decidido por Diego em 4/10/2026, empresa recebe e
+  repassa (sem split), como o site, com o extrato e as periodicidades do M4.10.
+- Reservas do site em imóveis de **gestão total**: decidido por Diego em 4/10/2026, um modelo
+  por contrato, nunca por reserva: a comissão do contrato de gestão total vale em todos os
+  canais, inclusive o site, sobre o valor líquido da taxa do pagamento (no marketplace, o modelo
+  B vale só para o que o site vende — item acima); o desconto do hóspede
+  no site é uma regra única do site, igual para gestão total e marketplace.

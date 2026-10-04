@@ -1,4 +1,7 @@
 import { TIPOS_CONTRATO, type TipoContrato } from "@/db/schema";
+import { bpParaTexto, percentualParaBp } from "@/lib/percentual";
+
+export { bpParaTexto, percentualParaBp };
 
 /** Regras puras de contratos: vigência, sobreposição e percentuais. Datas em "AAAA-MM-DD". */
 
@@ -16,7 +19,7 @@ export const NOMES_TIPO: Record<TipoContrato, string> = {
   marketplace: "Marketplace",
 };
 
-/** Percentual sugerido por tipo (decisões de Diego). Marketplace: fórmula ainda pendente. */
+/** Percentual sugerido por tipo (decisões de Diego). Marketplace: sem percentual fixo — a divisão é o modelo B (M12.1, em Configurações → Marketplace); o cálculo no financeiro é o M12.2. */
 export const COMISSAO_PADRAO_BP: Record<TipoContrato, number | null> = {
   gestao_completa: 1500,
   gestao_online: 1000,
@@ -38,19 +41,6 @@ export function sobrepoe(a: ContratoVigencia, b: ContratoVigencia): boolean {
   const fimA = a.fim ?? "9999-12-31";
   const fimB = b.fim ?? "9999-12-31";
   return a.inicio <= fimB && b.inicio <= fimA;
-}
-
-/** "15" → 1500; "12,5" → 1250. Aceita até duas casas decimais, entre 0 e 100. */
-export function percentualParaBp(texto: string): number | null {
-  const t = texto.trim().replace(",", ".");
-  if (!/^\d{1,3}(\.\d{1,2})?$/.test(t)) return null;
-  const bp = Math.round(Number(t) * 100);
-  return bp >= 0 && bp <= 10000 ? bp : null;
-}
-
-export function bpParaTexto(bp: number | null): string {
-  if (bp === null) return "a definir";
-  return `${(bp / 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`;
 }
 
 export type ErrosContrato = Partial<Record<"tipo" | "comissao" | "inicio" | "fim" | "proprietarioBloqueia" | "geral", string>>;
