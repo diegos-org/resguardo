@@ -52,8 +52,12 @@ peço na hora.
   e 16), semanalmente (às segundas) ou assim que o dinheiro estiver disponível (dia seguinte ao check-in, com o
   Mercado Pago já tendo liberado). Uma reserva do site só conta como disponível depois do
   check-in e da liberação, para não pagar e depois ter de pedir de volta num cancelamento.
-  Para Booking e reservas diretas, a reserva fica disponível depois do check-in e de o dinheiro
-  ter entrado e sido registrado no financeiro; o que ainda não entrou não é repassado. Se uma
+  Para as demais reservas em que a empresa recebe (Booking, diretas e qualquer canal que você
+  configure assim), a reserva fica disponível depois do check-in e de o dinheiro ter entrado e
+  sido registrado no financeiro; o que ainda não entrou não é repassado. Reserva em que o canal
+  paga o dono direto (o padrão do Airbnb) não entra no repasse, só aparece no extrato como
+  informação — vale o que está configurado em "quem recebe" de cada imóvel e canal, não o nome
+  do canal. Se uma
   reserva começa no último dia do mês e o dono recebe assim que disponível, o repasse do dia 1º
   paga a reserva inteira junto com o fechamento, numa só transferência. E o fechamento mensal
   passa a seguir a mesma regra: o que ainda não entrou na empresa fica para o repasse seguinte,
@@ -1550,4 +1554,4 @@ ambiente).
 
 ## Calendário e preços — referência operacional de 1/10/2026
 
-As regras aprovadas de mínimos, feriadões, temporada, multiplicadores, última hora e sobras estão reunidas em [Calendário, preços e duração](requisitos/operations/CALENDARIO-PRECOS-OPERACAO.md), com as exceções e decisões ainda pendentes. Desde 2/10 (M3.7) elas vivem no painel, em Configurações → Calendário e preços, e o envio ao Beds24 existe, mas só é ativado por você. Enquanto o envio do SCL não estiver ligado, a rodada autorizada em 1/10 continua usando o Beds24 conectado, com conferência no Airbnb — e não deve haver dois responsáveis escrevendo no mesmo calendário: ao ligar o SCL, pare de editar preços à mão no Beds24. Não aplicar descontos repetidos sobre diárias já reduzidas.
+As regras aprovadas de mínimos, feriadões, temporada, multiplicadores, última hora e sobras estão reunidas em [Calendário, preços e duração](requisitos/operations/CALENDARIO-PRECOS-OPERACAO.md), com as exceções e decisões ainda pendentes. Desde 2/10 (M3.7) elas vivem no painel, em Configurações → Calendário e preços, e o envio ao Beds24 existe, mas só é ativado por você. Enquanto o envio do SCL não estiver ligado, a rodada autorizada em 1/10 continua usando o Beds24 conectado, com conferência no Airbnb — e não deve haver dois responsáveis escrevendo no mesmo calendário: ao ligar o SCL, pare de editar preços à mão no Beds24 **nos imóveis em que a fonte de preços é a SCL** (preços automáticos ou digitados no portal); nos imóveis em que você ou o proprietário definem os preços no Beds24 ou numa ferramenta de precificação (M3.9, opção b), continuem editando lá — o SCL só lê. Não aplicar descontos repetidos sobre diárias já reduzidas.
