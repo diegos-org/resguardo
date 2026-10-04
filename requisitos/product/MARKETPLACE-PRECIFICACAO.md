@@ -33,6 +33,20 @@ painel. As fórmulas antigas do Diego não foram encontradas no repositório nem
   qualquer escrita em OTA ou provedor de pagamento. A comissão do contrato de gestão total
   continua sendo a do contrato (M4), sobre o que entra.
 
+## Portal do proprietário marketplace (M12.4, 4/10/2026)
+
+Implementado em `app/src/portal/marketplace.ts` (regras e acesso) e
+`app/src/components/portal/OperacaoMarketplace.tsx` (tela). Só para imóvel da sessão em contrato
+**marketplace** em vigor na data (deny-by-default, no servidor): o proprietário edita preço da
+noite, limpeza, hóspede extra, estadia mínima/máxima, antecedência, janela, dias de entrada/saída
+e horários — pela mesma `validarDetalhes` do painel, preservando o resto do cadastro — e os
+períodos especiais; vê a simulação do modelo B para o preço digitado (`simular`); vê a situação
+do envio ao Beds24 (na lista, automático, último envio) em vez de supor que a mudança chegou às
+OTAs; com fonte de preços "beds24" (M3.9) o preço da noite é só leitura. Limpezas das saídas dos
+imóveis marketplace podem ser marcadas como feitas pelo proprietário (custo 0, sem despesa) e
+manutenções feitas por ele são registradas já realizadas, por conta dele. A camada contratual da
+promessa de preço (item 2 acima) continua sendo texto de contrato; o portal não a impõe.
+
 ## Objetivo (Diego)
 
 Na reserva direta pelo site da SCL, ao mesmo tempo:

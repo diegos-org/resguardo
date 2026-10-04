@@ -181,12 +181,12 @@ export default async function Manutencao({ searchParams }: PageProps<"/painel/ma
             </form>
           )}
 
-          {lancar && m.estado === "realizada" && m.custo === null && categorias.length === 0 && (
+          {lancar && m.estado === "realizada" && m.custo === null && !m.semCusto && categorias.length === 0 && (
             <p role="note" className={styles.alerta} style={{ margin: 0 }}>
               Nenhuma categoria de despesa ativa: crie ou reative uma em <Link href="/painel/despesas/categorias">Despesas → Categorias</Link> para lançar o custo.
             </p>
           )}
-          {lancar && m.estado === "realizada" && m.custo === null && categorias.length > 0 && (
+          {lancar && m.estado === "realizada" && m.custo === null && !m.semCusto && categorias.length > 0 && (
             <form action={custoAcao} className={styles.linha} style={{ alignItems: "flex-end" }}>
               <input type="hidden" name="id" value={m.id} />
               <input type="hidden" name="voltar" value={voltar} />
