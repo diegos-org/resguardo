@@ -1221,7 +1221,12 @@ ambiente).
       workflow* → *Run workflow*. Em um ou dois minutos deve ficar verde. Confira em *Code* que
       apareceram as branches `espelho/main` (e as outras) e `backup-marcos`, e, em *Tags*, uma
       `backup/` com a data de hoje. Na branch principal vai aparecer também um commit do robô
-      com um arquivo `.backup/iniciado`: é o marcador de que o backup já existe; não apague. Se ficar vermelho, abra a rodada e me mande **só o texto da mensagem de erro**
+      com um arquivo `.backup/iniciado`: é o marcador de que o backup já existe; não apague.
+      **Depois dessa primeira rodada verde**, crie uma variável no repositório de backup:
+      *Settings → Secrets and variables → Actions → aba Variables → New repository variable*,
+      nome `BACKUP_INICIADO`, valor `sim`. É um registro que o robô só lê e nunca cria: se um
+      dia alguém apagar tudo (até o marcador), o robô ainda vai saber que o backup já existia e
+      avisar, em vez de recomeçar em silêncio. Se ficar vermelho, abra a rodada e me mande **só o texto da mensagem de erro**
       (ela não contém chave).
       - Se o erro falar de permissão para escrever, em *Settings → Actions → General → Workflow
         permissions* escolha *Read and write permissions* e rode de novo.

@@ -134,15 +134,18 @@ repositório principal não sabe que o backup existe.
      da origem). **Nomes reservados:** se a origem tiver tags `backup/`, `recusadas/`, `objetos/`
      ou uma branch `backup-marcos` (nunca existem no SCL), a rodada para antes de gravar e diz
      para renomear, porque no inventário elas se confundiriam com as refs do próprio backup;
-   - na **primeira rodada** o robô grava um arquivo-marcador (`.backup/iniciado`) na branch
-     principal do repositório de backup, num commit único, fora de todas as refs que ele
-     gerencia. Se um dia **todas** as refs do backup sumirem mas o marcador existir, a rodada
-     avisa que o backup foi zerado (e recomeça o espelho), em vez de tratar como primeira rodada
-     e ficar verde. Se o marcador não puder ser gravado (por exemplo, a branch principal exige
-     pull request e bloqueia o push do robô), a rodada fica vermelha e sem batimento até isso ser
-     resolvido, porque sem ele essa proteção não existe. Se apagarem também o marcador, isso já
-     exige apagar ou reescrever a branch principal, onde mora o próprio robô: aí vale o limite da
-     seção 2 (o robô não avisa a própria ausência; o batimento cobre);
+   - "backup já existe" fica registrado em **dois lugares**, fora de todas as refs que o robô
+     gerencia. (1) Na **primeira rodada** o robô grava um arquivo-marcador (`.backup/iniciado`)
+     na branch principal do repositório de backup, num commit único; se o marcador não puder ser
+     gravado (por exemplo, a branch principal exige pull request e bloqueia o push do robô), a
+     rodada fica vermelha e sem batimento até isso ser resolvido. (2) Depois da primeira rodada
+     verde, **Diego cria a variável** `BACKUP_INICIADO` no repositório de backup (passo 7 do
+     guia); o robô só lê essa variável, nunca a cria, então é o único registro que uma rodada não
+     consegue recriar sozinha. Se um dia **todas** as refs do backup sumirem e qualquer um dos
+     dois registros existir, a rodada avisa que o backup foi zerado (e recomeça o espelho), em
+     vez de tratar como primeira rodada e ficar verde. Só apagar as refs, o marcador **e** a
+     variável, mantendo o robô, passaria por primeira rodada: isso exige a senha da conta de
+     backup e intenção, e cai no limite da seção 2 (forja consistente);
    - **batimento (opcional):** ao terminar bem, chama a URL guardada no segredo `BATIMENTO_URL`,
      de um serviço gratuito de monitoramento do tipo "me avise se eu ficar sem sinal" (por
      exemplo, healthchecks.io, com período de 3 dias e tolerância de 1 dia). Se o robô for
@@ -158,7 +161,7 @@ repositório principal não sabe que o backup existe.
    robô: ele nunca apaga nem reescreve e avisa quando o backup perde algo. A trava cobre a
    mais só o erro manual de quem tem acesso à conta de backup, que é só o Diego.
 
-Testado em 3/10 rodando o script exato do robô contra repositórios locais, noventa rodadas:
+Testado em 3/10 rodando o script exato do robô contra repositórios locais, noventa e duas rodadas:
 origem só com `main`; novas branches e tags; origem avança; origem apaga uma branch (o backup
 a mantém e avisa uma vez); nada muda (sem aviso repetido); origem reescreve uma branch e uma
 tag anotada (o backup mantém as versões antigas em `espelho/`, guarda as novas em
@@ -208,8 +211,10 @@ com as duas regravadas quando apagadas; a primeira rodada grava o marcador `.bac
 branch principal, e apagar todas as refs do backup com o marcador presente é avisado como "apagaram
 tudo" (o espelho recomeça), em vez de passar por primeira rodada; se o marcador for removido e a
 branch principal recusar o push do robô, a rodada grava o retrato mas fica vermelha e sem sinal de
-batimento, e volta ao normal (marcador regravado, verde) quando o push é liberado; e as tags do
-backup não voltam para a origem nem se duplicam com o prefixo. O passo de batimento não entrou na simulação (é uma chamada HTTP
+batimento, e volta ao normal (marcador regravado, verde) quando o push é liberado; com a variável
+`BACKUP_INICIADO` definida, apagar todas as refs **e** o marcador da branch principal ainda é avisado
+como "apagaram tudo" (a variável não é recriável pelo robô), e a rodada seguinte regrava o marcador
+e fica verde; e as tags do backup não voltam para a origem nem se duplicam com o prefixo. O passo de batimento não entrou na simulação (é uma chamada HTTP
 simples a um serviço externo, só com a URL configurada); foi conferido na sintaxe e no caso sem
 URL.
 

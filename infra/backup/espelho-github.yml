@@ -87,6 +87,9 @@ jobs:
         id: gravar
         env:
           DESTINO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Variável do repositório (Settings → Secrets and variables → Actions → Variables), criada pelo Diego
+          # depois da primeira rodada verde. É o único "backup já existe" que o robô não consegue recriar.
+          BACKUP_INICIADO: ${{ vars.BACKUP_INICIADO }}
         run: |
           set -euo pipefail
           cd espelho.git
@@ -118,15 +121,19 @@ jobs:
             '+refs/tags/backup/*:refs/guardado/backup/*' '+refs/tags/recusadas/*:refs/guardado/recusadas/*' \
             '+refs/tags/objetos/*:refs/guardado/objetos/*'
           ponteiro=$(no_destino ls-remote "${destino}" refs/heads/backup-marcos | awk '{print $1}')
-          # Marcador de "backup iniciado": o arquivo .backup/iniciado na branch principal deste repositório,
-          # fora de todas as refs que o robô gerencia. Gravado uma vez, na primeira rodada. Se ele existir e
-          # nenhuma ref do backup existir, alguém apagou tudo: a rodada avisa em vez de recomeçar em silêncio.
+          # "Backup já existe" em dois lugares, fora de todas as refs que o robô gerencia:
+          # 1) o arquivo .backup/iniciado na branch principal deste repositório, gravado pelo robô na primeira
+          #    rodada (cobre apagar todas as refs por engano ou por script com o token);
+          # 2) a variável BACKUP_INICIADO do repositório, criada pelo Diego depois da primeira rodada verde: o
+          #    robô só lê, nunca cria, então nem apagar o arquivo junto com as refs faz a rodada passar por
+          #    primeira. Se qualquer um dos dois existir e nenhuma ref do backup existir, alguém apagou tudo.
           padrao=$(no_destino ls-remote --symref "${destino}" HEAD | awk '$1 == "ref:" {print $2}' | head -n1)
-          sentinela=0
+          sentinela=0; iniciado_declarado=0
           if [ -n "${padrao}" ]; then
             no_destino fetch -q --no-tags "${destino}" "+${padrao}:refs/guardado/padrao"
             if git cat-file -e 'refs/guardado/padrao:.backup/iniciado' 2>/dev/null; then sentinela=1; fi
           fi
+          if [ -n "${BACKUP_INICIADO:-}" ]; then iniciado_declarado=1; fi
           if [ -n "${ponteiro}" ]; then
             no_destino fetch -q --no-tags "${destino}" '+refs/heads/backup-marcos:refs/guardado/marcos'
           fi
@@ -186,7 +193,7 @@ jobs:
             if [ -z "${ponteiro}" ]; then ponteiro_apagado=1; fi
           elif [ -s guardado.refs ]; then
             marcos_apagados=1
-          elif [ "${sentinela}" -eq 1 ]; then
+          elif [ "${sentinela}" -eq 1 ] || [ "${iniciado_declarado}" -eq 1 ]; then
             tudo_apagado=1
           fi
 
@@ -571,7 +578,7 @@ jobs:
             falhou=1
           fi
           if [ "${tudo_apagado}" -eq 1 ]; then
-            echo "::error::TODAS as refs deste backup sumiram (espelho/, backup/, recusadas/, objetos/ e backup-marcos), mas o marcador .backup/iniciado da branch principal diz que o backup já existia: alguém apagou tudo. Esta rodada recomeçou o espelho do zero. Os pontos de restauração antigos não estão mais referenciados aqui; se foi engano e for recente, veja no documento como tentar recuperar antes de o Git limpar os objetos."
+            echo "::error::TODAS as refs deste backup sumiram (espelho/, backup/, recusadas/, objetos/ e backup-marcos), mas o marcador .backup/iniciado da branch principal e/ou a variável BACKUP_INICIADO dizem que o backup já existia: alguém apagou tudo. Esta rodada recomeçou o espelho do zero. Os pontos de restauração antigos não estão mais referenciados aqui; se foi engano e for recente, veja no documento como tentar recuperar antes de o Git limpar os objetos."
             falhou=1
           fi
           if [ "${marcos_apagados}" -eq 1 ]; then
