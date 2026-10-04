@@ -148,7 +148,7 @@ function FormPrecos({ imovel, precos, empresa, salvar }: { imovel: ImovelOperave
       </div>
       <p className={styles.miudo} aria-live="polite">
         {precoNoBeds24
-          ? `Com os preços definidos no Beds24, o site da ${empresa} lê o preço de cada noite de lá — a conta do que o hóspede paga e do que você recebe não dá para simular aqui com um preço fixo.`
+          ? `Como o preço vem do Beds24, o site da ${empresa} lê o valor de cada noite de lá — a conta do que o hóspede paga e do que você recebe não dá para simular aqui com um preço fixo.`
           : centavos
             ? textoDaSimulacao(centavos, precos, empresa)
             : "Informe o preço da noite para ver o que o hóspede paga e o que você recebe no site."}
