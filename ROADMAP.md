@@ -232,6 +232,12 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
   (ligada por padrão; a empresa desliga contrato a contrato no painel); o proprietário só
   bloqueia de hoje em diante, nunca por cima de reserva, e só libera o que ele mesmo bloqueou
   — bloqueio da empresa ou do Beds24 é pedido à empresa.
+- 4/10 (Diego): fechamentos feitos **antes do sistema** (setembro, entregues por fora) não são
+  reconstruídos na operação real — o primeiro fechamento no sistema é o de **outubro**. A reconstrução
+  de itens de fechamentos antigos (M4.10, migrações 0045 e 0049–0052) vale para a homologação, com um
+  caso raro aceito como limite documentado. O que foi acertado por fora não pode entrar de novo:
+  checklist no GUIA-DIEGO (seção 6, item 29); marcar partes anteriores a 1/10 como "acertadas por
+  fora" na carga de dados reais (M11.1) é decisão pendente de Diego (guia, seção 7).
 - 3/10 (Diego): **backup automático do repositório** a cada 3 dias, em conta separada do
   GitHub, guardando todas as versões (nunca apaga). O repositório principal registra só que o
   backup existe, como funciona e por quê — nenhum dado da conta de backup, nem nome de usuário
