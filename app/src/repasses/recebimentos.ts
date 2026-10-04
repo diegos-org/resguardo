@@ -11,6 +11,7 @@ import { registrarAuditoria } from "@/auditoria/auditoria";
 import { lancamentos, repasseItens, repasses, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { estornar, lancar, type Lancamento } from "@/financeiro/ledger";
+import { travarMotorDaReserva } from "@/financeiro/trava";
 import { uuidValido } from "@/lib/ids";
 import { formatBRL } from "@/lib/money";
 import { dataValida } from "@/reservas/regras";
@@ -78,6 +79,9 @@ export async function estornarRecebimento(db: Db, organizacaoId: string, lancame
       .where(and(eq(lancamentos.id, lancamentoId), eq(lancamentos.organizacaoId, organizacaoId), eq(lancamentos.tipo, "recebimento"), emVigor()))
       .for("update");
     if (!l) return { ok: false as const, erro: "Recebimento não encontrado ou já estornado." };
+    // Mesma trava do motor e do repasse: enquanto esta transação confere o repasse, nenhum antecipado ou
+    // fechamento lê o recebimento e vincula a parte (3ª rodada do Codex).
+    if (l.reservaId) await travarMotorDaReserva(tx, organizacaoId, l.reservaId);
     // A parte desta reserva já está num repasse a pagar? O dinheiro "com a empresa" sustenta esse repasse:
     // primeiro se estorna o repasse, depois o recebimento (2ª rodada do Codex). Repasse já pago não trava:
     // o dinheiro já saiu e a correção é um ajuste manual.

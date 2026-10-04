@@ -1,12 +1,14 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { criarContrato } from "@/contratos/repositorio";
-import { imoveis, lancamentos, organizacoes, proprietarioImoveis, proprietarios, repasseItens, representantes } from "@/db/schema";
+import { imoveis, lancamentos, organizacoes, proprietarioImoveis, proprietarios, repasseItens, repasses, representantes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { CorreioMemoria, ErroEnvioIncerto, type Mensagem } from "@/email/correio";
 import { aplicarMotor } from "@/financeiro/aplicar";
-import { chaveTravaMotor } from "@/financeiro/trava";
+import { chaveTravaMotor, travarMotorDaReserva } from "@/financeiro/trava";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { saldoAcerto } from "@/financeiro/ledger";
 import type { DadosReserva } from "@/reservas/regras";
 import { criarReserva } from "@/reservas/repositorio";
@@ -14,6 +16,11 @@ import { repassesDeTodas, rotinaDeRepasses } from "./cron";
 import { enviarEmailDoRepasse, enviarEmailsDeRepasses, textoDoEmailDoRepasse } from "./email";
 import { partesDisponiveis, partesDoProprietario, resumirPartes } from "./extrato";
 
+// A trava por reserva é espiada para conferir quem a toma (o estorno do recebimento, além do motor e do repasse).
+vi.mock("@/financeiro/trava", async (orig) => {
+  const m = await orig<typeof import("@/financeiro/trava")>();
+  return { ...m, travarMotorDaReserva: vi.fn(m.travarMotorDaReserva) };
+});
 // A leitura das partes disponíveis é espiada para simular o motor mudando o livro entre a leitura e a trava.
 vi.mock("./extrato", async (orig) => {
   const m = await orig<typeof import("./extrato")>();
@@ -401,5 +408,44 @@ describe("2ª rodada do Codex: trava das reservas no repasse, estorno do recebim
     expect(f.ok).toBe(true);
     const itens = await itensDoRepasse(db, org, (f as { id: string }).id);
     expect(itens.map((i) => i.reservaId)).toEqual([reservaBase]);
+  });
+});
+
+describe("3ª rodada do Codex: fechamentos antigos sem itens, trava no estorno do recebimento", () => {
+  it("o estorno do recebimento toma a trava da reserva antes de conferir o repasse", async () => {
+    const rec = await registrarRecebimento(db, org, { reservaId: reservaBase, data: "2026-10-10", valor: 85000, nota: "" }, null, "2026-10-12");
+    vi.mocked(travarMotorDaReserva).mockClear();
+    expect(await estornarRecebimento(db, org, (rec as { id: string }).id, "erro", null)).toMatchObject({ ok: true });
+    expect(vi.mocked(travarMotorDaReserva).mock.calls.map((c) => [c[1], c[2]])).toEqual([[org, reservaBase]]);
+  });
+
+  it("migração 0045: fechamento antigo (sem itens) ganha os itens das partes que pagou; depois disso a parte não fica disponível de novo", async () => {
+    // Fechamento "antigo" de outubro, gravado direto (sem itens), como os feitos antes do M4.10; um estornado não conta.
+    const base = { organizacaoId: org, proprietarioId: dono, tipo: "fechamento" as const, saldo: 72250, descontado: 0, contestado: 0, valor: 72250 };
+    const [estornado] = await db.insert(repasses).values({ ...base, mes: "2026-10-01", data: "2026-11-01", estornadoEm: new Date("2026-11-02T12:00:00Z") }).returning();
+    const [outubro] = await db.insert(repasses).values({ ...base, mes: "2026-10-01", data: "2026-11-01" }).returning();
+    const [novembro] = await db.insert(repasses).values({ ...base, mes: "2026-11-01", data: "2026-12-01", valor: 0, saldo: 0 }).returning();
+    // Reserva de novembro de outro dono: competência depois de outubro, só o fechamento de novembro dele (não há) alcançaria.
+    const deOutro = await criar(reserva(b, "2026-11-10", "2026-11-12"));
+    const sqlDaMigracao = readFileSync(join(process.cwd(), "drizzle", "0045_repasse_itens_antigos.sql"), "utf8")
+      .split("\n")
+      .filter((l) => !l.startsWith("--"))
+      .join("\n");
+    await db.execute(sql.raw(sqlDaMigracao));
+    const itens = await db.select().from(repasseItens);
+    // Uma parte (outubro da reserva base) → um item, no fechamento de outubro (o mais antigo que a alcança), não no estornado nem no de novembro.
+    expect(itens).toHaveLength(1);
+    expect(itens[0]).toMatchObject({ repasseId: outubro.id, reservaId: reservaBase, competencia: "2026-10-01", valor: 72250, liberadoEm: null });
+    expect(itens[0].repasseId).not.toBe(estornado.id);
+    expect(itens[0].repasseId).not.toBe(novembro.id);
+    expect((await partes("2026-10-12", outro)).find((p) => p.reservaId === deOutro.id)?.situacao).not.toBe("repassado");
+    // Rodar de novo não duplica.
+    await db.execute(sql.raw(sqlDaMigracao));
+    expect(await db.select().from(repasseItens)).toHaveLength(1);
+    // Com o item, registrar o recebimento não torna a parte disponível: o extrato a mostra como repassada e nada é antecipado.
+    await receberTudo(db, org, reservaBase, "2026-10-10");
+    const [p] = await partes("2026-10-12");
+    expect(p).toMatchObject({ situacao: "repassado", repasse: { id: outubro.id, tipo: "fechamento" } });
+    expect(await gerarAntecipado(db, org, dono, "2026-10-12", null)).toMatchObject({ ok: false, erro: expect.stringContaining("Nada disponível") });
   });
 });
