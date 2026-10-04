@@ -332,7 +332,8 @@ function Manutencoes({ imoveis, manutencoes, registrar }: { imoveis: ImovelOpera
           </label>
           <label>
             Data do serviço
-            <input type="date" name="data" defaultValue={v.data ?? hoje} min={desde} max={hoje} required />
+            {/* Remonta ao trocar o imóvel: o valor volta ao "hoje" dele (defaultValue só vale na montagem). */}
+            <input key={imovelId} type="date" name="data" defaultValue={v.imovelId === imovelId && v.data ? v.data : hoje} min={desde} max={hoje} required />
           </label>
           <label className={f.largo}>
             O que foi feito

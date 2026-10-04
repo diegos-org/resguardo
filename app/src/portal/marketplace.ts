@@ -14,7 +14,7 @@ import { vinculoUnicoParaEnvio } from "@/calendario/envio";
 import { lerRegrasCalendario, type RegrasCalendario } from "@/calendario/regras-config";
 import { type ContratoVigencia, contratoVigente } from "@/contratos/regras";
 import { listarContratos } from "@/contratos/repositorio";
-import { beds24Envios, beds24EnvioNoites, imoveis, imoveisPeriodos, limpezas, proprietarioImoveis, reservas } from "@/db/schema";
+import { beds24Envios, beds24EnvioNoites, imoveis, imoveisPeriodos, limpezas, proprietarioImoveis, proprietarios, proprietarioUsuarios, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { type Detalhes, type ErrosDetalhes, criarPeriodo, entradaDeDetalhes, excluirPeriodo, lerDetalhes, listarPeriodos, salvarDetalhesComLeitura, validarDetalhes } from "@/imoveis/detalhes";
 import type { FontePrecos } from "@/imoveis/fonte-precos";
@@ -28,6 +28,7 @@ import { type PrecosMarketplace, simular } from "@/marketplace/precos";
 
 export const NAO_MARKETPLACE = "Este imóvel não está em contrato marketplace nesta data: preços, regras, limpezas e manutenção são combinados com a empresa.";
 const SEM_IMOVEL = "Imóvel não encontrado.";
+export const NAO_DONO = "Este imóvel não está mais vinculado a você: recarregue a página.";
 const dataBr = (d: string) => d.split("-").reverse().join("/");
 export const ANTES_DA_POSSE = (desde: string) => `Isso é de antes de o imóvel passar a ser seu (${dataBr(desde)}): fica com a empresa e com o dono da época.`;
 
@@ -98,17 +99,27 @@ async function imovelOperavel(db: Db, sessao: Sessao, imovelId: string, quando: 
 }
 
 /**
- * Reconfere o contrato marketplace DENTRO da transação que grava, com a linha do imóvel travada: a
- * autorização lida antes (`imovelOperavel`) pode ter mudado no meio (contrato encerrado ou trocado no
- * painel). Toda escrita do portal passa por aqui; recusa = a mesma mensagem da conferência inicial.
+ * Reconfere a autorização DENTRO da transação que grava, com a linha do imóvel e o vínculo de posse travados: o que
+ * foi lido antes (`imovelOperavel`, a sessão) pode ter mudado no meio — contrato encerrado ou trocado, imóvel
+ * transferido para outro dono ou desvinculado no painel. A posse vale a do banco agora, não a da sessão: o usuário
+ * precisa representar o proprietário atual do imóvel (ativo, da organização). Toda escrita do portal passa por aqui.
  */
-async function conferirContratoNaTransacao(tx: Db, organizacaoId: string, imovelId: string, dia: string): Promise<string | null> {
+async function conferirNaTransacao(tx: Db, sessao: Sessao, imovelId: string, dia: string): Promise<string | null> {
   await tx
     .select({ id: imoveis.id })
     .from(imoveis)
-    .where(and(eq(imoveis.id, imovelId), eq(imoveis.organizacaoId, organizacaoId)))
+    .where(and(eq(imoveis.id, imovelId), eq(imoveis.organizacaoId, sessao.organizacaoId)))
     .for("update");
-  return emMarketplaceEm(await listarContratos(tx, organizacaoId, imovelId), dia) ? null : NAO_MARKETPLACE;
+  // O vínculo travado é o mesmo que `donoAtual` lê depois: quem grava a manutenção é o dono deste instante.
+  const [vinculo] = await tx.select({ proprietarioId: proprietarioImoveis.proprietarioId }).from(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, imovelId)).for("update");
+  if (!vinculo) return NAO_DONO;
+  const [meu] = await tx
+    .select({ id: proprietarioUsuarios.proprietarioId })
+    .from(proprietarioUsuarios)
+    .innerJoin(proprietarios, and(eq(proprietarios.id, proprietarioUsuarios.proprietarioId), eq(proprietarios.ativo, true), eq(proprietarios.organizacaoId, sessao.organizacaoId)))
+    .where(and(eq(proprietarioUsuarios.usuarioId, sessao.usuarioId), eq(proprietarioUsuarios.proprietarioId, vinculo.proprietarioId)));
+  if (!meu) return NAO_DONO;
+  return emMarketplaceEm(await listarContratos(tx, sessao.organizacaoId, imovelId), dia) ? null : NAO_MARKETPLACE;
 }
 
 /** A credencial Beds24 do ambiente atende esta organização (a mesma régua da rotina e da ação do painel; ambígua = não atende). */
@@ -193,7 +204,7 @@ export async function salvarPrecosPeloProprietario(db: Db, sessao: Sessao, imove
     },
     sessao.usuarioId,
     agora,
-    { conferir: (tx) => conferirContratoNaTransacao(tx, sessao.organizacaoId, r.imovel.id, r.dia) },
+    { conferir: (tx) => conferirNaTransacao(tx, sessao, r.imovel.id, r.dia) },
   );
 }
 
@@ -204,7 +215,7 @@ export async function criarPeriodoPeloProprietario(db: Db, sessao: Sessao, imove
   // Contrato e fonte de preços são conferidos dentro da transação que grava o período, com o imóvel travado (o painel pode tê-los mudado no meio).
   return criarPeriodo(db, sessao.organizacaoId, r.imovel.id, entrada, sessao.usuarioId, {
     conferir: async (atual, tx) =>
-      (await conferirContratoNaTransacao(tx, sessao.organizacaoId, r.imovel.id, r.dia)) ?? (atual.fontePrecos === "beds24" && preco ? "Os preços deste imóvel são definidos no Beds24: aqui o período só pode ter estadia mínima. Deixe o preço em branco." : null),
+      (await conferirNaTransacao(tx, sessao, r.imovel.id, r.dia)) ?? (atual.fontePrecos === "beds24" && preco ? "Os preços deste imóvel são definidos no Beds24: aqui o período só pode ter estadia mínima. Deixe o preço em branco." : null),
   });
 }
 
@@ -214,7 +225,7 @@ export async function excluirPeriodoPeloProprietario(db: Db, sessao: Sessao, per
   if (!p) return { ok: false, erro: "Período não encontrado." };
   const r = await imovelOperavel(db, sessao, p.imovelId, agora);
   if (!r.ok) return r;
-  const feito = await excluirPeriodo(db, sessao.organizacaoId, periodoId, sessao.usuarioId, { conferir: (tx, imovelId) => conferirContratoNaTransacao(tx, sessao.organizacaoId, imovelId, r.dia) });
+  const feito = await excluirPeriodo(db, sessao.organizacaoId, periodoId, sessao.usuarioId, { conferir: (tx, imovelId) => conferirNaTransacao(tx, sessao, imovelId, r.dia) });
   if (typeof feito === "string") return { ok: false, erro: feito };
   return feito ? { ok: true } : { ok: false, erro: "Período não encontrado." };
 }
@@ -285,7 +296,7 @@ export async function marcarLimpezaFeitaPeloProprietario(db: Db, sessao: Sessao,
   const r = await imovelOperavel(db, sessao, l.imovelId, l.data);
   if (!r.ok) return r;
   if (!r.posseDesde || l.data < r.posseDesde) return { ok: false, erro: ANTES_DA_POSSE(r.posseDesde ?? l.data) };
-  return realizarPeloProprietario(db, sessao.organizacaoId, limpezaId, hojeISO(r.imovel.fuso, agora), sessao.usuarioId, (atual, tx) => conferirContratoNaTransacao(tx, sessao.organizacaoId, atual.imovelId, atual.data));
+  return realizarPeloProprietario(db, sessao.organizacaoId, limpezaId, hojeISO(r.imovel.fuso, agora), sessao.usuarioId, (atual, tx) => conferirNaTransacao(tx, sessao, atual.imovelId, atual.data));
 }
 
 export type ManutencaoDoProprietario = { id: string; imovelCodigo: string; titulo: string; descricao: string; estado: string; dataRealizada: string | null; porContaPropria: boolean };
@@ -308,6 +319,6 @@ export async function registrarManutencaoPeloProprietario(db: Db, sessao: Sessao
   const r = await imovelOperavel(db, sessao, d.imovelId, /^\d{4}-\d{2}-\d{2}$/.test(d.data) ? d.data : agora);
   if (!r.ok) return r;
   if (!r.posseDesde || (/^\d{4}-\d{2}-\d{2}$/.test(d.data) && d.data < r.posseDesde)) return { ok: false, erro: ANTES_DA_POSSE(r.posseDesde ?? d.data) };
-  const feito = await registrarFeitaPeloProprietario(db, sessao.organizacaoId, d, hojeISO(r.imovel.fuso, agora), sessao.usuarioId, (tx) => conferirContratoNaTransacao(tx, sessao.organizacaoId, r.imovel.id, r.dia));
+  const feito = await registrarFeitaPeloProprietario(db, sessao.organizacaoId, d, hojeISO(r.imovel.fuso, agora), sessao.usuarioId, (tx) => conferirNaTransacao(tx, sessao, r.imovel.id, r.dia));
   return feito.ok ? { ok: true } : feito;
 }

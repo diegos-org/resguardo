@@ -29,15 +29,17 @@ export type OpcoesEnvio = { modo: ModoEnvio; imovelIds?: string[]; autorId?: str
 type VinculoBeds24 = { imovelId: string; ativo: boolean; propertyId: string; roomId: string };
 /** Vínculo Beds24 que vale para o envio: ativo, com propriedade e quarto numéricos. */
 export const vinculoValidoParaEnvio = (m: Pick<VinculoBeds24, "ativo" | "propertyId" | "roomId">) => m.ativo && /^\d+$/.test(m.propertyId) && /^\d+$/.test(m.roomId);
+/** Vínculos escolhidos para um envio são ambíguos quando um imóvel tem dois ou um quarto serve a dois imóveis: o envio inteiro é abortado. */
+export const vinculosAmbiguos = (escolhidos: readonly Pick<VinculoBeds24, "imovelId" | "roomId">[]) =>
+  new Set(escolhidos.map((m) => m.imovelId)).size !== escolhidos.length || new Set(escolhidos.map((m) => m.roomId)).size !== escolhidos.length;
 /**
- * O imóvel está pronto para o envio pela régua que aborta o envio inteiro: exatamente um vínculo válido, e o quarto
- * dele não ligado a outro imóvel da lista de envio. O portal lê daqui para nunca prometer o que o envio recusaria.
+ * O imóvel está pronto para o envio pela régua que aborta o envio inteiro: ele tem um vínculo válido e, entre os vínculos
+ * válidos de toda a lista de envio (mais o dele), nenhuma ambiguidade — a ambiguidade de outro imóvel também derruba o
+ * envio deste. O portal lê daqui para nunca prometer o que o envio recusaria.
  */
 export function vinculoUnicoParaEnvio(mapas: readonly VinculoBeds24[], imovelId: string, listaDeEnvio: readonly string[]): boolean {
-  const validos = mapas.filter(vinculoValidoParaEnvio);
-  const meus = validos.filter((m) => m.imovelId === imovelId);
-  if (meus.length !== 1) return false;
-  return !validos.some((m) => m.imovelId !== imovelId && listaDeEnvio.includes(m.imovelId) && m.roomId === meus[0].roomId);
+  const escolhidos = mapas.filter(vinculoValidoParaEnvio).filter((m) => m.imovelId === imovelId || listaDeEnvio.includes(m.imovelId));
+  return escolhidos.some((m) => m.imovelId === imovelId) && !vinculosAmbiguos(escolhidos);
 }
 
 const NOMES_SITUACAO: Record<SituacaoEnvio, string> = {
@@ -199,7 +201,7 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
       const escolhidos = mapas.filter(m => regras.envio.imoveis.includes(m.imovelId) && (!pedidos || pedidos.includes(m.imovelId)));
       if (pedidos?.some(id => !escolhidos.some(m => m.imovelId === id))) throw new ErroBeds24("Imóvel sem vínculo Beds24 ativo (propriedade e quarto numéricos). Confira em Integrações.", "configuracao");
       if (!escolhidos.length) throw new ErroBeds24("Nenhum imóvel com envio ligado e vínculo Beds24 ativo. Ligue o envio por imóvel em Configurações → Calendário e preços.", "configuracao");
-      if (new Set(escolhidos.map(m => m.imovelId)).size !== escolhidos.length || new Set(escolhidos.map(m => m.roomId)).size !== escolhidos.length) throw new ErroBeds24("Cada imóvel deve estar ligado a um único quarto Beds24. Remova os vínculos duplicados antes de enviar.", "configuracao");
+      if (vinculosAmbiguos(escolhidos)) throw new ErroBeds24("Cada imóvel deve estar ligado a um único quarto Beds24. Remova os vínculos duplicados antes de enviar.", "configuracao");
       const fusos = new Map((await tx.select({ id: imoveis.id, fuso: imoveis.fuso }).from(imoveis).where(and(eq(imoveis.organizacaoId, org), inArray(imoveis.id, escolhidos.map(m => m.imovelId))))).map(i => [i.id, i.fuso]));
 
       // Estado enviado de outro quarto (vínculo trocado) não vale para o quarto atual: a posse de um bloqueio

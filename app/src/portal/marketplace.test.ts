@@ -18,6 +18,7 @@ import {
   limpezasDoProprietario,
   manutencoesDoProprietario,
   marcarLimpezaFeitaPeloProprietario,
+  NAO_DONO,
   NAO_MARKETPLACE,
   registrarManutencaoPeloProprietario,
   salvarPrecosPeloProprietario,
@@ -251,6 +252,11 @@ describe("portal do proprietário marketplace (M12.4)", () => {
     expect((await situacaoDoEnvio(db, org, { ...regras, envio: { imoveis: [a, b], automatico: true } }, a, escritaPronta)).vinculado).toBe(false);
     // Fora da lista de envio, o outro imóvel não entra no envio e não cria ambiguidade.
     expect((await situacaoDoEnvio(db, org, regras, a, escritaPronta)).vinculado).toBe(true);
+    // Ambiguidade em OUTRO imóvel da lista (dois vínculos válidos no 102) também derruba o envio inteiro — e a promessa deste.
+    await db.delete(idsExternos).where(and(eq(idsExternos.imovelId, b), eq(idsExternos.canal, "beds24")));
+    await db.insert(idsExternos).values([{ organizacaoId: org, imovelId: b, canal: "beds24", idExterno: "12", detalhe: "30" }, { organizacaoId: org, imovelId: b, canal: "beds24", idExterno: "13", detalhe: "31" }]);
+    expect((await situacaoDoEnvio(db, org, { ...regras, envio: { imoveis: [a, b], automatico: true } }, a, escritaPronta)).vinculado).toBe(false);
+    expect((await situacaoDoEnvio(db, org, regras, a, escritaPronta)).vinculado).toBe(true);
     const [sim] = await db.insert(beds24Envios).values({ organizacaoId: org, modo: "simulacao", situacao: "simulacao", iniciadoEm: new Date("2026-10-02T10:00:00Z") }).returning();
     const [real] = await db.insert(beds24Envios).values({ organizacaoId: org, modo: "envio", situacao: "ok", iniciadoEm: new Date("2026-10-01T10:00:00Z") }).returning();
     await db.insert(beds24EnvioNoites).values([
@@ -304,9 +310,30 @@ describe("portal do proprietário marketplace (M12.4)", () => {
     }
   });
 
-  it("imóvel que mudou de dono: limpezas e manutenções de antes do vínculo não aparecem nem podem ser mexidas pelo dono novo", async () => {
-    // a passa de "dona" para "nova" em 3/10 (vínculo às 12:00 de São Paulo).
+  it("sessão com posse antiga: o imóvel transferido ou desvinculado no meio é recusado dentro da transação, e nada é gravado", async () => {
+    const s = sessao([a]);
     const [{ id: nova }] = await db.insert(proprietarios).values({ organizacaoId: org, nome: "Nova Dona" }).returning();
+    // Transferido para outra proprietária (sem vínculo com este usuário) depois de a sessão ter sido montada.
+    await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));
+    await db.insert(proprietarioImoveis).values({ proprietarioId: nova, imovelId: a, criadoEm: desdeSempre });
+    expect(await salvarPrecosPeloProprietario(db, s, a, { precoBase: "200,00" }, agora)).toEqual({ ok: false, erro: NAO_DONO });
+    expect(await criarPeriodoPeloProprietario(db, s, a, { nome: "Natal", inicio: "2026-12-24", fim: "2026-12-26", precoNoite: "500,00", estadiaMinima: "" }, agora)).toEqual({ ok: false, erro: NAO_DONO });
+    expect(await registrarManutencaoPeloProprietario(db, s, { imovelId: a, titulo: "Pintura", descricao: "", data: "2026-10-01" }, agora)).toEqual({ ok: false, erro: NAO_DONO });
+    expect(await db.select().from(manutencoes)).toEqual([]);
+    expect((await lerDetalhes(db, org, a)).precoBase).not.toBe(20000);
+    // Desvinculado de todo mundo: idem.
+    await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));
+    expect(await salvarPrecosPeloProprietario(db, s, a, { precoBase: "200,00" }, agora)).toEqual({ ok: false, erro: NAO_DONO });
+    // Representando a nova dona, o mesmo usuário volta a poder gravar.
+    await db.insert(proprietarioImoveis).values({ proprietarioId: nova, imovelId: a, criadoEm: desdeSempre });
+    await db.insert(proprietarioUsuarios).values({ proprietarioId: nova, usuarioId: usuario });
+    expect(await salvarPrecosPeloProprietario(db, s, a, { precoBase: "200,00" }, agora)).toEqual({ ok: true });
+  });
+
+  it("imóvel que mudou de dono: limpezas e manutenções de antes do vínculo não aparecem nem podem ser mexidas pelo dono novo", async () => {
+    // a passa de "dona" para "nova" em 3/10 (vínculo às 12:00 de São Paulo); o usuário representa a nova dona.
+    const [{ id: nova }] = await db.insert(proprietarios).values({ organizacaoId: org, nome: "Nova Dona" }).returning();
+    await db.insert(proprietarioUsuarios).values({ proprietarioId: nova, usuarioId: usuario });
     await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));
     await db.insert(proprietarioImoveis).values({ proprietarioId: nova, imovelId: a, criadoEm: new Date("2026-10-03T15:00:00Z") });
     await db.insert(limpezas).values([
