@@ -1,0 +1,609 @@
+# Robô de backup do repositório do SCL. Este arquivo é copiado para o repositório de backup,
+# em OUTRA conta do GitHub, no caminho .github/workflows/backup.yml. Aqui, em infra/backup/,
+# ele é só o original guardado: não roda neste repositório.
+#
+# Como funciona (detalhes em requisitos/operations/BACKUP-E-RECUPERACAO.md):
+# - A cada 3 dias (e quando acionado à mão), baixa todas as branches e tags da origem com um
+#   token SÓ DE LEITURA e grava neste repositório sob o prefixo `espelho/`.
+# - Nunca apaga nem reescreve o que já está aqui: só avança. Branch apagada na origem continua
+#   aqui; branch reescrita na origem fica como estava aqui (a versão nova fica na tag datada).
+# - Cada rodada cria uma tag `backup/AAAA-MM-DD-HHMM` apontando para um "retrato": um commit cuja
+#   árvore é a da `main` da origem e cujos pais são o retrato anterior e TODAS as pontas da origem
+#   (branches e tags), com um inventário na mensagem (cada branch e tag da origem com seu commit, e
+#   tudo o que este repositório guarda). A branch `backup-marcos` aponta sempre para o último
+#   retrato: é a linha do tempo dos retratos e a base da comparação. Uma ref reescrita na origem
+#   é guardada tal como está sob `recusadas/<data>/...`, para o objeto exato (inclusive tag
+#   anotada) continuar alcançável. Nada fica solto para o Git limpar.
+# - Comparando com o inventário do retrato anterior, o robô falha (o GitHub manda e-mail para a
+#   conta de backup) quando: algo sumiu da origem; algo foi reescrito na origem; algo sumiu deste
+#   backup (inclusive tags backup/ e o ponteiro backup-marcos). Cada ocorrência avisa uma vez só.
+#
+# Segredos deste repositório de backup (Settings → Secrets and variables → Actions):
+# - ORIGEM_REPO  = dono/repositorio da origem (ex.: empresa/sistema)
+# - ORIGEM_TOKEN = fine-grained token da conta principal: só este repositório, só leitura
+#                  (Contents: Read-only). Nada de escrita, nada de administração.
+# - BATIMENTO_URL (opcional) = URL de "ping" de um serviço gratuito de batimento (dead man's switch).
+#                  Chamada só quando a rodada termina bem; se o robô for apagado, desligado ou parar
+#                  de rodar, a URL fica sem chamadas e o serviço avisa por e-mail. Sem ela, o robô
+#                  não tem como avisar a própria ausência: vale a conferência mensal da aba Actions.
+# Nenhum dado da conta de backup aparece neste arquivo nem no repositório de origem.
+name: Backup do repositório de origem
+
+on:
+  schedule:
+    - cron: "17 6 */3 * *" # a cada 3 dias, 03:17 em Brasília (06:17 UTC)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  espelhar:
+    name: Espelhar a origem neste repositório
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GIT_TERMINAL_PROMPT: "0"
+    steps:
+      - name: Conferir segredos
+        env:
+          ORIGEM_REPO: ${{ secrets.ORIGEM_REPO }}
+          ORIGEM_TOKEN: ${{ secrets.ORIGEM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ORIGEM_REPO}" ] || [ -z "${ORIGEM_TOKEN}" ]; then
+            echo "::error::Faltam os segredos ORIGEM_REPO e/ou ORIGEM_TOKEN neste repositório."
+            exit 1
+          fi
+          case "${ORIGEM_REPO}" in
+            */*) ;;
+            *) echo "::error::ORIGEM_REPO deve ter o formato dono/repositorio."; exit 1 ;;
+          esac
+
+      - name: Baixar tudo da origem (só leitura)
+        env:
+          ORIGEM_REPO: ${{ secrets.ORIGEM_REPO }}
+          ORIGEM_TOKEN: ${{ secrets.ORIGEM_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Credencial vai no cabeçalho HTTP, nunca na URL: não aparece em mensagens de erro.
+          auth="AUTHORIZATION: basic $(printf '%s' "x-access-token:${ORIGEM_TOKEN}" | base64 -w0)"
+          origem="${ORIGEM_URL:-https://github.com/${ORIGEM_REPO}.git}"
+          git init -q --bare espelho.git
+          cd espelho.git
+          git -c "http.extraheader=${auth}" fetch -q --no-tags "${origem}" \
+            '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*'
+          echo "Branches baixadas: $(git for-each-ref refs/heads | wc -l); tags: $(git for-each-ref refs/tags | wc -l)"
+          if ! git rev-parse --verify -q refs/heads/main >/dev/null; then
+            echo "::error::A origem não tem a branch main."
+            exit 1
+          fi
+
+      - name: Gravar neste repositório sem apagar nem reescrever nada
+        id: gravar
+        env:
+          DESTINO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Variável do repositório (Settings → Secrets and variables → Actions → Variables), criada pelo Diego
+          # depois da primeira rodada verde. É o único "backup já existe" que o robô não consegue recriar.
+          BACKUP_INICIADO: ${{ vars.BACKUP_INICIADO }}
+        run: |
+          set -euo pipefail
+          cd espelho.git
+          auth="AUTHORIZATION: basic $(printf '%s' "x-access-token:${DESTINO_TOKEN}" | base64 -w0)"
+          destino="${DESTINO_URL:-https://github.com/${GITHUB_REPOSITORY}.git}"
+          marco="backup/$(TZ=America/Sao_Paulo date +%Y-%m-%d-%H%M)"
+          robo() { git -c user.name=robo -c user.email=robo@backup.invalid "$@"; }
+          no_destino() { git -c "http.extraheader=${auth}" "$@"; }
+          # Mensagem do COMMIT apontado (não a de uma tag anotada): é nela que fica o inventário do retrato.
+          mensagem() { git log -1 --format=%B "$1^{commit}" 2>/dev/null || true; }
+          # Retrato de verdade tem inventário: pelo menos a linha da main da origem.
+          tem_inventario() { [ -n "$(mensagem "$1" | grep -E '^origem [0-9a-f]{40} refs/heads/main$')" ]; }
+
+          # Nomes reservados: no inventário, refs da origem são citadas pelo nome original, então tags backup/,
+          # recusadas/ e objetos/ ou uma branch backup-marcos na origem se confundiriam com as do próprio
+          # backup. Nunca existem na origem de verdade; se aparecerem, a rodada para antes de gravar.
+          reservadas=$(git for-each-ref --format='%(refname)' refs/tags/backup refs/tags/recusadas refs/tags/objetos refs/heads/backup-marcos)
+          if [ -n "${reservadas}" ]; then
+            echo "::error::A origem tem refs com nomes reservados ao backup (tags backup/, recusadas/, objetos/ ou a branch backup-marcos). Renomeie-as na origem; até lá nada é gravado:"
+            echo "${reservadas}"
+            exit 1
+          fi
+
+          # O que este repositório já guarda, trazido para refs/guardado/ (traz também a história
+          # antiga, para reconhecer uma reescrita na origem). Se a leitura falhar, a rodada para:
+          # sem essa visão a comparação ficaria cega e a rodada seguinte tomaria o vazio por base.
+          no_destino fetch -q --no-tags "${destino}" \
+            '+refs/heads/espelho/*:refs/guardado/heads/*' '+refs/tags/espelho/*:refs/guardado/tags/*' \
+            '+refs/tags/backup/*:refs/guardado/backup/*' '+refs/tags/recusadas/*:refs/guardado/recusadas/*' \
+            '+refs/tags/objetos/*:refs/guardado/objetos/*'
+          ponteiro=$(no_destino ls-remote "${destino}" refs/heads/backup-marcos | awk '{print $1}')
+          # "Backup já existe" em dois lugares, fora de todas as refs que o robô gerencia:
+          # 1) o arquivo .backup/iniciado na branch principal deste repositório, gravado pelo robô na primeira
+          #    rodada (cobre apagar todas as refs por engano ou por script com o token);
+          # 2) a variável BACKUP_INICIADO do repositório, criada pelo Diego depois da primeira rodada verde: o
+          #    robô só lê, nunca cria, então nem apagar o arquivo junto com as refs faz a rodada passar por
+          #    primeira. Se qualquer um dos dois existir e nenhuma ref do backup existir, alguém apagou tudo.
+          padrao=$(no_destino ls-remote --symref "${destino}" HEAD | awk '$1 == "ref:" {print $2}' | head -n1)
+          sentinela=0; iniciado_declarado=0
+          if [ -n "${padrao}" ]; then
+            no_destino fetch -q --no-tags "${destino}" "+${padrao}:refs/guardado/padrao"
+            if git cat-file -e 'refs/guardado/padrao:.backup/iniciado' 2>/dev/null; then sentinela=1; fi
+          fi
+          if [ -n "${BACKUP_INICIADO:-}" ]; then iniciado_declarado=1; fi
+          if [ -n "${ponteiro}" ]; then
+            no_destino fetch -q --no-tags "${destino}" '+refs/heads/backup-marcos:refs/guardado/marcos'
+          fi
+          {
+            git for-each-ref --format='%(refname)' refs/guardado/heads refs/guardado/tags | sed 's#^refs/guardado/#refs/#'
+            git for-each-ref --format='%(refname)' refs/guardado/backup | sed 's#^refs/guardado/backup/#refs/tags/backup/#'
+            git for-each-ref --format='%(refname)' refs/guardado/recusadas | sed 's#^refs/guardado/recusadas/#refs/tags/recusadas/#'
+            git for-each-ref --format='%(refname)' refs/guardado/objetos | sed 's#^refs/guardado/objetos/#refs/tags/objetos/#'
+            if [ -n "${ponteiro}" ]; then echo refs/heads/backup-marcos; fi
+          } | sort > guardado.refs
+          # Marcos datados existentes (só os do formato backup/AAAA-MM-DD-HHMM).
+          grep -E '^refs/tags/backup/[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{4}$' guardado.refs | sort > marcos.refs || true
+          # Só vale como base um retrato íntegro: o inventário na mensagem nomeia a própria tag.
+          : > marcos-validos.refs
+          while read -r t; do
+            [ -z "${t}" ] && continue
+            m=$(mensagem "refs/guardado/backup/${t#refs/tags/backup/}" | awk '$1 == "marco" && NF == 2 {print $2}' | head -n1)
+            if [ "${m}" = "${t}" ] && tem_inventario "refs/guardado/backup/${t#refs/tags/backup/}"; then echo "${t}" >> marcos-validos.refs; fi
+          done < marcos.refs
+          marcos_invalidos=$(comm -23 marcos.refs marcos-validos.refs || true)
+          # O ponteiro só serve de base se estiver ANCORADO: aponta para um retrato (commit com inventário que
+          # nomeia um marco) e a tag desse marco existe e aponta para o mesmo commit. Commit sem inventário é
+          # adulteração; tag ausente ou em outro commit deixa o ponteiro sem âncora (a base cai para o marco
+          # íntegro mais novo e o commit apontado é preservado como pai do retrato).
+          ponteiro_adulterado=0; ponteiro_recuado=0; ponteiro_sem_ancora=0; ponteiro_commit=""
+          if [ -n "${ponteiro}" ]; then
+            ponteiro_commit=$(git rev-parse -q --verify 'refs/guardado/marcos^{commit}' 2>/dev/null || true)
+            m=$(mensagem refs/guardado/marcos | awk '$1 == "marco" && NF == 2 {print $2}' | head -n1)
+            if ! echo "${m}" | grep -Eq '^refs/tags/backup/[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{4}$' || ! tem_inventario refs/guardado/marcos; then
+              ponteiro_adulterado=1
+            else
+              tag_commit=$(git rev-parse -q --verify "refs/guardado/backup/${m#refs/tags/backup/}^{commit}" 2>/dev/null || true)
+              if [ -z "${tag_commit}" ]; then
+                # SEM ÂNCORA: a tag do marco citado não existe. Pode ser um retrato legítimo cuja tag foi apagada
+                # ou um commit forjado com um nome de marco qualquer; sozinho, o ponteiro não serve de base.
+                ponteiro_sem_ancora=1
+              elif [ "${tag_commit}" != "${ponteiro_commit}" ]; then
+                # A tag do marco aponta para outro commit: a tag é inválida e o ponteiro fica sem âncora.
+                marcos_invalidos=$(printf '%s\n%s' "${marcos_invalidos}" "${m}" | sed '/^$/d' | sort -u)
+                ponteiro_sem_ancora=1
+              else
+                # Ancorado. Ponteiro RECUADO: aponta para um retrato íntegro, mas há marco íntegro mais novo.
+                # A base passa a ser o mais novo e o ponteiro é avançado de novo (fast-forward) pela rodada.
+                mais_novo=$(tail -n1 marcos-validos.refs 2>/dev/null || true)
+                if [ -n "${mais_novo}" ] && [ "${m}" \< "${mais_novo}" ]; then ponteiro_recuado=1; fi
+              fi
+            fi
+          fi
+
+          # Rodada anterior = retrato apontado por backup-marcos, se íntegro. Senão, o marco íntegro mais novo
+          # (e avisa); sem marco algum mas com conteúdo espelhado, todos os marcos foram apagados.
+          anterior=""; ponteiro_apagado=0; marcos_apagados=0; tudo_apagado=0
+          if [ -n "${ponteiro}" ] && [ "${ponteiro_adulterado}" -eq 0 ] && [ "${ponteiro_recuado}" -eq 0 ] && [ "${ponteiro_sem_ancora}" -eq 0 ]; then
+            anterior=refs/guardado/marcos
+          elif [ -s marcos-validos.refs ]; then
+            anterior=$(tail -n1 marcos-validos.refs | sed 's#^refs/tags/backup/#refs/guardado/backup/#')
+            if [ -z "${ponteiro}" ]; then ponteiro_apagado=1; fi
+          elif [ -s guardado.refs ]; then
+            marcos_apagados=1
+          elif [ "${sentinela}" -eq 1 ] || [ "${iniciado_declarado}" -eq 1 ]; then
+            tudo_apagado=1
+          fi
+
+          # Inventário desta rodada, parte 1: qual é o marco e a origem (commit e nome de cada ref).
+          echo "marco refs/tags/${marco}" > inventario.txt
+          git for-each-ref --format='origem %(objectname) %(refname)' refs/heads refs/tags >> inventario.txt
+          awk '$1 == "origem" {print $3}' inventario.txt | sort > atual.refs
+
+          # Comparação com o inventário do retrato anterior.
+          sumiram_da_origem=""; sumiram_do_backup=""; reescritas=""
+          : > anterior.txt; : > anterior-origem.refs; : > anterior-backup.refs
+          if [ -n "${anterior}" ]; then
+            mensagem "${anterior}" > anterior.txt
+            awk '$1 == "origem" && NF == 3 {print $3}' anterior.txt | sort > anterior-origem.refs
+            awk '($1 == "backup" && NF == 2) {print $2} ($1 == "recusada" && NF == 3) {print $3}' anterior.txt | sort > anterior-backup.refs
+            sumiram_da_origem=$(comm -23 anterior-origem.refs atual.refs || true)
+            sumiram_do_backup=$(comm -23 anterior-backup.refs guardado.refs || true)
+            # Reescrita: branch cujo commit de antes não é antepassado do de agora; tag que mudou de objeto.
+            while read -r _ sha_antes ref; do
+              sha_agora=$(git rev-parse -q --verify "${ref}" 2>/dev/null || true)
+              [ -z "${sha_agora}" ] && continue
+              case "${ref}" in
+                refs/tags/*)
+                  [ "${sha_agora}" != "${sha_antes}" ] && reescritas="${reescritas}${ref}"$'\n' ;;
+                *)
+                  antes=$(git rev-parse -q --verify "${sha_antes}^{commit}" 2>/dev/null || true)
+                  agora=$(git rev-parse -q --verify "${sha_agora}^{commit}" 2>/dev/null || true)
+                  if [ -z "${antes}" ] || [ -z "${agora}" ] || ! git merge-base --is-ancestor "${antes}" "${agora}"; then
+                    reescritas="${reescritas}${ref}"$'\n'
+                  fi ;;
+              esac
+            done < <(awk '$1 == "origem" && NF == 3' anterior.txt)
+          fi
+          # Ref que a base anterior não conhecia (nova, ou apagada e recriada na origem) mas cujo espelho já
+          # existe com outro objeto: também é reescrita (cópia exata + aviso), senão o objeto novo se perderia.
+          while read -r ref; do
+            [ -z "${ref}" ] && continue
+            grep -qxF "${ref}" anterior-origem.refs && continue
+            g=$(git rev-parse -q --verify "refs/guardado/${ref#refs/}" 2>/dev/null || true)
+            [ -z "${g}" ] && continue
+            a=$(git rev-parse -q --verify "${ref}" 2>/dev/null || true)
+            [ "${g}" = "${a}" ] && continue
+            case "${ref}" in
+              refs/tags/*) reescritas="${reescritas}${ref}"$'\n' ;;
+              *)
+                gc=$(git rev-parse -q --verify "${g}^{commit}" 2>/dev/null || true)
+                ac=$(git rev-parse -q --verify "${a}^{commit}" 2>/dev/null || true)
+                if [ -z "${gc}" ] || [ -z "${ac}" ] || ! git merge-base --is-ancestor "${gc}" "${ac}"; then
+                  reescritas="${reescritas}${ref}"$'\n'
+                fi ;;
+            esac
+          done < atual.refs
+
+          # Cópias desta rodada: objeto exato de cada ref reescrita, sob recusadas/<data>/... ("recusada <sha> <ref>").
+          copias_novas=""
+          if [ -n "${reescritas}" ]; then
+            while read -r ref; do
+              [ -z "${ref}" ] && continue
+              copias_novas="${copias_novas}$(git rev-parse "${ref}") refs/tags/recusadas/${marco#backup/}/${ref#refs/}"$'\n'
+            done <<< "${reescritas}"
+          fi
+          # Cópias recusadas/ que sumiram deste backup: regravar só se a origem ainda tiver exatamente aquele
+          # objeto (o inventário anterior guarda o sha); senão, é perda, e fica dito.
+          recriadas=(); copias_recriadas=""; perdidas=""
+          if [ -n "${sumiram_do_backup}" ]; then
+            while read -r dest; do
+              case "${dest}" in refs/tags/recusadas/*/heads/*|refs/tags/recusadas/*/tags/*) ;; *) continue ;; esac
+              esperado=$(awk -v d="${dest}" '$1 == "recusada" && $3 == d {print $2}' anterior.txt | head -n1)
+              src="refs/${dest#refs/tags/recusadas/*/}"
+              atual_sha=$(git rev-parse -q --verify "${src}" 2>/dev/null || true)
+              if [ -n "${esperado}" ] && [ -n "${atual_sha}" ] && [ "${atual_sha}" = "${esperado}" ]; then
+                recriadas+=("${src}:${dest}"); copias_recriadas="${copias_recriadas}${esperado} ${dest}"$'\n'
+              else
+                perdidas="${perdidas}${dest} (objeto ${esperado:-desconhecido}; a origem tem ${atual_sha:-nada})"$'\n'
+              fi
+            done <<< "${sumiram_do_backup}"
+          fi
+          # Cópias recusadas/ ALTERADAS neste backup (ainda existem, mas com outro objeto): o inventário continua
+          # cobrando o objeto esperado em toda rodada, até a cópia ser apagada (aí vale a regra acima). Se a origem
+          # ainda tiver o objeto exato, ele é salvo de novo sob a data desta rodada.
+          alteradas=""
+          while read -r _ sha ref; do
+            [ -z "${ref}" ] && continue
+            g=$(git rev-parse -q --verify "refs/guardado/recusadas/${ref#refs/tags/recusadas/}" 2>/dev/null || true)
+            [ -z "${g}" ] && continue
+            [ "${g}" = "${sha}" ] && continue
+            alteradas="${alteradas}${ref} (esperado ${sha}, encontrado ${g})"$'\n'
+            src="refs/${ref#refs/tags/recusadas/*/}"
+            novo_dest="refs/tags/recusadas/${marco#backup/}/${src#refs/}"
+            atual_sha=$(git rev-parse -q --verify "${src}" 2>/dev/null || true)
+            # Um destino só: várias cópias alteradas com o mesmo objeto (ref que voltou a um valor antigo) geram
+            # uma única regravação sob a data de hoje.
+            if [ "${atual_sha}" = "${sha}" ] && ! printf '%s%s' "${copias_novas}" "${copias_recriadas}" | awk -v d="${novo_dest}" 'NF == 2 && $2 == d {ok = 1} END {exit ok ? 0 : 1}'; then
+              recriadas+=("${src}:${novo_dest}"); copias_recriadas="${copias_recriadas}${sha} ${novo_dest}"$'\n'
+            fi
+          done < <(awk '$1 == "recusada" && NF == 3' anterior.txt)
+
+          # Espelho: objeto esperado de cada ref espelho/... depois desta rodada (regra do push sem force), e refs
+          # cujo espelho foi ALTERADO neste backup (objeto diferente do inventariado). Nessas, o inventário mantém
+          # o esperado (avisa a cada rodada até a ref ser apagada ou corrigida) e, se a origem ainda tiver o objeto
+          # exato, ele é salvo de novo sob recusadas/<data>/....
+          awk '$1 == "espelho" && NF == 3' anterior.txt > anterior-espelho.txt
+          espelho_adulterado=""; : > espelho.inv; : > espelho-adulterado.refs
+          {
+            cat atual.refs
+            grep -E '^refs/(heads|tags)/' guardado.refs | grep -v -E '^refs/tags/(backup|recusadas|objetos)/|^refs/heads/backup-marcos$' || true
+          } | sort -u | while read -r ref; do
+            [ -z "${ref}" ] && continue
+            a=$(git rev-parse -q --verify "${ref}" 2>/dev/null || true)
+            g=$(git rev-parse -q --verify "refs/guardado/${ref#refs/}" 2>/dev/null || true)
+            esperado=$(awk -v r="${ref}" '$3 == r {print $2}' anterior-espelho.txt | head -n1)
+            # Alteração = o backup tem algo diferente do esperado que o push do próprio robô NÃO poderia ter
+            # produzido. O robô só avança branch por fast-forward e nunca muda tag espelhada; então retomada
+            # (rodada que avançou o espelho e falhou antes do marco) é: branch cujo esperado é antepassado do
+            # que está no backup. Vale mesmo que a origem já tenha mudado de novo (reescrita ou apagada): o
+            # avanço pode ser a única cópia daquela versão, e o esperado continua alcançável pelo retrato
+            # anterior, então nada se perde; se o avanço for além do que a origem tem agora, sai aviso amarelo.
+            # Tag espelhada diferente do esperado é alteração mesmo que seja igual ao que a origem tem agora:
+            # depois de uma reescrita na origem, mover o espelho à mão para a versão nova esconderia a reescrita.
+            retomada=0
+            if [ -n "${g}" ] && [ -n "${esperado}" ] && [ "${g}" != "${esperado}" ]; then
+              case "${ref}" in
+                refs/tags/*) ;;
+                *)
+                  ec=$(git rev-parse -q --verify "${esperado}^{commit}" 2>/dev/null || true)
+                  gc=$(git rev-parse -q --verify "${g}^{commit}" 2>/dev/null || true)
+                  if [ -n "${ec}" ] && [ -n "${gc}" ] && git merge-base --is-ancestor "${ec}" "${gc}"; then
+                    retomada=1
+                    ac=$(git rev-parse -q --verify "${a}^{commit}" 2>/dev/null || true)
+                    if [ -n "${a}" ] && [ "${g}" != "${a}" ] && { [ -z "${ac}" ] || ! git merge-base --is-ancestor "${gc}" "${ac}"; }; then
+                      echo "::warning::${ref}: o espelho avançou (${g}) além do que a origem tem agora (${a}); retomada de rodada incompleta ou avanço manual. Mantido como está; a origem divergente fica alcançável pelo retrato."
+                    fi
+                  fi ;;
+              esac
+            fi
+            if [ -n "${g}" ] && [ -n "${esperado}" ] && [ "${g}" != "${esperado}" ] && [ "${retomada}" -eq 0 ]; then
+              echo "${ref} (esperado ${esperado}, encontrado ${g})" >> espelho-adulterado.txt
+              echo "${ref}" >> espelho-adulterado.refs
+              echo "${esperado} ${ref}" >> espelho.inv
+              if [ -n "${a}" ] && [ "${a}" = "${esperado}" ]; then echo "${ref}" >> espelho-resalvar.refs; fi
+              continue
+            fi
+            if [ -z "${a}" ]; then echo "${g} ${ref}" >> espelho.inv; continue; fi
+            if [ -z "${g}" ] || [ "${g}" = "${a}" ]; then echo "${a} ${ref}" >> espelho.inv; continue; fi
+            case "${ref}" in
+              refs/tags/*) echo "${g} ${ref}" >> espelho.inv ;;
+              *)
+                gc=$(git rev-parse -q --verify "${g}^{commit}" 2>/dev/null || true)
+                ac=$(git rev-parse -q --verify "${a}^{commit}" 2>/dev/null || true)
+                if [ -n "${gc}" ] && [ -n "${ac}" ] && git merge-base --is-ancestor "${gc}" "${ac}"; then echo "${a} ${ref}" >> espelho.inv; else echo "${g} ${ref}" >> espelho.inv; fi ;;
+            esac
+          done
+          [ -f espelho-adulterado.txt ] && espelho_adulterado=$(cat espelho-adulterado.txt) || true
+          if [ -f espelho-resalvar.refs ]; then
+            while read -r ref; do
+              [ -z "${ref}" ] && continue
+              novo_dest="refs/tags/recusadas/${marco#backup/}/${ref#refs/}"
+              if ! printf '%s%s' "${copias_novas}" "${copias_recriadas}" | awk -v d="${novo_dest}" 'NF == 2 && $2 == d {ok = 1} END {exit ok ? 0 : 1}'; then
+                recriadas+=("${ref}:${novo_dest}"); copias_recriadas="${copias_recriadas}$(git rev-parse "${ref}") ${novo_dest}"$'\n'
+              fi
+            done < espelho-resalvar.refs
+          fi
+
+          # Pontas de tag que não são commit (tag anotada; tag leve para um arquivo ou uma árvore): cada
+          # objeto ganha uma ref durável objetos/<sha>, uma vez, para nunca depender de espelho/ ou
+          # recusadas/ (um commit já fica alcançável como pai do retrato; esses objetos não podem ser pais).
+          # Entram as pontas da origem e também as das cópias que este backup guarda (espelho/ e recusadas/):
+          # uma objetos/ apagada é regravada enquanto alguma dessas cópias ainda tiver o objeto.
+          objetos_novos=(); objetos_alterados=""
+          while read -r sha ref; do
+            [ -z "${sha}" ] && continue
+            [ "$(git cat-file -t "${sha}")" != "commit" ] || continue
+            if ! git rev-parse -q --verify "refs/guardado/objetos/${sha}" >/dev/null 2>&1; then objetos_novos+=("${sha}:refs/tags/objetos/${sha}"); fi
+          done < <(git for-each-ref --format='%(objectname) %(refname)' refs/tags refs/guardado/tags refs/guardado/recusadas | sort -u -k1,1)
+          while read -r sha ref; do
+            [ -z "${ref}" ] && continue
+            if [ "${sha}" != "${ref#refs/guardado/objetos/}" ]; then objetos_alterados="${objetos_alterados}refs/tags/objetos/${ref#refs/guardado/objetos/} (aponta para ${sha})"$'\n'; fi
+          done < <(git for-each-ref --format='%(objectname) %(refname)' refs/guardado/objetos)
+
+          # Inventário, parte 2: o que este backup guarda depois desta rodada. As cópias recusadas/ vão com o
+          # objeto esperado (o já inventariado, ou o desta rodada); o espelho, com o objeto esperado; o resto, pelo nome.
+          {
+            cat guardado.refs atual.refs
+            echo "refs/tags/${marco}"
+            echo refs/heads/backup-marcos
+            for spec in "${objetos_novos[@]}"; do echo "${spec#*:}"; done
+          } | grep -v '^refs/tags/recusadas/' | sort -u | sed 's/^/backup /' >> inventario.txt
+          sort -u espelho.inv | sed 's/^/espelho /' >> inventario.txt
+          {
+            # já inventariadas e ainda presentes: mantém o objeto esperado
+            while read -r _ sha ref; do
+              [ -z "${ref}" ] && continue
+              if git rev-parse -q --verify "refs/guardado/recusadas/${ref#refs/tags/recusadas/}" >/dev/null 2>&1; then echo "${sha} ${ref}"; fi
+            done < <(awk '$1 == "recusada" && NF == 3' anterior.txt)
+            # presentes no backup sem constar da base (ex.: base perdida): entram como estão
+            while read -r sha ref; do
+              [ -z "${ref}" ] && continue
+              if ! awk '$1 == "recusada" && NF == 3 {print $3}' anterior.txt | grep -qxF "${ref}"; then echo "${sha} ${ref}"; fi
+            done < <(git for-each-ref --format='%(objectname) refs/tags/recusadas/%(refname:strip=3)' refs/guardado/recusadas)
+            printf '%s' "${copias_novas}"
+            printf '%s' "${copias_recriadas}"
+          } | sed '/^$/d' | sort -u | sed 's/^/recusada /' >> inventario.txt
+
+          # Retrato da rodada: árvore da main; pais = retrato anterior, main e todas as outras pontas
+          # (commits); mensagem = inventário. Tudo o que o inventário cita fica alcançável por aqui.
+          main=$(git rev-parse "refs/heads/main^{commit}")
+          pais=(); : > pais.lst
+          pai() { if [ -n "$1" ] && ! grep -qxF "$1" pais.lst; then pais+=(-p "$1"); echo "$1" >> pais.lst; fi; }
+          if [ -n "${anterior}" ]; then pai "$(git rev-parse "${anterior}^{commit}")"; fi
+          # Ponteiro adulterado ou sem âncora: o commit para onde ele aponta vira pai também, para nada se
+          # perder antes de a pessoa apagar a branch (se era um retrato legítimo, continua alcançável).
+          if { [ "${ponteiro_adulterado}" -eq 1 ] || [ "${ponteiro_sem_ancora}" -eq 1 ]; } && [ -n "${ponteiro_commit}" ]; then pai "${ponteiro_commit}"; fi
+          pai "${main}"
+          # Pontas da origem (tag anotada vira o commit apontado) E as pontas espelhadas que este backup guarda
+          # (o que está em espelho/ agora e o que o inventário espera depois desta rodada): inclui avanços
+          # retomados e branches que a origem apagou ou reescreveu, para tudo o que o inventário cita continuar
+          # alcançável pelo retrato mesmo se uma ref espelho/ for apagada depois. Sem repetição.
+          while read -r c; do pai "${c}"; done < <(
+            { git for-each-ref --format='%(objectname)' refs/heads refs/tags refs/guardado/heads
+              awk 'NF == 2 {print $1}' espelho.inv
+            } | while read -r o; do git rev-parse -q --verify "${o}^{commit}" 2>/dev/null || true; done | sort -u)
+          retrato=$(robo commit-tree "${main}^{tree}" "${pais[@]}" -F inventario.txt)
+          git update-ref "refs/marcos/${marco}" "${retrato}"
+
+          # 1) Refs reescritas nesta rodada: guardar o objeto exato (inclusive tag anotada ou de blob) sob
+          #    recusadas/<data>/..., ANTES de avançar a base de comparação. Se falhar, a rodada para aqui e a
+          #    próxima tenta de novo (a ref continua "reescrita" frente à base antiga).
+          if [ -n "${reescritas}" ]; then
+            specs=()
+            while read -r ref; do
+              [ -n "${ref}" ] && specs+=("${ref}:refs/tags/recusadas/${marco#backup/}/${ref#refs/}")
+            done <<< "${reescritas}"
+            no_destino push -q "${destino}" "${specs[@]}"
+          fi
+          if [ "${#recriadas[@]}" -gt 0 ]; then
+            no_destino push -q "${destino}" "${recriadas[@]}"
+          fi
+          if [ "${#objetos_novos[@]}" -gt 0 ]; then
+            no_destino push -q "${destino}" "${objetos_novos[@]}"
+          fi
+
+          # 2) Espelho, sem --force e sem --prune: só avança. O que a origem apagou continua aqui; o que
+          #    ela reescreveu é recusado (linha começando com "!") e fica como estava.
+          set +e
+          no_destino push --porcelain "${destino}" \
+            'refs/heads/*:refs/heads/espelho/*' \
+            'refs/tags/*:refs/tags/espelho/*' > push.log 2> push.err
+          codigo=$?
+          set -e
+          grep -v '^To ' push.log || true
+          if [ "${codigo}" -ne 0 ] && ! grep -q '^!' push.log; then
+            cat push.err
+            echo "::error::O push do espelho para este repositório falhou (código ${codigo})."
+            exit "${codigo}"
+          fi
+          # Só se aceita recusa por divergência da origem (non-fast-forward, fetch first, already exists) de uma
+          # ref que a base já conhecia ou que foi tratada como reescrita nesta rodada. Qualquer outra (regra do
+          # repositório, hook, falha do servidor, ref desconhecida) para a rodada antes de avançar a base.
+          inesperadas=$(awk -F'\t' '$1 == "!" {split($2, a, ":"); print a[1] "\t" $3}' push.log | while IFS=$'\t' read -r src motivo; do
+            case "${motivo}" in
+              "[rejected] (non-fast-forward)"|"[rejected] (fetch first)"|"[rejected] (already exists)") ;;
+              *) echo "${src}: ${motivo}"; continue ;;
+            esac
+            if printf '%s' "${reescritas}" | grep -qxF "${src}"; then continue; fi
+            if ! grep -qxF "${src}" anterior-origem.refs; then
+              echo "${src}: recusada sem reescrita detectada (${motivo})"
+            elif grep -qxF "${src}" espelho-adulterado.refs; then
+              echo "${src}: recusada porque o espelho desta ref foi alterado neste backup (${motivo})"
+            fi
+          done || true)
+          if [ -n "${inesperadas}" ]; then
+            cat push.err || true
+            echo "::error::Recusas inesperadas no push do espelho (não são divergência da origem). A base de comparação não mudou; o espelho pode estar incompleto:"
+            echo "${inesperadas}"
+            exit 1
+          fi
+          if grep -q '^!' push.log; then
+            echo "::warning::Refs recusadas (a origem diverge do que está guardado): este backup manteve a versão anterior em espelho/...; a versão atual da origem está alcançável pela tag ${marco}."
+          fi
+
+          # 3) Marco e ponteiro juntos (--atomic): ou os dois entram, ou nenhum. A base de comparação nunca
+          #    fica à frente do que já foi guardado. Ponteiro adulterado: grava só o marco (o robô não força
+          #    nada); o aviso abaixo diz como corrigir.
+          if [ "${ponteiro_adulterado}" -eq 1 ]; then
+            specs=("refs/marcos/${marco}:refs/tags/${marco}")
+          else
+            specs=("refs/marcos/${marco}:refs/tags/${marco}" "refs/marcos/${marco}:refs/heads/backup-marcos")
+          fi
+          if ! no_destino push -q --atomic "${destino}" "${specs[@]}"; then
+            echo "::error::Não foi possível gravar ${marco} e backup-marcos (já existe uma rodada neste mesmo minuto, ou uma regra do repositório recusou). A base de comparação não mudou; rode de novo em outro minuto."
+            exit 1
+          fi
+          echo "Marco desta rodada: ${marco}"
+          # Retrato gravado: o batimento (passo seguinte) manda o sinal mesmo que a rodada termine vermelha
+          # por aviso; sem sinal fica só a rodada que não gravou nada, ou que não rodou.
+          # Primeira rodada (ou backup iniciado antes de existir o marcador): grava .backup/iniciado na branch
+          # principal, com um commit do robô, sem mexer em mais nada dela. Sem o marcador gravado a proteção
+          # contra "apagaram tudo" não existe, então a rodada fica vermelha e sem batimento até ele entrar.
+          sentinela_ok="${sentinela}"; sentinela_falhou=0
+          if [ "${sentinela}" -eq 0 ] && [ -n "${padrao}" ]; then
+            blob=$(printf 'Backup iniciado em %s (marco %s).\nNao apague: este arquivo diz ao robo que o backup ja existia, para ele avisar se um dia todas as refs sumirem.\n' "$(date -u +%Y-%m-%d)" "${marco}" | git hash-object -w --stdin)
+            export GIT_INDEX_FILE="${PWD}/sentinela.idx"
+            git read-tree refs/guardado/padrao
+            git update-index --add --cacheinfo "100644,${blob},.backup/iniciado"
+            arvore=$(git write-tree)
+            unset GIT_INDEX_FILE
+            c=$(robo commit-tree "${arvore}" -p "$(git rev-parse 'refs/guardado/padrao^{commit}')" -m "backup: marcador de backup iniciado (${marco})")
+            if no_destino push -q "${destino}" "${c}:${padrao}" 2>sentinela.err; then
+              echo "Marcador .backup/iniciado gravado na branch principal."
+              sentinela_ok=1
+            else
+              cat sentinela.err || true
+            fi
+          fi
+          if [ "${sentinela_ok}" -eq 1 ]; then
+            # Retrato gravado e marcador presente: o batimento (passo seguinte) manda o sinal mesmo que a rodada
+            # termine vermelha por aviso.
+            echo "marco_gravado=1" >> "${GITHUB_OUTPUT:-/dev/null}"
+          else
+            sentinela_falhou=1
+          fi
+
+          # Avisos (a rodada falha, e o GitHub manda e-mail para a conta de backup). Cada mudança
+          # avisa uma vez só: o inventário novo já a reflete.
+          falhou=0
+          if [ -n "${reescritas}" ]; then
+            echo "::error::Branches/tags REESCRITAS na origem desde a rodada anterior (este backup manteve a história antiga em espelho/...; a nova está alcançável pela tag ${marco}):"
+            printf '%s' "${reescritas}"
+            falhou=1
+          fi
+          if [ -n "${sumiram_da_origem}" ]; then
+            echo "::error::Branches/tags que SUMIRAM DA ORIGEM desde a rodada anterior (continuam guardadas aqui como espelho/...):"
+            echo "${sumiram_da_origem}"
+            falhou=1
+          fi
+          if [ -n "${sumiram_do_backup}" ]; then
+            echo "::error::Branches/tags que SUMIRAM DESTE BACKUP desde a rodada anterior (alguém apagou aqui; o que a origem ainda tem foi gravado de novo):"
+            echo "${sumiram_do_backup}"
+            falhou=1
+          fi
+          if [ -n "${alteradas}" ]; then
+            echo "::error::Cópias recusadas/ ALTERADAS neste backup (o objeto não é o inventariado; a cópia histórica pode ter se perdido). Apague a cópia alterada para o robô regravá-la a partir da origem, se ela ainda tiver o objeto; até lá este aviso se repete:"
+            printf '%s' "${alteradas}"
+            falhou=1
+          fi
+          if [ -n "${perdidas}" ]; then
+            echo "::error::Cópias recusadas/ que SUMIRAM DESTE BACKUP e não puderam ser regravadas (a origem já não tem aquele objeto exato):"
+            printf '%s' "${perdidas}"
+            falhou=1
+          fi
+          if [ -n "${espelho_adulterado}" ]; then
+            echo "::error::Refs espelho/... ALTERADAS neste backup (objeto diferente do inventariado; a origem não mudou). Apague a ref alterada para o robô regravá-la a partir da origem na rodada seguinte; até lá este aviso se repete. O objeto exato foi salvo de novo sob recusadas/ quando a origem ainda o tinha:"
+            printf '%s\n' "${espelho_adulterado}"
+            falhou=1
+          fi
+          if [ -n "${marcos_invalidos}" ]; then
+            echo "::error::Tags backup/ que NÃO apontam para um retrato íntegro (foram movidas ou criadas à mão). Não servem de base; confira e apague-as:"
+            echo "${marcos_invalidos}"
+            falhou=1
+          fi
+          if [ "${ponteiro_adulterado}" -eq 1 ]; then
+            echo "::error::A branch backup-marcos NÃO aponta para um retrato íntegro (foi movida à força). Esta rodada usou o marco íntegro mais novo como base, guardou o commit apontado como pai do retrato e não mexeu no ponteiro. Apague a branch backup-marcos para o robô recriá-la na rodada seguinte; até lá este aviso se repete."
+            falhou=1
+          fi
+          if [ -n "${objetos_alterados}" ]; then
+            echo "::error::Refs objetos/<sha> ALTERADAS neste backup (não apontam para o objeto do próprio nome). Apague-as; o robô as recria a partir da origem quando ela ainda tiver o objeto:"
+            printf '%s' "${objetos_alterados}"
+            falhou=1
+          fi
+          if [ "${ponteiro_sem_ancora}" -eq 1 ]; then
+            echo "::error::A branch backup-marcos apontava para um retrato SEM ÂNCORA: a tag do marco que ele cita não existe ou aponta para outro commit. Sozinho, ele não serve de base (poderia ser um commit forjado). Esta rodada usou o marco íntegro mais novo como base, guardou o commit apontado como pai do retrato e avançou o ponteiro para o retrato de hoje. Se a tag foi apagada por engano, nada se perdeu; se foi movida, apague-a (o aviso de marco inválido se repete até isso)."
+            falhou=1
+          fi
+          if [ "${ponteiro_recuado}" -eq 1 ]; then
+            echo "::error::A branch backup-marcos havia RECUADO para um marco antigo (foi movida à força). Esta rodada usou o marco íntegro mais novo como base e avançou o ponteiro de novo."
+            falhou=1
+          fi
+          if [ "${ponteiro_apagado}" -eq 1 ]; then
+            echo "::error::A branch backup-marcos (ponteiro para o último retrato) havia sido apagada deste repositório. Foi recriada a partir do marco mais novo que restou; confira se algum marco também sumiu."
+            falhou=1
+          fi
+          if [ "${sentinela_falhou}" -eq 1 ]; then
+            echo "::error::O marcador .backup/iniciado NÃO está gravado na branch principal (${padrao:-branch principal não encontrada}) e não consegui gravá-lo nesta rodada. Sem ele, apagar todas as refs do backup passaria por primeira rodada. Se a branch principal exige pull request ou bloqueia push direto, libere o push para o robô (Settings → Branches/Rules) ou crie o arquivo .backup/iniciado à mão; até lá a rodada fica vermelha e o batimento não é enviado."
+            falhou=1
+          fi
+          if [ "${tudo_apagado}" -eq 1 ]; then
+            echo "::error::TODAS as refs deste backup sumiram (espelho/, backup/, recusadas/, objetos/ e backup-marcos), mas o marcador .backup/iniciado da branch principal e/ou a variável BACKUP_INICIADO dizem que o backup já existia: alguém apagou tudo. Esta rodada recomeçou o espelho do zero. Os pontos de restauração antigos não estão mais referenciados aqui; se foi engano e for recente, veja no documento como tentar recuperar antes de o Git limpar os objetos."
+            falhou=1
+          fi
+          if [ "${marcos_apagados}" -eq 1 ]; then
+            echo "::error::Este repositório tinha conteúdo espelhado e NENHUMA tag backup/: todos os marcos datados foram apagados aqui. Esta rodada criou um marco novo (${marco}); os anteriores não voltam."
+            falhou=1
+          fi
+          exit "${falhou}"
+
+      # Batimento (opcional): o robô só consegue avisar o que vê numa rodada; se ele mesmo for apagado,
+      # desligado ou deixar de rodar, não há rodada para avisar. Um serviço externo que espera este
+      # sinal a cada rodada cobre exatamente esse caso. O sinal sai sempre que a rodada GRAVOU o retrato,
+      # inclusive quando termina vermelha por aviso (sumiço, reescrita, alteração): aviso não é robô parado.
+      - name: Batimento (opcional)
+        if: always() && steps.gravar.outputs.marco_gravado == '1'
+        env:
+          BATIMENTO_URL: ${{ secrets.BATIMENTO_URL }}
+        run: |
+          if [ -z "${BATIMENTO_URL}" ]; then
+            echo "Sem BATIMENTO_URL: nenhum serviço de batimento configurado (a conferência mensal da aba Actions é o que detecta um robô parado)."
+            exit 0
+          fi
+          if curl -fsS -m 15 --retry 3 -o /dev/null "${BATIMENTO_URL}"; then
+            echo "Batimento enviado."
+          else
+            echo "::warning::Não consegui chamar a URL de batimento; se isso se repetir, o serviço de monitoramento vai avisar ausência de sinal."
+          fi
