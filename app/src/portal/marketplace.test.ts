@@ -253,6 +253,17 @@ describe("portal do proprietário marketplace (M12.4)", () => {
     expect(await situacaoDoEnvio(db, org, regras, b, semEnv)).toMatchObject({ naLista: false, vinculado: false, ultimo: null });
   });
 
+  it("escrita pronta exige que a credencial Beds24 atenda esta organização: com mais de uma empresa, só a de BEDS24_ORGANIZACAO_ID", async () => {
+    const regras = { ...REGRAS_CALENDARIO_PADRAO, envio: { imoveis: [a], automatico: true } };
+    await db.insert(idsExternos).values({ organizacaoId: org, imovelId: a, canal: "beds24", idExterno: "10", detalhe: "20" });
+    const [outra] = await db.insert(organizacoes).values({ nome: "Outra empresa" }).returning();
+    // Duas organizações e nenhuma indicada: a credencial é ambígua, a rotina não envia — o portal não promete.
+    expect((await situacaoDoEnvio(db, org, regras, a, escritaPronta)).escritaPronta).toBe(false);
+    expect((await situacaoDoEnvio(db, org, regras, a, { ...escritaPronta, BEDS24_ORGANIZACAO_ID: org })).escritaPronta).toBe(true);
+    // Credencial de outra empresa: o imóvel desta nunca sai pelo envio.
+    expect((await situacaoDoEnvio(db, org, regras, a, { ...escritaPronta, BEDS24_ORGANIZACAO_ID: outra.id })).escritaPronta).toBe(false);
+  });
+
   it("o contrato marketplace é reconferido dentro da transação que grava: se acabou no meio, nada é gravado", async () => {
     const real = vi.mocked(listarContratos).getMockImplementation()!;
     // A 1ª leitura (conferência inicial) ainda vê o contrato; a 2ª (dentro da transação, com o imóvel travado) já não.

@@ -8,7 +8,7 @@
  */
 import { and, asc, desc, eq, exists, gte, inArray, lt, sql } from "drizzle-orm";
 import { exigir, type Sessao } from "@/acesso/politica";
-import { listarMapeamentosBeds24 } from "@/beds24/configuracao";
+import { listarMapeamentosBeds24, organizacaoBeds24 } from "@/beds24/configuracao";
 import { escritaBeds24Pronta } from "@/beds24/http";
 import { lerRegrasCalendario, type RegrasCalendario } from "@/calendario/regras-config";
 import { type ContratoVigencia, contratoVigente } from "@/contratos/regras";
@@ -110,7 +110,16 @@ async function conferirContratoNaTransacao(tx: Db, organizacaoId: string, imovel
   return emMarketplaceEm(await listarContratos(tx, organizacaoId, imovelId), dia) ? null : NAO_MARKETPLACE;
 }
 
-/** Situação do envio ao Beds24 para um imóvel: na lista? vinculado? escrita pronta (sinal e credencial)? automático? último envio real que o tocou. */
+/** A credencial Beds24 do ambiente atende esta organização (a mesma régua da rotina e da ação do painel; ambígua = não atende). */
+async function credencialAtendeOrganizacao(db: Db, organizacaoId: string, env: NodeJS.ProcessEnv): Promise<boolean> {
+  try {
+    return (await organizacaoBeds24(db, env)) === organizacaoId;
+  } catch {
+    return false;
+  }
+}
+
+/** Situação do envio ao Beds24 para um imóvel: na lista? vinculado? escrita pronta (sinal, credencial e credencial desta empresa)? automático? último envio real que o tocou. */
 export async function situacaoDoEnvio(db: Db, organizacaoId: string, regras: RegrasCalendario, imovelId: string, env: NodeJS.ProcessEnv = process.env): Promise<SituacaoEnvio> {
   // A mesma régua do envio (`calendario/envio.ts`): vínculo ativo com propriedade e quarto numéricos.
   const vinculado = (await listarMapeamentosBeds24(db, organizacaoId)).some((m) => m.imovelId === imovelId && m.ativo && /^\d+$/.test(m.propertyId) && /^\d+$/.test(m.roomId));
@@ -126,7 +135,8 @@ export async function situacaoDoEnvio(db: Db, organizacaoId: string, regras: Reg
     )
     .orderBy(desc(beds24Envios.iniciadoEm))
     .limit(1);
-  return { naLista: regras.envio.imoveis.includes(imovelId), vinculado, escritaPronta: escritaBeds24Pronta(env), automatico: regras.envio.automatico, ultimo: ultimo ? { em: ultimo.em, situacao: ultimo.situacao } : null };
+  const escritaPronta = escritaBeds24Pronta(env) && (await credencialAtendeOrganizacao(db, organizacaoId, env));
+  return { naLista: regras.envio.imoveis.includes(imovelId), vinculado, escritaPronta, automatico: regras.envio.automatico, ultimo: ultimo ? { em: ultimo.em, situacao: ultimo.situacao } : null };
 }
 
 /**
