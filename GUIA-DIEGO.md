@@ -1663,8 +1663,15 @@ ambiente).
      antecipado não aplica ajustes; só o fechamento). No dia 1º nenhum antecipado sai, nem pedido
      pelo portal, por isso é o dia seguro. **Se o fechamento não sair no próprio dia 1º** (algum
      bloqueio, falta de tempo), **estorne o recebimento ainda no dia 1º** (na página da reserva,
-     "estornar" ao lado do recebimento) e refaça os dois passos no dia em que for fechar; a partir do
-     dia 2 o pedido do proprietário no portal voltaria a funcionar.
+     "estornar" ao lado do recebimento). **O ajuste fica — não o lance de novo:** repetido, o valor
+     seria descontado duas vezes. A partir do dia 2 o pedido do proprietário no portal já funciona de
+     novo, então, no dia em que for fechar: confira em Financeiro → Repasses que esse proprietário não
+     tem repasse antecipado a pagar; registre **só o recebimento** e clique no fechamento em seguida;
+     depois de fechar, confira de novo. Se nesse intervalo apareceu um antecipado dele (pedido pelo
+     portal), ele levou as partes disponíveis, inclusive a de setembro: **antes de pagar qualquer
+     coisa**, estorne o fechamento, depois esse antecipado (o sistema só deixa estornar o repasse mais
+     recente do proprietário, por isso nessa ordem) e feche de novo na mesma hora — o ajuste continua
+     lá e desconta a parte de setembro. Só pague depois dessa conferência.
    - **Reserva de outubro que você já tenha acertado por fora** (se houver): mesmo caminho e mesma
      ordem — ajuste negativo do valor pago, datado do dia do pagamento por fora (até 31/10), e o
      recebimento registrado só no dia 1º/11, antes de clicar.
