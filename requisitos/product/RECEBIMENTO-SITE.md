@@ -142,10 +142,10 @@ criar).
 - **Cartão:** formulário no próprio checkout, com a marca do Mercado Pago visível; os dados do
   cartão nunca passam pelo servidor da SCL (tokenizados pelo componente do provedor — Checkout
   Bricks/Transparente; a página externa do Checkout Pro não dá esse controle de tela).
-  **Parcelamento: decisão pendente de Diego** — oferecer ou não, até quantas parcelas e quem
-  paga os juros: o hóspede ("com juros", nas parcelas) ou a SCL ("sem juros", em que o provedor
-  cobra do vendedor um acréscimo por parcela, que cresce com o número de parcelas). Fica
-  configurável no painel; sem decisão, só à vista.
+  **Parcelamento — decidido por Diego em 4/10/2026: sim, com os juros pagos pelo hóspede**
+  ("parcelamento com juros"); a SCL não assume o "sem juros", em que o provedor cobra do vendedor
+  um acréscimo por parcela, que cresce com o número de parcelas. O número máximo de parcelas fica
+  configurável no painel (padrão: o máximo que o Mercado Pago permitir).
 
 **Provedores** (fontes públicas consultadas em 4/10/2026; valores **aproximados e a confirmar**
 na abertura da conta — mudam por plano, prazo de recebimento, volume e negociação):
