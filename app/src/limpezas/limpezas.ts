@@ -456,7 +456,7 @@ export function realizarPeloProprietario(db: Db, organizacaoId: string, id: stri
       if (recusa) return recusa;
       if (l.data > hoje) return "A limpeza ainda não chegou: só dá para registrar como feita a partir do dia dela.";
       // Quem fez foi o proprietário: a profissional que estivesse confirmada sai (lista e calendário não a creditam; reabrir volta a "pedida").
-      return { estado: "realizada", profissionalId: null, confirmadaEm: null, custo: 0, observacao: comMotivo(l.observacao, "Feita pelo proprietário (marketplace)"), realizadaEm: new Date() };
+      return { estado: "realizada", profissionalId: null, confirmadaEm: null, custo: 0, semCusto: true, observacao: comMotivo(l.observacao, "Feita pelo proprietário (marketplace)"), realizadaEm: new Date() };
     },
     "limpeza.realizar",
     autorId,
@@ -467,12 +467,17 @@ export function realizarPeloProprietario(db: Db, organizacaoId: string, id: stri
 export function informarCusto(db: Db, organizacaoId: string, id: string, custo: number | null, autorId: string | null): Promise<Resultado> {
   const erroCusto = validarCusto(custo);
   if (erroCusto) return Promise.resolve({ ok: false, erro: erroCusto });
-  return transicao(db, organizacaoId, id, ["realizada"], async () => ({ custo }), "limpeza.custo", autorId);
+  // Custo informado pela empresa: deixa de ser "sem custo" do proprietário.
+  return transicao(db, organizacaoId, id, ["realizada"], async () => ({ custo, semCusto: false }), "limpeza.custo", autorId);
 }
 
-/** Desfaz um "realizada" marcado por engano: volta a confirmada (ou pedida, sem profissional). */
+/**
+ * Desfaz um "realizada" marcado por engano: volta a confirmada (ou pedida, sem profissional). Se tinha sido marcada
+ * pelo proprietário (sem custo, custo 0 de propósito), a marca e o zero saem: quem fizer agora segue o fluxo normal,
+ * e um custo não informado volta a ser avisado em vez de passar por "de graça".
+ */
 export function reabrirLimpeza(db: Db, organizacaoId: string, id: string, autorId: string | null): Promise<Resultado> {
-  return transicao(db, organizacaoId, id, ["realizada"], async (l) => ({ estado: l.profissionalId ? "confirmada" : "pedida", realizadaEm: null }), "limpeza.reabrir", autorId);
+  return transicao(db, organizacaoId, id, ["realizada"], async (l) => ({ estado: l.profissionalId ? "confirmada" : "pedida", realizadaEm: null, ...(l.semCusto ? { semCusto: false, custo: null } : {}) }), "limpeza.reabrir", autorId);
 }
 
 /** Junta o motivo à observação sem cortá-lo: o que sobra do limite fica para a observação antiga. */

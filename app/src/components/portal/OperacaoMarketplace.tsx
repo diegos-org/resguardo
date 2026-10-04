@@ -72,18 +72,28 @@ const SO_NO_SITE = "taxa de limpeza, hóspede extra, antecedência, janela de re
 const PRECO_NO_BEDS24 = "o preço da noite é definido no Beds24 e vem de lá para o site e para as OTAs";
 const maiuscula = (t: string) => `${t[0].toUpperCase()}${t.slice(1)}`;
 
-/** Mensagem depois de salvar: promete Airbnb/Booking só para o que o envio carrega para esta fonte de preços, e só se o imóvel está na lista. */
-export function textoSalvo(naLista: boolean, empresa: string, fonte: FontePrecos = "scl"): string {
-  const extra = fonte === "beds24" ? `; ${PRECO_NO_BEDS24}` : "";
-  return naLista
-    ? `Salvo. Vale no site da ${empresa} agora. ${maiuscula(vaiAsOtas(fonte))} chegam ao Airbnb e ao Booking no próximo envio de calendário; ${SO_NO_SITE}${extra}.`
-    : `Salvo. Vale no site da ${empresa} agora. Airbnb e Booking continuam com ${oQueFica(fonte)} até a ${empresa} incluir este imóvel no envio de calendário; ${SO_NO_SITE}${extra}.`;
+/** O que falta para o envio alcançar as OTAs de fato (lista, vínculo com o Beds24, chave de escrita); vazio = pronto. */
+function oQueFaltaNoEnvio(e: SituacaoEnvio, empresa: string): string | null {
+  if (!e.naLista) return `a ${empresa} incluir este imóvel no envio de calendário`;
+  if (!e.vinculado) return `a ${empresa} vincular este imóvel ao Beds24 (propriedade e quarto, em Integrações) — sem o vínculo, o envio pula o imóvel`;
+  if (!e.escritaLigada) return `a ${empresa} ligar a escrita no Beds24 — hoje o envio só simula, nada sai`;
+  return null;
 }
 
-/** Explica, sem supor, se (e o que) do que o proprietário mudou chega às OTAs, conforme a fonte de preços. */
+/** Mensagem depois de salvar: promete Airbnb/Booking só para o que o envio carrega para esta fonte de preços, e só se o envio está de fato pronto. */
+export function textoSalvo(e: SituacaoEnvio, empresa: string, fonte: FontePrecos = "scl"): string {
+  const extra = fonte === "beds24" ? `; ${PRECO_NO_BEDS24}` : "";
+  const falta = oQueFaltaNoEnvio(e, empresa);
+  return falta === null
+    ? `Salvo. Vale no site da ${empresa} agora. ${maiuscula(vaiAsOtas(fonte))} chegam ao Airbnb e ao Booking no próximo envio de calendário; ${SO_NO_SITE}${extra}.`
+    : `Salvo. Vale no site da ${empresa} agora. Airbnb e Booking continuam com ${oQueFica(fonte)} até ${falta}; ${SO_NO_SITE}${extra}.`;
+}
+
+/** Explica, sem supor, se (e o que) do que o proprietário mudou chega às OTAs, conforme a fonte de preços e a prontidão real do envio. */
 export function textoDoEnvio(e: SituacaoEnvio, empresa: string, fonte: FontePrecos = "scl"): string {
   const extra = fonte === "beds24" ? ` ${maiuscula(PRECO_NO_BEDS24)}.` : "";
-  if (!e.naLista) return `Este imóvel ainda não está na lista de envio ao Beds24 da ${empresa}: o que você mudar aqui vale no site da ${empresa}, mas o Airbnb e o Booking continuam com o calendário e ${oQueFica(fonte)} até a ${empresa} incluir o imóvel no envio. Em qualquer caso, ${SO_NO_SITE}.${extra}`;
+  const falta = oQueFaltaNoEnvio(e, empresa);
+  if (falta !== null) return `O que você mudar aqui vale no site da ${empresa}, mas o Airbnb e o Booking continuam com o calendário e ${oQueFica(fonte)} até ${falta}. Em qualquer caso, ${SO_NO_SITE}.${extra}`;
   const ultimo = e.ultimo ? ` Último envio: ${quando(e.ultimo.em)} (${NOMES_SITUACAO_ENVIO[e.ultimo.situacao] ?? e.ultimo.situacao}).` : " Ainda não houve envio para este imóvel.";
   return `${e.automatico ? `O envio ao Beds24 roda todo dia e leva ${vaiAsOtas(fonte)} ao Airbnb e ao Booking` : `O envio ao Beds24 é feito pela ${empresa}: até ele rodar, o Airbnb e o Booking continuam com ${oQueFica(fonte)}`}; ${SO_NO_SITE}.${extra}${ultimo}`;
 }
@@ -121,7 +131,7 @@ function FormPrecos({ imovel, precos, empresa, salvar }: { imovel: ImovelOperave
       )}
       {estado.ok && (
         <p role="status" className={f.sucesso}>
-          {textoSalvo(imovel.envio.naLista, empresa, imovel.fontePrecos)}
+          {textoSalvo(imovel.envio, empresa, imovel.fontePrecos)}
         </p>
       )}
       <div className={f.linha}>

@@ -928,6 +928,8 @@ export const limpezas = pgTable(
     profissionalId: uuid("profissional_id").references(() => profissionaisLimpeza.id),
     /** Centavos; null = custo ainda não informado. */
     custo: integer("custo"),
+    /** M12.4: feita pelo proprietário por conta própria (marketplace), custo 0 de propósito; reabrir limpa a marca e o custo. */
+    semCusto: boolean("sem_custo").notNull().default(false),
     observacao: text("observacao").notNull().default(""),
     /** Cancelada à mão (não pela reserva): a sincronização não a reabre. */
     canceladaManual: boolean("cancelada_manual").notNull().default(false),

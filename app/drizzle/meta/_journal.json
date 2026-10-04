@@ -316,6 +316,13 @@
       "when": 1791125012803,
       "tag": "0044_manutencoes_sem_custo",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1791128902784,
+      "tag": "0045_limpezas_sem_custo",
+      "breakpoints": true
     }
   ]
 }

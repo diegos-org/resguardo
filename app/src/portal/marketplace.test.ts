@@ -4,7 +4,7 @@ import { AcessoNegado, type Sessao } from "@/acesso/politica";
 import { historicoDe } from "@/auditoria/auditoria";
 import { REGRAS_CALENDARIO_PADRAO, salvarRegrasCalendario } from "@/calendario/regras-config";
 import { criarContrato, listarContratos } from "@/contratos/repositorio";
-import { beds24Envios, beds24EnvioNoites, imoveis, limpezas, manutencoes, organizacoes, profissionaisLimpeza, proprietarioImoveis, proprietarios, proprietarioUsuarios, reservas, usuarios } from "@/db/schema";
+import { beds24Envios, beds24EnvioNoites, idsExternos, imoveis, limpezas, manutencoes, organizacoes, profissionaisLimpeza, proprietarioImoveis, proprietarios, proprietarioUsuarios, reservas, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { DETALHES_VAZIOS, entradaDeDetalhes, lerDetalhes, listarPeriodos, salvarDetalhes, validarDetalhes } from "@/imoveis/detalhes";
@@ -34,6 +34,8 @@ let db: Db, close: () => Promise<void>, org: string, a: string, b: string, c: st
 // 3/10/2026, 12:00 em São Paulo.
 const agora = new Date("2026-10-03T15:00:00Z");
 const desdeSempre = new Date("2025-01-01T12:00:00Z");
+const semEnv = { NODE_ENV: "test" } as NodeJS.ProcessEnv;
+const escritaLigada = { NODE_ENV: "test", BEDS24_ESCRITA: "ligada" } as NodeJS.ProcessEnv;
 const sessao = (imovelIds = [a, b, d]): Sessao => ({ usuarioId: usuario, organizacaoId: org, papel: "proprietario", imovelIds });
 
 beforeEach(async () => {
@@ -75,7 +77,7 @@ describe("portal do proprietário marketplace (M12.4)", () => {
   it("lista só os imóveis da sessão em contrato marketplace hoje, com cadastro, períodos e situação do envio", async () => {
     const lista = await imoveisMarketplaceDaSessao(db, sessao(), agora);
     expect(lista.map((i) => i.codigo)).toEqual(["403"]);
-    expect(lista[0]).toMatchObject({ fontePrecos: "scl", posseDesde: "2025-01-01", detalhes: { precoBase: 30000 }, periodos: [], envio: { naLista: false, automatico: false, ultimo: null } });
+    expect(lista[0]).toMatchObject({ fontePrecos: "scl", posseDesde: "2025-01-01", detalhes: { precoBase: 30000 }, periodos: [], envio: { naLista: false, vinculado: false, escritaLigada: false, automatico: false, ultimo: null } });
     // Contrato marketplace que só começa no futuro ainda não libera.
     await criarContrato(db, org, d, { tipo: "marketplace", comissao: "", inicio: "2027-01-01" }, null);
     expect((await imoveisMarketplaceDaSessao(db, sessao(), agora)).map((i) => i.codigo)).toEqual(["403"]);
@@ -161,9 +163,10 @@ describe("portal do proprietário marketplace (M12.4)", () => {
     const [prof] = await db.insert(profissionaisLimpeza).values({ organizacaoId: org, nome: "Profissional Fictícia" }).returning();
     const [l] = await db.insert(limpezas).values({ organizacaoId: org, imovelId: a, data: "2026-10-02", estado: "confirmada", profissionalId: prof.id, confirmadaEm: new Date("2026-10-01T12:00:00Z") }).returning();
     expect(await marcarLimpezaFeitaPeloProprietario(db, sessao(), l.id, agora)).toEqual({ ok: true });
-    expect((await db.select().from(limpezas).where(eq(limpezas.id, l.id)))[0]).toMatchObject({ estado: "realizada", profissionalId: null, confirmadaEm: null, custo: 0 });
+    expect((await db.select().from(limpezas).where(eq(limpezas.id, l.id)))[0]).toMatchObject({ estado: "realizada", profissionalId: null, confirmadaEm: null, custo: 0, semCusto: true });
+    // Reabrir solta a marca "sem custo" e o zero: quem fizer agora segue o fluxo normal (custo não informado volta a avisar).
     expect(await reabrirLimpeza(db, org, l.id, null)).toEqual({ ok: true });
-    expect((await db.select().from(limpezas).where(eq(limpezas.id, l.id)))[0]).toMatchObject({ estado: "pedida", profissionalId: null });
+    expect((await db.select().from(limpezas).where(eq(limpezas.id, l.id)))[0]).toMatchObject({ estado: "pedida", profissionalId: null, custo: null, semCusto: false });
   });
 
   it("limpeza e manutenção: 'hoje' é o do fuso do imóvel (lista, botão e ação na mesma régua)", async () => {
@@ -227,18 +230,24 @@ describe("portal do proprietário marketplace (M12.4)", () => {
     expect(await criarPeriodoPeloProprietario(db, s, e, { nome: "Natal", inicio: "2026-12-24", fim: "2026-12-26", precoNoite: "500,00", estadiaMinima: "" }, agora)).toEqual({ ok: false, erro: NAO_MARKETPLACE });
   });
 
-  it("situação do envio: na lista e automático vêm das regras; o último envio real que tocou o imóvel (simulação não conta)", async () => {
+  it("situação do envio: lista e automático vêm das regras, vínculo do Beds24 e escrita do ambiente; o último envio real que tocou o imóvel (simulação não conta)", async () => {
     await salvarRegrasCalendario(db, org, { ...REGRAS_CALENDARIO_PADRAO, envio: { imoveis: [a], automatico: true } }, null);
     const regras = { ...REGRAS_CALENDARIO_PADRAO, envio: { imoveis: [a], automatico: true } };
-    expect(await situacaoDoEnvio(db, org, regras, a)).toEqual({ naLista: true, automatico: true, ultimo: null });
+    // Sem vínculo e com a escrita desligada, o envio não alcança as OTAs mesmo com o imóvel na lista.
+    expect(await situacaoDoEnvio(db, org, regras, a, semEnv)).toEqual({ naLista: true, vinculado: false, escritaLigada: false, automatico: true, ultimo: null });
+    // Vínculo precisa de propriedade e quarto numéricos; a escrita vem de BEDS24_ESCRITA=ligada.
+    await db.insert(idsExternos).values({ organizacaoId: org, imovelId: a, canal: "beds24", idExterno: "10", detalhe: "" });
+    expect((await situacaoDoEnvio(db, org, regras, a, escritaLigada)).vinculado).toBe(false);
+    await db.insert(idsExternos).values({ organizacaoId: org, imovelId: a, canal: "beds24", idExterno: "10", detalhe: "20" });
+    expect(await situacaoDoEnvio(db, org, regras, a, escritaLigada)).toEqual({ naLista: true, vinculado: true, escritaLigada: true, automatico: true, ultimo: null });
     const [sim] = await db.insert(beds24Envios).values({ organizacaoId: org, modo: "simulacao", situacao: "simulacao", iniciadoEm: new Date("2026-10-02T10:00:00Z") }).returning();
     const [real] = await db.insert(beds24Envios).values({ organizacaoId: org, modo: "envio", situacao: "ok", iniciadoEm: new Date("2026-10-01T10:00:00Z") }).returning();
     await db.insert(beds24EnvioNoites).values([
       { organizacaoId: org, envioId: sim.id, imovelId: a, data: "2026-10-10", resultado: "enviado" },
       { organizacaoId: org, envioId: real.id, imovelId: a, data: "2026-10-10", resultado: "confirmado" },
     ]);
-    expect(await situacaoDoEnvio(db, org, regras, a)).toEqual({ naLista: true, automatico: true, ultimo: { em: new Date("2026-10-01T10:00:00Z"), situacao: "ok" } });
-    expect(await situacaoDoEnvio(db, org, regras, b)).toMatchObject({ naLista: false, ultimo: null });
+    expect(await situacaoDoEnvio(db, org, regras, a, semEnv)).toMatchObject({ naLista: true, vinculado: true, escritaLigada: false, automatico: true, ultimo: { em: new Date("2026-10-01T10:00:00Z"), situacao: "ok" } });
+    expect(await situacaoDoEnvio(db, org, regras, b, semEnv)).toMatchObject({ naLista: false, vinculado: false, ultimo: null });
   });
 
   it("o contrato marketplace é reconferido dentro da transação que grava: se acabou no meio, nada é gravado", async () => {
