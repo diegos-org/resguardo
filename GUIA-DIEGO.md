@@ -841,9 +841,10 @@ Não precisa preencher descrições dos apartamentos para importar. A melhoria n
   24/09**: comissão sobre o valor que o canal repassa (depois da taxa do canal); estadia que
   atravessa o mês é **dividida igualmente por noite** (valor total, com a limpeza); no
   **Airbnb** o proprietário recebe a parte dele direto (split) e isso não entra no acerto; no
-  **Booking, site e direta** a empresa recebe tudo e repassa uma vez por mês (para o site, você
-  pediu para rever com a opção de split — ver "Como receber as reservas do site"; até lá, vale
-  esta). Dá para mudar
+  **Booking, site e direta** a empresa recebe tudo e repassa (decidido em 4/10 para o site:
+  continua assim; o repasse segue a periodicidade que o proprietário escolher, mensal por
+  padrão, e a reserva do site só fica disponível depois do check-in e da liberação pelo
+  Mercado Pago — item M4.10). Dá para mudar
   reserva a reserva no campo "Quem recebe do canal". Imóvel com **mais de um proprietário**
   (ainda não há cadastro de cotas) ou sem proprietário fica com o acerto **pendente** — nada
   é atribuído a alguém por chute.

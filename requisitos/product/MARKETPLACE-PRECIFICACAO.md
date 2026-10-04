@@ -1,6 +1,10 @@
-# Marketplace — proposta de precificação (para Diego decidir)
+# Marketplace — precificação (decidido por Diego em 4/10/2026: modelo B, partes iguais)
 
-**Situação:** proposta do Claude em 24/09/2026. Nada disto é decisão ainda. As fórmulas
+**Situação:** proposta do Claude em 24/09/2026; **decisão de Diego em 4/10/2026: modelo B, em
+partes iguais** (a margem, taxa do Airbnb menos a taxa do pagamento, dividida igualmente entre
+desconto ao hóspede, ganho do proprietário e SCL), com os três pesos e as taxas de referência
+editáveis no painel e a tela de simulação (item M12.1 do ROADMAP). Diego está testando os
+números num simulador e pode ajustar os pesos antes ou depois de implementado. As fórmulas
 antigas do Diego não foram encontradas no repositório nem no histórico.
 
 ## Objetivo (Diego)
@@ -83,11 +87,18 @@ Começar pelo **Modelo B**, com os pesos e percentuais **editáveis no painel** 
 "tudo editável"), e uma tela de **simulação**: você digita a diária, as noites e a limpeza e
 vê lado a lado Airbnb, Booking e SCL. Assim dá para testar com números reais antes de
 fechar. Se a margem ficar baixa, dá para combinar B com uma mensalidade pequena (C).
+**Adotada por Diego em 4/10/2026**, com partes iguais.
 
-## Antes de decidir
+## Conferências que continuam pendentes (não impedem o M12.1, porque tudo fica editável)
 
 - Conferir os percentuais reais das contas (Airbnb, Booking, Mercado Pago/Stripe).
 - Conferir nos contratos das OTAs se há regra de **paridade de preço** (preço mais baixo
   no site próprio) que se aplique aos anúncios.
 - Decidir se proprietários do marketplace também anunciam nas OTAs pela SCL (Beds24) e se
   a SCL cobra algo sobre essas reservas.
+- **Forma de recebimento do marketplace** (split do Mercado Pago × empresa recebe e repassa):
+  decisão separada, ação 12 do ROADMAP; trava o M12.2, não o M12.1.
+- Reservas do site em imóveis de **gestão total**: proposta do Claude em 4/10 (a confirmar por
+  Diego) é um modelo por contrato, nunca por reserva: a comissão do contrato vale em todos os
+  canais, inclusive o site, sobre o valor líquido da taxa do pagamento; o desconto do hóspede
+  no site é uma regra única do site, igual para gestão total e marketplace.
