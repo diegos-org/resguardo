@@ -127,6 +127,43 @@ criar).
   contrato (sobre o valor líquido da taxa do pagamento); o desconto do hóspede é regra única
   do site, igual para gestão total e marketplace.
 
+## Checkout e comparação rápida de provedores (pedido de Diego, 4/10/2026)
+
+**Checkout (M8.2).** Diego pediu que a tela de pagamento do site dê a escolha entre **Pix** e
+**cartão de crédito**:
+
+- **Pix:** QR code e código "copia e cola" com botão de copiar, na própria página; a reserva
+  confirma sozinha quando o aviso do provedor (webhook) chega. Liberado na hora e com a menor
+  taxa — deve ser a opção em destaque.
+- **Cartão:** formulário no próprio checkout, com a marca do Mercado Pago visível; os dados do
+  cartão nunca passam pelo servidor da SCL (tokenizados pelo componente do provedor — Checkout
+  Bricks/Transparente; a página externa do Checkout Pro não dá esse controle de tela).
+  **Parcelamento: decisão pendente de Diego** — oferecer ou não, até quantas parcelas e quem
+  paga os juros: o hóspede ("com juros", nas parcelas) ou a SCL ("sem juros", em que o provedor
+  cobra do vendedor um acréscimo por parcela, que cresce com o número de parcelas). Fica
+  configurável no painel; sem decisão, só à vista.
+
+**Provedores** (fontes públicas consultadas em 4/10/2026; valores **aproximados e a confirmar**
+na abertura da conta — mudam por plano, prazo de recebimento, volume e negociação):
+
+| Provedor | Pix | Cartão de crédito à vista (venda online) | Cartão emitido fora do Brasil | Observações |
+|---|---|---|---|---|
+| Mercado Pago | 0,99% | 3,98% (30 dias), 4,49% (14 dias), 4,98% (na hora) | a confirmar com o Mercado Pago (bandeiras aceitas e recusa de cartões de fora) | sandbox e componentes de checkout com Pix e cartão prontos; conta de Diego já existe |
+| Stripe | 1,19%, **só por convite** para empresas no Brasil | 3,99% + R$ 0,39 | + 2% (e taxa de conversão se cobrar em outra moeda) | o mais forte para cartão de fora; Pix não garantido |
+| PagBank (PagSeguro) | 1,89% | 3,19% (30 dias), 3,99% (14 dias), 4,99% (na hora), + R$ 0,40 por venda online | a confirmar | Pix mais caro que os demais |
+| Pagar.me (Stone) | 0,99% | ~4,19% de tabela; negociável por volume | a confirmar | voltado a contrato e negociação |
+| Asaas | valor fixo por Pix recebido (R$ 1,99 na tabela pública) | 2,99% + R$ 0,49 (prazo de recebimento a confirmar) | a confirmar | plataforma de cobrança (boleto, Pix, link); componente de checkout dentro do site a conferir |
+
+**Leitura.** (1) O que pesa é o **Pix**: ~1% contra ~4% do cartão — numa reserva de R$ 1.000
+são ~R$ 30 de diferença, por isso o checkout destaca o Pix. (2) Entre provedores, o cartão à
+vista varia cerca de 1 ponto percentual no mesmo prazo (3,2%–4,2% em 30 dias; 4,2%–5% na hora):
+~R$ 8–12 por reserva de R$ 1.000 — relevante com volume, não decisivo agora. (3) Cartão de
+fora do Brasil: o Stripe é o mais forte, mas custa +2% e não garante Pix; no Mercado Pago a
+aceitação precisa ser confirmada. (4) Recomendação: seguir com o **Mercado Pago no M8.2** (conta
+existente, sandbox, componentes com Pix e cartão); manter o provedor atrás de um adaptador para
+trocar ou somar outro (por exemplo, Stripe só para cartão de fora) quando houver volume real;
+negociar a taxa do cartão com o Mercado Pago quando o volume do site existir.
+
 ## O que Diego precisava decidir (perguntas originais)
 
 1. Modelo: **manter "empresa recebe e repassa"** (decisão de 24/09, recomendado) × mudar para
@@ -164,3 +201,15 @@ respondidas antes de o site receber pagamentos de verdade.
   e chargebacks (documentação do Stripe).
 - Tributação da temporada e da intermediação (comissão × valor total; reforma tributária):
   matérias e guias de contabilidade de 2026 — **não substituem o contador**.
+
+## Fontes consultadas (4/10/2026, comparação rápida de provedores)
+
+- Mercado Pago — "Quanto custa vender online com Mercado Pago" (blog) e "Checkout Pro: como
+  configurar parcelamento sem juros" (blog): taxas por prazo de recebimento, Pix 0,99%, custo
+  do parcelamento sem juros por conta do vendedor.
+- Stripe — "Local payment methods pricing" e "Pricing" (Brasil): cartão 3,99% + R$ 0,39, +2%
+  para cartão internacional, Pix 1,19% por convite.
+- PagBank — "Taxas, planos e tarifas para seu negócio" e tabela de taxas 2026 em
+  calculadoradetaxas.com.br.
+- Pagar.me — página de ofertas e comparativo de gateways 2026 (Mind Group).
+- Asaas — "Taxas Asaas: pague apenas por cobrança recebida" (blog).

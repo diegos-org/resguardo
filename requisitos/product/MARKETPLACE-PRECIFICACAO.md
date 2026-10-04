@@ -94,8 +94,11 @@ fechar. Se a margem ficar baixa, dá para combinar B com uma mensalidade pequena
 - Conferir os percentuais reais das contas (Airbnb, Booking, Mercado Pago/Stripe).
 - Conferir nos contratos das OTAs se há regra de **paridade de preço** (preço mais baixo
   no site próprio) que se aplique aos anúncios.
-- Decidir se proprietários do marketplace também anunciam nas OTAs pela SCL (Beds24) e se
-  a SCL cobra algo sobre essas reservas.
+- **Pendente (Diego):** se a SCL cobra algo sobre as reservas que o proprietário do marketplace
+  vende nas OTAs dele (anunciadas por ele ou pela SCL via Beds24). O modelo B só define a conta
+  da reserva vendida pelo site. Até a decisão, o M12.2 calcula só as reservas do site; as das
+  OTAs ficam no calendário e no extrato como informação, sem lançamento, com aviso de regra
+  ausente no contrato.
 - **Forma de recebimento do marketplace:** decidido por Diego em 4/10/2026, empresa recebe e
   repassa (sem split), como o site, com o extrato e as periodicidades do M4.10.
 - Reservas do site em imóveis de **gestão total**: decidido por Diego em 4/10/2026, um modelo

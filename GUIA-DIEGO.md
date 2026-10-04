@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 4/10/2026, recebimento do site decidido (M8.0: empresa recebe e repassa, Mercado Pago; repasse na periodicidade que o proprietário escolher, item novo M4.10), modelo do marketplace decidido (B, partes iguais; M12.1 liberado), marketplace recebendo pela empresa como o site, fonte de preços por imóvel no plano (M3.9) e backup do repositório ativado por você (M0.7); correção do robô de backup depois da sua primeira rodada (ele passa a gravar com uma chave da própria conta de backup e guarda o que vem da origem fora de branches e tags, onde nenhuma automação roda; item 23, passos 4, 5 e 7) e passo a passo mais detalhado (passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório ativo na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
+> **Última atualização:** 4/10/2026, recebimento do site decidido (M8.0: empresa recebe e repassa, Mercado Pago; repasse na periodicidade que o proprietário escolher, item novo M4.10), modelo do marketplace decidido (B, partes iguais; M12.1 liberado), marketplace recebendo pela empresa como o site, fonte de preços por imóvel no plano (M3.9), backup do repositório ativado por você (M0.7), publicação de homologação dada por fechada por você (M0.5) e pedido do checkout com Pix e cartão registrado (M8.2); correção do robô de backup depois da sua primeira rodada (ele passa a gravar com uma chave da própria conta de backup e guarda o que vem da origem fora de branches e tags, onde nenhuma automação roda; item 23, passos 4, 5 e 7) e passo a passo mais detalhado (passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório ativo na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
 
 ---
 
@@ -24,7 +24,7 @@
 
 | Etapa | O que entrega | Situação |
 |---|---|---|
-| M0 Fundação | Base do app, banco de dados, layout, publicação na Vercel, backup | 🟡 Vercel e login funcionando; banco de homologação separado conferido em 3/10; backup automático do repositório **ativo desde 4/10** em conta separada (M0.7, seção 6, item 23); conferência automática dos PRs mais rápida (M0.8); falta só você dar o M0.5 por fechado e mandar a referência do sistema antigo (M0.6) |
+| M0 Fundação | Base do app, banco de dados, layout, publicação na Vercel, backup | 🟡 Vercel e login funcionando; banco de homologação separado conferido em 3/10; backup automático do repositório **ativo desde 4/10** em conta separada (M0.7, seção 6, item 23); conferência automática dos PRs mais rápida (M0.8); M0.5 fechado por você em 4/10; falta só mandar a referência do sistema antigo (M0.6) |
 | M1 Acesso | Login (Google/código por e-mail), convites, permissões | ✅ pronto |
 | M2 Cadastros | Imóveis, proprietários, contratos e aba Anúncios | ✅ implementado; referências dos canais precisam ser preenchidas/conferidas |
 | M3 Reservas | Reservas, calendário central, importação e envio de calendário/preços ao Beds24 | 🟡 importação e envio implementados; o envio começa desligado e espera o seu teste no 103; conferência das reservas parcial; fonte de preços por imóvel (M3.9) a fazer |
@@ -62,9 +62,20 @@ dinheiro do proprietário que passa pela empresa). Com isso o M8.0 fecha e o pag
   legais do site (termos de uso, privacidade e, quando decidida, a política de cancelamento),
   com aceite no checkout. Entraram no plano como M5.6 e M7.4, com textos editáveis por você
   no painel. A sua ideia do extrato com saldo e saque virou o item M4.10 (acima).
+- **Checkout do site (pedido de 4/10):** na tela de pagamento o hóspede escolhe **Pix** (QR
+  code e código copia e cola com botão de copiar; a reserva confirma sozinha quando o Pix chega)
+  ou **cartão de crédito** (formulário no próprio site, com a marca do Mercado Pago; os dados do
+  cartão ficam protegidos pelo Mercado Pago, nunca passam pelo nosso servidor). Parcelamento
+  conforme você configurar no painel. Sobre as taxas, a pesquisa rápida está em
+  `requisitos/product/RECEBIMENTO-SITE.md`: o que pesa é o Pix (cerca de 1%, contra cerca de 4%
+  do cartão), e entre os provedores o cartão varia pouco (uns 3% a 5%, conforme o prazo de
+  recebimento) — numa reserva de R$ 1.000 a diferença fica em torno de R$ 10. O Mercado Pago
+  continua a escolha para o M8.2; trocar ou somar outro depois é possível, porque o pagamento
+  fica atrás de um adaptador.
 - **Ainda em aberto, antes de ligar o pagamento de verdade:** quem arca com a taxa do
   pagamento (hoje: sai antes da divisão, cada um na proporção), quem arca com uma
-  contestação de cartão perdida, e a política de cancelamento do site. Nada disso impede o
+  contestação de cartão perdida, a política de cancelamento do site e se oferece
+  parcelamento no cartão (até quantas vezes e quem paga os juros). Nada disso impede o
   M8.2 em teste.
 - **Marketplace e gestão total na mesma régua (4/10):** o marketplace também recebe pela
   empresa, sem split do Mercado Pago, com o extrato. E vale **um modelo por contrato, nunca
@@ -72,7 +83,9 @@ dinheiro do proprietário que passa pela empresa). Com isso o M8.0 fecha e o pag
   contrato (sobre o que entra depois da taxa do pagamento), e o desconto do hóspede é uma
   regra única do site. Numa reserva de R$ 1.000 pelo site com 4% de desconto, o dono de
   gestão total recebe R$ 784 (contra R$ 714 no Airbnb) e a SCL R$ 138 (contra R$ 126): o site
-  é melhor para os três sem regra nova.
+  é melhor para os três sem regra nova. **Falta você dizer:** se a SCL cobra algo sobre as
+  reservas que o dono do marketplace vende nas OTAs dele; até lá, o sistema não lança nada
+  sobre essas reservas e mostra um aviso de regra ausente no contrato.
 - **Fonte de preços por imóvel (pedido de 4/10):** virou o item M3.9. Cada imóvel vai ter, com
   uma explicação curta no painel e no portal, a escolha entre os preços automáticos da SCL, os
   preços que o proprietário (ou a ferramenta de precificação dele, como PriceLabs ou Beyond
@@ -1117,8 +1130,8 @@ ambiente).
 
 ## 6. O que você precisa fazer agora
 
-1. **Vercel + Neon:** site já publicado, segundo Diego (27/09). Conferir ainda o banco
-   isolado de homologação. Passos abaixo ficam como referência de configuração:
+1. **Vercel + Neon — feito:** site publicado (27/09), bancos de produção e de preview
+   conferidos (3/10) e M0.5 fechado por você em 4/10. Passos abaixo ficam como referência:
    1. Entre em vercel.com → *Add New… → Project* → escolha `al-life/scl-reconstrucao`.
    2. Em **Root Directory**, escolha `app`. Clique em *Deploy*.
    3. No projeto criado: *Storage* (ou *Integrations*) → **Neon** → conecte sua conta
@@ -1400,6 +1413,14 @@ ambiente).
   4/10): a comparação entre "empresa recebe e repassa", split do Mercado Pago e Stripe está em
   `requisitos/product/RECEBIMENTO-SITE.md`; a pergunta ao contador e a do cartão com
   recebimento em 30 dias já foram respondidas.
+- **Parcelamento no cartão do site:** oferecer ou não, até quantas vezes e quem paga os juros —
+  o hóspede (parcelas com juros) ou a SCL ("sem juros", que custa alguns por cento a mais por
+  venda, crescendo com o número de parcelas). Fica configurável no painel; sem decisão, o
+  checkout sai só à vista. Não trava o M8.2 em teste.
+- **Marketplace — reservas das OTAs do próprio dono:** quando um proprietário do marketplace
+  vende pelo Airbnb ou Booking dele, a SCL cobra algo sobre essa reserva? A conta do modelo B
+  só vale para o que o site vende; até você decidir, o sistema não lança nada sobre essas
+  reservas e mostra um aviso de regra ausente no contrato. Não trava o M12.1 nem o M12.2.
 - **Modelo do marketplace — decidido em 4/10: B, em partes iguais** (a margem do Airbnb menos
   a taxa do pagamento dividida igualmente entre hóspede, proprietário e SCL), com os pesos
   editáveis no painel; você está testando os números no simulador e pode ajustar. Histórico:
