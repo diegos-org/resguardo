@@ -299,7 +299,7 @@ jobs:
           espelho_adulterado=""; : > espelho.inv; : > espelho-adulterado.refs
           {
             cat atual.refs
-            grep -E '^refs/(heads|tags)/' guardado.refs | grep -v -E '^refs/tags/(backup|recusadas)/|^refs/heads/backup-marcos$' || true
+            grep -E '^refs/(heads|tags)/' guardado.refs | grep -v -E '^refs/tags/(backup|recusadas|objetos)/|^refs/heads/backup-marcos$' || true
           } | sort -u | while read -r ref; do
             [ -z "${ref}" ] && continue
             a=$(git rev-parse -q --verify "${ref}" 2>/dev/null || true)
