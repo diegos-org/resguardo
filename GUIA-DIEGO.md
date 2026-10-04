@@ -50,8 +50,9 @@ dinheiro do proprietário que passa pela empresa). Com isso o M8.0 fecha e o pag
   semanalmente ou assim que o dinheiro estiver disponível (dia seguinte ao check-in, com o
   Mercado Pago já tendo liberado). Uma reserva do site só conta como disponível depois do
   check-in e da liberação, para não pagar e depois ter de pedir de volta num cancelamento.
-  Cada repasse manda um e-mail ao proprietário com o comprovante e a lista das reservas. O
-  sistema de hoje só sabe fechar uma vez por mês; o resto entrou no plano como o item
+  Cada repasse manda um e-mail ao proprietário com o comprovante e a lista das reservas (no
+  Pix manual, você anexa o comprovante ao marcar pago; sem ele, o e-mail espera e o repasse
+  fica com aviso). O sistema de hoje só sabe fechar uma vez por mês; o resto entrou no plano como o item
   **M4.10** (extrato e repasses), já com a regra para reserva que atravessa o mês: é paga
   inteira no check-in e se acerta no fechamento seguinte. Pix é liberado na hora; cartão
   depende do plano do Mercado Pago (na hora com taxa maior, ou em 14 ou 30 dias com taxa
