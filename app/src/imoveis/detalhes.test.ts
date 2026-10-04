@@ -3,7 +3,7 @@ import { historicoDe } from "@/auditoria/auditoria";
 import { imoveis, organizacoes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
-import { criarPeriodo, DETALHES_VAZIOS, excluirPeriodo, lerDetalhes, listarPeriodos, salvarDetalhes, validarDetalhes, validarPeriodo } from "./detalhes";
+import { criarPeriodo, DETALHES_VAZIOS, excluirPeriodo, fontesDePrecosDosImoveis, lerDetalhes, listarPeriodos, salvarDetalhes, validarDetalhes, validarPeriodo } from "./detalhes";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -134,3 +134,20 @@ describe("períodos de exceção", () => {
     expect(await historicoDe(db, org, "imovel", im)).toHaveLength(3);
   });
 });
+
+it("fonte de preços (M3.9): ausente vira SCL; beds24 e manual são aceitas; valor desconhecido é erro", () => {
+  expect(validarDetalhes({})).toMatchObject({ ok: true, dados: { fontePrecos: "scl" } });
+  expect(validarDetalhes({ fontePrecos: "beds24" })).toMatchObject({ ok: true, dados: { fontePrecos: "beds24" } });
+  expect(validarDetalhes({ fontePrecos: "manual" })).toMatchObject({ ok: true, dados: { fontePrecos: "manual" } });
+  expect(validarDetalhes({ fontePrecos: "airbnb" })).toMatchObject({ ok: false, erros: { fontePrecos: expect.any(String) } });
+});
+
+it("fontesDePrecosDosImoveis: lê a fonte gravada; imóvel sem detalhes ou de outra empresa fica no padrão SCL", async () => {
+  const [{ id: semDetalhes }] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "102", nome: "Cento e dois" }).returning();
+  await salvarDetalhes(db, org, im, { ...DETALHES_VAZIOS, fontePrecos: "beds24" }, null);
+  expect(await lerDetalhes(db, org, im)).toMatchObject({ fontePrecos: "beds24" });
+  expect(await fontesDePrecosDosImoveis(db, org, [im, semDetalhes, "nao-e-uuid"])).toEqual(new Map([[im, "beds24"], [semDetalhes, "scl"], ["nao-e-uuid", "scl"]]));
+  expect(await fontesDePrecosDosImoveis(db, outraOrg, [im])).toEqual(new Map([[im, "scl"]]));
+  expect(await fontesDePrecosDosImoveis(db, org, [])).toEqual(new Map());
+});
+

@@ -9,6 +9,7 @@ import { lerRegrasCalendario } from "@/calendario/regras-config";
 import { EventosCalendario } from "@/components/configuracoes/EventosCalendario";
 import { FormRegrasCalendario } from "@/components/configuracoes/FormRegrasCalendario";
 import { getDb } from "@/db/client";
+import { fontesDePrecosDosImoveis } from "@/imoveis/detalhes";
 import { listarImoveis } from "@/imoveis/repositorio";
 
 export default async function CalendarioRegras() {
@@ -17,7 +18,8 @@ export default async function CalendarioRegras() {
   const db = getDb();
   const org = sessao.organizacaoId;
   const [regras, imoveis, mapas] = await Promise.all([lerRegrasCalendario(db, org), listarImoveis(db, org), listarMapeamentosBeds24(db, org)]);
-  const opcoes = imoveis.map((i) => ({ id: i.id, codigo: i.codigo, nome: i.nome, vinculado: mapas.some((m) => m.imovelId === i.id && /^\d+$/.test(m.propertyId) && /^\d+$/.test(m.roomId)) }));
+  const fontes = await fontesDePrecosDosImoveis(db, org, imoveis.map((i) => i.id));
+  const opcoes = imoveis.map((i) => ({ id: i.id, codigo: i.codigo, nome: i.nome, vinculado: mapas.some((m) => m.imovelId === i.id && /^\d+$/.test(m.propertyId) && /^\d+$/.test(m.roomId)), fontePrecos: fontes.get(i.id) ?? ("scl" as const) }));
   return <>
     <p style={{ fontSize: "0.875rem", color: "var(--scl-texto-2)", margin: 0, maxWidth: 820 }}>
       O SCL é a fonte oficial de calendário e preços: estas regras, mais o cadastro de cada imóvel (preço base, períodos especiais, pisos), definem o que vai ao Beds24 e dele às OTAs. Salvar aqui não envia nada: o envio é conferido e disparado em <Link href="/painel/calendario/previa">Calendário → Conferir calendário e preços</Link>. Sinal de escrita na Vercel: <strong>{escritaBeds24Ligada() ? "ligado" : "desligado"}</strong>.

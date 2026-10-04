@@ -6,9 +6,9 @@ import { REGRAS_CALENDARIO_PADRAO, type RegrasCalendario } from "./regras-config
 const IM = "11111111-1111-4111-8111-111111111111";
 const OUTRO = "22222222-2222-4222-8222-222222222222";
 const regras = (over: Partial<RegrasCalendario> = {}): RegrasCalendario => ({ ...REGRAS_CALENDARIO_PADRAO, ...over });
-const imovel = (over: Partial<EntradaPlano["imovel"]> = {}, detalhes: Partial<typeof DETALHES_VAZIOS> = {}) => ({
-  id: IM, regras: regrasDeVenda({ ...DETALHES_VAZIOS, precoBase: 45000, ...detalhes }), periodos: [], pisos: [35000, 30000] as const, ...over,
-});
+const imovel = (over: Partial<EntradaPlano["imovel"]> = {}, detalhes: Partial<typeof DETALHES_VAZIOS> = {}): EntradaPlano["imovel"] => ({
+  id: IM, regras: regrasDeVenda({ ...DETALHES_VAZIOS, precoBase: 45000, ...detalhes }), periodos: [], pisos: [35000, 30000] as const, fontePrecos: "scl", ...over,
+} as EntradaPlano["imovel"]);
 // Outubro de 2026: 1/10 é quinta; 2/10 sexta; 3/10 sábado; 4/10 domingo; 5/10 segunda.
 const entrada = (over: Partial<EntradaPlano> = {}): EntradaPlano => ({
   imovel: imovel(), regras: regras(), hoje: "2026-10-01", inicio: "2026-10-01", fim: "2026-10-10", reservas: [], bloqueios: [], observacoes: [], enviados: [], ...over,
@@ -280,3 +280,39 @@ describe("faixas de envio e resumo", () => {
     expect(faixasDeEnvio(semPreco)).toEqual([{ from: "2026-10-01", to: "2026-10-01", minimo: 1, maximo: 27 }, { from: "2026-10-02", to: "2026-10-02", minimo: 2, maximo: 27 }]);
   });
 });
+
+describe("fonte de preços por imóvel (M3.9)", () => {
+  const evento = { id: "e", nome: "Evento", inicio: "2026-10-03", fim: "2026-10-03", multiplicador: 300, estadiaMinima: null, todosImoveis: true, imoveis: [] };
+  it("beds24: o SCL não envia preço; o preço esperado é o lido do Beds24; sem leitura a noite fica sem preço e com aviso; mínimos continuam do SCL", () => {
+    const linhas = planejarCalendario(entrada({ imovel: imovel({ fontePrecos: "beds24" }), regras: regras({ eventos: [evento] }), observacoes: [obs("2026-10-02", { preco: 52000 }), obs("2026-10-03", { preco: 61000 })] }));
+    const l2 = porData(linhas, "2026-10-02");
+    expect(l2).toMatchObject({ fontePreco: "beds24", precoReferencia: null, precoEnviar: null, precoFinalEsperado: 52000, percentualUltimaHora: 0, minimoEnviar: 2 });
+    expect(l2.motivoPreco).toContain("definido no Beds24");
+    expect(l2.avisos).not.toContainEqual(expect.stringContaining("Preço não cadastrado"));
+    // Evento do SCL não mexe no preço de quem define preço no Beds24.
+    expect(porData(linhas, "2026-10-03").precoFinalEsperado).toBe(61000);
+    const l4 = porData(linhas, "2026-10-04");
+    expect(l4).toMatchObject({ precoEnviar: null, precoFinalEsperado: null });
+    expect(l4.avisos).toContainEqual(expect.stringContaining("Sem preço lido do Beds24"));
+    // Nunca sai preço na carga; mínimo e máximo continuam indo.
+    expect(linhas.every((l) => l.precoEnviar === null)).toBe(true);
+    expect(faixasDeEnvio(linhas).every((f) => f.preco === undefined && f.maximo === 27)).toBe(true);
+  });
+  it("manual: vale o cadastro como está — sem evento, feriadão e última hora; período explícito continua valendo", () => {
+    const linhas = planejarCalendario(entrada({
+      imovel: imovel({ fontePrecos: "manual", periodos: [{ nome: "Especial", inicio: "2026-10-05", fim: "2026-10-05", precoNoite: 80000, estadiaMinima: null }] }),
+      regras: regras({ eventos: [evento], feriados: [{ data: "2026-10-08", nome: "Quinta" }] }),
+    }));
+    // D0 com última hora ligada no padrão: na fonte manual não se aplica.
+    expect(porData(linhas, "2026-10-01")).toMatchObject({ precoEnviar: 45000, precoFinalEsperado: 45000, percentualUltimaHora: 0 });
+    expect(porData(linhas, "2026-10-01").motivoPreco).toContain("preços digitados");
+    expect(porData(linhas, "2026-10-03")).toMatchObject({ fontePreco: "base", precoEnviar: 45000 }); // evento 3× ignorado
+    expect(porData(linhas, "2026-10-08")).toMatchObject({ fontePreco: "base", precoEnviar: 45000 }); // feriadão ignorado no preço
+    expect(porData(linhas, "2026-10-05")).toMatchObject({ fontePreco: "periodo", precoEnviar: 80000 });
+    // O mesmo cadastro com fonte SCL aplica o evento e a última hora.
+    const scl = planejarCalendario(entrada({ regras: regras({ eventos: [evento] }) }));
+    expect(porData(scl, "2026-10-03").precoEnviar).toBe(135000);
+    expect(porData(scl, "2026-10-01").percentualUltimaHora).toBeGreaterThan(0);
+  });
+});
+

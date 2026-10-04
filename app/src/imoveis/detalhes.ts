@@ -2,7 +2,7 @@
  * Cadastro completo do imóvel (M2.6): leitura, validação e gravação dos detalhes e dos
  * períodos de exceção. Tudo com histórico e preso à organização.
  */
-import { and, asc, eq, gte, lte } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
 import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
 import { imoveis, imoveisDetalhes, imoveisPeriodos } from "@/db/schema";
 import type { Db } from "@/db/types";
@@ -10,6 +10,7 @@ import { reaisParaCentavos } from "@/lib/dinheiro-form";
 import { uuidValido } from "@/lib/ids";
 import { dataValida } from "@/reservas/regras";
 import { COMODIDADES, TIPOS_CAMA } from "./cadastro-opcoes";
+import { type FontePrecos, fontePrecosValida } from "./fonte-precos";
 import type { Periodo, RegrasVenda } from "./regras-venda";
 
 export { COMODIDADES, TIPOS_CAMA, type TipoCama } from "./cadastro-opcoes";
@@ -42,6 +43,7 @@ export const DETALHES_VAZIOS: Detalhes = {
   precoDinamico: false,
   precoMinimo: null,
   precoMaximo: null,
+  fontePrecos: "scl",
   pisoUltimaHora1: null,
   pisoUltimaHora2: null,
 };
@@ -129,6 +131,9 @@ export function validarDetalhes(e: Entrada): { ok: true; dados: Detalhes } | { o
   if (complemento.length > 120) erros.complemento = "Máximo de 120 caracteres.";
   const regrasCasa = txt(e.regrasCasa).replace(/\r\n/g, "\n");
   if (regrasCasa.length > 4000) erros.regrasCasa = "Máximo de 4000 caracteres.";
+  // Fonte de preços (M3.9): campo ausente = padrão (SCL); valor desconhecido é erro, nunca palpite.
+  const fonteTxt = txt(e.fontePrecos) || "scl";
+  if (!fontePrecosValida(fonteTxt)) erros.fontePrecos = "Escolha uma das fontes de preço.";
 
   const dados: Detalhes = {
     cep: cep && cep.length === 8 ? `${cep.slice(0, 5)}-${cep.slice(5)}` : cep,
@@ -155,6 +160,7 @@ export function validarDetalhes(e: Entrada): { ok: true; dados: Detalhes } | { o
     precoDinamico: marcado(e.precoDinamico),
     precoMinimo: dinheiro("precoMinimo"),
     precoMaximo: dinheiro("precoMaximo"),
+    fontePrecos: fontePrecosValida(fonteTxt) ? fonteTxt : "scl",
     pisoUltimaHora1: dinheiro("pisoUltimaHora1"),
     pisoUltimaHora2: dinheiro("pisoUltimaHora2"),
   };
@@ -194,6 +200,19 @@ export async function lerDetalhes(db: Db, organizacaoId: string, imovelId: strin
     .where(and(eq(imoveisDetalhes.imovelId, imovelId), eq(imoveisDetalhes.organizacaoId, organizacaoId)));
   if (!l) return DETALHES_VAZIOS;
   return Object.fromEntries(Object.keys(DETALHES_VAZIOS).map((k) => [k, l[k as keyof typeof l]])) as Detalhes;
+}
+
+/** Fonte de preços de cada imóvel (M3.9); imóvel sem detalhes gravados fica no padrão (SCL). */
+export async function fontesDePrecosDosImoveis(db: Db, organizacaoId: string, imovelIds: readonly string[]): Promise<Map<string, FontePrecos>> {
+  const mapa = new Map<string, FontePrecos>(imovelIds.map((id) => [id, "scl"]));
+  const ids = imovelIds.filter(uuidValido);
+  if (!ids.length) return mapa;
+  const linhas = await db
+    .select({ imovelId: imoveisDetalhes.imovelId, fontePrecos: imoveisDetalhes.fontePrecos })
+    .from(imoveisDetalhes)
+    .where(and(eq(imoveisDetalhes.organizacaoId, organizacaoId), inArray(imoveisDetalhes.imovelId, ids)));
+  for (const l of linhas) mapa.set(l.imovelId, l.fontePrecos);
+  return mapa;
 }
 
 /** Grava os detalhes (cria na primeira vez). Retorna false se o imóvel não é da organização. */
