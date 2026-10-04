@@ -497,4 +497,43 @@ describe("3ª rodada do Codex: fechamentos antigos sem itens, trava no estorno d
     expect(enviadas[1].chave).toBe(chaveReenvio);
     expect(enviadas).toHaveLength(2);
   });
+  it("reenvio recusado não volta à chave do primeiro e-mail; reenvios ao mesmo tempo (ou durante uma tentativa) disparam um e-mail só", async () => {
+    await receberTudo(db, org, reservaBase, "2026-10-10");
+    const g = await gerarAntecipado(db, org, dono, "2026-10-11", null);
+    const id = (g as { id: string }).id;
+    expect(await marcarRepassePago(db, org, id, "2026-10-11", "2026-10-12", null, comprovante)).toMatchObject({ ok: true });
+    let recusar = false;
+    const enviadas: Mensagem[] = [];
+    const correio = {
+      nome: "teste",
+      async enviar(m: Mensagem) {
+        if (recusar) throw new Error("HTTP 422");
+        enviadas.push(m);
+      },
+    };
+    const base = `repasse:${id}:email`;
+    expect(await enviarEmailDoRepasse(db, org, id, correio, new Date("2026-10-12T12:00:00Z"))).toBe("enviado");
+    expect(enviadas[0].chave).toBe(base);
+    // Reenvio pedido por pessoa recusado de vez: volta a pendente, e a chave do reenvio fica guardada...
+    recusar = true;
+    const t1 = new Date("2026-10-13T12:00:00Z");
+    expect(await enviarEmailDoRepasse(db, org, id, correio, t1, { reenviar: true })).toBe("falhou");
+    expect((await obterRepasse(db, org, id))!).toMatchObject({ emailSituacao: "pendente", emailChave: `${base}:${t1.getTime()}` });
+    // ...e a tentativa seguinte da rotina (sem `reenviar`) usa chave nova — nunca a do primeiro e-mail, que o provedor já
+    // consumiu (repeti-la seria "enviado" sem e-mail nenhum).
+    recusar = false;
+    const t2 = new Date("2026-10-14T11:00:00Z");
+    expect(await enviarEmailsDeRepasses(db, org, correio, t2)).toMatchObject({ enviados: 1 });
+    expect(enviadas).toHaveLength(2);
+    expect(enviadas[1].chave).toBe(`${base}:${t2.getTime()}`);
+    // Dois "enviar de novo" ao mesmo tempo: um reivindica a tentativa, o outro é avisado; um e-mail só.
+    const t3 = new Date("2026-10-15T12:00:00Z");
+    const juntos = await Promise.all([enviarEmailDoRepasse(db, org, id, correio, t3, { reenviar: true }), enviarEmailDoRepasse(db, org, id, correio, t3, { reenviar: true })]);
+    expect([...juntos].sort()).toEqual(["em_andamento", "enviado"]);
+    expect(enviadas).toHaveLength(3);
+    // Reenvio pedido enquanto uma tentativa incerta acabou de começar: não abre outra (a rotina retoma a atual).
+    await db.update(repasses).set({ emailSituacao: "incerto", emailEm: t3 }).where(eq(repasses.id, id));
+    expect(await enviarEmailDoRepasse(db, org, id, correio, new Date(t3.getTime() + 60_000), { reenviar: true })).toBe("em_andamento");
+    expect(enviadas).toHaveLength(3);
+  });
 });

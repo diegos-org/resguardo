@@ -83,6 +83,7 @@ const TEXTO_ENVIO: Record<SituacaoEnvioRepasse, string> = {
   sem_provedor: "Sem provedor de e-mail configurado na Vercel (RESEND_API_KEY e EMAIL_REMETENTE): nada enviado.",
   incerto: "O provedor não confirmou o envio: pode ter chegado. Confira com o proprietário antes de enviar de novo.",
   aguardando: "Há uma tentativa sem confirmação do provedor: o sistema repete o mesmo e-mail depois de 15 minutos.",
+  em_andamento: "Outra tentativa deste e-mail acabou de começar: aguarde a confirmação. Se o provedor não confirmar, o sistema repete o mesmo e-mail em 15 minutos.",
   falhou: "O provedor recusou o e-mail; o motivo está no histórico do repasse.",
   nao_encontrado: "Repasse não encontrado.",
 };
