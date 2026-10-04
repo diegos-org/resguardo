@@ -32,8 +32,10 @@ export function AcertoPorFora({ inicio, situacao, repasses, mes, hoje, editar }:
       </summary>
       <p style={{ color: "var(--scl-texto-2)", fontSize: "0.875rem", margin: 0, maxWidth: 820 }}>
         Tudo o que é de antes do início já foi acertado fora do sistema. Marcar como &ldquo;acertado por fora&rdquo; cria, para cada proprietário, um repasse já pago (sem Pix nem e-mail) com a
-        parte dele em cada reserva de antes e zera o acerto daqueles meses: nada de antes entra em antecipado nem em fechamento, e o recebimento de uma reserva que atravessa o início libera só a
-        parte de depois. Dá para repetir quando aparecer algo novo de antes; errou, estorne o repasse como qualquer outro.
+        parte dele em cada reserva de antes e zera o acerto daqueles meses: nada de antes entra em antecipado nem em fechamento. &ldquo;De antes&rdquo; é pela data em que o canal pagou a reserva,
+        não pelo mês de cada noite: reserva paga antes do início é acertada por fora inteira, mesmo as noites a partir dele; reserva paga a partir do início entra inteira no sistema. Reserva
+        que atravessa o início sem data de pagamento bloqueia o proprietário até a equipe registrar o recebimento com a data em que o canal pagou (ou, para canal que paga direto, definir o prazo
+        em Configurações → Regras financeiras). Dá para repetir quando aparecer algo novo de antes; errou, estorne o repasse como qualquer outro.
       </p>
       {!inicio && (
         <p style={{ margin: 0, fontSize: "0.875rem" }}>
@@ -48,8 +50,8 @@ export function AcertoPorFora({ inicio, situacao, repasses, mes, hoje, editar }:
               <thead>
                 <tr>
                   <th>Proprietário</th>
-                  <th>Partes de reserva de antes</th>
-                  <th>Acerto em aberto até {dataBr(vesperaDoInicio(inicio))}</th>
+                  <th>Partes de reserva paga antes do início</th>
+                  <th>Acerto em aberto de antes do início</th>
                   <th>Situação</th>
                 </tr>
               </thead>
@@ -76,7 +78,7 @@ export function AcertoPorFora({ inicio, situacao, repasses, mes, hoje, editar }:
             <form action={marcarAcertoPorForaAcao} className={styles.acoes}>
               <input type="hidden" name="mes" value={mes} />
               <BotaoConfirmar
-                pergunta={`Marcar tudo até ${dataBr(vesperaDoInicio(inicio))} como acertado por fora para ${marcaveis.map((s) => s.nome).join(", ")}? Cria um repasse já pago por proprietário, com as partes de reserva de antes, e zera o acerto desses meses. Nada de antes entra em outro repasse. Dá para estornar.`}
+                pergunta={`Marcar tudo o que é de antes de ${dataBr(inicio)} (reservas pagas até ${dataBr(vesperaDoInicio(inicio))}) como acertado por fora para ${marcaveis.map((s) => s.nome).join(", ")}? Cria um repasse já pago por proprietário, com todas as partes dessas reservas, e zera o acerto desses meses. Nada de antes entra em outro repasse. Dá para estornar.`}
               >
                 Marcar como acertado por fora ({marcaveis.length} proprietário{marcaveis.length === 1 ? "" : "s"})
               </BotaoConfirmar>

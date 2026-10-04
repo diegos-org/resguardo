@@ -14,7 +14,7 @@ import type { DadosReserva } from "@/reservas/regras";
 import { sincronizarReserva } from "@/reservas/repositorio";
 import { lerEmpresa, nomeDaEmpresa, nomeDaEmpresaPorEmail, salvarEmpresa, validarEmpresa } from "./empresa";
 import { criarModelo, excluirModelo, garantirModelosIniciais, listarModelos, MODELOS_INICIAIS, preencherModelo, atualizarModelo, validarModelo } from "./modelos";
-import { lerFormRegras, lerRegrasFinanceiras, lerVersoesRegras, normalizarRegras, regrasNaData, versoesDe } from "./regras-financeiras";
+import { lerFormRegras, lerRegrasFinanceiras, lerVersoesRegras, normalizarRegras, prazoDoCanal, prazoDoCanalNaData, regrasNaData, versoesDe } from "./regras-financeiras";
 import { salvarRegrasFinanceiras } from "./salvar-regras";
 import { lerTextosSite, salvarTextosSite, TEXTOS_SITE_INICIAIS, validarTextosSite } from "./textos-site";
 import { alterarUsuario, criarUsuarioEquipe, listarUsuarios } from "./usuarios";
@@ -78,7 +78,52 @@ describe("regras financeiras", () => {
     expect(normalizarRegras({ base: "x", recebimento: { airbnb: "empresa", booking: 3 } })).toEqual({
       base: "liquido_canal",
       recebimento: { ...REGRAS_PADRAO.recebimento, airbnb: "empresa" },
+      prazoPagamento: REGRAS_PADRAO.prazoPagamento,
     });
+  });
+
+  it("prazo de pagamento por canal (M4.12): padrão Airbnb 1 dia; null = sem regra; fora de 0–60 ou não inteiro cai no padrão; versão antiga sem o campo lê o padrão", () => {
+    expect(normalizarRegras(null).prazoPagamento).toEqual({ airbnb: 1, booking: null, site: null, direta: null, outro: null });
+    expect(normalizarRegras({ prazoPagamento: { airbnb: null, booking: 3, site: "x", direta: 99, outro: 1.5 } }).prazoPagamento).toEqual({ airbnb: null, booking: 3, site: null, direta: null, outro: null });
+    expect(prazoDoCanal({ base: "liquido_canal", recebimento: REGRAS_PADRAO.recebimento }, "airbnb")).toBe(1);
+    expect(prazoDoCanal({ base: "liquido_canal", recebimento: REGRAS_PADRAO.recebimento }, "booking")).toBeNull();
+    expect(prazoDoCanal(normalizarRegras({ prazoPagamento: { airbnb: null } }), "airbnb")).toBeNull();
+    // Formulário: campo ausente = padrão; vazio = sem regra; dígitos de 0 a 60; o resto é recusado.
+    const form = { base: "liquido_canal", recebimento_airbnb: "split", recebimento_booking: "empresa", recebimento_site: "empresa", recebimento_direta: "empresa", recebimento_outro: "empresa" };
+    expect(lerFormRegras(form)?.prazoPagamento).toEqual(REGRAS_PADRAO.prazoPagamento);
+    expect(lerFormRegras({ ...form, prazo_airbnb: "", prazo_booking: "2", prazo_site: " 0 ", prazo_direta: "60" })?.prazoPagamento).toEqual({ airbnb: null, booking: 2, site: 0, direta: 60, outro: null });
+    expect(lerFormRegras({ ...form, prazo_airbnb: "61" })).toBeNull();
+    expect(lerFormRegras({ ...form, prazo_airbnb: "-1" })).toBeNull();
+    expect(lerFormRegras({ ...form, prazo_airbnb: "1.5" })).toBeNull();
+    expect(lerFormRegras({ ...form, prazo_airbnb: "abc" })).toBeNull();
+    // Reserva antiga de canal sem prazo na versão da época usa o prazo atual (configurar hoje resolve a que atravessa o
+    // início); prazo explícito da época fica; sem versão mais nova com prazo, continua sem regra.
+    const comum = { base: "liquido_canal" as const, recebimento: REGRAS_PADRAO.recebimento };
+    const versoes = [
+      { ...comum, desde: "2026-09-01", prazoPagamento: { ...REGRAS_PADRAO.prazoPagamento!, booking: null, site: 2 } },
+      { ...comum, desde: "2026-10-04", prazoPagamento: { ...REGRAS_PADRAO.prazoPagamento!, booking: 3, site: 5, airbnb: null } },
+    ];
+    expect(prazoDoCanalNaData(versoes, "2026-09-29", "booking")).toBe(3);
+    expect(prazoDoCanalNaData(versoes, "2026-09-29", "site")).toBe(2);
+    expect(prazoDoCanalNaData(versoes, "2026-09-29", "airbnb")).toBe(1);
+    expect(prazoDoCanalNaData(versoes, "2026-10-10", "airbnb")).toBeNull();
+    expect(prazoDoCanalNaData(versoes, "2026-10-10", "direta")).toBeNull();
+    expect(prazoDoCanalNaData([], "2026-09-29", "airbnb")).toBe(1);
+  });
+
+  it("mudar o prazo do canal grava uma versão nova e registra a mudança; apagar a regra também; a data da reserva escolhe a versão", async () => {
+    const novas = { ...REGRAS_PADRAO, prazoPagamento: { ...REGRAS_PADRAO.prazoPagamento!, airbnb: 2 } };
+    const r = await salvarRegrasFinanceiras(db, org, novas, admin);
+    expect(r.mudou).toBe(true);
+    expect(await lerRegrasFinanceiras(db, org)).toEqual(novas);
+    expect((await lerVersoesRegras(db, org)).at(-1)?.prazoPagamento).toEqual(novas.prazoPagamento);
+    expect(JSON.stringify(await historicoDe(db, org, "configuracao", org))).toContain('"prazoPagamento.airbnb":[1,2]');
+    expect((await salvarRegrasFinanceiras(db, org, novas, admin)).mudou).toBe(false);
+    const semRegra = { ...novas, prazoPagamento: { ...novas.prazoPagamento, airbnb: null } };
+    expect((await salvarRegrasFinanceiras(db, org, semRegra, admin)).mudou).toBe(true);
+    expect(prazoDoCanal(await lerRegrasFinanceiras(db, org), "airbnb")).toBeNull();
+    // Antes de qualquer versão vale o padrão: uma reserva antiga do Airbnb segue com 1 dia.
+    expect(prazoDoCanal(regrasNaData(await lerVersoesRegras(db, org), "2026-01-01"), "airbnb")).toBe(1);
   });
 
   it("formulário com opção inválida é recusado", () => {

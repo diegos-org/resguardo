@@ -4,7 +4,7 @@ import { recalcularReservas, type ResultadoRecalculo } from "@/financeiro/aplica
 import type { RegrasMotor } from "@/financeiro/motor";
 import { hojeISO } from "@/lib/datas";
 import { gravarConfig, lerConfig, travarConfig } from "./armazem";
-import { regrasNaData, versoesDe } from "./regras-financeiras";
+import { normalizarRegras, prazoDoCanal, regrasNaData, versoesDe } from "./regras-financeiras";
 
 /**
  * Grava as regras financeiras como uma versão que vale **de hoje em diante** (uma versão já
@@ -24,12 +24,18 @@ export async function salvarRegrasFinanceiras(
     const atual = regrasNaData(versoes, hoje);
     const mudancas: Record<string, [unknown, unknown]> = {};
     if (atual.base !== regras.base) mudancas.base = [atual.base, regras.base];
+    const novaVersao = normalizarRegras({ ...regras } as Record<string, unknown>);
     for (const [o, r] of Object.entries(regras.recebimento)) {
       const antes = atual.recebimento[o as keyof RegrasMotor["recebimento"]];
       if (antes !== r) mudancas[`recebimento.${o}`] = [antes, r];
     }
+    for (const o of Object.keys(regras.recebimento) as (keyof RegrasMotor["recebimento"])[]) {
+      const antes = prazoDoCanal(atual, o);
+      const depois = prazoDoCanal(novaVersao, o);
+      if (antes !== depois) mudancas[`prazoPagamento.${o}`] = [antes, depois];
+    }
     if (!Object.keys(mudancas).length) return { mudou: false, recalculo: null };
-    const novas = [...versoes.filter((v) => v.desde !== hoje), { desde: hoje, base: regras.base, recebimento: { ...regras.recebimento } }];
+    const novas = [...versoes.filter((v) => v.desde !== hoje), { desde: hoje, base: regras.base, recebimento: { ...regras.recebimento }, prazoPagamento: { ...novaVersao.prazoPagamento! } }];
     await gravarConfig(tx, organizacaoId, "regras_financeiras", { versoes: novas }, autorId, false);
     await registrarAuditoria(tx, {
       organizacaoId,
