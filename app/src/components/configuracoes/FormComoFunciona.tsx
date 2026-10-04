@@ -20,6 +20,7 @@ export function FormComoFunciona({ atual, valores, salvar }: Props) {
   const proxima = (atual?.numero ?? 0) + 1;
   return (
     <form key={JSON.stringify(valores)} action={enviar} className={styles.form} aria-label="Como funciona para o proprietário">
+      <input type="hidden" name="versaoBase" value={atual?.numero ?? 0} />
       {!atual ? (
         <p role="note" style={{ margin: 0, fontSize: "0.875rem", padding: "10px 14px", borderLeft: "3px solid var(--scl-dourado)", background: "var(--scl-papel)" }}>
           <strong>Nenhuma versão publicada ainda.</strong> O texto abaixo é um rascunho sugerido a partir das regras que já valem no sistema: revise com calma, ajuste o que quiser e clique em

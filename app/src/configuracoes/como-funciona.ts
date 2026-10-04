@@ -90,23 +90,30 @@ export async function lerComoFunciona(db: Db, organizacaoId: string): Promise<Ve
   return versoesComoFuncionaDe(await lerConfig(db, organizacaoId, "como_funciona"));
 }
 
+export type ResultadoPublicacao = { ok: true; mudou: boolean; versao: VersaoComoFunciona } | { ok: false; erro: string; atual: VersaoComoFunciona | null };
+
 /**
  * Publica uma versão nova (número seguinte, datada de hoje) quando algum texto mudou; texto igual não cria versão.
  * Cada versão nova pede aceite novo de todos os proprietários (o portal compara o número aceito com o atual).
+ * `versaoBase`: a versão que o formulário mostrava (0 = nenhuma); se outra pessoa publicou no meio, a publicação é
+ * recusada em vez de passar por cima do texto dela (quem edita recarrega, confere e publica de novo).
  */
-export async function publicarComoFunciona(db: Db, organizacaoId: string, secoes: SecoesComoFunciona, autorId: string | null, hoje: string): Promise<{ mudou: boolean; versao: VersaoComoFunciona }> {
+export async function publicarComoFunciona(db: Db, organizacaoId: string, secoes: SecoesComoFunciona, autorId: string | null, hoje: string, versaoBase?: number): Promise<ResultadoPublicacao> {
   if (!dataValida(hoje)) throw new Error("Data inválida.");
   return db.transaction(async (tx) => {
     await travarConfig(tx, organizacaoId, "como_funciona");
     const versoes = await lerComoFunciona(tx, organizacaoId);
     const atual = versaoAtual(versoes);
-    if (atual && secoesIguais(atual.secoes, secoes)) return { mudou: false, versao: atual };
+    if (versaoBase !== undefined && (atual?.numero ?? 0) !== versaoBase) {
+      return { ok: false as const, erro: `Enquanto você editava, a versão ${atual?.numero ?? 0} foi publicada por outra pessoa${atual ? ` em ${atual.data.split("-").reverse().join("/")}` : ""}. Recarregue a página, confira o texto atual e publique de novo.`, atual };
+    }
+    if (atual && secoesIguais(atual.secoes, secoes)) return { ok: true as const, mudou: false, versao: atual };
     const nova: VersaoComoFunciona = { numero: (atual?.numero ?? 0) + 1, data: hoje, autorId, secoes: { ...secoes } };
     await gravarConfig(tx, organizacaoId, "como_funciona", { versoes: [...versoes, nova] }, autorId, false);
     const mudancas: Record<string, [unknown, unknown]> = { versao: [atual?.numero ?? null, nova.numero] };
     for (const s of SECOES_COMO_FUNCIONA) if ((atual?.secoes[s.chave] ?? "") !== secoes[s.chave]) mudancas[`secao.${s.chave}`] = [atual?.secoes[s.chave] ?? null, secoes[s.chave]];
     await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "configuracao.como_funciona", entidade: "configuracao", entidadeId: organizacaoId, mudancas });
-    return { mudou: true, versao: nova };
+    return { ok: true as const, mudou: true, versao: nova };
   });
 }
 

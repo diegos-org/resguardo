@@ -50,6 +50,15 @@ describe("documento 'Como funciona' para o proprietário (M5.6)", () => {
     expect(historico).toHaveLength(2);
     expect(historico.map((h) => h.mudancas).find((m) => JSON.stringify(m.versao) === "[1,2]")).toEqual({ versao: [1, 2], "secao.contestacoes": ["", "A SCL arca."] });
     await expect(publicarComoFunciona(db, org, RASCUNHO_COMO_FUNCIONA, admin, "2026-13-01")).rejects.toThrow("Data inválida.");
+    // Formulário aberto na versão velha: publicar por cima é recusado; com a versão certa, passa.
+    const velho = await publicarComoFunciona(db, org, { ...RASCUNHO_COMO_FUNCIONA, duvidas: "Texto de quem não recarregou." }, admin, "2026-10-07", 1);
+    expect(velho).toMatchObject({ ok: false, erro: expect.stringContaining("a versão 2 foi publicada por outra pessoa em 06/10/2026"), atual: { numero: 2 } });
+    expect((await lerComoFunciona(db, org)).length).toBe(2);
+    expect(await publicarComoFunciona(db, org, { ...RASCUNHO_COMO_FUNCIONA, duvidas: "Texto novo." }, admin, "2026-10-07", 2)).toMatchObject({ ok: true, mudou: true, versao: { numero: 3 } });
+    // Sem versão publicada, a base é 0.
+    const [{ id: outraOrg }] = await db.insert(organizacoes).values({ nome: "C" }).returning();
+    expect(await publicarComoFunciona(db, outraOrg, RASCUNHO_COMO_FUNCIONA, admin, "2026-10-07", 1)).toMatchObject({ ok: false, erro: expect.stringContaining("a versão 0 foi publicada"), atual: null });
+    expect(await publicarComoFunciona(db, outraOrg, RASCUNHO_COMO_FUNCIONA, admin, "2026-10-07", 0)).toMatchObject({ ok: true, mudou: true, versao: { numero: 1 } });
     // Outra organização não vê nada.
     const [{ id: outra }] = await db.insert(organizacoes).values({ nome: "B" }).returning();
     expect(await lerComoFunciona(db, outra)).toEqual([]);

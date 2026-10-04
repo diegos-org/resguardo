@@ -61,9 +61,13 @@ export async function publicarComoFuncionaAcao(_a: EstadoForm<Record<string, str
   const sessao = await sessaoConfig();
   const v = validarSecoes(campos(form));
   if (!v.ok) return { erros: v.erros, mensagem: v.mensagem, valores: campos(form) };
-  const r = await publicarComoFunciona(getDb(), sessao.organizacaoId, v.secoes, sessao.usuarioId, hojeISO());
+  // A versão que o formulário mostrava: publicar por cima de uma versão que outra pessoa acabou de publicar é recusado.
+  const base = String(form.get("versaoBase") ?? "");
+  if (!/^\d{1,6}$/.test(base)) return { mensagem: "Recarregue a página e tente de novo.", valores: campos(form) };
+  const r = await publicarComoFunciona(getDb(), sessao.organizacaoId, v.secoes, sessao.usuarioId, hojeISO(), Number(base));
   revalidatePath("/painel/configuracoes/como-funciona");
   revalidatePath("/portal", "layout");
+  if (!r.ok) return { mensagem: r.erro, valores: campos(form) };
   const data = r.versao.data.split("-").reverse().join("/");
   return { ok: true, aviso: r.mudou ? `Versão ${r.versao.numero} publicada em ${data}. Cada proprietário vai ler e aceitar no portal; quem já tinha aceitado a anterior precisa aceitar de novo.` : `Nada mudou no texto: a versão ${r.versao.numero}, de ${data}, continua valendo.` };
 }

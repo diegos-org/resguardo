@@ -1,4 +1,5 @@
 import { lerComoFunciona, secoesParaMostrar, versaoAtual } from "@/configuracoes/como-funciona";
+import { nomeDaEmpresa } from "@/configuracoes/empresa";
 import { getDb } from "@/db/client";
 import { seguirConvite } from "@/convites/acoes";
 import { lerConvite } from "@/convites/convites";
@@ -22,7 +23,8 @@ export default async function PaginaConvite({ params, searchParams }: PageProps<
   const [r, { conteudo }] = await Promise.all([lerConvite(db, token), carregarSite()]);
   const empresa = conteudo?.nomeEmpresa.trim() || "Sua Casa Leblon";
   // M5.6: com o "Como funciona" publicado, o convite só segue com o aceite marcado (gravado no login, com o convite).
-  const documento = r.ok ? versaoAtual(await lerComoFunciona(db, r.convite.organizacaoId)) : null;
+  // O documento e o nome da empresa são os da organização do convite (o site público pode ser de outra).
+  const [documento, empresaDoConvite] = r.ok ? await Promise.all([lerComoFunciona(db, r.convite.organizacaoId).then(versaoAtual), nomeDaEmpresa(db, r.convite.organizacaoId)]) : [null, empresa];
   return (
     <MolduraPortal empresa={empresa} estreito>
       <header>
@@ -52,7 +54,7 @@ export default async function PaginaConvite({ params, searchParams }: PageProps<
                     Como funciona — versão {documento.numero}, de {dataBr(documento.data)}
                   </summary>
                   <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12 }}>
-                    {secoesParaMostrar(documento, empresa).map((s) => (
+                    {secoesParaMostrar(documento, empresaDoConvite).map((s) => (
                       <section key={s.chave} aria-label={s.titulo}>
                         <h2 style={{ fontSize: "1.0625rem", margin: "0 0 6px" }}>{s.titulo}</h2>
                         {s.paragrafos.map((p, i) => (
