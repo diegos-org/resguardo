@@ -76,7 +76,7 @@ const maiuscula = (t: string) => `${t[0].toUpperCase()}${t.slice(1)}`;
 function oQueFaltaNoEnvio(e: SituacaoEnvio, empresa: string): string | null {
   if (!e.naLista) return `a ${empresa} incluir este imóvel no envio de calendário`;
   if (!e.vinculado) return `a ${empresa} vincular este imóvel ao Beds24 (propriedade e quarto, em Integrações) — sem o vínculo, o envio pula o imóvel`;
-  if (!e.escritaLigada) return `a ${empresa} ligar a escrita no Beds24 — hoje o envio só simula, nada sai`;
+  if (!e.escritaPronta) return `a ${empresa} ligar a escrita no Beds24 (sinal e credencial) — hoje o envio só simula, nada sai`;
   return null;
 }
 

@@ -35,7 +35,8 @@ let db: Db, close: () => Promise<void>, org: string, a: string, b: string, c: st
 const agora = new Date("2026-10-03T15:00:00Z");
 const desdeSempre = new Date("2025-01-01T12:00:00Z");
 const semEnv = { NODE_ENV: "test" } as NodeJS.ProcessEnv;
-const escritaLigada = { NODE_ENV: "test", BEDS24_ESCRITA: "ligada" } as NodeJS.ProcessEnv;
+const soSinal = { NODE_ENV: "test", BEDS24_ESCRITA: "ligada" } as NodeJS.ProcessEnv;
+const escritaPronta = { NODE_ENV: "test", BEDS24_ESCRITA: "ligada", BEDS24_API_KEY: "token-ficticio-de-teste" } as NodeJS.ProcessEnv;
 const sessao = (imovelIds = [a, b, d]): Sessao => ({ usuarioId: usuario, organizacaoId: org, papel: "proprietario", imovelIds });
 
 beforeEach(async () => {
@@ -77,7 +78,7 @@ describe("portal do proprietário marketplace (M12.4)", () => {
   it("lista só os imóveis da sessão em contrato marketplace hoje, com cadastro, períodos e situação do envio", async () => {
     const lista = await imoveisMarketplaceDaSessao(db, sessao(), agora);
     expect(lista.map((i) => i.codigo)).toEqual(["403"]);
-    expect(lista[0]).toMatchObject({ fontePrecos: "scl", posseDesde: "2025-01-01", detalhes: { precoBase: 30000 }, periodos: [], envio: { naLista: false, vinculado: false, escritaLigada: false, automatico: false, ultimo: null } });
+    expect(lista[0]).toMatchObject({ fontePrecos: "scl", posseDesde: "2025-01-01", detalhes: { precoBase: 30000 }, periodos: [], envio: { naLista: false, vinculado: false, escritaPronta: false, automatico: false, ultimo: null } });
     // Contrato marketplace que só começa no futuro ainda não libera.
     await criarContrato(db, org, d, { tipo: "marketplace", comissao: "", inicio: "2027-01-01" }, null);
     expect((await imoveisMarketplaceDaSessao(db, sessao(), agora)).map((i) => i.codigo)).toEqual(["403"]);
@@ -234,19 +235,21 @@ describe("portal do proprietário marketplace (M12.4)", () => {
     await salvarRegrasCalendario(db, org, { ...REGRAS_CALENDARIO_PADRAO, envio: { imoveis: [a], automatico: true } }, null);
     const regras = { ...REGRAS_CALENDARIO_PADRAO, envio: { imoveis: [a], automatico: true } };
     // Sem vínculo e com a escrita desligada, o envio não alcança as OTAs mesmo com o imóvel na lista.
-    expect(await situacaoDoEnvio(db, org, regras, a, semEnv)).toEqual({ naLista: true, vinculado: false, escritaLigada: false, automatico: true, ultimo: null });
+    expect(await situacaoDoEnvio(db, org, regras, a, semEnv)).toEqual({ naLista: true, vinculado: false, escritaPronta: false, automatico: true, ultimo: null });
     // Vínculo precisa de propriedade e quarto numéricos; a escrita vem de BEDS24_ESCRITA=ligada.
     await db.insert(idsExternos).values({ organizacaoId: org, imovelId: a, canal: "beds24", idExterno: "10", detalhe: "" });
-    expect((await situacaoDoEnvio(db, org, regras, a, escritaLigada)).vinculado).toBe(false);
+    expect((await situacaoDoEnvio(db, org, regras, a, escritaPronta)).vinculado).toBe(false);
     await db.insert(idsExternos).values({ organizacaoId: org, imovelId: a, canal: "beds24", idExterno: "10", detalhe: "20" });
-    expect(await situacaoDoEnvio(db, org, regras, a, escritaLigada)).toEqual({ naLista: true, vinculado: true, escritaLigada: true, automatico: true, ultimo: null });
+    expect(await situacaoDoEnvio(db, org, regras, a, escritaPronta)).toEqual({ naLista: true, vinculado: true, escritaPronta: true, automatico: true, ultimo: null });
+    // Sinal ligado sem credencial: o escritor do ambiente é nulo e nada sai — o portal não pode prometer envio.
+    expect((await situacaoDoEnvio(db, org, regras, a, soSinal)).escritaPronta).toBe(false);
     const [sim] = await db.insert(beds24Envios).values({ organizacaoId: org, modo: "simulacao", situacao: "simulacao", iniciadoEm: new Date("2026-10-02T10:00:00Z") }).returning();
     const [real] = await db.insert(beds24Envios).values({ organizacaoId: org, modo: "envio", situacao: "ok", iniciadoEm: new Date("2026-10-01T10:00:00Z") }).returning();
     await db.insert(beds24EnvioNoites).values([
       { organizacaoId: org, envioId: sim.id, imovelId: a, data: "2026-10-10", resultado: "enviado" },
       { organizacaoId: org, envioId: real.id, imovelId: a, data: "2026-10-10", resultado: "confirmado" },
     ]);
-    expect(await situacaoDoEnvio(db, org, regras, a, semEnv)).toMatchObject({ naLista: true, vinculado: true, escritaLigada: false, automatico: true, ultimo: { em: new Date("2026-10-01T10:00:00Z"), situacao: "ok" } });
+    expect(await situacaoDoEnvio(db, org, regras, a, semEnv)).toMatchObject({ naLista: true, vinculado: true, escritaPronta: false, automatico: true, ultimo: { em: new Date("2026-10-01T10:00:00Z"), situacao: "ok" } });
     expect(await situacaoDoEnvio(db, org, regras, b, semEnv)).toMatchObject({ naLista: false, vinculado: false, ultimo: null });
   });
 

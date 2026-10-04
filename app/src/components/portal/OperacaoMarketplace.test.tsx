@@ -14,7 +14,7 @@ const imovel: ImovelOperavel = {
   fontePrecos: "scl",
   regras: { precoBase: 30000, taxaLimpeza: 15000, hospedeExtraValor: null, hospedeExtraAPartirDe: null, estadiaMinima: 2, estadiaMaxima: null, antecedenciaMinima: null, janelaMaxima: null, diasChegada: [1, 5], diasSaida: [], checkinAPartirDe: "15:00", checkoutAte: "11:00" },
   periodos: [{ id: "p1", nome: "Réveillon", inicio: "2026-12-28", fim: "2027-01-02", precoNoite: 90000, estadiaMinima: 5 }],
-  envio: { naLista: true, vinculado: true, escritaLigada: true, automatico: true, ultimo: { em: new Date("2026-10-01T10:00:00Z"), situacao: "ok" } },
+  envio: { naLista: true, vinculado: true, escritaPronta: true, automatico: true, ultimo: { em: new Date("2026-10-01T10:00:00Z"), situacao: "ok" } },
 };
 const acao = vi.fn(async () => ({}));
 const render_ = (over: Partial<Parameters<typeof OperacaoMarketplace>[0]> = {}) =>
@@ -92,21 +92,21 @@ describe("portal marketplace (M12.4): seção do proprietário", () => {
   });
 
   it("explica o envio ao Beds24 sem supor: fora da lista, manual e automático", () => {
-    const envio = (over: Partial<SituacaoEnvio> = {}): SituacaoEnvio => ({ naLista: true, vinculado: true, escritaLigada: true, automatico: true, ultimo: null, ...over });
+    const envio = (over: Partial<SituacaoEnvio> = {}): SituacaoEnvio => ({ naLista: true, vinculado: true, escritaPronta: true, automatico: true, ultimo: null, ...over });
     expect(textoDoEnvio(envio({ naLista: false }), "SCL")).toContain("até a SCL incluir este imóvel no envio de calendário");
     expect(textoDoEnvio(envio({ automatico: false }), "SCL")).toContain("Ainda não houve envio");
     expect(textoDoEnvio(envio({ ultimo: { em: new Date("2026-10-01T10:00:00Z"), situacao: "ok" } }), "SCL")).toMatch(/roda todo dia.*Último envio: 01\/10\/2026, 07:00 \(concluído\)/);
     // Na lista, mas sem vínculo com o Beds24 ou com a escrita desligada: nada chega às OTAs, e o texto diz o que falta.
     expect(textoDoEnvio(envio({ vinculado: false }), "SCL")).toContain("vincular este imóvel ao Beds24");
     expect(textoDoEnvio(envio({ vinculado: false }), "SCL")).not.toContain("roda todo dia");
-    expect(textoDoEnvio(envio({ escritaLigada: false }), "SCL")).toContain("ligar a escrita no Beds24");
+    expect(textoDoEnvio(envio({ escritaPronta: false }), "SCL")).toContain("ligar a escrita no Beds24");
     expect(textoSalvo(envio({ vinculado: false }), "SCL")).toContain("continuam com o preço e as estadias anteriores até a SCL vincular este imóvel ao Beds24");
-    expect(textoSalvo(envio({ escritaLigada: false }), "SCL")).not.toContain("próximo envio");
+    expect(textoSalvo(envio({ escritaPronta: false }), "SCL")).not.toContain("próximo envio");
   });
 
   it("depois de salvar, só promete Airbnb e Booking quando o imóvel está na lista de envio", () => {
     // E só para o que o envio de calendário carrega (preço e estadias); o resto é só do site.
-    const pronto: SituacaoEnvio = { naLista: true, vinculado: true, escritaLigada: true, automatico: true, ultimo: null };
+    const pronto: SituacaoEnvio = { naLista: true, vinculado: true, escritaPronta: true, automatico: true, ultimo: null };
     const fora: SituacaoEnvio = { ...pronto, naLista: false };
     expect(textoSalvo(pronto, "SCL")).toContain("Preço da noite e estadias mínima e máxima chegam ao Airbnb e ao Booking no próximo envio");
     expect(textoSalvo(pronto, "SCL")).toContain("taxa de limpeza, hóspede extra, antecedência, janela de reservas, dias e horários de entrada e saída valem só no site");

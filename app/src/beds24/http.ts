@@ -193,13 +193,21 @@ export function leitorParaSincronizacao(env: NodeJS.ProcessEnv = process.env): L
 /** O sinal de escrita só vale com o valor exato "ligada" — quem liga é o Diego, na Vercel. */
 export const escritaBeds24Ligada = (env: NodeJS.ProcessEnv = process.env) => env.BEDS24_ESCRITA?.trim() === "ligada";
 
+/** Há credencial para falar com o Beds24 (refresh token ou token direto). */
+export const credencialBeds24Presente = (env: NodeJS.ProcessEnv = process.env) => {
+  const { refreshToken, token } = credenciais(env);
+  return Boolean(refreshToken || token);
+};
+
+/** A escrita realmente sai: sinal "ligada" E credencial — a régua única de `escritorDoAmbiente`, que o portal também lê. */
+export const escritaBeds24Pronta = (env: NodeJS.ProcessEnv = process.env) => escritaBeds24Ligada(env) && credencialBeds24Presente(env);
+
 /**
  * Escritor do calendário (M3.7): null sem credencial ou com `BEDS24_ESCRITA` diferente de
  * "ligada". Com o sinal desligado, nenhum caminho do sistema consegue escrever no Beds24.
  */
 export function escritorDoAmbiente(env: NodeJS.ProcessEnv = process.env): EscritorBeds24 | null {
-  if (!escritaBeds24Ligada(env)) return null;
+  if (!escritaBeds24Pronta(env)) return null;
   const { refreshToken, token } = credenciais(env);
-  if (!refreshToken && !token) return null;
   return new ClienteBeds24Http({ refreshToken, token, maxPaginas: 10, timeoutMs: 30_000 });
 }
