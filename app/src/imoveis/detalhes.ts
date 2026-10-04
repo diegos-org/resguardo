@@ -6,7 +6,7 @@ import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
 import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
 import { imoveis, imoveisDetalhes, imoveisPeriodos } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { reaisParaCentavos } from "@/lib/dinheiro-form";
+import { centavosParaCampo, reaisParaCentavos } from "@/lib/dinheiro-form";
 import { uuidValido } from "@/lib/ids";
 import { dataValida } from "@/reservas/regras";
 import { COMODIDADES, TIPOS_CAMA } from "./cadastro-opcoes";
@@ -183,6 +183,46 @@ export function validarDetalhes(e: Entrada): { ok: true; dados: Detalhes } | { o
   return Object.keys(erros).length ? { ok: false, erros } : { ok: true, dados };
 }
 
+/**
+ * O inverso de `validarDetalhes`: o cadastro como um formulário preenchido. Serve para editar só
+ * alguns campos (portal do proprietário, M12.4) passando pela mesma validação do painel — uma
+ * regra, um lugar. `validarDetalhes(entradaDeDetalhes(d))` devolve `d`.
+ */
+export function entradaDeDetalhes(d: Detalhes): Record<string, string | string[]> {
+  const num = (n: number | null) => (n === null ? "" : String(n));
+  const sim = (b: boolean) => (b ? "on" : "");
+  return {
+    cep: d.cep,
+    complemento: d.complemento,
+    estado: d.estado,
+    ...Object.fromEntries(Object.entries(d.camas).map(([tipo, n]) => [`cama_${tipo}`, String(n)])),
+    comodidades: d.comodidades.filter((c) => (COMODIDADES as readonly string[]).includes(c)),
+    comodidadesOutras: d.comodidades.filter((c) => !(COMODIDADES as readonly string[]).includes(c)).join(", "),
+    regrasCasa: d.regrasCasa,
+    aceitaAnimais: sim(d.aceitaAnimais),
+    permiteFumar: sim(d.permiteFumar),
+    permiteFestas: sim(d.permiteFestas),
+    checkinAPartirDe: d.checkinAPartirDe,
+    checkoutAte: d.checkoutAte,
+    taxaLimpeza: centavosParaCampo(d.taxaLimpeza),
+    hospedeExtraValor: centavosParaCampo(d.hospedeExtraValor),
+    hospedeExtraAPartirDe: num(d.hospedeExtraAPartirDe),
+    estadiaMinima: num(d.estadiaMinima),
+    estadiaMaxima: num(d.estadiaMaxima),
+    antecedenciaMinima: num(d.antecedenciaMinima),
+    janelaMaxima: num(d.janelaMaxima),
+    diasChegada: d.diasChegada.map(String),
+    diasSaida: d.diasSaida.map(String),
+    precoBase: centavosParaCampo(d.precoBase),
+    precoDinamico: sim(d.precoDinamico),
+    precoMinimo: centavosParaCampo(d.precoMinimo),
+    precoMaximo: centavosParaCampo(d.precoMaximo),
+    fontePrecos: d.fontePrecos,
+    pisoUltimaHora1: centavosParaCampo(d.pisoUltimaHora1),
+    pisoUltimaHora2: centavosParaCampo(d.pisoUltimaHora2),
+  };
+}
+
 async function imovelDaOrg(db: Db, organizacaoId: string, imovelId: string, travar = false) {
   if (!uuidValido(imovelId)) return false;
   const q = db
@@ -225,19 +265,53 @@ export async function salvarDetalhes(db: Db, organizacaoId: string, imovelId: st
   return db.transaction(async (tx) => {
     if (!(await imovelDaOrg(tx, organizacaoId, imovelId, true))) return false;
     const antes = await lerDetalhes(tx, organizacaoId, imovelId);
-    const mudancas = calcularMudancas(antes, dados);
-    if (!Object.keys(mudancas).length) return true;
-    if (antes.fontePrecos !== dados.fontePrecos) {
-      const recusa = await esperarEnvioBeds24(tx, organizacaoId, agora);
-      if (recusa) return `${recusa} A fonte de preços só muda com o envio parado, para o SCL nunca escrever preço num imóvel que passou a usar os preços do Beds24.`;
-    }
-    await tx
-      .insert(imoveisDetalhes)
-      .values({ ...dados, imovelId, organizacaoId })
-      .onConflictDoUpdate({ target: imoveisDetalhes.imovelId, set: { ...dados, atualizadoEm: new Date() } });
-    await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "imovel.detalhes", entidade: "imovel", entidadeId: imovelId, mudancas });
-    return true;
+    return gravarDetalhes(tx, organizacaoId, imovelId, antes, dados, autorId, agora);
   });
+}
+
+/** Prepara os detalhes a gravar a partir dos atuais (lidos com o imóvel travado); ou recusa, com erros por campo. */
+export type PrepararDetalhes = (atual: Detalhes) => Detalhes | { erro: string; erros?: ErrosDetalhes };
+
+/**
+ * Grava detalhes montados a partir do cadastro ATUAL, lido dentro da mesma transação e com o imóvel
+ * travado: quem edita só alguns campos (o portal do proprietário marketplace, M12.4) não grava uma
+ * foto velha do resto do cadastro por cima de uma mudança feita no painel no meio do caminho.
+ */
+export async function salvarDetalhesComLeitura(
+  db: Db,
+  organizacaoId: string,
+  imovelId: string,
+  preparar: PrepararDetalhes,
+  autorId: string | null,
+  agora = new Date(),
+  o: { conferir?: (tx: Db) => Promise<string | null> } = {},
+): Promise<{ ok: true } | { ok: false; erro: string; erros?: ErrosDetalhes }> {
+  return db.transaction(async (tx) => {
+    if (!(await imovelDaOrg(tx, organizacaoId, imovelId, true))) return { ok: false as const, erro: "Imóvel não encontrado." };
+    // Regra de quem chama (ex.: o portal reconfere o contrato marketplace), já com o imóvel travado.
+    const recusa = o.conferir ? await o.conferir(tx) : null;
+    if (recusa) return { ok: false as const, erro: recusa };
+    const atual = await lerDetalhes(tx, organizacaoId, imovelId);
+    const prep = preparar(atual);
+    if ("erro" in prep) return { ok: false as const, ...prep };
+    const r = await gravarDetalhes(tx, organizacaoId, imovelId, atual, prep, autorId, agora);
+    return r === true ? { ok: true as const } : { ok: false as const, erro: r };
+  });
+}
+
+async function gravarDetalhes(tx: Db, organizacaoId: string, imovelId: string, antes: Detalhes, dados: Detalhes, autorId: string | null, agora: Date): Promise<true | string> {
+  const mudancas = calcularMudancas(antes, dados);
+  if (!Object.keys(mudancas).length) return true;
+  if (antes.fontePrecos !== dados.fontePrecos) {
+    const recusa = await esperarEnvioBeds24(tx, organizacaoId, agora);
+    if (recusa) return `${recusa} A fonte de preços só muda com o envio parado, para o SCL nunca escrever preço num imóvel que passou a usar os preços do Beds24.`;
+  }
+  await tx
+    .insert(imoveisDetalhes)
+    .values({ ...dados, imovelId, organizacaoId })
+    .onConflictDoUpdate({ target: imoveisDetalhes.imovelId, set: { ...dados, atualizadoEm: new Date() } });
+  await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "imovel.detalhes", entidade: "imovel", entidadeId: imovelId, mudancas });
+  return true;
 }
 
 // --- Períodos de exceção ----------------------------------------------------------------
@@ -270,12 +344,21 @@ export function validarPeriodo(e: Entrada): { ok: true; dados: Omit<Periodo, "id
   return { ok: true, dados: { nome, inicio, fim, precoNoite: preco, estadiaMinima } };
 }
 
-export async function criarPeriodo(db: Db, organizacaoId: string, imovelId: string, e: Entrada, autorId: string | null): Promise<ResultadoPeriodo> {
+/**
+ * Cria um período de exceção. `conferir`: regra extra avaliada sobre o cadastro ATUAL, lido com o
+ * imóvel já travado (ex.: o portal recusa preço no período quando os preços são do Beds24) — nunca
+ * sobre uma leitura anterior, que o painel pode ter mudado no meio.
+ */
+export async function criarPeriodo(db: Db, organizacaoId: string, imovelId: string, e: Entrada, autorId: string | null, o: { conferir?: (atual: Detalhes, tx: Db) => Promise<string | null> | string | null } = {}): Promise<ResultadoPeriodo> {
   const v = validarPeriodo(e);
   if (!v.ok) return v;
   return db.transaction(async (tx) => {
     // Trava o imóvel: dois períodos sobrepostos não entram ao mesmo tempo.
     if (!(await imovelDaOrg(tx, organizacaoId, imovelId, true))) return { ok: false as const, erro: "Imóvel não encontrado." };
+    if (o.conferir) {
+      const recusa = await o.conferir(await lerDetalhes(tx, organizacaoId, imovelId), tx);
+      if (recusa) return { ok: false as const, erro: recusa };
+    }
     const [choque] = await tx
       .select({ nome: imoveisPeriodos.nome })
       .from(imoveisPeriodos)
@@ -287,9 +370,18 @@ export async function criarPeriodo(db: Db, organizacaoId: string, imovelId: stri
   });
 }
 
-export async function excluirPeriodo(db: Db, organizacaoId: string, periodoId: string, autorId: string | null): Promise<boolean> {
+/**
+ * Exclui um período. `false` = não encontrado; texto = recusa de `conferir` (regra de quem chama, avaliada
+ * com o imóvel travado, ex.: o portal reconfere o contrato marketplace).
+ */
+export async function excluirPeriodo(db: Db, organizacaoId: string, periodoId: string, autorId: string | null, o: { conferir?: (tx: Db, imovelId: string) => Promise<string | null> } = {}): Promise<boolean | string> {
   if (!uuidValido(periodoId)) return false;
   return db.transaction(async (tx) => {
+    const [alvo] = await tx.select({ imovelId: imoveisPeriodos.imovelId }).from(imoveisPeriodos).where(and(eq(imoveisPeriodos.id, periodoId), eq(imoveisPeriodos.organizacaoId, organizacaoId)));
+    if (!alvo) return false;
+    if (!(await imovelDaOrg(tx, organizacaoId, alvo.imovelId, true))) return false;
+    const recusa = o.conferir ? await o.conferir(tx, alvo.imovelId) : null;
+    if (recusa) return recusa;
     const [p] = await tx
       .delete(imoveisPeriodos)
       .where(and(eq(imoveisPeriodos.id, periodoId), eq(imoveisPeriodos.organizacaoId, organizacaoId)))

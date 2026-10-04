@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 4/10/2026, **antes do fechamento de outubro (o primeiro no sistema), faça o item 29 da seção 6: defina o início do sistema (1/10/2026) em Configurações → Repasses e clique em "Marcar como acertado por fora" em Financeiro → Repasses (M4.11) — nada de setembro entra de novo e o fechamento sai sem tratamento à mão;** **extrato e repasses por periodicidade prontos (M4.10):** o proprietário vê no portal a parte dele em cada reserva (a liberar, disponível, repassada), escolhe como quer receber (mensal, quinzenal, semanal, assim que disponível) e pode pedir um repasse; você registra o recebimento do canal na reserva, marca o repasse pago com o comprovante e o e-mail sai sozinho (seção 2); **identidade visual nova implementada (M7.5):** site, portais e painel estão no visual do estudo que você aprovou (verdes, off-white de papel, grão sutil nos fundos, busca translúcida, serifa nos títulos; painel mais denso), com três textos novos da capa editáveis em Configurações → Site (seção 2); **acervo visual do Sage guardado e especificação de design escrita (M7.5):** o visual que você aprovou está em `prototipos/acervo-visual-2026-10` (e o código dele já estava em `prototipos/scl-publico`); os tokens e os ajustes combinados estão em `requisitos/product/DESIGN.md`; falta só implementar; **fonte de preços por imóvel pronta (M3.9):** cada imóvel escolhe, na ficha, se os preços são automáticos do SCL, definidos no Beds24 (o SCL só lê) ou digitados no cadastro; site, envio ao Beds24, prévia e portal seguem a escolha (seção 2); item novo de **identidade visual** (M7.5, aprovado por você); **referência do sistema antigo cruzada com o plano (M0.6):** o museu que você mandou foi percorrido tela a tela e comparado com o que já existe, com uma lista de ideias para você decidir (seção 2 e `arquivo/sistema-antigo`); **desconto do site e simulação do marketplace prontos (M12.1):** nova aba Configurações → Marketplace e desconto do site, com as taxas de referência e os três pesos editáveis e a simulação Airbnb × Booking × site; o site passa a mostrar valor cheio, desconto e total em toda consulta e cotação (seção 2); recebimento do site decidido (M8.0: empresa recebe e repassa, Mercado Pago; repasse na periodicidade que o proprietário escolher, item novo M4.10), modelo do marketplace decidido (B, partes iguais; M12.1 liberado), marketplace recebendo pela empresa como o site, fonte de preços por imóvel no plano (M3.9), backup do repositório ativado por você (M0.7), publicação de homologação dada por fechada por você (M0.5), pedido do checkout com Pix e cartão registrado (M8.2, com parcelamento pago pelo hóspede) e decisão de não cobrar nada sobre as reservas das OTAs do dono do marketplace; correção do robô de backup depois da sua primeira rodada (ele passa a gravar com uma chave da própria conta de backup e guarda o que vem da origem fora de branches e tags, onde nenhuma automação roda; item 23, passos 4, 5 e 7) e passo a passo mais detalhado (passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório ativo na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
+> **Última atualização:** 4/10/2026, **antes do fechamento de outubro (o primeiro no sistema), faça o item 29 da seção 6: defina o início do sistema (1/10/2026) em Configurações → Repasses e clique em "Marcar como acertado por fora" em Financeiro → Repasses (M4.11) — nada de setembro entra de novo e o fechamento sai sem tratamento à mão;** **portal do proprietário marketplace pronto (M12.4):** quem tem contrato marketplace edita no portal os preços e as regras de venda do próprio imóvel (com a conta do site ao vivo), vê se a mudança já foi ao Beds24, marca as limpezas como feitas e registra os consertos por conta própria (seção 2); **extrato e repasses por periodicidade prontos (M4.10):** o proprietário vê no portal a parte dele em cada reserva (a liberar, disponível, repassada), escolhe como quer receber (mensal, quinzenal, semanal, assim que disponível) e pode pedir um repasse; você registra o recebimento do canal na reserva, marca o repasse pago com o comprovante e o e-mail sai sozinho (seção 2); **identidade visual nova implementada (M7.5):** site, portais e painel estão no visual do estudo que você aprovou (verdes, off-white de papel, grão sutil nos fundos, busca translúcida, serifa nos títulos; painel mais denso), com três textos novos da capa editáveis em Configurações → Site (seção 2); **acervo visual do Sage guardado e especificação de design escrita (M7.5):** o visual que você aprovou está em `prototipos/acervo-visual-2026-10` (e o código dele já estava em `prototipos/scl-publico`); os tokens e os ajustes combinados estão em `requisitos/product/DESIGN.md`; falta só implementar; **fonte de preços por imóvel pronta (M3.9):** cada imóvel escolhe, na ficha, se os preços são automáticos do SCL, definidos no Beds24 (o SCL só lê) ou digitados no cadastro; site, envio ao Beds24, prévia e portal seguem a escolha (seção 2); item novo de **identidade visual** (M7.5, aprovado por você); **referência do sistema antigo cruzada com o plano (M0.6):** o museu que você mandou foi percorrido tela a tela e comparado com o que já existe, com uma lista de ideias para você decidir (seção 2 e `arquivo/sistema-antigo`); **desconto do site e simulação do marketplace prontos (M12.1):** nova aba Configurações → Marketplace e desconto do site, com as taxas de referência e os três pesos editáveis e a simulação Airbnb × Booking × site; o site passa a mostrar valor cheio, desconto e total em toda consulta e cotação (seção 2); recebimento do site decidido (M8.0: empresa recebe e repassa, Mercado Pago; repasse na periodicidade que o proprietário escolher, item novo M4.10), modelo do marketplace decidido (B, partes iguais; M12.1 liberado), marketplace recebendo pela empresa como o site, fonte de preços por imóvel no plano (M3.9), backup do repositório ativado por você (M0.7), publicação de homologação dada por fechada por você (M0.5), pedido do checkout com Pix e cartão registrado (M8.2, com parcelamento pago pelo hóspede) e decisão de não cobrar nada sobre as reservas das OTAs do dono do marketplace; correção do robô de backup depois da sua primeira rodada (ele passa a gravar com uma chave da própria conta de backup e guarda o que vem da origem fora de branches e tags, onde nenhuma automação roda; item 23, passos 4, 5 e 7) e passo a passo mais detalhado (passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório ativo na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
 
 ---
 
@@ -36,7 +36,35 @@
 | M9 Portal do hóspede | Acesso do hóspede e mensagens automáticas | ✅ pronto |
 | M10 WhatsApp | Caixa de entrada do WhatsApp no painel | ⚪ aguardando |
 | M11 Produção | Dados reais, domínio, entrada em uso | ⚪ aguardando |
-| M12 Marketplace | Proprietário que opera o próprio imóvel; SCL cuida do online | 🟡 cadastro pelo site pronto; modelo de cobrança (B, partes iguais) com pesos editáveis, simulação e desconto único do site prontos (M12.1); cálculo e repasse no financeiro (M12.2) dependem do pagamento (M8.2) e do extrato (M4.10) |
+| M12 Marketplace | Proprietário que opera o próprio imóvel; SCL cuida do online | 🟡 portal do proprietário marketplace pronto (M12.4, 4/10); cadastro pelo site pronto; modelo de cobrança (B, partes iguais) com pesos editáveis, simulação e desconto único do site prontos (M12.1); cálculo e repasse no financeiro (M12.2) dependem do pagamento (M8.2) e do extrato (M4.10) |
+
+### Portal do proprietário marketplace — M12.4 (4/10)
+
+Quem tem imóvel em **contrato marketplace** passa a ver no portal a seção "Seu imóvel no
+marketplace" (quem é gestão total ou online não vê nada diferente). Lá o proprietário:
+
+- **Define preços e regras de venda** do próprio imóvel: preço da noite, taxa de limpeza, hóspede
+  extra, estadia mínima e máxima, antecedência, até quantos dias à frente aceita reserva, dias de
+  entrada e saída e horários — pela mesma validação do cadastro do painel (o que ele não edita
+  continua como você deixou). Embaixo do preço aparece a conta do site, ao vivo: quanto o hóspede
+  paga, quanto ele recebe e quanto fica com a empresa, pelo modelo B de Configurações →
+  Marketplace. Também cria e exclui períodos especiais (Réveillon, Carnaval).
+- **Vê se a mudança chegou às OTAs**, sem suposição: se o imóvel está na lista de envio ao
+  Beds24, se o envio é automático e quando foi o último. Fora da lista, o texto diz que o site da
+  empresa já usa o preço novo, mas o Airbnb e o Booking continuam com o anterior até você incluir
+  o imóvel no envio (Configurações → Calendário e preços).
+- Se os preços do imóvel são **definidos no Beds24** (fonte de preços escolhida por você), o preço
+  da noite fica só de leitura no portal; limpeza, hóspede extra, regras e horários continuam
+  editáveis. Período especial só com estadia mínima.
+- **Limpezas por conta própria:** a lista das saídas de hóspede (de 3 dias atrás a 2 semanas à
+  frente), com "atrasada" e "entra hóspede no mesmo dia", e o botão "Marcar como feita" a partir do
+  dia. A limpeza fica registrada sem custo para a empresa (nenhuma despesa é lançada).
+- **Manutenção por conta própria:** registra o conserto que ele mesmo fez (o quê, quando, detalhes);
+  entra no histórico do imóvel como realizada, por conta do proprietário, sem orçamento nem despesa.
+
+Tudo é decidido no servidor: imóvel que não é dele, ou sem contrato marketplace em vigor na data,
+não passa. Bloqueio de datas para uso próprio continua como antes (M5.5, pela permissão do
+contrato). As mudanças ficam no histórico do imóvel com o nome do proprietário.
 
 ### Extrato e repasses por periodicidade — M4.10 (4/10)
 
@@ -126,8 +154,10 @@ o sistema não pagar nem cobrar nada disso de novo, ele agora tem:
 - **Errou?** O repasse "acerto por fora" se estorna como qualquer outro: as partes voltam ao extrato.
 - **A data não passa por cima de repasse:** enquanto houver acerto por fora em vigor, o sistema não
   deixa mudar o início para antes dele nem apagá-lo; e não deixa colocar o início depois de uma parte
-  que um repasse normal (fechamento ou antecipado) em vigor já pagou, nem de um mês já fechado — senão a
-  data diria "acertado por fora" sobre algo que o sistema pagou. Nos dois casos, estorne primeiro.
+  que um repasse normal (fechamento ou antecipado) em vigor já pagou, nem de um mês já fechado, nem de
+  um acerto de antes que um fechamento posterior já quitou (o fechamento de outubro paga tudo o que
+  estava em aberto, inclusive um ajuste de setembro) — senão a data diria "acertado por fora" sobre
+  algo que o sistema pagou, e a marcação acertaria de novo. Em todos os casos, estorne primeiro.
 - **Nada de antes passa pelos repasses normais:** com a data definida, a parte de reserva de antes
   do início nunca fica "disponível" (o extrato diz "anterior ao início do sistema: aguarda a
   marcação"), então nem antecipado nem pedido pelo portal a pagam; e o fechamento não roda enquanto
@@ -1702,6 +1732,13 @@ ambiente).
    - **Reserva de outubro que você já tenha acertado por fora** (pelo que você disse em 4/10, não
      há): se existir, me avise antes do fechamento e não registre o recebimento dela até a gente
      combinar o ajuste — ela é de depois do início, então a marcação acima não a cobre.
+30. **Marketplace no portal (M12.4):** para cada imóvel marketplace, confira três coisas: o
+   contrato está como "marketplace" (é isso que libera a seção no portal); a fonte de preços na
+   ficha do imóvel está certa ("automáticos do SCL" ou "digitados no cadastro" deixam o
+   proprietário editar o preço; "definidos no Beds24" deixa só as regras); e o imóvel está na
+   lista de envio ao Beds24, senão o que o proprietário mudar vale só no site. Na página de
+   Limpezas, as limpezas de imóvel marketplace feitas pelo proprietário aparecem como realizadas
+   com custo zero e a observação "feita pelo proprietário".
 
 ---
 

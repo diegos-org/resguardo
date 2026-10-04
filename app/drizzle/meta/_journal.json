@@ -372,6 +372,13 @@
       "when": 1791132813984,
       "tag": "0052_repasse_itens_substituidos_reparo",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1791140081665,
+      "tag": "0053_m12_4_portal_marketplace",
+      "breakpoints": true
     }
   ]
 }

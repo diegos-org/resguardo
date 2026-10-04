@@ -18,6 +18,8 @@ export const ACOES = [
   "calendario:ler",
   /** Proprietário (M5.5): bloquear datas de uso próprio e liberá-las nos seus imóveis, conforme o contrato. */
   "bloqueio:proprio",
+  /** Proprietário marketplace (M12.4): preços, regras de venda, limpezas e manutenção dos seus imóveis em contrato marketplace. */
+  "marketplace:operar",
   "financeiro:ler",
   "financeiro:editar",
   "despesa:editar",
@@ -55,7 +57,7 @@ const OPERACAO: readonly Acao[] = [
 ];
 
 /** Proprietário lê o que é dos seus imóveis e só edita o próprio calendário (bloqueio de uso próprio, M5.5). */
-const PROPRIETARIO: readonly Acao[] = ["imovel:ler", "reserva:ler", "calendario:ler", "financeiro:ler", "bloqueio:proprio"];
+const PROPRIETARIO: readonly Acao[] = ["imovel:ler", "reserva:ler", "calendario:ler", "financeiro:ler", "bloqueio:proprio", "marketplace:operar"];
 
 export const PERMISSOES: Readonly<Record<Papel, readonly Acao[]>> = Object.freeze({
   admin: ACOES,

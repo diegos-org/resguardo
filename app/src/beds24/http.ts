@@ -11,6 +11,7 @@
  * beds24.com/api/v2). Antes da sincronização real (M3.3), conferir com a conta do Diego:
  * nomes de campos, filtro de canceladas e paginação.
  */
+import { createHash } from "node:crypto";
 import { AutenticacaoBeds24, buscarBeds24, type CorpoBeds24 } from "./autenticacao";
 import { normalizarCalendario, normalizarQuartos, normalizarReserva } from "./normalizar";
 import { type DiaCalendario, type EnvioCalendario, ErroBeds24, type EscritorBeds24, type FiltroCalendario, type FiltroReservas, type LeitorBeds24, type Lido, type QuartoBeds24, type ReservaBeds24, type ResultadoEscrita } from "./tipos";
@@ -193,13 +194,34 @@ export function leitorParaSincronizacao(env: NodeJS.ProcessEnv = process.env): L
 /** O sinal de escrita só vale com o valor exato "ligada" — quem liga é o Diego, na Vercel. */
 export const escritaBeds24Ligada = (env: NodeJS.ProcessEnv = process.env) => env.BEDS24_ESCRITA?.trim() === "ligada";
 
+/** Há credencial para falar com o Beds24 (refresh token ou token direto). */
+export const credencialBeds24Presente = (env: NodeJS.ProcessEnv = process.env) => {
+  const { refreshToken, token } = credenciais(env);
+  return Boolean(refreshToken || token);
+};
+
+/**
+ * Impressão da credencial Beds24 do ambiente: o tipo (refresh token ou token direto) e um hash truncado do valor — identifica
+ * "qual credencial" sem guardar a credencial (não dá para recuperá-la daqui). Vazia sem credencial. Cada envio grava a sua
+ * na execução, e o portal só aceita o veredito de um envio feito com a credencial atual: trocar a credencial (outra conta
+ * Beds24, por exemplo) invalida o veredito, porque o quarto acessível àquela pode não ser acessível a esta.
+ */
+export const impressaoCredencialBeds24 = (env: NodeJS.ProcessEnv = process.env): string => {
+  const { refreshToken, token } = credenciais(env);
+  const valor = refreshToken ?? token;
+  if (!valor) return "";
+  return `${refreshToken ? "refresh" : "token"}:${createHash("sha256").update(valor).digest("hex").slice(0, 16)}`;
+};
+
+/** A escrita realmente sai: sinal "ligada" E credencial — a régua única de `escritorDoAmbiente`, que o portal também lê. */
+export const escritaBeds24Pronta = (env: NodeJS.ProcessEnv = process.env) => escritaBeds24Ligada(env) && credencialBeds24Presente(env);
+
 /**
  * Escritor do calendário (M3.7): null sem credencial ou com `BEDS24_ESCRITA` diferente de
  * "ligada". Com o sinal desligado, nenhum caminho do sistema consegue escrever no Beds24.
  */
 export function escritorDoAmbiente(env: NodeJS.ProcessEnv = process.env): EscritorBeds24 | null {
-  if (!escritaBeds24Ligada(env)) return null;
+  if (!escritaBeds24Pronta(env)) return null;
   const { refreshToken, token } = credenciais(env);
-  if (!refreshToken && !token) return null;
   return new ClienteBeds24Http({ refreshToken, token, maxPaginas: 10, timeoutMs: 30_000 });
 }

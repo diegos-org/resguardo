@@ -960,6 +960,8 @@ export const manutencoes = pgTable(
     dataRealizada: date("data_realizada", { mode: "string" }),
     /** Despesa lançada com o custo final (livro de lançamentos). */
     despesaId: uuid("despesa_id").references(() => lancamentos.id),
+    /** M12.4: feita pelo proprietário por conta própria (marketplace) — sem custo para a empresa, nunca entra no fluxo de lançar custo. */
+    semCusto: boolean("sem_custo").notNull().default(false),
     observacao: text("observacao").notNull().default(""),
     criadoPor: uuid("criado_por").references(() => usuarios.id),
     criadoEm: criadoEm(),
@@ -1005,6 +1007,8 @@ export const limpezas = pgTable(
     profissionalId: uuid("profissional_id").references(() => profissionaisLimpeza.id),
     /** Centavos; null = custo ainda não informado. */
     custo: integer("custo"),
+    /** M12.4: feita pelo proprietário por conta própria (marketplace), custo 0 de propósito; reabrir limpa a marca e o custo. */
+    semCusto: boolean("sem_custo").notNull().default(false),
     observacao: text("observacao").notNull().default(""),
     /** Cancelada à mão (não pela reserva): a sincronização não a reabre. */
     canceladaManual: boolean("cancelada_manual").notNull().default(false),
@@ -1213,6 +1217,8 @@ export const beds24Envios = pgTable("beds24_envios", {
   noitesEnviadas: integer("noites_enviadas").notNull().default(0),
   noitesConfirmadas: integer("noites_confirmadas").notNull().default(0),
   noitesDivergentes: integer("noites_divergentes").notNull().default(0),
+  /** Impressão (tipo + hash truncado) da credencial Beds24 usada nesta execução — nunca a credencial: o veredito por imóvel só vale enquanto a credencial for esta. */
+  credencial: text("credencial").notNull().default(""),
 }, t => [index("beds24_envios_org").on(t.organizacaoId, t.iniciadoEm)]);
 
 /** Antes/depois de cada noite enviada: regra usada e resultado da conferência. */
@@ -1233,6 +1239,22 @@ export const beds24EnvioNoites = pgTable("beds24_envio_noites", {
   resultado: text("resultado").$type<"enviado" | "confirmado" | "divergente" | "falhou">().notNull(),
   detalhe: text("detalhe").notNull().default(""),
 }, t => [index("beds24_envio_noites_envio").on(t.envioId), index("beds24_envio_noites_imovel").on(t.organizacaoId, t.imovelId, t.data)]);
+
+/** Imóveis incluídos em cada execução (mesmo sem noite a enviar): o "último envio" por imóvel lê daqui, não das noites. */
+export const beds24EnvioImoveis = pgTable("beds24_envio_imoveis", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+  envioId: uuid("envio_id").notNull().references(() => beds24Envios.id),
+  imovelId: uuid("imovel_id").notNull().references(() => imoveis.id),
+  /** Par propriedade/quarto do Beds24 que esta execução validou para o imóvel: veredito só vale enquanto o vínculo for este. */
+  propertyId: text("property_id").notNull().default(""),
+  roomId: text("room_id").notNull().default(""),
+  /**
+   * Por que este imóvel ficou de fora nesta execução (quarto inacessível à credencial, moeda, leitura, escrita recusada).
+   * Nasce "pendente" e só fica vazio quando a execução termina com o imóvel incluído: execução interrompida nunca vale como sucesso.
+   */
+  falha: text("falha").notNull().default(""),
+}, t => [index("beds24_envio_imoveis_imovel").on(t.organizacaoId, t.imovelId), index("beds24_envio_imoveis_envio").on(t.envioId)]);
 
 /** Último valor que o SCL enviou por noite: idempotência e liberação só do que o SCL bloqueou. */
 export const beds24CalendarioEnviado = pgTable("beds24_calendario_enviado", {

@@ -6,7 +6,7 @@ import type { Db } from "@/db/types";
 import { sincronizarReserva } from "@/reservas/repositorio";
 import { converterLote, paraDadosReserva } from "./converter";
 import { Beds24Falso } from "./falso";
-import { ClienteBeds24Http, escritaBeds24Ligada, escritorDoAmbiente, leitorDoAmbiente } from "./http";
+import { ClienteBeds24Http, escritaBeds24Ligada, escritorDoAmbiente, impressaoCredencialBeds24, leitorDoAmbiente } from "./http";
 import { canalDe, normalizarCalendario, normalizarQuartos, normalizarReserva, reaisParaCentavosApi } from "./normalizar";
 import { ErroBeds24 } from "./tipos";
 
@@ -266,6 +266,16 @@ describe("cliente HTTP (rede simulada)", () => {
     expect(escritorDoAmbiente(env({ BEDS24_REFRESH_TOKEN: "r", BEDS24_ESCRITA: "ligada" }))).toBeInstanceOf(ClienteBeds24Http);
     expect(escritaBeds24Ligada(env({ BEDS24_ESCRITA: " ligada " }))).toBe(true);
     expect(escritaBeds24Ligada(env({}))).toBe(false);
+    // Impressão da credencial: diz "qual" sem guardar o valor; muda com o valor e com o tipo; vazia sem credencial.
+    expect(impressaoCredencialBeds24(env({}))).toBe("");
+    const token = impressaoCredencialBeds24(env({ BEDS24_API_KEY: "segredo-ficticio" }));
+    expect(token).toMatch(/^token:[0-9a-f]{16}$/);
+    expect(token).not.toContain("segredo-ficticio");
+    expect(impressaoCredencialBeds24(env({ BEDS24_API_KEY: " segredo-ficticio " }))).toBe(token);
+    expect(impressaoCredencialBeds24(env({ BEDS24_API_KEY: "outro-segredo" }))).not.toBe(token);
+    // Com refresh token, é ele que identifica a credencial (o token direto é ignorado, como em `credenciais`).
+    expect(impressaoCredencialBeds24(env({ BEDS24_REFRESH_TOKEN: "segredo-ficticio", BEDS24_API_KEY: "segredo-ficticio" }))).toMatch(/^refresh:[0-9a-f]{16}$/);
+    expect(impressaoCredencialBeds24(env({ BEDS24_REFRESH_TOKEN: "segredo-ficticio" }))).not.toBe(token);
   });
 });
 

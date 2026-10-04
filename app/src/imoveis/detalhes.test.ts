@@ -4,7 +4,7 @@ import { historicoDe } from "@/auditoria/auditoria";
 import { beds24Envios, imoveis, organizacoes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
-import { criarPeriodo, DETALHES_VAZIOS, excluirPeriodo, fontesDePrecosDosImoveis, lerDetalhes, listarPeriodos, salvarDetalhes, validarDetalhes, validarPeriodo } from "./detalhes";
+import { criarPeriodo, DETALHES_VAZIOS, excluirPeriodo, fontesDePrecosDosImoveis, lerDetalhes, listarPeriodos, salvarDetalhes, salvarDetalhesComLeitura, validarDetalhes, validarPeriodo } from "./detalhes";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -112,6 +112,20 @@ describe("gravação", () => {
     expect((await lerDetalhes(db, org, im)).fontePrecos).toBe("beds24");
   });
 
+  it("gravação com leitura: monta os dados a partir do cadastro atual, dentro da transação; recusa não grava nada", async () => {
+    const r = validarDetalhes(form);
+    if (!r.ok) throw new Error("inválido");
+    await salvarDetalhes(db, org, im, r.dados, null);
+    // Quem edita só um campo recebe o cadastro atual (lido com o imóvel travado) e devolve o completo.
+    expect(await salvarDetalhesComLeitura(db, org, im, (atual) => ({ ...atual, precoBase: 99900 }), null)).toEqual({ ok: true });
+    expect(await lerDetalhes(db, org, im)).toEqual({ ...r.dados, precoBase: 99900 });
+    expect((await historicoDe(db, org, "imovel", im))[0].mudancas).toEqual({ precoBase: [120050, 99900] });
+    // Recusa (com erros por campo) vem do cadastro atual e não grava.
+    expect(await salvarDetalhesComLeitura(db, org, im, (atual) => (atual.precoBase === 99900 ? { erro: "Confira.", erros: { precoBase: "alto" } } : atual), null)).toEqual({ ok: false, erro: "Confira.", erros: { precoBase: "alto" } });
+    expect(await lerDetalhes(db, org, im)).toMatchObject({ precoBase: 99900 });
+    expect(await salvarDetalhesComLeitura(db, outraOrg, im, (atual) => atual, null)).toEqual({ ok: false, erro: "Imóvel não encontrado." });
+  });
+
   it("outra organização não lê nem grava", async () => {
     expect(await salvarDetalhes(db, outraOrg, im, DETALHES_VAZIOS, null)).toBe(false);
     expect(await salvarDetalhes(db, org, "nao-uuid", DETALHES_VAZIOS, null)).toBe(false);
@@ -133,6 +147,26 @@ describe("períodos de exceção", () => {
     expect(validarPeriodo({ ...rev, inicio: "2026-02-30" }).ok).toBe(false);
     expect(validarPeriodo({ ...rev, precoNoite: "21474836,48" })).toEqual({ ok: false, erro: "Preço alto demais." });
     expect(validarDetalhes({ precoBase: "21474836,48" })).toMatchObject({ ok: false, erros: { precoBase: "Valor alto demais." } });
+  });
+
+  it("regra extra (`conferir`) é avaliada sobre o cadastro atual, com o imóvel travado; recusa não grava", async () => {
+    const r = validarDetalhes(form);
+    if (!r.ok) throw new Error("inválido");
+    await salvarDetalhes(db, org, im, { ...r.dados, fontePrecos: "beds24" }, null);
+    const periodo = { nome: "Natal", inicio: "2026-12-24", fim: "2026-12-26", precoNoite: "500,00", estadiaMinima: "" };
+    const vistos: string[] = [];
+    expect(await criarPeriodo(db, org, im, periodo, null, { conferir: (atual) => (vistos.push(atual.fontePrecos), atual.fontePrecos === "beds24" ? "preço não" : null) })).toEqual({ ok: false, erro: "preço não" });
+    expect(vistos).toEqual(["beds24"]);
+    expect(await listarPeriodos(db, org, im)).toEqual([]);
+    expect(await criarPeriodo(db, org, im, { ...periodo, precoNoite: "", estadiaMinima: "3" }, null, { conferir: async () => null })).toEqual({ ok: true });
+    const [criado] = await listarPeriodos(db, org, im);
+    // Excluir também aceita a regra extra, com o imóvel do período travado; recusa não apaga.
+    expect(await excluirPeriodo(db, org, criado.id, null, { conferir: async (_tx, imovelId) => (imovelId === im ? "contrato acabou" : null) })).toBe("contrato acabou");
+    expect(await listarPeriodos(db, org, im)).toHaveLength(1);
+    expect(await excluirPeriodo(db, org, criado.id, null, { conferir: async () => null })).toBe(true);
+    expect(await listarPeriodos(db, org, im)).toEqual([]);
+    // Gravação com leitura: a regra extra roda antes de preparar, com o imóvel travado.
+    expect(await salvarDetalhesComLeitura(db, org, im, (atual) => atual, null, new Date(), { conferir: async () => "sem contrato" })).toEqual({ ok: false, erro: "sem contrato" });
   });
 
   it("cria, recusa sobreposição, lista em ordem e exclui", async () => {
