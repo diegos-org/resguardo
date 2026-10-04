@@ -12,7 +12,7 @@ tabela `aceites_documento` (migração 0054), telas em Configurações → Como 
 
 - **Seções fixas, texto livre:** o que a empresa faz; marketplace; comissão e taxas; quando e como
   recebe; relatórios e extrato; cancelamentos; contestações; dúvidas. Limite por seção (3.000
-  caracteres; dúvidas 1.000); linha em branco separa parágrafos; `{empresa}` vira o nome da empresa.
+  caracteres; dúvidas 1.000); linha em branco separa parágrafos; `{empresa}` vira o nome da empresa — o nome do momento da publicação fica gravado na versão (o que foi lido e aceito não muda se o cadastro mudar; nome novo com o mesmo texto é versão nova).
   Seção vazia não aparece no portal. Pelo menos uma seção escrita para publicar.
 - **Nada publicado até a primeira versão:** sem versão, o painel traz um rascunho sugerido (a partir
   das regras do sistema; "contestações" em branco até a decisão de Diego) e o portal não mostra o
