@@ -20,7 +20,7 @@ import { type Correio, ErroEnvioIncerto } from "@/email/correio";
 import { formatBRL } from "@/lib/money";
 import { arquivoPorId, itensDoRepasse, JANELA_TENTATIVA_EMAIL_MS, nomeMes, obterRepasse, type RepasseListado, descricaoDoItem } from "./repasses";
 
-export type SituacaoEnvioRepasse = "enviado" | "ja_enviado" | "nao_pago" | "sem_comprovante" | "sem_email" | "sem_provedor" | "incerto" | "aguardando" | "em_andamento" | "falhou" | "nao_encontrado";
+export type SituacaoEnvioRepasse = "enviado" | "ja_enviado" | "nao_pago" | "por_fora" | "sem_comprovante" | "sem_email" | "sem_provedor" | "incerto" | "aguardando" | "em_andamento" | "falhou" | "nao_encontrado";
 
 /** Tentativa marcada há menos que isto ainda pode estar em curso (ou vai ser retomada pela rotina); o estorno do repasse espera essa janela. */
 const JANELA_TENTATIVA_MS = JANELA_TENTATIVA_EMAIL_MS;
@@ -63,6 +63,8 @@ export async function enviarEmailDoRepasse(db: Db, organizacaoId: string, repass
   const r = await obterRepasse(db, organizacaoId, repasseId);
   if (!r || r.estornadoEm) return "nao_encontrado";
   if (r.situacao !== "pago") return "nao_pago";
+  // Acerto por fora (M4.11): nada foi pago pelo sistema, então não há e-mail de repasse.
+  if (r.tipo === "por_fora") return "por_fora";
   if (!r.comprovante && !r.comprovanteArquivoId) return "sem_comprovante";
   if (r.emailSituacao === "enviado" && !o.reenviar) return "ja_enviado";
   // "Recente" olha a ÚLTIMA tentativa (`emailTentativaEm`), não a primeira: uma retomada que acabou de começar também conta.
@@ -150,7 +152,7 @@ export async function enviarEmailsDeRepasses(db: Db, organizacaoId: string, corr
   const pendentes = await db
     .select({ id: repasses.id, comprovante: repasses.comprovante, arquivo: repasses.comprovanteArquivoId })
     .from(repasses)
-    .where(and(eq(repasses.organizacaoId, organizacaoId), eq(repasses.situacao, "pago"), isNull(repasses.estornadoEm), ne(repasses.emailSituacao, "enviado")))
+    .where(and(eq(repasses.organizacaoId, organizacaoId), eq(repasses.situacao, "pago"), ne(repasses.tipo, "por_fora"), isNull(repasses.estornadoEm), ne(repasses.emailSituacao, "enviado")))
     .orderBy(repasses.dataPagamento);
   for (const p of pendentes) {
     if (!p.comprovante && !p.arquivo) {

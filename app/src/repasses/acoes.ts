@@ -11,8 +11,9 @@ import { reaisParaCentavos } from "@/lib/dinheiro-form";
 import { enviarEmailDoRepasse, type SituacaoEnvioRepasse } from "./email";
 import { type ErrosFormRegras, periodicidadeValida, validarFormRegras } from "./periodicidade";
 import { escolherPeriodicidade } from "./proprietario";
+import { descreverAcertoPorFora, marcarAcertoPorFora } from "./por-fora";
 import { estornarRecebimento, registrarRecebimento } from "./recebimentos";
-import { salvarRegrasRepasses } from "./regras-config";
+import { lerInicioDoSistema, salvarInicioDoSistema, salvarRegrasRepasses } from "./regras-config";
 import { anexarComprovante, type ComprovanteRepasse, estornarRepasse, fecharMes, gerarAntecipado, limitesDoMes, marcarRepassePago, TAMANHO_MAXIMO_COMPROVANTE } from "./repasses";
 
 async function sessaoEditora() {
@@ -78,6 +79,7 @@ const TEXTO_ENVIO: Record<SituacaoEnvioRepasse, string> = {
   enviado: "E-mail do repasse enviado.",
   ja_enviado: "Este e-mail já tinha sido enviado.",
   nao_pago: "Marque o repasse como pago antes de enviar o e-mail.",
+  por_fora: "Acerto por fora não tem e-mail: nada foi pago pelo sistema.",
   sem_comprovante: "Anexe o comprovante antes: o e-mail só sai com ele.",
   sem_email: "O proprietário não tem e-mail cadastrado.",
   sem_provedor: "Sem provedor de e-mail configurado na Vercel (RESEND_API_KEY e EMAIL_REMETENTE): nada enviado.",
@@ -106,6 +108,32 @@ export async function gerarAntecipadoAcao(form: FormData): Promise<void> {
   const sessao = await sessaoEditora();
   const mes = texto(form, "mes");
   voltar(mes, await gerarAntecipado(getDb(), sessao.organizacaoId, texto(form, "proprietarioId"), hojeISO(), sessao.usuarioId), "antecipado");
+}
+
+/** Financeiro → Repasses (M4.11): marca como acertado por fora tudo o que é de antes do início do sistema. */
+export async function marcarAcertoPorForaAcao(form: FormData): Promise<void> {
+  const sessao = await sessaoEditora();
+  const mes = texto(form, "mes");
+  const db = getDb();
+  const inicio = await lerInicioDoSistema(db, sessao.organizacaoId);
+  if (!inicio) return voltar(mes, { ok: false, erro: "Defina o início do sistema em Configurações → Repasses antes de marcar." }, "");
+  const r = await marcarAcertoPorFora(db, sessao.organizacaoId, inicio, sessao.usuarioId);
+  if (!r.ok) return voltar(mes, r, "");
+  voltar(mes, { ok: true }, "", descreverAcertoPorFora(r, inicio));
+}
+
+export type EstadoInicioDoSistema = { ok?: boolean; mensagem?: string; aviso?: string; valor?: string };
+
+/** Configurações → Repasses (M4.11): a data a partir da qual o sistema vale (sempre dia 1º; vazia apaga). */
+export async function salvarInicioDoSistemaAcao(_a: EstadoInicioDoSistema, form: FormData): Promise<EstadoInicioDoSistema> {
+  const sessao = await exigirSessaoPainel();
+  exigir(sessao, "configuracao:editar", { organizacaoId: sessao.organizacaoId });
+  const data = texto(form, "data").trim();
+  const r = await salvarInicioDoSistema(getDb(), sessao.organizacaoId, data, hojeISO(), sessao.usuarioId);
+  if (!r.ok) return { mensagem: r.erro, valor: data };
+  revalidatePath("/painel/configuracoes/repasses");
+  revalidatePath("/painel/financeiro/repasses");
+  return { ok: true, aviso: !r.mudou ? "Nada mudou." : data ? `Salvo: o sistema vale a partir de ${data.split("-").reverse().join("/")}. Marque o que é de antes em Financeiro → Repasses.` : "Salvo: sem início do sistema definido." };
 }
 
 export type EstadoRegrasRepasses = { ok?: boolean; mensagem?: string; aviso?: string; erros?: ErrosFormRegras; valores?: Record<string, string> };

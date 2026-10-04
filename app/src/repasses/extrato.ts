@@ -82,6 +82,8 @@ export function classificarParte(p: ParteBruta): Parte {
     // então; a diferença não fica escondida — está no acerto do mês e vai para o próximo fechamento mensal.
     const diferenca = p.valor - r.valor;
     const recalculo = diferenca === 0 ? "" : ` Recalculada depois: o repasse incluiu ${formatBRL(r.valor)}; a diferença de ${formatBRL(Math.abs(diferenca))} ${diferenca > 0 ? "a mais é acertada" : "a menos é descontada"} pelo fechamento mensal.`;
+    // M4.11: parte de antes do início do sistema, já acertada fora dele — nunca entra em outro repasse.
+    if (r.tipo === "por_fora") return com("repassado", `Acertada por fora, antes do início do sistema (até ${dataBr(r.data)}).${recalculo}`, diferenca);
     return com("repassado", `${r.tipo === "fechamento" ? "No fechamento" : "Repasse"} de ${dataBr(r.data)}${pago}.${recalculo}`, diferenca);
   }
   if (quemRecebe === "a_confirmar") return com("a_liberar", "Quem recebe o dinheiro desta reserva ainda está a confirmar pela empresa: fica fora de qualquer repasse até definir.");
@@ -99,18 +101,23 @@ export function classificarParte(p: ParteBruta): Parte {
   return com("disponivel", "Disponível para o próximo repasse.");
 }
 
-/** `ajusteNoFechamento`: soma das diferenças de recálculo das partes repassadas — acertada (ou descontada) pelo fechamento mensal, que pode já ter acontecido. */
-export type ResumoPartes = { aLiberar: number; disponivel: number; repassadoAPagar: number; repassadoPago: number; informacao: number; ajusteNoFechamento: number };
+/**
+ * `ajusteNoFechamento`: soma das diferenças de recálculo das partes repassadas — acertada (ou descontada) pelo fechamento
+ * mensal, que pode já ter acontecido. `acertadoPorFora` (M4.11): partes de antes do início do sistema, pagas fora dele —
+ * à parte do "já repassado", que é o que o sistema pagou.
+ */
+export type ResumoPartes = { aLiberar: number; disponivel: number; repassadoAPagar: number; repassadoPago: number; informacao: number; ajusteNoFechamento: number; acertadoPorFora: number };
 
 export function resumirPartes(partes: readonly Parte[]): ResumoPartes {
-  const r: ResumoPartes = { aLiberar: 0, disponivel: 0, repassadoAPagar: 0, repassadoPago: 0, informacao: 0, ajusteNoFechamento: 0 };
+  const r: ResumoPartes = { aLiberar: 0, disponivel: 0, repassadoAPagar: 0, repassadoPago: 0, informacao: 0, ajusteNoFechamento: 0, acertadoPorFora: 0 };
   for (const p of partes) {
     if (p.situacao === "a_liberar") r.aLiberar += p.valor;
     else if (p.situacao === "disponivel") r.disponivel += p.valor;
     else if (p.situacao === "informacao") r.informacao += p.valor;
     else {
       // Repassado conta o que o repasse incluiu; a diferença do recálculo vai à parte.
-      if (p.repasse?.situacao === "pago") r.repassadoPago += p.valor - p.diferenca;
+      if (p.repasse?.tipo === "por_fora") r.acertadoPorFora += p.valor - p.diferenca;
+      else if (p.repasse?.situacao === "pago") r.repassadoPago += p.valor - p.diferenca;
       else r.repassadoAPagar += p.valor - p.diferenca;
       r.ajusteNoFechamento += p.diferenca;
     }

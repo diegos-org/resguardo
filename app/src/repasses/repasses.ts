@@ -352,7 +352,7 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
 
 const atualOuNada = (partes: Parte[]) => partes;
 const brl = (c: number) => `R$ ${(c / 100).toFixed(2).replace(".", ",")}`;
-const codigosDe = (partes: readonly Parte[]) => [...new Set(partes.map((x) => x.codigoReserva))].join(", ");
+export const codigosDe = (partes: readonly Parte[]) => [...new Set(partes.map((x) => x.codigoReserva))].join(", ");
 const mesesDe = (partes: readonly Parte[]) => [...new Set(partes.map((x) => nomeMes(x.competencia.slice(0, 7))))].join(" e ");
 
 /**
@@ -376,7 +376,8 @@ export async function preverRepasses(db: Db, org: string, mes: string, hoje: str
 
 type Resultado = { ok: true; id: string } | { ok: false; erro: string };
 
-const chavePrefixo = (repasseId: string) => `repasse:${repasseId}:`;
+/** Prefixo da chave de origem dos lançamentos de um repasse (fechamento, antecipado ou acerto por fora): o estorno acha todos por ele. */
+export const chavePrefixo = (repasseId: string) => `repasse:${repasseId}:`;
 
 /** Fecha o mês de um proprietário: grava o repasse, os lançamentos e os descontos. */
 export async function fecharMes(db: Db, org: string, proprietarioId: string, mes: string, hoje: string, autorId: string | null, agora: Date = meioDiaDe(hoje)): Promise<Resultado> {
@@ -474,7 +475,7 @@ async function fecharNaTransacao(
   });
 }
 
-async function travarDono(tx: Db, org: string, proprietarioId: string): Promise<Dono | null> {
+export async function travarDono(tx: Db, org: string, proprietarioId: string): Promise<Dono | null> {
   if (!uuidValido(proprietarioId)) return null;
   const [dono] = await tx
     .select({ id: proprietarios.id, nome: proprietarios.nome, email: proprietarios.email, chavePix: proprietarios.chavePix })
@@ -512,7 +513,7 @@ function lancamentosAntecipados(repasseId: string, proprietarioId: string, parte
 }
 
 /** Vínculo único: a mesma parte nunca compõe dois repasses em vigor (índice único por lançamento). */
-async function vincularItens(tx: Db, org: string, repasseId: string, partes: readonly Parte[]) {
+export async function vincularItens(tx: Db, org: string, repasseId: string, partes: readonly Parte[]) {
   if (!partes.length) return;
   await tx.insert(repasseItens).values(partes.map((x) => ({ organizacaoId: org, repasseId, lancamentoId: x.lancamentoId, reservaId: x.reservaId, imovelId: x.imovelId, competencia: x.competencia, valor: x.valor })));
 }

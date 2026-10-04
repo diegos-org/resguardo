@@ -29,12 +29,15 @@ const botao: React.CSSProperties = { font: "inherit", padding: "8px 16px", borde
 
 export function nomeDoRepasseNoPortal(r: Pick<Repasse, "tipo" | "mes" | "data" | "pedidoEm">): string {
   if (r.tipo === "fechamento") return `Fechamento de ${nomeMes(r.mes.slice(0, 7))}`;
+  if (r.tipo === "por_fora") return `Acertado por fora, antes do sistema (até ${dataBr(r.data)})`;
   return `Repasse de ${dataBr(r.data)}${r.pedidoEm ? " (pedido por você)" : ""}`;
 }
 
-export function situacaoNoPortal(r: Pick<Repasse, "situacao" | "dataPagamento" | "estornadoEm">): string {
+export function situacaoNoPortal(r: Pick<Repasse, "tipo" | "situacao" | "dataPagamento" | "estornadoEm">): string {
   // Estornado fica no histórico: as reservas dele voltam ao extrato (disponível ou a liberar) e entram no próximo repasse.
   if (r.situacao === "estornado") return `Estornado pela empresa${r.estornadoEm ? ` em ${r.estornadoEm.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}` : ""}: as reservas voltaram ao extrato`;
+  // M4.11: acerto feito fora do sistema, antes do início dele — nada foi pago por aqui.
+  if (r.tipo === "por_fora") return "Acertado fora do sistema, antes do início";
   return r.situacao === "pago" ? `Pago em ${dataBr(r.dataPagamento!)}` : "A pagar pela empresa";
 }
 
@@ -102,6 +105,7 @@ export function ExtratoRepasses({ donos, periodicidades, partes, repasses, itens
           ["Em repasse a pagar", resumo.repassadoAPagar],
           ["Já repassado (pago)", resumo.repassadoPago],
           ...(resumo.ajusteNoFechamento !== 0 ? [["Diferença de recálculo (acertada pelo fechamento mensal)", resumo.ajusteNoFechamento] as const] : []),
+          ...(resumo.acertadoPorFora !== 0 ? [["Acertado por fora (antes do sistema)", resumo.acertadoPorFora] as const] : []),
         ].map(([t, v]) => (
           <div key={t} style={caixa}>
             <div style={rotulo}>{t}</div>
@@ -207,7 +211,7 @@ export function ExtratoRepasses({ donos, periodicidades, partes, repasses, itens
                   </td>
                   <td style={{ ...celula, whiteSpace: "normal" }}>{situacaoNoPortal(r)}</td>
                   <td style={{ ...celula, whiteSpace: "normal" }}>
-                    {r.situacao !== "pago" ? "—" : r.comprovante || r.comprovanteArquivoId ? (
+                    {r.situacao !== "pago" || r.tipo === "por_fora" ? "—" : r.comprovante || r.comprovanteArquivoId ? (
                       <>
                         {r.comprovante && <code>{r.comprovante}</code>}
                         {r.comprovante && r.comprovanteArquivoId && " · "}
@@ -217,7 +221,7 @@ export function ExtratoRepasses({ donos, periodicidades, partes, repasses, itens
                       "ainda não registrado pela empresa"
                     )}
                   </td>
-                  <td style={{ ...celula, whiteSpace: "normal" }}>{r.situacao === "pago" ? NOMES_SITUACAO_EMAIL[r.emailSituacao] : "—"}</td>
+                  <td style={{ ...celula, whiteSpace: "normal" }}>{r.situacao === "pago" && r.tipo !== "por_fora" ? NOMES_SITUACAO_EMAIL[r.emailSituacao] : "—"}</td>
                 </tr>
               );
             })}
@@ -225,7 +229,7 @@ export function ExtratoRepasses({ donos, periodicidades, partes, repasses, itens
         </table>
       </div>
       <p style={{ ...rotulo, margin: 0 }}>
-        &ldquo;Paga pelo canal&rdquo; é a reserva em que o canal transfere sua parte direto a você (ex.: Airbnb): aparece só como informação. &ldquo;A liberar&rdquo; traz o motivo. O fechamento do dia 1º continua acertando despesas e adiantamentos do mês.
+        &ldquo;Paga pelo canal&rdquo; é a reserva em que o canal transfere sua parte direto a você (ex.: Airbnb): aparece só como informação. &ldquo;A liberar&rdquo; traz o motivo. &ldquo;Acertada por fora&rdquo; é a parte de antes do início do sistema, já paga fora dele. O fechamento do dia 1º continua acertando despesas e adiantamentos do mês.
       </p>
     </section>
   );

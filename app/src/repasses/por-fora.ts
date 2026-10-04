@@ -1,0 +1,189 @@
+/**
+ * Acerto por fora (M4.11). Decisão de Diego (4/10/2026): o sistema vale a partir de 1/10/2026, e tudo o que é de
+ * antes — parte de reserva, comissão, despesa, ajuste — já foi acertado fora dele. Para o livro não pagar nem
+ * cobrar isso de novo, cada proprietário recebe um repasse do tipo "por_fora", já pago (sem Pix nem e-mail pelo
+ * sistema), com:
+ * - um item para cada parte de reserva anterior ao início que a empresa receberia (vínculo único: a parte nunca
+ *   entra em antecipado nem em fechamento, e o recebimento de uma reserva que atravessa o início libera só a parte
+ *   de depois);
+ * - um lançamento "repasse" por imóvel e mês que zera o acerto daquele mês (o acerto até a véspera fica em zero).
+ * Reexecutável: só o que ainda não foi coberto entra. Estornável como qualquer repasse (o mais recente primeiro).
+ * A data vive em Configurações → Repasses (chave `inicio_sistema`, sempre dia 1º de um mês: as partes de reserva
+ * são por mês); quem marca é a equipe, em Financeiro → Repasses.
+ */
+import { and, asc, eq, isNotNull, isNull, lt, or, sql, sum } from "drizzle-orm";
+import { listarAdiantamentos } from "@/adiantamentos/adiantamentos";
+import { registrarAuditoria } from "@/auditoria/auditoria";
+import { ajustes, imoveis, lancamentos, proprietarioImoveis, proprietarios, repasses } from "@/db/schema";
+import type { Db } from "@/db/types";
+import { lancar, mudarEstado } from "@/financeiro/ledger";
+import { lerComReservasTravadas } from "@/financeiro/trava";
+import { formatBRL } from "@/lib/money";
+import { lancamentoEmConferencia } from "@/portal/posse";
+import { type Parte, partesDoProprietario } from "./extrato";
+import { inicioDoSistemaValido } from "./regras-config";
+import { chavePrefixo, codigosDe, limitesDoMes, nomeMes, travarDono, vincularItens } from "./repasses";
+
+export type SituacaoAntesDoInicio = {
+  proprietarioId: string;
+  nome: string;
+  /** Partes de reserva anteriores ao início ainda fora de qualquer repasse (as que seriam marcadas). */
+  partes: number;
+  valorPartes: number;
+  /** Acerto até a véspera ainda em aberto (soma do livro por imóvel e mês); zero = já acertado. */
+  saldoAberto: number;
+  /** O que impede marcar este proprietário; resolver antes. */
+  bloqueios: string[];
+};
+
+export type ResultadoAcertoPorFora =
+  | { ok: true; marcados: { proprietarioId: string; nome: string; repasseId: string; valor: number; partes: number }[]; semNada: string[]; recusados: { nome: string; motivo: string }[] }
+  | { ok: false; erro: string };
+
+/** Véspera do início: a data do repasse "por fora" (o último dia que ele cobre). */
+export function vesperaDoInicio(inicio: string): string {
+  const d = new Date(`${inicio}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+const dataBr = (d: string) => d.split("-").reverse().join("/");
+
+type Grupo = { imovelId: string | null; mes: string; total: number };
+type Levantamento = { partes: Parte[]; grupos: Grupo[]; bloqueios: string[] };
+
+const dosImoveisDele = (coluna: typeof lancamentos.imovelId | typeof ajustes.imovelId, donoId: string) =>
+  sql`${coluna} in (select ${proprietarioImoveis.imovelId} from ${proprietarioImoveis} where ${proprietarioImoveis.proprietarioId} = ${donoId})`;
+
+/**
+ * O que há antes do início para um proprietário: as partes a marcar (a empresa recebe e ainda não estão em repasse),
+ * o acerto em aberto por imóvel e mês (a mesma soma do fechamento, estornos incluídos — por isso reexecutar não repete)
+ * e os bloqueios — os mesmos que travam um fechamento, limitados ao período anterior ao início.
+ */
+async function levantar(db: Db, org: string, donoId: string, inicio: string, agora: Date): Promise<Levantamento> {
+  const partes = (await partesDoProprietario(db, org, donoId, agora)).filter((p) => p.competencia < inicio && p.quemRecebe === "empresa" && p.situacao !== "repassado");
+  const mesDe = sql<string>`to_char(${lancamentos.competencia}, 'YYYY-MM')`;
+  const grupos: Grupo[] = (
+    await db
+      .select({ imovelId: lancamentos.imovelId, mes: mesDe, total: sum(lancamentos.efeitoSaldo) })
+      .from(lancamentos)
+      .where(and(eq(lancamentos.organizacaoId, org), eq(lancamentos.proprietarioId, donoId), lt(lancamentos.competencia, inicio)))
+      .groupBy(lancamentos.imovelId, mesDe)
+  )
+    .map((g) => ({ imovelId: g.imovelId, mes: g.mes, total: Number(g.total ?? 0) }))
+    .filter((g) => g.total !== 0)
+    .sort((x, y) => x.mes.localeCompare(y.mes) || (x.imovelId ?? "").localeCompare(y.imovelId ?? ""));
+  const bloqueios: string[] = [];
+  const emVigor = [isNull(lancamentos.estornoDe), sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`];
+  const [conferencia] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(lancamentos)
+    .where(and(eq(lancamentos.organizacaoId, org), lancamentoEmConferencia(), lt(lancamentos.competencia, inicio), or(eq(lancamentos.proprietarioId, donoId), dosImoveisDele(lancamentos.imovelId, donoId)), ...emVigor));
+  if (conferencia?.n) bloqueios.push(`${conferencia.n} lançamento(s) em conferência antes do início (quem recebe a confirmar, ajuste a esclarecer ou reserva que deixou de estar confirmada): resolva antes.`);
+  const [abertos] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(ajustes)
+    .where(and(eq(ajustes.organizacaoId, org), eq(ajustes.afeta, "proprietario"), isNull(ajustes.esclarecidoEm), lt(ajustes.data, inicio), or(eq(ajustes.proprietarioId, donoId), dosImoveisDele(ajustes.imovelId, donoId))));
+  if (abertos?.n) bloqueios.push(`${abertos.n} ajuste(s) com o proprietário a esclarecer antes do início: esclareça antes.`);
+  const adiantamentos = (await listarAdiantamentos(db, org, { proprietarioId: donoId, somenteAbertos: true })).filter((a) => a.data < inicio);
+  if (adiantamentos.length) bloqueios.push(`${adiantamentos.length} adiantamento(s) em aberto de antes do início (${formatBRL(adiantamentos.reduce((s, a) => s + a.aberto, 0))}): quite-os (foram acertados por fora) ou estorne-os antes.`);
+  return { partes, grupos, bloqueios };
+}
+
+/** Proprietários com algum lançamento anterior ao início (ativos ou não: o que está no livro conta). */
+async function donosComPassado(db: Db, org: string, inicio: string): Promise<{ id: string; nome: string }[]> {
+  return db
+    .selectDistinct({ id: proprietarios.id, nome: proprietarios.nome })
+    .from(lancamentos)
+    .innerJoin(proprietarios, eq(proprietarios.id, lancamentos.proprietarioId))
+    .where(and(eq(lancamentos.organizacaoId, org), isNotNull(lancamentos.proprietarioId), lt(lancamentos.competencia, inicio)))
+    .orderBy(asc(proprietarios.nome), asc(proprietarios.id));
+}
+
+/** Para o painel: por proprietário, o que ainda está antes do início fora de repasse e o que impede marcar. */
+export async function situacaoAntesDoInicio(db: Db, org: string, inicio: string, agora = new Date()): Promise<SituacaoAntesDoInicio[]> {
+  if (!inicioDoSistemaValido(inicio)) return [];
+  const saida: SituacaoAntesDoInicio[] = [];
+  for (const d of await donosComPassado(db, org, inicio)) {
+    const l = await levantar(db, org, d.id, inicio, agora);
+    saida.push({ proprietarioId: d.id, nome: d.nome, partes: l.partes.length, valorPartes: l.partes.reduce((s, p) => s + p.valor, 0), saldoAberto: l.grupos.reduce((s, g) => s + g.total, 0), bloqueios: l.bloqueios });
+  }
+  return saida;
+}
+
+type Passo = { tipo: "marcado"; repasseId: string; valor: number; partes: number } | { tipo: "nada" } | { tipo: "recusado"; motivo: string };
+
+/**
+ * Marca como acertado por fora tudo o que é de antes do início: um repasse "por_fora" (pago na véspera do início) por
+ * proprietário com algo a cobrir, numa transação por proprietário — proprietário travado e reservas das partes travadas
+ * para o motor, como no antecipado. Quem tem bloqueio fica de fora, com o motivo; os outros seguem.
+ */
+export async function marcarAcertoPorFora(db: Db, org: string, inicio: string, autorId: string | null, agora = new Date()): Promise<ResultadoAcertoPorFora> {
+  if (!inicioDoSistemaValido(inicio)) return { ok: false, erro: "Defina o início do sistema (dia 1º de um mês) em Configurações → Repasses antes de marcar." };
+  const vespera = vesperaDoInicio(inicio);
+  const marcados: Extract<ResultadoAcertoPorFora, { ok: true }>["marcados"] = [];
+  const semNada: string[] = [];
+  const recusados: { nome: string; motivo: string }[] = [];
+  for (const d of await donosComPassado(db, org, inicio)) {
+    const passo = await db.transaction(async (tx): Promise<Passo> => {
+      const dono = await travarDono(tx, org, d.id);
+      if (!dono) return { tipo: "recusado", motivo: "Proprietário não encontrado." };
+      const lev = await lerComReservasTravadas(tx, org, () => levantar(tx, org, dono.id, inicio, agora), (l) => l.partes.map((p) => p.reservaId));
+      if (!lev) return { tipo: "recusado", motivo: "Reservas deste proprietário estão sendo recalculadas agora: tente de novo em instantes." };
+      if (lev.bloqueios.length) return { tipo: "recusado", motivo: lev.bloqueios.join(" ") };
+      if (!lev.partes.length && !lev.grupos.length) return { tipo: "nada" };
+      const total = lev.grupos.reduce((s, g) => s + g.total, 0);
+      const [r] = await tx
+        .insert(repasses)
+        .values({ organizacaoId: org, proprietarioId: dono.id, tipo: "por_fora", mes: `${vespera.slice(0, 7)}-01`, data: vespera, saldo: total, descontado: 0, contestado: 0, valor: total, situacao: "pago", dataPagamento: vespera, criadoPor: autorId })
+        .returning();
+      const ids = [...new Set([...lev.grupos.map((g) => g.imovelId).filter((x): x is string => x !== null), ...lev.partes.map((p) => p.imovelId)])];
+      const codigos = new Map(ids.length ? (await tx.select({ id: imoveis.id, codigo: imoveis.codigo }).from(imoveis).where(sql`${imoveis.id} in ${ids}`)).map((i) => [i.id, i.codigo]) : []);
+      // Um "repasse" por imóvel e mês, no último dia do mês (sempre antes do início, que é dia 1º): zera o acerto daquele mês.
+      const gravados = await lancar(
+        tx,
+        org,
+        lev.grupos.map((g) => ({
+          tipo: "repasse" as const,
+          descricao: `Acertado por fora, antes do início do sistema (${dataBr(inicio)}) — ${g.imovelId ? (codigos.get(g.imovelId) ?? "") : "geral"}, ${nomeMes(g.mes)}`.slice(0, 300),
+          valor: 0,
+          montante: g.total,
+          efeitoSaldo: -g.total,
+          competencia: limitesDoMes(g.mes)!.ultimoDia,
+          estado: "previsto" as const,
+          imovelId: g.imovelId,
+          proprietarioId: dono.id,
+          origem: "repasse",
+          chaveOrigem: `${chavePrefixo(r.id)}${g.imovelId ?? "geral"}:${g.mes}`,
+        })),
+        autorId,
+      );
+      // Dinheiro já movimentado fora do sistema: tudo realizado na véspera, e as partes também (o motor não mexe mais nelas).
+      for (const l of gravados) await mudarEstado(tx, org, l.id, "realizado", autorId, vespera);
+      await vincularItens(tx, org, r.id, lev.partes);
+      for (const p of lev.partes) await mudarEstado(tx, org, p.lancamentoId, "realizado", autorId, vespera);
+      await registrarAuditoria(tx, {
+        organizacaoId: org,
+        usuarioId: autorId,
+        acao: "repasse.por_fora",
+        entidade: "repasse",
+        entidadeId: r.id,
+        mudancas: { repasse: [null, `acertado por fora até ${vespera}: ${total} (${lev.partes.length} parte(s)${lev.partes.length ? `, reservas ${codigosDe(lev.partes)}` : ""}, ${lev.grupos.length} lançamento(s) de acerto)`] },
+      });
+      return { tipo: "marcado", repasseId: r.id, valor: total, partes: lev.partes.length };
+    });
+    if (passo.tipo === "marcado") marcados.push({ proprietarioId: d.id, nome: d.nome, repasseId: passo.repasseId, valor: passo.valor, partes: passo.partes });
+    else if (passo.tipo === "nada") semNada.push(d.nome);
+    else recusados.push({ nome: d.nome, motivo: passo.motivo });
+  }
+  return { ok: true, marcados, semNada, recusados };
+}
+
+/** Frase do resultado para o painel (uma linha, sem supor nada). */
+export function descreverAcertoPorFora(r: Extract<ResultadoAcertoPorFora, { ok: true }>, inicio: string): string {
+  const partes = [
+    r.marcados.length ? `Marcado como acertado por fora até ${dataBr(vesperaDoInicio(inicio))}: ${r.marcados.map((m) => `${m.nome} (${formatBRL(m.valor)}, ${m.partes} parte(s) de reserva)`).join("; ")}.` : "Nada novo a marcar antes do início.",
+    r.recusados.length ? `Não marcado: ${r.recusados.map((x) => `${x.nome} — ${x.motivo}`).join(" ")}` : "",
+  ];
+  return partes.filter(Boolean).join(" ");
+}

@@ -57,7 +57,7 @@ describe("situação da parte do proprietário (M4.10, regra pura)", () => {
     const aMenos = classificarParte({ ...base, valor: 70000, repasse: rep });
     expect(aMenos).toMatchObject({ diferenca: -2250, motivo: expect.stringContaining("a diferença de R$ 22,50 a menos é descontada pelo fechamento mensal") });
     // O resumo conta como repassado o que o repasse incluiu e separa o ajuste.
-    expect(resumirPartes([aMais, aMenos])).toEqual({ disponivel: 0, aLiberar: 0, informacao: 0, repassadoAPagar: 0, repassadoPago: 144500, ajusteNoFechamento: 5500 });
+    expect(resumirPartes([aMais, aMenos])).toEqual({ disponivel: 0, aLiberar: 0, informacao: 0, repassadoAPagar: 0, repassadoPago: 144500, ajusteNoFechamento: 5500, acertadoPorFora: 0 });
   });
 
   it("resumo soma por situação", () => {
@@ -68,6 +68,10 @@ describe("situação da parte do proprietário (M4.10, regra pura)", () => {
       classificarParte({ ...base, valor: 300, repasse: { id: "x", tipo: "antecipado", data: "2026-10-12", situacao: "a_pagar", dataPagamento: null, valor: 300 } }),
       classificarParte({ ...base, valor: 200, repasse: { id: "y", tipo: "fechamento", data: "2026-10-01", situacao: "pago", dataPagamento: "2026-10-01", valor: 200 } }),
     ];
-    expect(resumirPartes(partes)).toEqual({ disponivel: 72250, aLiberar: 1000, informacao: 500, repassadoAPagar: 300, repassadoPago: 200, ajusteNoFechamento: 0 });
+    expect(resumirPartes(partes)).toEqual({ disponivel: 72250, aLiberar: 1000, informacao: 500, repassadoAPagar: 300, repassadoPago: 200, ajusteNoFechamento: 0, acertadoPorFora: 0 });
+    // M4.11: parte de antes do início do sistema, acertada por fora — "repassada", mas à parte do que o sistema pagou.
+    const porFora = classificarParte({ ...base, competencia: "2026-09-01", repasse: { id: "pf", tipo: "por_fora", data: "2026-09-30", situacao: "pago", dataPagamento: "2026-09-30", valor: 72250 } });
+    expect(porFora).toMatchObject({ situacao: "repassado", motivo: "Acertada por fora, antes do início do sistema (até 30/09/2026).", diferenca: 0 });
+    expect(resumirPartes([porFora, ...partes])).toMatchObject({ acertadoPorFora: 72250, repassadoPago: 200, repassadoAPagar: 300 });
   });
 });

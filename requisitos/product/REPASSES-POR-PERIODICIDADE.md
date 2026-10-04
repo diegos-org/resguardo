@@ -9,10 +9,11 @@ mudar qualquer uma pelo painel ou pedindo.
 **Onde está no código:** `app/src/repasses/` — `periodicidade.ts` (regras puras), `extrato.ts`
 (classificação das partes e leitura), `recebimentos.ts` (recebimento do canal), `repasses.ts`
 (fechamento com disponibilidade, antecipado, itens, comprovante, estorno), `email.ts`,
-`cron.ts` (rotina das 8h), `proprietario.ts` e `regras-config.ts` (escolha e padrão); telas em
-Financeiro → Repasses, Configurações → Repasses, página da reserva, cadastro do proprietário e
-portal. Tabelas novas: `repasse_itens` e `arquivos`; colunas novas em `repasses` e
-`proprietarios` (migração 0044).
+`cron.ts` (rotina das 8h), `proprietario.ts` e `regras-config.ts` (escolha, padrão e início do
+sistema), `por-fora.ts` (acerto por fora, M4.11); telas em Financeiro → Repasses, Configurações →
+Repasses, página da reserva, cadastro do proprietário e portal. Tabelas novas: `repasse_itens` e
+`arquivos`; colunas novas em `repasses` e `proprietarios` (migração 0044). O M4.11 não precisou de
+migração: o tipo de repasse é texto e a data de início fica na configuração da organização.
 
 ## O que o proprietário vê e escolhe
 
@@ -99,6 +100,41 @@ empresa ainda não recebeu").
 Configurações → Repasses: dia da semana do semanal (padrão segunda), os dois dias do quinzenal
 (padrão 1 e 16) e o padrão de periodicidade por tipo de contrato (padrão mensal para todos).
 A data prevista no extrato é calculada daqui.
+
+## Início do sistema e acerto por fora (M4.11, decisão de Diego em 4/10/2026)
+
+O sistema vale a partir de **1/10/2026**; tudo o que é de antes — parte de reserva, comissão,
+despesa, ajuste — já foi acertado fora dele e não pode entrar de novo (o acerto soma desde a primeira
+reserva de cada imóvel, pela regra de 2/10 para o início dos contratos).
+
+- **Data de início** em Configurações → Repasses (chave `inicio_sistema`): sempre dia 1º de um mês,
+  porque as partes de reserva são por mês; nunca no futuro; vazia = não definida.
+- **Marcar como acertado por fora** (Financeiro → Repasses, seção "Antes do início do sistema"):
+  para cada proprietário com lançamento anterior ao início, numa transação por proprietário
+  (proprietário travado e reservas das partes travadas para o motor, como no antecipado), um repasse
+  do tipo **`por_fora`**, com data e pagamento na véspera do início, situação "pago", sem comprovante
+  e sem e-mail (a rotina de e-mails o ignora e o envio manual recusa). Ele tem um **item** para cada
+  parte de reserva anterior ao início que a empresa receberia e que ainda não está em repasse em
+  vigor (vínculo único do M4.10: a parte nunca entra em antecipado nem em fechamento) e um
+  **lançamento "repasse"** por imóvel e mês de competência, no último dia do mês, realizado na
+  véspera, com efeito igual ao oposto do acerto daquele mês — o acerto até a véspera fica em zero. As
+  partes marcadas passam a "realizado" (o motor não as recalcula).
+- **Reexecutável e idempotente:** a soma por imóvel e mês inclui os próprios lançamentos de acerto já
+  feitos, então quem já está em zero não entra; só o que surgiu depois (uma reserva antiga importada
+  atrasada) gera um repasse novo, só com ela.
+- **Bloqueios** (os mesmos do fechamento, limitados ao período anterior ao início): lançamento em
+  conferência, ajuste com o proprietário a esclarecer, adiantamento em aberto. Recusam só aquele
+  proprietário, com o motivo; os outros são marcados. Avisar em vez de supor: nada é marcado por cima
+  de uma pendência.
+- **Estorno** como qualquer repasse (só o mais recente do proprietário): as partes voltam ao extrato
+  (a liberar ou disponível) e o acerto de antes volta.
+- **Extrato:** a parte aparece "Repassada" com o motivo "Acertada por fora, antes do início do
+  sistema (até 30/09/2026)"; o resumo tem a linha "Acertado por fora (antes do sistema)", separada do
+  "Já repassado (pago)", que é o que o sistema pagou. O repasse aparece na lista como "Acertado por
+  fora, antes do sistema", sem comprovante nem e-mail.
+- **Consequência para a reserva que atravessa o início** (ex.: 29/9 → 2/10): a parte de setembro já
+  está acertada; o recebimento da reserva libera só a parte de outubro, que segue o fluxo normal.
+  Isso substitui o checklist manual que o GUIA-DIEGO trazia para o fechamento de outubro.
 
 ## Fora deste item
 

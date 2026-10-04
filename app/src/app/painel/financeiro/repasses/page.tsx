@@ -5,6 +5,7 @@ import { podeFazer } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import styles from "@/components/formularios.module.css";
+import { AcertoPorFora } from "@/components/repasses/AcertoPorFora";
 import { CartaoRepasse } from "@/components/repasses/CartaoRepasse";
 import { type DonoAntecipavel, RepassesAntecipados } from "@/components/repasses/RepassesAntecipados";
 import { getDb } from "@/db/client";
@@ -15,8 +16,9 @@ import { enviarFechamentoAcao, salvarFechamentoEmailAcao } from "@/fechamento/ac
 import { lerConfigFechamentoEmail, situacaoDosFechamentos } from "@/fechamento/email";
 import { fecharMesAcao } from "@/repasses/acoes";
 import { partesDoProprietario, resumirPartes } from "@/repasses/extrato";
+import { situacaoAntesDoInicio } from "@/repasses/por-fora";
 import { periodicidadeDoProprietario } from "@/repasses/proprietario";
-import { lerRegrasRepasses } from "@/repasses/regras-config";
+import { lerInicioDoSistema, lerRegrasRepasses } from "@/repasses/regras-config";
 import { itensDoRepasse, limitesDoMes, listarRepassesDaOrganizacao, meioDiaDe, mesAFechar, nomeMes, type PrevisaoRepasse, somarMes } from "@/repasses/repasses";
 
 const dataBr = (d: string) => d.split("-").reverse().join("/");
@@ -83,6 +85,10 @@ export default async function Repasses({ searchParams }: PageProps<"/painel/fina
     }),
   );
   const antecipados = await Promise.all(antecipadosLista.map(async (r) => ({ ...r, itens: await itensDoRepasse(db, sessao.organizacaoId, r.id) })));
+  // M4.11: o que é de antes do início do sistema (acertado por fora) e os repasses "por fora" já feitos.
+  const inicio = await lerInicioDoSistema(db, sessao.organizacaoId);
+  const antesDoInicio = inicio ? await situacaoAntesDoInicio(db, sessao.organizacaoId, inicio, agora) : [];
+  const porFora = await Promise.all((await listarRepassesDaOrganizacao(db, sessao.organizacaoId, { tipo: "por_fora" })).map(async (r) => ({ ...r, itens: await itensDoRepasse(db, sessao.organizacaoId, r.id) })));
   const itensFechamento = new Map(await Promise.all(lista.filter((p) => p.repasse).map(async (p) => [p.repasse!.id, await itensDoRepasse(db, sessao.organizacaoId, p.repasse!.id)] as const)));
   const salvo = typeof params.salvo === "string" ? SUCESSO[params.salvo] : typeof params.info === "string" ? params.info : undefined;
   const prontos = lista.filter((p) => p.situacao === "pronto").length;
@@ -118,6 +124,8 @@ export default async function Repasses({ searchParams }: PageProps<"/painel/fina
       </p>
 
       <RepassesAntecipados repasses={antecipados} donos={donosAntecipaveis} mes={mes} hoje={hoje} editar={editar} />
+
+      <AcertoPorFora inicio={inicio} situacao={antesDoInicio} repasses={porFora} mes={mes} hoje={hoje} editar={editar} />
 
       <details className={styles.form} aria-label="E-mail do fechamento">
         <summary style={{ cursor: "pointer", fontWeight: 600 }}>

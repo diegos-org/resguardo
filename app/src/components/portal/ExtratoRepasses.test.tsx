@@ -55,6 +55,20 @@ describe("extrato e repasses no portal (M4.10)", () => {
     expect(h).toContain("1 reserva");
     expect(h).toContain("403 · Hóspede Fictício · 10/10/2026 → 13/10/2026 · R$ 722,50 (integral)");
   });
+  it("acerto por fora (M4.11): a parte de antes do início aparece acertada por fora, o resumo a separa do que o sistema pagou e o repasse não promete comprovante nem e-mail", () => {
+    const porFora = repasse({ id: "pf", tipo: "por_fora", mes: "2026-09-01", data: "2026-09-30", dataPagamento: "2026-09-30", comprovante: "", comprovanteArquivoId: null, emailSituacao: "pendente", emailEm: null, emailPara: "", pedidoEm: null });
+    const parteAntiga = classificarParte(parte({ lancamentoId: "l9", reservaId: "r9", codigoReserva: "R-9", competencia: "2026-09-01", checkin: "2026-09-10", checkout: "2026-09-13", repasse: { id: "pf", tipo: "por_fora", data: "2026-09-30", situacao: "pago", dataPagamento: "2026-09-30", valor: 72250 } }));
+    const h = render({ partes: [classificarParte(parte()), parteAntiga], repasses: [porFora], itens: { pf: [item({ id: "it9", repasseId: "pf", reservaId: "r9", codigoReserva: "R-9", competencia: "2026-09-01", checkin: "2026-09-10", checkout: "2026-09-13" })] } });
+    expect(h).toContain("Acertada por fora, antes do início do sistema (até 30/09/2026).");
+    expect(h).toContain("Acertado por fora (antes do sistema)");
+    expect(h).toContain("Acertado por fora, antes do sistema (até 30/09/2026)");
+    expect(h).toContain("Acertado fora do sistema, antes do início");
+    expect(h).not.toContain("ainda não registrado pela empresa");
+    expect(h).not.toContain("/portal/repasses/pf/comprovante");
+    expect(h).not.toContain("E-mail ainda não enviado");
+    // O "já repassado (pago)" é só o que o sistema pagou: a parte acertada por fora não entra nele.
+    expect(h).toMatch(/Já repassado \(pago\)<\/div><div[^>]*>R\$ 0,00/);
+  });
   it("repasse estornado continua no histórico, com a situação explicada; parte de um mês aparece como parcial; fechamento antigo sem itens avisa", () => {
     const h = render({
       repasses: [repasse(), repasse({ id: "rep2", situacao: "estornado", estornadoEm: new Date("2026-10-12T15:00:00Z"), motivoEstorno: "valor errado" }), repasse({ id: "rep3", tipo: "fechamento", mes: "2026-09-01", data: "2026-10-01", pedidoEm: null })],
