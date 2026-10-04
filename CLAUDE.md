@@ -73,6 +73,21 @@ O Claude faz o merge dos PRs de roadmap **somente** quando, no commit mais recen
 Usar "merge commit" (nunca squash/rebase de histórico alheio). Depois do merge, conferir a
 `main` e seguir para o próximo item. Diego pode revogar essa autorização a qualquer momento.
 
+PR de manutenção que não é item do ROADMAP (dependências, CI): o Claude só mergeia com
+autorização expressa de Diego para aquele PR.
+
+## Revisão do Codex (ajustes autorizados por Diego em 4/10/2026)
+
+- **PR só de documentação** (sem mudança em `app/`): uma rodada completa do Codex é
+  obrigatória. Depois dela, só apontamento **P1** trava o merge; P2 e P3 são corrigidos,
+  respondidos e resolvidos, e o PR pode ser mergeado sem esperar nova rodada completa — o
+  Codex revisa o resultado na `main` pelo PR seguinte. Em PR com código, as quatro condições
+  da seção "Merge" valem integralmente.
+- **PR em revisão não ganha escopo novo.** Decisão ou pedido novo de Diego vai para o PR
+  seguinte, mesmo com o anterior ainda aberto.
+- **Teto:** se um PR passar de 3 rodadas do Codex, o Claude avisa Diego antes de continuar
+  sozinho.
+
 ## Nunca
 
 - Force push ou apagar branches.
