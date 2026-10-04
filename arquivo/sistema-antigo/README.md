@@ -90,7 +90,7 @@ em produção.
 
 | Capacidade do sistema antigo | Situação no SCL 2.0 |
 |---|---|
-| Financeiro, dashboard, resultado por apartamento, repasse | Feito (M4.1, M4.6, M4.7, M4.9); indicadores de ocupação/diária média existem no dashboard |
+| Financeiro, dashboard, resultado por apartamento, repasse | Feito (M4.1, M4.6, M4.7, M4.9). Parcial nos indicadores: o painel inicial mostra ocupação, receita, comissões, despesas e resultado, mas **não calcula diária média (ADR), RevPAR nem RevPAN** (ver ideias) |
 | Despesas da empresa × do imóvel, categorias | Feito (M4.3) |
 | Reservas diretas, cotação e "segurar as datas" | Feito (M8.1); pagamento é o M8.2 |
 | Portal do proprietário, relatório PDF, e-mail do fechamento, bloqueio de datas | Feito (M5.1 a M5.5) |
@@ -127,7 +127,8 @@ em produção.
 6. **Cupons** de desconto para reservas diretas.
 7. **Importação de extrato bancário e fatura de cartão** para lançar despesas.
 8. **Papel "convidado só leitura"** para mostrar o painel sem risco.
-9. Crescimento (anotado em `requisitos/growth/ROADMAP.md`): prospecção de anúncios fracos,
+9. **Diária média (ADR), RevPAR e RevPAN** no painel inicial, ao lado da ocupação (pequeno).
+10. Crescimento (anotado em `requisitos/growth/ROADMAP.md`): prospecção de anúncios fracos,
    gerador de posts e anúncios, campanhas.
 
 Nenhum destes vira item do plano sem decisão de Diego.

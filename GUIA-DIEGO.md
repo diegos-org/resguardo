@@ -52,7 +52,8 @@ do proprietário e as telas de celular. O inventário completo e a tabela de com
   (as próprias telas dizem "entra no próximo PR", "pendente até termos API confiável"). O SCL
   2.0 é mais estreito e mais fundo: regras de dinheiro testadas, histórico de tudo, permissões,
   "avisar em vez de supor". Não vale portar código; vale portar ideias.
-- **O que o plano já cobre:** financeiro, despesas, reservas diretas e cotação, portal do
+- **O que o plano já cobre:** financeiro (sem os indicadores de diária média, RevPAR e RevPAN,
+  que entraram na lista de ideias), despesas, reservas diretas e cotação, portal do
   proprietário, limpezas e equipe, site com disponibilidade real, portal do hóspede e mensagens
   automáticas, importação do Beds24, calendário e preços, cadastro marketplace, WhatsApp com
   revisão humana (M10).
@@ -61,8 +62,8 @@ do proprietário e as telas de celular. O inventário completo e a tabela de com
   reservas do site para o marketplace; formulário público de cadastro no condomínio para o
   hóspede; exportação para o contador; recomendador de preço com dados de mercado e preço para
   "buraco de uma noite" (depois do M3.9); cupons; importação de extrato bancário e fatura;
-  papel "convidado só leitura". Prospecção de anúncios fracos, gerador de posts e campanhas
-  ficaram anotados como ideias de crescimento.
+  papel "convidado só leitura"; diária média, RevPAR e RevPAN no painel inicial. Prospecção de
+  anúncios fracos, gerador de posts e campanhas ficaram anotados como ideias de crescimento.
 - **O que não veio:** fotos reais (aparecem como "imagem omitida"), o código de julho e os
   dados de produção. O site antigo não está mais no ar.
 
@@ -1523,7 +1524,7 @@ ambiente).
   Os percentuais das OTAs e do pagamento são aproximados e precisam ser conferidos. A ideia
   é ter uma **tela de simulação** com tudo editável para você testar com números reais antes
   de decidir. Decidido: B, em partes iguais.
-- **Ideias do sistema antigo (M0.6):** diga quais das oito ideias da seção 2 viram item do
+- **Ideias do sistema antigo (M0.6):** diga quais das nove ideias da seção 2 viram item do
   plano, e em que ordem. Nenhuma entra sem a sua decisão.
 - **Búzios:** fica no sistema interno para controle (combinado). No site público, a decidir.
 - **Avaliações**: só no Airbnb ou também próprias.
