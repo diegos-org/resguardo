@@ -146,9 +146,11 @@ sem comparação percentual com meses inteiros (a comparação mostraria queda f
   (como hoje); o do painel e o do e-mail do dia 1º (M5.4) levam a foto e os extratos.
 - **Gestão completa × marketplace.** No marketplace, a capa diz "contrato marketplace"; "Do bruto ao
   resultado" separa **vendas pelo site SCL** (valor cheio, desconto do hóspede, taxa do pagamento,
-  parte da SCL, sua parte — modelo B, M12.1/M12.2) de **vendas suas nas OTAs** (sem comissão da SCL;
-  entram no resultado só quando o dinheiro passa pela empresa — quem recebe `empresa`, M2.7 —, senão
-  aparecem como informação, "pago a você pelo canal"). As métricas somam tudo, com a nota.
+  parte da SCL, sua parte — modelo B, M12.1/M12.2) de **vendas suas nas OTAs** (comissão da SCL
+  zero). As duas entram no resultado, nos números do mês, na conciliação e no gráfico — **um escopo
+  só**, o mesmo da capa (sua parte em todas as reservas do mês); o que muda entre elas é o caminho do
+  dinheiro em "como chega até você": OTA com `split` (M2.7) é "pago a você pelo canal"; OTA com
+  `empresa` e venda do site passam pelo repasse do M4.10.
 - **Mês corrente (parcial).** Igual, com "parcial até {dia}" na faixa e a frase de tom do guia da
   Lia: é para acompanhar o andamento; o fechamento completo vem no dia do fechamento.
 - **Dia de emissão.** O relatório do mês sai no dia do fechamento mensal (hoje, dia 1º; Diego

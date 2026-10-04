@@ -28,7 +28,7 @@
 | M1 Acesso | Login (Google/código por e-mail), convites, permissões | ✅ pronto |
 | M2 Cadastros | Imóveis, proprietários, contratos e aba Anúncios | ✅ implementado; referências dos canais precisam ser preenchidas/conferidas |
 | M3 Reservas | Reservas, calendário central, importação e envio de calendário/preços ao Beds24 | 🟡 importação e envio implementados; o envio começa desligado e espera o seu teste no 103; conferência das reservas parcial; fonte de preços por imóvel escolhida na ficha de cada imóvel (M3.9) pronta |
-| M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | 🟡 em andamento; extrato e repasses por periodicidade prontos (M4.10); conciliação do extrato bancário (M4.4b) e Pix automático dependem do banco/Mercado Pago |
+| M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | 🟡 em andamento; extrato e repasses por periodicidade prontos (M4.10); conciliação do extrato bancário (M4.4b) e Pix automático dependem do banco/Mercado Pago; reserva paga antes do início acertada inteira por fora (M4.12) e dia do fechamento configurável (M4.13) a fazer |
 | M5 Portal do proprietário | Relatórios, saldos, PDF, bloqueio de uso próprio | 🟡 relatórios, PDF, e-mail do fechamento e bloqueio de datas prontos; documento "como funciona" para o proprietário (M5.6) a fazer; modelo oficial do relatório mensal especificado em 4/10 (M5.7, a implementar) |
 | M6 Operação | Limpezas, manutenção, agenda diária | 🟡 em andamento |
 | M7 Site público | Site novo com disponibilidade e valor reais | 🟡 disponibilidade e valor prontos; visual novo do site, dos portais e do painel pronto (M7.5, 4/10); páginas legais do site (M7.4) a fazer; fotos reais (M7.3) dependem de você |
@@ -54,10 +54,21 @@ padrão. Ficou assim:
   bruto, taxa do canal, gestão, sua parte, situação); a conciliação (do extrato de cada canal ao
   resultado, repasses feitos no mês, despesas); e, no fim, os extratos oficiais das OTAs como
   emitidos.
-- **Sem dado, sem chute:** comparação com o mês anterior, com o ano anterior e acumulado só
+- **Sem dado, sem chute:** a comparação com o mês anterior e a com o mesmo mês do ano anterior só
   aparecem quando o sistema tem o dado do período inteiro; senão o relatório escreve "sem dado no
-  sistema". Como o sistema vale a partir de 1/10/2026, as comparações começam a aparecer de
-  novembro em diante (antes disso só se o histórico for importado — M11.1).
+  sistema". O acumulado do ano soma desde o primeiro mês com dado e diz desde quando ("acumulado
+  desde out/2026"). Como o sistema vale a partir de 1/10/2026, a comparação com o mês anterior
+  começa em novembro e a com o ano anterior em outubro de 2027 (antes disso só se o histórico for
+  importado — M11.1).
+- **Resultado por noite, dinheiro pela data do pagamento (sua lembrança de 4/10):** o resultado e
+  os números do mês continuam por noite (a regra de 24/09); já o "como chega até você" e a
+  conciliação seguem a data em que o canal pagou. O Airbnb paga a reserva inteira no dia seguinte
+  ao check-in, direto a você: uma reserva de 29/9 a 2/10 foi paga em 30/9, então a noite de
+  outubro conta no resultado de outubro, mas não no "pago pelo Airbnb em outubro" — o relatório
+  escreve a ponte entre os dois (no protótipo, a reserva de Zé). A mesma regra entra no acerto por
+  fora do início do sistema: reserva paga antes de 1/10 é acertada inteira por fora, em todos os
+  meses (item novo M4.12; para o Airbnb nada muda no acerto, porque a parte paga pelo canal já não
+  entra em repasse — muda o extrato e o relatório).
 - **Vale para tudo:** o PDF que o proprietário baixa no portal, o e-mail do fechamento no dia 1º
   e o relatório do marketplace (vendas do site separadas das vendas do dono nas OTAs dele).
   E-mails e, quando ligado, WhatsApp seguem a mesma família: saudação pelo nome, uma frase do que
@@ -1761,6 +1772,14 @@ ambiente).
 ## 7. Decisões pendentes e respostas às suas perguntas
 
 **Preciso de você (sem pressa):**
+- **Dia do fechamento e do relatório mensal (M4.13):** você perguntou em 4/10 se não é melhor
+  fechar no dia 2 em vez do dia 1º, porque o Airbnb paga a reserva com check-in no último dia do
+  mês só no dia 1º. Minha opinião: o fechamento nunca paga errado no dia 1º (o que ainda não
+  chegou fica "a liberar" e vai para o repasse seguinte), mas no dia 2 o relatório do Airbnb sai
+  completo, então vale a pena; Booking (pagamento conforme o acordo do imóvel) e Mercado Pago
+  (Pix na hora, cartão em 14 a 30 dias) nunca cabem num dia fixo — por isso o "a liberar" continua.
+  Proposta: dia do fechamento configurável em Configurações → Repasses (1 a 5), valendo para o
+  fechamento, o repasse mensal e o e-mail do relatório. **Confirme o dia (2?)** e eu implemento.
 - **Relatório mensal — modelo oficial (M5.7, 4/10):** abra `prototipos/relatorio-mensal/relatorio.html`
   (dados fictícios) e me diga: (1) se a ordem das páginas e o bloco "como chega até você" estão do
   jeito que você quer; (2) se os números do mês (noites e ocupação, diária média, comparação com o
