@@ -43,7 +43,7 @@ describe("validarContrato", () => {
     });
   });
 
-  it("marketplace pode ficar sem percentual (fórmula pendente); os outros não", () => {
+  it("marketplace fica sem percentual (a divisão é o modelo B); os outros não", () => {
     expect(validarContrato({ tipo: "marketplace", inicio: "2026-10-01" }, []).ok).toBe(true);
     const r = validarContrato({ tipo: "gestao_completa", inicio: "2026-10-01" }, []);
     expect(!r.ok && r.erros.comissao).toBeTruthy();

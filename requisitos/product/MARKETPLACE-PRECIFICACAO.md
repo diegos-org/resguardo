@@ -3,9 +3,35 @@
 **Situação:** proposta do Claude em 24/09/2026; **decisão de Diego em 4/10/2026: modelo B, em
 partes iguais** (a margem, taxa do Airbnb menos a taxa do pagamento, dividida igualmente entre
 desconto ao hóspede, ganho do proprietário e SCL), com os três pesos e as taxas de referência
-editáveis no painel e a tela de simulação (item M12.1 do ROADMAP). Diego está testando os
-números num simulador e pode ajustar os pesos antes ou depois de implementado. As fórmulas
-antigas do Diego não foram encontradas no repositório nem no histórico.
+editáveis no painel e a tela de simulação (item M12.1 do ROADMAP, **entregue em 4/10/2026** —
+ver "Como está implementado", abaixo). Diego pode ajustar pesos e taxas a qualquer momento no
+painel. As fórmulas antigas do Diego não foram encontradas no repositório nem no histórico.
+
+## Como está implementado (M12.1, 4/10/2026)
+
+- **Onde se edita:** Painel → Configurações → **Marketplace e desconto do site** (permissão
+  `configuracao:editar`). Taxas de referência em percentual (Airbnb só do anfitrião, Booking só
+  para comparação, pagamento no site) e pesos inteiros (hóspede / proprietário / SCL). Gravado
+  na configuração da organização (chave `marketplace_precos`), com auditoria. Padrão: 16% /
+  15% / 4% e 1/1/1.
+- **A conta (centavos inteiros, `app/src/marketplace/precos.ts`):** para o valor cheio P
+  (diárias + limpeza + hóspede extra):
+  margem = P × taxa do Airbnb − P × taxa do pagamento (zero se negativa);
+  partes = rateio da margem pelos pesos (sem perder centavo);
+  desconto do site = parte do hóspede; hóspede paga = P − desconto;
+  taxa do pagamento real = (hóspede paga) × taxa do pagamento;
+  SCL = parte da SCL; proprietário recebe = hóspede paga − taxa real − SCL.
+  Como a taxa real incide sobre um valor menor que P, a diferença fica com o proprietário
+  (ele recebe um pouco mais que a parte dele). Identidade: hóspede paga = taxa + SCL +
+  proprietário.
+- **Regra única do site:** o desconto vale para qualquer imóvel e qualquer contrato (gestão
+  total inclusive). A consulta e a cotação mostram valor cheio, desconto e total; a cotação
+  persistida guarda `valor_cheio`, `desconto` e `total` como calculados na hora (mudar a regra
+  depois não mexe nela; a revalidação detecta a diferença e pede nova consulta). O pedido de
+  "segurar as datas" entra com o total com desconto.
+- **Fora do M12.1:** a divisão proprietário/SCL no financeiro do contrato marketplace (M12.2) e
+  qualquer escrita em OTA ou provedor de pagamento. A comissão do contrato de gestão total
+  continua sendo a do contrato (M4), sobre o que entra.
 
 ## Objetivo (Diego)
 

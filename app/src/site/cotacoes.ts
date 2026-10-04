@@ -55,19 +55,20 @@ export const podeSegurar = (d: Disponibilidade) => (d.situacao === "disponivel" 
  * A cotação ainda descreve o que o site mostraria agora: mesma situação (disponível × a confirmar) e mesmos
  * valores. Leitura do Beds24 que venceu ou sumiu muda a situação e, portanto, a cotação.
  */
-export function cotacaoBate(c: Pick<Cotacao, "situacao" | "diarias" | "limpeza" | "hospedeExtra" | "total">, d: Disponibilidade): boolean {
+export function cotacaoBate(c: Pick<Cotacao, "situacao" | "diarias" | "limpeza" | "hospedeExtra" | "valorCheio" | "desconto" | "total">, d: Disponibilidade): boolean {
   if (d.situacao !== "disponivel" && d.situacao !== "a_confirmar") return false;
   if (d.situacao !== c.situacao) return false;
   const v = d.cotacao;
-  return !!v && v.diarias === c.diarias && v.limpeza === c.limpeza && v.hospedeExtra === c.hospedeExtra && v.total === c.total;
+  return !!v && v.diarias === c.diarias && v.limpeza === c.limpeza && v.hospedeExtra === c.hospedeExtra && v.valorCheio === c.valorCheio && v.desconto === c.desconto && v.total === c.total;
 }
 
 /** Em linguagem simples, o que mudou entre a cotação e a disponibilidade de agora (para avisos). */
-export function motivoDaMudanca(c: Pick<Cotacao, "situacao" | "total">, d: Disponibilidade): string {
+export function motivoDaMudanca(c: Pick<Cotacao, "situacao" | "valorCheio" | "desconto" | "total">, d: Disponibilidade): string {
   if (d.situacao === "indisponivel") return "Essas datas acabaram de ficar indisponíveis.";
   if (d.situacao === "invalida") return "Esta cotação não vale mais para estes dados. Faça uma nova consulta.";
   if (!d.cotacao || d.cotacao.total === null) return "O valor dessas datas agora precisa ser confirmado pela equipe. Faça uma nova consulta.";
-  if (d.cotacao.total !== c.total) return "O valor mudou desde esta cotação. Faça uma nova consulta para ver o valor atual.";
+  // Valor cheio ou desconto diferentes também são "o valor mudou", mesmo que o total coincida por acaso.
+  if (d.cotacao.total !== c.total || d.cotacao.valorCheio !== c.valorCheio || d.cotacao.desconto !== c.desconto) return "O valor mudou desde esta cotação. Faça uma nova consulta para ver o valor atual.";
   return d.situacao === "a_confirmar"
     ? "A disponibilidade dessas datas agora precisa ser confirmada pela equipe (a agenda mais recente ainda não foi conferida). Faça uma nova consulta."
     : "A disponibilidade dessas datas foi confirmada desde a cotação. Faça uma nova consulta para seguir com a situação atual.";
@@ -80,11 +81,13 @@ export async function criarCotacao(db: Db, organizacaoId: string, p: PedidoConsu
   const d = await consultarDisponibilidade(db, organizacaoId, p, agora);
   if (d.situacao === "indisponivel") return { ok: false, erro: "Essas datas não estão disponíveis.", disponibilidade: d };
   if (d.situacao === "invalida") return { ok: false, erro: "Confira os dados da consulta.", disponibilidade: d };
-  if (!d.cotacao || d.cotacao.diarias === null || d.cotacao.total === null) return { ok: false, erro: "O valor dessas datas ainda precisa ser confirmado pela equipe: fale com a gente.", disponibilidade: d };
+  if (!d.cotacao || d.cotacao.diarias === null || d.cotacao.valorCheio === null || d.cotacao.total === null) return { ok: false, erro: "O valor dessas datas ainda precisa ser confirmado pela equipe: fale com a gente.", disponibilidade: d };
   const [im] = await db.select({ id: imoveis.id }).from(imoveis).where(and(eq(imoveis.organizacaoId, organizacaoId), eq(imoveis.codigo, p.imovel)));
   if (!im) return { ok: false, erro: "Escolha um apartamento.", disponibilidade: d };
   const hospedes = Number(p.hospedes);
-  const valores = { diarias: d.cotacao.diarias, limpeza: d.cotacao.limpeza, hospedeExtra: d.cotacao.hospedeExtra, total: d.cotacao.total };
+  // A cotação guarda o valor cheio e o desconto como calculados agora: mudar a regra do desconto depois não
+  // mexe no que o visitante viu (e a revalidação detecta a diferença).
+  const valores = { diarias: d.cotacao.diarias, limpeza: d.cotacao.limpeza, hospedeExtra: d.cotacao.hospedeExtra, valorCheio: d.cotacao.valorCheio, desconto: d.cotacao.desconto, total: d.cotacao.total };
   return db.transaction(async (tx) => {
     // Reaproveitamento, teto e inserção em série por imóvel: pedidos simultâneos não furam o teto nem duplicam.
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`cotacao-imovel:${im.id}`}))`);
@@ -105,6 +108,8 @@ export async function criarCotacao(db: Db, organizacaoId: string, p: PedidoConsu
           eq(cotacoes.diarias, valores.diarias),
           eq(cotacoes.limpeza, valores.limpeza),
           eq(cotacoes.hospedeExtra, valores.hospedeExtra),
+          eq(cotacoes.valorCheio, valores.valorCheio),
+          eq(cotacoes.desconto, valores.desconto),
           eq(cotacoes.total, valores.total),
           gte(cotacoes.criadaEm, new Date(agora.getTime() - REAPROVEITAR_COTACAO_MS)),
         ),
@@ -137,6 +142,8 @@ export async function criarCotacao(db: Db, organizacaoId: string, p: PedidoConsu
               diarias: valores.diarias,
               limpeza: valores.limpeza,
               hospedeExtra: valores.hospedeExtra,
+              valorCheio: valores.valorCheio,
+              desconto: valores.desconto,
               total: valores.total,
               leituraEm: d.leituraEm,
               criadaEm: agora,
@@ -213,6 +220,8 @@ export type ResultadoHold =
   | { ok: true; cotacao: Cotacao; reservaCodigo: string; holdAte: Date }
   | { ok: false; erro: string; erros?: ErrosContato; motivos?: string[]; estado?: EstadoCotacao };
 
+const dataBr = (d: string) => d.split("-").reverse().join("/");
+const brl = (c: number) => `R$ ${(c / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const horaBr = (d: Date, fuso: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(d);
 
 /**
@@ -279,7 +288,7 @@ export async function segurarDatas(db: Db, organizacaoId: string, codigo: string
         taxaCanal: null,
         valorLiquido: null,
         codigoCanal: c.codigo,
-        observacoes: `Pedido pelo site — cotação ${c.codigo}. Datas seguradas até ${horaBr(holdAte, im.fuso)}; depois disso o pedido vence sozinho se não for confirmado.`,
+        observacoes: `Pedido pelo site — cotação ${c.codigo}${c.desconto > 0 ? ` (valor cheio ${brl(c.valorCheio)}, desconto do site ${brl(c.desconto)})` : ""}. Datas seguradas até ${horaBr(holdAte, im.fuso)}; depois disso o pedido vence sozinho se não for confirmado.`,
       },
       null,
     );
@@ -353,15 +362,12 @@ export async function expirarHoldsVencidos(db: Db, organizacaoId: string | null,
   });
 }
 
-const dataBr = (d: string) => d.split("-").reverse().join("/");
-const brl = (c: number) => `R$ ${(c / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
 /** Mensagem que o visitante manda à equipe com a cotação (e o prazo do hold, quando segurada). */
 export function textoDaCotacao(v: CotacaoVista): string {
   const c = v.cotacao;
   const linhas = [
     `Olá! Fiz a cotação ${c.codigo} no site para o ${c.imovelNome} (${c.imovelCodigo}).`,
-    `Entrada: ${dataBr(c.checkin)} · Saída: ${dataBr(c.checkout)} · ${c.hospedes} ${c.hospedes === 1 ? "pessoa" : "pessoas"} · ${brl(c.total)} por ${c.noites} ${c.noites === 1 ? "noite" : "noites"}.`,
+    `Entrada: ${dataBr(c.checkin)} · Saída: ${dataBr(c.checkout)} · ${c.hospedes} ${c.hospedes === 1 ? "pessoa" : "pessoas"} · ${brl(c.total)} por ${c.noites} ${c.noites === 1 ? "noite" : "noites"}${c.desconto > 0 ? ` (valor cheio ${brl(c.valorCheio)}, já com o desconto do site de ${brl(c.desconto)})` : ""}.`,
   ];
   if (v.estado === "segurada" && c.holdAte) linhas.push(`As datas estão seguradas para mim até ${horaBr(c.holdAte, c.fuso)}. Quero confirmar a reserva.`);
   else if (v.estado === "convertida" && v.reserva) linhas.push(`Minha reserva é a ${v.reserva.codigo}.`);

@@ -181,7 +181,7 @@ const brl = (c: number) => `R$ ${(c / 100).toLocaleString("pt-BR", { minimumFrac
  * Confere a consulta do visitante (datas, hóspedes dentro da capacidade) e monta a mensagem de
  * WhatsApp. Nada é gravado nem enviado pelo sistema: o visitante abre a conversa e manda.
  */
-export type ResumoCotacao = { situacao: "disponivel" | "indisponivel" | "a_confirmar" | "invalida"; noites: number; total: number | null };
+export type ResumoCotacao = { situacao: "disponivel" | "indisponivel" | "a_confirmar" | "invalida"; noites: number; total: number | null; /** Desconto do site já aplicado em `total` (M12.1); omitido ou zero = sem desconto. */ desconto?: number };
 
 export function montarConsulta(
   p: PedidoConsulta,
@@ -206,7 +206,8 @@ export function montarConsulta(
     `Entrada: ${dataBr(p.entrada)} · Saída: ${dataBr(p.saida)} · ${hospedes} ${hospedes === 1 ? "pessoa" : "pessoas"}.`,
   ];
   if (cotacao && cotacao.total !== null && (cotacao.situacao === "disponivel" || cotacao.situacao === "a_confirmar")) {
-    linhas.push(`O site mostrou ${brl(cotacao.total)} para ${cotacao.noites} ${cotacao.noites === 1 ? "noite" : "noites"}${cotacao.situacao === "a_confirmar" ? " (disponibilidade a confirmar)" : ""}.`);
+    const desconto = cotacao.desconto && cotacao.desconto > 0 ? ` (já com o desconto do site de ${brl(cotacao.desconto)})` : "";
+    linhas.push(`O site mostrou ${brl(cotacao.total)} para ${cotacao.noites} ${cotacao.noites === 1 ? "noite" : "noites"}${desconto}${cotacao.situacao === "a_confirmar" ? " (disponibilidade a confirmar)" : ""}.`);
   }
   return { ok: true, texto: linhas.join("\n") };
 }

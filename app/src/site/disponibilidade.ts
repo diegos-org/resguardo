@@ -4,7 +4,9 @@
  * unidade livre e (3) as regras de venda permitem a estadia. Qualquer lacuna vira
  * "a confirmar" — nunca "disponível" por omissão. O valor usa os mesmos preços por noite que
  * o SCL envia ao Beds24 (motor de calendário: eventos, feriadões, última hora) mais as taxas
- * do cadastro. Nada é gravado: cotação persistida e hold são o M8.1.
+ * do cadastro — esse é o valor cheio. Sobre ele entra o desconto único do site (M12.1, a parte do
+ * hóspede do modelo B, em Configurações → Marketplace), igual para qualquer contrato. Nada é
+ * gravado: cotação persistida e hold são o M8.1.
  */
 import { and, eq } from "drizzle-orm";
 import { planejarImovel } from "@/calendario/envio";
@@ -14,6 +16,8 @@ import type { Db } from "@/db/types";
 import { listarPeriodos } from "@/imoveis/detalhes";
 import { type Cotacao, cotarNoites, diasEntre, verificarEstadia } from "@/imoveis/regras-venda";
 import { hojeISO } from "@/lib/datas";
+import { descontoDoSite } from "@/marketplace/precos";
+import { lerPrecosMarketplace } from "@/marketplace/precos-config";
 import { dataValida } from "@/reservas/regras";
 import type { PedidoConsulta } from "./site";
 
@@ -24,9 +28,17 @@ export type Disponibilidade = {
   motivos: string[];
   noites: number;
   /** Só quando a estadia é possível (disponível ou a confirmar) e há preço em todas as noites; senão null. */
-  cotacao: Pick<Cotacao, "diarias" | "limpeza" | "hospedeExtra" | "total"> | null;
+  cotacao: CotacaoSite | null;
   /** Leitura mais antiga do Beds24 entre as noites; null quando alguma noite não tem leitura. */
   leituraEm: Date | null;
+};
+
+/** Valor por partes como o site mostra. `valorCheio` = diárias + limpeza + hóspede extra; `total` = valor cheio − desconto. */
+export type CotacaoSite = Pick<Cotacao, "diarias" | "limpeza" | "hospedeExtra"> & {
+  valorCheio: number | null;
+  /** Desconto único do site (M12.1), em centavos; zero quando não há margem ou o valor está a confirmar. */
+  desconto: number;
+  total: number | null;
 };
 
 const dataBr = (d: string) => d.split("-").reverse().join("/");
@@ -49,7 +61,7 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   if (erros.length) return vazio("invalida", erros);
 
   const noites = diasEntre(p.entrada, p.saida);
-  const regras = await lerRegrasCalendario(db, organizacaoId);
+  const [regras, precos] = await Promise.all([lerRegrasCalendario(db, organizacaoId), lerPrecosMarketplace(db, organizacaoId)]);
   if (noites > regras.site.maximoNoitesConsulta) return vazio("a_confirmar", [`Para estadias acima de ${regras.site.maximoNoitesConsulta} noites, fale com a equipe.`], noites);
   // O plano cobre as noites e o dia de saída: a restrição de saída e o último envio do SCL daquela data
   // vêm do mesmo lugar que os das noites.
@@ -118,7 +130,11 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   // cadastrada também não vira zero para o visitante. Nos dois casos o valor fica a confirmar.
   const comValor = linhas.every((l) => l.precoFinalEsperado !== null && l.precoFinalEsperado > 0);
   const diarias = comValor ? cot.diarias : null;
-  const total = comValor && cot.total !== null && plano.regras.taxaLimpeza !== null ? cot.total : null;
+  const valorCheio = comValor && cot.total !== null && plano.regras.taxaLimpeza !== null ? cot.total : null;
+  // Desconto único do site (M12.1): a parte do hóspede da margem do modelo B, calculada sobre o valor cheio.
+  // Sem valor cheio não há desconto a mostrar; sem margem (taxa do pagamento ≥ taxa da OTA) o desconto é zero.
+  const desconto = valorCheio === null ? 0 : descontoDoSite(valorCheio, precos);
+  const total = valorCheio === null ? null : valorCheio - desconto;
   const avisos: string[] = [];
   if (aConfirmar) avisos.push("Ainda não conferimos a agenda mais recente para essas datas: confirmamos na conversa.");
   // Capacidade não cadastrada: não dá para saber se as pessoas cabem, então nada é confirmado por omissão.
@@ -129,7 +145,7 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
     situacao: aConfirmar || semCapacidade ? "a_confirmar" : "disponivel",
     motivos: avisos,
     noites,
-    cotacao: { diarias, limpeza: cot.limpeza, hospedeExtra: cot.hospedeExtra, total },
+    cotacao: { diarias, limpeza: cot.limpeza, hospedeExtra: cot.hospedeExtra, valorCheio, desconto, total },
     leituraEm: semLeitura ? null : leituraEm,
   };
 }

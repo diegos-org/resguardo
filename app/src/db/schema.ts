@@ -444,6 +444,10 @@ export const cotacoes = pgTable(
     diarias: integer("diarias").notNull(),
     limpeza: integer("limpeza").notNull(),
     hospedeExtra: integer("hospede_extra").notNull(),
+    /** Soma das partes (preço cheio, o que o proprietário pediria na OTA); `total` = valor cheio − desconto. */
+    valorCheio: integer("valor_cheio").notNull(),
+    /** Desconto único do site (M12.1), em centavos, como calculado na hora da cotação. */
+    desconto: integer("desconto").notNull().default(0),
     total: integer("total").notNull(),
     /** Leitura do Beds24 mais antiga usada na decisão (null = sem leitura em alguma data). */
     leituraEm: timestamp("leitura_em", { withTimezone: true }),
