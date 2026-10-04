@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 4/10/2026, correção do robô de backup depois da sua primeira rodada (ele passa a gravar com uma chave da própria conta de backup; item 23, passos 4 e 5) e passo a passo mais detalhado (passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório pronto para você ativar na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
+> **Última atualização:** 4/10/2026, correção do robô de backup depois da sua primeira rodada (ele passa a gravar com uma chave da própria conta de backup e guarda o que vem da origem fora de branches e tags, onde nenhuma automação roda; item 23, passos 4, 5 e 7) e passo a passo mais detalhado (passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório pronto para você ativar na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
 
 ---
 
@@ -71,7 +71,11 @@ que ficou pronto:
   mas ela é criada na própria conta de backup, só vale para o repositório de backup e nunca
   sai de lá: não liga uma conta à outra. Ela existe porque o GitHub não deixa a chave
   automática dos robôs gravar arquivos de workflow, e o SCL tem um em todas as branches (foi
-  o que travou a sua primeira rodada, em 4/10).
+  o que travou a sua primeira rodada, em 4/10). Como essa chave faz o GitHub rodar automações
+  que estejam no que o robô grava, nada que vem da origem vira branch ou tag no repositório de
+  backup: fica numa área interna que o site não lista e onde nada roda, e o retrato de cada
+  rodada sai sem a pasta de automações. Assim, mesmo que alguém invada a origem e plante uma
+  automação maliciosa, ela não roda na conta de backup (apontamento do Codex em 4/10).
 - **Aqui no repositório fica só o registro** de que o backup existe, como funciona e por quê
   (`requisitos/operations/BACKUP-E-RECUPERACAO.md`, com o passo de recuperação). Nenhum nome
   de usuário, repositório ou e-mail da conta de backup aparece em lugar nenhum — isso fica só
@@ -1280,8 +1284,12 @@ ambiente).
       esquerda, "Backup do repositório de origem" (esse nome só existe depois do passo 5; se
       não aparecer, volte lá) → botão *Run workflow* (à direita, na faixa azul) → botão verde
       *Run workflow*. Em um ou dois minutos deve ficar verde. Confira em *Code* que
-      apareceram as branches `espelho/main` (e as outras) e `backup-marcos`, e, em *Tags*, uma
-      `backup/` com a data de hoje. Na branch principal vai aparecer também um commit do robô
+      apareceu a branch `backup-marcos` e, em *Tags*, uma `backup/` com a data de hoje (abra
+      a tag: são os arquivos do sistema naquele momento, e o texto do commit lista todas as
+      branches e tags da origem com o código de cada uma). As branches e tags copiadas da
+      origem ficam numa área interna que o site do GitHub não lista, de propósito: assim
+      nenhuma automação vinda da origem roda na conta de backup. Na branch principal vai
+      aparecer também um commit do robô
       com um arquivo `.backup/iniciado`: é o marcador de que o backup já existe; não apague.
       **Depois dessa primeira rodada verde**, crie uma variável no repositório de backup:
       *Settings → Secrets and variables → Actions → aba Variables → New repository variable*,

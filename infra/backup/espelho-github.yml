@@ -4,7 +4,12 @@
 #
 # Como funciona (detalhes em requisitos/operations/BACKUP-E-RECUPERACAO.md):
 # - A cada 3 dias (e quando acionado à mão), baixa todas as branches e tags da origem com um
-#   token SÓ DE LEITURA e grava neste repositório sob o prefixo `espelho/`.
+#   token SÓ DE LEITURA e grava neste repositório numa área interna de refs (refs/backup/espelho/...),
+#   que o GitHub não lista como branch nem tag. NADA vindo da origem vira branch ou tag aqui: um
+#   workflow que esteja numa branch ou tag roda no repositório onde ela é gravada, com os segredos
+#   dele, e uma origem invadida poderia plantar um para alcançar este backup. O retrato de cada
+#   rodada (tag backup/...) tem os arquivos da main da origem MENOS a pasta .github/workflows, pelo
+#   mesmo motivo.
 # - Nunca apaga nem reescreve o que já está aqui: só avança. Branch apagada na origem continua
 #   aqui; branch reescrita na origem fica como estava aqui (a versão nova fica na tag datada).
 # - Cada rodada cria uma tag `backup/AAAA-MM-DD-HHMM` apontando para um "retrato": um commit cuja
@@ -116,12 +121,13 @@ jobs:
           # Retrato de verdade tem inventário: pelo menos a linha da main da origem.
           tem_inventario() { [ -n "$(mensagem "$1" | grep -E '^origem [0-9a-f]{40} refs/heads/main$')" ]; }
 
-          # Nomes reservados: no inventário, refs da origem são citadas pelo nome original, então tags backup/,
-          # recusadas/ e objetos/ ou uma branch backup-marcos na origem se confundiriam com as do próprio
-          # backup. Nunca existem na origem de verdade; se aparecerem, a rodada para antes de gravar.
-          reservadas=$(git for-each-ref --format='%(refname)' refs/tags/backup refs/tags/recusadas refs/tags/objetos refs/heads/backup-marcos)
+          # Nomes reservados: no inventário, refs da origem são citadas pelo nome original, então tags backup/
+          # ou uma branch backup-marcos na origem se confundiriam com os marcos e o ponteiro do próprio backup
+          # (as cópias recusadas/ e objetos/ vivem em refs/backup/, fora de refs/tags, e não se confundem).
+          # Nunca existem na origem de verdade; se aparecerem, a rodada para antes de gravar.
+          reservadas=$(git for-each-ref --format='%(refname)' refs/tags/backup refs/heads/backup-marcos)
           if [ -n "${reservadas}" ]; then
-            echo "::error::A origem tem refs com nomes reservados ao backup (tags backup/, recusadas/, objetos/ ou a branch backup-marcos). Renomeie-as na origem; até lá nada é gravado:"
+            echo "::error::A origem tem refs com nomes reservados ao backup (tags backup/ ou a branch backup-marcos). Renomeie-as na origem; até lá nada é gravado:"
             echo "${reservadas}"
             exit 1
           fi
@@ -129,10 +135,12 @@ jobs:
           # O que este repositório já guarda, trazido para refs/guardado/ (traz também a história
           # antiga, para reconhecer uma reescrita na origem). Se a leitura falhar, a rodada para:
           # sem essa visão a comparação ficaria cega e a rodada seguinte tomaria o vazio por base.
+          # Onde fica o que vem da origem: refs/backup/espelho/{heads,tags}/..., refs/backup/recusadas/<data>/...
+          # e refs/backup/objetos/<sha>. Nunca em refs/heads nem refs/tags deste repositório (ver cabeçalho).
           no_destino fetch -q --no-tags "${destino}" \
-            '+refs/heads/espelho/*:refs/guardado/heads/*' '+refs/tags/espelho/*:refs/guardado/tags/*' \
-            '+refs/tags/backup/*:refs/guardado/backup/*' '+refs/tags/recusadas/*:refs/guardado/recusadas/*' \
-            '+refs/tags/objetos/*:refs/guardado/objetos/*'
+            '+refs/backup/espelho/heads/*:refs/guardado/heads/*' '+refs/backup/espelho/tags/*:refs/guardado/tags/*' \
+            '+refs/tags/backup/*:refs/guardado/backup/*' '+refs/backup/recusadas/*:refs/guardado/recusadas/*' \
+            '+refs/backup/objetos/*:refs/guardado/objetos/*'
           ponteiro=$(no_destino ls-remote "${destino}" refs/heads/backup-marcos | awk '{print $1}')
           # "Backup já existe" em dois lugares, fora de todas as refs que o robô gerencia:
           # 1) o arquivo .backup/iniciado na branch principal deste repositório, gravado pelo robô na primeira
@@ -153,8 +161,8 @@ jobs:
           {
             git for-each-ref --format='%(refname)' refs/guardado/heads refs/guardado/tags | sed 's#^refs/guardado/#refs/#'
             git for-each-ref --format='%(refname)' refs/guardado/backup | sed 's#^refs/guardado/backup/#refs/tags/backup/#'
-            git for-each-ref --format='%(refname)' refs/guardado/recusadas | sed 's#^refs/guardado/recusadas/#refs/tags/recusadas/#'
-            git for-each-ref --format='%(refname)' refs/guardado/objetos | sed 's#^refs/guardado/objetos/#refs/tags/objetos/#'
+            git for-each-ref --format='%(refname)' refs/guardado/recusadas | sed 's#^refs/guardado/recusadas/#refs/backup/recusadas/#'
+            git for-each-ref --format='%(refname)' refs/guardado/objetos | sed 's#^refs/guardado/objetos/#refs/backup/objetos/#'
             if [ -n "${ponteiro}" ]; then echo refs/heads/backup-marcos; fi
           } | sort > guardado.refs
           # Marcos datados existentes (só os do formato backup/AAAA-MM-DD-HHMM).
@@ -265,7 +273,7 @@ jobs:
           if [ -n "${reescritas}" ]; then
             while read -r ref; do
               [ -z "${ref}" ] && continue
-              copias_novas="${copias_novas}$(git rev-parse "${ref}") refs/tags/recusadas/${marco#backup/}/${ref#refs/}"$'\n'
+              copias_novas="${copias_novas}$(git rev-parse "${ref}") refs/backup/recusadas/${marco#backup/}/${ref#refs/}"$'\n'
             done <<< "${reescritas}"
           fi
           # Cópias recusadas/ que sumiram deste backup: regravar só se a origem ainda tiver exatamente aquele
@@ -273,9 +281,9 @@ jobs:
           recriadas=(); copias_recriadas=""; perdidas=""
           if [ -n "${sumiram_do_backup}" ]; then
             while read -r dest; do
-              case "${dest}" in refs/tags/recusadas/*/heads/*|refs/tags/recusadas/*/tags/*) ;; *) continue ;; esac
+              case "${dest}" in refs/backup/recusadas/*/heads/*|refs/backup/recusadas/*/tags/*) ;; *) continue ;; esac
               esperado=$(awk -v d="${dest}" '$1 == "recusada" && $3 == d {print $2}' anterior.txt | head -n1)
-              src="refs/${dest#refs/tags/recusadas/*/}"
+              src="refs/${dest#refs/backup/recusadas/*/}"
               atual_sha=$(git rev-parse -q --verify "${src}" 2>/dev/null || true)
               if [ -n "${esperado}" ] && [ -n "${atual_sha}" ] && [ "${atual_sha}" = "${esperado}" ]; then
                 recriadas+=("${src}:${dest}"); copias_recriadas="${copias_recriadas}${esperado} ${dest}"$'\n'
@@ -290,12 +298,12 @@ jobs:
           alteradas=""
           while read -r _ sha ref; do
             [ -z "${ref}" ] && continue
-            g=$(git rev-parse -q --verify "refs/guardado/recusadas/${ref#refs/tags/recusadas/}" 2>/dev/null || true)
+            g=$(git rev-parse -q --verify "refs/guardado/recusadas/${ref#refs/backup/recusadas/}" 2>/dev/null || true)
             [ -z "${g}" ] && continue
             [ "${g}" = "${sha}" ] && continue
             alteradas="${alteradas}${ref} (esperado ${sha}, encontrado ${g})"$'\n'
-            src="refs/${ref#refs/tags/recusadas/*/}"
-            novo_dest="refs/tags/recusadas/${marco#backup/}/${src#refs/}"
+            src="refs/${ref#refs/backup/recusadas/*/}"
+            novo_dest="refs/backup/recusadas/${marco#backup/}/${src#refs/}"
             atual_sha=$(git rev-parse -q --verify "${src}" 2>/dev/null || true)
             # Um destino só: várias cópias alteradas com o mesmo objeto (ref que voltou a um valor antigo) geram
             # uma única regravação sob a data de hoje.
@@ -312,7 +320,7 @@ jobs:
           espelho_adulterado=""; : > espelho.inv; : > espelho-adulterado.refs
           {
             cat atual.refs
-            grep -E '^refs/(heads|tags)/' guardado.refs | grep -v -E '^refs/tags/(backup|recusadas|objetos)/|^refs/heads/backup-marcos$' || true
+            grep -E '^refs/(heads|tags)/' guardado.refs | grep -v -E '^refs/tags/backup/|^refs/heads/backup-marcos$' || true
           } | sort -u | while read -r ref; do
             [ -z "${ref}" ] && continue
             a=$(git rev-parse -q --verify "${ref}" 2>/dev/null || true)
@@ -363,7 +371,7 @@ jobs:
           if [ -f espelho-resalvar.refs ]; then
             while read -r ref; do
               [ -z "${ref}" ] && continue
-              novo_dest="refs/tags/recusadas/${marco#backup/}/${ref#refs/}"
+              novo_dest="refs/backup/recusadas/${marco#backup/}/${ref#refs/}"
               if ! printf '%s%s' "${copias_novas}" "${copias_recriadas}" | awk -v d="${novo_dest}" 'NF == 2 && $2 == d {ok = 1} END {exit ok ? 0 : 1}'; then
                 recriadas+=("${ref}:${novo_dest}"); copias_recriadas="${copias_recriadas}$(git rev-parse "${ref}") ${novo_dest}"$'\n'
               fi
@@ -379,11 +387,11 @@ jobs:
           while read -r sha ref; do
             [ -z "${sha}" ] && continue
             [ "$(git cat-file -t "${sha}")" != "commit" ] || continue
-            if ! git rev-parse -q --verify "refs/guardado/objetos/${sha}" >/dev/null 2>&1; then objetos_novos+=("${sha}:refs/tags/objetos/${sha}"); fi
+            if ! git rev-parse -q --verify "refs/guardado/objetos/${sha}" >/dev/null 2>&1; then objetos_novos+=("${sha}:refs/backup/objetos/${sha}"); fi
           done < <(git for-each-ref --format='%(objectname) %(refname)' refs/tags refs/guardado/tags refs/guardado/recusadas | sort -u -k1,1)
           while read -r sha ref; do
             [ -z "${ref}" ] && continue
-            if [ "${sha}" != "${ref#refs/guardado/objetos/}" ]; then objetos_alterados="${objetos_alterados}refs/tags/objetos/${ref#refs/guardado/objetos/} (aponta para ${sha})"$'\n'; fi
+            if [ "${sha}" != "${ref#refs/guardado/objetos/}" ]; then objetos_alterados="${objetos_alterados}refs/backup/objetos/${ref#refs/guardado/objetos/} (aponta para ${sha})"$'\n'; fi
           done < <(git for-each-ref --format='%(objectname) %(refname)' refs/guardado/objetos)
 
           # Inventário, parte 2: o que este backup guarda depois desta rodada. As cópias recusadas/ vão com o
@@ -393,25 +401,25 @@ jobs:
             echo "refs/tags/${marco}"
             echo refs/heads/backup-marcos
             for spec in "${objetos_novos[@]}"; do echo "${spec#*:}"; done
-          } | grep -v '^refs/tags/recusadas/' | sort -u | sed 's/^/backup /' >> inventario.txt
+          } | grep -v '^refs/backup/recusadas/' | sort -u | sed 's/^/backup /' >> inventario.txt
           sort -u espelho.inv | sed 's/^/espelho /' >> inventario.txt
           {
             # já inventariadas e ainda presentes: mantém o objeto esperado
             while read -r _ sha ref; do
               [ -z "${ref}" ] && continue
-              if git rev-parse -q --verify "refs/guardado/recusadas/${ref#refs/tags/recusadas/}" >/dev/null 2>&1; then echo "${sha} ${ref}"; fi
+              if git rev-parse -q --verify "refs/guardado/recusadas/${ref#refs/backup/recusadas/}" >/dev/null 2>&1; then echo "${sha} ${ref}"; fi
             done < <(awk '$1 == "recusada" && NF == 3' anterior.txt)
             # presentes no backup sem constar da base (ex.: base perdida): entram como estão
             while read -r sha ref; do
               [ -z "${ref}" ] && continue
               if ! awk '$1 == "recusada" && NF == 3 {print $3}' anterior.txt | grep -qxF "${ref}"; then echo "${sha} ${ref}"; fi
-            done < <(git for-each-ref --format='%(objectname) refs/tags/recusadas/%(refname:strip=3)' refs/guardado/recusadas)
+            done < <(git for-each-ref --format='%(objectname) refs/backup/recusadas/%(refname:strip=3)' refs/guardado/recusadas)
             printf '%s' "${copias_novas}"
             printf '%s' "${copias_recriadas}"
           } | sed '/^$/d' | sort -u | sed 's/^/recusada /' >> inventario.txt
 
-          # Retrato da rodada: árvore da main; pais = retrato anterior, main e todas as outras pontas
-          # (commits); mensagem = inventário. Tudo o que o inventário cita fica alcançável por aqui.
+          # Retrato da rodada: árvore da main SEM .github/workflows; pais = retrato anterior, main e todas as
+          # outras pontas (commits); mensagem = inventário. Tudo o que o inventário cita fica alcançável por aqui.
           main=$(git rev-parse "refs/heads/main^{commit}")
           pais=(); : > pais.lst
           pai() { if [ -n "$1" ] && ! grep -qxF "$1" pais.lst; then pais+=(-p "$1"); echo "$1" >> pais.lst; fi; }
@@ -428,7 +436,20 @@ jobs:
             { git for-each-ref --format='%(objectname)' refs/heads refs/tags refs/guardado/heads
               awk 'NF == 2 {print $1}' espelho.inv
             } | while read -r o; do git rev-parse -q --verify "${o}^{commit}" 2>/dev/null || true; done | sort -u)
-          retrato=$(robo commit-tree "${main}^{tree}" "${pais[@]}" -F inventario.txt)
+          # A tag do retrato vai em refs/tags, onde um push dispara os workflows do commit apontado: os da
+          # origem nunca podem rodar neste repositório, então a pasta .github/workflows fica de fora da árvore
+          # (o conteúdo completo da main continua em refs/backup/espelho/heads/main e como pai do retrato).
+          # Repositório bare: a árvore é remontada com ls-tree/mktree, sem índice nem working tree.
+          arvore_retrato=$(git rev-parse "${main}^{tree}")
+          if git rev-parse -q --verify "${main}^{tree}:.github/workflows" >/dev/null 2>&1; then
+            github_sem=$(git ls-tree "${main}^{tree}:.github" | awk -F'\t' '$2 != "workflows"' | git mktree)
+            if [ "${github_sem}" = "$(git hash-object -t tree /dev/null)" ]; then
+              arvore_retrato=$(git ls-tree "${arvore_retrato}" | awk -F'\t' '$2 != ".github"' | git mktree)
+            else
+              arvore_retrato=$(git ls-tree "${arvore_retrato}" | awk -F'\t' -v t="${github_sem}" '$2 == ".github" {print "040000 tree " t "\t.github"; next} {print}' | git mktree)
+            fi
+          fi
+          retrato=$(robo commit-tree "${arvore_retrato}" "${pais[@]}" -F inventario.txt)
           git update-ref "refs/marcos/${marco}" "${retrato}"
 
           # 1) Refs reescritas nesta rodada: guardar o objeto exato (inclusive tag anotada ou de blob) sob
@@ -437,7 +458,7 @@ jobs:
           if [ -n "${reescritas}" ]; then
             specs=()
             while read -r ref; do
-              [ -n "${ref}" ] && specs+=("${ref}:refs/tags/recusadas/${marco#backup/}/${ref#refs/}")
+              [ -n "${ref}" ] && specs+=("${ref}:refs/backup/recusadas/${marco#backup/}/${ref#refs/}")
             done <<< "${reescritas}"
             no_destino push -q "${destino}" "${specs[@]}"
           fi
@@ -448,12 +469,21 @@ jobs:
             no_destino push -q "${destino}" "${objetos_novos[@]}"
           fi
 
-          # 2) Espelho, sem --force e sem --prune: só avança. O que a origem apagou continua aqui; o que
-          #    ela reescreveu é recusado (linha começando com "!") e fica como estava.
+          # 2) Espelho, sem --force e sem --prune: só avança. Branches: o servidor só aceita avanço (fast-forward);
+          #    o que a origem reescreveu é recusado (linha começando com "!") e fica como estava. Tags: fora de
+          #    refs/tags o servidor NÃO aplica a regra "tag existente nunca muda" (uma tag reapontada para um commit
+          #    descendente passaria como avanço, e uma tag de arquivo pediria force), então o robô só envia as tags
+          #    que este backup ainda não tem; tag conhecida com outro objeto é reescrita (cópia em recusadas/) ou
+          #    alteração aqui (avisada), e nunca é empurrada por cima.
+          specs=('refs/heads/*:refs/backup/espelho/heads/*')
+          while read -r t; do
+            [ -z "${t}" ] && continue
+            if ! git rev-parse -q --verify "refs/guardado/tags/${t#refs/tags/}" >/dev/null 2>&1; then
+              specs+=("${t}:refs/backup/espelho/tags/${t#refs/tags/}")
+            fi
+          done < <(git for-each-ref --format='%(refname)' refs/tags)
           set +e
-          no_destino push --porcelain "${destino}" \
-            'refs/heads/*:refs/heads/espelho/*' \
-            'refs/tags/*:refs/tags/espelho/*' > push.log 2> push.err
+          no_destino push --porcelain "${destino}" "${specs[@]}" > push.log 2> push.err
           codigo=$?
           set -e
           grep -v '^To ' push.log || true
