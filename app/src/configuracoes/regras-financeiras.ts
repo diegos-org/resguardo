@@ -16,28 +16,52 @@ import { lerConfig } from "./armazem";
 
 export const OPCOES_RECEBIMENTO = ["split", "empresa", "a_confirmar"] as const;
 export const OPCOES_BASE = ["liquido_canal", "bruto"] as const;
+/** Maior prazo aceito para o canal pagar o proprietário (dias depois do check-in). */
+export const PRAZO_MAXIMO = 60;
 
-/** Monta regras válidas a partir de um valor qualquer; o que faltar ou vier errado fica no padrão. */
+const PRAZOS_PADRAO = REGRAS_PADRAO.prazoPagamento!;
+const prazoValido = (x: unknown): x is number => typeof x === "number" && Number.isInteger(x) && x >= 0 && x <= PRAZO_MAXIMO;
+
+/** Prazo do canal (dias depois do check-in) nestas regras; sem o campo (versão antiga), o padrão. null = sem regra. */
+export function prazoDoCanal(regras: RegrasMotor, origem: OrigemReserva): number | null {
+  const p = regras.prazoPagamento;
+  return p && origem in p ? p[origem] : PRAZOS_PADRAO[origem];
+}
+
+/** Monta regras válidas a partir de um valor qualquer; o que faltar ou vier errado fica no padrão (null explícito = sem prazo). */
 export function normalizarRegras(v: Record<string, unknown> | null): RegrasMotor {
   const base = OPCOES_BASE.includes(v?.base as never) ? (v!.base as RegrasMotor["base"]) : REGRAS_PADRAO.base;
   const rec = (v?.recebimento ?? {}) as Record<string, unknown>;
   const recebimento = Object.fromEntries(
     ORIGENS_RESERVA.map((o) => [o, OPCOES_RECEBIMENTO.includes(rec[o] as never) ? rec[o] : REGRAS_PADRAO.recebimento[o]]),
   ) as RegrasMotor["recebimento"];
-  return { base, recebimento };
+  const pz = (v?.prazoPagamento ?? {}) as Record<string, unknown>;
+  const prazoPagamento = Object.fromEntries(
+    ORIGENS_RESERVA.map((o) => [o, pz[o] === null ? null : prazoValido(pz[o]) ? pz[o] : PRAZOS_PADRAO[o]]),
+  ) as Record<OrigemReserva, number | null>;
+  return { base, recebimento, prazoPagamento };
 }
 
-/** Lê do formulário; devolve null se algum valor não é uma opção válida. */
+/** Lê do formulário; devolve null se algum valor não é uma opção válida. Campo de prazo ausente = padrão; vazio = sem regra. */
 export function lerFormRegras(form: Record<string, unknown>): RegrasMotor | null {
   const base = form.base;
   if (!OPCOES_BASE.includes(base as never)) return null;
   const recebimento: Partial<Record<OrigemReserva, RegrasMotor["recebimento"][OrigemReserva]>> = {};
+  const prazoPagamento: Partial<Record<OrigemReserva, number | null>> = {};
   for (const o of ORIGENS_RESERVA) {
     const r = form[`recebimento_${o}`];
     if (!OPCOES_RECEBIMENTO.includes(r as never)) return null;
     recebimento[o] = r as RegrasMotor["recebimento"][OrigemReserva];
+    const p = form[`prazo_${o}`];
+    if (p === undefined) prazoPagamento[o] = PRAZOS_PADRAO[o];
+    else if (typeof p === "string" && p.trim() === "") prazoPagamento[o] = null;
+    else {
+      const n = typeof p === "string" && /^\d{1,2}$/.test(p.trim()) ? Number(p.trim()) : p;
+      if (!prazoValido(n)) return null;
+      prazoPagamento[o] = n;
+    }
   }
-  return { base: base as RegrasMotor["base"], recebimento: recebimento as RegrasMotor["recebimento"] };
+  return { base: base as RegrasMotor["base"], recebimento: recebimento as RegrasMotor["recebimento"], prazoPagamento: prazoPagamento as Record<OrigemReserva, number | null> };
 }
 
 export type VersaoRegras = RegrasMotor & { desde: string };
@@ -54,7 +78,7 @@ export function versoesDe(v: Record<string, unknown> | null): VersaoRegras[] {
 /** Regra vigente numa data: a última versão com `desde` ≤ data; antes de todas, o padrão. */
 export function regrasNaData(versoes: readonly VersaoRegras[], data: string): RegrasMotor {
   const v = versoes.filter((x) => x.desde <= data).at(-1);
-  return v ? { base: v.base, recebimento: v.recebimento } : REGRAS_PADRAO;
+  return v ? { base: v.base, recebimento: v.recebimento, prazoPagamento: v.prazoPagamento } : REGRAS_PADRAO;
 }
 
 /** Regras vigentes na data (padrão: hoje). O motor passa a data de entrada da reserva. */

@@ -27,11 +27,19 @@ import type { NovoLancamento } from "./ledger";
 export type RegrasMotor = {
   base: "liquido_canal" | "bruto";
   recebimento: Record<OrigemReserva, RecebimentoReserva | "a_confirmar">;
+  /**
+   * Em quantos dias depois do check-in o canal paga o proprietário direto (quando quem recebe é `split`); null = sem
+   * regra. Airbnb paga no dia seguinte (Diego, 4/10/2026). Decide a data do pagamento da reserva (M4.12): extrato,
+   * relatório e o lado do início do sistema. Opcional só para compatibilidade de literais antigos: `prazoDoCanal` lê
+   * o padrão quando falta.
+   */
+  prazoPagamento?: Record<OrigemReserva, number | null>;
 };
 
 export const REGRAS_PADRAO: RegrasMotor = {
   base: "liquido_canal",
   recebimento: { airbnb: "split", booking: "empresa", site: "empresa", direta: "empresa", outro: "empresa" },
+  prazoPagamento: { airbnb: 1, booking: null, site: null, direta: null, outro: null },
 };
 
 export type ReservaParaMotor = {
