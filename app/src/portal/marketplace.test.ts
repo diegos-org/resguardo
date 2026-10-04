@@ -8,6 +8,7 @@ import { beds24Envios, beds24EnvioNoites, imoveis, limpezas, manutencoes, organi
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { DETALHES_VAZIOS, entradaDeDetalhes, lerDetalhes, listarPeriodos, salvarDetalhes, validarDetalhes } from "@/imoveis/detalhes";
+import { lancarCusto, listarManutencoes } from "@/manutencao/manutencao";
 import {
   criarPeriodoPeloProprietario,
   excluirPeriodoPeloProprietario,
@@ -153,8 +154,30 @@ describe("portal do proprietário marketplace (M12.4)", () => {
     expect(await registrarManutencaoPeloProprietario(db, sessao(), { imovelId: a, titulo: "Pintura", descricao: "", data: "2026-10-09" }, hoje)).toMatchObject({ ok: false, erro: expect.stringContaining("futuro") });
     expect(await registrarManutencaoPeloProprietario(db, sessao(), { imovelId: b, titulo: "Pintura", descricao: "", data: "2026-10-01" }, hoje)).toEqual({ ok: false, erro: NAO_MARKETPLACE });
     const [m] = await db.select().from(manutencoes).where(eq(manutencoes.organizacaoId, org));
-    expect(m).toMatchObject({ imovelId: a, estado: "realizada", responsavel: "proprietario", proprietarioId: dona, dataRealizada: "2026-10-01", orcamento: null, despesaId: null });
+    expect(m).toMatchObject({ imovelId: a, estado: "realizada", responsavel: "proprietario", proprietarioId: dona, dataRealizada: "2026-10-01", orcamento: null, despesaId: null, semCusto: true });
     expect(await manutencoesDoProprietario(db, sessao(), agora)).toEqual([expect.objectContaining({ imovelCodigo: "403", titulo: "Troca do chuveiro", estado: "realizada", porContaPropria: true })]);
+    // Sem custo para a empresa: não entra na fila "custo a lançar" do painel, o aviso explica e lançar custo é recusado.
+    expect((await listarManutencoes(db, org, { emAberto: true })).map((x) => x.id)).not.toContain(m.id);
+    const [linha] = await listarManutencoes(db, org);
+    expect(linha).toMatchObject({ id: m.id, semCusto: true, custo: null, avisos: ["Feita pelo proprietário por conta própria (marketplace): sem custo para a empresa."] });
+    expect(await lancarCusto(db, org, m.id, { categoriaId: "00000000-0000-4000-8000-000000000001", valor: 10000, paga: false, dataPagamento: null, pagoPor: "empresa", comprovante: "" }, null)).toMatchObject({ ok: false, erro: expect.stringContaining("não há custo a lançar") });
+    expect((await db.select().from(manutencoes).where(eq(manutencoes.id, m.id)))[0].despesaId).toBeNull();
+  });
+
+  it("o dia da autorização é o do fuso do imóvel, o mesmo que decide se a seção aparece", async () => {
+    // d em Auckland: às 15:00Z de 3/10 já é 4/10 lá (em São Paulo ainda é 3/10). e em São Paulo, mesmo contrato.
+    await db.update(imoveis).set({ fuso: "Pacific/Auckland" }).where(eq(imoveis.id, d));
+    const [{ id: e }] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "501", nome: "Cinco" }).returning();
+    await db.insert(proprietarioImoveis).values({ proprietarioId: dona, imovelId: e });
+    await criarContrato(db, org, d, { tipo: "marketplace", comissao: "", inicio: "2026-10-04" }, null);
+    await criarContrato(db, org, e, { tipo: "marketplace", comissao: "", inicio: "2026-10-04" }, null);
+    const s = sessao([a, b, d, e]);
+    expect((await imoveisMarketplaceDaSessao(db, s, agora)).map((i) => i.codigo)).toEqual(["103", "403"]);
+    // Aparece e pode editar (Auckland); não aparece e não pode editar (São Paulo) — nunca uma coisa sem a outra.
+    expect(await salvarPrecosPeloProprietario(db, s, d, { precoBase: "200,00" }, agora)).toEqual({ ok: true });
+    expect(await criarPeriodoPeloProprietario(db, s, d, { nome: "Natal", inicio: "2026-12-24", fim: "2026-12-26", precoNoite: "500,00", estadiaMinima: "" }, agora)).toEqual({ ok: true });
+    expect(await salvarPrecosPeloProprietario(db, s, e, { precoBase: "200,00" }, agora)).toEqual({ ok: false, erro: NAO_MARKETPLACE });
+    expect(await criarPeriodoPeloProprietario(db, s, e, { nome: "Natal", inicio: "2026-12-24", fim: "2026-12-26", precoNoite: "500,00", estadiaMinima: "" }, agora)).toEqual({ ok: false, erro: NAO_MARKETPLACE });
   });
 
   it("situação do envio: na lista e automático vêm das regras; o último envio real que tocou o imóvel (simulação não conta)", async () => {

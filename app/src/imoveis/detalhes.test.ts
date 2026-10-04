@@ -4,7 +4,7 @@ import { historicoDe } from "@/auditoria/auditoria";
 import { beds24Envios, imoveis, organizacoes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
-import { criarPeriodo, DETALHES_VAZIOS, excluirPeriodo, fontesDePrecosDosImoveis, lerDetalhes, listarPeriodos, salvarDetalhes, validarDetalhes, validarPeriodo } from "./detalhes";
+import { criarPeriodo, DETALHES_VAZIOS, excluirPeriodo, fontesDePrecosDosImoveis, lerDetalhes, listarPeriodos, salvarDetalhes, salvarDetalhesComLeitura, validarDetalhes, validarPeriodo } from "./detalhes";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -110,6 +110,20 @@ describe("gravação", () => {
     await db.update(beds24Envios).set({ situacao: "ok" }).where(eq(beds24Envios.id, envio.id));
     expect(await salvarDetalhes(db, org, im, { ...DETALHES_VAZIOS, precoBase: 50000, fontePrecos: "beds24" }, null, agora)).toBe(true);
     expect((await lerDetalhes(db, org, im)).fontePrecos).toBe("beds24");
+  });
+
+  it("gravação com leitura: monta os dados a partir do cadastro atual, dentro da transação; recusa não grava nada", async () => {
+    const r = validarDetalhes(form);
+    if (!r.ok) throw new Error("inválido");
+    await salvarDetalhes(db, org, im, r.dados, null);
+    // Quem edita só um campo recebe o cadastro atual (lido com o imóvel travado) e devolve o completo.
+    expect(await salvarDetalhesComLeitura(db, org, im, (atual) => ({ ...atual, precoBase: 99900 }), null)).toEqual({ ok: true });
+    expect(await lerDetalhes(db, org, im)).toEqual({ ...r.dados, precoBase: 99900 });
+    expect((await historicoDe(db, org, "imovel", im))[0].mudancas).toEqual({ precoBase: [120050, 99900] });
+    // Recusa (com erros por campo) vem do cadastro atual e não grava.
+    expect(await salvarDetalhesComLeitura(db, org, im, (atual) => (atual.precoBase === 99900 ? { erro: "Confira.", erros: { precoBase: "alto" } } : atual), null)).toEqual({ ok: false, erro: "Confira.", erros: { precoBase: "alto" } });
+    expect(await lerDetalhes(db, org, im)).toMatchObject({ precoBase: 99900 });
+    expect(await salvarDetalhesComLeitura(db, outraOrg, im, (atual) => atual, null)).toEqual({ ok: false, erro: "Imóvel não encontrado." });
   });
 
   it("outra organização não lê nem grava", async () => {

@@ -881,6 +881,8 @@ export const manutencoes = pgTable(
     dataRealizada: date("data_realizada", { mode: "string" }),
     /** Despesa lançada com o custo final (livro de lançamentos). */
     despesaId: uuid("despesa_id").references(() => lancamentos.id),
+    /** M12.4: feita pelo proprietário por conta própria (marketplace) — sem custo para a empresa, nunca entra no fluxo de lançar custo. */
+    semCusto: boolean("sem_custo").notNull().default(false),
     observacao: text("observacao").notNull().default(""),
     criadoPor: uuid("criado_por").references(() => usuarios.id),
     criadoEm: criadoEm(),

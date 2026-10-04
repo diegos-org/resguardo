@@ -265,19 +265,42 @@ export async function salvarDetalhes(db: Db, organizacaoId: string, imovelId: st
   return db.transaction(async (tx) => {
     if (!(await imovelDaOrg(tx, organizacaoId, imovelId, true))) return false;
     const antes = await lerDetalhes(tx, organizacaoId, imovelId);
-    const mudancas = calcularMudancas(antes, dados);
-    if (!Object.keys(mudancas).length) return true;
-    if (antes.fontePrecos !== dados.fontePrecos) {
-      const recusa = await esperarEnvioBeds24(tx, organizacaoId, agora);
-      if (recusa) return `${recusa} A fonte de preços só muda com o envio parado, para o SCL nunca escrever preço num imóvel que passou a usar os preços do Beds24.`;
-    }
-    await tx
-      .insert(imoveisDetalhes)
-      .values({ ...dados, imovelId, organizacaoId })
-      .onConflictDoUpdate({ target: imoveisDetalhes.imovelId, set: { ...dados, atualizadoEm: new Date() } });
-    await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "imovel.detalhes", entidade: "imovel", entidadeId: imovelId, mudancas });
-    return true;
+    return gravarDetalhes(tx, organizacaoId, imovelId, antes, dados, autorId, agora);
   });
+}
+
+/** Prepara os detalhes a gravar a partir dos atuais (lidos com o imóvel travado); ou recusa, com erros por campo. */
+export type PrepararDetalhes = (atual: Detalhes) => Detalhes | { erro: string; erros?: ErrosDetalhes };
+
+/**
+ * Grava detalhes montados a partir do cadastro ATUAL, lido dentro da mesma transação e com o imóvel
+ * travado: quem edita só alguns campos (o portal do proprietário marketplace, M12.4) não grava uma
+ * foto velha do resto do cadastro por cima de uma mudança feita no painel no meio do caminho.
+ */
+export async function salvarDetalhesComLeitura(db: Db, organizacaoId: string, imovelId: string, preparar: PrepararDetalhes, autorId: string | null, agora = new Date()): Promise<{ ok: true } | { ok: false; erro: string; erros?: ErrosDetalhes }> {
+  return db.transaction(async (tx) => {
+    if (!(await imovelDaOrg(tx, organizacaoId, imovelId, true))) return { ok: false as const, erro: "Imóvel não encontrado." };
+    const atual = await lerDetalhes(tx, organizacaoId, imovelId);
+    const prep = preparar(atual);
+    if ("erro" in prep) return { ok: false as const, ...prep };
+    const r = await gravarDetalhes(tx, organizacaoId, imovelId, atual, prep, autorId, agora);
+    return r === true ? { ok: true as const } : { ok: false as const, erro: r };
+  });
+}
+
+async function gravarDetalhes(tx: Db, organizacaoId: string, imovelId: string, antes: Detalhes, dados: Detalhes, autorId: string | null, agora: Date): Promise<true | string> {
+  const mudancas = calcularMudancas(antes, dados);
+  if (!Object.keys(mudancas).length) return true;
+  if (antes.fontePrecos !== dados.fontePrecos) {
+    const recusa = await esperarEnvioBeds24(tx, organizacaoId, agora);
+    if (recusa) return `${recusa} A fonte de preços só muda com o envio parado, para o SCL nunca escrever preço num imóvel que passou a usar os preços do Beds24.`;
+  }
+  await tx
+    .insert(imoveisDetalhes)
+    .values({ ...dados, imovelId, organizacaoId })
+    .onConflictDoUpdate({ target: imoveisDetalhes.imovelId, set: { ...dados, atualizadoEm: new Date() } });
+  await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "imovel.detalhes", entidade: "imovel", entidadeId: imovelId, mudancas });
+  return true;
 }
 
 // --- Períodos de exceção ----------------------------------------------------------------

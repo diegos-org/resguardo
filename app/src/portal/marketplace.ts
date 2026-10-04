@@ -13,7 +13,7 @@ import { type ContratoVigencia, contratoVigente } from "@/contratos/regras";
 import { listarContratos } from "@/contratos/repositorio";
 import { beds24Envios, beds24EnvioNoites, imoveis, imoveisPeriodos, limpezas, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { type Detalhes, type ErrosDetalhes, criarPeriodo, entradaDeDetalhes, excluirPeriodo, lerDetalhes, listarPeriodos, salvarDetalhes, validarDetalhes } from "@/imoveis/detalhes";
+import { type Detalhes, type ErrosDetalhes, criarPeriodo, entradaDeDetalhes, excluirPeriodo, lerDetalhes, listarPeriodos, salvarDetalhesComLeitura, validarDetalhes } from "@/imoveis/detalhes";
 import type { FontePrecos } from "@/imoveis/fonte-precos";
 import type { Periodo } from "@/imoveis/regras-venda";
 import { hojeISO } from "@/lib/datas";
@@ -57,12 +57,17 @@ type ContratoLinha = ContratoVigencia & { tipo: string };
 /** Em contrato marketplace no dia? (contratos não se sobrepõem; vale o vigente no dia) */
 export const emMarketplaceEm = (contratos: readonly ContratoLinha[], dia: string) => contratoVigente(contratos, dia)?.tipo === "marketplace";
 
-/** Imóvel da organização, da sessão (política) e em contrato marketplace no dia; senão, o motivo. */
-async function imovelOperavel(db: Db, sessao: Sessao, imovelId: string, dia: string): Promise<{ ok: true; imovel: { id: string; codigo: string; fuso: string } } | { ok: false; erro: string }> {
+/**
+ * Imóvel da organização, da sessão (política) e em contrato marketplace no dia; senão, o motivo.
+ * `quando`: uma data (AAAA-MM-DD, ex.: o dia da limpeza) ou o instante — aí o dia é o do fuso do
+ * imóvel, o mesmo que `imoveisMarketplaceDaSessao` usa para mostrar a seção.
+ */
+async function imovelOperavel(db: Db, sessao: Sessao, imovelId: string, quando: Date | string): Promise<{ ok: true; imovel: { id: string; codigo: string; fuso: string } } | { ok: false; erro: string }> {
   if (!uuidValido(imovelId)) return { ok: false, erro: SEM_IMOVEL };
   exigir(sessao, "marketplace:operar", { organizacaoId: sessao.organizacaoId, imovelId });
   const [im] = await db.select({ id: imoveis.id, codigo: imoveis.codigo, fuso: imoveis.fuso }).from(imoveis).where(and(eq(imoveis.id, imovelId), eq(imoveis.organizacaoId, sessao.organizacaoId)));
   if (!im) return { ok: false, erro: SEM_IMOVEL };
+  const dia = typeof quando === "string" ? quando : hojeISO(im.fuso, quando);
   if (!emMarketplaceEm(await listarContratos(db, sessao.organizacaoId, im.id), dia)) return { ok: false, erro: NAO_MARKETPLACE };
   return { ok: true, imovel: im };
 }
@@ -110,31 +115,37 @@ export { simular };
 
 /**
  * Salva os campos do portal no cadastro do imóvel, passando pela validação do painel com o resto do
- * cadastro preservado. Com os preços definidos no Beds24 (M3.9), o preço da noite é editado lá:
- * aqui só limpeza, hóspede extra, regras e horários.
+ * cadastro preservado — lido e mesclado dentro da transação de gravação, com o imóvel travado, para
+ * não gravar uma foto velha por cima de uma edição do painel feita no meio. Com os preços definidos no
+ * Beds24 (M3.9), o preço da noite é editado lá: aqui só limpeza, hóspede extra, regras e horários.
  */
 export async function salvarPrecosPeloProprietario(db: Db, sessao: Sessao, imovelId: string, entrada: Record<string, string | string[]>, agora = new Date()): Promise<ResultadoPortal> {
-  const r = await imovelOperavel(db, sessao, imovelId, hojeISO(undefined, agora));
+  const r = await imovelOperavel(db, sessao, imovelId, agora);
   if (!r.ok) return r;
-  const atual = await lerDetalhes(db, sessao.organizacaoId, r.imovel.id);
-  const completa: Record<string, string | string[]> = entradaDeDetalhes(atual);
-  for (const campo of CAMPOS_PORTAL) {
-    const v = entrada[campo];
-    completa[campo] = CAMPOS_LISTA.includes(campo) ? (Array.isArray(v) ? v : v === undefined || v === "" ? [] : [v]) : Array.isArray(v) ? (v[0] ?? "") : (v ?? "");
-  }
-  const v = validarDetalhes(completa);
-  if (!v.ok) return { ok: false, erro: "Confira os campos destacados.", erros: v.erros };
-  if (atual.fontePrecos === "beds24" && v.dados.precoBase !== atual.precoBase) {
-    return { ok: false, erro: "Confira os campos destacados.", erros: { precoBase: "Os preços deste imóvel são definidos no Beds24: o preço da noite é editado lá. Limpeza, hóspede extra, regras e horários podem ser editados aqui." } };
-  }
-  const salvo = await salvarDetalhes(db, sessao.organizacaoId, r.imovel.id, v.dados, sessao.usuarioId, agora);
-  if (salvo === false) return { ok: false, erro: SEM_IMOVEL };
-  if (typeof salvo === "string") return { ok: false, erro: salvo };
-  return { ok: true };
+  return salvarDetalhesComLeitura(
+    db,
+    sessao.organizacaoId,
+    r.imovel.id,
+    (atual) => {
+      const completa: Record<string, string | string[]> = entradaDeDetalhes(atual);
+      for (const campo of CAMPOS_PORTAL) {
+        const v = entrada[campo];
+        completa[campo] = CAMPOS_LISTA.includes(campo) ? (Array.isArray(v) ? v : v === undefined || v === "" ? [] : [v]) : Array.isArray(v) ? (v[0] ?? "") : (v ?? "");
+      }
+      const v = validarDetalhes(completa);
+      if (!v.ok) return { erro: "Confira os campos destacados.", erros: v.erros };
+      if (atual.fontePrecos === "beds24" && v.dados.precoBase !== atual.precoBase) {
+        return { erro: "Confira os campos destacados.", erros: { precoBase: "Os preços deste imóvel são definidos no Beds24: o preço da noite é editado lá. Limpeza, hóspede extra, regras e horários podem ser editados aqui." } };
+      }
+      return v.dados;
+    },
+    sessao.usuarioId,
+    agora,
+  );
 }
 
 export async function criarPeriodoPeloProprietario(db: Db, sessao: Sessao, imovelId: string, entrada: Record<string, unknown>, agora = new Date()): Promise<ResultadoPortal> {
-  const r = await imovelOperavel(db, sessao, imovelId, hojeISO(undefined, agora));
+  const r = await imovelOperavel(db, sessao, imovelId, agora);
   if (!r.ok) return r;
   const atual = await lerDetalhes(db, sessao.organizacaoId, r.imovel.id);
   const preco = typeof entrada.precoNoite === "string" ? entrada.precoNoite.trim() : "";
@@ -146,7 +157,7 @@ export async function excluirPeriodoPeloProprietario(db: Db, sessao: Sessao, per
   if (!uuidValido(periodoId)) return { ok: false, erro: "Período não encontrado." };
   const [p] = await db.select({ imovelId: imoveisPeriodos.imovelId }).from(imoveisPeriodos).where(and(eq(imoveisPeriodos.id, periodoId), eq(imoveisPeriodos.organizacaoId, sessao.organizacaoId)));
   if (!p) return { ok: false, erro: "Período não encontrado." };
-  const r = await imovelOperavel(db, sessao, p.imovelId, hojeISO(undefined, agora));
+  const r = await imovelOperavel(db, sessao, p.imovelId, agora);
   if (!r.ok) return r;
   return (await excluirPeriodo(db, sessao.organizacaoId, periodoId, sessao.usuarioId)) ? { ok: true } : { ok: false, erro: "Período não encontrado." };
 }
@@ -219,7 +230,7 @@ export async function manutencoesDoProprietario(db: Db, sessao: Sessao, agora = 
   const meus = await imoveisMarketplaceDaSessao(db, sessao, agora);
   if (!meus.length) return [];
   const lista = await listarManutencoes(db, sessao.organizacaoId, { imovelIds: meus.map((i) => i.id) });
-  return lista.slice(0, limite).map((m) => ({ id: m.id, imovelCodigo: m.imovelCodigo, titulo: m.titulo, descricao: m.descricao, estado: m.estado, dataRealizada: m.dataRealizada, porContaPropria: m.responsavel === "proprietario" }));
+  return lista.slice(0, limite).map((m) => ({ id: m.id, imovelCodigo: m.imovelCodigo, titulo: m.titulo, descricao: m.descricao, estado: m.estado, dataRealizada: m.dataRealizada, porContaPropria: m.semCusto }));
 }
 
 /** O proprietário registra uma manutenção que ele mesmo fez no imóvel marketplace (nasce realizada, por conta dele). */
