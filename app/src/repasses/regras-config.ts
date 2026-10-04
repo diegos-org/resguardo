@@ -70,8 +70,10 @@ export async function salvarInicioDoSistema(db: Db, organizacaoId: string, data:
       // imóvel/mês daquele lançamento — acertado duas vezes. Conta só o que esse fechamento de fato quitou: lançamento em
       // vigor que já existia quando ele foi gerado e que não é parte de reserva (parte paga por repasse normal é a
       // conferência anterior; parte não paga ficou "fora do fechamento" e segue em aberto). Lançamento criado depois do
-      // fechamento, mesmo com data de antes, também ficou fora dele. E conta a soma: o fechamento paga o acerto acumulado
-      // do proprietário, então crédito de agosto e débito de setembro que se anulam não lhe custaram nada.
+      // fechamento, mesmo com data de antes, também ficou fora dele. Parte de reserva entra só quando um repasse em vigor
+      // gerado até esse fechamento já a tinha pago ou acertado por fora (com o lançamento de acerto que a zera, somam zero);
+      // parte sem repasse na hora do fechamento ficou fora dele. E conta a soma: o fechamento paga o acerto acumulado do
+      // proprietário, então crédito de agosto e débito de setembro que se anulam não lhe custaram nada.
       const [posteriores] = await tx
         .select({ n: sql<number>`count(*)::int` })
         .from(repasses)
@@ -84,9 +86,12 @@ export async function salvarInicioDoSistema(db: Db, organizacaoId: string, data:
             sql`exists (
               select 1 from ${lancamentos} l
               where l.organizacao_id = ${repasses.organizacaoId} and l.proprietario_id = ${repasses.proprietarioId}
-                and l.competencia < ${d}::date and l.tipo <> 'direito_proprietario'
+                and l.competencia < ${d}::date
                 and l.estorno_de is null and not exists (select 1 from ${lancamentos} e where e.estorno_de = l.id)
                 and l.criado_em <= ${repasses.criadoEm}
+                and (l.tipo <> 'direito_proprietario' or exists (
+                  select 1 from ${repasseItens} i join ${repasses} r2 on r2.id = i.repasse_id
+                  where i.lancamento_id = l.id and i.liberado_em is null and r2.estornado_em is null and r2.criado_em <= ${repasses.criadoEm}))
               having sum(l.efeito_saldo) <> 0)`,
           ),
         );

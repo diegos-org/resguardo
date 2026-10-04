@@ -382,6 +382,12 @@ describe("acerto por fora de antes do início do sistema (M4.11)", () => {
     expect(await salvarInicioDoSistema(db, org, INICIO, "2026-11-02", null)).toEqual({ ok: true, mudou: true });
     expect((await listarRepasses(db, org, dono)).map((r) => r.tipo)).toEqual(["fechamento"]);
     expect(await listarRepasses(db, org, quarto)).toHaveLength(1);
+    // Marcado por fora (partes de setembro zeradas pelo lançamento de acerto) e fechamento de outubro em vigor — o da Dona
+    // anterior à marcação, o do terceiro gerado depois dela: regravar a data é aceito, o acerto que o fechamento viu era zero.
+    const r = await marcar();
+    expect(r.ok && r.marcados.map((m) => m.proprietarioId).sort()).toEqual([dono, outro, quarto, terceiro].sort());
+    expect(await fecharMes(db, org, terceiro, "2026-10", "2026-11-02", null)).toMatchObject({ ok: true });
+    expect(await salvarInicioDoSistema(db, org, INICIO, "2026-11-02", null)).toEqual({ ok: true, mudou: false });
   });
 
   it("antecipado e fechamento tomam a trava do início do sistema antes de ler as partes: a data não muda no meio deles", async () => {
