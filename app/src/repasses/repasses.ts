@@ -642,7 +642,12 @@ export function validarComprovante(c: ComprovanteRepasse | undefined): string | 
  * (identificador e/ou arquivo) o e-mail ao proprietário fica liberado; sem ele, o repasse fica
  * "pago sem comprovante", com aviso, e o comprovante pode ser anexado depois.
  */
-export async function marcarRepassePago(db: Db, org: string, id: string, data: string, hoje: string, autorId: string | null, comprovante?: ComprovanteRepasse): Promise<Resultado> {
+/**
+ * Marca o repasse como pago. `chavePixUsada`: a chave mostrada na tela quando a pessoa fez o Pix — é ela
+ * que fica gravada (e vai no e-mail), não a do cadastro no instante do envio do formulário, que pode ter
+ * mudado no meio; sem ela (chamada sem tela), vale a do cadastro agora.
+ */
+export async function marcarRepassePago(db: Db, org: string, id: string, data: string, hoje: string, autorId: string | null, comprovante?: ComprovanteRepasse, o: { chavePixUsada?: string } = {}): Promise<Resultado> {
   if (!dataValida(data)) return { ok: false, erro: "Data do pagamento inválida." };
   if (data > hoje) return { ok: false, erro: "A data do pagamento não pode ser no futuro." };
   const invalido = validarComprovante(comprovante);
@@ -656,10 +661,20 @@ export async function marcarRepassePago(db: Db, org: string, id: string, data: s
     for (const l of await lancamentosDoRepasse(tx, org, id)) await mudarEstado(tx, org, l.id, "realizado", autorId, data);
     for (const i of await itensEmVigor(tx, org, id)) await mudarEstado(tx, org, i.lancamentoId, "realizado", autorId, data);
     const arquivoId = comprovante?.arquivo ? await guardarArquivo(tx, org, comprovante.arquivo, autorId) : null;
-    // A chave Pix de agora fica gravada no repasse: o e-mail e o histórico mostram a usada no pagamento, mesmo que o cadastro mude depois.
+    // A chave Pix usada fica gravada no repasse (a mostrada na tela; sem tela, a do cadastro agora): o e-mail e o
+    // histórico citam a do pagamento, mesmo que o cadastro mude antes do envio do formulário ou depois.
     const [dono] = await tx.select({ chavePix: proprietarios.chavePix }).from(proprietarios).where(eq(proprietarios.id, r.proprietarioId));
-    await tx.update(repasses).set({ situacao: "pago" as SituacaoRepasse, dataPagamento: data, comprovante: comprovante?.texto.trim() ?? "", comprovanteArquivoId: arquivoId, chavePixPaga: dono?.chavePix.trim() ?? "" }).where(eq(repasses.id, id));
-    await registrarAuditoria(tx, { organizacaoId: org, usuarioId: autorId, acao: "repasse.pagar", entidade: "repasse", entidadeId: id, mudancas: { situacao: ["a pagar", `pago em ${data}${temComprovante(comprovante) ? ", com comprovante" : ", sem comprovante"}`] } });
+    const atual = dono?.chavePix.trim() ?? "";
+    const chavePixPaga = o.chavePixUsada?.trim() || atual;
+    await tx.update(repasses).set({ situacao: "pago" as SituacaoRepasse, dataPagamento: data, comprovante: comprovante?.texto.trim() ?? "", comprovanteArquivoId: arquivoId, chavePixPaga }).where(eq(repasses.id, id));
+    await registrarAuditoria(tx, {
+      organizacaoId: org,
+      usuarioId: autorId,
+      acao: "repasse.pagar",
+      entidade: "repasse",
+      entidadeId: id,
+      mudancas: { situacao: ["a pagar", `pago em ${data}${temComprovante(comprovante) ? ", com comprovante" : ", sem comprovante"}`], ...(chavePixPaga !== atual ? { chavePix: [chavePixPaga, `cadastro mudou para ${atual || "(vazia)"} antes de marcar pago`] } : {}) },
+    });
     return { ok: true as const, id };
   });
 }
@@ -685,6 +700,13 @@ export async function anexarComprovante(db: Db, org: string, id: string, comprov
 async function guardarArquivo(tx: Db, org: string, a: NonNullable<ComprovanteRepasse["arquivo"]>, autorId: string | null): Promise<string> {
   const [f] = await tx.insert(arquivos).values({ organizacaoId: org, nome: a.nome.trim().slice(0, 200), tipo: a.tipo, tamanho: a.conteudo.length, conteudo: a.conteudo, criadoPor: autorId }).returning({ id: arquivos.id });
   return f.id;
+}
+
+/** Um arquivo pelo id (o anexo guardado no pedido de e-mail de um repasse; quem chama já conferiu o acesso). */
+export async function arquivoPorId(db: Db, org: string, arquivoId: string): Promise<{ nome: string; tipo: string; conteudo: Buffer } | null> {
+  if (!uuidValido(arquivoId)) return null;
+  const [a] = await db.select({ nome: arquivos.nome, tipo: arquivos.tipo, conteudo: arquivos.conteudo }).from(arquivos).where(and(eq(arquivos.id, arquivoId), eq(arquivos.organizacaoId, org)));
+  return a ? { nome: a.nome, tipo: a.tipo, conteudo: Buffer.from(a.conteudo) } : null;
 }
 
 /** Arquivo do comprovante de um repasse (quem chama já conferiu o acesso ao repasse). */

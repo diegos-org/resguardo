@@ -11,7 +11,7 @@ const parte = (over: Partial<ParteBruta> = {}): ParteBruta => ({
 });
 const repasse = (over: Partial<Repasse> = {}): Repasse => ({
   id: "rep1", organizacaoId: "org", proprietarioId: "d1", tipo: "antecipado", mes: "2026-10-01", data: "2026-10-11", saldo: 72250, descontado: 0, contestado: 0, valor: 72250, foraDoFechamento: 0, antecipado: 72250, situacao: "pago", dataPagamento: "2026-10-11",
-  comprovante: "E2E-1", comprovanteArquivoId: "arq", emailSituacao: "enviado", emailEm: new Date("2026-10-11T15:00:00Z"), emailPara: "dona@example.com", emailChave: "", emailTentativaEm: null, chavePixPaga: "", pedidoEm: new Date("2026-10-11T10:00:00Z"), motivoEstorno: "", criadoPor: null, criadoEm: new Date("2026-10-11T10:00:00Z"), estornadoEm: null, ...over,
+  comprovante: "E2E-1", comprovanteArquivoId: "arq", emailSituacao: "enviado", emailEm: new Date("2026-10-11T15:00:00Z"), emailPara: "dona@example.com", emailChave: "", emailTentativaEm: null, emailPedido: null, chavePixPaga: "", pedidoEm: new Date("2026-10-11T10:00:00Z"), motivoEstorno: "", criadoPor: null, criadoEm: new Date("2026-10-11T10:00:00Z"), estornadoEm: null, ...over,
 });
 const item = (over: Partial<ItemDoRepasse> = {}): ItemDoRepasse => ({
   id: "it1", organizacaoId: "org", repasseId: "rep1", lancamentoId: "l1", reservaId: "r1", imovelId: "i1", competencia: "2026-10-01", valor: 72250, criadoEm: new Date("2026-10-11T10:00:00Z"), liberadoEm: null,

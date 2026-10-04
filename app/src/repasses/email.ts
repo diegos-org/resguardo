@@ -7,17 +7,18 @@
  * repetição. A chave do primeiro e-mail é `repasse:<id>:email`; toda tentativa seguinte que não seja a
  * retomada de uma incerta (reenvio pedido por pessoa, nova tentativa depois de uma recusa) ganha chave
  * nova, porque a anterior o provedor já consumiu ou recusou. Sem resposta certa do provedor
- * ("incerto"), a rotina repete o mesmo pedido, com a mesma chave, enquanto ela vale (23h); depois
- * disso fica "incerto" e só uma pessoa decide reenviar.
+ * ("incerto"), a rotina repete o MESMO pedido — chave, destinatários, assunto, texto e anexo guardados
+ * na tentativa (`email_pedido`), não as linhas atuais — enquanto a chave vale (23h); depois disso fica
+ * "incerto" e só uma pessoa decide reenviar.
  */
 import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { nomeDaEmpresa } from "@/configuracoes/empresa";
-import { proprietarios, repasses, representantes, type SituacaoEmailRepasse } from "@/db/schema";
+import { type PedidoEmailRepasse, proprietarios, repasses, representantes, type SituacaoEmailRepasse } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { type Correio, ErroEnvioIncerto } from "@/email/correio";
 import { formatBRL } from "@/lib/money";
-import { arquivoDoComprovante, itensDoRepasse, nomeMes, obterRepasse, type RepasseListado } from "./repasses";
+import { arquivoPorId, itensDoRepasse, nomeMes, obterRepasse, type RepasseListado } from "./repasses";
 
 export type SituacaoEnvioRepasse = "enviado" | "ja_enviado" | "nao_pago" | "sem_comprovante" | "sem_email" | "sem_provedor" | "incerto" | "aguardando" | "em_andamento" | "falhou" | "nao_encontrado";
 
@@ -77,12 +78,20 @@ export async function enviarEmailDoRepasse(db: Db, organizacaoId: string, repass
   if (!correio) return "sem_provedor";
   const base = `repasse:${r.id}:email`;
   const retomada = r.emailSituacao === "incerto" && !o.reenviar && r.emailEm !== null;
-  // A retomada repete a MESMA requisição da tentativa incerta: chave e destinatários guardados nela (`emailPara`).
-  // Recarregar os endereços mudaria o pedido sob a mesma chave — o provedor poderia descartá-lo como repetido
-  // enquanto aqui ficaria "enviado" para um endereço que nunca recebeu. Só uma tentativa nova relê o cadastro.
-  const guardados = retomada ? r.emailPara.split(", ").filter(Boolean) : [];
-  const destinos = guardados.length ? guardados : await destinosDoRepasse(db, organizacaoId, r.proprietarioId);
-  if (!destinos.length) return "sem_email";
+  // A retomada repete a MESMA requisição da tentativa incerta: o pedido inteiro guardado nela (destinatários,
+  // assunto, texto e anexo), além da chave. Remontar qualquer parte a partir das linhas atuais (cadastro, nome
+  // da empresa, itens, comprovante trocado) mudaria o pedido sob a mesma chave — o provedor poderia descartá-lo
+  // como repetido enquanto aqui ficaria "enviado" com um conteúdo que nunca saiu. Só uma tentativa nova remonta.
+  let pedido: PedidoEmailRepasse;
+  if (retomada && r.emailPedido) pedido = r.emailPedido;
+  else {
+    const destinos = await destinosDoRepasse(db, organizacaoId, r.proprietarioId);
+    if (!destinos.length) return "sem_email";
+    const [empresa, itens] = await Promise.all([nomeDaEmpresa(db, organizacaoId), itensDoRepasse(db, organizacaoId, r.id)]);
+    const { assunto, texto } = textoDoEmailDoRepasse(r, itens, empresa);
+    pedido = { para: destinos[0], copias: destinos.slice(1), assunto, texto, anexoArquivoId: r.comprovanteArquivoId };
+  }
+  const destinos = [pedido.para, ...pedido.copias];
   // Marca a tentativa antes de chamar o provedor (quem ler vê "incerto" até a confirmação). Uma retomada
   // dentro da janela repete exatamente a chave da tentativa incerta (guardada no repasse: um reenvio
   // incerto é retomado com a chave do reenvio, não com a do primeiro e-mail, que o provedor já consumiu).
@@ -96,7 +105,7 @@ export async function enviarEmailDoRepasse(db: Db, organizacaoId: string, repass
   // disparam um e-mail só: quem chega depois não encontra mais a linha como leu.
   const reivindicado = await db
     .update(repasses)
-    .set({ emailSituacao: "incerto" as SituacaoEmailRepasse, emailEm: retomada ? r.emailEm : agora, emailTentativaEm: agora, emailPara: destinos.join(", "), emailChave: chave })
+    .set({ emailSituacao: "incerto" as SituacaoEmailRepasse, emailEm: retomada ? r.emailEm : agora, emailTentativaEm: agora, emailPara: destinos.join(", "), emailChave: chave, emailPedido: pedido })
     .where(
       and(
         eq(repasses.id, r.id),
@@ -107,10 +116,10 @@ export async function enviarEmailDoRepasse(db: Db, organizacaoId: string, repass
     )
     .returning({ id: repasses.id });
   if (!reivindicado.length) return "em_andamento";
-  const [empresa, itens, arquivo] = await Promise.all([nomeDaEmpresa(db, organizacaoId), itensDoRepasse(db, organizacaoId, r.id), r.comprovanteArquivoId ? arquivoDoComprovante(db, organizacaoId, r.id) : Promise.resolve(null)]);
-  const { assunto, texto } = textoDoEmailDoRepasse(r, itens, empresa);
+  // O anexo é o arquivo guardado no pedido (pelo id), mesmo que o comprovante tenha sido trocado depois.
+  const arquivo = pedido.anexoArquivoId ? await arquivoPorId(db, organizacaoId, pedido.anexoArquivoId) : null;
   try {
-    await correio.enviar({ para: destinos[0], copias: destinos.slice(1), assunto, texto, conteudoRestrito: true, chave, anexos: arquivo ? [{ nome: arquivo.nome, conteudo: new Uint8Array(arquivo.conteudo) }] : undefined });
+    await correio.enviar({ para: pedido.para, copias: pedido.copias, assunto: pedido.assunto, texto: pedido.texto, conteudoRestrito: true, chave, anexos: arquivo ? [{ nome: arquivo.nome, conteudo: new Uint8Array(arquivo.conteudo) }] : undefined });
   } catch (e) {
     if (e instanceof ErroEnvioIncerto) return "incerto";
     // Recusa certa: volta a pendente para a próxima tentativa (que usa chave nova: esta fica guardada), e o motivo fica no histórico.

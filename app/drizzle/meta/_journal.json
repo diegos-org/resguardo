@@ -337,6 +337,13 @@
       "when": 1791123774532,
       "tag": "0047_repasses_email_tentativa_em",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1791127370486,
+      "tag": "0048_repasses_email_pedido",
+      "breakpoints": true
     }
   ]
 }

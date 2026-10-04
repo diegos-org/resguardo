@@ -824,6 +824,8 @@ export const TIPOS_REPASSE = ["fechamento", "antecipado"] as const;
 export type TipoRepasse = (typeof TIPOS_REPASSE)[number];
 export const SITUACOES_EMAIL_REPASSE = ["pendente", "enviado", "incerto"] as const;
 export type SituacaoEmailRepasse = (typeof SITUACOES_EMAIL_REPASSE)[number];
+/** Requisição de e-mail de um repasse, guardada na tentativa para a retomada repetir exatamente a mesma (mesma chave de idempotência). */
+export type PedidoEmailRepasse = { para: string; copias: string[]; assunto: string; texto: string; anexoArquivoId: string | null };
 
 /** Arquivo guardado no banco (M4.10): comprovante do Pix de um repasse. Privado: só o painel e o dono baixam. */
 const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
@@ -883,6 +885,8 @@ export const repasses = pgTable(
     emailChave: text("email_chave").notNull().default(""),
     /** Quando a última tentativa de envio começou (token da reivindicação e janela de 15 min); `emailEm` guarda a primeira. */
     emailTentativaEm: timestamp("email_tentativa_em", { withTimezone: true }),
+    /** O pedido exato da última tentativa (destinatários, assunto, texto, anexo): a retomada repete isto, não as linhas atuais. */
+    emailPedido: jsonb("email_pedido").$type<PedidoEmailRepasse>(),
     /** Chave Pix do proprietário no momento do pagamento (o e-mail e o histórico mostram a que foi usada, não a atual). */
     chavePixPaga: text("chave_pix_paga").notNull().default(""),
     /** Antecipado avulso pedido pelo proprietário no portal (null = programado ou gerado no painel). */

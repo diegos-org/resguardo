@@ -119,6 +119,8 @@ export function CartaoRepasse({ r, nome, chavePix, itens, mes, hoje, editar }: P
           <form action={pagarRepasseAcao} className={styles.linha} style={{ alignItems: "flex-end" }} aria-label={`Marcar pago: ${nomeDoRepasse(r)} de ${nome}`}>
             <input type="hidden" name="mes" value={mes} />
             <input type="hidden" name="id" value={r.id} />
+            {/* A chave mostrada (e copiada) é a que fica gravada como usada, mesmo que o cadastro mude antes de enviar. */}
+            <input type="hidden" name="chavePix" value={chavePix} />
             <label style={{ flex: "0 1 200px" }}>
               Data do Pix
               <input type="date" name="data" defaultValue={hoje} min={r.data} max={hoje} required />

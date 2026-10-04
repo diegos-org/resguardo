@@ -58,7 +58,7 @@ export async function pagarRepasseAcao(form: FormData): Promise<void> {
   const mes = texto(form, "mes");
   const c = await comprovanteDoForm(form);
   if (!c.ok) return voltar(mes, c, "pago");
-  const r = await marcarRepassePago(getDb(), sessao.organizacaoId, texto(form, "id"), texto(form, "data"), hojeISO(), sessao.usuarioId, c.comprovante);
+  const r = await marcarRepassePago(getDb(), sessao.organizacaoId, texto(form, "id"), texto(form, "data"), hojeISO(), sessao.usuarioId, c.comprovante, { chavePixUsada: texto(form, "chavePix") });
   // Com comprovante, o e-mail sai já (se houver provedor); sem ele, fica para quando o comprovante for anexado.
   if (r.ok && (c.comprovante.texto || c.comprovante.arquivo)) await enviarEmailDoRepasse(getDb(), sessao.organizacaoId, r.id, correioDoAmbiente(), new Date(), { autorId: sessao.usuarioId });
   voltar(mes, r, "pago");

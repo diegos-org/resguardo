@@ -329,21 +329,26 @@ describe("periodicidade do proprietário e rotina diária (M4.10)", () => {
     const t0 = new Date("2026-10-12T12:00:00Z");
     expect(await enviarEmailDoRepasse(db, org, id, correio, t0)).toBe("incerto");
     expect((await obterRepasse(db, org, id))!).toMatchObject({ emailSituacao: "incerto", emailEm: t0 });
-    // Logo depois: aguarda; 20 minutos depois, dentro da janela, repete com a mesma chave — e os MESMOS destinatários
-    // da tentativa incerta, mesmo que o cadastro tenha mudado no meio (a mesma chave exige a mesma requisição).
+    // Logo depois: aguarda; 20 minutos depois, dentro da janela, repete com a mesma chave — e o MESMO pedido da
+    // tentativa incerta (destinatários, texto, anexo), mesmo que cadastro e comprovante tenham mudado no meio.
     expect(await enviarEmailDoRepasse(db, org, id, correio, new Date(t0.getTime() + 60_000))).toBe("aguardando");
-    await db.update(proprietarios).set({ email: "novo@example.com" }).where(eq(proprietarios.id, dono));
+    await db.update(proprietarios).set({ email: "novo@example.com", nome: "Dona Nova" }).where(eq(proprietarios.id, dono));
+    expect(await anexarComprovante(db, org, id, { texto: "", arquivo: { nome: "novo.pdf", tipo: "application/pdf", conteudo: Buffer.from("%PDF-1.4 novo") } }, null)).toMatchObject({ ok: true });
     falhar = null;
     // É a rotina de hora em hora (só e-mails, registrada na página Sistema) que faz essa retomada dentro da janela da chave.
     expect(await emailsDeRepassesDeTodas(db, correio, new Date(t0.getTime() + 20 * 60_000))).toBe("1 e-mail(s) enviado(s)");
     expect(await enviarEmailDoRepasse(db, org, id, correio, new Date(t0.getTime() + 20 * 60_000))).toBe("ja_enviado");
     expect(enviadas[0]).toMatchObject({ chave: `repasse:${id}:email`, para: "dona@example.com" });
+    expect(enviadas[0].texto).toContain("Olá, Dona Exemplo.");
+    expect(enviadas[0].anexos?.[0]?.nome).toBe("comprovante.pdf");
     expect((await obterRepasse(db, org, id))!.emailPara).toBe("dona@example.com");
     // Fora da janela: fica incerto até alguém reenviar; o reenvio (tentativa nova) já vai para o endereço atual.
     await db.update((await import("@/db/schema")).repasses).set({ emailSituacao: "incerto", emailEm: new Date(t0.getTime() - 30 * 3_600_000), emailTentativaEm: new Date(t0.getTime() - 30 * 3_600_000) }).where(eq((await import("@/db/schema")).repasses.id, id));
     expect(await enviarEmailDoRepasse(db, org, id, correio, t0)).toBe("incerto");
     expect(await enviarEmailDoRepasse(db, org, id, correio, t0, { reenviar: true })).toBe("enviado");
-    expect(enviadas[1].para).toBe("novo@example.com");
+    expect(enviadas[1]).toMatchObject({ para: "novo@example.com" });
+    expect(enviadas[1].texto).toContain("Olá, Dona Nova.");
+    expect(enviadas[1].anexos?.[0]?.nome).toBe("novo.pdf");
     // Recusa certa: volta a pendente.
     await db.update((await import("@/db/schema")).repasses).set({ emailSituacao: "pendente" }).where(eq((await import("@/db/schema")).repasses.id, id));
     falhar = "recusa";
@@ -486,6 +491,13 @@ describe("3ª rodada do Codex: fechamentos antigos sem itens, trava no estorno d
     // A chave Pix muda depois do pagamento: o repasse guarda a usada, e é ela que o e-mail cita.
     await db.update(proprietarios).set({ chavePix: "nova@example.com" }).where(eq(proprietarios.id, dono));
     expect((await obterRepasse(db, org, id))!).toMatchObject({ chavePixPaga: "dona@example.com", chavePix: "nova@example.com" });
+    // Outro repasse: a chave mudou ANTES de marcar pago, mas a pessoa fez o Pix com a chave que a tela mostrava — é essa que fica.
+    await db.update(proprietarios).set({ chavePix: "antiga@example.com" }).where(eq(proprietarios.id, dono));
+    await criar(reserva(a, "2026-10-14", "2026-10-16"), "2026-10-14");
+    const g2 = await gerarAntecipado(db, org, dono, "2026-10-17", null);
+    await db.update(proprietarios).set({ chavePix: "mudou-no-meio@example.com" }).where(eq(proprietarios.id, dono));
+    expect(await marcarRepassePago(db, org, (g2 as { id: string }).id, "2026-10-17", "2026-10-17", null, comprovante, { chavePixUsada: "antiga@example.com" })).toMatchObject({ ok: true });
+    expect((await obterRepasse(db, org, (g2 as { id: string }).id))!).toMatchObject({ chavePixPaga: "antiga@example.com", chavePix: "mudou-no-meio@example.com" });
     let falhar = false;
     const enviadas: Mensagem[] = [];
     const correio = {
