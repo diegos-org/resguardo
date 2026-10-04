@@ -584,5 +584,13 @@ describe("3ª rodada do Codex: fechamentos antigos sem itens, trava no estorno d
     expect(enviadas).toHaveLength(4);
     expect(await enviarEmailDoRepasse(db, org, id, correio, new Date(t5.getTime() + 20 * 60_000), { reenviar: true })).toBe("enviado");
     expect(enviadas).toHaveLength(5);
+    // Estorno e envio não se cruzam: com uma tentativa de e-mail em curso (menos de 15 min, sem resposta), o estorno espera;
+    // depois da janela segue, e aí nenhum envio começa para o repasse estornado.
+    const t6 = new Date("2026-10-18T12:00:00Z");
+    await db.update(repasses).set({ emailSituacao: "incerto", emailEm: t6, emailTentativaEm: t6 }).where(eq(repasses.id, id));
+    expect(await estornarRepasse(db, org, id, "conferir", "2026-10-18", null, new Date(t6.getTime() + 60_000))).toMatchObject({ ok: false, erro: expect.stringContaining("em andamento") });
+    expect(await estornarRepasse(db, org, id, "conferir", "2026-10-18", null, new Date(t6.getTime() + 20 * 60_000))).toMatchObject({ ok: true });
+    expect(await enviarEmailDoRepasse(db, org, id, correio, new Date(t6.getTime() + 21 * 60_000))).toBe("nao_encontrado");
+    expect(enviadas).toHaveLength(5);
   });
 });

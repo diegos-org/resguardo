@@ -18,12 +18,12 @@ import { type PedidoEmailRepasse, proprietarios, repasses, representantes, type 
 import type { Db } from "@/db/types";
 import { type Correio, ErroEnvioIncerto } from "@/email/correio";
 import { formatBRL } from "@/lib/money";
-import { arquivoPorId, itensDoRepasse, nomeMes, obterRepasse, type RepasseListado } from "./repasses";
+import { arquivoPorId, itensDoRepasse, JANELA_TENTATIVA_EMAIL_MS, nomeMes, obterRepasse, type RepasseListado } from "./repasses";
 
 export type SituacaoEnvioRepasse = "enviado" | "ja_enviado" | "nao_pago" | "sem_comprovante" | "sem_email" | "sem_provedor" | "incerto" | "aguardando" | "em_andamento" | "falhou" | "nao_encontrado";
 
-/** Tentativa marcada há menos que isto ainda pode estar em curso (ou vai ser retomada pela rotina). */
-const JANELA_TENTATIVA_MS = 15 * 60_000;
+/** Tentativa marcada há menos que isto ainda pode estar em curso (ou vai ser retomada pela rotina); o estorno do repasse espera essa janela. */
+const JANELA_TENTATIVA_MS = JANELA_TENTATIVA_EMAIL_MS;
 
 /** A chave de idempotência do provedor vale 24h: dentro de 23h a mesma tentativa pode ser repetida sem duplicar. */
 const JANELA_PROVEDOR_MS = 23 * 3_600_000;
@@ -103,23 +103,29 @@ export async function enviarEmailDoRepasse(db: Db, organizacaoId: string, repass
   // recusa certa) usa chave nova: a guardada já foi consumida ou recusada pelo provedor, e repeti-la
   // seria "enviado" sem e-mail nenhum. A hora da primeira tentativa fica guardada para a janela.
   const chave = retomada ? r.emailChave || base : o.reenviar || r.emailChave ? `${base}:${agora.getTime()}` : base;
-  // Reivindicação atômica: só avança quem encontrar o repasse exatamente como leu (situação, chave e carimbo da
-  // última tentativa), e toda reivindicação muda o carimbo — inclusive a retomada, que repete situação e chave.
-  // Assim duas chamadas ao mesmo tempo (dois cliques em "enviar de novo", rotina e botão, retomada e reenvio)
-  // disparam um e-mail só: quem chega depois não encontra mais a linha como leu.
+  // Reivindicação atômica: só avança quem encontrar o repasse exatamente como leu (situação do e-mail, chave e
+  // carimbo da última tentativa) e ainda pago e não estornado; toda reivindicação muda o carimbo — inclusive a
+  // retomada, que repete situação e chave. Assim duas chamadas ao mesmo tempo (dois cliques em "enviar de novo",
+  // rotina e botão, retomada e reenvio) disparam um e-mail só, e um estorno no meio não é seguido de e-mail: quem
+  // chega depois não encontra mais a linha como leu (o estorno, por sua vez, espera a tentativa em curso).
   const reivindicado = await db
     .update(repasses)
     .set({ emailSituacao: "incerto" as SituacaoEmailRepasse, emailEm: retomada ? r.emailEm : agora, emailTentativaEm: agora, emailPara: destinos.join(", "), emailChave: chave, emailPedido: pedido })
     .where(
       and(
         eq(repasses.id, r.id),
+        eq(repasses.situacao, "pago"),
+        isNull(repasses.estornadoEm),
         eq(repasses.emailSituacao, r.emailSituacao),
         eq(repasses.emailChave, r.emailChave),
         r.emailTentativaEm ? eq(repasses.emailTentativaEm, r.emailTentativaEm) : isNull(repasses.emailTentativaEm),
       ),
     )
     .returning({ id: repasses.id });
-  if (!reivindicado.length) return "em_andamento";
+  if (!reivindicado.length) {
+    const [agoraNoBanco] = await db.select({ estornadoEm: repasses.estornadoEm }).from(repasses).where(eq(repasses.id, r.id));
+    return agoraNoBanco?.estornadoEm ? "nao_encontrado" : "em_andamento";
+  }
   // O anexo é o arquivo guardado no pedido (pelo id), mesmo que o comprovante tenha sido trocado depois.
   const arquivo = pedido.anexoArquivoId ? await arquivoPorId(db, organizacaoId, pedido.anexoArquivoId) : null;
   try {

@@ -729,7 +729,10 @@ async function itensEmVigor(tx: Db, org: string, repasseId: string) {
  * ficar em aberto) e libera o mês para ser fechado de novo. Só o repasse mais recente do
  * proprietário, para a sequência dos meses continuar certa.
  */
-export async function estornarRepasse(db: Db, org: string, id: string, motivo: string, hoje: string, autorId: string | null): Promise<Resultado> {
+/** Tentativa de e-mail marcada há menos que isto, ainda sem resposta do provedor, pode estar em curso (a mesma janela de `email.ts`). */
+export const JANELA_TENTATIVA_EMAIL_MS = 15 * 60_000;
+
+export async function estornarRepasse(db: Db, org: string, id: string, motivo: string, hoje: string, autorId: string | null, agora = new Date()): Promise<Resultado> {
   const m = motivo.trim();
   if (!m) return { ok: false, erro: "Informe o motivo do estorno." };
   return db.transaction(async (tx) => {
@@ -741,6 +744,12 @@ export async function estornarRepasse(db: Db, org: string, id: string, motivo: s
     await tx.select({ id: proprietarios.id }).from(proprietarios).where(eq(proprietarios.id, dono.proprietarioId)).for("update");
     const r = await travarRepasse(tx, org, id);
     if (!r || r.estornadoEm) return { ok: false as const, erro: "Repasse não encontrado." };
+    // E-mail em curso (tentativa marcada há pouco, ainda sem resposta do provedor): não estorna no meio — o provedor
+    // poderia entregar a confirmação de um repasse que já não vale. Passada a janela, a tentativa é retomada pela
+    // rotina (ou reenviada por alguém) e o estorno segue; a reivindicação do envio, por sua vez, exige repasse pago e
+    // não estornado, então quem chega depois do estorno não envia.
+    if (r.emailSituacao === "incerto" && r.emailTentativaEm && agora.getTime() - r.emailTentativaEm.getTime() < JANELA_TENTATIVA_EMAIL_MS)
+      return { ok: false as const, erro: "Há um envio de e-mail deste repasse em andamento: aguarde a confirmação do provedor (até 15 minutos) e tente de novo." };
     // Só o repasse mais recente do proprietário (fechamento ou antecipado), para a sequência continuar certa.
     const [posterior] = await tx
       .select({ id: repasses.id, tipo: repasses.tipo })
