@@ -354,6 +354,16 @@ describe("acerto por fora de antes do início do sistema (M4.11)", () => {
     await criarContrato(db, org, c, { tipo: "gestao_completa", comissao: "15", inicio: "2025-01-01" }, null);
     await criarContrato(db, org, d, { tipo: "gestao_completa", comissao: "15", inicio: "2025-01-01" }, null);
     await lancar(db, org, [{ tipo: "ajuste", descricao: "Conserto de setembro", valor: 5000, montante: 5000, efeitoSaldo: -5000, competencia: "2026-09-20", estado: "realizado", dataCaixa: "2026-09-20", imovelId: c, proprietarioId: terceiro }], null);
+    // Quarto: crédito de agosto e débito de setembro que se anulam — o fechamento de outubro (acerto acumulado) não quitou nada de antes.
+    await lancar(
+      db,
+      org,
+      [
+        { tipo: "ajuste", descricao: "Crédito de agosto", valor: 10000, montante: 10000, efeitoSaldo: 10000, competencia: "2026-08-10", estado: "realizado", dataCaixa: "2026-08-10", imovelId: d, proprietarioId: quarto },
+        { tipo: "ajuste", descricao: "Débito de setembro", valor: 10000, montante: 10000, efeitoSaldo: -10000, competencia: "2026-09-10", estado: "realizado", dataCaixa: "2026-09-10", imovelId: d, proprietarioId: quarto },
+      ],
+      null,
+    );
     for (const [imovel, quem] of [[c, terceiro], [d, quarto]] as const) {
       await receberTudo(db, org, await criar(reserva(imovel, "2026-10-10", "2026-10-13")), "2026-10-12");
       expect(await fecharMes(db, org, quem, "2026-10", "2026-11-01", null)).toMatchObject({ ok: true });
@@ -362,7 +372,8 @@ describe("acerto por fora de antes do início do sistema (M4.11)", () => {
     }
     // Ajuste de setembro da Dona lançado depois do fechamento de outubro dela: ficou fora dele, não conta.
     await lancar(db, org, [{ tipo: "ajuste", descricao: "Conserto atrasado de setembro", valor: 3000, montante: 3000, efeitoSaldo: -3000, competencia: "2026-09-25", estado: "realizado", dataCaixa: "2026-09-25", imovelId: a, proprietarioId: dono }], null);
-    // Só o fechamento do terceiro conta (o da Dona e o do quarto não quitaram nada de antes): 1/10 deixaria a marcação
+    // Só o fechamento do terceiro conta (o da Dona e o do quarto não quitaram nada de antes — no do quarto, agosto e setembro
+    // se anulam na soma, como no acerto acumulado que o fechamento paga): 1/10 deixaria a marcação
     // zerar setembro do terceiro de novo (acertado duas vezes) — recusado até estornar esse fechamento.
     expect(await salvarInicioDoSistema(db, org, INICIO, "2026-11-02", null)).toMatchObject({ ok: false, erro: expect.stringContaining("1 fechamento(s) de mês a partir de 01/10/2026 que já quitou(aram) acerto de antes dessa data") });
     const [fechamento] = await listarRepasses(db, org, terceiro);

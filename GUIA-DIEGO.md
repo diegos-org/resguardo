@@ -157,7 +157,8 @@ o sistema não pagar nem cobrar nada disso de novo, ele agora tem:
   que um repasse normal (fechamento ou antecipado) em vigor já pagou, nem de um mês já fechado, nem de
   um acerto de antes que um fechamento posterior já quitou (o fechamento de outubro paga tudo o que
   estava em aberto na hora dele, inclusive um ajuste de setembro; parte de reserva que ficou fora do
-  fechamento e lançamento feito depois dele não contam) — senão a data diria "acertado por fora"
+  fechamento e lançamento feito depois dele não contam, e crédito e débito de antes que se anulam
+  também não) — senão a data diria "acertado por fora"
   sobre algo que o sistema pagou, e a marcação acertaria de novo. Em todos os casos, estorne primeiro.
 - **Nada de antes passa pelos repasses normais:** com a data definida, a parte de reserva de antes
   do início nunca fica "disponível" (o extrato diz "anterior ao início do sistema: aguarda a

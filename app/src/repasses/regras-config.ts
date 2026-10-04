@@ -70,7 +70,8 @@ export async function salvarInicioDoSistema(db: Db, organizacaoId: string, data:
       // imóvel/mês daquele lançamento — acertado duas vezes. Conta só o que esse fechamento de fato quitou: lançamento em
       // vigor que já existia quando ele foi gerado e que não é parte de reserva (parte paga por repasse normal é a
       // conferência anterior; parte não paga ficou "fora do fechamento" e segue em aberto). Lançamento criado depois do
-      // fechamento, mesmo com data de antes, também ficou fora dele.
+      // fechamento, mesmo com data de antes, também ficou fora dele. E conta a soma: o fechamento paga o acerto acumulado
+      // do proprietário, então crédito de agosto e débito de setembro que se anulam não lhe custaram nada.
       const [posteriores] = await tx
         .select({ n: sql<number>`count(*)::int` })
         .from(repasses)
@@ -86,7 +87,7 @@ export async function salvarInicioDoSistema(db: Db, organizacaoId: string, data:
                 and l.competencia < ${d}::date and l.tipo <> 'direito_proprietario'
                 and l.estorno_de is null and not exists (select 1 from ${lancamentos} e where e.estorno_de = l.id)
                 and l.criado_em <= ${repasses.criadoEm}
-              group by l.imovel_id, to_char(l.competencia, 'YYYY-MM') having sum(l.efeito_saldo) <> 0)`,
+              having sum(l.efeito_saldo) <> 0)`,
           ),
         );
       if (normais?.n || fechados?.n || posteriores?.n) {
