@@ -1669,9 +1669,10 @@ ambiente).
      tem repasse antecipado a pagar; registre **só o recebimento** e clique no fechamento em seguida;
      depois de fechar, confira de novo. Se nesse intervalo apareceu um antecipado dele (pedido pelo
      portal), ele levou as partes disponíveis, inclusive a de setembro: **antes de pagar qualquer
-     coisa**, estorne o fechamento, depois esse antecipado (o sistema só deixa estornar o repasse mais
-     recente do proprietário, por isso nessa ordem) e feche de novo na mesma hora — o ajuste continua
-     lá e desconta a parte de setembro. Só pague depois dessa conferência.
+     coisa**, estorne primeiro **esse antecipado** e depois **o fechamento** — o sistema só deixa
+     estornar o repasse mais recente do proprietário, e o antecipado (datado do dia em que foi pedido)
+     é mais recente que o fechamento de outubro (datado de 1º/11) — e feche de novo na mesma hora; o
+     ajuste continua lá e desconta a parte de setembro. Só pague depois dessa conferência.
    - **Reserva de outubro que você já tenha acertado por fora** (se houver): mesmo caminho e mesma
      ordem — ajuste negativo do valor pago, datado do dia do pagamento por fora (até 31/10), e o
      recebimento registrado só no dia 1º/11, antes de clicar.
