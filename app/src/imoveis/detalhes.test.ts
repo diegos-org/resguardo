@@ -149,6 +149,19 @@ describe("períodos de exceção", () => {
     expect(validarDetalhes({ precoBase: "21474836,48" })).toMatchObject({ ok: false, erros: { precoBase: "Valor alto demais." } });
   });
 
+  it("regra extra (`conferir`) é avaliada sobre o cadastro atual, com o imóvel travado; recusa não grava", async () => {
+    const r = validarDetalhes(form);
+    if (!r.ok) throw new Error("inválido");
+    await salvarDetalhes(db, org, im, { ...r.dados, fontePrecos: "beds24" }, null);
+    const periodo = { nome: "Natal", inicio: "2026-12-24", fim: "2026-12-26", precoNoite: "500,00", estadiaMinima: "" };
+    const vistos: string[] = [];
+    expect(await criarPeriodo(db, org, im, periodo, null, { conferir: (atual) => (vistos.push(atual.fontePrecos), atual.fontePrecos === "beds24" ? "preço não" : null) })).toEqual({ ok: false, erro: "preço não" });
+    expect(vistos).toEqual(["beds24"]);
+    expect(await listarPeriodos(db, org, im)).toEqual([]);
+    expect(await criarPeriodo(db, org, im, { ...periodo, precoNoite: "", estadiaMinima: "3" }, null, { conferir: () => null })).toEqual({ ok: true });
+    expect(await listarPeriodos(db, org, im)).toHaveLength(1);
+  });
+
   it("cria, recusa sobreposição, lista em ordem e exclui", async () => {
     expect(await criarPeriodo(db, org, im, rev, null)).toEqual({ ok: true });
     expect(await criarPeriodo(db, org, im, { ...rev, nome: "Ano novo", inicio: "2027-01-01", fim: "2027-01-03" }, null)).toMatchObject({

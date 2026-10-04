@@ -192,6 +192,7 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
     id: i.id,
     codigo: i.codigo,
     nome: i.nome,
+    hoje: hojeISO(i.fuso),
     fontePrecos: i.fontePrecos,
     regras: {
       precoBase: i.detalhes.precoBase,
@@ -211,7 +212,7 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
     envio: i.envio,
   }));
   const [precosMarketplace, limpezasMarketplace, manutencoesMarketplace] = marketplace.length
-    ? await Promise.all([precosDoMarketplace(db, sessao.organizacaoId), limpezasDoProprietario(db, sessao, hojeUsoProprio), manutencoesDoProprietario(db, sessao)])
+    ? await Promise.all([precosDoMarketplace(db, sessao.organizacaoId), limpezasDoProprietario(db, sessao), manutencoesDoProprietario(db, sessao)])
     : [null, [], []];
   // Mesma regra do PDF: só os donos dos imóveis escolhidos (no período) e só os imóveis que eram
   // deles no período; os lançamentos sem imóvel entram quando todos os imóveis desses donos estão escolhidos.
@@ -395,7 +396,6 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
               limpezas={limpezasMarketplace}
               manutencoes={manutencoesMarketplace}
               empresa={empresa}
-              hoje={hojeUsoProprio}
               salvarPrecos={salvarPrecosPortalAcao}
               novoPeriodo={novoPeriodoPortalAcao}
               excluirPeriodo={excluirPeriodoPortalAcao}

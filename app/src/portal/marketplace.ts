@@ -147,10 +147,11 @@ export async function salvarPrecosPeloProprietario(db: Db, sessao: Sessao, imove
 export async function criarPeriodoPeloProprietario(db: Db, sessao: Sessao, imovelId: string, entrada: Record<string, unknown>, agora = new Date()): Promise<ResultadoPortal> {
   const r = await imovelOperavel(db, sessao, imovelId, agora);
   if (!r.ok) return r;
-  const atual = await lerDetalhes(db, sessao.organizacaoId, r.imovel.id);
   const preco = typeof entrada.precoNoite === "string" ? entrada.precoNoite.trim() : "";
-  if (atual.fontePrecos === "beds24" && preco) return { ok: false, erro: "Os preços deste imóvel são definidos no Beds24: aqui o período só pode ter estadia mínima. Deixe o preço em branco." };
-  return criarPeriodo(db, sessao.organizacaoId, r.imovel.id, entrada, sessao.usuarioId);
+  // A fonte de preços é conferida dentro da transação que grava o período, com o imóvel travado (o painel pode tê-la mudado no meio).
+  return criarPeriodo(db, sessao.organizacaoId, r.imovel.id, entrada, sessao.usuarioId, {
+    conferir: (atual) => (atual.fontePrecos === "beds24" && preco ? "Os preços deste imóvel são definidos no Beds24: aqui o período só pode ter estadia mínima. Deixe o preço em branco." : null),
+  });
 }
 
 export async function excluirPeriodoPeloProprietario(db: Db, sessao: Sessao, periodoId: string, agora = new Date()): Promise<ResultadoPortal> {
@@ -178,23 +179,28 @@ export type LimpezaDoProprietario = {
   reservaCodigo: string | null;
   /** Alguém entra no imóvel no mesmo dia: deixar pronto até a hora de entrada. */
   entraNoDia: boolean;
-  /** Já passou do dia e ainda não foi marcada como feita. */
+  /** Já passou do dia (no fuso do imóvel) e ainda não foi marcada como feita. */
   atrasada: boolean;
+  /** Já chegou o dia dela (no fuso do imóvel) e ainda não foi marcada: o botão "marcar como feita" aparece. */
+  podeMarcar: boolean;
 };
 
 /**
  * Limpezas (saídas) dos imóveis marketplace da sessão, de alguns dias atrás até as próximas duas
- * semanas — só as de imóvel em contrato marketplace na data da limpeza. Sem custo nem financeiro.
+ * semanas — só as de imóvel em contrato marketplace na data da limpeza. "Hoje", a janela, o atraso e
+ * o "pode marcar" são no fuso de cada imóvel, a mesma régua que a ação de marcar usa. Sem custo nem financeiro.
  */
-export async function limpezasDoProprietario(db: Db, sessao: Sessao, hoje: string): Promise<LimpezaDoProprietario[]> {
+export async function limpezasDoProprietario(db: Db, sessao: Sessao, agora = new Date()): Promise<LimpezaDoProprietario[]> {
   const ids = sessao.imovelIds.filter(uuidValido);
   if (!ids.length || sessao.papel !== "proprietario") return [];
+  // A consulta pega um dia a mais de cada lado (fusos diferentes de São Paulo); a janela certa é por imóvel, abaixo.
+  const hojeSp = hojeISO(undefined, agora);
   const linhas = await db
-    .select({ id: limpezas.id, data: limpezas.data, estado: limpezas.estado, imovelId: limpezas.imovelId, imovelCodigo: imoveis.codigo, imovelNome: imoveis.nome, reservaCodigo: reservas.codigo })
+    .select({ id: limpezas.id, data: limpezas.data, estado: limpezas.estado, imovelId: limpezas.imovelId, imovelCodigo: imoveis.codigo, imovelNome: imoveis.nome, fuso: imoveis.fuso, reservaCodigo: reservas.codigo })
     .from(limpezas)
     .innerJoin(imoveis, eq(imoveis.id, limpezas.imovelId))
     .leftJoin(reservas, eq(reservas.id, limpezas.reservaId))
-    .where(and(eq(limpezas.organizacaoId, sessao.organizacaoId), inArray(limpezas.imovelId, ids), inArray(limpezas.estado, ["pedida", "confirmada", "realizada"]), gte(limpezas.data, somaDias(hoje, -DIAS_ANTES)), lt(limpezas.data, somaDias(hoje, DIAS_DEPOIS + 1))))
+    .where(and(eq(limpezas.organizacaoId, sessao.organizacaoId), inArray(limpezas.imovelId, ids), inArray(limpezas.estado, ["pedida", "confirmada", "realizada"]), gte(limpezas.data, somaDias(hojeSp, -DIAS_ANTES - 1)), lt(limpezas.data, somaDias(hojeSp, DIAS_DEPOIS + 2))))
     .orderBy(asc(limpezas.data), asc(imoveis.codigo));
   if (!linhas.length) return [];
   const contratos = new Map<string, ContratoLinha[]>();
@@ -205,22 +211,22 @@ export async function limpezasDoProprietario(db: Db, sessao: Sessao, hoje: strin
     .selectDistinct({ imovelId: reservas.imovelId, checkin: reservas.checkin })
     .from(reservas)
     .where(and(eq(reservas.organizacaoId, sessao.organizacaoId), eq(reservas.estado, "confirmada"), inArray(reservas.imovelId, [...new Set(minhas.map((l) => l.imovelId))]), inArray(reservas.checkin, [...new Set(minhas.map((l) => l.data))])));
-  return minhas.map((l) => ({
-    ...l,
-    estado: l.estado as LimpezaDoProprietario["estado"],
-    entraNoDia: entradas.some((e) => e.imovelId === l.imovelId && e.checkin === l.data),
-    atrasada: l.estado !== "realizada" && l.data < hoje,
-  }));
+  return minhas.flatMap(({ fuso, ...l }) => {
+    const hoje = hojeISO(fuso, agora);
+    if (l.data < somaDias(hoje, -DIAS_ANTES) || l.data > somaDias(hoje, DIAS_DEPOIS)) return [];
+    const estado = l.estado as LimpezaDoProprietario["estado"];
+    return [{ ...l, estado, entraNoDia: entradas.some((e) => e.imovelId === l.imovelId && e.checkin === l.data), atrasada: estado !== "realizada" && l.data < hoje, podeMarcar: estado !== "realizada" && l.data <= hoje }];
+  });
 }
 
-/** O proprietário marca a limpeza do imóvel marketplace como feita (a partir do dia dela; sem custo para a empresa). */
-export async function marcarLimpezaFeitaPeloProprietario(db: Db, sessao: Sessao, limpezaId: string, hoje: string): Promise<ResultadoPortal> {
+/** O proprietário marca a limpeza do imóvel marketplace como feita (a partir do dia dela, no fuso do imóvel; sem custo para a empresa). */
+export async function marcarLimpezaFeitaPeloProprietario(db: Db, sessao: Sessao, limpezaId: string, agora = new Date()): Promise<ResultadoPortal> {
   if (!uuidValido(limpezaId)) return { ok: false, erro: "Limpeza não encontrada." };
   const [l] = await db.select({ imovelId: limpezas.imovelId, data: limpezas.data }).from(limpezas).where(and(eq(limpezas.id, limpezaId), eq(limpezas.organizacaoId, sessao.organizacaoId)));
   if (!l) return { ok: false, erro: "Limpeza não encontrada." };
   const r = await imovelOperavel(db, sessao, l.imovelId, l.data);
   if (!r.ok) return r;
-  return realizarPeloProprietario(db, sessao.organizacaoId, limpezaId, hoje, sessao.usuarioId);
+  return realizarPeloProprietario(db, sessao.organizacaoId, limpezaId, hojeISO(r.imovel.fuso, agora), sessao.usuarioId);
 }
 
 export type ManutencaoDoProprietario = { id: string; imovelCodigo: string; titulo: string; descricao: string; estado: string; dataRealizada: string | null; porContaPropria: boolean };
@@ -233,11 +239,10 @@ export async function manutencoesDoProprietario(db: Db, sessao: Sessao, agora = 
   return lista.slice(0, limite).map((m) => ({ id: m.id, imovelCodigo: m.imovelCodigo, titulo: m.titulo, descricao: m.descricao, estado: m.estado, dataRealizada: m.dataRealizada, porContaPropria: m.semCusto }));
 }
 
-/** O proprietário registra uma manutenção que ele mesmo fez no imóvel marketplace (nasce realizada, por conta dele). */
-export async function registrarManutencaoPeloProprietario(db: Db, sessao: Sessao, d: { imovelId: string; titulo: string; descricao: string; data: string }, hoje: string): Promise<ResultadoPortal> {
-  const dia = /^\d{4}-\d{2}-\d{2}$/.test(d.data) ? d.data : hoje;
-  const r = await imovelOperavel(db, sessao, d.imovelId, dia);
+/** O proprietário registra uma manutenção que ele mesmo fez no imóvel marketplace (nasce realizada, por conta dele; "hoje" no fuso do imóvel). */
+export async function registrarManutencaoPeloProprietario(db: Db, sessao: Sessao, d: { imovelId: string; titulo: string; descricao: string; data: string }, agora = new Date()): Promise<ResultadoPortal> {
+  const r = await imovelOperavel(db, sessao, d.imovelId, /^\d{4}-\d{2}-\d{2}$/.test(d.data) ? d.data : agora);
   if (!r.ok) return r;
-  const feito = await registrarFeitaPeloProprietario(db, sessao.organizacaoId, d, hoje, sessao.usuarioId);
+  const feito = await registrarFeitaPeloProprietario(db, sessao.organizacaoId, d, hojeISO(r.imovel.fuso, agora), sessao.usuarioId);
   return feito.ok ? { ok: true } : feito;
 }

@@ -333,12 +333,21 @@ export function validarPeriodo(e: Entrada): { ok: true; dados: Omit<Periodo, "id
   return { ok: true, dados: { nome, inicio, fim, precoNoite: preco, estadiaMinima } };
 }
 
-export async function criarPeriodo(db: Db, organizacaoId: string, imovelId: string, e: Entrada, autorId: string | null): Promise<ResultadoPeriodo> {
+/**
+ * Cria um período de exceção. `conferir`: regra extra avaliada sobre o cadastro ATUAL, lido com o
+ * imóvel já travado (ex.: o portal recusa preço no período quando os preços são do Beds24) — nunca
+ * sobre uma leitura anterior, que o painel pode ter mudado no meio.
+ */
+export async function criarPeriodo(db: Db, organizacaoId: string, imovelId: string, e: Entrada, autorId: string | null, o: { conferir?: (atual: Detalhes) => string | null } = {}): Promise<ResultadoPeriodo> {
   const v = validarPeriodo(e);
   if (!v.ok) return v;
   return db.transaction(async (tx) => {
     // Trava o imóvel: dois períodos sobrepostos não entram ao mesmo tempo.
     if (!(await imovelDaOrg(tx, organizacaoId, imovelId, true))) return { ok: false as const, erro: "Imóvel não encontrado." };
+    if (o.conferir) {
+      const recusa = o.conferir(await lerDetalhes(tx, organizacaoId, imovelId));
+      if (recusa) return { ok: false as const, erro: recusa };
+    }
     const [choque] = await tx
       .select({ nome: imoveisPeriodos.nome })
       .from(imoveisPeriodos)

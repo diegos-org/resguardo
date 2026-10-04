@@ -19,6 +19,8 @@ export type ImovelOperavel = {
   id: string;
   codigo: string;
   nome: string;
+  /** Hoje no fuso do imóvel: a data de um serviço não passa disso (o servidor confere pela mesma régua). */
+  hoje: string;
   fontePrecos: FontePrecos;
   regras: {
     precoBase: number | null;
@@ -46,7 +48,6 @@ type Props = {
   limpezas: LimpezaDoProprietario[];
   manutencoes: ManutencaoDoProprietario[];
   empresa: string;
-  hoje: string;
   salvarPrecos: AcaoPrecos;
   novoPeriodo: (a: EstadoPeriodo, f: FormData) => Promise<EstadoPeriodo>;
   excluirPeriodo: (f: FormData) => Promise<void>;
@@ -183,7 +184,7 @@ function FormPrecos({ imovel, precos, empresa, salvar }: { imovel: ImovelOperave
   );
 }
 
-function Limpezas({ limpezas, hoje, marcar }: { limpezas: LimpezaDoProprietario[]; hoje: string; marcar: AcaoSimples }) {
+function Limpezas({ limpezas, marcar }: { limpezas: LimpezaDoProprietario[]; marcar: AcaoSimples }) {
   const [estado, enviar] = useActionState(marcar, {} as EstadoSimplesPortal);
   return (
     <section aria-label="Limpezas" className={styles.secao}>
@@ -229,7 +230,7 @@ function Limpezas({ limpezas, hoje, marcar }: { limpezas: LimpezaDoProprietario[
                     {l.entraNoDia && l.estado !== "realizada" ? " · entra hóspede no mesmo dia" : ""}
                   </td>
                   <td>
-                    {l.estado !== "realizada" && l.data <= hoje && (
+                    {l.podeMarcar && (
                       <form action={enviar}>
                         <input type="hidden" name="id" value={l.id} />
                         <BotaoConfirmar className={f.pequeno} pergunta={`Marcar a limpeza de ${dataBr(l.data)} (${l.imovelCodigo}) como feita?`}>
@@ -248,9 +249,12 @@ function Limpezas({ limpezas, hoje, marcar }: { limpezas: LimpezaDoProprietario[
   );
 }
 
-function Manutencoes({ imoveis, manutencoes, hoje, registrar }: { imoveis: ImovelOperavel[]; manutencoes: ManutencaoDoProprietario[]; hoje: string; registrar: AcaoSimples }) {
+function Manutencoes({ imoveis, manutencoes, registrar }: { imoveis: ImovelOperavel[]; manutencoes: ManutencaoDoProprietario[]; registrar: AcaoSimples }) {
   const [estado, enviar, enviando] = useActionState(registrar, {} as EstadoSimplesPortal);
   const v = estado.valores ?? {};
+  // "Hoje" é o do imóvel escolhido (cada um no seu fuso): o servidor recusa data futura pela mesma régua.
+  const [imovelId, setImovelId] = useState(v.imovelId ?? imoveis[0]?.id ?? "");
+  const hoje = (imoveis.find((i) => i.id === imovelId) ?? imoveis[0])?.hoje ?? "";
   return (
     <section aria-label="Manutenção" className={styles.secao}>
       <h3>Manutenção por sua conta</h3>
@@ -281,7 +285,7 @@ function Manutencoes({ imoveis, manutencoes, hoje, registrar }: { imoveis: Imove
         <div className={f.linha}>
           <label>
             Imóvel
-            <select name="imovelId" defaultValue={v.imovelId ?? imoveis[0]?.id ?? ""} required>
+            <select name="imovelId" value={imovelId} onChange={(e) => setImovelId(e.target.value)} required>
               {imoveis.map((i) => (
                 <option key={i.id} value={i.id}>
                   {i.codigo} · {i.nome}
@@ -317,7 +321,7 @@ function Manutencoes({ imoveis, manutencoes, hoje, registrar }: { imoveis: Imove
  * modelo B, períodos especiais, situação do envio ao Beds24, limpezas e manutenção por conta própria.
  * Só aparece para quem tem imóvel em contrato marketplace em vigor (decidido no servidor).
  */
-export function OperacaoMarketplace({ imoveis, precos, limpezas, manutencoes, empresa, hoje, salvarPrecos, novoPeriodo, excluirPeriodo, marcarLimpeza, registrarManutencao }: Props) {
+export function OperacaoMarketplace({ imoveis, precos, limpezas, manutencoes, empresa, salvarPrecos, novoPeriodo, excluirPeriodo, marcarLimpeza, registrarManutencao }: Props) {
   if (!imoveis.length) return null;
   return (
     <section aria-label="Seu imóvel no marketplace" className={styles.secao}>
@@ -337,8 +341,8 @@ export function OperacaoMarketplace({ imoveis, precos, limpezas, manutencoes, em
           <Periodos imovelId={i.id} periodos={i.periodos} criar={novoPeriodo} excluir={excluirPeriodo} />
         </article>
       ))}
-      <Limpezas limpezas={limpezas} hoje={hoje} marcar={marcarLimpeza} />
-      <Manutencoes imoveis={imoveis} manutencoes={manutencoes} hoje={hoje} registrar={registrarManutencao} />
+      <Limpezas limpezas={limpezas} marcar={marcarLimpeza} />
+      <Manutencoes imoveis={imoveis} manutencoes={manutencoes} registrar={registrarManutencao} />
     </section>
   );
 }

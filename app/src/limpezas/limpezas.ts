@@ -452,7 +452,8 @@ export function realizarPeloProprietario(db: Db, organizacaoId: string, id: stri
     ["pedida", "confirmada"],
     async (l) => {
       if (l.data > hoje) return "A limpeza ainda não chegou: só dá para registrar como feita a partir do dia dela.";
-      return { estado: "realizada", custo: 0, observacao: comMotivo(l.observacao, "Feita pelo proprietário (marketplace)"), realizadaEm: new Date() };
+      // Quem fez foi o proprietário: a profissional que estivesse confirmada sai (lista e calendário não a creditam; reabrir volta a "pedida").
+      return { estado: "realizada", profissionalId: null, confirmadaEm: null, custo: 0, observacao: comMotivo(l.observacao, "Feita pelo proprietário (marketplace)"), realizadaEm: new Date() };
     },
     "limpeza.realizar",
     autorId,

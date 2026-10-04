@@ -8,6 +8,7 @@ const imovel: ImovelOperavel = {
   id: "11111111-1111-4111-8111-111111111111",
   codigo: "403",
   nome: "Studio Exemplo",
+  hoje: "2026-10-03",
   fontePrecos: "scl",
   regras: { precoBase: 30000, taxaLimpeza: 15000, hospedeExtraValor: null, hospedeExtraAPartirDe: null, estadiaMinima: 2, estadiaMaxima: null, antecedenciaMinima: null, janelaMaxima: null, diasChegada: [1, 5], diasSaida: [], checkinAPartirDe: "15:00", checkoutAte: "11:00" },
   periodos: [{ id: "p1", nome: "Réveillon", inicio: "2026-12-28", fim: "2027-01-02", precoNoite: 90000, estadiaMinima: 5 }],
@@ -20,13 +21,12 @@ const render_ = (over: Partial<Parameters<typeof OperacaoMarketplace>[0]> = {}) 
       imoveis={[imovel]}
       precos={PRECOS_MARKETPLACE_PADRAO}
       limpezas={[
-        { id: "l1", data: "2026-10-02", estado: "pedida", imovelId: imovel.id, imovelCodigo: "403", imovelNome: "Studio Exemplo", reservaCodigo: "SCL-AAA", entraNoDia: false, atrasada: true },
-        { id: "l2", data: "2026-10-05", estado: "confirmada", imovelId: imovel.id, imovelCodigo: "403", imovelNome: "Studio Exemplo", reservaCodigo: null, entraNoDia: true, atrasada: false },
-        { id: "l3", data: "2026-10-01", estado: "realizada", imovelId: imovel.id, imovelCodigo: "403", imovelNome: "Studio Exemplo", reservaCodigo: "SCL-BBB", entraNoDia: false, atrasada: false },
+        { id: "l1", data: "2026-10-02", estado: "pedida", imovelId: imovel.id, imovelCodigo: "403", imovelNome: "Studio Exemplo", reservaCodigo: "SCL-AAA", entraNoDia: false, atrasada: true, podeMarcar: true },
+        { id: "l2", data: "2026-10-05", estado: "confirmada", imovelId: imovel.id, imovelCodigo: "403", imovelNome: "Studio Exemplo", reservaCodigo: null, entraNoDia: true, atrasada: false, podeMarcar: false },
+        { id: "l3", data: "2026-10-01", estado: "realizada", imovelId: imovel.id, imovelCodigo: "403", imovelNome: "Studio Exemplo", reservaCodigo: "SCL-BBB", entraNoDia: false, atrasada: false, podeMarcar: false },
       ]}
       manutencoes={[{ id: "m1", imovelCodigo: "403", titulo: "Troca do chuveiro", descricao: "", estado: "realizada", dataRealizada: "2026-10-01", porContaPropria: true }]}
       empresa="Sua Casa Exemplo"
-      hoje="2026-10-03"
       salvarPrecos={acao}
       novoPeriodo={acao}
       excluirPeriodo={async () => {}}

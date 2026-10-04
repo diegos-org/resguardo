@@ -4,10 +4,11 @@ import { AcessoNegado, type Sessao } from "@/acesso/politica";
 import { historicoDe } from "@/auditoria/auditoria";
 import { REGRAS_CALENDARIO_PADRAO, salvarRegrasCalendario } from "@/calendario/regras-config";
 import { criarContrato } from "@/contratos/repositorio";
-import { beds24Envios, beds24EnvioNoites, imoveis, limpezas, manutencoes, organizacoes, proprietarioImoveis, proprietarios, proprietarioUsuarios, reservas, usuarios } from "@/db/schema";
+import { beds24Envios, beds24EnvioNoites, imoveis, limpezas, manutencoes, organizacoes, profissionaisLimpeza, proprietarioImoveis, proprietarios, proprietarioUsuarios, reservas, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { DETALHES_VAZIOS, entradaDeDetalhes, lerDetalhes, listarPeriodos, salvarDetalhes, validarDetalhes } from "@/imoveis/detalhes";
+import { reabrirLimpeza } from "@/limpezas/limpezas";
 import { lancarCusto, listarManutencoes } from "@/manutencao/manutencao";
 import {
   criarPeriodoPeloProprietario,
@@ -25,7 +26,6 @@ import {
 let db: Db, close: () => Promise<void>, org: string, a: string, b: string, c: string, d: string, usuario: string, dona: string, outro: string;
 // 3/10/2026, 12:00 em São Paulo.
 const agora = new Date("2026-10-03T15:00:00Z");
-const hoje = "2026-10-03";
 const sessao = (imovelIds = [a, b, d]): Sessao => ({ usuarioId: usuario, organizacaoId: org, papel: "proprietario", imovelIds });
 
 beforeEach(async () => {
@@ -132,27 +132,60 @@ describe("portal do proprietário marketplace (M12.4)", () => {
         { organizacaoId: org, imovelId: a, data: "2026-11-30", estado: "pedida" },
       ])
       .returning();
-    const lista = await limpezasDoProprietario(db, sessao(), hoje);
-    expect(lista.map((l) => [l.data, l.imovelCodigo, l.atrasada, l.entraNoDia])).toEqual([
-      ["2026-10-02", "403", true, false],
-      ["2026-10-05", "403", false, true],
+    const lista = await limpezasDoProprietario(db, sessao(), agora);
+    expect(lista.map((l) => [l.data, l.imovelCodigo, l.atrasada, l.entraNoDia, l.podeMarcar])).toEqual([
+      ["2026-10-02", "403", true, false, true],
+      ["2026-10-05", "403", false, true, false],
     ]);
-    expect(await marcarLimpezaFeitaPeloProprietario(db, sessao(), futura.id, hoje)).toMatchObject({ ok: false, erro: expect.stringContaining("ainda não chegou") });
-    expect(await marcarLimpezaFeitaPeloProprietario(db, sessao(), atrasada.id, hoje)).toEqual({ ok: true });
+    expect(await marcarLimpezaFeitaPeloProprietario(db, sessao(), futura.id, agora)).toMatchObject({ ok: false, erro: expect.stringContaining("ainda não chegou") });
+    expect(await marcarLimpezaFeitaPeloProprietario(db, sessao(), atrasada.id, agora)).toEqual({ ok: true });
     const [feita] = await db.select().from(limpezas).where(eq(limpezas.id, atrasada.id));
     expect(feita).toMatchObject({ estado: "realizada", custo: 0, despesaId: null, observacao: expect.stringContaining("Feita pelo proprietário") });
-    expect((await limpezasDoProprietario(db, sessao(), hoje))[0]).toMatchObject({ estado: "realizada", atrasada: false });
+    expect((await limpezasDoProprietario(db, sessao(), agora))[0]).toMatchObject({ estado: "realizada", atrasada: false, podeMarcar: false });
     // Imóvel de gestão completa: a limpeza é da empresa.
     const [daEmpresa] = await db.select({ id: limpezas.id }).from(limpezas).where(eq(limpezas.imovelId, b));
-    expect(await marcarLimpezaFeitaPeloProprietario(db, sessao(), daEmpresa.id, hoje)).toEqual({ ok: false, erro: NAO_MARKETPLACE });
-    expect(await marcarLimpezaFeitaPeloProprietario(db, sessao(), "nada", hoje)).toMatchObject({ ok: false });
+    expect(await marcarLimpezaFeitaPeloProprietario(db, sessao(), daEmpresa.id, agora)).toEqual({ ok: false, erro: NAO_MARKETPLACE });
+    expect(await marcarLimpezaFeitaPeloProprietario(db, sessao(), "nada", agora)).toMatchObject({ ok: false });
+  });
+
+  it("limpeza já confirmada para uma profissional: marcada pelo dono, a profissional sai; reabrir volta a 'pedida'", async () => {
+    const [prof] = await db.insert(profissionaisLimpeza).values({ organizacaoId: org, nome: "Profissional Fictícia" }).returning();
+    const [l] = await db.insert(limpezas).values({ organizacaoId: org, imovelId: a, data: "2026-10-02", estado: "confirmada", profissionalId: prof.id, confirmadaEm: new Date("2026-10-01T12:00:00Z") }).returning();
+    expect(await marcarLimpezaFeitaPeloProprietario(db, sessao(), l.id, agora)).toEqual({ ok: true });
+    expect((await db.select().from(limpezas).where(eq(limpezas.id, l.id)))[0]).toMatchObject({ estado: "realizada", profissionalId: null, confirmadaEm: null, custo: 0 });
+    expect(await reabrirLimpeza(db, org, l.id, null)).toEqual({ ok: true });
+    expect((await db.select().from(limpezas).where(eq(limpezas.id, l.id)))[0]).toMatchObject({ estado: "pedida", profissionalId: null });
+  });
+
+  it("limpeza e manutenção: 'hoje' é o do fuso do imóvel (lista, botão e ação na mesma régua)", async () => {
+    // a em Auckland: às 15:00Z de 3/10 já é 4/10 lá; e em São Paulo ainda é 3/10.
+    await db.update(imoveis).set({ fuso: "Pacific/Auckland" }).where(eq(imoveis.id, a));
+    const [{ id: e }] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "501", nome: "Cinco" }).returning();
+    await db.insert(proprietarioImoveis).values({ proprietarioId: dona, imovelId: e });
+    await criarContrato(db, org, e, { tipo: "marketplace", comissao: "", inicio: "2025-01-01" }, null);
+    const [auckland, saoPaulo] = await db
+      .insert(limpezas)
+      .values([
+        { organizacaoId: org, imovelId: a, data: "2026-10-04", estado: "pedida" },
+        { organizacaoId: org, imovelId: e, data: "2026-10-04", estado: "pedida" },
+      ])
+      .returning();
+    const s = sessao([a, b, d, e]);
+    expect((await limpezasDoProprietario(db, s, agora)).map((l) => [l.imovelCodigo, l.podeMarcar, l.atrasada])).toEqual([
+      ["403", true, false],
+      ["501", false, false],
+    ]);
+    expect(await marcarLimpezaFeitaPeloProprietario(db, s, saoPaulo.id, agora)).toMatchObject({ ok: false, erro: expect.stringContaining("ainda não chegou") });
+    expect(await marcarLimpezaFeitaPeloProprietario(db, s, auckland.id, agora)).toEqual({ ok: true });
+    expect(await registrarManutencaoPeloProprietario(db, s, { imovelId: e, titulo: "Pintura", descricao: "", data: "2026-10-04" }, agora)).toMatchObject({ ok: false, erro: expect.stringContaining("futuro") });
+    expect(await registrarManutencaoPeloProprietario(db, s, { imovelId: a, titulo: "Pintura", descricao: "", data: "2026-10-04" }, agora)).toEqual({ ok: true });
   });
 
   it("manutenção feita pelo proprietário nasce realizada e por conta dele; nunca no futuro, nunca fora do marketplace", async () => {
-    expect(await registrarManutencaoPeloProprietario(db, sessao(), { imovelId: a, titulo: "Troca do chuveiro", descricao: "Chuveiro novo instalado.", data: "2026-10-01" }, hoje)).toEqual({ ok: true });
-    expect(await registrarManutencaoPeloProprietario(db, sessao(), { imovelId: a, titulo: "", descricao: "", data: "2026-10-01" }, hoje)).toMatchObject({ ok: false, erro: expect.stringContaining("o que foi feito") });
-    expect(await registrarManutencaoPeloProprietario(db, sessao(), { imovelId: a, titulo: "Pintura", descricao: "", data: "2026-10-09" }, hoje)).toMatchObject({ ok: false, erro: expect.stringContaining("futuro") });
-    expect(await registrarManutencaoPeloProprietario(db, sessao(), { imovelId: b, titulo: "Pintura", descricao: "", data: "2026-10-01" }, hoje)).toEqual({ ok: false, erro: NAO_MARKETPLACE });
+    expect(await registrarManutencaoPeloProprietario(db, sessao(), { imovelId: a, titulo: "Troca do chuveiro", descricao: "Chuveiro novo instalado.", data: "2026-10-01" }, agora)).toEqual({ ok: true });
+    expect(await registrarManutencaoPeloProprietario(db, sessao(), { imovelId: a, titulo: "", descricao: "", data: "2026-10-01" }, agora)).toMatchObject({ ok: false, erro: expect.stringContaining("o que foi feito") });
+    expect(await registrarManutencaoPeloProprietario(db, sessao(), { imovelId: a, titulo: "Pintura", descricao: "", data: "2026-10-09" }, agora)).toMatchObject({ ok: false, erro: expect.stringContaining("futuro") });
+    expect(await registrarManutencaoPeloProprietario(db, sessao(), { imovelId: b, titulo: "Pintura", descricao: "", data: "2026-10-01" }, agora)).toEqual({ ok: false, erro: NAO_MARKETPLACE });
     const [m] = await db.select().from(manutencoes).where(eq(manutencoes.organizacaoId, org));
     expect(m).toMatchObject({ imovelId: a, estado: "realizada", responsavel: "proprietario", proprietarioId: dona, dataRealizada: "2026-10-01", orcamento: null, despesaId: null, semCusto: true });
     expect(await manutencoesDoProprietario(db, sessao(), agora)).toEqual([expect.objectContaining({ imovelCodigo: "403", titulo: "Troca do chuveiro", estado: "realizada", porContaPropria: true })]);

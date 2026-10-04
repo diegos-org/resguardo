@@ -6,7 +6,6 @@ import { AcessoNegado, type Sessao } from "@/acesso/politica";
 import { obterSessao } from "@/acesso/sessao-atual";
 import { getDb } from "@/db/client";
 import type { EstadoPeriodo } from "@/imoveis/acoes";
-import { hojeISO } from "@/lib/datas";
 import { bloquearPeloProprietario, liberarPeloProprietario } from "./bloqueios";
 import { criarPeriodoPeloProprietario, excluirPeriodoPeloProprietario, marcarLimpezaFeitaPeloProprietario, registrarManutencaoPeloProprietario, salvarPrecosPeloProprietario } from "./marketplace";
 
@@ -104,7 +103,7 @@ export async function excluirPeriodoPortalAcao(form: FormData): Promise<void> {
 export async function marcarLimpezaFeitaPortalAcao(_a: EstadoSimplesPortal, form: FormData): Promise<EstadoSimplesPortal> {
   const sessao = await sessaoDoPortal();
   try {
-    const r = await marcarLimpezaFeitaPeloProprietario(getDb(), sessao, texto(form, "id"), hojeISO());
+    const r = await marcarLimpezaFeitaPeloProprietario(getDb(), sessao, texto(form, "id"), new Date());
     revalidatePath("/portal");
     return r.ok ? { ok: true } : { erro: r.erro };
   } catch (e) {
@@ -117,7 +116,7 @@ export async function registrarManutencaoPortalAcao(_a: EstadoSimplesPortal, for
   const sessao = await sessaoDoPortal();
   const valores = { imovelId: texto(form, "imovelId"), titulo: texto(form, "titulo"), descricao: texto(form, "descricao"), data: texto(form, "data") };
   try {
-    const r = await registrarManutencaoPeloProprietario(getDb(), sessao, valores, hojeISO());
+    const r = await registrarManutencaoPeloProprietario(getDb(), sessao, valores, new Date());
     revalidatePath("/portal");
     return r.ok ? { ok: true } : { erro: r.erro, valores };
   } catch (e) {
