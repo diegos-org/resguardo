@@ -6,7 +6,7 @@ import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
 import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
 import { imoveis, imoveisDetalhes, imoveisPeriodos } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { reaisParaCentavos } from "@/lib/dinheiro-form";
+import { centavosParaCampo, reaisParaCentavos } from "@/lib/dinheiro-form";
 import { uuidValido } from "@/lib/ids";
 import { dataValida } from "@/reservas/regras";
 import { COMODIDADES, TIPOS_CAMA } from "./cadastro-opcoes";
@@ -181,6 +181,46 @@ export function validarDetalhes(e: Entrada): { ok: true; dados: Detalhes } | { o
     erros.precoDinamico = "Com o preço dinâmico ligado, informe o preço mínimo e o máximo.";
   }
   return Object.keys(erros).length ? { ok: false, erros } : { ok: true, dados };
+}
+
+/**
+ * O inverso de `validarDetalhes`: o cadastro como um formulário preenchido. Serve para editar só
+ * alguns campos (portal do proprietário, M12.4) passando pela mesma validação do painel — uma
+ * regra, um lugar. `validarDetalhes(entradaDeDetalhes(d))` devolve `d`.
+ */
+export function entradaDeDetalhes(d: Detalhes): Record<string, string | string[]> {
+  const num = (n: number | null) => (n === null ? "" : String(n));
+  const sim = (b: boolean) => (b ? "on" : "");
+  return {
+    cep: d.cep,
+    complemento: d.complemento,
+    estado: d.estado,
+    ...Object.fromEntries(Object.entries(d.camas).map(([tipo, n]) => [`cama_${tipo}`, String(n)])),
+    comodidades: d.comodidades.filter((c) => (COMODIDADES as readonly string[]).includes(c)),
+    comodidadesOutras: d.comodidades.filter((c) => !(COMODIDADES as readonly string[]).includes(c)).join(", "),
+    regrasCasa: d.regrasCasa,
+    aceitaAnimais: sim(d.aceitaAnimais),
+    permiteFumar: sim(d.permiteFumar),
+    permiteFestas: sim(d.permiteFestas),
+    checkinAPartirDe: d.checkinAPartirDe,
+    checkoutAte: d.checkoutAte,
+    taxaLimpeza: centavosParaCampo(d.taxaLimpeza),
+    hospedeExtraValor: centavosParaCampo(d.hospedeExtraValor),
+    hospedeExtraAPartirDe: num(d.hospedeExtraAPartirDe),
+    estadiaMinima: num(d.estadiaMinima),
+    estadiaMaxima: num(d.estadiaMaxima),
+    antecedenciaMinima: num(d.antecedenciaMinima),
+    janelaMaxima: num(d.janelaMaxima),
+    diasChegada: d.diasChegada.map(String),
+    diasSaida: d.diasSaida.map(String),
+    precoBase: centavosParaCampo(d.precoBase),
+    precoDinamico: sim(d.precoDinamico),
+    precoMinimo: centavosParaCampo(d.precoMinimo),
+    precoMaximo: centavosParaCampo(d.precoMaximo),
+    fontePrecos: d.fontePrecos,
+    pisoUltimaHora1: centavosParaCampo(d.pisoUltimaHora1),
+    pisoUltimaHora2: centavosParaCampo(d.pisoUltimaHora2),
+  };
 }
 
 async function imovelDaOrg(db: Db, organizacaoId: string, imovelId: string, travar = false) {

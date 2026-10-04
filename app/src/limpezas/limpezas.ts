@@ -439,6 +439,26 @@ export function realizarPelaProfissional(db: Db, organizacaoId: string, id: stri
   );
 }
 
+/**
+ * O proprietário marketplace marca a limpeza como feita pelo portal (M12.4): a limpeza é por conta
+ * dele, então fica sem custo para a empresa (custo 0, nenhuma despesa). A posse do imóvel e o
+ * contrato são conferidos por quem chama (`portal/marketplace.ts`); aqui só o estado e a data.
+ */
+export function realizarPeloProprietario(db: Db, organizacaoId: string, id: string, hoje: string, autorId: string | null): Promise<Resultado> {
+  return transicao(
+    db,
+    organizacaoId,
+    id,
+    ["pedida", "confirmada"],
+    async (l) => {
+      if (l.data > hoje) return "A limpeza ainda não chegou: só dá para registrar como feita a partir do dia dela.";
+      return { estado: "realizada", custo: 0, observacao: comMotivo(l.observacao, "Feita pelo proprietário (marketplace)"), realizadaEm: new Date() };
+    },
+    "limpeza.realizar",
+    autorId,
+  );
+}
+
 /** Corrige o custo de uma limpeza realizada. */
 export function informarCusto(db: Db, organizacaoId: string, id: string, custo: number | null, autorId: string | null): Promise<Resultado> {
   const erroCusto = validarCusto(custo);

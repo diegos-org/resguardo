@@ -57,6 +57,55 @@ export async function criarManutencao(db: Db, organizacaoId: string, d: { imovel
   });
 }
 
+/**
+ * O proprietário marketplace registra pelo portal uma manutenção que ele mesmo fez (M12.4): nasce
+ * realizada, por conta dele (responsável "proprietario", sem orçamento nem despesa da empresa). A
+ * posse do imóvel e o contrato são conferidos por quem chama; aqui, os dados e a data.
+ */
+export async function registrarFeitaPeloProprietario(
+  db: Db,
+  organizacaoId: string,
+  d: { imovelId: string; titulo: string; descricao: string; data: string },
+  hoje: string,
+  autorId: string | null,
+): Promise<Resultado> {
+  if (!uuidValido(d.imovelId)) return { ok: false, erro: "Escolha o imóvel." };
+  const titulo = d.titulo.trim();
+  if (!titulo || titulo.length > 200) return { ok: false, erro: "Diga o que foi feito (até 200 caracteres)." };
+  if (d.descricao.length > 1000) return { ok: false, erro: "Descrição longa demais (até 1000 caracteres)." };
+  if (!dataValida(d.data)) return { ok: false, erro: "Data inválida." };
+  if (d.data > hoje) return { ok: false, erro: "A data do serviço não pode ser no futuro." };
+  return db.transaction(async (tx) => {
+    const [im] = await tx
+      .select({ id: imoveis.id })
+      .from(imoveis)
+      .where(and(eq(imoveis.id, d.imovelId), eq(imoveis.organizacaoId, organizacaoId)));
+    if (!im) return { ok: false as const, erro: "Imóvel não encontrado." };
+    const dono = await donoAtual(tx, d.imovelId);
+    if (!dono) return { ok: false as const, erro: "O imóvel não tem proprietário vinculado." };
+    const agora = new Date();
+    const [m] = await tx
+      .insert(manutencoes)
+      .values({
+        organizacaoId,
+        imovelId: d.imovelId,
+        titulo,
+        descricao: d.descricao.trim(),
+        estado: "realizada",
+        responsavel: "proprietario",
+        proprietarioId: dono,
+        aprovadaPor: autorId,
+        aprovadaEm: agora,
+        dataRealizada: d.data,
+        observacao: "Feita por conta do proprietário (marketplace), registrada pelo portal.",
+        criadoPor: autorId,
+      })
+      .returning();
+    await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "manutencao.criar", entidade: "manutencao", entidadeId: m.id, mudancas: { titulo: [null, titulo], estado: [null, "realizada (pelo proprietário)"] } });
+    return { ok: true as const, id: m.id };
+  });
+}
+
 async function travar(tx: Db, organizacaoId: string, id: string): Promise<Manutencao | null> {
   if (!uuidValido(id)) return null;
   const [m] = await tx

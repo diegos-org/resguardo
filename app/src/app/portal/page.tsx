@@ -8,6 +8,7 @@ import { imoveis } from "@/db/schema";
 import type { ItemCalendario } from "@/calendario/grade";
 import { BotaoCopiar } from "@/components/BotaoCopiar";
 import { BloqueiosProprietario } from "@/components/portal/BloqueiosProprietario";
+import { type ImovelOperavel, OperacaoMarketplace } from "@/components/portal/OperacaoMarketplace";
 import { CalendarioPortal } from "@/components/portal/CalendarioPortal";
 import { MolduraPortal } from "@/components/portal/MolduraPortal";
 import styles from "@/components/portal/portal.module.css";
@@ -18,8 +19,9 @@ import { hojeISO } from "@/lib/datas";
 import { centavosParaCampo } from "@/lib/dinheiro-form";
 import { nomeDoMes, periodoDosFiltros } from "@/lib/filtros";
 import { formatBRL } from "@/lib/money";
-import { bloquearDatasAcao, liberarDatasAcao } from "@/portal/acoes";
+import { bloquearDatasAcao, excluirPeriodoPortalAcao, liberarDatasAcao, marcarLimpezaFeitaPortalAcao, novoPeriodoPortalAcao, registrarManutencaoPortalAcao, salvarPrecosPortalAcao } from "@/portal/acoes";
 import { bloqueiosDoProprietario, permissoesDeBloqueio } from "@/portal/bloqueios";
+import { imoveisMarketplaceDaSessao, limpezasDoProprietario, manutencoesDoProprietario, precosDoMarketplace } from "@/portal/marketplace";
 import { janela, lerPeriodoPortal, nome, situacaoDoPeriodo, vizinhos } from "@/portal/periodo";
 import { bloqueiosDoPortal, reservasDoPortal, type SituacaoReserva } from "@/portal/reservas";
 import { hojeMaisCedo } from "@/site/site";
@@ -184,6 +186,33 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
   // cada pedido no fuso do imóvel escolhido).
   const hojeUsoProprio = hojeMaisCedo(meus);
   const [permissoes, meusBloqueios, fontesPrecos] = await Promise.all([permissoesDeBloqueio(db, sessao.organizacaoId, sessao.imovelIds, hojeUsoProprio), bloqueiosDoProprietario(db, sessao), fontesDePrecosDosImoveis(db, sessao.organizacaoId, meus.map((i) => i.id))]);
+  // Marketplace (M12.4): só os imóveis em contrato marketplace hoje; o resto da página é igual para todos.
+  const marketplace = await imoveisMarketplaceDaSessao(db, sessao);
+  const operaveis: ImovelOperavel[] = marketplace.map((i) => ({
+    id: i.id,
+    codigo: i.codigo,
+    nome: i.nome,
+    fontePrecos: i.fontePrecos,
+    regras: {
+      precoBase: i.detalhes.precoBase,
+      taxaLimpeza: i.detalhes.taxaLimpeza,
+      hospedeExtraValor: i.detalhes.hospedeExtraValor,
+      hospedeExtraAPartirDe: i.detalhes.hospedeExtraAPartirDe,
+      estadiaMinima: i.detalhes.estadiaMinima,
+      estadiaMaxima: i.detalhes.estadiaMaxima,
+      antecedenciaMinima: i.detalhes.antecedenciaMinima,
+      janelaMaxima: i.detalhes.janelaMaxima,
+      diasChegada: i.detalhes.diasChegada,
+      diasSaida: i.detalhes.diasSaida,
+      checkinAPartirDe: i.detalhes.checkinAPartirDe,
+      checkoutAte: i.detalhes.checkoutAte,
+    },
+    periodos: i.periodos,
+    envio: i.envio,
+  }));
+  const [precosMarketplace, limpezasMarketplace, manutencoesMarketplace] = marketplace.length
+    ? await Promise.all([precosDoMarketplace(db, sessao.organizacaoId), limpezasDoProprietario(db, sessao, hojeUsoProprio), manutencoesDoProprietario(db, sessao)])
+    : [null, [], []];
   // Mesma regra do PDF: só os donos dos imóveis escolhidos (no período) e só os imóveis que eram
   // deles no período; os lançamentos sem imóvel entram quando todos os imóveis desses donos estão escolhidos.
   const selecao = await donosDosEscolhidos(db, donos, escolhidos, periodo);
@@ -358,6 +387,22 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
             bloquear={bloquearDatasAcao}
             liberar={liberarDatasAcao}
           />
+
+          {precosMarketplace && (
+            <OperacaoMarketplace
+              imoveis={operaveis}
+              precos={precosMarketplace}
+              limpezas={limpezasMarketplace}
+              manutencoes={manutencoesMarketplace}
+              empresa={empresa}
+              hoje={hojeUsoProprio}
+              salvarPrecos={salvarPrecosPortalAcao}
+              novoPeriodo={novoPeriodoPortalAcao}
+              excluirPeriodo={excluirPeriodoPortalAcao}
+              marcarLimpeza={marcarLimpezaFeitaPortalAcao}
+              registrarManutencao={registrarManutencaoPortalAcao}
+            />
+          )}
 
           {meus.length > 0 && (
             <section aria-label="De onde vêm os preços" className={styles.secao}>
