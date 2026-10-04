@@ -209,6 +209,25 @@ export const convites = pgTable(
   (t) => [uniqueIndex("convites_token").on(t.tokenHash), index("convites_proprietario").on(t.proprietarioId)],
 );
 
+/**
+ * Aceite de um documento pelo proprietário (M5.6): quem (usuário do portal, em nome de qual proprietário),
+ * quando e qual versão. Só inclusão: uma versão nova do documento pede um aceite novo; os antigos ficam.
+ * `documento` hoje é só "como_funciona"; as páginas legais do site (M7.4) poderão usar a mesma tabela.
+ */
+export const aceitesDocumento = pgTable(
+  "aceites_documento",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    documento: text("documento").notNull(),
+    versao: integer("versao").notNull(),
+    proprietarioId: uuid("proprietario_id").notNull().references(() => proprietarios.id, { onDelete: "cascade" }),
+    usuarioId: uuid("usuario_id").notNull().references(() => usuarios.id),
+    aceitoEm: timestamp("aceito_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("aceites_documento_unico").on(t.documento, t.versao, t.proprietarioId, t.usuarioId), index("aceites_documento_proprietario").on(t.organizacaoId, t.proprietarioId)],
+);
+
 // ---------------------------------------------------------------------------
 // Auditoria (M1.5): registro só de inclusão de quem mudou o quê e quando
 // ---------------------------------------------------------------------------

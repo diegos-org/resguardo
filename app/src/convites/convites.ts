@@ -12,6 +12,7 @@ import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { convites, proprietarios, proprietarioUsuarios, usuarios } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { registrarAceiteDoConvite } from "@/portal/aceites";
 import { normalizarEmail } from "@/acesso/entrada";
 import { uuidValido } from "@/lib/ids";
 
@@ -145,9 +146,10 @@ export async function temConvitePendente(db: Db, emailBruto: string, agora = new
 /**
  * Aceita o convite do token para o e-mail JÁ VERIFICADO (login por código ou Google).
  * Cria (ou reaproveita) o usuário proprietário e o liga ao proprietário. Retorna o id do
- * usuário, ou null se o token não vale para este e-mail.
+ * usuário, ou null se o token não vale para este e-mail. `aceiteComoFunciona`: número da versão do
+ * "Como funciona" que a pessoa marcou como lida e aceita na página do convite (M5.6).
  */
-export async function aceitarConvite(db: Db, token: string, emailVerificado: string, agora = new Date()): Promise<string | null> {
+export async function aceitarConvite(db: Db, token: string, emailVerificado: string, agora = new Date(), aceiteComoFunciona: number | null = null): Promise<string | null> {
   if (!tokenValido(token)) return null;
   const email = normalizarEmail(emailVerificado);
   return db.transaction(async (tx) => {
@@ -172,6 +174,8 @@ export async function aceitarConvite(db: Db, token: string, emailVerificado: str
       entidadeId: p.id,
       mudancas: { convite: [`para ${email}`, "aceito"] },
     });
+    // M5.6: "li e aceito" marcado na página do convite — vale só se a versão ainda é a publicada.
+    if (aceiteComoFunciona !== null) await registrarAceiteDoConvite(tx, { organizacaoId: c.organizacaoId, proprietarioId: p.id, usuarioId: u.id, versao: aceiteComoFunciona }, agora);
     return u.id;
   });
 }

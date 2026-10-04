@@ -10,6 +10,7 @@ import { hojeISO } from "@/lib/datas";
 import { periodicidadeValida } from "@/repasses/periodicidade";
 import { escolherPeriodicidade } from "@/repasses/proprietario";
 import { gerarAntecipado } from "@/repasses/repasses";
+import { registrarAceite } from "./aceites";
 import { bloquearPeloProprietario, liberarPeloProprietario } from "./bloqueios";
 import { criarPeriodoPeloProprietario, excluirPeriodoPeloProprietario, marcarLimpezaFeitaPeloProprietario, registrarManutencaoPeloProprietario, salvarPrecosPeloProprietario } from "./marketplace";
 import { proprietariosDoUsuario } from "./resumo";
@@ -157,4 +158,16 @@ export async function pedirRepasseAcao(form: FormData): Promise<void> {
   if (!(await donoDoUsuario(sessao, proprietarioId))) return voltarPortal(false, "", "Você não tem acesso a este cadastro.");
   const r = await gerarAntecipado(getDb(), sessao.organizacaoId, proprietarioId, hojeISO(), sessao.usuarioId, { pedidoPeloProprietario: true });
   voltarPortal(r.ok, "repasse", r.ok ? undefined : r.erro);
+}
+
+/** "Li e aceito" do Como funciona (M5.6): registra o aceite da versão mostrada para todos os proprietários do usuário. */
+export async function aceitarComoFuncionaAcao(form: FormData): Promise<void> {
+  const sessao = await sessaoDoPortal();
+  const volta = (ok: boolean, erro?: string) => {
+    revalidatePath("/portal", "layout");
+    redirect(`/portal/como-funciona?${ok ? "salvo=aceite" : `erro=${encodeURIComponent(erro ?? "Não foi possível.")}`}`);
+  };
+  if (form.get("aceito") !== "on") return volta(false, "Marque que leu e aceita antes de registrar.");
+  const r = await registrarAceite(getDb(), sessao, Number(texto(form, "versao")));
+  volta(r.ok, r.ok ? undefined : r.erro);
 }
