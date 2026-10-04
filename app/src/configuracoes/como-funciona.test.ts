@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { historicoDe } from "@/auditoria/auditoria";
 import { organizacoes, usuarios } from "@/db/schema";
@@ -40,7 +41,7 @@ describe("documento 'Como funciona' para o proprietário (M5.6)", () => {
 
   it("publicar cria a versão 1 datada; texto igual não cria versão; mudança cria a 2 e o histórico guarda o que mudou", async () => {
     expect(await lerComoFunciona(db, org)).toEqual([]);
-    expect(await publicarComoFunciona(db, org, RASCUNHO_COMO_FUNCIONA, admin, "2026-10-04")).toMatchObject({ mudou: true, versao: { numero: 1, data: "2026-10-04", autorId: admin } });
+    expect(await publicarComoFunciona(db, org, RASCUNHO_COMO_FUNCIONA, admin, "2026-10-04")).toMatchObject({ mudou: true, versao: { numero: 1, data: "2026-10-04", autorId: admin, empresa: "A" } });
     expect(await publicarComoFunciona(db, org, { ...RASCUNHO_COMO_FUNCIONA }, admin, "2026-10-05")).toMatchObject({ mudou: false, versao: { numero: 1, data: "2026-10-04" } });
     expect(await publicarComoFunciona(db, org, { ...RASCUNHO_COMO_FUNCIONA, contestacoes: "A SCL arca." }, admin, "2026-10-06")).toMatchObject({ mudou: true, versao: { numero: 2, data: "2026-10-06" } });
     const versoes = await lerComoFunciona(db, org);
@@ -55,6 +56,17 @@ describe("documento 'Como funciona' para o proprietário (M5.6)", () => {
     expect(velho).toMatchObject({ ok: false, erro: expect.stringContaining("a versão 2 foi publicada por outra pessoa em 06/10/2026"), atual: { numero: 2 } });
     expect((await lerComoFunciona(db, org)).length).toBe(2);
     expect(await publicarComoFunciona(db, org, { ...RASCUNHO_COMO_FUNCIONA, duvidas: "Texto novo." }, admin, "2026-10-07", 2)).toMatchObject({ ok: true, mudou: true, versao: { numero: 3 } });
+    // O nome da empresa fica gravado na versão: mudou o cadastro, o texto aceito continua com o nome de então; publicar o
+    // mesmo texto com o nome novo cria outra versão (que pede aceite de novo), e o histórico registra a troca.
+    await db.update(organizacoes).set({ nome: "Casa Nova" }).where(eq(organizacoes.id, org));
+    const v3 = versaoAtual(await lerComoFunciona(db, org))!;
+    expect(v3).toMatchObject({ numero: 3, empresa: "A" });
+    expect(secoesParaMostrar(v3, "Casa Nova")[0].paragrafos[0]).toContain("A A cuida");
+    expect(await publicarComoFunciona(db, org, v3.secoes, admin, "2026-10-08", 3)).toMatchObject({ ok: true, mudou: true, versao: { numero: 4, empresa: "Casa Nova" } });
+    expect(secoesParaMostrar(versaoAtual(await lerComoFunciona(db, org))!, "ignorado")[0].paragrafos[0]).toContain("A Casa Nova cuida");
+    expect((await historicoDe(db, org, "configuracao", org)).find((h) => JSON.stringify(h.mudancas.versao) === "[3,4]")?.mudancas.empresa).toEqual(["A", "Casa Nova"]);
+    // Versão gravada antes de o nome entrar nela (sem `empresa`): mostra com o nome atual.
+    expect(secoesParaMostrar({ numero: 1, data: "2026-10-01", autorId: null, secoes: RASCUNHO_COMO_FUNCIONA, empresa: "" }, "Atual")[0].paragrafos[0]).toContain("A Atual cuida");
     // Sem versão publicada, a base é 0.
     const [{ id: outraOrg }] = await db.insert(organizacoes).values({ nome: "C" }).returning();
     expect(await publicarComoFunciona(db, outraOrg, RASCUNHO_COMO_FUNCIONA, admin, "2026-10-07", 1)).toMatchObject({ ok: false, erro: expect.stringContaining("a versão 0 foi publicada"), atual: null });
@@ -79,7 +91,7 @@ describe("documento 'Como funciona' para o proprietário (M5.6)", () => {
     expect(preencherEmpresa("A {empresa} cuida; {empresa}.", " SCL ")).toBe("A SCL cuida; SCL.");
     expect(preencherEmpresa("{empresa}", "")).toBe("empresa");
     expect(paragrafos("a\n\n  b  \n\n\n")).toEqual(["a", "b"]);
-    const v = { numero: 1, data: "2026-10-04", autorId: null, secoes: { ...normalizarSecoes(null), duvidas: "Fale com a {empresa}.", oQueFazemos: "Um.\n\nDois." } };
+    const v = { numero: 1, data: "2026-10-04", autorId: null, empresa: "", secoes: { ...normalizarSecoes(null), duvidas: "Fale com a {empresa}.", oQueFazemos: "Um.\n\nDois." } };
     expect(secoesParaMostrar(v, "SCL")).toEqual([
       { chave: "oQueFazemos", titulo: "O que a empresa faz por você", paragrafos: ["Um.", "Dois."] },
       { chave: "duvidas", titulo: "Dúvidas", paragrafos: ["Fale com a SCL."] },

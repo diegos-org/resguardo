@@ -10,6 +10,7 @@ import { registrarAuditoria } from "@/auditoria/auditoria";
 import type { Db } from "@/db/types";
 import { dataValida } from "@/reservas/regras";
 import { gravarConfig, lerConfig, travarConfig } from "./armazem";
+import { nomeDaEmpresa } from "./empresa";
 
 export const DOCUMENTO_COMO_FUNCIONA = "como_funciona";
 
@@ -25,7 +26,17 @@ export const SECOES_COMO_FUNCIONA = [
 ] as const;
 export type ChaveSecao = (typeof SECOES_COMO_FUNCIONA)[number]["chave"];
 export type SecoesComoFunciona = Record<ChaveSecao, string>;
-export type VersaoComoFunciona = { numero: number; data: string; autorId: string | null; secoes: SecoesComoFunciona };
+export type VersaoComoFunciona = {
+  numero: number;
+  data: string;
+  autorId: string | null;
+  secoes: SecoesComoFunciona;
+  /**
+   * Nome da empresa no momento da publicação: o texto aceito é mostrado sempre com ele, mesmo que o cadastro mude
+   * depois (mudar o nome e publicar de novo cria outra versão). Vazio só em versão gravada antes deste campo.
+   */
+  empresa: string;
+};
 
 /** Ponto de partida oferecido no painel enquanto não há versão publicada. Diego revisa e salva: só então vale. */
 export const RASCUNHO_COMO_FUNCIONA: SecoesComoFunciona = {
@@ -63,6 +74,7 @@ export function versoesComoFuncionaDe(v: Record<string, unknown> | null): Versao
       data: typeof x.data === "string" && dataValida(x.data) ? x.data : "",
       autorId: typeof x.autorId === "string" ? x.autorId : null,
       secoes: normalizarSecoes(x.secoes),
+      empresa: texto(x.empresa).slice(0, 200),
     }))
     .filter((x) => x.numero > 0 && x.data)
     .sort((a, b) => a.numero - b.numero);
@@ -107,10 +119,13 @@ export async function publicarComoFunciona(db: Db, organizacaoId: string, secoes
     if (versaoBase !== undefined && (atual?.numero ?? 0) !== versaoBase) {
       return { ok: false as const, erro: `Enquanto você editava, a versão ${atual?.numero ?? 0} foi publicada por outra pessoa${atual ? ` em ${atual.data.split("-").reverse().join("/")}` : ""}. Recarregue a página, confira o texto atual e publique de novo.`, atual };
     }
-    if (atual && secoesIguais(atual.secoes, secoes)) return { ok: true as const, mudou: false, versao: atual };
-    const nova: VersaoComoFunciona = { numero: (atual?.numero ?? 0) + 1, data: hoje, autorId, secoes: { ...secoes } };
+    // O nome da empresa entra na versão (é o que o proprietário lê e aceita): nome novo com o mesmo texto é versão nova.
+    const empresa = await nomeDaEmpresa(tx, organizacaoId);
+    if (atual && secoesIguais(atual.secoes, secoes) && atual.empresa === empresa) return { ok: true as const, mudou: false, versao: atual };
+    const nova: VersaoComoFunciona = { numero: (atual?.numero ?? 0) + 1, data: hoje, autorId, secoes: { ...secoes }, empresa };
     await gravarConfig(tx, organizacaoId, "como_funciona", { versoes: [...versoes, nova] }, autorId, false);
     const mudancas: Record<string, [unknown, unknown]> = { versao: [atual?.numero ?? null, nova.numero] };
+    if ((atual?.empresa ?? null) !== empresa) mudancas.empresa = [atual?.empresa ?? null, empresa];
     for (const s of SECOES_COMO_FUNCIONA) if ((atual?.secoes[s.chave] ?? "") !== secoes[s.chave]) mudancas[`secao.${s.chave}`] = [atual?.secoes[s.chave] ?? null, secoes[s.chave]];
     await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "configuracao.como_funciona", entidade: "configuracao", entidadeId: organizacaoId, mudancas });
     return { ok: true as const, mudou: true, versao: nova };
@@ -138,7 +153,11 @@ export const paragrafos = (texto: string): string[] =>
     .map((p) => p.trim())
     .filter(Boolean);
 
-/** Seções com texto, na ordem oficial, já com o nome da empresa. */
-export function secoesParaMostrar(v: VersaoComoFunciona, empresa: string): { chave: ChaveSecao; titulo: string; paragrafos: string[] }[] {
+/**
+ * Seções com texto, na ordem oficial, já com o nome da empresa — o gravado na versão (o que foi lido e aceito);
+ * `empresaAtual` só vale para versão gravada antes de o nome entrar na versão.
+ */
+export function secoesParaMostrar(v: VersaoComoFunciona, empresaAtual: string): { chave: ChaveSecao; titulo: string; paragrafos: string[] }[] {
+  const empresa = v.empresa || empresaAtual;
   return SECOES_COMO_FUNCIONA.filter((s) => v.secoes[s.chave]).map((s) => ({ chave: s.chave, titulo: s.titulo, paragrafos: paragrafos(preencherEmpresa(v.secoes[s.chave], empresa)) }));
 }

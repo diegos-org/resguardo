@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { normalizarSecoes } from "@/configuracoes/como-funciona";
 import { DocumentoComoFunciona } from "./DocumentoComoFunciona";
 
-const versao = { numero: 2, data: "2026-10-06", autorId: null, secoes: { ...normalizarSecoes(null), oQueFazemos: "A {empresa} cuida.\n\nVocê acompanha.", duvidas: "Fale com a {empresa}." } };
+const versao = { numero: 2, data: "2026-10-06", autorId: null, empresa: "", secoes: { ...normalizarSecoes(null), oQueFazemos: "A {empresa} cuida.\n\nVocê acompanha.", duvidas: "Fale com a {empresa}." } };
 const dados = [
   {
     proprietarioId: "p1",

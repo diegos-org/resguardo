@@ -49,7 +49,7 @@ pronto, e funciona assim:
   contestações; dúvidas). Enquanto você não publica nada, o formulário traz um **rascunho sugerido**
   a partir das regras que já valem no sistema — revise, mude o que quiser e clique em "Publicar a
   versão 1". A seção "Contestações" veio em branco de propósito (decisão pendente, seção 7): seção
-  vazia não aparece para o proprietário. Escreva `{empresa}` para o nome da empresa entrar sozinho.
+  vazia não aparece para o proprietário. Escreva `{empresa}` para o nome da empresa entrar sozinho (o nome fica gravado na versão: se um dia o cadastro mudar, o texto já aceito não muda, e publicar de novo cria uma versão nova).
 - **Versões:** cada publicação com texto diferente vira a versão seguinte, numerada e datada; texto
   igual não cria versão. Versão nova pede **aceite novo** de todos os proprietários; os aceites antigos
   ficam guardados. A mesma aba mostra quem já aceitou qual versão e quando, e a página de cada
