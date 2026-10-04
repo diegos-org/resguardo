@@ -57,7 +57,7 @@ peço na hora.
   sido registrado no financeiro; o que ainda não entrou não é repassado. Reserva em que o canal
   paga o dono direto (o padrão do Airbnb) não entra no repasse, só aparece no extrato como
   informação — vale o que está configurado em "quem recebe" de cada imóvel e canal, não o nome
-  do canal. Se uma
+  do canal; se estiver "a confirmar", fica pendente e fora do repasse até você definir. Se uma
   reserva começa no último dia do mês e o dono recebe assim que disponível, o repasse do dia 1º
   paga a reserva inteira junto com o fechamento, numa só transferência. E o fechamento mensal
   passa a seguir a mesma regra: o que ainda não entrou na empresa fica para o repasse seguinte,
