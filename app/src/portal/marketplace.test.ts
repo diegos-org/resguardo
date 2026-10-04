@@ -13,6 +13,7 @@ import { lancarCusto, listarManutencoes } from "@/manutencao/manutencao";
 import {
   ANTES_DA_POSSE,
   criarPeriodoPeloProprietario,
+  envioPronto,
   excluirPeriodoPeloProprietario,
   imoveisMarketplaceDaSessao,
   limpezasDoProprietario,
@@ -264,12 +265,19 @@ describe("portal do proprietário marketplace (M12.4)", () => {
       { organizacaoId: org, envioId: sim.id, imovelId: a, data: "2026-10-10", resultado: "enviado" },
       { organizacaoId: org, envioId: real.id, imovelId: a, data: "2026-10-10", resultado: "confirmado" },
     ]);
-    expect(await situacaoDoEnvio(db, org, regras, a, semEnv)).toMatchObject({ naLista: true, vinculado: true, escritaPronta: false, automatico: true, ultimo: { em: new Date("2026-10-01T10:00:00Z"), situacao: "ok" } });
+    expect(await situacaoDoEnvio(db, org, regras, a, semEnv)).toMatchObject({ naLista: true, vinculado: true, escritaPronta: false, automatico: true, ultimo: { em: new Date("2026-10-01T10:00:00Z"), situacao: "ok", falha: "" } });
     expect(await situacaoDoEnvio(db, org, regras, b, semEnv)).toMatchObject({ naLista: false, vinculado: false, ultimo: null });
     // Execução real que incluiu o imóvel sem nenhuma noite a mudar (tudo já igual) também é "último envio".
     const [igual] = await db.insert(beds24Envios).values({ organizacaoId: org, modo: "envio", situacao: "ok", iniciadoEm: new Date("2026-10-03T10:00:00Z") }).returning();
     await db.insert(beds24EnvioImoveis).values({ organizacaoId: org, envioId: igual.id, imovelId: a });
-    expect((await situacaoDoEnvio(db, org, regras, a, semEnv)).ultimo).toEqual({ em: new Date("2026-10-03T10:00:00Z"), situacao: "ok" });
+    expect((await situacaoDoEnvio(db, org, regras, a, semEnv)).ultimo).toEqual({ em: new Date("2026-10-03T10:00:00Z"), situacao: "ok", falha: "" });
+    expect(envioPronto(await situacaoDoEnvio(db, org, regras, a, escritaPronta))).toBe(true);
+    // Execução em que o imóvel ficou de fora (quarto inacessível à credencial, moeda): o veredito vem junto e nada é prometido.
+    const [fora] = await db.insert(beds24Envios).values({ organizacaoId: org, modo: "envio", situacao: "erro", iniciadoEm: new Date("2026-10-04T10:00:00Z") }).returning();
+    await db.insert(beds24EnvioImoveis).values({ organizacaoId: org, envioId: fora.id, imovelId: a, falha: "O quarto vinculado ao imóvel 403 não está acessível nesta credencial." });
+    const comFalha = await situacaoDoEnvio(db, org, regras, a, escritaPronta);
+    expect(comFalha.ultimo).toMatchObject({ em: new Date("2026-10-04T10:00:00Z"), falha: expect.stringContaining("não está acessível") });
+    expect(envioPronto(comFalha)).toBe(false);
   });
 
   it("escrita pronta exige que a credencial Beds24 atenda esta organização: com mais de uma empresa, só a de BEDS24_ORGANIZACAO_ID", async () => {

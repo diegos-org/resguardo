@@ -127,6 +127,8 @@ describe("envio ao Beds24 (M3.7)", () => {
     const r = await enviar();
     expect(r).toMatchObject({ ok: false, situacao: "erro", imoveis: [{ codigo: "103", enviadas: 0, falha: expect.stringContaining("não está acessível nesta credencial") }] });
     expect(beds.escritas).toHaveLength(0);
+    // O veredito por imóvel fica gravado na execução (o portal lê daí para não prometer envio).
+    expect((await db.select().from(beds24EnvioImoveis).where(eq(beds24EnvioImoveis.envioId, r.envioId!)))[0].falha).toContain("não está acessível nesta credencial");
     expect(await noites()).toHaveLength(0);
     await db.update(idsExternos).set({ detalhe: "20" }).where(eq(idsExternos.organizacaoId, org));
     beds.properties = [{ id: 10, currency: "USD", roomTypes: [{ id: 20, name: "Quarto fictício" }] }];

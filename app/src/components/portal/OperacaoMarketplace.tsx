@@ -72,11 +72,13 @@ const SO_NO_SITE = "taxa de limpeza, hóspede extra, antecedência, janela de re
 const PRECO_NO_BEDS24 = "o preço da noite é definido no Beds24 e vem de lá para o site e para as OTAs";
 const maiuscula = (t: string) => `${t[0].toUpperCase()}${t.slice(1)}`;
 
-/** O que falta para o envio alcançar as OTAs de fato (lista, vínculo com o Beds24, chave de escrita); vazio = pronto. */
+/** O que falta para o envio alcançar as OTAs de fato (lista, vínculo, chave de escrita, e um envio real que já aceitou o imóvel); vazio = pronto. */
 function oQueFaltaNoEnvio(e: SituacaoEnvio, empresa: string): string | null {
   if (!e.naLista) return `a ${empresa} incluir este imóvel no envio de calendário`;
   if (!e.vinculado) return `a ${empresa} vincular este imóvel ao Beds24 (propriedade e quarto, em Integrações) — sem o vínculo, o envio pula o imóvel`;
   if (!e.escritaPronta) return `a ${empresa} ligar a escrita no Beds24 (sinal e credencial da empresa) — hoje o envio só simula, nada sai`;
+  if (!e.ultimo) return `o primeiro envio ao Beds24 confirmar o quarto deste imóvel (ainda não houve envio para ele)`;
+  if (e.ultimo.falha) return `o envio voltar a aceitar este imóvel — no último envio (${quando(e.ultimo.em)}) ele ficou de fora: ${e.ultimo.falha}`;
   return null;
 }
 

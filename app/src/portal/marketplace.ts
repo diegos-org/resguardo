@@ -6,7 +6,7 @@
  * um lugar. Preço, regra ou bloqueio editado aqui só chega ao Airbnb e ao Booking pelo envio de
  * calendário da SCL (M3.7) — a situação desse envio é mostrada ao proprietário, nunca suposta.
  */
-import { and, asc, desc, eq, exists, gte, inArray, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt } from "drizzle-orm";
 import { exigir, type Sessao } from "@/acesso/politica";
 import { listarMapeamentosBeds24, organizacaoBeds24 } from "@/beds24/configuracao";
 import { escritaBeds24Pronta } from "@/beds24/http";
@@ -57,12 +57,16 @@ export type SituacaoEnvio = {
   escritaPronta: boolean;
   /** O envio roda sozinho todo dia. */
   automatico: boolean;
-  /** Último envio (de verdade, não simulação) que tocou este imóvel. */
-  ultimo: { em: Date; situacao: string } | null;
+  /** Último envio (de verdade, não simulação) que incluiu este imóvel; `falha` = por que ele ficou de fora nessa execução (vazio = foi). */
+  ultimo: { em: Date; situacao: string; falha: string } | null;
 };
 
-/** Só com as três condições o que se muda aqui chega de fato às OTAs no próximo envio. */
-export const envioPronto = (e: Pick<SituacaoEnvio, "naLista" | "vinculado" | "escritaPronta">) => e.naLista && e.vinculado && e.escritaPronta;
+/**
+ * Só assim o que se muda aqui chega de fato às OTAs no próximo envio: lista, vínculo, escrita pronta E um envio real que
+ * já incluiu o imóvel sem deixá-lo de fora (quarto acessível à credencial, em BRL) — a mesma régua do envio, lida do
+ * resultado dele em vez de suposta.
+ */
+export const envioPronto = (e: Pick<SituacaoEnvio, "naLista" | "vinculado" | "escritaPronta" | "ultimo">) => e.naLista && e.vinculado && e.escritaPronta && e.ultimo !== null && !e.ultimo.falha;
 
 export type ImovelMarketplace = {
   id: string;
@@ -140,21 +144,16 @@ async function credencialAtendeOrganizacao(db: Db, organizacaoId: string, env: N
 export async function situacaoDoEnvio(db: Db, organizacaoId: string, regras: RegrasCalendario, imovelId: string, env: NodeJS.ProcessEnv = process.env): Promise<SituacaoEnvio> {
   // A mesma régua que aborta o envio (`calendario/envio.ts`): um único vínculo válido e quarto não repetido na lista.
   const vinculado = vinculoUnicoParaEnvio(await listarMapeamentosBeds24(db, organizacaoId), imovelId, regras.envio.imoveis);
+  // Execução real que incluiu o imóvel (mesmo sem noite a mudar), com o veredito dela para este imóvel.
   const [ultimo] = await db
-    .select({ em: beds24Envios.iniciadoEm, situacao: beds24Envios.situacao })
+    .select({ em: beds24Envios.iniciadoEm, situacao: beds24Envios.situacao, falha: beds24EnvioImoveis.falha })
     .from(beds24Envios)
-    .where(
-      and(
-        eq(beds24Envios.organizacaoId, organizacaoId),
-        eq(beds24Envios.modo, "envio"),
-        // Execução que incluiu o imóvel (mesmo sem noite a mudar): não vale olhar só as noites gravadas.
-        exists(db.select({ um: sql`1` }).from(beds24EnvioImoveis).where(and(eq(beds24EnvioImoveis.envioId, beds24Envios.id), eq(beds24EnvioImoveis.imovelId, imovelId)))),
-      ),
-    )
+    .innerJoin(beds24EnvioImoveis, and(eq(beds24EnvioImoveis.envioId, beds24Envios.id), eq(beds24EnvioImoveis.imovelId, imovelId)))
+    .where(and(eq(beds24Envios.organizacaoId, organizacaoId), eq(beds24Envios.modo, "envio")))
     .orderBy(desc(beds24Envios.iniciadoEm))
     .limit(1);
   const escritaPronta = escritaBeds24Pronta(env) && (await credencialAtendeOrganizacao(db, organizacaoId, env));
-  return { naLista: regras.envio.imoveis.includes(imovelId), vinculado, escritaPronta, automatico: regras.envio.automatico, ultimo: ultimo ? { em: ultimo.em, situacao: ultimo.situacao } : null };
+  return { naLista: regras.envio.imoveis.includes(imovelId), vinculado, escritaPronta, automatico: regras.envio.automatico, ultimo: ultimo ? { em: ultimo.em, situacao: ultimo.situacao, falha: ultimo.falha } : null };
 }
 
 /**

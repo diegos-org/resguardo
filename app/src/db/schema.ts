@@ -1165,6 +1165,8 @@ export const beds24EnvioImoveis = pgTable("beds24_envio_imoveis", {
   organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
   envioId: uuid("envio_id").notNull().references(() => beds24Envios.id),
   imovelId: uuid("imovel_id").notNull().references(() => imoveis.id),
+  /** Por que este imóvel ficou de fora nesta execução (quarto inacessível à credencial, moeda, leitura, escrita recusada); vazio = incluído. */
+  falha: text("falha").notNull().default(""),
 }, t => [index("beds24_envio_imoveis_imovel").on(t.organizacaoId, t.imovelId), index("beds24_envio_imoveis_envio").on(t.envioId)]);
 
 /** Último valor que o SCL enviou por noite: idempotência e liberação só do que o SCL bloqueou. */

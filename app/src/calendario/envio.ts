@@ -478,6 +478,9 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
     terminadoEm: new Date(), situacao: r.situacao, resumo: r.mensagem.slice(0, 1000), avisos: r.avisos,
     noitesEnviadas: r.imoveis.reduce((s, i) => s + i.enviadas, 0), noitesConfirmadas: r.imoveis.reduce((s, i) => s + i.confirmadas, 0), noitesDivergentes: r.imoveis.reduce((s, i) => s + i.divergentes, 0),
   }).where(eq(beds24Envios.id, exec.id));
+  // Veredito por imóvel (quarto inacessível à credencial, moeda, leitura incompleta, escrita recusada): o portal lê daqui
+  // para não prometer envio a um imóvel que a execução deixa de fora.
+  for (const i of r.imoveis) if (i.falha) await db.update(beds24EnvioImoveis).set({ falha: i.falha.slice(0, 300) }).where(and(eq(beds24EnvioImoveis.envioId, exec.id), eq(beds24EnvioImoveis.imovelId, i.imovelId)));
   return r;
 }
 

@@ -330,6 +330,13 @@
       "when": 1791133627897,
       "tag": "0046_beds24_envio_imoveis",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1791134207507,
+      "tag": "0047_beds24_envio_imoveis_falha",
+      "breakpoints": true
     }
   ]
 }
