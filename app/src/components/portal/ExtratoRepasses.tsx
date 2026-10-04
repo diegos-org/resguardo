@@ -101,7 +101,7 @@ export function ExtratoRepasses({ donos, periodicidades, partes, repasses, itens
           ["A liberar", resumo.aLiberar],
           ["Em repasse a pagar", resumo.repassadoAPagar],
           ["Já repassado (pago)", resumo.repassadoPago],
-          ...(resumo.ajusteNoFechamento !== 0 ? [["Ajuste no próximo fechamento (recálculo)", resumo.ajusteNoFechamento] as const] : []),
+          ...(resumo.ajusteNoFechamento !== 0 ? [["Diferença de recálculo (acertada pelo fechamento mensal)", resumo.ajusteNoFechamento] as const] : []),
         ].map(([t, v]) => (
           <div key={t} style={caixa}>
             <div style={rotulo}>{t}</div>

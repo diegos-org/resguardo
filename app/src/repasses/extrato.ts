@@ -99,7 +99,7 @@ export function classificarParte(p: ParteBruta): Parte {
   return com("disponivel", "Disponível para o próximo repasse.");
 }
 
-/** `ajusteNoFechamento`: soma das diferenças de recálculo das partes repassadas (entra, ou é descontada, no próximo fechamento mensal). */
+/** `ajusteNoFechamento`: soma das diferenças de recálculo das partes repassadas — acertada (ou descontada) pelo fechamento mensal, que pode já ter acontecido. */
 export type ResumoPartes = { aLiberar: number; disponivel: number; repassadoAPagar: number; repassadoPago: number; informacao: number; ajusteNoFechamento: number };
 
 export function resumirPartes(partes: readonly Parte[]): ResumoPartes {
