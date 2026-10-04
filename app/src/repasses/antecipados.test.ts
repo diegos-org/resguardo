@@ -6,7 +6,7 @@ import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { CorreioMemoria, ErroEnvioIncerto, type Mensagem } from "@/email/correio";
 import { aplicarMotor } from "@/financeiro/aplicar";
-import { chaveTravaMotor, travarMotorDaReserva } from "@/financeiro/trava";
+import { chaveTravaMotor, lerComReservasTravadas, travarMotorDaReserva } from "@/financeiro/trava";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { saldoAcerto } from "@/financeiro/ledger";
@@ -16,10 +16,11 @@ import { repassesDeTodas, rotinaDeRepasses } from "./cron";
 import { enviarEmailDoRepasse, enviarEmailsDeRepasses, textoDoEmailDoRepasse } from "./email";
 import { partesDisponiveis, partesDoProprietario, resumirPartes } from "./extrato";
 
-// A trava por reserva é espiada para conferir quem a toma (o estorno do recebimento, além do motor e do repasse).
+// A trava por reserva é espiada para conferir quem a toma (o estorno do recebimento, além do motor e do repasse) e a
+// leitura travada, para conferir quais reservas o fechamento pede para travar.
 vi.mock("@/financeiro/trava", async (orig) => {
   const m = await orig<typeof import("@/financeiro/trava")>();
-  return { ...m, travarMotorDaReserva: vi.fn(m.travarMotorDaReserva) };
+  return { ...m, travarMotorDaReserva: vi.fn(m.travarMotorDaReserva), lerComReservasTravadas: vi.fn(m.lerComReservasTravadas) };
 });
 // A leitura das partes disponíveis é espiada para simular o motor mudando o livro entre a leitura e a trava.
 vi.mock("./extrato", async (orig) => {
@@ -334,7 +335,7 @@ describe("periodicidade do proprietário e rotina diária (M4.10)", () => {
     expect(await enviarEmailDoRepasse(db, org, id, correio, new Date(t0.getTime() + 20 * 60_000))).toBe("enviado");
     expect(enviadas[0].chave).toBe(`repasse:${id}:email`);
     // Fora da janela: fica incerto até alguém reenviar.
-    await db.update((await import("@/db/schema")).repasses).set({ emailSituacao: "incerto", emailEm: new Date(t0.getTime() - 30 * 3_600_000) }).where(eq((await import("@/db/schema")).repasses.id, id));
+    await db.update((await import("@/db/schema")).repasses).set({ emailSituacao: "incerto", emailEm: new Date(t0.getTime() - 30 * 3_600_000), emailTentativaEm: new Date(t0.getTime() - 30 * 3_600_000) }).where(eq((await import("@/db/schema")).repasses.id, id));
     expect(await enviarEmailDoRepasse(db, org, id, correio, t0)).toBe("incerto");
     expect(await enviarEmailDoRepasse(db, org, id, correio, t0, { reenviar: true })).toBe("enviado");
     // Recusa certa: volta a pendente.
@@ -402,12 +403,20 @@ describe("2ª rodada do Codex: trava das reservas no repasse, estorno do recebim
     expect(await estornarRecebimento(db, org, (rec2 as { id: string }).id, "conferido com o banco", null)).toMatchObject({ ok: true });
   });
 
-  it("o fechamento também trava as reservas das partes que paga (mesma releitura)", async () => {
+  it("o fechamento trava toda reserva de que o cálculo depende (não só as partes que paga) e relê com a trava", async () => {
     await receberTudo(db, org, reservaBase, "2026-10-10");
+    // Outra reserva do mesmo dono sem recebimento: fica fora do fechamento, mas entra no saldo — também precisa estar travada,
+    // senão o motor pode trocá-la entre a leitura do saldo e a das partes (6ª rodada do Codex).
+    const fora = (await criar(reserva(a, "2026-10-01", "2026-10-03"))).id;
+    vi.mocked(lerComReservasTravadas).mockClear();
     const f = await fecharMes(db, org, dono, "2026-10", "2026-11-01", null);
     expect(f.ok).toBe(true);
     const itens = await itensDoRepasse(db, org, (f as { id: string }).id);
     expect(itens.map((i) => i.reservaId)).toEqual([reservaBase]);
+    // As reservas que o fechamento pediu para travar são as do cálculo lido: a paga e a que ficou fora.
+    const leitura = vi.mocked(lerComReservasTravadas).mock;
+    const reservasDe = leitura.calls.at(-1)![3] as (r: unknown) => string[];
+    expect([...new Set(reservasDe(await leitura.results.at(-1)!.value))].sort()).toEqual([fora, reservaBase].sort());
   });
 });
 
@@ -532,8 +541,22 @@ describe("3ª rodada do Codex: fechamentos antigos sem itens, trava no estorno d
     expect([...juntos].sort()).toEqual(["em_andamento", "enviado"]);
     expect(enviadas).toHaveLength(3);
     // Reenvio pedido enquanto uma tentativa incerta acabou de começar: não abre outra (a rotina retoma a atual).
-    await db.update(repasses).set({ emailSituacao: "incerto", emailEm: t3 }).where(eq(repasses.id, id));
+    await db.update(repasses).set({ emailSituacao: "incerto", emailEm: t3, emailTentativaEm: t3 }).where(eq(repasses.id, id));
     expect(await enviarEmailDoRepasse(db, org, id, correio, new Date(t3.getTime() + 60_000), { reenviar: true })).toBe("em_andamento");
     expect(enviadas).toHaveLength(3);
+    // Retomada (rotina) e reenvio (pessoa) ao mesmo tempo sobre uma tentativa incerta antiga: a retomada repete situação e
+    // chave, mas muda o carimbo da tentativa, então o reenvio que leu a mesma linha não passa; um e-mail só, com a chave antiga.
+    const t4 = new Date("2026-10-16T12:00:00Z");
+    const antiga = new Date(t4.getTime() - 20 * 60_000);
+    const chaveAntiga = (await obterRepasse(db, org, id))!.emailChave;
+    await db.update(repasses).set({ emailSituacao: "incerto", emailEm: antiga, emailTentativaEm: antiga }).where(eq(repasses.id, id));
+    const corrida = await Promise.all([enviarEmailDoRepasse(db, org, id, correio, t4), enviarEmailDoRepasse(db, org, id, correio, t4, { reenviar: true })]);
+    expect(corrida).toEqual(["enviado", "em_andamento"]);
+    expect(enviadas).toHaveLength(4);
+    expect(enviadas[3].chave).toBe(chaveAntiga);
+    // Logo depois da retomada começar, um reenvio ainda é "em andamento" (a primeira tentativa é antiga, mas a última não).
+    await db.update(repasses).set({ emailSituacao: "incerto", emailEm: antiga, emailTentativaEm: t4 }).where(eq(repasses.id, id));
+    expect(await enviarEmailDoRepasse(db, org, id, correio, new Date(t4.getTime() + 60_000), { reenviar: true })).toBe("em_andamento");
+    expect(enviadas).toHaveLength(4);
   });
 });

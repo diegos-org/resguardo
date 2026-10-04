@@ -13,7 +13,7 @@
  * deixa cada imóvel com saldo −Cᵢ) e registra a compensação de cada adiantamento descontado.
  * Estornar desfaz tudo isso de uma vez.
  */
-import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, ne, or, sql, sum } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, or, sql, sum } from "drizzle-orm";
 import { desfazerCompensacoesDoRepasse, listarAdiantamentos, quitar } from "@/adiantamentos/adiantamentos";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { violouUnicidade } from "@/db/erros";
@@ -126,6 +126,12 @@ export type PrevisaoRepasse = ReturnType<typeof calcularRepasse> & {
   itens: Parte[];
   /** M4.10: partes da competência que ficam fora (dinheiro ainda não com a empresa, conferência): vão para o repasse seguinte. */
   foraDoFechamento: Parte[];
+  /**
+   * M4.10 (6ª rodada do Codex): toda reserva de que este cálculo depende — as das partes (pagas, fora,
+   * só informação) e as de qualquer lançamento do proprietário até o mês. O fechamento trava todas antes
+   * de reler, não só as que paga: o saldo e as partes têm de vir da mesma foto, sem o motor no meio.
+   */
+  reservasDoCalculo: string[];
 };
 
 type Dono = { id: string; nome: string; email: string; chavePix: string };
@@ -245,6 +251,11 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
   // para o repasse seguinte. Partes já disponíveis com noites em meses seguintes entram como adiantamento
   // vinculado, para a reserva ser paga inteira. Sem repasse próprio, a lista vale só para avisar.
   const partes = atualOuNada(await partesDoProprietario(db, org, dono.id, agora));
+  const comReserva = await db
+    .selectDistinct({ reservaId: lancamentos.reservaId })
+    .from(lancamentos)
+    .where(and(eq(lancamentos.organizacaoId, org), eq(lancamentos.proprietarioId, dono.id), lt(lancamentos.competencia, lim.fim), isNotNull(lancamentos.reservaId)));
+  const reservasDoCalculo = [...new Set([...comReserva.map((l) => l.reservaId!), ...partes.map((x) => x.reservaId)])].sort();
   const daCompetencia = (x: Parte) => x.competencia < lim.fim;
   const foraDoFechamento = partes.filter((x) => daCompetencia(x) && x.quemRecebe === "empresa" && x.situacao === "a_liberar");
   const antecipadas = partes.filter((x) => !daCompetencia(x) && x.situacao === "disponivel");
@@ -334,6 +345,7 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
     diferencaPosFechamento: diferenca,
     itens,
     foraDoFechamento,
+    reservasDoCalculo,
   };
 }
 
@@ -400,8 +412,9 @@ async function fecharNaTransacao(
     // Trava o proprietário: dois fechamentos ao mesmo tempo não passam daqui juntos.
     const dono = await travarDono(tx, org, proprietarioId);
     if (!dono) return { ok: false as const, erro: "Proprietário não encontrado." };
-    // As reservas das partes ficam travadas para o motor até o fim: o que se paga é o que foi lido com a trava.
-    const p = await lerComReservasTravadas(tx, org, () => calcularDono(tx, org, dono, mes, hoje, agora), (x) => x.itens.map((i) => i.reservaId));
+    // Toda reserva de que o cálculo depende (partes pagas, fora, só informação e qualquer lançamento até o mês)
+    // fica travada para o motor até o fim: saldo e partes vêm da mesma foto, e o que se paga é o que foi lido com a trava.
+    const p = await lerComReservasTravadas(tx, org, () => calcularDono(tx, org, dono, mes, hoje, agora), (x) => x.reservasDoCalculo);
     if (!p) return { ok: false as const, erro: RESERVAS_EM_RECALCULO };
     if (p.repasse) return { ok: false as const, erro: "Este mês já foi fechado para este proprietário." };
     if (p.bloqueios.length) return { ok: false as const, erro: p.bloqueios[0] };

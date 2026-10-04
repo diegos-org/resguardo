@@ -330,6 +330,13 @@
       "when": 1791122043451,
       "tag": "0046_repasses_email_chave_pix_paga",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1791123774532,
+      "tag": "0047_repasses_email_tentativa_em",
+      "breakpoints": true
     }
   ]
 }

@@ -64,7 +64,9 @@ export async function enviarEmailDoRepasse(db: Db, organizacaoId: string, repass
   if (r.situacao !== "pago") return "nao_pago";
   if (!r.comprovante && !r.comprovanteArquivoId) return "sem_comprovante";
   if (r.emailSituacao === "enviado" && !o.reenviar) return "ja_enviado";
-  const recente = r.emailSituacao === "incerto" && r.emailEm !== null && agora.getTime() - r.emailEm.getTime() < JANELA_TENTATIVA_MS;
+  // "Recente" olha a ÚLTIMA tentativa (`emailTentativaEm`), não a primeira: uma retomada que acabou de começar também conta.
+  const ultima = r.emailTentativaEm ?? r.emailEm;
+  const recente = r.emailSituacao === "incerto" && ultima !== null && agora.getTime() - ultima.getTime() < JANELA_TENTATIVA_MS;
   if (r.emailSituacao === "incerto" && !o.reenviar) {
     // Tentativa anterior sem resposta certa: repete dentro da janela da chave; fora dela, espera uma pessoa.
     if (r.emailEm && agora.getTime() - r.emailEm.getTime() > JANELA_PROVEDOR_MS) return "incerto";
@@ -84,13 +86,21 @@ export async function enviarEmailDoRepasse(db: Db, organizacaoId: string, repass
   const base = `repasse:${r.id}:email`;
   const retomada = r.emailSituacao === "incerto" && !o.reenviar && r.emailEm !== null;
   const chave = retomada ? r.emailChave || base : o.reenviar || r.emailChave ? `${base}:${agora.getTime()}` : base;
-  // Reivindicação atômica: só avança quem encontrar o repasse exatamente como leu (situação e chave). Duas
-  // chamadas ao mesmo tempo (dois cliques em "enviar de novo", rotina e botão) disparam um e-mail só; a
-  // retomada de uma tentativa incerta repete a mesma chave, então duas retomadas juntas também não duplicam.
+  // Reivindicação atômica: só avança quem encontrar o repasse exatamente como leu (situação, chave e carimbo da
+  // última tentativa), e toda reivindicação muda o carimbo — inclusive a retomada, que repete situação e chave.
+  // Assim duas chamadas ao mesmo tempo (dois cliques em "enviar de novo", rotina e botão, retomada e reenvio)
+  // disparam um e-mail só: quem chega depois não encontra mais a linha como leu.
   const reivindicado = await db
     .update(repasses)
-    .set({ emailSituacao: "incerto" as SituacaoEmailRepasse, emailEm: retomada ? r.emailEm : agora, emailPara: destinos.join(", "), emailChave: chave })
-    .where(and(eq(repasses.id, r.id), eq(repasses.emailSituacao, r.emailSituacao), eq(repasses.emailChave, r.emailChave)))
+    .set({ emailSituacao: "incerto" as SituacaoEmailRepasse, emailEm: retomada ? r.emailEm : agora, emailTentativaEm: agora, emailPara: destinos.join(", "), emailChave: chave })
+    .where(
+      and(
+        eq(repasses.id, r.id),
+        eq(repasses.emailSituacao, r.emailSituacao),
+        eq(repasses.emailChave, r.emailChave),
+        r.emailTentativaEm ? eq(repasses.emailTentativaEm, r.emailTentativaEm) : isNull(repasses.emailTentativaEm),
+      ),
+    )
     .returning({ id: repasses.id });
   if (!reivindicado.length) return "em_andamento";
   const [empresa, itens, arquivo] = await Promise.all([nomeDaEmpresa(db, organizacaoId), itensDoRepasse(db, organizacaoId, r.id), r.comprovanteArquivoId ? arquivoDoComprovante(db, organizacaoId, r.id) : Promise.resolve(null)]);

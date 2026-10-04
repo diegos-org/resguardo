@@ -881,6 +881,8 @@ export const repasses = pgTable(
     emailPara: text("email_para").notNull().default(""),
     /** Chave de idempotência usada na última tentativa de e-mail (uma retomada repete exatamente esta chave). */
     emailChave: text("email_chave").notNull().default(""),
+    /** Quando a última tentativa de envio começou (token da reivindicação e janela de 15 min); `emailEm` guarda a primeira. */
+    emailTentativaEm: timestamp("email_tentativa_em", { withTimezone: true }),
     /** Chave Pix do proprietário no momento do pagamento (o e-mail e o histórico mostram a que foi usada, não a atual). */
     chavePixPaga: text("chave_pix_paga").notNull().default(""),
     /** Antecipado avulso pedido pelo proprietário no portal (null = programado ou gerado no painel). */
