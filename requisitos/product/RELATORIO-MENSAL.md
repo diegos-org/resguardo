@@ -39,6 +39,14 @@ assim como o tom de `requisitos/operations/RELATORIOS-E-TOM.md`.
 - **Uma regra, um lugar.** O relatório não calcula nada: lê o resumo, as reservas, o rodapé do
   portal (`portal/resumo`, `portal/reservas`, `portal/rodape`) e o extrato do M4.10
   (`repasses/extrato`). Portal, painel, PDF e e-mail mostram os mesmos números.
+- **Resultado por noite, dinheiro por data de pagamento.** O resultado do mês e os números do mês
+  seguem a competência (rateio igual por noite, regra de 24/09). O dinheiro — "como chega até você"
+  e a conciliação — segue a **data em que o canal pagou**: o Airbnb paga o proprietário direto, no dia
+  seguinte ao check-in, a reserva inteira; uma reserva de 29/9 a 2/10 foi paga em 30/9, então a
+  noite de outubro **não** entra no "pago pelo Airbnb em outubro" (entrou em setembro), e o relatório
+  escreve a ponte entre os dois ("inclui R$ X de noites de setembro; R$ Y de noites de outubro já
+  vieram em setembro"). É o que o extrato do Airbnb mostra, por pagamento. (Decisão de Diego em
+  4/10; a mesma regra vale para o acerto por fora do início do sistema, item M4.12.)
 - **Avisar em vez de supor.** Métrica sem dado no período inteiro aparece como "sem dado no sistema",
   nunca zero nem estimativa. Recebimento do canal não registrado: a parte é "a liberar", com o motivo.
   Total de canal não é lucro; "enviado" não é "creditado".
@@ -48,10 +56,13 @@ assim como o tom de `requisitos/operations/RELATORIOS-E-TOM.md`.
   foto só real e autorizada (M7.3) — até lá, o quadro "foto em breve", nunca imagem genérica.
 - **Autorização no servidor** como hoje (`relatorios/gerar.ts`): portal só o próprio dono, dentro da
   janela, sem anexos; painel com foto e extrato anexados na hora, com histórico.
-- **Legível em A4 e na tela**: uma coluna, tabelas com números alinhados à direita, texto 11–13 pt,
-  nada de cor fixa no código (tokens do M7.5). Bonito e relevante, sem ser exaustivo: um gráfico e
-  um bloco de quatro números (página 2), e cada página cabe numa folha; o detalhe fica nas páginas
-  seguintes.
+- **Legível em A4, na tela e no celular**: uma coluna, tabelas com números alinhados à direita,
+  texto 11–13 pt, nada de cor fixa no código (tokens do M7.5). Cada página cabe numa folha A4
+  (no PDF nada é cortado). Na tela do celular (a partir de 360 px de largura), **nada rola de lado**:
+  a página encolhe como uma folha; a tabela de reservas e a de canais viram uma lista empilhada
+  (um bloco por reserva, rótulo e valor em cada linha) e os quadros ficam um embaixo do outro
+  (pedido de Diego em 4/10). Bonito e relevante, sem ser exaustivo: um gráfico e um bloco de quatro
+  números (página 2); o detalhe fica nas páginas seguintes.
 
 ## Estrutura (página a página)
 
@@ -63,8 +74,9 @@ assim como o tom de `requisitos/operations/RELATORIOS-E-TOM.md`.
    comissão em vigor (gestão completa X% / marketplace).
 3. **Foto** do imóvel (3:2, real e autorizada).
 4. **Seu resultado em {mês}** — valor grande com a base: "sua parte nas reservas do mês, em todos os
-   canais, já descontadas as despesas do imóvel". Ao lado, **Como chega até você**, uma linha por
-   caminho, só as que existirem: pago direto pelo canal (Airbnb, split); já repassado no mês
+   canais, já descontadas as despesas do imóvel". Ao lado, **Como chega até você**, por data de
+   pagamento (ver "Resultado por noite, dinheiro por data de pagamento"), uma linha por
+   caminho, só as que existirem: pago direto pelo canal (Airbnb, split) no mês; já repassado no mês
    (antecipados, com as datas); a transferir no fechamento (valor, data e **quem paga quem**: "a Sua
    Casa Leblon transfere para {nome}" ou "{nome} transfere para a Sua Casa Leblon", pela chave Pix
    cadastrada); a liberar (recebimento do canal pendente / liberação do provedor), com o motivo.
@@ -82,7 +94,9 @@ assim como o tom de `requisitos/operations/RELATORIOS-E-TOM.md`.
    resultado, "como chega" e a tabela do bruto ao resultado; os números do mês ficam na página 2.
 
 ### 2. Números e reservas do mês
-Em cima, **Números do mês** — quatro quadros e um gráfico (ver "Métricas"). Embaixo, as reservas:
+Em cima, **Números do mês** — quatro quadros em **duas linhas de dois** (pedido de Diego em 4/10:
+com quatro lado a lado o texto fica apertado) e, embaixo deles, o gráfico (ver "Métricas"). Depois,
+as reservas:
 "{N} reservas · {n} noites em {mês}". Uma linha (ou cartão) por reserva: primeiro nome do hóspede,
 canal, código do canal, entrada → saída, noites no mês, bruto, taxa do canal, limpeza (quando o
 componente existir no livro), comissão da gestão, **sua parte** e situação da parte (paga pelo canal /
@@ -90,9 +104,13 @@ repassada em {data} / a transferir / a liberar: {motivo}). Nota de rodapé: esta
 mês entra só com as noites do mês, rateio igual por noite (regra de 24/09). Ordem: por entrada.
 
 ### 3. Conciliação e repasses
-1. **Do extrato dos canais ao seu resultado** — uma linha por canal: reservas, bruto, taxa, quem
-   recebeu (o canal pagou a você direto / pagou à Sua Casa Leblon em {datas} / liberado pelo
-   provedor em {data} / **a receber**), sua parte. Totais iguais aos da capa.
+1. **Do extrato dos canais ao seu resultado** — uma linha por canal, **pelo que o canal pagou no
+   mês** (data do pagamento: Airbnb, dia seguinte ao check-in; Booking, site e direta, data do
+   recebimento registrado ou da liberação do provedor): reservas, bruto, taxa, quem recebeu (o canal
+   pagou a você direto / pagou à Sua Casa Leblon em {datas} / liberado pelo provedor em {data} /
+   **a receber**), sua parte. Embaixo, a **ponte para o resultado do mês**: "+ noites de {mês}
+   pagas no mês anterior" e "− noites de {mês seguinte} pagas neste mês", até fechar nos totais da
+   capa (competência). É a "conciliação do extrato ao mês completo" do modelo da Lia.
 2. **Repasses do mês** — antecipados pagos (data, valor, reservas, "comprovante no portal") e o
    fechamento: saldo do acerto, adiantamentos descontados, valor a transferir, quem paga quem, data
    prevista. A liberar: lista com o motivo e "entra no próximo repasse".
@@ -132,7 +150,11 @@ sem comparação percentual com meses inteiros (a comparação mostraria queda f
   entram no resultado só quando o dinheiro passa pela empresa — quem recebe `empresa`, M2.7 —, senão
   aparecem como informação, "pago a você pelo canal"). As métricas somam tudo, com a nota.
 - **Mês corrente (parcial).** Igual, com "parcial até {dia}" na faixa e a frase de tom do guia da
-  Lia: é para acompanhar o andamento; o fechamento completo vem no dia 1º.
+  Lia: é para acompanhar o andamento; o fechamento completo vem no dia do fechamento.
+- **Dia de emissão.** O relatório do mês sai no dia do fechamento mensal (hoje, dia 1º; Diego
+  propôs em 4/10 passar para o dia 2, porque o Airbnb paga a reserva com check-in no último dia
+  do mês só no dia 1º — item M4.13, dia configurável). O que o canal ainda não pagou até lá
+  aparece como "a receber"/"a liberar" e entra no mês seguinte; nunca é suposto.
 - **Vários imóveis do mesmo dono.** Um relatório por dono com uma capa (resultado consolidado e
   um quadro por imóvel) ou um por imóvel — escolha do proprietário no portal; o painel gera os dois.
   Imóveis de donos diferentes nunca no mesmo PDF (regra atual de `donosDosEscolhidos`).
@@ -167,8 +189,9 @@ com pdf-lib; `gerar.ts` decide quem pode gerar) e troca o desenho:
    dos tokens do M7.5 (DESIGN.md é a fonte); títulos em Times-Roman (serifa padrão do PDF, no papel
    da Georgia do site; uma serifa própria só por arquivo local, se Diego quiser), corpo Helvetica.
 2. **Dados novos em `DadosRelatorio`:** `comoChega` (pago pelo canal / repassado no mês / a
-   transferir / a liberar, com motivos) e `conciliacao` a partir de `repasses/extrato` e dos repasses
-   do mês; `metricas` (módulo puro `relatorios/metricas.ts` com testes: noites, ocupação, diária
+   transferir / a liberar, com motivos) e `conciliacao` por data de pagamento, com a ponte para a
+   competência, a partir de `repasses/extrato`, dos recebimentos (M4.10) e da regra de pagamento do
+   canal (Airbnb: dia seguinte ao check-in — a mesma regra do M4.12, num lugar só); `metricas` (módulo puro `relatorios/metricas.ts` com testes: noites, ocupação, diária
    média, variações, acumulado, série de 12 meses, regras de "sem dado"); por reserva, canal, código
    e os componentes do livro (taxa, limpeza, comissão) já existentes por lançamento (M4.2).
 3. **Páginas** 1–4 como acima, cada uma numa folha A4; gráfico desenhado com retângulos (sem imagem); hachura para "sem dado".
