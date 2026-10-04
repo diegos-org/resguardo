@@ -14,7 +14,7 @@ import type { DadosReserva } from "@/reservas/regras";
 import { sincronizarReserva } from "@/reservas/repositorio";
 import { lerEmpresa, nomeDaEmpresa, nomeDaEmpresaPorEmail, salvarEmpresa, validarEmpresa } from "./empresa";
 import { criarModelo, excluirModelo, garantirModelosIniciais, listarModelos, MODELOS_INICIAIS, preencherModelo, atualizarModelo, validarModelo } from "./modelos";
-import { lerFormRegras, lerRegrasFinanceiras, lerVersoesRegras, normalizarRegras, prazoDoCanal, regrasNaData, versoesDe } from "./regras-financeiras";
+import { lerFormRegras, lerRegrasFinanceiras, lerVersoesRegras, normalizarRegras, prazoDoCanal, prazoDoCanalNaData, regrasNaData, versoesDe } from "./regras-financeiras";
 import { salvarRegrasFinanceiras } from "./salvar-regras";
 import { lerTextosSite, salvarTextosSite, TEXTOS_SITE_INICIAIS, validarTextosSite } from "./textos-site";
 import { alterarUsuario, criarUsuarioEquipe, listarUsuarios } from "./usuarios";
@@ -96,6 +96,19 @@ describe("regras financeiras", () => {
     expect(lerFormRegras({ ...form, prazo_airbnb: "-1" })).toBeNull();
     expect(lerFormRegras({ ...form, prazo_airbnb: "1.5" })).toBeNull();
     expect(lerFormRegras({ ...form, prazo_airbnb: "abc" })).toBeNull();
+    // Reserva antiga de canal sem prazo na versão da época usa o prazo atual (configurar hoje resolve a que atravessa o
+    // início); prazo explícito da época fica; sem versão mais nova com prazo, continua sem regra.
+    const comum = { base: "liquido_canal" as const, recebimento: REGRAS_PADRAO.recebimento };
+    const versoes = [
+      { ...comum, desde: "2026-09-01", prazoPagamento: { ...REGRAS_PADRAO.prazoPagamento!, booking: null, site: 2 } },
+      { ...comum, desde: "2026-10-04", prazoPagamento: { ...REGRAS_PADRAO.prazoPagamento!, booking: 3, site: 5, airbnb: null } },
+    ];
+    expect(prazoDoCanalNaData(versoes, "2026-09-29", "booking")).toBe(3);
+    expect(prazoDoCanalNaData(versoes, "2026-09-29", "site")).toBe(2);
+    expect(prazoDoCanalNaData(versoes, "2026-09-29", "airbnb")).toBe(1);
+    expect(prazoDoCanalNaData(versoes, "2026-10-10", "airbnb")).toBeNull();
+    expect(prazoDoCanalNaData(versoes, "2026-10-10", "direta")).toBeNull();
+    expect(prazoDoCanalNaData([], "2026-09-29", "airbnb")).toBe(1);
   });
 
   it("mudar o prazo do canal grava uma versão nova e registra a mudança; apagar a regra também; a data da reserva escolhe a versão", async () => {

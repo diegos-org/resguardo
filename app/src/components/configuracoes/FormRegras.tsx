@@ -51,7 +51,7 @@ export function FormRegras({ regras, origens, salvar }: Props) {
       <fieldset style={{ border: 0, padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
         <legend style={{ fontSize: "0.875rem", color: "var(--scl-texto-2)", marginBottom: 8 }}>
           Em quantos dias depois do check-in o canal paga o proprietário direto (quando o canal paga direto). Vazio = sem regra. 1 = dia seguinte ao check-in, padrão do
-          Airbnb. É a data do pagamento da reserva: decide se ela é de antes ou de depois do início do sistema e aparece no extrato e no relatório.
+          Airbnb. É a data do pagamento da reserva: decide se ela é de antes ou de depois do início do sistema e aparece no extrato e no relatório. Reserva antiga de canal sem prazo definido na época passa a usar o prazo de hoje.
         </legend>
         <div style={{ display: "grid", gridTemplateColumns: "minmax(120px, max-content) minmax(0, 1fr)", gap: "8px 16px", alignItems: "center" }}>
           {Object.entries(origens).map(([o, nome]) => (

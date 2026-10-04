@@ -28,6 +28,15 @@ export function prazoDoCanal(regras: RegrasMotor, origem: OrigemReserva): number
   return p && origem in p ? p[origem] : PRAZOS_PADRAO[origem];
 }
 
+/**
+ * Prazo do canal para uma reserva, pela data de entrada (a versão da época, como as outras regras). Sem prazo na versão
+ * da época (null), vale o da versão atual: o prazo descreve quando o canal paga, então um canal configurado hoje resolve
+ * a reserva antiga que atravessa o início do sistema (apontamento do Codex no PR do M4.12). Prazo explícito da época fica.
+ */
+export function prazoDoCanalNaData(versoes: readonly VersaoRegras[], data: string, origem: OrigemReserva): number | null {
+  return prazoDoCanal(regrasNaData(versoes, data), origem) ?? prazoDoCanal(versoes.at(-1) ?? REGRAS_PADRAO, origem);
+}
+
 /** Monta regras válidas a partir de um valor qualquer; o que faltar ou vier errado fica no padrão (null explícito = sem prazo). */
 export function normalizarRegras(v: Record<string, unknown> | null): RegrasMotor {
   const base = OPCOES_BASE.includes(v?.base as never) ? (v!.base as RegrasMotor["base"]) : REGRAS_PADRAO.base;

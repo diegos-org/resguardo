@@ -8,11 +8,12 @@
  *   **indefinida** — avisar em vez de supor: a equipe registra o recebimento com a data em que o canal pagou (empresa
  *   recebe) ou define o prazo do canal (canal paga direto), e a data decide.
  * A data vem de duas fontes: quem recebe `split` → check-in + prazo do canal (Configurações → Regras financeiras, por
- * canal; Airbnb: 1 dia); quem recebe `empresa` → a data do recebimento que completou o líquido do canal (M4.10).
+ * canal; Airbnb: 1 dia; reserva antiga sem prazo na versão da época usa o prazo atual); quem recebe `empresa` → a data do
+ * recebimento que completou o líquido do canal (M4.10).
  * A contabilidade por noite (competência) não muda: é só o dinheiro que segue a data do pagamento.
  */
 import { and, eq, gte, inArray, isNotNull, isNull, lt, ne, notInArray, or, type SQL, sql } from "drizzle-orm";
-import { lerVersoesRegras, prazoDoCanal, regrasNaData, type VersaoRegras } from "@/configuracoes/regras-financeiras";
+import { lerVersoesRegras, prazoDoCanalNaData, type VersaoRegras } from "@/configuracoes/regras-financeiras";
 import { lancamentos, type OrigemReserva, repasses, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
@@ -90,7 +91,7 @@ export async function reservasDoInicio(db: Db, organizacaoId: string, inicio: st
 }
 
 export function pagamentoDe(r: { quemRecebe: QuemRecebeReserva; origem: OrigemReserva; checkin: string }, recebido: RecebidoDaReserva, versoes: readonly VersaoRegras[]): PagamentoDaReserva | null {
-  return dataDoPagamento({ quemRecebe: r.quemRecebe, checkin: r.checkin, recebido }, prazoDoCanal(regrasNaData(versoes, r.checkin), r.origem));
+  return dataDoPagamento({ quemRecebe: r.quemRecebe, checkin: r.checkin, recebido }, prazoDoCanalNaData(versoes, r.checkin, r.origem));
 }
 
 /**

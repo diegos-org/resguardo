@@ -222,8 +222,9 @@ Então o corte do início do sistema não é por noite: **é pela data em que o 
   elas ficam disponíveis e saem no antecipado ou no fechamento normalmente.
 - **De onde vem a data:** quando o canal paga você direto (Airbnb), é o check-in mais o prazo do
   canal — campo novo em **Configurações → Regras financeiras, "em quantos dias depois do check-in o
-  canal paga"** (Airbnb: 1; vazio = sem regra; vale para reservas com entrada de hoje em diante, como
-  as outras regras). Quando a empresa recebe (Booking, site, direta), é a data do recebimento que você
+  canal paga"** (Airbnb: 1; vazio = sem regra; a regra vale pela data de entrada da reserva, como as
+  outras, mas reserva antiga de canal sem prazo na época usa o prazo de hoje — configurar agora resolve a
+  reserva que atravessa o início). Quando a empresa recebe (Booking, site, direta), é a data do recebimento que você
   registra na reserva (o que completou o valor do canal). Por isso, registre o recebimento **com a
   data em que o canal pagou**, não com a de hoje.
 - **Sem data conhecida:** reserva inteira antes de 1/10 é de antes; inteira depois, de depois. A que

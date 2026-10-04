@@ -113,7 +113,8 @@ reserva de cada imóvel, pela regra de 2/10 para o início dos contratos).
   `dataDoPagamento` — quem recebe `split`: check-in + prazo do canal (`prazoPagamento` nas regras
   financeiras versionadas, por canal, 0–60 dias ou null = sem regra; padrão Airbnb 1, demais null;
   editável em Configurações → Regras financeiras, vale pela data de entrada da reserva como as outras
-  regras); quem recebe `empresa`: data (caixa) do recebimento que completou o líquido do canal
+  regras; sem prazo na versão da época, vale o prazo da versão atual — `prazoDoCanalNaData` —, para um canal
+  configurado hoje resolver a reserva antiga que atravessa o início); quem recebe `empresa`: data (caixa) do recebimento que completou o líquido do canal
   (`recebidoPorReserva().dataCompleto`); a confirmar: nenhuma. `ladoDoInicio` — com data: antes do
   início → **antes** (a reserva inteira, em qualquer mês), senão **depois** (inteira, mesmo as noites
   anteriores); sem data: inteira antes do início → antes, inteira a partir dele → depois, atravessando
