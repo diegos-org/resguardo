@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 4/10/2026, **documento "Como funciona" para o proprietário pronto (M5.6):** texto por seção em Configurações → Como funciona (proprietário), versão datada a cada publicação, aceite registrado no convite e no portal (quem, quando, qual versão) — **nada aparece no portal até você revisar o rascunho e publicar a versão 1** (seção 6, item 31); **reserva paga antes do início é acertada inteira por fora (M4.12):** o corte do início do sistema passou a ser pela data em que o canal pagou a reserva, não por noite — a reserva de 29/9 a 2/10 paga em 30/9 é toda de antes, com a noite de outubro; a paga a partir de 1/10 entra inteira; Booking, site e direta que atravessam 30/9→1/10 precisam do recebimento registrado **com a data em que o canal pagou** antes da marcação (item 29 da seção 6); Configurações → Regras financeiras ganhou "em quantos dias depois do check-in o canal paga" (Airbnb: 1) — seção 2; **antes do fechamento de outubro (o primeiro no sistema), faça o item 29 da seção 6: defina o início do sistema (1/10/2026) em Configurações → Repasses e clique em "Marcar como acertado por fora" em Financeiro → Repasses (M4.11) — nada de setembro entra de novo e o fechamento sai sem tratamento à mão;** **modelo oficial do relatório mensal especificado (M5.7, a implementar):** o relatório de setembro que a Lia montou com você virou o padrão, no visual novo, com números do mês e os extratos das OTAs no fim — veja o protótipo com dados fictícios e me diga o que mudar (seção 2 e seção 7); **portal do proprietário marketplace pronto (M12.4):** quem tem contrato marketplace edita no portal os preços e as regras de venda do próprio imóvel (com a conta do site ao vivo), vê se a mudança já foi ao Beds24, marca as limpezas como feitas e registra os consertos por conta própria (seção 2); **atenção ao fechamento de outubro — o primeiro no sistema: checklist no item 29 da seção 6 (setembro já acertado por fora não pode entrar de novo);** **extrato e repasses por periodicidade prontos (M4.10):** o proprietário vê no portal a parte dele em cada reserva (a liberar, disponível, repassada), escolhe como quer receber (mensal, quinzenal, semanal, assim que disponível) e pode pedir um repasse; você registra o recebimento do canal na reserva, marca o repasse pago com o comprovante e o e-mail sai sozinho (seção 2); **identidade visual nova implementada (M7.5):** site, portais e painel estão no visual do estudo que você aprovou (verdes, off-white de papel, grão sutil nos fundos, busca translúcida, serifa nos títulos; painel mais denso), com três textos novos da capa editáveis em Configurações → Site (seção 2); **acervo visual do Sage guardado e especificação de design escrita (M7.5):** o visual que você aprovou está em `prototipos/acervo-visual-2026-10` (e o código dele já estava em `prototipos/scl-publico`); os tokens e os ajustes combinados estão em `requisitos/product/DESIGN.md`; falta só implementar; **fonte de preços por imóvel pronta (M3.9):** cada imóvel escolhe, na ficha, se os preços são automáticos do SCL, definidos no Beds24 (o SCL só lê) ou digitados no cadastro; site, envio ao Beds24, prévia e portal seguem a escolha (seção 2); item novo de **identidade visual** (M7.5, aprovado por você); **referência do sistema antigo cruzada com o plano (M0.6):** o museu que você mandou foi percorrido tela a tela e comparado com o que já existe, com uma lista de ideias para você decidir (seção 2 e `arquivo/sistema-antigo`); **desconto do site e simulação do marketplace prontos (M12.1):** nova aba Configurações → Marketplace e desconto do site, com as taxas de referência e os três pesos editáveis e a simulação Airbnb × Booking × site; o site passa a mostrar valor cheio, desconto e total em toda consulta e cotação (seção 2); recebimento do site decidido (M8.0: empresa recebe e repassa, Mercado Pago; repasse na periodicidade que o proprietário escolher, item novo M4.10), modelo do marketplace decidido (B, partes iguais; M12.1 liberado), marketplace recebendo pela empresa como o site, fonte de preços por imóvel no plano (M3.9), backup do repositório ativado por você (M0.7), publicação de homologação dada por fechada por você (M0.5), pedido do checkout com Pix e cartão registrado (M8.2, com parcelamento pago pelo hóspede) e decisão de não cobrar nada sobre as reservas das OTAs do dono do marketplace; correção do robô de backup depois da sua primeira rodada (ele passa a gravar com uma chave da própria conta de backup e guarda o que vem da origem fora de branches e tags, onde nenhuma automação roda; item 23, passos 4, 5 e 7) e passo a passo mais detalhado (passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório ativo na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
+> **Última atualização:** 4/10/2026, **relatório mensal no modelo oficial pronto (M5.7):** o PDF do portal, do painel e do e-mail do fechamento saiu em quatro páginas (capa com o resultado e "como chega até você", números e reservas do mês com o gráfico de 12 meses, conciliação e repasses, extratos dos canais no fim), com os ajustes que você pediu (quadros dois a dois, nada com rolagem lateral no celular); **antes do fechamento de outubro, guarde os extratos dos canais em Financeiro → Repasses → "Extratos dos canais"** para irem no e-mail (item 32 da seção 6); os e-mails do fechamento e do repasse ganharam a versão bonita (HTML) na mesma ordem do texto; **documento "Como funciona" para o proprietário pronto (M5.6):** texto por seção em Configurações → Como funciona (proprietário), versão datada a cada publicação, aceite registrado no convite e no portal (quem, quando, qual versão) — **nada aparece no portal até você revisar o rascunho e publicar a versão 1** (seção 6, item 31); **reserva paga antes do início é acertada inteira por fora (M4.12):** o corte do início do sistema passou a ser pela data em que o canal pagou a reserva, não por noite — a reserva de 29/9 a 2/10 paga em 30/9 é toda de antes, com a noite de outubro; a paga a partir de 1/10 entra inteira; Booking, site e direta que atravessam 30/9→1/10 precisam do recebimento registrado **com a data em que o canal pagou** antes da marcação (item 29 da seção 6); Configurações → Regras financeiras ganhou "em quantos dias depois do check-in o canal paga" (Airbnb: 1) — seção 2; **antes do fechamento de outubro (o primeiro no sistema), faça o item 29 da seção 6: defina o início do sistema (1/10/2026) em Configurações → Repasses e clique em "Marcar como acertado por fora" em Financeiro → Repasses (M4.11) — nada de setembro entra de novo e o fechamento sai sem tratamento à mão;** **modelo oficial do relatório mensal especificado (M5.7, a implementar):** o relatório de setembro que a Lia montou com você virou o padrão, no visual novo, com números do mês e os extratos das OTAs no fim — veja o protótipo com dados fictícios e me diga o que mudar (seção 2 e seção 7); **portal do proprietário marketplace pronto (M12.4):** quem tem contrato marketplace edita no portal os preços e as regras de venda do próprio imóvel (com a conta do site ao vivo), vê se a mudança já foi ao Beds24, marca as limpezas como feitas e registra os consertos por conta própria (seção 2); **atenção ao fechamento de outubro — o primeiro no sistema: checklist no item 29 da seção 6 (setembro já acertado por fora não pode entrar de novo);** **extrato e repasses por periodicidade prontos (M4.10):** o proprietário vê no portal a parte dele em cada reserva (a liberar, disponível, repassada), escolhe como quer receber (mensal, quinzenal, semanal, assim que disponível) e pode pedir um repasse; você registra o recebimento do canal na reserva, marca o repasse pago com o comprovante e o e-mail sai sozinho (seção 2); **identidade visual nova implementada (M7.5):** site, portais e painel estão no visual do estudo que você aprovou (verdes, off-white de papel, grão sutil nos fundos, busca translúcida, serifa nos títulos; painel mais denso), com três textos novos da capa editáveis em Configurações → Site (seção 2); **acervo visual do Sage guardado e especificação de design escrita (M7.5):** o visual que você aprovou está em `prototipos/acervo-visual-2026-10` (e o código dele já estava em `prototipos/scl-publico`); os tokens e os ajustes combinados estão em `requisitos/product/DESIGN.md`; falta só implementar; **fonte de preços por imóvel pronta (M3.9):** cada imóvel escolhe, na ficha, se os preços são automáticos do SCL, definidos no Beds24 (o SCL só lê) ou digitados no cadastro; site, envio ao Beds24, prévia e portal seguem a escolha (seção 2); item novo de **identidade visual** (M7.5, aprovado por você); **referência do sistema antigo cruzada com o plano (M0.6):** o museu que você mandou foi percorrido tela a tela e comparado com o que já existe, com uma lista de ideias para você decidir (seção 2 e `arquivo/sistema-antigo`); **desconto do site e simulação do marketplace prontos (M12.1):** nova aba Configurações → Marketplace e desconto do site, com as taxas de referência e os três pesos editáveis e a simulação Airbnb × Booking × site; o site passa a mostrar valor cheio, desconto e total em toda consulta e cotação (seção 2); recebimento do site decidido (M8.0: empresa recebe e repassa, Mercado Pago; repasse na periodicidade que o proprietário escolher, item novo M4.10), modelo do marketplace decidido (B, partes iguais; M12.1 liberado), marketplace recebendo pela empresa como o site, fonte de preços por imóvel no plano (M3.9), backup do repositório ativado por você (M0.7), publicação de homologação dada por fechada por você (M0.5), pedido do checkout com Pix e cartão registrado (M8.2, com parcelamento pago pelo hóspede) e decisão de não cobrar nada sobre as reservas das OTAs do dono do marketplace; correção do robô de backup depois da sua primeira rodada (ele passa a gravar com uma chave da própria conta de backup e guarda o que vem da origem fora de branches e tags, onde nenhuma automação roda; item 23, passos 4, 5 e 7) e passo a passo mais detalhado (passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório ativo na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
 
 ---
 
@@ -29,7 +29,7 @@
 | M2 Cadastros | Imóveis, proprietários, contratos e aba Anúncios | ✅ implementado; referências dos canais precisam ser preenchidas/conferidas |
 | M3 Reservas | Reservas, calendário central, importação e envio de calendário/preços ao Beds24 | 🟡 importação e envio implementados; o envio começa desligado e espera o seu teste no 103; conferência das reservas parcial; fonte de preços por imóvel escolhida na ficha de cada imóvel (M3.9) pronta |
 | M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | 🟡 em andamento; extrato e repasses por periodicidade prontos (M4.10); início do sistema e acerto por fora do que é de antes (M4.11); conciliação do extrato bancário (M4.4b) e Pix automático dependem do banco/Mercado Pago; reserva paga antes do início acertada inteira por fora, pela data em que o canal pagou (M4.12); dia do fechamento configurável (M4.13) a fazer |
-| M5 Portal do proprietário | Relatórios, saldos, PDF, bloqueio de uso próprio | 🟡 relatórios, PDF, e-mail do fechamento e bloqueio de datas prontos; documento "como funciona" para o proprietário pronto, aguardando você publicar a versão 1 (M5.6); modelo oficial do relatório mensal especificado em 4/10 (M5.7, a implementar) |
+| M5 Portal do proprietário | Relatórios, saldos, PDF, bloqueio de uso próprio | 🟡 relatórios, PDF, e-mail do fechamento e bloqueio de datas prontos; documento "como funciona" para o proprietário pronto, aguardando você publicar a versão 1 (M5.6); relatório mensal no modelo oficial pronto (M5.7), com os extratos dos canais guardados por mês para o e-mail |
 | M6 Operação | Limpezas, manutenção, agenda diária | 🟡 em andamento |
 | M7 Site público | Site novo com disponibilidade e valor reais | 🟡 disponibilidade e valor prontos; visual novo do site, dos portais e do painel pronto (M7.5, 4/10); páginas legais do site (M7.4) a fazer; fotos reais (M7.3) dependem de você |
 | M8 Reserva direta | Cotação, datas seguradas e pagamento pelo Mercado Pago | 🟡 cotação e "segurar as datas" prontos; recebimento decidido em 4/10 (empresa recebe e repassa); pagamento (M8.2) espera só as credenciais de teste do Mercado Pago |
@@ -67,10 +67,10 @@ pronto, e funciona assim:
   oficial, com aceite registrado. As páginas legais do site (termos, privacidade, cancelamento) são o
   M7.4, com aceite no checkout.
 
-### Relatório mensal: modelo oficial — M5.7 (4/10, especificado; implementação a fazer)
+### Relatório mensal: modelo oficial — M5.7 (4/10, pronto)
 
 Você mandou em 4/10 o relatório de setembro que a Lia montou com você e pediu que ele virasse o
-padrão. Ficou assim:
+padrão. Está implementado assim (no portal, no painel e no e-mail do fechamento):
 
 - **O que o relatório vai ter, nesta ordem:** capa com a marca, o mês, o imóvel, a foto e os
   nomes (proprietário e, quando houver, representante autorizado); **seu resultado do mês** em
@@ -106,9 +106,22 @@ padrão. Ficou assim:
   `prototipos/relatorio-mensal/relatorio.html` (abra no navegador; "Imprimir" mostra as quatro
   páginas em A4); a especificação completa, em `requisitos/product/RELATORIO-MENSAL.md`. O PDF que
   você mandou tem dados reais e **não** foi para o GitHub — só a estrutura dele.
-- **O que falta:** você validar o protótipo (seção 7); depois a implementação (item M5.7 do
-  ROADMAP), que substitui o PDF atual de duas páginas e passa a valer no portal e no e-mail do
-  dia 1º.
+- **O que você vê agora:** o PDF tem quatro páginas em A4 (capa e resultado; números e reservas do
+  mês com o gráfico; conciliação, repasses e despesas; extratos dos canais), cada uma numa folha,
+  numeradas "página N de M"; os quadros dos números ficam dois a dois e nada precisa de rolagem
+  lateral no celular (seu pedido de 4/10). O do portal sai sem os extratos (o rodapé diz que eles
+  ficam com a equipe); o do painel (ficha do proprietário → Relatório em PDF) aceita foto e um
+  extrato na hora, agora com o nome do canal; o do e-mail do fechamento leva os extratos que você
+  guardar em **Financeiro → Repasses → "Extratos dos canais para o relatório"** (um PDF por imóvel,
+  mês e canal, com as páginas a usar) — sem extrato guardado, o relatório sai sem anexos e a seção
+  do proprietário avisa, antes e depois do envio. Os e-mails do fechamento e do repasse saem em
+  texto e numa versão bonita (HTML), na ordem combinada: saudação pelo primeiro nome, uma frase do
+  que é, o valor em destaque, lista curta, próximo passo, assinatura — o seu texto editável
+  continua valendo (se ele já começa com "Olá", a saudação não repete).
+- **O que ficou para os itens próprios:** foto real da capa (M7.3 — até lá o quadro "foto em breve"),
+  linhas do modelo B no relatório do marketplace (M12.2), comparações com meses anteriores a
+  1/10/2026 (M11.1) e WhatsApp (M10). Dia do fechamento no dia 2: item M4.13, esperando a sua
+  confirmação (seção 7).
 
 ### Portal do proprietário marketplace — M12.4 (4/10)
 
@@ -1334,9 +1347,17 @@ Não precisa preencher descrições dos apartamentos para importar. A melhoria n
 |---|---|
 | ![Portal](docs/telas/portal.png) | ![Portal com reservas no celular](docs/telas/portal-reservas-celular.png) |
 
-| Portal do proprietário: calendário, reservas e saldo | Relatório do mês em PDF (primeira página) |
+| Portal do proprietário: calendário, reservas e saldo | Relatório mensal · capa e resultado |
 |---|---|
-| ![Portal com reservas](docs/telas/portal-reservas.png) | ![Relatório em PDF](docs/telas/relatorio-pdf.png) |
+| ![Portal com reservas](docs/telas/portal-reservas.png) | ![Relatório mensal · capa e resultado](docs/telas/relatorio-mensal-1.png) |
+
+| Relatório mensal · números e reservas do mês | Relatório mensal · conciliação e repasses |
+|---|---|
+| ![Relatório mensal · página 2](docs/telas/relatorio-mensal-2.png) | ![Relatório mensal · página 3](docs/telas/relatorio-mensal-3.png) |
+
+| Relatório mensal · extratos dos canais no fim | |
+|---|---|
+| ![Relatório mensal · página 4](docs/telas/relatorio-mensal-4.png) | |
 
 | Limpezas | Limpezas no celular |
 |---|---|
@@ -1856,6 +1877,14 @@ ambiente).
    preencha a seção "Contestações" e publique a versão 2 — todos vão aceitar de novo, e é assim mesmo.
    Não escreva no texto a comissão nem a periodicidade: elas aparecem sozinhas, do cadastro.
 
+32. **Guarde os extratos dos canais antes do fechamento (M5.7):** em **Financeiro → Repasses**, abra
+    "Extratos dos canais para o relatório de {mês}" e suba, para cada imóvel, o PDF que o Airbnb
+    emitiu ("Ganhos" do período; Booking quando houver), indicando as páginas que são só daquele
+    imóvel e daquele mês. Esse arquivo vai no fim do relatório que o e-mail do fechamento manda. Sem
+    ele, o relatório sai sem anexos e a seção do proprietário avisa — nada é inventado. Antes do
+    primeiro envio, gere o PDF de um proprietário na ficha dele (Relatório em PDF) e confira as
+    quatro páginas; me diga o que ajustar.
+
 ---
 
 ## 7. Decisões pendentes e respostas às suas perguntas
@@ -1869,12 +1898,10 @@ ambiente).
   (Pix na hora, cartão em 14 a 30 dias) nunca cabem num dia fixo — por isso o "a liberar" continua.
   Proposta: dia do fechamento configurável em Configurações → Repasses (1 a 5), valendo para o
   fechamento, o repasse mensal e o e-mail do relatório. **Confirme o dia (2?)** e eu implemento.
-- **Relatório mensal — modelo oficial (M5.7, 4/10):** abra `prototipos/relatorio-mensal/relatorio.html`
-  (dados fictícios) e me diga: (1) se a ordem das páginas e o bloco "como chega até você" estão do
-  jeito que você quer; (2) se os números do mês (noites e ocupação, diária média, comparação com o
-  mês anterior e com o ano anterior, acumulado) são os que você quer acompanhar, ou se tira/põe
-  algum; (3) se um gráfico de barras de 12 meses basta ou quer um segundo (ex.: ocupação). Sem
-  resposta, implemento como está no protótipo.
+- **Relatório mensal — modelo oficial (M5.7, 4/10, implementado):** você disse que o modelo está
+  excelente e pediu os quadros dois a dois e nada com rolagem lateral no celular — feito. Fica em
+  aberto só: quer um segundo gráfico (ex.: ocupação) além do de 12 meses? Gere o PDF de um
+  proprietário na ficha dele e me diga o que ajustar no texto ou na ordem.
 - **Como receber as reservas do site (M8.0) — decidido em 4/10:** mantém "empresa recebe e
   repassa" pelo Mercado Pago; o contador confirmou que só a comissão é receita; o repasse segue
   a periodicidade que o proprietário escolher (seção 2 e item M4.10). **Ainda preciso de você,

@@ -1,7 +1,12 @@
 # Relatório mensal do proprietário — modelo oficial (M5.7)
 
-**Situação:** especificado em 4/10/2026 a pedido de Diego; implementação é o item **M5.7** do
-ROADMAP (a fazer). Modelo navegável com dados fictícios em `prototipos/relatorio-mensal/relatorio.html`.
+**Situação:** especificado em 4/10/2026 a pedido de Diego e **implementado em 4/10/2026 (item M5.7 do
+ROADMAP, feito)**: `app/src/relatorios/` (`metricas.ts` e `dinheiro.ts` puros, `relatorio.ts` textos, `pdf.ts`
+desenho, `extratos.ts` extratos guardados, `tema.ts` cores) e `app/src/email/modelo.ts` (esqueleto dos e-mails).
+Fora deste item, como previsto: foto da capa (M7.3), linhas do modelo B (M12.2), histórico anterior a
+1/10/2026 (M11.1), WhatsApp (M10). Ajustes de Diego em 4/10 já aplicados: quadros 2×2 em vez de quatro
+em linha, nada com rolagem lateral no celular, cada página como uma folha. Modelo navegável com dados
+fictícios em `prototipos/relatorio-mensal/relatorio.html`.
 
 **Decisão de Diego (4/10/2026):** o relatório mensal que a Lia (Codex) montou com ele para
 setembro/2026 vira o **padrão** do sistema, adaptado às cores e fontes da identidade visual nova
