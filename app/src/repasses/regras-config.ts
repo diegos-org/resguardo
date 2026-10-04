@@ -4,7 +4,7 @@
  */
 import { and, eq, gte, isNull, lt, ne, sql } from "drizzle-orm";
 import { gravarConfig, lerConfig, travarConfig } from "@/configuracoes/armazem";
-import { repasseItens, repasses } from "@/db/schema";
+import { lancamentos, repasseItens, repasses } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { dataValida } from "@/reservas/regras";
 import { type RegrasRepasses, regrasDeJson } from "./periodicidade";
@@ -33,8 +33,10 @@ export async function lerInicioDoSistema(db: Db, organizacaoId: string): Promise
  * Grava (ou apaga, com data vazia) o início do sistema, com auditoria. Nunca no futuro: marcaria como acertado o que ainda
  * nem aconteceu. Nunca para antes de um acerto por fora em vigor (nem apagado enquanto houver um): as partes e os
  * lançamentos que ele cobre ficariam "acertados" dentro do período do sistema e nunca entrariam num repasse normal.
- * Nem para depois de uma parte que um repasse normal em vigor (fechamento ou antecipado) já pagou, ou de um mês já
- * fechado: a data diria que aquilo foi acertado por fora enquanto o sistema o paga. Nos dois casos, estorne primeiro.
+ * Nem para depois de uma parte que um repasse normal em vigor (fechamento ou antecipado) já pagou, de um mês já
+ * fechado, ou de saldo que um fechamento posterior em vigor já quitou (o fechamento paga o acerto acumulado, então o de
+ * outubro leva um ajuste de setembro sem item de reserva): a data diria que aquilo foi acertado por fora enquanto o
+ * sistema o paga, e a marcação zeraria de novo o mês. Em todos os casos, estorne primeiro.
  * A conferência e a gravação ficam sob a mesma trava que a marcação, o antecipado e o fechamento usam.
  */
 export async function salvarInicioDoSistema(db: Db, organizacaoId: string, data: string, hoje: string, autorId: string | null): Promise<{ ok: true; mudou: boolean } | { ok: false; erro: string }> {
@@ -62,8 +64,30 @@ export async function salvarInicioDoSistema(db: Db, organizacaoId: string, data:
         .select({ n: sql<number>`count(*)::int` })
         .from(repasses)
         .where(and(eq(repasses.organizacaoId, organizacaoId), eq(repasses.tipo, "fechamento"), isNull(repasses.estornadoEm), lt(repasses.mes, d)));
-      if (normais?.n || fechados?.n) {
-        const o = [normais?.n ? `${normais.n} parte(s) de reserva anterior(es) a ${d.split("-").reverse().join("/")} já em repasse normal (fechamento ou antecipado)` : "", fechados?.n ? `${fechados.n} fechamento(s) de mês anterior` : ""].filter(Boolean).join(" e ");
+      // Fechamento de mês a partir da data: pagou o acerto acumulado do proprietário, inclusive o que é de antes dela
+      // (ajuste de setembro sem item de reserva entra no fechamento de outubro). Se ainda houver imóvel/mês de antes com
+      // acerto diferente de zero, a marcação por fora o zeraria de novo — acertado duas vezes.
+      const [posteriores] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(repasses)
+        .where(
+          and(
+            eq(repasses.organizacaoId, organizacaoId),
+            eq(repasses.tipo, "fechamento"),
+            isNull(repasses.estornadoEm),
+            gte(repasses.mes, d),
+            sql`exists (select 1 from ${lancamentos} l where l.organizacao_id = ${repasses.organizacaoId} and l.proprietario_id = ${repasses.proprietarioId} and l.competencia < ${d}::date group by l.imovel_id, to_char(l.competencia, 'YYYY-MM') having sum(l.efeito_saldo) <> 0)`,
+          ),
+        );
+      if (normais?.n || fechados?.n || posteriores?.n) {
+        const dia = d.split("-").reverse().join("/");
+        const o = [
+          normais?.n ? `${normais.n} parte(s) de reserva anterior(es) a ${dia} já em repasse normal (fechamento ou antecipado)` : "",
+          fechados?.n ? `${fechados.n} fechamento(s) de mês anterior` : "",
+          posteriores?.n ? `${posteriores.n} fechamento(s) de mês a partir de ${dia} que já quitou(aram) acerto de antes dessa data` : "",
+        ]
+          .filter(Boolean)
+          .join(", ");
         return { ok: false as const, erro: `Há ${o} em vigor: o sistema já pagou (ou vai pagar) isso, então não pode ser dado como acertado por fora. Estorne esses repasses antes, ou escolha um início que não os alcance.` };
       }
     }
