@@ -76,7 +76,8 @@ regra** a decidir — a comparação abaixo vale igual.
    exige) fica menor, então dá para começar a vender pelo site mais cedo.
    Condição (cumprida em 4/10/2026): o contador confirmou que, com o contrato e as notas
    certas, a SCL tributa só a comissão.
-2. **Deixar o split do Mercado Pago para o marketplace (M12)**, quando entrarem proprietários
+2. **Deixar o split do Mercado Pago para o marketplace (M12)** — superado em 4/10/2026: Diego
+   decidiu que o marketplace também será "empresa recebe e repassa", sem split —, quando entrarem proprietários
    que cuidam da própria operação e esperam receber na hora — aí o split compensa o trabalho
    extra de ligar a conta de cada um. Essa escolha do marketplace é **separada** desta: fica no
    M12.2 (decidida junto com o modelo do M12.1), então escolher "empresa recebe e repassa"
@@ -121,6 +122,11 @@ criar).
 - **Pedido novo de Diego:** documento "como funciona" para o proprietário (inclusive quando e
   como recebe) com aceite registrado, e páginas legais do site com aceite no checkout: itens
   M5.6 e M7.4 do ROADMAP.
+- **Marketplace (4/10/2026, mesma conversa):** também "empresa recebe e repassa", sem split
+  do Mercado Pago, com o extrato e as periodicidades do M4.10. E **um modelo por contrato,
+  nunca por reserva**: imóvel de gestão total que vender pelo site continua com a comissão do
+  contrato (sobre o valor líquido da taxa do pagamento); o desconto do hóspede é regra única
+  do site, igual para gestão total e marketplace.
 
 ## O que Diego precisava decidir (perguntas originais)
 

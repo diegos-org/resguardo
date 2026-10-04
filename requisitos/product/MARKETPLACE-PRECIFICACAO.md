@@ -96,9 +96,9 @@ fechar. Se a margem ficar baixa, dá para combinar B com uma mensalidade pequena
   no site próprio) que se aplique aos anúncios.
 - Decidir se proprietários do marketplace também anunciam nas OTAs pela SCL (Beds24) e se
   a SCL cobra algo sobre essas reservas.
-- **Forma de recebimento do marketplace** (split do Mercado Pago × empresa recebe e repassa):
-  decisão separada, ação 12 do ROADMAP; trava o M12.2, não o M12.1.
-- Reservas do site em imóveis de **gestão total**: proposta do Claude em 4/10 (a confirmar por
-  Diego) é um modelo por contrato, nunca por reserva: a comissão do contrato vale em todos os
+- **Forma de recebimento do marketplace:** decidido por Diego em 4/10/2026, empresa recebe e
+  repassa (sem split), como o site, com o extrato e as periodicidades do M4.10.
+- Reservas do site em imóveis de **gestão total**: decidido por Diego em 4/10/2026, um modelo
+  por contrato, nunca por reserva: a comissão do contrato vale em todos os
   canais, inclusive o site, sobre o valor líquido da taxa do pagamento; o desconto do hóspede
   no site é uma regra única do site, igual para gestão total e marketplace.

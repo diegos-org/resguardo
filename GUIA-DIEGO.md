@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 4/10/2026, recebimento do site decidido (M8.0: empresa recebe e repassa, Mercado Pago; repasse na periodicidade que o proprietário escolher, item novo M4.10), modelo do marketplace decidido (B, partes iguais; M12.1 liberado) e backup do repositório ativado por você (M0.7); correção do robô de backup depois da sua primeira rodada (ele passa a gravar com uma chave da própria conta de backup e guarda o que vem da origem fora de branches e tags, onde nenhuma automação roda; item 23, passos 4, 5 e 7) e passo a passo mais detalhado (passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório ativo na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
+> **Última atualização:** 4/10/2026, recebimento do site decidido (M8.0: empresa recebe e repassa, Mercado Pago; repasse na periodicidade que o proprietário escolher, item novo M4.10), modelo do marketplace decidido (B, partes iguais; M12.1 liberado), marketplace recebendo pela empresa como o site, fonte de preços por imóvel no plano (M3.9) e backup do repositório ativado por você (M0.7); correção do robô de backup depois da sua primeira rodada (ele passa a gravar com uma chave da própria conta de backup e guarda o que vem da origem fora de branches e tags, onde nenhuma automação roda; item 23, passos 4, 5 e 7) e passo a passo mais detalhado (passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório ativo na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
 
 ---
 
@@ -27,7 +27,7 @@
 | M0 Fundação | Base do app, banco de dados, layout, publicação na Vercel, backup | 🟡 Vercel e login funcionando; banco de homologação separado conferido em 3/10; backup automático do repositório **ativo desde 4/10** em conta separada (M0.7, seção 6, item 23); conferência automática dos PRs mais rápida (M0.8); falta só você dar o M0.5 por fechado e mandar a referência do sistema antigo (M0.6) |
 | M1 Acesso | Login (Google/código por e-mail), convites, permissões | ✅ pronto |
 | M2 Cadastros | Imóveis, proprietários, contratos e aba Anúncios | ✅ implementado; referências dos canais precisam ser preenchidas/conferidas |
-| M3 Reservas | Reservas, calendário central, importação e envio de calendário/preços ao Beds24 | 🟡 importação e envio implementados; o envio começa desligado e espera o seu teste no 103; conferência das reservas parcial |
+| M3 Reservas | Reservas, calendário central, importação e envio de calendário/preços ao Beds24 | 🟡 importação e envio implementados; o envio começa desligado e espera o seu teste no 103; conferência das reservas parcial; fonte de preços por imóvel (M3.9) a fazer |
 | M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | 🟡 em andamento; extrato e repasses por periodicidade (M4.10) a fazer |
 | M5 Portal do proprietário | Relatórios, saldos, PDF, bloqueio de uso próprio | 🟡 relatórios, PDF, e-mail do fechamento e bloqueio de datas prontos; documento "como funciona" para o proprietário (M5.6) a fazer |
 | M6 Operação | Limpezas, manutenção, agenda diária | 🟡 em andamento |
@@ -66,6 +66,19 @@ dinheiro do proprietário que passa pela empresa). Com isso o M8.0 fecha e o pag
   pagamento (hoje: sai antes da divisão, cada um na proporção), quem arca com uma
   contestação de cartão perdida, e a política de cancelamento do site. Nada disso impede o
   M8.2 em teste.
+- **Marketplace e gestão total na mesma régua (4/10):** o marketplace também recebe pela
+  empresa, sem split do Mercado Pago, com o extrato. E vale **um modelo por contrato, nunca
+  por reserva**: imóvel de gestão total que vender pelo site continua com a comissão do
+  contrato (sobre o que entra depois da taxa do pagamento), e o desconto do hóspede é uma
+  regra única do site. Numa reserva de R$ 1.000 pelo site com 4% de desconto, o dono de
+  gestão total recebe R$ 784 (contra R$ 714 no Airbnb) e a SCL R$ 138 (contra R$ 126): o site
+  é melhor para os três sem regra nova.
+- **Fonte de preços por imóvel (pedido de 4/10):** virou o item M3.9. Cada imóvel vai ter, com
+  uma explicação curta no painel e no portal, a escolha entre os preços automáticos da SCL, os
+  preços que o proprietário (ou a ferramenta de precificação dele, como PriceLabs ou Beyond
+  Pricing) define no Beds24, ou preços digitados por ele no portal. O calendário é sempre
+  sincronizado pelo Beds24, nos dois sentidos. Um aviso: "usar o preço do Airbnb" só funciona
+  se o preço estiver no Beds24; o preço inteligente do Airbnb não dá para ler de fora.
 
 ### Conferência automática dos PRs mais rápida — M0.8
 
