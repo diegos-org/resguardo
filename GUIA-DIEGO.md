@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 4/10/2026, recebimento do site decidido (M8.0: empresa recebe e repassa, Mercado Pago; repasse na periodicidade que o proprietário escolher, item novo M4.10), modelo do marketplace decidido (B, partes iguais; M12.1 liberado), marketplace recebendo pela empresa como o site, fonte de preços por imóvel no plano (M3.9), backup do repositório ativado por você (M0.7), publicação de homologação dada por fechada por você (M0.5), pedido do checkout com Pix e cartão registrado (M8.2, com parcelamento pago pelo hóspede) e decisão de não cobrar nada sobre as reservas das OTAs do dono do marketplace; correção do robô de backup depois da sua primeira rodada (ele passa a gravar com uma chave da própria conta de backup e guarda o que vem da origem fora de branches e tags, onde nenhuma automação roda; item 23, passos 4, 5 e 7) e passo a passo mais detalhado (passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório ativo na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
+> **Última atualização:** 4/10/2026, **desconto do site e simulação do marketplace prontos (M12.1):** nova aba Configurações → Marketplace e desconto do site, com as taxas de referência e os três pesos editáveis e a simulação Airbnb × Booking × site; o site passa a mostrar valor cheio, desconto e total em toda consulta e cotação (seção 2); recebimento do site decidido (M8.0: empresa recebe e repassa, Mercado Pago; repasse na periodicidade que o proprietário escolher, item novo M4.10), modelo do marketplace decidido (B, partes iguais; M12.1 liberado), marketplace recebendo pela empresa como o site, fonte de preços por imóvel no plano (M3.9), backup do repositório ativado por você (M0.7), publicação de homologação dada por fechada por você (M0.5), pedido do checkout com Pix e cartão registrado (M8.2, com parcelamento pago pelo hóspede) e decisão de não cobrar nada sobre as reservas das OTAs do dono do marketplace; correção do robô de backup depois da sua primeira rodada (ele passa a gravar com uma chave da própria conta de backup e guarda o que vem da origem fora de branches e tags, onde nenhuma automação roda; item 23, passos 4, 5 e 7) e passo a passo mais detalhado (passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório ativo na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
 
 ---
 
@@ -36,7 +36,36 @@
 | M9 Portal do hóspede | Acesso do hóspede e mensagens automáticas | ✅ pronto |
 | M10 WhatsApp | Caixa de entrada do WhatsApp no painel | ⚪ aguardando |
 | M11 Produção | Dados reais, domínio, entrada em uso | ⚪ aguardando |
-| M12 Marketplace | Proprietário que opera o próprio imóvel; SCL cuida do online | 🟡 cadastro pelo site pronto; modelo de cobrança decidido em 4/10 (B, partes iguais); fórmula e simulação (M12.1) são o próximo item |
+| M12 Marketplace | Proprietário que opera o próprio imóvel; SCL cuida do online | 🟡 cadastro pelo site pronto; modelo de cobrança (B, partes iguais) com pesos editáveis, simulação e desconto único do site prontos (M12.1); cálculo e repasse no financeiro (M12.2) dependem do pagamento (M8.2) e do extrato (M4.10) |
+
+### Marketplace e desconto do site — M12.1 (4/10)
+
+O modelo B em partes iguais, que você decidiu em 4/10, está no sistema como **uma regra só**,
+num lugar só: **Configurações → Marketplace e desconto do site**.
+
+- **O que a tela tem:** as três taxas de referência (Airbnb, só do anfitrião, 16%; Booking, 15%,
+  só para a coluna de comparação; pagamento no site, 4%) e os três pesos da divisão (hóspede,
+  proprietário e SCL, hoje 1/1/1). Embaixo, a **simulação**: você digita diária, noites e
+  limpeza e vê lado a lado o que o hóspede paga e o que cada um recebe no Airbnb, no Booking e
+  no site — com os valores que estão nos campos, antes mesmo de salvar. Salvar fica registrado no
+  histórico e vale para as cotações novas; as já feitas guardam o que mostraram.
+- **A conta, em palavras:** sobre o valor cheio (diárias + limpeza + hóspede extra, o que o dono
+  pediria na OTA), a margem é a taxa do Airbnb menos a taxa do pagamento (12% hoje). Ela é
+  dividida pelos pesos: a parte do hóspede vira **desconto no site**, a da SCL é a receita da SCL
+  e a do proprietário é o que ele recebe a mais que no Airbnb. Como a taxa do pagamento é cobrada
+  só sobre o que o hóspede paga (já com desconto), sobra um pouco, e esse pouco fica com o
+  proprietário. Exemplo de R$ 1.650 cheios: hóspede paga R$ 1.584 (−R$ 66), pagamento R$ 63,36,
+  SCL R$ 66, proprietário R$ 1.454,64 (contra R$ 1.386 no Airbnb). Nada se perde nem se cria.
+- **No site:** toda consulta e toda cotação mostram **Valor cheio**, **Desconto do site** e
+  **Total**, para qualquer imóvel e qualquer contrato (gestão total inclusive — um modelo por
+  contrato, desconto igual para todos, como você decidiu). O pedido de "segurar as datas" entra
+  com o total com desconto, e a mensagem do WhatsApp diz o desconto. Se a taxa do pagamento for
+  igual ou maior que a do Airbnb, não há margem: o site vende pelo valor cheio e a tela avisa.
+- **O que ainda não acontece:** a divisão entre proprietário e SCL **não entra no financeiro**
+  ainda — isso é o M12.2, que depende do pagamento (M8.2) e do extrato com periodicidades
+  (M4.10). Até lá, o contrato marketplace aparece como "modelo B (Configurações → Marketplace)"
+  e não gera lançamentos. Os percentuais são referências suas: confira de tempos em tempos nas
+  tabelas das plataformas, porque o sistema não os adivinha.
 
 ### Recebimento do site: decidido — M8.0
 
@@ -100,7 +129,7 @@ peço na hora.
   empresa, sem split do Mercado Pago, com o extrato. E vale **um modelo por contrato, nunca
   por reserva**: imóvel de gestão total que vender pelo site continua com a comissão do
   contrato (sobre o que entra depois da taxa do pagamento), e o desconto do hóspede é uma
-  regra única do site, que entra na cotação do site com o M12.1. Numa reserva de R$ 1.000 pelo site com 4% de desconto, o dono de
+  regra única do site, já aplicada na cotação do site desde o M12.1 (abaixo). Numa reserva de R$ 1.000 pelo site com 4% de desconto, o dono de
   gestão total recebe R$ 784 (contra R$ 714 no Airbnb) e a SCL R$ 138 (contra R$ 126): o site
   é melhor para os três sem regra nova. **Você decidiu em 4/10:** a SCL não cobra nada sobre
   as reservas que o dono do marketplace vende nas OTAs dele (o modelo B vale só para o que o
@@ -509,8 +538,9 @@ Não precisa preencher descrições dos apartamentos para importar. A melhoria n
   relatórios". Essa área é **só do admin** (tem dados pessoais); na lista o CPF aparece
   mascarado (•••.•••.247-25) e o histórico nunca grava CPF nem Pix por extenso.
 - M2.3: **contratos de gestão com data de início e fim**, na ficha de cada imóvel: gestão
-  completa (sugestão 15%), gestão online (10%) ou marketplace (fórmula decidida em 4/10:
-  modelo B em partes iguais, que entra no sistema no M12.1).
+  completa (sugestão 15%), gestão online (10%) ou marketplace (modelo B em partes iguais,
+  com pesos e taxas em Configurações → Marketplace e desconto do site, M12.1; o cálculo no
+  financeiro é o M12.2).
   Mudou o percentual? Encerra-se o contrato atual e cria-se um novo a partir da data nova —
   assim reservas antigas continuam com a regra da época (ex.: 102, 303 e 399 voltando a
   15/85 em 01/01/2027 = novo contrato começando nessa data). O sistema não deixa dois
@@ -1072,8 +1102,8 @@ Não precisa preencher descrições dos apartamentos para importar. A melhoria n
     fica registrado. Se algo impedir (código de imóvel repetido, e-mail que já é da equipe),
     nada é criado e a tela avisa;
   - depois de aprovar, complete na ficha do proprietário o **documento, o Pix e o contrato**
-    (o contrato marketplace usa o modelo de cobrança decidido em 4/10, que entra no sistema
-    no M12.1).
+    (o contrato marketplace usa o modelo B de Configurações → Marketplace e desconto do site,
+    M12.1; o cálculo no financeiro é o M12.2).
 
 A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 
@@ -1423,6 +1453,12 @@ ambiente).
    perder a conta do Neon. A cópia **fora** do Neon (despejo cifrado num lugar privado, nunca no
    GitHub) fica para o M11.3, quando houver volume de dados reais. Nada para você fazer agora;
    custa um pouco de armazenamento a mais (o banco tem poucos megabytes).
+24. **Marketplace e desconto do site (M12.1):** abra **Configurações → Marketplace e desconto do
+   site**, confira as taxas de referência (Airbnb 16%, Booking 15%, pagamento 4% — eu coloquei os
+   valores aproximados que a gente usou nas contas; se a sua tabela do Mercado Pago ou do Airbnb
+   disser outro número, corrija ali) e brinque com a simulação. Enquanto não salvar nada, vale o
+   padrão 1/1/1, que já está dando desconto no site de homologação (cerca de 4% do valor cheio).
+   Se preferir que o site não dê desconto por enquanto, ponha 0 no peso do hóspede.
 
 ---
 
@@ -1441,7 +1477,8 @@ ambiente).
   recebimento em 30 dias já foram respondidas.
 - **Modelo do marketplace — decidido em 4/10: B, em partes iguais** (a margem do Airbnb menos
   a taxa do pagamento dividida igualmente entre hóspede, proprietário e SCL), com os pesos
-  editáveis no painel; você está testando os números no simulador e pode ajustar. Histórico:
+  editáveis no painel — **implementado em 4/10 (M12.1)**: a tela é Configurações → Marketplace e
+  desconto do site, com a simulação embutida (seção 2 e item 24 da seção 6). Histórico:
   as fórmulas antigas não estão em lugar nenhum, então montei
   uma proposta com as contas feitas: `requisitos/product/MARKETPLACE-PRECIFICACAO.md`.
   Resumo, numa reserva de R$ 1.650 que no Airbnb custaria R$ 1.881 ao hóspede e daria
@@ -1515,8 +1552,8 @@ ambiente).
   algum anúncio já existir no Booking, a gente **liga** em vez de criar outro. Quando você for
   fazer, me chame que eu te guio tela a tela.
 - **Modelos de cliente:** o sistema já tem os dois tipos de contrato — **gestão completa**
-  (os cinco do Rio) e **marketplace** (tipo separado; fórmula decidida em 4/10, modelo B em
-  partes iguais, a entrar no M12.1). Agora o marketplace
+  (os cinco do Rio) e **marketplace** (tipo separado; modelo B em partes iguais, com pesos
+  editáveis e simulação desde o M12.1). Agora o marketplace
   ganhou um bloco próprio no plano (**M12**): fórmula, cálculo e repasse, auto-cadastro do
   proprietário e portal dele com calendário e preços.
 - **Site público:** é a parte que estava mais adiantada, mas ainda como **protótipo

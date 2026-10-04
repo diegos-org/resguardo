@@ -9,7 +9,7 @@ import { SegurarDatas } from "./SegurarDatas";
 const base: CotacaoVista = {
   cotacao: {
     id: "c1", organizacaoId: "o1", imovelId: "i1", codigo: "COT-ABCDEFGH", estado: "aberta", checkin: "2026-10-12", checkout: "2026-10-15", hospedes: 4, noites: 3, situacao: "disponivel",
-    diarias: 135000, limpeza: 25000, hospedeExtra: 30000, total: 190000, leituraEm: null, reservaId: null, holdAte: null, criadaEm: new Date(), atualizadaEm: new Date(),
+    diarias: 135000, limpeza: 25000, hospedeExtra: 30000, valorCheio: 190000, desconto: 7600, total: 182400, leituraEm: null, reservaId: null, holdAte: null, criadaEm: new Date(), atualizadaEm: new Date(),
     imovelCodigo: "403", imovelNome: "Studio Exemplo", fuso: "America/Sao_Paulo",
   },
   estado: "aberta",
@@ -20,27 +20,35 @@ const base: CotacaoVista = {
 const vista = (over: Partial<CotacaoVista>, cot: Partial<CotacaoVista["cotacao"]> = {}): CotacaoVista => ({ ...base, ...over, cotacao: { ...base.cotacao, ...cot } });
 afterEach(cleanup);
 
-it("cotação aberta: resumo com valor por partes e o formulário de contato; sem pagamento", () => {
+it("cotação aberta: resumo com valor por partes, valor cheio e desconto do site, e o formulário de contato; sem pagamento", () => {
   render(<Cotacao vista={base} whatsapp="5521999990000" email="" formulario={<p>FORMULARIO</p>} />);
   expect(screen.getByRole("heading", { name: "Sua cotação" })).toBeTruthy();
   expect(screen.getByText("COT-ABCDEFGH")).toBeTruthy();
   expect(screen.getByText("R$ 1.350,00")).toBeTruthy();
-  expect(screen.getByText("R$ 1.900,00")).toBeTruthy();
+  expect(screen.getByText("Valor cheio").nextElementSibling?.textContent).toBe("R$ 1.900,00");
+  expect(screen.getByText("Desconto do site").nextElementSibling?.textContent).toBe("− R$ 76,00");
+  expect(screen.getByText("R$ 1.824,00")).toBeTruthy();
   expect(screen.getByText("FORMULARIO")).toBeTruthy();
   expect(screen.getByText(/Nenhum pagamento é feito no site/)).toBeTruthy();
+  cleanup();
+  // Sem desconto (regra sem margem): só o total, sem as linhas de valor cheio e desconto.
+  render(<Cotacao vista={vista({}, { desconto: 0, total: 190000 })} whatsapp={null} email="" />);
+  expect(screen.queryByText("Valor cheio")).toBeNull();
+  expect(screen.queryByText("Desconto do site")).toBeNull();
+  expect(screen.getByText("R$ 1.900,00")).toBeTruthy();
 });
 
 it("cotação que mudou: aviso com o valor atual e nova consulta com os mesmos dados; sem formulário", () => {
-  const atual = { situacao: "disponivel" as const, motivos: [], noites: 3, cotacao: { diarias: 150000, limpeza: 25000, hospedeExtra: 30000, total: 205000 }, leituraEm: null };
+  const atual = { situacao: "disponivel" as const, motivos: [], noites: 3, cotacao: { diarias: 150000, limpeza: 25000, hospedeExtra: 30000, valorCheio: 205000, desconto: 8200, total: 196800 }, leituraEm: null };
   render(<Cotacao vista={vista({ mudou: true, atual })} whatsapp={null} email="" formulario={<p>FORMULARIO</p>} />);
   expect(screen.getByRole("heading", { name: "Esta cotação mudou" })).toBeTruthy();
   expect(screen.getByRole("alert").textContent).toContain("O valor mudou desde esta cotação");
-  expect(screen.getByRole("alert").textContent).toContain("Valor atual: R$ 2.050,00");
+  expect(screen.getByRole("alert").textContent).toContain("Valor atual: R$ 1.968,00");
   expect(screen.queryByText("FORMULARIO")).toBeNull();
   expect(screen.getByRole("link", { name: "Fazer uma nova consulta" }).getAttribute("href")).toBe("/consulta?imovel=403&entrada=2026-10-12&saida=2026-10-15&hospedes=4");
   cleanup();
   // Só a situação mudou (mesmo valor): o aviso fala da disponibilidade, não do valor.
-  render(<Cotacao vista={vista({ mudou: true, atual: { ...atual, situacao: "a_confirmar", cotacao: { ...atual.cotacao, diarias: 135000, total: 190000 }, motivos: ["Ainda não conferimos a agenda mais recente para essas datas: confirmamos na conversa."] } })} whatsapp={null} email="" />);
+  render(<Cotacao vista={vista({ mudou: true, atual: { ...atual, situacao: "a_confirmar", cotacao: { ...atual.cotacao, diarias: 135000, valorCheio: 190000, desconto: 7600, total: 182400 }, motivos: ["Ainda não conferimos a agenda mais recente para essas datas: confirmamos na conversa."] } })} whatsapp={null} email="" />);
   expect(screen.getByRole("alert").textContent).toContain("precisa ser confirmada pela equipe");
   expect(screen.getByRole("alert").textContent).not.toContain("Valor atual");
 });

@@ -20,6 +20,7 @@
  */
 import type { EstadoReserva, OrigemReserva, RecebimentoReserva, TipoContrato } from "@/db/schema";
 import { contratoVigente } from "@/contratos/regras";
+import { comissao, ratear } from "@/lib/rateio";
 import { noites } from "@/reservas/regras";
 import type { NovoLancamento } from "./ledger";
 
@@ -60,28 +61,8 @@ export function noitesPorMes(checkin: string, checkout: string): [string, number
   return [...mapa.entries()];
 }
 
-/** Divide `total` centavos em partes proporcionais aos pesos, sem perder nem criar centavo. */
-export function ratear(total: number, pesos: number[]): number[] {
-  const soma = pesos.reduce((a, b) => a + b, 0);
-  if (soma === 0) return pesos.map(() => 0);
-  const exatos = pesos.map((p) => (total * p) / soma);
-  const partes = exatos.map((x) => Math.trunc(x));
-  let resto = total - partes.reduce((a, b) => a + b, 0);
-  const ordem = exatos.map((x, i) => [Math.abs(x - Math.trunc(x)), i] as const).sort((a, b) => b[0] - a[0] || a[1] - b[1]);
-  for (const [, i] of ordem) {
-    if (resto === 0) break;
-    const passo = Math.sign(resto);
-    partes[i] += passo;
-    resto -= passo;
-  }
-  return partes;
-}
-
-/** Comissão em centavos: base × pontos-base / 10000, meio centavo para cima (em módulo). */
-export function comissao(base: number, bp: number): number {
-  const bruto = base * bp;
-  return Math.sign(bruto) * Math.floor((Math.abs(bruto) + 5000) / 10000);
-}
+/** `ratear` e `comissao` vivem em `lib/rateio` (também usados pelos preços do marketplace, M12.1). */
+export { comissao, ratear };
 
 export function calcularReserva(
   r: ReservaParaMotor,
@@ -101,7 +82,7 @@ export function calcularReserva(
   if (r.valorBruto === null) return { lancamentos: [], avisos: ["Valor bruto não informado: cálculo pendente."] };
   const contrato = contratoVigente(contratos, r.checkin);
   if (!contrato) return { lancamentos: [], avisos: [`Sem contrato vigente em ${r.checkin} para este imóvel.`] };
-  if (contrato.comissaoBp === null) return { lancamentos: [], avisos: ["Contrato de marketplace com fórmula ainda não definida."] };
+  if (contrato.comissaoBp === null) return { lancamentos: [], avisos: ["Contrato de marketplace: a divisão do modelo B (Configurações → Marketplace) entra no financeiro com o M12.2; nada lançado por enquanto."] };
 
   const taxa = r.taxaCanal ?? 0;
   if (r.taxaCanal === null) avisos.push("Taxa do canal não informada: considerada zero.");

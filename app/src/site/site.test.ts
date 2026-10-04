@@ -95,6 +95,9 @@ describe("site público (M7.1)", () => {
     // Com o resultado do site (M7.2), a mensagem traz o valor como referência; indisponível ou sem valor, não.
     expect(montarConsulta(base, imovel, "2026-09-25", { situacao: "disponivel", noites: 3, total: 160000 })).toMatchObject({ ok: true, texto: expect.stringContaining("O site mostrou R$ 1.600,00 para 3 noites.") });
     expect(montarConsulta(base, imovel, "2026-09-25", { situacao: "a_confirmar", noites: 1, total: 58750 })).toMatchObject({ texto: expect.stringContaining("R$ 587,50 para 1 noite (disponibilidade a confirmar).") });
+    // Com desconto do site (M12.1): o total já é o valor com desconto, e a mensagem diz isso.
+    expect(montarConsulta(base, imovel, "2026-09-25", { situacao: "disponivel", noites: 3, total: 153600, desconto: 6400 })).toMatchObject({ texto: expect.stringContaining("O site mostrou R$ 1.536,00 para 3 noites (já com o desconto do site de R$ 64,00).") });
+    expect(montarConsulta(base, imovel, "2026-09-25", { situacao: "disponivel", noites: 3, total: 160000, desconto: 0 })).toMatchObject({ texto: expect.stringContaining("O site mostrou R$ 1.600,00 para 3 noites.") });
     expect(montarConsulta(base, imovel, "2026-09-25", { situacao: "indisponivel", noites: 3, total: null })).toMatchObject({ texto: expect.not.stringContaining("O site mostrou") });
     expect(linkWhatsapp("5521900000000", "a b&c")).toBe("https://wa.me/5521900000000?text=a%20b%26c");
   });

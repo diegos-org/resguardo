@@ -60,6 +60,14 @@ export function Cotacao({ vista, whatsapp, email, formulario }: { vista: Cotacao
             <dd>{brl(c.hospedeExtra)}</dd>
           </>
         )}
+        {c.desconto > 0 && (
+          <>
+            <dt>Valor cheio</dt>
+            <dd>{brl(c.valorCheio)}</dd>
+            <dt>Desconto do site</dt>
+            <dd>− {brl(c.desconto)}</dd>
+          </>
+        )}
         <dt>
           <strong>Total</strong>
         </dt>
