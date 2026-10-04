@@ -10,6 +10,7 @@ import { reaisParaCentavos } from "@/lib/dinheiro-form";
 import { uuidValido } from "@/lib/ids";
 import { dataValida } from "@/reservas/regras";
 import { COMODIDADES, TIPOS_CAMA } from "./cadastro-opcoes";
+import { esperarEnvioBeds24 } from "@/beds24/trava";
 import { type FontePrecos, fontePrecosValida } from "./fonte-precos";
 import type { Periodo, RegrasVenda } from "./regras-venda";
 
@@ -215,13 +216,21 @@ export async function fontesDePrecosDosImoveis(db: Db, organizacaoId: string, im
   return mapa;
 }
 
-/** Grava os detalhes (cria na primeira vez). Retorna false se o imóvel não é da organização. */
-export async function salvarDetalhes(db: Db, organizacaoId: string, imovelId: string, dados: Detalhes, autorId: string | null): Promise<boolean> {
+/**
+ * Grava os detalhes (cria na primeira vez). `false` = imóvel não é da organização; texto = recusa
+ * (mudar a fonte de preços durante um envio ao Beds24: o envio planeja a partir dela, então a troca
+ * espera a trava do Beds24, como o bloqueio manual e o vínculo — M3.9).
+ */
+export async function salvarDetalhes(db: Db, organizacaoId: string, imovelId: string, dados: Detalhes, autorId: string | null, agora = new Date()): Promise<true | false | string> {
   return db.transaction(async (tx) => {
     if (!(await imovelDaOrg(tx, organizacaoId, imovelId, true))) return false;
     const antes = await lerDetalhes(tx, organizacaoId, imovelId);
     const mudancas = calcularMudancas(antes, dados);
     if (!Object.keys(mudancas).length) return true;
+    if (antes.fontePrecos !== dados.fontePrecos) {
+      const recusa = await esperarEnvioBeds24(tx, organizacaoId, agora);
+      if (recusa) return `${recusa} A fonte de preços só muda com o envio parado, para o SCL nunca escrever preço num imóvel que passou a usar os preços do Beds24.`;
+    }
     await tx
       .insert(imoveisDetalhes)
       .values({ ...dados, imovelId, organizacaoId })

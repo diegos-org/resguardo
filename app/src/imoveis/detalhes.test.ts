@@ -1,6 +1,7 @@
+import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { historicoDe } from "@/auditoria/auditoria";
-import { imoveis, organizacoes } from "@/db/schema";
+import { beds24Envios, imoveis, organizacoes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { criarPeriodo, DETALHES_VAZIOS, excluirPeriodo, fontesDePrecosDosImoveis, lerDetalhes, listarPeriodos, salvarDetalhes, validarDetalhes, validarPeriodo } from "./detalhes";
@@ -93,6 +94,22 @@ describe("gravação", () => {
     const h = await historicoDe(db, org, "imovel", im);
     expect(h).toHaveLength(2);
     expect(h[0].mudancas).toEqual({ precoBase: [120050, 130000] });
+  });
+
+  it("mudar a fonte de preços durante um envio ao Beds24 é recusado; outros campos salvam; com o envio parado, salva", async () => {
+    const agora = new Date("2026-10-04T12:00:00Z");
+    // Envio entre a escrita externa e o registro final (fase sem trava): a troca de fonte espera.
+    const [envio] = await db.insert(beds24Envios).values({ organizacaoId: org, iniciadoEm: agora, modo: "envio", automatica: false, situacao: "executando" }).returning({ id: beds24Envios.id });
+    const r = await salvarDetalhes(db, org, im, { ...DETALHES_VAZIOS, fontePrecos: "beds24" }, null, agora);
+    expect(typeof r).toBe("string");
+    expect(r).toContain("envio de calendário e preços em andamento");
+    expect((await lerDetalhes(db, org, im)).fontePrecos).toBe("scl");
+    // Outros campos não dependem do envio.
+    expect(await salvarDetalhes(db, org, im, { ...DETALHES_VAZIOS, precoBase: 50000 }, null, agora)).toBe(true);
+    // Envio registrado como terminado: a troca passa.
+    await db.update(beds24Envios).set({ situacao: "ok" }).where(eq(beds24Envios.id, envio.id));
+    expect(await salvarDetalhes(db, org, im, { ...DETALHES_VAZIOS, precoBase: 50000, fontePrecos: "beds24" }, null, agora)).toBe(true);
+    expect((await lerDetalhes(db, org, im)).fontePrecos).toBe("beds24");
   });
 
   it("outra organização não lê nem grava", async () => {
