@@ -187,7 +187,7 @@ export function Simulador({ regras, periodos, hoje, fontePrecos = "scl" }: { reg
               </table>
             )}
             {cot?.avisos.map((a) => (
-              <p key={a} style={{ fontSize: "0.875rem", color: "#7a4a00", margin: 0 }}>
+              <p key={a} style={{ fontSize: "0.875rem", color: "var(--scl-aviso-texto)", margin: 0 }}>
                 ⚠ {a}
               </p>
             ))}

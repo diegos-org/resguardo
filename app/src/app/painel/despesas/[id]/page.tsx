@@ -142,7 +142,7 @@ export default async function DetalheDespesa({ params, searchParams }: PageProps
             </label>
           </div>
           <div className={styles.acoes}>
-            <BotaoConfirmar pergunta="Estornar esta despesa? Ela deixa de contar (o histórico fica guardado)." style={{ background: "#b3261e" }}>
+            <BotaoConfirmar pergunta="Estornar esta despesa? Ela deixa de contar (o histórico fica guardado)." style={{ background: "var(--scl-erro)" }}>
               Estornar
             </BotaoConfirmar>
           </div>

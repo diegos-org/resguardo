@@ -18,7 +18,7 @@ import { categoriaDasLimpezas, listarLimpezas, listarProfissionais, NOMES_ESTADO
 
 const SEMANA = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 const dia = (d: string) => `${SEMANA[new Date(`${d}T12:00:00Z`).getUTCDay()]} ${d.split("-").reverse().slice(0, 2).join("/")}`;
-const COR: Record<EstadoLimpeza, string> = { pedida: "#8a6d1c", confirmada: "#2f5d8a", realizada: "#2e6b3f", cancelada: "#777" };
+const COR: Record<EstadoLimpeza, string> = { pedida: "var(--scl-aviso)", confirmada: "var(--scl-info)", realizada: "var(--scl-ok)", cancelada: "var(--scl-texto-2)" };
 
 export default async function Limpezas({ searchParams }: PageProps<"/painel/limpezas">) {
   const sessao = await exigirSessaoPainel();
@@ -58,7 +58,7 @@ export default async function Limpezas({ searchParams }: PageProps<"/painel/limp
       <div className={styles.topo}>
         <h1>Limpezas</h1>
         {editar && (
-          <Link href={`/painel/limpezas/profissionais${q}`} className={styles.botao} style={{ background: "#fff", color: "var(--scl-salvia)", border: "1px solid currentColor" }}>
+          <Link href={`/painel/limpezas/profissionais${q}`} className={styles.botao} style={{ background: "var(--scl-papel)", color: "var(--scl-musgo)", border: "1px solid currentColor" }}>
             Profissionais
           </Link>
         )}
@@ -201,7 +201,7 @@ export default async function Limpezas({ searchParams }: PageProps<"/painel/limp
                   <input name="motivo" required maxLength={200} />
                 </label>
                 <div className={styles.acoes}>
-                  <BotaoConfirmar pergunta="Cancelar esta limpeza?" style={{ background: "#b3261e" }}>
+                  <BotaoConfirmar pergunta="Cancelar esta limpeza?" style={{ background: "var(--scl-erro)" }}>
                     Cancelar limpeza
                   </BotaoConfirmar>
                 </div>

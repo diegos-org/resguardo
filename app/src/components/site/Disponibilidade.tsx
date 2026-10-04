@@ -10,7 +10,7 @@ export function Disponibilidade({ resultado, entrada, saida, fuso }: { resultado
   const r = resultado;
   const dataBr = (d: string) => d.split("-").reverse().join("/");
   return (
-    <section className={styles.secao} style={{ marginTop: 0 }} aria-label="Disponibilidade e valor">
+    <section className={styles.bloco} aria-label="Disponibilidade e valor">
       <h2>{TITULO[r.situacao]}</h2>
       {r.noites > 0 && (
         <p className={styles.miudo}>
@@ -26,7 +26,7 @@ export function Disponibilidade({ resultado, entrada, saida, fuso }: { resultado
         </ul>
       )}
       {r.cotacao && (
-        <dl style={{ display: "grid", gridTemplateColumns: "max-content auto", gap: "4px 16px", marginTop: 12, background: "#fff", border: "1px solid #e4dccb", borderRadius: 8, padding: 16 }}>
+        <dl className={styles.resumo}>
           <dt>Diárias</dt>
           <dd>{r.cotacao.diarias === null ? "a confirmar" : brl(r.cotacao.diarias)}</dd>
           {r.cotacao.limpeza > 0 && (

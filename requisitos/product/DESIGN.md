@@ -1,6 +1,17 @@
 # Identidade visual do SCL 2.0 — especificação (M7.5)
 
-**Situação:** aprovado por Diego em 4/10/2026: adotar o visual do estudo do "Sage" (site público,
+**Situação:** implementado em `app/` em 4/10/2026 (M7.5): tokens em `app/src/app/globals.css`
+(`--scl-*`, com a textura de papel e as cores semânticas), site público em
+`app/src/components/site/site.module.css`, portais em `app/src/components/portal/portal.module.css`
+(moldura `MolduraPortal`), painel em `app/src/components/painel/painel.module.css` e
+`app/src/components/formularios.module.css`; calendário e anúncios pelos mesmos tokens. Desvios
+registrados ao implementar: (1) no painel os campos continuam com caixa (borda fina), não só
+linha inferior — formulários densos ficam mais legíveis assim; (2) o olho dos cartões sálvia e o
+"Conheça a casa" usam branco em vez de `--scl-dourado-claro` (4,3:1 sobre sálvia, abaixo do
+mínimo em texto pequeno); (3) `--scl-aviso` ficou `#7d6118` (o `#8a6d1c` dava 4,46:1 sobre o
+papel); (4) a foto da capa e as fotos dos imóveis esperam o M7.3: a capa é um gradiente sobre
+`--scl-profundo` e os cartões mostram um quadro "foto em breve"; (5) o PDF do relatório mantém
+a paleta anterior. Aprovado por Diego em 4/10/2026: adotar o visual do estudo do "Sage" (site público,
 `prototipos/acervo-visual-2026-10` e `prototipos/scl-publico`) como design geral do projeto —
 site, portal do hóspede, portal do proprietário e painel —, com os ajustes abaixo. O painel usa a
 mesma paleta e os mesmos padrões, só mais denso. Este documento é a fonte dos tokens; o código

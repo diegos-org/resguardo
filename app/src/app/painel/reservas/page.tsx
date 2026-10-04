@@ -44,7 +44,7 @@ export default async function ListaReservas({ searchParams }: PageProps<"/painel
         <h1>Reservas</h1>
         <span style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {podeFazer(sessao.papel, "reserva:editar") && podeFazer(sessao.papel, "financeiro:editar") && (
-            <Link href="/painel/reservas/importar" className={styles.botao} style={{ background: "#fff", color: "var(--scl-texto)", border: "1px solid var(--scl-areia)" }}>
+            <Link href="/painel/reservas/importar" className={styles.botao} style={{ background: "var(--scl-papel)", color: "var(--scl-texto)", border: "1px solid var(--scl-areia)" }}>
               Importar planilha
             </Link>
           )}
@@ -106,7 +106,7 @@ export default async function ListaReservas({ searchParams }: PageProps<"/painel
             </thead>
             <tbody>
               {lista.map((r) => (
-                <tr key={r.id} className={r.estado === "cancelada" ? styles.inativo : undefined} style={emConflito.has(r.id) ? { background: "#fbeaea" } : undefined}>
+                <tr key={r.id} className={r.estado === "cancelada" ? styles.inativo : undefined} style={emConflito.has(r.id) ? { background: "var(--scl-erro-fundo)" } : undefined}>
                   <td>
                     <Link href={`/painel/reservas/${r.id}`}>{r.codigo}</Link>
                   </td>

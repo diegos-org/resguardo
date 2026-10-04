@@ -33,7 +33,11 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
   const prontoParaEnviar = r?.ok === true && disponibilidade?.situacao !== "invalida";
   return (
     <Moldura conteudo={conteudo}>
-      <h1 style={{ fontSize: "2rem", margin: "8px 0 16px" }}>Consulta</h1>
+      <header className={styles.cabecalhoPagina}>
+        <p className={styles.olho}>Consulta</p>
+        <h1>Planeje sua estadia</h1>
+        <p>Escolha o lugar, as datas e quantas pessoas. A disponibilidade e o valor aparecem antes de qualquer reserva.</p>
+      </header>
       <div className={styles.colunas}>
         <div>
           {sp.aviso === "mudou" && (
@@ -44,36 +48,34 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
           {disponibilidade && <Disponibilidade resultado={disponibilidade} entrada={pedido.entrada} saida={pedido.saida} fuso={imovel?.fuso ?? "America/Sao_Paulo"} />}
           {disponibilidade && podeSegurar(disponibilidade) && <SegurarDatas pedido={pedido} aConfirmar={disponibilidade.situacao === "a_confirmar"} acao={criarCotacaoAcao} />}
           {prontoParaEnviar && r?.ok ? (
-            <>
-              <section className={styles.secao}>
-                <h2>Sua mensagem</h2>
-                <p className={styles.texto} style={{ background: "#fff", border: "1px solid #e4dccb", borderRadius: 8, padding: 16, whiteSpace: "pre-line" }}>
-                  {r.texto}
+            <section className={styles.bloco} aria-labelledby="titulo-mensagem">
+              <h2 id="titulo-mensagem">Sua mensagem</h2>
+              <p className={`${styles.texto} ${styles.caixa}`}>{r.texto}</p>
+              {conteudo.whatsapp ? (
+                <p style={{ marginTop: 16 }}>
+                  <a href={linkWhatsapp(conteudo.whatsapp, r.texto)} className={styles.botao} target="_blank" rel="noopener noreferrer">
+                    Enviar pelo WhatsApp
+                    <span aria-hidden="true">↗</span>
+                  </a>
                 </p>
-                {conteudo.whatsapp ? (
-                  <p style={{ marginTop: 16 }}>
-                    <a href={linkWhatsapp(conteudo.whatsapp, r.texto)} className={styles.botao} target="_blank" rel="noopener noreferrer">
-                      Enviar pelo WhatsApp
-                    </a>
-                  </p>
-                ) : conteudo.email ? (
-                  <p style={{ marginTop: 16 }}>
-                    <a href={`mailto:${conteudo.email}?subject=${encodeURIComponent("Consulta de disponibilidade")}&body=${encodeURIComponent(r.texto)}`} className={styles.botao}>
-                      Enviar por e-mail
-                    </a>
-                  </p>
-                ) : (
-                  <p className={styles.aviso} role="note" style={{ marginTop: 16 }}>
-                    O contato ainda não foi configurado. Volte em breve.
-                  </p>
-                )}
-                <p className={styles.miudo} style={{ marginTop: 12 }}>
-                  A reserva é confirmada na conversa. Nenhuma reserva ou pagamento é feito aqui.
+              ) : conteudo.email ? (
+                <p style={{ marginTop: 16 }}>
+                  <a href={`mailto:${conteudo.email}?subject=${encodeURIComponent("Consulta de disponibilidade")}&body=${encodeURIComponent(r.texto)}`} className={styles.botao}>
+                    Enviar por e-mail
+                    <span aria-hidden="true">↗</span>
+                  </a>
                 </p>
-              </section>
-            </>
-          ) : !disponibilidade && (
-            <p className={styles.texto}>{conteudo.textos.comoReservar || "Escolha o apartamento, as datas e quantas pessoas."}</p>
+              ) : (
+                <p className={styles.aviso} role="note" style={{ marginTop: 16 }}>
+                  O contato ainda não foi configurado. Volte em breve.
+                </p>
+              )}
+              <p className={styles.miudo} style={{ marginTop: 12 }}>
+                A reserva é confirmada na conversa. Nenhuma reserva ou pagamento é feito aqui.
+              </p>
+            </section>
+          ) : (
+            !disponibilidade && <p className={styles.texto}>{conteudo.textos.comoReservar || "Escolha o apartamento, as datas e quantas pessoas."}</p>
           )}
         </div>
         <FormConsulta imoveis={todos} valores={pedido} erros={r && !r.ok ? r.erros : {}} hoje={hojeMinimo} canal={canalDeContato(conteudo)} />

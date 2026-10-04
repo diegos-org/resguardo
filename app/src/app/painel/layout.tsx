@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { signOut } from "@/acesso/auth";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { Menu } from "@/components/painel/Menu";
+import { marcaComDestaque } from "@/components/site/Moldura";
 import { nomeDaEmpresa } from "@/configuracoes/empresa";
 import { getDb } from "@/db/client";
 import styles from "@/components/painel/painel.module.css";
@@ -20,7 +21,7 @@ export default async function PainelLayout({ children }: LayoutProps<"/painel">)
     <div className={styles.estrutura}>
       <aside className={styles.lateral}>
         <Link href="/painel" className={styles.marca}>
-          {empresa}
+          {marcaComDestaque(empresa)}
         </Link>
         <Suspense>
           <Menu papel={sessao.papel} />

@@ -114,7 +114,7 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
           </p>
           <BotaoConfirmar
             pergunta={`Confirmar a reserva ${r.codigo}? Os valores dela entram no financeiro.`}
-            style={{ font: "inherit", padding: "8px 16px", borderRadius: 6, border: "1px solid var(--scl-verde, #2e6b4f)", color: "var(--scl-verde, #2e6b4f)", background: "#fff", cursor: "pointer" }}
+            style={{ font: "inherit", padding: "8px 16px", borderRadius: 6, border: "1px solid var(--scl-ok)", color: "var(--scl-ok)", background: "var(--scl-papel)", cursor: "pointer" }}
           >
             Confirmar reserva
           </BotaoConfirmar>
@@ -125,7 +125,7 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
           <input type="hidden" name="id" value={r.id} />
           <BotaoConfirmar
             pergunta={`Cancelar a reserva ${r.codigo}? O financeiro dela será estornado.`}
-            style={{ font: "inherit", padding: "8px 16px", borderRadius: 6, border: "1px solid #b3261e", color: "#b3261e", background: "#fff", cursor: "pointer" }}
+            style={{ font: "inherit", padding: "8px 16px", borderRadius: 6, border: "1px solid var(--scl-erro)", color: "var(--scl-erro)", background: "var(--scl-papel)", cursor: "pointer" }}
           >
             Cancelar reserva
           </BotaoConfirmar>

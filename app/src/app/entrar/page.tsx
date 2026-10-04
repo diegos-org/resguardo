@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { loginCodigoConfigurado, loginConfigurado, loginGoogleConfigurado, signIn } from "@/acesso/auth";
 import { entrarComCodigo, pedirCodigoAcao } from "@/acesso/entrar-acoes";
+import { MolduraPortal } from "@/components/portal/MolduraPortal";
+import styles from "@/components/portal/portal.module.css";
+import { carregarSite } from "@/site/pagina";
 
 const MENSAGENS: Record<string, string> = {
   "nao-cadastrado": "Este e-mail não tem acesso. Peça a um administrador para cadastrá-lo.",
@@ -10,12 +13,10 @@ const MENSAGENS: Record<string, string> = {
   codigo: "Código incorreto ou vencido. Confira o e-mail mais recente ou peça um novo código.",
 };
 
-const campo = { width: "100%", padding: "12px 14px", fontSize: "1rem", borderRadius: 6, border: "1px solid #d8d0c0", boxSizing: "border-box" as const };
-const botaoPrincipal = { width: "100%", padding: "12px 16px", fontSize: "1rem", borderRadius: 6, border: 0, background: "var(--scl-salvia)", color: "#fff", cursor: "pointer" };
-const botaoSecundario = { ...botaoPrincipal, border: "1px solid #d8d0c0", background: "#fff", color: "var(--scl-texto)" };
-
 export default async function Entrar({ searchParams }: PageProps<"/entrar">) {
   const { erro, etapa, email } = await searchParams;
+  const { conteudo } = await carregarSite();
+  const empresa = conteudo?.nomeEmpresa.trim() || "Sua Casa Leblon";
   const mensagem = typeof erro === "string" ? (MENSAGENS[erro] ?? "Não foi possível entrar. Tente novamente.") : null;
   const emailInformado = typeof email === "string" ? email : "";
   const digitarCodigo = etapa === "codigo" && emailInformado && loginCodigoConfigurado;
@@ -26,28 +27,31 @@ export default async function Entrar({ searchParams }: PageProps<"/entrar">) {
   }
 
   return (
-    <main style={{ maxWidth: 420, margin: "0 auto", padding: "80px 16px" }}>
-      <h1 style={{ fontSize: "2rem", marginBottom: 8 }}>Sua Casa Leblon</h1>
-      <p style={{ color: "var(--scl-texto-2)", marginBottom: 32 }}>Entre para acessar o painel.</p>
+    <MolduraPortal empresa={empresa} estreito>
+      <header>
+        <p className={styles.olho}>Área da equipe e dos proprietários</p>
+        <h1>Entrar</h1>
+        <p className={styles.miudo}>Entre para acessar o painel ou o seu portal.</p>
+      </header>
       {mensagem && (
-        <p role="alert" style={{ background: "#fbeaea", color: "#7a2020", padding: 12, borderRadius: 6, marginBottom: 20 }}>
+        <p role="alert" className={styles.alerta}>
           {mensagem}
         </p>
       )}
-      {!loginConfigurado && <p style={{ color: "var(--scl-texto-2)" }}>O login ainda não foi configurado neste ambiente.</p>}
+      {!loginConfigurado && <p className={styles.miudo}>O login ainda não foi configurado neste ambiente.</p>}
 
       {digitarCodigo ? (
-        <form action={entrarComCodigo} style={{ display: "grid", gap: 12 }} aria-label="Digitar código">
+        <form action={entrarComCodigo} className={styles.caixa} style={{ display: "grid", gap: 14 }} aria-label="Digitar código">
           <p style={{ margin: 0 }}>
             Se <strong>{emailInformado}</strong> tiver acesso, enviamos um código de 6 dígitos para ele. O código vale por 10 minutos. Não
             chegou em alguns minutos? Confira o spam e peça outro (até 5 por hora).
           </p>
           <input type="hidden" name="email" value={emailInformado} />
-          <label style={{ display: "grid", gap: 4 }}>
+          <label className={styles.campo}>
             Código
-            <input name="codigo" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9 ]{6,7}" maxLength={7} required autoFocus style={{ ...campo, letterSpacing: "0.3em", fontSize: "1.25rem" }} />
+            <input name="codigo" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9 ]{6,7}" maxLength={7} required autoFocus style={{ letterSpacing: "0.3em", fontSize: "1.25rem" }} />
           </label>
-          <button type="submit" style={botaoPrincipal}>
+          <button type="submit" className={`${styles.botao} ${styles.botaoLargo}`}>
             Entrar
           </button>
           <Link href="/entrar" style={{ fontSize: "0.875rem" }}>
@@ -57,25 +61,25 @@ export default async function Entrar({ searchParams }: PageProps<"/entrar">) {
       ) : (
         <div style={{ display: "grid", gap: 24 }}>
           {loginCodigoConfigurado && (
-            <form action={pedirCodigoAcao} style={{ display: "grid", gap: 12 }} aria-label="Receber código por e-mail">
-              <label style={{ display: "grid", gap: 4 }}>
+            <form action={pedirCodigoAcao} className={styles.caixa} style={{ display: "grid", gap: 14 }} aria-label="Receber código por e-mail">
+              <label className={styles.campo}>
                 Seu e-mail
-                <input type="email" name="email" autoComplete="email" required defaultValue={emailInformado} style={campo} />
+                <input type="email" name="email" autoComplete="email" required defaultValue={emailInformado} />
               </label>
-              <button type="submit" style={botaoPrincipal}>
+              <button type="submit" className={`${styles.botao} ${styles.botaoLargo}`}>
                 Receber código por e-mail
               </button>
             </form>
           )}
           {loginGoogleConfigurado && (
             <form action={entrarComGoogle}>
-              <button type="submit" style={botaoSecundario}>
+              <button type="submit" className={`${styles.botao} ${styles.botaoContorno} ${styles.botaoLargo}`}>
                 Entrar com Google
               </button>
             </form>
           )}
         </div>
       )}
-    </main>
+    </MolduraPortal>
   );
 }

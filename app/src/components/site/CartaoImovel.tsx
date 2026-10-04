@@ -12,14 +12,32 @@ export function resumoImovel(i: ImovelPublico): string {
   return partes.join(" · ");
 }
 
+/** Primeira frase da descrição (até 120 caracteres) para o cartão; sem descrição, bairro e cidade. */
+export function fraseDoImovel(i: Pick<ImovelPublico, "descricao" | "bairro" | "cidade">): string {
+  const frase = i.descricao.trim().split(/(?<=[.!?])\s+/)[0] ?? "";
+  if (frase) return frase.length > 120 ? `${frase.slice(0, 119).trimEnd()}…` : frase;
+  return [i.bairro, i.cidade].filter(Boolean).join(", ");
+}
+
+/** "Olho" do cartão: bairro e código do imóvel, em maiúsculas pelo CSS. */
+export const olhoImovel = (i: Pick<ImovelPublico, "bairro" | "cidade" | "codigo">) => [i.bairro || i.cidade, i.codigo].filter(Boolean).join(" · ");
+
+/** Cartão sálvia do apartamento (carrossel da página inicial e catálogo). */
 export function CartaoImovel({ imovel }: { imovel: ImovelPublico }) {
+  const resumo = resumoImovel(imovel);
   return (
-    <Link href={`/imoveis/${encodeURIComponent(imovel.codigo)}`} className={styles.cartao}>
-      <FotoProvisoria titulo={imovel.nome} />
+    <Link href={`/imoveis/${encodeURIComponent(imovel.codigo)}`} className={styles.cartaoCasa}>
+      <div className={styles.cartaoFoto}>
+        <FotoProvisoria titulo={imovel.nome} />
+      </div>
       <div className={styles.cartaoCorpo}>
+        <p className={styles.olho}>{olhoImovel(imovel)}</p>
         <h3>{imovel.nome}</h3>
-        <span className={styles.miudo}>{[imovel.bairro, imovel.cidade].filter(Boolean).join(", ")}</span>
-        {resumoImovel(imovel) && <span className={styles.miudo}>{resumoImovel(imovel)}</span>}
+        <p>{fraseDoImovel(imovel)}</p>
+        <div className={styles.cartaoRodape}>
+          <span>{resumo}</span>
+          <span>Conheça a casa →</span>
+        </div>
       </div>
     </Link>
   );

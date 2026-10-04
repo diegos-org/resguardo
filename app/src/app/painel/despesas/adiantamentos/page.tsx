@@ -8,7 +8,7 @@ import { getDb } from "@/db/client";
 import { formatBRL } from "@/lib/money";
 
 const dataBr = (d: string) => d.split("-").reverse().join("/");
-const COR_SITUACAO: Record<SituacaoAdiantamento, string> = { a_cobrar: "#fdf3dc", parcial: "#e8eef7", quitado: "#e3efe0", contestado: "#fbeaea" };
+const COR_SITUACAO: Record<SituacaoAdiantamento, string> = { a_cobrar: "var(--scl-aviso-fundo)", parcial: "var(--scl-info-fundo)", quitado: "var(--scl-ok-fundo)", contestado: "var(--scl-erro-fundo)" };
 
 export default async function Adiantamentos({ searchParams }: PageProps<"/painel/despesas/adiantamentos">) {
   const sessao = await exigirSessaoPainel();

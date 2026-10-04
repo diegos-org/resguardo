@@ -13,11 +13,11 @@ import { regrasEmVigor } from "@/sistema/regras";
 import { type SituacaoServico, situacaoServicos } from "@/sistema/servicos";
 
 const SELO: Record<SituacaoServico, { texto: string; cor: string }> = {
-  ok: { texto: "Funcionando (testado agora)", cor: "#e3efe0" },
-  configurado: { texto: "Configurado", cor: "#e8eef7" },
-  falha: { texto: "Com problema", cor: "#fbeaea" },
-  nao_configurado: { texto: "Falta configurar", cor: "#fdf3dc" },
-  planejado: { texto: "Ainda não construído", cor: "#eeeeee" },
+  ok: { texto: "Funcionando (testado agora)", cor: "var(--scl-ok-fundo)" },
+  configurado: { texto: "Configurado", cor: "var(--scl-info-fundo)" },
+  falha: { texto: "Com problema", cor: "var(--scl-erro-fundo)" },
+  nao_configurado: { texto: "Falta configurar", cor: "var(--scl-aviso-fundo)" },
+  planejado: { texto: "Ainda não construído", cor: "var(--scl-neutro-fundo)" },
 };
 const RECEBE = { split: "canal paga o proprietário", empresa: "empresa recebe e repassa", a_confirmar: "a confirmar" };
 const quando = (d: Date | null) => (d ? d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" }) : "—");
@@ -150,9 +150,9 @@ export default async function Sistema() {
                     <td>
                       {r.codigo} · {r.nome}
                     </td>
-                    <td>{r.proprietario ?? <span style={{ color: "#7a2020" }}>sem proprietário</span>}</td>
+                    <td>{r.proprietario ?? <span style={{ color: "var(--scl-erro-texto)" }}>sem proprietário</span>}</td>
                     <td>
-                      {r.contrato ?? <span style={{ color: "#7a2020" }}>sem contrato vigente</span>}
+                      {r.contrato ?? <span style={{ color: "var(--scl-erro-texto)" }}>sem contrato vigente</span>}
                       {r.proximoContrato && <div style={{ fontSize: "0.8125rem", color: "var(--scl-texto-2)" }}>Próximo: {r.proximoContrato}</div>}
                     </td>
                     <td style={{ fontSize: "0.8125rem" }}>

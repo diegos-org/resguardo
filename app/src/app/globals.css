@@ -1,14 +1,64 @@
-/* Identidade SCL (requisitos/operations/RELATORIOS-PROPRIETARIOS.md) */
+/*
+ * Identidade visual do SCL 2.0 (M7.5) — fonte dos tokens: requisitos/product/DESIGN.md.
+ * Um lugar só: site, portais e painel usam estas variáveis; nenhuma tela recebe cor fixa.
+ */
 :root {
-  --scl-salvia: #505b46;
-  --scl-areia: #f0e7d7;
-  --scl-dourado: #c9a96e;
-  --scl-texto: #252b23;
-  --scl-texto-2: #5b604f;
-  --background: #fbf8f2;
-  --foreground: var(--scl-texto);
+  /* Paleta (estudo "Sage", ajustes de Diego em 4/10/2026) */
+  --scl-floresta: #505b46; /* cabeçalho, seções escuras, botões primários do site */
+  --scl-profundo: #3d4736; /* rodapé, capa */
+  --scl-musgo: #58684d; /* botões, fechamento, acentos */
+  --scl-musgo-escuro: #35432f; /* hover dos botões */
+  --scl-salvia: #626e55; /* cartões sobre fundo escuro */
+  --scl-creme: #f3eee3; /* fundo geral das páginas */
+  --scl-papel: #f8f4ea; /* cartões, formulários, blocos de texto */
+  --scl-areia: #e6dcc8; /* faixas de apoio, etiquetas, divisórias */
+  --scl-dourado: #c9a96e; /* só decoração: itálico do logotipo grande, filetes */
+  --scl-dourado-claro: #ecd8b0; /* texto dourado pequeno sobre os verdes */
+  --scl-dourado-escuro: #75592a; /* texto dourado pequeno sobre fundos claros */
+  --scl-tinta: #252b23; /* texto principal */
+  --scl-texto: var(--scl-tinta);
+  --scl-texto-2: #5b604f; /* texto secundário */
+  --scl-borda: #cfc1a9; /* bordas de cartões e campos */
+  --scl-borda-campo: #babaa9; /* linha inferior dos campos */
+  --scl-foco: #b66630; /* contorno de foco do teclado */
+  --scl-branco: #ffffff;
+  --scl-sobre-escuro: #dadacf; /* texto de apoio sobre os verdes */
+
+  /* Semânticas (avisos do sistema), com contraste ≥ 4,5:1 nos pares usados */
+  --scl-erro: #b3261e;
+  --scl-erro-texto: #7a2020;
+  --scl-erro-fundo: #fbeaea;
+  --scl-aviso: #7d6118;
+  --scl-aviso-texto: #6a5215;
+  --scl-aviso-fundo: #fdf3dc;
+  --scl-ok: #2e6b3f;
+  --scl-ok-fundo: #e3efe0;
+  --scl-info: #2f5d8a;
+  --scl-info-fundo: #e8eef7;
+  --scl-neutro-fundo: #eeebe3;
+
+  /* Categorias do calendário (cores de dado, não de marca): canais, bloqueio e serviços */
+  --scl-cal-airbnb: #f3c4bf;
+  --scl-cal-booking: #bcd1ec;
+  --scl-cal-site: #c9d4bd;
+  --scl-cal-outro: #ecdcb8;
+  --scl-cal-bloqueio: #e6e2da;
+  --scl-cal-bloqueio-2: #d6d1c6;
+  --scl-cal-bloqueio-texto: #4a4a44;
+
+  /* Formas */
+  --scl-raio-campo: 4px;
+  --scl-raio-cartao: 6px;
+  --scl-raio-dialogo: 12px;
+  --scl-sombra: 0 12px 32px rgba(26, 29, 25, 0.04);
+
+  /* Textura de papel: grão sutil (alfa máximo ~3,5%), só em fundos de página e de seção */
+  --scl-textura: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' seed='7' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.16 0 0 0 0 0.13 0 0 0 0 0.08 0.035 0 0 0 0'/></filter><rect width='100%25' height='100%25' filter='url(%23g)'/></svg>");
+
+  --background: var(--scl-creme);
+  --foreground: var(--scl-tinta);
   --font-serif: Georgia, "Times New Roman", serif;
-  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-sans: Arial, Helvetica, sans-serif;
 }
 
 * {
@@ -26,10 +76,12 @@ body {
 body {
   min-height: 100vh;
   color: var(--foreground);
-  background: var(--background);
+  background-color: var(--scl-creme);
+  background-image: var(--scl-textura);
   font-family: var(--font-sans);
-  line-height: 1.5;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  font-synthesis: none;
 }
 
 h1,
@@ -37,9 +89,44 @@ h2,
 h3 {
   font-family: var(--font-serif);
   font-weight: 400;
-  color: var(--scl-salvia);
+  color: var(--scl-floresta);
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+h1 em,
+h2 em {
+  font-style: italic;
+  color: var(--scl-dourado-escuro);
 }
 
 a {
   color: inherit;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid var(--scl-foco);
+  outline-offset: 3px;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Fundo liso para blocos com texto (cartões, formulários, tabelas): a textura fica só na página. */
+.scl-papel {
+  background: var(--scl-papel);
 }

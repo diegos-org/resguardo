@@ -47,7 +47,7 @@ export function IdsExternos({ imovelId, lista, adicionar, remover }: Props) {
                 <input type="hidden" name="registroId" value={r.id} />
                 <BotaoConfirmar
                   pergunta={`Remover a ligação ${NOMES_CANAL[r.canal]} ${r.idExterno}? As reservas desse canal deixam de ser ligadas a este imóvel.`}
-                  style={{ font: "inherit", fontSize: "0.875rem", background: "none", border: "1px solid #d8d0c0", borderRadius: 6, padding: "2px 10px", cursor: "pointer" }}
+                  style={{ font: "inherit", fontSize: "0.875rem", background: "none", border: "1px solid var(--scl-borda)", borderRadius: 6, padding: "2px 10px", cursor: "pointer" }}
                 >
                   Remover
                 </BotaoConfirmar>

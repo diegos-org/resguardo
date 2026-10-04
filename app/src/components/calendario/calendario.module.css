@@ -1,8 +1,8 @@
 .rolagem {
   overflow-x: auto;
-  background: #fff;
-  border: 1px solid var(--scl-areia);
-  border-radius: 8px;
+  background: var(--scl-papel);
+  border: 1px solid var(--scl-borda);
+  border-radius: var(--scl-raio-cartao);
 }
 
 .grade {
@@ -16,7 +16,7 @@
   position: sticky;
   left: 0;
   z-index: 2;
-  background: #fff;
+  background: var(--scl-papel);
   border-right: 1px solid var(--scl-areia);
   padding: 6px 10px;
   white-space: nowrap;
@@ -33,7 +33,7 @@
   text-align: center;
   padding: 4px 0;
   color: var(--scl-texto-2);
-  border-left: 1px solid #f4efe5;
+  border-left: 1px solid var(--scl-neutro-fundo);
 }
 
 .dia strong {
@@ -43,12 +43,12 @@
 }
 
 .fimDeSemana {
-  background: #faf6ef;
+  background: var(--scl-creme);
 }
 
 .hoje strong {
-  background: var(--scl-salvia);
-  color: #fff;
+  background: var(--scl-musgo);
+  color: var(--scl-branco);
   border-radius: 999px;
   display: inline-block;
   min-width: 22px;
@@ -71,14 +71,14 @@
   padding: 3px 6px;
   border-radius: 6px;
   margin: 0 1px;
-  color: #1f241c;
+  color: var(--scl-tinta);
   text-decoration: none;
   line-height: 1.3;
   min-height: 22px;
 }
 
 .segmento:focus-visible {
-  outline: 2px solid var(--scl-salvia);
+  outline: 2px solid var(--scl-foco);
   outline-offset: 1px;
 }
 
@@ -93,41 +93,41 @@
 }
 
 .conflito {
-  outline: 2px solid #b3261e;
+  outline: 2px solid var(--scl-erro);
 }
 
 .airbnb {
-  background: #f3c4bf;
+  background: var(--scl-cal-airbnb);
 }
 
 .booking {
-  background: #bcd1ec;
+  background: var(--scl-cal-booking);
 }
 
 .site,
 .direta {
-  background: #c9d4bd;
+  background: var(--scl-cal-site);
 }
 
 .outro {
-  background: #ecdcb8;
+  background: var(--scl-cal-outro);
 }
 
 .limpeza {
-  background: #fff;
-  border: 1px dashed #2f5d8a;
-  color: #2f5d8a;
+  background: var(--scl-papel);
+  border: 1px dashed var(--scl-info);
+  color: var(--scl-info);
 }
 
 .manutencao {
-  background: #fff;
-  border: 1px dashed #8a6d1c;
-  color: #8a6d1c;
+  background: var(--scl-papel);
+  border: 1px dashed var(--scl-aviso);
+  color: var(--scl-aviso);
 }
 
 .bloqueio {
-  background: repeating-linear-gradient(135deg, #e6e2da, #e6e2da 6px, #d6d1c6 6px, #d6d1c6 12px);
-  color: #4a4a44;
+  background: repeating-linear-gradient(135deg, var(--scl-cal-bloqueio), var(--scl-cal-bloqueio) 6px, var(--scl-cal-bloqueio-2) 6px, var(--scl-cal-bloqueio-2) 12px);
+  color: var(--scl-cal-bloqueio-texto);
 }
 
 .navegacao {
@@ -139,10 +139,14 @@
 
 .navegacao a {
   text-decoration: none;
-  border: 1px solid #d8d0c0;
-  border-radius: 6px;
+  border: 1px solid var(--scl-borda);
+  border-radius: var(--scl-raio-campo);
   padding: 4px 12px;
-  background: #fff;
+  background: var(--scl-papel);
+}
+
+.navegacao a:hover {
+  background: var(--scl-areia);
 }
 
 .legenda {
