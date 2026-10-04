@@ -91,6 +91,15 @@ Decisões que tomei sozinho, com a sua autorização de 4/10 (dá para mudar): o
 continua disparado por você no painel (a rotina só gera antecipados), para você conferir antes;
 o antecipado não desconta adiantamentos e despesas (isso continua no fechamento, como você
 decidiu); o Pix em lote automático fica para quando houver API do banco ou do Mercado Pago.
+
+**Fechamentos feitos antes deste sistema (decisão sua, 4/10):** os fechamentos de setembro você
+entregou por fora, e o primeiro fechamento feito aqui será o de outubro, já com a parte de cada
+reserva registrada. Por isso o sistema não tenta reconstruir fechamentos antigos de verdade: isso só
+existe na homologação, com dados fictícios, e lá um caso raro (parte de reserva recalculada depois de
+dois fechamentos antigos) fica com uma trava de segurança a menos no estorno de recebimento — aceito
+como limite documentado. Na operação real nada muda: no fechamento de outubro (dia 1º de novembro),
+confira as reservas de outubro que porventura você já tenha acertado por fora e trate essas, se
+houver, à mão.
 ### Identidade visual nova — M7.5 (4/10)
 
 O site, o portal do proprietário, a tela da equipe de limpeza, a entrada (login), o convite e o
@@ -1620,7 +1629,9 @@ ambiente).
    reserva cujo dinheiro você registrou como recebido. Antes do próximo dia 1º, abra as reservas
    de Booking, site e direta já recebidas e clique em "Registrar recebimento" (o valor vem
    preenchido). Sem isso, a parte fica "a liberar", fora do repasse, com aviso no painel e no
-   portal. O Airbnb (paga direto) não precisa.
+   portal. O Airbnb (paga direto) não precisa. O fechamento de outubro é o primeiro feito no sistema: os de
+   setembro ficaram por fora, e reserva de outubro que você já tenha acertado por fora deve ser
+   tratada à mão nesse fechamento (seção 2, M4.10).
 28. **Periodicidade dos repasses (M4.10):** confira **Configurações → Repasses** (padrão mensal
    para todos; segunda-feira no semanal; dias 1 e 16 no quinzenal) e avise os proprietários que
    eles podem escolher no portal. Se quiser outro padrão para o marketplace (ex.: semanal),
