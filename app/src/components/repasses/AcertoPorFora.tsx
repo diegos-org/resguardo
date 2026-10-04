@@ -21,7 +21,8 @@ const dataBr = (d: string) => d.split("-").reverse().join("/");
 
 /** Seção "Antes do início do sistema" do painel (M4.11): o que ainda está de fora e os acertos por fora já marcados. */
 export function AcertoPorFora({ inicio, situacao, repasses, mes, hoje, editar }: Props) {
-  const pendentes = situacao.filter((s) => s.partes > 0 || s.saldoAberto !== 0);
+  // Grupos que se anulam (crédito num mês, débito em outro) dão saldo zero, mas ainda há lançamentos a zerar: conta o número de grupos.
+  const pendentes = situacao.filter((s) => s.partes > 0 || s.gruposAbertos > 0);
   const marcaveis = pendentes.filter((s) => !s.bloqueios.length);
   const resumo = !inicio ? "data não definida" : pendentes.length ? `${pendentes.length} proprietário(s) a marcar` : repasses.length ? "tudo marcado como acertado por fora" : "nada de antes fora de repasse";
   return (
@@ -61,7 +62,10 @@ export function AcertoPorFora({ inicio, situacao, repasses, mes, hoje, editar }:
                     <td>
                       {s.partes} ({formatBRL(s.valorPartes)})
                     </td>
-                    <td className={styles.numero}>{formatBRL(s.saldoAberto)}</td>
+                    <td className={styles.numero}>
+                      {formatBRL(s.saldoAberto)}
+                      {s.gruposAbertos > 0 ? ` (${s.gruposAbertos} imóvel/mês a zerar)` : ""}
+                    </td>
                     <td style={{ whiteSpace: "normal", minWidth: 220 }}>{s.bloqueios.length ? <strong>{s.bloqueios.join(" ")}</strong> : "Pronto para marcar"}</td>
                   </tr>
                 ))}

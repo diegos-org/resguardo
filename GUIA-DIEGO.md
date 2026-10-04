@@ -124,6 +124,8 @@ o sistema não pagar nem cobrar nada disso de novo, ele agora tem:
   proprietário tiver um bloqueio (lançamento em conferência, ajuste a esclarecer ou adiantamento em
   aberto de antes de 1/10), ele fica de fora com o motivo escrito, e os outros são marcados.
 - **Errou?** O repasse "acerto por fora" se estorna como qualquer outro: as partes voltam ao extrato.
+- **A data não volta atrás por cima de um acerto:** enquanto houver acerto por fora em vigor, o sistema
+  não deixa mudar o início para antes dele nem apagá-lo (estorne primeiro); mudar para depois pode.
 
 Passo a passo na seção 6, item 29.
 ### Identidade visual nova — M7.5 (4/10)

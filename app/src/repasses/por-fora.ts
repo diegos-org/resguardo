@@ -14,6 +14,7 @@
 import { and, asc, eq, isNotNull, isNull, lt, or, sql, sum } from "drizzle-orm";
 import { listarAdiantamentos } from "@/adiantamentos/adiantamentos";
 import { registrarAuditoria } from "@/auditoria/auditoria";
+import { travarConfig } from "@/configuracoes/armazem";
 import { ajustes, imoveis, lancamentos, proprietarioImoveis, proprietarios, repasses } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { lancar, mudarEstado } from "@/financeiro/ledger";
@@ -21,7 +22,7 @@ import { lerComReservasTravadas } from "@/financeiro/trava";
 import { formatBRL } from "@/lib/money";
 import { lancamentoEmConferencia } from "@/portal/posse";
 import { type Parte, partesDoProprietario } from "./extrato";
-import { inicioDoSistemaValido } from "./regras-config";
+import { inicioDoSistemaValido, lerInicioDoSistema } from "./regras-config";
 import { chavePrefixo, codigosDe, limitesDoMes, nomeMes, travarDono, vincularItens } from "./repasses";
 
 export type SituacaoAntesDoInicio = {
@@ -30,8 +31,10 @@ export type SituacaoAntesDoInicio = {
   /** Partes de reserva anteriores ao início ainda fora de qualquer repasse (as que seriam marcadas). */
   partes: number;
   valorPartes: number;
-  /** Acerto até a véspera ainda em aberto (soma do livro por imóvel e mês); zero = já acertado. */
+  /** Acerto até a véspera ainda em aberto: soma do livro por imóvel e mês. Pode dar zero com grupos que se anulam — por isso `gruposAbertos`. */
   saldoAberto: number;
+  /** Quantos pares imóvel/mês ainda têm acerto diferente de zero (cada um vira um lançamento de acerto). Zero = nada a zerar. */
+  gruposAbertos: number;
   /** O que impede marcar este proprietário; resolver antes. */
   bloqueios: string[];
 };
@@ -106,7 +109,7 @@ export async function situacaoAntesDoInicio(db: Db, org: string, inicio: string,
   const saida: SituacaoAntesDoInicio[] = [];
   for (const d of await donosComPassado(db, org, inicio)) {
     const l = await levantar(db, org, d.id, inicio, agora);
-    saida.push({ proprietarioId: d.id, nome: d.nome, partes: l.partes.length, valorPartes: l.partes.reduce((s, p) => s + p.valor, 0), saldoAberto: l.grupos.reduce((s, g) => s + g.total, 0), bloqueios: l.bloqueios });
+    saida.push({ proprietarioId: d.id, nome: d.nome, partes: l.partes.length, valorPartes: l.partes.reduce((s, p) => s + p.valor, 0), saldoAberto: l.grupos.reduce((s, g) => s + g.total, 0), gruposAbertos: l.grupos.length, bloqueios: l.bloqueios });
   }
   return saida;
 }
@@ -115,8 +118,9 @@ type Passo = { tipo: "marcado"; repasseId: string; valor: number; partes: number
 
 /**
  * Marca como acertado por fora tudo o que é de antes do início: um repasse "por_fora" (pago na véspera do início) por
- * proprietário com algo a cobrir, numa transação por proprietário — proprietário travado e reservas das partes travadas
- * para o motor, como no antecipado. Quem tem bloqueio fica de fora, com o motivo; os outros seguem.
+ * proprietário com algo a cobrir, numa transação por proprietário — proprietário travado, reservas das partes travadas
+ * para o motor (como no antecipado) e o início do sistema reconferido sob a mesma trava que a configuração usa (uma
+ * mudança no meio não marca com data velha). Quem tem bloqueio fica de fora, com o motivo; os outros seguem.
  */
 export async function marcarAcertoPorFora(db: Db, org: string, inicio: string, autorId: string | null, agora = new Date()): Promise<ResultadoAcertoPorFora> {
   if (!inicioDoSistemaValido(inicio)) return { ok: false, erro: "Defina o início do sistema (dia 1º de um mês) em Configurações → Repasses antes de marcar." };
@@ -128,6 +132,9 @@ export async function marcarAcertoPorFora(db: Db, org: string, inicio: string, a
     const passo = await db.transaction(async (tx): Promise<Passo> => {
       const dono = await travarDono(tx, org, d.id);
       if (!dono) return { tipo: "recusado", motivo: "Proprietário não encontrado." };
+      await travarConfig(tx, org, "inicio_sistema");
+      const configurado = await lerInicioDoSistema(tx, org);
+      if (configurado !== inicio) return { tipo: "recusado", motivo: `O início do sistema configurado é ${configurado ? dataBr(configurado) : "nenhum"}, não ${dataBr(inicio)}: recarregue a página e confira.` };
       const lev = await lerComReservasTravadas(tx, org, () => levantar(tx, org, dono.id, inicio, agora), (l) => l.partes.map((p) => p.reservaId));
       if (!lev) return { tipo: "recusado", motivo: "Reservas deste proprietário estão sendo recalculadas agora: tente de novo em instantes." };
       if (lev.bloqueios.length) return { tipo: "recusado", motivo: lev.bloqueios.join(" ") };

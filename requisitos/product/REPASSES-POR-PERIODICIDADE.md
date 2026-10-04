@@ -108,7 +108,9 @@ despesa, ajuste — já foi acertado fora dele e não pode entrar de novo (o ace
 reserva de cada imóvel, pela regra de 2/10 para o início dos contratos).
 
 - **Data de início** em Configurações → Repasses (chave `inicio_sistema`): sempre dia 1º de um mês,
-  porque as partes de reserva são por mês; nunca no futuro; vazia = não definida.
+  porque as partes de reserva são por mês; nunca no futuro; vazia = não definida. Com acerto por fora
+  em vigor, a data não pode voltar para antes dele nem ser apagada (estornar primeiro); a marcação
+  reconfere a data configurada sob a mesma trava, para uma mudança no meio não marcar com data velha.
 - **Marcar como acertado por fora** (Financeiro → Repasses, seção "Antes do início do sistema"):
   para cada proprietário com lançamento anterior ao início, numa transação por proprietário
   (proprietário travado e reservas das partes travadas para o motor, como no antecipado), um repasse
@@ -121,7 +123,8 @@ reserva de cada imóvel, pela regra de 2/10 para o início dos contratos).
   partes marcadas passam a "realizado" (o motor não as recalcula).
 - **Reexecutável e idempotente:** a soma por imóvel e mês inclui os próprios lançamentos de acerto já
   feitos, então quem já está em zero não entra; só o que surgiu depois (uma reserva antiga importada
-  atrasada) gera um repasse novo, só com ela.
+  atrasada) gera um repasse novo, só com ela. O painel conta os pares imóvel/mês com acerto diferente de
+  zero (não só a soma): grupos que se anulam continuam marcáveis.
 - **Bloqueios** (os mesmos do fechamento, limitados ao período anterior ao início): lançamento em
   conferência, ajuste com o proprietário a esclarecer, adiantamento em aberto. Recusam só aquele
   proprietário, com o motivo; os outros são marcados. Avisar em vez de supor: nada é marcado por cima

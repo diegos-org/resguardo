@@ -63,6 +63,7 @@ beforeEach(async () => {
   atravessa = await criar(reserva(a, "2026-09-29", "2026-10-02"));
   outubro = await criar(reserva(a, "2026-10-10", "2026-10-13"));
   await criar(reserva(b, "2026-09-05", "2026-09-07"));
+  await salvarInicioDoSistema(db, org, INICIO, "2026-10-04", null);
 });
 afterEach(() => close());
 
@@ -197,15 +198,35 @@ describe("acerto por fora de antes do início do sistema (M4.11)", () => {
   it("situação antes do início para o painel; início inválido e outra organização não marcam nada", async () => {
     const { set } = await partesDaQueAtravessa();
     const antes = await situacaoAntesDoInicio(db, org, INICIO, agora);
-    expect(antes.map((s) => ({ nome: s.nome, partes: s.partes, valorPartes: s.valorPartes, saldoAberto: s.saldoAberto, bloqueios: s.bloqueios }))).toEqual([
-      { nome: "Dona Exemplo", partes: 2, valorPartes: 72250 + set, saldoAberto: 72250 + set, bloqueios: [] },
-      { nome: "Outro Dono", partes: 1, valorPartes: 72250, saldoAberto: 72250, bloqueios: [] },
+    expect(antes.map((s) => ({ nome: s.nome, partes: s.partes, valorPartes: s.valorPartes, saldoAberto: s.saldoAberto, gruposAbertos: s.gruposAbertos, bloqueios: s.bloqueios }))).toEqual([
+      { nome: "Dona Exemplo", partes: 2, valorPartes: 72250 + set, saldoAberto: 72250 + set, gruposAbertos: 1, bloqueios: [] },
+      { nome: "Outro Dono", partes: 1, valorPartes: 72250, saldoAberto: 72250, gruposAbertos: 1, bloqueios: [] },
     ]);
     await marcar();
-    expect((await situacaoAntesDoInicio(db, org, INICIO, agora)).map((s) => [s.partes, s.saldoAberto])).toEqual([[0, 0], [0, 0]]);
+    expect((await situacaoAntesDoInicio(db, org, INICIO, agora)).map((s) => [s.partes, s.saldoAberto, s.gruposAbertos])).toEqual([[0, 0, 0], [0, 0, 0]]);
+    // Grupos que se anulam (crédito em agosto, débito em setembro): saldo zero, mas dois lançamentos de acerto a fazer — e a
+    // marcação os zera um a um, num repasse de valor zero.
+    await lancar(db, org, [
+      { tipo: "ajuste", descricao: "crédito antigo", valor: 10000, efeitoSaldo: 10000, competencia: "2026-08-15", estado: "realizado", dataCaixa: "2026-08-15", imovelId: b, proprietarioId: outro },
+      { tipo: "ajuste", descricao: "débito antigo", valor: -10000, efeitoSaldo: -10000, competencia: "2026-09-15", estado: "realizado", dataCaixa: "2026-09-15", imovelId: b, proprietarioId: outro },
+    ], null);
+    const doOutro = (await situacaoAntesDoInicio(db, org, INICIO, agora)).find((s) => s.proprietarioId === outro)!;
+    expect(doOutro).toMatchObject({ partes: 0, saldoAberto: 0, gruposAbertos: 2, bloqueios: [] });
+    const r = await marcar();
+    expect(r.ok && r.marcados).toEqual([expect.objectContaining({ proprietarioId: outro, valor: 0, partes: 0 })]);
+    expect((await acertos(outro)).map((l) => [l.competencia, l.efeitoSaldo])).toEqual([["2026-08-31", -10000], ["2026-09-30", -72250], ["2026-09-30", 10000]]);
+    expect((await situacaoAntesDoInicio(db, org, INICIO, agora)).find((s) => s.proprietarioId === outro)?.gruposAbertos).toBe(0);
     // Início no meio do mês não existe (as partes são por mês): nada é marcado nem listado.
     expect(await marcarAcertoPorFora(db, org, "2026-10-15", null, agora)).toMatchObject({ ok: false, erro: expect.stringContaining("dia 1º") });
     expect(await situacaoAntesDoInicio(db, org, "2026-10-15", agora)).toEqual([]);
+    // Início diferente do configurado (tela velha, configuração mudou no meio): nenhum proprietário é marcado com a data errada.
+    // Com 1/9 só o Outro Dono tem lançamento de antes (o crédito de agosto); ele é o único candidato, e é recusado.
+    await criar(reserva(a, "2026-09-20", "2026-09-22"));
+    const velho = await marcarAcertoPorFora(db, org, "2026-09-01", null, agora);
+    expect(velho.ok && velho.marcados).toEqual([]);
+    expect(velho.ok && velho.recusados).toEqual([{ nome: "Outro Dono", motivo: "O início do sistema configurado é 01/10/2026, não 01/09/2026: recarregue a página e confira." }]);
+    expect(await listarRepasses(db, org, dono)).toHaveLength(1);
+    expect(await listarRepasses(db, org, outro)).toHaveLength(2);
     const [{ id: outraOrg }] = await db.insert(organizacoes).values({ nome: "B" }).returning();
     expect(await situacaoAntesDoInicio(db, outraOrg, INICIO, agora)).toEqual([]);
     expect(await marcarAcertoPorFora(db, outraOrg, INICIO, null, agora)).toEqual({ ok: true, marcados: [], semNada: [], recusados: [] });
@@ -213,6 +234,8 @@ describe("acerto por fora de antes do início do sistema (M4.11)", () => {
   });
 
   it("início do sistema: sempre dia 1º, nunca no futuro; vazio apaga; a véspera é o último dia coberto", async () => {
+    expect(await lerInicioDoSistema(db, org)).toBe(INICIO);
+    expect(await salvarInicioDoSistema(db, org, "", "2026-10-04", null)).toEqual({ ok: true, mudou: true });
     expect(await lerInicioDoSistema(db, org)).toBeNull();
     expect(await salvarInicioDoSistema(db, org, "2026-10-15", "2026-10-04", null)).toMatchObject({ ok: false, erro: expect.stringContaining("dia 1º") });
     expect(await salvarInicioDoSistema(db, org, "2026-11-01", "2026-10-04", null)).toMatchObject({ ok: false, erro: expect.stringContaining("futuro") });
@@ -224,6 +247,24 @@ describe("acerto por fora de antes do início do sistema (M4.11)", () => {
     expect(await lerInicioDoSistema(db, org)).toBeNull();
     expect(vesperaDoInicio("2026-10-01")).toBe("2026-09-30");
     expect(vesperaDoInicio("2026-01-01")).toBe("2025-12-31");
+  });
+
+  it("com acerto por fora em vigor, o início não volta para antes dele nem é apagado; para depois pode, e depois do estorno tudo pode", async () => {
+    const { repasseId } = await marcadoDe();
+    const recusa = { ok: false, erro: expect.stringContaining("2 acerto(s) por fora em vigor até 30/09/2026") };
+    expect(await salvarInicioDoSistema(db, org, "2026-09-01", "2026-10-04", null)).toMatchObject({ ...recusa, erro: expect.stringContaining("mudar o início para antes disso") });
+    expect(await salvarInicioDoSistema(db, org, "", "2026-10-04", null)).toMatchObject({ ...recusa, erro: expect.stringContaining("apagar o início") });
+    expect(await lerInicioDoSistema(db, org)).toBe(INICIO);
+    // Para depois pode: os acertos continuam antes do início novo.
+    expect(await salvarInicioDoSistema(db, org, "2026-11-01", "2026-11-02", null)).toEqual({ ok: true, mudou: true });
+    expect(await salvarInicioDoSistema(db, org, INICIO, "2026-11-02", null)).toEqual({ ok: true, mudou: true });
+    // Estornados os dois acertos, a data volta a ser livre.
+    expect(await estornarRepasse(db, org, repasseId, "refazer", "2026-10-05", null)).toMatchObject({ ok: true });
+    expect(await salvarInicioDoSistema(db, org, "2026-09-01", "2026-10-04", null)).toMatchObject({ ok: false, erro: expect.stringContaining("1 acerto(s) por fora em vigor") });
+    const [doOutro] = await listarRepasses(db, org, outro);
+    expect(await estornarRepasse(db, org, doOutro.id, "refazer", "2026-10-05", null)).toMatchObject({ ok: true });
+    expect(await salvarInicioDoSistema(db, org, "2026-09-01", "2026-10-04", null)).toEqual({ ok: true, mudou: true });
+    expect(await salvarInicioDoSistema(db, org, "", "2026-10-04", null)).toEqual({ ok: true, mudou: true });
   });
 
   it("o repasse por fora não entra na rotina de e-mails nem aceita envio: nada foi pago pelo sistema", async () => {
