@@ -9,7 +9,7 @@ import styles from "../formularios.module.css";
 
 type Props = { regras: RegrasRepasses; salvar: (a: EstadoRegrasRepasses, f: FormData) => Promise<EstadoRegrasRepasses> };
 
-const grupo = { border: "1px solid var(--scl-areia)", borderRadius: 8, padding: "12px 16px", display: "flex", flexDirection: "column" as const, gap: 12, margin: 0 };
+const grupo = { border: "1px solid var(--scl-borda)", borderRadius: 8, padding: "12px 16px", display: "flex", flexDirection: "column" as const, gap: 12, margin: 0 };
 const legenda = { fontWeight: 500, padding: "0 6px" };
 const nota = { fontSize: "0.875rem", color: "var(--scl-texto-2)", margin: 0 };
 

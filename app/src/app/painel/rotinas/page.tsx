@@ -11,11 +11,11 @@ import { garantirRotinasIniciais, type LinhaRotina, listarRotinas, NOMES_FREQUEN
 
 const dataBr = (d: string) => d.split("-").reverse().join("/");
 const SITUACAO: Record<SituacaoRotina, [string, string]> = {
-  atrasada: ["Atrasada", "#b3261e"],
-  hoje: ["Vence hoje", "#8a6d1c"],
-  esta_semana: ["Esta semana", "#2f5d8a"],
-  em_dia: ["Em dia", "#2e6b3f"],
-  arquivada: ["Arquivada", "#777"],
+  atrasada: ["Atrasada", "var(--scl-erro)"],
+  hoje: ["Vence hoje", "var(--scl-aviso)"],
+  esta_semana: ["Esta semana", "var(--scl-info)"],
+  em_dia: ["Em dia", "var(--scl-ok)"],
+  arquivada: ["Arquivada", "var(--scl-texto-2)"],
 };
 
 function Campos({ r, hoje }: { r?: LinhaRotina; hoje: string }) {
@@ -80,7 +80,7 @@ function Cartao({ r, hoje, registrar, configurar }: { r: LinhaRotina; hoje: stri
           </label>
           <div className={styles.acoes}>
             <button type="submit">Marcar como feita</button>
-            <button type="submit" name="pulada" value="sim" style={{ background: "#fff", color: "var(--scl-salvia)", border: "1px solid currentColor" }}>
+            <button type="submit" name="pulada" value="sim" style={{ background: "var(--scl-papel)", color: "var(--scl-musgo)", border: "1px solid currentColor" }}>
               Pular desta vez
             </button>
           </div>
@@ -102,7 +102,7 @@ function Cartao({ r, hoje, registrar, configurar }: { r: LinhaRotina; hoje: stri
             <input type="hidden" name="id" value={r.id} />
             <input type="hidden" name="ativa" value={r.ativa ? "nao" : "sim"} />
             {r.ativa ? (
-              <BotaoConfirmar pergunta="Arquivar esta rotina? Ela sai das pendências; o histórico fica." style={{ background: "#b3261e" }}>
+              <BotaoConfirmar pergunta="Arquivar esta rotina? Ela sai das pendências; o histórico fica." style={{ background: "var(--scl-erro)" }}>
                 Arquivar
               </BotaoConfirmar>
             ) : (

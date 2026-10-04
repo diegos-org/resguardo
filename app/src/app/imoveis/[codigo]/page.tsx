@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
-import { resumoImovel } from "@/components/site/CartaoImovel";
+import { olhoImovel, resumoImovel } from "@/components/site/CartaoImovel";
 import { Disponibilidade } from "@/components/site/Disponibilidade";
 import { SegurarDatas } from "@/components/site/SegurarDatas";
 import { canalDeContato, FormConsulta } from "@/components/site/FormConsulta";
@@ -41,26 +42,53 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
     imovel.permiteFumar ? null : "Proibido fumar",
     imovel.permiteFestas ? null : "Sem festas ou eventos",
   ].filter((x): x is string => !!x);
+  const resumo = resumoImovel(imovel);
   return (
     <Moldura conteudo={conteudo}>
-      <h1 style={{ fontSize: "2rem", margin: "8px 0 4px" }}>{imovel.nome}</h1>
-      <p className={styles.miudo} style={{ marginBottom: 16 }}>
-        {[imovel.bairro, imovel.cidade].filter(Boolean).join(", ")}
-        {resumoImovel(imovel) ? ` · ${resumoImovel(imovel)}` : ""}
-      </p>
-      <div className={styles.galeria} aria-label="Galeria (fotos em breve)">
-        <FotoProvisoria titulo={imovel.nome} />
-        <FotoProvisoria titulo="" />
-        <FotoProvisoria titulo="" />
-      </div>
-      <div className={styles.colunas}>
+      <Link href="/imoveis" className={styles.linkTexto}>
+        ← Todas as casas
+      </Link>
+      <header className={styles.cabecalhoImovel}>
         <div>
+          <p className={styles.olho}>{olhoImovel(imovel)}</p>
+          <h1>{imovel.nome}</h1>
+          {resumo && <p>{resumo}</p>}
+        </div>
+        <a href="#planejar" className={styles.botao}>
+          Planejar estadia
+          <span aria-hidden="true">↗</span>
+        </a>
+      </header>
+      <div className={styles.galeria} aria-label="Galeria (fotos em breve)">
+        <div className={styles.galeriaPrincipal}>
+          <FotoProvisoria titulo={imovel.nome} />
+        </div>
+        <div className={styles.miniaturas}>
+          <FotoProvisoria titulo="" />
+          <FotoProvisoria titulo="" />
+          <FotoProvisoria titulo="" />
+          <FotoProvisoria titulo="" />
+        </div>
+      </div>
+      <p className={styles.notaEditorial}>Fotos em revisão para publicação.</p>
+      <div className={styles.colunas}>
+        <div className={styles.editorial}>
           {disponibilidade && <Disponibilidade resultado={disponibilidade} entrada={pedido.entrada} saida={pedido.saida} fuso={imovel.fuso} />}
           {disponibilidade && podeSegurar(disponibilidade) && <SegurarDatas pedido={consulta} aConfirmar={disponibilidade.situacao === "a_confirmar"} acao={criarCotacaoAcao} />}
           {imovel.descricao && <p className={styles.texto}>{imovel.descricao}</p>}
+          {imovel.comodidades.length > 0 && (
+            <section aria-labelledby="titulo-comodidades">
+              <h3 id="titulo-comodidades">O que você encontra</h3>
+              <ul className={styles.comodidades}>
+                {imovel.comodidades.map((c) => (
+                  <li key={c}>{c}</li>
+                ))}
+              </ul>
+            </section>
+          )}
           {imovel.camas.length > 0 && (
-            <section className={styles.secao}>
-              <h2>Camas</h2>
+            <section aria-labelledby="titulo-camas">
+              <h3 id="titulo-camas">Camas</h3>
               <ul className={styles.fichas}>
                 {imovel.camas.map((c) => (
                   <li key={c}>{c}</li>
@@ -68,18 +96,8 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
               </ul>
             </section>
           )}
-          {imovel.comodidades.length > 0 && (
-            <section className={styles.secao}>
-              <h2>Comodidades</h2>
-              <ul className={styles.fichas}>
-                {imovel.comodidades.map((c) => (
-                  <li key={c}>{c}</li>
-                ))}
-              </ul>
-            </section>
-          )}
-          <section className={styles.secao}>
-            <h2>Regras da casa</h2>
+          <section aria-labelledby="titulo-regras">
+            <h3 id="titulo-regras">Regras da casa</h3>
             <ul className={styles.fichas}>
               {regras.map((r) => (
                 <li key={r}>{r}</li>
@@ -92,7 +110,11 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
             )}
           </section>
         </div>
-        <FormConsulta imoveis={todos} valores={consulta} hoje={hojeMaisCedo([imovel, ...todos])} canal={canalDeContato(conteudo)} />
+        <aside id="planejar" className={styles.lateral} aria-labelledby="titulo-planejar">
+          <p className={styles.olho}>Planeje sua estadia</p>
+          <h2 id="titulo-planejar">Consultar disponibilidade</h2>
+          <FormConsulta imoveis={todos} valores={consulta} hoje={hojeMaisCedo([imovel, ...todos])} canal={canalDeContato(conteudo)} variante="lateral" />
+        </aside>
       </div>
     </Moldura>
   );

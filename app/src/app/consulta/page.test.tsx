@@ -32,7 +32,8 @@ it("pedido válido mostra disponibilidade, valor por partes e a mensagem com o v
   expect(h).toContain("R$ 64,00"); // desconto do site
   expect(h).toContain("R$ 1.536,00");
   expect(h).toContain("O site mostrou R$ 1.536,00 para 3 noites (já com o desconto do site de R$ 64,00).");
-  expect(h).toContain("wa.me/5521900000000");
+  expect(h).toContain("Enviar pelo WhatsApp");
+  expect(h).toContain("wa.me/5521900000000?text=Ol%C3%A1!%20Gostaria");
   expect(h).toContain("Nenhuma data fica reservada pela consulta.");
 });
 it("indisponível explica os motivos, não mostra valor nem o põe na mensagem", async () => {
@@ -49,7 +50,9 @@ it("disponibilidade inválida não oferece a mensagem, mesmo que a conferência 
   expect(h).toContain("Confira os dados");
   expect(h).toContain("Escolha um apartamento.");
   expect(h).not.toContain("Sua mensagem");
-  expect(h).not.toContain("wa.me");
+  // O botão flutuante do WhatsApp (moldura) existe em toda página; o que não pode aparecer é o link da mensagem.
+  expect(h).not.toContain("Enviar pelo WhatsApp");
+  expect(h).not.toContain("Gostaria%20de%20consultar");
 });
 it("as datas são conferidas no fuso do imóvel escolhido, não no de São Paulo", async () => {
   // 00:30 de 12/10 em São Paulo, mas ainda 22:30 de 11/10 em Rio Branco: entrada em 11/10 vale para o imóvel de lá.

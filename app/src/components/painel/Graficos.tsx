@@ -20,9 +20,9 @@ export function GraficoMensal({ dados, mesAtual }: { dados: { mes: number; recei
           return (
             <g key={d.mes}>
               <title>{`${MESES[i]}: receita ${brlCurto(d.receitaBruta)}, comissões ${brlCurto(d.comissoes)}`}</title>
-              <rect x={x} y={A - 20 - altura(d.receitaBruta)} width={larg} height={altura(d.receitaBruta)} fill={destaque ? "#b9c7a8" : "#dfe6d6"} />
-              <rect x={x + larg} y={A - 20 - altura(d.comissoes)} width={larg} height={altura(d.comissoes)} fill={destaque ? "#3f5a3a" : "#6f8a66"} />
-              <text x={x + larg} y={A - 5} fontSize="11" textAnchor="middle" fill="#6b6b6b" fontWeight={destaque ? 700 : 400}>
+              <rect x={x} y={A - 20 - altura(d.receitaBruta)} width={larg} height={altura(d.receitaBruta)} fill={destaque ? "var(--scl-borda)" : "var(--scl-areia)"} />
+              <rect x={x + larg} y={A - 20 - altura(d.comissoes)} width={larg} height={altura(d.comissoes)} fill={destaque ? "var(--scl-floresta)" : "var(--scl-salvia)"} />
+              <text x={x + larg} y={A - 5} fontSize="11" textAnchor="middle" fill="var(--scl-texto-2)" fontWeight={destaque ? 700 : 400}>
                 {MESES[i]}
               </text>
             </g>
@@ -31,11 +31,11 @@ export function GraficoMensal({ dados, mesAtual }: { dados: { mes: number; recei
       </svg>
       <figcaption style={{ fontSize: "0.8125rem", color: "var(--scl-texto-2)", display: "flex", gap: 16 }}>
         <span>
-          <span style={{ display: "inline-block", width: 10, height: 10, background: "#dfe6d6", marginRight: 4 }} />
+          <span style={{ display: "inline-block", width: 10, height: 10, background: "var(--scl-areia)", marginRight: 4 }} />
           Receita bruta
         </span>
         <span>
-          <span style={{ display: "inline-block", width: 10, height: 10, background: "#6f8a66", marginRight: 4 }} />
+          <span style={{ display: "inline-block", width: 10, height: 10, background: "var(--scl-musgo)", marginRight: 4 }} />
           Comissões SCL
         </span>
       </figcaption>
@@ -50,8 +50,8 @@ export function BarrasOcupacao({ linhas }: { linhas: { codigo: string; nome: str
       {linhas.map((l) => (
         <li key={l.codigo} style={{ display: "grid", gridTemplateColumns: "minmax(80px, 140px) 1fr 64px", gap: 8, alignItems: "center", fontSize: "0.875rem" }}>
           <span title={l.nome}>{l.codigo}</span>
-          <span style={{ background: "#eef1ea", borderRadius: 4, height: 12, overflow: "hidden" }} aria-hidden>
-            <span style={{ display: "block", height: "100%", width: `${Math.round((l.taxa ?? 0) * 100)}%`, background: "#6f8a66" }} />
+          <span style={{ background: "var(--scl-neutro-fundo)", borderRadius: 4, height: 12, overflow: "hidden" }} aria-hidden>
+            <span style={{ display: "block", height: "100%", width: `${Math.round((l.taxa ?? 0) * 100)}%`, background: "var(--scl-musgo)" }} />
           </span>
           <span style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }} title={`${l.vendidas} de ${l.disponiveis} noites`}>
             {l.taxa === null ? "—" : `${Math.round(l.taxa * 100)}%`}

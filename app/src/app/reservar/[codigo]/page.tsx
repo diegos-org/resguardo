@@ -3,6 +3,7 @@ import { lerRegrasCalendario } from "@/calendario/regras-config";
 import { Cotacao } from "@/components/site/Cotacao";
 import { FormSegurar } from "@/components/site/FormSegurar";
 import { Moldura, SiteEmConfiguracao } from "@/components/site/Moldura";
+import styles from "@/components/site/site.module.css";
 import { segurarDatasAcao } from "@/site/acoes";
 import { codigoCotacaoValido, verCotacao } from "@/site/cotacoes";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
@@ -20,8 +21,11 @@ export default async function PaginaCotacao({ params }: PageProps<"/reservar/[co
   if (!vista) notFound();
   return (
     <Moldura conteudo={conteudo}>
-      <h1 style={{ fontSize: "2rem", margin: "8px 0 16px" }}>Reservar</h1>
-      <div className={undefined} style={{ maxWidth: 720 }}>
+      <div className={styles.largo}>
+        <header className={styles.cabecalhoPagina}>
+          <p className={styles.olho}>Cotação</p>
+          <h1>Reservar</h1>
+        </header>
         <Cotacao
           vista={vista}
           whatsapp={conteudo.whatsapp}

@@ -23,8 +23,11 @@ export default async function Anunciar({ searchParams }: PageProps<"/anunciar">)
 
   return (
     <Moldura conteudo={conteudo}>
-      <section className={styles.secao} style={{ maxWidth: 560 }}>
-        <h1>Anuncie seu imóvel</h1>
+      <section className={styles.estreito}>
+        <header className={styles.cabecalhoPagina}>
+          <p className={styles.olho}>Para proprietários</p>
+          <h1>Anuncie seu imóvel</h1>
+        </header>
         <p>
           Você cuida do imóvel (limpeza, chaves, reposição) e nós cuidamos da parte online: anúncio, reservas e atendimento. Mande os dados do seu imóvel; a
           nossa equipe analisa e responde por e-mail. Nada é publicado antes dessa análise.

@@ -20,10 +20,10 @@ type Props = {
 };
 
 const dataBr = (d: string) => d.split("-").reverse().join("/");
-const caixa: React.CSSProperties = { background: "#fff", border: "1px solid var(--scl-areia)", borderRadius: 8, padding: 16 };
+const caixa: React.CSSProperties = { background: "var(--scl-papel)", border: "1px solid var(--scl-borda)", borderRadius: 8, padding: 16 };
 const rotulo: React.CSSProperties = { color: "var(--scl-texto-2)", fontSize: "0.875rem" };
 const celula: React.CSSProperties = { padding: "8px 10px", borderBottom: "1px solid var(--scl-areia)", whiteSpace: "nowrap" };
-const botao: React.CSSProperties = { font: "inherit", padding: "8px 16px", borderRadius: 6, border: 0, background: "var(--scl-salvia)", color: "#fff", cursor: "pointer" };
+const botao: React.CSSProperties = { font: "inherit", padding: "8px 16px", borderRadius: 6, border: 0, background: "var(--scl-musgo)", color: "var(--scl-branco)", cursor: "pointer" };
 
 export function nomeDoRepasseNoPortal(r: Pick<Repasse, "tipo" | "mes" | "data" | "pedidoEm">): string {
   if (r.tipo === "fechamento") return `Fechamento de ${nomeMes(r.mes.slice(0, 7))}`;
@@ -47,7 +47,7 @@ export function ExtratoRepasses({ donos, periodicidades, partes, repasses, regra
     <section id="repasses" aria-label="Extrato e repasses" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <h2 style={{ fontSize: "1.125rem", margin: 0 }}>Extrato e repasses</h2>
       {mensagem && (
-        <p role={mensagem.tipo === "erro" ? "alert" : "status"} style={{ margin: 0, padding: 12, borderRadius: 6, background: mensagem.tipo === "erro" ? "#fbeaea" : "#e8f3ea", color: mensagem.tipo === "erro" ? "#8a1c14" : "#1f4d2b" }}>
+        <p role={mensagem.tipo === "erro" ? "alert" : "status"} style={{ margin: 0, padding: 12, borderRadius: 6, background: mensagem.tipo === "erro" ? "var(--scl-erro-fundo)" : "var(--scl-ok-fundo)", color: mensagem.tipo === "erro" ? "var(--scl-erro-texto)" : "var(--scl-ok)" }}>
           {mensagem.texto}
         </p>
       )}

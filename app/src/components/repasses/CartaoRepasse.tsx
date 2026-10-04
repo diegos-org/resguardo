@@ -169,7 +169,7 @@ export function CartaoRepasse({ r, nome, chavePix, itens, mes, hoje, editar }: P
             <div className={styles.acoes}>
               <BotaoConfirmar
                 pergunta={`Estornar o ${nomeDoRepasse(r).toLowerCase()} de ${nome}? Os lançamentos são estornados${r.tipo === "fechamento" ? ", os adiantamentos descontados voltam a ficar em aberto" : ""} e as partes de reserva voltam a ficar disponíveis.${r.situacao === "pago" ? " O Pix já feito precisa ser devolvido ou acertado à parte." : ""}`}
-                style={{ background: "#b3261e" }}
+                style={{ background: "var(--scl-erro)" }}
               >
                 Estornar
               </BotaoConfirmar>

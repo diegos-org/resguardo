@@ -10,6 +10,8 @@ import { BotaoCopiar } from "@/components/BotaoCopiar";
 import { BloqueiosProprietario } from "@/components/portal/BloqueiosProprietario";
 import { CalendarioPortal } from "@/components/portal/CalendarioPortal";
 import { ExtratoRepasses } from "@/components/portal/ExtratoRepasses";
+import { MolduraPortal } from "@/components/portal/MolduraPortal";
+import styles from "@/components/portal/portal.module.css";
 import { lerEmpresa, nomeDaEmpresa } from "@/configuracoes/empresa";
 import { fontesDePrecosDosImoveis } from "@/imoveis/detalhes";
 import { EXPLICACAO_FONTE_PRECOS, NOMES_FONTE_PRECOS } from "@/imoveis/fonte-precos";
@@ -122,8 +124,8 @@ function TextoRodape({ r, empresa }: { r: Rodape; empresa: string }) {
               <span>
                 Pix da {empresa}: <code>{r.chavePix}</code>
               </span>
-              <BotaoCopiar texto={r.chavePix} rotulo="Copiar Pix" />
-              <BotaoCopiar texto={centavosParaCampo(r.valor)} rotulo="Copiar valor" />
+              <BotaoCopiar texto={r.chavePix} rotulo="Copiar Pix" className={`${styles.botao} ${styles.botaoContorno}`} />
+              <BotaoCopiar texto={centavosParaCampo(r.valor)} rotulo="Copiar valor" className={`${styles.botao} ${styles.botaoContorno}`} />
             </div>
           ) : (
             <p style={{ margin: 0 }}>Fale com a {empresa} para combinar o pagamento.</p>
@@ -147,15 +149,16 @@ function TextoRodape({ r, empresa }: { r: Rodape; empresa: string }) {
 
 const curto = (p: { ano: number; mes: number | null }) => (p.mes === null ? String(p.ano) : `${nomeDoMes(p.mes).slice(0, 3)}/${p.ano}`);
 
-const caixa: React.CSSProperties = { background: "#fff", border: "1px solid var(--scl-areia)", borderRadius: 8, padding: 16 };
-const rotulo: React.CSSProperties = { color: "var(--scl-texto-2)", fontSize: "0.875rem" };
-
 function Numero({ titulo, valor, detalhe }: { titulo: string; valor: string; detalhe?: string }) {
   return (
-    <div style={caixa}>
-      <div style={rotulo}>{titulo}</div>
-      <div style={{ fontSize: "1.375rem", fontVariantNumeric: "tabular-nums", marginTop: 4 }}>{valor}</div>
-      {detalhe && <div style={{ ...rotulo, marginTop: 2 }}>{detalhe}</div>}
+    <div className={styles.numero}>
+      <div className={styles.rotulo}>{titulo}</div>
+      <div className={styles.numeroValor}>{valor}</div>
+      {detalhe && (
+        <div className={styles.rotulo} style={{ marginTop: 2 }}>
+          {detalhe}
+        </div>
+      )}
     </div>
   );
 }
@@ -252,38 +255,33 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
   }
 
   return (
-    <main style={{ maxWidth: 880, margin: "0 auto", padding: "32px 16px 64px", display: "flex", flexDirection: "column", gap: 20 }}>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
+    <MolduraPortal empresa={empresa} titulo="Portal do proprietário" sair={sair}>
+      <header className={styles.cabecalho}>
         <div>
-          <h1 style={{ fontSize: "1.75rem", margin: 0 }}>Portal do proprietário</h1>
-          {donos.length > 0 && <p style={{ ...rotulo, margin: 0 }}>{donos.map((d) => d.nome).join(", ")}</p>}
+          <p className={styles.olho}>Portal do proprietário</p>
+          <h1>{donos.length > 0 ? donos.map((d) => d.nome).join(", ") : "Seus imóveis"}</h1>
         </div>
-        <form action={sair}>
-          <button type="submit" style={{ font: "inherit", padding: "6px 14px", borderRadius: 6, border: "1px solid #d8d0c0", background: "#fff", cursor: "pointer" }}>
-            Sair
-          </button>
-        </form>
       </header>
 
       {meus.length === 0 ? (
         <p>Nenhum imóvel ligado ao seu cadastro ainda. Fale com a {empresa}.</p>
       ) : (
         <>
-          <form method="get" action="/portal" aria-label="Filtro" style={{ ...caixa, display: "flex", gap: 16, flexWrap: "wrap", alignItems: "flex-end" }}>
+          <form method="get" action="/portal" aria-label="Filtro" className={styles.filtro}>
             {meus.length > 1 && (
-              <fieldset style={{ border: 0, padding: 0, margin: 0, display: "flex", gap: "4px 16px", flexWrap: "wrap" }}>
-                <legend style={rotulo}>Imóveis</legend>
+              <fieldset>
+                <legend>Imóveis</legend>
                 {meus.map((i) => (
-                  <label key={i.codigo} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <label key={i.codigo} className={styles.opcao}>
                     <input type="checkbox" name="imovel" value={i.codigo} defaultChecked={filtros.imoveis.length === 0 || filtros.imoveis.includes(i.codigo)} />
                     {i.codigo} · {i.nome}
                   </label>
                 ))}
               </fieldset>
             )}
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, ...rotulo }}>
+            <label className={styles.campo}>
               Mês
-              <select name="mes" defaultValue={filtros.mes === null ? "todos" : String(filtros.mes)} style={{ font: "inherit", padding: 6 }}>
+              <select name="mes" defaultValue={filtros.mes === null ? "todos" : String(filtros.mes)}>
                 <option value="todos">Ano inteiro</option>
                 {Array.from({ length: 12 }, (_, k) => (
                   <option key={k + 1} value={k + 1}>
@@ -292,9 +290,9 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
                 ))}
               </select>
             </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, ...rotulo }}>
+            <label className={styles.campo}>
               Ano
-              <select name="ano" defaultValue={String(filtros.ano)} style={{ font: "inherit", padding: 6 }}>
+              <select name="ano" defaultValue={String(filtros.ano)}>
                 {anos.map((a) => (
                   <option key={a} value={a}>
                     {a}
@@ -302,18 +300,18 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
                 ))}
               </select>
             </label>
-            <button type="submit" style={{ font: "inherit", padding: "8px 16px", borderRadius: 6, border: 0, background: "var(--scl-salvia)", color: "#fff", cursor: "pointer" }}>
+            <button type="submit" className={styles.botao}>
               Ver
             </button>
           </form>
 
           {aviso && (
-            <p role="alert" style={{ margin: 0, padding: 12, borderRadius: 6, background: "#fbeaea", color: "#8a1c14" }}>
+            <p role="alert" className={styles.alerta}>
               {aviso}
             </p>
           )}
 
-          <nav aria-label="Período" style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8 }}>
+          <nav aria-label="Período" className={styles.periodo}>
             {anterior ? (
               <Link href={link(anterior)} aria-label={`Anterior: ${anterior.mes === null ? anterior.ano : nome(anterior)}`}>
                 ← {curto(anterior)}
@@ -321,9 +319,9 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
             ) : (
               <span />
             )}
-            <strong style={{ fontSize: "1.25rem", textAlign: "center" }}>{titulo}</strong>
+            <strong>{titulo}</strong>
             {seguinte ? (
-              <Link href={link(seguinte)} aria-label={`Seguinte: ${seguinte.mes === null ? seguinte.ano : nome(seguinte)}`} style={{ justifySelf: "end" }}>
+              <Link href={link(seguinte)} aria-label={`Seguinte: ${seguinte.mes === null ? seguinte.ano : nome(seguinte)}`}>
                 {curto(seguinte)} →
               </Link>
             ) : (
@@ -331,19 +329,19 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
             )}
           </nav>
           {filtros.mes !== null && selecao.imoveis.length > 0 && (
-            <p style={{ margin: 0, textAlign: "center" }}>
+            <p className={styles.centro}>
               <a href={link({ ano: filtros.ano, mes: filtros.mes }).replace("/portal?", "/portal/relatorio?")} download>
                 Baixar o relatório deste mês em PDF
               </a>
             </p>
           )}
           {SITUACAO[situacao] && (
-            <p role="note" style={{ margin: 0, padding: "8px 12px", borderRadius: 6, background: "var(--scl-areia)", fontSize: "0.9375rem" }}>
+            <p role="note" className={styles.nota}>
               <strong>{SITUACAO[situacao].titulo}:</strong> {SITUACAO[situacao].texto}
             </p>
           )}
 
-          <section aria-label="Números do período" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+          <section aria-label="Números do período" className={styles.numeros}>
             <Numero titulo="Reservas" valor={String(resumo.reservas)} detalhe={selecao.imoveis.map((i) => i.codigo).join(", ")} />
             <Numero titulo="Valor bruto das reservas" valor={formatBRL(resumo.receitaBruta)} detalhe={`Taxas dos canais: ${formatBRL(resumo.taxasCanais)}`} />
             <Numero titulo={`Comissão da ${empresa}`} valor={formatBRL(resumo.comissao)} />
@@ -356,7 +354,7 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
             />
           </section>
           {resumo.emConferencia && (
-            <p role="note" style={{ margin: 0, padding: "8px 12px", borderRadius: 6, background: "var(--scl-areia)", fontSize: "0.9375rem" }}>
+            <p role="note" className={styles.nota}>
               <strong>Em conferência:</strong> há itens deste período ainda não definidos
               {resumo.acertoPendente !== 0 ? ` (${formatBRL(Math.abs(resumo.acertoPendente))} ${resumo.acertoPendente > 0 ? "a seu favor" : `a favor da ${empresa}`})` : ""}. Eles
               ficaram fora do acerto acima, que ainda não é definitivo. A {empresa} vai esclarecer antes do fechamento do mês.
@@ -364,9 +362,9 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
           )}
 
           {filtros.mes !== null && (
-            <section aria-label="Calendário" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <h2 style={{ fontSize: "1.125rem", margin: 0 }}>Calendário</h2>
-              <p style={{ ...rotulo, margin: 0 }}>Toque numa reserva para ver os valores dela na tabela.</p>
+            <section aria-label="Calendário" className={styles.secao}>
+              <h2>Calendário</h2>
+              <p className={styles.miudo}>Toque numa reserva para ver os valores dela na tabela.</p>
               <CalendarioPortal periodo={periodo} imoveis={selecao.imoveis} itens={itens} hoje={hoje} />
             </section>
           )}
@@ -381,8 +379,8 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
           />
 
           {meus.length > 0 && (
-            <section aria-label="De onde vêm os preços" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <h2 style={{ fontSize: "1.125rem", margin: 0 }}>De onde vêm os preços</h2>
+            <section aria-label="De onde vêm os preços" className={styles.secao}>
+              <h2>De onde vêm os preços</h2>
               <ul style={{ margin: 0, paddingLeft: 18 }}>
                 {meus.map((i) => {
                   const f = fontesPrecos.get(i.id) ?? "scl";
@@ -391,29 +389,28 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
                       <strong>
                         {i.codigo} · {i.nome}:
                       </strong>{" "}
-                      {NOMES_FONTE_PRECOS[f]}. <span style={rotulo}>{EXPLICACAO_FONTE_PRECOS[f]}</span>
+                      {NOMES_FONTE_PRECOS[f]}. <span className={styles.rotulo}>{EXPLICACAO_FONTE_PRECOS[f]}</span>
                     </li>
                   );
                 })}
               </ul>
-              <p style={{ ...rotulo, margin: 0 }}>
+              <p className={styles.miudo}>
                 O calendário, as estadias mínimas e os bloqueios são sempre do SCL. O site da {empresa} vende pelo mesmo preço do canal, com o desconto do site por cima. Para mudar a fonte de preços, fale com a {empresa}.
               </p>
             </section>
           )}
 
-          <section aria-label="Reservas" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <h2 style={{ fontSize: "1.125rem", margin: 0 }}>Reservas</h2>
+          <section aria-label="Reservas" className={styles.secao}>
+            <h2>Reservas</h2>
             {lista.length === 0 ? (
               <p style={{ margin: 0 }}>Nenhuma reserva confirmada neste período.</p>
             ) : (
-              <div style={{ overflowX: "auto", ...caixa, padding: 0 }}>
-                <style>{`tr:target td { background: #f6efe0; }`}</style>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
+              <div className={styles.rolagem}>
+                <table className={styles.tabela}>
                   <thead>
-                    <tr style={{ textAlign: "left", color: "var(--scl-texto-2)" }}>
+                    <tr>
                       {["Imóvel", "Entrada", "Saída", "Hóspede", "Valor bruto*", "Sua parte*", "Situação", "Canal", "Origem"].map((c) => (
-                        <th key={c} scope="col" style={{ padding: "8px 10px", borderBottom: "1px solid var(--scl-areia)", whiteSpace: "nowrap" }}>
+                        <th key={c} scope="col">
                           {c}
                         </th>
                       ))}
@@ -433,7 +430,7 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
                           NOMES_ORIGEM[r.canal],
                           r.origemHospede || "não informada",
                         ].map((v, k) => (
-                          <td key={k} style={{ padding: "8px 10px", borderBottom: "1px solid var(--scl-areia)", whiteSpace: "nowrap", fontVariantNumeric: k === 4 || k === 5 ? "tabular-nums" : undefined }}>
+                          <td key={k} className={k === 4 || k === 5 ? styles.numeroCelula : undefined}>
                             {v}
                           </td>
                         ))}
@@ -443,7 +440,7 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
                 </table>
               </div>
             )}
-            <p style={{ ...rotulo, margin: 0 }}>
+            <p className={styles.miudo}>
               * Valores deste período pelo mês da estadia (estadas que passam de um mês para o outro são divididas pelas noites). Origem só quando o
               hóspede informou.
             </p>
@@ -462,8 +459,8 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
             mensagem={mensagemRepasses}
           />
 
-          <section aria-label="Saldo e Pix" style={{ ...caixa, display: "flex", flexDirection: "column", gap: 12 }}>
-            <h2 style={{ fontSize: "1.125rem", margin: 0 }}>Saldo com a {empresa}</h2>
+          <section aria-label="Saldo e Pix" className={`${styles.caixa} ${styles.secao}`}>
+            <h2>Saldo com a {empresa}</h2>
             <div style={{ display: "flex", gap: "8px 24px", flexWrap: "wrap" }}>
               <span>
                 Receitas (sua parte): <strong>{formatBRL(resumo.suaParte)}</strong>
@@ -478,13 +475,13 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
                 <TextoRodape r={r} empresa={empresa} />
               </div>
             ))}
-            <p style={{ ...rotulo, margin: 0 }}>
+            <p className={styles.miudo}>
               O saldo considera todos os seus imóveis até o fim de {filtros.mes === null ? `dezembro de ${filtros.ano}` : nome({ ano: filtros.ano, mes: filtros.mes })},
               já com os repasses feitos.
             </p>
           </section>
         </>
       )}
-    </main>
+    </MolduraPortal>
   );
 }

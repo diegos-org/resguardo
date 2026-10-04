@@ -39,10 +39,10 @@ export default async function ListaDespesas({ searchParams }: PageProps<"/painel
         <h1>Despesas</h1>
         {editar && (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <Link href="/painel/despesas/adiantamentos" className={styles.botao} style={{ background: "#fff", color: "var(--scl-salvia)", border: "1px solid currentColor" }}>
+            <Link href="/painel/despesas/adiantamentos" className={styles.botao} style={{ background: "var(--scl-papel)", color: "var(--scl-musgo)", border: "1px solid currentColor" }}>
               Adiantamentos
             </Link>
-            <Link href="/painel/despesas/categorias" className={styles.botao} style={{ background: "#fff", color: "var(--scl-salvia)", border: "1px solid currentColor" }}>
+            <Link href="/painel/despesas/categorias" className={styles.botao} style={{ background: "var(--scl-papel)", color: "var(--scl-musgo)", border: "1px solid currentColor" }}>
               Categorias
             </Link>
             <Link href="/painel/despesas/nova" className={styles.botao}>

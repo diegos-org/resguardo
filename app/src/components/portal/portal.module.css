@@ -1,0 +1,375 @@
+/*
+ * Portais (proprietário, equipe de limpeza, entrada e convite) — mesma linguagem do site (M7.5):
+ * cabeçalho floresta, fundo creme, cartões papel, títulos em serifa. Cores só pelos tokens.
+ */
+.pagina {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+  flex-wrap: wrap;
+  padding: 12px max(4vw, 16px);
+  background: var(--scl-floresta);
+  color: var(--scl-creme);
+}
+
+.marca {
+  font-family: var(--font-serif);
+  font-size: 1.375rem;
+  letter-spacing: -0.02em;
+  color: var(--scl-creme);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.marca em {
+  font-style: italic;
+  color: var(--scl-dourado);
+}
+
+.topoTitulo {
+  font-size: 0.8125rem;
+  color: var(--scl-sobre-escuro);
+}
+
+.topoAcoes {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.miolo {
+  flex: 1;
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px max(4vw, 16px) 56px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.estreito {
+  max-width: 480px;
+  padding-top: 56px;
+}
+
+.rodape {
+  padding: 18px max(4vw, 16px);
+  background: var(--scl-profundo);
+  color: var(--scl-sobre-escuro);
+  font-size: 0.75rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.rodape a {
+  color: var(--scl-creme);
+}
+
+/* Títulos */
+.cabecalho {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.cabecalho h1,
+.miolo > h1 {
+  font-size: 1.75rem;
+  margin: 0;
+}
+
+.olho {
+  margin: 0;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.19em;
+  text-transform: uppercase;
+  color: var(--scl-texto-2);
+}
+
+.secao {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.secao h2,
+.caixa h2 {
+  font-size: 1.25rem;
+  margin: 0;
+}
+
+/* Blocos */
+.caixa {
+  background: var(--scl-papel);
+  border: 1px solid var(--scl-borda);
+  border-radius: 7px;
+  padding: 16px;
+}
+
+.rotulo {
+  color: var(--scl-texto-2);
+  font-size: 0.875rem;
+}
+
+.numeros {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.numero {
+  composes: caixa;
+}
+
+.numeroValor {
+  font-family: var(--font-serif);
+  font-size: 1.5rem;
+  color: var(--scl-floresta);
+  font-variant-numeric: tabular-nums;
+  margin-top: 4px;
+  letter-spacing: -0.02em;
+}
+
+.nota {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: var(--scl-raio-campo);
+  background: var(--scl-papel);
+  border-left: 3px solid var(--scl-dourado);
+  font-size: 0.9375rem;
+}
+
+.alerta {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: var(--scl-raio-campo);
+  background: var(--scl-erro-fundo);
+  color: var(--scl-erro-texto);
+}
+
+.sucesso {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: var(--scl-raio-campo);
+  background: var(--scl-ok-fundo);
+  color: var(--scl-ok);
+}
+
+/* Filtro e campos */
+.filtro {
+  composes: caixa;
+  display: flex;
+  gap: 12px 20px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  font-size: 0.875rem;
+}
+
+.filtro fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  gap: 4px 16px;
+  flex-wrap: wrap;
+}
+
+.filtro legend {
+  color: var(--scl-texto-2);
+  margin-bottom: 4px;
+}
+
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--scl-tinta);
+}
+
+.campo input,
+.campo select {
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  min-width: 0;
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 0;
+  border: 0;
+  border-bottom: 1px solid var(--scl-borda-campo);
+  border-radius: 0;
+  background: transparent;
+  color: var(--scl-tinta);
+}
+
+.opcao {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.9375rem;
+}
+
+/* Botões */
+.botao {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 10px 18px;
+  border: 0;
+  border-radius: var(--scl-raio-campo);
+  background: var(--scl-musgo);
+  color: var(--scl-branco);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.botao:hover {
+  background: var(--scl-musgo-escuro);
+}
+
+.botaoLargo {
+  width: 100%;
+  min-height: 48px;
+  font-size: 1rem;
+}
+
+.botaoContorno {
+  background: transparent;
+  color: inherit;
+  border: 1px solid var(--scl-borda);
+}
+
+.botaoContorno:hover {
+  background: var(--scl-areia);
+}
+
+.topo .botaoContorno {
+  color: var(--scl-creme);
+  border-color: rgba(243, 238, 227, 0.45);
+  min-height: 36px;
+  padding: 6px 14px;
+  font-size: 0.8125rem;
+}
+
+.topo .botaoContorno:hover {
+  background: rgba(243, 238, 227, 0.08);
+}
+
+/* Tabela */
+.rolagem {
+  overflow-x: auto;
+  background: var(--scl-papel);
+  border: 1px solid var(--scl-borda);
+  border-radius: 7px;
+}
+
+.tabela {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.tabela th,
+.tabela td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--scl-areia);
+  white-space: nowrap;
+}
+
+.tabela th {
+  color: var(--scl-texto-2);
+  font-weight: 500;
+  font-size: 0.8125rem;
+}
+
+.tabela tr:last-child td {
+  border-bottom: 0;
+}
+
+.tabela tr:target td {
+  background: var(--scl-aviso-fundo);
+}
+
+.numeroCelula {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Navegação entre períodos */
+.periodo {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 8px;
+}
+
+.periodo strong {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 1.375rem;
+  text-align: center;
+  color: var(--scl-floresta);
+}
+
+.periodo a:last-child {
+  justify-self: end;
+}
+
+/* Cartão de limpeza (equipe) */
+.cartaoLimpeza {
+  composes: caixa;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cartaoLimpeza strong {
+  font-size: 1.125rem;
+}
+
+.centro {
+  margin: 0;
+  text-align: center;
+}
+
+.miudo {
+  margin: 0;
+  color: var(--scl-texto-2);
+  font-size: 0.875rem;
+}
+
+@media (max-width: 600px) {
+  .miolo {
+    padding: 16px 16px 40px;
+    gap: 16px;
+  }
+
+  .estreito {
+    padding-top: 32px;
+  }
+}

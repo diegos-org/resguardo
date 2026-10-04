@@ -1,3 +1,4 @@
+/* Painel interno (M7.5): mesma paleta do site, mais denso. Cores só pelos tokens de globals.css. */
 .estrutura {
   display: grid;
   grid-template-columns: 220px 1fr;
@@ -5,17 +6,25 @@
 }
 
 .lateral {
-  background: var(--scl-salvia);
-  color: #fff;
-  padding: 24px 16px;
+  background: var(--scl-floresta);
+  color: var(--scl-creme);
+  padding: 18px 14px;
 }
 
 .marca {
-  font-family: var(--font-serif);
-  font-size: 1.25rem;
-  margin-bottom: 24px;
   display: block;
+  margin: 0 8px 18px;
+  font-family: var(--font-serif);
+  font-size: 1.5rem;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: var(--scl-creme);
   text-decoration: none;
+}
+
+.marca em {
+  font-style: italic;
+  color: var(--scl-dourado);
 }
 
 .menu {
@@ -27,21 +36,22 @@
 
 .menu a {
   display: block;
-  padding: 8px 12px;
-  border-radius: 6px;
+  padding: 7px 12px;
+  border-radius: var(--scl-raio-campo);
   text-decoration: none;
-  color: #fff;
+  font-size: 0.875rem;
+  color: var(--scl-creme);
   opacity: 0.85;
 }
 
 .menu a:hover {
   opacity: 1;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(243, 238, 227, 0.08);
 }
 
 .menu a.ativo {
   opacity: 1;
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(243, 238, 227, 0.14);
   box-shadow: inset 3px 0 0 var(--scl-dourado);
 }
 
@@ -56,13 +66,17 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 16px 24px;
-  border-bottom: 1px solid var(--scl-areia);
-  background: #fff;
+  padding: 10px 24px;
+  border-bottom: 1px solid var(--scl-borda);
+  background: var(--scl-papel);
+  font-size: 0.875rem;
+  color: var(--scl-texto-2);
 }
 
 .selo {
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   background: var(--scl-areia);
   color: var(--scl-texto-2);
   padding: 2px 8px;
@@ -70,21 +84,29 @@
 }
 
 .conteudo {
-  padding: 24px;
+  padding: 20px 24px 40px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
+}
+
+.conteudo h1 {
+  font-size: 1.5rem;
+}
+
+.conteudo h2 {
+  font-size: 1.125rem;
 }
 
 .filtro {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
-  gap: 12px 20px;
-  padding: 16px;
-  background: #fff;
-  border: 1px solid var(--scl-areia);
-  border-radius: 8px;
+  gap: 10px 18px;
+  padding: 12px 16px;
+  background: var(--scl-papel);
+  border: 1px solid var(--scl-borda);
+  border-radius: var(--scl-raio-cartao);
   font-size: 0.875rem;
 }
 
@@ -98,25 +120,31 @@
 .filtro select,
 .filtro button {
   font: inherit;
-  padding: 6px 10px;
-  border-radius: 6px;
-  border: 1px solid #d8d0c0;
-  background: #fff;
+  min-height: 34px;
+  padding: 5px 10px;
+  border-radius: var(--scl-raio-campo);
+  border: 1px solid var(--scl-borda);
+  background: var(--scl-branco);
   color: var(--scl-texto);
 }
 
 .filtro button {
-  background: var(--scl-salvia);
-  color: #fff;
-  border-color: var(--scl-salvia);
+  background: var(--scl-musgo);
+  color: var(--scl-branco);
+  border-color: var(--scl-musgo);
   cursor: pointer;
+}
+
+.filtro button:hover {
+  background: var(--scl-musgo-escuro);
+  border-color: var(--scl-musgo-escuro);
 }
 
 .imoveis {
   border: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 14px;
+  gap: 6px 14px;
 }
 
 .imoveis legend {
@@ -132,21 +160,21 @@
 }
 
 .cartao {
-  background: #fff;
-  border: 1px solid var(--scl-areia);
-  border-radius: 8px;
-  padding: 20px;
+  background: var(--scl-papel);
+  border: 1px solid var(--scl-borda);
+  border-radius: var(--scl-raio-cartao);
+  padding: 16px;
 }
 
 .cartao h2 {
-  font-size: 1.25rem;
+  font-size: 1.125rem;
   margin-bottom: 8px;
 }
 
 .grade {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 
 .grade a {
@@ -166,11 +194,12 @@
 
   .lateral {
     min-width: 0;
-    padding: 12px 16px;
+    padding: 10px 16px;
   }
 
   .marca {
-    margin-bottom: 8px;
+    margin: 0 0 6px;
+    font-size: 1.375rem;
   }
 
   .menu {
@@ -190,17 +219,51 @@
 
   .cabecalho,
   .conteudo {
-    padding: 16px;
+    padding: 12px 16px;
   }
 }
 
 .sair {
   font: inherit;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   background: none;
-  border: 1px solid #d8d0c0;
-  border-radius: 6px;
+  border: 1px solid var(--scl-borda);
+  border-radius: var(--scl-raio-campo);
   padding: 4px 10px;
   cursor: pointer;
   color: var(--scl-texto-2);
+}
+
+.sair:hover {
+  background: var(--scl-areia);
+  color: var(--scl-texto);
+}
+
+/* Botões e campos sem classe nas telas do painel: o padrão já sai pelos tokens (inline só ajusta). */
+.conteudo button:not([class]) {
+  font: inherit;
+  font-size: 0.875rem;
+  min-height: 34px;
+  padding: 6px 14px;
+  border: 0;
+  border-radius: var(--scl-raio-campo);
+  background: var(--scl-musgo);
+  color: var(--scl-branco);
+  cursor: pointer;
+}
+
+.conteudo button:not([class]):hover {
+  background: var(--scl-musgo-escuro);
+}
+
+.conteudo input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([class]),
+.conteudo select:not([class]),
+.conteudo textarea:not([class]) {
+  font: inherit;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--scl-borda-campo);
+  border-radius: var(--scl-raio-campo);
+  background: var(--scl-branco);
+  color: var(--scl-tinta);
 }

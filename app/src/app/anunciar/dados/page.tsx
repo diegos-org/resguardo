@@ -15,8 +15,11 @@ export default async function DadosCadastro() {
   const { conteudo } = await carregarSite();
   return (
     <Moldura conteudo={conteudo}>
-      <section className={styles.secao} style={{ maxWidth: 640 }}>
-        <h1>Dados do seu imóvel</h1>
+      <section className={styles.estreito}>
+        <header className={styles.cabecalhoPagina}>
+          <p className={styles.olho}>Para proprietários</p>
+          <h1>Dados do seu imóvel</h1>
+        </header>
         <p className={styles.miudo}>E-mail confirmado: {email}. O endereço exato fica só com a nossa equipe; nada aparece no site antes da análise.</p>
         <FormCadastro enviar={enviarCadastroAcao} />
       </section>

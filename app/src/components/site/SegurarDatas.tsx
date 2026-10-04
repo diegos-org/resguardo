@@ -7,7 +7,7 @@ import styles from "./site.module.css";
  */
 export function SegurarDatas({ pedido, aConfirmar, acao }: { pedido: PedidoConsulta; aConfirmar: boolean; acao: (form: FormData) => void | Promise<void> }) {
   return (
-    <section className={styles.secao} aria-label="Segurar datas">
+    <section className={styles.bloco} aria-label="Segurar datas">
       <h2>Quer garantir essas datas?</h2>
       <p className={styles.texto}>
         Segure as datas por alguns minutos enquanto fala com a equipe: na próxima tela você informa seu contato e recebe um código de cotação. Nenhum pagamento é feito aqui.
