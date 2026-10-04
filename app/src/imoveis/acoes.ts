@@ -77,7 +77,9 @@ export async function salvarDetalhesAcao(_a: EstadoDetalhes, form: FormData): Pr
   const valores = lerForm(form);
   const v = validarDetalhes(valores);
   if (!v.ok) return { erros: v.erros, mensagem: "Confira os campos destacados.", valores };
-  if (!(await salvarDetalhes(getDb(), sessao.organizacaoId, imovelId, v.dados, sessao.usuarioId))) return { mensagem: "Imóvel não encontrado." };
+  const r = await salvarDetalhes(getDb(), sessao.organizacaoId, imovelId, v.dados, sessao.usuarioId);
+  if (r === false) return { mensagem: "Imóvel não encontrado." };
+  if (typeof r === "string") return { mensagem: r, valores };
   revalidatePath(`/painel/imoveis/${imovelId}`);
   return { ok: true };
 }
