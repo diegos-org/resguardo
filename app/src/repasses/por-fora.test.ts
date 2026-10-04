@@ -13,9 +13,9 @@ import { criarReserva } from "@/reservas/repositorio";
 import { enviarEmailDoRepasse, enviarEmailsDeRepasses } from "./email";
 import { partesDisponiveis, partesDoProprietario, resumirPartes } from "./extrato";
 import { descreverAcertoPorFora, marcarAcertoPorFora, situacaoAntesDoInicio, vesperaDoInicio } from "./por-fora";
-import { recebidoPorReserva, registrarRecebimento } from "./recebimentos";
+import { estornarRecebimento, recebidoPorReserva, recebimentosDaReserva, registrarRecebimento } from "./recebimentos";
 import { lerInicioDoSistema, salvarInicioDoSistema } from "./regras-config";
-import { estornarRepasse, fecharMes, gerarAntecipado, itensDoRepasse, listarRepasses, listarRepassesDaOrganizacao, obterRepasse, preverRepasses } from "./repasses";
+import { estornarRepasse, fecharMes, gerarAntecipado, itensDoRepasse, listarRepasses, listarRepassesDaOrganizacao, marcarRepassePago, obterRepasse, preverRepasses } from "./repasses";
 import { receberTudo } from "./testes";
 
 // A trava da configuração é espiada para conferir que antecipado e fechamento a tomam antes de ler o início do sistema.
@@ -265,6 +265,39 @@ describe("acerto por fora de antes do início do sistema (M4.11; M4.12: 'de ante
     await db.update(lancamentos).set({ estado: "previsto" }).where(eq(lancamentos.id, outubroDaQueAtravessa.id));
     expect(await marcadoDe()).toMatchObject({ partes: 3, valor: 144500 });
     expect(await saldo("2026-11-01")).toBe(72250);
+  });
+
+  it("reserva já paga por antecipado cuja data de pagamento é corrigida para antes do início: a marcação recusa o proprietário até estornar o antecipado (senão zeraria o acerto sem item e descontaria de novo)", async () => {
+    const { set, out } = await partesDaQueAtravessa();
+    const codigo = (await partes("2026-10-06")).find((p) => p.reservaId === atravessa)!.codigoReserva;
+    // Recebida em 3/10: de depois — o antecipado paga as duas partes e é pago (repasse pago não trava o estorno do recebimento).
+    await receberTudo(db, org, atravessa, "2026-10-03");
+    const g = await gerarAntecipado(db, org, dono, "2026-10-06", null);
+    if (!g.ok) throw new Error(g.erro);
+    expect(await marcarRepassePago(db, org, g.id, "2026-10-06", "2026-10-06", null)).toMatchObject({ ok: true });
+    // A equipe descobre que o canal pagou em 30/9: estorna o recebimento e registra de novo com a data certa → a reserva vira de antes.
+    const [recebimento] = await recebimentosDaReserva(db, org, atravessa);
+    expect(await estornarRecebimento(db, org, recebimento.id, "data errada", null)).toMatchObject({ ok: true });
+    await receberTudo(db, org, atravessa, "2026-09-30");
+    expect((await partes("2026-10-06")).filter((p) => p.reservaId === atravessa).map((p) => [p.situacao, p.repasse?.tipo])).toEqual([["repassado", "antecipado"], ["repassado", "antecipado"]]);
+    // O livro de antes traria o direito das duas partes (sem o débito do antecipado): em vez de zerar isso sem item, bloqueia.
+    const [situacao] = await situacaoAntesDoInicio(db, org, INICIO, agora);
+    expect(situacao).toMatchObject({ nome: "Dona Exemplo", partes: 1, valorPartes: 72250, bloqueios: [expect.stringContaining(`1 reserva(s) paga(s) antes do início do sistema com parte já paga por antecipado ou fechamento (${codigo})`)] });
+    expect(situacao.bloqueios[0]).toContain("estorne esse(s) repasse(s) em Financeiro → Repasses antes de marcar");
+    const recusa = await marcar();
+    expect(recusa.ok && recusa.recusados).toEqual([{ nome: "Dona Exemplo", motivo: expect.stringContaining("já paga por antecipado ou fechamento") }]);
+    expect(await listarRepasses(db, org, dono)).toHaveLength(1);
+    // Nenhum lançamento de acerto foi feito: os únicos "repasse" no livro são os do próprio antecipado.
+    const doAntecipado = (l: { chaveOrigem: string | null }) => l.chaveOrigem?.startsWith(`repasse:${g.id}:`);
+    expect((await acertos()).filter((l) => !doAntecipado(l))).toEqual([]);
+    // Estornado o antecipado, a marcação leva as três partes e zera setembro e a noite de outubro; nada é descontado duas vezes.
+    expect(await estornarRepasse(db, org, g.id, "data do pagamento corrigida", "2026-10-07", null)).toMatchObject({ ok: true });
+    expect((await situacaoAntesDoInicio(db, org, INICIO, agora))[0]).toMatchObject({ nome: "Dona Exemplo", partes: 3, valorPartes: 144500, gruposAbertos: 2, bloqueios: [] });
+    const marcado = await marcadoDe();
+    expect(marcado).toMatchObject({ partes: 3, valor: 144500 });
+    expect((await acertos()).filter((l) => l.chaveOrigem?.startsWith(`repasse:${marcado.repasseId}:`)).map((l) => [l.competencia, l.efeitoSaldo])).toEqual([["2026-09-30", -(72250 + set)], ["2026-10-31", -out]]);
+    expect(await saldo(INICIO)).toBe(0);
+    expect(await saldo("2026-11-01")).toBe(72250); // só a reserva de outubro, de depois do início, continua no livro
   });
 
   it("estornar o repasse por fora devolve as partes ao extrato e o acerto de antes volta; marcar de novo refaz", async () => {

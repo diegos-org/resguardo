@@ -127,7 +127,9 @@ reserva de cada imóvel, pela regra de 2/10 para o início dos contratos).
   recebimento na reserva com a data em que o canal pagou") e vira **aviso** no fechamento (a parte fica a
   liberar, fora do repasse); canal que paga direto sem prazo só avisa. Reserva já marcada por fora cujo
   lado deixou de ser "antes" (recebimento estornado ou refeito) bloqueia a marcação: estornar o acerto
-  por fora e marcar de novo. O extrato mostra a data: "pago/previsto em dd/mm/aaaa, N dia(s) depois do
+  por fora e marcar de novo. O inverso também bloqueia: reserva que passou a ser "antes" com parte já
+  paga por antecipado ou fechamento em vigor (a data do pagamento mudou depois do repasse) — marcar
+  zeraria o acerto sem item e descontaria o valor de novo; estornar esse repasse antes. O extrato mostra a data: "pago/previsto em dd/mm/aaaa, N dia(s) depois do
   check-in" (split) ou "Reserva paga antes do início do sistema (dd/mm/aaaa), em dd/mm/aaaa" (empresa).
 
 - **Data de início** em Configurações → Repasses (chave `inicio_sistema`): sempre dia 1º de um mês,

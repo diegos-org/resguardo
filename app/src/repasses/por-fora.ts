@@ -92,6 +92,12 @@ async function levantar(db: Db, org: string, donoId: string, inicio: string, ago
   // marca por cima — a equipe estorna o acerto por fora e marca de novo.
   const desalinhadas = [...new Map(todas.filter((p) => p.repasse?.tipo === "por_fora" && lados.get(p.reservaId)?.lado !== "antes").map((p) => [p.reservaId, p.codigoReserva])).values()];
   if (desalinhadas.length) bloqueios.push(`${desalinhadas.length} reserva(s) marcada(s) como acertada(s) por fora cuja data de pagamento agora é a partir do início do sistema, ou desconhecida (${desalinhadas.join(", ")}): estorne o acerto por fora dela(s) em Financeiro → Repasses e marque de novo.`);
+  // O inverso: reserva que era de depois, já paga por antecipado ou fechamento em vigor, e cuja data de pagamento foi
+  // corrigida para antes do início (recebimento estornado e refeito — um repasse já pago não trava esse estorno). As
+  // partes dela estão fora de `partes` (repassadas), mas o livro de antes traz o direito delas sem o débito desse
+  // repasse: marcar zeraria o acerto sem item e descontaria o valor de novo. A equipe estorna o repasse antes.
+  const emRepasseNormal = [...new Map(todas.filter((p) => p.repasse && p.repasse.tipo !== "por_fora" && lados.get(p.reservaId)?.lado === "antes").map((p) => [p.reservaId, p.codigoReserva])).values()];
+  if (emRepasseNormal.length) bloqueios.push(`${emRepasseNormal.length} reserva(s) paga(s) antes do início do sistema com parte já paga por antecipado ou fechamento (${emRepasseNormal.join(", ")}) — a data do pagamento mudou depois do repasse: estorne esse(s) repasse(s) em Financeiro → Repasses antes de marcar.`);
   // Em conferência no livro de antes (M4.12: inclui a parte de mês a partir do início de reserva paga antes dele — uma
   // reserva cancelada ou divergente depois de paga não pode ser dada como acertada): recusa até resolver.
   const emVigor = [isNull(lancamentos.estornoDe), sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`];

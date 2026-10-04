@@ -232,7 +232,9 @@ Então o corte do início do sistema não é por noite: **é pela data em que o 
   parte fica "a liberar", o proprietário aparece com bloqueio na lista "Antes do início do sistema"
   até você registrar o recebimento com a data certa, e o fechamento avisa. Se a data de um recebimento
   de reserva já marcada mudar (estorno e novo registro), o sistema bloqueia a marcação daquele
-  proprietário e pede: estorne o acerto por fora e marque de novo.
+  proprietário e pede: estorne o acerto por fora e marque de novo. O contrário também: se a reserva
+  já saiu num antecipado ou fechamento e depois a data do pagamento passa para antes de 1/10, a
+  marcação é bloqueada até você estornar esse repasse (senão o valor seria descontado duas vezes).
 - **O que não muda:** o resultado por noite (números do mês, relatório) e o Airbnb no acerto — a
   parte paga pelo canal nunca entrou em repasse; para ele muda só o texto do extrato, que passa a
   mostrar a data do pagamento ("pago em 30/09/2026, 1 dia depois do check-in").
