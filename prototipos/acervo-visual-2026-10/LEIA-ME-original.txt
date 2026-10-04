@@ -1,0 +1,8 @@
+SCL — acervo visual recuperado em 04/10/2026
+
+Abra site-publico-navegavel/index.html após extrair o ZIP inteiro. Home, catálogo e cinco imóveis têm links locais. Consulta, privacidade e checkout demonstrativo também estão incluídos. Esta é uma cópia visual: formulários não enviam e recursos que exigem servidor podem não funcionar por arquivo local.
+
+Versão completa neste Mac: http://127.0.0.1:4173/
+Demonstração interna: http://127.0.0.1:4177/ — dados fictícios; edição em memória, sem operação real. Arquivos do painel incluídos para preservação, requerem servidor HTTP para módulos JavaScript.
+
+Os dois PNGs e o HTML de comparação são registros históricos, não capturas novas. A cópia corresponde aos arquivos locais encontrados; não representa certificação da versão mais recente do GitHub nem sistema publicado. Não há disponibilidade ou pagamento real. Direitos de algumas fotos de lugares seguem pendentes para publicação. Nenhum dado privado de consultas incluído.
