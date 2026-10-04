@@ -22,6 +22,7 @@ import {
   marcarLimpezaFeitaPeloProprietario,
   NAO_DONO,
   NAO_MARKETPLACE,
+  NAO_SAIDA,
   registrarManutencaoPeloProprietario,
   salvarPrecosPeloProprietario,
   situacaoDoEnvio,
@@ -41,6 +42,15 @@ const semEnv = { NODE_ENV: "test" } as NodeJS.ProcessEnv;
 const soSinal = { NODE_ENV: "test", BEDS24_ESCRITA: "ligada" } as NodeJS.ProcessEnv;
 const escritaPronta = { NODE_ENV: "test", BEDS24_ESCRITA: "ligada", BEDS24_API_KEY: "token-ficticio-de-teste" } as NodeJS.ProcessEnv;
 const sessao = (imovelIds = [a, b, d]): Sessao => ({ usuarioId: usuario, organizacaoId: org, papel: "proprietario", imovelIds });
+const somaDias = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+let seq = 0;
+/** Limpeza de saída de hóspede: cada uma nasce de uma reserva com checkout no dia (uma limpeza por reserva). */
+const limpezaDeSaida = async (imovelId: string, data: string, extra: Partial<typeof limpezas.$inferInsert> = {}) => {
+  seq++;
+  const [r] = await db.insert(reservas).values({ organizacaoId: org, imovelId, codigo: `SCL-L${seq}`, origem: "airbnb", estado: "confirmada", checkin: somaDias(data, -2), checkout: data, hospedeNome: "Hóspede Fictício", fonte: "manual", idFonte: `L${seq}` }).returning();
+  const [l] = await db.insert(limpezas).values({ organizacaoId: org, imovelId, data, estado: "pedida", reservaId: r.id, ...extra }).returning();
+  return l;
+};
 
 beforeEach(async () => {
   ({ db, close } = await createTestDb());
@@ -138,20 +148,19 @@ describe("portal do proprietário marketplace (M12.4)", () => {
 
   it("limpezas: só as dos imóveis marketplace, com atraso e entrada no dia; marcar feita só a partir do dia, sem custo para a empresa", async () => {
     await db.insert(reservas).values({ organizacaoId: org, imovelId: a, codigo: "SCL-T1", origem: "airbnb", estado: "confirmada", checkin: "2026-10-05", checkout: "2026-10-08", hospedeNome: "Hóspede Fictício", fonte: "manual", idFonte: "" });
-    const [atrasada, futura] = await db
-      .insert(limpezas)
-      .values([
-        { organizacaoId: org, imovelId: a, data: "2026-10-02", estado: "pedida" },
-        { organizacaoId: org, imovelId: a, data: "2026-10-05", estado: "confirmada" },
-        { organizacaoId: org, imovelId: b, data: "2026-10-04", estado: "pedida" },
-        { organizacaoId: org, imovelId: a, data: "2026-11-30", estado: "pedida" },
-      ])
-      .returning();
+    const atrasada = await limpezaDeSaida(a, "2026-10-02");
+    const futura = await limpezaDeSaida(a, "2026-10-05", { estado: "confirmada" });
+    await limpezaDeSaida(b, "2026-10-04");
+    await limpezaDeSaida(a, "2026-11-30");
+    // Limpeza avulsa/extra agendada pela empresa (sem reserva): não é do proprietário — nem na lista, nem para marcar.
+    const [avulsa] = await db.insert(limpezas).values({ organizacaoId: org, imovelId: a, data: "2026-10-02", estado: "pedida" }).returning();
     const lista = await limpezasDoProprietario(db, sessao(), agora);
     expect(lista.map((l) => [l.data, l.imovelCodigo, l.atrasada, l.entraNoDia, l.podeMarcar])).toEqual([
       ["2026-10-02", "403", true, false, true],
       ["2026-10-05", "403", false, true, false],
     ]);
+    expect(await marcarLimpezaFeitaPeloProprietario(db, sessao(), avulsa.id, agora)).toEqual({ ok: false, erro: NAO_SAIDA });
+    expect((await db.select().from(limpezas).where(eq(limpezas.id, avulsa.id)))[0].estado).toBe("pedida");
     expect(await marcarLimpezaFeitaPeloProprietario(db, sessao(), futura.id, agora)).toMatchObject({ ok: false, erro: expect.stringContaining("ainda não chegou") });
     expect(await marcarLimpezaFeitaPeloProprietario(db, sessao(), atrasada.id, agora)).toEqual({ ok: true });
     const [feita] = await db.select().from(limpezas).where(eq(limpezas.id, atrasada.id));
@@ -165,7 +174,7 @@ describe("portal do proprietário marketplace (M12.4)", () => {
 
   it("limpeza já confirmada para uma profissional: marcada pelo dono, a profissional sai; reabrir volta a 'pedida'", async () => {
     const [prof] = await db.insert(profissionaisLimpeza).values({ organizacaoId: org, nome: "Profissional Fictícia" }).returning();
-    const [l] = await db.insert(limpezas).values({ organizacaoId: org, imovelId: a, data: "2026-10-02", estado: "confirmada", profissionalId: prof.id, confirmadaEm: new Date("2026-10-01T12:00:00Z") }).returning();
+    const l = await limpezaDeSaida(a, "2026-10-02", { estado: "confirmada", profissionalId: prof.id, confirmadaEm: new Date("2026-10-01T12:00:00Z") });
     expect(await marcarLimpezaFeitaPeloProprietario(db, sessao(), l.id, agora)).toEqual({ ok: true });
     expect((await db.select().from(limpezas).where(eq(limpezas.id, l.id)))[0]).toMatchObject({ estado: "realizada", profissionalId: null, confirmadaEm: null, custo: 0, semCusto: true });
     // Reabrir solta a marca "sem custo" e o zero: quem fizer agora segue o fluxo normal (custo não informado volta a avisar).
@@ -179,13 +188,8 @@ describe("portal do proprietário marketplace (M12.4)", () => {
     const [{ id: e }] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "501", nome: "Cinco" }).returning();
     await db.insert(proprietarioImoveis).values({ proprietarioId: dona, imovelId: e, criadoEm: desdeSempre });
     await criarContrato(db, org, e, { tipo: "marketplace", comissao: "", inicio: "2025-01-01" }, null);
-    const [auckland, saoPaulo] = await db
-      .insert(limpezas)
-      .values([
-        { organizacaoId: org, imovelId: a, data: "2026-10-04", estado: "pedida" },
-        { organizacaoId: org, imovelId: e, data: "2026-10-04", estado: "pedida" },
-      ])
-      .returning();
+    const auckland = await limpezaDeSaida(a, "2026-10-04");
+    const saoPaulo = await limpezaDeSaida(e, "2026-10-04");
     const s = sessao([a, b, d, e]);
     expect((await limpezasDoProprietario(db, s, agora)).map((l) => [l.imovelCodigo, l.podeMarcar, l.atrasada])).toEqual([
       ["403", true, false],
@@ -325,7 +329,7 @@ describe("portal do proprietário marketplace (M12.4)", () => {
       acabouNoMeio();
       expect(await excluirPeriodoPeloProprietario(db, sessao(), p.id, agora)).toEqual({ ok: false, erro: NAO_MARKETPLACE });
       expect(await listarPeriodos(db, org, a)).toHaveLength(1);
-      const [l] = await db.insert(limpezas).values({ organizacaoId: org, imovelId: a, data: "2026-10-02", estado: "pedida" }).returning();
+      const l = await limpezaDeSaida(a, "2026-10-02");
       acabouNoMeio();
       expect(await marcarLimpezaFeitaPeloProprietario(db, sessao(), l.id, agora)).toEqual({ ok: false, erro: NAO_MARKETPLACE });
       expect((await db.select().from(limpezas).where(eq(limpezas.id, l.id)))[0].estado).toBe("pedida");
@@ -341,7 +345,7 @@ describe("portal do proprietário marketplace (M12.4)", () => {
     const real = vi.mocked(listarContratos).getMockImplementation()!;
     const [{ id: nova }] = await db.insert(proprietarios).values({ organizacaoId: org, nome: "Nova Dona" }).returning();
     await db.insert(proprietarioUsuarios).values({ proprietarioId: nova, usuarioId: usuario });
-    const [l] = await db.insert(limpezas).values({ organizacaoId: org, imovelId: a, data: "2026-10-02", estado: "pedida" }).returning();
+    const l = await limpezaDeSaida(a, "2026-10-02");
     // Entre a conferência inicial (posse desde sempre) e a transação, o imóvel passa à nova dona a partir de 3/10.
     const troca = () =>
       vi.mocked(listarContratos).mockImplementationOnce(async (...args) => {
@@ -403,10 +407,8 @@ describe("portal do proprietário marketplace (M12.4)", () => {
     await db.insert(proprietarioUsuarios).values({ proprietarioId: nova, usuarioId: usuario });
     await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));
     await db.insert(proprietarioImoveis).values({ proprietarioId: nova, imovelId: a, criadoEm: new Date("2026-10-03T15:00:00Z") });
-    await db.insert(limpezas).values([
-      { organizacaoId: org, imovelId: a, data: "2026-10-02", estado: "pedida" },
-      { organizacaoId: org, imovelId: a, data: "2026-10-03", estado: "pedida" },
-    ]);
+    await limpezaDeSaida(a, "2026-10-02");
+    await limpezaDeSaida(a, "2026-10-03");
     await db.insert(manutencoes).values([
       { organizacaoId: org, imovelId: a, titulo: "Do dono anterior", estado: "realizada", dataRealizada: "2026-10-01", responsavel: "proprietario", semCusto: true },
       { organizacaoId: org, imovelId: a, titulo: "Do dono novo", estado: "realizada", dataRealizada: "2026-10-03", responsavel: "proprietario", semCusto: true },

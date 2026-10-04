@@ -29,6 +29,7 @@ import { type PrecosMarketplace, simular } from "@/marketplace/precos";
 export const NAO_MARKETPLACE = "Este imóvel não está em contrato marketplace nesta data: preços, regras, limpezas e manutenção são combinados com a empresa.";
 const SEM_IMOVEL = "Imóvel não encontrado.";
 export const NAO_DONO = "Este imóvel não está mais vinculado a você: recarregue a página.";
+export const NAO_SAIDA = "Esta limpeza não é de saída de hóspede: é da empresa, não entra no portal.";
 const dataBr = (d: string) => d.split("-").reverse().join("/");
 export const ANTES_DA_POSSE = (desde: string) => `Isso é de antes de o imóvel passar a ser seu (${dataBr(desde)}): fica com a empresa e com o dono da época.`;
 
@@ -268,8 +269,8 @@ export type LimpezaDoProprietario = {
 };
 
 /**
- * Limpezas (saídas) dos imóveis marketplace da sessão, de alguns dias atrás até as próximas duas
- * semanas — só as de imóvel em contrato marketplace na data da limpeza e do tempo em que o imóvel é
+ * Limpezas de saída de hóspede (nascidas de uma reserva) dos imóveis marketplace da sessão, de alguns dias atrás
+ * até as próximas duas semanas — só as de imóvel em contrato marketplace na data da limpeza e do tempo em que o imóvel é
  * do dono atual (as de antes do vínculo ficam com a empresa e com o dono da época). "Hoje", a janela, o
  * atraso e o "pode marcar" são no fuso de cada imóvel, a mesma régua que a ação de marcar usa. Sem custo nem financeiro.
  */
@@ -283,7 +284,8 @@ export async function limpezasDoProprietario(db: Db, sessao: Sessao, agora = new
     .from(limpezas)
     .innerJoin(imoveis, eq(imoveis.id, limpezas.imovelId))
     .leftJoin(reservas, eq(reservas.id, limpezas.reservaId))
-    .where(and(eq(limpezas.organizacaoId, sessao.organizacaoId), inArray(limpezas.imovelId, ids), inArray(limpezas.estado, ["pedida", "confirmada", "realizada"]), gte(limpezas.data, somaDias(hojeSp, -DIAS_ANTES - 1)), lt(limpezas.data, somaDias(hojeSp, DIAS_DEPOIS + 2))))
+    // Só limpeza de saída de hóspede (nascida de uma reserva): a avulsa/extra que a empresa agenda é operação dela.
+    .where(and(eq(limpezas.organizacaoId, sessao.organizacaoId), inArray(limpezas.imovelId, ids), isNotNull(limpezas.reservaId), inArray(limpezas.estado, ["pedida", "confirmada", "realizada"]), gte(limpezas.data, somaDias(hojeSp, -DIAS_ANTES - 1)), lt(limpezas.data, somaDias(hojeSp, DIAS_DEPOIS + 2))))
     .orderBy(asc(limpezas.data), asc(imoveis.codigo));
   if (!linhas.length) return [];
   const contratos = new Map<string, ContratoLinha[]>();
@@ -306,12 +308,13 @@ export async function limpezasDoProprietario(db: Db, sessao: Sessao, agora = new
 /** O proprietário marca a limpeza do imóvel marketplace como feita (a partir do dia dela, no fuso do imóvel; sem custo para a empresa). */
 export async function marcarLimpezaFeitaPeloProprietario(db: Db, sessao: Sessao, limpezaId: string, agora = new Date()): Promise<ResultadoPortal> {
   if (!uuidValido(limpezaId)) return { ok: false, erro: "Limpeza não encontrada." };
-  const [l] = await db.select({ imovelId: limpezas.imovelId, data: limpezas.data }).from(limpezas).where(and(eq(limpezas.id, limpezaId), eq(limpezas.organizacaoId, sessao.organizacaoId)));
+  const [l] = await db.select({ imovelId: limpezas.imovelId, data: limpezas.data, reservaId: limpezas.reservaId }).from(limpezas).where(and(eq(limpezas.id, limpezaId), eq(limpezas.organizacaoId, sessao.organizacaoId)));
   if (!l) return { ok: false, erro: "Limpeza não encontrada." };
+  if (!l.reservaId) return { ok: false, erro: NAO_SAIDA };
   const r = await imovelOperavel(db, sessao, l.imovelId, l.data);
   if (!r.ok) return r;
   if (!r.posseDesde || l.data < r.posseDesde) return { ok: false, erro: ANTES_DA_POSSE(r.posseDesde ?? l.data) };
-  return realizarPeloProprietario(db, sessao.organizacaoId, limpezaId, hojeISO(r.imovel.fuso, agora), sessao.usuarioId, (atual, tx) => conferirNaTransacao(tx, sessao, atual.imovelId, atual.data, { dataDeServico: true }));
+  return realizarPeloProprietario(db, sessao.organizacaoId, limpezaId, hojeISO(r.imovel.fuso, agora), sessao.usuarioId, async (atual, tx) => (atual.reservaId ? conferirNaTransacao(tx, sessao, atual.imovelId, atual.data, { dataDeServico: true }) : NAO_SAIDA));
 }
 
 export type ManutencaoDoProprietario = { id: string; imovelCodigo: string; titulo: string; descricao: string; estado: string; dataRealizada: string | null; porContaPropria: boolean };
