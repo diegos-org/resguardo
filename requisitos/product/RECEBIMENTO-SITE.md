@@ -102,12 +102,18 @@ criar).
   dele: é mais simples; a SCL é só a ponte entre hóspede e proprietário.
 - **Contador:** já confirmado por Diego: só a comissão é receita da SCL; o restante é valor de
   terceiros que passa pela empresa e vai ao proprietário.
-- **Prazo do repasse (pergunta 6):** o proprietário recebe **no dia seguinte** ao dia em que o
-  provedor libera o dinheiro para a SCL, qualquer que seja esse prazo; a SCL não adianta e não
-  troca de plano de liberação só por isso. Pix é liberado na hora; cartão depende do plano de
-  liberação do Mercado Pago (na hora, 14 ou 30 dias, com taxas diferentes), a confirmar nos
-  termos vigentes antes do M8.2. O sistema registra a data de liberação de cada pagamento (já
-  previsto no M8.2) e o portal mostra ao proprietário a data prevista do repasse.
+- **Prazo do repasse (pergunta 6):** o fechamento mensal do dia 1º continua sendo o padrão e
+  o intervalo máximo; o proprietário pode escolher no portal receber quinzenalmente,
+  semanalmente ou **assim que disponível** (dia seguinte ao check-in, com o dinheiro já
+  liberado pelo provedor). Uma reserva do site só conta como **disponível** depois do check-in
+  **e** da liberação: antes disso é saldo "a liberar", para não pagar e depois ter de pedir de
+  volta num cancelamento. A SCL não adianta e não troca de plano de liberação só por isso. Pix
+  é liberado na hora; cartão depende do plano do Mercado Pago (na hora, 14 ou 30 dias, com
+  taxas diferentes), a confirmar nos termos vigentes antes do M8.2. O fluxo de hoje (M4.9) só
+  faz o fechamento mensal; o extrato, as periodicidades, o e-mail com comprovante por repasse
+  e a conciliação com o fechamento (repasse fora do fechamento é adiantamento vinculado às
+  reservas; reserva que atravessa o mês é paga no check-in e se acerta no fechamento seguinte)
+  são o item **M4.10** do ROADMAP. O M8.2 registra a data de liberação de cada pagamento.
 - **Continuam pendentes** (perguntas 3, 4 e 5): taxa do cartão/Pix (vale a regra atual até
   decisão contrária), contestação perdida e política de cancelamento. Nenhuma impede o M8.2 em
   sandbox; todas precisam estar decididas antes de o site receber pagamento de verdade.

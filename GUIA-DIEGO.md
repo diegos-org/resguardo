@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 4/10/2026, recebimento do site decidido (M8.0: empresa recebe e repassa, Mercado Pago; repasse ao proprietário no dia seguinte à liberação) e backup do repositório ativado por você (M0.7); correção do robô de backup depois da sua primeira rodada (ele passa a gravar com uma chave da própria conta de backup e guarda o que vem da origem fora de branches e tags, onde nenhuma automação roda; item 23, passos 4, 5 e 7) e passo a passo mais detalhado (passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório pronto para você ativar na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
+> **Última atualização:** 4/10/2026, recebimento do site decidido (M8.0: empresa recebe e repassa, Mercado Pago; repasse na periodicidade que o proprietário escolher, item novo M4.10), modelo do marketplace decidido (B, partes iguais; M12.1 liberado) e backup do repositório ativado por você (M0.7); correção do robô de backup depois da sua primeira rodada (ele passa a gravar com uma chave da própria conta de backup e guarda o que vem da origem fora de branches e tags, onde nenhuma automação roda; item 23, passos 4, 5 e 7) e passo a passo mais detalhado (passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório pronto para você ativar na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
 
 ---
 
@@ -28,7 +28,7 @@
 | M1 Acesso | Login (Google/código por e-mail), convites, permissões | ✅ pronto |
 | M2 Cadastros | Imóveis, proprietários, contratos e aba Anúncios | ✅ implementado; referências dos canais precisam ser preenchidas/conferidas |
 | M3 Reservas | Reservas, calendário central, importação e envio de calendário/preços ao Beds24 | 🟡 importação e envio implementados; o envio começa desligado e espera o seu teste no 103; conferência das reservas parcial |
-| M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | 🟡 em andamento |
+| M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | 🟡 em andamento; extrato e repasses por periodicidade (M4.10) a fazer |
 | M5 Portal do proprietário | Relatórios, saldos, PDF, bloqueio de uso próprio | 🟡 relatórios, PDF, e-mail do fechamento e bloqueio de datas prontos; documento "como funciona" para o proprietário (M5.6) a fazer |
 | M6 Operação | Limpezas, manutenção, agenda diária | 🟡 em andamento |
 | M7 Site público | Site novo com disponibilidade e valor reais | 🟡 disponibilidade e valor prontos; páginas legais do site (M7.4) a fazer; fotos reais (M7.3) dependem de você |
@@ -36,7 +36,7 @@
 | M9 Portal do hóspede | Acesso do hóspede e mensagens automáticas | ✅ pronto |
 | M10 WhatsApp | Caixa de entrada do WhatsApp no painel | ⚪ aguardando |
 | M11 Produção | Dados reais, domínio, entrada em uso | ⚪ aguardando |
-| M12 Marketplace | Proprietário que opera o próprio imóvel; SCL cuida do online | 🟡 em andamento |
+| M12 Marketplace | Proprietário que opera o próprio imóvel; SCL cuida do online | 🟡 cadastro pelo site pronto; modelo de cobrança decidido em 4/10 (B, partes iguais); fórmula e simulação (M12.1) são o próximo item |
 
 ### Recebimento do site: decidido — M8.0
 
@@ -45,17 +45,23 @@ e reservas diretas; e o contador já confirmou que só a comissão é receita da
 dinheiro do proprietário que passa pela empresa). Com isso o M8.0 fecha e o pagamento do site
 (M8.2) passa a depender só das credenciais de teste do Mercado Pago, que eu te peço na hora.
 
-- **Quando o proprietário recebe uma reserva do site:** no **dia seguinte** ao dia em que o
-  dinheiro é liberado para a SCL pelo Mercado Pago, sem a SCL adiantar. Pix é liberado na
-  hora; cartão depende do plano contratado no Mercado Pago (na hora, com taxa maior, ou em
-  14 ou 30 dias, com taxa menor): isso eu confirmo nos termos atuais deles antes de montar o
-  M8.2, e o portal vai mostrar ao proprietário a data prevista de cada repasse.
+- **Quando o proprietário recebe:** o fechamento mensal do dia 1º continua sendo o padrão e
+  o intervalo máximo; no portal, o proprietário pode escolher receber quinzenalmente,
+  semanalmente ou assim que o dinheiro estiver disponível (dia seguinte ao check-in, com o
+  Mercado Pago já tendo liberado). Uma reserva do site só conta como disponível depois do
+  check-in e da liberação, para não pagar e depois ter de pedir de volta num cancelamento.
+  Cada repasse manda um e-mail ao proprietário com o comprovante e a lista das reservas. O
+  sistema de hoje só sabe fechar uma vez por mês; o resto entrou no plano como o item
+  **M4.10** (extrato e repasses), já com a regra para reserva que atravessa o mês: é paga
+  inteira no check-in e se acerta no fechamento seguinte. Pix é liberado na hora; cartão
+  depende do plano do Mercado Pago (na hora com taxa maior, ou em 14 ou 30 dias com taxa
+  menor), que eu confirmo antes de montar o M8.2.
 - **O que você pediu junto:** um documento "como funciona" para o proprietário (gestão total
   e marketplace: o que a SCL faz, comissão e taxas, quando e como recebe, relatórios,
   cancelamentos), para consulta no portal, com aceite registrado no cadastro; e as páginas
   legais do site (termos de uso, privacidade e, quando decidida, a política de cancelamento),
   com aceite no checkout. Entraram no plano como M5.6 e M7.4, com textos editáveis por você
-  no painel.
+  no painel. A sua ideia do extrato com saldo e saque virou o item M4.10 (acima).
 - **Ainda em aberto, antes de ligar o pagamento de verdade:** quem arca com a taxa do
   pagamento (hoje: sai antes da divisão, cada um na proporção), quem arca com uma
   contestação de cartão perdida, e a política de cancelamento do site. Nada disso impede o
@@ -1368,32 +1374,20 @@ ambiente).
 ## 7. Decisões pendentes e respostas às suas perguntas
 
 **Preciso de você (sem pressa):**
-- **Como receber as reservas do site (M8.0) — decidido em 4/10: mantém "empresa recebe e
-  repassa"; repasse ao proprietário no dia seguinte à liberação do dinheiro (seção 2).**
-  Histórico: em 24/09 você decidiu que no site a empresa
-  recebe e repassa; depois perguntou se dava para fazer como o Airbnb (split). Comparei as
-  opções em `requisitos/product/RECEBIMENTO-SITE.md` — até você dizer outra coisa, vale a de
-  24/09. Resumo:
-  - **empresa recebe e repassa (a de 24/09; minha sugestão é manter):** o hóspede paga à SCL pelo
-    Mercado Pago (cartão ~4–5%, Pix ~1%), a SCL repassa ao proprietário no dia 1º, como já
-    faz com Booking e diretas. A parte financeira do sistema já está pronta para isso (falta,
-    em qualquer opção, ligar o pagamento em si — M8.2) e o proprietário não precisa abrir
-    conta nenhuma;
-  - **split automático no Mercado Pago (como no Airbnb):** a parte do proprietário cai
-    direto na conta dele, mas **cada proprietário precisa de conta no Mercado Pago** ligada
-    ao sistema. Faz mais sentido no marketplace (M12);
-  - **Stripe:** mais caro no Brasil, Pix só por convite e o dinheiro também passa pela conta
-    da SCL antes de ir ao proprietário; não recomendo agora.
-  **Antes de decidir, pergunte ao contador:** "a SCL recebendo o valor total da reserva e
-  repassando ao proprietário, com contrato de intermediação, paga imposto só sobre a
-  comissão?". E diga se a taxa do cartão/Pix segue a regra de hoje (sai antes da divisão,
-  cada um na proporção, como a do Airbnb/Booking) ou se muda; quem arca com uma contestação
-  de cartão perdida (SCL, proprietário ou os dois na proporção); e a **política de
-  cancelamento** das reservas do site (reembolso total, parcial ou nenhum, conforme a
-  antecedência); e, no cartão com recebimento em 30 dias, se o repasse espera o Mercado Pago
-  liberar o dinheiro, se a SCL adianta, ou se usa o recebimento na hora (taxa maior). Essas
-  três últimas só precisam estar decididas antes de o site receber pagamentos de verdade.
-- **Modelo do marketplace:** as fórmulas antigas não estão em lugar nenhum, então montei
+- **Como receber as reservas do site (M8.0) — decidido em 4/10:** mantém "empresa recebe e
+  repassa" pelo Mercado Pago; o contador confirmou que só a comissão é receita; o repasse segue
+  a periodicidade que o proprietário escolher (seção 2 e item M4.10). **Ainda preciso de você,
+  só antes de ligar o pagamento de verdade:** se a taxa do cartão/Pix segue a regra de hoje
+  (sai antes da divisão, cada um na proporção) ou muda; quem arca com uma contestação de
+  cartão perdida (SCL, proprietário ou os dois na proporção); e a política de cancelamento do
+  site (reembolso total, parcial ou nenhum, conforme a antecedência). Histórico (24/09 a
+  4/10): a comparação entre "empresa recebe e repassa", split do Mercado Pago e Stripe está em
+  `requisitos/product/RECEBIMENTO-SITE.md`; a pergunta ao contador e a do cartão com
+  recebimento em 30 dias já foram respondidas.
+- **Modelo do marketplace — decidido em 4/10: B, em partes iguais** (a margem do Airbnb menos
+  a taxa do pagamento dividida igualmente entre hóspede, proprietário e SCL), com os pesos
+  editáveis no painel; você está testando os números no simulador e pode ajustar. Histórico:
+  as fórmulas antigas não estão em lugar nenhum, então montei
   uma proposta com as contas feitas: `requisitos/product/MARKETPLACE-PRECIFICACAO.md`.
   Resumo, numa reserva de R$ 1.650 que no Airbnb custaria R$ 1.881 ao hóspede e daria
   R$ 1.600 ao proprietário:
@@ -1405,7 +1399,7 @@ ambiente).
     R$ 1.650, SCL vive da mensalidade.
   Os percentuais das OTAs e do pagamento são aproximados e precisam ser conferidos. A ideia
   é ter uma **tela de simulação** com tudo editável para você testar com números reais antes
-  de decidir. Me diga qual modelo te agrada mais (ou o que mudar).
+  de decidir. Decidido: B, em partes iguais.
 - **Búzios:** fica no sistema interno para controle (combinado). No site público, a decidir.
 - **Avaliações**: só no Airbnb ou também próprias.
 
