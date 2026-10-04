@@ -185,7 +185,7 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 7. **Booking:** criar os anúncios (o Beds24 pode criar a partir dos dados já importados do Airbnb — ver guia). 
 9. **E-mail do sistema (Resend):** conta e domínio. (liga o login por código e os convites por e-mail)
 10. **Recebimento do site:** dizer se mantém a decisão de 24/09 ("empresa recebe e repassa", recomendado) ou muda para split automático, e confirmar com o contador a tributação só sobre a comissão — ver `requisitos/product/RECEBIMENTO-SITE.md`. (destrava M8.0 e orienta o M8.2)
-11. **Backup do repositório (M0.7):** criar a conta separada do GitHub, o repositório privado, o token só de leitura na conta principal e os dois segredos; rodar o robô uma vez à mão e conferir (guia, seção 6, item 23). Depois, decidir a proposta para o Neon: histórico de 7 dias e snapshot diário (guia, seção 6, item 23b).
+11. **Backup do repositório (M0.7):** criar a conta separada do GitHub, o repositório privado, o token só de leitura na conta principal e os dois segredos; rodar o robô uma vez à mão e conferir (guia, seção 6, item 23). O backup do banco no Neon já foi ampliado em 3/10 com o "pode fazer" de Diego (7 dias de histórico, snapshots diário e semanal; guia, seção 6, item 23b).
 
 ## Pendências de decisão (não bloqueiam o início)
 

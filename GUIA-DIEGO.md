@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 3/10/2026, backup automático do repositório pronto para você ativar na conta separada (M0.7, seção 6, item 23) e situação do backup do banco levantada; cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
+> **Última atualização:** 3/10/2026, backup automático do repositório pronto para você ativar na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
 
 ---
 
@@ -62,10 +62,10 @@ que ficou pronto:
   passo a passo com os cliques exatos está na seção 6, item 23. Leva uns 15 minutos.
 
 **Atenção, isso protege o código e os documentos, não os dados.** Reservas, proprietários e
-financeiro vivem no banco (Neon), e dados reais nunca podem ir para o GitHub. Conferi o Neon
-em 3/10: hoje a restauração por ponto no tempo cobre **só 1 dia** e não há nenhum snapshot. A
-proposta (7 dias de histórico e snapshot diário) está na seção 6, item 23b, e espera o seu
-"pode fazer".
+financeiro vivem no banco (Neon), e dados reais nunca podem ir para o GitHub. O backup do banco
+é do próprio Neon: em 3/10, com o seu "pode fazer", a restauração por ponto no tempo passou de 1
+para **7 dias** e entraram snapshots **diário** (guardado 14 dias) e **semanal** (35 dias) do
+banco de produção, tudo dentro do Neon (detalhes na seção 6, item 23b). Nada para você fazer aí.
 
 ### Site: cotação e "segurar as datas" — M8.1
 

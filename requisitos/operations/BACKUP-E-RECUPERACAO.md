@@ -14,7 +14,7 @@ gerenciador de senhas.
 | O quê | Onde vive | Como está protegido | Situação |
 |---|---|---|---|
 | Código, documentação, histórico de decisões | GitHub (`al-life/scl-reconstrucao`) | Espelho automático em **outra conta** do GitHub, a cada 3 dias, guardando todas as versões (M0.7) | Pronto no repositório; Diego ativa na conta separada |
-| Dados reais (reservas, proprietários, financeiro) | Neon (projeto `scl-sistema`, branch `main`) | Restauração por ponto no tempo do próprio Neon | **Só 1 dia** de histórico e **nenhum snapshot** (conferido em 3/10). Proposta na seção 5 |
+| Dados reais (reservas, proprietários, financeiro) | Neon (projeto `scl-sistema`, branch `main`) | Restauração por ponto no tempo e snapshots do próprio Neon | **7 dias** de histórico e snapshots **diário** (14 dias) e **semanal** (35 dias), desde 3/10 (seção 5). Cópia fora do Neon fica para o M11.3 |
 | Chaves e senhas do sistema | Variáveis da Vercel | Não têm backup automático e não devem ter cópia em lugar nenhum além do gerenciador de senhas | Diego guarda uma cópia no gerenciador de senhas |
 | Configuração da Vercel, do Beds24, do Google (login) | Painéis de cada serviço | Reconstruível a partir deste guia e do `GUIA-DIEGO.md` | Documentado |
 
