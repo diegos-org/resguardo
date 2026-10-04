@@ -165,3 +165,20 @@ Pode usar:
 
 ### Futuro
 Essa frente pode integrar CRM/prospecção e futuro agente de growth/conteúdo.
+
+## Marketplace — assinatura modular (ideia de Diego, 4/10/2026)
+Contexto: em 4/10 Diego decidiu que a SCL **não cobra nada** sobre as reservas que o
+proprietário do marketplace vende nas OTAs dele (o modelo B vale só para o que o site vende),
+porque cobrar sobre elas faria o proprietário sair. Ao mesmo tempo, há serviços da SCL cujo
+valor talvez não esteja sendo capturado pela comissão do site.
+
+Hipótese: **assinatura modular** — uma base e serviços opcionais que o proprietário escolhe no
+portal e paga à parte, um pequeno valor a mais sobre a base para cada um. Exemplo citado: o motor
+de preços da SCL (a escolha de usar ou não já está no plano, item M3.9). Outros candidatos a
+pensar: anúncio nas OTAs pela SCL, fotos, textos, atendimento ao hóspede.
+
+Ainda precisa definir: quais serviços entram, valores, se a base é por imóvel ou por conta,
+como fica junto com o modelo B (parecido com o Modelo C de `requisitos/product/MARKETPLACE-PRECIFICACAO.md`),
+cobrança (desconto no repasse ou cobrança avulsa) e quando começar. Não é compromisso nem item do
+ROADMAP principal; retomar depois do M12.1, com números reais no simulador.
+
