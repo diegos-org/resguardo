@@ -6,6 +6,7 @@ import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { estornar, lancar, type NovoLancamento } from "./ledger";
+import { travarMotorDaReserva } from "./trava";
 import { lerRegrasFinanceiras } from "@/configuracoes/regras-financeiras";
 import { calcularReserva, type RegrasMotor } from "./motor";
 
@@ -39,8 +40,8 @@ export async function aplicarMotor(
 ): Promise<ResultadoAplicacao | null> {
   if (!uuidValido(reservaId)) return null;
   return db.transaction(async (tx) => {
-    // Uma aplicação por reserva de cada vez.
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`motor:${organizacaoId}:${reservaId}`}))`);
+    // Uma aplicação por reserva de cada vez; a mesma trava que o repasse usa ao reunir as partes dela.
+    await travarMotorDaReserva(tx, organizacaoId, reservaId);
     const [r] = await tx
       .select()
       .from(reservas)

@@ -1,17 +1,24 @@
 import { and, eq } from "drizzle-orm";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { criarContrato } from "@/contratos/repositorio";
 import { imoveis, lancamentos, organizacoes, proprietarioImoveis, proprietarios, repasseItens, representantes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { CorreioMemoria, ErroEnvioIncerto, type Mensagem } from "@/email/correio";
 import { aplicarMotor } from "@/financeiro/aplicar";
+import { chaveTravaMotor } from "@/financeiro/trava";
 import { saldoAcerto } from "@/financeiro/ledger";
 import type { DadosReserva } from "@/reservas/regras";
 import { criarReserva } from "@/reservas/repositorio";
 import { repassesDeTodas, rotinaDeRepasses } from "./cron";
 import { enviarEmailDoRepasse, enviarEmailsDeRepasses, textoDoEmailDoRepasse } from "./email";
-import { partesDoProprietario, resumirPartes } from "./extrato";
+import { partesDisponiveis, partesDoProprietario, resumirPartes } from "./extrato";
+
+// A leitura das partes disponíveis é espiada para simular o motor mudando o livro entre a leitura e a trava.
+vi.mock("./extrato", async (orig) => {
+  const m = await orig<typeof import("./extrato")>();
+  return { ...m, partesDisponiveis: vi.fn(m.partesDisponiveis) };
+});
 import { escolherPeriodicidade, periodicidadeDoProprietario } from "./proprietario";
 import { estornarRecebimento, recebimentosDaReserva, registrarRecebimento } from "./recebimentos";
 import { lerRegrasRepasses, salvarRegrasRepasses } from "./regras-config";
@@ -334,5 +341,65 @@ describe("periodicidade do proprietário e rotina diária (M4.10)", () => {
     expect(texto.assunto).toBe("Repasse do fechamento de outubro de 2026 — SCL");
     expect(texto.texto).toContain("R$ 3,00 ficaram para o próximo repasse");
     expect(texto.texto).toContain("R$ 4,00 de noites de meses seguintes já pagos");
+  });
+});
+
+describe("2ª rodada do Codex: trava das reservas no repasse, estorno do recebimento e candidatos ao antecipado", () => {
+  it("quem repassa trava a mesma chave que o motor usa para recalcular a reserva", () => {
+    expect(chaveTravaMotor("org-1", "res-1")).toBe("motor:org-1:res-1");
+  });
+
+  it("o antecipado vale pelo que foi lido com as reservas travadas: parte que a releitura não confirma fica de fora", async () => {
+    await receberTudo(db, org, reservaBase, "2026-10-10");
+    // Outra reserva do mesmo dono, sem recebimento: na leitura certa ela não está disponível.
+    await criar(reserva(a, "2026-10-01", "2026-10-03"));
+    // 1ª leitura (antes da trava) devolve até a parte não disponível, como se o motor a tivesse mudado no meio;
+    // a releitura, já com as reservas travadas, é a que decide.
+    vi.mocked(partesDisponiveis).mockImplementationOnce(async (d, o, p, agora) => partesDoProprietario(d, o, p, agora));
+    const g = await gerarAntecipado(db, org, dono, "2026-10-12", null);
+    expect(g.ok).toBe(true);
+    const itens = await itensDoRepasse(db, org, (g as { id: string }).id);
+    expect(itens.map((i) => i.reservaId)).toEqual([reservaBase]);
+    expect((await obterRepasse(db, org, (g as { id: string }).id))!.valor).toBe(72250);
+    expect(vi.mocked(partesDisponiveis).mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("se a cada releitura aparece reserva nova, recusa com aviso e não grava nada", async () => {
+    await receberTudo(db, org, reservaBase, "2026-10-10");
+    let n = 0;
+    for (let i = 0; i < 8; i++) {
+      vi.mocked(partesDisponiveis).mockImplementationOnce(async (d, o, p, agora) => (await partesDoProprietario(d, o, p, agora)).map((x) => ({ ...x, reservaId: `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}` })));
+    }
+    expect(await gerarAntecipado(db, org, dono, "2026-10-12", null)).toMatchObject({ ok: false, erro: expect.stringContaining("recalculadas") });
+    vi.mocked(partesDisponiveis).mockReset();
+    expect(await listarRepassesDaOrganizacao(db, org, { tipo: "antecipado" })).toHaveLength(0);
+    expect(await db.select().from(repasseItens)).toHaveLength(0);
+  });
+
+  it("recebimento não é estornado enquanto a parte compõe um repasse a pagar; estornado o repasse (ou pago), pode", async () => {
+    const rec = await registrarRecebimento(db, org, { reservaId: reservaBase, data: "2026-10-10", valor: 85000, nota: "" }, null, "2026-10-12");
+    expect(rec.ok).toBe(true);
+    const idRec = (rec as { id: string }).id;
+    const g = await gerarAntecipado(db, org, dono, "2026-10-12", null);
+    expect(g.ok).toBe(true);
+    expect(await estornarRecebimento(db, org, idRec, "lançado errado", null)).toMatchObject({ ok: false, erro: expect.stringContaining("repasse antecipado de 12/10/2026, ainda não pago: estorne o repasse") });
+    expect(await recebimentosDaReserva(db, org, reservaBase)).toHaveLength(1);
+    expect(await estornarRepasse(db, org, (g as { id: string }).id, "refazer", "2026-10-12", null)).toMatchObject({ ok: true });
+    expect(await estornarRecebimento(db, org, idRec, "lançado errado", null)).toMatchObject({ ok: true });
+    expect(await recebimentosDaReserva(db, org, reservaBase)).toHaveLength(0);
+    // Repasse já pago: o dinheiro saiu; a correção do recebimento é permitida (ajuste manual depois).
+    const rec2 = await registrarRecebimento(db, org, { reservaId: reservaBase, data: "2026-10-10", valor: 85000, nota: "" }, null, "2026-10-13");
+    const g2 = await gerarAntecipado(db, org, dono, "2026-10-13", null);
+    expect(g2.ok).toBe(true);
+    expect(await marcarRepassePago(db, org, (g2 as { id: string }).id, "2026-10-13", "2026-10-13", null, comprovante)).toMatchObject({ ok: true });
+    expect(await estornarRecebimento(db, org, (rec2 as { id: string }).id, "conferido com o banco", null)).toMatchObject({ ok: true });
+  });
+
+  it("o fechamento também trava as reservas das partes que paga (mesma releitura)", async () => {
+    await receberTudo(db, org, reservaBase, "2026-10-10");
+    const f = await fecharMes(db, org, dono, "2026-10", "2026-11-01", null);
+    expect(f.ok).toBe(true);
+    const itens = await itensDoRepasse(db, org, (f as { id: string }).id);
+    expect(itens.map((i) => i.reservaId)).toEqual([reservaBase]);
   });
 });

@@ -8,7 +8,7 @@
  */
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
-import { lancamentos, reservas } from "@/db/schema";
+import { lancamentos, repasseItens, repasses, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { estornar, lancar, type Lancamento } from "@/financeiro/ledger";
 import { uuidValido } from "@/lib/ids";
@@ -78,6 +78,18 @@ export async function estornarRecebimento(db: Db, organizacaoId: string, lancame
       .where(and(eq(lancamentos.id, lancamentoId), eq(lancamentos.organizacaoId, organizacaoId), eq(lancamentos.tipo, "recebimento"), emVigor()))
       .for("update");
     if (!l) return { ok: false as const, erro: "Recebimento não encontrado ou já estornado." };
+    // A parte desta reserva já está num repasse a pagar? O dinheiro "com a empresa" sustenta esse repasse:
+    // primeiro se estorna o repasse, depois o recebimento (2ª rodada do Codex). Repasse já pago não trava:
+    // o dinheiro já saiu e a correção é um ajuste manual.
+    const [preso] = l.reservaId
+      ? await tx
+          .select({ data: repasses.data, tipo: repasses.tipo })
+          .from(repasseItens)
+          .innerJoin(repasses, eq(repasses.id, repasseItens.repasseId))
+          .where(and(eq(repasseItens.organizacaoId, organizacaoId), eq(repasseItens.reservaId, l.reservaId), isNull(repasseItens.liberadoEm), isNull(repasses.estornadoEm), isNull(repasses.dataPagamento)))
+          .limit(1)
+      : [];
+    if (preso) return { ok: false as const, erro: `A parte desta reserva já compõe o repasse ${preso.tipo === "antecipado" ? "antecipado" : "do fechamento"} de ${preso.data.split("-").reverse().join("/")}, ainda não pago: estorne o repasse antes de estornar o recebimento.` };
     await estornar(tx, organizacaoId, l.id, `Recebimento estornado: ${m}`, autorId);
     return { ok: true as const, id: l.id };
   });

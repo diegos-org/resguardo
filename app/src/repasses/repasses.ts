@@ -20,6 +20,7 @@ import { violouUnicidade } from "@/db/erros";
 import { ajustes, arquivos, contestacoesAdiantamento, imoveis, lancamentos, quitacoesAdiantamento, proprietarioImoveis, proprietarios, repasseItens, repasses, type SituacaoRepasse, type TipoRepasse } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { estornar, lancar, mudarEstado } from "@/financeiro/ledger";
+import { lerComReservasTravadas } from "@/financeiro/trava";
 import { dataValida } from "@/reservas/regras";
 import { uuidValido } from "@/lib/ids";
 import { lancamentoEmConferencia } from "@/portal/posse";
@@ -399,7 +400,9 @@ async function fecharNaTransacao(
     // Trava o proprietário: dois fechamentos ao mesmo tempo não passam daqui juntos.
     const dono = await travarDono(tx, org, proprietarioId);
     if (!dono) return { ok: false as const, erro: "Proprietário não encontrado." };
-    const p = await calcularDono(tx, org, dono, mes, hoje, agora);
+    // As reservas das partes ficam travadas para o motor até o fim: o que se paga é o que foi lido com a trava.
+    const p = await lerComReservasTravadas(tx, org, () => calcularDono(tx, org, dono, mes, hoje, agora), (x) => x.itens.map((i) => i.reservaId));
+    if (!p) return { ok: false as const, erro: RESERVAS_EM_RECALCULO };
     if (p.repasse) return { ok: false as const, erro: "Este mês já foi fechado para este proprietário." };
     if (p.bloqueios.length) return { ok: false as const, erro: p.bloqueios[0] };
     if (p.valor <= 0) return { ok: false as const, erro: "Nada a repassar neste mês." };
@@ -544,7 +547,10 @@ export async function gerarAntecipado(db: Db, org: string, proprietarioId: strin
       if (jaHoje) return { ok: false as const, erro: "Já existe um repasse antecipado de hoje para este proprietário." };
       // Um fechamento mais novo que a data de hoje (mês fechado com atraso, data no futuro) não acontece; mas um
       // antecipado nunca passa na frente do fechamento do dia.
-      const partes = await partesDisponiveis(tx, org, dono.id, agora);
+      // As reservas das partes ficam travadas para o motor até o fim da transação: nenhuma parte lida aqui
+      // é estornada/recriada antes de o vínculo existir (2ª rodada do Codex).
+      const partes = await lerComReservasTravadas(tx, org, () => partesDisponiveis(tx, org, dono.id, agora), (ps) => ps.map((x) => x.reservaId));
+      if (!partes) return { ok: false as const, erro: RESERVAS_EM_RECALCULO };
       if (!partes.length) return { ok: false as const, erro: "Nada disponível para repassar agora." };
       const valor = partes.reduce((t, x) => t + x.valor, 0);
       if (valor <= 0) return { ok: false as const, erro: "Nada disponível para repassar agora." };
@@ -573,6 +579,7 @@ export async function gerarAntecipado(db: Db, org: string, proprietarioId: strin
 }
 
 const dataBr = (d: string) => d.split("-").reverse().join("/");
+const RESERVAS_EM_RECALCULO = "Reservas deste proprietário estão sendo recalculadas agora: tente de novo em instantes.";
 
 async function travarRepasse(tx: Db, org: string, id: string): Promise<Repasse | null> {
   if (!uuidValido(id)) return null;

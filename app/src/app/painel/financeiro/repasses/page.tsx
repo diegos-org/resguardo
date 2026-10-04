@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { and, asc, eq } from "drizzle-orm";
 import { podeFazer } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
@@ -7,6 +8,7 @@ import styles from "@/components/formularios.module.css";
 import { CartaoRepasse } from "@/components/repasses/CartaoRepasse";
 import { type DonoAntecipavel, RepassesAntecipados } from "@/components/repasses/RepassesAntecipados";
 import { getDb } from "@/db/client";
+import { proprietarios } from "@/db/schema";
 import { hojeISO } from "@/lib/datas";
 import { formatBRL } from "@/lib/money";
 import { enviarFechamentoAcao, salvarFechamentoEmailAcao } from "@/fechamento/acoes";
@@ -65,12 +67,19 @@ export default async function Repasses({ searchParams }: PageProps<"/painel/fina
     lerRegrasRepasses(db, sessao.organizacaoId),
     listarRepassesDaOrganizacao(db, sessao.organizacaoId, { tipo: "antecipado", de: lim.inicio, ate: lim.fim }),
   ]);
-  // M4.10: partes disponíveis agora (para o antecipado avulso) e periodicidade de cada proprietário com acerto.
+  // M4.10: partes disponíveis agora (para o antecipado avulso) e periodicidade de cada proprietário. Todos os
+  // proprietários ativos, não só os do mês a fechar: quem entrou neste mês e já tem parte disponível também aparece.
+  const ativos = await db
+    .select({ id: proprietarios.id, nome: proprietarios.nome })
+    .from(proprietarios)
+    .where(and(eq(proprietarios.organizacaoId, sessao.organizacaoId), eq(proprietarios.ativo, true)))
+    .orderBy(asc(proprietarios.nome));
+  const candidatos = [...new Map([...ativos.map((p) => [p.id, p.nome] as const), ...lista.map((p) => [p.proprietarioId, p.nome] as const)])];
   const donosAntecipaveis: DonoAntecipavel[] = await Promise.all(
-    lista.map(async (p) => {
-      const [partes, periodicidade] = await Promise.all([partesDoProprietario(db, sessao.organizacaoId, p.proprietarioId, agora), periodicidadeDoProprietario(db, sessao.organizacaoId, p.proprietarioId, hoje, regrasRepasses)]);
+    candidatos.map(async ([proprietarioId, nome]) => {
+      const [partes, periodicidade] = await Promise.all([partesDoProprietario(db, sessao.organizacaoId, proprietarioId, agora), periodicidadeDoProprietario(db, sessao.organizacaoId, proprietarioId, hoje, regrasRepasses)]);
       const r = resumirPartes(partes);
-      return { proprietarioId: p.proprietarioId, nome: p.nome, disponivel: r.disponivel, aLiberar: r.aLiberar, periodicidade };
+      return { proprietarioId, nome, disponivel: r.disponivel, aLiberar: r.aLiberar, periodicidade };
     }),
   );
   const antecipados = await Promise.all(antecipadosLista.map(async (r) => ({ ...r, itens: await itensDoRepasse(db, sessao.organizacaoId, r.id) })));
