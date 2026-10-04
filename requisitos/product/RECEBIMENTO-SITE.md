@@ -68,8 +68,9 @@ regra** a decidir — a comparação abaixo vale igual.
 
 ## Recomendação
 
-1. **Começar com "empresa recebe e repassa", pelo Mercado Pago** (Checkout Pro, cartão e
-   Pix). Motivos: a parte financeira já existe (é o mesmo caminho do Booking e das diretas:
+1. **Começar com "empresa recebe e repassa", pelo Mercado Pago** (Pix e cartão com os
+   componentes de checkout no próprio site — Checkout Bricks/Transparente, decisão de 4/10; não
+   a página externa do Checkout Pro). Motivos: a parte financeira já existe (é o mesmo caminho do Booking e das diretas:
    comissão, repasse mensal, Pix para copiar e conferência), o
    proprietário não precisa abrir conta em lugar nenhum, e a integração do pagamento (M8.2 —
    checkout, aviso de pagamento, devolução ao hóspede com os lançamentos da devolução e conciliação, que qualquer opção
@@ -99,7 +100,10 @@ criar).
 
 ## Decisão de Diego (4/10/2026)
 
-- **Modelo:** mantém **"empresa recebe e repassa"**, pelo Mercado Pago (Checkout Pro). Motivo
+- **Modelo:** mantém **"empresa recebe e repassa"**, pelo Mercado Pago, com os componentes de
+  checkout no próprio site (Checkout Bricks/Transparente, Pix e cartão — ver "Checkout e
+  comparação rápida de provedores"; a página externa do Checkout Pro fica descartada por não
+  atender ao pedido de Diego de 4/10). Motivo
   dele: é mais simples; a SCL é só a ponte entre hóspede e proprietário.
 - **Contador:** já confirmado por Diego: só a comissão é receita da SCL; o restante é valor de
   terceiros que passa pela empresa e vai ao proprietário.
@@ -180,14 +184,16 @@ negociar a taxa do cartão com o Mercado Pago quando o volume do site existir.
 5. Política de cancelamento das reservas do site: reembolso total, parcial ou nenhum conforme
    a antecedência, e quem arca com a taxa do pagamento que não volta. Sem ela, o sistema não
    calcula reembolso sozinho.
-6. Cartão com recebimento em 30 dias: uma reserva paga no fim do mês entraria no repasse do
+6. **Respondida em 4/10/2026 (opção (a), ver "Decisão de Diego"; fica só como histórico).**
+   Cartão com recebimento em 30 dias: uma reserva paga no fim do mês entraria no repasse do
    dia 1º antes de o Mercado Pago liberar o dinheiro. Opções: (a) repassar só quando o
    dinheiro for liberado (a parte do proprietário vai para o repasse seguinte), (b) a SCL
    adianta, ou (c) usar o recebimento na hora e pagar a taxa maior. Sem decisão, o sistema faz
    (a).
 
-As perguntas 4, 5 e 6 não impedem montar o pagamento em teste (M8.2 em sandbox), mas precisam estar
-respondidas antes de o site receber pagamentos de verdade.
+As perguntas 3, 4 e 5 não impedem montar o pagamento em teste (M8.2 em sandbox), mas precisam
+estar respondidas antes de o site receber pagamentos de verdade. As perguntas 1, 2 e 6 já foram
+respondidas (4/10/2026) e ficam aqui só como histórico.
 
 ## Fontes consultadas (setembro/2026)
 
