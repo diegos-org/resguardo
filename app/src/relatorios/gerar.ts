@@ -103,7 +103,7 @@ export async function relatorioDoPortal(db: Db, sessao: Sessao | null, params: P
     hoje: hojeISO("America/Sao_Paulo", agora),
     agora,
   });
-  return { ok: true, pdf: await gerarPdfRelatorio(textosDoRelatorio(dados, agora), {}, agora), arquivo: nomeArquivo(filtros.ano, filtros.mes, doMes) };
+  return { ok: true, pdf: await gerarPdfRelatorio(textosDoRelatorio(dados), {}, agora), arquivo: nomeArquivo(filtros.ano, filtros.mes, doMes) };
 }
 
 export type PedidoPainel = {
@@ -143,7 +143,7 @@ export async function relatorioDoPainel(db: Db, sessao: Sessao | null, proprieta
   });
   let pdf: Uint8Array;
   try {
-    pdf = await gerarPdfRelatorio(textosDoRelatorio(dados, agora), pedido.anexos, agora);
+    pdf = await gerarPdfRelatorio(textosDoRelatorio(dados), pedido.anexos, agora);
   } catch (e) {
     if (e instanceof ErroRelatorio) return { ok: false, status: 400, erro: e.message };
     throw e;
@@ -200,5 +200,5 @@ export async function conteudoDoFechamento(
   const doMes = await imoveisDoProprietario(db, organizacaoId, dono.id, periodoDosFiltros({ imoveis: [], ano, mes }));
   if (!doMes.length) return { ok: false, status: 400, erro: "Este proprietário não tem imóvel ligado nem lançamentos neste mês." };
   const dados = await dadosDoRelatorio(db, organizacaoId, { donos: [dono], imoveis: doMes, todosOsImoveis: true, ano, mes, hoje, agora });
-  return { ok: true, textos: textosDoRelatorio(dados, agora), arquivo: nomeArquivo(ano, mes, doMes) };
+  return { ok: true, textos: textosDoRelatorio(dados), arquivo: nomeArquivo(ano, mes, doMes) };
 }

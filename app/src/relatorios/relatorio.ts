@@ -227,7 +227,6 @@ export type TextosRelatorio = {
 const SITUACAO_RESERVA: Record<SituacaoReserva, string> = { definido: "definido", em_conferencia: "em conferência", sem_calculo: "sem cálculo ainda" };
 const br = (d: string) => d.split("-").reverse().join("/");
 const ultimoDia = (ano: number, mes: number) => new Date(Date.UTC(ano, mes, 0)).getUTCDate();
-const dataHora = (d: Date) => new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(d).replace(",", " às");
 const capitalizar = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const plural = (n: number, um: string, varios: string) => (n === 1 ? um : varios);
 const comoLinha = (l: Linha): LinhaValor => ({ texto: l.texto, valor: formatBRL(l.valor), tipo: l.tipo });
@@ -294,7 +293,11 @@ const situacaoDaParte = (p: ParteDoRelatorio): { texto: string; tipo: LinhaReser
   return { texto: `a liberar: ${curto}`, tipo: "aviso" };
 };
 
-export function textosDoRelatorio(d: DadosRelatorio, agora: Date = new Date()): TextosRelatorio {
+/**
+ * Os textos dependem só dos dados (nunca do relógio): o e-mail do fechamento (M5.4) versiona o conteúdo por eles, e uma
+ * retomada tem de bater com o pedido guardado. A data e a hora de emissão entram na hora de desenhar o PDF (`pdf.ts`).
+ */
+export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
   const e = d.empresa;
   const mes = mesISO(d.ano, d.mes);
   const mesNome = nomeDoMes(mes);
@@ -312,7 +315,7 @@ export function textosDoRelatorio(d: DadosRelatorio, agora: Date = new Date()): 
   const lugar = [...new Set(d.imoveis.map((i) => [i.bairro, i.cidade].filter(Boolean).join(", ")).filter(Boolean))].join(" · ");
 
   const periodo = d.situacao === "parcial" ? `1 a ${ateDia}/${d.mes}/${d.ano} (parcial: posição de ${br(d.ate!)})` : `1 a ${fim} de ${mesNome}${d.situacao === "futuro" ? " (previsto: só reservas já confirmadas)" : ""}`;
-  const emissao = `Emitido em ${br(d.ate ?? new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Sao_Paulo" }).format(agora))} · ${d.situacao === "parcial" ? `parcial até ${ateDia}/${d.mes}` : d.situacao === "futuro" ? "mês ainda não começou" : "fechamento do mês"}`;
+  const emissao = d.situacao === "parcial" ? `parcial até ${ateDia}/${d.mes}` : d.situacao === "futuro" ? "mês ainda não começou" : "fechamento do mês";
   const aviso =
     d.situacao === "parcial"
       ? `Relatório parcial, para acompanhar o andamento do mês, com a posição de ${br(d.ate!)}. Ele já inclui as reservas confirmadas até o fim do mês, inclusive as que ainda não aconteceram (como no portal): os números podem mudar. O fechamento completo vem no início do mês seguinte.`
@@ -481,7 +484,7 @@ export function textosDoRelatorio(d: DadosRelatorio, agora: Date = new Date()): 
     repasses,
     despesas,
     acerto,
-    posicao: `Posição extraída do sistema em ${dataHora(agora)} (horário de Brasília). Nenhum valor é estimado: o que o sistema ainda não tem aparece como "a receber" ou "a liberar". Um repasse "enviado" não confirma o crédito na sua conta: confira o comprovante no portal.`,
+    posicao: `Nenhum valor é estimado: o que o sistema ainda não tem aparece como "a receber" ou "a liberar". Um repasse "enviado" não confirma o crédito na sua conta: confira o comprovante no portal.`,
     anexosIntro: "Como emitidos pelo canal, sem alterações. Só as páginas deste imóvel e destes favorecidos.",
     anexosNota: `Diferença entre o total do extrato do canal e o bruto deste relatório tem explicação na conciliação (página 3): período, base "ganhos" × "pagamentos", estadia que atravessa o mês. O total do canal não é lucro nem erro.`,
     saldo: saldo.length ? saldo : ["Nada a pagar ou receber neste mês."],

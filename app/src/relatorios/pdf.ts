@@ -509,6 +509,7 @@ class Folhas {
   }
 }
 
+const dataDe = (d: Date) => new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric" }).format(d);
 const dataHora = (d: Date) =>
   new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(d);
 
@@ -549,7 +550,13 @@ export async function gerarPdfRelatorio(t: TextosRelatorio, anexos: Anexos = {},
     }
   }
   const comAnexos = extratos.length > 0;
-  const p = new Folhas(doc, f, limpo, t);
+  // Data e hora de emissão entram aqui, não nos textos: o conteúdo versionado pelo e-mail do fechamento fica estável.
+  const tt: TextosRelatorio = {
+    ...t,
+    emissao: `Emitido em ${dataDe(agora)} · ${t.emissao}`,
+    posicao: `Posição extraída do sistema em ${dataHora(agora)} (horário de Brasília). ${t.posicao}`,
+  };
+  const p = new Folhas(doc, f, limpo, tt);
 
   // ---- Página 1: capa e resultado -------------------------------------------------------------
   p.capa(comAnexos ? t.rodapeCapa.comAnexos : t.rodapeCapa.semAnexos);
@@ -681,7 +688,7 @@ export async function gerarPdfRelatorio(t: TextosRelatorio, anexos: Anexos = {},
     if (t.acerto.length) p.tabelaValores(null, t.acerto);
     else p.paragrafo("Nada a pagar ou receber neste mês.", f.sans, 8.5, C.texto2);
   }
-  p.paragrafo(t.posicao, f.sans, 7.5, C.texto2);
+  p.paragrafo(tt.posicao, f.sans, 7.5, C.texto2);
 
   // ---- Página 4: anexos (só quando há extratos) ------------------------------------------------
   if (comAnexos) {
