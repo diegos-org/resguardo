@@ -35,8 +35,9 @@ export async function lerInicioDoSistema(db: Db, organizacaoId: string): Promise
  * lançamentos que ele cobre ficariam "acertados" dentro do período do sistema e nunca entrariam num repasse normal.
  * Nem para depois de uma parte que um repasse normal em vigor (fechamento ou antecipado) já pagou, de um mês já
  * fechado, ou de saldo que um fechamento posterior em vigor já quitou (o fechamento paga o acerto acumulado, então o de
- * outubro leva um ajuste de setembro sem item de reserva): a data diria que aquilo foi acertado por fora enquanto o
- * sistema o paga, e a marcação zeraria de novo o mês. Em todos os casos, estorne primeiro.
+ * outubro leva um ajuste de setembro sem item de reserva; parte não paga, que ficou fora do fechamento, e lançamento
+ * criado depois dele não contam): a data diria que aquilo foi acertado por fora enquanto o sistema o paga, e a marcação
+ * zeraria de novo o mês. Em todos os casos, estorne primeiro.
  * A conferência e a gravação ficam sob a mesma trava que a marcação, o antecipado e o fechamento usam.
  */
 export async function salvarInicioDoSistema(db: Db, organizacaoId: string, data: string, hoje: string, autorId: string | null): Promise<{ ok: true; mudou: boolean } | { ok: false; erro: string }> {
@@ -65,8 +66,11 @@ export async function salvarInicioDoSistema(db: Db, organizacaoId: string, data:
         .from(repasses)
         .where(and(eq(repasses.organizacaoId, organizacaoId), eq(repasses.tipo, "fechamento"), isNull(repasses.estornadoEm), lt(repasses.mes, d)));
       // Fechamento de mês a partir da data: pagou o acerto acumulado do proprietário, inclusive o que é de antes dela
-      // (ajuste de setembro sem item de reserva entra no fechamento de outubro). Se ainda houver imóvel/mês de antes com
-      // acerto diferente de zero, a marcação por fora o zeraria de novo — acertado duas vezes.
+      // (ajuste de setembro sem item de reserva entra no fechamento de outubro), e a marcação por fora zeraria de novo o
+      // imóvel/mês daquele lançamento — acertado duas vezes. Conta só o que esse fechamento de fato quitou: lançamento em
+      // vigor que já existia quando ele foi gerado e que não é parte de reserva (parte paga por repasse normal é a
+      // conferência anterior; parte não paga ficou "fora do fechamento" e segue em aberto). Lançamento criado depois do
+      // fechamento, mesmo com data de antes, também ficou fora dele.
       const [posteriores] = await tx
         .select({ n: sql<number>`count(*)::int` })
         .from(repasses)
@@ -76,7 +80,13 @@ export async function salvarInicioDoSistema(db: Db, organizacaoId: string, data:
             eq(repasses.tipo, "fechamento"),
             isNull(repasses.estornadoEm),
             gte(repasses.mes, d),
-            sql`exists (select 1 from ${lancamentos} l where l.organizacao_id = ${repasses.organizacaoId} and l.proprietario_id = ${repasses.proprietarioId} and l.competencia < ${d}::date group by l.imovel_id, to_char(l.competencia, 'YYYY-MM') having sum(l.efeito_saldo) <> 0)`,
+            sql`exists (
+              select 1 from ${lancamentos} l
+              where l.organizacao_id = ${repasses.organizacaoId} and l.proprietario_id = ${repasses.proprietarioId}
+                and l.competencia < ${d}::date and l.tipo <> 'direito_proprietario'
+                and l.estorno_de is null and not exists (select 1 from ${lancamentos} e where e.estorno_de = l.id)
+                and l.criado_em <= ${repasses.criadoEm}
+              group by l.imovel_id, to_char(l.competencia, 'YYYY-MM') having sum(l.efeito_saldo) <> 0)`,
           ),
         );
       if (normais?.n || fechados?.n || posteriores?.n) {

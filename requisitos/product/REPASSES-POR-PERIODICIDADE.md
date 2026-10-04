@@ -111,10 +111,11 @@ reserva de cada imóvel, pela regra de 2/10 para o início dos contratos).
   porque as partes de reserva são por mês; nunca no futuro; vazia = não definida. Com acerto por fora
   em vigor, a data não pode voltar para antes dele nem ser apagada; com parte anterior à data nova já
   em repasse normal em vigor (fechamento ou antecipado), mês anterior já fechado, ou fechamento de mês
-  a partir da data em vigor para um proprietário que ainda tem imóvel/mês de antes com acerto
-  diferente de zero (o fechamento paga o acerto acumulado, então o de outubro leva um ajuste de
-  setembro sem item de reserva, e a marcação zeraria setembro de novo), a data não pode avançar por
-  cima (estornar primeiro). A marcação reconfere a data configurada sob a mesma trava, para uma
+  a partir da data em vigor que quitou acerto de antes dela (o fechamento paga o acerto acumulado,
+  então o de outubro leva um ajuste de setembro sem item de reserva, e a marcação zeraria setembro de
+  novo; conta só lançamento em vigor que já existia na hora do fechamento e que não é parte de
+  reserva — parte não paga ficou fora do fechamento, e lançamento criado depois dele também), a data
+  não pode avançar por cima (estornar primeiro). A marcação reconfere a data configurada sob a mesma trava, para uma
   mudança no meio não marcar com data velha.
 - **Marcar como acertado por fora** (Financeiro → Repasses, seção "Antes do início do sistema"):
   para cada proprietário com lançamento anterior ao início, numa transação por proprietário
