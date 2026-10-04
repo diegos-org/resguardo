@@ -137,8 +137,11 @@ Todas vêm do livro e do calendário do SCL; nenhuma é estimada.
 | **Acumulado do ano** | soma do resultado de janeiro até o mês — ou "desde {mês/ano}" quando o dado começa depois de janeiro, escrito no rótulo | sempre que houver ao menos um mês |
 | **Gráfico** | barras dos últimos 12 meses do resultado (sua parte − despesas); meses sem dado em hachura, com legenda "sem dado no sistema"; eixo em R$ mil; o mês atual destacado | sempre |
 
-Mês parcial (relatório do mês corrente): métricas calculadas até o dia, com o rótulo "até {dia}", e
-sem comparação percentual com meses inteiros (a comparação mostraria queda falsa).
+Mês parcial (relatório do mês corrente): métricas calculadas até o dia, com o rótulo "até {dia}" —
+inclusive o denominador da ocupação: noites disponíveis contadas só até o dia (noites de 1 a {dia}
+menos as bloqueadas nesse intervalo), nunca o mês inteiro, senão 10 noites ocupadas até 10/10
+apareceriam como 10 de 31 em vez de 10 de 10 —, e sem comparação percentual com meses inteiros (a
+comparação mostraria queda falsa).
 
 ## Variantes
 
