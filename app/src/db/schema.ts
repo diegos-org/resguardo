@@ -1138,6 +1138,8 @@ export const beds24Envios = pgTable("beds24_envios", {
   noitesEnviadas: integer("noites_enviadas").notNull().default(0),
   noitesConfirmadas: integer("noites_confirmadas").notNull().default(0),
   noitesDivergentes: integer("noites_divergentes").notNull().default(0),
+  /** Impressão (tipo + hash truncado) da credencial Beds24 usada nesta execução — nunca a credencial: o veredito por imóvel só vale enquanto a credencial for esta. */
+  credencial: text("credencial").notNull().default(""),
 }, t => [index("beds24_envios_org").on(t.organizacaoId, t.iniciadoEm)]);
 
 /** Antes/depois de cada noite enviada: regra usada e resultado da conferência. */

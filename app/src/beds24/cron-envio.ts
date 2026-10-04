@@ -3,7 +3,7 @@ import { lerRegrasCalendario } from "@/calendario/regras-config";
 import type { Db } from "@/db/types";
 import { registrarExecucao } from "@/sistema/automacoes";
 import { organizacaoBeds24 } from "./configuracao";
-import { escritaBeds24Ligada, escritorDoAmbiente, leitorParaSincronizacao } from "./http";
+import { escritaBeds24Ligada, escritorDoAmbiente, impressaoCredencialBeds24, leitorParaSincronizacao } from "./http";
 import { mensagemSeguraBeds24 } from "./sincronizacao";
 import { ErroBeds24 } from "./tipos";
 
@@ -17,7 +17,7 @@ export function executarCronEnvioBeds24(db: Db, env: NodeJS.ProcessEnv = process
       const leitor = leitorParaSincronizacao(env);
       const escritor = escritorDoAmbiente(env);
       if (!leitor || !escritor) throw new ErroBeds24("Credencial Beds24 não configurada.", "configuracao");
-      const r = await enviarCalendarioBeds24(db, org, leitor, escritor, { modo: "envio", automatica: true });
+      const r = await enviarCalendarioBeds24(db, org, leitor, escritor, { modo: "envio", automatica: true, credencial: impressaoCredencialBeds24(env) });
       if (!r.ok && r.situacao !== "ocupada") throw new ErroBeds24(`Envio ${r.situacao}: ${r.mensagem}`, "configuracao");
       return r.mensagem;
     } catch (e) {

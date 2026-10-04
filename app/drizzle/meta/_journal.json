@@ -344,6 +344,13 @@
       "when": 1791134692081,
       "tag": "0048_beds24_envio_imoveis_vinculo",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1791136981143,
+      "tag": "0049_beds24_envios_credencial",
+      "breakpoints": true
     }
   ]
 }

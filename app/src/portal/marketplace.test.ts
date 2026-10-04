@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AcessoNegado, type Sessao } from "@/acesso/politica";
 import { historicoDe } from "@/auditoria/auditoria";
+import { impressaoCredencialBeds24 } from "@/beds24/http";
 import { VEREDITO_PENDENTE } from "@/calendario/envio";
 import { REGRAS_CALENDARIO_PADRAO, salvarRegrasCalendario } from "@/calendario/regras-config";
 import { criarContrato, listarContratos } from "@/contratos/repositorio";
@@ -41,6 +42,8 @@ const desdeSempre = new Date("2025-01-01T12:00:00Z");
 const semEnv = { NODE_ENV: "test" } as NodeJS.ProcessEnv;
 const soSinal = { NODE_ENV: "test", BEDS24_ESCRITA: "ligada" } as NodeJS.ProcessEnv;
 const escritaPronta = { NODE_ENV: "test", BEDS24_ESCRITA: "ligada", BEDS24_API_KEY: "token-ficticio-de-teste" } as NodeJS.ProcessEnv;
+/** Impressão da credencial de `escritaPronta`: as execuções de teste "feitas com a credencial atual" gravam esta. */
+const credencial = impressaoCredencialBeds24(escritaPronta);
 const sessao = (imovelIds = [a, b, d]): Sessao => ({ usuarioId: usuario, organizacaoId: org, papel: "proprietario", imovelIds });
 const somaDias = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 let seq = 0;
@@ -265,37 +268,53 @@ describe("portal do proprietário marketplace (M12.4)", () => {
     expect((await situacaoDoEnvio(db, org, regras, a, escritaPronta)).vinculado).toBe(true);
     const terminada = (iniciadoEm: string) => ({ iniciadoEm: new Date(iniciadoEm), terminadoEm: new Date(new Date(iniciadoEm).getTime() + 60_000) });
     const [sim] = await db.insert(beds24Envios).values({ organizacaoId: org, modo: "simulacao", situacao: "simulacao", ...terminada("2026-10-02T10:00:00Z") }).returning();
-    const [real] = await db.insert(beds24Envios).values({ organizacaoId: org, modo: "envio", situacao: "ok", ...terminada("2026-10-01T10:00:00Z") }).returning();
+    const [real] = await db.insert(beds24Envios).values({ organizacaoId: org, modo: "envio", situacao: "ok", credencial, ...terminada("2026-10-01T10:00:00Z") }).returning();
     await db.insert(beds24EnvioImoveis).values([{ organizacaoId: org, envioId: sim.id, imovelId: a, propertyId: "10", roomId: "20" }, { organizacaoId: org, envioId: real.id, imovelId: a, propertyId: "10", roomId: "20" }]);
     await db.insert(beds24EnvioNoites).values([
       { organizacaoId: org, envioId: sim.id, imovelId: a, data: "2026-10-10", resultado: "enviado" },
       { organizacaoId: org, envioId: real.id, imovelId: a, data: "2026-10-10", resultado: "confirmado" },
     ]);
-    expect(await situacaoDoEnvio(db, org, regras, a, semEnv)).toMatchObject({ naLista: true, vinculado: true, escritaPronta: false, automatico: true, ultimo: { em: new Date("2026-10-01T10:00:00Z"), situacao: "ok", falha: "", mesmoVinculo: true } });
+    // Sem credencial no ambiente, a do veredito não é "a atual" (e a escrita também não está pronta).
+    expect(await situacaoDoEnvio(db, org, regras, a, semEnv)).toMatchObject({ naLista: true, vinculado: true, escritaPronta: false, automatico: true, ultimo: { em: new Date("2026-10-01T10:00:00Z"), situacao: "ok", falha: "", mesmoVinculo: true, mesmaCredencial: false } });
     expect(await situacaoDoEnvio(db, org, regras, b, semEnv)).toMatchObject({ naLista: false, vinculado: false, ultimo: null });
     // Execução real que incluiu o imóvel sem nenhuma noite a mudar (tudo já igual) também é "último envio".
-    const [igual] = await db.insert(beds24Envios).values({ organizacaoId: org, modo: "envio", situacao: "ok", ...terminada("2026-10-03T10:00:00Z") }).returning();
+    const [igual] = await db.insert(beds24Envios).values({ organizacaoId: org, modo: "envio", situacao: "ok", credencial, ...terminada("2026-10-03T10:00:00Z") }).returning();
     await db.insert(beds24EnvioImoveis).values({ organizacaoId: org, envioId: igual.id, imovelId: a, propertyId: "10", roomId: "20" });
-    expect((await situacaoDoEnvio(db, org, regras, a, semEnv)).ultimo).toEqual({ em: new Date("2026-10-03T10:00:00Z"), situacao: "ok", falha: "", mesmoVinculo: true });
+    expect((await situacaoDoEnvio(db, org, regras, a, semEnv)).ultimo).toEqual({ em: new Date("2026-10-03T10:00:00Z"), situacao: "ok", falha: "", mesmoVinculo: true, mesmaCredencial: false });
+    expect((await situacaoDoEnvio(db, org, regras, a, escritaPronta)).ultimo?.mesmaCredencial).toBe(true);
     // Execução ainda em curso (ou interrompida sem terminar) não conta: o veredito dela está pendente.
-    const [emCurso] = await db.insert(beds24Envios).values({ organizacaoId: org, modo: "envio", situacao: "executando", iniciadoEm: new Date("2026-10-03T12:00:00Z") }).returning();
+    const [emCurso] = await db.insert(beds24Envios).values({ organizacaoId: org, modo: "envio", situacao: "executando", credencial, iniciadoEm: new Date("2026-10-03T12:00:00Z") }).returning();
     await db.insert(beds24EnvioImoveis).values({ organizacaoId: org, envioId: emCurso.id, imovelId: a, propertyId: "10", roomId: "20", falha: VEREDITO_PENDENTE });
     expect((await situacaoDoEnvio(db, org, regras, a, semEnv)).ultimo?.em).toEqual(new Date("2026-10-03T10:00:00Z"));
     expect(envioPronto(await situacaoDoEnvio(db, org, regras, a, escritaPronta))).toBe(true);
     // Execução em que o imóvel ficou de fora (quarto inacessível à credencial, moeda): o veredito vem junto e nada é prometido.
-    const [fora] = await db.insert(beds24Envios).values({ organizacaoId: org, modo: "envio", situacao: "erro", ...terminada("2026-10-04T10:00:00Z") }).returning();
+    const [fora] = await db.insert(beds24Envios).values({ organizacaoId: org, modo: "envio", situacao: "erro", credencial, ...terminada("2026-10-04T10:00:00Z") }).returning();
     await db.insert(beds24EnvioImoveis).values({ organizacaoId: org, envioId: fora.id, imovelId: a, propertyId: "10", roomId: "20", falha: "O quarto vinculado ao imóvel 403 não está acessível nesta credencial." });
     const comFalha = await situacaoDoEnvio(db, org, regras, a, escritaPronta);
     expect(comFalha.ultimo).toMatchObject({ em: new Date("2026-10-04T10:00:00Z"), falha: expect.stringContaining("não está acessível") });
     expect(envioPronto(comFalha)).toBe(false);
     // Envio bom, mas o vínculo mudou depois (outro quarto): o veredito antigo não vale para o quarto novo.
-    const [bom] = await db.insert(beds24Envios).values({ organizacaoId: org, modo: "envio", situacao: "ok", ...terminada("2026-10-05T10:00:00Z") }).returning();
+    const [bom] = await db.insert(beds24Envios).values({ organizacaoId: org, modo: "envio", situacao: "ok", credencial, ...terminada("2026-10-05T10:00:00Z") }).returning();
     await db.insert(beds24EnvioImoveis).values({ organizacaoId: org, envioId: bom.id, imovelId: a, propertyId: "10", roomId: "20" });
     expect(envioPronto(await situacaoDoEnvio(db, org, regras, a, escritaPronta))).toBe(true);
     await db.update(idsExternos).set({ detalhe: "22" }).where(and(eq(idsExternos.imovelId, a), eq(idsExternos.detalhe, "20")));
     const trocado = await situacaoDoEnvio(db, org, regras, a, escritaPronta);
-    expect(trocado).toMatchObject({ vinculado: true, ultimo: { em: new Date("2026-10-05T10:00:00Z"), falha: "", mesmoVinculo: false } });
+    expect(trocado).toMatchObject({ vinculado: true, ultimo: { em: new Date("2026-10-05T10:00:00Z"), falha: "", mesmoVinculo: false, mesmaCredencial: true } });
     expect(envioPronto(trocado)).toBe(false);
+    // Vínculo de volta ao quarto validado, mas a credencial Beds24 do ambiente trocada (outra conta, mesma organização e mesmo
+    // vínculo): o veredito foi dado por outra credencial, que podia enxergar um quarto que esta não enxerga — nada é prometido
+    // até um envio real com a credencial atual.
+    await db.update(idsExternos).set({ detalhe: "20" }).where(and(eq(idsExternos.imovelId, a), eq(idsExternos.detalhe, "22")));
+    expect(envioPronto(await situacaoDoEnvio(db, org, regras, a, escritaPronta))).toBe(true);
+    const outraCredencial = { ...escritaPronta, BEDS24_API_KEY: "outro-token-ficticio" } as NodeJS.ProcessEnv;
+    const trocada = await situacaoDoEnvio(db, org, regras, a, outraCredencial);
+    expect(trocada).toMatchObject({ escritaPronta: true, ultimo: { em: new Date("2026-10-05T10:00:00Z"), falha: "", mesmoVinculo: true, mesmaCredencial: false } });
+    expect(envioPronto(trocada)).toBe(false);
+    // Execução antiga, sem impressão gravada: não se sabe com que credencial foi, então também não vale.
+    await db.update(beds24Envios).set({ credencial: "" }).where(eq(beds24Envios.id, bom.id));
+    const semImpressao = await situacaoDoEnvio(db, org, regras, a, escritaPronta);
+    expect(semImpressao.ultimo?.mesmaCredencial).toBe(false);
+    expect(envioPronto(semImpressao)).toBe(false);
   });
 
   it("escrita pronta exige que a credencial Beds24 atenda esta organização: com mais de uma empresa, só a de BEDS24_ORGANIZACAO_ID", async () => {

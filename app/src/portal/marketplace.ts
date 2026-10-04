@@ -9,7 +9,7 @@
 import { and, asc, desc, eq, gte, inArray, isNotNull, lt } from "drizzle-orm";
 import { exigir, type Sessao } from "@/acesso/politica";
 import { listarMapeamentosBeds24, organizacaoBeds24 } from "@/beds24/configuracao";
-import { escritaBeds24Pronta } from "@/beds24/http";
+import { escritaBeds24Pronta, impressaoCredencialBeds24 } from "@/beds24/http";
 import { vinculoUnicoParaEnvio, vinculoValidoParaEnvio } from "@/calendario/envio";
 import { lerRegrasCalendario, type RegrasCalendario } from "@/calendario/regras-config";
 import { type ContratoVigencia, contratoVigente } from "@/contratos/regras";
@@ -60,9 +60,10 @@ export type SituacaoEnvio = {
   automatico: boolean;
   /**
    * Último envio (de verdade, não simulação) terminado que incluiu este imóvel; `falha` = por que ele ficou de fora nessa
-   * execução (vazio = foi); `mesmoVinculo` = o par propriedade/quarto validado então ainda é o vínculo atual.
+   * execução (vazio = foi); `mesmoVinculo` = o par propriedade/quarto validado então ainda é o vínculo atual;
+   * `mesmaCredencial` = a credencial Beds24 que deu esse veredito é a do ambiente agora (outra credencial pode não enxergar o quarto).
    */
-  ultimo: { em: Date; situacao: string; falha: string; mesmoVinculo: boolean } | null;
+  ultimo: { em: Date; situacao: string; falha: string; mesmoVinculo: boolean; mesmaCredencial: boolean } | null;
 };
 
 /**
@@ -70,7 +71,7 @@ export type SituacaoEnvio = {
  * já incluiu o imóvel sem deixá-lo de fora (quarto acessível à credencial, em BRL) — a mesma régua do envio, lida do
  * resultado dele em vez de suposta.
  */
-export const envioPronto = (e: Pick<SituacaoEnvio, "naLista" | "vinculado" | "escritaPronta" | "ultimo">) => e.naLista && e.vinculado && e.escritaPronta && e.ultimo !== null && !e.ultimo.falha && e.ultimo.mesmoVinculo;
+export const envioPronto = (e: Pick<SituacaoEnvio, "naLista" | "vinculado" | "escritaPronta" | "ultimo">) => e.naLista && e.vinculado && e.escritaPronta && e.ultimo !== null && !e.ultimo.falha && e.ultimo.mesmoVinculo && e.ultimo.mesmaCredencial;
 
 export type ImovelMarketplace = {
   id: string;
@@ -154,17 +155,34 @@ export async function situacaoDoEnvio(db: Db, organizacaoId: string, regras: Reg
   const mapas = await listarMapeamentosBeds24(db, organizacaoId);
   const vinculado = vinculoUnicoParaEnvio(mapas, imovelId, regras.envio.imoveis);
   const atual = vinculado ? mapas.filter(vinculoValidoParaEnvio).find((m) => m.imovelId === imovelId) : undefined;
-  // Execução real TERMINADA que incluiu o imóvel (mesmo sem noite a mudar), com o veredito dela para este imóvel e o
-  // vínculo que validou: execução em curso ou interrompida não conta, e vínculo trocado depois invalida o veredito.
+  // Execução real TERMINADA que incluiu o imóvel (mesmo sem noite a mudar), com o veredito dela para este imóvel, o
+  // vínculo que validou e a credencial que usou: execução em curso ou interrompida não conta; vínculo ou credencial
+  // trocados depois invalidam o veredito (o quarto acessível a uma credencial pode não ser acessível a outra).
   const [ultimo] = await db
-    .select({ em: beds24Envios.iniciadoEm, situacao: beds24Envios.situacao, falha: beds24EnvioImoveis.falha, propertyId: beds24EnvioImoveis.propertyId, roomId: beds24EnvioImoveis.roomId })
+    .select({ em: beds24Envios.iniciadoEm, situacao: beds24Envios.situacao, credencial: beds24Envios.credencial, falha: beds24EnvioImoveis.falha, propertyId: beds24EnvioImoveis.propertyId, roomId: beds24EnvioImoveis.roomId })
     .from(beds24Envios)
     .innerJoin(beds24EnvioImoveis, and(eq(beds24EnvioImoveis.envioId, beds24Envios.id), eq(beds24EnvioImoveis.imovelId, imovelId)))
     .where(and(eq(beds24Envios.organizacaoId, organizacaoId), eq(beds24Envios.modo, "envio"), isNotNull(beds24Envios.terminadoEm)))
     .orderBy(desc(beds24Envios.iniciadoEm))
     .limit(1);
   const escritaPronta = escritaBeds24Pronta(env) && (await credencialAtendeOrganizacao(db, organizacaoId, env));
-  return { naLista: regras.envio.imoveis.includes(imovelId), vinculado, escritaPronta, automatico: regras.envio.automatico, ultimo: ultimo ? { em: ultimo.em, situacao: ultimo.situacao, falha: ultimo.falha, mesmoVinculo: atual !== undefined && ultimo.propertyId === atual.propertyId && ultimo.roomId === atual.roomId } : null };
+  const credencialAtual = impressaoCredencialBeds24(env);
+  return {
+    naLista: regras.envio.imoveis.includes(imovelId),
+    vinculado,
+    escritaPronta,
+    automatico: regras.envio.automatico,
+    ultimo: ultimo
+      ? {
+          em: ultimo.em,
+          situacao: ultimo.situacao,
+          falha: ultimo.falha,
+          mesmoVinculo: atual !== undefined && ultimo.propertyId === atual.propertyId && ultimo.roomId === atual.roomId,
+          // Execução antiga sem impressão gravada também não vale: não se sabe com que credencial foi.
+          mesmaCredencial: ultimo.credencial !== "" && ultimo.credencial === credencialAtual,
+        }
+      : null,
+  };
 }
 
 /**

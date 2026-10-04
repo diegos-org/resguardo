@@ -80,6 +80,7 @@ function oQueFaltaNoEnvio(e: SituacaoEnvio, empresa: string): string | null {
   if (!e.ultimo) return `o primeiro envio ao Beds24 confirmar o quarto deste imóvel (ainda não houve envio para ele)`;
   if (e.ultimo.falha) return `uma nova execução do envio aplicar este imóvel por inteiro — na última (${quando(e.ultimo.em)}): ${e.ultimo.falha}`;
   if (!e.ultimo.mesmoVinculo) return `o próximo envio confirmar o quarto novo deste imóvel (o vínculo com o Beds24 mudou depois do último envio)`;
+  if (!e.ultimo.mesmaCredencial) return `o próximo envio confirmar o quarto deste imóvel com a credencial atual do Beds24 (a credencial mudou depois do último envio)`;
   return null;
 }
 

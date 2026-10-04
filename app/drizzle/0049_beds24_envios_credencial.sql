@@ -1,0 +1,1 @@
+ALTER TABLE "beds24_envios" ADD COLUMN "credencial" text DEFAULT '' NOT NULL;

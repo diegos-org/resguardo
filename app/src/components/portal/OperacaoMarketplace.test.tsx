@@ -14,7 +14,7 @@ const imovel: ImovelOperavel = {
   fontePrecos: "scl",
   regras: { precoBase: 30000, taxaLimpeza: 15000, hospedeExtraValor: null, hospedeExtraAPartirDe: null, estadiaMinima: 2, estadiaMaxima: null, antecedenciaMinima: null, janelaMaxima: null, diasChegada: [1, 5], diasSaida: [], checkinAPartirDe: "15:00", checkoutAte: "11:00" },
   periodos: [{ id: "p1", nome: "Réveillon", inicio: "2026-12-28", fim: "2027-01-02", precoNoite: 90000, estadiaMinima: 5 }],
-  envio: { naLista: true, vinculado: true, escritaPronta: true, automatico: true, ultimo: { em: new Date("2026-10-01T10:00:00Z"), situacao: "ok", falha: "", mesmoVinculo: true } },
+  envio: { naLista: true, vinculado: true, escritaPronta: true, automatico: true, ultimo: { em: new Date("2026-10-01T10:00:00Z"), situacao: "ok", falha: "", mesmoVinculo: true, mesmaCredencial: true } },
 };
 const acao = vi.fn(async () => ({}));
 const render_ = (over: Partial<Parameters<typeof OperacaoMarketplace>[0]> = {}) =>
@@ -92,7 +92,7 @@ describe("portal marketplace (M12.4): seção do proprietário", () => {
   });
 
   it("explica o envio ao Beds24 sem supor: fora da lista, manual e automático", () => {
-    const feito = { em: new Date("2026-10-01T10:00:00Z"), situacao: "ok", falha: "", mesmoVinculo: true };
+    const feito = { em: new Date("2026-10-01T10:00:00Z"), situacao: "ok", falha: "", mesmoVinculo: true, mesmaCredencial: true };
     const envio = (over: Partial<SituacaoEnvio> = {}): SituacaoEnvio => ({ naLista: true, vinculado: true, escritaPronta: true, automatico: true, ultimo: feito, ...over });
     expect(textoDoEnvio(envio({ naLista: false }), "SCL")).toContain("até a SCL incluir este imóvel no envio de calendário");
     expect(textoDoEnvio(envio({ automatico: false }), "SCL")).toContain("O envio ao Beds24 é feito pela SCL");
@@ -104,6 +104,9 @@ describe("portal marketplace (M12.4): seção do proprietário", () => {
     expect(textoSalvo(envio({ ultimo: { ...feito, falha: "moeda" } }), "SCL")).not.toContain("próximo envio");
     // Vínculo trocado depois do último envio: o veredito antigo não vale para o quarto novo.
     expect(textoDoEnvio(envio({ ultimo: { ...feito, mesmoVinculo: false } }), "SCL")).toContain("o vínculo com o Beds24 mudou depois do último envio");
+    // Credencial Beds24 trocada depois do último envio: o veredito foi de outra credencial; nada é prometido até um envio com a atual.
+    expect(textoDoEnvio(envio({ ultimo: { ...feito, mesmaCredencial: false } }), "SCL")).toContain("a credencial mudou depois do último envio");
+    expect(textoSalvo(envio({ ultimo: { ...feito, mesmaCredencial: false } }), "SCL")).not.toContain("próximo envio de calendário");
     // Na lista, mas sem vínculo com o Beds24 ou com a escrita desligada: nada chega às OTAs, e o texto diz o que falta.
     expect(textoDoEnvio(envio({ vinculado: false }), "SCL")).toContain("vincular este imóvel ao Beds24");
     expect(textoDoEnvio(envio({ vinculado: false }), "SCL")).not.toContain("roda todo dia");
@@ -114,7 +117,7 @@ describe("portal marketplace (M12.4): seção do proprietário", () => {
 
   it("depois de salvar, só promete Airbnb e Booking quando o imóvel está na lista de envio", () => {
     // E só para o que o envio de calendário carrega (preço e estadias); o resto é só do site.
-    const pronto: SituacaoEnvio = { naLista: true, vinculado: true, escritaPronta: true, automatico: true, ultimo: { em: new Date("2026-10-01T10:00:00Z"), situacao: "ok", falha: "", mesmoVinculo: true } };
+    const pronto: SituacaoEnvio = { naLista: true, vinculado: true, escritaPronta: true, automatico: true, ultimo: { em: new Date("2026-10-01T10:00:00Z"), situacao: "ok", falha: "", mesmoVinculo: true, mesmaCredencial: true } };
     const fora: SituacaoEnvio = { ...pronto, naLista: false };
     expect(textoSalvo(pronto, "SCL")).toContain("Preço da noite e estadias mínima e máxima chegam ao Airbnb e ao Booking no próximo envio");
     expect(textoSalvo(pronto, "SCL")).toContain("taxa de limpeza, hóspede extra, antecedência, janela de reservas, dias e horários de entrada e saída valem só no site");

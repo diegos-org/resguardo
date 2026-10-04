@@ -20,8 +20,8 @@ const salvarRegras = (r: RegrasCalendario) => db.transaction(tx => gravarConfig(
 // Cada execução acontece um minuto depois da anterior, como na vida real; a primeira, em `agora`.
 let relogio = agora.getTime() - 60_000;
 const proximoAgora = () => new Date((relogio += 60_000));
-const enviar = (modo: "simulacao" | "envio" = "envio", o: { imovelIds?: string[]; semEscritor?: boolean; leitor?: LeitorBeds24 } = {}) =>
-  enviarCalendarioBeds24(db, org, o.leitor ?? beds, o.semEscritor ? null : beds, { modo, imovelIds: o.imovelIds, agora: proximoAgora(), autorId: null });
+const enviar = (modo: "simulacao" | "envio" = "envio", o: { imovelIds?: string[]; semEscritor?: boolean; leitor?: LeitorBeds24; credencial?: string } = {}) =>
+  enviarCalendarioBeds24(db, org, o.leitor ?? beds, o.semEscritor ? null : beds, { modo, imovelIds: o.imovelIds, agora: proximoAgora(), autorId: null, credencial: o.credencial });
 const observacoes = () => db.select().from(beds24Calendario).where(and(eq(beds24Calendario.organizacaoId, org), eq(beds24Calendario.imovelId, im))).orderBy(beds24Calendario.data);
 const enviados = () => db.select().from(beds24CalendarioEnviado).where(eq(beds24CalendarioEnviado.organizacaoId, org)).orderBy(beds24CalendarioEnviado.data);
 const noites = () => db.select().from(beds24EnvioNoites).where(eq(beds24EnvioNoites.organizacaoId, org));
@@ -43,12 +43,13 @@ beforeEach(async () => {
 
 describe("envio ao Beds24 (M3.7)", () => {
   it("simulação planeja, registra e não grava nada no Beds24; sem BEDS24_ESCRITA o envio fica desligado", async () => {
-    const s = await enviar("simulacao");
+    const s = await enviar("simulacao", { credencial: "token:0123456789abcdef" });
     expect(s).toMatchObject({ ok: true, situacao: "simulacao", imoveis: [{ codigo: "103", resumo: { noites: 10, enviar: 10, iguais: 0 } }] });
     expect(s.mensagem).toContain("10 noite(s) seriam enviadas");
     expect(beds.escritas).toHaveLength(0);
     expect(await noites()).toHaveLength(0);
-    expect((await ultimosEnvios(db, org))[0]).toMatchObject({ modo: "simulacao", situacao: "simulacao" });
+    // A impressão da credencial usada fica na execução (o portal só aceita veredito dado pela credencial atual); sem ela, vazio.
+    expect((await ultimosEnvios(db, org))[0]).toMatchObject({ modo: "simulacao", situacao: "simulacao", credencial: "token:0123456789abcdef" });
     const d = await enviar("envio", { semEscritor: true });
     expect(d).toMatchObject({ ok: false, situacao: "desligada", envioId: null });
     expect(d.mensagem).toContain("BEDS24_ESCRITA");
@@ -58,6 +59,7 @@ describe("envio ao Beds24 (M3.7)", () => {
   it("envia só as noites diferentes, relê e confirma, guarda antes/depois e não reenvia o que já está igual", async () => {
     const r = await enviar();
     expect(r).toMatchObject({ ok: true, situacao: "ok", imoveis: [{ codigo: "103", enviadas: 10, confirmadas: 10, divergentes: 0, falha: "" }] });
+    expect((await ultimosEnvios(db, org))[0]).toMatchObject({ situacao: "ok", credencial: "" });
     expect(beds.escritas).toHaveLength(1);
     expect(beds.escritas[0][0].roomId).toBe("20");
     // Quinta 1/10 (hoje, 25%: piso 300 → 400 enviados), sexta/sábado mínimo 2, domingo em diante (D+3..D+7: 15%).

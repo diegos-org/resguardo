@@ -24,7 +24,8 @@ export type ModoEnvio = "simulacao" | "envio";
 export type SituacaoEnvio = "ok" | "parcial" | "erro" | "ocupada" | "desligada" | "simulacao" | "incerto";
 export type ImovelEnviado = { imovelId: string; codigo: string; resumo: ResumoPlano; enviadas: number; confirmadas: number; divergentes: number; pendentes: number; falha: string };
 export type ResultadoEnvio = { ok: boolean; situacao: SituacaoEnvio; mensagem: string; envioId: string | null; imoveis: ImovelEnviado[]; avisos: string[]; totalAvisos: number };
-export type OpcoesEnvio = { modo: ModoEnvio; imovelIds?: string[]; autorId?: string | null; automatica?: boolean; agora?: Date };
+/** `credencial` = impressão da credencial Beds24 usada (`impressaoCredencialBeds24`), gravada na execução: o veredito por imóvel só vale para ela. */
+export type OpcoesEnvio = { modo: ModoEnvio; imovelIds?: string[]; autorId?: string | null; automatica?: boolean; agora?: Date; credencial?: string };
 /** Veredito de um imóvel numa execução que ainda não terminou (ou morreu no meio): nunca conta como incluído. */
 export const VEREDITO_PENDENTE = "Execução ainda não concluída.";
 
@@ -175,7 +176,7 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
   const base = (situacao: SituacaoEnvio, mensagem: string): ResultadoEnvio => ({ ok: situacao === "ok" || situacao === "simulacao", situacao, mensagem, envioId: null, imoveis: [], avisos: [], totalAvisos: 0 });
   if (o.modo === "envio" && !escritor) return base("desligada", "Envio desligado: BEDS24_ESCRITA não está \"ligada\" na Vercel (só o Diego liga, depois do teste). Use a simulação.");
   // Registro da execução fora das transações: sobrevive a qualquer falha e marca "em andamento".
-  const [exec] = await db.insert(beds24Envios).values({ organizacaoId: org, iniciadoEm: agora, modo: o.modo, automatica: o.automatica === true, situacao: "iniciando" }).returning({ id: beds24Envios.id });
+  const [exec] = await db.insert(beds24Envios).values({ organizacaoId: org, iniciadoEm: agora, modo: o.modo, automatica: o.automatica === true, situacao: "iniciando", credencial: o.credencial ?? "" }).returning({ id: beds24Envios.id });
   const avisos: string[] = [];
   let totalAvisos = 0;
   const aviso = (s: string) => { totalAvisos++; if (avisos.length < 100) avisos.push(s.slice(0, 300)); };
