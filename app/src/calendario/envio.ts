@@ -484,9 +484,12 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
   // Veredito por imóvel (quarto inacessível à credencial, moeda, leitura incompleta, escrita recusada): o portal lê daqui
   // para não prometer envio a um imóvel que a execução deixa de fora. Imóvel sem resultado (execução interrompida por
   // exceção depois da fase 1) fica com a mensagem do erro, nunca em branco.
+  // Só conta como aplicado o imóvel sem falha, sem noite divergente e sem noite pendente de releitura.
+  const veredito = (i: ImovelEnviado) =>
+    i.falha ? i.falha : i.divergentes ? `${i.divergentes} noite(s) divergente(s) na releitura: o Beds24 não ficou igual ao enviado.` : i.pendentes ? `${i.pendentes} noite(s) sem confirmação na releitura.` : "";
   for (const linha of await db.select({ imovelId: beds24EnvioImoveis.imovelId }).from(beds24EnvioImoveis).where(eq(beds24EnvioImoveis.envioId, exec.id))) {
     const resultado = r.imoveis.find(i => i.imovelId === linha.imovelId);
-    const falha = resultado ? resultado.falha : `Execução não concluída para este imóvel: ${r.mensagem}`;
+    const falha = resultado ? veredito(resultado) : `Execução não concluída para este imóvel: ${r.mensagem}`;
     await db.update(beds24EnvioImoveis).set({ falha: falha.slice(0, 300) }).where(and(eq(beds24EnvioImoveis.envioId, exec.id), eq(beds24EnvioImoveis.imovelId, linha.imovelId)));
   }
   return r;

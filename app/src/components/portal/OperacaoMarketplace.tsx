@@ -78,7 +78,7 @@ function oQueFaltaNoEnvio(e: SituacaoEnvio, empresa: string): string | null {
   if (!e.vinculado) return `a ${empresa} vincular este imóvel ao Beds24 (propriedade e quarto, em Integrações) — sem o vínculo, o envio pula o imóvel`;
   if (!e.escritaPronta) return `a ${empresa} ligar a escrita no Beds24 (sinal e credencial da empresa) — hoje o envio só simula, nada sai`;
   if (!e.ultimo) return `o primeiro envio ao Beds24 confirmar o quarto deste imóvel (ainda não houve envio para ele)`;
-  if (e.ultimo.falha) return `o envio voltar a aceitar este imóvel — no último envio (${quando(e.ultimo.em)}) ele ficou de fora: ${e.ultimo.falha}`;
+  if (e.ultimo.falha) return `uma nova execução do envio aplicar este imóvel por inteiro — na última (${quando(e.ultimo.em)}): ${e.ultimo.falha}`;
   if (!e.ultimo.mesmoVinculo) return `o próximo envio confirmar o quarto novo deste imóvel (o vínculo com o Beds24 mudou depois do último envio)`;
   return null;
 }

@@ -100,7 +100,7 @@ describe("portal marketplace (M12.4): seção do proprietário", () => {
     // Sem nenhum envio real que tenha incluído o imóvel, ou com o imóvel deixado de fora no último (quarto inacessível, moeda), nada é prometido.
     expect(textoDoEnvio(envio({ ultimo: null }), "SCL")).toContain("até o primeiro envio ao Beds24 confirmar o quarto deste imóvel");
     expect(textoDoEnvio(envio({ ultimo: null }), "SCL")).not.toContain("roda todo dia");
-    expect(textoDoEnvio(envio({ ultimo: { ...feito, falha: "O quarto vinculado ao imóvel 403 não está acessível nesta credencial." } }), "SCL")).toContain("ele ficou de fora: O quarto vinculado ao imóvel 403 não está acessível nesta credencial.");
+    expect(textoDoEnvio(envio({ ultimo: { ...feito, falha: "O quarto vinculado ao imóvel 403 não está acessível nesta credencial." } }), "SCL")).toContain("na última (01/10/2026, 07:00): O quarto vinculado ao imóvel 403 não está acessível nesta credencial.");
     expect(textoSalvo(envio({ ultimo: { ...feito, falha: "moeda" } }), "SCL")).not.toContain("próximo envio");
     // Vínculo trocado depois do último envio: o veredito antigo não vale para o quarto novo.
     expect(textoDoEnvio(envio({ ultimo: { ...feito, mesmoVinculo: false } }), "SCL")).toContain("o vínculo com o Beds24 mudou depois do último envio");

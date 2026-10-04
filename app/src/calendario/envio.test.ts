@@ -232,6 +232,7 @@ describe("envio ao Beds24 (M3.7)", () => {
     const leitorReleitura: LeitorBeds24 = { reservas: f => beds.reservas(f), quartos: () => beds.quartos(), calendario: async f => { const l = await beds.calendario(f); return leituras++ === 1 ? semDono(l) : l; } };
     const r2 = await enviar("envio", { leitor: leitorReleitura });
     expect(r2).toMatchObject({ situacao: "incerto", imoveis: [{ enviadas: 10, confirmadas: 0, pendentes: 10 }] });
+    expect((await db.select().from(beds24EnvioImoveis).where(eq(beds24EnvioImoveis.envioId, r2.envioId!)))[0].falha).toContain("sem confirmação");
     expect((await noites()).every(n => n.resultado === "enviado" && n.detalhe.includes("dados inválidos"))).toBe(true);
     expect((await enviados()).every(e => !e.confirmado)).toBe(true);
     expect((await observacoes()).every(o => o.preco === 40000)).toBe(true);
@@ -312,6 +313,8 @@ describe("envio ao Beds24 (M3.7)", () => {
     } };
     const r = await enviar("envio", { leitor: leitorTorto });
     expect(r).toMatchObject({ ok: false, situacao: "parcial", imoveis: [{ enviadas: 10, confirmadas: 9, divergentes: 1 }] });
+    // Noite divergente: o veredito do imóvel nesta execução não é "aplicado" (o portal não promete envio).
+    expect((await db.select().from(beds24EnvioImoveis).where(eq(beds24EnvioImoveis.envioId, r.envioId!)))[0].falha).toContain("divergente");
     expect(r.avisos).toContain("Imóvel 103, noite 05/10/2026: o Beds24 devolveu valores diferentes do enviado; conferir no Beds24.");
     const n = (await noitesDoEnvio(db, org, r.envioId!)).find(x => x.data === "2026-10-05");
     expect(n).toMatchObject({ resultado: "divergente", detalhe: expect.stringContaining("preço 99900") });
