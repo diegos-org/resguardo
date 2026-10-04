@@ -139,15 +139,15 @@ export function planejarCalendario(e: EntradaPlano): LinhaPlano[] {
     const antecedencia = diasEntre(e.hoje, data);
     const avisos: string[] = [];
     const periodo = periodoDaNoite(imovel.periodos, data);
-    const base = precoDaNoite(imovel.regras, imovel.periodos, data);
-
     // Preço de referência: período explícito > maior multiplicador > base. Com fonte "manual" (M3.9) vale o
-    // cadastro como está, sem multiplicadores; com fonte "beds24" o SCL só lê (tratado mais abaixo).
+    // cadastro como está — sem multiplicadores e sem os limites mínimo/máximo do preço dinâmico, que também são
+    // um ajuste automático; com fonte "beds24" o SCL só lê (tratado mais abaixo).
     const fonte = imovel.fontePrecos;
+    const base = precoDaNoite(fonte === "manual" ? { ...imovel.regras, precoDinamico: false } : imovel.regras, imovel.periodos, data);
     let fontePreco: FontePreco = base.fonte;
     let motivoPreco = base.fonte === "periodo" ? `Período ${base.periodo}` : base.fonte === "base" ? "Preço base" : "Sem preço cadastrado";
     let precoReferencia = base.valor;
-    if (fonte === "manual" && base.valor !== null) motivoPreco += " (preços digitados: sem eventos, feriadões e última hora)";
+    if (fonte === "manual" && base.valor !== null) motivoPreco += " (preços digitados: sem eventos, feriadões, última hora nem limites do preço dinâmico)";
     if (fonte === "scl" && base.valor !== null && base.fonte === "base") {
       const candidatos = [
         ...eventos.filter((ev) => ev.inicio <= data && data <= ev.fim).map((ev) => ({ nome: `Evento ${ev.nome}`, fonte: "evento" as const, mult: ev.multiplicador })),

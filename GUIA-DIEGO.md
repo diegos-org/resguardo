@@ -51,8 +51,8 @@ opções explicadas na própria tela:
   última leitura do Beds24; noite sem preço lido, ou com leitura vencida, fica "a confirmar",
   sem valor e sem "segurar as datas" — nunca o preço base do cadastro como palpite.
 - **Preços digitados no cadastro**: vale o preço base e os períodos exatamente como estão, sem
-  eventos, feriadões e última hora; o SCL envia ao Beds24. A edição pelo próprio proprietário,
-  no portal, chega com o M12.4.
+  eventos, feriadões e última hora e sem os limites mínimo/máximo do preço dinâmico; o SCL envia
+  ao Beds24. A edição pelo próprio proprietário, no portal, chega com o M12.4.
 
 Em qualquer opção, o **desconto do site** (M12.1) entra por cima do valor cheio, e o calendário
 (mínimos, máximos e bloqueios) é sempre do SCL. Na prévia de calendário aparecem a fonte do

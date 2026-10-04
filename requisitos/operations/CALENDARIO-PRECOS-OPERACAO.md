@@ -258,7 +258,9 @@ de entrada/saída restritos no cadastro ainda não são enviados. O teste no 103
   (sem eventos, feriadões e última hora), o envio ao Beds24 nunca escreve preço (só mínimos,
   máximos e bloqueios), e o site usa o preço da leitura atual do Beds24; noite sem preço lido ou
   com leitura vencida fica a confirmar, sem valor. Com `manual`, vale o preço base e os períodos
-  do cadastro, sem multiplicadores nem última hora, enviados ao Beds24. O calendário (mínimos,
+  do cadastro, sem multiplicadores, última hora nem os limites mínimo/máximo do preço dinâmico
+  (também um ajuste automático), enviados ao Beds24. Entre o plano e a escrita, o envio confere
+  de novo a fonte do imóvel: se mudou, nada é escrito para ele nessa execução. O calendário (mínimos,
   máximos, bloqueios, sobras) é sempre do SCL, em qualquer fonte.
 - A direção global do M3.7 ("SCL envia") continua valendo para o calendário; para preços, manda a
   fonte do imóvel. A regra "até o M3.9 existir, esse imóvel não é marcado para envio" deixou de

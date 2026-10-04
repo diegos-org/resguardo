@@ -314,5 +314,13 @@ describe("fonte de preços por imóvel (M3.9)", () => {
     expect(porData(scl, "2026-10-03").precoEnviar).toBe(135000);
     expect(porData(scl, "2026-10-01").percentualUltimaHora).toBeGreaterThan(0);
   });
+  it("manual: os limites mínimo/máximo do preço dinâmico também não se aplicam — vai o valor digitado; na fonte SCL o piso vale", () => {
+    const limites = { precoBase: 30000, precoDinamico: true, precoMinimo: 40000, precoMaximo: 60000 };
+    const manual = planejarCalendario(entrada({ imovel: imovel({ fontePrecos: "manual" }, limites), regras: regras({ ultimaHora: { ...REGRAS_CALENDARIO_PADRAO.ultimaHora, aplicadoPor: "desligada" } }) }));
+    expect(porData(manual, "2026-10-06")).toMatchObject({ fontePreco: "base", precoReferencia: 30000, precoEnviar: 30000, precoFinalEsperado: 30000 });
+    expect(porData(manual, "2026-10-06").motivoPreco).not.toContain("limitado ao piso");
+    const scl = planejarCalendario(entrada({ imovel: imovel({}, limites), regras: regras({ ultimaHora: { ...REGRAS_CALENDARIO_PADRAO.ultimaHora, aplicadoPor: "desligada" } }) }));
+    expect(porData(scl, "2026-10-06")).toMatchObject({ precoEnviar: 40000, motivoPreco: "Preço base (limitado ao piso/teto)" });
+  });
 });
 
