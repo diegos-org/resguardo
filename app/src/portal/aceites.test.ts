@@ -1,12 +1,19 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Sessao } from "@/acesso/politica";
 import { historicoDe } from "@/auditoria/auditoria";
+import { travarConfig } from "@/configuracoes/armazem";
 import { publicarComoFunciona, RASCUNHO_COMO_FUNCIONA } from "@/configuracoes/como-funciona";
 import { aceitarConvite, criarConvite } from "@/convites/convites";
 import { imoveis, organizacoes, proprietarioImoveis, proprietarios, proprietarioUsuarios, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { registrarAceite, situacaoDosProprietarios, situacaoNoPortal, ultimoAceite } from "./aceites";
+
+// A trava da configuração é espiada: o aceite confere a versão publicada sob a mesma trava que a publicação usa.
+vi.mock("@/configuracoes/armazem", async (orig) => {
+  const m = await orig<typeof import("@/configuracoes/armazem")>();
+  return { ...m, travarConfig: vi.fn(m.travarConfig) };
+});
 
 let db: Db, close: () => Promise<void>, org: string, dona: string, outro: string, usuario: string, admin: string;
 const agora = new Date("2026-10-05T15:00:00Z");
@@ -34,7 +41,10 @@ describe("aceite do 'Como funciona' pelo proprietário (M5.6)", () => {
     expect(await registrarAceite(db, sessao(), 1, agora)).toEqual({ ok: false, erro: "O documento ainda não foi publicado." });
     await publicar();
     expect(await situacaoNoPortal(db, org, usuario)).toMatchObject({ atual: { numero: 1 }, pendente: true });
+    vi.mocked(travarConfig).mockClear();
     expect(await registrarAceite(db, sessao(), 1, agora)).toEqual({ ok: true, proprietarios: 2 });
+    // A versão é conferida sob a trava `como_funciona` (a mesma da publicação), na transação que grava.
+    expect(vi.mocked(travarConfig).mock.calls.map((c) => c[2])).toContain("como_funciona");
     const s = await situacaoNoPortal(db, org, usuario);
     expect(s.pendente).toBe(false);
     expect(s.donos.map((d) => [d.nome, d.aceiteAtual?.versao, d.aceiteAtual?.email, d.aceiteAtual?.aceitoEm])).toEqual([["Dona", 1, "dona@example.com", agora], ["Outro", 1, "dona@example.com", agora]]);
@@ -82,7 +92,9 @@ describe("aceite do 'Como funciona' pelo proprietário (M5.6)", () => {
     const [{ id: quarto }] = await db.insert(proprietarios).values({ organizacaoId: org, nome: "Quarto", email: "quarto@example.com" }).returning();
     const c = await criarConvite(db, org, quarto, "quarto@example.com", admin);
     if (!c.ok) throw new Error(c.erro);
+    vi.mocked(travarConfig).mockClear();
     expect(await aceitarConvite(db, c.token, "quarto@example.com", agora, 1)).toBeTruthy();
+    expect(vi.mocked(travarConfig).mock.calls.map((x) => x[2])).toContain("como_funciona");
     expect(await ultimoAceite(db, org, quarto)).toMatchObject({ versao: 1, email: "quarto@example.com", aceitoEm: agora });
     expect((await historicoDe(db, org, "proprietario", quarto)).map((h) => h.acao)).toEqual(expect.arrayContaining(["como_funciona.aceitar", "convite.aceitar"]));
     // Convite aceito sem marcar nada: nenhum aceite gravado.

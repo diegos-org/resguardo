@@ -7,6 +7,7 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import type { Sessao } from "@/acesso/politica";
 import { registrarAuditoria } from "@/auditoria/auditoria";
+import { travarConfig } from "@/configuracoes/armazem";
 import { DOCUMENTO_COMO_FUNCIONA, lerComoFunciona, type VersaoComoFunciona, versaoAtual } from "@/configuracoes/como-funciona";
 import { aceitesDocumento, proprietarios, proprietarioUsuarios, usuarios } from "@/db/schema";
 import type { Db } from "@/db/types";
@@ -51,22 +52,30 @@ export async function situacaoNoPortal(db: Db, organizacaoId: string, usuarioId:
 
 /**
  * Registra o aceite da versão `versao` para todos os proprietários do usuário da sessão. Recusa sessão que não é de
- * proprietário, usuário sem proprietário ligado, documento sem versão publicada e versão diferente da atual.
+ * proprietário, usuário sem proprietário ligado, documento sem versão publicada e versão diferente da atual. A
+ * conferência da versão e a gravação ficam na mesma transação, sob a trava da configuração que a publicação usa: uma
+ * versão publicada no meio não deixa passar um aceite da versão velha.
  */
 export async function registrarAceite(db: Db, sessao: Sessao, versao: number, agora = new Date()): Promise<{ ok: true; proprietarios: number } | { ok: false; erro: string }> {
   if (sessao.papel !== "proprietario" || !uuidValido(sessao.usuarioId)) return { ok: false, erro: "Só o proprietário, pelo portal, aceita o documento." };
   const donos = await proprietariosDoUsuario(db, sessao.organizacaoId, sessao.usuarioId);
   if (!donos.length) return { ok: false, erro: "Nenhum proprietário ligado ao seu acesso: fale com a empresa." };
-  const atual = versaoAtual(await lerComoFunciona(db, sessao.organizacaoId));
-  if (!atual) return { ok: false, erro: "O documento ainda não foi publicado." };
-  if (!Number.isInteger(versao) || versao !== atual.numero) return { ok: false, erro: `O documento mudou (versão ${atual.numero}, de ${dataBr(atual.data)}): leia a versão atual e aceite de novo.` };
   return db.transaction(async (tx) => {
+    const atual = await versaoPublicadaTravada(tx, sessao.organizacaoId);
+    if (!atual) return { ok: false as const, erro: "O documento ainda não foi publicado." };
+    if (!Number.isInteger(versao) || versao !== atual.numero) return { ok: false as const, erro: `O documento mudou (versão ${atual.numero}, de ${dataBr(atual.data)}): leia a versão atual e aceite de novo.` };
     let n = 0;
     for (const d of donos) {
       if (await gravarAceite(tx, { organizacaoId: sessao.organizacaoId, proprietarioId: d.id, usuarioId: sessao.usuarioId, versao }, agora)) n++;
     }
     return { ok: true as const, proprietarios: n };
   });
+}
+
+/** Versão publicada lida sob a trava da configuração `como_funciona` (até o fim da transação): ninguém publica no meio. */
+async function versaoPublicadaTravada(tx: Db, organizacaoId: string): Promise<VersaoComoFunciona | null> {
+  await travarConfig(tx, organizacaoId, "como_funciona");
+  return versaoAtual(await lerComoFunciona(tx, organizacaoId));
 }
 
 /** Insere (uma vez) e registra na auditoria do proprietário. Devolve false se já havia o mesmo aceite. */
@@ -90,11 +99,11 @@ async function gravarAceite(tx: Db, a: { organizacaoId: string; proprietarioId: 
 
 /**
  * Aceite feito no convite (M5.6): a pessoa marcou "li e aceito" na página do link e o aceite é gravado quando o
- * convite é aceito no login, dentro da mesma transação. Só vale se a versão marcada ainda é a publicada; senão o
- * portal pede o aceite da versão nova.
+ * convite é aceito no login, dentro da mesma transação (sob a mesma trava da publicação). Só vale se a versão marcada
+ * ainda é a publicada; senão o portal pede o aceite da versão nova.
  */
 export async function registrarAceiteDoConvite(tx: Db, a: { organizacaoId: string; proprietarioId: string; usuarioId: string; versao: number }, agora = new Date()): Promise<boolean> {
-  const atual = versaoAtual(await lerComoFunciona(tx, a.organizacaoId));
+  const atual = await versaoPublicadaTravada(tx, a.organizacaoId);
   if (!atual || atual.numero !== a.versao) return false;
   return gravarAceite(tx, a, agora);
 }
