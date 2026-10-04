@@ -110,10 +110,10 @@ async function imovelOperavel(db: Db, sessao: Sessao, imovelId: string, quando: 
  * Reconfere a autorização DENTRO da transação que grava, com a linha do imóvel e o vínculo de posse travados: o que
  * foi lido antes (`imovelOperavel`, a sessão) pode ter mudado no meio — contrato encerrado ou trocado, imóvel
  * transferido para outro dono ou desvinculado no painel. A posse vale a do banco agora, não a da sessão: o usuário
- * precisa representar o proprietário atual do imóvel (ativo, da organização) e a data do serviço não pode ser de antes
- * desse vínculo. Toda escrita do portal passa por aqui.
+ * precisa representar o proprietário atual do imóvel (ativo, da organização) e, em limpeza e manutenção, a data do
+ * serviço não pode ser de antes desse vínculo. Toda escrita do portal passa por aqui.
  */
-async function conferirNaTransacao(tx: Db, sessao: Sessao, imovelId: string, dia: string): Promise<string | null> {
+async function conferirNaTransacao(tx: Db, sessao: Sessao, imovelId: string, dia: string, o: { dataDeServico?: boolean } = {}): Promise<string | null> {
   await tx
     .select({ id: imoveis.id })
     .from(imoveis)
@@ -122,9 +122,13 @@ async function conferirNaTransacao(tx: Db, sessao: Sessao, imovelId: string, dia
   // O vínculo travado é o mesmo que `donoAtual` lê depois: quem grava a manutenção é o dono deste instante.
   const [vinculo] = await tx.select({ proprietarioId: proprietarioImoveis.proprietarioId, criadoEm: proprietarioImoveis.criadoEm }).from(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, imovelId)).for("update");
   if (!vinculo) return NAO_DONO;
-  // A data do serviço é conferida contra a posse DESTE vínculo (a lida antes pode ser de um vínculo anterior).
-  const posse = hojeISO("America/Sao_Paulo", vinculo.criadoEm);
-  if (dia < posse) return ANTES_DA_POSSE(posse);
+  // Só para data de serviço (limpeza, manutenção): conferida contra a posse DESTE vínculo, na mesma base de São Paulo da
+  // conferência inicial — a lida antes pode ser de um vínculo anterior. Preço e períodos usam o "hoje" do fuso do imóvel e
+  // não passam por aqui, senão um vínculo criado hoje em São Paulo recusaria o cadastro até a meia-noite do imóvel.
+  if (o.dataDeServico) {
+    const posse = hojeISO("America/Sao_Paulo", vinculo.criadoEm);
+    if (dia < posse) return ANTES_DA_POSSE(posse);
+  }
   const [meu] = await tx
     .select({ id: proprietarioUsuarios.proprietarioId })
     .from(proprietarioUsuarios)
@@ -307,7 +311,7 @@ export async function marcarLimpezaFeitaPeloProprietario(db: Db, sessao: Sessao,
   const r = await imovelOperavel(db, sessao, l.imovelId, l.data);
   if (!r.ok) return r;
   if (!r.posseDesde || l.data < r.posseDesde) return { ok: false, erro: ANTES_DA_POSSE(r.posseDesde ?? l.data) };
-  return realizarPeloProprietario(db, sessao.organizacaoId, limpezaId, hojeISO(r.imovel.fuso, agora), sessao.usuarioId, (atual, tx) => conferirNaTransacao(tx, sessao, atual.imovelId, atual.data));
+  return realizarPeloProprietario(db, sessao.organizacaoId, limpezaId, hojeISO(r.imovel.fuso, agora), sessao.usuarioId, (atual, tx) => conferirNaTransacao(tx, sessao, atual.imovelId, atual.data, { dataDeServico: true }));
 }
 
 export type ManutencaoDoProprietario = { id: string; imovelCodigo: string; titulo: string; descricao: string; estado: string; dataRealizada: string | null; porContaPropria: boolean };
@@ -330,6 +334,6 @@ export async function registrarManutencaoPeloProprietario(db: Db, sessao: Sessao
   const r = await imovelOperavel(db, sessao, d.imovelId, /^\d{4}-\d{2}-\d{2}$/.test(d.data) ? d.data : agora);
   if (!r.ok) return r;
   if (!r.posseDesde || (/^\d{4}-\d{2}-\d{2}$/.test(d.data) && d.data < r.posseDesde)) return { ok: false, erro: ANTES_DA_POSSE(r.posseDesde ?? d.data) };
-  const feito = await registrarFeitaPeloProprietario(db, sessao.organizacaoId, d, hojeISO(r.imovel.fuso, agora), sessao.usuarioId, (tx) => conferirNaTransacao(tx, sessao, r.imovel.id, r.dia));
+  const feito = await registrarFeitaPeloProprietario(db, sessao.organizacaoId, d, hojeISO(r.imovel.fuso, agora), sessao.usuarioId, (tx) => conferirNaTransacao(tx, sessao, r.imovel.id, r.dia, { dataDeServico: true }));
   return feito.ok ? { ok: true } : feito;
 }

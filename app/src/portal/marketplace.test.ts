@@ -364,6 +364,19 @@ describe("portal do proprietário marketplace (M12.4)", () => {
     }
   });
 
+  it("vínculo criado hoje em São Paulo num imóvel de fuso atrasado: preço e período gravam (a posse só vale para data de serviço)", async () => {
+    // 00:30 em São Paulo de 4/10; no Havaí ainda é 3/10 17:30. Vínculo criado às 00:10 de São Paulo (posse desde 4/10).
+    const madrugada = new Date("2026-10-04T03:30:00Z");
+    const [{ id: h }] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "808", nome: "Havaí", fuso: "Pacific/Honolulu" }).returning();
+    await db.insert(proprietarioImoveis).values({ proprietarioId: dona, imovelId: h, criadoEm: new Date("2026-10-04T03:10:00Z") });
+    await criarContrato(db, org, h, { tipo: "marketplace", comissao: "", inicio: "2025-01-01" }, null);
+    const s = sessao([h]);
+    expect(await salvarPrecosPeloProprietario(db, s, h, { precoBase: "150,00" }, madrugada)).toEqual({ ok: true });
+    expect(await criarPeriodoPeloProprietario(db, s, h, { nome: "Natal", inicio: "2026-12-24", fim: "2026-12-26", precoNoite: "500,00", estadiaMinima: "" }, madrugada)).toEqual({ ok: true });
+    // Serviço com data de antes do vínculo continua recusado.
+    expect(await registrarManutencaoPeloProprietario(db, s, { imovelId: h, titulo: "Antiga", descricao: "", data: "2026-10-03" }, madrugada)).toEqual({ ok: false, erro: ANTES_DA_POSSE("2026-10-04") });
+  });
+
   it("sessão com posse antiga: o imóvel transferido ou desvinculado no meio é recusado dentro da transação, e nada é gravado", async () => {
     const s = sessao([a]);
     const [{ id: nova }] = await db.insert(proprietarios).values({ organizacaoId: org, nome: "Nova Dona" }).returning();
