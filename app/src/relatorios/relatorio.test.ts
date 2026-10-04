@@ -11,8 +11,10 @@ import type { Rodape } from "@/portal/rodape";
 import type { DadosReserva } from "@/reservas/regras";
 import { criarReserva } from "@/reservas/repositorio";
 import { donosDosEscolhidos, relatorioDoPainel, relatorioDoPortal } from "./gerar";
-import { conferirAnexos, ErroRelatorio, gerarPdfRelatorio, lerPaginas } from "./pdf";
-import { type DadosRelatorio, dadosDoRelatorio, imoveisDoProprietario, textoDoSaldo, textosDoRelatorio } from "./relatorio";
+import type { ParteDoRelatorio } from "./dinheiro";
+import type { DadosDoMes } from "./metricas";
+import { conferirAnexos, ErroRelatorio, extratosDe, gerarPdfRelatorio, lerPaginas } from "./pdf";
+import { type DadosRelatorio, dadosDoRelatorio, imoveisDoProprietario, marcaDe, textoDoSaldo, textosDoRelatorio } from "./relatorio";
 import { receberTudo } from "@/repasses/testes";
 
 // PNG 1×1 (fictício, só para o teste).
@@ -45,6 +47,12 @@ const reserva = (imovelId: string, over: Partial<DadosReserva> = {}): DadosReser
   ...over,
 });
 
+const parte = (over: Partial<ParteDoRelatorio> = {}): ParteDoRelatorio => ({
+  reservaId: "r1", codigo: "R1", codigoCanal: "", hospede: "Hóspede Fictício da Silva", canal: "booking", checkin: "2026-10-10", checkout: "2026-10-13", mes: "2026-10", noitesNoMes: 3, noitesTotal: 3,
+  bruto: 100000, taxa: 15000, comissao: 12750, suaParte: 72250, quemRecebe: "empresa", situacao: "disponivel", motivo: "Disponível para o próximo repasse.", pagamento: { data: "2026-10-12", fonte: "recebimento" }, repasse: null, ...over,
+});
+const mesDados = (over: Partial<DadosDoMes> = {}): DadosDoMes => ({ mes: "2026-10", resultado: 72250, bruto: 100000, noitesOcupadas: 3, noitesDoPeriodo: 31, imoveis: 1, noitesBloqueadas: 0, ...over });
+
 const base: DadosRelatorio = {
   empresa: "Sua Casa Leblon",
   contato: ["https://example.com"],
@@ -73,7 +81,14 @@ const base: DadosRelatorio = {
     },
   ],
   rodape: [],
+  partes: [parte()],
+  metricas: { atual: mesDados(), anterior: null, anoAnterior: null, serie: [["2026-10", 72250]], parcialAte: null },
+  repasses: [],
+  fechamentos: [],
+  despesas: [],
+  contratos: [{ imovelId: "i1", tipo: "gestao_completa", tipoNome: "Gestão completa", comissao: "15%" }],
 };
+const AGORA_TEXTOS = new Date("2026-11-01T11:00:00Z");
 
 const rodape = (over: Partial<Rodape>): Rodape => ({
   proprietarioId: "p",
@@ -91,53 +106,148 @@ const rodape = (over: Partial<Rodape>): Rodape => ({
   ...over,
 });
 
-describe("textos do relatório (primeira página)", () => {
-  it("título com mês por extenso, nome comercial (sem código), destinatários e período", () => {
-    const t = textosDoRelatorio({ ...base, representantes: ["Representante Fictício"] });
-    expect(t.titulo).toBe("Relatório de outubro de 2026");
-    expect(t.imoveis).toBe("Studio Mezanino");
-    expect(t.destinatarios).toBe("Proprietário: Dona Fictícia · Representante: Representante Fictício");
-    expect(t.periodo).toBe("De 1º/10/2026 a 31/10/2026");
+describe("textos do relatório (modelo oficial, M5.7)", () => {
+  it("capa: olho com o mês por extenso, emissão, período, marca em duas partes, destinatários e identidade do contrato", () => {
+    const t = textosDoRelatorio({ ...base, representantes: ["Representante Fictício"], imoveis: [{ ...base.imoveis[0], bairro: "Leblon", cidade: "Rio de Janeiro" }] }, AGORA_TEXTOS);
+    expect(t.olho).toBe("Relatório mensal · Outubro de 2026");
+    expect(t.emissao).toBe("Emitido em 01/11/2026 · fechamento do mês");
+    expect(t.periodo).toBe("1 a 31 de outubro de 2026");
+    expect(t.marca).toEqual({ inicio: "Sua Casa", destaque: "Leblon" });
+    expect(marcaDe("SCL")).toEqual({ inicio: "SCL", destaque: "" });
+    expect(t.imovelTitulo).toBe("Studio Mezanino");
+    expect(t.cabecalhoCurto).toBe("Studio Mezanino · Outubro de 2026");
+    expect(t.para).toBe("Para Dona Fictícia · com cópia a Representante Fictício, representante autorizado");
+    expect(t.identidade).toBe("Leblon, Rio de Janeiro · contrato de gestão completa · comissão de 15% sobre o líquido dos canais");
+    expect(t.marketplace).toBe(false);
     expect(t.aviso).toBeNull();
     expect(t.contato).toBe("https://example.com");
+    expect(t.rodapeCapa.semAnexos).toContain("ficam com a equipe");
+    expect(t.rodapeCapa.comAnexos).toContain("no fim, como emitidos");
   });
 
-  it("mês atual: parcial até hoje; mês futuro: previsto", () => {
-    const p = textosDoRelatorio({ ...base, situacao: "parcial", ate: "2026-10-20" });
-    // O mês inteiro (como no portal), dizendo de quando é a posição e que inclui o que ainda vai acontecer.
-    expect(p.periodo).toBe("De 1º/10/2026 a 31/10/2026 (parcial: posição de 20/10/2026)");
+  it("mês atual: parcial até o dia, sem comparação; mês futuro: previsto; marketplace na identidade", () => {
+    const p = textosDoRelatorio({ ...base, situacao: "parcial", ate: "2026-10-20", metricas: { ...base.metricas, parcialAte: 20, anterior: mesDados({ mes: "2026-09" }) } }, new Date("2026-10-20T12:00:00Z"));
+    expect(p.emissao).toBe("Emitido em 20/10/2026 · parcial até 20/10");
+    expect(p.periodo).toBe("1 a 20/10/2026 (parcial: posição de 20/10/2026)");
     expect(p.aviso).toContain("inclusive as que ainda não aconteceram");
-    expect(textosDoRelatorio({ ...base, situacao: "futuro" }).periodo).toContain("previsto");
+    expect(p.quadros[2]).toMatchObject({ valor: "mês em andamento", semDado: true });
+    expect(textosDoRelatorio({ ...base, situacao: "futuro" }, AGORA_TEXTOS).periodo).toContain("previsto");
+    const m = textosDoRelatorio({ ...base, contratos: [{ imovelId: "i1", tipo: "marketplace", tipoNome: "Marketplace", comissao: null }] }, AGORA_TEXTOS);
+    expect(m.marketplace).toBe(true);
+    expect(m.identidade).toBe("contrato de marketplace");
   });
 
-  it("destaque é a parte do proprietário, com a base nomeada (não é total do canal nem lucro)", () => {
-    const t = textosDoRelatorio(base);
-    const destaques = t.numeros.filter((n) => n.destaque);
-    expect(destaques).toHaveLength(1);
-    expect(destaques[0]).toMatchObject({ rotulo: "Sua parte das reservas", valor: "R$ 722,50" });
-    expect(destaques[0].detalhe).toContain("não é o total do canal nem lucro");
-    expect(t.numeros.find((n) => n.rotulo === "Taxas dos canais")?.valor).toBe("R$ 150,00");
+  it("destaque é o resultado (sua parte menos despesas), com a base nomeada; do bruto ao resultado linha a linha", () => {
+    const t = textosDoRelatorio(base, AGORA_TEXTOS);
+    expect(t.destaque).toEqual({ rotulo: "Seu resultado em outubro de 2026", valor: "R$ 722,50", base: "Sua parte na 1 reserva com noites em outubro de 2026, em todos os canais (sem despesas do imóvel no mês). Resultado por noite: não é o total que um canal pagou no mês nem o valor de um Pix só." });
+    expect(t.brutoAoResultado.map((l) => [l.texto, l.valor, l.tipo])).toEqual([
+      ["Bruto das reservas (1 reserva, 3 noites em outubro de 2026)", "R$ 1.000,00", "normal"],
+      ["− Taxas dos canais (Booking.com)", "− R$ 150,00", "sub"],
+      ["Líquido depois dos canais", "R$ 850,00", "normal"],
+      ["− Comissão da gestão (15% do líquido)", "− R$ 127,50", "sub"],
+      ["Sua parte nas reservas", "R$ 722,50", "normal"],
+      ["Seu resultado em outubro de 2026", "R$ 722,50", "total"],
+    ]);
+    const com = textosDoRelatorio({ ...base, resumo: { ...base.resumo, despesas: 5000 }, despesas: [{ data: "2026-10-12", descricao: "Troca do chuveiro", valor: 5000 }] }, AGORA_TEXTOS);
+    expect(com.destaque.valor).toBe("R$ 672,50");
+    expect(com.destaque.base).toContain("já descontadas as despesas do imóvel (R$ 50,00)");
+    expect(com.brutoAoResultado.at(-2)).toEqual({ texto: "− Despesas do imóvel (1 lançamento — detalhe na página 3)", valor: "− R$ 50,00", tipo: "sub" });
+    expect(com.despesas).toEqual([
+      { texto: "12/10 — Troca do chuveiro", valor: "R$ 50,00", tipo: "normal" },
+      { texto: "Total descontado no fechamento", valor: "R$ 50,00", tipo: "total" },
+    ]);
   });
 
-  it("vendas diretas em destaque no início, só quando existem", () => {
-    expect(textosDoRelatorio(base).numeros.some((n) => n.rotulo === "Vendas diretas")).toBe(false);
-    const com = textosDoRelatorio({ ...base, reservas: [...base.reservas, { ...base.reservas[0], id: "r2", canal: "direta", bruto: 50000 }, { ...base.reservas[0], id: "r3", canal: "site", bruto: 30000 }] });
-    expect(com.numeros[1]).toMatchObject({ rotulo: "Vendas diretas", valor: "R$ 800,00", detalhe: expect.stringContaining("2 reserva(s)") });
+  it("como chega até você e avisos: o fechamento pelo rodapé, a parte a liberar vira aviso; em conferência também", () => {
+    const t = textosDoRelatorio({ ...base, rodape: [rodape({ nome: "Dona Fictícia", situacao: "empresa_deve", valor: 72250, saldo: 72250, aFavor: "proprietario", chavePix: "segredo@example.com" })] }, AGORA_TEXTOS);
+    expect(t.comoChega.linhas).toEqual([{ texto: "A transferir no fechamento, previsto para 01/11/2026", valor: "R$ 722,50", tipo: "normal" }]);
+    expect(t.comoChega.quemPagaQuem).toBe("A Sua Casa Leblon transfere R$ 722,50 para Dona Fictícia em 01/11/2026, pela chave Pix cadastrada no portal.");
+    expect(JSON.stringify(t)).not.toContain("segredo@example.com");
+    expect(t.avisos).toEqual([]);
+    expect(t.acerto).toEqual([
+      { texto: "Saldo do acerto em 31/10 (a Sua Casa Leblon deve a você)", valor: "R$ 722,50", tipo: "normal" },
+      { texto: "A transferir no fechamento", valor: "R$ 722,50", tipo: "total" },
+    ]);
+    const aLiberar = textosDoRelatorio({ ...base, partes: [parte({ situacao: "a_liberar", motivo: "A empresa ainda não registrou o recebimento desta reserva.", pagamento: null })], resumo: { ...base.resumo, emConferencia: true, acertoPendente: -5000 } }, AGORA_TEXTOS);
+    expect(aLiberar.comoChega.linhas[0]).toMatchObject({ tipo: "aviso", texto: expect.stringContaining("A liberar — Hóspede (10/10 → 13/10), Booking.com") });
+    expect(aLiberar.avisos).toEqual([
+      expect.stringContaining("(R$ 722,50). Entra no próximo repasse assim que o canal pagar; você não precisa fazer nada."),
+      expect.stringContaining("Em conferência: há itens deste mês ainda não definidos (R$ 50,00 a favor da Sua Casa Leblon)"),
+    ]);
+    expect(aLiberar.emConferencia).toContain("R$ 50,00 a favor da Sua Casa Leblon");
+    expect(aLiberar.reservas[0]).toMatchObject({ situacao: "a liberar: pagamento do canal não registrado", situacaoTipo: "aviso" });
   });
 
-  it("do hóspede, só o primeiro nome; coluna de imóvel só com mais de um imóvel", () => {
-    const t = textosDoRelatorio(base);
-    expect(t.reservas[0]).toMatchObject({ hospede: "Hóspede", entrada: "10/10", canal: "Booking.com", bruto: "R$ 1.000,00", situacao: "Definido" });
+  it("reservas: do hóspede só o primeiro nome, canal e código do canal, situação da parte, noites do mês; total; imóvel só com mais de um", () => {
+    const t = textosDoRelatorio(base, AGORA_TEXTOS);
+    expect(t.reservasTitulo).toBe("Reservas do mês · 1 reserva · 3 noites em outubro de 2026");
+    expect(t.reservas).toEqual([
+      { imovel: "Studio Mezanino", hospede: "Hóspede", canal: "Booking.com", codigo: "R1", situacao: "a transferir no fechamento", situacaoTipo: "info", datas: "10/10 → 13/10", noites: "3", bruto: "R$ 1.000,00", taxa: "R$ 150,00", gestao: "R$ 127,50", suaParte: "R$ 722,50", atravessa: false },
+    ]);
+    expect(t.totalReservas).toMatchObject({ hospede: "Total de outubro de 2026", noites: "3", bruto: "R$ 1.000,00", taxa: "R$ 150,00", gestao: "R$ 127,50", suaParte: "R$ 722,50" });
+    expect(t.notaReservas).not.toContain("*");
     expect(t.mostrarImovel).toBe(false);
-    const dois = textosDoRelatorio({ ...base, imoveis: [...base.imoveis, { id: "i2", codigo: "102", nome: "Studio Inteligente" }] });
-    expect(dois.mostrarImovel).toBe(true);
-    expect(dois.reservas[0].imovel).toBe("Studio Mezanino");
-    expect(textosDoRelatorio({ ...base, reservas: [{ ...base.reservas[0], hospede: "" }] }).reservas[0].hospede).toBe("não informado");
+    // Estadia que atravessa o mês: noites "2 de 3", asterisco e a nota; código do canal quando existe; repassada e paga pelo canal.
+    const varias = textosDoRelatorio(
+      {
+        ...base,
+        partes: [
+          parte({ reservaId: "r2", codigoCanal: "4471-905", hospede: "Elisa Fictícia", checkin: "2026-10-30", checkout: "2026-11-02", noitesNoMes: 2, noitesTotal: 3, situacao: "repassado", repasse: { id: "x", tipo: "antecipado", data: "2026-10-31", situacao: "pago", dataPagamento: "2026-10-31", valor: 72250 } }),
+          parte({ reservaId: "r3", hospede: "Zé", canal: "airbnb", quemRecebe: "split", situacao: "informacao", pagamento: { data: "2026-10-11", fonte: "canal", prazo: 1 } }),
+          parte({ reservaId: "r4", hospede: "Ana", quemRecebe: "a_confirmar", situacao: "a_liberar", pagamento: null }),
+        ],
+        reservas: [...["r2", "r3", "r4"].map((id) => ({ ...base.reservas[0], id })), { ...base.reservas[0], id: "r9", codigo: "R9", hospede: "Sem Cálculo", situacao: "sem_calculo", bruto: 0, suaParte: 0 }],
+        imoveis: [...base.imoveis, { id: "i2", codigo: "102", nome: "Studio Inteligente" }],
+      },
+      AGORA_TEXTOS,
+    );
+    expect(varias.reservas.map((l) => [l.hospede, l.codigo, l.datas, l.noites, l.situacao, l.situacaoTipo])).toEqual([
+      ["Elisa", "4471-905", "30/10 → 2/11 *", "2 de 3", "repassada em 31/10", "ok"],
+      ["Zé", "R1", "10/10 → 13/10", "3", "paga pelo canal em 11/10", "ok"],
+      ["Ana", "R1", "10/10 → 13/10", "3", "a liberar: quem recebe a confirmar", "aviso"],
+      ["Sem", "R9", "10/10 → 13/10", "—", "sem cálculo ainda", "aviso"],
+    ]);
+    expect(varias.notaReservas).toContain("* Estadia que atravessa o mês");
+    expect(varias.mostrarImovel).toBe(true);
+    expect(textosDoRelatorio({ ...base, partes: [], reservas: [{ ...base.reservas[0], hospede: "" }] }, AGORA_TEXTOS).reservas[0].hospede).toBe("não informado");
   });
 
-  it("em conferência: aviso com o valor à parte", () => {
-    const t = textosDoRelatorio({ ...base, resumo: { ...base.resumo, emConferencia: true, acertoPendente: -5000 } });
-    expect(t.emConferencia).toContain("R$ 50,00 a favor da Sua Casa Leblon");
+  it("números do mês e gráfico: quadros, série de 12 meses e acumulado desde o primeiro mês com dado", () => {
+    const serie: [string, number | null][] = [["2026-05", 980000], ["2026-06", 1120000], ["2026-07", 1390000], ["2026-08", 1210000], ["2026-09", 1304000], ["2026-10", 1503780]];
+    const t = textosDoRelatorio(
+      { ...base, metricas: { atual: mesDados({ resultado: 1503780, bruto: 1945000, noitesOcupadas: 18, noitesBloqueadas: 2 }), anterior: mesDados({ mes: "2026-09", resultado: 1304000, noitesOcupadas: 16, noitesDoPeriodo: 30 }), anoAnterior: null, serie, parcialAte: null } },
+      AGORA_TEXTOS,
+    );
+    expect(t.quadros.map((q) => q.valor)).toEqual(["18 noites", "R$ 1.080,56", "+15%", "sem dado no sistema"]);
+    expect(t.grafico.serie).toHaveLength(12);
+    expect(t.grafico.serie[0]).toEqual({ mes: "2025-11", resultado: null, atual: false });
+    expect(t.grafico.serie.at(-1)).toEqual({ mes: "2026-10", resultado: 1503780, atual: true });
+    expect(t.grafico.acumulado).toBe("Acumulado desde maio de 2026 (primeiro mês com dado): R$ 75.077,80");
+    expect(t.grafico.legendaAtual).toBe("outubro de 2026");
+    expect(textosDoRelatorio({ ...base, metricas: { ...base.metricas, serie: [["2026-01", 100], ["2026-10", 72250]] } }, AGORA_TEXTOS).grafico.acumulado).toBe("Acumulado de 2026: R$ 723,50");
+  });
+
+  it("conciliação por data de pagamento com a ponte fechando; repasses do mês com etiqueta; posição com data e hora de Brasília", () => {
+    const t = textosDoRelatorio(
+      {
+        ...base,
+        partes: [parte(), parte({ reservaId: "r2", hospede: "Zé", canal: "airbnb", checkin: "2026-09-29", checkout: "2026-10-02", noitesNoMes: 1, noitesTotal: 3, bruto: 30000, taxa: 900, comissao: 4365, suaParte: 24735, quemRecebe: "split", situacao: "informacao", pagamento: { data: "2026-09-30", fonte: "canal", prazo: 1 } })],
+        repasses: [{ id: "rep1", tipo: "antecipado", data: "2026-10-16", situacao: "pago", dataPagamento: "2026-10-16", valor: 72250, reservas: ["Hóspede"] }],
+        rodape: [rodape({ nome: "Dona Fictícia", situacao: "pago", valor: 0, dataPagamento: "2026-11-01" })],
+      },
+      AGORA_TEXTOS,
+    );
+    expect(t.conciliacao.map((l) => [l.rotulo, l.reservas, l.suaParte, l.tipo])).toEqual([
+      ["Booking.com", "1", "R$ 722,50", "canal"],
+      ["Pago pelos canais em outubro de 2026", "1", "R$ 722,50", "subtotal"],
+      ["+ 1 noite de outubro de 2026 paga em setembro de 2026 (Zé (29/9 → 2/10), Airbnb, paga em 30/9)", "1", "R$ 247,35", "ponte"],
+      ["Resultado por noite de outubro de 2026", "2", "R$ 969,85", "total"],
+    ]);
+    expect(t.conciliacaoFecha).toBe(true);
+    expect(t.conciliacaoIntro).toContain("pela data do pagamento");
+    expect(t.repasses[0]).toEqual({ texto: "16/10 — repasse antecipado (Hóspede)", valor: "R$ 722,50", tipo: "normal", etiqueta: "pago em 16/10 · comprovante no portal" });
+    expect(t.repasses[1]).toMatchObject({ texto: "Transferido no fechamento, em 01/11/2026" });
+    expect(t.posicao).toBe('Posição extraída do sistema em 01/11/2026 às 08:00 (horário de Brasília). Nenhum valor é estimado: o que o sistema ainda não tem aparece como "a receber" ou "a liberar". Um repasse "enviado" não confirma o crédito na sua conta: confira o comprovante no portal.');
   });
 
   it("saldo: mesma leitura do rodapé do portal; Pix do proprietário nunca impresso", () => {
@@ -157,7 +267,7 @@ describe("textos do relatório (primeira página)", () => {
     expect(textoDoSaldo(rodape({ situacao: "parcial", valor: 100, aFavor: "proprietario" }), e)[0]).toContain("a seu favor");
     expect(textoDoSaldo(rodape({ situacao: "no_repasse_posterior", repassePosterior: "2026-11" }), e)[0]).toContain("novembro");
     expect(textoDoSaldo(rodape({}), e)).toEqual(["Nada a pagar ou receber neste mês."]);
-    const dois = textosDoRelatorio({ ...base, rodape: [rodape({ nome: "A" }), rodape({ nome: "B" })] });
+    const dois = textosDoRelatorio({ ...base, rodape: [rodape({ nome: "A" }), rodape({ nome: "B" })] }, AGORA_TEXTOS);
     expect(dois.saldo).toEqual(["A: Nada a pagar ou receber neste mês.", "B: Nada a pagar ou receber neste mês."]);
   });
 });
@@ -171,39 +281,42 @@ describe("PDF", () => {
     expect(() => lerPaginas("a", 3)).toThrow("não é um número");
   });
 
-  it("anexos: foto JPG/PNG e extrato PDF, com limite de tamanho", () => {
+  it("anexos: foto JPG/PNG e extratos PDF (um ou vários), com limite de tamanho", () => {
     expect(() => conferirAnexos({ foto: PNG })).not.toThrow();
     expect(() => conferirAnexos({ foto: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9]) })).toThrow("JPG ou PNG");
     expect(() => conferirAnexos({ foto: new Uint8Array(2 * 1024 * 1024 + 1).fill(0xff) })).toThrow("2 MB");
     expect(() => conferirAnexos({ extrato: { bytes: PNG } })).toThrow("PDF oficial");
+    expect(() => conferirAnexos({ extratos: [{ canal: "Booking.com", bytes: PNG }] })).toThrow("(Booking.com) precisa ser o PDF oficial");
+    expect(extratosDe({ extrato: { bytes: PNG, canal: "Airbnb" }, extratos: [{ canal: "Booking.com", bytes: PNG }] }).map((e) => e.canal)).toEqual(["Booking.com", "Airbnb"]);
   });
 
-  it("gera a página do relatório e copia o extrato como veio (todas ou só as escolhidas)", async () => {
-    const t = textosDoRelatorio(base);
-    expect(await paginasDe(await gerarPdfRelatorio(t))).toBe(1);
+  it("três páginas sem anexos; com extratos, a página de anexos e as cópias no fim (todas ou só as escolhidas)", async () => {
+    const t = textosDoRelatorio(base, AGORA_TEXTOS);
+    expect(await paginasDe(await gerarPdfRelatorio(t))).toBe(3);
     const extrato = await pdfCom(3);
-    expect(await paginasDe(await gerarPdfRelatorio(t, { foto: PNG, extrato: { bytes: extrato } }))).toBe(4);
-    const so = await PDFDocument.load(await gerarPdfRelatorio(t, { extrato: { bytes: extrato, paginas: "2-3" } }));
-    expect(so.getPageCount()).toBe(3);
-    // Páginas do extrato mantêm o tamanho original (não são redesenhadas).
-    expect(so.getPage(1).getSize()).toEqual({ width: 300, height: 400 });
-    expect(so.getTitle()).toBe("Relatório de outubro de 2026 — Studio Mezanino");
+    expect(await paginasDe(await gerarPdfRelatorio(t, { foto: PNG, extrato: { bytes: extrato } }))).toBe(4 + 3);
+    const so = await PDFDocument.load(await gerarPdfRelatorio(t, { extratos: [{ canal: "Airbnb", bytes: extrato, paginas: "2-3" }, { canal: "Booking.com", bytes: await pdfCom(1) }] }));
+    expect(so.getPageCount()).toBe(4 + 2 + 1);
+    // Páginas do extrato mantêm o tamanho original (não são redesenhadas); as nossas são A4.
+    expect(so.getPage(4).getSize()).toEqual({ width: 300, height: 400 });
+    expect(so.getPage(0).getSize().width).toBeCloseTo(595.28, 1);
+    expect(so.getTitle()).toBe("Relatório mensal · Outubro de 2026 — Studio Mezanino");
   });
 
   it("extrato que não abre: erro claro, nada gerado", async () => {
     const quebrado = new TextEncoder().encode("%PDF-1.7 isto não é um pdf");
-    await expect(gerarPdfRelatorio(textosDoRelatorio(base), { extrato: { bytes: quebrado } })).rejects.toThrow("Não foi possível ler o PDF do extrato.");
+    await expect(gerarPdfRelatorio(textosDoRelatorio(base, AGORA_TEXTOS), { extrato: { bytes: quebrado } })).rejects.toThrow("Não foi possível ler o PDF do extrato (Canal).");
   });
 
   it("nomes com caracteres fora da fonte (emoji, outros alfabetos) não quebram o PDF", async () => {
-    const t = textosDoRelatorio({ ...base, proprietarios: ["Dona 😀 李"], reservas: [{ ...base.reservas[0], hospede: "Žofia 🌴" }] });
-    expect(await paginasDe(await gerarPdfRelatorio(t))).toBe(1);
+    const t = textosDoRelatorio({ ...base, proprietarios: ["Dona 😀 李"], partes: [parte({ hospede: "Žofia 🌴" })], reservas: [{ ...base.reservas[0], hospede: "Žofia 🌴" }] }, AGORA_TEXTOS);
+    expect(await paginasDe(await gerarPdfRelatorio(t))).toBe(3);
   });
 
-  it("muitas reservas: a tabela continua na página seguinte, antes do extrato", async () => {
-    const reservas = Array.from({ length: 70 }, (_, i) => ({ ...base.reservas[0], id: `r${i}` }));
-    const n = await paginasDe(await gerarPdfRelatorio(textosDoRelatorio({ ...base, reservas }), { extrato: { bytes: await pdfCom(1) } }));
-    expect(n).toBeGreaterThanOrEqual(3);
+  it("muitas reservas: a tabela continua nas páginas seguintes, antes da conciliação e dos anexos", async () => {
+    const partes = Array.from({ length: 70 }, (_, i) => parte({ reservaId: `r${i}`, codigo: `R${i}` }));
+    const n = await paginasDe(await gerarPdfRelatorio(textosDoRelatorio({ ...base, partes }, AGORA_TEXTOS), { extrato: { bytes: await pdfCom(1) } }));
+    expect(n).toBeGreaterThanOrEqual(6);
   });
 });
 
@@ -281,7 +394,7 @@ describe("dados e acesso", () => {
     const r = await relatorioDoPortal(db, donaUsuario, { ano: "2026", mes: "10", imovel: ["102"] }, AGORA);
     if (!r.ok) throw new Error(r.erro);
     expect(r.arquivo).toBe("relatorio-2026-10-403.pdf");
-    expect(await paginasDe(r.pdf)).toBe(1);
+    expect(await paginasDe(r.pdf)).toBe(3);
   });
 
   it("portal: quem representa dois proprietários recebe no PDF só o dono do imóvel escolhido", async () => {
@@ -378,7 +491,7 @@ describe("dados e acesso", () => {
     expect(await historico()).toHaveLength(0);
     const r = await relatorioDoPainel(db, admin(), dona, { mes: "2026-10", imoveis: ["403"], anexos: { foto: PNG, extrato: { bytes: await pdfCom(2), paginas: "2" } } }, AGORA);
     if (!r.ok) throw new Error(r.erro);
-    expect(await paginasDe(r.pdf)).toBe(2);
+    expect(await paginasDe(r.pdf)).toBe(5);
     const [h] = await historico();
     expect(h).toMatchObject({ acao: "relatorio.pdf", entidade: "proprietario", entidadeId: dona });
     expect(h.mudancas).toEqual({ relatorio: [null, "2026-10 · 403"], anexos: [null, "foto e extrato"] });
