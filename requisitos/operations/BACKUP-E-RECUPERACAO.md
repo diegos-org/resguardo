@@ -45,7 +45,9 @@ a comparação parte do que está guardado lá. O robô detecta e avisa o que é
 (ponteiro sem âncora ou movido, tag de marco movida, ref alterada, cópia alterada), não o que
 foi forjado de forma consistente. A defesa é a conta de backup ser só do Diego, com 2FA, senha
 própria e nenhum outro acesso; no plano pago, as rulesets (seção 3, item 4) impedem apagar e
-forçar, inclusive para o robô.
+forçar, inclusive para o robô. A chave de escrita do robô (seção 3, item 2) fica como segredo
+dentro do repositório de backup, só vale para ele e não é legível pela interface: quem a
+obtivesse já teria de ter a conta.
 
 ## 3. Como o espelho funciona
 
@@ -54,9 +56,21 @@ repositório principal não sabe que o backup existe.
 
 1. **Conta separada do GitHub**, com e-mail, senha e 2FA próprios, códigos de recuperação no
    gerenciador de senhas. Nela, um repositório **privado**.
-2. **Token só de leitura** criado na conta principal (fine-grained), restrito ao repositório
-   `scl-reconstrucao`, permissão *Contents: Read-only*, com validade de até 1 ano. É a única
-   ponte entre as contas e fica guardado como segredo dentro do repositório de backup.
+2. **Duas chaves**, guardadas como segredos dentro do repositório de backup:
+   - **Token só de leitura** criado na conta principal (fine-grained), restrito ao repositório
+     `scl-reconstrucao`, permissão *Contents: Read-only*, com validade de até 1 ano
+     (`ORIGEM_TOKEN`). É a única ponte entre as contas.
+   - **Token de escrita** criado na própria conta de backup (fine-grained), restrito ao
+     repositório de backup, permissões *Contents: Read and write* e *Workflows: Read and
+     write*, validade de até 1 ano (`DESTINO_TOKEN`). É com ele que o robô grava. O token
+     automático do GitHub Actions não serve: o GitHub não o deixa criar nem atualizar arquivos em
+     `.github/workflows/`, e todas as branches da origem têm o workflow de testes, então toda
+     branch era recusada (primeira rodada real, 4/10/2026). Esse token não cruza contas: dá ao
+     robô, dentro da conta de backup, só o que a própria conta já tem sobre o próprio
+     repositório. Efeito colateral conhecido: gravações feitas com ele podem disparar workflows
+     no repositório de backup, se alguma branch espelhada tiver um workflow com gatilho de
+     *push* que case com o nome `espelho/...`; o workflow de testes do SCL roda só em pull
+     request, e o do robô só por agenda ou à mão, então hoje nada dispara.
 3. **Robô agendado** no repositório de backup (arquivo original em `infra/backup/espelho-github.yml`
    deste repositório; copiado para `.github/workflows/backup.yml` lá). A cada 3 dias, às 03:17
    de Brasília, e quando acionado à mão:
@@ -317,12 +331,13 @@ descartar. Fazer isso com o sistema parado, para ninguém gravar no meio.
   backup; na rodada seguinte o robô a regrava a partir da origem (ou recria o ponteiro). Se o
   ponteiro só tiver **recuado** para um marco antigo, o robô já o avança de novo sozinho. O
   robô nunca força nada por conta própria.
-- **Anual (antes da validade do token):** gerar um token novo só de leitura na conta principal
-  e trocar o segredo `ORIGEM_TOKEN` no repositório de backup. A data de validade fica anotada
-  no gerenciador de senhas junto com o token.
-- **Nunca:** colar o token em chat, e-mail, Git ou tela do sistema; dar ao token qualquer
-  permissão além de leitura do repositório; apontar o robô para uma conta que alguém mais
-  acesse.
+- **Anual (antes da validade de cada token):** gerar um token novo e trocar o segredo
+  correspondente no repositório de backup: leitura (conta principal, `ORIGEM_TOKEN`) e
+  escrita (conta de backup, `DESTINO_TOKEN`). As datas de validade ficam anotadas no
+  gerenciador de senhas junto com os tokens.
+- **Nunca:** colar um token em chat, e-mail, Git ou tela do sistema; dar ao token de leitura
+  qualquer permissão além de leitura do repositório, nem ao de escrita qualquer repositório além
+  do de backup; apontar o robô para uma conta que alguém mais acesse.
 
 ## 7. Histórico
 
@@ -333,3 +348,10 @@ descartar. Fazer isso com o sistema parado, para ninguém gravar no meio.
 - 3/10/2026 (noite) — Diego autoriza ("pode fazer sim") o ajuste do Neon: histórico de 7 dias e
   snapshots diário (14 dias) e semanal (35 dias) na branch `main`. Feito pelo conector do Neon
   e conferido em seguida.
+- 4/10/2026 — Primeira rodada real do robô, feita pelo Diego, fica vermelha: "Recusas
+  inesperadas no push do espelho". Causa: o token automático do GitHub Actions não pode criar
+  nem atualizar arquivos em `.github/workflows/`, e todas as branches da origem têm o workflow
+  de testes. A simulação local não podia pegar isso (Git puro não tem essa regra); o robô se
+  comportou como desenhado (parou antes de avançar a base). Correção: o robô grava com uma chave
+  de escrita da própria conta de backup (`DESTINO_TOKEN`), conferida no início da rodada e com
+  mensagem direcionada quando a recusa cita workflow; simulação da recusa acrescentada.
