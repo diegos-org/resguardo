@@ -172,7 +172,10 @@ com as taxas padrão** (conta existente, sandbox, componentes com Pix e cartão)
 outros provedores e troca só mais à frente, se compensar — não é obrigação; o provedor fica
 atrás de um adaptador para trocar ou somar outro (por exemplo, Stripe só para cartão de fora)
 quando houver volume real. Na mistura Pix/cartão, o Mercado Pago empata ou ganha do PagBank
-(Pix 0,99% × 1,89%). (5) **Pix direto pelo banco, descartado por ora:** o Itaú cobra do PJ
+(Pix 0,99% × 1,89%). A conta da integração é a **Conta Negócio no CNPJ da SCL** (as credenciais
+de produção saem dela; sem mensalidade, Pix e TED de saída grátis, saldo remunerado), e os
+repasses aos proprietários podem sair direto dela por Pix, sem passar pela conta bancária.
+(5) **Pix direto pelo banco, descartado por ora:** o Itaú cobra do PJ
 ~1,45% por Pix recebido (chave ou QR, teto R$ 150), mais que o Mercado Pago; o Nubank PJ não
 cobra Pix, mas não há API oficial de integração confirmada; chave Pix fixa com botão de copiar
 não serve como caminho principal (sem confirmação automática nem casamento com a reserva, o

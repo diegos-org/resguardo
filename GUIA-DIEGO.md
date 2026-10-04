@@ -43,7 +43,9 @@
 Você decidiu em 4/10: **a empresa recebe e repassa**, pelo Mercado Pago, como já é com Booking
 e reservas diretas; e o contador já confirmou que só a comissão é receita da SCL (o resto é
 dinheiro do proprietário que passa pela empresa). Com isso o M8.0 fecha e o pagamento do site
-(M8.2) passa a depender só das credenciais de teste do Mercado Pago, que eu te peço na hora.
+(M8.2) passa a depender só da Conta Negócio do Mercado Pago no CNPJ da empresa (é dela que
+saem as credenciais de produção; conta pessoal não serve) e das credenciais de teste, que eu te
+peço na hora.
 
 - **Quando o proprietário recebe:** o fechamento mensal do dia 1º continua sendo o padrão e
   o intervalo máximo; no portal, o proprietário pode escolher receber quinzenalmente (dias 1
@@ -74,7 +76,9 @@ dinheiro do proprietário que passa pela empresa). Com isso o M8.0 fecha e o pag
   recebimento) — numa reserva de R$ 1.000 a diferença fica em torno de R$ 10. **Você decidiu em
   4/10: Mercado Pago para tudo (Pix e cartão), com as taxas padrão**; pedir propostas a outros
   provedores e trocar fica para mais à frente, só se compensar, porque o pagamento fica atrás
-  de um adaptador. Pix direto pelo banco ficou de fora por ora: o Itaú cobra do PJ cerca de
+  de um adaptador. A conta tem de ser a **Conta Negócio no CNPJ da empresa** (sem mensalidade,
+  Pix e TED de saída grátis, saldo rendendo), e os repasses podem sair direto dela por Pix, sem
+  passar pelo banco. Pix direto pelo banco ficou de fora por ora: o Itaú cobra do PJ cerca de
   1,45% por Pix recebido (mais que o Mercado Pago) e o Nubank PJ não tem integração oficial
   confirmada; chave Pix fixa com botão de copiar não serve como caminho principal, porque o
   sistema não saberia quem pagou.
@@ -443,8 +447,8 @@ Não precisa preencher descrições dos apartamentos para importar. A melhoria n
     próprio papel, e o sistema nunca deixa a empresa sem nenhum administrador. Embaixo, uma
     tabela mostra o que cada papel pode fazer. Proprietários continuam entrando por convite.
   - **Regras financeiras:** sobre qual valor a comissão é calculada e **quem recebe em cada
-    canal** (canal paga o proprietário direto, empresa recebe e repassa no mês, ou "a
-    confirmar"). É o padrão da empresa; cada imóvel e cada reserva ainda podem ter a sua
+    canal** (canal paga o proprietário direto, empresa recebe e repassa — na periodicidade que o
+    proprietário escolher, mensal por padrão, M4.10 —, ou "a confirmar"). É o padrão da empresa; cada imóvel e cada reserva ainda podem ter a sua
     escolha. Ao salvar, pede confirmação e recalcula só as reservas com entrada **de hoje em
     diante**, e mostra quantas foram recalculadas. O sistema guarda cada versão da regra com
     a data em que passou a valer: uma reserva antiga continua com a regra da época, mesmo que
@@ -1258,7 +1262,8 @@ ambiente).
    (item 5). Quem é recusado ainda não recebe e-mail automático — responda você mesmo.
 19. **Recebimento do site — feito em 4/10:** você manteve "empresa recebe e repassa" e o
    contador confirmou que só a comissão é receita. Nada mais aqui; o próximo passo do pagamento
-   são as credenciais de teste do Mercado Pago, que eu peço quando chegar o M8.2.
+   são a Conta Negócio do Mercado Pago no CNPJ da empresa e as credenciais de teste, que eu peço
+   quando chegar o M8.2.
 
 20. **Bloqueio pelo portal (M5.5):** confira em cada contrato (ficha do imóvel → Contratos) se
    "Bloqueio pelo portal" deve ficar em Sim (como vem) ou Não — o botão Ligar/Desligar fica na
@@ -1456,8 +1461,11 @@ ambiente).
   manda calendário, preços e regras para o Beds24 → OTAs) e o **M5.5** (proprietário mexe
   no calendário do imóvel dele pelo portal; a mudança passa pelo SCL e segue para as OTAs).
   A escrita fica **desligada** até você mandar ligar, depois de testarmos num imóvel.
-- **Repasse e relatório mensal:** combinado, **dia 1º do mês seguinte** (no último dia ainda
-  pode entrar reserva). Já está no plano (M4.9 e M5.4).
+- **Repasse e relatório mensal:** combinado em 24/09, **dia 1º do mês seguinte** (no último dia
+  ainda pode entrar reserva); já no sistema (M4.9 e M5.4). Desde 4/10, o relatório e o
+  fechamento continuam mensais no dia 1º, mas o **repasse** pode ser quinzenal, semanal ou
+  assim que disponível, à escolha do proprietário (M4.10); o dia 1º é o padrão e o intervalo
+  máximo.
 - **E-mail no cadastro de todos:** o e-mail do proprietário passou a ser **obrigatório**
   (convite do portal, relatórios, avisos, às vezes a chave Pix). Hóspedes entram no portal
   pelo e-mail (M9.1). Nas reservas das OTAs o e-mail às vezes vem mascarado pelo canal; o

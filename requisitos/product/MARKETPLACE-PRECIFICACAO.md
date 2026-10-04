@@ -105,6 +105,7 @@ fechar. Se a margem ficar baixa, dá para combinar B com uma mensalidade pequena
 - **Forma de recebimento do marketplace:** decidido por Diego em 4/10/2026, empresa recebe e
   repassa (sem split), como o site, com o extrato e as periodicidades do M4.10.
 - Reservas do site em imóveis de **gestão total**: decidido por Diego em 4/10/2026, um modelo
-  por contrato, nunca por reserva: a comissão do contrato vale em todos os
-  canais, inclusive o site, sobre o valor líquido da taxa do pagamento; o desconto do hóspede
+  por contrato, nunca por reserva: a comissão do contrato de gestão total vale em todos os
+  canais, inclusive o site, sobre o valor líquido da taxa do pagamento (no marketplace, o modelo
+  B vale só para o que o site vende — item acima); o desconto do hóspede
   no site é uma regra única do site, igual para gestão total e marketplace.
