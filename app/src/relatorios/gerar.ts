@@ -15,6 +15,7 @@ import { periodoDosFiltros } from "@/lib/filtros";
 import { lerPeriodoPortal } from "@/portal/periodo";
 import { proprietariosDoUsuario } from "@/portal/resumo";
 import { type Anexos, ErroRelatorio, gerarPdfRelatorio } from "./pdf";
+import { extratosDoRelatorio } from "./extratos";
 import { dadosDoRelatorio, donoDoRelatorio, HISTORICO_TODO, imoveisDoProprietario, textosDoRelatorio } from "./relatorio";
 
 export type Resultado = { ok: true; pdf: Uint8Array; arquivo: string } | { ok: false; status: number; erro: string };
@@ -174,11 +175,14 @@ export async function relatorioDoFechamento(
   mesISO: string,
   agora: Date,
   hoje?: string,
-): Promise<(Resultado & { ok: false }) | { ok: true; pdf: Uint8Array; arquivo: string; textos: ReturnType<typeof textosDoRelatorio> }> {
+): Promise<(Resultado & { ok: false }) | { ok: true; pdf: Uint8Array; arquivo: string; textos: ReturnType<typeof textosDoRelatorio>; anexos: string[] }> {
   const c = await conteudoDoFechamento(db, organizacaoId, proprietarioId, mesISO, agora, hoje);
   if (!c.ok) return c;
-  const pdf = await gerarPdfRelatorio(c.textos, {}, agora);
-  return { ok: true, pdf, arquivo: c.arquivo, textos: c.textos };
+  // M5.7: os extratos oficiais guardados por imóvel e mês vão no fim, como emitidos; sem nenhum guardado, o PDF sai sem
+  // anexos com o rodapé "ficam com a equipe" (e o painel avisa). A foto da capa espera as fotos reais (M7.3).
+  const extratos = await extratosDoRelatorio(db, organizacaoId, c.imovelIds, mesISO);
+  const pdf = await gerarPdfRelatorio(c.textos, { extratos }, agora);
+  return { ok: true, pdf, arquivo: c.arquivo, textos: c.textos, anexos: extratos.map((e) => e.canal) };
 }
 
 /** O que o PDF do fechamento mostra (sem gerar o PDF): usado também para saber se ele mudou. */
@@ -190,7 +194,7 @@ export async function conteudoDoFechamento(
   agora: Date,
   /** Data de referência do conteúdo (padrão: hoje). */
   hoje: string = hojeISO("America/Sao_Paulo", agora),
-): Promise<{ ok: true; textos: ReturnType<typeof textosDoRelatorio>; arquivo: string } | { ok: false; status: number; erro: string }> {
+): Promise<{ ok: true; textos: ReturnType<typeof textosDoRelatorio>; arquivo: string; imovelIds: string[] } | { ok: false; status: number; erro: string }> {
   const dono = await donoDoRelatorio(db, organizacaoId, proprietarioId);
   if (!dono) return { ok: false, status: 404, erro: "Proprietário não encontrado." };
   const m = /^(\d{4})-(\d{2})$/.exec(mesISO);
@@ -200,5 +204,5 @@ export async function conteudoDoFechamento(
   const doMes = await imoveisDoProprietario(db, organizacaoId, dono.id, periodoDosFiltros({ imoveis: [], ano, mes }));
   if (!doMes.length) return { ok: false, status: 400, erro: "Este proprietário não tem imóvel ligado nem lançamentos neste mês." };
   const dados = await dadosDoRelatorio(db, organizacaoId, { donos: [dono], imoveis: doMes, todosOsImoveis: true, ano, mes, hoje, agora });
-  return { ok: true, textos: textosDoRelatorio(dados), arquivo: nomeArquivo(ano, mes, doMes) };
+  return { ok: true, textos: textosDoRelatorio(dados), arquivo: nomeArquivo(ano, mes, doMes), imovelIds: doMes.map((i) => i.id) };
 }

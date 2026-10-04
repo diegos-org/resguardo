@@ -6,13 +6,15 @@ import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import styles from "@/components/formularios.module.css";
 import { AcertoPorFora } from "@/components/repasses/AcertoPorFora";
+import { ExtratosCanal } from "@/components/repasses/ExtratosCanal";
 import { CartaoRepasse } from "@/components/repasses/CartaoRepasse";
 import { type DonoAntecipavel, RepassesAntecipados } from "@/components/repasses/RepassesAntecipados";
 import { getDb } from "@/db/client";
-import { proprietarios } from "@/db/schema";
+import { imoveis, proprietarios } from "@/db/schema";
 import { hojeISO } from "@/lib/datas";
 import { formatBRL } from "@/lib/money";
 import { enviarFechamentoAcao, salvarFechamentoEmailAcao } from "@/fechamento/acoes";
+import { listarExtratos } from "@/relatorios/extratos";
 import { lerConfigFechamentoEmail, situacaoDosFechamentos } from "@/fechamento/email";
 import { fecharMesAcao } from "@/repasses/acoes";
 import { partesDoProprietario, resumirPartes } from "@/repasses/extrato";
@@ -89,6 +91,11 @@ export default async function Repasses({ searchParams }: PageProps<"/painel/fina
   const inicio = await lerInicioDoSistema(db, sessao.organizacaoId);
   const antesDoInicio = inicio ? await situacaoAntesDoInicio(db, sessao.organizacaoId, inicio, agora) : [];
   const porFora = await Promise.all((await listarRepassesDaOrganizacao(db, sessao.organizacaoId, { tipo: "por_fora" })).map(async (r) => ({ ...r, itens: await itensDoRepasse(db, sessao.organizacaoId, r.id) })));
+  // M5.7: extratos oficiais dos canais guardados para o mês (vão no fim do relatório do e-mail) e os imóveis para o upload.
+  const [extratos, todosImoveis] = await Promise.all([
+    listarExtratos(db, sessao.organizacaoId, mes),
+    db.select({ id: imoveis.id, codigo: imoveis.codigo, nome: imoveis.nome }).from(imoveis).where(eq(imoveis.organizacaoId, sessao.organizacaoId)).orderBy(asc(imoveis.codigo)),
+  ]);
   const itensFechamento = new Map(await Promise.all(lista.filter((p) => p.repasse).map(async (p) => [p.repasse!.id, await itensDoRepasse(db, sessao.organizacaoId, p.repasse!.id)] as const)));
   const salvo = typeof params.salvo === "string" ? SUCESSO[params.salvo] : typeof params.info === "string" ? params.info : undefined;
   const prontos = lista.filter((p) => p.situacao === "pronto").length;
@@ -166,6 +173,8 @@ export default async function Repasses({ searchParams }: PageProps<"/painel/fina
         )}
       </details>
 
+      <ExtratosCanal mes={mes} extratos={extratos} imoveis={todosImoveis} editar={editar} />
+
       {lista.length === 0 && <p>Nenhum proprietário com acerto até o fim deste mês.</p>}
       {lista.map((p) => {
         const r = p.repasse;
@@ -219,6 +228,17 @@ export default async function Repasses({ searchParams }: PageProps<"/painel/fina
                       ? "mês reaberto: espera ser fechado de novo (depois, use \"Enviar e-mail de novo\")"
                       : "espera o mês ser fechado"}
             </p>
+            {/* M5.7: o relatório do e-mail leva os extratos oficiais guardados em "Extratos dos canais"; sem nenhum, sai sem anexos — avisa, não supõe. */}
+            {p.situacao === "enviado" && p.anexosEnviados !== null && (
+              <p role="note" className={p.anexosEnviados.length ? undefined : styles.alerta} style={{ margin: 0, fontSize: "0.875rem", color: p.anexosEnviados.length ? "var(--scl-texto-2)" : undefined }}>
+                {p.anexosEnviados.length ? `Relatório de ${nomeMes(mes)} enviado com o extrato oficial no fim: ${p.anexosEnviados.join(", ")}.` : `Relatório de ${nomeMes(mes)} enviado sem extrato de canal (nenhum estava guardado): o rodapé diz que os extratos ficam com a equipe.`}
+              </p>
+            )}
+            {p.situacao !== "enviado" && p.situacao !== "sem_relatorio" && (
+              <p role="note" className={p.extratosGuardados.length ? undefined : styles.alerta} style={{ margin: 0, fontSize: "0.875rem", color: p.extratosGuardados.length ? "var(--scl-texto-2)" : undefined }}>
+                {p.extratosGuardados.length ? `Extratos guardados para o relatório: ${p.extratosGuardados.join(", ")}.` : `Sem extrato de canal guardado para ${nomeMes(mes)}: o relatório do e-mail sai sem anexos. Guarde em "Extratos dos canais", acima.`}
+              </p>
+            )}
             {p.reenvioPendente && (
               <p role="note" className={styles.alerta} style={{ margin: 0 }}>
                 {p.reenvioPendente.estado === "incerto"

@@ -1,9 +1,11 @@
 import type { NextRequest } from "next/server";
 import { obterSessao } from "@/acesso/sessao-atual";
 import { getDb } from "@/db/client";
+import { canalExtratoValido } from "@/relatorios/extratos";
 import { relatorioDoPainel } from "@/relatorios/gerar";
 import { LIMITE_EXTRATO, LIMITE_FOTO } from "@/relatorios/pdf";
 import { respostaDoRelatorio } from "@/relatorios/resposta";
+import { NOMES_ORIGEM } from "@/reservas/regras";
 
 async function bytes(v: FormDataEntryValue | null, limite: number): Promise<Uint8Array | null | "grande"> {
   if (!v || typeof v === "string" || v.size === 0) return null;
@@ -31,10 +33,11 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/painel/propriet
   if (foto === "grande") return voltar("A foto passa de 2 MB: use uma versão menor.");
   if (extrato === "grande") return voltar("O extrato passa de 2 MB: exporte só o período do mês.");
   const paginas = form.get("paginas");
+  const canal = form.get("canal");
   const r = await relatorioDoPainel(getDb(), sessao, id, {
     mes: String(form.get("mes") ?? ""),
     imoveis: form.getAll("imovel").filter((v): v is string => typeof v === "string"),
-    anexos: { foto, extrato: extrato ? { bytes: extrato, paginas: typeof paginas === "string" ? paginas : "" } : null },
+    anexos: { foto, extrato: extrato ? { bytes: extrato, paginas: typeof paginas === "string" ? paginas : "", canal: typeof canal === "string" && canalExtratoValido(canal) ? NOMES_ORIGEM[canal] : "Canal" } : null },
   });
   if (!r.ok && r.status === 400) return voltar(r.erro);
   return respostaDoRelatorio(r);

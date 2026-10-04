@@ -845,7 +845,7 @@ export type TipoRepasse = (typeof TIPOS_REPASSE)[number];
 export const SITUACOES_EMAIL_REPASSE = ["pendente", "enviado", "incerto"] as const;
 export type SituacaoEmailRepasse = (typeof SITUACOES_EMAIL_REPASSE)[number];
 /** Requisição de e-mail de um repasse, guardada na tentativa para a retomada repetir exatamente a mesma (mesma chave de idempotência). */
-export type PedidoEmailRepasse = { para: string; copias: string[]; assunto: string; texto: string; anexoArquivoId: string | null };
+export type PedidoEmailRepasse = { para: string; copias: string[]; assunto: string; texto: string; anexoArquivoId: string | null; /** Versão em HTML (M5.7); pedidos antigos não têm. */ html?: string };
 
 /** Arquivo guardado no banco (M4.10): comprovante do Pix de um repasse. Privado: só o painel e o dono baixam. */
 const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
@@ -861,6 +861,30 @@ export const arquivos = pgTable("arquivos", {
   criadoPor: uuid("criado_por").references(() => usuarios.id),
   criadoEm: criadoEm(),
 });
+
+/**
+ * Extrato oficial de um canal guardado por imóvel e mês (M5.7): o PDF que o canal emitiu (Airbnb, Booking…), subido pela
+ * equipe em Financeiro → Repasses antes do fechamento, vai no fim do relatório do e-mail como emitido. O arquivo fica em
+ * `arquivos` (privado, como o comprovante do Pix). Um por imóvel, mês ("AAAA-MM") e canal; subir de novo substitui.
+ */
+export const extratosCanal = pgTable(
+  "extratos_canal",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    imovelId: uuid("imovel_id").notNull().references(() => imoveis.id, { onDelete: "cascade" }),
+    /** Mês de competência do relatório, "AAAA-MM". */
+    mes: text("mes").notNull(),
+    /** Canal emissor (origem da reserva: airbnb, booking, outro). */
+    canal: text("canal").notNull(),
+    arquivoId: uuid("arquivo_id").notNull().references(() => arquivos.id),
+    /** Páginas a copiar para o relatório ("1-2, 4"); vazio = todas. */
+    paginas: text("paginas").notNull().default(""),
+    criadoPor: uuid("criado_por").references(() => usuarios.id),
+    criadoEm: criadoEm(),
+  },
+  (t) => [uniqueIndex("extratos_canal_unico").on(t.organizacaoId, t.imovelId, t.mes, t.canal), index("extratos_canal_mes").on(t.organizacaoId, t.mes)],
+);
 
 /**
  * Repasse ao proprietário. `fechamento` (M4.9): o fechamento de um mês, por competência, com os

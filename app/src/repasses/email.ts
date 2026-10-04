@@ -17,6 +17,7 @@ import { nomeDaEmpresa } from "@/configuracoes/empresa";
 import { type PedidoEmailRepasse, proprietarios, repasses, representantes, type SituacaoEmailRepasse } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { type Correio, ErroEnvioIncerto } from "@/email/correio";
+import { montarEmail } from "@/email/modelo";
 import { formatBRL } from "@/lib/money";
 import { arquivoPorId, itensDoRepasse, JANELA_TENTATIVA_EMAIL_MS, nomeMes, obterRepasse, type RepasseListado, descricaoDoItem } from "./repasses";
 
@@ -38,21 +39,34 @@ export async function destinosDoRepasse(db: Db, organizacaoId: string, proprieta
 
 type Item = Awaited<ReturnType<typeof itensDoRepasse>>[number];
 
-/** Texto do e-mail (puro, para teste e prévia). */
-export function textoDoEmailDoRepasse(r: RepasseListado, itens: readonly Item[], empresa: string): { assunto: string; texto: string } {
+/**
+ * Texto e HTML do e-mail (puros, para teste e prévia), no esqueleto da casa (M5.7, `email/modelo.ts`): saudação, o que é,
+ * o destaque (valor e data do Pix), o que entrou, onde ver mais.
+ */
+export function textoDoEmailDoRepasse(r: RepasseListado, itens: readonly Item[], empresa: string): { assunto: string; texto: string; html: string } {
   const quando = dataBr(r.dataPagamento ?? r.data);
   const assunto = `${r.tipo === "fechamento" ? `Repasse do fechamento de ${nomeMes(r.mes.slice(0, 7))}` : `Repasse de ${dataBr(r.data)}`} — ${empresa}`;
   // A chave Pix é a usada no pagamento (guardada ao marcar pago), nunca a atual do cadastro; sem registro, não se cita.
-  const linhas = [`Olá, ${r.nome}.`, "", `Fizemos o repasse de ${formatBRL(r.valor)} em ${quando}${r.chavePixPaga ? ` para a chave Pix ${r.chavePixPaga}` : ""}.${r.comprovante ? ` Identificador do Pix: ${r.comprovante}.` : ""}${r.comprovanteArquivoId ? " O comprovante do banco vai em anexo." : ""}`];
+  const frase = `Fizemos o repasse de ${formatBRL(r.valor)} em ${quando}${r.chavePixPaga ? ` para a chave Pix ${r.chavePixPaga}` : ""}.${r.comprovante ? ` Identificador do Pix: ${r.comprovante}.` : ""}${r.comprovanteArquivoId ? " O comprovante do banco vai em anexo." : ""}`;
+  const valores: { rotulo: string; valor: string }[] = [];
   if (r.tipo === "fechamento") {
-    linhas.push("", `Fechamento de ${nomeMes(r.mes.slice(0, 7))}: saldo do mês ${formatBRL(r.saldo + r.descontado + r.contestado)}${r.descontado ? `, adiantamentos descontados ${formatBRL(r.descontado)}` : ""}${r.contestado ? `, contestados fora ${formatBRL(r.contestado)}` : ""}${r.foraDoFechamento ? `, ${formatBRL(r.foraDoFechamento)} ficaram para o próximo repasse (dinheiro ainda não recebido pela empresa)` : ""}${r.antecipado ? `, ${formatBRL(r.antecipado)} de noites de meses seguintes já pagos` : ""}.`);
+    valores.push({ rotulo: `Saldo de ${nomeMes(r.mes.slice(0, 7))}`, valor: formatBRL(r.saldo + r.descontado + r.contestado) });
+    if (r.descontado) valores.push({ rotulo: "Adiantamentos descontados", valor: `− ${formatBRL(r.descontado)}` });
+    if (r.contestado) valores.push({ rotulo: "Contestados (fora deste repasse)", valor: formatBRL(r.contestado) });
+    if (r.foraDoFechamento) valores.push({ rotulo: "Para o próximo repasse (dinheiro ainda não recebido pela empresa)", valor: formatBRL(r.foraDoFechamento) });
+    if (r.antecipado) valores.push({ rotulo: "Noites de meses seguintes já pagas", valor: formatBRL(r.antecipado) });
   }
-  if (itens.length) {
-    linhas.push("", "Reservas pagas neste repasse:");
-    for (const i of itens) linhas.push(`- ${i.codigoImovel} · ${i.hospede || i.codigoReserva} · ${dataBr(i.checkin)} a ${dataBr(i.checkout)} · ${formatBRL(i.valor)} (${descricaoDoItem(i)})`);
-  }
-  linhas.push("", "O extrato completo está no portal do proprietário. Qualquer dúvida, é só responder este e-mail.");
-  return { assunto, texto: linhas.join("\n") };
+  const reservas = itens.map((i) => `${i.codigoImovel} · ${i.hospede || i.codigoReserva} · ${dataBr(i.checkin)} a ${dataBr(i.checkout)} · ${formatBRL(i.valor)} (${descricaoDoItem(i)})`);
+  const { texto, html } = montarEmail({
+    empresa,
+    nome: r.nome,
+    frase,
+    destaque: { rotulo: r.tipo === "fechamento" ? `Repasse do fechamento de ${nomeMes(r.mes.slice(0, 7))}` : "Repasse", valor: formatBRL(r.valor), nota: `Pix em ${quando}` },
+    valores,
+    linhas: reservas.length <= 5 ? reservas : [...reservas.slice(0, 4), `e mais ${reservas.length - 4} reserva(s) — a lista completa está no portal`],
+    proximoPasso: `${reservas.length ? "Reservas pagas neste repasse acima. " : ""}O extrato completo está no portal do proprietário.`,
+  });
+  return { assunto, texto, html };
 }
 
 /**
@@ -94,8 +108,8 @@ export async function enviarEmailDoRepasse(db: Db, organizacaoId: string, repass
     const destinos = await destinosDoRepasse(db, organizacaoId, r.proprietarioId);
     if (!destinos.length) return "sem_email";
     const [empresa, itens] = await Promise.all([nomeDaEmpresa(db, organizacaoId), itensDoRepasse(db, organizacaoId, r.id)]);
-    const { assunto, texto } = textoDoEmailDoRepasse(r, itens, empresa);
-    pedido = { para: destinos[0], copias: destinos.slice(1), assunto, texto, anexoArquivoId: r.comprovanteArquivoId };
+    const { assunto, texto, html } = textoDoEmailDoRepasse(r, itens, empresa);
+    pedido = { para: destinos[0], copias: destinos.slice(1), assunto, texto, html, anexoArquivoId: r.comprovanteArquivoId };
   }
   const destinos = [pedido.para, ...pedido.copias];
   // Marca a tentativa antes de chamar o provedor (quem ler vê "incerto" até a confirmação). Uma retomada
@@ -131,7 +145,7 @@ export async function enviarEmailDoRepasse(db: Db, organizacaoId: string, repass
   // O anexo é o arquivo guardado no pedido (pelo id), mesmo que o comprovante tenha sido trocado depois.
   const arquivo = pedido.anexoArquivoId ? await arquivoPorId(db, organizacaoId, pedido.anexoArquivoId) : null;
   try {
-    await correio.enviar({ para: pedido.para, copias: pedido.copias, assunto: pedido.assunto, texto: pedido.texto, conteudoRestrito: true, chave, anexos: arquivo ? [{ nome: arquivo.nome, conteudo: new Uint8Array(arquivo.conteudo) }] : undefined });
+    await correio.enviar({ para: pedido.para, copias: pedido.copias, assunto: pedido.assunto, texto: pedido.texto, html: pedido.html, conteudoRestrito: true, chave, anexos: arquivo ? [{ nome: arquivo.nome, conteudo: new Uint8Array(arquivo.conteudo) }] : undefined });
   } catch (e) {
     if (e instanceof ErroEnvioIncerto) return "incerto";
     // Recusa certa: volta a pendente para a próxima tentativa (que usa chave nova: esta fica guardada), e o motivo fica no histórico.
