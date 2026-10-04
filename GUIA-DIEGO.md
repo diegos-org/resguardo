@@ -55,7 +55,9 @@ peço na hora.
   Para Booking e reservas diretas, a reserva fica disponível depois do check-in e de o dinheiro
   ter entrado e sido registrado no financeiro; o que ainda não entrou não é repassado. Se uma
   reserva começa no último dia do mês e o dono recebe assim que disponível, o repasse do dia 1º
-  paga a reserva inteira junto com o fechamento, numa só transferência.
+  paga a reserva inteira junto com o fechamento, numa só transferência. E o fechamento mensal
+  passa a seguir a mesma regra: o que ainda não entrou na empresa fica para o repasse seguinte,
+  com aviso no extrato.
   Cada repasse manda um e-mail ao proprietário com o comprovante e a lista das reservas (no
   Pix manual, você anexa o comprovante ao marcar pago; sem ele, o e-mail espera e o repasse
   fica com aviso). O sistema de hoje só sabe fechar uma vez por mês; o resto entrou no plano como o item
