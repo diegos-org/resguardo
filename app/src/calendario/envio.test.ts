@@ -111,8 +111,14 @@ describe("envio ao Beds24 (M3.7)", () => {
     // Pedir só o 103 ignora o 403 sem vínculo; a execução registra que incluiu o 103 (mesmo sem noite a mudar).
     const soCento = await enviar("envio", { imovelIds: [im] });
     expect(soCento.imoveis.map(i => i.codigo)).toEqual(["103"]);
-    expect((await db.select().from(beds24EnvioImoveis).where(eq(beds24EnvioImoveis.envioId, soCento.envioId!))).map(x => x.imovelId)).toEqual([im]);
-    expect((await ultimosEnvios(db, org)).filter(e => e.situacao === "erro")).toHaveLength(3);
+    expect((await db.select().from(beds24EnvioImoveis).where(eq(beds24EnvioImoveis.envioId, soCento.envioId!))).map(x => [x.imovelId, x.propertyId, x.roomId, x.falha])).toEqual([[im, "10", "20", ""]]);
+    // Execução que morre depois da fase 1 (erro inesperado na releitura, por exemplo) não deixa o veredito em branco.
+    const leitorQueMorre: LeitorBeds24 = { reservas: f => beds.reservas(f), quartos: () => beds.quartos(), calendario: async () => { throw new TypeError("quebrou"); } };
+    const morto = await enviar("envio", { imovelIds: [im], leitor: leitorQueMorre });
+    expect(morto.ok).toBe(false);
+    for (const linha of await db.select().from(beds24EnvioImoveis).where(eq(beds24EnvioImoveis.envioId, morto.envioId!))) expect(linha.falha).not.toBe("");
+    // Três execuções recusadas na configuração + a que morreu na releitura.
+    expect((await ultimosEnvios(db, org)).filter(e => e.situacao === "erro")).toHaveLength(4);
   });
 
   it("vínculo que a credencial não enxerga, ou moeda diferente de BRL, nunca recebe escrita", async () => {

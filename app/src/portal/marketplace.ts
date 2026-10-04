@@ -6,11 +6,11 @@
  * um lugar. Preço, regra ou bloqueio editado aqui só chega ao Airbnb e ao Booking pelo envio de
  * calendário da SCL (M3.7) — a situação desse envio é mostrada ao proprietário, nunca suposta.
  */
-import { and, asc, desc, eq, gte, inArray, lt } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, lt } from "drizzle-orm";
 import { exigir, type Sessao } from "@/acesso/politica";
 import { listarMapeamentosBeds24, organizacaoBeds24 } from "@/beds24/configuracao";
 import { escritaBeds24Pronta } from "@/beds24/http";
-import { vinculoUnicoParaEnvio } from "@/calendario/envio";
+import { vinculoUnicoParaEnvio, vinculoValidoParaEnvio } from "@/calendario/envio";
 import { lerRegrasCalendario, type RegrasCalendario } from "@/calendario/regras-config";
 import { type ContratoVigencia, contratoVigente } from "@/contratos/regras";
 import { listarContratos } from "@/contratos/repositorio";
@@ -57,8 +57,11 @@ export type SituacaoEnvio = {
   escritaPronta: boolean;
   /** O envio roda sozinho todo dia. */
   automatico: boolean;
-  /** Último envio (de verdade, não simulação) que incluiu este imóvel; `falha` = por que ele ficou de fora nessa execução (vazio = foi). */
-  ultimo: { em: Date; situacao: string; falha: string } | null;
+  /**
+   * Último envio (de verdade, não simulação) terminado que incluiu este imóvel; `falha` = por que ele ficou de fora nessa
+   * execução (vazio = foi); `mesmoVinculo` = o par propriedade/quarto validado então ainda é o vínculo atual.
+   */
+  ultimo: { em: Date; situacao: string; falha: string; mesmoVinculo: boolean } | null;
 };
 
 /**
@@ -66,7 +69,7 @@ export type SituacaoEnvio = {
  * já incluiu o imóvel sem deixá-lo de fora (quarto acessível à credencial, em BRL) — a mesma régua do envio, lida do
  * resultado dele em vez de suposta.
  */
-export const envioPronto = (e: Pick<SituacaoEnvio, "naLista" | "vinculado" | "escritaPronta" | "ultimo">) => e.naLista && e.vinculado && e.escritaPronta && e.ultimo !== null && !e.ultimo.falha;
+export const envioPronto = (e: Pick<SituacaoEnvio, "naLista" | "vinculado" | "escritaPronta" | "ultimo">) => e.naLista && e.vinculado && e.escritaPronta && e.ultimo !== null && !e.ultimo.falha && e.ultimo.mesmoVinculo;
 
 export type ImovelMarketplace = {
   id: string;
@@ -143,17 +146,20 @@ async function credencialAtendeOrganizacao(db: Db, organizacaoId: string, env: N
 /** Situação do envio ao Beds24 para um imóvel: na lista? vinculado? escrita pronta (sinal, credencial e credencial desta empresa)? automático? último envio real que o tocou. */
 export async function situacaoDoEnvio(db: Db, organizacaoId: string, regras: RegrasCalendario, imovelId: string, env: NodeJS.ProcessEnv = process.env): Promise<SituacaoEnvio> {
   // A mesma régua que aborta o envio (`calendario/envio.ts`): um único vínculo válido e quarto não repetido na lista.
-  const vinculado = vinculoUnicoParaEnvio(await listarMapeamentosBeds24(db, organizacaoId), imovelId, regras.envio.imoveis);
-  // Execução real que incluiu o imóvel (mesmo sem noite a mudar), com o veredito dela para este imóvel.
+  const mapas = await listarMapeamentosBeds24(db, organizacaoId);
+  const vinculado = vinculoUnicoParaEnvio(mapas, imovelId, regras.envio.imoveis);
+  const atual = vinculado ? mapas.filter(vinculoValidoParaEnvio).find((m) => m.imovelId === imovelId) : undefined;
+  // Execução real TERMINADA que incluiu o imóvel (mesmo sem noite a mudar), com o veredito dela para este imóvel e o
+  // vínculo que validou: execução em curso ou interrompida não conta, e vínculo trocado depois invalida o veredito.
   const [ultimo] = await db
-    .select({ em: beds24Envios.iniciadoEm, situacao: beds24Envios.situacao, falha: beds24EnvioImoveis.falha })
+    .select({ em: beds24Envios.iniciadoEm, situacao: beds24Envios.situacao, falha: beds24EnvioImoveis.falha, propertyId: beds24EnvioImoveis.propertyId, roomId: beds24EnvioImoveis.roomId })
     .from(beds24Envios)
     .innerJoin(beds24EnvioImoveis, and(eq(beds24EnvioImoveis.envioId, beds24Envios.id), eq(beds24EnvioImoveis.imovelId, imovelId)))
-    .where(and(eq(beds24Envios.organizacaoId, organizacaoId), eq(beds24Envios.modo, "envio")))
+    .where(and(eq(beds24Envios.organizacaoId, organizacaoId), eq(beds24Envios.modo, "envio"), isNotNull(beds24Envios.terminadoEm)))
     .orderBy(desc(beds24Envios.iniciadoEm))
     .limit(1);
   const escritaPronta = escritaBeds24Pronta(env) && (await credencialAtendeOrganizacao(db, organizacaoId, env));
-  return { naLista: regras.envio.imoveis.includes(imovelId), vinculado, escritaPronta, automatico: regras.envio.automatico, ultimo: ultimo ? { em: ultimo.em, situacao: ultimo.situacao, falha: ultimo.falha } : null };
+  return { naLista: regras.envio.imoveis.includes(imovelId), vinculado, escritaPronta, automatico: regras.envio.automatico, ultimo: ultimo ? { em: ultimo.em, situacao: ultimo.situacao, falha: ultimo.falha, mesmoVinculo: atual !== undefined && ultimo.propertyId === atual.propertyId && ultimo.roomId === atual.roomId } : null };
 }
 
 /**

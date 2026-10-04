@@ -1165,7 +1165,13 @@ export const beds24EnvioImoveis = pgTable("beds24_envio_imoveis", {
   organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
   envioId: uuid("envio_id").notNull().references(() => beds24Envios.id),
   imovelId: uuid("imovel_id").notNull().references(() => imoveis.id),
-  /** Por que este imóvel ficou de fora nesta execução (quarto inacessível à credencial, moeda, leitura, escrita recusada); vazio = incluído. */
+  /** Par propriedade/quarto do Beds24 que esta execução validou para o imóvel: veredito só vale enquanto o vínculo for este. */
+  propertyId: text("property_id").notNull().default(""),
+  roomId: text("room_id").notNull().default(""),
+  /**
+   * Por que este imóvel ficou de fora nesta execução (quarto inacessível à credencial, moeda, leitura, escrita recusada).
+   * Nasce "pendente" e só fica vazio quando a execução termina com o imóvel incluído: execução interrompida nunca vale como sucesso.
+   */
   falha: text("falha").notNull().default(""),
 }, t => [index("beds24_envio_imoveis_imovel").on(t.organizacaoId, t.imovelId), index("beds24_envio_imoveis_envio").on(t.envioId)]);
 

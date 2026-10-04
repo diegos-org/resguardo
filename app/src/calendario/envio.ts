@@ -25,6 +25,8 @@ export type SituacaoEnvio = "ok" | "parcial" | "erro" | "ocupada" | "desligada" 
 export type ImovelEnviado = { imovelId: string; codigo: string; resumo: ResumoPlano; enviadas: number; confirmadas: number; divergentes: number; pendentes: number; falha: string };
 export type ResultadoEnvio = { ok: boolean; situacao: SituacaoEnvio; mensagem: string; envioId: string | null; imoveis: ImovelEnviado[]; avisos: string[]; totalAvisos: number };
 export type OpcoesEnvio = { modo: ModoEnvio; imovelIds?: string[]; autorId?: string | null; automatica?: boolean; agora?: Date };
+/** Veredito de um imóvel numa execução que ainda não terminou (ou morreu no meio): nunca conta como incluído. */
+export const VEREDITO_PENDENTE = "Execução ainda não concluída.";
 
 type VinculoBeds24 = { imovelId: string; ativo: boolean; propertyId: string; roomId: string };
 /** Vínculo Beds24 que vale para o envio: ativo, com propriedade e quarto numéricos. */
@@ -202,8 +204,9 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
       if (pedidos?.some(id => !escolhidos.some(m => m.imovelId === id))) throw new ErroBeds24("Imóvel sem vínculo Beds24 ativo (propriedade e quarto numéricos). Confira em Integrações.", "configuracao");
       if (!escolhidos.length) throw new ErroBeds24("Nenhum imóvel com envio ligado e vínculo Beds24 ativo. Ligue o envio por imóvel em Configurações → Calendário e preços.", "configuracao");
       if (vinculosAmbiguos(escolhidos)) throw new ErroBeds24("Cada imóvel deve estar ligado a um único quarto Beds24. Remova os vínculos duplicados antes de enviar.", "configuracao");
-      // Quais imóveis esta execução incluiu, mesmo que nenhuma noite precise mudar: é o que conta como "último envio" por imóvel.
-      await tx.insert(beds24EnvioImoveis).values(escolhidos.map(m => ({ organizacaoId: org, envioId: exec.id, imovelId: m.imovelId })));
+      // Quais imóveis esta execução incluiu (e com que vínculo), mesmo que nenhuma noite precise mudar: é o que conta como
+      // "último envio" por imóvel. Nascem pendentes: só o fim da execução dá o veredito — interrompida, nunca vale como sucesso.
+      await tx.insert(beds24EnvioImoveis).values(escolhidos.map(m => ({ organizacaoId: org, envioId: exec.id, imovelId: m.imovelId, propertyId: m.propertyId, roomId: m.roomId, falha: VEREDITO_PENDENTE })));
       const fusos = new Map((await tx.select({ id: imoveis.id, fuso: imoveis.fuso }).from(imoveis).where(and(eq(imoveis.organizacaoId, org), inArray(imoveis.id, escolhidos.map(m => m.imovelId))))).map(i => [i.id, i.fuso]));
 
       // Estado enviado de outro quarto (vínculo trocado) não vale para o quarto atual: a posse de um bloqueio
@@ -479,8 +482,13 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
     noitesEnviadas: r.imoveis.reduce((s, i) => s + i.enviadas, 0), noitesConfirmadas: r.imoveis.reduce((s, i) => s + i.confirmadas, 0), noitesDivergentes: r.imoveis.reduce((s, i) => s + i.divergentes, 0),
   }).where(eq(beds24Envios.id, exec.id));
   // Veredito por imóvel (quarto inacessível à credencial, moeda, leitura incompleta, escrita recusada): o portal lê daqui
-  // para não prometer envio a um imóvel que a execução deixa de fora.
-  for (const i of r.imoveis) if (i.falha) await db.update(beds24EnvioImoveis).set({ falha: i.falha.slice(0, 300) }).where(and(eq(beds24EnvioImoveis.envioId, exec.id), eq(beds24EnvioImoveis.imovelId, i.imovelId)));
+  // para não prometer envio a um imóvel que a execução deixa de fora. Imóvel sem resultado (execução interrompida por
+  // exceção depois da fase 1) fica com a mensagem do erro, nunca em branco.
+  for (const linha of await db.select({ imovelId: beds24EnvioImoveis.imovelId }).from(beds24EnvioImoveis).where(eq(beds24EnvioImoveis.envioId, exec.id))) {
+    const resultado = r.imoveis.find(i => i.imovelId === linha.imovelId);
+    const falha = resultado ? resultado.falha : `Execução não concluída para este imóvel: ${r.mensagem}`;
+    await db.update(beds24EnvioImoveis).set({ falha: falha.slice(0, 300) }).where(and(eq(beds24EnvioImoveis.envioId, exec.id), eq(beds24EnvioImoveis.imovelId, linha.imovelId)));
+  }
   return r;
 }
 
