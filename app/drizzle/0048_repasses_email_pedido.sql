@@ -1,0 +1,1 @@
+ALTER TABLE "repasses" ADD COLUMN "email_pedido" jsonb;

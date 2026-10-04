@@ -15,6 +15,9 @@ import { lerRegrasFinanceiras } from "@/configuracoes/regras-financeiras";
 import { lerRecebimento } from "@/imoveis/recebimento";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import { Horarios } from "@/components/reservas/Horarios";
+import { Recebimentos } from "@/components/reservas/Recebimentos";
+import { hojeISO } from "@/lib/datas";
+import { recebidoPorReserva, recebimentosDaReserva } from "@/repasses/recebimentos";
 import { acordoVigente, lerHorariosReservas } from "@/reservas/horarios";
 
 const CAMPOS_FINANCEIROS = ["valorBruto", "taxaCanal", "valorLiquido", "moeda", "recebimento"];
@@ -41,6 +44,8 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
   const efetivo = r.recebimento ?? doImovel ?? (await lerRegrasFinanceiras(db, sessao.organizacaoId, r.checkin)).recebimento[r.origem];
   const fonte = r.recebimento ? "definido nesta reserva" : doImovel ? "configuração do imóvel" : "padrão da empresa vigente na entrada";
   const quemRecebe = `${efetivo === "a_confirmar" ? "A confirmar" : NOMES_RECEBIMENTO[efetivo]} (${fonte})`;
+  // M4.10: recebimentos do canal registrados para esta reserva (liberam a parte do proprietário para repasse).
+  const [recebimentos, recebidos] = verValores ? await Promise.all([recebimentosDaReserva(db, sessao.organizacaoId, r.id), recebidoPorReserva(db, sessao.organizacaoId, [r.id])]) : [[], new Map()];
 
   const linhas: [string, string][] = [
     ["Imóvel", imovel ? `${imovel.codigo} · ${imovel.nome}` : "—"],
@@ -76,7 +81,7 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
       )}
       {salvo && (
         <p role="status" className={styles.sucesso}>
-          Reserva salva.
+          {salvo === "recebimento" ? "Recebimento registrado." : "Reserva salva."}
         </p>
       )}
       <dl className={styles.form} style={{ display: "grid", gridTemplateColumns: "minmax(140px, max-content) 1fr", gap: "8px 16px" }}>
@@ -182,6 +187,17 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
             </div>
           )}
         </section>
+      )}
+      {verValores && r.estado !== "consulta" && r.estado !== "pedido" && (
+        <Recebimentos
+          reservaId={r.id}
+          recebimentos={recebimentos}
+          recebido={recebidos.get(r.id) ?? { recebido: 0, devido: 0 }}
+          quemRecebe={efetivo}
+          editar={podeFazer(sessao.papel, "financeiro:editar")}
+          hoje={hojeISO()}
+          cancelada={r.estado === "cancelada"}
+        />
       )}
       <Horarios id={r.id} horarios={horarios} vigentes={{ entrada: acordoVigente(horarios, "entrada", r), saida: acordoVigente(horarios, "saida", r) }} editar={r.estado === "confirmada" && podeFazer(sessao.papel, "reserva:editar")} />
       <HistoricoAlteracoes linhas={verValores ? historico : ocultarCampos(historico, CAMPOS_FINANCEIROS)} />

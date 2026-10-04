@@ -8,6 +8,7 @@ export const ABAS_CONFIG: readonly { slug: string; titulo: string; exige: Acao }
   { slug: "integracoes", titulo: "Integrações", exige: "configuracao:editar" },
   { slug: "calendario", titulo: "Calendário e preços", exige: "configuracao:editar" },
   { slug: "marketplace", titulo: "Marketplace e desconto do site", exige: "configuracao:editar" },
+  { slug: "repasses", titulo: "Repasses", exige: "configuracao:editar" },
   { slug: "categorias", titulo: "Categorias de despesa", exige: "despesa:editar" },
   { slug: "mensagens", titulo: "Modelos de mensagem", exige: "configuracao:editar" },
   { slug: "site", titulo: "Textos do site", exige: "configuracao:editar" },

@@ -1,0 +1,1 @@
+ALTER TABLE "repasses" ADD COLUMN "email_tentativa_em" timestamp with time zone;

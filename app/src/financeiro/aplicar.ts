@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
 import { and, asc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { listarContratos } from "@/contratos/repositorio";
-import { lancamentos, proprietarioImoveis, recebimentoPorCanal, reservas } from "@/db/schema";
+import { lancamentos, proprietarioImoveis, recebimentoPorCanal, repasseItens, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { estornar, lancar, type NovoLancamento } from "./ledger";
+import { travarMotorDaReserva } from "./trava";
 import { lerRegrasFinanceiras } from "@/configuracoes/regras-financeiras";
 import { calcularReserva, type RegrasMotor } from "./motor";
 
@@ -39,8 +40,8 @@ export async function aplicarMotor(
 ): Promise<ResultadoAplicacao | null> {
   if (!uuidValido(reservaId)) return null;
   return db.transaction(async (tx) => {
-    // Uma aplicação por reserva de cada vez.
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`motor:${organizacaoId}:${reservaId}`}))`);
+    // Uma aplicação por reserva de cada vez; a mesma trava que o repasse usa ao reunir as partes dela.
+    await travarMotorDaReserva(tx, organizacaoId, reservaId);
     const [r] = await tx
       .select()
       .from(reservas)
@@ -85,11 +86,19 @@ export async function aplicarMotor(
 
     // O que já movimentou dinheiro (realizado/conciliado) nunca é mexido automaticamente
     // (Diego, 24/09): se o cálculo novo divergir, a reserva fica como está e avisa — a
-    // correção vira um ajuste manual (M4.5).
+    // correção vira um ajuste manual (M4.5). Vale o mesmo para a parte do proprietário que já
+    // compõe um repasse em vigor (M4.10), mesmo ainda "a pagar": estornar o lançamento deixaria o
+    // repasse apontando para um valor anulado e a parte nova pareceria disponível de novo.
     const precisaMudar =
       ativos.some((a) => !a.chave || !desejadas.has(baseDaChave(a.chave))) ||
       desejados.some((l) => !ativos.some((a) => a.chave && baseDaChave(a.chave) === l.chaveOrigem));
-    if (precisaMudar && ativos.some((a) => a.estado === "realizado" || a.estado === "conciliado")) {
+    const emRepasse = ativos.length
+      ? await tx
+          .select({ id: repasseItens.lancamentoId })
+          .from(repasseItens)
+          .where(and(inArray(repasseItens.lancamentoId, ativos.map((a) => a.id)), isNull(repasseItens.liberadoEm)))
+      : [];
+    if (precisaMudar && (ativos.some((a) => a.estado === "realizado" || a.estado === "conciliado") || emRepasse.length > 0)) {
       // Divergência entre o cálculo e o dinheiro já movimentado: a reserva fica em conferência (M4.8),
       // qualquer que seja a situação dela, até bater de novo ou alguém dar por resolvida.
       // Um cálculo divergente diferente do que já estava em conferência (contrato, recebimento ou regra
@@ -105,7 +114,7 @@ export async function aplicarMotor(
         estornados: 0,
         mantidos: ativos.length,
         protegido: true,
-        avisos: [...avisos, "Esta reserva já teve dinheiro movimentado: o cálculo novo não foi aplicado. Se precisar, faça um ajuste manual."],
+        avisos: [...avisos, emRepasse.length ? "A parte do proprietário desta reserva já compõe um repasse: o cálculo novo não foi aplicado. Se precisar, estorne o repasse ou faça um ajuste manual." : "Esta reserva já teve dinheiro movimentado: o cálculo novo não foi aplicado. Se precisar, faça um ajuste manual."],
       };
     }
 

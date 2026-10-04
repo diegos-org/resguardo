@@ -12,6 +12,7 @@ import { criarReserva } from "@/reservas/repositorio";
 import { estornarRepasse, fecharMes, listarRepasses, marcarRepassePago } from "@/repasses/repasses";
 import { fechamentoDeTodas, fechamentoManual } from "./cron";
 import { chaveDoEnvio, chaveDoReenvio, enviarFechamentos, fechamentoAindaVale, versaoDoConteudo, enviarFechamentosAutomaticos, lerConfigFechamentoEmail, salvarConfigFechamentoEmail, situacaoDosFechamentos } from "./email";
+import { receberTudo } from "@/repasses/testes";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -45,6 +46,15 @@ const reserva = (imovelId: string, checkin: string, checkout: string): DadosRese
 const ligar = () => salvarConfigFechamentoEmail(db, org, { ativo: true, assunto: "Fechamento de {mes}", texto: "Olá, {nome}. Segue o relatório de {mes}." }, null);
 const fechar = (dono = dona) => fecharMes(db, org, dono, MES, "2026-11-01", null);
 
+
+/** Cria a reserva e registra o recebimento integral (M4.10: só o dinheiro já com a empresa entra no repasse). */
+async function criarRecebida(dados: Parameters<typeof criarReserva>[2]) {
+  const r = await criarReserva(db, org, dados, null);
+  if (!r.ok) throw new Error(JSON.stringify(r.erros));
+  await receberTudo(db, org, r.reserva.id, dados.checkin);
+  return r.reserva;
+}
+
 beforeEach(async () => {
   ({ db, close } = await createTestDb());
   [{ id: org }] = await db.insert(organizacoes).values({ nome: "A" }).returning();
@@ -68,8 +78,8 @@ beforeEach(async () => {
   ]);
   await criarContrato(db, org, a, { tipo: "gestao_completa", comissao: "15", inicio: "2025-01-01" }, null);
   await criarContrato(db, org, b, { tipo: "gestao_completa", comissao: "15", inicio: "2025-01-01" }, null);
-  await criarReserva(db, org, reserva(a, "2026-10-05", "2026-10-10"), null);
-  await criarReserva(db, org, reserva(b, "2026-10-05", "2026-10-10"), null);
+  await criarRecebida(reserva(a, "2026-10-05", "2026-10-10"));
+  await criarRecebida(reserva(b, "2026-10-05", "2026-10-10"));
 });
 afterEach(() => close());
 
@@ -392,7 +402,7 @@ describe("e-mail do fechamento (M5.4)", () => {
     const [{ id: terceira }] = await db.insert(proprietarios).values({ organizacaoId: org, nome: "Terceira Exemplo", email: "" }).returning();
     await db.insert(proprietarioImoveis).values({ proprietarioId: terceira, imovelId: c });
     await criarContrato(db, org, c, { tipo: "gestao_completa", comissao: "15", inicio: "2025-01-01" }, null);
-    await criarReserva(db, org, reserva(c, "2026-11-05", "2026-11-10"), null);
+    await criarRecebida(reserva(c, "2026-11-05", "2026-11-10"));
     // Outubro: saldo zero, sem e-mail cadastrado (não sai). Novembro é pago.
     expect(await fecharMes(db, org, terceira, "2026-11", "2026-12-01", null)).toMatchObject({ ok: true });
     await db.update(proprietarios).set({ email: "terceira@example.com" }).where(eq(proprietarios.id, terceira));

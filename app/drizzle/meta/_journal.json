@@ -309,6 +309,69 @@
       "when": 1791111172363,
       "tag": "0043_fonte_precos",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1791114259509,
+      "tag": "0044_repasses_periodicidade",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1791120405173,
+      "tag": "0045_repasse_itens_antigos",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1791122043451,
+      "tag": "0046_repasses_email_chave_pix_paga",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1791123774532,
+      "tag": "0047_repasses_email_tentativa_em",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1791127370486,
+      "tag": "0048_repasses_email_pedido",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1791129670377,
+      "tag": "0049_repasse_itens_substituidos",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1791131344975,
+      "tag": "0050_repasse_itens_substituidos_outro_mes",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1791131828589,
+      "tag": "0051_repasse_itens_substituidos_varios_fechamentos",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1791132813984,
+      "tag": "0052_repasse_itens_substituidos_reparo",
+      "breakpoints": true
     }
   ]
 }
