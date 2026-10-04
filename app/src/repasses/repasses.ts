@@ -517,7 +517,10 @@ async function vincularItens(tx: Db, org: string, repasseId: string, partes: rea
 }
 
 /** Itens de um repasse em vigor (as partes de reserva que ele paga), com os códigos para mostrar. */
-export async function itensDoRepasse(db: Db, org: string, repasseId: string): Promise<(RepasseItem & { codigoReserva: string; codigoImovel: string; checkin: string; checkout: string; hospede: string; parcial: boolean })[]> {
+/** Item de repasse com a reserva e o imóvel (para o painel, o portal e o e-mail). */
+export type ItemDoRepasse = RepasseItem & { codigoReserva: string; codigoImovel: string; checkin: string; checkout: string; hospede: string; parcial: boolean };
+
+export async function itensDoRepasse(db: Db, org: string, repasseId: string): Promise<ItemDoRepasse[]> {
   if (!uuidValido(repasseId)) return [];
   const linhas = await db
     .select({ item: repasseItens, codigoReserva: reservasRef.codigo, codigoImovel: imoveis.codigo, checkin: reservasRef.checkin, checkout: reservasRef.checkout, hospede: reservasRef.hospedeNome })

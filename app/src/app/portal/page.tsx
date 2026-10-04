@@ -23,7 +23,7 @@ import { bloquearDatasAcao, escolherPeriodicidadeAcao, liberarDatasAcao, pedirRe
 import { partesDoProprietario } from "@/repasses/extrato";
 import { periodicidadeDoProprietario } from "@/repasses/proprietario";
 import { lerRegrasRepasses } from "@/repasses/regras-config";
-import { listarRepasses } from "@/repasses/repasses";
+import { itensDoRepasse, listarRepasses } from "@/repasses/repasses";
 import { bloqueiosDoProprietario, permissoesDeBloqueio } from "@/portal/bloqueios";
 import { janela, lerPeriodoPortal, nome, situacaoDoPeriodo, vizinhos } from "@/portal/periodo";
 import { bloqueiosDoPortal, reservasDoPortal, type SituacaoReserva } from "@/portal/reservas";
@@ -226,7 +226,10 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
   const agora = new Date();
   const periodicidades = (await Promise.all(donos.map((d) => periodicidadeDoProprietario(db, sessao.organizacaoId, d.id, hoje, regrasRepasses)))).filter((x) => x !== null);
   const partes = (await Promise.all(donos.map((d) => partesDoProprietario(db, sessao.organizacaoId, d.id, agora)))).flat().filter((x) => (x.competencia >= periodo.inicio && x.competencia < periodo.fim) || x.situacao === "disponivel" || x.situacao === "a_liberar");
-  const repassesDoPortal = (await Promise.all(donos.map((d) => listarRepasses(db, sessao.organizacaoId, d.id)))).flat().filter((r) => r.estornadoEm === null && ((r.data >= periodo.inicio && r.data < periodo.fim) || r.situacao === "a_pagar"));
+  // Estornados ficam no histórico do período (o proprietário viu o repasse aparecer, talvez até pago): a situação explica.
+  const repassesDoPortal = (await Promise.all(donos.map((d) => listarRepasses(db, sessao.organizacaoId, d.id)))).flat().filter((r) => (r.data >= periodo.inicio && r.data < periodo.fim) || r.situacao === "a_pagar");
+  // As reservas que cada repasse cobriu (itens): o detalhe oficial do que foi pago, mesmo com partes do mesmo período em repasses diferentes.
+  const itensDosRepasses = Object.fromEntries(await Promise.all(repassesDoPortal.map(async (r) => [r.id, await itensDoRepasse(db, sessao.organizacaoId, r.id)] as const)));
   const mensagemRepasses =
     typeof params.erro === "string"
       ? { tipo: "erro" as const, texto: params.erro }
@@ -451,6 +454,7 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
             periodicidades={periodicidades}
             partes={partes}
             repasses={repassesDoPortal}
+            itens={itensDosRepasses}
             regras={regrasRepasses}
             hoje={hoje}
             empresa={empresa}

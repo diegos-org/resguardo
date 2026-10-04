@@ -4,13 +4,15 @@ import { NOMES_SITUACAO_EMAIL } from "@/repasses/email";
 import { NOMES_SITUACAO_PARTE, type Parte, resumirPartes } from "@/repasses/extrato";
 import { NOMES_PERIODICIDADE, PERIODICIDADES, type PeriodicidadeRepasse, type RegrasRepasses } from "@/repasses/periodicidade";
 import type { PeriodicidadeDoDono } from "@/repasses/proprietario";
-import { nomeMes, type Repasse } from "@/repasses/repasses";
+import { type ItemDoRepasse, nomeMes, type Repasse } from "@/repasses/repasses";
 
 type Props = {
   donos: readonly { id: string; nome: string }[];
   periodicidades: readonly PeriodicidadeDoDono[];
   partes: readonly Parte[];
   repasses: readonly Repasse[];
+  /** Reservas que cada repasse cobriu (por id do repasse): o detalhe oficial do que foi pago. */
+  itens: Readonly<Record<string, readonly ItemDoRepasse[]>>;
   regras: RegrasRepasses;
   hoje: string;
   empresa: string;
@@ -30,13 +32,19 @@ export function nomeDoRepasseNoPortal(r: Pick<Repasse, "tipo" | "mes" | "data" |
   return `Repasse de ${dataBr(r.data)}${r.pedidoEm ? " (pedido por você)" : ""}`;
 }
 
-export function situacaoNoPortal(r: Pick<Repasse, "situacao" | "dataPagamento">): string {
-  if (r.situacao === "estornado") return "Estornado";
+export function situacaoNoPortal(r: Pick<Repasse, "situacao" | "dataPagamento" | "estornadoEm">): string {
+  // Estornado fica no histórico: as reservas dele voltam ao extrato (disponível ou a liberar) e entram no próximo repasse.
+  if (r.situacao === "estornado") return `Estornado pela empresa${r.estornadoEm ? ` em ${r.estornadoEm.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}` : ""}: as reservas voltaram ao extrato`;
   return r.situacao === "pago" ? `Pago em ${dataBr(r.dataPagamento!)}` : "A pagar pela empresa";
 }
 
+/** Uma linha por reserva coberta pelo repasse (integral ou a parte de um mês). */
+export function textoDoItemNoPortal(i: ItemDoRepasse): string {
+  return `${i.codigoImovel} · ${i.hospede || i.codigoReserva} · ${dataBr(i.checkin)} → ${dataBr(i.checkout)} · ${formatBRL(i.valor)} (${i.parcial ? `parte de ${nomeMes(i.competencia.slice(0, 7))}` : "integral"})`;
+}
+
 /** Seção "Extrato e repasses" do portal (M4.10): como quer receber, a parte de cada reserva e os repasses. */
-export function ExtratoRepasses({ donos, periodicidades, partes, repasses, regras, hoje, empresa, escolher, pedir, mensagem }: Props) {
+export function ExtratoRepasses({ donos, periodicidades, partes, repasses, itens, regras, hoje, empresa, escolher, pedir, mensagem }: Props) {
   const resumo = resumirPartes(partes);
   const diaPrimeiro = hoje.endsWith("-01");
   // Disponível por proprietário: o botão de pedir só aparece para quem tem valor a repassar.
@@ -160,7 +168,7 @@ export function ExtratoRepasses({ donos, periodicidades, partes, repasses, regra
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }} aria-label="Repasses">
           <thead>
             <tr style={{ textAlign: "left", color: "var(--scl-texto-2)" }}>
-              {["Repasse", "Valor", "Situação", "Comprovante", "E-mail"].map((c) => (
+              {["Repasse", "Valor", "Reservas", "Situação", "Comprovante", "E-mail"].map((c) => (
                 <th key={c} scope="col" style={celula}>
                   {c}
                 </th>
@@ -170,30 +178,48 @@ export function ExtratoRepasses({ donos, periodicidades, partes, repasses, regra
           <tbody>
             {repasses.length === 0 && (
               <tr>
-                <td colSpan={5} style={{ ...celula, whiteSpace: "normal" }}>
+                <td colSpan={6} style={{ ...celula, whiteSpace: "normal" }}>
                   Nenhum repasse neste período.
                 </td>
               </tr>
             )}
-            {repasses.map((r) => (
-              <tr key={r.id}>
-                <td style={celula}>{nomeDoRepasseNoPortal(r)}</td>
-                <td style={{ ...celula, fontVariantNumeric: "tabular-nums" }}>{formatBRL(r.valor)}</td>
-                <td style={celula}>{situacaoNoPortal(r)}</td>
-                <td style={{ ...celula, whiteSpace: "normal" }}>
-                  {r.situacao !== "pago" ? "—" : r.comprovante || r.comprovanteArquivoId ? (
-                    <>
-                      {r.comprovante && <code>{r.comprovante}</code>}
-                      {r.comprovante && r.comprovanteArquivoId && " · "}
-                      {r.comprovanteArquivoId && <a href={`/portal/repasses/${r.id}/comprovante`}>abrir comprovante</a>}
-                    </>
-                  ) : (
-                    "ainda não registrado pela empresa"
-                  )}
-                </td>
-                <td style={{ ...celula, whiteSpace: "normal" }}>{r.situacao === "pago" ? NOMES_SITUACAO_EMAIL[r.emailSituacao] : "—"}</td>
-              </tr>
-            ))}
+            {repasses.map((r) => {
+              const dele = itens[r.id] ?? [];
+              return (
+                <tr key={r.id}>
+                  <td style={celula}>{nomeDoRepasseNoPortal(r)}</td>
+                  <td style={{ ...celula, fontVariantNumeric: "tabular-nums" }}>{formatBRL(r.valor)}</td>
+                  <td style={{ ...celula, whiteSpace: "normal", minWidth: 220 }}>
+                    {dele.length === 0 ? (
+                      r.tipo === "fechamento" ? "sem detalhe por reserva (fechamento antigo)" : "—"
+                    ) : (
+                      <details>
+                        <summary style={{ cursor: "pointer" }}>{dele.length === 1 ? "1 reserva" : `${dele.length} reservas`}</summary>
+                        <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+                          {dele.map((i) => (
+                            <li key={i.id}>{textoDoItemNoPortal(i)}</li>
+                          ))}
+                        </ul>
+                        {r.tipo === "fechamento" && <p style={{ ...rotulo, margin: "6px 0 0" }}>O fechamento também acerta despesas e adiantamentos do mês, por isso o valor pode diferir da soma das reservas.</p>}
+                      </details>
+                    )}
+                  </td>
+                  <td style={{ ...celula, whiteSpace: "normal" }}>{situacaoNoPortal(r)}</td>
+                  <td style={{ ...celula, whiteSpace: "normal" }}>
+                    {r.situacao !== "pago" ? "—" : r.comprovante || r.comprovanteArquivoId ? (
+                      <>
+                        {r.comprovante && <code>{r.comprovante}</code>}
+                        {r.comprovante && r.comprovanteArquivoId && " · "}
+                        {r.comprovanteArquivoId && <a href={`/portal/repasses/${r.id}/comprovante`}>abrir comprovante</a>}
+                      </>
+                    ) : (
+                      "ainda não registrado pela empresa"
+                    )}
+                  </td>
+                  <td style={{ ...celula, whiteSpace: "normal" }}>{r.situacao === "pago" ? NOMES_SITUACAO_EMAIL[r.emailSituacao] : "—"}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
