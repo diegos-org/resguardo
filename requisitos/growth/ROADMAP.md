@@ -182,3 +182,15 @@ como fica junto com o modelo B (parecido com o Modelo C de `requisitos/product/M
 cobrança (desconto no repasse ou cobrança avulsa) e quando começar. Não é compromisso nem item do
 ROADMAP principal; retomar depois do M12.1, com números reais no simulador.
 
+## Ideias vindas do sistema de julho (levantamento M0.6, 4/10/2026)
+
+Registradas a partir do acervo do sistema antigo (`arquivo/sistema-antigo/README.md`). São
+hipóteses, não compromissos:
+- **Prospecção de proprietários:** varrer anúncios fracos do Airbnb por localidade e tipo
+  (nota baixa, poucos reviews, sem Superhost), captura manual com diagnóstico por IA e funil
+  de captação. Depende de uma fonte de dados confiável e das regras das plataformas.
+- **Gerador de posts e anúncios:** rascunhos por imóvel, formato, objetivo e público, com
+  brief visual e checklist antes de publicar; nada publicado automaticamente.
+- **Campanhas pagas:** conexão com Google e Meta para acompanhar gasto, cliques e reservas.
+- **Cupons de desconto** para reservas diretas (também listado como ideia de produto).
+
