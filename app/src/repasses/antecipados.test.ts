@@ -1,7 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { criarContrato } from "@/contratos/repositorio";
-import { imoveis, lancamentos, organizacoes, proprietarioImoveis, proprietarios, repasseItens, repasses, representantes } from "@/db/schema";
+import { imoveis, lancamentos, organizacoes, proprietarioImoveis, proprietarios, repasseItens, repasses, representantes, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { CorreioMemoria, ErroEnvioIncerto, type Mensagem } from "@/email/correio";
@@ -483,10 +483,13 @@ describe("3ª rodada do Codex: fechamentos antigos sem itens, trava no estorno d
     expect(await gerarAntecipado(db, org, dono, "2026-10-12", null)).toMatchObject({ ok: false, erro: expect.stringContaining("Nada disponível") });
   });
 
-  it("migração 0049: parte recalculada depois do fechamento antigo (original estornado, substituto novo) ganha o item do fechamento com o valor que ele incluiu; entrada atrasada continua livre", async () => {
+  it("migrações 0049/0050: parte recalculada depois do fechamento antigo (original estornado, substituto novo, mesmo mês ou outro) ganha o item do fechamento com o valor que ele incluiu; entrada atrasada continua livre", async () => {
     const sqlDaMigracao = (arquivo: string) => readFileSync(join(process.cwd(), "drizzle", arquivo), "utf8").split("\n").filter((l) => !l.startsWith("--")).join("\n");
     const base = { organizacaoId: org, proprietarioId: dono, tipo: "fechamento" as const, saldo: 72250, descontado: 0, contestado: 0, valor: 72250 };
-    // Fechamento "antigo" de outubro, gravado direto (sem itens), calculado com a parte original da reserva base em vigor.
+    // Reserva de outubro que, depois do fechamento, vai ser corrigida para novembro (o motor troca a competência da parte).
+    const movida = await criar(reserva(a, "2026-10-20", "2026-10-22"));
+    const [originalMovida] = await direitos(movida.id);
+    // Fechamento "antigo" de outubro, gravado direto (sem itens), calculado com as partes originais em vigor.
     const [outubro] = await db.insert(repasses).values({ ...base, mes: "2026-10-01", data: "2026-11-01" }).returning();
     const [original] = await direitos(reservaBase);
     // Depois do fechamento, o motor recalcula a reserva com outra regra (base bruta): o original é estornado e nasce um substituto de outro valor.
@@ -495,25 +498,41 @@ describe("3ª rodada do Codex: fechamentos antigos sem itens, trava no estorno d
     expect(recalculo!.estornados).toBeGreaterThan(0);
     const substituto = (await direitos(reservaBase)).find((l) => !l.estornoDe && l.id !== original.id)!;
     expect(substituto.valor).not.toBe(72250);
+    // A reserva movida muda de mês: o substituto nasce na competência de novembro, com o mesmo valor.
+    await db.update(reservas).set({ checkin: "2026-11-20", checkout: "2026-11-22" }).where(eq(reservas.id, movida.id));
+    expect((await aplicarMotor(db, org, movida.id, null))!.estornados).toBeGreaterThan(0);
+    const substitutoMovida = (await direitos(movida.id)).find((l) => !l.estornoDe && l.competencia === "2026-11-01")!;
+    expect(substitutoMovida.valor).toBe(originalMovida.valor);
     // Reserva lançada com atraso (depois do fechamento, sem original coberto): continua livre para o próximo repasse.
     const atrasada = await criar(reserva(a, "2026-10-20", "2026-10-22"));
-    // A 0045 sozinha não liga nada: o original está estornado e o substituto nasceu depois do fechamento.
+    // A 0045 sozinha não liga nada: os originais estão estornados e os substitutos nasceram depois do fechamento.
     await db.execute(sql.raw(sqlDaMigracao("0045_repasse_itens_antigos.sql")));
     expect(await db.select().from(repasseItens)).toHaveLength(0);
+    // A 0049 liga o substituto do mesmo mês; o que mudou de mês fica para a 0050.
     await db.execute(sql.raw(sqlDaMigracao("0049_repasse_itens_substituidos.sql")));
-    const itens = await db.select().from(repasseItens);
+    let itens = await db.select().from(repasseItens);
     expect(itens).toHaveLength(1);
     // O substituto ganha o item do fechamento de outubro com o valor que o fechamento incluiu (o do original), não o novo.
     expect(itens[0]).toMatchObject({ repasseId: outubro.id, lancamentoId: substituto.id, reservaId: reservaBase, competencia: "2026-10-01", valor: 72250, liberadoEm: null });
-    expect(itens.some((i) => i.reservaId === atrasada.id || i.lancamentoId === original.id)).toBe(false);
-    // Rodar de novo não duplica.
+    await db.execute(sql.raw(sqlDaMigracao("0050_repasse_itens_substituidos_outro_mes.sql")));
+    itens = await db.select().from(repasseItens);
+    expect(itens).toHaveLength(2);
+    // O substituto de novembro também fica ligado ao fechamento de outubro (que pagou aquele direito), com o valor coberto.
+    expect(itens.find((i) => i.lancamentoId === substitutoMovida.id)).toMatchObject({ repasseId: outubro.id, reservaId: movida.id, competencia: "2026-11-01", valor: originalMovida.valor, liberadoEm: null });
+    expect(itens.some((i) => i.reservaId === atrasada.id || i.lancamentoId === original.id || i.lancamentoId === originalMovida.id)).toBe(false);
+    // Rodar de novo (qualquer das duas) não duplica nem realoca.
     await db.execute(sql.raw(sqlDaMigracao("0049_repasse_itens_substituidos.sql")));
-    expect(await db.select().from(repasseItens)).toHaveLength(1);
+    await db.execute(sql.raw(sqlDaMigracao("0050_repasse_itens_substituidos_outro_mes.sql")));
+    expect(await db.select().from(repasseItens)).toHaveLength(2);
+    // No painel, no portal e no e-mail o item recalculado é "parcial" (o item não cobre o valor atual); o movido, integral.
+    const doFechamento = await itensDoRepasse(db, org, outubro.id);
+    expect(doFechamento.map((i) => [i.reservaId, i.parcial])).toEqual(expect.arrayContaining([[reservaBase, true], [movida.id, false]]));
     // Com o item, registrar o recebimento não torna o substituto disponível de novo: repassado pelo valor que o fechamento
     // incluiu, com a diferença do recálculo explícita (vai ao próximo fechamento mensal pelo acerto); nada a antecipar.
     await receberTudo(db, org, reservaBase, "2026-10-10");
     const todas = await partes("2026-10-12");
     expect(todas.find((p) => p.reservaId === reservaBase)).toMatchObject({ situacao: "repassado", repasse: { id: outubro.id, tipo: "fechamento", valor: 72250 }, diferenca: substituto.valor - 72250, motivo: expect.stringContaining("Recalculada depois") });
+    expect(todas.find((p) => p.reservaId === movida.id)).toMatchObject({ situacao: "repassado", competencia: "2026-11-01", repasse: { id: outubro.id }, diferenca: 0 });
     expect(resumirPartes(todas).ajusteNoFechamento).toBe(substituto.valor - 72250);
     expect(await gerarAntecipado(db, org, dono, "2026-10-12", null)).toMatchObject({ ok: false, erro: expect.stringContaining("Nada disponível") });
   });

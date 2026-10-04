@@ -523,14 +523,16 @@ export type ItemDoRepasse = RepasseItem & { codigoReserva: string; codigoImovel:
 export async function itensDoRepasse(db: Db, org: string, repasseId: string): Promise<ItemDoRepasse[]> {
   if (!uuidValido(repasseId)) return [];
   const linhas = await db
-    .select({ item: repasseItens, codigoReserva: reservasRef.codigo, codigoImovel: imoveis.codigo, checkin: reservasRef.checkin, checkout: reservasRef.checkout, hospede: reservasRef.hospedeNome })
+    .select({ item: repasseItens, codigoReserva: reservasRef.codigo, codigoImovel: imoveis.codigo, checkin: reservasRef.checkin, checkout: reservasRef.checkout, hospede: reservasRef.hospedeNome, valorAtual: lancamentos.valor })
     .from(repasseItens)
     .innerJoin(reservasRef, eq(reservasRef.id, repasseItens.reservaId))
     .innerJoin(imoveis, eq(imoveis.id, repasseItens.imovelId))
+    .innerJoin(lancamentos, eq(lancamentos.id, repasseItens.lancamentoId))
     .where(and(eq(repasseItens.organizacaoId, org), eq(repasseItens.repasseId, repasseId)))
     .orderBy(asc(reservasRef.checkin), asc(repasseItens.competencia));
   if (!linhas.length) return [];
-  // Parcial: a reserva tem outra parte (outro mês) em vigor que não está neste repasse.
+  // Parcial: a reserva tem outra parte (outro mês) em vigor que não está neste repasse, ou o item não cobre o valor
+  // atual da parte (recalculada depois de um fechamento antigo, migrações 0049/0050: a diferença vai ao próximo fechamento).
   const outras = await db
     .select({ reservaId: lancamentos.reservaId, n: sql<number>`count(*)::int` })
     .from(lancamentos)
@@ -539,7 +541,7 @@ export async function itensDoRepasse(db: Db, org: string, repasseId: string): Pr
   const totalPartes = new Map(outras.map((o) => [o.reservaId!, o.n]));
   const nesteRepasse = new Map<string, number>();
   for (const l of linhas) nesteRepasse.set(l.item.reservaId, (nesteRepasse.get(l.item.reservaId) ?? 0) + 1);
-  return linhas.map((l) => ({ ...l.item, codigoReserva: l.codigoReserva, codigoImovel: l.codigoImovel, checkin: l.checkin, checkout: l.checkout, hospede: l.hospede, parcial: (totalPartes.get(l.item.reservaId) ?? 1) > (nesteRepasse.get(l.item.reservaId) ?? 0) }));
+  return linhas.map((l) => ({ ...l.item, codigoReserva: l.codigoReserva, codigoImovel: l.codigoImovel, checkin: l.checkin, checkout: l.checkout, hospede: l.hospede, parcial: (totalPartes.get(l.item.reservaId) ?? 1) > (nesteRepasse.get(l.item.reservaId) ?? 0) || l.item.valor !== l.valorAtual }));
 }
 
 /**
