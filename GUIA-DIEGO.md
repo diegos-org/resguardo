@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 4/10/2026, **referência do sistema antigo cruzada com o plano (M0.6):** o museu que você mandou foi percorrido tela a tela e comparado com o que já existe, com uma lista de ideias para você decidir (seção 2 e `arquivo/sistema-antigo`); **desconto do site e simulação do marketplace prontos (M12.1):** nova aba Configurações → Marketplace e desconto do site, com as taxas de referência e os três pesos editáveis e a simulação Airbnb × Booking × site; o site passa a mostrar valor cheio, desconto e total em toda consulta e cotação (seção 2); recebimento do site decidido (M8.0: empresa recebe e repassa, Mercado Pago; repasse na periodicidade que o proprietário escolher, item novo M4.10), modelo do marketplace decidido (B, partes iguais; M12.1 liberado), marketplace recebendo pela empresa como o site, fonte de preços por imóvel no plano (M3.9), backup do repositório ativado por você (M0.7), publicação de homologação dada por fechada por você (M0.5), pedido do checkout com Pix e cartão registrado (M8.2, com parcelamento pago pelo hóspede) e decisão de não cobrar nada sobre as reservas das OTAs do dono do marketplace; correção do robô de backup depois da sua primeira rodada (ele passa a gravar com uma chave da própria conta de backup e guarda o que vem da origem fora de branches e tags, onde nenhuma automação roda; item 23, passos 4, 5 e 7) e passo a passo mais detalhado (passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório ativo na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
+> **Última atualização:** 4/10/2026, **fonte de preços por imóvel pronta (M3.9):** cada imóvel escolhe, na ficha, se os preços são automáticos do SCL, definidos no Beds24 (o SCL só lê) ou digitados no cadastro; site, envio ao Beds24, prévia e portal seguem a escolha (seção 2); item novo de **identidade visual** (M7.5, aprovado por você); **referência do sistema antigo cruzada com o plano (M0.6):** o museu que você mandou foi percorrido tela a tela e comparado com o que já existe, com uma lista de ideias para você decidir (seção 2 e `arquivo/sistema-antigo`); **desconto do site e simulação do marketplace prontos (M12.1):** nova aba Configurações → Marketplace e desconto do site, com as taxas de referência e os três pesos editáveis e a simulação Airbnb × Booking × site; o site passa a mostrar valor cheio, desconto e total em toda consulta e cotação (seção 2); recebimento do site decidido (M8.0: empresa recebe e repassa, Mercado Pago; repasse na periodicidade que o proprietário escolher, item novo M4.10), modelo do marketplace decidido (B, partes iguais; M12.1 liberado), marketplace recebendo pela empresa como o site, fonte de preços por imóvel no plano (M3.9), backup do repositório ativado por você (M0.7), publicação de homologação dada por fechada por você (M0.5), pedido do checkout com Pix e cartão registrado (M8.2, com parcelamento pago pelo hóspede) e decisão de não cobrar nada sobre as reservas das OTAs do dono do marketplace; correção do robô de backup depois da sua primeira rodada (ele passa a gravar com uma chave da própria conta de backup e guarda o que vem da origem fora de branches e tags, onde nenhuma automação roda; item 23, passos 4, 5 e 7) e passo a passo mais detalhado (passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório ativo na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
 
 ---
 
@@ -27,7 +27,7 @@
 | M0 Fundação | Base do app, banco de dados, layout, publicação na Vercel, backup | 🟡 Vercel e login funcionando; banco de homologação separado conferido em 3/10; backup automático do repositório **ativo desde 4/10** em conta separada (M0.7, seção 6, item 23); conferência automática dos PRs mais rápida (M0.8); M0.5 fechado por você em 4/10; referência do sistema antigo cruzada com o plano em 4/10 (M0.6). **M0 concluído** |
 | M1 Acesso | Login (Google/código por e-mail), convites, permissões | ✅ pronto |
 | M2 Cadastros | Imóveis, proprietários, contratos e aba Anúncios | ✅ implementado; referências dos canais precisam ser preenchidas/conferidas |
-| M3 Reservas | Reservas, calendário central, importação e envio de calendário/preços ao Beds24 | 🟡 importação e envio implementados; o envio começa desligado e espera o seu teste no 103; conferência das reservas parcial; fonte de preços por imóvel (M3.9) a fazer |
+| M3 Reservas | Reservas, calendário central, importação e envio de calendário/preços ao Beds24 | 🟡 importação e envio implementados; o envio começa desligado e espera o seu teste no 103; conferência das reservas parcial; fonte de preços por imóvel escolhida na ficha de cada imóvel (M3.9) pronta |
 | M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | 🟡 em andamento; extrato e repasses por periodicidade (M4.10) a fazer |
 | M5 Portal do proprietário | Relatórios, saldos, PDF, bloqueio de uso próprio | 🟡 relatórios, PDF, e-mail do fechamento e bloqueio de datas prontos; documento "como funciona" para o proprietário (M5.6) a fazer |
 | M6 Operação | Limpezas, manutenção, agenda diária | 🟡 em andamento |
@@ -37,6 +37,38 @@
 | M10 WhatsApp | Caixa de entrada do WhatsApp no painel | ⚪ aguardando |
 | M11 Produção | Dados reais, domínio, entrada em uso | ⚪ aguardando |
 | M12 Marketplace | Proprietário que opera o próprio imóvel; SCL cuida do online | 🟡 cadastro pelo site pronto; modelo de cobrança (B, partes iguais) com pesos editáveis, simulação e desconto único do site prontos (M12.1); cálculo e repasse no financeiro (M12.2) dependem do pagamento (M8.2) e do extrato (M4.10) |
+
+### Fonte de preços por imóvel — M3.9 (4/10)
+
+Na ficha de cada imóvel (Preço e taxas) existe agora o campo **Fonte de preços**, com três
+opções explicadas na própria tela:
+
+- **Preços automáticos do SCL** (padrão, como era): preço base, períodos, eventos, feriadões,
+  última hora e pisos; o SCL envia ao Beds24, que repassa ao Airbnb e ao Booking.
+- **Preços definidos no Beds24**, pelo proprietário ou pela ferramenta dele: o SCL **só lê e
+  nunca escreve preço**. O envio ao Beds24 manda só calendário, mínimos e bloqueios (a lista de
+  envio em Configurações → Calendário marca esses imóveis). O site e a cotação usam o preço da
+  última leitura do Beds24; noite sem preço lido, ou com leitura vencida, fica "a confirmar",
+  sem valor e sem "segurar as datas" — nunca o preço base do cadastro como palpite.
+- **Preços digitados no cadastro**: vale o preço base e os períodos exatamente como estão, sem
+  eventos, feriadões e última hora e sem os limites mínimo/máximo do preço dinâmico; o SCL envia
+  ao Beds24. A edição pelo próprio proprietário, no portal, chega com o M12.4.
+
+Em qualquer opção, o **desconto do site** (M12.1) entra por cima do valor cheio, e o calendário
+(mínimos, máximos e bloqueios) é sempre do SCL. Na prévia de calendário aparecem a fonte do
+imóvel e uma coluna **"Site (≈)"**, o preço aproximado da noite no site, para você conferir
+contra o Airbnb e o Booking se a promessa "pague menos" está de pé. O portal do proprietário
+mostra um bloco "De onde vêm os preços" com a explicação.
+
+Decisões suas de 4/10 que ficaram registradas no plano: última hora e desconto do site
+**acumulam** (de propósito); a comunicação é genérica ("pague menos que no Airbnb"), sem
+garantia absoluta; para o marketplace que define preço no Beds24, a promessa fica garantida
+pelo desconto sobre o preço lido, pela cláusula do contrato (quando o M12.3/M12.4 chegar) e pela
+conferência periódica com a coluna "Site (≈)". Os pesos 6/3/3 do modelo B estão com você para
+confirmar (seção 7). E o **visual do estudo de 4/10** (Sage e site de julho) virou o item M7.5:
+verdes mantidos, off-white de papel no lugar do bege, grão sutil só em fundos, busca
+translúcida, serifa nos títulos; site, portais e painel com a mesma paleta, o painel só mais
+denso.
 
 ### Sistema antigo cruzado com o plano — M0.6 (4/10)
 
@@ -172,6 +204,7 @@ peço na hora.
   Pricing) define no Beds24, ou preços digitados por ele no portal. O calendário é sempre
   sincronizado pelo Beds24, nos dois sentidos. Um aviso: "usar o preço do Airbnb" só funciona
   se o preço estiver no Beds24; o preço inteligente do Airbnb não dá para ler de fora.
+  **Entregue em 4/10:** ver o bloco "Fonte de preços por imóvel — M3.9" abaixo.
 
 ### Conferência automática dos PRs mais rápida — M0.8
 
@@ -303,8 +336,8 @@ se a importação não rodou. Estadias acima de 90 noites (ajustável) pedem con
 O SCL passa a ser a fonte oficial de calendário e preços: o que você cadastra aqui vai ao
 Beds24 e dele ao Airbnb/Booking. Desde 4/10, para os **preços**, isso vale imóvel por imóvel
 (M3.9, seção 2): onde o proprietário define os preços no Beds24 (ele ou a ferramenta dele), o
-SCL só lê e não mexe — até o M3.9 existir, é só não marcar esse imóvel para envio. O calendário
-é sempre sincronizado. Tudo está pronto, mas **desligado**: nada sai enquanto a
+SCL só lê e não mexe — a escolha fica na ficha do imóvel e, nesses imóveis, o envio manda só
+calendário, mínimos e bloqueios. O calendário é sempre sincronizado. Tudo está pronto, mas **desligado**: nada sai enquanto a
 variável `BEDS24_ESCRITA` não estiver com o valor `ligada` na Vercel e o imóvel não estiver
 marcado para envio. Quatro lugares novos:
 
@@ -1491,6 +1524,14 @@ ambiente).
    disser outro número, corrija ali) e brinque com a simulação. Enquanto não salvar nada, vale o
    padrão 1/1/1, que já está dando desconto no site de homologação (cerca de 4% do valor cheio).
    Se preferir que o site não dê desconto por enquanto, ponha 0 no peso do hóspede.
+25. **Fonte de preços de cada imóvel (M3.9):** abra a ficha de cada imóvel → Preço e taxas →
+   **Fonte de preços**. Os cinco do Rio ficam em "automáticos do SCL" (já é o padrão). Para um
+   imóvel de marketplace em que o dono ou a ferramenta dele define os preços no Beds24, escolha
+   "definidos no Beds24": aí ele pode entrar na lista de envio sem risco de o SCL sobrescrever
+   preço. Depois, na prévia de calendário, confira a coluna "Site (≈)" contra o anúncio.
+26. **Identidade visual (M7.5):** quando achar, mande as capturas e os arquivos do "Sage" e as
+   imagens do Google Fotos; eu guardo em `prototipos/` e escrevo a especificação de design
+   antes de mexer em qualquer tela. O mock da home que você já mandou está guardado comigo.
 
 ---
 
@@ -1526,6 +1567,11 @@ ambiente).
   de decidir. Decidido: B, em partes iguais.
 - **Ideias do sistema antigo (M0.6):** diga quais das nove ideias da seção 2 viram item do
   plano, e em que ordem. Nenhuma entra sem a sua decisão.
+- **Pesos do modelo B (6/3/3):** você propôs SCL 6%, hóspede 3% e proprietário 3% da margem
+  de 12 pontos; eu achei justo e defensável (hóspede paga 3% a menos que no Airbnb, proprietário
+  recebe cerca de 3,7% a mais, SCL fica com 6%). Se confirmar, salve em Configurações →
+  Marketplace e desconto do site como hóspede 1 / proprietário 1 / SCL 2, e eu troco o padrão
+  do sistema para esses pesos no PR seguinte.
 - **Búzios:** fica no sistema interno para controle (combinado). No site público, a decidir.
 - **Avaliações**: só no Airbnb ou também próprias.
 

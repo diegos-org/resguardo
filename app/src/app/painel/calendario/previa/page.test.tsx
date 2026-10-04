@@ -12,10 +12,11 @@ vi.mock("@/imoveis/repositorio", () => ({ listarImoveis: m.imoveis }));
 vi.mock("@/beds24/configuracao", () => ({ listarMapeamentosBeds24: m.mapas }));
 vi.mock("@/calendario/regras-config", async (orig) => ({ ...(await orig<typeof import("@/calendario/regras-config")>()), lerRegrasCalendario: m.regras }));
 vi.mock("@/calendario/envio", async (orig) => ({ ...(await orig<typeof import("@/calendario/envio")>()), planejarImovel: m.planejar, ultimosEnvios: m.envios, noitesDoEnvio: m.noites }));
+vi.mock("@/marketplace/precos-config", async () => ({ lerPrecosMarketplace: async () => (await import("@/marketplace/precos")).PRECOS_MARKETPLACE_PADRAO }));
 vi.mock("@/components/calendario/EnvioBeds24", () => ({ EnvioBeds24: (p: { envioLigado: boolean; escritaLigada: boolean }) => <div data-envio={`${p.escritaLigada}/${p.envioLigado}`}>Envio ao Beds24</div> }));
 const imovel = { id: "i103", codigo: "103", nome: "Fictício", ativo: true, fuso: "America/Sao_Paulo" };
 const regras = regrasDeVenda({ ...DETALHES_VAZIOS, precoBase: 45000, estadiaMinima: 2 });
-const linhas = planejarCalendario({ imovel: { id: "i103", regras, periodos: [], pisos: [35000, 30000] }, regras: REGRAS_CALENDARIO_PADRAO, hoje: "2026-10-02", inicio: "2026-10-02", fim: "2026-10-03", reservas: [], bloqueios: [], enviados: [], observacoes: [{ data: "2026-10-02", preco: 45000, minimoNoites: null, maximoNoites: null, livres: null, bloqueio: null, observadoEm: new Date("2026-10-02T15:00:00Z") }] });
+const linhas = planejarCalendario({ imovel: { id: "i103", regras, periodos: [], pisos: [35000, 30000], fontePrecos: "scl" }, regras: REGRAS_CALENDARIO_PADRAO, hoje: "2026-10-02", inicio: "2026-10-02", fim: "2026-10-03", reservas: [], bloqueios: [], enviados: [], observacoes: [{ data: "2026-10-02", preco: 45000, minimoNoites: null, maximoNoites: null, livres: null, bloqueio: null, observadoEm: new Date("2026-10-02T15:00:00Z") }] });
 beforeEach(() => {
   vi.clearAllMocks();
   m.db.mockReturnValue({});
@@ -26,7 +27,7 @@ beforeEach(() => {
   m.mapas.mockResolvedValue([{ id: "m", imovelId: "i103", codigo: "103", ativo: true, propertyId: "10", roomId: "20" }]);
   m.envios.mockResolvedValue([{ id: "e1", iniciadoEm: new Date("2026-10-02T12:00:00Z"), situacao: "ok", modo: "envio", automatica: false, resumo: "10 noite(s) enviada(s)", avisos: ["aviso de teste"], noitesEnviadas: 10, noites: 10 }]);
   m.noites.mockResolvedValue([]);
-  m.planejar.mockResolvedValue({ hoje: "2026-10-02", inicio: "2026-10-02", fim: "2026-10-03", linhas, regras, pisos: [35000, 30000] });
+  m.planejar.mockResolvedValue({ hoje: "2026-10-02", inicio: "2026-10-02", fim: "2026-10-03", linhas, regras, pisos: [35000, 30000], fontePrecos: "scl" });
 });
 afterEach(() => vi.unstubAllEnvs());
 const html = async (params: Record<string, string> = {}) => renderToStaticMarkup(await Page({ params: Promise.resolve({}), searchParams: Promise.resolve(params) }));
@@ -44,6 +45,9 @@ it("prefere 103, mostra plano por noite, leitura parcial e horário local; opera
   expect(h).toContain("2 noites nesta consulta · 1 com leitura do Beds24 · 2 a enviar");
   expect(h).toContain("12:00");
   expect(h).toContain("R$ 450,00 → R$ 450,00 (R$ 337,50)");
+  // Fonte de preços (M3.9) e preço aproximado no site: R$ 337,50 − 4% = R$ 324,00.
+  expect(h).toContain("Fonte de preços deste imóvel:</strong> Preços automáticos do SCL");
+  expect(h).toContain("R$ 324,00");
   expect(h).toContain("Semana normal");
   expect(h).toContain("Enviar (diferente ou sem leitura)");
   expect(h).not.toContain("Envio ao Beds24");

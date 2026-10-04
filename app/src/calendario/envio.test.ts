@@ -526,6 +526,30 @@ describe("envio ao Beds24 (M3.7)", () => {
     expect(beds.escritas[0][0].roomId).toBe("20");
   });
 
+  it("fonte de preços trocada para o Beds24 entre o plano e a escrita (M3.9): nada é escrito, os preços do proprietário ficam intactos; o próximo envio replaneja sem preço", async () => {
+    let transacoes = 0;
+    const dbCorrida = new Proxy(db, {
+      get(alvo, prop, receptor) {
+        if (prop === "transaction") {
+          const original = alvo.transaction.bind(alvo) as (...a: unknown[]) => Promise<unknown>;
+          return async (...a: unknown[]) => { const r = await original(...a); if (++transacoes === 1) await alvo.update(imoveisDetalhes).set({ fontePrecos: "beds24" }).where(eq(imoveisDetalhes.imovelId, im)); return r; };
+        }
+        const v = Reflect.get(alvo, prop, receptor);
+        return typeof v === "function" ? v.bind(alvo) : v;
+      },
+    }) as Db;
+    const r = await enviarCalendarioBeds24(dbCorrida, org, beds, beds, { modo: "envio", agora: proximoAgora(), autorId: null });
+    expect(r).toMatchObject({ ok: false, situacao: "erro", imoveis: [{ enviadas: 0, confirmadas: 0, falha: expect.stringContaining("Fonte de preços do imóvel alterada") }] });
+    expect(beds.escritas).toHaveLength(0);
+    expect(diaFalso("2026-10-01")).toMatchObject({ price1: 400 });
+    expect((await noites()).every(n => n.resultado === "falhou")).toBe(true);
+    // Replanejado com a fonte nova: calendário vai, preço não.
+    const r2 = await enviar();
+    expect(r2.situacao).toBe("ok");
+    expect(beds.escritas[0][0].faixas.every(f => f.preco === undefined)).toBe(true);
+    expect(diaFalso("2026-10-01")).toMatchObject({ price1: 400 });
+  });
+
   it("bloqueio removido entre o plano e a escrita: nada é escrito para o imóvel, sem posse; o próximo envio replaneja", async () => {
     const [b] = await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-10-03", fim: "2026-10-04", motivo: "Uso próprio" }).returning({ id: bloqueios.id });
     // Depois da primeira transação (plano e intenção), o bloqueio some por fora da trava.

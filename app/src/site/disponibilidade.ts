@@ -125,10 +125,17 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   }
   if (motivos.size) return { situacao: "indisponivel", motivos: [...motivos], noites, cotacao: null, leituraEm: semLeitura ? null : leituraEm };
 
-  const cot = cotarNoites(plano.regras, linhas.map((l) => ({ data: l.data, valor: l.precoFinalEsperado, fonte: l.fontePreco })), hospedes);
+  // Fonte de preços do imóvel (M3.9): com preços do Beds24, só vale o preço de uma leitura atual (dentro da
+  // validade e posterior ao último envio); leitura velha ou sem preço deixa a noite sem valor — nunca o
+  // cadastro como palpite. Nas outras fontes vale o preço final esperado do motor.
+  const precoDaNoite = (l: (typeof linhas)[number]) => (plano.fontePrecos === "beds24" ? (atual(l) ? (l.observacao?.preco ?? null) : null) : l.precoFinalEsperado);
+  const precosNoites = linhas.map((l) => ({ data: l.data, valor: precoDaNoite(l), fonte: l.fontePreco }));
+  const cot = cotarNoites(plano.regras, precosNoites, hospedes);
   // Preço zero numa noite é aviso do motor ("conferir"), não diária grátis; taxa de limpeza não
   // cadastrada também não vira zero para o visitante. Nos dois casos o valor fica a confirmar.
-  const comValor = linhas.every((l) => l.precoFinalEsperado !== null && l.precoFinalEsperado > 0);
+  const comValor = precosNoites.every((p) => p.valor !== null && p.valor > 0);
+  // Preços do Beds24 sem leitura atual (ou sem preço na leitura): a data não é vendida pelo site, fica a confirmar (M3.9).
+  const semPrecoNaFonte = plano.fontePrecos === "beds24" && !comValor;
   const diarias = comValor ? cot.diarias : null;
   const valorCheio = comValor && cot.total !== null && plano.regras.taxaLimpeza !== null ? cot.total : null;
   // Desconto único do site (M12.1): a parte do hóspede da margem do modelo B, calculada sobre o valor cheio.
@@ -140,9 +147,9 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   // Capacidade não cadastrada: não dá para saber se as pessoas cabem, então nada é confirmado por omissão.
   const semCapacidade = !imovel.capacidade;
   if (semCapacidade) avisos.push("A capacidade deste apartamento ainda não foi cadastrada: confirmamos na conversa se o número de pessoas cabe.");
-  if (total === null) avisos.push("O valor dessas datas é confirmado na conversa.");
+  if (total === null) avisos.push(semPrecoNaFonte ? "O preço dessas datas é definido no Beds24 e ainda não foi lido (ou a leitura venceu): confirmamos na conversa." : "O valor dessas datas é confirmado na conversa.");
   return {
-    situacao: aConfirmar || semCapacidade ? "a_confirmar" : "disponivel",
+    situacao: aConfirmar || semCapacidade || semPrecoNaFonte ? "a_confirmar" : "disponivel",
     motivos: avisos,
     noites,
     cotacao: { diarias, limpeza: cot.limpeza, hospedeExtra: cot.hospedeExtra, valorCheio, desconto, total },

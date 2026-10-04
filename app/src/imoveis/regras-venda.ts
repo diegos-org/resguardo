@@ -36,7 +36,7 @@ export function periodoDaNoite(periodos: readonly Periodo[], noite: string): Per
   return periodos.find((p) => p.inicio <= noite && noite <= p.fim);
 }
 
-export type PrecoNoite = { data: string; valor: number | null; fonte: "periodo" | "base" | "evento" | "feriado" | "sem_preco"; periodo?: string; ajustado?: boolean };
+export type PrecoNoite = { data: string; valor: number | null; fonte: "periodo" | "base" | "evento" | "feriado" | "sem_preco" | "beds24"; periodo?: string; ajustado?: boolean };
 
 /**
  * Preço de uma noite: exceção do período, senão o preço base. Com o preço dinâmico ligado, o

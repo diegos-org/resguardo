@@ -250,3 +250,25 @@ as regras nativas), reprecificação de sobras de Réveillon/Carnaval, validaç�
 piso líquido. A releitura comprova o que o Beds24 gravou, não a cotação final nas OTAs. Dias
 de entrada/saída restritos no cadastro ainda não são enviados. O teste no 103 e a ativação
 (variável na Vercel) não foram feitos nesta implementação.
+
+## Fonte de preços por imóvel — M3.9, 4/10/2026
+
+- Implementado: a ficha de cada imóvel tem o campo **Fonte de preços** (`scl` automáticos,
+  `beds24` o SCL só lê, `manual` cadastro sem ajustes). Com `beds24`, o motor não calcula preço
+  (sem eventos, feriadões e última hora), o envio ao Beds24 nunca escreve preço (só mínimos,
+  máximos e bloqueios), e o site usa o preço da leitura atual do Beds24; noite sem preço lido ou
+  com leitura vencida fica a confirmar, sem valor. Com `manual`, vale o preço base e os períodos
+  do cadastro, sem multiplicadores, última hora nem os limites mínimo/máximo do preço dinâmico
+  (também um ajuste automático), enviados ao Beds24. Entre o plano e a escrita, o envio confere
+  de novo a fonte do imóvel: se mudou, nada é escrito para ele nessa execução. O calendário (mínimos,
+  máximos, bloqueios, sobras) é sempre do SCL, em qualquer fonte.
+- A direção global do M3.7 ("SCL envia") continua valendo para o calendário; para preços, manda a
+  fonte do imóvel. A regra "até o M3.9 existir, esse imóvel não é marcado para envio" deixou de
+  ser necessária.
+- **Desconto do site acumula com a última hora — decisão de Diego em 4/10/2026.** A regra
+  "multiplicadores não acumulam" continua valendo entre eventos e feriadões. O desconto do site
+  (M12.1) é aplicado por cima do valor cheio de qualquer fonte, e por isso o site fica sempre o
+  mesmo percentual abaixo do que está nas OTAs, inclusive em noite de última hora.
+- A prévia de calendário mostra a fonte do imóvel e a coluna "Site (≈)" (preço da noite com o
+  desconto do site, aproximado) para a conferência periódica contra o Airbnb e o Booking.
+

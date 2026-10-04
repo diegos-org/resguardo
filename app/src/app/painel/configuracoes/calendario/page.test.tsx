@@ -7,6 +7,7 @@ vi.mock("next/navigation", () => ({ redirect: m.redirect }));
 vi.mock("@/acesso/sessao-atual", () => ({ exigirSessaoPainel: m.sessao }));
 vi.mock("@/db/client", () => ({ getDb: m.db }));
 vi.mock("@/imoveis/repositorio", () => ({ listarImoveis: m.imoveis }));
+vi.mock("@/imoveis/detalhes", () => ({ fontesDePrecosDosImoveis: async () => new Map([["ib", "beds24"]]) }));
 vi.mock("@/beds24/configuracao", () => ({ listarMapeamentosBeds24: m.mapas }));
 vi.mock("@/calendario/regras-config", async (orig) => ({ ...(await orig<typeof import("@/calendario/regras-config")>()), lerRegrasCalendario: m.regras }));
 vi.mock("@/calendario/acoes", () => ({ novoEventoAcao: vi.fn(), removerEventoAcao: vi.fn(), salvarRegrasCalendarioAcao: vi.fn() }));
@@ -34,7 +35,7 @@ it("admin vê as regras, feriados, eventos, imóveis com vínculo e o sinal da V
   expect(h).toContain("02/11/2026 Finados");
   expect(h).toContain("Carnaval");
   expect(h).toContain("4×");
-  expect(h).toContain("buzios (sem vínculo Beds24)");
+  expect(h).toContain("buzios (sem vínculo Beds24) (preços do Beds24: o SCL envia só calendário)");
   expect(h).toContain("Sinal de escrita na Vercel: <strong>desligado</strong>");
   expect(h).toContain('name="envioImoveis" checked="" value="i103"');
   expect(h).toContain('name="faixa2Pct"');

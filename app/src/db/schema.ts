@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { boolean, date, index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import type { FontePrecos } from "@/imoveis/fonte-precos";
 
 /**
  * Esquema do banco (Drizzle). Novas tabelas entram aqui e geram migração com
@@ -680,6 +681,8 @@ export const imoveisDetalhes = pgTable("imoveis_detalhes", {
   precoDinamico: boolean("preco_dinamico").notNull().default(false),
   precoMinimo: integer("preco_minimo"),
   precoMaximo: integer("preco_maximo"),
+  /** Fonte de preços do imóvel (M3.9): scl (automáticos), beds24 (o SCL só lê) ou manual (cadastro sem ajustes). */
+  fontePrecos: text("fonte_precos").$type<FontePrecos>().notNull().default("scl"),
   /** Pisos (centavos) da diária final nas faixas de última hora (M3.7); null = não cadastrado. */
   pisoUltimaHora1: integer("piso_ultima_hora_1"),
   pisoUltimaHora2: integer("piso_ultima_hora_2"),

@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import type { Detalhes } from "@/imoveis/detalhes";
 import type { EstadoDetalhes } from "@/imoveis/acoes";
 import { COMODIDADES, TIPOS_CAMA } from "@/imoveis/cadastro-opcoes";
+import { EXPLICACAO_FONTE_PRECOS, FONTES_PRECOS, NOMES_FONTE_PRECOS } from "@/imoveis/fonte-precos";
 import { DIAS_SEMANA } from "@/imoveis/regras-venda";
 import { centavosParaCampo } from "@/lib/dinheiro-form";
 import styles from "../formularios.module.css";
@@ -126,6 +127,24 @@ export function FormDetalhes({ imovelId, inicial, salvar }: Props) {
 
         <fieldset style={grupo}>
           <legend style={legenda}>Preço e taxas (R$)</legend>
+          <label>
+            Fonte de preços deste imóvel
+            <select name="fontePrecos" defaultValue={campo("fontePrecos", inicial.fontePrecos)} {...invalido("fontePrecos")}>
+              {FONTES_PRECOS.map((f) => (
+                <option key={f} value={f}>
+                  {NOMES_FONTE_PRECOS[f]}
+                </option>
+              ))}
+            </select>
+            {erro("fontePrecos")}
+          </label>
+          <ul style={{ margin: 0, paddingLeft: 18, fontSize: "0.875rem", color: "var(--scl-texto-2)" }}>
+            {FONTES_PRECOS.map((f) => (
+              <li key={f}>
+                <strong>{NOMES_FONTE_PRECOS[f]}:</strong> {EXPLICACAO_FONTE_PRECOS[f]}
+              </li>
+            ))}
+          </ul>
           <div className={styles.linha}>
             <label>
               Preço base da noite
