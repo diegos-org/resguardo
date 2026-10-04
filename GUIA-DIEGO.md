@@ -1650,12 +1650,22 @@ ambiente).
      esperado. Anote a lista para não confundir com reserva de outubro que falta receber.
    - **Reserva que atravessa setembro e outubro** (ex.: entrada 29/9, saída 2/10): o sistema separa
      por noite — noites de setembro são a parte de setembro; noites de outubro, a parte de outubro —
-     mas um recebimento só libera as duas partes. Se setembro já foi pago por fora: registre o
-     recebimento normalmente e lance em Financeiro → **Ajustes** um ajuste negativo do valor da parte
-     de setembro (o valor aparece no extrato do proprietário, mês a mês), com a descrição "setembro
-     acertado por fora". Assim o fechamento paga só outubro.
-   - **Reserva de outubro que você já tenha acertado por fora** (se houver): mesmo caminho — recebimento
-     registrado e ajuste negativo do valor pago, com a descrição dizendo quando foi pago.
+     mas um recebimento só libera as duas partes. Se setembro já foi pago por fora, faça **na ordem e
+     no dia certos**: (1) lance em Financeiro → **Ajustes** um ajuste negativo do valor da parte de
+     setembro (o valor aparece no extrato do proprietário, mês a mês), com a descrição "setembro
+     acertado por fora" e **a data em que você pagou por fora — até 31/10, nunca 1/11**: o fechamento
+     de outubro só considera lançamentos datados até 31/10, e o formulário vem com a data de hoje;
+     (2) **só no dia 1º/11, pouco antes de clicar no fechamento**, registre o recebimento. **Nunca
+     registre esse recebimento antes do dia 1º:** para proprietário semanal, quinzenal ou "assim que
+     disponível" — ou se alguém gerar um repasse antecipado à mão — a parte de setembro ficaria
+     disponível e o antecipado a pagaria de novo (o antecipado não aplica ajustes; só o fechamento).
+     No dia 1º não existe antecipado, por isso é o dia seguro.
+   - **Reserva de outubro que você já tenha acertado por fora** (se houver): mesmo caminho e mesma
+     ordem — ajuste negativo do valor pago, datado do dia do pagamento por fora (até 31/10), e o
+     recebimento registrado só no dia 1º/11, antes de clicar.
+   - **Até o fechamento de outubro estar feito**, não gere repasse antecipado à mão para ninguém e,
+     se puder, mantenha todos no padrão mensal (Configurações → Repasses): é a garantia de que nada
+     de setembro sai de novo antes de o ajuste contar.
    - **Despesas e adiantamentos de setembro já acertados por fora:** não lance no sistema. Só o que
      for de outubro em diante.
    - **Antes de clicar:** registre o recebimento de todas as reservas de outubro de Booking, site e
