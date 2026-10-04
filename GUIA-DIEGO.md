@@ -100,7 +100,7 @@ peço na hora.
   empresa, sem split do Mercado Pago, com o extrato. E vale **um modelo por contrato, nunca
   por reserva**: imóvel de gestão total que vender pelo site continua com a comissão do
   contrato (sobre o que entra depois da taxa do pagamento), e o desconto do hóspede é uma
-  regra única do site. Numa reserva de R$ 1.000 pelo site com 4% de desconto, o dono de
+  regra única do site, que entra na cotação do site com o M12.1. Numa reserva de R$ 1.000 pelo site com 4% de desconto, o dono de
   gestão total recebe R$ 784 (contra R$ 714 no Airbnb) e a SCL R$ 138 (contra R$ 126): o site
   é melhor para os três sem regra nova. **Você decidiu em 4/10:** a SCL não cobra nada sobre
   as reservas que o dono do marketplace vende nas OTAs dele (o modelo B vale só para o que o
