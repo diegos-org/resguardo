@@ -124,8 +124,10 @@ o sistema não pagar nem cobrar nada disso de novo, ele agora tem:
   proprietário tiver um bloqueio (lançamento em conferência, ajuste a esclarecer ou adiantamento em
   aberto de antes de 1/10), ele fica de fora com o motivo escrito, e os outros são marcados.
 - **Errou?** O repasse "acerto por fora" se estorna como qualquer outro: as partes voltam ao extrato.
-- **A data não volta atrás por cima de um acerto:** enquanto houver acerto por fora em vigor, o sistema
-  não deixa mudar o início para antes dele nem apagá-lo (estorne primeiro); mudar para depois pode.
+- **A data não passa por cima de repasse:** enquanto houver acerto por fora em vigor, o sistema não
+  deixa mudar o início para antes dele nem apagá-lo; e não deixa colocar o início depois de uma parte
+  que um repasse normal (fechamento ou antecipado) em vigor já pagou, nem de um mês já fechado — senão a
+  data diria "acertado por fora" sobre algo que o sistema pagou. Nos dois casos, estorne primeiro.
 - **Nada de antes passa pelos repasses normais:** com a data definida, a parte de reserva de antes
   do início nunca fica "disponível" (o extrato diz "anterior ao início do sistema: aguarda a
   marcação"), então nem antecipado nem pedido pelo portal a pagam; e o fechamento não roda enquanto

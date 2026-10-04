@@ -317,6 +317,26 @@ describe("acerto por fora de antes do início do sistema (M4.11)", () => {
     expect(await saldo("2026-11-01")).toBe(0);
   });
 
+  it("o início não avança por cima de parte que um repasse normal em vigor já pagou, nem de mês já fechado; estornados, pode", async () => {
+    expect(await salvarInicioDoSistema(db, org, "", "2026-10-04", null)).toEqual({ ok: true, mudou: true });
+    // Sem início, setembro recebido fica disponível e um antecipado o paga pelo sistema.
+    await receberTudo(db, org, setembro, "2026-09-14");
+    const g = await gerarAntecipado(db, org, dono, "2026-09-15", null);
+    expect(g.ok).toBe(true);
+    expect(await salvarInicioDoSistema(db, org, INICIO, "2026-10-04", null)).toMatchObject({ ok: false, erro: expect.stringContaining("1 parte(s) de reserva anterior(es) a 01/10/2026 já em repasse normal") });
+    // Início que não alcança a parte (1/9) pode.
+    expect(await salvarInicioDoSistema(db, org, "2026-09-01", "2026-10-04", null)).toEqual({ ok: true, mudou: true });
+    expect(await salvarInicioDoSistema(db, org, "", "2026-10-04", null)).toEqual({ ok: true, mudou: true });
+    expect(await estornarRepasse(db, org, (g as { id: string }).id, "teste", "2026-09-16", null)).toMatchObject({ ok: true });
+    // Fechamento de setembro em vigor também trava o início em 1/10.
+    await receberTudo(db, org, atravessa, "2026-10-03");
+    expect(await fecharMes(db, org, dono, "2026-09", "2026-10-03", null)).toMatchObject({ ok: true });
+    expect(await salvarInicioDoSistema(db, org, INICIO, "2026-10-04", null)).toMatchObject({ ok: false, erro: expect.stringContaining("1 fechamento(s) de mês anterior") });
+    const [fechamento] = await listarRepasses(db, org, dono);
+    expect(await estornarRepasse(db, org, fechamento.id, "teste", "2026-10-04", null)).toMatchObject({ ok: true });
+    expect(await salvarInicioDoSistema(db, org, INICIO, "2026-10-04", null)).toEqual({ ok: true, mudou: true });
+  });
+
   it("antecipado e fechamento tomam a trava do início do sistema antes de ler as partes: a data não muda no meio deles", async () => {
     const trava = vi.mocked(travarConfig);
     const leituras = [vi.mocked(partesDoProprietario), vi.mocked(partesDisponiveis)];

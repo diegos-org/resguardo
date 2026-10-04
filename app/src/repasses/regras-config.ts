@@ -2,9 +2,9 @@
  * Regras dos repasses por periodicidade gravadas na configuração da organização (chave `repasses_regras`) e o
  * início do sistema para valer (chave `inicio_sistema`, M4.11).
  */
-import { and, eq, gte, isNull, sql } from "drizzle-orm";
+import { and, eq, gte, isNull, lt, ne, sql } from "drizzle-orm";
 import { gravarConfig, lerConfig, travarConfig } from "@/configuracoes/armazem";
-import { repasses } from "@/db/schema";
+import { repasseItens, repasses } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { dataValida } from "@/reservas/regras";
 import { type RegrasRepasses, regrasDeJson } from "./periodicidade";
@@ -32,8 +32,10 @@ export async function lerInicioDoSistema(db: Db, organizacaoId: string): Promise
 /**
  * Grava (ou apaga, com data vazia) o início do sistema, com auditoria. Nunca no futuro: marcaria como acertado o que ainda
  * nem aconteceu. Nunca para antes de um acerto por fora em vigor (nem apagado enquanto houver um): as partes e os
- * lançamentos que ele cobre ficariam "acertados" dentro do período do sistema e nunca entrariam num repasse normal —
- * estorne-os primeiro. A conferência e a gravação ficam sob a mesma trava que a marcação usa.
+ * lançamentos que ele cobre ficariam "acertados" dentro do período do sistema e nunca entrariam num repasse normal.
+ * Nem para depois de uma parte que um repasse normal em vigor (fechamento ou antecipado) já pagou, ou de um mês já
+ * fechado: a data diria que aquilo foi acertado por fora enquanto o sistema o paga. Nos dois casos, estorne primeiro.
+ * A conferência e a gravação ficam sob a mesma trava que a marcação, o antecipado e o fechamento usam.
  */
 export async function salvarInicioDoSistema(db: Db, organizacaoId: string, data: string, hoje: string, autorId: string | null): Promise<{ ok: true; mudou: boolean } | { ok: false; erro: string }> {
   const d = data.trim();
@@ -49,6 +51,21 @@ export async function salvarInicioDoSistema(db: Db, organizacaoId: string, data:
     if (emVigor?.n) {
       const ate = (emVigor.ate ?? "").split("-").reverse().join("/");
       return { ok: false as const, erro: `Há ${emVigor.n} acerto(s) por fora em vigor até ${ate}: para ${d ? "mudar o início para antes disso" : "apagar o início"}, estorne-os primeiro em Financeiro → Repasses.` };
+    }
+    if (d) {
+      const [normais] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(repasseItens)
+        .innerJoin(repasses, eq(repasses.id, repasseItens.repasseId))
+        .where(and(eq(repasses.organizacaoId, organizacaoId), ne(repasses.tipo, "por_fora"), isNull(repasses.estornadoEm), isNull(repasseItens.liberadoEm), lt(repasseItens.competencia, d)));
+      const [fechados] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(repasses)
+        .where(and(eq(repasses.organizacaoId, organizacaoId), eq(repasses.tipo, "fechamento"), isNull(repasses.estornadoEm), lt(repasses.mes, d)));
+      if (normais?.n || fechados?.n) {
+        const o = [normais?.n ? `${normais.n} parte(s) de reserva anterior(es) a ${d.split("-").reverse().join("/")} já em repasse normal (fechamento ou antecipado)` : "", fechados?.n ? `${fechados.n} fechamento(s) de mês anterior` : ""].filter(Boolean).join(" e ");
+        return { ok: false as const, erro: `Há ${o} em vigor: o sistema já pagou (ou vai pagar) isso, então não pode ser dado como acertado por fora. Estorne esses repasses antes, ou escolha um início que não os alcance.` };
+      }
     }
     const mudancas = await gravarConfig(tx, organizacaoId, "inicio_sistema", { data: d }, autorId);
     return { ok: true as const, mudou: Object.keys(mudancas).length > 0 };
