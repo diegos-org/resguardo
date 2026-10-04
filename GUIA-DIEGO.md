@@ -1655,17 +1655,23 @@ ambiente).
      setembro (o valor aparece no extrato do proprietário, mês a mês), com a descrição "setembro
      acertado por fora" e **a data em que você pagou por fora — até 31/10, nunca 1/11**: o fechamento
      de outubro só considera lançamentos datados até 31/10, e o formulário vem com a data de hoje;
-     (2) **só no dia 1º/11, pouco antes de clicar no fechamento**, registre o recebimento. **Nunca
-     registre esse recebimento antes do dia 1º:** para proprietário semanal, quinzenal ou "assim que
-     disponível" — ou se alguém gerar um repasse antecipado à mão — a parte de setembro ficaria
-     disponível e o antecipado a pagaria de novo (o antecipado não aplica ajustes; só o fechamento).
-     No dia 1º não existe antecipado, por isso é o dia seguro.
+     (2) **só no dia 1º/11, pouco antes de clicar no fechamento**, registre o recebimento e **feche na
+     mesma sentada**. **Nunca registre esse recebimento antes do dia 1º:** para proprietário semanal,
+     quinzenal ou "assim que disponível" — ou se alguém gerar um repasse antecipado à mão, ou se o
+     próprio proprietário clicar em "Pedir repasse agora" no portal (isso não depende da
+     periodicidade dele) — a parte de setembro ficaria disponível e o antecipado a pagaria de novo (o
+     antecipado não aplica ajustes; só o fechamento). No dia 1º nenhum antecipado sai, nem pedido
+     pelo portal, por isso é o dia seguro. **Se o fechamento não sair no próprio dia 1º** (algum
+     bloqueio, falta de tempo), **estorne o recebimento ainda no dia 1º** (na página da reserva,
+     "estornar" ao lado do recebimento) e refaça os dois passos no dia em que for fechar; a partir do
+     dia 2 o pedido do proprietário no portal voltaria a funcionar.
    - **Reserva de outubro que você já tenha acertado por fora** (se houver): mesmo caminho e mesma
      ordem — ajuste negativo do valor pago, datado do dia do pagamento por fora (até 31/10), e o
      recebimento registrado só no dia 1º/11, antes de clicar.
-   - **Até o fechamento de outubro estar feito**, não gere repasse antecipado à mão para ninguém e,
-     se puder, mantenha todos no padrão mensal (Configurações → Repasses): é a garantia de que nada
-     de setembro sai de novo antes de o ajuste contar.
+   - **Até o fechamento de outubro estar feito**, não gere repasse antecipado à mão para ninguém.
+     Manter todos no padrão mensal ajuda, mas não basta: o proprietário ainda pode pedir um repasse
+     pelo portal. A proteção de verdade é a ordem acima — recebimento das reservas já pagas por fora
+     só no dia 1º, com o fechamento na mesma sentada.
    - **Despesas e adiantamentos de setembro já acertados por fora:** não lance no sistema. Só o que
      for de outubro em diante.
    - **Antes de clicar:** registre o recebimento de todas as reservas de outubro de Booking, site e
