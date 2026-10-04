@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AcessoNegado, type Sessao } from "@/acesso/politica";
 import { historicoDe } from "@/auditoria/auditoria";
@@ -11,6 +11,7 @@ import { DETALHES_VAZIOS, entradaDeDetalhes, lerDetalhes, listarPeriodos, salvar
 import { reabrirLimpeza } from "@/limpezas/limpezas";
 import { lancarCusto, listarManutencoes } from "@/manutencao/manutencao";
 import {
+  ANTES_DA_POSSE,
   criarPeriodoPeloProprietario,
   excluirPeriodoPeloProprietario,
   imoveisMarketplaceDaSessao,
@@ -32,6 +33,7 @@ vi.mock("@/contratos/repositorio", async (orig) => {
 let db: Db, close: () => Promise<void>, org: string, a: string, b: string, c: string, d: string, usuario: string, dona: string, outro: string;
 // 3/10/2026, 12:00 em São Paulo.
 const agora = new Date("2026-10-03T15:00:00Z");
+const desdeSempre = new Date("2025-01-01T12:00:00Z");
 const sessao = (imovelIds = [a, b, d]): Sessao => ({ usuarioId: usuario, organizacaoId: org, papel: "proprietario", imovelIds });
 
 beforeEach(async () => {
@@ -48,7 +50,8 @@ beforeEach(async () => {
     ])
     .returning();
   [{ id: dona }, { id: outro }] = await db.insert(proprietarios).values([{ organizacaoId: org, nome: "Dona" }, { organizacaoId: org, nome: "Outro" }]).returning();
-  await db.insert(proprietarioImoveis).values([{ proprietarioId: dona, imovelId: a }, { proprietarioId: dona, imovelId: b }, { proprietarioId: outro, imovelId: c }, { proprietarioId: dona, imovelId: d }]);
+  // Vínculos antigos (data explícita): o que é anterior ao vínculo não é do dono atual.
+  await db.insert(proprietarioImoveis).values([{ proprietarioId: dona, imovelId: a, criadoEm: desdeSempre }, { proprietarioId: dona, imovelId: b, criadoEm: desdeSempre }, { proprietarioId: outro, imovelId: c, criadoEm: desdeSempre }, { proprietarioId: dona, imovelId: d, criadoEm: desdeSempre }]);
   [{ id: usuario }] = await db.insert(usuarios).values({ organizacaoId: org, email: "dona@example.com", nome: "Dona", papel: "proprietario" }).returning();
   await db.insert(proprietarioUsuarios).values({ proprietarioId: dona, usuarioId: usuario });
   await criarContrato(db, org, a, { tipo: "marketplace", comissao: "", inicio: "2025-01-01" }, null);
@@ -72,7 +75,7 @@ describe("portal do proprietário marketplace (M12.4)", () => {
   it("lista só os imóveis da sessão em contrato marketplace hoje, com cadastro, períodos e situação do envio", async () => {
     const lista = await imoveisMarketplaceDaSessao(db, sessao(), agora);
     expect(lista.map((i) => i.codigo)).toEqual(["403"]);
-    expect(lista[0]).toMatchObject({ fontePrecos: "scl", detalhes: { precoBase: 30000 }, periodos: [], envio: { naLista: false, automatico: false, ultimo: null } });
+    expect(lista[0]).toMatchObject({ fontePrecos: "scl", posseDesde: "2025-01-01", detalhes: { precoBase: 30000 }, periodos: [], envio: { naLista: false, automatico: false, ultimo: null } });
     // Contrato marketplace que só começa no futuro ainda não libera.
     await criarContrato(db, org, d, { tipo: "marketplace", comissao: "", inicio: "2027-01-01" }, null);
     expect((await imoveisMarketplaceDaSessao(db, sessao(), agora)).map((i) => i.codigo)).toEqual(["403"]);
@@ -167,7 +170,7 @@ describe("portal do proprietário marketplace (M12.4)", () => {
     // a em Auckland: às 15:00Z de 3/10 já é 4/10 lá; e em São Paulo ainda é 3/10.
     await db.update(imoveis).set({ fuso: "Pacific/Auckland" }).where(eq(imoveis.id, a));
     const [{ id: e }] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "501", nome: "Cinco" }).returning();
-    await db.insert(proprietarioImoveis).values({ proprietarioId: dona, imovelId: e });
+    await db.insert(proprietarioImoveis).values({ proprietarioId: dona, imovelId: e, criadoEm: desdeSempre });
     await criarContrato(db, org, e, { tipo: "marketplace", comissao: "", inicio: "2025-01-01" }, null);
     const [auckland, saoPaulo] = await db
       .insert(limpezas)
@@ -212,7 +215,7 @@ describe("portal do proprietário marketplace (M12.4)", () => {
     // d em Auckland: às 15:00Z de 3/10 já é 4/10 lá (em São Paulo ainda é 3/10). e em São Paulo, mesmo contrato.
     await db.update(imoveis).set({ fuso: "Pacific/Auckland" }).where(eq(imoveis.id, d));
     const [{ id: e }] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "501", nome: "Cinco" }).returning();
-    await db.insert(proprietarioImoveis).values({ proprietarioId: dona, imovelId: e });
+    await db.insert(proprietarioImoveis).values({ proprietarioId: dona, imovelId: e, criadoEm: desdeSempre });
     await criarContrato(db, org, d, { tipo: "marketplace", comissao: "", inicio: "2026-10-04" }, null);
     await criarContrato(db, org, e, { tipo: "marketplace", comissao: "", inicio: "2026-10-04" }, null);
     const s = sessao([a, b, d, e]);
@@ -268,5 +271,28 @@ describe("portal do proprietário marketplace (M12.4)", () => {
     } finally {
       vi.mocked(listarContratos).mockImplementation(real);
     }
+  });
+
+  it("imóvel que mudou de dono: limpezas e manutenções de antes do vínculo não aparecem nem podem ser mexidas pelo dono novo", async () => {
+    // a passa de "dona" para "nova" em 3/10 (vínculo às 12:00 de São Paulo).
+    const [{ id: nova }] = await db.insert(proprietarios).values({ organizacaoId: org, nome: "Nova Dona" }).returning();
+    await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));
+    await db.insert(proprietarioImoveis).values({ proprietarioId: nova, imovelId: a, criadoEm: new Date("2026-10-03T15:00:00Z") });
+    await db.insert(limpezas).values([
+      { organizacaoId: org, imovelId: a, data: "2026-10-02", estado: "pedida" },
+      { organizacaoId: org, imovelId: a, data: "2026-10-03", estado: "pedida" },
+    ]);
+    await db.insert(manutencoes).values([
+      { organizacaoId: org, imovelId: a, titulo: "Do dono anterior", estado: "realizada", dataRealizada: "2026-10-01", responsavel: "proprietario", semCusto: true },
+      { organizacaoId: org, imovelId: a, titulo: "Do dono novo", estado: "realizada", dataRealizada: "2026-10-03", responsavel: "proprietario", semCusto: true },
+    ]);
+    const s = sessao([a]);
+    expect((await imoveisMarketplaceDaSessao(db, s, agora))[0]).toMatchObject({ codigo: "403", posseDesde: "2026-10-03" });
+    expect((await limpezasDoProprietario(db, s, agora)).map((l) => l.data)).toEqual(["2026-10-03"]);
+    const [antiga] = await db.select({ id: limpezas.id }).from(limpezas).where(and(eq(limpezas.imovelId, a), eq(limpezas.data, "2026-10-02")));
+    expect(await marcarLimpezaFeitaPeloProprietario(db, s, antiga.id, agora)).toEqual({ ok: false, erro: ANTES_DA_POSSE("2026-10-03") });
+    expect((await manutencoesDoProprietario(db, s, agora)).map((m) => m.titulo)).toEqual(["Do dono novo"]);
+    expect(await registrarManutencaoPeloProprietario(db, s, { imovelId: a, titulo: "Retroativa", descricao: "", data: "2026-10-02" }, agora)).toEqual({ ok: false, erro: ANTES_DA_POSSE("2026-10-03") });
+    expect(await registrarManutencaoPeloProprietario(db, s, { imovelId: a, titulo: "De hoje", descricao: "", data: "2026-10-03" }, agora)).toEqual({ ok: true });
   });
 });

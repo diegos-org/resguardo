@@ -21,6 +21,8 @@ export type ImovelOperavel = {
   nome: string;
   /** Hoje no fuso do imóvel: a data de um serviço não passa disso (o servidor confere pela mesma régua). */
   hoje: string;
+  /** Desde quando o imóvel é dele (AAAA-MM-DD): a data de um serviço não vem antes disso. */
+  desde: string | null;
   fontePrecos: FontePrecos;
   regras: {
     precoBase: number | null;
@@ -265,7 +267,9 @@ function Manutencoes({ imoveis, manutencoes, registrar }: { imoveis: ImovelOpera
   const v = estado.valores ?? {};
   // "Hoje" é o do imóvel escolhido (cada um no seu fuso): o servidor recusa data futura pela mesma régua.
   const [imovelId, setImovelId] = useState(v.imovelId ?? imoveis[0]?.id ?? "");
-  const hoje = (imoveis.find((i) => i.id === imovelId) ?? imoveis[0])?.hoje ?? "";
+  const escolhido = imoveis.find((i) => i.id === imovelId) ?? imoveis[0];
+  const hoje = escolhido?.hoje ?? "";
+  const desde = escolhido?.desde ?? undefined;
   return (
     <section aria-label="Manutenção" className={styles.secao}>
       <h3>Manutenção por sua conta</h3>
@@ -306,7 +310,7 @@ function Manutencoes({ imoveis, manutencoes, registrar }: { imoveis: ImovelOpera
           </label>
           <label>
             Data do serviço
-            <input type="date" name="data" defaultValue={v.data ?? hoje} max={hoje} required />
+            <input type="date" name="data" defaultValue={v.data ?? hoje} min={desde} max={hoje} required />
           </label>
           <label className={f.largo}>
             O que foi feito

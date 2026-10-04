@@ -193,6 +193,7 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
     codigo: i.codigo,
     nome: i.nome,
     hoje: hojeISO(i.fuso),
+    desde: i.posseDesde,
     fontePrecos: i.fontePrecos,
     regras: {
       precoBase: i.detalhes.precoBase,

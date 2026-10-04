@@ -9,6 +9,7 @@ const imovel: ImovelOperavel = {
   codigo: "403",
   nome: "Studio Exemplo",
   hoje: "2026-10-03",
+  desde: "2025-01-01",
   fontePrecos: "scl",
   regras: { precoBase: 30000, taxaLimpeza: 15000, hospedeExtraValor: null, hospedeExtraAPartirDe: null, estadiaMinima: 2, estadiaMaxima: null, antecedenciaMinima: null, janelaMaxima: null, diasChegada: [1, 5], diasSaida: [], checkinAPartirDe: "15:00", checkoutAte: "11:00" },
   periodos: [{ id: "p1", nome: "Réveillon", inicio: "2026-12-28", fim: "2027-01-02", precoNoite: 90000, estadiaMinima: 5 }],
@@ -65,6 +66,7 @@ describe("portal marketplace (M12.4): seção do proprietário", () => {
     const manutencao = screen.getByRole("region", { name: "Manutenção" });
     expect(manutencao.textContent).toContain("Troca do chuveiro");
     expect((within(manutencao).getByLabelText("Data do serviço") as HTMLInputElement).getAttribute("max")).toBe("2026-10-03");
+    expect((within(manutencao).getByLabelText("Data do serviço") as HTMLInputElement).getAttribute("min")).toBe("2025-01-01");
   });
 
   it("sem imóvel marketplace, não aparece; com preços no Beds24, o preço da noite fica só de leitura", () => {
