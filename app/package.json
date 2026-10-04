@@ -11,9 +11,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "node scripts/migrar.mjs",
+    "db:migrate": "tsx scripts/migrar.mts",
     "db:check": "drizzle-kit check",
-    "vercel-build": "node scripts/migrar.mjs && tsx scripts/recalcular.ts && next build",
+    "vercel-build": "tsx scripts/migrar.mts && tsx scripts/recalcular.ts && next build",
     "db:semear-demo": "tsx scripts/semear-demo.ts",
     "financeiro:recalcular": "tsx scripts/recalcular.ts"
   },
