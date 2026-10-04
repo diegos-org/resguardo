@@ -96,7 +96,26 @@ formas cabem no financeiro sem mudança de regra — a escolha define **com qual
 **de que jeito** o M8.2 é construído (e de quem são as credenciais de teste que Diego precisa
 criar).
 
-## O que Diego precisa decidir
+## Decisão de Diego (4/10/2026)
+
+- **Modelo:** mantém **"empresa recebe e repassa"**, pelo Mercado Pago (Checkout Pro). Motivo
+  dele: é mais simples; a SCL é só a ponte entre hóspede e proprietário.
+- **Contador:** já confirmado por Diego: só a comissão é receita da SCL; o restante é valor de
+  terceiros que passa pela empresa e vai ao proprietário.
+- **Prazo do repasse (pergunta 6):** o proprietário recebe **no dia seguinte** ao dia em que o
+  provedor libera o dinheiro para a SCL, qualquer que seja esse prazo; a SCL não adianta e não
+  troca de plano de liberação só por isso. Pix é liberado na hora; cartão depende do plano de
+  liberação do Mercado Pago (na hora, 14 ou 30 dias, com taxas diferentes), a confirmar nos
+  termos vigentes antes do M8.2. O sistema registra a data de liberação de cada pagamento (já
+  previsto no M8.2) e o portal mostra ao proprietário a data prevista do repasse.
+- **Continuam pendentes** (perguntas 3, 4 e 5): taxa do cartão/Pix (vale a regra atual até
+  decisão contrária), contestação perdida e política de cancelamento. Nenhuma impede o M8.2 em
+  sandbox; todas precisam estar decididas antes de o site receber pagamento de verdade.
+- **Pedido novo de Diego:** documento "como funciona" para o proprietário (inclusive quando e
+  como recebe) com aceite registrado, e páginas legais do site com aceite no checkout: itens
+  M5.6 e M7.4 do ROADMAP.
+
+## O que Diego precisava decidir (perguntas originais)
 
 1. Modelo: **manter "empresa recebe e repassa"** (decisão de 24/09, recomendado) × mudar para
    **split Mercado Pago** × **Stripe Connect**.

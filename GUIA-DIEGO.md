@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 4/10/2026, correção do robô de backup depois da sua primeira rodada (ele passa a gravar com uma chave da própria conta de backup e guarda o que vem da origem fora de branches e tags, onde nenhuma automação roda; item 23, passos 4, 5 e 7) e passo a passo mais detalhado (passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório pronto para você ativar na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
+> **Última atualização:** 4/10/2026, recebimento do site decidido (M8.0: empresa recebe e repassa, Mercado Pago; repasse ao proprietário no dia seguinte à liberação) e backup do repositório ativado por você (M0.7); correção do robô de backup depois da sua primeira rodada (ele passa a gravar com uma chave da própria conta de backup e guarda o que vem da origem fora de branches e tags, onde nenhuma automação roda; item 23, passos 4, 5 e 7) e passo a passo mais detalhado (passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório pronto para você ativar na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
 
 ---
 
@@ -24,19 +24,42 @@
 
 | Etapa | O que entrega | Situação |
 |---|---|---|
-| M0 Fundação | Base do app, banco de dados, layout, publicação na Vercel, backup | 🟡 Vercel e login funcionando; banco de homologação separado conferido em 3/10; **backup automático do repositório pronto, falta você ativar na conta separada** (M0.7, seção 6, item 23); conferência automática dos PRs mais rápida (M0.8); falta só você dar o M0.5 por fechado e mandar a referência do sistema antigo (M0.6) |
+| M0 Fundação | Base do app, banco de dados, layout, publicação na Vercel, backup | 🟡 Vercel e login funcionando; banco de homologação separado conferido em 3/10; backup automático do repositório **ativo desde 4/10** em conta separada (M0.7, seção 6, item 23); conferência automática dos PRs mais rápida (M0.8); falta só você dar o M0.5 por fechado e mandar a referência do sistema antigo (M0.6) |
 | M1 Acesso | Login (Google/código por e-mail), convites, permissões | ✅ pronto |
 | M2 Cadastros | Imóveis, proprietários, contratos e aba Anúncios | ✅ implementado; referências dos canais precisam ser preenchidas/conferidas |
 | M3 Reservas | Reservas, calendário central, importação e envio de calendário/preços ao Beds24 | 🟡 importação e envio implementados; o envio começa desligado e espera o seu teste no 103; conferência das reservas parcial |
 | M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | 🟡 em andamento |
-| M5 Portal do proprietário | Relatórios, saldos, PDF, bloqueio de uso próprio | 🟡 relatórios, PDF, e-mail do fechamento e bloqueio de datas prontos |
+| M5 Portal do proprietário | Relatórios, saldos, PDF, bloqueio de uso próprio | 🟡 relatórios, PDF, e-mail do fechamento e bloqueio de datas prontos; documento "como funciona" para o proprietário (M5.6) a fazer |
 | M6 Operação | Limpezas, manutenção, agenda diária | 🟡 em andamento |
-| M7 Site público | Site novo com disponibilidade e valor reais | 🟡 disponibilidade e valor prontos; fotos reais (M7.3) dependem de você |
-| M8 Reserva direta | Cotação, datas seguradas e pagamento pelo Mercado Pago | 🟡 cotação e "segurar as datas" prontos; pagamento (M8.2) espera a decisão do M8.0 e as credenciais de teste |
+| M7 Site público | Site novo com disponibilidade e valor reais | 🟡 disponibilidade e valor prontos; páginas legais do site (M7.4) a fazer; fotos reais (M7.3) dependem de você |
+| M8 Reserva direta | Cotação, datas seguradas e pagamento pelo Mercado Pago | 🟡 cotação e "segurar as datas" prontos; recebimento decidido em 4/10 (empresa recebe e repassa); pagamento (M8.2) espera só as credenciais de teste do Mercado Pago |
 | M9 Portal do hóspede | Acesso do hóspede e mensagens automáticas | ✅ pronto |
 | M10 WhatsApp | Caixa de entrada do WhatsApp no painel | ⚪ aguardando |
 | M11 Produção | Dados reais, domínio, entrada em uso | ⚪ aguardando |
 | M12 Marketplace | Proprietário que opera o próprio imóvel; SCL cuida do online | 🟡 em andamento |
+
+### Recebimento do site: decidido — M8.0
+
+Você decidiu em 4/10: **a empresa recebe e repassa**, pelo Mercado Pago, como já é com Booking
+e reservas diretas; e o contador já confirmou que só a comissão é receita da SCL (o resto é
+dinheiro do proprietário que passa pela empresa). Com isso o M8.0 fecha e o pagamento do site
+(M8.2) passa a depender só das credenciais de teste do Mercado Pago, que eu te peço na hora.
+
+- **Quando o proprietário recebe uma reserva do site:** no **dia seguinte** ao dia em que o
+  dinheiro é liberado para a SCL pelo Mercado Pago, sem a SCL adiantar. Pix é liberado na
+  hora; cartão depende do plano contratado no Mercado Pago (na hora, com taxa maior, ou em
+  14 ou 30 dias, com taxa menor): isso eu confirmo nos termos atuais deles antes de montar o
+  M8.2, e o portal vai mostrar ao proprietário a data prevista de cada repasse.
+- **O que você pediu junto:** um documento "como funciona" para o proprietário (gestão total
+  e marketplace: o que a SCL faz, comissão e taxas, quando e como recebe, relatórios,
+  cancelamentos), para consulta no portal, com aceite registrado no cadastro; e as páginas
+  legais do site (termos de uso, privacidade e, quando decidida, a política de cancelamento),
+  com aceite no checkout. Entraram no plano como M5.6 e M7.4, com textos editáveis por você
+  no painel.
+- **Ainda em aberto, antes de ligar o pagamento de verdade:** quem arca com a taxa do
+  pagamento (hoje: sai antes da divisão, cada um na proporção), quem arca com uma
+  contestação de cartão perdida, e a política de cancelamento do site. Nada disso impede o
+  M8.2 em teste.
 
 ### Conferência automática dos PRs mais rápida — M0.8
 
@@ -81,8 +104,9 @@ que ficou pronto:
   de usuário, repositório ou e-mail da conta de backup aparece em lugar nenhum — isso fica só
   com você, no gerenciador de senhas. Avaliei e manter esse registro não abre brecha: saber
   que existe um backup em algum lugar não dá acesso a nada.
-- **O que falta é só você:** criar a conta, o repositório, as duas chaves e colar três segredos.
-  O passo a passo com os cliques exatos está na seção 6, item 23. Leva uns 20 minutos.
+- **Ativado por você em 4/10:** conta, repositório, duas chaves, três segredos, primeira rodada
+  verde e variável `BACKUP_INICIADO`. O passo a passo continua na seção 6, item 23, para
+  consulta e para renovar as chaves daqui a um ano.
 
 **Atenção, isso protege o código e os documentos, não os dados.** Reservas, proprietários e
 financeiro vivem no banco (Neon), e dados reais nunca podem ir para o GitHub. O backup do banco
@@ -1044,13 +1068,13 @@ e escreva normalmente.
 
 | Serviço | Para que serve | Situação | O que falta |
 |---|---|---|---|
-| **GitHub** (`al-life/scl-reconstrucao`) | Guarda o código e o histórico | ✅ conectado; robô de backup pronto (M0.7) | Ativar o backup na conta separada (seção 6, item 23) |
+| **GitHub** (`al-life/scl-reconstrucao`) | Guarda o código e o histórico | ✅ conectado; backup automático ativo em conta separada desde 4/10 (M0.7) | Olhar a aba *Actions* da conta de backup quando o lembrete chegar; renovar as duas chaves em um ano (seção 6, item 23, passo 8) |
 | **Claude Code** | Programa o sistema; rotina a cada 3h | ✅ ativo | — |
 | **Codex** (revisor automático) | Revisa cada PR | ✅ ativo no repositório | — |
 | **Neon** | Banco de dados (Postgres) | ✅ projeto `scl-sistema` com duas branches: `main` (produção) e `preview` (versões de teste dos PRs); as 41 migrações até o M5.5 aplicadas nas duas, conferido em 3/10 | **Backup:** desde 3/10, 7 dias de histórico e snapshots diário (14 dias) e semanal (35 dias) da `main`, dentro do Neon (seção 6, item 23b). Cópia fora do Neon e checklist ficam para o M11.3 |
 | **Vercel** | Publica o sistema na internet (homologação e depois produção) | ✅ site acessível (27/09); conferido em 3/10 que produção usa a branch `main` do Neon e as previews dos PRs usam a branch `preview` — bancos separados | Variáveis já presentes: banco, login Google, Beds24 (leitura), Resend, agendador. Faltam só as que ligam coisas novas (`BEDS24_ESCRITA`, item 3) |
 | **Beds24** | Channel manager (Airbnb/Booking), reservas, calendário e preços | 🟡 importação feita por Diego (1 e 2/10); envio de calendário/preços pronto e **desligado** | Testar o envio no 103 (simular → `BEDS24_ESCRITA=ligada` com refresh token de inventário → enviar → conferir no Beds24/Airbnb) e só então ligar o automático (seção 6, item 3) |
-| **Mercado Pago** | Pagamentos da reserva direta | ⚪ não conectado | Credenciais de *teste* do provedor escolhido no M8.0 (Mercado Pago, se for a escolha), mais adiante (M8) |
+| **Mercado Pago** | Pagamentos da reserva direta | ⚪ não conectado | Credenciais de *teste* do Mercado Pago (provedor decidido em 4/10), quando eu pedir no M8.2 |
 | **Meta / WhatsApp Business** | Atendimento pelo WhatsApp da empresa | ⚪ não conectado | Verificação da empresa no Meta Business (demora dias) |
 | **Google Cloud (login)** | Botão "Entrar com Google" | ✅ login confirmado por Diego em 27/09 | — |
 | **Resend** (envio de e-mail) | E-mails do sistema: código de login, convites, agenda da equipe, relatórios, mensagens ao hóspede | 🟡 conta criada (e conector no Claude) | Cadastrar o domínio e pôr a chave na Vercel (seção 6, item 5) |
@@ -1187,8 +1211,9 @@ ambiente).
 18. **Cadastros pelo site (marketplace):** de vez em quando, abra **Proprietários → Cadastros
    pelo site** e aprove ou recuse os pedidos. O código de confirmação depende do Resend
    (item 5). Quem é recusado ainda não recebe e-mail automático — responda você mesmo.
-19. **Recebimento do site:** leia a comparação na seção 7 ("Como receber as reservas do
-   site"), leve a pergunta ao contador e me diga se mantém "empresa recebe e repassa" ou muda.
+19. **Recebimento do site — feito em 4/10:** você manteve "empresa recebe e repassa" e o
+   contador confirmou que só a comissão é receita. Nada mais aqui; o próximo passo do pagamento
+   são as credenciais de teste do Mercado Pago, que eu peço quando chegar o M8.2.
 
 20. **Bloqueio pelo portal (M5.5):** confira em cada contrato (ficha do imóvel → Contratos) se
    "Bloqueio pelo portal" deve ficar em Sim (como vem) ou Não — o botão Ligar/Desligar fica na
@@ -1207,7 +1232,8 @@ ambiente).
    ficha) e **confirme ou cancele antes do prazo** das observações; se não, o pedido vence sozinho.
    O prazo padrão é de 30 minutos, em Configurações → Calendário e preços → Site público.
 
-23. **Backup do repositório (M0.7) — ativar na conta separada.** Pode fazer pelo celular. Guarde
+23. **Backup do repositório (M0.7) — ativado por você em 4/10; passo a passo mantido para
+   consulta e para renovar as chaves.** Pode fazer pelo celular. Guarde
    cada senha e chave no gerenciador de senhas na hora em que criar; **nada vai para o chat**.
    Nunca me passe o nome da conta nova nem do repositório de backup: não preciso deles e é
    melhor que fiquem só com você.
@@ -1342,7 +1368,9 @@ ambiente).
 ## 7. Decisões pendentes e respostas às suas perguntas
 
 **Preciso de você (sem pressa):**
-- **Como receber as reservas do site (M8.0):** em 24/09 você decidiu que no site a empresa
+- **Como receber as reservas do site (M8.0) — decidido em 4/10: mantém "empresa recebe e
+  repassa"; repasse ao proprietário no dia seguinte à liberação do dinheiro (seção 2).**
+  Histórico: em 24/09 você decidiu que no site a empresa
   recebe e repassa; depois perguntou se dava para fazer como o Airbnb (split). Comparei as
   opções em `requisitos/product/RECEBIMENTO-SITE.md` — até você dizer outra coisa, vale a de
   24/09. Resumo:
