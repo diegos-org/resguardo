@@ -126,6 +126,11 @@ o sistema não pagar nem cobrar nada disso de novo, ele agora tem:
 - **Errou?** O repasse "acerto por fora" se estorna como qualquer outro: as partes voltam ao extrato.
 - **A data não volta atrás por cima de um acerto:** enquanto houver acerto por fora em vigor, o sistema
   não deixa mudar o início para antes dele nem apagá-lo (estorne primeiro); mudar para depois pode.
+- **Nada de antes passa pelos repasses normais:** com a data definida, a parte de reserva de antes
+  do início nunca fica "disponível" (o extrato diz "anterior ao início do sistema: aguarda a
+  marcação"), então nem antecipado nem pedido pelo portal a pagam; e o fechamento não roda enquanto
+  houver algo de antes sem marcar — ele avisa e pede a marcação. Isso vale também para uma reserva
+  antiga que apareça depois (importação atrasada): basta marcar de novo.
 
 Passo a passo na seção 6, item 29.
 ### Identidade visual nova — M7.5 (4/10)
@@ -1679,7 +1684,9 @@ ambiente).
    3. Se um proprietário aparecer com **bloqueio** (lançamento em conferência, ajuste a esclarecer
       ou adiantamento em aberto de antes de 1/10), resolva o que o texto pedir e clique de novo: o
       botão só marca o que ainda não foi marcado. Se depois surgir algo novo de antes de 1/10 (uma
-      importação atrasada, por exemplo), a lista volta a mostrar e você clica de novo.
+      importação atrasada, por exemplo), a lista volta a mostrar e você clica de novo — até lá essa
+      parte fica "a liberar" (nunca entra em antecipado) e o fechamento desse proprietário avisa e
+      espera a marcação.
    4. Errou? O repasse "acerto por fora" se estorna como qualquer outro (Financeiro → Repasses, na
       própria seção): as partes voltam ao extrato. Se já houver um repasse mais novo do mesmo
       proprietário, o sistema pede para estornar esse primeiro.

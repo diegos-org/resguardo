@@ -27,6 +27,7 @@ import { uuidValido } from "@/lib/ids";
 import { lancamentoEmConferencia } from "@/portal/posse";
 import { reservas as reservasRef } from "@/db/schema";
 import { type Parte, partesDisponiveis, partesDoProprietario } from "./extrato";
+import { lerInicioDoSistema } from "./regras-config";
 
 export type Repasse = typeof repasses.$inferSelect;
 export type RepasseItem = typeof repasseItens.$inferSelect;
@@ -271,6 +272,23 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
   if (pendentes[0]?.n) bloqueios.push(`${pendentes[0].n} lançamento(s) com acerto pendente até este mês (sem proprietário, quem recebe a confirmar, ajuste a esclarecer ou reserva que deixou de estar confirmada com dinheiro já movimentado): resolva antes de fechar.`);
   if (ajustesAbertos?.n) bloqueios.push(`${ajustesAbertos.n} ajuste(s) com o proprietário ainda a esclarecer até este mês (com ou sem valor): esclareça antes de fechar.`);
   if (posterior) bloqueios.push(`Já existe repasse de ${nomeMes(posterior.mes.slice(0, 7))}: estorne-o antes de fechar um mês anterior.`);
+  // M4.11: nada anterior ao início do sistema passa por um fechamento. Parte de antes ainda fora de repasse, ou mês de antes
+  // com acerto diferente de zero (uma reserva antiga importada depois da marcação), trava até ser marcado como acertado por fora.
+  const inicio = await lerInicioDoSistema(db, org);
+  if (inicio) {
+    const partesAntes = partes.filter((x) => x.competencia < inicio && x.quemRecebe === "empresa" && x.situacao !== "repassado");
+    const mesDe = sql<string>`to_char(${lancamentos.competencia}, 'YYYY-MM')`;
+    const gruposAbertos = await db
+      .select({ imovelId: lancamentos.imovelId, mes: mesDe })
+      .from(lancamentos)
+      .where(and(eq(lancamentos.organizacaoId, org), eq(lancamentos.proprietarioId, dono.id), lt(lancamentos.competencia, inicio)))
+      .groupBy(lancamentos.imovelId, mesDe)
+      .having(sql`sum(${lancamentos.efeitoSaldo}) <> 0`);
+    if (partesAntes.length || gruposAbertos.length) {
+      const o = [partesAntes.length ? `${partesAntes.length} parte(s) de reserva` : "", gruposAbertos.length ? `${gruposAbertos.length} mês(es) com acerto em aberto` : ""].filter(Boolean).join(" e ");
+      bloqueios.push(`${o} anterior(es) ao início do sistema (${dataBr(inicio)}) ainda sem marcar como acertado por fora: marque em Financeiro → Repasses ("Antes do início do sistema") antes de fechar.`);
+    }
+  }
   if (previstos[0]?.n) avisos.push(`${previstos[0].n} lançamento(s) ainda previsto(s), isto é, dinheiro que pode não ter entrado: confira antes de pagar.`);
   if (!atual && calc.fora > 0) avisos.push(`${brl(calc.fora)} da competência ficam fora deste repasse e passam para o seguinte: dinheiro ainda não registrado com a empresa (reservas ${codigosDe(foraDoFechamento)}). Registre o recebimento na reserva quando o canal pagar.`);
   if (!atual && calc.antecipado > 0) avisos.push(`${brl(calc.antecipado)} de noites de ${mesesDe(antecipadas)} entram neste repasse como adiantamento (reservas ${codigosDe(antecipadas)}): já disponíveis, a reserva é paga inteira.`);

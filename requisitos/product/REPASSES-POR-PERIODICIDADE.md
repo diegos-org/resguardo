@@ -129,6 +129,12 @@ reserva de cada imóvel, pela regra de 2/10 para o início dos contratos).
   conferência, ajuste com o proprietário a esclarecer, adiantamento em aberto. Recusam só aquele
   proprietário, com o motivo; os outros são marcados. Avisar em vez de supor: nada é marcado por cima
   de uma pendência.
+- **O início vale nos repasses normais:** com a data definida, parte de mês anterior ao início nunca
+  fica disponível (`classificarParte` recebe o início; a parte fica a liberar com o motivo "anterior ao
+  início do sistema: aguarda a marcação"), então antecipado e pedido pelo portal nunca a pagam; e o
+  fechamento bloqueia enquanto o proprietário tiver parte de antes fora de repasse ou mês de antes com
+  acerto diferente de zero — inclusive uma reserva antiga importada depois da marcação. A marcação
+  manual não precisa vencer corrida nenhuma.
 - **Estorno** como qualquer repasse (só o mais recente do proprietário): as partes voltam ao extrato
   (a liberar ou disponível) e o acerto de antes volta.
 - **Extrato:** a parte aparece "Repassada" com o motivo "Acertada por fora, antes do início do

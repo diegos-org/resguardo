@@ -73,5 +73,12 @@ describe("situação da parte do proprietário (M4.10, regra pura)", () => {
     const porFora = classificarParte({ ...base, competencia: "2026-09-01", repasse: { id: "pf", tipo: "por_fora", data: "2026-09-30", situacao: "pago", dataPagamento: "2026-09-30", valor: 72250 } });
     expect(porFora).toMatchObject({ situacao: "repassado", motivo: "Acertada por fora, antes do início do sistema (até 30/09/2026).", diferenca: 0 });
     expect(resumirPartes([porFora, ...partes])).toMatchObject({ acertadoPorFora: 72250, repassadoPago: 200, repassadoAPagar: 300 });
+    // Com o início do sistema definido, a parte de mês anterior nunca fica disponível (aguarda a marcação); a de depois segue a regra normal.
+    expect(classificarParte({ ...base, competencia: "2026-09-01" }, "2026-10-01")).toMatchObject({ situacao: "a_liberar", motivo: "Anterior ao início do sistema (01/10/2026): já acertada por fora; aguarda a marcação em Financeiro → Repasses." });
+    expect(classificarParte(base, "2026-10-01").situacao).toBe("disponivel");
+    expect(classificarParte({ ...base, competencia: "2026-09-01" }, null).situacao).toBe("disponivel");
+    // Já marcada, ou paga pelo canal, a parte de antes não muda de situação por causa do início.
+    expect(classificarParte({ ...base, competencia: "2026-09-01", repasse: { id: "pf", tipo: "por_fora", data: "2026-09-30", situacao: "pago", dataPagamento: "2026-09-30", valor: 72250 } }, "2026-10-01").situacao).toBe("repassado");
+    expect(classificarParte({ ...base, competencia: "2026-09-01", efeitoSaldo: 0 }, "2026-10-01").situacao).toBe("informacao");
   });
 });

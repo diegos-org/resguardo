@@ -22,6 +22,7 @@ import { uuidValido } from "@/lib/ids";
 import { formatBRL } from "@/lib/money";
 import { lancamentoEmConferencia, lancamentoEmVigor } from "@/portal/posse";
 import { dinheiroComAEmpresa, type RecebidoDaReserva, recebidoPorReserva } from "./recebimentos";
+import { lerInicioDoSistema } from "./regras-config";
 
 export type QuemRecebeParte = "empresa" | "split" | "a_confirmar";
 export type SituacaoParte = "informacao" | "a_liberar" | "disponivel" | "repassado";
@@ -71,8 +72,12 @@ export type Parte = ParteBruta & {
 
 const dataBr = (d: string) => d.split("-").reverse().join("/");
 
-/** A regra única de disponibilidade (pura). */
-export function classificarParte(p: ParteBruta): Parte {
+/**
+ * A regra única de disponibilidade (pura). `inicioDoSistema` (M4.11): parte de mês anterior ao início do sistema já foi
+ * acertada fora dele — enquanto não estiver marcada ("por_fora"), fica a liberar, nunca disponível: nem antecipado nem
+ * fechamento a pagam, mesmo que a reserva antiga apareça (importada, recebida) depois da marcação.
+ */
+export function classificarParte(p: ParteBruta, inicioDoSistema: string | null = null): Parte {
   const quemRecebe: QuemRecebeParte = p.estado === "pendente" ? "a_confirmar" : p.efeitoSaldo === 0 ? "split" : "empresa";
   const com = (situacao: SituacaoParte, motivo: string, diferenca = 0): Parte => ({ ...p, quemRecebe, situacao, motivo, diferenca });
   if (p.repasse) {
@@ -88,6 +93,7 @@ export function classificarParte(p: ParteBruta): Parte {
   }
   if (quemRecebe === "a_confirmar") return com("a_liberar", "Quem recebe o dinheiro desta reserva ainda está a confirmar pela empresa: fica fora de qualquer repasse até definir.");
   if (quemRecebe === "split") return com("informacao", "O canal paga sua parte direto a você: não entra em repasse.");
+  if (inicioDoSistema && p.competencia < inicioDoSistema) return com("a_liberar", `Anterior ao início do sistema (${dataBr(inicioDoSistema)}): já acertada por fora; aguarda a marcação em Financeiro → Repasses.`);
   if (p.emConferencia) return com("a_liberar", "Reserva em conferência: a empresa precisa esclarecer os valores antes do repasse.");
   if (p.checkin >= p.hoje) return com("a_liberar", `Libera depois do check-in (${dataBr(p.checkin)}), com o dinheiro já com a empresa.`);
   if (!dinheiroComAEmpresa(p.recebido)) {
@@ -171,26 +177,30 @@ export async function partesDoProprietario(db: Db, organizacaoId: string, propri
     .where(and(eq(repasseItens.organizacaoId, organizacaoId), inArray(repasseItens.lancamentoId, linhas.map((l) => l.lancamentoId)), isNull(repasseItens.liberadoEm)));
   const porLancamento = new Map(itens.map((i) => [i.lancamentoId, { id: i.id, tipo: i.tipo, data: i.data, situacao: i.situacao, dataPagamento: i.dataPagamento, valor: i.valor } satisfies RepasseDaParte]));
   const recebidos = await recebidoPorReserva(db, organizacaoId, [...new Set(linhas.map((l) => l.reservaId!))]);
+  const inicioDoSistema = await lerInicioDoSistema(db, organizacaoId);
   return linhas.map((l) =>
-    classificarParte({
-      lancamentoId: l.lancamentoId,
-      proprietarioId,
-      reservaId: l.reservaId!,
-      codigoReserva: l.codigoReserva,
-      imovelId: l.imovelId!,
-      codigoImovel: l.codigoImovel,
-      competencia: l.competencia,
-      valor: l.valor,
-      efeitoSaldo: l.efeitoSaldo,
-      estado: l.estado,
-      checkin: l.checkin,
-      checkout: l.checkout,
-      hospede: l.hospede,
-      hoje: hojeISO(l.fuso, agora),
-      recebido: recebidos.get(l.reservaId!) ?? { recebido: 0, devido: 0 },
-      emConferencia: l.emConferencia === true,
-      repasse: porLancamento.get(l.lancamentoId) ?? null,
-    }),
+    classificarParte(
+      {
+        lancamentoId: l.lancamentoId,
+        proprietarioId,
+        reservaId: l.reservaId!,
+        codigoReserva: l.codigoReserva,
+        imovelId: l.imovelId!,
+        codigoImovel: l.codigoImovel,
+        competencia: l.competencia,
+        valor: l.valor,
+        efeitoSaldo: l.efeitoSaldo,
+        estado: l.estado,
+        checkin: l.checkin,
+        checkout: l.checkout,
+        hospede: l.hospede,
+        hoje: hojeISO(l.fuso, agora),
+        recebido: recebidos.get(l.reservaId!) ?? { recebido: 0, devido: 0 },
+        emConferencia: l.emConferencia === true,
+        repasse: porLancamento.get(l.lancamentoId) ?? null,
+      },
+      inicioDoSistema,
+    ),
   );
 }
 

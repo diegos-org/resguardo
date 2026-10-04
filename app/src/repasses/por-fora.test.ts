@@ -10,7 +10,7 @@ import { lancar, saldoAcerto } from "@/financeiro/ledger";
 import type { DadosReserva } from "@/reservas/regras";
 import { criarReserva } from "@/reservas/repositorio";
 import { enviarEmailDoRepasse, enviarEmailsDeRepasses } from "./email";
-import { partesDoProprietario, resumirPartes } from "./extrato";
+import { partesDisponiveis, partesDoProprietario, resumirPartes } from "./extrato";
 import { descreverAcertoPorFora, marcarAcertoPorFora, situacaoAntesDoInicio, vesperaDoInicio } from "./por-fora";
 import { lerInicioDoSistema, salvarInicioDoSistema } from "./regras-config";
 import { estornarRepasse, fecharMes, gerarAntecipado, itensDoRepasse, listarRepasses, listarRepassesDaOrganizacao, obterRepasse, preverRepasses } from "./repasses";
@@ -265,6 +265,44 @@ describe("acerto por fora de antes do início do sistema (M4.11)", () => {
     expect(await estornarRepasse(db, org, doOutro.id, "refazer", "2026-10-05", null)).toMatchObject({ ok: true });
     expect(await salvarInicioDoSistema(db, org, "2026-09-01", "2026-10-04", null)).toEqual({ ok: true, mudou: true });
     expect(await salvarInicioDoSistema(db, org, "", "2026-10-04", null)).toEqual({ ok: true, mudou: true });
+  });
+
+  it("com o início definido, parte de antes nunca fica disponível e o fechamento bloqueia até a marcação — também para reserva antiga que apareça depois", async () => {
+    const { out } = await partesDaQueAtravessa();
+    // Recebidas, as partes de setembro continuam a liberar (anteriores ao início); a de outubro fica disponível.
+    await receberTudo(db, org, setembro, "2026-09-14");
+    await receberTudo(db, org, atravessa, "2026-10-03");
+    const antes = await partes("2026-10-06");
+    expect(antes.filter((p) => p.competencia === "2026-09-01").map((p) => [p.situacao, p.motivo])).toEqual([
+      ["a_liberar", "Anterior ao início do sistema (01/10/2026): já acertada por fora; aguarda a marcação em Financeiro → Repasses."],
+      ["a_liberar", "Anterior ao início do sistema (01/10/2026): já acertada por fora; aguarda a marcação em Financeiro → Repasses."],
+    ]);
+    expect(antes.find((p) => p.reservaId === atravessa && p.competencia === "2026-10-01")?.situacao).toBe("disponivel");
+    // O antecipado só leva a parte de outubro; o fechamento de outubro trava enquanto setembro não estiver marcado.
+    const g = await gerarAntecipado(db, org, dono, "2026-10-06", null);
+    expect(g.ok).toBe(true);
+    expect((await obterRepasse(db, org, (g as { id: string }).id))!.valor).toBe(out);
+    await receberTudo(db, org, outubro, "2026-10-12");
+    const [bloqueada] = await preverRepasses(db, org, "2026-10", "2026-11-01", [dono]);
+    expect(bloqueada.bloqueios).toEqual([expect.stringContaining("2 parte(s) de reserva e 1 mês(es) com acerto em aberto anterior(es) ao início do sistema (01/10/2026) ainda sem marcar")]);
+    expect(await fecharMes(db, org, dono, "2026-10", "2026-11-01", null)).toMatchObject({ ok: false, erro: expect.stringContaining("anterior(es) ao início do sistema") });
+    await marcar();
+    const [livre] = await preverRepasses(db, org, "2026-10", "2026-11-01", [dono]);
+    expect(livre.bloqueios).toEqual([]);
+    expect(livre.valor).toBe(72250);
+    // Reserva antiga que aparece depois da marcação (importação atrasada), já recebida: não fica disponível, o antecipado a
+    // ignora e o fechamento volta a travar até marcar de novo — nunca é paga pelo sistema.
+    const tardia = await criar(reserva(a, "2026-09-20", "2026-09-22"));
+    await receberTudo(db, org, tardia, "2026-09-25");
+    expect((await partes("2026-10-13")).find((p) => p.reservaId === tardia)).toMatchObject({ situacao: "a_liberar", motivo: expect.stringContaining("Anterior ao início do sistema") });
+    // O que um antecipado levaria agora é só a reserva de outubro; a tardia nunca.
+    expect((await partesDisponiveis(db, org, dono, new Date("2026-10-13T15:00:00Z"))).map((p) => p.reservaId)).toEqual([outubro]);
+    expect((await preverRepasses(db, org, "2026-10", "2026-11-01", [dono]))[0].bloqueios).toEqual([expect.stringContaining("1 parte(s) de reserva e 1 mês(es) com acerto em aberto anterior(es)")]);
+    const r = await marcar();
+    expect(r.ok && r.marcados).toEqual([expect.objectContaining({ proprietarioId: dono, partes: 1, valor: 72250 })]);
+    expect((await preverRepasses(db, org, "2026-10", "2026-11-01", [dono]))[0].bloqueios).toEqual([]);
+    expect(await fecharMes(db, org, dono, "2026-10", "2026-11-01", null)).toMatchObject({ ok: true });
+    expect(await saldo("2026-11-01")).toBe(0);
   });
 
   it("o repasse por fora não entra na rotina de e-mails nem aceita envio: nada foi pago pelo sistema", async () => {
