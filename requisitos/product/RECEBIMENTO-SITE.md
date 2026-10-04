@@ -167,10 +167,17 @@ são ~R$ 30 de diferença, por isso o checkout destaca o Pix. (2) Entre provedor
 vista varia cerca de 1 ponto percentual no mesmo prazo (3,2%–4,2% em 30 dias; 4,2%–5% na hora):
 ~R$ 8–12 por reserva de R$ 1.000 — relevante com volume, não decisivo agora. (3) Cartão de
 fora do Brasil: o Stripe é o mais forte, mas custa +2% e não garante Pix; no Mercado Pago a
-aceitação precisa ser confirmada. (4) Recomendação: seguir com o **Mercado Pago no M8.2** (conta
-existente, sandbox, componentes com Pix e cartão); manter o provedor atrás de um adaptador para
-trocar ou somar outro (por exemplo, Stripe só para cartão de fora) quando houver volume real;
-negociar a taxa do cartão com o Mercado Pago quando o volume do site existir.
+aceitação precisa ser confirmada. (4) **Decisão de Diego (4/10/2026): Mercado Pago para Pix e cartão no M8.2,
+com as taxas padrão** (conta existente, sandbox, componentes com Pix e cartão); propostas de
+outros provedores e troca só mais à frente, se compensar — não é obrigação; o provedor fica
+atrás de um adaptador para trocar ou somar outro (por exemplo, Stripe só para cartão de fora)
+quando houver volume real. Na mistura Pix/cartão, o Mercado Pago empata ou ganha do PagBank
+(Pix 0,99% × 1,89%). (5) **Pix direto pelo banco, descartado por ora:** o Itaú cobra do PJ
+~1,45% por Pix recebido (chave ou QR, teto R$ 150), mais que o Mercado Pago; o Nubank PJ não
+cobra Pix, mas não há API oficial de integração confirmada; chave Pix fixa com botão de copiar
+não serve como caminho principal (sem confirmação automática nem casamento com a reserva, o
+hold do M8.1 não fecha) — só como plano B manual. QR dinâmico com prazo igual ao do hold é o
+caminho, pelo provedor.
 
 ## O que Diego precisava decidir (perguntas originais)
 

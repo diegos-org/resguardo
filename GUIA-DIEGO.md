@@ -46,8 +46,8 @@ dinheiro do proprietário que passa pela empresa). Com isso o M8.0 fecha e o pag
 (M8.2) passa a depender só das credenciais de teste do Mercado Pago, que eu te peço na hora.
 
 - **Quando o proprietário recebe:** o fechamento mensal do dia 1º continua sendo o padrão e
-  o intervalo máximo; no portal, o proprietário pode escolher receber quinzenalmente,
-  semanalmente ou assim que o dinheiro estiver disponível (dia seguinte ao check-in, com o
+  o intervalo máximo; no portal, o proprietário pode escolher receber quinzenalmente (dias 1
+  e 16), semanalmente (às segundas) ou assim que o dinheiro estiver disponível (dia seguinte ao check-in, com o
   Mercado Pago já tendo liberado). Uma reserva do site só conta como disponível depois do
   check-in e da liberação, para não pagar e depois ter de pedir de volta num cancelamento.
   Cada repasse manda um e-mail ao proprietário com o comprovante e a lista das reservas (no
@@ -71,9 +71,13 @@ dinheiro do proprietário que passa pela empresa). Com isso o M8.0 fecha e o pag
   quantas vezes. Sobre as taxas, a pesquisa rápida está em
   `requisitos/product/RECEBIMENTO-SITE.md`: o que pesa é o Pix (cerca de 1%, contra cerca de 4%
   do cartão), e entre os provedores o cartão varia pouco (uns 3% a 5%, conforme o prazo de
-  recebimento) — numa reserva de R$ 1.000 a diferença fica em torno de R$ 10. O Mercado Pago
-  continua a escolha para o M8.2; trocar ou somar outro depois é possível, porque o pagamento
-  fica atrás de um adaptador.
+  recebimento) — numa reserva de R$ 1.000 a diferença fica em torno de R$ 10. **Você decidiu em
+  4/10: Mercado Pago para tudo (Pix e cartão), com as taxas padrão**; pedir propostas a outros
+  provedores e trocar fica para mais à frente, só se compensar, porque o pagamento fica atrás
+  de um adaptador. Pix direto pelo banco ficou de fora por ora: o Itaú cobra do PJ cerca de
+  1,45% por Pix recebido (mais que o Mercado Pago) e o Nubank PJ não tem integração oficial
+  confirmada; chave Pix fixa com botão de copiar não serve como caminho principal, porque o
+  sistema não saberia quem pagou.
 - **Ainda em aberto, antes de ligar o pagamento de verdade:** quem arca com a taxa do
   pagamento (hoje: sai antes da divisão, cada um na proporção), quem arca com uma
   contestação de cartão perdida, e a política de cancelamento do site. Nada disso impede o
