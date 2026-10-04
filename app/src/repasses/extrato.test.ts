@@ -15,8 +15,10 @@ const base: ParteBruta = {
   checkin: "2026-10-10",
   checkout: "2026-10-13",
   hospede: "Hóspede",
+  origem: "booking",
   hoje: "2026-10-12",
   recebido: { recebido: 85000, devido: 85000 },
+  pagamento: null,
   emConferencia: false,
   repasse: null,
 };
@@ -73,12 +75,50 @@ describe("situação da parte do proprietário (M4.10, regra pura)", () => {
     const porFora = classificarParte({ ...base, competencia: "2026-09-01", repasse: { id: "pf", tipo: "por_fora", data: "2026-09-30", situacao: "pago", dataPagamento: "2026-09-30", valor: 72250 } });
     expect(porFora).toMatchObject({ situacao: "repassado", motivo: "Acertada por fora, antes do início do sistema (até 30/09/2026).", diferenca: 0 });
     expect(resumirPartes([porFora, ...partes])).toMatchObject({ acertadoPorFora: 72250, repassadoPago: 200, repassadoAPagar: 300 });
-    // Com o início do sistema definido, a parte de mês anterior nunca fica disponível (aguarda a marcação); a de depois segue a regra normal.
-    expect(classificarParte({ ...base, competencia: "2026-09-01" }, "2026-10-01")).toMatchObject({ situacao: "a_liberar", motivo: "Anterior ao início do sistema (01/10/2026): já acertada por fora; aguarda a marcação em Financeiro → Repasses." });
+    // Com o início do sistema definido, a parte de reserva de antes dele nunca fica disponível (aguarda a marcação); a de depois segue a regra normal.
+    const deAntes = { ...base, competencia: "2026-09-01", checkin: "2026-09-10", checkout: "2026-09-13" };
+    expect(classificarParte(deAntes, "2026-10-01")).toMatchObject({ situacao: "a_liberar", motivo: "Reserva paga antes do início do sistema (01/10/2026): já acertada por fora; aguarda a marcação em Financeiro → Repasses." });
     expect(classificarParte(base, "2026-10-01").situacao).toBe("disponivel");
-    expect(classificarParte({ ...base, competencia: "2026-09-01" }, null).situacao).toBe("disponivel");
+    expect(classificarParte(deAntes, null).situacao).toBe("disponivel");
     // Já marcada, ou paga pelo canal, a parte de antes não muda de situação por causa do início.
     expect(classificarParte({ ...base, competencia: "2026-09-01", repasse: { id: "pf", tipo: "por_fora", data: "2026-09-30", situacao: "pago", dataPagamento: "2026-09-30", valor: 72250 } }, "2026-10-01").situacao).toBe("repassado");
     expect(classificarParte({ ...base, competencia: "2026-09-01", efeitoSaldo: 0 }, "2026-10-01").situacao).toBe("informacao");
+  });
+});
+
+describe("lado do início do sistema pela data do pagamento (M4.12, regra pura)", () => {
+  const inicio = "2026-10-01";
+  const atravessa = { checkin: "2026-09-29", checkout: "2026-10-02" };
+
+  it("empresa recebe: paga antes do início é a liberar (acertada por fora) em qualquer mês; paga a partir dele entra inteira; sem data e atravessando, a liberar com o aviso", () => {
+    expect(classificarParte({ ...base, ...atravessa, competencia: "2026-10-01", pagamento: { data: "2026-09-30", fonte: "recebimento" } }, inicio)).toMatchObject({
+      situacao: "a_liberar",
+      motivo: "Reserva paga antes do início do sistema (01/10/2026), em 30/09/2026: já acertada por fora; aguarda a marcação em Financeiro → Repasses.",
+    });
+    expect(classificarParte({ ...base, ...atravessa, competencia: "2026-09-01", pagamento: { data: "2026-10-03", fonte: "recebimento" } }, inicio).situacao).toBe("disponivel");
+    expect(classificarParte({ ...base, ...atravessa, competencia: "2026-09-01", recebido: { recebido: 0, devido: 85000 } }, inicio)).toMatchObject({
+      situacao: "a_liberar",
+      motivo: expect.stringContaining("Reserva que atravessa o início do sistema (01/10/2026) sem data de pagamento: registre o recebimento completo"),
+    });
+    // Sem data: inteira antes do início é de antes; inteira depois entra (e segue as regras normais).
+    expect(classificarParte({ ...base, competencia: "2026-09-01", checkin: "2026-09-10", checkout: "2026-09-13", recebido: { recebido: 0, devido: 85000 } }, inicio)).toMatchObject({
+      situacao: "a_liberar",
+      motivo: "Reserva paga antes do início do sistema (01/10/2026): já acertada por fora; aguarda a marcação em Financeiro → Repasses.",
+    });
+    expect(classificarParte({ ...base, recebido: { recebido: 0, devido: 85000 } }, inicio)).toMatchObject({ situacao: "a_liberar", motivo: expect.stringContaining("ainda não registrou o recebimento") });
+    // Sem início definido, a data do pagamento não muda nada.
+    expect(classificarParte({ ...base, pagamento: { data: "2026-09-30", fonte: "recebimento" } }).situacao).toBe("disponivel");
+  });
+
+  it("canal paga direto: informação com a data (pago ou previsto) e o prazo; antes do início, já acertada por fora", () => {
+    const split: ParteBruta = { ...base, origem: "airbnb", efeitoSaldo: 0 };
+    expect(classificarParte({ ...split, pagamento: { data: "2026-10-11", fonte: "canal", prazo: 1 } }, inicio).motivo).toBe("O canal paga sua parte direto a você (pago em 11/10/2026, 1 dia(s) depois do check-in): não entra em repasse.");
+    expect(classificarParte({ ...split, hoje: "2026-10-10", pagamento: { data: "2026-10-11", fonte: "canal", prazo: 1 } }, inicio).motivo).toContain("(previsto em 11/10/2026, 1 dia(s) depois do check-in)");
+    expect(classificarParte({ ...split, pagamento: { data: "2026-10-10", fonte: "canal", prazo: 0 } }, inicio).motivo).toContain("(pago em 10/10/2026, no check-in)");
+    expect(classificarParte({ ...split, ...atravessa, competencia: "2026-10-01", pagamento: { data: "2026-09-30", fonte: "canal", prazo: 1 } }, inicio)).toMatchObject({
+      situacao: "informacao",
+      motivo: "O canal pagou sua parte direto a você (pago em 30/09/2026, 1 dia(s) depois do check-in), antes do início do sistema (01/10/2026): já acertada por fora.",
+    });
+    expect(classificarParte({ ...split, ...atravessa, pagamento: null }, inicio).motivo).toBe("O canal paga sua parte direto a você: não entra em repasse.");
   });
 });

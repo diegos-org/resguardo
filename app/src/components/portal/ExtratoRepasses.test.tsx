@@ -7,7 +7,7 @@ import { ExtratoRepasses } from "./ExtratoRepasses";
 
 const parte = (over: Partial<ParteBruta> = {}): ParteBruta => ({
   lancamentoId: Math.random().toString(36).slice(2), proprietarioId: "d1", reservaId: "r1", codigoReserva: "R-1", imovelId: "i1", codigoImovel: "403", competencia: "2026-10-01", valor: 72250, efeitoSaldo: 72250, estado: "previsto",
-  checkin: "2026-10-10", checkout: "2026-10-13", hospede: "Hóspede Fictício", hoje: "2026-10-12", recebido: { recebido: 85000, devido: 85000 }, emConferencia: false, repasse: null, ...over,
+  checkin: "2026-10-10", checkout: "2026-10-13", hospede: "Hóspede Fictício", origem: "booking", hoje: "2026-10-12", recebido: { recebido: 85000, devido: 85000 }, pagamento: null, emConferencia: false, repasse: null, ...over,
 });
 const repasse = (over: Partial<Repasse> = {}): Repasse => ({
   id: "rep1", organizacaoId: "org", proprietarioId: "d1", tipo: "antecipado", mes: "2026-10-01", data: "2026-10-11", saldo: 72250, descontado: 0, contestado: 0, valor: 72250, foraDoFechamento: 0, antecipado: 72250, situacao: "pago", dataPagamento: "2026-10-11",

@@ -114,6 +114,8 @@ export type RecebidoDaReserva = {
   recebido: number;
   /** Líquido do canal (valor bruto − taxa do canal) pelos lançamentos do motor em vigor. */
   devido: number;
+  /** Data (caixa) do recebimento que completou o líquido do canal — a data em que o canal pagou (M4.12); null se ainda falta. */
+  dataCompleto?: string | null;
 };
 
 /**
@@ -122,10 +124,10 @@ export type RecebidoDaReserva = {
  */
 export async function recebidoPorReserva(db: Db, organizacaoId: string, reservaIds: readonly string[]): Promise<Map<string, RecebidoDaReserva>> {
   const ids = [...new Set(reservaIds.filter(uuidValido))];
-  const mapa = new Map<string, RecebidoDaReserva>(ids.map((id) => [id, { recebido: 0, devido: 0 }]));
+  const mapa = new Map<string, RecebidoDaReserva>(ids.map((id) => [id, { recebido: 0, devido: 0, dataCompleto: null }]));
   if (!ids.length) return mapa;
   const linhas = await db
-    .select({ reservaId: lancamentos.reservaId, tipo: lancamentos.tipo, estado: lancamentos.estado, valor: lancamentos.valor, montante: lancamentos.montante })
+    .select({ reservaId: lancamentos.reservaId, tipo: lancamentos.tipo, estado: lancamentos.estado, valor: lancamentos.valor, montante: lancamentos.montante, dataCaixa: lancamentos.dataCaixa, criadoEm: lancamentos.criadoEm })
     .from(lancamentos)
     .where(
       and(
@@ -135,11 +137,30 @@ export async function recebidoPorReserva(db: Db, organizacaoId: string, reservaI
         emVigor(),
       ),
     );
+  const recebimentos = new Map<string, { data: string; montante: number; ordem: number }[]>();
   for (const l of linhas) {
     const r = mapa.get(l.reservaId!)!;
     if (l.tipo === "recebimento") {
-      if (l.estado === "realizado" || l.estado === "conciliado") r.recebido += l.montante ?? 0;
+      if (l.estado === "realizado" || l.estado === "conciliado") {
+        r.recebido += l.montante ?? 0;
+        const lista = recebimentos.get(l.reservaId!) ?? [];
+        lista.push({ data: l.dataCaixa ?? "", montante: l.montante ?? 0, ordem: l.criadoEm?.getTime() ?? 0 });
+        recebimentos.set(l.reservaId!, lista);
+      }
     } else r.devido += l.valor;
+  }
+  // A data em que o dinheiro ficou completo: o recebimento (na ordem de caixa) em que a soma alcançou o líquido do canal.
+  for (const [id, lista] of recebimentos) {
+    const r = mapa.get(id)!;
+    if (r.devido <= 0) continue;
+    let soma = 0;
+    for (const x of lista.sort((a, b) => a.data.localeCompare(b.data) || a.ordem - b.ordem)) {
+      soma += x.montante;
+      if (soma >= r.devido) {
+        r.dataCompleto = x.data || null;
+        break;
+      }
+    }
   }
   return mapa;
 }

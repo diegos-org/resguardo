@@ -28,6 +28,7 @@ import { uuidValido } from "@/lib/ids";
 import { lancamentoEmConferencia } from "@/portal/posse";
 import { reservas as reservasRef } from "@/db/schema";
 import { type Parte, partesDisponiveis, partesDoProprietario } from "./extrato";
+import { avisoIndefinidas, ladoDoInicio, type LadoDoInicio, livroDeAntes } from "./inicio";
 import { lerInicioDoSistema } from "./regras-config";
 
 export type Repasse = typeof repasses.$inferSelect;
@@ -277,18 +278,23 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
   // com acerto diferente de zero (uma reserva antiga importada depois da marcação), trava até ser marcado como acertado por fora.
   const inicio = await lerInicioDoSistema(db, org);
   if (inicio) {
-    const partesAntes = partes.filter((x) => x.competencia < inicio && x.quemRecebe === "empresa" && x.situacao !== "repassado");
+    // "De antes" é pela data em que o canal pagou a reserva (M4.12), não pelo mês da noite.
+    const lados = new Map<string, { lado: LadoDoInicio; codigo: string; quemRecebe: Parte["quemRecebe"] }>();
+    for (const x of partes) if (!lados.has(x.reservaId)) lados.set(x.reservaId, { lado: ladoDoInicio(x, inicio)!, codigo: x.codigoReserva, quemRecebe: x.quemRecebe });
+    const partesAntes = partes.filter((x) => lados.get(x.reservaId)?.lado === "antes" && x.quemRecebe === "empresa" && x.situacao !== "repassado");
     const mesDe = sql<string>`to_char(${lancamentos.competencia}, 'YYYY-MM')`;
     const gruposAbertos = await db
       .select({ imovelId: lancamentos.imovelId, mes: mesDe })
       .from(lancamentos)
-      .where(and(eq(lancamentos.organizacaoId, org), eq(lancamentos.proprietarioId, dono.id), lt(lancamentos.competencia, inicio)))
+      .where(and(eq(lancamentos.organizacaoId, org), eq(lancamentos.proprietarioId, dono.id), livroDeAntes(inicio, lados)))
       .groupBy(lancamentos.imovelId, mesDe)
       .having(sql`sum(${lancamentos.efeitoSaldo}) <> 0`);
     if (partesAntes.length || gruposAbertos.length) {
       const o = [partesAntes.length ? `${partesAntes.length} parte(s) de reserva` : "", gruposAbertos.length ? `${gruposAbertos.length} mês(es) com acerto em aberto` : ""].filter(Boolean).join(" e ");
       bloqueios.push(`${o} anterior(es) ao início do sistema (${dataBr(inicio)}) ainda sem marcar como acertado por fora: marque em Financeiro → Repasses ("Antes do início do sistema") antes de fechar.`);
     }
+    const indefinidas = avisoIndefinidas([...lados.values()].filter((r) => r.lado === "indefinido" && r.quemRecebe !== "a_confirmar"), inicio);
+    if (indefinidas) avisos.push(indefinidas);
   }
   if (previstos[0]?.n) avisos.push(`${previstos[0].n} lançamento(s) ainda previsto(s), isto é, dinheiro que pode não ter entrado: confira antes de pagar.`);
   if (!atual && calc.fora > 0) avisos.push(`${brl(calc.fora)} da competência ficam fora deste repasse e passam para o seguinte: dinheiro ainda não registrado com a empresa (reservas ${codigosDe(foraDoFechamento)}). Registre o recebimento na reserva quando o canal pagar.`);

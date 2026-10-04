@@ -15,12 +15,14 @@
  *   (`repasse.valor`) e a `diferenca` é acertada, ou descontada, pelo fechamento mensal (pelo acerto).
  */
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
-import { type EstadoLancamento, imoveis, lancamentos, repasseItens, repasses, reservas, type SituacaoRepasse, type TipoRepasse } from "@/db/schema";
+import { lerVersoesRegras } from "@/configuracoes/regras-financeiras";
+import { type EstadoLancamento, imoveis, lancamentos, type OrigemReserva, repasseItens, repasses, reservas, type SituacaoRepasse, type TipoRepasse } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { formatBRL } from "@/lib/money";
 import { lancamentoEmConferencia, lancamentoEmVigor } from "@/portal/posse";
+import { dataBr, ladoDoInicio, type PagamentoDaReserva, pagamentoDe, quemRecebeDe } from "./inicio";
 import { dinheiroComAEmpresa, type RecebidoDaReserva, recebidoPorReserva } from "./recebimentos";
 import { lerInicioDoSistema } from "./regras-config";
 
@@ -55,9 +57,12 @@ export type ParteBruta = {
   checkin: string;
   checkout: string;
   hospede: string;
+  origem: OrigemReserva;
   /** Hoje, no fuso do imóvel. */
   hoje: string;
   recebido: RecebidoDaReserva;
+  /** Data em que o canal pagou a reserva (M4.12): pela regra do canal (split) ou pelo recebimento completo (empresa); null = sem data. */
+  pagamento: PagamentoDaReserva | null;
   emConferencia: boolean;
   repasse: RepasseDaParte | null;
 };
@@ -70,15 +75,15 @@ export type Parte = ParteBruta & {
   diferenca: number;
 };
 
-const dataBr = (d: string) => d.split("-").reverse().join("/");
-
 /**
- * A regra única de disponibilidade (pura). `inicioDoSistema` (M4.11): parte de mês anterior ao início do sistema já foi
- * acertada fora dele — enquanto não estiver marcada ("por_fora"), fica a liberar, nunca disponível: nem antecipado nem
- * fechamento a pagam, mesmo que a reserva antiga apareça (importada, recebida) depois da marcação.
+ * A regra única de disponibilidade (pura). `inicioDoSistema` (M4.11): reserva de antes do início já foi acertada fora
+ * dele — enquanto a parte não estiver marcada ("por_fora"), fica a liberar, nunca disponível: nem antecipado nem
+ * fechamento a pagam, mesmo que a reserva antiga apareça (importada, recebida) depois da marcação. "De antes" é pela
+ * data em que o canal pagou a reserva (M4.12, `ladoDoInicio`), não pelo mês da noite.
  */
 export function classificarParte(p: ParteBruta, inicioDoSistema: string | null = null): Parte {
-  const quemRecebe: QuemRecebeParte = p.estado === "pendente" ? "a_confirmar" : p.efeitoSaldo === 0 ? "split" : "empresa";
+  const quemRecebe: QuemRecebeParte = quemRecebeDe(p);
+  const lado = ladoDoInicio(p, inicioDoSistema);
   const com = (situacao: SituacaoParte, motivo: string, diferenca = 0): Parte => ({ ...p, quemRecebe, situacao, motivo, diferenca });
   if (p.repasse) {
     const r = p.repasse;
@@ -92,8 +97,13 @@ export function classificarParte(p: ParteBruta, inicioDoSistema: string | null =
     return com("repassado", `${r.tipo === "fechamento" ? "No fechamento" : "Repasse"} de ${dataBr(r.data)}${pago}.${recalculo}`, diferenca);
   }
   if (quemRecebe === "a_confirmar") return com("a_liberar", "Quem recebe o dinheiro desta reserva ainda está a confirmar pela empresa: fica fora de qualquer repasse até definir.");
-  if (quemRecebe === "split") return com("informacao", "O canal paga sua parte direto a você: não entra em repasse.");
-  if (inicioDoSistema && p.competencia < inicioDoSistema) return com("a_liberar", `Anterior ao início do sistema (${dataBr(inicioDoSistema)}): já acertada por fora; aguarda a marcação em Financeiro → Repasses.`);
+  if (quemRecebe === "split") {
+    const quando = p.pagamento ? ` (${p.pagamento.data <= p.hoje ? "pago" : "previsto"} em ${dataBr(p.pagamento.data)}, ${p.pagamento.prazo === 0 ? "no check-in" : `${p.pagamento.prazo} dia(s) depois do check-in`})` : "";
+    if (lado === "antes") return com("informacao", `O canal pagou sua parte direto a você${quando}, antes do início do sistema (${dataBr(inicioDoSistema!)}): já acertada por fora.`);
+    return com("informacao", `O canal paga sua parte direto a você${quando}: não entra em repasse.`);
+  }
+  if (lado === "antes") return com("a_liberar", `Reserva paga antes do início do sistema (${dataBr(inicioDoSistema!)})${p.pagamento ? `, em ${dataBr(p.pagamento.data)}` : ""}: já acertada por fora; aguarda a marcação em Financeiro → Repasses.`);
+  if (lado === "indefinido") return com("a_liberar", `Reserva que atravessa o início do sistema (${dataBr(inicioDoSistema!)}) sem data de pagamento: registre o recebimento completo com a data em que o canal pagou — antes do início, a reserva inteira é acertada por fora; a partir dele, entra inteira no sistema.`);
   if (p.emConferencia) return com("a_liberar", "Reserva em conferência: a empresa precisa esclarecer os valores antes do repasse.");
   if (p.checkin >= p.hoje) return com("a_liberar", `Libera depois do check-in (${dataBr(p.checkin)}), com o dinheiro já com a empresa.`);
   if (!dinheiroComAEmpresa(p.recebido)) {
@@ -153,6 +163,7 @@ export async function partesDoProprietario(db: Db, organizacaoId: string, propri
       checkin: reservas.checkin,
       checkout: reservas.checkout,
       hospede: reservas.hospedeNome,
+      origem: reservas.origem,
       codigoImovel: imoveis.codigo,
       fuso: imoveis.fuso,
     })
@@ -178,6 +189,7 @@ export async function partesDoProprietario(db: Db, organizacaoId: string, propri
   const porLancamento = new Map(itens.map((i) => [i.lancamentoId, { id: i.id, tipo: i.tipo, data: i.data, situacao: i.situacao, dataPagamento: i.dataPagamento, valor: i.valor } satisfies RepasseDaParte]));
   const recebidos = await recebidoPorReserva(db, organizacaoId, [...new Set(linhas.map((l) => l.reservaId!))]);
   const inicioDoSistema = await lerInicioDoSistema(db, organizacaoId);
+  const versoes = await lerVersoesRegras(db, organizacaoId);
   return linhas.map((l) =>
     classificarParte(
       {
@@ -194,8 +206,10 @@ export async function partesDoProprietario(db: Db, organizacaoId: string, propri
         checkin: l.checkin,
         checkout: l.checkout,
         hospede: l.hospede,
+        origem: l.origem,
         hoje: hojeISO(l.fuso, agora),
         recebido: recebidos.get(l.reservaId!) ?? { recebido: 0, devido: 0 },
+        pagamento: pagamentoDe({ quemRecebe: quemRecebeDe(l), origem: l.origem, checkin: l.checkin }, recebidos.get(l.reservaId!) ?? { recebido: 0, devido: 0 }, versoes),
         emConferencia: l.emConferencia === true,
         repasse: porLancamento.get(l.lancamentoId) ?? null,
       },
