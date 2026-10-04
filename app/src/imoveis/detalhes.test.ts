@@ -158,8 +158,15 @@ describe("períodos de exceção", () => {
     expect(await criarPeriodo(db, org, im, periodo, null, { conferir: (atual) => (vistos.push(atual.fontePrecos), atual.fontePrecos === "beds24" ? "preço não" : null) })).toEqual({ ok: false, erro: "preço não" });
     expect(vistos).toEqual(["beds24"]);
     expect(await listarPeriodos(db, org, im)).toEqual([]);
-    expect(await criarPeriodo(db, org, im, { ...periodo, precoNoite: "", estadiaMinima: "3" }, null, { conferir: () => null })).toEqual({ ok: true });
+    expect(await criarPeriodo(db, org, im, { ...periodo, precoNoite: "", estadiaMinima: "3" }, null, { conferir: async () => null })).toEqual({ ok: true });
+    const [criado] = await listarPeriodos(db, org, im);
+    // Excluir também aceita a regra extra, com o imóvel do período travado; recusa não apaga.
+    expect(await excluirPeriodo(db, org, criado.id, null, { conferir: async (_tx, imovelId) => (imovelId === im ? "contrato acabou" : null) })).toBe("contrato acabou");
     expect(await listarPeriodos(db, org, im)).toHaveLength(1);
+    expect(await excluirPeriodo(db, org, criado.id, null, { conferir: async () => null })).toBe(true);
+    expect(await listarPeriodos(db, org, im)).toEqual([]);
+    // Gravação com leitura: a regra extra roda antes de preparar, com o imóvel travado.
+    expect(await salvarDetalhesComLeitura(db, org, im, (atual) => atual, null, new Date(), { conferir: async () => "sem contrato" })).toEqual({ ok: false, erro: "sem contrato" });
   });
 
   it("cria, recusa sobreposição, lista em ordem e exclui", async () => {

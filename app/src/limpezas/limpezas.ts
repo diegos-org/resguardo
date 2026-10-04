@@ -444,13 +444,16 @@ export function realizarPelaProfissional(db: Db, organizacaoId: string, id: stri
  * dele, então fica sem custo para a empresa (custo 0, nenhuma despesa). A posse do imóvel e o
  * contrato são conferidos por quem chama (`portal/marketplace.ts`); aqui só o estado e a data.
  */
-export function realizarPeloProprietario(db: Db, organizacaoId: string, id: string, hoje: string, autorId: string | null): Promise<Resultado> {
+export function realizarPeloProprietario(db: Db, organizacaoId: string, id: string, hoje: string, autorId: string | null, conferir?: (l: Limpeza, tx: Db) => Promise<string | null>): Promise<Resultado> {
   return transicao(
     db,
     organizacaoId,
     id,
     ["pedida", "confirmada"],
-    async (l) => {
+    async (l, tx) => {
+      // Regra de quem chama (o portal reconfere o contrato marketplace), já com a limpeza travada.
+      const recusa = conferir ? await conferir(l, tx) : null;
+      if (recusa) return recusa;
       if (l.data > hoje) return "A limpeza ainda não chegou: só dá para registrar como feita a partir do dia dela.";
       // Quem fez foi o proprietário: a profissional que estivesse confirmada sai (lista e calendário não a creditam; reabrir volta a "pedida").
       return { estado: "realizada", profissionalId: null, confirmadaEm: null, custo: 0, observacao: comMotivo(l.observacao, "Feita pelo proprietário (marketplace)"), realizadaEm: new Date() };

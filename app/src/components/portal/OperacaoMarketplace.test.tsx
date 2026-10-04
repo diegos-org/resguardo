@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PRECOS_MARKETPLACE_PADRAO } from "@/marketplace/precos";
-import { type ImovelOperavel, OperacaoMarketplace, textoDaSimulacao, textoDoEnvio } from "./OperacaoMarketplace";
+import { type ImovelOperavel, OperacaoMarketplace, textoDaSimulacao, textoDoEnvio, textoSalvo } from "./OperacaoMarketplace";
 
 const imovel: ImovelOperavel = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -81,5 +81,11 @@ describe("portal marketplace (M12.4): seção do proprietário", () => {
     expect(textoDoEnvio({ naLista: false, automatico: true, ultimo: null }, "SCL")).toContain("ainda não está na lista de envio");
     expect(textoDoEnvio({ naLista: true, automatico: false, ultimo: null }, "SCL")).toContain("Ainda não houve envio");
     expect(textoDoEnvio({ naLista: true, automatico: true, ultimo: { em: new Date("2026-10-01T10:00:00Z"), situacao: "ok" } }, "SCL")).toMatch(/roda todo dia.*Último envio: 01\/10\/2026, 07:00 \(concluído\)/);
+  });
+
+  it("depois de salvar, só promete Airbnb e Booking quando o imóvel está na lista de envio", () => {
+    expect(textoSalvo(true, "SCL")).toContain("chega ao Airbnb e ao Booking no próximo envio");
+    expect(textoSalvo(false, "SCL")).toContain("continuam com os valores anteriores até a SCL incluir este imóvel no envio");
+    expect(textoSalvo(false, "SCL")).not.toContain("próximo envio");
   });
 });

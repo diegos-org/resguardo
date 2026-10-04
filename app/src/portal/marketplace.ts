@@ -62,14 +62,28 @@ export const emMarketplaceEm = (contratos: readonly ContratoLinha[], dia: string
  * `quando`: uma data (AAAA-MM-DD, ex.: o dia da limpeza) ou o instante — aí o dia é o do fuso do
  * imóvel, o mesmo que `imoveisMarketplaceDaSessao` usa para mostrar a seção.
  */
-async function imovelOperavel(db: Db, sessao: Sessao, imovelId: string, quando: Date | string): Promise<{ ok: true; imovel: { id: string; codigo: string; fuso: string } } | { ok: false; erro: string }> {
+async function imovelOperavel(db: Db, sessao: Sessao, imovelId: string, quando: Date | string): Promise<{ ok: true; imovel: { id: string; codigo: string; fuso: string }; dia: string } | { ok: false; erro: string }> {
   if (!uuidValido(imovelId)) return { ok: false, erro: SEM_IMOVEL };
   exigir(sessao, "marketplace:operar", { organizacaoId: sessao.organizacaoId, imovelId });
   const [im] = await db.select({ id: imoveis.id, codigo: imoveis.codigo, fuso: imoveis.fuso }).from(imoveis).where(and(eq(imoveis.id, imovelId), eq(imoveis.organizacaoId, sessao.organizacaoId)));
   if (!im) return { ok: false, erro: SEM_IMOVEL };
   const dia = typeof quando === "string" ? quando : hojeISO(im.fuso, quando);
   if (!emMarketplaceEm(await listarContratos(db, sessao.organizacaoId, im.id), dia)) return { ok: false, erro: NAO_MARKETPLACE };
-  return { ok: true, imovel: im };
+  return { ok: true, imovel: im, dia };
+}
+
+/**
+ * Reconfere o contrato marketplace DENTRO da transação que grava, com a linha do imóvel travada: a
+ * autorização lida antes (`imovelOperavel`) pode ter mudado no meio (contrato encerrado ou trocado no
+ * painel). Toda escrita do portal passa por aqui; recusa = a mesma mensagem da conferência inicial.
+ */
+async function conferirContratoNaTransacao(tx: Db, organizacaoId: string, imovelId: string, dia: string): Promise<string | null> {
+  await tx
+    .select({ id: imoveis.id })
+    .from(imoveis)
+    .where(and(eq(imoveis.id, imovelId), eq(imoveis.organizacaoId, organizacaoId)))
+    .for("update");
+  return emMarketplaceEm(await listarContratos(tx, organizacaoId, imovelId), dia) ? null : NAO_MARKETPLACE;
 }
 
 /** Situação do envio ao Beds24 para um imóvel: na lista? automático? último envio real que o tocou. */
@@ -141,6 +155,7 @@ export async function salvarPrecosPeloProprietario(db: Db, sessao: Sessao, imove
     },
     sessao.usuarioId,
     agora,
+    { conferir: (tx) => conferirContratoNaTransacao(tx, sessao.organizacaoId, r.imovel.id, r.dia) },
   );
 }
 
@@ -148,9 +163,10 @@ export async function criarPeriodoPeloProprietario(db: Db, sessao: Sessao, imove
   const r = await imovelOperavel(db, sessao, imovelId, agora);
   if (!r.ok) return r;
   const preco = typeof entrada.precoNoite === "string" ? entrada.precoNoite.trim() : "";
-  // A fonte de preços é conferida dentro da transação que grava o período, com o imóvel travado (o painel pode tê-la mudado no meio).
+  // Contrato e fonte de preços são conferidos dentro da transação que grava o período, com o imóvel travado (o painel pode tê-los mudado no meio).
   return criarPeriodo(db, sessao.organizacaoId, r.imovel.id, entrada, sessao.usuarioId, {
-    conferir: (atual) => (atual.fontePrecos === "beds24" && preco ? "Os preços deste imóvel são definidos no Beds24: aqui o período só pode ter estadia mínima. Deixe o preço em branco." : null),
+    conferir: async (atual, tx) =>
+      (await conferirContratoNaTransacao(tx, sessao.organizacaoId, r.imovel.id, r.dia)) ?? (atual.fontePrecos === "beds24" && preco ? "Os preços deste imóvel são definidos no Beds24: aqui o período só pode ter estadia mínima. Deixe o preço em branco." : null),
   });
 }
 
@@ -160,7 +176,9 @@ export async function excluirPeriodoPeloProprietario(db: Db, sessao: Sessao, per
   if (!p) return { ok: false, erro: "Período não encontrado." };
   const r = await imovelOperavel(db, sessao, p.imovelId, agora);
   if (!r.ok) return r;
-  return (await excluirPeriodo(db, sessao.organizacaoId, periodoId, sessao.usuarioId)) ? { ok: true } : { ok: false, erro: "Período não encontrado." };
+  const feito = await excluirPeriodo(db, sessao.organizacaoId, periodoId, sessao.usuarioId, { conferir: (tx, imovelId) => conferirContratoNaTransacao(tx, sessao.organizacaoId, imovelId, r.dia) });
+  if (typeof feito === "string") return { ok: false, erro: feito };
+  return feito ? { ok: true } : { ok: false, erro: "Período não encontrado." };
 }
 
 // --- Limpezas e manutenção por conta própria ---------------------------------------------------
@@ -226,16 +244,17 @@ export async function marcarLimpezaFeitaPeloProprietario(db: Db, sessao: Sessao,
   if (!l) return { ok: false, erro: "Limpeza não encontrada." };
   const r = await imovelOperavel(db, sessao, l.imovelId, l.data);
   if (!r.ok) return r;
-  return realizarPeloProprietario(db, sessao.organizacaoId, limpezaId, hojeISO(r.imovel.fuso, agora), sessao.usuarioId);
+  return realizarPeloProprietario(db, sessao.organizacaoId, limpezaId, hojeISO(r.imovel.fuso, agora), sessao.usuarioId, (atual, tx) => conferirContratoNaTransacao(tx, sessao.organizacaoId, atual.imovelId, atual.data));
 }
 
 export type ManutencaoDoProprietario = { id: string; imovelCodigo: string; titulo: string; descricao: string; estado: string; dataRealizada: string | null; porContaPropria: boolean };
 
-/** Manutenções dos imóveis marketplace da sessão (as mais recentes), sem valores da empresa. */
+/** Manutenções dos imóveis marketplace da sessão — as mais recentes (por registro), sem valores da empresa. */
 export async function manutencoesDoProprietario(db: Db, sessao: Sessao, agora = new Date(), limite = 20): Promise<ManutencaoDoProprietario[]> {
   const meus = await imoveisMarketplaceDaSessao(db, sessao, agora);
   if (!meus.length) return [];
-  const lista = await listarManutencoes(db, sessao.organizacaoId, { imovelIds: meus.map((i) => i.id) });
+  // `listarManutencoes` ordena pelo que pede ação (fila do painel); aqui é histórico: as últimas registradas primeiro.
+  const lista = [...(await listarManutencoes(db, sessao.organizacaoId, { imovelIds: meus.map((i) => i.id) }))].sort((a, b) => b.criadoEm.getTime() - a.criadoEm.getTime());
   return lista.slice(0, limite).map((m) => ({ id: m.id, imovelCodigo: m.imovelCodigo, titulo: m.titulo, descricao: m.descricao, estado: m.estado, dataRealizada: m.dataRealizada, porContaPropria: m.semCusto }));
 }
 
@@ -243,6 +262,6 @@ export async function manutencoesDoProprietario(db: Db, sessao: Sessao, agora = 
 export async function registrarManutencaoPeloProprietario(db: Db, sessao: Sessao, d: { imovelId: string; titulo: string; descricao: string; data: string }, agora = new Date()): Promise<ResultadoPortal> {
   const r = await imovelOperavel(db, sessao, d.imovelId, /^\d{4}-\d{2}-\d{2}$/.test(d.data) ? d.data : agora);
   if (!r.ok) return r;
-  const feito = await registrarFeitaPeloProprietario(db, sessao.organizacaoId, d, hojeISO(r.imovel.fuso, agora), sessao.usuarioId);
+  const feito = await registrarFeitaPeloProprietario(db, sessao.organizacaoId, d, hojeISO(r.imovel.fuso, agora), sessao.usuarioId, (tx) => conferirContratoNaTransacao(tx, sessao.organizacaoId, r.imovel.id, r.dia));
   return feito.ok ? { ok: true } : feito;
 }

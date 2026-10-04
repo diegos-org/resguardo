@@ -68,6 +68,7 @@ export async function registrarFeitaPeloProprietario(
   d: { imovelId: string; titulo: string; descricao: string; data: string },
   hoje: string,
   autorId: string | null,
+  conferir?: (tx: Db) => Promise<string | null>,
 ): Promise<Resultado> {
   if (!uuidValido(d.imovelId)) return { ok: false, erro: "Escolha o imóvel." };
   const titulo = d.titulo.trim();
@@ -76,11 +77,15 @@ export async function registrarFeitaPeloProprietario(
   if (!dataValida(d.data)) return { ok: false, erro: "Data inválida." };
   if (d.data > hoje) return { ok: false, erro: "A data do serviço não pode ser no futuro." };
   return db.transaction(async (tx) => {
+    // Trava o imóvel: a conferência de quem chama (contrato marketplace) vale até o fim da gravação.
     const [im] = await tx
       .select({ id: imoveis.id })
       .from(imoveis)
-      .where(and(eq(imoveis.id, d.imovelId), eq(imoveis.organizacaoId, organizacaoId)));
+      .where(and(eq(imoveis.id, d.imovelId), eq(imoveis.organizacaoId, organizacaoId)))
+      .for("update");
     if (!im) return { ok: false as const, erro: "Imóvel não encontrado." };
+    const recusa = conferir ? await conferir(tx) : null;
+    if (recusa) return { ok: false as const, erro: recusa };
     const dono = await donoAtual(tx, d.imovelId);
     if (!dono) return { ok: false as const, erro: "O imóvel não tem proprietário vinculado." };
     const agora = new Date();

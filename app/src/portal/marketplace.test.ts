@@ -1,9 +1,9 @@
 import { eq } from "drizzle-orm";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AcessoNegado, type Sessao } from "@/acesso/politica";
 import { historicoDe } from "@/auditoria/auditoria";
 import { REGRAS_CALENDARIO_PADRAO, salvarRegrasCalendario } from "@/calendario/regras-config";
-import { criarContrato } from "@/contratos/repositorio";
+import { criarContrato, listarContratos } from "@/contratos/repositorio";
 import { beds24Envios, beds24EnvioNoites, imoveis, limpezas, manutencoes, organizacoes, profissionaisLimpeza, proprietarioImoveis, proprietarios, proprietarioUsuarios, reservas, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
@@ -22,6 +22,12 @@ import {
   salvarPrecosPeloProprietario,
   situacaoDoEnvio,
 } from "./marketplace";
+
+// A leitura dos contratos é espiada para simular o contrato acabando entre a conferência inicial e a gravação.
+vi.mock("@/contratos/repositorio", async (orig) => {
+  const m = await orig<typeof import("@/contratos/repositorio")>();
+  return { ...m, listarContratos: vi.fn(m.listarContratos) };
+});
 
 let db: Db, close: () => Promise<void>, org: string, a: string, b: string, c: string, d: string, usuario: string, dona: string, outro: string;
 // 3/10/2026, 12:00 em São Paulo.
@@ -189,10 +195,15 @@ describe("portal do proprietário marketplace (M12.4)", () => {
     const [m] = await db.select().from(manutencoes).where(eq(manutencoes.organizacaoId, org));
     expect(m).toMatchObject({ imovelId: a, estado: "realizada", responsavel: "proprietario", proprietarioId: dona, dataRealizada: "2026-10-01", orcamento: null, despesaId: null, semCusto: true });
     expect(await manutencoesDoProprietario(db, sessao(), agora)).toEqual([expect.objectContaining({ imovelCodigo: "403", titulo: "Troca do chuveiro", estado: "realizada", porContaPropria: true })]);
+    // Histórico do portal: as últimas registradas primeiro, mesmo com pedido da empresa (que a fila do painel põe na frente); o limite corta depois.
+    await db.insert(manutencoes).values({ organizacaoId: org, imovelId: a, titulo: "Pedido da empresa", estado: "pedida" });
+    expect(await registrarManutencaoPeloProprietario(db, sessao(), { imovelId: a, titulo: "Pintura", descricao: "", data: "2026-09-20" }, agora)).toEqual({ ok: true });
+    expect((await manutencoesDoProprietario(db, sessao(), agora)).map((x) => x.titulo)).toEqual(["Pintura", "Pedido da empresa", "Troca do chuveiro"]);
+    expect((await manutencoesDoProprietario(db, sessao(), agora, 1)).map((x) => x.titulo)).toEqual(["Pintura"]);
     // Sem custo para a empresa: não entra na fila "custo a lançar" do painel, o aviso explica e lançar custo é recusado.
     expect((await listarManutencoes(db, org, { emAberto: true })).map((x) => x.id)).not.toContain(m.id);
-    const [linha] = await listarManutencoes(db, org);
-    expect(linha).toMatchObject({ id: m.id, semCusto: true, custo: null, avisos: ["Feita pelo proprietário por conta própria (marketplace): sem custo para a empresa."] });
+    const linha = (await listarManutencoes(db, org)).find((x) => x.id === m.id);
+    expect(linha).toMatchObject({ semCusto: true, custo: null, avisos: ["Feita pelo proprietário por conta própria (marketplace): sem custo para a empresa."] });
     expect(await lancarCusto(db, org, m.id, { categoriaId: "00000000-0000-4000-8000-000000000001", valor: 10000, paga: false, dataPagamento: null, pagoPor: "empresa", comprovante: "" }, null)).toMatchObject({ ok: false, erro: expect.stringContaining("não há custo a lançar") });
     expect((await db.select().from(manutencoes).where(eq(manutencoes.id, m.id)))[0].despesaId).toBeNull();
   });
@@ -225,5 +236,37 @@ describe("portal do proprietário marketplace (M12.4)", () => {
     ]);
     expect(await situacaoDoEnvio(db, org, regras, a)).toEqual({ naLista: true, automatico: true, ultimo: { em: new Date("2026-10-01T10:00:00Z"), situacao: "ok" } });
     expect(await situacaoDoEnvio(db, org, regras, b)).toMatchObject({ naLista: false, ultimo: null });
+  });
+
+  it("o contrato marketplace é reconferido dentro da transação que grava: se acabou no meio, nada é gravado", async () => {
+    const real = vi.mocked(listarContratos).getMockImplementation()!;
+    // A 1ª leitura (conferência inicial) ainda vê o contrato; a 2ª (dentro da transação, com o imóvel travado) já não.
+    const acabouNoMeio = () => {
+      let n = 0;
+      vi.mocked(listarContratos).mockImplementation(async (...args) => (++n === 2 ? [] : real(...args)));
+    };
+    try {
+      acabouNoMeio();
+      expect(await salvarPrecosPeloProprietario(db, sessao(), a, { precoBase: "999,00" }, agora)).toEqual({ ok: false, erro: NAO_MARKETPLACE });
+      expect((await lerDetalhes(db, org, a)).precoBase).toBe(30000);
+      acabouNoMeio();
+      expect(await criarPeriodoPeloProprietario(db, sessao(), a, { nome: "Natal", inicio: "2026-12-24", fim: "2026-12-26", precoNoite: "500,00", estadiaMinima: "" }, agora)).toEqual({ ok: false, erro: NAO_MARKETPLACE });
+      expect(await listarPeriodos(db, org, a)).toEqual([]);
+      vi.mocked(listarContratos).mockImplementation(real);
+      expect(await criarPeriodoPeloProprietario(db, sessao(), a, { nome: "Natal", inicio: "2026-12-24", fim: "2026-12-26", precoNoite: "500,00", estadiaMinima: "" }, agora)).toEqual({ ok: true });
+      const [p] = await listarPeriodos(db, org, a);
+      acabouNoMeio();
+      expect(await excluirPeriodoPeloProprietario(db, sessao(), p.id, agora)).toEqual({ ok: false, erro: NAO_MARKETPLACE });
+      expect(await listarPeriodos(db, org, a)).toHaveLength(1);
+      const [l] = await db.insert(limpezas).values({ organizacaoId: org, imovelId: a, data: "2026-10-02", estado: "pedida" }).returning();
+      acabouNoMeio();
+      expect(await marcarLimpezaFeitaPeloProprietario(db, sessao(), l.id, agora)).toEqual({ ok: false, erro: NAO_MARKETPLACE });
+      expect((await db.select().from(limpezas).where(eq(limpezas.id, l.id)))[0].estado).toBe("pedida");
+      acabouNoMeio();
+      expect(await registrarManutencaoPeloProprietario(db, sessao(), { imovelId: a, titulo: "Pintura", descricao: "", data: "2026-10-01" }, agora)).toEqual({ ok: false, erro: NAO_MARKETPLACE });
+      expect(await db.select().from(manutencoes)).toEqual([]);
+    } finally {
+      vi.mocked(listarContratos).mockImplementation(real);
+    }
   });
 });

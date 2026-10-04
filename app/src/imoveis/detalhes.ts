@@ -277,9 +277,20 @@ export type PrepararDetalhes = (atual: Detalhes) => Detalhes | { erro: string; e
  * travado: quem edita só alguns campos (o portal do proprietário marketplace, M12.4) não grava uma
  * foto velha do resto do cadastro por cima de uma mudança feita no painel no meio do caminho.
  */
-export async function salvarDetalhesComLeitura(db: Db, organizacaoId: string, imovelId: string, preparar: PrepararDetalhes, autorId: string | null, agora = new Date()): Promise<{ ok: true } | { ok: false; erro: string; erros?: ErrosDetalhes }> {
+export async function salvarDetalhesComLeitura(
+  db: Db,
+  organizacaoId: string,
+  imovelId: string,
+  preparar: PrepararDetalhes,
+  autorId: string | null,
+  agora = new Date(),
+  o: { conferir?: (tx: Db) => Promise<string | null> } = {},
+): Promise<{ ok: true } | { ok: false; erro: string; erros?: ErrosDetalhes }> {
   return db.transaction(async (tx) => {
     if (!(await imovelDaOrg(tx, organizacaoId, imovelId, true))) return { ok: false as const, erro: "Imóvel não encontrado." };
+    // Regra de quem chama (ex.: o portal reconfere o contrato marketplace), já com o imóvel travado.
+    const recusa = o.conferir ? await o.conferir(tx) : null;
+    if (recusa) return { ok: false as const, erro: recusa };
     const atual = await lerDetalhes(tx, organizacaoId, imovelId);
     const prep = preparar(atual);
     if ("erro" in prep) return { ok: false as const, ...prep };
@@ -338,14 +349,14 @@ export function validarPeriodo(e: Entrada): { ok: true; dados: Omit<Periodo, "id
  * imóvel já travado (ex.: o portal recusa preço no período quando os preços são do Beds24) — nunca
  * sobre uma leitura anterior, que o painel pode ter mudado no meio.
  */
-export async function criarPeriodo(db: Db, organizacaoId: string, imovelId: string, e: Entrada, autorId: string | null, o: { conferir?: (atual: Detalhes) => string | null } = {}): Promise<ResultadoPeriodo> {
+export async function criarPeriodo(db: Db, organizacaoId: string, imovelId: string, e: Entrada, autorId: string | null, o: { conferir?: (atual: Detalhes, tx: Db) => Promise<string | null> | string | null } = {}): Promise<ResultadoPeriodo> {
   const v = validarPeriodo(e);
   if (!v.ok) return v;
   return db.transaction(async (tx) => {
     // Trava o imóvel: dois períodos sobrepostos não entram ao mesmo tempo.
     if (!(await imovelDaOrg(tx, organizacaoId, imovelId, true))) return { ok: false as const, erro: "Imóvel não encontrado." };
     if (o.conferir) {
-      const recusa = o.conferir(await lerDetalhes(tx, organizacaoId, imovelId));
+      const recusa = await o.conferir(await lerDetalhes(tx, organizacaoId, imovelId), tx);
       if (recusa) return { ok: false as const, erro: recusa };
     }
     const [choque] = await tx
@@ -359,9 +370,18 @@ export async function criarPeriodo(db: Db, organizacaoId: string, imovelId: stri
   });
 }
 
-export async function excluirPeriodo(db: Db, organizacaoId: string, periodoId: string, autorId: string | null): Promise<boolean> {
+/**
+ * Exclui um período. `false` = não encontrado; texto = recusa de `conferir` (regra de quem chama, avaliada
+ * com o imóvel travado, ex.: o portal reconfere o contrato marketplace).
+ */
+export async function excluirPeriodo(db: Db, organizacaoId: string, periodoId: string, autorId: string | null, o: { conferir?: (tx: Db, imovelId: string) => Promise<string | null> } = {}): Promise<boolean | string> {
   if (!uuidValido(periodoId)) return false;
   return db.transaction(async (tx) => {
+    const [alvo] = await tx.select({ imovelId: imoveisPeriodos.imovelId }).from(imoveisPeriodos).where(and(eq(imoveisPeriodos.id, periodoId), eq(imoveisPeriodos.organizacaoId, organizacaoId)));
+    if (!alvo) return false;
+    if (!(await imovelDaOrg(tx, organizacaoId, alvo.imovelId, true))) return false;
+    const recusa = o.conferir ? await o.conferir(tx, alvo.imovelId) : null;
+    if (recusa) return recusa;
     const [p] = await tx
       .delete(imoveisPeriodos)
       .where(and(eq(imoveisPeriodos.id, periodoId), eq(imoveisPeriodos.organizacaoId, organizacaoId)))

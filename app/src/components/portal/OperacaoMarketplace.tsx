@@ -61,6 +61,13 @@ const NOMES_SITUACAO_ENVIO: Record<string, string> = { ok: "concluído", parcial
 const ESTADO_LIMPEZA = { pedida: "A fazer", confirmada: "A fazer", realizada: "Feita" } as const;
 
 /** Explica, sem supor, se o que o proprietário mudou chega às OTAs. */
+/** Mensagem depois de salvar: só promete Airbnb/Booking quando o imóvel está na lista de envio. */
+export function textoSalvo(naLista: boolean, empresa: string): string {
+  return naLista
+    ? `Salvo. Vale no site da ${empresa} agora e chega ao Airbnb e ao Booking no próximo envio de calendário.`
+    : `Salvo. Vale no site da ${empresa} agora. Airbnb e Booking continuam com os valores anteriores até a ${empresa} incluir este imóvel no envio de calendário.`;
+}
+
 export function textoDoEnvio(e: SituacaoEnvio, empresa: string): string {
   if (!e.naLista) return `Este imóvel ainda não está na lista de envio ao Beds24 da ${empresa}: o que você mudar aqui vale no site da ${empresa}, mas o Airbnb e o Booking continuam com o calendário e os preços anteriores até a ${empresa} incluir o imóvel no envio.`;
   const ultimo = e.ultimo ? ` Último envio: ${quando(e.ultimo.em)} (${NOMES_SITUACAO_ENVIO[e.ultimo.situacao] ?? e.ultimo.situacao}).` : " Ainda não houve envio para este imóvel.";
@@ -100,7 +107,7 @@ function FormPrecos({ imovel, precos, empresa, salvar }: { imovel: ImovelOperave
       )}
       {estado.ok && (
         <p role="status" className={f.sucesso}>
-          Salvo. Vale no site da {empresa} agora e chega ao Airbnb e ao Booking no próximo envio de calendário.
+          {textoSalvo(imovel.envio.naLista, empresa)}
         </p>
       )}
       <div className={f.linha}>
