@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 3/10/2026, conferência automática de cada PR mais rápida (M0.8); backup automático do repositório pronto para você ativar na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
+> **Última atualização:** 4/10/2026, passo a passo do backup mais detalhado (item 23, passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório pronto para você ativar na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
 
 ---
 
@@ -1221,10 +1221,30 @@ ambiente).
       variables → Actions → New repository secret*:
       - `ORIGEM_REPO` = `al-life/scl-reconstrucao`
       - `ORIGEM_TOKEN` = a chave do passo 3.
-   5. **O robô:** no repositório principal, abra `infra/backup/espelho-github.yml`, toque em
-      *Raw* (ou no botão de copiar o arquivo) e copie **tudo**. No repositório de backup:
-      *Add file → Create new file*, nome do arquivo exatamente
-      `.github/workflows/backup.yml`, cole o conteúdo, *Commit changes* (na `main`).
+   5. **O robô.** É este passo que faz o robô aparecer na aba *Actions* do repositório de
+      backup: enquanto o arquivo não existir lá, a aba *Actions* só mostra modelos do GitHub
+      ("Get started with GitHub Actions"), e não há nada para escolher. Nada é digitado à mão:
+      é copiar um arquivo pronto e colar.
+      - **Copiar:** no repositório principal (`al-life/scl-reconstrucao`, aba *Code*, branch
+        `main`), abra a pasta `infra`, depois `backup`, e toque no arquivo
+        `espelho-github.yml`. No alto do arquivo há um botão *Raw* e, ao lado dele, um ícone de
+        dois quadradinhos (*Copy raw file*): toque nele e o arquivo inteiro vai para a área de
+        transferência. Se preferir o *Raw*: selecione tudo (Ctrl+A ou Cmd+A) e copie. Pelo
+        celular é mais difícil selecionar tudo; se der, faça este passo no computador.
+      - **Colar no repositório de backup** (na conta nova, aba *Code*): botão *Add file →
+        Create new file*. Na caixa do nome, digite `.github/workflows/backup.yml` **com o ponto
+        no começo**: ao digitar cada barra, o GitHub transforma a parte anterior numa pastinha
+        e segue; no fim deve aparecer `.github / workflows / backup.yml`. Na caixa grande de
+        baixo, cole o conteúdo (a primeira linha começa com `# Robô de backup`). Toque em
+        *Commit changes...*, deixe marcado *Commit directly to the main branch* e confirme em
+        *Commit changes*.
+      - **Caminho alternativo**, se preferir: aba *Actions* do repositório de backup → link
+        *set up a workflow yourself*. Abre um editor já na pasta certa, com o nome `main.yml`:
+        troque o nome por `backup.yml`, apague o texto de exemplo que vem na caixa, cole o
+        conteúdo copiado e confirme em *Commit changes*.
+      - Conferir: em *Code* deve existir a pasta `.github`, dentro dela `workflows`, dentro dela
+        `backup.yml`; e a aba *Actions* passa a listar, à esquerda, "Backup do repositório de
+        origem" (o nome vem de dentro do arquivo).
    6. **Proteção extra contra apagar e reescrever** (opcional). **Só existe em repositório
       privado com plano pago do GitHub** (Pro, cerca de US$ 4 por mês, na conta nova). No plano
       Free, **pule este passo**: o robô já nunca apaga nem reescreve e te avisa se o backup
@@ -1233,8 +1253,10 @@ ambiente).
       *Enforcement status*: **Active**; *Target branches → Add target → Include all branches*;
       em *Rules*, marque **só** *Restrict deletions* e *Block force pushes*; *Create*. Repita
       com *New tag ruleset* → *Include all tags*, as mesmas duas regras.
-   7. **Primeira rodada à mão:** aba *Actions* → "Backup do repositório de origem" → *Run
-      workflow* → *Run workflow*. Em um ou dois minutos deve ficar verde. Confira em *Code* que
+   7. **Primeira rodada à mão:** aba *Actions* do repositório de backup → na lista da
+      esquerda, "Backup do repositório de origem" (esse nome só existe depois do passo 5; se
+      não aparecer, volte lá) → botão *Run workflow* (à direita, na faixa azul) → botão verde
+      *Run workflow*. Em um ou dois minutos deve ficar verde. Confira em *Code* que
       apareceram as branches `espelho/main` (e as outras) e `backup-marcos`, e, em *Tags*, uma
       `backup/` com a data de hoje. Na branch principal vai aparecer também um commit do robô
       com um arquivo `.backup/iniciado`: é o marcador de que o backup já existe; não apague.
