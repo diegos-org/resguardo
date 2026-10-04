@@ -224,7 +224,10 @@ se a importação não rodou. Estadias acima de 90 noites (ajustável) pedem con
 ### Calendário e preços no Beds24 — M3.7
 
 O SCL passa a ser a fonte oficial de calendário e preços: o que você cadastra aqui vai ao
-Beds24 e dele ao Airbnb/Booking. Tudo está pronto, mas **desligado**: nada sai enquanto a
+Beds24 e dele ao Airbnb/Booking. Desde 4/10, para os **preços**, isso vale imóvel por imóvel
+(M3.9, seção 2): onde o proprietário define os preços no Beds24 (ele ou a ferramenta dele), o
+SCL só lê e não mexe — até o M3.9 existir, é só não marcar esse imóvel para envio. O calendário
+é sempre sincronizado. Tudo está pronto, mas **desligado**: nada sai enquanto a
 variável `BEDS24_ESCRITA` não estiver com o valor `ligada` na Vercel e o imóvel não estiver
 marcado para envio. Quatro lugares novos:
 
@@ -1443,8 +1446,9 @@ ambiente).
   antigo, eu cruzo tudo com o plano (M0.6) e acrescento o que faltar.
 - **Avisar em vez de supor:** virou regra do projeto — faltou um dado ou algo não bate, o
   sistema avisa e deixa pendente; nunca preenche com um palpite.
-- **Beds24 só leitura?** Não — como o SCL vai ser a fonte oficial de calendário e preços, a
-  chave precisa de **leitura e escrita** (seção 6, item 3). Entrou no plano o **M3.7** (SCL
+- **Beds24 só leitura?** Não — como o SCL vai ser a fonte oficial de calendário e preços (para
+  os preços, imóvel por imóvel desde 4/10 — M3.9), a chave precisa de **leitura e escrita**
+  (seção 6, item 3). Entrou no plano o **M3.7** (SCL
   manda calendário, preços e regras para o Beds24 → OTAs) e o **M5.5** (proprietário mexe
   no calendário do imóvel dele pelo portal; a mudança passa pelo SCL e segue para as OTAs).
   A escrita fica **desligada** até você mandar ligar, depois de testarmos num imóvel.
