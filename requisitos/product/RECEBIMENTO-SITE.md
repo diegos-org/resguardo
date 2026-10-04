@@ -49,15 +49,16 @@ regra** a decidir — a comparação abaixo vale igual.
 | Repasse ao proprietário | Decidido em 4/10: mensal no dia 1º por padrão (intervalo máximo), ou quinzenal, semanal ou assim que disponível, à escolha do proprietário no portal (M4.10); reserva do site disponível só depois do check-in e da liberação pelo provedor | Automático, quando o provedor libera | Automático, quando o provedor libera |
 | Quando o dinheiro fica disponível | Pix: no mesmo dia. Cartão: na hora (taxa ~4,98%) ou em 30 dias (~3,98%) | Igual ao lado | Conforme o prazo do Stripe (a conferir) |
 
-## Impostos (para o contador confirmar)
+## Impostos (pergunta levada ao contador; confirmado por Diego em 4/10/2026)
 
 - **O ponto principal:** se o dinheiro todo entra na conta da SCL, a Receita e a prefeitura
   podem entender que a receita da SCL é o valor total, e não só a comissão. Na intermediação
   bem documentada (contrato de administração/intermediação, repasse identificado, nota fiscal
-  só da comissão), a empresa costuma tributar **só a comissão**. É isso que o contador precisa
-  confirmar para o caso da SCL.
+  só da comissão), a empresa costuma tributar **só a comissão**. Era isso que o contador
+  precisava confirmar para o caso da SCL; **confirmado** (Diego, 4/10/2026): só a comissão é
+  receita da SCL, o restante é valor de terceiros que passa pela empresa.
 - No **split do Mercado Pago**, a parte do proprietário cai direto na conta dele — a
-  separação fica mais clara (ainda assim, confirmar com o contador).
+  separação fica mais clara (ainda assim, confirmar com o contador se um dia for adotado).
 - No **Stripe Connect com "destination charges"**, a cobrança entra na conta da SCL antes da
   transferência ao proprietário: a dúvida é a mesma do "empresa recebe e repassa" e precisa
   da mesma confirmação do contador.
@@ -73,8 +74,8 @@ regra** a decidir — a comparação abaixo vale igual.
    proprietário não precisa abrir conta em lugar nenhum, e a integração do pagamento (M8.2 —
    checkout, aviso de pagamento, devolução ao hóspede com os lançamentos da devolução e conciliação, que qualquer opção
    exige) fica menor, então dá para começar a vender pelo site mais cedo.
-   Condição: o **contador confirmar** que, com o contrato e as notas certas, a SCL tributa só
-   a comissão.
+   Condição (cumprida em 4/10/2026): o contador confirmou que, com o contrato e as notas
+   certas, a SCL tributa só a comissão.
 2. **Deixar o split do Mercado Pago para o marketplace (M12)**, quando entrarem proprietários
    que cuidam da própria operação e esperam receber na hora — aí o split compensa o trabalho
    extra de ligar a conta de cada um. Essa escolha do marketplace é **separada** desta: fica no

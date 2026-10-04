@@ -1,7 +1,7 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 4/10/2026, recebimento do site decidido (M8.0: empresa recebe e repassa, Mercado Pago; repasse na periodicidade que o proprietário escolher, item novo M4.10), modelo do marketplace decidido (B, partes iguais; M12.1 liberado) e backup do repositório ativado por você (M0.7); correção do robô de backup depois da sua primeira rodada (ele passa a gravar com uma chave da própria conta de backup e guarda o que vem da origem fora de branches e tags, onde nenhuma automação roda; item 23, passos 4, 5 e 7) e passo a passo mais detalhado (passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório pronto para você ativar na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
+> **Última atualização:** 4/10/2026, recebimento do site decidido (M8.0: empresa recebe e repassa, Mercado Pago; repasse na periodicidade que o proprietário escolher, item novo M4.10), modelo do marketplace decidido (B, partes iguais; M12.1 liberado) e backup do repositório ativado por você (M0.7); correção do robô de backup depois da sua primeira rodada (ele passa a gravar com uma chave da própria conta de backup e guarda o que vem da origem fora de branches e tags, onde nenhuma automação roda; item 23, passos 4, 5 e 7) e passo a passo mais detalhado (passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório ativo na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
 
 ---
 
@@ -458,7 +458,8 @@ Não precisa preencher descrições dos apartamentos para importar. A melhoria n
   relatórios". Essa área é **só do admin** (tem dados pessoais); na lista o CPF aparece
   mascarado (•••.•••.247-25) e o histórico nunca grava CPF nem Pix por extenso.
 - M2.3: **contratos de gestão com data de início e fim**, na ficha de cada imóvel: gestão
-  completa (sugestão 15%), gestão online (10%) ou marketplace (fórmula ainda a definir).
+  completa (sugestão 15%), gestão online (10%) ou marketplace (fórmula decidida em 4/10:
+  modelo B em partes iguais, que entra no sistema no M12.1).
   Mudou o percentual? Encerra-se o contrato atual e cria-se um novo a partir da data nova —
   assim reservas antigas continuam com a regra da época (ex.: 102, 303 e 399 voltando a
   15/85 em 01/01/2027 = novo contrato começando nessa data). O sistema não deixa dois
@@ -1020,7 +1021,8 @@ Não precisa preencher descrições dos apartamentos para importar. A melhoria n
     fica registrado. Se algo impedir (código de imóvel repetido, e-mail que já é da equipe),
     nada é criado e a tela avisa;
   - depois de aprovar, complete na ficha do proprietário o **documento, o Pix e o contrato**
-    (o contrato marketplace depende do modelo de cobrança, M12.1).
+    (o contrato marketplace usa o modelo de cobrança decidido em 4/10, que entra no sistema
+    no M12.1).
 
 A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 
@@ -1457,7 +1459,8 @@ ambiente).
   algum anúncio já existir no Booking, a gente **liga** em vez de criar outro. Quando você for
   fazer, me chame que eu te guio tela a tela.
 - **Modelos de cliente:** o sistema já tem os dois tipos de contrato — **gestão completa**
-  (os cinco do Rio) e **marketplace** (tipo separado, esperando a fórmula). Agora o marketplace
+  (os cinco do Rio) e **marketplace** (tipo separado; fórmula decidida em 4/10, modelo B em
+  partes iguais, a entrar no M12.1). Agora o marketplace
   ganhou um bloco próprio no plano (**M12**): fórmula, cálculo e repasse, auto-cadastro do
   proprietário e portal dele com calendário e preços.
 - **Site público:** é a parte que estava mais adiantada, mas ainda como **protótipo
