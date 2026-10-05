@@ -451,10 +451,13 @@ describe("dados e acesso", () => {
     await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));
     await db.insert(proprietarioImoveis).values({ proprietarioId: outro, imovelId: a, criadoEm: new Date("2026-10-11T12:00:00-03:00") });
     // A estadia de 10 a 13/10 atravessa a troca: a Dona conta só a noite de 10/10 (1 de 10 para vender, não 3) e um
-    // terço do bruto na diária; o Outro, nenhuma (a reserva é do livro da Dona).
+    // terço do bruto na diária; o Outro conta as duas noites depois da troca (11 e 12) e dois terços do bruto, embora o
+    // dinheiro dessa reserva esteja no livro da Dona (a estadia é fato do imóvel; o dinheiro segue o livro).
     expect((await pedir()).metricas.atual).toMatchObject({ diasImovel: 10, noitesBloqueadas: 3, noitesOcupadas: 1, bruto: 33333 });
     const pedirOutro = () => dadosDoRelatorio(db, org, { donos: [{ id: outro, nome: "Outro Fictício" }], imoveis: [{ id: a, codigo: "403", nome: "Studio Mezanino" }], todosOsImoveis: false, ano: 2026, mes: 10, hoje: "2026-11-02" });
-    expect((await pedirOutro()).metricas.atual).toMatchObject({ diasImovel: 21, noitesBloqueadas: 0, noitesOcupadas: 0 });
+    const doOutro = await pedirOutro();
+    expect(doOutro.metricas.atual).toMatchObject({ diasImovel: 21, noitesBloqueadas: 0, noitesOcupadas: 2, bruto: 66667 });
+    expect(doOutro.resumo.receitaBruta).toBe(0);
     // Com o histórico do painel ("proprietario.imoveis"), o imóvel que volta à Dona em 1/12 não apaga a posse antiga:
     // outubro da Dona continua com 10 noites (perdeu em 11/10), e o do Outro com 21 (ganhou em 11/10, perdeu em 1/12).
     const h = (entidadeId: string, antes: string[], depois: string[], quando: string) => ({ organizacaoId: org, usuarioId: null, acao: "proprietario.imoveis", entidade: "proprietario", entidadeId, mudancas: { imoveis: [antes, depois] }, criadoEm: new Date(quando) });
@@ -462,7 +465,7 @@ describe("dados e acesso", () => {
     await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));
     await db.insert(proprietarioImoveis).values({ proprietarioId: dona, imovelId: a, criadoEm: new Date("2026-12-01T12:00:00-03:00") });
     expect((await pedir()).metricas.atual).toMatchObject({ diasImovel: 10, noitesBloqueadas: 3, noitesOcupadas: 1, bruto: 33333 });
-    expect((await pedirOutro()).metricas.atual).toMatchObject({ diasImovel: 21, noitesBloqueadas: 0, noitesOcupadas: 0 });
+    expect((await pedirOutro()).metricas.atual).toMatchObject({ diasImovel: 21, noitesBloqueadas: 0, noitesOcupadas: 2, bruto: 66667 });
   });
 
   it("mês parcial: a diária média usa o bruto das noites já passadas (proporcional por noite), não o bruto do mês inteiro", async () => {
