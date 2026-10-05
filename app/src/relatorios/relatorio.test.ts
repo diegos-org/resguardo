@@ -20,6 +20,8 @@ import { type DadosDoMes, diariaMedia } from "./metricas";
 import { conferirAnexos, ErroRelatorio, extratosDe, gerarPdfRelatorio, lerPaginas } from "./pdf";
 import { type DadosRelatorio, dadosDoRelatorio, imoveisDoProprietario, marcaDe, textoDoSaldo, textosDoRelatorio } from "./relatorio";
 import { receberTudo } from "@/repasses/testes";
+import { gerarAntecipado, marcarRepassePago } from "@/repasses/repasses";
+import { repassesDoRelatorio } from "./dados";
 
 // PNG 1×1 (fictício, só para o teste).
 const PNG = Uint8Array.from(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"));
@@ -263,6 +265,13 @@ describe("textos do relatório (modelo oficial, M5.7)", () => {
     expect(t.conciliacaoFecha).toBe(true);
     expect(t.conciliacaoIntro).toContain("pela data do pagamento");
     expect(t.repasses[0]).toEqual({ texto: "16/10 — repasse antecipado (Hóspede)", valor: "R$ 722,50", tipo: "normal", etiqueta: "pago em 16/10 · comprovante no portal" });
+    // Antecipado programado para 31/10 e pago em 1/11: a linha leva a data do Pix e diz a programada.
+    const virada = textosDoRelatorio({ ...base, repasses: [{ id: "rep2", tipo: "antecipado", data: "2026-10-31", situacao: "pago", dataPagamento: "2026-11-01", valor: 1000, reservas: ["Zé"] }] });
+    expect(virada.repasses[0]).toEqual({ texto: "1/11 — repasse antecipado (Zé)", valor: "R$ 10,00", tipo: "normal", etiqueta: "pago em 1/11 (programado para 31/10) · comprovante no portal" });
+    // Relatório parcial antes da data do canal: a parte paga pelo canal ainda é prevista, não "paga".
+    const antes = textosDoRelatorio({ ...base, hoje: "2026-10-05", situacao: "parcial", ate: "2026-10-05", partes: [parte({ quemRecebe: "split", situacao: "informacao", canal: "airbnb", pagamento: { data: "2026-10-11", fonte: "canal", prazo: 1 } })] });
+    expect(antes.reservas[0]).toMatchObject({ situacao: "prevista para 11/10 pelo canal", situacaoTipo: "info" });
+    expect(antes.comoChega.linhas.map((l) => l.texto)).toContain("Previsto para 11/10: o Airbnb paga a você direto (3 noites de outubro de 2026 da reserva de Hóspede (10/10 → 13/10))");
     expect(t.repasses[1]).toMatchObject({ texto: "Transferido no fechamento, em 01/11/2026" });
     expect(t.posicao).toBe('Nenhum valor é estimado: o que o sistema ainda não tem aparece como "a receber" ou "a liberar". Um repasse "enviado" não confirma o crédito na sua conta: confira o comprovante no portal.');
     // Mesmos dados, horas diferentes: textos idênticos (o e-mail do fechamento versiona o conteúdo por eles).
@@ -467,6 +476,20 @@ describe("dados e acesso", () => {
     await db.insert(proprietarioImoveis).values({ proprietarioId: dona, imovelId: a, criadoEm: new Date("2026-12-01T12:00:00-03:00") });
     expect((await pedir()).metricas.atual).toMatchObject({ diasImovel: 10, noitesBloqueadas: 3, noitesOcupadas: 1, bruto: 33333 });
     expect((await pedirOutro()).metricas.atual).toMatchObject({ diasImovel: 21, noitesBloqueadas: 0, noitesOcupadas: 2, bruto: 66667 });
+  });
+
+  it("repasses do mês pela data do Pix: antecipado programado para 31/10 e pago em 1/11 é de novembro, na tabela e na capa", async () => {
+    const g = await gerarAntecipado(db, org, dona, "2026-10-31", null);
+    if (!g.ok) throw new Error(g.erro);
+    const pago = await marcarRepassePago(db, org, g.id, "2026-11-01", "2026-11-02", null, { texto: "", arquivo: { nome: "pix.png", tipo: "image/png", conteudo: Buffer.from(PNG) } });
+    if (!pago.ok) throw new Error(pago.erro);
+    const donos = [{ id: dona, nome: "Dona Fictícia" }];
+    expect((await repassesDoRelatorio(db, org, donos, "2026-10")).repasses).toEqual([]);
+    expect((await repassesDoRelatorio(db, org, donos, "2026-11")).repasses).toMatchObject([{ id: g.id, data: "2026-10-31", dataPagamento: "2026-11-01", situacao: "pago", valor: 72250 }]);
+    // No relatório de outubro, a parte aparece como repassada em 1/11 (informação); o Pix inteiro fica no de novembro.
+    const out = textosDoRelatorio(await dadosDoRelatorio(db, org, { donos, imoveis: [{ id: a, codigo: "403", nome: "Studio Mezanino" }], todosOsImoveis: true, ano: 2026, mes: 10, hoje: "2026-11-02" }));
+    expect(out.comoChega.linhas.map((l) => l.texto)).toEqual(["Já repassado em 1/11 (repasse antecipado de novembro de 2026): 3 noites de outubro de 2026 da reserva de Hóspede (10/10 → 13/10)"]);
+    expect(out.repasses.map((l) => l.texto)).toEqual([]);
   });
 
   it("noite bloqueada para uso próprio dentro de uma estadia confirmada sai das noites ocupadas e do bruto da diária", async () => {

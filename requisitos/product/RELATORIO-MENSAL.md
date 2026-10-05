@@ -112,7 +112,7 @@ com quatro lado a lado o texto fica apertado; os dois quadros a mais entraram no
 deles, os dois gráficos (ver "Métricas"). Depois, as reservas:
 "{N} reservas · {n} noites em {mês}". Uma linha (ou cartão) por reserva: primeiro nome do hóspede,
 canal, código do canal, entrada → saída, noites no mês, bruto, taxa do canal, limpeza (quando o
-componente existir no livro), comissão da gestão, **sua parte** e situação da parte (paga pelo canal /
+componente existir no livro), comissão da gestão, **sua parte** e situação da parte (paga pelo canal em {data}, ou prevista para {data} pelo canal quando a data ainda não chegou /
 repassada em {data} / a transferir / a liberar: {motivo}). Nota de rodapé: estadia que atravessa o
 mês entra só com as noites do mês, rateio igual por noite (regra de 24/09). Ordem: por entrada.
 
@@ -124,7 +124,9 @@ mês entra só com as noites do mês, rateio igual por noite (regra de 24/09). O
    **a receber**), sua parte. Embaixo, a **ponte para o resultado do mês**: "+ noites de {mês}
    pagas no mês anterior" e "− noites de {mês seguinte} pagas neste mês", até fechar nos totais da
    capa (competência). É a "conciliação do extrato ao mês completo" do modelo da Lia.
-2. **Repasses do mês** — antecipados pagos (data, valor, reservas, "comprovante no portal") e o
+2. **Repasses do mês** — antecipados pela data do Pix (a do pagamento quando pago, a programada
+   enquanto não; o programado para 31/10 e pago em 1/11 é de novembro), com data, valor, reservas,
+   "comprovante no portal", e o
    fechamento: saldo do acerto, adiantamentos descontados, valor a transferir, quem paga quem, data
    prevista. A liberar: lista com o motivo e "entra no próximo repasse".
 3. **Despesas e ajustes do imóvel** — data, descrição, valor, nota/anexo no portal.

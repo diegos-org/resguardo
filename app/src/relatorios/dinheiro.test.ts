@@ -110,6 +110,21 @@ describe("como chega até você (M5.7, pela data em que o canal pagou)", () => {
     expect(conciliacaoFecha(conciliacao([zeSetembro, ze], "2026-10", "2026-09-20", E))).toBe(true);
   });
 
+  it("antecipado programado para 31/10 e pago em 1/11: é dinheiro de novembro (data do Pix), e outubro só informa", () => {
+    const virada = { ...bruno, repasse: { ...bruno.repasse!, data: "2026-10-31", dataPagamento: "2026-11-01" } };
+    expect(comoChega([virada], "2026-10", HOJE, [], E).linhas.map((l) => [l.texto, l.valor, l.tipo])).toEqual([
+      ["Já repassado em 1/11 (repasse antecipado de novembro de 2026): 3 noites de outubro de 2026 da reserva de Bruno (7/10 → 10/10)", 216750, "info"],
+    ]);
+    expect(comoChega([virada], "2026-11", HOJE, [], E, [{ id: "rep1", valor: 216750, reservas: ["Bruno"] }]).linhas.map((l) => [l.texto, l.valor, l.tipo])).toEqual([
+      ["Já repassado em 1/11 (repasse antecipado: Bruno; Pix com comprovante no portal)", 216750, "normal"],
+      ["Desse valor, 3 noites de outubro de 2026 da reserva de Bruno (7/10 → 10/10), pagas junto: entram no resultado de outubro de 2026", 216750, "info"],
+    ]);
+    // Enquanto não pago, vale a data programada.
+    const aPagar = { ...virada, repasse: { ...virada.repasse!, situacao: "a_pagar" as const, dataPagamento: null } };
+    expect(comoChega([aPagar], "2026-10", HOJE, [], E).linhas[0].texto).toBe("Repasse antecipado de 31/10 a pagar (Bruno)");
+    expect(comoChega([aPagar], "2026-11", HOJE, [], E).linhas).toEqual([]);
+  });
+
   it("fechamento pago, proprietário que deve, saldo parcial, em conferência, repasse a pagar e sem prazo do canal", () => {
     expect(comoChega([ana], "2026-10", HOJE, [rodape({ situacao: "pago", dataPagamento: "2026-11-01" })], E)).toMatchObject({
       linhas: [expect.anything(), { texto: "Transferido no fechamento, em 01/11/2026", valor: 314800 }],
