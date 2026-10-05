@@ -283,22 +283,23 @@ class Folhas {
       const fonte = l.tipo === "total" ? this.f.sansN : this.f.sans;
       const c = l.tipo === "sub" || l.tipo === "info" ? C.texto2 : C.tinta;
       const valor = this.limpo(l.valor.replace(/^R\$\s?/, "").replace(/^(−|-)\s*R\$\s?/, "− "));
-      const largTexto = largura - 12 - this.f.sansN.widthOfTextAtSize(valor, 8.5) - 8;
-      const texto = quebrar(this.limpo(l.texto), fonte, 8.5, largTexto);
-      const etiqueta = l.etiqueta ? quebrar(this.limpo(l.etiqueta), this.f.sans, 7, largTexto) : [];
-      const altura = 5 + texto.length * 10.5 + etiqueta.length * 9 + 3;
+      // Tabelas densas a 9 pt e etiquetas a 8 pt, o mínimo da especificação (RELATORIO-MENSAL → "Tipografia").
+      const largTexto = largura - 12 - this.f.sansN.widthOfTextAtSize(valor, 9) - 8;
+      const texto = quebrar(this.limpo(l.texto), fonte, 9, largTexto);
+      const etiqueta = l.etiqueta ? quebrar(this.limpo(l.etiqueta), this.f.sans, 8, largTexto) : [];
+      const altura = 5 + texto.length * 11.5 + etiqueta.length * 10 + 3;
       this.espaco(altura);
       if (l.tipo === "total") this.page.drawRectangle({ x, y: this.y, width: largura, height: 0.8, color: C.dourado });
       let y = this.y - 4;
       for (const t of texto) {
-        y -= 10.5;
-        this.page.drawText(t, { x: x + 6, y: y + 2, size: 8.5, font: fonte, color: c });
+        y -= 11.5;
+        this.page.drawText(t, { x: x + 6, y: y + 2, size: 9, font: fonte, color: c });
       }
       for (const e of etiqueta) {
-        y -= 9;
-        this.page.drawText(e, { x: x + 6, y: y + 2, size: 7, font: this.f.sans, color: l.tipo === "aviso" ? C.douradoEscuro : C.texto2 });
+        y -= 10;
+        this.page.drawText(e, { x: x + 6, y: y + 2, size: 8, font: this.f.sans, color: l.tipo === "aviso" ? C.douradoEscuro : C.texto2 });
       }
-      this.page.drawText(valor, { x: x + largura - 6 - this.f.sansN.widthOfTextAtSize(valor, 8.5), y: this.y - 4 - 10.5 + 2, size: 8.5, font: l.tipo === "total" || l.tipo === "normal" ? this.f.sansN : this.f.sans, color: c });
+      this.page.drawText(valor, { x: x + largura - 6 - this.f.sansN.widthOfTextAtSize(valor, 9), y: this.y - 4 - 11.5 + 2, size: 9, font: l.tipo === "total" || l.tipo === "normal" ? this.f.sansN : this.f.sans, color: c });
       this.y -= altura;
       this.page.drawRectangle({ x, y: this.y, width: largura, height: 0.4, color: C.areia });
     }
@@ -307,23 +308,23 @@ class Folhas {
 
   /** Tabela com colunas; células com `quebra` embrulham o texto e a linha cresce. */
   tabela<T extends Record<string, string>>(colunas: readonly Col<T>[], linhas: readonly T[], o: { total?: T | null; destaqueTipo?: (l: T) => "normal" | "sub" | "total" | "ponte" } = {}) {
-    const ALT = 15;
+    const ALT = 16;
     const cabecalho = () => {
       this.espaco(ALT);
       this.page.drawRectangle({ x: M, y: this.y - ALT, width: LARG, height: ALT, color: C.areia });
       let x = M;
       for (const c of colunas) {
         const s = this.limpo(c.titulo);
-        const px = c.direita ? x + c.w - 5 - this.f.sansN.widthOfTextAtSize(s, 7.5) : x + 5;
-        this.page.drawText(s, { x: px, y: this.y - 10.5, size: 7.5, font: this.f.sansN, color: C.texto2 });
+        const px = c.direita ? x + c.w - 5 - this.f.sansN.widthOfTextAtSize(s, 8) : x + 5;
+        this.page.drawText(s, { x: px, y: this.y - 11, size: 8, font: this.f.sansN, color: C.texto2 });
         x += c.w;
       }
       this.y -= ALT;
     };
     const linha = (l: T, i: number, tipo: "normal" | "sub" | "total" | "ponte") => {
-      const celulas = colunas.map((c) => (c.quebra ? quebrar(this.limpo(String(l[c.chave] ?? "")), tipo === "total" ? this.f.sansN : this.f.sans, 8, c.w - 10) : [cortar(this.limpo(String(l[c.chave] ?? "")), this.f.sans, 8, c.w - 10)]));
+      const celulas = colunas.map((c) => (c.quebra ? quebrar(this.limpo(String(l[c.chave] ?? "")), tipo === "total" ? this.f.sansN : this.f.sans, 9, c.w - 10) : [cortar(this.limpo(String(l[c.chave] ?? "")), this.f.sans, 9, c.w - 10)]));
       const nLinhas = Math.max(1, ...celulas.map((c) => c.length));
-      const altura = 6 + nLinhas * 10;
+      const altura = 6 + nLinhas * 11.5;
       if (this.espaco(altura)) cabecalho();
       if (tipo === "total" || tipo === "sub") this.page.drawRectangle({ x: M, y: this.y - altura, width: LARG, height: altura, color: C.areia });
       else if (i % 2 === 1) this.page.drawRectangle({ x: M, y: this.y - altura, width: LARG, height: altura, color: C.papel });
@@ -333,9 +334,9 @@ class Folhas {
         const corTexto = tipo === "ponte" ? C.texto2 : C.tinta;
         let y = this.y - 3;
         for (const s of celulas[k]) {
-          y -= 10;
-          const px = c.direita ? x + c.w - 5 - fonte.widthOfTextAtSize(s, 8) : x + 5;
-          this.page.drawText(s, { x: px, y: y + 1, size: 8, font: fonte, color: corTexto });
+          y -= 11.5;
+          const px = c.direita ? x + c.w - 5 - fonte.widthOfTextAtSize(s, 9) : x + 5;
+          this.page.drawText(s, { x: px, y: y + 1.5, size: 9, font: fonte, color: corTexto });
         }
         x += c.w;
       }
@@ -351,23 +352,24 @@ class Folhas {
   /** Tabela das reservas: a primeira coluna tem duas linhas (hóspede · canal · código; situação). */
   tabelaReservas(linhas: readonly LinhaReserva[], total: LinhaReserva | null, comImovel: boolean) {
     const colunas: { titulo: string; w: number; direita?: boolean; de: (l: LinhaReserva) => string }[] = [
-      { titulo: "Hóspede · canal · situação", w: 190, de: () => "" },
-      { titulo: "Datas", w: 60, de: (l) => l.datas },
-      { titulo: "Noites", w: 40, direita: true, de: (l) => l.noites },
-      { titulo: "Bruto", w: 60, direita: true, de: (l) => l.bruto.replace(/^R\$\s?/, "") },
-      { titulo: "Taxa do canal", w: 56, direita: true, de: (l) => l.taxa.replace(/^R\$\s?/, "") },
-      { titulo: "Gestão", w: 54, direita: true, de: (l) => l.gestao.replace(/^R\$\s?/, "") },
-      { titulo: "Sua parte", w: LARG - 460, direita: true, de: (l) => l.suaParte.replace(/^R\$\s?/, "") },
+      { titulo: "Hóspede · canal · situação", w: 176, de: () => "" },
+      { titulo: "Datas", w: 66, de: (l) => l.datas },
+      { titulo: "Noites", w: 38, direita: true, de: (l) => l.noites },
+      { titulo: "Bruto", w: 58, direita: true, de: (l) => l.bruto.replace(/^R\$\s?/, "") },
+      { titulo: "Taxa do canal", w: 62, direita: true, de: (l) => l.taxa.replace(/^R\$\s?/, "") },
+      { titulo: "Gestão", w: 56, direita: true, de: (l) => l.gestao.replace(/^R\$\s?/, "") },
+      { titulo: "Sua parte", w: LARG - 456, direita: true, de: (l) => l.suaParte.replace(/^R\$\s?/, "") },
     ];
-    const ALT = 15;
+    // 9 pt nas células e 8 pt no cabeçalho e na situação: o mínimo da especificação para tabelas densas.
+    const ALT = 16;
     const cabecalho = () => {
       this.espaco(ALT);
       this.page.drawRectangle({ x: M, y: this.y - ALT, width: LARG, height: ALT, color: C.areia });
       let x = M;
       for (const c of colunas) {
         const s = this.limpo(c.titulo);
-        const px = c.direita ? x + c.w - 5 - this.f.sansN.widthOfTextAtSize(s, 7.5) : x + 5;
-        this.page.drawText(s, { x: px, y: this.y - 10.5, size: 7.5, font: this.f.sansN, color: C.texto2 });
+        const px = c.direita ? x + c.w - 5 - this.f.sansN.widthOfTextAtSize(s, 8) : x + 5;
+        this.page.drawText(s, { x: px, y: this.y - 11, size: 8, font: this.f.sansN, color: C.texto2 });
         x += c.w;
       }
       this.y -= ALT;
@@ -375,38 +377,40 @@ class Folhas {
     cabecalho();
     const corSituacao = (tipo: LinhaReserva["situacaoTipo"]) => (tipo === "ok" ? C.musgo : tipo === "info" ? C.douradoEscuro : C.tinta);
     for (const [i, l] of linhas.entries()) {
-      const altura = 25;
+      const altura = 28;
       if (this.espaco(altura)) cabecalho();
       if (i % 2 === 1) this.page.drawRectangle({ x: M, y: this.y - altura, width: LARG, height: altura, color: C.papel });
       // Primeira coluna: hóspede em negrito, canal e código; embaixo, a situação.
       const hospede = this.limpo(comImovel && l.imovel ? `${l.imovel} · ${l.hospede}` : l.hospede);
       const resto = this.limpo(` · ${l.canal}${l.codigo ? ` · ${l.codigo}` : ""}`);
-      const hospedeCortado = cortar(hospede, this.f.sansN, 8.5, 180 - this.f.sans.widthOfTextAtSize(resto, 8));
-      this.page.drawText(hospedeCortado, { x: M + 5, y: this.y - 11, size: 8.5, font: this.f.sansN, color: C.tinta });
-      this.page.drawText(cortar(resto, this.f.sans, 8, 180 - this.f.sansN.widthOfTextAtSize(hospedeCortado, 8.5)), { x: M + 5 + this.f.sansN.widthOfTextAtSize(hospedeCortado, 8.5), y: this.y - 11, size: 8, font: this.f.sans, color: C.tinta });
-      if (l.situacao) this.page.drawText(cortar(this.limpo(l.situacao), this.f.sans, 7, 180), { x: M + 5, y: this.y - 21, size: 7, font: this.f.sans, color: corSituacao(l.situacaoTipo) });
+      // O nome tem prioridade: canal e código é que encurtam quando não cabe tudo.
+      const largPrimeira = colunas[0].w - 10;
+      const hospedeCortado = cortar(hospede, this.f.sansN, 9, largPrimeira - 40);
+      this.page.drawText(hospedeCortado, { x: M + 5, y: this.y - 12, size: 9, font: this.f.sansN, color: C.tinta });
+      this.page.drawText(cortar(resto, this.f.sans, 9, largPrimeira - this.f.sansN.widthOfTextAtSize(hospedeCortado, 9)), { x: M + 5 + this.f.sansN.widthOfTextAtSize(hospedeCortado, 9), y: this.y - 12, size: 9, font: this.f.sans, color: C.tinta });
+      if (l.situacao) this.page.drawText(cortar(this.limpo(l.situacao), this.f.sans, 8, largPrimeira), { x: M + 5, y: this.y - 23, size: 8, font: this.f.sans, color: corSituacao(l.situacaoTipo) });
       let x = M;
       for (const c of colunas) {
         if (c.titulo !== colunas[0].titulo) {
-          const s = cortar(this.limpo(c.de(l)), this.f.sans, 8, c.w - 10);
-          const px = c.direita ? x + c.w - 5 - this.f.sans.widthOfTextAtSize(s, 8) : x + 5;
-          this.page.drawText(s, { x: px, y: this.y - 15, size: 8, font: this.f.sans, color: C.tinta });
+          const s = cortar(this.limpo(c.de(l)), this.f.sans, 9, c.w - 10);
+          const px = c.direita ? x + c.w - 5 - this.f.sans.widthOfTextAtSize(s, 9) : x + 5;
+          this.page.drawText(s, { x: px, y: this.y - 17, size: 9, font: this.f.sans, color: C.tinta });
         }
         x += c.w;
       }
       this.y -= altura;
     }
     if (total) {
-      const altura = 16;
+      const altura = 18;
       if (this.espaco(altura)) cabecalho();
       this.page.drawRectangle({ x: M, y: this.y - altura, width: LARG, height: altura, color: C.areia });
-      this.page.drawText(this.limpo(total.hospede), { x: M + 5, y: this.y - 11, size: 8, font: this.f.sansN, color: C.tinta });
+      this.page.drawText(this.limpo(total.hospede), { x: M + 5, y: this.y - 12, size: 9, font: this.f.sansN, color: C.tinta });
       let x = M;
       for (const c of colunas) {
         if (c.titulo !== colunas[0].titulo) {
           const s = this.limpo(c.de(total));
-          const px = c.direita ? x + c.w - 5 - this.f.sansN.widthOfTextAtSize(s, 8) : x + 5;
-          this.page.drawText(s, { x: px, y: this.y - 11, size: 8, font: this.f.sansN, color: C.tinta });
+          const px = c.direita ? x + c.w - 5 - this.f.sansN.widthOfTextAtSize(s, 9) : x + 5;
+          this.page.drawText(s, { x: px, y: this.y - 12, size: 9, font: this.f.sansN, color: C.tinta });
         }
         x += c.w;
       }

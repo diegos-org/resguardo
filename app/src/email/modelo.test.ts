@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { comecaComSaudacao, escaparHtml, montarEmail, primeiroNome } from "./modelo";
+import { comecaComSaudacao, escaparHtml, fraseDoModelo, montarEmail, primeiroNome } from "./modelo";
 
 describe("esqueleto dos e-mails (M5.7): saudação, frase, destaque, lista curta, próximo passo, assinatura", () => {
   it("texto e HTML na mesma ordem; só o primeiro nome; até cinco linhas; sem destaque nem link nada sobra", () => {
@@ -56,16 +56,28 @@ describe("esqueleto dos e-mails (M5.7): saudação, frase, destaque, lista curta
     expect(minimo.html).not.toContain("<a ");
   });
 
-  it("modelo editável que já cumprimenta não ganha segunda saudação; o primeiro parágrafo vira o título no HTML", () => {
+  it("modelo editável que já cumprimenta: a saudação dele sai e entra a do esqueleto, pelo primeiro nome; o contato igual ao padrão não repete", () => {
     expect(comecaComSaudacao("Olá, Maria. Segue o relatório.")).toBe(true);
     expect(comecaComSaudacao("  Bom dia! Tudo bem?")).toBe(true);
     expect(comecaComSaudacao("Segue o relatório de outubro.")).toBe(false);
     expect(comecaComSaudacao("Olavo chegou.")).toBe(false);
-    const m = montarEmail({ empresa: "SCL", nome: "Maria Fictícia", frase: "Olá, Maria. Segue o relatório de outubro.\n\nBoa leitura." });
-    expect(m.texto.startsWith("Olá, Maria. Segue o relatório de outubro.\n\nBoa leitura.\n\n")).toBe(true);
+    // O modelo padrão do fechamento, já preenchido com o nome completo: fica só a frase do meio.
+    expect(fraseDoModelo("Olá, Dona Exemplo.\n\nSegue em anexo o relatório de outubro de 2026 dos seus imóveis.\n\nQualquer dúvida, é só responder este e-mail.")).toBe("Segue em anexo o relatório de outubro de 2026 dos seus imóveis.");
+    expect(fraseDoModelo("Olá, {nome}. Segue o relatório de {mes}.")).toBe("Segue o relatório de {mes}.");
+    expect(fraseDoModelo("Bom dia! Tudo bem?")).toBe("Tudo bem?");
+    expect(fraseDoModelo("Oi. Segue.")).toBe("Segue.");
+    expect(fraseDoModelo("Olá, Maria.")).toBe("");
+    expect(fraseDoModelo("Olavo chegou.")).toBe("Olavo chegou.");
+    // Contato diferente do padrão fica; igual ao contato passado sai.
+    expect(fraseDoModelo("Segue.\n\nFale com a Ana se precisar.")).toBe("Segue.\n\nFale com a Ana se precisar.");
+    expect(fraseDoModelo("Segue.\n\nFale com a Ana se precisar.", "Fale com a Ana se precisar.")).toBe("Segue.");
+    const m = montarEmail({ empresa: "SCL", nome: "Maria Fictícia", frase: "Olá, Maria Fictícia. Segue o relatório de outubro.\n\nBoa leitura.\n\nQualquer dúvida, é só responder este e-mail." });
+    expect(m.texto).toBe("Olá, Maria.\n\nSegue o relatório de outubro.\n\nBoa leitura.\n\nQualquer dúvida, é só responder este e-mail.\n\nEquipe SCL");
     expect(m.texto.match(/Olá/g)).toHaveLength(1);
+    expect(m.texto.match(/Qualquer dúvida/g)).toHaveLength(1);
     expect(m.html).toContain("<h1");
     expect(m.html.match(/Olá/g)).toHaveLength(1);
+    expect(m.html.match(/Qualquer dúvida/g)).toHaveLength(1);
   });
 
   it("nada do que vem dos dados vira HTML: nomes e textos são escapados", () => {

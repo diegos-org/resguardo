@@ -117,17 +117,24 @@ export async function metricasDoRelatorio(
     ).map((l) => l.mes),
   );
   const temDado = (m: MesISO) => (m === o.mes ? true : inicio ? m >= mesDe(inicio) && m <= o.mes : comLancamento.has(m));
-  // Desde quando cada imóvel é dos proprietários (vínculo atual, dia em São Paulo): as noites para vender só contam
-  // a partir daí. Sem vínculo atual (imóvel que já foi dele, só no livro), conta o período inteiro — o fim da posse
-  // não fica registrado.
-  const vinculos = imovelIds.length && donoIds.length
+  // Período de posse de cada imóvel (dia em São Paulo): as noites para vender só contam enquanto o imóvel era dos
+  // proprietários. Com vínculo atual, desde o dia do vínculo. Sem vínculo atual (dono antigo, que entra pelo livro),
+  // a posse termina no dia em que o dono seguinte foi vinculado — o vínculo antigo é apagado na troca, então o fim é
+  // o começo do outro; sem ninguém vinculado, conta o período inteiro.
+  const vinculos = imovelIds.length
     ? await db
-        .select({ imovelId: proprietarioImoveis.imovelId, desde: sql<string>`min(to_char((${proprietarioImoveis.criadoEm} at time zone 'America/Sao_Paulo')::date, 'YYYY-MM-DD'))` })
+        .select({ imovelId: proprietarioImoveis.imovelId, proprietarioId: proprietarioImoveis.proprietarioId, dia: sql<string>`to_char((${proprietarioImoveis.criadoEm} at time zone 'America/Sao_Paulo')::date, 'YYYY-MM-DD')` })
         .from(proprietarioImoveis)
-        .where(and(inArray(proprietarioImoveis.imovelId, imovelIds), inArray(proprietarioImoveis.proprietarioId, donoIds)))
-        .groupBy(proprietarioImoveis.imovelId)
+        .where(inArray(proprietarioImoveis.imovelId, imovelIds))
     : [];
-  const desdeDe = new Map(vinculos.map((v) => [v.imovelId, v.desde]));
+  const posseDe = new Map(
+    imovelIds.map((id) => {
+      const doImovel = vinculos.filter((v) => v.imovelId === id);
+      const meus = doImovel.filter((v) => donoIds.includes(v.proprietarioId)).map((v) => v.dia).sort();
+      const outros = doImovel.filter((v) => !donoIds.includes(v.proprietarioId)).map((v) => v.dia).sort();
+      return [id, meus.length ? { desde: meus[0], ate: null } : { desde: null, ate: outros[0] ?? null }] as const;
+    }),
+  );
   const dadosDoMes = async (m: MesISO, ate: string | null): Promise<DadosDoMes> => {
     const { inicio: de, fim } = limitesDe(m);
     const fimConsiderado = ate ? somarDias(ate, 1) : fim;
@@ -156,7 +163,7 @@ export async function metricasDoRelatorio(
       noitesOcupadas: noitesOcupadasNoIntervalo(confirmadas, bloqueiosDoDono, de, fimConsiderado),
       noitesDoPeriodo: ate ? Number(ate.slice(8, 10)) : diasDoMes(m),
       imoveis: imovelIds.length,
-      diasImovel: diasDeImovel(imovelIds.map((id) => ({ desde: desdeDe.get(id) ?? null })), de, fimConsiderado),
+      diasImovel: diasDeImovel(imovelIds.map((id) => posseDe.get(id) ?? { desde: null, ate: null }), de, fimConsiderado),
       noitesBloqueadas: noitesBloqueadas(bloqueiosDoDono, de, fimConsiderado),
     };
   };
