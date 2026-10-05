@@ -253,27 +253,45 @@ class Folhas {
     this.y -= 7;
   }
 
-  /** Caixa areia com filete dourado (avisos). */
+  /** Caixa areia com filete dourado (avisos). Muitos avisos continuam na página seguinte, numa caixa "(continuação)". */
   caixaAvisos(titulo: string, itens: readonly string[]) {
-    const linhas = itens.flatMap((i) => quebrar(this.limpo(`• ${i}`), this.f.sans, 8.5, LARG - 24));
-    const altura = 16 + linhas.length * 11 + 8;
-    this.espaco(altura);
-    this.page.drawRectangle({ x: M, y: this.y - altura, width: LARG, height: altura, color: C.areia });
-    this.page.drawRectangle({ x: M, y: this.y - altura, width: 3, height: altura, color: C.dourado });
-    this.texto(titulo, M + 12, this.y - 12, this.f.sansN, 8.5, C.tinta);
-    let y = this.y - 16;
-    for (const l of linhas) {
-      y -= 11;
-      this.page.drawText(l, { x: M + 12, y, size: 8.5, font: this.f.sans, color: C.tinta });
+    let linhas = itens.flatMap((i) => quebrar(this.limpo(`• ${i}`), this.f.sans, 8.5, LARG - 24));
+    let primeira = true;
+    while (primeira || linhas.length) {
+      this.espaco(16 + 11 + 8);
+      const cabem = Math.max(1, Math.floor((this.y - (RODAPE + 10) - 16 - 8) / 11));
+      const parte = linhas.slice(0, cabem);
+      linhas = linhas.slice(parte.length);
+      const altura = 16 + parte.length * 11 + 8;
+      this.page.drawRectangle({ x: M, y: this.y - altura, width: LARG, height: altura, color: C.areia });
+      this.page.drawRectangle({ x: M, y: this.y - altura, width: 3, height: altura, color: C.dourado });
+      this.texto(primeira ? titulo : `${titulo} (continuação)`, M + 12, this.y - 12, this.f.sansN, 8.5, C.tinta);
+      let y = this.y - 16;
+      for (const l of parte) {
+        y -= 11;
+        this.page.drawText(l, { x: M + 12, y, size: 8.5, font: this.f.sans, color: C.tinta });
+      }
+      this.y -= altura;
+      primeira = false;
+      if (linhas.length) this.nova(this.paginas.at(-1)!.rodape);
     }
-    this.y -= altura + 10;
+    this.y -= 10;
   }
 
   /** Tabela de duas colunas (texto + valor) com linhas "normal", "sub", "total". */
   tabelaValores(titulo: string | null, linhas: readonly LinhaValor[], largura = LARG, x = M) {
     const ALT = 15;
+    // A altura de uma linha (texto e etiqueta quebrados na largura que sobra ao lado do valor).
+    const alturaDaLinha = (l: LinhaValor) => {
+      const valor = this.limpo(l.valor.replace(/^R\$\s?/, "").replace(/^(−|-)\s*R\$\s?/, "− "));
+      const largTexto = largura - 12 - this.f.sansN.widthOfTextAtSize(valor, 9) - 8;
+      const n = quebrar(this.limpo(l.texto), l.tipo === "total" ? this.f.sansN : this.f.sans, 9, largTexto).length;
+      const e = l.etiqueta ? quebrar(this.limpo(l.etiqueta), this.f.sans, 8, largTexto).length : 0;
+      return 5 + n * 11.5 + e * 10 + 3;
+    };
     if (titulo) {
-      this.espaco(ALT);
+      // O título nunca fica sozinho no pé da página: desce junto com a primeira linha.
+      this.espaco(ALT + (linhas[0] ? alturaDaLinha(linhas[0]) : 0));
       this.page.drawRectangle({ x, y: this.y - ALT, width: largura, height: ALT, color: C.areia });
       this.texto(titulo, x + 6, this.y - 10.5, this.f.sansN, 8, C.texto2);
       this.textoDireita("R$", x + largura - 6, this.y - 10.5, this.f.sansN, 8, C.texto2);
@@ -676,9 +694,28 @@ export async function gerarPdfRelatorio(t: TextosRelatorio, anexos: Anexos = {},
   const baseLinhas = quebrar(limpo(t.destaque.base), f.sans, 7.8, wDest - 22);
   const altDest = 14 + 12 + 30 + baseLinhas.length * 10 + 12;
   const camLinhas = t.comoChega.linhas.map((l) => ({ l, texto: quebrar(limpo(l.texto), f.sans, 8, wCam - 20 - 62) }));
-  const altCam = 26 + camLinhas.reduce((s, c) => s + c.texto.length * 10 + 4, 0) + (t.comoChega.quemPagaQuem ? p.alturaDe(t.comoChega.quemPagaQuem, f.sans, 7.5, wCam - 20, 1.3) + 8 : 0) + (camLinhas.length ? 0 : 14) + 8;
+  const altLinha = (c: (typeof camLinhas)[number]) => c.texto.length * 10 + 4;
+  const altQuem = t.comoChega.quemPagaQuem ? p.alturaDe(t.comoChega.quemPagaQuem, f.sans, 7.5, wCam - 20, 1.3) + 8 : 0;
+  const ALT_CONTINUA = 14;
+  // A caixa ao lado do destaque tem a altura que couber na página: o que não couber (muitas linhas, por exemplo muitas
+  // reservas a liberar) continua logo abaixo, numa lista que segue para a página seguinte — nada é desenhado fora da folha.
+  p.espaco(Math.max(altDest, 26 + (camLinhas[0] ? altLinha(camLinhas[0]) : 14) + ALT_CONTINUA + 8) + 12);
+  const limite = p.y - (RODAPE + 10) - 12;
+  const somaLinhas = (cs: typeof camLinhas) => cs.reduce((s, c) => s + altLinha(c), 0);
+  let naCaixa = camLinhas;
+  let quemNaCaixa = true;
+  if (26 + somaLinhas(camLinhas) + altQuem + (camLinhas.length ? 0 : 14) + 8 > limite) {
+    quemNaCaixa = false;
+    if (26 + somaLinhas(camLinhas) + 8 > limite) {
+      let n = 0;
+      let h = 26 + ALT_CONTINUA + 8;
+      while (n < camLinhas.length && h + altLinha(camLinhas[n]) <= limite) h += altLinha(camLinhas[n++]);
+      naCaixa = camLinhas.slice(0, n);
+    }
+  }
+  const resto = camLinhas.slice(naCaixa.length);
+  const altCam = 26 + somaLinhas(naCaixa) + (quemNaCaixa ? altQuem : 0) + (camLinhas.length ? 0 : 14) + (resto.length ? ALT_CONTINUA : 0) + 8;
   const alt = Math.max(altDest, altCam);
-  p.espaco(alt + 12);
   const topo = p.y;
   p.page.drawRectangle({ x: M, y: topo - alt, width: wDest, height: alt, color: C.floresta });
   p.texto(t.destaque.rotulo.toUpperCase(), M + 11, topo - 16, f.sans, 7.2, C.douradoClaro);
@@ -691,7 +728,7 @@ export async function gerarPdfRelatorio(t: TextosRelatorio, anexos: Anexos = {},
     y -= 12;
     p.page.drawText(limpo("Nada a receber nem a pagar neste mês."), { x: xCam + 10, y, size: 8, font: f.sans, color: C.texto2 });
   }
-  for (const c of camLinhas) {
+  for (const c of naCaixa) {
     const corLinha = c.l.tipo === "aviso" ? C.douradoEscuro : c.l.tipo === "info" ? C.texto2 : C.tinta;
     const valor = limpo(c.l.valor);
     p.page.drawText(valor, { x: xCam + wCam - 10 - f.sansN.widthOfTextAtSize(valor, 8.5), y: y - 10, size: 8.5, font: f.sansN, color: corLinha });
@@ -702,11 +739,19 @@ export async function gerarPdfRelatorio(t: TextosRelatorio, anexos: Anexos = {},
     y -= 4;
     p.page.drawLine({ start: { x: xCam + 10, y: y + 1 }, end: { x: xCam + wCam - 10, y: y + 1 }, thickness: 0.4, color: C.areia });
   }
-  if (t.comoChega.quemPagaQuem) {
+  if (resto.length) {
+    y -= 11;
+    p.page.drawText(limpo(`Continua logo abaixo (mais ${resto.length} ${resto.length === 1 ? "linha" : "linhas"}).`), { x: xCam + 10, y, size: 8, font: f.sans, color: C.texto2 });
+  } else if (t.comoChega.quemPagaQuem && quemNaCaixa) {
     y -= 6;
     p.bloco(t.comoChega.quemPagaQuem, xCam + 10, y, f.sans, 7.5, C.texto2, wCam - 20, 1.3);
   }
   p.y = topo - alt - 14;
+  if (resto.length) p.tabelaValores("Como chega até você (continuação)", resto.map((c) => c.l));
+  if (t.comoChega.quemPagaQuem && !quemNaCaixa) {
+    p.paragrafo(t.comoChega.quemPagaQuem, f.sans, 7.5, C.texto2);
+    p.y -= 8;
+  }
   p.tabelaValores("Do bruto ao seu resultado", t.brutoAoResultado);
   if (t.avisos.length) p.caixaAvisos("Avisos", t.avisos);
 

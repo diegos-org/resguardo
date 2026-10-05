@@ -126,8 +126,9 @@ mês entra só com as noites do mês, rateio igual por noite (regra de 24/09). O
    pagas no mês anterior" e "− noites de {mês seguinte} pagas neste mês", até fechar nos totais da
    capa (competência). É a "conciliação do extrato ao mês completo" do modelo da Lia.
 2. **Repasses do mês** — antecipados pela data do Pix (a do pagamento quando pago, a programada
-   enquanto não; o programado para 31/10 e pago em 1/11 é de novembro), com data, valor, reservas,
-   "comprovante no portal", e o
+   enquanto não; o programado para 31/10 e pago em 1/11 é de novembro; no relatório de parte dos
+   imóveis do dono, só os repasses com ao menos uma reserva desses imóveis), com data, valor,
+   reservas, "comprovante no portal", e o
    fechamento: saldo do acerto, adiantamentos descontados, valor a transferir, quem paga quem, data
    prevista. A liberar: lista com o motivo e "entra no próximo repasse".
 3. **Despesas e ajustes do imóvel** — data, descrição, valor, nota/anexo no portal.
