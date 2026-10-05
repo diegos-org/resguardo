@@ -35,8 +35,27 @@ export type EmailMontado = { texto: string; html: string };
 
 export const primeiroNome = (n: string): string => n.trim().split(/\s+/)[0] ?? "";
 
-/** O modelo editável já começa cumprimentando ("Olá, {nome}.")? Então a saudação automática não entra (seria dupla). */
+/** O contato que fecha todo e-mail quando o esqueleto não recebe outro. */
+export const CONTATO_PADRAO = "Qualquer dúvida, é só responder este e-mail.";
+
+/** O modelo editável começa cumprimentando ("Olá, {nome}.", "Bom dia!")? */
 export const comecaComSaudacao = (frase: string): boolean => /^\s*(olá|ola|oi|bom dia|boa tarde|boa noite|prezad[oa]s?|car[oa]s?)(?=[^\p{L}\p{N}]|$)/iu.test(frase);
+
+// A saudação inicial do modelo: a palavra, e, se vier vírgula, o nome até a pontuação ("Olá, Maria." / "Olá, {nome}.").
+const SAUDACAO_INICIAL = /^\s*(?:olá|ola|oi|bom dia|boa tarde|boa noite|prezad[oa]s?|car[oa]s?)(?=[^\p{L}\p{N}]|$)(?:,\s*[^\n.!,:?]{1,60}?(?=[.!,:]|\n|$))?[.!,:]?\s*/iu;
+const semPontoFinal = (t: string) => t.trim().replace(/[.!]+$/, "").toLocaleLowerCase("pt-BR");
+
+/**
+ * Tira do modelo editável o que o esqueleto já põe, para não sair duas vezes: a saudação inicial (a saudação é sempre
+ * pelo primeiro nome, dada pelo esqueleto) e o parágrafo final de contato quando é o mesmo do esqueleto. O modelo padrão
+ * do fechamento ("Olá, {nome}. … Qualquer dúvida, é só responder este e-mail.") vira só a frase do meio.
+ */
+export function fraseDoModelo(frase: string, contato = CONTATO_PADRAO): string {
+  const ps = paragrafos(frase.replace(SAUDACAO_INICIAL, ""));
+  if (ps.length && semPontoFinal(ps[ps.length - 1]) === semPontoFinal(contato)) ps.pop();
+  const f = ps.join("\n\n");
+  return f ? f[0].toLocaleUpperCase("pt-BR") + f.slice(1) : "";
+}
 
 /** Texto seguro dentro de HTML. */
 export function escaparHtml(t: string): string {
@@ -49,15 +68,17 @@ const limite = <T>(xs: readonly T[] | undefined, n: number) => (xs ?? []).slice(
 /** Monta a versão em texto e a em HTML, na mesma ordem. */
 export function montarEmail(e: EsqueletoEmail): EmailMontado {
   const nome = primeiroNome(e.nome);
-  const saudacao = comecaComSaudacao(e.frase) ? "" : nome ? `Olá, ${nome}.` : "Olá.";
+  const saudacao = nome ? `Olá, ${nome}.` : "Olá.";
   const linhas = limite(e.linhas, 5).filter((l) => l.trim());
   const valores = (e.valores ?? []).filter((v) => v.rotulo.trim());
   const assinatura = e.assinatura?.trim() || `Equipe ${e.empresa}`;
-  const contato = e.contato?.trim() || "Qualquer dúvida, é só responder este e-mail.";
+  const contato = e.contato?.trim() || CONTATO_PADRAO;
+  const frase = fraseDoModelo(e.frase, contato);
 
   const texto = [
-    ...(saudacao ? [saudacao, ""] : []),
-    ...paragrafos(e.frase).flatMap((p) => [p, ""]),
+    saudacao,
+    "",
+    ...paragrafos(frase).flatMap((p) => [p, ""]),
     ...(e.destaque ? [`${e.destaque.rotulo}: ${e.destaque.valor}${e.destaque.nota ? ` (${e.destaque.nota})` : ""}`, ""] : []),
     ...(valores.length ? [...valores.map((v) => `${v.rotulo}: ${v.valor}`), ""] : []),
     ...(linhas.length ? [...linhas.map((l) => `- ${l}`), ""] : []),
@@ -81,8 +102,8 @@ export function montarEmail(e: EsqueletoEmail): EmailMontado {
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:${C.branco};border:1px solid ${C.borda};">`,
     `<tr><td style="background:${C.floresta};border-bottom:2px solid ${C.dourado};padding:16px 24px;font:italic 20px Georgia,'Times New Roman',serif;color:${C.creme};">${h(e.empresa)}</td></tr>`,
     `<tr><td style="padding:24px;">`,
-    // Sem saudação automática, o primeiro parágrafo do modelo é o título (ele já cumprimenta).
-    ...(saudacao ? [`<h1 style="margin:0 0 16px;font:normal 22px/1.3 Georgia,'Times New Roman',serif;color:${C.profundo};">${h(saudacao)}</h1>`, ...paragrafos(e.frase).map((t) => p(t))] : paragrafos(e.frase).map((t, i) => (i === 0 ? `<h1 style="margin:0 0 16px;font:normal 22px/1.3 Georgia,'Times New Roman',serif;color:${C.profundo};">${h(t)}</h1>` : p(t)))),
+    `<h1 style="margin:0 0 16px;font:normal 22px/1.3 Georgia,'Times New Roman',serif;color:${C.profundo};">${h(saudacao)}</h1>`,
+    ...paragrafos(frase).map((t) => p(t)),
     ...(e.destaque
       ? [
           `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 16px;border-left:3px solid ${C.dourado};background:${C.creme};"><tr><td style="padding:12px 16px;">`,

@@ -120,6 +120,10 @@ Configurações → Repasses: dia da semana do semanal (padrão segunda), os doi
   e `descreverPeriodicidade`, o botão "Pedir repasse agora" do portal, o envio automático do e-mail
   do fechamento (`enviarFechamentosAutomaticos`: antes do dia, o mês a fechar espera, com aviso na
   rotina; meses atrasados saem em qualquer dia) e os textos do painel, do portal e do relatório.
+- **O que as telas mostram:** o dia do **próximo** fechamento (`proximoFechamento`): o do mês anterior enquanto o
+  dia dele não passou, depois o do mês corrente. Uma mudança feita hoje vale do fechamento do mês corrente em
+  diante, então o mês anterior ainda aberto fecha no dia que já valia — e é esse que o texto, a descrição da
+  periodicidade e a próxima data dizem até lá. O formulário mostra o dia que vale daqui para a frente.
 - **Data gravada no fechamento:** o dia do fechamento do mês (`dataDoFechamento`); fechado antes, à mão, o dia
   em que foi fechado. O Pix do fechamento só pode ter data a partir dela (`marcarRepassePago`).
 - **À mão continua possível:** fechar o mês e enviar o relatório no dia 1º pelo painel; o proprietário

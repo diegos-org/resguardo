@@ -22,6 +22,10 @@ describe("métricas do relatório mensal (M5.7, regras puras)", () => {
     // Parcial até o dia 10 (fim exclusivo 11/10) com vínculo em 5/10: 6 noites.
     expect(diasDeImovel([{ desde: "2026-10-05" }], "2026-10-01", "2026-10-11")).toBe(6);
     expect(diasDeImovel([], "2026-10-01", "2026-11-01")).toBe(0);
+    // Dono antigo: a posse termina no dia em que o seguinte foi vinculado (11/10 → 10 noites); acabou antes do mês → zero.
+    expect(diasDeImovel([{ desde: null, ate: "2026-10-11" }], "2026-10-01", "2026-11-01")).toBe(10);
+    expect(diasDeImovel([{ desde: "2026-10-03", ate: "2026-10-11" }], "2026-10-01", "2026-11-01")).toBe(8);
+    expect(diasDeImovel([{ desde: null, ate: "2026-09-20" }], "2026-10-01", "2026-11-01")).toBe(0);
     // A ocupação usa essas noites: 18 ocupadas de 21 (vínculo em 11/10), com 1 bloqueada → 18 de 20.
     expect(ocupacao({ noitesOcupadas: 18, diasImovel: 21, noitesBloqueadas: 1 })).toEqual({ ocupadas: 18, disponiveis: 20, bloqueadas: 1, percentual: 90 });
   });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { comDiaDeFechamento, dataDoFechamento, descreverPeriodicidade, diaDoFechamento, diaDoFechamentoAtual, ehDiaDeFechamento, ehDiaDeRepasse, geraAntecipadoEm, periodicidadeEfetiva, proximaDataDeRepasse, REGRAS_REPASSES_PADRAO, regrasDeJson, validarFormRegras } from "./periodicidade";
+import { comDiaDeFechamento, dataDoFechamento, descreverPeriodicidade, diaDoFechamento, diaDoFechamentoAtual, ehDiaDeFechamento, ehDiaDeRepasse, geraAntecipadoEm, periodicidadeEfetiva, proximaDataDeRepasse, proximoFechamento, REGRAS_REPASSES_PADRAO, regrasDeJson, validarFormRegras } from "./periodicidade";
 
 const R = REGRAS_REPASSES_PADRAO;
 
@@ -78,12 +78,20 @@ describe("periodicidade dos repasses (M4.10)", () => {
   });
 
   it("descrição em linguagem simples com os dias configurados", () => {
-    expect(descreverPeriodicidade("semanal", { ...R, diaSemanal: 3 })).toContain("quarta-feira");
-    expect(descreverPeriodicidade("quinzenal", { ...R, diasQuinzenal: [5, 20] })).toContain("dias 5 e 20");
-    expect(descreverPeriodicidade("mensal", R)).toContain("dia 2");
-    expect(descreverPeriodicidade("mensal", { ...R, fechamento: [{ dia: 1, desde: "2026-10" }] })).toContain("dia 1,");
-    expect(descreverPeriodicidade("semanal", { ...R, fechamento: [{ dia: 3, desde: "2026-10" }] })).toContain("no dia 3, junto com o fechamento");
-    expect(descreverPeriodicidade("disponivel", R)).toContain("check-in");
+    const hoje = "2026-10-10";
+    expect(descreverPeriodicidade("semanal", { ...R, diaSemanal: 3 }, hoje)).toContain("quarta-feira");
+    expect(descreverPeriodicidade("quinzenal", { ...R, diasQuinzenal: [5, 20] }, hoje)).toContain("dias 5 e 20");
+    expect(descreverPeriodicidade("mensal", R, hoje)).toContain("dia 2");
+    expect(descreverPeriodicidade("mensal", { ...R, fechamento: [{ dia: 1, desde: "2026-10" }] }, hoje)).toContain("dia 1,");
+    expect(descreverPeriodicidade("semanal", { ...R, fechamento: [{ dia: 3, desde: "2026-10" }] }, hoje)).toContain("no dia 3, junto com o fechamento");
+    expect(descreverPeriodicidade("disponivel", R, hoje)).toContain("check-in");
+    // O dia mostrado é o do próximo fechamento: dia mudado para 5 em 1/11 — outubro ainda fecha no dia 2, e é isso que o texto diz até lá.
+    const mudado = { ...R, fechamento: [{ dia: 5, desde: "2026-11" }] };
+    expect(descreverPeriodicidade("mensal", mudado, "2026-11-01")).toContain("dia 2");
+    expect(descreverPeriodicidade("mensal", mudado, "2026-11-02")).toContain("dia 2");
+    expect(descreverPeriodicidade("mensal", mudado, "2026-11-03")).toContain("dia 5");
+    expect(proximaDataDeRepasse("2026-11-01", "mensal", mudado)).toBe("2026-11-02");
+    expect(proximaDataDeRepasse("2026-11-02", "mensal", mudado)).toBe("2026-12-05");
   });
 
   it("dia do fechamento (M4.13): padrão 2; versões por mês de competência; data e teste do dia", () => {
@@ -102,6 +110,17 @@ describe("periodicidade dos repasses (M4.10)", () => {
     expect(ehDiaDeFechamento("2026-11-02", v)).toBe(false);
     expect(ehDiaDeFechamento("2027-01-03", v)).toBe(true); // dezembro fecha no dia 3
     expect(ehDiaDeFechamento("2027-01-02", v)).toBe(false);
+  });
+
+  it("próximo fechamento a partir de hoje: o do mês anterior enquanto o dia dele não passou; depois, o do mês corrente", () => {
+    expect(proximoFechamento(R, "2026-11-01")).toEqual({ mes: "2026-10", data: "2026-11-02", dia: 2 });
+    expect(proximoFechamento(R, "2026-11-02")).toEqual({ mes: "2026-10", data: "2026-11-02", dia: 2 });
+    expect(proximoFechamento(R, "2026-11-03")).toEqual({ mes: "2026-11", data: "2026-12-02", dia: 2 });
+    const v = { fechamento: [{ dia: 5, desde: "2026-11" }] };
+    expect(proximoFechamento(v, "2026-11-01")).toEqual({ mes: "2026-10", data: "2026-11-02", dia: 2 });
+    expect(proximoFechamento(v, "2026-11-03")).toEqual({ mes: "2026-11", data: "2026-12-05", dia: 5 });
+    expect(proximoFechamento(v, "2026-12-05")).toEqual({ mes: "2026-11", data: "2026-12-05", dia: 5 });
+    expect(proximoFechamento(R, "2027-01-02")).toEqual({ mes: "2026-12", data: "2027-01-02", dia: 2 });
   });
 
   it("mudar o dia do fechamento: vale do mês de hoje em diante; igual ao que já valeria não cria versão; mesmo mês substitui", () => {

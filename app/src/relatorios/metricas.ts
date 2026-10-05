@@ -117,11 +117,16 @@ export type DadosDoMes = {
 };
 
 /**
- * Noites de imóvel dentro do período, contando cada imóvel só a partir do dia em que passou a ser do proprietário
- * (`desde`; null = o período inteiro). Imóvel ligado depois do fim do período não conta.
+ * Noites de imóvel dentro do período, contando cada imóvel só enquanto era do proprietário: a partir de `desde` (null =
+ * desde sempre) e antes de `ate` (null = até hoje; o dono antigo deixa de contar no dia em que o seguinte foi vinculado).
+ * Imóvel ligado depois do fim do período, ou cuja posse acabou antes do começo dele, não conta.
  */
-export function diasDeImovel(imoveis: readonly { desde: string | null }[], inicio: string, fim: string): number {
-  return imoveis.reduce((s, i) => s + Math.max(0, dias(fim) - Math.max(dias(inicio), i.desde ? dias(i.desde) : dias(inicio))), 0);
+export function diasDeImovel(imoveis: readonly { desde: string | null; ate?: string | null }[], inicio: string, fim: string): number {
+  return imoveis.reduce((s, i) => {
+    const de = Math.max(dias(inicio), i.desde ? dias(i.desde) : dias(inicio));
+    const ate = Math.min(dias(fim), i.ate ? dias(i.ate) : dias(fim));
+    return s + Math.max(0, ate - de);
+  }, 0);
 }
 
 export type Ocupacao = { ocupadas: number; disponiveis: number; bloqueadas: number; percentual: number | null };
