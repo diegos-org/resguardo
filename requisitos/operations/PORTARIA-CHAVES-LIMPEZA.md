@@ -32,7 +32,7 @@ No103, o texto antigo afirmava ausência de porteiro para toda chegada; no399, n
 
 ## Documentos — esclarecimento de Diego nesta revisão
 
-Até segunda ordem, solicitar e encaminhar documentos somente no 403. O 303 Rita deixa de constar como exigência ou pendência de coleta. Diego relata pouca ou nenhuma cobrança pela portaria do 403; isso não dispensa a regra do 403 nem cria cobranças extras. Preservar o fluxo e os limites de repetição do [Guia Lia](GUIA-LIA-ATENDIMENTO.md#portaria-e-documentos). Este registro não realiza envios.
+Até segunda ordem, documentos somente no 403; o 303 Rita não tem exigência ou pendência de coleta. Reforço de Diego em 5/10: antes de todo check-in, coletar documentos de todos os ocupantes via Airbnb/WhatsApp e encaminhar ao contato verificado Portaria Três Irmãos (403), com nome, total de hóspedes, entrada e saída. Conferir persistência e recebimento quando disponível; documento faltante continua pendente. Segundo Diego, a portaria só libera após recebimento; não inferir liberação a partir de uma tentativa de envio ou de pouca cobrança anterior. Preservar minimização e limites de repetição do [Guia Lia](GUIA-LIA-ATENDIMENTO.md#portaria-e-documentos), sem dados reais ou anexos no repositório. Este registro descreve o procedimento, não realiza envios nem substitui autorização.
 
 ## Cadastro na nuvem — pendência explícita
 Preferência aprovada: cadastro restrito do sistema SCL, com imóvel, função, telefone, expediente, exceções, fonte/data e última conferência. GitHub documenta regra e referência, não armazena os telefones em documentação geral.

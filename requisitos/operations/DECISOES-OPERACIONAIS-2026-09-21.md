@@ -16,7 +16,7 @@ Um relatório parcial tem período menor e definido; isso não é sinônimo de r
 Custo interno de faxina ainda não confirmado não deve impedir o relatório de receitas do proprietário quando não altera seu resultado. Não descontá-lo do proprietário indevidamente. Se houver lançamento efetivamente relevante ao acerto e não validado, explicitar a lacuna e não apresentar saldo definitivo.
 
 ## Documentos de portaria — somente apartamento 403
-Manter vínculo validado entre reserva, hóspedes, datas e documentos, destinatário previamente conferido e histórico entre canais. Nunca publicar documento, número ou foto no repositório ou grupo de limpeza.
+Manter vínculo validado entre reserva, hóspedes, datas e documentos, destinatário previamente conferido e histórico entre canais. Nunca publicar documento, número ou foto no repositório ou grupo de limpeza. Reforço de Diego em 5/10: antes de todo check-in do 403, coletar os documentos de todos os ocupantes via Airbnb/WhatsApp e encaminhar ao contato verificado Portaria Três Irmãos (403), com nome, total de hóspedes, entrada e saída. Confirmar persistência e recebimento quando disponível; faltantes continuam pendentes. Segundo Diego, recebimento pela portaria é condição para liberação; envio não comprova liberação. Procedimento não substitui autorização vigente.
 - Aviso inicial na reserva.
 - Segundo pedido entre cinco e sete dias antes da entrada, se faltarem documentos.
 - Pedido final na véspera, se ainda necessário.
