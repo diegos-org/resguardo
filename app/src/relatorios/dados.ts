@@ -166,15 +166,16 @@ export async function metricasDoRelatorio(
     // Ocupação e diária média são fatos do imóvel: toda estadia confirmada (cancelada ou pendente com valor no livro não
     // ocupa noite), recortada à posse de cada dono (o mesmo recorte dos bloqueios) e ao período — a estadia que atravessa
     // a troca de dono conta, para cada um, as noites em que o imóvel era dele, e ninguém passa de 100%. O bruto da diária
-    // é o valor da reserva rateado igual por noite (a mesma conta do livro), só das noites contadas; no mês parcial, só
-    // até o dia (uma estadia futura já confirmada não entra nem no bruto nem nas noites). O dinheiro do resultado segue o
-    // livro, que não é recortado.
+    // é o valor da reserva rateado igual por noite (a mesma conta do livro), só das noites contadas — na posse, no
+    // período e fora das bloqueadas para uso próprio, a mesma régua das noites ocupadas; no mês parcial, só até o dia
+    // (uma estadia futura já confirmada não entra nem no bruto nem nas noites). O dinheiro do resultado segue o livro,
+    // que não é recortado.
     type Estadia = (typeof estadias)[number];
     const estadiasNaPosse = (r: Estadia) => trechosNaPosse(r.checkin, r.checkout, posse(r.imovelId)).map((t) => ({ imovelId: r.imovelId, checkin: t.inicio, checkout: t.fim }));
-    const noitesNaPosseAte = (r: Estadia, ate: string) => estadiasNaPosse(r).reduce((s, e) => s + noitesNoIntervalo(e.checkin, e.checkout, de, ate), 0);
+    const noitesContadas = (r: Estadia, ate: string) => noitesOcupadasNoIntervalo(estadiasNaPosse(r), bloqueiosNaPosse, de, ate);
     const brutoNaPosse = (r: Estadia, ate: string) => {
       const total = noitesNoIntervalo(r.checkin, r.checkout, r.checkin, r.checkout);
-      const noites = noitesNaPosseAte(r, ate);
+      const noites = noitesContadas(r, ate);
       return total > 0 && noites > 0 ? ratear(r.valorBruto ?? 0, [noites, total - noites])[0] : 0;
     };
     const noitesAte = (r: { checkin: string; checkout: string }) => noitesNoIntervalo(r.checkin, r.checkout, de, fimConsiderado);
