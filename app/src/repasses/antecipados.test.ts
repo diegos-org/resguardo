@@ -300,6 +300,8 @@ describe("periodicidade do proprietário e rotina diária (M4.10)", () => {
     expect(m.texto).toContain("R$ 722,50 em 13/10/2026");
     expect(m.texto).toContain("Identificador do Pix: E2E-PIX-123");
     expect(m.texto).toContain("403 · Hóspede Fictício · 10/10/2026 a 13/10/2026 · R$ 722,50 (integral)");
+    expect(m.html).toContain("Hóspede Fictício");
+    expect(m.texto.startsWith("Olá, Dona.")).toBe(true);
     expect(m.anexos?.[0]).toMatchObject({ nome: "comprovante.pdf" });
     expect((await obterRepasse(db, org, rep.id))!).toMatchObject({ emailSituacao: "enviado", emailPara: "dona@example.com, rep@example.com" });
     // Não repete; reenvio pedido por pessoa usa chave nova.
@@ -340,7 +342,7 @@ describe("periodicidade do proprietário e rotina diária (M4.10)", () => {
     expect(await emailsDeRepassesDeTodas(db, correio, new Date(t0.getTime() + 20 * 60_000))).toBe("1 e-mail(s) enviado(s)");
     expect(await enviarEmailDoRepasse(db, org, id, correio, new Date(t0.getTime() + 20 * 60_000))).toBe("ja_enviado");
     expect(enviadas[0]).toMatchObject({ chave: `repasse:${id}:email`, para: "dona@example.com" });
-    expect(enviadas[0].texto).toContain("Olá, Dona Exemplo.");
+    expect(enviadas[0].texto).toContain("Olá, Dona."); // saudação pelo primeiro nome (esqueleto do M5.7)
     expect(enviadas[0].anexos?.[0]?.nome).toBe("comprovante.pdf");
     expect((await obterRepasse(db, org, id))!.emailPara).toBe("dona@example.com");
     // Fora da janela: fica incerto até alguém reenviar; o reenvio (tentativa nova) já vai para o endereço atual.
@@ -348,7 +350,7 @@ describe("periodicidade do proprietário e rotina diária (M4.10)", () => {
     expect(await enviarEmailDoRepasse(db, org, id, correio, t0)).toBe("incerto");
     expect(await enviarEmailDoRepasse(db, org, id, correio, t0, { reenviar: true })).toBe("enviado");
     expect(enviadas[1]).toMatchObject({ para: "novo@example.com" });
-    expect(enviadas[1].texto).toContain("Olá, Dona Nova.");
+    expect(enviadas[1].texto).toContain("Olá, Dona.");
     expect(enviadas[1].anexos?.[0]?.nome).toBe("novo.pdf");
     // Recusa certa: volta a pendente.
     await db.update((await import("@/db/schema")).repasses).set({ emailSituacao: "pendente" }).where(eq((await import("@/db/schema")).repasses.id, id));
@@ -359,8 +361,10 @@ describe("periodicidade do proprietário e rotina diária (M4.10)", () => {
     // Texto puro do e-mail do fechamento menciona o que ficou fora e o antecipado.
     const texto = textoDoEmailDoRepasse({ ...(await obterRepasse(db, org, id))!, tipo: "fechamento", mes: "2026-10-01", saldo: 1000, descontado: 200, contestado: 0, foraDoFechamento: 300, antecipado: 400, valor: 900 }, [], "SCL");
     expect(texto.assunto).toBe("Repasse do fechamento de outubro de 2026 — SCL");
-    expect(texto.texto).toContain("R$ 3,00 ficaram para o próximo repasse");
-    expect(texto.texto).toContain("R$ 4,00 de noites de meses seguintes já pagos");
+    expect(texto.texto).toContain("Para o próximo repasse (dinheiro ainda não recebido pela empresa): R$ 3,00");
+    expect(texto.texto).toContain("Repasse do fechamento de outubro de 2026: R$ 9,00 (Pix em ");
+    expect(texto.html).toContain("Repasse do fechamento de outubro de 2026");
+    expect(texto.texto).toContain("Noites de meses seguintes já pagas: R$ 4,00");
   });
 });
 

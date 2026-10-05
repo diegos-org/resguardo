@@ -19,6 +19,8 @@ export type Mensagem = {
   copias?: string[];
   /** Arquivos anexados (ex.: o PDF do fechamento). */
   anexos?: { nome: string; conteudo: Uint8Array }[];
+  /** Versão em HTML da mesma mensagem (M5.7, `email/modelo.ts`); o texto continua obrigatório e equivalente. */
+  html?: string;
 };
 
 /** Chave de idempotência com tamanho fixo: hash da chave inteira (cortar poderia juntar e-mails diferentes). */
@@ -67,6 +69,7 @@ export class CorreioResend implements Correio {
           ...(m.copias?.length ? { cc: m.copias } : {}),
           subject: m.assunto,
           text: m.texto,
+          ...(m.html ? { html: m.html } : {}),
           ...(m.anexos?.length ? { attachments: m.anexos.map((a) => ({ filename: a.nome, content: Buffer.from(a.conteudo).toString("base64") })) } : {}),
         }),
         // Não fica pendurada: sem resposta em 50s, vira envio incerto.

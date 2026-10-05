@@ -16,10 +16,13 @@ import { registrarAuditoria } from "@/auditoria/auditoria";
 import { gravarConfig, lerConfig } from "@/configuracoes/armazem";
 import { appSettings, proprietarios, representantes } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { nomeDaEmpresa } from "@/configuracoes/empresa";
 import { type Correio, ErroEnvioIncerto } from "@/email/correio";
+import { montarEmail } from "@/email/modelo";
 import { hojeISO } from "@/lib/datas";
 import { formatBRL } from "@/lib/money";
 import { conteudoDoFechamento, relatorioDoFechamento } from "@/relatorios/gerar";
+import { listarExtratos } from "@/relatorios/extratos";
 import { imoveisDoProprietario } from "@/relatorios/relatorio";
 import { limitesDoMes, mesAFechar, nomeMes, preverRepasses, type PrevisaoRepasse, somarMes } from "@/repasses/repasses";
 
@@ -78,6 +81,14 @@ function linhaDoValor(p: PrevisaoRepasse): string {
   return "Não há valor a repassar neste mês.";
 }
 
+/** O mesmo valor como destaque do esqueleto do e-mail (M5.7): rótulo, valor e nota. */
+function destaqueDoValor(p: PrevisaoRepasse, empresa: string): { rotulo: string; valor: string; nota?: string } {
+  const r = p.repasse;
+  if (r) return { rotulo: "Repasse do mês", valor: formatBRL(r.valor), nota: r.situacao === "pago" ? `pago em ${r.dataPagamento!.split("-").reverse().join("/")}` : "a pagar" };
+  if (p.deve > 0) return { rotulo: "Saldo do mês", valor: `você deve ${formatBRL(p.deve)} à ${empresa}`, nota: "detalhes no relatório" };
+  return { rotulo: "Repasse do mês", valor: "Não há valor a repassar neste mês." };
+}
+
 /** incerto: tentativa sem confirmação do provedor por mais tempo do que a chave dele vale (pode ter chegado). */
 /**
  * aguardando: tentativa sem confirmação do provedor, ainda dentro da janela da chave (o mesmo e-mail é
@@ -109,12 +120,17 @@ export async function situacaoDosFechamentos(
     /** Para onde foi a tentativa sem confirmação (pode ter chegado), como gravada no pedido. */
     destinosTentados: string[];
     reenvioPendente: { estado: "enviando" | "incerto"; em: string | null; destinos: string[] } | null;
+    /** Extratos oficiais guardados para os imóveis do proprietário no mês ("403 · Airbnb"): vão no fim do relatório do e-mail (M5.7). */
+    extratosGuardados: string[];
+    /** O que foi anexado no envio registrado; null quando o envio é anterior ao registro (não se sabe). */
+    anexosEnviados: string[] | null;
   })[]
 > {
   const periodo = limitesDoMes(mes);
   if (!periodo) return [];
   const todos = await preverRepasses(db, organizacaoId, mes, hoje, undefined, true);
-  const doMes = await Promise.all(todos.map(async (p) => (await imoveisDoProprietario(db, organizacaoId, p.proprietarioId, periodo)).length > 0));
+  const imoveisDoMes = await Promise.all(todos.map((p) => imoveisDoProprietario(db, organizacaoId, p.proprietarioId, periodo)));
+  const doMes = imoveisDoMes.map((x) => x.length > 0);
   const lista = todos.filter((p, i) => p.repasse || p.saldo !== 0 || p.contestado !== 0 || p.aDescontar !== 0 || doMes[i]);
   const [marcas, reps] = lista.length
     ? await Promise.all([
@@ -135,7 +151,8 @@ export async function situacaoDosFechamentos(
     : [];
   const entregueComPedido = (v: unknown) => !!v && typeof (v as { primeira?: unknown }).primeira === "string" && cargaValida((v as { carga?: unknown }).carga);
   return Promise.all(lista.map(async (p) => {
-    const marca = marcas.find((m) => m.key === chaveDoEnvio(organizacaoId, p.proprietarioId, mes))?.value as { estado?: string; em?: string; destinos?: unknown; reenvio?: unknown } | undefined;
+    const marca = marcas.find((m) => m.key === chaveDoEnvio(organizacaoId, p.proprietarioId, mes))?.value as { estado?: string; em?: string; destinos?: unknown; reenvio?: unknown; anexos?: unknown } | undefined;
+    const extratosGuardados = (await listarExtratos(db, organizacaoId, mes.slice(0, 7), { imovelIds: imoveisDoMes[todos.indexOf(p)].map((i) => i.id), proprietarioIds: [p.proprietarioId] })).map((e) => `${e.imovelCodigo} · ${e.canalNome}`);
     const doReenvio = typeof marca?.reenvio === "string" ? (reenvios.find((x) => x.key === marca.reenvio)?.value as ValorMarca | undefined) : undefined;
     // Os destinos do reenvio são os do pedido guardado (a retomada vai para eles), não os do cadastro.
     const cargaReenvio = (doReenvio as { carga?: unknown } | undefined)?.carga;
@@ -178,7 +195,8 @@ export async function situacaoDosFechamentos(
     // Para quem foi, como gravado no envio (não o cadastro de hoje).
     const enviadoPara = enviado && Array.isArray(marca.destinos) ? marca.destinos.filter((x): x is string => typeof x === "string") : [];
     const destinosTentados = (incerto || aguardando) && entregue && cargaValida(guardada) ? guardada.destinos : [];
-    return { ...p, email, destinos: destinosDoPedido ?? destinos, destinosTentados, situacao, enviadoEm: enviado ? (marca.em ?? null) : null, enviadoPara, reenvioPendente };
+    const anexosEnviados = enviado && Array.isArray(marca.anexos) ? marca.anexos.filter((x): x is string => typeof x === "string") : null;
+    return { ...p, email, destinos: destinosDoPedido ?? destinos, destinosTentados, situacao, enviadoEm: enviado ? (marca.em ?? null) : null, enviadoPara, reenvioPendente, extratosGuardados, anexosEnviados };
   }));
 }
 
@@ -194,7 +212,7 @@ function estadoVisto(v: ValorMarca, agora: Date): "enviando" | "incerto" {
 export const chaveDoEnvio = (organizacaoId: string, proprietarioId: string, mes: string) => `fechamento-email:${organizacaoId}:${proprietarioId}:${mes}`;
 
 /** O pedido guardado: uma retomada manda exatamente o mesmo, para os mesmos endereços. */
-type Carga = { destinos: string[]; assunto: string; texto: string; arquivo: string; pdf: string; versao?: string };
+type Carga = { destinos: string[]; assunto: string; texto: string; arquivo: string; pdf: string; versao?: string; /** Versão em HTML (M5.7); pedidos antigos não têm. */ html?: string; /** Selos dos extratos anexados ao PDF ("Airbnb", "Booking.com · 403"); vazio = sem anexos. */ anexos?: string[] };
 /**
  * Versão do fechamento que o e-mail retrata: o repasse (reabrir e fechar de novo é outra versão), a
  * linha do valor (com a situação do repasse: a pagar, pago em…) e tudo o que o PDF mostra do mês,
@@ -373,6 +391,7 @@ export async function enviarFechamentos(
   const mes = o.mes ?? mesAFechar(hoje);
   const r: ResultadoFechamentoEmail = { mes, enviados: 0, jaEnviados: 0, pendentes: [], semEmail: [], semRelatorio: [], incertos: [], falhas: [], aviso: null };
   const config = await lerConfigFechamentoEmail(db, organizacaoId);
+  const empresa = await nomeDaEmpresa(db, organizacaoId);
   if (!config.ativo && !o.manual) return { ...r, aviso: "envio do fechamento desligado" };
   if (!correio) return { ...r, aviso: "sem provedor de e-mail configurado: nada enviado" };
   const lista = (await situacaoDosFechamentos(db, organizacaoId, mes, hoje, agora)).filter((p) => !o.proprietarioId || p.proprietarioId === o.proprietarioId);
@@ -453,13 +472,25 @@ export async function enviarFechamentos(
         // O PDF e a versão saem do mesmo conteúdo (visto no fim do mês).
         const pdf = await relatorioDoFechamento(db, organizacaoId, p.proprietarioId, mes.slice(0, 7), agora, limitesDoMes(mes)?.fim);
         if (!pdf.ok) throw new Error(pdf.erro);
+        // Esqueleto da casa (M5.7): o texto do painel é a frase, o valor do mês é o destaque, e o próximo passo diz o que vai anexo.
+        const corpo = montarEmail({
+          empresa,
+          nome: p.nome,
+          frase: preencher(config.texto, p.nome, mes),
+          destaque: destaqueDoValor(p, empresa),
+          proximoPasso: pdf.anexos.length
+            ? `O relatório completo de ${nomeMes(mes)} está anexo, com o extrato oficial no fim (${pdf.anexos.join(", ")}). O extrato por reserva está no portal.`
+            : `O relatório completo de ${nomeMes(mes)} está anexo. Os extratos oficiais dos canais ficam com a equipe: peça se precisar. O extrato por reserva está no portal.`,
+        });
         carga = {
           destinos,
           assunto: preencher(config.assunto, p.nome, mes),
-          texto: `${preencher(config.texto, p.nome, mes)}\n\n${linhaDoValor(p)}\n`,
+          texto: corpo.texto,
+          html: corpo.html,
           arquivo: pdf.arquivo,
           pdf: Buffer.from(pdf.pdf).toString("base64"),
           versao: versaoDe(p, pdf.textos),
+          anexos: pdf.anexos,
         };
         // Estorno ou lançamento feito enquanto o pedido era montado: não manda um e-mail misturado
         // (a marca sai e a próxima execução monta de novo).
@@ -478,7 +509,7 @@ export async function enviarFechamentos(
         .set({ value: sql`case when ${appSettings.value} ->> 'primeira' is null then ${appSettings.value} || ${JSON.stringify({ primeira: agora.toISOString() })}::jsonb else ${appSettings.value} end`, updatedAt: new Date() })
         .where(and(eq(appSettings.key, chave), daTentativa));
       const [para, ...copias] = carga.destinos;
-      await correio.enviar({ para, copias, assunto: carga.assunto, texto: carga.texto, chave, anexos: [{ nome: carga.arquivo, conteudo: Buffer.from(carga.pdf, "base64") }] });
+      await correio.enviar({ para, copias, assunto: carga.assunto, texto: carga.texto, html: carga.html, chave, anexos: [{ nome: carga.arquivo, conteudo: Buffer.from(carga.pdf, "base64") }] });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (e instanceof ErroEnvioIncerto) {
@@ -491,7 +522,8 @@ export async function enviarFechamentos(
     }
     r.enviados++;
     // Enviado: a marca fica sem o pedido (o PDF não precisa ficar guardado).
-    const feito = { estado: "enviado", em: agora.toISOString(), destinos: carga.destinos };
+    // Fica registrado o que foi anexado (M5.7): a tela avisa quando o relatório saiu sem extrato de canal.
+    const feito = { estado: "enviado", em: agora.toISOString(), destinos: carga.destinos, anexos: carga.anexos ?? [] };
     await db.update(appSettings).set({ value: feito, updatedAt: new Date() }).where(and(eq(appSettings.key, chave), daTentativa));
     // Reenvio: a marca do mês continua "enviado", com a data do último envio.
     // Só se o ponteiro ainda é deste reenvio: um mais novo (em andamento) continua visível.

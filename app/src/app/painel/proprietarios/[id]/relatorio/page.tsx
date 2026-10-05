@@ -5,7 +5,9 @@ import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import styles from "@/components/formularios.module.css";
 import { getDb } from "@/db/client";
 import { hojeISO } from "@/lib/datas";
+import { CANAIS_EXTRATO } from "@/relatorios/extratos";
 import { donoDoRelatorio, HISTORICO_TODO, imoveisDoProprietario } from "@/relatorios/relatorio";
+import { NOMES_ORIGEM } from "@/reservas/regras";
 
 /** Mês anterior ao de hoje (o fechamento que normalmente se envia). */
 function mesAnterior(hoje: string): string {
@@ -31,8 +33,9 @@ export default async function RelatorioDoProprietario({ params, searchParams }: 
       </p>
       <h1>Relatório em PDF</h1>
       <p style={{ margin: 0, maxWidth: 720 }}>
-        Primeira página com os números do mês (os mesmos do portal do proprietário). Depois dela entra o extrato oficial do canal, se você anexar, página por
-        página e sem alterações. A foto e o extrato servem só para montar este PDF: não ficam guardados no sistema.
+        O relatório no modelo oficial: capa com o resultado do mês e como ele chega ao proprietário, números e reservas do mês, conciliação e repasses — os
+        mesmos números do portal. No fim entra o extrato oficial do canal, se você anexar, página por página e sem alterações. A foto e o extrato
+        anexados aqui servem só para montar este PDF: não ficam guardados (os extratos do e-mail do fechamento são guardados em Financeiro → Repasses).
       </p>
       {typeof erro === "string" && (
         <p role="alert" className={styles.erro}>
@@ -68,6 +71,16 @@ export default async function RelatorioDoProprietario({ params, searchParams }: 
           <label>
             Extrato oficial do canal (opcional, PDF até 2 MB)
             <input type="file" name="extrato" accept="application/pdf" />
+          </label>
+          <label>
+            Canal que emitiu o extrato
+            <select name="canal" defaultValue="airbnb">
+              {CANAIS_EXTRATO.map((c) => (
+                <option key={c} value={c}>
+                  {NOMES_ORIGEM[c]}
+                </option>
+              ))}
+            </select>
           </label>
           <label>
             Páginas do extrato (opcional, ex.: 1-2, 4; vazio = todas)

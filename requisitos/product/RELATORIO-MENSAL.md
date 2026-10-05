@@ -1,7 +1,12 @@
 # Relatório mensal do proprietário — modelo oficial (M5.7)
 
-**Situação:** especificado em 4/10/2026 a pedido de Diego; implementação é o item **M5.7** do
-ROADMAP (a fazer). Modelo navegável com dados fictícios em `prototipos/relatorio-mensal/relatorio.html`.
+**Situação:** especificado em 4/10/2026 a pedido de Diego e **implementado em 4/10/2026 (item M5.7 do
+ROADMAP, feito)**: `app/src/relatorios/` (`metricas.ts` e `dinheiro.ts` puros, `relatorio.ts` textos, `pdf.ts`
+desenho, `extratos.ts` extratos guardados, `tema.ts` cores) e `app/src/email/modelo.ts` (esqueleto dos e-mails).
+Fora deste item, como previsto: foto da capa (M7.3), linhas do modelo B (M12.2), histórico anterior a
+1/10/2026 (M11.1), WhatsApp (M10). Ajustes de Diego em 4/10 já aplicados: quadros 2×2 em vez de quatro
+em linha, nada com rolagem lateral no celular, cada página como uma folha. Modelo navegável com dados
+fictícios em `prototipos/relatorio-mensal/relatorio.html`.
 
 **Decisão de Diego (4/10/2026):** o relatório mensal que a Lia (Codex) montou com ele para
 setembro/2026 vira o **padrão** do sistema, adaptado às cores e fontes da identidade visual nova
@@ -78,8 +83,14 @@ assim como o tom de `requisitos/operations/RELATORIOS-E-TOM.md`.
 4. **Seu resultado em {mês}** — valor grande com a base: "sua parte nas reservas do mês, em todos os
    canais, já descontadas as despesas do imóvel". Ao lado, **Como chega até você**, por data de
    pagamento (ver "Resultado por noite, dinheiro por data de pagamento"), uma linha por
-   caminho, só as que existirem: pago direto pelo canal (Airbnb, split) no mês; já repassado no mês
-   (antecipados, com as datas); a transferir no fechamento (valor, data e **quem paga quem**: "a Sua
+   caminho, só as que existirem: pago direto pelo canal (Airbnb, split) no mês — só o que o canal já
+   pagou até a data do relatório; data do canal ainda no futuro aparece como "previsto para", na capa
+   e na conciliação; sem prazo do canal cadastrado, aviso "sem data" (nunca "pago"), na capa e na
+   tabela de reservas; já repassado no mês
+   (antecipados, com as datas — o Pix inteiro, como gravado no repasse e na tabela da página 3, com a
+   parte de outro mês (de uma reserva que atravessa, ou de uma reserva antiga liberada só agora) e a de
+   reservas de outro imóvel do mesmo dono, fora do relatório, discriminadas, como no "pago pelo
+   canal"); a transferir no fechamento (valor, data e **quem paga quem**: "a Sua
    Casa Leblon transfere para {nome}" ou "{nome} transfere para a Sua Casa Leblon", pela chave Pix
    cadastrada); a liberar (recebimento do canal pendente / liberação do provedor), com o motivo.
 5. **Do bruto ao resultado** (tabela): bruto das reservas; taxas dos canais; líquido depois dos
@@ -88,11 +99,13 @@ assim como o tom de `requisitos/operations/RELATORIOS-E-TOM.md`.
    No marketplace, as linhas do modelo B (desconto do hóspede, taxa do pagamento, parte da SCL)
    aparecem só para as vendas do site (ver "Variantes").
 6. **Avisos** (só se houver): pendências que mudam a leitura (recebimento não registrado,
-   lançamento em conferência, compensação pendente), uma linha cada, com o que acontece depois.
+   lançamento em conferência, compensação pendente), uma linha cada, com o que acontece depois: o
+   valor a liberar "entra no próximo repasse; você não precisa fazer nada"; quando é o proprietário
+   quem transfere, o aviso pede a transferência (chave Pix da empresa no portal), nunca o contrário.
 7. Rodapé: "Os números são os mesmos do portal." e, **só quando há anexos** (PDF do painel e do
    e-mail), "O extrato oficial de cada canal está no fim, como emitido."; no PDF do portal, que
    sai sem anexos, a frase é "Os extratos oficiais dos canais ficam com a equipe: peça se
-   precisar." Página N de M (M conta só as páginas que existem). A capa cabe numa folha A4: foto,
+   precisar." Página N de M (M conta o PDF inteiro, inclusive as páginas copiadas dos extratos, que levam só o número). A capa cabe numa folha A4: foto,
    resultado, "como chega" e a tabela do bruto ao resultado; os números do mês ficam na página 2.
 
 ### 2. Números e reservas do mês
@@ -101,7 +114,7 @@ com quatro lado a lado o texto fica apertado) e, embaixo deles, o gráfico (ver 
 as reservas:
 "{N} reservas · {n} noites em {mês}". Uma linha (ou cartão) por reserva: primeiro nome do hóspede,
 canal, código do canal, entrada → saída, noites no mês, bruto, taxa do canal, limpeza (quando o
-componente existir no livro), comissão da gestão, **sua parte** e situação da parte (paga pelo canal /
+componente existir no livro), comissão da gestão, **sua parte** e situação da parte (paga pelo canal em {data}, ou prevista para {data} pelo canal quando a data ainda não chegou /
 repassada em {data} / a transferir / a liberar: {motivo}). Nota de rodapé: estadia que atravessa o
 mês entra só com as noites do mês, rateio igual por noite (regra de 24/09). Ordem: por entrada.
 
@@ -113,7 +126,10 @@ mês entra só com as noites do mês, rateio igual por noite (regra de 24/09). O
    **a receber**), sua parte. Embaixo, a **ponte para o resultado do mês**: "+ noites de {mês}
    pagas no mês anterior" e "− noites de {mês seguinte} pagas neste mês", até fechar nos totais da
    capa (competência). É a "conciliação do extrato ao mês completo" do modelo da Lia.
-2. **Repasses do mês** — antecipados pagos (data, valor, reservas, "comprovante no portal") e o
+2. **Repasses do mês** — antecipados pela data do Pix (a do pagamento quando pago, a programada
+   enquanto não; o programado para 31/10 e pago em 1/11 é de novembro; no relatório de parte dos
+   imóveis do dono, só os repasses com ao menos uma reserva desses imóveis), com data, valor,
+   reservas, "comprovante no portal", e o
    fechamento: saldo do acerto, adiantamentos descontados, valor a transferir, quem paga quem, data
    prevista. A liberar: lista com o motivo e "entra no próximo repasse".
 3. **Despesas e ajustes do imóvel** — data, descrição, valor, nota/anexo no portal.
@@ -133,8 +149,8 @@ Todas vêm do livro e do calendário do SCL; nenhuma é estimada.
 
 | Quadro | Definição | Quando aparece |
 |---|---|---|
-| **Noites e ocupação** | noites ocupadas no mês (reservas confirmadas, rateio por noite) e ocupação = noites ocupadas ÷ noites disponíveis, onde disponíveis = noites do mês − noites bloqueadas pelo proprietário para uso próprio (M5.5). Mostra "{n} de {d} disponíveis" e as bloqueadas. Com zero noites disponíveis (mês inteiro bloqueado para uso próprio), a ocupação é "não se aplica", com a nota "mês bloqueado para seu uso"; nunca 0 ÷ 0 | sempre (a ocupação, "não se aplica" sem noite disponível) |
-| **Diária média** | bruto do mês ÷ noites ocupadas no mês; rótulo "por noite, com limpeza" (o bruto do livro inclui a limpeza) | se houver noite ocupada; senão "sem reserva no mês" |
+| **Noites e ocupação** | noites ocupadas no mês (estadias confirmadas nos imóveis do relatório, independentemente de em que livro está o dinheiro; cada noite de cada imóvel uma vez) e ocupação = noites ocupadas ÷ noites disponíveis, onde disponíveis = noites de imóvel no período de posse do proprietário − noites bloqueadas pelo proprietário para uso próprio (M5.5). Posse como intervalos (histórico de troca de dono + vínculo atual): ocupadas, bloqueadas e disponíveis contam só dentro da posse — uma estadia que atravessa a troca de dono fica, para cada dono, com as noites em que o imóvel era dele. Mostra "{n} de {d} disponíveis" e as bloqueadas. Com zero noites disponíveis (mês inteiro bloqueado para uso próprio), a ocupação é "não se aplica", com a nota "mês bloqueado para seu uso"; nunca 0 ÷ 0 | sempre (a ocupação, "não se aplica" sem noite disponível) |
+| **Diária média** | bruto ÷ noites ocupadas, os dois só das noites contadas (dentro da posse e do período, fora das bloqueadas para uso próprio, e a noite que duas reservas sobrepostas disputam uma vez só, com a que entrou primeiro) — o bruto é o de cada estadia no livro (em vigor: a reserva divergente usa o valor protegido; sem lançamento, o valor da reserva), rateado igual por noite, dessas noites; rótulo "por noite, com limpeza" (o bruto do livro inclui a limpeza) | se houver noite ocupada; senão "sem reserva no mês" |
 | **Comparado ao mês anterior** | variação % do resultado e ocupação "de X% para Y%"; se o resultado do mês de comparação for zero (mês sem reserva e sem despesa), mostra a diferença em R$ ("+ R$ X; setembro sem resultado"), nunca % | só se o mês anterior estiver inteiro no sistema (depois do início do sistema, M4.11, ou do histórico importado) |
 | **Mesmo mês do ano anterior** | variação % do resultado; base zero, a mesma regra do mês anterior (diferença em R$) | idem; senão "sem dado no sistema" |
 | **Acumulado do ano** | soma do resultado de janeiro até o mês — ou "desde {mês/ano}" quando o dado começa depois de janeiro, escrito no rótulo | sempre que houver ao menos um mês |
@@ -151,7 +167,9 @@ comparação mostraria queda falsa).
 - **Portal × painel/e-mail.** Mesmo PDF; o do portal sai sem anexos e só dentro da janela do portal
   (como hoje); o do painel e o do e-mail do dia do fechamento (M5.4) levam a foto e os extratos. **De
   onde vêm os anexos do e-mail** (hoje `relatorioDoFechamento` gera sem anexos e só o painel aceita
-  upload na hora): a equipe guarda, por imóvel e mês, os extratos oficiais dos canais — upload em
+  upload na hora): a equipe guarda, por imóvel, proprietário favorecido e mês, os extratos oficiais dos canais (o
+  proprietário é parte da chave: imóvel que troca de dono no mês tem um extrato por dono, e o relatório
+  de um nunca anexa o do outro) — upload em
   Financeiro → Fechamento, antes do dia do fechamento, em armazenamento privado como o comprovante
   do Pix do M4.10 —, e a foto vem da ficha do imóvel (M7.3); o e-mail anexa o que estiver guardado
   e, sem arquivo guardado, sai sem anexos, com o rodapé "ficam com a equipe" e um aviso no painel

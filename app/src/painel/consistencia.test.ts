@@ -123,7 +123,7 @@ describe("consistência entre telas (M4.8)", () => {
       hoje: "2026-11-10",
     });
     const pdf = textosDoRelatorio(dados);
-    const noPdf = (rotulo: string) => pdf.numeros.find((n) => n.rotulo.startsWith(rotulo))?.valor;
+    const noPdf = (texto: string) => pdf.brutoAoResultado.find((l) => l.texto.startsWith(texto))?.valor;
 
     // Bruto de outubro: 1.000 + metade de 2.000 (4 de 8 noites) + 600 da direta = 2.600.
     const bruto = 100000 + 100000 + 60000;
@@ -152,14 +152,18 @@ describe("consistência entre telas (M4.8)", () => {
 
     // O PDF mostra exatamente os números do portal.
     expect(dados.resumo).toEqual(portal);
-    expect(noPdf("Reservas no mês")).toBe(String(nReservas));
-    expect(noPdf("Valor bruto")).toBe(formatBRL(bruto));
-    expect(noPdf("Taxas dos canais")).toBe(formatBRL(taxas));
-    expect(noPdf("Comissão")).toBe(formatBRL(comissao));
-    expect(noPdf("Sua parte")).toBe(formatBRL(portal.suaParte));
-    expect(noPdf("Despesas atribuídas")).toBe(formatBRL(12000));
-    expect(noPdf("Vendas diretas")).toBe(formatBRL(60000));
+    expect(noPdf("Bruto das reservas")).toBe(formatBRL(bruto));
+    expect(noPdf("Bruto das reservas")).toBe(pdf.totalReservas?.bruto);
+    expect(noPdf("− Taxas dos canais")).toBe(`− ${formatBRL(taxas)}`);
+    expect(noPdf("− Comissão da gestão")).toBe(`− ${formatBRL(comissao)}`);
+    expect(noPdf("Sua parte nas reservas")).toBe(formatBRL(portal.suaParte));
+    expect(noPdf("− Despesas do imóvel")).toBe(`− ${formatBRL(12000)}`);
+    expect(pdf.destaque.valor).toBe(formatBRL(portal.suaParte - 12000));
+    expect(pdf.reservasTitulo).toContain(`${nReservas} reservas`);
     expect(pdf.reservas).toHaveLength(nReservas);
+    // Conciliação: nada foi pago ainda, então cada parte entra na ponte "a receber"; o total por noite é o bruto do mês.
+    expect(pdf.conciliacao.find((l) => l.rotulo.includes("Reserva direta"))).toMatchObject({ tipo: "ponte", bruto: formatBRL(60000), quemRecebeu: expect.stringContaining("o hóspede ainda não pagou") });
+    expect(pdf.conciliacao.at(-1)).toMatchObject({ tipo: "total", bruto: formatBRL(bruto), suaParte: formatBRL(portal.suaParte) });
   });
 
   it("todos os imóveis: o Início soma o mesmo que o total da aba Apartamentos", async () => {

@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { PDFDocument } from "pdf-lib";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { criarContrato } from "@/contratos/repositorio";
 import { appSettings, auditoria, execucoesAutomacao, lancamentos, imoveis, organizacoes, proprietarioImoveis, proprietarios, representantes } from "@/db/schema";
@@ -9,6 +10,7 @@ import { registrarDespesa } from "@/despesas/despesas";
 import { type Correio, CorreioMemoria, ErroEnvioIncerto, type Mensagem } from "@/email/correio";
 import type { DadosReserva } from "@/reservas/regras";
 import { criarReserva } from "@/reservas/repositorio";
+import { guardarExtrato } from "@/relatorios/extratos";
 import { estornarRepasse, fecharMes, listarRepasses, marcarRepassePago } from "@/repasses/repasses";
 import { fechamentoDeTodas, fechamentoManual } from "./cron";
 import { chaveDoEnvio, chaveDoReenvio, enviarFechamentos, fechamentoAindaVale, versaoDoConteudo, enviarFechamentosAutomaticos, lerConfigFechamentoEmail, salvarConfigFechamentoEmail, situacaoDosFechamentos } from "./email";
@@ -92,6 +94,32 @@ describe("e-mail do fechamento (M5.4)", () => {
     expect(correio.enviadas).toHaveLength(1);
   });
 
+  it("o e-mail leva os extratos oficiais guardados para o mês no fim do PDF e registra o que foi anexado; sem extrato, a situação avisa", async () => {
+    await ligar();
+    await fechar();
+    const antes = await situacaoDosFechamentos(db, org, MES, "2026-11-01");
+    expect(antes.find((p) => p.proprietarioId === dona)).toMatchObject({ situacao: "pronto", extratosGuardados: [], anexosEnviados: null });
+    // Extrato do Airbnb do 403 guardado para outubro (2 páginas, só a 2ª vai); o de setembro não entra.
+    const pdfCom = async (n: number) => {
+      const doc = await PDFDocument.create();
+      for (let i = 0; i < n; i++) doc.addPage([200, 200]);
+      return doc.save();
+    };
+    expect(await guardarExtrato(db, org, { imovelId: a, proprietarioId: dona, mes: MES, canal: "airbnb", paginas: "2", arquivo: { nome: "ganhos.pdf", tipo: "application/pdf", conteudo: await pdfCom(2) } }, null)).toMatchObject({ ok: true });
+    expect(await guardarExtrato(db, org, { imovelId: a, proprietarioId: dona, mes: "2026-09", canal: "booking", paginas: "", arquivo: { nome: "set.pdf", tipo: "application/pdf", conteudo: await pdfCom(1) } }, null)).toMatchObject({ ok: true });
+    expect((await situacaoDosFechamentos(db, org, MES, "2026-11-01")).find((p) => p.proprietarioId === dona)).toMatchObject({ extratosGuardados: ["403 · Airbnb"] });
+    const correio = new CorreioMemoria();
+    expect(await enviarFechamentos(db, org, correio, DIA1)).toMatchObject({ enviados: 1 });
+    const m = correio.enviadas[0];
+    // Quatro páginas do relatório mais a página escolhida do extrato; o texto diz o que vai anexo, e o HTML acompanha.
+    expect((await PDFDocument.load(m.anexos![0].conteudo)).getPageCount()).toBe(5);
+    expect(m.texto).toContain("com o extrato oficial no fim (Airbnb)");
+    expect(m.html).toContain("Repasse do mês");
+    expect(m.html).toContain("Olá, Dona.");
+    expect(m.html).toContain("Segue o relatório de outubro de 2026.");
+    expect((await situacaoDosFechamentos(db, org, MES, "2026-11-01")).find((p) => p.proprietarioId === dona)).toMatchObject({ situacao: "enviado", anexosEnviados: ["Airbnb"] });
+  });
+
   it("depois de fechado, envia uma vez o PDF do mês, com o texto do painel e o valor do repasse", async () => {
     await ligar();
     await fechar();
@@ -103,8 +131,11 @@ describe("e-mail do fechamento (M5.4)", () => {
     expect(await enviarFechamentos(db, org, new CorreioMemoria(), DIA1)).toMatchObject({ enviados: 0, jaEnviados: 1, semEmail: ["Outro Exemplo"] });
     const m = correio.enviadas[0];
     expect(m).toMatchObject({ para: "dona@example.com", assunto: "Fechamento de outubro de 2026", chave: chaveDoEnvio(org, dona, MES) });
-    expect(m.texto).toContain("Olá, Dona Exemplo. Segue o relatório de outubro de 2026.");
+    expect(m.texto).toContain("Olá, Dona.\n\nSegue o relatório de outubro de 2026.");
     expect(m.texto).toContain("Repasse do mês: R$");
+    expect(m.texto).toContain("Os extratos oficiais dos canais ficam com a equipe");
+    expect(m.html).toContain("Repasse do mês");
+    expect(m.texto.match(/Olá/g)).toHaveLength(1); // o modelo do painel já cumprimenta: sem saudação dupla
     expect(m.anexos).toHaveLength(1);
     expect(m.anexos![0].nome).toBe("relatorio-2026-10-403.pdf");
     expect(Buffer.from(m.anexos![0].conteudo).subarray(0, 5).toString()).toBe("%PDF-");
@@ -112,7 +143,7 @@ describe("e-mail do fechamento (M5.4)", () => {
     expect(await enviarFechamentos(db, org, correio, new Date("2026-11-02T12:00:00Z"))).toMatchObject({ enviados: 0, jaEnviados: 1 });
     expect(correio.enviadas).toHaveLength(1);
     const [marca] = await db.select().from(appSettings).where(eq(appSettings.key, chaveDoEnvio(org, dona, MES)));
-    expect(marca.value).toEqual({ estado: "enviado", em: DIA1.toISOString(), destinos: ["dona@example.com"] });
+    expect(marca.value).toEqual({ estado: "enviado", em: DIA1.toISOString(), destinos: ["dona@example.com"], anexos: [] });
   });
 
   it("mês ainda não fechado não sai: avisa quem ficou; sai quando fechar", async () => {
