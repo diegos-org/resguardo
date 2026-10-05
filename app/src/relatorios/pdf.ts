@@ -565,8 +565,12 @@ class Folhas {
     };
     for (const [i, p] of g.serie.entries()) {
       const x = x0 + i * slot + (slot - w) / 2;
-      if (p.ocupacao === null) {
+      if (p.semDado) {
         this.hachura(x, base, w, alturaBarras * 0.28);
+      } else if (p.ocupacao === null) {
+        // Mês sem noite à venda (todo bloqueado para uso próprio ou fora da posse): contorno vazio, não hachura.
+        this.page.drawRectangle({ x, y: base, width: w, height: alturaBarras * 0.28, color: C.papel, borderColor: C.borda, borderWidth: 0.6 });
+        centrado("—", x, base + 4, 7, C.texto2);
       } else {
         const hb = (Math.min(100, p.ocupacao) / 100) * alturaBarras;
         this.page.drawRectangle({ x, y: base, width: w, height: hb, color: p.atual ? C.floresta : C.barra });
@@ -585,6 +589,7 @@ class Folhas {
       [C.barra, "meses anteriores"],
       [C.floresta, g.legendaAtual],
       [C.creme, "sem dado no sistema"],
+      ...(g.serie.some((p) => !p.semDado && p.ocupacao === null) ? [[C.papel, "sem noite à venda (bloqueado)"] as const] : []),
     ] as const) {
       this.page.drawRectangle({ x: lx, y: ly, width: 8, height: 6, color: c, borderColor: C.borda, borderWidth: 0.5 });
       this.texto(s, lx + 11, ly, this.f.sans, 7, C.texto2);

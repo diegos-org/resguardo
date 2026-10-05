@@ -253,13 +253,18 @@ export function variacao(atual: number, anterior: number | null): Variacao {
 export type PontoDaSerie = { mes: MesISO; resultado: number | null; atual: boolean };
 
 /** Ponto do gráfico de ocupação (M5.8): ocupação em % e diária média do mês; null = sem dado (ou sem noite disponível / ocupada). */
-export type PontoOcupacao = { mes: MesISO; ocupacao: number | null; diaria: number | null; atual: boolean };
+/**
+ * Um mês do gráfico de ocupação. `semDado`: o mês não está no sistema (hachura, "sem dado no sistema"). Com dado e
+ * `ocupacao` null, o mês não teve noite à venda (todo bloqueado para uso próprio ou fora da posse): ocupação não se
+ * aplica — nunca confundido com falta de dado.
+ */
+export type PontoOcupacao = { mes: MesISO; ocupacao: number | null; diaria: number | null; atual: boolean; semDado: boolean };
 
-/** Os 12 meses até `mes` com ocupação (%) e diária média; mês sem dado no sistema → nulls. */
+/** Os 12 meses até `mes` com ocupação (%) e diária média; mês sem dado no sistema → nulls e `semDado`. */
 export function serieOcupacaoDe12(meses: ReadonlyMap<MesISO, DadosDoMes | null>, mes: MesISO): PontoOcupacao[] {
   return Array.from({ length: 12 }, (_, i) => somarMeses(mes, i - 11)).map((m) => {
     const d = meses.get(m) ?? null;
-    return { mes: m, ocupacao: d ? ocupacao(d).percentual : null, diaria: d ? diariaMedia(d.bruto, d.noitesOcupadas) : null, atual: m === mes };
+    return { mes: m, ocupacao: d ? ocupacao(d).percentual : null, diaria: d ? diariaMedia(d.bruto, d.noitesOcupadas) : null, atual: m === mes, semDado: !d };
   });
 }
 

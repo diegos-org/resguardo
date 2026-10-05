@@ -121,6 +121,18 @@ export async function metricasDoRelatorio(
     ).map((l) => l.mes),
   );
   const temDado = (m: MesISO) => (m === o.mes ? true : inicio ? m >= mesDe(inicio) && m <= o.mes : comLancamento.has(m));
+  // Sem início do sistema definido, o livro é o que diz que um mês está no sistema — mas a ocupação é fato do imóvel:
+  // o mês com estadia confirmada nos imóveis do relatório entra no gráfico de ocupação mesmo sem lançamento (o
+  // resultado em dinheiro desse mês continua "sem dado").
+  const comEstadia = new Set<MesISO>();
+  if (!inicio && imovelIds.length) {
+    const estadiasDaSerie = await db
+      .select({ checkin: reservas.checkin, checkout: reservas.checkout })
+      .from(reservas)
+      .where(and(eq(reservas.organizacaoId, organizacaoId), eq(reservas.estado, "confirmada"), inArray(reservas.imovelId, imovelIds), lt(reservas.checkin, limitesDe(o.mes).fim), gt(reservas.checkout, limitesDe(meses[0]).inicio)));
+    for (const e of estadiasDaSerie) for (const m of meses) if (e.checkin < limitesDe(m).fim && e.checkout > limitesDe(m).inicio) comEstadia.add(m);
+  }
+  const temOcupacao = (m: MesISO) => temDado(m) || comEstadia.has(m);
   // Posse de cada imóvel pelos proprietários do relatório, como intervalos (dia em São Paulo): o histórico de
   // "proprietario.imoveis" (quem ganhou e quem perdeu o imóvel, e quando) mais o vínculo atual; sem histórico, o
   // vínculo atual e, para o dono antigo, até o dia em que o dono seguinte foi vinculado (`intervalosDePosse`). As
@@ -229,9 +241,11 @@ export async function metricasDoRelatorio(
   const anteriorMes = somarMeses(o.mes, -1);
   const anoAnteriorMes = somarMeses(o.mes, -12);
   const [anterior, anoAnterior] = await Promise.all([temDado(anteriorMes) ? dadosDoMes(anteriorMes, null) : null, temDado(anoAnteriorMes) ? dadosDoMes(anoAnteriorMes, null) : null]);
-  // Os 12 meses da série (M5.8: resultado, ocupação e diária média por mês), reaproveitando os já calculados.
-  const demais = new Map(await Promise.all(meses.filter((m) => m !== o.mes && m !== anteriorMes && temDado(m)).map(async (m) => [m, await dadosDoMes(m, null)] as const)));
-  const serie: [MesISO, DadosDoMes | null][] = meses.map((m) => [m, m === o.mes ? atual : m === anteriorMes ? anterior : (demais.get(m) ?? null)]);
+  // Os 12 meses da série (M5.8: resultado, ocupação e diária média por mês), reaproveitando os já calculados. O mês que
+  // só entra pela ocupação (estadia sem livro) vem com o resultado null: no gráfico do resultado, "sem dado".
+  const pendentes = meses.filter((m) => m !== o.mes && !(m === anteriorMes && anterior) && temOcupacao(m));
+  const demais = new Map(await Promise.all(pendentes.map(async (m) => [m, temDado(m) ? await dadosDoMes(m, null) : { ...(await dadosDoMes(m, null)), resultado: null }] as const)));
+  const serie: [MesISO, DadosDoMes | null][] = meses.map((m) => [m, m === o.mes ? atual : m === anteriorMes && anterior ? anterior : (demais.get(m) ?? null)]);
   return { atual, anterior, anoAnterior, meses: serie, parcialAte: ate ? Number(ate.slice(8, 10)) : null };
 }
 
