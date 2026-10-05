@@ -68,6 +68,14 @@ describe("esqueleto dos e-mails (M5.7): saudação, frase, destaque, lista curta
     expect(fraseDoModelo("Oi. Segue.")).toBe("Segue.");
     expect(fraseDoModelo("Olá, Maria.")).toBe("");
     expect(fraseDoModelo("Olavo chegou.")).toBe("Olavo chegou.");
+    // Saudação sem nome: só ela sai; a mensagem que vem depois fica inteira.
+    expect(fraseDoModelo("Olá, segue em anexo o relatório.")).toBe("Segue em anexo o relatório.");
+    expect(fraseDoModelo("Bom dia, segue o fechamento.")).toBe("Segue o fechamento.");
+    expect(fraseDoModelo("Olá, tudo bem? Segue o relatório.")).toBe("Tudo bem? Segue o relatório.");
+    expect(fraseDoModelo("Olá, Segue em anexo o relatório de outubro.")).toBe("Segue em anexo o relatório de outubro.");
+    // Com nome (próprio ou marcador), sai o nome junto.
+    expect(fraseDoModelo("Olá {nome}, segue o relatório.")).toBe("Segue o relatório.");
+    expect(fraseDoModelo("Prezada Maria da Silva,\nSegue o relatório.")).toBe("Segue o relatório.");
     // Contato diferente do padrão fica; igual ao contato passado sai.
     expect(fraseDoModelo("Segue.\n\nFale com a Ana se precisar.")).toBe("Segue.\n\nFale com a Ana se precisar.");
     expect(fraseDoModelo("Segue.\n\nFale com a Ana se precisar.", "Fale com a Ana se precisar.")).toBe("Segue.");

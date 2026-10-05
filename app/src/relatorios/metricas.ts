@@ -91,6 +91,42 @@ export function noitesOcupadasNoIntervalo(
 export type Posse = { desde: string | null; ate: string | null };
 
 /**
+ * Noites contadas de cada estadia dentro de [inicio, fim): só os trechos dados (a posse do imóvel), fora das noites
+ * bloqueadas para uso próprio, e cada noite de cada imóvel uma vez — a noite que duas estadias sobrepostas disputam
+ * (overbooking) fica com a que entrou primeiro (check-in; empate, a ordem da lista). Devolve na ordem da lista. A soma é a
+ * mesma de `noitesOcupadasNoIntervalo`; por estadia, dá o bruto das noites contadas sem contar a mesma noite duas vezes.
+ */
+export function noitesContadasPorEstadia(
+  estadias: readonly { imovelId: string; checkin: string; trechos: readonly { inicio: string; fim: string }[] }[],
+  bloqueios: readonly { imovelId: string; inicio: string; fim: string }[],
+  inicio: string,
+  fim: string,
+): number[] {
+  const bloqueadas = new Map<string, Set<number>>();
+  for (const b of bloqueios) {
+    const noites = bloqueadas.get(b.imovelId) ?? new Set<number>();
+    for (let d = Math.max(dias(b.inicio), dias(inicio)); d < Math.min(dias(b.fim), dias(fim)); d++) noites.add(d);
+    bloqueadas.set(b.imovelId, noites);
+  }
+  const tomadas = new Map<string, Set<number>>();
+  const resultado = estadias.map(() => 0);
+  const ordem = estadias.map((e, i) => [e, i] as const).sort(([a, i], [b, j]) => a.checkin.localeCompare(b.checkin) || i - j);
+  for (const [e, i] of ordem) {
+    const minhas = tomadas.get(e.imovelId) ?? new Set<number>();
+    const bloq = bloqueadas.get(e.imovelId);
+    for (const t of e.trechos) {
+      for (let d = Math.max(dias(t.inicio), dias(inicio)); d < Math.min(dias(t.fim), dias(fim)); d++) {
+        if (bloq?.has(d) || minhas.has(d)) continue;
+        minhas.add(d);
+        resultado[i]++;
+      }
+    }
+    tomadas.set(e.imovelId, minhas);
+  }
+  return resultado;
+}
+
+/**
  * Os trechos de [inicio, fim) que caem dentro dos intervalos de posse (uma estadia ou um bloqueio que atravessa a troca
  * de dono conta, para cada dono, só os dias em que o imóvel era dele). Posses em sequência, sem sobreposição.
  */
@@ -146,9 +182,10 @@ export type DadosDoMes = {
    */
   resultado: number | null;
   /**
-   * Bruto das noites ocupadas contadas abaixo, em centavos: o valor de cada estadia rateado igual por noite (a mesma
-   * conta do livro), só das noites dentro da posse e do período (no mês parcial, até o dia). Assim a diária média divide
-   * bruto e noites do mesmo conjunto. O dinheiro da capa segue o livro, sem recorte.
+   * Bruto das noites ocupadas contadas abaixo, em centavos: o bruto de cada estadia no livro (em vigor; sem lançamento,
+   * o valor da reserva) rateado igual por noite (a mesma conta do livro), só das noites contadas — dentro da posse e do
+   * período (no mês parcial, até o dia), fora das bloqueadas e sem repetir a noite que duas estadias disputam. Assim a
+   * diária média divide bruto e noites do mesmo conjunto. O dinheiro da capa segue o livro, sem recorte.
    */
   bruto: number;
   /**
