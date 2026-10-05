@@ -510,6 +510,19 @@ describe("dados e acesso", () => {
     expect((await pedirOutro()).metricas.atual).toMatchObject({ diasImovel: 21, noitesBloqueadas: 0, noitesOcupadas: 2, bruto: 66667 });
   });
 
+  it("antecipado de outubro que pagou uma reserva de julho: a capa mostra o Pix inteiro (como a tabela de repasses), com as noites de julho discriminadas", async () => {
+    // Reserva de julho recebida e ainda fora de repasse; o antecipado de 6/10 a leva (a de outubro ainda não entrou).
+    await criarRecebida(reserva(a, { checkin: "2026-07-10", checkout: "2026-07-13", hospedeNome: "Júlia Fictícia" }));
+    const g = await gerarAntecipado(db, org, dona, "2026-10-06", null);
+    if (!g.ok) throw new Error(g.erro);
+    const d = await dadosDoRelatorio(db, org, { donos: [{ id: dona, nome: "Dona Fictícia" }], imoveis: [{ id: a, codigo: "403", nome: "Studio Mezanino" }], todosOsImoveis: true, ano: 2026, mes: 10, hoje: "2026-11-02" });
+    expect(d.repasses.map((r) => r.id)).toEqual([g.id]);
+    expect(d.partes.some((p) => p.mes === "2026-07" && p.repasse?.id === g.id)).toBe(true);
+    const textos = textosDoRelatorio(d).comoChega.linhas.map((l) => l.texto);
+    expect(textos).toContain("Repasse antecipado de 6/10 a pagar (Júlia)");
+    expect(textos).toContain("Desse valor, 3 noites de julho de 2026 da reserva de Júlia (10/7 → 13/7), pagas junto: entram no resultado de julho de 2026");
+  });
+
   it("relatório de parte dos imóveis do dono: só os repasses com reserva desses imóveis; sem filtro, todos", async () => {
     // A Dona ganha um segundo imóvel (c) com uma reserva de 5 a 7/10, recebida. O antecipado de 6/10 paga só a de c (a de
     // a ainda não entrou); o de 14/10 paga a de a.
