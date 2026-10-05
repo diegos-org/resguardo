@@ -60,6 +60,7 @@ const mesDados = (over: Partial<DadosDoMes> = {}): DadosDoMes => ({ mes: "2026-1
 const mesesDe = (serie: [string, number | null][]): [string, DadosDoMes | null][] => serie.map(([m, r]) => [m, r === null ? null : mesDados({ mes: m, resultado: r })]);
 
 const base: DadosRelatorio = {
+  hoje: "2026-11-02",
   empresa: "Sua Casa Leblon",
   diaFechamento: 2,
   contato: ["https://example.com"],
@@ -466,6 +467,15 @@ describe("dados e acesso", () => {
     await db.insert(proprietarioImoveis).values({ proprietarioId: dona, imovelId: a, criadoEm: new Date("2026-12-01T12:00:00-03:00") });
     expect((await pedir()).metricas.atual).toMatchObject({ diasImovel: 10, noitesBloqueadas: 3, noitesOcupadas: 1, bruto: 33333 });
     expect((await pedirOutro()).metricas.atual).toMatchObject({ diasImovel: 21, noitesBloqueadas: 0, noitesOcupadas: 2, bruto: 66667 });
+  });
+
+  it("noite bloqueada para uso próprio dentro de uma estadia confirmada sai das noites ocupadas e do bruto da diária", async () => {
+    // Estadia de 10 a 13/10 (R$ 1.000,00) com a noite de 12/10 bloqueada pela Dona (bloqueio e estadia importados juntos: o
+    // portal não deixa bloquear por cima de hóspede, mas a importação pode trazer os dois): 2 noites contadas e dois terços do bruto.
+    expect((await criarBloqueio(db, org, { imovelId: a, inicio: "2026-10-12", fim: "2026-10-13", motivo: "Uso próprio" }, null, { fonte: "proprietario", proprietarioId: dona })).ok).toBe(true);
+    const d = await dadosDoRelatorio(db, org, { donos: [{ id: dona, nome: "Dona Fictícia" }], imoveis: [{ id: a, codigo: "403", nome: "Studio Mezanino" }], todosOsImoveis: true, ano: 2026, mes: 10, hoje: "2026-11-02" });
+    expect(d.metricas.atual).toMatchObject({ noitesOcupadas: 2, noitesBloqueadas: 1, bruto: 66667 });
+    expect(diariaMedia(d.metricas.atual.bruto, d.metricas.atual.noitesOcupadas)).toBe(33334);
   });
 
   it("mês parcial: a diária média usa o bruto das noites já passadas (proporcional por noite), não o bruto do mês inteiro", async () => {

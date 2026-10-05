@@ -83,7 +83,9 @@ assim como o tom de `requisitos/operations/RELATORIOS-E-TOM.md`.
 4. **Seu resultado em {mês}** — valor grande com a base: "sua parte nas reservas do mês, em todos os
    canais, já descontadas as despesas do imóvel". Ao lado, **Como chega até você**, por data de
    pagamento (ver "Resultado por noite, dinheiro por data de pagamento"), uma linha por
-   caminho, só as que existirem: pago direto pelo canal (Airbnb, split) no mês; já repassado no mês
+   caminho, só as que existirem: pago direto pelo canal (Airbnb, split) no mês — só o que o canal já
+   pagou até a data do relatório; data do canal ainda no futuro aparece como "previsto para", na capa
+   e na conciliação; já repassado no mês
    (antecipados, com as datas — o Pix inteiro, como gravado no repasse e na tabela da página 3, com a
    parte de outro mês de uma reserva que atravessa e a de reservas de outro imóvel do mesmo dono, fora
    do relatório, discriminadas, como no "pago pelo canal"); a transferir no fechamento (valor, data e **quem paga quem**: "a Sua
@@ -143,7 +145,7 @@ Todas vêm do livro e do calendário do SCL; nenhuma é estimada.
 | Quadro | Definição | Quando aparece |
 |---|---|---|
 | **Noites ocupadas e ocupação** | o quadro diz "{n} noites ocupadas" (M5.8: só "noites" era ambíguo para Diego — ocupadas ou vazias?): noites ocupadas no mês (estadias confirmadas nos imóveis do relatório, independentemente de em que livro está o dinheiro; cada noite de cada imóvel uma vez) e ocupação = noites ocupadas ÷ noites disponíveis, onde disponíveis = noites de imóvel no período de posse do proprietário − noites bloqueadas pelo proprietário para uso próprio (M5.5). Posse como intervalos (histórico de troca de dono + vínculo atual): ocupadas, bloqueadas e disponíveis contam só dentro da posse — uma estadia que atravessa a troca de dono fica, para cada dono, com as noites em que o imóvel era dele. Mostra "{n} de {d} disponíveis" e as bloqueadas. Com zero noites disponíveis (mês inteiro bloqueado para uso próprio), a ocupação é "não se aplica", com a nota "mês bloqueado para seu uso"; nunca 0 ÷ 0 | sempre (a ocupação, "não se aplica" sem noite disponível) |
-| **Diária média** | bruto ÷ noites ocupadas, os dois só das noites dentro da posse e do período — o bruto é o valor de cada estadia rateado igual por noite (a conta do livro), das noites contadas — o ADR do setor; rótulo "por noite ocupada, com limpeza" (o bruto do livro inclui a limpeza) | se houver noite ocupada; senão "sem reserva no mês" |
+| **Diária média** | bruto ÷ noites ocupadas, os dois só das noites contadas (dentro da posse e do período, fora das bloqueadas para uso próprio) — o bruto é o valor de cada estadia rateado igual por noite (a conta do livro), dessas noites — o ADR do setor; rótulo "por noite ocupada, com limpeza" (o bruto do livro inclui a limpeza) | se houver noite ocupada; senão "sem reserva no mês" |
 | **Receita por noite disponível** (M5.8) | bruto do mês ÷ noites disponíveis (as mesmas da ocupação: noites de imóvel no período de posse − bloqueadas), ocupadas ou não — o RevPAN/RevPAR do setor, que junta ocupação e diária num número só; rótulo diz a conta ("bruto ÷ 29 noites disponíveis") | se houver noite disponível; senão "não se aplica" |
 | **Reservas e estadia média** (M5.8) | estadias confirmadas com ao menos uma noite dentro da posse e do período (a mesma régua das noites ocupadas) e estadia média = noites ocupadas ÷ reservas, com uma casa ("2,6 noites por reserva") | se houver reserva; senão "nenhuma reserva" |
 | **Comparado ao mês anterior** | variação % do resultado e ocupação "de X% para Y%"; se o resultado do mês de comparação for zero (mês sem reserva e sem despesa), mostra a diferença em R$ ("+ R$ X; setembro sem resultado"), nunca % | só se o mês anterior estiver inteiro no sistema (depois do início do sistema, M4.11, ou do histórico importado) |
