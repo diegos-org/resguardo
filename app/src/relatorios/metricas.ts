@@ -91,6 +91,18 @@ export function noitesOcupadasNoIntervalo(
 export type Posse = { desde: string | null; ate: string | null };
 
 /**
+ * Os trechos de [inicio, fim) que caem dentro dos intervalos de posse (uma estadia ou um bloqueio que atravessa a troca
+ * de dono conta, para cada dono, só os dias em que o imóvel era dele). Posses em sequência, sem sobreposição.
+ */
+export function trechosNaPosse(inicio: string, fim: string, posses: readonly Posse[]): { inicio: string; fim: string }[] {
+  return posses.flatMap((p) => {
+    const de = p.desde && p.desde > inicio ? p.desde : inicio;
+    const ate = p.ate && p.ate < fim ? p.ate : fim;
+    return ate > de ? [{ inicio: de, fim: ate }] : [];
+  });
+}
+
+/**
  * Intervalos de posse de um imóvel pelos proprietários de um relatório: o histórico de "proprietario.imoveis" (quem
  * ganhou e quem perdeu o imóvel, e quando, em ordem) mais os vínculos atuais. Perda sem ganho registrado = posse desde
  * sempre até a perda; ganho sem perda = posse aberta; vínculo atual sem histórico = posse desde o vínculo; nada
@@ -134,13 +146,15 @@ export type DadosDoMes = {
    */
   resultado: number | null;
   /**
-   * Bruto das reservas (parte do mês), em centavos. No mês parcial, só a parte das noites confirmadas até o dia
-   * (proporcional por noite), para a diária média dividir bruto e noites do mesmo intervalo.
+   * Bruto das reservas (parte do mês), em centavos, só das noites dentro da posse do imóvel (proporcional por noite).
+   * No mês parcial, só a parte das noites confirmadas até o dia. Assim a diária média divide bruto e noites do mesmo
+   * intervalo. O dinheiro da capa segue o livro, sem recorte.
    */
   bruto: number;
   /**
    * Noites ocupadas dentro do período: reservas confirmadas (cancelada ou pendente com valor no livro não ocupa noite),
-   * cada noite de cada imóvel contada uma vez e fora das bloqueadas (`noitesOcupadasNoIntervalo`).
+   * só as noites dentro da posse do imóvel (`trechosNaPosse`), cada noite de cada imóvel contada uma vez e fora das
+   * bloqueadas (`noitesOcupadasNoIntervalo`).
    */
   noitesOcupadas: number;
   /** Noites do período considerado por imóvel (mês inteiro; no mês parcial, só até o dia). */

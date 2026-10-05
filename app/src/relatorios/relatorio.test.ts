@@ -180,6 +180,12 @@ describe("textos do relatório (modelo oficial, M5.7)", () => {
       expect.stringContaining("Em conferência: há itens deste mês ainda não definidos (R$ 50,00 a favor da Sua Casa Leblon)"),
     ]);
     expect(aLiberar.emConferencia).toContain("R$ 50,00 a favor da Sua Casa Leblon");
+    // Quem transfere é o proprietário: o aviso pede a transferência, nunca "entra no próximo repasse; você não precisa fazer nada".
+    const deve = textosDoRelatorio({ ...base, rodape: [rodape({ nome: "Dona Fictícia", situacao: "proprietario_deve", valor: 5000, saldo: -5000, aFavor: "empresa" })] });
+    expect(deve.avisos).toEqual(["Você transfere à Sua Casa Leblon no fechamento (R$ 50,00). As despesas do mês passaram da sua parte; a chave Pix da Sua Casa Leblon está no portal."]);
+    expect(JSON.stringify(deve.avisos)).not.toContain("próximo repasse");
+    const conferencia = textosDoRelatorio({ ...base, rodape: [rodape({ nome: "Dona Fictícia", situacao: "em_conferencia", valor: 72250, saldo: 72250, aFavor: null })] });
+    expect(conferencia.avisos).toEqual(["Em conferência: o valor do fechamento sai depois que a Sua Casa Leblon resolver (R$ 722,50). Esse valor é provisório e pode mudar; você não precisa fazer nada até a conferência terminar."]);
     expect(aLiberar.reservas[0]).toMatchObject({ situacao: "a liberar: pagamento do canal não registrado", situacaoTipo: "aviso" });
   });
 
@@ -420,30 +426,35 @@ describe("dados e acesso", () => {
     // Vínculo criado no dia 11/10 (dia em São Paulo): outubro tem 21 noites de imóvel para vender, não 31.
     await db.update(proprietarioImoveis).set({ criadoEm: new Date("2026-10-11T12:00:00-03:00") }).where(eq(proprietarioImoveis.imovelId, a));
     const d2 = await pedir();
-    expect(d2.metricas.atual.diasImovel).toBe(21);
+    // A estadia de 10 a 13/10 conta só as noites dentro da posse (11 e 12), e o bruto da diária acompanha (dois terços).
+    expect(d2.metricas.atual).toMatchObject({ diasImovel: 21, noitesOcupadas: 2, bruto: 66667 });
+    expect(d1.metricas.atual).toMatchObject({ noitesOcupadas: 3, bruto: 100000 });
     expect(d1.metricas.atual.diasImovel).toBeGreaterThan(21);
-    // Vínculo depois do mês: nenhuma noite para vender em outubro (o imóvel entra pelo livro); as noites ocupadas não mudam.
+    // Vínculo depois do mês: nenhuma noite para vender nem ocupada em outubro (a estadia fica fora da posse; ocupação e
+    // diária "não se aplicam"); o dinheiro continua na capa, pelo livro.
     await db.update(proprietarioImoveis).set({ criadoEm: new Date("2026-11-05T12:00:00-03:00") }).where(eq(proprietarioImoveis.imovelId, a));
     const d3 = await pedir();
-    expect(d3.metricas.atual.diasImovel).toBe(0);
-    expect(d3.metricas.atual.noitesOcupadas).toBe(d1.metricas.atual.noitesOcupadas);
+    expect(d3.metricas.atual).toMatchObject({ diasImovel: 0, noitesOcupadas: 0, bruto: 0 });
+    expect(d3.resumo.receitaBruta).toBe(100000);
     // Troca de dono em 11/10 (o vínculo da Dona é apagado; o do Outro nasce em 11/10): o relatório da Dona, que entra pelo
     // livro, conta só até 10/10 (10 noites); o do Outro, de 11/10 em diante (21). O bloqueio de uso próprio que a Dona
     // fez antes da troca continua no relatório dela (3 noites bloqueadas, 7 disponíveis) e não no do Outro.
     expect((await criarBloqueio(db, org, { imovelId: a, inicio: "2026-10-05", fim: "2026-10-08", motivo: "Uso próprio" }, null, { fonte: "proprietario", semReserva: true, proprietarioId: dona })).ok).toBe(true);
     await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));
     await db.insert(proprietarioImoveis).values({ proprietarioId: outro, imovelId: a, criadoEm: new Date("2026-10-11T12:00:00-03:00") });
-    expect((await pedir()).metricas.atual).toMatchObject({ diasImovel: 10, noitesBloqueadas: 3 });
+    // A estadia de 10 a 13/10 atravessa a troca: a Dona conta só a noite de 10/10 (1 de 10 para vender, não 3) e um
+    // terço do bruto na diária; o Outro, nenhuma (a reserva é do livro da Dona).
+    expect((await pedir()).metricas.atual).toMatchObject({ diasImovel: 10, noitesBloqueadas: 3, noitesOcupadas: 1, bruto: 33333 });
     const pedirOutro = () => dadosDoRelatorio(db, org, { donos: [{ id: outro, nome: "Outro Fictício" }], imoveis: [{ id: a, codigo: "403", nome: "Studio Mezanino" }], todosOsImoveis: false, ano: 2026, mes: 10, hoje: "2026-11-02" });
-    expect((await pedirOutro()).metricas.atual).toMatchObject({ diasImovel: 21, noitesBloqueadas: 0 });
+    expect((await pedirOutro()).metricas.atual).toMatchObject({ diasImovel: 21, noitesBloqueadas: 0, noitesOcupadas: 0 });
     // Com o histórico do painel ("proprietario.imoveis"), o imóvel que volta à Dona em 1/12 não apaga a posse antiga:
     // outubro da Dona continua com 10 noites (perdeu em 11/10), e o do Outro com 21 (ganhou em 11/10, perdeu em 1/12).
     const h = (entidadeId: string, antes: string[], depois: string[], quando: string) => ({ organizacaoId: org, usuarioId: null, acao: "proprietario.imoveis", entidade: "proprietario", entidadeId, mudancas: { imoveis: [antes, depois] }, criadoEm: new Date(quando) });
     await db.insert(auditoria).values([h(dona, [a], [], "2026-10-11T12:00:00-03:00"), h(outro, [], [a], "2026-10-11T12:00:00-03:00"), h(outro, [a], [], "2026-12-01T12:00:00-03:00"), h(dona, [], [a], "2026-12-01T12:00:00-03:00")]);
     await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));
     await db.insert(proprietarioImoveis).values({ proprietarioId: dona, imovelId: a, criadoEm: new Date("2026-12-01T12:00:00-03:00") });
-    expect((await pedir()).metricas.atual).toMatchObject({ diasImovel: 10, noitesBloqueadas: 3 });
-    expect((await pedirOutro()).metricas.atual).toMatchObject({ diasImovel: 21, noitesBloqueadas: 0 });
+    expect((await pedir()).metricas.atual).toMatchObject({ diasImovel: 10, noitesBloqueadas: 3, noitesOcupadas: 1, bruto: 33333 });
+    expect((await pedirOutro()).metricas.atual).toMatchObject({ diasImovel: 21, noitesBloqueadas: 0, noitesOcupadas: 0 });
   });
 
   it("mês parcial: a diária média usa o bruto das noites já passadas (proporcional por noite), não o bruto do mês inteiro", async () => {
