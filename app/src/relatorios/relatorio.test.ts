@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { PDFDocument } from "pdf-lib";
+import { decodePDFRawStream, PDFArray, PDFDocument, PDFRawStream } from "pdf-lib";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Sessao } from "@/acesso/politica";
 import { criarContrato } from "@/contratos/repositorio";
@@ -32,6 +32,22 @@ async function pdfCom(paginas: number): Promise<Uint8Array> {
   return d.save();
 }
 const paginasDe = async (b: Uint8Array) => (await PDFDocument.load(b)).getPageCount();
+/** O conteúdo (operadores) de cada página, para conferir o que foi desenhado — as fontes padrão escrevem o texto em hexadecimal WinAnsi. */
+async function conteudoDasPaginas(b: Uint8Array): Promise<string[]> {
+  const doc = await PDFDocument.load(b);
+  return doc.getPages().map((pg) => {
+    const c = pg.node.Contents();
+    const itens = c instanceof PDFArray ? c.asArray() : c ? [c] : [];
+    return itens
+      .map((x) => {
+        const s = doc.context.lookup(x);
+        return s instanceof PDFRawStream ? Buffer.from(decodePDFRawStream(s).decode()).toString("latin1") : "";
+      })
+      .join("\n")
+      .toLowerCase();
+  });
+}
+const hexWinAnsi = (texto: string) => Buffer.from(texto, "latin1").toString("hex").toLowerCase();
 
 const reserva = (imovelId: string, over: Partial<DadosReserva> = {}): DadosReserva => ({
   imovelId,
@@ -321,7 +337,12 @@ describe("PDF", () => {
     const comTransbordo = await paginasDe(await gerarPdfRelatorio(muitos));
     expect(comTransbordo).toBeGreaterThanOrEqual(4);
     expect(comTransbordo).toBeLessThanOrEqual(6);
-    expect(await paginasDe(await gerarPdfRelatorio(t, { foto: PNG, extrato: { bytes: extrato } }))).toBe(4 + 3);
+    const comExtrato = await gerarPdfRelatorio(t, { foto: PNG, extrato: { bytes: extrato } });
+    expect(await paginasDe(comExtrato)).toBe(4 + 3);
+    // A numeração conta o PDF inteiro, inclusive as páginas copiadas do extrato (cada uma com o seu "Página N de 7").
+    const conteudos = await conteudoDasPaginas(comExtrato);
+    for (const [i, c] of conteudos.entries()) expect(c, `página ${i + 1}`).toContain(hexWinAnsi(`Página ${i + 1} de 7`));
+    expect(conteudos[3]).not.toContain(hexWinAnsi("Página 4 de 4"));
     const so = await PDFDocument.load(await gerarPdfRelatorio(t, { extratos: [{ canal: "Airbnb", bytes: extrato, paginas: "2-3" }, { canal: "Booking.com", bytes: await pdfCom(1) }] }));
     expect(so.getPageCount()).toBe(4 + 2 + 1);
     // Páginas do extrato mantêm o tamanho original (não são redesenhadas); as nossas são A4.
