@@ -2,20 +2,20 @@
  * Consultas dos dados novos do relatório mensal (M5.7). Nada é recalculado: as partes vêm do extrato (M4.10/M4.12), os
  * números do mês do resumo do portal, os repasses e as despesas do livro. Aqui só se junta o que cada página mostra.
  */
-import { and, eq, gte, inArray, isNull, lt, or, sql, sum } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, isNull, lt, or, sql, sum } from "drizzle-orm";
 import { NOMES_TIPO } from "@/contratos/regras";
-import { contratos, lancamentos, proprietarioImoveis, reservas, type TipoContrato } from "@/db/schema";
+import { auditoria, bloqueios, contratos, lancamentos, proprietarioImoveis, reservas, type TipoContrato } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
 import { lancamentoEmVigor } from "@/portal/posse";
-import { bloqueiosDoPortal, reservasDoPortal } from "@/portal/reservas";
+import { reservasDoPortal } from "@/portal/reservas";
 import { resumoDoProprietario } from "@/portal/resumo";
 import { partesDoProprietario } from "@/repasses/extrato";
 import { somarDias } from "@/repasses/inicio";
 import { lerInicioDoSistema } from "@/repasses/regras-config";
 import { itensDoRepasse, listarRepasses, type Repasse } from "@/repasses/repasses";
 import type { ParteDoRelatorio } from "./dinheiro";
-import { type DadosDoMes, diasDeImovel, diasDoMes, limitesDe, type MesISO, noitesBloqueadas, noitesNoIntervalo, noitesOcupadasNoIntervalo, somarMeses } from "./metricas";
+import { type DadosDoMes, diasDeImovel, diasDoMes, intervalosDePosse, limitesDe, type MesISO, noitesBloqueadas, noitesNoIntervalo, noitesOcupadasNoIntervalo, somarMeses } from "./metricas";
 
 type Dono = { id: string; nome: string };
 const mesDe = (data: string): MesISO => data.slice(0, 7);
@@ -117,32 +117,48 @@ export async function metricasDoRelatorio(
     ).map((l) => l.mes),
   );
   const temDado = (m: MesISO) => (m === o.mes ? true : inicio ? m >= mesDe(inicio) && m <= o.mes : comLancamento.has(m));
-  // Período de posse de cada imóvel (dia em São Paulo): as noites para vender só contam enquanto o imóvel era dos
-  // proprietários. Com vínculo atual, desde o dia do vínculo. Sem vínculo atual (dono antigo, que entra pelo livro),
-  // a posse termina no dia em que o dono seguinte foi vinculado — o vínculo antigo é apagado na troca, então o fim é
-  // o começo do outro; sem ninguém vinculado, conta o período inteiro.
-  const vinculos = imovelIds.length
-    ? await db
-        .select({ imovelId: proprietarioImoveis.imovelId, proprietarioId: proprietarioImoveis.proprietarioId, dia: sql<string>`to_char((${proprietarioImoveis.criadoEm} at time zone 'America/Sao_Paulo')::date, 'YYYY-MM-DD')` })
-        .from(proprietarioImoveis)
-        .where(inArray(proprietarioImoveis.imovelId, imovelIds))
-    : [];
-  const posseDe = new Map(
-    imovelIds.map((id) => {
-      const doImovel = vinculos.filter((v) => v.imovelId === id);
-      const meus = doImovel.filter((v) => donoIds.includes(v.proprietarioId)).map((v) => v.dia).sort();
-      const outros = doImovel.filter((v) => !donoIds.includes(v.proprietarioId)).map((v) => v.dia).sort();
-      return [id, meus.length ? { desde: meus[0], ate: null } : { desde: null, ate: outros[0] ?? null }] as const;
-    }),
-  );
+  // Posse de cada imóvel pelos proprietários do relatório, como intervalos (dia em São Paulo): o histórico de
+  // "proprietario.imoveis" (quem ganhou e quem perdeu o imóvel, e quando) mais o vínculo atual; sem histórico, o
+  // vínculo atual e, para o dono antigo, até o dia em que o dono seguinte foi vinculado (`intervalosDePosse`). As
+  // noites para vender e os bloqueios do dono contam só dentro da posse — inclusive numa posse anterior do mesmo dono.
+  const donosValidos = donoIds.filter(uuidValido);
+  const diaSP = (coluna: typeof proprietarioImoveis.criadoEm | typeof auditoria.criadoEm) => sql<string>`to_char((${coluna} at time zone 'America/Sao_Paulo')::date, 'YYYY-MM-DD')`;
+  const [vinculos, historico] = imovelIds.length
+    ? await Promise.all([
+        db.select({ imovelId: proprietarioImoveis.imovelId, proprietarioId: proprietarioImoveis.proprietarioId, dia: diaSP(proprietarioImoveis.criadoEm) }).from(proprietarioImoveis).where(inArray(proprietarioImoveis.imovelId, imovelIds)),
+        donosValidos.length
+          ? db
+              .select({ proprietarioId: auditoria.entidadeId, mudancas: auditoria.mudancas, dia: diaSP(auditoria.criadoEm) })
+              .from(auditoria)
+              .where(and(eq(auditoria.organizacaoId, organizacaoId), eq(auditoria.acao, "proprietario.imoveis"), inArray(auditoria.entidadeId, donosValidos)))
+              .orderBy(asc(auditoria.criadoEm))
+          : Promise.resolve([]),
+      ])
+    : [[], []];
+  const posseDe = new Map(imovelIds.map((id) => [id, intervalosDePosse(id, donoIds, vinculos, historico)] as const));
   const dadosDoMes = async (m: MesISO, ate: string | null): Promise<DadosDoMes> => {
     const { inicio: de, fim } = limitesDe(m);
     const fimConsiderado = ate ? somarDias(ate, 1) : fim;
-    const [resumo, lista, bloqueios] = await Promise.all([
+    const [resumo, resumoAte, lista, bloqueiosDoDono] = await Promise.all([
       resumoDoProprietario(db, organizacaoId, { proprietarioIds: donoIds, imovelIds, semImovel: o.todosOsImoveis, periodo: { inicio: de, fim } }),
+      ate ? resumoDoProprietario(db, organizacaoId, { proprietarioIds: donoIds, imovelIds, semImovel: o.todosOsImoveis, periodo: { inicio: de, fim: fimConsiderado } }) : Promise.resolve(null),
       reservasDoPortal(db, organizacaoId, { proprietarioIds: donoIds, imovelIds, periodo: { inicio: de, fim } }),
-      bloqueiosDoPortal(db, organizacaoId, { proprietarioIds: donoIds, imovelIds, periodo: { inicio: de, fim } }),
+      // Bloqueios de uso próprio dos donos do relatório, pelo dono registrado no bloqueio (não pelo vínculo atual: o
+      // dono antigo continua com os bloqueios que fez), e só dentro da posse de cada um.
+      donosValidos.length && imovelIds.length
+        ? db
+            .select({ imovelId: bloqueios.imovelId, inicio: bloqueios.inicio, fim: bloqueios.fim })
+            .from(bloqueios)
+            .where(and(eq(bloqueios.organizacaoId, organizacaoId), inArray(bloqueios.imovelId, imovelIds), inArray(bloqueios.proprietarioId, donosValidos), eq(bloqueios.fonte, "proprietario"), lt(bloqueios.inicio, fim), gt(bloqueios.fim, de)))
+        : Promise.resolve([]),
     ]);
+    const bloqueiosNaPosse = bloqueiosDoDono.flatMap((b) =>
+      (posseDe.get(b.imovelId) ?? [{ desde: null, ate: null }]).flatMap((p) => {
+        const inicio = p.desde && p.desde > b.inicio ? p.desde : b.inicio;
+        const fimDoBloqueio = p.ate && p.ate < b.fim ? p.ate : b.fim;
+        return fimDoBloqueio > inicio ? [{ imovelId: b.imovelId, inicio, fim: fimDoBloqueio }] : [];
+      }),
+    );
     // Só reserva confirmada ocupa noite: a cancelada ou pendente que ainda tem valor no livro entra na lista para
     // explicar o valor, não como estadia.
     const confirmadas = lista.filter((r) => r.confirmada);
@@ -154,18 +170,25 @@ export async function metricasDoRelatorio(
       const noMes = noitesNoIntervalo(r.checkin, r.checkout, de, fim);
       return s + (noMes > 0 ? Math.round((r.bruto * noitesAte(r)) / noMes) : 0);
     }, 0);
-    const bloqueiosDoDono = bloqueios.filter((b) => b.fonte === "proprietario");
+    // Mês parcial: o resultado também vai só até o dia — a parte de cada reserva confirmada proporcional às noites já
+    // passadas (como o bruto), mais o que não é reserva (ajustes) e menos as despesas com data até o dia — para a barra
+    // do mês corrente e o acumulado ficarem no mesmo intervalo dos outros números. Mês inteiro: o livro.
+    const fracaoAte = (r: (typeof lista)[number]) => {
+      const noMes = noitesNoIntervalo(r.checkin, r.checkout, de, fim);
+      return r.confirmada && noMes > 0 ? noitesAte(r) / noMes : 1;
+    };
+    const resultadoAte = resumoAte ? resumoAte.suaParte - lista.reduce((s, r) => s + r.suaParte, 0) + lista.reduce((s, r) => s + Math.round(r.suaParte * fracaoAte(r)), 0) - resumoAte.despesas : null;
     return {
       mes: m,
-      resultado: resumo.suaParte - resumo.despesas,
+      resultado: resultadoAte ?? resumo.suaParte - resumo.despesas,
       bruto: ate ? brutoAte : resumo.receitaBruta,
       // Cada noite de cada imóvel conta uma vez (overbooking não passa de 100%) e noite bloqueada para uso próprio não conta.
-      noitesOcupadas: noitesOcupadasNoIntervalo(confirmadas, bloqueiosDoDono, de, fimConsiderado),
+      noitesOcupadas: noitesOcupadasNoIntervalo(confirmadas, bloqueiosNaPosse, de, fimConsiderado),
       reservas: confirmadas.filter((r) => noitesAte(r) > 0).length,
       noitesDoPeriodo: ate ? Number(ate.slice(8, 10)) : diasDoMes(m),
       imoveis: imovelIds.length,
-      diasImovel: diasDeImovel(imovelIds.map((id) => posseDe.get(id) ?? { desde: null, ate: null }), de, fimConsiderado),
-      noitesBloqueadas: noitesBloqueadas(bloqueiosDoDono, de, fimConsiderado),
+      diasImovel: diasDeImovel(imovelIds.flatMap((id) => posseDe.get(id) ?? [{ desde: null, ate: null }]), de, fimConsiderado),
+      noitesBloqueadas: noitesBloqueadas(bloqueiosNaPosse, de, fimConsiderado),
     };
   };
   const ate = o.parcial ? o.hoje : null;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { acumuladoDoAno, type DadosDoMes, diariaMedia, diasDeImovel, diasDoMes, escalaEmMil, estadiaMedia, limitesDe, mesCurto, nomeDoMes, noitesBloqueadas, noitesNoIntervalo, noitesOcupadasNoIntervalo, ocupacao, quadrosDoMes, receitaPorNoiteDisponivel, serieDe12, serieOcupacaoDe12, somarMeses, variacao } from "./metricas";
+import { acumuladoDoAno, type DadosDoMes, diariaMedia, diasDeImovel, diasDoMes, escalaEmMil, estadiaMedia, intervalosDePosse, limitesDe, mesCurto, nomeDoMes, noitesBloqueadas, noitesNoIntervalo, noitesOcupadasNoIntervalo, ocupacao, quadrosDoMes, receitaPorNoiteDisponivel, serieDe12, serieOcupacaoDe12, somarMeses, variacao } from "./metricas";
 
 const mes = (over: Partial<Parameters<typeof quadrosDoMes>[0]["atual"]> = {}) => ({ mes: "2026-10", resultado: 1503780, bruto: 1945000, noitesOcupadas: 18, reservas: 7, noitesDoPeriodo: 31, imoveis: 1, diasImovel: 31, noitesBloqueadas: 2, ...over });
 
@@ -85,6 +85,25 @@ describe("métricas do relatório mensal (M5.7, regras puras)", () => {
     expect(escalaEmMil(1503780)).toEqual({ teto: 16, passo: 4 });
     expect(escalaEmMil(0)).toEqual({ teto: 1, passo: 1 });
     expect(escalaEmMil(42_000_00)).toEqual({ teto: 60, passo: 20 });
+  });
+
+  it("intervalos de posse: pelo histórico (ganhou/perdeu) e pelos vínculos; perda sem ganho = desde sempre; imóvel que volta = dois intervalos; sem nada = até o vínculo do seguinte", () => {
+    const ev = (proprietarioId: string, antes: string[], depois: string[], dia: string) => ({ proprietarioId, mudancas: { imoveis: [antes, depois] }, dia });
+    // Vínculo atual sem histórico: desde o vínculo.
+    expect(intervalosDePosse("a", ["A"], [{ imovelId: "a", proprietarioId: "A", dia: "2026-10-11" }], [])).toEqual([{ desde: "2026-10-11", ate: null }]);
+    // Dono antigo sem histórico: até o vínculo do seguinte; sem ninguém, o período inteiro.
+    expect(intervalosDePosse("a", ["A"], [{ imovelId: "a", proprietarioId: "B", dia: "2026-10-11" }], [])).toEqual([{ desde: null, ate: "2026-10-11" }]);
+    expect(intervalosDePosse("a", ["A"], [], [])).toEqual([{ desde: null, ate: null }]);
+    // Histórico: A perde em 11/10 (sem ganho registrado: era dele desde sempre) e volta em 1/12 (vínculo novo).
+    const hist = [ev("A", ["a", "b"], ["b"], "2026-10-11"), ev("B", [], ["a"], "2026-10-11"), ev("B", ["a"], [], "2026-12-01"), ev("A", ["b"], ["b", "a"], "2026-12-01")];
+    const vinc = [{ imovelId: "a", proprietarioId: "A", dia: "2026-12-01" }];
+    expect(intervalosDePosse("a", ["A"], vinc, hist)).toEqual([{ desde: null, ate: "2026-10-11" }, { desde: "2026-12-01", ate: null }]);
+    expect(intervalosDePosse("a", ["B"], vinc, hist)).toEqual([{ desde: "2026-10-11", ate: "2026-12-01" }]);
+    // Histórico de outro imóvel ou de outro dono não entra; mudança malformada é ignorada.
+    expect(intervalosDePosse("b", ["A"], [{ imovelId: "b", proprietarioId: "A", dia: "2026-01-05" }], [...hist, { proprietarioId: "A", mudancas: { imoveis: "x" }, dia: "2026-02-01" }])).toEqual([{ desde: "2026-01-05", ate: null }]);
+    // Os intervalos somam nas noites para vender: outubro de A = 10 noites; de B = 21.
+    expect(diasDeImovel(intervalosDePosse("a", ["A"], vinc, hist), "2026-10-01", "2026-11-01")).toBe(10);
+    expect(diasDeImovel(intervalosDePosse("a", ["B"], vinc, hist), "2026-10-01", "2026-11-01")).toBe(21);
   });
 
   it("noites ocupadas: cada noite de cada imóvel conta uma vez (overbooking), noite bloqueada para uso próprio não conta, fora do intervalo não conta", () => {

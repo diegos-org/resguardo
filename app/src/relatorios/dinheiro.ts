@@ -73,26 +73,36 @@ export function comoChega(partes: readonly ParteDoRelatorio[], mes: MesISO, roda
   const { fim } = limitesDe(mes);
   const doMes = partes.filter((p) => p.mes === mes);
   const linhas: Linha[] = [];
-  // 1. Pago a você direto pelo canal (split), no mês.
-  const split = doMes.filter((p) => p.quemRecebe === "split");
+  // 1. Pago a você direto pelo canal (split), pela data do pagamento: tudo o que o canal pagou no mês, inclusive as
+  //    noites de outro mês de uma reserva que atravessa (o extrato do canal e a conta do proprietário mostram a reserva
+  //    inteira); essa parte sai discriminada e entra no resultado do mês dela (ponte na conciliação).
+  const split = partes.filter((p) => p.quemRecebe === "split");
   for (const canal of unicos(split.map((p) => p.canal))) {
     const doCanal = split.filter((p) => p.canal === canal);
     const noMes = doCanal.filter((p) => emMes(p.pagamento?.data, mes));
     if (noMes.length) {
       const n = unicos(noMes.map((p) => p.reservaId)).length;
       linhas.push({ texto: `Pago a você direto pelo ${nomeDoCanal(canal, empresa)} em ${nomeDoMes(mes)} (${n} ${plural(n, "reserva", "reservas")}${prazoTexto(noMes)})`, valor: soma(noMes, (p) => p.suaParte), tipo: "normal" });
+      for (const p of noMes.filter((x) => x.mes !== mes).sort((a, b) => a.mes.localeCompare(b.mes) || a.checkin.localeCompare(b.checkin))) {
+        linhas.push({
+          texto: `Desse valor, ${p.noitesNoMes} ${plural(p.noitesNoMes, "noite", "noites")} de ${nomeDoMes(p.mes)} da reserva de ${reservaDe(p)}, ${plural(p.noitesNoMes, "paga", "pagas")} junto: ${plural(p.noitesNoMes, "entra", "entram")} no resultado de ${nomeDoMes(p.mes)}`,
+          valor: p.suaParte,
+          tipo: "info",
+        });
+      }
     }
-    for (const p of doCanal.filter((x) => antesDe(x.pagamento?.data, mes))) {
+    const doCanalDoMes = doCanal.filter((p) => p.mes === mes);
+    for (const p of doCanalDoMes.filter((x) => antesDe(x.pagamento?.data, mes))) {
       linhas.push({
         texto: `Já pago pelo ${nomeDoCanal(canal, empresa)} em ${dataCurta(p.pagamento!.data)}: ${p.noitesNoMes} ${plural(p.noitesNoMes, "noite", "noites")} de ${nomeDoMes(mes)} da reserva de ${reservaDe(p)} — está no extrato de ${nomeDoMes(p.pagamento!.data.slice(0, 7))}`,
         valor: p.suaParte,
         tipo: "info",
       });
     }
-    for (const p of doCanal.filter((x) => depoisDe(x.pagamento?.data, mes))) {
+    for (const p of doCanalDoMes.filter((x) => depoisDe(x.pagamento?.data, mes))) {
       linhas.push({ texto: `Pago a você direto pelo ${nomeDoCanal(canal, empresa)} em ${dataCurta(p.pagamento!.data)}, depois do mês: ${p.noitesNoMes} ${plural(p.noitesNoMes, "noite", "noites")} da reserva de ${reservaDe(p)}`, valor: p.suaParte, tipo: "info" });
     }
-    for (const p of doCanal.filter((x) => !x.pagamento)) {
+    for (const p of doCanalDoMes.filter((x) => !x.pagamento)) {
       linhas.push({ texto: `Pago a você direto pelo ${nomeDoCanal(canal, empresa)} (sem prazo do canal cadastrado): reserva de ${reservaDe(p)}`, valor: p.suaParte, tipo: "info" });
     }
   }
