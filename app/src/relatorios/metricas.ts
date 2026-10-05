@@ -60,7 +60,10 @@ export type DadosDoMes = {
   mes: MesISO;
   /** Sua parte menos as despesas do imóvel, em centavos; null = mês sem dado no sistema. */
   resultado: number | null;
-  /** Bruto das reservas (parte do mês), em centavos. */
+  /**
+   * Bruto das reservas (parte do mês), em centavos. No mês parcial, só a parte das noites confirmadas até o dia
+   * (proporcional por noite), para a diária média dividir bruto e noites do mesmo intervalo.
+   */
   bruto: number;
   /** Noites das reservas confirmadas dentro do período (cancelada ou pendente com valor no livro não ocupa noite). */
   noitesOcupadas: number;
