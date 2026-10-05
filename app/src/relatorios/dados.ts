@@ -24,15 +24,18 @@ const comissaoTexto = (bp: number | null): string | null => (bp === null ? null 
 
 /**
  * As partes do proprietário que o relatório de `mes` precisa: as de competência no mês, no anterior e no seguinte (a
- * ponte da conciliação) e qualquer parte paga pelo canal dentro do mês; só dos imóveis do relatório. Cada parte traz os
- * componentes do livro daquele mês (bruto, taxa do canal, comissão) e a data em que o canal pagou (M4.12).
+ * ponte da conciliação), qualquer parte paga pelo canal dentro do mês e qualquer parte que um repasse com o Pix no mês
+ * pagou (um antecipado de outubro pode levar uma reserva de julho liberada só agora: a capa mostra o Pix inteiro, como a
+ * tabela de repasses); só dos imóveis do relatório. Cada parte traz os componentes do livro daquele mês (bruto, taxa do
+ * canal, comissão) e a data em que o canal pagou (M4.12).
  */
 export async function partesDoRelatorio(db: Db, organizacaoId: string, o: { donos: readonly Dono[]; imovelIds: readonly string[]; mes: MesISO; agora: Date }): Promise<ParteDoRelatorio[]> {
   const imoveis = new Set(o.imovelIds.filter(uuidValido));
   if (!imoveis.size) return [];
   const meses = new Set([somarMeses(o.mes, -1), o.mes, somarMeses(o.mes, 1)]);
   const todas = (await Promise.all(o.donos.map((d) => partesDoProprietario(db, organizacaoId, d.id, o.agora)))).flat();
-  const partes = todas.filter((p) => imoveis.has(p.imovelId) && (meses.has(mesDe(p.competencia)) || mesDe(p.pagamento?.data ?? "") === o.mes));
+  const pixNoMes = (p: (typeof todas)[number]) => Boolean(p.repasse && p.repasse.tipo !== "fechamento" && mesDe(dataDoPix(p.repasse)) === o.mes);
+  const partes = todas.filter((p) => imoveis.has(p.imovelId) && (meses.has(mesDe(p.competencia)) || mesDe(p.pagamento?.data ?? "") === o.mes || pixNoMes(p)));
   if (!partes.length) return [];
   const reservaIds = [...new Set(partes.map((p) => p.reservaId))];
   const mesesDasPartes = [...new Set(partes.map((p) => mesDe(p.competencia)))].sort();
