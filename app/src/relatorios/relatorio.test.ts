@@ -371,6 +371,21 @@ describe("PDF", () => {
     expect(await paginasDe(await gerarPdfRelatorio(t))).toBe(3);
   });
 
+  it("muitas linhas em 'como chega até você' e muitos avisos: o que não cabe na capa continua nas páginas seguintes, nada abaixo do rodapé", async () => {
+    const partes = Array.from({ length: 60 }, (_, i) => parte({ reservaId: `r${i}`, codigo: `R${i}`, situacao: "a_liberar", motivo: "A empresa ainda não registrou o recebimento desta reserva.", pagamento: null }));
+    const t = textosDoRelatorio({ ...base, partes });
+    expect(t.comoChega.linhas.length).toBeGreaterThan(50);
+    const conteudos = await conteudoDasPaginas(await gerarPdfRelatorio(t));
+    const ys = conteudos.flatMap((c) => [...c.matchAll(/1 0 0 1 (-?[\d.]+) (-?[\d.]+) tm/g)].map((m) => Number(m[2])));
+    expect(ys.length).toBeGreaterThan(100);
+    expect(Math.min(...ys)).toBeGreaterThanOrEqual(20);
+    const tudo = conteudos.join("\n");
+    expect(tudo).toContain(hexWinAnsi("Como chega até você (continuação)"));
+    expect(tudo).toContain(hexWinAnsi("Avisos (continuação)"));
+    // Poucas linhas: tudo na caixa da capa, sem continuação.
+    expect((await conteudoDasPaginas(await gerarPdfRelatorio(textosDoRelatorio(base)))).join("\n")).not.toContain(hexWinAnsi("(continuação)"));
+  });
+
   it("muitas reservas: a tabela continua nas páginas seguintes, antes da conciliação e dos anexos", async () => {
     const partes = Array.from({ length: 70 }, (_, i) => parte({ reservaId: `r${i}`, codigo: `R${i}` }));
     const n = await paginasDe(await gerarPdfRelatorio(textosDoRelatorio({ ...base, partes }), { extrato: { bytes: await pdfCom(1) } }));
@@ -493,6 +508,25 @@ describe("dados e acesso", () => {
     await db.insert(proprietarioImoveis).values({ proprietarioId: dona, imovelId: a, criadoEm: new Date("2026-12-01T12:00:00-03:00") });
     expect((await pedir()).metricas.atual).toMatchObject({ diasImovel: 10, noitesBloqueadas: 3, noitesOcupadas: 1, bruto: 33333 });
     expect((await pedirOutro()).metricas.atual).toMatchObject({ diasImovel: 21, noitesBloqueadas: 0, noitesOcupadas: 2, bruto: 66667 });
+  });
+
+  it("relatório de parte dos imóveis do dono: só os repasses com reserva desses imóveis; sem filtro, todos", async () => {
+    // A Dona ganha um segundo imóvel (c) com uma reserva de 5 a 7/10, recebida. O antecipado de 6/10 paga só a de c (a de
+    // a ainda não entrou); o de 14/10 paga a de a.
+    const [{ id: c }] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "205", nome: "Studio Jardim" }).returning();
+    await db.insert(proprietarioImoveis).values({ proprietarioId: dona, imovelId: c });
+    await criarContrato(db, org, c, { tipo: "gestao_completa", comissao: "15", inicio: "2025-01-01" }, null);
+    await criarRecebida(reserva(c, { checkin: "2026-10-05", checkout: "2026-10-07", hospedeNome: "Gabi Fictícia" }));
+    const so_c = await gerarAntecipado(db, org, dona, "2026-10-06", null);
+    const so_a = await gerarAntecipado(db, org, dona, "2026-10-14", null);
+    if (!so_c.ok || !so_a.ok) throw new Error("antecipados");
+    const donos = [{ id: dona, nome: "Dona Fictícia" }];
+    expect((await repassesDoRelatorio(db, org, donos, "2026-10", [a])).repasses.map((r) => r.id)).toEqual([so_a.id]);
+    expect((await repassesDoRelatorio(db, org, donos, "2026-10", [c])).repasses.map((r) => r.id)).toEqual([so_c.id]);
+    expect((await repassesDoRelatorio(db, org, donos, "2026-10")).repasses.map((r) => r.id)).toEqual([so_c.id, so_a.id]);
+    // O relatório só do imóvel a não lista o Pix da Gabi; o de todos os imóveis lista os dois.
+    const soA = await dadosDoRelatorio(db, org, { donos, imoveis: [{ id: a, codigo: "403", nome: "Studio Mezanino" }], todosOsImoveis: false, ano: 2026, mes: 10, hoje: "2026-11-02" });
+    expect(soA.repasses.map((r) => r.reservas)).toEqual([["Hóspede"]]);
   });
 
   it("repasses do mês pela data do Pix: antecipado programado para 31/10 e pago em 1/11 é de novembro, na tabela e na capa", async () => {

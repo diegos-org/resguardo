@@ -241,23 +241,27 @@ export type RepasseDoRelatorio = { id: string; tipo: Repasse["tipo"]; data: stri
 /**
  * Repasses do mês (antecipados e acertos por fora em vigor cuja data do Pix cai no mês — a do pagamento quando pago, a
  * programada enquanto não, `dataDoPix`) e o fechamento do mês, de cada proprietário. A mesma régua de "como chega até
- * você": o antecipado programado para 31/10 e pago em 1/11 é dinheiro de novembro.
+ * você": o antecipado programado para 31/10 e pago em 1/11 é dinheiro de novembro. `imovelIds`: no relatório de parte dos
+ * imóveis do dono, só os repasses com ao menos uma reserva desses imóveis (o Pix que pagou só outro imóvel não tem nada a
+ * ver com este relatório; o que pagou os dois aparece inteiro, com o valor gravado). Sem filtro: todos.
  */
-export async function repassesDoRelatorio(db: Db, organizacaoId: string, donos: readonly Dono[], mes: MesISO): Promise<{ repasses: RepasseDoRelatorio[]; fechamentos: Repasse[] }> {
+export async function repassesDoRelatorio(db: Db, organizacaoId: string, donos: readonly Dono[], mes: MesISO, imovelIds?: readonly string[]): Promise<{ repasses: RepasseDoRelatorio[]; fechamentos: Repasse[] }> {
   const { inicio, fim } = limitesDe(mes);
   const todos = (await Promise.all(donos.map((d) => listarRepasses(db, organizacaoId, d.id)))).flat().filter((r) => !r.estornadoEm);
   const doMes = todos.filter((r) => r.tipo !== "fechamento" && dataDoPix(r) >= inicio && dataDoPix(r) < fim).sort((a, b) => dataDoPix(a).localeCompare(dataDoPix(b)));
-  const repasses = await Promise.all(
-    doMes.map(async (r) => ({
+  const doImovel = imovelIds ? new Set(imovelIds) : null;
+  const comItens = await Promise.all(doMes.map(async (r) => ({ r, itens: await itensDoRepasse(db, organizacaoId, r.id) })));
+  const repasses = comItens
+    .filter(({ itens }) => !doImovel || itens.some((i) => doImovel.has(i.imovelId)))
+    .map(({ r, itens }) => ({
       id: r.id,
       tipo: r.tipo,
       data: r.data,
       situacao: r.situacao,
       dataPagamento: r.dataPagamento,
       valor: r.valor,
-      reservas: [...new Set((await itensDoRepasse(db, organizacaoId, r.id)).map((i) => i.hospede.trim().split(/\s+/)[0] || i.codigoReserva))],
-    })),
-  );
+      reservas: [...new Set(itens.map((i) => i.hospede.trim().split(/\s+/)[0] || i.codigoReserva))],
+    }));
   return { repasses, fechamentos: todos.filter((r) => r.tipo === "fechamento" && r.mes === inicio) };
 }
 
