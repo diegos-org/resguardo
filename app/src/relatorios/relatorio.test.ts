@@ -13,7 +13,7 @@ import type { DadosReserva } from "@/reservas/regras";
 import { criarReserva } from "@/reservas/repositorio";
 import { donosDosEscolhidos, relatorioDoPainel, relatorioDoPortal } from "./gerar";
 import type { ParteDoRelatorio } from "./dinheiro";
-import type { DadosDoMes } from "./metricas";
+import { type DadosDoMes, diariaMedia } from "./metricas";
 import { conferirAnexos, ErroRelatorio, extratosDe, gerarPdfRelatorio, lerPaginas } from "./pdf";
 import { type DadosRelatorio, dadosDoRelatorio, imoveisDoProprietario, marcaDe, textoDoSaldo, textosDoRelatorio } from "./relatorio";
 import { receberTudo } from "@/repasses/testes";
@@ -311,6 +311,12 @@ describe("PDF", () => {
     expect(so.getTitle()).toBe("Relatório mensal · Outubro de 2026 — Studio Mezanino");
   });
 
+  it("gráfico com mês negativo (despesas acima da sua parte) e com todos os meses negativos: o PDF sai inteiro", async () => {
+    const com = (serie: [string, number | null][]) => gerarPdfRelatorio(textosDoRelatorio({ ...base, metricas: { ...base.metricas, serie } }));
+    expect(await paginasDe(await com([["2026-07", -350000], ["2026-08", 1200000], ["2026-09", null], ["2026-10", 72250]]))).toBe(3);
+    expect(await paginasDe(await com([["2026-09", -1500000], ["2026-10", -20000]]))).toBe(3);
+  });
+
   it("extrato que não abre: erro claro, nada gerado", async () => {
     const quebrado = new TextEncoder().encode("%PDF-1.7 isto não é um pdf");
     await expect(gerarPdfRelatorio(textosDoRelatorio(base), { extrato: { bytes: quebrado } })).rejects.toThrow("Não foi possível ler o PDF do extrato (Canal).");
@@ -418,6 +424,20 @@ describe("dados e acesso", () => {
     const d3 = await pedir();
     expect(d3.metricas.atual.diasImovel).toBe(0);
     expect(d3.metricas.atual.noitesOcupadas).toBe(d1.metricas.atual.noitesOcupadas);
+  });
+
+  it("mês parcial: a diária média usa o bruto das noites já passadas (proporcional por noite), não o bruto do mês inteiro", async () => {
+    const pedir = (hoje: string) => dadosDoRelatorio(db, org, { donos: [{ id: dona, nome: "Dona Fictícia" }], imoveis: [{ id: a, codigo: "403", nome: "Studio Mezanino" }], todosOsImoveis: true, ano: 2026, mes: 10, hoje });
+    // Reserva de 10 a 13/10: 3 noites, bruto R$ 1.000,00. Mês fechado: tudo conta.
+    const fechado = (await pedir("2026-11-02")).metricas.atual;
+    expect(fechado).toMatchObject({ bruto: 100000, noitesOcupadas: 3 });
+    expect(diariaMedia(fechado.bruto, fechado.noitesOcupadas)).toBe(33333);
+    // Posição de 11/10: duas noites passadas (10 e 11) e dois terços do bruto — a diária fica a mesma, não R$ 500,00.
+    const parcial = (await pedir("2026-10-11")).metricas.atual;
+    expect(parcial).toMatchObject({ bruto: 66667, noitesOcupadas: 2 });
+    expect(diariaMedia(parcial.bruto, parcial.noitesOcupadas)).toBe(33334);
+    // Antes do check-in: nenhuma noite e nenhum bruto; a diária não aparece.
+    expect((await pedir("2026-10-05")).metricas.atual).toMatchObject({ bruto: 0, noitesOcupadas: 0 });
   });
 
   it("portal: só o proprietário, só o mês, só dentro da janela; imóvel de outro é ignorado", async () => {

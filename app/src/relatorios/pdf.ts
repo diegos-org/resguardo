@@ -435,7 +435,11 @@ class Folhas {
     }
   }
 
-  /** Barras dos últimos 12 meses (R$ mil), com hachura para "sem dado"; o mês atual em floresta. */
+  /**
+   * Barras dos últimos 12 meses (R$ mil), com hachura para "sem dado"; o mês atual em floresta. Mês com resultado
+   * negativo (despesas maiores que a parte do proprietário) entra na escala e desce abaixo da linha do zero, no
+   * tamanho real, em dourado escuro.
+   */
   grafico() {
     const g = this.t.grafico;
     const h = 150;
@@ -448,10 +452,17 @@ class Folhas {
     const x1 = M + LARG - 12;
     const base = topo - h + 26;
     const alturaBarras = h - 26 - 42;
-    const max = Math.max(0, ...g.serie.map((p) => p.resultado ?? 0));
-    const { teto, passo } = escalaEmMil(max);
-    for (let v = 0; v <= teto; v += passo) {
-      const y = base + (v / teto) * alturaBarras;
+    const valores = g.serie.map((p) => p.resultado).filter((v): v is number => v !== null);
+    const max = Math.max(0, ...valores);
+    const min = Math.min(0, ...valores);
+    // Um passo só para os dois lados; o lado positivo tem sempre ao menos um passo (cabe a hachura do "sem dado").
+    const { passo } = escalaEmMil(Math.max(max, -min));
+    const topoMil = Math.max(passo, Math.ceil(max / 100_000 / passo) * passo);
+    const fundoMil = -Math.ceil(-min / 100_000 / passo) * passo;
+    const porMil = alturaBarras / (topoMil - fundoMil);
+    const zero = base - fundoMil * porMil;
+    for (let v = fundoMil; v <= topoMil; v += passo) {
+      const y = base + (v - fundoMil) * porMil;
       this.page.drawLine({ start: { x: x0, y }, end: { x: x1, y }, thickness: 0.6, color: C.areia });
       this.textoDireita(v === 0 ? "0" : `${v} mil`, x0 - 5, y - 2.5, this.f.sans, 7, C.texto2);
     }
@@ -460,35 +471,38 @@ class Folhas {
     for (const [i, p] of g.serie.entries()) {
       const x = x0 + i * slot + (slot - w) / 2;
       if (p.resultado === null) {
-        const hb = alturaBarras * 0.28;
-        this.page.drawRectangle({ x, y: base, width: w, height: hb, color: C.creme, borderColor: C.borda, borderWidth: 0.6 });
+        const hb = topoMil * porMil * 0.28;
+        this.page.drawRectangle({ x, y: zero, width: w, height: hb, color: C.creme, borderColor: C.borda, borderWidth: 0.6 });
         for (let o = -hb; o < w; o += 5) {
           const xa = Math.max(x, x + o);
-          const ya = base + Math.max(0, -o);
+          const ya = zero + Math.max(0, -o);
           const xb = Math.min(x + w, x + o + hb);
-          const yb = base + Math.min(hb, w - o);
+          const yb = zero + Math.min(hb, w - o);
           if (xb > xa) this.page.drawLine({ start: { x: xa, y: ya }, end: { x: xb, y: yb }, thickness: 0.6, color: C.borda });
         }
       } else {
-        const hb = Math.max(0, (p.resultado / 100_000 / teto) * alturaBarras);
-        if (p.resultado >= 0) this.page.drawRectangle({ x, y: base, width: w, height: hb, color: p.atual ? C.floresta : C.barra });
-        else this.page.drawRectangle({ x, y: base - 1, width: w, height: 2, color: C.douradoEscuro });
+        const hb = (Math.abs(p.resultado) / 100_000) * porMil;
+        // Positivo sobe da linha do zero; negativo desce dela, e o rótulo fica logo acima da linha (o espaço livre).
+        if (p.resultado >= 0) this.page.drawRectangle({ x, y: zero, width: w, height: hb, color: p.atual ? C.floresta : C.barra });
+        else this.page.drawRectangle({ x, y: zero - hb, width: w, height: hb, color: C.douradoEscuro });
         const rotulo = (p.resultado / 100_000).toLocaleString("pt-BR", { maximumFractionDigits: 1, minimumFractionDigits: 1 });
         const lr = this.limpo(rotulo);
-        this.page.drawText(lr, { x: x + w / 2 - this.f.sans.widthOfTextAtSize(lr, 7) / 2, y: base + hb + 3, size: 7, font: this.f.sans, color: C.tinta });
+        this.page.drawText(lr, { x: x + w / 2 - this.f.sans.widthOfTextAtSize(lr, 7) / 2, y: (p.resultado >= 0 ? zero + hb : zero) + 3, size: 7, font: this.f.sans, color: C.tinta });
       }
       const lm = this.limpo(mesCurto(p.mes));
       this.page.drawText(lm, { x: x + w / 2 - this.f.sans.widthOfTextAtSize(lm, 7) / 2, y: base - 11, size: 7, font: this.f.sans, color: C.texto2 });
     }
-    this.page.drawLine({ start: { x: x0, y: base }, end: { x: x1, y: base }, thickness: 0.8, color: C.borda });
+    this.page.drawLine({ start: { x: x0, y: zero }, end: { x: x1, y: zero }, thickness: 0.8, color: C.borda });
     // Legenda.
     let lx = M + 10;
     const ly = topo - h + 8;
-    for (const [c, s] of [
+    const legenda: (readonly [typeof C.barra, string])[] = [
       [C.barra, "meses anteriores"],
       [C.floresta, g.legendaAtual],
       [C.creme, "sem dado no sistema"],
-    ] as const) {
+    ];
+    if (min < 0) legenda.push([C.douradoEscuro, "mês negativo (despesas acima da sua parte)"]);
+    for (const [c, s] of legenda) {
       this.page.drawRectangle({ x: lx, y: ly, width: 8, height: 6, color: c, borderColor: C.borda, borderWidth: 0.5 });
       this.texto(s, lx + 11, ly, this.f.sans, 7, C.texto2);
       lx += 11 + this.f.sans.widthOfTextAtSize(this.limpo(s), 7) + 14;

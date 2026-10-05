@@ -136,13 +136,22 @@ export async function metricasDoRelatorio(
       reservasDoPortal(db, organizacaoId, { proprietarioIds: donoIds, imovelIds, periodo: { inicio: de, fim } }),
       bloqueiosDoPortal(db, organizacaoId, { proprietarioIds: donoIds, imovelIds, periodo: { inicio: de, fim } }),
     ]);
+    // Só reserva confirmada ocupa noite: a cancelada ou pendente que ainda tem valor no livro entra na lista para
+    // explicar o valor, não como estadia.
+    const confirmadas = lista.filter((r) => r.confirmada);
+    const noitesAte = (r: { checkin: string; checkout: string }) => noitesNoIntervalo(r.checkin, r.checkout, de, fimConsiderado);
+    // Mês parcial: a diária média divide bruto e noites do mesmo intervalo — o bruto é o das noites já passadas,
+    // proporcional por noite em cada reserva (a mesma divisão por noite que o livro faz nas estadas entre meses);
+    // uma estadia futura já confirmada não entra em nenhum dos dois. Mês inteiro: o bruto do livro.
+    const brutoAte = confirmadas.reduce((s, r) => {
+      const noMes = noitesNoIntervalo(r.checkin, r.checkout, de, fim);
+      return s + (noMes > 0 ? Math.round((r.bruto * noitesAte(r)) / noMes) : 0);
+    }, 0);
     return {
       mes: m,
       resultado: resumo.suaParte - resumo.despesas,
-      bruto: resumo.receitaBruta,
-      // Só reserva confirmada ocupa noite: a cancelada ou pendente que ainda tem valor no livro entra na lista para
-      // explicar o valor, não como estadia.
-      noitesOcupadas: lista.filter((r) => r.confirmada).reduce((s, r) => s + noitesNoIntervalo(r.checkin, r.checkout, de, fimConsiderado), 0),
+      bruto: ate ? brutoAte : resumo.receitaBruta,
+      noitesOcupadas: confirmadas.reduce((s, r) => s + noitesAte(r), 0),
       noitesDoPeriodo: ate ? Number(ate.slice(8, 10)) : diasDoMes(m),
       imoveis: imovelIds.length,
       diasImovel: diasDeImovel(imovelIds.map((id) => ({ desde: desdeDe.get(id) ?? null })), de, fimConsiderado),
