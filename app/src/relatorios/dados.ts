@@ -105,14 +105,15 @@ export async function metricasDoRelatorio(
   const donoIds = o.donos.map((d) => d.id);
   const imovelIds = [...o.imovelIds];
   const meses = Array.from({ length: 12 }, (_, i) => somarMeses(o.mes, i - 11));
-  const candidatos = [...new Set([...meses, somarMeses(o.mes, -12)])];
+  // O mês mais antigo que entra em alguma comparação é o do ano anterior (−12), antes dos 12 da série.
+  const mesMaisAntigo = somarMeses(o.mes, -12);
   const inicio = await lerInicioDoSistema(db, organizacaoId);
   const comLancamento = new Set(
     (
       await db
         .selectDistinct({ mes: sql<string>`to_char(${lancamentos.competencia}, 'YYYY-MM')` })
         .from(lancamentos)
-        .where(and(eq(lancamentos.organizacaoId, organizacaoId), gte(lancamentos.competencia, `${candidatos[0]}-01`), lt(lancamentos.competencia, limitesDe(o.mes).fim)))
+        .where(and(eq(lancamentos.organizacaoId, organizacaoId), gte(lancamentos.competencia, `${mesMaisAntigo}-01`), lt(lancamentos.competencia, limitesDe(o.mes).fim)))
     ).map((l) => l.mes),
   );
   const temDado = (m: MesISO) => (m === o.mes ? true : inicio ? m >= mesDe(inicio) && m <= o.mes : comLancamento.has(m));

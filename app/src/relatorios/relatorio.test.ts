@@ -5,6 +5,7 @@ import type { Sessao } from "@/acesso/politica";
 import { criarContrato } from "@/contratos/repositorio";
 import { auditoria, imoveis, lancamentos, organizacoes, proprietarioImoveis, proprietarios, proprietarioUsuarios, representantes, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
+import { lancar } from "@/financeiro/ledger";
 import type { Db } from "@/db/types";
 import { resumoDoProprietario } from "@/portal/resumo";
 import type { Rodape } from "@/portal/rodape";
@@ -390,6 +391,16 @@ describe("dados e acesso", () => {
     expect(d.reservas.map((r) => r.imovelId)).toEqual([a]);
     expect(d.situacao).toBe("fechado");
     expect(d.rodape[0]).toMatchObject({ situacao: "empresa_deve", valor: 72250 });
+  });
+
+  it("sem início do sistema definido, o mês do ano anterior conta como 'com dado' quando há lançamento nele (comparação ano a ano)", async () => {
+    const pedir = () => dadosDoRelatorio(db, org, { donos: [{ id: dona, nome: "Dona Fictícia" }], imoveis: [{ id: a, codigo: "403", nome: "Studio Mezanino" }], todosOsImoveis: true, ano: 2026, mes: 10, hoje: "2026-11-02" });
+    expect((await pedir()).metricas.anoAnterior).toBeNull();
+    await lancar(db, org, [{ tipo: "ajuste", descricao: "crédito antigo", valor: 10000, efeitoSaldo: 10000, competencia: "2025-10-15", estado: "realizado", dataCaixa: "2025-10-15", imovelId: a, proprietarioId: dona }], null);
+    const d = await pedir();
+    expect(d.metricas.anoAnterior).toMatchObject({ mes: "2025-10" });
+    // O mês de 11 meses atrás (sem lançamento) continua sem dado; a série não ganha valor por isso.
+    expect(d.metricas.serie.find(([m]) => m === "2025-11")?.[1]).toBeNull();
   });
 
   it("noites para vender contam só desde o vínculo do imóvel; o vínculo depois do mês não dá noite nenhuma", async () => {
