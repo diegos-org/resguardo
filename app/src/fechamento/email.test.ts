@@ -106,8 +106,8 @@ describe("e-mail do fechamento (M5.4)", () => {
       for (let i = 0; i < n; i++) doc.addPage([200, 200]);
       return doc.save();
     };
-    expect(await guardarExtrato(db, org, { imovelId: a, mes: MES, canal: "airbnb", paginas: "2", arquivo: { nome: "ganhos.pdf", tipo: "application/pdf", conteudo: await pdfCom(2) } }, null)).toMatchObject({ ok: true });
-    expect(await guardarExtrato(db, org, { imovelId: a, mes: "2026-09", canal: "booking", paginas: "", arquivo: { nome: "set.pdf", tipo: "application/pdf", conteudo: await pdfCom(1) } }, null)).toMatchObject({ ok: true });
+    expect(await guardarExtrato(db, org, { imovelId: a, proprietarioId: dona, mes: MES, canal: "airbnb", paginas: "2", arquivo: { nome: "ganhos.pdf", tipo: "application/pdf", conteudo: await pdfCom(2) } }, null)).toMatchObject({ ok: true });
+    expect(await guardarExtrato(db, org, { imovelId: a, proprietarioId: dona, mes: "2026-09", canal: "booking", paginas: "", arquivo: { nome: "set.pdf", tipo: "application/pdf", conteudo: await pdfCom(1) } }, null)).toMatchObject({ ok: true });
     expect((await situacaoDosFechamentos(db, org, MES, "2026-11-01")).find((p) => p.proprietarioId === dona)).toMatchObject({ extratosGuardados: ["403 · Airbnb"] });
     const correio = new CorreioMemoria();
     expect(await enviarFechamentos(db, org, correio, DIA1)).toMatchObject({ enviados: 1 });

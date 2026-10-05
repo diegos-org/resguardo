@@ -15,7 +15,7 @@ import { somarDias } from "@/repasses/inicio";
 import { lerInicioDoSistema } from "@/repasses/regras-config";
 import { itensDoRepasse, listarRepasses, type Repasse } from "@/repasses/repasses";
 import type { ParteDoRelatorio } from "./dinheiro";
-import { type DadosDoMes, diasDeImovel, diasDoMes, limitesDe, type MesISO, noitesBloqueadas, noitesNoIntervalo, somarMeses } from "./metricas";
+import { type DadosDoMes, diasDeImovel, diasDoMes, limitesDe, type MesISO, noitesBloqueadas, noitesNoIntervalo, noitesOcupadasNoIntervalo, somarMeses } from "./metricas";
 
 type Dono = { id: string; nome: string };
 const mesDe = (data: string): MesISO => data.slice(0, 7);
@@ -147,20 +147,18 @@ export async function metricasDoRelatorio(
       const noMes = noitesNoIntervalo(r.checkin, r.checkout, de, fim);
       return s + (noMes > 0 ? Math.round((r.bruto * noitesAte(r)) / noMes) : 0);
     }, 0);
+    const bloqueiosDoDono = bloqueios.filter((b) => b.fonte === "proprietario");
     return {
       mes: m,
       resultado: resumo.suaParte - resumo.despesas,
       bruto: ate ? brutoAte : resumo.receitaBruta,
-      noitesOcupadas: confirmadas.reduce((s, r) => s + noitesAte(r), 0),
+      // Cada noite de cada imóvel conta uma vez (overbooking não passa de 100%) e noite bloqueada para uso próprio não conta.
+      noitesOcupadas: noitesOcupadasNoIntervalo(confirmadas, bloqueiosDoDono, de, fimConsiderado),
       reservas: confirmadas.filter((r) => noitesAte(r) > 0).length,
       noitesDoPeriodo: ate ? Number(ate.slice(8, 10)) : diasDoMes(m),
       imoveis: imovelIds.length,
       diasImovel: diasDeImovel(imovelIds.map((id) => ({ desde: desdeDe.get(id) ?? null })), de, fimConsiderado),
-      noitesBloqueadas: noitesBloqueadas(
-        bloqueios.filter((b) => b.fonte === "proprietario"),
-        de,
-        fimConsiderado,
-      ),
+      noitesBloqueadas: noitesBloqueadas(bloqueiosDoDono, de, fimConsiderado),
     };
   };
   const ate = o.parcial ? o.hoje : null;

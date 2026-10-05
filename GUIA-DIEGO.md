@@ -69,7 +69,9 @@ o extrato do canal sai completo. Está no sistema assim:
   e-mail automático do relatório. No dia 1º, a rotina das 9h não manda nada e registra "sai sozinho
   a partir de 02/11/2026"; no dia 2, manda. Repasses quinzenais, semanais e "assim que disponível"
   continuam nos dias deles — só não nascem no dia do fechamento, que é o único repasse daquele dia
-  (antes isso valia para o dia 1º; agora o dia 1º é um dia comum).
+  (antes isso valia para o dia 1º; agora o dia 1º é um dia comum). O fechamento fica registrado com a
+  data do dia do fechamento (2/11, por exemplo), mesmo que você clique depois; se fechar antes, à mão,
+  fica com o dia em que você fechou. A data do Pix do fechamento nunca pode ser anterior a essa.
 - **O que não mudou:** você continua clicando em "Fechar o mês" no painel, quando quiser — pode
   fechar e enviar à mão no dia 1º, se estiver tudo certo. O proprietário baixa o PDF no portal a
   qualquer momento, inclusive o parcial do mês em andamento. O que o canal ainda não pagou até o dia
@@ -157,7 +159,7 @@ padrão. Está implementado assim (no portal, no painel e no e-mail do fechament
   ficam com a equipe); o do painel (ficha do proprietário → Relatório em PDF) aceita foto e um
   extrato na hora, agora com o nome do canal; o do e-mail do fechamento leva os extratos que você
   guardar em **Financeiro → Repasses → "Extratos dos canais para o relatório"** (um PDF por imóvel,
-  mês e canal, com as páginas a usar) — sem extrato guardado, o relatório sai sem anexos e a seção
+  proprietário favorecido, mês e canal, com as páginas a usar — só o relatório daquele proprietário o anexa) — sem extrato guardado, o relatório sai sem anexos e a seção
   do proprietário avisa, antes e depois do envio. Os e-mails do fechamento e do repasse saem em
   texto e numa versão bonita (HTML), na ordem combinada: saudação pelo primeiro nome, uma frase do
   que é, o valor em destaque, lista curta, próximo passo, assinatura — o seu texto editável
@@ -1924,8 +1926,9 @@ ambiente).
 
 32. **Guarde os extratos dos canais antes do fechamento (M5.7):** em **Financeiro → Repasses**, abra
     "Extratos dos canais para o relatório de {mês}" e suba, para cada imóvel, o PDF que o Airbnb
-    emitiu ("Ganhos" do período; Booking quando houver), indicando as páginas que são só daquele
-    imóvel e daquele mês. Esse arquivo vai no fim do relatório que o e-mail do fechamento manda. Sem
+    emitiu ("Ganhos" do período; Booking quando houver), escolhendo o proprietário favorecido e
+    indicando as páginas que são só daquele imóvel, daquele proprietário e daquele mês (se o imóvel
+    trocou de dono no meio do mês, um extrato para cada um — o de um nunca vai no relatório do outro). Esse arquivo vai no fim do relatório que o e-mail do fechamento manda. Sem
     ele, o relatório sai sem anexos e a seção do proprietário avisa — nada é inventado. Antes do
     primeiro envio, gere o PDF de um proprietário na ficha dele (Relatório em PDF) e confira as
     quatro páginas; me diga o que ajustar.

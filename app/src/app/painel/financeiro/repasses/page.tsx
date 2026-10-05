@@ -174,7 +174,7 @@ export default async function Repasses({ searchParams }: PageProps<"/painel/fina
         )}
       </details>
 
-      <ExtratosCanal mes={mes} extratos={extratos} imoveis={todosImoveis} editar={editar} />
+      <ExtratosCanal mes={mes} extratos={extratos} imoveis={todosImoveis} proprietarios={candidatos.map(([id, nome]) => ({ id, nome }))} editar={editar} />
 
       {lista.length === 0 && <p>Nenhum proprietário com acerto até o fim deste mês.</p>}
       {lista.map((p) => {
