@@ -1,8 +1,8 @@
 # Lia — atendimento e agenda das equipes
 
-Versão de 2/10/2026, preparada em 3/10 UTC a partir da `main@623859697b0c873de92decd45fdae8879ec4d443`. A situação deste texto (candidato ou aprovado) é a do GitHub: o arquivo que está na `main` é a versão aprovada; uma cópia local vale pelo commit de onde foi baixada, não por esta frase.
+Atualização de 5/10/2026 a partir da `main@69f6f25d86e56010d69bf395c8f7e5972988eff0`, após o merge dos PRs80 e 81. As decisões abaixo são requisitos operacionais; sua presença no guia não comprova implantação no aplicativo. A situação deste texto é a do GitHub: `main` contém a versão mesclada; branch/PR contém a candidata, identificada por commit.
 
-Este é o ponto de entrada da consolidação de regras de atendimento, WhatsApp e agenda. Preserva regras úteis dos guias locais e decisões mais recentes de Diego, sem declarar o acervo inteiro migrado. Não substitui registros privados, fichas completas, autorizações da conversa ou estado real dos canais. Por decisão de Diego nesta revisão, os guias locais não foram substituídos: ele avisará a Lia para trazer esta versão à máquina depois de identificar o arquivo ativo.
+Este é o ponto de entrada da consolidação de regras de atendimento, WhatsApp e agenda. Preserva regras úteis dos guias locais e decisões mais recentes de Diego, sem declarar o acervo inteiro migrado. Não substitui registros privados, fichas completas, autorizações da conversa ou estado real dos canais. Em 5/10 Diego pediu guias e registros tanto no GitHub quanto no Mac. Manter cópia local verificável por commit, sem substituir o mestre antigo da Lia enquanto seu caminho ativo for desconhecido. Registros com dados privados permanecem restritos; só a síntese sanitizada vai ao GitHub.
 
 ## Ler por assunto
 
@@ -16,7 +16,7 @@ Este é o ponto de entrada da consolidação de regras de atendimento, WhatsApp 
 | Calendário e preços, fora desta revisão | [Calendário e preços](CALENDARIO-PRECOS-OPERACAO.md) |
 | Relatórios e comunicação com proprietários | [Relatórios e tom](RELATORIOS-E-TOM.md) |
 
-Para agenda, as decisões de 2/10 abaixo substituem a janela de cinco dias de Búzios presente na consolidação de 21/9 e nos guias locais de setembro. Não usar a data de modificação de um arquivo como prova de superioridade de todas as suas regras. Instrução específica de uma reserva prevalece sobre modelo geral quando sua fonte e validade estão confirmadas.
+Para agenda, prevalecem as decisões de 5/10 abaixo: Rio cinco dias; Búzios no máximo cinco próximas reservas dentro de 30 dias. O limite de quantidade substitui expressamente a decisão de 2/10 de listar todas as reservas da janela. Não usar a data de modificação de um arquivo como prova de superioridade de todas as suas regras. Instrução específica de uma reserva prevalece sobre modelo geral quando sua fonte e validade estão confirmadas.
 
 ## Atendimento e continuidade preservados
 
@@ -25,7 +25,7 @@ Para agenda, as decisões de 2/10 abaixo substituem a janela de cinco dias de B�
 - Antes de responder, identificar reserva/imóvel e consultar histórico recente nos canais acessíveis, decisões de Diego, mensagens automáticas e último envio. Não repetir pergunta respondida, reabrir demanda resolvida ou deduplicar somente pelo nome.
 - Registrar em local restrito: referência da reserva, canal/mensagem de origem, decisão e fonte/data, responsável, resultado, pendência, próximo passo e prazo. Separar preparado, tentativa, enviado, entregue, confirmado e resolvido. Se o envio for incerto, reler a conversa antes de repetir.
 - Preservar “feito até” por rotina (inbox, avaliações, respostas públicas, configurações), com cobertura real e lacunas. Retomar pelo marco sem repetir o passivo concluído, mas reabrir quando houver mensagem nova, alteração ou pendência. Marcar lida não significa demanda resolvida.
-- Alteração autorizada: salvar → reabrir/recarregar → conferir imóvel, período, valor/texto e resultado. “Salvo” e “conferido” são marcas distintas; tentativa sem confirmação continua pendente.
+- Doublecheck ao fim de cada etapa e rodada (reforço de Diego em 5/10): conferir a persistência real de envios, alterações e configurações, idealmente reabrindo/recarregando e relendo o destino. Ação, clique ou tentativa de salvar não bastam; conferir imóvel/reserva, período, destinatário e valor/texto aplicáveis. Registrar separadamente confirmado, pendente e incerto; “salvo” e “conferido” não são equivalentes. Resultado incerto exige consulta do histórico/estado antes de nova tentativa, sem reenviar nem repetir automaticamente. Esta é preferência de verificação operacional, não nova regra de aprovação.
 - Falha de acesso não é ausência de novidades. Áudio não compreendido não vira decisão: registrar remetente/data/hora/duração disponíveis e pedir apoio de transcrição ou texto, sem repetir pedido atendido. Validar nomes, valores, datas e trechos ambíguos; não fazer novos uploads/contratações por este documento.
 - Equipes recebem comunicação cordial e objetiva, sem atribuir culpa a Diego ou prometer gastos. Relato não é diagnóstico, orçamento não é contratação, escala não é execução. Manutenção tem imóvel, fonte/data, prioridade, responsável e próximo passo; gastos exigem autorização própria.
 - Avaliações: conferir saídas recentes (referência local: últimos três dias) e pendências do índice; distinguir avaliação do hóspede e resposta pública recebida. Comentário privado opcional fica vazio salvo pedido específico. Não inventar notas/fatos nem estender autorização de uma rodada a estadias futuras. Avaliação negativa exige análise individual do texto, datas e atendimento.
@@ -76,7 +76,7 @@ A descrição factual acima permanece válida para responder quando perguntado c
 
 O [roadmap, M9.2](../../ROADMAP.md) já contempla mensagens programadas editáveis; o Guia Diego descreve envio por e-mail, opt-in, com origens padrão site/direta. Isso não comprova migração ou substituição das automáticas Airbnb. Foi registrada nota de planejamento no M9 para conferir modelos por imóvel, campos, horários, canais e prevenção de duplicidade antes de uma migração futura, sem fase/data nova nem ativação. M10 continua dependente da integração WhatsApp. Concluir atendimento e listas é a prioridade atual; esta nota não inicia implementação nem desliga automações existentes.
 
-## Agenda — decisões diretas de Diego em 2/10/2026
+## Agenda — decisões diretas de Diego em 5/10/2026
 
 A agenda diária tem referência de 20h, America/Sao_Paulo; esta regra não ativa envio. Exibir datas inicial/final e cobertura consultada. No produto, prévia/e-mail e WhatsApp local são caminhos diferentes: a prévia do aplicativo não comprova que Lia enviou aquele texto.
 
@@ -84,20 +84,20 @@ A agenda diária tem referência de 20h, America/Sao_Paulo; esta regra não ativ
 
 - Primeiro bloco: cada dia e os apartamentos que efetivamente precisam de limpeza, com estado, saída e horário-limite quando houver troca no mesmo dia.
 - Conferir limpeza registrada e ocupação/uso posterior. **Já limpo, sem uso posterior: não listar nova limpeza apenas por chegada.** Evidência insuficiente fica em “a confirmar”, separada de tarefas confirmadas.
-- A regra de limpar no checkout mesmo sem nova entrada continua: conferir o uso que gerou a necessidade. Checkout previsto, calendário vazio ou limpeza agendada não comprovam execução nem saída física.
+- O checkout dispara a necessidade de limpeza, mesmo sem nova entrada. Saída normal ou late checkout até cerca de 12h–13h permite limpeza no mesmo dia, conforme disponibilidade/jornada confirmada. Saída no fim do dia, fora da jornada, desloca a limpeza para a próxima manhã disponível, desde cedo (referência: cerca de 8h), sem esperar 11h. Confirmar horário acordado, saída efetiva e equipe; não inventar disponibilidade. Checkout previsto, calendário vazio ou limpeza agendada não comprovam execução nem saída física.
 - Segundo bloco, separado: entradas/check-in e logística de chaves, com data, primeiro nome, número de hóspedes e horário aplicável. Uma entrada nesse bloco não cria tarefa de faxina.
 - Para dia sem necessidade confirmada, dizer isso somente após consulta suficiente; havendo lacunas, indicar “estado a confirmar”, sem declarar tudo limpo.
 
-### Búzios: todas as reservas nos próximos 30 dias
+### Búzios: no máximo cinco próximas reservas dentro de 30 dias
 
-- Listar todas as reservas confirmadas relevantes à janela, sem limite de cinco reservas e sem cabeçalho de cinco dias. Incluir estadias em andamento que atravessem a janela, indicando entrada original e saída. Não confundir consultas/pedidos com reservas confirmadas.
+- Listar no máximo as cinco próximas reservas confirmadas dentro da janela de 30 dias, em ordem de entrada; se houver menos, listar menos. Não buscar reservas além dos 30 dias só para completar cinco, nem listar todas quando houver mais de cinco. Não confundir consultas/pedidos com reservas confirmadas.
 - Mostrar entrada e saída completas, primeiro nome, quantidade de hóspedes e horários. Destacar troca no mesmo dia e o que requer confirmação, sem presumir limpeza pendente.
 - Mostrar explicitamente o intervalo; se não houver reservas, informar isso apenas quando a fonte tiver sido conferida. A cobertura de datas deve ser validada no fluxo de implementação, inclusive limites da janela.
 - Preservar aviso de cada nova reserva e alterações/cancelamentos relevantes, inclusive além da janela, após detecção e conferência. É bloco/evento complementar; não alonga silenciosamente a janela regular.
 
 ### Em ambos
 
-Nas duas listas, o sistema (M6.7) inclui primeiro nome, total de hóspedes e telefone operacional, para orientar contato e arrumação. O telefone vem só do campo estruturado da reserva (cadastro/importação) e só aparece quando está em formato válido; **quando não está, a linha sai sem telefone** — isso significa “não consta no cadastro”, não esquecimento, e o sistema nunca busca número em observações ou conversas. Ao repassar, resumir ou responder sobre a agenda, Lia marca explicitamente “telefone não informado” (e “não informado” para nome ou quantidade ausentes), sem adivinhar, e orienta a conferir a ficha da reserva no painel. Compartilhar telefone somente com acesso autorizado e com a equipe responsável. Não colocar telefones reais em exemplos, GitHub, páginas públicas ou logs. Não trocar destinatários/permissões por esta regra.
+Nas duas listas operacionais, incluir primeiro nome, telefone e total de hóspedes. No Rio, as entradas ficam em bloco abaixo das limpezas, para ciência/logística; em Búzios, cada reserva traz também datas de entrada/saída e horários. O sistema (M6.7) oferece esses campos, com a limitação do telefone descrita a seguir. O telefone vem só do campo estruturado da reserva (cadastro/importação) e só aparece quando está em formato válido; **quando não está, a linha sai sem telefone** — isso significa “não consta no cadastro”, não esquecimento, e o sistema nunca busca número em observações ou conversas. Ao repassar, resumir ou responder sobre a agenda, Lia marca explicitamente “telefone não informado” (e “não informado” para nome ou quantidade ausentes), sem adivinhar, e orienta a conferir a ficha da reserva no painel. Compartilhar telefone somente com acesso autorizado e com a equipe responsável. Não colocar telefones reais em exemplos, GitHub, páginas públicas ou logs. Não trocar destinatários/permissões por esta regra.
 
 Manter aviso de mudanças: “Essa é a agenda atual e ainda pode mudar com novas reservas ou cancelamentos. Quando eu identificar alguma mudança, aviso aqui.” Equipe verificada pode pedir horizonte maior da própria operação; declarar intervalo e consultar dados atuais. Não prometer detecção instantânea nem repetir avisos já confirmados.
 
@@ -107,15 +107,15 @@ Manter aviso de mudanças: “Essa é a agenda atual e ainda pode mudar com nova
 2. Distinguir pedido pendente, acordo confirmado, alteração/cancelamento e conflito. “Posso entrar às 13h?” sozinho não confirma 13h.
 3. Registrar no sistema, quando o fluxo estiver disponível: reserva, entrada/saída, data e hora no fuso correto, canal, referência/evidência mínima da conversa, quem confirmou e quando. Preservar alteração/revogação e autoria sem copiar conversa privada para documentação pública.
 4. Usar na agenda somente o acordo válido confirmado. Sem acordo, usar padrão configurado do imóvel, identificado como padrão; se o padrão faltar, marcar a confirmar. Nunca preencher horário pelo primeiro número encontrado na conversa.
-5. Conflito, pedido sem resposta ou fonte inacessível fica pendente. Registro manual verificado é o caminho mínimo em avaliação; extração automática futura poderá sugerir preenchimento, sem converter sugestão em confirmação.
+5. Conflito, pedido sem resposta ou fonte inacessível fica pendente. O registro manual do PR81 já foi mesclado; extração automática futura poderá sugerir preenchimento, sem converter sugestão em confirmação.
 
-**Implementação:** o [PR81](https://github.com/al-life/scl-reconstrucao/pull/81) (item **M6.7** do roadmap) implementa o fluxo manual abaixo. Se ele está mesclado e publicado, quem diz é o GitHub e o roadmap, não este texto; testes do PR não comprovam envio real.
+**Implementação e diferença para a regra de 5/10:** o [PR81](https://github.com/al-life/scl-reconstrucao/pull/81) (M6.7) foi mesclado em 3/10 e implementa o fluxo manual abaixo. Na base comparada, o aplicativo ainda lista todas as reservas relevantes de Búzios em 30 dias e gera limpeza no checkout; esta revisão só documental não implementa o limite de cinco nem o deslocamento por late checkout. Aplicar as regras novas ao preparar a lista operacional, sem apresentar código, configuração ou envio como atualizados. Merge e testes não comprovam implantação nem envio real.
 
 - **Ficha da reserva → Horários combinados com o hóspede:** em reserva confirmada, registrar pedido pendente de entrada ou saída, hora, canal e referência. O pedido sozinho não altera a agenda.
 - Depois de conferir a conversa, preencher canal e referência do **aceite**, marcar a declaração de acordo explícito e usar **Registrar acordo confirmado**. Referência: data/hora e identificador ou trecho mínimo, sem telefone ou documentos. Canais manuais: Airbnb, WhatsApp, Booking.com, Inbox SCL e Outro; o canal do aceite pode diferir do pedido.
 - **Descartar pedido** preserva acordo já vigente; **Revogar acordo** remove o acordo. Novo pedido também preserva o acordo vigente até sua substituição. Mudança nas datas, imóvel ou reconfirmação da reserva invalida a vigência anterior e exige novo registro/aceite.
-- Prioridade efetiva na candidata: **acordo vigente → horário cadastrado no imóvel → padrão da agenda**. Pedido sem aceite não substitui padrão nem acordo vigente. O registro usa a permissão existente de edição de reserva, isolamento por organização e controle de versão para impedir sobrescrita por formulário desatualizado.
-- A agenda candidata cobre amanhã a D+5 no Rio e amanhã a D+30 em Búzios, inclusive reservas em andamento/atravessando a janela. Telefone vem do campo estruturado da reserva, com validação de formato, **sem verificação externa de titularidade**: aparece só na prévia operacional interna e no e-mail dos destinatários já configurados por cidade. Não é extraído da conversa nem publicado no site/logs.
+- Prioridade no fluxo implementado: **acordo vigente → horário cadastrado no imóvel → padrão da agenda**. Pedido sem aceite não substitui padrão nem acordo vigente. O registro usa a permissão existente de edição de reserva, isolamento por organização e controle de versão para impedir sobrescrita por formulário desatualizado.
+- O gerador do PR81 cobre amanhã a D+5 no Rio e amanhã a D+30 em Búzios, inclusive reservas em andamento/atravessando a janela; isso descreve o código mesclado, não revoga o limite operacional de cinco reservas decidido em 5/10. Telefone vem do campo estruturado da reserva, com validação de formato, **sem verificação externa de titularidade**: aparece só na prévia operacional interna e no e-mail dos destinatários já configurados por cidade. Não é extraído da conversa nem publicado no site/logs.
 - Não há leitura/extração automática nem conexão de canais. O caminho do aplicativo continua cron/botão manual → gerador da agenda → adaptador de e-mail. WhatsApp é fluxo separado; o PR81 não comprovou nem corrigiu a origem da mensagem antiga enviada pela Lia.
 
 ## Portaria e documentos
@@ -132,10 +132,10 @@ Encaminhamento de documentos à portaria: somente 403, com reserva, pessoas, dat
 |---|---|---|
 | Tom, verificação e continuidade | Guia Lia e método locais; cópia Claude mantém método com links adaptados | Preservar acolhimento, distinção de estados, leitura entre canais e confirmação após salvar |
 | Retomada por cobertura | Claude, regras de 23/9: “feito até” por rotina | Preservar marcos e lacunas, sem tratar mensagem lida como resolução |
-| Janela e conteúdo da agenda | Locais e consolidação repo: cinco dias; pedido direto de 2/10: Rio 5/Búzios 30 | Pedido novo prevalece; não limitar quantidade de reservas, separar limpezas e entradas |
-| Limpeza já realizada | Guia/protocolo locais de 1/10 e PR74 mesclado | Fontes concordam; manter vedação de faxina repetida sem uso posterior |
+| Janela e conteúdo da agenda | 2/10: Rio 5 dias/Búzios todas em 30; correção direta de 5/10 | Rio 5 dias; Búzios no máximo 5 próximas reservas em 30 dias; limpezas e entradas separadas |
+| Limpeza e horário | Regra de 1/10 preservada; esclarecimento direto de 5/10 | Checkout gera necessidade; late no fim do dia vai à próxima manhã disponível, desde cedo; nunca repetir limpeza sem uso posterior |
 | Porteiros e chaves | Claude tem expedientes de 23/9; repo PR74 confirma atualização dos modelos em 1/10; local ainda registra etapa pendente | Usar repo para estado verificado e alternativa condicionada; preservar contatos em cadastro restrito |
-| Dados e horários | Locais esclarecem D-2 às 10h; produto descreve padrões; decisão de 2/10 exige acordo e fonte | Não confundir envio com entrada; hóspedes/telefone operacional; registro manual na candidata PR81; sem implantação comprovada |
+| Dados e horários | Locais esclarecem D-2 às 10h; produto descreve padrões; decisão de 2/10 exige acordo e fonte | Não confundir envio com entrada; hóspedes/telefone operacional; registro manual PR81 mesclado; sem comprovação de envio |
 | Documentos | Locais antigos pediam 403/303; repo detalha 403; Diego esclareceu nesta revisão: somente 403 até segunda ordem | Regra 403 mantida; coleta 303 retirada como exigência e pendência, sem cobranças extras |
 | Capacidade atual | Guia Diego/roadmap mais novos que inventário local de setembro | Referenciar produto; não transportar status antigo de integração para o presente nem equiparar e-mail a WhatsApp |
 
@@ -143,10 +143,24 @@ Fontes locais consultadas, preservadas sem alteração:
 - Lia/Codex: `2026-09-05/gmail-plugin-gmail-openai-curated-remote/COMECE-POR-AQUI.md` (mestre de 22/9); `outputs/guia-respostas-airbnb.md` e `outputs/protocolo-whatsapp-airbnb.md` (com acréscimos de 1/10); `outputs/lia-metodo-e-continuidade.md` (20/9).
 - Claude: `Sua Casa Leblon/SCL - Atendimento/00-COMECE-POR-AQUI.md` (23/9), `00-REGRAS-CONSOLIDADAS.md` (23–24/9) e `02-Guia-de-Atendimento/`. Declaram origem Lia e piloto Claude; não demonstram qual arquivo a Lia carrega hoje.
 - Repositório: base identificada no início; PR74 mesclado para portaria; Guia Diego, roadmap, consolidação e decisões operacionais de 21/9.
-- Novos requisitos: instruções diretas de Diego de 2/10 reproduzidas na solicitação desta revisão; não extraídos de mensagens de hóspedes.
+- Requisitos: instruções diretas de Diego de 2/10 e correções de 5/10 reproduzidas na solicitação desta revisão; não extraídos de mensagens de hóspedes.
+
+## Rodada diária temporária durante a reconstrução — 5/10/2026
+
+Pedido explícito de Diego para esta etapa: mensagens operacionais Airbnb/WhatsApp, avaliações positivas salvo exceção, respostas a avaliações, agendas das equipes e conferência de preços/mínimos de curto prazo conforme regras vigentes. Positividade não autoriza inventar notas, fatos ou ignorar exceção/caso pendente; consultar contexto e autorizações da rodada. Esta seção registra escopo, não concede permissão permanente para enviar, aprovar reservas ou mudar sistemas.
+
+Alterações de calendário/preços somente pelo Beds24; Airbnb pode ser alternativa para mensagens. A autorização de cada ação continua sujeita ao pedido vigente e às políticas aplicáveis. Não ampliar para bloqueios, descontos, cobrança ou integração fora dessas regras. Em 5/10, excluir revisões semanais de longo prazo: Diego informou que foram feitas um ou dois dias antes. Esse relato não comprova nova revisão nesta rodada. Não criar automação.
+
+## Registros, manutenção e reposição
+
+Reaproveitar índices de atendimento e catálogo de manutenção existentes antes de criar controles novos. O log privado da rodada de 5/10 fica no diretório já existente `2026-10-05/task/registros/rodada-scl-2026-10-05.md` do Codex, mantido pelo executor da rodada. Não editar simultaneamente nem usar um snapshot parcial como conclusão.
+
+Após receber o fechamento, produzir somente uma síntese sanitizada em `requisitos/operations/RODADA-2026-10-05.md`, com cobertura real por assunto, ações confirmadas, falhas, pendências e próxima ação. Esse é o destino preparado; não afirmar arquivo publicado ou rodada encerrada antes da entrega final. A cópia local correspondente deve ser idêntica por commit. Telefones, documentos, conversas, identificadores e demais dados de hóspedes ficam exclusivamente no registro restrito, nunca na síntese GitHub.
+
+**Manutenção/reposição — procedimento futuro:** somente depois de terminar a rodada, perguntar a Diego quais itens quer registrar. Conferir o catálogo existente e então atualizar/criar o registro necessário com imóvel, item descrito, fonte/data, estado, responsável e próximo passo, sem inventar itens ou transformar relato em contratação. Nenhum novo item ou automação é criado por esta instrução.
 
 ## Trazer a versão para a máquina
 
-Lia deve identificar seu índice ativo antes de substituir qualquer arquivo. Preservar cópia recuperável anterior e registros privados; baixar **este guia e PORTARIA-CHAVES-LIMPEZA.md do mesmo commit/PR**, manter os nomes/links relativos e apontar o índice ativo para eles. Não substituir o guia histórico completo por este recorte: ele ainda guarda fichas, preços e exceções fora do escopo.
+Lia deve identificar seu índice ativo antes de substituir qualquer arquivo. Preservar cópia recuperável anterior e registros privados; baixar **este guia, PORTARIA-CHAVES-LIMPEZA.md e DECISOES-OPERACIONAIS-2026-09-21.md do mesmo commit/PR**, manter os nomes/links relativos e apontar o índice ativo para eles. Não substituir o guia histórico completo por este recorte: ele ainda guarda fichas, preços e exceções fora do escopo.
 
-Conferir igualdade dos arquivos baixados com os blobs do commit (SHA-256 local ou comparação byte a byte) e registrar o commit de origem. Baixar sempre da `main`: o que está lá é o aprovado. Se houver edição local posterior, comparar por assunto antes de sobrescrever; não criar sincronização automática ou outra automação de envio.
+Conferir igualdade dos arquivos baixados com os blobs do commit (SHA-256 local ou comparação byte a byte) e registrar o commit de origem. A cópia operacional aprovada vem da `main`; para revisão, pode existir cópia da branch/PR claramente marcada como candidata, sem confundi-la com `main` ou com o mestre ativo da Lia. A entrada local deve apontar commit, PR, arquivos e manifesto de paridade, preservando a versão anterior recuperável. Se houver edição local posterior, comparar por assunto antes de sobrescrever; não criar sincronização automática ou outra automação de envio.

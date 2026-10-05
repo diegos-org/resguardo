@@ -2,7 +2,7 @@
 Fonte: instruções diretas de Diego, áudios privados integralmente lidos pela Lia na rodada das 14h. Este documento contém somente regras sanitizadas. Dados financeiros, cadastros e transcrições ficam restritos.
 
 ## Faxina e conservação
-Agendar limpeza no dia do checkout, mesmo sem nova entrada, incluindo finais de semana com profissional responsável ou substituto aprovado. Agendamento não comprova execução: registrar separadamente pedido, confirmação e realização.
+O checkout dispara a necessidade de limpeza, mesmo sem nova entrada, incluindo finais de semana com responsável ou substituto aprovado. Esclarecimento de Diego em 5/10/2026: saída normal ou late até cerca de 12h–13h permite limpar no mesmo dia; late no fim do dia fora da jornada desloca para a próxima manhã disponível, desde cedo (cerca de 8h), sem esperar 11h. Confirmar saída e disponibilidade. Se já houver limpeza registrada sem uso posterior, não repeti-la por uma entrada. Agendamento não comprova execução: registrar separadamente pedido, confirmação e realização. Detalhes e distinção entre regra e código no [Guia Lia](GUIA-LIA-ATENDIMENTO.md).
 
 A orientação geral sobre distribuição entre dias úteis e fins de semana não apaga ocorrências específicas já registradas nem comprova faxinas passadas. Divergências históricas precisam de conferência, sem preencher lacunas por inferência.
 
