@@ -325,7 +325,7 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
 
   // Capa: destaque e "como chega".
   const base = `Sua parte ${nReservas === 1 ? "na" : "nas"} ${nReservas} ${plural(nReservas, "reserva", "reservas")} com noites em ${mesNome}, em todos os canais${r.despesas > 0 ? `, já descontadas as despesas do imóvel (${formatBRL(r.despesas)})` : " (sem despesas do imóvel no mês)"}. Resultado por noite: não é o total que um canal pagou no mês nem o valor de um Pix só.`;
-  const chega = comoChega(d.partes, mes, d.rodape, e);
+  const chega = comoChega(d.partes, mes, d.rodape, e, d.repasses);
   const canaisComTaxa = [...new Set(doMes.filter((p) => p.taxa > 0).map((p) => nomeDoCanal(p.canal, e)))];
   const nDespesas = d.despesas.length;
   const brutoAoResultado: LinhaValor[] = [

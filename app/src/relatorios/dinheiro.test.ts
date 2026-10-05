@@ -71,6 +71,20 @@ describe("como chega até você (M5.7, pela data em que o canal pagou)", () => {
     expect(comoChega([{ ...fabioOut, repasse: porFora }], "2026-11", [], E).linhas).toEqual([]);
   });
 
+  it("antecipado que também pagou reserva de outro imóvel do dono: a linha traz o Pix inteiro (valor gravado) e discrimina a parte fora deste relatório", () => {
+    const linhas = comoChega([bruno], "2026-10", [], E, [{ id: "rep1", valor: 216750 + 100000, reservas: ["Bruno", "Gabi"] }]).linhas;
+    expect(linhas.map((l) => [l.texto, l.valor, l.tipo])).toEqual([
+      ["Já repassado em 16/10 (repasse antecipado: Bruno; Pix com comprovante no portal)", 316750, "normal"],
+      ["Desse valor, a parte de Gabi, fora deste relatório (outro imóvel seu ou outro mês): entra no relatório de lá", 100000, "info"],
+    ]);
+    // Repasse gravado só com as partes deste relatório: nada a discriminar. Sem o repasse gravado, a soma das partes.
+    expect(comoChega([bruno], "2026-10", [], E, [{ id: "rep1", valor: 216750, reservas: ["Bruno"] }]).linhas).toHaveLength(1);
+    expect(comoChega([bruno], "2026-10", [], E).linhas[0].valor).toBe(216750);
+    // A pagar com data no mês segue a mesma régua (a data programada, como a tabela de repasses), mesmo sem data de pagamento.
+    const aPagar = { ...bruno, repasse: { ...bruno.repasse!, situacao: "a_pagar" as const, dataPagamento: null } };
+    expect(comoChega([aPagar], "2026-10", [], E, [{ id: "rep1", valor: 316750, reservas: ["Bruno", "Gabi"] }]).linhas.map((l) => l.valor)).toEqual([316750, 100000]);
+  });
+
   it("fechamento pago, proprietário que deve, saldo parcial, em conferência, repasse a pagar e sem prazo do canal", () => {
     expect(comoChega([ana], "2026-10", [rodape({ situacao: "pago", dataPagamento: "2026-11-01" })], E)).toMatchObject({
       linhas: [expect.anything(), { texto: "Transferido no fechamento, em 01/11/2026", valor: 314800 }],
