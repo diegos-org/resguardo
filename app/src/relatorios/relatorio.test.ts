@@ -18,7 +18,7 @@ import { donosDosEscolhidos, relatorioDoPainel, relatorioDoPortal } from "./gera
 import type { ParteDoRelatorio } from "./dinheiro";
 import { type DadosDoMes, diariaMedia } from "./metricas";
 import { conferirAnexos, ErroRelatorio, extratosDe, gerarPdfRelatorio, lerPaginas } from "./pdf";
-import { type DadosRelatorio, dadosDoRelatorio, imoveisDoProprietario, marcaDe, textoDoSaldo, textosDoRelatorio } from "./relatorio";
+import { comPaginas, type DadosRelatorio, dadosDoRelatorio, imoveisDoProprietario, marcaDe, PAGINAS_PADRAO, textoDoSaldo, textosDoRelatorio } from "./relatorio";
 import { receberTudo } from "@/repasses/testes";
 import { gerarAntecipado, marcarRepassePago } from "@/repasses/repasses";
 import { repassesDoRelatorio } from "./dados";
@@ -398,6 +398,29 @@ describe("PDF", () => {
     const partes = Array.from({ length: 70 }, (_, i) => parte({ reservaId: `r${i}`, codigo: `R${i}` }));
     const n = await paginasDe(await gerarPdfRelatorio(textosDoRelatorio({ ...base, partes }), { extrato: { bytes: await pdfCom(1) } }));
     expect(n).toBeGreaterThanOrEqual(6);
+  });
+
+  it("referências de página: reservas que transbordam a página 2 levam a capa, a linha das despesas e a nota dos anexos para onde a conciliação começou", async () => {
+    const comDespesa: DadosRelatorio = { ...base, resumo: { ...base.resumo, despesas: 5000 }, despesas: [{ data: "2026-10-12", descricao: "Troca do chuveiro", valor: 5000 }] };
+    const secoes = (cs: string[]) => ({ numeros: cs.findIndex((c) => c.includes(hexWinAnsi("Números e reservas do mês"))) + 1, conciliacao: cs.findIndex((c) => c.includes(hexWinAnsi("Conciliação e repasses"))) + 1 });
+    const extrato = { extrato: { bytes: await pdfCom(1) } };
+    // Poucas reservas: as seções nas páginas 2 e 3, como os textos já dizem; nada muda.
+    const t = textosDoRelatorio(comDespesa);
+    expect(comPaginas(t, PAGINAS_PADRAO)).toBe(t);
+    const poucas = await conteudoDasPaginas(await gerarPdfRelatorio(t, extrato));
+    expect(secoes(poucas)).toEqual({ numeros: 2, conciliacao: 3 });
+    expect(poucas[0]).toContain(hexWinAnsi("conciliação e repasses na 3"));
+    // Oito reservas: a tabela continua na folha seguinte e a conciliação começa depois dela.
+    const partes = Array.from({ length: 8 }, (_, i) => parte({ reservaId: `r${i}`, codigo: `R${i}` }));
+    const muitas = await conteudoDasPaginas(await gerarPdfRelatorio(textosDoRelatorio({ ...comDespesa, partes }), extrato));
+    const s = secoes(muitas);
+    expect(s.numeros).toBe(2);
+    expect(s.conciliacao).toBeGreaterThan(3);
+    expect(muitas[0]).toContain(hexWinAnsi(`conciliação e repasses na ${s.conciliacao}`));
+    expect(muitas[0]).toContain(hexWinAnsi(`detalhe na página ${s.conciliacao})`));
+    expect(muitas[0]).not.toContain(hexWinAnsi("página 3"));
+    expect(muitas.join("\n")).toContain(hexWinAnsi(`(página ${s.conciliacao})`));
+    expect(muitas.join("\n")).not.toContain(hexWinAnsi("(página 3)"));
   });
 });
 

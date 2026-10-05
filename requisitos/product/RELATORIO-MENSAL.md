@@ -233,6 +233,9 @@ com pdf-lib; `gerar.ts` decide quem pode gerar) e troca o desenho:
    média, variações, acumulado, série de 12 meses, regras de "sem dado"); por reserva, canal, código
    e os componentes do livro (taxa, limpeza, comissão) já existentes por lançamento (M4.2).
 3. **Páginas** 1–4 como acima, cada uma numa folha A4; gráfico desenhado com retângulos (sem imagem); hachura para "sem dado".
+   As referências de página (rodapé da capa, linha das despesas no "do bruto ao resultado", nota dos anexos) apontam para
+   a página em que a seção começou de fato: a capa ou uma lista longa de reservas pode continuar na folha seguinte e
+   empurrar a conciliação para a 4 ou depois; o PDF confere e redesenha com o número certo (M5.8).
 4. **Variante marketplace** pelo tipo de contrato; linhas do modelo B só com o M12.2 pronto (até lá,
    as vendas do site aparecem com a comissão do contrato, como hoje).
 5. **Extratos guardados por imóvel e mês:** tabela e armazenamento privado (como o comprovante do

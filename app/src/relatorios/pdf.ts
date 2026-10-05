@@ -8,7 +8,7 @@
  */
 import { PDFDocument, type PDFFont, type PDFImage, type PDFPage, rgb, StandardFonts } from "pdf-lib";
 import { escalaEmMil, mesCurto } from "./metricas";
-import type { LinhaConciliacaoTexto, LinhaReserva, LinhaValor, TextosRelatorio } from "./relatorio";
+import { comPaginas, type LinhaConciliacaoTexto, type LinhaReserva, type LinhaValor, type PaginasDasSecoes, type TextosRelatorio } from "./relatorio";
 import { TEMA } from "./tema";
 
 /** Limites dos anexos (a Vercel recusa pedidos acima de ~4,5 MB no total). */
@@ -631,18 +631,8 @@ const dataHora = (d: Date) =>
 /** Gera o PDF: as páginas do relatório e, no fim, os extratos oficiais copiados como vieram. */
 export async function gerarPdfRelatorio(t: TextosRelatorio, anexos: Anexos = {}, agora: Date = new Date()): Promise<Uint8Array> {
   conferirAnexos(anexos);
-  const doc = await PDFDocument.create();
-  const f: Fontes = {
-    serif: await doc.embedFont(StandardFonts.TimesRoman),
-    serifN: await doc.embedFont(StandardFonts.TimesRomanBold),
-    serifI: await doc.embedFont(StandardFonts.TimesRomanItalic),
-    sans: await doc.embedFont(StandardFonts.Helvetica),
-    sansN: await doc.embedFont(StandardFonts.HelveticaBold),
-  };
-  const limpo = limpador(f.sans);
-
   // Extratos primeiro: se um arquivo não servir, nada é gerado.
-  const extratos: { anexo: ExtratoAnexo; doc: PDFDocument; paginas: number[]; total: number }[] = [];
+  const extratos: ExtratoLido[] = [];
   for (const e of extratosDe(anexos)) {
     let origem: PDFDocument;
     let total: number;
@@ -656,6 +646,31 @@ export async function gerarPdfRelatorio(t: TextosRelatorio, anexos: Anexos = {},
     if (total === 0) throw new ErroRelatorio("O PDF do extrato não tem páginas.");
     extratos.push({ anexo: e, doc: origem, paginas: lerPaginas(e.paginas, total), total });
   }
+  // A capa, a linha das despesas e a nota dos anexos citam as páginas das seções. Desenha, confere onde cada seção
+  // começou (a capa ou uma lista longa de reservas pode continuar na folha seguinte) e, se mudou, desenha de novo com as
+  // páginas certas. Os algarismos têm a mesma largura, então a segunda passada já fecha; a terceira é só garantia.
+  let textos = t;
+  for (let passada = 1; ; passada++) {
+    const r = await desenharRelatorio(textos, anexos, extratos, agora);
+    const certos = comPaginas(textos, r.paginas);
+    if (certos === textos || passada === 3) return r.doc.save();
+    textos = certos;
+  }
+}
+
+type ExtratoLido = { anexo: ExtratoAnexo; doc: PDFDocument; paginas: number[]; total: number };
+
+/** Desenha o relatório num documento novo e diz em que páginas começaram "Números e reservas" e "Conciliação". */
+async function desenharRelatorio(t: TextosRelatorio, anexos: Anexos, extratos: readonly ExtratoLido[], agora: Date): Promise<{ doc: PDFDocument; paginas: PaginasDasSecoes }> {
+  const doc = await PDFDocument.create();
+  const f: Fontes = {
+    serif: await doc.embedFont(StandardFonts.TimesRoman),
+    serifN: await doc.embedFont(StandardFonts.TimesRomanBold),
+    serifI: await doc.embedFont(StandardFonts.TimesRomanItalic),
+    sans: await doc.embedFont(StandardFonts.Helvetica),
+    sansN: await doc.embedFont(StandardFonts.HelveticaBold),
+  };
+  const limpo = limpador(f.sans);
   let foto: PDFImage | null = null;
   if (anexos.foto) {
     try {
@@ -766,6 +781,7 @@ export async function gerarPdfRelatorio(t: TextosRelatorio, anexos: Anexos = {},
 
   // ---- Página 2: números e reservas do mês ---------------------------------------------------
   p.nova("Hóspedes só pelo primeiro nome. Códigos são os do canal. Os números são os mesmos do portal.");
+  const paginaNumeros = p.paginas.length;
   p.h2("Números e reservas do mês", `Os números de ${t.mesNome} e cada reserva com noites no mês, ordenadas pela entrada.`);
   p.h3("Números do mês");
   p.quadros();
@@ -778,6 +794,7 @@ export async function gerarPdfRelatorio(t: TextosRelatorio, anexos: Anexos = {},
 
   // ---- Página 3: conciliação e repasses ---------------------------------------------------------
   p.nova("Os mesmos números do portal, na mesma data.");
+  const paginaConciliacao = p.paginas.length;
   p.h2("Conciliação e repasses", t.conciliacaoIntro);
   const colunasConc: Col<LinhaConciliacaoTexto>[] = [
     { chave: "rotulo", titulo: "Canal", w: 150, quebra: true },
@@ -877,5 +894,5 @@ export async function gerarPdfRelatorio(t: TextosRelatorio, anexos: Anexos = {},
   doc.setSubject(limpo(`Posição de ${dataHora(agora)}`));
   doc.setCreationDate(agora);
   doc.setModificationDate(agora);
-  return doc.save();
+  return { doc, paginas: { numeros: paginaNumeros, conciliacao: paginaConciliacao } };
 }
