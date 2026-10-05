@@ -19,7 +19,7 @@ import { lerConfigFechamentoEmail, situacaoDosFechamentos } from "@/fechamento/e
 import { fecharMesAcao } from "@/repasses/acoes";
 import { partesDoProprietario, resumirPartes } from "@/repasses/extrato";
 import { situacaoAntesDoInicio } from "@/repasses/por-fora";
-import { diaDoFechamentoAtual, ehDiaDeFechamento } from "@/repasses/periodicidade";
+import { ehDiaDeFechamento, proximoFechamento } from "@/repasses/periodicidade";
 import { periodicidadeDoProprietario } from "@/repasses/proprietario";
 import { lerInicioDoSistema, lerRegrasRepasses } from "@/repasses/regras-config";
 import { itensDoRepasse, limitesDoMes, listarRepassesDaOrganizacao, meioDiaDe, mesAFechar, nomeMes, type PrevisaoRepasse, somarMes } from "@/repasses/repasses";
@@ -107,7 +107,7 @@ export default async function Repasses({ searchParams }: PageProps<"/painel/fina
     <>
       <h1>Repasses aos proprietários</h1>
       <p style={{ color: "var(--scl-texto-2)", fontSize: "0.875rem", maxWidth: 820, margin: 0 }}>
-        No dia do fechamento (dia {diaDoFechamentoAtual(regrasRepasses)} do mês seguinte; muda em Configurações → Repasses), feche o mês anterior de cada proprietário — antes disso também dá, à mão. O valor é o saldo do acerto no fim do mês, já com os adiantamentos descontados; só entra o que
+        No dia do fechamento (dia {proximoFechamento(regrasRepasses, hoje).dia} do mês seguinte; muda em Configurações → Repasses), feche o mês anterior de cada proprietário — antes disso também dá, à mão. O valor é o saldo do acerto no fim do mês, já com os adiantamentos descontados; só entra o que
         já está <strong>disponível</strong> (check-in passado e dinheiro recebido pela empresa — registre o recebimento na página da reserva); o resto fica para o
         repasse seguinte, e noites de meses seguintes já disponíveis entram como adiantamento. Os contestados ficam de fora até você resolver. Depois de fazer o
         Pix, marque como pago com o comprovante: o e-mail ao proprietário sai com ele. Errou? Estorne o repasse: tudo volta como estava.
@@ -137,7 +137,7 @@ export default async function Repasses({ searchParams }: PageProps<"/painel/fina
 
       <details className={styles.form} aria-label="E-mail do fechamento">
         <summary style={{ cursor: "pointer", fontWeight: 600 }}>
-          E-mail do fechamento aos proprietários · {configEmail.ativo ? `ligado (todo dia às 9h, a partir do dia ${diaDoFechamentoAtual(regrasRepasses)})` : "desligado"}
+          E-mail do fechamento aos proprietários · {configEmail.ativo ? `ligado (todo dia às 9h, a partir do dia ${proximoFechamento(regrasRepasses, hoje).dia})` : "desligado"}
         </summary>
         <p style={{ color: "var(--scl-texto-2)", fontSize: "0.875rem", margin: 0 }}>
           Cada proprietário recebe o relatório do mês em PDF, uma vez, depois de o mês dele ser fechado (repasse gerado, ou nada a repassar e sem

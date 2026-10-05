@@ -2,7 +2,7 @@ import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import { formatBRL } from "@/lib/money";
 import { NOMES_SITUACAO_EMAIL } from "@/repasses/email";
 import { NOMES_SITUACAO_PARTE, type Parte, resumirPartes } from "@/repasses/extrato";
-import { diaDoFechamentoAtual, ehDiaDeFechamento, NOMES_PERIODICIDADE, PERIODICIDADES, type PeriodicidadeRepasse, type RegrasRepasses } from "@/repasses/periodicidade";
+import { ehDiaDeFechamento, NOMES_PERIODICIDADE, PERIODICIDADES, type PeriodicidadeRepasse, proximoFechamento, type RegrasRepasses } from "@/repasses/periodicidade";
 import type { PeriodicidadeDoDono } from "@/repasses/proprietario";
 import { type ItemDoRepasse, nomeMes, type Repasse, descricaoDoItem } from "@/repasses/repasses";
 
@@ -50,7 +50,7 @@ export function textoDoItemNoPortal(i: ItemDoRepasse): string {
 export function ExtratoRepasses({ donos, periodicidades, partes, repasses, itens, regras, hoje, empresa, escolher, pedir, mensagem }: Props) {
   const resumo = resumirPartes(partes);
   // M4.13: no dia do fechamento (Configurações → Repasses) o fechamento é o único repasse; não se pede antecipado.
-  const dia = diaDoFechamentoAtual(regras);
+  const dia = proximoFechamento(regras, hoje).dia;
   const diaPrimeiro = ehDiaDeFechamento(hoje, regras);
   // Disponível por proprietário: o botão de pedir só aparece para quem tem valor a repassar.
   const disponivelPorDono = new Map<string, number>();

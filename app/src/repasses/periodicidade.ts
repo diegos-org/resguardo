@@ -87,6 +87,17 @@ export const dataDoFechamento = (regras: Pick<RegrasRepasses, "fechamento">, mes
 export const ehDiaDeFechamento = (data: string, regras: Pick<RegrasRepasses, "fechamento">): boolean => data === dataDoFechamento(regras, mesAnteriorDe(data));
 
 /**
+ * O próximo fechamento a partir de `hoje`: o do mês anterior, se o dia dele ainda não passou (hoje inclusive); senão o
+ * do mês corrente. É o dia que as telas mostram — uma mudança feita hoje vale do fechamento do mês corrente em diante,
+ * então o mês anterior ainda aberto fecha no dia que já valia, e é esse que o texto e a próxima data precisam dizer.
+ */
+export function proximoFechamento(regras: Pick<RegrasRepasses, "fechamento">, hoje: string): { mes: string; data: string; dia: number } {
+  const anterior = mesAnteriorDe(hoje);
+  const mes = hoje <= dataDoFechamento(regras, anterior) ? anterior : hoje.slice(0, 7);
+  return { mes, data: dataDoFechamento(regras, mes), dia: diaDoFechamento(regras, mes) };
+}
+
+/**
  * Versões com o dia `dia` valendo a partir do mês `desde` (o mês de hoje: o fechamento dele, feito no mês
  * seguinte, já sai no dia novo; o mês anterior, se ainda não fechou, segue como estava). Dia igual ao que já
  * valeria não cria versão; versão do mesmo mês é substituída.
@@ -192,9 +203,9 @@ export function proximaDataDeRepasse(hoje: string, p: PeriodicidadeRepasse, regr
   return d;
 }
 
-/** Texto curto da periodicidade com os dias, para o portal e o painel. */
-export function descreverPeriodicidade(p: PeriodicidadeRepasse, regras: RegrasRepasses): string {
-  const dia = diaDoFechamentoAtual(regras);
+/** Texto curto da periodicidade com os dias, para o portal e o painel; o dia do fechamento é o do próximo fechamento a partir de `hoje`. */
+export function descreverPeriodicidade(p: PeriodicidadeRepasse, regras: RegrasRepasses, hoje: string): string {
+  const dia = proximoFechamento(regras, hoje).dia;
   switch (p) {
     case "mensal":
       return `mensal, no dia ${dia}, junto com o fechamento do mês`;

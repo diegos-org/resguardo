@@ -24,7 +24,7 @@ import { bloquearDatasAcao, escolherPeriodicidadeAcao, excluirPeriodoPortalAcao,
 import { situacaoNoPortal } from "@/portal/aceites";
 import { partesDoProprietario } from "@/repasses/extrato";
 import { periodicidadeDoProprietario } from "@/repasses/proprietario";
-import { diaDoFechamentoAtual } from "@/repasses/periodicidade";
+import { diaDoFechamento } from "@/repasses/periodicidade";
 import { lerRegrasRepasses } from "@/repasses/regras-config";
 import { itensDoRepasse, listarRepasses } from "@/repasses/repasses";
 import { bloqueiosDoProprietario, permissoesDeBloqueio } from "@/portal/bloqueios";
@@ -537,7 +537,7 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
             {rodape.map((r) => (
               <div key={r.proprietarioId} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 {rodape.length > 1 && <strong>{r.nome}</strong>}
-                <TextoRodape r={r} empresa={empresa} diaFechamento={diaDoFechamentoAtual(regrasRepasses)} />
+                <TextoRodape r={r} empresa={empresa} diaFechamento={diaDoFechamento(regrasRepasses, mesSaldo)} />
               </div>
             ))}
             <p className={styles.miudo}>
