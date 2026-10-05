@@ -60,6 +60,8 @@ const reservaDe = (p: ParteDoRelatorio) => `${nomeOuHospede(p.hospede)} (${dataC
 const plural = (n: number, um: string, varios: string) => (n === 1 ? um : varios);
 
 const emMes = (data: string | undefined | null, mes: MesISO) => Boolean(data && data.slice(0, 7) === mes);
+/** O canal (ou o hóspede) já pagou: a data do pagamento não passou de hoje — a mesma régua de `classificarParte` ("pago" × "previsto"). Data futura é previsão, não dinheiro. */
+const pago = (p: ParteDoRelatorio, hoje: string) => Boolean(p.pagamento && p.pagamento.data <= hoje);
 const antesDe = (data: string | undefined | null, mes: MesISO) => Boolean(data && data.slice(0, 7) < mes);
 const depoisDe = (data: string | undefined | null, mes: MesISO) => Boolean(data && data.slice(0, 7) > mes);
 
@@ -76,6 +78,8 @@ function prazoTexto(partes: readonly ParteDoRelatorio[]): string {
 export function comoChega(
   partes: readonly ParteDoRelatorio[],
   mes: MesISO,
+  /** A data de hoje (dia em São Paulo): pagamento do canal com data depois dela é previsto, não pago. */
+  hoje: string,
   rodapes: readonly Rodape[],
   empresa: string,
   /** Os repasses do mês como gravados (valor do Pix inteiro e reservas incluídas), para a linha do antecipado bater com a tabela de repasses e o comprovante. */
@@ -100,18 +104,22 @@ export function comoChega(
   const split = partes.filter((p) => p.quemRecebe === "split");
   for (const canal of unicos(split.map((p) => p.canal))) {
     const doCanal = split.filter((p) => p.canal === canal);
-    const noMes = doCanal.filter((p) => emMes(p.pagamento?.data, mes));
+    const noMes = doCanal.filter((p) => emMes(p.pagamento?.data, mes) && pago(p, hoje));
     if (noMes.length) {
       const n = unicos(noMes.map((p) => p.reservaId)).length;
       linhas.push({ texto: `Pago a você direto pelo ${nomeDoCanal(canal, empresa)} em ${nomeDoMes(mes)} (${n} ${plural(n, "reserva", "reservas")}${prazoTexto(noMes)})`, valor: soma(noMes, suaParte), tipo: "normal", origem: "canal" });
       for (const p of noMes.filter((x) => x.mes !== mes).sort(porMesECheckin)) linhas.push(pagaJunto(p, "canal"));
     }
     const doCanalDoMes = doCanal.filter((p) => p.mes === mes);
-    for (const p of doCanalDoMes.filter((x) => antesDe(x.pagamento?.data, mes))) {
+    for (const p of doCanalDoMes.filter((x) => antesDe(x.pagamento?.data, mes) && pago(x, hoje))) {
       linhas.push({ texto: `Já pago pelo ${nomeDoCanal(canal, empresa)} em ${dataCurta(p.pagamento!.data)}: ${noitesDe(p)} — está no extrato de ${nomeDoMes(p.pagamento!.data.slice(0, 7))}`, valor: p.suaParte, tipo: "info", origem: "canal" });
     }
-    for (const p of doCanalDoMes.filter((x) => depoisDe(x.pagamento?.data, mes))) {
+    for (const p of doCanalDoMes.filter((x) => depoisDe(x.pagamento?.data, mes) && pago(x, hoje))) {
       linhas.push({ texto: `Pago a você direto pelo ${nomeDoCanal(canal, empresa)} em ${dataCurta(p.pagamento!.data)}, depois do mês: ${p.noitesNoMes} ${plural(p.noitesNoMes, "noite", "noites")} da reserva de ${reservaDe(p)}`, valor: p.suaParte, tipo: "info", origem: "canal" });
+    }
+    // Data do canal ainda no futuro (relatório parcial ou de mês futuro): previsão, não dinheiro.
+    for (const p of doCanalDoMes.filter((x) => x.pagamento && !pago(x, hoje)).sort((a, b) => a.pagamento!.data.localeCompare(b.pagamento!.data))) {
+      linhas.push({ texto: `Previsto para ${dataCurta(p.pagamento!.data)}: o ${nomeDoCanal(canal, empresa)} paga a você direto (${noitesDe(p)})`, valor: p.suaParte, tipo: "info", origem: "canal" });
     }
     for (const p of doCanalDoMes.filter((x) => !x.pagamento)) {
       linhas.push({ texto: `Pago a você direto pelo ${nomeDoCanal(canal, empresa)} (sem prazo do canal cadastrado): reserva de ${reservaDe(p)}`, valor: p.suaParte, tipo: "info", origem: "canal" });
@@ -205,8 +213,8 @@ export type LinhaConciliacao = { rotulo: string; reservas: number; bruto: number
  * pagamento), o subtotal, e a ponte até o resultado por noite do mês: + noites do mês pagas antes, + noites do mês a
  * receber (ou pagas depois), − noites de outros meses pagas neste. O total bate com a competência do mês.
  */
-export function conciliacao(partes: readonly ParteDoRelatorio[], mes: MesISO, empresa: string): LinhaConciliacao[] {
-  const pagasNoMes = partes.filter((p) => emMes(p.pagamento?.data, mes));
+export function conciliacao(partes: readonly ParteDoRelatorio[], mes: MesISO, hoje: string, empresa: string): LinhaConciliacao[] {
+  const pagasNoMes = partes.filter((p) => emMes(p.pagamento?.data, mes) && pago(p, hoje));
   const linhas: LinhaConciliacao[] = [];
   const somaDe = (ps: readonly ParteDoRelatorio[]) => ({ reservas: unicos(ps.map((p) => p.reservaId)).length, bruto: soma(ps, (p) => p.bruto), taxa: soma(ps, (p) => p.taxa), suaParte: soma(ps, (p) => p.suaParte) });
   for (const canal of unicos(pagasNoMes.map((p) => p.canal))) {
@@ -223,7 +231,7 @@ export function conciliacao(partes: readonly ParteDoRelatorio[], mes: MesISO, em
   }
   linhas.push({ rotulo: `Pago pelos canais em ${nomeDoMes(mes)}`, ...somaDe(pagasNoMes), quemRecebeu: "", tipo: "subtotal" });
   const doMes = partes.filter((p) => p.mes === mes);
-  for (const p of doMes.filter((x) => antesDe(x.pagamento?.data, mes))) {
+  for (const p of doMes.filter((x) => antesDe(x.pagamento?.data, mes) && pago(x, hoje))) {
     linhas.push({
       rotulo: `+ ${p.noitesNoMes} ${plural(p.noitesNoMes, "noite", "noites")} de ${nomeDoMes(mes)} ${plural(p.noitesNoMes, "paga", "pagas")} em ${nomeDoMes(p.pagamento!.data.slice(0, 7))} (${reservaDe(p)}, ${nomeDoCanal(p.canal, empresa)}, ${plural(p.noitesNoMes, "paga", "pagas")} em ${dataCurta(p.pagamento!.data)})`,
       ...somaDe([p]),
@@ -231,15 +239,21 @@ export function conciliacao(partes: readonly ParteDoRelatorio[], mes: MesISO, em
       tipo: "ponte",
     });
   }
-  for (const p of doMes.filter((x) => !emMes(x.pagamento?.data, mes) && !antesDe(x.pagamento?.data, mes))) {
-    const depois = depoisDe(p.pagamento?.data, mes);
+  // O resto do mês: pago depois do mês, previsto (data do canal ainda no futuro) ou a receber.
+  for (const p of doMes.filter((x) => !pago(x, hoje) || depoisDe(x.pagamento?.data, mes))) {
+    const depois = pago(p, hoje) && depoisDe(p.pagamento?.data, mes);
+    const previsto = Boolean(p.pagamento) && !pago(p, hoje);
     linhas.push({
-      rotulo: `+ ${depois ? `${plural(p.noitesNoMes, "paga", "pagas")} em ${dataCurta(p.pagamento!.data)}, depois do mês` : "a receber"} (${reservaDe(p)}, ${nomeDoCanal(p.canal, empresa)}, ${p.noitesNoMes} ${plural(p.noitesNoMes, "noite", "noites")} de ${nomeDoMes(mes)})`,
+      rotulo: `+ ${depois ? `${plural(p.noitesNoMes, "paga", "pagas")} em ${dataCurta(p.pagamento!.data)}, depois do mês` : previsto ? `${plural(p.noitesNoMes, "prevista", "previstas")} para ${dataCurta(p.pagamento!.data)}` : "a receber"} (${reservaDe(p)}, ${nomeDoCanal(p.canal, empresa)}, ${p.noitesNoMes} ${plural(p.noitesNoMes, "noite", "noites")} de ${nomeDoMes(mes)})`,
       ...somaDe([p]),
       quemRecebeu: depois
         ? p.quemRecebe === "split"
           ? `${quemPaga(p.canal, empresa)} pagou a você direto depois do fim do mês`
           : `pagou à ${empresa} depois do fim do mês`
+        : previsto
+          ? p.quemRecebe === "split"
+            ? `${quemPaga(p.canal, empresa)} paga a você direto em ${dataCurta(p.pagamento!.data)}`
+            : `paga à ${empresa} em ${dataCurta(p.pagamento!.data)}; a parte entra no repasse depois`
         : p.quemRecebe === "a_confirmar"
           ? "quem recebe o dinheiro ainda está a confirmar pela empresa"
           : p.quemRecebe === "split"

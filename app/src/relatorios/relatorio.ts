@@ -36,6 +36,8 @@ export type DadosRelatorio = {
   situacao: SituacaoPeriodo;
   /** Até que dia os números valem (mês atual); null no mês terminado ou futuro. */
   ate: string | null;
+  /** A data de hoje (dia em São Paulo): pagamento do canal com data depois dela é previsto, não pago. */
+  hoje: string;
   resumo: ResumoPortal;
   reservas: ReservaPortal[];
   rodape: Rodape[];
@@ -149,6 +151,7 @@ export async function dadosDoRelatorio(
     mes: o.mes,
     situacao,
     ate: situacao === "parcial" ? o.hoje : null,
+    hoje: o.hoje,
     resumo,
     reservas: lista,
     rodape,
@@ -325,7 +328,7 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
 
   // Capa: destaque e "como chega".
   const base = `Sua parte ${nReservas === 1 ? "na" : "nas"} ${nReservas} ${plural(nReservas, "reserva", "reservas")} com noites em ${mesNome}, em todos os canais${r.despesas > 0 ? `, já descontadas as despesas do imóvel (${formatBRL(r.despesas)})` : " (sem despesas do imóvel no mês)"}. Resultado por noite: não é o total que um canal pagou no mês nem o valor de um Pix só.`;
-  const chega = comoChega(d.partes, mes, d.rodape, e, d.repasses);
+  const chega = comoChega(d.partes, mes, d.hoje, d.rodape, e, d.repasses);
   const canaisComTaxa = [...new Set(doMes.filter((p) => p.taxa > 0).map((p) => nomeDoCanal(p.canal, e)))];
   const nDespesas = d.despesas.length;
   const brutoAoResultado: LinhaValor[] = [
@@ -419,7 +422,7 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
   const atravessam = linhasReservas.filter((l) => l.atravessa);
 
   // Página 3: conciliação, repasses, despesas, acerto.
-  const conc = conciliacao(d.partes, mes, e);
+  const conc = conciliacao(d.partes, mes, d.hoje, e);
   const repasses: LinhaValor[] = [
     ...d.repasses.map((x) => ({
       texto: `${dataCurta(x.data)} — ${x.tipo === "por_fora" ? "acertado por fora, antes do início do sistema" : "repasse antecipado"}${x.reservas.length ? ` (${x.reservas.join(", ")})` : ""}`,
