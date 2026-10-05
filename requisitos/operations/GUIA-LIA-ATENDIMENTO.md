@@ -153,9 +153,9 @@ Alterações de calendário/preços somente pelo Beds24; Airbnb pode ser alterna
 
 ## Registros, manutenção e reposição
 
-Reaproveitar índices de atendimento e catálogo de manutenção existentes antes de criar controles novos. O log privado da rodada de 5/10 fica no diretório já existente `2026-10-05/task/registros/rodada-scl-2026-10-05.md` do Codex, mantido pelo executor da rodada. Não editar simultaneamente nem usar um snapshot parcial como conclusão.
+Reaproveitar índices de atendimento e catálogo de manutenção existentes antes de criar controles novos. O log privado da rodada de 5/10 fica no diretório já existente `2026-10-05/task/registros/rodada-scl-2026-10-05.md` do Codex, mantido pelo executor. Seu fechamento parcial foi liberado para leitura após a escrita; o original permanece intocado. Não editar simultaneamente nem tratar o parcial como rodada concluída.
 
-Após receber o fechamento, produzir somente uma síntese sanitizada em `requisitos/operations/RODADA-2026-10-05.md`, com cobertura real por assunto, ações confirmadas, falhas, pendências e próxima ação. Esse é o destino preparado; não afirmar arquivo publicado ou rodada encerrada antes da entrega final. A cópia local correspondente deve ser idêntica por commit. Telefones, documentos, conversas, identificadores e demais dados de hóspedes ficam exclusivamente no registro restrito, nunca na síntese GitHub.
+A [síntese sanitizada da rodada](RODADA-2026-10-05.md) registra **NÃO CONCLUÍDA**: tela do Mac bloqueada, acesso ao Beds24 pendente, preços/mínimos não examinados/alterados, áudios e confirmações operacionais pendentes. Separa ações verificadas de resultados incertos e próxima ação; sua cópia local é idêntica por commit. Telefones, documentos, conversas, identificadores e demais dados de hóspedes ficam exclusivamente no registro restrito. Uma atualização após a retomada precisa de novo fechamento verificado, sem apagar a cobertura e os limites deste parcial.
 
 **Manutenção/reposição — procedimento futuro:** somente depois de terminar a rodada, perguntar a Diego quais itens quer registrar. Conferir o catálogo existente e então atualizar/criar o registro necessário com imóvel, item descrito, fonte/data, estado, responsável e próximo passo, sem inventar itens ou transformar relato em contratação. Nenhum novo item ou automação é criado por esta instrução.
 
