@@ -20,7 +20,7 @@ import { travarConfig } from "@/configuracoes/armazem";
 import { violouUnicidade } from "@/db/erros";
 import { ajustes, arquivos, contestacoesAdiantamento, imoveis, lancamentos, quitacoesAdiantamento, proprietarioImoveis, proprietarios, repasseItens, repasses, type SituacaoRepasse, type TipoRepasse } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { ehDiaDeFechamento } from "./periodicidade";
+import { dataDoFechamento, ehDiaDeFechamento } from "./periodicidade";
 import { formatBRL } from "@/lib/money";
 import { estornar, lancar, mudarEstado } from "@/financeiro/ledger";
 import { lerComReservasTravadas } from "@/financeiro/trava";
@@ -451,9 +451,13 @@ async function fecharNaTransacao(
     if (p.bloqueios.length) return { ok: false as const, erro: p.bloqueios[0] };
     if (p.valor <= 0) return { ok: false as const, erro: "Nada a repassar neste mês." };
 
+    // M4.13: a data do fechamento é o dia do fechamento configurado para o mês (dia 2 por padrão, versionado); fechado
+    // antes, à mão (do dia 1º em diante), vale o dia em que foi fechado. O Pix do fechamento só pode ter data a partir dela.
+    const dataFechamento = dataDoFechamento(await lerRegrasRepasses(tx, org), mes);
+    const data = hoje < dataFechamento ? hoje : dataFechamento;
     const [r] = await tx
       .insert(repasses)
-      .values({ organizacaoId: org, proprietarioId, tipo: "fechamento", mes: lim.inicio, data: lim.fim, saldo: p.saldo, descontado: p.aDescontar, contestado: p.contestado, valor: p.valor, foraDoFechamento: p.fora, antecipado: p.antecipado, criadoPor: autorId })
+      .values({ organizacaoId: org, proprietarioId, tipo: "fechamento", mes: lim.inicio, data, saldo: p.saldo, descontado: p.aDescontar, contestado: p.contestado, valor: p.valor, foraDoFechamento: p.fora, antecipado: p.antecipado, criadoPor: autorId })
       .returning();
     const ids = [...new Set([...[...p.porImovel.keys()].filter((k): k is string => k !== null), ...p.itens.map((x) => x.imovelId)])];
     const codigos = new Map(

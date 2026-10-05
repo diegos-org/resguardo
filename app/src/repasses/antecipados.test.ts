@@ -135,6 +135,28 @@ describe("repasse antecipado (M4.10)", () => {
     expect(await gerarAntecipado(db, org, dono, "2026-12-02", null)).toMatchObject({ ok: false, erro: "Nada disponível para repassar agora." });
   });
 
+  it("M4.13: o fechamento leva a data do dia do fechamento (dia 2, ou o dia configurado); fechado à mão antes, a data do dia; o Pix não pode ser antes dela", async () => {
+    await receberTudo(db, org, reservaBase, "2026-10-10");
+    // Fechado com atraso, em 5/11: a data gravada é 2/11; Pix em 1/11 recusado, em 2/11 aceito.
+    const f = await fecharMes(db, org, dono, "2026-10", "2026-11-05", null);
+    expect(f.ok).toBe(true);
+    const id = (f as { id: string }).id;
+    expect(await obterRepasse(db, org, id)).toMatchObject({ tipo: "fechamento", data: "2026-11-02" });
+    expect(await marcarRepassePago(db, org, id, "2026-11-01", "2026-11-05", null)).toMatchObject({ ok: false, erro: "A data do pagamento não pode ser antes de 02/11/2026." });
+    expect(await marcarRepassePago(db, org, id, "2026-11-02", "2026-11-05", null)).toMatchObject({ ok: true });
+    // Estornado e refeito com o dia do fechamento em 3 (valendo desde outubro): a data passa a 3/11.
+    expect(await estornarRepasse(db, org, id, "teste", "2026-11-05", null)).toMatchObject({ ok: true });
+    await salvarRegrasRepasses(db, org, await lerRegrasRepasses(db, org), null, { diaFechamento: 3, hoje: "2026-10-20" });
+    const f2 = await fecharMes(db, org, dono, "2026-10", "2026-11-05", null);
+    expect(f2.ok).toBe(true);
+    expect(await obterRepasse(db, org, (f2 as { id: string }).id)).toMatchObject({ tipo: "fechamento", data: "2026-11-03" });
+    // Fechado à mão no dia 1º (antes do dia 3): a data é o próprio dia 1º — o teste do fechamento no dia 1º, acima, cobre o padrão.
+    expect(await estornarRepasse(db, org, (f2 as { id: string }).id, "teste", "2026-11-05", null)).toMatchObject({ ok: true });
+    const f3 = await fecharMes(db, org, dono, "2026-10", "2026-11-01", null);
+    expect(f3.ok).toBe(true);
+    expect(await obterRepasse(db, org, (f3 as { id: string }).id)).toMatchObject({ tipo: "fechamento", data: "2026-11-01" });
+  });
+
   it("reserva que atravessa o mês é paga inteira, um lançamento por competência, e cada fechamento fecha zerado; o avulso do portal fica marcado", async () => {
     const r2 = await criar(reserva(a, "2026-10-30", "2026-11-02"), "2026-10-30"); // 3 noites: 2 em outubro, 1 em novembro
     const g = await gerarAntecipado(db, org, dono, "2026-10-31", null, { pedidoPeloProprietario: true });

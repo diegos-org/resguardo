@@ -48,7 +48,9 @@ o extrato do canal sai completo. Está no sistema assim:
   e-mail automático do relatório. No dia 1º, a rotina das 9h não manda nada e registra "sai sozinho
   a partir de 02/11/2026"; no dia 2, manda. Repasses quinzenais, semanais e "assim que disponível"
   continuam nos dias deles — só não nascem no dia do fechamento, que é o único repasse daquele dia
-  (antes isso valia para o dia 1º; agora o dia 1º é um dia comum).
+  (antes isso valia para o dia 1º; agora o dia 1º é um dia comum). O fechamento fica registrado com a
+  data do dia do fechamento (2/11, por exemplo), mesmo que você clique depois; se fechar antes, à mão,
+  fica com o dia em que você fechou. A data do Pix do fechamento nunca pode ser anterior a essa.
 - **O que não mudou:** você continua clicando em "Fechar o mês" no painel, quando quiser — pode
   fechar e enviar à mão no dia 1º, se estiver tudo certo. O proprietário baixa o PDF no portal a
   qualquer momento, inclusive o parcial do mês em andamento. O que o canal ainda não pagou até o dia
