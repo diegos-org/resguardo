@@ -1,12 +1,13 @@
 import { PDFDocument } from "pdf-lib";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { historicoDe } from "@/auditoria/auditoria";
-import { arquivos, imoveis, organizacoes } from "@/db/schema";
+import { arquivos, imoveis, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
+import { lancar } from "@/financeiro/ledger";
 import { extratosDoRelatorio, guardarExtrato, listarExtratos, removerExtrato } from "./extratos";
 
-let db: Db, close: () => Promise<void>, org: string, outraOrg: string, a: string, b: string, deOutra: string;
+let db: Db, close: () => Promise<void>, org: string, outraOrg: string, a: string, b: string, deOutra: string, dona: string, antiga: string, semImovel: string;
 
 async function pdfCom(paginas: number): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
@@ -14,7 +15,8 @@ async function pdfCom(paginas: number): Promise<Uint8Array> {
   return doc.save();
 }
 const arquivo = async (paginas = 2, nome = "ganhos-outubro.pdf") => ({ nome, tipo: "application/pdf", conteudo: await pdfCom(paginas) });
-const guardar = (imovelId: string, canal: string, paginas = "", mes = "2026-10", arq?: Awaited<ReturnType<typeof arquivo>>) => guardarExtrato(db, org, { imovelId, mes, canal, paginas, arquivo: arq ?? { nome: "extrato.pdf", tipo: "application/pdf", conteudo: new Uint8Array() } }, null);
+const guardar = (imovelId: string, canal: string, paginas = "", mes = "2026-10", arq?: Awaited<ReturnType<typeof arquivo>>, proprietarioId = dona) =>
+  guardarExtrato(db, org, { imovelId, proprietarioId, mes, canal, paginas, arquivo: arq ?? { nome: "extrato.pdf", tipo: "application/pdf", conteudo: new Uint8Array() } }, null);
 
 beforeEach(async () => {
   ({ db, close } = await createTestDb());
@@ -23,6 +25,13 @@ beforeEach(async () => {
     .insert(imoveis)
     .values([{ organizacaoId: org, codigo: "403", nome: "Quatro" }, { organizacaoId: org, codigo: "102", nome: "Um" }, { organizacaoId: outraOrg, codigo: "900", nome: "De outra" }])
     .returning();
+  // Dona atual dos dois imóveis; Antiga foi dona do 403 (só no livro de outubro); Sem Imóvel não tem nada.
+  [{ id: dona }, { id: antiga }, { id: semImovel }] = await db
+    .insert(proprietarios)
+    .values([{ organizacaoId: org, nome: "Dona Fictícia" }, { organizacaoId: org, nome: "Antiga Fictícia" }, { organizacaoId: org, nome: "Sem Imóvel" }])
+    .returning();
+  await db.insert(proprietarioImoveis).values([{ proprietarioId: dona, imovelId: a }, { proprietarioId: dona, imovelId: b }]);
+  await lancar(db, org, [{ tipo: "ajuste", descricao: "crédito da dona antiga", valor: 1000, efeitoSaldo: 1000, competencia: "2026-10-05", estado: "realizado", dataCaixa: "2026-10-05", imovelId: a, proprietarioId: antiga }], null);
 });
 afterEach(() => close());
 
@@ -32,7 +41,7 @@ describe("extratos oficiais dos canais guardados por imóvel e mês (M5.7)", () 
     expect(r).toMatchObject({ ok: true, substituiu: false, paginasTotal: 2 });
     const lista = await listarExtratos(db, org, "2026-10");
     expect(lista).toHaveLength(1);
-    expect(lista[0]).toMatchObject({ imovelCodigo: "403", imovelNome: "Quatro", canal: "airbnb", canalNome: "Airbnb", paginas: "2", arquivoNome: "ganhos-outubro.pdf", mes: "2026-10" });
+    expect(lista[0]).toMatchObject({ imovelCodigo: "403", imovelNome: "Quatro", proprietarioId: dona, proprietarioNome: "Dona Fictícia", canal: "airbnb", canalNome: "Airbnb", paginas: "2", arquivoNome: "ganhos-outubro.pdf", mes: "2026-10" });
     const primeiroArquivo = lista[0].arquivoId;
     // Mesmo imóvel, mês e canal: substitui; o arquivo antigo sai do banco.
     const r2 = await guardar(a, "airbnb", "", "2026-10", await arquivo(3, "ganhos-v2.pdf"));
@@ -49,7 +58,24 @@ describe("extratos oficiais dos canais guardados por imóvel e mês (M5.7)", () 
     expect(await listarExtratos(db, org, "2026-09")).toEqual([]);
     const historico = (await historicoDe(db, org, "imovel", a)).filter((h) => h.acao === "extrato_canal.guardar");
     expect(historico).toHaveLength(3);
-    expect(historico.map((h) => h.mudancas.extrato)).toEqual(expect.arrayContaining([[null, "Airbnb · 2026-10 · 2 página(s) (usar 2)"], ["substituído", "Airbnb · 2026-10 · 3 página(s)"]]));
+    expect(historico.map((h) => h.mudancas.extrato)).toEqual(expect.arrayContaining([[null, "Airbnb · 2026-10 · Dona Fictícia · 2 página(s) (usar 2)"], ["substituído", "Airbnb · 2026-10 · Dona Fictícia · 3 página(s)"]]));
+  });
+
+  it("o favorecido faz parte da chave: imóvel que trocou de dono no mês tem um extrato por dono, e cada relatório anexa só o seu; quem não tem o imóvel não guarda", async () => {
+    // Antiga só está no livro de outubro do 403: pode guardar o dela; para novembro (sem lançamento) não.
+    expect(await guardar(a, "airbnb", "", "2026-10", await arquivo(1, "airbnb-antiga.pdf"), antiga)).toMatchObject({ ok: true });
+    expect(await guardar(a, "airbnb", "", "2026-11", await arquivo(1), antiga)).toMatchObject({ ok: false, erro: expect.stringContaining("precisa ter esse imóvel") });
+    expect(await guardar(a, "airbnb", "", "2026-10", await arquivo(1), semImovel)).toMatchObject({ ok: false, erro: expect.stringContaining("precisa ter esse imóvel") });
+    expect(await guardar(a, "airbnb", "", "2026-10", await arquivo(1), "nao-e-uuid")).toMatchObject({ ok: false, erro: expect.stringContaining("precisa ter esse imóvel") });
+    // A dona atual guarda o dela no mesmo imóvel, mês e canal: não substitui o da Antiga.
+    expect(await guardar(a, "airbnb", "", "2026-10", await arquivo(2, "airbnb-dona.pdf"))).toMatchObject({ ok: true, substituiu: false });
+    expect((await listarExtratos(db, org, "2026-10")).map((l) => `${l.proprietarioNome}/${l.arquivoNome}`)).toEqual(["Antiga Fictícia/airbnb-antiga.pdf", "Dona Fictícia/airbnb-dona.pdf"]);
+    // O relatório de cada uma leva só o próprio extrato, mesmo pedindo o mesmo imóvel.
+    expect((await extratosDoRelatorio(db, org, { imovelIds: [a], proprietarioIds: [dona] }, "2026-10")).map((x) => x.nome)).toEqual(["airbnb-dona.pdf"]);
+    expect((await extratosDoRelatorio(db, org, { imovelIds: [a], proprietarioIds: [antiga] }, "2026-10")).map((x) => x.nome)).toEqual(["airbnb-antiga.pdf"]);
+    expect(await extratosDoRelatorio(db, org, { imovelIds: [a], proprietarioIds: [semImovel] }, "2026-10")).toEqual([]);
+    expect(await extratosDoRelatorio(db, org, { imovelIds: [a], proprietarioIds: [] }, "2026-10")).toEqual([]);
+    expect((await listarExtratos(db, org, "2026-10", { proprietarioIds: [antiga] })).map((l) => l.arquivoNome)).toEqual(["airbnb-antiga.pdf"]);
   });
 
   it("recusa mês, canal, arquivo e páginas inválidos, e imóvel de outra organização; nada é gravado", async () => {
@@ -77,13 +103,13 @@ describe("extratos oficiais dos canais guardados por imóvel e mês (M5.7)", () 
     await guardar(a, "booking", "", "2026-10", await arquivo(1, "booking-403.pdf"));
     await guardar(b, "airbnb", "", "2026-10", await arquivo(1, "airbnb-102.pdf"));
     await guardar(a, "airbnb", "", "2026-09", await arquivo(1, "airbnb-set.pdf"));
-    const soA = await extratosDoRelatorio(db, org, [a], "2026-10");
+    const soA = await extratosDoRelatorio(db, org, { imovelIds: [a], proprietarioIds: [dona] }, "2026-10");
     expect(soA.map((x) => [x.canal, x.nome, x.paginas, x.bytes.length > 100])).toEqual([["Airbnb", "airbnb-403.pdf", "1", true], ["Booking.com", "booking-403.pdf", "", true]]);
-    const ambos = await extratosDoRelatorio(db, org, [a, b], "2026-10");
+    const ambos = await extratosDoRelatorio(db, org, { imovelIds: [a, b], proprietarioIds: [dona] }, "2026-10");
     expect(ambos.map((x) => x.canal)).toEqual(["Airbnb · 102", "Airbnb · 403", "Booking.com · 403"]);
-    expect(await extratosDoRelatorio(db, org, [], "2026-10")).toEqual([]);
-    expect(await extratosDoRelatorio(db, org, [a], "2026-11")).toEqual([]);
-    expect(await extratosDoRelatorio(db, outraOrg, [a], "2026-10")).toEqual([]);
+    expect(await extratosDoRelatorio(db, org, { imovelIds: [], proprietarioIds: [dona] }, "2026-10")).toEqual([]);
+    expect(await extratosDoRelatorio(db, org, { imovelIds: [a], proprietarioIds: [dona] }, "2026-11")).toEqual([]);
+    expect(await extratosDoRelatorio(db, outraOrg, { imovelIds: [a], proprietarioIds: [dona] }, "2026-10")).toEqual([]);
     expect(await listarExtratos(db, outraOrg, "2026-10")).toEqual([]);
     // Remover: só da própria organização; o arquivo vai junto.
     const [booking] = (await listarExtratos(db, org, "2026-10")).filter((l) => l.canal === "booking");

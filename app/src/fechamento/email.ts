@@ -152,7 +152,7 @@ export async function situacaoDosFechamentos(
   const entregueComPedido = (v: unknown) => !!v && typeof (v as { primeira?: unknown }).primeira === "string" && cargaValida((v as { carga?: unknown }).carga);
   return Promise.all(lista.map(async (p) => {
     const marca = marcas.find((m) => m.key === chaveDoEnvio(organizacaoId, p.proprietarioId, mes))?.value as { estado?: string; em?: string; destinos?: unknown; reenvio?: unknown; anexos?: unknown } | undefined;
-    const extratosGuardados = (await listarExtratos(db, organizacaoId, mes.slice(0, 7), imoveisDoMes[todos.indexOf(p)].map((i) => i.id))).map((e) => `${e.imovelCodigo} · ${e.canalNome}`);
+    const extratosGuardados = (await listarExtratos(db, organizacaoId, mes.slice(0, 7), { imovelIds: imoveisDoMes[todos.indexOf(p)].map((i) => i.id), proprietarioIds: [p.proprietarioId] })).map((e) => `${e.imovelCodigo} · ${e.canalNome}`);
     const doReenvio = typeof marca?.reenvio === "string" ? (reenvios.find((x) => x.key === marca.reenvio)?.value as ValorMarca | undefined) : undefined;
     // Os destinos do reenvio são os do pedido guardado (a retomada vai para eles), não os do cadastro.
     const cargaReenvio = (doReenvio as { carga?: unknown } | undefined)?.carga;

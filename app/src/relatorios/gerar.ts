@@ -180,7 +180,7 @@ export async function relatorioDoFechamento(
   if (!c.ok) return c;
   // M5.7: os extratos oficiais guardados por imóvel e mês vão no fim, como emitidos; sem nenhum guardado, o PDF sai sem
   // anexos com o rodapé "ficam com a equipe" (e o painel avisa). A foto da capa espera as fotos reais (M7.3).
-  const extratos = await extratosDoRelatorio(db, organizacaoId, c.imovelIds, mesISO);
+  const extratos = await extratosDoRelatorio(db, organizacaoId, { imovelIds: c.imovelIds, proprietarioIds: [proprietarioId] }, mesISO);
   const pdf = await gerarPdfRelatorio(c.textos, { extratos }, agora);
   return { ok: true, pdf, arquivo: c.arquivo, textos: c.textos, anexos: extratos.map((e) => e.canal) };
 }

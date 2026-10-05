@@ -873,6 +873,11 @@ export const extratosCanal = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
     imovelId: uuid("imovel_id").notNull().references(() => imoveis.id, { onDelete: "cascade" }),
+    /**
+     * Favorecido do extrato: o proprietário cujo relatório o anexa. Um imóvel que troca de dono no meio do mês tem
+     * dois relatórios; o extrato de um nunca vai no do outro (cada um sobe o seu, com as páginas dele).
+     */
+    proprietarioId: uuid("proprietario_id").notNull().references(() => proprietarios.id, { onDelete: "cascade" }),
     /** Mês de competência do relatório, "AAAA-MM". */
     mes: text("mes").notNull(),
     /** Canal emissor (origem da reserva: airbnb, booking, outro). */
@@ -883,7 +888,7 @@ export const extratosCanal = pgTable(
     criadoPor: uuid("criado_por").references(() => usuarios.id),
     criadoEm: criadoEm(),
   },
-  (t) => [uniqueIndex("extratos_canal_unico").on(t.organizacaoId, t.imovelId, t.mes, t.canal), index("extratos_canal_mes").on(t.organizacaoId, t.mes)],
+  (t) => [uniqueIndex("extratos_canal_unico").on(t.organizacaoId, t.imovelId, t.proprietarioId, t.mes, t.canal), index("extratos_canal_mes").on(t.organizacaoId, t.mes)],
 );
 
 /**
