@@ -107,6 +107,8 @@ describe("extratos oficiais dos canais guardados por imóvel e mês (M5.7)", () 
     expect(soA.map((x) => [x.canal, x.nome, x.paginas, x.bytes.length > 100])).toEqual([["Airbnb", "airbnb-403.pdf", "1", true], ["Booking.com", "booking-403.pdf", "", true]]);
     const ambos = await extratosDoRelatorio(db, org, { imovelIds: [a, b], proprietarioIds: [dona] }, "2026-10");
     expect(ambos.map((x) => x.canal)).toEqual(["Airbnb · 102", "Airbnb · 403", "Booking.com · 403"]);
+    // Relatório de dois imóveis em que só um tem extrato guardado: o selo ainda diz de qual imóvel é.
+    expect((await extratosDoRelatorio(db, org, { imovelIds: [a, b], proprietarioIds: [dona] }, "2026-09")).map((x) => x.canal)).toEqual(["Airbnb · 403"]);
     expect(await extratosDoRelatorio(db, org, { imovelIds: [], proprietarioIds: [dona] }, "2026-10")).toEqual([]);
     expect(await extratosDoRelatorio(db, org, { imovelIds: [a], proprietarioIds: [dona] }, "2026-11")).toEqual([]);
     expect(await extratosDoRelatorio(db, outraOrg, { imovelIds: [a], proprietarioIds: [dona] }, "2026-10")).toEqual([]);
