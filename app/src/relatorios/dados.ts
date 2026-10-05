@@ -4,7 +4,7 @@
  */
 import { and, eq, gte, inArray, isNull, lt, or, sql, sum } from "drizzle-orm";
 import { NOMES_TIPO } from "@/contratos/regras";
-import { contratos, lancamentos, reservas, type TipoContrato } from "@/db/schema";
+import { contratos, lancamentos, proprietarioImoveis, reservas, type TipoContrato } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
 import { lancamentoEmVigor } from "@/portal/posse";
@@ -15,7 +15,7 @@ import { somarDias } from "@/repasses/inicio";
 import { lerInicioDoSistema } from "@/repasses/regras-config";
 import { itensDoRepasse, listarRepasses, type Repasse } from "@/repasses/repasses";
 import type { ParteDoRelatorio } from "./dinheiro";
-import { type DadosDoMes, diasDoMes, limitesDe, type MesISO, noitesBloqueadas, noitesNoIntervalo, somarMeses } from "./metricas";
+import { type DadosDoMes, diasDeImovel, diasDoMes, limitesDe, type MesISO, noitesBloqueadas, noitesNoIntervalo, somarMeses } from "./metricas";
 
 type Dono = { id: string; nome: string };
 const mesDe = (data: string): MesISO => data.slice(0, 7);
@@ -116,6 +116,17 @@ export async function metricasDoRelatorio(
     ).map((l) => l.mes),
   );
   const temDado = (m: MesISO) => (m === o.mes ? true : inicio ? m >= mesDe(inicio) && m <= o.mes : comLancamento.has(m));
+  // Desde quando cada imóvel é dos proprietários (vínculo atual, dia em São Paulo): as noites para vender só contam
+  // a partir daí. Sem vínculo atual (imóvel que já foi dele, só no livro), conta o período inteiro — o fim da posse
+  // não fica registrado.
+  const vinculos = imovelIds.length && donoIds.length
+    ? await db
+        .select({ imovelId: proprietarioImoveis.imovelId, desde: sql<string>`min(to_char((${proprietarioImoveis.criadoEm} at time zone 'America/Sao_Paulo')::date, 'YYYY-MM-DD'))` })
+        .from(proprietarioImoveis)
+        .where(and(inArray(proprietarioImoveis.imovelId, imovelIds), inArray(proprietarioImoveis.proprietarioId, donoIds)))
+        .groupBy(proprietarioImoveis.imovelId)
+    : [];
+  const desdeDe = new Map(vinculos.map((v) => [v.imovelId, v.desde]));
   const dadosDoMes = async (m: MesISO, ate: string | null): Promise<DadosDoMes> => {
     const { inicio: de, fim } = limitesDe(m);
     const fimConsiderado = ate ? somarDias(ate, 1) : fim;
@@ -128,9 +139,12 @@ export async function metricasDoRelatorio(
       mes: m,
       resultado: resumo.suaParte - resumo.despesas,
       bruto: resumo.receitaBruta,
-      noitesOcupadas: lista.reduce((s, r) => s + noitesNoIntervalo(r.checkin, r.checkout, de, fimConsiderado), 0),
+      // Só reserva confirmada ocupa noite: a cancelada ou pendente que ainda tem valor no livro entra na lista para
+      // explicar o valor, não como estadia.
+      noitesOcupadas: lista.filter((r) => r.confirmada).reduce((s, r) => s + noitesNoIntervalo(r.checkin, r.checkout, de, fimConsiderado), 0),
       noitesDoPeriodo: ate ? Number(ate.slice(8, 10)) : diasDoMes(m),
       imoveis: imovelIds.length,
+      diasImovel: diasDeImovel(imovelIds.map((id) => ({ desde: desdeDe.get(id) ?? null })), de, fimConsiderado),
       noitesBloqueadas: noitesBloqueadas(
         bloqueios.filter((b) => b.fonte === "proprietario"),
         de,

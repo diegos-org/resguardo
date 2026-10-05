@@ -50,12 +50,15 @@ export type ResultadoExtrato = { ok: true; id: string; substituiu: boolean; pagi
 const MES = /^\d{4}-(0[1-9]|1[0-2])$/;
 const ePdf = (b: Uint8Array) => b.length > 5 && String.fromCharCode(...b.slice(0, 5)) === "%PDF-";
 
-/** Quantas páginas tem o PDF; null se não dá para ler. */
-async function paginasDoPdf(bytes: Uint8Array): Promise<number | null> {
+/**
+ * Quantas páginas tem o PDF, lendo do mesmo jeito que o relatório lê na hora de anexar (`gerarPdfRelatorio`): arquivo
+ * protegido por senha é recusado aqui, no upload, e não na hora de mandar o e-mail do fechamento.
+ */
+async function paginasDoPdf(bytes: Uint8Array): Promise<{ total: number } | "protegido" | null> {
   try {
-    return (await PDFDocument.load(bytes, { ignoreEncryption: true })).getPageCount();
-  } catch {
-    return null;
+    return { total: (await PDFDocument.load(bytes, { updateMetadata: false })).getPageCount() };
+  } catch (err) {
+    return err instanceof Error && /encrypt/i.test(err.message) ? "protegido" : null;
   }
 }
 
@@ -66,8 +69,10 @@ export async function guardarExtrato(db: Db, organizacaoId: string, e: NovoExtra
   if (!e.arquivo.conteudo.length) return { ok: false, erro: "Escolha o arquivo PDF do extrato." };
   if (e.arquivo.conteudo.length > LIMITE_EXTRATO) return { ok: false, erro: "O extrato passa de 2 MB: exporte só o período do mês." };
   if (!ePdf(e.arquivo.conteudo)) return { ok: false, erro: "O extrato precisa ser um PDF (o arquivo que o canal emite)." };
-  const total = await paginasDoPdf(e.arquivo.conteudo);
-  if (!total) return { ok: false, erro: "Não foi possível ler o PDF do extrato: exporte de novo pelo canal." };
+  const lido = await paginasDoPdf(e.arquivo.conteudo);
+  if (lido === "protegido") return { ok: false, erro: "O extrato está protegido por senha: exporte de novo sem senha." };
+  if (!lido || !lido.total) return { ok: false, erro: "Não foi possível ler o PDF do extrato: exporte de novo pelo canal." };
+  const total = lido.total;
   const paginas = e.paginas.trim();
   try {
     lerPaginas(paginas, total);

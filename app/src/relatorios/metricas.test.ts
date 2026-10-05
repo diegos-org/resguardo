@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { acumuladoDoAno, diariaMedia, diasDoMes, escalaEmMil, limitesDe, mesCurto, nomeDoMes, noitesBloqueadas, noitesNoIntervalo, ocupacao, quadrosDoMes, serieDe12, somarMeses, variacao } from "./metricas";
+import { acumuladoDoAno, diariaMedia, diasDeImovel, diasDoMes, escalaEmMil, limitesDe, mesCurto, nomeDoMes, noitesBloqueadas, noitesNoIntervalo, ocupacao, quadrosDoMes, serieDe12, somarMeses, variacao } from "./metricas";
 
-const mes = (over: Partial<Parameters<typeof quadrosDoMes>[0]["atual"]> = {}) => ({ mes: "2026-10", resultado: 1503780, bruto: 1945000, noitesOcupadas: 18, noitesDoPeriodo: 31, imoveis: 1, noitesBloqueadas: 2, ...over });
+const mes = (over: Partial<Parameters<typeof quadrosDoMes>[0]["atual"]> = {}) => ({ mes: "2026-10", resultado: 1503780, bruto: 1945000, noitesOcupadas: 18, noitesDoPeriodo: 31, imoveis: 1, diasImovel: 31, noitesBloqueadas: 2, ...over });
 
 describe("métricas do relatório mensal (M5.7, regras puras)", () => {
   it("meses: soma, dias, limites, nomes", () => {
@@ -13,6 +13,17 @@ describe("métricas do relatório mensal (M5.7, regras puras)", () => {
     expect(limitesDe("2026-12")).toEqual({ inicio: "2026-12-01", fim: "2027-01-01" });
     expect(nomeDoMes("2026-10")).toBe("outubro de 2026");
     expect(mesCurto("2025-11")).toBe("nov/25");
+  });
+
+  it("noites de imóvel para vender: por imóvel, desde o vínculo; antes do período inteiro, no meio, depois do fim", () => {
+    expect(diasDeImovel([{ desde: null }], "2026-10-01", "2026-11-01")).toBe(31);
+    expect(diasDeImovel([{ desde: "2025-01-01" }, { desde: "2026-10-11" }], "2026-10-01", "2026-11-01")).toBe(31 + 21);
+    expect(diasDeImovel([{ desde: "2026-11-05" }], "2026-10-01", "2026-11-01")).toBe(0);
+    // Parcial até o dia 10 (fim exclusivo 11/10) com vínculo em 5/10: 6 noites.
+    expect(diasDeImovel([{ desde: "2026-10-05" }], "2026-10-01", "2026-10-11")).toBe(6);
+    expect(diasDeImovel([], "2026-10-01", "2026-11-01")).toBe(0);
+    // A ocupação usa essas noites: 18 ocupadas de 21 (vínculo em 11/10), com 1 bloqueada → 18 de 20.
+    expect(ocupacao({ noitesOcupadas: 18, diasImovel: 21, noitesBloqueadas: 1 })).toEqual({ ocupadas: 18, disponiveis: 20, bloqueadas: 1, percentual: 90 });
   });
 
   it("noites no intervalo: só as do mês, fim exclusivo; estada fora do mês dá zero", () => {
@@ -35,9 +46,9 @@ describe("métricas do relatório mensal (M5.7, regras puras)", () => {
   });
 
   it("ocupação: ocupadas ÷ disponíveis (noites × imóveis − bloqueadas); sem disponível, não se aplica; diária média sem noite é null", () => {
-    expect(ocupacao({ noitesOcupadas: 18, noitesDoPeriodo: 31, imoveis: 1, noitesBloqueadas: 2 })).toEqual({ ocupadas: 18, disponiveis: 29, bloqueadas: 2, percentual: 62 });
-    expect(ocupacao({ noitesOcupadas: 0, noitesDoPeriodo: 31, imoveis: 1, noitesBloqueadas: 31 }).percentual).toBeNull();
-    expect(ocupacao({ noitesOcupadas: 10, noitesDoPeriodo: 10, imoveis: 2, noitesBloqueadas: 0 }).percentual).toBe(50);
+    expect(ocupacao({ noitesOcupadas: 18, diasImovel: 31, noitesBloqueadas: 2 })).toEqual({ ocupadas: 18, disponiveis: 29, bloqueadas: 2, percentual: 62 });
+    expect(ocupacao({ noitesOcupadas: 0, diasImovel: 31, noitesBloqueadas: 31 }).percentual).toBeNull();
+    expect(ocupacao({ noitesOcupadas: 10, diasImovel: 20, noitesBloqueadas: 0 }).percentual).toBe(50);
     expect(diariaMedia(1945000, 18)).toBe(108056);
     expect(diariaMedia(0, 0)).toBeNull();
   });
@@ -73,7 +84,7 @@ describe("métricas do relatório mensal (M5.7, regras puras)", () => {
   });
 
   it("quadros do mês: noites e ocupação, diária média, comparação com o mês anterior e com o ano anterior", () => {
-    const q = quadrosDoMes({ atual: mes(), anterior: mes({ mes: "2026-09", resultado: 1304000, noitesOcupadas: 16, noitesDoPeriodo: 30, noitesBloqueadas: 0 }), anoAnterior: null, parcialAte: null });
+    const q = quadrosDoMes({ atual: mes(), anterior: mes({ mes: "2026-09", resultado: 1304000, noitesOcupadas: 16, noitesDoPeriodo: 30, diasImovel: 30, noitesBloqueadas: 0 }), anoAnterior: null, parcialAte: null });
     expect(q[0]).toEqual({ valor: "18 noites", legenda: "62% de ocupação: 18 de 29 noites disponíveis (2 bloqueadas para seu uso)", semDado: false });
     expect(q[1]).toEqual({ valor: "R$ 1.080,56", legenda: "diária média por noite, com limpeza (bruto ÷ noites)", semDado: false });
     expect(q[2]).toEqual({ valor: "+15%", legenda: "resultado comparado a setembro de 2026 (R$ 13.040,00); ocupação de 53% para 62%", semDado: false });
@@ -81,13 +92,13 @@ describe("métricas do relatório mensal (M5.7, regras puras)", () => {
   });
 
   it("quadros: base zero vira diferença em R$; mês inteiro bloqueado não se aplica; sem reserva não há diária; mês parcial não compara e conta as noites até o dia", () => {
-    const zero = quadrosDoMes({ atual: mes(), anterior: mes({ mes: "2026-09", resultado: 0, noitesOcupadas: 0, noitesDoPeriodo: 30, noitesBloqueadas: 0 }), anoAnterior: mes({ mes: "2025-10", resultado: 2000000 }), parcialAte: null });
+    const zero = quadrosDoMes({ atual: mes(), anterior: mes({ mes: "2026-09", resultado: 0, noitesOcupadas: 0, noitesDoPeriodo: 30, diasImovel: 30, noitesBloqueadas: 0 }), anoAnterior: mes({ mes: "2025-10", resultado: 2000000 }), parcialAte: null });
     expect(zero[2]).toMatchObject({ valor: "+ R$ 15.037,80", legenda: expect.stringContaining("setembro de 2026 sem resultado (R$ 0,00)"), semDado: false });
     expect(zero[3]).toMatchObject({ valor: "−25%", legenda: expect.stringContaining("outubro de 2025 (R$ 20.000,00)") });
     const bloqueado = quadrosDoMes({ atual: mes({ noitesOcupadas: 0, bruto: 0, noitesBloqueadas: 31 }), anterior: null, anoAnterior: null, parcialAte: null });
     expect(bloqueado[0]).toEqual({ valor: "0 noites", legenda: "ocupação não se aplica: todas as noites bloqueadas para seu uso", semDado: false });
     expect(bloqueado[1]).toMatchObject({ valor: "sem reserva no mês", semDado: true });
-    const parcial = quadrosDoMes({ atual: mes({ noitesOcupadas: 7, noitesDoPeriodo: 10, noitesBloqueadas: 0 }), anterior: mes({ mes: "2026-09" }), anoAnterior: null, parcialAte: 10 });
+    const parcial = quadrosDoMes({ atual: mes({ noitesOcupadas: 7, noitesDoPeriodo: 10, diasImovel: 10, noitesBloqueadas: 0 }), anterior: mes({ mes: "2026-09" }), anoAnterior: null, parcialAte: 10 });
     expect(parcial[0]).toEqual({ valor: "7 noites até 10/10", legenda: "70% de ocupação: 7 de 10 noites disponíveis", semDado: false });
     expect(parcial[2]).toMatchObject({ valor: "mês em andamento", legenda: expect.stringContaining("até 10/10"), semDado: true });
     expect(parcial[3]).toMatchObject({ valor: "mês em andamento", semDado: true });

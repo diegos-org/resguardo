@@ -62,19 +62,33 @@ export type DadosDoMes = {
   resultado: number | null;
   /** Bruto das reservas (parte do mês), em centavos. */
   bruto: number;
+  /** Noites das reservas confirmadas dentro do período (cancelada ou pendente com valor no livro não ocupa noite). */
   noitesOcupadas: number;
   /** Noites do período considerado por imóvel (mês inteiro; no mês parcial, só até o dia). */
   noitesDoPeriodo: number;
   imoveis: number;
+  /**
+   * Noites de imóvel que existiam para vender no período: por imóvel, só os dias em que ele era do proprietário
+   * (`diasDeImovel`). Igual a `noitesDoPeriodo × imoveis` quando todos eram dele o período inteiro.
+   */
+  diasImovel: number;
   /** Noites bloqueadas para uso próprio pelo proprietário no período (M5.5). */
   noitesBloqueadas: number;
 };
 
+/**
+ * Noites de imóvel dentro do período, contando cada imóvel só a partir do dia em que passou a ser do proprietário
+ * (`desde`; null = o período inteiro). Imóvel ligado depois do fim do período não conta.
+ */
+export function diasDeImovel(imoveis: readonly { desde: string | null }[], inicio: string, fim: string): number {
+  return imoveis.reduce((s, i) => s + Math.max(0, dias(fim) - Math.max(dias(inicio), i.desde ? dias(i.desde) : dias(inicio))), 0);
+}
+
 export type Ocupacao = { ocupadas: number; disponiveis: number; bloqueadas: number; percentual: number | null };
 
-/** Ocupação = ocupadas ÷ (noites do período × imóveis − bloqueadas). Sem noite disponível: percentual null ("não se aplica"). */
-export function ocupacao(d: Pick<DadosDoMes, "noitesOcupadas" | "noitesDoPeriodo" | "imoveis" | "noitesBloqueadas">): Ocupacao {
-  const disponiveis = Math.max(0, d.noitesDoPeriodo * d.imoveis - d.noitesBloqueadas);
+/** Ocupação = ocupadas ÷ (noites de imóvel no período de posse − bloqueadas). Sem noite disponível: percentual null ("não se aplica"). */
+export function ocupacao(d: Pick<DadosDoMes, "noitesOcupadas" | "diasImovel" | "noitesBloqueadas">): Ocupacao {
+  const disponiveis = Math.max(0, d.diasImovel - d.noitesBloqueadas);
   return { ocupadas: d.noitesOcupadas, disponiveis, bloqueadas: d.noitesBloqueadas, percentual: disponiveis > 0 ? Math.round((d.noitesOcupadas / disponiveis) * 100) : null };
 }
 

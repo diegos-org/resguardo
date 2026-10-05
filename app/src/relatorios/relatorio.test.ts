@@ -51,7 +51,7 @@ const parte = (over: Partial<ParteDoRelatorio> = {}): ParteDoRelatorio => ({
   reservaId: "r1", codigo: "R1", codigoCanal: "", hospede: "Hóspede Fictício da Silva", canal: "booking", checkin: "2026-10-10", checkout: "2026-10-13", mes: "2026-10", noitesNoMes: 3, noitesTotal: 3,
   bruto: 100000, taxa: 15000, comissao: 12750, suaParte: 72250, quemRecebe: "empresa", situacao: "disponivel", motivo: "Disponível para o próximo repasse.", pagamento: { data: "2026-10-12", fonte: "recebimento" }, repasse: null, ...over,
 });
-const mesDados = (over: Partial<DadosDoMes> = {}): DadosDoMes => ({ mes: "2026-10", resultado: 72250, bruto: 100000, noitesOcupadas: 3, noitesDoPeriodo: 31, imoveis: 1, noitesBloqueadas: 0, ...over });
+const mesDados = (over: Partial<DadosDoMes> = {}): DadosDoMes => ({ mes: "2026-10", resultado: 72250, bruto: 100000, noitesOcupadas: 3, noitesDoPeriodo: 31, imoveis: 1, diasImovel: 31, noitesBloqueadas: 0, ...over });
 
 const base: DadosRelatorio = {
   empresa: "Sua Casa Leblon",
@@ -78,6 +78,7 @@ const base: DadosRelatorio = {
       bruto: 100000,
       suaParte: 72250,
       situacao: "definido",
+      confirmada: true,
     },
   ],
   rodape: [],
@@ -292,6 +293,13 @@ describe("PDF", () => {
     const t = textosDoRelatorio(base);
     expect(await paginasDe(await gerarPdfRelatorio(t))).toBe(3);
     const extrato = await pdfCom(3);
+    // Lista de repasses longa: a coluna da esquerda abre outra página e despesas e acerto seguem embaixo, na largura toda
+    // (sem voltar ao topo da página anterior); o PDF continua inteiro.
+    const muitos = textosDoRelatorio({ ...base, repasses: Array.from({ length: 70 }, (_, i) => ({ id: `rep${i}`, tipo: "antecipado" as const, data: `2026-10-${String((i % 28) + 1).padStart(2, "0")}`, situacao: "pago" as const, dataPagamento: `2026-10-${String((i % 28) + 1).padStart(2, "0")}`, valor: 1000 + i, reservas: ["SCL-1"] })) });
+    expect(muitos.repasses.length).toBeGreaterThan(60);
+    const comTransbordo = await paginasDe(await gerarPdfRelatorio(muitos));
+    expect(comTransbordo).toBeGreaterThanOrEqual(4);
+    expect(comTransbordo).toBeLessThanOrEqual(6);
     expect(await paginasDe(await gerarPdfRelatorio(t, { foto: PNG, extrato: { bytes: extrato } }))).toBe(4 + 3);
     const so = await PDFDocument.load(await gerarPdfRelatorio(t, { extratos: [{ canal: "Airbnb", bytes: extrato, paginas: "2-3" }, { canal: "Booking.com", bytes: await pdfCom(1) }] }));
     expect(so.getPageCount()).toBe(4 + 2 + 1);
@@ -382,6 +390,22 @@ describe("dados e acesso", () => {
     expect(d.reservas.map((r) => r.imovelId)).toEqual([a]);
     expect(d.situacao).toBe("fechado");
     expect(d.rodape[0]).toMatchObject({ situacao: "empresa_deve", valor: 72250 });
+  });
+
+  it("noites para vender contam só desde o vínculo do imóvel; o vínculo depois do mês não dá noite nenhuma", async () => {
+    const pedir = () => dadosDoRelatorio(db, org, { donos: [{ id: dona, nome: "Dona Fictícia" }], imoveis: [{ id: a, codigo: "403", nome: "Studio Mezanino" }], todosOsImoveis: true, ano: 2026, mes: 10, hoje: "2026-11-02" });
+    const d1 = await pedir();
+    expect(d1.metricas.atual).toMatchObject({ imoveis: 1, noitesDoPeriodo: 31 });
+    // Vínculo criado no dia 11/10 (dia em São Paulo): outubro tem 21 noites de imóvel para vender, não 31.
+    await db.update(proprietarioImoveis).set({ criadoEm: new Date("2026-10-11T12:00:00-03:00") }).where(eq(proprietarioImoveis.imovelId, a));
+    const d2 = await pedir();
+    expect(d2.metricas.atual.diasImovel).toBe(21);
+    expect(d1.metricas.atual.diasImovel).toBeGreaterThan(21);
+    // Vínculo depois do mês: nenhuma noite para vender em outubro (o imóvel entra pelo livro); as noites ocupadas não mudam.
+    await db.update(proprietarioImoveis).set({ criadoEm: new Date("2026-11-05T12:00:00-03:00") }).where(eq(proprietarioImoveis.imovelId, a));
+    const d3 = await pedir();
+    expect(d3.metricas.atual.diasImovel).toBe(0);
+    expect(d3.metricas.atual.noitesOcupadas).toBe(d1.metricas.atual.noitesOcupadas);
   });
 
   it("portal: só o proprietário, só o mês, só dentro da janela; imóvel de outro é ignorado", async () => {

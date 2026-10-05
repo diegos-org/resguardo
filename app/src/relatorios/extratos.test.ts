@@ -59,6 +59,11 @@ describe("extratos oficiais dos canais guardados por imóvel e mês (M5.7)", () 
     expect(await guardar(a, "airbnb", "", "2026-10")).toMatchObject({ ok: false, erro: "Escolha o arquivo PDF do extrato." });
     expect(await guardar(a, "airbnb", "", "2026-10", { nome: "x.pdf", tipo: "application/pdf", conteudo: new TextEncoder().encode("%PDF-1.4 quebrado") })).toMatchObject({ ok: false, erro: expect.stringContaining("Não foi possível ler o PDF") });
     expect(await guardar(a, "airbnb", "", "2026-10", { nome: "x.png", tipo: "image/png", conteudo: new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4, 5]) })).toMatchObject({ ok: false, erro: expect.stringContaining("precisa ser um PDF") });
+    // Protegido por senha (trailer com /Encrypt): recusado no upload, como o relatório recusaria na hora de anexar.
+    const classico = Buffer.from(await (await (async () => { const d = await PDFDocument.create(); d.addPage([200, 200]); return d; })()).save({ useObjectStreams: false })).toString("latin1");
+    const protegido = Buffer.from(classico.replace(/trailer\s*<<(\s*)/, "trailer\n<< /Encrypt 1 0 R$1"), "latin1");
+    expect(protegido.includes("/Encrypt")).toBe(true);
+    expect(await guardar(a, "airbnb", "", "2026-10", { nome: "senha.pdf", tipo: "application/pdf", conteudo: new Uint8Array(protegido) })).toMatchObject({ ok: false, erro: expect.stringContaining("protegido por senha") });
     expect(await guardar(a, "airbnb", "", "2026-10", { nome: "grande.pdf", tipo: "application/pdf", conteudo: new Uint8Array(2 * 1024 * 1024 + 1) })).toMatchObject({ ok: false, erro: expect.stringContaining("passa de 2 MB") });
     expect(await guardar(a, "airbnb", "3", "2026-10", bom)).toMatchObject({ ok: false, erro: expect.stringContaining("tem 2 página(s), não dá para usar a 3") });
     expect(await guardar(a, "airbnb", "x", "2026-10", bom)).toMatchObject({ ok: false, erro: expect.stringContaining("não é um número nem um intervalo") });

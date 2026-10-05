@@ -653,14 +653,16 @@ export async function gerarPdfRelatorio(t: TextosRelatorio, anexos: Anexos = {},
   // Duas colunas: repasses à esquerda; despesas e acerto à direita.
   const wCol = (LARG - 14) / 2;
   const topoCols = p.y;
+  // A página em que as colunas começam, guardada ANTES de desenhar a da esquerda: se a lista de repasses abrir outra
+  // página, a direita não volta para o topo da anterior — segue embaixo, na largura toda.
+  const paginaEsq = p.page;
   p.h3("Repasses do mês");
   if (t.repasses.length) p.tabelaValores(null, t.repasses, wCol);
   else p.paragrafo("Nenhum repasse neste mês.", f.sans, 8.5, C.texto2, wCol);
   const fimEsq = p.y;
-  const paginaEsq = p.page;
-  p.y = topoCols;
   if (p.page === paginaEsq) {
-    // Coluna da direita na mesma página (se a esquerda não mudou de página).
+    // Coluna da direita na mesma página (a esquerda não mudou de página).
+    p.y = topoCols;
     const xDir = M + wCol + 14;
     p.y -= 11;
     p.texto("Despesas e ajustes do imóvel", xDir, p.y, f.serifN, 11, C.floresta);
