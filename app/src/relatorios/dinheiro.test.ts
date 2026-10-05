@@ -138,7 +138,9 @@ describe("como chega até você (M5.7, pela data em que o canal pagou)", () => {
     expect(comoChega([], "2026-10", HOJE, [rodape({ situacao: "zerado", valor: 0 })], E)).toEqual({ linhas: [], quemPagaQuem: null });
     const aPagar = comoChega([{ ...bruno, repasse: { ...bruno.repasse!, situacao: "a_pagar", dataPagamento: null } }], "2026-10", HOJE, [], E).linhas[0];
     expect(aPagar).toMatchObject({ texto: "Repasse antecipado de 16/10 a pagar (Bruno)", tipo: "info" });
-    expect(comoChega([{ ...ana, pagamento: null }], "2026-10", HOJE, [], E).linhas[0].texto).toContain("sem prazo do canal cadastrado");
+    // Sem prazo do canal cadastrado: nunca "pago" (a conciliação põe em "a receber"); aviso de dado faltando.
+    expect(comoChega([{ ...ana, pagamento: null }], "2026-10", HOJE, [], E).linhas[0]).toMatchObject({ tipo: "aviso", aviso: "sem_prazo_do_canal", texto: "O Airbnb paga a você direto, mas sem data: o prazo do canal não está cadastrado (reserva de Ana (2/10 → 5/10))" });
+    expect(conciliacao([{ ...ana, pagamento: null }], "2026-10", HOJE, E).find((l) => l.tipo === "ponte")?.rotulo).toContain("+ a receber");
     // Dois proprietários: o nome em cada linha do fechamento.
     const dois = comoChega([], "2026-10", HOJE, [rodape(), rodape({ nome: "Empresa Dela", valor: 100 })], E);
     expect(dois.linhas.map((l) => l.texto)).toEqual(["A transferir no fechamento, previsto para 01/11/2026 — Maria Exemplo", "A transferir no fechamento, previsto para 01/11/2026 — Empresa Dela"]);

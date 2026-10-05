@@ -287,6 +287,10 @@ describe("textos do relatório (modelo oficial, M5.7)", () => {
     // Relatório parcial antes da data do canal: a parte paga pelo canal ainda é prevista, não "paga".
     const antes = textosDoRelatorio({ ...base, hoje: "2026-10-05", situacao: "parcial", ate: "2026-10-05", partes: [parte({ quemRecebe: "split", situacao: "informacao", canal: "airbnb", pagamento: { data: "2026-10-11", fonte: "canal", prazo: 1 } })] });
     expect(antes.reservas[0]).toMatchObject({ situacao: "prevista para 11/10 pelo canal", situacaoTipo: "info" });
+    // Sem prazo do canal cadastrado: nem "paga" na tabela, nem na capa; aviso com o que falta.
+    const semPrazo = textosDoRelatorio({ ...base, partes: [parte({ quemRecebe: "split", situacao: "informacao", canal: "airbnb", pagamento: null })] });
+    expect(semPrazo.reservas[0]).toMatchObject({ situacao: "pelo canal, sem data: prazo do canal não cadastrado", situacaoTipo: "aviso" });
+    expect(semPrazo.avisos).toContain("O Airbnb paga a você direto, mas sem data: o prazo do canal não está cadastrado (reserva de Hóspede (10/10 → 13/10)) (R$ 722,50). A data aparece aqui quando a Sua Casa Leblon cadastrar o prazo do canal; confira o pagamento na sua conta do canal.");
     expect(antes.comoChega.linhas.map((l) => l.texto)).toContain("Previsto para 11/10: o Airbnb paga a você direto (3 noites de outubro de 2026 da reserva de Hóspede (10/10 → 13/10))");
     expect(t.repasses[1]).toMatchObject({ texto: "Transferido no fechamento, em 01/11/2026" });
     expect(t.posicao).toBe('Nenhum valor é estimado: o que o sistema ainda não tem aparece como "a receber" ou "a liberar". Um repasse "enviado" não confirma o crédito na sua conta: confira o comprovante no portal.');

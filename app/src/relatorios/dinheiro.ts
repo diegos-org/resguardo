@@ -42,7 +42,7 @@ export type ParteDoRelatorio = {
 /** De onde vem a linha: o canal pagou direto, um repasse antecipado (ou acerto por fora), o fechamento, ou valor a liberar. */
 export type OrigemLinha = "canal" | "antecipado" | "fechamento" | "a_liberar";
 /** Qual é o aviso, para a capa completar com o que o proprietário precisa (ou não precisa) fazer. */
-export type AvisoDaLinha = "a_liberar" | "voce_transfere" | "em_conferencia";
+export type AvisoDaLinha = "a_liberar" | "voce_transfere" | "em_conferencia" | "sem_prazo_do_canal";
 export type Linha = { texto: string; valor: number; tipo: "normal" | "aviso" | "info"; origem: OrigemLinha; aviso?: AvisoDaLinha };
 
 export const dataBr = (d: string) => d.split("-").reverse().join("/");
@@ -124,7 +124,8 @@ export function comoChega(
       linhas.push({ texto: `Previsto para ${dataCurta(p.pagamento!.data)}: o ${nomeDoCanal(canal, empresa)} paga a você direto (${noitesDe(p)})`, valor: p.suaParte, tipo: "info", origem: "canal" });
     }
     for (const p of doCanalDoMes.filter((x) => !x.pagamento)) {
-      linhas.push({ texto: `Pago a você direto pelo ${nomeDoCanal(canal, empresa)} (sem prazo do canal cadastrado): reserva de ${reservaDe(p)}`, valor: p.suaParte, tipo: "info", origem: "canal" });
+      // Sem prazo do canal cadastrado não há data de pagamento: nunca "pago" (a conciliação põe em "a receber"); aviso.
+      linhas.push({ texto: `O ${nomeDoCanal(canal, empresa)} paga a você direto, mas sem data: o prazo do canal não está cadastrado (reserva de ${reservaDe(p)})`, valor: p.suaParte, tipo: "aviso", origem: "canal", aviso: "sem_prazo_do_canal" });
     }
   }
   // 2. Já repassado (antecipados) e acertado por fora. O antecipado é um Pix só: com a data do Pix no mês (a do

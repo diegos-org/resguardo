@@ -85,7 +85,8 @@ assim como o tom de `requisitos/operations/RELATORIOS-E-TOM.md`.
    pagamento (ver "Resultado por noite, dinheiro por data de pagamento"), uma linha por
    caminho, só as que existirem: pago direto pelo canal (Airbnb, split) no mês — só o que o canal já
    pagou até a data do relatório; data do canal ainda no futuro aparece como "previsto para", na capa
-   e na conciliação; já repassado no mês
+   e na conciliação; sem prazo do canal cadastrado, aviso "sem data" (nunca "pago"), na capa e na
+   tabela de reservas; já repassado no mês
    (antecipados, com as datas — o Pix inteiro, como gravado no repasse e na tabela da página 3, com a
    parte de outro mês de uma reserva que atravessa e a de reservas de outro imóvel do mesmo dono, fora
    do relatório, discriminadas, como no "pago pelo canal"); a transferir no fechamento (valor, data e **quem paga quem**: "a Sua
