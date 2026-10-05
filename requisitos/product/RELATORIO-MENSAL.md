@@ -103,7 +103,7 @@ assim como o tom de `requisitos/operations/RELATORIOS-E-TOM.md`.
 7. Rodapé: "Os números são os mesmos do portal." e, **só quando há anexos** (PDF do painel e do
    e-mail), "O extrato oficial de cada canal está no fim, como emitido."; no PDF do portal, que
    sai sem anexos, a frase é "Os extratos oficiais dos canais ficam com a equipe: peça se
-   precisar." Página N de M (M conta só as páginas que existem). A capa cabe numa folha A4: foto,
+   precisar." Página N de M (M conta o PDF inteiro, inclusive as páginas copiadas dos extratos, que levam só o número). A capa cabe numa folha A4: foto,
    resultado, "como chega" e a tabela do bruto ao resultado; os números do mês ficam na página 2.
 
 ### 2. Números e reservas do mês

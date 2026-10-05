@@ -193,8 +193,9 @@ export async function listarExtratos(db: Db, organizacaoId: string, mes: string,
 
 /**
  * Os extratos guardados para um relatório — os imóveis dele **e** os favorecidos dele (o extrato de outro dono do mesmo
- * imóvel no mês nunca entra) — prontos para o fim do PDF (`Anexos.extratos`). Com mais de um imóvel, o selo do anexo
- * traz o código do imóvel junto do canal.
+ * imóvel no mês nunca entra) — prontos para o fim do PDF (`Anexos.extratos`). Com mais de um imóvel **no relatório**, o
+ * selo do anexo traz o código do imóvel junto do canal — mesmo que só um deles tenha extrato guardado, para o leitor saber
+ * de qual é.
  */
 export async function extratosDoRelatorio(db: Db, organizacaoId: string, f: { imovelIds: readonly string[]; proprietarioIds: readonly string[] }, mes: string): Promise<ExtratoAnexo[]> {
   const lista = await listarExtratos(db, organizacaoId, mes, f);
@@ -204,7 +205,7 @@ export async function extratosDoRelatorio(db: Db, organizacaoId: string, f: { im
     .from(arquivos)
     .where(and(eq(arquivos.organizacaoId, organizacaoId), inArray(arquivos.id, lista.map((l) => l.arquivoId))));
   const porId = new Map(conteudos.map((c) => [c.id, new Uint8Array(c.conteudo)]));
-  const varios = new Set(lista.map((l) => l.imovelId)).size > 1;
+  const varios = new Set(f.imovelIds).size > 1;
   return lista.flatMap((l) => {
     const bytes = porId.get(l.arquivoId);
     return bytes ? [{ canal: varios ? `${l.canalNome} · ${l.imovelCodigo}` : l.canalNome, nome: l.arquivoNome, bytes, paginas: l.paginas }] : [];

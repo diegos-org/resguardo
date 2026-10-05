@@ -575,16 +575,25 @@ class Folhas {
     this.y = topo - h - 10;
   }
 
-  /** Rodapés "Página N de M" em todas as páginas desenhadas aqui. */
-  rodapes() {
-    const total = this.paginas.length;
-    for (const [i, p] of this.paginas.entries()) {
+  /**
+   * Rodapés "Página N de M" em todas as páginas: as desenhadas aqui (com a linha e o texto do rodapé) e as páginas dos
+   * extratos copiadas no fim (`anexas`, só o número, no canto inferior direito da página, do tamanho que ela tiver), para
+   * o total bater com o PDF entregue.
+   */
+  rodapes(anexas: readonly PDFPage[] = []) {
+    const total = this.paginas.length + anexas.length;
+    const numero = (page: PDFPage, i: number) => {
       const num = this.limpo(`Página ${i + 1} de ${total}`);
+      page.drawText(num, { x: page.getWidth() - M - this.f.sans.widthOfTextAtSize(num, 7), y: RODAPE - 3, size: 7, font: this.f.sans, color: C.texto2 });
+      return num;
+    };
+    for (const [i, p] of this.paginas.entries()) {
       p.page.drawLine({ start: { x: M, y: RODAPE + 8 }, end: { x: L - M, y: RODAPE + 8 }, thickness: 0.5, color: C.borda });
-      p.page.drawText(num, { x: L - M - this.f.sans.widthOfTextAtSize(num, 7), y: RODAPE - 3, size: 7, font: this.f.sans, color: C.texto2 });
+      const num = numero(p.page, i);
       const largura = LARG - this.f.sans.widthOfTextAtSize(num, 7) - 12;
       p.page.drawText(cortar(this.limpo(p.rodape), this.f.sans, 7, largura), { x: M, y: RODAPE - 3, size: 7, font: this.f.sans, color: C.texto2 });
     }
+    for (const [k, page] of anexas.entries()) numero(page, this.paginas.length + k);
   }
 }
 
@@ -794,7 +803,8 @@ export async function gerarPdfRelatorio(t: TextosRelatorio, anexos: Anexos = {},
     p.paragrafo(t.anexosNota, f.sans, 7.5, C.texto2);
   }
 
-  p.rodapes();
+  // As páginas dos extratos entram antes da numeração, para "Página N de M" contar o PDF inteiro.
+  const anexas: PDFPage[] = [];
   for (const e of extratos) {
     let copiadas;
     try {
@@ -802,8 +812,9 @@ export async function gerarPdfRelatorio(t: TextosRelatorio, anexos: Anexos = {},
     } catch {
       throw new ErroRelatorio(`Não foi possível copiar as páginas do extrato${e.anexo.canal ? ` (${e.anexo.canal})` : ""}: exporte o PDF de novo.`);
     }
-    for (const pg of copiadas) doc.addPage(pg);
+    for (const pg of copiadas) anexas.push(doc.addPage(pg));
   }
+  p.rodapes(anexas);
 
   doc.setTitle(limpo(`${t.olho} — ${t.imovelTitulo}`));
   doc.setAuthor(limpo(t.empresa));
