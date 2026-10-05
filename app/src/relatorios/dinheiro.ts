@@ -73,7 +73,14 @@ function prazoTexto(partes: readonly ParteDoRelatorio[]): string {
  * "Como chega até você": uma linha por caminho, só os que existem, pela data em que o canal pagou. `rodapes`: o saldo
  * do fechamento de cada proprietário do relatório (um, em geral).
  */
-export function comoChega(partes: readonly ParteDoRelatorio[], mes: MesISO, rodapes: readonly Rodape[], empresa: string): { linhas: Linha[]; quemPagaQuem: string | null } {
+export function comoChega(
+  partes: readonly ParteDoRelatorio[],
+  mes: MesISO,
+  rodapes: readonly Rodape[],
+  empresa: string,
+  /** Os repasses do mês como gravados (valor do Pix inteiro e reservas incluídas), para a linha do antecipado bater com a tabela de repasses e o comprovante. */
+  repassesDoMes: readonly { id: string; valor: number; reservas: readonly string[] }[] = [],
+): { linhas: Linha[]; quemPagaQuem: string | null } {
   const { fim } = limitesDe(mes);
   const doMes = partes.filter((p) => p.mes === mes);
   const linhas: Linha[] = [];
@@ -110,28 +117,37 @@ export function comoChega(partes: readonly ParteDoRelatorio[], mes: MesISO, roda
       linhas.push({ texto: `Pago a você direto pelo ${nomeDoCanal(canal, empresa)} (sem prazo do canal cadastrado): reserva de ${reservaDe(p)}`, valor: p.suaParte, tipo: "info", origem: "canal" });
     }
   }
-  // 2. Já repassado (antecipados) e acertado por fora. O antecipado é um Pix só: com a data dele no mês, a linha traz o
-  //    repasse inteiro, inclusive as noites de outro mês de uma reserva que atravessa (é o valor da tabela de repasses e
-  //    do comprovante), discriminadas em linha própria; o antecipado datado em outro mês que pagou noites deste entra
-  //    como informação. O acerto por fora é só das noites do mês.
+  // 2. Já repassado (antecipados) e acertado por fora. O antecipado é um Pix só: com a data dele no mês (a mesma régua
+  //    da tabela de repasses da página 3), a linha traz o Pix inteiro — o valor gravado no repasse, que pode incluir
+  //    noites de outro mês de uma reserva que atravessa e reservas de outro imóvel do mesmo dono, fora deste relatório,
+  //    cada parte discriminada em linha própria; o antecipado datado em outro mês que pagou noites deste entra como
+  //    informação. O acerto por fora é só das noites do mês.
   const repassadas = partes.filter((p) => p.quemRecebe === "empresa" && p.repasse && p.repasse.tipo !== "fechamento");
   const porRepasse = new Map<string, ParteDoRelatorio[]>();
   for (const p of repassadas) porRepasse.set(p.repasse!.id, [...(porRepasse.get(p.repasse!.id) ?? []), p]);
-  const dataDoRepasse = (r: RepasseDaParte) => (r.situacao === "pago" && r.dataPagamento) || r.data;
-  for (const ps of [...porRepasse.values()].sort((a, b) => dataDoRepasse(a[0].repasse!).localeCompare(dataDoRepasse(b[0].repasse!)))) {
+  const dataDoPix = (r: RepasseDaParte) => (r.situacao === "pago" && r.dataPagamento) || r.data;
+  for (const ps of [...porRepasse.values()].sort((a, b) => a[0].repasse!.data.localeCompare(b[0].repasse!.data))) {
     const r = ps[0].repasse!;
-    const data = dataDoRepasse(r);
+    const data = dataDoPix(r);
     const deste = ps.filter((p) => p.mes === mes).sort(porMesECheckin);
     if (r.tipo === "por_fora") {
       if (deste.length) linhas.push({ texto: `Acertado por fora, antes do início do sistema (reserva de ${lista(unicos(deste.map((p) => nomeOuHospede(p.hospede))))})`, valor: soma(deste, suaParte), tipo: "info", origem: "antecipado" });
       continue;
     }
     if (r.situacao !== "pago" && r.situacao !== "a_pagar") continue;
-    if (emMes(data, mes)) {
-      const reservas = lista(unicos(ps.map((p) => nomeOuHospede(p.hospede))));
-      if (r.situacao === "pago") linhas.push({ texto: `Já repassado em ${dataCurta(data)} (repasse antecipado: ${reservas}; Pix com comprovante no portal)`, valor: soma(ps, suaParte), tipo: "normal", origem: "antecipado" });
-      else linhas.push({ texto: `Repasse antecipado de ${dataCurta(data)} a pagar (${reservas})`, valor: soma(ps, suaParte), tipo: "info", origem: "antecipado" });
+    if (emMes(r.data, mes)) {
+      const nomes = unicos(ps.map((p) => nomeOuHospede(p.hospede)));
+      const gravado = repassesDoMes.find((x) => x.id === r.id);
+      const valor = gravado?.valor ?? soma(ps, suaParte);
+      if (r.situacao === "pago") linhas.push({ texto: `Já repassado em ${dataCurta(data)} (repasse antecipado: ${lista(nomes)}; Pix com comprovante no portal)`, valor, tipo: "normal", origem: "antecipado" });
+      else linhas.push({ texto: `Repasse antecipado de ${dataCurta(data)} a pagar (${lista(nomes)})`, valor, tipo: "info", origem: "antecipado" });
       for (const p of ps.filter((x) => x.mes !== mes).sort(porMesECheckin)) linhas.push(pagaJunto(p, "antecipado"));
+      // O que o repasse pagou além das partes deste relatório (reserva de outro imóvel do dono, ou de um mês fora dos que o relatório carrega).
+      const foraDoRelatorio = gravado ? gravado.valor - soma(ps, (p) => p.repasse!.valor) : 0;
+      if (foraDoRelatorio > 0) {
+        const outras = gravado!.reservas.filter((n) => !nomes.includes(n));
+        linhas.push({ texto: `Desse valor, a parte de ${outras.length ? lista(outras) : "outras reservas"}, fora deste relatório (outro imóvel seu ou outro mês): entra no relatório de lá`, valor: foraDoRelatorio, tipo: "info", origem: "antecipado" });
+      }
     } else {
       for (const p of deste) {
         linhas.push({

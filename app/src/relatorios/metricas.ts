@@ -146,15 +146,15 @@ export type DadosDoMes = {
    */
   resultado: number | null;
   /**
-   * Bruto das reservas (parte do mês), em centavos, só das noites dentro da posse do imóvel (proporcional por noite).
-   * No mês parcial, só a parte das noites confirmadas até o dia. Assim a diária média divide bruto e noites do mesmo
-   * intervalo. O dinheiro da capa segue o livro, sem recorte.
+   * Bruto das noites ocupadas contadas abaixo, em centavos: o valor de cada estadia rateado igual por noite (a mesma
+   * conta do livro), só das noites dentro da posse e do período (no mês parcial, até o dia). Assim a diária média divide
+   * bruto e noites do mesmo conjunto. O dinheiro da capa segue o livro, sem recorte.
    */
   bruto: number;
   /**
-   * Noites ocupadas dentro do período: reservas confirmadas (cancelada ou pendente com valor no livro não ocupa noite),
-   * só as noites dentro da posse do imóvel (`trechosNaPosse`), cada noite de cada imóvel contada uma vez e fora das
-   * bloqueadas (`noitesOcupadasNoIntervalo`).
+   * Noites ocupadas dentro do período: estadias confirmadas nos imóveis do relatório, independentemente de em que livro
+   * está o dinheiro (cancelada ou pendente não ocupa noite), só as noites dentro da posse do imóvel (`trechosNaPosse`),
+   * cada noite de cada imóvel contada uma vez e fora das bloqueadas (`noitesOcupadasNoIntervalo`).
    */
   noitesOcupadas: number;
   /** Noites do período considerado por imóvel (mês inteiro; no mês parcial, só até o dia). */

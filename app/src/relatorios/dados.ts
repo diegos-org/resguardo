@@ -7,6 +7,7 @@ import { NOMES_TIPO } from "@/contratos/regras";
 import { auditoria, bloqueios, contratos, lancamentos, proprietarioImoveis, reservas, type TipoContrato } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
+import { ratear } from "@/lib/rateio";
 import { lancamentoEmVigor } from "@/portal/posse";
 import { reservasDoPortal } from "@/portal/reservas";
 import { resumoDoProprietario } from "@/portal/resumo";
@@ -139,7 +140,7 @@ export async function metricasDoRelatorio(
   const dadosDoMes = async (m: MesISO, ate: string | null): Promise<DadosDoMes> => {
     const { inicio: de, fim } = limitesDe(m);
     const fimConsiderado = ate ? somarDias(ate, 1) : fim;
-    const [resumo, resumoAte, lista, bloqueiosDoDono] = await Promise.all([
+    const [resumo, resumoAte, lista, bloqueiosDoDono, estadias] = await Promise.all([
       resumoDoProprietario(db, organizacaoId, { proprietarioIds: donoIds, imovelIds, semImovel: o.todosOsImoveis, periodo: { inicio: de, fim } }),
       ate ? resumoDoProprietario(db, organizacaoId, { proprietarioIds: donoIds, imovelIds, semImovel: o.todosOsImoveis, periodo: { inicio: de, fim: fimConsiderado } }) : Promise.resolve(null),
       reservasDoPortal(db, organizacaoId, { proprietarioIds: donoIds, imovelIds, periodo: { inicio: de, fim } }),
@@ -151,31 +152,35 @@ export async function metricasDoRelatorio(
             .from(bloqueios)
             .where(and(eq(bloqueios.organizacaoId, organizacaoId), inArray(bloqueios.imovelId, imovelIds), inArray(bloqueios.proprietarioId, donosValidos), eq(bloqueios.fonte, "proprietario"), lt(bloqueios.inicio, fim), gt(bloqueios.fim, de)))
         : Promise.resolve([]),
+      // Estadias confirmadas nos imóveis do relatório, independentemente de em que livro está o dinheiro: a estadia que
+      // atravessa a troca de dono fica no livro do dono antigo, mas as noites depois da troca são do dono novo.
+      imovelIds.length
+        ? db
+            .select({ imovelId: reservas.imovelId, checkin: reservas.checkin, checkout: reservas.checkout, valorBruto: reservas.valorBruto })
+            .from(reservas)
+            .where(and(eq(reservas.organizacaoId, organizacaoId), eq(reservas.estado, "confirmada"), inArray(reservas.imovelId, imovelIds), lt(reservas.checkin, fim), gt(reservas.checkout, de)))
+        : Promise.resolve([]),
     ]);
     const posse = (imovelId: string) => posseDe.get(imovelId) ?? [{ desde: null, ate: null }];
     const bloqueiosNaPosse = bloqueiosDoDono.flatMap((b) => trechosNaPosse(b.inicio, b.fim, posse(b.imovelId)).map((t) => ({ imovelId: b.imovelId, ...t })));
-    // Só reserva confirmada ocupa noite: a cancelada ou pendente que ainda tem valor no livro entra na lista para
-    // explicar o valor, não como estadia. E só as noites dentro da posse: uma estadia que atravessa a troca de dono
-    // conta, para cada dono, as noites em que o imóvel era dele (o mesmo recorte dos bloqueios), senão o dono antigo
-    // passaria de 100% de ocupação. O bruto da diária média acompanha o recorte, proporcional por noite; o dinheiro do
-    // resultado segue o livro, que não é recortado.
-    const confirmadas = lista.filter((r) => r.confirmada);
-    const estadiasNaPosse = (r: (typeof lista)[number]) => trechosNaPosse(r.checkin, r.checkout, posse(r.imovelId)).map((t) => ({ imovelId: r.imovelId, checkin: t.inicio, checkout: t.fim }));
-    const noitesNaPosseAte = (r: (typeof lista)[number], ate: string) => estadiasNaPosse(r).reduce((s, e) => s + noitesNoIntervalo(e.checkin, e.checkout, de, ate), 0);
-    const noitesAte = (r: { checkin: string; checkout: string }) => noitesNoIntervalo(r.checkin, r.checkout, de, fimConsiderado);
-    // Mês parcial: a diária média divide bruto e noites do mesmo intervalo — o bruto é o das noites já passadas (e na
-    // posse), proporcional por noite em cada reserva (a mesma divisão por noite que o livro faz nas estadas entre
-    // meses); uma estadia futura já confirmada não entra em nenhum dos dois. Mês inteiro: o bruto do livro, menos a
-    // parte das noites fora da posse.
-    const brutoNaPosse = (r: (typeof lista)[number], ate: string) => {
-      const noMes = noitesNoIntervalo(r.checkin, r.checkout, de, fim);
-      return noMes > 0 ? Math.round((r.bruto * noitesNaPosseAte(r, ate)) / noMes) : 0;
+    // Ocupação e diária média são fatos do imóvel: toda estadia confirmada (cancelada ou pendente com valor no livro não
+    // ocupa noite), recortada à posse de cada dono (o mesmo recorte dos bloqueios) e ao período — a estadia que atravessa
+    // a troca de dono conta, para cada um, as noites em que o imóvel era dele, e ninguém passa de 100%. O bruto da diária
+    // é o valor da reserva rateado igual por noite (a mesma conta do livro), só das noites contadas; no mês parcial, só
+    // até o dia (uma estadia futura já confirmada não entra nem no bruto nem nas noites). O dinheiro do resultado segue o
+    // livro, que não é recortado.
+    type Estadia = (typeof estadias)[number];
+    const estadiasNaPosse = (r: Estadia) => trechosNaPosse(r.checkin, r.checkout, posse(r.imovelId)).map((t) => ({ imovelId: r.imovelId, checkin: t.inicio, checkout: t.fim }));
+    const noitesNaPosseAte = (r: Estadia, ate: string) => estadiasNaPosse(r).reduce((s, e) => s + noitesNoIntervalo(e.checkin, e.checkout, de, ate), 0);
+    const brutoNaPosse = (r: Estadia, ate: string) => {
+      const total = noitesNoIntervalo(r.checkin, r.checkout, r.checkin, r.checkout);
+      const noites = noitesNaPosseAte(r, ate);
+      return total > 0 && noites > 0 ? ratear(r.valorBruto ?? 0, [noites, total - noites])[0] : 0;
     };
-    const brutoAte = confirmadas.reduce((s, r) => s + brutoNaPosse(r, fimConsiderado), 0);
-    const brutoForaDaPosse = confirmadas.reduce((s, r) => s + (noitesNoIntervalo(r.checkin, r.checkout, de, fim) > 0 ? r.bruto - brutoNaPosse(r, fim) : 0), 0);
+    const noitesAte = (r: { checkin: string; checkout: string }) => noitesNoIntervalo(r.checkin, r.checkout, de, fimConsiderado);
     // Mês parcial: o resultado também vai só até o dia — a parte de cada reserva confirmada proporcional às noites já
-    // passadas (como o bruto), mais o que não é reserva (ajustes) e menos as despesas com data até o dia — para a barra
-    // do mês corrente e o acumulado ficarem no mesmo intervalo dos outros números. Mês inteiro: o livro.
+    // passadas, mais o que não é reserva (ajustes) e menos as despesas com data até o dia — para a barra do mês corrente
+    // e o acumulado ficarem no mesmo intervalo dos outros números. Mês inteiro: o livro.
     const fracaoAte = (r: (typeof lista)[number]) => {
       const noMes = noitesNoIntervalo(r.checkin, r.checkout, de, fim);
       return r.confirmada && noMes > 0 ? noitesAte(r) / noMes : 1;
@@ -184,9 +189,9 @@ export async function metricasDoRelatorio(
     return {
       mes: m,
       resultado: resultadoAte ?? resumo.suaParte - resumo.despesas,
-      bruto: ate ? brutoAte : resumo.receitaBruta - brutoForaDaPosse,
+      bruto: estadias.reduce((s, r) => s + brutoNaPosse(r, fimConsiderado), 0),
       // Cada noite de cada imóvel conta uma vez (overbooking não passa de 100%) e noite bloqueada para uso próprio não conta.
-      noitesOcupadas: noitesOcupadasNoIntervalo(confirmadas.flatMap(estadiasNaPosse), bloqueiosNaPosse, de, fimConsiderado),
+      noitesOcupadas: noitesOcupadasNoIntervalo(estadias.flatMap(estadiasNaPosse), bloqueiosNaPosse, de, fimConsiderado),
       noitesDoPeriodo: ate ? Number(ate.slice(8, 10)) : diasDoMes(m),
       imoveis: imovelIds.length,
       diasImovel: diasDeImovel(imovelIds.flatMap(posse), de, fimConsiderado),
