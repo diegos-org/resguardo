@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { acumuladoDoAno, diariaMedia, diasDeImovel, diasDoMes, escalaEmMil, intervalosDePosse, limitesDe, mesCurto, nomeDoMes, noitesBloqueadas, noitesNoIntervalo, noitesOcupadasNoIntervalo, ocupacao, quadrosDoMes, serieDe12, somarMeses, variacao } from "./metricas";
+import { acumuladoDoAno, diariaMedia, diasDeImovel, diasDoMes, escalaEmMil, intervalosDePosse, limitesDe, mesCurto, nomeDoMes, noitesBloqueadas, noitesNoIntervalo, noitesOcupadasNoIntervalo, ocupacao, quadrosDoMes, serieDe12, somarMeses, trechosNaPosse, variacao } from "./metricas";
 
 const mes = (over: Partial<Parameters<typeof quadrosDoMes>[0]["atual"]> = {}) => ({ mes: "2026-10", resultado: 1503780, bruto: 1945000, noitesOcupadas: 18, noitesDoPeriodo: 31, imoveis: 1, diasImovel: 31, noitesBloqueadas: 2, ...over });
 
@@ -85,6 +85,18 @@ describe("métricas do relatório mensal (M5.7, regras puras)", () => {
     expect(escalaEmMil(1503780)).toEqual({ teto: 16, passo: 4 });
     expect(escalaEmMil(0)).toEqual({ teto: 1, passo: 1 });
     expect(escalaEmMil(42_000_00)).toEqual({ teto: 60, passo: 20 });
+  });
+
+  it("trechos na posse: uma estadia ou bloqueio que atravessa a troca de dono fica só com os dias de cada dono; fora da posse, nada", () => {
+    expect(trechosNaPosse("2026-10-10", "2026-10-13", [{ desde: null, ate: "2026-10-11" }])).toEqual([{ inicio: "2026-10-10", fim: "2026-10-11" }]);
+    expect(trechosNaPosse("2026-10-10", "2026-10-13", [{ desde: "2026-10-11", ate: null }])).toEqual([{ inicio: "2026-10-11", fim: "2026-10-13" }]);
+    expect(trechosNaPosse("2026-10-10", "2026-10-13", [{ desde: null, ate: null }])).toEqual([{ inicio: "2026-10-10", fim: "2026-10-13" }]);
+    expect(trechosNaPosse("2026-10-10", "2026-10-13", [{ desde: "2026-11-05", ate: null }])).toEqual([]);
+    // Dois intervalos (o imóvel saiu e voltou): a estadia longa fica em dois trechos.
+    expect(trechosNaPosse("2026-10-01", "2026-12-10", [{ desde: null, ate: "2026-10-11" }, { desde: "2026-12-01", ate: null }])).toEqual([{ inicio: "2026-10-01", fim: "2026-10-11" }, { inicio: "2026-12-01", fim: "2026-12-10" }]);
+    // Noites ocupadas só dentro da posse: o dono antigo conta 1 noite da estadia de 10 a 13/10, não 3.
+    const trechos = trechosNaPosse("2026-10-10", "2026-10-13", [{ desde: null, ate: "2026-10-11" }]).map((t) => ({ imovelId: "a", checkin: t.inicio, checkout: t.fim }));
+    expect(noitesOcupadasNoIntervalo(trechos, [], "2026-10-01", "2026-11-01")).toBe(1);
   });
 
   it("intervalos de posse: pelo histórico (ganhou/perdeu) e pelos vínculos; perda sem ganho = desde sempre; imóvel que volta = dois intervalos; sem nada = até o vínculo do seguinte", () => {

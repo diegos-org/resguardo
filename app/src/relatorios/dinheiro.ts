@@ -39,7 +39,11 @@ export type ParteDoRelatorio = {
   repasse: RepasseDaParte | null;
 };
 
-export type Linha = { texto: string; valor: number; tipo: "normal" | "aviso" | "info" };
+/** De onde vem a linha: o canal pagou direto, um repasse antecipado (ou acerto por fora), o fechamento, ou valor a liberar. */
+export type OrigemLinha = "canal" | "antecipado" | "fechamento" | "a_liberar";
+/** Qual é o aviso, para a capa completar com o que o proprietário precisa (ou não precisa) fazer. */
+export type AvisoDaLinha = "a_liberar" | "voce_transfere" | "em_conferencia";
+export type Linha = { texto: string; valor: number; tipo: "normal" | "aviso" | "info"; origem: OrigemLinha; aviso?: AvisoDaLinha };
 
 export const dataBr = (d: string) => d.split("-").reverse().join("/");
 /** "29/9" (o ano está no título). */
@@ -76,46 +80,68 @@ export function comoChega(partes: readonly ParteDoRelatorio[], mes: MesISO, roda
   // 1. Pago a você direto pelo canal (split), pela data do pagamento: tudo o que o canal pagou no mês, inclusive as
   //    noites de outro mês de uma reserva que atravessa (o extrato do canal e a conta do proprietário mostram a reserva
   //    inteira); essa parte sai discriminada e entra no resultado do mês dela (ponte na conciliação).
+  const suaParte = (p: ParteDoRelatorio) => p.suaParte;
+  const porMesECheckin = (a: ParteDoRelatorio, b: ParteDoRelatorio) => a.mes.localeCompare(b.mes) || a.checkin.localeCompare(b.checkin);
+  const noitesDe = (p: ParteDoRelatorio) => `${p.noitesNoMes} ${plural(p.noitesNoMes, "noite", "noites")} de ${nomeDoMes(p.mes)} da reserva de ${reservaDe(p)}`;
+  /** A parte de outro mês paga junto com as deste (reserva que atravessa): sai discriminada e entra no resultado do mês dela. */
+  const pagaJunto = (p: ParteDoRelatorio, origem: OrigemLinha): Linha => ({
+    texto: `Desse valor, ${noitesDe(p)}, ${plural(p.noitesNoMes, "paga", "pagas")} junto: ${plural(p.noitesNoMes, "entra", "entram")} no resultado de ${nomeDoMes(p.mes)}`,
+    valor: p.suaParte,
+    tipo: "info",
+    origem,
+  });
   const split = partes.filter((p) => p.quemRecebe === "split");
   for (const canal of unicos(split.map((p) => p.canal))) {
     const doCanal = split.filter((p) => p.canal === canal);
     const noMes = doCanal.filter((p) => emMes(p.pagamento?.data, mes));
     if (noMes.length) {
       const n = unicos(noMes.map((p) => p.reservaId)).length;
-      linhas.push({ texto: `Pago a você direto pelo ${nomeDoCanal(canal, empresa)} em ${nomeDoMes(mes)} (${n} ${plural(n, "reserva", "reservas")}${prazoTexto(noMes)})`, valor: soma(noMes, (p) => p.suaParte), tipo: "normal" });
-      for (const p of noMes.filter((x) => x.mes !== mes).sort((a, b) => a.mes.localeCompare(b.mes) || a.checkin.localeCompare(b.checkin))) {
-        linhas.push({
-          texto: `Desse valor, ${p.noitesNoMes} ${plural(p.noitesNoMes, "noite", "noites")} de ${nomeDoMes(p.mes)} da reserva de ${reservaDe(p)}, ${plural(p.noitesNoMes, "paga", "pagas")} junto: ${plural(p.noitesNoMes, "entra", "entram")} no resultado de ${nomeDoMes(p.mes)}`,
-          valor: p.suaParte,
-          tipo: "info",
-        });
-      }
+      linhas.push({ texto: `Pago a você direto pelo ${nomeDoCanal(canal, empresa)} em ${nomeDoMes(mes)} (${n} ${plural(n, "reserva", "reservas")}${prazoTexto(noMes)})`, valor: soma(noMes, suaParte), tipo: "normal", origem: "canal" });
+      for (const p of noMes.filter((x) => x.mes !== mes).sort(porMesECheckin)) linhas.push(pagaJunto(p, "canal"));
     }
     const doCanalDoMes = doCanal.filter((p) => p.mes === mes);
     for (const p of doCanalDoMes.filter((x) => antesDe(x.pagamento?.data, mes))) {
-      linhas.push({
-        texto: `Já pago pelo ${nomeDoCanal(canal, empresa)} em ${dataCurta(p.pagamento!.data)}: ${p.noitesNoMes} ${plural(p.noitesNoMes, "noite", "noites")} de ${nomeDoMes(mes)} da reserva de ${reservaDe(p)} — está no extrato de ${nomeDoMes(p.pagamento!.data.slice(0, 7))}`,
-        valor: p.suaParte,
-        tipo: "info",
-      });
+      linhas.push({ texto: `Já pago pelo ${nomeDoCanal(canal, empresa)} em ${dataCurta(p.pagamento!.data)}: ${noitesDe(p)} — está no extrato de ${nomeDoMes(p.pagamento!.data.slice(0, 7))}`, valor: p.suaParte, tipo: "info", origem: "canal" });
     }
     for (const p of doCanalDoMes.filter((x) => depoisDe(x.pagamento?.data, mes))) {
-      linhas.push({ texto: `Pago a você direto pelo ${nomeDoCanal(canal, empresa)} em ${dataCurta(p.pagamento!.data)}, depois do mês: ${p.noitesNoMes} ${plural(p.noitesNoMes, "noite", "noites")} da reserva de ${reservaDe(p)}`, valor: p.suaParte, tipo: "info" });
+      linhas.push({ texto: `Pago a você direto pelo ${nomeDoCanal(canal, empresa)} em ${dataCurta(p.pagamento!.data)}, depois do mês: ${p.noitesNoMes} ${plural(p.noitesNoMes, "noite", "noites")} da reserva de ${reservaDe(p)}`, valor: p.suaParte, tipo: "info", origem: "canal" });
     }
     for (const p of doCanalDoMes.filter((x) => !x.pagamento)) {
-      linhas.push({ texto: `Pago a você direto pelo ${nomeDoCanal(canal, empresa)} (sem prazo do canal cadastrado): reserva de ${reservaDe(p)}`, valor: p.suaParte, tipo: "info" });
+      linhas.push({ texto: `Pago a você direto pelo ${nomeDoCanal(canal, empresa)} (sem prazo do canal cadastrado): reserva de ${reservaDe(p)}`, valor: p.suaParte, tipo: "info", origem: "canal" });
     }
   }
-  // 2. Já repassado no mês (antecipados) e acertado por fora.
-  const repassadas = doMes.filter((p) => p.quemRecebe === "empresa" && p.repasse && p.repasse.tipo !== "fechamento");
+  // 2. Já repassado (antecipados) e acertado por fora. O antecipado é um Pix só: com a data dele no mês, a linha traz o
+  //    repasse inteiro, inclusive as noites de outro mês de uma reserva que atravessa (é o valor da tabela de repasses e
+  //    do comprovante), discriminadas em linha própria; o antecipado datado em outro mês que pagou noites deste entra
+  //    como informação. O acerto por fora é só das noites do mês.
+  const repassadas = partes.filter((p) => p.quemRecebe === "empresa" && p.repasse && p.repasse.tipo !== "fechamento");
   const porRepasse = new Map<string, ParteDoRelatorio[]>();
   for (const p of repassadas) porRepasse.set(p.repasse!.id, [...(porRepasse.get(p.repasse!.id) ?? []), p]);
-  for (const [, ps] of [...porRepasse.entries()].sort(([, a], [, b]) => a[0].repasse!.data.localeCompare(b[0].repasse!.data))) {
+  const dataDoRepasse = (r: RepasseDaParte) => (r.situacao === "pago" && r.dataPagamento) || r.data;
+  for (const ps of [...porRepasse.values()].sort((a, b) => dataDoRepasse(a[0].repasse!).localeCompare(dataDoRepasse(b[0].repasse!)))) {
     const r = ps[0].repasse!;
-    const reservas = lista(unicos(ps.map((p) => nomeOuHospede(p.hospede))));
-    if (r.tipo === "por_fora") linhas.push({ texto: `Acertado por fora, antes do início do sistema (reserva de ${reservas})`, valor: soma(ps, (p) => p.suaParte), tipo: "info" });
-    else if (r.situacao === "pago") linhas.push({ texto: `Já repassado em ${dataCurta(r.dataPagamento ?? r.data)} (repasse antecipado: ${reservas}; Pix com comprovante no portal)`, valor: soma(ps, (p) => p.suaParte), tipo: "normal" });
-    else if (r.situacao === "a_pagar") linhas.push({ texto: `Repasse antecipado de ${dataCurta(r.data)} a pagar (${reservas})`, valor: soma(ps, (p) => p.suaParte), tipo: "info" });
+    const data = dataDoRepasse(r);
+    const deste = ps.filter((p) => p.mes === mes).sort(porMesECheckin);
+    if (r.tipo === "por_fora") {
+      if (deste.length) linhas.push({ texto: `Acertado por fora, antes do início do sistema (reserva de ${lista(unicos(deste.map((p) => nomeOuHospede(p.hospede))))})`, valor: soma(deste, suaParte), tipo: "info", origem: "antecipado" });
+      continue;
+    }
+    if (r.situacao !== "pago" && r.situacao !== "a_pagar") continue;
+    if (emMes(data, mes)) {
+      const reservas = lista(unicos(ps.map((p) => nomeOuHospede(p.hospede))));
+      if (r.situacao === "pago") linhas.push({ texto: `Já repassado em ${dataCurta(data)} (repasse antecipado: ${reservas}; Pix com comprovante no portal)`, valor: soma(ps, suaParte), tipo: "normal", origem: "antecipado" });
+      else linhas.push({ texto: `Repasse antecipado de ${dataCurta(data)} a pagar (${reservas})`, valor: soma(ps, suaParte), tipo: "info", origem: "antecipado" });
+      for (const p of ps.filter((x) => x.mes !== mes).sort(porMesECheckin)) linhas.push(pagaJunto(p, "antecipado"));
+    } else {
+      for (const p of deste) {
+        linhas.push({
+          texto: r.situacao === "pago" ? `Já repassado em ${dataCurta(data)} (repasse antecipado de ${nomeDoMes(data.slice(0, 7))}): ${noitesDe(p)}` : `Repasse antecipado de ${dataCurta(data)} a pagar: ${noitesDe(p)}`,
+          valor: p.suaParte,
+          tipo: "info",
+          origem: "antecipado",
+        });
+      }
+    }
   }
   // 3. O fechamento: a transferir, transferido, ou o que você deve.
   let quemPagaQuem: string | null = null;
@@ -124,26 +150,26 @@ export function comoChega(partes: readonly ParteDoRelatorio[], mes: MesISO, roda
     const v = formatBRL(r.valor);
     switch (r.situacao) {
       case "pago":
-        linhas.push({ texto: `Transferido no fechamento, em ${dataBr(r.dataPagamento!)}${quem}`, valor: r.valor, tipo: "normal" });
+        linhas.push({ texto: `Transferido no fechamento, em ${dataBr(r.dataPagamento!)}${quem}`, valor: r.valor, tipo: "normal", origem: "fechamento" });
         quemPagaQuem = `A ${empresa} transferiu ${v} para ${r.nome} em ${dataBr(r.dataPagamento!)}, pela chave Pix cadastrada no portal (comprovante no portal).`;
         break;
       case "fechado":
       case "empresa_deve":
-        linhas.push({ texto: `A transferir no fechamento, ${r.situacao === "fechado" ? "mês já fechado" : `previsto para ${dataBr(fim)}`}${quem}`, valor: r.valor, tipo: "normal" });
+        linhas.push({ texto: `A transferir no fechamento, ${r.situacao === "fechado" ? "mês já fechado" : `previsto para ${dataBr(fim)}`}${quem}`, valor: r.valor, tipo: "normal", origem: "fechamento" });
         quemPagaQuem = `A ${empresa} transfere ${v} para ${r.nome}${r.situacao === "fechado" ? "" : ` em ${dataBr(fim)}`}, pela chave Pix cadastrada no portal.`;
         break;
       case "proprietario_deve":
-        linhas.push({ texto: `Você transfere à ${empresa} no fechamento${quem}`, valor: r.valor, tipo: "aviso" });
+        linhas.push({ texto: `Você transfere à ${empresa} no fechamento${quem}`, valor: r.valor, tipo: "aviso", origem: "fechamento", aviso: "voce_transfere" });
         quemPagaQuem = `${r.nome} transfere ${v} para a ${empresa} (as despesas do mês passaram da sua parte): chave Pix da empresa no portal.`;
         break;
       case "parcial":
-        linhas.push({ texto: `Saldo parcial a acertar no fechamento de ${dataBr(fim)}${r.aFavor === "proprietario" ? " (a seu favor)" : r.aFavor === "empresa" ? ` (a favor da ${empresa})` : ""}${quem}`, valor: r.valor, tipo: "info" });
+        linhas.push({ texto: `Saldo parcial a acertar no fechamento de ${dataBr(fim)}${r.aFavor === "proprietario" ? " (a seu favor)" : r.aFavor === "empresa" ? ` (a favor da ${empresa})` : ""}${quem}`, valor: r.valor, tipo: "info", origem: "fechamento" });
         break;
       case "no_repasse_posterior":
-        linhas.push({ texto: `Saldo deste mês levado pelo repasse de ${nomeDoMes(r.repassePosterior!)}${quem}`, valor: r.valor, tipo: "info" });
+        linhas.push({ texto: `Saldo deste mês levado pelo repasse de ${nomeDoMes(r.repassePosterior!)}${quem}`, valor: r.valor, tipo: "info", origem: "fechamento" });
         break;
       case "em_conferencia":
-        linhas.push({ texto: `Em conferência: o valor do fechamento sai depois que a ${empresa} resolver${quem}`, valor: r.valor, tipo: "aviso" });
+        linhas.push({ texto: `Em conferência: o valor do fechamento sai depois que a ${empresa} resolver${quem}`, valor: r.valor, tipo: "aviso", origem: "fechamento", aviso: "em_conferencia" });
         break;
       default:
         break;
@@ -151,7 +177,7 @@ export function comoChega(partes: readonly ParteDoRelatorio[], mes: MesISO, roda
   }
   // 4. A liberar (empresa recebe, dinheiro ainda não com ela) e quem recebe a confirmar.
   const aLiberar = doMes.filter((p) => p.quemRecebe !== "split" && p.situacao === "a_liberar");
-  for (const p of aLiberar) linhas.push({ texto: `A liberar — ${reservaDe(p)}, ${nomeDoCanal(p.canal, empresa)}: ${p.motivo}`, valor: p.suaParte, tipo: "aviso" });
+  for (const p of aLiberar) linhas.push({ texto: `A liberar — ${reservaDe(p)}, ${nomeDoCanal(p.canal, empresa)}: ${p.motivo}`, valor: p.suaParte, tipo: "aviso", origem: "a_liberar", aviso: "a_liberar" });
   if (aLiberar.length && quemPagaQuem) quemPagaQuem += " O valor a liberar entra no próximo repasse assim que o canal pagar.";
   return { linhas, quemPagaQuem };
 }

@@ -17,7 +17,7 @@ import { type ResumoPortal, resumoDoProprietario } from "@/portal/resumo";
 import { type Rodape, rodapeDoPortal } from "@/portal/rodape";
 import { nomeMes, type Repasse } from "@/repasses/repasses";
 import { type ContratoDoRelatorio, contratosDoRelatorio, type DespesaDoRelatorio, despesasDoRelatorio, type MetricasDoRelatorio, metricasDoRelatorio, partesDoRelatorio, type RepasseDoRelatorio, repassesDoRelatorio } from "./dados";
-import { comoChega, conciliacao, conciliacaoFecha, dataCurta, type Linha, type LinhaConciliacao, nomeDoCanal, type ParteDoRelatorio, primeiroNome } from "./dinheiro";
+import { type AvisoDaLinha, comoChega, conciliacao, conciliacaoFecha, dataCurta, type Linha, type LinhaConciliacao, nomeDoCanal, type ParteDoRelatorio, primeiroNome } from "./dinheiro";
 import { acumuladoDoAno, mesISO, type MesISO, nomeDoMes, type PontoDaSerie, type Quadro, quadrosDoMes, serieDe12 } from "./metricas";
 
 export type Dono = { id: string; nome: string };
@@ -340,8 +340,15 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
   const emConferencia = r.emConferencia
     ? `Em conferência: há itens deste mês ainda não definidos${r.acertoPendente !== 0 ? ` (${formatBRL(Math.abs(r.acertoPendente))} ${r.acertoPendente > 0 ? "a seu favor" : `a favor da ${e}`})` : ""}. Eles ficaram fora do resultado acima, que ainda não é definitivo.`
     : null;
+  // O complemento de cada aviso diz o que o proprietário precisa (ou não precisa) fazer: só o valor a liberar "entra no
+  // próximo repasse"; quando é ele quem transfere, o aviso pede a transferência, nunca o contrário.
+  const complemento: Record<AvisoDaLinha, string> = {
+    a_liberar: "Entra no próximo repasse assim que o canal pagar; você não precisa fazer nada.",
+    voce_transfere: `As despesas do mês passaram da sua parte; a chave Pix da ${e} está no portal.`,
+    em_conferencia: "Esse valor é provisório e pode mudar; você não precisa fazer nada até a conferência terminar.",
+  };
   const avisos = [
-    ...chega.linhas.filter((l) => l.tipo === "aviso").map((l) => `${l.texto} (${formatBRL(l.valor)}). Entra no próximo repasse assim que o canal pagar; você não precisa fazer nada.`),
+    ...chega.linhas.filter((l) => l.tipo === "aviso").map((l) => `${l.texto} (${formatBRL(l.valor)}).${l.aviso ? ` ${complemento[l.aviso]}` : ""}`),
     ...(emConferencia ? [emConferencia] : []),
     ...d.rodape.filter((x) => x.diferenca !== 0).map((x) => `Depois do fechamento, o acerto deste mês mudou ${formatBRL(Math.abs(x.diferenca))} (${x.diferenca > 0 ? "a seu favor" : `a favor da ${e}`}): isso entra no próximo repasse.`),
   ];
@@ -420,9 +427,8 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
       tipo: "normal" as const,
       etiqueta: x.tipo === "por_fora" ? "acertado fora do sistema" : x.situacao === "pago" ? `pago em ${dataCurta(x.dataPagamento ?? x.data)} · comprovante no portal` : x.situacao === "a_pagar" ? "a pagar" : x.situacao,
     })),
-    ...chega.linhas
-      .filter((l) => !l.texto.startsWith("Pago a você direto") && !l.texto.startsWith("Já pago pelo") && !l.texto.startsWith("Já repassado") && !l.texto.startsWith("Repasse antecipado") && !l.texto.startsWith("Acertado por fora"))
-      .map((l) => ({ texto: l.texto, valor: formatBRL(l.valor), tipo: l.tipo, etiqueta: l.tipo === "aviso" && l.texto.startsWith("A liberar") ? "próximo repasse" : undefined })),
+    // O que o canal pagou direto e os antecipados já estão acima (tabela de repasses) ou na conciliação; aqui só o fechamento e o a liberar.
+    ...chega.linhas.filter((l) => l.origem === "fechamento" || l.origem === "a_liberar").map((l) => ({ texto: l.texto, valor: formatBRL(l.valor), tipo: l.tipo, etiqueta: l.origem === "a_liberar" ? "próximo repasse" : undefined })),
   ];
   const despesas: LinhaValor[] = d.despesas.map((x) => ({ texto: `${dataCurta(x.data)} — ${x.descricao}`, valor: formatBRL(x.valor), tipo: "normal" as const }));
   if (despesas.length) despesas.push({ texto: "Total descontado no fechamento", valor: formatBRL(d.despesas.reduce((s, x) => s + x.valor, 0)), tipo: "total" });
