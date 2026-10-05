@@ -15,7 +15,7 @@ import { partesDoProprietario } from "@/repasses/extrato";
 import { somarDias } from "@/repasses/inicio";
 import { lerInicioDoSistema } from "@/repasses/regras-config";
 import { itensDoRepasse, listarRepasses, type Repasse } from "@/repasses/repasses";
-import type { ParteDoRelatorio } from "./dinheiro";
+import { dataDoPix, type ParteDoRelatorio } from "./dinheiro";
 import { type DadosDoMes, diasDeImovel, diasDoMes, intervalosDePosse, limitesDe, type MesISO, noitesBloqueadas, noitesNoIntervalo, noitesOcupadasNoIntervalo, somarMeses, trechosNaPosse } from "./metricas";
 
 type Dono = { id: string; nome: string };
@@ -219,11 +219,15 @@ export async function metricasDoRelatorio(
 
 export type RepasseDoRelatorio = { id: string; tipo: Repasse["tipo"]; data: string; situacao: Repasse["situacao"]; dataPagamento: string | null; valor: number; reservas: string[] };
 
-/** Repasses do mês (antecipados e acertos por fora com data no mês, em vigor) e o fechamento do mês, de cada proprietário. */
+/**
+ * Repasses do mês (antecipados e acertos por fora em vigor cuja data do Pix cai no mês — a do pagamento quando pago, a
+ * programada enquanto não, `dataDoPix`) e o fechamento do mês, de cada proprietário. A mesma régua de "como chega até
+ * você": o antecipado programado para 31/10 e pago em 1/11 é dinheiro de novembro.
+ */
 export async function repassesDoRelatorio(db: Db, organizacaoId: string, donos: readonly Dono[], mes: MesISO): Promise<{ repasses: RepasseDoRelatorio[]; fechamentos: Repasse[] }> {
   const { inicio, fim } = limitesDe(mes);
   const todos = (await Promise.all(donos.map((d) => listarRepasses(db, organizacaoId, d.id)))).flat().filter((r) => !r.estornadoEm);
-  const doMes = todos.filter((r) => r.tipo !== "fechamento" && r.data >= inicio && r.data < fim).sort((a, b) => a.data.localeCompare(b.data));
+  const doMes = todos.filter((r) => r.tipo !== "fechamento" && dataDoPix(r) >= inicio && dataDoPix(r) < fim).sort((a, b) => dataDoPix(a).localeCompare(dataDoPix(b)));
   const repasses = await Promise.all(
     doMes.map(async (r) => ({
       id: r.id,
