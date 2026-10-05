@@ -166,12 +166,14 @@ describe("métricas do relatório mensal (M5.7, regras puras)", () => {
     ]);
     const s = serieOcupacaoDe12(meses, "2026-10");
     expect(s).toHaveLength(12);
-    expect(s[0]).toEqual({ mes: "2025-11", ocupacao: null, diaria: null, atual: false, semDado: true });
-    expect(s.at(-3)).toEqual({ mes: "2026-08", ocupacao: null, diaria: null, atual: false, semDado: true });
-    expect(s.at(-2)).toEqual({ mes: "2026-09", ocupacao: 50, diaria: 100000, atual: false, semDado: false });
-    expect(s.at(-1)).toEqual({ mes: "2026-10", ocupacao: 62, diaria: 108056, atual: true, semDado: false });
+    expect(s[0]).toEqual({ mes: "2025-11", ocupacao: null, diaria: null, atual: false, semOcupacao: "sem_dado" });
+    expect(s.at(-3)).toEqual({ mes: "2026-08", ocupacao: null, diaria: null, atual: false, semOcupacao: "sem_dado" });
+    expect(s.at(-2)).toEqual({ mes: "2026-09", ocupacao: 50, diaria: 100000, atual: false, semOcupacao: null });
+    expect(s.at(-1)).toEqual({ mes: "2026-10", ocupacao: 62, diaria: 108056, atual: true, semOcupacao: null });
     // Mês inteiro bloqueado para uso próprio: ocupação não se aplica e não há diária — mas o mês tem dado (não é hachura).
-    expect(serieOcupacaoDe12(new Map([["2026-10", mes({ noitesOcupadas: 0, reservas: 0, bruto: 0, noitesBloqueadas: 31 })]]), "2026-10").at(-1)).toMatchObject({ ocupacao: null, diaria: null, semDado: false });
+    expect(serieOcupacaoDe12(new Map([["2026-10", mes({ noitesOcupadas: 0, reservas: 0, bruto: 0, noitesBloqueadas: 31 })]]), "2026-10").at(-1)).toMatchObject({ ocupacao: null, diaria: null, semOcupacao: "bloqueado" });
+    // Mês em que o imóvel ainda não era do dono (nenhum dia de posse): também tem dado, mas não é "bloqueado".
+    expect(serieOcupacaoDe12(new Map([["2026-10", mes({ noitesOcupadas: 0, reservas: 0, bruto: 0, diasImovel: 0, noitesBloqueadas: 0 })]]), "2026-10").at(-1)).toMatchObject({ ocupacao: null, diaria: null, semOcupacao: "fora_da_posse" });
   });
 
   it("quadros: base zero vira diferença em R$; mês inteiro bloqueado não se aplica; sem reserva não há diária; mês parcial não compara e conta as noites até o dia", () => {

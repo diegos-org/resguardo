@@ -3,7 +3,7 @@ import { decodePDFRawStream, PDFArray, PDFDocument, PDFRawStream } from "pdf-lib
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Sessao } from "@/acesso/politica";
 import { criarContrato } from "@/contratos/repositorio";
-import { auditoria, imoveis, lancamentos, organizacoes, proprietarioImoveis, proprietarios, proprietarioUsuarios, representantes, reservas, usuarios } from "@/db/schema";
+import { auditoria, bloqueios, imoveis, lancamentos, organizacoes, proprietarioImoveis, proprietarios, proprietarioUsuarios, representantes, reservas, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import { criarCategoria } from "@/despesas/categorias";
 import { registrarDespesa } from "@/despesas/despesas";
@@ -257,9 +257,9 @@ describe("textos do relatório (modelo oficial, M5.7)", () => {
     // Gráfico de ocupação (M5.8): mesma janela de 12 meses; sem dado → nulls; diária média por mês.
     expect(t.graficoOcupacao.titulo).toBe("Ocupação por mês, últimos 12 meses (%)");
     expect(t.graficoOcupacao.serie).toHaveLength(12);
-    expect(t.graficoOcupacao.serie[0]).toEqual({ mes: "2025-11", ocupacao: null, diaria: null, atual: false, semDado: true });
-    expect(t.graficoOcupacao.serie.at(-2)).toEqual({ mes: "2026-09", ocupacao: 53, diaria: 100000, atual: false, semDado: false });
-    expect(t.graficoOcupacao.serie.at(-1)).toEqual({ mes: "2026-10", ocupacao: 62, diaria: 108056, atual: true, semDado: false });
+    expect(t.graficoOcupacao.serie[0]).toEqual({ mes: "2025-11", ocupacao: null, diaria: null, atual: false, semOcupacao: "sem_dado" });
+    expect(t.graficoOcupacao.serie.at(-2)).toEqual({ mes: "2026-09", ocupacao: 53, diaria: 100000, atual: false, semOcupacao: null });
+    expect(t.graficoOcupacao.serie.at(-1)).toEqual({ mes: "2026-10", ocupacao: 62, diaria: 108056, atual: true, semOcupacao: null });
     expect(textosDoRelatorio({ ...base, metricas: { ...base.metricas, meses: mesesDe([["2026-01", 100], ["2026-10", 72250]]) } }).grafico.acumulado).toBe("Acumulado de 2026: R$ 723,50");
   });
 
@@ -582,10 +582,36 @@ describe("dados e acesso", () => {
     const agosto = new Map(d.metricas.meses).get("2026-08");
     expect(agosto).toMatchObject({ noitesOcupadas: 4, bruto: 80000, resultado: null });
     const t = textosDoRelatorio(d);
-    expect(t.graficoOcupacao.serie.find((p) => p.mes === "2026-08")).toMatchObject({ semDado: false, diaria: 20000 });
+    expect(t.graficoOcupacao.serie.find((p) => p.mes === "2026-08")).toMatchObject({ semOcupacao: null, diaria: 20000 });
     expect(t.grafico.serie.find((p) => p.mes === "2026-08")).toMatchObject({ resultado: null });
     // Julho, sem estadia nem livro, continua sem dado nos dois.
-    expect(t.graficoOcupacao.serie.find((p) => p.mes === "2026-07")).toMatchObject({ semDado: true });
+    expect(t.graficoOcupacao.serie.find((p) => p.mes === "2026-07")).toMatchObject({ semOcupacao: "sem_dado" });
+  });
+
+  it("sem início do sistema definido, mês todo bloqueado para uso próprio (sem estadia nem livro) aparece como bloqueado, não como sem dado", async () => {
+    await db.update(proprietarioImoveis).set({ criadoEm: new Date("2025-01-01T12:00:00-03:00") }).where(eq(proprietarioImoveis.imovelId, a));
+    // Julho inteiro bloqueado pela Dona; um bloqueio da equipe em junho não é dela e não põe junho no gráfico.
+    await db.insert(bloqueios).values([
+      { organizacaoId: org, imovelId: a, inicio: "2026-07-01", fim: "2026-08-01", motivo: "Uso próprio", fonte: "proprietario", proprietarioId: dona },
+      { organizacaoId: org, imovelId: a, inicio: "2026-06-10", fim: "2026-06-12", motivo: "Manutenção", fonte: "manual" },
+    ]);
+    const d = await dadosDoRelatorio(db, org, { donos: [{ id: dona, nome: "Dona Fictícia" }], imoveis: [{ id: a, codigo: "403", nome: "Studio Mezanino" }], todosOsImoveis: true, ano: 2026, mes: 10, hoje: "2026-11-02" });
+    expect(new Map(d.metricas.meses).get("2026-07")).toMatchObject({ noitesBloqueadas: 31, noitesOcupadas: 0, resultado: null });
+    const t = textosDoRelatorio(d);
+    expect(t.graficoOcupacao.serie.find((p) => p.mes === "2026-07")).toMatchObject({ ocupacao: null, semOcupacao: "bloqueado" });
+    expect(t.grafico.serie.find((p) => p.mes === "2026-07")).toMatchObject({ resultado: null });
+    expect(t.graficoOcupacao.serie.find((p) => p.mes === "2026-06")).toMatchObject({ semOcupacao: "sem_dado" });
+  });
+
+  it("mês em que o imóvel ainda não era do dono aparece como fora da posse, não como bloqueado", async () => {
+    // A Dona tem o imóvel desde 15/9; a estadia de agosto foi do dono anterior.
+    await db.update(proprietarioImoveis).set({ criadoEm: new Date("2026-09-15T12:00:00-03:00") }).where(eq(proprietarioImoveis.imovelId, a));
+    const [r1] = await db.select({ codigo: reservas.codigo }).from(reservas).where(eq(reservas.imovelId, a));
+    await db.insert(reservas).values({ organizacaoId: org, imovelId: a, codigo: `${r1.codigo}-AGO`, origem: "airbnb", estado: "confirmada", checkin: "2026-08-10", checkout: "2026-08-14", hospedeNome: "Hóspede de Agosto Fictício", valorBruto: 80000 });
+    const d = await dadosDoRelatorio(db, org, { donos: [{ id: dona, nome: "Dona Fictícia" }], imoveis: [{ id: a, codigo: "403", nome: "Studio Mezanino" }], todosOsImoveis: true, ano: 2026, mes: 10, hoje: "2026-11-02" });
+    expect(new Map(d.metricas.meses).get("2026-08")).toMatchObject({ diasImovel: 0, noitesOcupadas: 0 });
+    const t = textosDoRelatorio(d);
+    expect(t.graficoOcupacao.serie.find((p) => p.mes === "2026-08")).toMatchObject({ ocupacao: null, semOcupacao: "fora_da_posse" });
   });
 
   it("duas reservas sobrepostas no mesmo imóvel (overbooking importado): a noite disputada conta uma vez nas noites e no bruto", async () => {

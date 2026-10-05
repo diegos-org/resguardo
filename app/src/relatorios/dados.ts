@@ -121,18 +121,6 @@ export async function metricasDoRelatorio(
     ).map((l) => l.mes),
   );
   const temDado = (m: MesISO) => (m === o.mes ? true : inicio ? m >= mesDe(inicio) && m <= o.mes : comLancamento.has(m));
-  // Sem início do sistema definido, o livro é o que diz que um mês está no sistema — mas a ocupação é fato do imóvel:
-  // o mês com estadia confirmada nos imóveis do relatório entra no gráfico de ocupação mesmo sem lançamento (o
-  // resultado em dinheiro desse mês continua "sem dado").
-  const comEstadia = new Set<MesISO>();
-  if (!inicio && imovelIds.length) {
-    const estadiasDaSerie = await db
-      .select({ checkin: reservas.checkin, checkout: reservas.checkout })
-      .from(reservas)
-      .where(and(eq(reservas.organizacaoId, organizacaoId), eq(reservas.estado, "confirmada"), inArray(reservas.imovelId, imovelIds), lt(reservas.checkin, limitesDe(o.mes).fim), gt(reservas.checkout, limitesDe(meses[0]).inicio)));
-    for (const e of estadiasDaSerie) for (const m of meses) if (e.checkin < limitesDe(m).fim && e.checkout > limitesDe(m).inicio) comEstadia.add(m);
-  }
-  const temOcupacao = (m: MesISO) => temDado(m) || comEstadia.has(m);
   // Posse de cada imóvel pelos proprietários do relatório, como intervalos (dia em São Paulo): o histórico de
   // "proprietario.imoveis" (quem ganhou e quem perdeu o imóvel, e quando) mais o vínculo atual; sem histórico, o
   // vínculo atual e, para o dono antigo, até o dia em que o dono seguinte foi vinculado (`intervalosDePosse`). As
@@ -152,6 +140,33 @@ export async function metricasDoRelatorio(
       ])
     : [[], []];
   const posseDe = new Map(imovelIds.map((id) => [id, intervalosDePosse(id, donoIds, vinculos, historico)] as const));
+  // Sem início do sistema definido, o livro é o que diz que um mês está no sistema — mas a ocupação é fato do imóvel:
+  // o mês com estadia confirmada nos imóveis do relatório ou com bloqueio de uso próprio do dono (dentro da posse, o
+  // mesmo bloqueio que o mês conta) entra no gráfico de ocupação mesmo sem lançamento — o mês todo bloqueado aparece
+  // como bloqueado, não como "sem dado". O resultado em dinheiro desse mês continua "sem dado".
+  const comCalendario = new Set<MesISO>();
+  if (!inicio && imovelIds.length) {
+    const deSerie = limitesDe(meses[0]).inicio;
+    const ateSerie = limitesDe(o.mes).fim;
+    const [estadiasDaSerie, bloqueiosDaSerie] = await Promise.all([
+      db
+        .select({ checkin: reservas.checkin, checkout: reservas.checkout })
+        .from(reservas)
+        .where(and(eq(reservas.organizacaoId, organizacaoId), eq(reservas.estado, "confirmada"), inArray(reservas.imovelId, imovelIds), lt(reservas.checkin, ateSerie), gt(reservas.checkout, deSerie))),
+      donosValidos.length
+        ? db
+            .select({ imovelId: bloqueios.imovelId, inicio: bloqueios.inicio, fim: bloqueios.fim })
+            .from(bloqueios)
+            .where(and(eq(bloqueios.organizacaoId, organizacaoId), inArray(bloqueios.imovelId, imovelIds), inArray(bloqueios.proprietarioId, donosValidos), eq(bloqueios.fonte, "proprietario"), lt(bloqueios.inicio, ateSerie), gt(bloqueios.fim, deSerie)))
+        : Promise.resolve([]),
+    ]);
+    const trechos = [
+      ...estadiasDaSerie.map((e) => ({ inicio: e.checkin, fim: e.checkout })),
+      ...bloqueiosDaSerie.flatMap((b) => trechosNaPosse(b.inicio, b.fim, posseDe.get(b.imovelId) ?? [{ desde: null, ate: null }])),
+    ];
+    for (const t of trechos) for (const m of meses) if (t.inicio < limitesDe(m).fim && t.fim > limitesDe(m).inicio) comCalendario.add(m);
+  }
+  const temOcupacao = (m: MesISO) => temDado(m) || comCalendario.has(m);
   const dadosDoMes = async (m: MesISO, ate: string | null): Promise<DadosDoMes> => {
     const { inicio: de, fim } = limitesDe(m);
     const fimConsiderado = ate ? somarDias(ate, 1) : fim;

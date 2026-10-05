@@ -252,19 +252,23 @@ export function variacao(atual: number, anterior: number | null): Variacao {
 
 export type PontoDaSerie = { mes: MesISO; resultado: number | null; atual: boolean };
 
-/** Ponto do gráfico de ocupação (M5.8): ocupação em % e diária média do mês; null = sem dado (ou sem noite disponível / ocupada). */
 /**
- * Um mês do gráfico de ocupação. `semDado`: o mês não está no sistema (hachura, "sem dado no sistema"). Com dado e
- * `ocupacao` null, o mês não teve noite à venda (todo bloqueado para uso próprio ou fora da posse): ocupação não se
- * aplica — nunca confundido com falta de dado.
+ * Um mês do gráfico de ocupação (M5.8): ocupação em % e diária média do mês. Sem ocupação, `semOcupacao` diz por quê,
+ * sem confundir os casos (a mesma distinção do quadro de ocupação): "sem_dado", o mês não está no sistema (hachura,
+ * "sem dado no sistema"); "bloqueado", o mês está no sistema, mas todas as noites da posse foram bloqueadas para uso
+ * próprio; "fora_da_posse", o imóvel não era dos donos do relatório em nenhum dia do mês. Com ocupação, null.
  */
-export type PontoOcupacao = { mes: MesISO; ocupacao: number | null; diaria: number | null; atual: boolean; semDado: boolean };
+export type SemOcupacao = "sem_dado" | "bloqueado" | "fora_da_posse";
+export type PontoOcupacao = { mes: MesISO; ocupacao: number | null; diaria: number | null; atual: boolean; semOcupacao: SemOcupacao | null };
 
-/** Os 12 meses até `mes` com ocupação (%) e diária média; mês sem dado no sistema → nulls e `semDado`. */
+/** Os 12 meses até `mes` com ocupação (%) e diária média; sem ocupação, nulls e o motivo (`semOcupacao`). */
 export function serieOcupacaoDe12(meses: ReadonlyMap<MesISO, DadosDoMes | null>, mes: MesISO): PontoOcupacao[] {
   return Array.from({ length: 12 }, (_, i) => somarMeses(mes, i - 11)).map((m) => {
     const d = meses.get(m) ?? null;
-    return { mes: m, ocupacao: d ? ocupacao(d).percentual : null, diaria: d ? diariaMedia(d.bruto, d.noitesOcupadas) : null, atual: m === mes, semDado: !d };
+    if (!d) return { mes: m, ocupacao: null, diaria: null, atual: m === mes, semOcupacao: "sem_dado" };
+    const oc = ocupacao(d);
+    const semOcupacao = oc.percentual !== null ? null : oc.bloqueadas > 0 ? "bloqueado" : "fora_da_posse";
+    return { mes: m, ocupacao: oc.percentual, diaria: diariaMedia(d.bruto, d.noitesOcupadas), atual: m === mes, semOcupacao };
   });
 }
 

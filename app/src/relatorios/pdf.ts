@@ -59,6 +59,8 @@ const A = 841.89;
 const M = 36;
 const LARG = L - 2 * M;
 const RODAPE = 30;
+/** Contorno tracejado do gráfico de ocupação (mês em que o imóvel não era do dono). */
+const TRACEJADO = [1.5, 1.2];
 
 const eJpg = (b: Uint8Array) => b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
 const ePng = (b: Uint8Array) => b.length > 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47;
@@ -565,13 +567,14 @@ class Folhas {
     };
     for (const [i, p] of g.serie.entries()) {
       const x = x0 + i * slot + (slot - w) / 2;
-      if (p.semDado) {
+      if (p.semOcupacao === "sem_dado") {
         this.hachura(x, base, w, alturaBarras * 0.28);
-      } else if (p.ocupacao === null) {
-        // Mês sem noite à venda (todo bloqueado para uso próprio ou fora da posse): contorno vazio, não hachura.
-        this.page.drawRectangle({ x, y: base, width: w, height: alturaBarras * 0.28, color: C.papel, borderColor: C.borda, borderWidth: 0.6 });
+      } else if (p.semOcupacao) {
+        // Mês no sistema sem noite à venda: todo bloqueado para uso próprio (contorno cheio) ou com o imóvel ainda não
+        // sendo do dono (contorno tracejado). Nunca a hachura de "sem dado".
+        this.page.drawRectangle({ x, y: base, width: w, height: alturaBarras * 0.28, color: C.papel, borderColor: C.borda, borderWidth: 0.6, ...(p.semOcupacao === "fora_da_posse" ? { borderDashArray: TRACEJADO } : {}) });
         centrado("—", x, base + 4, 7, C.texto2);
-      } else {
+      } else if (p.ocupacao !== null) {
         const hb = (Math.min(100, p.ocupacao) / 100) * alturaBarras;
         this.page.drawRectangle({ x, y: base, width: w, height: hb, color: p.atual ? C.floresta : C.barra });
         // Percentual dentro da barra quando cabe; senão logo acima dela. A diária média fica por cima de tudo.
@@ -585,13 +588,14 @@ class Folhas {
     this.page.drawLine({ start: { x: x0, y: base }, end: { x: x1, y: base }, thickness: 0.8, color: C.borda });
     let lx = M + 10;
     const ly = topo - h + 8;
-    for (const [c, s] of [
-      [C.barra, "meses anteriores"],
-      [C.floresta, g.legendaAtual],
-      [C.creme, "sem dado no sistema"],
-      ...(g.serie.some((p) => !p.semDado && p.ocupacao === null) ? [[C.papel, "sem noite à venda (bloqueado)"] as const] : []),
+    for (const [c, s, tracejado] of [
+      [C.barra, "meses anteriores", false],
+      [C.floresta, g.legendaAtual, false],
+      [C.creme, "sem dado no sistema", false],
+      ...(g.serie.some((p) => p.semOcupacao === "bloqueado") ? [[C.papel, "sem noite à venda (bloqueado)", false] as const] : []),
+      ...(g.serie.some((p) => p.semOcupacao === "fora_da_posse") ? [[C.papel, "o imóvel não era seu", true] as const] : []),
     ] as const) {
-      this.page.drawRectangle({ x: lx, y: ly, width: 8, height: 6, color: c, borderColor: C.borda, borderWidth: 0.5 });
+      this.page.drawRectangle({ x: lx, y: ly, width: 8, height: 6, color: c, borderColor: C.borda, borderWidth: 0.5, ...(tracejado ? { borderDashArray: TRACEJADO } : {}) });
       this.texto(s, lx + 11, ly, this.f.sans, 7, C.texto2);
       lx += 11 + this.f.sans.widthOfTextAtSize(this.limpo(s), 7) + 14;
     }
