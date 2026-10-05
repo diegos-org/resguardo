@@ -88,8 +88,9 @@ assim como o tom de `requisitos/operations/RELATORIOS-E-TOM.md`.
    e na conciliação; sem prazo do canal cadastrado, aviso "sem data" (nunca "pago"), na capa e na
    tabela de reservas; já repassado no mês
    (antecipados, com as datas — o Pix inteiro, como gravado no repasse e na tabela da página 3, com a
-   parte de outro mês de uma reserva que atravessa e a de reservas de outro imóvel do mesmo dono, fora
-   do relatório, discriminadas, como no "pago pelo canal"); a transferir no fechamento (valor, data e **quem paga quem**: "a Sua
+   parte de outro mês (de uma reserva que atravessa, ou de uma reserva antiga liberada só agora) e a de
+   reservas de outro imóvel do mesmo dono, fora do relatório, discriminadas, como no "pago pelo
+   canal"); a transferir no fechamento (valor, data e **quem paga quem**: "a Sua
    Casa Leblon transfere para {nome}" ou "{nome} transfere para a Sua Casa Leblon", pela chave Pix
    cadastrada); a liberar (recebimento do canal pendente / liberação do provedor), com o motivo.
 5. **Do bruto ao resultado** (tabela): bruto das reservas; taxas dos canais; líquido depois dos
