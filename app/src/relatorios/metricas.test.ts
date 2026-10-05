@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { acumuladoDoAno, diariaMedia, diasDeImovel, diasDoMes, escalaEmMil, intervalosDePosse, limitesDe, mesCurto, nomeDoMes, noitesBloqueadas, noitesNoIntervalo, noitesOcupadasNoIntervalo, ocupacao, quadrosDoMes, serieDe12, somarMeses, trechosNaPosse, variacao } from "./metricas";
+import { acumuladoDoAno, diariaMedia, diasDeImovel, diasDoMes, escalaEmMil, intervalosDePosse, limitesDe, mesCurto, nomeDoMes, noitesBloqueadas, noitesContadasPorEstadia, noitesNoIntervalo, noitesOcupadasNoIntervalo, ocupacao, quadrosDoMes, serieDe12, somarMeses, trechosNaPosse, variacao } from "./metricas";
 
 const mes = (over: Partial<Parameters<typeof quadrosDoMes>[0]["atual"]> = {}) => ({ mes: "2026-10", resultado: 1503780, bruto: 1945000, noitesOcupadas: 18, noitesDoPeriodo: 31, imoveis: 1, diasImovel: 31, noitesBloqueadas: 2, ...over });
 
@@ -85,6 +85,18 @@ describe("métricas do relatório mensal (M5.7, regras puras)", () => {
     expect(escalaEmMil(1503780)).toEqual({ teto: 16, passo: 4 });
     expect(escalaEmMil(0)).toEqual({ teto: 1, passo: 1 });
     expect(escalaEmMil(42_000_00)).toEqual({ teto: 60, passo: 20 });
+  });
+
+  it("noites contadas por estadia: na posse e no período, fora das bloqueadas; a noite disputada fica com quem entrou primeiro", () => {
+    const e = (imovelId: string, checkin: string, checkout: string) => ({ imovelId, checkin, trechos: [{ inicio: checkin, fim: checkout }] });
+    // 10→13 e 12→15 no mesmo imóvel: a noite de 12 é da primeira; a segunda fica com 13 e 14. Total 5, como em noitesOcupadasNoIntervalo.
+    expect(noitesContadasPorEstadia([e("a", "2026-10-12", "2026-10-15"), e("a", "2026-10-10", "2026-10-13")], [], "2026-10-01", "2026-11-01")).toEqual([2, 3]);
+    // Mesmo check-in: a ordem da lista desempata. Outro imóvel não disputa.
+    expect(noitesContadasPorEstadia([e("a", "2026-10-10", "2026-10-12"), e("a", "2026-10-10", "2026-10-12"), e("b", "2026-10-10", "2026-10-12")], [], "2026-10-01", "2026-11-01")).toEqual([2, 0, 2]);
+    // Noite bloqueada não conta; só o que cai no intervalo; só os trechos dados (posse).
+    expect(noitesContadasPorEstadia([e("a", "2026-10-10", "2026-10-13")], [{ imovelId: "a", inicio: "2026-10-12", fim: "2026-10-13" }], "2026-10-01", "2026-11-01")).toEqual([2]);
+    expect(noitesContadasPorEstadia([e("a", "2026-09-29", "2026-10-02")], [], "2026-10-01", "2026-11-01")).toEqual([1]);
+    expect(noitesContadasPorEstadia([{ imovelId: "a", checkin: "2026-10-10", trechos: [{ inicio: "2026-10-11", fim: "2026-10-13" }] }], [], "2026-10-01", "2026-11-01")).toEqual([2]);
   });
 
   it("trechos na posse: uma estadia ou bloqueio que atravessa a troca de dono fica só com os dias de cada dono; fora da posse, nada", () => {

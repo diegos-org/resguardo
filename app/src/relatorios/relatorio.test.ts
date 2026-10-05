@@ -3,7 +3,7 @@ import { decodePDFRawStream, PDFArray, PDFDocument, PDFRawStream } from "pdf-lib
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Sessao } from "@/acesso/politica";
 import { criarContrato } from "@/contratos/repositorio";
-import { auditoria, imoveis, lancamentos, organizacoes, proprietarioImoveis, proprietarios, proprietarioUsuarios, representantes, usuarios } from "@/db/schema";
+import { auditoria, imoveis, lancamentos, organizacoes, proprietarioImoveis, proprietarios, proprietarioUsuarios, representantes, reservas, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import { criarCategoria } from "@/despesas/categorias";
 import { registrarDespesa } from "@/despesas/despesas";
@@ -503,6 +503,24 @@ describe("dados e acesso", () => {
     const out = textosDoRelatorio(await dadosDoRelatorio(db, org, { donos, imoveis: [{ id: a, codigo: "403", nome: "Studio Mezanino" }], todosOsImoveis: true, ano: 2026, mes: 10, hoje: "2026-11-02" }));
     expect(out.comoChega.linhas.map((l) => l.texto)).toEqual(["Já repassado em 1/11 (repasse antecipado de novembro de 2026): 3 noites de outubro de 2026 da reserva de Hóspede (10/10 → 13/10)"]);
     expect(out.repasses.map((l) => l.texto)).toEqual([]);
+  });
+
+  it("diária pelo bruto do livro: a reserva que mudou de valor depois de movimentar dinheiro (divergente) usa o valor protegido", async () => {
+    const pedir = () => dadosDoRelatorio(db, org, { donos: [{ id: dona, nome: "Dona Fictícia" }], imoveis: [{ id: a, codigo: "403", nome: "Studio Mezanino" }], todosOsImoveis: true, ano: 2026, mes: 10, hoje: "2026-11-02" });
+    // O livro guarda R$ 1.000,00; a reserva passa a dizer R$ 2.000,00 e fica divergente (o motor não refaz o livro).
+    await db.update(reservas).set({ valorBruto: 200000, divergenciaEm: new Date("2026-10-20T12:00:00-03:00") }).where(eq(reservas.imovelId, a));
+    const d = await pedir();
+    expect(d.metricas.atual).toMatchObject({ noitesOcupadas: 3, bruto: 100000 });
+    expect(diariaMedia(d.metricas.atual.bruto, d.metricas.atual.noitesOcupadas)).toBe(33333);
+  });
+
+  it("duas reservas sobrepostas no mesmo imóvel (overbooking importado): a noite disputada conta uma vez nas noites e no bruto", async () => {
+    // A de 10 a 13/10 (R$ 1.000,00, no livro) e outra de 12 a 14/10 (R$ 600,00, fora do livro): a noite de 12 fica com a
+    // primeira; a segunda conta só a de 13 (R$ 300,00). 4 noites e R$ 1.300,00, não 5 noites com R$ 1.600,00.
+    const [r1] = await db.select({ id: reservas.id, codigo: reservas.codigo }).from(reservas).where(eq(reservas.imovelId, a));
+    await db.insert(reservas).values({ organizacaoId: org, imovelId: a, codigo: `${r1.codigo}-B`, origem: "booking", estado: "confirmada", checkin: "2026-10-12", checkout: "2026-10-14", hospedeNome: "Outro Hóspede Fictício", valorBruto: 60000 });
+    const d = await dadosDoRelatorio(db, org, { donos: [{ id: dona, nome: "Dona Fictícia" }], imoveis: [{ id: a, codigo: "403", nome: "Studio Mezanino" }], todosOsImoveis: true, ano: 2026, mes: 10, hoje: "2026-11-02" });
+    expect(d.metricas.atual).toMatchObject({ noitesOcupadas: 4, bruto: 100000 + 30000 });
   });
 
   it("noite bloqueada para uso próprio dentro de uma estadia confirmada sai das noites ocupadas e do bruto da diária", async () => {

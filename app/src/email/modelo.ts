@@ -41,8 +41,22 @@ export const CONTATO_PADRAO = "Qualquer dúvida, é só responder este e-mail.";
 /** O modelo editável começa cumprimentando ("Olá, {nome}.", "Bom dia!")? */
 export const comecaComSaudacao = (frase: string): boolean => /^\s*(olá|ola|oi|bom dia|boa tarde|boa noite|prezad[oa]s?|car[oa]s?)(?=[^\p{L}\p{N}]|$)/iu.test(frase);
 
-// A saudação inicial do modelo: a palavra, e, se vier vírgula, o nome até a pontuação ("Olá, Maria." / "Olá, {nome}.").
-const SAUDACAO_INICIAL = /^\s*(?:olá|ola|oi|bom dia|boa tarde|boa noite|prezad[oa]s?|car[oa]s?)(?=[^\p{L}\p{N}]|$)(?:,\s*[^\n.!,:?]{1,60}?(?=[.!,:]|\n|$))?[.!,:]?\s*/iu;
+// A saudação inicial do modelo: só a palavra ("Olá", "Bom dia").
+const SAUDACAO_INICIAL = /^\s*(?:olá|ola|oi|bom dia|boa tarde|boa noite|prezad[oa]s?|car[oa]s?)(?=[^\p{L}\p{N}]|$)/iu;
+// O nome logo depois da saudação, só quando é nome mesmo: o marcador do modelo ("{nome}") ou um nome próprio (até quatro
+// palavras com inicial maiúscula, "da/de/do" no meio), seguido de pontuação ou do fim da linha. "Olá, segue o relatório."
+// não tem nome: a frase fica inteira.
+const NOME_DA_SAUDACAO = /^,?[ \t]*(?:\{[^}\n]{1,30}\}|\p{Lu}[\p{L}'’-]*(?:[ \t]+(?:d[aeo]s?[ \t]+)?\p{Lu}[\p{L}'’-]*){0,3})(?=[ \t]*(?:[.!,:]|\n|$))/u;
+
+/** O modelo sem a saudação inicial (e sem o nome dela, quando houver); o resto da frase fica. */
+function semSaudacao(frase: string): string {
+  const s = SAUDACAO_INICIAL.exec(frase);
+  if (!s) return frase;
+  let resto = frase.slice(s[0].length);
+  const n = NOME_DA_SAUDACAO.exec(resto);
+  if (n) resto = resto.slice(n[0].length);
+  return resto.replace(/^[ \t]*[.!,:]?\s*/, "");
+}
 const semPontoFinal = (t: string) => t.trim().replace(/[.!]+$/, "").toLocaleLowerCase("pt-BR");
 
 /**
@@ -51,7 +65,7 @@ const semPontoFinal = (t: string) => t.trim().replace(/[.!]+$/, "").toLocaleLowe
  * do fechamento ("Olá, {nome}. … Qualquer dúvida, é só responder este e-mail.") vira só a frase do meio.
  */
 export function fraseDoModelo(frase: string, contato = CONTATO_PADRAO): string {
-  const ps = paragrafos(frase.replace(SAUDACAO_INICIAL, ""));
+  const ps = paragrafos(semSaudacao(frase));
   if (ps.length && semPontoFinal(ps[ps.length - 1]) === semPontoFinal(contato)) ps.pop();
   const f = ps.join("\n\n");
   return f ? f[0].toLocaleUpperCase("pt-BR") + f.slice(1) : "";
