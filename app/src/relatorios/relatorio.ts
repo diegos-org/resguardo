@@ -20,7 +20,7 @@ import { type ContratoDoRelatorio, contratosDoRelatorio, type DespesaDoRelatorio
 import { DIA_FECHAMENTO_PADRAO, diaDoFechamento } from "@/repasses/periodicidade";
 import { lerRegrasRepasses } from "@/repasses/regras-config";
 import { comoChega, conciliacao, conciliacaoFecha, dataCurta, type Linha, type LinhaConciliacao, nomeDoCanal, type ParteDoRelatorio, primeiroNome } from "./dinheiro";
-import { acumuladoDoAno, mesISO, type MesISO, nomeDoMes, type PontoDaSerie, type Quadro, quadrosDoMes, serieDe12 } from "./metricas";
+import { acumuladoDoAno, mesISO, type MesISO, nomeDoMes, type PontoDaSerie, type PontoOcupacao, type Quadro, quadrosDoMes, serieDe12, serieOcupacaoDe12 } from "./metricas";
 
 export type Dono = { id: string; nome: string };
 export type ImovelDoRelatorio = { id: string; codigo: string; nome: string; bairro?: string; cidade?: string };
@@ -212,6 +212,8 @@ export type TextosRelatorio = {
   rodapeCapa: { comAnexos: string; semAnexos: string };
   quadros: Quadro[];
   grafico: { titulo: string; serie: PontoDaSerie[]; acumulado: string | null; legendaAtual: string };
+  /** M5.8 (escolha de Diego em 5/10): ocupação por mês nos 12 meses, com a diária média sobre cada barra. */
+  graficoOcupacao: { titulo: string; serie: PontoOcupacao[]; legendaAtual: string; nota: string };
   reservasTitulo: string;
   reservas: LinhaReserva[];
   totalReservas: LinhaReserva | null;
@@ -354,7 +356,8 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
 
   // Página 2: quadros, gráfico e reservas.
   const quadros = quadrosDoMes({ atual: d.metricas.atual, anterior: d.metricas.anterior, anoAnterior: d.metricas.anoAnterior, parcialAte: d.metricas.parcialAte });
-  const resultados = new Map(d.metricas.serie);
+  const mesesDados = new Map(d.metricas.meses);
+  const resultados = new Map([...mesesDados].map(([m, x]) => [m, x?.resultado ?? null] as const));
   const acumulado = acumuladoDoAno(resultados, mes);
   const nomes = new Map(d.imoveis.map((i) => [i.id, i.nome]));
   const partesDasReservas = new Set(doMes.map((p) => p.reservaId));
@@ -479,6 +482,12 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
       serie: serieDe12(resultados, mes),
       acumulado: acumulado ? `Acumulado ${acumulado.desde === `${d.ano}-01` ? `de ${d.ano}` : `desde ${nomeDoMes(acumulado.desde)} (primeiro mês com dado)`}: ${formatBRL(acumulado.valor)}` : null,
       legendaAtual: mesNome,
+    },
+    graficoOcupacao: {
+      titulo: "Ocupação por mês, últimos 12 meses (%)",
+      serie: serieOcupacaoDe12(mesesDados, mes),
+      legendaAtual: mesNome,
+      nota: "sobre cada barra, a diária média do mês",
     },
     reservasTitulo: `Reservas do mês · ${nReservas} ${plural(nReservas, "reserva", "reservas")} · ${noites} ${plural(noites, "noite", "noites")} em ${mesNome}`,
     reservas: linhasReservas,

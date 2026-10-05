@@ -52,7 +52,9 @@ const parte = (over: Partial<ParteDoRelatorio> = {}): ParteDoRelatorio => ({
   reservaId: "r1", codigo: "R1", codigoCanal: "", hospede: "Hóspede Fictício da Silva", canal: "booking", checkin: "2026-10-10", checkout: "2026-10-13", mes: "2026-10", noitesNoMes: 3, noitesTotal: 3,
   bruto: 100000, taxa: 15000, comissao: 12750, suaParte: 72250, quemRecebe: "empresa", situacao: "disponivel", motivo: "Disponível para o próximo repasse.", pagamento: { data: "2026-10-12", fonte: "recebimento" }, repasse: null, ...over,
 });
-const mesDados = (over: Partial<DadosDoMes> = {}): DadosDoMes => ({ mes: "2026-10", resultado: 72250, bruto: 100000, noitesOcupadas: 3, noitesDoPeriodo: 31, imoveis: 1, diasImovel: 31, noitesBloqueadas: 0, ...over });
+const mesDados = (over: Partial<DadosDoMes> = {}): DadosDoMes => ({ mes: "2026-10", resultado: 72250, bruto: 100000, noitesOcupadas: 3, reservas: 1, noitesDoPeriodo: 31, imoveis: 1, diasImovel: 31, noitesBloqueadas: 0, ...over });
+/** Série de 12 meses só com o resultado (os outros números do mês ficam os do fixture). */
+const mesesDe = (serie: [string, number | null][]): [string, DadosDoMes | null][] => serie.map(([m, r]) => [m, r === null ? null : mesDados({ mes: m, resultado: r })]);
 
 const base: DadosRelatorio = {
   empresa: "Sua Casa Leblon",
@@ -85,7 +87,7 @@ const base: DadosRelatorio = {
   ],
   rodape: [],
   partes: [parte()],
-  metricas: { atual: mesDados(), anterior: null, anoAnterior: null, serie: [["2026-10", 72250]], parcialAte: null },
+  metricas: { atual: mesDados(), anterior: null, anoAnterior: null, meses: [["2026-10", mesDados()]], parcialAte: null },
   repasses: [],
   fechamentos: [],
   despesas: [],
@@ -132,7 +134,7 @@ describe("textos do relatório (modelo oficial, M5.7)", () => {
     expect(p.emissao).toBe("parcial até 20/10");
     expect(p.periodo).toBe("1 a 20/10/2026 (parcial: posição de 20/10/2026)");
     expect(p.aviso).toContain("inclusive as que ainda não aconteceram");
-    expect(p.quadros[2]).toMatchObject({ valor: "mês em andamento", semDado: true });
+    expect(p.quadros[4]).toMatchObject({ valor: "mês em andamento", semDado: true });
     expect(textosDoRelatorio({ ...base, situacao: "futuro" }).periodo).toContain("previsto");
     const m = textosDoRelatorio({ ...base, contratos: [{ imovelId: "i1", tipo: "marketplace", tipoNome: "Marketplace", comissao: null }] });
     expect(m.marketplace).toBe(true);
@@ -213,18 +215,24 @@ describe("textos do relatório (modelo oficial, M5.7)", () => {
     expect(textosDoRelatorio({ ...base, partes: [], reservas: [{ ...base.reservas[0], hospede: "" }] }).reservas[0].hospede).toBe("não informado");
   });
 
-  it("números do mês e gráfico: quadros, série de 12 meses e acumulado desde o primeiro mês com dado", () => {
-    const serie: [string, number | null][] = [["2026-05", 980000], ["2026-06", 1120000], ["2026-07", 1390000], ["2026-08", 1210000], ["2026-09", 1304000], ["2026-10", 1503780]];
-    const t = textosDoRelatorio(
-      { ...base, metricas: { atual: mesDados({ resultado: 1503780, bruto: 1945000, noitesOcupadas: 18, noitesBloqueadas: 2 }), anterior: mesDados({ mes: "2026-09", resultado: 1304000, noitesOcupadas: 16, noitesDoPeriodo: 30 }), anoAnterior: null, serie, parcialAte: null } },
-    );
-    expect(t.quadros.map((q) => q.valor)).toEqual(["18 noites", "R$ 1.080,56", "+15%", "sem dado no sistema"]);
+  it("números do mês e gráficos: seis quadros, série de 12 meses do resultado e da ocupação (com a diária média), acumulado desde o primeiro mês com dado", () => {
+    const atual = mesDados({ resultado: 1503780, bruto: 1945000, noitesOcupadas: 18, reservas: 7, noitesBloqueadas: 2 });
+    const anterior = mesDados({ mes: "2026-09", resultado: 1304000, bruto: 1600000, noitesOcupadas: 16, noitesDoPeriodo: 30, diasImovel: 30 });
+    const meses: [string, DadosDoMes | null][] = [...mesesDe([["2026-05", 980000], ["2026-06", 1120000], ["2026-07", 1390000], ["2026-08", 1210000]]), ["2026-09", anterior], ["2026-10", atual]];
+    const t = textosDoRelatorio({ ...base, metricas: { atual, anterior, anoAnterior: null, meses, parcialAte: null } });
+    expect(t.quadros.map((q) => q.valor)).toEqual(["18 noites ocupadas", "R$ 1.080,56", "R$ 670,69", "7 reservas", "+15%", "sem dado no sistema"]);
     expect(t.grafico.serie).toHaveLength(12);
     expect(t.grafico.serie[0]).toEqual({ mes: "2025-11", resultado: null, atual: false });
     expect(t.grafico.serie.at(-1)).toEqual({ mes: "2026-10", resultado: 1503780, atual: true });
     expect(t.grafico.acumulado).toBe("Acumulado desde maio de 2026 (primeiro mês com dado): R$ 75.077,80");
     expect(t.grafico.legendaAtual).toBe("outubro de 2026");
-    expect(textosDoRelatorio({ ...base, metricas: { ...base.metricas, serie: [["2026-01", 100], ["2026-10", 72250]] } }).grafico.acumulado).toBe("Acumulado de 2026: R$ 723,50");
+    // Gráfico de ocupação (M5.8): mesma janela de 12 meses; sem dado → nulls; diária média por mês.
+    expect(t.graficoOcupacao.titulo).toBe("Ocupação por mês, últimos 12 meses (%)");
+    expect(t.graficoOcupacao.serie).toHaveLength(12);
+    expect(t.graficoOcupacao.serie[0]).toEqual({ mes: "2025-11", ocupacao: null, diaria: null, atual: false });
+    expect(t.graficoOcupacao.serie.at(-2)).toEqual({ mes: "2026-09", ocupacao: 53, diaria: 100000, atual: false });
+    expect(t.graficoOcupacao.serie.at(-1)).toEqual({ mes: "2026-10", ocupacao: 62, diaria: 108056, atual: true });
+    expect(textosDoRelatorio({ ...base, metricas: { ...base.metricas, meses: mesesDe([["2026-01", 100], ["2026-10", 72250]]) } }).grafico.acumulado).toBe("Acumulado de 2026: R$ 723,50");
   });
 
   it("conciliação por data de pagamento com a ponte fechando; repasses do mês com etiqueta; posição com data e hora de Brasília", () => {
@@ -312,7 +320,7 @@ describe("PDF", () => {
   });
 
   it("gráfico com mês negativo (despesas acima da sua parte) e com todos os meses negativos: o PDF sai inteiro", async () => {
-    const com = (serie: [string, number | null][]) => gerarPdfRelatorio(textosDoRelatorio({ ...base, metricas: { ...base.metricas, serie } }));
+    const com = (serie: [string, number | null][]) => gerarPdfRelatorio(textosDoRelatorio({ ...base, metricas: { ...base.metricas, meses: mesesDe(serie) } }));
     expect(await paginasDe(await com([["2026-07", -350000], ["2026-08", 1200000], ["2026-09", null], ["2026-10", 72250]]))).toBe(3);
     expect(await paginasDe(await com([["2026-09", -1500000], ["2026-10", -20000]]))).toBe(3);
   });
@@ -407,7 +415,7 @@ describe("dados e acesso", () => {
     const d = await pedir();
     expect(d.metricas.anoAnterior).toMatchObject({ mes: "2025-10" });
     // O mês de 11 meses atrás (sem lançamento) continua sem dado; a série não ganha valor por isso.
-    expect(d.metricas.serie.find(([m]) => m === "2025-11")?.[1]).toBeNull();
+    expect(d.metricas.meses.find(([m]) => m === "2025-11")?.[1]).toBeNull();
   });
 
   it("noites para vender contam só desde o vínculo do imóvel; o vínculo depois do mês não dá noite nenhuma", async () => {

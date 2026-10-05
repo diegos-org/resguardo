@@ -101,9 +101,9 @@ assim como o tom de `requisitos/operations/RELATORIOS-E-TOM.md`.
    resultado, "como chega" e a tabela do bruto ao resultado; os números do mês ficam na página 2.
 
 ### 2. Números e reservas do mês
-Em cima, **Números do mês** — quatro quadros em **duas linhas de dois** (pedido de Diego em 4/10:
-com quatro lado a lado o texto fica apertado) e, embaixo deles, o gráfico (ver "Métricas"). Depois,
-as reservas:
+Em cima, **Números do mês** — seis quadros em **três linhas de dois** (pedido de Diego em 4/10:
+com quatro lado a lado o texto fica apertado; os dois quadros a mais entraram no M5.8) e, embaixo
+deles, os dois gráficos (ver "Métricas"). Depois, as reservas:
 "{N} reservas · {n} noites em {mês}". Uma linha (ou cartão) por reserva: primeiro nome do hóspede,
 canal, código do canal, entrada → saída, noites no mês, bruto, taxa do canal, limpeza (quando o
 componente existir no livro), comissão da gestão, **sua parte** e situação da parte (paga pelo canal /
@@ -138,12 +138,15 @@ Todas vêm do livro e do calendário do SCL; nenhuma é estimada.
 
 | Quadro | Definição | Quando aparece |
 |---|---|---|
-| **Noites e ocupação** | noites ocupadas no mês (reservas confirmadas, rateio por noite) e ocupação = noites ocupadas ÷ noites disponíveis, onde disponíveis = noites do mês − noites bloqueadas pelo proprietário para uso próprio (M5.5). Mostra "{n} de {d} disponíveis" e as bloqueadas. Com zero noites disponíveis (mês inteiro bloqueado para uso próprio), a ocupação é "não se aplica", com a nota "mês bloqueado para seu uso"; nunca 0 ÷ 0 | sempre (a ocupação, "não se aplica" sem noite disponível) |
-| **Diária média** | bruto do mês ÷ noites ocupadas no mês; rótulo "por noite, com limpeza" (o bruto do livro inclui a limpeza) | se houver noite ocupada; senão "sem reserva no mês" |
+| **Noites ocupadas e ocupação** | o quadro diz "{n} noites ocupadas" (M5.8: só "noites" era ambíguo para Diego — ocupadas ou vazias?): noites ocupadas no mês (reservas confirmadas, rateio por noite) e ocupação = noites ocupadas ÷ noites disponíveis, onde disponíveis = noites do mês − noites bloqueadas pelo proprietário para uso próprio (M5.5). Mostra "{n} de {d} disponíveis" e as bloqueadas. Com zero noites disponíveis (mês inteiro bloqueado para uso próprio), a ocupação é "não se aplica", com a nota "mês bloqueado para seu uso"; nunca 0 ÷ 0 | sempre (a ocupação, "não se aplica" sem noite disponível) |
+| **Diária média** | bruto do mês ÷ noites ocupadas no mês (o ADR do setor); rótulo "por noite ocupada, com limpeza" (o bruto do livro inclui a limpeza) | se houver noite ocupada; senão "sem reserva no mês" |
+| **Receita por noite disponível** (M5.8) | bruto do mês ÷ noites disponíveis (as mesmas da ocupação: noites de imóvel no período de posse − bloqueadas), ocupadas ou não — o RevPAN/RevPAR do setor, que junta ocupação e diária num número só; rótulo diz a conta ("bruto ÷ 29 noites disponíveis") | se houver noite disponível; senão "não se aplica" |
+| **Reservas e estadia média** (M5.8) | reservas confirmadas com ao menos uma noite no período e estadia média = noites ocupadas ÷ reservas, com uma casa ("2,6 noites por reserva") | se houver reserva; senão "nenhuma reserva" |
 | **Comparado ao mês anterior** | variação % do resultado e ocupação "de X% para Y%"; se o resultado do mês de comparação for zero (mês sem reserva e sem despesa), mostra a diferença em R$ ("+ R$ X; setembro sem resultado"), nunca % | só se o mês anterior estiver inteiro no sistema (depois do início do sistema, M4.11, ou do histórico importado) |
 | **Mesmo mês do ano anterior** | variação % do resultado; base zero, a mesma regra do mês anterior (diferença em R$) | idem; senão "sem dado no sistema" |
 | **Acumulado do ano** | soma do resultado de janeiro até o mês — ou "desde {mês/ano}" quando o dado começa depois de janeiro, escrito no rótulo | sempre que houver ao menos um mês |
-| **Gráfico** | barras dos últimos 12 meses do resultado (sua parte − despesas); meses sem dado em hachura, com legenda "sem dado no sistema"; eixo em R$ mil; o mês atual destacado | sempre |
+| **Gráfico do resultado** | barras dos últimos 12 meses do resultado (sua parte − despesas); meses sem dado em hachura, com legenda "sem dado no sistema"; eixo em R$ mil; o mês atual destacado; mês negativo desce abaixo da linha do zero, na escala | sempre |
+| **Gráfico de ocupação** (M5.8, escolha de Diego em 5/10 entre ocupação, RevPAN mensal e calendário do mês) | barras de 0 a 100% com a ocupação de cada um dos últimos 12 meses (mesma regra do quadro: ocupadas ÷ disponíveis), o percentual dentro da barra e, sobre cada barra, a **diária média** do mês em R$ — mostra se o mês foi bom por volume ou por preço; mês sem dado em hachura; mês sem noite disponível (todo bloqueado) idem; o mês atual destacado; no mês parcial, o mês corrente conta até o dia | sempre, logo abaixo do gráfico do resultado |
 
 Mês parcial (relatório do mês corrente): métricas calculadas até o dia, com o rótulo "até {dia}" —
 inclusive o denominador da ocupação: noites disponíveis contadas só até o dia (noites de 1 a {dia}
@@ -233,8 +236,8 @@ com pdf-lib; `gerar.ts` decide quem pode gerar) e troca o desenho:
 ## Fora do escopo do M5.7
 
 - Fotos reais (M7.3); histórico anterior a 1/10/2026 (M11.1) — até ele, as comparações dizem "sem
-  dado"; WhatsApp (M10); exportação para planilha/contador (ideia em `requisitos/labs/`); segundo
-  gráfico (ocupação) — decisão de Diego depois de ver o primeiro.
+  dado"; WhatsApp (M10); exportação para planilha/contador (ideia em `requisitos/labs/`). O segundo
+  gráfico (ocupação) foi decidido por Diego em 5/10 e entrou no M5.8.
 
 ## Referências
 

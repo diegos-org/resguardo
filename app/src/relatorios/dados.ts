@@ -87,8 +87,8 @@ export type MetricasDoRelatorio = {
   atual: DadosDoMes;
   anterior: DadosDoMes | null;
   anoAnterior: DadosDoMes | null;
-  /** Resultado (sua parte − despesas) dos 12 meses até o mês; null = sem dado no sistema. */
-  serie: [MesISO, number | null][];
+  /** Os 12 meses até o mês, com os números de cada um (resultado, noites, bruto…); null = sem dado no sistema. */
+  meses: [MesISO, DadosDoMes | null][];
   /** Dia até onde os números do mês corrente valem; null no mês terminado. */
   parcialAte: number | null;
 };
@@ -152,6 +152,7 @@ export async function metricasDoRelatorio(
       resultado: resumo.suaParte - resumo.despesas,
       bruto: ate ? brutoAte : resumo.receitaBruta,
       noitesOcupadas: confirmadas.reduce((s, r) => s + noitesAte(r), 0),
+      reservas: confirmadas.filter((r) => noitesAte(r) > 0).length,
       noitesDoPeriodo: ate ? Number(ate.slice(8, 10)) : diasDoMes(m),
       imoveis: imovelIds.length,
       diasImovel: diasDeImovel(imovelIds.map((id) => ({ desde: desdeDe.get(id) ?? null })), de, fimConsiderado),
@@ -167,17 +168,10 @@ export async function metricasDoRelatorio(
   const anteriorMes = somarMeses(o.mes, -1);
   const anoAnteriorMes = somarMeses(o.mes, -12);
   const [anterior, anoAnterior] = await Promise.all([temDado(anteriorMes) ? dadosDoMes(anteriorMes, null) : null, temDado(anoAnteriorMes) ? dadosDoMes(anoAnteriorMes, null) : null]);
-  const serie: [MesISO, number | null][] = [];
-  for (const m of meses) {
-    if (m === o.mes) serie.push([m, atual.resultado]);
-    else if (m === anteriorMes && anterior) serie.push([m, anterior.resultado]);
-    else if (!temDado(m)) serie.push([m, null]);
-    else {
-      const r = await resumoDoProprietario(db, organizacaoId, { proprietarioIds: donoIds, imovelIds, semImovel: o.todosOsImoveis, periodo: limitesDe(m) });
-      serie.push([m, r.suaParte - r.despesas]);
-    }
-  }
-  return { atual, anterior, anoAnterior, serie, parcialAte: ate ? Number(ate.slice(8, 10)) : null };
+  // Os 12 meses da série (M5.8: resultado, ocupação e diária média por mês), reaproveitando os já calculados.
+  const demais = new Map(await Promise.all(meses.filter((m) => m !== o.mes && m !== anteriorMes && temDado(m)).map(async (m) => [m, await dadosDoMes(m, null)] as const)));
+  const serie: [MesISO, DadosDoMes | null][] = meses.map((m) => [m, m === o.mes ? atual : m === anteriorMes ? anterior : (demais.get(m) ?? null)]);
+  return { atual, anterior, anoAnterior, meses: serie, parcialAte: ate ? Number(ate.slice(8, 10)) : null };
 }
 
 export type RepasseDoRelatorio = { id: string; tipo: Repasse["tipo"]; data: string; situacao: Repasse["situacao"]; dataPagamento: string | null; valor: number; reservas: string[] };

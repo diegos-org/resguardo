@@ -416,11 +416,11 @@ class Folhas {
     this.y -= 8;
   }
 
-  /** Os quatro quadros dos números do mês, em duas linhas de dois. */
+  /** Os quadros dos números do mês, dois por linha (seis desde o M5.8: três linhas). */
   quadros() {
     const w = (LARG - 10) / 2;
     const h = 54;
-    for (let linha = 0; linha < 2; linha++) {
+    for (let linha = 0; linha < Math.ceil(this.t.quadros.length / 2); linha++) {
       this.espaco(h + 8);
       for (let col = 0; col < 2; col++) {
         const q = this.t.quadros[linha * 2 + col];
@@ -471,15 +471,7 @@ class Folhas {
     for (const [i, p] of g.serie.entries()) {
       const x = x0 + i * slot + (slot - w) / 2;
       if (p.resultado === null) {
-        const hb = topoMil * porMil * 0.28;
-        this.page.drawRectangle({ x, y: zero, width: w, height: hb, color: C.creme, borderColor: C.borda, borderWidth: 0.6 });
-        for (let o = -hb; o < w; o += 5) {
-          const xa = Math.max(x, x + o);
-          const ya = zero + Math.max(0, -o);
-          const xb = Math.min(x + w, x + o + hb);
-          const yb = zero + Math.min(hb, w - o);
-          if (xb > xa) this.page.drawLine({ start: { x: xa, y: ya }, end: { x: xb, y: yb }, thickness: 0.6, color: C.borda });
-        }
+        this.hachura(x, zero, w, topoMil * porMil * 0.28);
       } else {
         const hb = (Math.abs(p.resultado) / 100_000) * porMil;
         // Positivo sobe da linha do zero; negativo desce dela, e o rótulo fica logo acima da linha (o espaço livre).
@@ -503,6 +495,75 @@ class Folhas {
     ];
     if (min < 0) legenda.push([C.douradoEscuro, "mês negativo (despesas acima da sua parte)"]);
     for (const [c, s] of legenda) {
+      this.page.drawRectangle({ x: lx, y: ly, width: 8, height: 6, color: c, borderColor: C.borda, borderWidth: 0.5 });
+      this.texto(s, lx + 11, ly, this.f.sans, 7, C.texto2);
+      lx += 11 + this.f.sans.widthOfTextAtSize(this.limpo(s), 7) + 14;
+    }
+    this.y = topo - h - 10;
+  }
+
+  /** Barra hachurada do "sem dado no sistema", de `y` para cima. */
+  hachura(x: number, y: number, w: number, hb: number) {
+    this.page.drawRectangle({ x, y, width: w, height: hb, color: C.creme, borderColor: C.borda, borderWidth: 0.6 });
+    for (let o = -hb; o < w; o += 5) {
+      const xa = Math.max(x, x + o);
+      const ya = y + Math.max(0, -o);
+      const xb = Math.min(x + w, x + o + hb);
+      const yb = y + Math.min(hb, w - o);
+      if (xb > xa) this.page.drawLine({ start: { x: xa, y: ya }, end: { x: xb, y: yb }, thickness: 0.6, color: C.borda });
+    }
+  }
+
+  /**
+   * Ocupação por mês nos últimos 12 meses (M5.8, escolha de Diego em 5/10): barras de 0 a 100%, com a diária média
+   * do mês escrita sobre cada barra e o percentual dentro dela; hachura para "sem dado"; o mês atual em floresta.
+   */
+  graficoOcupacao() {
+    const g = this.t.graficoOcupacao;
+    const h = 150;
+    this.espaco(h + 10);
+    const topo = this.y;
+    this.page.drawRectangle({ x: M, y: topo - h, width: LARG, height: h, color: C.papel, borderColor: C.borda, borderWidth: 0.8 });
+    this.texto(g.titulo, M + 10, topo - 15, this.f.serifN, 10, C.floresta);
+    this.textoDireita(g.nota, M + LARG - 10, topo - 15, this.f.sans, 7.5, C.texto2);
+    const x0 = M + 44;
+    const x1 = M + LARG - 12;
+    const base = topo - h + 26;
+    const alturaBarras = h - 26 - 42;
+    for (let v = 0; v <= 100; v += 25) {
+      const y = base + (v / 100) * alturaBarras;
+      this.page.drawLine({ start: { x: x0, y }, end: { x: x1, y }, thickness: 0.6, color: C.areia });
+      this.textoDireita(`${v}%`, x0 - 5, y - 2.5, this.f.sans, 7, C.texto2);
+    }
+    const slot = (x1 - x0) / g.serie.length;
+    const w = slot * 0.6;
+    const centrado = (s: string, x: number, y: number, tam: number, cor: typeof C.tinta) => {
+      const t = this.limpo(s);
+      this.page.drawText(t, { x: x + w / 2 - this.f.sans.widthOfTextAtSize(t, tam) / 2, y, size: tam, font: this.f.sans, color: cor });
+    };
+    for (const [i, p] of g.serie.entries()) {
+      const x = x0 + i * slot + (slot - w) / 2;
+      if (p.ocupacao === null) {
+        this.hachura(x, base, w, alturaBarras * 0.28);
+      } else {
+        const hb = (Math.min(100, p.ocupacao) / 100) * alturaBarras;
+        this.page.drawRectangle({ x, y: base, width: w, height: hb, color: p.atual ? C.floresta : C.barra });
+        // Percentual dentro da barra quando cabe; senão logo acima dela. A diária média fica por cima de tudo.
+        const pct = `${p.ocupacao}%`;
+        const dentro = hb >= 14;
+        centrado(pct, x, dentro ? base + hb - 10 : base + hb + 3, 7, dentro ? C.papel : C.texto2);
+        if (p.diaria !== null) centrado(`R$ ${Math.round(p.diaria / 100).toLocaleString("pt-BR")}`, x, base + hb + (dentro ? 3 : 12), 7, C.tinta);
+      }
+      centrado(mesCurto(p.mes), x, base - 11, 7, C.texto2);
+    }
+    this.page.drawLine({ start: { x: x0, y: base }, end: { x: x1, y: base }, thickness: 0.8, color: C.borda });
+    let lx = M + 10;
+    const ly = topo - h + 8;
+    for (const [c, s] of [
+      [C.barra, "meses anteriores"],
+      [C.floresta, g.legendaAtual],
+      [C.creme, "sem dado no sistema"],
+    ] as const) {
       this.page.drawRectangle({ x: lx, y: ly, width: 8, height: 6, color: c, borderColor: C.borda, borderWidth: 0.5 });
       this.texto(s, lx + 11, ly, this.f.sans, 7, C.texto2);
       lx += 11 + this.f.sans.widthOfTextAtSize(this.limpo(s), 7) + 14;
@@ -642,6 +703,7 @@ export async function gerarPdfRelatorio(t: TextosRelatorio, anexos: Anexos = {},
   p.h3("Números do mês");
   p.quadros();
   p.grafico();
+  p.graficoOcupacao();
   p.h3(t.reservasTitulo);
   if (t.reservas.length) p.tabelaReservas(t.reservas, t.totalReservas, t.mostrarImovel);
   else p.paragrafo("Nenhuma reserva confirmada com noites neste mês.", f.sans, 9, C.tinta);

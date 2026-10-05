@@ -67,6 +67,8 @@ export type DadosDoMes = {
   bruto: number;
   /** Noites das reservas confirmadas dentro do período (cancelada ou pendente com valor no livro não ocupa noite). */
   noitesOcupadas: number;
+  /** Reservas confirmadas com ao menos uma noite no período (M5.8: quadro "reservas e estadia média"). */
+  reservas: number;
   /** Noites do período considerado por imóvel (mês inteiro; no mês parcial, só até o dia). */
   noitesDoPeriodo: number;
   imoveis: number;
@@ -95,8 +97,17 @@ export function ocupacao(d: Pick<DadosDoMes, "noitesOcupadas" | "diasImovel" | "
   return { ocupadas: d.noitesOcupadas, disponiveis, bloqueadas: d.noitesBloqueadas, percentual: disponiveis > 0 ? Math.round((d.noitesOcupadas / disponiveis) * 100) : null };
 }
 
-/** Bruto ÷ noites ocupadas (centavos, arredondado); sem noite, null. */
+/** Bruto ÷ noites ocupadas (centavos, arredondado); sem noite, null. É o ADR do setor. */
 export const diariaMedia = (bruto: number, noites: number): number | null => (noites > 0 ? Math.round(bruto / noites) : null);
+
+/**
+ * Receita por noite disponível (RevPAN/RevPAR do setor, M5.8): bruto ÷ noites disponíveis (ocupadas ou não), em
+ * centavos; junta ocupação e diária num número só. Sem noite disponível, null.
+ */
+export const receitaPorNoiteDisponivel = (bruto: number, disponiveis: number): number | null => (disponiveis > 0 ? Math.round(bruto / disponiveis) : null);
+
+/** Estadia média no período: noites ÷ reservas, com uma casa ("2,6"); sem reserva, null. */
+export const estadiaMedia = (noites: number, reservas: number): string | null => (reservas > 0 ? (noites / reservas).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : null);
 
 export type Variacao = { tipo: "percentual"; valor: number } | { tipo: "diferenca"; valor: number } | null;
 
@@ -108,6 +119,17 @@ export function variacao(atual: number, anterior: number | null): Variacao {
 }
 
 export type PontoDaSerie = { mes: MesISO; resultado: number | null; atual: boolean };
+
+/** Ponto do gráfico de ocupação (M5.8): ocupação em % e diária média do mês; null = sem dado (ou sem noite disponível / ocupada). */
+export type PontoOcupacao = { mes: MesISO; ocupacao: number | null; diaria: number | null; atual: boolean };
+
+/** Os 12 meses até `mes` com ocupação (%) e diária média; mês sem dado no sistema → nulls. */
+export function serieOcupacaoDe12(meses: ReadonlyMap<MesISO, DadosDoMes | null>, mes: MesISO): PontoOcupacao[] {
+  return Array.from({ length: 12 }, (_, i) => somarMeses(mes, i - 11)).map((m) => {
+    const d = meses.get(m) ?? null;
+    return { mes: m, ocupacao: d ? ocupacao(d).percentual : null, diaria: d ? diariaMedia(d.bruto, d.noitesOcupadas) : null, atual: m === mes };
+  });
+}
 
 /** Os 12 meses até `mes` (inclusive), com o resultado de cada um ou null (sem dado). */
 export function serieDe12(resultados: ReadonlyMap<MesISO, number | null>, mes: MesISO): PontoDaSerie[] {
@@ -137,15 +159,17 @@ const sinal = (v: number) => (v > 0 ? "+" : v < 0 ? "−" : "");
 const brlAbs = (v: number) => formatBRL(Math.abs(v));
 
 /**
- * Os quatro quadros dos "Números do mês" (página 2): noites e ocupação; diária média; comparação com o mês anterior;
- * comparação com o mesmo mês do ano anterior. `parcialAte`: dia do mês até onde os números valem (mês corrente).
+ * Os seis quadros dos "Números do mês" (página 2), em três linhas de dois: noites ocupadas e ocupação; diária média;
+ * receita por noite disponível; reservas e estadia média; comparação com o mês anterior; comparação com o mesmo mês
+ * do ano anterior. `parcialAte`: dia do mês até onde os números valem (mês corrente). (M5.8: "noites ocupadas" no
+ * lugar de "noites", que Diego achou ambíguo; RevPAN e estadia média a pedido dele em 5/10.)
  */
 export function quadrosDoMes(o: { atual: DadosDoMes; anterior: DadosDoMes | null; anoAnterior: DadosDoMes | null; parcialAte: number | null }): Quadro[] {
   const a = o.atual;
   const oc = ocupacao(a);
   const ate = o.parcialAte !== null ? ` até ${o.parcialAte}/${Number(a.mes.slice(5, 7))}` : "";
   const noites: Quadro = {
-    valor: `${a.noitesOcupadas} ${a.noitesOcupadas === 1 ? "noite" : "noites"}${ate}`,
+    valor: `${a.noitesOcupadas} ${a.noitesOcupadas === 1 ? "noite ocupada" : "noites ocupadas"}${ate}`,
     legenda:
       oc.percentual === null
         ? `ocupação não se aplica: ${oc.bloqueadas > 0 ? "todas as noites bloqueadas para seu uso" : "nenhuma noite disponível no período"}`
@@ -153,7 +177,17 @@ export function quadrosDoMes(o: { atual: DadosDoMes; anterior: DadosDoMes | null
     semDado: false,
   };
   const dm = diariaMedia(a.bruto, a.noitesOcupadas);
-  const diaria: Quadro = dm === null ? { valor: "sem reserva no mês", legenda: "diária média: aparece quando houver noite ocupada", semDado: true } : { valor: formatBRL(dm), legenda: "diária média por noite, com limpeza (bruto ÷ noites)", semDado: false };
+  const diaria: Quadro = dm === null ? { valor: "sem reserva no mês", legenda: "diária média: aparece quando houver noite ocupada", semDado: true } : { valor: formatBRL(dm), legenda: "diária média por noite ocupada, com limpeza (bruto ÷ noites ocupadas)", semDado: false };
+  const rpn = receitaPorNoiteDisponivel(a.bruto, oc.disponiveis);
+  const porNoiteDisponivel: Quadro =
+    rpn === null
+      ? { valor: "não se aplica", legenda: "receita por noite disponível: sem noite disponível no período", semDado: true }
+      : { valor: formatBRL(rpn), legenda: `receita por noite disponível (RevPAN): bruto ÷ ${oc.disponiveis} ${oc.disponiveis === 1 ? "noite disponível" : "noites disponíveis"}, ocupadas ou não — ocupação e diária num número só`, semDado: false };
+  const em = estadiaMedia(a.noitesOcupadas, a.reservas);
+  const reservas: Quadro =
+    em === null
+      ? { valor: "nenhuma reserva", legenda: `nenhuma reserva confirmada com noite no ${ate ? "período" : "mês"}`, semDado: true }
+      : { valor: `${a.reservas} ${a.reservas === 1 ? "reserva" : "reservas"}${ate}`, legenda: `estadia média de ${em} ${em === "1,0" ? "noite" : "noites"} por reserva no ${ate ? "período" : "mês"} (${a.noitesOcupadas} ${a.noitesOcupadas === 1 ? "noite" : "noites"} ÷ ${a.reservas} ${a.reservas === 1 ? "reserva" : "reservas"})`, semDado: false };
   const comparar = (outro: DadosDoMes | null, rotulo: string, semDado: string): Quadro => {
     if (o.parcialAte !== null) return { valor: "mês em andamento", legenda: `sem comparação com ${rotulo} até o mês terminar (os números valem até ${o.parcialAte}/${Number(a.mes.slice(5, 7))})`, semDado: true };
     if (!outro || outro.resultado === null || a.resultado === null) return { valor: "sem dado no sistema", legenda: semDado, semDado: true };
@@ -168,6 +202,8 @@ export function quadrosDoMes(o: { atual: DadosDoMes; anterior: DadosDoMes | null
   return [
     noites,
     diaria,
+    porNoiteDisponivel,
+    reservas,
     comparar(o.anterior, nomeDoMes(anterior), `${nomeDoMes(anterior)} não está no sistema; a comparação começa quando houver`),
     comparar(o.anoAnterior, nomeDoMes(anoAnterior), `${nomeDoMes(anoAnterior)} não está no sistema; a comparação ano a ano começa quando houver`),
   ];
