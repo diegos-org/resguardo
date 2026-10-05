@@ -43,18 +43,24 @@ export const comecaComSaudacao = (frase: string): boolean => /^\s*(olá|ola|oi|b
 
 // A saudação inicial do modelo: só a palavra ("Olá", "Bom dia").
 const SAUDACAO_INICIAL = /^\s*(?:olá|ola|oi|bom dia|boa tarde|boa noite|prezad[oa]s?|car[oa]s?)(?=[^\p{L}\p{N}]|$)/iu;
-// O nome logo depois da saudação, só quando é nome mesmo: o marcador do modelo ("{nome}") ou um nome próprio (até quatro
-// palavras com inicial maiúscula, "da/de/do" no meio), seguido de pontuação ou do fim da linha. "Olá, segue o relatório."
-// não tem nome: a frase fica inteira.
-const NOME_DA_SAUDACAO = /^,?[ \t]*(?:\{[^}\n]{1,30}\}|\p{Lu}[\p{L}'’-]*(?:[ \t]+(?:d[aeo]s?[ \t]+)?\p{Lu}[\p{L}'’-]*){0,3})(?=[ \t]*(?:[.!,:]|\n|$))/u;
+// O que pode ser o nome logo depois da saudação: o marcador do modelo ("{nome}") ou até quatro palavras com inicial
+// maiúscula ("da/de/do" no meio), seguidas de pontuação ou do fim da linha.
+const CANDIDATO_A_NOME = /^,?[ \t]*(?:(\{[^}\n]{1,30}\})|(\p{Lu}[\p{L}'’-]*(?:[ \t]+(?:d[aeo]s?[ \t]+)?\p{Lu}[\p{L}'’-]*){0,3}))(?=[ \t]*(?:[.!,:]|\n|$))/u;
+const palavras = (s: string) => s.toLocaleLowerCase("pt-BR").split(/[ \t]+/).filter(Boolean);
 
-/** O modelo sem a saudação inicial (e sem o nome dela, quando houver); o resto da frase fica. */
-function semSaudacao(frase: string): string {
+/**
+ * O modelo sem a saudação inicial e, quando ela vem com o nome de quem recebe, sem o nome: o marcador ("{nome}") ou
+ * palavras do nome cadastrado ("Maria", "Maria da Silva"). Qualquer outra palavra fica — "Olá, Encaminho." mantém
+ * "Encaminho." —, para nunca apagar a mensagem.
+ */
+function semSaudacao(frase: string, nome: string): string {
   const s = SAUDACAO_INICIAL.exec(frase);
   if (!s) return frase;
   let resto = frase.slice(s[0].length);
-  const n = NOME_DA_SAUDACAO.exec(resto);
-  if (n) resto = resto.slice(n[0].length);
+  const n = CANDIDATO_A_NOME.exec(resto);
+  const doNome = new Set(palavras(nome));
+  const ehNome = n && (n[1] !== undefined || (n[2] !== undefined && palavras(n[2]).every((p) => doNome.has(p))));
+  if (n && ehNome) resto = resto.slice(n[0].length);
   return resto.replace(/^[ \t]*[.!,:]?\s*/, "");
 }
 const semPontoFinal = (t: string) => t.trim().replace(/[.!]+$/, "").toLocaleLowerCase("pt-BR");
@@ -64,8 +70,8 @@ const semPontoFinal = (t: string) => t.trim().replace(/[.!]+$/, "").toLocaleLowe
  * pelo primeiro nome, dada pelo esqueleto) e o parágrafo final de contato quando é o mesmo do esqueleto. O modelo padrão
  * do fechamento ("Olá, {nome}. … Qualquer dúvida, é só responder este e-mail.") vira só a frase do meio.
  */
-export function fraseDoModelo(frase: string, contato = CONTATO_PADRAO): string {
-  const ps = paragrafos(semSaudacao(frase));
+export function fraseDoModelo(frase: string, contato = CONTATO_PADRAO, nome = ""): string {
+  const ps = paragrafos(semSaudacao(frase, nome));
   if (ps.length && semPontoFinal(ps[ps.length - 1]) === semPontoFinal(contato)) ps.pop();
   const f = ps.join("\n\n");
   return f ? f[0].toLocaleUpperCase("pt-BR") + f.slice(1) : "";
@@ -87,7 +93,7 @@ export function montarEmail(e: EsqueletoEmail): EmailMontado {
   const valores = (e.valores ?? []).filter((v) => v.rotulo.trim());
   const assinatura = e.assinatura?.trim() || `Equipe ${e.empresa}`;
   const contato = e.contato?.trim() || CONTATO_PADRAO;
-  const frase = fraseDoModelo(e.frase, contato);
+  const frase = fraseDoModelo(e.frase, contato, e.nome);
 
   const texto = [
     saudacao,

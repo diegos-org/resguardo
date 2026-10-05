@@ -62,11 +62,11 @@ describe("esqueleto dos e-mails (M5.7): saudação, frase, destaque, lista curta
     expect(comecaComSaudacao("Segue o relatório de outubro.")).toBe(false);
     expect(comecaComSaudacao("Olavo chegou.")).toBe(false);
     // O modelo padrão do fechamento, já preenchido com o nome completo: fica só a frase do meio.
-    expect(fraseDoModelo("Olá, Dona Exemplo.\n\nSegue em anexo o relatório de outubro de 2026 dos seus imóveis.\n\nQualquer dúvida, é só responder este e-mail.")).toBe("Segue em anexo o relatório de outubro de 2026 dos seus imóveis.");
+    expect(fraseDoModelo("Olá, Dona Exemplo.\n\nSegue em anexo o relatório de outubro de 2026 dos seus imóveis.\n\nQualquer dúvida, é só responder este e-mail.", undefined, "Dona Exemplo")).toBe("Segue em anexo o relatório de outubro de 2026 dos seus imóveis.");
     expect(fraseDoModelo("Olá, {nome}. Segue o relatório de {mes}.")).toBe("Segue o relatório de {mes}.");
     expect(fraseDoModelo("Bom dia! Tudo bem?")).toBe("Tudo bem?");
     expect(fraseDoModelo("Oi. Segue.")).toBe("Segue.");
-    expect(fraseDoModelo("Olá, Maria.")).toBe("");
+    expect(fraseDoModelo("Olá, Maria.", undefined, "Maria Fictícia")).toBe("");
     expect(fraseDoModelo("Olavo chegou.")).toBe("Olavo chegou.");
     // Saudação sem nome: só ela sai; a mensagem que vem depois fica inteira.
     expect(fraseDoModelo("Olá, segue em anexo o relatório.")).toBe("Segue em anexo o relatório.");
@@ -75,7 +75,11 @@ describe("esqueleto dos e-mails (M5.7): saudação, frase, destaque, lista curta
     expect(fraseDoModelo("Olá, Segue em anexo o relatório de outubro.")).toBe("Segue em anexo o relatório de outubro.");
     // Com nome (próprio ou marcador), sai o nome junto.
     expect(fraseDoModelo("Olá {nome}, segue o relatório.")).toBe("Segue o relatório.");
-    expect(fraseDoModelo("Prezada Maria da Silva,\nSegue o relatório.")).toBe("Segue o relatório.");
+    expect(fraseDoModelo("Prezada Maria da Silva,\nSegue o relatório.", undefined, "Maria Fictícia da Silva")).toBe("Segue o relatório.");
+    // Palavra com maiúscula que não é o nome de quem recebe fica: a mensagem nunca some.
+    expect(fraseDoModelo("Olá, Encaminho.", undefined, "Maria Fictícia")).toBe("Encaminho.");
+    expect(fraseDoModelo("Bom dia, Obrigada!", undefined, "Maria Fictícia")).toBe("Obrigada!");
+    expect(fraseDoModelo("Olá, Maria.")).toBe("Maria.");
     // Contato diferente do padrão fica; igual ao contato passado sai.
     expect(fraseDoModelo("Segue.\n\nFale com a Ana se precisar.")).toBe("Segue.\n\nFale com a Ana se precisar.");
     expect(fraseDoModelo("Segue.\n\nFale com a Ana se precisar.", "Fale com a Ana se precisar.")).toBe("Segue.");

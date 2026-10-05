@@ -137,7 +137,7 @@ export async function dadosDoRelatorio(
       : Promise.resolve([]),
     partesDoRelatorio(db, organizacaoId, { donos: o.donos, imovelIds, mes, agora }),
     metricasDoRelatorio(db, organizacaoId, { donos: o.donos, imovelIds, todosOsImoveis: o.todosOsImoveis, mes, hoje: o.hoje, parcial: situacao === "parcial" }),
-    repassesDoRelatorio(db, organizacaoId, o.donos, mes),
+    repassesDoRelatorio(db, organizacaoId, o.donos, mes, o.todosOsImoveis ? undefined : imovelIds),
     despesasDoRelatorio(db, organizacaoId, { donos: o.donos, imovelIds, todosOsImoveis: o.todosOsImoveis, mes }),
     contratosDoRelatorio(db, organizacaoId, imovelIds, mes),
   ]);
