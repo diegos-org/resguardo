@@ -156,7 +156,9 @@ comparação mostraria queda falsa).
 - **Portal × painel/e-mail.** Mesmo PDF; o do portal sai sem anexos e só dentro da janela do portal
   (como hoje); o do painel e o do e-mail do dia do fechamento (M5.4) levam a foto e os extratos. **De
   onde vêm os anexos do e-mail** (hoje `relatorioDoFechamento` gera sem anexos e só o painel aceita
-  upload na hora): a equipe guarda, por imóvel e mês, os extratos oficiais dos canais — upload em
+  upload na hora): a equipe guarda, por imóvel, proprietário favorecido e mês, os extratos oficiais dos canais (o
+  proprietário é parte da chave: imóvel que troca de dono no mês tem um extrato por dono, e o relatório
+  de um nunca anexa o do outro) — upload em
   Financeiro → Fechamento, antes do dia do fechamento, em armazenamento privado como o comprovante
   do Pix do M4.10 —, e a foto vem da ficha do imóvel (M7.3); o e-mail anexa o que estiver guardado
   e, sem arquivo guardado, sai sem anexos, com o rodapé "ficam com a equipe" e um aviso no painel

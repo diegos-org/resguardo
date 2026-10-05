@@ -136,7 +136,7 @@ padrão. Está implementado assim (no portal, no painel e no e-mail do fechament
   ficam com a equipe); o do painel (ficha do proprietário → Relatório em PDF) aceita foto e um
   extrato na hora, agora com o nome do canal; o do e-mail do fechamento leva os extratos que você
   guardar em **Financeiro → Repasses → "Extratos dos canais para o relatório"** (um PDF por imóvel,
-  mês e canal, com as páginas a usar) — sem extrato guardado, o relatório sai sem anexos e a seção
+  proprietário favorecido, mês e canal, com as páginas a usar — só o relatório daquele proprietário o anexa) — sem extrato guardado, o relatório sai sem anexos e a seção
   do proprietário avisa, antes e depois do envio. Os e-mails do fechamento e do repasse saem em
   texto e numa versão bonita (HTML), na ordem combinada: saudação pelo primeiro nome, uma frase do
   que é, o valor em destaque, lista curta, próximo passo, assinatura — o seu texto editável
@@ -1903,8 +1903,9 @@ ambiente).
 
 32. **Guarde os extratos dos canais antes do fechamento (M5.7):** em **Financeiro → Repasses**, abra
     "Extratos dos canais para o relatório de {mês}" e suba, para cada imóvel, o PDF que o Airbnb
-    emitiu ("Ganhos" do período; Booking quando houver), indicando as páginas que são só daquele
-    imóvel e daquele mês. Esse arquivo vai no fim do relatório que o e-mail do fechamento manda. Sem
+    emitiu ("Ganhos" do período; Booking quando houver), escolhendo o proprietário favorecido e
+    indicando as páginas que são só daquele imóvel, daquele proprietário e daquele mês (se o imóvel
+    trocou de dono no meio do mês, um extrato para cada um — o de um nunca vai no relatório do outro). Esse arquivo vai no fim do relatório que o e-mail do fechamento manda. Sem
     ele, o relatório sai sem anexos e a seção do proprietário avisa — nada é inventado. Antes do
     primeiro envio, gere o PDF de um proprietário na ficha dele (Relatório em PDF) e confira as
     quatro páginas; me diga o que ajustar.

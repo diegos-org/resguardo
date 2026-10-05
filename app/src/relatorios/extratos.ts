@@ -1,16 +1,20 @@
 /**
- * Extratos oficiais dos canais guardados por imóvel e mês (M5.7). A equipe sobe, em Financeiro → Repasses, o PDF que o
- * canal emitiu (Airbnb, Booking…) antes do fechamento; o relatório do e-mail do fechamento os anexa no fim, como
- * emitidos, só as páginas escolhidas. Um por imóvel, mês e canal (subir de novo substitui). Privado, no banco
- * (`arquivos`), como o comprovante do Pix. Sem arquivo guardado o relatório sai sem anexos e o painel avisa — nunca se
- * supõe. O sistema não lê o conteúdo do extrato: só confere que é um PDF e que as páginas pedidas existem.
+ * Extratos oficiais dos canais guardados por imóvel, proprietário e mês (M5.7). A equipe sobe, em Financeiro →
+ * Repasses, o PDF que o canal emitiu (Airbnb, Booking…) antes do fechamento; o relatório do e-mail do fechamento os
+ * anexa no fim, como emitidos, só as páginas escolhidas. Um por imóvel, proprietário (favorecido), mês e canal (subir
+ * de novo substitui). O proprietário é parte da chave de propósito: um imóvel que troca de dono no meio do mês gera
+ * dois relatórios, e o extrato guardado para um nunca vai no do outro. Privado, no banco (`arquivos`), como o
+ * comprovante do Pix. Sem arquivo guardado o relatório sai sem anexos e o painel avisa — nunca se supõe. O sistema não
+ * lê o conteúdo do extrato: só confere que é um PDF e que as páginas pedidas existem.
  */
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lt } from "drizzle-orm";
 import { PDFDocument } from "pdf-lib";
 import { registrarAuditoria } from "@/auditoria/auditoria";
-import { arquivos, extratosCanal, imoveis } from "@/db/schema";
+import { arquivos, extratosCanal, imoveis, lancamentos, proprietarioImoveis, proprietarios } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { uuidValido } from "@/lib/ids";
 import { NOMES_ORIGEM } from "@/reservas/regras";
+import { limitesDe } from "./metricas";
 import { ErroRelatorio, type ExtratoAnexo, lerPaginas, LIMITE_EXTRATO } from "./pdf";
 
 /** Canais que emitem extrato próprio (site e direta são da empresa: não há extrato de canal). */
@@ -22,6 +26,8 @@ export const nomeDoCanalExtrato = (c: string): string => (canalExtratoValido(c) 
 
 export type NovoExtrato = {
   imovelId: string;
+  /** Favorecido: o proprietário em cujo relatório o extrato vai. */
+  proprietarioId: string;
   /** "AAAA-MM". */
   mes: string;
   canal: string;
@@ -35,6 +41,8 @@ export type ExtratoGuardado = {
   imovelId: string;
   imovelCodigo: string;
   imovelNome: string;
+  proprietarioId: string;
+  proprietarioNome: string;
   mes: string;
   canal: CanalExtrato;
   canalNome: string;
@@ -82,12 +90,14 @@ export async function guardarExtrato(db: Db, organizacaoId: string, e: NovoExtra
   }
   const [imovel] = await db.select({ id: imoveis.id, codigo: imoveis.codigo }).from(imoveis).where(and(eq(imoveis.id, e.imovelId), eq(imoveis.organizacaoId, organizacaoId)));
   if (!imovel) return { ok: false, erro: "Imóvel não encontrado." };
+  const dono = await donoDoImovelNoMes(db, organizacaoId, imovel.id, e.proprietarioId, e.mes);
+  if (!dono) return { ok: false, erro: "Escolha o proprietário favorecido: ele precisa ter esse imóvel (no cadastro ou no livro desse mês)." };
   const canal = e.canal;
   return db.transaction(async (tx) => {
     const [antigo] = await tx
       .select({ id: extratosCanal.id, arquivoId: extratosCanal.arquivoId })
       .from(extratosCanal)
-      .where(and(eq(extratosCanal.organizacaoId, organizacaoId), eq(extratosCanal.imovelId, imovel.id), eq(extratosCanal.mes, e.mes), eq(extratosCanal.canal, canal)))
+      .where(and(eq(extratosCanal.organizacaoId, organizacaoId), eq(extratosCanal.imovelId, imovel.id), eq(extratosCanal.proprietarioId, dono.id), eq(extratosCanal.mes, e.mes), eq(extratosCanal.canal, canal)))
       .for("update");
     if (antigo) {
       await tx.delete(extratosCanal).where(eq(extratosCanal.id, antigo.id));
@@ -97,17 +107,37 @@ export async function guardarExtrato(db: Db, organizacaoId: string, e: NovoExtra
       .insert(arquivos)
       .values({ organizacaoId, nome: (e.arquivo.nome.trim() || `extrato-${canal}-${e.mes}.pdf`).slice(0, 200), tipo: "application/pdf", tamanho: e.arquivo.conteudo.length, conteudo: Buffer.from(e.arquivo.conteudo), criadoPor: autorId })
       .returning({ id: arquivos.id });
-    const [linha] = await tx.insert(extratosCanal).values({ organizacaoId, imovelId: imovel.id, mes: e.mes, canal, arquivoId: arquivo.id, paginas, criadoPor: autorId }).returning({ id: extratosCanal.id });
+    const [linha] = await tx.insert(extratosCanal).values({ organizacaoId, imovelId: imovel.id, proprietarioId: dono.id, mes: e.mes, canal, arquivoId: arquivo.id, paginas, criadoPor: autorId }).returning({ id: extratosCanal.id });
     await registrarAuditoria(tx, {
       organizacaoId,
       usuarioId: autorId,
       acao: "extrato_canal.guardar",
       entidade: "imovel",
       entidadeId: imovel.id,
-      mudancas: { extrato: [antigo ? "substituído" : null, `${NOMES_ORIGEM[canal]} · ${e.mes} · ${total} página(s)${paginas ? ` (usar ${paginas})` : ""}`] },
+      mudancas: { extrato: [antigo ? "substituído" : null, `${NOMES_ORIGEM[canal]} · ${e.mes} · ${dono.nome} · ${total} página(s)${paginas ? ` (usar ${paginas})` : ""}`] },
     });
     return { ok: true as const, id: linha.id, substituiu: Boolean(antigo), paginasTotal: total };
   });
+}
+
+/**
+ * O proprietário é dono do imóvel nesse mês? Vale o vínculo atual do cadastro ou qualquer lançamento dele para o imóvel
+ * com competência no mês (o dono antigo, que ainda recebe o relatório daquele mês pelo livro). Fora disso, não: um
+ * extrato guardado para quem não tem o imóvel nunca chegaria a relatório nenhum.
+ */
+async function donoDoImovelNoMes(db: Db, organizacaoId: string, imovelId: string, proprietarioId: string, mes: string): Promise<{ id: string; nome: string } | null> {
+  if (!uuidValido(proprietarioId)) return null;
+  const [p] = await db.select({ id: proprietarios.id, nome: proprietarios.nome }).from(proprietarios).where(and(eq(proprietarios.id, proprietarioId), eq(proprietarios.organizacaoId, organizacaoId)));
+  if (!p) return null;
+  const [vinculo] = await db.select({ id: proprietarioImoveis.proprietarioId }).from(proprietarioImoveis).where(and(eq(proprietarioImoveis.proprietarioId, p.id), eq(proprietarioImoveis.imovelId, imovelId))).limit(1);
+  if (vinculo) return p;
+  const { inicio, fim } = limitesDe(mes);
+  const [noLivro] = await db
+    .select({ id: lancamentos.id })
+    .from(lancamentos)
+    .where(and(eq(lancamentos.organizacaoId, organizacaoId), eq(lancamentos.proprietarioId, p.id), eq(lancamentos.imovelId, imovelId), gte(lancamentos.competencia, inicio), lt(lancamentos.competencia, fim)))
+    .limit(1);
+  return noLivro ? p : null;
 }
 
 /** Remove um extrato guardado (e o arquivo dele). */
@@ -118,20 +148,25 @@ export async function removerExtrato(db: Db, organizacaoId: string, id: string, 
     if (!l) return { ok: false as const, erro: "Extrato não encontrado." };
     await tx.delete(extratosCanal).where(eq(extratosCanal.id, l.id));
     await tx.delete(arquivos).where(and(eq(arquivos.id, l.arquivoId), eq(arquivos.organizacaoId, organizacaoId)));
-    await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "extrato_canal.remover", entidade: "imovel", entidadeId: l.imovelId, mudancas: { extrato: [`${nomeDoCanalExtrato(l.canal)} · ${l.mes}`, null] } });
+    await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "extrato_canal.remover", entidade: "imovel", entidadeId: l.imovelId, mudancas: { extrato: [`${nomeDoCanalExtrato(l.canal)} · ${l.mes} · ${l.proprietarioId}`, null] } });
     return { ok: true as const };
   });
 }
 
-/** Extratos guardados de um mês (todos os imóveis, ou só alguns), na ordem do código do imóvel e do canal. */
-export async function listarExtratos(db: Db, organizacaoId: string, mes: string, imovelIds?: readonly string[]): Promise<ExtratoGuardado[]> {
-  if (imovelIds && !imovelIds.length) return [];
+/** Filtro dos extratos: só estes imóveis e/ou só estes favorecidos (um relatório pede os dois). */
+export type FiltroExtratos = { imovelIds?: readonly string[]; proprietarioIds?: readonly string[] };
+
+/** Extratos guardados de um mês (todos, ou filtrados por imóvel e favorecido), na ordem do código do imóvel, do favorecido e do canal. */
+export async function listarExtratos(db: Db, organizacaoId: string, mes: string, f: FiltroExtratos = {}): Promise<ExtratoGuardado[]> {
+  if ((f.imovelIds && !f.imovelIds.length) || (f.proprietarioIds && !f.proprietarioIds.length)) return [];
   const linhas = await db
     .select({
       id: extratosCanal.id,
       imovelId: extratosCanal.imovelId,
       imovelCodigo: imoveis.codigo,
       imovelNome: imoveis.nome,
+      proprietarioId: extratosCanal.proprietarioId,
+      proprietarioNome: proprietarios.nome,
       mes: extratosCanal.mes,
       canal: extratosCanal.canal,
       paginas: extratosCanal.paginas,
@@ -142,18 +177,27 @@ export async function listarExtratos(db: Db, organizacaoId: string, mes: string,
     })
     .from(extratosCanal)
     .innerJoin(imoveis, eq(imoveis.id, extratosCanal.imovelId))
+    .innerJoin(proprietarios, eq(proprietarios.id, extratosCanal.proprietarioId))
     .innerJoin(arquivos, eq(arquivos.id, extratosCanal.arquivoId))
-    .where(and(eq(extratosCanal.organizacaoId, organizacaoId), eq(extratosCanal.mes, mes), imovelIds ? inArray(extratosCanal.imovelId, [...imovelIds]) : undefined))
-    .orderBy(asc(imoveis.codigo), asc(extratosCanal.canal));
+    .where(
+      and(
+        eq(extratosCanal.organizacaoId, organizacaoId),
+        eq(extratosCanal.mes, mes),
+        f.imovelIds ? inArray(extratosCanal.imovelId, [...f.imovelIds]) : undefined,
+        f.proprietarioIds ? inArray(extratosCanal.proprietarioId, [...f.proprietarioIds]) : undefined,
+      ),
+    )
+    .orderBy(asc(imoveis.codigo), asc(proprietarios.nome), asc(extratosCanal.canal));
   return linhas.map((l) => ({ ...l, canal: l.canal as CanalExtrato, canalNome: nomeDoCanalExtrato(l.canal) }));
 }
 
 /**
- * Os extratos guardados dos imóveis de um relatório, prontos para o fim do PDF (`Anexos.extratos`). Com mais de um imóvel,
- * o selo do anexo traz o código do imóvel junto do canal.
+ * Os extratos guardados para um relatório — os imóveis dele **e** os favorecidos dele (o extrato de outro dono do mesmo
+ * imóvel no mês nunca entra) — prontos para o fim do PDF (`Anexos.extratos`). Com mais de um imóvel, o selo do anexo
+ * traz o código do imóvel junto do canal.
  */
-export async function extratosDoRelatorio(db: Db, organizacaoId: string, imovelIds: readonly string[], mes: string): Promise<ExtratoAnexo[]> {
-  const lista = await listarExtratos(db, organizacaoId, mes, imovelIds);
+export async function extratosDoRelatorio(db: Db, organizacaoId: string, f: { imovelIds: readonly string[]; proprietarioIds: readonly string[] }, mes: string): Promise<ExtratoAnexo[]> {
+  const lista = await listarExtratos(db, organizacaoId, mes, f);
   if (!lista.length) return [];
   const conteudos = await db
     .select({ id: arquivos.id, conteudo: arquivos.conteudo })

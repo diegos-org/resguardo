@@ -36,7 +36,7 @@ export async function guardarExtratoAcao(form: FormData): Promise<void> {
   const r = await guardarExtrato(
     getDb(),
     s.organizacaoId,
-    { imovelId: texto(form, "imovelId"), mes, canal: texto(form, "canal"), paginas: texto(form, "paginas"), arquivo: { nome: f.name, tipo: f.type, conteudo: new Uint8Array(await f.arrayBuffer()) } },
+    { imovelId: texto(form, "imovelId"), proprietarioId: texto(form, "proprietarioId"), mes, canal: texto(form, "canal"), paginas: texto(form, "paginas"), arquivo: { nome: f.name, tipo: f.type, conteudo: new Uint8Array(await f.arrayBuffer()) } },
     s.usuarioId,
   );
   if (!r.ok) voltar(mes, r);

@@ -56,6 +56,38 @@ export function noitesBloqueadas(bloqueios: readonly { imovelId: string; inicio:
   return [...porImovel.values()].reduce((s, n) => s + n.size, 0);
 }
 
+/**
+ * Noites ocupadas dentro de [inicio, fim), por imóvel, sem contar duas vezes a mesma noite (reservas sobrepostas no
+ * mesmo imóvel — overbooking — contam uma vez) e sem contar noite que o proprietário bloqueou para uso próprio (ela
+ * já saiu do denominador da ocupação). A mesma conta de `calcularOcupacao` no painel.
+ */
+export function noitesOcupadasNoIntervalo(
+  reservas: readonly { imovelId: string; checkin: string; checkout: string }[],
+  bloqueios: readonly { imovelId: string; inicio: string; fim: string }[],
+  inicio: string,
+  fim: string,
+): number {
+  const diasDe = (xs: readonly { imovelId: string; de: string; ate: string }[]) => {
+    const porImovel = new Map<string, Set<number>>();
+    for (const x of xs) {
+      const de = Math.max(dias(x.de), dias(inicio));
+      const ate = Math.min(dias(x.ate), dias(fim));
+      const noites = porImovel.get(x.imovelId) ?? new Set<number>();
+      for (let d = de; d < ate; d++) noites.add(d);
+      porImovel.set(x.imovelId, noites);
+    }
+    return porImovel;
+  };
+  const ocupadas = diasDe(reservas.map((r) => ({ imovelId: r.imovelId, de: r.checkin, ate: r.checkout })));
+  const bloqueadas = diasDe(bloqueios.map((b) => ({ imovelId: b.imovelId, de: b.inicio, ate: b.fim })));
+  let total = 0;
+  for (const [imovelId, noites] of ocupadas) {
+    const bloq = bloqueadas.get(imovelId);
+    for (const d of noites) if (!bloq?.has(d)) total++;
+  }
+  return total;
+}
+
 export type DadosDoMes = {
   mes: MesISO;
   /** Sua parte menos as despesas do imóvel, em centavos; null = mês sem dado no sistema. */
@@ -65,7 +97,10 @@ export type DadosDoMes = {
    * (proporcional por noite), para a diária média dividir bruto e noites do mesmo intervalo.
    */
   bruto: number;
-  /** Noites das reservas confirmadas dentro do período (cancelada ou pendente com valor no livro não ocupa noite). */
+  /**
+   * Noites ocupadas dentro do período: reservas confirmadas (cancelada ou pendente com valor no livro não ocupa noite),
+   * cada noite de cada imóvel contada uma vez e fora das bloqueadas (`noitesOcupadasNoIntervalo`).
+   */
   noitesOcupadas: number;
   /** Noites do período considerado por imóvel (mês inteiro; no mês parcial, só até o dia). */
   noitesDoPeriodo: number;

@@ -9,6 +9,8 @@ type Props = {
   mes: string;
   extratos: readonly ExtratoGuardado[];
   imoveis: readonly { id: string; codigo: string; nome: string }[];
+  /** Favorecidos possíveis: proprietários ativos e os que têm relatório no mês. */
+  proprietarios: readonly { id: string; nome: string }[];
   editar: boolean;
 };
 
@@ -18,7 +20,7 @@ const kb = (n: number) => `${Math.max(1, Math.round(n / 1024))} KB`;
  * Extratos oficiais dos canais guardados para o mês (M5.7). O relatório do e-mail do fechamento os anexa no fim, como
  * emitidos; sem extrato guardado, o PDF sai sem anexos e a seção do proprietário avisa.
  */
-export function ExtratosCanal({ mes, extratos, imoveis, editar }: Props) {
+export function ExtratosCanal({ mes, extratos, imoveis, proprietarios, editar }: Props) {
   return (
     <details className={styles.form} aria-label="Extratos dos canais">
       <summary style={{ cursor: "pointer", fontWeight: 600 }}>
@@ -26,15 +28,17 @@ export function ExtratosCanal({ mes, extratos, imoveis, editar }: Props) {
       </summary>
       <p style={{ color: "var(--scl-texto-2)", fontSize: "0.875rem", margin: 0, maxWidth: 820 }}>
         Guarde aqui, antes do fechamento, o PDF que cada canal emitiu para o imóvel no mês (Airbnb: &ldquo;Ganhos&rdquo; do período; Booking.com: extrato de
-        pagamentos). O relatório enviado por e-mail leva esses extratos no fim, como emitidos, só nas páginas que você indicar. Confira antes de guardar: o
-        extrato é só deste imóvel e deste período, sem outros favorecidos — o sistema não lê o conteúdo. Sem extrato guardado, o relatório sai sem
-        anexos e a seção do proprietário avisa.
+        pagamentos). O relatório enviado por e-mail leva esses extratos no fim, como emitidos, só nas páginas que você indicar. Cada extrato é guardado
+        para um proprietário (o favorecido): só o relatório dele o anexa — se o imóvel trocou de dono no meio do mês, guarde um extrato para cada um, com
+        as páginas de cada um. Confira antes de guardar: o extrato é só deste imóvel, deste proprietário e deste período — o sistema não lê o conteúdo.
+        Sem extrato guardado, o relatório sai sem anexos e a seção do proprietário avisa.
       </p>
       {extratos.length > 0 && (
         <table className={styles.tabela} style={{ fontSize: "0.875rem" }}>
           <thead>
             <tr>
               <th>Imóvel</th>
+              <th>Proprietário</th>
               <th>Canal</th>
               <th>Arquivo</th>
               <th>Páginas</th>
@@ -47,6 +51,7 @@ export function ExtratosCanal({ mes, extratos, imoveis, editar }: Props) {
                 <td>
                   {e.imovelCodigo} · {e.imovelNome}
                 </td>
+                <td>{e.proprietarioNome}</td>
                 <td>{e.canalNome}</td>
                 <td>
                   {e.arquivoNome} ({kb(e.tamanho)})
@@ -57,7 +62,7 @@ export function ExtratosCanal({ mes, extratos, imoveis, editar }: Props) {
                     <form action={removerExtratoAcao} style={{ display: "inline" }}>
                       <input type="hidden" name="mes" value={mes} />
                       <input type="hidden" name="id" value={e.id} />
-                      <BotaoConfirmar pergunta={`Remover o extrato ${e.canalNome} do ${e.imovelCodigo} (${nomeMes(mes)})? O relatório passa a sair sem ele.`} className={styles.pequeno}>
+                      <BotaoConfirmar pergunta={`Remover o extrato ${e.canalNome} do ${e.imovelCodigo} de ${e.proprietarioNome} (${nomeMes(mes)})? O relatório passa a sair sem ele.`} className={styles.pequeno}>
                         Remover
                       </BotaoConfirmar>
                     </form>
@@ -81,6 +86,19 @@ export function ExtratosCanal({ mes, extratos, imoveis, editar }: Props) {
                 {imoveis.map((i) => (
                   <option key={i.id} value={i.id}>
                     {i.codigo} · {i.nome}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Proprietário (favorecido)
+              <select name="proprietarioId" required defaultValue="">
+                <option value="" disabled>
+                  Escolha
+                </option>
+                {proprietarios.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nome}
                   </option>
                 ))}
               </select>

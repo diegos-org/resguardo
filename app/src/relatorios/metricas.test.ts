@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { acumuladoDoAno, diariaMedia, diasDeImovel, diasDoMes, escalaEmMil, limitesDe, mesCurto, nomeDoMes, noitesBloqueadas, noitesNoIntervalo, ocupacao, quadrosDoMes, serieDe12, somarMeses, variacao } from "./metricas";
+import { acumuladoDoAno, diariaMedia, diasDeImovel, diasDoMes, escalaEmMil, limitesDe, mesCurto, nomeDoMes, noitesBloqueadas, noitesNoIntervalo, noitesOcupadasNoIntervalo, ocupacao, quadrosDoMes, serieDe12, somarMeses, variacao } from "./metricas";
 
 const mes = (over: Partial<Parameters<typeof quadrosDoMes>[0]["atual"]> = {}) => ({ mes: "2026-10", resultado: 1503780, bruto: 1945000, noitesOcupadas: 18, noitesDoPeriodo: 31, imoveis: 1, diasImovel: 31, noitesBloqueadas: 2, ...over });
 
@@ -81,6 +81,18 @@ describe("métricas do relatório mensal (M5.7, regras puras)", () => {
     expect(escalaEmMil(1503780)).toEqual({ teto: 16, passo: 4 });
     expect(escalaEmMil(0)).toEqual({ teto: 1, passo: 1 });
     expect(escalaEmMil(42_000_00)).toEqual({ teto: 60, passo: 20 });
+  });
+
+  it("noites ocupadas: cada noite de cada imóvel conta uma vez (overbooking), noite bloqueada para uso próprio não conta, fora do intervalo não conta", () => {
+    const r = (imovelId: string, checkin: string, checkout: string) => ({ imovelId, checkin, checkout });
+    // Duas reservas sobrepostas no mesmo imóvel (10→13 e 12→15): 5 noites, não 6; outro imóvel soma à parte.
+    expect(noitesOcupadasNoIntervalo([r("x", "2026-10-10", "2026-10-13"), r("x", "2026-10-12", "2026-10-15"), r("y", "2026-10-12", "2026-10-13")], [], "2026-10-01", "2026-11-01")).toBe(6);
+    // Noite de 12/10 bloqueada pelo dono no imóvel x: sai das ocupadas (já saiu das disponíveis); o bloqueio de y não afeta x.
+    expect(noitesOcupadasNoIntervalo([r("x", "2026-10-10", "2026-10-13")], [{ imovelId: "x", inicio: "2026-10-12", fim: "2026-10-13" }, { imovelId: "y", inicio: "2026-10-10", fim: "2026-10-11" }], "2026-10-01", "2026-11-01")).toBe(2);
+    // Só o que cai no intervalo (mês parcial até o dia 11: fim exclusivo 12/10).
+    expect(noitesOcupadasNoIntervalo([r("x", "2026-10-10", "2026-10-13")], [], "2026-10-01", "2026-10-12")).toBe(2);
+    expect(noitesOcupadasNoIntervalo([r("x", "2026-09-29", "2026-10-02")], [], "2026-10-01", "2026-11-01")).toBe(1);
+    expect(noitesOcupadasNoIntervalo([], [], "2026-10-01", "2026-11-01")).toBe(0);
   });
 
   it("quadros do mês: noites e ocupação, diária média, comparação com o mês anterior e com o ano anterior", () => {
