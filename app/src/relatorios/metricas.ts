@@ -88,9 +88,50 @@ export function noitesOcupadasNoIntervalo(
   return total;
 }
 
+export type Posse = { desde: string | null; ate: string | null };
+
+/**
+ * Intervalos de posse de um imóvel pelos proprietários de um relatório: o histórico de "proprietario.imoveis" (quem
+ * ganhou e quem perdeu o imóvel, e quando, em ordem) mais os vínculos atuais. Perda sem ganho registrado = posse desde
+ * sempre até a perda; ganho sem perda = posse aberta; vínculo atual sem histórico = posse desde o vínculo; nada
+ * registrado = o período inteiro, até o dia em que outro dono foi vinculado (o vínculo antigo é apagado na troca).
+ * Um imóvel que sai e volta ao mesmo dono fica com dois intervalos.
+ */
+export function intervalosDePosse(
+  imovelId: string,
+  donoIds: readonly string[],
+  vinculos: readonly { imovelId: string; proprietarioId: string; dia: string }[],
+  historico: readonly { proprietarioId: string; mudancas: unknown; dia: string }[],
+): Posse[] {
+  const doImovel = vinculos.filter((v) => v.imovelId === imovelId);
+  const meus = doImovel.filter((v) => donoIds.includes(v.proprietarioId)).map((v) => v.dia).sort();
+  const outros = doImovel.filter((v) => !donoIds.includes(v.proprietarioId)).map((v) => v.dia).sort();
+  const intervalos: Posse[] = [];
+  let aberto: string | undefined;
+  for (const h of historico) {
+    if (!donoIds.includes(h.proprietarioId)) continue;
+    const m = (h.mudancas as { imoveis?: unknown } | null)?.imoveis;
+    if (!Array.isArray(m) || m.length !== 2 || !Array.isArray(m[0]) || !Array.isArray(m[1])) continue;
+    const tinha = (m[0] as unknown[]).includes(imovelId);
+    const tem = (m[1] as unknown[]).includes(imovelId);
+    if (tem && !tinha && aberto === undefined) aberto = h.dia;
+    else if (tinha && !tem && (aberto !== undefined || !intervalos.length)) {
+      intervalos.push({ desde: aberto ?? null, ate: h.dia });
+      aberto = undefined;
+    }
+  }
+  if (aberto !== undefined) intervalos.push({ desde: aberto, ate: null });
+  else if (meus.length && !intervalos.some((i) => i.ate === null)) intervalos.push({ desde: meus[0], ate: null });
+  if (!intervalos.length) intervalos.push({ desde: null, ate: outros[0] ?? null });
+  return intervalos;
+}
+
 export type DadosDoMes = {
   mes: MesISO;
-  /** Sua parte menos as despesas do imóvel, em centavos; null = mês sem dado no sistema. */
+  /**
+   * Sua parte menos as despesas do imóvel, em centavos; null = mês sem dado no sistema. No mês parcial, só até o dia:
+   * a parte de cada reserva proporcional às noites já passadas, mais o que não é reserva e menos as despesas até o dia.
+   */
   resultado: number | null;
   /**
    * Bruto das reservas (parte do mês), em centavos. No mês parcial, só a parte das noites confirmadas até o dia

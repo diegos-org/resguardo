@@ -5,11 +5,14 @@ import type { Sessao } from "@/acesso/politica";
 import { criarContrato } from "@/contratos/repositorio";
 import { auditoria, imoveis, lancamentos, organizacoes, proprietarioImoveis, proprietarios, proprietarioUsuarios, representantes, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
+import { criarCategoria } from "@/despesas/categorias";
+import { registrarDespesa } from "@/despesas/despesas";
 import { lancar } from "@/financeiro/ledger";
 import type { Db } from "@/db/types";
 import { resumoDoProprietario } from "@/portal/resumo";
 import type { Rodape } from "@/portal/rodape";
 import type { DadosReserva } from "@/reservas/regras";
+import { criarBloqueio } from "@/reservas/bloqueios";
 import { criarReserva } from "@/reservas/repositorio";
 import { donosDosEscolhidos, relatorioDoPainel, relatorioDoPortal } from "./gerar";
 import type { ParteDoRelatorio } from "./dinheiro";
@@ -424,26 +427,47 @@ describe("dados e acesso", () => {
     expect(d3.metricas.atual.diasImovel).toBe(0);
     expect(d3.metricas.atual.noitesOcupadas).toBe(d1.metricas.atual.noitesOcupadas);
     // Troca de dono em 11/10 (o vínculo da Dona é apagado; o do Outro nasce em 11/10): o relatório da Dona, que entra pelo
-    // livro, conta só até 10/10 (10 noites); o do Outro, de 11/10 em diante (21).
+    // livro, conta só até 10/10 (10 noites); o do Outro, de 11/10 em diante (21). O bloqueio de uso próprio que a Dona
+    // fez antes da troca continua no relatório dela (3 noites bloqueadas, 7 disponíveis) e não no do Outro.
+    expect((await criarBloqueio(db, org, { imovelId: a, inicio: "2026-10-05", fim: "2026-10-08", motivo: "Uso próprio" }, null, { fonte: "proprietario", semReserva: true, proprietarioId: dona })).ok).toBe(true);
     await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));
     await db.insert(proprietarioImoveis).values({ proprietarioId: outro, imovelId: a, criadoEm: new Date("2026-10-11T12:00:00-03:00") });
-    expect((await pedir()).metricas.atual.diasImovel).toBe(10);
-    const doOutro = await dadosDoRelatorio(db, org, { donos: [{ id: outro, nome: "Outro Fictício" }], imoveis: [{ id: a, codigo: "403", nome: "Studio Mezanino" }], todosOsImoveis: false, ano: 2026, mes: 10, hoje: "2026-11-02" });
-    expect(doOutro.metricas.atual.diasImovel).toBe(21);
+    expect((await pedir()).metricas.atual).toMatchObject({ diasImovel: 10, noitesBloqueadas: 3 });
+    const pedirOutro = () => dadosDoRelatorio(db, org, { donos: [{ id: outro, nome: "Outro Fictício" }], imoveis: [{ id: a, codigo: "403", nome: "Studio Mezanino" }], todosOsImoveis: false, ano: 2026, mes: 10, hoje: "2026-11-02" });
+    expect((await pedirOutro()).metricas.atual).toMatchObject({ diasImovel: 21, noitesBloqueadas: 0 });
+    // Com o histórico do painel ("proprietario.imoveis"), o imóvel que volta à Dona em 1/12 não apaga a posse antiga:
+    // outubro da Dona continua com 10 noites (perdeu em 11/10), e o do Outro com 21 (ganhou em 11/10, perdeu em 1/12).
+    const h = (entidadeId: string, antes: string[], depois: string[], quando: string) => ({ organizacaoId: org, usuarioId: null, acao: "proprietario.imoveis", entidade: "proprietario", entidadeId, mudancas: { imoveis: [antes, depois] }, criadoEm: new Date(quando) });
+    await db.insert(auditoria).values([h(dona, [a], [], "2026-10-11T12:00:00-03:00"), h(outro, [], [a], "2026-10-11T12:00:00-03:00"), h(outro, [a], [], "2026-12-01T12:00:00-03:00"), h(dona, [], [a], "2026-12-01T12:00:00-03:00")]);
+    await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));
+    await db.insert(proprietarioImoveis).values({ proprietarioId: dona, imovelId: a, criadoEm: new Date("2026-12-01T12:00:00-03:00") });
+    expect((await pedir()).metricas.atual).toMatchObject({ diasImovel: 10, noitesBloqueadas: 3 });
+    expect((await pedirOutro()).metricas.atual).toMatchObject({ diasImovel: 21, noitesBloqueadas: 0 });
   });
 
   it("mês parcial: a diária média usa o bruto das noites já passadas (proporcional por noite), não o bruto do mês inteiro", async () => {
     const pedir = (hoje: string) => dadosDoRelatorio(db, org, { donos: [{ id: dona, nome: "Dona Fictícia" }], imoveis: [{ id: a, codigo: "403", nome: "Studio Mezanino" }], todosOsImoveis: true, ano: 2026, mes: 10, hoje });
     // Reserva de 10 a 13/10: 3 noites, bruto R$ 1.000,00. Mês fechado: tudo conta.
     const fechado = (await pedir("2026-11-02")).metricas.atual;
-    expect(fechado).toMatchObject({ bruto: 100000, noitesOcupadas: 3 });
+    expect(fechado).toMatchObject({ bruto: 100000, noitesOcupadas: 3, resultado: 72250 });
     expect(diariaMedia(fechado.bruto, fechado.noitesOcupadas)).toBe(33333);
     // Posição de 11/10: duas noites passadas (10 e 11) e dois terços do bruto — a diária fica a mesma, não R$ 500,00.
-    const parcial = (await pedir("2026-10-11")).metricas.atual;
-    expect(parcial).toMatchObject({ bruto: 66667, noitesOcupadas: 2 });
+    // O resultado do mês parcial segue a mesma conta (dois terços da sua parte), para a barra e o acumulado não
+    // contarem noites futuras; o da capa (o mês inteiro, "parcial até o fim do mês") não muda.
+    const parcialTodo = await pedir("2026-10-11");
+    const parcial = parcialTodo.metricas.atual;
+    expect(parcial).toMatchObject({ bruto: 66667, noitesOcupadas: 2, resultado: 48167 });
+    expect(parcialTodo.resumo.suaParte).toBe(72250);
     expect(diariaMedia(parcial.bruto, parcial.noitesOcupadas)).toBe(33334);
-    // Antes do check-in: nenhuma noite e nenhum bruto; a diária não aparece.
-    expect((await pedir("2026-10-05")).metricas.atual).toMatchObject({ bruto: 0, noitesOcupadas: 0 });
+    // Antes do check-in: nenhuma noite e nenhum bruto; a diária não aparece; o resultado até o dia é zero.
+    expect((await pedir("2026-10-05")).metricas.atual).toMatchObject({ bruto: 0, noitesOcupadas: 0, resultado: 0 });
+    // Uma despesa do imóvel datada de 20/10 entra no resultado parcial de 25/10, não no de 11/10; no mês inteiro, sempre.
+    const c = await criarCategoria(db, org, "Manutenção", null);
+    if (!c.ok) throw new Error("categoria");
+    await registrarDespesa(db, org, { responsavel: "proprietario", pagoPor: "empresa", categoriaId: c.categoria.id, descricao: "Reparo", valor: 1000, data: "2026-10-20", imovelId: a, proprietarioId: null, fornecedor: "", comprovante: "", paga: true, dataPagamento: "2026-10-20" }, null);
+    expect((await pedir("2026-10-11")).metricas.atual.resultado).toBe(48167);
+    expect((await pedir("2026-10-25")).metricas.atual.resultado).toBe(72250 - 1000);
+    expect((await pedir("2026-11-02")).metricas.atual.resultado).toBe(72250 - 1000);
   });
 
   it("portal: só o proprietário, só o mês, só dentro da janela; imóvel de outro é ignorado", async () => {

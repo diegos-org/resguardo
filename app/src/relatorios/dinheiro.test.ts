@@ -33,6 +33,18 @@ describe("como chega até você (M5.7, pela data em que o canal pagou)", () => {
     expect(JSON.stringify(linhas) + quemPagaQuem).not.toContain("chave-pix-secreta");
   });
 
+  it("relatório de setembro: o que o Airbnb pagou no mês inclui a noite de outubro da reserva que atravessa, discriminada (e a conciliação faz a ponte)", () => {
+    const { linhas } = comoChega([zeSetembro, ze], "2026-09", [rodape({ situacao: "zerado", valor: 0 })], E);
+    expect(linhas.map((l) => [l.texto, l.valor, l.tipo])).toEqual([
+      ["Pago a você direto pelo Airbnb em setembro de 2026 (1 reserva, no dia seguinte a cada check-in)", 164900 + 82450, "normal"],
+      ["Desse valor, 1 noite de outubro de 2026 da reserva de Zé (29/9 → 2/10), paga junto: entra no resultado de outubro de 2026", 82450, "info"],
+    ]);
+    // Em outubro, a mesma noite aparece como já paga em setembro (não entra no "pago em outubro").
+    const out = comoChega([zeSetembro, ze], "2026-10", [rodape({ situacao: "zerado", valor: 0 })], E).linhas;
+    expect(out.map((l) => l.tipo)).toEqual(["info"]);
+    expect(out[0].texto).toContain("Já pago pelo Airbnb em 30/9");
+  });
+
   it("fechamento pago, proprietário que deve, saldo parcial, em conferência, repasse a pagar e sem prazo do canal", () => {
     expect(comoChega([ana], "2026-10", [rodape({ situacao: "pago", dataPagamento: "2026-11-01" })], E)).toMatchObject({
       linhas: [expect.anything(), { texto: "Transferido no fechamento, em 01/11/2026", valor: 314800 }],
