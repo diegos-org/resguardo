@@ -282,7 +282,7 @@ const situacaoDaParte = (p: ParteDoRelatorio, hoje: string): { texto: string; ti
     return p.repasse.situacao === "pago" ? { texto: `repassada em ${dataCurta(dataDoPix(p.repasse))}`, tipo: "ok" } : { texto: `em repasse de ${dataCurta(p.repasse.data)}, a pagar`, tipo: "info" };
   }
   if (p.quemRecebe === "split") {
-    if (!p.pagamento) return { texto: "paga pelo canal", tipo: "ok" };
+    if (!p.pagamento) return { texto: "pelo canal, sem data: prazo do canal não cadastrado", tipo: "aviso" };
     return p.pagamento.data <= hoje ? { texto: `paga pelo canal em ${dataCurta(p.pagamento.data)}`, tipo: "ok" } : { texto: `prevista para ${dataCurta(p.pagamento.data)} pelo canal`, tipo: "info" };
   }
   if (p.situacao === "disponivel") return { texto: "a transferir no fechamento", tipo: "info" };
@@ -352,6 +352,7 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
     a_liberar: "Entra no próximo repasse assim que o canal pagar; você não precisa fazer nada.",
     voce_transfere: `As despesas do mês passaram da sua parte; a chave Pix da ${e} está no portal.`,
     em_conferencia: "Esse valor é provisório e pode mudar; você não precisa fazer nada até a conferência terminar.",
+    sem_prazo_do_canal: `A data aparece aqui quando a ${e} cadastrar o prazo do canal; confira o pagamento na sua conta do canal.`,
   };
   const avisos = [
     ...chega.linhas.filter((l) => l.tipo === "aviso").map((l) => `${l.texto} (${formatBRL(l.valor)}).${l.aviso ? ` ${complemento[l.aviso]}` : ""}`),
