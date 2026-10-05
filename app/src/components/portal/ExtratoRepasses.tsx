@@ -2,7 +2,7 @@ import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import { formatBRL } from "@/lib/money";
 import { NOMES_SITUACAO_EMAIL } from "@/repasses/email";
 import { NOMES_SITUACAO_PARTE, type Parte, resumirPartes } from "@/repasses/extrato";
-import { NOMES_PERIODICIDADE, PERIODICIDADES, type PeriodicidadeRepasse, type RegrasRepasses } from "@/repasses/periodicidade";
+import { ehDiaDeFechamento, NOMES_PERIODICIDADE, PERIODICIDADES, type PeriodicidadeRepasse, proximoFechamento, type RegrasRepasses } from "@/repasses/periodicidade";
 import type { PeriodicidadeDoDono } from "@/repasses/proprietario";
 import { type ItemDoRepasse, nomeMes, type Repasse, descricaoDoItem } from "@/repasses/repasses";
 
@@ -49,7 +49,9 @@ export function textoDoItemNoPortal(i: ItemDoRepasse): string {
 /** Seção "Extrato e repasses" do portal (M4.10): como quer receber, a parte de cada reserva e os repasses. */
 export function ExtratoRepasses({ donos, periodicidades, partes, repasses, itens, regras, hoje, empresa, escolher, pedir, mensagem }: Props) {
   const resumo = resumirPartes(partes);
-  const diaPrimeiro = hoje.endsWith("-01");
+  // M4.13: no dia do fechamento (Configurações → Repasses) o fechamento é o único repasse; não se pede antecipado.
+  const dia = proximoFechamento(regras, hoje).dia;
+  const diaPrimeiro = ehDiaDeFechamento(hoje, regras);
   // Disponível por proprietário: o botão de pedir só aparece para quem tem valor a repassar.
   const disponivelPorDono = new Map<string, number>();
   for (const p of partes) if (p.situacao === "disponivel") disponivelPorDono.set(p.proprietarioId, (disponivelPorDono.get(p.proprietarioId) ?? 0) + p.valor);
@@ -66,7 +68,7 @@ export function ExtratoRepasses({ donos, periodicidades, partes, repasses, itens
       <div style={{ ...caixa, display: "flex", flexDirection: "column", gap: 12 }}>
         <h3 style={{ fontSize: "1rem", margin: 0 }}>Como você quer receber</h3>
         <p style={{ ...rotulo, margin: 0 }}>
-          Sua parte de cada reserva fica <strong>disponível</strong> no dia seguinte ao check-in, assim que o dinheiro do canal estiver com a {empresa}. O repasse reúne tudo o que está disponível na data dele. O mensal (dia 1º) é o padrão e o intervalo máximo; o fechamento do dia 1º
+          Sua parte de cada reserva fica <strong>disponível</strong> no dia seguinte ao check-in, assim que o dinheiro do canal estiver com a {empresa}. O repasse reúne tudo o que está disponível na data dele. O mensal (dia {dia}) é o padrão e o intervalo máximo; o fechamento do dia {dia}
           acerta também despesas e adiantamentos. A escolha vale a partir do próximo repasse.
         </p>
         {donos.map((d) => {
@@ -114,7 +116,7 @@ export function ExtratoRepasses({ donos, periodicidades, partes, repasses, itens
         ))}
       </section>
 
-      {comDisponivel.length > 0 && diaPrimeiro && <p style={{ ...rotulo, margin: 0 }}>Hoje é dia 1º: o fechamento do mês é o repasse do dia e inclui o que está disponível.</p>}
+      {comDisponivel.length > 0 && diaPrimeiro && <p style={{ ...rotulo, margin: 0 }}>Hoje é o dia do fechamento: o fechamento do mês é o repasse do dia e inclui o que está disponível.</p>}
       {comDisponivel.length > 0 && !diaPrimeiro && (
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           {comDisponivel.map((d) => {
@@ -229,7 +231,7 @@ export function ExtratoRepasses({ donos, periodicidades, partes, repasses, itens
         </table>
       </div>
       <p style={{ ...rotulo, margin: 0 }}>
-        &ldquo;Paga pelo canal&rdquo; é a reserva em que o canal transfere sua parte direto a você (ex.: Airbnb): aparece só como informação. &ldquo;A liberar&rdquo; traz o motivo. &ldquo;Acertada por fora&rdquo; é a parte de antes do início do sistema, já paga fora dele. O fechamento do dia 1º continua acertando despesas e adiantamentos do mês.
+        &ldquo;Paga pelo canal&rdquo; é a reserva em que o canal transfere sua parte direto a você (ex.: Airbnb): aparece só como informação. &ldquo;A liberar&rdquo; traz o motivo. &ldquo;Acertada por fora&rdquo; é a parte de antes do início do sistema, já paga fora dele. O fechamento do dia {dia} continua acertando despesas e adiantamentos do mês.
       </p>
     </section>
   );

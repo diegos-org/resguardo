@@ -14,7 +14,7 @@ import { escolherPeriodicidade } from "./proprietario";
 import { descreverAcertoPorFora, marcarAcertoPorFora } from "./por-fora";
 import { estornarRecebimento, registrarRecebimento } from "./recebimentos";
 import { lerInicioDoSistema, salvarInicioDoSistema, salvarRegrasRepasses } from "./regras-config";
-import { anexarComprovante, type ComprovanteRepasse, estornarRepasse, fecharMes, gerarAntecipado, limitesDoMes, marcarRepassePago, TAMANHO_MAXIMO_COMPROVANTE } from "./repasses";
+import { anexarComprovante, type ComprovanteRepasse, estornarRepasse, fecharMes, gerarAntecipado, limitesDoMes, marcarRepassePago, nomeMes, TAMANHO_MAXIMO_COMPROVANTE } from "./repasses";
 
 async function sessaoEditora() {
   const sessao = await exigirSessaoPainel();
@@ -147,10 +147,12 @@ export async function salvarRegrasRepassesAcao(_a: EstadoRegrasRepasses, form: F
   const valores = campos(form);
   const v = validarFormRegras(valores);
   if (!v.ok) return { erros: v.erros, mensagem: "Confira os campos destacados.", valores };
-  const mudou = await salvarRegrasRepasses(getDb(), sessao.organizacaoId, v.regras, sessao.usuarioId);
+  const hoje = hojeISO();
+  const mudou = await salvarRegrasRepasses(getDb(), sessao.organizacaoId, v.regras, sessao.usuarioId, { diaFechamento: v.diaFechamento, hoje });
   revalidatePath("/painel/configuracoes/repasses");
+  revalidatePath("/painel", "layout");
   revalidatePath("/portal");
-  return { ok: true, aviso: mudou ? "Salvo. Vale dos próximos repasses em diante; os já gerados não mudam." : "Nada mudou." };
+  return { ok: true, aviso: mudou ? `Salvo. Vale dos próximos repasses em diante; os já gerados não mudam. O dia do fechamento vale a partir do fechamento de ${nomeMes(hoje.slice(0, 7))} (feito no mês seguinte); um fechamento ainda pendente do mês anterior segue como estava.` : "Nada mudou." };
 }
 
 /** Painel → Proprietário: como ele recebe (vazio = padrão do tipo de contrato). */

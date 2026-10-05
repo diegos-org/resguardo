@@ -907,7 +907,7 @@ export const repasses = pgTable(
     tipo: text("tipo").$type<TipoRepasse>().notNull().default("fechamento"),
     /** Fechamento: primeiro dia do mês fechado. Antecipado: primeiro dia do mês da data do repasse. */
     mes: date("mes", { mode: "string" }).notNull(),
-    /** Data do repasse (fechamento: o dia 1º seguinte ao mês fechado; antecipado: o dia em que foi gerado). */
+    /** Data do repasse (fechamento: o dia do fechamento seguinte ao mês fechado, dia 2 por padrão; antecipado: o dia em que foi gerado). */
     data: date("data", { mode: "string" }).notNull(),
     /** Saldo do acerto no fim do mês, antes do repasse (positivo: a empresa devia). */
     saldo: integer("saldo").notNull(),

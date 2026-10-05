@@ -6,7 +6,8 @@ Claude a partir do item M4.10 do ROADMAP (decisões de Diego de 4/10) e do que j
 *decisão do Claude* foram tomadas com a autorização prévia de Diego para seguir sozinho; ele pode
 mudar qualquer uma pelo painel ou pedindo.
 
-**Onde está no código:** `app/src/repasses/` — `periodicidade.ts` (regras puras), `extrato.ts`
+**Onde está no código:** `app/src/repasses/` — `periodicidade.ts` (regras puras, inclusive o dia do
+fechamento do M4.13), `extrato.ts`
 (classificação das partes e leitura), `recebimentos.ts` (recebimento do canal), `repasses.ts`
 (fechamento com disponibilidade, antecipado, itens, comprovante, estorno), `email.ts`,
 `cron.ts` (rotina das 8h), `proprietario.ts` e `regras-config.ts` (escolha, padrão e início do
@@ -17,8 +18,8 @@ migração: o tipo de repasse é texto e a data de início fica na configuraçã
 
 ## O que o proprietário vê e escolhe
 
-- **Como quer receber** (no portal, com explicação curta): mensal no dia 1º (padrão e intervalo
-  máximo), quinzenal (dias 1 e 16), semanal (segundas-feiras) ou assim que disponível (dia
+- **Como quer receber** (no portal, com explicação curta): mensal no dia do fechamento (dia 2 por
+  padrão desde o M4.13; padrão e intervalo máximo), quinzenal (dias 1 e 16), semanal (segundas-feiras) ou assim que disponível (dia
   seguinte ao check-in, com o dinheiro já com a empresa). Sem escolha, vale o padrão do tipo de
   contrato dele, definido em Configurações → Repasses. A escolha fica no histórico e vale a
   partir do próximo repasse.
@@ -62,12 +63,12 @@ empresa ainda não recebeu").
   adiantamentos nem despesas: isso continua no fechamento (decisão de Diego).
 - **Programado:** a rotina diária (8h) gera, para cada proprietário, o repasse do dia quando a
   data bate com a periodicidade efetiva dele (segunda-feira no semanal; dias 1 e 16 no
-  quinzenal; todo dia no "assim que disponível"). No **dia 1º** a rotina não gera antecipado: o
-  fechamento mensal é o único repasse do dia. *Decisão do Claude:* o fechamento continua sendo
-  disparado por Diego no painel (como no M4.9), para ele conferir antes; a automação total do dia
-  1º fica para quando o Pix for automático.
+  quinzenal; todo dia no "assim que disponível"). No **dia do fechamento** a rotina não gera
+  antecipado: o fechamento mensal é o único repasse do dia. *Decisão do Claude:* o fechamento
+  continua sendo disparado por Diego no painel (como no M4.9), para ele conferir antes; a automação
+  total do dia do fechamento fica para quando o Pix for automático.
 - **Avulso:** o proprietário pede no portal ou Diego gera no painel; mesma regra do antecipado.
-- **Fechamento mensal (dia 1º):** continua por competência (noites do mês fechado) e numa única
+- **Fechamento mensal (no dia do fechamento — dia 2 por padrão, M4.13):** continua por competência (noites do mês fechado) e numa única
   transação por proprietário, com duas mudanças: (1) valores da competência cujo dinheiro ainda
   não está com a empresa ficam **fora** e passam para o repasse seguinte, aparecendo no extrato
   como a liberar com aviso; (2) valores já disponíveis com noites fora do mês fechado entram no
@@ -98,8 +99,38 @@ empresa ainda não recebeu").
 ## Configuração (uma regra, um lugar)
 
 Configurações → Repasses: dia da semana do semanal (padrão segunda), os dois dias do quinzenal
-(padrão 1 e 16) e o padrão de periodicidade por tipo de contrato (padrão mensal para todos).
-A data prevista no extrato é calculada daqui.
+(padrão 1 e 16), o padrão de periodicidade por tipo de contrato (padrão mensal para todos) e o
+**dia do fechamento** (M4.13, abaixo). A data prevista no extrato é calculada daqui.
+
+## Dia do fechamento (M4.13, decisão de Diego em 5/10/2026)
+
+- **Regra:** o fechamento mensal, o repasse mensal e o e-mail automático do relatório (M5.4) saem no
+  **dia 2** do mês seguinte por padrão, porque o Airbnb paga a reserva com check-in no último dia do
+  mês só no dia 1º — no dia 2 o extrato do canal sai completo. Booking (conforme o acordo do imóvel)
+  e Mercado Pago (Pix na hora, cartão em 14 a 30 dias) nunca cabem num dia fixo: o que não estiver
+  disponível continua "a liberar" e vai para o repasse seguinte, com aviso.
+- **Editável** de 1 a 5 em Configurações → Repasses (`repasses_regras.fechamento`). **Versionado por
+  mês de competência:** cada versão é `{dia, desde: "AAAA-MM"}`; o dia do fechamento de um mês é o da
+  versão mais nova com `desde` até aquele mês; sem versão, 2. Mudar o dia vale do fechamento do mês
+  corrente em diante (feito no mês seguinte); o mês anterior ainda aberto fecha no dia que já valia e
+  o que já fechou não muda. Dia igual ao que já valeria não cria versão; duas mudanças no mesmo mês, a
+  última vale.
+- **Onde se aplica:** `ehDiaDeRepasse` (o dia do fechamento conta em todas as periodicidades, no lugar
+  do dia 1º), `geraAntecipadoEm` e `gerarAntecipado` (nunca no dia do fechamento), `proximaDataDeRepasse`
+  e `descreverPeriodicidade`, o botão "Pedir repasse agora" do portal, o envio automático do e-mail
+  do fechamento (`enviarFechamentosAutomaticos`: antes do dia, o mês a fechar espera, com aviso na
+  rotina; meses atrasados saem em qualquer dia) e os textos do painel, do portal e do relatório.
+- **O que as telas mostram:** o dia do **próximo** fechamento (`proximoFechamento`): o do mês anterior enquanto o
+  dia dele não passou, depois o do mês corrente. Uma mudança feita hoje vale do fechamento do mês corrente em
+  diante, então o mês anterior ainda aberto fecha no dia que já valia — e é esse que o texto, a descrição da
+  periodicidade e a próxima data dizem até lá. O formulário mostra o dia que vale daqui para a frente.
+- **Data gravada no fechamento:** o dia do fechamento do mês (`dataDoFechamento`); fechado antes, à mão, o dia
+  em que foi fechado. O Pix do fechamento só pode ter data a partir dela (`marcarRepassePago`).
+- **À mão continua possível:** fechar o mês e enviar o relatório no dia 1º pelo painel; o proprietário
+  baixa o PDF no portal a qualquer momento (parcial do mês corrente inclusive). O cron continua diário
+  (`vercel.json`): é a regra, não o agendador, que decide o dia.
+- *Decisão do Claude:* sem migração — a regra entra no JSON de `repasses_regras` já existente, com
+  leitura tolerante (versão inválida é ignorada).
 
 ## Início do sistema e acerto por fora (M4.11 e M4.12, decisões de Diego em 4/10/2026)
 

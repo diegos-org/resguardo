@@ -78,6 +78,7 @@ const mesDados = (over: Partial<DadosDoMes> = {}): DadosDoMes => ({ mes: "2026-1
 const base: DadosRelatorio = {
   hoje: "2026-11-02",
   empresa: "Sua Casa Leblon",
+  diaFechamento: 2,
   contato: ["https://example.com"],
   proprietarios: ["Dona Fictícia"],
   representantes: [],

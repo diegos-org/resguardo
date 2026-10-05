@@ -8,15 +8,24 @@ import { lancamentos, repasseItens, repasses } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { dataValida } from "@/reservas/regras";
 import { livroDeAntes, reservasDoInicio } from "./inicio";
-import { type RegrasRepasses, regrasDeJson } from "./periodicidade";
+import { comDiaDeFechamento, type RegrasRepasses, regrasDeJson } from "./periodicidade";
 
 export async function lerRegrasRepasses(db: Db, organizacaoId: string): Promise<RegrasRepasses> {
   return regrasDeJson(await lerConfig(db, organizacaoId, "repasses_regras"));
 }
 
-/** Grava com auditoria; devolve se algo mudou. Vale dos próximos repasses em diante (nada já gerado muda). */
-export async function salvarRegrasRepasses(db: Db, organizacaoId: string, regras: RegrasRepasses, autorId: string | null): Promise<boolean> {
-  const mudancas = await db.transaction((tx) => gravarConfig(tx, organizacaoId, "repasses_regras", { diaSemanal: regras.diaSemanal, diasQuinzenal: [...regras.diasQuinzenal], padraoPorContrato: { ...regras.padraoPorContrato } }, autorId));
+/**
+ * Grava com auditoria; devolve se algo mudou. Vale dos próximos repasses em diante (nada já gerado muda).
+ * `diaFechamento` (M4.13): o dia pedido no formulário vira uma versão a partir do mês de `hoje` (`comDiaDeFechamento`),
+ * por cima das versões já gravadas; sem ele, as versões de `regras.fechamento` são gravadas como vieram.
+ */
+export async function salvarRegrasRepasses(db: Db, organizacaoId: string, regras: RegrasRepasses, autorId: string | null, o: { diaFechamento?: number; hoje?: string } = {}): Promise<boolean> {
+  const mudancas = await db.transaction(async (tx) => {
+    await travarConfig(tx, organizacaoId, "repasses_regras");
+    const atuais = regrasDeJson(await lerConfig(tx, organizacaoId, "repasses_regras"));
+    const fechamento = o.diaFechamento !== undefined && o.hoje ? comDiaDeFechamento(atuais.fechamento, o.diaFechamento, o.hoje.slice(0, 7)) : regras.fechamento;
+    return gravarConfig(tx, organizacaoId, "repasses_regras", { diaSemanal: regras.diaSemanal, diasQuinzenal: [...regras.diasQuinzenal], padraoPorContrato: { ...regras.padraoPorContrato }, fechamento: fechamento.map((v) => ({ ...v })) }, autorId);
+  });
   return Object.keys(mudancas).length > 0;
 }
 

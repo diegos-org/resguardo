@@ -1,6 +1,6 @@
 /**
- * Envio mensal do fechamento por e-mail (M5.4): no dia 1º (e nos dias seguintes, até sair), cada
- * proprietário recebe o relatório em PDF do mês anterior, **só depois de fechado**:
+ * Envio mensal do fechamento por e-mail (M5.4): no dia do fechamento (M4.13; e nos dias seguintes, até
+ * sair), cada proprietário recebe o relatório em PDF do mês anterior, **só depois de fechado**:
  * - com repasse gerado (Financeiro → Repasses), ou
  * - sem nada a transferir e sem pendência que impeça o fechamento.
  * Mês com pendência (acerto pendente, ajuste a esclarecer…) não sai: o resultado avisa quem ficou.
@@ -24,6 +24,8 @@ import { formatBRL } from "@/lib/money";
 import { conteudoDoFechamento, relatorioDoFechamento } from "@/relatorios/gerar";
 import { listarExtratos } from "@/relatorios/extratos";
 import { imoveisDoProprietario } from "@/relatorios/relatorio";
+import { dataDoFechamento } from "@/repasses/periodicidade";
+import { lerRegrasRepasses } from "@/repasses/regras-config";
 import { limitesDoMes, mesAFechar, nomeMes, preverRepasses, type PrevisaoRepasse, somarMes } from "@/repasses/repasses";
 
 /** `ativoDesde`: o primeiro mês que o envio automático cobre (o mês a fechar quando foi ligado). */
@@ -573,12 +575,21 @@ export async function enviarFechamentosAutomaticos(db: Db, organizacaoId: string
   const hoje = hojeISO("America/Sao_Paulo", agora);
   const atual = mesAFechar(hoje);
   const config = await lerConfigFechamentoEmail(db, organizacaoId);
-  if (!config.ativo || !config.ativoDesde) return [await enviarFechamentos(db, organizacaoId, correio, agora, { mes: atual })];
+  // M4.13: o mês anterior só sai sozinho a partir do dia do fechamento (Configurações → Repasses); antes disso, o
+  // botão do painel continua mandando à mão. Meses mais antigos (atrasados) saem em qualquer dia.
+  const dataAtual = dataDoFechamento(await lerRegrasRepasses(db, organizacaoId), atual);
+  const aguardando = (): ResultadoFechamentoEmail => ({ mes: atual, enviados: 0, jaEnviados: 0, pendentes: [], semEmail: [], semRelatorio: [], incertos: [], falhas: [], aviso: `${nomeMes(atual)} sai sozinho a partir de ${dataAtual.split("-").reverse().join("/")} (dia do fechamento): nada enviado hoje` });
+  const esperando = config.ativo && hoje < dataAtual;
+  if (!config.ativo || !config.ativoDesde) return [esperando ? aguardando() : await enviarFechamentos(db, organizacaoId, correio, agora, { mes: atual })];
   const limite = somarMes(atual, -(MESES_PARA_TRAS - 1));
   const meses: string[] = [];
   for (let m = config.ativoDesde > limite ? config.ativoDesde : limite; m <= atual; m = somarMes(m, 1)) meses.push(m);
   const resultados: ResultadoFechamentoEmail[] = [];
   for (const mes of meses) {
+    if (mes === atual && esperando) {
+      resultados.push(aguardando());
+      continue;
+    }
     const r = await enviarFechamentos(db, organizacaoId, correio, agora, { mes });
     if (mes === atual || r.enviados || r.falhas.length || r.incertos.length || r.aviso) resultados.push(r);
   }

@@ -472,7 +472,7 @@ describe("acerto por fora de antes do início do sistema (M4.11; M4.12: 'de ante
   it("a trava da data segue a data do pagamento: reserva paga antes e já em antecipado trava até pela noite de outubro; reserva recebida a partir do início, com noite de setembro em antecipado, não trava", async () => {
     expect(await salvarInicioDoSistema(db, org, "", "2026-10-04", null)).toEqual({ ok: true, mudou: true });
     await receberTudo(db, org, atravessa, "2026-09-30");
-    const g = await gerarAntecipado(db, org, dono, "2026-10-02", null);
+    const g = await gerarAntecipado(db, org, dono, "2026-10-03", null); // 2/10 é o dia do fechamento (M4.13): sem antecipado
     expect(g.ok).toBe(true);
     expect(await itensDoRepasse(db, org, (g as { id: string }).id)).toHaveLength(2);
     expect(await salvarInicioDoSistema(db, org, INICIO, "2026-10-04", null)).toMatchObject({ ok: false, erro: expect.stringContaining("2 parte(s) de reserva anterior(es) a 01/10/2026 já em repasse normal") });

@@ -46,7 +46,7 @@ export async function periodicidadeDoProprietario(db: Db, organizacaoId: string,
   const tiposContrato = await tiposDeContratoDoProprietario(db, organizacaoId, proprietarioId, hoje);
   const escolha = periodicidadeValida(dono.escolha) ? dono.escolha : null;
   const efetiva = periodicidadeEfetiva(escolha, tiposContrato, r);
-  return { proprietarioId, escolha, efetiva, nome: NOMES_PERIODICIDADE[efetiva], descricao: descreverPeriodicidade(efetiva, r), tiposContrato, proximaData: proximaDataDeRepasse(hoje, efetiva, r) };
+  return { proprietarioId, escolha, efetiva, nome: NOMES_PERIODICIDADE[efetiva], descricao: descreverPeriodicidade(efetiva, r, hoje), tiposContrato, proximaData: proximaDataDeRepasse(hoje, efetiva, r) };
 }
 
 /** Grava a escolha (null volta ao padrão do contrato). `peloProprietario` só muda o texto do histórico. */

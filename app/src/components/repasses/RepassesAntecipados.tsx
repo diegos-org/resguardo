@@ -14,21 +14,23 @@ type Props = {
   donos: readonly DonoAntecipavel[];
   mes: string;
   hoje: string;
+  /** Hoje é o dia do fechamento (M4.13)? Nesse dia não há antecipado. */
+  diaDeFechamento: boolean;
   editar: boolean;
 };
 
 const dataBr = (d: string) => d.split("-").reverse().join("/");
 
 /** Seção "Repasses antecipados" do painel (M4.10): o que já saiu fora do fechamento e o que dá para gerar agora. */
-export function RepassesAntecipados({ repasses, donos, mes, hoje, editar }: Props) {
-  const diaPrimeiro = hoje.endsWith("-01");
+export function RepassesAntecipados({ repasses, donos, mes, hoje, diaDeFechamento, editar }: Props) {
+  const diaPrimeiro = diaDeFechamento;
   const comDisponivel = donos.filter((d) => d.disponivel > 0);
   return (
     <section className={styles.form} aria-label="Repasses antecipados">
       <h2 style={{ fontSize: "1.125rem", margin: 0 }}>Repasses antecipados (quinzenal, semanal, assim que disponível)</h2>
       <p style={{ color: "var(--scl-texto-2)", fontSize: "0.875rem", margin: 0, maxWidth: 820 }}>
         Cada parte de reserva fica <strong>disponível</strong> depois do check-in e com o dinheiro registrado na empresa (recebimento na página da reserva). A rotina das 8h gera o
-        repasse de quem está no dia da periodicidade dele; aqui você gera um avulso. No dia 1º só existe o fechamento. Nada é pago duas vezes: cada parte entra num repasse só.
+        repasse de quem está no dia da periodicidade dele; aqui você gera um avulso. No dia do fechamento só existe o fechamento. Nada é pago duas vezes: cada parte entra num repasse só.
       </p>
       {comDisponivel.length > 0 ? (
         <ul style={{ margin: 0, paddingLeft: 18 }}>
@@ -54,7 +56,7 @@ export function RepassesAntecipados({ repasses, donos, mes, hoje, editar }: Prop
       ) : (
         <p style={{ margin: 0, fontSize: "0.875rem" }}>Nenhum proprietário com valor disponível fora do fechamento agora.</p>
       )}
-      {diaPrimeiro && <p style={{ margin: 0, fontSize: "0.875rem", color: "var(--scl-texto-2)" }}>Hoje é dia 1º: o fechamento do mês é o único repasse do dia.</p>}
+      {diaPrimeiro && <p style={{ margin: 0, fontSize: "0.875rem", color: "var(--scl-texto-2)" }}>Hoje é o dia do fechamento: o fechamento do mês é o único repasse do dia.</p>}
       {repasses.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {repasses.map((r) => (

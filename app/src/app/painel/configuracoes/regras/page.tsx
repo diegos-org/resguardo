@@ -28,7 +28,7 @@ export default async function Regras() {
           O percentual de comissão fica no contrato de cada imóvel; a escolha de quem recebe pode ser diferente por imóvel (na página do
           imóvel) e por reserva.
         </li>
-        <li>Estadia entre meses: valor total (com limpeza) dividido igualmente por noite. Repasse e relatório: dia 1º do mês seguinte.</li>
+        <li>Estadia entre meses: valor total (com limpeza) dividido igualmente por noite. Repasse e relatório: no dia do fechamento do mês seguinte (padrão dia 2; <Link href="/painel/configuracoes/repasses">Configurações → Repasses</Link>).</li>
       </ul>
       <FormRegras regras={regras} origens={NOMES_ORIGEM} salvar={salvarRegrasAcao} />
       <p style={{ fontSize: "0.875rem", margin: 0 }}>

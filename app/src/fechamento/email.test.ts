@@ -11,6 +11,7 @@ import { type Correio, CorreioMemoria, ErroEnvioIncerto, type Mensagem } from "@
 import type { DadosReserva } from "@/reservas/regras";
 import { criarReserva } from "@/reservas/repositorio";
 import { guardarExtrato } from "@/relatorios/extratos";
+import { lerRegrasRepasses, salvarRegrasRepasses } from "@/repasses/regras-config";
 import { estornarRepasse, fecharMes, listarRepasses, marcarRepassePago } from "@/repasses/repasses";
 import { fechamentoDeTodas, fechamentoManual } from "./cron";
 import { chaveDoEnvio, chaveDoReenvio, enviarFechamentos, fechamentoAindaVale, versaoDoConteudo, enviarFechamentosAutomaticos, lerConfigFechamentoEmail, salvarConfigFechamentoEmail, situacaoDosFechamentos } from "./email";
@@ -339,6 +340,20 @@ describe("e-mail do fechamento (M5.4)", () => {
     expect(correio.enviadas[0].chave).not.toBe(chaveDoEnvio(org, dona, MES));
     const [q] = (await situacaoDosFechamentos(db, org, MES, "2026-11-02")).filter((x) => x.proprietarioId === dona);
     expect(q.situacao).toBe("enviado");
+  });
+
+  it("automático (M4.13): no dia 1º o mês espera o dia do fechamento (dia 2) com aviso; no dia 2 sai; com o dia mudado para 1, sai no dia 1º", async () => {
+    await ligar();
+    await fechar();
+    const correio = new CorreioMemoria();
+    expect(await enviarFechamentosAutomaticos(db, org, correio, DIA1)).toEqual([expect.objectContaining({ mes: MES, enviados: 0, aviso: "outubro de 2026 sai sozinho a partir de 02/11/2026 (dia do fechamento): nada enviado hoje" })]);
+    expect(correio.enviadas).toHaveLength(0);
+    expect(await enviarFechamentosAutomaticos(db, org, correio, new Date("2026-11-02T12:00:00Z"))).toEqual([expect.objectContaining({ mes: MES, enviados: 1 })]);
+    expect(correio.enviadas).toHaveLength(1);
+    // Novembro, com o dia do fechamento mudado para 1 em novembro: sai no dia 1º de dezembro.
+    await salvarRegrasRepasses(db, org, await lerRegrasRepasses(db, org), null, { diaFechamento: 1, hoje: "2026-11-20" });
+    await fecharMes(db, org, dona, "2026-11", "2026-12-01", null);
+    expect(await enviarFechamentosAutomaticos(db, org, correio, new Date("2026-12-01T12:00:00Z"))).toEqual([expect.objectContaining({ mes: "2026-11", enviados: 1 })]);
   });
 
   it("automático: mês fechado com atraso ainda sai, mas nada de antes de o envio ser ligado", async () => {
