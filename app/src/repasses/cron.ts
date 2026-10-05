@@ -1,7 +1,7 @@
 /**
  * Rotinas dos repasses (M4.10), registradas na página "Sistema":
  * - diária, às 8h de São Paulo: gera o repasse antecipado de quem tem periodicidade quinzenal,
- *   semanal ou "assim que disponível" quando a data bate (nunca no dia 1º: o fechamento é o único
+ *   semanal ou "assim que disponível" quando a data bate (nunca no dia do fechamento: o fechamento é o único
  *   repasse do dia) e manda os e-mails dos repasses pagos com comprovante que ainda não saíram;
  * - de hora em hora: só os e-mails — manda os que faltam e repete, com a mesma chave, a tentativa
  *   sem confirmação do provedor enquanto a chave vale (15 min a 23 h). Uma rotina só diária não

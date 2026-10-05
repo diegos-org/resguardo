@@ -1,6 +1,6 @@
 /**
  * E-mail do fechamento mensal aos proprietários (M5.4), chamado pelo agendador da Vercel todo dia
- * às 9h (12h UTC; ver `vercel.json`): do dia 1º em diante, sai para quem já tem o mês fechado.
+ * às 9h (12h UTC; ver `vercel.json`): do dia do fechamento em diante (M4.13), sai para quem já tem o mês fechado.
  * Só roda com o segredo do agendador (`CRON_SECRET`): sem ele, recusa.
  */
 import { getDb } from "@/db/client";

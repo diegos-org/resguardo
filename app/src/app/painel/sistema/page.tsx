@@ -127,7 +127,7 @@ export default async function Sistema() {
             <Link href="/painel/configuracoes/regras">Mudar</Link>
           </li>
           <li>Estadia entre meses: valor total (com limpeza) dividido igualmente por noite.</li>
-          <li>Repasse e relatório mensal: dia 1º do mês seguinte.</li>
+          <li>Repasse e relatório mensal: no dia do fechamento do mês seguinte (padrão dia 2; <Link href="/painel/configuracoes/repasses">Configurações → Repasses</Link>).</li>
           <li>Mudança de regra vale daquela data para frente; o que já movimentou dinheiro não é recalculado.</li>
         </ul>
         {regras.length === 0 ? (

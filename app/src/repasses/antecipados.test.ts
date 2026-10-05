@@ -124,9 +124,15 @@ describe("repasse antecipado (M4.10)", () => {
     expect(await obterRepasse(db, outraOrg, r.id)).toBeNull();
   });
 
-  it("no dia 1º não há antecipado: o fechamento é o único repasse do dia", async () => {
+  it("no dia do fechamento (dia 2 por padrão, M4.13) não há antecipado: o fechamento é o único repasse do dia; no dia 1º pode", async () => {
     await receberTudo(db, org, reservaBase, "2026-10-10");
-    expect(await gerarAntecipado(db, org, dono, "2026-11-01", null)).toMatchObject({ ok: false, erro: expect.stringContaining("dia 1º") });
+    expect(await gerarAntecipado(db, org, dono, "2026-11-02", null)).toMatchObject({ ok: false, erro: expect.stringContaining("dia do fechamento (dia 2)") });
+    expect(await gerarAntecipado(db, org, dono, "2026-11-01", null)).toMatchObject({ ok: true });
+    // Dia do fechamento mudado para 1 a partir de outubro: o dia 1º passa a ser o do fechamento.
+    await salvarRegrasRepasses(db, org, await lerRegrasRepasses(db, org), null, { diaFechamento: 1, hoje: "2026-10-20" });
+    expect((await lerRegrasRepasses(db, org)).fechamento).toEqual([{ dia: 1, desde: "2026-10" }]);
+    expect(await gerarAntecipado(db, org, dono, "2026-12-01", null)).toMatchObject({ ok: false, erro: expect.stringContaining("dia do fechamento (dia 1)") });
+    expect(await gerarAntecipado(db, org, dono, "2026-12-02", null)).toMatchObject({ ok: false, erro: "Nada disponível para repassar agora." });
   });
 
   it("reserva que atravessa o mês é paga inteira, um lançamento por competência, e cada fechamento fecha zerado; o avulso do portal fica marcado", async () => {
@@ -254,7 +260,7 @@ describe("recálculo do motor com parte já em repasse (M4.10)", () => {
 
 describe("periodicidade do proprietário e rotina diária (M4.10)", () => {
   it("escolha do proprietário, padrão por contrato (mais frequente) e próxima data; a escolha fica no histórico", async () => {
-    expect(await periodicidadeDoProprietario(db, org, dono, "2026-10-10")).toMatchObject({ escolha: null, efetiva: "mensal", tiposContrato: ["gestao_completa"], proximaData: "2026-11-01" });
+    expect(await periodicidadeDoProprietario(db, org, dono, "2026-10-10")).toMatchObject({ escolha: null, efetiva: "mensal", tiposContrato: ["gestao_completa"], proximaData: "2026-11-02" });
     await salvarRegrasRepasses(db, org, { ...(await lerRegrasRepasses(db, org)), padraoPorContrato: { gestao_completa: "mensal", gestao_online: "mensal", marketplace: "semanal" } }, null);
     expect(await periodicidadeDoProprietario(db, org, outro, "2026-10-10")).toMatchObject({ efetiva: "semanal", proximaData: "2026-10-12" });
     expect(await escolherPeriodicidade(db, org, dono, "quinzenal" as never, null, { peloProprietario: true })).toMatchObject({ ok: true });
@@ -279,12 +285,13 @@ describe("periodicidade do proprietário e rotina diária (M4.10)", () => {
     // Mesmo dia de novo (rotina e botão): nada gerado, nada duplicado.
     r = await rotinaDeRepasses(db, org, correio, new Date("2026-10-13T11:30:00Z"));
     expect(r).toMatchObject({ gerados: 0, semDisponivel: 1 });
-    // Semanal: só na segunda (19/10), e no dia 1º nunca.
+    // Semanal: só na segunda (19/10); no domingo 1/11 não é segunda, e na segunda 2/11 (dia do fechamento) nunca.
     await escolherPeriodicidade(db, org, dono, "semanal", null);
     await criar(reserva(a, "2026-10-14", "2026-10-16"), "2026-10-14");
     expect(await rotinaDeRepasses(db, org, correio, new Date("2026-10-15T11:00:00Z"))).toMatchObject({ gerados: 0 });
     expect(await rotinaDeRepasses(db, org, correio, new Date("2026-10-19T11:00:00Z"))).toMatchObject({ gerados: 1 });
     expect(await rotinaDeRepasses(db, org, correio, new Date("2026-11-01T11:00:00Z"))).toMatchObject({ gerados: 0 });
+    expect(await rotinaDeRepasses(db, org, correio, new Date("2026-11-02T11:00:00Z"))).toMatchObject({ gerados: 0 });
     // E-mail: pago sem comprovante espera; com comprovante sai uma vez, com as reservas e o anexo; representante em cópia.
     await db.insert(representantes).values({ proprietarioId: dono, nome: "Rep", email: "rep@example.com", recebeRelatorios: true });
     await marcarRepassePago(db, org, rep.id, "2026-10-13", "2026-10-13", null);

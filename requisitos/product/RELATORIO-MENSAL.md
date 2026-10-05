@@ -13,7 +13,7 @@ setembro/2026 vira o **padrão** do sistema, adaptado às cores e fontes da iden
 (M7.5, `requisitos/product/DESIGN.md`), com um bloco de métricas e um gráfico leve, e vale:
 
 - para o PDF que o **proprietário baixa no portal** (M5.3) e para o **envio mensal da empresa** no
-  dia 1º (M5.4) — um modelo só;
+  dia do fechamento (dia 2 por padrão — M4.13; M5.4) — um modelo só;
 - **adaptado, para o marketplace** (M12): vendas do site com o modelo B separadas das vendas que o
   dono faz nas OTAs dele;
 - como **família visual e de linguagem** para e-mails e, quando ligado (M10), WhatsApp (confirmação
@@ -171,10 +171,12 @@ comparação mostraria queda falsa).
   `empresa` e venda do site passam pelo repasse do M4.10.
 - **Mês corrente (parcial).** Igual, com "parcial até {dia}" na faixa e a frase de tom do guia da
   Lia: é para acompanhar o andamento; o fechamento completo vem no dia do fechamento.
-- **Dia de emissão.** O relatório do mês sai no dia do fechamento mensal (hoje, dia 1º; Diego
-  propôs em 4/10 passar para o dia 2, porque o Airbnb paga a reserva com check-in no último dia
-  do mês só no dia 1º — item M4.13, dia configurável). O que o canal ainda não pagou até lá
-  aparece como "a receber"/"a liberar" e entra no mês seguinte; nunca é suposto.
+- **Dia de emissão.** O relatório do mês sai sozinho no dia do fechamento mensal: **dia 2** por
+  padrão, editável de 1 a 5 em Configurações → Repasses (M4.13, decisão de Diego em 5/10/2026,
+  porque o Airbnb paga a reserva com check-in no último dia do mês só no dia 1º). Diego pode fechar
+  e enviar à mão antes, no dia 1º; o proprietário baixa o PDF no portal a qualquer momento (parcial
+  do mês corrente inclusive). O que o canal ainda não pagou até lá aparece como "a receber"/"a
+  liberar" e entra no mês seguinte; nunca é suposto.
 - **Vários imóveis do mesmo dono.** Um relatório por dono com uma capa (resultado consolidado e
   um quadro por imóvel) ou um por imóvel — escolha do proprietário no portal; o painel gera os dois.
   Imóveis de donos diferentes nunca no mesmo PDF (regra atual de `donosDosEscolhidos`).

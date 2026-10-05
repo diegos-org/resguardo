@@ -151,7 +151,7 @@ export async function escolherPeriodicidadeAcao(form: FormData): Promise<void> {
   voltarPortal(r.ok, "periodicidade", r.ok ? undefined : r.erro);
 }
 
-/** Portal → "Pedir repasse agora": antecipado avulso com o que está disponível (nunca no dia 1º). */
+/** Portal → "Pedir repasse agora": antecipado avulso com o que está disponível (nunca no dia do fechamento). */
 export async function pedirRepasseAcao(form: FormData): Promise<void> {
   const sessao = await sessaoDoPortal();
   const proprietarioId = texto(form, "proprietarioId");

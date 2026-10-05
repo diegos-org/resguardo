@@ -1,5 +1,5 @@
 /**
- * Repasse mensal ao proprietário (M4.9). No dia 1º do mês seguinte, cada proprietário tem o
+ * Repasse mensal ao proprietário (M4.9). No dia do fechamento do mês seguinte (M4.13: dia 2 por padrão), cada proprietário tem o
  * mês fechado:
  *
  * - saldo S: acerto acumulado até o fim do mês (soma de efeitoSaldo; positivo = empresa deve);
@@ -20,6 +20,7 @@ import { travarConfig } from "@/configuracoes/armazem";
 import { violouUnicidade } from "@/db/erros";
 import { ajustes, arquivos, contestacoesAdiantamento, imoveis, lancamentos, quitacoesAdiantamento, proprietarioImoveis, proprietarios, repasseItens, repasses, type SituacaoRepasse, type TipoRepasse } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { ehDiaDeFechamento } from "./periodicidade";
 import { formatBRL } from "@/lib/money";
 import { estornar, lancar, mudarEstado } from "@/financeiro/ledger";
 import { lerComReservasTravadas } from "@/financeiro/trava";
@@ -29,7 +30,7 @@ import { lancamentoEmConferencia } from "@/portal/posse";
 import { reservas as reservasRef } from "@/db/schema";
 import { type Parte, partesDisponiveis, partesDoProprietario } from "./extrato";
 import { avisoIndefinidas, ladoDoInicio, type LadoDoInicio, livroDeAntes } from "./inicio";
-import { lerInicioDoSistema } from "./regras-config";
+import { lerRegrasRepasses, lerInicioDoSistema } from "./regras-config";
 
 export type Repasse = typeof repasses.$inferSelect;
 export type RepasseItem = typeof repasseItens.$inferSelect;
@@ -50,7 +51,7 @@ export function limitesDoMes(mes: string): { inicio: string; fim: string; ultimo
   return { inicio: `${mes}-01`, fim, ultimoDia: `${mes}-${String(dias).padStart(2, "0")}` };
 }
 
-/** Mês anterior ao de `hoje` ("AAAA-MM"): o que se fecha no dia 1º. */
+/** Mês anterior ao de `hoje` ("AAAA-MM"): o que se fecha no dia do fechamento. */
 export function mesAFechar(hoje: string): string {
   const [a, m] = hoje.split("-").map(Number);
   return m === 1 ? `${a - 1}-12` : `${a}-${String(m - 1).padStart(2, "0")}`;
@@ -590,12 +591,12 @@ export async function itensDoRepasse(db: Db, org: string, repasseId: string): Pr
 /**
  * Repasse antecipado (M4.10): reúne tudo o que está disponível (check-in até ontem, dinheiro com a
  * empresa) e ainda não compôs repasse. Programado pela rotina diária ou avulso (pedido do
- * proprietário no portal, ou gerado por Diego no painel). Nunca no dia 1º: nesse dia o fechamento
- * é o único repasse. Um antecipado por proprietário por dia; a mesma parte nunca entra duas vezes.
+ * proprietário no portal, ou gerado por Diego no painel). Nunca no dia do fechamento (M4.13): nesse
+ * dia o fechamento é o único repasse. Um antecipado por proprietário por dia; a mesma parte nunca entra duas vezes.
  */
 export async function gerarAntecipado(db: Db, org: string, proprietarioId: string, hoje: string, autorId: string | null, o: { pedidoPeloProprietario?: boolean; agora?: Date } = {}): Promise<Resultado> {
   if (!dataValida(hoje)) return { ok: false, erro: "Data inválida." };
-  if (hoje.endsWith("-01")) return { ok: false, erro: "No dia 1º o repasse é o fechamento do mês: feche o mês em vez de antecipar." };
+  if (ehDiaDeFechamento(hoje, await lerRegrasRepasses(db, org))) return { ok: false, erro: `No dia do fechamento (dia ${Number(hoje.slice(8, 10))}) o repasse é o fechamento do mês: feche o mês em vez de antecipar.` };
   const agora = o.agora ?? meioDiaDe(hoje);
   try {
     return await db.transaction(async (tx) => {
@@ -703,7 +704,7 @@ export async function marcarRepassePago(db: Db, org: string, id: string, data: s
     const r = await travarRepasse(tx, org, id);
     if (!r || r.estornadoEm) return { ok: false as const, erro: "Repasse não encontrado." };
     if (r.situacao !== "a_pagar") return { ok: false as const, erro: "Este repasse já está pago." };
-    // O Pix só pode ter sido feito a partir da data do repasse (fechamento: o dia 1º seguinte ao mês).
+    // O Pix só pode ter sido feito a partir da data do repasse (fechamento: o dia do fechamento seguinte ao mês).
     if (data < r.data) return { ok: false as const, erro: `A data do pagamento não pode ser antes de ${dataBr(r.data)}.` };
     for (const l of await lancamentosDoRepasse(tx, org, id)) await mudarEstado(tx, org, l.id, "realizado", autorId, data);
     for (const i of await itensEmVigor(tx, org, id)) await mudarEstado(tx, org, i.lancamentoId, "realizado", autorId, data);

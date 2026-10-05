@@ -24,6 +24,7 @@ import { bloquearDatasAcao, escolherPeriodicidadeAcao, excluirPeriodoPortalAcao,
 import { situacaoNoPortal } from "@/portal/aceites";
 import { partesDoProprietario } from "@/repasses/extrato";
 import { periodicidadeDoProprietario } from "@/repasses/proprietario";
+import { diaDoFechamentoAtual } from "@/repasses/periodicidade";
 import { lerRegrasRepasses } from "@/repasses/regras-config";
 import { itensDoRepasse, listarRepasses } from "@/repasses/repasses";
 import { bloqueiosDoProprietario, permissoesDeBloqueio } from "@/portal/bloqueios";
@@ -63,7 +64,7 @@ function DepoisDoFechamento({ r, empresa }: { r: Rodape; empresa: string }) {
   );
 }
 
-function TextoRodape({ r, empresa }: { r: Rodape; empresa: string }) {
+function TextoRodape({ r, empresa, diaFechamento }: { r: Rodape; empresa: string; diaFechamento: number }) {
   const valor = <strong>{formatBRL(r.valor)}</strong>;
   const descontos = r.descontado > 0 ? ` (já descontados ${formatBRL(r.descontado)} de despesas que a ${empresa} pagou por você)` : "";
   switch (r.situacao) {
@@ -139,7 +140,7 @@ function TextoRodape({ r, empresa }: { r: Rodape; empresa: string }) {
       return (
         <p style={{ margin: 0 }}>
           Saldo parcial até o fim do período: {valor}
-          {r.aFavor === "proprietario" ? " a seu favor" : r.aFavor === "empresa" ? ` a favor da ${empresa}` : ""}. O valor final, quem paga e o Pix saem no fechamento, no dia 1º do mês
+          {r.aFavor === "proprietario" ? " a seu favor" : r.aFavor === "empresa" ? ` a favor da ${empresa}` : ""}. O valor final, quem paga e o Pix saem no fechamento, no dia {diaFechamento} do mês
           seguinte.
         </p>
       );
@@ -536,7 +537,7 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
             {rodape.map((r) => (
               <div key={r.proprietarioId} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 {rodape.length > 1 && <strong>{r.nome}</strong>}
-                <TextoRodape r={r} empresa={empresa} />
+                <TextoRodape r={r} empresa={empresa} diaFechamento={diaDoFechamentoAtual(regrasRepasses)} />
               </div>
             ))}
             <p className={styles.miudo}>

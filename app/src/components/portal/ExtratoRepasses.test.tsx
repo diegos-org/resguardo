@@ -22,7 +22,7 @@ const render = (props: Partial<Parameters<typeof ExtratoRepasses>[0]> = {}) =>
   renderToStaticMarkup(
     <ExtratoRepasses
       donos={[{ id: "d1", nome: "Dona" }]}
-      periodicidades={[{ proprietarioId: "d1", escolha: null, efetiva: "mensal", nome: "Mensal, no dia 1º (padrão)", descricao: "mensal, no dia 1º, junto com o fechamento do mês", tiposContrato: ["gestao_completa"], proximaData: "2026-11-01" }]}
+      periodicidades={[{ proprietarioId: "d1", escolha: null, efetiva: "mensal", nome: "Mensal, no dia do fechamento (padrão)", descricao: "mensal, no dia 2, junto com o fechamento do mês", tiposContrato: ["gestao_completa"], proximaData: "2026-11-02" }]}
       partes={[classificarParte(parte()), classificarParte(parte({ lancamentoId: "l2", reservaId: "r2", codigoReserva: "R-2", recebido: { recebido: 0, devido: 85000 }, valor: 1000 })), classificarParte(parte({ lancamentoId: "l3", efeitoSaldo: 0, valor: 500 }))]}
       repasses={[repasse()]}
       itens={{ rep1: [item()] }}
@@ -38,8 +38,9 @@ const render = (props: Partial<Parameters<typeof ExtratoRepasses>[0]> = {}) =>
 describe("extrato e repasses no portal (M4.10)", () => {
   it("mostra a periodicidade com a próxima data, o resumo, as partes com situação e motivo, e os repasses com comprovante", () => {
     const h = render();
-    expect(h).toContain("Próximo repasse previsto: <strong>01/11/2026</strong>");
-    expect(h).toContain('<option value="" selected="">Padrão do contrato (Mensal, no dia 1º (padrão))</option>');
+    expect(h).toContain("Próximo repasse previsto: <strong>02/11/2026</strong>");
+    expect(h).toContain("O mensal (dia 2) é o padrão");
+    expect(h).toContain('<option value="" selected="">Padrão do contrato (Mensal, no dia do fechamento (padrão))</option>');
     expect(h).toContain("Disponível para o próximo repasse");
     expect(h).toContain("R$ 722,50");
     expect(h).toContain("<strong>A liberar</strong>");
@@ -80,8 +81,11 @@ describe("extrato e repasses no portal (M4.10)", () => {
     expect(h).toContain("sem detalhe por reserva (fechamento antigo)");
     expect(h.match(/<summary/g)).toHaveLength(2);
   });
-  it("no dia 1º não oferece pedir repasse; sem disponível, idem; mensagem de retorno aparece", () => {
-    expect(render({ hoje: "2026-11-01" })).toContain("Hoje é dia 1º");
+  it("no dia do fechamento (dia 2) não oferece pedir repasse; no dia 1º oferece; sem disponível, idem; mensagem de retorno aparece", () => {
+    expect(render({ hoje: "2026-11-02" })).toContain("Hoje é o dia do fechamento");
+    expect(render({ hoje: "2026-11-02" })).not.toContain("Pedir repasse agora");
+    expect(render({ hoje: "2026-11-01" })).toContain("Pedir repasse agora");
+    expect(render({ hoje: "2026-11-01", regras: { ...REGRAS_REPASSES_PADRAO, fechamento: [{ dia: 1, desde: "2026-10" }] } })).toContain("Hoje é o dia do fechamento");
     expect(render({ partes: [] })).not.toContain("Pedir repasse agora");
     expect(render({ mensagem: { tipo: "ok", texto: "Salvo." } })).toContain('role="status"');
   });
@@ -89,7 +93,7 @@ describe("extrato e repasses no portal (M4.10)", () => {
     const h = render({
       donos: [{ id: "d1", nome: "Dona" }, { id: "d2", nome: "Empresa Dela" }],
       periodicidades: [
-        { proprietarioId: "d1", escolha: null, efetiva: "mensal", nome: "Mensal, no dia 1º (padrão)", descricao: "mensal", tiposContrato: ["gestao_completa"], proximaData: "2026-11-01" },
+        { proprietarioId: "d1", escolha: null, efetiva: "mensal", nome: "Mensal, no dia do fechamento (padrão)", descricao: "mensal", tiposContrato: ["gestao_completa"], proximaData: "2026-11-02" },
         { proprietarioId: "d2", escolha: "semanal", efetiva: "semanal", nome: "Semanal", descricao: "semanal", tiposContrato: ["marketplace"], proximaData: "2026-10-19" },
       ],
       partes: [classificarParte(parte({ proprietarioId: "d1" })), classificarParte(parte({ lancamentoId: "l2", proprietarioId: "d2", recebido: { recebido: 0, devido: 85000 } }))],

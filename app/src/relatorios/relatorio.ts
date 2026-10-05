@@ -17,6 +17,8 @@ import { type ResumoPortal, resumoDoProprietario } from "@/portal/resumo";
 import { type Rodape, rodapeDoPortal } from "@/portal/rodape";
 import { nomeMes, type Repasse } from "@/repasses/repasses";
 import { type ContratoDoRelatorio, contratosDoRelatorio, type DespesaDoRelatorio, despesasDoRelatorio, type MetricasDoRelatorio, metricasDoRelatorio, partesDoRelatorio, type RepasseDoRelatorio, repassesDoRelatorio } from "./dados";
+import { DIA_FECHAMENTO_PADRAO, diaDoFechamento } from "@/repasses/periodicidade";
+import { lerRegrasRepasses } from "@/repasses/regras-config";
 import { comoChega, conciliacao, conciliacaoFecha, dataCurta, type Linha, type LinhaConciliacao, nomeDoCanal, type ParteDoRelatorio, primeiroNome } from "./dinheiro";
 import { acumuladoDoAno, mesISO, type MesISO, nomeDoMes, type PontoDaSerie, type Quadro, quadrosDoMes, serieDe12 } from "./metricas";
 
@@ -25,6 +27,8 @@ export type ImovelDoRelatorio = { id: string; codigo: string; nome: string; bair
 
 export type DadosRelatorio = {
   empresa: string;
+  /** Dia do mês seguinte em que este mês fecha (M4.13, Configurações → Repasses). */
+  diaFechamento: number;
   /** Contatos da empresa (site, e-mail, telefone) cadastrados em Configurações → Empresa. */
   contato: string[];
   /** Proprietários primeiro; depois os representantes autorizados a receber relatórios. */
@@ -122,7 +126,7 @@ export async function dadosDoRelatorio(
   const agora = o.agora ?? new Date();
   const empresa = await lerEmpresa(db, organizacaoId);
   const situacao: SituacaoPeriodo = o.hoje < periodo.inicio ? "futuro" : o.hoje >= periodo.fim ? "fechado" : "parcial";
-  const [resumo, lista, rodape, reps, partes, metricas, repassesDoMes, despesas, contratos] = await Promise.all([
+  const [resumo, lista, rodape, reps, partes, metricas, repassesDoMes, despesas, contratos, regrasRepasses] = await Promise.all([
     resumoDoProprietario(db, organizacaoId, { proprietarioIds: donoIds, imovelIds, semImovel: o.todosOsImoveis, periodo }),
     reservasDoPortal(db, organizacaoId, { proprietarioIds: donoIds, imovelIds, periodo }),
     rodapeDoPortal(db, organizacaoId, { proprietarios: o.donos, mes, hoje: o.hoje, pixEmpresa: empresa.chavePix }),
@@ -138,9 +142,11 @@ export async function dadosDoRelatorio(
     repassesDoRelatorio(db, organizacaoId, o.donos, mes),
     despesasDoRelatorio(db, organizacaoId, { donos: o.donos, imovelIds, todosOsImoveis: o.todosOsImoveis, mes }),
     contratosDoRelatorio(db, organizacaoId, imovelIds, mes),
+    lerRegrasRepasses(db, organizacaoId),
   ]);
   return {
     empresa: empresa.nome || NOME_EMPRESA_INICIAL,
+    diaFechamento: diaDoFechamento(regrasRepasses, mes),
     contato: [empresa.site, empresa.email, empresa.telefone].filter(Boolean),
     proprietarios: o.donos.map((d) => d.nome),
     representantes: reps.map((r) => r.nome),
@@ -232,7 +238,7 @@ const plural = (n: number, um: string, varios: string) => (n === 1 ? um : varios
 const comoLinha = (l: Linha): LinhaValor => ({ texto: l.texto, valor: formatBRL(l.valor), tipo: l.tipo });
 
 /** Frase do saldo com a empresa, a mesma leitura do rodapé do portal. */
-export function textoDoSaldo(r: Rodape, empresa: string): string[] {
+export function textoDoSaldo(r: Rodape, empresa: string, diaFechamento: number = DIA_FECHAMENTO_PADRAO): string[] {
   const valor = formatBRL(r.valor);
   const descontos = r.descontado > 0 ? ` (já descontados ${formatBRL(r.descontado)} de despesas que a ${empresa} pagou por você)` : "";
   const pixDele = r.chavePix ? " para a sua chave Pix cadastrada." : `. Sua chave Pix não está cadastrada: fale com a ${empresa}.`;
@@ -256,7 +262,7 @@ export function textoDoSaldo(r: Rodape, empresa: string): string[] {
       return [`Credor: ${empresa}. Você deve ${valor} à ${empresa}.`, r.chavePix ? `Pix da ${empresa}: ${r.chavePix}` : `Fale com a ${empresa} para combinar o pagamento.`];
     case "parcial":
       return [
-        `Saldo parcial até o fim do mês: ${valor}${r.aFavor === "proprietario" ? " a seu favor" : r.aFavor === "empresa" ? ` a favor da ${empresa}` : ""}. O valor final e quem paga saem no fechamento, no dia 1º do mês seguinte.`,
+        `Saldo parcial até o fim do mês: ${valor}${r.aFavor === "proprietario" ? " a seu favor" : r.aFavor === "empresa" ? ` a favor da ${empresa}` : ""}. O valor final e quem paga saem no fechamento, no dia ${diaFechamento} do mês seguinte.`,
       ];
     case "em_conferencia":
       return [`Há itens em conferência: o valor final aparece depois que a ${empresa} resolver.`];
@@ -439,7 +445,7 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
   });
 
   const saldo = d.rodape.flatMap((x) => {
-    const linhas = textoDoSaldo(x, e);
+    const linhas = textoDoSaldo(x, e, d.diaFechamento);
     return d.rodape.length > 1 ? [`${x.nome}: ${linhas[0]}`, ...linhas.slice(1)] : linhas;
   });
   const imovelTitulo = d.imoveis.map((i) => i.nome).join(" · ");
