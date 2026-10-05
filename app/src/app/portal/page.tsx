@@ -21,6 +21,7 @@ import { centavosParaCampo } from "@/lib/dinheiro-form";
 import { nomeDoMes, periodoDosFiltros } from "@/lib/filtros";
 import { formatBRL } from "@/lib/money";
 import { bloquearDatasAcao, escolherPeriodicidadeAcao, excluirPeriodoPortalAcao, liberarDatasAcao, marcarLimpezaFeitaPortalAcao, novoPeriodoPortalAcao, pedirRepasseAcao, registrarManutencaoPortalAcao, salvarPrecosPortalAcao } from "@/portal/acoes";
+import { situacaoNoPortal } from "@/portal/aceites";
 import { partesDoProprietario } from "@/repasses/extrato";
 import { periodicidadeDoProprietario } from "@/repasses/proprietario";
 import { lerRegrasRepasses } from "@/repasses/regras-config";
@@ -179,6 +180,8 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
     nomeDaEmpresa(db, sessao.organizacaoId),
   ]);
   meus.sort((x, y) => x.codigo.localeCompare(y.codigo));
+  // "Como funciona" (M5.6): com versão publicada e ainda sem aceite, a faixa pede a leitura.
+  const comoFunciona = await situacaoNoPortal(db, sessao.organizacaoId, sessao.usuarioId);
   const opcoes = meus.map((i) => ({ codigo: i.codigo, nome: i.nome }));
   const params = await searchParams;
   const { filtros, aviso } = lerPeriodoPortal(params, opcoes);
@@ -296,6 +299,17 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
           <h1>{donos.length > 0 ? donos.map((d) => d.nome).join(", ") : "Seus imóveis"}</h1>
         </div>
       </header>
+      {comoFunciona.atual &&
+        (comoFunciona.pendente ? (
+          <p role="alert" className={styles.nota}>
+            <strong>Leia e aceite o documento &ldquo;Como funciona&rdquo;</strong> (versão {comoFunciona.atual.numero}, de {br(comoFunciona.atual.data)}): ele explica o que a {empresa} faz, a
+            comissão, quando e como você recebe. <Link href="/portal/como-funciona">Ler e aceitar →</Link>
+          </p>
+        ) : (
+          <p className={styles.miudo}>
+            <Link href="/portal/como-funciona">Como funciona</Link> · versão {comoFunciona.atual.numero}, aceita.
+          </p>
+        ))}
 
       {meus.length === 0 ? (
         <p>Nenhum imóvel ligado ao seu cadastro ainda. Fale com a {empresa}.</p>

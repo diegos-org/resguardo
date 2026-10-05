@@ -12,4 +12,5 @@ export const ABAS_CONFIG: readonly { slug: string; titulo: string; exige: Acao }
   { slug: "categorias", titulo: "Categorias de despesa", exige: "despesa:editar" },
   { slug: "mensagens", titulo: "Modelos de mensagem", exige: "configuracao:editar" },
   { slug: "site", titulo: "Textos do site", exige: "configuracao:editar" },
+  { slug: "como-funciona", titulo: "Como funciona (proprietário)", exige: "configuracao:editar" },
 ];

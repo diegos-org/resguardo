@@ -53,9 +53,11 @@ describe("aplicação das migrações por hash (build da Vercel)", () => {
     expect(await aplicarMigracoesPendentes(executar, todas)).toBe(todas.length);
     expect(await tabelas()).toEqual(expect.arrayContaining(["beds24_envio_imoveis", "repasse_itens", "arquivos"]));
     // Como no banco de preview: os objetos existem, mas a 0053 não está registrada (as antigas do branch é que criaram).
-    const ultima = todas.at(-1)!;
-    await db.query('delete from "drizzle"."__drizzle_migrations" where hash = $1', [ultima.hash]);
+    // A 0053 é a 54ª da pasta (0000 a 0053); as migrações seguintes são normais, não precisam ser idempotentes.
+    const m0053 = todas[53];
+    expect(m0053.sql.join("\n")).toContain("beds24_envio_imoveis");
+    await db.query('delete from "drizzle"."__drizzle_migrations" where hash = $1', [m0053.hash]);
     expect(await aplicarMigracoesPendentes(executar, todas)).toBe(1);
-    expect((await registradas()).some((r) => r.hash === ultima.hash)).toBe(true);
+    expect((await registradas()).some((r) => r.hash === m0053.hash)).toBe(true);
   }, 120_000);
 });
