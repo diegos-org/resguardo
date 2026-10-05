@@ -423,6 +423,13 @@ describe("dados e acesso", () => {
     const d3 = await pedir();
     expect(d3.metricas.atual.diasImovel).toBe(0);
     expect(d3.metricas.atual.noitesOcupadas).toBe(d1.metricas.atual.noitesOcupadas);
+    // Troca de dono em 11/10 (o vínculo da Dona é apagado; o do Outro nasce em 11/10): o relatório da Dona, que entra pelo
+    // livro, conta só até 10/10 (10 noites); o do Outro, de 11/10 em diante (21).
+    await db.delete(proprietarioImoveis).where(eq(proprietarioImoveis.imovelId, a));
+    await db.insert(proprietarioImoveis).values({ proprietarioId: outro, imovelId: a, criadoEm: new Date("2026-10-11T12:00:00-03:00") });
+    expect((await pedir()).metricas.atual.diasImovel).toBe(10);
+    const doOutro = await dadosDoRelatorio(db, org, { donos: [{ id: outro, nome: "Outro Fictício" }], imoveis: [{ id: a, codigo: "403", nome: "Studio Mezanino" }], todosOsImoveis: false, ano: 2026, mes: 10, hoje: "2026-11-02" });
+    expect(doOutro.metricas.atual.diasImovel).toBe(21);
   });
 
   it("mês parcial: a diária média usa o bruto das noites já passadas (proporcional por noite), não o bruto do mês inteiro", async () => {

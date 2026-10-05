@@ -117,7 +117,7 @@ padrão. Está implementado assim (no portal, no painel e no e-mail do fechament
   do proprietário avisa, antes e depois do envio. Os e-mails do fechamento e do repasse saem em
   texto e numa versão bonita (HTML), na ordem combinada: saudação pelo primeiro nome, uma frase do
   que é, o valor em destaque, lista curta, próximo passo, assinatura — o seu texto editável
-  continua valendo (se ele já começa com "Olá", a saudação não repete).
+  continua valendo (a saudação do seu texto é trocada pela saudação pelo primeiro nome, e o "qualquer dúvida" do fim não sai duas vezes).
 - **O que ficou para os itens próprios:** foto real da capa (M7.3 — até lá o quadro "foto em breve"),
   linhas do modelo B no relatório do marketplace (M12.2), comparações com meses anteriores a
   1/10/2026 (M11.1) e WhatsApp (M10). Dia do fechamento no dia 2: item M4.13, esperando a sua

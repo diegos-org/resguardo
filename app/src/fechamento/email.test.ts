@@ -115,7 +115,8 @@ describe("e-mail do fechamento (M5.4)", () => {
     expect((await PDFDocument.load(m.anexos![0].conteudo)).getPageCount()).toBe(5);
     expect(m.texto).toContain("com o extrato oficial no fim (Airbnb)");
     expect(m.html).toContain("Repasse do mês");
-    expect(m.html).toContain("Olá, Dona Exemplo. Segue o relatório de outubro de 2026.");
+    expect(m.html).toContain("Olá, Dona.");
+    expect(m.html).toContain("Segue o relatório de outubro de 2026.");
     expect((await situacaoDosFechamentos(db, org, MES, "2026-11-01")).find((p) => p.proprietarioId === dona)).toMatchObject({ situacao: "enviado", anexosEnviados: ["Airbnb"] });
   });
 
@@ -130,7 +131,7 @@ describe("e-mail do fechamento (M5.4)", () => {
     expect(await enviarFechamentos(db, org, new CorreioMemoria(), DIA1)).toMatchObject({ enviados: 0, jaEnviados: 1, semEmail: ["Outro Exemplo"] });
     const m = correio.enviadas[0];
     expect(m).toMatchObject({ para: "dona@example.com", assunto: "Fechamento de outubro de 2026", chave: chaveDoEnvio(org, dona, MES) });
-    expect(m.texto).toContain("Olá, Dona Exemplo. Segue o relatório de outubro de 2026.");
+    expect(m.texto).toContain("Olá, Dona.\n\nSegue o relatório de outubro de 2026.");
     expect(m.texto).toContain("Repasse do mês: R$");
     expect(m.texto).toContain("Os extratos oficiais dos canais ficam com a equipe");
     expect(m.html).toContain("Repasse do mês");
