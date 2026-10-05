@@ -16,7 +16,7 @@ import { somarDias } from "@/repasses/inicio";
 import { lerInicioDoSistema } from "@/repasses/regras-config";
 import { itensDoRepasse, listarRepasses, type Repasse } from "@/repasses/repasses";
 import { dataDoPix, type ParteDoRelatorio } from "./dinheiro";
-import { type DadosDoMes, diasDeImovel, diasDoMes, intervalosDePosse, limitesDe, type MesISO, noitesBloqueadas, noitesNoIntervalo, noitesOcupadasNoIntervalo, somarMeses, trechosNaPosse } from "./metricas";
+import { type DadosDoMes, diasDeImovel, diasDoMes, intervalosDePosse, limitesDe, type MesISO, noitesBloqueadas, noitesContadasPorEstadia, noitesNoIntervalo, somarMeses, trechosNaPosse } from "./metricas";
 
 type Dono = { id: string; nome: string };
 const mesDe = (data: string): MesISO => data.slice(0, 7);
@@ -156,11 +156,26 @@ export async function metricasDoRelatorio(
       // atravessa a troca de dono fica no livro do dono antigo, mas as noites depois da troca são do dono novo.
       imovelIds.length
         ? db
-            .select({ imovelId: reservas.imovelId, checkin: reservas.checkin, checkout: reservas.checkout, valorBruto: reservas.valorBruto })
+            .select({ id: reservas.id, imovelId: reservas.imovelId, checkin: reservas.checkin, checkout: reservas.checkout, valorBruto: reservas.valorBruto })
             .from(reservas)
             .where(and(eq(reservas.organizacaoId, organizacaoId), eq(reservas.estado, "confirmada"), inArray(reservas.imovelId, imovelIds), lt(reservas.checkin, fim), gt(reservas.checkout, de)))
+            .orderBy(asc(reservas.checkin), asc(reservas.id))
         : Promise.resolve([]),
     ]);
+    // O bruto de cada estadia é o do livro (lançamentos "receita_bruta" em vigor, de qualquer mês e de qualquer dono): a
+    // reserva que mudou de valor depois de movimentar dinheiro fica divergente e o livro guarda o valor protegido — a
+    // diária usa o mesmo número da capa. Sem lançamento nenhum (reserva fora do livro), o valor da reserva.
+    const brutoNoLivro = new Map(
+      estadias.length
+        ? (
+            await db
+              .select({ reservaId: lancamentos.reservaId, total: sum(lancamentos.valor) })
+              .from(lancamentos)
+              .where(and(eq(lancamentos.organizacaoId, organizacaoId), eq(lancamentos.tipo, "receita_bruta"), inArray(lancamentos.reservaId, estadias.map((r) => r.id)), lancamentoEmVigor(db)))
+              .groupBy(lancamentos.reservaId)
+          ).map((l) => [l.reservaId, Number(l.total ?? 0)] as const)
+        : [],
+    );
     const posse = (imovelId: string) => posseDe.get(imovelId) ?? [{ desde: null, ate: null }];
     const bloqueiosNaPosse = bloqueiosDoDono.flatMap((b) => trechosNaPosse(b.inicio, b.fim, posse(b.imovelId)).map((t) => ({ imovelId: b.imovelId, ...t })));
     // Ocupação e diária média são fatos do imóvel: toda estadia confirmada (cancelada ou pendente com valor no livro não
@@ -170,13 +185,17 @@ export async function metricasDoRelatorio(
     // período e fora das bloqueadas para uso próprio, a mesma régua das noites ocupadas; no mês parcial, só até o dia
     // (uma estadia futura já confirmada não entra nem no bruto nem nas noites). O dinheiro do resultado segue o livro,
     // que não é recortado.
+    // A noite que duas estadias sobrepostas disputam (overbooking) conta uma vez, nas noites e no bruto.
     type Estadia = (typeof estadias)[number];
-    const estadiasNaPosse = (r: Estadia) => trechosNaPosse(r.checkin, r.checkout, posse(r.imovelId)).map((t) => ({ imovelId: r.imovelId, checkin: t.inicio, checkout: t.fim }));
-    const noitesContadas = (r: Estadia, ate: string) => noitesOcupadasNoIntervalo(estadiasNaPosse(r), bloqueiosNaPosse, de, ate);
-    const brutoNaPosse = (r: Estadia, ate: string) => {
+    const contadas = noitesContadasPorEstadia(
+      estadias.map((r) => ({ imovelId: r.imovelId, checkin: r.checkin, trechos: trechosNaPosse(r.checkin, r.checkout, posse(r.imovelId)) })),
+      bloqueiosNaPosse,
+      de,
+      fimConsiderado,
+    );
+    const brutoDasNoites = (r: Estadia, noites: number) => {
       const total = noitesNoIntervalo(r.checkin, r.checkout, r.checkin, r.checkout);
-      const noites = noitesContadas(r, ate);
-      return total > 0 && noites > 0 ? ratear(r.valorBruto ?? 0, [noites, total - noites])[0] : 0;
+      return total > 0 && noites > 0 ? ratear(brutoNoLivro.get(r.id) ?? r.valorBruto ?? 0, [noites, total - noites])[0] : 0;
     };
     const noitesAte = (r: { checkin: string; checkout: string }) => noitesNoIntervalo(r.checkin, r.checkout, de, fimConsiderado);
     // Mês parcial: o resultado também vai só até o dia — a parte de cada reserva confirmada proporcional às noites já
@@ -190,11 +209,12 @@ export async function metricasDoRelatorio(
     return {
       mes: m,
       resultado: resultadoAte ?? resumo.suaParte - resumo.despesas,
-      bruto: estadias.reduce((s, r) => s + brutoNaPosse(r, fimConsiderado), 0),
+      bruto: estadias.reduce((s, r, i) => s + brutoDasNoites(r, contadas[i]), 0),
       // Cada noite de cada imóvel conta uma vez (overbooking não passa de 100%) e noite bloqueada para uso próprio não conta.
-      noitesOcupadas: noitesOcupadasNoIntervalo(estadias.flatMap(estadiasNaPosse), bloqueiosNaPosse, de, fimConsiderado),
-      // Estadias com ao menos uma noite dentro da posse e do período (a mesma régua das noites ocupadas).
-      reservas: estadias.filter((r) => noitesContadas(r, fimConsiderado) > 0).length,
+      noitesOcupadas: contadas.reduce((s, n) => s + n, 0),
+      // Estadias com ao menos uma noite contada (na posse, no período, fora das bloqueadas e sem a noite disputada que
+      // ficou com outra): a mesma régua das noites ocupadas.
+      reservas: contadas.filter((n) => n > 0).length,
       noitesDoPeriodo: ate ? Number(ate.slice(8, 10)) : diasDoMes(m),
       imoveis: imovelIds.length,
       diasImovel: diasDeImovel(imovelIds.flatMap(posse), de, fimConsiderado),
