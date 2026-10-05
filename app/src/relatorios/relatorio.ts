@@ -20,7 +20,7 @@ import { type ContratoDoRelatorio, contratosDoRelatorio, type DespesaDoRelatorio
 import { DIA_FECHAMENTO_PADRAO, diaDoFechamento } from "@/repasses/periodicidade";
 import { lerRegrasRepasses } from "@/repasses/regras-config";
 import { type AvisoDaLinha, comoChega, conciliacao, conciliacaoFecha, dataCurta, dataDoPix, type Linha, type LinhaConciliacao, nomeDoCanal, type ParteDoRelatorio, primeiroNome } from "./dinheiro";
-import { acumuladoDoAno, mesISO, type MesISO, nomeDoMes, type PontoDaSerie, type Quadro, quadrosDoMes, serieDe12 } from "./metricas";
+import { acumuladoDoAno, mesISO, type MesISO, nomeDoMes, type PontoDaSerie, type PontoOcupacao, type Quadro, quadrosDoMes, serieDe12, serieOcupacaoDe12 } from "./metricas";
 
 export type Dono = { id: string; nome: string };
 export type ImovelDoRelatorio = { id: string; codigo: string; nome: string; bairro?: string; cidade?: string };
@@ -213,8 +213,12 @@ export type TextosRelatorio = {
   brutoAoResultado: LinhaValor[];
   avisos: string[];
   rodapeCapa: { comAnexos: string; semAnexos: string };
+  /** Páginas em que começam as seções que a capa, a linha das despesas e a nota dos anexos citam (`comPaginas`). */
+  paginas: PaginasDasSecoes;
   quadros: Quadro[];
   grafico: { titulo: string; serie: PontoDaSerie[]; acumulado: string | null; legendaAtual: string };
+  /** M5.8 (escolha de Diego em 5/10): ocupação por mês nos 12 meses, com a diária média sobre cada barra. */
+  graficoOcupacao: { titulo: string; serie: PontoOcupacao[]; legendaAtual: string; nota: string };
   reservasTitulo: string;
   reservas: LinhaReserva[];
   totalReservas: LinhaReserva | null;
@@ -232,6 +236,35 @@ export type TextosRelatorio = {
   saldo: string[];
   emConferencia: string | null;
 };
+
+/**
+ * Páginas em que começam "Números e reservas" e "Conciliação e repasses". Os textos saem com as do PDF sem transbordo
+ * (2 e 3); o PDF confere onde cada seção começou de fato (a capa ou uma lista longa de reservas pode continuar na folha
+ * seguinte) e, se mudou, redesenha com `comPaginas` — a capa, a linha das despesas e a nota dos anexos nunca apontam
+ * para a página errada.
+ */
+export type PaginasDasSecoes = { numeros: number; conciliacao: number };
+export const PAGINAS_PADRAO: PaginasDasSecoes = { numeros: 2, conciliacao: 3 };
+const rodapeCapaDe = (p: PaginasDasSecoes) => ({
+  comAnexos: `Os números são os mesmos do portal. Números e reservas na página ${p.numeros}; conciliação e repasses na ${p.conciliacao}; extratos oficiais dos canais no fim, como emitidos.`,
+  semAnexos: `Os números são os mesmos do portal. Números e reservas na página ${p.numeros}; conciliação e repasses na ${p.conciliacao}. Os extratos oficiais dos canais ficam com a equipe: peça se precisar.`,
+});
+const detalheDasDespesas = (p: PaginasDasSecoes) => `detalhe na página ${p.conciliacao}`;
+const anexosNotaDe = (p: PaginasDasSecoes) =>
+  `Diferença entre o total do extrato do canal e o bruto deste relatório tem explicação na conciliação (página ${p.conciliacao}): período, base "ganhos" × "pagamentos", estadia que atravessa o mês. O total do canal não é lucro nem erro.`;
+
+/** Os mesmos textos com as referências apontando para `p` (onde as seções começaram no PDF desenhado). */
+export function comPaginas(t: TextosRelatorio, p: PaginasDasSecoes): TextosRelatorio {
+  if (p.numeros === t.paginas.numeros && p.conciliacao === t.paginas.conciliacao) return t;
+  const antes = detalheDasDespesas(t.paginas);
+  return {
+    ...t,
+    paginas: p,
+    rodapeCapa: rodapeCapaDe(p),
+    anexosNota: anexosNotaDe(p),
+    brutoAoResultado: t.brutoAoResultado.map((l) => (l.texto.includes(antes) ? { ...l, texto: l.texto.replace(antes, detalheDasDespesas(p)) } : l)),
+  };
+}
 
 const SITUACAO_RESERVA: Record<SituacaoReserva, string> = { definido: "definido", em_conferencia: "em conferência", sem_calculo: "sem cálculo ainda" };
 const br = (d: string) => d.split("-").reverse().join("/");
@@ -346,7 +379,7 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
     { texto: "Líquido depois dos canais", valor: formatBRL(r.receitaBruta - r.taxasCanais), tipo: "normal" },
     { texto: `− Comissão da gestão${comissoes.length === 1 ? ` (${comissoes[0]} do líquido)` : ""}`, valor: `− ${formatBRL(r.comissao)}`, tipo: "sub" },
     { texto: "Sua parte nas reservas", valor: formatBRL(r.suaParte), tipo: "normal" },
-    ...(r.despesas > 0 ? [{ texto: `− Despesas do imóvel (${nDespesas || 1} ${plural(nDespesas || 1, "lançamento", "lançamentos")} — detalhe na página 3)`, valor: `− ${formatBRL(r.despesas)}`, tipo: "sub" as const }] : []),
+    ...(r.despesas > 0 ? [{ texto: `− Despesas do imóvel (${nDespesas || 1} ${plural(nDespesas || 1, "lançamento", "lançamentos")} — ${detalheDasDespesas(PAGINAS_PADRAO)})`, valor: `− ${formatBRL(r.despesas)}`, tipo: "sub" as const }] : []),
     { texto: `Seu resultado em ${mesNome}`, valor: formatBRL(resultado), tipo: "total" },
   ];
   const emConferencia = r.emConferencia
@@ -368,7 +401,8 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
 
   // Página 2: quadros, gráfico e reservas.
   const quadros = quadrosDoMes({ atual: d.metricas.atual, anterior: d.metricas.anterior, anoAnterior: d.metricas.anoAnterior, parcialAte: d.metricas.parcialAte });
-  const resultados = new Map(d.metricas.serie);
+  const mesesDados = new Map(d.metricas.meses);
+  const resultados = new Map([...mesesDados].map(([m, x]) => [m, x?.resultado ?? null] as const));
   const acumulado = acumuladoDoAno(resultados, mes);
   const nomes = new Map(d.imoveis.map((i) => [i.id, i.nome]));
   const partesDasReservas = new Set(doMes.map((p) => p.reservaId));
@@ -482,16 +516,20 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
     comoChega: { linhas: chega.linhas.map(comoLinha), quemPagaQuem: chega.quemPagaQuem },
     brutoAoResultado,
     avisos,
-    rodapeCapa: {
-      comAnexos: "Os números são os mesmos do portal. Números e reservas na página 2; conciliação e repasses na 3; extratos oficiais dos canais no fim, como emitidos.",
-      semAnexos: "Os números são os mesmos do portal. Números e reservas na página 2; conciliação e repasses na 3. Os extratos oficiais dos canais ficam com a equipe: peça se precisar.",
-    },
+    rodapeCapa: rodapeCapaDe(PAGINAS_PADRAO),
+    paginas: PAGINAS_PADRAO,
     quadros,
     grafico: {
       titulo: "Resultado mensal, últimos 12 meses (R$ mil)",
       serie: serieDe12(resultados, mes),
       acumulado: acumulado ? `Acumulado ${acumulado.desde === `${d.ano}-01` ? `de ${d.ano}` : `desde ${nomeDoMes(acumulado.desde)} (primeiro mês com dado)`}: ${formatBRL(acumulado.valor)}` : null,
       legendaAtual: mesNome,
+    },
+    graficoOcupacao: {
+      titulo: "Ocupação por mês, últimos 12 meses (%)",
+      serie: serieOcupacaoDe12(mesesDados, mes),
+      legendaAtual: mesNome,
+      nota: "sobre cada barra, a diária média do mês",
     },
     reservasTitulo: `Reservas do mês · ${nReservas} ${plural(nReservas, "reserva", "reservas")} · ${noites} ${plural(noites, "noite", "noites")} em ${mesNome}`,
     reservas: linhasReservas,
@@ -505,7 +543,7 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
     acerto,
     posicao: `Nenhum valor é estimado: o que o sistema ainda não tem aparece como "a receber" ou "a liberar". Um repasse "enviado" não confirma o crédito na sua conta: confira o comprovante no portal.`,
     anexosIntro: "Como emitidos pelo canal, sem alterações. Só as páginas deste imóvel e destes favorecidos.",
-    anexosNota: `Diferença entre o total do extrato do canal e o bruto deste relatório tem explicação na conciliação (página 3): período, base "ganhos" × "pagamentos", estadia que atravessa o mês. O total do canal não é lucro nem erro.`,
+    anexosNota: anexosNotaDe(PAGINAS_PADRAO),
     saldo: saldo.length ? saldo : ["Nada a pagar ou receber neste mês."],
     emConferencia,
   };

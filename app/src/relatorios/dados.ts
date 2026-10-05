@@ -91,8 +91,8 @@ export type MetricasDoRelatorio = {
   atual: DadosDoMes;
   anterior: DadosDoMes | null;
   anoAnterior: DadosDoMes | null;
-  /** Resultado (sua parte − despesas) dos 12 meses até o mês; null = sem dado no sistema. */
-  serie: [MesISO, number | null][];
+  /** Os 12 meses até o mês, com os números de cada um (resultado, noites, bruto…); null = sem dado no sistema. */
+  meses: [MesISO, DadosDoMes | null][];
   /** Dia até onde os números do mês corrente valem; null no mês terminado. */
   parcialAte: number | null;
 };
@@ -140,6 +140,33 @@ export async function metricasDoRelatorio(
       ])
     : [[], []];
   const posseDe = new Map(imovelIds.map((id) => [id, intervalosDePosse(id, donoIds, vinculos, historico)] as const));
+  // Sem início do sistema definido, o livro é o que diz que um mês está no sistema — mas a ocupação é fato do imóvel:
+  // o mês com estadia confirmada nos imóveis do relatório ou com bloqueio de uso próprio do dono (dentro da posse, o
+  // mesmo bloqueio que o mês conta) entra no gráfico de ocupação mesmo sem lançamento — o mês todo bloqueado aparece
+  // como bloqueado, não como "sem dado". O resultado em dinheiro desse mês continua "sem dado".
+  const comCalendario = new Set<MesISO>();
+  if (!inicio && imovelIds.length) {
+    const deSerie = limitesDe(meses[0]).inicio;
+    const ateSerie = limitesDe(o.mes).fim;
+    const [estadiasDaSerie, bloqueiosDaSerie] = await Promise.all([
+      db
+        .select({ checkin: reservas.checkin, checkout: reservas.checkout })
+        .from(reservas)
+        .where(and(eq(reservas.organizacaoId, organizacaoId), eq(reservas.estado, "confirmada"), inArray(reservas.imovelId, imovelIds), lt(reservas.checkin, ateSerie), gt(reservas.checkout, deSerie))),
+      donosValidos.length
+        ? db
+            .select({ imovelId: bloqueios.imovelId, inicio: bloqueios.inicio, fim: bloqueios.fim })
+            .from(bloqueios)
+            .where(and(eq(bloqueios.organizacaoId, organizacaoId), inArray(bloqueios.imovelId, imovelIds), inArray(bloqueios.proprietarioId, donosValidos), eq(bloqueios.fonte, "proprietario"), lt(bloqueios.inicio, ateSerie), gt(bloqueios.fim, deSerie)))
+        : Promise.resolve([]),
+    ]);
+    const trechos = [
+      ...estadiasDaSerie.map((e) => ({ inicio: e.checkin, fim: e.checkout })),
+      ...bloqueiosDaSerie.flatMap((b) => trechosNaPosse(b.inicio, b.fim, posseDe.get(b.imovelId) ?? [{ desde: null, ate: null }])),
+    ];
+    for (const t of trechos) for (const m of meses) if (t.inicio < limitesDe(m).fim && t.fim > limitesDe(m).inicio) comCalendario.add(m);
+  }
+  const temOcupacao = (m: MesISO) => temDado(m) || comCalendario.has(m);
   const dadosDoMes = async (m: MesISO, ate: string | null): Promise<DadosDoMes> => {
     const { inicio: de, fim } = limitesDe(m);
     const fimConsiderado = ate ? somarDias(ate, 1) : fim;
@@ -215,6 +242,9 @@ export async function metricasDoRelatorio(
       bruto: estadias.reduce((s, r, i) => s + brutoDasNoites(r, contadas[i]), 0),
       // Cada noite de cada imóvel conta uma vez (overbooking não passa de 100%) e noite bloqueada para uso próprio não conta.
       noitesOcupadas: contadas.reduce((s, n) => s + n, 0),
+      // Estadias com ao menos uma noite contada (na posse, no período, fora das bloqueadas e sem a noite disputada que
+      // ficou com outra): a mesma régua das noites ocupadas.
+      reservas: contadas.filter((n) => n > 0).length,
       noitesDoPeriodo: ate ? Number(ate.slice(8, 10)) : diasDoMes(m),
       imoveis: imovelIds.length,
       diasImovel: diasDeImovel(imovelIds.flatMap(posse), de, fimConsiderado),
@@ -226,17 +256,12 @@ export async function metricasDoRelatorio(
   const anteriorMes = somarMeses(o.mes, -1);
   const anoAnteriorMes = somarMeses(o.mes, -12);
   const [anterior, anoAnterior] = await Promise.all([temDado(anteriorMes) ? dadosDoMes(anteriorMes, null) : null, temDado(anoAnteriorMes) ? dadosDoMes(anoAnteriorMes, null) : null]);
-  const serie: [MesISO, number | null][] = [];
-  for (const m of meses) {
-    if (m === o.mes) serie.push([m, atual.resultado]);
-    else if (m === anteriorMes && anterior) serie.push([m, anterior.resultado]);
-    else if (!temDado(m)) serie.push([m, null]);
-    else {
-      const r = await resumoDoProprietario(db, organizacaoId, { proprietarioIds: donoIds, imovelIds, semImovel: o.todosOsImoveis, periodo: limitesDe(m) });
-      serie.push([m, r.suaParte - r.despesas]);
-    }
-  }
-  return { atual, anterior, anoAnterior, serie, parcialAte: ate ? Number(ate.slice(8, 10)) : null };
+  // Os 12 meses da série (M5.8: resultado, ocupação e diária média por mês), reaproveitando os já calculados. O mês que
+  // só entra pela ocupação (estadia sem livro) vem com o resultado null: no gráfico do resultado, "sem dado".
+  const pendentes = meses.filter((m) => m !== o.mes && !(m === anteriorMes && anterior) && temOcupacao(m));
+  const demais = new Map(await Promise.all(pendentes.map(async (m) => [m, temDado(m) ? await dadosDoMes(m, null) : { ...(await dadosDoMes(m, null)), resultado: null }] as const)));
+  const serie: [MesISO, DadosDoMes | null][] = meses.map((m) => [m, m === o.mes ? atual : m === anteriorMes && anterior ? anterior : (demais.get(m) ?? null)]);
+  return { atual, anterior, anoAnterior, meses: serie, parcialAte: ate ? Number(ate.slice(8, 10)) : null };
 }
 
 export type RepasseDoRelatorio = { id: string; tipo: Repasse["tipo"]; data: string; situacao: Repasse["situacao"]; dataPagamento: string | null; valor: number; reservas: string[] };

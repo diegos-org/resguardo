@@ -3,7 +3,7 @@ import { decodePDFRawStream, PDFArray, PDFDocument, PDFRawStream } from "pdf-lib
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Sessao } from "@/acesso/politica";
 import { criarContrato } from "@/contratos/repositorio";
-import { auditoria, imoveis, lancamentos, organizacoes, proprietarioImoveis, proprietarios, proprietarioUsuarios, representantes, reservas, usuarios } from "@/db/schema";
+import { auditoria, bloqueios, imoveis, lancamentos, organizacoes, proprietarioImoveis, proprietarios, proprietarioUsuarios, representantes, reservas, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import { criarCategoria } from "@/despesas/categorias";
 import { registrarDespesa } from "@/despesas/despesas";
@@ -18,7 +18,7 @@ import { donosDosEscolhidos, relatorioDoPainel, relatorioDoPortal } from "./gera
 import type { ParteDoRelatorio } from "./dinheiro";
 import { type DadosDoMes, diariaMedia } from "./metricas";
 import { conferirAnexos, ErroRelatorio, extratosDe, gerarPdfRelatorio, lerPaginas } from "./pdf";
-import { type DadosRelatorio, dadosDoRelatorio, imoveisDoProprietario, marcaDe, textoDoSaldo, textosDoRelatorio } from "./relatorio";
+import { comPaginas, type DadosRelatorio, dadosDoRelatorio, imoveisDoProprietario, marcaDe, PAGINAS_PADRAO, textoDoSaldo, textosDoRelatorio } from "./relatorio";
 import { receberTudo } from "@/repasses/testes";
 import { gerarAntecipado, marcarRepassePago } from "@/repasses/repasses";
 import { repassesDoRelatorio } from "./dados";
@@ -73,7 +73,9 @@ const parte = (over: Partial<ParteDoRelatorio> = {}): ParteDoRelatorio => ({
   reservaId: "r1", codigo: "R1", codigoCanal: "", hospede: "Hóspede Fictício da Silva", canal: "booking", checkin: "2026-10-10", checkout: "2026-10-13", mes: "2026-10", noitesNoMes: 3, noitesTotal: 3,
   bruto: 100000, taxa: 15000, comissao: 12750, suaParte: 72250, quemRecebe: "empresa", situacao: "disponivel", motivo: "Disponível para o próximo repasse.", pagamento: { data: "2026-10-12", fonte: "recebimento" }, repasse: null, ...over,
 });
-const mesDados = (over: Partial<DadosDoMes> = {}): DadosDoMes => ({ mes: "2026-10", resultado: 72250, bruto: 100000, noitesOcupadas: 3, noitesDoPeriodo: 31, imoveis: 1, diasImovel: 31, noitesBloqueadas: 0, ...over });
+const mesDados = (over: Partial<DadosDoMes> = {}): DadosDoMes => ({ mes: "2026-10", resultado: 72250, bruto: 100000, noitesOcupadas: 3, reservas: 1, noitesDoPeriodo: 31, imoveis: 1, diasImovel: 31, noitesBloqueadas: 0, ...over });
+/** Série de 12 meses só com o resultado (os outros números do mês ficam os do fixture). */
+const mesesDe = (serie: [string, number | null][]): [string, DadosDoMes | null][] => serie.map(([m, r]) => [m, r === null ? null : mesDados({ mes: m, resultado: r })]);
 
 const base: DadosRelatorio = {
   hoje: "2026-11-02",
@@ -107,7 +109,7 @@ const base: DadosRelatorio = {
   ],
   rodape: [],
   partes: [parte()],
-  metricas: { atual: mesDados(), anterior: null, anoAnterior: null, serie: [["2026-10", 72250]], parcialAte: null },
+  metricas: { atual: mesDados(), anterior: null, anoAnterior: null, meses: [["2026-10", mesDados()]], parcialAte: null },
   repasses: [],
   fechamentos: [],
   despesas: [],
@@ -154,7 +156,7 @@ describe("textos do relatório (modelo oficial, M5.7)", () => {
     expect(p.emissao).toBe("parcial até 20/10");
     expect(p.periodo).toBe("1 a 20/10/2026 (parcial: posição de 20/10/2026)");
     expect(p.aviso).toContain("inclusive as que ainda não aconteceram");
-    expect(p.quadros[2]).toMatchObject({ valor: "mês em andamento", semDado: true });
+    expect(p.quadros[4]).toMatchObject({ valor: "mês em andamento", semDado: true });
     expect(textosDoRelatorio({ ...base, situacao: "futuro" }).periodo).toContain("previsto");
     const m = textosDoRelatorio({ ...base, contratos: [{ imovelId: "i1", tipo: "marketplace", tipoNome: "Marketplace", comissao: null }] });
     expect(m.marketplace).toBe(true);
@@ -241,18 +243,24 @@ describe("textos do relatório (modelo oficial, M5.7)", () => {
     expect(textosDoRelatorio({ ...base, partes: [], reservas: [{ ...base.reservas[0], hospede: "" }] }).reservas[0].hospede).toBe("não informado");
   });
 
-  it("números do mês e gráfico: quadros, série de 12 meses e acumulado desde o primeiro mês com dado", () => {
-    const serie: [string, number | null][] = [["2026-05", 980000], ["2026-06", 1120000], ["2026-07", 1390000], ["2026-08", 1210000], ["2026-09", 1304000], ["2026-10", 1503780]];
-    const t = textosDoRelatorio(
-      { ...base, metricas: { atual: mesDados({ resultado: 1503780, bruto: 1945000, noitesOcupadas: 18, noitesBloqueadas: 2 }), anterior: mesDados({ mes: "2026-09", resultado: 1304000, noitesOcupadas: 16, noitesDoPeriodo: 30 }), anoAnterior: null, serie, parcialAte: null } },
-    );
-    expect(t.quadros.map((q) => q.valor)).toEqual(["18 noites", "R$ 1.080,56", "+15%", "sem dado no sistema"]);
+  it("números do mês e gráficos: seis quadros, série de 12 meses do resultado e da ocupação (com a diária média), acumulado desde o primeiro mês com dado", () => {
+    const atual = mesDados({ resultado: 1503780, bruto: 1945000, noitesOcupadas: 18, reservas: 7, noitesBloqueadas: 2 });
+    const anterior = mesDados({ mes: "2026-09", resultado: 1304000, bruto: 1600000, noitesOcupadas: 16, noitesDoPeriodo: 30, diasImovel: 30 });
+    const meses: [string, DadosDoMes | null][] = [...mesesDe([["2026-05", 980000], ["2026-06", 1120000], ["2026-07", 1390000], ["2026-08", 1210000]]), ["2026-09", anterior], ["2026-10", atual]];
+    const t = textosDoRelatorio({ ...base, metricas: { atual, anterior, anoAnterior: null, meses, parcialAte: null } });
+    expect(t.quadros.map((q) => q.valor)).toEqual(["18 noites ocupadas", "R$ 1.080,56", "R$ 670,69", "7 reservas", "+15%", "sem dado no sistema"]);
     expect(t.grafico.serie).toHaveLength(12);
     expect(t.grafico.serie[0]).toEqual({ mes: "2025-11", resultado: null, atual: false });
     expect(t.grafico.serie.at(-1)).toEqual({ mes: "2026-10", resultado: 1503780, atual: true });
     expect(t.grafico.acumulado).toBe("Acumulado desde maio de 2026 (primeiro mês com dado): R$ 75.077,80");
     expect(t.grafico.legendaAtual).toBe("outubro de 2026");
-    expect(textosDoRelatorio({ ...base, metricas: { ...base.metricas, serie: [["2026-01", 100], ["2026-10", 72250]] } }).grafico.acumulado).toBe("Acumulado de 2026: R$ 723,50");
+    // Gráfico de ocupação (M5.8): mesma janela de 12 meses; sem dado → nulls; diária média por mês.
+    expect(t.graficoOcupacao.titulo).toBe("Ocupação por mês, últimos 12 meses (%)");
+    expect(t.graficoOcupacao.serie).toHaveLength(12);
+    expect(t.graficoOcupacao.serie[0]).toEqual({ mes: "2025-11", ocupacao: null, diaria: null, atual: false, semOcupacao: "sem_dado" });
+    expect(t.graficoOcupacao.serie.at(-2)).toEqual({ mes: "2026-09", ocupacao: 53, diaria: 100000, atual: false, semOcupacao: null });
+    expect(t.graficoOcupacao.serie.at(-1)).toEqual({ mes: "2026-10", ocupacao: 62, diaria: 108056, atual: true, semOcupacao: null });
+    expect(textosDoRelatorio({ ...base, metricas: { ...base.metricas, meses: mesesDe([["2026-01", 100], ["2026-10", 72250]]) } }).grafico.acumulado).toBe("Acumulado de 2026: R$ 723,50");
   });
 
   it("conciliação por data de pagamento com a ponte fechando; repasses do mês com etiqueta; posição com data e hora de Brasília", () => {
@@ -356,7 +364,7 @@ describe("PDF", () => {
   });
 
   it("gráfico com mês negativo (despesas acima da sua parte) e com todos os meses negativos: o PDF sai inteiro", async () => {
-    const com = (serie: [string, number | null][]) => gerarPdfRelatorio(textosDoRelatorio({ ...base, metricas: { ...base.metricas, serie } }));
+    const com = (serie: [string, number | null][]) => gerarPdfRelatorio(textosDoRelatorio({ ...base, metricas: { ...base.metricas, meses: mesesDe(serie) } }));
     expect(await paginasDe(await com([["2026-07", -350000], ["2026-08", 1200000], ["2026-09", null], ["2026-10", 72250]]))).toBe(3);
     expect(await paginasDe(await com([["2026-09", -1500000], ["2026-10", -20000]]))).toBe(3);
   });
@@ -390,6 +398,29 @@ describe("PDF", () => {
     const partes = Array.from({ length: 70 }, (_, i) => parte({ reservaId: `r${i}`, codigo: `R${i}` }));
     const n = await paginasDe(await gerarPdfRelatorio(textosDoRelatorio({ ...base, partes }), { extrato: { bytes: await pdfCom(1) } }));
     expect(n).toBeGreaterThanOrEqual(6);
+  });
+
+  it("referências de página: reservas que transbordam a página 2 levam a capa, a linha das despesas e a nota dos anexos para onde a conciliação começou", async () => {
+    const comDespesa: DadosRelatorio = { ...base, resumo: { ...base.resumo, despesas: 5000 }, despesas: [{ data: "2026-10-12", descricao: "Troca do chuveiro", valor: 5000 }] };
+    const secoes = (cs: string[]) => ({ numeros: cs.findIndex((c) => c.includes(hexWinAnsi("Números e reservas do mês"))) + 1, conciliacao: cs.findIndex((c) => c.includes(hexWinAnsi("Conciliação e repasses"))) + 1 });
+    const extrato = { extrato: { bytes: await pdfCom(1) } };
+    // Poucas reservas: as seções nas páginas 2 e 3, como os textos já dizem; nada muda.
+    const t = textosDoRelatorio(comDespesa);
+    expect(comPaginas(t, PAGINAS_PADRAO)).toBe(t);
+    const poucas = await conteudoDasPaginas(await gerarPdfRelatorio(t, extrato));
+    expect(secoes(poucas)).toEqual({ numeros: 2, conciliacao: 3 });
+    expect(poucas[0]).toContain(hexWinAnsi("conciliação e repasses na 3"));
+    // Oito reservas: a tabela continua na folha seguinte e a conciliação começa depois dela.
+    const partes = Array.from({ length: 8 }, (_, i) => parte({ reservaId: `r${i}`, codigo: `R${i}` }));
+    const muitas = await conteudoDasPaginas(await gerarPdfRelatorio(textosDoRelatorio({ ...comDespesa, partes }), extrato));
+    const s = secoes(muitas);
+    expect(s.numeros).toBe(2);
+    expect(s.conciliacao).toBeGreaterThan(3);
+    expect(muitas[0]).toContain(hexWinAnsi(`conciliação e repasses na ${s.conciliacao}`));
+    expect(muitas[0]).toContain(hexWinAnsi(`detalhe na página ${s.conciliacao})`));
+    expect(muitas[0]).not.toContain(hexWinAnsi("página 3"));
+    expect(muitas.join("\n")).toContain(hexWinAnsi(`(página ${s.conciliacao})`));
+    expect(muitas.join("\n")).not.toContain(hexWinAnsi("(página 3)"));
   });
 });
 
@@ -466,7 +497,7 @@ describe("dados e acesso", () => {
     const d = await pedir();
     expect(d.metricas.anoAnterior).toMatchObject({ mes: "2025-10" });
     // O mês de 11 meses atrás (sem lançamento) continua sem dado; a série não ganha valor por isso.
-    expect(d.metricas.serie.find(([m]) => m === "2025-11")?.[1]).toBeNull();
+    expect(d.metricas.meses.find(([m]) => m === "2025-11")?.[1]).toBeNull();
   });
 
   it("noites para vender contam só desde o vínculo do imóvel; o vínculo depois do mês não dá noite nenhuma", async () => {
@@ -563,6 +594,47 @@ describe("dados e acesso", () => {
     const d = await pedir();
     expect(d.metricas.atual).toMatchObject({ noitesOcupadas: 3, bruto: 100000 });
     expect(diariaMedia(d.metricas.atual.bruto, d.metricas.atual.noitesOcupadas)).toBe(33333);
+  });
+
+  it("sem início do sistema definido, mês com estadia confirmada fora do livro entra no gráfico de ocupação; o resultado dele continua sem dado", async () => {
+    // Estadia de 10 a 14/8 (R$ 800,00) gravada sem passar pelo livro (importada, sem lançamento); o imóvel é da Dona desde 2025.
+    await db.update(proprietarioImoveis).set({ criadoEm: new Date("2025-01-01T12:00:00-03:00") }).where(eq(proprietarioImoveis.imovelId, a));
+    const [r1] = await db.select({ codigo: reservas.codigo }).from(reservas).where(eq(reservas.imovelId, a));
+    await db.insert(reservas).values({ organizacaoId: org, imovelId: a, codigo: `${r1.codigo}-AGO`, origem: "airbnb", estado: "confirmada", checkin: "2026-08-10", checkout: "2026-08-14", hospedeNome: "Hóspede de Agosto Fictício", valorBruto: 80000 });
+    const d = await dadosDoRelatorio(db, org, { donos: [{ id: dona, nome: "Dona Fictícia" }], imoveis: [{ id: a, codigo: "403", nome: "Studio Mezanino" }], todosOsImoveis: true, ano: 2026, mes: 10, hoje: "2026-11-02" });
+    const agosto = new Map(d.metricas.meses).get("2026-08");
+    expect(agosto).toMatchObject({ noitesOcupadas: 4, bruto: 80000, resultado: null });
+    const t = textosDoRelatorio(d);
+    expect(t.graficoOcupacao.serie.find((p) => p.mes === "2026-08")).toMatchObject({ semOcupacao: null, diaria: 20000 });
+    expect(t.grafico.serie.find((p) => p.mes === "2026-08")).toMatchObject({ resultado: null });
+    // Julho, sem estadia nem livro, continua sem dado nos dois.
+    expect(t.graficoOcupacao.serie.find((p) => p.mes === "2026-07")).toMatchObject({ semOcupacao: "sem_dado" });
+  });
+
+  it("sem início do sistema definido, mês todo bloqueado para uso próprio (sem estadia nem livro) aparece como bloqueado, não como sem dado", async () => {
+    await db.update(proprietarioImoveis).set({ criadoEm: new Date("2025-01-01T12:00:00-03:00") }).where(eq(proprietarioImoveis.imovelId, a));
+    // Julho inteiro bloqueado pela Dona; um bloqueio da equipe em junho não é dela e não põe junho no gráfico.
+    await db.insert(bloqueios).values([
+      { organizacaoId: org, imovelId: a, inicio: "2026-07-01", fim: "2026-08-01", motivo: "Uso próprio", fonte: "proprietario", proprietarioId: dona },
+      { organizacaoId: org, imovelId: a, inicio: "2026-06-10", fim: "2026-06-12", motivo: "Manutenção", fonte: "manual" },
+    ]);
+    const d = await dadosDoRelatorio(db, org, { donos: [{ id: dona, nome: "Dona Fictícia" }], imoveis: [{ id: a, codigo: "403", nome: "Studio Mezanino" }], todosOsImoveis: true, ano: 2026, mes: 10, hoje: "2026-11-02" });
+    expect(new Map(d.metricas.meses).get("2026-07")).toMatchObject({ noitesBloqueadas: 31, noitesOcupadas: 0, resultado: null });
+    const t = textosDoRelatorio(d);
+    expect(t.graficoOcupacao.serie.find((p) => p.mes === "2026-07")).toMatchObject({ ocupacao: null, semOcupacao: "bloqueado" });
+    expect(t.grafico.serie.find((p) => p.mes === "2026-07")).toMatchObject({ resultado: null });
+    expect(t.graficoOcupacao.serie.find((p) => p.mes === "2026-06")).toMatchObject({ semOcupacao: "sem_dado" });
+  });
+
+  it("mês em que o imóvel ainda não era do dono aparece como fora da posse, não como bloqueado", async () => {
+    // A Dona tem o imóvel desde 15/9; a estadia de agosto foi do dono anterior.
+    await db.update(proprietarioImoveis).set({ criadoEm: new Date("2026-09-15T12:00:00-03:00") }).where(eq(proprietarioImoveis.imovelId, a));
+    const [r1] = await db.select({ codigo: reservas.codigo }).from(reservas).where(eq(reservas.imovelId, a));
+    await db.insert(reservas).values({ organizacaoId: org, imovelId: a, codigo: `${r1.codigo}-AGO`, origem: "airbnb", estado: "confirmada", checkin: "2026-08-10", checkout: "2026-08-14", hospedeNome: "Hóspede de Agosto Fictício", valorBruto: 80000 });
+    const d = await dadosDoRelatorio(db, org, { donos: [{ id: dona, nome: "Dona Fictícia" }], imoveis: [{ id: a, codigo: "403", nome: "Studio Mezanino" }], todosOsImoveis: true, ano: 2026, mes: 10, hoje: "2026-11-02" });
+    expect(new Map(d.metricas.meses).get("2026-08")).toMatchObject({ diasImovel: 0, noitesOcupadas: 0 });
+    const t = textosDoRelatorio(d);
+    expect(t.graficoOcupacao.serie.find((p) => p.mes === "2026-08")).toMatchObject({ ocupacao: null, semOcupacao: "fora_da_posse" });
   });
 
   it("duas reservas sobrepostas no mesmo imóvel (overbooking importado): a noite disputada conta uma vez nas noites e no bruto", async () => {
