@@ -272,3 +272,11 @@ de entrada/saída restritos no cadastro ainda não são enviados. O teste no 103
 - A prévia de calendário mostra a fonte do imóvel e a coluna "Site (≈)" (preço da noite com o
   desconto do site, aproximado) para a conferência periódica contra o Airbnb e o Booking.
 
+
+## Diretriz de pisos de Búzios — 6/10/2026, implementação pendente
+
+Diego orientou trabalhar com **dois pisos para Búzios**: **R$450 de piso geral** e **R$350 de piso para descontos de última hora**, se for possível aplicar corretamente. São limites mínimos, não diárias uniformes, preços-alvo nem autorização para baixar todas as noites a esses valores. Não copiar essa direção para os apartamentos do Leblon.
+
+A aplicação continua **pendente**. Antes de escrever, conferir o horizonte abrangido, as regras/faixas de antecedência, a referência original, tarifas especiais e intervenções existentes, reservas/bloqueios e a composição dos descontos, inclusive o benefício adicional de 15% para hóspedes bem avaliados. Se a combinação não permitir respeitar o piso, registrar o impedimento e a decisão necessária; não remover benefícios ou inventar outra regra por suposição. Preservar a fonte única de escrita autorizada.
+
+A auditoria ampliada de Búzios, feriados e descontos está em andamento no registro desta decisão. Este documento não comprova alteração de preços, mínimos, faixas, benefícios ou configurações, nem revisão concluída de todo o horizonte. O piso de R$350 proposto para última hora não significa que uma cotação final já foi conferida ou protegida após todos os descontos. Tratar os pisos históricos anteriores como histórico, não como prova da aplicação da nova direção.
