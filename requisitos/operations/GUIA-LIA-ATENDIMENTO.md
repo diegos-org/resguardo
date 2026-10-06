@@ -47,6 +47,18 @@ Reservas existentes no Airbnb permanecem na plataforma. Atendimento operacional 
 
 Telefone pessoal de Diego, códigos, documentos, finanças e contatos de terceiros ficam fora de guias compartilháveis e agendas. **Exceção autorizada por Diego em 2/10:** o telefone operacional do hóspede, vindo do campo estruturado da reserva (cadastro ou importação), entra na agenda interna da equipe — prévia no painel e e-mail dos destinatários da cidade — para orientar contato e chegada; continua fora de guias compartilháveis, site, logs e exemplos. Exceções históricas para a presença dele em grupos de equipes/proprietários não autorizam redistribuir o número; participação em grupos com hóspedes é decisão específica.
 
+## WhatsApp da empresa — texto revisado e link para envio manual
+
+Quando Diego pedir uma mensagem para o WhatsApp da empresa, entregar **o texto revisado e legível junto com um link clicável que preencha esse mesmo texto**. O conteúdo deve estar autorizado para o destinatário e continuar sujeito à conferência de dados, horários, permissões e documentos. Preparar um link não significa enviar a mensagem.
+
+- **Pessoa:** conferir o número no cadastro ou conversa autorizada; usar apenas os dígitos do telefone completo, com código do país e DDD. Formato do link: `https://wa.me/{numero_verificado}?text={texto_codificado}`. Não adivinhar número, recuperar dado protegido nem colocar telefone real em exemplos do GitHub.
+- **Grupo:** usar `https://wa.me/?text={texto_codificado}` para abrir o seletor de destinatário. Diego escolhe o grupo certo e pressiona **Enviar**. Não usar URL de convite do grupo como substituta do envio de mensagem.
+- **Codificação:** produzir `texto_codificado` com `encodeURIComponent(textoRevisado)` em UTF-8, incluindo acentos, emojis e quebras de linha; não concatenar o texto bruto, não codificar duas vezes e conferir que o texto decodificado é idêntico à versão revisada entregue.
+- **Aplicativo e remetente:** o link pode abrir o aplicativo padrão do aparelho. Não garantir que abrirá o WhatsApp Business em vez do pessoal. No primeiro teste, Diego deve conferir o aplicativo, a identidade remetente e o destinatário antes de enviar; depois registrar a preferência observada sem presumir o mesmo comportamento em outro aparelho.
+- **Estado:** guardar preparado, entregue a Diego e envio confirmado como etapas separadas. Não marcar o atendimento à equipe/hóspede como enviado só porque o link abriu. Evitar duplicar uma mensagem que Diego já enviou.
+
+Exemplo genérico para grupo, sem dados de hóspede: texto “Olá, segue a agenda revisada.” → [preencher mensagem](https://wa.me/?text=Ol%C3%A1%2C%20segue%20a%20agenda%20revisada.). Nos registros compartilháveis, não publicar links contendo nomes, telefones, documentos, códigos ou outros dados reais de hóspedes.
+
 ## Exemplos úteis por imóvel
 
 Reunir aqui mensagens adaptáveis com informações novas fornecidas por Diego, organizadas por imóvel. Acrescentar exemplos dos demais imóveis conforme surgirem, no mesmo guia. Cada exemplo deve registrar fonte/data, distinguir fato informado de hipótese e indicar o que precisa ser conferido antes de usar. Não extrapolar características entre imóveis nem transformar um exemplo em autorização de envio.
