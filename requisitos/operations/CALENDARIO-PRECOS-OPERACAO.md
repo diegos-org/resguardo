@@ -2,6 +2,8 @@
 
 Consolidação solicitada por Diego em 1/10/2026. Origem: decisões diretas de 15, 18 e 19/9 registradas no protocolo local de calendário, comparadas com ROADMAP, CLAUDE.md, decisões operacionais e código atual da main `73f14d89f7fd616ada889ca175730ab42dba28b0`. Somente regras; reservas, contatos e resultados financeiros individuais ficam fora do Git.
 
+**Atualização de 6/10/2026:** decisões novas de sobras, alta temporada de Búzios e testes de feriados constam nas seções temáticas. Descontos retirados, 35 referências de Búzios e 42 mínimos de sobras foram conferidos; estado e limites estão no [resultado confirmado](#resultado-confirmado-de-610--preços-descontos-mínimos-e-limites). Trechos de 1–4/10 preservam a história e não substituem os resultados posteriores. Detalhe sanitizado do antes/depois no [registro de 6/10](RODADA-2026-10-06.md).
+
 ## Fonte e estado de implantação
 
 - Prevalece a direção de 24/9: **SCL como fonte oficial**, enviando calendário/preços ao Beds24 e às OTAs pelo M3.7, após implementação, teste em imóvel escolhido e ativação expressa por Diego. **Atualização de 4/10:** a fonte de **preços** passa a ser escolhida por imóvel (ROADMAP M3.9: automáticos da SCL, definidos no Beds24 pelo proprietário ou pela ferramenta dele, ou digitados no portal); a direção "SCL envia" vale sempre para o calendário e, para os preços, só quando a SCL é a fonte escolhida — em imóvel com preços do Beds24, o M3.7 não escreve preços (até o M3.9 existir, esse imóvel não é marcado para envio). Essa é a direção do sistema; em 1/10 Diego pediu expressamente esta rodada diretamente pelo Beds24 enquanto o painel não efetua escrita.
@@ -31,7 +33,7 @@ Preservar reservas e bloqueios intencionais. Uma autorização antiga para liber
 
 ## Feriadões
 
-Feriados nacionais e estaduais do RJ, Corpus Christi e a exceção expressa de 9 de julho/SP para ambos os destinos. Excluir feriados municipais. Outros feriados de origem dos hóspedes dependem de aprovação. Confirmar datas anuais e abrangência em fonte confiável.
+Feriados nacionais e estaduais do RJ e Corpus Christi continuam no escopo aprovado. Atualização de 6/10: o feriado estadual de **9 de julho/SP** recebe tratamento de teste próprio para Rio e Búzios, descrito abaixo; não é feriado municipal. A antiga exclusão geral de municipais foi substituída apenas pelo teste delimitado de feriados municipais da cidade do Rio com efeito em Búzios. Outros feriados de origem dos hóspedes dependem de conferência e aprovação. Confirmar datas anuais e abrangência em fonte confiável. A tabela de janelas abaixo não define automaticamente a janela dos novos testes de 1,5×.
 
 | Dia do feriado | Janela inclusiva | Mínimo |
 |---|---|---:|
@@ -44,9 +46,9 @@ Quarta, sábado ou domingo não ativam uma janela extra. Se dois feriados prolon
 
 ## Temporada e eventos
 
-- Alta temporada: 15/12 ao último dia de fevereiro, estendendo até Quarta-feira de Cinzas quando ela cair em março. Preço Leblon 2×B. Não estender ao fim de semana seguinte por inferência.
-- Réveillon: 25/12–1/1 inclusivos, mínimo 5 noites, Leblon 4×B. Depois de reserva de cinco noites que ocupe o período principal, rever sobras; datas livres de 25–27/12 voltam ao mínimo semanal. Reprecificação dessas sobras não foi definida: não baixar preço automaticamente.
-- Carnaval: segunda-feira da semana anterior à terça-feira de Carnaval até Cinzas, inclusivos; é a segunda três dias antes da quinta que inicia o período principal. Mínimo 5, Leblon 4×B. Confirmar datas anuais. Rever sobras após reserva.
+- Alta temporada: **15/12 ao último dia de fevereiro**, estendendo até Quarta-feira de Cinzas quando ela cair em março. **2×B no Leblon e em Búzios**, conforme confirmação direta de Diego em 6/10/2026 para a casa. B é a base própria confirmada de cada imóvel, não o piso nem a diária já multiplicada; o piso geral de R$450 de Búzios não define sua base B. Não estender ao fim de semana seguinte por inferência. A adoção da regra não comprova que os preços foram gravados ou relidos.
+- Réveillon: 25/12–1/1 inclusivos, mínimo 5 noites, Leblon 4×B. Esclarecimento de 6/10: se já houver reserva no período, aplicar às noites livres restantes o mínimo semanal ordinário, limitado à sobra menor, conforme a regra abaixo; não exige reserva prévia de cinco noites. Manter o preço do evento em todas as noites ainda dentro dessa janela, antes ou depois da reserva. A partir de 2/1, voltar às regras normais da data, incluindo alta temporada quando aplicável.
+- Carnaval: segunda-feira da semana anterior à terça-feira de Carnaval até Cinzas, inclusivos; é a segunda três dias antes da quinta que inicia o período principal. Mínimo 5, Leblon 4×B. Confirmar datas anuais. Havendo reserva no período, aplicar a regra de sobras abaixo sem retirar o preço do evento das noites que continuam dentro da janela. Na quinta-feira após Cinzas, retomar as regras normais, incluindo alta temporada quando aplicável; em 2027, esse retorno é em 11/2.
 - Rock in Rio: Leblon 3×B; sem novo mínimo de noites. Búzios excluído. Confirmar edição, dias efetivos e noites abrangidas; não importar datas de outro ano.
 - Multiplicadores não acumulam: usar o maior aplicável. Carnaval dentro da alta = 4×B, nunca 8×B.
 - Nas datas especiais, preço fixo manual substitui o Preço Inteligente naquela noite. Não desligar o recurso global nem elevar seu teto global por consequência.
@@ -72,15 +74,25 @@ Conferir promoções, descontos por duração, hóspedes com avaliações excele
 
 ## Sobras entre reservas
 
-Regra aprovada para todos os seis imóveis e para eventos: em cada data de entrada, mínimo ajustado = menor entre mínimo aplicável e noites consecutivas livres até a próxima reserva/bloqueio válido. Exemplo: sobram três noites num período com mínimo cinco → mínimos 3, 2, 1 nas respectivas entradas. Não liberar todo o período com uma noite indistintamente.
+**Atualização de Diego em 6/10/2026 para feriados/eventos com reserva já existente no período:** em todas as noites livres restantes do período, usar o mínimo ordinário da semana — domingo a quinta **1 noite**, sexta e sábado **2 noites** — limitado ao número de noites consecutivas livres até a próxima reserva/bloqueio válido, para não encalhar uma sobra de uma noite. Vale para todos os seis imóveis, sem alterar reservas ou bloqueios. Esta decisão substitui o escalonamento de três/quatro noites que ainda pudesse resultar do mínimo especial; não manter 3 ou 4 apenas porque essas eram as noites livres restantes.
+
+Se ainda não houver reserva no período de feriado/evento, preservar o mínimo especial aplicável à janela íntegra. A existência de uma reserva no período é a condição para usar o mínimo ordinário nas sobras; consulta ou pedido não confirmado não basta. Conferir a ocupação real antes de mudar.
+
+Fora dessa exceção, permanece a regra geral de sobra: em cada data de entrada, mínimo ajustado = menor entre mínimo aplicável e noites consecutivas livres até a próxima reserva/bloqueio válido. Não liberar todo um período com uma noite indistintamente.
+
+**Preço e mínimo são decisões separadas.** A flexibilização do mínimo não reduz o preço do feriado/evento: manter a tarifa especial em todas as noites ainda dentro da janela, tanto antes quanto depois da reserva. Exemplo de calendário: uma reserva no miolo do Réveillon não retira o preço de evento de 31/12 ou 1/1 livres. Diego também pediu manter, por enquanto, os preços dos grandes eventos nas noites anteriores à reserva que continuem na janela.
+
+Depois da janela, voltar ao preço e ao mínimo normais aplicáveis à data. “Normal” inclui a alta temporada quando documentada: 2/1 e a quinta-feira após Cinzas podem continuar sujeitos à alta temporada, sem prolongar o multiplicador ou mínimo do evento. Búzios agora adota a mesma regra de alta temporada por confirmação expressa de 6/10; os demais multiplicadores não são herdados por inferência.
+
+Esta atualização documenta a decisão; aplicação e releitura dos resultados precisam ser registradas por imóvel/período. Não apresentar a mudança como implementada no motor SCL nem como aplicada na plataforma apenas porque o guia foi alterado.
 
 Sábado livre após checkout com sexta ocupada pode ter mínimo 1, conferindo exceções especiais. Aplicar também a sobras de hoje, mantendo avaliação manual e limpeza. A redução do mínimo não autoriza desconto ou desbloqueio.
 
 ## Búzios — regra própria
 
-Piloto antigo de 2×/4× sobre 450 não autoriza novas replicações. Em 18/9, Diego orientou preservar os limites gerais então registrados (450/2.500), com revisão própria. Referência relatada de cerca de 3.000/noite para Réveillon anterior e Carnaval desejado não é tarifa aprovada para novas datas.
+Histórico: o piloto antigo de 2×/4× sobre 450 não autorizava novas replicações. Em 18/9, Diego orientou preservar os limites gerais então registrados (450/2.500), com revisão própria. Referência relatada de cerca de 3.000/noite para Réveillon anterior e Carnaval desejado não é tarifa aprovada para novas datas. **Nova confirmação de 6/10:** Búzios adota a mesma regra de alta temporada do Leblon (15/12 ao fim de fevereiro, extensão até Cinzas se em março, 2× a base própria confirmada). Isso não aprova automaticamente 4× para Réveillon/Carnaval ou 2× para todos os demais feriadões; os fatores ainda não definidos seguem pendentes de decisão.
 
-Próximos 30 dias: registrar noites reservadas, livres e impedimentos de duração/antecedência. Antes de reduzir, resolver a incidência adicional de 15% para hóspedes com avaliações excelentes observada em setembro. Pisos históricos do teste eram 350/300; aplicar só após conferir as condições específicas e decisões posteriores. Alta temporada/feriadões continuam exigindo definição própria dos valores. Não prometer melhora de ranking por reduzir preço.
+Próximos 30 dias: registrar noites reservadas, livres e impedimentos de duração/antecedência. Antes de reduzir, resolver a incidência adicional de 15% para hóspedes com avaliações excelentes observada em setembro. Pisos históricos do teste eram 350/300; aplicar só após conferir as condições específicas e decisões posteriores. A alta temporada passou a ter a fórmula acima por decisão de 6/10; conferir a base própria antes da aplicação. Os demais feriadões/eventos continuam exigindo definição dos fatores/valores que não tenham sido aprovados explicitamente. Não prometer melhora de ranking por reduzir preço.
 
 ## Registro e verificação de cada rodada
 
@@ -89,13 +101,13 @@ Próximos 30 dias: registrar noites reservadas, livres e impedimentos de duraç�
 3. Aplicar apenas noites disponíveis e mudanças autorizadas, sem alterar reservas confirmadas.
 4. Salvar; reabrir/recarregar e conferir anúncio, datas e valores. Distinguir envio do salvamento e resultado confirmado.
 5. Registrar cobertura de preços, mínimos e horizonte separadamente; registrar lacunas e próximo passo.
-6. Manter log privado por data/anúncio para não duplicar reduções. No repositório somente metodologia e exemplos fictícios.
+6. Manter log restrito por data/anúncio para não duplicar reduções, preservando horários, valores antes/depois, motivo, persistência e desfecho. No repositório, somente metodologia, exemplos fictícios ou sínteses sanitizadas autorizadas de preços de calendário/mínimos, sem nomes, identificadores, valores de reservas, repasses ou documentos. Não atribuir resultado de desempenho a uma alteração sem evidência suficiente.
 
 ## Compatibilidade com o sistema atual e pendências
 
 O arquivo `app/src/imoveis/regras-venda.ts`, conferido na main citada, aceita períodos explícitos, aplica o primeiro período correspondente e limita o valor ao mínimo/máximo com preço dinâmico ligado. Ainda não é um motor das regras acima: não calcula o maior multiplicador, os descontos de última hora com referência persistida, a semana normal por dia ou as sobras por disponibilidade. Essa diferença precisa ser tratada no desenvolvimento de M3.7 antes de usá-lo como automatismo; esta consolidação **não altera código nem libera escrita**.
 
-Pendentes: tarifas próprias de eventos de Búzios; combinação de descontos adicionais; tratamento de última hora em grandes eventos; reprecificação de sobras de Réveillon/Carnaval; validação de mercado e definição de piso líquido. Nenhuma dessas lacunas deve ser preenchida por palpite.
+Pendentes: tarifas próprias de eventos de Búzios; combinação de descontos adicionais; tratamento de última hora em grandes eventos; validação de mercado e definição de piso líquido. Para sobras de Réveillon/Carnaval, prevalece a decisão de 6/10 acima: mínimo ordinário condicionado à reserva existente e preço de evento mantido dentro da janela; aplicação ainda exige verificação. Nenhuma dessas lacunas deve ser preenchida por palpite.
 
 O documento `requisitos/product/MARKETPLACE-PRECIFICACAO.md` trata de propostas para venda direta e divisão de receita. Foi preservado: não substitui estas regras de diárias e não constitui aprovação de novos percentuais.
 
@@ -273,10 +285,48 @@ de entrada/saída restritos no cadastro ainda não são enviados. O teste no 103
   desconto do site, aproximado) para a conferência periódica contra o Airbnb e o Booking.
 
 
-## Diretriz de pisos de Búzios — 6/10/2026, implementação pendente
+## Pisos de Búzios — decisão e aplicação de 6/10/2026
 
-Diego orientou trabalhar com **dois pisos para Búzios**: **R$450 de piso geral** e **R$350 de piso para descontos de última hora**, se for possível aplicar corretamente. São limites mínimos, não diárias uniformes, preços-alvo nem autorização para baixar todas as noites a esses valores. Não copiar essa direção para os apartamentos do Leblon.
+Diego definiu **R$450 de piso geral** e **R$350 de piso de última hora D0–D7**, somente no inventário livre, no horizonte de nove meses de **6/10/2026 a 6/7/2027**, inclusive. São limites mínimos, não diárias uniformes, preços-alvo nem definição da base B. Não copiar a direção para os apartamentos do Leblon ou reduzir valores já acima do piso.
 
-A aplicação continua **pendente**. Antes de escrever, conferir o horizonte abrangido, as regras/faixas de antecedência, a referência original, tarifas especiais e intervenções existentes, reservas/bloqueios e a composição dos descontos, inclusive o benefício adicional de 15% para hóspedes bem avaliados. Se a combinação não permitir respeitar o piso, registrar o impedimento e a decisão necessária; não remover benefícios ou inventar outra regra por suposição. Preservar a fonte única de escrita autorizada.
+Na execução, 35 referências livres de R$350 foram elevadas para R$450 e relidas; os valores de D0–D7 já respeitavam R$350 e não precisaram alteração. Descontos mensal e de hóspedes bem avaliados foram retirados conforme autorização específica, com resultado por anúncio. Detalhes e limites estão no resultado confirmado abaixo.
 
-A auditoria ampliada de Búzios, feriados e descontos está em andamento no registro desta decisão. Este documento não comprova alteração de preços, mínimos, faixas, benefícios ou configurações, nem revisão concluída de todo o horizonte. O piso de R$350 proposto para última hora não significa que uma cotação final já foi conferida ou protegida após todos os descontos. Tratar os pisos históricos anteriores como histórico, não como prova da aplicação da nova direção.
+A correção da grade não cria proteção permanente: faixas nativas 15%/25% continuam, e referência de R$450 produzirá R$337,50 ao entrar em D0–D2 com −25%. Nessa faixa, é necessária referência de pelo menos R$466,67 para gerar R$350,00. A rotina deve conferir novas datas, preservando referência original, tarifas especiais, reservas/bloqueios e composição efetiva; não presumir que a futura cotação final já esteja protegida.
+
+## Revisão semanal da base — próxima revisão
+
+Na próxima revisão semanal, Diego pediu conferir se a base de preços faz sentido, além de checar piso e teto. Observar, a partir da experiência das rodadas e dos valores efetivamente encontrados, onde ficam as tarifas usuais dentro do intervalo: próximas do mínimo, do máximo ou distribuídas de forma coerente. Identificar tarifas anômalas e sua origem antes de corrigir.
+
+Depois da análise, rever e ajustar a base dentro do escopo autorizado, documentando o motivo e o antes/depois. Distinguir a base de um preço pontual, desconto, piso, teto ou tarifa de evento; preservar reservas, bloqueios e intervenções manuais específicas. Não elevar ou baixar toda a grade apenas porque uma noite encostou num limite. Conferir a persistência da alteração e os descontos que afetam o preço final. Este item entra na próxima revisão semanal já configurada, sem declarar análise concluída nem criar outra rotina paralela.
+
+## Descontos e Preço Inteligente — autorização de 6/10
+
+Diego autorizou retirar o desconto mensal de 15% e o benefício de 15% para hóspedes bem avaliados dos anúncios ativos em escopo, quando configurados, e verificar que o Preço Inteligente esteja desligado em todos. A retirada dos benefícios foi confirmada; o estado explícito OFF do Preço Inteligente ainda não foi comprovado. Guardar resultado por anúncio, distinguir configuração já ausente/desligada de alteração efetuada e registrar opção inacessível ou sem confirmação.
+
+A autorização não inclui desconectar o software para expor opções na plataforma. Resultado de inspeção somente leitura ou ausência de chave não confirma desligamento. Preservar tarifas, taxas, reservas e disponibilidade fora do escopo autorizado.
+
+### Alta temporada e sobras — confirmação documental em 6/10
+
+A alta temporada já estava documentada de 15/12 ao último dia de fevereiro, estendendo até Cinzas quando cair em março, com 2×B no Leblon. Na conferência inicial de 6/10, Búzios ainda não tinha fórmula quantificada aprovada no guia. Depois dessa conferência, Diego confirmou adotar para Búzios o mesmo período e 2×B, usando a base própria confirmada. Em 2027, 2/1 e 11/2 ficam dentro dessa alta temporada: encerrar a janela do Réveillon/Carnaval não significa desligar a alta temporada. Confirmação documental e autorização de adoção não comprovam configuração ou preço final salvo.
+
+## Testes de feriados de origem — decisão de 6/10/2026
+
+- **Municipal do próprio destino:** não tratar como evento de aumento pela hipótese de viagem dos próprios moradores. Feriado municipal de Búzios não gera efeito automático no Rio; eventos realizados em Búzios são avaliados caso a caso.
+- **Municipal da cidade do Rio → Búzios:** teste de **1,5× a base própria de Búzios** somente quando o feriado cair em **segunda, terça, quinta ou sexta**. Quarta-feira, sábado e domingo ficam fora do teste. Não aplicar esse teste à própria cidade do Rio nem transformar qualquer evento carioca em demanda de Búzios.
+- **9 de julho/SP → Rio e Búzios:** é feriado **estadual**, com teste de **1,5× a base própria de cada imóvel** quando cair em segunda, terça, quinta ou sexta. Não classificar como municipal nem aplicar em quarta/sábado/domingo. A ocorrência de 9/7/2027 está fora do horizonte desta rodada, que termina em 6/7/2027.
+- **Municipais de São Paulo:** pesquisa pendente; não criar lista, fator ou aplicação por inferência.
+- **Rock in Rio:** permanece sem impacto automático em Búzios; o fator 3× documentado é do Leblon.
+
+**Limites de implementação dos testes:** os dias de início/fim da janela e o tratamento de sobreposição com alta temporada, feriadões e eventos ainda precisam ser definidos antes de aplicar. Não multiplicar 2× de alta temporada por 1,5× de teste por suposição. A regra geral de não somar/acumular multiplicadores permanece; esclarecer a aplicação dos novos testes nas sobreposições em vez de inventar uma fórmula. Registrar decisões e resultados separadamente.
+
+**Comparação ainda aberta para Búzios:** no Leblon, o guia traz 4×B para Réveillon/Carnaval e 2×B para os feriadões gerais; a confirmação de alta temporada de Búzios não aprova esses fatores para a casa. Levantar as diferenças e consultar Diego antes de replicar.
+
+## Resultado confirmado de 6/10 — preços, descontos, mínimos e limites
+
+- **Benefícios Airbnb:** mensal de 15% para 28 ou mais noites passou a 0% nos seis anúncios. Benefício de 15% para hóspedes bem avaliados foi removido de 102, 103, 303, 403 e Búzios; no 399 já estava desligado. Foram 11 alterações com retorno e releitura dos painéis. Semanais já estavam em 0%. Nenhuma tarifa-base, taxa, reserva ou disponibilidade foi alterada diretamente no Airbnb.
+- **Piso geral de Búzios:** 35 noites livres passaram de R$350 para R$450 na referência, em oito intervalos entre maio e julho de 2027. Releitura cobriu 274 noites de 6/10/2026 a 6/7/2027: 35 alterações, 44 indisponíveis preservadas e 195 livres já no piso ou acima preservadas. Mínimos, máximos, inventário, multiplicadores e overrides ficaram idênticos nessa operação. Faixas vinculadas acompanharam as referências, sem mudança dos percentuais. Intervalos e limite futuro D0–D2 no [registro](RODADA-2026-10-06.md#búzios--piso-geral-nove-meses).
+- **Sobras de feriados:** 42/42 mínimos reduzidos foram conferidos em 16 operações e nova leitura global dos seis calendários, entre o snapshot anterior de 14h16 e o posterior de 14h39 BRT. Em 1.098 noites comparadas houve zero divergências, 1.056 noites fora do plano intactas, nenhum preço/inventário/outro campo alterado. Trinta e cinco mínimos 1 aparecem vazios na interface por herdar o mínimo nativo 1; sete mínimos 2 continuam explícitos, com normalização conferida. Propagação nas OTAs não foi verificada. [Antes/depois sanitizado](RODADA-2026-10-06.md#antesdepois-sanitizado-dos-mínimos).
+- **Fronteiras de eventos:** nas noites livres consultadas, os preços após Réveillon e Carnaval já eram normais de alta temporada: R$900 nos studios/Búzios e R$1.600 no 303, conforme imóvel/data examinados. Não houve restauração desnecessária; não estender a amostra a todos os imóveis e datas.
+- **Alta temporada de Búzios:** snapshot de 76 noites em 15/12/2026–28/2/2027, com 52 livres e 24 indisponíveis, confirmou referências de R$900 fora das janelas de evento e R$1.800 em 25/12–1/1 e 1–10/2, sem exceções ao padrão observado. Os preços já estavam assim; nenhum novo multiplicador foi aplicado. Esse estado observado não define a base B por inferência a partir do piso R$450 nem comprova cotações finais das OTAs.
+- **Preço Inteligente:** OFF explícito continua indeterminado nos seis anúncios conectados ao software. Interface inspecionada somente leitura, sem chave exposta; nenhuma conexão desfeita.
+- **Limites restantes:** proteção permanente do piso D0–D2, cotação final das OTAs, definição das janelas/sobreposições dos testes 1,5× e fatores de eventos de Búzios ainda não aprovados. Resultados de ações específicas não comprovam implantação dessas proteções no motor SCL.
