@@ -128,9 +128,10 @@ export async function definirCidades(db: Db, organizacaoId: string, profissional
 
 /**
  * A própria pessoa cria ou troca a senha (no acesso dela). Quem já tem senha confirma a atual; quem entrou pelo código
- * ou pelo Google e ainda não tem, cria direto. A nova senha deixa de ser provisória.
+ * ou pelo Google e ainda não tem, cria direto. A nova senha deixa de ser provisória e as sessões abertas antes caem
+ * (inclusive a atual: a pessoa entra de novo com a senha nova).
  */
-export async function trocarMinhaSenha(db: Db, usuarioId: string, e: { atual?: string; nova: string; repetir: string }): Promise<Resultado> {
+export async function trocarMinhaSenha(db: Db, usuarioId: string, e: { atual?: string; nova: string; repetir: string }, agora: Date = new Date()): Promise<Resultado> {
   if (!uuidValido(usuarioId)) return { ok: false, erro: "Usuário não encontrado." };
   if (e.nova !== e.repetir) return { ok: false, erro: "As duas senhas novas não são iguais." };
   const colunas = { id: usuarios.id, ativo: usuarios.ativo, login: usuarios.login, email: usuarios.email, senhaHash: usuarios.senhaHash, organizacaoId: usuarios.organizacaoId };
@@ -149,7 +150,13 @@ export async function trocarMinhaSenha(db: Db, usuarioId: string, e: { atual?: s
     if (!u || !u.ativo) return { ok: false as const, erro: "Usuário não encontrado." };
     if (u.login !== antes.login || u.email !== antes.email) return { ok: false as const, erro: "Seu acesso acabou de mudar: entre de novo e tente outra vez." };
     if (u.senhaHash && !(await conferirSenha(e.atual ?? "", u.senhaHash))) return { ok: false as const, erro: "A senha atual não confere." };
-    await tx.update(usuarios).set({ senhaHash, senhaProvisoria: false }).where(eq(usuarios.id, u.id));
+    // Senha nova derruba as sessões abertas com a anterior (a provisória pode ter sido usada em outro aparelho); a
+    // própria pessoa entra de novo com a nova. A espera por erros com este acesso também acaba aqui.
+    await tx
+      .update(usuarios)
+      .set({ senhaHash, senhaProvisoria: false, sessaoValidaDesde: new Date(Math.max(agora.getTime(), Date.now())) })
+      .where(eq(usuarios.id, u.id));
+    await tx.delete(tentativasLogin).where(inArray(tentativasLogin.chave, contas));
     await registrarAuditoria(tx, { organizacaoId: u.organizacaoId, usuarioId: u.id, acao: "usuario.senha", entidade: "usuario", entidadeId: u.id, mudancas: { senha: [u.senhaHash ? "tinha senha" : null, "trocada pela própria pessoa"] } });
     return { ok: true as const };
   });

@@ -18,7 +18,7 @@ const MENSAGENS: Record<string, string> = {
 };
 
 export default async function Entrar({ searchParams }: PageProps<"/entrar">) {
-  const { erro, etapa, email, login } = await searchParams;
+  const { erro, etapa, email, login, aviso } = await searchParams;
   const { conteudo } = await carregarSite();
   const empresa = conteudo?.nomeEmpresa.trim() || "Sua Casa Leblon";
   const mensagem = typeof erro === "string" ? (MENSAGENS[erro] ?? "Não foi possível entrar. Tente novamente.") : null;
@@ -41,6 +41,11 @@ export default async function Entrar({ searchParams }: PageProps<"/entrar">) {
       {mensagem && (
         <p role="alert" className={styles.alerta}>
           {mensagem}
+        </p>
+      )}
+      {aviso === "senha-trocada" && !mensagem && (
+        <p role="status" className={styles.sucesso}>
+          Senha trocada. Por segurança, os acessos abertos antes saíram: entre de novo com a senha nova.
         </p>
       )}
       {!loginConfigurado && <p className={styles.miudo}>O login ainda não foi configurado neste ambiente.</p>}

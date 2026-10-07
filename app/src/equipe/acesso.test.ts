@@ -112,7 +112,16 @@ describe("entrada da equipe sem e-mail (M6.8)", () => {
     expect(await trocarMinhaSenha(db, uid, { atual: "errada-1", nova: "minha-senha-1", repetir: "minha-senha-1" })).toEqual({ ok: false, erro: "A senha atual não confere." });
     expect(await trocarMinhaSenha(db, uid, { atual: "provisoria-1", nova: "minha-senha-1", repetir: "outra" })).toMatchObject({ ok: false, erro: expect.stringContaining("iguais") });
     expect(await trocarMinhaSenha(db, uid, { atual: "provisoria-1", nova: "ana", repetir: "ana" })).toMatchObject({ ok: false });
-    expect(await trocarMinhaSenha(db, uid, { atual: "provisoria-1", nova: "minha-senha-1", repetir: "minha-senha-1" })).toEqual({ ok: true });
+    // Erros com a senha provisória (em outro aparelho, por exemplo) e uma sessão aberta antes da troca.
+    for (let i = 1; i < MAX_ERROS; i++) await entrarComSenha(db, "ana", `errada-${i}`, AGORA);
+    const sessaoAntes = await entrarComSenha(db, "ana", "provisoria-1", AGORA);
+    if (!sessaoAntes.ok) throw new Error("devia entrar");
+    for (let i = 1; i < MAX_ERROS; i++) await entrarComSenha(db, "ana", `errada-${i}`, AGORA);
+    const troca = new Date(AGORA.getTime() + 5_000);
+    expect(await trocarMinhaSenha(db, uid, { atual: "provisoria-1", nova: "minha-senha-1", repetir: "minha-senha-1" }, troca)).toEqual({ ok: true });
+    // A sessão aberta com a provisória cai; a conta de erros recomeça (um erro agora não bloqueia).
+    expect(await carregarSessao(db, uid, { emitidaEm: sessaoAntes.conferidaEm })).toBeNull();
+    expect(await entrarComSenha(db, "ana", "errada-de-novo", troca)).toEqual({ ok: false, motivo: "senha" });
     expect(await situacaoDaSenha(db, uid)).toEqual({ temSenha: true, provisoria: false });
     expect(await entrarComSenha(db, "ana", "minha-senha-1", AGORA)).toMatchObject({ ok: true });
     expect(await entrarComSenha(db, "ana", "provisoria-1", AGORA)).toMatchObject({ ok: false });

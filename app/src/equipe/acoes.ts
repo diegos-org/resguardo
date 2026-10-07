@@ -27,6 +27,7 @@ export async function trocarMinhaSenhaAcao(_anterior: EstadoMinhaSenha, form: Fo
   if (!sessao || sessao.papel !== "limpeza" || !sessao.profissionalId) redirect("/entrar");
   exigir(sessao, "limpeza:propria", { organizacaoId: sessao.organizacaoId });
   const r = await trocarMinhaSenha(getDb(), sessao.usuarioId, { atual: String(form.get("atual") ?? ""), nova: String(form.get("nova") ?? ""), repetir: String(form.get("repetir") ?? "") });
-  revalidatePath("/equipe");
-  return r.ok ? { ok: true } : { erro: r.erro };
+  if (!r.ok) return { erro: r.erro };
+  // As sessões de antes da troca (esta inclusive) não valem mais: entra de novo com a senha nova.
+  redirect("/entrar?etapa=senha&aviso=senha-trocada");
 }
