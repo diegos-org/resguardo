@@ -170,7 +170,7 @@ describe("site público (M7.1)", () => {
     const form = document.querySelector("form")!;
     expect(form.getAttribute("action")).toBe("/consulta");
     expect([...form.querySelectorAll("[name]")].map((e) => e.getAttribute("name"))).toEqual(["imovel", "entrada", "saida", "hospedes"]);
-    expect(screen.getByRole("button").textContent).toContain("Consultar");
+    expect(screen.getByRole("button", { name: /Consultar/ }).getAttribute("type")).toBe("submit");
     expect(form.querySelector("strong")).toBeNull();
   });
 
@@ -179,11 +179,13 @@ describe("site público (M7.1)", () => {
     const form = document.querySelector("form")!;
     expect(form.getAttribute("action")).toBe("/consulta");
     expect(form.getAttribute("method")).toBe("get");
-    expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("403");
+    expect((screen.getByRole("combobox", { name: /Seu lugar/ }) as HTMLSelectElement).value).toBe("403");
     expect(screen.getByText("A saída precisa ser depois da entrada.")).toBeTruthy();
-    // Nada pessoal no endereço: só apartamento, datas e pessoas; limite de pessoas pela maior capacidade.
+    // Nada pessoal no endereço: só apartamento, datas e pessoas; pessoas de 1 até a maior capacidade, 2 por padrão.
     expect([...form.querySelectorAll("[name]")].map((e) => e.getAttribute("name"))).toEqual(["imovel", "entrada", "saida", "hospedes"]);
-    expect(form.querySelector('[name="hospedes"]')!.getAttribute("max")).toBe("4");
+    const pessoas = form.querySelector('select[name="hospedes"]') as HTMLSelectElement;
+    expect([...pessoas.options].map((o) => o.textContent)).toEqual(["1 pessoa", "2 pessoas", "3 pessoas", "4 pessoas"]);
+    expect(pessoas.value).toBe("2");
     // O texto fala do canal que existe no cadastro (aqui, só e-mail): nada de prometer WhatsApp.
     expect(form.textContent).toContain("por e-mail");
     expect(form.textContent).not.toContain("WhatsApp");
@@ -191,8 +193,11 @@ describe("site público (M7.1)", () => {
     expect(form.textContent).not.toContain("Sua Casa Leblon");
   });
 
-  it("sem capacidade informada em algum apartamento, o formulário não limita o número de pessoas", () => {
+  it("sem capacidade informada em algum apartamento, o formulário oferece até 10 pessoas; um número já pedido acima continua escolhido", () => {
     render(<FormConsulta imoveis={[imovel, { ...imovel, codigo: "102", capacidade: null }]} valores={{}} hoje="2026-09-25" canal="whatsapp" />);
-    expect(document.querySelector('[name="hospedes"]')!.hasAttribute("max")).toBe(false);
+    expect([...(document.querySelector('select[name="hospedes"]') as HTMLSelectElement).options].map((o) => o.value).at(-1)).toBe("10");
+    cleanup();
+    render(<FormConsulta imoveis={[imovel]} valores={{ imovel: "403", hospedes: "6" }} erros={{ hospedes: "Este apartamento recebe até 4 pessoas." }} hoje="2026-09-25" canal="whatsapp" />);
+    expect((document.querySelector('select[name="hospedes"]') as HTMLSelectElement).value).toBe("6");
   });
 });

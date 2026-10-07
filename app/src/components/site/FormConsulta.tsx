@@ -1,4 +1,5 @@
 import type { ConteudoSite, ErrosConsulta, ImovelPublico, PedidoConsulta } from "@/site/site";
+import { CampoDatas } from "./CampoDatas";
 import styles from "./site.module.css";
 
 /**
@@ -10,6 +11,20 @@ import styles from "./site.module.css";
 export type CanalContato = "whatsapp" | "email" | null;
 /** Por onde a conversa continua: o que está no cadastro da empresa (WhatsApp antes do e-mail). */
 export const canalDeContato = (c: Pick<ConteudoSite, "whatsapp" | "email">): CanalContato => (c.whatsapp ? "whatsapp" : c.email ? "email" : null);
+
+/**
+ * Opções de "Hóspedes": de 1 até a maior capacidade dos lugares listados; com alguma capacidade não cadastrada,
+ * até 10 (ou a maior conhecida, se passar disso). Um número já pedido acima do limite continua na lista, para a
+ * mensagem do servidor ("recebe até N pessoas") fazer sentido.
+ */
+export function opcoesDeHospedes(imoveis: Pick<ImovelPublico, "capacidade">[], pedido?: string): number[] {
+  const capacidades = imoveis.map((i) => i.capacidade ?? 0);
+  const todas = imoveis.length > 0 && capacidades.every((c) => c > 0);
+  const maximo = todas ? Math.max(...capacidades) : Math.max(10, ...capacidades);
+  const opcoes = Array.from({ length: maximo }, (_, i) => i + 1);
+  const n = pedido && /^\d{1,2}$/.test(pedido) ? Number(pedido) : 0;
+  return n > maximo ? [...opcoes, n] : opcoes;
+}
 
 const TEXTO_CANAL: Record<"whatsapp" | "email" | "nenhum", string> = {
   whatsapp: "A conversa continua pelo WhatsApp, onde você pode se apresentar e contar mais.",
@@ -43,6 +58,9 @@ export function FormConsulta({
         {erros[k]}
       </span>
     ) : null;
+  const pessoas = opcoesDeHospedes(imoveis, valores.hospedes);
+  const pedidas = /^\d+$/.test(valores.hospedes ?? "") ? Number(valores.hospedes) : 0;
+  const pessoasEscolhidas = String(pessoas.includes(pedidas) ? pedidas : Math.min(2, pessoas.length));
   const classe = variante === "busca" ? styles.buscaForm : `${styles.formulario} ${styles.duasColunas}`;
   const dica = variante === "busca" ? "Escolha o lugar e as datas. A disponibilidade e o valor aparecem na próxima tela, antes de qualquer reserva." : `${TEXTO_CANAL[canal ?? "nenhum"]} Nenhum pagamento é feito aqui.`;
   return (
@@ -62,19 +80,17 @@ export function FormConsulta({
         </select>
         {erro("imovel")}
       </label>
-      <label>
-        Entrada
-        <input type="date" name="entrada" min={hoje} defaultValue={valores.entrada ?? ""} required />
-        {erro("entrada")}
-      </label>
-      <label>
-        Saída
-        <input type="date" name="saida" min={hoje} defaultValue={valores.saida ?? ""} required />
-        {erro("saida")}
-      </label>
+      {/* Datas num calendário próprio (M7.6), com as noites ocupadas do lugar escolhido acima. */}
+      <CampoDatas hoje={hoje} entrada={valores.entrada} saida={valores.saida} campoImovel="imovel" erroEntrada={erros.entrada} erroSaida={erros.saida} variante={variante} />
       <label className={variante === "busca" ? undefined : styles.campoLargo}>
         Hóspedes
-        <input type="number" name="hospedes" min={1} max={imoveis.length && imoveis.every((i) => i.capacidade) ? Math.max(...imoveis.map((i) => i.capacidade ?? 0)) : undefined} defaultValue={valores.hospedes || "2"} required />
+        <select name="hospedes" defaultValue={pessoasEscolhidas} required aria-describedby={erros.hospedes ? "erro-hospedes" : undefined}>
+          {pessoas.map((n) => (
+            <option key={n} value={n}>
+              {n} {n === 1 ? "pessoa" : "pessoas"}
+            </option>
+          ))}
+        </select>
         {erro("hospedes")}
       </label>
       <button type="submit" className={styles.botao}>

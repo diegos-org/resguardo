@@ -10,7 +10,8 @@
  */
 import { and, eq } from "drizzle-orm";
 import { planejarImovel } from "@/calendario/envio";
-import { lerRegrasCalendario } from "@/calendario/regras-config";
+import type { LinhaPlano, ObservacaoPlano } from "@/calendario/motor";
+import { lerRegrasCalendario, type RegrasCalendario } from "@/calendario/regras-config";
 import { imoveis } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { listarPeriodos } from "@/imoveis/detalhes";
@@ -42,6 +43,22 @@ export type CotacaoSite = Pick<Cotacao, "diarias" | "limpeza" | "hospedeExtra"> 
 };
 
 const dataBr = (d: string) => d.split("-").reverse().join("/");
+
+/**
+ * Critério de noite ocupada do site, num lugar só (a consulta e o calendário do site usam o mesmo). Leitura do
+ * Beds24 "atual": dentro da validade do site e não anterior ao último envio do SCL para a data (como no motor):
+ * depois de uma escrita sem releitura, a leitura anterior já não descreve o Beds24.
+ */
+type NoiteLida = { observacao: { observadoEm: Date } | null; enviado: { enviadoEm: Date } | null };
+/** Hora (ms) da leitura mais antiga que ainda vale, pela validade em Configurações → Calendário. */
+export const limiteDaLeitura = (regras: Pick<RegrasCalendario, "site">, agora: Date) => agora.getTime() - regras.site.validadeLeituraHoras * 3_600_000;
+export const leituraAtual = (l: NoiteLida | undefined, limite: number) =>
+  !!l?.observacao && l.observacao.observadoEm.getTime() >= limite && (!l.enviado || l.observacao.observadoEm.getTime() >= l.enviado.enviadoEm.getTime());
+/** Leitura que fecha a noite: blackout (mesmo sem unidades informadas) ou nenhuma unidade livre. */
+const fechadaNaLeitura = (o: Pick<ObservacaoPlano, "bloqueio" | "livres">) => o.bloqueio === "blackout" || o.livres === 0;
+/** Noite certamente ocupada: reserva ou bloqueio no SCL, ou leitura atual que fecha a noite. Sem leitura atual, só o SCL decide. */
+export const noiteOcupada = (l: Pick<LinhaPlano, "livresSeguidas" | "observacao" | "enviado">, limite: number) =>
+  l.livresSeguidas === 0 || (leituraAtual(l, limite) && fechadaNaLeitura(l.observacao!));
 
 export async function consultarDisponibilidade(db: Db, organizacaoId: string, p: PedidoConsulta, agora = new Date()): Promise<Disponibilidade> {
   const vazio = (situacao: SituacaoDisponibilidade, motivos: string[], noites = 0): Disponibilidade => ({ situacao, motivos, noites, cotacao: null, leituraEm: null });
@@ -85,12 +102,9 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   // Restrições de entrada/saída do calendário Beds24: valem na data de entrada e na de saída,
   // só com leitura atual (leitura velha vira "a confirmar", como nas noites).
   // Restrição desconhecida (ex.: "exception") ou não informada na leitura (null) nunca vira "disponível".
-  const limite = agora.getTime() - regras.site.validadeLeituraHoras * 3_600_000;
+  const limite = limiteDaLeitura(regras, agora);
   const conhecidas = new Set<string | null>(["none", "noCheckIn", "noCheckOut", "noCheckInOrCheckOut"]);
-  // Leitura atual: dentro da validade e não anterior ao último envio do SCL para a data (como no motor):
-  // depois de uma escrita sem releitura, a leitura anterior já não descreve o Beds24.
-  const atual = (l: { observacao: { observadoEm: Date } | null; enviado: { enviadoEm: Date } | null } | undefined) =>
-    !!l?.observacao && l.observacao.observadoEm.getTime() >= limite && (!l.enviado || l.observacao.observadoEm.getTime() >= l.enviado.enviadoEm.getTime());
+  const atual = (l: NoiteLida | undefined) => leituraAtual(l, limite);
   const restricao = (l: { observacao: { bloqueio: string | null; observadoEm: Date } | null; enviado: { enviadoEm: Date } | null } | undefined, fecha: readonly string[], motivo: string) => {
     if (!atual(l)) { aConfirmar = true; return; }
     const bloqueio = l!.observacao!.bloqueio;
@@ -110,13 +124,12 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   // Uma data pode estar ocupada no SCL e no Beds24 ao mesmo tempo (reserva importada): conta uma vez.
   const ocupadas = new Set<string>();
   for (const l of linhas) {
-    if (l.livresSeguidas === 0) ocupadas.add(l.data);
+    if (noiteOcupada(l, limite)) ocupadas.add(l.data);
     const o = l.observacao;
     if (!o || !atual(l)) {
       if (!o) semLeitura = true;
       aConfirmar = true;
-    } else if (o.bloqueio === "blackout" || o.livres === 0) ocupadas.add(l.data); // blackout fecha mesmo sem unidades informadas
-    else if (o.livres === null || !conhecidas.has(o.bloqueio)) aConfirmar = true;
+    } else if (!fechadaNaLeitura(o) && (o.livres === null || !conhecidas.has(o.bloqueio))) aConfirmar = true;
     maisAntiga(o);
   }
   if (ocupadas.size) {
