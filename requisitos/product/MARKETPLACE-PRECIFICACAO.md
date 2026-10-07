@@ -1,11 +1,13 @@
-# Marketplace — precificação (decidido por Diego em 4/10/2026: modelo B, partes iguais)
+# Marketplace — precificação (decidido por Diego: modelo B em 4/10/2026; pesos 6/3/3 em 7/10/2026)
 
 **Situação:** proposta do Claude em 24/09/2026; **decisão de Diego em 4/10/2026: modelo B, em
 partes iguais** (a margem, taxa do Airbnb menos a taxa do pagamento, dividida igualmente entre
 desconto ao hóspede, ganho do proprietário e SCL), com os três pesos e as taxas de referência
 editáveis no painel e a tela de simulação (item M12.1 do ROADMAP, **entregue em 4/10/2026** —
-ver "Como está implementado", abaixo). Diego pode ajustar pesos e taxas a qualquer momento no
-painel. As fórmulas antigas do Diego não foram encontradas no repositório nem no histórico.
+ver "Como está implementado", abaixo). **Em 7/10/2026 Diego confirmou os pesos 6/3/3** (da
+margem: SCL 6%, hóspede 3%, proprietário 3% — pesos hóspede 1, proprietário 1, SCL 2), que
+passam a ser o padrão do sistema no lugar das partes iguais (item M12.5 do ROADMAP). Diego pode
+ajustar pesos e taxas a qualquer momento no painel. As fórmulas antigas do Diego não foram encontradas no repositório nem no histórico.
 
 ## Como está implementado (M12.1, 4/10/2026)
 
@@ -127,7 +129,8 @@ Começar pelo **Modelo B**, com os pesos e percentuais **editáveis no painel** 
 "tudo editável"), e uma tela de **simulação**: você digita a diária, as noites e a limpeza e
 vê lado a lado Airbnb, Booking e SCL. Assim dá para testar com números reais antes de
 fechar. Se a margem ficar baixa, dá para combinar B com uma mensalidade pequena (C).
-**Adotada por Diego em 4/10/2026**, com partes iguais.
+**Adotada por Diego em 4/10/2026**, com partes iguais; **pesos 6/3/3 confirmados em 7/10/2026**
+(padrão do sistema a partir do M12.5).
 
 ## Conferências que continuam pendentes (não impedem o M12.1, porque tudo fica editável)
 
@@ -167,8 +170,10 @@ fechar. Se a margem ficar baixa, dá para combinar B com uma mensalidade pequena
      o que o hóspede vê no Airbnb e no Booking (promoções dentro das OTAs não são legíveis por
      API). Divergência vira pendência no cadastro, nunca palpite.
 - **Última hora e desconto do site acumulam** de propósito (ver o requisito operacional).
-- **Pesos em avaliação:** Diego propôs 6/3/3 (SCL / hóspede / proprietário) em vez de partes
-  iguais; avaliação do Claude: justo e defensável (hóspede 3% abaixo do Airbnb, proprietário
-  cerca de 3,7% acima, SCL 6%). Até Diego confirmar, o padrão do sistema continua 1/1/1 e ele
-  pode salvar qualquer divisão em Configurações → Marketplace e desconto do site.
+- **Pesos 6/3/3 — confirmados por Diego em 7/10/2026:** SCL 6%, hóspede 3% e proprietário 3% da
+  margem (pesos hóspede 1, proprietário 1, SCL 2), no lugar das partes iguais; avaliação do
+  Claude: justo e defensável (hóspede 3% abaixo do Airbnb, proprietário cerca de 3,7% acima, SCL
+  6%). O padrão do sistema passa a ser esse no item M12.5 (até ele entrar, o padrão ainda é
+  1/1/1); quem já salvou outra divisão em Configurações → Marketplace e desconto do site
+  continua com a sua.
 

@@ -305,8 +305,10 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
   assinatura modular (base + serviços opcionais, como o motor de preços) — registrada em
   `requisitos/growth/ROADMAP.md`.
 - 7/10 (Diego, pela página de pendências): **marketplace mostra só o que passa pela SCL** — relatório e
-  extrato em dinheiro só com as reservas do site; as reservas que o proprietário vende nas OTAs dele
-  entram só no calendário; consolidar as outras plataformas fica para depois, se houver procura (M12.2).
+  extrato em dinheiro só com o dinheiro que passou pela SCL: as reservas do site e, se houver, a
+  reserva de OTA cujo dinheiro a empresa recebeu (quem recebe = `empresa`, M2.7); as demais reservas
+  que o proprietário vende nas OTAs dele entram só no calendário; consolidar as outras plataformas
+  fica para depois, se houver procura (M12.2).
   **Beds24 nos bastidores**: nenhum texto para proprietário ou hóspede cita o Beds24 (M5.9).
   **Contestação perdida**: arca quem deu causa ao motivo, decidido caso a caso pela equipe e registrado;
   o sistema nunca escolhe sozinho (M8.2). **Cancelamento do site (base)**: reembolso integral até 14
