@@ -7,10 +7,10 @@ import { LIMITE_BYTES, MODELO_CSV } from "@/reservas/csv-modelo";
 import styles from "../formularios.module.css";
 
 const SITUACAO = {
-  nova: { texto: "Nova", cor: "#e3efe0" },
-  atualiza: { texto: "Atualiza", cor: "#e8eef7" },
-  igual: { texto: "Já importada, igual", cor: "#eeeeee" },
-  erro: { texto: "Com erro", cor: "#fbeaea" },
+  nova: { texto: "Nova", cor: "var(--scl-ok-fundo)" },
+  atualiza: { texto: "Atualiza", cor: "var(--scl-info-fundo)" },
+  igual: { texto: "Já importada, igual", cor: "var(--scl-neutro-fundo)" },
+  erro: { texto: "Com erro", cor: "var(--scl-erro-fundo)" },
 };
 
 /** Planilha salva pelo Excel brasileiro costuma vir em Windows-1252; o resto, UTF-8. */
@@ -172,12 +172,12 @@ export function ImportarCsv({ conferirAcao, importarAcao }: Props) {
                     <td>{l.resumo || "—"}</td>
                     <td style={{ fontSize: "0.8125rem" }}>
                       {l.erros.map((e) => (
-                        <div key={e} style={{ color: "#7a2020" }}>
+                        <div key={e} style={{ color: "var(--scl-erro-texto)" }}>
                           {e}
                         </div>
                       ))}
                       {l.avisos.map((a) => (
-                        <div key={a} style={{ color: "#7a4a00" }}>
+                        <div key={a} style={{ color: "var(--scl-aviso-texto)" }}>
                           ⚠ {a}
                         </div>
                       ))}

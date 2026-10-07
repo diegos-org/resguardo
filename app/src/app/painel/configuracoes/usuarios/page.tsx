@@ -16,6 +16,7 @@ const NOME_ACAO: Record<(typeof ACOES)[number], string> = {
   "reserva:editar": "Criar e editar reservas",
   "calendario:ler": "Ver calendário",
   "bloqueio:proprio": "Bloquear datas de uso próprio no portal (conforme o contrato)",
+  "marketplace:operar": "Operar o próprio imóvel marketplace pelo portal (preços, regras de venda, limpezas e manutenção)",
   "financeiro:ler": "Ver financeiro",
   "financeiro:editar": "Editar financeiro e contratos",
   "despesa:editar": "Lançar despesas",

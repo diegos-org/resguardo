@@ -74,9 +74,9 @@ describe("reservas do portal", () => {
     await criarReserva(db, org, reserva(b, "2026-10-05", "2026-10-08"), null);
     await criarReserva(db, org, reserva(a, "2026-10-10", "2026-10-12", { estado: "pendente" }), null);
     const r = await lista();
-    expect(r.map((x) => [x.checkin, x.imovelCodigo, x.canal, x.hospede, x.origemHospede, x.bruto, x.suaParte, x.situacao])).toEqual([
-      ["2026-10-05", "403", "airbnb", "Hóspede Fictício", "", 100000, 72250, "definido"],
-      ["2026-10-20", "403", "booking", "Bia Fictícia", "Lisboa, Portugal", 100000, 72250, "definido"],
+    expect(r.map((x) => [x.checkin, x.imovelCodigo, x.canal, x.hospede, x.origemHospede, x.bruto, x.suaParte, x.situacao, x.confirmada])).toEqual([
+      ["2026-10-05", "403", "airbnb", "Hóspede Fictício", "", 100000, 72250, "definido", true],
+      ["2026-10-20", "403", "booking", "Bia Fictícia", "Lisboa, Portugal", 100000, 72250, "definido", true],
     ]);
     expect(await lista([dona], [b])).toEqual([]);
     expect(await lista([], [a])).toEqual([]);

@@ -20,15 +20,16 @@ import { formatBRL } from "@/lib/money";
 import { ocupaInventario } from "@/reservas/regras";
 import { type BloqueioEnvio, ehBloqueioEnvio, type FaixaEnvio } from "@/beds24/tipos";
 import { centesimosParaMultiplicador, type Feriado, type RegrasCalendario } from "./regras-config";
+import type { FontePrecos } from "@/imoveis/fonte-precos";
 
-export type ImovelPlano = { id: string; regras: RegrasVenda; periodos: readonly Periodo[]; pisos: readonly [number | null, number | null] };
+export type ImovelPlano = { id: string; regras: RegrasVenda; periodos: readonly Periodo[]; pisos: readonly [number | null, number | null]; /** Fonte de preços (M3.9): scl, beds24 ou manual. */ fontePrecos: FontePrecos };
 export type ObservacaoPlano = { data: string; preco: number | null; minimoNoites: number | null; maximoNoites: number | null; livres: number | null; bloqueio: string | null; observadoEm: Date };
 export type EnviadoPlano = { data: string; preco: number | null; minimo: number | null; maximo: number | null; bloqueio: string | null; bloqueioAnterior?: string | null; confirmado: boolean; enviadoEm: Date; envioId?: string | null };
 export type OcupacaoPlano = { checkin: string; checkout: string; estado: EstadoReserva };
 export type BloqueioPlano = { inicio: string; fim: string; fonte: string };
 export type Janela = { nome: string; inicio: string; fim: string };
 
-export type FontePreco = "periodo" | "evento" | "feriado" | "base" | "sem_preco";
+export type FontePreco = "periodo" | "evento" | "feriado" | "base" | "sem_preco" | "beds24";
 export type AcaoNoite = "enviar" | "igual" | "sem_dados";
 
 export type LinhaPlano = {
@@ -138,13 +139,16 @@ export function planejarCalendario(e: EntradaPlano): LinhaPlano[] {
     const antecedencia = diasEntre(e.hoje, data);
     const avisos: string[] = [];
     const periodo = periodoDaNoite(imovel.periodos, data);
-    const base = precoDaNoite(imovel.regras, imovel.periodos, data);
-
-    // Preço de referência: período explícito > maior multiplicador > base.
+    // Preço de referência: período explícito > maior multiplicador > base. Com fonte "manual" (M3.9) vale o
+    // cadastro como está — sem multiplicadores e sem os limites mínimo/máximo do preço dinâmico, que também são
+    // um ajuste automático; com fonte "beds24" o SCL só lê (tratado mais abaixo).
+    const fonte = imovel.fontePrecos;
+    const base = precoDaNoite(fonte === "manual" ? { ...imovel.regras, precoDinamico: false } : imovel.regras, imovel.periodos, data);
     let fontePreco: FontePreco = base.fonte;
     let motivoPreco = base.fonte === "periodo" ? `Período ${base.periodo}` : base.fonte === "base" ? "Preço base" : "Sem preço cadastrado";
     let precoReferencia = base.valor;
-    if (base.valor !== null && base.fonte === "base") {
+    if (fonte === "manual" && base.valor !== null) motivoPreco += " (preços digitados: sem eventos, feriadões, última hora nem limites do preço dinâmico)";
+    if (fonte === "scl" && base.valor !== null && base.fonte === "base") {
       const candidatos = [
         ...eventos.filter((ev) => ev.inicio <= data && data <= ev.fim).map((ev) => ({ nome: `Evento ${ev.nome}`, fonte: "evento" as const, mult: ev.multiplicador })),
         ...janelas.filter((j) => j.inicio <= data && data <= j.fim).map((j) => ({ nome: `Feriadão ${j.nome}`, fonte: "feriado" as const, mult: regras.janelaFeriado.multiplicador })),
@@ -157,16 +161,24 @@ export function planejarCalendario(e: EntradaPlano): LinhaPlano[] {
         if (candidatos.length > 1) motivoPreco += "; multiplicadores não somam, vale o maior";
       } else if (base.ajustado) motivoPreco = "Preço base (limitado ao piso/teto)";
     }
-    if (precoReferencia === null) avisos.push("Preço não cadastrado no SCL: nenhum preço será enviado para esta noite.");
+    // Fonte "beds24": o preço é o lido do Beds24 (proprietário ou ferramenta dele); o SCL nunca envia preço.
+    // Sem leitura, a noite fica sem preço (o site não vende) — nunca um palpite do cadastro.
+    const lidoDoBeds24 = fonte === "beds24" ? (observadas.get(data)?.preco ?? null) : null;
+    if (fonte === "beds24") {
+      fontePreco = "beds24";
+      precoReferencia = null;
+      motivoPreco = lidoDoBeds24 !== null ? "Preço definido no Beds24 (o SCL só lê)" : "Preço definido no Beds24, ainda sem leitura";
+      if (lidoDoBeds24 === null) avisos.push("Sem preço lido do Beds24 para esta noite: fica indisponível para venda no site até a próxima leitura. O SCL não envia preço para este imóvel.");
+    } else if (precoReferencia === null) avisos.push("Preço não cadastrado no SCL: nenhum preço será enviado para esta noite.");
     else if (precoReferencia <= 0) avisos.push("Preço zero: conferir antes de qualquer envio.");
 
-    // Última hora: percentual pela antecedência da noite; piso por imóvel na diária final.
+    // Última hora: percentual pela antecedência da noite; piso por imóvel na diária final. Só com preços do SCL.
     const uh = regras.ultimaHora;
-    const faixa = uh.aplicadoPor === "desligada" ? -1 : uh.faixas.findIndex((f) => f.deDias <= antecedencia && antecedencia <= f.ateDias);
+    const faixa = fonte !== "scl" || uh.aplicadoPor === "desligada" ? -1 : uh.faixas.findIndex((f) => f.deDias <= antecedencia && antecedencia <= f.ateDias);
     const pct = faixa >= 0 ? uh.faixas[faixa].percentual : 0;
     const piso = faixa >= 0 ? imovel.pisos[faixa] : null;
     let precoEnviar = precoReferencia;
-    let precoFinalEsperado = precoReferencia;
+    let precoFinalEsperado = fonte === "beds24" ? lidoDoBeds24 : precoReferencia;
     let motivoUltimaHora = "";
     if (precoReferencia !== null && pct > 0) {
       const reduzido = reduzir(precoReferencia, pct);

@@ -46,7 +46,7 @@ export function Representantes({ proprietarioId, lista, adicionar, remover }: Pr
                 <input type="hidden" name="representanteId" value={r.id} />
                 <BotaoConfirmar
                   pergunta={`Remover o representante ${r.nome}?`}
-                  style={{ font: "inherit", fontSize: "0.875rem", background: "none", border: "1px solid #d8d0c0", borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}
+                  style={{ font: "inherit", fontSize: "0.875rem", background: "none", border: "1px solid var(--scl-borda)", borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}
                 >
                   Remover
                 </BotaoConfirmar>

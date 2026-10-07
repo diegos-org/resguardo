@@ -33,6 +33,20 @@ painel. As fórmulas antigas do Diego não foram encontradas no repositório nem
   qualquer escrita em OTA ou provedor de pagamento. A comissão do contrato de gestão total
   continua sendo a do contrato (M4), sobre o que entra.
 
+## Portal do proprietário marketplace (M12.4, 4/10/2026)
+
+Implementado em `app/src/portal/marketplace.ts` (regras e acesso) e
+`app/src/components/portal/OperacaoMarketplace.tsx` (tela). Só para imóvel da sessão em contrato
+**marketplace** em vigor na data (deny-by-default, no servidor): o proprietário edita preço da
+noite, limpeza, hóspede extra, estadia mínima/máxima, antecedência, janela, dias de entrada/saída
+e horários — pela mesma `validarDetalhes` do painel, preservando o resto do cadastro — e os
+períodos especiais; vê a simulação do modelo B para o preço digitado (`simular`); vê a situação
+do envio ao Beds24 (na lista, automático, último envio) em vez de supor que a mudança chegou às
+OTAs; com fonte de preços "beds24" (M3.9) o preço da noite é só leitura. Limpezas das saídas dos
+imóveis marketplace podem ser marcadas como feitas pelo proprietário (custo 0, sem despesa) e
+manutenções feitas por ele são registradas já realizadas, por conta dele. A camada contratual da
+promessa de preço (item 2 acima) continua sendo texto de contrato; o portal não a impõe.
+
 ## Objetivo (Diego)
 
 Na reserva direta pelo site da SCL, ao mesmo tempo:
@@ -137,3 +151,24 @@ fechar. Se a margem ficar baixa, dá para combinar B com uma mensalidade pequena
   canais, inclusive o site, sobre o valor líquido da taxa do pagamento (no marketplace, o modelo
   B vale só para o que o site vende — item acima); o desconto do hóspede
   no site é uma regra única do site, igual para gestão total e marketplace.
+
+## Promessa de preço abaixo das plataformas — decisões de Diego em 4/10/2026
+
+- **Comunicação genérica:** "pague menos que no Airbnb" (o Booking nem precisa ser citado), sem
+  garantia absoluta de "melhor preço". Exceção rara e não consistente é aceitável; se virar
+  algo sério, a regra é repensada.
+- **Três camadas de garantia** para o marketplace que define preço no Beds24 (M3.9):
+  1. automática: o desconto do site é aplicado sobre o preço lido do Beds24, que é o preço que
+     o Beds24 manda às OTAs; o proprietário não tem como desligar o desconto;
+  2. contratual (entra no M12.3/M12.4): os preços das OTAs vêm do Beds24 ou do motor do SCL;
+     preço inteligente do Airbnb desligado; nenhuma promoção dentro das OTAs que deixe a OTA
+     mais barata que o preço do Beds24; mesma limpeza e mesmo hóspede extra em todos os canais;
+  3. operacional: conferência periódica, com a coluna "Site (≈)" da prévia de calendário, contra
+     o que o hóspede vê no Airbnb e no Booking (promoções dentro das OTAs não são legíveis por
+     API). Divergência vira pendência no cadastro, nunca palpite.
+- **Última hora e desconto do site acumulam** de propósito (ver o requisito operacional).
+- **Pesos em avaliação:** Diego propôs 6/3/3 (SCL / hóspede / proprietário) em vez de partes
+  iguais; avaliação do Claude: justo e defensável (hóspede 3% abaixo do Airbnb, proprietário
+  cerca de 3,7% acima, SCL 6%). Até Diego confirmar, o padrão do sistema continua 1/1/1 e ele
+  pode salvar qualquer divisão em Configurações → Marketplace e desconto do site.
+

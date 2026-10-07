@@ -1,0 +1,223 @@
+# Extrato do proprietário e repasses por periodicidade (M4.10)
+
+**Situação:** implementado em 4/10/2026 (PR do M4.10) conforme esta especificação, escrita pelo
+Claude a partir do item M4.10 do ROADMAP (decisões de Diego de 4/10) e do que já existia
+(fechamento mensal do M4.9, livro do M4.1, "quem recebe" do M2.7). As escolhas marcadas como
+*decisão do Claude* foram tomadas com a autorização prévia de Diego para seguir sozinho; ele pode
+mudar qualquer uma pelo painel ou pedindo.
+
+**Onde está no código:** `app/src/repasses/` — `periodicidade.ts` (regras puras, inclusive o dia do
+fechamento do M4.13), `extrato.ts`
+(classificação das partes e leitura), `recebimentos.ts` (recebimento do canal), `repasses.ts`
+(fechamento com disponibilidade, antecipado, itens, comprovante, estorno), `email.ts`,
+`cron.ts` (rotina das 8h), `proprietario.ts` e `regras-config.ts` (escolha, padrão e início do
+sistema), `por-fora.ts` (acerto por fora, M4.11), `inicio.ts` (data do pagamento e lado do início, M4.12); telas em Financeiro → Repasses, Configurações →
+Repasses, página da reserva, cadastro do proprietário e portal. Tabelas novas: `repasse_itens` e
+`arquivos`; colunas novas em `repasses` e `proprietarios` (migração 0044). O M4.11 não precisou de
+migração: o tipo de repasse é texto e a data de início fica na configuração da organização.
+
+## O que o proprietário vê e escolhe
+
+- **Como quer receber** (no portal, com explicação curta): mensal no dia do fechamento (dia 2 por
+  padrão desde o M4.13; padrão e intervalo máximo), quinzenal (dias 1 e 16), semanal (segundas-feiras) ou assim que disponível (dia
+  seguinte ao check-in, com o dinheiro já com a empresa). Sem escolha, vale o padrão do tipo de
+  contrato dele, definido em Configurações → Repasses. A escolha fica no histórico e vale a
+  partir do próximo repasse.
+- **Extrato por reserva:** para cada reserva, a parte dele e a situação:
+  - **informação** — o canal pagou o proprietário direto (`split`): não entra em repasse;
+  - **a liberar** — reserva confirmada, mas antes do check-in, ou dinheiro ainda não registrado
+    com a empresa, ou "quem recebe" a confirmar (cada caso com o motivo escrito);
+  - **disponível** — check-in já passou e o dinheiro está com a empresa; aparece a data prevista
+    do próximo repasse dele;
+  - **repassado em DD/MM** — já saiu num repasse (com o link para o repasse).
+- **Repasses:** lista com data, valor, situação (a pagar, pago, pago sem comprovante, estornado),
+  as reservas que o compõem e o comprovante do Pix para baixar.
+
+## Quando um valor fica disponível (regra única)
+
+Unidade: a **parte do proprietário de cada reserva em cada mês** (o lançamento
+`direito_proprietario` do livro, um por mês de competência). Ela fica **disponível** quando,
+ao mesmo tempo:
+
+1. quem recebe, conforme registrado na reserva (ou o padrão do imóvel/canal), é **`empresa`**;
+2. o **check-in já passou** (data de entrada ≤ ontem, no fuso do imóvel);
+3. o **dinheiro está com a empresa**: existe lançamento de **recebimento** daquela reserva no
+   livro, realizado ou conciliado (hoje registrado à mão na página da reserva — "Registrar
+   recebimento", com data e valor; o M4.4 passa a conciliar com o extrato e o M8.2 registra a
+   liberação do provedor do site automaticamente);
+4. ainda **não compôs nenhum repasse** (vínculo único).
+
+Fora disso: `split` é informação; `a_confirmar` fica a liberar, com aviso, fora de qualquer
+repasse; sem recebimento registrado fica a liberar, com aviso ("nunca se repassa o que a
+empresa ainda não recebeu").
+
+## Repasses
+
+- **Antecipado** (programado ou avulso): reúne tudo o que está disponível até o dia anterior e
+  ainda não compôs repasse. É um adiantamento vinculado às reservas que o compõem: entra no livro
+  como "repasse" (efeito no acerto), **um lançamento por imóvel e por mês de competência das
+  partes, na competência delas** (*decisão do Claude* na implementação: assim o mês de cada noite
+  fecha zerado e a reserva que atravessa o mês não vira "dívida" no fechamento do primeiro mês;
+  o ROADMAP descrevia o saldo negativo, o efeito final é o mesmo e mais legível). O fechamento
+  mensal o desconta naturalmente, porque soma o acerto acumulado. O antecipado não desconta
+  adiantamentos nem despesas: isso continua no fechamento (decisão de Diego).
+- **Programado:** a rotina diária (8h) gera, para cada proprietário, o repasse do dia quando a
+  data bate com a periodicidade efetiva dele (segunda-feira no semanal; dias 1 e 16 no
+  quinzenal; todo dia no "assim que disponível"). No **dia do fechamento** a rotina não gera
+  antecipado: o fechamento mensal é o único repasse do dia. *Decisão do Claude:* o fechamento
+  continua sendo disparado por Diego no painel (como no M4.9), para ele conferir antes; a automação
+  total do dia do fechamento fica para quando o Pix for automático.
+- **Avulso:** o proprietário pede no portal ou Diego gera no painel; mesma regra do antecipado.
+- **Fechamento mensal (no dia do fechamento — dia 2 por padrão, M4.13):** continua por competência (noites do mês fechado) e numa única
+  transação por proprietário, com duas mudanças: (1) valores da competência cujo dinheiro ainda
+  não está com a empresa ficam **fora** e passam para o repasse seguinte, aparecendo no extrato
+  como a liberar com aviso; (2) valores já disponíveis com noites fora do mês fechado entram no
+  mesmo repasse como **adiantamentos vinculados**, para a reserva ser paga inteira como prometido.
+- **Vínculo único e idempotente:** cada parte disponível só pode compor um repasse (tabela de
+  itens com índice único por lançamento). A rotina e o botão do painel podem rodar no mesmo dia
+  sem pagar duas vezes: no máximo um repasse antecipado por proprietário por dia, e o item já
+  usado nunca entra de novo. Estornar um repasse libera os itens dele (só o repasse mais recente
+  do proprietário, de qualquer tipo, para a sequência continuar certa). Ao marcar pago, as partes
+  pagas passam a "realizado" no livro: o recálculo do motor não mexe mais nelas (divergência vira
+  conferência, como no M4.8).
+- **Pagamento:** o sistema gera o repasse "a pagar" na data; o Pix sai pela equipe (manual) e,
+  depois, por lote diário automático (API do banco ou do Mercado Pago), com o comprovante vindo do
+  provedor.
+
+## Comprovante e e-mail
+
+- Ao **marcar pago**, Diego anexa o comprovante: arquivo do banco (PDF, PNG ou JPG até 5 MB) ou
+  o identificador da transação Pix. *Decisão do Claude:* o arquivo fica guardado **no banco de
+  dados**, numa tabela própria e privada (sem serviço externo nem variável nova); só o admin e o
+  próprio proprietário conseguem baixar. Sem comprovante, o repasse fica "pago sem comprovante",
+  com aviso, e o e-mail espera.
+- **E-mail do repasse:** com o repasse pago e o comprovante registrado, sai um e-mail ao
+  proprietário (e representantes com cópia) com a lista das reservas e valores (integral ou
+  parcial) e o comprovante anexado. Uma vez por repasse (chave idempotente), pelo mesmo provedor
+  do fechamento (Resend; sem provedor configurado, fica pendente com aviso no painel).
+
+## Configuração (uma regra, um lugar)
+
+Configurações → Repasses: dia da semana do semanal (padrão segunda), os dois dias do quinzenal
+(padrão 1 e 16), o padrão de periodicidade por tipo de contrato (padrão mensal para todos) e o
+**dia do fechamento** (M4.13, abaixo). A data prevista no extrato é calculada daqui.
+
+## Dia do fechamento (M4.13, decisão de Diego em 5/10/2026)
+
+- **Regra:** o fechamento mensal, o repasse mensal e o e-mail automático do relatório (M5.4) saem no
+  **dia 2** do mês seguinte por padrão, porque o Airbnb paga a reserva com check-in no último dia do
+  mês só no dia 1º — no dia 2 o extrato do canal sai completo. Booking (conforme o acordo do imóvel)
+  e Mercado Pago (Pix na hora, cartão em 14 a 30 dias) nunca cabem num dia fixo: o que não estiver
+  disponível continua "a liberar" e vai para o repasse seguinte, com aviso.
+- **Editável** de 1 a 5 em Configurações → Repasses (`repasses_regras.fechamento`). **Versionado por
+  mês de competência:** cada versão é `{dia, desde: "AAAA-MM"}`; o dia do fechamento de um mês é o da
+  versão mais nova com `desde` até aquele mês; sem versão, 2. Mudar o dia vale do fechamento do mês
+  corrente em diante (feito no mês seguinte); o mês anterior ainda aberto fecha no dia que já valia e
+  o que já fechou não muda. Dia igual ao que já valeria não cria versão; duas mudanças no mesmo mês, a
+  última vale.
+- **Onde se aplica:** `ehDiaDeRepasse` (o dia do fechamento conta em todas as periodicidades, no lugar
+  do dia 1º), `geraAntecipadoEm` e `gerarAntecipado` (nunca no dia do fechamento), `proximaDataDeRepasse`
+  e `descreverPeriodicidade`, o botão "Pedir repasse agora" do portal, o envio automático do e-mail
+  do fechamento (`enviarFechamentosAutomaticos`: antes do dia, o mês a fechar espera, com aviso na
+  rotina; meses atrasados saem em qualquer dia) e os textos do painel, do portal e do relatório.
+- **O que as telas mostram:** o dia do **próximo** fechamento (`proximoFechamento`): o do mês anterior enquanto o
+  dia dele não passou, depois o do mês corrente. Uma mudança feita hoje vale do fechamento do mês corrente em
+  diante, então o mês anterior ainda aberto fecha no dia que já valia — e é esse que o texto, a descrição da
+  periodicidade e a próxima data dizem até lá. O formulário mostra o dia que vale daqui para a frente.
+- **Data gravada no fechamento:** o dia do fechamento do mês (`dataDoFechamento`); fechado antes, à mão, o dia
+  em que foi fechado. O Pix do fechamento só pode ter data a partir dela (`marcarRepassePago`).
+- **À mão continua possível:** fechar o mês e enviar o relatório no dia 1º pelo painel; o proprietário
+  baixa o PDF no portal a qualquer momento (parcial do mês corrente inclusive). O cron continua diário
+  (`vercel.json`): é a regra, não o agendador, que decide o dia.
+- *Decisão do Claude:* sem migração — a regra entra no JSON de `repasses_regras` já existente, com
+  leitura tolerante (versão inválida é ignorada).
+
+## Início do sistema e acerto por fora (M4.11 e M4.12, decisões de Diego em 4/10/2026)
+
+O sistema vale a partir de **1/10/2026**; tudo o que é de antes — parte de reserva, comissão,
+despesa, ajuste — já foi acertado fora dele e não pode entrar de novo (o acerto soma desde a primeira
+reserva de cada imóvel, pela regra de 2/10 para o início dos contratos).
+
+- **"De antes" é pela data em que o canal pagou a reserva (M4.12, `inicio.ts`)**, não pelo mês de cada
+  noite: o Airbnb paga a reserva inteira no dia seguinte ao check-in, direto ao proprietário, então a
+  reserva de 29/9 a 2/10 foi paga (e acertada por fora) em 30/9, com a noite de outubro. Regras puras:
+  `dataDoPagamento` — quem recebe `split`: check-in + prazo do canal (`prazoPagamento` nas regras
+  financeiras versionadas, por canal, 0–60 dias ou null = sem regra; padrão Airbnb 1, demais null;
+  editável em Configurações → Regras financeiras, vale pela data de entrada da reserva como as outras
+  regras; sem prazo na versão da época, vale o prazo da versão atual — `prazoDoCanalNaData` —, para um canal
+  configurado hoje resolver a reserva antiga que atravessa o início); quem recebe `empresa`: data (caixa) do recebimento que completou o líquido do canal
+  (`recebidoPorReserva().dataCompleto`); a confirmar: nenhuma. `ladoDoInicio` — com data: antes do
+  início → **antes** (a reserva inteira, em qualquer mês), senão **depois** (inteira, mesmo as noites
+  anteriores); sem data: inteira antes do início → antes, inteira a partir dele → depois, atravessando
+  → **indefinido**. `livroDeAntes(inicio, lados)` é o predicado SQL único do "livro de antes":
+  competência anterior ao início menos os lançamentos das reservas depois/indefinidas, mais os de
+  qualquer mês das reservas de antes; dos lançamentos "repasse", só o acerto por fora (e o estorno
+  dele) entra — antecipado e fechamento que pagaram parte de reserva de depois ficam de fora com ela.
+  A marcação, o bloqueio do fechamento e a trava da data usam esse mesmo predicado. Indefinida com a
+  empresa recebendo **bloqueia a marcação** do proprietário (avisar em vez de supor: "registre o
+  recebimento na reserva com a data em que o canal pagou") e vira **aviso** no fechamento (a parte fica a
+  liberar, fora do repasse); canal que paga direto sem prazo só avisa. Reserva já marcada por fora cujo
+  lado deixou de ser "antes" (recebimento estornado ou refeito) bloqueia a marcação: estornar o acerto
+  por fora e marcar de novo. O inverso também bloqueia: reserva que passou a ser "antes" com parte já
+  paga por antecipado ou fechamento em vigor (a data do pagamento mudou depois do repasse) — marcar
+  zeraria o acerto sem item e descontaria o valor de novo; estornar esse repasse antes. O extrato mostra a data: "pago/previsto em dd/mm/aaaa, N dia(s) depois do
+  check-in" (split) ou "Reserva paga antes do início do sistema (dd/mm/aaaa), em dd/mm/aaaa" (empresa).
+
+- **Data de início** em Configurações → Repasses (chave `inicio_sistema`): sempre dia 1º de um mês,
+  porque as partes de reserva são por mês; nunca no futuro; vazia = não definida. Com acerto por fora
+  em vigor, a data não pode voltar para antes dele nem ser apagada; com parte de reserva que a data nova
+  daria como de antes (pela data do pagamento; sem lado, noite de mês anterior) já em repasse normal em
+  vigor (fechamento ou antecipado), mês anterior já fechado, ou fechamento de mês
+  a partir da data em vigor que quitou acerto de antes dela (o fechamento paga o acerto acumulado,
+  então o de outubro leva um ajuste de setembro sem item de reserva, e a marcação zeraria setembro de
+  novo; conta só a soma dos lançamentos em vigor que já existiam na hora do fechamento e que não são
+  parte de reserva — parte não paga ficou fora do fechamento, lançamento criado depois dele também, e
+  crédito e débito de antes que se anulam não lhe custaram nada), a data não pode avançar por cima
+  (estornar primeiro). A marcação reconfere a data configurada sob a mesma trava, para uma
+  mudança no meio não marcar com data velha.
+- **Marcar como acertado por fora** (Financeiro → Repasses, seção "Antes do início do sistema"):
+  para cada proprietário com lançamento anterior ao início, numa transação por proprietário
+  (proprietário travado e reservas das partes travadas para o motor, como no antecipado), um repasse
+  do tipo **`por_fora`**, com data e pagamento na véspera do início, situação "pago", sem comprovante
+  e sem e-mail (a rotina de e-mails o ignora e o envio manual recusa). Ele tem um **item** para cada
+  parte, de qualquer mês, de reserva paga antes do início que a empresa receberia e que ainda não está
+  em repasse em vigor (vínculo único do M4.10: a parte nunca entra em antecipado nem em fechamento) e um
+  **lançamento "repasse"** por imóvel e mês de competência do livro de antes, no último dia do mês,
+  realizado na véspera, com efeito igual ao oposto do acerto daquele mês — o acerto de antes fica em
+  zero; em mês a partir do início o lançamento compensa só as partes dessas reservas (descrição com
+  "(reservas pagas antes do início)"). As partes marcadas passam a "realizado" (o motor não as recalcula).
+- **Reexecutável e idempotente:** a soma por imóvel e mês inclui os próprios lançamentos de acerto já
+  feitos, então quem já está em zero não entra; só o que surgiu depois (uma reserva antiga importada
+  atrasada) gera um repasse novo, só com ela. O painel conta os pares imóvel/mês com acerto diferente de
+  zero (não só a soma): grupos que se anulam continuam marcáveis.
+- **Bloqueios** (os mesmos do fechamento, limitados ao período anterior ao início): lançamento em
+  conferência, ajuste com o proprietário a esclarecer, adiantamento em aberto. Recusam só aquele
+  proprietário, com o motivo; os outros são marcados. Avisar em vez de supor: nada é marcado por cima
+  de uma pendência.
+- **O início vale nos repasses normais:** com a data definida, parte de reserva paga antes do início
+  nunca fica disponível (`classificarParte` recebe o início e a data do pagamento; a parte fica a liberar
+  com o motivo "reserva paga antes do início do sistema: já acertada por fora; aguarda a marcação"),
+  então antecipado e pedido pelo portal nunca a pagam; e o fechamento bloqueia enquanto o proprietário
+  tiver parte de antes fora de repasse ou imóvel/mês do livro de antes com acerto diferente de zero —
+  inclusive uma reserva antiga importada depois da marcação. A marcação
+  manual não precisa vencer corrida nenhuma: antecipado e fechamento tomam a mesma trava da
+  configuração do início antes de ler as partes, então a data não muda entre a leitura e a gravação.
+- **Estorno** como qualquer repasse (só o mais recente do proprietário): as partes voltam ao extrato
+  (a liberar ou disponível) e o acerto de antes volta.
+- **Extrato:** a parte aparece "Repassada" com o motivo "Acertada por fora, antes do início do
+  sistema (até 30/09/2026)"; o resumo tem a linha "Acertado por fora (antes do sistema)", separada do
+  "Já repassado (pago)", que é o que o sistema pagou. O repasse aparece na lista como "Acertado por
+  fora, antes do sistema", sem comprovante nem e-mail.
+- **Consequência para a reserva que atravessa o início** (ex.: 29/9 → 2/10): a data em que o canal
+  pagou decide (M4.12). Paga até 30/9 (Airbnb pelo prazo; Booking/site/direta pelo recebimento
+  registrado com essa data): inteira por fora, com a noite de outubro. Paga de 1/10 em diante: inteira
+  no sistema, com as noites de setembro, disponível para antecipado e fechamento. Sem data: indefinida,
+  bloqueio na marcação e aviso no fechamento até o recebimento ser registrado. Isso substitui o
+  checklist manual que o GUIA-DIEGO trazia para o fechamento de outubro.
+
+## Fora deste item
+
+- Pix automático em lote (fica planejado; depende de API do banco ou do Mercado Pago).
+- Conciliação automática do extrato (M4.4) e liberação do provedor do site (M8.2): quando
+  existirem, só alimentam a mesma condição 3.
+- O cálculo do marketplace (M12.2) usa este mesmo extrato e estas mesmas periodicidades.

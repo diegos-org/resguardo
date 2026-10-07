@@ -34,7 +34,7 @@ function Campos({ m, estado }: { m?: Modelo; estado: EstadoForm<ErrosModelo> }) 
         {erro("texto")}
       </label>
       {texto && (
-        <p style={{ fontSize: "0.875rem", background: "#f7f4ee", padding: "8px 12px", borderRadius: 6, margin: 0, whiteSpace: "pre-wrap" }}>
+        <p style={{ fontSize: "0.875rem", background: "var(--scl-creme)", padding: "8px 12px", borderRadius: 6, margin: 0, whiteSpace: "pre-wrap" }}>
           <strong>Prévia com dados de exemplo:</strong> {preencherModelo(texto, EXEMPLO)}
         </p>
       )}
@@ -45,7 +45,7 @@ function Campos({ m, estado }: { m?: Modelo; estado: EstadoForm<ErrosModelo> }) 
 function Editar({ m, editar }: { m: Modelo; editar: Acao }) {
   const [estado, enviar, enviando] = useActionState(editar, {});
   return (
-    <details style={{ background: "#fff", border: "1px solid var(--scl-areia)", borderRadius: 8, padding: "10px 14px", maxWidth: 820 }}>
+    <details style={{ background: "var(--scl-papel)", border: "1px solid var(--scl-areia)", borderRadius: 8, padding: "10px 14px", maxWidth: 820 }}>
       <summary style={{ cursor: "pointer" }}>
         <strong>{m.nome}</strong> {m.quando && <span style={{ color: "var(--scl-texto-2)" }}>· {m.quando}</span>}{" "}
         {!m.ativo && <span className={styles.etiqueta}>arquivado</span>}
@@ -63,12 +63,12 @@ function Editar({ m, editar }: { m: Modelo; editar: Acao }) {
           <button type="submit" name="op" value="salvar" disabled={enviando}>
             Salvar
           </button>
-          <button type="submit" className={styles.pequeno} style={{ background: "#fff", color: "var(--scl-texto)" }} name="op" value={m.ativo ? "arquivar" : "reativar"} formNoValidate disabled={enviando}>
+          <button type="submit" className={styles.pequeno} style={{ background: "var(--scl-papel)", color: "var(--scl-texto)" }} name="op" value={m.ativo ? "arquivar" : "reativar"} formNoValidate disabled={enviando}>
             {m.ativo ? "Arquivar" : "Reativar"}
           </button>
           <BotaoConfirmar
             className={styles.pequeno}
-            style={{ background: "#fff", color: "#7a2020" }}
+            style={{ background: "var(--scl-papel)", color: "var(--scl-erro-texto)" }}
             name="op"
             value="excluir"
             formNoValidate

@@ -25,7 +25,7 @@ export default async function Financeiro() {
         <section className={styles.cartao}>
           <h2>Repasses aos proprietários</h2>
           <p>
-            Fechamento do mês no dia 1º: valor a transferir, Pix para copiar e marcar pago. <Link href="/painel/financeiro/repasses">Abrir</Link>
+            Fechamento do mês no dia do fechamento (padrão dia 2; Configurações → Repasses): valor a transferir, Pix para copiar e marcar pago. <Link href="/painel/financeiro/repasses">Abrir</Link>
           </p>
         </section>
       )}

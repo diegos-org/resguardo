@@ -11,6 +11,7 @@ import { fecharMes, marcarRepassePago } from "@/repasses/repasses";
 import type { DadosReserva } from "@/reservas/regras";
 import { criarReserva } from "@/reservas/repositorio";
 import { rodapeDoPortal } from "./rodape";
+import { receberTudo } from "@/repasses/testes";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -42,6 +43,15 @@ const reserva = (imovelId: string): DadosReserva => ({
   observacoes: "",
 });
 
+
+/** Cria a reserva e registra o recebimento integral (M4.10: só o dinheiro já com a empresa entra no repasse). */
+async function criarRecebida(dados: Parameters<typeof criarReserva>[2]) {
+  const r = await criarReserva(db, org, dados, null);
+  if (!r.ok) throw new Error(JSON.stringify(r.erros));
+  await receberTudo(db, org, r.reserva.id, dados.checkin);
+  return r.reserva;
+}
+
 beforeEach(async () => {
   ({ db, close } = await createTestDb());
   [{ id: org }] = await db.insert(organizacoes).values({ nome: "A" }).returning();
@@ -68,7 +78,7 @@ beforeEach(async () => {
   if (!c.ok) throw new Error("categoria");
   categoria = c.categoria.id;
   // Booking: a empresa recebe e deve 722,50 à dona.
-  await criarReserva(db, org, reserva(a), null);
+  await criarRecebida(reserva(a));
   // O outro proprietário deve 300 (reparo pago pela empresa).
   await registrarDespesa(
     db,
@@ -120,10 +130,10 @@ describe("rodapé do portal", () => {
     const [c] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "555", nome: "Cinco" }).returning();
     await criarContrato(db, org, c.id, { tipo: "gestao_completa", comissao: "15", inicio: "2025-01-01" }, null);
     // Reserva de setembro calculada sem dono (parte do proprietário pendente, sem proprietário).
-    await criarReserva(db, org, { ...reserva(c.id), checkin: "2026-09-10", checkout: "2026-09-13" }, null);
+    await criarRecebida({ ...reserva(c.id), checkin: "2026-09-10", checkout: "2026-09-13" });
     // O imóvel passa a ser do Novo em 01/10.
     await db.insert(proprietarioImoveis).values({ proprietarioId: novo.id, imovelId: c.id, criadoEm: new Date("2026-10-01T12:00:00Z") });
-    await criarReserva(db, org, { ...reserva(c.id), checkin: "2026-10-10", checkout: "2026-10-13" }, null);
+    await criarRecebida({ ...reserva(c.id), checkin: "2026-10-10", checkout: "2026-10-13" });
     expect(await rodape("2026-11-02", { id: novo.id, nome: "Novo" })).toMatchObject({ situacao: "empresa_deve", emConferencia: false });
     // A pendência de setembro continua segurando o fechamento (a equipe resolve no painel).
     expect(await fecharMes(db, org, novo.id, MES, "2026-11-02", null)).toMatchObject({ ok: false });
@@ -148,7 +158,7 @@ describe("rodapé do portal", () => {
     );
     expect(await rodape("2026-11-03")).toMatchObject({ situacao: "fechado", valor: 72250, diferenca: -5000, emConferencia: false });
     // Novembro fechado depois: ele já levou a diferença de outubro — não aparece mais.
-    await criarReserva(db, org, { ...reserva(a), checkin: "2026-11-10", checkout: "2026-11-13" }, null);
+    await criarRecebida({ ...reserva(a), checkin: "2026-11-10", checkout: "2026-11-13" });
     const g = await fecharMes(db, org, dona, "2026-11", "2026-12-02", null);
     if (!g.ok) throw new Error(g.erro);
     expect(await rodape("2026-12-02")).toMatchObject({ situacao: "fechado", valor: 72250, diferenca: 0 });
@@ -164,12 +174,12 @@ describe("rodapé do portal", () => {
 
   it("mês sem repasse cujo saldo entrou num repasse posterior: não fica 'em conferência'", async () => {
     await criarContrato(db, org, b, { tipo: "gestao_completa", comissao: "15", inicio: "2025-01-01" }, null);
-    await criarReserva(db, org, { ...reserva(b), checkin: "2026-11-10", checkout: "2026-11-13" }, null);
+    await criarRecebida({ ...reserva(b), checkin: "2026-11-10", checkout: "2026-11-13" });
     const f = await fecharMes(db, org, outro, "2026-11", "2026-12-02", null);
     if (!f.ok) throw new Error(f.erro);
     expect(await rodape("2026-12-02", { id: outro, nome: "Outro" })).toMatchObject({ situacao: "no_repasse_posterior", repassePosterior: "2026-11", valor: 0, diferenca: 0 });
     // Com mais de um repasse depois, aponta o primeiro (o que levou o saldo deste mês).
-    await criarReserva(db, org, { ...reserva(b), checkin: "2026-12-10", checkout: "2026-12-13" }, null);
+    await criarRecebida({ ...reserva(b), checkin: "2026-12-10", checkout: "2026-12-13" });
     const g = await fecharMes(db, org, outro, "2026-12", "2027-01-02", null);
     if (!g.ok) throw new Error(g.erro);
     expect(await rodape("2027-01-02", { id: outro, nome: "Outro" })).toMatchObject({ situacao: "no_repasse_posterior", repassePosterior: "2026-11" });
@@ -186,7 +196,7 @@ describe("rodapé do portal", () => {
 
   it("mês vazio antes de um repasse posterior continua 'nada a pagar' (não 'entrou no repasse de…')", async () => {
     await criarContrato(db, org, b, { tipo: "gestao_completa", comissao: "15", inicio: "2025-01-01" }, null);
-    await criarReserva(db, org, { ...reserva(b), checkin: "2026-11-10", checkout: "2026-11-13" }, null);
+    await criarRecebida({ ...reserva(b), checkin: "2026-11-10", checkout: "2026-11-13" });
     const f = await fecharMes(db, org, outro, "2026-11", "2026-12-02", null);
     if (!f.ok) throw new Error(f.erro);
     // Setembro: o Outro não tinha nada até ali.

@@ -3,10 +3,11 @@
 import { useActionState } from "react";
 import type { EstadoRegrasCalendario } from "@/calendario/acoes";
 import { APLICACOES_ULTIMA_HORA, centesimosParaMultiplicador, dataBr, type RegrasCalendario } from "@/calendario/regras-config";
+import type { FontePrecos } from "@/imoveis/fonte-precos";
 import { DIAS_SEMANA } from "@/imoveis/regras-venda";
 import styles from "../formularios.module.css";
 
-export type ImovelOpcao = { id: string; codigo: string; nome: string; vinculado: boolean };
+export type ImovelOpcao = { id: string; codigo: string; nome: string; vinculado: boolean; /** Fonte de preços (M3.9): com "beds24" o SCL envia só calendário. */ fontePrecos?: FontePrecos };
 type Props = { regras: RegrasCalendario; imoveis: ImovelOpcao[]; salvar: (a: EstadoRegrasCalendario, f: FormData) => Promise<EstadoRegrasCalendario> };
 
 const grupo = { border: "1px solid var(--scl-areia)", borderRadius: 8, padding: "12px 16px", display: "flex", flexDirection: "column" as const, gap: 12, margin: 0 };
@@ -31,7 +32,7 @@ export function FormRegrasCalendario({ regras, imoveis, salvar }: Props) {
     </div>;
   };
   const listaImoveis = (nome: string, atual: readonly string[]) => <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px" }}>
-    {imoveis.map((i) => <label key={i.id} className={styles.check} style={{ flex: "0 0 auto", minWidth: 0 }}><input type="checkbox" name={nome} value={i.id} defaultChecked={naLista(nome, i.id, atual)} /> {i.codigo}{nome === "envioImoveis" && !i.vinculado ? " (sem vínculo Beds24)" : ""}</label>)}
+    {imoveis.map((i) => <label key={i.id} className={styles.check} style={{ flex: "0 0 auto", minWidth: 0 }}><input type="checkbox" name={nome} value={i.id} defaultChecked={naLista(nome, i.id, atual)} /> {i.codigo}{nome === "envioImoveis" && !i.vinculado ? " (sem vínculo Beds24)" : ""}{nome === "envioImoveis" && i.fontePrecos === "beds24" ? " (preços do Beds24: o SCL envia só calendário)" : nome === "envioImoveis" && i.fontePrecos === "manual" ? " (preços digitados no cadastro)" : ""}</label>)}
     {!imoveis.length && <span style={nota}>Nenhum imóvel ativo cadastrado.</span>}
   </div>;
   return <form key={JSON.stringify(regras)} action={enviar} className={styles.form} aria-label="Regras de calendário e preços">
@@ -67,7 +68,7 @@ export function FormRegrasCalendario({ regras, imoveis, salvar }: Props) {
     </fieldset>
     <fieldset style={grupo}>
       <legend style={legenda}>Envio ao Beds24</legend>
-      <p style={nota}>Só os imóveis marcados recebem calendário e preços do SCL — comece pelo imóvel de teste (103). Mesmo marcados, nada é enviado enquanto a variável BEDS24_ESCRITA não estiver &quot;ligada&quot; na Vercel. Simular e enviar ficam em Calendário → Conferir calendário e preços.</p>
+      <p style={nota}>Só os imóveis marcados recebem calendário e preços do SCL — comece pelo imóvel de teste (103). Imóvel com preços definidos no Beds24 (fonte escolhida no cadastro do imóvel) recebe só calendário, mínimos e bloqueios: o SCL não escreve preço nele. Mesmo marcados, nada é enviado enquanto a variável BEDS24_ESCRITA não estiver &quot;ligada&quot; na Vercel. Simular e enviar ficam em Calendário → Conferir calendário e preços.</p>
       {listaImoveis("envioImoveis", regras.envio.imoveis)}
       <label className={styles.check}><input type="checkbox" name="envioAutomatico" defaultChecked={marcado("envioAutomatico", regras.envio.automatico)} /> Enviar automaticamente todo dia às 7h (depois da importação do Beds24)</label>
       <p style={nota}>Deixe desligado até o teste manual no imóvel escolhido estar conferido. O envio automático respeita a mesma lista de imóveis e o mesmo sinal da Vercel.</p>

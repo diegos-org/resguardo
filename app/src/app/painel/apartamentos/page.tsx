@@ -49,7 +49,7 @@ function Anteriores({ lista, valor }: { lista: readonly DonoAnterior[]; valor: (
         .map((x) => (
           <span key={x.proprietarioId}>
             <br />
-            <small style={{ color: "#b3261e" }}>
+            <small style={{ color: "var(--scl-erro)" }}>
               + {formatBRL(Math.abs(valor(x)))} com {x.nome} ({valor(x) > 0 ? "empresa deve" : "ele deve"})
             </small>
           </span>
@@ -96,7 +96,7 @@ function celula(l: LinhaApartamento, c: ChaveColuna): React.ReactNode {
             .map((x) => (
               <span key={x.proprietarioId}>
                 <br />
-                <small style={{ color: "#b3261e" }}>
+                <small style={{ color: "var(--scl-erro)" }}>
                   + {formatBRL(x.despesas)} de {x.nome}
                 </small>
               </span>
@@ -126,7 +126,7 @@ function celula(l: LinhaApartamento, c: ChaveColuna): React.ReactNode {
           {l.contestados > 0 && (
             <>
               <br />
-              <small style={{ color: "#b3261e" }}>{l.contestados} contestado(s)</small>
+              <small style={{ color: "var(--scl-erro)" }}>{l.contestados} contestado(s)</small>
             </>
           )}
           {l.anteriores
@@ -134,7 +134,7 @@ function celula(l: LinhaApartamento, c: ChaveColuna): React.ReactNode {
             .map((x) => (
               <span key={x.proprietarioId}>
                 <br />
-                <small style={{ color: "#b3261e" }}>
+                <small style={{ color: "var(--scl-erro)" }}>
                   + {formatBRL(x.aCobrar)} de {x.nome}
                   {x.contestados ? ` (${x.contestados} contestado(s))` : ""}
                 </small>

@@ -1,11 +1,12 @@
+/* Formulários e tabelas do painel (M7.5): papel liso, bordas e botões pelos tokens; denso. */
 .form {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  background: #fff;
-  border: 1px solid var(--scl-areia);
-  border-radius: 8px;
-  padding: 20px;
+  gap: 14px;
+  background: var(--scl-papel);
+  border: 1px solid var(--scl-borda);
+  border-radius: var(--scl-raio-cartao);
+  padding: 18px;
   max-width: 820px;
 }
 
@@ -13,7 +14,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   color: var(--scl-texto-2);
   flex: 1;
   min-width: 140px;
@@ -23,22 +24,28 @@
 .form textarea,
 .form select {
   font: inherit;
-  font-size: 1rem;
+  font-size: 0.9375rem;
   color: var(--scl-texto);
-  padding: 8px 10px;
-  border: 1px solid #d8d0c0;
-  border-radius: 6px;
-  background: #fff;
+  padding: 7px 10px;
+  min-height: 36px;
+  border: 1px solid var(--scl-borda-campo);
+  border-radius: var(--scl-raio-campo);
+  background: var(--scl-branco);
+}
+
+.form input[type="checkbox"],
+.form input[type="radio"] {
+  min-height: 0;
 }
 
 .form [aria-invalid="true"] {
-  border-color: #b3261e;
+  border-color: var(--scl-erro);
 }
 
 .linha {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 14px;
 }
 
 .largo {
@@ -53,41 +60,50 @@
 }
 
 .erro {
-  color: #b3261e;
+  color: var(--scl-erro);
   font-size: 0.8125rem;
 }
 
 .alerta {
-  background: #fbeaea;
-  color: #7a2020;
+  background: var(--scl-erro-fundo);
+  color: var(--scl-erro-texto);
   padding: 10px 12px;
-  border-radius: 6px;
+  border-radius: var(--scl-raio-campo);
 }
 
 .sucesso {
-  background: #e8f0e3;
-  color: var(--scl-salvia);
+  background: var(--scl-ok-fundo);
+  color: var(--scl-ok);
   padding: 10px 12px;
-  border-radius: 6px;
+  border-radius: var(--scl-raio-campo);
 }
 
 .acoes {
   display: flex;
-  gap: 16px;
+  gap: 14px;
   align-items: center;
 }
 
 .acoes button,
 .botao {
   font: inherit;
-  background: var(--scl-salvia);
-  color: #fff;
+  font-size: 0.875rem;
+  background: var(--scl-musgo);
+  color: var(--scl-branco);
   border: 0;
-  border-radius: 6px;
-  padding: 8px 18px;
+  border-radius: var(--scl-raio-campo);
+  min-height: 36px;
+  padding: 7px 16px;
   cursor: pointer;
   text-decoration: none;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.acoes button:hover,
+.botao:hover {
+  background: var(--scl-musgo-escuro);
 }
 
 .acoes button[disabled] {
@@ -105,24 +121,26 @@
 .tabela {
   width: 100%;
   border-collapse: collapse;
-  background: #fff;
-  border: 1px solid var(--scl-areia);
-  border-radius: 8px;
+  background: var(--scl-papel);
+  border: 1px solid var(--scl-borda);
+  border-radius: var(--scl-raio-cartao);
   overflow: hidden;
-  font-size: 0.9375rem;
+  font-size: 0.875rem;
 }
 
 .tabela th,
 .tabela td {
   text-align: left;
-  padding: 10px 12px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--scl-areia);
 }
 
 .tabela th {
   font-weight: 500;
   color: var(--scl-texto-2);
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
 .rolagem {
@@ -150,11 +168,15 @@
 
 .pequeno {
   font: inherit;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   padding: 4px 10px;
-  border: 1px solid #d8d0c0;
-  border-radius: 6px;
-  background: #fff;
+  border: 1px solid var(--scl-borda);
+  border-radius: var(--scl-raio-campo);
+  background: var(--scl-papel);
   color: var(--scl-texto);
   cursor: pointer;
+}
+
+.pequeno:hover {
+  background: var(--scl-areia);
 }

@@ -29,6 +29,8 @@ export type ReservaPortal = {
   bruto: number;
   suaParte: number;
   situacao: SituacaoReserva;
+  /** Reserva confirmada (ocupa noites). Cancelada ou pendente entra na lista só para explicar valor em vigor no livro. */
+  confirmada: boolean;
 };
 
 export async function reservasDoPortal(
@@ -160,6 +162,7 @@ export async function reservasDoPortal(
       suaParte: valor(r.id, "direito_proprietario"),
       // Divergência com o dinheiro já movimentado conta como "não confirmada" para a conferência.
       situacao: situacao(r.id, divergencia ? "divergente" : estado, resolvida),
+      confirmada: estado === "confirmada",
     };
   });
 }

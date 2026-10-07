@@ -47,7 +47,7 @@ export function DecisaoCadastro({ id, nome, aprovar, recusar }: { id: string; no
           Motivo da recusa (fica registrado)
           <input name="motivo" required maxLength={500} />
         </label>
-        <BotaoConfirmar disabled={recusando} className={styles.pequeno} style={{ background: "#fff", color: "#7a2020" }} pergunta={`Recusar o cadastro de ${nome}?`}>
+        <BotaoConfirmar disabled={recusando} className={styles.pequeno} style={{ background: "var(--scl-papel)", color: "var(--scl-erro-texto)" }} pergunta={`Recusar o cadastro de ${nome}?`}>
           Recusar
         </BotaoConfirmar>
       </form>

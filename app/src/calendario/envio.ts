@@ -11,9 +11,10 @@ import { listarMapeamentosBeds24 } from "@/beds24/configuracao";
 import { mensagemSeguraBeds24 } from "@/beds24/sincronizacao";
 import { chaveTravaBeds24, envioEmAndamento, tentarTravaBeds24 } from "@/beds24/trava";
 import { type DiaCalendario, type Divergencia, ErroBeds24, type EscritorBeds24, type LeitorBeds24 } from "@/beds24/tipos";
-import { beds24Calendario, beds24CalendarioEnviado, beds24EnvioNoites, beds24Envios, bloqueios, imoveis, reservas } from "@/db/schema";
+import { beds24Calendario, beds24CalendarioEnviado, beds24EnvioImoveis, beds24EnvioNoites, beds24Envios, bloqueios, imoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { lerDetalhes, listarPeriodos, regrasDeVenda } from "@/imoveis/detalhes";
+import { fontesDePrecosDosImoveis, lerDetalhes, listarPeriodos, regrasDeVenda } from "@/imoveis/detalhes";
+import type { FontePrecos } from "@/imoveis/fonte-precos";
 import { somarDias } from "@/imoveis/regras-venda";
 import { hojeISO } from "@/lib/datas";
 import { faixasDeEnvio, type LinhaPlano, planejarCalendario, resumirPlano, type ResumoPlano } from "./motor";
@@ -23,7 +24,26 @@ export type ModoEnvio = "simulacao" | "envio";
 export type SituacaoEnvio = "ok" | "parcial" | "erro" | "ocupada" | "desligada" | "simulacao" | "incerto";
 export type ImovelEnviado = { imovelId: string; codigo: string; resumo: ResumoPlano; enviadas: number; confirmadas: number; divergentes: number; pendentes: number; falha: string };
 export type ResultadoEnvio = { ok: boolean; situacao: SituacaoEnvio; mensagem: string; envioId: string | null; imoveis: ImovelEnviado[]; avisos: string[]; totalAvisos: number };
-export type OpcoesEnvio = { modo: ModoEnvio; imovelIds?: string[]; autorId?: string | null; automatica?: boolean; agora?: Date };
+/** `credencial` = impressão da credencial Beds24 usada (`impressaoCredencialBeds24`), gravada na execução: o veredito por imóvel só vale para ela. */
+export type OpcoesEnvio = { modo: ModoEnvio; imovelIds?: string[]; autorId?: string | null; automatica?: boolean; agora?: Date; credencial?: string };
+/** Veredito de um imóvel numa execução que ainda não terminou (ou morreu no meio): nunca conta como incluído. */
+export const VEREDITO_PENDENTE = "Execução ainda não concluída.";
+
+type VinculoBeds24 = { imovelId: string; ativo: boolean; propertyId: string; roomId: string };
+/** Vínculo Beds24 que vale para o envio: ativo, com propriedade e quarto numéricos. */
+export const vinculoValidoParaEnvio = (m: Pick<VinculoBeds24, "ativo" | "propertyId" | "roomId">) => m.ativo && /^\d+$/.test(m.propertyId) && /^\d+$/.test(m.roomId);
+/** Vínculos escolhidos para um envio são ambíguos quando um imóvel tem dois ou um quarto serve a dois imóveis: o envio inteiro é abortado. */
+export const vinculosAmbiguos = (escolhidos: readonly Pick<VinculoBeds24, "imovelId" | "roomId">[]) =>
+  new Set(escolhidos.map((m) => m.imovelId)).size !== escolhidos.length || new Set(escolhidos.map((m) => m.roomId)).size !== escolhidos.length;
+/**
+ * O imóvel está pronto para o envio pela régua que aborta o envio inteiro: ele tem um vínculo válido e, entre os vínculos
+ * válidos de toda a lista de envio (mais o dele), nenhuma ambiguidade — a ambiguidade de outro imóvel também derruba o
+ * envio deste. O portal lê daqui para nunca prometer o que o envio recusaria.
+ */
+export function vinculoUnicoParaEnvio(mapas: readonly VinculoBeds24[], imovelId: string, listaDeEnvio: readonly string[]): boolean {
+  const escolhidos = mapas.filter(vinculoValidoParaEnvio).filter((m) => m.imovelId === imovelId || listaDeEnvio.includes(m.imovelId));
+  return escolhidos.some((m) => m.imovelId === imovelId) && !vinculosAmbiguos(escolhidos);
+}
 
 const NOMES_SITUACAO: Record<SituacaoEnvio, string> = {
   ok: "Enviado e conferido", parcial: "Enviado com divergências ou falhas", erro: "Falhou", ocupada: "Outra execução em andamento",
@@ -31,7 +51,7 @@ const NOMES_SITUACAO: Record<SituacaoEnvio, string> = {
 };
 export const nomeSituacaoEnvio = (s: string) => NOMES_SITUACAO[s as SituacaoEnvio] ?? s;
 
-type Plano = { imovelId: string; codigo: string; propertyId: string; roomId: string; linhas: LinhaPlano[] };
+type Plano = { imovelId: string; codigo: string; propertyId: string; roomId: string; fontePrecos: FontePrecos; linhas: LinhaPlano[] };
 
 /**
  * Quarto Beds24 vinculado ao imóvel: exatamente um vínculo ativo com propriedade e quarto numéricos, e esse
@@ -68,10 +88,10 @@ export async function planejarImovel(db: Db, org: string, regras: RegrasCalendar
     roomId === null ? [] : db.select().from(beds24CalendarioEnviado).where(and(eq(beds24CalendarioEnviado.organizacaoId, org), eq(beds24CalendarioEnviado.imovelId, imovel.id), eq(beds24CalendarioEnviado.roomId, roomId), gte(beds24CalendarioEnviado.data, inicio), lte(beds24CalendarioEnviado.data, fim))),
   ]);
   const linhas = planejarCalendario({
-    imovel: { id: imovel.id, regras: regrasVenda, periodos, pisos: [detalhes.pisoUltimaHora1, detalhes.pisoUltimaHora2] },
+    imovel: { id: imovel.id, regras: regrasVenda, periodos, pisos: [detalhes.pisoUltimaHora1, detalhes.pisoUltimaHora2], fontePrecos: detalhes.fontePrecos },
     regras, hoje, inicio, fim, fimDados, reservas: ocupantes, bloqueios: impedimentos, observacoes, enviados,
   });
-  return { hoje, inicio, fim, linhas, regras: regrasVenda, pisos: [detalhes.pisoUltimaHora1, detalhes.pisoUltimaHora2] as const };
+  return { hoje, inicio, fim, linhas, regras: regrasVenda, pisos: [detalhes.pisoUltimaHora1, detalhes.pisoUltimaHora2] as const, fontePrecos: detalhes.fontePrecos };
 }
 
 /** Grava a leitura do calendário como observação local das noites (a mais nova vale), presa ao quarto lido. */
@@ -156,7 +176,7 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
   const base = (situacao: SituacaoEnvio, mensagem: string): ResultadoEnvio => ({ ok: situacao === "ok" || situacao === "simulacao", situacao, mensagem, envioId: null, imoveis: [], avisos: [], totalAvisos: 0 });
   if (o.modo === "envio" && !escritor) return base("desligada", "Envio desligado: BEDS24_ESCRITA não está \"ligada\" na Vercel (só o Diego liga, depois do teste). Use a simulação.");
   // Registro da execução fora das transações: sobrevive a qualquer falha e marca "em andamento".
-  const [exec] = await db.insert(beds24Envios).values({ organizacaoId: org, iniciadoEm: agora, modo: o.modo, automatica: o.automatica === true, situacao: "iniciando" }).returning({ id: beds24Envios.id });
+  const [exec] = await db.insert(beds24Envios).values({ organizacaoId: org, iniciadoEm: agora, modo: o.modo, automatica: o.automatica === true, situacao: "iniciando", credencial: o.credencial ?? "" }).returning({ id: beds24Envios.id });
   const avisos: string[] = [];
   let totalAvisos = 0;
   const aviso = (s: string) => { totalAvisos++; if (avisos.length < 100) avisos.push(s.slice(0, 300)); };
@@ -178,13 +198,16 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
       await tx.update(beds24Envios).set({ situacao: "executando" }).where(eq(beds24Envios.id, exec.id));
 
       const regras = await lerRegrasCalendario(tx, org);
-      const mapas = (await listarMapeamentosBeds24(tx, org)).filter(m => m.ativo && /^\d+$/.test(m.propertyId) && /^\d+$/.test(m.roomId));
+      const mapas = (await listarMapeamentosBeds24(tx, org)).filter(vinculoValidoParaEnvio);
       const pedidos = o.imovelIds ? [...new Set(o.imovelIds)] : null;
       if (pedidos?.some(id => !regras.envio.imoveis.includes(id))) throw new ErroBeds24("Este imóvel não está com envio ligado em Configurações → Calendário e preços.", "configuracao");
       const escolhidos = mapas.filter(m => regras.envio.imoveis.includes(m.imovelId) && (!pedidos || pedidos.includes(m.imovelId)));
       if (pedidos?.some(id => !escolhidos.some(m => m.imovelId === id))) throw new ErroBeds24("Imóvel sem vínculo Beds24 ativo (propriedade e quarto numéricos). Confira em Integrações.", "configuracao");
       if (!escolhidos.length) throw new ErroBeds24("Nenhum imóvel com envio ligado e vínculo Beds24 ativo. Ligue o envio por imóvel em Configurações → Calendário e preços.", "configuracao");
-      if (new Set(escolhidos.map(m => m.imovelId)).size !== escolhidos.length || new Set(escolhidos.map(m => m.roomId)).size !== escolhidos.length) throw new ErroBeds24("Cada imóvel deve estar ligado a um único quarto Beds24. Remova os vínculos duplicados antes de enviar.", "configuracao");
+      if (vinculosAmbiguos(escolhidos)) throw new ErroBeds24("Cada imóvel deve estar ligado a um único quarto Beds24. Remova os vínculos duplicados antes de enviar.", "configuracao");
+      // Quais imóveis esta execução incluiu (e com que vínculo), mesmo que nenhuma noite precise mudar: é o que conta como
+      // "último envio" por imóvel. Nascem pendentes: só o fim da execução dá o veredito — interrompida, nunca vale como sucesso.
+      await tx.insert(beds24EnvioImoveis).values(escolhidos.map(m => ({ organizacaoId: org, envioId: exec.id, imovelId: m.imovelId, propertyId: m.propertyId, roomId: m.roomId, falha: VEREDITO_PENDENTE })));
       const fusos = new Map((await tx.select({ id: imoveis.id, fuso: imoveis.fuso }).from(imoveis).where(and(eq(imoveis.organizacaoId, org), inArray(imoveis.id, escolhidos.map(m => m.imovelId))))).map(i => [i.id, i.fuso]));
 
       // Estado enviado de outro quarto (vínculo trocado) não vale para o quarto atual: a posse de um bloqueio
@@ -272,7 +295,7 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
           if (c.divergentes) aviso(`Imóvel ${m.codigo}: ${c.divergentes} noite(s) de envio anterior sem releitura diferem da leitura de agora; o plano decide se reenvia.`);
         }
         const p = await planejarImovel(tx, org, regras, { id: m.imovelId, fuso: fusos.get(m.imovelId) ?? "America/Sao_Paulo", roomId: m.roomId }, agora);
-        planos.push({ imovelId: m.imovelId, codigo: m.codigo, propertyId: m.propertyId, roomId: m.roomId, linhas: p.linhas });
+        planos.push({ imovelId: m.imovelId, codigo: m.codigo, propertyId: m.propertyId, roomId: m.roomId, fontePrecos: p.fontePrecos, linhas: p.linhas });
         if (p.inicio < inicioLeitura) inicioLeitura = p.inicio;
         if (p.fim > fimLeitura) fimLeitura = p.fim;
         const semPreco = p.linhas.filter(l => l.precoReferencia === null).length;
@@ -328,6 +351,15 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
         const vinculos = (await listarMapeamentosBeds24(db, org)).filter(m => m.imovelId === p.imovelId && m.ativo && /^\d+$/.test(m.propertyId) && /^\d+$/.test(m.roomId));
         if (vinculos.length !== 1 || vinculos[0].propertyId !== p.propertyId || vinculos[0].roomId !== p.roomId) {
           res.falha = "Vínculo Beds24 do imóvel alterado durante o envio: nada foi escrito para este imóvel nesta execução; o próximo envio replaneja.";
+          aviso(`Imóvel ${p.codigo}: ${res.falha}`);
+          continue;
+        }
+        // Conferência final da fonte de preços (M3.9): a ficha do imóvel não espera o envio, então a fonte pode ter
+        // mudado entre o plano e a escrita — por exemplo para "preços definidos no Beds24", quando a carga planejada
+        // ainda traz preços e sobrescreveria os do proprietário. Fonte diferente da planejada: nada é escrito.
+        const fonteAgora = (await fontesDePrecosDosImoveis(db, org, [p.imovelId])).get(p.imovelId) ?? "scl";
+        if (fonteAgora !== p.fontePrecos) {
+          res.falha = "Fonte de preços do imóvel alterada durante o envio: nada foi escrito para este imóvel nesta execução; o próximo envio replaneja.";
           aviso(`Imóvel ${p.codigo}: ${res.falha}`);
           continue;
         }
@@ -450,6 +482,17 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
     terminadoEm: new Date(), situacao: r.situacao, resumo: r.mensagem.slice(0, 1000), avisos: r.avisos,
     noitesEnviadas: r.imoveis.reduce((s, i) => s + i.enviadas, 0), noitesConfirmadas: r.imoveis.reduce((s, i) => s + i.confirmadas, 0), noitesDivergentes: r.imoveis.reduce((s, i) => s + i.divergentes, 0),
   }).where(eq(beds24Envios.id, exec.id));
+  // Veredito por imóvel (quarto inacessível à credencial, moeda, leitura incompleta, escrita recusada): o portal lê daqui
+  // para não prometer envio a um imóvel que a execução deixa de fora. Imóvel sem resultado (execução interrompida por
+  // exceção depois da fase 1) fica com a mensagem do erro, nunca em branco.
+  // Só conta como aplicado o imóvel sem falha, sem noite divergente e sem noite pendente de releitura.
+  const veredito = (i: ImovelEnviado) =>
+    i.falha ? i.falha : i.divergentes ? `${i.divergentes} noite(s) divergente(s) na releitura: o Beds24 não ficou igual ao enviado.` : i.pendentes ? `${i.pendentes} noite(s) sem confirmação na releitura.` : "";
+  for (const linha of await db.select({ imovelId: beds24EnvioImoveis.imovelId }).from(beds24EnvioImoveis).where(eq(beds24EnvioImoveis.envioId, exec.id))) {
+    const resultado = r.imoveis.find(i => i.imovelId === linha.imovelId);
+    const falha = resultado ? veredito(resultado) : `Execução não concluída para este imóvel: ${r.mensagem}`;
+    await db.update(beds24EnvioImoveis).set({ falha: falha.slice(0, 300) }).where(and(eq(beds24EnvioImoveis.envioId, exec.id), eq(beds24EnvioImoveis.imovelId, linha.imovelId)));
+  }
   return r;
 }
 

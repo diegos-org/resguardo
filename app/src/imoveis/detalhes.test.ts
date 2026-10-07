@@ -1,9 +1,10 @@
+import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { historicoDe } from "@/auditoria/auditoria";
-import { imoveis, organizacoes } from "@/db/schema";
+import { beds24Envios, imoveis, organizacoes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
-import { criarPeriodo, DETALHES_VAZIOS, excluirPeriodo, lerDetalhes, listarPeriodos, salvarDetalhes, validarDetalhes, validarPeriodo } from "./detalhes";
+import { criarPeriodo, DETALHES_VAZIOS, excluirPeriodo, fontesDePrecosDosImoveis, lerDetalhes, listarPeriodos, salvarDetalhes, salvarDetalhesComLeitura, validarDetalhes, validarPeriodo } from "./detalhes";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -95,6 +96,36 @@ describe("gravação", () => {
     expect(h[0].mudancas).toEqual({ precoBase: [120050, 130000] });
   });
 
+  it("mudar a fonte de preços durante um envio ao Beds24 é recusado; outros campos salvam; com o envio parado, salva", async () => {
+    const agora = new Date("2026-10-04T12:00:00Z");
+    // Envio entre a escrita externa e o registro final (fase sem trava): a troca de fonte espera.
+    const [envio] = await db.insert(beds24Envios).values({ organizacaoId: org, iniciadoEm: agora, modo: "envio", automatica: false, situacao: "executando" }).returning({ id: beds24Envios.id });
+    const r = await salvarDetalhes(db, org, im, { ...DETALHES_VAZIOS, fontePrecos: "beds24" }, null, agora);
+    expect(typeof r).toBe("string");
+    expect(r).toContain("envio de calendário e preços em andamento");
+    expect((await lerDetalhes(db, org, im)).fontePrecos).toBe("scl");
+    // Outros campos não dependem do envio.
+    expect(await salvarDetalhes(db, org, im, { ...DETALHES_VAZIOS, precoBase: 50000 }, null, agora)).toBe(true);
+    // Envio registrado como terminado: a troca passa.
+    await db.update(beds24Envios).set({ situacao: "ok" }).where(eq(beds24Envios.id, envio.id));
+    expect(await salvarDetalhes(db, org, im, { ...DETALHES_VAZIOS, precoBase: 50000, fontePrecos: "beds24" }, null, agora)).toBe(true);
+    expect((await lerDetalhes(db, org, im)).fontePrecos).toBe("beds24");
+  });
+
+  it("gravação com leitura: monta os dados a partir do cadastro atual, dentro da transação; recusa não grava nada", async () => {
+    const r = validarDetalhes(form);
+    if (!r.ok) throw new Error("inválido");
+    await salvarDetalhes(db, org, im, r.dados, null);
+    // Quem edita só um campo recebe o cadastro atual (lido com o imóvel travado) e devolve o completo.
+    expect(await salvarDetalhesComLeitura(db, org, im, (atual) => ({ ...atual, precoBase: 99900 }), null)).toEqual({ ok: true });
+    expect(await lerDetalhes(db, org, im)).toEqual({ ...r.dados, precoBase: 99900 });
+    expect((await historicoDe(db, org, "imovel", im))[0].mudancas).toEqual({ precoBase: [120050, 99900] });
+    // Recusa (com erros por campo) vem do cadastro atual e não grava.
+    expect(await salvarDetalhesComLeitura(db, org, im, (atual) => (atual.precoBase === 99900 ? { erro: "Confira.", erros: { precoBase: "alto" } } : atual), null)).toEqual({ ok: false, erro: "Confira.", erros: { precoBase: "alto" } });
+    expect(await lerDetalhes(db, org, im)).toMatchObject({ precoBase: 99900 });
+    expect(await salvarDetalhesComLeitura(db, outraOrg, im, (atual) => atual, null)).toEqual({ ok: false, erro: "Imóvel não encontrado." });
+  });
+
   it("outra organização não lê nem grava", async () => {
     expect(await salvarDetalhes(db, outraOrg, im, DETALHES_VAZIOS, null)).toBe(false);
     expect(await salvarDetalhes(db, org, "nao-uuid", DETALHES_VAZIOS, null)).toBe(false);
@@ -118,6 +149,26 @@ describe("períodos de exceção", () => {
     expect(validarDetalhes({ precoBase: "21474836,48" })).toMatchObject({ ok: false, erros: { precoBase: "Valor alto demais." } });
   });
 
+  it("regra extra (`conferir`) é avaliada sobre o cadastro atual, com o imóvel travado; recusa não grava", async () => {
+    const r = validarDetalhes(form);
+    if (!r.ok) throw new Error("inválido");
+    await salvarDetalhes(db, org, im, { ...r.dados, fontePrecos: "beds24" }, null);
+    const periodo = { nome: "Natal", inicio: "2026-12-24", fim: "2026-12-26", precoNoite: "500,00", estadiaMinima: "" };
+    const vistos: string[] = [];
+    expect(await criarPeriodo(db, org, im, periodo, null, { conferir: (atual) => (vistos.push(atual.fontePrecos), atual.fontePrecos === "beds24" ? "preço não" : null) })).toEqual({ ok: false, erro: "preço não" });
+    expect(vistos).toEqual(["beds24"]);
+    expect(await listarPeriodos(db, org, im)).toEqual([]);
+    expect(await criarPeriodo(db, org, im, { ...periodo, precoNoite: "", estadiaMinima: "3" }, null, { conferir: async () => null })).toEqual({ ok: true });
+    const [criado] = await listarPeriodos(db, org, im);
+    // Excluir também aceita a regra extra, com o imóvel do período travado; recusa não apaga.
+    expect(await excluirPeriodo(db, org, criado.id, null, { conferir: async (_tx, imovelId) => (imovelId === im ? "contrato acabou" : null) })).toBe("contrato acabou");
+    expect(await listarPeriodos(db, org, im)).toHaveLength(1);
+    expect(await excluirPeriodo(db, org, criado.id, null, { conferir: async () => null })).toBe(true);
+    expect(await listarPeriodos(db, org, im)).toEqual([]);
+    // Gravação com leitura: a regra extra roda antes de preparar, com o imóvel travado.
+    expect(await salvarDetalhesComLeitura(db, org, im, (atual) => atual, null, new Date(), { conferir: async () => "sem contrato" })).toEqual({ ok: false, erro: "sem contrato" });
+  });
+
   it("cria, recusa sobreposição, lista em ordem e exclui", async () => {
     expect(await criarPeriodo(db, org, im, rev, null)).toEqual({ ok: true });
     expect(await criarPeriodo(db, org, im, { ...rev, nome: "Ano novo", inicio: "2027-01-01", fim: "2027-01-03" }, null)).toMatchObject({
@@ -134,3 +185,20 @@ describe("períodos de exceção", () => {
     expect(await historicoDe(db, org, "imovel", im)).toHaveLength(3);
   });
 });
+
+it("fonte de preços (M3.9): ausente vira SCL; beds24 e manual são aceitas; valor desconhecido é erro", () => {
+  expect(validarDetalhes({})).toMatchObject({ ok: true, dados: { fontePrecos: "scl" } });
+  expect(validarDetalhes({ fontePrecos: "beds24" })).toMatchObject({ ok: true, dados: { fontePrecos: "beds24" } });
+  expect(validarDetalhes({ fontePrecos: "manual" })).toMatchObject({ ok: true, dados: { fontePrecos: "manual" } });
+  expect(validarDetalhes({ fontePrecos: "airbnb" })).toMatchObject({ ok: false, erros: { fontePrecos: expect.any(String) } });
+});
+
+it("fontesDePrecosDosImoveis: lê a fonte gravada; imóvel sem detalhes ou de outra empresa fica no padrão SCL", async () => {
+  const [{ id: semDetalhes }] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "102", nome: "Cento e dois" }).returning();
+  await salvarDetalhes(db, org, im, { ...DETALHES_VAZIOS, fontePrecos: "beds24" }, null);
+  expect(await lerDetalhes(db, org, im)).toMatchObject({ fontePrecos: "beds24" });
+  expect(await fontesDePrecosDosImoveis(db, org, [im, semDetalhes, "nao-e-uuid"])).toEqual(new Map([[im, "beds24"], [semDetalhes, "scl"], ["nao-e-uuid", "scl"]]));
+  expect(await fontesDePrecosDosImoveis(db, outraOrg, [im])).toEqual(new Map([[im, "scl"]]));
+  expect(await fontesDePrecosDosImoveis(db, org, [])).toEqual(new Map());
+});
+

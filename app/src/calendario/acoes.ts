@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { exigir } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { organizacaoBeds24 } from "@/beds24/configuracao";
-import { escritorDoAmbiente, leitorParaSincronizacao } from "@/beds24/http";
+import { escritorDoAmbiente, impressaoCredencialBeds24, leitorParaSincronizacao } from "@/beds24/http";
 import { mensagemSeguraBeds24 } from "@/beds24/sincronizacao";
 import { ErroBeds24 } from "@/beds24/tipos";
 import { getDb } from "@/db/client";
@@ -80,7 +80,7 @@ export async function enviarCalendarioAcao(_a: EstadoEnvio, form: FormData): Pro
     const imovelId = String(form.get("imovelId") ?? "");
     const leitor = leitorParaSincronizacao();
     if (!leitor) throw new ErroBeds24("Credencial Beds24 não configurada.", "configuracao");
-    const resultado = await enviarCalendarioBeds24(db, sessao.organizacaoId, leitor, modo === "envio" ? escritorDoAmbiente() : null, { modo, imovelIds: imovelId ? [imovelId] : undefined, autorId: sessao.usuarioId });
+    const resultado = await enviarCalendarioBeds24(db, sessao.organizacaoId, leitor, modo === "envio" ? escritorDoAmbiente() : null, { modo, imovelIds: imovelId ? [imovelId] : undefined, autorId: sessao.usuarioId, credencial: impressaoCredencialBeds24() });
     revalidatePath("/painel/calendario/previa");
     return { resultado };
   } catch (e) {

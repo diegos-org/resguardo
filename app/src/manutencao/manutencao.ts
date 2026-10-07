@@ -57,6 +57,62 @@ export async function criarManutencao(db: Db, organizacaoId: string, d: { imovel
   });
 }
 
+/**
+ * O proprietário marketplace registra pelo portal uma manutenção que ele mesmo fez (M12.4): nasce
+ * realizada, por conta dele (responsável "proprietario", sem orçamento nem despesa da empresa). A
+ * posse do imóvel e o contrato são conferidos por quem chama; aqui, os dados e a data.
+ */
+export async function registrarFeitaPeloProprietario(
+  db: Db,
+  organizacaoId: string,
+  d: { imovelId: string; titulo: string; descricao: string; data: string },
+  hoje: string,
+  autorId: string | null,
+  conferir?: (tx: Db) => Promise<string | null>,
+): Promise<Resultado> {
+  if (!uuidValido(d.imovelId)) return { ok: false, erro: "Escolha o imóvel." };
+  const titulo = d.titulo.trim();
+  if (!titulo || titulo.length > 200) return { ok: false, erro: "Diga o que foi feito (até 200 caracteres)." };
+  if (d.descricao.length > 1000) return { ok: false, erro: "Descrição longa demais (até 1000 caracteres)." };
+  if (!dataValida(d.data)) return { ok: false, erro: "Data inválida." };
+  if (d.data > hoje) return { ok: false, erro: "A data do serviço não pode ser no futuro." };
+  return db.transaction(async (tx) => {
+    // Trava o imóvel: a conferência de quem chama (contrato marketplace) vale até o fim da gravação.
+    const [im] = await tx
+      .select({ id: imoveis.id })
+      .from(imoveis)
+      .where(and(eq(imoveis.id, d.imovelId), eq(imoveis.organizacaoId, organizacaoId)))
+      .for("update");
+    if (!im) return { ok: false as const, erro: "Imóvel não encontrado." };
+    const recusa = conferir ? await conferir(tx) : null;
+    if (recusa) return { ok: false as const, erro: recusa };
+    const dono = await donoAtual(tx, d.imovelId);
+    if (!dono) return { ok: false as const, erro: "O imóvel não tem proprietário vinculado." };
+    const agora = new Date();
+    const [m] = await tx
+      .insert(manutencoes)
+      .values({
+        organizacaoId,
+        imovelId: d.imovelId,
+        titulo,
+        descricao: d.descricao.trim(),
+        estado: "realizada",
+        responsavel: "proprietario",
+        proprietarioId: dono,
+        aprovadaPor: autorId,
+        aprovadaEm: agora,
+        dataRealizada: d.data,
+        // Marca explícita: sem custo para a empresa. Fica fora da fila "custo a lançar" e nunca vira despesa.
+        semCusto: true,
+        observacao: "Feita por conta do proprietário (marketplace), registrada pelo portal.",
+        criadoPor: autorId,
+      })
+      .returning();
+    await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "manutencao.criar", entidade: "manutencao", entidadeId: m.id, mudancas: { titulo: [null, titulo], estado: [null, "realizada (pelo proprietário)"] } });
+    return { ok: true as const, id: m.id };
+  });
+}
+
 async function travar(tx: Db, organizacaoId: string, id: string): Promise<Manutencao | null> {
   if (!uuidValido(id)) return null;
   const [m] = await tx
@@ -188,6 +244,7 @@ export function lancarCusto(db: Db, organizacaoId: string, id: string, d: DadosC
     id,
     ["realizada"],
     async (m, tx) => {
+      if (m.semCusto) return "Manutenção feita pelo proprietário por conta própria (marketplace): não há custo a lançar.";
       if (await despesaAtiva(tx, m.despesaId)) return "O custo já foi lançado. Para corrigir, estorne a despesa em Despesas e lance de novo.";
       if (!m.responsavel || !m.dataRealizada) return "Manutenção sem aprovação registrada: não dá para lançar o custo.";
       if (m.responsavel === "proprietario" && (!m.proprietarioId || (await donoAtual(tx, m.imovelId)) !== m.proprietarioId))
@@ -259,7 +316,8 @@ export type LinhaManutencao = Manutencao & {
 
 /**
  * Manutenções (as que pedem ação primeiro), com avisos para conferência. `emAberto`: as que
- * ainda pedem ação, inclusive a realizada sem custo lançado (ou com a despesa estornada).
+ * ainda pedem ação, inclusive a realizada sem custo lançado (ou com a despesa estornada) — menos a
+ * feita pelo proprietário por conta própria (`semCusto`), que não tem custo a lançar.
  */
 export async function listarManutencoes(db: Db, organizacaoId: string, f: { imovelIds?: string[]; emAberto?: boolean } = {}): Promise<LinhaManutencao[]> {
   const c = [eq(manutencoes.organizacaoId, organizacaoId)];
@@ -291,14 +349,15 @@ export async function listarManutencoes(db: Db, organizacaoId: string, f: { imov
       const estornada = Boolean(m.despesaId && x.estornada);
       const custo = m.despesaId && !estornada ? (x.despesaValor ?? null) : null;
       const avisos: string[] = [];
-      if ((m.estado === "aprovada" || (m.estado === "realizada" && custo === null)) && m.responsavel === "proprietario" && m.proprietarioId !== x.donoAtual)
+      if (m.semCusto) avisos.push("Feita pelo proprietário por conta própria (marketplace): sem custo para a empresa.");
+      if (!m.semCusto && (m.estado === "aprovada" || (m.estado === "realizada" && custo === null)) && m.responsavel === "proprietario" && m.proprietarioId !== x.donoAtual)
         avisos.push("O imóvel mudou de proprietário depois da aprovação: o custo não vai para o dono novo. Decida com o Diego como cobrar.");
       if (m.estado === "orcada") avisos.push("Orçamento aguardando aprovação do Diego: não execute antes.");
       if (m.estado === "realizada" && estornada) avisos.push("A despesa desta manutenção foi estornada: lance o custo de novo, se for o caso.");
-      else if (m.estado === "realizada" && custo === null) avisos.push("Custo ainda não lançado.");
+      else if (m.estado === "realizada" && custo === null && !m.semCusto) avisos.push("Custo ainda não lançado.");
       if (custo !== null && m.orcamento !== null && custo > m.orcamento) avisos.push(`Custo acima do orçamento aprovado (${formatBRL(m.orcamento)}): confira.`);
       return { ...m, imovelCodigo: x.imovelCodigo, custo, despesaEstornada: estornada, avisos };
     })
-    .filter((m) => !f.emAberto || m.estado !== "realizada" || m.custo === null)
+    .filter((m) => !f.emAberto || m.estado !== "realizada" || (m.custo === null && !m.semCusto))
     .sort((a, b) => ordem(a.estado) - ordem(b.estado));
 }

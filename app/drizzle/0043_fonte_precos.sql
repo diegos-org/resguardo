@@ -1,0 +1,1 @@
+ALTER TABLE "imoveis_detalhes" ADD COLUMN "fonte_precos" text DEFAULT 'scl' NOT NULL;

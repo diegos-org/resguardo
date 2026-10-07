@@ -78,7 +78,7 @@ export default async function PainelInicio({ searchParams }: PageProps<"/painel"
         ) : (
           <ul style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 4 }}>
             {d.alertas.map((a) => (
-              <li key={a.texto} style={{ color: a.nivel === "atencao" ? "#7a2020" : "inherit" }}>
+              <li key={a.texto} style={{ color: a.nivel === "atencao" ? "var(--scl-erro-texto)" : "inherit" }}>
                 {a.texto} {a.link && <Link href={`${a.link}${query}`}>Ver</Link>}
               </li>
             ))}

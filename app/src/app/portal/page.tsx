@@ -8,14 +8,27 @@ import { imoveis } from "@/db/schema";
 import type { ItemCalendario } from "@/calendario/grade";
 import { BotaoCopiar } from "@/components/BotaoCopiar";
 import { BloqueiosProprietario } from "@/components/portal/BloqueiosProprietario";
+import { type ImovelOperavel, OperacaoMarketplace } from "@/components/portal/OperacaoMarketplace";
 import { CalendarioPortal } from "@/components/portal/CalendarioPortal";
+import { ExtratoRepasses } from "@/components/portal/ExtratoRepasses";
+import { MolduraPortal } from "@/components/portal/MolduraPortal";
+import styles from "@/components/portal/portal.module.css";
 import { lerEmpresa, nomeDaEmpresa } from "@/configuracoes/empresa";
+import { fontesDePrecosDosImoveis } from "@/imoveis/detalhes";
+import { EXPLICACAO_FONTE_PRECOS, NOMES_FONTE_PRECOS } from "@/imoveis/fonte-precos";
 import { hojeISO } from "@/lib/datas";
 import { centavosParaCampo } from "@/lib/dinheiro-form";
 import { nomeDoMes, periodoDosFiltros } from "@/lib/filtros";
 import { formatBRL } from "@/lib/money";
-import { bloquearDatasAcao, liberarDatasAcao } from "@/portal/acoes";
+import { bloquearDatasAcao, escolherPeriodicidadeAcao, excluirPeriodoPortalAcao, liberarDatasAcao, marcarLimpezaFeitaPortalAcao, novoPeriodoPortalAcao, pedirRepasseAcao, registrarManutencaoPortalAcao, salvarPrecosPortalAcao } from "@/portal/acoes";
+import { situacaoNoPortal } from "@/portal/aceites";
+import { partesDoProprietario } from "@/repasses/extrato";
+import { periodicidadeDoProprietario } from "@/repasses/proprietario";
+import { diaDoFechamento } from "@/repasses/periodicidade";
+import { lerRegrasRepasses } from "@/repasses/regras-config";
+import { itensDoRepasse, listarRepasses } from "@/repasses/repasses";
 import { bloqueiosDoProprietario, permissoesDeBloqueio } from "@/portal/bloqueios";
+import { imoveisMarketplaceDaSessao, limpezasDoProprietario, manutencoesDoProprietario, precosDoMarketplace } from "@/portal/marketplace";
 import { janela, lerPeriodoPortal, nome, situacaoDoPeriodo, vizinhos } from "@/portal/periodo";
 import { bloqueiosDoPortal, reservasDoPortal, type SituacaoReserva } from "@/portal/reservas";
 import { hojeMaisCedo } from "@/site/site";
@@ -51,7 +64,7 @@ function DepoisDoFechamento({ r, empresa }: { r: Rodape; empresa: string }) {
   );
 }
 
-function TextoRodape({ r, empresa }: { r: Rodape; empresa: string }) {
+function TextoRodape({ r, empresa, diaFechamento }: { r: Rodape; empresa: string; diaFechamento: number }) {
   const valor = <strong>{formatBRL(r.valor)}</strong>;
   const descontos = r.descontado > 0 ? ` (já descontados ${formatBRL(r.descontado)} de despesas que a ${empresa} pagou por você)` : "";
   switch (r.situacao) {
@@ -115,8 +128,8 @@ function TextoRodape({ r, empresa }: { r: Rodape; empresa: string }) {
               <span>
                 Pix da {empresa}: <code>{r.chavePix}</code>
               </span>
-              <BotaoCopiar texto={r.chavePix} rotulo="Copiar Pix" />
-              <BotaoCopiar texto={centavosParaCampo(r.valor)} rotulo="Copiar valor" />
+              <BotaoCopiar texto={r.chavePix} rotulo="Copiar Pix" className={`${styles.botao} ${styles.botaoContorno}`} />
+              <BotaoCopiar texto={centavosParaCampo(r.valor)} rotulo="Copiar valor" className={`${styles.botao} ${styles.botaoContorno}`} />
             </div>
           ) : (
             <p style={{ margin: 0 }}>Fale com a {empresa} para combinar o pagamento.</p>
@@ -127,7 +140,7 @@ function TextoRodape({ r, empresa }: { r: Rodape; empresa: string }) {
       return (
         <p style={{ margin: 0 }}>
           Saldo parcial até o fim do período: {valor}
-          {r.aFavor === "proprietario" ? " a seu favor" : r.aFavor === "empresa" ? ` a favor da ${empresa}` : ""}. O valor final, quem paga e o Pix saem no fechamento, no dia 1º do mês
+          {r.aFavor === "proprietario" ? " a seu favor" : r.aFavor === "empresa" ? ` a favor da ${empresa}` : ""}. O valor final, quem paga e o Pix saem no fechamento, no dia {diaFechamento} do mês
           seguinte.
         </p>
       );
@@ -140,15 +153,16 @@ function TextoRodape({ r, empresa }: { r: Rodape; empresa: string }) {
 
 const curto = (p: { ano: number; mes: number | null }) => (p.mes === null ? String(p.ano) : `${nomeDoMes(p.mes).slice(0, 3)}/${p.ano}`);
 
-const caixa: React.CSSProperties = { background: "#fff", border: "1px solid var(--scl-areia)", borderRadius: 8, padding: 16 };
-const rotulo: React.CSSProperties = { color: "var(--scl-texto-2)", fontSize: "0.875rem" };
-
 function Numero({ titulo, valor, detalhe }: { titulo: string; valor: string; detalhe?: string }) {
   return (
-    <div style={caixa}>
-      <div style={rotulo}>{titulo}</div>
-      <div style={{ fontSize: "1.375rem", fontVariantNumeric: "tabular-nums", marginTop: 4 }}>{valor}</div>
-      {detalhe && <div style={{ ...rotulo, marginTop: 2 }}>{detalhe}</div>}
+    <div className={styles.numero}>
+      <div className={styles.rotulo}>{titulo}</div>
+      <div className={styles.numeroValor}>{valor}</div>
+      {detalhe && (
+        <div className={styles.rotulo} style={{ marginTop: 2 }}>
+          {detalhe}
+        </div>
+      )}
     </div>
   );
 }
@@ -167,6 +181,8 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
     nomeDaEmpresa(db, sessao.organizacaoId),
   ]);
   meus.sort((x, y) => x.codigo.localeCompare(y.codigo));
+  // "Como funciona" (M5.6): com versão publicada e ainda sem aceite, a faixa pede a leitura.
+  const comoFunciona = await situacaoNoPortal(db, sessao.organizacaoId, sessao.usuarioId);
   const opcoes = meus.map((i) => ({ codigo: i.codigo, nome: i.nome }));
   const params = await searchParams;
   const { filtros, aviso } = lerPeriodoPortal(params, opcoes);
@@ -178,7 +194,36 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
   // atuais/futuros dos imóveis dele. "Hoje" é o mais cedo entre os fusos dos imóveis dele (o servidor confere
   // cada pedido no fuso do imóvel escolhido).
   const hojeUsoProprio = hojeMaisCedo(meus);
-  const [permissoes, meusBloqueios] = await Promise.all([permissoesDeBloqueio(db, sessao.organizacaoId, sessao.imovelIds, hojeUsoProprio), bloqueiosDoProprietario(db, sessao)]);
+  const [permissoes, meusBloqueios, fontesPrecos] = await Promise.all([permissoesDeBloqueio(db, sessao.organizacaoId, sessao.imovelIds, hojeUsoProprio), bloqueiosDoProprietario(db, sessao), fontesDePrecosDosImoveis(db, sessao.organizacaoId, meus.map((i) => i.id))]);
+  // Marketplace (M12.4): só os imóveis em contrato marketplace hoje; o resto da página é igual para todos.
+  const marketplace = await imoveisMarketplaceDaSessao(db, sessao);
+  const operaveis: ImovelOperavel[] = marketplace.map((i) => ({
+    id: i.id,
+    codigo: i.codigo,
+    nome: i.nome,
+    hoje: hojeISO(i.fuso),
+    desde: i.posseDesde,
+    fontePrecos: i.fontePrecos,
+    regras: {
+      precoBase: i.detalhes.precoBase,
+      taxaLimpeza: i.detalhes.taxaLimpeza,
+      hospedeExtraValor: i.detalhes.hospedeExtraValor,
+      hospedeExtraAPartirDe: i.detalhes.hospedeExtraAPartirDe,
+      estadiaMinima: i.detalhes.estadiaMinima,
+      estadiaMaxima: i.detalhes.estadiaMaxima,
+      antecedenciaMinima: i.detalhes.antecedenciaMinima,
+      janelaMaxima: i.detalhes.janelaMaxima,
+      diasChegada: i.detalhes.diasChegada,
+      diasSaida: i.detalhes.diasSaida,
+      checkinAPartirDe: i.detalhes.checkinAPartirDe,
+      checkoutAte: i.detalhes.checkoutAte,
+    },
+    periodos: i.periodos,
+    envio: i.envio,
+  }));
+  const [precosMarketplace, limpezasMarketplace, manutencoesMarketplace] = marketplace.length
+    ? await Promise.all([precosDoMarketplace(db, sessao.organizacaoId), limpezasDoProprietario(db, sessao), manutencoesDoProprietario(db, sessao)])
+    : [null, [], []];
   // Mesma regra do PDF: só os donos dos imóveis escolhidos (no período) e só os imóveis que eram
   // deles no período; os lançamentos sem imóvel entram quando todos os imóveis desses donos estão escolhidos.
   const selecao = await donosDosEscolhidos(db, donos, escolhidos, periodo);
@@ -211,6 +256,23 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
   // Saldo do acerto: o do repasse do mês (no ano inteiro, o de dezembro), com todos os imóveis dele.
   const mesSaldo = `${filtros.ano}-${String(filtros.mes ?? 12).padStart(2, "0")}`;
   const rodape = await rodapeDoPortal(db, sessao.organizacaoId, { proprietarios: selecao.donos, mes: mesSaldo, hoje, pixEmpresa: (await lerEmpresa(db, sessao.organizacaoId)).chavePix });
+  // Extrato e repasses (M4.10), de todos os proprietários do usuário: as partes do período (ou ainda não repassadas) e os repasses do período (ou a pagar).
+  const regrasRepasses = await lerRegrasRepasses(db, sessao.organizacaoId);
+  const agora = new Date();
+  const periodicidades = (await Promise.all(donos.map((d) => periodicidadeDoProprietario(db, sessao.organizacaoId, d.id, hoje, regrasRepasses)))).filter((x) => x !== null);
+  const partes = (await Promise.all(donos.map((d) => partesDoProprietario(db, sessao.organizacaoId, d.id, agora)))).flat().filter((x) => (x.competencia >= periodo.inicio && x.competencia < periodo.fim) || x.situacao === "disponivel" || x.situacao === "a_liberar");
+  // Estornados ficam no histórico do período (o proprietário viu o repasse aparecer, talvez até pago): a situação explica.
+  const repassesDoPortal = (await Promise.all(donos.map((d) => listarRepasses(db, sessao.organizacaoId, d.id)))).flat().filter((r) => (r.data >= periodo.inicio && r.data < periodo.fim) || r.situacao === "a_pagar");
+  // As reservas que cada repasse cobriu (itens): o detalhe oficial do que foi pago, mesmo com partes do mesmo período em repasses diferentes.
+  const itensDosRepasses = Object.fromEntries(await Promise.all(repassesDoPortal.map(async (r) => [r.id, await itensDoRepasse(db, sessao.organizacaoId, r.id)] as const)));
+  const mensagemRepasses =
+    typeof params.erro === "string"
+      ? { tipo: "erro" as const, texto: params.erro }
+      : params.salvo === "periodicidade"
+        ? { tipo: "ok" as const, texto: "Sua escolha foi salva: vale a partir do próximo repasse." }
+        : params.salvo === "repasse"
+          ? { tipo: "ok" as const, texto: `Pedido registrado: o repasse aparece abaixo como a pagar. A ${empresa} faz o Pix e você recebe o comprovante por e-mail.` }
+          : null;
   const situacao = situacaoDoPeriodo(filtros);
   const { anterior, seguinte } = vizinhos(filtros);
   const j = janela();
@@ -231,38 +293,44 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
   }
 
   return (
-    <main style={{ maxWidth: 880, margin: "0 auto", padding: "32px 16px 64px", display: "flex", flexDirection: "column", gap: 20 }}>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
+    <MolduraPortal empresa={empresa} titulo="Portal do proprietário" sair={sair}>
+      <header className={styles.cabecalho}>
         <div>
-          <h1 style={{ fontSize: "1.75rem", margin: 0 }}>Portal do proprietário</h1>
-          {donos.length > 0 && <p style={{ ...rotulo, margin: 0 }}>{donos.map((d) => d.nome).join(", ")}</p>}
+          <p className={styles.olho}>Portal do proprietário</p>
+          <h1>{donos.length > 0 ? donos.map((d) => d.nome).join(", ") : "Seus imóveis"}</h1>
         </div>
-        <form action={sair}>
-          <button type="submit" style={{ font: "inherit", padding: "6px 14px", borderRadius: 6, border: "1px solid #d8d0c0", background: "#fff", cursor: "pointer" }}>
-            Sair
-          </button>
-        </form>
       </header>
+      {comoFunciona.atual &&
+        (comoFunciona.pendente ? (
+          <p role="alert" className={styles.nota}>
+            <strong>Leia e aceite o documento &ldquo;Como funciona&rdquo;</strong> (versão {comoFunciona.atual.numero}, de {br(comoFunciona.atual.data)}): ele explica o que a {empresa} faz, a
+            comissão, quando e como você recebe. <Link href="/portal/como-funciona">Ler e aceitar →</Link>
+          </p>
+        ) : (
+          <p className={styles.miudo}>
+            <Link href="/portal/como-funciona">Como funciona</Link> · versão {comoFunciona.atual.numero}, aceita.
+          </p>
+        ))}
 
       {meus.length === 0 ? (
         <p>Nenhum imóvel ligado ao seu cadastro ainda. Fale com a {empresa}.</p>
       ) : (
         <>
-          <form method="get" action="/portal" aria-label="Filtro" style={{ ...caixa, display: "flex", gap: 16, flexWrap: "wrap", alignItems: "flex-end" }}>
+          <form method="get" action="/portal" aria-label="Filtro" className={styles.filtro}>
             {meus.length > 1 && (
-              <fieldset style={{ border: 0, padding: 0, margin: 0, display: "flex", gap: "4px 16px", flexWrap: "wrap" }}>
-                <legend style={rotulo}>Imóveis</legend>
+              <fieldset>
+                <legend>Imóveis</legend>
                 {meus.map((i) => (
-                  <label key={i.codigo} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <label key={i.codigo} className={styles.opcao}>
                     <input type="checkbox" name="imovel" value={i.codigo} defaultChecked={filtros.imoveis.length === 0 || filtros.imoveis.includes(i.codigo)} />
                     {i.codigo} · {i.nome}
                   </label>
                 ))}
               </fieldset>
             )}
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, ...rotulo }}>
+            <label className={styles.campo}>
               Mês
-              <select name="mes" defaultValue={filtros.mes === null ? "todos" : String(filtros.mes)} style={{ font: "inherit", padding: 6 }}>
+              <select name="mes" defaultValue={filtros.mes === null ? "todos" : String(filtros.mes)}>
                 <option value="todos">Ano inteiro</option>
                 {Array.from({ length: 12 }, (_, k) => (
                   <option key={k + 1} value={k + 1}>
@@ -271,9 +339,9 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
                 ))}
               </select>
             </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, ...rotulo }}>
+            <label className={styles.campo}>
               Ano
-              <select name="ano" defaultValue={String(filtros.ano)} style={{ font: "inherit", padding: 6 }}>
+              <select name="ano" defaultValue={String(filtros.ano)}>
                 {anos.map((a) => (
                   <option key={a} value={a}>
                     {a}
@@ -281,18 +349,18 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
                 ))}
               </select>
             </label>
-            <button type="submit" style={{ font: "inherit", padding: "8px 16px", borderRadius: 6, border: 0, background: "var(--scl-salvia)", color: "#fff", cursor: "pointer" }}>
+            <button type="submit" className={styles.botao}>
               Ver
             </button>
           </form>
 
           {aviso && (
-            <p role="alert" style={{ margin: 0, padding: 12, borderRadius: 6, background: "#fbeaea", color: "#8a1c14" }}>
+            <p role="alert" className={styles.alerta}>
               {aviso}
             </p>
           )}
 
-          <nav aria-label="Período" style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8 }}>
+          <nav aria-label="Período" className={styles.periodo}>
             {anterior ? (
               <Link href={link(anterior)} aria-label={`Anterior: ${anterior.mes === null ? anterior.ano : nome(anterior)}`}>
                 ← {curto(anterior)}
@@ -300,9 +368,9 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
             ) : (
               <span />
             )}
-            <strong style={{ fontSize: "1.25rem", textAlign: "center" }}>{titulo}</strong>
+            <strong>{titulo}</strong>
             {seguinte ? (
-              <Link href={link(seguinte)} aria-label={`Seguinte: ${seguinte.mes === null ? seguinte.ano : nome(seguinte)}`} style={{ justifySelf: "end" }}>
+              <Link href={link(seguinte)} aria-label={`Seguinte: ${seguinte.mes === null ? seguinte.ano : nome(seguinte)}`}>
                 {curto(seguinte)} →
               </Link>
             ) : (
@@ -310,19 +378,19 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
             )}
           </nav>
           {filtros.mes !== null && selecao.imoveis.length > 0 && (
-            <p style={{ margin: 0, textAlign: "center" }}>
+            <p className={styles.centro}>
               <a href={link({ ano: filtros.ano, mes: filtros.mes }).replace("/portal?", "/portal/relatorio?")} download>
                 Baixar o relatório deste mês em PDF
               </a>
             </p>
           )}
           {SITUACAO[situacao] && (
-            <p role="note" style={{ margin: 0, padding: "8px 12px", borderRadius: 6, background: "var(--scl-areia)", fontSize: "0.9375rem" }}>
+            <p role="note" className={styles.nota}>
               <strong>{SITUACAO[situacao].titulo}:</strong> {SITUACAO[situacao].texto}
             </p>
           )}
 
-          <section aria-label="Números do período" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+          <section aria-label="Números do período" className={styles.numeros}>
             <Numero titulo="Reservas" valor={String(resumo.reservas)} detalhe={selecao.imoveis.map((i) => i.codigo).join(", ")} />
             <Numero titulo="Valor bruto das reservas" valor={formatBRL(resumo.receitaBruta)} detalhe={`Taxas dos canais: ${formatBRL(resumo.taxasCanais)}`} />
             <Numero titulo={`Comissão da ${empresa}`} valor={formatBRL(resumo.comissao)} />
@@ -335,7 +403,7 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
             />
           </section>
           {resumo.emConferencia && (
-            <p role="note" style={{ margin: 0, padding: "8px 12px", borderRadius: 6, background: "var(--scl-areia)", fontSize: "0.9375rem" }}>
+            <p role="note" className={styles.nota}>
               <strong>Em conferência:</strong> há itens deste período ainda não definidos
               {resumo.acertoPendente !== 0 ? ` (${formatBRL(Math.abs(resumo.acertoPendente))} ${resumo.acertoPendente > 0 ? "a seu favor" : `a favor da ${empresa}`})` : ""}. Eles
               ficaram fora do acerto acima, que ainda não é definitivo. A {empresa} vai esclarecer antes do fechamento do mês.
@@ -343,9 +411,9 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
           )}
 
           {filtros.mes !== null && (
-            <section aria-label="Calendário" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <h2 style={{ fontSize: "1.125rem", margin: 0 }}>Calendário</h2>
-              <p style={{ ...rotulo, margin: 0 }}>Toque numa reserva para ver os valores dela na tabela.</p>
+            <section aria-label="Calendário" className={styles.secao}>
+              <h2>Calendário</h2>
+              <p className={styles.miudo}>Toque numa reserva para ver os valores dela na tabela.</p>
               <CalendarioPortal periodo={periodo} imoveis={selecao.imoveis} itens={itens} hoje={hoje} />
             </section>
           )}
@@ -359,18 +427,54 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
             liberar={liberarDatasAcao}
           />
 
-          <section aria-label="Reservas" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <h2 style={{ fontSize: "1.125rem", margin: 0 }}>Reservas</h2>
+          {precosMarketplace && (
+            <OperacaoMarketplace
+              imoveis={operaveis}
+              precos={precosMarketplace}
+              limpezas={limpezasMarketplace}
+              manutencoes={manutencoesMarketplace}
+              empresa={empresa}
+              salvarPrecos={salvarPrecosPortalAcao}
+              novoPeriodo={novoPeriodoPortalAcao}
+              excluirPeriodo={excluirPeriodoPortalAcao}
+              marcarLimpeza={marcarLimpezaFeitaPortalAcao}
+              registrarManutencao={registrarManutencaoPortalAcao}
+            />
+          )}
+
+          {meus.length > 0 && (
+            <section aria-label="De onde vêm os preços" className={styles.secao}>
+              <h2>De onde vêm os preços</h2>
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {meus.map((i) => {
+                  const f = fontesPrecos.get(i.id) ?? "scl";
+                  return (
+                    <li key={i.id}>
+                      <strong>
+                        {i.codigo} · {i.nome}:
+                      </strong>{" "}
+                      {NOMES_FONTE_PRECOS[f]}. <span className={styles.rotulo}>{EXPLICACAO_FONTE_PRECOS[f]}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className={styles.miudo}>
+                O calendário, as estadias mínimas e os bloqueios são sempre do SCL. O site da {empresa} vende pelo mesmo preço do canal, com o desconto do site por cima. Para mudar a fonte de preços, fale com a {empresa}.
+              </p>
+            </section>
+          )}
+
+          <section aria-label="Reservas" className={styles.secao}>
+            <h2>Reservas</h2>
             {lista.length === 0 ? (
               <p style={{ margin: 0 }}>Nenhuma reserva confirmada neste período.</p>
             ) : (
-              <div style={{ overflowX: "auto", ...caixa, padding: 0 }}>
-                <style>{`tr:target td { background: #f6efe0; }`}</style>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
+              <div className={styles.rolagem}>
+                <table className={styles.tabela}>
                   <thead>
-                    <tr style={{ textAlign: "left", color: "var(--scl-texto-2)" }}>
+                    <tr>
                       {["Imóvel", "Entrada", "Saída", "Hóspede", "Valor bruto*", "Sua parte*", "Situação", "Canal", "Origem"].map((c) => (
-                        <th key={c} scope="col" style={{ padding: "8px 10px", borderBottom: "1px solid var(--scl-areia)", whiteSpace: "nowrap" }}>
+                        <th key={c} scope="col">
                           {c}
                         </th>
                       ))}
@@ -390,7 +494,7 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
                           NOMES_ORIGEM[r.canal],
                           r.origemHospede || "não informada",
                         ].map((v, k) => (
-                          <td key={k} style={{ padding: "8px 10px", borderBottom: "1px solid var(--scl-areia)", whiteSpace: "nowrap", fontVariantNumeric: k === 4 || k === 5 ? "tabular-nums" : undefined }}>
+                          <td key={k} className={k === 4 || k === 5 ? styles.numeroCelula : undefined}>
                             {v}
                           </td>
                         ))}
@@ -400,14 +504,28 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
                 </table>
               </div>
             )}
-            <p style={{ ...rotulo, margin: 0 }}>
+            <p className={styles.miudo}>
               * Valores deste período pelo mês da estadia (estadas que passam de um mês para o outro são divididas pelas noites). Origem só quando o
               hóspede informou.
             </p>
           </section>
 
-          <section aria-label="Saldo e Pix" style={{ ...caixa, display: "flex", flexDirection: "column", gap: 12 }}>
-            <h2 style={{ fontSize: "1.125rem", margin: 0 }}>Saldo com a {empresa}</h2>
+          <ExtratoRepasses
+            donos={donos}
+            periodicidades={periodicidades}
+            partes={partes}
+            repasses={repassesDoPortal}
+            itens={itensDosRepasses}
+            regras={regrasRepasses}
+            hoje={hoje}
+            empresa={empresa}
+            escolher={escolherPeriodicidadeAcao}
+            pedir={pedirRepasseAcao}
+            mensagem={mensagemRepasses}
+          />
+
+          <section aria-label="Saldo e Pix" className={`${styles.caixa} ${styles.secao}`}>
+            <h2>Saldo com a {empresa}</h2>
             <div style={{ display: "flex", gap: "8px 24px", flexWrap: "wrap" }}>
               <span>
                 Receitas (sua parte): <strong>{formatBRL(resumo.suaParte)}</strong>
@@ -419,16 +537,16 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
             {rodape.map((r) => (
               <div key={r.proprietarioId} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 {rodape.length > 1 && <strong>{r.nome}</strong>}
-                <TextoRodape r={r} empresa={empresa} />
+                <TextoRodape r={r} empresa={empresa} diaFechamento={diaDoFechamento(regrasRepasses, mesSaldo)} />
               </div>
             ))}
-            <p style={{ ...rotulo, margin: 0 }}>
+            <p className={styles.miudo}>
               O saldo considera todos os seus imóveis até o fim de {filtros.mes === null ? `dezembro de ${filtros.ano}` : nome({ ano: filtros.ano, mes: filtros.mes })},
               já com os repasses feitos.
             </p>
           </section>
         </>
       )}
-    </main>
+    </MolduraPortal>
   );
 }

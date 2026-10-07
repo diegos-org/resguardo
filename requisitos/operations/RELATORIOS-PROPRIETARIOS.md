@@ -1,5 +1,9 @@
 # Relatórios para proprietários — direção aprovada21/9/2026
 
+> **Modelo visual superado em 4/10/2026:** o modelo oficial do relatório mensal (M5.7) está em
+> `requisitos/product/RELATORIO-MENSAL.md`, com protótipo em `prototipos/relatorio-mensal/`. As regras
+> abaixo sobre destinatários, conferência das fontes, isolamento de dados e compensação continuam valendo.
+
 Modelo de duas páginas: primeira com Sua Casa Leblon, destinatários (proprietário primeiro e representante quando autorizado), nome público do imóvel, mês/ano, período efetivo, foto real e tabela legível. O representante financeiro não se torna coproprietário por figurar no relatório ou receber acesso ao portal. Evitar código interno no título.
 
 Visual acompanha site: verde sálvia #505b46 para marca/destaques; areia #f0e7d7 para página/tabela; dourado #c9a96e para pequenos acentos; texto #252b23, secundário #5b604f. Títulos serifados (Georgia), corpo sem serifa. Respiro entre identidade, foto e números; destaque do total com base claramente nomeada. Não confundir total após taxas do canal com lucro ou repasse ao proprietário.

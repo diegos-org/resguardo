@@ -202,6 +202,23 @@ describe("disponibilidade e cotação do site (M7.2)", () => {
     expect(await consultar({ hospedes: "4" })).toMatchObject({ cotacao: { valorCheio: 190000, desconto: 0, total: 190000 } });
   });
 
+  it("fonte de preços do Beds24 (M3.9): o site cobra o preço lido; leitura sem preço ou vencida deixa a data a confirmar e sem valor, nunca o cadastro", async () => {
+    await db.update(imoveisDetalhes).set({ fontePrecos: "beds24" }).where(eq(imoveisDetalhes.imovelId, im));
+    await observar(dias("2026-10-12", 4), { preco: 52000 });
+    // 3 × R$ 520 + limpeza R$ 250 + hóspede extra (2 × R$ 50 × 3) = R$ 2.110 cheio; desconto do site 4% = R$ 84,40.
+    expect(await consultar({ hospedes: "4" })).toMatchObject({ situacao: "disponivel", motivos: [], cotacao: { diarias: 156000, valorCheio: 211000, desconto: 8440, total: 202560 } });
+    // Uma noite sem preço no Beds24: sem valor e a confirmar (o preço base R$ 450 do cadastro não é usado).
+    await db.update(beds24Calendario).set({ preco: null }).where(eq(beds24Calendario.data, "2026-10-13"));
+    expect(await consultar({ hospedes: "4" })).toMatchObject({ situacao: "a_confirmar", motivos: [expect.stringContaining("definido no Beds24")], cotacao: { diarias: null, valorCheio: null, total: null } });
+    // Leitura vencida: idem, mesmo com preço na leitura antiga.
+    await db.update(beds24Calendario).set({ preco: 52000, observadoEm: new Date("2026-09-20T09:00:00Z") }).where(eq(beds24Calendario.data, "2026-10-13"));
+    expect(await consultar({ hospedes: "4" })).toMatchObject({ situacao: "a_confirmar", cotacao: { diarias: null, total: null } });
+    // Fonte manual: o cadastro vale como está (sem última hora), e o site aplica o desconto normalmente.
+    await db.update(imoveisDetalhes).set({ fontePrecos: "manual" }).where(eq(imoveisDetalhes.imovelId, im));
+    await db.update(beds24Calendario).set({ observadoEm: new Date("2026-10-01T09:15:00Z") }).where(eq(beds24Calendario.data, "2026-10-13"));
+    expect(await consultar({ hospedes: "4" })).toMatchObject({ situacao: "disponivel", cotacao: { diarias: 135000, valorCheio: 190000, desconto: 7600, total: 182400 } });
+  });
+
   it("preço zero numa noite não vira diária grátis: diárias e total ficam a confirmar", async () => {
     await observar(dias("2026-10-12", 4));
     await db.update(imoveisDetalhes).set({ precoBase: 0 });

@@ -14,7 +14,7 @@ import { formatBRL } from "@/lib/money";
 import { aprovarAcao, cancelarAcao, criarAcao, custoAcao, orcamentoAcao, realizarAcao, recusarAcao } from "@/manutencao/acoes";
 import { listarManutencoes, NOMES_ESTADO } from "@/manutencao/manutencao";
 
-const COR: Record<EstadoManutencao, string> = { pedida: "#8a6d1c", orcada: "#b3261e", aprovada: "#2f5d8a", realizada: "#2e6b3f", recusada: "#777", cancelada: "#777" };
+const COR: Record<EstadoManutencao, string> = { pedida: "var(--scl-aviso)", orcada: "var(--scl-erro)", aprovada: "var(--scl-info)", realizada: "var(--scl-ok)", recusada: "var(--scl-texto-2)", cancelada: "var(--scl-texto-2)" };
 const dataBr = (d: string) => d.split("-").reverse().join("/");
 const QUEM: Record<string, string> = { empresa: "empresa paga", proprietario: "proprietário paga" };
 
@@ -181,12 +181,12 @@ export default async function Manutencao({ searchParams }: PageProps<"/painel/ma
             </form>
           )}
 
-          {lancar && m.estado === "realizada" && m.custo === null && categorias.length === 0 && (
+          {lancar && m.estado === "realizada" && m.custo === null && !m.semCusto && categorias.length === 0 && (
             <p role="note" className={styles.alerta} style={{ margin: 0 }}>
               Nenhuma categoria de despesa ativa: crie ou reative uma em <Link href="/painel/despesas/categorias">Despesas → Categorias</Link> para lançar o custo.
             </p>
           )}
-          {lancar && m.estado === "realizada" && m.custo === null && categorias.length > 0 && (
+          {lancar && m.estado === "realizada" && m.custo === null && !m.semCusto && categorias.length > 0 && (
             <form action={custoAcao} className={styles.linha} style={{ alignItems: "flex-end" }}>
               <input type="hidden" name="id" value={m.id} />
               <input type="hidden" name="voltar" value={voltar} />
@@ -269,7 +269,7 @@ export default async function Manutencao({ searchParams }: PageProps<"/painel/ma
                       <input name="motivo" required maxLength={300} />
                     </label>
                     <div className={styles.acoes}>
-                      <BotaoConfirmar pergunta={`Recusar ${m.titulo} (${m.imovelCodigo})?`} style={{ background: "#b3261e" }}>
+                      <BotaoConfirmar pergunta={`Recusar ${m.titulo} (${m.imovelCodigo})?`} style={{ background: "var(--scl-erro)" }}>
                         Recusar
                       </BotaoConfirmar>
                     </div>
@@ -284,7 +284,7 @@ export default async function Manutencao({ searchParams }: PageProps<"/painel/ma
                       <input name="motivo" required maxLength={300} />
                     </label>
                     <div className={styles.acoes}>
-                      <BotaoConfirmar pergunta={`Cancelar ${m.titulo} (${m.imovelCodigo})?`} style={{ background: "#b3261e" }}>
+                      <BotaoConfirmar pergunta={`Cancelar ${m.titulo} (${m.imovelCodigo})?`} style={{ background: "var(--scl-erro)" }}>
                         Cancelar
                       </BotaoConfirmar>
                     </div>

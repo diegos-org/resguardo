@@ -22,7 +22,7 @@ function Encerrar({ c, imovelId, acao }: { c: Contrato; imovelId: string; acao: 
       <BotaoConfirmar
         pergunta="Encerrar este contrato na data escolhida? Não dá para estender depois, só criar um contrato novo."
         disabled={enviando}
-        style={{ font: "inherit", fontSize: "0.875rem", padding: "4px 10px", borderRadius: 6, border: "1px solid #d8d0c0", background: "#fff", cursor: "pointer" }}
+        style={{ font: "inherit", fontSize: "0.875rem", padding: "4px 10px", borderRadius: 6, border: "1px solid var(--scl-borda)", background: "var(--scl-papel)", cursor: "pointer" }}
       >
         Encerrar
       </BotaoConfirmar>
@@ -42,7 +42,7 @@ function BloqueioPortal({ c, acao }: { c: Contrato; acao: Acao }) {
         type="submit"
         disabled={enviando}
         aria-label={c.proprietarioBloqueia ? "Desligar o bloqueio pelo portal neste contrato" : "Ligar o bloqueio pelo portal neste contrato"}
-        style={{ font: "inherit", fontSize: "0.8125rem", padding: "2px 8px", borderRadius: 6, border: "1px solid #d8d0c0", background: "#fff", cursor: "pointer" }}
+        style={{ font: "inherit", fontSize: "0.8125rem", padding: "2px 8px", borderRadius: 6, border: "1px solid var(--scl-borda)", background: "var(--scl-papel)", cursor: "pointer" }}
       >
         {enviando ? "Salvando…" : c.proprietarioBloqueia ? "Desligar" : "Ligar"}
       </button>

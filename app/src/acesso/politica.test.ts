@@ -26,15 +26,18 @@ describe("proprietário", () => {
     expect(ok({ ...dono, imovelIds: ["*"] }, "financeiro:ler", "im-102")).toBe(false);
   });
 
-  it("não edita nada além do próprio calendário (bloqueio de uso próprio, só nos seus imóveis)", () => {
-    for (const acao of ACOES.filter((a) => !a.endsWith(":ler") && a !== "bloqueio:proprio")) {
+  it("não edita nada além do próprio calendário e da operação do marketplace (bloqueio de uso próprio e marketplace:operar, só nos seus imóveis)", () => {
+    const proprias = ["bloqueio:proprio", "marketplace:operar"] as const;
+    for (const acao of ACOES.filter((a) => !a.endsWith(":ler") && !(proprias as readonly string[]).includes(a))) {
       expect(ok(dono, acao, "im-403")).toBe(false);
     }
-    expect(ok(dono, "bloqueio:proprio", "im-403")).toBe(true);
-    expect(ok(dono, "bloqueio:proprio", "im-102")).toBe(false);
-    expect(ok(dono, "bloqueio:proprio")).toBe(false);
-    expect(ok(operacao, "bloqueio:proprio", "im-403")).toBe(false);
-    expect(ok(hospede, "bloqueio:proprio", "im-403")).toBe(false);
+    for (const acao of proprias) {
+      expect(ok(dono, acao, "im-403")).toBe(true);
+      expect(ok(dono, acao, "im-102")).toBe(false);
+      expect(ok(dono, acao)).toBe(false);
+      expect(ok(operacao, acao, "im-403")).toBe(false);
+      expect(ok(hospede, acao, "im-403")).toBe(false);
+    }
   });
 });
 

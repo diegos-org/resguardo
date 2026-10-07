@@ -12,14 +12,14 @@ import { imoveisComPortaria, type LinhaPortaria, listarPortaria, type Passo, som
 
 const br = (d: string | null) => (d ? d.split("-").reverse().join("/") : "—");
 const COR: Record<Passo, string> = {
-  aviso_inicial: "#b3261e",
-  segundo_pedido: "#b3261e",
-  pedido_final: "#b3261e",
-  encaminhar: "#b3261e",
-  confirmar_entrega: "#8a6d1c",
-  aguardar: "#8a6d1c",
-  entrada_passou: "#777",
-  concluido: "#2e6b3f",
+  aviso_inicial: "var(--scl-erro)",
+  segundo_pedido: "var(--scl-erro)",
+  pedido_final: "var(--scl-erro)",
+  encaminhar: "var(--scl-erro)",
+  confirmar_entrega: "var(--scl-aviso)",
+  aguardar: "var(--scl-aviso)",
+  entrada_passou: "var(--scl-texto-2)",
+  concluido: "var(--scl-ok)",
 };
 const BOTAO: Partial<Record<Passo, [string, string]>> = {
   aviso_inicial: ["aviso_inicial", "Registrar aviso inicial"],

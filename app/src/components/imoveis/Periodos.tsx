@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import type { EstadoPeriodo } from "@/imoveis/acoes";
+import type { FontePrecos } from "@/imoveis/fonte-precos";
 import { cotarEstadia, type Periodo, type RegrasVenda, verificarEstadia } from "@/imoveis/regras-venda";
 import styles from "../formularios.module.css";
 
@@ -14,17 +15,21 @@ type Props = {
   periodos: (Periodo & { id: string })[];
   criar: (a: EstadoPeriodo, f: FormData) => Promise<EstadoPeriodo>;
   excluir: (f: FormData) => Promise<void>;
+  /** Preços definidos no Beds24 (M3.9): o período só leva estadia mínima — o campo de preço nem aparece. */
+  semPreco?: boolean;
 };
 
 /** Exceções por período: preço da noite e/ou estadia mínima diferentes (Réveillon, Carnaval…). */
-export function Periodos({ imovelId, periodos, criar, excluir }: Props) {
+export function Periodos({ imovelId, periodos, criar, excluir, semPreco = false }: Props) {
   const [estado, enviar, enviando] = useActionState(criar, {});
   const v = estado.valores ?? {};
   return (
     <section aria-label="Períodos especiais" style={{ maxWidth: 820, display: "flex", flexDirection: "column", gap: 12 }}>
       <h2 style={{ fontSize: "1.25rem" }}>Períodos especiais</h2>
       <p style={{ fontSize: "0.875rem", color: "var(--scl-texto-2)", margin: 0 }}>
-        Preço da noite e/ou estadia mínima diferentes em datas específicas. As datas são das noites (a primeira e a última noite do período). O preço explícito do período é preservado, mesmo fora dos limites gerais do preço base.
+        {semPreco
+          ? "Estadia mínima diferente em datas específicas. As datas são das noites (a primeira e a última noite do período). O preço da noite é definido no Beds24, então aqui o período não tem preço."
+          : "Preço da noite e/ou estadia mínima diferentes em datas específicas. As datas são das noites (a primeira e a última noite do período). O preço explícito do período é preservado, mesmo fora dos limites gerais do preço base."}
       </p>
       {periodos.length > 0 && (
         <div className={styles.rolagem}>
@@ -79,13 +84,15 @@ export function Periodos({ imovelId, periodos, criar, excluir }: Props) {
           </label>
         </div>
         <div className={styles.linha}>
-          <label>
-            Preço da noite (R$)
-            <input name="precoNoite" inputMode="decimal" placeholder="em branco = preço base" defaultValue={v.precoNoite} />
-          </label>
+          {!semPreco && (
+            <label>
+              Preço da noite (R$)
+              <input name="precoNoite" inputMode="decimal" placeholder="em branco = preço base" defaultValue={v.precoNoite} />
+            </label>
+          )}
           <label>
             Estadia mínima (noites)
-            <input name="estadiaMinima" type="number" min={1} max={365} placeholder="em branco = a geral" defaultValue={v.estadiaMinima} />
+            <input name="estadiaMinima" type="number" min={1} max={365} placeholder={semPreco ? "ex.: 5" : "em branco = a geral"} defaultValue={v.estadiaMinima} required={semPreco} />
           </label>
         </div>
         {estado.erro && (
@@ -103,18 +110,28 @@ export function Periodos({ imovelId, periodos, criar, excluir }: Props) {
   );
 }
 
-/** Simulador: confere regras e valor de uma estadia com o cadastro salvo (nada é gravado). */
-export function Simulador({ regras, periodos, hoje }: { regras: RegrasVenda; periodos: Periodo[]; hoje: string }) {
+/**
+ * Simulador: confere regras e valor de uma estadia com o cadastro salvo (nada é gravado). Segue a fonte
+ * de preços do imóvel (M3.9): com preços digitados, sem os limites do preço dinâmico; com preços do
+ * Beds24, só as regras de estadia — o valor vem da leitura do Beds24 (prévia de calendário e site).
+ */
+export function Simulador({ regras, periodos, hoje, fontePrecos = "scl" }: { regras: RegrasVenda; periodos: Periodo[]; hoje: string; fontePrecos?: FontePrecos }) {
   const [checkin, setCheckin] = useState("");
   const [checkout, setCheckout] = useState("");
   const [hospedes, setHospedes] = useState("2");
   const pronto = /^\d{4}-\d{2}-\d{2}$/.test(checkin) && /^\d{4}-\d{2}-\d{2}$/.test(checkout);
-  const problemas = pronto ? verificarEstadia(regras, periodos, checkin, checkout, hoje) : [];
-  const cot = pronto && checkout > checkin ? cotarEstadia(regras, periodos, checkin, checkout, Number(hospedes) || 1) : null;
+  const regrasDaFonte = fontePrecos === "manual" ? { ...regras, precoDinamico: false } : regras;
+  const problemas = pronto ? verificarEstadia(regrasDaFonte, periodos, checkin, checkout, hoje) : [];
+  const cot = pronto && checkout > checkin && fontePrecos !== "beds24" ? cotarEstadia(regrasDaFonte, periodos, checkin, checkout, Number(hospedes) || 1) : null;
   return (
     <section aria-label="Simular estadia" style={{ maxWidth: 820, display: "flex", flexDirection: "column", gap: 12 }}>
       <h2 style={{ fontSize: "1.25rem" }}>Simular uma estadia</h2>
-      <p style={{ fontSize: "0.875rem", color: "var(--scl-texto-2)", margin: 0 }}>Usa o cadastro salvo acima. Não cria reserva.</p>
+      <p style={{ fontSize: "0.875rem", color: "var(--scl-texto-2)", margin: 0 }}>
+        Usa o cadastro salvo acima. Não cria reserva.
+        {fontePrecos === "manual" ? " Preços digitados: vale o preço base e os períodos como estão, sem eventos, feriadões, última hora nem os limites do preço dinâmico." : ""}
+        {fontePrecos === "beds24" ? " Preços definidos no Beds24: aqui só as regras de estadia são conferidas; o valor da noite é o lido do Beds24 e aparece na prévia de calendário e no site." : ""}
+        {fontePrecos === "scl" ? " O valor abaixo é o do cadastro (base, períodos e limites); eventos, feriadões e última hora entram na prévia de calendário." : ""}
+      </p>
       <div className={styles.form}>
         <div className={styles.linha}>
           <label>
@@ -176,7 +193,7 @@ export function Simulador({ regras, periodos, hoje }: { regras: RegrasVenda; per
               </table>
             )}
             {cot?.avisos.map((a) => (
-              <p key={a} style={{ fontSize: "0.875rem", color: "#7a4a00", margin: 0 }}>
+              <p key={a} style={{ fontSize: "0.875rem", color: "var(--scl-aviso-texto)", margin: 0 }}>
                 ⚠ {a}
               </p>
             ))}
