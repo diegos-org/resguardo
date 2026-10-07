@@ -910,6 +910,32 @@ export const extratosCanal = pgTable(
 );
 
 /**
+ * Foto real de um imóvel (M7.3, liberado por Diego em 7/10/2026): subida pela equipe na ficha do imóvel, guardada em
+ * `arquivos` (como o comprovante e o extrato — fora do Git, sem conta nova). A ordem decide a galeria do site; a
+ * primeira é a capa (cartão do site, página do imóvel e capa do relatório mensal). O site só mostra as fotos de imóvel
+ * público; sem foto, continua o quadro "foto em breve", nunca uma imagem genérica.
+ */
+export const fotosImoveis = pgTable(
+  "fotos_imoveis",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    imovelId: uuid("imovel_id").notNull().references(() => imoveis.id),
+    /** A foto grande (galeria da página do imóvel), já reduzida no navegador antes de subir. */
+    arquivoId: uuid("arquivo_id").notNull().references(() => arquivos.id),
+    /** A versão pequena (cartões do site, miniaturas e capa do relatório); sem ela, vale a grande. */
+    miniaturaId: uuid("miniatura_id").references(() => arquivos.id),
+    /** Posição na galeria (0 = capa). */
+    ordem: integer("ordem").notNull(),
+    /** Texto curto que descreve a foto (vira o texto alternativo no site); vazio = "Foto de {imóvel}". */
+    legenda: text("legenda").notNull().default(""),
+    criadoPor: uuid("criado_por").references(() => usuarios.id),
+    criadoEm: criadoEm(),
+  },
+  (t) => [index("fotos_imoveis_imovel").on(t.imovelId, t.ordem), uniqueIndex("fotos_imoveis_arquivo").on(t.arquivoId), uniqueIndex("fotos_imoveis_miniatura").on(t.miniaturaId)],
+);
+
+/**
  * Repasse ao proprietário. `fechamento` (M4.9): o fechamento de um mês, por competência, com os
  * valores gravados como foram calculados; um ativo por proprietário e mês. `antecipado` (M4.10):
  * repasse programado ou avulso com o que ficou disponível até o dia anterior — um adiantamento

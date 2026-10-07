@@ -1,19 +1,21 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, it, vi } from "vitest";
 import Page from "./page";
-const m = vi.hoisted(() => ({ sessao: vi.fn(), listar: vi.fn(), site: vi.fn(), db: vi.fn(), redirect: vi.fn() }));
+const m = vi.hoisted(() => ({ sessao: vi.fn(), listar: vi.fn(), site: vi.fn(), db: vi.fn(), redirect: vi.fn(), fotos: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: m.redirect }));
 vi.mock("@/acesso/sessao-atual", () => ({ exigirSessaoPainel: m.sessao }));
 vi.mock("@/db/client", () => ({ getDb: m.db }));
 vi.mock("@/anuncios/repositorio", () => ({ listarAnuncios: m.listar }));
 vi.mock("@/anuncios/acoes", () => ({ salvarAnuncioAcao: async () => ({ ok: true }) }));
 vi.mock("@/site/site", () => ({ organizacaoDoSite: m.site }));
+vi.mock("@/imoveis/fotos", () => ({ quantasFotos: m.fotos }));
 beforeEach(() => {
   vi.clearAllMocks();
   m.db.mockReturnValue({});
   m.redirect.mockImplementation(() => { throw new Error("NEXT_REDIRECT"); });
   m.sessao.mockResolvedValue({ papel: "operacao", usuarioId: "u", organizacaoId: "org" });
   m.site.mockResolvedValue("org");
+  m.fotos.mockResolvedValue(new Map([["im", 3]]));
   m.listar.mockResolvedValue([
     { id: "im", codigo: "T1", nome: "Studio fictício", descricao: "Do site", ativo: true, publico: true, precoBase: 10000, anuncios: [], vinculos: [{ canal: "airbnb", idExterno: "123" }] },
     { id: "arq", codigo: "ARQ", nome: "Arquivado", descricao: "", ativo: false, publico: true, precoBase: null, anuncios: [], vinculos: [] },
@@ -27,6 +29,7 @@ it.each(["proprietario", "hospede", "limpeza"])("acesso direto de %s redireciona
   expect(m.db).not.toHaveBeenCalled();
   expect(m.listar).not.toHaveBeenCalled();
   expect(m.site).not.toHaveBeenCalled();
+  expect(m.fotos).not.toHaveBeenCalled();
 });
 it("operação lê sem formulários de edição; ID não significa publicação", async () => {
   const h = await html();
@@ -34,6 +37,10 @@ it("operação lê sem formulários de edição; ID não significa publicação"
   expect(h).toContain("Não conferido"); expect(h).toContain("Vínculo não comprova publicação");
   expect(h).toContain("Preço interno de referência");
   expect(h).not.toContain("Editar referência do");
+  // Fotos reais do site (M7.3): quantas há, ou o aviso de que ainda não há.
+  expect(h).toContain("3 fotos reais na galeria (a primeira é a capa).");
+  m.fotos.mockResolvedValue(new Map());
+  expect(await html()).toContain("Sem fotos ainda");
 });
 it("admin pode editar as referências e tem atalho para o cadastro do site", async () => {
   m.sessao.mockResolvedValue({ papel: "admin", usuarioId: "u", organizacaoId: "org" });
