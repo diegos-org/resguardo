@@ -8,8 +8,18 @@ export const CAMPOS_TEXTOS_SITE = [
   { chave: "olho", rotulo: "Olho da capa (linha pequena acima do título, ex.: RIO DE JANEIRO · BRASIL)", limite: 60, linhas: 1 },
   { chave: "titulo", rotulo: "Título da página inicial (a palavra entre *asteriscos* sai em itálico)", limite: 120, linhas: 1 },
   { chave: "subtitulo", rotulo: "Subtítulo", limite: 240, linhas: 2 },
-  { chave: "sobre", rotulo: "Por que reservar direto (um benefício por bloco, separados por linha em branco; a primeira linha do bloco é o título)", limite: 2000, linhas: 8 },
+  { chave: "legendaCapa", rotulo: "Legenda vertical da capa (texto pequeno no canto da foto, ex.: LEBLON, DO NOSSO JEITO.)", limite: 40, linhas: 1 },
+  { chave: "vitrineOlho", rotulo: "Olho da vitrine de casas (linha pequena acima do título)", limite: 60, linhas: 1 },
+  { chave: "vitrineTitulo", rotulo: "Título da vitrine de casas (a palavra entre *asteriscos* sai em itálico)", limite: 80, linhas: 1 },
+  { chave: "vitrineTexto", rotulo: "Frase da vitrine de casas", limite: 160, linhas: 1 },
+  { chave: "porqueOlho", rotulo: "Olho de \"Por que reservar direto\"", limite: 60, linhas: 1 },
+  { chave: "porqueTitulo", rotulo: "Título de \"Por que reservar direto\" (a parte entre *asteriscos* sai em itálico)", limite: 120, linhas: 1 },
+  { chave: "porque", rotulo: "Por que reservar direto (um benefício por bloco, separados por linha em branco; a primeira linha do bloco é o título). Vazio = a seção não aparece", limite: 2000, linhas: 8 },
   { chave: "comoReservar", rotulo: "Como reservar", limite: 2000, linhas: 5 },
+  { chave: "consultaOlho", rotulo: "Página de consulta: olho (linha pequena acima do título)", limite: 60, linhas: 1 },
+  { chave: "consultaTitulo", rotulo: "Página de consulta: título (a parte entre *asteriscos* sai em itálico)", limite: 120, linhas: 1 },
+  { chave: "consultaTexto", rotulo: "Página de consulta: frase abaixo do título", limite: 240, linhas: 2 },
+  { chave: "chamadaOlho", rotulo: "Olho da chamada final (linha pequena acima dela)", limite: 60, linhas: 1 },
   { chave: "chamada", rotulo: "Chamada final (título da faixa verde antes do rodapé)", limite: 120, linhas: 1 },
   { chave: "contato", rotulo: "Texto de contato", limite: 500, linhas: 3 },
   { chave: "rodape", rotulo: "Rodapé", limite: 240, linhas: 2 },
@@ -21,8 +31,23 @@ export const TEXTOS_SITE_INICIAIS: TextosSite = {
   olho: "Rio de Janeiro · Brasil",
   titulo: "Um pouco de Rio. Um lugar *seu*.",
   subtitulo: "Estadias com cuidado de casa, a poucos passos da praia.",
-  sobre: "",
+  legendaCapa: "Leblon, do nosso jeito.",
+  vitrineOlho: "Poucas casas. Muito cuidado.",
+  vitrineTitulo: "Seu endereço no *Leblon*.",
+  vitrineTexto: "Seu jeito de se sentir em casa no Rio.",
+  porqueOlho: "Reservar direto",
+  porqueTitulo: "A leveza de chegar e *se sentir em casa*.",
+  // Texto-base (M7.6) para Diego revisar perto da entrada no ar: só o que o site de fato oferece.
+  porque: [
+    "Conversa direta\nVocê fala com quem cuida da casa, da primeira mensagem à saída.",
+    "Valor claro desde o início\nO total da estadia aparece antes de qualquer reserva, já com o desconto de quem reserva pelo site.",
+    "Um bairro para viver\nEntre a praia, os cafés e os restaurantes, descubra seu próprio ritmo no Leblon.",
+  ].join("\n\n"),
   comoReservar: "",
+  consultaOlho: "Vamos combinar sua viagem",
+  consultaTitulo: "Conte seus planos. *A gente encontra sua casa.*",
+  consultaTexto: "Escolha a casa, as datas e quantas pessoas. A disponibilidade e o valor aparecem aqui, antes de qualquer reserva.",
+  chamadaOlho: "Sua próxima viagem começa aqui",
   chamada: "O Rio está logo ali.",
   contato: "",
   rodape: "",
@@ -74,6 +99,8 @@ export function validarTextosSite(bruto: Record<string, unknown>): { ok: true; t
 
 export async function lerTextosSite(db: Db, organizacaoId: string): Promise<TextosSite> {
   const c = (await lerConfig(db, organizacaoId, "textos_site")) ?? {};
+  // "Por que reservar direto" se chamava "sobre" até o M7.6: o que foi escrito lá continua valendo; vazio dá o texto-base.
+  if (typeof c.porque !== "string" && typeof c.sobre === "string" && c.sobre.trim()) c.porque = c.sobre;
   return Object.fromEntries(CAMPOS_TEXTOS_SITE.map((f) => [f.chave, typeof c[f.chave] === "string" ? c[f.chave] : TEXTOS_SITE_INICIAIS[f.chave]])) as TextosSite;
 }
 

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { podeFazer } from "@/acesso/politica";
 import * as aplicar from "@/financeiro/aplicar";
 import { ABAS_CONFIG } from "./abas";
+import { gravarConfig } from "./armazem";
 import { and, eq } from "drizzle-orm";
 import { historicoDe } from "@/auditoria/auditoria";
 import { criarContrato } from "@/contratos/repositorio";
@@ -254,12 +255,22 @@ describe("textos do site", () => {
   it("começa com textos iniciais, valida limites e grava", async () => {
     expect(await lerTextosSite(db, org)).toEqual(TEXTOS_SITE_INICIAIS);
     expect(validarTextosSite({ titulo: "" }).ok).toBe(false);
-    expect(validarTextosSite({ titulo: "Oi", sobre: "x".repeat(2001) }).ok).toBe(false);
-    const v = validarTextosSite({ ...TEXTOS_SITE_INICIAIS, titulo: "Novo título", sobre: "linha 1\r\nlinha 2" });
+    expect(validarTextosSite({ titulo: "Oi", porque: "x".repeat(2001) }).ok).toBe(false);
+    const v = validarTextosSite({ ...TEXTOS_SITE_INICIAIS, titulo: "Novo título", porque: "linha 1\r\nlinha 2" });
     if (!v.ok) throw new Error("inválido");
     expect(await salvarTextosSite(db, org, v.textos, admin)).toBe(true);
     expect(await salvarTextosSite(db, org, v.textos, admin)).toBe(false);
-    expect(await lerTextosSite(db, org)).toMatchObject({ titulo: "Novo título", sobre: "linha 1\nlinha 2" });
+    expect(await lerTextosSite(db, org)).toMatchObject({ titulo: "Novo título", porque: "linha 1\nlinha 2" });
+  });
+
+  it("\"Por que reservar direto\" gravado com o nome antigo (sobre) continua valendo; vazio fica com o texto-base (M7.6)", async () => {
+    await gravarConfig(db, org, "textos_site", { titulo: "T", sobre: "Benefício antigo" }, null);
+    expect((await lerTextosSite(db, org)).porque).toBe("Benefício antigo");
+    await gravarConfig(db, org, "textos_site", { titulo: "T", sobre: "" }, null);
+    expect((await lerTextosSite(db, org)).porque).toBe(TEXTOS_SITE_INICIAIS.porque);
+    // Depois de salvo pelo nome novo, vale o novo, até vazio (a seção some).
+    await gravarConfig(db, org, "textos_site", { titulo: "T", sobre: "Benefício antigo", porque: "" }, null);
+    expect((await lerTextosSite(db, org)).porque).toBe("");
   });
 });
 

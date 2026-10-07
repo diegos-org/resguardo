@@ -1,39 +1,51 @@
+import Image from "next/image";
 import Link from "next/link";
 import { CartaoImovel } from "@/components/site/CartaoImovel";
 import { canalDeContato, FormConsulta } from "@/components/site/FormConsulta";
 import { Moldura, SiteEmConfiguracao, TextoComDestaque } from "@/components/site/Moldura";
 import styles from "@/components/site/site.module.css";
-import { blocosDoTexto } from "@/configuracoes/textos-site";
+import { VitrineCasas } from "@/components/site/VitrineCasas";
+import { blocosDoTexto, tituloSimples } from "@/configuracoes/textos-site";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
 import { hojeMaisCedo, imoveisDoSite } from "@/site/site";
 
 export const generateMetadata = () => metadadosDoSite();
 
-/** Página inicial: capa, busca, casas, por que reservar direto, como reservar, contato e fechamento — tudo editável no painel. */
+/**
+ * Página inicial (M7.5, M7.6): capa com a foto escolhida no painel e a legenda vertical, busca, vitrine das casas em
+ * carrossel, por que reservar direto, como reservar, contato e fechamento — textos e fotos editáveis no painel.
+ */
 export default async function Inicio() {
   const { db, conteudo } = await carregarSite();
   if (!conteudo) return <SiteEmConfiguracao />;
-  const { textos } = conteudo;
+  const { textos, imagens } = conteudo;
   const lista = await imoveisDoSite(db, conteudo.organizacaoId);
-  const beneficios = blocosDoTexto(textos.sobre);
-  const lugares = [...new Set(lista.map((i) => i.bairro).filter(Boolean))];
+  const beneficios = blocosDoTexto(textos.porque);
   return (
     <Moldura conteudo={conteudo} largura="cheia">
-      <section className={styles.capa} aria-label="Apresentação">
+      <section className={`${styles.capa} ${imagens.capa ? styles.capaComFoto : ""}`} aria-label="Apresentação">
+        {imagens.capa && <Image src={imagens.capa} alt="" fill sizes="100vw" unoptimized loading="eager" fetchPriority="high" className={styles.capaFoto} />}
         <div className={styles.capaDentro}>
-          {textos.olho && <p className={styles.olho}>{textos.olho}</p>}
-          <h1>
-            <TextoComDestaque texto={textos.titulo} />
-          </h1>
-          {textos.subtitulo && <p className={styles.capaTexto}>{textos.subtitulo}</p>}
-          <Link href="/imoveis" className={styles.capaLink}>
-            Conheça as casas
-            <span aria-hidden="true">→</span>
-          </Link>
+          <div className={styles.capaTextos}>
+            {textos.olho && <p className={styles.olho}>{textos.olho}</p>}
+            <h1>
+              <TextoComDestaque texto={textos.titulo} />
+            </h1>
+            {textos.subtitulo && <p className={styles.capaTexto}>{textos.subtitulo}</p>}
+          </div>
+          <a href={lista.length ? "#busca" : "#titulo-casas"} className={styles.capaLink}>
+            Encontre seu lugar
+            <span aria-hidden="true">↓</span>
+          </a>
         </div>
+        {textos.legendaCapa && (
+          <p className={styles.capaLegenda} aria-hidden="true">
+            {textos.legendaCapa}
+          </p>
+        )}
       </section>
       {lista.length > 0 && (
-        <div className={styles.busca}>
+        <div className={styles.busca} id="busca">
           <div className={styles.buscaCaixa}>
             <FormConsulta imoveis={lista} valores={{}} hoje={hojeMaisCedo(lista)} canal={canalDeContato(conteudo)} variante="busca" />
           </div>
@@ -43,20 +55,29 @@ export default async function Inicio() {
         <div className={styles.dentro}>
           <div className={styles.cabecalhoSecao}>
             <div>
-              <p className={styles.olho}>Apartamentos</p>
-              <h2 id="titulo-casas">Nossas casas</h2>
-              {lugares.length > 0 && <p>{lugares.join(" · ")}</p>}
+              {textos.vitrineOlho && <p className={styles.olho}>{textos.vitrineOlho}</p>}
+              <h2 id="titulo-casas">
+                <TextoComDestaque texto={textos.vitrineTitulo || "Nossas casas"} />
+              </h2>
+              {textos.vitrineTexto && <p>{textos.vitrineTexto}</p>}
             </div>
             <Link href="/imoveis" className={styles.linkTexto}>
-              Ver todas →
+              Ver todas as casas ↗
             </Link>
           </div>
           {lista.length ? (
-            <div className={styles.carrossel}>
-              {lista.map((i) => (
-                <CartaoImovel key={i.codigo} imovel={i} />
+            <VitrineCasas
+              rotulo={tituloSimples(textos.vitrineTitulo) || "Nossas casas"}
+              rodape={
+                <Link href="/imoveis" className={styles.linkTexto}>
+                  Explore nossas casas
+                </Link>
+              }
+            >
+              {lista.map((i, n) => (
+                <CartaoImovel key={i.codigo} imovel={i} carregarCedo={n < 2} />
               ))}
-            </div>
+            </VitrineCasas>
           ) : (
             <p className={styles.miudo}>Em breve.</p>
           )}
@@ -65,8 +86,10 @@ export default async function Inicio() {
       {beneficios.length > 0 && (
         <section className={`${styles.secao} ${styles.porque}`} aria-labelledby="titulo-porque">
           <div className={styles.dentro}>
-            <p className={styles.olho}>Reservar direto</p>
-            <h2 id="titulo-porque">Por que reservar direto</h2>
+            {textos.porqueOlho && <p className={styles.olho}>{textos.porqueOlho}</p>}
+            <h2 id="titulo-porque" className={styles.porqueTitulo}>
+              <TextoComDestaque texto={textos.porqueTitulo || "Por que reservar direto"} />
+            </h2>
             {beneficios.length > 1 ? (
               <div className={styles.beneficios}>
                 {beneficios.map((b, i) => (
@@ -107,6 +130,7 @@ export default async function Inicio() {
       {textos.chamada && (
         <section className={`${styles.secao} ${styles.fechamento}`} aria-labelledby="titulo-chamada">
           <div className={styles.dentro}>
+            {textos.chamadaOlho && <p className={styles.olho}>{textos.chamadaOlho}</p>}
             <h2 id="titulo-chamada">
               <TextoComDestaque texto={textos.chamada} />
             </h2>

@@ -1,7 +1,8 @@
+import Image from "next/image";
 import Link from "next/link";
 import { Fragment, type ReactNode } from "react";
 import { partesDoTitulo } from "@/configuracoes/textos-site";
-import { type ConteudoSite, linkWhatsapp } from "@/site/site";
+import { type ConteudoSite, linkWhatsapp, MARCA_PADRAO } from "@/site/site";
 import styles from "./site.module.css";
 
 /**
@@ -43,12 +44,14 @@ const IconeWhatsapp = () => (
  */
 export function Moldura({ conteudo, children, largura = "miolo" }: { conteudo: ConteudoSite | null; children: ReactNode; largura?: "miolo" | "cheia" }) {
   const nome = conteudo?.nomeEmpresa.trim() || "Início";
+  const marca = conteudo?.imagens.marca ?? MARCA_PADRAO;
   const ano = new Date().getFullYear();
   return (
     <div className={styles.pagina}>
       <header className={styles.topo}>
         <Link href="/" className={styles.marca}>
-          {marcaComDestaque(nome)}
+          <Image src={marca} alt="" width={40} height={40} unoptimized className={styles.marcaIcone} />
+          <span>{marcaComDestaque(nome)}</span>
         </Link>
         <nav className={styles.menu} aria-label="Principal">
           <Link href="/imoveis" className={styles.menuCelularOculto}>
@@ -76,7 +79,10 @@ export function Moldura({ conteudo, children, largura = "miolo" }: { conteudo: C
       )}
       <footer className={styles.rodape}>
         <div className={styles.rodapeDentro}>
-          <strong className={styles.rodapeMarca}>{marcaComDestaque(nome)}</strong>
+          <strong className={styles.rodapeMarca}>
+            <Image src={marca} alt="" width={34} height={34} unoptimized className={styles.marcaIcone} />
+            <span>{marcaComDestaque(nome)}</span>
+          </strong>
           <p>{conteudo?.textos.rodape || conteudo?.textos.subtitulo || nome}</p>
           <div className={styles.rodapeLinks}>
             <Link href="/imoveis">Nossas casas</Link>

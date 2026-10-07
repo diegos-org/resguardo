@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
-import { CartaoImovel, fraseDoImovel } from "@/components/site/CartaoImovel";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { CartaoImovel, fraseDoImovel, seloDoImovel } from "@/components/site/CartaoImovel";
 import { FormConsulta } from "@/components/site/FormConsulta";
 import { GaleriaImovel } from "@/components/site/GaleriaImovel";
 import { Moldura, SiteEmConfiguracao } from "@/components/site/Moldura";
+import { PASSO_VITRINE_MS, VitrineCasas } from "@/components/site/VitrineCasas";
 import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
 import type { ImovelPublico } from "@/site/site";
 
@@ -35,7 +36,7 @@ afterEach(cleanup);
 describe("site público (M7.1)", () => {
   it("moldura com o nome da empresa (última palavra em destaque), menu, rodapé e o botão do WhatsApp só com telefone no cadastro", () => {
     render(
-      <Moldura conteudo={{ organizacaoId: "x", nomeEmpresa: "Sua Casa Leblon", textos: { ...TEXTOS_SITE_INICIAIS, rodape: "Rodapé fictício" }, whatsapp: null, email: "" }}>
+      <Moldura conteudo={{ organizacaoId: "x", nomeEmpresa: "Sua Casa Leblon", textos: { ...TEXTOS_SITE_INICIAIS, rodape: "Rodapé fictício" }, whatsapp: null, email: "", imagens: { capa: null, marca: "/marca.png" } }}>
         <h1>Oi</h1>
       </Moldura>,
     );
@@ -50,7 +51,7 @@ describe("site público (M7.1)", () => {
     expect(screen.queryByRole("link", { name: /WhatsApp/ })).toBeNull();
     cleanup();
     render(
-      <Moldura conteudo={{ organizacaoId: "x", nomeEmpresa: "Casa", textos: TEXTOS_SITE_INICIAIS, whatsapp: "5521900000000", email: "" }}>
+      <Moldura conteudo={{ organizacaoId: "x", nomeEmpresa: "Casa", textos: TEXTOS_SITE_INICIAIS, whatsapp: "5521900000000", email: "", imagens: { capa: null, marca: "/marca.png" } }}>
         <h1>Oi</h1>
       </Moldura>,
     );
@@ -102,13 +103,66 @@ describe("site público (M7.1)", () => {
     render(<CartaoImovel imovel={imovel} />);
     const link = screen.getByRole("link");
     expect(link.getAttribute("href")).toBe("/imoveis/403");
-    expect(link.textContent).toContain("até 4 pessoas · studio · 1 banheiro");
+    expect(link.textContent).toContain("Até 4 hóspedes");
     // "Olho" do cartão: bairro e código.
     expect(link.textContent).toContain("Leblon · 403");
     // Frase do cartão: primeira frase da descrição, limitada; sem descrição, bairro e cidade.
     expect(fraseDoImovel(imovel)).toBe("Leblon, Rio de Janeiro");
     expect(fraseDoImovel({ ...imovel, descricao: "Dias leves entre a praia e os restaurantes. Vista para o mar." })).toBe("Dias leves entre a praia e os restaurantes.");
     expect(fraseDoImovel({ ...imovel, descricao: "x".repeat(200) })).toHaveLength(120);
+    cleanup();
+    // Sem capacidade cadastrada, o resumo do cadastro (nada inventado).
+    render(<CartaoImovel imovel={{ ...imovel, capacidade: null }} />);
+    expect(screen.getByRole("link").textContent).toContain("studio · 1 banheiro");
+  });
+
+  it("cartão da vitrine (M7.6): selo com tipo e bairro sobre a foto e até quatro ícones de comodidades, na ordem do que mais pesa", () => {
+    const comFoto = { ...imovel, fotos: [{ grande: "/fotos/f1", pequena: "/fotos/f1/pequena", legenda: "" }] };
+    render(<CartaoImovel imovel={{ ...comFoto, comodidades: ["Elevador", "Wi-Fi", "Comodidade inventada", "Smart TV", "Ar-condicionado", "Cozinha equipada"] }} />);
+    expect(screen.getByText("Studio · Leblon")).toBeTruthy();
+    const icones = screen.getAllByRole("img").filter((i) => i.tagName.toLowerCase() === "svg").map((i) => i.getAttribute("aria-label"));
+    expect(icones).toEqual(["Ar-condicionado", "Cozinha equipada", "Wi-Fi", "Smart TV"]);
+    cleanup();
+    expect(seloDoImovel({ quartos: 2, bairro: "", cidade: "Búzios" })).toBe("2 quartos · Búzios");
+    expect(seloDoImovel({ quartos: null, bairro: "Leblon", cidade: "Rio de Janeiro" })).toBe("Leblon");
+    // Sem foto, sem selo: o quadro "foto em breve" já diz o que falta.
+    render(<CartaoImovel imovel={imovel} />);
+    expect(screen.queryByText("Studio · Leblon")).toBeNull();
+  });
+
+  it("vitrine (M7.6): setas, botão de pausa e movimento automático que para ao pausar; um cartão só, sem setas", () => {
+    vi.useFakeTimers();
+    try {
+      const scrollTo = vi.fn();
+      Object.defineProperty(HTMLElement.prototype, "scrollTo", { value: scrollTo, configurable: true });
+      render(
+        <VitrineCasas rotulo="Seu endereço no Leblon" rodape={<span>Explore nossas casas</span>}>
+          <article>Casa 1</article>
+          <article>Casa 2</article>
+        </VitrineCasas>,
+      );
+      expect(screen.getByRole("region", { name: "Seu endereço no Leblon" })).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Próxima casa" }));
+      expect(scrollTo).toHaveBeenCalledTimes(1);
+      act(() => vi.advanceTimersByTime(PASSO_VITRINE_MS));
+      expect(scrollTo).toHaveBeenCalledTimes(2);
+      const pausa = screen.getByRole("button", { name: "Pausar movimento" });
+      fireEvent.click(pausa);
+      expect(pausa.getAttribute("aria-pressed")).toBe("true");
+      expect(pausa.textContent).toBe("Retomar movimento");
+      act(() => vi.advanceTimersByTime(PASSO_VITRINE_MS * 3));
+      expect(scrollTo).toHaveBeenCalledTimes(2);
+      expect(screen.getByText("Explore nossas casas")).toBeTruthy();
+      cleanup();
+      render(
+        <VitrineCasas rotulo="Casas">
+          <article>Casa 1</article>
+        </VitrineCasas>,
+      );
+      expect(screen.queryByRole("button")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("variante de busca da capa: mesmos campos e destino, sem título e com o botão \"Consultar\"", () => {

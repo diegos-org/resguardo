@@ -7,6 +7,7 @@ import { Disponibilidade } from "@/components/site/Disponibilidade";
 import { SegurarDatas } from "@/components/site/SegurarDatas";
 import { canalDeContato, FormConsulta } from "@/components/site/FormConsulta";
 import { GaleriaImovel } from "@/components/site/GaleriaImovel";
+import { IconeComodidade, temIcone } from "@/components/site/IconeComodidade";
 import { FotoProvisoria, Moldura, SiteEmConfiguracao } from "@/components/site/Moldura";
 import styles from "@/components/site/site.module.css";
 import { hojeISO } from "@/lib/datas";
@@ -91,7 +92,10 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
               <h3 id="titulo-comodidades">O que você encontra</h3>
               <ul className={styles.comodidades}>
                 {imovel.comodidades.map((c) => (
-                  <li key={c}>{c}</li>
+                  <li key={c}>
+                    {temIcone(c) ? <IconeComodidade nome={c} /> : <span aria-hidden="true">✓</span>}
+                    {c}
+                  </li>
                 ))}
               </ul>
             </section>

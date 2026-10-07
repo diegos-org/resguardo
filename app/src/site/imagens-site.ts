@@ -6,10 +6,10 @@
  */
 import { and, eq } from "drizzle-orm";
 import { autorizar, type Sessao } from "@/acesso/politica";
-import { lerConfig } from "@/configuracoes/armazem";
+import { gravarConfig, lerConfig, travarConfig } from "@/configuracoes/armazem";
 import { arquivos } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { LIMITE_FOTO, tipoDaImagem } from "@/imoveis/fotos-regras";
+import { LIMITE_FOTO, LIMITE_MINIATURA, tipoDaImagem } from "@/imoveis/fotos-regras";
 import { CACHE_FOTO_PUBLICA } from "@/imoveis/fotos-entrega";
 import { uuidValido } from "@/lib/ids";
 import { idsDasFotosDoBairro } from "./bairro";
@@ -83,4 +83,40 @@ export async function entregarImagemSite(db: Db, id: string, contexto: { organiz
     }
   }
   return new Response("Não encontrado.", { status: 404, headers: { "Cache-Control": "no-store" } });
+}
+
+export type QualImagem = "capa" | "marca";
+/** A marca sobe como está (PNG com fundo transparente continua transparente): até 512 KB; a capa vem reduzida, até 2 MB. */
+export const LIMITE_IMAGEM: Record<QualImagem, number> = { capa: LIMITE_FOTO, marca: LIMITE_MINIATURA };
+
+/** Troca a foto da capa ou a marca: grava a nova e apaga a anterior, tudo junto; o histórico registra a troca. */
+export async function definirImagemSite(
+  db: Db,
+  organizacaoId: string,
+  qual: QualImagem,
+  a: { nome: string; conteudo: Uint8Array },
+  autorId: string | null,
+): Promise<{ ok: true } | { ok: false; erro: string }> {
+  if (a.conteudo.length > LIMITE_IMAGEM[qual]) return { ok: false, erro: qual === "marca" ? "A marca passa de 512 KB: use um arquivo menor (um PNG quadrado de 200 a 400 px basta)." : "A foto passa de 2 MB mesmo reduzida: use uma versão menor." };
+  return db.transaction(async (tx) => {
+    await travarConfig(tx, organizacaoId, "site_imagens");
+    const atual = await lerImagensSite(tx, organizacaoId);
+    const nova = await guardarImagemSite(tx, organizacaoId, a, autorId);
+    if (!nova.ok) return nova;
+    await gravarConfig(tx, organizacaoId, "site_imagens", { ...atual, [qual]: nova.id }, autorId);
+    await apagarImagemSite(tx, organizacaoId, atual[qual]);
+    return { ok: true as const };
+  });
+}
+
+/** Tira a foto da capa (volta o fundo verde) ou a marca enviada (volta a do estudo), apagando o arquivo. */
+export async function tirarImagemSite(db: Db, organizacaoId: string, qual: QualImagem, autorId: string | null): Promise<{ ok: true } | { ok: false; erro: string }> {
+  return db.transaction(async (tx) => {
+    await travarConfig(tx, organizacaoId, "site_imagens");
+    const atual = await lerImagensSite(tx, organizacaoId);
+    if (!atual[qual]) return { ok: false as const, erro: qual === "capa" ? "O site já está sem foto na capa." : "O site já usa a marca padrão." };
+    await gravarConfig(tx, organizacaoId, "site_imagens", { ...atual, [qual]: null }, autorId);
+    await apagarImagemSite(tx, organizacaoId, atual[qual]);
+    return { ok: true as const };
+  });
 }

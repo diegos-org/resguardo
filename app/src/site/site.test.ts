@@ -81,10 +81,10 @@ describe("site público (M7.1)", () => {
   it("textos e contato vêm do painel; sem telefone, sem WhatsApp", async () => {
     let c = await conteudoDoSite(db);
     expect(c).toMatchObject({ organizacaoId: org, nomeEmpresa: "Sua Casa Exemplo", whatsapp: null, textos: { titulo: TEXTOS_SITE_INICIAIS.titulo } });
-    await salvarTextosSite(db, org, { ...TEXTOS_SITE_INICIAIS, titulo: "Título novo", sobre: "Sobre nós." }, null);
+    await salvarTextosSite(db, org, { ...TEXTOS_SITE_INICIAIS, titulo: "Título novo", porque: "Sobre nós." }, null);
     await salvarEmpresa(db, org, { nome: "Sua Casa Exemplo", razaoSocial: "", cnpj: "", email: "contato@example.com", telefone: "(21) 90000-0000", endereco: "", site: "", chavePix: "" }, null);
     c = await conteudoDoSite(db);
-    expect(c).toMatchObject({ whatsapp: "5521900000000", email: "contato@example.com", textos: { titulo: "Título novo", sobre: "Sobre nós." } });
+    expect(c).toMatchObject({ whatsapp: "5521900000000", email: "contato@example.com", textos: { titulo: "Título novo", porque: "Sobre nós." } });
   });
 
   it("número do WhatsApp a partir do telefone do cadastro", () => {

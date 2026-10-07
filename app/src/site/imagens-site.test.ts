@@ -7,7 +7,8 @@ import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { CACHE_FOTO_PUBLICA } from "@/imoveis/fotos-entrega";
 import { LIMITE_FOTO } from "@/imoveis/fotos-regras";
-import { apagarImagemSite, entregarImagemSite, guardarImagemSite, imagensEmUso, lerImagensSite } from "./imagens-site";
+import { historicoDe } from "@/auditoria/auditoria";
+import { apagarImagemSite, definirImagemSite, entregarImagemSite, guardarImagemSite, imagensEmUso, LIMITE_IMAGEM, lerImagensSite, tirarImagemSite } from "./imagens-site";
 
 // Imagens fictícias: só os primeiros bytes contam para o tipo.
 const jpg = (n = 1, tamanho = 32) => Uint8Array.from({ length: tamanho }, (_, i) => [0xff, 0xd8, 0xff, 0xe0][i] ?? n);
@@ -72,5 +73,25 @@ describe("imagens do site (M7.6)", () => {
     expect(await db.select({ id: arquivos.id }).from(arquivos).where(eq(arquivos.id, id))).toHaveLength(1);
     await apagarImagemSite(db, org, id);
     expect(await db.select({ id: arquivos.id }).from(arquivos).where(eq(arquivos.id, id))).toHaveLength(0);
+  });
+
+  it("trocar a capa ou a marca grava a nova e apaga a anterior; tirar volta ao padrão; o histórico registra", async () => {
+    expect(await definirImagemSite(db, org, "capa", { nome: "praia.jpg", conteudo: jpg(1) }, null)).toEqual({ ok: true });
+    const primeira = (await lerImagensSite(db, org)).capa!;
+    expect(await definirImagemSite(db, org, "capa", { nome: "praia-2.jpg", conteudo: jpg(2) }, null)).toEqual({ ok: true });
+    const segunda = (await lerImagensSite(db, org)).capa!;
+    expect(segunda).not.toBe(primeira);
+    expect(await db.select({ id: arquivos.id }).from(arquivos).where(eq(arquivos.id, primeira))).toHaveLength(0);
+    // A marca tem limite menor (sobe sem redução) e não mexe na capa.
+    expect(await definirImagemSite(db, org, "marca", { nome: "marca.png", conteudo: jpg(3, LIMITE_IMAGEM.marca + 1) }, null)).toMatchObject({ ok: false });
+    expect(await definirImagemSite(db, org, "marca", { nome: "marca.png", conteudo: jpg(3) }, null)).toEqual({ ok: true });
+    const imagens = await lerImagensSite(db, org);
+    expect(imagens.capa).toBe(segunda);
+    expect(imagens.marca).not.toBeNull();
+    expect(await tirarImagemSite(db, org, "capa", null)).toEqual({ ok: true });
+    expect(await tirarImagemSite(db, org, "capa", null)).toMatchObject({ ok: false });
+    expect(await lerImagensSite(db, org)).toEqual({ capa: null, marca: imagens.marca });
+    expect(await db.select({ id: arquivos.id }).from(arquivos).where(eq(arquivos.id, segunda))).toHaveLength(0);
+    expect((await historicoDe(db, org, "configuracao", org)).filter((h) => h.acao === "configuracao.site_imagens")).toHaveLength(4);
   });
 });

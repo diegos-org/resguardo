@@ -1,13 +1,14 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, it, vi } from "vitest";
 import Page from "./page";
+import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
 const m = vi.hoisted(() => ({ site: vi.fn(), imoveis: vi.fn(), imovel: vi.fn(), disponibilidade: vi.fn() }));
 vi.mock("@/site/pagina", () => ({ carregarSite: m.site, metadadosDoSite: vi.fn() }));
 vi.mock("@/site/disponibilidade", () => ({ consultarDisponibilidade: m.disponibilidade }));
 vi.mock("@/site/site", async (orig) => ({ ...(await orig<typeof import("@/site/site")>()), imoveisDoSite: m.imoveis, imovelDoSite: m.imovel }));
 vi.mock("next/link", () => ({ default: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a> }));
 const imovel = { codigo: "403", fuso: "America/Sao_Paulo", nome: "Studio Exemplo", bairro: "Leblon", cidade: "Rio de Janeiro", capacidade: 4, quartos: 0, banheiros: 1, descricao: "", camas: [], comodidades: [], regrasCasa: "", aceitaAnimais: false, permiteFumar: false, permiteFestas: false, checkinAPartirDe: "15:00", checkoutAte: "11:00", estadiaMinima: null };
-const conteudo = { organizacaoId: "org", nomeEmpresa: "Sua Casa Exemplo", textos: { titulo: "T", subtitulo: "", sobre: "", comoReservar: "", contato: "", rodape: "" }, whatsapp: "5521900000000", email: "" };
+const conteudo = { organizacaoId: "org", nomeEmpresa: "Sua Casa Exemplo", textos: { ...TEXTOS_SITE_INICIAIS, titulo: "T", subtitulo: "", comoReservar: "", contato: "", rodape: "" }, whatsapp: "5521900000000", email: "", imagens: { capa: null, marca: "/marca.png" } };
 beforeEach(() => {
   vi.clearAllMocks();
   m.site.mockResolvedValue({ db: {}, conteudo });
