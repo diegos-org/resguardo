@@ -39,16 +39,34 @@ export const usuarios = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    /** Vazio só para quem entra com usuário e senha, sem e-mail (equipe, M6.8). */
     email: text("email").notNull(),
     nome: text("nome").notNull(),
     papel: papelEnum("papel").notNull(),
     ativo: boolean("ativo").notNull().default(true),
-    /** Sessões abertas antes disso não valem mais (e-mail trocado, acesso devolvido). */
+    /** Sessões abertas antes disso não valem mais (e-mail trocado, acesso devolvido, senha redefinida). */
     sessaoValidaDesde: timestamp("sessao_valida_desde", { withTimezone: true }),
+    /** Usuário para entrar com senha (M6.8), em minúsculas; null = sem usuário (entra pelo e-mail). */
+    login: text("login"),
+    /** Senha (M6.8) só como hash scrypt (`acesso/senha.ts`); null = não entra com senha. */
+    senhaHash: text("senha_hash"),
+    /** Senha definida pela empresa (provisória): a tela da equipe sugere trocar. */
+    senhaProvisoria: boolean("senha_provisoria").notNull().default(false),
     criadoEm: criadoEm(),
   },
-  (t) => [uniqueIndex("usuarios_email_unico").on(sql`lower(${t.email})`)],
+  (t) => [uniqueIndex("usuarios_email_unico").on(sql`lower(${t.email})`).where(sql`${t.email} <> ''`), uniqueIndex("usuarios_login_unico").on(t.login)],
 );
+
+/**
+ * Tentativas erradas de senha por usuário digitado (M6.8), exista ele ou não: depois de muitas, espera. A chave é o
+ * que foi digitado, normalizado — assim a resposta é a mesma para quem existe e para quem não existe.
+ */
+export const tentativasLogin = pgTable("tentativas_login", {
+  chave: text("chave").primaryKey(),
+  erros: integer("erros").notNull().default(0),
+  bloqueadoAte: timestamp("bloqueado_ate", { withTimezone: true }),
+  atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+});
 
 /**
  * Código de login enviado por e-mail (M1.3). Guarda só o HMAC do código, nunca o código.
@@ -1056,6 +1074,11 @@ export const profissionaisLimpeza = pgTable(
     ativo: boolean("ativo").notNull().default(true),
     /** Acesso próprio pelo celular (M6.6): o usuário (papel "limpeza") desta profissional. */
     usuarioId: uuid("usuario_id").references(() => usuarios.id),
+    /**
+     * Cidades da agenda que ela vê no acesso próprio (M6.8: Búzios só Búzios, Rio só Rio), com o nome da cidade como
+     * no cadastro dos imóveis. Vazio = nenhuma: a tela avisa que falta escolher, nunca mostra todas.
+     */
+    cidades: jsonb("cidades").$type<string[]>().notNull().default([]),
     criadoEm: criadoEm(),
   },
   (t) => [uniqueIndex("profissionais_limpeza_nome").on(t.organizacaoId, sql`lower(${t.nome})`), uniqueIndex("profissionais_limpeza_usuario").on(t.usuarioId)],
