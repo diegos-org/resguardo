@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { CartaoImovel, fraseDoImovel } from "@/components/site/CartaoImovel";
 import { FormConsulta } from "@/components/site/FormConsulta";
+import { GaleriaImovel } from "@/components/site/GaleriaImovel";
 import { Moldura, SiteEmConfiguracao } from "@/components/site/Moldura";
 import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
 import type { ImovelPublico } from "@/site/site";
@@ -26,6 +27,7 @@ const imovel: ImovelPublico = {
   checkinAPartirDe: "15:00",
   checkoutAte: "11:00",
   estadiaMinima: null,
+  fotos: [],
 };
 
 afterEach(cleanup);
@@ -60,6 +62,40 @@ describe("site público (M7.1)", () => {
   it("sem organização definida, avisa que está em configuração", () => {
     render(<SiteEmConfiguracao />);
     expect(screen.getByRole("note").textContent).toContain("Site em configuração");
+  });
+
+  it("cartão com foto real (M7.3): a capa na versão pequena, com a legenda como texto alternativo; sem foto, \"foto em breve\"", () => {
+    render(<CartaoImovel imovel={{ ...imovel, fotos: [{ grande: "/fotos/f1", pequena: "/fotos/f1/pequena", legenda: "Sala com vista" }] }} />);
+    expect(screen.getByRole("img", { name: "Sala com vista" }).getAttribute("src")).toBe("/fotos/f1/pequena");
+    expect(screen.queryByText("Foto em breve")).toBeNull();
+    cleanup();
+    render(<CartaoImovel imovel={{ ...imovel, fotos: [{ grande: "/fotos/f1", pequena: "/fotos/f1", legenda: "" }] }} />);
+    expect(screen.getByRole("img", { name: "Foto de Studio Exemplo" })).toBeTruthy();
+    cleanup();
+    render(<CartaoImovel imovel={imovel} />);
+    expect(screen.getByText("Foto em breve")).toBeTruthy();
+  });
+
+  it("galeria da página do imóvel: a foto escolhida em destaque, com contador e legenda; uma foto só, sem miniaturas", () => {
+    const fotos = [
+      { grande: "/fotos/f1", pequena: "/fotos/f1/pequena", legenda: "Sala" },
+      { grande: "/fotos/f2", pequena: "/fotos/f2/pequena", legenda: "" },
+      { grande: "/fotos/f3", pequena: "/fotos/f3/pequena", legenda: "Varanda" },
+    ];
+    render(<GaleriaImovel nome="Studio Exemplo" fotos={fotos} />);
+    const galeria = within(screen.getByRole("region", { name: "Fotos de Studio Exemplo" }));
+    expect(galeria.getByRole("img", { name: "Sala" }).getAttribute("src")).toBe("/fotos/f1");
+    expect(galeria.getByText("1 / 3")).toBeTruthy();
+    fireEvent.click(galeria.getByRole("button", { name: "Ver a foto 3: Varanda" }));
+    expect(galeria.getByRole("img", { name: "Varanda" }).getAttribute("src")).toBe("/fotos/f3");
+    expect(galeria.getByText("3 / 3")).toBeTruthy();
+    expect(galeria.getByRole("button", { name: "Ver a foto 3: Varanda" }).getAttribute("aria-current")).toBe("true");
+    fireEvent.click(galeria.getByRole("button", { name: "Ver a foto 2" }));
+    expect(galeria.getByRole("img", { name: "Foto 2 de Studio Exemplo" }).getAttribute("src")).toBe("/fotos/f2");
+    cleanup();
+    render(<GaleriaImovel nome="Studio Exemplo" fotos={fotos.slice(0, 1)} />);
+    expect(screen.queryAllByRole("button")).toHaveLength(0);
+    expect(screen.queryByText("1 / 1")).toBeNull();
   });
 
   it("cartão leva à página do imóvel pelo código, com o resumo", () => {

@@ -5,6 +5,7 @@ import { olhoImovel, resumoImovel } from "@/components/site/CartaoImovel";
 import { Disponibilidade } from "@/components/site/Disponibilidade";
 import { SegurarDatas } from "@/components/site/SegurarDatas";
 import { canalDeContato, FormConsulta } from "@/components/site/FormConsulta";
+import { GaleriaImovel } from "@/components/site/GaleriaImovel";
 import { FotoProvisoria, Moldura, SiteEmConfiguracao } from "@/components/site/Moldura";
 import styles from "@/components/site/site.module.css";
 import { hojeISO } from "@/lib/datas";
@@ -59,18 +60,24 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
           <span aria-hidden="true">↗</span>
         </a>
       </header>
-      <div className={styles.galeria} aria-label="Galeria (fotos em breve)">
-        <div className={styles.galeriaPrincipal}>
-          <FotoProvisoria titulo={imovel.nome} />
-        </div>
-        <div className={styles.miniaturas}>
-          <FotoProvisoria titulo="" />
-          <FotoProvisoria titulo="" />
-          <FotoProvisoria titulo="" />
-          <FotoProvisoria titulo="" />
-        </div>
-      </div>
-      <p className={styles.notaEditorial}>Fotos em revisão para publicação.</p>
+      {imovel.fotos.length > 0 ? (
+        <GaleriaImovel nome={imovel.nome} fotos={imovel.fotos} />
+      ) : (
+        <>
+          <div className={styles.galeria} aria-label="Galeria (fotos em breve)">
+            <div className={styles.galeriaPrincipal}>
+              <FotoProvisoria titulo={imovel.nome} />
+            </div>
+            <div className={styles.miniaturas}>
+              <FotoProvisoria titulo="" />
+              <FotoProvisoria titulo="" />
+              <FotoProvisoria titulo="" />
+              <FotoProvisoria titulo="" />
+            </div>
+          </div>
+          <p className={styles.notaEditorial}>Fotos em breve.</p>
+        </>
+      )}
       <div className={styles.colunas}>
         <div className={styles.editorial}>
           {disponibilidade && <Disponibilidade resultado={disponibilidade} entrada={pedido.entrada} saida={pedido.saida} fuso={imovel.fuso} />}

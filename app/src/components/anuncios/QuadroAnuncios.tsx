@@ -12,7 +12,7 @@ export function referenciasDoQuadro(imovel: ImovelAnuncios, siteDaOrg: boolean):
   return [{ nome: "Site", situacao: siteDaOrg && imovel.ativo && imovel.publico ? "publicado" : "inexistente", titulo: imovel.nome, descricao: imovel.descricao, precoBase: imovel.precoBase, fotos: [] },
     ...imovel.anuncios.filter(a => a.canal === "airbnb" || a.canal === "booking").map(a => ({ ...a, nome: nomes[a.canal as keyof typeof nomes], situacao: a.situacao as Situacao }))];
 }
-export function QuadroAnuncios({ imovel: i, podeEditar, siteDaOrg }: { imovel: ImovelAnuncios; podeEditar: boolean; siteDaOrg: boolean }) {
+export function QuadroAnuncios({ imovel: i, podeEditar, siteDaOrg, fotosNoSite = 0 }: { imovel: ImovelAnuncios; podeEditar: boolean; siteDaOrg: boolean; fotosNoSite?: number }) {
   const avisos = compararAnuncios(referenciasDoQuadro(i, siteDaOrg));
   const siteVisivel = siteDaOrg && i.publico && i.ativo;
   return <section className={styles.imovel} aria-label={`Anúncios ${i.codigo}`}>
@@ -25,7 +25,7 @@ export function QuadroAnuncios({ imovel: i, podeEditar, siteDaOrg }: { imovel: I
         <p className={styles.miudo}>Dados atuais do cadastro do imóvel.</p>
         <dl><dt>Título</dt><dd>{i.nome}</dd><dt>Descrição</dt><dd>{i.descricao || "Não cadastrada"}</dd><dt>Preço base cadastrado</dt><dd>{i.precoBase === null ? "Não informado" : formatBRL(i.precoBase)}</dd></dl>
         <p className={styles.miudo}>Preço interno de referência. O site ainda não publica cotações de estadia.</p>
-        <p>Fotos reais ainda não publicadas; a galeria usa imagens provisórias.</p>
+        <p>{fotosNoSite ? `${fotosNoSite} ${fotosNoSite === 1 ? "foto real" : "fotos reais"} na galeria (a primeira é a capa).` : "Sem fotos ainda: o site mostra \"foto em breve\". Suba as fotos na ficha do imóvel."}</p>
         {podeEditar && <Link href={`/painel/imoveis/${i.id}`}>Editar dados do site no cadastro</Link>}
       </article>
       {CANAIS_ANUNCIO.map(canal => {
