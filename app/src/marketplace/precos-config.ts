@@ -23,13 +23,16 @@ export async function pesosNoPadraoAntigo(db: Db, organizacaoId: string): Promis
 }
 
 /**
- * Troca só os pesos pelo padrão atual, mantendo as taxas gravadas. Vale para as cotações novas. Lê as taxas depois de
- * travar a chave: uma gravação de taxas ao mesmo tempo não é desfeita.
+ * Troca só os pesos pelo padrão atual, mantendo as taxas gravadas. Vale para as cotações novas. Lê depois de travar a
+ * chave e só troca se o gravado ainda é o padrão antigo (1/1/1): uma gravação de taxas ou de outros pesos feita ao mesmo
+ * tempo (outra aba, outra pessoa) não é desfeita. Devolve se algo mudou.
  */
 export async function usarPesosPadrao(db: Db, organizacaoId: string, autorId: string | null): Promise<boolean> {
   const mudancas = await db.transaction(async (tx) => {
     await travarConfig(tx, organizacaoId, "marketplace_precos");
-    const atual = await lerPrecosMarketplace(tx, organizacaoId);
+    const gravado = await lerConfig(tx, organizacaoId, "marketplace_precos");
+    const atual = precosDeJson(gravado);
+    if (gravado === null || !mesmosPesos(atual.pesos, PESOS_PADRAO_ANTIGO)) return {};
     return gravarConfig(tx, organizacaoId, "marketplace_precos", { ...atual, pesos: { ...PRECOS_MARKETPLACE_PADRAO.pesos } }, autorId);
   });
   return Object.keys(mudancas).length > 0;

@@ -25,5 +25,8 @@ describe("padrão dos pesos do modelo B (M12.5)", () => {
     // Outros pesos gravados (escolha de alguém) não são o padrão antigo: sem aviso.
     await salvarPrecosMarketplace(db, org, { ...PRECOS_MARKETPLACE_PADRAO, pesos: { hospede: 2, proprietario: 1, scl: 1 } }, null);
     expect(await pesosNoPadraoAntigo(db, org)).toBe(false);
+    // O botão clicado numa tela velha (alguém já gravou outros pesos) não desfaz a escolha.
+    expect(await usarPesosPadrao(db, org, null)).toBe(false);
+    expect((await lerPrecosMarketplace(db, org)).pesos).toEqual({ hospede: 2, proprietario: 1, scl: 1 });
   });
 });
