@@ -123,9 +123,12 @@ criar).
   e a conciliação com o fechamento (repasse fora do fechamento é adiantamento vinculado às
   reservas; reserva que atravessa o mês é paga no check-in e se acerta no fechamento seguinte)
   são o item **M4.10** do ROADMAP. O M8.2 registra a data de liberação de cada pagamento.
-- **Continuam pendentes** (perguntas 3, 4 e 5): taxa do cartão/Pix (vale a regra atual até
-  decisão contrária), contestação perdida e política de cancelamento. Nenhuma impede o M8.2 em
-  sandbox; todas precisam estar decididas antes de o site receber pagamento de verdade.
+- **Decididas em 7/10/2026:** contestação perdida (pergunta 4) e a base da política de
+  cancelamento (pergunta 5) — ver as respostas abaixo. **Continuam pendentes:** taxa do
+  cartão/Pix (pergunta 3; vale a regra atual até decisão contrária); no reembolso integral, quem
+  fica com a taxa do pagamento que não volta; e a confirmação do jurídico sobre o arrependimento
+  de 7 dias. Nenhuma impede o M8.2 em sandbox; todas precisam estar fechadas antes de o site
+  receber pagamento de verdade.
 - **Pedido novo de Diego:** documento "como funciona" para o proprietário (inclusive quando e
   como recebe) com aceite registrado, e páginas legais do site com aceite no checkout: itens
   M5.6 e M7.4 do ROADMAP.
@@ -194,10 +197,20 @@ caminho, pelo provedor.
    um na proporção — como a taxa do Airbnb/Booking) ou mudar (só SCL ou só proprietário).
 4. Contestação de cartão (chargeback) perdida: quem arca — a SCL, o proprietário ou os dois na
    proporção. O provedor só diz de que conta sai o dinheiro; quem assume a perda é regra de
-   negócio (vai no contrato). Até decidir, o sistema só registra e avisa.
+   negócio (vai no contrato). **Respondida em 7/10/2026:** arca quem deu causa ao motivo da
+   disputa (problema no imóvel, o proprietário; falha no atendimento ou na cobrança, a SCL; sem
+   como separar, cada um na proporção da sua parte), decidido caso a caso pela equipe e
+   registrado com o motivo. O sistema registra a disputa e avisa, e nunca escolhe sozinho: o
+   lançamento para quem arca só nasce com a decisão registrada (M8.2).
 5. Política de cancelamento das reservas do site: reembolso total, parcial ou nenhum conforme
-   a antecedência, e quem arca com a taxa do pagamento que não volta. Sem ela, o sistema não
-   calcula reembolso sozinho.
+   a antecedência, e quem arca com a taxa do pagamento que não volta. **Base respondida em
+   7/10/2026:** reembolso integral até 14 dias antes da entrada; com menos de 14 dias, sem
+   reembolso; o texto-base das páginas legais (M7.4) inclui o arrependimento de 7 dias depois do
+   pagamento em compra pela internet (Código de Defesa do Consumidor, art. 49), a confirmar com o
+   jurídico se vale para hospedagem com data marcada. **Ainda pendente:** no reembolso integral,
+   quem fica com a taxa do pagamento que não volta. Com a base, o sistema calcula o valor a
+   devolver pela antecedência; enquanto a taxa estiver pendente, a devolução que dependa dela
+   fica para conferência, com aviso.
 6. **Respondida em 4/10/2026 (opção (a), ver "Decisão de Diego"; fica só como histórico).**
    Cartão com recebimento em 30 dias: uma reserva paga no fim do mês entraria no repasse do
    dia 1º antes de o Mercado Pago liberar o dinheiro. Opções: (a) repassar só quando o

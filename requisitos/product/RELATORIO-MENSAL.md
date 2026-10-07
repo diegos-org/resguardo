@@ -14,8 +14,8 @@ setembro/2026 vira o **padrão** do sistema, adaptado às cores e fontes da iden
 
 - para o PDF que o **proprietário baixa no portal** (M5.3) e para o **envio mensal da empresa** no
   dia do fechamento (dia 2 por padrão — M4.13; M5.4) — um modelo só;
-- **adaptado, para o marketplace** (M12): vendas do site com o modelo B separadas das vendas que o
-  dono faz nas OTAs dele;
+- **adaptado, para o marketplace** (M12): só as vendas do site, com o modelo B — as vendas que o
+  dono faz nas OTAs dele ficam fora do dinheiro do relatório (decisão de Diego em 7/10);
 - como **família visual e de linguagem** para e-mails e, quando ligado (M10), WhatsApp (confirmação
   de reserva, lembretes, instruções, repasse, fechamento).
 
@@ -178,13 +178,17 @@ comparação mostraria queda falsa).
   e, sem arquivo guardado, sai sem anexos, com o rodapé "ficam com a equipe" e um aviso no painel
   ("relatório de {mês} enviado sem o extrato do Airbnb"). Importação automática do extrato do canal
   fica para o M4.4.
-- **Gestão completa × marketplace.** No marketplace, a capa diz "contrato marketplace"; "Do bruto ao
-  resultado" separa **vendas pelo site SCL** (valor cheio, desconto do hóspede, taxa do pagamento,
-  parte da SCL, sua parte — modelo B, M12.1/M12.2) de **vendas suas nas OTAs** (comissão da SCL
-  zero). As duas entram no resultado, nos números do mês, na conciliação e no gráfico — **um escopo
-  só**, o mesmo da capa (sua parte em todas as reservas do mês); o que muda entre elas é o caminho do
-  dinheiro em "como chega até você": OTA com `split` (M2.7) é "pago a você pelo canal"; OTA com
-  `empresa` e venda do site passam pelo repasse do M4.10.
+- **Gestão completa × marketplace.** No marketplace, a capa diz "contrato marketplace" e o relatório
+  mostra **só o que passa pela SCL** (decisão de Diego em 7/10: "não faz sentido exibir resultados com
+  os quais nada temos a ver"): no dinheiro — resultado, "do bruto ao resultado", conciliação, repasses,
+  gráfico do resultado e quadros em reais — entram só as **vendas pelo site SCL** (valor cheio,
+  desconto do hóspede, taxa do pagamento, parte da SCL, sua parte — modelo B, M12.1/M12.2). As
+  vendas que o proprietário faz nas OTAs dele ficam fora do dinheiro; a exceção é a reserva de OTA
+  cujo dinheiro a empresa recebeu (quem recebe = `empresa`, M2.7), que entra porque passou pela SCL.
+  A ocupação (noites ocupadas, gráfico de ocupação) mostra o imóvel inteiro, porque as noites vêm do
+  calendário que a SCL precisa ter para não vender a mesma noite duas vezes; Diego pode mudar isso.
+  Consolidar o financeiro das outras plataformas fica para depois, se houver procura. Nenhum texto do
+  relatório cita o Beds24 (M5.9).
 - **Mês corrente (parcial).** Igual, com "parcial até {dia}" na faixa e a frase de tom do guia da
   Lia: é para acompanhar o andamento; o fechamento completo vem no dia do fechamento.
 - **Dia de emissão.** O relatório do mês sai sozinho no dia do fechamento mensal: **dia 2** por
@@ -237,7 +241,8 @@ com pdf-lib; `gerar.ts` decide quem pode gerar) e troca o desenho:
    a página em que a seção começou de fato: a capa ou uma lista longa de reservas pode continuar na folha seguinte e
    empurrar a conciliação para a 4 ou depois; o PDF confere e redesenha com o número certo (M5.8).
 4. **Variante marketplace** pelo tipo de contrato; linhas do modelo B só com o M12.2 pronto (até lá,
-   as vendas do site aparecem com a comissão do contrato, como hoje).
+   as vendas do site aparecem com a comissão do contrato, como hoje); o recorte "só o que passa pela
+   SCL" (decisão de 7/10) entra com o M12.2.
 5. **Extratos guardados por imóvel e mês:** tabela e armazenamento privado (como o comprovante do
    Pix), tela de upload em Financeiro → Fechamento, e `relatorioDoFechamento` anexando o que houver
    (sem arquivo, PDF sem anexos com o rodapé certo e aviso no painel).
