@@ -42,13 +42,17 @@ Essa é a agenda atual e ainda pode mudar com novas reservas ou cancelamentos.
 
 Conferir datas/dias da semana, próxima quantidade, trocas, acordos válidos e pendências antes de entregar. Uma agenda preparada não comprova envio; envio relatado pelo usuário e entrega relida no canal devem continuar diferenciados.
 
-## 403 — atenção reforçada por pelo menos 30 dias
+## 103 — atenção reforçada por pelo menos 30 dias
+
+**Correção de escopo em 7/10, por esclarecimento direto do responsável:** a atenção reforçada é exclusiva do **103**. A atribuição anterior desse período ao 403 estava incorreta. Esta correção prevalece, para esse escopo, sobre a versão anterior deste complemento e sobre referências históricas divergentes nos guias. O período mínimo original é preservado, sem reiniciar a contagem em 7/10.
+
+Manter equipe do Rio e atendimento com atenção reforçada ao **103** por **pelo menos 30 dias, cobrindo até 5/11/2026, inclusive**, para evitar novas falhas. Conferir preparo, chaves e problemas nas passagens pertinentes, tratar relatos rapidamente e registrar somente resultados confirmados, evitando repetições sem contexto novo. O fim do período mínimo não comprova resolução.
+
+## 403 — acompanhamento comum de manutenção
 
 Em 6/10, o responsável informou que o mofo e as demais questões do 403 **já foram encaminhados**. Encaminhamento confirmado pelo responsável; execução e resolução ainda não confirmadas.
 
-Manter equipe do Rio e atendimento com atenção reforçada por **pelo menos 30 dias, cobrindo até 5/11/2026, inclusive**, para evitar novas falhas. Conferir cuidados nas passagens pertinentes, tratar relatos rapidamente e registrar somente resultados confirmados, evitando repetições sem contexto novo.
-
-Este complemento amplia a atenção operacional da equipe ao 403. A coordenação dos reparos permanece com o responsável; não autoriza contato com prestadores, contratação ou gastos. O fim do período mínimo não comprova resolução.
+O 403 permanece no acompanhamento comum de manutenção. Não recebe a atenção reforçada de 30 dias destinada ao 103. A coordenação dos reparos permanece com o responsável; não autoriza contato com prestadores, contratação ou gastos.
 
 ## Histórico agregado e estado confirmado
 
