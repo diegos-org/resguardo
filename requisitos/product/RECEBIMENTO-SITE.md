@@ -123,12 +123,12 @@ criar).
   e a conciliação com o fechamento (repasse fora do fechamento é adiantamento vinculado às
   reservas; reserva que atravessa o mês é paga no check-in e se acerta no fechamento seguinte)
   são o item **M4.10** do ROADMAP. O M8.2 registra a data de liberação de cada pagamento.
-- **Decididas em 7/10/2026:** contestação perdida (pergunta 4) e a base da política de
-  cancelamento (pergunta 5) — ver as respostas abaixo. **Continuam pendentes:** taxa do
-  cartão/Pix (pergunta 3; vale a regra atual até decisão contrária); no reembolso integral, quem
-  fica com a taxa do pagamento que não volta; e a confirmação do jurídico sobre o arrependimento
-  de 7 dias. Nenhuma impede o M8.2 em sandbox; todas precisam estar fechadas antes de o site
-  receber pagamento de verdade.
+- **Decididas em 7/10/2026:** contestação perdida (pergunta 4), a base da política de
+  cancelamento e, no reembolso integral, quem fica com a taxa do pagamento que não volta (a SCL;
+  pergunta 5) — ver as respostas abaixo. **Continuam pendentes:** taxa do cartão/Pix (pergunta 3;
+  vale a regra atual até decisão contrária) e a conferência por Diego, com o contador, da posição
+  sobre o arrependimento de 7 dias que o Claude escreve no M7.4. Nenhuma impede o M8.2 em
+  sandbox; as duas precisam estar fechadas antes de o site receber pagamento de verdade.
 - **Pedido novo de Diego:** documento "como funciona" para o proprietário (inclusive quando e
   como recebe) com aceite registrado, e páginas legais do site com aceite no checkout: itens
   M5.6 e M7.4 do ROADMAP.
@@ -206,11 +206,16 @@ caminho, pelo provedor.
    a antecedência, e quem arca com a taxa do pagamento que não volta. **Base respondida em
    7/10/2026:** reembolso integral até 14 dias antes da entrada; com menos de 14 dias, sem
    reembolso; o texto-base das páginas legais (M7.4) inclui o arrependimento de 7 dias depois do
-   pagamento em compra pela internet (Código de Defesa do Consumidor, art. 49), a confirmar com o
-   jurídico se vale para hospedagem com data marcada. **Ainda pendente:** no reembolso integral,
-   quem fica com a taxa do pagamento que não volta. Com a base, o sistema calcula o valor a
-   devolver pela antecedência; enquanto a taxa estiver pendente, a devolução que dependa dela
-   fica para conferência, com aviso.
+   pagamento em compra pela internet (Código de Defesa do Consumidor, art. 49). **Respondido em
+   7/10/2026 (segunda rodada):** no reembolso integral, a taxa do pagamento que o Mercado Pago não
+   devolver fica com a SCL ("a empresa arca com esse custo no começo"; revisto se pesar). Não há
+   regra oficial brasileira clara sobre a taxa voltar na devolução total (na Argentina, volta):
+   confirmar no primeiro reembolso em sandbox e registrar aqui. Sobre o arrependimento, o Claude
+   escreve a posição a partir da lei (CDC, art. 49, e o Decreto nº 7.962/2013 do comércio
+   eletrônico; a regra de 24 horas é das passagens aéreas, da ANAC, e não vale para hospedagem) e
+   Diego confere com o contador, de preferência também com um advogado, antes de ligar o pagamento
+   de verdade. Com a base, o sistema calcula o valor a devolver pela antecedência e lança a taxa que
+   não voltar como custo da SCL.
 6. **Respondida em 4/10/2026 (opção (a), ver "Decisão de Diego"; fica só como histórico).**
    Cartão com recebimento em 30 dias: uma reserva paga no fim do mês entraria no repasse do
    dia 1º antes de o Mercado Pago liberar o dinheiro. Opções: (a) repassar só quando o
