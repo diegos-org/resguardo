@@ -1,16 +1,17 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import type { BloqueioDoProprietario } from "@/portal/bloqueios";
 import { BloqueiosProprietario } from "./BloqueiosProprietario";
 
 const imoveis = [
   { id: "i403", codigo: "403", nome: "Quatro", permissao: true as boolean | null },
   { id: "i303", codigo: "303", nome: "Três", permissao: false as boolean | null },
 ];
-const bloqueios = [
-  { id: "b1", imovelId: "i403", codigo: "403", inicio: "2026-10-10", fim: "2026-10-12", motivo: "Uso próprio", fonte: "proprietario", proprio: true, liberavel: true },
-  { id: "b2", imovelId: "i403", codigo: "403", inicio: "2026-11-10", fim: "2026-11-12", motivo: "Manutenção", fonte: "manual", proprio: false, liberavel: false },
-  { id: "b3", imovelId: "i403", codigo: "403", inicio: "2026-12-10", fim: "2026-12-12", motivo: "Uso próprio", fonte: "proprietario", proprio: false, liberavel: false },
+const bloqueios: BloqueioDoProprietario[] = [
+  { id: "b1", imovelId: "i403", codigo: "403", inicio: "2026-10-10", fim: "2026-10-12", motivo: "Uso próprio", quem: "proprietario", proprio: true, liberavel: true },
+  { id: "b2", imovelId: "i403", codigo: "403", inicio: "2026-11-10", fim: "2026-11-12", motivo: "Manutenção", quem: "empresa", proprio: false, liberavel: false },
+  { id: "b3", imovelId: "i403", codigo: "403", inicio: "2026-12-10", fim: "2026-12-12", motivo: "Uso próprio", quem: "proprietario", proprio: false, liberavel: false },
 ];
 const bloquear = vi.fn();
 const liberar = vi.fn();

@@ -17,7 +17,7 @@ import { listarContratos } from "@/contratos/repositorio";
 import { beds24EnvioImoveis, beds24Envios, imoveis, imoveisPeriodos, limpezas, proprietarioImoveis, proprietarios, proprietarioUsuarios, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { type Detalhes, type ErrosDetalhes, criarPeriodo, entradaDeDetalhes, excluirPeriodo, lerDetalhes, listarPeriodos, salvarDetalhesComLeitura, validarDetalhes } from "@/imoveis/detalhes";
-import type { FontePrecos } from "@/imoveis/fonte-precos";
+import { fontePrecosDoPortal, type FontePrecosPortal } from "@/imoveis/fonte-precos";
 import type { Periodo } from "@/imoveis/regras-venda";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
@@ -59,11 +59,12 @@ export type SituacaoEnvio = {
   /** O envio roda sozinho todo dia. */
   automatico: boolean;
   /**
-   * Último envio (de verdade, não simulação) terminado que incluiu este imóvel; `falha` = por que ele ficou de fora nessa
-   * execução (vazio = foi); `mesmoVinculo` = o par propriedade/quarto validado então ainda é o vínculo atual;
+   * Último envio (de verdade, não simulação) terminado que incluiu este imóvel; `falhou` = ele ficou de fora nessa
+   * execução (o motivo técnico, com nomes internos e números de quarto, fica no painel e nunca vem para o portal: este
+   * objeto vai inteiro ao navegador do proprietário); `mesmoVinculo` = o par propriedade/quarto validado então ainda é o vínculo atual;
    * `mesmaCredencial` = a credencial Beds24 que deu esse veredito é a do ambiente agora (outra credencial pode não enxergar o quarto).
    */
-  ultimo: { em: Date; situacao: string; falha: string; mesmoVinculo: boolean; mesmaCredencial: boolean } | null;
+  ultimo: { em: Date; situacao: string; falhou: boolean; mesmoVinculo: boolean; mesmaCredencial: boolean } | null;
 };
 
 /**
@@ -71,7 +72,7 @@ export type SituacaoEnvio = {
  * já incluiu o imóvel sem deixá-lo de fora (quarto acessível à credencial, em BRL) — a mesma régua do envio, lida do
  * resultado dele em vez de suposta.
  */
-export const envioPronto = (e: Pick<SituacaoEnvio, "naLista" | "vinculado" | "escritaPronta" | "ultimo">) => e.naLista && e.vinculado && e.escritaPronta && e.ultimo !== null && !e.ultimo.falha && e.ultimo.mesmoVinculo && e.ultimo.mesmaCredencial;
+export const envioPronto = (e: Pick<SituacaoEnvio, "naLista" | "vinculado" | "escritaPronta" | "ultimo">) => e.naLista && e.vinculado && e.escritaPronta && e.ultimo !== null && !e.ultimo.falhou && e.ultimo.mesmoVinculo && e.ultimo.mesmaCredencial;
 
 export type ImovelMarketplace = {
   id: string;
@@ -80,7 +81,8 @@ export type ImovelMarketplace = {
   fuso: string;
   /** Desde quando é do dono atual (AAAA-MM-DD): limpezas, manutenções e datas de antes disso não são dele. */
   posseDesde: string | null;
-  fontePrecos: FontePrecos;
+  /** Já convertida para o portal (sem o nome interno do provedor de preços). */
+  fontePrecos: FontePrecosPortal;
   detalhes: Detalhes;
   periodos: (Periodo & { id: string })[];
   envio: SituacaoEnvio;
@@ -176,7 +178,7 @@ export async function situacaoDoEnvio(db: Db, organizacaoId: string, regras: Reg
       ? {
           em: ultimo.em,
           situacao: ultimo.situacao,
-          falha: ultimo.falha,
+          falhou: ultimo.falha !== "",
           mesmoVinculo: atual !== undefined && ultimo.propertyId === atual.propertyId && ultimo.roomId === atual.roomId,
           // Execução antiga sem impressão gravada também não vale: não se sabe com que credencial foi.
           mesmaCredencial: ultimo.credencial !== "" && ultimo.credencial === credencialAtual,
@@ -199,7 +201,7 @@ export async function imoveisMarketplaceDaSessao(db: Db, sessao: Sessao, agora =
   for (const im of linhas) {
     if (!emMarketplaceEm(await listarContratos(db, sessao.organizacaoId, im.id), hojeISO(im.fuso, agora))) continue;
     const [detalhes, periodos, envio] = await Promise.all([lerDetalhes(db, sessao.organizacaoId, im.id), listarPeriodos(db, sessao.organizacaoId, im.id), situacaoDoEnvio(db, sessao.organizacaoId, regras, im.id)]);
-    saida.push({ ...im, posseDesde: posse.get(im.id) ?? null, fontePrecos: detalhes.fontePrecos, detalhes, periodos, envio });
+    saida.push({ ...im, posseDesde: posse.get(im.id) ?? null, fontePrecos: fontePrecosDoPortal(detalhes.fontePrecos), detalhes, periodos, envio });
   }
   return saida;
 }
@@ -232,7 +234,7 @@ export async function salvarPrecosPeloProprietario(db: Db, sessao: Sessao, imove
       const v = validarDetalhes(completa);
       if (!v.ok) return { erro: "Confira os campos destacados.", erros: v.erros };
       if (atual.fontePrecos === "beds24" && v.dados.precoBase !== atual.precoBase) {
-        return { erro: "Confira os campos destacados.", erros: { precoBase: "Os preços deste imóvel são definidos no Beds24: o preço da noite é editado lá. Limpeza, hóspede extra, regras e horários podem ser editados aqui." } };
+        return { erro: "Confira os campos destacados.", erros: { precoBase: "Os preços deste imóvel são definidos por você ou pela sua ferramenta de preços: o preço da noite é editado lá. Limpeza, hóspede extra, regras e horários podem ser editados aqui." } };
       }
       return v.dados;
     },
@@ -249,7 +251,7 @@ export async function criarPeriodoPeloProprietario(db: Db, sessao: Sessao, imove
   // Contrato e fonte de preços são conferidos dentro da transação que grava o período, com o imóvel travado (o painel pode tê-los mudado no meio).
   return criarPeriodo(db, sessao.organizacaoId, r.imovel.id, entrada, sessao.usuarioId, {
     conferir: async (atual, tx) =>
-      (await conferirNaTransacao(tx, sessao, r.imovel.id, r.dia)) ?? (atual.fontePrecos === "beds24" && preco ? "Os preços deste imóvel são definidos no Beds24: aqui o período só pode ter estadia mínima. Deixe o preço em branco." : null),
+      (await conferirNaTransacao(tx, sessao, r.imovel.id, r.dia)) ?? (atual.fontePrecos === "beds24" && preco ? "Os preços deste imóvel são definidos por você ou pela sua ferramenta de preços: aqui o período só pode ter estadia mínima. Deixe o preço em branco." : null),
   });
 }
 
