@@ -109,6 +109,9 @@ export async function liberarPeloProprietario(db: Db, sessao: Sessao, bloqueioId
  * Bloqueios atuais e futuros dos imóveis do proprietário, com quem fez cada um; só os dele, e só os que ainda
  * não acabaram, são liberáveis. "Hoje" é o de cada imóvel (fuso do imóvel), a mesma data que a liberação usa.
  */
+/** O que o portal mostra como motivo de um bloqueio vindo dos canais (Airbnb, Booking), no lugar do texto interno. */
+export const MOTIVO_BLOQUEIO_DOS_CANAIS = "Datas fechadas nos canais (Airbnb, Booking)";
+
 export async function bloqueiosDoProprietario(db: Db, sessao: Sessao, agora = new Date()): Promise<BloqueioDoProprietario[]> {
   const ids = sessao.imovelIds.filter(uuidValido);
   if (!ids.length) return [];
@@ -124,6 +127,9 @@ export async function bloqueiosDoProprietario(db: Db, sessao: Sessao, agora = ne
   return linhas.flatMap(({ fuso, proprietarioId, ...b }) => {
     const hoje = hojeISO(fuso, agora);
     const proprio = b.fonte === "proprietario" && proprietarioId !== null && meus.includes(proprietarioId);
-    return b.fim >= hoje ? [{ ...b, proprio, liberavel: proprio && b.fim > hoje }] : [];
+    // Bloqueio vindo dos canais: o motivo gravado na importação é interno (cita o Beds24); o proprietário lê só que
+    // as datas foram fechadas nos canais (M5.9).
+    const motivo = b.fonte === "beds24" ? MOTIVO_BLOQUEIO_DOS_CANAIS : b.motivo;
+    return b.fim >= hoje ? [{ ...b, motivo, proprio, liberavel: proprio && b.fim > hoje }] : [];
   });
 }

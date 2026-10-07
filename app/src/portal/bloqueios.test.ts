@@ -7,7 +7,7 @@ import { beds24Envios, bloqueios, imoveis, organizacoes, proprietarioImoveis, pr
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { criarBloqueio } from "@/reservas/bloqueios";
-import { bloqueiosDoProprietario, bloquearPeloProprietario, liberarPeloProprietario, permissaoAPartirDe, permissaoNoIntervalo, permissoesDeBloqueio } from "./bloqueios";
+import { bloqueiosDoProprietario, bloquearPeloProprietario, liberarPeloProprietario, MOTIVO_BLOQUEIO_DOS_CANAIS, permissaoAPartirDe, permissaoNoIntervalo, permissoesDeBloqueio } from "./bloqueios";
 
 let db: Db, close: () => Promise<void>, org: string, a: string, b: string, c: string, d: string, usuario: string, dona: string, outro: string;
 // 3/10/2026, 12:00 em São Paulo.
@@ -168,8 +168,12 @@ describe("calendário do proprietário (M5.5)", () => {
     expect(await liberarPeloProprietario(db, sessao(), passado.id, agora)).toMatchObject({ ok: false, erro: expect.stringContaining("já passou") });
     await expect(liberarPeloProprietario(db, sessao(), deOutro.id, agora)).rejects.toBeInstanceOf(AcessoNegado);
     expect(await liberarPeloProprietario(db, sessao(), "nao-e-uuid", agora)).toMatchObject({ ok: false });
-    // Bloqueio que veio dos canais: fica, e a mensagem não cita o Beds24 (M5.9).
-    const [doCanal] = await db.insert(bloqueios).values({ organizacaoId: org, imovelId: a, inicio: "2026-12-01", fim: "2026-12-03", fonte: "beds24", idFonte: "91" }).returning({ id: bloqueios.id });
+    // Bloqueio que veio dos canais (com o motivo interno que a importação grava): na lista do portal, o motivo e a
+    // fonte não citam o Beds24; ao tentar liberar, fica, e a mensagem também não cita (M5.9).
+    const [doCanal] = await db.insert(bloqueios).values({ organizacaoId: org, imovelId: a, inicio: "2026-12-01", fim: "2026-12-03", motivo: "Bloqueio importado do Beds24", fonte: "beds24", idFonte: "91" }).returning({ id: bloqueios.id });
+    const naLista = (await bloqueiosDoProprietario(db, sessao(), agora)).find((x) => x.id === doCanal.id);
+    expect(naLista).toMatchObject({ motivo: MOTIVO_BLOQUEIO_DOS_CANAIS, liberavel: false });
+    expect(naLista?.motivo).not.toMatch(/beds24/i);
     const r = await liberarPeloProprietario(db, sessao(), doCanal.id, agora);
     expect(r).toMatchObject({ ok: false, erro: expect.stringContaining("veio dos canais") });
     expect(JSON.stringify(r)).not.toMatch(/beds24/i);
