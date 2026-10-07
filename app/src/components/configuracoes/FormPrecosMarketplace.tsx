@@ -34,6 +34,13 @@ const SIMULACAO_PADRAO = { diaria: "500", noites: "3", limpeza: "150" };
 export function FormPrecosMarketplace({ precos, salvar }: Props) {
   const [estado, enviar, enviando] = useActionState(salvar, {});
   const [campos, setCampos] = useState<Record<string, string>>(() => ({ ...camposDe(precos), ...(estado.valores ?? {}) }));
+  // Valores gravados mudaram (ex.: "Usar o padrão novo"): os campos recomeçam deles, sem perder o aviso de "Salvo".
+  const gravados = JSON.stringify(precos);
+  const [ultimosGravados, setUltimosGravados] = useState(gravados);
+  if (ultimosGravados !== gravados) {
+    setUltimosGravados(gravados);
+    setCampos(camposDe(precos));
+  }
   const [sim, setSim] = useState(SIMULACAO_PADRAO);
   const erro = (k: string) => (estado.erros?.[k] ? <span className={styles.erro}>{estado.erros[k]}</span> : null);
   const invalido = (k: string) => (estado.erros?.[k] ? { "aria-invalid": true as const } : {});

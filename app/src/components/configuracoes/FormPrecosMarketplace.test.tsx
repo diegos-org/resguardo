@@ -56,3 +56,17 @@ it("a simulação reage aos campos antes de salvar: pesos, taxas e a estadia de 
   expect(screen.getByText("Corrija os campos acima para ver a simulação.")).toBeTruthy();
   expect(salvar).not.toHaveBeenCalled();
 });
+
+it("valores gravados mudam (ex.: \"Usar o padrão novo\"): os campos recomeçam deles; sem mudança, o que foi digitado fica", () => {
+  const { rerender } = render(<FormPrecosMarketplace precos={IGUAIS} salvar={salvar} />);
+  const scl = () => (screen.getByLabelText("SCL") as HTMLInputElement).value;
+  expect(scl()).toBe("1");
+  fireEvent.change(screen.getByLabelText("Hóspede"), { target: { value: "3" } });
+  // Mesmos valores gravados (outra renderização da página): o que foi digitado continua.
+  rerender(<FormPrecosMarketplace precos={{ ...IGUAIS, pesos: { ...IGUAIS.pesos } }} salvar={salvar} />);
+  expect((screen.getByLabelText("Hóspede") as HTMLInputElement).value).toBe("3");
+  // Gravados mudaram: os campos mostram os novos, e salvar em seguida não regrava os antigos.
+  rerender(<FormPrecosMarketplace precos={PRECOS_MARKETPLACE_PADRAO} salvar={salvar} />);
+  expect(scl()).toBe("2");
+  expect((screen.getByLabelText("Hóspede") as HTMLInputElement).value).toBe("1");
+});

@@ -49,16 +49,3 @@ it("pesos gravados no padrão antigo (1/1/1): avisa e oferece o novo, sem trocar
   expect(h).toContain("<strong>4%</strong>");
 });
 
-it("o formulário recomeça quando os valores gravados mudam (ex.: depois de \"Usar o padrão novo\"), em vez de guardar os antigos", async () => {
-  const chave = async () => {
-    const filhos = (await Page()).props.children as unknown[];
-    const form = filhos.find((f) => (f as { props?: { salvar?: unknown } })?.props?.salvar) as { key: string | null };
-    return form.key;
-  };
-  m.precos.mockResolvedValue({ ...PRECOS_MARKETPLACE_PADRAO, pesos: { hospede: 1, proprietario: 1, scl: 1 } });
-  const antes = await chave();
-  m.precos.mockResolvedValue({ ...PRECOS_MARKETPLACE_PADRAO });
-  const depois = await chave();
-  expect(antes).toBeTruthy();
-  expect(depois).not.toBe(antes);
-});
