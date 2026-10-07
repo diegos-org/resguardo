@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { PESOS_PADRAO_ANTIGO, PRECOS_MARKETPLACE_PADRAO } from "@/marketplace/precos";
 import { FormPrecosMarketplace } from "./FormPrecosMarketplace";
@@ -69,4 +69,29 @@ it("valores gravados mudam (ex.: \"Usar o padrão novo\"): os campos recomeçam 
   rerender(<FormPrecosMarketplace precos={PRECOS_MARKETPLACE_PADRAO} salvar={salvar} />);
   expect(scl()).toBe("2");
   expect((screen.getByLabelText("Hóspede") as HTMLInputElement).value).toBe("1");
+});
+
+it("erros de uma gravação recusada somem quando os valores gravados mudam por outro caminho; o \"Salvo\" da gravação que os mudou fica", async () => {
+  const recusar = vi.fn(async () => ({ mensagem: "Confira os campos destacados.", erros: { pesoScl: "Use um número inteiro de 0 a 100." } }));
+  const { rerender } = render(<FormPrecosMarketplace precos={IGUAIS} salvar={recusar} />);
+  await act(async () => {
+    fireEvent.submit(screen.getByRole("form", { name: "Marketplace e desconto do site" }));
+  });
+  expect(screen.getByText("Confira os campos destacados.")).toBeTruthy();
+  // Mesmos valores gravados: o aviso continua.
+  rerender(<FormPrecosMarketplace precos={{ ...IGUAIS }} salvar={recusar} />);
+  expect(screen.getByText("Confira os campos destacados.")).toBeTruthy();
+  // "Usar o padrão novo" (ou outra pessoa) mudou o que está gravado: os erros antigos somem.
+  rerender(<FormPrecosMarketplace precos={PRECOS_MARKETPLACE_PADRAO} salvar={recusar} />);
+  expect(screen.queryByText("Confira os campos destacados.")).toBeNull();
+  expect(screen.queryByText("Use um número inteiro de 0 a 100.")).toBeNull();
+  cleanup();
+  // Gravação que muda os valores: o aviso de salvo aparece junto com os valores novos.
+  const gravar = vi.fn(async () => ({ ok: true, aviso: "Salvo de verdade." }));
+  const r2 = render(<FormPrecosMarketplace precos={IGUAIS} salvar={gravar} />);
+  await act(async () => {
+    fireEvent.submit(screen.getByRole("form", { name: "Marketplace e desconto do site" }));
+  });
+  r2.rerender(<FormPrecosMarketplace precos={PRECOS_MARKETPLACE_PADRAO} salvar={gravar} />);
+  expect(screen.getByText("Salvo de verdade.")).toBeTruthy();
 });

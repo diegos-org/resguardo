@@ -32,15 +32,19 @@ const SIMULACAO_PADRAO = { diaria: "500", noites: "3", limpeza: "150" };
  * escreve em OTA ou no pagamento: são parâmetros do desconto do site e da futura divisão (M12.2).
  */
 export function FormPrecosMarketplace({ precos, salvar }: Props) {
-  const [estado, enviar, enviando] = useActionState(salvar, {});
-  const [campos, setCampos] = useState<Record<string, string>>(() => ({ ...camposDe(precos), ...(estado.valores ?? {}) }));
-  // Valores gravados mudaram (ex.: "Usar o padrão novo"): os campos recomeçam deles, sem perder o aviso de "Salvo".
+  const [resposta, enviar, enviando] = useActionState(salvar, {});
+  const [campos, setCampos] = useState<Record<string, string>>(() => ({ ...camposDe(precos), ...(resposta.valores ?? {}) }));
+  // Valores gravados mudaram (ex.: "Usar o padrão novo"): os campos recomeçam deles. Erros de uma gravação recusada
+  // falam de campos que já não estão na tela e somem; o "Salvo" de uma gravação aceita fica.
   const gravados = JSON.stringify(precos);
   const [ultimosGravados, setUltimosGravados] = useState(gravados);
+  const [respostaVencida, setRespostaVencida] = useState<EstadoPrecos | null>(null);
   if (ultimosGravados !== gravados) {
     setUltimosGravados(gravados);
     setCampos(camposDe(precos));
+    if (!resposta.ok) setRespostaVencida(resposta);
   }
+  const estado: EstadoPrecos = resposta === respostaVencida ? {} : resposta;
   const [sim, setSim] = useState(SIMULACAO_PADRAO);
   const erro = (k: string) => (estado.erros?.[k] ? <span className={styles.erro}>{estado.erros[k]}</span> : null);
   const invalido = (k: string) => (estado.erros?.[k] ? { "aria-invalid": true as const } : {});
