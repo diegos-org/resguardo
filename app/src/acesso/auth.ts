@@ -6,12 +6,15 @@ import { correioDoAmbiente } from "@/email/correio";
 import { aceitarConviteDoCookie } from "@/convites/cookie";
 import { verificarCodigo } from "./codigo-email";
 import { decidirEntrada, lerAdminEmails } from "./entrada";
+import { entrarComSenha } from "./senha";
 
 /** Entrar com Google: precisa das credenciais do Google e do segredo. */
 export const loginGoogleConfigurado = Boolean(process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET && process.env.AUTH_SECRET);
 /** Entrar com código por e-mail: precisa do segredo e de um jeito de enviar e-mail. */
 export const loginCodigoConfigurado = Boolean(process.env.AUTH_SECRET && correioDoAmbiente());
-export const loginConfigurado = loginGoogleConfigurado || loginCodigoConfigurado;
+/** Entrar com usuário (ou e-mail) e senha (M6.8): só precisa do segredo. */
+export const loginSenhaConfigurado = Boolean(process.env.AUTH_SECRET);
+export const loginConfigurado = loginGoogleConfigurado || loginCodigoConfigurado || loginSenhaConfigurado;
 
 const configEntrada = () => ({
   adminEmails: lerAdminEmails(process.env.ADMIN_EMAILS),
@@ -48,14 +51,25 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         return entrarOuAceitarConvite(db, r.email).then((id) => (id ? { id, email: r.email } : null));
       },
     }),
+    // Usuário (ou e-mail) e senha (M6.8): só precisa do segredo; quem não tem senha cadastrada não entra por aqui.
+    Credentials({
+      id: "senha",
+      name: "Usuário e senha",
+      credentials: { login: {}, senha: {} },
+      async authorize(c) {
+        if (!process.env.AUTH_SECRET || typeof c?.login !== "string" || typeof c?.senha !== "string") return null;
+        const r = await entrarComSenha(getDb(), c.login, c.senha);
+        return r.ok ? { id: r.usuarioId } : null;
+      },
+    }),
   ],
   session: { strategy: "jwt", maxAge: 60 * 60 * 24 * 7 },
   pages: { signIn: "/entrar", error: "/entrar" },
   trustHost: true,
   callbacks: {
     async signIn({ account, profile, user }) {
-      // Código por e-mail: o authorize já conferiu o código e o acesso.
-      if (account?.provider === "codigo") return Boolean(user?.id);
+      // Código por e-mail ou senha: o authorize já conferiu e achou o usuário ativo.
+      if (account?.provider === "codigo" || account?.provider === "senha") return Boolean(user?.id);
       const email = emailVerificado(profile);
       if (!email) return "/entrar?erro=email-nao-verificado";
       const id = await entrarOuAceitarConvite(getDb(), email);
@@ -64,7 +78,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async jwt({ token, profile, account, user }) {
       // Hora do login (fica no token enquanto a sessão durar): acesso mudado depois derruba a sessão.
       if (account) token.desde = Date.now();
-      if (account?.provider === "codigo") {
+      if (account?.provider === "codigo" || account?.provider === "senha") {
         token.uid = user?.id;
       } else if (profile) {
         const email = emailVerificado(profile);

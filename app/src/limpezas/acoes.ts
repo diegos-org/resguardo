@@ -7,6 +7,7 @@ import { exigir, podeFazer } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { getDb } from "@/db/client";
 import { correioDoAmbiente } from "@/email/correio";
+import { definirCidades, definirSenhaPelaEmpresa } from "@/equipe/acesso";
 import { avisarAtribuicao, darAcesso, tirarAcesso } from "@/equipe/equipe";
 import { hojeISO } from "@/lib/datas";
 import { reaisParaCentavos } from "@/lib/dinheiro-form";
@@ -148,4 +149,25 @@ export async function categoriaAcao(form: FormData) {
   const s = await exigirSessaoPainel();
   exigir(s, "despesa:editar", { organizacaoId: s.organizacaoId });
   voltar(form, await escolherCategoriaDasLimpezas(getDb(), s.organizacaoId, String(form.get("categoriaId") ?? ""), s.usuarioId));
+}
+
+export type EstadoSenhaProfissional = { ok?: boolean; erro?: string; login?: string; senha?: string };
+
+/**
+ * Usuário e senha provisória da profissional (M6.8). Só quem gerencia usuários (o admin): é uma credencial de outra
+ * pessoa. A senha volta só para esta tela, uma vez, para ser copiada e mandada pelo WhatsApp; nunca vai para a URL.
+ */
+export async function senhaProfissionalAcao(_anterior: EstadoSenhaProfissional, form: FormData): Promise<EstadoSenhaProfissional> {
+  const s = await exigirSessaoPainel();
+  exigir(s, "usuario:gerenciar", { organizacaoId: s.organizacaoId });
+  const r = await definirSenhaPelaEmpresa(getDb(), s.organizacaoId, String(form.get("id") ?? ""), { login: String(form.get("login") ?? ""), senha: String(form.get("senha") ?? "") }, s.usuarioId);
+  revalidatePath("/painel/limpezas/profissionais");
+  return r.ok ? { ok: true, login: r.login, senha: r.senha } : { erro: r.erro };
+}
+
+/** Cidades da agenda que a profissional vê no acesso dela (M6.8). */
+export async function cidadesProfissionalAcao(form: FormData) {
+  const s = await sessaoEditora();
+  const r = await definirCidades(getDb(), s.organizacaoId, String(form.get("id") ?? ""), form.getAll("cidade").map(String), s.usuarioId);
+  voltar(form, r, "/painel/limpezas/profissionais");
 }

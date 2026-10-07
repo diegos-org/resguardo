@@ -6,17 +6,19 @@ import { MolduraPortal } from "@/components/portal/MolduraPortal";
 import styles from "@/components/portal/portal.module.css";
 import { nomeDaEmpresa } from "@/configuracoes/empresa";
 import { getDb } from "@/db/client";
-import { marcarFeitaAcao } from "@/equipe/acoes";
+import { MinhaSenha } from "@/components/equipe/MinhaSenha";
+import { agendaDaProfissional, situacaoDaSenha } from "@/equipe/acesso";
+import { marcarFeitaAcao, trocarMinhaSenhaAcao } from "@/equipe/acoes";
 import { limpezasDaProfissional } from "@/equipe/equipe";
-import { lerConfigAgenda } from "@/agenda/agenda";
+import { FRASE_FINAL, lerConfigAgenda } from "@/agenda/agenda";
 import { hojeISO } from "@/lib/datas";
 
 const DIAS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 const dia = (d: string) => `${DIAS[new Date(`${d}T12:00:00Z`).getUTCDay()]} ${d.split("-").reverse().slice(0, 2).join("/")}`;
 
 /**
- * Tela da profissional de limpeza pelo celular (M6.6): as limpezas dela e o botão "Feita". Sem custo,
- * sem proprietário, sem financeiro.
+ * Tela da profissional de limpeza pelo celular (M6.6): as limpezas dela e o botão "Feita"; desde o M6.8, também a agenda
+ * das cidades escolhidas para ela (só essas) e a senha dela. Sem custo, sem proprietário, sem financeiro.
  */
 export default async function Equipe({ searchParams }: PageProps<"/equipe">) {
   const sessao = await obterSessao();
@@ -26,7 +28,13 @@ export default async function Equipe({ searchParams }: PageProps<"/equipe">) {
   const params = await searchParams;
   const hoje = hojeISO();
   const db = getDb();
-  const [lista, config, empresa] = await Promise.all([limpezasDaProfissional(db, sessao.organizacaoId, sessao.profissionalId, hoje), lerConfigAgenda(db, sessao.organizacaoId), nomeDaEmpresa(db, sessao.organizacaoId)]);
+  const [lista, config, empresa, agenda, senha] = await Promise.all([
+    limpezasDaProfissional(db, sessao.organizacaoId, sessao.profissionalId, hoje),
+    lerConfigAgenda(db, sessao.organizacaoId),
+    nomeDaEmpresa(db, sessao.organizacaoId),
+    agendaDaProfissional(db, sessao.organizacaoId, sessao.profissionalId, hojeISO("America/Sao_Paulo")),
+    situacaoDaSenha(db, sessao.usuarioId),
+  ]);
   const erro = typeof params.erro === "string" ? params.erro : undefined;
 
   async function sair() {
@@ -84,6 +92,25 @@ export default async function Equipe({ searchParams }: PageProps<"/equipe">) {
           </section>
         );
       })}
+
+      <section aria-label="Agenda da equipe" style={{ display: "grid", gap: 12, marginTop: 24 }}>
+        <h2>Agenda da equipe</h2>
+        {!agenda.cidades.length ? (
+          <p className={styles.miudo}>A empresa ainda não escolheu de qual cidade é a sua agenda. Peça para liberar.</p>
+        ) : !agenda.secoes.length ? (
+          <p className={styles.miudo}>Nenhum imóvel ativo em {agenda.cidades.join(", ")} agora.</p>
+        ) : (
+          agenda.secoes.map((s) => (
+            <div key={s.cidade} className={styles.caixa}>
+              <h3 style={{ marginTop: 0 }}>{s.cidade}</h3>
+              <div style={{ whiteSpace: "pre-wrap", fontSize: "0.9375rem", lineHeight: 1.5 }}>{s.linhas.join("\n")}</div>
+            </div>
+          ))
+        )}
+        {agenda.secoes.length > 0 && <p className={styles.miudo}>{FRASE_FINAL}</p>}
+      </section>
+
+      <MinhaSenha temSenha={senha.temSenha} provisoria={senha.provisoria} trocar={trocarMinhaSenhaAcao} />
     </MolduraPortal>
   );
 }

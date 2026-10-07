@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { loginCodigoConfigurado, loginConfigurado, loginGoogleConfigurado, signIn } from "@/acesso/auth";
-import { entrarComCodigo, pedirCodigoAcao } from "@/acesso/entrar-acoes";
+import { loginCodigoConfigurado, loginConfigurado, loginGoogleConfigurado, loginSenhaConfigurado, signIn } from "@/acesso/auth";
+import { entrarComCodigo, entrarComSenhaAcao, pedirCodigoAcao } from "@/acesso/entrar-acoes";
 import { MolduraPortal } from "@/components/portal/MolduraPortal";
 import styles from "@/components/portal/portal.module.css";
 import { carregarSite } from "@/site/pagina";
@@ -11,15 +11,19 @@ const MENSAGENS: Record<string, string> = {
   "sem-acesso": "Sua conta não tem acesso ao painel interno.",
   "email-vazio": "Informe seu e-mail.",
   codigo: "Código incorreto ou vencido. Confira o e-mail mais recente ou peça um novo código.",
+  "senha-vazia": "Informe o usuário (ou e-mail) e a senha.",
+  senha: "Usuário ou senha não conferem. Confira e tente de novo; se esqueceu, peça à empresa uma senha nova.",
+  espere: "Muitas tentativas erradas. Espere 15 minutos e tente de novo, ou peça à empresa uma senha nova.",
 };
 
 export default async function Entrar({ searchParams }: PageProps<"/entrar">) {
-  const { erro, etapa, email } = await searchParams;
+  const { erro, etapa, email, login } = await searchParams;
   const { conteudo } = await carregarSite();
   const empresa = conteudo?.nomeEmpresa.trim() || "Sua Casa Leblon";
   const mensagem = typeof erro === "string" ? (MENSAGENS[erro] ?? "Não foi possível entrar. Tente novamente.") : null;
   const emailInformado = typeof email === "string" ? email : "";
   const digitarCodigo = etapa === "codigo" && emailInformado && loginCodigoConfigurado;
+  const loginInformado = typeof login === "string" ? login.slice(0, 200) : "";
 
   async function entrarComGoogle() {
     "use server";
@@ -77,6 +81,27 @@ export default async function Entrar({ searchParams }: PageProps<"/entrar">) {
                 Entrar com Google
               </button>
             </form>
+          )}
+          {loginSenhaConfigurado && (
+            <details className={styles.caixa} open={etapa === "senha"}>
+              <summary style={{ cursor: "pointer", fontWeight: 600 }}>Entrar com usuário e senha</summary>
+              <form action={entrarComSenhaAcao} style={{ display: "grid", gap: 14, marginTop: 14 }} aria-label="Entrar com usuário e senha">
+                <label className={styles.campo}>
+                  Usuário ou e-mail
+                  <input name="login" autoComplete="username" autoCapitalize="none" spellCheck={false} required maxLength={200} defaultValue={loginInformado} />
+                </label>
+                <label className={styles.campo}>
+                  Senha
+                  <input name="senha" type="password" autoComplete="current-password" required maxLength={128} />
+                </label>
+                <button type="submit" className={`${styles.botao} ${styles.botaoLargo}`}>
+                  Entrar
+                </button>
+                <p className={styles.miudo} style={{ margin: 0 }}>
+                  Para quem recebeu da empresa um usuário e uma senha, ou já criou a sua. Esqueceu? Peça à empresa uma senha nova.
+                </p>
+              </form>
+            </details>
           )}
         </div>
       )}
