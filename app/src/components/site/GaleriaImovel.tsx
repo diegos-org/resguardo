@@ -14,7 +14,7 @@ export function GaleriaImovel({ nome, fotos }: { nome: string; fotos: readonly F
   return (
     <div className={`${styles.galeria} ${uma ? styles.galeriaUma : ""}`} role="region" aria-label={`Fotos de ${nome}`}>
       <figure className={styles.galeriaPrincipal}>
-        <Image src={foto.grande} alt={foto.legenda || `Foto ${atual + 1} de ${nome}`} fill sizes={uma ? "100vw" : "(max-width: 600px) 100vw, 50vw"} unoptimized priority className={styles.fotoReal} />
+        <Image src={foto.grande} alt={foto.legenda || `Foto ${atual + 1} de ${nome}`} fill sizes={uma ? "100vw" : "(max-width: 600px) 100vw, 50vw"} unoptimized loading="eager" className={styles.fotoReal} />
         {foto.legenda && <figcaption className={styles.legendaFoto}>{foto.legenda}</figcaption>}
         {!uma && (
           <span className={styles.contador} aria-live="polite">
