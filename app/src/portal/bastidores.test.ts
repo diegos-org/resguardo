@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { EXPLICACAO_FONTE_PRECOS_PORTAL, FONTES_PRECOS, NOMES_FONTE_PRECOS_PORTAL } from "@/imoveis/fonte-precos";
+import { EXPLICACAO_FONTE_PRECOS_PORTAL, FONTES_PRECOS, fontePrecosDoPortal, NOMES_FONTE_PRECOS_PORTAL } from "@/imoveis/fonte-precos";
 
 /**
  * M5.9 (decisão de Diego em 7/10): o Beds24 fica nos bastidores — nenhum texto que o proprietário ou o hóspede lê
@@ -74,10 +74,21 @@ describe("Beds24 nos bastidores (M5.9)", () => {
     expect(achados).toEqual([]);
   });
 
-  it("os nomes e as explicações da fonte de preços no portal não citam o Beds24", () => {
+  it("os nomes e as explicações da fonte de preços no portal não citam o Beds24, e a fonte chega ao portal já convertida", () => {
     for (const f of FONTES_PRECOS) {
-      expect(NOMES_FONTE_PRECOS_PORTAL[f]).not.toMatch(/beds24/i);
-      expect(EXPLICACAO_FONTE_PRECOS_PORTAL[f]).not.toMatch(/beds24/i);
+      const doPortal = fontePrecosDoPortal(f);
+      expect(doPortal).not.toMatch(/beds24/i);
+      expect(NOMES_FONTE_PRECOS_PORTAL[doPortal]).not.toMatch(/beds24/i);
+      expect(EXPLICACAO_FONTE_PRECOS_PORTAL[doPortal]).not.toMatch(/beds24/i);
     }
+  });
+
+  it("os componentes de navegador do portal e do site não carregam o nome interno nem como valor", () => {
+    // O código de um componente "use client" vai inteiro para o navegador: nem o valor "beds24" (de fonte de preços ou
+    // de bloqueio) pode estar nele — o servidor converte antes (`fontePrecosDoPortal`, `quemBloqueou`).
+    const doNavegador = ["components/portal", "components/site"].flatMap(arquivos).filter((rel) => /^\s*["']use client["']/.test(readFileSync(join(RAIZ, rel), "utf8")));
+    expect(doNavegador.length).toBeGreaterThan(3);
+    const achados = doNavegador.filter((rel) => /beds24/i.test(semComentarios(readFileSync(join(RAIZ, rel), "utf8")).replace(/^\s*import\b.*$/gm, "")));
+    expect(achados).toEqual([]);
   });
 });

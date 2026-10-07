@@ -17,7 +17,7 @@ import { listarContratos } from "@/contratos/repositorio";
 import { beds24EnvioImoveis, beds24Envios, imoveis, imoveisPeriodos, limpezas, proprietarioImoveis, proprietarios, proprietarioUsuarios, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { type Detalhes, type ErrosDetalhes, criarPeriodo, entradaDeDetalhes, excluirPeriodo, lerDetalhes, listarPeriodos, salvarDetalhesComLeitura, validarDetalhes } from "@/imoveis/detalhes";
-import type { FontePrecos } from "@/imoveis/fonte-precos";
+import { fontePrecosDoPortal, type FontePrecosPortal } from "@/imoveis/fonte-precos";
 import type { Periodo } from "@/imoveis/regras-venda";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
@@ -81,7 +81,8 @@ export type ImovelMarketplace = {
   fuso: string;
   /** Desde quando é do dono atual (AAAA-MM-DD): limpezas, manutenções e datas de antes disso não são dele. */
   posseDesde: string | null;
-  fontePrecos: FontePrecos;
+  /** Já convertida para o portal (sem o nome interno do provedor de preços). */
+  fontePrecos: FontePrecosPortal;
   detalhes: Detalhes;
   periodos: (Periodo & { id: string })[];
   envio: SituacaoEnvio;
@@ -200,7 +201,7 @@ export async function imoveisMarketplaceDaSessao(db: Db, sessao: Sessao, agora =
   for (const im of linhas) {
     if (!emMarketplaceEm(await listarContratos(db, sessao.organizacaoId, im.id), hojeISO(im.fuso, agora))) continue;
     const [detalhes, periodos, envio] = await Promise.all([lerDetalhes(db, sessao.organizacaoId, im.id), listarPeriodos(db, sessao.organizacaoId, im.id), situacaoDoEnvio(db, sessao.organizacaoId, regras, im.id)]);
-    saida.push({ ...im, posseDesde: posse.get(im.id) ?? null, fontePrecos: detalhes.fontePrecos, detalhes, periodos, envio });
+    saida.push({ ...im, posseDesde: posse.get(im.id) ?? null, fontePrecos: fontePrecosDoPortal(detalhes.fontePrecos), detalhes, periodos, envio });
   }
   return saida;
 }

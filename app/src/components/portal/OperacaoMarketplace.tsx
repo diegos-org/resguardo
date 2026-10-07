@@ -4,7 +4,7 @@ import { useActionState, useState } from "react";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import { Periodos } from "@/components/imoveis/Periodos";
 import type { EstadoPeriodo } from "@/imoveis/acoes";
-import { EXPLICACAO_FONTE_PRECOS_PORTAL, type FontePrecos, NOMES_FONTE_PRECOS_PORTAL } from "@/imoveis/fonte-precos";
+import { EXPLICACAO_FONTE_PRECOS_PORTAL, type FontePrecosPortal, NOMES_FONTE_PRECOS_PORTAL } from "@/imoveis/fonte-precos";
 import { DIAS_SEMANA, type Periodo } from "@/imoveis/regras-venda";
 import { centavosParaCampo, reaisParaCentavos } from "@/lib/dinheiro-form";
 import { formatBRL } from "@/lib/money";
@@ -23,7 +23,7 @@ export type ImovelOperavel = {
   hoje: string;
   /** Desde quando o imóvel é dele (AAAA-MM-DD): a data de um serviço não vem antes disso. */
   desde: string | null;
-  fontePrecos: FontePrecos;
+  fontePrecos: FontePrecosPortal;
   regras: {
     precoBase: number | null;
     taxaLimpeza: number | null;
@@ -67,8 +67,8 @@ const ESTADO_LIMPEZA = { pedida: "A fazer", confirmada: "A fazer", realizada: "F
  * definidos no Beds24 (M3.9), o envio não manda preço nenhum (a SCL só lê os preços de lá): vão só as estadias.
  * Os textos para o proprietário não citam o Beds24 (M5.9): falam do nosso sistema, dos canais e da ferramenta de preços.
  */
-const vaiAsOtas = (fonte: FontePrecos) => (fonte === "beds24" ? "estadias mínima e máxima" : "preço da noite e estadias mínima e máxima");
-const oQueFica = (fonte: FontePrecos) => (fonte === "beds24" ? "as estadias anteriores" : "o preço e as estadias anteriores");
+const vaiAsOtas = (fonte: FontePrecosPortal) => (fonte === "ferramenta" ? "estadias mínima e máxima" : "preço da noite e estadias mínima e máxima");
+const oQueFica = (fonte: FontePrecosPortal) => (fonte === "ferramenta" ? "as estadias anteriores" : "o preço e as estadias anteriores");
 const SO_NO_SITE = "taxa de limpeza, hóspede extra, antecedência, janela de reservas, dias e horários de entrada e saída valem só no site";
 const PRECO_NA_FERRAMENTA = "o preço da noite é definido por você ou pela sua ferramenta de preços e vem de lá para o site e para os canais";
 const maiuscula = (t: string) => `${t[0].toUpperCase()}${t.slice(1)}`;
@@ -87,8 +87,8 @@ function oQueFaltaNoEnvio(e: SituacaoEnvio, empresa: string): string | null {
 }
 
 /** Mensagem depois de salvar: promete Airbnb/Booking só para o que o envio carrega para esta fonte de preços, e só se o envio está de fato pronto. */
-export function textoSalvo(e: SituacaoEnvio, empresa: string, fonte: FontePrecos = "scl"): string {
-  const extra = fonte === "beds24" ? `; ${PRECO_NA_FERRAMENTA}` : "";
+export function textoSalvo(e: SituacaoEnvio, empresa: string, fonte: FontePrecosPortal = "scl"): string {
+  const extra = fonte === "ferramenta" ? `; ${PRECO_NA_FERRAMENTA}` : "";
   const falta = oQueFaltaNoEnvio(e, empresa);
   return falta === null
     ? `Salvo. Vale no site da ${empresa} agora. ${maiuscula(vaiAsOtas(fonte))} chegam ao Airbnb e ao Booking no próximo envio de calendário; ${SO_NO_SITE}${extra}.`
@@ -96,8 +96,8 @@ export function textoSalvo(e: SituacaoEnvio, empresa: string, fonte: FontePrecos
 }
 
 /** Explica, sem supor, se (e o que) do que o proprietário mudou chega às OTAs, conforme a fonte de preços e a prontidão real do envio. */
-export function textoDoEnvio(e: SituacaoEnvio, empresa: string, fonte: FontePrecos = "scl"): string {
-  const extra = fonte === "beds24" ? ` ${maiuscula(PRECO_NA_FERRAMENTA)}.` : "";
+export function textoDoEnvio(e: SituacaoEnvio, empresa: string, fonte: FontePrecosPortal = "scl"): string {
+  const extra = fonte === "ferramenta" ? ` ${maiuscula(PRECO_NA_FERRAMENTA)}.` : "";
   const falta = oQueFaltaNoEnvio(e, empresa);
   if (falta !== null) return `O que você mudar aqui vale no site da ${empresa}, mas o Airbnb e o Booking continuam com o calendário e ${oQueFica(fonte)} até ${falta}. Em qualquer caso, ${SO_NO_SITE}.${extra}`;
   const ultimo = e.ultimo ? ` Último envio: ${quando(e.ultimo.em)} (${NOMES_SITUACAO_ENVIO[e.ultimo.situacao] ?? e.ultimo.situacao}).` : " Ainda não houve envio para este imóvel.";
@@ -122,7 +122,7 @@ function FormPrecos({ imovel, precos, empresa, salvar }: { imovel: ImovelOperave
   const invalido = (k: string) => (estado.erros?.[k] ? { "aria-invalid": true as const } : {});
   const [precoDigitado, setPrecoDigitado] = useState(dinheiro("precoBase"));
   const centavos = reaisParaCentavos(precoDigitado);
-  const precoNoBeds24 = imovel.fontePrecos === "beds24";
+  const precoNaFerramenta = imovel.fontePrecos === "ferramenta";
   return (
     <form key={JSON.stringify(imovel.regras)} action={enviar} className={f.form} aria-label={`Preços e regras de venda do ${imovel.codigo}`}>
       <input type="hidden" name="imovelId" value={imovel.id} />
@@ -142,8 +142,8 @@ function FormPrecos({ imovel, precos, empresa, salvar }: { imovel: ImovelOperave
       )}
       <div className={f.linha}>
         <label>
-          Preço da noite (R$){precoNoBeds24 ? " — definido pela sua ferramenta de preços" : ""}
-          <input name="precoBase" inputMode="decimal" value={precoDigitado} onChange={(ev) => setPrecoDigitado(ev.target.value)} readOnly={precoNoBeds24} placeholder="ex.: 350,00" {...invalido("precoBase")} />
+          Preço da noite (R$){precoNaFerramenta ? " — definido pela sua ferramenta de preços" : ""}
+          <input name="precoBase" inputMode="decimal" value={precoDigitado} onChange={(ev) => setPrecoDigitado(ev.target.value)} readOnly={precoNaFerramenta} placeholder="ex.: 350,00" {...invalido("precoBase")} />
           {erro("precoBase")}
         </label>
         <label>
@@ -163,7 +163,7 @@ function FormPrecos({ imovel, precos, empresa, salvar }: { imovel: ImovelOperave
         </label>
       </div>
       <p className={styles.miudo} aria-live="polite">
-        {precoNoBeds24
+        {precoNaFerramenta
           ? `Como o preço vem da sua ferramenta de preços, o site da ${empresa} lê o valor de cada noite de lá — a conta do que o hóspede paga e do que você recebe não dá para simular aqui com um preço fixo.`
           : centavos
             ? textoDaSimulacao(centavos, precos, empresa)
@@ -382,7 +382,7 @@ export function OperacaoMarketplace({ imoveis, precos, limpezas, manutencoes, em
             {textoDoEnvio(i.envio, empresa, i.fontePrecos)}
           </p>
           <FormPrecos imovel={i} precos={precos} empresa={empresa} salvar={salvarPrecos} />
-          <Periodos imovelId={i.id} periodos={i.periodos} criar={novoPeriodo} excluir={excluirPeriodo} semPreco={i.fontePrecos === "beds24"} />
+          <Periodos imovelId={i.id} periodos={i.periodos} criar={novoPeriodo} excluir={excluirPeriodo} semPreco={i.fontePrecos === "ferramenta"} />
         </article>
       ))}
       <Limpezas limpezas={limpezas} marcar={marcarLimpeza} />

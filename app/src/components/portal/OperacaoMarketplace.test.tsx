@@ -74,7 +74,7 @@ describe("portal marketplace (M12.4): seção do proprietário", () => {
     const { container } = render_({ imoveis: [] });
     expect(container.textContent).toBe("");
     cleanup();
-    render_({ imoveis: [{ ...imovel, fontePrecos: "beds24" }] });
+    render_({ imoveis: [{ ...imovel, fontePrecos: "ferramenta" }] });
     const form = screen.getByRole("form", { name: "Preços e regras de venda do 403" });
     // Sem simulação com o preço base antigo (o site lê o preço de cada noite do Beds24), e o aviso do envio não promete preço.
     expect(form.textContent).not.toContain("no Airbnb você receberia");
@@ -120,7 +120,7 @@ describe("portal marketplace (M12.4): seção do proprietário", () => {
     expect(textoSalvo(envio({ escritaPronta: false }), "SCL")).not.toContain("próximo envio");
     // M5.9: em nenhum estado, e em nenhuma fonte de preços, o texto para o proprietário cita o Beds24.
     const estados = [envio(), envio({ naLista: false }), envio({ vinculado: false }), envio({ escritaPronta: false }), envio({ automatico: false }), envio({ ultimo: null }), envio({ ultimo: { ...feito, falhou: true } }), envio({ ultimo: { ...feito, mesmoVinculo: false } }), envio({ ultimo: { ...feito, mesmaCredencial: false } })];
-    for (const e of estados) for (const f of ["scl", "beds24", "manual"] as const) {
+    for (const e of estados) for (const f of ["scl", "ferramenta", "manual"] as const) {
       expect(textoDoEnvio(e, "SCL", f)).not.toMatch(/beds24/i);
       expect(textoSalvo(e, "SCL", f)).not.toMatch(/beds24/i);
     }
@@ -136,12 +136,12 @@ describe("portal marketplace (M12.4): seção do proprietário", () => {
     expect(textoSalvo(fora, "SCL")).toContain("valem só no site");
     expect(textoSalvo(fora, "SCL")).not.toContain("próximo envio");
     expect(textoDoEnvio(pronto, "SCL")).toContain("leva preço da noite e estadias mínima e máxima ao Airbnb e ao Booking; taxa de limpeza");
-    // Preços no Beds24: o envio não leva preço (só lê de lá), então nem o texto do envio nem o de "salvo" prometem preço às OTAs.
-    expect(textoDoEnvio(pronto, "SCL", "beds24")).toContain("leva estadias mínima e máxima ao Airbnb e ao Booking");
-    expect(textoDoEnvio(pronto, "SCL", "beds24")).not.toContain("preço da noite e estadias");
-    expect(textoDoEnvio(fora, "SCL", "beds24")).toContain("continuam com o calendário e as estadias anteriores");
-    expect(textoSalvo(pronto, "SCL", "beds24")).toContain("Estadias mínima e máxima chegam ao Airbnb e ao Booking");
-    expect(textoSalvo(pronto, "SCL", "beds24")).toContain("o preço da noite é definido por você ou pela sua ferramenta de preços");
-    expect(textoSalvo(fora, "SCL", "beds24")).toContain("continuam com as estadias anteriores");
+    // Preços da ferramenta do proprietário: o envio não leva preço (só lê de lá), então nem o texto do envio nem o de "salvo" prometem preço às OTAs.
+    expect(textoDoEnvio(pronto, "SCL", "ferramenta")).toContain("leva estadias mínima e máxima ao Airbnb e ao Booking");
+    expect(textoDoEnvio(pronto, "SCL", "ferramenta")).not.toContain("preço da noite e estadias");
+    expect(textoDoEnvio(fora, "SCL", "ferramenta")).toContain("continuam com o calendário e as estadias anteriores");
+    expect(textoSalvo(pronto, "SCL", "ferramenta")).toContain("Estadias mínima e máxima chegam ao Airbnb e ao Booking");
+    expect(textoSalvo(pronto, "SCL", "ferramenta")).toContain("o preço da noite é definido por você ou pela sua ferramenta de preços");
+    expect(textoSalvo(fora, "SCL", "ferramenta")).toContain("continuam com as estadias anteriores");
   });
 });

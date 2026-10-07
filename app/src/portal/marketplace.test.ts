@@ -132,6 +132,8 @@ describe("portal do proprietário marketplace (M12.4)", () => {
     expect(await salvarPrecosPeloProprietario(db, sessao(), a, { precoBase: "350,00", estadiaMinima: "2" }, agora)).toMatchObject({ ok: false, erros: { precoBase: expect.stringContaining("sua ferramenta de preços") } });
     expect(await salvarPrecosPeloProprietario(db, sessao(), a, { precoBase: "300,00", estadiaMinima: "2", taxaLimpeza: "120,00" }, agora)).toEqual({ ok: true });
     expect(await lerDetalhes(db, org, a)).toMatchObject({ precoBase: 30000, estadiaMinima: 2, taxaLimpeza: 12000, fontePrecos: "beds24" });
+    // O portal recebe a fonte já convertida, sem o nome interno.
+    expect((await imoveisMarketplaceDaSessao(db, sessao(), agora))[0]).toMatchObject({ fontePrecos: "ferramenta" });
     expect(await criarPeriodoPeloProprietario(db, sessao(), a, { nome: "Réveillon", inicio: "2026-12-28", fim: "2027-01-02", precoNoite: "900,00", estadiaMinima: "" }, agora)).toMatchObject({ ok: false, erro: expect.stringContaining("sua ferramenta de preços") });
     expect(await criarPeriodoPeloProprietario(db, sessao(), a, { nome: "Réveillon", inicio: "2026-12-28", fim: "2027-01-02", precoNoite: "", estadiaMinima: "5" }, agora)).toEqual({ ok: true });
   });

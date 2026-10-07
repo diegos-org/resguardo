@@ -15,7 +15,7 @@ import { MolduraPortal } from "@/components/portal/MolduraPortal";
 import styles from "@/components/portal/portal.module.css";
 import { lerEmpresa, nomeDaEmpresa } from "@/configuracoes/empresa";
 import { fontesDePrecosDosImoveis } from "@/imoveis/detalhes";
-import { EXPLICACAO_FONTE_PRECOS_PORTAL, NOMES_FONTE_PRECOS_PORTAL } from "@/imoveis/fonte-precos";
+import { EXPLICACAO_FONTE_PRECOS_PORTAL, fontePrecosDoPortal, NOMES_FONTE_PRECOS_PORTAL } from "@/imoveis/fonte-precos";
 import { hojeISO } from "@/lib/datas";
 import { centavosParaCampo } from "@/lib/dinheiro-form";
 import { nomeDoMes, periodoDosFiltros } from "@/lib/filtros";
@@ -447,7 +447,7 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
               <h2>De onde vêm os preços</h2>
               <ul style={{ margin: 0, paddingLeft: 18 }}>
                 {meus.map((i) => {
-                  const f = fontesPrecos.get(i.id) ?? "scl";
+                  const f = fontePrecosDoPortal(fontesPrecos.get(i.id) ?? "scl");
                   return (
                     <li key={i.id}>
                       <strong>

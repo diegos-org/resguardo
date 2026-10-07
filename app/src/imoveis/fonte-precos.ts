@@ -24,17 +24,21 @@ export const EXPLICACAO_FONTE_PRECOS: Record<FontePrecos, string> = {
 
 /**
  * As mesmas fontes como o proprietário as vê no portal (M5.9, decisão de Diego em 7/10: o Beds24 fica nos
- * bastidores — nenhum texto para proprietário ou hóspede o cita). O painel continua com os nomes acima.
+ * bastidores — nenhum texto para proprietário ou hóspede o cita, nem os dados que vão ao navegador dele). O portal
+ * recebe a fonte já convertida (`fontePrecosDoPortal`); o painel continua com os nomes acima.
  */
-export const NOMES_FONTE_PRECOS_PORTAL: Record<FontePrecos, string> = {
+export type FontePrecosPortal = "scl" | "ferramenta" | "manual";
+export const fontePrecosDoPortal = (f: FontePrecos): FontePrecosPortal => (f === "beds24" ? "ferramenta" : f);
+
+export const NOMES_FONTE_PRECOS_PORTAL: Record<FontePrecosPortal, string> = {
   scl: "Preços automáticos da SCL",
-  beds24: "Preços definidos por você ou pela sua ferramenta de preços",
+  ferramenta: "Preços definidos por você ou pela sua ferramenta de preços",
   manual: "Preços digitados no cadastro, sem ajustes automáticos",
 };
 
-export const EXPLICACAO_FONTE_PRECOS_PORTAL: Record<FontePrecos, string> = {
+export const EXPLICACAO_FONTE_PRECOS_PORTAL: Record<FontePrecosPortal, string> = {
   scl: "Nosso sistema calcula a diária de cada noite (preço base, períodos, eventos, feriadões, última hora e pisos) e a envia aos canais (Airbnb e Booking). O site vende pelo mesmo preço, com o desconto do site por cima.",
-  beds24: "O preço de cada noite é o que você ou a sua ferramenta de preços definem; nosso sistema só lê esse preço e nunca o muda. Calendário, estadias mínimas e bloqueios continuam com o nosso sistema. Noite sem preço lido fica indisponível para venda no site, nunca com um palpite. O preço inteligente do Airbnb não entra aqui.",
+  ferramenta: "O preço de cada noite é o que você ou a sua ferramenta de preços definem; nosso sistema só lê esse preço e nunca o muda. Calendário, estadias mínimas e bloqueios continuam com o nosso sistema. Noite sem preço lido fica indisponível para venda no site, nunca com um palpite. O preço inteligente do Airbnb não entra aqui.",
   manual: "Vale exatamente o preço base e os períodos do cadastro, sem eventos, feriadões e última hora e sem os limites mínimo e máximo do preço dinâmico. Nosso sistema envia esses preços aos canais (Airbnb e Booking).",
 };
 

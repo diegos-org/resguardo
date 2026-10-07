@@ -16,7 +16,11 @@ import { proprietariosDoUsuario } from "./resumo";
 
 export type EntradaBloqueioPortal = { imovelId: string; inicio: string; fim: string; motivo: string };
 /** `proprio`: feito por um titular da conta dele (não pelo titular anterior do imóvel). */
-export type BloqueioDoProprietario = { id: string; imovelId: string; codigo: string; inicio: string; fim: string; motivo: string; fonte: string; proprio: boolean; liberavel: boolean };
+/** Quem fechou as datas, como o portal mostra: o proprietário, a empresa ou os canais (sem o nome interno da importação). */
+export type QuemBloqueou = "proprietario" | "empresa" | "canais";
+export const quemBloqueou = (fonte: string): QuemBloqueou => (fonte === "proprietario" ? "proprietario" : fonte === "beds24" ? "canais" : "empresa");
+
+export type BloqueioDoProprietario = { id: string; imovelId: string; codigo: string; inicio: string; fim: string; motivo: string; quem: QuemBloqueou; proprio: boolean; liberavel: boolean };
 
 const SEM_PERMISSAO = "Seu contrato não prevê bloqueio de datas pelo portal. Fale com a empresa.";
 const SEM_TITULAR = "Não foi possível identificar o titular deste imóvel na sua conta. Fale com a empresa.";
@@ -124,12 +128,13 @@ export async function bloqueiosDoProprietario(db: Db, sessao: Sessao, agora = ne
     .innerJoin(imoveis, eq(imoveis.id, bloqueios.imovelId))
     .where(and(eq(bloqueios.organizacaoId, sessao.organizacaoId), inArray(bloqueios.imovelId, ids), gte(bloqueios.fim, limite)))
     .orderBy(asc(bloqueios.inicio), asc(imoveis.codigo));
-  return linhas.flatMap(({ fuso, proprietarioId, ...b }) => {
+  return linhas.flatMap(({ fuso, proprietarioId, fonte, ...b }) => {
     const hoje = hojeISO(fuso, agora);
-    const proprio = b.fonte === "proprietario" && proprietarioId !== null && meus.includes(proprietarioId);
+    const quem = quemBloqueou(fonte);
+    const proprio = quem === "proprietario" && proprietarioId !== null && meus.includes(proprietarioId);
     // Bloqueio vindo dos canais: o motivo gravado na importação é interno (cita o Beds24); o proprietário lê só que
-    // as datas foram fechadas nos canais (M5.9).
-    const motivo = b.fonte === "beds24" ? MOTIVO_BLOQUEIO_DOS_CANAIS : b.motivo;
-    return b.fim >= hoje ? [{ ...b, motivo, proprio, liberavel: proprio && b.fim > hoje }] : [];
+    // as datas foram fechadas nos canais (M5.9). A fonte em si também não vai: só quem bloqueou.
+    const motivo = quem === "canais" ? MOTIVO_BLOQUEIO_DOS_CANAIS : b.motivo;
+    return b.fim >= hoje ? [{ ...b, motivo, quem, proprio, liberavel: proprio && b.fim > hoje }] : [];
   });
 }
