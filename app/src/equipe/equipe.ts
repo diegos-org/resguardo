@@ -1,7 +1,8 @@
 /**
  * Equipe de limpeza pelo celular (M6.6). Cada profissional pode ter um acesso próprio (usuário com
- * papel "limpeza", entrando pelo código por e-mail) que vê só as limpezas atribuídas a ela e marca
- * como feita. Custo, proprietário e financeiro nunca aparecem aqui.
+ * papel "limpeza", entrando pelo código por e-mail, pelo Google ou, desde o M6.8, com usuário e senha — ver
+ * `acesso.ts`) que vê só as limpezas atribuídas a ela e marca como feita. Custo, proprietário e financeiro nunca
+ * aparecem aqui.
  *
  * Aviso de limpeza nova: por e-mail enquanto o WhatsApp (M10) não está ligado.
  */
