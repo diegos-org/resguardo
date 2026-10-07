@@ -33,7 +33,7 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
   if (!conteudo) return <SiteEmConfiguracao />;
   const [imovel, todos] = await Promise.all([imovelDoSite(db, conteudo.organizacaoId, codigo), imoveisDoSite(db, conteudo.organizacaoId)]);
   if (!imovel) notFound();
-  const lugares = await lugaresDoSite(db, conteudo.organizacaoId, imovel.bairro);
+  const bairro = await lugaresDoSite(db, conteudo.organizacaoId, imovel.bairro);
   // "Hoje" no fuso do imóvel, o mesmo que a disponibilidade usa.
   const hoje = hojeISO(imovel.fuso);
   // Com datas no link, mostra disponibilidade e valor reais (M7.2) antes do formulário.
@@ -130,7 +130,7 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
           <FormConsulta imoveis={todos} valores={consulta} hoje={hojeMaisCedo([imovel, ...todos])} canal={canalDeContato(conteudo)} variante="lateral" />
         </aside>
       </div>
-      <BairroAPorta lugares={lugares} />
+      <BairroAPorta {...bairro} />
     </Moldura>
   );
 }

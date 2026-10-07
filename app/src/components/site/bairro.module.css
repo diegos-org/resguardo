@@ -1,0 +1,116 @@
+/*
+ * "O bairro à sua porta" na ficha do imóvel (M7.6), pelo estudo Sage: filete fino, olho, título serifado, subtítulo e
+ * cartões claros. Quatro colunas no computador, duas no tablet e no celular (como no estudo). Só tokens de globals.css.
+ */
+.secao {
+  margin-top: 40px;
+  padding-top: 28px;
+  border-top: 1px solid var(--scl-borda);
+}
+
+.olho {
+  color: var(--scl-texto-2);
+}
+
+.titulo {
+  margin: 8px 0 10px;
+  font-size: clamp(1.625rem, 3vw, 2rem);
+}
+
+.subtitulo {
+  margin: 0;
+  max-width: 60ch;
+  font-size: 0.9375rem;
+  color: var(--scl-texto-2);
+}
+
+.lugares {
+  list-style: none;
+  padding: 0;
+  margin: 20px 0 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.lugar {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--scl-papel);
+  border: 1px solid var(--scl-borda);
+  border-radius: var(--scl-raio-cartao);
+  overflow: hidden;
+}
+
+.foto {
+  position: relative;
+  aspect-ratio: 3 / 2;
+  overflow: hidden;
+  background: var(--scl-areia);
+}
+
+.imagem {
+  object-fit: cover;
+}
+
+.corpo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 14px 16px;
+}
+
+.corpo h3 {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 1rem;
+  line-height: 1.3;
+  letter-spacing: 0;
+  color: var(--scl-tinta);
+  overflow-wrap: anywhere;
+}
+
+.corpo p {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--scl-texto-2);
+  overflow-wrap: anywhere;
+}
+
+.corpo small {
+  margin-top: auto;
+  padding-top: 4px;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--scl-dourado-escuro);
+}
+
+@media (max-width: 1000px) {
+  .lugares {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+}
+
+@media (max-width: 600px) {
+  .secao {
+    margin-top: 32px;
+    padding-top: 24px;
+  }
+
+  .lugares {
+    gap: 12px;
+  }
+
+  .corpo {
+    padding: 12px 12px 14px;
+  }
+
+  .corpo h3 {
+    font-size: 0.9375rem;
+  }
+}
