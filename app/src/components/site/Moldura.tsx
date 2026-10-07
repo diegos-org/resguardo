@@ -105,7 +105,7 @@ export function SiteEmConfiguracao() {
   );
 }
 
-/** Enquanto as fotos reais não são liberadas (M7.3): um quadro com o nome do apartamento. */
+/** Imóvel ainda sem foto real (M7.3): um quadro com o nome do apartamento — nunca uma imagem genérica. */
 export function FotoProvisoria({ titulo }: { titulo: string }) {
   return (
     <div className={styles.foto} role="img" aria-label={titulo ? `Foto de ${titulo} (em breve)` : "Foto (em breve)"}>

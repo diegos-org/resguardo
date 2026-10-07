@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ImovelPublico } from "@/site/site";
-import { FotoProvisoria } from "./Moldura";
+import { CapaDoImovel } from "./CapaDoImovel";
 import styles from "./site.module.css";
 
 export function resumoImovel(i: ImovelPublico): string {
@@ -28,7 +28,7 @@ export function CartaoImovel({ imovel }: { imovel: ImovelPublico }) {
   return (
     <Link href={`/imoveis/${encodeURIComponent(imovel.codigo)}`} className={styles.cartaoCasa}>
       <div className={styles.cartaoFoto}>
-        <FotoProvisoria titulo={imovel.nome} />
+        <CapaDoImovel nome={imovel.nome} fotos={imovel.fotos} sizes="(max-width: 600px) 100vw, 360px" />
       </div>
       <div className={styles.cartaoCorpo}>
         <p className={styles.olho}>{olhoImovel(imovel)}</p>

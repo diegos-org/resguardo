@@ -13,6 +13,7 @@ import { lerTextosSite, type TextosSite } from "@/configuracoes/textos-site";
 import { imoveis, imoveisDetalhes, organizacoes } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { TIPOS_CAMA, type TipoCama } from "@/imoveis/cadastro-opcoes";
+import { type FotoPublica, fotosParaOSite } from "@/imoveis/fotos";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 
@@ -37,6 +38,8 @@ export type ImovelPublico = {
   checkinAPartirDe: string;
   checkoutAte: string;
   estadiaMinima: number | null;
+  /** Fotos reais (M7.3), na ordem da galeria; a primeira é a capa. Vazio = "foto em breve". */
+  fotos: FotoPublica[];
 };
 
 export type ConteudoSite = {
@@ -88,6 +91,8 @@ const descreverCamas = (camas: Record<string, number>): string[] =>
     });
 
 const colunasPublicas = {
+  // Só para buscar as fotos: o id nunca vai para o objeto público.
+  id: imoveis.id,
   codigo: imoveis.codigo,
   fuso: imoveis.fuso,
   nome: imoveis.nome,
@@ -110,7 +115,7 @@ const colunasPublicas = {
 
 type Linha = { [K in keyof typeof colunasPublicas]: (typeof colunasPublicas)[K]["_"]["data"] | null };
 
-function publico(l: Linha): ImovelPublico {
+function publico(l: Linha, fotos: FotoPublica[]): ImovelPublico {
   return {
     codigo: l.codigo ?? "",
     fuso: l.fuso ?? "America/Sao_Paulo",
@@ -130,7 +135,13 @@ function publico(l: Linha): ImovelPublico {
     checkinAPartirDe: l.checkinAPartirDe ?? "15:00",
     checkoutAte: l.checkoutAte ?? "11:00",
     estadiaMinima: l.estadiaMinima,
+    fotos,
   };
+}
+
+async function comFotos(db: Db, organizacaoId: string, linhas: Linha[]): Promise<ImovelPublico[]> {
+  const fotos = await fotosParaOSite(db, organizacaoId, linhas.map((l) => l.id).filter((id): id is string => !!id));
+  return linhas.map((l) => publico(l, (l.id && fotos.get(l.id)) || []));
 }
 
 /** Imóveis que aparecem no site: públicos e ativos, pelo código. */
@@ -141,7 +152,7 @@ export async function imoveisDoSite(db: Db, organizacaoId: string): Promise<Imov
     .leftJoin(imoveisDetalhes, eq(imoveisDetalhes.imovelId, imoveis.id))
     .where(and(eq(imoveis.organizacaoId, organizacaoId), eq(imoveis.publico, true), eq(imoveis.ativo, true)))
     .orderBy(asc(imoveis.codigo));
-  return linhas.map(publico);
+  return comFotos(db, organizacaoId, linhas);
 }
 
 /** Um imóvel do site pelo código (o endereço da página); null se não é público ou não existe. */
@@ -152,7 +163,7 @@ export async function imovelDoSite(db: Db, organizacaoId: string, codigo: string
     .from(imoveis)
     .leftJoin(imoveisDetalhes, eq(imoveisDetalhes.imovelId, imoveis.id))
     .where(and(eq(imoveis.organizacaoId, organizacaoId), eq(imoveis.codigo, codigo), eq(imoveis.publico, true), eq(imoveis.ativo, true)));
-  return l ? publico(l) : null;
+  return l ? (await comFotos(db, organizacaoId, [l]))[0] : null;
 }
 
 export type PedidoConsulta = { imovel: string; entrada: string; saida: string; hospedes: string };
