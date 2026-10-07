@@ -24,6 +24,7 @@ export const RECUSAS = {
   passada: "Essa data já passou.",
   ocupada: "Essa noite já está ocupada.",
   cruza: "Há noites ocupadas nesse intervalo.",
+  fim: "O último dia do calendário só pode ser a saída. Para datas mais adiante, fale com a equipe.",
 } as const;
 
 export function dataISOValida(d: string): boolean {
@@ -80,7 +81,8 @@ export function ultimaSaidaPossivel(entrada: string, ocupadas: ReadonlySet<strin
 export type Datas = { entrada: string; saida: string };
 /** O que o próximo clique escolhe. Sem entrada, é sempre a entrada. */
 export type Etapa = "entrada" | "saida";
-export type Contexto = { hoje: string; ocupadas: ReadonlySet<string> };
+/** `ultimoDia`: o último dia que o calendário mostra; ele só serve de saída (sem ele, a entrada nele não teria saída). */
+export type Contexto = { hoje: string; ocupadas: ReadonlySet<string>; ultimoDia?: string };
 export type Escolha = { datas: Datas; etapa: Etapa | "pronta"; recusa: string | null };
 
 const etapaEfetiva = (datas: Datas, etapa: Etapa): Etapa => (etapa === "saida" && datas.entrada ? "saida" : "entrada");
@@ -98,6 +100,7 @@ export function escolherDia(datas: Datas, dia: string, etapa: Etapa, c: Contexto
     return { datas: { entrada: datas.entrada, saida: dia }, etapa: "pronta", recusa: null };
   }
   if (c.ocupadas.has(dia)) return { datas, etapa: etapaEfetiva(datas, etapa), recusa: RECUSAS.ocupada };
+  if (c.ultimoDia && dia >= c.ultimoDia) return { datas, etapa: etapaEfetiva(datas, etapa), recusa: RECUSAS.fim };
   return { datas: { entrada: dia, saida: "" }, etapa: "saida", recusa: null };
 }
 
@@ -129,7 +132,7 @@ export function situacaoDoDia(dia: string, datas: Datas, etapa: Etapa, c: Contex
     passada,
     ocupada,
     soSaida: ocupada && serveDeSaida(dia),
-    disponivel: !passada && (naSaida && dia > datas.entrada ? serveDeSaida(dia) : !ocupada),
+    disponivel: !passada && (naSaida && dia > datas.entrada ? serveDeSaida(dia) : !ocupada && !(c.ultimoDia && dia >= c.ultimoDia)),
     entrada: dia === datas.entrada,
     saida: !!datas.saida && dia === datas.saida,
     noIntervalo: !!datas.entrada && !!fim && dia > datas.entrada && dia < fim,

@@ -120,7 +120,7 @@ export function CampoDatas({ hoje, entrada = "", saida = "", imovel, campoImovel
   const visiveis = Array.from({ length: n }, (_, i) => somarMeses(mes, i));
   const fimVisivel = somarMeses(mes, n);
   const ocupadas = new Set(comLugar ? Object.entries(ocupacao).flatMap(([k, v]) => (k.startsWith(`${lugar}|`) ? v : [])) : []);
-  const contexto = { hoje, ocupadas };
+  const contexto = { hoje, ocupadas, ultimoDia };
   const etapaAtual: Etapa = etapa === "saida" && datas.entrada ? "saida" : "entrada";
   // Dia que recebe o Tab na grade: o do foco, se está à vista; senão o primeiro dia escolhível à vista.
   const focoVisivel = foco >= mes && foco < fimVisivel ? foco : menor(maior(mes, hoje), ultimoDia);

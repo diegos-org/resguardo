@@ -92,6 +92,17 @@ describe("calendário do site: escolha da entrada e da saída (M7.6)", () => {
     expect(escolherDia(sel, "2026-10-15", "saida", c)).toEqual({ datas: sel, etapa: "saida", recusa: RECUSAS.ocupada });
   });
 
+  it("o último dia do calendário só serve de saída: como entrada, ninguém conseguiria escolher a saída", () => {
+    const comFim = { ...c, ultimoDia: "2028-04-06" };
+    expect(escolherDia(vazio, "2028-04-06", "entrada", comFim)).toEqual({ datas: vazio, etapa: "entrada", recusa: RECUSAS.fim });
+    expect(situacaoDoDia("2028-04-06", vazio, "entrada", comFim).disponivel).toBe(false);
+    // A véspera é entrada válida e o último dia, a saída.
+    const a = escolherDia(vazio, "2028-04-05", "entrada", comFim);
+    expect(a.recusa).toBeNull();
+    expect(situacaoDoDia("2028-04-06", a.datas, "saida", comFim).disponivel).toBe(true);
+    expect(escolherDia(a.datas, "2028-04-06", "saida", comFim)).toMatchObject({ datas: { entrada: "2028-04-05", saida: "2028-04-06" }, etapa: "pronta" });
+  });
+
   it("estadia não pode incluir noite ocupada; o dia de saída pode ser uma noite ocupada (saída de manhã)", () => {
     const sel = { entrada: "2026-10-10", saida: "" };
     expect(escolherDia(sel, "2026-10-14", "saida", c)).toEqual({ datas: { entrada: "2026-10-10", saida: "2026-10-14" }, etapa: "pronta", recusa: null });
