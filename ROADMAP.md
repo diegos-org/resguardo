@@ -205,7 +205,7 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 11. **Backup do repositório (M0.7) — feito por Diego em 4/10:** conta separada, repositório privado, chave só de leitura na conta principal, chave de escrita na conta de backup, três segredos, primeira rodada verde e variável `BACKUP_INICIADO` (guia, seção 6, item 23). O backup do banco no Neon já foi ampliado em 3/10 com o "pode fazer" de Diego (7 dias de histórico, snapshots diário e semanal; guia, seção 6, item 23b).
 12. **Forma de recebimento do marketplace — feito em 4/10:** empresa recebe e repassa, sem split, como o site, com o extrato e as periodicidades do M4.10. O M12.2 passa a depender do M8.2.
 13. **Fotos — liberado em 7/10:** Diego autorizou as fotos dos anúncios do Airbnb ou do catálogo que ele separa sob demanda (destrava M7.3).
-14. **Decisões de 7/10 que ainda faltam:** a lista dos serviços à parte e o valor de cada um (destrava M4.14); conferir com o contador a posição sobre o arrependimento de 7 dias, quando o Claude escrever no M7.4 (antes de ligar o pagamento de verdade). Decididos em 7/10: como a equipe entra (M6.8) e quem fica com a taxa do pagamento que não volta no reembolso integral (a SCL).
+14. **Decisões de 7/10 que ainda faltam:** a lista dos serviços à parte e o valor de cada um (destrava M4.14); conferir com o contador a posição sobre o arrependimento de 7 dias, quando o Claude escrever no M7.4; e dizer se a taxa do cartão/Pix continua como hoje (sai antes da divisão, cada um na proporção) ou muda — as duas antes de ligar o pagamento de verdade (M8.2). Decididos em 7/10: como a equipe entra (M6.8) e quem fica com a taxa do pagamento que não volta no reembolso integral (a SCL).
 
 ## Pendências de decisão (não bloqueiam o início)
 
