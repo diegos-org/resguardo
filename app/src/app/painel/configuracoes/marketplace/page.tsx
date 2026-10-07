@@ -22,6 +22,7 @@ export default async function MarketplacePrecos() {
         <button type="submit">Usar o padrão novo</button>
       </form>
     )}
-    <FormPrecosMarketplace precos={precos} salvar={salvarPrecosMarketplaceAcao} />
+    {/* A chave muda com os valores gravados: depois de "Usar o padrão novo" o formulário recomeça com os pesos novos. */}
+    <FormPrecosMarketplace key={JSON.stringify(precos)} precos={precos} salvar={salvarPrecosMarketplaceAcao} />
   </>;
 }
