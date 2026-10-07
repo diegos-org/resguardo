@@ -1,5 +1,5 @@
 /** Preços do marketplace gravados na configuração da organização (chave `marketplace_precos`). */
-import { gravarConfig, lerConfig } from "@/configuracoes/armazem";
+import { gravarConfig, lerConfig, travarConfig } from "@/configuracoes/armazem";
 import type { Db } from "@/db/types";
 import { mesmosPesos, PESOS_PADRAO_ANTIGO, PRECOS_MARKETPLACE_PADRAO, type PrecosMarketplace, precosDeJson } from "./precos";
 
@@ -22,8 +22,15 @@ export async function pesosNoPadraoAntigo(db: Db, organizacaoId: string): Promis
   return gravado !== null && mesmosPesos(precosDeJson(gravado).pesos, PESOS_PADRAO_ANTIGO);
 }
 
-/** Troca só os pesos pelo padrão atual, mantendo as taxas gravadas. Vale para as cotações novas. */
+/**
+ * Troca só os pesos pelo padrão atual, mantendo as taxas gravadas. Vale para as cotações novas. Lê as taxas depois de
+ * travar a chave: uma gravação de taxas ao mesmo tempo não é desfeita.
+ */
 export async function usarPesosPadrao(db: Db, organizacaoId: string, autorId: string | null): Promise<boolean> {
-  const atual = await lerPrecosMarketplace(db, organizacaoId);
-  return salvarPrecosMarketplace(db, organizacaoId, { ...atual, pesos: { ...PRECOS_MARKETPLACE_PADRAO.pesos } }, autorId);
+  const mudancas = await db.transaction(async (tx) => {
+    await travarConfig(tx, organizacaoId, "marketplace_precos");
+    const atual = await lerPrecosMarketplace(tx, organizacaoId);
+    return gravarConfig(tx, organizacaoId, "marketplace_precos", { ...atual, pesos: { ...PRECOS_MARKETPLACE_PADRAO.pesos } }, autorId);
+  });
+  return Object.keys(mudancas).length > 0;
 }
