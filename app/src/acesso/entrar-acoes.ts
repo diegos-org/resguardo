@@ -1,6 +1,7 @@
 "use server";
 
 import { AuthError } from "next-auth";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { getDb } from "@/db/client";
@@ -8,7 +9,7 @@ import { correioDoAmbiente } from "@/email/correio";
 import { loginCodigoConfigurado, signIn } from "./auth";
 import { pedirCodigo } from "./codigo-email";
 import { lerAdminEmails } from "./entrada";
-import { loginBloqueado } from "./senha";
+import { esperaDoLogin, origemDoPedido } from "./senha";
 
 const paraCodigo = (email: string, erro?: string) => `/entrar?etapa=codigo&email=${encodeURIComponent(email)}${erro ? `&erro=${erro}` : ""}`;
 
@@ -52,12 +53,14 @@ export async function entrarComSenhaAcao(form: FormData): Promise<void> {
   const login = String(form.get("login") ?? "").trim().slice(0, 200);
   const senha = String(form.get("senha") ?? "").slice(0, 200);
   if (!login || !senha) redirect(paraSenha(login, "senha-vazia"));
-  if (await loginBloqueado(getDb(), login)) redirect(paraSenha(login, "espere"));
+  const origem = origemDoPedido(await headers());
+  const antes = await esperaDoLogin(getDb(), login, origem);
+  if (antes) redirect(paraSenha(login, antes));
   try {
     await signIn("senha", { login, senha, redirectTo: "/painel" });
   } catch (e) {
     // Sucesso também "lança" (é o redirecionamento do Next): só o erro de login é tratado aqui.
-    if (e instanceof AuthError) redirect(paraSenha(login, (await loginBloqueado(getDb(), login)) ? "espere" : "senha"));
+    if (e instanceof AuthError) redirect(paraSenha(login, (await esperaDoLogin(getDb(), login, origem)) ?? "senha"));
     throw e;
   }
 }

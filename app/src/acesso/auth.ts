@@ -6,7 +6,7 @@ import { correioDoAmbiente } from "@/email/correio";
 import { aceitarConviteDoCookie } from "@/convites/cookie";
 import { verificarCodigo } from "./codigo-email";
 import { decidirEntrada, lerAdminEmails } from "./entrada";
-import { entrarComSenha } from "./senha";
+import { entrarComSenha, origemDoPedido } from "./senha";
 
 /** Entrar com Google: precisa das credenciais do Google e do segredo. */
 export const loginGoogleConfigurado = Boolean(process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET && process.env.AUTH_SECRET);
@@ -56,9 +56,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       id: "senha",
       name: "Usuário e senha",
       credentials: { login: {}, senha: {} },
-      async authorize(c) {
+      async authorize(c, pedido) {
         if (!process.env.AUTH_SECRET || typeof c?.login !== "string" || typeof c?.senha !== "string") return null;
-        const r = await entrarComSenha(getDb(), c.login, c.senha);
+        const r = await entrarComSenha(getDb(), c.login, c.senha, new Date(), origemDoPedido(pedido?.headers));
         return r.ok ? { id: r.usuarioId } : null;
       },
     }),

@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { entrarComSenha } from "@/acesso/senha";
+import { entrarComSenha, MAX_ERROS } from "@/acesso/senha";
 import { carregarSessao } from "@/acesso/sessao";
 import { historicoDe } from "@/auditoria/auditoria";
 import { imoveis, limpezas, organizacoes, profissionaisLimpeza, usuarios } from "@/db/schema";
@@ -67,6 +67,11 @@ describe("entrada da equipe sem e-mail (M6.8)", () => {
     expect(await carregarSessao(db, uid, { emitidaEm: entrouAntes })).toBeNull();
     expect(await entrarComSenha(db, "ana", "primeira-senha", depois)).toMatchObject({ ok: false });
     expect(await entrarComSenha(db, "ana", "segunda-senha", depois)).toMatchObject({ ok: true });
+    // Errou demais e ficou esperando: a senha nova da empresa vale na hora.
+    for (let i = 1; i <= MAX_ERROS; i++) await entrarComSenha(db, "ana", `errada-${i}`, depois);
+    expect(await entrarComSenha(db, "ana", "segunda-senha", depois)).toEqual({ ok: false, motivo: "bloqueado" });
+    expect(await definirSenhaPelaEmpresa(db, org, ana, { login: "ana", senha: "terceira-senha" }, null, depois)).toMatchObject({ ok: true });
+    expect(await entrarComSenha(db, "ana", "terceira-senha", new Date(depois.getTime() + 1000))).toMatchObject({ ok: true });
     // O mesmo usuário para outra pessoa, mesmo noutra organização: recusado (o usuário é único no sistema).
     expect(await definirSenhaPelaEmpresa(db, org, bia, { login: "ANA" }, null, AGORA)).toMatchObject({ ok: false, erro: expect.stringContaining("outra pessoa") });
     expect(await definirSenhaPelaEmpresa(db, org, bia, { login: "bia", senha: "curta" }, null, AGORA)).toMatchObject({ ok: false, erro: expect.stringContaining("8") });
@@ -76,7 +81,7 @@ describe("entrada da equipe sem e-mail (M6.8)", () => {
     expect(await definirSenhaPelaEmpresa(db, org, bia, { login: "bia" }, null, AGORA)).toMatchObject({ ok: false, erro: expect.stringContaining("arquivada") });
     // Tirar o acesso vale também para quem entra com senha.
     expect(await tirarAcesso(db, org, ana, null)).toEqual({ ok: true });
-    expect(await entrarComSenha(db, "ana", "segunda-senha", depois)).toMatchObject({ ok: false });
+    expect(await entrarComSenha(db, "ana", "terceira-senha", depois)).toMatchObject({ ok: false });
   });
 
   it("quem tem e-mail ganha também usuário e senha (mesmo usuário); quem tem só senha pode ganhar e-mail depois", async () => {

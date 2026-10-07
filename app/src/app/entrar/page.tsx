@@ -14,6 +14,7 @@ const MENSAGENS: Record<string, string> = {
   "senha-vazia": "Informe o usuário (ou e-mail) e a senha.",
   senha: "Usuário ou senha não conferem. Confira e tente de novo; se esqueceu, peça à empresa uma senha nova.",
   espere: "Muitas tentativas erradas. Espere 15 minutos e tente de novo, ou peça à empresa uma senha nova.",
+  muitas: "Muitas tentativas neste momento. Espere alguns minutos e tente de novo.",
 };
 
 export default async function Entrar({ searchParams }: PageProps<"/entrar">) {

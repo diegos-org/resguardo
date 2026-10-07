@@ -2,10 +2,12 @@
  * Entrar com usuário (ou e-mail) e senha (M6.8, decisão de Diego em 7/10: "e-mail não vai funcionar" para a equipe;
  * vários jeitos de entrar, sem verificação em duas etapas). A senha nunca é guardada: só o hash scrypt, com sal
  * próprio e os parâmetros junto (dá para endurecer depois sem perder as senhas antigas). Depois de muitos erros para o
- * mesmo usuário digitado — exista ele ou não —, é preciso esperar: a resposta é a mesma nos dois casos.
+ * mesmo usuário digitado — exista ele ou não —, é preciso esperar: a resposta é a mesma nos dois casos. Antes de qualquer
+ * conferência (o scrypt custa memória e tempo) há dois tetos de tentativas, um por endereço de origem e um geral, e as
+ * contas velhas são apagadas: variar o usuário digitado não abre conferências sem fim nem enche a tabela.
  */
 import { randomBytes, randomInt, scrypt, timingSafeEqual } from "node:crypto";
-import { and, eq, isNotNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { tentativasLogin, usuarios } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { normalizarLogin, SENHA_MAXIMA } from "./senha-regras";
@@ -14,6 +16,11 @@ export { normalizarLogin, SENHA_MAXIMA, SENHA_MINIMA, validarLogin, validarSenha
 
 export const MAX_ERROS = 5;
 export const ESPERA_MS = 15 * 60_000;
+/** Tetos antes da conferência: por endereço de origem (IP) e no total (a equipe é pequena; sobra muito). */
+export const LIMITE_POR_ORIGEM = { tentativas: 20, janelaMs: 15 * 60_000 } as const;
+export const LIMITE_GERAL = { tentativas: 60, janelaMs: 60_000 } as const;
+/** Conta parada há mais de um dia (e sem espera em curso) é apagada. */
+export const GUARDA_CONTAS_MS = 24 * 60 * 60_000;
 
 /** Custo do scrypt (2^15, bloco 8): ~32 MB e uma fração de segundo por conferência. */
 const LOG_N = 15;
@@ -57,24 +64,85 @@ export function gerarSenhaProvisoria(): string {
 /** Sal fixo para a conferência de quem não existe: o tempo de resposta é o mesmo de quem existe. */
 const SAL_FALSO = Buffer.from("scl-login-inexistente", "utf8");
 
-const chaveDe = (digitado: string) => `senha:${normalizarLogin(digitado).slice(0, 200)}`;
+/** Chave da conta de erros de um usuário (ou e-mail) digitado. Trocar a senha pela empresa zera esta conta. */
+export const chaveDoLogin = (digitado: string) => `senha:${normalizarLogin(digitado).slice(0, 200)}`;
+const chaveDaOrigem = (ip: string) => `senha-origem:${ip}`;
+const CHAVE_GERAL = "senha-geral";
 
-/** Está esperando depois de muitos erros? (para a tela dizer "espere", sem gastar tentativa). */
-export async function loginBloqueado(db: Db, digitado: string, agora: Date = new Date()): Promise<Date | null> {
-  const [t] = await db.select({ ate: tentativasLogin.bloqueadoAte }).from(tentativasLogin).where(eq(tentativasLogin.chave, chaveDe(digitado)));
-  return t?.ate && t.ate > agora ? t.ate : null;
+/** Endereço de origem do pedido (na Vercel, `x-real-ip`/`x-forwarded-for` vêm da própria plataforma). Estranho = nenhum. */
+export function origemDoPedido(h: Pick<Headers, "get"> | undefined): string | null {
+  const ip = (h?.get("x-real-ip") ?? h?.get("x-forwarded-for")?.split(",")[0] ?? "").trim().toLowerCase();
+  return /^[0-9a-f:.]{3,45}$/.test(ip) ? ip : null;
 }
 
-export type ResultadoSenha = { ok: true; usuarioId: string } | { ok: false; motivo: "senha" | "bloqueado" };
+type Limite = { tentativas: number; janelaMs: number };
 
 /**
- * Confere usuário (ou e-mail) e senha. Só entra quem está ativo e tem senha. Erro conta para o que foi digitado; no
- * quinto seguido, espera 15 minutos (e o próximo erro, depois da espera, recomeça a conta). Acerto zera a conta.
+ * Conta mais uma tentativa na janela da chave (a janela começa na primeira tentativa e vale `janelaMs`). Num comando só,
+ * fora de transação: não segura ninguém enquanto a senha é conferida. Devolve o total da janela.
  */
-export async function entrarComSenha(db: Db, digitado: string, senha: string, agora: Date = new Date()): Promise<ResultadoSenha> {
+async function contarNaJanela(db: Db, chave: string, limite: Limite, agora: Date): Promise<number> {
+  const inicio = sql`${new Date(agora.getTime() - limite.janelaMs).toISOString()}::timestamptz`;
+  const vencida = sql`${tentativasLogin.atualizadoEm} <= ${inicio}`;
+  const [r] = await db
+    .insert(tentativasLogin)
+    .values({ chave, erros: 1, atualizadoEm: agora })
+    .onConflictDoUpdate({
+      target: tentativasLogin.chave,
+      set: {
+        erros: sql`case when ${vencida} then 1 else ${tentativasLogin.erros} + 1 end`,
+        atualizadoEm: sql`case when ${vencida} then ${agora.toISOString()}::timestamptz else ${tentativasLogin.atualizadoEm} end`,
+      },
+    })
+    .returning({ total: tentativasLogin.erros });
+  return r.total;
+}
+
+/** A janela da chave já passou do teto? (só lê; para a tela dizer "espere" sem gastar tentativa). */
+const passouDoTeto = (t: { erros: number; atualizadoEm: Date } | undefined, limite: Limite, agora: Date) =>
+  Boolean(t && t.erros >= limite.tentativas && t.atualizadoEm.getTime() > agora.getTime() - limite.janelaMs);
+
+/** Apaga as contas paradas há mais de um dia que não estão numa espera (roda no máximo uma vez por janela geral). */
+async function apagarContasVelhas(db: Db, agora: Date): Promise<void> {
+  const corte = new Date(agora.getTime() - GUARDA_CONTAS_MS);
+  await db
+    .delete(tentativasLogin)
+    .where(and(lt(tentativasLogin.atualizadoEm, corte), or(isNull(tentativasLogin.bloqueadoAte), lt(tentativasLogin.bloqueadoAte, agora))));
+}
+
+export type Espera = "espere" | "muitas";
+
+/**
+ * Precisa esperar? "espere" = muitos erros para esse usuário digitado; "muitas" = muitas tentativas desta origem ou no
+ * total. Só lê: a tela avisa sem gastar tentativa.
+ */
+export async function esperaDoLogin(db: Db, digitado: string, origem: string | null = null, agora: Date = new Date()): Promise<Espera | null> {
+  const chaves = [chaveDoLogin(digitado), CHAVE_GERAL, ...(origem ? [chaveDaOrigem(origem)] : [])];
+  const linhas = await db.select().from(tentativasLogin).where(inArray(tentativasLogin.chave, chaves));
+  const de = (c: string) => linhas.find((l) => l.chave === c);
+  const doLogin = de(chaves[0]);
+  if (doLogin?.bloqueadoAte && doLogin.bloqueadoAte > agora) return "espere";
+  if (origem && passouDoTeto(de(chaveDaOrigem(origem)), LIMITE_POR_ORIGEM, agora)) return "muitas";
+  return passouDoTeto(de(CHAVE_GERAL), LIMITE_GERAL, agora) ? "muitas" : null;
+}
+
+export type ResultadoSenha = { ok: true; usuarioId: string } | { ok: false; motivo: "senha" | "bloqueado" | "muitas" };
+
+/**
+ * Confere usuário (ou e-mail) e senha. Só entra quem está ativo e tem senha. Antes de conferir, os tetos: mais de 20
+ * tentativas da mesma origem em 15 minutos, ou mais de 60 no total em um minuto, e a resposta é "muitas" sem conferir
+ * nada. Erro conta para o que foi digitado; no quinto seguido, espera 15 minutos (e o próximo erro, depois da espera,
+ * recomeça a conta). Acerto zera a conta.
+ */
+export async function entrarComSenha(db: Db, digitado: string, senha: string, agora: Date = new Date(), origem: string | null = null): Promise<ResultadoSenha> {
   const identificador = normalizarLogin(digitado);
   if (!identificador || !senha || senha.length > SENHA_MAXIMA || identificador.length > 200) return { ok: false, motivo: "senha" };
-  const chave = chaveDe(identificador);
+  // A origem que passou do teto não gasta a conta geral: uma origem só não tira a vez de todo mundo.
+  if (origem && (await contarNaJanela(db, chaveDaOrigem(origem), LIMITE_POR_ORIGEM, agora)) > LIMITE_POR_ORIGEM.tentativas) return { ok: false, motivo: "muitas" };
+  const geral = await contarNaJanela(db, CHAVE_GERAL, LIMITE_GERAL, agora);
+  if (geral === 1) await apagarContasVelhas(db, agora);
+  if (geral > LIMITE_GERAL.tentativas) return { ok: false, motivo: "muitas" };
+  const chave = chaveDoLogin(identificador);
   return db.transaction(async (tx) => {
     // Uma conferência por vez para o mesmo usuário digitado: tentativas em paralelo não escapam da conta.
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`login-senha:${chave}`}))`);

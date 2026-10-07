@@ -55,8 +55,10 @@ Ficou assim:
 - **A senha é dela:** no acesso dela aparece "Minha senha" para trocar a provisória por uma que só ela
   saiba (pelo menos 8 caracteres). Quem entrou pelo código ou pelo Google pode criar uma senha ali.
 - **Segurança sem complicar:** a senha não fica guardada, só uma "impressão digital" dela. Cinco
-  erros seguidos para o mesmo usuário e é preciso esperar 15 minutos. "Tirar acesso" corta todos os
-  jeitos de entrar na hora.
+  erros seguidos para o mesmo usuário e é preciso esperar 15 minutos; se ela pedir socorro, a senha
+  nova que você cria vale na hora, sem esperar. Contra quem tenta adivinhar em massa, o sistema também
+  segura tentativas demais vindas do mesmo lugar ou todas juntas (passa sozinho em poucos minutos).
+  "Tirar acesso" corta todos os jeitos de entrar na hora.
 - **Cada uma vê só a cidade dela:** na mesma tela, marque a cidade da agenda de cada profissional. O
   acesso dela mostra as limpezas dela e a **agenda da equipe** só daquela cidade, no mesmo formato da
   agenda de sempre (Búzios com as reservas dos próximos 30 dias; Rio com as limpezas por dia e as

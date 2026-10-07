@@ -4,14 +4,14 @@
  * pessoa (pelo WhatsApp); a pessoa troca a senha no acesso dela quando quiser. Sem verificação em duas etapas, mas com o
  * acesso contido: cada login vê só a agenda das cidades escolhidas para ela e as limpezas dela.
  */
-import { and, eq, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { cidadesDosImoveis, lerConfigAgenda, montarAgenda, textoDaSecao } from "@/agenda/agenda";
 import { registrarAuditoria } from "@/auditoria/auditoria";
-import { profissionaisLimpeza, usuarios } from "@/db/schema";
+import { profissionaisLimpeza, tentativasLogin, usuarios } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
 import type { Resultado } from "@/limpezas/limpezas";
-import { conferirSenha, gerarSenhaProvisoria, hashSenha, normalizarLogin, validarLogin, validarSenha } from "@/acesso/senha";
+import { chaveDoLogin, conferirSenha, gerarSenhaProvisoria, hashSenha, normalizarLogin, validarLogin, validarSenha } from "@/acesso/senha";
 
 const SEM_PROFISSIONAL = "Profissional não encontrada.";
 
@@ -55,9 +55,16 @@ export async function definirSenhaPelaEmpresa(
     if (deOutro) return { ok: false as const, erro: "Esse usuário já é de outra pessoa: escolha outro (ex.: com o sobrenome)." };
     let usuarioId = p.usuarioId;
     let antes: string | null = null;
+    // A senha nova vale na hora: a espera por erros com este usuário (e com o antigo, e com o e-mail) acaba aqui.
+    const contas = new Set([chaveDoLogin(login)]);
     if (usuarioId) {
-      const [u] = await tx.select({ login: usuarios.login, temSenha: sql<boolean>`${usuarios.senhaHash} is not null` }).from(usuarios).where(eq(usuarios.id, usuarioId));
+      const [u] = await tx
+        .select({ login: usuarios.login, email: usuarios.email, temSenha: sql<boolean>`${usuarios.senhaHash} is not null` })
+        .from(usuarios)
+        .where(eq(usuarios.id, usuarioId));
       antes = u ? `${u.login ? `usuário ${u.login}` : "sem usuário"}${u.temSenha ? " com senha" : ""}` : null;
+      if (u?.login) contas.add(chaveDoLogin(u.login));
+      if (u?.email) contas.add(chaveDoLogin(u.email));
       await tx
         .update(usuarios)
         .set({ login, senhaHash, senhaProvisoria: true, ativo: true, nome: p.nome, sessaoValidaDesde: agora })
@@ -70,6 +77,7 @@ export async function definirSenhaPelaEmpresa(
       usuarioId = u.id;
       await tx.update(profissionaisLimpeza).set({ usuarioId }).where(eq(profissionaisLimpeza.id, p.id));
     }
+    await tx.delete(tentativasLogin).where(inArray(tentativasLogin.chave, [...contas]));
     // A senha nunca vai para o histórico: só que foi definida, por quem e quando.
     await registrarAuditoria(tx, {
       organizacaoId,

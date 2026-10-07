@@ -1,9 +1,23 @@
-import { eq } from "drizzle-orm";
+import { eq, like } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { organizacoes, tentativasLogin, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
-import { conferirSenha, ESPERA_MS, entrarComSenha, gerarSenhaProvisoria, hashSenha, loginBloqueado, MAX_ERROS, validarLogin, validarSenha } from "./senha";
+import {
+  conferirSenha,
+  ESPERA_MS,
+  entrarComSenha,
+  esperaDoLogin,
+  GUARDA_CONTAS_MS,
+  gerarSenhaProvisoria,
+  hashSenha,
+  LIMITE_GERAL,
+  LIMITE_POR_ORIGEM,
+  MAX_ERROS,
+  origemDoPedido,
+  validarLogin,
+  validarSenha,
+} from "./senha";
 
 let db: Db, close: () => Promise<void>, org: string, maria: string;
 const AGORA = new Date("2026-10-08T12:00:00Z");
@@ -61,23 +75,72 @@ describe("senha (M6.8)", () => {
     for (let i = 1; i < MAX_ERROS; i++) expect(await entrarComSenha(db, "maria.limpeza", `errada-${i}`, AGORA)).toEqual({ ok: false, motivo: "senha" });
     // Um acerto antes do quinto zera a conta.
     expect(await entrarComSenha(db, "maria.limpeza", "senha-da-maria", AGORA)).toMatchObject({ ok: true });
-    expect(await db.select().from(tentativasLogin)).toEqual([]);
+    expect(await db.select().from(tentativasLogin).where(like(tentativasLogin.chave, "senha:%"))).toEqual([]);
     for (let i = 1; i < MAX_ERROS; i++) await entrarComSenha(db, "maria.limpeza", `errada-${i}`, AGORA);
-    expect(await loginBloqueado(db, "maria.limpeza", AGORA)).toBeNull();
+    expect(await esperaDoLogin(db, "maria.limpeza", null, AGORA)).toBeNull();
     expect(await entrarComSenha(db, "maria.limpeza", "errada-5", AGORA)).toEqual({ ok: false, motivo: "bloqueado" });
-    expect(await loginBloqueado(db, "MARIA.limpeza", AGORA)).toEqual(depois(ESPERA_MS));
+    expect(await esperaDoLogin(db, "MARIA.limpeza", null, AGORA)).toBe("espere");
     expect(await entrarComSenha(db, "maria.limpeza", "senha-da-maria", depois(ESPERA_MS - 1000))).toEqual({ ok: false, motivo: "bloqueado" });
     // Passada a espera: entra; e um erro depois dela conta do zero (não volta a bloquear no primeiro).
     expect(await entrarComSenha(db, "maria.limpeza", "errada", depois(ESPERA_MS + 1000))).toEqual({ ok: false, motivo: "senha" });
-    expect(await loginBloqueado(db, "maria.limpeza", depois(ESPERA_MS + 1000))).toBeNull();
+    expect(await esperaDoLogin(db, "maria.limpeza", null, depois(ESPERA_MS + 1000))).toBeNull();
     expect(await entrarComSenha(db, "maria.limpeza", "senha-da-maria", depois(ESPERA_MS + 2000))).toMatchObject({ ok: true });
   });
 
   it("quem não existe recebe a mesma resposta e a mesma espera: não dá para descobrir quem tem acesso", async () => {
     for (let i = 1; i < MAX_ERROS; i++) expect(await entrarComSenha(db, "ninguem", "x".repeat(8), AGORA)).toEqual({ ok: false, motivo: "senha" });
     expect(await entrarComSenha(db, "ninguem", "x".repeat(8), AGORA)).toEqual({ ok: false, motivo: "bloqueado" });
-    expect(await loginBloqueado(db, "ninguem", AGORA)).toEqual(depois(ESPERA_MS));
+    expect(await esperaDoLogin(db, "ninguem", null, AGORA)).toBe("espere");
     // A espera é de quem foi digitado: a Maria continua entrando.
     expect(await entrarComSenha(db, "maria.limpeza", "senha-da-maria", AGORA)).toMatchObject({ ok: true });
+  });
+
+  it("origem do pedido: só endereço com cara de IP; o resto é nenhum", () => {
+    expect(origemDoPedido(new Headers({ "x-real-ip": "203.0.113.7" }))).toBe("203.0.113.7");
+    expect(origemDoPedido(new Headers({ "x-forwarded-for": "2001:DB8::1, 10.0.0.1" }))).toBe("2001:db8::1");
+    expect(origemDoPedido(new Headers({ "x-forwarded-for": "senha:maria" }))).toBeNull();
+    expect(origemDoPedido(new Headers())).toBeNull();
+    expect(origemDoPedido(undefined)).toBeNull();
+  });
+
+  it("teto por origem: variar o usuário digitado não abre conferências sem fim; a origem que passou do teto não gasta a conta geral", async () => {
+    const ip = "203.0.113.7";
+    for (let i = 1; i <= LIMITE_POR_ORIGEM.tentativas; i++) expect(await entrarComSenha(db, `alguem-${i}`, "x".repeat(8), AGORA, ip)).toEqual({ ok: false, motivo: "senha" });
+    const [geral] = await db.select().from(tentativasLogin).where(eq(tentativasLogin.chave, "senha-geral"));
+    // Passou do teto: nem a senha certa é conferida, e a conta geral não anda.
+    expect(await entrarComSenha(db, "maria.limpeza", "senha-da-maria", AGORA, ip)).toEqual({ ok: false, motivo: "muitas" });
+    expect(await entrarComSenha(db, "outro", "x".repeat(8), AGORA, ip)).toEqual({ ok: false, motivo: "muitas" });
+    expect(await db.select().from(tentativasLogin).where(eq(tentativasLogin.chave, "senha-geral"))).toEqual([geral]);
+    expect(await db.select().from(tentativasLogin).where(eq(tentativasLogin.chave, "senha:outro"))).toEqual([]);
+    expect(await esperaDoLogin(db, "maria.limpeza", ip, AGORA)).toBe("muitas");
+    // Outra origem entra; a mesma origem, depois da janela, também.
+    expect(await esperaDoLogin(db, "maria.limpeza", "198.51.100.2", AGORA)).toBeNull();
+    expect(await entrarComSenha(db, "maria.limpeza", "senha-da-maria", AGORA, "198.51.100.2")).toMatchObject({ ok: true });
+    const passada = depois(LIMITE_POR_ORIGEM.janelaMs + 1000);
+    expect(await esperaDoLogin(db, "maria.limpeza", ip, passada)).toBeNull();
+    expect(await entrarComSenha(db, "maria.limpeza", "senha-da-maria", passada, ip)).toMatchObject({ ok: true });
+  });
+
+  it("teto geral: passou de 60 tentativas no minuto, ninguém é conferido até o minuto acabar", async () => {
+    await db.insert(tentativasLogin).values({ chave: "senha-geral", erros: LIMITE_GERAL.tentativas, atualizadoEm: AGORA });
+    expect(await esperaDoLogin(db, "maria.limpeza", null, AGORA)).toBe("muitas");
+    expect(await entrarComSenha(db, "maria.limpeza", "senha-da-maria", depois(30_000))).toEqual({ ok: false, motivo: "muitas" });
+    expect(await db.select().from(tentativasLogin).where(like(tentativasLogin.chave, "senha:%"))).toEqual([]);
+    const passada = depois(LIMITE_GERAL.janelaMs + 1000);
+    expect(await esperaDoLogin(db, "maria.limpeza", null, passada)).toBeNull();
+    expect(await entrarComSenha(db, "maria.limpeza", "senha-da-maria", passada)).toMatchObject({ ok: true });
+  });
+
+  it("contas paradas há mais de um dia são apagadas; a espera em curso fica", async () => {
+    const velho = new Date(AGORA.getTime() - GUARDA_CONTAS_MS - 1000);
+    await db.insert(tentativasLogin).values([
+      { chave: "senha:fulano-1", erros: 3, atualizadoEm: velho },
+      { chave: "senha-origem:203.0.113.9", erros: 4, atualizadoEm: velho },
+      { chave: "senha:fulano-2", erros: 0, bloqueadoAte: depois(60_000), atualizadoEm: velho },
+      { chave: "senha:fulano-3", erros: 2, atualizadoEm: AGORA },
+    ]);
+    expect(await entrarComSenha(db, "maria.limpeza", "senha-da-maria", AGORA)).toMatchObject({ ok: true });
+    const ficaram = (await db.select({ chave: tentativasLogin.chave }).from(tentativasLogin)).map((t) => t.chave).sort();
+    expect(ficaram).toEqual(["senha-geral", "senha:fulano-2", "senha:fulano-3"]);
   });
 });
