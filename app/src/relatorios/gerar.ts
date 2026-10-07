@@ -14,13 +14,30 @@ import { hojeISO } from "@/lib/datas";
 import { periodoDosFiltros } from "@/lib/filtros";
 import { lerPeriodoPortal } from "@/portal/periodo";
 import { proprietariosDoUsuario } from "@/portal/resumo";
-import { type Anexos, ErroRelatorio, gerarPdfRelatorio } from "./pdf";
+import { capaDoRelatorio } from "@/imoveis/fotos";
+import { type Anexos, ErroFotoRelatorio, ErroRelatorio, gerarPdfRelatorio } from "./pdf";
 import { extratosDoRelatorio } from "./extratos";
 import { dadosDoRelatorio, donoDoRelatorio, HISTORICO_TODO, imoveisDoProprietario, textosDoRelatorio } from "./relatorio";
 
 export type Resultado = { ok: true; pdf: Uint8Array; arquivo: string } | { ok: false; status: number; erro: string };
 
 type Params = Record<string, string | string[] | undefined>;
+
+/**
+ * PDF com a foto da capa do cadastro (M7.3): a capa do primeiro imóvel do relatório que tem foto. Foto guardada que o
+ * PDF não consegue ler nunca impede o relatório: ele sai com o quadro "foto do imóvel — em breve".
+ */
+async function pdfComCapa(db: Db, organizacaoId: string, imovelIds: readonly string[], textos: Parameters<typeof gerarPdfRelatorio>[0], anexos: Anexos, agora: Date): Promise<{ pdf: Uint8Array; comFoto: boolean }> {
+  const foto = await capaDoRelatorio(db, organizacaoId, imovelIds);
+  if (foto) {
+    try {
+      return { pdf: await gerarPdfRelatorio(textos, { ...anexos, foto }, agora), comFoto: true };
+    } catch (e) {
+      if (!(e instanceof ErroFotoRelatorio)) throw e;
+    }
+  }
+  return { pdf: await gerarPdfRelatorio(textos, anexos, agora), comFoto: false };
+}
 
 const nomeArquivo = (ano: number, mes: number, imoveis: { codigo: string }[]) =>
   `relatorio-${ano}-${String(mes).padStart(2, "0")}-${imoveis.map((i) => i.codigo.replace(/[^\w-]/g, "")).join("-") || "imoveis"}.pdf`;
@@ -104,7 +121,8 @@ export async function relatorioDoPortal(db: Db, sessao: Sessao | null, params: P
     hoje: hojeISO("America/Sao_Paulo", agora),
     agora,
   });
-  return { ok: true, pdf: await gerarPdfRelatorio(textosDoRelatorio(dados), {}, agora), arquivo: nomeArquivo(filtros.ano, filtros.mes, doMes) };
+  const { pdf } = await pdfComCapa(db, sessao.organizacaoId, doMes.map((i) => i.id), textosDoRelatorio(dados), {}, agora);
+  return { ok: true, pdf, arquivo: nomeArquivo(filtros.ano, filtros.mes, doMes) };
 }
 
 export type PedidoPainel = {
@@ -143,8 +161,11 @@ export async function relatorioDoPainel(db: Db, sessao: Sessao | null, proprieta
     agora,
   });
   let pdf: Uint8Array;
+  // Foto subida no formulário vale só para este PDF; sem ela, a capa do cadastro do imóvel (M7.3).
+  let fotoDoCadastro = false;
   try {
-    pdf = await gerarPdfRelatorio(textosDoRelatorio(dados), pedido.anexos, agora);
+    if (pedido.anexos.foto) pdf = await gerarPdfRelatorio(textosDoRelatorio(dados), pedido.anexos, agora);
+    else ({ pdf, comFoto: fotoDoCadastro } = await pdfComCapa(db, sessao.organizacaoId, escolhidos.map((i) => i.id), textosDoRelatorio(dados), pedido.anexos, agora));
   } catch (e) {
     if (e instanceof ErroRelatorio) return { ok: false, status: 400, erro: e.message };
     throw e;
@@ -158,7 +179,7 @@ export async function relatorioDoPainel(db: Db, sessao: Sessao | null, proprieta
     entidadeId: dono.id,
     mudancas: {
       relatorio: [null, `${pedido.mes} · ${escolhidos.map((i) => i.codigo).join(", ")}`],
-      anexos: [null, [pedido.anexos.foto ? "foto" : null, pedido.anexos.extrato ? "extrato" : null].filter(Boolean).join(" e ") || "nenhum"],
+      anexos: [null, [pedido.anexos.foto ? "foto" : fotoDoCadastro ? "foto do cadastro" : null, pedido.anexos.extrato ? "extrato" : null].filter(Boolean).join(" e ") || "nenhum"],
     },
   });
   return { ok: true, pdf, arquivo: nomeArquivo(ano, mes, escolhidos) };
@@ -179,9 +200,9 @@ export async function relatorioDoFechamento(
   const c = await conteudoDoFechamento(db, organizacaoId, proprietarioId, mesISO, agora, hoje);
   if (!c.ok) return c;
   // M5.7: os extratos oficiais guardados por imóvel e mês vão no fim, como emitidos; sem nenhum guardado, o PDF sai sem
-  // anexos com o rodapé "ficam com a equipe" (e o painel avisa). A foto da capa espera as fotos reais (M7.3).
+  // anexos com o rodapé "ficam com a equipe" (e o painel avisa). A foto da capa é a do cadastro do imóvel (M7.3).
   const extratos = await extratosDoRelatorio(db, organizacaoId, { imovelIds: c.imovelIds, proprietarioIds: [proprietarioId] }, mesISO);
-  const pdf = await gerarPdfRelatorio(c.textos, { extratos }, agora);
+  const { pdf } = await pdfComCapa(db, organizacaoId, c.imovelIds, c.textos, { extratos }, agora);
   return { ok: true, pdf, arquivo: c.arquivo, textos: c.textos, anexos: extratos.map((e) => e.canal) };
 }
 

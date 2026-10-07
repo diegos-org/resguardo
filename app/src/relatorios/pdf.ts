@@ -7,16 +7,19 @@
  * numeração deles).
  */
 import { PDFDocument, type PDFFont, type PDFImage, type PDFPage, rgb, StandardFonts } from "pdf-lib";
+import { LIMITE_FOTO, tipoDaImagem } from "@/imoveis/fotos-regras";
 import { escalaEmMil, mesCurto } from "./metricas";
 import { comPaginas, type LinhaConciliacaoTexto, type LinhaReserva, type LinhaValor, type PaginasDasSecoes, type TextosRelatorio } from "./relatorio";
 import { TEMA } from "./tema";
 
-/** Limites dos anexos (a Vercel recusa pedidos acima de ~4,5 MB no total). */
-export const LIMITE_FOTO = 2 * 1024 * 1024;
+/** Limites dos anexos (a Vercel recusa pedidos acima de ~4,5 MB no total). A foto segue a regra das fotos dos imóveis (M7.3). */
+export { LIMITE_FOTO };
 export const LIMITE_EXTRATO = 2 * 1024 * 1024;
 
 /** Erro que pode ser mostrado ao usuário como está. */
 export class ErroRelatorio extends Error {}
+/** A foto da capa não serve (tipo, tamanho ou arquivo ilegível): quem usa a foto do cadastro gera de novo sem ela. */
+export class ErroFotoRelatorio extends ErroRelatorio {}
 
 export type ExtratoAnexo = {
   /** Nome do canal ("Airbnb", "Booking.com"); aparece no selo do anexo. */
@@ -62,8 +65,8 @@ const RODAPE = 30;
 /** Contorno tracejado do gráfico de ocupação (mês em que o imóvel não era do dono). */
 const TRACEJADO = [1.5, 1.2];
 
-const eJpg = (b: Uint8Array) => b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
-const ePng = (b: Uint8Array) => b.length > 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47;
+const eJpg = (b: Uint8Array) => tipoDaImagem(b) === "image/jpeg";
+const ePng = (b: Uint8Array) => tipoDaImagem(b) === "image/png";
 const ePdf = (b: Uint8Array) => b.length > 5 && String.fromCharCode(...b.slice(0, 5)) === "%PDF-";
 
 /**
@@ -94,8 +97,8 @@ export function extratosDe(a: Anexos): ExtratoAnexo[] {
 /** Confere os anexos antes de gerar (tipo e tamanho); a mensagem vai direto para a tela. */
 export function conferirAnexos(a: Anexos): void {
   if (a.foto) {
-    if (a.foto.length > LIMITE_FOTO) throw new ErroRelatorio("A foto passa de 2 MB: use uma versão menor.");
-    if (!eJpg(a.foto) && !ePng(a.foto)) throw new ErroRelatorio("A foto precisa ser JPG ou PNG.");
+    if (a.foto.length > LIMITE_FOTO) throw new ErroFotoRelatorio("A foto passa de 2 MB: use uma versão menor.");
+    if (!eJpg(a.foto) && !ePng(a.foto)) throw new ErroFotoRelatorio("A foto precisa ser JPG ou PNG.");
   }
   for (const e of extratosDe(a)) {
     if (e.bytes.length > LIMITE_EXTRATO) throw new ErroRelatorio(`O extrato${e.canal ? ` (${e.canal})` : ""} passa de 2 MB: exporte só o período do mês.`);
@@ -676,7 +679,7 @@ async function desenharRelatorio(t: TextosRelatorio, anexos: Anexos, extratos: r
     try {
       foto = eJpg(anexos.foto) ? await doc.embedJpg(anexos.foto) : await doc.embedPng(anexos.foto);
     } catch {
-      throw new ErroRelatorio("Não foi possível ler a foto: tente outro arquivo JPG ou PNG.");
+      throw new ErroFotoRelatorio("Não foi possível ler a foto: tente outro arquivo JPG ou PNG.");
     }
   }
   const comAnexos = extratos.length > 0;

@@ -14,7 +14,8 @@ import type { Rodape } from "@/portal/rodape";
 import type { DadosReserva } from "@/reservas/regras";
 import { criarBloqueio } from "@/reservas/bloqueios";
 import { criarReserva } from "@/reservas/repositorio";
-import { donosDosEscolhidos, relatorioDoPainel, relatorioDoPortal } from "./gerar";
+import { guardarFoto, listarFotos, usarComoCapa } from "@/imoveis/fotos";
+import { donosDosEscolhidos, relatorioDoFechamento, relatorioDoPainel, relatorioDoPortal } from "./gerar";
 import type { ParteDoRelatorio } from "./dinheiro";
 import { type DadosDoMes, diariaMedia } from "./metricas";
 import { conferirAnexos, ErroRelatorio, extratosDe, gerarPdfRelatorio, lerPaginas } from "./pdf";
@@ -789,5 +790,39 @@ describe("dados e acesso", () => {
     const [h] = await historico();
     expect(h).toMatchObject({ acao: "relatorio.pdf", entidade: "proprietario", entidadeId: dona });
     expect(h.mudancas).toEqual({ relatorio: [null, "2026-10 · 403"], anexos: [null, "foto e extrato"] });
+  });
+
+  it("capa (M7.3): a primeira foto da ficha do imóvel entra no portal, no painel e no fechamento; foto guardada ilegível não impede o relatório", async () => {
+    const EM_BREVE = hexWinAnsi("foto do imóvel");
+    const capaDe = async (pdf: Uint8Array) => (await conteudoDasPaginas(pdf))[0];
+    const portal = async () => {
+      const r = await relatorioDoPortal(db, donaUsuario, { ano: "2026", mes: "10" }, AGORA);
+      if (!r.ok) throw new Error(r.erro);
+      return r.pdf;
+    };
+    // Sem foto na ficha: o quadro "foto do imóvel — em breve".
+    expect(await capaDe(await portal())).toContain(EM_BREVE);
+    expect(await guardarFoto(db, org, { imovelId: a, arquivo: { nome: "sala.png", conteudo: PNG } }, null)).toMatchObject({ ok: true });
+    expect(await capaDe(await portal())).not.toContain(EM_BREVE);
+    // Painel sem foto no formulário: usa a do cadastro e o histórico diz qual foi.
+    const painel = await relatorioDoPainel(db, admin(), dona, { mes: "2026-10", imoveis: [], anexos: {} }, AGORA);
+    if (!painel.ok) throw new Error(painel.erro);
+    expect(await capaDe(painel.pdf)).not.toContain(EM_BREVE);
+    const [h] = await db.select().from(auditoria).where(eq(auditoria.acao, "relatorio.pdf"));
+    expect(h.mudancas).toMatchObject({ anexos: [null, "foto do cadastro"] });
+    // E-mail do fechamento: a mesma capa.
+    const fechamento = await relatorioDoFechamento(db, org, dona, "2026-10", AGORA);
+    if (!fechamento.ok) throw new Error(fechamento.erro);
+    expect(await capaDe(fechamento.pdf)).not.toContain(EM_BREVE);
+    // O 102 (de outro dono) tem foto boa; ela nunca vai para o relatório da dona, nem quando a capa do 403 falha (abaixo).
+    await guardarFoto(db, org, { imovelId: b, arquivo: { nome: "outro.png", conteudo: PNG } }, null);
+    // Foto que passa na conferência (começa como PNG) mas o PDF não lê: o relatório sai inteiro, com "em breve".
+    const ruim = await guardarFoto(db, org, { imovelId: a, arquivo: { nome: "ruim.png", conteudo: Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]) } }, null);
+    if (!ruim.ok) throw new Error(ruim.erro);
+    await usarComoCapa(db, org, ruim.id, null);
+    expect((await listarFotos(db, org, a))[0].id).toBe(ruim.id);
+    expect(await capaDe(await portal())).toContain(EM_BREVE);
+    const doFechamento = await relatorioDoFechamento(db, org, dona, "2026-10", AGORA);
+    expect(doFechamento.ok).toBe(true);
   });
 });

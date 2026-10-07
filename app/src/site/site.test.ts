@@ -5,6 +5,7 @@ import { imoveis, organizacoes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { DETALHES_VAZIOS, salvarDetalhes } from "@/imoveis/detalhes";
+import { guardarFoto } from "@/imoveis/fotos";
 import { conteudoDoSite, destinoDoLinkAntigo, hojeMaisCedo, imovelDoSite, imoveisDoSite, lerPedidoConsulta, tituloDoSite, linkWhatsapp, montarConsulta, numeroWhatsapp, organizacaoDoSite } from "./site";
 
 let db: Db;
@@ -52,6 +53,22 @@ describe("site público (M7.1)", () => {
     expect(JSON.stringify(lista)).not.toMatch(/Rua Fictícia|22000|apto 1|50000|precoBase|endereco|cep/);
     // Sem cadastro completo: valores neutros.
     expect(lista[0]).toMatchObject({ camas: [], comodidades: [], checkinAPartirDe: "15:00" });
+  });
+
+  it("fotos reais (M7.3): cada imóvel com as suas, na ordem, só endereço e legenda; sem foto, lista vazia", async () => {
+    const jpg = (n: number) => Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, n]);
+    const f1 = await guardarFoto(db, org, { imovelId: studio, legenda: "Sala", arquivo: { nome: "a.jpg", conteudo: jpg(1) }, miniatura: jpg(2) }, null);
+    const f2 = await guardarFoto(db, org, { imovelId: studio, arquivo: { nome: "b.jpg", conteudo: jpg(3) } }, null);
+    if (!f1.ok || !f2.ok) throw new Error("foto");
+    const [dois, s] = await imoveisDoSite(db, org);
+    expect(s.fotos).toEqual([
+      { grande: `/fotos/${f1.id}`, pequena: `/fotos/${f1.id}/pequena`, legenda: "Sala" },
+      { grande: `/fotos/${f2.id}`, pequena: `/fotos/${f2.id}`, legenda: "" },
+    ]);
+    expect(dois.fotos).toEqual([]);
+    expect((await imovelDoSite(db, org, "403"))?.fotos).toEqual(s.fotos);
+    // O id do imóvel (usado só para buscar as fotos) nunca vai para o objeto público.
+    expect(JSON.stringify(s)).not.toContain(studio);
   });
 
   it("página do imóvel: só se for público e ativo", async () => {

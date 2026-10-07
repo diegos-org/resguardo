@@ -5,6 +5,7 @@ import { listarAnuncios } from "@/anuncios/repositorio";
 import { QuadroAnuncios } from "@/components/anuncios/QuadroAnuncios";
 import styles from "@/components/anuncios/anuncios.module.css";
 import { getDb } from "@/db/client";
+import { quantasFotos } from "@/imoveis/fotos";
 import { lerImoveisSelecionados } from "@/lib/filtros";
 import { organizacaoDoSite } from "@/site/site";
 
@@ -15,7 +16,7 @@ export default async function Anuncios({ searchParams }: PageProps<"/painel/anun
   exigir(s, "imovel:ler", { organizacaoId: s.organizacaoId });
   const sp = await searchParams;
   const db = getDb();
-  const [todos, siteOrg] = await Promise.all([listarAnuncios(db, s.organizacaoId), organizacaoDoSite(db)]);
+  const [todos, siteOrg, fotos] = await Promise.all([listarAnuncios(db, s.organizacaoId), organizacaoDoSite(db), quantasFotos(db, s.organizacaoId)]);
   const selecionados = lerImoveisSelecionados(sp, todos);
   const incluirArquivados = sp.arquivados === "sim";
   const lista = todos.filter(i => (selecionados.length ? selecionados.includes(i.codigo) : i.ativo || incluirArquivados));
@@ -32,6 +33,6 @@ export default async function Anuncios({ searchParams }: PageProps<"/painel/anun
       <label>Imóveis<select name="arquivados" defaultValue={incluirArquivados ? "sim" : "nao"}><option value="nao">Ativos (e os selecionados)</option><option value="sim">Incluir arquivados</option></select></label><button type="submit">Aplicar</button>
     </form>
     <p>{lista.length} {lista.length === 1 ? "imóvel" : "imóveis"} nesta seleção.</p>
-    {!lista.length ? <p>Nenhum imóvel nesta seleção.</p> : <div className={styles.lista}>{lista.map(i => <QuadroAnuncios key={i.id} imovel={i} podeEditar={podeFazer(s.papel, "imovel:editar")} siteDaOrg={siteOrg === s.organizacaoId} />)}</div>}
+    {!lista.length ? <p>Nenhum imóvel nesta seleção.</p> : <div className={styles.lista}>{lista.map(i => <QuadroAnuncios key={i.id} imovel={i} podeEditar={podeFazer(s.papel, "imovel:editar")} siteDaOrg={siteOrg === s.organizacaoId} fotosNoSite={fotos.get(i.id) ?? 0} />)}</div>}
   </>;
 }
