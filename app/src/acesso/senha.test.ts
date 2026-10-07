@@ -60,9 +60,9 @@ describe("senha (M6.8)", () => {
   });
 
   it("entra com o usuário (sem diferença de maiúscula) ou com o e-mail; quem está inativo ou sem senha não entra", async () => {
-    expect(await entrarComSenha(db, "  Maria.Limpeza ", "senha-da-maria", AGORA)).toEqual({ ok: true, usuarioId: maria });
+    expect(await entrarComSenha(db, "  Maria.Limpeza ", "senha-da-maria", AGORA)).toMatchObject({ ok: true, usuarioId: maria });
     const [ana] = await db.insert(usuarios).values({ organizacaoId: org, email: "Ana@Example.com", nome: "Ana", papel: "limpeza", senhaHash: await hashSenha("senha-da-ana") }).returning();
-    expect(await entrarComSenha(db, "ana@example.com", "senha-da-ana", AGORA)).toEqual({ ok: true, usuarioId: ana.id });
+    expect(await entrarComSenha(db, "ana@example.com", "senha-da-ana", AGORA)).toMatchObject({ ok: true, usuarioId: ana.id });
     // Sem senha cadastrada (entra só pelo código ou pelo Google): por aqui, não.
     await db.insert(usuarios).values({ organizacaoId: org, email: "bia@example.com", nome: "Bia", papel: "limpeza" });
     expect(await entrarComSenha(db, "bia@example.com", "qualquer-coisa", AGORA)).toEqual({ ok: false, motivo: "senha" });

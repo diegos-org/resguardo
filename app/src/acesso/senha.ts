@@ -126,7 +126,16 @@ export async function esperaDoLogin(db: Db, digitado: string, origem: string | n
   return passouDoTeto(de(CHAVE_GERAL), LIMITE_GERAL, agora) ? "muitas" : null;
 }
 
-export type ResultadoSenha = { ok: true; usuarioId: string } | { ok: false; motivo: "senha" | "bloqueado" | "muitas" };
+/**
+ * Trava da conferência de senha de um usuário digitado, até o fim da transação. A entrada (`entrarComSenha`) e a troca da
+ * senha pela empresa usam a mesma: uma não corre no meio da outra.
+ */
+export async function travarEntrada(tx: Db, chave: string): Promise<void> {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`login-senha:${chave}`}))`);
+}
+
+/** `conferidaEm`: a hora em que a senha foi conferida, já com a trava; vira a hora da sessão (corte de senha trocada). */
+export type ResultadoSenha = { ok: true; usuarioId: string; conferidaEm: number } | { ok: false; motivo: "senha" | "bloqueado" | "muitas" };
 
 /**
  * Confere usuário (ou e-mail) e senha. Só entra quem está ativo e tem senha. Antes de conferir, os tetos: mais de 20
@@ -144,8 +153,10 @@ export async function entrarComSenha(db: Db, digitado: string, senha: string, ag
   if (geral > LIMITE_GERAL.tentativas) return { ok: false, motivo: "muitas" };
   const chave = chaveDoLogin(identificador);
   return db.transaction(async (tx) => {
-    // Uma conferência por vez para o mesmo usuário digitado: tentativas em paralelo não escapam da conta.
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`login-senha:${chave}`}))`);
+    // Uma conferência por vez para o mesmo usuário digitado: tentativas em paralelo não escapam da conta, e uma troca
+    // de senha pela empresa espera esta conferência acabar (ou esta espera a troca).
+    await travarEntrada(tx, chave);
+    const conferidaEm = Math.max(agora.getTime(), Date.now());
     const [t] = await tx.select().from(tentativasLogin).where(eq(tentativasLogin.chave, chave));
     if (t?.bloqueadoAte && t.bloqueadoAte > agora) return { ok: false as const, motivo: "bloqueado" as const };
     const porEmail = identificador.includes("@");
@@ -156,7 +167,7 @@ export async function entrarComSenha(db: Db, digitado: string, senha: string, ag
     const confere = u?.senhaHash ? await conferirSenha(senha, u.senhaHash) : (await derivar(senha, SAL_FALSO, LOG_N, R, P), false);
     if (confere && u) {
       if (t) await tx.delete(tentativasLogin).where(eq(tentativasLogin.chave, chave));
-      return { ok: true as const, usuarioId: u.id };
+      return { ok: true as const, usuarioId: u.id, conferidaEm };
     }
     // Espera vencida: a conta recomeça.
     const erros = (t && !t.bloqueadoAte ? t.erros : 0) + 1;

@@ -45,7 +45,7 @@ describe("entrada da equipe sem e-mail (M6.8)", () => {
     expect(u).toMatchObject({ email: "", login: "ana.limpeza", papel: "limpeza", senhaProvisoria: true, ativo: true });
     expect(u.senhaHash).not.toContain(r.senha);
     const entrou = await entrarComSenha(db, "ana.limpeza", r.senha, new Date(AGORA.getTime() + 1000));
-    expect(entrou).toEqual({ ok: true, usuarioId: u.id });
+    expect(entrou).toMatchObject({ ok: true, usuarioId: u.id });
     expect(await carregarSessao(db, u.id, { emitidaEm: AGORA.getTime() + 1000 })).toMatchObject({ papel: "limpeza", profissionalId: ana });
     const historico = await historicoDe(db, org, "profissional_limpeza", ana);
     expect(JSON.stringify(historico)).not.toContain(r.senha);
@@ -67,9 +67,19 @@ describe("entrada da equipe sem e-mail (M6.8)", () => {
     expect(await carregarSessao(db, uid, { emitidaEm: entrouAntes })).toBeNull();
     expect(await entrarComSenha(db, "ana", "primeira-senha", depois)).toMatchObject({ ok: false });
     expect(await entrarComSenha(db, "ana", "segunda-senha", depois)).toMatchObject({ ok: true });
+    // A sessão vale da hora em que a senha foi conferida: a de antes da troca cai; a de depois, com a senha nova, vale.
+    const antesDaTroca = await entrarComSenha(db, "ana", "segunda-senha", depois);
+    if (!antesDaTroca.ok) throw new Error("devia entrar");
+    const terceira = new Date(depois.getTime() + 30_000);
+    expect(await definirSenhaPelaEmpresa(db, org, ana, { login: "ana", senha: "outra-senha-1" }, null, terceira)).toMatchObject({ ok: true });
+    expect(await carregarSessao(db, uid, { emitidaEm: antesDaTroca.conferidaEm })).toBeNull();
+    const depoisDaTroca = await entrarComSenha(db, "ana", "outra-senha-1", new Date(terceira.getTime() + 1000));
+    if (!depoisDaTroca.ok) throw new Error("devia entrar");
+    expect(depoisDaTroca.conferidaEm).toBeGreaterThan(terceira.getTime());
+    expect(await carregarSessao(db, uid, { emitidaEm: depoisDaTroca.conferidaEm })).not.toBeNull();
     // Errou demais e ficou esperando: a senha nova da empresa vale na hora.
     for (let i = 1; i <= MAX_ERROS; i++) await entrarComSenha(db, "ana", `errada-${i}`, depois);
-    expect(await entrarComSenha(db, "ana", "segunda-senha", depois)).toEqual({ ok: false, motivo: "bloqueado" });
+    expect(await entrarComSenha(db, "ana", "outra-senha-1", depois)).toEqual({ ok: false, motivo: "bloqueado" });
     expect(await definirSenhaPelaEmpresa(db, org, ana, { login: "ana", senha: "terceira-senha" }, null, depois)).toMatchObject({ ok: true });
     expect(await entrarComSenha(db, "ana", "terceira-senha", new Date(depois.getTime() + 1000))).toMatchObject({ ok: true });
     // O mesmo usuário para outra pessoa, mesmo noutra organização: recusado (o usuário é único no sistema).
@@ -89,8 +99,8 @@ describe("entrada da equipe sem e-mail (M6.8)", () => {
     const uid = await usuarioDe(ana);
     expect(await definirSenhaPelaEmpresa(db, org, ana, { login: "ana", senha: "senha-da-ana" }, null, AGORA)).toMatchObject({ ok: true });
     expect(await usuarioDe(ana)).toBe(uid);
-    expect(await entrarComSenha(db, "ana@example.com", "senha-da-ana", AGORA)).toEqual({ ok: true, usuarioId: uid });
-    expect(await entrarComSenha(db, "ana", "senha-da-ana", AGORA)).toEqual({ ok: true, usuarioId: uid });
+    expect(await entrarComSenha(db, "ana@example.com", "senha-da-ana", AGORA)).toMatchObject({ ok: true, usuarioId: uid });
+    expect(await entrarComSenha(db, "ana", "senha-da-ana", AGORA)).toMatchObject({ ok: true, usuarioId: uid });
     expect(await definirSenhaPelaEmpresa(db, org, bia, { login: "bia", senha: "senha-da-bia" }, null, AGORA)).toMatchObject({ ok: true });
     expect(await darAcesso(db, org, bia, "bia@example.com", null)).toEqual({ ok: true });
     expect((await acessosDasProfissionais(db, org)).get(bia)).toMatchObject({ email: "bia@example.com", login: "bia", temSenha: true });

@@ -49,13 +49,15 @@ function lerCusto(form: FormData, podeCusto: boolean): number | null | "invalido
   return reaisParaCentavos(t) ?? "invalido";
 }
 
-/** Endereço da tela da equipe no mesmo site em que o painel está. */
-async function linkDaEquipe() {
+/** Endereço completo de uma tela no mesmo site em que o painel está (para links mandados por e-mail ou WhatsApp). */
+async function enderecoNoSite(caminho: string) {
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
   const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  return `${proto}://${host}/equipe`;
+  return `${proto}://${host}${caminho}`;
 }
+
+const linkDaEquipe = () => enderecoNoSite("/equipe");
 
 export async function confirmarAcao(form: FormData) {
   const s = await sessaoEditora();
@@ -151,7 +153,7 @@ export async function categoriaAcao(form: FormData) {
   voltar(form, await escolherCategoriaDasLimpezas(getDb(), s.organizacaoId, String(form.get("categoriaId") ?? ""), s.usuarioId));
 }
 
-export type EstadoSenhaProfissional = { ok?: boolean; erro?: string; login?: string; senha?: string };
+export type EstadoSenhaProfissional = { ok?: boolean; erro?: string; login?: string; senha?: string; /** Endereço completo da tela de entrada, para a mensagem do WhatsApp. */ endereco?: string };
 
 /**
  * Usuário e senha provisória da profissional (M6.8). Só quem gerencia usuários (o admin): é uma credencial de outra
@@ -162,7 +164,7 @@ export async function senhaProfissionalAcao(_anterior: EstadoSenhaProfissional, 
   exigir(s, "usuario:gerenciar", { organizacaoId: s.organizacaoId });
   const r = await definirSenhaPelaEmpresa(getDb(), s.organizacaoId, String(form.get("id") ?? ""), { login: String(form.get("login") ?? ""), senha: String(form.get("senha") ?? "") }, s.usuarioId);
   revalidatePath("/painel/limpezas/profissionais");
-  return r.ok ? { ok: true, login: r.login, senha: r.senha } : { erro: r.erro };
+  return r.ok ? { ok: true, login: r.login, senha: r.senha, endereco: await enderecoNoSite("/entrar") } : { erro: r.erro };
 }
 
 /** Cidades da agenda que a profissional vê no acesso dela (M6.8). */

@@ -11,7 +11,7 @@ import { profissionaisLimpeza, tentativasLogin, usuarios } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
 import type { Resultado } from "@/limpezas/limpezas";
-import { chaveDoLogin, conferirSenha, gerarSenhaProvisoria, hashSenha, normalizarLogin, validarLogin, validarSenha } from "@/acesso/senha";
+import { chaveDoLogin, conferirSenha, gerarSenhaProvisoria, hashSenha, normalizarLogin, travarEntrada, validarLogin, validarSenha } from "@/acesso/senha";
 
 const SEM_PROFISSIONAL = "Profissional não encontrada.";
 
@@ -65,9 +65,15 @@ export async function definirSenhaPelaEmpresa(
       antes = u ? `${u.login ? `usuário ${u.login}` : "sem usuário"}${u.temSenha ? " com senha" : ""}` : null;
       if (u?.login) contas.add(chaveDoLogin(u.login));
       if (u?.email) contas.add(chaveDoLogin(u.email));
+    }
+    // A mesma trava da entrada com senha, para cada jeito de digitar este acesso: uma entrada com a senha antiga já em
+    // andamento termina antes, e o corte é tomado depois dela (a sessão dela cai); as entradas seguintes já conferem a nova.
+    for (const chave of [...contas].sort()) await travarEntrada(tx, chave);
+    const corte = new Date(Math.max(agora.getTime(), Date.now()));
+    if (usuarioId) {
       await tx
         .update(usuarios)
-        .set({ login, senhaHash, senhaProvisoria: true, ativo: true, nome: p.nome, sessaoValidaDesde: agora })
+        .set({ login, senhaHash, senhaProvisoria: true, ativo: true, nome: p.nome, sessaoValidaDesde: corte })
         .where(and(eq(usuarios.id, usuarioId), eq(usuarios.organizacaoId, organizacaoId)));
     } else {
       const [u] = await tx

@@ -59,7 +59,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       async authorize(c, pedido) {
         if (!process.env.AUTH_SECRET || typeof c?.login !== "string" || typeof c?.senha !== "string") return null;
         const r = await entrarComSenha(getDb(), c.login, c.senha, new Date(), origemDoPedido(pedido?.headers));
-        return r.ok ? { id: r.usuarioId } : null;
+        return r.ok ? { id: r.usuarioId, conferidaEm: r.conferidaEm } : null;
       },
     }),
   ],
@@ -76,8 +76,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return id ? true : "/entrar?erro=nao-cadastrado";
     },
     async jwt({ token, profile, account, user }) {
-      // Hora do login (fica no token enquanto a sessão durar): acesso mudado depois derruba a sessão.
-      if (account) token.desde = Date.now();
+      // Hora do login (fica no token enquanto a sessão durar): acesso mudado depois derruba a sessão. Na senha, é a hora
+      // da conferência: uma entrada com a senha antiga que termina durante a troca pela empresa cai junto.
+      if (account) token.desde = account.provider === "senha" && typeof user?.conferidaEm === "number" ? user.conferidaEm : Date.now();
       if (account?.provider === "codigo" || account?.provider === "senha") {
         token.uid = user?.id;
       } else if (profile) {
@@ -104,5 +105,8 @@ declare module "@auth/core/jwt" {
 declare module "next-auth" {
   interface Session {
     desde?: number;
+  }
+  interface User {
+    conferidaEm?: number;
   }
 }

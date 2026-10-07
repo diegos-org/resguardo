@@ -15,6 +15,16 @@ type Props = {
   definir: (a: EstadoSenhaProfissional, f: FormData) => Promise<EstadoSenhaProfissional>;
 };
 
+/** Mensagem pronta para o WhatsApp: com o endereço completo da entrada (um caminho solto não abre no celular). */
+export function mensagemDeAcesso(login: string, senha: string, endereco?: string): string {
+  return [
+    "Seu acesso à agenda da equipe:",
+    `Usuário: ${login}`,
+    `Senha: ${senha}`,
+    `Entre em ${endereco || "a página de entrada do sistema"}, em "Entrar com usuário e senha". Depois, troque a senha em "Minha senha".`,
+  ].join("\n");
+}
+
 /**
  * Usuário e senha provisória da profissional (M6.8), para quem não usa e-mail. A senha aparece uma vez, logo depois de
  * salvar, para copiar e mandar pelo WhatsApp; depois disso nem a empresa a vê (só dá para definir outra).
@@ -22,7 +32,7 @@ type Props = {
 export function SenhaProfissional({ profissionalId, nome, login, temSenha, senhaProvisoria, definir }: Props) {
   const [estado, enviar, enviando] = useActionState(definir, {});
   const [copiado, setCopiado] = useState(false);
-  const mensagem = estado.ok && estado.login && estado.senha ? `Seu acesso à agenda da equipe:\nUsuário: ${estado.login}\nSenha: ${estado.senha}\nEntre em /entrar, em "Entrar com usuário e senha". Depois, troque a senha em "Minha senha".` : "";
+  const mensagem = estado.ok && estado.login && estado.senha ? mensagemDeAcesso(estado.login, estado.senha, estado.endereco) : "";
   return (
     <form action={enviar} className={styles.linha} style={{ alignItems: "flex-end" }} aria-label={`Usuário e senha de ${nome}`}>
       <input type="hidden" name="id" value={profissionalId} />
