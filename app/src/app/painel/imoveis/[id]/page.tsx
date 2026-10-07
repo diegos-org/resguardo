@@ -22,6 +22,7 @@ import { listarFotos } from "@/imoveis/fotos";
 import { Periodos, Simulador } from "@/components/imoveis/Periodos";
 import { lerRecebimento } from "@/imoveis/recebimento";
 import { obterImovel } from "@/imoveis/repositorio";
+import { organizacaoDoSite } from "@/site/site";
 
 export default async function EditarImovel({ params }: PageProps<"/painel/imoveis/[id]">) {
   const sessao = await exigirSessaoPainel();
@@ -29,7 +30,7 @@ export default async function EditarImovel({ params }: PageProps<"/painel/imovei
   const { id } = await params;
   const imovel = await obterImovel(getDb(), sessao.organizacaoId, id);
   if (!imovel) notFound();
-  const [historico, contratos, ids, recebimento, regras, detalhes, periodos, fotos] = await Promise.all([
+  const [historico, contratos, ids, recebimento, regras, detalhes, periodos, fotos, siteOrg] = await Promise.all([
     historicoDe(getDb(), sessao.organizacaoId, "imovel", imovel.id),
     listarContratos(getDb(), sessao.organizacaoId, imovel.id),
     listarIdsExternos(getDb(), sessao.organizacaoId, imovel.id),
@@ -38,6 +39,7 @@ export default async function EditarImovel({ params }: PageProps<"/painel/imovei
     lerDetalhes(getDb(), sessao.organizacaoId, imovel.id),
     listarPeriodos(getDb(), sessao.organizacaoId, imovel.id),
     listarFotos(getDb(), sessao.organizacaoId, imovel.id),
+    organizacaoDoSite(getDb()),
   ]);
   return (
     <>
@@ -46,7 +48,7 @@ export default async function EditarImovel({ params }: PageProps<"/painel/imovei
       </h1>
       <FormImovel acao={salvarImovel} id={imovel.id} inicial={imovel} />
       <FormDetalhes imovelId={imovel.id} inicial={detalhes} salvar={salvarDetalhesAcao} />
-      <FotosImovel imovelId={imovel.id} imovelNome={`${imovel.codigo} · ${imovel.nome}`} fotos={fotos} noSite={imovel.publico && imovel.ativo} />
+      <FotosImovel imovelId={imovel.id} imovelNome={`${imovel.codigo} · ${imovel.nome}`} fotos={fotos} noSite={siteOrg === sessao.organizacaoId && imovel.publico && imovel.ativo} />
       <Periodos imovelId={imovel.id} periodos={periodos} criar={novoPeriodoAcao} excluir={excluirPeriodoAcao} />
       <Simulador regras={regrasDeVenda(detalhes)} periodos={periodos} hoje={hojeISO(imovel.fuso)} fontePrecos={detalhes.fontePrecos} />
       <IdsExternos imovelId={imovel.id} lista={ids} adicionar={novoIdExterno} remover={excluirIdExterno} />

@@ -16,7 +16,11 @@ import { proprietariosDoUsuario } from "./resumo";
 
 export type EntradaBloqueioPortal = { imovelId: string; inicio: string; fim: string; motivo: string };
 /** `proprio`: feito por um titular da conta dele (não pelo titular anterior do imóvel). */
-export type BloqueioDoProprietario = { id: string; imovelId: string; codigo: string; inicio: string; fim: string; motivo: string; fonte: string; proprio: boolean; liberavel: boolean };
+/** Quem fechou as datas, como o portal mostra: o proprietário, a empresa ou os canais (sem o nome interno da importação). */
+export type QuemBloqueou = "proprietario" | "empresa" | "canais";
+export const quemBloqueou = (fonte: string): QuemBloqueou => (fonte === "proprietario" ? "proprietario" : fonte === "beds24" ? "canais" : "empresa");
+
+export type BloqueioDoProprietario = { id: string; imovelId: string; codigo: string; inicio: string; fim: string; motivo: string; quem: QuemBloqueou; proprio: boolean; liberavel: boolean };
 
 const SEM_PERMISSAO = "Seu contrato não prevê bloqueio de datas pelo portal. Fale com a empresa.";
 const SEM_TITULAR = "Não foi possível identificar o titular deste imóvel na sua conta. Fale com a empresa.";
@@ -109,6 +113,9 @@ export async function liberarPeloProprietario(db: Db, sessao: Sessao, bloqueioId
  * Bloqueios atuais e futuros dos imóveis do proprietário, com quem fez cada um; só os dele, e só os que ainda
  * não acabaram, são liberáveis. "Hoje" é o de cada imóvel (fuso do imóvel), a mesma data que a liberação usa.
  */
+/** O que o portal mostra como motivo de um bloqueio vindo dos canais (Airbnb, Booking), no lugar do texto interno. */
+export const MOTIVO_BLOQUEIO_DOS_CANAIS = "Datas fechadas nos canais (Airbnb, Booking)";
+
 export async function bloqueiosDoProprietario(db: Db, sessao: Sessao, agora = new Date()): Promise<BloqueioDoProprietario[]> {
   const ids = sessao.imovelIds.filter(uuidValido);
   if (!ids.length) return [];
@@ -121,9 +128,13 @@ export async function bloqueiosDoProprietario(db: Db, sessao: Sessao, agora = ne
     .innerJoin(imoveis, eq(imoveis.id, bloqueios.imovelId))
     .where(and(eq(bloqueios.organizacaoId, sessao.organizacaoId), inArray(bloqueios.imovelId, ids), gte(bloqueios.fim, limite)))
     .orderBy(asc(bloqueios.inicio), asc(imoveis.codigo));
-  return linhas.flatMap(({ fuso, proprietarioId, ...b }) => {
+  return linhas.flatMap(({ fuso, proprietarioId, fonte, ...b }) => {
     const hoje = hojeISO(fuso, agora);
-    const proprio = b.fonte === "proprietario" && proprietarioId !== null && meus.includes(proprietarioId);
-    return b.fim >= hoje ? [{ ...b, proprio, liberavel: proprio && b.fim > hoje }] : [];
+    const quem = quemBloqueou(fonte);
+    const proprio = quem === "proprietario" && proprietarioId !== null && meus.includes(proprietarioId);
+    // Bloqueio vindo dos canais: o motivo gravado na importação é interno (cita o Beds24); o proprietário lê só que
+    // as datas foram fechadas nos canais (M5.9). A fonte em si também não vai: só quem bloqueou.
+    const motivo = quem === "canais" ? MOTIVO_BLOQUEIO_DOS_CANAIS : b.motivo;
+    return b.fim >= hoje ? [{ ...b, motivo, quem, proprio, liberavel: proprio && b.fim > hoje }] : [];
   });
 }

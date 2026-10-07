@@ -7,7 +7,7 @@ import { beds24Envios, bloqueios, imoveis, organizacoes, proprietarioImoveis, pr
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { criarBloqueio } from "@/reservas/bloqueios";
-import { bloqueiosDoProprietario, bloquearPeloProprietario, liberarPeloProprietario, permissaoAPartirDe, permissaoNoIntervalo, permissoesDeBloqueio } from "./bloqueios";
+import { bloqueiosDoProprietario, bloquearPeloProprietario, liberarPeloProprietario, MOTIVO_BLOQUEIO_DOS_CANAIS, permissaoAPartirDe, permissaoNoIntervalo, permissoesDeBloqueio } from "./bloqueios";
 
 let db: Db, close: () => Promise<void>, org: string, a: string, b: string, c: string, d: string, usuario: string, dona: string, outro: string;
 // 3/10/2026, 12:00 em São Paulo.
@@ -74,7 +74,7 @@ describe("calendário do proprietário (M5.5)", () => {
     const [{ id: usuario2 }] = await db.insert(usuarios).values({ organizacaoId: org, email: "outro@example.com", nome: "Outro", papel: "proprietario" }).returning();
     await db.insert(proprietarioUsuarios).values({ proprietarioId: outro, usuarioId: usuario2 });
     const s2: Sessao = { usuarioId: usuario2, organizacaoId: org, papel: "proprietario", imovelIds: [a] };
-    expect(await bloqueiosDoProprietario(db, s2, agora)).toMatchObject([{ id: meu.id, fonte: "proprietario", proprio: false, liberavel: false }]);
+    expect(await bloqueiosDoProprietario(db, s2, agora)).toMatchObject([{ id: meu.id, quem: "proprietario", proprio: false, liberavel: false }]);
     expect(await liberarPeloProprietario(db, s2, meu.id, agora)).toMatchObject({ ok: false, erro: expect.stringContaining("outro proprietário") });
     // O novo titular bloqueia normalmente (fica ligado a ele) e libera o dele.
     const dele = await bloquearPeloProprietario(db, s2, { imovelId: a, inicio: "2026-12-01", fim: "2026-12-03", motivo: "" }, agora);
@@ -161,13 +161,24 @@ describe("calendário do proprietário (M5.5)", () => {
     const deOutro = await criarBloqueio(db, org, { imovelId: b, inicio: "2026-10-10", fim: "2026-10-12", motivo: "" }, null, { fonte: "proprietario" });
     if (!meu.ok || !daEmpresa.ok || !deOutro.ok) throw new Error("fixture");
     expect(await bloqueiosDoProprietario(db, sessao(), agora)).toMatchObject([
-      { id: meu.id, codigo: "403", inicio: "2026-10-10", fonte: "proprietario", liberavel: true },
-      { id: daEmpresa.id, codigo: "403", inicio: "2026-11-10", fonte: "manual", liberavel: false },
+      { id: meu.id, codigo: "403", inicio: "2026-10-10", quem: "proprietario", liberavel: true },
+      { id: daEmpresa.id, codigo: "403", inicio: "2026-11-10", quem: "empresa", liberavel: false },
     ]);
     expect(await liberarPeloProprietario(db, sessao(), daEmpresa.id, agora)).toMatchObject({ ok: false, erro: expect.stringContaining("empresa") });
     expect(await liberarPeloProprietario(db, sessao(), passado.id, agora)).toMatchObject({ ok: false, erro: expect.stringContaining("já passou") });
     await expect(liberarPeloProprietario(db, sessao(), deOutro.id, agora)).rejects.toBeInstanceOf(AcessoNegado);
     expect(await liberarPeloProprietario(db, sessao(), "nao-e-uuid", agora)).toMatchObject({ ok: false });
+    // Bloqueio que veio dos canais (com o motivo interno que a importação grava): na lista do portal, o motivo e a
+    // fonte não citam o Beds24; ao tentar liberar, fica, e a mensagem também não cita (M5.9).
+    const [doCanal] = await db.insert(bloqueios).values({ organizacaoId: org, imovelId: a, inicio: "2026-12-01", fim: "2026-12-03", motivo: "Bloqueio importado do Beds24", fonte: "beds24", idFonte: "91" }).returning({ id: bloqueios.id });
+    const naLista = (await bloqueiosDoProprietario(db, sessao(), agora)).find((x) => x.id === doCanal.id);
+    expect(naLista).toMatchObject({ motivo: MOTIVO_BLOQUEIO_DOS_CANAIS, quem: "canais", liberavel: false });
+    // O objeto vai inteiro ao navegador do proprietário: nem a fonte nem o id da importação vão junto.
+    expect(JSON.stringify(naLista)).not.toMatch(/beds24/i);
+    expect(naLista).not.toHaveProperty("fonte");
+    const r = await liberarPeloProprietario(db, sessao(), doCanal.id, agora);
+    expect(r).toMatchObject({ ok: false, erro: expect.stringContaining("veio dos canais") });
+    expect(JSON.stringify(r)).not.toMatch(/beds24/i);
     expect(await liberarPeloProprietario(db, sessao(), meu.id, agora)).toEqual({ ok: true });
     expect((await lista()).map((x) => x.id)).toEqual(expect.arrayContaining([daEmpresa.id, passado.id, deOutro.id]));
     expect((await lista()).some((x) => x.id === meu.id)).toBe(false);

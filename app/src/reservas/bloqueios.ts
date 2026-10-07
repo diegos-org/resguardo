@@ -83,12 +83,14 @@ export async function criarBloqueio(db: Db, organizacaoId: string, e: EntradaBlo
 
 /** Só bloqueios criados no SCL; os importados do Beds24 ficam como estão. */
 export async function excluirBloqueio(db: Db, organizacaoId: string, id: string, autorId: string | null, opcoes: OpcoesRemocao = {}): Promise<ResultadoRemocao> {
-  const naoEncontrado = { ok: false as const, erro: "Bloqueio não encontrado ou importado do Beds24 (mude lá)." };
+  // No portal (somenteFonte), o proprietário não lê o nome do Beds24 (M5.9): o bloqueio importado é "dos canais".
+  const naoEncontrado = { ok: false as const, erro: opcoes.somenteFonte ? "Bloqueio não encontrado." : "Bloqueio não encontrado ou importado do Beds24 (mude lá)." };
   if (!uuidValido(id)) return naoEncontrado;
   return db.transaction(async (tx) => {
     const ocupado = await esperarEnvio(tx, organizacaoId);
     if (ocupado) return { ok: false as const, erro: ocupado };
     const [b] = await tx.select().from(bloqueios).where(and(eq(bloqueios.id, id), eq(bloqueios.organizacaoId, organizacaoId), ...(opcoes.imovelIds ? [inArray(bloqueios.imovelId, [...opcoes.imovelIds])] : []))).for("update");
+    if (b?.fonte === "beds24" && opcoes.somenteFonte) return { ok: false as const, erro: "Este bloqueio veio dos canais (Airbnb, Booking): fale com a empresa para liberar as datas." };
     if (!b || b.fonte === "beds24") return naoEncontrado;
     if (opcoes.somenteFonte && b.fonte !== opcoes.somenteFonte) return { ok: false as const, erro: "Este bloqueio foi feito pela empresa: fale com ela para liberar as datas." };
     if (opcoes.proprietarioIds && (!b.proprietarioId || !opcoes.proprietarioIds.includes(b.proprietarioId))) {

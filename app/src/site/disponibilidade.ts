@@ -147,7 +147,7 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   // Capacidade não cadastrada: não dá para saber se as pessoas cabem, então nada é confirmado por omissão.
   const semCapacidade = !imovel.capacidade;
   if (semCapacidade) avisos.push("A capacidade deste apartamento ainda não foi cadastrada: confirmamos na conversa se o número de pessoas cabe.");
-  if (total === null) avisos.push(semPrecoNaFonte ? "O preço dessas datas é definido no Beds24 e ainda não foi lido (ou a leitura venceu): confirmamos na conversa." : "O valor dessas datas é confirmado na conversa.");
+  if (total === null) avisos.push(semPrecoNaFonte ? "O preço dessas datas ainda não foi confirmado: confirmamos na conversa." : "O valor dessas datas é confirmado na conversa.");
   return {
     situacao: aConfirmar || semCapacidade || semPrecoNaFonte ? "a_confirmar" : "disponivel",
     motivos: avisos,
