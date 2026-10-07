@@ -85,10 +85,15 @@ describe("portal marketplace (M12.4): seção do proprietário", () => {
     const periodos = screen.getByRole("region", { name: "Períodos especiais" });
     expect(within(periodos).queryByLabelText(/Preço da noite/)).toBeNull();
     expect((within(periodos).getByLabelText(/Estadia mínima/) as HTMLInputElement).required).toBe(true);
-    expect(periodos.textContent).toContain("O preço da noite vem da sua ferramenta de preços");
+    expect(periodos.textContent).toContain("O preço da noite é definido por você ou pela sua ferramenta de preços");
     const campo = within(form).getByLabelText(/Preço da noite/) as HTMLInputElement;
     expect(campo.readOnly).toBe(true);
     expect(screen.getByText(/Preços definidos por você ou pela sua ferramenta de preços/)).toBeTruthy();
+    // Nem todo proprietário usa ferramenta: toda menção à ferramenta vem junto de "você" (preço digitado por ele mesmo).
+    const tudo = document.body.textContent ?? "";
+    const mencoes = tudo.match(/sua ferramenta de preços/g) ?? [];
+    expect(mencoes.length).toBeGreaterThan(3);
+    expect((tudo.match(/você ou (pela|a) sua ferramenta de preços/g) ?? []).length).toBe(mencoes.length);
     // M5.9: o Beds24 fica nos bastidores — nada na seção do proprietário o cita.
     expect(document.body.textContent).not.toMatch(/beds24/i);
   });

@@ -65,7 +65,8 @@ const ESTADO_LIMPEZA = { pedida: "A fazer", confirmada: "A fazer", realizada: "F
 /**
  * O envio de calendário (M3.7) leva só isto às OTAs; o resto do cadastro vale apenas no site. Com os preços
  * definidos no Beds24 (M3.9), o envio não manda preço nenhum (a SCL só lê os preços de lá): vão só as estadias.
- * Os textos para o proprietário não citam o Beds24 (M5.9): falam do nosso sistema, dos canais e da ferramenta de preços.
+ * Os textos para o proprietário não citam o Beds24 (M5.9): falam do nosso sistema, dos canais e do preço definido pelo
+ * proprietário ou pela ferramenta de preços dele (as duas coisas: nem todo proprietário usa ferramenta).
  */
 const vaiAsOtas = (fonte: FontePrecosPortal) => (fonte === "ferramenta" ? "estadias mínima e máxima" : "preço da noite e estadias mínima e máxima");
 const oQueFica = (fonte: FontePrecosPortal) => (fonte === "ferramenta" ? "as estadias anteriores" : "o preço e as estadias anteriores");
@@ -142,7 +143,7 @@ function FormPrecos({ imovel, precos, empresa, salvar }: { imovel: ImovelOperave
       )}
       <div className={f.linha}>
         <label>
-          Preço da noite (R$){precoNaFerramenta ? " — definido pela sua ferramenta de preços" : ""}
+          Preço da noite (R$){precoNaFerramenta ? " — definido por você ou pela sua ferramenta de preços" : ""}
           <input name="precoBase" inputMode="decimal" value={precoDigitado} onChange={(ev) => setPrecoDigitado(ev.target.value)} readOnly={precoNaFerramenta} placeholder="ex.: 350,00" {...invalido("precoBase")} />
           {erro("precoBase")}
         </label>
@@ -164,7 +165,7 @@ function FormPrecos({ imovel, precos, empresa, salvar }: { imovel: ImovelOperave
       </div>
       <p className={styles.miudo} aria-live="polite">
         {precoNaFerramenta
-          ? `Como o preço vem da sua ferramenta de preços, o site da ${empresa} lê o valor de cada noite de lá — a conta do que o hóspede paga e do que você recebe não dá para simular aqui com um preço fixo.`
+          ? `Como o preço de cada noite é o que você ou a sua ferramenta de preços definem, o site da ${empresa} lê esse valor noite a noite — a conta do que o hóspede paga e do que você recebe não dá para simular aqui com um preço fixo.`
           : centavos
             ? textoDaSimulacao(centavos, precos, empresa)
             : "Informe o preço da noite para ver o que o hóspede paga e o que você recebe no site."}
