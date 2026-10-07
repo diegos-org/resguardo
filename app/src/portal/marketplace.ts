@@ -232,7 +232,7 @@ export async function salvarPrecosPeloProprietario(db: Db, sessao: Sessao, imove
       const v = validarDetalhes(completa);
       if (!v.ok) return { erro: "Confira os campos destacados.", erros: v.erros };
       if (atual.fontePrecos === "beds24" && v.dados.precoBase !== atual.precoBase) {
-        return { erro: "Confira os campos destacados.", erros: { precoBase: "Os preços deste imóvel são definidos no Beds24: o preço da noite é editado lá. Limpeza, hóspede extra, regras e horários podem ser editados aqui." } };
+        return { erro: "Confira os campos destacados.", erros: { precoBase: "Os preços deste imóvel são definidos por você ou pela sua ferramenta de preços: o preço da noite é editado lá. Limpeza, hóspede extra, regras e horários podem ser editados aqui." } };
       }
       return v.dados;
     },
@@ -249,7 +249,7 @@ export async function criarPeriodoPeloProprietario(db: Db, sessao: Sessao, imove
   // Contrato e fonte de preços são conferidos dentro da transação que grava o período, com o imóvel travado (o painel pode tê-los mudado no meio).
   return criarPeriodo(db, sessao.organizacaoId, r.imovel.id, entrada, sessao.usuarioId, {
     conferir: async (atual, tx) =>
-      (await conferirNaTransacao(tx, sessao, r.imovel.id, r.dia)) ?? (atual.fontePrecos === "beds24" && preco ? "Os preços deste imóvel são definidos no Beds24: aqui o período só pode ter estadia mínima. Deixe o preço em branco." : null),
+      (await conferirNaTransacao(tx, sessao, r.imovel.id, r.dia)) ?? (atual.fontePrecos === "beds24" && preco ? "Os preços deste imóvel são definidos por você ou pela sua ferramenta de preços: aqui o período só pode ter estadia mínima. Deixe o preço em branco." : null),
   });
 }
 

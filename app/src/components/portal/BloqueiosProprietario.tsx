@@ -22,7 +22,7 @@ export function BloqueiosProprietario({ imoveis, bloqueios, empresa, hoje, bloqu
     <section aria-label="Uso próprio" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <h2 style={{ fontSize: "1.125rem", margin: 0 }}>Bloquear datas para uso próprio</h2>
       <p style={{ margin: 0, fontSize: "0.9375rem", color: "var(--scl-texto-2)" }}>
-        Vai usar o apartamento? Bloqueie as datas aqui: elas saem de venda no sistema na hora e fecham no Beds24 e nos canais (Airbnb, Booking) no próximo
+        Vai usar o apartamento? Bloqueie as datas aqui: elas saem de venda no sistema na hora e fecham nos canais (Airbnb, Booking) no próximo
         envio de calendário da {empresa}. Liberar devolve as datas à venda do mesmo jeito. Datas com reserva não podem ser bloqueadas.
       </p>
       {remocao.erro && <p role="alert" className={styles.alerta}>{remocao.erro}</p>}
@@ -48,7 +48,7 @@ export function BloqueiosProprietario({ imoveis, bloqueios, empresa, hoje, bloqu
                   <td>{dataBr(b.inicio)}</td>
                   <td>{dataBr(b.fim)}</td>
                   <td>{b.motivo || "—"}</td>
-                  <td>{b.fonte === "proprietario" ? (b.proprio ? "Você" : "Proprietário anterior") : b.fonte === "beds24" ? "Canal (Beds24)" : empresa}</td>
+                  <td>{b.fonte === "proprietario" ? (b.proprio ? "Você" : "Proprietário anterior") : b.fonte === "beds24" ? "Canal" : empresa}</td>
                   <td>
                     {b.liberavel && (
                       <form action={remover}>

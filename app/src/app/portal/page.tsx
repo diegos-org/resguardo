@@ -15,7 +15,7 @@ import { MolduraPortal } from "@/components/portal/MolduraPortal";
 import styles from "@/components/portal/portal.module.css";
 import { lerEmpresa, nomeDaEmpresa } from "@/configuracoes/empresa";
 import { fontesDePrecosDosImoveis } from "@/imoveis/detalhes";
-import { EXPLICACAO_FONTE_PRECOS, NOMES_FONTE_PRECOS } from "@/imoveis/fonte-precos";
+import { EXPLICACAO_FONTE_PRECOS_PORTAL, NOMES_FONTE_PRECOS_PORTAL } from "@/imoveis/fonte-precos";
 import { hojeISO } from "@/lib/datas";
 import { centavosParaCampo } from "@/lib/dinheiro-form";
 import { nomeDoMes, periodoDosFiltros } from "@/lib/filtros";
@@ -453,7 +453,7 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
                       <strong>
                         {i.codigo} · {i.nome}:
                       </strong>{" "}
-                      {NOMES_FONTE_PRECOS[f]}. <span className={styles.rotulo}>{EXPLICACAO_FONTE_PRECOS[f]}</span>
+                      {NOMES_FONTE_PRECOS_PORTAL[f]}. <span className={styles.rotulo}>{EXPLICACAO_FONTE_PRECOS_PORTAL[f]}</span>
                     </li>
                   );
                 })}

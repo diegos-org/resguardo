@@ -168,6 +168,11 @@ describe("calendário do proprietário (M5.5)", () => {
     expect(await liberarPeloProprietario(db, sessao(), passado.id, agora)).toMatchObject({ ok: false, erro: expect.stringContaining("já passou") });
     await expect(liberarPeloProprietario(db, sessao(), deOutro.id, agora)).rejects.toBeInstanceOf(AcessoNegado);
     expect(await liberarPeloProprietario(db, sessao(), "nao-e-uuid", agora)).toMatchObject({ ok: false });
+    // Bloqueio que veio dos canais: fica, e a mensagem não cita o Beds24 (M5.9).
+    const [doCanal] = await db.insert(bloqueios).values({ organizacaoId: org, imovelId: a, inicio: "2026-12-01", fim: "2026-12-03", fonte: "beds24", idFonte: "91" }).returning({ id: bloqueios.id });
+    const r = await liberarPeloProprietario(db, sessao(), doCanal.id, agora);
+    expect(r).toMatchObject({ ok: false, erro: expect.stringContaining("veio dos canais") });
+    expect(JSON.stringify(r)).not.toMatch(/beds24/i);
     expect(await liberarPeloProprietario(db, sessao(), meu.id, agora)).toEqual({ ok: true });
     expect((await lista()).map((x) => x.id)).toEqual(expect.arrayContaining([daEmpresa.id, passado.id, deOutro.id]));
     expect((await lista()).some((x) => x.id === meu.id)).toBe(false);

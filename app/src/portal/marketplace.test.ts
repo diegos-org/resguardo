@@ -127,12 +127,12 @@ describe("portal do proprietário marketplace (M12.4)", () => {
     await expect(salvarPrecosPeloProprietario(db, { ...sessao(), papel: "limpeza" }, a, { precoBase: "100,00" }, agora)).rejects.toBeInstanceOf(AcessoNegado);
   });
 
-  it("com os preços definidos no Beds24, o preço da noite não é editado aqui (regras e taxas, sim); período só com estadia mínima", async () => {
+  it("com os preços definidos no Beds24, o preço da noite não é editado aqui (regras e taxas, sim); período só com estadia mínima; as mensagens não citam o Beds24", async () => {
     await salvarDetalhes(db, org, a, { ...(await lerDetalhes(db, org, a)), fontePrecos: "beds24" }, null, agora);
-    expect(await salvarPrecosPeloProprietario(db, sessao(), a, { precoBase: "350,00", estadiaMinima: "2" }, agora)).toMatchObject({ ok: false, erros: { precoBase: expect.stringContaining("Beds24") } });
+    expect(await salvarPrecosPeloProprietario(db, sessao(), a, { precoBase: "350,00", estadiaMinima: "2" }, agora)).toMatchObject({ ok: false, erros: { precoBase: expect.stringContaining("sua ferramenta de preços") } });
     expect(await salvarPrecosPeloProprietario(db, sessao(), a, { precoBase: "300,00", estadiaMinima: "2", taxaLimpeza: "120,00" }, agora)).toEqual({ ok: true });
     expect(await lerDetalhes(db, org, a)).toMatchObject({ precoBase: 30000, estadiaMinima: 2, taxaLimpeza: 12000, fontePrecos: "beds24" });
-    expect(await criarPeriodoPeloProprietario(db, sessao(), a, { nome: "Réveillon", inicio: "2026-12-28", fim: "2027-01-02", precoNoite: "900,00", estadiaMinima: "" }, agora)).toMatchObject({ ok: false, erro: expect.stringContaining("Beds24") });
+    expect(await criarPeriodoPeloProprietario(db, sessao(), a, { nome: "Réveillon", inicio: "2026-12-28", fim: "2027-01-02", precoNoite: "900,00", estadiaMinima: "" }, agora)).toMatchObject({ ok: false, erro: expect.stringContaining("sua ferramenta de preços") });
     expect(await criarPeriodoPeloProprietario(db, sessao(), a, { nome: "Réveillon", inicio: "2026-12-28", fim: "2027-01-02", precoNoite: "", estadiaMinima: "5" }, agora)).toEqual({ ok: true });
   });
 

@@ -209,7 +209,10 @@ describe("disponibilidade e cotação do site (M7.2)", () => {
     expect(await consultar({ hospedes: "4" })).toMatchObject({ situacao: "disponivel", motivos: [], cotacao: { diarias: 156000, valorCheio: 211000, desconto: 8440, total: 202560 } });
     // Uma noite sem preço no Beds24: sem valor e a confirmar (o preço base R$ 450 do cadastro não é usado).
     await db.update(beds24Calendario).set({ preco: null }).where(eq(beds24Calendario.data, "2026-10-13"));
-    expect(await consultar({ hospedes: "4" })).toMatchObject({ situacao: "a_confirmar", motivos: [expect.stringContaining("definido no Beds24")], cotacao: { diarias: null, valorCheio: null, total: null } });
+    const semPreco = await consultar({ hospedes: "4" });
+    expect(semPreco).toMatchObject({ situacao: "a_confirmar", motivos: [expect.stringContaining("ainda não foi confirmado")], cotacao: { diarias: null, valorCheio: null, total: null } });
+    // M5.9: o hóspede nunca lê o nome do Beds24.
+    expect(JSON.stringify(semPreco)).not.toMatch(/beds24/i);
     // Leitura vencida: idem, mesmo com preço na leitura antiga.
     await db.update(beds24Calendario).set({ preco: 52000, observadoEm: new Date("2026-09-20T09:00:00Z") }).where(eq(beds24Calendario.data, "2026-10-13"));
     expect(await consultar({ hospedes: "4" })).toMatchObject({ situacao: "a_confirmar", cotacao: { diarias: null, total: null } });
