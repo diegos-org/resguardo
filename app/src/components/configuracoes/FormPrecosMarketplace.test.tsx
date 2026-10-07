@@ -1,15 +1,26 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { PRECOS_MARKETPLACE_PADRAO } from "@/marketplace/precos";
+import { PESOS_PADRAO_ANTIGO, PRECOS_MARKETPLACE_PADRAO } from "@/marketplace/precos";
 import { FormPrecosMarketplace } from "./FormPrecosMarketplace";
 
 afterEach(cleanup);
 const salvar = vi.fn();
 const celula = (linha: string, coluna: number) => screen.getByText(linha).closest("tr")!.children[coluna].textContent;
+// Partes iguais (1/1/1, o modelo de 4/10): os números abaixo são desses pesos.
+const IGUAIS = { ...PRECOS_MARKETPLACE_PADRAO, pesos: { ...PESOS_PADRAO_ANTIGO } };
 
-it("simulação padrão (R$ 500 × 3 + R$ 150 = R$ 1.650): Airbnb, Booking e site com partes iguais", () => {
+it("padrão 6/3/3 (M12.5): desconto de 3%, SCL com 6% e o proprietário com 3% a mais", () => {
   render(<FormPrecosMarketplace precos={PRECOS_MARKETPLACE_PADRAO} salvar={salvar} />);
+  expect(screen.getByText(/desconto do site é de aproximadamente/).textContent).toContain("3%");
+  expect((screen.getByLabelText("SCL") as HTMLInputElement).value).toBe("2");
+  // R$ 1.650: margem 12% = R$ 198 → hóspede R$ 49,50, proprietário R$ 49,50, SCL R$ 99,00.
+  expect(celula("Desconto do site", 3)).toBe("R$ 49,50");
+  expect(celula("SCL recebe", 3)).toBe("R$ 99,00");
+});
+
+it("simulação de exemplo (R$ 500 × 3 + R$ 150 = R$ 1.650): Airbnb, Booking e site com partes iguais", () => {
+  render(<FormPrecosMarketplace precos={IGUAIS} salvar={salvar} />);
   expect(screen.getByText(/desconto do site é de aproximadamente/).textContent).toContain("4%");
   expect(screen.getByText("Valor cheio: R$ 1.650,00")).toBeTruthy();
   expect(celula("Hóspede paga", 1)).toBe("R$ 1.650,00");
@@ -26,7 +37,7 @@ it("simulação padrão (R$ 500 × 3 + R$ 150 = R$ 1.650): Airbnb, Booking e sit
 });
 
 it("a simulação reage aos campos antes de salvar: pesos, taxas e a estadia de exemplo; campo inválido avisa", () => {
-  render(<FormPrecosMarketplace precos={PRECOS_MARKETPLACE_PADRAO} salvar={salvar} />);
+  render(<FormPrecosMarketplace precos={IGUAIS} salvar={salvar} />);
   fireEvent.change(screen.getByLabelText("Hóspede"), { target: { value: "2" } });
   expect(screen.getByText(/desconto do site é de aproximadamente/).textContent).toContain("6%");
   expect(celula("Desconto do site", 3)).toBe("R$ 99,00");

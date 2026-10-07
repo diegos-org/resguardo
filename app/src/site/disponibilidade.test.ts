@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { PESOS_PADRAO_ANTIGO, PRECOS_MARKETPLACE_PADRAO } from "@/marketplace/precos";
+import { salvarPrecosMarketplace } from "@/marketplace/precos-config";
 import { eq } from "drizzle-orm";
 import { gravarConfig } from "@/configuracoes/armazem";
 import { REGRAS_CALENDARIO_PADRAO } from "@/calendario/regras-config";
-import { PRECOS_MARKETPLACE_PADRAO } from "@/marketplace/precos";
 import { beds24Calendario, beds24CalendarioEnviado, bloqueios, idsExternos, imoveis, imoveisDetalhes, organizacoes, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
@@ -25,6 +26,9 @@ beforeEach(async () => {
   await db.insert(imoveis).values({ organizacaoId: org, codigo: "buzios", nome: "Casa", publico: false, capacidade: 8 });
   await db.insert(imoveisDetalhes).values({ imovelId: im, organizacaoId: org, precoBase: 45000, taxaLimpeza: 25000, hospedeExtraValor: 5000, hospedeExtraAPartirDe: 3, pisoUltimaHora1: 35000, pisoUltimaHora2: 30000 });
   await db.insert(idsExternos).values({ organizacaoId: org, imovelId: im, canal: "beds24", idExterno: "10", detalhe: "20" });
+  // Os valores destes testes são com os pesos em partes iguais (1/1/1), gravados como numa organização que já salvou
+  // a configuração; o padrão 6/3/3 (M12.5) é testado em marketplace/precos.test.ts.
+  await salvarPrecosMarketplace(db, org, { ...PRECOS_MARKETPLACE_PADRAO, pesos: { ...PESOS_PADRAO_ANTIGO } }, null);
 });
 
 describe("disponibilidade e cotação do site (M7.2)", () => {

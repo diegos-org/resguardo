@@ -66,7 +66,7 @@ export function FormPrecosMarketplace({ precos, salvar }: Props) {
         </fieldset>
         <fieldset style={grupo}>
           <legend style={legenda}>Divisão da margem (pesos)</legend>
-          <p style={nota}>A margem (taxa do Airbnb − taxa do pagamento, sobre o valor cheio) é dividida pelos pesos: a parte do hóspede vira o desconto do site, a da SCL é a receita da SCL e a do proprietário é o que ele recebe a mais que na OTA. 1/1/1 = partes iguais.</p>
+          <p style={nota}>A margem (taxa do Airbnb − taxa do pagamento, sobre o valor cheio) é dividida pelos pesos: a parte do hóspede vira o desconto do site, a da SCL é a receita da SCL e a do proprietário é o que ele recebe a mais que na OTA. O padrão (decisão de 7/10) é hóspede 1, proprietário 1 e SCL 2: numa margem de 12 pontos, 3% de desconto, 3% a mais para o proprietário e 6% para a SCL. 1/1/1 = partes iguais.</p>
           <div className={styles.linha}>
             {campo("pesoHospede", "Hóspede", { inputMode: "numeric" })}
             {campo("pesoProprietario", "Proprietário", { inputMode: "numeric" })}
