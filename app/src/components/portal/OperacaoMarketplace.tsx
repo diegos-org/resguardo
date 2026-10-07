@@ -79,8 +79,8 @@ function oQueFaltaNoEnvio(e: SituacaoEnvio, empresa: string): string | null {
   if (!e.vinculado) return `a ${empresa} ligar este imóvel aos canais no nosso sistema — sem essa ligação, o envio pula o imóvel`;
   if (!e.escritaPronta) return `a ${empresa} ligar o envio aos canais — hoje o envio só simula, nada sai`;
   if (!e.ultimo) return `o primeiro envio aos canais confirmar este imóvel (ainda não houve envio para ele)`;
-  // O motivo técnico da falha (com nomes internos) fica no painel; aqui, só que falhou e quando.
-  if (e.ultimo.falha) return `uma nova execução do envio aplicar este imóvel por inteiro — a última (${quando(e.ultimo.em)}) não conseguiu, e a ${empresa} vê o motivo no painel`;
+  // O motivo técnico da falha (com nomes internos) fica no painel e nem chega aqui; só que falhou e quando.
+  if (e.ultimo.falhou) return `uma nova execução do envio aplicar este imóvel por inteiro — a última (${quando(e.ultimo.em)}) não conseguiu, e a ${empresa} vê o motivo no painel`;
   if (!e.ultimo.mesmoVinculo) return `o próximo envio confirmar este imóvel de novo (a ligação dele com os canais mudou depois do último envio)`;
   if (!e.ultimo.mesmaCredencial) return `o próximo envio confirmar este imóvel de novo (o acesso da ${empresa} aos canais mudou depois do último envio)`;
   return null;

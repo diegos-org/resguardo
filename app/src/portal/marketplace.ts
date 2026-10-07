@@ -59,11 +59,12 @@ export type SituacaoEnvio = {
   /** O envio roda sozinho todo dia. */
   automatico: boolean;
   /**
-   * Último envio (de verdade, não simulação) terminado que incluiu este imóvel; `falha` = por que ele ficou de fora nessa
-   * execução (vazio = foi); `mesmoVinculo` = o par propriedade/quarto validado então ainda é o vínculo atual;
+   * Último envio (de verdade, não simulação) terminado que incluiu este imóvel; `falhou` = ele ficou de fora nessa
+   * execução (o motivo técnico, com nomes internos e números de quarto, fica no painel e nunca vem para o portal: este
+   * objeto vai inteiro ao navegador do proprietário); `mesmoVinculo` = o par propriedade/quarto validado então ainda é o vínculo atual;
    * `mesmaCredencial` = a credencial Beds24 que deu esse veredito é a do ambiente agora (outra credencial pode não enxergar o quarto).
    */
-  ultimo: { em: Date; situacao: string; falha: string; mesmoVinculo: boolean; mesmaCredencial: boolean } | null;
+  ultimo: { em: Date; situacao: string; falhou: boolean; mesmoVinculo: boolean; mesmaCredencial: boolean } | null;
 };
 
 /**
@@ -71,7 +72,7 @@ export type SituacaoEnvio = {
  * já incluiu o imóvel sem deixá-lo de fora (quarto acessível à credencial, em BRL) — a mesma régua do envio, lida do
  * resultado dele em vez de suposta.
  */
-export const envioPronto = (e: Pick<SituacaoEnvio, "naLista" | "vinculado" | "escritaPronta" | "ultimo">) => e.naLista && e.vinculado && e.escritaPronta && e.ultimo !== null && !e.ultimo.falha && e.ultimo.mesmoVinculo && e.ultimo.mesmaCredencial;
+export const envioPronto = (e: Pick<SituacaoEnvio, "naLista" | "vinculado" | "escritaPronta" | "ultimo">) => e.naLista && e.vinculado && e.escritaPronta && e.ultimo !== null && !e.ultimo.falhou && e.ultimo.mesmoVinculo && e.ultimo.mesmaCredencial;
 
 export type ImovelMarketplace = {
   id: string;
@@ -176,7 +177,7 @@ export async function situacaoDoEnvio(db: Db, organizacaoId: string, regras: Reg
       ? {
           em: ultimo.em,
           situacao: ultimo.situacao,
-          falha: ultimo.falha,
+          falhou: ultimo.falha !== "",
           mesmoVinculo: atual !== undefined && ultimo.propertyId === atual.propertyId && ultimo.roomId === atual.roomId,
           // Execução antiga sem impressão gravada também não vale: não se sabe com que credencial foi.
           mesmaCredencial: ultimo.credencial !== "" && ultimo.credencial === credencialAtual,

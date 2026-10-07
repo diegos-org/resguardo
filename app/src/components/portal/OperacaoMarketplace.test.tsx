@@ -14,7 +14,7 @@ const imovel: ImovelOperavel = {
   fontePrecos: "scl",
   regras: { precoBase: 30000, taxaLimpeza: 15000, hospedeExtraValor: null, hospedeExtraAPartirDe: null, estadiaMinima: 2, estadiaMaxima: null, antecedenciaMinima: null, janelaMaxima: null, diasChegada: [1, 5], diasSaida: [], checkinAPartirDe: "15:00", checkoutAte: "11:00" },
   periodos: [{ id: "p1", nome: "Réveillon", inicio: "2026-12-28", fim: "2027-01-02", precoNoite: 90000, estadiaMinima: 5 }],
-  envio: { naLista: true, vinculado: true, escritaPronta: true, automatico: true, ultimo: { em: new Date("2026-10-01T10:00:00Z"), situacao: "ok", falha: "", mesmoVinculo: true, mesmaCredencial: true } },
+  envio: { naLista: true, vinculado: true, escritaPronta: true, automatico: true, ultimo: { em: new Date("2026-10-01T10:00:00Z"), situacao: "ok", falhou: false, mesmoVinculo: true, mesmaCredencial: true } },
 };
 const acao = vi.fn(async () => ({}));
 const render_ = (over: Partial<Parameters<typeof OperacaoMarketplace>[0]> = {}) =>
@@ -94,7 +94,7 @@ describe("portal marketplace (M12.4): seção do proprietário", () => {
   });
 
   it("explica o envio aos canais sem supor e sem citar o Beds24: fora da lista, manual e automático", () => {
-    const feito = { em: new Date("2026-10-01T10:00:00Z"), situacao: "ok", falha: "", mesmoVinculo: true, mesmaCredencial: true };
+    const feito = { em: new Date("2026-10-01T10:00:00Z"), situacao: "ok", falhou: false, mesmoVinculo: true, mesmaCredencial: true };
     const envio = (over: Partial<SituacaoEnvio> = {}): SituacaoEnvio => ({ naLista: true, vinculado: true, escritaPronta: true, automatico: true, ultimo: feito, ...over });
     expect(textoDoEnvio(envio({ naLista: false }), "SCL")).toContain("até a SCL incluir este imóvel no envio de calendário");
     expect(textoDoEnvio(envio({ automatico: false }), "SCL")).toContain("O envio aos canais é feito pela SCL");
@@ -102,11 +102,11 @@ describe("portal marketplace (M12.4): seção do proprietário", () => {
     // Sem nenhum envio real que tenha incluído o imóvel, ou com o imóvel deixado de fora no último (quarto inacessível, moeda), nada é prometido.
     expect(textoDoEnvio(envio({ ultimo: null }), "SCL")).toContain("até o primeiro envio aos canais confirmar este imóvel");
     expect(textoDoEnvio(envio({ ultimo: null }), "SCL")).not.toContain("roda todo dia");
-    // O motivo técnico da falha (com nomes internos) fica no painel; o proprietário vê que falhou e quando.
-    const comFalha = textoDoEnvio(envio({ ultimo: { ...feito, falha: "O quarto Beds24 vinculado ao imóvel 403 não está acessível nesta credencial." } }), "SCL");
+    // O motivo técnico da falha (com nomes internos) fica no painel e nem chega ao portal; o proprietário vê que falhou e quando.
+    const comFalha = textoDoEnvio(envio({ ultimo: { ...feito, falhou: true } }), "SCL");
     expect(comFalha).toContain("a última (01/10/2026, 07:00) não conseguiu, e a SCL vê o motivo no painel");
     expect(comFalha).not.toContain("credencial");
-    expect(textoSalvo(envio({ ultimo: { ...feito, falha: "moeda" } }), "SCL")).not.toContain("próximo envio");
+    expect(textoSalvo(envio({ ultimo: { ...feito, falhou: true } }), "SCL")).not.toContain("próximo envio");
     // Vínculo trocado depois do último envio: o veredito antigo não vale para o quarto novo.
     expect(textoDoEnvio(envio({ ultimo: { ...feito, mesmoVinculo: false } }), "SCL")).toContain("a ligação dele com os canais mudou depois do último envio");
     // Credencial Beds24 trocada depois do último envio: o veredito foi de outra credencial; nada é prometido até um envio com a atual.
@@ -119,7 +119,7 @@ describe("portal marketplace (M12.4): seção do proprietário", () => {
     expect(textoSalvo(envio({ vinculado: false }), "SCL")).toContain("continuam com o preço e as estadias anteriores até a SCL ligar este imóvel aos canais no nosso sistema");
     expect(textoSalvo(envio({ escritaPronta: false }), "SCL")).not.toContain("próximo envio");
     // M5.9: em nenhum estado, e em nenhuma fonte de preços, o texto para o proprietário cita o Beds24.
-    const estados = [envio(), envio({ naLista: false }), envio({ vinculado: false }), envio({ escritaPronta: false }), envio({ automatico: false }), envio({ ultimo: null }), envio({ ultimo: { ...feito, falha: "quarto Beds24 inacessível" } }), envio({ ultimo: { ...feito, mesmoVinculo: false } }), envio({ ultimo: { ...feito, mesmaCredencial: false } })];
+    const estados = [envio(), envio({ naLista: false }), envio({ vinculado: false }), envio({ escritaPronta: false }), envio({ automatico: false }), envio({ ultimo: null }), envio({ ultimo: { ...feito, falhou: true } }), envio({ ultimo: { ...feito, mesmoVinculo: false } }), envio({ ultimo: { ...feito, mesmaCredencial: false } })];
     for (const e of estados) for (const f of ["scl", "beds24", "manual"] as const) {
       expect(textoDoEnvio(e, "SCL", f)).not.toMatch(/beds24/i);
       expect(textoSalvo(e, "SCL", f)).not.toMatch(/beds24/i);
@@ -128,7 +128,7 @@ describe("portal marketplace (M12.4): seção do proprietário", () => {
 
   it("depois de salvar, só promete Airbnb e Booking quando o imóvel está na lista de envio", () => {
     // E só para o que o envio de calendário carrega (preço e estadias); o resto é só do site.
-    const pronto: SituacaoEnvio = { naLista: true, vinculado: true, escritaPronta: true, automatico: true, ultimo: { em: new Date("2026-10-01T10:00:00Z"), situacao: "ok", falha: "", mesmoVinculo: true, mesmaCredencial: true } };
+    const pronto: SituacaoEnvio = { naLista: true, vinculado: true, escritaPronta: true, automatico: true, ultimo: { em: new Date("2026-10-01T10:00:00Z"), situacao: "ok", falhou: false, mesmoVinculo: true, mesmaCredencial: true } };
     const fora: SituacaoEnvio = { ...pronto, naLista: false };
     expect(textoSalvo(pronto, "SCL")).toContain("Preço da noite e estadias mínima e máxima chegam ao Airbnb e ao Booking no próximo envio");
     expect(textoSalvo(pronto, "SCL")).toContain("taxa de limpeza, hóspede extra, antecedência, janela de reservas, dias e horários de entrada e saída valem só no site");
