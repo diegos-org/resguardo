@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { gravarConfig } from "@/configuracoes/armazem";
 import { organizacoes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
@@ -28,5 +29,9 @@ describe("padrão dos pesos do modelo B (M12.5)", () => {
     // O botão clicado numa tela velha (alguém já gravou outros pesos) não desfaz a escolha.
     expect(await usarPesosPadrao(db, org, null)).toBe(false);
     expect((await lerPrecosMarketplace(db, org)).pesos).toEqual({ hospede: 2, proprietario: 1, scl: 1 });
+    // Gravada sem pesos (ou com pesos inválidos): continua com a conta de partes iguais e o aviso aparece.
+    await gravarConfig(db, org, "marketplace_precos", { taxaOtaBp: 1600 }, null);
+    expect((await lerPrecosMarketplace(db, org)).pesos).toEqual(PESOS_PADRAO_ANTIGO);
+    expect(await pesosNoPadraoAntigo(db, org)).toBe(true);
   });
 });

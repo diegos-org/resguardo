@@ -74,8 +74,10 @@ describe("configuração", () => {
   it("lê o JSON tolerando lixo: campo inválido volta ao padrão; pesos todos zero voltam ao padrão", () => {
     expect(precosDeJson(null)).toEqual(PRECOS_MARKETPLACE_PADRAO);
     expect(precosDeJson({ taxaOtaBp: 1500, taxaPagamentoBp: "4", pesos: { hospede: 2, scl: 1 } })).toEqual({ ...PRECOS_MARKETPLACE_PADRAO, taxaOtaBp: 1500, pesos: { hospede: 2, proprietario: 1, scl: 1 } });
-    expect(precosDeJson({ pesos: { hospede: 0, proprietario: 0, scl: 0 } })).toEqual(PRECOS_MARKETPLACE_PADRAO);
-    expect(precosDeJson({ taxaBookingBp: 9999 })).toEqual(PRECOS_MARKETPLACE_PADRAO);
+    // Configuração gravada sem pesos válidos: o padrão de quando ela foi gravada (1/1/1), nunca o novo em silêncio (M12.5).
+    expect(precosDeJson({ pesos: { hospede: 0, proprietario: 0, scl: 0 } })).toEqual({ ...PRECOS_MARKETPLACE_PADRAO, pesos: PESOS_PADRAO_ANTIGO });
+    expect(precosDeJson({ taxaBookingBp: 9999 })).toEqual({ ...PRECOS_MARKETPLACE_PADRAO, pesos: PESOS_PADRAO_ANTIGO });
+    expect(precosDeJson({ taxaOtaBp: 1500, pesos: { hospede: 2, proprietario: 1, scl: "x" } }).pesos).toEqual({ hospede: 2, proprietario: 1, scl: 1 });
   });
 
   it("formulário: percentuais com vírgula e pesos inteiros; erros por campo, nunca padrão em silêncio", () => {

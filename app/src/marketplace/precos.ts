@@ -60,19 +60,25 @@ export type SimulacaoMarketplace = {
 
 const inteiroEntre = (v: unknown, [min, max]: readonly [number, number]) => typeof v === "number" && Number.isInteger(v) && v >= min && v <= max;
 
-/** Lê o JSON gravado tolerando campos ausentes/inválidos (voltam ao padrão). */
+/**
+ * Lê o JSON gravado tolerando campos ausentes/inválidos (voltam ao padrão). Nada gravado: os pesos são o padrão atual.
+ * Configuração gravada com peso ausente ou inválido: vale o padrão de quando ela foi gravada (o antigo, 1/1/1), para a
+ * conta de quem já salvou não mudar sozinha com o padrão novo (M12.5).
+ */
 export function precosDeJson(valor: unknown): PrecosMarketplace {
-  const c = (valor && typeof valor === "object" && !Array.isArray(valor) ? valor : {}) as Record<string, unknown>;
+  const gravado = !!valor && typeof valor === "object" && !Array.isArray(valor);
+  const c = (gravado ? valor : {}) as Record<string, unknown>;
   const P = PRECOS_MARKETPLACE_PADRAO;
+  const pesosPadrao = gravado ? PESOS_PADRAO_ANTIGO : P.pesos;
   const pesos = (c.pesos && typeof c.pesos === "object" ? c.pesos : {}) as Record<string, unknown>;
-  const peso = (k: keyof PesosMarketplace) => (inteiroEntre(pesos[k], LIMITES_PRECOS.peso) ? (pesos[k] as number) : P.pesos[k]);
+  const peso = (k: keyof PesosMarketplace) => (inteiroEntre(pesos[k], LIMITES_PRECOS.peso) ? (pesos[k] as number) : pesosPadrao[k]);
   const lidos = { hospede: peso("hospede"), proprietario: peso("proprietario"), scl: peso("scl") };
   return {
     taxaOtaBp: inteiroEntre(c.taxaOtaBp, LIMITES_PRECOS.taxaBp) ? (c.taxaOtaBp as number) : P.taxaOtaBp,
     taxaBookingBp: inteiroEntre(c.taxaBookingBp, LIMITES_PRECOS.taxaBp) ? (c.taxaBookingBp as number) : P.taxaBookingBp,
     taxaPagamentoBp: inteiroEntre(c.taxaPagamentoBp, LIMITES_PRECOS.taxaBp) ? (c.taxaPagamentoBp as number) : P.taxaPagamentoBp,
     // Pesos todos zero não dividem nada: volta ao padrão em vez de inventar.
-    pesos: lidos.hospede + lidos.proprietario + lidos.scl > 0 ? lidos : { ...P.pesos },
+    pesos: lidos.hospede + lidos.proprietario + lidos.scl > 0 ? lidos : { ...pesosPadrao },
   };
 }
 
