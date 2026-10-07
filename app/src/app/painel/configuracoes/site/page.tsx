@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
 import { podeFazer } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
+import { BairroPainel } from "@/components/configuracoes/BairroPainel";
 import { FormCampos } from "@/components/configuracoes/FormCampos";
+import { ImagensSitePainel } from "@/components/configuracoes/ImagensSitePainel";
 import { salvarTextosAcao } from "@/configuracoes/acoes";
 import { CAMPOS_TEXTOS_SITE, lerTextosSite } from "@/configuracoes/textos-site";
 import { getDb } from "@/db/client";
@@ -22,6 +24,8 @@ export default async function TextosSite() {
         valores={textos}
         salvar={salvarTextosAcao}
       />
+      <ImagensSitePainel organizacaoId={sessao.organizacaoId} />
+      <BairroPainel organizacaoId={sessao.organizacaoId} />
     </>
   );
 }

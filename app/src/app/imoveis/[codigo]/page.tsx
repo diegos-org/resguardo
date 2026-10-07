@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { BairroAPorta } from "@/components/site/BairroAPorta";
 import { olhoImovel, resumoImovel } from "@/components/site/CartaoImovel";
 import { Disponibilidade } from "@/components/site/Disponibilidade";
 import { SegurarDatas } from "@/components/site/SegurarDatas";
@@ -10,6 +11,7 @@ import { FotoProvisoria, Moldura, SiteEmConfiguracao } from "@/components/site/M
 import styles from "@/components/site/site.module.css";
 import { hojeISO } from "@/lib/datas";
 import { criarCotacaoAcao } from "@/site/acoes";
+import { lugaresDoSite } from "@/site/bairro";
 import { podeSegurar } from "@/site/cotacoes";
 import { consultarDisponibilidade } from "@/site/disponibilidade";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
@@ -30,6 +32,7 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
   if (!conteudo) return <SiteEmConfiguracao />;
   const [imovel, todos] = await Promise.all([imovelDoSite(db, conteudo.organizacaoId, codigo), imoveisDoSite(db, conteudo.organizacaoId)]);
   if (!imovel) notFound();
+  const lugares = await lugaresDoSite(db, conteudo.organizacaoId, imovel.bairro);
   // "Hoje" no fuso do imóvel, o mesmo que a disponibilidade usa.
   const hoje = hojeISO(imovel.fuso);
   // Com datas no link, mostra disponibilidade e valor reais (M7.2) antes do formulário.
@@ -123,6 +126,7 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
           <FormConsulta imoveis={todos} valores={consulta} hoje={hojeMaisCedo([imovel, ...todos])} canal={canalDeContato(conteudo)} variante="lateral" />
         </aside>
       </div>
+      <BairroAPorta lugares={lugares} />
     </Moldura>
   );
 }
