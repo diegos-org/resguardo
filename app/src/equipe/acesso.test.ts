@@ -122,6 +122,12 @@ describe("entrada da equipe sem e-mail (M6.8)", () => {
     expect(await situacaoDaSenha(db, bid)).toEqual({ temSenha: false, provisoria: false });
     expect(await trocarMinhaSenha(db, bid, { nova: "senha-da-bia", repetir: "senha-da-bia" })).toEqual({ ok: true });
     expect(await entrarComSenha(db, "bia@example.com", "senha-da-bia", AGORA)).toMatchObject({ ok: true });
+    // Depois que a empresa define uma senha (socorro), a troca pela própria pessoa confere com a senha gravada agora:
+    // quem só tinha a antiga (ou nenhuma) não desfaz a da empresa.
+    expect(await definirSenhaPelaEmpresa(db, org, bia, { login: "bia", senha: "senha-da-empresa" }, null, AGORA)).toMatchObject({ ok: true });
+    expect(await trocarMinhaSenha(db, bid, { nova: "tomada-de-volta", repetir: "tomada-de-volta" })).toEqual({ ok: false, erro: "A senha atual não confere." });
+    expect(await trocarMinhaSenha(db, bid, { atual: "senha-da-bia", nova: "tomada-de-volta", repetir: "tomada-de-volta" })).toEqual({ ok: false, erro: "A senha atual não confere." });
+    expect(await entrarComSenha(db, "bia", "senha-da-empresa", new Date(AGORA.getTime() + 1000))).toMatchObject({ ok: true });
   });
 
   it("cada uma vê só a agenda das cidades dela (Búzios só Búzios, Rio só Rio); sem cidade escolhida, nenhuma", async () => {

@@ -132,18 +132,27 @@ export async function definirCidades(db: Db, organizacaoId: string, profissional
  */
 export async function trocarMinhaSenha(db: Db, usuarioId: string, e: { atual?: string; nova: string; repetir: string }): Promise<Resultado> {
   if (!uuidValido(usuarioId)) return { ok: false, erro: "Usuário não encontrado." };
-  const [u] = await db.select({ id: usuarios.id, ativo: usuarios.ativo, login: usuarios.login, senhaHash: usuarios.senhaHash, organizacaoId: usuarios.organizacaoId }).from(usuarios).where(eq(usuarios.id, usuarioId));
-  if (!u || !u.ativo) return { ok: false, erro: "Usuário não encontrado." };
-  if (u.senhaHash && !(await conferirSenha(e.atual ?? "", u.senhaHash))) return { ok: false, erro: "A senha atual não confere." };
   if (e.nova !== e.repetir) return { ok: false, erro: "As duas senhas novas não são iguais." };
-  const erro = validarSenha(e.nova, u.login ?? "");
+  const colunas = { id: usuarios.id, ativo: usuarios.ativo, login: usuarios.login, email: usuarios.email, senhaHash: usuarios.senhaHash, organizacaoId: usuarios.organizacaoId };
+  const [antes] = await db.select(colunas).from(usuarios).where(eq(usuarios.id, usuarioId));
+  if (!antes || !antes.ativo) return { ok: false, erro: "Usuário não encontrado." };
+  const erro = validarSenha(e.nova, antes.login ?? "");
   if (erro) return { ok: false, erro };
   const senhaHash = await hashSenha(e.nova);
-  await db.transaction(async (tx) => {
+  const contas = [...new Set([antes.login, antes.email].filter((x): x is string => !!x).map(chaveDoLogin))].sort();
+  if (!contas.length) return { ok: false, erro: "Usuário não encontrado." };
+  return db.transaction(async (tx) => {
+    // A mesma trava da entrada com senha e da troca pela empresa: a senha atual é conferida com o que está gravado agora,
+    // então uma troca feita pela empresa no meio do caminho não é desfeita por quem tinha a senha antiga.
+    for (const chave of contas) await travarEntrada(tx, chave);
+    const [u] = await tx.select(colunas).from(usuarios).where(eq(usuarios.id, usuarioId));
+    if (!u || !u.ativo) return { ok: false as const, erro: "Usuário não encontrado." };
+    if (u.login !== antes.login || u.email !== antes.email) return { ok: false as const, erro: "Seu acesso acabou de mudar: entre de novo e tente outra vez." };
+    if (u.senhaHash && !(await conferirSenha(e.atual ?? "", u.senhaHash))) return { ok: false as const, erro: "A senha atual não confere." };
     await tx.update(usuarios).set({ senhaHash, senhaProvisoria: false }).where(eq(usuarios.id, u.id));
     await registrarAuditoria(tx, { organizacaoId: u.organizacaoId, usuarioId: u.id, acao: "usuario.senha", entidade: "usuario", entidadeId: u.id, mudancas: { senha: [u.senhaHash ? "tinha senha" : null, "trocada pela própria pessoa"] } });
+    return { ok: true as const };
   });
-  return { ok: true };
 }
 
 export type AgendaDaProfissional = { cidades: string[]; secoes: { cidade: string; linhas: string[] }[] };
