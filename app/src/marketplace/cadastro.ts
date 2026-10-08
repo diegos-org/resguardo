@@ -21,7 +21,7 @@ import type { Correio } from "@/email/correio";
 import { CodigoDuplicado, criarImovel } from "@/imoveis/repositorio";
 import { validarImovel } from "@/imoveis/validacao";
 import { uuidValido } from "@/lib/ids";
-import { soDigitos } from "@/proprietarios/documento";
+import { ERRO_TELEFONE_DDD, telefoneComDddValido } from "@/proprietarios/documento";
 import { criarProprietario } from "@/proprietarios/repositorio";
 
 /** Teto de códigos do cadastro por hora (todas as pessoas juntas). */
@@ -69,8 +69,7 @@ export function validarCadastro(e: Entrada): { ok: true; dados: DadosCadastro } 
   const telefone = txt(e, "telefone");
   if (!nome) erros.nome = "Informe seu nome completo ou a razão social.";
   else if (nome.length > 150) erros.nome = "Máximo de 150 caracteres.";
-  const tel = soDigitos(telefone);
-  if (tel.length < 10 || tel.length > 13 || telefone.length > 20 || !/^[\d\s()+.-]+$/.test(telefone)) erros.telefone = "Telefone com DDD: só números, espaços, parênteses, + e - (10 a 13 dígitos).";
+  if (!telefoneComDddValido(telefone)) erros.telefone = ERRO_TELEFONE_DDD;
   if (e.consentimento !== "on" && e.consentimento !== true) erros.consentimento = "É preciso autorizar o uso dos dados para a análise.";
 
   const limites: [keyof ImovelCadastro, number, string][] = [

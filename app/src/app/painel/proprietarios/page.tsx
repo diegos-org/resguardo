@@ -6,6 +6,7 @@ import { getDb } from "@/db/client";
 import { mascararDocumento } from "@/proprietarios/documento";
 import { listarProprietarios } from "@/proprietarios/repositorio";
 import { contarPendentes } from "@/marketplace/cadastro";
+import { contarPedidosNovos } from "@/proprietarios/pedidos-contato";
 
 export default async function ListaProprietarios() {
   const sessao = await exigirSessaoPainel();
@@ -17,7 +18,11 @@ export default async function ListaProprietarios() {
       </>
     );
   }
-  const [lista, pendentes] = await Promise.all([listarProprietarios(getDb(), sessao.organizacaoId), contarPendentes(getDb(), sessao.organizacaoId)]);
+  const [lista, pendentes, contatos] = await Promise.all([
+    listarProprietarios(getDb(), sessao.organizacaoId),
+    contarPendentes(getDb(), sessao.organizacaoId),
+    contarPedidosNovos(getDb(), sessao.organizacaoId),
+  ]);
   return (
     <>
       <div className={styles.topo}>
@@ -25,6 +30,7 @@ export default async function ListaProprietarios() {
         {podeFazer(sessao.papel, "proprietario:editar") && (
           <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
             <Link href="/painel/proprietarios/cadastros">Cadastros pelo site{pendentes ? ` (${pendentes} esperando análise)` : ""}</Link>
+            <Link href="/painel/proprietarios/contatos">Pedidos de contato{contatos ? ` (${contatos} esperando resposta)` : ""}</Link>
             <Link href="/painel/proprietarios/novo" className={styles.botao}>
               Novo proprietário
             </Link>

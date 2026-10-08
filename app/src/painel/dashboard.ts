@@ -11,6 +11,8 @@ import { listarDespesas, totaisDespesas } from "@/despesas/despesas";
 import { totaisPorTipo } from "@/financeiro/ledger";
 import { lancamentoDeConferenciaResolvida, reservasQueContam } from "@/portal/posse";
 import type { Imovel } from "@/imoveis/repositorio";
+import { contarPendentes as contarCadastrosPendentes } from "@/marketplace/cadastro";
+import { contarPedidosNovos } from "@/proprietarios/pedidos-contato";
 import { conflitos } from "@/reservas/regras";
 import { listarBloqueios, listarReservas, type Reserva } from "@/reservas/repositorio";
 import { rotinasPendentes } from "@/rotinas/rotinas";
@@ -45,6 +47,8 @@ export async function carregarDashboard(
     verFinanceiro: boolean;
     /** Quem vê rotinas recebe o aviso das atrasadas ou que vencem hoje. */
     verRotinas?: boolean;
+    /** Quem trata proprietários recebe o aviso dos pedidos de contato e dos cadastros vindos do site. */
+    verProprietarios?: boolean;
   },
 ): Promise<Dashboard> {
   const ids = o.imoveis.map((i) => i.id);
@@ -77,6 +81,12 @@ export async function carregarDashboard(
   // Rotinas são da organização (não dependem do filtro de imóveis).
   const rotinas = o.verRotinas ? await rotinasPendentes(db, organizacaoId, o.hoje) : 0;
   if (rotinas) alertas.push({ nivel: "atencao", texto: `${rotinas} rotina(s) atrasada(s) ou para hoje.`, link: "/painel/rotinas" });
+  // Pedidos do site (M7.7, M12.3) também são da organização, não dos imóveis filtrados.
+  if (o.verProprietarios) {
+    const [contatos, cadastros] = await Promise.all([contarPedidosNovos(db, organizacaoId), contarCadastrosPendentes(db, organizacaoId)]);
+    if (contatos) alertas.push({ nivel: "info", texto: `${contatos} pedido(s) de contato de proprietário esperando resposta.`, link: "/painel/proprietarios/contatos" });
+    if (cadastros) alertas.push({ nivel: "info", texto: `${cadastros} cadastro(s) de proprietário pelo site esperando análise.`, link: "/painel/proprietarios/cadastros" });
+  }
 
   let financeiro: Financeiro | null = null;
   let porMes: Dashboard["porMes"] = null;
