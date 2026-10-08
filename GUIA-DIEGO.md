@@ -32,11 +32,50 @@
 | M5 Portal do proprietário | Relatórios, saldos, PDF, bloqueio de uso próprio | 🟡 relatórios, PDF, e-mail do fechamento e bloqueio de datas prontos; documento "como funciona" para o proprietário pronto e com a versão 1 publicada por você em 7/10 (M5.6); relatório mensal no modelo oficial pronto (M5.7), com os extratos dos canais guardados por mês para o e-mail; ajustes de 5/10 no relatório prontos (M5.8: noites ocupadas, receita por noite disponível, estadia média, gráfico de ocupação); Beds24 fora dos textos do portal e do site (M5.9, 7/10) pronto |
 | M6 Operação | Limpezas, manutenção, agenda diária | 🟡 em andamento; a equipe entra sem e-mail e vê só a agenda da cidade dela (M6.8, 7/10); aviso pelo WhatsApp depende do M10 |
 | M7 Site público | Site novo com disponibilidade e valor reais | 🟡 disponibilidade e valor prontos; visual novo do site, dos portais e do painel pronto (M7.5, 4/10); páginas legais do site (M7.4) a fazer; fotos reais prontas (M7.3, 7/10: você sobe na ficha do imóvel); site do hóspede no visual do estudo pronto (M7.6, 7/10); página para proprietários pronta (M7.7, 8/10) |
-| M8 Reserva direta | Cotação, datas seguradas e pagamento pelo Mercado Pago | 🟡 cotação e "segurar as datas" prontos; recebimento decidido em 4/10 (empresa recebe e repassa); pagamento (M8.2) espera só as credenciais de teste do Mercado Pago |
+| M8 Reserva direta | Cotação, datas seguradas e pagamento pelo Mercado Pago | 🟡 cotação e "segurar as datas" prontos; recebimento decidido em 4/10 (empresa recebe e repassa); pagamento dividido em cinco partes (8/10): **Pix em teste pronto (M8.2a)**, testado nas prévias com as suas chaves de teste; cartão, cancelamento, alteração e contestação a seguir |
 | M9 Portal do hóspede | Acesso do hóspede e mensagens automáticas | ✅ pronto |
 | M10 WhatsApp | Caixa de entrada do WhatsApp no painel | ⚪ aguardando |
 | M11 Produção | Dados reais, domínio, entrada em uso | ⚪ aguardando |
 | M12 Marketplace | Proprietário que opera o próprio imóvel; SCL cuida do online | 🟡 portal do proprietário marketplace pronto (M12.4, 4/10); cadastro pelo site pronto; modelo de cobrança (B, partes iguais) com pesos editáveis, simulação e desconto único do site prontos (M12.1); cálculo e repasse no financeiro (M12.2) dependem do pagamento (M8.2) e do extrato (M4.10); pesos 6/3/3 no padrão do sistema (M12.5, 7/10) |
+
+### Pagamento pelo site, em teste — M8.2a (8/10)
+
+O pagamento pelo site começou. Ele foi dividido em cinco partes, e esta é a primeira: **Pix**, em
+**modo de teste** (sem dinheiro de verdade), com toda a base que as outras partes usam. Depois vêm o
+cartão (M8.2b), o cancelamento com devolução (M8.2c), a alteração de reserva paga (M8.2d) e a
+contestação de cartão (M8.2e). O dinheiro de verdade só liga com as cinco partes, as páginas legais
+(M7.4) e as decisões que ainda faltam.
+
+- **Para o hóspede:** depois de segurar as datas, a página da cotação mostra o **Pix**: o código
+  copia e cola (com botão de copiar), o QR e o prazo. O hóspede paga no app do banco e a página
+  confirma sozinha: "Pagamento aprovado: reserva SCL-… confirmada", com o link para Minha reserva. Se
+  o pagamento chegar mas as datas não puderem ser garantidas, a página diz que a equipe vai falar com
+  ele e devolver o valor integral, e nunca o manda pagar de novo.
+- **As datas ficam seguradas até o fim do Pix.** O Mercado Pago exige que o Pix valha pelo menos 30
+  minutos, então gerar um Pix segura as datas por pelo menos esse tempo (até 3 Pix por cotação, um
+  de cada vez). Um Pix pago no último minuto não perde a reserva.
+- **A reserva confirma sozinha** quando o pagamento é aprovado com as datas ainda seguradas. Pedido
+  que você ou a equipe cancelaram nunca volta sozinho. Até o envio ao Beds24 ser ligado, o Início
+  avisa "reserva do site paga: feche as datas nas OTAs" (feche como **bloqueio** no Beds24, nunca
+  como reserva, senão a importação cria uma segunda reserva).
+- **O dinheiro:** a taxa real do Mercado Pago entra na reserva. A parte do proprietário só fica
+  disponível depois do check-in **e** de o Mercado Pago liberar o dinheiro. A data de liberação que
+  o Mercado Pago mostra é só uma previsão; a liberação conta quando ele disser que liberou, ou quando
+  você registrar à mão, conferindo no Mercado Pago.
+- **No painel:** a ficha da reserva ganha o quadro **Pagamento no site** (situação, valores e os botões
+  **Conferir agora**, **Registrar liberação**, **Devolver pelo Mercado Pago** e **Registrar devolução
+  feita por fora**, só para quem edita o financeiro, sempre com confirmação). Em **Financeiro →
+  Pagamentos do site** está a lista de todos, com o filtro "pede atenção". Em **Configurações →
+  Pagamento no site** você liga e desliga o pagamento e vê, imóvel por imóvel, se o Pix é oferecido
+  ou por que não. Em **Integrações** aparece a situação da conexão com o Mercado Pago.
+- **Onde roda o teste:** só nas **prévias** da Vercel (os links dos PRs), que usam um banco separado.
+  No endereço de produção o site continua com o pedido pela conversa, porque ali está a operação
+  real (os recebimentos de outubro). Por isso as chaves de teste vão só no ambiente **Preview** da Vercel.
+- **Travas:** o sistema só cobra se o Mercado Pago confirmar que a conta das chaves é **de teste**.
+  Chave de produção, mesmo por engano, não cobra nada nesta parte.
+- **O que ainda não faz:** cartão (M8.2b); cancelar uma reserva já paga (o painel recusa e explica;
+  chega no M8.2c); alterar reserva paga (M8.2d); contestação (M8.2e). Nenhum e-mail novo vai ao
+  hóspede: a confirmação do M9.2 passa a valer para as reservas pagas quando você ligar as mensagens.
 
 ### Página para proprietários — M7.7 (8/10)
 
@@ -1692,8 +1731,8 @@ e escreva normalmente.
 | **Neon** | Banco de dados (Postgres) | ✅ projeto `scl-sistema` com duas branches: `main` (produção) e `preview` (versões de teste dos PRs); as 41 migrações até o M5.5 aplicadas nas duas, conferido em 3/10 | **Backup:** desde 3/10, 7 dias de histórico e snapshots diário (14 dias) e semanal (35 dias) da `main`, dentro do Neon (seção 6, item 23b). Cópia fora do Neon e checklist ficam para o M11.3 |
 | **Vercel** | Publica o sistema na internet (homologação e depois produção) | ✅ site acessível (27/09); conferido em 3/10 que produção usa a branch `main` do Neon e as previews dos PRs usam a branch `preview` — bancos separados | Variáveis já presentes: banco, login Google, Beds24 (leitura), Resend, agendador. Faltam só as que ligam coisas novas (`BEDS24_ESCRITA`, item 3) |
 | **Beds24** | Channel manager (Airbnb/Booking), reservas, calendário e preços | 🟡 importação feita por Diego (1 e 2/10); envio de calendário/preços pronto e **desligado** | Testar o envio no 103 (simular → `BEDS24_ESCRITA=ligada` com refresh token de inventário → enviar → conferir no Beds24/Airbnb) e só então ligar o automático (seção 6, item 3) |
-| **Mercado Pago** | Pagamentos da reserva direta | ⚪ não conectado | Credenciais de *teste* do Mercado Pago (provedor decidido em 4/10), quando eu pedir no M8.2 |
-| **Meta / WhatsApp Business** | Atendimento pelo WhatsApp da empresa | ⚪ não conectado | Verificação da empresa no Meta Business (demora dias) |
+| **Mercado Pago** | Pagamentos da reserva direta | 🟡 Conta Negócio no CNPJ aberta por você (8/10); Pix em teste pronto (M8.2a) | Criar a aplicação, pôr as chaves de teste só no ambiente Preview da Vercel e testar um Pix (seção 6, item 37) |
+| **Meta / WhatsApp Business** | Atendimento pelo WhatsApp da empresa | ⚪ não conectado | Entrar no Meta (o login voltava para a tela de entrada, 8/10) e decidir qual número o sistema vai usar; a verificação da empresa pode esperar o site no ar (seção 6, item 4) |
 | **Google Cloud (login)** | Botão "Entrar com Google" | ✅ login confirmado por Diego em 27/09 | — |
 | **Resend** (envio de e-mail) | E-mails do sistema: código de login, convites, agenda da equipe, relatórios, mensagens ao hóspede | 🟡 conta criada (e conector no Claude) | Cadastrar o domínio e pôr a chave na Vercel (seção 6, item 5) |
 | **Cloudflare** | Domínio e e-mail | ⚪ não conectado | Só no final (M11) |
@@ -1772,7 +1811,13 @@ ambiente).
    - **Histórico do acesso:** o teste de 27/09 falhou; após salvar novamente a variável,
      Diego confirmou a leitura. Isso não comprova qual foi a causa da falha anterior.
      Caso reapareça, informe só a mensagem sanitizada do painel, nunca a chave.
-4. **Meta Business:** comece a verificação da empresa, porque ela demora.
+4. **Meta / WhatsApp (atualizado em 8/10):** para o WhatsApp do sistema, o caminho é o site de
+   desenvolvedores do Meta (developers.facebook.com), com o login do Facebook: empresa com endereço
+   no Brasil não consegue criar a conta do WhatsApp pelo Business Suite. Antes de cadastrar número,
+   decida qual o sistema vai usar (o número que entra sai do aplicativo WhatsApp do celular). A
+   verificação da empresa não é necessária para começar e pode esperar o site no ar: com o
+   suacasaleblon.com fora do ar, ela seria recusada. Os passos para o login que volta para a tela de
+   entrada estão na página de pendências.
 5. **E-mail do sistema (Resend) — feito:** domínio `suacasaleblon.com` verificado no Resend e com envio liberado
    (conferido em 5/10) e remetente `contato@suacasaleblon.com` posto por você na Vercel em 7/10. Falta só
    o teste: peça um código em `/entrar` com um e-mail que não seja o seu. Passos originais, para referência:
@@ -2126,6 +2171,33 @@ ambiente).
       números. Só dados reais que você conferiu. Sem números, a seção não aparece.
     - **Pedidos de contato:** quando chegar um, ele aparece no Início do painel e por e-mail. Responda
       e marque como respondido em **Proprietários → Pedidos de contato**.
+
+37. **Pagamento pelo site em teste (M8.2a):**
+    - **Aplicação no Mercado Pago:** em mercadopago.com.br/developers, com a Conta Negócio do CNPJ
+      (confira no canto de cima), **Suas integrações → Criar aplicação**, criar manualmente,
+      solução **Checkout Transparente**, tipo de API **Orders**.
+    - **Chaves de teste na Vercel, só no ambiente Preview:** em Testes → Credenciais de teste, copie
+      a Public Key e o Access Token. Na Vercel, em *Settings → Environment Variables*, crie
+      `MERCADOPAGO_PUBLIC_KEY` e `MERCADOPAGO_ACCESS_TOKEN` (marque *Sensitive*), marcando só
+      **Preview**. Nunca mande as chaves no chat.
+    - **Chave Pix na conta do Mercado Pago:** sem ela, o Pix não aparece. Se o CNPJ já é chave em
+      outro banco, use uma chave aleatória.
+    - **Conferir:** abra o link da prévia do PR, entre no painel e veja em **Integrações** que aparece
+      "conta de teste conferida". Em **Configurações → Pagamento no site**, veja se o imóvel do teste
+      tem ✓.
+    - **Testar um Pix:** no site da prévia, faça uma consulta, segure as datas (no nome, escreva
+      **APRO**: no teste, o Mercado Pago aprova sozinho o Pix de quem tem esse nome), gere o Pix e
+      espere a página confirmar. Se demorar, use **Conferir agora** na ficha da reserva. Depois,
+      registre a liberação à mão na mesma ficha (no teste o Mercado Pago não informa liberação).
+    - **Aviso de pagamento (webhook), depois:** quando eu avisar, em Suas integrações → a aplicação →
+      Webhooks → Configurar notificações, use o endereço que aparece em **Integrações**, marque só
+      o evento "Order (Mercado Pago)", salve, copie a assinatura secreta para a Vercel como
+      `MERCADOPAGO_WEBHOOK_SECRET` e use o botão **Simular**.
+    - **Na conta do Mercado Pago:** deixe **desligado** "parcelas sem acréscimo" (o hóspede paga os
+      juros) e não use cupons do Mercado Pago (o desconto do site já vem no preço).
+    - **Nunca devolva pelo painel do Mercado Pago:** devolva pela ficha da reserva, para o sistema
+      saber. A regra de a empresa ficar com a taxa que não volta, quando o pagamento ficou sem reserva
+      por falha do sistema, é minha sugestão: confirme se concorda.
 
 ---
 
