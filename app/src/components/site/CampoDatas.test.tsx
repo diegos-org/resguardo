@@ -141,6 +141,24 @@ describe("campo de datas do site (M7.6)", () => {
     expect(dia("14 de outubro de 2026").getAttribute("aria-label")).toBe("14 de outubro de 2026");
   });
 
+  it("troca rápida de lugar: a resposta atrasada do lugar anterior não desfaz a estadia do lugar escolhido agora", async () => {
+    let liberar: () => void = () => {};
+    buscar.mockImplementationOnce(
+      (url: string) =>
+        new Promise((ok) => {
+          liberar = () => ok({ ok: true, json: async () => ({ ocupadas: url.includes("imovel=403") ? ocupacoes["403"] : [] }) });
+        }),
+    );
+    render(<Formulario lugar="102" entrada="2026-10-12" saida="2026-10-16" />);
+    const lugar = screen.getByRole("combobox", { name: /Seu lugar/ });
+    fireEvent.change(lugar, { target: { value: "403" } });
+    fireEvent.change(lugar, { target: { value: "102" } });
+    await waitFor(() => expect(buscar).toHaveBeenCalledWith("/api/site/ocupacao?imovel=102&inicio=2026-10-07&fim=2026-11-01"));
+    liberar();
+    await new Promise((r) => setTimeout(r, 0));
+    expect([escondido("entrada"), escondido("saida")]).toEqual(["2026-10-12", "2026-10-16"]);
+  });
+
   it("lugar fixo e falha na leitura: nada marcado, nada quebra (o servidor confere depois)", async () => {
     buscar.mockRejectedValueOnce(new Error("rede")).mockResolvedValueOnce({ ok: false, json: async () => ({}) });
     render(<CampoDatas hoje="2026-10-07" imovel="403" />);

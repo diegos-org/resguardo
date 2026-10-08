@@ -170,6 +170,8 @@ export function CampoDatas({ hoje, entrada = "", saida = "", imovel, campoImovel
       const meses = mesesEntre(maior(e, hoje), somarDias(sd, -1)).filter((m) => m < limiteDoCalendario(hoje));
       void Promise.all(meses.map((m) => pedirMes(cod, m))).then((listas) => {
         const noites = new Set(listas.flatMap((l) => l ?? []));
+        // Resposta atrasada de um lugar que já foi trocado de novo não vale.
+        if (s.value !== cod) return;
         setDatas((d) => (d.entrada === e && d.saida === sd && cruzaOcupada(e, sd, noites) ? { entrada: e, saida: "" } : d));
       });
     };
