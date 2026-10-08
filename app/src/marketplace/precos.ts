@@ -1,11 +1,13 @@
 /**
  * Preços do marketplace e desconto único do site (M12.1). Decisão de Diego em 4/10/2026
- * (`requisitos/product/MARKETPLACE-PRECIFICACAO.md`): **modelo B em partes iguais**.
+ * (`requisitos/product/MARKETPLACE-PRECIFICACAO.md`): **modelo B**, a margem dividida por pesos. Em 4/10 os pesos
+ * nasceram em partes iguais (1/1/1); em 7/10 Diego confirmou **6/3/3** (M12.5): da margem de 12 pontos, SCL 6%, hóspede
+ * 3% e proprietário 3% — pesos hóspede 1, proprietário 1, SCL 2.
  *
  * A conta, em centavos inteiros, a partir do preço cheio P (o que o proprietário pediria na OTA):
  * - margem de referência = P × taxa da OTA − P × taxa do pagamento (zero se a taxa do pagamento
  *   for maior: não há o que dividir e o site vende pelo preço cheio);
- * - a margem é rateada pelos três pesos (padrão 1/1/1, editáveis no painel): a parte do hóspede
+ * - a margem é rateada pelos três pesos (padrão 1/1/2, editáveis no painel): a parte do hóspede
  *   vira desconto, a da SCL vira receita da SCL, a do proprietário vira ganho dele acima da OTA;
  * - o hóspede paga P − desconto; a taxa do pagamento real incide sobre o que ele paga (menor que
  *   a de referência), e essa sobra fica com o proprietário — por isso ele recebe um pouco mais
@@ -26,7 +28,7 @@ export type PrecosMarketplace = {
   taxaBookingBp: number;
   /** Taxa de referência do pagamento no site (cartão pelo Mercado Pago), em pontos-base. */
   taxaPagamentoBp: number;
-  /** Pesos inteiros do rateio da margem (1/1/1 = partes iguais). */
+  /** Pesos inteiros do rateio da margem (padrão 1/1/2: hóspede, proprietário, SCL). */
   pesos: PesosMarketplace;
 };
 
@@ -34,8 +36,12 @@ export const PRECOS_MARKETPLACE_PADRAO: PrecosMarketplace = {
   taxaOtaBp: 1600,
   taxaBookingBp: 1500,
   taxaPagamentoBp: 400,
-  pesos: { hospede: 1, proprietario: 1, scl: 1 },
+  pesos: { hospede: 1, proprietario: 1, scl: 2 },
 };
+
+/** O padrão de antes de 7/10 (partes iguais). Quem ainda está com ele gravado vê um aviso no painel, nunca uma troca sozinha. */
+export const PESOS_PADRAO_ANTIGO: PesosMarketplace = { hospede: 1, proprietario: 1, scl: 1 };
+export const mesmosPesos = (a: PesosMarketplace, b: PesosMarketplace) => a.hospede === b.hospede && a.proprietario === b.proprietario && a.scl === b.scl;
 
 export const LIMITES_PRECOS = { taxaBp: [0, 5000], peso: [0, 100] } as const;
 
@@ -54,19 +60,25 @@ export type SimulacaoMarketplace = {
 
 const inteiroEntre = (v: unknown, [min, max]: readonly [number, number]) => typeof v === "number" && Number.isInteger(v) && v >= min && v <= max;
 
-/** Lê o JSON gravado tolerando campos ausentes/inválidos (voltam ao padrão). */
+/**
+ * Lê o JSON gravado tolerando campos ausentes/inválidos (voltam ao padrão). Nada gravado: os pesos são o padrão atual.
+ * Configuração gravada com peso ausente ou inválido: vale o padrão de quando ela foi gravada (o antigo, 1/1/1), para a
+ * conta de quem já salvou não mudar sozinha com o padrão novo (M12.5).
+ */
 export function precosDeJson(valor: unknown): PrecosMarketplace {
-  const c = (valor && typeof valor === "object" && !Array.isArray(valor) ? valor : {}) as Record<string, unknown>;
+  const gravado = !!valor && typeof valor === "object" && !Array.isArray(valor);
+  const c = (gravado ? valor : {}) as Record<string, unknown>;
   const P = PRECOS_MARKETPLACE_PADRAO;
+  const pesosPadrao = gravado ? PESOS_PADRAO_ANTIGO : P.pesos;
   const pesos = (c.pesos && typeof c.pesos === "object" ? c.pesos : {}) as Record<string, unknown>;
-  const peso = (k: keyof PesosMarketplace) => (inteiroEntre(pesos[k], LIMITES_PRECOS.peso) ? (pesos[k] as number) : P.pesos[k]);
+  const peso = (k: keyof PesosMarketplace) => (inteiroEntre(pesos[k], LIMITES_PRECOS.peso) ? (pesos[k] as number) : pesosPadrao[k]);
   const lidos = { hospede: peso("hospede"), proprietario: peso("proprietario"), scl: peso("scl") };
   return {
     taxaOtaBp: inteiroEntre(c.taxaOtaBp, LIMITES_PRECOS.taxaBp) ? (c.taxaOtaBp as number) : P.taxaOtaBp,
     taxaBookingBp: inteiroEntre(c.taxaBookingBp, LIMITES_PRECOS.taxaBp) ? (c.taxaBookingBp as number) : P.taxaBookingBp,
     taxaPagamentoBp: inteiroEntre(c.taxaPagamentoBp, LIMITES_PRECOS.taxaBp) ? (c.taxaPagamentoBp as number) : P.taxaPagamentoBp,
     // Pesos todos zero não dividem nada: volta ao padrão em vez de inventar.
-    pesos: lidos.hospede + lidos.proprietario + lidos.scl > 0 ? lidos : { ...P.pesos },
+    pesos: lidos.hospede + lidos.proprietario + lidos.scl > 0 ? lidos : { ...pesosPadrao },
   };
 }
 

@@ -15,7 +15,7 @@ ajustar pesos e taxas a qualquer momento no painel. As fórmulas antigas do Dieg
   `configuracao:editar`). Taxas de referência em percentual (Airbnb só do anfitrião, Booking só
   para comparação, pagamento no site) e pesos inteiros (hóspede / proprietário / SCL). Gravado
   na configuração da organização (chave `marketplace_precos`), com auditoria. Padrão: 16% /
-  15% / 4% e 1/1/1.
+  15% / 4% e pesos 1/1/2 (hóspede, proprietário, SCL; até o M12.5, 1/1/1).
 - **A conta (centavos inteiros, `app/src/marketplace/precos.ts`):** para o valor cheio P
   (diárias + limpeza + hóspede extra):
   margem = P × taxa do Airbnb − P × taxa do pagamento (zero se negativa);
@@ -173,7 +173,8 @@ fechar. Se a margem ficar baixa, dá para combinar B com uma mensalidade pequena
 - **Pesos 6/3/3 — confirmados por Diego em 7/10/2026:** SCL 6%, hóspede 3% e proprietário 3% da
   margem (pesos hóspede 1, proprietário 1, SCL 2), no lugar das partes iguais; avaliação do
   Claude: justo e defensável (hóspede 3% abaixo do Airbnb, proprietário cerca de 3,7% acima, SCL
-  6%). O padrão do sistema passa a ser esse no item M12.5 (até ele entrar, o padrão ainda é
-  1/1/1); quem já salvou outra divisão em Configurações → Marketplace e desconto do site
-  continua com a sua.
+  6%). **Padrão do sistema desde o M12.5 (7/10/2026).** Quem nunca salvou a configuração já usa
+  1/1/2; quem salvou continua com o que salvou (vale daquela data para frente, as cotações já
+  feitas guardam o que mostraram). Se o que está salvo é o 1/1/1 antigo, a aba mostra o aviso e o
+  botão "Usar o padrão novo", que troca só os pesos (as taxas ficam); nada muda sozinho.
 
