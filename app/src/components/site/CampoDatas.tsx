@@ -142,12 +142,20 @@ export function CampoDatas({ hoje, entrada = "", saida = "", imovel, campoImovel
               .catch(() => null);
       pedidos.current.set(chave, p);
       void p.then((lista) => {
-        if (lista) setOcupacao((o) => ({ ...o, [chave]: lista }));
-        else pedidos.current.delete(chave);
+        if (!lista) {
+          pedidos.current.delete(chave);
+          return;
+        }
+        setOcupacao((o) => ({ ...o, [chave]: lista }));
+        // Noites que chegam depois da escolha: se a estadia do lugar escolhido agora passa por uma delas, a saída
+        // é desfeita (a mesma regra da troca de lugar), em vez de seguir para o servidor recusar.
+        if ((imovel ?? seletor()?.value) !== cod) return;
+        const noites = new Set(lista);
+        setDatas((d) => (d.entrada && d.saida && cruzaOcupada(d.entrada, d.saida, noites) ? { entrada: d.entrada, saida: "" } : d));
       });
       return p;
     },
-    [hoje],
+    [hoje, imovel, seletor],
   );
 
   // Meses à vista (e, escolhendo a saída, os meses desde a entrada, para conferir o caminho).

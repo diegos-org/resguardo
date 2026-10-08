@@ -159,6 +159,32 @@ describe("campo de datas do site (M7.6)", () => {
     expect([escondido("entrada"), escondido("saida")]).toEqual(["2026-10-12", "2026-10-16"]);
   });
 
+  it("estadia escolhida antes de chegarem as noites ocupadas: se passa por uma delas, a saída é desfeita", async () => {
+    let liberar: () => void = () => {};
+    buscar.mockImplementationOnce(
+      (url: string) =>
+        new Promise((ok) => {
+          const q = new URL(url, "http://teste.invalid").searchParams;
+          liberar = () => ok({ ok: true, json: async () => ({ ocupadas: ocupacoes["403"].filter((d) => d >= q.get("inicio")! && d < q.get("fim")!) }) });
+        }),
+    );
+    render(<Formulario lugar="403" />);
+    fireEvent.click(campo("Entrada"));
+    // Outubro ainda não chegou: 14 e 15 aparecem livres e a estadia de 12 a 16 é aceita.
+    fireEvent.click(dia("12 de outubro de 2026"));
+    fireEvent.click(dia("16 de outubro de 2026"));
+    expect([escondido("entrada"), escondido("saida")]).toEqual(["2026-10-12", "2026-10-16"]);
+    liberar();
+    await waitFor(() => expect(escondido("saida")).toBe(""));
+    expect(escondido("entrada")).toBe("2026-10-12");
+    cleanup();
+    // Noites que não cruzam a estadia não mexem nela.
+    render(<Formulario lugar="403" entrada="2026-10-20" saida="2026-10-23" />);
+    fireEvent.click(campo("Entrada"));
+    await waitFor(() => expect(dia("14 de outubro de 2026").getAttribute("aria-label")).toContain("ocupada"));
+    expect([escondido("entrada"), escondido("saida")]).toEqual(["2026-10-20", "2026-10-23"]);
+  });
+
   it("lugar fixo e falha na leitura: nada marcado, nada quebra (o servidor confere depois)", async () => {
     buscar.mockRejectedValueOnce(new Error("rede")).mockResolvedValueOnce({ ok: false, json: async () => ({}) });
     render(<CampoDatas hoje="2026-10-07" imovel="403" />);
