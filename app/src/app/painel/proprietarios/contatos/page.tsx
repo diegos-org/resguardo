@@ -12,6 +12,7 @@ import {
   type ErroDecisao,
   listarPedidosContato,
   MAX_NOTA,
+  NOVOS_POR_PAGINA,
   type PedidoContatoComAutor,
   TEXTO_ERRO_DECISAO,
 } from "@/proprietarios/pedidos-contato";
@@ -55,7 +56,10 @@ export default async function PedidosContato({ searchParams }: PageProps<"/paine
   const params = await searchParams;
   const feito = typeof params.feito === "string" && Object.hasOwn(FEITO, params.feito) ? FEITO[params.feito] : null;
   const erro = typeof params.erro === "string" && Object.hasOwn(TEXTO_ERRO_DECISAO, params.erro) ? TEXTO_ERRO_DECISAO[params.erro as ErroDecisao] : null;
-  const { novos, decididos } = await listarPedidosContato(getDb(), sessao.organizacaoId);
+  const pagina = typeof params.pagina === "string" && /^\d{1,4}$/.test(params.pagina) && Number(params.pagina) >= 1 ? Number(params.pagina) : 1;
+  const { novos, totalNovos, decididos } = await listarPedidosContato(getDb(), sessao.organizacaoId, pagina);
+  const paginas = Math.max(1, Math.ceil(totalNovos / NOVOS_POR_PAGINA));
+  const primeiro = (pagina - 1) * NOVOS_POR_PAGINA + 1;
   return (
     <>
       <div className={styles.topo}>
@@ -78,9 +82,18 @@ export default async function PedidosContato({ searchParams }: PageProps<"/paine
         </p>
       )}
 
-      <h2>Novos{novos.length ? ` (${novos.length})` : ""}</h2>
+      <h2>Novos{totalNovos ? ` (${totalNovos})` : ""}</h2>
+      {totalNovos > NOVOS_POR_PAGINA && (
+        <nav aria-label="Páginas dos pedidos novos" className={styles.linha} style={{ alignItems: "center", fontSize: "0.875rem" }}>
+          <span>
+            {novos.length ? `Mostrando ${primeiro}–${primeiro + novos.length - 1} de ${totalNovos}, dos mais antigos para os mais novos.` : `Esta página não tem pedidos (são ${paginas}).`}
+          </span>
+          {pagina > 1 && <Link href={`/painel/proprietarios/contatos?pagina=${Math.min(pagina - 1, paginas)}`}>Anteriores</Link>}
+          {pagina < paginas && <Link href={`/painel/proprietarios/contatos?pagina=${pagina + 1}`}>Próximos</Link>}
+        </nav>
+      )}
       {novos.length === 0 ? (
-        <p>Nenhum pedido esperando resposta.</p>
+        <p>{totalNovos ? "Nenhum pedido nesta página." : "Nenhum pedido esperando resposta."}</p>
       ) : (
         novos.map((p) => (
           <section key={p.id} aria-label={`Pedido de ${p.nome}`} className={styles.form}>

@@ -33,7 +33,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   m.db.mockReturnValue({});
   m.sessao.mockResolvedValue({ papel: "admin", usuarioId: "u", organizacaoId: "org", imovelIds: [] });
-  m.listar.mockResolvedValue({ novos: [], decididos: [] });
+  m.listar.mockResolvedValue({ novos: [], totalNovos: 0, decididos: [] });
 });
 const html = async (params: Record<string, string> = {}) => renderToStaticMarkup(await Page({ params: Promise.resolve({}), searchParams: Promise.resolve(params) }));
 
@@ -48,13 +48,13 @@ it.each(["operacao", "proprietario"])("%s vê só o aviso de área restrita, sem
 
 it("sem pedidos: diz que não há nada esperando", async () => {
   const h = await html();
-  expect(m.listar).toHaveBeenCalledWith({}, "org");
+  expect(m.listar).toHaveBeenCalledWith({}, "org", 1);
   expect(h).toContain("Nenhum pedido esperando resposta.");
   expect(h).toContain("Nenhum pedido tratado ainda.");
 });
 
 it("novo: mostra os dados, links de e-mail e WhatsApp e as duas ações", async () => {
-  m.listar.mockResolvedValue({ novos: [pedido()], decididos: [] });
+  m.listar.mockResolvedValue({ novos: [pedido()], totalNovos: 1, decididos: [] });
   const h = await html();
   expect(h).toContain("Novos (1)");
   expect(h).toContain("Maria Exemplo · Ipanema, Rio de Janeiro");
@@ -73,7 +73,7 @@ it("novo: mostra os dados, links de e-mail e WhatsApp e as duas ações", async 
 });
 
 it("e-mail com caracteres de endereço não vira cópia nem assunto no link", async () => {
-  m.listar.mockResolvedValue({ novos: [pedido({ email: "a?cc=b&x@exemplo.com", telefone: "+55 21 90000-0000" })], decididos: [] });
+  m.listar.mockResolvedValue({ novos: [pedido({ email: "a?cc=b&x@exemplo.com", telefone: "+55 21 90000-0000" })], totalNovos: 1, decididos: [] });
   const h = await html();
   expect(h).toContain('href="mailto:a%3Fcc%3Db%26x@exemplo.com"');
   expect(h).toContain('href="https://wa.me/5521900000000"');
@@ -82,6 +82,7 @@ it("e-mail com caracteres de endereço não vira cópia nem assunto no link", as
 it("já tratados: situação, quando, quem e nota; respondido ainda pode ser arquivado", async () => {
   m.listar.mockResolvedValue({
     novos: [],
+    totalNovos: 0,
     decididos: [
       pedido({ id: "00000000-0000-4000-8000-0000000000b2", nome: "Beto Exemplo", situacao: "respondido", nota: "Liguei.", decididoEm: new Date("2026-10-09T13:00:00Z"), decididoPorNome: "Ana Equipe" }),
       pedido({ id: "00000000-0000-4000-8000-0000000000c3", nome: "Caio Exemplo", situacao: "arquivado", decididoEm: new Date("2026-10-09T14:00:00Z") }),
@@ -104,4 +105,20 @@ it("mostra o resultado da última ação só para códigos conhecidos", async ()
   expect(h).not.toContain("texto qualquer");
   expect(h).not.toContain('role="alert"');
   expect(h).not.toContain('role="status"');
+});
+
+it("fila grande: mostra uma página por vez, com o total e os links para as outras", async () => {
+  m.listar.mockResolvedValue({ novos: [pedido()], totalNovos: 61, decididos: [] });
+  const h = await html({ pagina: "2" });
+  expect(m.listar).toHaveBeenCalledWith({}, "org", 2);
+  expect(h).toContain("Novos (61)");
+  expect(h).toContain("Mostrando 31–31 de 61, dos mais antigos para os mais novos.");
+  expect(h).toContain('href="/painel/proprietarios/contatos?pagina=1"');
+  expect(h).toContain('href="/painel/proprietarios/contatos?pagina=3"');
+  // Página inválida vira a primeira.
+  await html({ pagina: "abc" });
+  expect(m.listar).toHaveBeenLastCalledWith({}, "org", 1);
+  // Até 30, sem navegação.
+  m.listar.mockResolvedValue({ novos: [pedido()], totalNovos: 1, decididos: [] });
+  expect(await html()).not.toContain("Páginas dos pedidos novos");
 });

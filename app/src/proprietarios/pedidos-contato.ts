@@ -164,16 +164,30 @@ export async function registrarPedidoContato(db: Db, organizacaoId: string, dado
 const colunasComAutor = { pedido: pedidosContatoProprietario, decididoPorNome: usuarios.nome };
 const comAutor = (r: { pedido: PedidoContato; decididoPorNome: string | null }): PedidoContatoComAutor => ({ ...r.pedido, decididoPorNome: r.decididoPorNome });
 
-/** Novos (mais antigos primeiro, para ninguém ficar esquecido) e os já tratados mais recentes. */
-export async function listarPedidosContato(db: Db, organizacaoId: string): Promise<{ novos: PedidoContatoComAutor[]; decididos: PedidoContatoComAutor[] }> {
+/** Pedidos novos por página da tela (a fila pode crescer mais rápido que a equipe trata, então a tela não carrega tudo). */
+export const NOVOS_POR_PAGINA = 30;
+
+/**
+ * Novos, mais antigos primeiro (para ninguém ficar esquecido), em páginas de `NOVOS_POR_PAGINA`, com o total; e os já
+ * tratados mais recentes. Página fora do intervalo devolve lista vazia (a tela oferece voltar).
+ */
+export async function listarPedidosContato(
+  db: Db,
+  organizacaoId: string,
+  pagina = 1,
+): Promise<{ novos: PedidoContatoComAutor[]; totalNovos: number; decididos: PedidoContatoComAutor[] }> {
   const t = pedidosContatoProprietario;
-  const [novos, decididos] = await Promise.all([
+  const n = Number.isSafeInteger(pagina) && pagina >= 1 ? pagina : 1;
+  const [novos, totalNovos, decididos] = await Promise.all([
     db
       .select(colunasComAutor)
       .from(t)
       .leftJoin(usuarios, eq(usuarios.id, t.decididoPor))
       .where(and(eq(t.organizacaoId, organizacaoId), eq(t.situacao, "novo")))
-      .orderBy(asc(t.criadoEm), asc(t.id)),
+      .orderBy(asc(t.criadoEm), asc(t.id))
+      .limit(NOVOS_POR_PAGINA)
+      .offset((n - 1) * NOVOS_POR_PAGINA),
+    contarPedidosNovos(db, organizacaoId),
     db
       .select(colunasComAutor)
       .from(t)
@@ -182,7 +196,7 @@ export async function listarPedidosContato(db: Db, organizacaoId: string): Promi
       .orderBy(sql`${t.decididoEm} desc nulls last`, desc(t.criadoEm), desc(t.id))
       .limit(LIMITE_DECIDIDOS),
   ]);
-  return { novos: novos.map(comAutor), decididos: decididos.map(comAutor) };
+  return { novos: novos.map(comAutor), totalNovos, decididos: decididos.map(comAutor) };
 }
 
 export async function contarPedidosNovos(db: Db, organizacaoId: string): Promise<number> {

@@ -19,6 +19,7 @@ import {
   marcarRespondido,
   MAX_POR_EMAIL_POR_DIA,
   MAX_POR_HORA,
+  NOVOS_POR_PAGINA,
   preencheuIsca,
   registrarPedidoContato,
   validarPedidoContato,
@@ -196,6 +197,21 @@ describe("registro e tetos", () => {
 });
 
 describe("tratamento no painel", () => {
+  it(`novos em páginas de ${NOVOS_POR_PAGINA}, dos mais antigos para os mais novos, com o total`, async () => {
+    const base = agora.getTime() - 2 * 60 * 60_000;
+    await db.insert(pedidosContatoProprietario).values(
+      Array.from({ length: NOVOS_POR_PAGINA + 5 }, (_, i) => ({ organizacaoId: org, ...dados({ email: `fila${i}@exemplo.com` }), criadoEm: new Date(base + i * 1000) })),
+    );
+    const p1 = await listarPedidosContato(db, org);
+    expect(p1.totalNovos).toBe(NOVOS_POR_PAGINA + 5);
+    expect(p1.novos).toHaveLength(NOVOS_POR_PAGINA);
+    expect(p1.novos[0].email).toBe("fila0@exemplo.com");
+    const p2 = await listarPedidosContato(db, org, 2);
+    expect(p2.novos.map((p) => p.email)).toEqual(Array.from({ length: 5 }, (_, i) => `fila${NOVOS_POR_PAGINA + i}@exemplo.com`));
+    expect((await listarPedidosContato(db, org, 9)).novos).toEqual([]);
+    expect((await listarPedidosContato(db, org, 0)).novos).toHaveLength(NOVOS_POR_PAGINA);
+  });
+
   it("lista novos do mais antigo para o mais novo e os tratados do mais recente, com quem tratou", async () => {
     const velho = await registrar({ nome: "Primeiro" }, org, new Date("2026-10-01T10:00:00Z"));
     const novo = await registrar({ nome: "Segundo", email: "segundo@exemplo.com" }, org, new Date("2026-10-05T10:00:00Z"));
