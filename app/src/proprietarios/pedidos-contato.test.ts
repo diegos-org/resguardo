@@ -192,16 +192,20 @@ describe("registro e tetos", () => {
 
   it(`no máximo ${LIMITE_TENTATIVAS_GERAL.tentativas} tentativas por hora no total, antes de contar a origem; a limpeza das contas velhas roda uma vez por hora`, async () => {
     // Conta parada há mais de um dia (de uma origem qualquer): sai na primeira tentativa da janela geral.
-    await db.insert(tentativasLogin).values({ chave: "contato-origem:192.0.2.1", erros: 2, atualizadoEm: new Date(agora.getTime() - 25 * 60 * 60_000) });
-    await db.insert(tentativasLogin).values({ chave: "contato-geral", erros: LIMITE_TENTATIVAS_GERAL.tentativas, atualizadoEm: new Date(agora.getTime() - 10 * 60_000) });
+    await db.insert(tentativasLogin).values({ chave: `contato-origem:${org}:192.0.2.1`, erros: 2, atualizadoEm: new Date(agora.getTime() - 25 * 60 * 60_000) });
+    await db.insert(tentativasLogin).values({ chave: `contato-geral:${org}`, erros: LIMITE_TENTATIVAS_GERAL.tentativas, atualizadoEm: new Date(agora.getTime() - 10 * 60_000) });
     // Janela geral ainda aberta e no teto: recusa sem criar conta para a origem nova e sem limpar.
     expect(await registrarPedidoContato(db, org, dados({ email: "x@exemplo.com" }), agora, "198.51.100.20")).toEqual({ ok: false, erro: ERRO_LIMITE_TOTAL });
     const chaves = async () => (await db.select({ chave: tentativasLogin.chave }).from(tentativasLogin)).map((t) => t.chave).sort();
-    expect(await chaves()).toEqual(["contato-geral", "contato-origem:192.0.2.1"]);
+    expect(await chaves()).toEqual([`contato-geral:${org}`, `contato-origem:${org}:192.0.2.1`]);
     // Uma hora depois, a janela geral recomeça: limpa a conta velha e aceita.
     const depoisDaHora = new Date(agora.getTime() + 60 * 60_000);
     expect((await registrarPedidoContato(db, org, dados({ email: "x@exemplo.com" }), depoisDaHora, "198.51.100.20")).ok).toBe(true);
-    expect(await chaves()).toEqual(["contato-geral", "contato-origem:198.51.100.20"]);
+    expect(await chaves()).toEqual([`contato-geral:${org}`, `contato-origem:${org}:198.51.100.20`]);
+    // Outra organização tem as suas próprias contas: o teto de uma não gasta o da outra.
+    await db.update(tentativasLogin).set({ erros: LIMITE_TENTATIVAS_GERAL.tentativas + 5 }).where(eq(tentativasLogin.chave, `contato-geral:${org}`));
+    expect((await registrarPedidoContato(db, outra, dados({ email: "x@exemplo.com" }), depoisDaHora, "198.51.100.20")).ok).toBe(true);
+    expect(await registrarPedidoContato(db, org, dados({ email: "y@exemplo.com" }), depoisDaHora, "198.51.100.21")).toEqual({ ok: false, erro: ERRO_LIMITE_TOTAL });
   });
 
   it("envios simultâneos do mesmo e-mail não passam do teto", async () => {

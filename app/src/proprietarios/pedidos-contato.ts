@@ -32,7 +32,8 @@ const UM_DIA_MS = 24 * 60 * 60_000;
 export const LIMITE_POR_ORIGEM: Limite = { tentativas: 5, janelaMs: 60 * 60_000 };
 /** Tentativas por hora no total (aceitas ou não), conferidas antes da conta por origem. */
 export const LIMITE_TENTATIVAS_GERAL: Limite = { tentativas: 120, janelaMs: 60 * 60_000 };
-const CHAVE_TENTATIVAS_GERAL = "contato-geral";
+/** Contas de tentativas do pedido de contato, sempre por organização (o tráfego de um site não gasta o teto de outro). */
+const PREFIXO_TENTATIVAS = "contato-";
 export const MAX_POR_HORA = 30;
 const UMA_HORA_MS = 60 * 60_000;
 /** Quantos pedidos já tratados a tela mostra (os mais recentes). */
@@ -141,10 +142,10 @@ export async function registrarPedidoContato(db: Db, organizacaoId: string, dado
   if (!emailValido(email)) return { ok: false, erro: "E-mail inválido." };
   // Antes de qualquer conta por origem: o teto geral de tentativas da hora. Muitas origens diferentes não criam linhas
   // sem fim, e a limpeza das contas paradas roda uma vez por janela geral (não a cada origem nova).
-  const geral = await contarNaJanela(db, CHAVE_TENTATIVAS_GERAL, LIMITE_TENTATIVAS_GERAL, agora);
+  const geral = await contarNaJanela(db, `${PREFIXO_TENTATIVAS}geral:${organizacaoId}`, LIMITE_TENTATIVAS_GERAL, agora);
   if (geral === 1) await apagarContasVelhas(db, agora);
   if (geral > LIMITE_TENTATIVAS_GERAL.tentativas) return { ok: false, erro: ERRO_LIMITE_TOTAL };
-  if (origem && (await contarNaJanela(db, `contato-origem:${origem}`, LIMITE_POR_ORIGEM, agora)) > LIMITE_POR_ORIGEM.tentativas) {
+  if (origem && (await contarNaJanela(db, `${PREFIXO_TENTATIVAS}origem:${organizacaoId}:${origem}`, LIMITE_POR_ORIGEM, agora)) > LIMITE_POR_ORIGEM.tentativas) {
     return { ok: false, erro: ERRO_LIMITE_ORIGEM };
   }
   return db.transaction(async (tx) => {
