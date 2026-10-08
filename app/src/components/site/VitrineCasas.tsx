@@ -16,7 +16,7 @@ export const PASSO_VITRINE_MS = 6000;
 
 /**
  * Vitrine "Seu endereço no Leblon" (M7.6): carrossel com setas e movimento automático, que para com o botão "Pausar
- * movimento", ao passar o mouse ou focar um cartão, e não começa para quem pediu menos movimento no aparelho. No
+ * movimento", ao passar o mouse ou focar um cartão ou uma seta, e não começa para quem pediu menos movimento no aparelho. No
  * celular, um cartão por vez. Sem JavaScript, continua sendo uma faixa que rola para o lado.
  */
 export function VitrineCasas({ children, rotulo, rodape }: { children: ReactNode; rotulo: string; rodape?: ReactNode }) {
@@ -46,18 +46,17 @@ export function VitrineCasas({ children, rotulo, rodape }: { children: ReactNode
 
   return (
     <div className={styles.vitrine}>
-      <div className={styles.vitrineFaixa}>
-        <div
-          ref={faixa}
-          className={styles.carrossel}
-          role="region"
-          aria-roledescription="carrossel"
-          aria-label={rotulo}
-          onMouseEnter={() => setParado(true)}
-          onMouseLeave={() => setParado(false)}
-          onFocus={() => setParado(true)}
-          onBlur={() => setParado(false)}
-        >
+      {/* A pausa por mouse ou foco vale para os cartões e as setas juntos: ir de um para o outro não solta o movimento. */}
+      <div
+        className={styles.vitrineFaixa}
+        onMouseEnter={() => setParado(true)}
+        onMouseLeave={() => setParado(false)}
+        onFocus={() => setParado(true)}
+        onBlur={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setParado(false);
+        }}
+      >
+        <div ref={faixa} className={styles.carrossel} role="region" aria-roledescription="carrossel" aria-label={rotulo}>
           {children}
         </div>
         {total > 1 && (

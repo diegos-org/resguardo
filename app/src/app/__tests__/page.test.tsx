@@ -165,6 +165,41 @@ describe("site público (M7.1)", () => {
     }
   });
 
+  it("vitrine (M7.6): mouse ou foco nos cartões e nas setas param o movimento; passar de um cartão para uma seta não solta", () => {
+    vi.useFakeTimers();
+    try {
+      const scrollTo = vi.fn();
+      Object.defineProperty(HTMLElement.prototype, "scrollTo", { value: scrollTo, configurable: true });
+      render(
+        <VitrineCasas rotulo="Seu endereço no Leblon">
+          <article><button type="button">Casa 1</button></article>
+          <article><button type="button">Casa 2</button></article>
+        </VitrineCasas>,
+      );
+      const casa = screen.getByRole("button", { name: "Casa 1" });
+      const seta = screen.getByRole("button", { name: "Próxima casa" });
+      // Teclado: do cartão para a seta, o movimento continua parado.
+      fireEvent.focus(casa);
+      fireEvent.blur(casa, { relatedTarget: seta });
+      fireEvent.focus(seta);
+      act(() => vi.advanceTimersByTime(PASSO_VITRINE_MS * 2));
+      expect(scrollTo).not.toHaveBeenCalled();
+      // Foco sai da vitrine: volta a andar.
+      fireEvent.blur(seta, { relatedTarget: null });
+      act(() => vi.advanceTimersByTime(PASSO_VITRINE_MS));
+      expect(scrollTo).toHaveBeenCalledTimes(1);
+      // Mouse sobre a seta também para; ao sair da vitrine, volta.
+      fireEvent.mouseEnter(seta);
+      act(() => vi.advanceTimersByTime(PASSO_VITRINE_MS * 2));
+      expect(scrollTo).toHaveBeenCalledTimes(1);
+      fireEvent.mouseLeave(seta.parentElement!);
+      act(() => vi.advanceTimersByTime(PASSO_VITRINE_MS));
+      expect(scrollTo).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("variante de busca da capa: mesmos campos e destino, sem título e com o botão \"Consultar\"", () => {
     render(<FormConsulta imoveis={[imovel]} valores={{}} hoje="2026-09-25" canal="whatsapp" variante="busca" />);
     const form = document.querySelector("form")!;
