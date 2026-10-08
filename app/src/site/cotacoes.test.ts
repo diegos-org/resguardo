@@ -1,11 +1,12 @@
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { PESOS_PADRAO_ANTIGO, PRECOS_MARKETPLACE_PADRAO } from "@/marketplace/precos";
+import { salvarPrecosMarketplace } from "@/marketplace/precos-config";
 import { REGRAS_CALENDARIO_PADRAO } from "@/calendario/regras-config";
 import { gravarConfig } from "@/configuracoes/armazem";
 import { beds24Calendario, bloqueios, cotacoes, idsExternos, imoveis, imoveisDetalhes, lancamentos, organizacoes, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
-import { PRECOS_MARKETPLACE_PADRAO } from "@/marketplace/precos";
 import { cancelarReserva, confirmarReserva } from "@/reservas/repositorio";
 import { codigoCotacaoValido, criarCotacao, expirarHoldsVencidos, MAXIMO_COTACOES_ABERTAS_POR_IMOVEL, MAXIMO_HOLDS_POR_IMOVEL, motivoDaMudanca, segurarDatas, textoDaCotacao, validarContato, verCotacao } from "./cotacoes";
 import { consultarDisponibilidade } from "./disponibilidade";
@@ -31,6 +32,9 @@ beforeEach(async () => {
   [{ id: im }] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "403", nome: "Studio Exemplo", publico: true, capacidade: 4 }).returning();
   await db.insert(imoveisDetalhes).values({ imovelId: im, organizacaoId: org, precoBase: 45000, taxaLimpeza: 25000, hospedeExtraValor: 5000, hospedeExtraAPartirDe: 3, pisoUltimaHora1: 35000, pisoUltimaHora2: 30000 });
   await db.insert(idsExternos).values({ organizacaoId: org, imovelId: im, canal: "beds24", idExterno: "10", detalhe: "20" });
+  // Os valores destes testes são com os pesos em partes iguais (1/1/1), gravados como numa organização que já salvou
+  // a configuração; o padrão 6/3/3 (M12.5) é testado em marketplace/precos.test.ts.
+  await salvarPrecosMarketplace(db, org, { ...PRECOS_MARKETPLACE_PADRAO, pesos: { ...PESOS_PADRAO_ANTIGO } }, null);
   // Leitura recente do Beds24 para outubro e novembro: tudo livre.
   await db.insert(beds24Calendario).values(dias("2026-10-01", 61).map((data) => ({ organizacaoId: org, imovelId: im, data, roomId: "20", livres: 1, preco: 45000, minimoNoites: 1, maximoNoites: 27, bloqueio: "none", observadoEm: new Date("2026-10-01T09:15:00Z") })));
 });
