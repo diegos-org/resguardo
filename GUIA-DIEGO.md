@@ -57,8 +57,9 @@ agora é essa página, no mesmo visual do site:
 - **Pedido de contato (gestão completa):** a pessoa deixa nome, e-mail, WhatsApp, bairro e uma
   mensagem. O pedido chega em **Proprietários → Pedidos de contato**, aparece nas pendências do
   **Início** do painel e vai por e-mail para o e-mail da empresa (Configurações → Empresa). Ali você
-  responde pelo e-mail ou WhatsApp e marca como respondido, ou arquiva. Há um limite de pedidos
-  abertos por e-mail e no total, contra envio em massa.
+  responde pelo e-mail ou WhatsApp e marca como respondido, ou arquiva. Contra envio em massa, há
+  limites por e-mail, por endereço de internet e por hora, que se desfazem sozinhos depois de uma hora:
+  ninguém precisa arquivar nada para o formulário voltar a funcionar.
 - **Cadastro do marketplace:** igual ao de antes (e-mail, código e dados do imóvel). No meio do
   cadastro, a página mostra só ele.
 

@@ -2,6 +2,7 @@
 
 import { headers } from "next/headers";
 import { after } from "next/server";
+import { origemDoPedido } from "@/acesso/senha";
 import { enderecoDaRequisicao } from "@/convites/email";
 import { getDb } from "@/db/client";
 import { correioDoAmbiente } from "@/email/correio";
@@ -33,9 +34,10 @@ export async function pedirContatoProprietarioAcao(_estado: EstadoContatoProprie
   const db = getDb();
   const organizacaoId = await organizacaoDoSite(db);
   if (!organizacaoId) return { mensagem: "O pedido de contato ainda não está disponível por aqui. Fale com a gente pelo WhatsApp ou pelo e-mail do site.", valores };
-  const r = await registrarPedidoContato(db, organizacaoId, v.dados, new Date());
+  const h = await headers();
+  const r = await registrarPedidoContato(db, organizacaoId, v.dados, new Date(), origemDoPedido(h));
   if (!r.ok) return { mensagem: r.erro, valores };
-  const link = enderecoDaRequisicao(await headers(), PAGINA_PAINEL);
+  const link = enderecoDaRequisicao(h, PAGINA_PAINEL);
   const correio = correioDoAmbiente();
   // Depois da resposta: o visitante não espera o provedor de e-mail. Se o e-mail falhar, o pedido
   // continua no painel (Proprietários → Pedidos de contato, com aviso no Início).

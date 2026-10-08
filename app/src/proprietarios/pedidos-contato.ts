@@ -8,12 +8,15 @@
  * a garantia (e-mail que falha não perde o pedido).
  *
  * Contra abuso: campo-isca escondido ("site") — robô que preenche recebe "ok" e nada é gravado nem enviado —,
- * e teto de pedidos "novos" por e-mail e no total, conferido sob trava para envios simultâneos não passarem.
- * Não guarda IP.
+ * teto de pedidos "novos" por e-mail e tetos com janela de uma hora, por endereço de origem e no total da organização.
+ * Os tetos com janela se desfazem sozinhos: spam não trava os pedidos de verdade por mais de uma hora, e ninguém precisa
+ * arquivar nada para o formulário voltar a funcionar. O pedido não guarda IP; a origem só entra na conta temporária de
+ * tentativas (a mesma do login), apagada depois de um dia parada.
  */
-import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { emailValido } from "@/acesso/codigo-email";
 import { normalizarEmail } from "@/acesso/entrada";
+import { apagarContasVelhas, contarNaJanela, type Limite } from "@/acesso/senha";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { lerEmpresa } from "@/configuracoes/empresa";
 import { pedidosContatoProprietario, type SituacaoPedidoContato, usuarios } from "@/db/schema";
@@ -22,9 +25,12 @@ import type { Correio } from "@/email/correio";
 import { uuidValido } from "@/lib/ids";
 import { ERRO_TELEFONE_DDD, telefoneComDddValido } from "./documento";
 
-/** Pedidos "novos" ao mesmo tempo: por e-mail e no total da organização (contra envio em massa). */
+/** Pedidos "novos" ao mesmo tempo por e-mail. */
 export const MAX_NOVOS_POR_EMAIL = 3;
-export const MAX_NOVOS_TOTAL = 200;
+/** Pedidos por hora: de um mesmo endereço de origem e no total da organização (contra envio em massa). */
+export const LIMITE_POR_ORIGEM: Limite = { tentativas: 5, janelaMs: 60 * 60_000 };
+export const MAX_POR_HORA = 30;
+const UMA_HORA_MS = 60 * 60_000;
 /** Quantos pedidos já tratados a tela mostra (os mais recentes). */
 export const LIMITE_DECIDIDOS = 100;
 export const MAX_NOTA = 500;
@@ -117,14 +123,24 @@ export type PedidoContato = typeof pedidosContatoProprietario.$inferSelect;
 export type PedidoContatoComAutor = PedidoContato & { decididoPorNome: string | null };
 
 export const ERRO_LIMITE_POR_EMAIL = "Já recebemos seus pedidos e vamos responder. Se for urgente, fale com a gente pelo WhatsApp ou pelo e-mail do site.";
-export const ERRO_LIMITE_TOTAL = "No momento não conseguimos receber novos pedidos por aqui. Fale com a gente pelo WhatsApp ou pelo e-mail do site.";
+export const ERRO_LIMITE_ORIGEM = "Recebemos muitos pedidos deste endereço de internet. Tente de novo daqui a uma hora ou fale com a gente pelo WhatsApp ou pelo e-mail do site.";
+export const ERRO_LIMITE_TOTAL = "Recebemos muitos pedidos agora há pouco. Tente de novo daqui a uma hora ou fale com a gente pelo WhatsApp ou pelo e-mail do site.";
 
 export type ResultadoRegistro = { ok: true; pedido: PedidoContato } | { ok: false; erro: string };
 
-/** Grava o pedido como "novo", respeitando os tetos (conferidos e gravados sob a mesma trava). */
-export async function registrarPedidoContato(db: Db, organizacaoId: string, dados: DadosPedidoContato, agora: Date): Promise<ResultadoRegistro> {
+/**
+ * Grava o pedido como "novo", respeitando os tetos. `origem` = endereço de quem enviou (ver `origemDoPedido`); sem ele,
+ * só valem os outros tetos. Os tetos por e-mail e por hora da organização são conferidos e gravados sob a mesma trava.
+ */
+export async function registrarPedidoContato(db: Db, organizacaoId: string, dados: DadosPedidoContato, agora: Date, origem: string | null = null): Promise<ResultadoRegistro> {
   const email = normalizarEmail(dados.email);
   if (!emailValido(email)) return { ok: false, erro: "E-mail inválido." };
+  if (origem) {
+    const n = await contarNaJanela(db, `contato-origem:${origem}`, LIMITE_POR_ORIGEM, agora);
+    // Primeira tentativa de uma janela nova: aproveita para limpar as contas paradas há mais de um dia.
+    if (n === 1) await apagarContasVelhas(db, agora);
+    if (n > LIMITE_POR_ORIGEM.tentativas) return { ok: false, erro: ERRO_LIMITE_ORIGEM };
+  }
   return db.transaction(async (tx) => {
     // Um de cada vez por organização: as contagens abaixo valem na hora de gravar.
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`pedido-contato-proprietario:${organizacaoId}`}))`);
@@ -135,7 +151,11 @@ export async function registrarPedidoContato(db: Db, organizacaoId: string, dado
         .where(and(eq(pedidosContatoProprietario.organizacaoId, organizacaoId), eq(pedidosContatoProprietario.situacao, "novo"), f))
         .then((r) => r[0].n);
     if ((await novos(eq(pedidosContatoProprietario.email, email))) >= MAX_NOVOS_POR_EMAIL) return { ok: false as const, erro: ERRO_LIMITE_POR_EMAIL };
-    if ((await novos()) >= MAX_NOVOS_TOTAL) return { ok: false as const, erro: ERRO_LIMITE_TOTAL };
+    const [{ n: naUltimaHora }] = await tx
+      .select({ n: count() })
+      .from(pedidosContatoProprietario)
+      .where(and(eq(pedidosContatoProprietario.organizacaoId, organizacaoId), gt(pedidosContatoProprietario.criadoEm, new Date(agora.getTime() - UMA_HORA_MS))));
+    if (naUltimaHora >= MAX_POR_HORA) return { ok: false as const, erro: ERRO_LIMITE_TOTAL };
     const [pedido] = await tx
       .insert(pedidosContatoProprietario)
       .values({ organizacaoId, ...dados, email, situacao: "novo", criadoEm: agora })

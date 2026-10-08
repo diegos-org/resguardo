@@ -75,13 +75,13 @@ export function origemDoPedido(h: Pick<Headers, "get"> | undefined): string | nu
   return /^[0-9a-f:.]{3,45}$/.test(ip) ? ip : null;
 }
 
-type Limite = { tentativas: number; janelaMs: number };
+export type Limite = { tentativas: number; janelaMs: number };
 
 /**
  * Conta mais uma tentativa na janela da chave (a janela começa na primeira tentativa e vale `janelaMs`). Num comando só,
  * fora de transação: não segura ninguém enquanto a senha é conferida. Devolve o total da janela.
  */
-async function contarNaJanela(db: Db, chave: string, limite: Limite, agora: Date): Promise<number> {
+export async function contarNaJanela(db: Db, chave: string, limite: Limite, agora: Date): Promise<number> {
   const inicio = sql`${new Date(agora.getTime() - limite.janelaMs).toISOString()}::timestamptz`;
   const vencida = sql`${tentativasLogin.atualizadoEm} <= ${inicio}`;
   const [r] = await db
@@ -103,7 +103,7 @@ const passouDoTeto = (t: { erros: number; atualizadoEm: Date } | undefined, limi
   Boolean(t && t.erros >= limite.tentativas && t.atualizadoEm.getTime() > agora.getTime() - limite.janelaMs);
 
 /** Apaga as contas paradas há mais de um dia que não estão numa espera (roda no máximo uma vez por janela geral). */
-async function apagarContasVelhas(db: Db, agora: Date): Promise<void> {
+export async function apagarContasVelhas(db: Db, agora: Date): Promise<void> {
   const corte = new Date(agora.getTime() - GUARDA_CONTAS_MS);
   await db
     .delete(tentativasLogin)

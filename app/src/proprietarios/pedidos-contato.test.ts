@@ -11,12 +11,14 @@ import {
   contarPedidosNovos,
   type DadosPedidoContato,
   descreverQuartos,
+  ERRO_LIMITE_ORIGEM,
   ERRO_LIMITE_POR_EMAIL,
   ERRO_LIMITE_TOTAL,
+  LIMITE_POR_ORIGEM,
   listarPedidosContato,
   marcarRespondido,
   MAX_NOVOS_POR_EMAIL,
-  MAX_NOVOS_TOTAL,
+  MAX_POR_HORA,
   preencheuIsca,
   registrarPedidoContato,
   validarPedidoContato,
@@ -160,12 +162,28 @@ describe("registro e tetos", () => {
     expect((await registrarPedidoContato(db, org, dados(), agora)).ok).toBe(true);
   });
 
-  it(`no máximo ${MAX_NOVOS_TOTAL} novos na organização`, async () => {
+  it(`no máximo ${MAX_POR_HORA} pedidos por hora na organização; passada a hora, volta a receber sem ninguém arquivar nada`, async () => {
+    const antes = new Date(agora.getTime() - 61 * 60_000);
+    // Pedidos antigos (mesmo ainda "novos") não contam: spam de ontem não trava o formulário de hoje.
+    await db.insert(pedidosContatoProprietario).values(Array.from({ length: MAX_POR_HORA }, (_, i) => ({ organizacaoId: org, ...dados({ email: `velho${i}@exemplo.com` }), criadoEm: antes })));
+    expect((await registrarPedidoContato(db, org, dados({ email: "primeira@exemplo.com" }), agora)).ok).toBe(true);
     await db.insert(pedidosContatoProprietario).values(
-      Array.from({ length: MAX_NOVOS_TOTAL }, (_, i) => ({ organizacaoId: org, ...dados({ email: `pessoa${i}@exemplo.com` }), criadoEm: agora })),
+      Array.from({ length: MAX_POR_HORA - 1 }, (_, i) => ({ organizacaoId: org, ...dados({ email: `pessoa${i}@exemplo.com` }), criadoEm: new Date(agora.getTime() - 30 * 60_000) })),
     );
     expect(await registrarPedidoContato(db, org, dados({ email: "nova@exemplo.com" }), agora)).toEqual({ ok: false, erro: ERRO_LIMITE_TOTAL });
     expect((await registrarPedidoContato(db, outra, dados(), agora)).ok).toBe(true);
+    // Uma hora depois do mais recente, a janela passou.
+    expect((await registrarPedidoContato(db, org, dados({ email: "nova@exemplo.com" }), new Date(agora.getTime() + 61 * 60_000))).ok).toBe(true);
+  });
+
+  it(`no máximo ${LIMITE_POR_ORIGEM.tentativas} pedidos por hora do mesmo endereço de origem; outro endereço segue livre`, async () => {
+    for (let i = 0; i < LIMITE_POR_ORIGEM.tentativas; i++) expect((await registrarPedidoContato(db, org, dados({ email: `p${i}@exemplo.com` }), agora, "203.0.113.7")).ok).toBe(true);
+    expect(await registrarPedidoContato(db, org, dados({ email: "outro@exemplo.com" }), agora, "203.0.113.7")).toEqual({ ok: false, erro: ERRO_LIMITE_ORIGEM });
+    expect((await registrarPedidoContato(db, org, dados({ email: "outro@exemplo.com" }), agora, "198.51.100.9")).ok).toBe(true);
+    // Passada a hora, o mesmo endereço volta a poder enviar.
+    expect((await registrarPedidoContato(db, org, dados({ email: "depois@exemplo.com" }), new Date(agora.getTime() + 61 * 60_000), "203.0.113.7")).ok).toBe(true);
+    // O pedido não guarda o endereço.
+    expect(JSON.stringify(await db.select().from(pedidosContatoProprietario))).not.toContain("203.0.113.7");
   });
 
   it("envios simultâneos do mesmo e-mail não passam do teto", async () => {
