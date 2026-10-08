@@ -50,6 +50,11 @@ e com as decisões pendentes de Diego (taxa do pagamento; arrependimento conferi
 - **Trava:** com `MERCADOPAGO_AMBIENTE=producao`, a parte (a) **não cobra**: o site volta ao fluxo
   pela conversa e o painel avisa "produção travada até as páginas legais (M7.4) e as partes b a d".
   Liberar a produção é uma linha de código num item futuro, nunca uma variável só.
+- **A variável sozinha não é a trava.** Antes de mostrar o formulário do cartão ou gerar qualquer
+  cobrança, o sistema confirma com o Mercado Pago que a conta das chaves é **de teste**
+  (`GET /users/me`, guardado por alguns minutos). Conta real, resposta estranha ou falha na
+  consulta: nada é cobrado, o site segue pela conversa e o painel avisa. Assim uma chave de produção
+  posta por engano com a variável ausente (ou `teste`) também não cobra.
 - Sem as duas chaves, o site continua como hoje (pedido pela conversa).
 
 ### Quando o site oferece o pagamento
@@ -107,9 +112,14 @@ Situação normalizada do provedor: `pendente`, `aprovado`, `recusado`, `cancela
   veio ou em minúsculas, porque a documentação e o SDK divergem). Assinatura inválida: 401 e nada é
   gravado. Válida: registra o evento, responde 200 e processa depois da resposta.
 - O aviso é só gatilho: a situação vem sempre de uma consulta ao provedor (`GET /v1/orders/{id}`).
-- **Rotina** a cada 10 minutos (só produção, `CRON_SECRET`): reconsulta pagamentos pendentes, os
-  aprovados sem taxa ou sem liberação e as devoluções pedidas; apaga eventos velhos. Entra no
-  catálogo de automações da área Sistema.
+- **Rotina** a cada 10 minutos (`CRON_SECRET`): reconsulta pagamentos pendentes, os aprovados sem
+  taxa ou sem liberação e as devoluções pedidas; apaga eventos velhos. Entra no catálogo de
+  automações da área Sistema. Ela **não** recusa ambiente de teste: a Vercel só agenda rotinas no
+  deploy de produção (onde o teste roda, com as chaves de teste), e a mesma conferência pode ser
+  disparada pelo botão **Conferir agora** do painel em qualquer ambiente, inclusive a prévia.
+- A página do hóspede, enquanto espera o Pix ou a análise do cartão, consulta o provedor para aquela
+  cotação; assim o pagamento confirma mesmo se o aviso não chegar (por exemplo, numa prévia sem
+  webhook).
 - Processar o mesmo aviso duas vezes, ou fora de ordem, não muda nada: cada efeito tem chave única,
   e uma situação final não volta para trás.
 
@@ -139,11 +149,15 @@ O retorno do navegador nunca confirma nada.
   referência de 4% do M12.1 continua só para calcular o desconto do site.
 - Enquanto o dinheiro não é liberado, a parte do proprietário fica "a liberar" (regra do M4.10, sem
   regra nova); o extrato diz "o Mercado Pago libera em dd/mm" quando a data prevista é conhecida.
-- Na **liberação**, o sistema lança o `recebimento` da reserva: montante = líquido, data de caixa =
-  data da liberação (fuso de São Paulo), estado `conciliado` (confirmado pelo provedor), origem
+- A data de liberação que o provedor informa é só a **prevista** (o Mercado Pago a documenta como
+  previsão; uma reclamação ou retenção pode adiar). Ela aparece no painel e no extrato, mas não
+  libera nada.
+- Só quando o provedor diz **explicitamente** que o dinheiro foi liberado (situação "liberado" do
+  pagamento), o sistema lança o `recebimento` da reserva: montante = líquido, data de caixa = data da
+  liberação (fuso de São Paulo), estado `conciliado` (confirmado pelo provedor), origem
   `sincronizacao`, chave `mercadopago:<pagamento>:recebimento`. Essa data vira a data do pagamento
-  do M4.12. Sem data informada pelo provedor, a equipe registra a liberação à mão (mesma chave, então
-  nunca conta duas vezes).
+  do M4.12. Sem esse sinal, a equipe confirma a liberação à mão, conferindo no Mercado Pago (mesma
+  chave, então nunca conta duas vezes; fica `realizado`, não `conciliado`).
 - O "Registrar recebimento" manual fica recusado em reserva paga pelo site (aponta para o
   pagamento).
 
