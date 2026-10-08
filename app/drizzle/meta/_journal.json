@@ -407,6 +407,13 @@
       "when": 1791408127824,
       "tag": "0057_m7_3_fotos_imoveis",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1791411263263,
+      "tag": "0058_m6_8_equipe_entrada",
+      "breakpoints": true
     }
   ]
 }

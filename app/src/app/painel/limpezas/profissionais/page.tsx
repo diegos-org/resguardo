@@ -6,11 +6,15 @@ import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import styles from "@/components/formularios.module.css";
 import { getDb } from "@/db/client";
 import { manterFiltros } from "@/lib/filtros";
+import { cidadesDosImoveis } from "@/agenda/agenda";
+import { SenhaProfissional } from "@/components/limpezas/SenhaProfissional";
 import { acessosDasProfissionais } from "@/equipe/equipe";
 import {
   acessoProfissionalAcao,
+  cidadesProfissionalAcao,
   criarProfissionalAcao,
   editarProfissionalAcao,
+  senhaProfissionalAcao,
 } from "@/limpezas/acoes";
 import { listarProfissionais } from "@/limpezas/limpezas";
 
@@ -21,12 +25,14 @@ export default async function Profissionais({
   const sessao = await exigirSessaoPainel();
   if (!podeFazer(sessao.papel, "limpeza:editar")) redirect("/painel/limpezas");
   const params = await searchParams;
-  const [lista, acessos] = await Promise.all([
+  const [lista, acessos, cidades] = await Promise.all([
     listarProfissionais(getDb(), sessao.organizacaoId, {
       incluirArquivados: true,
     }),
     acessosDasProfissionais(getDb(), sessao.organizacaoId),
+    cidadesDosImoveis(getDb(), sessao.organizacaoId),
   ]);
+  const gerenciaSenhas = podeFazer(sessao.papel, "usuario:gerenciar");
   const q = manterFiltros(params);
   const voltar = q.slice(1);
   const erro = typeof params.erro === "string" ? params.erro : undefined;
@@ -196,6 +202,44 @@ export default async function Profissionais({
                     : acessos.get(p.id)
                       ? "Acesso retirado"
                       : "Sem acesso"}
+                </span>
+              </div>
+            </form>
+          )}
+          {p.ativo && gerenciaSenhas && (
+            <SenhaProfissional
+              profissionalId={p.id}
+              nome={p.nome}
+              login={acessos.get(p.id)?.login ?? null}
+              temSenha={acessos.get(p.id)?.temSenha ?? false}
+              senhaProvisoria={acessos.get(p.id)?.senhaProvisoria ?? false}
+              definir={senhaProfissionalAcao}
+            />
+          )}
+          {p.ativo && (
+            <form
+              action={cidadesProfissionalAcao}
+              className={styles.linha}
+              style={{ alignItems: "flex-end" }}
+              aria-label={`Cidades da agenda de ${p.nome}`}
+            >
+              <input type="hidden" name="id" value={p.id} />
+              <input type="hidden" name="voltar" value={voltar} />
+              <fieldset style={{ flex: "1 1 240px", border: 0, padding: 0, margin: 0 }}>
+                <legend>Agenda que ela vê no acesso dela</legend>
+                {cidades.map((c) => (
+                  <label key={c} className={styles.check} style={{ marginRight: 16 }}>
+                    <input type="checkbox" name="cidade" value={c} defaultChecked={p.cidades.includes(c)} />
+                    {c}
+                  </label>
+                ))}
+              </fieldset>
+              <div className={styles.acoes}>
+                <button type="submit" className={styles.pequeno}>
+                  Salvar cidades
+                </button>
+                <span style={{ fontSize: "0.875rem", color: "var(--scl-texto-2)" }}>
+                  {p.cidades.length ? `Vê só: ${p.cidades.join(", ")}` : "Nenhuma cidade: ela não vê agenda, só as limpezas dela"}
                 </span>
               </div>
             </form>
