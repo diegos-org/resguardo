@@ -30,6 +30,9 @@ export const MAX_POR_EMAIL_POR_DIA = 3;
 const UM_DIA_MS = 24 * 60 * 60_000;
 /** Pedidos por hora: de um mesmo endereço de origem e no total da organização (contra envio em massa). */
 export const LIMITE_POR_ORIGEM: Limite = { tentativas: 5, janelaMs: 60 * 60_000 };
+/** Tentativas por hora no total (aceitas ou não), conferidas antes da conta por origem. */
+export const LIMITE_TENTATIVAS_GERAL: Limite = { tentativas: 120, janelaMs: 60 * 60_000 };
+const CHAVE_TENTATIVAS_GERAL = "contato-geral";
 export const MAX_POR_HORA = 30;
 const UMA_HORA_MS = 60 * 60_000;
 /** Quantos pedidos já tratados a tela mostra (os mais recentes). */
@@ -136,11 +139,13 @@ export type ResultadoRegistro = { ok: true; pedido: PedidoContato } | { ok: fals
 export async function registrarPedidoContato(db: Db, organizacaoId: string, dados: DadosPedidoContato, agora: Date, origem: string | null = null): Promise<ResultadoRegistro> {
   const email = normalizarEmail(dados.email);
   if (!emailValido(email)) return { ok: false, erro: "E-mail inválido." };
-  if (origem) {
-    const n = await contarNaJanela(db, `contato-origem:${origem}`, LIMITE_POR_ORIGEM, agora);
-    // Primeira tentativa de uma janela nova: aproveita para limpar as contas paradas há mais de um dia.
-    if (n === 1) await apagarContasVelhas(db, agora);
-    if (n > LIMITE_POR_ORIGEM.tentativas) return { ok: false, erro: ERRO_LIMITE_ORIGEM };
+  // Antes de qualquer conta por origem: o teto geral de tentativas da hora. Muitas origens diferentes não criam linhas
+  // sem fim, e a limpeza das contas paradas roda uma vez por janela geral (não a cada origem nova).
+  const geral = await contarNaJanela(db, CHAVE_TENTATIVAS_GERAL, LIMITE_TENTATIVAS_GERAL, agora);
+  if (geral === 1) await apagarContasVelhas(db, agora);
+  if (geral > LIMITE_TENTATIVAS_GERAL.tentativas) return { ok: false, erro: ERRO_LIMITE_TOTAL };
+  if (origem && (await contarNaJanela(db, `contato-origem:${origem}`, LIMITE_POR_ORIGEM, agora)) > LIMITE_POR_ORIGEM.tentativas) {
+    return { ok: false, erro: ERRO_LIMITE_ORIGEM };
   }
   return db.transaction(async (tx) => {
     // Um de cada vez por organização: as contagens abaixo valem na hora de gravar.

@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { salvarEmpresa } from "@/configuracoes/empresa";
-import { auditoria, organizacoes, pedidosContatoProprietario, usuarios } from "@/db/schema";
+import { auditoria, organizacoes, pedidosContatoProprietario, tentativasLogin, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { type Correio, CorreioMemoria } from "@/email/correio";
@@ -15,6 +15,7 @@ import {
   ERRO_LIMITE_POR_EMAIL,
   ERRO_LIMITE_TOTAL,
   LIMITE_POR_ORIGEM,
+  LIMITE_TENTATIVAS_GERAL,
   listarPedidosContato,
   marcarRespondido,
   MAX_POR_EMAIL_POR_DIA,
@@ -187,6 +188,20 @@ describe("registro e tetos", () => {
     expect((await registrarPedidoContato(db, org, dados({ email: "depois@exemplo.com" }), new Date(agora.getTime() + 61 * 60_000), "203.0.113.7")).ok).toBe(true);
     // O pedido não guarda o endereço.
     expect(JSON.stringify(await db.select().from(pedidosContatoProprietario))).not.toContain("203.0.113.7");
+  });
+
+  it(`no máximo ${LIMITE_TENTATIVAS_GERAL.tentativas} tentativas por hora no total, antes de contar a origem; a limpeza das contas velhas roda uma vez por hora`, async () => {
+    // Conta parada há mais de um dia (de uma origem qualquer): sai na primeira tentativa da janela geral.
+    await db.insert(tentativasLogin).values({ chave: "contato-origem:192.0.2.1", erros: 2, atualizadoEm: new Date(agora.getTime() - 25 * 60 * 60_000) });
+    await db.insert(tentativasLogin).values({ chave: "contato-geral", erros: LIMITE_TENTATIVAS_GERAL.tentativas, atualizadoEm: new Date(agora.getTime() - 10 * 60_000) });
+    // Janela geral ainda aberta e no teto: recusa sem criar conta para a origem nova e sem limpar.
+    expect(await registrarPedidoContato(db, org, dados({ email: "x@exemplo.com" }), agora, "198.51.100.20")).toEqual({ ok: false, erro: ERRO_LIMITE_TOTAL });
+    const chaves = async () => (await db.select({ chave: tentativasLogin.chave }).from(tentativasLogin)).map((t) => t.chave).sort();
+    expect(await chaves()).toEqual(["contato-geral", "contato-origem:192.0.2.1"]);
+    // Uma hora depois, a janela geral recomeça: limpa a conta velha e aceita.
+    const depoisDaHora = new Date(agora.getTime() + 60 * 60_000);
+    expect((await registrarPedidoContato(db, org, dados({ email: "x@exemplo.com" }), depoisDaHora, "198.51.100.20")).ok).toBe(true);
+    expect(await chaves()).toEqual(["contato-geral", "contato-origem:198.51.100.20"]);
   });
 
   it("envios simultâneos do mesmo e-mail não passam do teto", async () => {
