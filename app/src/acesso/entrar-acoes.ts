@@ -1,6 +1,7 @@
 "use server";
 
 import { AuthError } from "next-auth";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { getDb } from "@/db/client";
@@ -8,6 +9,7 @@ import { correioDoAmbiente } from "@/email/correio";
 import { loginCodigoConfigurado, signIn } from "./auth";
 import { pedirCodigo } from "./codigo-email";
 import { lerAdminEmails } from "./entrada";
+import { esperaDoLogin, origemDoPedido } from "./senha";
 
 const paraCodigo = (email: string, erro?: string) => `/entrar?etapa=codigo&email=${encodeURIComponent(email)}${erro ? `&erro=${erro}` : ""}`;
 
@@ -37,6 +39,28 @@ export async function entrarComCodigo(form: FormData): Promise<void> {
   } catch (e) {
     // Sucesso também "lança" (é o redirecionamento do Next): só o erro de login é tratado aqui.
     if (e instanceof AuthError) redirect(paraCodigo(email, "codigo"));
+    throw e;
+  }
+}
+
+const paraSenha = (login: string, erro: string) => `/entrar?etapa=senha&login=${encodeURIComponent(login)}&erro=${erro}`;
+
+/**
+ * Usuário (ou e-mail) e senha (M6.8). A espera depois de muitos erros é conferida antes, para a tela dizer "espere"
+ * sem gastar tentativa; o erro diz só "não confere" (não revela se o usuário existe).
+ */
+export async function entrarComSenhaAcao(form: FormData): Promise<void> {
+  const login = String(form.get("login") ?? "").trim().slice(0, 200);
+  const senha = String(form.get("senha") ?? "").slice(0, 200);
+  if (!login || !senha) redirect(paraSenha(login, "senha-vazia"));
+  const origem = origemDoPedido(await headers());
+  const antes = await esperaDoLogin(getDb(), login, origem);
+  if (antes) redirect(paraSenha(login, antes));
+  try {
+    await signIn("senha", { login, senha, redirectTo: "/painel" });
+  } catch (e) {
+    // Sucesso também "lança" (é o redirecionamento do Next): só o erro de login é tratado aqui.
+    if (e instanceof AuthError) redirect(paraSenha(login, (await esperaDoLogin(getDb(), login, origem)) ?? "senha"));
     throw e;
   }
 }

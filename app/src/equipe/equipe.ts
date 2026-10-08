@@ -1,7 +1,8 @@
 /**
  * Equipe de limpeza pelo celular (M6.6). Cada profissional pode ter um acesso próprio (usuário com
- * papel "limpeza", entrando pelo código por e-mail) que vê só as limpezas atribuídas a ela e marca
- * como feita. Custo, proprietário e financeiro nunca aparecem aqui.
+ * papel "limpeza", entrando pelo código por e-mail, pelo Google ou, desde o M6.8, com usuário e senha — ver
+ * `acesso.ts`) que vê só as limpezas atribuídas a ela e marca como feita. Custo, proprietário e financeiro nunca
+ * aparecem aqui.
  *
  * Aviso de limpeza nova: por e-mail enquanto o WhatsApp (M10) não está ligado.
  */
@@ -96,16 +97,25 @@ export async function marcarFeitaPelaProfissional(db: Db, organizacaoId: string,
   return realizarPelaProfissional(db, organizacaoId, limpezaId, profissionalId, hoje, autorId);
 }
 
-export type SituacaoAcesso = { usuarioId: string; email: string; ativo: boolean } | null;
+/** `email` vazio = entra só com usuário e senha (M6.8). */
+export type SituacaoAcesso = { usuarioId: string; email: string; ativo: boolean; login: string | null; temSenha: boolean; senhaProvisoria: boolean } | null;
 
 /** Acesso pelo celular de cada profissional (para a tela de profissionais). */
 export async function acessosDasProfissionais(db: Db, organizacaoId: string): Promise<Map<string, SituacaoAcesso>> {
   const linhas = await db
-    .select({ profissionalId: profissionaisLimpeza.id, usuarioId: usuarios.id, email: usuarios.email, ativo: usuarios.ativo })
+    .select({
+      profissionalId: profissionaisLimpeza.id,
+      usuarioId: usuarios.id,
+      email: usuarios.email,
+      ativo: usuarios.ativo,
+      login: usuarios.login,
+      temSenha: sql<boolean>`${usuarios.senhaHash} is not null`,
+      senhaProvisoria: usuarios.senhaProvisoria,
+    })
     .from(profissionaisLimpeza)
     .innerJoin(usuarios, eq(usuarios.id, profissionaisLimpeza.usuarioId))
     .where(eq(profissionaisLimpeza.organizacaoId, organizacaoId));
-  return new Map(linhas.map((l) => [l.profissionalId, { usuarioId: l.usuarioId, email: l.email, ativo: l.ativo }]));
+  return new Map(linhas.map(({ profissionalId, ...a }) => [profissionalId, a]));
 }
 
 /**
@@ -209,8 +219,9 @@ export async function avisarAtribuicao(
     .innerJoin(profissionaisLimpeza, eq(profissionaisLimpeza.id, limpezas.profissionalId))
     .innerJoin(usuarios, eq(usuarios.id, profissionaisLimpeza.usuarioId))
     .where(and(eq(limpezas.id, limpezaId), eq(limpezas.organizacaoId, organizacaoId)));
-  // Sem acesso pelo celular: nada a avisar por aqui (a equipe combina como antes).
-  if (!l || !l.ativo || l.estado !== "confirmada") return { enviado: false, aviso: null };
+  // Sem acesso pelo celular, ou acesso só com usuário e senha (sem e-mail, M6.8): nada a avisar por e-mail (a equipe
+  // vê na tela dela e o aviso vai pelo WhatsApp quando ele ligar).
+  if (!l || !l.ativo || l.estado !== "confirmada" || !l.email) return { enviado: false, aviso: null };
   if (!correio) return { enviado: false, aviso: "Sem provedor de e-mail: a profissional não foi avisada por e-mail." };
   try {
     await correio.enviar({
