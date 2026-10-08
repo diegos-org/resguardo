@@ -1317,7 +1317,12 @@ export const pedidosContatoProprietario = pgTable(
     decididoEm: timestamp("decidido_em", { withTimezone: true }),
     decididoPor: uuid("decidido_por").references(() => usuarios.id, { onDelete: "set null" }),
   },
-  (t) => [index("pedidos_contato_proprietario_org").on(t.organizacaoId, t.situacao, t.criadoEm)],
+  (t) => [
+    index("pedidos_contato_proprietario_org").on(t.organizacaoId, t.situacao, t.criadoEm),
+    // Tetos do formulário público: por e-mail em 24 h e no total por hora.
+    index("pedidos_contato_proprietario_email").on(t.organizacaoId, t.email, t.criadoEm),
+    index("pedidos_contato_proprietario_criado").on(t.organizacaoId, t.criadoEm),
+  ],
 );
 
 

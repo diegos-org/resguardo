@@ -1,5 +1,5 @@
 {
-  "id": "496ebfa3-c0fd-4372-ac8b-dbfc99e67639",
+  "id": "2390e4d4-16ce-47f5-b13f-242d91966359",
   "prevId": "ff8a608f-9436-487d-b72e-81087d03d543",
   "version": "7",
   "dialect": "postgresql",
@@ -5317,6 +5317,54 @@
             },
             {
               "expression": "situacao",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "criado_em",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "pedidos_contato_proprietario_email": {
+          "name": "pedidos_contato_proprietario_email",
+          "columns": [
+            {
+              "expression": "organizacao_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "email",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "criado_em",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "pedidos_contato_proprietario_criado": {
+          "name": "pedidos_contato_proprietario_criado",
+          "columns": [
+            {
+              "expression": "organizacao_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
