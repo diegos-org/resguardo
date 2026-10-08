@@ -17,7 +17,7 @@ import {
   LIMITE_POR_ORIGEM,
   listarPedidosContato,
   marcarRespondido,
-  MAX_NOVOS_POR_EMAIL,
+  MAX_POR_EMAIL_POR_DIA,
   MAX_POR_HORA,
   preencheuIsca,
   registrarPedidoContato,
@@ -151,15 +151,17 @@ describe("registro e tetos", () => {
     expect((await listarPedidosContato(db, outra)).novos).toEqual([]);
   });
 
-  it(`no máximo ${MAX_NOVOS_POR_EMAIL} novos por e-mail; respondido libera a vaga`, async () => {
+  it(`no máximo ${MAX_POR_EMAIL_POR_DIA} pedidos por e-mail em 24 horas; passado o dia, volta (ninguém fica bloqueado por spam com o seu e-mail)`, async () => {
     const ids: string[] = [];
-    for (let i = 0; i < MAX_NOVOS_POR_EMAIL; i++) ids.push((await registrar()).id);
+    for (let i = 0; i < MAX_POR_EMAIL_POR_DIA; i++) ids.push((await registrar()).id);
     expect(await registrarPedidoContato(db, org, dados({ email: "MARIA@exemplo.com" }), agora)).toEqual({ ok: false, erro: ERRO_LIMITE_POR_EMAIL });
     // Outro e-mail e outra organização seguem livres.
     expect((await registrarPedidoContato(db, org, dados({ email: "joao@exemplo.com" }), agora)).ok).toBe(true);
     expect((await registrarPedidoContato(db, outra, dados(), agora)).ok).toBe(true);
+    // Tratar os pedidos não muda a conta do dia; o tempo, sim: 24 horas depois do mais recente, o e-mail volta.
     expect(await marcarRespondido(db, org, ids[0], "", ana, depois)).toEqual({ ok: true });
-    expect((await registrarPedidoContato(db, org, dados(), agora)).ok).toBe(true);
+    expect(await registrarPedidoContato(db, org, dados(), new Date(agora.getTime() + 23 * 60 * 60_000))).toEqual({ ok: false, erro: ERRO_LIMITE_POR_EMAIL });
+    expect((await registrarPedidoContato(db, org, dados(), new Date(agora.getTime() + 24 * 60 * 60_000 + 60_000))).ok).toBe(true);
   });
 
   it(`no máximo ${MAX_POR_HORA} pedidos por hora na organização; passada a hora, volta a receber sem ninguém arquivar nada`, async () => {
@@ -187,9 +189,9 @@ describe("registro e tetos", () => {
   });
 
   it("envios simultâneos do mesmo e-mail não passam do teto", async () => {
-    const rs = await Promise.all(Array.from({ length: MAX_NOVOS_POR_EMAIL + 3 }, () => registrarPedidoContato(db, org, dados(), agora)));
-    expect(rs.filter((r) => r.ok)).toHaveLength(MAX_NOVOS_POR_EMAIL);
-    expect(await contarPedidosNovos(db, org)).toBe(MAX_NOVOS_POR_EMAIL);
+    const rs = await Promise.all(Array.from({ length: MAX_POR_EMAIL_POR_DIA + 3 }, () => registrarPedidoContato(db, org, dados(), agora)));
+    expect(rs.filter((r) => r.ok)).toHaveLength(MAX_POR_EMAIL_POR_DIA);
+    expect(await contarPedidosNovos(db, org)).toBe(MAX_POR_EMAIL_POR_DIA);
   });
 });
 

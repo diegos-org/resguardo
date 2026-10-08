@@ -58,8 +58,8 @@ agora é essa página, no mesmo visual do site:
   mensagem. O pedido chega em **Proprietários → Pedidos de contato**, aparece nas pendências do
   **Início** do painel e vai por e-mail para o e-mail da empresa (Configurações → Empresa). Ali você
   responde pelo e-mail ou WhatsApp e marca como respondido, ou arquiva. Contra envio em massa, há
-  limites por e-mail, por endereço de internet e por hora, que se desfazem sozinhos depois de uma hora:
-  ninguém precisa arquivar nada para o formulário voltar a funcionar.
+  limites que se desfazem sozinhos: 3 pedidos por e-mail em 24 horas, 5 por hora do mesmo endereço
+  de internet e 30 por hora no total. Ninguém precisa arquivar nada para o formulário voltar a funcionar.
 - **Cadastro do marketplace:** igual ao de antes (e-mail, código e dados do imóvel). No meio do
   cadastro, a página mostra só ele.
 
