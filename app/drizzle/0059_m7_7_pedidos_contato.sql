@@ -18,6 +18,4 @@ CREATE TABLE "pedidos_contato_proprietario" (
 --> statement-breakpoint
 ALTER TABLE "pedidos_contato_proprietario" ADD CONSTRAINT "pedidos_contato_proprietario_organizacao_id_organizacoes_id_fk" FOREIGN KEY ("organizacao_id") REFERENCES "public"."organizacoes"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "pedidos_contato_proprietario" ADD CONSTRAINT "pedidos_contato_proprietario_decidido_por_usuarios_id_fk" FOREIGN KEY ("decidido_por") REFERENCES "public"."usuarios"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "pedidos_contato_proprietario_org" ON "pedidos_contato_proprietario" USING btree ("organizacao_id","situacao","criado_em");--> statement-breakpoint
-CREATE INDEX "pedidos_contato_proprietario_email" ON "pedidos_contato_proprietario" USING btree ("organizacao_id","email","criado_em");--> statement-breakpoint
-CREATE INDEX "pedidos_contato_proprietario_criado" ON "pedidos_contato_proprietario" USING btree ("organizacao_id","criado_em");
+CREATE INDEX "pedidos_contato_proprietario_org" ON "pedidos_contato_proprietario" USING btree ("organizacao_id","situacao","criado_em");

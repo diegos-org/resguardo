@@ -1,0 +1,2 @@
+CREATE INDEX "pedidos_contato_proprietario_email" ON "pedidos_contato_proprietario" USING btree ("organizacao_id","email","criado_em");--> statement-breakpoint
+CREATE INDEX "pedidos_contato_proprietario_criado" ON "pedidos_contato_proprietario" USING btree ("organizacao_id","criado_em");
