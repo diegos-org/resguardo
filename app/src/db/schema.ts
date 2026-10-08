@@ -1285,6 +1285,46 @@ export const cadastrosMarketplace = pgTable(
   (t) => [index("cadastros_marketplace_org").on(t.organizacaoId, t.situacao, t.criadoEm), index("cadastros_marketplace_email").on(t.email)],
 );
 
+// ---------------------------------------------------------------------------
+// Pedido de contato para a gestão completa (M7.7): o proprietário deixa os dados na página
+// "Anuncie seu imóvel" do site e a equipe responde por e-mail ou WhatsApp. Não cria conta,
+// proprietário nem imóvel; fica "novo" até a equipe marcar como respondido ou arquivar.
+// ---------------------------------------------------------------------------
+
+export const SITUACOES_PEDIDO_CONTATO = ["novo", "respondido", "arquivado"] as const;
+export type SituacaoPedidoContato = (typeof SITUACOES_PEDIDO_CONTATO)[number];
+
+export const pedidosContatoProprietario = pgTable(
+  "pedidos_contato_proprietario",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    nome: text("nome").notNull(),
+    /** Normalizado (minúsculas, sem espaços nas pontas). Não é confirmado por código. */
+    email: text("email").notNull(),
+    telefone: text("telefone").notNull(),
+    bairro: text("bairro").notNull(),
+    cidade: text("cidade").notNull(),
+    /** 0 = studio; null = não informou. */
+    quartos: integer("quartos"),
+    /** Já anuncia em alguma plataforma? null = não informou. */
+    anunciaHoje: boolean("anuncia_hoje"),
+    mensagem: text("mensagem").notNull().default(""),
+    situacao: text("situacao").$type<SituacaoPedidoContato>().notNull().default("novo"),
+    /** Nota interna da equipe (nunca aparece para a pessoa). */
+    nota: text("nota").notNull().default(""),
+    criadoEm: criadoEm(),
+    decididoEm: timestamp("decidido_em", { withTimezone: true }),
+    decididoPor: uuid("decidido_por").references(() => usuarios.id, { onDelete: "set null" }),
+  },
+  (t) => [
+    index("pedidos_contato_proprietario_org").on(t.organizacaoId, t.situacao, t.criadoEm),
+    // Tetos do formulário público: por e-mail em 24 h e no total por hora.
+    index("pedidos_contato_proprietario_email").on(t.organizacaoId, t.email, t.criadoEm),
+    index("pedidos_contato_proprietario_criado").on(t.organizacaoId, t.criadoEm),
+  ],
+);
+
 
 /** Registros efetivamente alterados por execução; gravados na mesma transação da importação. */
 export const beds24ExecucaoReservas = pgTable("beds24_execucao_reservas", {

@@ -11,8 +11,10 @@ const registradas = async () => (await db.query<{ hash: string; created_at: stri
 const tabelas = async () => (await db.query<{ t: string }>("select tablename as t from pg_tables where schemaname = 'public' order by 1")).rows.map((r) => r.t);
 const migracao = (sql: string, folderMillis: number): Migracao => ({ sql: [sql], folderMillis, hash: createHash("sha256").update(sql).digest("hex") });
 
-beforeEach(() => {
+beforeEach(async () => {
   db = new PGlite();
+  // A partida do banco fica na preparação (prazo maior), não no corpo do teste: com a máquina ocupada, ela passa de 5 s.
+  await db.waitReady;
 });
 afterEach(() => db.close());
 

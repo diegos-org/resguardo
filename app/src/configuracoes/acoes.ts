@@ -12,6 +12,7 @@ import { atualizarModelo, criarModelo, type ErrosModelo, excluirModelo } from ".
 import { lerFormRegras } from "./regras-financeiras";
 import { salvarRegrasFinanceiras } from "./salvar-regras";
 import { publicarComoFunciona, validarSecoes } from "./como-funciona";
+import { type ErrosMercado, salvarMercado, salvarTextosProprietarios, type TextosProprietarios, validarMercado, validarTextosProprietarios } from "./pagina-proprietarios";
 import { salvarTextosSite, type TextosSite, validarTextosSite } from "./textos-site";
 import { alterarUsuario, criarUsuarioEquipe } from "./usuarios";
 
@@ -54,6 +55,29 @@ export async function salvarTextosAcao(_a: EstadoForm<Partial<TextosSite>>, form
   const mudou = await salvarTextosSite(getDb(), sessao.organizacaoId, v.textos, sessao.usuarioId);
   revalidatePath("/painel/configuracoes/site");
   return { ok: true, aviso: mudou ? "Salvo." : "Nada mudou." };
+}
+
+/** Página para proprietários do site (M7.7): textos. */
+export async function salvarTextosProprietariosAcao(_a: EstadoForm<Partial<TextosProprietarios>>, form: FormData): Promise<EstadoForm<Partial<TextosProprietarios>>> {
+  const sessao = await sessaoConfig();
+  const v = validarTextosProprietarios(campos(form));
+  if (!v.ok) return { erros: v.erros, mensagem: "Confira os campos destacados.", valores: campos(form) };
+  const mudou = await salvarTextosProprietarios(getDb(), sessao.organizacaoId, v.textos, sessao.usuarioId);
+  revalidatePath("/painel/configuracoes/pagina-proprietarios");
+  revalidatePath("/anunciar");
+  return { ok: true, aviso: mudou ? "Salvo." : "Nada mudou." };
+}
+
+/** Página para proprietários (M7.7): faixa de mercado. Sem linhas, a seção some da página. */
+export async function salvarMercadoAcao(_a: EstadoForm<ErrosMercado>, form: FormData): Promise<EstadoForm<ErrosMercado>> {
+  const sessao = await sessaoConfig();
+  const v = validarMercado(campos(form));
+  if (!v.ok) return { erros: v.erros, mensagem: "Confira os campos destacados.", valores: campos(form) };
+  const mudou = await salvarMercado(getDb(), sessao.organizacaoId, v.mercado, sessao.usuarioId);
+  revalidatePath("/painel/configuracoes/pagina-proprietarios");
+  revalidatePath("/anunciar");
+  if (!mudou) return { ok: true, aviso: "Nada mudou." };
+  return { ok: true, aviso: v.mercado.linhas.length ? "Salvo. A faixa de mercado aparece na página para proprietários." : "Salvo. Sem números, a faixa de mercado não aparece na página." };
 }
 
 /** "Como funciona" para o proprietário (M5.6): publica uma versão nova quando o texto mudou. */
