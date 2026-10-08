@@ -1,7 +1,7 @@
 import { Disponibilidade } from "@/components/site/Disponibilidade";
 import { SegurarDatas } from "@/components/site/SegurarDatas";
 import { canalDeContato, FormConsulta } from "@/components/site/FormConsulta";
-import { Moldura, SiteEmConfiguracao } from "@/components/site/Moldura";
+import { Moldura, SiteEmConfiguracao, TextoComDestaque } from "@/components/site/Moldura";
 import styles from "@/components/site/site.module.css";
 import { hojeISO } from "@/lib/datas";
 import { criarCotacaoAcao } from "@/site/acoes";
@@ -31,25 +31,54 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
   const r = enviado ? montarConsulta(pedido, imovel, hoje, disponibilidade && { situacao: disponibilidade.situacao, noites: disponibilidade.noites, total: disponibilidade.cotacao?.total ?? null, desconto: disponibilidade.cotacao?.desconto ?? 0 }) : null;
   // Se a disponibilidade recusar o pedido, a mensagem não é oferecida: vale a conferência mais estrita.
   const prontoParaEnviar = r?.ok === true && disponibilidade?.situacao !== "invalida";
+  const { textos } = conteudo;
   return (
     <Moldura conteudo={conteudo}>
-      <header className={styles.cabecalhoPagina}>
-        <p className={styles.olho}>Consulta</p>
-        <h1>Planeje sua estadia</h1>
-        <p>Escolha o lugar, as datas e quantas pessoas. A disponibilidade e o valor aparecem antes de qualquer reserva.</p>
+      <header className={`${styles.cabecalhoPagina} ${styles.cabecalhoConsulta}`}>
+        {textos.consultaOlho && <p className={styles.olho}>{textos.consultaOlho}</p>}
+        <h1>
+          <TextoComDestaque texto={textos.consultaTitulo || "Planeje sua estadia"} />
+        </h1>
+        {textos.consultaTexto && <p>{textos.consultaTexto}</p>}
       </header>
-      <div className={styles.colunas}>
-        <div>
-          {sp.aviso === "mudou" && (
-            <p className={styles.aviso} role="alert">
-              A disponibilidade ou o valor mudaram desde a sua consulta anterior. Confira a situação atual abaixo.
-            </p>
+      {sp.aviso === "mudou" && (
+        <p className={styles.aviso} role="alert">
+          A disponibilidade ou o valor mudaram desde a sua consulta anterior. Confira a situação atual abaixo.
+        </p>
+      )}
+      <div className={styles.consultaColunas}>
+        <div className={styles.consultaForm}>
+          <FormConsulta imoveis={todos} valores={pedido} erros={r && !r.ok ? r.erros : {}} hoje={hojeMinimo} canal={canalDeContato(conteudo)} />
+        </div>
+        <aside className={styles.resumoViagem} aria-labelledby="titulo-resumo">
+          <p className={styles.olho}>Sua estadia, sem surpresas</p>
+          <h2 id="titulo-resumo">Resumo da viagem</h2>
+          {disponibilidade ? (
+            <Disponibilidade resultado={disponibilidade} entrada={pedido.entrada} saida={pedido.saida} fuso={imovel?.fuso ?? "America/Sao_Paulo"} nivel={3} />
+          ) : (
+            <>
+              <p className={styles.texto}>{textos.comoReservar || "Escolha o apartamento, as datas e quantas pessoas."}</p>
+              <dl className={styles.resumo}>
+                <dt>Estadia</dt>
+                <dd>a confirmar</dd>
+                <dt>Limpeza e demais taxas</dt>
+                <dd>a confirmar</dd>
+                <dt>
+                  <strong>Total</strong>
+                </dt>
+                <dd>
+                  <strong>a confirmar</strong>
+                </dd>
+              </dl>
+              <p className={styles.miudo} style={{ marginTop: 12 }}>
+                Nada é cobrado nem reservado por aqui.
+              </p>
+            </>
           )}
-          {disponibilidade && <Disponibilidade resultado={disponibilidade} entrada={pedido.entrada} saida={pedido.saida} fuso={imovel?.fuso ?? "America/Sao_Paulo"} />}
-          {disponibilidade && podeSegurar(disponibilidade) && <SegurarDatas pedido={pedido} aConfirmar={disponibilidade.situacao === "a_confirmar"} acao={criarCotacaoAcao} />}
-          {prontoParaEnviar && r?.ok ? (
+          {disponibilidade && podeSegurar(disponibilidade) && <SegurarDatas pedido={pedido} aConfirmar={disponibilidade.situacao === "a_confirmar"} acao={criarCotacaoAcao} nivel={3} />}
+          {prontoParaEnviar && r?.ok && (
             <section className={styles.bloco} aria-labelledby="titulo-mensagem">
-              <h2 id="titulo-mensagem">Sua mensagem</h2>
+              <h3 id="titulo-mensagem">Sua mensagem</h3>
               <p className={`${styles.texto} ${styles.caixa}`}>{r.texto}</p>
               {conteudo.whatsapp ? (
                 <p style={{ marginTop: 16 }}>
@@ -74,11 +103,8 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
                 A reserva é confirmada na conversa. Nenhuma reserva ou pagamento é feito aqui.
               </p>
             </section>
-          ) : (
-            !disponibilidade && <p className={styles.texto}>{conteudo.textos.comoReservar || "Escolha o apartamento, as datas e quantas pessoas."}</p>
           )}
-        </div>
-        <FormConsulta imoveis={todos} valores={pedido} erros={r && !r.ok ? r.erros : {}} hoje={hojeMinimo} canal={canalDeContato(conteudo)} />
+        </aside>
       </div>
     </Moldura>
   );

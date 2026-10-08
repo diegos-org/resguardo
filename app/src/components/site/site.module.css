@@ -37,6 +37,15 @@
   color: var(--scl-dourado);
 }
 
+/* Ícone do logotipo (M7.6): a marca enviada no painel ou a do estudo. */
+.marcaIcone {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 7px;
+  object-fit: contain;
+}
+
 .menu {
   display: flex;
   align-items: center;
@@ -110,6 +119,69 @@
   margin: 0 auto;
   display: grid;
   gap: 14px;
+}
+
+.capaTextos {
+  display: grid;
+  gap: 14px;
+}
+
+/* Capa com a foto escolhida no painel (M7.6): foto de ponta a ponta, véu para o texto e textos à direita, como no estudo. */
+.capaComFoto {
+  min-height: clamp(460px, 62vh, 640px);
+  display: flex;
+  align-items: stretch;
+  padding-top: 32px;
+  padding-bottom: 110px;
+}
+
+.capaComFoto::before {
+  z-index: -1;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--scl-profundo) 10%, transparent) 0%, color-mix(in srgb, var(--scl-profundo) 55%, transparent) 70%),
+    linear-gradient(180deg, color-mix(in srgb, var(--scl-profundo) 35%, transparent) 0%, transparent 35%, color-mix(in srgb, var(--scl-profundo) 30%, transparent) 100%);
+}
+
+.capaFoto {
+  z-index: -2;
+  object-fit: cover;
+}
+
+.capaComFoto .capaDentro {
+  width: 100%;
+  grid-template-columns: 1fr minmax(0, 470px);
+  grid-template-rows: 1fr auto;
+  column-gap: 40px;
+}
+
+.capaComFoto .capaTextos {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+}
+
+.capaComFoto .capaLink {
+  grid-column: 1;
+  grid-row: 2;
+  margin-left: 8vw;
+}
+
+.capaComFoto h1 {
+  font-size: clamp(2.1rem, 3.8vw, 3.1rem);
+}
+
+/* Legenda vertical no canto da capa (texto editável; decorativa, fora da leitura de tela). */
+.capaLegenda {
+  position: absolute;
+  right: max(5vw, 24px);
+  bottom: 96px;
+  margin: 0;
+  writing-mode: vertical-rl;
+  letter-spacing: 0.2em;
+  font-size: 0.5625rem;
+  text-transform: uppercase;
+  color: var(--scl-creme);
+  opacity: 0.85;
 }
 
 .olho {
@@ -434,7 +506,8 @@
   color: var(--scl-creme);
 }
 
-.casas .olho {
+.casas .olho,
+.casas h2 em {
   color: var(--scl-dourado-claro);
 }
 
@@ -466,7 +539,80 @@
 
 @media (max-width: 600px) {
   .carrossel > * {
-    flex-basis: 88%;
+    flex-basis: 100%;
+  }
+}
+
+/* Vitrine em carrossel (M7.6): setas sobre os cartões e, embaixo, o link e o botão de pausa. */
+.vitrineFaixa {
+  position: relative;
+}
+
+.carrossel {
+  scroll-behavior: smooth;
+}
+
+.setaVitrine {
+  position: absolute;
+  top: 18%;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--scl-borda);
+  border-radius: 50%;
+  background: var(--scl-papel);
+  color: var(--scl-tinta);
+  font-size: 1.125rem;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+
+.setaVitrine:hover {
+  background: var(--scl-creme);
+}
+
+.setaAnterior {
+  left: -18px;
+}
+
+.setaProxima {
+  right: -18px;
+}
+
+.vitrineRodape {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.pausaVitrine {
+  margin-left: auto;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid rgba(243, 238, 227, 0.45);
+  border-radius: var(--scl-raio-campo);
+  background: transparent;
+  color: var(--scl-creme);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.pausaVitrine:hover {
+  background: rgba(243, 238, 227, 0.08);
+}
+
+@media (max-width: 600px) {
+  .setaAnterior {
+    left: -10px;
+  }
+
+  .setaProxima {
+    right: -10px;
   }
 }
 
@@ -506,11 +652,52 @@
 }
 
 .cartaoCorpo h3 {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
   margin: 0;
   font-family: var(--font-serif);
   font-size: 1.1875rem;
   line-height: 1.2;
   color: inherit;
+}
+
+.cartaoCorpo h3 span {
+  font-family: var(--font-sans);
+  font-size: 1rem;
+}
+
+/* Selo sobre a foto do cartão (tipo e bairro) */
+.selo {
+  position: absolute;
+  left: 12px;
+  bottom: 10px;
+  padding: 3px 8px;
+  border-radius: 3px;
+  background: var(--scl-papel);
+  color: var(--scl-tinta);
+  font-size: 0.625rem;
+  line-height: 1.4;
+}
+
+.cartaoMeio {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: start;
+  gap: 12px;
+}
+
+.icones {
+  display: grid;
+  grid-template-columns: repeat(2, 22px);
+  gap: 8px 14px;
+  padding-top: 2px;
+  color: var(--scl-creme);
+}
+
+.icones svg {
+  width: 20px;
+  height: 20px;
 }
 
 .cartaoCorpo p {
@@ -771,6 +958,111 @@
   max-width: 600px;
 }
 
+/* Consulta (M7.6): título grande como no estudo, formulário à esquerda e "Resumo da viagem" à direita */
+.cabecalhoConsulta {
+  max-width: 1000px;
+  margin: 28px auto 30px;
+}
+
+.cabecalhoConsulta h1 {
+  font-size: clamp(2.4rem, 5.4vw, 4.1rem);
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+}
+
+.cabecalhoConsulta h1,
+.cabecalhoConsulta h1 em {
+  color: var(--scl-tinta);
+}
+
+.cabecalhoConsulta h1 em {
+  display: block;
+  font-style: italic;
+}
+
+.cabecalhoConsulta p {
+  margin-top: 18px;
+  color: var(--scl-tinta);
+}
+
+.consultaColunas {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 28px;
+  max-width: 1000px;
+  margin: 0 auto;
+  align-items: start;
+}
+
+@media (min-width: 861px) {
+  .consultaColunas {
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+    gap: 44px;
+  }
+}
+
+.consultaForm > form {
+  box-shadow: var(--scl-sombra);
+}
+
+.resumoViagem {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 28px;
+  background: var(--scl-papel);
+  border: 1px solid var(--scl-borda);
+  border-radius: 7px;
+}
+
+.resumoViagem > .olho {
+  font-size: 0.75rem;
+  letter-spacing: 0.22em;
+  color: var(--scl-tinta);
+}
+
+.resumoViagem h2 {
+  margin: 4px 0 6px;
+  font-size: 1.75rem;
+}
+
+.resumoViagem h3 {
+  margin: 6px 0 4px;
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 1.375rem;
+}
+
+.resumoViagem .bloco {
+  margin: 0;
+}
+
+.resumoViagem .resumo {
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+.resumoViagem .resumo > :nth-last-child(-n + 2) {
+  border-bottom: 1px solid var(--scl-borda);
+}
+
+/* Linhas contínuas de ponta a ponta (sem o vão entre rótulo e valor). */
+.resumoViagem .resumo {
+  column-gap: 0;
+}
+
+.resumoViagem .resumo dd {
+  padding-left: 16px;
+}
+
+@media (max-width: 600px) {
+  .resumoViagem {
+    padding: 22px;
+  }
+}
+
 /* Duas colunas: texto à esquerda, cartão lateral à direita */
 .colunas {
   display: grid;
@@ -831,6 +1123,19 @@
   font-size: 0.875rem;
 }
 
+.comodidades li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.comodidades svg {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  color: var(--scl-floresta);
+}
+
 .fichas {
   display: flex;
   flex-wrap: wrap;
@@ -856,6 +1161,23 @@
 
 .porque .olho {
   color: var(--scl-texto-2);
+}
+
+.porqueTitulo {
+  max-width: 14ch;
+  margin-top: 14px;
+  font-size: clamp(2.2rem, 5vw, 3.6rem) !important;
+  line-height: 1.12;
+}
+
+.porqueTitulo,
+.porqueTitulo em {
+  font-style: inherit;
+  color: var(--scl-tinta);
+}
+
+.porqueTitulo em {
+  font-style: italic;
 }
 
 .beneficios {
@@ -940,6 +1262,9 @@
 }
 
 .rodapeMarca {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   font-family: var(--font-serif);
   font-weight: 400;
   font-size: 1.625rem;
@@ -1137,6 +1462,32 @@
 
   .capa {
     padding: 32px 24px 84px;
+  }
+
+  .capaComFoto {
+    min-height: 440px;
+  }
+
+  .capaComFoto .capaDentro {
+    grid-template-columns: 1fr;
+  }
+
+  .capaComFoto .capaTextos,
+  .capaComFoto .capaLink {
+    grid-column: 1;
+  }
+
+  .capaComFoto .capaLink {
+    margin-left: 0;
+  }
+
+  .capaLegenda {
+    display: none;
+  }
+
+  .marcaIcone {
+    width: 32px;
+    height: 32px;
   }
 
   .busca {

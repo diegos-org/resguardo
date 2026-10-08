@@ -16,6 +16,7 @@ import { TIPOS_CAMA, type TipoCama } from "@/imoveis/cadastro-opcoes";
 import { type FotoPublica, fotosParaOSite } from "@/imoveis/fotos";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
+import { enderecoImagemSite, lerImagensSite } from "./imagens-site";
 
 export type ImovelPublico = {
   codigo: string;
@@ -49,7 +50,12 @@ export type ConteudoSite = {
   /** Número do WhatsApp da empresa (só dígitos, com DDI) ou null se não há telefone no cadastro. */
   whatsapp: string | null;
   email: string;
+  /** Endereços das imagens do site (M7.6): foto da capa (null = o fundo verde) e marca (sem a enviada, a do estudo). */
+  imagens: { capa: string | null; marca: string };
 };
+
+/** Marca do estudo (o ícone do logotipo), usada enquanto nenhuma outra é enviada em Configurações → Site. */
+export const MARCA_PADRAO = "/marca.png";
 
 /**
  * De qual organização é o site: a da variável SITE_ORGANIZACAO_ID, se existir; senão, a única
@@ -77,8 +83,15 @@ export function numeroWhatsapp(telefone: string): string | null {
 export async function conteudoDoSite(db: Db): Promise<ConteudoSite | null> {
   const organizacaoId = await organizacaoDoSite(db);
   if (!organizacaoId) return null;
-  const [textos, empresa] = await Promise.all([lerTextosSite(db, organizacaoId), lerEmpresa(db, organizacaoId)]);
-  return { organizacaoId, nomeEmpresa: empresa.nome, textos, whatsapp: numeroWhatsapp(empresa.telefone), email: empresa.email };
+  const [textos, empresa, imagens] = await Promise.all([lerTextosSite(db, organizacaoId), lerEmpresa(db, organizacaoId), lerImagensSite(db, organizacaoId)]);
+  return {
+    organizacaoId,
+    nomeEmpresa: empresa.nome,
+    textos,
+    whatsapp: numeroWhatsapp(empresa.telefone),
+    email: empresa.email,
+    imagens: { capa: imagens.capa && enderecoImagemSite(imagens.capa), marca: imagens.marca ? enderecoImagemSite(imagens.marca) : MARCA_PADRAO },
+  };
 }
 
 const SEM_PALAVRA_CAMA = new Set(["sofa_cama", "beliche", "colchao"]);

@@ -6,12 +6,27 @@ const TITULO: Record<Resultado["situacao"], string> = { disponivel: "Disponível
 const quando = (d: Date, fuso: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, dateStyle: "short", timeStyle: "short" }).format(d);
 
 /** Resultado da consulta no site: situação em linguagem simples, valor por partes e o aviso de que a reserva se confirma na conversa. */
-export function Disponibilidade({ resultado, entrada, saida, fuso }: { resultado: Resultado; entrada: string; saida: string; /** Fuso do imóvel: a hora da leitura é mostrada nele. */ fuso: string }) {
+export function Disponibilidade({
+  resultado,
+  entrada,
+  saida,
+  fuso,
+  nivel = 2,
+}: {
+  resultado: Resultado;
+  entrada: string;
+  saida: string;
+  /** Fuso do imóvel: a hora da leitura é mostrada nele. */
+  fuso: string;
+  /** Nível do título: 3 dentro do quadro "Resumo da viagem" da consulta. */
+  nivel?: 2 | 3;
+}) {
   const r = resultado;
+  const Titulo = nivel === 3 ? "h3" : "h2";
   const dataBr = (d: string) => d.split("-").reverse().join("/");
   return (
     <section className={styles.bloco} aria-label="Disponibilidade e valor">
-      <h2>{TITULO[r.situacao]}</h2>
+      <Titulo>{TITULO[r.situacao]}</Titulo>
       {r.noites > 0 && (
         <p className={styles.miudo}>
           {dataBr(entrada)} a {dataBr(saida)} · {r.noites} {r.noites === 1 ? "noite" : "noites"}
