@@ -26,6 +26,8 @@ export const minutos = (n: number, de: Date = AGORA) => new Date(de.getTime() + 
 export const TOTAL = 182400;
 export const EMAIL_HOSPEDE = "visitante@example.com";
 export const DOCUMENTO_FICTICIO = "12345678909";
+/** Chave pública fictícia do formulário do cartão (M8.2b), no formato das de teste do Mercado Pago. */
+export const CHAVE_PUBLICA_FICTICIA = "TEST-chave-publica-ficticia";
 /** Variáveis de ambiente de teste (nunca as do processo). */
 export const env = (v: Record<string, string> = {}) => v as unknown as NodeJS.ProcessEnv;
 
@@ -66,14 +68,14 @@ export async function montarCenario(db: Db, o: { semPaginasLegais?: boolean } = 
   await db.insert(proprietarioImoveis).values({ proprietarioId: dono, imovelId: imovel });
   const contrato = await criarContrato(db, org, imovel, { tipo: "gestao_completa", comissao: "15", inicio: "2025-01-01" }, null);
   if (!contrato.ok) throw new Error(JSON.stringify(contrato.erros));
-  // "Oferecer pagamento no site" começa desligado: o cenário liga, como o Diego na aba.
-  const config = await salvarConfigPagamentoSite(db, org, { ...CONFIG_PAGAMENTO_SITE_PADRAO, oferecer: true }, null);
+  // "Oferecer pagamento no site" e o cartão começam desligados: o cenário liga os dois, como o Diego na aba.
+  const config = await salvarConfigPagamentoSite(db, org, { ...CONFIG_PAGAMENTO_SITE_PADRAO, oferecer: true, cartao: true }, null);
   if (!config.ok) throw new Error(JSON.stringify(config.erros));
   // As três páginas legais na versão 1 (texto-base, dados fictícios), sem mexer em Configurações → Empresa.
   const versoesLegais = o.semPaginasLegais ? null : await publicarPaginasLegaisDeTeste(db, org);
   const relogio = { agora: AGORA };
   const provedor = new ProvedorFalso(() => relogio.agora);
-  const gate = await podeCobrar(db, org, env(), AGORA, { provedor });
+  const gate = await podeCobrar(db, org, env(), AGORA, { provedor, chavePublica: CHAVE_PUBLICA_FICTICIA });
   const c: Cenario = {
     db,
     org,

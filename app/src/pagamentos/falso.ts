@@ -2,31 +2,44 @@
  * Provedor de pagamento FALSO para testes e desenvolvimento: guarda as orders em memória e
  * nunca usa rede. Ids determinísticos (ORDTST0001, PAYTST0001, REFTST0001…), validação igual à
  * do cliente real, e simuladores para o que no Mercado Pago acontece "do lado de lá"
- * (aprovar, recusar, expirar, contestar, devolver pelo painel…).
+ * (aprovar, recusar, expirar, contestar, devolver pelo painel…). Cartão (M8.2b): desafio 3DS (o endereço só na
+ * resposta da criação, como na API), análise, processamento, recusa sem order, juros do parcelamento pagos pelo
+ * hóspede ou pela SCL, liberação em parcelas e atraso da busca pela referência.
  *
  * Falhas: `falhar` (todas as chamadas) e `falhas[metodo]` lançam antes de fazer qualquer coisa;
  * `falhasDepois[metodo]` faz a operação e lança em seguida (resposta perdida no caminho). Como
  * no cliente real, `cancelar`, `devolver`, `detalheFinanceiro` e `conferirContaDeTeste` nunca
  * lançam: a falha vira "erro", "incerta"/"recusada", tudo null ou null.
  */
-import { chaveIdempotenciaValida, emailPlausivel, ErroProvedor, idProvedorValido, PIX_VALIDADE_MINIMA_MINUTOS, problemaNoCartao, problemaNoPedido, referenciaValida, validadePixMinutos } from "./provedor";
-import type { Cobranca, DetalheFinanceiro, PedidoCartao, PedidoPix, ProvedorPagamento, ResultadoCancelamento, ResultadoCriacao, ResultadoDevolucao, SituacaoCobranca } from "./provedor";
+import {
+  chaveIdempotenciaValida, emailPlausivel, ErroProvedor, idProvedorValido, PIX_VALIDADE_MINIMA_MINUTOS, problemaNoCartao, problemaNoPedido, RECUSA_GENERICA, referenciaValida,
+  validadePixMinutos,
+} from "./provedor";
+import type { Cobranca, DadosCartao, DetalheFinanceiro, ModoTresDS, PedidoCartao, PedidoPix, ProvedorPagamento, ResultadoCancelamento, ResultadoCriacao, ResultadoDevolucao, SituacaoCobranca, StatusTresDS } from "./provedor";
 
-export type MetodoProvedor = "criarPix" | "criarCartao" | "consultar" | "buscarPorReferencia" | "detalheFinanceiro" | "cancelar" | "devolver" | "conferirContaDeTeste";
+export type MetodoProvedor =
+  | "criarPix" | "criarCartao" | "consultar" | "buscarPorReferencia" | "existePagamentoPorReferencia" | "detalheFinanceiro" | "cancelar" | "devolver" | "conferirContaDeTeste";
 export type ChamadaFalsa = { metodo: MetodoProvedor; chave: string | null; id: string | null; referencia: string | null; valor: number | null };
 export type OpcoesAprovacao = { taxa?: number | null; liquido?: number | null; liberacaoPrevista?: Date | null; liberado?: boolean | null };
+/** O que chegou ao provedor no último cartão, sem o token (só se ele veio): para os testes conferirem o que passou por aqui. */
+export type PedidoCartaoRecebido = Omit<PedidoCartao, "token"> & { comToken: boolean };
 
-type Registro = { cobranca: Cobranca; criadaEm: Date; financeiro: DetalheFinanceiro; pendentes: { id: string; valor: number }[] };
+/** `tresDS` = a verificação do banco pedida na criação (null no Pix). */
+type Registro = { cobranca: Cobranca; criadaEm: Date; financeiro: DetalheFinanceiro; pendentes: { id: string; valor: number }[]; tresDS: ModoTresDS | null };
 type Lembrado =
   | { metodo: "criarPix" | "criarCartao"; id: string | null; resultado: ResultadoCriacao }
   | { metodo: "cancelar"; resultado: ResultadoCancelamento }
   | { metodo: "devolver"; resultado: ResultadoDevolucao };
 
-const NADA: DetalheFinanceiro = { taxa: null, liquido: null, liberacaoPrevista: null, liberado: null, idPagamento: null };
+const NADA: DetalheFinanceiro = { taxa: null, liquido: null, liberacaoPrevista: null, liberado: null, idPagamento: null, liberacaoEmParcelas: false, custoParcelasVendedor: null };
 const MARGEM_BUSCA_MS = 5 * 60_000;
 const INCERTO_CRIACAO = "Não deu para saber se o pagamento foi criado; conferir pela referência antes de tentar de novo.";
 
-const copiar = (c: Cobranca): Cobranca => ({ ...c, pix: c.pix ? { ...c.pix, expiraEm: c.pix.expiraEm ? new Date(c.pix.expiraEm) : null } : null });
+const copiar = (c: Cobranca): Cobranca => ({
+  ...c,
+  pix: c.pix ? { ...c.pix, expiraEm: c.pix.expiraEm ? new Date(c.pix.expiraEm) : null } : null,
+  cartao: c.cartao ? { ...c.cartao } : null,
+});
 const copiarFinanceiro = (f: DetalheFinanceiro): DetalheFinanceiro => ({ ...f, liberacaoPrevista: f.liberacaoPrevista ? new Date(f.liberacaoPrevista) : null });
 const copiarCriacao = (r: ResultadoCriacao): ResultadoCriacao => (r.ok ? { ok: true, cobranca: copiar(r.cobranca) } : { ...r, cobranca: r.cobranca ? copiar(r.cobranca) : null });
 const seq = (n: number) => String(n).padStart(4, "0");
@@ -45,8 +58,29 @@ export class ProvedorFalso implements ProvedorPagamento {
    * primeira chamada (com a order no estado atual).
    */
   chaveRepetida: "incerto" | "mesma_resposta" = "incerto";
-  /** Desfecho do próximo cartão. */
-  respostaCartao: "aprovado" | "recusado" | "em_analise" | "pendente" = "aprovado";
+  /**
+   * Desfecho do próximo cartão: `desafio` = pendente com o desafio 3DS (o endereço só na resposta da criação);
+   * `em_analise` = processing/in_review (análise); `processando` = processing/in_process; `recusado_sem_order` = o 402
+   * sem `data` (recusado sem a order no corpo; nada fica registrado do lado de cá).
+   */
+  respostaCartao: "aprovado" | "recusado" | "recusado_sem_order" | "em_analise" | "processando" | "desafio" = "aprovado";
+  /** status_detail da próxima recusa de cartão (vira `codigo` e o detalhe "failed/failed; pagamento failed/<motivo>"). */
+  motivoRecusaCartao = "rejected_by_issuer";
+  /** Centavos de juros do parcelamento somados ao pago quando um cartão com mais de uma parcela é aprovado. */
+  jurosCartao = 0;
+  /**
+   * Quem paga os juros do parcelamento: o hóspede (pago = valor + juros) ou a SCL ("parcelamento sem acréscimo":
+   * pago = valor e o financeiro traz `custoParcelasVendedor` > 0 — `jurosCartao`, ou 5% do valor sem ele —, já dentro da taxa).
+   */
+  jurosPor: "comprador" | "vendedor" = "comprador";
+  /** O financeiro dos cartões vem com liberação parcela a parcela (money_release_schema; `liberado` fica null). */
+  liberacaoEmParcelas = false;
+  /** Resultado da verificação do banco nos cartões com 3DS (`on_fraud_risk`) que não ficam no desafio. */
+  tresDSStatus: StatusTresDS | null = "AUTHENTICATED";
+  /** Por quanto tempo depois da criação a busca pela referência (orders e pagamentos) ainda não acha nada. */
+  atrasoBuscaMs = 0;
+  /** Último cartão que chegou aqui (sem o token). */
+  ultimoPedidoCartao: PedidoCartaoRecebido | null = null;
   /** "pedida" deixa a devolução esperando `confirmarDevolucoes`. */
   respostaDevolucao: "confirmada" | "pedida" = "confirmada";
   /** Resposta de `conferirContaDeTeste`. */
@@ -62,6 +96,7 @@ export class ProvedorFalso implements ProvedorPagamento {
   private readonly chaves = new Map<string, Lembrado>();
   private orders = 0;
   private devolucoes = 0;
+  private desafios = 0;
 
   constructor(private readonly agora: () => Date = () => new Date()) {}
 
@@ -85,19 +120,22 @@ export class ProvedorFalso implements ProvedorPagamento {
     return r;
   }
 
+  /** Muda a situação; no cartão, desafio e análise seguem o detalhe (como a leitura do cliente real). */
   private mudar(id: string, situacao: SituacaoCobranca, detalhe: string) {
     const r = this.registro(id);
-    r.cobranca = { ...r.cobranca, situacao, detalhe };
+    const cartao = r.cobranca.cartao ? { ...r.cobranca.cartao, desafio: /pending_challenge/.test(detalhe), analise: /in_review|pending_review_manual/.test(detalhe) } : null;
+    r.cobranca = { ...r.cobranca, situacao, detalhe, cartao };
     return r;
   }
 
-  private novaOrder(base: Omit<Cobranca, "idProvedor" | "idTransacao" | "devolvido" | "devolucaoEmAndamento" | "aoVivo" | "valorTransacao">): Registro {
+  private novaOrder(base: Omit<Cobranca, "idProvedor" | "idTransacao" | "devolvido" | "devolucaoEmAndamento" | "aoVivo" | "valorTransacao">, tresDS: ModoTresDS | null = null): Registro {
     const n = ++this.orders;
     const registro: Registro = {
       cobranca: { ...base, idProvedor: `ORDTST${seq(n)}`, idTransacao: `PAYTST${seq(n)}`, valorTransacao: base.valor, devolvido: 0, devolucaoEmAndamento: false, aoVivo: this.aoVivo },
       criadaEm: this.agora(),
       financeiro: { ...NADA },
       pendentes: [],
+      tresDS,
     };
     this.registros.set(registro.cobranca.idProvedor, registro);
     return registro;
@@ -108,7 +146,7 @@ export class ProvedorFalso implements ProvedorPagamento {
     const l = this.chaves.get(chave);
     if (!l) return null;
     if (this.chaveRepetida === "incerto" || (l.metodo !== "criarPix" && l.metodo !== "criarCartao")) {
-      return { ok: false, motivo: "incerto", mensagem: INCERTO_CRIACAO, cobranca: null };
+      return { ok: false, motivo: "incerto", mensagem: INCERTO_CRIACAO, cobranca: null, codigo: "idempotency_key_already_used" };
     }
     const atual = l.id ? this.registros.get(l.id)?.cobranca : undefined;
     if (!atual) return copiarCriacao(l.resultado);
@@ -126,7 +164,7 @@ export class ProvedorFalso implements ProvedorPagamento {
     this.registrar("criarPix", { chave: p.chaveIdempotencia, referencia: p.referencia, valor: p.valor });
     const antes = this.falhaAntes("criarPix");
     if (antes) throw antes;
-    const invalido = (mensagem: string): ResultadoCriacao => ({ ok: false, motivo: "dados_invalidos", mensagem, cobranca: null });
+    const invalido = (mensagem: string): ResultadoCriacao => ({ ok: false, motivo: "dados_invalidos", mensagem, cobranca: null, codigo: null });
     const problema = problemaNoPedido(p);
     if (problema) return invalido(problema);
     const validade = validadePixMinutos(p.validadeMinutos);
@@ -149,6 +187,7 @@ export class ProvedorFalso implements ProvedorPagamento {
         link: `https://pagamento.falso.invalid/pix/ORDTST${seq(n)}`,
         expiraEm: new Date(this.agora().getTime() + Math.max(validade, PIX_VALIDADE_MINIMA_MINUTOS) * 60_000),
       },
+      cartao: null,
     });
     return this.concluirCriacao("criarPix", p.chaveIdempotencia, registro, { ok: true, cobranca: copiar(registro.cobranca) });
   }
@@ -157,29 +196,45 @@ export class ProvedorFalso implements ProvedorPagamento {
     this.registrar("criarCartao", { chave: p.chaveIdempotencia, referencia: p.referencia, valor: p.valor });
     const antes = this.falhaAntes("criarCartao");
     if (antes) throw antes;
+    // O que chegou, sem o token: os testes conferem que o resto (documento, aparelho, 3DS, parcelas) passou por aqui.
+    const { token, ...semToken } = p;
+    this.ultimoPedidoCartao = { ...semToken, documento: p.documento ? { ...p.documento } : null, comToken: typeof token === "string" && token.length > 0 };
     const problema = problemaNoCartao(p) ?? (emailPlausivel(p.email?.trim()) ? null : "E-mail do pagador inválido.");
-    if (problema) return { ok: false, motivo: "dados_invalidos", mensagem: problema, cobranca: null };
+    if (problema) return { ok: false, motivo: "dados_invalidos", mensagem: problema, cobranca: null, codigo: null };
     const repetida = this.repetidaCriacao(p.chaveIdempotencia);
     if (repetida) return repetida;
-    const desfechos: Record<ProvedorFalso["respostaCartao"], { situacao: SituacaoCobranca; detalhe: string }> = {
+    const motivo = this.motivoRecusaCartao;
+    if (this.respostaCartao === "recusado_sem_order") {
+      // Como o 402 sem `data`: recusado, sem a order no corpo (a busca pela referência não acha nada).
+      const resultado: ResultadoCriacao = { ok: false, motivo: "recusado", mensagem: RECUSA_GENERICA, cobranca: null, codigo: motivo };
+      this.chaves.set(p.chaveIdempotencia, { metodo: "criarCartao", id: null, resultado: copiarCriacao(resultado) });
+      if (this.falhasDepois.criarCartao) throw this.falhasDepois.criarCartao;
+      return resultado;
+    }
+    const comTresDS = p.tresDS === "on_fraud_risk";
+    const desfechos: Record<Exclude<ProvedorFalso["respostaCartao"], "recusado_sem_order">, { situacao: SituacaoCobranca; detalhe: string; desafio?: boolean; analise?: boolean }> = {
       aprovado: { situacao: "aprovado", detalhe: "processed/accredited" },
-      recusado: { situacao: "recusado", detalhe: "failed/failed; pagamento failed/rejected_by_issuer" },
-      em_analise: { situacao: "em_analise", detalhe: "processing/in_review" },
-      pendente: { situacao: "pendente", detalhe: "action_required/pending_challenge" },
+      recusado: { situacao: "recusado", detalhe: `failed/failed; pagamento failed/${motivo}` },
+      em_analise: { situacao: "em_analise", detalhe: "processing/in_review", analise: true },
+      processando: { situacao: "em_analise", detalhe: "processing/in_process" },
+      desafio: { situacao: "pendente", detalhe: "action_required/pending_challenge", desafio: true },
     };
     const d = desfechos[this.respostaCartao];
-    const registro = this.novaOrder({
-      referencia: p.referencia,
-      ...d,
-      forma: "cartao",
-      valor: p.valor,
-      pago: d.situacao === "aprovado" ? p.valor : null,
-      parcelas: p.parcelas,
-      pix: null,
-    });
+    const cartao: DadosCartao = {
+      desafioUrl: null,
+      desafio: d.desafio === true,
+      analise: d.analise === true,
+      tresDSStatus: !comTresDS ? null : d.desafio ? "CHALLENGE" : this.tresDSStatus,
+      bandeira: p.bandeira.toLowerCase(),
+    };
+    const registro = this.novaOrder({ referencia: p.referencia, situacao: d.situacao, detalhe: d.detalhe, forma: "cartao", valor: p.valor, pago: null, parcelas: p.parcelas, pix: null, cartao }, p.tresDS);
+    if (d.situacao === "aprovado") this.aplicarAprovacao(registro);
+    const resposta = copiar(registro.cobranca);
+    // Só a resposta da criação traz o endereço do desafio (o GET não documenta): a order guardada fica sem ele.
+    if (d.desafio && resposta.cartao) resposta.cartao.desafioUrl = `https://www.mercadopago.com.br/checkout/v1/3ds/FALSO${seq(++this.desafios)}`;
     const resultado: ResultadoCriacao = d.situacao === "recusado"
-      ? { ok: false, motivo: "recusado", mensagem: "O banco emissor recusou o pagamento. Tente outro cartão ou o Pix.", cobranca: copiar(registro.cobranca) }
-      : { ok: true, cobranca: copiar(registro.cobranca) };
+      ? { ok: false, motivo: "recusado", mensagem: RECUSA_GENERICA, cobranca: resposta, codigo: motivo }
+      : { ok: true, cobranca: resposta };
     return this.concluirCriacao("criarCartao", p.chaveIdempotencia, registro, resultado);
   }
 
@@ -199,16 +254,34 @@ export class ProvedorFalso implements ProvedorPagamento {
     if (!referenciaValida(referencia)) return null;
     const inicio = Math.min(desde.getTime(), this.agora().getTime()) - MARGEM_BUSCA_MS;
     for (const r of this.registros.values()) {
-      if (r.cobranca.referencia === referencia && r.criadaEm.getTime() >= inicio) return copiar(r.cobranca);
+      if (r.cobranca.referencia === referencia && r.criadaEm.getTime() >= inicio && this.jaAparece(r)) return copiar(r.cobranca);
     }
     return null;
+  }
+
+  /** A Payments API pela referência (qualquer situação), com o mesmo atraso da busca. */
+  async existePagamentoPorReferencia(referencia: string, _desde: Date): Promise<boolean> {
+    void _desde; // Como o cliente real: a data não filtra.
+    this.registrar("existePagamentoPorReferencia", { referencia });
+    const antes = this.falhaAntes("existePagamentoPorReferencia");
+    if (antes) throw antes;
+    if (!referenciaValida(referencia)) return false;
+    return [...this.registros.values()].some((r) => r.cobranca.referencia === referencia && this.jaAparece(r));
+  }
+
+  /** A busca só acha a order depois de `atrasoBuscaMs` (o atraso de indexação do provedor). */
+  private jaAparece(r: Registro): boolean {
+    return this.agora().getTime() - r.criadaEm.getTime() >= this.atrasoBuscaMs;
   }
 
   async detalheFinanceiro(c: Cobranca): Promise<DetalheFinanceiro> {
     this.registrar("detalheFinanceiro", { id: c.idProvedor, referencia: c.referencia });
     if (this.falhaAntes("detalheFinanceiro")) return { ...NADA };
     const r = this.registros.get(c.idProvedor);
-    return r ? copiarFinanceiro(r.financeiro) : { ...NADA };
+    if (!r) return { ...NADA };
+    const f = copiarFinanceiro(r.financeiro);
+    // Liberação parcela a parcela (só cartão): como o cliente real, nada fica "liberado" de uma vez.
+    return r.cobranca.forma === "cartao" && this.liberacaoEmParcelas ? { ...f, liberado: null, liberacaoEmParcelas: true } : f;
   }
 
   async cancelar(idProvedor: string, chaveIdempotencia: string): Promise<ResultadoCancelamento> {
@@ -221,7 +294,8 @@ export class ProvedorFalso implements ProvedorPagamento {
     let resultado: ResultadoCancelamento;
     if (!r) resultado = "erro";
     else if (r.cobranca.situacao === "cancelado") resultado = "cancelado";
-    else if (r.cobranca.situacao === "pendente" || r.cobranca.situacao === "em_analise") {
+    else if (r.cobranca.situacao === "pendente") {
+      // Como a API: só created/action_required se cancelam (um cartão em análise ou processando não).
       this.mudar(idProvedor, "cancelado", "canceled/canceled_transaction");
       resultado = "cancelado";
     } else resultado = "nao_cancelavel";
@@ -295,17 +369,33 @@ export class ProvedorFalso implements ProvedorPagamento {
 
   // ------------------------------------------------------------ simuladores ("do lado do provedor")
 
-  /** Pagamento aprovado. Taxa/líquido/liberação ficam desconhecidos (null) se não informados; liquido = valor − taxa quando só a taxa vem. */
+  /**
+   * Pagamento aprovado. Taxa/líquido/liberação ficam desconhecidos (null) se não informados; liquido = valor − taxa
+   * quando só a taxa vem. Cartão: juros e custo do parcelamento como em `jurosCartao`/`jurosPor`.
+   */
   aprovar(id: string, o: OpcoesAprovacao = {}) {
     const r = this.mudar(id, "aprovado", "processed/accredited");
-    r.cobranca = { ...r.cobranca, pago: r.cobranca.valor };
-    const taxa = o.taxa ?? null;
+    this.aplicarAprovacao(r, o);
+  }
+
+  /** Dinheiro e financeiro da aprovação (o custo do "sem acréscimo" entra na taxa e sai do líquido, como na Payments API). */
+  private aplicarAprovacao(r: Registro, o: OpcoesAprovacao = {}) {
+    const valor = r.cobranca.valor;
+    const parcelado = r.cobranca.forma === "cartao" && (r.cobranca.parcelas ?? 1) > 1;
+    const custo = parcelado && this.jurosPor === "vendedor" ? (this.jurosCartao > 0 ? this.jurosCartao : Math.max(1, Math.round(valor / 20))) : 0;
+    const juros = parcelado && this.jurosPor === "comprador" ? this.jurosCartao : 0;
+    const cartao = r.cobranca.cartao ? { ...r.cobranca.cartao, tresDSStatus: r.tresDS === "on_fraud_risk" ? this.tresDSStatus : null } : null;
+    r.cobranca = { ...r.cobranca, pago: valor + juros, cartao };
+    const taxa = o.taxa === undefined || o.taxa === null ? null : o.taxa + custo;
+    const liquido = o.liquido !== undefined ? (o.liquido === null ? null : o.liquido - custo) : taxa !== null ? valor - taxa : null;
     r.financeiro = {
       taxa,
-      liquido: o.liquido !== undefined ? o.liquido : taxa !== null ? r.cobranca.valor - taxa : null,
+      liquido,
       liberacaoPrevista: o.liberacaoPrevista ? new Date(o.liberacaoPrevista) : null,
       liberado: o.liberado ?? null,
-      idPagamento: String(9_000_000_000 + Number(id.replace(/\D/g, "") || 0)),
+      idPagamento: String(9_000_000_000 + Number(r.cobranca.idProvedor.replace(/\D/g, "") || 0)),
+      liberacaoEmParcelas: false,
+      custoParcelasVendedor: r.cobranca.forma === "cartao" ? custo : null,
     };
   }
 
@@ -319,6 +409,34 @@ export class ProvedorFalso implements ProvedorPagamento {
     this.mudar(id, "recusado", "failed/failed; pagamento failed/rejected_by_issuer");
   }
 
+  /**
+   * Fim do desafio 3DS: aprovado (verificação autenticada); recusado = failed/failed com NOT_AUTHENTICATED, como o
+   * sandbox (ou `o.detalhe`, o status_detail da transação, ex.: cc_rejected_3ds_challenge); expirado = canceled/expired.
+   */
+  concluirDesafio(id: string, fim: "aprovado" | "recusado" | "expirado", o: { detalhe?: string } = {}) {
+    const r = this.registro(id);
+    if (fim === "aprovado") {
+      this.mudar(id, "aprovado", "processed/accredited");
+      this.aplicarAprovacao(r);
+      if (r.cobranca.cartao) r.cobranca.cartao.tresDSStatus = "AUTHENTICATED";
+      return;
+    }
+    const detalhe = fim === "expirado" ? "canceled/expired" : o.detalhe ? `failed/failed; pagamento failed/${o.detalhe}` : "failed/failed";
+    this.mudar(id, fim === "expirado" ? "expirado" : "recusado", detalhe);
+    if (fim === "recusado" && r.cobranca.cartao) r.cobranca.cartao.tresDSStatus = "NOT_AUTHENTICATED";
+  }
+
+  /** Fim da análise (ou do processamento): aprovado, ou recusado com `motivoRecusaCartao`. */
+  concluirAnalise(id: string, fim: "aprovado" | "recusado") {
+    const r = this.registro(id);
+    if (fim === "aprovado") {
+      this.mudar(id, "aprovado", "processed/accredited");
+      this.aplicarAprovacao(r);
+      return;
+    }
+    this.mudar(id, "recusado", `failed/failed; pagamento failed/${this.motivoRecusaCartao}`);
+  }
+
   expirar(id: string) {
     this.mudar(id, "expirado", "expired/expired");
   }
@@ -327,8 +445,13 @@ export class ProvedorFalso implements ProvedorPagamento {
     this.mudar(id, "cancelado", "canceled/canceled");
   }
 
-  contestar(id: string) {
-    this.mudar(id, "contestado", "charged_back/in_process");
+  /**
+   * Contestação: `order` = a order inteira em charged_back/in_process; `transacao` = só a transação charged_back/in_process
+   * numa order processada; `lista` = uma contestação in_process em transactions.chargebacks[], a order ainda processada.
+   */
+  contestar(id: string, como: "order" | "transacao" | "lista" = "order") {
+    const detalhe = { order: "charged_back/in_process", transacao: "processed/accredited; pagamento charged_back/in_process", lista: "processed/accredited" }[como];
+    this.mudar(id, "contestado", detalhe);
   }
 
   /** Devolução feita fora do sistema (painel do Mercado Pago). */

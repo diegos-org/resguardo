@@ -3,7 +3,10 @@ import { historicoDe } from "@/auditoria/auditoria";
 import { imoveis, organizacoes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
-import { adicionarEvento, definirMinimoNormalDoEvento, lerData, lerRegrasCalendario, multiplicadorParaCentesimos, REGRAS_CALENDARIO_PADRAO, regrasDeJson, removerEvento, salvarRegrasCalendario, validarEvento, validarFormRegras } from "./regras-config";
+import {
+  adicionarEvento, definirMinimoNormalDoEvento, LIMITE_MINUTOS_ANALISE_CARTAO, lerData, lerRegrasCalendario, multiplicadorParaCentesimos, REGRAS_CALENDARIO_PADRAO, regrasDeJson, removerEvento,
+  salvarRegrasCalendario, validarEvento, validarFormRegras,
+} from "./regras-config";
 
 const IM = "11111111-1111-4111-8111-111111111111";
 const form = (over: Record<string, unknown> = {}) => ({
@@ -86,8 +89,26 @@ describe("formulário das regras", () => {
       eventos: [{ id: IM, nome: "Ok", inicio: "2026-12-25", fim: "2027-01-01", multiplicador: 400, estadiaMinima: null, minimoNormalComReserva: true, todosImoveis: false, imoveis: [IM] }],
       ultimaHora: { ...REGRAS_CALENDARIO_PADRAO.ultimaHora, aplicadoPor: "scl" },
       envio: { imoveis: [IM], automatico: false },
-      site: { validadeLeituraHoras: 12, maximoNoitesConsulta: 90, minutosHold: 30 },
+      site: { validadeLeituraHoras: 12, maximoNoitesConsulta: 90, minutosHold: 30, minutosAnaliseCartao: 60 },
     });
+  });
+  it("minutos a mais do cartão em análise (M8.2b): padrão 60, de 0 a 240; gravado estranho volta ao padrão", () => {
+    expect(REGRAS_CALENDARIO_PADRAO.site.minutosAnaliseCartao).toBe(60);
+    expect(LIMITE_MINUTOS_ANALISE_CARTAO).toBe(240);
+    const site = (v: unknown) => regrasDeJson({ site: { minutosAnaliseCartao: v } }).site.minutosAnaliseCartao;
+    expect([site(0), site(240), site(90)]).toEqual([0, 240, 90]);
+    for (const estranho of [-1, 241, 1.5, "60", null, undefined]) expect(site(estranho)).toBe(60);
+  });
+  it("formulário: minutos a mais do cartão em análise lidos na faixa (0 = nenhum); sem o campo, fica o valor gravado", () => {
+    const atual = { ...REGRAS_CALENDARIO_PADRAO, site: { ...REGRAS_CALENDARIO_PADRAO.site, minutosAnaliseCartao: 45 } };
+    const ler = (v: string | undefined) => {
+      const r = validarFormRegras(form({ siteMinutosAnaliseCartao: v }), atual, [IM]);
+      return r.ok ? r.regras.site.minutosAnaliseCartao : r.erros;
+    };
+    expect([ler("0"), ler("240"), ler(" 90 ")]).toEqual([0, 240, 90]);
+    // Formulário aberto antes do campo existir: nada volta ao padrão em silêncio, fica o que estava gravado.
+    expect(ler(undefined)).toBe(45);
+    for (const ruim of ["", "241", "-1", "1,5", "x"]) expect(ler(ruim)).toEqual({ siteMinutosAnaliseCartao: "Número inteiro entre 0 e 240." });
   });
 });
 

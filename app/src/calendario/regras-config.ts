@@ -43,8 +43,10 @@ export type RegrasCalendario = {
   /**
    * Site público (M7.2/M8.1): por quantas horas uma leitura do Beds24 vale como disponibilidade; máximo de
    * noites cotadas online; por quantos minutos "segurar as datas" ocupa o calendário antes de vencer.
+   * `minutosAnaliseCartao` (M8.2b): quantos minutos a mais as datas ficam seguradas quando um cartão entra em
+   * análise ou processamento no Mercado Pago — uma vez por cotação; 0 = nenhum.
    */
-  site: { validadeLeituraHoras: number; maximoNoitesConsulta: number; minutosHold: number };
+  site: { validadeLeituraHoras: number; maximoNoitesConsulta: number; minutosHold: number; minutosAnaliseCartao: number };
 };
 
 export const REGRAS_CALENDARIO_PADRAO: RegrasCalendario = {
@@ -56,10 +58,12 @@ export const REGRAS_CALENDARIO_PADRAO: RegrasCalendario = {
   eventos: [],
   ultimaHora: { aplicadoPor: "beds24", faixas: [{ deDias: 3, ateDias: 7, percentual: 15 }, { deDias: 0, ateDias: 2, percentual: 25 }] },
   envio: { imoveis: [], automatico: false },
-  site: { validadeLeituraHoras: 36, maximoNoitesConsulta: 90, minutosHold: 30 },
+  site: { validadeLeituraHoras: 36, maximoNoitesConsulta: 90, minutosHold: 30, minutosAnaliseCartao: 60 },
 };
 
-const LIMITES = { minimo: [1, 30], estadiaMaxima: [1, 364], horizonte: [7, 540], multiplicador: [100, 1000], percentual: [0, 90], dias: [0, 60], feriados: 200, eventos: 100, validadeHoras: [1, 720], noitesConsulta: [1, 364], minutosHold: [5, 240] } as const;
+const LIMITES = { minimo: [1, 30], estadiaMaxima: [1, 364], horizonte: [7, 540], multiplicador: [100, 1000], percentual: [0, 90], dias: [0, 60], feriados: 200, eventos: 100, validadeHoras: [1, 720], noitesConsulta: [1, 364], minutosHold: [5, 240], minutosAnaliseCartao: [0, 240] } as const;
+/** Teto dos minutos a mais de um cartão em análise (o cookie do pedido usa o teto para continuar puro). */
+export const LIMITE_MINUTOS_ANALISE_CARTAO = LIMITES.minutosAnaliseCartao[1];
 
 type Entrada = Record<string, unknown>;
 const txt = (v: unknown) => (typeof v === "string" ? v.trim() : "");
@@ -146,6 +150,7 @@ export function regrasDeJson(valor: unknown): RegrasCalendario {
       validadeLeituraHoras: inteiroEntre(site.validadeLeituraHoras, LIMITES.validadeHoras) ? (site.validadeLeituraHoras as number) : P.site.validadeLeituraHoras,
       maximoNoitesConsulta: inteiroEntre(site.maximoNoitesConsulta, LIMITES.noitesConsulta) ? (site.maximoNoitesConsulta as number) : P.site.maximoNoitesConsulta,
       minutosHold: inteiroEntre(site.minutosHold, LIMITES.minutosHold) ? (site.minutosHold as number) : P.site.minutosHold,
+      minutosAnaliseCartao: inteiroEntre(site.minutosAnaliseCartao, LIMITES.minutosAnaliseCartao) ? (site.minutosAnaliseCartao as number) : P.site.minutosAnaliseCartao,
     },
   };
 }
@@ -201,6 +206,8 @@ export function validarFormRegras(e: Entrada, atual: RegrasCalendario, imoveisDa
   const siteValidadeHoras = inteiro("siteValidadeHoras", LIMITES.validadeHoras);
   const siteMaximoNoites = inteiro("siteMaximoNoites", LIMITES.noitesConsulta);
   const siteMinutosHold = inteiro("siteMinutosHold", LIMITES.minutosHold);
+  // Campo novo (M8.2b): um formulário aberto antes dele (sem o campo) mantém o valor gravado; presente, vale a faixa.
+  const siteMinutosAnaliseCartao = e.siteMinutosAnaliseCartao === undefined ? atual.site.minutosAnaliseCartao : inteiro("siteMinutosAnaliseCartao", LIMITES.minutosAnaliseCartao);
   if (Object.keys(erros).length) return { ok: false, erros };
   return {
     ok: true,
@@ -211,7 +218,7 @@ export function validarFormRegras(e: Entrada, atual: RegrasCalendario, imoveisDa
       eventos: atual.eventos,
       ultimaHora: { aplicadoPor: aplicadoPor as AplicacaoUltimaHora, faixas },
       envio: { imoveis: ids(e.envioImoveis, imoveisDaOrg), automatico: marcado(e.envioAutomatico) },
-      site: { validadeLeituraHoras: siteValidadeHoras, maximoNoitesConsulta: siteMaximoNoites, minutosHold: siteMinutosHold },
+      site: { validadeLeituraHoras: siteValidadeHoras, maximoNoitesConsulta: siteMaximoNoites, minutosHold: siteMinutosHold, minutosAnaliseCartao: siteMinutosAnaliseCartao },
     },
   };
 }

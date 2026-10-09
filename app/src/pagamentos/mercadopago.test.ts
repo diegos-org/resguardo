@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   centavosParaValorApi, ClienteMercadoPagoHttp, cobrancaDaOrder, codigosDeErro, contaDeTesteDoUsuario, dataRfc3339, detalheDaOrder,
-  EMAIL_PAGADOR_SANDBOX, falhaDeRede, financeiroDoPagamento, mensagemRecusa, normalizarSituacao, valorApiParaCentavos,
+  EMAIL_PAGADOR_SANDBOX, falhaDeRede, financeiroDoPagamento, normalizarSituacao, primeiroCodigo, valorApiParaCentavos,
 } from "./mercadopago";
-import { type Cobranca, ErroProvedor, type PedidoCartao, type PedidoPix } from "./provedor";
+import { type Cobranca, ErroProvedor, type PedidoCartao, type PedidoPix, RECUSA_GENERICA, urlDoDesafio } from "./provedor";
 
 // Tudo fictício. O token tem cara de real para os testes de vazamento.
 const TOKEN = "APP_USR-0000000000000000-000000-ficticio0000000000000000000000-000000000";
@@ -113,6 +113,7 @@ const cartao = (over: Partial<PedidoCartao> = {}): PedidoCartao => ({
   sessaoDispositivo: "armor.ficticio.0123456789",
   descricao: "Reserva SCL",
   descricaoFatura: null,
+  tresDS: "on_fraud_risk",
   ...over,
 });
 
@@ -131,8 +132,13 @@ const cobrancaAprovada = (over: Partial<Cobranca> = {}): Cobranca => ({
   idTransacao: "PAY01KB0JDVXYPD6HPP2HSMJS11QN",
   aoVivo: null,
   pix: null,
+  cartao: { desafioUrl: null, desafio: false, analise: false, tresDSStatus: null, bandeira: "master" },
   ...over,
 });
+
+/** Endereço do desafio no formato da documentação (domínio do Mercado Pago Brasil; id e token fictícios). */
+const URL_DESAFIO = "https://www.mercadopago.com.br/auth/card/validation/pages/remedies/00000000-0000-0000-0000-000000000000?display_mode=self_hosted&guest_token=ficticio";
+const NADA_FINANCEIRO = { taxa: null, liquido: null, liberacaoPrevista: null, liberado: null, idPagamento: null, liberacaoEmParcelas: false, custoParcelasVendedor: null };
 
 async function erroDe(p: Promise<unknown>): Promise<ErroProvedor> {
   try {
@@ -218,6 +224,9 @@ describe("situação normalizada", () => {
     ["charged_back", "in_process", null, "contestado"],
     ["charged_back", "settled", null, "contestado"],
     ["charged_back", "reimbursed", null, "contestado"],
+    // Contestação é por transação (M8.2b): a transação charged_back vence a order processada.
+    ["processed", "accredited", pag("charged_back", "in_process"), "contestado"],
+    ["processed", "accredited", pag("charged_back", "settled"), "contestado"],
     ["approved", "accredited", null, "desconhecido"],
     ["", "", null, "desconhecido"],
   ])("%s/%s (transação %j) → %s", (status, status_detail, transacao, esperado) => {
@@ -235,11 +244,21 @@ describe("situação normalizada", () => {
     expect(detalheDaOrder({ status: "processed", status_detail: "<script>alert(1)</script>" })).toBe("processed/?");
   });
 
-  it("mensagem de recusa vem de lista fechada", () => {
-    expect(mensagemRecusa(["required_call_for_authorize"])).toMatch(/autorização/);
-    expect(mensagemRecusa([null, "desconhecido_xyz", "card_insufficient_amount"])).toMatch(/insuficiente/);
-    expect(mensagemRecusa(["texto-do-provedor com dados"])).toBe("Pagamento recusado. Tente outro cartão ou o Pix.");
-    expect(mensagemRecusa([])).toBe("Pagamento recusado. Tente outro cartão ou o Pix.");
+  it("contestações da lista (transactions.chargebacks[]): in_process e settled contestam; reimbursed (devolvida à SCL) não", () => {
+    const aprovada = { status: "processed", status_detail: "accredited" };
+    expect(normalizarSituacao(aprovada, aprovada, ["in_process"])).toBe("contestado");
+    expect(normalizarSituacao(aprovada, aprovada, ["reimbursed", "settled"])).toBe("contestado");
+    expect(normalizarSituacao(aprovada, aprovada, ["reimbursed"])).toBe("aprovado");
+    expect(normalizarSituacao(aprovada, aprovada, [])).toBe("aprovado");
+  });
+
+  it("código do motivo: o primeiro válido, com os de token na frente; nada fora do formato", () => {
+    expect(primeiroCodigo(["high_risk", "failed"])).toBe("high_risk");
+    expect(primeiroCodigo([null, "texto-do-provedor com dados", " Rejected_By_Issuer "])).toBe("rejected_by_issuer");
+    expect(primeiroCodigo(new Set(["bad_request", "invalid_card_token"]))).toBe("invalid_card_token");
+    expect(primeiroCodigo(["failed", "card_token_not_found"])).toBe("card_token_not_found");
+    expect(primeiroCodigo([])).toBeNull();
+    expect(primeiroCodigo([`x${"y".repeat(60)}`, 7])).toBeNull();
   });
 });
 
@@ -265,6 +284,7 @@ describe("order → Cobranca", () => {
         link: "https://www.mercadopago.com.br/sandbox/payments/1/ticket?caller_id=1&hash=x",
         expiraEm: new Date("2026-10-08T15:45:00.000Z"),
       },
+      cartao: null,
     });
   });
 
@@ -287,6 +307,63 @@ describe("order → Cobranca", () => {
 
   it("cartão aprovado com parcelas e valor pago", () => {
     expect(cobrancaDaOrder(orderCartao())).toMatchObject({ situacao: "aprovado", forma: "cartao", valor: 50000, valorTransacao: 50000, pago: 50000, parcelas: 3, pix: null, aoVivo: null, devolvido: 0, devolucaoEmAndamento: false });
+    expect(cobrancaDaOrder(orderCartao())!.cartao).toEqual({ desafioUrl: null, desafio: false, analise: false, tresDSStatus: null, bandeira: "master" });
+  });
+
+  it("cartão parcelado com juros do hóspede: pago com os juros, valor e transação sem eles", () => {
+    expect(cobrancaDaOrder(orderCartao({ total_paid_amount: "537.42" }, { paid_amount: "537.42" }))).toMatchObject({ valor: 50000, valorTransacao: 50000, pago: 53742, parcelas: 3 });
+  });
+
+  it("3DS: desafio com o endereço (só de domínio do Mercado Pago), resultado da verificação em maiúsculo e bandeira", () => {
+    const comDesafio = (url: unknown, status: unknown = "challenge") => cobrancaDaOrder(orderCartao(
+      { status: "action_required", status_detail: "pending_challenge", total_paid_amount: undefined },
+      { status: "action_required", status_detail: "pending_challenge", payment_method: { id: "Master", type: "credit_card", installments: 1, transaction_security: { url, validation: "on_fraud_risk", liability_shift: "required", status } } },
+    ))!;
+    const c = comDesafio(URL_DESAFIO);
+    expect(c.situacao).toBe("pendente");
+    expect(c.cartao).toEqual({ desafioUrl: URL_DESAFIO, desafio: true, analise: false, tresDSStatus: "CHALLENGE", bandeira: "master" });
+    // Endereço fora do Mercado Pago, sem https, com usuário, porta ou grande demais: descartado (nunca vai a um iframe).
+    for (const ruim of [
+      "http://www.mercadopago.com.br/auth/x", "https://mercadopago.com.br.evil.example/x", "https://evilmercadopago.com.br/x", "https://www.mercadopago.com.ar/auth/x",
+      "https://user:senha@www.mercadopago.com.br/x", "https://www.mercadopago.com.br:8443/x", `https://www.mercadopago.com.br/${"a".repeat(2000)}`, "javascript:alert(1)", 42, null,
+    ]) {
+      expect(comDesafio(ruim).cartao).toMatchObject({ desafio: true, desafioUrl: null });
+    }
+    // A tabela de testes do 3DS escreve o resultado em minúsculo; fora da lista fechada = null.
+    expect(comDesafio(null, "not_authenticated").cartao?.tresDSStatus).toBe("NOT_AUTHENTICATED");
+    expect(comDesafio(null, "Attempted").cartao?.tresDSStatus).toBe("ATTEMPTED");
+    expect(comDesafio(null, "algo_novo").cartao?.tresDSStatus).toBeNull();
+    expect(comDesafio(null, 3).cartao?.tresDSStatus).toBeNull();
+  });
+
+  it("análise: in_review (status ou detalhe, da order ou da transação) e pending_review_manual; processing/in_process é só processando", () => {
+    const cartao = (order: Record<string, unknown>, transacao: Record<string, unknown>) => cobrancaDaOrder(orderCartao({ total_paid_amount: undefined, ...order }, transacao))!;
+    expect(cartao({ status: "processing", status_detail: "in_review" }, { status: "processing", status_detail: "in_review" })).toMatchObject({ situacao: "em_analise", cartao: { analise: true, desafio: false } });
+    expect(cartao({ status: "processing", status_detail: "in_process" }, { status: "processing", status_detail: "pending_review_manual" }).cartao?.analise).toBe(true);
+    expect(cartao({ status: "in_review", status_detail: "in_review" }, { status: "in_review", status_detail: "in_review" }).cartao?.analise).toBe(true);
+    expect(cartao({ status: "processing", status_detail: "in_process" }, { status: "processing", status_detail: "in_process" })).toMatchObject({ situacao: "em_analise", cartao: { analise: false } });
+  });
+
+  it("contestação na order (por transação ou na lista): contestado, lendo só o status da lista", () => {
+    const naTransacao = orderCartao({}, { status: "charged_back", status_detail: "in_process" });
+    expect(cobrancaDaOrder(naTransacao)!.situacao).toBe("contestado");
+    const naLista = orderCartao();
+    (naLista.transactions as Record<string, unknown>).chargebacks = [{ id: "CBK01FICTICIO", transaction_id: "PAY01KB0JDVXYPD6HPP2HSMJS11QN", case_id: "9876543210", status: "in_process", references: [null] }, null, { status: 5 }];
+    const c = cobrancaDaOrder(naLista)!;
+    expect(c.situacao).toBe("contestado");
+    expect(JSON.stringify(c)).not.toMatch(/9876543210|CBK01FICTICIO/);
+    (naLista.transactions as Record<string, unknown>).chargebacks = [{ status: "reimbursed" }];
+    expect(cobrancaDaOrder(naLista)!.situacao).toBe("aprovado");
+  });
+
+  it("nunca lê BIN, últimos dígitos, titular nem a identificação do pagador", () => {
+    const o = orderCartao(
+      { payer: { email: EMAIL_HOSPEDE, identification: { type: "CPF", number: "12345678909" } }, config: { payment_method: { installments_cost: "seller" } } },
+      { payment_method: { id: "visa", type: "credit_card", installments: 2, first_six_digits: "423564", last_four_digits: "5682", cardholder: { name: "APRO", identification: { number: "12345678909" } } } },
+    );
+    const c = cobrancaDaOrder(o)!;
+    expect(c.cartao?.bandeira).toBe("visa");
+    for (const proibido of ["423564", "5682", "APRO", "12345678909", EMAIL_HOSPEDE, "seller"]) expect(JSON.stringify(c)).not.toContain(proibido);
   });
 
   it("devolvido soma só devoluções confirmadas e legíveis", () => {
@@ -350,7 +427,33 @@ describe("financeiro da Payments API", () => {
       liberacaoPrevista: new Date("2026-11-07T14:00:00.000Z"),
       liberado: false,
       idPagamento: "104669748043",
+      liberacaoEmParcelas: false,
+      // Os juros (financing_fee do comprador) não são custo da SCL.
+      custoParcelasVendedor: 0,
     });
+  });
+
+  it("parcelamento sem acréscimo: financing_fee da SCL vira custoParcelasVendedor (já dentro da taxa); sem a lista ou ilegível = null", () => {
+    const semAcrescimo = pagamento({
+      transaction_details: { net_received_amount: 460.1, total_paid_amount: 500 },
+      fee_details: [{ type: "mercadopago_fee", amount: 19.9, fee_payer: "collector" }, { type: "financing_fee", amount: "20.00", fee_payer: "collector" }],
+    });
+    expect(financeiroDoPagamento(semAcrescimo)).toMatchObject({ taxa: 3990, liquido: 46010, custoParcelasVendedor: 2000 });
+    // fee_payer ausente numa financing_fee: conta como da SCL (nunca supõe que foi o hóspede).
+    expect(financeiroDoPagamento(pagamento({ fee_details: [{ type: "financing_fee", amount: 5 }] })).custoParcelasVendedor).toBe(500);
+    expect(financeiroDoPagamento(pagamento({ fee_details: [] })).custoParcelasVendedor).toBe(0);
+    expect(financeiroDoPagamento(pagamento({ fee_details: undefined })).custoParcelasVendedor).toBeNull();
+    expect(financeiroDoPagamento(pagamento({ fee_details: "x" })).custoParcelasVendedor).toBeNull();
+    expect(financeiroDoPagamento(pagamento({ fee_details: [null] })).custoParcelasVendedor).toBeNull();
+    expect(financeiroDoPagamento(pagamento({ fee_details: [{ type: "financing_fee", amount: "x", fee_payer: "collector" }] })).custoParcelasVendedor).toBeNull();
+  });
+
+  it("liberação em parcelas (money_release_schema): nunca 'liberado', mesmo com released; sem esquema, libera de uma vez", () => {
+    expect(financeiroDoPagamento(pagamento({ money_release_status: "released", money_release_schema: "payment_in_flow" }))).toMatchObject({ liberado: null, liberacaoEmParcelas: true, liberacaoPrevista: new Date("2026-11-07T14:00:00.000Z") });
+    expect(financeiroDoPagamento(pagamento({ money_release_status: "pending", money_release_schema: { tipo: "x" } }))).toMatchObject({ liberado: null, liberacaoEmParcelas: true });
+    for (const vazio of [null, undefined, "", "  ", [], {}]) {
+      expect(financeiroDoPagamento(pagamento({ money_release_status: "released", money_release_schema: vazio }))).toMatchObject({ liberado: true, liberacaoEmParcelas: false });
+    }
   });
 
   it("sem fee_details: taxa = valor − líquido", () => {
@@ -378,7 +481,7 @@ describe("financeiro da Payments API", () => {
     expect(financeiroDoPagamento(pagamento({ id: "123" })).idPagamento).toBe("123");
     expect(financeiroDoPagamento(pagamento({ id: "PAY01" })).idPagamento).toBeNull();
     expect(financeiroDoPagamento(pagamento({ id: -1 })).idPagamento).toBeNull();
-    expect(financeiroDoPagamento("lixo")).toEqual({ taxa: null, liquido: null, liberacaoPrevista: null, liberado: null, idPagamento: null });
+    expect(financeiroDoPagamento("lixo")).toEqual(NADA_FINANCEIRO);
   });
 });
 
@@ -583,14 +686,23 @@ describe("criarCartao", () => {
     expect(p.corpo).toEqual({
       type: "online",
       processing_mode: "automatic",
+      capture_mode: "automatic",
       total_amount: "500.00",
       external_reference: "scl-456",
       description: "Reserva SCL",
       payer: { email: EMAIL_PAGADOR_SANDBOX, identification: { type: "CPF", number: "12345678909" } },
+      config: { online: { transaction_security: { validation: "on_fraud_risk", liability_shift: "required" } } },
       transactions: { payments: [{ amount: "500.00", payment_method: { id: "master", type: "credit_card", token: "1c87b6b301010101ddcd92f9bbbb3be2", installments: 3 } }] },
     });
     // O emissor não é campo documentado da Orders: não vai.
     expect(JSON.stringify(p.corpo)).not.toMatch(/issuer|"24"/);
+  });
+
+  it("verificação do banco 'nunca': validation never, sem liability_shift (a documentação proíbe os dois juntos)", async () => {
+    const f = fetchFalso(json(201, orderCartao()));
+    await cliente(f.impl).criarCartao(cartao({ tresDS: "never" }));
+    expect((f.pedidos[0].corpo as { config: unknown }).config).toEqual({ online: { transaction_security: { validation: "never" } } });
+    expect(JSON.stringify(f.pedidos[0].corpo)).not.toContain("liability_shift");
   });
 
   it("produção manda o e-mail real; sem documento, sem identification; Device ID inválido fica fora", async () => {
@@ -617,7 +729,7 @@ describe("criarCartao", () => {
       cartao({ parcelas: 0 }), cartao({ parcelas: 37 }), cartao({ parcelas: 2.5 }), cartao({ tipo: "debit_card", parcelas: 2 }),
       cartao({ token: "" }), cartao({ token: "x y" }), cartao({ bandeira: "" }), cartao({ bandeira: "../x" }),
       cartao({ tipo: "prepaid_card" as never }), cartao({ documento: { tipo: "CPF", numero: "" } }), cartao({ documento: { tipo: "C", numero: "1" } }),
-      cartao({ email: "x" }), cartao({ referencia: "" }), cartao({ valor: 0 }),
+      cartao({ email: "x" }), cartao({ referencia: "" }), cartao({ valor: 0 }), cartao({ tresDS: "always" as never }), cartao({ tresDS: undefined as never }),
     ]) {
       const r = await c.criarCartao(ruim);
       expect(r).toMatchObject({ ok: false, motivo: "dados_invalidos", cobranca: null });
@@ -626,30 +738,63 @@ describe("criarCartao", () => {
     expect(f.pedidos).toHaveLength(0);
   });
 
-  it("402: order criada, transação recusada → recusado com a order e mensagem pelo motivo", async () => {
+  it("402: order criada, transação recusada → recusado com a order, mensagem genérica e o motivo em `codigo`", async () => {
     const dados = orderCartao({ status: "failed", status_detail: "failed", total_paid_amount: undefined }, { status: "failed", status_detail: "required_call_for_authorize" });
     const f = fetchFalso(json(402, { errors: [{ code: "failed", message: "texto-do-provedor", details: ["PAY01KB0JDVXYPD6HPP2HSMJS11QN: required_call_for_authorize"] }], data: dados }));
     const r = await cliente(f.impl).criarCartao(cartao());
-    expect(r).toMatchObject({ ok: false, motivo: "recusado", cobranca: { situacao: "recusado", idProvedor: "ORDTST01KB0JDVXYPD6HPP2HSJDKH8FG", detalhe: "failed/failed; pagamento failed/required_call_for_authorize" } });
+    expect(r).toMatchObject({ ok: false, motivo: "recusado", codigo: "required_call_for_authorize", cobranca: { situacao: "recusado", idProvedor: "ORDTST01KB0JDVXYPD6HPP2HSJDKH8FG", detalhe: "failed/failed; pagamento failed/required_call_for_authorize" } });
     if (r.ok) throw new Error("ok inesperado");
-    expect(r.mensagem).toMatch(/autorização/);
+    expect(r.mensagem).toBe(RECUSA_GENERICA);
     semSegredos(r.mensagem);
   });
 
-  it("402 sem data: recusado sem order", async () => {
+  it("402 sem data: continua recusado (sem order), com o código dos detalhes ou, sem eles, o do erro", async () => {
     const r = await cliente(fetchFalso(json(402, { errors: [{ code: "failed", details: ["pay_x: high_risk"] }] })).impl).criarCartao(cartao());
-    expect(r).toMatchObject({ ok: false, motivo: "recusado", cobranca: null });
-    if (!r.ok) expect(r.mensagem).toMatch(/segurança/);
+    expect(r).toEqual({ ok: false, motivo: "recusado", mensagem: RECUSA_GENERICA, cobranca: null, codigo: "high_risk" });
+    const semDetalhe = await cliente(fetchFalso(json(402, { errors: [{ code: "failed", message: "texto-do-provedor" }] })).impl).criarCartao(cartao());
+    expect(semDetalhe).toMatchObject({ ok: false, motivo: "recusado", cobranca: null, codigo: "failed" });
+  });
+
+  it.each([
+    "bad_filled_card_data", "high_risk", "rejected_by_issuer", "required_call_for_authorize", "max_attempts_exceeded", "card_disabled", "insufficient_amount",
+    "card_insufficient_amount", "amount_limit_exceeded", "invalid_installments", "processing_error", "3ds_challenge_expired", "cc_rejected_3ds_challenge", "codigo_desconhecido",
+  ])("recusa %s: a mesma mensagem para todo motivo (o motivo só no código)", async (motivo) => {
+    const order = orderCartao({ status: "failed", status_detail: "failed", total_paid_amount: undefined }, { status: "failed", status_detail: motivo });
+    for (const resposta of [json(201, order), json(402, { errors: [{ code: "failed", details: [`pay_x: ${motivo}`] }], data: order })]) {
+      const r = await cliente(fetchFalso(resposta).impl).criarCartao(cartao());
+      expect(r).toMatchObject({ ok: false, motivo: "recusado", mensagem: RECUSA_GENERICA, codigo: motivo });
+    }
   });
 
   it("201 com a order já recusada → recusado", async () => {
     const r = await cliente(fetchFalso(json(201, orderCartao({ status: "failed", status_detail: "high_risk" }, { status: "failed", status_detail: "high_risk" }))).impl).criarCartao(cartao());
-    expect(r).toMatchObject({ ok: false, motivo: "recusado", cobranca: { situacao: "recusado" } });
+    expect(r).toMatchObject({ ok: false, motivo: "recusado", codigo: "high_risk", cobranca: { situacao: "recusado" } });
   });
 
-  it("3DS: action_required/pending_challenge → ok, pendente", async () => {
-    const r = await cliente(fetchFalso(json(201, orderCartao({ status: "action_required", status_detail: "pending_challenge", total_paid_amount: undefined }, { status: "action_required", status_detail: "pending_challenge" }))).impl).criarCartao(cartao());
-    expect(r).toMatchObject({ ok: true, cobranca: { situacao: "pendente", pago: null } });
+  it("dados inválidos e incerto também trazem o código (o de token na frente)", async () => {
+    const token = await cliente(fetchFalso(json(400, { error: "bad_request", cause: [{ code: "invalid_card_token" }] })).impl).criarCartao(cartao());
+    expect(token).toMatchObject({ ok: false, motivo: "dados_invalidos", codigo: "invalid_card_token", cobranca: null });
+    const parcelas = await cliente(fetchFalso(json(400, { errors: [{ code: "invalid_installments", message: "texto-do-provedor" }] })).impl).criarCartao(cartao());
+    expect(parcelas).toMatchObject({ ok: false, motivo: "dados_invalidos", codigo: "invalid_installments" });
+    const repetida = await cliente(fetchFalso(json(409, { errors: [{ code: "idempotency_key_already_used" }] })).impl).criarCartao(cartao());
+    expect(repetida).toMatchObject({ ok: false, motivo: "incerto", codigo: "idempotency_key_already_used" });
+    const local = await cliente(fetchFalso().impl).criarCartao(cartao({ parcelas: 0 }));
+    expect(local).toMatchObject({ ok: false, motivo: "dados_invalidos", codigo: null });
+  });
+
+  it("3DS: action_required/pending_challenge → ok, pendente, com o endereço do desafio na resposta da criação", async () => {
+    const order = orderCartao(
+      { status: "action_required", status_detail: "pending_challenge", total_paid_amount: undefined },
+      { status: "action_required", status_detail: "pending_challenge", payment_method: { id: "master", type: "credit_card", installments: 3, transaction_security: { url: URL_DESAFIO, validation: "on_fraud_risk", liability_shift: "required" } } },
+    );
+    const r = await cliente(fetchFalso(json(201, order)).impl).criarCartao(cartao());
+    expect(r).toMatchObject({ ok: true, cobranca: { situacao: "pendente", pago: null, cartao: { desafio: true, desafioUrl: URL_DESAFIO, tresDSStatus: null } } });
+  });
+
+  it("resposta sem o meio de pagamento: forma cartão completada, com os dados do cartão lidos", async () => {
+    const o = orderCartao({}, { payment_method: null });
+    const r = await cliente(fetchFalso(json(201, o)).impl).criarCartao(cartao());
+    expect(r).toMatchObject({ ok: true, cobranca: { forma: "cartao", parcelas: null, pix: null, cartao: { desafio: false, bandeira: null } } });
   });
 });
 
@@ -737,14 +882,14 @@ describe("buscarPorReferencia", () => {
 });
 
 describe("detalheFinanceiro", () => {
-  const nada = { taxa: null, liquido: null, liberacaoPrevista: null, liberado: null, idPagamento: null };
+  const nada = NADA_FINANCEIRO;
 
   it("procura na Payments API pela referência e usa o pagamento com a referência idêntica", async () => {
     const f = fetchFalso(json(200, { results: [
       { id: 1, external_reference: "scl-4567", transaction_amount: 1 },
       { id: 104669748043, external_reference: "scl-456", transaction_amount: 500, transaction_details: { net_received_amount: 480.1 }, fee_details: [{ amount: 19.9, fee_payer: "collector" }], money_release_date: "2026-11-07T10:00:00.000-04:00", money_release_status: "released" },
     ] }));
-    expect(await cliente(f.impl).detalheFinanceiro(cobrancaAprovada())).toEqual({ taxa: 1990, liquido: 48010, liberacaoPrevista: new Date("2026-11-07T14:00:00.000Z"), liberado: true, idPagamento: "104669748043" });
+    expect(await cliente(f.impl).detalheFinanceiro(cobrancaAprovada())).toEqual({ taxa: 1990, liquido: 48010, liberacaoPrevista: new Date("2026-11-07T14:00:00.000Z"), liberado: true, idPagamento: "104669748043", liberacaoEmParcelas: false, custoParcelasVendedor: 0 });
     const [p] = f.pedidos;
     expect(p.url.pathname).toBe("/v1/payments/search");
     expect(Object.fromEntries(p.url.searchParams)).toEqual({ external_reference: "scl-456", sort: "date_created", criteria: "desc" });
@@ -762,6 +907,42 @@ describe("detalheFinanceiro", () => {
     const f = fetchFalso();
     expect(await cliente(f.impl).detalheFinanceiro(cobrancaAprovada({ referencia: "" }))).toEqual(nada);
     expect(f.pedidos).toHaveLength(0);
+  });
+});
+
+describe("existePagamentoPorReferencia (D18)", () => {
+  it("GET /v1/payments/search pela referência: true só com a referência idêntica; 200 sem ela = false", async () => {
+    const f = fetchFalso(json(200, { results: [{ id: 1, external_reference: "scl-4567" }, { id: 104669748043, external_reference: "scl-456", status: "rejected" }] }));
+    expect(await cliente(f.impl).existePagamentoPorReferencia("scl-456", AGORA)).toBe(true);
+    const [p] = f.pedidos;
+    expect(p.metodo).toBe("GET");
+    expect(p.url.pathname).toBe("/v1/payments/search");
+    expect(Object.fromEntries(p.url.searchParams)).toEqual({ external_reference: "scl-456", sort: "date_created", criteria: "desc" });
+    expect(await cliente(fetchFalso(json(200, { results: [{ external_reference: "SCL-456" }, null] })).impl).existePagamentoPorReferencia("scl-456", AGORA)).toBe(false);
+    expect(await cliente(fetchFalso(json(200, { results: [] })).impl).existePagamentoPorReferencia("scl-456", AGORA)).toBe(false);
+  });
+
+  it("busca que não funciona LANÇA (nunca 'não existe' sem saber); referência inválida = false sem rede", async () => {
+    for (const r of [json(500, {}), json(400, { message: "texto-do-provedor" }), json(404, {}), json(200, { outra: 1 }), json(200, { results: "x" }), new Response("x", { status: 200 })]) {
+      expect((await erroDe(cliente(fetchFalso(r).impl).existePagamentoPorReferencia("scl-456", AGORA))).tipo).toBe("incerto");
+    }
+    expect((await erroDe(cliente(fetchFalso(json(401, {})).impl).existePagamentoPorReferencia("scl-456", AGORA))).tipo).toBe("credencial");
+    expect((await erroDe(cliente(fetchFalso(json(429, {})).impl).existePagamentoPorReferencia("scl-456", AGORA))).tipo).toBe("limite");
+    expect((await erroDe(cliente(fetchFalso(new TypeError("fetch failed", { cause: { code: "ECONNRESET" } })).impl).existePagamentoPorReferencia("scl-456", AGORA))).tipo).toBe("incerto");
+    const f = fetchFalso();
+    expect(await cliente(f.impl).existePagamentoPorReferencia("scl 456", AGORA)).toBe(false);
+    expect(f.pedidos).toHaveLength(0);
+  });
+});
+
+describe("urlDoDesafio", () => {
+  it("só https de domínio do Mercado Pago (ou subdomínio), sem usuário, senha ou porta", () => {
+    expect(urlDoDesafio(URL_DESAFIO)).toBe(URL_DESAFIO);
+    expect(urlDoDesafio(`  ${URL_DESAFIO}  `)).toBe(URL_DESAFIO);
+    for (const ok of ["https://mercadopago.com/x", "https://a.b.mercadolibre.com/x", "https://www.mercadolivre.com.br/x", "https://WWW.MercadoPago.com.br/x"]) expect(urlDoDesafio(ok)).not.toBeNull();
+    for (const ruim of ["https://mercadopago.com.br@evil.example/x", "https://evil.example/?u=mercadopago.com.br", "ftp://www.mercadopago.com.br/x", "https://www.mercadopago.com.br.evil.example/", "", "   ", undefined, {}]) {
+      expect(urlDoDesafio(ruim)).toBeNull();
+    }
   });
 });
 

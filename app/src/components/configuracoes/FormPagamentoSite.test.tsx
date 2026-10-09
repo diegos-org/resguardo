@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { FormPagamentoSite } from "./FormPagamentoSite";
 
 const props = {
-  config: { oferecer: true, nomeFatura: null, categoriaTaxaId: null },
+  config: { oferecer: true, nomeFatura: null, categoriaTaxaId: null, cartao: false, parcelasMaximas: null, tresDS: "on_fraud_risk" as const },
   categorias: [{ id: "33333333-3333-4333-8333-333333333333", nome: "Tarifas bancárias" }],
   nomeEmpresa: "Sua Casa Leblon",
   limiteNome: 22,

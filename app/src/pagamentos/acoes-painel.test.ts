@@ -183,7 +183,7 @@ describe("salvar a aba Pagamento no site", () => {
     m.salvar.mockResolvedValue({ ok: true, mudou: true });
     const r = await salvarConfigPagamentoSiteAcao({}, form({ oferecer: "on", nomeFatura: " SCL  Leblon ", categoriaTaxaId: "" }));
     expect(r).toEqual({ ok: true, aviso: "Salvo. Vale para os Pix novos; os já gerados seguem como estavam." });
-    expect(m.salvar).toHaveBeenCalledWith({ banco: true }, "org", { oferecer: true, nomeFatura: "SCL Leblon", categoriaTaxaId: null }, "u");
+    expect(m.salvar).toHaveBeenCalledWith({ banco: true }, "org", { oferecer: true, nomeFatura: "SCL Leblon", categoriaTaxaId: null, cartao: false, parcelasMaximas: null, tresDS: "on_fraud_risk" }, "u");
     expect(m.revalidar).toHaveBeenCalledWith("/painel", "layout");
     // Desligar: a caixa desmarcada não vem no formulário.
     expect((await salvarConfigPagamentoSiteAcao({}, form({ nomeFatura: "" }))).aviso).toContain("deixa de oferecer o Pix");

@@ -83,7 +83,7 @@ describe("taxa, liberação e recebimento do pagamento no site (M8.2a)", () => {
     expect(await c.tentativa(x.pagamentoId)).toMatchObject({ desfecho: "reserva", taxa: null, liquido: null });
     const [order] = c.provedor.todas().filter((o) => o.idProvedor === x.idProvedor);
     const outra = { ...order, referencia: "scl-outra" };
-    await aplicarNaTransacao(db, c.org, { id: x.pagamentoId, cotacaoId: x.cotacaoId }, { cobranca: outra, financeiro: { taxa: 900, liquido: TOTAL - 900, liberacaoPrevista: new Date("2026-10-02T13:00:00Z"), liberado: true, idPagamento: "999" } }, minutos(10));
+    await aplicarNaTransacao(db, c.org, { id: x.pagamentoId, cotacaoId: x.cotacaoId }, { cobranca: outra, financeiro: { taxa: 900, liquido: TOTAL - 900, liberacaoPrevista: new Date("2026-10-02T13:00:00Z"), liberado: true, idPagamento: "999", liberacaoEmParcelas: false, custoParcelasVendedor: null } }, minutos(10));
     expect(await c.tentativa(x.pagamentoId)).toMatchObject({ taxa: null, liquido: null, liberacaoPrevistaEm: null, liberacaoConfirmadaEm: null, financeiroConsultadoEm: expect.any(Date), avisos: ["referencia_divergente"] });
     expect(await c.reserva(x.reservaId)).toMatchObject({ taxaCanal: null });
     expect(await recebimentos(x.reservaId)).toEqual([]);
@@ -220,7 +220,7 @@ describe("taxa, liberação e recebimento do pagamento no site (M8.2a)", () => {
     expect((await recebidos(x.reservaId)).map((l) => [l.estado, l.montante])).toEqual([["conciliado", NOVO]]);
     expect(dinheiroComAEmpresa((await recebidoPorReserva(db, c.org, [x.reservaId])).get(x.reservaId)!)).toBe(true);
     // Uma leitura depois, com outro líquido: o recebimento conciliado e a taxa ficam; aviso.
-    const lida = (liquido: number) => ({ financeiro: { taxa: null, liquido, liberacaoPrevista: new Date("2026-10-02T18:00:00Z"), liberado: true, idPagamento: null } });
+    const lida = (liquido: number) => ({ financeiro: { taxa: null, liquido, liberacaoPrevista: new Date("2026-10-02T18:00:00Z"), liberado: true, idPagamento: null, liberacaoEmParcelas: false, custoParcelasVendedor: null } });
     await aplicarNaTransacao(db, c.org, { id: x.pagamentoId, cotacaoId: x.cotacaoId }, lida(TOTAL - 3000), new Date("2026-10-04T12:00:00Z"));
     expect(await c.tentativa(x.pagamentoId)).toMatchObject({ taxa: 2500, liquido: NOVO });
     expect((await c.tentativa(x.pagamentoId)).avisos).toEqual(expect.arrayContaining(["taxa_divergente", "liberacao_divergente"]));

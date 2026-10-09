@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { salvarConfigPagamentoSite } from "@/configuracoes/pagamento-site";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { CONFIG_PAGAMENTO_SITE_PADRAO, salvarConfigPagamentoSite } from "@/configuracoes/pagamento-site";
 import { encerrarContrato, listarContratos } from "@/contratos/repositorio";
 import { beds24Calendario, bloqueios, cotacoes, imoveis, organizacoes, proprietarioImoveis, recebimentoPorCanal, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
@@ -10,8 +10,9 @@ import { CONFLITO_AGENDA_EXTERNA, noitesLivres } from "@/site/disponibilidade";
 import { expirarHoldsVencidos } from "@/site/cotacoes";
 import { esquecerProvedorDoAmbiente } from "./ambiente";
 import { ProvedorFalso } from "./falso";
-import { motivosPorImovel, ofertaDePix, podeCobrar, provedorDeConferencia, TEXTO_SEM_COBRANCA, TEXTO_SEM_PIX } from "./oferta";
-import { AGORA, type Cenario, env, minutos, montarCenario } from "./testes";
+import { ClienteMercadoPagoHttp } from "./mercadopago";
+import { chavePublicaValida, motivosPorImovel, ofertaDePix, podeCobrar, provedorDeConferencia, TEXTO_SEM_COBRANCA, TEXTO_SEM_PIX } from "./oferta";
+import { AGORA, type Cenario, CHAVE_PUBLICA_FICTICIA, env, minutos, montarCenario } from "./testes";
 
 let db: Db, close: () => Promise<void>, c: Cenario;
 beforeAll(async () => { ({ db, close } = await createTestDb()); });
@@ -40,7 +41,7 @@ describe("podeCobrar: a função única das travas (M8.2a)", () => {
     muda.contaDeTeste = null;
     expect(await podeCobrar(db, c.org, env(), AGORA, { provedor: muda })).toMatchObject({ ok: false, motivo: "conta_nao_conferida" });
     expect(await provedorDeConferencia(env(), AGORA, { provedor: real })).toMatchObject({ ok: false, motivo: "conta_nao_teste" });
-    await salvarConfigPagamentoSite(db, c.org, { oferecer: false, nomeFatura: null, categoriaTaxaId: null }, null);
+    await salvarConfigPagamentoSite(db, c.org, { ...CONFIG_PAGAMENTO_SITE_PADRAO, oferecer: false }, null);
     const outra = new ProvedorFalso(() => AGORA);
     expect(await podeCobrar(db, c.org, env(), AGORA, { provedor: outra })).toMatchObject({ ok: false, motivo: "desligado_no_painel" });
     // Com a oferta desligada nem se pergunta a conta ao provedor; a conferência continua liberada.
@@ -66,8 +67,37 @@ describe("podeCobrar: a função única das travas (M8.2a)", () => {
     // Conferir, cancelar e devolver o que já foi cobrado nunca dependem das páginas legais.
     expect(await provedorDeConferencia(env(), AGORA, { provedor: falsa })).toMatchObject({ ok: true });
     // Oferta desligada no painel: esse é o motivo, mesmo sem as páginas.
-    await salvarConfigPagamentoSite(db, s.org, { oferecer: false, nomeFatura: null, categoriaTaxaId: null }, null);
+    await salvarConfigPagamentoSite(db, s.org, { ...CONFIG_PAGAMENTO_SITE_PADRAO, oferecer: false }, null);
     expect(await podeCobrar(db, s.org, env(), AGORA, { provedor: falsa })).toMatchObject({ ok: false, motivo: "desligado_no_painel" });
+  });
+});
+
+describe("chave pública no portão (M8.2b)", () => {
+  it("o portão aberto leva a chave pública do formulário do cartão; formato estranho ou ausente = null (o Pix não depende dela)", async () => {
+    expect(c.gate).toMatchObject({ ok: true, chavePublica: CHAVE_PUBLICA_FICTICIA });
+    const falsa = new ProvedorFalso(() => AGORA);
+    expect(await podeCobrar(db, c.org, env(), AGORA, { provedor: falsa })).toMatchObject({ ok: true, chavePublica: null });
+    expect(await podeCobrar(db, c.org, env(), AGORA, { provedor: falsa, chavePublica: "curta" })).toMatchObject({ ok: true, chavePublica: null });
+    expect(await provedorDeConferencia(env(), AGORA, { provedor: falsa, chavePublica: CHAVE_PUBLICA_FICTICIA })).toMatchObject({ ok: true, chavePublica: CHAVE_PUBLICA_FICTICIA });
+    for (const ok of ["TEST-0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0", "APP_USR-ficticia-0000-0000-0000-000000000000"]) expect(chavePublicaValida(ok)).toBe(true);
+    for (const ruim of ["", "curta", "TEST chave com espaço", "TEST-<script>alert(1)</script>", "x".repeat(201), null, 42]) expect(chavePublicaValida(ruim)).toBe(false);
+  });
+
+  it("pelo ambiente: a chave pública vem de MERCADOPAGO_PUBLIC_KEY, só no formato esperado (a conta é conferida sem rede neste teste)", async () => {
+    esquecerProvedorDoAmbiente();
+    const conta = vi.spyOn(ClienteMercadoPagoHttp.prototype, "conferirContaDeTeste").mockResolvedValue(true);
+    try {
+      const publica = "TEST-0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0";
+      const chaves = { MERCADOPAGO_ACCESS_TOKEN: "TEST-token-ficticio-0000", MERCADOPAGO_AMBIENTE: "teste", NODE_ENV: "test" };
+      expect(await podeCobrar(db, c.org, env({ ...chaves, MERCADOPAGO_PUBLIC_KEY: publica }), AGORA)).toMatchObject({ ok: true, chavePublica: publica });
+      expect(await provedorDeConferencia(env({ ...chaves, MERCADOPAGO_PUBLIC_KEY: publica }), AGORA)).toMatchObject({ ok: true, chavePublica: publica });
+      // Legível para o ambiente (sem espaço), mas fora do formato de chave pública: o Pix segue, o cartão não tem chave.
+      expect(await podeCobrar(db, c.org, env({ ...chaves, MERCADOPAGO_PUBLIC_KEY: "TEST.chave+estranha/0000" }), AGORA)).toMatchObject({ ok: true, chavePublica: null });
+      expect(conta).toHaveBeenCalled();
+    } finally {
+      conta.mockRestore();
+      esquecerProvedorDoAmbiente();
+    }
   });
 });
 

@@ -38,19 +38,31 @@ export const TEXTO_SEM_COBRANCA: Record<MotivoSemCobranca, string> = {
   conta_nao_conferida: "Não deu para conferir no Mercado Pago se a conta das chaves é de teste: nenhuma cobrança é feita.",
 };
 
-export type PortaoCobranca = { ok: true; provedor: ProvedorPagamento; ambiente: "teste" } | { ok: false; motivo: MotivoSemCobranca; texto: string };
+/**
+ * `chavePublica` (M8.2b): a chave pública do Mercado Pago que o formulário do cartão usa no navegador; null quando
+ * falta ou tem formato estranho (o cartão não é oferecido; o Pix não depende dela).
+ */
+export type PortaoCobranca = { ok: true; provedor: ProvedorPagamento; ambiente: "teste"; chavePublica: string | null } | { ok: false; motivo: MotivoSemCobranca; texto: string };
 
 const recusa = (motivo: MotivoSemCobranca): PortaoCobranca => ({ ok: false, motivo, texto: TEXTO_SEM_COBRANCA[motivo] });
 
-/** Ambiente e chaves (a primeira metade das travas). Provedor injetado (testes) pula o ambiente, nunca a conta. */
-function provedorPeloAmbiente(env: NodeJS.ProcessEnv, injetado: ProvedorPagamento | undefined): { provedor: ProvedorPagamento } | { motivo: MotivoSemCobranca } {
-  if (injetado) return { provedor: injetado };
+/** Chave pública com cara de chave (TEST-…/APP_USR-…): só letras, números, hífen e sublinhado. */
+export const chavePublicaValida = (v: unknown): v is string => typeof v === "string" && /^[A-Za-z0-9_-]{10,200}$/.test(v);
+
+type OpcoesDoPortao = { provedor?: ProvedorPagamento; esperaMs?: number; chavePublica?: string | null };
+
+/**
+ * Ambiente e chaves (a primeira metade das travas). Provedor injetado (testes) pula o ambiente, nunca a conta; a chave
+ * pública vem então de `o.chavePublica`.
+ */
+function provedorPeloAmbiente(env: NodeJS.ProcessEnv, o: OpcoesDoPortao): { provedor: ProvedorPagamento; chavePublica: string | null } | { motivo: MotivoSemCobranca } {
+  if (o.provedor) return { provedor: o.provedor, chavePublica: chavePublicaValida(o.chavePublica) ? o.chavePublica : null };
   const estado = estadoPagamentoDoAmbiente(env);
   if (estado.situacao === "desligado") return { motivo: ambienteMercadoPago(env.MERCADOPAGO_AMBIENTE) === null ? "configuracao_invalida" : "desligado" };
   if (estado.situacao === "so_nas_previas") return { motivo: "so_nas_previas" };
   if (estado.situacao === "producao_travada") return { motivo: "producao_travada" };
   const provedor = provedorDoAmbiente(env);
-  return provedor ? { provedor } : { motivo: "desligado" };
+  return provedor ? { provedor, chavePublica: chavePublicaValida(estado.chavePublica) ? estado.chavePublica : null } : { motivo: "desligado" };
 }
 
 /**
@@ -68,11 +80,11 @@ async function contaConfere(provedor: ProvedorPagamento, agora: Date, esperaMs?:
  * Provedor para conferir, cancelar e devolver: ambiente de teste fora da produção, chaves e conta de TESTE
  * comprovada. Não olha a chave do painel.
  */
-export async function provedorDeConferencia(env: NodeJS.ProcessEnv = process.env, agora: Date = new Date(), o: { provedor?: ProvedorPagamento; esperaMs?: number } = {}): Promise<PortaoCobranca> {
-  const p = provedorPeloAmbiente(env, o.provedor);
+export async function provedorDeConferencia(env: NodeJS.ProcessEnv = process.env, agora: Date = new Date(), o: OpcoesDoPortao = {}): Promise<PortaoCobranca> {
+  const p = provedorPeloAmbiente(env, o);
   if ("motivo" in p) return recusa(p.motivo);
   const conta = await contaConfere(p.provedor, agora, o.esperaMs);
-  return conta ? recusa(conta) : { ok: true, provedor: p.provedor, ambiente: "teste" };
+  return conta ? recusa(conta) : { ok: true, provedor: p.provedor, ambiente: "teste", chavePublica: p.chavePublica };
 }
 
 /** A função única que libera cobrar (criar Pix). Todas as travas, inclusive a chave do painel e as páginas legais. */
@@ -81,16 +93,16 @@ export async function podeCobrar(
   organizacaoId: string,
   env: NodeJS.ProcessEnv = process.env,
   agora: Date = new Date(),
-  o: { provedor?: ProvedorPagamento; esperaMs?: number } = {},
+  o: OpcoesDoPortao = {},
 ): Promise<PortaoCobranca> {
-  const p = provedorPeloAmbiente(env, o.provedor);
+  const p = provedorPeloAmbiente(env, o);
   if ("motivo" in p) return recusa(p.motivo);
   // A chave do painel antes da conferência da conta: com a oferta desligada, nem se pergunta ao provedor.
   if (!(await lerConfigPagamentoSite(db, organizacaoId)).oferecer) return recusa("desligado_no_painel");
   // Sem os termos, a privacidade e o cancelamento publicados, o hóspede não tem o que aceitar antes de pagar (M7.4).
   if (!(await versoesLegaisAtuais(db, organizacaoId))) return recusa("sem_paginas_legais");
   const conta = await contaConfere(p.provedor, agora, o.esperaMs);
-  return conta ? recusa(conta) : { ok: true, provedor: p.provedor, ambiente: "teste" };
+  return conta ? recusa(conta) : { ok: true, provedor: p.provedor, ambiente: "teste", chavePublica: p.chavePublica };
 }
 
 export type MotivoSemPix =

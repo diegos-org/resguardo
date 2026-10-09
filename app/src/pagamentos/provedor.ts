@@ -24,6 +24,29 @@ export type SituacaoCobranca =
 
 export type FormaPagamento = "pix" | "cartao";
 
+/**
+ * Verificação do banco (3DS) pedida na criação do cartão (M8.2b): `on_fraud_risk` (o banco pede a verificação só nos
+ * pagamentos arriscados) ou `never`. "Sempre" não existe na Orders API do Brasil.
+ */
+export const MODOS_TRES_DS = ["on_fraud_risk", "never"] as const;
+export type ModoTresDS = (typeof MODOS_TRES_DS)[number];
+/** Resultado da verificação do banco (transaction_security.status), lista fechada da documentação. */
+export const STATUS_TRES_DS = ["AUTHENTICATED", "NOT_AUTHENTICATED", "CHALLENGE", "ATTEMPTED", "REJECTED", "ERROR"] as const;
+export type StatusTresDS = (typeof STATUS_TRES_DS)[number];
+
+/** O que a order diz do cartão (M8.2b). Nunca BIN, últimos dígitos, titular ou documento: a leitura nem olha esses campos. */
+export type DadosCartao = {
+  /** URL do desafio 3DS (só https de domínio do Mercado Pago, ver `urlDoDesafio`). Só a resposta da criação traz (o GET não documenta). */
+  desafioUrl: string | null;
+  /** A transação está em action_required/pending_challenge (o banco pediu a verificação ao hóspede). */
+  desafio: boolean;
+  /** A transação está em análise (in_review | pending_review_manual), não só processando. */
+  analise: boolean;
+  tresDSStatus: StatusTresDS | null;
+  /** payment_method_id (visa, master, elo…), minúsculo. */
+  bandeira: string | null;
+};
+
 export type DadosPix = {
   /** Texto do "copia e cola". */
   copiaECola: string;
@@ -59,6 +82,8 @@ export type Cobranca = {
   /** `live_mode` quando vier; null = não informado. */
   aoVivo: boolean | null;
   pix: DadosPix | null;
+  /** null no Pix. */
+  cartao: DadosCartao | null;
 };
 
 /** O que o hóspede pagou na order: o total pago quando vier, senão o valor da order. É o "integral" de uma devolução. */
@@ -82,6 +107,13 @@ export type DetalheFinanceiro = {
   liberado: boolean | null;
   /** Id numérico do pagamento na Payments API, em texto. */
   idPagamento: string | null;
+  /** money_release_schema não vazio (ex.: payment_in_flow): o provedor libera parcela a parcela (`liberado` fica null). */
+  liberacaoEmParcelas: boolean;
+  /**
+   * Centavos: soma das tarifas financing_fee que NÃO são do comprador (o custo do "parcelamento sem acréscimo" cobrado
+   * da SCL). 0 = tarifas lidas e nenhuma assim; null = tarifas não lidas.
+   */
+  custoParcelasVendedor: number | null;
 };
 
 export type MotivoFalhaCriacao = "recusado" | "dados_invalidos" | "incerto";
@@ -95,7 +127,15 @@ export type MotivoFalhaCriacao = "recusado" | "dados_invalidos" | "incerto";
  */
 export type ResultadoCriacao =
   | { ok: true; cobranca: Cobranca }
-  | { ok: false; motivo: MotivoFalhaCriacao; mensagem: string; cobranca: Cobranca | null };
+  | {
+      ok: false;
+      motivo: MotivoFalhaCriacao;
+      /** Texto de lista fechada para o painel e o desenvolvimento; nunca vai ao hóspede (as recusas de cartão são todas iguais). */
+      mensagem: string;
+      cobranca: Cobranca | null;
+      /** Primeiro código conhecido do provedor (status_detail ou código de erro), `/^[a-z0-9_]{1,60}$/`; null = nenhum. */
+      codigo: string | null;
+    };
 
 export type PedidoPix = {
   referencia: string;
@@ -120,9 +160,12 @@ export type PedidoCartao = {
   token: string;
   /** Bandeira (payment_method_id do formulário, ex.: "master"). */
   bandeira: string;
+  /** O domínio só manda crédito (M8.2b); débito continua no contrato do adaptador. */
   tipo: "credit_card" | "debit_card";
   /** 1 a 36. */
   parcelas: number;
+  /** Verificação do banco pedida (retrato do painel na criação da tentativa). */
+  tresDS: ModoTresDS;
   /** issuer_id do formulário. A Orders API não documenta esse campo: não é enviado (ver mercadopago.ts). */
   emissor: string | null;
   email: string;
@@ -172,6 +215,11 @@ export interface ProvedorPagamento {
   consultar(idProvedor: string): Promise<Cobranca | null>;
   /** null = a busca funcionou e não há order com essa referência desde `desde`. Busca que não funciona lança `ErroProvedor`. */
   buscarPorReferencia(referencia: string, desde: Date): Promise<Cobranca | null>;
+  /**
+   * Payments API pela external_reference: existe algum pagamento (de qualquer situação)? Só leitura. Falha de
+   * transporte ou resposta ilegível lança `ErroProvedor` (nunca "não" sem saber: um cartão pode já ter sido cobrado).
+   */
+  existePagamentoPorReferencia(referencia: string, desde: Date): Promise<boolean>;
   /** Taxa, líquido e liberação. Qualquer falha ou ausência = campos null (nunca lança). */
   detalheFinanceiro(c: Cobranca): Promise<DetalheFinanceiro>;
   cancelar(idProvedor: string, chaveIdempotencia: string): Promise<ResultadoCancelamento>;
@@ -189,6 +237,40 @@ export interface ProvedorPagamento {
 export const PIX_VALIDADE_MINIMA_MINUTOS = 30;
 export const PIX_VALIDADE_MAXIMA_MINUTOS = 30 * 24 * 60;
 export const PARCELAS_MAXIMAS = 36;
+/** O hóspede tem 40 minutos, a partir da criação do endereço do desafio 3DS, para concluir a verificação do banco. */
+export const DESAFIO_3DS_MINUTOS = 40;
+
+/**
+ * Mensagem de toda recusa de cartão (lista fechada, igual para todo motivo): quem testa cartões roubados usa
+ * textos diferentes por motivo como oráculo. O motivo fica só no código (`codigo`) e no painel da equipe.
+ */
+export const RECUSA_GENERICA = "Pagamento recusado pelo Mercado Pago.";
+/** Códigos do provedor de token do cartão vencido ou inválido (o formulário precisa ser preenchido de novo). */
+export const CODIGOS_TOKEN = ["invalid_card_token", "card_token_not_found", "invalid_token"] as const;
+/** Falha técnica do próprio provedor ao processar (não é recusa do banco nem da análise de risco). */
+export const CODIGOS_FALHA_DO_PROVEDOR = ["processing_error"] as const;
+
+/** Domínios do Mercado Pago aceitos para o desafio 3DS (o endereço, o iframe e a política de frames da página). */
+export const DOMINIOS_DESAFIO = ["mercadopago.com", "mercadopago.com.br", "mercadolibre.com", "mercadolivre.com.br"] as const;
+
+/**
+ * Endereço do desafio 3DS, ou null: só https, até 2000 caracteres, sem usuário/senha nem porta, e o host igual a um
+ * dos `DOMINIOS_DESAFIO` ou subdomínio dele. Qualquer outro endereço é descartado (nunca vai a um iframe).
+ */
+export function urlDoDesafio(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  if (!t || t.length > 2000) return null;
+  let u: URL;
+  try {
+    u = new URL(t);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== "https:" || u.username || u.password || u.port) return null;
+  const host = u.hostname.toLowerCase();
+  return DOMINIOS_DESAFIO.some((d) => host === d || host.endsWith(`.${d}`)) ? u.toString() : null;
+}
 
 /** external_reference: até 64 caracteres, só letras, números, hífen e sublinhado (regra do Mercado Pago). */
 export const referenciaValida = (r: unknown): r is string => typeof r === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(r);
@@ -225,6 +307,7 @@ export function problemaNoCartao(p: PedidoCartao): string | null {
   if (!Number.isInteger(p.parcelas) || p.parcelas < 1 || p.parcelas > PARCELAS_MAXIMAS) return "Número de parcelas inválido.";
   if (p.tipo !== "credit_card" && p.tipo !== "debit_card") return "Tipo de cartão inválido.";
   if (p.tipo === "debit_card" && p.parcelas !== 1) return "Cartão de débito não parcela.";
+  if (!(MODOS_TRES_DS as readonly string[]).includes(p.tresDS)) return "Verificação do banco (3DS) inválida.";
   if (typeof p.token !== "string" || !/^[A-Za-z0-9_-]{8,128}$/.test(p.token)) return "Os dados do cartão expiraram ou são inválidos; preencha de novo.";
   if (typeof p.bandeira !== "string" || !/^[a-z0-9_-]{1,40}$/i.test(p.bandeira)) return "Bandeira do cartão inválida.";
   return null;
