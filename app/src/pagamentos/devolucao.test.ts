@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { lerConfigPagamentoSite } from "@/configuracoes/pagamento-site";
+import { ERRO_CATEGORIA_TAXA_PADRAO_ARQUIVADA, lerConfigPagamentoSite } from "@/configuracoes/pagamento-site";
 import { categoriasDespesa, cotacoes, devolucoesPagamento, lancamentos } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
@@ -99,6 +99,19 @@ describe("devolução do pagamento sem reserva (M8.2a)", () => {
     expect(await devolucao(y.pagamentoId)).toMatchObject({ taxaPerdida: 0, despesaLancamentoId: null });
     expect((await c.tentativa(y.pagamentoId)).avisos).toEqual([]);
     expect(await despesas()).toHaveLength(3);
+  });
+
+  it("taxa que não voltou com a categoria arquivada: avisa, não lança e a pendência continua", async () => {
+    const x = await semReserva();
+    await devolverPeloProvedor(db, c.org, x.pagamentoId, null, c.provedor, minutos(10));
+    const [cat] = await db.insert(categoriasDespesa).values({ organizacaoId: c.org, nome: "Taxa do pagamento do site", ativa: false }).returning();
+    expect(await registrarTaxaPerdida(db, c.org, x.pagamentoId, 900, null, minutos(12))).toEqual({ ok: false, erro: ERRO_CATEGORIA_TAXA_PADRAO_ARQUIVADA });
+    expect(await despesas()).toEqual([]);
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ taxaPerdida: null, despesaLancamentoId: null });
+    expect((await c.tentativa(x.pagamentoId)).avisos).toContain("taxa_perdida_desconhecida");
+    await db.update(categoriasDespesa).set({ ativa: true }).where(eq(categoriasDespesa.id, cat.id));
+    expect(await registrarTaxaPerdida(db, c.org, x.pagamentoId, 900, null, minutos(13))).toEqual({ ok: true });
+    expect((await despesas())[0].categoriaId).toBe(cat.id);
   });
 
   it("pedida até o provedor confirmar; a rotina relê a order antes de pedir de novo (já devolvida = confirmada; em andamento = espera, sem reenviar)", async () => {

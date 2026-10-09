@@ -77,31 +77,37 @@ export async function nomeNaFatura(db: Db, organizacaoId: string): Promise<strin
   return (await lerConfigPagamentoSite(db, organizacaoId)).nomeFatura ?? (await nomeDaEmpresa(db, organizacaoId)).slice(0, LIMITE_NOME_FATURA);
 }
 
+export const ERRO_CATEGORIA_TAXA_ARQUIVADA = "A categoria escolhida para a taxa do pagamento do site está arquivada: escolha outra em Configurações → Pagamento no site (ou reative-a em Despesas).";
+export const ERRO_CATEGORIA_TAXA_PADRAO_ARQUIVADA = `A categoria “${CATEGORIA_TAXA_PERDIDA}” está arquivada: reative-a em Despesas ou escolha outra em Configurações → Pagamento no site.`;
+
 /**
- * Categoria da despesa da taxa perdida: a escolhida no painel (se ainda existe); senão a de nome
- * "Taxa do pagamento do site" (criada aqui no primeiro uso) — e passa a ser a escolhida. Editável depois.
+ * Categoria da despesa da taxa perdida: a escolhida no painel (ativa); sem escolha, a de nome "Taxa do pagamento do
+ * site" (criada aqui no primeiro uso) — e passa a ser a escolhida. Categoria arquivada nunca recebe lançamento novo:
+ * avisa e não lança (a equipe escolhe outra ou reativa). Editável depois.
  */
-export async function categoriaDaTaxaPerdida(db: Db, organizacaoId: string, autorId: string | null): Promise<string> {
+export async function categoriaDaTaxaPerdida(db: Db, organizacaoId: string, autorId: string | null): Promise<{ ok: true; id: string } | { ok: false; erro: string }> {
   return db.transaction(async (tx) => {
     await travarConfig(tx, organizacaoId, "pagamento_site");
     const config = await lerConfigPagamentoSite(tx, organizacaoId);
     if (config.categoriaTaxaId) {
       const [c] = await tx
-        .select({ id: categoriasDespesa.id })
+        .select({ id: categoriasDespesa.id, ativa: categoriasDespesa.ativa })
         .from(categoriasDespesa)
         .where(and(eq(categoriasDespesa.id, config.categoriaTaxaId), eq(categoriasDespesa.organizacaoId, organizacaoId)));
-      if (c) return c.id;
+      if (c?.ativa) return { ok: true as const, id: c.id };
+      if (c) return { ok: false as const, erro: ERRO_CATEGORIA_TAXA_ARQUIVADA };
     }
-    // Uma categoria com o mesmo nome (mesmo arquivada) é reaproveitada: o nome é único por organização.
+    // Uma categoria com o mesmo nome é reaproveitada (o nome é único por organização); arquivada, avisa.
     let [c] = await tx
-      .select({ id: categoriasDespesa.id })
+      .select({ id: categoriasDespesa.id, ativa: categoriasDespesa.ativa })
       .from(categoriasDespesa)
       .where(and(eq(categoriasDespesa.organizacaoId, organizacaoId), sql`lower(${categoriasDespesa.nome}) = lower(${CATEGORIA_TAXA_PERDIDA})`));
+    if (c && !c.ativa) return { ok: false as const, erro: ERRO_CATEGORIA_TAXA_PADRAO_ARQUIVADA };
     if (!c) {
-      [c] = await tx.insert(categoriasDespesa).values({ organizacaoId, nome: CATEGORIA_TAXA_PERDIDA }).returning({ id: categoriasDespesa.id });
+      [c] = await tx.insert(categoriasDespesa).values({ organizacaoId, nome: CATEGORIA_TAXA_PERDIDA }).returning({ id: categoriasDespesa.id, ativa: categoriasDespesa.ativa });
       await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "categoria_despesa.criar", entidade: "categoria_despesa", entidadeId: c.id, mudancas: { nome: [null, CATEGORIA_TAXA_PERDIDA] } });
     }
     await gravarConfig(tx, organizacaoId, "pagamento_site", { ...config, categoriaTaxaId: c.id }, autorId);
-    return c.id;
+    return { ok: true as const, id: c.id };
   });
 }

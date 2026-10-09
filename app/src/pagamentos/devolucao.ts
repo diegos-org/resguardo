@@ -289,7 +289,9 @@ export async function registrarTaxaPerdida(db: Db, organizacaoId: string, pagame
       };
     let despesaLancamentoId: string | null = null;
     if (valor > 0) {
-      const categoriaId = await categoriaDaTaxaPerdida(tx, organizacaoId, autorId);
+      const categoria = await categoriaDaTaxaPerdida(tx, organizacaoId, autorId);
+      if (!categoria.ok) return { ok: false as const, erro: categoria.erro };
+      const categoriaId = categoria.id;
       const data = hojeISO(FUSO_PAGAMENTO, dev.confirmadaEm ?? agora);
       const [l] = await lancar(
         tx,

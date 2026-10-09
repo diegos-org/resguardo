@@ -4,7 +4,7 @@ import { criarCategoria } from "@/despesas/categorias";
 import { auditoria, categoriasDespesa, organizacoes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
-import { categoriaDaTaxaPerdida, CATEGORIA_TAXA_PERDIDA, CONFIG_PAGAMENTO_SITE_PADRAO, configDeJson, lerConfigPagamentoSite, LIMITE_NOME_FATURA, nomeNaFatura, salvarConfigPagamentoSite, validarConfigPagamentoSite } from "./pagamento-site";
+import { categoriaDaTaxaPerdida, CATEGORIA_TAXA_PERDIDA, ERRO_CATEGORIA_TAXA_ARQUIVADA, ERRO_CATEGORIA_TAXA_PADRAO_ARQUIVADA, CONFIG_PAGAMENTO_SITE_PADRAO, configDeJson, lerConfigPagamentoSite, LIMITE_NOME_FATURA, nomeNaFatura, salvarConfigPagamentoSite, validarConfigPagamentoSite } from "./pagamento-site";
 
 let db: Db, close: () => Promise<void>, org: string;
 beforeAll(async () => { ({ db, close } = await createTestDb()); });
@@ -32,15 +32,33 @@ describe("Configurações → Pagamento no site (M8.2a)", () => {
     expect(await salvarConfigPagamentoSite(db, org, { oferecer: false, nomeFatura: "SCL Leblon", categoriaTaxaId: cat.categoria.id }, null)).toEqual({ ok: true, mudou: false });
     expect(await nomeNaFatura(db, org)).toBe("SCL Leblon");
     expect(await db.select().from(auditoria).where(and(eq(auditoria.organizacaoId, org), eq(auditoria.acao, "configuracao.pagamento_site")))).toHaveLength(1);
-    expect(await categoriaDaTaxaPerdida(db, org, null)).toBe(cat.categoria.id);
+    expect(await categoriaDaTaxaPerdida(db, org, null)).toEqual({ ok: true, id: cat.categoria.id });
   });
 
   it("categoria da taxa perdida: criada no primeiro uso, guardada e reaproveitada", async () => {
-    const id = await categoriaDaTaxaPerdida(db, org, null);
+    const r = await categoriaDaTaxaPerdida(db, org, null);
+    if (!r.ok) throw new Error(r.erro);
+    const id = r.id;
     const [c] = await db.select().from(categoriasDespesa).where(eq(categoriasDespesa.id, id));
     expect(c.nome).toBe(CATEGORIA_TAXA_PERDIDA);
     expect((await lerConfigPagamentoSite(db, org)).categoriaTaxaId).toBe(id);
-    expect(await categoriaDaTaxaPerdida(db, org, null)).toBe(id);
+    expect(await categoriaDaTaxaPerdida(db, org, null)).toEqual({ ok: true, id });
     expect(await db.select().from(categoriasDespesa).where(eq(categoriasDespesa.organizacaoId, org))).toHaveLength(1);
+  });
+
+  it("categoria arquivada nunca recebe a taxa perdida: avisa (a escolhida ou a de nome padrão) e não lança", async () => {
+    const r = await categoriaDaTaxaPerdida(db, org, null);
+    if (!r.ok) throw new Error(r.erro);
+    // A escolhida (aqui, a padrão criada no primeiro uso) foi arquivada depois.
+    await db.update(categoriasDespesa).set({ ativa: false }).where(eq(categoriasDespesa.id, r.id));
+    expect(await categoriaDaTaxaPerdida(db, org, null)).toEqual({ ok: false, erro: ERRO_CATEGORIA_TAXA_ARQUIVADA });
+    // Sem escolha no painel, a de nome padrão arquivada também não é usada (nem uma nova com o mesmo nome).
+    const config = await lerConfigPagamentoSite(db, org);
+    expect(await salvarConfigPagamentoSite(db, org, { ...config, categoriaTaxaId: null }, null)).toMatchObject({ ok: true });
+    expect(await categoriaDaTaxaPerdida(db, org, null)).toEqual({ ok: false, erro: ERRO_CATEGORIA_TAXA_PADRAO_ARQUIVADA });
+    expect(await db.select().from(categoriasDespesa).where(eq(categoriasDespesa.organizacaoId, org))).toHaveLength(1);
+    // Reativada: volta a valer.
+    await db.update(categoriasDespesa).set({ ativa: true }).where(eq(categoriasDespesa.id, r.id));
+    expect(await categoriaDaTaxaPerdida(db, org, null)).toEqual({ ok: true, id: r.id });
   });
 });

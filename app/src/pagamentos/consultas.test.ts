@@ -187,6 +187,11 @@ describe("painel: pagamentos da reserva, lista e avisos do Início (M8.2a)", () 
     expect(atencao[0]).toMatchObject({ reservaCodigo: expect.stringMatching(/^SCL-/), imovelCodigo: "403", cotacaoCodigo: expect.stringMatching(/^COT-/) });
     // Liberação prevista vencida sem sinal também pede atenção.
     expect((await listarPagamentos(db, c.org, { atencao: true }, new Date("2026-10-04T12:00:00Z"))).map((l) => l.id).sort()).toEqual([pa.pagamentoId, pb.pagamentoId].sort());
+    // Mais de 500 tentativas mais novas que não pedem atenção: o filtro vem do banco, antes do limite de linhas.
+    const base = { organizacaoId: c.org, cotacaoId: b.cotacaoId, reservaId: b.reservaId, imovelId: c.imovel, ambiente: "teste" as const, forma: "pix" as const, valor: TOTAL, situacao: "cancelado" as const };
+    await db.insert(pagamentos).values(Array.from({ length: 501 }, (_, i) => ({ ...base, referencia: `scl-velha-${i}`, chaveIdempotencia: `velha-${i}`, criadoEm: minutos(10 + i) })));
+    expect(await listarPagamentos(db, c.org, {}, minutos(600))).toHaveLength(500);
+    expect((await listarPagamentos(db, c.org, { atencao: true }, minutos(600))).map((l) => l.id)).toEqual([pa.pagamentoId]);
   });
 
   it("Início: aprovado sem desfecho, devolução pedida/recusada, liberação vencida, live_mode, dinheiro sem cálculo, configuração inválida e o informativo das OTAs", async () => {

@@ -243,6 +243,22 @@ export async function pagamentosDaReserva(db: Db, organizacaoId: string, reserva
   return montarPainel(db, organizacaoId, lista, agora);
 }
 
+/**
+ * O mesmo critério de `pedeAtencao` (paraPainel), em SQL, para o filtro "pede atenção" vir do banco antes do limite
+ * de linhas: um pagamento antigo que pede atenção nunca some da lista. A lista ainda confere `pedeAtencao` depois.
+ */
+function podePedirAtencao(agora: Date) {
+  const limiteCriacao = new Date(agora.getTime() - CARENCIA_PAGAMENTO_MS);
+  return or(
+    and(inArray(pagamentos.situacao, ["aprovado", "devolvido_parcial", "contestado"]), isNull(pagamentos.desfecho)),
+    sql`jsonb_array_length(${pagamentos.avisos}) > 0`,
+    eq(pagamentos.situacao, "incerta"),
+    and(eq(pagamentos.situacao, "criando"), sql`${pagamentos.criadoEm} < ${limiteCriacao}`),
+    and(eq(pagamentos.desfecho, "reserva"), eq(pagamentos.situacao, "aprovado"), isNull(pagamentos.liberacaoConfirmadaEm), sql`${pagamentos.liberacaoPrevistaEm} < ${agora}`),
+    sql`exists (select 1 from ${devolucoesPagamento} where ${devolucoesPagamento.pagamentoId} = ${pagamentos.id} and ${devolucoesPagamento.situacao} in ('pedida', 'recusada'))`,
+  );
+}
+
 export type LinhaPagamento = PagamentoDoPainel & { reservaCodigo: string; reservaEstado: string; imovelCodigo: string; checkin: string; checkout: string; cotacaoCodigo: string };
 
 /**
@@ -257,7 +273,7 @@ export async function listarPagamentos(db: Db, organizacaoId: string, f: { de?: 
     .innerJoin(reservas, eq(reservas.id, pagamentos.reservaId))
     .innerJoin(imoveis, eq(imoveis.id, pagamentos.imovelId))
     .innerJoin(cotacoes, eq(cotacoes.id, pagamentos.cotacaoId))
-    .where(and(eq(pagamentos.organizacaoId, organizacaoId), !f.atencao && f.de ? gte(dia, f.de) : undefined, !f.atencao && f.ate ? sql`${dia} <= ${f.ate}` : undefined))
+    .where(and(eq(pagamentos.organizacaoId, organizacaoId), !f.atencao && f.de ? gte(dia, f.de) : undefined, !f.atencao && f.ate ? sql`${dia} <= ${f.ate}` : undefined, f.atencao ? podePedirAtencao(agora) : undefined))
     .orderBy(desc(pagamentos.criadoEm), desc(pagamentos.id))
     .limit(500);
   const painel = await montarPainel(db, organizacaoId, linhas.map((l) => l.p), agora);
