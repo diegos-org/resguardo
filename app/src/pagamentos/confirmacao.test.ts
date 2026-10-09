@@ -228,6 +228,25 @@ describe("confirmação pelo pagamento (M8.2a)", () => {
     expect((await c.tentativa(segunda.id)).situacao).toBe("cancelado");
   });
 
+  it("dinheiro que chega sem confirmar a reserva (Pix vencido pago depois, com as noites já ocupadas): o outro Pix pendente da cotação é cancelado no provedor, na leitura e pela rotina", async () => {
+    const z = await comPix();
+    const extra = await c.provedor.criarPix({ referencia: "scl-extra-0004", chaveIdempotencia: "extra-0004", valor: TOTAL, email: "test@testuser.com", nome: "", validadeMinutos: 30, descricao: "", descricaoFatura: null });
+    if (!extra.ok) throw new Error("extra");
+    const [segunda] = await db.insert(pagamentos).values({ organizacaoId: c.org, cotacaoId: z.cotacaoId, reservaId: z.reservaId, imovelId: c.imovel, ambiente: "teste", forma: "pix", referencia: "scl-extra-0004", chaveIdempotencia: "extra-0004", situacao: "pendente", idProvedor: extra.cobranca.idProvedor, valor: TOTAL }).returning();
+    // O valor aprovado não bate com a cotação: aprovado sem reserva (nenhum desfecho).
+    await db.update(cotacoes).set({ total: TOTAL + 1 }).where(eq(cotacoes.id, z.cotacaoId));
+    c.provedor.aprovar(z.idProvedor);
+    await conferir(z.pagamentoId, minutos(4));
+    expect(await c.tentativa(z.pagamentoId)).toMatchObject({ situacao: "aprovado", desfecho: null, motivoSemReserva: "valor_divergente" });
+    expect((await c.tentativa(segunda.id)).situacao).toBe("cancelado");
+    // E a rotina também cancela o que sobrar numa cotação com dinheiro, mesmo sem reserva confirmada.
+    const outra = await c.provedor.criarPix({ referencia: "scl-extra-0005", chaveIdempotencia: "extra-0005", valor: TOTAL, email: "test@testuser.com", nome: "", validadeMinutos: 30, descricao: "", descricaoFatura: null });
+    if (!outra.ok) throw new Error("outra");
+    const [terceira] = await db.insert(pagamentos).values({ organizacaoId: c.org, cotacaoId: z.cotacaoId, reservaId: z.reservaId, imovelId: c.imovel, ambiente: "teste", forma: "pix", referencia: "scl-extra-0005", chaveIdempotencia: "extra-0005", situacao: "pendente", idProvedor: outra.cobranca.idProvedor, valor: TOTAL, criadoEm: minutos(5) }).returning();
+    await conferirPendentes(db, c.org, c.provedor, minutos(6));
+    expect((await c.tentativa(terceira.id)).situacao).toBe("cancelado");
+  });
+
   it("Pix que sobrou pendente numa cotação confirmada, mas fora do prazo do provedor (85 dias): a rotina não cancela nem relê; fica o aviso", async () => {
     const z = await comPix();
     c.provedor.aprovar(z.idProvedor);

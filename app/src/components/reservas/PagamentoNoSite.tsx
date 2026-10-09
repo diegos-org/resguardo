@@ -92,7 +92,8 @@ function Tentativa({ p, verValores, editar, hoje }: { p: PagamentoDoPainel } & O
     if (lib) linhas.push(["Liberação", lib]);
   }
   const a = p.acoes;
-  const valorTexto = verValores ? ` de ${formatBRL(p.valor)}` : "";
+  // O que a devolução integral devolve: o que o hóspede pagou (a mesma regra do domínio), não o total pedido.
+  const valorTexto = verValores ? ` de ${formatBRL(p.valorPago ?? p.valor)}` : "";
   return (
     <article aria-label={`Pagamento ${FORMA[p.forma]} de ${quando(p.criadoEm)}`} style={{ border: "1px solid var(--scl-borda)", borderRadius: "var(--scl-raio-cartao)", padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
       <div className={styles.linha} style={{ alignItems: "center", gap: 8 }}>

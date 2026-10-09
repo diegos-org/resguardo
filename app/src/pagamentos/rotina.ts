@@ -10,7 +10,7 @@
  * - devoluções pedidas cuja próxima tentativa chegou (relê a order antes; chave nova a cada pedido), só de pagamentos
  *   dos últimos 85 dias: depois disso a order não aparece mais, a rotina para de ler e liga o aviso
  *   `devolucao_fora_do_prazo` (uma vez), para a equipe resolver pelo painel do Mercado Pago;
- * - Pix pendentes que sobraram numa cotação já confirmada (cancelados no provedor);
+ * - Pix pendentes que sobraram numa cotação em que outro pagamento já trouxe dinheiro (cancelados no provedor);
  * - uma vez por dia, os pagamentos dos últimos 85 dias (o provedor só consulta orders de até três meses) com desfecho (reserva, devolução ou devolução por fora) e
  *   os aprovados sem reserva à espera da devolução: devolução ou contestação feita por fora (ou devolução em dobro)
  *   vira aviso, nunca estorno automático.
@@ -108,13 +108,15 @@ export async function conferirPendentes(db: Db, organizacaoId: string | null, pr
       else if (r.consultou) {
         resumo.conferidas++;
         if (r.mudou) resumo.mudaram++;
+        resumo.canceladas += r.canceladas ?? 0;
       }
     } catch {
       resumo.falhas++;
     }
   }
 
-  // Pix pendente que sobrou numa cotação já confirmada por outro pagamento: cancelar no provedor.
+  // Pix pendente que sobrou numa cotação em que outro pagamento já trouxe dinheiro (confirmando a reserva ou não):
+  // cancelar no provedor (nunca dois Pix pagáveis com um já pago).
   const sobrando = await db
     .select({ id: pagamentos.id, organizacaoId: pagamentos.organizacaoId, idProvedor: pagamentos.idProvedor })
     .from(pagamentos)
@@ -125,7 +127,7 @@ export async function conferirPendentes(db: Db, organizacaoId: string | null, pr
         isNotNull(pagamentos.idProvedor),
         // Fora do prazo do provedor, nem cancela nem relê (o aviso de andamento fora do prazo fica para a equipe).
         gte(pagamentos.criadoEm, corte),
-        sql`exists (select 1 from ${pagamentos} p2 where p2.cotacao_id = ${pagamentos.cotacaoId} and p2.id <> ${pagamentos.id} and p2.desfecho = 'reserva')`,
+        sql`exists (select 1 from ${pagamentos} p2 where p2.cotacao_id = ${pagamentos.cotacaoId} and p2.id <> ${pagamentos.id} and p2.situacao in ('aprovado', 'devolvido_parcial', 'devolvido', 'contestado'))`,
       ),
     );
   for (const x of sobrando) {

@@ -25,7 +25,8 @@ export const INTERVALO_FINANCEIRO_MS = 5 * 60_000;
 export const DESISTIR_SEM_ORDER_MS = 15 * 60_000;
 
 export type OrigemConferencia = "aviso" | "pagina" | "rotina" | "painel";
-export type ResultadoConferencia = { ok: true; situacao: SituacaoPagamento; consultou: boolean; mudou: boolean } | { ok: false; erro: string };
+/** `canceladas`: Pix que sobraram cancelados no provedor por causa desta leitura (dinheiro chegou nesta tentativa). */
+export type ResultadoConferencia = { ok: true; situacao: SituacaoPagamento; consultou: boolean; mudou: boolean; canceladas?: number } | { ok: false; erro: string };
 
 /**
  * Chave do cancelamento: nova a cada pedido (o provedor recusa repetir uma chave já usada, e cancelar o que já
@@ -151,8 +152,8 @@ export async function conferirTentativa(
     throw e;
   }
   if (!efeitos) return { ok: false, erro: "Pagamento não encontrado." };
-  if (efeitos.cancelar.length && !opcoes.semCancelar) await cancelarNoProvedor(db, organizacaoId, efeitos.cancelar, provedor, agora);
-  return { ok: true, situacao: efeitos.situacao, consultou: true, mudou: efeitos.mudou };
+  const canceladas = efeitos.cancelar.length && !opcoes.semCancelar ? await cancelarNoProvedor(db, organizacaoId, efeitos.cancelar, provedor, agora) : 0;
+  return { ok: true, situacao: efeitos.situacao, consultou: true, mudou: efeitos.mudou, ...(canceladas ? { canceladas } : {}) };
 }
 
 export { FOLGA_LEITURA_PIX_ENCERRADO_MS } from "./andamento";

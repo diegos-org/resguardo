@@ -239,7 +239,9 @@ noites nunca foram liberadas), seja qual for o relógio.
 1. **Aprovado com as datas seguradas e sem conflito** (nenhuma outra reserva ou bloqueio nas mesmas
    noites, a própria reserva excluída da conta): a reserva vira `confirmada` (com `confirmadaEm`,
    quem recebe = empresa), a cotação `convertida`, o motor roda. Desfecho `reserva`. As outras
-   tentativas pendentes da cotação são canceladas no provedor.
+   tentativas pendentes da cotação são canceladas no provedor (isso vale para **qualquer** dinheiro que
+   chegue, confirmando a reserva ou não: um Pix já copiado nunca fica pagável ao lado de um pago; a rotina
+   também cancela o que sobrar numa cotação com dinheiro).
 2. **Aprovado depois que o pedido venceu** (cotação `expirada`, vencida pela rotina ou pelo painel):
    confere as noites (livres no SCL e na leitura atual do Beds24, sem regras de venda nem preço).
    Livres: a mesma reserva volta a `confirmada` pelo valor pago, com auditoria "confirmação tardia".
@@ -314,8 +316,10 @@ do M9.2 passa a valer para reservas pagas quando Diego ligar as mensagens.
   antes de gravar a resposta, o envio seguinte repete a mesma chave); só uma recusa clara tira a dúvida.
   Depois de uma resposta **incerta** (o pedido pode ter sido aceito), o pedido seguinte repete a
   **mesma** chave: o provedor nunca devolve duas vezes pela mesma chave (no pior caso responde
-  "chave já usada", que conta como incerta). Chave nova só depois de uma recusa clara ou de um pedido
-  novo da equipe (depois de recusada). Pedido **aceito** pelo provedor (`chave_aceita`): daí em diante
+  "chave já usada", que conta como incerta). Chave nova só depois de uma recusa clara **de uma chave
+  nova** ou de um pedido novo da equipe (depois de recusada): uma chave que já estava em dúvida continua em
+  dúvida mesmo recusada depois (a recusa pode vir antes de o provedor conferir a chave), até a desistência
+  com a order relida sem sinal de devolução. Pedido **aceito** pelo provedor (`chave_aceita`): daí em diante
   nada se envia de novo (nem com outra chave, nem num pedido novo da equipe); só a leitura da order
   confirma, e três leituras sem a devolução viram o aviso "o Mercado Pago aceitou a devolução, mas o
   pagamento ainda não aparece como devolvido" (continua pedida). O pedido aceito **nunca para**, qualquer que

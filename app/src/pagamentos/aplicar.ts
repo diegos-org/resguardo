@@ -9,6 +9,7 @@ import { and, eq, ne } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { devolucoesPagamento, pagamentos, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { inicioDoPrazoDeReleitura } from "./andamento";
 import { decidirAprovacao } from "./confirmacao";
 import { gravarTaxaNaReserva, liberarPeloProvedor, recebimentosDoPagamento } from "./liberacao";
 import { type Cobranca, type DetalheFinanceiro, RETENCAO_ORDERS_DIAS } from "./provedor";
@@ -174,8 +175,6 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
       patch.desfechoMotivo = d.desfechoMotivo;
       patch.desfechoEm = agora;
       patch.desfechoPor = null;
-      // As outras tentativas pendentes da cotação são canceladas no provedor (depois da transação).
-      for (const x of t.tentativas) if (x.id !== p.id && x.situacao === "pendente" && x.idProvedor) efeitos.cancelar.push({ id: x.id, idProvedor: x.idProvedor });
     } else patch.motivoSemReserva = d.motivoSemReserva;
   } else if (comDinheiro(situacao) && situacao !== "aprovado" && desfecho === null && motivoSemReserva === null) {
     // O dinheiro chegou já devolvido (no todo ou em parte) ou contestado, sem uma leitura "aprovado" antes: nunca
@@ -187,6 +186,15 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
     // Taxa conhecida (ou atualizada) depois da confirmação: entra na reserva e o motor roda (nessa ordem), antes de
     // qualquer recebimento desta leitura.
     await gravarTaxaNaReserva(tx, organizacaoId, t.reserva.id, taxa, liquido, null, p.id, agora);
+  }
+
+  // Dinheiro chegou nesta tentativa (confirmando a reserva ou não): as outras pendentes da cotação são canceladas no
+  // provedor (depois da transação). Um Pix já copiado nunca fica pagável ao lado de um pago (cobrança em dobro).
+  // Fora do prazo de releitura, o provedor nem mostra a order: fica o aviso de andamento fora do prazo.
+  if (comDinheiro(situacao)) {
+    const inicio = inicioDoPrazoDeReleitura(agora).getTime();
+    for (const x of t.tentativas)
+      if (x.id !== p.id && x.situacao === "pendente" && x.idProvedor && x.criadoEm.getTime() >= inicio && !efeitos.cancelar.some((y) => y.id === x.id)) efeitos.cancelar.push({ id: x.id, idProvedor: x.idProvedor });
   }
 
   // Devolução feita, contestação, ou devolução fora do sistema: só avisos (partes c e e cuidam da reserva).

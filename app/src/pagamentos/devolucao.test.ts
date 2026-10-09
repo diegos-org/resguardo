@@ -140,21 +140,33 @@ describe("devolução do pagamento sem reserva (M8.2a)", () => {
     expect((await c.tentativa(x.pagamentoId)).desfecho).toBe("devolucao");
   });
 
-  it("chave do pedido: repetida depois de resposta incerta, nova depois de recusa clara e no pedido novo da equipe", async () => {
+  it("chave do pedido: repetida depois de resposta incerta (mesmo que a repetição seja recusada depois); nova depois de recusa clara de uma chave nova", async () => {
     const x = await semReserva();
     // 1º pedido: incerta → o 2º repete a chave.
     c.provedor.falhas.devolver = new ErroProvedor("incerto", "tempo");
     await devolverPeloProvedor(db, c.org, x.pagamentoId, null, c.provedor, minutos(10));
     expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "pedida", tentativas: 1, chaveEmDuvida: true });
-    // 2º pedido: recusa clara (credencial recusada) → o 3º leva chave nova.
+    // 2º pedido (mesma chave): recusa clara (credencial recusada, antes de o provedor conferir a chave) → a chave
+    // continua em dúvida (o 1º pedido pode ter saído) e o 3º repete a mesma.
     c.provedor.falhas.devolver = new ErroProvedor("credencial", "recusada");
     await conferirPendentes(db, c.org, c.provedor, minutos(21));
-    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "pedida", tentativas: 2, chaveEmDuvida: false });
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "pedida", tentativas: 2, chaveEmDuvida: true });
     c.provedor.falhas.devolver = null;
     await conferirPendentes(db, c.org, c.provedor, minutos(32));
     expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "confirmada", tentativas: 3, chaveEmDuvida: false });
     const d = await devolucao(x.pagamentoId);
-    expect(pedidos().map((ch) => ch.chave)).toEqual([chaveDevolucao(d.id, 1), chaveDevolucao(d.id, 1), chaveDevolucao(d.id, 3)]);
+    expect(pedidos().map((ch) => ch.chave)).toEqual([chaveDevolucao(d.id, 1), chaveDevolucao(d.id, 1), chaveDevolucao(d.id, 1)]);
+
+    // Recusa clara de uma chave nova (nada em dúvida): o próximo leva chave nova.
+    const y = await semReserva({ taxa: 1806 }, outras(0));
+    c.provedor.falhas.devolver = new ErroProvedor("credencial", "recusada");
+    await devolverPeloProvedor(db, c.org, y.pagamentoId, null, c.provedor, minutos(40));
+    expect(await devolucao(y.pagamentoId)).toMatchObject({ situacao: "pedida", tentativas: 1, chaveEmDuvida: false });
+    c.provedor.falhas.devolver = null;
+    await conferirPendentes(db, c.org, c.provedor, minutos(51));
+    const e = await devolucao(y.pagamentoId);
+    expect(e).toMatchObject({ situacao: "confirmada", tentativas: 2 });
+    expect(pedidos().slice(-2).map((ch) => ch.chave)).toEqual([chaveDevolucao(e.id, 1), chaveDevolucao(e.id, 2)]);
   });
 
   it("o processo cai depois de enviar o pedido (antes de gravar a resposta): a chave já estava em dúvida, e o envio seguinte repete a mesma chave", async () => {
