@@ -212,6 +212,28 @@ describe("estadia mínima, máxima e sobras", () => {
     const desligada = planejarCalendario(entrada({ regras: { ...base, janelaFeriado: { ...base.janelaFeriado, minimoNormalComReserva: false } }, reservas: [...reservas, { checkin: "2026-10-19", checkout: "2026-10-21", estado: "confirmada" }], inicio: "2026-10-17", fim: "2026-10-17", fimDados: "2026-10-30" }));
     expect(desligada[0]).toMatchObject({ minimoRegra: 3, minimoEnviar: 2, motivoMinimo: "Feriadão Professores; sobra de 2 noite(s) até a próxima reserva/bloqueio" });
   });
+  it("regra de 6/10 noite a noite: feriadão dentro do Réveillon ou do Carnaval cede junto quando o evento já tem reserva", () => {
+    // Réveillon 25/12/2026 a 1/1/2027 (mínimo 5); Natal 25/12 (sexta: janela 24–27/12) e Confraternização 1/1/2027
+    // (sexta: janela 31/12–3/1), mínimo do feriadão 3; uma reserva confirmada de 28 a 30/12, no miolo do Réveillon.
+    const reveillon = { id: OUTRO, nome: "Réveillon", inicio: "2026-12-25", fim: "2027-01-01", multiplicador: 400, estadiaMinima: 5, minimoNormalComReserva: true, todosImoveis: true, imoveis: [] };
+    const r = regras({ eventos: [reveillon], feriados: [{ data: "2026-12-25", nome: "Natal" }, { data: "2027-01-01", nome: "Confraternização" }], janelaFeriado: { estadiaMinima: 3, multiplicador: 200, minimoNormalComReserva: true, todosImoveis: true, imoveis: [] } });
+    const linhas = planejarCalendario(entrada({ regras: r, hoje: "2026-12-01", inicio: "2026-12-24", fim: "2027-01-03", reservas: [{ checkin: "2026-12-28", checkout: "2026-12-30", estado: "confirmada" }], fimDados: "2027-01-20" }));
+    // 24/12 (quinta) é só do feriadão do Natal, sem reserva nele: mantém 3. 25/12 a 1/1: mínimo normal (sexta e sábado 2,
+    // limitado à sobra). 2/1 e 3/1 estão só na janela da Confraternização, sem reserva nela: mantêm 3 (limitado ao que sobra).
+    expect(linhas.map((l) => [l.data, l.minimoRegra])).toEqual([
+      ["2026-12-24", 3], ["2026-12-25", 2], ["2026-12-26", 2], ["2026-12-27", 1], ["2026-12-28", 1], ["2026-12-29", 1], ["2026-12-30", 1], ["2026-12-31", 1], ["2027-01-01", 2], ["2027-01-02", 3], ["2027-01-03", 3],
+    ]);
+    expect(porData(linhas, "2026-12-31").motivoMinimo).toBe("Semana normal; Evento Réveillon já tem reserva confirmada: noites livres com o mínimo normal");
+    // Carnaval 1/2 a 10/2/2027 (mínimo 5) e feriado estadual numa terça, 9/2 (janela 5/2–9/2, mínimo 3); reserva de 1 a 4/2.
+    const carnaval = { ...reveillon, nome: "Carnaval", inicio: "2027-02-01", fim: "2027-02-10" };
+    const c = regras({ eventos: [carnaval], feriados: [{ data: "2027-02-09", nome: "Feriado fictício" }], janelaFeriado: { estadiaMinima: 3, multiplicador: 200, minimoNormalComReserva: true, todosImoveis: true, imoveis: [] } });
+    const lc = planejarCalendario(entrada({ regras: c, hoje: "2027-01-10", inicio: "2027-02-05", fim: "2027-02-09", reservas: [{ checkin: "2027-02-01", checkout: "2027-02-04", estado: "confirmada" }] }));
+    expect(lc.map((l) => l.minimoRegra)).toEqual([2, 2, 1, 1, 1]);
+    // Temporada longa com a regra desligada não cede, mesmo na noite em que o Réveillon cedeu.
+    const alta = { ...reveillon, id: IM, nome: "Alta temporada", inicio: "2026-12-15", fim: "2027-02-28", multiplicador: 200, estadiaMinima: 4, minimoNormalComReserva: false };
+    const comAlta = planejarCalendario(entrada({ regras: { ...r, eventos: [reveillon, alta] }, hoje: "2026-12-01", inicio: "2026-12-31", fim: "2026-12-31", reservas: [{ checkin: "2026-12-28", checkout: "2026-12-30", estado: "confirmada" }], fimDados: "2027-01-20" }));
+    expect(comAlta[0]).toMatchObject({ minimoRegra: 4, motivoMinimo: "Evento Alta temporada; Evento Réveillon já tem reserva confirmada: noites livres com o mínimo normal" });
+  });
   it("intervaloDasReservas estende a carga ao período inteiro dos eventos e feriadões com a regra ligada que tocam as noites", () => {
     const ev = { id: OUTRO, nome: "Réveillon", inicio: "2026-12-25", fim: "2027-01-01", multiplicador: 400, estadiaMinima: 5, minimoNormalComReserva: true, todosImoveis: true, imoveis: [] };
     const semMinimo = { ...ev, id: IM, nome: "Alta", inicio: "2026-12-01", fim: "2027-02-28", estadiaMinima: null };

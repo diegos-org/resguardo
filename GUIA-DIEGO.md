@@ -52,6 +52,9 @@ sistema faz isso sozinho:
   antes e depois da reserva. Depois do período, tudo volta ao normal da data.
 - **Sem reserva confirmada, nada muda:** consulta, pedido do site ainda não pago ou reserva pendente
   não contam. Enquanto não há reserva confirmada, vale o mínimo especial no período inteiro.
+- **Feriado dentro do evento:** se um feriadão cai dentro do Réveillon ou do Carnaval (Natal, 1º de
+  janeiro, um feriado estadual), nas noites em que o evento já cedeu o feriadão cede junto. Fora do
+  evento, o feriadão segue a própria regra: só cede se tiver reserva confirmada na janela dele.
 - **Período do cadastro do imóvel continua mandando:** se você cadastrou na ficha do imóvel um
   período com mínimo próprio, ele vale como antes.
 - **Onde aparece:** no envio ao Beds24, na prévia do envio (a coluna do mínimo explica a regra

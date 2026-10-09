@@ -242,23 +242,27 @@ export function planejarCalendario(e: EntradaPlano): LinhaPlano[] {
       minimoRegra = periodo.estadiaMinima;
       motivoMinimo = `Período ${periodo.nome}`;
     } else {
-      // Evento ou feriadão com reserva confirmada no período (e a regra ligada) cede ao mínimo normal.
+      // Regra de 6/10, decidida noite a noite: se um evento ou feriadão desta noite (com a regra ligada) já tem
+      // reserva confirmada no seu período, todos os mínimos especiais com a regra ligada saem desta noite — um
+      // feriadão dentro do Réveillon não segura 3 noites onde o Réveillon já cedeu. Os de regra desligada
+      // (temporadas longas) continuam.
       const especiais = [
         ...eventos.filter((ev) => ev.estadiaMinima !== null && ev.inicio <= data && data <= ev.fim)
-          .map((ev) => ({ v: ev.estadiaMinima!, nome: `Evento ${ev.nome}`, cede: ev.minimoNormalComReserva && temReservaConfirmada(ev.inicio, ev.fim) })),
+          .map((ev) => ({ v: ev.estadiaMinima!, nome: `Evento ${ev.nome}`, ligada: ev.minimoNormalComReserva, inicio: ev.inicio, fim: ev.fim })),
         ...janelas.filter((j) => j.inicio <= data && data <= j.fim)
-          .map((j) => ({ v: regras.janelaFeriado.estadiaMinima, nome: `Feriadão ${j.nome}`, cede: regras.janelaFeriado.minimoNormalComReserva && temReservaConfirmada(j.inicio, j.fim) })),
+          .map((j) => ({ v: regras.janelaFeriado.estadiaMinima, nome: `Feriadão ${j.nome}`, ligada: regras.janelaFeriado.minimoNormalComReserva, inicio: j.inicio, fim: j.fim })),
       ];
+      const comReserva = especiais.filter((c) => c.ligada && temReservaConfirmada(c.inicio, c.fim)).map((c) => c.nome);
+      const cedem = comReserva.length > 0;
       const candidatos: { v: number; nome: string }[] = [
         { v: regras.minimoPorDia[dia], nome: "Semana normal" },
         ...(imovel.regras.estadiaMinima !== null ? [{ v: imovel.regras.estadiaMinima, nome: "Cadastro do imóvel" }] : []),
-        ...especiais.filter((c) => !c.cede),
+        ...especiais.filter((c) => !(cedem && c.ligada)),
       ];
       const maior = candidatos.reduce((m, c) => (c.v > m.v ? c : m));
       minimoRegra = maior.v;
       motivoMinimo = maior.nome;
-      const cedidos = especiais.filter((c) => c.cede && c.v > maior.v).map((c) => c.nome);
-      if (cedidos.length) motivoMinimo += `; ${cedidos.join(" e ")} já tem reserva confirmada: noites livres com o mínimo normal`;
+      if (cedem && especiais.some((c) => c.ligada && c.v > maior.v)) motivoMinimo += `; ${comReserva.join(" e ")} já tem reserva confirmada: noites livres com o mínimo normal`;
     }
     const livresSeguidas = livres[n] ?? null;
     let minimoEnviar = minimoRegra;
