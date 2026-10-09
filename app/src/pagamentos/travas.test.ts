@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import * as schema from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
+import { criarReserva, sincronizarReserva } from "@/reservas/repositorio";
 import { conferirTentativa } from "./conferencia";
 import { estornarLiberacaoManual, registrarLiberacaoManual } from "./liberacao";
 import { type Cenario, minutos, montarCenario, TOTAL } from "./testes";
@@ -40,5 +41,23 @@ describe("ordem e modo das travas do pagamento (M8.2a)", () => {
     const naReserva = e.comandos.filter((q) => /from "reservas"/.test(q) && /\bfor (no key )?update\b/.test(q));
     expect(naReserva.length).toBeGreaterThanOrEqual(5);
     expect(naReserva.filter((q) => /\bfor update\b/.test(q))).toEqual([]);
+  });
+
+  it("quem ocupa noites trava o imóvel como o pagamento (NO KEY UPDATE, antes da reserva): importação do Beds24 ou da planilha e reserva lançada no painel", async () => {
+    const e = espiao();
+    const dados: Parameters<typeof sincronizarReserva>[4] = {
+      imovelId: c.imovel, origem: "airbnb", estado: "confirmada", checkin: "2026-11-20", checkout: "2026-11-23", hospedes: 2,
+      hospedeNome: "Hóspede Fictício", hospedeEmail: "", hospedeTelefone: "", hospedeOrigem: "", moeda: "BRL",
+      valorBruto: 100000, taxaCanal: null, valorLiquido: null, codigoCanal: "", observacoes: "",
+    };
+    expect(await sincronizarReserva(e.db, c.org, "beds24", "999001", dados)).toMatchObject({ ok: true });
+    expect(await criarReserva(e.db, c.org, { ...dados, checkin: "2026-11-25", checkout: "2026-11-27" }, null)).toMatchObject({ ok: true });
+    const noImovel = e.comandos.filter((q) => /from "imoveis"/.test(q) && /\bfor no key update\b/.test(q));
+    expect(noImovel.length).toBeGreaterThanOrEqual(2);
+    // A trava do imóvel vem antes de qualquer trava da reserva na mesma transação.
+    const primeiroImovel = e.comandos.findIndex((q) => /from "imoveis"/.test(q) && /\bfor no key update\b/.test(q));
+    const primeiraReserva = e.comandos.findIndex((q) => /from "reservas"/.test(q) && /\bfor (no key )?update\b/.test(q));
+    expect(primeiroImovel).toBeGreaterThanOrEqual(0);
+    expect(primeiraReserva === -1 || primeiroImovel < primeiraReserva).toBe(true);
   });
 });

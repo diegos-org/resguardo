@@ -48,6 +48,17 @@ describe("taxa, liberação e recebimento do pagamento no site (M8.2a)", () => {
     expect(dinheiroComAEmpresa(r)).toBe(true);
   });
 
+  it("order de outra referência: nada do financeiro dela entra (taxa, líquido, liberação), só o aviso", async () => {
+    const x = await paga({}, {});
+    expect(await c.tentativa(x.pagamentoId)).toMatchObject({ desfecho: "reserva", taxa: null, liquido: null });
+    const [order] = c.provedor.todas().filter((o) => o.idProvedor === x.idProvedor);
+    const outra = { ...order, referencia: "scl-outra" };
+    await aplicarNaTransacao(db, c.org, { id: x.pagamentoId, cotacaoId: x.cotacaoId }, { cobranca: outra, financeiro: { taxa: 900, liquido: TOTAL - 900, liberacaoPrevista: new Date("2026-10-02T13:00:00Z"), liberado: true, idPagamento: "999" } }, minutos(10));
+    expect(await c.tentativa(x.pagamentoId)).toMatchObject({ taxa: null, liquido: null, liberacaoPrevistaEm: null, liberacaoConfirmadaEm: null, financeiroConsultadoEm: expect.any(Date), avisos: ["referencia_divergente"] });
+    expect(await c.reserva(x.reservaId)).toMatchObject({ taxaCanal: null });
+    expect(await recebimentos(x.reservaId)).toEqual([]);
+  });
+
   it("taxa conhecida depois da confirmação: entra na reserva e o motor recalcula; taxa inválida vira aviso", async () => {
     const x = await paga({}, {});
     expect(await c.reserva(x.reservaId)).toMatchObject({ estado: "confirmada", taxaCanal: null });

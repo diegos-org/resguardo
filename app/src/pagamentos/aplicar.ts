@@ -54,8 +54,8 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
   };
   const efeitos: Efeitos = { situacao: p.situacao, mudou: false, confirmou: false, cancelar: [] };
   let situacao: SituacaoPagamento = p.situacao;
-  const f = leitura.financeiro ?? null;
-  if (leitura.financeiro !== undefined && leitura.financeiro !== null) patch.financeiroConsultadoEm = agora;
+  // O financeiro (taxa, líquido, liberação) vem da order lida: só vale se a order for desta tentativa (mais abaixo).
+  let f = leitura.financeiro ?? null;
 
   const semOrder = situacao === "criando" || situacao === "incerta";
   if (leitura.incerta && situacao === "criando") situacao = "incerta";
@@ -82,8 +82,11 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
       if (outra) confere = false;
       else patch.idProvedor = c.idProvedor;
     }
-    if (!confere) ligar("referencia_divergente");
-    else {
+    if (!confere) {
+      ligar("referencia_divergente");
+      // Order de outra tentativa (ou outra referência): nada do financeiro dela entra aqui (taxa, líquido, liberação).
+      f = null;
+    } else {
       cobrancaAplicada = c;
       desligar("referencia_divergente");
       desligar("order_nao_encontrada");
@@ -106,6 +109,7 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
       }
     }
   }
+  if (f) patch.financeiroConsultadoEm = agora;
   // Pix pendente com o copia e cola, mas sem prazo conhecido: aviso (nunca um prazo suposto).
   if (situacao === "pendente" && (patch.pixCopiaECola ?? p.pixCopiaECola) && !(patch.pixExpiraEm ?? p.pixExpiraEm)) ligar("pix_sem_prazo");
   else desligar("pix_sem_prazo");

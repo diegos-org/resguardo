@@ -119,7 +119,11 @@ daquela reserva (com `FOR UPDATE`, a confirmação à mão e o Pix entravam em i
 liberação ou uma taxa tardia, que esperam a trava do motor, com um repasse ou recálculo que tem essa
 trava e grava lançamentos da reserva). Os UPDATEs de reserva nessas transações não mexem nas chaves
 únicas, e as releituras da reserva na mesma transação (gravar a taxa, confirmar o pedido pago, a
-sincronização da reserva) usam o mesmo modo: uma releitura `FOR UPDATE` subiria a trava. Trava não
+sincronização da reserva) usam o mesmo modo: uma releitura `FOR UPDATE` subiria a trava. Toda escrita
+que ocupa noites passa pela mesma trava do imóvel, antes de qualquer outra: reserva lançada no painel,
+importada do Beds24 ou da planilha (`sincronizarReserva`), bloqueio vindo do Beds24 (os bloqueios do
+painel já travavam o imóvel). Assim uma importação nas mesmas noites espera a confirmação do pagamento
+(ou o contrário), e a conferência das noites sempre vê a outra. Trava não
 obtida (tempo-limite ou impasse desfeito pelo Postgres) = "ocupado": nada fica pela metade e o
 hóspede tenta de novo; na rotina, o
 hold que falhou é contado e os seguintes continuam. As chamadas ao Mercado Pago **nunca** acontecem

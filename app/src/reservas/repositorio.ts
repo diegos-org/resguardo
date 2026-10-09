@@ -20,12 +20,21 @@ function semContato(m: Record<string, [unknown, unknown]>) {
   return m;
 }
 
+/**
+ * Confere o imóvel e o trava para a ocupação (NO KEY UPDATE, até o fim da transação): toda escrita que ocupa noites
+ * (reserva lançada no painel, importada do Beds24 ou da planilha, confirmação do pagamento do site) passa pela mesma
+ * trava do imóvel que o pagamento do site toma antes de conferir se as noites estão livres (pagamentos/travas.ts).
+ * Assim uma importação que cai nas mesmas noites espera a confirmação (ou a confirmação espera ela) e a conferência
+ * vê a outra. NO KEY UPDATE não bloqueia as chaves estrangeiras de quem grava lançamentos do imóvel. É a primeira
+ * trava de quem chama (antes das travas por identidade e da reserva), na mesma ordem do pagamento.
+ */
 async function imovelDaOrganizacao(tx: Db, organizacaoId: string, imovelId: string) {
   if (!uuidValido(imovelId)) return false;
   const [i] = await tx
     .select({ id: imoveis.id })
     .from(imoveis)
-    .where(and(eq(imoveis.id, imovelId), eq(imoveis.organizacaoId, organizacaoId)));
+    .where(and(eq(imoveis.id, imovelId), eq(imoveis.organizacaoId, organizacaoId)))
+    .for("no key update");
   return Boolean(i);
 }
 
