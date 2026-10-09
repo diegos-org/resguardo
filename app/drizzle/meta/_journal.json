@@ -442,6 +442,13 @@
       "when": 1791519487749,
       "tag": "0062_m8_2a_chave_em_duvida",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1791528272681,
+      "tag": "0063_m8_2a_chave_aceita",
+      "breakpoints": true
     }
   ]
 }

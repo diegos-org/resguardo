@@ -1520,6 +1520,11 @@ export const devolucoesPagamento = pgTable(
      * nova só depois de uma recusa clara ou de um pedido novo da equipe. Desliga quando a leitura confirma.
      */
     chaveEmDuvida: boolean("chave_em_duvida").notNull().default(false),
+    /**
+     * O provedor ACEITOU o pedido com `chaveAtual` (pedida/confirmada): daí em diante nada se envia de novo (nem com outra
+     * chave, nem num pedido novo da equipe); só a leitura da order confirma. Desliga quando a leitura confirma.
+     */
+    chaveAceita: boolean("chave_aceita").notNull().default(false),
     proximaTentativaEm: timestamp("proxima_tentativa_em", { withTimezone: true }),
     idProvedor: text("id_provedor"),
     confirmadaEm: timestamp("confirmada_em", { withTimezone: true }),

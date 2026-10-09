@@ -122,7 +122,7 @@ export const AVISOS_PAGAMENTO = {
   referencia_divergente: "A resposta do Mercado Pago não bate com este pagamento (referência ou identificação diferentes): nada foi aplicado.",
   taxa_invalida: "A taxa ou o líquido informados não fecham com o valor (taxa negativa ou líquido maior que o valor): nada foi gravado.",
   taxa_divergente: "O Mercado Pago informou um líquido diferente do que já entrou como recebimento: nada foi mudado. Confira no Mercado Pago.",
-  liberacao_divergente: "O Mercado Pago confirmou a liberação com data ou valor diferentes do recebimento registrado: nada foi mudado. Confira no Mercado Pago; se o registrado à mão estiver errado, estorne e registre de novo pelo quadro do pagamento.",
+  liberacao_divergente: "O Mercado Pago confirmou a liberação com um valor diferente do recebimento registrado: nada foi mudado. Confira no Mercado Pago; se o registrado à mão estiver errado, estorne e registre de novo pelo quadro do pagamento.",
   liberacao_futura: "O Mercado Pago marcou o dinheiro como liberado, mas com data futura: nada foi lançado.",
   liberacao_sem_valor: "O Mercado Pago marcou o dinheiro como liberado sem informar o líquido: nada foi lançado. Confira no Mercado Pago e, se o dinheiro caiu, registre a liberação à mão.",
   devolvido_por_fora: "Este pagamento foi devolvido (no todo ou em parte) fora do sistema: confira a reserva.",
@@ -133,6 +133,8 @@ export const AVISOS_PAGAMENTO = {
   pix_sem_prazo: "O Mercado Pago não informou até quando este Pix vale: confira no painel do Mercado Pago.",
   taxa_perdida_desconhecida: "Devolução confirmada: falta saber quanto da taxa o Mercado Pago não devolveu. Confira no Mercado Pago e use \"Registrar taxa que não voltou\" no quadro do pagamento (zero se voltou toda).",
   devolucao_falhou: "O Mercado Pago recusou ou não respondeu três vezes: confira no painel do Mercado Pago antes de tentar de novo ou de registrar a devolução feita por fora.",
+  devolucao_parada: "O Mercado Pago mostra este pagamento devolvido em parte ou contestado: a devolução pelo sistema parou (devolver o valor inteiro agora poderia devolver a mais). Confira no painel do Mercado Pago e resolva por lá até o M8.2c.",
+  devolucao_sem_confirmacao: "O Mercado Pago aceitou a devolução, mas o pagamento ainda não aparece como devolvido: confira no painel do Mercado Pago. O sistema não pede de novo (poderia devolver duas vezes) e confirma sozinho quando a devolução aparecer.",
   cancelamento_pendente: "Não deu para cancelar no Mercado Pago um Pix que ficou sobrando: use Conferir agora para tentar de novo (no teste, nada é conferido sozinho).",
 } as const;
 export type CodigoAviso = keyof typeof AVISOS_PAGAMENTO;

@@ -194,7 +194,7 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
   // Pedida (ou dada por recusada depois de 3 recusas, mas que acabou saindo): a leitura confirma.
   if (situacao === "devolvido" && (dev?.situacao === "pedida" || dev?.situacao === "recusada") && desfecho === null) {
     const antes = dev.situacao;
-    await tx.update(devolucoesPagamento).set({ situacao: "confirmada", confirmadaEm: agora, proximaTentativaEm: null, chaveEmDuvida: false, atualizadoEm: agora }).where(eq(devolucoesPagamento.id, dev.id));
+    await tx.update(devolucoesPagamento).set({ situacao: "confirmada", confirmadaEm: agora, proximaTentativaEm: null, chaveEmDuvida: false, chaveAceita: false, atualizadoEm: agora }).where(eq(devolucoesPagamento.id, dev.id));
     dev.situacao = "confirmada";
     dev.confirmadaEm = agora;
     desfecho = "devolucao";
@@ -203,6 +203,8 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
     patch.desfechoEm = agora;
     patch.desfechoPor = dev.autorId;
     desligar("devolucao_falhou");
+    desligar("devolucao_sem_confirmacao");
+    desligar("devolucao_parada");
     await registrarAuditoria(tx, { organizacaoId, usuarioId: null, acao: "pagamento.devolucao_confirmada", entidade: "pagamento", entidadeId: p.id, mudancas: { devolucao: [antes, "confirmada"] } });
   } else if (devolvidoNoProvedor && desfecho === null && !dev) ligar("devolvido_por_fora");
   // Taxa que não voltou: o provedor não diz quanto da tarifa devolveu (a que ele informa é a da aprovação). Fica

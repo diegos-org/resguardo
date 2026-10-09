@@ -146,22 +146,48 @@ describe("devolução do pagamento sem reserva (M8.2a)", () => {
     expect(pedidos().map((ch) => ch.chave)).toEqual([chaveDevolucao(d.id, 1), chaveDevolucao(d.id, 1), chaveDevolucao(d.id, 3)]);
   });
 
-  it("pedido aceito (pedida) com a order ainda sem mostrar a devolução: um novo envio repete a mesma chave (nunca devolve de novo)", async () => {
+  it("pedido aceito (pedida) com a order ainda sem mostrar a devolução: nada se envia de novo, nem depois de várias leituras (aviso na terceira, continua pedida); a leitura confirma quando a order mostra", async () => {
     const x = await semReserva();
     c.provedor.respostaDevolucao = "pedida";
     await devolverPeloProvedor(db, c.org, x.pagamentoId, null, c.provedor, minutos(10));
-    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "pedida", tentativas: 1, chaveEmDuvida: true });
-    // A order lida ainda não mostra a devolução (atraso do provedor).
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "pedida", tentativas: 1, chaveEmDuvida: true, chaveAceita: true, falhas: 0 });
+    // A order lida ainda não mostra a devolução (atraso do provedor), leitura após leitura.
     const [order] = c.provedor.todas().filter((o) => o.idProvedor === x.idProvedor);
     vi.spyOn(c.provedor, "consultar").mockResolvedValue({ ...order, situacao: "aprovado", devolvido: 0, devolucaoEmAndamento: false });
-    await conferirPendentes(db, c.org, c.provedor, minutos(21));
+    for (const m of [21, 32, 43, 54]) await tentarDevolucao(db, c.org, (await devolucao(x.pagamentoId)).id, c.provedor, minutos(m));
     vi.restoreAllMocks();
-    const d = await devolucao(x.pagamentoId);
-    expect(pedidos().map((ch) => ch.chave)).toEqual([chaveDevolucao(d.id, 1), chaveDevolucao(d.id, 1)]);
-    // Quando a order mostra, a leitura confirma.
+    expect(pedidos()).toHaveLength(1);
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "pedida", tentativas: 1, chaveAceita: true });
+    expect((await c.tentativa(x.pagamentoId)).avisos).toContain("devolucao_sem_confirmacao");
+    // Quando a order mostra, a leitura confirma e o aviso sai.
     c.provedor.confirmarDevolucoes(x.idProvedor);
-    await conferirPendentes(db, c.org, c.provedor, minutos(32));
-    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "confirmada", chaveEmDuvida: false });
+    await conferirPendentes(db, c.org, c.provedor, minutos(65));
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "confirmada", chaveEmDuvida: false, chaveAceita: false });
+    expect((await c.tentativa(x.pagamentoId)).avisos).not.toContain("devolucao_sem_confirmacao");
+    expect(pedidos()).toHaveLength(1);
+  });
+
+  it("order devolvida em parte ou contestada antes de pedir de novo: a leitura é aplicada e a devolução para (aviso), sem pedir o valor inteiro por cima", async () => {
+    for (const [n, mexer] of [
+      [0, (id: string) => c.provedor.devolverNoProvedor(id, 5000)],
+      [1, (id: string) => c.provedor.contestar(id)],
+    ] as const) {
+      const x = await semReserva({ taxa: 1806 }, outras(n));
+      const antes = pedidos().length;
+      // 1º pedido sem resposta (incerta): continua pedida, sem devolução no provedor.
+      c.provedor.falhas.devolver = new ErroProvedor("incerto", "tempo");
+      await devolverPeloProvedor(db, c.org, x.pagamentoId, null, c.provedor, minutos(10));
+      c.provedor.falhas.devolver = null;
+      expect((await devolucao(x.pagamentoId)).situacao).toBe("pedida");
+      mexer(x.idProvedor);
+      await tentarDevolucao(db, c.org, (await devolucao(x.pagamentoId)).id, c.provedor, minutos(21));
+      expect((await devolucao(x.pagamentoId)).situacao).toBe("recusada");
+      expect(pedidos()).toHaveLength(antes + 1);
+      const t = await c.tentativa(x.pagamentoId);
+      expect(t.situacao).toBe(n === 0 ? "devolvido_parcial" : "contestado");
+      expect(t.avisos).toContain("devolucao_parada");
+      expect(textosDosAvisos(t.avisos).join(" ")).toContain("parou");
+    }
   });
 
   it("devolução feita no painel do Mercado Pago enquanto pedida: a releitura confirma", async () => {

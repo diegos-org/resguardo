@@ -8,7 +8,10 @@
  * Recusa e resposta incerta contam do mesmo jeito; a terceira só vira "recusada" (aviso) depois de reler a order sem
  * nenhum sinal de devolução (feita, em parte ou em andamento): com sinal, continua pedida e a leitura confirma. Assim
  * uma devolução que só recebe respostas incertas não fica "pedida" para sempre, e uma que saiu nunca é dada por
- * recusada. Por fora: só depois
+ * recusada. Pedido ACEITO pelo provedor: nada se envia de novo (nem com outra chave, nem num pedido novo da equipe),
+ * só a leitura confirma; três leituras sem a devolução viram aviso, e ela continua pedida. Order devolvida em parte
+ * ou contestada antes de pedir: a leitura é aplicada e a devolução para (aviso; devolver o inteiro devolveria a mais).
+ * Por fora: só depois
  * de reler a order no provedor (devolvida, em andamento ou contestada = recusa), e só o valor integral. A taxa que
  * não voltar a equipe informa depois da confirmação ("Registrar taxa que não voltou"): vira despesa da empresa.
  */
@@ -26,7 +29,7 @@ import { conferirTentativa } from "./conferencia";
 import { FUSO_PAGAMENTO } from "./liberacao";
 import type { Cobranca, ProvedorPagamento, ResultadoDevolucao } from "./provedor";
 import type { SituacaoDevolucao } from "@/db/schema";
-import { textoMotivoSemReserva } from "./situacoes";
+import { type CodigoAviso, textoMotivoSemReserva } from "./situacoes";
 import { type Devolucao, type Pagamento, type Travado, travarCotacao } from "./travas";
 
 /** Recusas ou respostas incertas do provedor até a devolução ficar "recusada" (sempre depois de reler a order sem sinal de devolução). */
@@ -68,6 +71,42 @@ async function adiarDevolucao(db: Db, devolucaoId: string, agora: Date): Promise
   await db.update(devolucoesPagamento).set({ proximaTentativaEm: new Date(agora.getTime() + ESPERA_DEVOLUCAO_MS), atualizadoEm: agora }).where(eq(devolucoesPagamento.id, devolucaoId));
 }
 
+/** Liga o aviso no pagamento (sob a trava de quem chama), sem repetir. */
+async function ligarAvisoNoPagamento(tx: Db, p: Pagamento, aviso: CodigoAviso, agora: Date): Promise<void> {
+  if (!p.avisos.includes(aviso)) await tx.update(pagamentos).set({ avisos: [...p.avisos, aviso], atualizadoEm: agora }).where(eq(pagamentos.id, p.id));
+}
+
+/**
+ * Order devolvida em parte ou contestada antes de pedir: a devolução integral automática para (recusada, com aviso).
+ * Devolver o valor inteiro agora devolveria o resto junto de uma parcial, ou correria com a contestação.
+ */
+async function pararDevolucao(db: Db, organizacaoId: string, cotacaoId: string, devolucaoId: string, agora: Date): Promise<void> {
+  await db.transaction(async (tx) => {
+    const t = await travarCotacao(tx, organizacaoId, cotacaoId);
+    const dev = t?.devolucoes.find((x) => x.id === devolucaoId);
+    if (!t || !dev || dev.situacao !== "pedida") return;
+    await tx.update(devolucoesPagamento).set({ situacao: "recusada", proximaTentativaEm: null, atualizadoEm: agora }).where(eq(devolucoesPagamento.id, dev.id));
+    const p = t.tentativas.find((x) => x.id === dev.pagamentoId)!;
+    await ligarAvisoNoPagamento(tx, p, "devolucao_parada", agora);
+    await registrarAuditoria(tx, { organizacaoId, usuarioId: null, acao: "pagamento.devolucao_parada", entidade: "pagamento", entidadeId: p.id, mudancas: { devolucao: ["pedida", "recusada"] } });
+  });
+}
+
+/**
+ * Pedido já aceito pelo provedor e a order ainda sem a devolução: nada se envia (só a leitura confirma). Conta a
+ * leitura; da terceira em diante, aviso para a equipe conferir no Mercado Pago. Continua pedida.
+ */
+async function esperarAceita(db: Db, organizacaoId: string, cotacaoId: string, devolucaoId: string, agora: Date): Promise<void> {
+  await db.transaction(async (tx) => {
+    const t = await travarCotacao(tx, organizacaoId, cotacaoId);
+    const dev = t?.devolucoes.find((x) => x.id === devolucaoId);
+    if (!t || !dev || dev.situacao !== "pedida" || !dev.chaveAceita) return;
+    const falhas = dev.falhas + 1;
+    await tx.update(devolucoesPagamento).set({ falhas, proximaTentativaEm: new Date(agora.getTime() + ESPERA_DEVOLUCAO_MS), atualizadoEm: agora }).where(eq(devolucoesPagamento.id, dev.id));
+    if (falhas >= MAXIMO_FALHAS_DEVOLUCAO) await ligarAvisoNoPagamento(tx, t.tentativas.find((x) => x.id === dev.pagamentoId)!, "devolucao_sem_confirmacao", agora);
+  });
+}
+
 /**
  * Um pedido de devolução ao provedor (rotina e painel): relê a order antes (já devolvida = confirmada; devolução em
  * andamento = espera), grava a chave nova antes de chamar, chama fora de transação e registra o resultado. A
@@ -99,6 +138,17 @@ export async function tentarDevolucao(db: Db, organizacaoId: string, devolucaoId
     await adiarDevolucao(db, devolucaoId, agora);
     return "pedida";
   }
+  // Devolvida em parte ou contestada: a leitura é aplicada e a devolução automática para (nunca o inteiro por cima).
+  if (cobranca && (cobranca.situacao === "devolvido_parcial" || cobranca.situacao === "contestado" || cobranca.devolvido > 0)) {
+    await conferirTentativa(db, organizacaoId, d.dev.pagamentoId, provedor, agora, { forcar: true, origem: "rotina", cobranca });
+    await pararDevolucao(db, organizacaoId, d.cotacaoId, devolucaoId, agora);
+    return (await situacaoDaDevolucao(db, devolucaoId)) ?? null;
+  }
+  // Pedido já aceito pelo provedor: nada se envia de novo (nem com a mesma chave); a leitura confirma quando a order mostrar.
+  if (d.dev.chaveAceita) {
+    await esperarAceita(db, organizacaoId, d.cotacaoId, devolucaoId, agora);
+    return (await situacaoDaDevolucao(db, devolucaoId)) ?? null;
+  }
   let res: ResultadoDevolucao;
   if (!cobranca) res = { situacao: "recusada", idDevolucao: null, mensagem: "O Mercado Pago não encontrou o pagamento." };
   else {
@@ -108,7 +158,7 @@ export async function tentarDevolucao(db: Db, organizacaoId: string, devolucaoId
       const t = await travarCotacao(tx, organizacaoId, d.cotacaoId);
       const dev = t?.devolucoes.find((x) => x.id === devolucaoId);
       // Sob a trava: ainda pedida, a vez dela chegou e ninguém pediu desde a leitura (painel e rotina ao mesmo tempo).
-      if (!t || !dev || dev.situacao !== "pedida" || dev.tentativas !== d.dev.tentativas || (dev.proximaTentativaEm && dev.proximaTentativaEm.getTime() > agora.getTime())) return null;
+      if (!t || !dev || dev.situacao !== "pedida" || dev.chaveAceita || dev.tentativas !== d.dev.tentativas || (dev.proximaTentativaEm && dev.proximaTentativaEm.getTime() > agora.getTime())) return null;
       const proxima = dev.tentativas + 1;
       const usar = dev.chaveEmDuvida && dev.chaveAtual ? dev.chaveAtual : chaveDevolucao(dev.id, proxima);
       await tx.update(devolucoesPagamento).set({ tentativas: proxima, chaveAtual: usar, proximaTentativaEm: new Date(agora.getTime() + ESPERA_DEVOLUCAO_MS), atualizadoEm: agora }).where(eq(devolucoesPagamento.id, dev.id));
@@ -133,9 +183,12 @@ export async function tentarDevolucao(db: Db, organizacaoId: string, devolucaoId
     const dev = t?.devolucoes.find((x) => x.id === devolucaoId);
     if (!t || !dev || dev.situacao !== "pedida") return;
     if (res.situacao === "confirmada" || res.situacao === "pedida") {
-      // Aceito pelo provedor: até a leitura da order confirmar, qualquer novo envio repete esta MESMA chave (a order pode
-      // demorar a mostrar a devolução; uma chave nova devolveria de novo).
-      await tx.update(devolucoesPagamento).set({ chaveEmDuvida: true, ...(res.idDevolucao ? { idProvedor: res.idDevolucao } : {}), atualizadoEm: agora }).where(eq(devolucoesPagamento.id, dev.id));
+      // Aceito pelo provedor: daí em diante nada se envia de novo (a order pode demorar a mostrar a devolução; um envio
+      // novo poderia devolver de novo). Só a leitura confirma; as falhas recomeçam a contar as leituras sem a devolução.
+      await tx
+        .update(devolucoesPagamento)
+        .set({ chaveEmDuvida: true, chaveAceita: true, falhas: 0, ...(res.idDevolucao ? { idProvedor: res.idDevolucao } : {}), atualizadoEm: agora })
+        .where(eq(devolucoesPagamento.id, dev.id));
       return;
     }
     // Recusada ou incerta (o pedido pode ter saído): conta; só desiste com a releitura sem nenhum sinal de devolução.
@@ -184,8 +237,12 @@ export async function devolverPeloProvedor(db: Db, organizacaoId: string, pagame
     let id: string;
     if (dev) {
       // Devolução que desistiu depois de 3 recusas (relida a order, sem sinal de devolução): a equipe pede de novo, com
-      // chave nova (as falhas recomeçam; a numeração das chaves continua).
-      await tx.update(devolucoesPagamento).set({ situacao: "pedida", falhas: 0, chaveEmDuvida: false, proximaTentativaEm: agora, autorId, atualizadoEm: agora }).where(eq(devolucoesPagamento.id, dev.id));
+      // chave nova (as falhas recomeçam; a numeração das chaves continua). Pedido que o provedor já aceitou nunca ganha
+      // chave nova: continua só à espera da leitura.
+      await tx
+        .update(devolucoesPagamento)
+        .set({ situacao: "pedida", falhas: 0, chaveEmDuvida: dev.chaveAceita, proximaTentativaEm: agora, autorId, atualizadoEm: agora })
+        .where(eq(devolucoesPagamento.id, dev.id));
       id = dev.id;
     } else {
       [{ id }] = await tx
@@ -193,7 +250,7 @@ export async function devolverPeloProvedor(db: Db, organizacaoId: string, pagame
         .values({ organizacaoId, pagamentoId: p.id, motivo, valor: p.valor, situacao: "pedida", proximaTentativaEm: agora, autorId, criadoEm: agora, atualizadoEm: agora })
         .returning({ id: devolucoesPagamento.id });
     }
-    await tx.update(pagamentos).set({ avisos: p.avisos.filter((a) => a !== "devolucao_falhou"), atualizadoEm: agora }).where(eq(pagamentos.id, p.id));
+    await tx.update(pagamentos).set({ avisos: p.avisos.filter((a) => a !== "devolucao_falhou" && a !== "devolucao_parada"), atualizadoEm: agora }).where(eq(pagamentos.id, p.id));
     await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "pagamento.devolver", entidade: "pagamento", entidadeId: p.id, mudancas: { devolucao: [dev?.situacao ?? null, "pedida"], valor: [null, p.valor] } });
     return { ok: true as const, id };
   });

@@ -291,11 +291,16 @@ do M9.2 passa a valer para reservas pagas quando Diego ligar as mensagens.
   **Registrar devolução feita por fora** (data, valor, nota; a data entre o dia em que o Pix foi
   criado e hoje). Exigem desfecho vazio e nenhuma devolução pedida, sob a trava da tentativa.
 - Devolução pelo provedor: `pedida` até confirmar. A chave de cada pedido é gravada antes de chamar.
-  Depois de uma resposta **incerta** (o pedido pode ter sido aceito) ou de um pedido **aceito** cuja
-  devolução a order ainda não mostra, o pedido seguinte repete a **mesma** chave: o provedor nunca devolve duas vezes pela mesma chave (no pior caso responde
+  Depois de uma resposta **incerta** (o pedido pode ter sido aceito), o pedido seguinte repete a
+  **mesma** chave: o provedor nunca devolve duas vezes pela mesma chave (no pior caso responde
   "chave já usada", que conta como incerta). Chave nova só depois de uma recusa clara ou de um pedido
-  novo da equipe (depois de recusada). Antes de tentar de novo, relê a order (já devolvida = confirmada; devolução em andamento lá = não
-  pede de novo). `order_refund_already_in_process` = continua pedida; `already_refunded` =
+  novo da equipe (depois de recusada). Pedido **aceito** pelo provedor (`chave_aceita`): daí em diante
+  nada se envia de novo (nem com outra chave, nem num pedido novo da equipe); só a leitura da order
+  confirma, e três leituras sem a devolução viram o aviso "o Mercado Pago aceitou a devolução, mas o
+  pagamento ainda não aparece como devolvido" (continua pedida). Antes de tentar de novo, relê a order
+  (já devolvida = confirmada; devolução em andamento lá = não pede de novo; **devolvida em parte ou
+  contestada** = a leitura é aplicada e a devolução para, recusada, com o aviso de que parou: devolver
+  o valor inteiro por cima devolveria a mais ou correria com a contestação). `order_refund_already_in_process` = continua pedida; `already_refunded` =
   confirmada. Recusa e resposta **incerta** (tempo esgotado, 5xx, resposta que o sistema não sabe
   ler) contam do mesmo jeito; na terceira, a order é relida antes e só sem nenhum sinal de devolução
   (feita, em parte ou em andamento) a devolução fica recusada, com o aviso "o Mercado Pago recusou ou
