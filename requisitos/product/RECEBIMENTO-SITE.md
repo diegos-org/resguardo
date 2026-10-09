@@ -182,8 +182,10 @@ repasses aos proprietários podem sair direto dela por Pix, sem passar pela cont
 ~1,45% por Pix recebido (chave ou QR, teto R$ 150), mais que o Mercado Pago; o Nubank PJ não
 cobra Pix, mas não há API oficial de integração confirmada; chave Pix fixa com botão de copiar
 não serve como caminho principal (sem confirmação automática nem casamento com a reserva, o
-hold do M8.1 não fecha) — só como plano B manual. QR dinâmico com prazo igual ao do hold é o
-caminho, pelo provedor.
+hold do M8.1 não fecha) — só como plano B manual. QR dinâmico do provedor é o caminho. Ajuste
+de 8/10 (M8.2a, `PAGAMENTO-SITE.md`): o Mercado Pago exige pelo menos 30 minutos de validade, então
+o prazo das datas é estendido até o fim do Pix (nunca o contrário), com até 3 Pix por cotação, um de
+cada vez.
 
 ## O que Diego precisava decidir (perguntas originais)
 

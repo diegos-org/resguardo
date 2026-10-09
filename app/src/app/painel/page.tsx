@@ -7,9 +7,9 @@ import styles from "@/components/painel/painel.module.css";
 import { getDb } from "@/db/client";
 import { listarImoveis } from "@/imoveis/repositorio";
 import { hojeISO } from "@/lib/datas";
-import { descreverFiltros, lerFiltros, manterFiltros, periodoDosFiltros } from "@/lib/filtros";
+import { comFiltros, descreverFiltros, lerFiltros, manterFiltros, periodoDosFiltros } from "@/lib/filtros";
 import { formatBRL } from "@/lib/money";
-import { carregarDashboard } from "@/painel/dashboard";
+import { carregarDashboard, contaDeTesteParaInicio } from "@/painel/dashboard";
 
 const dataBr = (d: string) => d.split("-").reverse().slice(0, 2).join("/");
 const pct = (t: number | null) => (t === null ? "—" : `${Math.round(t * 100)}%`);
@@ -45,6 +45,8 @@ export default async function PainelInicio({ searchParams }: PageProps<"/painel"
     verFinanceiro,
     verRotinas: podeFazer(sessao.papel, "rotina:ler"),
     verProprietarios: podeFazer(sessao.papel, "proprietario:editar"),
+    verPagamentos: verFinanceiro,
+    contaDeTesteMercadoPago: verFinanceiro ? await contaDeTesteParaInicio() : null,
   });
   const porId = new Map(imoveis.map((i) => [i.id, i]));
 
@@ -80,7 +82,7 @@ export default async function PainelInicio({ searchParams }: PageProps<"/painel"
           <ul style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 4 }}>
             {d.alertas.map((a) => (
               <li key={a.texto} style={{ color: a.nivel === "atencao" ? "var(--scl-erro-texto)" : "inherit" }}>
-                {a.texto} {a.link && <Link href={`${a.link}${query}`}>Ver</Link>}
+                {a.texto} {a.link && <Link href={comFiltros(a.link, query)}>Ver</Link>}
               </li>
             ))}
           </ul>

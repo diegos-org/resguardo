@@ -266,6 +266,8 @@ describe("textos do site", () => {
   it("\"Por que reservar direto\" gravado com o nome antigo (sobre) continua valendo; vazio fica com o texto-base (M7.6)", async () => {
     await gravarConfig(db, org, "textos_site", { titulo: "T", sobre: "Benefício antigo" }, null);
     expect((await lerTextosSite(db, org)).porque).toBe("Benefício antigo");
+    // Textos gravados antes do pagamento no site (M8.2a): os do Pix ficam com o texto-base.
+    expect(await lerTextosSite(db, org)).toMatchObject({ pagamentoConvite: TEXTOS_SITE_INICIAIS.pagamentoConvite, pagamentoSemDatas: TEXTOS_SITE_INICIAIS.pagamentoSemDatas });
     await gravarConfig(db, org, "textos_site", { titulo: "T", sobre: "" }, null);
     expect((await lerTextosSite(db, org)).porque).toBe(TEXTOS_SITE_INICIAIS.porque);
     // Depois de salvo pelo nome novo, vale o novo, até vazio (a seção some).

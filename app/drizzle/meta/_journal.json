@@ -428,6 +428,34 @@
       "when": 1791425866997,
       "tag": "0060_m7_7_indices_pedidos_contato",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1791501491004,
+      "tag": "0061_m8_2a_pagamentos",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1791519487749,
+      "tag": "0062_m8_2a_chave_em_duvida",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1791528272681,
+      "tag": "0063_m8_2a_chave_aceita",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1791533699138,
+      "tag": "0064_m8_2a_avisos_sem_metadados",
+      "breakpoints": true
     }
   ]
 }

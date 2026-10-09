@@ -2,8 +2,10 @@ import { redirect } from "next/navigation";
 import { podeFazer } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import styles from "@/components/formularios.module.css";
+import { MercadoPagoIntegracao } from "@/components/configuracoes/MercadoPagoIntegracao";
 import { TestarBeds24 } from "@/components/configuracoes/TestarBeds24";
-import { situacaoServicos } from "@/sistema/servicos";
+import { situacaoDoMercadoPago } from "@/pagamentos/integracao";
+import { NOME_MERCADO_PAGO, situacaoServicos } from "@/sistema/servicos";
 import { and, asc, eq } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { imoveis } from "@/db/schema";
@@ -18,14 +20,18 @@ const ONDE: Record<string, string> = {
   "Login com Google": "AUTH_SECRET, AUTH_GOOGLE_ID, AUTH_GOOGLE_SECRET",
   "E-mail do sistema (Resend)": "RESEND_API_KEY, EMAIL_REMETENTE",
   Beds24: "BEDS24_REFRESH_TOKEN (recomendado) ou BEDS24_API_KEY (token direto). Envio de calendário/preços só com BEDS24_ESCRITA=ligada (o refresh token precisa do escopo de inventário).",
+  [NOME_MERCADO_PAGO]:
+    "MERCADOPAGO_PUBLIC_KEY, MERCADOPAGO_ACCESS_TOKEN e MERCADOPAGO_AMBIENTE (teste): só no ambiente Preview da Vercel. MERCADOPAGO_WEBHOOK_SECRET: em Preview e Production (o aviso chega no endereço de produção).",
 };
 
 export default async function Integracoes() {
   const sessao = await exigirSessaoPainel();
   if (!podeFazer(sessao.papel, "configuracao:editar")) redirect("/painel/configuracoes");
-  const servicos = situacaoServicos(process.env, null);
   const db = getDb();
   const org = sessao.organizacaoId;
+  // A mesma função que Sistema lê (uma regra, um lugar).
+  const mercadoPago = await situacaoDoMercadoPago(db);
+  const servicos = situacaoServicos(process.env, null, mercadoPago);
   const [config, mapas, locais, execucoes] = await Promise.all([
     lerConfigBeds24(db, org), listarMapeamentosBeds24(db, org),
     db.select({ id: imoveis.id, codigo: imoveis.codigo }).from(imoveis).where(and(eq(imoveis.organizacaoId, org), eq(imoveis.ativo, true))).orderBy(asc(imoveis.codigo)),
@@ -60,6 +66,7 @@ export default async function Integracoes() {
           </tbody>
         </table>
       </div>
+      <MercadoPagoIntegracao mp={mercadoPago} env={process.env} />
       <TestarBeds24 />
       <SincronizarBeds24 config={config} mapas={mapas} imoveis={locais} execucoes={execucoes.map(e => ({ id: e.id, quando: e.iniciadoEm.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }), situacao: e.situacao, resumo: e.resumo, divergencias: e.divergencias }))} />
     </>

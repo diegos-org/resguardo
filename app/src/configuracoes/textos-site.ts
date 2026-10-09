@@ -23,9 +23,14 @@ export const CAMPOS_TEXTOS_SITE = [
   { chave: "chamada", rotulo: "Chamada final (título da faixa verde antes do rodapé)", limite: 120, linhas: 1 },
   { chave: "contato", rotulo: "Texto de contato", limite: 500, linhas: 3 },
   { chave: "rodape", rotulo: "Rodapé", limite: 240, linhas: 2 },
+  { chave: "pagamentoConvite", rotulo: "Pagamento por Pix: convite para pagar (página da cotação, com as datas seguradas)", limite: 240, linhas: 2 },
+  { chave: "pagamentoAguardando", rotulo: "Pagamento por Pix: instrução enquanto o Pix aguarda o pagamento", limite: 240, linhas: 2 },
+  { chave: "pagamentoSemDatas", rotulo: "Pagamento por Pix: pagamento recebido sem conseguir garantir as datas", limite: 400, linhas: 3 },
 ] as const;
 export type ChaveTextoSite = (typeof CAMPOS_TEXTOS_SITE)[number]["chave"];
 export type TextosSite = Record<ChaveTextoSite, string>;
+/** Textos que não podem ficar vazios (o título e os do pagamento, que o hóspede precisa ler). */
+export const TEXTOS_SITE_OBRIGATORIOS: readonly ChaveTextoSite[] = ["titulo", "pagamentoConvite", "pagamentoAguardando", "pagamentoSemDatas"];
 
 export const TEXTOS_SITE_INICIAIS: TextosSite = {
   olho: "Rio de Janeiro · Brasil",
@@ -51,6 +56,10 @@ export const TEXTOS_SITE_INICIAIS: TextosSite = {
   chamada: "O Rio está logo ali.",
   contato: "",
   rodape: "",
+  // Pagamento no site (M8.2a): texto-base para Diego revisar.
+  pagamentoConvite: "Pague por Pix aqui mesmo: assim que o pagamento é aprovado, a reserva fica confirmada, sem precisar esperar a equipe.",
+  pagamentoAguardando: "Abra o app do seu banco, escolha pagar com Pix e use o código copia e cola (ou leia o QR). O valor já vem preenchido.",
+  pagamentoSemDatas: "Recebemos seu pagamento, mas não conseguimos garantir as datas. A equipe vai falar com você e devolver o valor integral.",
 };
 
 /**
@@ -93,7 +102,7 @@ export function validarTextosSite(bruto: Record<string, unknown>): { ok: true; t
     if (v.length > c.limite) erros[c.chave] = `Máximo de ${c.limite} caracteres.`;
     textos[c.chave] = v;
   }
-  if (!textos.titulo) erros.titulo = "O título não pode ficar vazio.";
+  for (const k of TEXTOS_SITE_OBRIGATORIOS) if (!textos[k] && !erros[k]) erros[k] = k === "titulo" ? "O título não pode ficar vazio." : "Este texto não pode ficar vazio.";
   return Object.keys(erros).length ? { ok: false, erros } : { ok: true, textos };
 }
 

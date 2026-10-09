@@ -1678,3 +1678,153 @@
     grid-template-columns: 1fr;
   }
 }
+
+/*
+ * Pagamento por Pix na página da cotação (M8.2a). O Pix vem em destaque e primeiro; no celular, o copia e cola
+ * vem antes do QR (quem está no celular paga colando o código no app do banco).
+ */
+.faixaTeste {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  background: var(--scl-aviso-fundo);
+  color: var(--scl-aviso-texto);
+  border: 1px solid var(--scl-aviso);
+  border-radius: var(--scl-raio-campo);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.pix {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 16px 0 4px;
+  padding: 20px;
+  background: var(--scl-papel);
+  border: 2px solid var(--scl-musgo);
+  border-radius: var(--scl-raio-cartao);
+  box-shadow: var(--scl-sombra);
+}
+
+.pix h3 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 1.375rem;
+  letter-spacing: -0.02em;
+  color: var(--scl-floresta);
+}
+
+.pix p {
+  margin: 0;
+}
+
+.pixOk {
+  border-color: var(--scl-ok);
+  background: var(--scl-ok-fundo);
+}
+
+.pixAtencao {
+  border-color: var(--scl-aviso);
+  background: var(--scl-aviso-fundo);
+}
+
+.pixValor {
+  font-size: 1.0625rem;
+  color: var(--scl-tinta);
+}
+
+.pixCodigos {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.pixCopia {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pixRotulo {
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--scl-tinta);
+}
+
+.pixCodigo {
+  max-height: 7.5em;
+  overflow: auto;
+  padding: 12px;
+  background: var(--scl-creme);
+  border: 1px solid var(--scl-borda);
+  border-radius: var(--scl-raio-campo);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--scl-tinta);
+  word-break: break-all;
+  user-select: all;
+}
+
+.pixQr {
+  display: flex;
+  justify-content: center;
+}
+
+.pixQr img {
+  width: 220px;
+  max-width: 100%;
+  height: auto;
+  padding: 8px;
+  background: var(--scl-branco);
+  border: 1px solid var(--scl-borda);
+  border-radius: var(--scl-raio-campo);
+  image-rendering: pixelated;
+}
+
+.pixAcao {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.pixOutraOpcao {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--scl-borda);
+}
+
+@media (max-width: 600px) {
+  .pix {
+    padding: 16px;
+  }
+
+  .pixAcao .botao,
+  .pixCopia .botao {
+    width: 100%;
+  }
+}
+
+@media (min-width: 720px) {
+  /* No computador, o QR à esquerda (lido pelo celular) e o copia e cola ao lado. */
+  .pixCodigos {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .pixQr {
+    order: -1;
+  }
+
+  .pixCopia .botao {
+    align-self: flex-start;
+  }
+}

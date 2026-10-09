@@ -84,7 +84,7 @@ describe("cotação do site (M8.1)", () => {
       { organizacaoId: org, imovelId: im, codigo: "COT-VELHA001", estado: "aberta", checkin: "2026-11-01", checkout: "2026-11-02", hospedes: 1, noites: 1, situacao: "disponivel", diarias: 1, limpeza: 0, hospedeExtra: 0, valorCheio: 1, total: 1, criadaEm: new Date(agora.getTime() - 40 * 86_400_000), atualizadaEm: agora },
       { organizacaoId: org, imovelId: im, codigo: "COT-VELHA002", estado: "desatualizada", checkin: "2026-11-01", checkout: "2026-11-02", hospedes: 1, noites: 1, situacao: "disponivel", diarias: 1, limpeza: 0, hospedeExtra: 0, valorCheio: 1, total: 1, criadaEm: new Date(agora.getTime() - 40 * 86_400_000), atualizadaEm: agora },
     ]);
-    expect(await expirarHoldsVencidos(db, org, agora)).toEqual({ expiradas: 0, convertidas: 0, canceladas: 0, removidas: 2 });
+    expect(await expirarHoldsVencidos(db, org, agora)).toEqual({ expiradas: 0, convertidas: 0, canceladas: 0, removidas: 2, falhas: 0 });
     expect(await db.select().from(cotacoes).where(eq(cotacoes.organizacaoId, org))).toHaveLength(2 + MAXIMO_COTACOES_ABERTAS_POR_IMOVEL);
   });
 
@@ -147,10 +147,10 @@ describe("cotação do site (M8.1)", () => {
     // Antes da rotina, a página já mostra o vencimento.
     expect((await verCotacao(db, org, c.codigo, depois(29)))?.estado).toBe("segurada");
     expect((await verCotacao(db, org, c.codigo, depois(31)))?.estado).toBe("expirada");
-    expect(await expirarHoldsVencidos(db, org, depois(29))).toEqual({ expiradas: 0, convertidas: 0, canceladas: 0, removidas: 0 });
+    expect(await expirarHoldsVencidos(db, org, depois(29))).toEqual({ expiradas: 0, convertidas: 0, canceladas: 0, removidas: 0, falhas: 0 });
     // Sem empresa (rotina): cobre todas — inclusive holds de outros testes neste banco compartilhado.
     expect((await expirarHoldsVencidos(db, null, depois(31))).expiradas).toBeGreaterThanOrEqual(1);
-    expect(await expirarHoldsVencidos(db, org, depois(31))).toEqual({ expiradas: 0, convertidas: 0, canceladas: 0, removidas: 0 });
+    expect(await expirarHoldsVencidos(db, org, depois(31))).toEqual({ expiradas: 0, convertidas: 0, canceladas: 0, removidas: 0, falhas: 0 });
     expect((await db.select().from(reservas).where(eq(reservas.id, h.cotacao.reservaId!)))[0].estado).toBe("cancelada");
     expect(await verCotacao(db, org, c.codigo, depois(31))).toMatchObject({ estado: "expirada", atual: null });
     expect((await consultarDisponibilidade(db, org, pedido(), depois(31))).situacao).toBe("disponivel");
@@ -161,9 +161,9 @@ describe("cotação do site (M8.1)", () => {
     if (!h2.ok) throw new Error(h2.erro);
     expect(await confirmarReserva(db, org, h2.cotacao.reservaId!, null, depois(41))).toEqual({ ok: true });
     expect(await verCotacao(db, org, c2.codigo, depois(41))).toMatchObject({ estado: "convertida", reserva: { estado: "confirmada" } });
-    expect(await expirarHoldsVencidos(db, org, depois(41))).toEqual({ expiradas: 0, convertidas: 1, canceladas: 0, removidas: 0 });
+    expect(await expirarHoldsVencidos(db, org, depois(41))).toEqual({ expiradas: 0, convertidas: 1, canceladas: 0, removidas: 0, falhas: 0 });
     expect((await db.select().from(cotacoes).where(eq(cotacoes.id, c2.id)))[0].estado).toBe("convertida");
-    expect(await expirarHoldsVencidos(db, org, depois(200))).toEqual({ expiradas: 0, convertidas: 0, canceladas: 0, removidas: 0 });
+    expect(await expirarHoldsVencidos(db, org, depois(200))).toEqual({ expiradas: 0, convertidas: 0, canceladas: 0, removidas: 0, falhas: 0 });
     expect((await db.select().from(reservas).where(eq(reservas.id, h2.cotacao.reservaId!)))[0].estado).toBe("confirmada");
     // Equipe cancela o pedido: cotação cancelada, noites livres.
     const c3 = await cotar({ entrada: "2026-11-02", saida: "2026-11-04" }, depois(50));
@@ -171,7 +171,7 @@ describe("cotação do site (M8.1)", () => {
     if (!h3.ok) throw new Error(h3.erro);
     expect(await cancelarReserva(db, org, h3.cotacao.reservaId!, null)).toBe(true);
     expect((await verCotacao(db, org, c3.codigo, depois(51)))?.estado).toBe("cancelada");
-    expect(await expirarHoldsVencidos(db, org, depois(51))).toEqual({ expiradas: 0, convertidas: 0, canceladas: 1, removidas: 0 });
+    expect(await expirarHoldsVencidos(db, org, depois(51))).toEqual({ expiradas: 0, convertidas: 0, canceladas: 1, removidas: 0, falhas: 0 });
     expect((await consultarDisponibilidade(db, org, pedido({ entrada: "2026-11-02", saida: "2026-11-04" }), depois(51))).situacao).toBe("disponivel");
   });
 

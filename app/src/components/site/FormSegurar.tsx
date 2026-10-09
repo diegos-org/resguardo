@@ -5,18 +5,32 @@ import type { EstadoSegurar } from "@/site/acoes";
 import styles from "./site.module.css";
 
 type Acao = (a: EstadoSegurar, f: FormData) => Promise<EstadoSegurar>;
+type Valores = { nome: string; email: string; telefone: string };
+type Estado = EstadoSegurar & { valores?: Valores };
+const VAZIO: Valores = { nome: "", email: "", telefone: "" };
 
-/** Contato do visitante para segurar as datas da cotação (M8.1). O servidor decide; aqui só o formulário. */
-export function FormSegurar({ codigo, minutos, acao }: { codigo: string; minutos: number; acao: Acao }) {
-  const [estado, enviar, enviando] = useActionState(acao, {} as EstadoSegurar);
-  const v = estado.valores ?? {};
+/**
+ * Contato do visitante para segurar as datas da cotação (M8.1). O servidor decide; aqui só o formulário. O que foi
+ * digitado fica no navegador (o estado da ação nunca traz dado pessoal de volta) e volta aos campos depois de um erro.
+ * `comPagamento` (M8.2a): o site oferece o Pix nesta cotação (muda o texto "nenhum pagamento é feito aqui").
+ */
+export function FormSegurar({ codigo, minutos, acao, comPagamento = false }: { codigo: string; minutos: number; acao: Acao; comPagamento?: boolean }) {
+  const [estado, enviar, enviando] = useActionState(async (_a: Estado, f: FormData): Promise<Estado> => {
+    // O estado anterior não volta ao servidor (ele só traria de volta o que já foi digitado).
+    const r = await acao({}, f);
+    const ok = !r.erro && !r.erros;
+    return { ...r, valores: ok ? VAZIO : { nome: String(f.get("nome") ?? ""), email: String(f.get("email") ?? ""), telefone: String(f.get("telefone") ?? "") } };
+  }, {} as Estado);
+  const v = estado.valores ?? VAZIO;
   const e = estado.erros ?? {};
   const erro = (k: string) => (e[k] ? <span className={styles.erro}>{e[k]}</span> : null);
   return (
     <form action={enviar} className={styles.formulario} aria-label="Segurar as datas">
       <strong>Segurar as datas por {minutos} minutos</strong>
       <p className={styles.miudo} style={{ margin: 0 }}>
-        Seus dados vão só para a equipe, para confirmar a reserva com você. Nenhum pagamento é feito aqui.
+        {comPagamento
+          ? "Seus dados vão só para a equipe. Nada é cobrado ao segurar: o Pix aparece logo depois, nesta página."
+          : "Seus dados vão só para a equipe, para confirmar a reserva com você. Nenhum pagamento é feito aqui."}
       </p>
       <input type="hidden" name="codigo" value={codigo} />
       <label>

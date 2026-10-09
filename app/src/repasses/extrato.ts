@@ -21,6 +21,7 @@ import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { formatBRL } from "@/lib/money";
+import { liberacoesDoSite } from "@/pagamentos/andamento";
 import { lancamentoEmConferencia, lancamentoEmVigor } from "@/portal/posse";
 import { dataBr, ladoDoInicio, type PagamentoDaReserva, pagamentoDe, quemRecebeDe } from "./inicio";
 import { dinheiroComAEmpresa, type RecebidoDaReserva, recebidoPorReserva } from "./recebimentos";
@@ -65,6 +66,11 @@ export type ParteBruta = {
   pagamento: PagamentoDaReserva | null;
   emConferencia: boolean;
   repasse: RepasseDaParte | null;
+  /**
+   * Reserva paga pelo site (M8.2a): o dinheiro entra quando o Mercado Pago libera. `prevista` = data prevista da
+   * liberação (AAAA-MM-DD, São Paulo), null = a confirmar. Ausente = não é reserva paga pelo site.
+   */
+  liberacaoSite?: { prevista: string | null } | null;
 };
 
 export type Parte = ParteBruta & {
@@ -107,6 +113,10 @@ export function classificarParte(p: ParteBruta, inicioDoSistema: string | null =
   if (p.emConferencia) return com("a_liberar", "Reserva em conferência: a empresa precisa esclarecer os valores antes do repasse.");
   if (p.checkin >= p.hoje) return com("a_liberar", `Libera depois do check-in (${dataBr(p.checkin)}), com o dinheiro já com a empresa.`);
   if (!dinheiroComAEmpresa(p.recebido)) {
+    if (p.liberacaoSite) {
+      const quando = p.liberacaoSite.prevista ? `o Mercado Pago libera em ${dataBr(p.liberacaoSite.prevista)}` : "liberação do Mercado Pago a confirmar";
+      return com("a_liberar", `Reserva paga pelo site: ${quando}; nunca se repassa o que ainda não entrou.`);
+    }
     return com(
       "a_liberar",
       p.recebido.recebido <= 0
@@ -188,6 +198,7 @@ export async function partesDoProprietario(db: Db, organizacaoId: string, propri
     .where(and(eq(repasseItens.organizacaoId, organizacaoId), inArray(repasseItens.lancamentoId, linhas.map((l) => l.lancamentoId)), isNull(repasseItens.liberadoEm)));
   const porLancamento = new Map(itens.map((i) => [i.lancamentoId, { id: i.id, tipo: i.tipo, data: i.data, situacao: i.situacao, dataPagamento: i.dataPagamento, valor: i.valor } satisfies RepasseDaParte]));
   const recebidos = await recebidoPorReserva(db, organizacaoId, [...new Set(linhas.map((l) => l.reservaId!))]);
+  const doSite = await liberacoesDoSite(db, organizacaoId, [...new Set(linhas.map((l) => l.reservaId!))]);
   const inicioDoSistema = await lerInicioDoSistema(db, organizacaoId);
   const versoes = await lerVersoesRegras(db, organizacaoId);
   return linhas.map((l) =>
@@ -212,6 +223,7 @@ export async function partesDoProprietario(db: Db, organizacaoId: string, propri
         pagamento: pagamentoDe({ quemRecebe: quemRecebeDe(l), origem: l.origem, checkin: l.checkin }, recebidos.get(l.reservaId!) ?? { recebido: 0, devido: 0 }, versoes),
         emConferencia: l.emConferencia === true,
         repasse: porLancamento.get(l.lancamentoId) ?? null,
+        liberacaoSite: doSite.has(l.reservaId!) ? { prevista: doSite.get(l.reservaId!) ? hojeISO("America/Sao_Paulo", doSite.get(l.reservaId!)!) : null } : null,
       },
       inicioDoSistema,
     ),
