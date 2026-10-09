@@ -109,12 +109,28 @@ describe("conferência: freio da página e leituras antigas (M8.2a)", () => {
 
     const outra = await c.segurar({ entrada: "2026-11-02", saida: "2026-11-05", email: "outra@example.com" });
     const b = await c.pix(outra.cotacaoId);
-    await db.update(pagamentos).set({ situacao: "expirado", atualizadoEm: minutos(31) }).where(eq(pagamentos.id, b.pagamentoId));
+    c.provedor.expirar(b.idProvedor);
     const lidas = () => c.provedor.chamadas.filter((x) => x.metodo === "consultar" && x.id === b.idProvedor).length;
+    // Vencido e lido de novo pela página (cada leitura atualiza a tentativa, mas não o prazo da leitura).
+    await conferirCotacaoParaPagina(db, c.org, outra.cotacaoId, c.provedor, minutos(31));
+    expect((await c.tentativa(b.pagamentoId)).situacao).toBe("expirado");
+    await conferirCotacaoParaPagina(db, c.org, outra.cotacaoId, c.provedor, minutos(40));
     const antes = lidas();
-    // O prazo do Pix (30 min) mais a folga (15 min) já passou: nada é lido.
+    // O prazo do Pix (30 min) mais a folga (15 min) já passou: nada é lido, por mais que a página tenha lido antes.
     expect(await conferirCotacaoParaPagina(db, c.org, outra.cotacaoId, c.provedor, minutos(50))).toBeNull();
     expect(lidas()).toBe(antes);
+  });
+
+  it("Pix recusado que o provedor depois corrige para aprovado: a página também o lê e confirma", async () => {
+    const s = await c.segurar();
+    const a = await c.pix(s.cotacaoId);
+    c.provedor.recusar(a.idProvedor);
+    await conferirCotacaoParaPagina(db, c.org, s.cotacaoId, c.provedor, minutos(1));
+    expect((await c.tentativa(a.pagamentoId)).situacao).toBe("recusado");
+    c.provedor.aprovar(a.idProvedor);
+    await conferirCotacaoParaPagina(db, c.org, s.cotacaoId, c.provedor, minutos(2));
+    expect(await c.tentativa(a.pagamentoId)).toMatchObject({ situacao: "aprovado", desfecho: "reserva" });
+    expect((await c.reserva(s.reservaId)).estado).toBe("confirmada");
   });
 
   it("leituras simultâneas da página: a leitura é reservada num comando só — 25 pedidos ao mesmo tempo, uma leitura do provedor", async () => {
