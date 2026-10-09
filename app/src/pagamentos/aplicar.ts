@@ -177,9 +177,11 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
     const pedidoValido = t.reserva.estado === "pedido" && t.cotacao.estado === "segurada";
     if (etapa === "desafio") {
       if (patch.desafioUrl) desligar("desafio_sem_url");
-      if (leitura.daCriacao && !patch.desafioUrl) {
+      if (!patch.desafioUrl && (leitura.daCriacao || avisos.has("desafio_sem_url"))) {
         // O banco pediu a verificação, mas sem um endereço válido o hóspede não tem como fazê-la: cancela. Só a resposta
-        // da criação decide isso (uma leitura da página ou o aviso podem chegar antes dela, sem o endereço).
+        // da criação decide isso (uma leitura da página ou o aviso podem chegar antes dela, sem o endereço); depois de
+        // decidido (o aviso fica gravado), toda leitura manda cancelar de novo, até o Mercado Pago confirmar — um
+        // cancelamento que falhou não deixa o desafio inútil segurando as datas até vencer.
         ligar("desafio_sem_url");
         cancelarEsta("sistema");
       } else if (!pedidoValido) {

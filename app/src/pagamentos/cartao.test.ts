@@ -437,6 +437,30 @@ describe("desafio do banco (3DS)", () => {
     expect(textosDosAvisos(p.avisos).join(" ")).toContain("não mandou um endereço válido");
   });
 
+  it("desafio sem endereço válido cujo cancelamento falhou: a leitura seguinte (rotina ou página) manda cancelar de novo e não estende as datas", async () => {
+    const s = await c.segurar();
+    c.provedor.respostaCartao = "desafio";
+    const original = c.provedor.criarCartao.bind(c.provedor);
+    c.provedor.criarCartao = async (pedido) => {
+      const res = await original(pedido);
+      return res.ok && res.cobranca.cartao ? { ...res, cobranca: { ...res.cobranca, cartao: { ...res.cobranca.cartao, desafioUrl: "https://exemplo.invalid/3ds" } } } : res;
+    };
+    c.provedor.falhas.cancelar = new ErroProvedor("indisponivel", "sem conexão");
+    const r = await c.cartao(s.cotacaoId);
+    expect(r.resultado).toMatchObject({ ok: false, codigo: "verificacao" });
+    let p = await c.tentativa(r.pagamentoId!);
+    expect(p).toMatchObject({ situacao: "pendente", etapaCartao: "desafio", desafioUrl: null, cancelamentoPor: "sistema" });
+    expect(p.avisos).toEqual(expect.arrayContaining(["desafio_sem_url", "cancelamento_pendente"]));
+    const holdAntes = (await c.cotacao(s.cotacaoId)).holdAte?.toISOString();
+    // O Mercado Pago volta: a próxima leitura (sem `daCriacao`) cancela; o desafio inútil não segura mais as datas.
+    c.provedor.falhas.cancelar = null;
+    await conferir(p.id, minutos(5));
+    p = await c.tentativa(p.id);
+    expect(p).toMatchObject({ situacao: "cancelado", cancelamentoPor: "sistema" });
+    expect(p.avisos).not.toContain("cancelamento_pendente");
+    expect((await c.cotacao(s.cotacaoId)).holdAte?.toISOString()).toBe(holdAntes);
+  });
+
   it("desafio com o pedido não mais segurado (a equipe cancelou durante a chamada): cancelado pelo sistema, 'prazo'", async () => {
     const s = await c.segurar();
     c.provedor.respostaCartao = "desafio";
