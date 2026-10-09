@@ -189,7 +189,8 @@ async function criar(db: Db, organizacaoId: string, cotacaoId: string, f: Extrac
   if (fim.situacao === null) return falha("provedor", erro instanceof ErroProvedor ? erro.message : MENSAGENS.provedor);
   if (fim.aoVivo) return falha("ao_vivo");
   if (fim.situacao === "incerta") return falha("incerto");
-  if (fim.situacao === "recusado") return falha("recusado");
+  // Sem Pix para pagar (recusada, ou criada já cancelada ou vencida): falha, nunca "ok".
+  if (fim.situacao === "recusado" || fim.situacao === "cancelado" || fim.situacao === "expirado") return falha("recusado");
   if (fim.situacao === "pendente" && !fim.pedidoValido) return falha("nao_oferecido", "O prazo das datas desta cotação acabou durante a criação do Pix: ele foi cancelado.");
   return { ok: true, pagamentoId: f.id, reaproveitado: false };
 }

@@ -129,6 +129,21 @@ describe("gerar o Pix (M8.2a)", () => {
     expect((await c.cotacao(cotacaoId)).holdAte?.toISOString()).toBe(antes.toISOString());
   });
 
+  it("criação que já volta cancelada ou vencida (sem Pix para pagar): falha, nunca 'ok', e o prazo provisório das datas volta ao que era", async () => {
+    for (const [n, situacao] of [[0, "cancelado"], [1, "expirado"]] as const) {
+      const { cotacaoId } = await c.segurar({ entrada: `2026-11-${String(2 + n * 4).padStart(2, "0")}`, saida: `2026-11-${String(5 + n * 4).padStart(2, "0")}`, email: `fechada${n}@example.com` });
+      const antes = (await c.cotacao(cotacaoId)).holdAte!;
+      const original = c.provedor.criarPix.bind(c.provedor);
+      c.provedor.criarPix = async (p) => {
+        const r = await original(p);
+        return r.ok ? { ...r, cobranca: { ...r.cobranca, situacao } } : r;
+      };
+      expect(await gerarPix(db, c.org, cotacaoId, minutos(0), c.provedor)).toMatchObject({ ok: false, codigo: "recusado" });
+      c.provedor.criarPix = original;
+      expect((await c.cotacao(cotacaoId)).holdAte?.toISOString()).toBe(antes.toISOString());
+    }
+  });
+
   it("teto antes de cancelar: com 3 Pix gerados, pedir outro não cancela o terceiro, ainda pagável", async () => {
     const { cotacaoId } = await c.segurar();
     for (const [gerar, vencer] of [[0, 31], [31, 62]]) {
