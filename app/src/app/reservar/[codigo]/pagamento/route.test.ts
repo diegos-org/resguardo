@@ -2,8 +2,9 @@ import { NextRequest } from "next/server";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
-import { COOKIE_CHECKOUT, emitirAutorizacao, validadeDaAutorizacao } from "@/pagamentos/autorizacao";
+import { emitirAutorizacao, validadeDaAutorizacao } from "@/pagamentos/autorizacao";
 import { AGORA, type Cenario, EMAIL_HOSPEDE, minutos, montarCenario } from "@/pagamentos/testes";
+import { nomeDoCookieDoPedido } from "@/site/checkout";
 
 const m = vi.hoisted(() => ({ db: null as unknown as Db, org: "" as string | null }));
 vi.mock("@/db/client", () => ({ getDb: () => m.db }));
@@ -37,7 +38,7 @@ it("GET /reservar/<código>/pagamento: lê o cookie do pedido (QR só com ele), 
   expect(sem.headers.get("Cache-Control")).toBe("no-store");
   expect(await sem.json()).toMatchObject({ estado: "pix_aguardando", pix: null });
   const token = emitirAutorizacao(s.cotacaoId, validadeDaAutorizacao(minutos(30), AGORA));
-  const com = await pedir(s.codigo, { cookie: `${COOKIE_CHECKOUT}=${token}` });
+  const com = await pedir(s.codigo, { cookie: `${nomeDoCookieDoPedido(s.cotacaoId)}=${token}` });
   const corpo = await com.text();
   expect(JSON.parse(corpo)).toMatchObject({ estado: "pix_aguardando", pix: { copiaECola: expect.any(String) } });
   expect(corpo).not.toContain(EMAIL_HOSPEDE);

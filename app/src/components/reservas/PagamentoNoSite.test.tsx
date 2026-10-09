@@ -1,10 +1,10 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { PagamentoDoPainel } from "@/pagamentos/consultas";
-vi.mock("@/pagamentos/acoes-painel", () => ({ conferirAgoraAcao: vi.fn(), devolverAcao: vi.fn(), devolucaoPorForaAcao: vi.fn(), registrarLiberacaoAcao: vi.fn(), estornarLiberacaoAcao: vi.fn() }));
+vi.mock("@/pagamentos/acoes-painel", () => ({ conferirAgoraAcao: vi.fn(), devolverAcao: vi.fn(), devolucaoPorForaAcao: vi.fn(), registrarLiberacaoAcao: vi.fn(), estornarLiberacaoAcao: vi.fn(), registrarTaxaPerdidaAcao: vi.fn() }));
 import { PagamentoNoSite, situacaoEmPalavras } from "./PagamentoNoSite";
 
-const sem = { conferir: false, devolver: false, devolucaoPorFora: false, registrarLiberacao: false, estornarLiberacao: false };
+const sem = { conferir: false, devolver: false, devolucaoPorFora: false, registrarLiberacao: false, estornarLiberacao: false, registrarTaxaPerdida: false };
 const base: PagamentoDoPainel = {
   id: "11111111-1111-4111-8111-111111111111",
   cotacaoId: "c",
@@ -111,6 +111,22 @@ describe("quadro Pagamento no site", () => {
       acoes: sem,
     };
     expect(html([porFora])).toContain("feita por fora · R$ 1.824,00 · em 05/10/2026 · nota: Pix da empresa");
+    // Recusada: o quadro não afirma que o Mercado Pago não fez; manda conferir lá antes.
+    const recusada: PagamentoDoPainel = { ...base, desfecho: null, devolucao: { situacao: "recusada", valor: 182400, tentativas: 3, falhas: 3, confirmadaEm: null, porForaData: null, porForaValor: null, porForaNota: "", taxaPerdida: null }, acoes: sem };
+    const hr = html([recusada]);
+    expect(hr).toContain("confira no painel do Mercado Pago se o dinheiro já voltou");
+    expect(hr).not.toContain("não fez");
+    // Devolução confirmada sem a taxa que não voltou: o formulário para a equipe informar, com confirmação.
+    const confirmada: PagamentoDoPainel = {
+      ...base,
+      desfecho: "devolucao",
+      devolucao: { situacao: "confirmada", valor: 182400, tentativas: 1, falhas: 0, confirmadaEm: new Date("2026-10-02T15:00:00Z"), porForaData: null, porForaValor: null, porForaNota: "", taxaPerdida: null },
+      acoes: { ...sem, registrarTaxaPerdida: true },
+    };
+    const hc = html([confirmada]);
+    expect(hc).toContain("Registrar taxa que não voltou");
+    expect(hc).toContain('name="valor"');
+    expect(html([confirmada], { editar: false })).not.toContain("Registrar taxa que não voltou");
     const pendente: PagamentoDoPainel = { ...base, situacao: "pendente", desfecho: null, pixExpiraEm: new Date("2026-10-01T15:30:00Z"), acoes: { ...sem, conferir: true } };
     expect(situacaoEmPalavras(pendente)).toBe("Aguardando o pagamento do Pix (vale até 12:30 de 01/10/2026)");
   });

@@ -7,7 +7,7 @@ import { aplicarMotor } from "@/financeiro/aplicar";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
 import { hojeISO } from "@/lib/datas";
-import { pagamentoEmAndamentoOuAprovado, type PagamentoQuePrende } from "@/pagamentos/andamento";
+import { pagamentoEmAndamentoOuAprovado, type PagamentoQuePrende, pagamentoSemReservaADevolver } from "@/pagamentos/andamento";
 import { chavesDaImportacao } from "./travas-importacao";
 import { type DadosReserva, type ErrosReserva, gerarCodigo, validarReserva } from "./regras";
 
@@ -340,6 +340,12 @@ async function confirmarNaTransacao(db: Db, organizacaoId: string, id: string, a
         const [im] = await tx.select({ fuso: imoveis.fuso }).from(imoveis).where(eq(imoveis.id, r.imovelId));
         return { ok: false, aviso: avisoDoPagamento(p, im?.fuso ?? "America/Sao_Paulo", "confirmar") };
       }
+      // Pagamento aprovado e decidido "sem reserva" (a devolver): ele não se liga a uma confirmação à mão depois.
+      if (await pagamentoSemReservaADevolver(tx, r.id))
+        return {
+          ok: false,
+          aviso: "Não confirmada: este pedido tem um pagamento do site aprovado sem reserva, a devolver ao hóspede. Resolva pelo quadro \"Pagamento no site\" desta reserva antes de confirmar à mão.",
+        };
       if (cot && (cot.estado !== "segurada" || !cot.holdAte || cot.holdAte.getTime() <= agora.getTime())) {
         await tx.update(reservas).set({ estado: "cancelada", canceladaEm: new Date(), confirmadaEm: null, conferenciaResolvidaEm: null, atualizadoEm: new Date() }).where(eq(reservas.id, id));
         await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "reserva.cancelar", entidade: "reserva", entidadeId: id, mudancas: { estado: [r.estado, "cancelada"], motivo: [null, "prazo do pedido do site vencido"] } });

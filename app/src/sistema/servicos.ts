@@ -14,6 +14,11 @@ export const NOME_MERCADO_PAGO = "Pagamentos (Mercado Pago)";
 
 const quando = (d: Date) => d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
 
+/** No deploy de produção sem as chaves de teste (que ficam só no ambiente Preview): é o esperado, não falta nada. */
+export const TEXTO_PRODUCAO_SEM_CHAVES = "Deploy de produção: o teste do pagamento roda nas prévias (as chaves de teste ficam só no ambiente Preview da Vercel)";
+export const producaoSemChaves = (mp: SituacaoMercadoPago, env: NodeJS.ProcessEnv) =>
+  env.VERCEL_ENV === "production" && mp.situacao === "desligado" && ambienteMercadoPago(env.MERCADOPAGO_AMBIENTE) !== null;
+
 /**
  * A linha do Mercado Pago (Integrações e Sistema), lida de `situacaoDoMercadoPago` — a mesma função nos dois
  * lugares. "ok" só com a conta conferida agora como de teste no provedor.
@@ -27,6 +32,7 @@ export function servicoMercadoPago(mp: SituacaoMercadoPago, env: NodeJS.ProcessE
   const base = { nome: NOME_MERCADO_PAGO, paraQue: "Pagamento da reserva direta no site (Pix, em teste)" };
   switch (mp.situacao) {
     case "desligado":
+      if (producaoSemChaves(mp, env)) return { ...base, situacao: "configurado", detalhe: `${TEXTO_PRODUCAO_SEM_CHAVES} · ${avisos}` };
       return { ...base, situacao: ambienteMercadoPago(env.MERCADOPAGO_AMBIENTE) === null ? "falha" : "nao_configurado", detalhe: `Desligado: ${mp.motivo ?? "faltam as chaves"} · ${avisos}` };
     case "so_nas_previas":
       return { ...base, situacao: "configurado", detalhe: `Chaves configuradas, mas o teste do pagamento roda nas prévias da Vercel: aqui o site segue pelo pedido na conversa · ${avisos}` };

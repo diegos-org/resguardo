@@ -123,8 +123,10 @@ const cobrancaAprovada = (over: Partial<Cobranca> = {}): Cobranca => ({
   detalhe: "processed/accredited",
   forma: "cartao",
   valor: 50000,
+  valorTransacao: 50000,
   pago: 50000,
   devolvido: 0,
+  devolucaoEmAndamento: false,
   parcelas: 3,
   idTransacao: "PAY01KB0JDVXYPD6HPP2HSMJS11QN",
   aoVivo: null,
@@ -250,8 +252,10 @@ describe("order → Cobranca", () => {
       detalhe: "action_required/waiting_transfer",
       forma: "pix",
       valor: 123456,
+      valorTransacao: 123456,
       pago: null,
       devolvido: 0,
+      devolucaoEmAndamento: false,
       parcelas: null,
       idTransacao: "PAY01KB00C5QRFKWERZQW5DX6XMMJ",
       aoVivo: false,
@@ -282,7 +286,7 @@ describe("order → Cobranca", () => {
   });
 
   it("cartão aprovado com parcelas e valor pago", () => {
-    expect(cobrancaDaOrder(orderCartao())).toMatchObject({ situacao: "aprovado", forma: "cartao", valor: 50000, pago: 50000, parcelas: 3, pix: null, aoVivo: null, devolvido: 0 });
+    expect(cobrancaDaOrder(orderCartao())).toMatchObject({ situacao: "aprovado", forma: "cartao", valor: 50000, valorTransacao: 50000, pago: 50000, parcelas: 3, pix: null, aoVivo: null, devolvido: 0, devolucaoEmAndamento: false });
   });
 
   it("devolvido soma só devoluções confirmadas e legíveis", () => {
@@ -298,6 +302,12 @@ describe("order → Cobranca", () => {
     const c = cobrancaDaOrder(o)!;
     expect(c.situacao).toBe("devolvido_parcial");
     expect(c.devolvido).toBe(15050);
+    // A REF3 (in_process) ainda está em andamento.
+    expect(c.devolucaoEmAndamento).toBe(true);
+    // Só confirmadas e falhas: nada em andamento; sem o valor da transação, null.
+    (o.transactions as Record<string, unknown>).refunds = [{ id: "REF1", amount: "100.00", status: "processed" }, { id: "REF5", amount: "10.00", status: "failed" }];
+    delete (o.transactions.payments[0] as Record<string, unknown>).amount;
+    expect(cobrancaDaOrder(o)).toMatchObject({ devolucaoEmAndamento: false, devolvido: 10000, valorTransacao: null });
   });
 
   it("ids com sublinhado (exemplos da documentação) e lista de pagamentos com null", () => {

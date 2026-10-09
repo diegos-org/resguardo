@@ -1,8 +1,10 @@
 /**
  * Pagamento no site (M8.2a) — freios das ações públicas: gerar Pix, "Continuar o pagamento" (conferir o e-mail
- * do pedido), a consulta da página que espera o Pix e segurar as datas. Para cada uma, um teto geral por
- * organização (conferido ANTES do teto por origem) e um teto por endereço de internet; origem desconhecida conta
- * numa chave compartilhada, com teto baixo (nunca "sem teto"). Mesmas contas de `contarNaJanela` do login.
+ * do pedido), a consulta da página que espera o Pix e segurar as datas. Para cada uma, um teto por endereço de
+ * internet (IPv6 agrupado pela rede /64) e um teto geral por organização. A origem é contada PRIMEIRO, e só o pedido
+ * que ainda cabe no teto dela conta no geral (como na entrada com senha): uma origem só não tira a vez de todo
+ * mundo. Origem desconhecida conta numa chave compartilhada, com teto baixo (nunca "sem teto"). Mesmas contas de
+ * `contarNaJanela` do login.
  */
 import { createHash, timingSafeEqual } from "node:crypto";
 import { and, eq } from "drizzle-orm";
@@ -36,14 +38,35 @@ export const ERROS_LIMITE: Record<AcaoLimitada, string> = {
   segurar: "Muitos pedidos agora há pouco. Tente de novo mais tarde ou fale com a equipe pelo WhatsApp.",
 };
 
-/** Conta a tentativa nos tetos da ação: geral da organização primeiro, depois a origem (ou a chave sem origem). */
+/**
+ * Chave da origem para os tetos: IPv4 inteiro; IPv6 pela rede /64 (quem tem uma /64 troca de endereço à vontade);
+ * IPv4 dentro de IPv6 (::ffff:a.b.c.d) como IPv4. Só aqui: a origem do login continua a de `origemDoPedido`.
+ */
+export function chaveDaOrigem(origem: string): string {
+  const o = origem.trim().toLowerCase();
+  if (!o.includes(":")) return o;
+  const mapeado = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(o);
+  if (mapeado) return mapeado[1];
+  // Grupos de 16 bits; um IPv4 no fim (ex.: 64:ff9b::1.2.3.4) ocupa dois.
+  const grupos = (lado: string) => (lado ? lado.split(":").flatMap((g) => (g.includes(".") ? ["0", "0"] : [g])) : []);
+  const [cabeca, cauda] = o.includes("::") ? o.split("::", 2) : [o, null];
+  const inicio = grupos(cabeca);
+  const fim = cauda === null ? [] : grupos(cauda);
+  const todos = cauda === null ? inicio : [...inicio, ...Array<string>(Math.max(0, 8 - inicio.length - fim.length)).fill("0"), ...fim];
+  const rede = todos.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, "") || "0");
+  while (rede.length < 4) rede.push("0");
+  return `${rede.join(":")}::/64`;
+}
+
+/** Conta a tentativa nos tetos da ação: a origem (ou a chave sem origem) primeiro; só dentro dela, o geral da organização. */
 export async function conferirLimite(db: Db, organizacaoId: string, acao: AcaoLimitada, origem: string | null, agora: Date = new Date()): Promise<{ ok: true } | { ok: false; erro: string }> {
   const l = LIMITES_PAGAMENTO[acao];
+  const [chave, teto] = origem ? [`pagamento-${acao}:origem:${organizacaoId}:${chaveDaOrigem(origem)}`, l.origem] : [`pagamento-${acao}:sem-origem:${organizacaoId}`, l.semOrigem];
+  // A origem que passou do teto não gasta a conta geral.
+  if ((await contarNaJanela(db, chave, teto, agora)) > teto.tentativas) return { ok: false, erro: ERROS_LIMITE[acao] };
   const geral = await contarNaJanela(db, `pagamento-${acao}:geral:${organizacaoId}`, l.geral, agora);
   if (geral === 1) await apagarContasVelhas(db, agora);
   if (geral > l.geral.tentativas) return { ok: false, erro: ERROS_LIMITE[acao] };
-  const [chave, teto] = origem ? [`pagamento-${acao}:origem:${organizacaoId}:${origem}`, l.origem] : [`pagamento-${acao}:sem-origem:${organizacaoId}`, l.semOrigem];
-  if ((await contarNaJanela(db, chave, teto, agora)) > teto.tentativas) return { ok: false, erro: ERROS_LIMITE[acao] };
   return { ok: true };
 }
 

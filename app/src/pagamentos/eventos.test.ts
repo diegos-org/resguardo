@@ -3,7 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { eventosPagamento, pagamentos } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
-import { aplicarNaTransacao, conferirCotacaoParaPagina, conferirTentativa, idDeOrder, INTERVALO_CONSULTA_MS, processarAvisoDeOrder } from "./conferencia";
+import { aplicarNaTransacao, conferirCotacaoParaPagina, conferirTentativa, idDeOrder, INTERVALO_CONSULTA_MS, marcarAviso, processarAvisoDeOrder } from "./conferencia";
 import { apagarEventosAntigos, GUARDAR_EVENTOS_DIAS, marcarResultadoDoEvento, registrarAssinaturaRecusada, registrarEventoDeAviso, situacaoDosAvisos } from "./eventos";
 import { ErroProvedor } from "./provedor";
 import { situacaoDoMercadoPago, ENDERECO_WEBHOOK, segredoDoWebhook } from "./integracao";
@@ -97,6 +97,38 @@ describe("conferência: freio da página e leituras antigas (M8.2a)", () => {
     expect(lidas()).toBe(depois);
   });
 
+  it("leituras simultâneas da página: a leitura é reservada num comando só — 25 pedidos ao mesmo tempo, uma leitura do provedor", async () => {
+    const s = await c.segurar();
+    await c.pix(s.cotacaoId);
+    const lidas = () => c.provedor.chamadas.filter((x) => x.metodo === "consultar" || x.metodo === "buscarPorReferencia").length;
+    const antes = lidas();
+    const quando = new Date(AGORA.getTime() + 20_000);
+    const r = await Promise.all(Array.from({ length: 25 }, () => conferirCotacaoParaPagina(db, c.org, s.cotacaoId, c.provedor, quando)));
+    expect(lidas() - antes).toBe(1);
+    expect(r.filter((x) => x?.ok && x.consultou)).toHaveLength(1);
+    // Leitura que falha não conta: a marca volta e a próxima (15 s depois da última que valeu) lê de novo.
+    c.provedor.falhas.consultar = new ErroProvedor("incerto", "tempo");
+    expect(await conferirCotacaoParaPagina(db, c.org, s.cotacaoId, c.provedor, new Date(quando.getTime() + 15_000))).toMatchObject({ ok: false });
+    expect((await db.select().from(pagamentos).where(eq(pagamentos.cotacaoId, s.cotacaoId)))[0].consultadoEm?.toISOString()).toBe(quando.toISOString());
+    c.provedor.falhas.consultar = null;
+    expect(await conferirCotacaoParaPagina(db, c.org, s.cotacaoId, c.provedor, new Date(quando.getTime() + 16_000))).toMatchObject({ ok: true, consultou: true });
+  });
+
+  it("aviso de cancelamento ligado e desligado num comando só: nunca apaga os outros avisos gravados", async () => {
+    const s = await c.segurar();
+    const p = await c.pix(s.cotacaoId);
+    await db.update(pagamentos).set({ avisos: ["ao_vivo"] }).where(eq(pagamentos.id, p.pagamentoId));
+    await marcarAviso(db, p.pagamentoId, "cancelamento_pendente", true);
+    await marcarAviso(db, p.pagamentoId, "cancelamento_pendente", true);
+    expect((await c.tentativa(p.pagamentoId)).avisos).toEqual(["ao_vivo", "cancelamento_pendente"]);
+    // Outro aviso gravado entre uma marcação e outra continua lá.
+    await db.update(pagamentos).set({ avisos: ["ao_vivo", "cancelamento_pendente", "situacao_desconhecida"] }).where(eq(pagamentos.id, p.pagamentoId));
+    await marcarAviso(db, p.pagamentoId, "cancelamento_pendente", false);
+    expect((await c.tentativa(p.pagamentoId)).avisos).toEqual(["ao_vivo", "situacao_desconhecida"]);
+    await marcarAviso(db, p.pagamentoId, "cancelamento_pendente", false);
+    expect((await c.tentativa(p.pagamentoId)).avisos).toEqual(["ao_vivo", "situacao_desconhecida"]);
+  });
+
   it("ausência lida pela referência antes de a criação gravar o id da order não vira aviso", async () => {
     const s = await c.segurar();
     const p = await c.pix(s.cotacaoId);
@@ -170,6 +202,17 @@ describe("rotina do site e situação do Mercado Pago (M8.2a)", () => {
     expect((await c.reserva(s.reservaId)).estado).toBe("confirmada");
     // Sem provedor (pagamento desligado), só vence os holds.
     expect((await rotinaDoSite(db, null, new Date(T.getTime() + 21 * 60_000))).pagamentos).toBeNull();
+  });
+
+  it("limpeza dos avisos com mais de 90 dias: na rotina do site, mesmo sem provedor (deploy de produção); nunca no Conferir agora de uma empresa", async () => {
+    const ev = await registrarEventoDeAviso(db, { tipo: "order", acao: "order.processed", dataId: "ORDTSTLIMPA1", requestId: "r-limpa", ts: "9" }, AGORA);
+    const depois = new Date(AGORA.getTime() + (GUARDAR_EVENTOS_DIAS + 1) * 86_400_000);
+    await conferirPendentes(db, c.org, c.provedor, depois);
+    expect(await db.select().from(eventosPagamento).where(eq(eventosPagamento.id, ev!.id))).toHaveLength(1);
+    const r = await rotinaDoSite(db, null, depois);
+    expect(r.pagamentos).toBeNull();
+    expect(r.eventosApagados).toBeGreaterThanOrEqual(1);
+    expect(await db.select().from(eventosPagamento).where(eq(eventosPagamento.id, ev!.id))).toEqual([]);
   });
 
   it("Integrações: situação, conta conferida, segredo do webhook, avisos — sem chaves nem segredo na resposta", async () => {

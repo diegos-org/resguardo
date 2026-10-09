@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useActionState } from "react";
+import { type ReactNode, startTransition, useActionState } from "react";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import styles from "@/components/formularios.module.css";
 import type { EstadoAcaoPagamento } from "@/pagamentos/acoes-painel";
@@ -21,13 +21,23 @@ type Props = {
 
 /**
  * Um formulário de ação do pagamento no site (M8.2a): campos, o botão (com confirmação quando mexe em dinheiro) e a
- * mensagem que o servidor devolveu — de sucesso ou a recusa do domínio, como veio.
+ * mensagem que o servidor devolveu — de sucesso ou a recusa do domínio, como veio. Envia pelo `onSubmit` (não pelo
+ * `action` do formulário) para o React não limpar os campos: numa recusa, o que foi digitado continua ali para corrigir.
  */
 export function FormAcaoPagamento({ acao, rotulo, nome, pagamentoId, pergunta, discreto, children }: Props) {
   const [estado, enviar, enviando] = useActionState(acao, {});
   const classe = discreto ? styles.pequeno : undefined;
   return (
-    <form action={enviar} aria-label={nome} className={styles.linha} style={{ alignItems: "flex-end", margin: 0 }}>
+    <form
+      aria-label={nome}
+      className={styles.linha}
+      style={{ alignItems: "flex-end", margin: 0 }}
+      onSubmit={(ev) => {
+        ev.preventDefault();
+        const dados = new FormData(ev.currentTarget);
+        startTransition(() => enviar(dados));
+      }}
+    >
       {pagamentoId && <input type="hidden" name="pagamentoId" value={pagamentoId} />}
       {children}
       <div className={discreto ? undefined : styles.acoes}>

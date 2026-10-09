@@ -2,7 +2,7 @@
  * Pagamento no site (M8.2a) — consultas pequenas que o resto do sistema (cotações, reservas, recebimentos,
  * extrato) usa para respeitar um pagamento em andamento. Só lê o banco: sem provedor, sem regra de confirmação.
  */
-import { and, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, or } from "drizzle-orm";
 import { pagamentos } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
@@ -60,6 +60,20 @@ export async function pagamentoEmAndamentoOuAprovado(db: Db, reservaId: string):
   const ordem = (s: SituacaoPagamento) => (s === "criando" || s === "incerta" || s === "pendente" ? 0 : 1);
   const [p] = linhas.sort((a, b) => ordem(a.situacao) - ordem(b.situacao) || b.criadoEm.getTime() - a.criadoEm.getTime());
   return { id: p.id, forma: p.forma, situacao: p.situacao, pixExpiraEm: p.pixExpiraEm, desfecho: p.desfecho };
+}
+
+/**
+ * Há dinheiro do site nesta reserva sem desfecho e já decidido "sem reserva" (a devolver)? Confirmar o pedido à mão
+ * fica recusado enquanto houver: o pagamento não se liga à reserva confirmada depois.
+ */
+export async function pagamentoSemReservaADevolver(db: Db, reservaId: string): Promise<boolean> {
+  if (!uuidValido(reservaId)) return false;
+  const [p] = await db
+    .select({ id: pagamentos.id })
+    .from(pagamentos)
+    .where(and(eq(pagamentos.reservaId, reservaId), inArray(pagamentos.situacao, ["aprovado", "devolvido_parcial", "contestado"]), isNull(pagamentos.desfecho), isNotNull(pagamentos.motivoSemReserva)))
+    .limit(1);
+  return Boolean(p);
 }
 
 /**

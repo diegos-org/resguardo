@@ -171,6 +171,52 @@ describe("confirmação pelo pagamento (M8.2a)", () => {
     expect(await c.tentativa(segunda.id)).toMatchObject({ situacao: "aprovado", desfecho: null, motivoSemReserva: "outra_tentativa" });
   });
 
+  it("valor: o valor da transação (que precisa vir) e o total pago, quando vier, também têm de bater com o total da cotação", async () => {
+    const leitura = async (over: Partial<Cobranca>, n: number) => {
+      const x = await comPix({ entrada: `2026-11-${String(2 + n * 4).padStart(2, "0")}`, saida: `2026-11-${String(5 + n * 4).padStart(2, "0")}`, email: `v${n}@example.com` });
+      c.provedor.aprovar(x.idProvedor);
+      const [order] = c.provedor.todas().filter((o) => o.idProvedor === x.idProvedor);
+      await conferir(x.pagamentoId, minutos(3), { cobranca: { ...order, ...over } });
+      return { ...x, t: await c.tentativa(x.pagamentoId), r: await c.reserva(x.reservaId) };
+    };
+    for (const [over, n] of [[{ valorTransacao: TOTAL - 1 }, 0], [{ valorTransacao: null }, 1], [{ pago: TOTAL + 100 }, 2]] as const) {
+      const { t, r } = await leitura(over, n);
+      expect(t).toMatchObject({ desfecho: null, motivoSemReserva: "valor_divergente" });
+      expect(r.estado).toBe("pedido");
+    }
+    // Tudo igual (e o pago ausente): confirma.
+    expect((await leitura({ pago: null }, 3)).t).toMatchObject({ desfecho: "reserva" });
+  });
+
+  it("pedido com pagamento aprovado sem reserva: a confirmação à mão é recusada, apontando para o quadro do pagamento", async () => {
+    const x = await comPix();
+    await db.update(cotacoes).set({ total: TOTAL + 100 }).where(eq(cotacoes.id, x.cotacaoId));
+    c.provedor.aprovar(x.idProvedor);
+    await conferir(x.pagamentoId, minutos(3));
+    expect((await c.tentativa(x.pagamentoId)).motivoSemReserva).toBe("valor_divergente");
+    expect(await confirmarReserva(db, c.org, x.reservaId, null, minutos(4))).toEqual({
+      ok: false,
+      aviso: 'Não confirmada: este pedido tem um pagamento do site aprovado sem reserva, a devolver ao hóspede. Resolva pelo quadro "Pagamento no site" desta reserva antes de confirmar à mão.',
+    });
+    expect((await c.reserva(x.reservaId)).estado).toBe("pedido");
+  });
+
+  it("dinheiro que chega já devolvido em parte ou contestado (sem leitura 'aprovado' antes): nunca confirma; fica sem reserva, com aviso", async () => {
+    for (const [n, simular] of [[0, (id: string) => c.provedor.devolverNoProvedor(id, 1000)], [1, (id: string) => c.provedor.contestar(id)]] as const) {
+      const x = await comPix({ entrada: `2026-11-${String(2 + n * 4).padStart(2, "0")}`, saida: `2026-11-${String(5 + n * 4).padStart(2, "0")}`, email: `w${n}@example.com` });
+      c.provedor.aprovar(x.idProvedor);
+      simular(x.idProvedor);
+      await conferir(x.pagamentoId, minutos(3));
+      const t = await c.tentativa(x.pagamentoId);
+      expect(t).toMatchObject({ situacao: n === 0 ? "devolvido_parcial" : "contestado", desfecho: null, motivoSemReserva: "situacao_inesperada" });
+      expect(t.avisos).toContain("situacao_inesperada");
+      expect((await c.reserva(x.reservaId)).estado).toBe("pedido");
+      // Ler de novo não decide nada.
+      await conferir(x.pagamentoId, minutos(5));
+      expect(await c.tentativa(x.pagamentoId)).toMatchObject({ desfecho: null, motivoSemReserva: "situacao_inesperada" });
+    }
+  });
+
   it("a confirmação cancela no provedor o outro Pix pendente da cotação", async () => {
     const z = await comPix();
     const extra = await c.provedor.criarPix({ referencia: "scl-extra-0002", chaveIdempotencia: "extra-0002", valor: TOTAL, email: "test@testuser.com", nome: "", validadeMinutos: 30, descricao: "", descricaoFatura: null });
@@ -236,13 +282,51 @@ describe("confirmação pelo pagamento (M8.2a)", () => {
     expect(await tentarCancelarReserva(db, c.org, x.reservaId, null)).toMatchObject({ ok: false, aviso: expect.stringContaining("pagamento aprovado pelo site") });
   });
 
-  it("segurar: o mesmo e-mail com pagamento em andamento não segura outras datas, mesmo com o prazo daquele pedido vencido", async () => {
+  it("segurar: o mesmo e-mail com Pix em andamento não segura outras datas na carência; depois dela, a tentativa que nunca se resolve não prende o e-mail; aprovado sem desfecho prende sempre; a resposta não revela o pagamento", async () => {
     const x = await comPix();
     const r = await criarCotacao(db, c.org, { imovel: "403", entrada: "2026-11-20", saida: "2026-11-22", hospedes: "2" }, new Date(x.T.getTime() + 60_000));
     if (!r.ok) throw new Error(r.erro);
-    expect(await segurarDatas(db, c.org, r.cotacao.codigo, { nome: "Visitante Fictício", email: EMAIL_HOSPEDE, telefone: "(21) 99999-0000" }, new Date(x.T.getTime() + 60_000))).toMatchObject({ ok: false, erro: expect.stringContaining("pagamento em andamento") });
+    const segurarCom = (codigo: string, email: string, quando: Date) => segurarDatas(db, c.org, codigo, { nome: "Visitante Fictício", email, telefone: "(21) 99999-0000" }, quando);
+    const naCarencia = await segurarCom(r.cotacao.codigo, EMAIL_HOSPEDE, new Date(x.T.getTime() + 60_000));
+    // A mesma resposta de "reserva em andamento": nada diz que essa pessoa está pagando.
+    expect(naCarencia).toMatchObject({ ok: false, erro: "Já existe uma reserva em andamento com este e-mail. Conclua aquela ou aguarde o prazo dela acabar." });
+    expect(JSON.stringify(naCarencia)).not.toMatch(/pagamento/i);
     // Outro e-mail segura normalmente.
-    expect((await segurarDatas(db, c.org, r.cotacao.codigo, { nome: "Outra Fictícia", email: "outra@example.com", telefone: "(21) 99999-0001" }, new Date(x.T.getTime() + 60_000))).ok).toBe(true);
+    expect((await segurarCom(r.cotacao.codigo, "outra@example.com", new Date(x.T.getTime() + 60_000))).ok).toBe(true);
+    // Passada a carência, o Pix que nunca teve resposta (ainda "pendente" no sistema) não prende mais o e-mail.
+    const r2 = await criarCotacao(db, c.org, { imovel: "403", entrada: "2026-11-24", saida: "2026-11-26", hospedes: "2" }, new Date(x.T.getTime() + 20 * 60_000));
+    if (!r2.ok) throw new Error(r2.erro);
+    expect((await c.tentativa(x.pagamentoId)).situacao).toBe("pendente");
+    expect((await segurarCom(r2.cotacao.codigo, EMAIL_HOSPEDE, new Date(x.T.getTime() + 20 * 60_000))).ok).toBe(true);
+
+    // Aprovado sem reserva (a devolver): o e-mail continua preso, dias depois.
+    const y = await comPix({ entrada: "2026-11-02", saida: "2026-11-05", email: "y@example.com" });
+    await db.update(cotacoes).set({ total: TOTAL + 1 }).where(eq(cotacoes.id, y.cotacaoId));
+    c.provedor.aprovar(y.idProvedor);
+    await conferir(y.pagamentoId, minutos(3));
+    expect((await c.tentativa(y.pagamentoId)).motivoSemReserva).toBe("valor_divergente");
+    const tresDias = minutos(3 * 24 * 60);
+    const r3 = await criarCotacao(db, c.org, { imovel: "403", entrada: "2026-11-27", saida: "2026-11-29", hospedes: "2" }, tresDias);
+    if (!r3.ok) throw new Error(r3.erro);
+    expect(await segurarCom(r3.cotacao.codigo, "y@example.com", tresDias)).toMatchObject({ ok: false, erro: expect.stringContaining("reserva em andamento") });
+  });
+
+  it("rotina de holds: um hold que não dá para fechar (impasse, trava ocupada ou outro erro) é contado e os seguintes continuam", async () => {
+    const a = await c.segurar();
+    const b = await c.segurar({ entrada: "2026-11-02", saida: "2026-11-05", email: "b@example.com" });
+    let i = 0;
+    const falhaNaPrimeira = new Proxy(db, {
+      get(alvo, k, r) {
+        if (k === "transaction") return (...x: Parameters<typeof db.transaction>) => (++i === 1 ? Promise.reject(Object.assign(new Error("deadlock detected"), { code: "40P01" })) : alvo.transaction(...x));
+        return Reflect.get(alvo, k, r);
+      },
+    });
+    const r = await expirarHoldsVencidos(falhaNaPrimeira, c.org, minutos(31));
+    expect(r).toMatchObject({ expiradas: 1, falhas: 1 });
+    const estados = [(await c.reserva(a.reservaId)).estado, (await c.reserva(b.reservaId)).estado].sort();
+    expect(estados).toEqual(["cancelada", "pedido"]);
+    // A próxima volta fecha o que ficou.
+    expect(await expirarHoldsVencidos(db, c.org, minutos(41))).toMatchObject({ expiradas: 1, falhas: 0 });
   });
 
   it("gerar Pix com a cotação de outra empresa, ou depois de confirmada: recusado", async () => {

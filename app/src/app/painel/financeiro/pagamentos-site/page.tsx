@@ -27,8 +27,9 @@ function periodoPadrao(hoje: string): { de: string; ate: string } {
 function desfechoEmPalavras(p: Pick<LinhaPagamento, "desfecho" | "devolucao" | "motivoSemReservaTexto" | "situacao">): string {
   if (p.desfecho) return NOMES_DESFECHO[p.desfecho];
   if (p.devolucao?.situacao === "pedida") return "Devolução pedida ao Mercado Pago";
-  if (p.devolucao?.situacao === "recusada") return "A devolução pelo Mercado Pago falhou: tente de novo ou registre a feita por fora";
+  if (p.devolucao?.situacao === "recusada") return "Devolução recusada pelo Mercado Pago: confira lá se o dinheiro já voltou antes de pedir de novo ou de registrar a feita por fora";
   if (p.situacao === "aprovado" && p.motivoSemReservaTexto) return `Sem reserva, a devolver: ${p.motivoSemReservaTexto}`;
+  if ((p.situacao === "devolvido_parcial" || p.situacao === "contestado") && p.motivoSemReservaTexto) return `Sem reserva: ${p.motivoSemReservaTexto} O resto se resolve pelo Mercado Pago até o M8.2c.`;
   if (p.situacao === "aprovado") return "Confirmando a reserva";
   return "—";
 }

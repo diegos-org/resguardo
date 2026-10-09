@@ -1,7 +1,7 @@
 /**
  * Pagamento no site (M8.2a): regras de venda editáveis no painel (Configurações → Pagamento no site), num
  * lugar só. `oferecer` liga e desliga o pagamento para as tentativas novas (o que já foi pago continua sendo
- * conferido); `nomeFatura` é o nome que aparece na fatura do cartão (vazio = o nome da empresa); a categoria da
+ * conferido) e começa DESLIGADO (deny-by-default: o Diego liga na aba, auditado); `nomeFatura` é o nome que aparece na fatura do cartão (vazio = o nome da empresa); a categoria da
  * taxa perdida recebe a despesa da taxa que o provedor não devolve (criada no primeiro uso, editável depois).
  * Tudo auditado, valendo para as tentativas novas.
  */
@@ -16,7 +16,7 @@ import { nomeDaEmpresa } from "./empresa";
 export type ConfigPagamentoSite = { oferecer: boolean; nomeFatura: string | null; categoriaTaxaId: string | null };
 export type ErrosPagamentoSite = Partial<Record<keyof ConfigPagamentoSite, string>>;
 
-export const CONFIG_PAGAMENTO_SITE_PADRAO: ConfigPagamentoSite = { oferecer: true, nomeFatura: null, categoriaTaxaId: null };
+export const CONFIG_PAGAMENTO_SITE_PADRAO: ConfigPagamentoSite = { oferecer: false, nomeFatura: null, categoriaTaxaId: null };
 /** O provedor aceita mais, mas a fatura mostra poucos caracteres (o painel mostra a prévia). */
 export const LIMITE_NOME_FATURA = 22;
 /** Quantos caracteres do nome costumam aparecer na fatura do cartão. */

@@ -9,6 +9,7 @@ const m = vi.hoisted(() => ({
   pendentes: vi.fn(),
   devolver: vi.fn(),
   porFora: vi.fn(),
+  taxa: vi.fn(),
   liberar: vi.fn(),
   estornar: vi.fn(),
   salvar: vi.fn(),
@@ -19,10 +20,10 @@ vi.mock("next/cache", () => ({ revalidatePath: m.revalidar }));
 vi.mock("./oferta", () => ({ provedorDeConferencia: m.gate }));
 vi.mock("./conferencia", () => ({ conferirTentativa: m.conferir }));
 vi.mock("./rotina", () => ({ conferirPendentes: m.pendentes }));
-vi.mock("./devolucao", () => ({ devolverPeloProvedor: m.devolver, registrarDevolucaoPorFora: m.porFora }));
+vi.mock("./devolucao", () => ({ devolverPeloProvedor: m.devolver, registrarDevolucaoPorFora: m.porFora, registrarTaxaPerdida: m.taxa }));
 vi.mock("./liberacao", () => ({ registrarLiberacaoManual: m.liberar, estornarLiberacaoManual: m.estornar }));
 vi.mock("@/configuracoes/pagamento-site", async (original) => ({ ...(await original<typeof import("@/configuracoes/pagamento-site")>()), salvarConfigPagamentoSite: m.salvar }));
-import { conferirAgoraAcao, devolucaoPorForaAcao, devolverAcao, estornarLiberacaoAcao, registrarLiberacaoAcao, salvarConfigPagamentoSiteAcao } from "./acoes-painel";
+import { conferirAgoraAcao, devolucaoPorForaAcao, devolverAcao, estornarLiberacaoAcao, registrarLiberacaoAcao, registrarTaxaPerdidaAcao, salvarConfigPagamentoSiteAcao } from "./acoes-painel";
 
 const ID = "11111111-1111-4111-8111-111111111111";
 const provedor = { falso: true };
@@ -50,12 +51,13 @@ describe("permissão (deny-by-default)", () => {
     () => devolucaoPorForaAcao({}, form({ pagamentoId: ID, data: hoje(), valor: "10,00" })),
     () => registrarLiberacaoAcao({}, form({ pagamentoId: ID, data: hoje(), liquido: "10,00" })),
     () => estornarLiberacaoAcao({}, form({ pagamentoId: ID, motivo: "erro" })),
+    () => registrarTaxaPerdidaAcao({}, form({ pagamentoId: ID, valor: "18,06" })),
     () => salvarConfigPagamentoSiteAcao({}, form({ oferecer: "on" })),
   ];
   it.each(["operacao", "proprietario", "limpeza", "hospede"])("%s não executa nenhuma ação de dinheiro", async (papel) => {
     m.sessao.mockResolvedValue({ papel, organizacaoId: "org", usuarioId: "u", imovelIds: [] });
     for (const f of todas) await expect(f()).rejects.toThrow("Acesso negado");
-    for (const fn of [m.gate, m.conferir, m.pendentes, m.devolver, m.porFora, m.liberar, m.estornar, m.salvar]) expect(fn).not.toHaveBeenCalled();
+    for (const fn of [m.gate, m.conferir, m.pendentes, m.devolver, m.porFora, m.taxa, m.liberar, m.estornar, m.salvar]) expect(fn).not.toHaveBeenCalled();
   });
 });
 
@@ -80,11 +82,11 @@ describe("conferir agora", () => {
   });
 
   it("todas as pendentes da empresa (nunca de todas as empresas)", async () => {
-    m.pendentes.mockResolvedValue({ conferidas: 3, mudaram: 1, devolucoes: 1, canceladas: 0, falhas: 1, eventosApagados: 0 });
+    m.pendentes.mockResolvedValue({ conferidas: 3, mudaram: 1, devolucoes: 1, canceladas: 0, falhas: 1 });
     const r = await conferirAgoraAcao({}, form({}));
     expect(m.pendentes).toHaveBeenCalledWith({ banco: true }, "org", provedor);
     expect(r).toEqual({ ok: true, mensagem: "3 pagamento(s) conferido(s) com o Mercado Pago, 1 com mudança, 1 devolução(ões) confirmada(s). 1 não deu para conferir agora: tente de novo em instantes." });
-    m.pendentes.mockResolvedValue({ conferidas: 0, mudaram: 0, devolucoes: 0, canceladas: 0, falhas: 0, eventosApagados: 2 });
+    m.pendentes.mockResolvedValue({ conferidas: 0, mudaram: 0, devolucoes: 0, canceladas: 0, falhas: 0 });
     expect((await conferirAgoraAcao({}, form({}))).mensagem).toBe("Nada pendente para conferir com o Mercado Pago.");
   });
 
@@ -109,7 +111,7 @@ describe("devoluções", () => {
     expect((await devolverAcao({}, form({ pagamentoId: ID }))).mensagem).toContain("registre a devolução feita por fora");
   });
 
-  it("devolução por fora: valida data (até hoje), valor em reais e passa a nota", async () => {
+  it("devolução por fora: valida data (até hoje), valor em reais e passa a nota; o domínio relê a order com o provedor de conferência", async () => {
     expect((await devolucaoPorForaAcao({}, form({ pagamentoId: ID, data: "", valor: "10,00" }))).mensagem).toBe("Informe a data da devolução.");
     expect((await devolucaoPorForaAcao({}, form({ pagamentoId: ID, data: amanha(), valor: "10,00" }))).mensagem).toBe("A data da devolução não pode ser no futuro.");
     expect((await devolucaoPorForaAcao({}, form({ pagamentoId: ID, data: hoje(), valor: "dez" }))).mensagem).toBe("Informe o valor devolvido em reais (ex.: 850,00).");
@@ -117,9 +119,33 @@ describe("devoluções", () => {
     expect(m.porFora).not.toHaveBeenCalled();
     m.porFora.mockResolvedValue({ ok: true, situacao: "por_fora" });
     expect(await devolucaoPorForaAcao({}, form({ pagamentoId: ID, data: hoje(), valor: "1.824,00", nota: " Pix da conta da empresa " }))).toEqual({ ok: true, mensagem: "Devolução feita por fora registrada." });
-    expect(m.porFora).toHaveBeenCalledWith({ banco: true }, "org", ID, { data: hoje(), valor: 182400, nota: "Pix da conta da empresa" }, "u");
+    expect(m.porFora).toHaveBeenCalledWith({ banco: true }, "org", ID, { data: hoje(), valor: 182400, nota: "Pix da conta da empresa" }, "u", provedor);
+    // Sem provedor para conferir (deploy de produção, conta não conferida): nada é registrado.
+    m.porFora.mockClear();
+    m.gate.mockResolvedValue({ ok: false, motivo: "so_nas_previas", texto: "O teste do pagamento roda nas prévias da Vercel, não no deploy de produção." });
+    expect((await devolucaoPorForaAcao({}, form({ pagamentoId: ID, data: hoje(), valor: "1.824,00" }))).mensagem).toBe(
+      "Não deu para conferir no Mercado Pago se a devolução já foi feita por lá (O teste do pagamento roda nas prévias da Vercel, não no deploy de produção). Sem essa conferência, a devolução feita por fora não é registrada.",
+    );
+    expect(m.porFora).not.toHaveBeenCalled();
+    m.gate.mockResolvedValue({ ok: true, provedor, ambiente: "teste" });
     m.porFora.mockResolvedValue({ ok: false, erro: "O valor devolvido não pode passar do valor pago (R$ 1.824,00)." });
     expect(await devolucaoPorForaAcao({}, form({ pagamentoId: ID, data: hoje(), valor: "9.999,00" }))).toEqual({ mensagem: "O valor devolvido não pode passar do valor pago (R$ 1.824,00)." });
+  });
+});
+
+describe("taxa que não voltou", () => {
+  it("valor em reais (zero vale), autor e empresa da sessão; recusa do domínio volta como veio", async () => {
+    expect((await registrarTaxaPerdidaAcao({}, form({ pagamentoId: ID, valor: "" }))).mensagem).toContain("Informe a taxa que não voltou");
+    expect((await registrarTaxaPerdidaAcao({}, form({ pagamentoId: ID, valor: "dez" }))).mensagem).toContain("Informe a taxa que não voltou");
+    expect(await registrarTaxaPerdidaAcao({}, form({ pagamentoId: "x" }))).toEqual({ mensagem: "Pagamento não encontrado." });
+    expect(m.taxa).not.toHaveBeenCalled();
+    m.taxa.mockResolvedValue({ ok: true });
+    expect(await registrarTaxaPerdidaAcao({}, form({ pagamentoId: ID, valor: "18,06" }))).toEqual({ ok: true, mensagem: "Taxa registrada: a despesa entrou no financeiro da empresa." });
+    expect(m.taxa).toHaveBeenCalledWith({ banco: true }, "org", ID, 1806, "u");
+    expect((await registrarTaxaPerdidaAcao({}, form({ pagamentoId: ID, valor: "0" }))).mensagem).toContain("nenhuma despesa lançada");
+    expect(m.taxa).toHaveBeenLastCalledWith({ banco: true }, "org", ID, 0, "u");
+    m.taxa.mockResolvedValue({ ok: false, erro: "A taxa que não voltou já foi registrada (R$ 18,06)." });
+    expect(await registrarTaxaPerdidaAcao({}, form({ pagamentoId: ID, valor: "18,06" }))).toEqual({ mensagem: "A taxa que não voltou já foi registrada (R$ 18,06)." });
   });
 });
 

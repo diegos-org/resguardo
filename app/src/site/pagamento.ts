@@ -28,6 +28,7 @@ export const MENSAGENS_PIX_HOSPEDE: Record<CodigoFalhaPix, string> = {
   incerto: "Não deu para confirmar se o Pix foi gerado. Atualize a página em instantes: nada é cobrado duas vezes.",
   recusado: "O Mercado Pago não aceitou gerar o Pix agora. Tente de novo ou fale com a equipe pelo WhatsApp.",
   ocupado: "Muitos pedidos neste apartamento agora. Tente de novo em instantes.",
+  ao_vivo: "O pagamento pelo site não está disponível agora. Fale com a equipe pelo WhatsApp.",
 };
 
 /** Sem o cookie do pedido (outro aparelho, link repassado): nada é gerado. */
@@ -70,9 +71,10 @@ export async function pixPossivel(
 }
 
 /**
- * O que a página da cotação mostra do pagamento (a mesma resposta na página e na rota). "pagar" só quando o site
- * oferece o Pix nesta cotação — a oferta (travas e motor em seco) só é conferida quando é ela que decide. Dinheiro
- * sem desfecho nunca aparece como "sem pagamento" (a página nunca convida a uma nova consulta nesse caso).
+ * O que a página da cotação mostra do pagamento (a mesma resposta na página e na rota). "pagar" e "Gerar outro Pix"
+ * só quando o site oferece o Pix nesta cotação — a oferta (travas e motor em seco) só é conferida quando é ela que
+ * decide. Dinheiro ou Pix sem desfecho nunca aparece como "sem pagamento" nem como "Pix esgotado": a página mostra
+ * "conferindo" e continua consultando (um Pix pago no último instante ainda confirma).
  */
 export async function vistaDoPagamento(
   db: Db,
@@ -82,13 +84,15 @@ export async function vistaDoPagamento(
   o: { comAutorizacao: boolean; gate: () => Promise<PortaoCobranca> },
 ): Promise<PagamentoDoHospede | null> {
   let vista = await vistaDaCotacaoParaHospede(db, organizacaoId, cotacaoId, agora, { comAutorizacao: o.comAutorizacao });
-  if (vista && vista.estado === "sem_pagamento" && vista.holdAte) {
+  let podeGerar = false;
+  if (vista && (vista.estado === "sem_pagamento" || vista.estado === "pix_vencido") && vista.holdAte) {
     const oferta = await ofertaDePix(db, organizacaoId, cotacaoId, agora, await o.gate());
-    if (oferta.oferecer) vista = await vistaDaCotacaoParaHospede(db, organizacaoId, cotacaoId, agora, { comAutorizacao: o.comAutorizacao, oferecido: true });
+    podeGerar = oferta.oferecer;
+    if (oferta.oferecer && vista.estado === "sem_pagamento") vista = await vistaDaCotacaoParaHospede(db, organizacaoId, cotacaoId, agora, { comAutorizacao: o.comAutorizacao, oferecido: true });
   }
   if (!vista) return null;
-  const r = paraOHospede(vista);
-  return r.estado === "sem_pagamento" && r.dinheiroSemDesfecho ? { ...r, estado: "verificando" } : r;
+  const r = { ...paraOHospede(vista), podeGerar };
+  return (r.estado === "sem_pagamento" || r.estado === "pix_esgotado") && r.dinheiroSemDesfecho ? { ...r, estado: "verificando", podeGerar: false } : r;
 }
 
 export const CACHE_PAGAMENTO = "no-store";
@@ -105,7 +109,7 @@ const resposta = (status: number, corpo: object, extra: Record<string, string> =
 export async function responderPagamento(
   db: Db,
   codigoBruto: string,
-  o: { organizacao: () => Promise<string | null>; token: string | undefined; origem: string | null; agora?: Date; env?: NodeJS.ProcessEnv; provedor?: ProvedorPagamento },
+  o: { organizacao: () => Promise<string | null>; token: (cotacaoId: string) => string | undefined; origem: string | null; agora?: Date; env?: NodeJS.ProcessEnv; provedor?: ProvedorPagamento },
 ): Promise<Response> {
   const agora = o.agora ?? new Date();
   const codigo = codigoBruto.trim().toUpperCase();
@@ -125,7 +129,7 @@ export async function responderPagamento(
     console.warn("[site] conferência do pagamento falhou na consulta da página");
   }
   const vista = await vistaDoPagamento(db, organizacaoId, c.id, agora, {
-    comAutorizacao: autorizacaoValida(o.token, c.id, agora),
+    comAutorizacao: autorizacaoValida(o.token(c.id), c.id, agora),
     gate: () => portaoDoSite(db, organizacaoId, agora, { env, provedor: o.provedor }),
   });
   return vista ? resposta(200, vista) : resposta(404, { erro: "Não encontrado." });

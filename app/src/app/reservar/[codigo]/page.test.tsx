@@ -38,7 +38,7 @@ const cotacao: CotacaoVista["cotacao"] = {
 };
 const vistaCotacao = (estado: CotacaoVista["estado"], over: Partial<CotacaoVista> = {}): CotacaoVista => ({ cotacao: { ...cotacao, estado }, estado, atual: null, mudou: false, reserva: { codigo: "SCL-TESTE1", estado: "pedido" }, ...over });
 const pagamento = (over: Partial<PagamentoDoHospede>): PagamentoDoHospede => ({
-  estado: "sem_pagamento", ambienteTeste: true, dinheiroSemDesfecho: false, holdAte: holdAte.toISOString(), pix: null, pixRestantes: 3, reservaCodigo: null, pagamentoEmDobro: false, devolucao: null, ...over,
+  estado: "sem_pagamento", ambienteTeste: true, dinheiroSemDesfecho: false, holdAte: holdAte.toISOString(), pix: null, pixRestantes: 3, podeGerar: true, reservaCodigo: null, pagamentoEmDobro: false, devolucao: null, ...over,
 });
 const GATE_OK = { ok: true, ambiente: "teste", provedor: {} };
 const GATE_NAO = { ok: false, motivo: "desligado", texto: "desligado" };
@@ -158,6 +158,15 @@ describe("página da cotação com o pagamento no site (M8.2a)", () => {
     expect(h).toContain('href="/hospede"');
     expect(h).toContain("Guarde este link");
     expect(h).not.toMatch(/[\w.+-]+@[\w-]+\.[\w.]+/);
+  });
+
+  it("reserva já confirmada pela equipe, sem pagamento no site: nenhum texto de 'pague por Pix aqui'", async () => {
+    m.verCotacao.mockResolvedValue(vistaCotacao("convertida", { reserva: { codigo: "SCL-TESTE1", estado: "confirmada" } }));
+    m.portao.mockResolvedValue(GATE_OK);
+    m.pixPossivel.mockResolvedValue(true);
+    const h = await html();
+    expect(h).not.toContain("o pagamento é por Pix");
+    expect(m.pixPossivel).not.toHaveBeenCalled();
   });
 
   it("expirada sem pagamento: o fluxo de hoje, com a nova consulta", async () => {

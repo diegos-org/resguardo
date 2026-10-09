@@ -2,6 +2,7 @@ import { BotaoCopiar } from "@/components/BotaoCopiar";
 import styles from "@/components/formularios.module.css";
 import { ambienteMercadoPago } from "@/pagamentos/ambiente";
 import type { SituacaoMercadoPago } from "@/pagamentos/integracao";
+import { producaoSemChaves, TEXTO_PRODUCAO_SEM_CHAVES } from "@/sistema/servicos";
 
 const quando = (d: Date) => d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
 
@@ -35,7 +36,7 @@ export function MercadoPagoIntegracao({ mp, env }: { mp: SituacaoMercadoPago; en
   // Fora do deploy de produção (prévia ou computador), o Mercado Pago não alcança este endereço.
   const naPrevia = env.VERCEL_ENV !== "production";
   const linhas: [string, string][] = [
-    ["Conexão", mp.motivo ? `${CONEXAO[mp.situacao]}: ${mp.motivo}` : CONEXAO[mp.situacao]],
+    ["Conexão", producaoSemChaves(mp, env) ? TEXTO_PRODUCAO_SEM_CHAVES : mp.motivo ? `${CONEXAO[mp.situacao]}: ${mp.motivo}` : CONEXAO[mp.situacao]],
     ["Conta de teste", contaDeTeste(mp)],
     ["Ambiente", textoAmbiente(env)],
     ["Segredo do webhook", mp.segredoWebhook ? "Configurado (MERCADOPAGO_WEBHOOK_SECRET)" : "Falta MERCADOPAGO_WEBHOOK_SECRET: todo aviso do Mercado Pago é recusado"],

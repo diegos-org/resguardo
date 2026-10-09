@@ -8,7 +8,7 @@ import { getDb } from "@/db/client";
 import { validadeDaAutorizacao } from "@/pagamentos/autorizacao";
 import { conferirLimite } from "@/pagamentos/limites";
 import { gravarAutorizacao } from "./checkout";
-import { criarCotacao, segurarDatas, validarContato } from "./cotacoes";
+import { codigoCotacaoValido, criarCotacao, segurarDatas, validarContato } from "./cotacoes";
 import { conteudoDoSite } from "./site";
 
 /** Estado do formulário de contato: erros e motivos, nunca os dados digitados (o formulário guarda o que digitou). */
@@ -41,6 +41,8 @@ export async function segurarDatasAcao(_a: EstadoSegurar, form: FormData): Promi
   if (!conteudo) return { erro: "O site ainda está em configuração." };
   const v = validarContato(contato);
   if (!v.ok) return { erro: "Confira seus dados.", erros: v.erros };
+  // Código fora do formato: recusa antes do freio (não gasta a conta de ninguém).
+  if (!codigoCotacaoValido(codigo)) return { erro: "Cotação não encontrada." };
   const agora = new Date();
   const limite = await conferirLimite(db, conteudo.organizacaoId, "segurar", origemDoPedido(await headers()), agora);
   if (!limite.ok) return { erro: limite.erro };

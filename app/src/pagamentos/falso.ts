@@ -53,6 +53,8 @@ export class ProvedorFalso implements ProvedorPagamento {
   contaDeTeste: boolean | null = true;
   /** Imagem do QR devolvida no Pix (null simula o sandbox que manda ""). */
   imagemPix: string | null = "RkFMU08=";
+  /** `live_mode` das orders novas (true simula pagamento real na conta de teste). */
+  aoVivo: boolean | null = false;
   /** Tudo o que foi chamado, na ordem, com as chaves de idempotência. */
   readonly chamadas: ChamadaFalsa[] = [];
 
@@ -89,10 +91,10 @@ export class ProvedorFalso implements ProvedorPagamento {
     return r;
   }
 
-  private novaOrder(base: Omit<Cobranca, "idProvedor" | "idTransacao" | "devolvido" | "aoVivo">): Registro {
+  private novaOrder(base: Omit<Cobranca, "idProvedor" | "idTransacao" | "devolvido" | "devolucaoEmAndamento" | "aoVivo" | "valorTransacao">): Registro {
     const n = ++this.orders;
     const registro: Registro = {
-      cobranca: { ...base, idProvedor: `ORDTST${seq(n)}`, idTransacao: `PAYTST${seq(n)}`, devolvido: 0, aoVivo: false },
+      cobranca: { ...base, idProvedor: `ORDTST${seq(n)}`, idTransacao: `PAYTST${seq(n)}`, valorTransacao: base.valor, devolvido: 0, devolucaoEmAndamento: false, aoVivo: this.aoVivo },
       criadaEm: this.agora(),
       financeiro: { ...NADA },
       pendentes: [],
@@ -266,6 +268,7 @@ export class ProvedorFalso implements ProvedorPagamento {
       const id = `REFTST${seq(++this.devolucoes)}`;
       if (this.respostaDevolucao === "pedida") {
         r.pendentes.push({ id, valor: quanto });
+        r.cobranca = { ...r.cobranca, devolucaoEmAndamento: true };
         resultado = { situacao: "pedida", idDevolucao: id, mensagem: "Devolução pedida; aguardando confirmação do Mercado Pago." };
       } else {
         this.aplicarDevolucao(r, quanto);
@@ -339,5 +342,6 @@ export class ProvedorFalso implements ProvedorPagamento {
   confirmarDevolucoes(id: string) {
     const r = this.registro(id);
     for (const d of r.pendentes.splice(0)) this.aplicarDevolucao(r, d.valor);
+    r.cobranca = { ...r.cobranca, devolucaoEmAndamento: false };
   }
 }

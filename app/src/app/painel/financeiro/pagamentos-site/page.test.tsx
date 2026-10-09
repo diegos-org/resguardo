@@ -11,7 +11,7 @@ vi.mock("@/pagamentos/consultas", () => ({ listarPagamentos: m.listar }));
 vi.mock("@/pagamentos/acoes-painel", () => ({ conferirAgoraAcao: vi.fn() }));
 import Page from "./page";
 
-const sem = { conferir: true, devolver: true, devolucaoPorFora: true, registrarLiberacao: false, estornarLiberacao: false };
+const sem = { conferir: true, devolver: true, devolucaoPorFora: true, registrarLiberacao: false, estornarLiberacao: false, registrarTaxaPerdida: false };
 const linha: LinhaPagamento = {
   id: "11111111-1111-4111-8111-111111111111",
   cotacaoId: "c",

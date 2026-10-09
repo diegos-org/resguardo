@@ -17,6 +17,8 @@ export type PagamentoDoHospede = {
   /** Pix aguardando — só com a autorização do pedido. */
   pix: { copiaECola: string; imagem: string | null; link: string | null; expiraEm: string | null } | null;
   pixRestantes: number;
+  /** "Gerar outro Pix" só quando o site ainda oferece o Pix nesta cotação (a oferta conferida agora). */
+  podeGerar: boolean;
   reservaCodigo: string | null;
   pagamentoEmDobro: boolean;
   devolucao: { situacao: "pedida" | "feita"; em: string | null } | null;
@@ -71,6 +73,7 @@ export function paraOHospede(v: VistaPagamentoHospede): PagamentoDoHospede {
     holdAte: iso(v.holdAte),
     pix: v.pix ? { copiaECola: v.pix.copiaECola, imagem: imagemDoQr(v.pix.imagemBase64), link: linkDoPix(v.pix.link), expiraEm: iso(v.pix.expiraEm) } : null,
     pixRestantes: v.pixRestantes,
+    podeGerar: false,
     reservaCodigo: v.reservaCodigo,
     pagamentoEmDobro: v.pagamentoEmDobro,
     devolucao: v.devolucao ? { situacao: v.devolucao.situacao, em: iso(v.devolucao.em) } : null,

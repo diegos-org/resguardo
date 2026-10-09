@@ -4,10 +4,10 @@
  * tentativa está `criando`/`incerta`, pela referência — nunca cria nada aqui), lê taxa/líquido/liberação só
  * quando faltam e no máximo a cada alguns minutos, e aplica numa transação curta com a ordem única das travas.
  * Depois da transação, cancela no provedor o que sobrou (Pix pendente de uma cotação já confirmada), sem
- * bloquear: se falhar, a rotina tenta de novo.
+ * bloquear: se falhar, fica o aviso e a próxima conferência (rotina ou "Conferir agora") tenta de novo.
  */
 import { randomUUID } from "node:crypto";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { eventosPagamento, pagamentos } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
@@ -35,20 +35,19 @@ export const chaveCancelamento = (pagamentoId: string) => `pagamento:${pagamento
 const mensagemDoErro = (e: unknown) => (e instanceof ErroProvedor ? e.message : "Não deu para falar com o Mercado Pago agora; tente de novo em instantes.");
 
 function precisaFinanceiro(p: Pagamento, c: Cobranca, agora: Date, forcar: boolean): boolean {
-  if (c.situacao !== "aprovado" && c.situacao !== "devolvido" && c.situacao !== "devolvido_parcial") return false;
+  // Taxa, líquido e liberação só servem enquanto aprovado (a taxa que não volta numa devolução a equipe informa).
+  if (c.situacao !== "aprovado") return false;
   const primeira = p.situacao !== "aprovado" && c.situacao === "aprovado";
   // Depois do primeiro dia da aprovação, a Payments API é lida a cada 6 h (o sinal de liberação pode demorar semanas).
   const intervalo = p.aprovadoEm && agora.getTime() - p.aprovadoEm.getTime() > 24 * 3_600_000 ? 6 * 3_600_000 : INTERVALO_FINANCEIRO_MS;
   if (!primeira && !forcar && p.financeiroConsultadoEm && agora.getTime() - p.financeiroConsultadoEm.getTime() < intervalo) return false;
-  if (p.taxa === null && c.situacao === "aprovado") return true;
-  if (p.desfecho === "reserva" && !p.liberacaoConfirmadaEm && c.situacao === "aprovado") return true;
+  if (p.taxa === null) return true;
+  if (p.desfecho === "reserva" && !p.liberacaoConfirmadaEm) return true;
   // Liberação registrada à mão: o sinal do provedor ainda concilia (ou acusa a diferença) — conferido uma vez por dia.
-  if (p.desfecho === "reserva" && p.liberacaoOrigem === "manual" && c.situacao === "aprovado") {
+  if (p.desfecho === "reserva" && p.liberacaoOrigem === "manual") {
     return forcar || !p.financeiroConsultadoEm || agora.getTime() - p.financeiroConsultadoEm.getTime() >= 24 * 3_600_000;
   }
-  // Devolução: a taxa que o provedor ficou só se sabe depois dela.
-  if (c.situacao === "devolvido" && p.desfecho === null) return true;
-  return p.avisos.includes("taxa_perdida_desconhecida");
+  return false;
 }
 
 /** Lê o provedor para a tentativa (fora de transação). Falha de transporte lança `ErroProvedor`. */
@@ -71,7 +70,7 @@ export async function aplicarNaTransacao(db: Db, organizacaoId: string, p: Pick<
   });
 }
 
-/** Cancela no provedor as orders que sobraram e relê cada uma (melhor esforço: a rotina repete o que falhar). */
+/** Cancela no provedor as orders que sobraram e relê cada uma (melhor esforço: o que falhar fica com o aviso `cancelamento_pendente` e a próxima conferência — rotina ou "Conferir agora" — tenta de novo). */
 export async function cancelarNoProvedor(db: Db, organizacaoId: string, lista: { id: string; idProvedor: string }[], provedor: ProvedorPagamento, agora: Date): Promise<number> {
   let canceladas = 0;
   for (const x of lista) {
@@ -89,16 +88,21 @@ export async function cancelarNoProvedor(db: Db, organizacaoId: string, lista: {
   return canceladas;
 }
 
-async function marcarAviso(db: Db, pagamentoId: string, aviso: string, ligar: boolean): Promise<void> {
-  const [p] = await db.select({ avisos: pagamentos.avisos }).from(pagamentos).where(eq(pagamentos.id, pagamentoId));
-  if (!p || p.avisos.includes(aviso) === ligar) return;
-  await db.update(pagamentos).set({ avisos: ligar ? [...p.avisos, aviso] : p.avisos.filter((a) => a !== aviso) }).where(eq(pagamentos.id, pagamentoId));
+/**
+ * Liga ou desliga um aviso num comando só (sem ler antes): nunca apaga o que uma conferência gravou ao mesmo tempo.
+ * Exportada para os testes.
+ */
+export async function marcarAviso(db: Db, pagamentoId: string, aviso: string, ligar: boolean): Promise<void> {
+  const item = sql`jsonb_build_array(${aviso}::text)`;
+  if (ligar) await db.update(pagamentos).set({ avisos: sql`${pagamentos.avisos} || ${item}` }).where(and(eq(pagamentos.id, pagamentoId), sql`not (${pagamentos.avisos} @> ${item})`));
+  else await db.update(pagamentos).set({ avisos: sql`${pagamentos.avisos} - ${aviso}::text` }).where(and(eq(pagamentos.id, pagamentoId), sql`${pagamentos.avisos} @> ${item}`));
 }
 
 /**
- * Confere a tentativa com o provedor e aplica. `forcar` ignora o intervalo de 15 s (aviso assinado, "Conferir
- * agora", depois de cancelar). A página só deve chamar enquanto a tentativa está pendente/criando/incerta (ver
- * `conferirCotacaoParaPagina`).
+ * Confere a tentativa com o provedor e aplica. Sem `forcar`, a leitura é reservada antes, num comando só
+ * (`consultadoEm` passa a agora só se a última leitura tem 15 s ou mais): pedidos simultâneos da página ou da rotina
+ * leem o provedor uma vez só. `forcar` ignora o intervalo (aviso assinado, "Conferir agora", depois de cancelar). A
+ * página só deve chamar enquanto a tentativa está pendente/criando/incerta (ver `conferirCotacaoParaPagina`).
  */
 export async function conferirTentativa(
   db: Db,
@@ -111,16 +115,33 @@ export async function conferirTentativa(
   if (!uuidValido(pagamentoId)) return { ok: false, erro: "Pagamento não encontrado." };
   const [p] = await db.select().from(pagamentos).where(and(eq(pagamentos.id, pagamentoId), eq(pagamentos.organizacaoId, organizacaoId)));
   if (!p) return { ok: false, erro: "Pagamento não encontrado." };
-  if (!opcoes.forcar && !opcoes.cobranca && p.consultadoEm && agora.getTime() - p.consultadoEm.getTime() < INTERVALO_CONSULTA_MS) {
-    return { ok: true, situacao: p.situacao, consultou: false, mudou: false };
+  const reservar = !opcoes.forcar && !opcoes.cobranca;
+  if (reservar) {
+    const [reservada] = await db
+      .update(pagamentos)
+      .set({ consultadoEm: agora })
+      .where(and(eq(pagamentos.id, p.id), or(isNull(pagamentos.consultadoEm), lt(pagamentos.consultadoEm, new Date(agora.getTime() - INTERVALO_CONSULTA_MS + 1)))))
+      .returning({ id: pagamentos.id });
+    if (!reservada) return { ok: true, situacao: p.situacao, consultou: false, mudou: false };
   }
+  // Leitura que falhou não conta: a marca volta ao que era (a rotina e a página tentam de novo no tempo delas).
+  const desfazerReserva = async () => {
+    if (reservar) await db.update(pagamentos).set({ consultadoEm: p.consultadoEm }).where(and(eq(pagamentos.id, p.id), eq(pagamentos.consultadoEm, agora)));
+  };
   let leitura: Leitura;
   try {
     leitura = await lerProvedor(p, provedor, agora, opcoes.forcar === true, opcoes.cobranca);
   } catch (e) {
+    await desfazerReserva();
     return { ok: false, erro: mensagemDoErro(e) };
   }
-  const efeitos = await aplicarNaTransacao(db, organizacaoId, p, leitura, agora);
+  let efeitos: Efeitos | null;
+  try {
+    efeitos = await aplicarNaTransacao(db, organizacaoId, p, leitura, agora);
+  } catch (e) {
+    await desfazerReserva();
+    throw e;
+  }
   if (!efeitos) return { ok: false, erro: "Pagamento não encontrado." };
   if (efeitos.cancelar.length && !opcoes.semCancelar) await cancelarNoProvedor(db, organizacaoId, efeitos.cancelar, provedor, agora);
   return { ok: true, situacao: efeitos.situacao, consultou: true, mudou: efeitos.mudou };

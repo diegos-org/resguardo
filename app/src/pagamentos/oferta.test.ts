@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { salvarConfigPagamentoSite } from "@/configuracoes/pagamento-site";
 import { encerrarContrato, listarContratos } from "@/contratos/repositorio";
-import { beds24Calendario, bloqueios, cotacoes, imoveis, proprietarioImoveis, recebimentoPorCanal, reservas } from "@/db/schema";
+import { beds24Calendario, bloqueios, cotacoes, imoveis, organizacoes, proprietarioImoveis, recebimentoPorCanal, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { pendenciaDoCalculo } from "@/financeiro/motor";
@@ -46,6 +46,13 @@ describe("podeCobrar: a função única das travas (M8.2a)", () => {
     // Com a oferta desligada nem se pergunta a conta ao provedor; a conferência continua liberada.
     expect(outra.chamadas.filter((x) => x.metodo === "conferirContaDeTeste")).toHaveLength(0);
     expect(await provedorDeConferencia(env(), AGORA, { provedor: outra })).toMatchObject({ ok: true });
+  });
+
+  it("deny-by-default: uma empresa que nunca salvou a aba Pagamento no site não cobra (a oferta começa desligada)", async () => {
+    const [{ id: nova }] = await db.insert(organizacoes).values({ nome: "Outra Exemplo" }).returning();
+    const falsa = new ProvedorFalso(() => AGORA);
+    expect(await podeCobrar(db, nova, env(), AGORA, { provedor: falsa })).toMatchObject({ ok: false, motivo: "desligado_no_painel", texto: TEXTO_SEM_COBRANCA.desligado_no_painel });
+    expect(falsa.chamadas).toEqual([]);
   });
 });
 

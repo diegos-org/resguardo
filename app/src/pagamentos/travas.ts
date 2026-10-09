@@ -1,8 +1,13 @@
 /**
- * Pagamento no site (M8.2a) — a ordem única das travas, num lugar só: imóvel (FOR UPDATE) → reserva → cotação →
- * tentativas da cotação (por id) → devoluções. Motor e livro travam depois, como já fazem. Toda transação que
- * aplica um pagamento (aviso, página, rotina, painel) entra por aqui, com tempo-limite de espera: nada espera em
- * círculo, e chamada ao provedor nunca acontece com trava aberta.
+ * Pagamento no site (M8.2a) — a ordem única das travas, num lugar só: imóvel (FOR NO KEY UPDATE) → reserva →
+ * cotação → tentativas da cotação (por id) → devoluções. Motor e livro travam depois, como já fazem. Toda transação
+ * que aplica um pagamento (aviso, página, rotina, painel) entra por aqui, com tempo-limite de espera, e chamada ao
+ * provedor nunca acontece com trava aberta.
+ *
+ * O imóvel é travado com NO KEY UPDATE (não FOR UPDATE): serializa os caminhos do pagamento e do hold entre si e com
+ * os FOR UPDATE de bloqueios e contratos, mas não bloqueia o FOR KEY SHARE que o Postgres toma no imóvel ao conferir
+ * as chaves estrangeiras de quem grava lançamentos, limpezas ou pagamentos dele (senão: impasse 40P01 com a
+ * confirmação à mão, que trava reserva → cotação e depois grava lançamentos do imóvel).
  */
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { cotacoes, devolucoesPagamento, imoveis, pagamentos, reservas } from "@/db/schema";
@@ -38,7 +43,7 @@ export async function travarCotacao(tx: Db, organizacaoId: string, cotacaoId: st
   await limitarEspera(tx);
   const [antes] = await tx.select({ imovelId: cotacoes.imovelId, reservaId: cotacoes.reservaId }).from(cotacoes).where(and(eq(cotacoes.id, cotacaoId), eq(cotacoes.organizacaoId, organizacaoId)));
   if (!antes?.reservaId) return null;
-  const [imovel] = await tx.select({ id: imoveis.id, codigo: imoveis.codigo, nome: imoveis.nome, fuso: imoveis.fuso }).from(imoveis).where(eq(imoveis.id, antes.imovelId)).for("update");
+  const [imovel] = await tx.select({ id: imoveis.id, codigo: imoveis.codigo, nome: imoveis.nome, fuso: imoveis.fuso }).from(imoveis).where(eq(imoveis.id, antes.imovelId)).for("no key update");
   const [reserva] = await tx.select().from(reservas).where(and(eq(reservas.id, antes.reservaId), eq(reservas.organizacaoId, organizacaoId))).for("update");
   const [cotacao] = await tx.select().from(cotacoes).where(eq(cotacoes.id, cotacaoId)).for("update");
   // O pedido de uma cotação nunca muda depois de segurada; se mudou entre a leitura e a trava, nada é aplicado.

@@ -12,7 +12,8 @@ afterAll(() => close());
 beforeEach(async () => { [{ id: org }] = await db.insert(organizacoes).values({ nome: "Sua Casa Exemplo" }).returning(); });
 
 describe("Configurações → Pagamento no site (M8.2a)", () => {
-  it("padrão: oferecer ligado, nome na fatura = nome da empresa, sem categoria; valor gravado estranho volta ao padrão", async () => {
+  it("padrão: oferecer DESLIGADO (deny-by-default), nome na fatura = nome da empresa, sem categoria; valor gravado estranho volta ao padrão", async () => {
+    expect(CONFIG_PAGAMENTO_SITE_PADRAO.oferecer).toBe(false);
     expect(await lerConfigPagamentoSite(db, org)).toEqual(CONFIG_PAGAMENTO_SITE_PADRAO);
     expect(await nomeNaFatura(db, org)).toBe("Sua Casa Exemplo");
     expect(configDeJson({ oferecer: "sim", nomeFatura: 3, categoriaTaxaId: "x" })).toEqual(CONFIG_PAGAMENTO_SITE_PADRAO);

@@ -65,16 +65,19 @@ contestação de cartão (M8.2e). O dinheiro de verdade só liga com as cinco pa
   você registrar à mão, conferindo no Mercado Pago.
 - **No painel:** a ficha da reserva ganha o quadro **Pagamento no site** (situação, valores e os botões
   **Conferir agora**, **Registrar liberação** (e **Estornar liberação**, se registrou errado),
-  **Devolver pelo Mercado Pago** e **Registrar devolução feita por fora**, só para quem edita o
-  financeiro, sempre com confirmação). Em **Financeiro →
+  **Devolver pelo Mercado Pago**, **Registrar devolução feita por fora** e, depois de uma devolução,
+  **Registrar taxa que não voltou**, só para quem edita o financeiro, sempre com confirmação). Em **Financeiro →
   Pagamentos do site** está a lista de todos, com o filtro "pede atenção". Em **Configurações →
   Pagamento no site** você liga e desliga o pagamento e vê, imóvel por imóvel, se o Pix é oferecido
   ou por que não. Em **Integrações** aparece a situação da conexão com o Mercado Pago.
 - **Onde roda o teste:** só nas **prévias** da Vercel (os links dos PRs), que usam um banco separado.
   No endereço de produção o site continua com o pedido pela conversa, porque ali está a operação
   real (os recebimentos de outubro). Por isso as chaves de teste vão só no ambiente **Preview** da Vercel.
-- **Travas:** o sistema só cobra se o Mercado Pago confirmar que a conta das chaves é **de teste**.
-  Chave de produção, mesmo por engano, não cobra nada nesta parte.
+  Nas prévias nada confere sozinho: a página do hóspede confere o próprio Pix e o botão **Conferir
+  agora** faz o resto.
+- **Travas:** o sistema só cobra se o Mercado Pago confirmar que a conta das chaves é **de teste** e se
+  você ligar **Oferecer pagamento no site** (vem desligado). Chave de produção, mesmo por engano, não
+  cobra nada nesta parte.
 - **O que ainda não faz:** cartão (M8.2b); cancelar uma reserva já paga (o painel recusa e explica;
   chega no M8.2c); alterar reserva paga (M8.2d); contestação (M8.2e). Nenhum e-mail novo vai ao
   hóspede: a confirmação do M9.2 passa a valer para as reservas pagas quando você ligar as mensagens.
@@ -2185,8 +2188,10 @@ ambiente).
     - **Chave Pix na conta do Mercado Pago:** sem ela, o Pix não aparece. Se o CNPJ já é chave em
       outro banco, use uma chave aleatória.
     - **Conferir:** abra o link da prévia do PR, entre no painel e veja em **Integrações** que aparece
-      "conta de teste conferida". Em **Configurações → Pagamento no site**, veja se o imóvel do teste
-      tem ✓.
+      "conta de teste conferida".
+    - **Ligar a oferta:** em **Configurações → Pagamento no site**, marque **Oferecer pagamento no
+      site** e salve. Ela vem **desligada**: sem isso, o site não oferece o Pix (por segurança, nada
+      cobra enquanto você não ligar). Na mesma tela, veja se o imóvel do teste tem ✓.
     - **Testar um Pix:** no site da prévia, faça uma consulta, segure as datas (no nome, escreva
       **APRO**: no teste, o Mercado Pago aprova sozinho o Pix de quem tem esse nome), gere o Pix e
       espere a página confirmar. Se demorar, use **Conferir agora** na ficha da reserva. Depois,
@@ -2200,8 +2205,15 @@ ambiente).
     - **Na conta do Mercado Pago:** deixe **desligado** "parcelas sem acréscimo" (o hóspede paga os
       juros) e não use cupons do Mercado Pago (o desconto do site já vem no preço).
     - **Nunca devolva pelo painel do Mercado Pago:** devolva pela ficha da reserva, para o sistema
-      saber. A regra de a empresa ficar com a taxa que não volta, quando o pagamento ficou sem reserva
-      por falha do sistema, é minha sugestão: confirme se concorda.
+      saber. Antes de registrar uma devolução **feita por fora**, o sistema confere no Mercado Pago se
+      o dinheiro já não voltou por lá (se não der para conferir, ele não registra).
+    - **Depois de uma devolução pelo Mercado Pago:** veja no Mercado Pago quanto da taxa ficou com ele
+      e informe em **Registrar taxa que não voltou**, na ficha (zero se voltou toda). O Mercado Pago não
+      informa isso sozinho; até você informar, fica um aviso. A regra de a empresa ficar com a taxa que
+      não volta, quando o pagamento ficou sem reserva por falha do sistema, é minha sugestão: confirme
+      se concorda.
+    - **No teste, nada confere sozinho:** a página do hóspede confere o Pix dela; o resto (devolução
+      pedida, Pix que sobrou, um pagamento que ficou sem resposta) você confere com **Conferir agora**.
 
 ---
 

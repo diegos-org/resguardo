@@ -4,6 +4,7 @@
  * Só testes importam daqui; nada usa rede nem credenciais.
  */
 import { and, eq } from "drizzle-orm";
+import { CONFIG_PAGAMENTO_SITE_PADRAO, salvarConfigPagamentoSite } from "@/configuracoes/pagamento-site";
 import { criarContrato } from "@/contratos/repositorio";
 import { beds24Calendario, cotacoes, idsExternos, imoveis, imoveisDetalhes, organizacoes, pagamentos, proprietarioImoveis, proprietarios, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
@@ -56,6 +57,9 @@ export async function montarCenario(db: Db): Promise<Cenario> {
   await db.insert(proprietarioImoveis).values({ proprietarioId: dono, imovelId: imovel });
   const contrato = await criarContrato(db, org, imovel, { tipo: "gestao_completa", comissao: "15", inicio: "2025-01-01" }, null);
   if (!contrato.ok) throw new Error(JSON.stringify(contrato.erros));
+  // "Oferecer pagamento no site" começa desligado: o cenário liga, como o Diego na aba.
+  const config = await salvarConfigPagamentoSite(db, org, { ...CONFIG_PAGAMENTO_SITE_PADRAO, oferecer: true }, null);
+  if (!config.ok) throw new Error(JSON.stringify(config.erros));
   const relogio = { agora: AGORA };
   const provedor = new ProvedorFalso(() => relogio.agora);
   const gate = await podeCobrar(db, org, env(), AGORA, { provedor });

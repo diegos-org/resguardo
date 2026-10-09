@@ -10,7 +10,7 @@ import { CARACTERES_VISIVEIS_FATURA, CATEGORIA_TAXA_PERDIDA, LIMITE_NOME_FATURA,
 import { getDb } from "@/db/client";
 import { listarCategorias } from "@/despesas/categorias";
 import { conferirAgoraAcao, salvarConfigPagamentoSiteAcao } from "@/pagamentos/acoes-painel";
-import { motivosPorImovel } from "@/pagamentos/oferta";
+import { motivosPorImovel, podeCobrar, TEXTO_SEM_COBRANCA } from "@/pagamentos/oferta";
 
 /** Configurações → Pagamento no site (M8.2a): regras de venda do pagamento, a lista de imóveis e o "Conferir agora". */
 export default async function PagamentoNoSite() {
@@ -19,7 +19,14 @@ export default async function PagamentoNoSite() {
   if (!podeFazer(sessao.papel, "financeiro:ler") || sessao.papel === "proprietario") redirect("/painel/configuracoes");
   const db = getDb();
   const org = sessao.organizacaoId;
-  const [config, categorias, imoveis, empresa] = await Promise.all([lerConfigPagamentoSite(db, org), listarCategorias(db, org), motivosPorImovel(db, org), nomeDaEmpresa(db, org)]);
+  const [config, categorias, imoveis, empresa, gate] = await Promise.all([
+    lerConfigPagamentoSite(db, org),
+    listarCategorias(db, org),
+    motivosPorImovel(db, org),
+    nomeDaEmpresa(db, org),
+    // As travas de hoje (ambiente, chaves, a chave do painel e a conta de teste): sem elas, nenhum imóvel oferece o Pix.
+    podeCobrar(db, org).catch(() => ({ ok: false as const, motivo: "conta_nao_conferida" as const, texto: TEXTO_SEM_COBRANCA.conta_nao_conferida })),
+  ]);
   const editar = podeFazer(sessao.papel, "financeiro:editar");
   return (
     <>
@@ -44,6 +51,11 @@ export default async function PagamentoNoSite() {
           O Pix só aparece quando o cálculo do financeiro fecha sem pendência (contrato de gestão vigente, um proprietário, a empresa recebendo do site).
           Conferido aqui para uma entrada hoje; cada pedido é conferido de novo na data de entrada dele.
         </p>
+        {!gate.ok && (
+          <p role="status" style={{ fontSize: "0.8125rem", color: "var(--scl-erro-texto)", margin: 0 }}>
+            Hoje o site não oferece o Pix em nenhum imóvel: {gate.texto}
+          </p>
+        )}
         {imoveis.length === 0 ? (
           <p>Nenhum imóvel ativo no site público.</p>
         ) : (
@@ -61,7 +73,15 @@ export default async function PagamentoNoSite() {
                     <td>
                       {i.codigo} · {i.nome}
                     </td>
-                    <td>{i.oferece ? <span aria-label="oferece o Pix">✓</span> : <span style={{ color: "var(--scl-erro-texto)" }}>{i.texto}</span>}</td>
+                    <td>
+                      {!i.oferece ? (
+                        <span style={{ color: "var(--scl-erro-texto)" }}>{i.texto}</span>
+                      ) : gate.ok ? (
+                        <span aria-label="oferece o Pix">✓</span>
+                      ) : (
+                        <span>cálculo sem pendência (o Pix aparece quando as travas acima liberarem)</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

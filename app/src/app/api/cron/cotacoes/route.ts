@@ -23,7 +23,8 @@ function resumoDaRotina(r: Resultado): string {
     ? `Pagamentos: ${p.conferidas} conferido(s), ${p.mudaram} com mudança, ${p.devolucoes} devolução(ões) confirmada(s), ${p.canceladas} Pix cancelado(s), ${p.falhas} falha(s)`
     : "Pagamentos: não conferidos neste ambiente (o teste roda nas prévias)";
   const h = r.holds;
-  return `${pagamentos} · Pedidos: ${h.expiradas} vencido(s), ${h.convertidas} confirmado(s), ${h.canceladas} cancelado(s)`;
+  const falhas = h.falhas ? `, ${h.falhas} não fechado(s) nesta volta` : "";
+  return `${pagamentos} · Pedidos: ${h.expiradas} vencido(s), ${h.convertidas} confirmado(s), ${h.canceladas} cancelado(s)${falhas}`;
 }
 
 async function executar(db: Db): Promise<Resultado> {

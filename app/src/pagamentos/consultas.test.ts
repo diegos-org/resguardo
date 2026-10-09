@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { auditoria, cotacoes, eventosPagamento, lancamentos, pagamentos } from "@/db/schema";
+import { auditoria, cotacoes, devolucoesPagamento, eventosPagamento, lancamentos, pagamentos } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { estornar } from "@/financeiro/ledger";
@@ -97,6 +97,38 @@ describe("o que o hóspede vê (M8.2a)", () => {
   });
 });
 
+describe("leituras que faltam dado e situações inesperadas (M8.2a)", () => {
+  it("leitura do Pix pendente sem prazo, imagem ou link não apaga o que já se sabia; Pix sem prazo nenhum vira aviso", async () => {
+    const { cotacaoId } = await c.segurar();
+    const p = await c.pix(cotacaoId);
+    const antes = await c.tentativa(p.pagamentoId);
+    const [order] = c.provedor.todas().filter((o) => o.idProvedor === p.idProvedor);
+    const semDados = { ...order, pix: { ...order.pix!, expiraEm: null, imagemBase64: null, link: null } };
+    await conferirTentativa(db, c.org, p.pagamentoId, c.provedor, minutos(1), { origem: "rotina", forcar: true, cobranca: semDados });
+    const depois = await c.tentativa(p.pagamentoId);
+    expect(depois).toMatchObject({ situacao: "pendente", pixExpiraEm: antes.pixExpiraEm, pixImagem: antes.pixImagem, pixLink: antes.pixLink, pixCopiaECola: antes.pixCopiaECola, avisos: [] });
+    expect(await vista(cotacaoId, minutos(2))).toMatchObject({ estado: "pix_aguardando" });
+    // Nunca se soube o prazo: aviso (nada de prazo suposto).
+    await db.update(pagamentos).set({ pixExpiraEm: null }).where(eq(pagamentos.id, p.pagamentoId));
+    await conferirTentativa(db, c.org, p.pagamentoId, c.provedor, minutos(3), { origem: "rotina", forcar: true, cobranca: semDados });
+    expect((await c.tentativa(p.pagamentoId)).avisos).toEqual(["pix_sem_prazo"]);
+    await conferirTentativa(db, c.org, p.pagamentoId, c.provedor, minutos(4), { origem: "rotina", forcar: true });
+    expect(await c.tentativa(p.pagamentoId)).toMatchObject({ pixExpiraEm: minutos(30), avisos: [] });
+  });
+
+  it("devolvido em parte antes de o sistema decidir: o hóspede vê 'aprovado sem as datas' (nunca 'confirmando' para sempre); o painel pede atenção e oferece só a devolução por fora", async () => {
+    const { cotacaoId, reservaId } = await c.segurar();
+    const p = await c.pix(cotacaoId);
+    c.provedor.aprovar(p.idProvedor);
+    c.provedor.devolverNoProvedor(p.idProvedor, 1000);
+    await conferir(p.pagamentoId, minutos(3));
+    expect(await vista(cotacaoId, minutos(3))).toMatchObject({ estado: "aprovado_sem_datas", dinheiroSemDesfecho: true });
+    const [q] = await pagamentosDaReserva(db, c.org, reservaId, minutos(3));
+    expect(q).toMatchObject({ situacao: "devolvido_parcial", pedeAtencao: true, motivoSemReservaTexto: expect.stringContaining("antes de o sistema decidir"), acoes: { devolver: false, devolucaoPorFora: true, registrarTaxaPerdida: false } });
+    expect(q.avisos.join(" ")).toContain("M8.2c");
+  });
+});
+
 describe("painel: pagamentos da reserva, lista e avisos do Início (M8.2a)", () => {
   it("quadro da reserva com valores, motivo e ações; lista por período e 'pede atenção'; pagamento que prende a reserva", async () => {
     const a = await c.segurar();
@@ -154,10 +186,30 @@ describe("painel: pagamentos da reserva, lista e avisos do Início (M8.2a)", () 
     c.provedor.falhas.devolver = new ErroProvedor("incerto", "tempo");
     await devolverPeloProvedor(db, c.org, pa.pagamentoId, null, c.provedor, minutos(10));
     expect((await avisosDePagamento(db, c.org, minutos(11), { env: env({}) })).contagens.devolucaoPedida).toBe(1);
+    await db.update(devolucoesPagamento).set({ situacao: "recusada" }).where(eq(devolucoesPagamento.pagamentoId, pa.pagamentoId));
+    const recusada = await avisosDePagamento(db, c.org, minutos(11), { env: env({}) });
+    expect(recusada.contagens.devolucaoRecusada).toBe(1);
+    // O Início não afirma que o Mercado Pago não fez: manda conferir lá antes.
+    expect(recusada.alertas.map((x) => x.texto).join("\n")).toContain("confira no painel do Mercado Pago se o dinheiro já voltou");
+    await db.update(devolucoesPagamento).set({ situacao: "pedida" }).where(eq(devolucoesPagamento.pagamentoId, pa.pagamentoId));
     // Dinheiro sem cálculo: os lançamentos do motor da reserva paga somem (recálculo depois do fim do contrato).
     const motor = await db.select().from(lancamentos).where(and(eq(lancamentos.reservaId, b.reservaId), eq(lancamentos.origem, "motor")));
     for (const l of motor) await estornar(db, c.org, l.id, "contrato encerrado", null);
     expect((await avisosDePagamento(db, c.org, minutos(11), { env: env({}) })).contagens.semCalculo).toBe(1);
+  });
+
+  it("Início: criação do Pix sem resposta do Mercado Pago há mais que a carência (busca pela referência falhando) vira alerta", async () => {
+    const s = await c.segurar();
+    c.provedor.falhas.criarPix = new ErroProvedor("incerto", "tempo");
+    await gerarPix(db, c.org, s.cotacaoId, AGORA, c.provedor);
+    c.provedor.falhas.criarPix = null;
+    c.provedor.falhas.buscarPorReferencia = new ErroProvedor("indisponivel", "busca fora do ar");
+    await conferirTentativa(db, c.org, (await db.select().from(pagamentos).where(eq(pagamentos.cotacaoId, s.cotacaoId)))[0].id, c.provedor, minutos(20), { origem: "rotina", forcar: true });
+    expect((await avisosDePagamento(db, c.org, minutos(10), { env: env({}) })).contagens.criacaoPresa).toBe(0);
+    const r = await avisosDePagamento(db, c.org, minutos(20), { env: env({}) });
+    expect(r.contagens.criacaoPresa).toBe(1);
+    expect(r.alertas.map((x) => x.texto).join("\n")).toContain("sem resposta do Mercado Pago sobre a criação");
+    expect((await listarPagamentos(db, c.org, { atencao: true }, minutos(20))).map((l) => l.situacao)).toEqual(["incerta"]);
   });
 
   it("dados pessoais: depois de fluxos completos, nenhum e-mail ou documento do pagador em tentativas, eventos ou auditoria do pagamento", async () => {

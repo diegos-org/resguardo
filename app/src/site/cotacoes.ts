@@ -7,13 +7,13 @@
  * usar este mesmo hold. Nada é escrito no Beds24 aqui (M8.3).
  */
 import { randomInt } from "node:crypto";
-import { and, count, desc, eq, gte, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { lerRegrasCalendario } from "@/calendario/regras-config";
 import { travaOcupada, violouUnicidade } from "@/db/erros";
 import { cotacoes, type EstadoCotacao, imoveis, pagamentos, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { CARENCIA_PAGAMENTO_MINUTOS, CARENCIA_PAGAMENTO_MS, cotacaoEmCarencia, tentativaSeguraAsDatas } from "@/pagamentos/andamento";
+import { CARENCIA_PAGAMENTO_MINUTOS, CARENCIA_PAGAMENTO_MS, cotacaoEmCarencia } from "@/pagamentos/andamento";
 import { cancelarReserva, sincronizarReserva } from "@/reservas/repositorio";
 import { consultarDisponibilidade, type Disponibilidade } from "./disponibilidade";
 import type { PedidoConsulta } from "./site";
@@ -227,6 +227,8 @@ export type ResultadoHold =
   | { ok: false; erro: string; erros?: ErrosContato; motivos?: string[]; estado?: EstadoCotacao };
 
 const dataBr = (d: string) => d.split("-").reverse().join("/");
+/** Mesmo texto para reserva ou pagamento em andamento com o e-mail: não revela nada do pedido de outra pessoa. */
+const ERRO_EMAIL_EM_ANDAMENTO = "Já existe uma reserva em andamento com este e-mail. Conclua aquela ou aguarde o prazo dela acabar.";
 const brl = (c: number) => `R$ ${(c / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const horaBr = (d: Date, fuso: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(d);
 
@@ -243,9 +245,10 @@ export async function segurarDatas(db: Db, organizacaoId: string, codigo: string
   return db.transaction(async (tx) => {
     const [antes] = await tx.select({ id: cotacoes.id, imovelId: cotacoes.imovelId }).from(cotacoes).where(and(eq(cotacoes.organizacaoId, organizacaoId), eq(cotacoes.codigo, codigo)));
     if (!antes) return { ok: false as const, erro: "Cotação não encontrada." };
-    // Ordem única das travas (M8.2a): imóvel → reserva → cotação → pagamentos. A trava do imóvel (a mesma dos
-    // bloqueios) também impede dois visitantes de segurarem as mesmas noites ao mesmo tempo.
-    const [im] = await tx.select({ id: imoveis.id, codigo: imoveis.codigo, fuso: imoveis.fuso }).from(imoveis).where(and(eq(imoveis.id, antes.imovelId), eq(imoveis.organizacaoId, organizacaoId))).for("update");
+    // Ordem única das travas (M8.2a): imóvel → reserva → cotação → pagamentos. A trava do imóvel também impede dois
+    // visitantes de segurarem as mesmas noites ao mesmo tempo. NO KEY UPDATE: serializa com os bloqueios e com o
+    // pagamento, sem segurar as chaves estrangeiras que outras transações conferem no imóvel (impasse 40P01).
+    const [im] = await tx.select({ id: imoveis.id, codigo: imoveis.codigo, fuso: imoveis.fuso }).from(imoveis).where(and(eq(imoveis.id, antes.imovelId), eq(imoveis.organizacaoId, organizacaoId))).for("no key update");
     if (!im) return { ok: false as const, erro: "Imóvel não encontrado." };
     const [c] = await tx.select().from(cotacoes).where(eq(cotacoes.id, antes.id)).for("update");
     if (!c) return { ok: false as const, erro: "Cotação não encontrada." };
@@ -271,16 +274,28 @@ export async function segurarDatas(db: Db, organizacaoId: string, codigo: string
       .from(cotacoes)
       .innerJoin(reservas, eq(reservas.id, cotacoes.reservaId))
       .where(and(eq(cotacoes.organizacaoId, organizacaoId), eq(cotacoes.estado, "segurada"), eq(reservas.estado, "pedido")));
-    if (ativos.some((a) => a.email === v.dados.email && a.holdAte && a.holdAte.getTime() > agora.getTime())) return { ok: false as const, erro: "Já existe uma reserva em andamento com este e-mail. Conclua aquela ou aguarde o prazo dela acabar." };
-    // Pagamento do site em andamento, ou aprovado e ainda sem desfecho, com este e-mail (M8.2a): mesmo com o prazo
-    // daquelas datas vencido, não segura outras — senão o mesmo hóspede pagaria duas vezes.
+    if (ativos.some((a) => a.email === v.dados.email && a.holdAte && a.holdAte.getTime() > agora.getTime())) return { ok: false as const, erro: ERRO_EMAIL_EM_ANDAMENTO };
+    // Pagamento do site com este e-mail (M8.2a): em andamento ainda na carência das datas daquela cotação, ou aprovado
+    // e ainda sem desfecho (dinheiro a confirmar ou a devolver). Senão o mesmo hóspede pagaria duas vezes. Uma tentativa
+    // que nunca se resolve não prende o e-mail depois da carência. A resposta é a mesma de "reserva em andamento":
+    // nada se descobre sobre o pagamento de outra pessoa.
     const [pagando] = await tx
       .select({ id: pagamentos.id })
       .from(pagamentos)
       .innerJoin(reservas, eq(reservas.id, pagamentos.reservaId))
-      .where(and(eq(pagamentos.organizacaoId, organizacaoId), eq(reservas.hospedeEmail, v.dados.email), or(tentativaSeguraAsDatas(), and(eq(pagamentos.situacao, "aprovado"), isNull(pagamentos.desfecho)))))
+      .innerJoin(cotacoes, eq(cotacoes.id, pagamentos.cotacaoId))
+      .where(
+        and(
+          eq(pagamentos.organizacaoId, organizacaoId),
+          eq(reservas.hospedeEmail, v.dados.email),
+          or(
+            and(inArray(pagamentos.situacao, ["criando", "incerta", "pendente"]), gt(cotacoes.holdAte, new Date(agora.getTime() - CARENCIA_PAGAMENTO_MS))),
+            and(eq(pagamentos.situacao, "aprovado"), isNull(pagamentos.desfecho)),
+          ),
+        ),
+      )
       .limit(1);
-    if (pagando) return { ok: false as const, erro: "Você tem um pagamento em andamento com este e-mail. Aguarde a confirmação dele ou fale com a equipe." };
+    if (pagando) return { ok: false as const, erro: ERRO_EMAIL_EM_ANDAMENTO };
     // Os holds deste imóvel que sobraram depois do vencimento acima ainda valem (ou estão na carência de um pagamento).
     if (ativos.filter((a) => a.imovelId === im.id).length >= MAXIMO_HOLDS_POR_IMOVEL) return { ok: false as const, erro: "Há muitas reservas em andamento neste apartamento agora. Tente de novo em alguns minutos ou fale com a equipe." };
     const regras = await lerRegrasCalendario(tx, organizacaoId);
@@ -318,7 +333,8 @@ export async function segurarDatas(db: Db, organizacaoId: string, codigo: string
   });
 }
 
-export type ResumoExpiracao = { expiradas: number; convertidas: number; canceladas: number; removidas: number };
+/** `falhas`: holds que não deu para fechar nesta volta (ficam para a próxima). */
+export type ResumoExpiracao = { expiradas: number; convertidas: number; canceladas: number; removidas: number; falhas: number };
 
 /**
  * Fecha o ciclo de um hold, já com as travas imóvel → reserva → cotação tomadas por quem chama. Pedido vencido é
@@ -355,7 +371,7 @@ async function fecharHold(tx: Db, c: { id: string; organizacaoId: string; reserv
  * transação de quem chama, que já travou o imóvel. `organizacaoId` null = todas as empresas (rotina).
  */
 export async function expirarHoldsVencidos(db: Db, organizacaoId: string | null, agora = new Date(), imovelId?: string): Promise<ResumoExpiracao> {
-  const resumo: ResumoExpiracao = { expiradas: 0, convertidas: 0, canceladas: 0, removidas: 0 };
+  const resumo: ResumoExpiracao = { expiradas: 0, convertidas: 0, canceladas: 0, removidas: 0, falhas: 0 };
   const candidatas = (q: Db) =>
     q
       .select({ id: cotacoes.id, organizacaoId: cotacoes.organizacaoId, imovelId: cotacoes.imovelId, reservaId: reservas.id })
@@ -377,15 +393,22 @@ export async function expirarHoldsVencidos(db: Db, organizacaoId: string | null,
     });
   }
   for (const c of await candidatas(db)) {
+    // O resumo só conta o que a transação gravou de fato.
+    const parcial: ResumoExpiracao = { expiradas: 0, convertidas: 0, canceladas: 0, removidas: 0, falhas: 0 };
     try {
       await db.transaction(async (tx) => {
         await tx.execute(sql`set local lock_timeout = '15s'`);
-        await tx.select({ id: imoveis.id }).from(imoveis).where(eq(imoveis.id, c.imovelId)).for("update");
-        await fecharHold(tx, c, agora, resumo);
+        await tx.select({ id: imoveis.id }).from(imoveis).where(eq(imoveis.id, c.imovelId)).for("no key update");
+        await fecharHold(tx, c, agora, parcial);
       });
+      resumo.expiradas += parcial.expiradas;
+      resumo.convertidas += parcial.convertidas;
+      resumo.canceladas += parcial.canceladas;
     } catch (e) {
-      // Imóvel ocupado por outra transação além do tempo-limite: este hold fica para a próxima volta da rotina.
-      if (!travaOcupada(e)) throw e;
+      // Imóvel ocupado além do tempo-limite, impasse ou qualquer outro erro: este hold fica para a próxima volta e
+      // os seguintes continuam (um hold com problema não para a rotina). Só o tipo vai para o registro.
+      if (!travaOcupada(e)) console.error("[site] hold não fechado pela rotina", e instanceof Error ? e.name : "erro");
+      resumo.falhas++;
     }
   }
   const antigas = await db
@@ -422,6 +445,28 @@ export async function estenderHold(tx: Db, organizacaoId: string, cotacaoId: str
     if (r && nova !== r.observacoes) await tx.update(reservas).set({ observacoes: nova }).where(eq(reservas.id, c.reservaId));
   }
   await registrarAuditoria(tx, { organizacaoId, usuarioId: null, acao: "cotacao.estender", entidade: "cotacao", entidadeId: cotacaoId, mudancas: { holdAte: [c.holdAte.toISOString(), ate.toISOString()], ...(pagamentoId ? { pagamento: [null, pagamentoId] } : {}) } });
+  return true;
+}
+
+/**
+ * Desfaz uma extensão provisória do prazo das datas (M8.2a: o Pix que ela cobria não chegou a existir, ou foi
+ * cancelado na hora): volta a `ate` só se o prazo ainda é o `provisorio` gravado (ninguém mexeu depois). Quem chama já
+ * tem as travas. Auditoria sem dados pessoais.
+ */
+export async function voltarHold(tx: Db, organizacaoId: string, cotacaoId: string, ate: Date, provisorio: Date, agora: Date, pagamentoId: string | null): Promise<boolean> {
+  const [c] = await tx
+    .select({ estado: cotacoes.estado, holdAte: cotacoes.holdAte, reservaId: cotacoes.reservaId, fuso: imoveis.fuso })
+    .from(cotacoes)
+    .innerJoin(imoveis, eq(imoveis.id, cotacoes.imovelId))
+    .where(and(eq(cotacoes.id, cotacaoId), eq(cotacoes.organizacaoId, organizacaoId)));
+  if (!c || c.estado !== "segurada" || !c.holdAte || c.holdAte.getTime() !== provisorio.getTime() || ate.getTime() >= provisorio.getTime()) return false;
+  await tx.update(cotacoes).set({ holdAte: ate, atualizadaEm: agora }).where(eq(cotacoes.id, cotacaoId));
+  if (c.reservaId) {
+    const [r] = await tx.select({ observacoes: reservas.observacoes }).from(reservas).where(eq(reservas.id, c.reservaId));
+    const nova = r?.observacoes.replace(/Datas seguradas até [^;.]+(?: \(estendido pelo Pix\))?;/, `Datas seguradas até ${horaBr(ate, c.fuso)};`);
+    if (r && nova !== r.observacoes) await tx.update(reservas).set({ observacoes: nova }).where(eq(reservas.id, c.reservaId));
+  }
+  await registrarAuditoria(tx, { organizacaoId, usuarioId: null, acao: "cotacao.voltar_prazo", entidade: "cotacao", entidadeId: cotacaoId, mudancas: { holdAte: [c.holdAte.toISOString(), ate.toISOString()], ...(pagamentoId ? { pagamento: [null, pagamentoId] } : {}) } });
   return true;
 }
 

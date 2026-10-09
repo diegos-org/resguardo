@@ -281,13 +281,23 @@ export function PagamentoPix({
       return (
         <section className={styles.pix} aria-label="Pagamento por Pix">
           <h3>O Pix venceu</h3>
-          <p className={styles.texto}>
-            O Pix venceu sem pagamento, mas as datas continuam seguradas. Gere outro para pagar
-            {v.pixRestantes > 0 ? ` (ainda dá para gerar ${v.pixRestantes})` : ""}.
-          </p>
-          {prazo}
-          {pagarOuContinuar("Gerar outro Pix")}
-          {outraOpcao}
+          {v.podeGerar ? (
+            <>
+              <p className={styles.texto}>
+                O Pix venceu sem pagamento, mas as datas continuam seguradas. Gere outro para pagar
+                {v.pixRestantes > 0 ? ` (ainda dá para gerar ${v.pixRestantes})` : ""}.
+              </p>
+              {prazo}
+              {pagarOuContinuar("Gerar outro Pix")}
+              {outraOpcao}
+            </>
+          ) : (
+            <>
+              <p className={styles.texto}>O Pix venceu sem pagamento, e o pagamento pelo site não está disponível agora. As datas continuam seguradas: para reservar, fale com a equipe.</p>
+              {prazo}
+              {contato}
+            </>
+          )}
         </section>
       );
     case "pix_esgotado":

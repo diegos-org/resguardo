@@ -65,6 +65,19 @@ describe("estadoPagamentoDoAmbiente", () => {
     expect(estadoPagamentoDoAmbiente(env({ VERCEL_ENV: "production", MERCADOPAGO_AMBIENTE: "producao" }))).toEqual({ situacao: "producao_travada" });
   });
 
+  it("fora da Vercel, só o computador de desenvolvimento roda o teste: NODE_ENV=production (next start, script) conta como produção", () => {
+    expect(estadoPagamentoDoAmbiente(env({ NODE_ENV: "production" }))).toEqual({ situacao: "so_nas_previas" });
+    expect(provedorDoAmbiente(env({ NODE_ENV: "production" }))).toBeNull();
+    expect(estadoPagamentoDoAmbiente(env({ NODE_ENV: "development" }))).toMatchObject({ situacao: "teste" });
+    expect(estadoPagamentoDoAmbiente(env({ NODE_ENV: "test" }))).toMatchObject({ situacao: "teste" });
+    expect(estadoPagamentoDoAmbiente(env())).toMatchObject({ situacao: "teste" });
+    // Na Vercel vale o VERCEL_ENV: prévia e `vercel dev` rodam o teste (mesmo com NODE_ENV=production no build).
+    expect(estadoPagamentoDoAmbiente(env({ VERCEL_ENV: "preview", NODE_ENV: "production" }))).toMatchObject({ situacao: "teste" });
+    expect(estadoPagamentoDoAmbiente(env({ VERCEL_ENV: "development" }))).toMatchObject({ situacao: "teste" });
+    // VERCEL_ENV inesperado: deny-by-default.
+    expect(estadoPagamentoDoAmbiente(env({ VERCEL_ENV: "staging" }))).toEqual({ situacao: "so_nas_previas" });
+  });
+
   it("nada no estado carrega o access token", () => {
     for (const e of [env(), env({ MERCADOPAGO_AMBIENTE: "producao" }), env({ MERCADOPAGO_PUBLIC_KEY: "" })]) {
       expect(JSON.stringify(estadoPagamentoDoAmbiente(e))).not.toContain(TOKEN);

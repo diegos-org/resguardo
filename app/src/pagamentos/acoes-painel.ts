@@ -2,12 +2,13 @@
 
 /**
  * Pagamento no site (M8.2a) — ações do painel: conferir agora (uma tentativa ou todas as pendentes da empresa),
- * devolver pelo Mercado Pago, registrar a devolução feita por fora, registrar e estornar a liberação à mão, e salvar
- * a aba Configurações → Pagamento no site.
+ * devolver pelo Mercado Pago, registrar a devolução feita por fora, registrar a taxa que não voltou, registrar e
+ * estornar a liberação à mão, e salvar a aba Configurações → Pagamento no site.
  *
  * Sempre nesta ordem: sessão (a empresa vem só dela) → permissão `financeiro:editar` → validação → domínio. Conferir,
- * cancelar e devolver usam `provedorDeConferencia` (sem a chave do painel): desligar a oferta nunca impede de cuidar
- * do dinheiro já cobrado. As mensagens do domínio voltam para a tela como vieram.
+ * cancelar, devolver e a devolução por fora (que relê a order antes) usam `provedorDeConferencia` (sem a chave do
+ * painel): desligar a oferta nunca impede de cuidar do dinheiro já cobrado. As mensagens do domínio voltam para a
+ * tela como vieram.
  */
 import { revalidatePath } from "next/cache";
 import { exigir } from "@/acesso/politica";
@@ -19,7 +20,7 @@ import { reaisParaCentavos } from "@/lib/dinheiro-form";
 import { uuidValido } from "@/lib/ids";
 import { dataValida } from "@/reservas/regras";
 import { conferirTentativa } from "./conferencia";
-import { devolverPeloProvedor, registrarDevolucaoPorFora } from "./devolucao";
+import { devolverPeloProvedor, registrarDevolucaoPorFora, registrarTaxaPerdida } from "./devolucao";
 import { estornarLiberacaoManual, registrarLiberacaoManual } from "./liberacao";
 import { provedorDeConferencia } from "./oferta";
 import { ErroProvedor } from "./provedor";
@@ -114,7 +115,10 @@ export async function devolverAcao(_e: EstadoAcaoPagamento, form: FormData): Pro
   }
 }
 
-/** A devolução foi feita fora do sistema (Pix da conta da empresa, por exemplo): data, valor e nota. */
+/**
+ * A devolução foi feita fora do sistema (Pix da conta da empresa, por exemplo): data, valor e nota. Antes, o domínio
+ * relê a order no Mercado Pago (pelo provedor de conferência): sem conseguir conferir, nada é registrado.
+ */
 export async function devolucaoPorForaAcao(_e: EstadoAcaoPagamento, form: FormData): Promise<EstadoAcaoPagamento> {
   const sessao = await sessaoFinanceira();
   const pagamentoId = texto(form, "pagamentoId");
@@ -124,10 +128,28 @@ export async function devolucaoPorForaAcao(_e: EstadoAcaoPagamento, form: FormDa
   if (data > hojeISO(FUSO)) return { mensagem: "A data da devolução não pode ser no futuro." };
   const valor = reaisParaCentavos(texto(form, "valor"));
   if (typeof valor !== "number" || valor <= 0) return { mensagem: "Informe o valor devolvido em reais (ex.: 850,00)." };
-  const r = await registrarDevolucaoPorFora(getDb(), sessao.organizacaoId, pagamentoId, { data, valor, nota: texto(form, "nota") }, sessao.usuarioId);
+  const gate = await provedorDeConferencia();
+  if (!gate.ok) return { mensagem: `Não deu para conferir no Mercado Pago se a devolução já foi feita por lá (${gate.texto.replace(/\.$/, "")}). Sem essa conferência, a devolução feita por fora não é registrada.` };
+  const r = await registrarDevolucaoPorFora(getDb(), sessao.organizacaoId, pagamentoId, { data, valor, nota: texto(form, "nota") }, sessao.usuarioId, gate.provedor);
   if (!r.ok) return { mensagem: r.erro };
   revalidar();
   return { ok: true, mensagem: "Devolução feita por fora registrada." };
+}
+
+/**
+ * Taxa que o Mercado Pago não devolveu (informada pela equipe depois da devolução confirmada): valor em reais, zero
+ * se voltou toda. Vira despesa da empresa e tira o aviso.
+ */
+export async function registrarTaxaPerdidaAcao(_e: EstadoAcaoPagamento, form: FormData): Promise<EstadoAcaoPagamento> {
+  const sessao = await sessaoFinanceira();
+  const pagamentoId = texto(form, "pagamentoId");
+  if (!uuidValido(pagamentoId)) return NAO_ENCONTRADO;
+  const valor = reaisParaCentavos(texto(form, "valor"));
+  if (typeof valor !== "number" || valor < 0) return { mensagem: "Informe a taxa que não voltou em reais (ex.: 18,06; zero se voltou toda)." };
+  const r = await registrarTaxaPerdida(getDb(), sessao.organizacaoId, pagamentoId, valor, sessao.usuarioId);
+  if (!r.ok) return { mensagem: r.erro };
+  revalidar();
+  return { ok: true, mensagem: valor > 0 ? "Taxa registrada: a despesa entrou no financeiro da empresa." : "Registrado: a taxa voltou toda, nenhuma despesa lançada." };
 }
 
 /** Liberação registrada à mão (sem o sinal do Mercado Pago): a data em que caiu (até hoje) e o líquido. */

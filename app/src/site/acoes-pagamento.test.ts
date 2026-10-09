@@ -3,10 +3,11 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { pagamentos, tentativasLogin } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
-import { autorizacaoValida, CAMINHO_COOKIE_CHECKOUT, COOKIE_CHECKOUT, emitirAutorizacao, validadeDaAutorizacao } from "@/pagamentos/autorizacao";
+import { autorizacaoValida, CAMINHO_COOKIE_CHECKOUT, emitirAutorizacao, validadeDaAutorizacao } from "@/pagamentos/autorizacao";
 import { ERRO_EMAIL_DO_PEDIDO, ERROS_LIMITE, LIMITES_PAGAMENTO } from "@/pagamentos/limites";
 import { ErroProvedor } from "@/pagamentos/provedor";
 import { AGORA, type Cenario, EMAIL_HOSPEDE, minutos, montarCenario } from "@/pagamentos/testes";
+import { nomeDoCookieDoPedido } from "./checkout";
 import { criarCotacao } from "./cotacoes";
 import { MENSAGEM_SEM_AUTORIZACAO, MENSAGENS_PIX_HOSPEDE } from "./pagamento";
 
@@ -60,7 +61,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const comCookie = (cotacaoId: string) => m.jarra.set(COOKIE_CHECKOUT, { value: emitirAutorizacao(cotacaoId, validadeDaAutorizacao(minutos(30), AGORA)), opcoes: {} });
+const comCookie = (cotacaoId: string) => m.jarra.set(nomeDoCookieDoPedido(cotacaoId), { value: emitirAutorizacao(cotacaoId, validadeDaAutorizacao(minutos(30), AGORA)), opcoes: {} });
 const tentativasDa = (cotacaoId: string) => db.select().from(pagamentos).where(eq(pagamentos.cotacaoId, cotacaoId));
 const form = (campos: Record<string, string>) => {
   const f = new FormData();
@@ -138,7 +139,7 @@ describe("Continuar o pagamento noutro aparelho (M8.2a)", () => {
     expect(m.jarra.size).toBe(0);
     const ok = await continuarPagamentoAcao({}, form({ codigo: s.codigo, email: ` ${EMAIL_HOSPEDE.toUpperCase()} ` }));
     expect(ok).toEqual({ ok: true });
-    const g = m.jarra.get(COOKIE_CHECKOUT)!;
+    const g = m.jarra.get(nomeDoCookieDoPedido(s.cotacaoId))!;
     expect(g.opcoes).toMatchObject({ httpOnly: true, sameSite: "lax", path: CAMINHO_COOKIE_CHECKOUT, secure: false });
     expect(autorizacaoValida(g.value, s.cotacaoId, minutos(1))).toBe(true);
     expect(m.revalidar).toHaveBeenCalledWith(`/reservar/${s.codigo}`);
@@ -173,9 +174,18 @@ describe("Segurar as datas (M8.1 + M8.2a)", () => {
     const cot = await novaCotacao();
     const r = await segurarDatasAcao({}, form({ codigo: cot.codigo, ...contato }));
     expect(r).toEqual({});
-    const g = m.jarra.get(COOKIE_CHECKOUT)!;
+    const g = m.jarra.get(nomeDoCookieDoPedido(cot.id))!;
     expect(g.opcoes).toMatchObject({ httpOnly: true, sameSite: "lax", path: "/reservar", expires: validadeDaAutorizacao(minutos(30), AGORA) });
     expect(autorizacaoValida(g.value, cot.id, minutos(29))).toBe(true);
+  });
+
+  it("segurar uma segunda cotação no mesmo navegador não tira a autorização da primeira (um cookie por cotação)", async () => {
+    const s = await c.segurar({ entrada: "2026-11-02", saida: "2026-11-05", email: "outra@example.com" });
+    comCookie(s.cotacaoId);
+    const cot = await novaCotacao();
+    expect(await segurarDatasAcao({}, form({ codigo: cot.codigo, ...contato }))).toEqual({});
+    expect(autorizacaoValida(m.jarra.get(nomeDoCookieDoPedido(s.cotacaoId))!.value, s.cotacaoId, minutos(1))).toBe(true);
+    expect(autorizacaoValida(m.jarra.get(nomeDoCookieDoPedido(cot.id))!.value, cot.id, minutos(1))).toBe(true);
   });
 
   it("dados inválidos voltam com os erros, sem gastar o freio; o estado nunca traz os dados de volta", async () => {
@@ -185,6 +195,11 @@ describe("Segurar as datas (M8.1 + M8.2a)", () => {
     expect(JSON.stringify(r)).not.toContain("Visitante");
     expect(await db.select().from(tentativasLogin).where(like(tentativasLogin.chave, `pagamento-segurar:%${c.org}%`))).toEqual([]);
     expect(m.jarra.size).toBe(0);
+  });
+
+  it("código fora do formato: recusa antes do freio (não gasta a conta de ninguém)", async () => {
+    expect(await segurarDatasAcao({}, form({ codigo: "lixo", ...contato }))).toEqual({ erro: "Cotação não encontrada." });
+    expect(await db.select().from(tentativasLogin).where(like(tentativasLogin.chave, `pagamento-segurar:%${c.org}%`))).toEqual([]);
   });
 
   it("freio por endereço de internet antes de segurar: a mensagem do domínio, nada segurado", async () => {

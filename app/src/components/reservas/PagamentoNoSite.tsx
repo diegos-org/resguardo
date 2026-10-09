@@ -2,7 +2,7 @@ import styles from "@/components/formularios.module.css";
 import { FormAcaoPagamento } from "@/components/pagamentos/FormAcaoPagamento";
 import { centavosParaCampo } from "@/lib/dinheiro-form";
 import { formatBRL } from "@/lib/money";
-import { conferirAgoraAcao, devolucaoPorForaAcao, devolverAcao, estornarLiberacaoAcao, registrarLiberacaoAcao } from "@/pagamentos/acoes-painel";
+import { conferirAgoraAcao, devolucaoPorForaAcao, devolverAcao, estornarLiberacaoAcao, registrarLiberacaoAcao, registrarTaxaPerdidaAcao } from "@/pagamentos/acoes-painel";
 import type { PagamentoDoPainel } from "@/pagamentos/consultas";
 import { NOMES_DESFECHO, NOMES_SITUACAO_PAGAMENTO } from "@/pagamentos/situacoes";
 
@@ -21,7 +21,12 @@ const dia = (d: Date) => d.toLocaleDateString("pt-BR", { timeZone: FUSO });
 const hora = (d: Date) => d.toLocaleTimeString("pt-BR", { timeZone: FUSO, hour: "2-digit", minute: "2-digit" });
 const dataBr = (d: string) => d.split("-").reverse().join("/");
 const FORMA = { pix: "Pix", cartao: "Cartão" } as const;
-const DEVOLUCAO = { pedida: "pedida ao Mercado Pago, aguardando confirmação", confirmada: "confirmada pelo Mercado Pago", recusada: "o Mercado Pago não fez (três falhas)", por_fora: "feita por fora" } as const;
+const DEVOLUCAO = {
+  pedida: "pedida ao Mercado Pago, aguardando confirmação",
+  confirmada: "confirmada pelo Mercado Pago",
+  recusada: "recusada três vezes pelo Mercado Pago: confira no painel do Mercado Pago se o dinheiro já voltou antes de pedir de novo ou de registrar uma devolução feita por fora",
+  por_fora: "feita por fora",
+} as const;
 
 /** A situação da tentativa em palavras simples, com o desfecho quando houver. */
 export function situacaoEmPalavras(p: PagamentoDoPainel): string {
@@ -30,6 +35,8 @@ export function situacaoEmPalavras(p: PagamentoDoPainel): string {
   if (p.desfecho === "reserva") return p.situacao === "aprovado" ? "Aprovado: confirmou a reserva" : `${NOMES_SITUACAO_PAGAMENTO[p.situacao]} (tinha confirmado a reserva)`;
   if (p.desfecho) return NOMES_DESFECHO[p.desfecho];
   if (p.situacao === "aprovado" && p.motivoSemReservaTexto) return `Aprovado sem reserva: ${p.motivoSemReservaTexto} O valor precisa ser devolvido ao hóspede.`;
+  if ((p.situacao === "devolvido_parcial" || p.situacao === "contestado") && p.motivoSemReservaTexto)
+    return `${NOMES_SITUACAO_PAGAMENTO[p.situacao]} sem reserva: ${p.motivoSemReservaTexto} O que falta resolver se resolve pelo painel do Mercado Pago até o M8.2c.`;
   if (p.situacao === "aprovado") return "Aprovado: confirmando a reserva";
   return NOMES_SITUACAO_PAGAMENTO[p.situacao];
 }
@@ -164,7 +171,7 @@ function Tentativa({ p, verValores, editar, hoje }: { p: PagamentoDoPainel } & O
               rotulo="Registrar devolução feita por fora"
               nome="Registrar devolução feita por fora"
               discreto
-              pergunta="Registrar que o dinheiro já voltou ao hóspede por fora do Mercado Pago? O pagamento fica encerrado como devolvido por fora e não pode mais ser devolvido pelo Mercado Pago."
+              pergunta="Registrar que o dinheiro já voltou ao hóspede por fora do Mercado Pago? Vale só o valor integral, e antes o sistema confere no Mercado Pago que a devolução não foi feita por lá. O pagamento fica encerrado como devolvido por fora e não pode mais ser devolvido pelo Mercado Pago."
             >
               <label style={{ flex: "0 1 180px" }}>
                 Data da devolução
@@ -177,6 +184,21 @@ function Tentativa({ p, verValores, editar, hoje }: { p: PagamentoDoPainel } & O
               <label style={{ flex: "1 1 200px" }}>
                 Nota (opcional)
                 <input name="nota" maxLength={300} placeholder="ex.: Pix da conta da empresa em 10/10" />
+              </label>
+            </FormAcaoPagamento>
+          )}
+          {a.registrarTaxaPerdida && (
+            <FormAcaoPagamento
+              acao={registrarTaxaPerdidaAcao}
+              pagamentoId={p.id}
+              rotulo="Registrar taxa que não voltou"
+              nome="Registrar taxa que não voltou"
+              discreto
+              pergunta="Registrar a taxa que o Mercado Pago não devolveu? Ela entra como despesa da empresa (zero, se a taxa voltou toda) e só se registra uma vez."
+            >
+              <label style={{ flex: "0 1 220px" }}>
+                Taxa que não voltou (R$)
+                <input name="valor" inputMode="decimal" required placeholder="confira no Mercado Pago" />
               </label>
             </FormAcaoPagamento>
           )}

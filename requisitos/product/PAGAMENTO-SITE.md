@@ -2,8 +2,9 @@
 
 > Situação: desenho de 8/10/2026 para o M8.2, dividido em cinco partes (M8.2a a M8.2e), revisado
 > por quatro leituras adversariais (dinheiro, concorrência, segurança e produto) e pela primeira
-> revisão do Codex. Base: ROADMAP (M8.0, M8.1, M8.2, M7.4, M4.10, M4.12, M12.2),
-> `RECEBIMENTO-SITE.md`, `COTACAO-E-HOLD-SITE.md` e `REPASSES-POR-PERIODICIDADE.md`. API conferida
+> revisão do Codex. Ajustado em 9/10/2026 pela revisão do código do M8.2a (liberação, devolução
+> em dobro, travas, freios e taxa perdida). Base: ROADMAP (M8.0, M8.1, M8.2, M7.4, M4.10, M4.12,
+> M12.2), `RECEBIMENTO-SITE.md`, `COTACAO-E-HOLD-SITE.md` e `REPASSES-POR-PERIODICIDADE.md`. API conferida
 > na documentação oficial do Mercado Pago em 8/10/2026 (Checkout Transparente pela Orders API); o
 > que a documentação deixa em aberto está em "A conferir no sandbox".
 
@@ -47,16 +48,22 @@ base por canal, porque a opção atual vale para todos), arrependimento conferid
 | `MERCADOPAGO_AMBIENTE` | ausente ou exatamente `teste` = teste; exatamente `producao` = travado; qualquer outro valor = configuração inválida, travado, com aviso |
 
 Cobrança só acontece com tudo isto (uma função só decide, para criar, cancelar e devolver):
-1. fora do deploy de produção;
+1. fora do deploy de produção: só nas prévias da Vercel (`VERCEL_ENV=preview`), no `vercel dev` e no
+   computador de desenvolvimento (sem `VERCEL_ENV` e com `NODE_ENV` diferente de `production`); um
+   servidor ou script fora da Vercel com `NODE_ENV=production`, ou um `VERCEL_ENV` inesperado, conta
+   como produção;
 2. ambiente `teste`;
 3. as duas chaves presentes;
 4. **conta conferida como de teste no Mercado Pago** (`GET /users/me`; critério positivo, ex.:
    marca `test_user`, a conferir no sandbox; resposta estranha ou falha = não é teste; resultado
    guardado alguns minutos, inclusive a falha);
-5. a chave "Oferecer pagamento no site" ligada no painel.
+5. a chave "Oferecer pagamento no site" ligada no painel (começa **desligada**: o Diego liga na aba).
 
 Aviso com `live_mode=true` (não é assinado; serve de alarme) vira aviso no painel. Nas tentativas
-gravadas fica o ambiente e o `live_mode` lido do provedor.
+gravadas fica o ambiente e o `live_mode` lido do provedor. **Desvio registrado (9/10):** uma order
+lida com `live_mode=true` no teste nunca confirma reserva (vira "aprovado sem reserva", motivo
+`ao_vivo`), e um Pix recém-criado assim é cancelado na hora: "Gerar Pix" responde falha (nunca "deu
+certo" com um Pix já cancelado) e o prazo provisório das datas volta ao que era.
 
 ## Quando o site oferece o Pix
 
@@ -98,26 +105,40 @@ A reserva continua `pedido` enquanto o hóspede paga. Não há estado novo de re
 
 ## Ordem das travas (uma só, em todos os caminhos)
 
-imóvel (`FOR UPDATE`) → reserva → cotação → tentativas da cotação (por id) → devolução. Motor e
-livro travam depois, como já fazem. As chamadas ao Mercado Pago **nunca** acontecem com trava
-aberta: três fases, como no envio ao Beds24 (gravar a intenção; chamar fora de transação; reler e
-aplicar). A rotina de vencimento de holds passa a vencer cada hold numa transação curta, travando
-o imóvel primeiro; e o pagamento nunca vence holds de outras cotações (a conferência das noites só
-ignora pedidos já vencidos).
+imóvel (`FOR NO KEY UPDATE`) → reserva → cotação → tentativas da cotação (por id) → devolução. Motor
+e livro travam depois, como já fazem. O imóvel é travado com `NO KEY UPDATE`, não `FOR UPDATE`:
+serializa pagamento e hold entre si e com os bloqueios e contratos, mas não bloqueia a conferência
+das chaves estrangeiras de quem grava lançamentos, limpezas ou pagamentos daquele imóvel (com
+`FOR UPDATE`, a confirmação à mão e o Pix entravam em impasse). Trava não obtida (tempo-limite ou impasse
+desfeito pelo Postgres) = "ocupado": nada fica pela metade e o hóspede tenta de novo; na rotina, o
+hold que falhou é contado e os seguintes continuam. As chamadas ao Mercado Pago **nunca** acontecem
+com trava aberta: três fases, como no envio ao Beds24 (gravar a intenção; chamar fora de transação;
+reler e aplicar). A rotina de vencimento de holds passa a vencer cada hold numa transação curta,
+travando o imóvel primeiro; e o pagamento nunca vence holds de outras cotações (a conferência das
+noites só ignora pedidos já vencidos).
 
 ## Pix
 
 - **Um Pix por vez.** Pix válido existente é mostrado de novo (mesmo QR, mesmo prazo). Pix novo só
   depois de cancelar o anterior no provedor (cancelado, já cancelado ou vencido). Até 3 Pix por
-  cotação (constante, freio como os do M8.1).
+  cotação (constante, freio como os do M8.1), conferido **antes** de cancelar o anterior (o terceiro,
+  ainda pagável, não é cancelado à toa).
 - **Prazo:** o Pix vale no mínimo 30 minutos (regra do Mercado Pago). Na fase 1 o prazo das datas é
   estendido provisoriamente para agora + validade + 2 minutos; na fase 3, para o `date_of_expiration`
   devolvido + 2 minutos (só se o pedido ainda for `pedido` e a cotação `segurada`; senão o Pix é
-  cancelado). Assim o QR nunca vale mais que as datas. A extensão aparece na tela do prazo das
-  datas do painel ("com o pagamento ligado, cada Pix segura as datas por pelo menos 30 minutos").
+  cancelado). Assim o QR nunca vale mais que as datas. Se o pedido nem chegou ao provedor (tentativa
+  apagada), a extensão provisória é desfeita. A extensão aparece na tela do prazo das datas do painel
+  ("com o pagamento ligado, cada Pix segura as datas por pelo menos 30 minutos"). Uma leitura sem o
+  prazo (ou sem a imagem, ou o link) não apaga o que já se sabia do mesmo Pix; Pix pendente sem prazo
+  nenhum vira aviso.
 - **Carência:** a rotina e o `segurarDatas` não vencem um pedido com tentativa `criando`,
   `incerta`, `pendente` ou aprovada sem desfecho até 15 minutos depois do prazo; nesse tempo, as
   datas continuam ocupadas.
+- **O mesmo e-mail:** segurar outras datas fica recusado enquanto o mesmo e-mail tem um Pix em
+  andamento **na carência daquela cotação** (prazo + 15 minutos) ou um pagamento aprovado sem desfecho
+  (este, sem limite de tempo). Uma tentativa que nunca se resolve não prende o e-mail depois da
+  carência (e aparece no Início). A resposta é a mesma de "reserva em andamento": nada revela que
+  aquela pessoa está pagando.
 - Sem imagem do QR (o sandbox às vezes não manda), a página mostra o copia e cola e o link do
   Mercado Pago. No celular, o copia e cola vem primeiro.
 - O e-mail do pagador enviado ao Mercado Pago sai do servidor: no teste, `test@testuser.com`
@@ -129,9 +150,11 @@ O código da cotação circula no WhatsApp e não é credencial. Ao segurar as d
 um cookie assinado (finalidade própria, só para `/reservar`, validade até o fim do pedido). Gerar o
 Pix e ver o QR exigem o cookie. Noutro aparelho, "Continuar o pagamento" pede o e-mail usado ao
 segurar (conferido no servidor, com limite de tentativas) e emite o cookie de novo. Sem cookie, a
-página mostra só a situação. Freios por endereço de internet e geral por organização (antes do de
-origem; origem desconhecida conta numa chave compartilhada com teto baixo) para gerar Pix, para
-"Continuar o pagamento" e também para segurar as datas.
+página mostra só a situação. Freios por endereço de internet e geral por organização para gerar Pix,
+para "Continuar o pagamento", para a consulta da página e também para segurar as datas: a origem é
+conferida **primeiro** e só o pedido que ainda cabe no teto dela conta no geral (uma origem só não
+tira a vez de todo mundo, como na entrada com senha); IPv6 conta pela rede /64; origem desconhecida
+conta numa chave compartilhada com teto baixo.
 
 ## Aviso assinado (webhook)
 
@@ -151,10 +174,19 @@ origem; origem desconhecida conta numa chave compartilhada com teto baixo) para 
 `conferirPagamento(tentativa)`: lê a order (pelo id, ou pela referência quando a tentativa está
 `criando`/`incerta`), lê taxa/líquido/liberação na Payments API só quando faltam (no máximo a cada
 alguns minutos), e aplica numa transação curta. Gatilhos: aviso, página do hóspede (no máximo uma
-leitura a cada 15 s por tentativa, só enquanto pendente; freio por endereço de internet), rotina
-(a de holds, que primeiro confere os pagamentos e só depois vence holds) e **Conferir agora** no
-painel. A rotina relê uma vez por dia os pagamentos com desfecho `reserva` por 180 dias (devolução ou
-contestação feita por fora vira aviso, nunca estorno automático).
+leitura a cada 15 s por tentativa, só enquanto pendente; a leitura é **reservada num comando só**
+antes de chamar o provedor, então pedidos simultâneos leem uma vez; leitura que falha não conta;
+freio por endereço de internet), rotina (a de holds, que primeiro confere os pagamentos e só depois
+vence holds) e **Conferir agora** no painel (sem o intervalo). A rotina relê uma vez por dia, por 180
+dias, os pagamentos com desfecho (`reserva`, `devolucao`, `por_fora`) e os aprovados sem reserva à
+espera da devolução: devolução ou contestação feita por fora, ou devolução em dobro, vira aviso, nunca
+estorno automático.
+
+**Onde a rotina roda:** o cron da Vercel só roda no deploy de produção, onde o pagamento fica
+desligado. No teste (prévias), nada confere sozinho: a página do hóspede confere o próprio Pix e o
+**Conferir agora** do painel faz o papel da rotina (os avisos dizem isso). A limpeza dos avisos com
+mais de 90 dias roda na rotina do site em qualquer ambiente (o webhook grava no deploy de produção),
+nunca no "Conferir agora" de uma empresa.
 
 ## Confirmação (na transação, com as travas na ordem acima)
 
@@ -171,13 +203,19 @@ noites nunca foram liberadas), seja qual for o relógio.
 3. **Qualquer outro caso** vira **aprovado sem reserva**, com o motivo gravado na mesma transação
    (depois disso só a equipe muda): noites ocupadas ou sem leitura atual para conferir; pedido
    cancelado pela equipe (cotação `cancelada`, ou reserva cancelada com a cotação ainda segurada:
-   nunca é revivido); valor aprovado (`total_amount` e o valor da transação) diferente do total da
-   cotação; outra tentativa da mesma cotação já com desfecho `reserva`; reserva confirmada à mão e
-   com recebimento manual.
+   nunca é revivido); valor aprovado diferente do total da cotação (`total_amount`, o valor da
+   transação — que precisa vir na order — e o total pago, quando vier; no cartão, o pago pode passar
+   pelos juros do hóspede); outra tentativa da mesma cotação já com desfecho `reserva`; reserva
+   confirmada à mão e com recebimento manual; dinheiro que chega **já devolvido em parte ou
+   contestado**, sem uma leitura "aprovado" antes (motivo "situação inesperada", com aviso: nunca
+   confirma sozinho; o resto se resolve pelo Mercado Pago até o M8.2c).
 4. **Reserva confirmada à mão pela equipe** (sem recebimento manual e sem outra tentativa com
    desfecho `reserva`): o pagamento vira o desfecho `reserva` dela.
 5. Recusado, cancelado ou expirado: nada muda; o hóspede pode tentar de novo enquanto as datas
    estiverem seguradas.
+
+Confirmar à mão um pedido que tem pagamento aprovado sem reserva (a devolver) fica recusado, com a
+mensagem apontando o quadro do pagamento: o pagamento não se liga à reserva depois.
 
 O retorno do navegador nunca confirma nada. O M8.2a não manda e-mail novo ao hóspede; a confirmação
 do M9.2 passa a valer para reservas pagas quando Diego ligar as mensagens.
@@ -186,7 +224,9 @@ do M9.2 passa a valer para reservas pagas quando Diego ligar as mensagens.
 
 - **Valor** = o que enviamos (`total_amount`), igual ao total da cotação. **Líquido** = o que o
   provedor informa. **Taxa** = valor − líquido, em centavos inteiros a partir dos textos decimais,
-  numa leitura só (nunca soma de itens). Taxa negativa ou líquido maior que o valor viram aviso.
+  numa leitura só (nunca soma de itens). Taxa negativa ou líquido maior que o valor viram aviso. Se
+  o provedor informar outro líquido **antes** de qualquer recebimento lançado, a taxa é atualizada
+  (reserva e motor) antes de lançar; com recebimento já lançado, outro líquido vira aviso, sem mexer.
 - Gravar a taxa: `reservas.taxaCanal` (e `valorLiquido`), aplicar o motor, nessa ordem, numa
   transação. A taxa de referência de 4% do M12.1 continua só para o desconto do site.
 - A data de liberação informada é a **prevista**: aparece no painel e no extrato ("o Mercado Pago
@@ -194,12 +234,17 @@ do M9.2 passa a valer para reservas pagas quando Diego ligar as mensagens.
 - Só o pagamento com desfecho `reserva`, com a reserva confirmada e a situação ainda `aprovado`,
   lança o `recebimento`, e só quando o provedor disser **explicitamente** que liberou (campo e valor
   exatos a conferir no sandbox; data passada sozinha nunca basta; liberação em parcelas não lança
-  sozinha). Recebimento: montante = líquido, data de caixa = data da liberação no fuso de São Paulo,
-  `conciliado`, origem `sincronizacao`, chave `mercadopago:<tentativa>:recebimento`.
-- Sem o sinal, a equipe registra a liberação à mão (com confirmação): informa a data (até hoje) e o
-  líquido; o sistema deriva a taxa, grava `taxaCanal` e lança o recebimento `realizado` com a mesma
-  chave. Se o provedor confirmar depois com os mesmos valores, passa a `conciliado`; diferentes,
-  aviso, sem mexer.
+  sozinha). Recebimento: montante = o líquido **informado pelo provedor nessa leitura** (nunca o
+  guardado antes), data de caixa = data da liberação no fuso de São Paulo, `conciliado`, origem
+  `sincronizacao`, chave `mercadopago:<tentativa>:recebimento`. Liberado sem o líquido: aviso, nada
+  lançado.
+- Sem o sinal, a equipe registra a liberação à mão (com confirmação): informa a data (entre a
+  aprovação e hoje) e o líquido; o sistema deriva a taxa, grava `taxaCanal` e lança o recebimento
+  `realizado` com a mesma chave. Se o provedor confirmar depois com o mesmo líquido e a mesma data,
+  passa a `conciliado`; diferentes, aviso, sem mexer (o aviso não é apagado pela mesma leitura que o
+  ligou). No estorno da manual, a taxa e o líquido voltam ao que o provedor tinha informado antes (ou
+  a desconhecidos), a reserva recebe essa taxa com o motor e a próxima conferência relê a Payments
+  API: o sinal seguinte lança o líquido certo.
 - O recebimento do pagamento não aparece como estornável na lista genérica; estorno (só do manual)
   pelo quadro do pagamento, e o registro seguinte usa chave versionada (`#N`), como o motor.
 - "Registrar recebimento" manual fica recusado em reserva com tentativa pendente ou aprovada (aponta
@@ -214,13 +259,26 @@ do M9.2 passa a valer para reservas pagas quando Diego ligar as mensagens.
   **Registrar devolução feita por fora** (data, valor, nota). Exigem desfecho vazio e nenhuma
   devolução pedida, sob a trava da tentativa.
 - Devolução pelo provedor: `pedida` até confirmar. Cada tentativa nova usa chave nova, gravada antes;
-  antes de tentar de novo, relê a order (já devolvida = confirmada). `order_refund_already_in_process`
-  = continua pedida; `already_refunded` = confirmada. Depois de 3 falhas, aviso; a equipe pode
-  registrar a devolução feita por fora.
-- A taxa que não voltar vira despesa da empresa só depois da confirmação, com o valor informado
-  pelo provedor (sem esse dado: aviso, nunca palpite), numa categoria escolhida na aba de pagamento
-  (criada no primeiro uso, editável). Regra derivada (a decisão de 7/10 fala do reembolso integral
-  da política; aqui a falha é do sistema): está no GUIA para Diego confirmar.
+  antes de tentar de novo, relê a order (já devolvida = confirmada; devolução em andamento lá = não
+  pede de novo). `order_refund_already_in_process` = continua pedida; `already_refunded` =
+  confirmada. Resposta **incerta** (tempo esgotado, 5xx) não é falha: o pedido pode ter saído, então
+  continua pedida e a próxima volta relê a order. Só recusa explícita conta; na terceira, a order é
+  relida antes e, sem nenhum sinal de devolução, a devolução fica recusada, com aviso. Sob a trava, a
+  vez e o número de tentativas são conferidos de novo (painel e rotina juntos não pedem duas vezes).
+- **Registrar devolução feita por fora** relê antes a order no Mercado Pago (fora da transação):
+  devolvida (no todo ou em parte), com devolução em andamento ou contestada = recusa; sem conseguir
+  ler (ou sem o provedor, como no deploy de produção) = recusa também. Nesta parte, só o valor
+  integral (devolução de parte do valor é o M8.2c). Se o Mercado Pago mostrar depois o pagamento
+  devolvido com o desfecho "por fora", aviso de **devolução em dobro** (a releitura diária inclui
+  esses pagamentos). Os textos do painel nunca afirmam que o Mercado Pago "não fez": mandam conferir
+  lá antes de registrar por fora.
+- A taxa que não voltar vira despesa da empresa só depois da confirmação, **com o valor informado pela
+  equipe** ("Registrar taxa que não voltou", no quadro do pagamento, com confirmação; zero se voltou
+  toda; uma vez por devolução, chave `mercadopago:<tentativa>:taxa_perdida`): o Mercado Pago só
+  informa a tarifa da aprovação, não o que voltou na devolução (item 7 de "A conferir no sandbox").
+  Até a equipe informar, aviso, nunca palpite. Categoria escolhida na aba de pagamento (criada no
+  primeiro uso, editável). Regra derivada (a decisão de 7/10 fala do reembolso integral da política;
+  aqui a falha é do sistema): está no GUIA para Diego confirmar.
 - Cancelar uma reserva com tentativa pendente ou aprovada fica recusado na parte (a), com mensagem
   ("o cancelamento com devolução chega no M8.2c"). Confirmar à mão um pedido com Pix pendente também
   fica recusado ("há um Pix em andamento até HH:MM").
@@ -258,9 +316,10 @@ estar oferecido para aquele imóvel. A página proíbe ser enquadrada por outro 
   conferir agora) para quem edita o financeiro, com confirmação.
 - **Financeiro → Pagamentos do site:** lista por período com filtro "pede atenção".
 - **Início** (para a empresa toda, sem depender do filtro de imóveis): aprovado sem desfecho,
-  devolução pedida ou recusada, liberação prevista vencida sem sinal, conta das chaves que não é de
-  teste, configuração inválida, aviso com `live_mode`, dinheiro sem cálculo, e o informativo "N
-  reserva(s) do site paga(s): feche as datas nas OTAs enquanto o envio ao Beds24 estiver desligado".
+  devolução pedida ou recusada, liberação prevista vencida sem sinal, criação do Pix sem resposta do
+  Mercado Pago há mais que a carência, conta das chaves que não é de teste, configuração inválida,
+  aviso com `live_mode`, dinheiro sem cálculo, e o informativo "N reserva(s) do site paga(s): feche as
+  datas nas OTAs enquanto o envio ao Beds24 estiver desligado".
 - Até o M8.3, a equipe fecha as datas no Beds24 como **bloqueio**, nunca como reserva (a importação
   criaria uma segunda reserva).
 
@@ -281,4 +340,7 @@ do pagador aparece nessas tabelas.
 4. O que uma repetição com a mesma chave depois de um tempo esgotado devolve.
 5. Se o `data.id` da assinatura vai em minúsculas e se o reenvio traz `ts` novo.
 6. Se o Pix de teste aprova sozinho com o nome APRO e se vem a imagem do QR.
-7. Se a taxa volta na devolução integral (registrar em `RECEBIMENTO-SITE.md`).
+7. Se a taxa volta na devolução integral (registrar em `RECEBIMENTO-SITE.md`). Até lá, a equipe
+   informa a taxa que não voltou.
+8. O valor de `live_mode` nas orders do usuário de teste (se vier `true`, todo Pix do teste é
+   cancelado na hora: ver o desvio em "Variáveis e travas").

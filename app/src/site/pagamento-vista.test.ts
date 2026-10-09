@@ -32,6 +32,7 @@ describe("vista do pagamento para o navegador (M8.2a)", () => {
       holdAte: "2026-10-01T15:32:00.000Z",
       pix: { copiaECola: "000201", imagem: "data:image/png;base64,RkFMU08=", link: null, expiraEm: "2026-10-01T15:30:00.000Z" },
       pixRestantes: 2,
+      podeGerar: false,
       reservaCodigo: null,
       pagamentoEmDobro: false,
       devolucao: { situacao: "pedida", em: "2026-10-02T12:00:00.000Z" },

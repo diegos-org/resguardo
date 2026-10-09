@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const m = vi.hoisted(() => ({ conferir: vi.fn(), devolver: vi.fn(), porFora: vi.fn(), liberar: vi.fn(), estornar: vi.fn() }));
-vi.mock("@/pagamentos/acoes-painel", () => ({ conferirAgoraAcao: m.conferir, devolverAcao: m.devolver, devolucaoPorForaAcao: m.porFora, registrarLiberacaoAcao: m.liberar, estornarLiberacaoAcao: m.estornar }));
+vi.mock("@/pagamentos/acoes-painel", () => ({ conferirAgoraAcao: m.conferir, devolverAcao: m.devolver, devolucaoPorForaAcao: m.porFora, registrarLiberacaoAcao: m.liberar, estornarLiberacaoAcao: m.estornar, registrarTaxaPerdidaAcao: vi.fn() }));
 import type { PagamentoDoPainel } from "@/pagamentos/consultas";
 import { PagamentoNoSite } from "@/components/reservas/PagamentoNoSite";
 import { FormAcaoPagamento } from "./FormAcaoPagamento";
@@ -34,7 +34,7 @@ const semReserva = {
   avisos: [],
   devolucao: null,
   pedeAtencao: true,
-  acoes: { conferir: true, devolver: true, devolucaoPorFora: true, registrarLiberacao: false, estornarLiberacao: false },
+  acoes: { conferir: true, devolver: true, devolucaoPorFora: true, registrarLiberacao: false, estornarLiberacao: false, registrarTaxaPerdida: false },
 } satisfies PagamentoDoPainel;
 
 let confirmar: ReturnType<typeof vi.fn>;
@@ -80,4 +80,20 @@ it("sem tentativa, Conferir agora vai sem pagamentoId (todas as pendentes da emp
   await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Nada pendente para conferir com o Mercado Pago."));
   const [, dados] = m.conferir.mock.calls[0] as [unknown, FormData];
   expect(dados.get("pagamentoId")).toBeNull();
+});
+
+it("numa recusa, o que foi digitado continua no campo (nada volta ao valor padrão)", async () => {
+  m.liberar.mockResolvedValue({ mensagem: "A data da liberação não pode ser antes da aprovação do pagamento." });
+  render(
+    <FormAcaoPagamento acao={m.liberar} rotulo="Registrar" nome="Registrar liberação" pagamentoId={ID}>
+      <input name="liquido" aria-label="Líquido" defaultValue="1.805,94" />
+    </FormAcaoPagamento>,
+  );
+  const campo = screen.getByLabelText("Líquido") as HTMLInputElement;
+  fireEvent.change(campo, { target: { value: "1.700,00" } });
+  fireEvent.click(screen.getByRole("button", { name: "Registrar" }));
+  await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("antes da aprovação"));
+  expect((m.liberar.mock.calls[0][1] as FormData).get("liquido")).toBe("1.700,00");
+  expect((m.liberar.mock.calls[0][1] as FormData).get("pagamentoId")).toBe(ID);
+  expect(campo.value).toBe("1.700,00");
 });

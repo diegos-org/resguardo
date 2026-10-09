@@ -15,6 +15,7 @@ const base: PagamentoDoHospede = {
   holdAte: "2026-10-01T15:30:00.000Z",
   pix: null,
   pixRestantes: 3,
+  podeGerar: true,
   reservaCodigo: null,
   pagamentoEmDobro: false,
   devolucao: null,
@@ -104,6 +105,11 @@ describe("o que o hóspede vê em cada situação do pagamento (M8.2a)", () => {
     mostrar({ estado: "pix_vencido", pixRestantes: 2 });
     expect(screen.getByText(/ainda dá para gerar 2/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Gerar outro Pix" })).toBeTruthy();
+    cleanup();
+    mostrar({ estado: "pix_vencido", pixRestantes: 2, podeGerar: false });
+    expect(screen.queryByRole("button", { name: /Gerar/ })).toBeNull();
+    expect(screen.getByText(/não está disponível agora/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Falar com a equipe pelo WhatsApp" })).toBeTruthy();
     cleanup();
     mostrar({ estado: "pix_esgotado", pixRestantes: 0 });
     expect(screen.queryByRole("button", { name: /Gerar/ })).toBeNull();

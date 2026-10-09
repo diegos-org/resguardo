@@ -45,10 +45,14 @@ export type Cobranca = {
   forma: FormaPagamento | null;
   /** Centavos (total_amount). */
   valor: number;
+  /** Centavos do valor da transação de pagamento (payments[0].amount), se veio. */
+  valorTransacao: number | null;
   /** Centavos (total_paid_amount), se veio. */
   pago: number | null;
   /** Centavos já devolvidos (soma das devoluções confirmadas conhecidas); 0 se nenhuma. */
   devolvido: number;
+  /** Há devolução pedida e ainda não confirmada (ou numa situação que o sistema não conhece) na order. */
+  devolucaoEmAndamento: boolean;
   parcelas: number | null;
   /** Id do pagamento dentro da order (PAY…), usado na devolução parcial. */
   idTransacao: string | null;

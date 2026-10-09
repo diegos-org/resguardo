@@ -12,7 +12,7 @@ import { cotacoes, devolucoesPagamento, eventosPagamento, imoveis, lancamentos, 
 import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
-import { MAXIMO_PIX_POR_COTACAO } from "./andamento";
+import { CARENCIA_PAGAMENTO_MS, MAXIMO_PIX_POR_COTACAO } from "./andamento";
 import { ambienteMercadoPago, estadoPagamentoDoAmbiente } from "./ambiente";
 import { AVISOS_PAGAMENTO, type CodigoAviso, comDinheiro, emAndamento, type SituacaoPagamento, textoMotivoSemReserva, textosDosAvisos } from "./situacoes";
 import type { Devolucao, Pagamento } from "./travas";
@@ -111,7 +111,7 @@ export async function vistaDaCotacaoParaHospede(db: Db, organizacaoId: string, c
   return o.oferecido ? { ...base, estado: "pagar" } : base;
 }
 
-export type AcoesDoPagamento = { conferir: boolean; devolver: boolean; devolucaoPorFora: boolean; registrarLiberacao: boolean; estornarLiberacao: boolean };
+export type AcoesDoPagamento = { conferir: boolean; devolver: boolean; devolucaoPorFora: boolean; registrarLiberacao: boolean; estornarLiberacao: boolean; registrarTaxaPerdida: boolean };
 
 export type PagamentoDoPainel = {
   id: string;
@@ -146,10 +146,16 @@ export type PagamentoDoPainel = {
 
 const liberacaoVencida = (p: Pagamento, agora: Date) => p.desfecho === "reserva" && p.situacao === "aprovado" && !p.liberacaoConfirmadaEm && !!p.liberacaoPrevistaEm && p.liberacaoPrevistaEm.getTime() < agora.getTime();
 
+/** Tentativa `criando`/`incerta` sem resposta há mais que a carência: a criação do Pix não se resolve sozinha. */
+const criacaoPresa = (p: Pagamento, agora: Date) => (p.situacao === "criando" || p.situacao === "incerta") && p.criadoEm.getTime() + CARENCIA_PAGAMENTO_MS < agora.getTime();
+
 function paraPainel(p: Pagamento, dev: Devolucao | undefined, temRecebimentoManual: boolean, agora: Date): PagamentoDoPainel {
   const semDecisao = p.situacao === "aprovado" && p.desfecho === null;
+  // Dinheiro que chegou já devolvido em parte ou contestado, sem decisão do sistema (situação inesperada).
+  const inesperada = (p.situacao === "devolvido_parcial" || p.situacao === "contestado") && p.desfecho === null;
   const devolucaoAberta = dev?.situacao === "pedida" || dev?.situacao === "recusada";
-  const podeDecidir = semDecisao && p.motivoSemReserva !== null && dev?.situacao !== "pedida" && (!dev || dev.situacao === "recusada");
+  const semDevolucaoAberta = dev?.situacao !== "pedida" && (!dev || dev.situacao === "recusada");
+  const podeDecidir = semDecisao && p.motivoSemReserva !== null && semDevolucaoAberta;
   return {
     id: p.id,
     cotacaoId: p.cotacaoId,
@@ -177,13 +183,15 @@ function paraPainel(p: Pagamento, dev: Devolucao | undefined, temRecebimentoManu
     devolucao: dev
       ? { situacao: dev.situacao, valor: dev.valor, tentativas: dev.tentativas, falhas: dev.falhas, confirmadaEm: dev.confirmadaEm, porForaData: dev.porForaData, porForaValor: dev.porForaValor, porForaNota: dev.porForaNota, taxaPerdida: dev.taxaPerdida }
       : null,
-    pedeAtencao: semDecisao || devolucaoAberta || p.avisos.length > 0 || p.situacao === "incerta" || liberacaoVencida(p, agora),
+    pedeAtencao: semDecisao || inesperada || devolucaoAberta || p.avisos.length > 0 || p.situacao === "incerta" || criacaoPresa(p, agora) || liberacaoVencida(p, agora),
     acoes: {
       conferir: p.idProvedor !== null || emAndamento(p.situacao) || !!dev,
       devolver: podeDecidir,
-      devolucaoPorFora: podeDecidir,
+      // A devolução por fora relê antes a order no Mercado Pago (devolvida, em andamento ou contestada = recusa).
+      devolucaoPorFora: podeDecidir || (inesperada && p.motivoSemReserva !== null && semDevolucaoAberta),
       registrarLiberacao: p.desfecho === "reserva" && p.situacao === "aprovado" && !p.liberacaoConfirmadaEm,
       estornarLiberacao: p.liberacaoOrigem === "manual" && temRecebimentoManual,
+      registrarTaxaPerdida: dev?.situacao === "confirmada" && dev.taxaPerdida === null,
     },
   };
 }
@@ -249,6 +257,8 @@ export type ContagensPagamento = {
   aoVivo: number;
   semCalculo: number;
   pagasAbertas: number;
+  /** Criação do Pix sem resposta do Mercado Pago há mais que a carência (busca pela referência falhando). */
+  criacaoPresa: number;
 };
 
 const LINK_PAGAMENTOS = "/painel/financeiro/pagamentos-site";
@@ -274,13 +284,13 @@ export async function avisosDePagamento(
           and(inArray(pagamentos.situacao, ["aprovado", "devolvido_parcial", "contestado"]), isNull(pagamentos.desfecho)),
           eq(pagamentos.desfecho, "reserva"),
           sql`jsonb_array_length(${pagamentos.avisos}) > 0`,
-          eq(pagamentos.situacao, "incerta"),
+          inArray(pagamentos.situacao, ["criando", "incerta"]),
         ),
       ),
     );
   const devs = lista.length ? await db.select().from(devolucoesPagamento).where(inArray(devolucoesPagamento.pagamentoId, lista.map((p) => p.id))) : [];
   const devDe = (id: string) => devs.find((d) => d.pagamentoId === id);
-  const contagens: ContagensPagamento = { aprovadoSemDesfecho: 0, devolucaoPedida: 0, devolucaoRecusada: 0, liberacaoVencida: 0, comAviso: 0, aoVivo: 0, semCalculo: 0, pagasAbertas: 0 };
+  const contagens: ContagensPagamento = { aprovadoSemDesfecho: 0, devolucaoPedida: 0, devolucaoRecusada: 0, liberacaoVencida: 0, comAviso: 0, aoVivo: 0, semCalculo: 0, pagasAbertas: 0, criacaoPresa: 0 };
   for (const p of lista) {
     const dev = devDe(p.id);
     if (comDinheiro(p.situacao) && p.situacao !== "devolvido" && p.desfecho === null) {
@@ -289,6 +299,7 @@ export async function avisosDePagamento(
       else contagens.aprovadoSemDesfecho++;
     }
     if (liberacaoVencida(p, agora)) contagens.liberacaoVencida++;
+    if (criacaoPresa(p, agora)) contagens.criacaoPresa++;
     if (p.avisos.some((a) => a !== "ao_vivo" && a in AVISOS_PAGAMENTO)) contagens.comAviso++;
     if (p.aoVivo === true || p.avisos.includes("ao_vivo")) contagens.aoVivo++;
   }
@@ -324,7 +335,8 @@ export async function avisosDePagamento(
   if (contagens.aoVivo) alertas.push({ nivel: "atencao", texto: `${contagens.aoVivo} aviso(s) do Mercado Pago marcado(s) como pagamento real (live_mode) no ambiente de teste: confira no painel do Mercado Pago.`, link: LINK_PAGAMENTOS });
   if (contagens.aprovadoSemDesfecho) alertas.push({ nivel: "atencao", texto: `${contagens.aprovadoSemDesfecho} pagamento(s) do site aprovado(s) sem reserva: devolva ao hóspede (pelo Mercado Pago ou por fora).`, link: `${LINK_PAGAMENTOS}?atencao=1` });
   if (contagens.devolucaoPedida) alertas.push({ nivel: "info", texto: `${contagens.devolucaoPedida} devolução(ões) pedida(s) ao Mercado Pago aguardando confirmação.`, link: `${LINK_PAGAMENTOS}?atencao=1` });
-  if (contagens.devolucaoRecusada) alertas.push({ nivel: "atencao", texto: `${contagens.devolucaoRecusada} devolução(ões) que o Mercado Pago não fez: tente de novo ou registre a devolução feita por fora.`, link: `${LINK_PAGAMENTOS}?atencao=1` });
+  if (contagens.devolucaoRecusada) alertas.push({ nivel: "atencao", texto: `${contagens.devolucaoRecusada} devolução(ões) recusada(s) pelo Mercado Pago: confira no painel do Mercado Pago se o dinheiro já voltou antes de pedir de novo ou de registrar a devolução feita por fora.`, link: `${LINK_PAGAMENTOS}?atencao=1` });
+  if (contagens.criacaoPresa) alertas.push({ nivel: "atencao", texto: `${contagens.criacaoPresa} Pix do site sem resposta do Mercado Pago sobre a criação há mais de ${CARENCIA_PAGAMENTO_MS / 60_000} minutos: confira no painel do Mercado Pago e use Conferir agora.`, link: `${LINK_PAGAMENTOS}?atencao=1` });
   if (contagens.liberacaoVencida) alertas.push({ nivel: "info", texto: `${contagens.liberacaoVencida} pagamento(s) do site com a liberação prevista vencida e sem confirmação do Mercado Pago: confira e, se o dinheiro caiu, registre a liberação na reserva.`, link: `${LINK_PAGAMENTOS}?atencao=1` });
   if (contagens.semCalculo) alertas.push({ nivel: "atencao", texto: `${contagens.semCalculo} reserva(s) paga(s) pelo site com dinheiro recebido sem cálculo no financeiro: confira o contrato na data da entrada.`, link: LINK_PAGAMENTOS });
   if (contagens.comAviso) alertas.push({ nivel: "atencao", texto: `${contagens.comAviso} pagamento(s) do site com aviso: confira na lista.`, link: `${LINK_PAGAMENTOS}?atencao=1` });

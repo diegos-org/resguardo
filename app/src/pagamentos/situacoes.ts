@@ -92,6 +92,7 @@ export const MOTIVOS_SEM_RESERVA = {
   outra_tentativa: "Outro pagamento desta cotação já confirmou a reserva (pagamento em dobro).",
   recebimento_manual: "A reserva já tinha sido confirmada pela equipe, com recebimento registrado à mão.",
   ao_vivo: "O Mercado Pago informou um pagamento real (live_mode) no ambiente de teste.",
+  situacao_inesperada: "O Mercado Pago mostrou o pagamento já devolvido (no todo ou em parte) ou contestado antes de o sistema decidir a reserva.",
   outro: "A reserva não estava numa situação que permitisse confirmar pelo pagamento.",
 } as const;
 export type MotivoSemReserva = keyof typeof MOTIVOS_SEM_RESERVA;
@@ -120,15 +121,19 @@ export const AVISOS_PAGAMENTO = {
   order_nao_encontrada: "O Mercado Pago não encontrou mais este pagamento: confira no painel do Mercado Pago.",
   referencia_divergente: "A resposta do Mercado Pago não bate com este pagamento (referência ou identificação diferentes): nada foi aplicado.",
   taxa_invalida: "A taxa ou o líquido informados não fecham com o valor (taxa negativa ou líquido maior que o valor): nada foi gravado.",
-  taxa_divergente: "O Mercado Pago informou uma taxa diferente da já registrada: confira.",
-  liberacao_divergente: "O Mercado Pago confirmou a liberação com data ou valor diferentes do registrado à mão: confira e corrija pelo quadro do pagamento.",
+  taxa_divergente: "O Mercado Pago informou um líquido diferente do que já entrou como recebimento: nada foi mudado. Confira no Mercado Pago.",
+  liberacao_divergente: "O Mercado Pago confirmou a liberação com data ou valor diferentes do recebimento registrado: nada foi mudado. Confira no Mercado Pago; se o registrado à mão estiver errado, estorne e registre de novo pelo quadro do pagamento.",
   liberacao_futura: "O Mercado Pago marcou o dinheiro como liberado, mas com data futura: nada foi lançado.",
+  liberacao_sem_valor: "O Mercado Pago marcou o dinheiro como liberado sem informar o líquido: nada foi lançado. Confira no Mercado Pago e, se o dinheiro caiu, registre a liberação à mão.",
   devolvido_por_fora: "Este pagamento foi devolvido (no todo ou em parte) fora do sistema: confira a reserva.",
+  devolucao_em_dobro: "O Mercado Pago mostra este pagamento como devolvido, e a devolução também foi registrada como feita por fora: o hóspede pode ter recebido duas vezes. Confira no Mercado Pago e fale com o hóspede.",
+  situacao_inesperada: "O Mercado Pago mostrou este pagamento já devolvido (no todo ou em parte) ou contestado antes de o sistema decidir a reserva: nada foi confirmado. O que falta resolver se resolve pelo painel do Mercado Pago até o M8.2c.",
   contestado: "O pagamento foi contestado pelo pagador: confira a reserva.",
   ao_vivo: "O Mercado Pago marcou este pagamento como real (live_mode) no ambiente de teste.",
-  taxa_perdida_desconhecida: "Devolução confirmada, mas o Mercado Pago não informou quanto da taxa ficou com ele: a despesa não foi lançada.",
-  devolucao_falhou: "A devolução pelo Mercado Pago falhou três vezes: tente de novo ou registre a devolução feita por fora.",
-  cancelamento_pendente: "Não deu para cancelar no Mercado Pago um Pix que ficou sobrando: a rotina tenta de novo.",
+  pix_sem_prazo: "O Mercado Pago não informou até quando este Pix vale: confira no painel do Mercado Pago.",
+  taxa_perdida_desconhecida: "Devolução confirmada: falta saber quanto da taxa o Mercado Pago não devolveu. Confira no Mercado Pago e use \"Registrar taxa que não voltou\" no quadro do pagamento (zero se voltou toda).",
+  devolucao_falhou: "O Mercado Pago recusou a devolução três vezes. Antes de pedir de novo ou de registrar uma devolução feita por fora, confira no painel do Mercado Pago se o dinheiro já voltou ao hóspede.",
+  cancelamento_pendente: "Não deu para cancelar no Mercado Pago um Pix que ficou sobrando: use Conferir agora para tentar de novo (no teste, nada é conferido sozinho).",
 } as const;
 export type CodigoAviso = keyof typeof AVISOS_PAGAMENTO;
 

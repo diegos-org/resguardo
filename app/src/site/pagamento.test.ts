@@ -4,9 +4,10 @@ import { cotacoes, imoveis, pagamentos, tentativasLogin } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { emitirAutorizacao, validadeDaAutorizacao } from "@/pagamentos/autorizacao";
+import { conferirTentativa } from "@/pagamentos/conferencia";
 import { ERROS_LIMITE, LIMITES_PAGAMENTO } from "@/pagamentos/limites";
 import type { PortaoCobranca } from "@/pagamentos/oferta";
-import type { CodigoFalhaPix } from "@/pagamentos/pix";
+import { type CodigoFalhaPix, gerarPix } from "@/pagamentos/pix";
 import { ErroProvedor } from "@/pagamentos/provedor";
 import { AGORA, type Cenario, EMAIL_HOSPEDE, env, minutos, montarCenario, TOTAL } from "@/pagamentos/testes";
 import { CACHE_PAGAMENTO, MENSAGENS_PIX_HOSPEDE, mensagemSemPix, pixPossivel, portaoDoSite, responderPagamento, vistaDoPagamento } from "./pagamento";
@@ -23,7 +24,7 @@ const desligado: PortaoCobranca = { ok: false, motivo: "desligado", texto: "desl
 const vista = (cotacaoId: string, quando: Date, comAutorizacao: boolean, gate: PortaoCobranca = c.gate) => vistaDoPagamento(db, c.org, cotacaoId, quando, { comAutorizacao, gate: async () => gate });
 const token = (cotacaoId: string) => emitirAutorizacao(cotacaoId, validadeDaAutorizacao(minutos(30), AGORA));
 const consultar = (codigo: string, o: { token?: string; origem?: string | null; quando?: Date; organizacao?: string | null } = {}) =>
-  responderPagamento(db, codigo, { organizacao: async () => (o.organizacao === undefined ? c.org : o.organizacao), token: o.token, origem: o.origem === undefined ? "203.0.113.50" : o.origem, agora: o.quando ?? minutos(1), env: env(), provedor: c.provedor });
+  responderPagamento(db, codigo, { organizacao: async () => (o.organizacao === undefined ? c.org : o.organizacao), token: () => o.token, origem: o.origem === undefined ? "203.0.113.50" : o.origem, agora: o.quando ?? minutos(1), env: env(), provedor: c.provedor });
 
 describe("o que a página da cotação mostra do pagamento (M8.2a)", () => {
   it("'pagar' só com o Pix oferecido (a oferta só é conferida quando decide); QR só com a autorização, já pronto para o navegador", async () => {
@@ -50,6 +51,28 @@ describe("o que a página da cotação mostra do pagamento (M8.2a)", () => {
     expect(await vista(s.cotacaoId, minutos(60), true)).toMatchObject({ estado: "verificando", dinheiroSemDesfecho: true });
   });
 
+  it("Pix vencido: 'Gerar outro Pix' só com o Pix ainda oferecido; último Pix ainda pendente com o QR vencido: 'conferindo', não 'esgotado'", async () => {
+    const s = await c.segurar();
+    const conferir = (id: string, quando: Date) => conferirTentativa(db, c.org, id, c.provedor, quando, { origem: "rotina", forcar: true });
+    const p = await c.pix(s.cotacaoId);
+    c.provedor.expirar(p.idProvedor);
+    await conferir(p.pagamentoId, minutos(31));
+    expect(await vista(s.cotacaoId, minutos(31), true)).toMatchObject({ estado: "pix_vencido", podeGerar: true });
+    expect(await vista(s.cotacaoId, minutos(31), true, desligado)).toMatchObject({ estado: "pix_vencido", podeGerar: false });
+    const segundo = await gerarPix(db, c.org, s.cotacaoId, minutos(31), c.provedor);
+    if (!segundo.ok) throw new Error(segundo.erro);
+    c.provedor.expirar((await c.tentativa(segundo.pagamentoId)).idProvedor!);
+    await conferir(segundo.pagamentoId, minutos(61.5));
+    // Terceiro Pix: o QR venceu no relógio, mas ninguém leu o provedor ainda (pode ter sido pago no último instante).
+    const terceiro = await gerarPix(db, c.org, s.cotacaoId, minutos(62), c.provedor);
+    if (!terceiro.ok) throw new Error(terceiro.erro);
+    expect(await vista(s.cotacaoId, minutos(92.5), true)).toMatchObject({ estado: "verificando", dinheiroSemDesfecho: true, podeGerar: false });
+    // Lido como vencido: aí sim, esgotado (e a página para de consultar).
+    c.provedor.expirar((await c.tentativa(terceiro.pagamentoId)).idProvedor!);
+    await conferir(terceiro.pagamentoId, minutos(92.6));
+    expect(await vista(s.cotacaoId, minutos(92.6), true)).toMatchObject({ estado: "pix_esgotado", dinheiroSemDesfecho: false });
+  });
+
   it("Pix possível numa consulta ou cotação aberta: travas, situação disponível com valor, imóvel do site e motor sem pendência", async () => {
     const estadia = { imovel: { codigo: "403" }, checkin: "2026-10-12", checkout: "2026-10-15", situacao: "disponivel", total: TOTAL };
     expect(await pixPossivel(db, c.org, estadia, c.gate)).toBe(true);
@@ -72,7 +95,7 @@ describe("o que a página da cotação mostra do pagamento (M8.2a)", () => {
   });
 
   it("mensagens ao hóspede: uma para cada falha do Pix, sem texto do provedor nem motivo interno", () => {
-    const codigos: CodigoFalhaPix[] = ["nao_encontrada", "nao_oferecido", "em_andamento", "ja_pago", "limite", "provedor", "incerto", "recusado", "ocupado"];
+    const codigos: CodigoFalhaPix[] = ["nao_encontrada", "nao_oferecido", "em_andamento", "ja_pago", "limite", "provedor", "incerto", "recusado", "ocupado", "ao_vivo"];
     expect(Object.keys(MENSAGENS_PIX_HOSPEDE).sort()).toEqual([...codigos].sort());
     for (const m of Object.values(MENSAGENS_PIX_HOSPEDE)) expect(m).not.toMatch(/Configurações|painel|Beds24|contrato|proprietário/i);
     expect(mensagemSemPix("prazo_vencido")).toBe("O prazo das datas desta cotação acabou.");

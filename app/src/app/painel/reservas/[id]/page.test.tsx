@@ -18,7 +18,7 @@ vi.mock("@/pagamentos/consultas", () => ({ pagamentosDaReserva: m.pagamentos }))
 vi.mock("@/reservas/acoes", () => ({ cancelar: vi.fn(), confirmar: vi.fn(), resolverConferenciaAcao: vi.fn(), salvarEmailHospedeAcao: vi.fn() }));
 vi.mock("@/reservas/horarios-acoes", () => ({ alterarHorarioAcao: vi.fn() }));
 vi.mock("@/repasses/acoes", () => ({ estornarRecebimentoAcao: vi.fn(), registrarRecebimentoAcao: vi.fn() }));
-vi.mock("@/pagamentos/acoes-painel", () => ({ conferirAgoraAcao: vi.fn(), devolverAcao: vi.fn(), devolucaoPorForaAcao: vi.fn(), registrarLiberacaoAcao: vi.fn(), estornarLiberacaoAcao: vi.fn() }));
+vi.mock("@/pagamentos/acoes-painel", () => ({ conferirAgoraAcao: vi.fn(), devolverAcao: vi.fn(), devolucaoPorForaAcao: vi.fn(), registrarLiberacaoAcao: vi.fn(), estornarLiberacaoAcao: vi.fn(), registrarTaxaPerdidaAcao: vi.fn() }));
 import Page from "./page";
 
 const reserva = {
@@ -71,7 +71,7 @@ const pagamento: PagamentoDoPainel = {
   avisos: [],
   devolucao: null,
   pedeAtencao: false,
-  acoes: { conferir: true, devolver: false, devolucaoPorFora: false, registrarLiberacao: true, estornarLiberacao: false },
+  acoes: { conferir: true, devolver: false, devolucaoPorFora: false, registrarLiberacao: true, estornarLiberacao: false, registrarTaxaPerdida: false },
 };
 beforeEach(() => {
   vi.clearAllMocks();

@@ -102,13 +102,78 @@ describe("gerar o Pix (M8.2a)", () => {
     expect(c.provedor.todas().filter((o) => o.referencia === perdida.referencia)).toHaveLength(1);
   });
 
-  it("pedido que não chegou ao provedor (sem conexão, chave recusada): a tentativa é apagada e não conta no teto", async () => {
-    const { cotacaoId } = await c.segurar();
+  it("pedido que não chegou ao provedor (sem conexão, chave recusada): a tentativa é apagada, não conta no teto e o prazo provisório das datas volta ao que era", async () => {
+    const { cotacaoId, reservaId } = await c.segurar();
+    const antes = (await c.cotacao(cotacaoId)).holdAte!;
+    const observacao = (await c.reserva(reservaId)).observacoes;
     c.provedor.falhas.criarPix = new ErroProvedor("indisponivel", "Não deu para falar com o Mercado Pago.");
-    expect(await gerarPix(db, c.org, cotacaoId, AGORA, c.provedor)).toMatchObject({ ok: false, codigo: "provedor" });
+    // Clicando várias vezes com o Mercado Pago fora, as datas não ficam presas além do prazo original.
+    for (const m of [0, 5, 10]) expect(await gerarPix(db, c.org, cotacaoId, minutos(m), c.provedor)).toMatchObject({ ok: false, codigo: "provedor" });
     expect(await db.select().from(pagamentos).where(eq(pagamentos.cotacaoId, cotacaoId))).toEqual([]);
+    expect((await c.cotacao(cotacaoId)).holdAte?.toISOString()).toBe(antes.toISOString());
+    expect((await c.reserva(reservaId)).observacoes).toBe(observacao);
     c.provedor.falhas.criarPix = null;
-    expect((await gerarPix(db, c.org, cotacaoId, minutos(1), c.provedor)).ok).toBe(true);
+    expect((await gerarPix(db, c.org, cotacaoId, minutos(11), c.provedor)).ok).toBe(true);
+  });
+
+  it("teto antes de cancelar: com 3 Pix gerados, pedir outro não cancela o terceiro, ainda pagável", async () => {
+    const { cotacaoId } = await c.segurar();
+    for (const [gerar, vencer] of [[0, 31], [31, 62]]) {
+      const r = await gerarPix(db, c.org, cotacaoId, minutos(gerar), c.provedor);
+      if (!r.ok) throw new Error(r.erro);
+      c.provedor.expirar((await c.tentativa(r.pagamentoId)).idProvedor!);
+      await conferirTentativa(db, c.org, r.pagamentoId, c.provedor, minutos(vencer), { origem: "rotina", forcar: true });
+    }
+    const terceiro = await gerarPix(db, c.org, cotacaoId, minutos(62), c.provedor);
+    if (!terceiro.ok) throw new Error(terceiro.erro);
+    const t3 = await c.tentativa(terceiro.pagamentoId);
+    // A menos de um minuto de vencer (não é mais mostrado de novo), o hóspede pede outro: teto, sem cancelar.
+    const quase = new Date(t3.pixExpiraEm!.getTime() - 30_000);
+    expect(await gerarPix(db, c.org, cotacaoId, quase, c.provedor)).toMatchObject({ ok: false, codigo: "limite" });
+    expect(c.provedor.chamadas.some((x) => x.metodo === "cancelar" && x.id === t3.idProvedor)).toBe(false);
+    expect((await c.tentativa(t3.id)).situacao).toBe("pendente");
+  });
+
+  it("Pix marcado como real (live_mode) no teste: cancelado na hora, a resposta é de falha (nunca ok) e as datas não ficam presas a ele", async () => {
+    const { cotacaoId } = await c.segurar();
+    const antes = (await c.cotacao(cotacaoId)).holdAte!;
+    c.provedor.aoVivo = true;
+    const r = await gerarPix(db, c.org, cotacaoId, AGORA, c.provedor);
+    expect(r).toMatchObject({ ok: false, codigo: "ao_vivo" });
+    const [p] = await db.select().from(pagamentos).where(eq(pagamentos.cotacaoId, cotacaoId));
+    expect(p).toMatchObject({ situacao: "cancelado", aoVivo: true, pixCopiaECola: null });
+    expect(p.avisos).toContain("ao_vivo");
+    expect(c.provedor.chamadas.some((x) => x.metodo === "cancelar" && x.id === p.idProvedor)).toBe(true);
+    expect((await c.cotacao(cotacaoId)).holdAte?.toISOString()).toBe(antes.toISOString());
+  });
+
+  it("trava não obtida (impasse 40P01 ou tempo-limite) na criação, na conferência inicial ou depois de cancelar: 'ocupado', nada pela metade", async () => {
+    const impasse = () => Object.assign(new Error("deadlock detected"), { code: "40P01" });
+    /** O banco, com a n-ésima transação abortada por impasse (como o Postgres faz). */
+    const falhandoNa = (n: number): typeof db => {
+      let i = 0;
+      return new Proxy(db, {
+        get(alvo, k, r) {
+          if (k === "transaction") return (...a: Parameters<typeof db.transaction>) => (++i === n ? Promise.reject(impasse()) : alvo.transaction(...a));
+          return Reflect.get(alvo, k, r);
+        },
+      });
+    };
+    const { cotacaoId } = await c.segurar();
+    // Fase 1 (a primeira transação).
+    expect(await gerarPix(falhandoNa(1), c.org, cotacaoId, AGORA, c.provedor)).toMatchObject({ ok: false, codigo: "ocupado" });
+    expect(await db.select().from(pagamentos).where(eq(pagamentos.cotacaoId, cotacaoId))).toEqual([]);
+    // Fase 3: o Pix foi criado no provedor; a tentativa fica "criando" e a próxima conferência acha pela referência.
+    expect(await gerarPix(falhandoNa(2), c.org, cotacaoId, AGORA, c.provedor)).toMatchObject({ ok: false, codigo: "ocupado" });
+    const [criando] = await db.select().from(pagamentos).where(eq(pagamentos.cotacaoId, cotacaoId));
+    expect(criando).toMatchObject({ situacao: "criando", idProvedor: null });
+    // Conferência inicial da que ficou no ar.
+    expect(await gerarPix(falhandoNa(1), c.org, cotacaoId, minutos(1), c.provedor)).toMatchObject({ ok: false, codigo: "ocupado" });
+    expect(await gerarPix(db, c.org, cotacaoId, minutos(1), c.provedor)).toEqual({ ok: true, pagamentoId: criando.id, reaproveitado: true });
+    expect(c.provedor.chamadas.filter((x) => x.metodo === "criarPix")).toHaveLength(1);
+    // Depois de cancelar o anterior (perto de vencer), a releitura com trava ocupada.
+    expect(await gerarPix(falhandoNa(2), c.org, cotacaoId, minutos(29.5), c.provedor)).toMatchObject({ ok: false, codigo: "ocupado" });
+    expect(c.provedor.chamadas.filter((x) => x.metodo === "criarPix")).toHaveLength(1);
   });
 
   it("recusas: cotação não segurada, prazo vencido, a confirmar, outra organização; e o prazo provisório cobre a chamada", async () => {

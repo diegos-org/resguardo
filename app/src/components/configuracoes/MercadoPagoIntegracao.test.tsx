@@ -43,6 +43,9 @@ it("conta que não é de teste, desligado com o motivo e o ambiente inválido", 
   expect(renderToStaticMarkup(<MercadoPagoIntegracao mp={mp({ contaDeTeste: false })} env={env({})} />)).toContain("NÃO é de teste");
   const desligado = renderToStaticMarkup(<MercadoPagoIntegracao mp={mp({ situacao: "desligado", motivo: "Falta configurar MERCADOPAGO_ACCESS_TOKEN.", contaDeTeste: null })} env={env({})} />);
   expect(desligado).toContain("Desligado: Falta configurar MERCADOPAGO_ACCESS_TOKEN.");
+  const producao = renderToStaticMarkup(<MercadoPagoIntegracao mp={mp({ situacao: "desligado", motivo: "Falta configurar MERCADOPAGO_ACCESS_TOKEN.", contaDeTeste: null })} env={env({ VERCEL_ENV: "production" })} />);
+  expect(producao).toContain("Deploy de produção: o teste do pagamento roda nas prévias");
+  expect(producao).not.toContain("Falta configurar");
   expect(textoAmbiente(env({ MERCADOPAGO_AMBIENTE: "prod" }))).toBe("valor inválido em MERCADOPAGO_AMBIENTE (desligado) · computador de desenvolvimento");
   expect(textoAmbiente(env({ MERCADOPAGO_AMBIENTE: "producao", VERCEL_ENV: "production" }))).toBe("produção (travado nesta fase) · deploy de produção");
 });

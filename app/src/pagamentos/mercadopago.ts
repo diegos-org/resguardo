@@ -146,6 +146,8 @@ export function mensagemRecusa(motivos: (string | null | undefined)[]): string {
 }
 
 const STATUS_DEVOLUCAO_CONFIRMADA = new Set(["processed", "approved"]);
+/** Devolução que comprovadamente não aconteceu (não conta como "em andamento"). */
+const STATUS_DEVOLUCAO_FALHA = new Set(["failed", "rejected", "canceled", "cancelled"]);
 
 const formaDe = (pm: Obj | null): FormaPagamento | null => {
   const tipo = codigo(pm?.type);
@@ -168,6 +170,8 @@ const linkSeguro = (v: unknown): string | null => {
  * Order da API → `Cobranca`. null quando não dá para ler o essencial (id ou total_amount).
  * `devolvido` soma só devoluções conhecidas e confirmadas (status processed — o único
  * documentado — ou approved, dos tipos do SDK); o GET da order nem documenta refunds[].
+ * `devolucaoEmAndamento`: alguma devolução que não é confirmada nem comprovadamente falha
+ * (in_process, pending ou situação desconhecida). `valorTransacao` = amount do pagamento.
  */
 export function cobrancaDaOrder(dados: unknown): Cobranca | null {
   if (!obj(dados) || !idProvedorValido(dados.id)) return null;
@@ -178,8 +182,15 @@ export function cobrancaDaOrder(dados: unknown): Cobranca | null {
   const pm = pagamento && obj(pagamento.payment_method) ? pagamento.payment_method : null;
   const forma = formaDe(pm);
   let devolvido = 0;
+  let devolucaoEmAndamento = false;
   for (const r of lista(transacoes.refunds)) {
-    if (!obj(r) || !STATUS_DEVOLUCAO_CONFIRMADA.has(codigo(r.status) ?? "")) continue;
+    if (!obj(r)) continue;
+    const status = codigo(r.status) ?? "";
+    // Devolução que não é confirmada nem comprovadamente falha (in_process, pending, status estranho): em andamento.
+    if (!STATUS_DEVOLUCAO_CONFIRMADA.has(status)) {
+      if (!STATUS_DEVOLUCAO_FALHA.has(status)) devolucaoEmAndamento = true;
+      continue;
+    }
     devolvido += valorApiParaCentavos(r.amount) ?? 0;
   }
   const parcelas = pm && Number.isInteger(pm.installments) && (pm.installments as number) >= 1 && (pm.installments as number) <= 36 ? (pm.installments as number) : null;
@@ -192,8 +203,10 @@ export function cobrancaDaOrder(dados: unknown): Cobranca | null {
     detalhe: detalheDaOrder(dados, pagamento),
     forma,
     valor,
+    valorTransacao: pagamento ? valorApiParaCentavos(pagamento.amount) : null,
     pago: valorApiParaCentavos(dados.total_paid_amount),
     devolvido,
+    devolucaoEmAndamento,
     parcelas: forma === "pix" ? null : parcelas,
     idTransacao: pagamento && idProvedorValido(pagamento.id) ? pagamento.id : null,
     aoVivo: typeof dados.live_mode === "boolean" ? dados.live_mode : null,

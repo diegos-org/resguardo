@@ -1511,7 +1511,7 @@ export const devolucoesPagamento = pgTable(
     situacao: text("situacao").$type<SituacaoDevolucao>().notNull().default("pedida"),
     /** Pedidos enviados ao provedor; cada um com chave nova (`chaveAtual`, gravada antes). */
     tentativas: integer("tentativas").notNull().default(0),
-    /** Pedidos recusados ou sem resposta: depois de 3, a devolução fica recusada (aviso). */
+    /** Pedidos recusados pelo provedor (resposta incerta não conta): depois de 3, relida a order, a devolução fica recusada (aviso). */
     falhas: integer("falhas").notNull().default(0),
     chaveAtual: text("chave_atual"),
     proximaTentativaEm: timestamp("proxima_tentativa_em", { withTimezone: true }),
@@ -1520,7 +1520,7 @@ export const devolucoesPagamento = pgTable(
     porForaData: date("por_fora_data", { mode: "string" }),
     porForaValor: integer("por_fora_valor"),
     porForaNota: text("por_fora_nota").notNull().default(""),
-    /** Taxa que o provedor não devolveu (valor informado por ele); null = ainda não informado. */
+    /** Taxa que o provedor não devolveu (valor informado pela equipe, conferido no Mercado Pago); null = ainda não informado. */
     taxaPerdida: integer("taxa_perdida"),
     despesaLancamentoId: uuid("despesa_lancamento_id").references(() => lancamentos.id),
     autorId: uuid("autor_id").references(() => usuarios.id, { onDelete: "set null" }),

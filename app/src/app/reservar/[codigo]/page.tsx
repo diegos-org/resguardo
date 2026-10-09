@@ -38,9 +38,10 @@ export default async function PaginaCotacao({ params }: PageProps<"/reservar/[co
   const vistaPagamento = await vistaDoPagamento(db, organizacaoId, c.id, agora, { comAutorizacao: autorizado, gate: async () => gate });
   const pagamento = vistaPagamento && vistaPagamento.estado !== "sem_pagamento" ? vistaPagamento : null;
   // Sem pagamento em curso: o texto "nenhum pagamento é feito no site" depende de o Pix ser oferecido para esta
-  // estadia. Cotação segurada sem "pagar" = a oferta já disse que não (segue pela conversa).
+  // estadia. Cotação segurada sem "pagar" = a oferta já disse que não (segue pela conversa); reserva já confirmada
+  // pela equipe = nada mais a pagar no site.
   const pagamentoNoSite =
-    !pagamento && vista.estado !== "segurada" && !(vista.estado === "aberta" && vista.mudou)
+    !pagamento && vista.estado !== "segurada" && vista.estado !== "convertida" && !(vista.estado === "aberta" && vista.mudou)
       ? await pixPossivel(db, organizacaoId, { imovel: { id: c.imovelId }, checkin: c.checkin, checkout: c.checkout, situacao: c.situacao, total: c.total }, gate)
       : false;
   const ambienteTeste = gate.ok || (pagamento?.ambienteTeste ?? false);

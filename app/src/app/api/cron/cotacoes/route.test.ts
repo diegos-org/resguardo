@@ -7,7 +7,7 @@ vi.mock("@/sistema/automacoes", () => ({ registrarExecucao: m.registrar }));
 import { GET } from "./route";
 const req = (token?: string) => new Request("https://example.com/api/cron/cotacoes", { headers: token ? { authorization: `Bearer ${token}` } : {} });
 const holds = { expiradas: 2, convertidas: 1, canceladas: 0, removidas: 3 };
-const pagamentos = { conferidas: 4, mudaram: 1, devolucoes: 0, canceladas: 0, falhas: 1, eventosApagados: 0 };
+const pagamentos = { conferidas: 4, mudaram: 1, devolucoes: 0, canceladas: 0, falhas: 1 };
 const provedor = { nome: "falso" };
 let resumos: string[];
 beforeEach(() => {
@@ -49,6 +49,13 @@ it("com o provedor de conferência: confere os pagamentos e vence os holds de to
   expect(m.rotina).toHaveBeenCalledWith({ banco: true }, provedor, expect.any(Date));
   expect(m.registrar).toHaveBeenCalledWith({ banco: true }, "pedidos-site", expect.any(Function));
   expect(resumos[0]).toBe("Pagamentos: 4 conferido(s), 1 com mudança, 0 devolução(ões) confirmada(s), 0 Pix cancelado(s), 1 falha(s) · Pedidos: 2 vencido(s), 1 confirmado(s), 0 cancelado(s)");
+});
+
+it("hold que não deu para fechar aparece no resumo (a rotina segue com os outros)", async () => {
+  m.gate.mockResolvedValue({ ok: false, motivo: "so_nas_previas", texto: "nas prévias" });
+  m.rotina.mockResolvedValue({ pagamentos: null, holds: { ...holds, falhas: 1 }, eventosApagados: 0 });
+  await GET(req("cron-teste"));
+  expect(resumos[0]).toContain("Pedidos: 2 vencido(s), 1 confirmado(s), 0 cancelado(s), 1 não fechado(s) nesta volta");
 });
 
 it("sem provedor (deploy de produção): só vence os holds", async () => {

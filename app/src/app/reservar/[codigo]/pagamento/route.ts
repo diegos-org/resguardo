@@ -5,7 +5,7 @@
 import type { NextRequest } from "next/server";
 import { origemDoPedido } from "@/acesso/senha";
 import { getDb } from "@/db/client";
-import { COOKIE_CHECKOUT } from "@/pagamentos/autorizacao";
+import { nomeDoCookieDoPedido } from "@/site/checkout";
 import { responderPagamento } from "@/site/pagamento";
 import { organizacaoDoSite } from "@/site/site";
 
@@ -18,5 +18,5 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/reservar/[codigo
   } catch {
     // Código malformado: a conferência do formato recusa.
   }
-  return responderPagamento(db, bruto, { organizacao: () => organizacaoDoSite(db), token: req.cookies.get(COOKIE_CHECKOUT)?.value, origem: origemDoPedido(req.headers) });
+  return responderPagamento(db, bruto, { organizacao: () => organizacaoDoSite(db), token: (cotacaoId) => req.cookies.get(nomeDoCookieDoPedido(cotacaoId))?.value, origem: origemDoPedido(req.headers) });
 }

@@ -70,6 +70,13 @@ describe("Mercado Pago em Serviços e Integrações (M8.2a): a mesma situação 
     expect(servicoMercadoPago(mp({ situacao: "desligado", motivo: "MERCADOPAGO_AMBIENTE com valor inesperado: use teste ou producao.", contaDeTeste: null }), { MERCADOPAGO_AMBIENTE: "prod" } as unknown as NodeJS.ProcessEnv).situacao).toBe("falha");
     expect(servicoMercadoPago(mp({ situacao: "so_nas_previas", contaDeTeste: null }), vazio).detalhe).toContain("roda nas prévias");
     expect(servicoMercadoPago(mp({ situacao: "producao_travada", contaDeTeste: null }), vazio).detalhe).toContain("travado");
+    // No deploy de produção, sem as chaves (que ficam só em Preview): é o esperado, não "falta configurar".
+    const producao = { VERCEL_ENV: "production" } as unknown as NodeJS.ProcessEnv;
+    expect(servicoMercadoPago(mp({ situacao: "desligado", motivo: "Falta configurar MERCADOPAGO_ACCESS_TOKEN e MERCADOPAGO_PUBLIC_KEY.", contaDeTeste: null }), producao)).toMatchObject({
+      situacao: "configurado",
+      detalhe: expect.stringContaining("o teste do pagamento roda nas prévias"),
+    });
+    expect(servicoMercadoPago(mp({ situacao: "desligado", motivo: "x", contaDeTeste: null }), { VERCEL_ENV: "production", MERCADOPAGO_AMBIENTE: "prod" } as unknown as NodeJS.ProcessEnv).situacao).toBe("falha");
   });
   it("situacaoServicos usa a situação lida; sem ela, diz que não foi conferida (nunca 'planejado')", () => {
     expect(situacaoServicos(vazio, null, mp()).find((x) => x.nome === NOME_MERCADO_PAGO)?.situacao).toBe("ok");

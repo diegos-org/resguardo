@@ -7,9 +7,13 @@
  * - aprovadas ainda sem taxa ou sem liberação (só a que confirmou a reserva lança recebimento);
  * - devoluções pedidas cuja próxima tentativa chegou (relê a order antes; chave nova a cada pedido);
  * - Pix pendentes que sobraram numa cotação já confirmada (cancelados no provedor);
- * - uma vez por dia, os pagamentos com desfecho `reserva` (e os aprovados sem reserva à espera da devolução) dos
- *   últimos 180 dias: devolução ou contestação feita por fora vira aviso, nunca estorno automático;
- * - limpeza dos avisos com mais de 90 dias.
+ * - uma vez por dia, os pagamentos dos últimos 180 dias com desfecho (reserva, devolução ou devolução por fora) e
+ *   os aprovados sem reserva à espera da devolução: devolução ou contestação feita por fora (ou devolução em dobro)
+ *   vira aviso, nunca estorno automático.
+ *
+ * O cron da Vercel só roda no deploy de produção, onde o pagamento fica desligado: no teste (prévias), tudo isto
+ * roda pelo "Conferir agora" do painel (e a página do hóspede confere o próprio Pix). A limpeza dos avisos com mais
+ * de 90 dias roda na rotina do site, em qualquer ambiente (fora desta função, que o painel também chama).
  */
 import { and, eq, gte, inArray, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { devolucoesPagamento, pagamentos } from "@/db/schema";
@@ -26,11 +30,11 @@ export const RELER_RESERVA_A_CADA_MS = 24 * 3_600_000;
 /** Aprovado há mais de um dia à espera da taxa ou da liberação: relido a cada 6 h. */
 export const ESPERA_LIBERACAO_MS = 6 * 3_600_000;
 
-export type ResumoConferencia = { conferidas: number; mudaram: number; devolucoes: number; canceladas: number; falhas: number; eventosApagados: number };
+export type ResumoConferencia = { conferidas: number; mudaram: number; devolucoes: number; canceladas: number; falhas: number };
 
 /** Confere o que está pendente. `organizacaoId` null = todas as empresas (rotina). */
 export async function conferirPendentes(db: Db, organizacaoId: string | null, provedor: ProvedorPagamento, agora: Date = new Date()): Promise<ResumoConferencia> {
-  const resumo: ResumoConferencia = { conferidas: 0, mudaram: 0, devolucoes: 0, canceladas: 0, falhas: 0, eventosApagados: 0 };
+  const resumo: ResumoConferencia = { conferidas: 0, mudaram: 0, devolucoes: 0, canceladas: 0, falhas: 0 };
   const daOrg = organizacaoId ? eq(pagamentos.organizacaoId, organizacaoId) : undefined;
   const alvos = await db
     .select({ id: pagamentos.id, organizacaoId: pagamentos.organizacaoId })
@@ -50,11 +54,14 @@ export async function conferirPendentes(db: Db, organizacaoId: string | null, pr
               lt(pagamentos.consultadoEm, new Date(agora.getTime() - ESPERA_LIBERACAO_MS)),
             ),
           ),
-          sql`${pagamentos.avisos} @> '["taxa_perdida_desconhecida"]'::jsonb`,
           and(
-            // O que confirmou a reserva, e o aprovado sem reserva à espera da devolução (devolvido pelo painel do
-            // Mercado Pago, por exemplo): relidos uma vez por dia.
-            or(eq(pagamentos.desfecho, "reserva"), and(isNull(pagamentos.desfecho), inArray(pagamentos.situacao, ["aprovado", "devolvido_parcial"]))),
+            // O que confirmou a reserva, o que já foi devolvido (pelo Mercado Pago ou por fora: devolução em dobro) e o
+            // aprovado sem reserva à espera da devolução (devolvido pelo painel do Mercado Pago, por exemplo): relidos
+            // uma vez por dia.
+            or(
+              inArray(pagamentos.desfecho, ["reserva", "devolucao", "por_fora"]),
+              and(isNull(pagamentos.desfecho), inArray(pagamentos.situacao, ["aprovado", "devolvido_parcial", "contestado"])),
+            ),
             gte(pagamentos.criadoEm, new Date(agora.getTime() - RELER_RESERVA_DIAS * 86_400_000)),
             or(isNull(pagamentos.consultadoEm), lt(pagamentos.consultadoEm, new Date(agora.getTime() - RELER_RESERVA_A_CADA_MS))),
           ),
@@ -113,16 +120,17 @@ export async function conferirPendentes(db: Db, organizacaoId: string | null, pr
       resumo.falhas++;
     }
   }
-  resumo.eventosApagados = await apagarEventosAntigos(db, agora);
   return resumo;
 }
 
 /**
  * A rotina do site (a de holds, a cada 10 min): primeiro confere os pagamentos e só depois vence os holds, para
- * nunca vencer um pedido cujo Pix já foi pago. Sem provedor (pagamento desligado), só vence os holds — a carência
- * de um pagamento em andamento continua valendo.
+ * nunca vencer um pedido cujo Pix já foi pago. Sem provedor (pagamento desligado, como no deploy de produção), só
+ * vence os holds — a carência de um pagamento em andamento continua valendo. Em qualquer caso, apaga os avisos do
+ * Mercado Pago com mais de 90 dias (o webhook grava no deploy de produção).
  */
-export async function rotinaDoSite(db: Db, provedor: ProvedorPagamento | null, agora: Date = new Date()): Promise<{ pagamentos: ResumoConferencia | null; holds: ResumoExpiracao }> {
+export async function rotinaDoSite(db: Db, provedor: ProvedorPagamento | null, agora: Date = new Date()): Promise<{ pagamentos: ResumoConferencia | null; holds: ResumoExpiracao; eventosApagados: number }> {
   const pagamentos = provedor ? await conferirPendentes(db, null, provedor, agora) : null;
-  return { pagamentos, holds: await expirarHoldsVencidos(db, null, agora) };
+  const holds = await expirarHoldsVencidos(db, null, agora);
+  return { pagamentos, holds, eventosApagados: await apagarEventosAntigos(db, agora) };
 }

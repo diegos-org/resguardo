@@ -27,6 +27,17 @@ import type { Pagamento, Travado } from "./travas";
 
 export type Decisao = { desfecho: "reserva" | null; desfechoMotivo: string | null; motivoSemReserva: string | null; confirmou: boolean; avisos: string[] };
 
+/**
+ * O valor aprovado é o total da cotação? O que enviamos (total_amount), o valor da transação de pagamento (precisa vir
+ * na order: sem ele, não se confirma) e o total pago quando vier. No cartão, o pago pode passar do total pelos juros
+ * das parcelas, que são do hóspede (M8.2b); no Pix, precisa ser igual.
+ */
+function valorConfere(c: Cobranca | null, p: Pagamento, total: number): boolean {
+  if (p.valor !== total || !c) return false;
+  if (c.valor !== total || c.valorTransacao !== total) return false;
+  return c.pago === null || c.pago === total || (c.forma === "cartao" && c.pago > total);
+}
+
 const semReserva = (m: MotivoSemReserva, detalhe?: string | null): Decisao => ({ desfecho: null, desfechoMotivo: null, motivoSemReserva: detalhe ? `${m}:${detalhe}` : m, confirmou: false, avisos: [] });
 
 export async function decidirAprovacao(tx: Db, organizacaoId: string, t: Travado, p: Pagamento, c: Cobranca | null, fin: { taxa: number | null; liquido: number | null }, agora: Date): Promise<Decisao> {
@@ -34,8 +45,7 @@ export async function decidirAprovacao(tx: Db, organizacaoId: string, t: Travado
   const cot = t.cotacao;
   // Dinheiro real no ambiente de teste: nunca confirma uma reserva com ele.
   if (p.aoVivo === true || c?.aoVivo === true) return semReserva("ao_vivo");
-  // Valor = o que enviamos (total_amount); o pago pelo hóspede (com juros, no cartão) não entra aqui.
-  if ((c?.valor ?? p.valor) !== cot.total || p.valor !== cot.total) return semReserva("valor_divergente");
+  if (!valorConfere(c, p, cot.total)) return semReserva("valor_divergente");
   if (t.tentativas.some((x) => x.id !== p.id && x.desfecho === "reserva")) return semReserva("outra_tentativa");
 
   const confirmar = async (tardio: boolean): Promise<Decisao> => {

@@ -6,7 +6,10 @@
  *   travado (a parte (a) NÃO cobra; liberar é código num item futuro, nunca uma variável só);
  *   qualquer outro valor = configuração inválida (desliga).
  * - Deploy de produção da Vercel (VERCEL_ENV=production): o teste nunca roda ali, porque o banco
- *   de produção tem a operação real; o teste é nas prévias (banco separado).
+ *   de produção tem a operação real; o teste é nas prévias (banco separado). Só rodam o teste as
+ *   prévias (VERCEL_ENV=preview), o `vercel dev` (development) e o computador de desenvolvimento
+ *   (sem VERCEL_ENV e NODE_ENV diferente de production): um `next start` ou script fora da Vercel
+ *   com NODE_ENV=production, ou um VERCEL_ENV inesperado, conta como produção.
  * - MERCADOPAGO_ACCESS_TOKEN e MERCADOPAGO_PUBLIC_KEY: as duas obrigatórias.
  * - MERCADOPAGO_WEBHOOK_SECRET: opcional aqui (sem ela, nenhum aviso é aceito).
  *
@@ -37,6 +40,13 @@ export function ambienteMercadoPago(valor: string | undefined): AmbienteMercadoP
 const chaveLegivel = (v: string) => /^[\x21-\x7E]{1,512}$/.test(v);
 const ler = (v: string | undefined) => v?.trim() || null;
 
+/** Só as prévias da Vercel, o `vercel dev` e o computador de desenvolvimento rodam o teste (deny-by-default). */
+function ambienteDeTeste(env: NodeJS.ProcessEnv): boolean {
+  const vercel = env.VERCEL_ENV?.trim();
+  if (vercel) return vercel === "preview" || vercel === "development";
+  return env.NODE_ENV !== "production";
+}
+
 export function estadoPagamentoDoAmbiente(env: NodeJS.ProcessEnv = process.env): EstadoPagamento {
   const ambiente = ambienteMercadoPago(env.MERCADOPAGO_AMBIENTE);
   // Nunca repetir o valor recebido: pode ser uma chave colada na variável errada.
@@ -48,7 +58,7 @@ export function estadoPagamentoDoAmbiente(env: NodeJS.ProcessEnv = process.env):
   if (!chaveLegivel(token!)) return { situacao: "desligado", motivo: "MERCADOPAGO_ACCESS_TOKEN tem espaços ou caracteres inválidos: cole só a chave, numa linha." };
   if (!chaveLegivel(publica!)) return { situacao: "desligado", motivo: "MERCADOPAGO_PUBLIC_KEY tem espaços ou caracteres inválidos: cole só a chave, numa linha." };
   if (ambiente === "producao") return { situacao: "producao_travada" };
-  if (env.VERCEL_ENV === "production") return { situacao: "so_nas_previas" };
+  if (!ambienteDeTeste(env)) return { situacao: "so_nas_previas" };
   return { situacao: "teste", chavePublica: publica!, segredoWebhook: ler(env.MERCADOPAGO_WEBHOOK_SECRET) };
 }
 
