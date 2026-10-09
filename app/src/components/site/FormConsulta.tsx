@@ -44,6 +44,7 @@ export function FormConsulta({
   hoje,
   canal,
   variante = "padrao",
+  comPagamento = false,
 }: {
   imoveis: ImovelPublico[];
   valores: Partial<PedidoConsulta>;
@@ -51,6 +52,8 @@ export function FormConsulta({
   hoje: string;
   canal: CanalContato;
   variante?: "padrao" | "busca" | "lateral";
+  /** O site cobra por Pix (M8.2a): a dica deixa de dizer que nenhum pagamento é feito no site. */
+  comPagamento?: boolean;
 }) {
   const erro = (k: keyof PedidoConsulta) =>
     erros[k] ? (
@@ -62,7 +65,7 @@ export function FormConsulta({
   const pedidas = /^\d+$/.test(valores.hospedes ?? "") ? Number(valores.hospedes) : 0;
   const pessoasEscolhidas = String(pessoas.includes(pedidas) ? pedidas : Math.min(2, pessoas.length));
   const classe = variante === "busca" ? styles.buscaForm : `${styles.formulario} ${styles.duasColunas}`;
-  const dica = variante === "busca" ? "Escolha o lugar e as datas. A disponibilidade e o valor aparecem na próxima tela, antes de qualquer reserva." : `${TEXTO_CANAL[canal ?? "nenhum"]} Nenhum pagamento é feito aqui.`;
+  const dica = variante === "busca" ? "Escolha o lugar e as datas. A disponibilidade e o valor aparecem na próxima tela, antes de qualquer reserva." : `${TEXTO_CANAL[canal ?? "nenhum"]} ${comPagamento ? "Nada é cobrado na consulta." : "Nenhum pagamento é feito aqui."}`;
   return (
     <form action="/consulta" method="get" className={classe} aria-label="Consultar disponibilidade">
       {variante === "padrao" && <strong>Consultar disponibilidade</strong>}

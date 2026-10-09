@@ -15,6 +15,7 @@ import { criarCotacaoAcao } from "@/site/acoes";
 import { lugaresDoSite } from "@/site/bairro";
 import { podeSegurar } from "@/site/cotacoes";
 import { consultarDisponibilidade } from "@/site/disponibilidade";
+import { pixPossivel, portaoDoSite } from "@/site/pagamento";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
 import { hojeMaisCedo, imovelDoSite, imoveisDoSite, lerPedidoConsulta, montarConsulta } from "@/site/site";
 
@@ -39,6 +40,13 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
   // Com datas no link, mostra disponibilidade e valor reais (M7.2) antes do formulário.
   const consulta = { ...pedido, imovel: imovel.codigo };
   const disponibilidade = pedido.entrada && pedido.saida && montarConsulta(consulta, imovel, hoje).ok ? await consultarDisponibilidade(db, conteudo.organizacaoId, consulta) : null;
+  // Pagamento no site (M8.2a): os textos "nenhum pagamento é feito aqui" dependem de o Pix estar oferecido.
+  const gate = await portaoDoSite(db, conteudo.organizacaoId);
+  // Estadia que dá para segurar (null = o site não oferece segurar estas datas).
+  const segurar = disponibilidade && podeSegurar(disponibilidade) ? disponibilidade : null;
+  const comPix = segurar
+    ? await pixPossivel(db, conteudo.organizacaoId, { imovel: { codigo: imovel.codigo }, checkin: consulta.entrada, checkout: consulta.saida, situacao: segurar.situacao, total: segurar.cotacao?.total ?? null }, gate)
+    : false;
   const regras = [
     `Entrada a partir das ${imovel.checkinAPartirDe}`,
     `Saída até as ${imovel.checkoutAte}`,
@@ -84,8 +92,8 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
       )}
       <div className={styles.colunas}>
         <div className={styles.editorial}>
-          {disponibilidade && <Disponibilidade resultado={disponibilidade} entrada={pedido.entrada} saida={pedido.saida} fuso={imovel.fuso} />}
-          {disponibilidade && podeSegurar(disponibilidade) && <SegurarDatas pedido={consulta} aConfirmar={disponibilidade.situacao === "a_confirmar"} acao={criarCotacaoAcao} />}
+          {disponibilidade && <Disponibilidade resultado={disponibilidade} entrada={pedido.entrada} saida={pedido.saida} fuso={imovel.fuso} comPagamento={comPix} />}
+          {segurar && <SegurarDatas pedido={consulta} aConfirmar={segurar.situacao === "a_confirmar"} acao={criarCotacaoAcao} comPagamento={comPix} />}
           {imovel.descricao && <p className={styles.texto}>{imovel.descricao}</p>}
           {imovel.comodidades.length > 0 && (
             <section aria-labelledby="titulo-comodidades">
@@ -127,7 +135,7 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
         <aside id="planejar" className={styles.lateral} aria-labelledby="titulo-planejar">
           <p className={styles.olho}>Planeje sua estadia</p>
           <h2 id="titulo-planejar">Consultar disponibilidade</h2>
-          <FormConsulta imoveis={todos} valores={consulta} hoje={hojeMaisCedo([imovel, ...todos])} canal={canalDeContato(conteudo)} variante="lateral" />
+          <FormConsulta imoveis={todos} valores={consulta} hoje={hojeMaisCedo([imovel, ...todos])} canal={canalDeContato(conteudo)} variante="lateral" comPagamento={gate.ok} />
         </aside>
       </div>
       <BairroAPorta {...bairro} />

@@ -25,6 +25,13 @@ export const AUTOMACOES: readonly Automacao[] = [
   { id: "repasses-periodicos", nome: "Repasses antecipados (quinzenal, semanal, assim que disponível) e e-mail dos repasses pagos", quando: "Todo dia às 8h (nunca no dia do fechamento: o fechamento é o repasse do dia)", situacao: "ativa", item: "M4.10" },
   { id: "repasses-emails", nome: "E-mail dos repasses pagos: envia o que falta e repete a tentativa sem confirmação do provedor", quando: "De hora em hora, aos 30 minutos (a repetição com a mesma chave vale por 23 h)", situacao: "ativa", item: "M4.10" },
   { id: "mensagens-hospede", nome: "Mensagens programadas ao hóspede (e-mail)", quando: "De hora em hora (confirmação, D-2 10h, D-1 14h, D+3 10h)", situacao: "ativa", item: "M9.2" },
+  {
+    id: "pedidos-site",
+    nome: "Pedidos e pagamentos do site: confere os pagamentos e depois vence os pedidos sem pagamento",
+    quando: "A cada 10 minutos (no deploy de produção só vence os pedidos: o teste do pagamento roda nas prévias, com \"Conferir agora\")",
+    situacao: "ativa",
+    item: "M8.2a",
+  },
 ];
 
 export type Execucao = typeof execucoesAutomacao.$inferSelect;
@@ -43,11 +50,15 @@ export async function registrarExecucao(db: Db, nome: string, fn: () => Promise<
   }
 }
 
-/** Última execução de cada automação (por id). */
+/**
+ * Última execução de cada automação (por id). Uma por nome (índice nome + início): a rotina de 10 em 10 minutos não
+ * empurra para fora as que rodam uma vez por mês.
+ */
 export async function ultimasExecucoes(db: Db): Promise<Map<string, Execucao>> {
-  const linhas = await db.select().from(execucoesAutomacao).orderBy(desc(execucoesAutomacao.iniciadoEm)).limit(500);
-  const m = new Map<string, Execucao>();
-  for (const l of linhas) if (!m.has(l.nome)) m.set(l.nome, l);
-  return m;
+  const linhas = await db
+    .selectDistinctOn([execucoesAutomacao.nome])
+    .from(execucoesAutomacao)
+    .orderBy(execucoesAutomacao.nome, desc(execucoesAutomacao.iniciadoEm), desc(execucoesAutomacao.id));
+  return new Map(linhas.map((l) => [l.nome, l]));
 }
 

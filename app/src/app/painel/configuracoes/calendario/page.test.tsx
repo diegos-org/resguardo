@@ -39,4 +39,6 @@ it("admin vê as regras, feriados, eventos, imóveis com vínculo e o sinal da V
   expect(h).toContain("Sinal de escrita na Vercel: <strong>desligado</strong>");
   expect(h).toContain('name="envioImoveis" checked="" value="i103"');
   expect(h).toContain('name="faixa2Pct"');
+  // M8.2a: perto do prazo de "segurar as datas", quanto cada Pix segura.
+  expect(h).toContain("Com o pagamento no site ligado, cada Pix segura as datas por pelo menos 30 minutos (até 3 por cotação, um de cada vez).");
 });

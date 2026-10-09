@@ -7,6 +7,7 @@ import { hojeISO } from "@/lib/datas";
 import { criarCotacaoAcao } from "@/site/acoes";
 import { podeSegurar } from "@/site/cotacoes";
 import { consultarDisponibilidade } from "@/site/disponibilidade";
+import { pixPossivel, portaoDoSite } from "@/site/pagamento";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
 import { hojeMaisCedo, imoveisDoSite, imovelDoSite, lerPedidoConsulta, linkWhatsapp, montarConsulta } from "@/site/site";
 
@@ -31,6 +32,14 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
   const r = enviado ? montarConsulta(pedido, imovel, hoje, disponibilidade && { situacao: disponibilidade.situacao, noites: disponibilidade.noites, total: disponibilidade.cotacao?.total ?? null, desconto: disponibilidade.cotacao?.desconto ?? 0 }) : null;
   // Se a disponibilidade recusar o pedido, a mensagem não é oferecida: vale a conferência mais estrita.
   const prontoParaEnviar = r?.ok === true && disponibilidade?.situacao !== "invalida";
+  // Pagamento no site (M8.2a): os textos "nenhum pagamento é feito aqui" dependem de o Pix estar oferecido.
+  const gate = await portaoDoSite(db, conteudo.organizacaoId);
+  // Estadia que dá para segurar (null = o site não oferece segurar estas datas).
+  const segurar = disponibilidade && podeSegurar(disponibilidade) ? disponibilidade : null;
+  const comPix =
+    segurar && imovel
+      ? await pixPossivel(db, conteudo.organizacaoId, { imovel: { codigo: imovel.codigo }, checkin: pedido.entrada, checkout: pedido.saida, situacao: segurar.situacao, total: segurar.cotacao?.total ?? null }, gate)
+      : false;
   const { textos } = conteudo;
   return (
     <Moldura conteudo={conteudo}>
@@ -48,13 +57,13 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
       )}
       <div className={styles.consultaColunas}>
         <div className={styles.consultaForm}>
-          <FormConsulta imoveis={todos} valores={pedido} erros={r && !r.ok ? r.erros : {}} hoje={hojeMinimo} canal={canalDeContato(conteudo)} />
+          <FormConsulta imoveis={todos} valores={pedido} erros={r && !r.ok ? r.erros : {}} hoje={hojeMinimo} canal={canalDeContato(conteudo)} comPagamento={gate.ok} />
         </div>
         <aside className={styles.resumoViagem} aria-labelledby="titulo-resumo">
           <p className={styles.olho}>Sua estadia, sem surpresas</p>
           <h2 id="titulo-resumo">Resumo da viagem</h2>
           {disponibilidade ? (
-            <Disponibilidade resultado={disponibilidade} entrada={pedido.entrada} saida={pedido.saida} fuso={imovel?.fuso ?? "America/Sao_Paulo"} nivel={3} />
+            <Disponibilidade resultado={disponibilidade} entrada={pedido.entrada} saida={pedido.saida} fuso={imovel?.fuso ?? "America/Sao_Paulo"} nivel={3} comPagamento={comPix} />
           ) : (
             <>
               <p className={styles.texto}>{textos.comoReservar || "Escolha o apartamento, as datas e quantas pessoas."}</p>
@@ -71,11 +80,11 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
                 </dd>
               </dl>
               <p className={styles.miudo} style={{ marginTop: 12 }}>
-                Nada é cobrado nem reservado por aqui.
+                {gate.ok ? "Nada é cobrado nem reservado na consulta." : "Nada é cobrado nem reservado por aqui."}
               </p>
             </>
           )}
-          {disponibilidade && podeSegurar(disponibilidade) && <SegurarDatas pedido={pedido} aConfirmar={disponibilidade.situacao === "a_confirmar"} acao={criarCotacaoAcao} nivel={3} />}
+          {segurar && <SegurarDatas pedido={pedido} aConfirmar={segurar.situacao === "a_confirmar"} acao={criarCotacaoAcao} nivel={3} comPagamento={comPix} />}
           {prontoParaEnviar && r?.ok && (
             <section className={styles.bloco} aria-labelledby="titulo-mensagem">
               <h3 id="titulo-mensagem">Sua mensagem</h3>
@@ -100,7 +109,7 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
                 </p>
               )}
               <p className={styles.miudo} style={{ marginTop: 12 }}>
-                A reserva é confirmada na conversa. Nenhuma reserva ou pagamento é feito aqui.
+                {comPix ? "Pela conversa, a reserva é confirmada pela equipe. Para pagar por Pix aqui no site, segure as datas." : "A reserva é confirmada na conversa. Nenhuma reserva ou pagamento é feito aqui."}
               </p>
             </section>
           )}

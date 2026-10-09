@@ -18,6 +18,8 @@ type Props = {
 };
 
 const dataBr = (d: string) => d.split("-").reverse().join("/");
+/** Recebimento lançado pela liberação do pagamento no site (M8.2a): chave `mercadopago:<tentativa>:recebimento[#N]`. */
+const doPagamentoNoSite = (l: Lancamento) => l.chaveOrigem.startsWith("mercadopago:");
 
 /** Recebimentos da reserva (M4.10): o dinheiro do canal que entrou na empresa; libera a parte do proprietário para repasse. */
 export function Recebimentos({ reservaId, recebimentos, recebido, quemRecebe, editar, hoje, cancelada }: Props) {
@@ -55,14 +57,19 @@ export function Recebimentos({ reservaId, recebimentos, recebido, quemRecebe, ed
                     <td>{l.estado}</td>
                     {editar && (
                       <td>
-                        <form action={estornarRecebimentoAcao} className={styles.linha} style={{ alignItems: "center", margin: 0 }}>
-                          <input type="hidden" name="reservaId" value={reservaId} />
-                          <input type="hidden" name="id" value={l.id} />
-                          <input name="motivo" required maxLength={200} placeholder="motivo" aria-label="Motivo do estorno" style={{ width: 160 }} />
-                          <BotaoConfirmar pergunta="Estornar este recebimento? A parte do proprietário pode deixar de estar disponível." className={styles.pequeno}>
-                            Estornar
-                          </BotaoConfirmar>
-                        </form>
+                        {doPagamentoNoSite(l) ? (
+                          // A liberação do pagamento no site só se estorna pelo quadro dele (e só a registrada à mão).
+                          <span style={{ fontSize: "0.8125rem", color: "var(--scl-texto-2)" }}>pelo quadro &ldquo;Pagamento no site&rdquo;</span>
+                        ) : (
+                          <form action={estornarRecebimentoAcao} className={styles.linha} style={{ alignItems: "center", margin: 0 }}>
+                            <input type="hidden" name="reservaId" value={reservaId} />
+                            <input type="hidden" name="id" value={l.id} />
+                            <input name="motivo" required maxLength={200} placeholder="motivo" aria-label="Motivo do estorno" style={{ width: 160 }} />
+                            <BotaoConfirmar pergunta="Estornar este recebimento? A parte do proprietário pode deixar de estar disponível." className={styles.pequeno}>
+                              Estornar
+                            </BotaoConfirmar>
+                          </form>
+                        )}
                       </td>
                     )}
                   </tr>

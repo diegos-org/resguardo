@@ -12,6 +12,9 @@ import { totaisPorTipo } from "@/financeiro/ledger";
 import { lancamentoDeConferenciaResolvida, reservasQueContam } from "@/portal/posse";
 import type { Imovel } from "@/imoveis/repositorio";
 import { contarPendentes as contarCadastrosPendentes } from "@/marketplace/cadastro";
+import { contaDeTesteConfirmada, estadoPagamentoDoAmbiente, provedorDoAmbiente } from "@/pagamentos/ambiente";
+import { avisosDePagamento } from "@/pagamentos/consultas";
+import type { ProvedorPagamento } from "@/pagamentos/provedor";
 import { contarPedidosNovos } from "@/proprietarios/pedidos-contato";
 import { conflitos } from "@/reservas/regras";
 import { listarBloqueios, listarReservas, type Reserva } from "@/reservas/repositorio";
@@ -32,6 +35,26 @@ export type Dashboard = {
   alertas: Alerta[];
 };
 
+/**
+ * A conta das chaves do Mercado Pago, para o aviso do Início, sem segurar a página: a mesma conferência de
+ * Integrações e das travas (lembrada por alguns minutos), esperada no máximo `esperaMs`; passou disso, ou fora do
+ * ambiente de teste, null (o aviso não aparece — Integrações mostra a situação completa).
+ */
+export async function contaDeTesteParaInicio(o: { env?: NodeJS.ProcessEnv; provedor?: ProvedorPagamento; esperaMs?: number } = {}): Promise<boolean | null> {
+  const env = o.env ?? process.env;
+  const provedor = o.provedor ?? (estadoPagamentoDoAmbiente(env).situacao === "teste" ? provedorDoAmbiente(env) : null);
+  if (!provedor) return null;
+  let relogio: ReturnType<typeof setTimeout> | undefined;
+  const limite = new Promise<null>((r) => {
+    relogio = setTimeout(() => r(null), o.esperaMs ?? 2000);
+  });
+  try {
+    return await Promise.race([contaDeTesteConfirmada(provedor), limite]);
+  } finally {
+    clearTimeout(relogio);
+  }
+}
+
 const somaDias = (d: string, n: number) => new Date(Date.UTC(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10)) + n)).toISOString().slice(0, 10);
 
 export async function carregarDashboard(
@@ -49,6 +72,11 @@ export async function carregarDashboard(
     verRotinas?: boolean;
     /** Quem trata proprietários recebe o aviso dos pedidos de contato e dos cadastros vindos do site. */
     verProprietarios?: boolean;
+    /** Quem lê o financeiro recebe os avisos do pagamento no site (M8.2a), da empresa toda. */
+    verPagamentos?: boolean;
+    /** Conta das chaves do Mercado Pago conferida agora (true/false); null ou ausente = não conferida (sem esse aviso). */
+    contaDeTesteMercadoPago?: boolean | null;
+    agora?: Date;
   },
 ): Promise<Dashboard> {
   const ids = o.imoveis.map((i) => i.id);
@@ -86,6 +114,12 @@ export async function carregarDashboard(
     const [contatos, cadastros] = await Promise.all([contarPedidosNovos(db, organizacaoId), contarCadastrosPendentes(db, organizacaoId)]);
     if (contatos) alertas.push({ nivel: "info", texto: `${contatos} pedido(s) de contato de proprietário esperando resposta.`, link: "/painel/proprietarios/contatos" });
     if (cadastros) alertas.push({ nivel: "info", texto: `${cadastros} cadastro(s) de proprietário pelo site esperando análise.`, link: "/painel/proprietarios/cadastros" });
+  }
+  // Pagamento no site (M8.2a): da empresa toda, sem depender do filtro de imóveis (aprovado sem reserva, devoluções,
+  // liberação vencida, configuração e conta do Mercado Pago, live_mode, dinheiro sem cálculo, datas a fechar nas OTAs).
+  if (o.verPagamentos) {
+    const pagamentos = await avisosDePagamento(db, organizacaoId, o.agora ?? new Date(), { contaDeTeste: o.contaDeTesteMercadoPago ?? null });
+    alertas.push(...pagamentos.alertas);
   }
 
   let financeiro: Financeiro | null = null;

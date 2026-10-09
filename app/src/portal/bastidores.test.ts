@@ -19,6 +19,8 @@ const PASTAS = [
   "app/property",
   "app/reservar",
   "app/consulta",
+  // Rotas públicas do site (calendário da consulta); a da situação do pagamento fica em app/reservar.
+  "app/api/site",
   "components/portal",
   "components/site",
   "portal",

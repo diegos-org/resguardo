@@ -1,0 +1,74 @@
+import { BotaoCopiar } from "@/components/BotaoCopiar";
+import styles from "@/components/formularios.module.css";
+import { ambienteMercadoPago } from "@/pagamentos/ambiente";
+import type { SituacaoMercadoPago } from "@/pagamentos/integracao";
+
+const quando = (d: Date) => d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
+
+const CONEXAO: Record<SituacaoMercadoPago["situacao"], string> = {
+  teste: "Ligado em teste (nenhuma cobrança real)",
+  so_nas_previas: "Chaves configuradas, mas aqui é o deploy de produção: o teste do pagamento roda nas prévias",
+  producao_travada: "Ambiente de produção do Mercado Pago: travado nesta fase (só teste)",
+  desligado: "Desligado",
+};
+
+function contaDeTeste(mp: SituacaoMercadoPago): string {
+  if (mp.situacao !== "teste") return "Não conferida: só é conferida no ambiente de teste, nas prévias.";
+  if (mp.contaDeTeste === true) return "Conferida no Mercado Pago: é uma conta de teste.";
+  if (mp.contaDeTeste === false) return "A conta das chaves NÃO é de teste: nenhuma cobrança é feita até trocar as chaves.";
+  return "Não deu para conferir agora no Mercado Pago: nenhuma cobrança é feita até conferir.";
+}
+
+/** MERCADOPAGO_AMBIENTE e onde o sistema está rodando (o teste só roda fora do deploy de produção). */
+export function textoAmbiente(env: NodeJS.ProcessEnv): string {
+  const a = ambienteMercadoPago(env.MERCADOPAGO_AMBIENTE);
+  const mp = a === "teste" ? "teste" : a === "producao" ? "produção (travado nesta fase)" : "valor inválido em MERCADOPAGO_AMBIENTE (desligado)";
+  const onde = env.VERCEL_ENV === "production" ? "deploy de produção" : env.VERCEL_ENV === "preview" ? "prévia da Vercel" : "computador de desenvolvimento";
+  return `${mp} · ${onde}`;
+}
+
+/**
+ * Integrações → Mercado Pago (M8.2a): a mesma situação que Sistema mostra (`situacaoDoMercadoPago`), em detalhe, e o
+ * endereço fixo do aviso assinado para configurar no painel do Mercado Pago. Nunca mostra chave nem segredo.
+ */
+export function MercadoPagoIntegracao({ mp, env }: { mp: SituacaoMercadoPago; env: NodeJS.ProcessEnv }) {
+  // Fora do deploy de produção (prévia ou computador), o Mercado Pago não alcança este endereço.
+  const naPrevia = env.VERCEL_ENV !== "production";
+  const linhas: [string, string][] = [
+    ["Conexão", mp.motivo ? `${CONEXAO[mp.situacao]}: ${mp.motivo}` : CONEXAO[mp.situacao]],
+    ["Conta de teste", contaDeTeste(mp)],
+    ["Ambiente", textoAmbiente(env)],
+    ["Segredo do webhook", mp.segredoWebhook ? "Configurado (MERCADOPAGO_WEBHOOK_SECRET)" : "Falta MERCADOPAGO_WEBHOOK_SECRET: todo aviso do Mercado Pago é recusado"],
+    ["Último aviso válido", mp.ultimoAvisoValidoEm ? quando(mp.ultimoAvisoValidoEm) : "Nenhum recebido ainda"],
+    ["Assinaturas recusadas hoje", String(mp.assinaturasRecusadasHoje)],
+  ];
+  return (
+    <section aria-label="Mercado Pago" style={{ maxWidth: 820, display: "flex", flexDirection: "column", gap: 8 }}>
+      <h2 style={{ fontSize: "1.25rem", margin: 0 }}>Mercado Pago (pagamento no site)</h2>
+      <dl style={{ display: "grid", gridTemplateColumns: "minmax(160px, max-content) 1fr", gap: "6px 16px", margin: 0 }}>
+        {linhas.map(([k, v]) => (
+          <div key={k} style={{ display: "contents" }}>
+            <dt style={{ color: "var(--scl-texto-2)", fontSize: "0.875rem" }}>{k}</dt>
+            <dd style={{ margin: 0 }}>{v}</dd>
+          </div>
+        ))}
+      </dl>
+      <div className={styles.linha} style={{ alignItems: "center" }}>
+        <span style={{ fontSize: "0.875rem" }}>
+          Endereço do aviso (webhook) para configurar no Mercado Pago: <code>{mp.enderecoWebhook}</code>
+        </span>
+        <BotaoCopiar texto={mp.enderecoWebhook} rotulo="Copiar endereço" className={styles.pequeno} />
+      </div>
+      <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--scl-texto-2)" }}>
+        No painel do Mercado Pago (Suas integrações → Webhooks), use este endereço, marque só o evento &ldquo;Order (Mercado Pago)&rdquo; e copie a
+        assinatura secreta para a variável MERCADOPAGO_WEBHOOK_SECRET na Vercel.
+      </p>
+      {naPrevia && (
+        <p role="note" className={styles.alerta} style={{ margin: 0 }}>
+          O aviso só chega no endereço de produção; aqui use Conferir agora (na reserva, em Financeiro → Pagamentos do site ou em Configurações →
+          Pagamento no site).
+        </p>
+      )}
+    </section>
+  );
+}

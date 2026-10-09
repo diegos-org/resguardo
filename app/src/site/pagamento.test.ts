@@ -1,0 +1,154 @@
+import { eq } from "drizzle-orm";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { cotacoes, imoveis, pagamentos, tentativasLogin } from "@/db/schema";
+import { createTestDb } from "@/db/testing";
+import type { Db } from "@/db/types";
+import { emitirAutorizacao, validadeDaAutorizacao } from "@/pagamentos/autorizacao";
+import { ERROS_LIMITE, LIMITES_PAGAMENTO } from "@/pagamentos/limites";
+import type { PortaoCobranca } from "@/pagamentos/oferta";
+import type { CodigoFalhaPix } from "@/pagamentos/pix";
+import { ErroProvedor } from "@/pagamentos/provedor";
+import { AGORA, type Cenario, EMAIL_HOSPEDE, env, minutos, montarCenario, TOTAL } from "@/pagamentos/testes";
+import { CACHE_PAGAMENTO, MENSAGENS_PIX_HOSPEDE, mensagemSemPix, pixPossivel, portaoDoSite, responderPagamento, vistaDoPagamento } from "./pagamento";
+
+let db: Db, close: () => Promise<void>, c: Cenario;
+beforeAll(async () => { ({ db, close } = await createTestDb()); });
+afterAll(() => close());
+beforeEach(async () => {
+  c = await montarCenario(db);
+  vi.stubEnv("AUTH_SECRET", "segredo-de-teste-ficticio");
+});
+
+const desligado: PortaoCobranca = { ok: false, motivo: "desligado", texto: "desligado" };
+const vista = (cotacaoId: string, quando: Date, comAutorizacao: boolean, gate: PortaoCobranca = c.gate) => vistaDoPagamento(db, c.org, cotacaoId, quando, { comAutorizacao, gate: async () => gate });
+const token = (cotacaoId: string) => emitirAutorizacao(cotacaoId, validadeDaAutorizacao(minutos(30), AGORA));
+const consultar = (codigo: string, o: { token?: string; origem?: string | null; quando?: Date; organizacao?: string | null } = {}) =>
+  responderPagamento(db, codigo, { organizacao: async () => (o.organizacao === undefined ? c.org : o.organizacao), token: o.token, origem: o.origem === undefined ? "203.0.113.50" : o.origem, agora: o.quando ?? minutos(1), env: env(), provedor: c.provedor });
+
+describe("o que a página da cotação mostra do pagamento (M8.2a)", () => {
+  it("'pagar' só com o Pix oferecido (a oferta só é conferida quando decide); QR só com a autorização, já pronto para o navegador", async () => {
+    const s = await c.segurar();
+    expect(await vista(s.cotacaoId, AGORA, true, desligado)).toMatchObject({ estado: "sem_pagamento", holdAte: minutos(30).toISOString() });
+    expect(await vista(s.cotacaoId, AGORA, true)).toMatchObject({ estado: "pagar", pixRestantes: 3, ambienteTeste: true, pix: null });
+    const p = await c.pix(s.cotacaoId);
+    const com = await vista(s.cotacaoId, minutos(1), true);
+    expect(com).toMatchObject({ estado: "pix_aguardando", pix: { imagem: "data:image/png;base64,RkFMU08=", expiraEm: minutos(30).toISOString() } });
+    expect(com?.pix?.copiaECola).toContain(p.idProvedor);
+    expect(com?.pix?.link).toMatch(/^https:\/\//);
+    expect(await vista(s.cotacaoId, minutos(1), false)).toMatchObject({ estado: "pix_aguardando", pix: null });
+    // Nada pessoal, nem com a autorização.
+    expect(JSON.stringify(com)).not.toContain(EMAIL_HOSPEDE);
+    expect(JSON.stringify(com)).not.toContain("Visitante");
+  });
+
+  it("dinheiro sem desfecho nunca aparece como 'sem pagamento' (nem com o pedido vencido): mostra 'conferindo'", async () => {
+    const s = await c.segurar();
+    const base = { organizacaoId: c.org, cotacaoId: s.cotacaoId, reservaId: s.reservaId, imovelId: c.imovel, ambiente: "teste" as const, forma: "pix" as const, valor: TOTAL };
+    await db.insert(pagamentos).values({ ...base, referencia: "scl-antiga", chaveIdempotencia: "antiga", situacao: "pendente", criadoEm: minutos(-10) });
+    await db.insert(pagamentos).values({ ...base, referencia: "scl-nova", chaveIdempotencia: "nova", situacao: "cancelado", criadoEm: minutos(-5) });
+    // Prazo das datas passado: a vista do domínio cairia em "sem pagamento", com dinheiro em andamento.
+    expect(await vista(s.cotacaoId, minutos(60), true)).toMatchObject({ estado: "verificando", dinheiroSemDesfecho: true });
+  });
+
+  it("Pix possível numa consulta ou cotação aberta: travas, situação disponível com valor, imóvel do site e motor sem pendência", async () => {
+    const estadia = { imovel: { codigo: "403" }, checkin: "2026-10-12", checkout: "2026-10-15", situacao: "disponivel", total: TOTAL };
+    expect(await pixPossivel(db, c.org, estadia, c.gate)).toBe(true);
+    expect(await pixPossivel(db, c.org, { ...estadia, imovel: { id: c.imovel } }, c.gate)).toBe(true);
+    expect(await pixPossivel(db, c.org, estadia, desligado)).toBe(false);
+    expect(await pixPossivel(db, c.org, { ...estadia, situacao: "a_confirmar" }, c.gate)).toBe(false);
+    expect(await pixPossivel(db, c.org, { ...estadia, total: null }, c.gate)).toBe(false);
+    // Antes do contrato de gestão (início 2025-01-01): o motor teria pendência.
+    expect(await pixPossivel(db, c.org, { ...estadia, checkin: "2024-12-10", checkout: "2024-12-12" }, c.gate)).toBe(false);
+    // Imóvel sem proprietário nem contrato, e imóvel fora do site.
+    await db.insert(imoveis).values({ organizacaoId: c.org, codigo: "501", nome: "Outro", publico: true, capacidade: 2 });
+    expect(await pixPossivel(db, c.org, { ...estadia, imovel: { codigo: "501" } }, c.gate)).toBe(false);
+    await db.update(imoveis).set({ publico: false }).where(eq(imoveis.id, c.imovel));
+    expect(await pixPossivel(db, c.org, estadia, c.gate)).toBe(false);
+  });
+
+  it("travas do site: sem as chaves, não cobra; com o provedor de teste, cobra", async () => {
+    expect(await portaoDoSite(db, c.org, AGORA, { env: env() })).toMatchObject({ ok: false, motivo: "desligado" });
+    expect(await portaoDoSite(db, c.org, AGORA, { env: env(), provedor: c.provedor })).toMatchObject({ ok: true, ambiente: "teste" });
+  });
+
+  it("mensagens ao hóspede: uma para cada falha do Pix, sem texto do provedor nem motivo interno", () => {
+    const codigos: CodigoFalhaPix[] = ["nao_encontrada", "nao_oferecido", "em_andamento", "ja_pago", "limite", "provedor", "incerto", "recusado", "ocupado"];
+    expect(Object.keys(MENSAGENS_PIX_HOSPEDE).sort()).toEqual([...codigos].sort());
+    for (const m of Object.values(MENSAGENS_PIX_HOSPEDE)) expect(m).not.toMatch(/Configurações|painel|Beds24|contrato|proprietário/i);
+    expect(mensagemSemPix("prazo_vencido")).toBe("O prazo das datas desta cotação acabou.");
+    expect(mensagemSemPix("varios_proprietarios")).toBe(MENSAGENS_PIX_HOSPEDE.nao_oferecido);
+    expect(mensagemSemPix("desligado_no_painel")).toBe(MENSAGENS_PIX_HOSPEDE.nao_oferecido);
+  });
+});
+
+describe("rota que a página consulta enquanto espera (M8.2a)", () => {
+  it("código inválido, site sem organização e cotação inexistente: recusa sem cache e sem dizer nada", async () => {
+    for (const [codigo, o, status] of [
+      ["nada", {}, 400],
+      ["COT-ABCDEFG0", {}, 400],
+      ["COT-ABCDEFGH", { organizacao: null }, 404],
+      ["COT-ABCDEFGH", {}, 404],
+    ] as const) {
+      const r = await consultar(codigo, o);
+      expect(r.status).toBe(status);
+      expect(r.headers.get("Cache-Control")).toBe(CACHE_PAGAMENTO);
+      expect(Object.keys(await r.json())).toEqual(["erro"]);
+    }
+  });
+
+  it("QR só com o cookie do pedido; nada pessoal na resposta; código em minúsculas vale", async () => {
+    const s = await c.segurar();
+    await c.pix(s.cotacaoId);
+    const sem = await consultar(s.codigo);
+    expect(sem.status).toBe(200);
+    expect(sem.headers.get("Cache-Control")).toBe("no-store");
+    expect(await sem.json()).toMatchObject({ estado: "pix_aguardando", pix: null });
+    const outra = await c.segurar({ entrada: "2026-11-02", saida: "2026-11-05", email: "outra@example.com" });
+    // Cookie de outra cotação não autoriza esta.
+    expect(await (await consultar(s.codigo, { token: token(outra.cotacaoId) })).json()).toMatchObject({ pix: null });
+    const com = await consultar(s.codigo.toLowerCase(), { token: token(s.cotacaoId) });
+    const corpo = await com.text();
+    expect(JSON.parse(corpo)).toMatchObject({ estado: "pix_aguardando", pix: { imagem: "data:image/png;base64,RkFMU08=" } });
+    expect(corpo).not.toContain(EMAIL_HOSPEDE);
+    expect(corpo).not.toContain("Visitante");
+    expect(corpo).not.toContain("99999");
+  });
+
+  it("confere o pagamento com o provedor enquanto espera e mostra a reserva confirmada", async () => {
+    const s = await c.segurar();
+    const p = await c.pix(s.cotacaoId);
+    c.provedor.aprovar(p.idProvedor);
+    // Passados os 15 s da última leitura, a consulta da página lê o provedor e aplica a aprovação.
+    const r = await consultar(s.codigo, { quando: minutos(2) });
+    expect(await r.json()).toMatchObject({ estado: "confirmada", reservaCodigo: (await c.reserva(s.reservaId)).codigo });
+    expect((await c.reserva(s.reservaId)).estado).toBe("confirmada");
+  });
+
+  it("falha do provedor não derruba a consulta: mostra o que o banco já sabe", async () => {
+    const s = await c.segurar();
+    await c.pix(s.cotacaoId);
+    c.provedor.falhar = new ErroProvedor("indisponivel", "fora do ar");
+    const r = await consultar(s.codigo, { quando: minutos(3) });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ estado: "pix_aguardando" });
+  });
+
+  it("freio por endereço de internet antes de ler a cotação: 429 com a mensagem do domínio", async () => {
+    const s = await c.segurar();
+    const { tentativas } = LIMITES_PAGAMENTO.consulta.origem;
+    await db.insert(tentativasLogin).values({ chave: `pagamento-consulta:origem:${c.org}:203.0.113.60`, erros: tentativas, atualizadoEm: minutos(1) });
+    const r = await consultar(s.codigo, { origem: "203.0.113.60" });
+    expect(r.status).toBe(429);
+    expect(r.headers.get("Cache-Control")).toBe("no-store");
+    expect(await r.json()).toEqual({ erro: ERROS_LIMITE.consulta });
+    // Outro endereço segue.
+    expect((await consultar(s.codigo, { origem: "203.0.113.61" })).status).toBe(200);
+  });
+
+  it("cotação aberta (sem pedido) e prazo vencido sem pagamento: 'sem pagamento', que a página trata como final", async () => {
+    const s = await c.segurar();
+    expect(await (await consultar(s.codigo, { quando: minutos(5) })).json()).toMatchObject({ estado: "pagar" });
+    await db.update(cotacoes).set({ holdAte: minutos(1) }).where(eq(cotacoes.id, s.cotacaoId));
+    expect(await (await consultar(s.codigo, { quando: minutos(5) })).json()).toMatchObject({ estado: "sem_pagamento", holdAte: null });
+  });
+});

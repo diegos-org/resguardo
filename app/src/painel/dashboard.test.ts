@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { criarContrato } from "@/contratos/repositorio";
-import { bloqueios, cadastrosMarketplace, imoveis, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
+import { bloqueios, cadastrosMarketplace, cotacoes, imoveis, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import { registrarAjuste } from "@/ajustes/ajustes";
 import { criarCategoria } from "@/despesas/categorias";
@@ -12,7 +12,10 @@ import type { DadosReserva } from "@/reservas/regras";
 import { criarReserva, listarReservas } from "@/reservas/repositorio";
 import { criarRotina } from "@/rotinas/rotinas";
 import { arquivarPedido, registrarPedidoContato } from "@/proprietarios/pedidos-contato";
-import { carregarDashboard } from "./dashboard";
+import { conferirTentativa } from "@/pagamentos/conferencia";
+import { ProvedorFalso } from "@/pagamentos/falso";
+import { minutos, montarCenario, TOTAL } from "@/pagamentos/testes";
+import { carregarDashboard, contaDeTesteParaInicio } from "./dashboard";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -277,5 +280,40 @@ describe("painel inicial", () => {
     // Vale para a organização toda, mesmo com filtro de imóvel.
     expect(doSite((await carregarDashboard(db, org, { ...base, imoveis: lista.slice(0, 1), todos: false, verProprietarios: true })).alertas)).toHaveLength(2);
     expect(doSite((await carregarDashboard(db, org, base)).alertas)).toEqual([]);
+  });
+});
+
+describe("pagamento no site no Início (M8.2a)", () => {
+  it("avisos da empresa toda (sem depender do filtro de imóveis), só para quem lê o financeiro, com links da lista", async () => {
+    const c = await montarCenario(db);
+    const s = await c.segurar();
+    const p = await c.pix(s.cotacaoId);
+    // Valor aprovado diferente do total da cotação: aprovado sem reserva, a devolver.
+    await db.update(cotacoes).set({ total: TOTAL + 1 }).where(eq(cotacoes.id, s.cotacaoId));
+    c.provedor.aprovar(p.idProvedor);
+    await conferirTentativa(db, c.org, p.pagamentoId, c.provedor, minutos(3), { origem: "rotina", forcar: true });
+    const base = { imoveis: [], todos: false, periodo: { inicio: "2026-10-01", fim: "2026-11-01" }, ano: 2026, hoje: "2026-10-01", verFinanceiro: true, agora: minutos(5) };
+    const d = await carregarDashboard(db, c.org, { ...base, verPagamentos: true });
+    expect(d.alertas).toContainEqual({
+      nivel: "atencao",
+      texto: "1 pagamento(s) do site aprovado(s) sem reserva: devolva ao hóspede (pelo Mercado Pago ou por fora).",
+      link: "/painel/financeiro/pagamentos-site?atencao=1",
+    });
+    expect((await carregarDashboard(db, c.org, { ...base, verPagamentos: false })).alertas.some((x) => x.link?.startsWith("/painel/financeiro/pagamentos-site"))).toBe(false);
+    // A conta das chaves conferida como não sendo de teste vira aviso; não conferida (null), nada.
+    expect((await carregarDashboard(db, c.org, { ...base, verPagamentos: true, contaDeTesteMercadoPago: false })).alertas.map((x) => x.texto).join()).toContain("não é de teste");
+    expect(d.alertas.map((x) => x.texto).join()).not.toContain("não é de teste");
+    // Outra empresa não vê nada disso.
+    expect((await carregarDashboard(db, org, { ...base, verPagamentos: true })).alertas.some((x) => x.link?.startsWith("/painel/financeiro/pagamentos-site"))).toBe(false);
+  });
+
+  it("conta de teste para o Início: fora do teste, nada; conferida pelo provedor; demorou demais, sem o aviso", async () => {
+    expect(await contaDeTesteParaInicio({ env: {} as NodeJS.ProcessEnv })).toBeNull();
+    const falso = new ProvedorFalso();
+    falso.contaDeTeste = false;
+    expect(await contaDeTesteParaInicio({ provedor: falso })).toBe(false);
+    const lento = new ProvedorFalso();
+    lento.conferirContaDeTeste = () => new Promise(() => undefined);
+    expect(await contaDeTesteParaInicio({ provedor: lento, esperaMs: 20 })).toBeNull();
   });
 });

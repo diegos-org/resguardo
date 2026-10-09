@@ -3,6 +3,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { CotacaoVista } from "@/site/cotacoes";
 import { Cotacao } from "./Cotacao";
+import { Disponibilidade } from "./Disponibilidade";
+import { FormConsulta } from "./FormConsulta";
 import { FormSegurar } from "./FormSegurar";
 import { SegurarDatas } from "./SegurarDatas";
 
@@ -75,8 +77,9 @@ it("datas seguradas: prazo no fuso do imóvel, pedido e botão do WhatsApp com a
 const acao = vi.fn();
 beforeEach(() => vi.resetAllMocks());
 
-it("formulário de contato envia código e dados; mostra o erro do servidor por campo e geral", async () => {
-  acao.mockResolvedValue({ erro: "Confira seus dados.", erros: { email: "Informe um e-mail válido." }, valores: { nome: "Ana", email: "x", telefone: "21999990000" } });
+it("formulário de contato envia código e dados; mostra o erro do servidor por campo e geral; o digitado fica no navegador", async () => {
+  // O servidor nunca devolve os dados digitados (M8.2a): os campos voltam com o que foi enviado.
+  acao.mockResolvedValue({ erro: "Confira seus dados.", erros: { email: "Informe um e-mail válido." } });
   render(<FormSegurar codigo="COT-ABCDEFGH" minutos={30} acao={acao} />);
   expect(screen.getByText("Segurar as datas por 30 minutos")).toBeTruthy();
   fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Ana" } });
@@ -89,6 +92,14 @@ it("formulário de contato envia código e dados; mostra o erro do servidor por 
   expect(form.get("nome")).toBe("Ana");
   await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Confira seus dados."));
   expect(screen.getByText("Informe um e-mail válido.")).toBeTruthy();
+  expect(acao.mock.calls[0][0]).toEqual({});
+  expect((screen.getByLabelText("Nome") as HTMLInputElement).value).toBe("Ana");
+  expect((screen.getByLabelText(/^E-mail/) as HTMLInputElement).value).toBe("x@example.com");
+  expect(screen.getByText(/Nenhum pagamento é feito aqui/)).toBeTruthy();
+  cleanup();
+  render(<FormSegurar codigo="COT-ABCDEFGH" minutos={30} acao={acao} comPagamento />);
+  expect(screen.queryByText(/Nenhum pagamento é feito aqui/)).toBeNull();
+  expect(screen.getByText(/Nada é cobrado ao segurar: o Pix aparece logo depois/)).toBeTruthy();
 });
 
 it("chamada 'segurar estas datas' leva o pedido da consulta escondido e avisa quando é 'a confirmar'", () => {
@@ -101,4 +112,44 @@ it("chamada 'segurar estas datas' leva o pedido da consulta escondido e avisa qu
   cleanup();
   render(<SegurarDatas pedido={pedido} aConfirmar={false} acao={acao} />);
   expect(screen.queryByRole("note")).toBeNull();
+});
+
+it("com o Pix oferecido (M8.2a), os textos 'nenhum pagamento é feito no site' mudam; sem ele, ficam como hoje", () => {
+  const pedido = { imovel: "403", entrada: "2026-10-12", saida: "2026-10-15", hospedes: "4" };
+  const resultado = { situacao: "disponivel" as const, motivos: [], noites: 3, cotacao: { diarias: 135000, limpeza: 25000, hospedeExtra: 0, valorCheio: 160000, desconto: 6400, total: 153600 }, leituraEm: null };
+  const { container: hoje } = render(
+    <>
+      <SegurarDatas pedido={pedido} aConfirmar={false} acao={acao} />
+      <Disponibilidade resultado={resultado} entrada="2026-10-12" saida="2026-10-15" fuso="America/Sao_Paulo" />
+      <FormConsulta imoveis={[]} valores={{}} hoje="2026-10-01" canal="whatsapp" />
+      <Cotacao vista={base} whatsapp={null} email="" />
+    </>,
+  );
+  expect(hoje.textContent).toContain("Nenhum pagamento é feito aqui.");
+  expect(hoje.textContent).toContain("sem reserva ou pagamento por aqui: a reserva é confirmada na conversa.");
+  expect(hoje.textContent).toContain("Nenhum pagamento é feito no site por enquanto.");
+  cleanup();
+  const { container: comPix } = render(
+    <>
+      <SegurarDatas pedido={pedido} aConfirmar={false} acao={acao} comPagamento />
+      <Disponibilidade resultado={resultado} entrada="2026-10-12" saida="2026-10-15" fuso="America/Sao_Paulo" comPagamento />
+      <FormConsulta imoveis={[]} valores={{}} hoje="2026-10-01" canal="whatsapp" comPagamento />
+      <Cotacao vista={base} whatsapp={null} email="" pagamentoNoSite />
+    </>,
+  );
+  expect(comPix.textContent).not.toMatch(/Nenhum pagamento|sem reserva ou pagamento/);
+  expect(comPix.textContent).toContain("pode pagar por Pix ali mesmo");
+  expect(comPix.textContent).toContain("segure as datas para pagar por Pix aqui no site");
+  expect(comPix.textContent).toContain("Nada é cobrado na consulta.");
+  expect(comPix.textContent).toContain("Nada é cobrado ao segurar as datas: o pagamento é por Pix");
+});
+
+it("com um pagamento (M8.2a): o título e o quadro dele vêm antes do resumo e substituem o estado da cotação", () => {
+  const expirada = vista({ estado: "expirada" }, { estado: "segurada", holdAte: new Date("2026-10-01T15:30:00Z") });
+  const { container } = render(<Cotacao vista={expirada} whatsapp="5521999990000" email="" pagamento={{ titulo: "Pagamento recebido", conteudo: <p>QUADRO DO PAGAMENTO</p> }} />);
+  expect(screen.getByRole("heading", { name: "Pagamento recebido" })).toBeTruthy();
+  expect(container.textContent!.indexOf("QUADRO DO PAGAMENTO")).toBeLessThan(container.textContent!.indexOf("Diárias"));
+  expect(screen.queryByText("Fazer uma nova consulta")).toBeNull();
+  expect(screen.queryByText(/O prazo passou sem confirmação/)).toBeNull();
+  expect(screen.queryByText(/Nenhum pagamento é feito no site/)).toBeNull();
 });
