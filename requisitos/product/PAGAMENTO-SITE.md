@@ -143,7 +143,8 @@ noites só ignora pedidos já vencidos).
   estendido provisoriamente para agora + validade + 2 minutos; na fase 3, para o `date_of_expiration`
   devolvido + 2 minutos (só se o pedido ainda for `pedido` e a cotação `segurada`; senão o Pix é
   cancelado). Assim o QR nunca vale mais que as datas. Se o pedido nem chegou ao provedor (tentativa
-  apagada), a extensão provisória é desfeita. A extensão aparece na tela do prazo das datas do painel
+  apagada), ou se o provedor recusou a criação (order recusada, ou dados inválidos sem order) e não há Pix
+  para pagar, a extensão provisória é desfeita. A extensão aparece na tela do prazo das datas do painel
   ("com o pagamento ligado, cada Pix segura as datas por pelo menos 30 minutos"). Uma leitura sem o
   prazo (ou sem a imagem, ou o link) não apaga o que já se sabia do mesmo Pix; Pix pendente sem prazo
   nenhum vira aviso.
@@ -352,7 +353,8 @@ estar oferecido para aquele imóvel. A página proíbe ser enquadrada por outro 
   desliga), nome na fatura (para o cartão; padrão o nome da empresa), categoria da taxa perdida e a
   lista de imóveis com ✓ ou o motivo de não oferecer. Tudo auditado, valendo para as tentativas novas.
   A conferência da conta no Mercado Pago espera no máximo 2 s: passou disso, a aba avisa "não deu
-  para conferir a conta agora" e mostra o resto (a chave para desligar nunca fica presa).
+  para conferir a conta agora" e mostra o resto (a chave para desligar nunca fica presa). Integrações e
+  Sistema esperam o mesmo tanto e mostram a conta como "não conferida".
 - **Ficha da reserva:** quadro "Pagamento no site". Situação, forma e datas para quem lê reservas;
   valores para quem lê o financeiro; ações (devolver, devolução por fora, registrar liberação,
   conferir agora) para quem edita o financeiro, com confirmação.

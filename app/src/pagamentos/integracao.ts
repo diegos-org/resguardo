@@ -5,6 +5,7 @@
  * Nunca devolve chave nem segredo.
  */
 import type { Db } from "@/db/types";
+import { ESPERA_TELA_MS, esperarNoMaximo } from "@/lib/prazo";
 import { contaDeTesteConfirmada, estadoPagamentoDoAmbiente, provedorDoAmbiente } from "./ambiente";
 import { situacaoDosAvisos } from "./eventos";
 import type { ProvedorPagamento } from "./provedor";
@@ -29,10 +30,19 @@ export type SituacaoMercadoPago = {
   enderecoWebhook: string;
 };
 
-export async function situacaoDoMercadoPago(db: Db, env: NodeJS.ProcessEnv = process.env, agora: Date = new Date(), o: { provedor?: ProvedorPagamento } = {}): Promise<SituacaoMercadoPago> {
+/**
+ * `esperaMs`: quanto a tela espera a conferência da conta no Mercado Pago (padrão `ESPERA_TELA_MS`, 2 s); passou disso,
+ * a conta sai "não conferida" e o resto da tela aparece (a conferência continua no fundo e fica lembrada).
+ */
+export async function situacaoDoMercadoPago(
+  db: Db,
+  env: NodeJS.ProcessEnv = process.env,
+  agora: Date = new Date(),
+  o: { provedor?: ProvedorPagamento; esperaMs?: number } = {},
+): Promise<SituacaoMercadoPago> {
   const estado = estadoPagamentoDoAmbiente(env);
   const provedor = estado.situacao === "teste" ? (o.provedor ?? provedorDoAmbiente(env)) : null;
-  const conta = provedor ? await contaDeTesteConfirmada(provedor, () => agora) : null;
+  const conta = provedor ? await esperarNoMaximo(contaDeTesteConfirmada(provedor, () => agora).catch(() => null), o.esperaMs ?? ESPERA_TELA_MS, null) : null;
   const avisos = await situacaoDosAvisos(db, agora);
   return {
     situacao: estado.situacao,

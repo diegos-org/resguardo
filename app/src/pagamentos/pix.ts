@@ -168,7 +168,10 @@ async function criar(db: Db, organizacaoId: string, cotacaoId: string, f: Extrac
       const cancelar = [...ef.cancelar];
       // Pix marcado como real (live_mode) no teste: a leitura já o mandou cancelar; as datas não ficam presas a ele.
       const aoVivo = cancelar.some((x) => x.id === p.id);
-      if (aoVivo) await desfazerProvisorio(tx, organizacaoId, cotacaoId, f, agora);
+      // Criação recusada pelo provedor (order recusada, ou dados inválidos sem order) ou já encerrada: não há Pix para
+      // pagar, e o prazo provisório das datas volta ao que era (10ª rodada do Codex).
+      const semPixPagavel = ef.situacao === "recusado" || ef.situacao === "cancelado" || ef.situacao === "expirado";
+      if (aoVivo || semPixPagavel) await desfazerProvisorio(tx, organizacaoId, cotacaoId, f, agora);
       else if (ef.situacao === "pendente") {
         if (pedidoValido && p.pixExpiraEm) await estenderHold(tx, organizacaoId, cotacaoId, new Date(p.pixExpiraEm.getTime() + FOLGA_PRAZO_PIX_MS), agora, p.id);
         else if (!pedidoValido && p.idProvedor) cancelar.push({ id: p.id, idProvedor: p.idProvedor });

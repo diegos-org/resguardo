@@ -5,6 +5,7 @@ import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { aplicarNaTransacao, conferirCotacaoParaPagina, conferirTentativa, idDeOrder, INTERVALO_CONSULTA_MS, marcarAviso, processarAvisoDeOrder } from "./conferencia";
 import { apagarEventosAntigos, GUARDAR_EVENTOS_DIAS, marcarResultadoDoEvento, registrarAssinaturaRecusada, registrarEventoDeAviso, situacaoDosAvisos } from "./eventos";
+import { ProvedorFalso } from "./falso";
 import { ErroProvedor } from "./provedor";
 import { situacaoDoMercadoPago, ENDERECO_WEBHOOK, segredoDoWebhook } from "./integracao";
 import { conferirPendentes, rotinaDoSite } from "./rotina";
@@ -303,5 +304,15 @@ describe("rotina do site e situação do Mercado Pago (M8.2a)", () => {
     expect(JSON.stringify(teste)).not.toContain("APP_USR");
     expect(await situacaoDoMercadoPago(db, env(), AGORA)).toMatchObject({ situacao: "desligado", motivo: expect.stringContaining("Falta configurar"), segredoWebhook: false });
     expect(segredoDoWebhook(env({ MERCADOPAGO_WEBHOOK_SECRET: "  " }))).toBeNull();
+  });
+
+  it("Integrações e Sistema: a conferência da conta que não responde não prende a tela (sai \"não conferida\" no prazo)", async () => {
+    const chaves = { MERCADOPAGO_ACCESS_TOKEN: "APP_USR-ficticio", MERCADOPAGO_PUBLIC_KEY: "APP_USR-publica" };
+    const lento = new ProvedorFalso(() => AGORA);
+    lento.conferirContaDeTeste = () => new Promise<boolean | null>(() => {});
+    const inicio = performance.now();
+    const r = await situacaoDoMercadoPago(db, env(chaves), AGORA, { provedor: lento, esperaMs: 50 });
+    expect(r).toMatchObject({ situacao: "teste", contaDeTeste: null });
+    expect(performance.now() - inicio).toBeLessThan(1_000);
   });
 });

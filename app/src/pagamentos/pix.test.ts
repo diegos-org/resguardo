@@ -116,6 +116,16 @@ describe("gerar o Pix (M8.2a)", () => {
     expect((await gerarPix(db, c.org, cotacaoId, minutos(11), c.provedor)).ok).toBe(true);
   });
 
+  it("criação recusada pelo provedor (dados inválidos, sem order): sem Pix para pagar, o prazo provisório das datas volta ao que era", async () => {
+    const { cotacaoId } = await c.segurar();
+    const antes = (await c.cotacao(cotacaoId)).holdAte!;
+    c.provedor.criarPix = async () => ({ ok: false, motivo: "dados_invalidos", mensagem: "Dados do pagador inválidos.", cobranca: null });
+    for (const m of [0, 5]) expect(await gerarPix(db, c.org, cotacaoId, minutos(m), c.provedor)).toMatchObject({ ok: false, codigo: "recusado" });
+    const tentativas = await db.select().from(pagamentos).where(eq(pagamentos.cotacaoId, cotacaoId));
+    expect(tentativas.map((t) => t.situacao)).toEqual(["recusado", "recusado"]);
+    expect((await c.cotacao(cotacaoId)).holdAte?.toISOString()).toBe(antes.toISOString());
+  });
+
   it("teto antes de cancelar: com 3 Pix gerados, pedir outro não cancela o terceiro, ainda pagável", async () => {
     const { cotacaoId } = await c.segurar();
     for (const [gerar, vencer] of [[0, 31], [31, 62]]) {
