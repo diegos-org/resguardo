@@ -22,11 +22,15 @@ export type PagamentoDoHospede = {
   reservaCodigo: string | null;
   pagamentoEmDobro: boolean;
   devolucao: { situacao: "pedida" | "feita"; em: string | null } | null;
+  /** Alguma tentativa ainda pode virar dinheiro: a página acompanha mesmo fora das situações de espera. */
+  acompanhar: boolean;
 };
 
 /** Situações em que a página acompanha sozinha (consulta a rota a cada poucos segundos). */
 export const ESTADOS_EM_ESPERA: readonly EstadoPagamentoHospede[] = ["pix_aguardando", "pix_vencido", "verificando", "confirmando"];
 export const emEspera = (e: EstadoPagamentoHospede) => ESTADOS_EM_ESPERA.includes(e);
+/** A página continua acompanhando: situação de espera, ou tentativa que ainda pode virar dinheiro (ex.: Pix esgotado). */
+export const deveAcompanhar = (v: { estado: EstadoPagamentoHospede; acompanhar?: boolean }) => emEspera(v.estado) || v.acompanhar === true;
 
 /** Título do quadro da cotação em cada situação do pagamento (sem_pagamento = o título de sempre). */
 export const TITULO_PAGAMENTO: Record<Exclude<EstadoPagamentoHospede, "sem_pagamento">, string> = {
@@ -77,6 +81,7 @@ export function paraOHospede(v: VistaPagamentoHospede): PagamentoDoHospede {
     reservaCodigo: v.reservaCodigo,
     pagamentoEmDobro: v.pagamentoEmDobro,
     devolucao: v.devolucao ? { situacao: v.devolucao.situacao, em: iso(v.devolucao.em) } : null,
+    acompanhar: v.acompanhar,
   };
 }
 

@@ -12,8 +12,9 @@ import { eventosPagamento, pagamentos } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
 import { aplicarLeitura, type Efeitos, type Leitura } from "./aplicar";
-import { type Cobranca, ErroProvedor, PIX_VALIDADE_MINIMA_MINUTOS, type ProvedorPagamento } from "./provedor";
-import { emAndamento, type SituacaoPagamento } from "./situacoes";
+import { paginaAindaLe } from "./andamento";
+import { type Cobranca, ErroProvedor, type ProvedorPagamento } from "./provedor";
+import type { SituacaoPagamento } from "./situacoes";
 import { type Pagamento, travarCotacao } from "./travas";
 
 /** A página e os outros gatilhos não leem o provedor mais de uma vez a cada 15 s por tentativa (salvo `forcar`). */
@@ -154,19 +155,7 @@ export async function conferirTentativa(
   return { ok: true, situacao: efeitos.situacao, consultou: true, mudou: efeitos.mudou };
 }
 
-/** Depois do prazo do Pix, por quanto tempo a página ainda lê a order de um Pix recusado, cancelado ou vencido. */
-export const FOLGA_LEITURA_PIX_ENCERRADO_MS = 15 * 60_000;
-
-/** Situações encerradas sem dinheiro que a leitura ainda pode levar a aprovado (ver `transicaoPermitida`). */
-const ENCERRADAS_SEM_DINHEIRO: readonly SituacaoPagamento[] = ["recusado", "cancelado", "expirado"];
-
-/**
- * Até quando a página lê um Pix encerrado sem dinheiro: o prazo do Pix (ou, sem ele, o mínimo do provedor desde a
- * criação) mais a folga. Só datas que a leitura não muda: `atualizadoEm` anda a cada leitura e esticaria o prazo.
- */
-function fimDaLeituraEncerrada(t: { pixExpiraEm: Date | null; criadoEm: Date }): number {
-  return (t.pixExpiraEm?.getTime() ?? t.criadoEm.getTime() + PIX_VALIDADE_MINIMA_MINUTOS * 60_000) + FOLGA_LEITURA_PIX_ENCERRADO_MS;
-}
+export { FOLGA_LEITURA_PIX_ENCERRADO_MS } from "./andamento";
 
 /**
  * Página do hóspede esperando o Pix: confere, com o intervalo de 15 s por tentativa, toda tentativa da cotação que
@@ -182,9 +171,7 @@ export async function conferirCotacaoParaPagina(db: Db, organizacaoId: string, c
     .from(pagamentos)
     .where(and(eq(pagamentos.cotacaoId, cotacaoId), eq(pagamentos.organizacaoId, organizacaoId)))
     .orderBy(desc(pagamentos.criadoEm), desc(pagamentos.id));
-  const encerradaHaPouco = (t: (typeof tentativas)[number]) =>
-    ENCERRADAS_SEM_DINHEIRO.includes(t.situacao) && !!t.idProvedor && agora.getTime() < fimDaLeituraEncerrada(t);
-  const alvos = tentativas.filter((t) => emAndamento(t.situacao) || encerradaHaPouco(t));
+  const alvos = tentativas.filter((t) => paginaAindaLe(t, agora));
   let resultado: ResultadoConferencia | null = null;
   for (const t of alvos) {
     const r = await conferirTentativa(db, organizacaoId, t.id, provedor, agora, { origem: "pagina" });

@@ -12,7 +12,7 @@ import { cotacoes, devolucoesPagamento, eventosPagamento, imoveis, lancamentos, 
 import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
-import { CARENCIA_PAGAMENTO_MS, MAXIMO_PIX_POR_COTACAO } from "./andamento";
+import { CARENCIA_PAGAMENTO_MS, MAXIMO_PIX_POR_COTACAO, paginaAindaLe } from "./andamento";
 import { ambienteMercadoPago, estadoPagamentoDoAmbiente } from "./ambiente";
 import { AVISOS_PAGAMENTO, type CodigoAviso, codigoMotivo, comDinheiro, emAndamento, type SituacaoPagamento, textoMotivoSemReserva, textosDosAvisos } from "./situacoes";
 import type { Devolucao, Pagamento } from "./travas";
@@ -54,6 +54,11 @@ export type VistaPagamentoHospede = {
    * aquele (quem chama não oferece "Gerar outro Pix"). Não vai ao navegador.
    */
   pixAoVivo: boolean;
+  /**
+   * Alguma tentativa ainda pode virar dinheiro e a página ainda a lê (`paginaAindaLe`): a página continua
+   * acompanhando mesmo numa situação que não é de espera (ex.: os 3 Pix gastos, o último recusado há pouco).
+   */
+  acompanhar: boolean;
 };
 
 /**
@@ -85,6 +90,7 @@ export async function vistaDaCotacaoParaHospede(db: Db, organizacaoId: string, c
     pagamentoEmDobro: false,
     devolucao: null,
     pixAoVivo: tentativas.some((t) => t.forma === "pix" && t.aoVivo === true),
+    acompanhar: tentativas.some((t) => paginaAindaLe(t, agora)),
   };
   const comReserva = tentativas.find((t) => t.desfecho === "reserva");
   if (comReserva) {

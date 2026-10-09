@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { type ReactNode, useActionState, useEffect, useRef, useSyncExternalStore } from "react";
 import { BotaoCopiar } from "@/components/BotaoCopiar";
 import type { EstadoContinuar, EstadoPix } from "@/site/acoes-pagamento";
-import { emEspera, type EstadoPagamentoHospede, type PagamentoDoHospede } from "@/site/pagamento-vista";
+import { deveAcompanhar, type EstadoPagamentoHospede, type PagamentoDoHospede } from "@/site/pagamento-vista";
 import styles from "./site.module.css";
 
 /** A página consulta a situação a cada 5 s enquanto espera; depois de um "muitas consultas", espera 1 minuto. */
@@ -26,7 +26,8 @@ const dia = (iso: string, fuso: string) => formato(fuso, { dateStyle: "short" })
  * Acompanha o pagamento (M8.2a): enquanto a situação é de espera, consulta a rota da cotação a cada 5 s (a primeira
  * logo ao abrir, para a página conferir quem volta pelo link), pausa com a aba escondida e volta quando ela aparece.
  * Mudou a situação ou o "pode gerar outro Pix" (ex.: as travas voltaram depois de uma falha passageira): recarrega a
- * página (o servidor mostra o que vale agora); situação final: para.
+ * página (o servidor mostra o que vale agora). Para quando a situação não é de espera e nenhuma tentativa ainda pode
+ * virar dinheiro (`acompanhar`, ex.: os 3 Pix gastos e o último recusado há pouco: continua até o prazo da leitura).
  */
 export function useAcompanharPagamento(codigo: string, estado: EstadoPagamentoHospede, podeGerar: boolean, ativo: boolean) {
   const router = useRouter();
@@ -53,13 +54,15 @@ export function useAcompanharPagamento(codigo: string, estado: EstadoPagamentoHo
         const r = await fetch(`/reservar/${encodeURIComponent(codigo)}/pagamento`, { cache: "no-store", headers: { accept: "application/json" } });
         if (r.status === 429) proxima = ESPERA_DEPOIS_DO_LIMITE_MS;
         else if (r.ok) {
-          const j = (await r.json()) as { estado?: EstadoPagamentoHospede; podeGerar?: boolean };
+          const j = (await r.json()) as { estado?: EstadoPagamentoHospede; podeGerar?: boolean; acompanhar?: boolean };
           const gerar = typeof j.podeGerar === "boolean" ? j.podeGerar : ultimoPodeGerar;
-          if (!parado && j.estado && assinatura(j.estado, gerar) !== ultimo) {
-            ultimo = assinatura(j.estado, gerar);
-            ultimoPodeGerar = gerar;
-            if (!emEspera(j.estado)) parado = true;
-            router.refresh();
+          if (!parado && j.estado) {
+            if (!deveAcompanhar({ estado: j.estado, acompanhar: j.acompanhar })) parado = true;
+            if (assinatura(j.estado, gerar) !== ultimo) {
+              ultimo = assinatura(j.estado, gerar);
+              ultimoPodeGerar = gerar;
+              router.refresh();
+            }
           }
         }
       } catch {
@@ -239,7 +242,7 @@ export function PagamentoPix({
   gerarPix: AcaoPix;
   continuar: AcaoContinuar;
 }) {
-  useAcompanharPagamento(codigo, v.estado, v.podeGerar, emEspera(v.estado));
+  useAcompanharPagamento(codigo, v.estado, v.podeGerar, deveAcompanhar(v));
   const prazo = v.holdAte ? (
     <p className={styles.texto}>
       As datas estão seguradas para você até <strong>{quando(v.holdAte, fuso)}</strong>.

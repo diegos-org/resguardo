@@ -6,7 +6,8 @@ import { and, eq, inArray, isNotNull, isNull, or } from "drizzle-orm";
 import { pagamentos } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
-import type { SituacaoPagamento } from "./situacoes";
+import { PIX_VALIDADE_MINIMA_MINUTOS } from "./provedor";
+import { emAndamento, type SituacaoPagamento } from "./situacoes";
 
 /**
  * Carência: um pedido com Pix em andamento (ou aprovado e ainda sem decisão) não vence até 15 minutos depois do
@@ -19,6 +20,31 @@ export const CARENCIA_PAGAMENTO_MS = CARENCIA_PAGAMENTO_MINUTOS * 60_000;
 export const MAXIMO_PIX_POR_COTACAO = 3;
 /** Folga entre o vencimento do Pix e o prazo das datas (o QR nunca vale mais que as datas). */
 export const FOLGA_PRAZO_PIX_MS = 2 * 60_000;
+
+/** Depois do prazo do Pix, por quanto tempo a página ainda lê a order de um Pix recusado, cancelado ou vencido. */
+export const FOLGA_LEITURA_PIX_ENCERRADO_MS = 15 * 60_000;
+
+/** Situações encerradas sem dinheiro que a leitura ainda pode levar a aprovado (ver `transicaoPermitida`). */
+const ENCERRADAS_SEM_DINHEIRO: readonly SituacaoPagamento[] = ["recusado", "cancelado", "expirado"];
+
+/**
+ * Até quando a página lê um Pix encerrado sem dinheiro: o prazo do Pix (ou, sem ele, o mínimo do provedor desde a
+ * criação) mais a folga. Só datas que a leitura não muda: `atualizadoEm` anda a cada leitura e esticaria o prazo.
+ */
+function fimDaLeituraEncerrada(t: { pixExpiraEm: Date | null; criadoEm: Date }): number {
+  return (t.pixExpiraEm?.getTime() ?? t.criadoEm.getTime() + PIX_VALIDADE_MINIMA_MINUTOS * 60_000) + FOLGA_LEITURA_PIX_ENCERRADO_MS;
+}
+
+/**
+ * A página do hóspede ainda lê esta tentativa (ela ainda pode virar dinheiro)? Em andamento (criando, incerta,
+ * pendente), ou recusada, cancelada ou vencida há pouco, com order no provedor, até o prazo do Pix mais a folga: o
+ * cancelamento pode cruzar com o pagamento e o provedor pode corrigir uma recusa. A mesma regra decide o que a página
+ * lê (`conferirCotacaoParaPagina`) e se ela continua acompanhando (`acompanhar` da vista do hóspede).
+ */
+export function paginaAindaLe(t: { situacao: SituacaoPagamento; idProvedor: string | null; pixExpiraEm: Date | null; criadoEm: Date }, agora: Date): boolean {
+  if (emAndamento(t.situacao)) return true;
+  return ENCERRADAS_SEM_DINHEIRO.includes(t.situacao) && !!t.idProvedor && agora.getTime() < fimDaLeituraEncerrada(t);
+}
 
 /** Tentativa que segura as datas: em andamento, ou aprovada e ainda sem decisão (nem reserva, nem "sem reserva"). */
 export const tentativaSeguraAsDatas = () =>

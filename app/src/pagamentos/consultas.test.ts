@@ -26,7 +26,7 @@ describe("o que o hóspede vê (M8.2a)", () => {
   it("datas seguradas: Pix oferecido ou o fluxo pela conversa; Pix aguardando com QR só com a autorização; vencido gera outro; esgotado", async () => {
     const { cotacaoId } = await c.segurar();
     expect(await vista(cotacaoId, AGORA, true, false)).toMatchObject({ estado: "sem_pagamento", dinheiroSemDesfecho: false });
-    expect(await vista(cotacaoId, AGORA)).toMatchObject({ estado: "pagar", pixRestantes: 3, holdAte: minutos(30), ambienteTeste: true });
+    expect(await vista(cotacaoId, AGORA)).toMatchObject({ estado: "pagar", pixRestantes: 3, holdAte: minutos(30), ambienteTeste: true, acompanhar: false });
     const p = await c.pix(cotacaoId);
     const com = await vista(cotacaoId, minutos(1));
     expect(com).toMatchObject({ estado: "pix_aguardando", dinheiroSemDesfecho: true, pixRestantes: 2, pix: { imagemBase64: "RkFMU08=", expiraEm: minutos(30) } });
@@ -42,12 +42,18 @@ describe("o que o hóspede vê (M8.2a)", () => {
     // Esgotado: três tentativas sem pagamento, datas ainda seguradas.
     // Cada Pix novo estende as datas até ele + 2 min: gerar o seguinte logo depois do vencimento do anterior.
     for (const [gerar, ler] of [[31, 61.5], [62, 92.5]]) {
+      c.relogio.agora = minutos(gerar); // o provedor conta o prazo do Pix a partir da criação
       const r = await gerarPix(db, c.org, cotacaoId, minutos(gerar), c.provedor);
       if (!r.ok) throw new Error(r.erro);
       c.provedor.expirar((await c.tentativa(r.pagamentoId)).idProvedor!);
       await conferir(r.pagamentoId, minutos(ler));
     }
     expect(await vista(cotacaoId, minutos(93))).toMatchObject({ estado: "pix_esgotado", pixRestantes: 0 });
+    // O último Pix venceu às 92 min e ainda pode virar dinheiro (o provedor pode corrigir): a página continua
+    // acompanhando, mesmo depois do prazo das datas, até o prazo do Pix mais a folga da leitura (92 + 15 min).
+    expect(await vista(cotacaoId, minutos(93))).toMatchObject({ acompanhar: true });
+    expect(await vista(cotacaoId, minutos(100))).toMatchObject({ estado: "sem_pagamento", acompanhar: true });
+    expect(await vista(cotacaoId, minutos(108))).toMatchObject({ estado: "sem_pagamento", acompanhar: false });
   });
 
   it("verificando (criação incerta); pagamento recebido e confirmando; confirmada com o código; pagamento em dobro", async () => {

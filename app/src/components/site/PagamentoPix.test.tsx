@@ -19,6 +19,7 @@ const base: PagamentoDoHospede = {
   reservaCodigo: null,
   pagamentoEmDobro: false,
   devolucao: null,
+  acompanhar: false,
 };
 const pix = { copiaECola: "00020126580014br.gov.bcb.pix0136FALSO-ORDTST0001", imagem: "data:image/png;base64,RkFMU08=", link: "https://pagamento.falso.invalid/pix/1", expiraEm: "2026-10-01T15:30:00.000Z" };
 const textos = { convite: "CONVITE EDITAVEL", aguardando: "AGUARDANDO EDITAVEL", semDatas: "SEM DATAS EDITAVEL" };
@@ -203,6 +204,25 @@ describe("a página acompanha sozinha enquanto espera (M8.2a)", () => {
     cleanup();
     fetchMock.mockClear();
     mostrar({ estado: "confirmada", holdAte: null, reservaCodigo: "SCL-TESTE1" });
+    await act(() => vi.advanceTimersByTimeAsync(INTERVALO_ACOMPANHAMENTO_MS * 2));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("Pix esgotado (os 3 gastos) com tentativa que ainda pode virar dinheiro: continua acompanhando até a rota dizer que acabou; sem isso, não consulta", async () => {
+    vi.useFakeTimers({ now: AGORA });
+    const esgotado = (acompanhar: boolean) => new Response(JSON.stringify({ ...base, estado: "pix_esgotado", pixRestantes: 0, podeGerar: false, acompanhar }), { status: 200 });
+    fetchMock.mockResolvedValueOnce(esgotado(true)).mockResolvedValueOnce(esgotado(true)).mockImplementation(async () => esgotado(false));
+    mostrar({ estado: "pix_esgotado", pixRestantes: 0, podeGerar: false, acompanhar: true });
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    await act(() => vi.advanceTimersByTimeAsync(INTERVALO_ACOMPANHAMENTO_MS * 2));
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    // A terceira resposta diz que nada mais pode virar dinheiro: para, sem recarregar (a situação é a mesma).
+    await act(() => vi.advanceTimersByTimeAsync(INTERVALO_ACOMPANHAMENTO_MS * 3));
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(m.refresh).not.toHaveBeenCalled();
+    cleanup();
+    fetchMock.mockClear();
+    mostrar({ estado: "pix_esgotado", pixRestantes: 0, podeGerar: false, acompanhar: false });
     await act(() => vi.advanceTimersByTimeAsync(INTERVALO_ACOMPANHAMENTO_MS * 2));
     expect(fetchMock).not.toHaveBeenCalled();
   });
