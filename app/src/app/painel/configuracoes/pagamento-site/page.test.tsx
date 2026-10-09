@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ABAS_CONFIG } from "@/configuracoes/abas";
+import { ESPERA_TELA_MS } from "@/lib/prazo";
 
 const m = vi.hoisted(() => ({ sessao: vi.fn(), config: vi.fn(), categorias: vi.fn(), motivos: vi.fn(), portao: vi.fn(), redirect: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: m.redirect }));
@@ -29,6 +30,7 @@ beforeEach(() => {
     { imovelId: "b", codigo: "102", nome: "Outro Fictício", oferece: false, motivo: "sem_contrato", texto: "Sem contrato de gestão vigente na data de entrada: segue pela conversa." },
   ]);
 });
+afterEach(() => vi.useRealTimers());
 const html = async () => renderToStaticMarkup(await Page());
 
 it("a aba existe em Configurações para quem edita o financeiro", () => {
@@ -78,4 +80,18 @@ it("travas fechadas (ex.: deploy de produção ou chave do painel desligada): di
   h = await html();
   expect(h).toContain("Hoje o site não oferece o Pix em nenhum imóvel: Não deu para conferir no Mercado Pago");
   expect(h).not.toContain('aria-label="oferece o Pix"');
+});
+
+it("Mercado Pago sem responder (conferência da conta presa): a página não espera mais que alguns segundos, avisa que não deu para conferir e mostra o resto (inclusive a chave para desligar)", async () => {
+  vi.useFakeTimers();
+  m.portao.mockReturnValue(new Promise(() => undefined));
+  const pagina = Page();
+  await vi.advanceTimersByTimeAsync(ESPERA_TELA_MS);
+  const h = renderToStaticMarkup(await pagina);
+  expect(h).toContain("Não deu para conferir a conta do Mercado Pago agora (ele demorou a responder)");
+  expect(h).not.toContain("Hoje o site não oferece o Pix em nenhum imóvel");
+  expect(h).not.toContain('aria-label="oferece o Pix"');
+  expect(h).toContain("cálculo sem pendência (as travas não foram conferidas agora)");
+  expect(h).toMatch(/<input type="checkbox" name="oferecer" checked=""/);
+  expect(h).toContain(">Salvar<");
 });

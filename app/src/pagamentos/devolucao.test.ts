@@ -7,7 +7,9 @@ import type { Db } from "@/db/types";
 import { conferirTentativa } from "./conferencia";
 import { chaveDevolucao, chaveTaxaPerdida, devolverPeloProvedor, ERRO_POR_FORA_SEM_CONFERIR, MAXIMO_FALHAS_DEVOLUCAO, registrarDevolucaoPorFora, registrarTaxaPerdida, tentarDevolucao } from "./devolucao";
 import { ErroProvedor, type ProvedorPagamento } from "./provedor";
+import { pagamentosDaReserva } from "./consultas";
 import { conferirPendentes } from "./rotina";
+import { textosDosAvisos } from "./situacoes";
 import { type Cenario, minutos, montarCenario, TOTAL } from "./testes";
 
 let db: Db, close: () => Promise<void>, c: Cenario;
@@ -58,6 +60,13 @@ describe("devolução do pagamento sem reserva (M8.2a)", () => {
     await devolverPeloProvedor(db, c.org, x.pagamentoId, null, c.provedor, minutos(10));
     expect(await registrarTaxaPerdida(db, c.org, x.pagamentoId, -1, null, minutos(12))).toMatchObject({ ok: false });
     expect(await registrarTaxaPerdida(db, c.org, x.pagamentoId, TOTAL + 1, null, minutos(12))).toMatchObject({ ok: false });
+    // "1806" digitado sem vírgula (R$ 1.806,00) com a taxa da aprovação de R$ 18,06: recusado, com os dois valores.
+    expect(await registrarTaxaPerdida(db, c.org, x.pagamentoId, 180600, null, minutos(12))).toEqual({
+      ok: false,
+      erro: "A taxa que não voltou (R$ 1.806,00) não pode passar da taxa que o Mercado Pago cobrou neste pagamento (R$ 18,06). Confira o valor (em reais, com vírgula: ex.: 18,06).",
+    });
+    expect(await registrarTaxaPerdida(db, c.org, x.pagamentoId, 1807, null, minutos(12))).toMatchObject({ ok: false, erro: expect.stringContaining("R$ 18,06") });
+    expect(await despesas()).toEqual([]);
     expect(await registrarTaxaPerdida(db, c.org, x.pagamentoId, 900, null, minutos(12))).toEqual({ ok: true });
     const d = await devolucao(x.pagamentoId);
     expect(d.taxaPerdida).toBe(900);
@@ -71,13 +80,25 @@ describe("devolução do pagamento sem reserva (M8.2a)", () => {
     expect(await registrarTaxaPerdida(db, c.org, x.pagamentoId, 900, null, minutos(13))).toMatchObject({ ok: false, erro: expect.stringContaining("já foi registrada") });
     expect(await despesas()).toHaveLength(1);
 
+    // A taxa inteira da aprovação também vale (nada voltou).
+    const w = await semReserva({ taxa: 1806 }, outras(1));
+    await devolverPeloProvedor(db, c.org, w.pagamentoId, null, c.provedor, minutos(14));
+    expect(await registrarTaxaPerdida(db, c.org, w.pagamentoId, 1806, null, minutos(15))).toEqual({ ok: true });
+    // Sem a taxa da aprovação (o Mercado Pago não informou), o teto é o valor do pagamento.
+    const v = await semReserva({}, outras(2));
+    expect((await c.tentativa(v.pagamentoId)).taxa).toBeNull();
+    await devolverPeloProvedor(db, c.org, v.pagamentoId, null, c.provedor, minutos(16));
+    expect(await registrarTaxaPerdida(db, c.org, v.pagamentoId, TOTAL + 1, null, minutos(17))).toMatchObject({ ok: false, erro: expect.stringContaining("valor do pagamento (R$ 1.824,00)") });
+    expect(await registrarTaxaPerdida(db, c.org, v.pagamentoId, 2000, null, minutos(17))).toEqual({ ok: true });
+    expect(await despesas()).toHaveLength(3);
+
     // Outra devolução em que a taxa voltou toda: zero, sem despesa, e o aviso sai.
     const y = await semReserva({ taxa: 1806 }, outras(0));
     await devolverPeloProvedor(db, c.org, y.pagamentoId, null, c.provedor, minutos(20));
     expect(await registrarTaxaPerdida(db, c.org, y.pagamentoId, 0, null, minutos(21))).toEqual({ ok: true });
     expect(await devolucao(y.pagamentoId)).toMatchObject({ taxaPerdida: 0, despesaLancamentoId: null });
     expect((await c.tentativa(y.pagamentoId)).avisos).toEqual([]);
-    expect(await despesas()).toHaveLength(1);
+    expect(await despesas()).toHaveLength(3);
   });
 
   it("pedida até o provedor confirmar; a rotina relê a order antes de pedir de novo (já devolvida = confirmada; em andamento = espera, sem reenviar)", async () => {
@@ -106,7 +127,7 @@ describe("devolução do pagamento sem reserva (M8.2a)", () => {
     expect((await devolucao(x.pagamentoId)).situacao).toBe("confirmada");
   });
 
-  it("resposta incerta não é falha: o terceiro pedido saiu mas a resposta se perdeu — continua pedida, a próxima volta relê e confirma (nada de devolução em dobro)", async () => {
+  it("resposta incerta conta, mas a terceira relê a order antes de desistir: o pedido que saiu com a resposta perdida é confirmado (nunca recusada, nada de devolução em dobro)", async () => {
     const x = await semReserva();
     c.provedor.falhas.devolver = new ErroProvedor("incerto", "tempo");
     expect(await devolverPeloProvedor(db, c.org, x.pagamentoId, null, c.provedor, minutos(10))).toEqual({ ok: true, situacao: "pedida" });
@@ -114,22 +135,71 @@ describe("devolução do pagamento sem reserva (M8.2a)", () => {
     await conferirPendentes(db, c.org, c.provedor, minutos(15));
     expect(pedidos()).toHaveLength(1);
     await conferirPendentes(db, c.org, c.provedor, minutos(21));
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "pedida", tentativas: 2, falhas: 2 });
+    // O terceiro pedido sai (o Mercado Pago devolve), mas a resposta se perde.
     c.provedor.falhas.devolver = null;
     c.provedor.falhasDepois.devolver = new ErroProvedor("incerto", "tempo");
     await conferirPendentes(db, c.org, c.provedor, minutos(32));
     c.provedor.falhasDepois.devolver = null;
-    // Três pedidos, três respostas incertas: nenhuma falha contada, a devolução continua pedida (com chave nova a cada pedido).
+    // A releitura antes de desistir mostra a devolução: confirmada pela leitura, com chave nova a cada pedido.
     const d = await devolucao(x.pagamentoId);
-    expect(d).toMatchObject({ situacao: "pedida", tentativas: 3, falhas: 0 });
+    expect(d).toMatchObject({ situacao: "confirmada", tentativas: 3 });
     expect(pedidos().map((ch) => ch.chave)).toEqual([1, 2, 3].map((n) => chaveDevolucao(d.id, n)));
-    expect((await c.tentativa(x.pagamentoId)).avisos).not.toContain("devolucao_falhou");
-    // A volta seguinte relê a order (devolvida pelo terceiro pedido) e confirma, sem pedir de novo.
-    await conferirPendentes(db, c.org, c.provedor, minutos(43));
-    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "confirmada" });
     expect(await c.tentativa(x.pagamentoId)).toMatchObject({ situacao: "devolvido", desfecho: "devolucao" });
+    expect((await c.tentativa(x.pagamentoId)).avisos).not.toContain("devolucao_falhou");
+    await conferirPendentes(db, c.org, c.provedor, minutos(43));
     expect(pedidos()).toHaveLength(3);
     // E a devolução por fora não se registra por cima.
     expect(await porFora(x.pagamentoId, minutos(44))).toMatchObject({ ok: false });
+  });
+
+  it("só respostas incertas e nenhum sinal de devolução na order: na terceira vira recusada, com o aviso (nunca 'pedida' para sempre); a equipe pede de novo ou registra por fora", async () => {
+    const x = await semReserva();
+    // Ex.: o Mercado Pago responde sempre com um erro que o sistema não sabe ler (fica incerta).
+    c.provedor.falhas.devolver = new ErroProvedor("incerto", "Resposta inesperada do Mercado Pago.");
+    await devolverPeloProvedor(db, c.org, x.pagamentoId, null, c.provedor, minutos(10));
+    await conferirPendentes(db, c.org, c.provedor, minutos(21));
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "pedida", falhas: 2 });
+    const lidas = () => c.provedor.chamadas.filter((ch) => ch.metodo === "consultar").length;
+    const antes = lidas();
+    await conferirPendentes(db, c.org, c.provedor, minutos(32));
+    // Antes do pedido e, de novo, antes de dar por recusada.
+    expect(lidas() - antes).toBeGreaterThanOrEqual(2);
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "recusada", tentativas: 3, falhas: MAXIMO_FALHAS_DEVOLUCAO });
+    const t = await c.tentativa(x.pagamentoId);
+    expect(t.avisos).toContain("devolucao_falhou");
+    expect(textosDosAvisos(t.avisos)).toContain("O Mercado Pago recusou ou não respondeu três vezes: confira no painel do Mercado Pago antes de tentar de novo ou de registrar a devolução feita por fora.");
+    // Nada mais é pedido sozinho; o painel volta a oferecer as duas saídas.
+    await conferirPendentes(db, c.org, c.provedor, minutos(60));
+    expect(pedidos()).toHaveLength(3);
+    const [q] = await pagamentosDaReserva(db, c.org, x.reservaId, minutos(61));
+    expect(q.acoes).toMatchObject({ devolver: true, devolucaoPorFora: true });
+    c.provedor.falhas.devolver = null;
+    expect(await porFora(x.pagamentoId, minutos(70))).toEqual({ ok: true, situacao: "por_fora" });
+    expect(await c.tentativa(x.pagamentoId)).toMatchObject({ desfecho: "por_fora", avisos: [] });
+  });
+
+  it("terceira resposta incerta com a order mostrando a devolução em andamento: continua pedida (nunca recusada), espera sem pedir de novo e a leitura confirma quando ela sai", async () => {
+    const x = await semReserva();
+    c.provedor.falhas.devolver = new ErroProvedor("incerto", "tempo");
+    await devolverPeloProvedor(db, c.org, x.pagamentoId, null, c.provedor, minutos(10));
+    await conferirPendentes(db, c.org, c.provedor, minutos(21));
+    // O terceiro pedido chega ao Mercado Pago (fica em andamento lá), mas a resposta se perde.
+    c.provedor.falhas.devolver = null;
+    c.provedor.respostaDevolucao = "pedida";
+    c.provedor.falhasDepois.devolver = new ErroProvedor("incerto", "tempo");
+    await conferirPendentes(db, c.org, c.provedor, minutos(32));
+    c.provedor.falhasDepois.devolver = null;
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "pedida", tentativas: 3, falhas: 3 });
+    expect((await c.tentativa(x.pagamentoId)).avisos).not.toContain("devolucao_falhou");
+    await conferirPendentes(db, c.org, c.provedor, minutos(43));
+    expect(pedidos()).toHaveLength(3);
+    expect((await devolucao(x.pagamentoId)).situacao).toBe("pedida");
+    c.provedor.confirmarDevolucoes(x.idProvedor);
+    await conferirPendentes(db, c.org, c.provedor, minutos(54));
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "confirmada" });
+    expect(await c.tentativa(x.pagamentoId)).toMatchObject({ situacao: "devolvido", desfecho: "devolucao" });
+    expect(pedidos()).toHaveLength(3);
   });
 
   it("a devolução por fora relê a order: o pedido que saiu com a resposta perdida é confirmado e o registro por fora, recusado", async () => {
@@ -145,7 +215,7 @@ describe("devolução do pagamento sem reserva (M8.2a)", () => {
     expect(await c.tentativa(x.pagamentoId)).toMatchObject({ situacao: "devolvido", desfecho: "devolucao" });
   });
 
-  it("recusas explícitas: só elas contam; a terceira relê a order antes e, sem sinal de devolução, vira recusada com aviso; a equipe registra por fora (relendo a order)", async () => {
+  it("recusas explícitas: a terceira relê a order antes e, sem sinal de devolução, vira recusada com aviso; a equipe registra por fora (relendo a order)", async () => {
     const x = await semReserva();
     c.provedor.falhas.devolver = new ErroProvedor("credencial", "Chave recusada pelo Mercado Pago.");
     await devolverPeloProvedor(db, c.org, x.pagamentoId, null, c.provedor, minutos(10));

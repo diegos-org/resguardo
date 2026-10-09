@@ -132,7 +132,7 @@ export const AVISOS_PAGAMENTO = {
   ao_vivo: "O Mercado Pago marcou este pagamento como real (live_mode) no ambiente de teste.",
   pix_sem_prazo: "O Mercado Pago não informou até quando este Pix vale: confira no painel do Mercado Pago.",
   taxa_perdida_desconhecida: "Devolução confirmada: falta saber quanto da taxa o Mercado Pago não devolveu. Confira no Mercado Pago e use \"Registrar taxa que não voltou\" no quadro do pagamento (zero se voltou toda).",
-  devolucao_falhou: "O Mercado Pago recusou a devolução três vezes. Antes de pedir de novo ou de registrar uma devolução feita por fora, confira no painel do Mercado Pago se o dinheiro já voltou ao hóspede.",
+  devolucao_falhou: "O Mercado Pago recusou ou não respondeu três vezes: confira no painel do Mercado Pago antes de tentar de novo ou de registrar a devolução feita por fora.",
   cancelamento_pendente: "Não deu para cancelar no Mercado Pago um Pix que ficou sobrando: use Conferir agora para tentar de novo (no teste, nada é conferido sozinho).",
 } as const;
 export type CodigoAviso = keyof typeof AVISOS_PAGAMENTO;

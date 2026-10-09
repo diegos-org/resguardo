@@ -83,7 +83,7 @@ it("sem tentativa, Conferir agora vai sem pagamentoId (todas as pendentes da emp
 });
 
 it("numa recusa, o que foi digitado continua no campo (nada volta ao valor padrão)", async () => {
-  m.liberar.mockResolvedValue({ mensagem: "A data da liberação não pode ser antes da aprovação do pagamento." });
+  m.liberar.mockResolvedValue({ mensagem: "A data da liberação não pode ser antes da criação do Pix (01/10/2026)." });
   render(
     <FormAcaoPagamento acao={m.liberar} rotulo="Registrar" nome="Registrar liberação" pagamentoId={ID}>
       <input name="liquido" aria-label="Líquido" defaultValue="1.805,94" />
@@ -92,8 +92,29 @@ it("numa recusa, o que foi digitado continua no campo (nada volta ao valor padr�
   const campo = screen.getByLabelText("Líquido") as HTMLInputElement;
   fireEvent.change(campo, { target: { value: "1.700,00" } });
   fireEvent.click(screen.getByRole("button", { name: "Registrar" }));
-  await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("antes da aprovação"));
+  await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("antes da criação do Pix"));
   expect((m.liberar.mock.calls[0][1] as FormData).get("liquido")).toBe("1.700,00");
   expect((m.liberar.mock.calls[0][1] as FormData).get("pagamentoId")).toBe(ID);
   expect(campo.value).toBe("1.700,00");
+});
+
+it("taxa que não voltou: a pergunta de confirmação mostra o valor digitado (1806 sem vírgula = R$ 1.806,00) e a taxa da aprovação", async () => {
+  const confirmada = {
+    ...semReserva,
+    situacao: "devolvido",
+    taxa: 1806,
+    desfecho: "devolucao",
+    devolucao: { situacao: "confirmada", valor: 182400, tentativas: 1, falhas: 0, confirmadaEm: new Date("2026-10-02T15:00:00Z"), porForaData: null, porForaValor: null, porForaNota: "", taxaPerdida: null },
+    acoes: { conferir: true, devolver: false, devolucaoPorFora: false, registrarLiberacao: false, estornarLiberacao: false, registrarTaxaPerdida: true },
+  } satisfies PagamentoDoPainel;
+  render(<PagamentoNoSite pagamentos={[confirmada]} verValores editar hoje="2026-10-09" />);
+  const form = screen.getByRole("form", { name: "Registrar taxa que não voltou" });
+  fireEvent.change(form.querySelector('input[name="valor"]')!, { target: { value: "1806" } });
+  fireEvent.click(screen.getByRole("button", { name: "Registrar taxa que não voltou" }));
+  expect(confirmar).toHaveBeenCalledWith(
+    "Registrar R$ 1.806,00 como a taxa que o Mercado Pago não devolveu (a taxa cobrada na aprovação foi R$ 18,06)? Ela entra como despesa da empresa (zero, se a taxa voltou toda) e só se registra uma vez.",
+  );
+  fireEvent.change(form.querySelector('input[name="valor"]')!, { target: { value: "18,06" } });
+  fireEvent.click(screen.getByRole("button", { name: "Registrar taxa que não voltou" }));
+  expect(confirmar.mock.calls[1][0]).toContain("Registrar R$ 18,06 como a taxa");
 });

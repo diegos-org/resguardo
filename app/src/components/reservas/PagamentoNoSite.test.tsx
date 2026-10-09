@@ -114,7 +114,7 @@ describe("quadro Pagamento no site", () => {
     // Recusada: o quadro não afirma que o Mercado Pago não fez; manda conferir lá antes.
     const recusada: PagamentoDoPainel = { ...base, desfecho: null, devolucao: { situacao: "recusada", valor: 182400, tentativas: 3, falhas: 3, confirmadaEm: null, porForaData: null, porForaValor: null, porForaNota: "", taxaPerdida: null }, acoes: sem };
     const hr = html([recusada]);
-    expect(hr).toContain("confira no painel do Mercado Pago se o dinheiro já voltou");
+    expect(hr).toContain("o Mercado Pago recusou ou não respondeu três vezes: confira no painel do Mercado Pago antes de tentar de novo ou de registrar a devolução feita por fora");
     expect(hr).not.toContain("não fez");
     // Devolução confirmada sem a taxa que não voltou: o formulário para a equipe informar, com confirmação.
     const confirmada: PagamentoDoPainel = {

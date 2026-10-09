@@ -133,8 +133,12 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
     else {
       desligar("taxa_invalida");
       liquidoInformado = f.liquido;
-      if (taxa === lida) desligar("taxa_divergente");
-      else if (p.liberacaoOrigem === "manual") ligar("liberacao_divergente");
+      if (taxa === lida) {
+        // O líquido lido bate com o gravado (do provedor ou registrado à mão): nada diverge no valor. Se esta mesma
+        // leitura trouxer a liberação com outra data, o passo da liberação, mais abaixo, liga o aviso de novo.
+        desligar("taxa_divergente");
+        desligar("liberacao_divergente");
+      } else if (p.liberacaoOrigem === "manual") ligar("liberacao_divergente");
       else if (taxa !== null && (await recebimentosDoPagamento(tx, organizacaoId, p.id)).emVigor.length) ligar("taxa_divergente");
       else {
         taxa = lida;

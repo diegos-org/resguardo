@@ -11,7 +11,8 @@
  *    o pedido ainda em `pedido` e a cotação `segurada`; senão o Pix é cancelado). Assim o QR nunca vale mais que as
  *    datas. Resposta perdida = `incerta`, resolvida depois pela referência (nunca com uma order nova). Pedido que
  *    não chegou ao provedor apaga a tentativa e desfaz a extensão provisória; Pix marcado como real (live_mode) no
- *    teste é cancelado na hora e a resposta é de falha.
+ *    teste é cancelado na hora e a resposta é de falha — e, depois dele, a cotação não gera outro Pix (nem mostra
+ *    aquele de novo, mesmo que o cancelamento tenha falhado).
  *
  * Trava não obtida (tempo-limite ou impasse desfeito pelo Postgres) em qualquer transação = "ocupado": nada foi
  * gravado pela metade e o hóspede tenta de novo.
@@ -75,6 +76,9 @@ async function fase1(tx: Db, organizacaoId: string, cotacaoId: string, agora: Da
   if (motivo) return erro("nao_oferecido", TEXTO_SEM_PIX[motivo]);
   if (t.tentativas.some((x) => x.situacao === "criando" || x.situacao === "incerta")) return erro("em_andamento");
   if (t.tentativas.some((x) => comDinheiro(x.situacao))) return erro("ja_pago");
+  // Um Pix desta cotação já veio marcado como real (live_mode) no teste: nenhum outro (nem o mesmo, se o cancelamento
+  // ainda não pegou) — os 3 Pix da cotação não se gastam à toa. A equipe confere no painel do Mercado Pago.
+  if (t.tentativas.some((x) => x.forma === "pix" && x.aoVivo === true)) return erro("ao_vivo", "O Mercado Pago marcou um Pix desta cotação como pagamento real no ambiente de teste: nenhum outro é gerado. Fale com a equipe.");
   const pendentes = t.tentativas.filter((x) => x.situacao === "pendente");
   if (pendentes.some((x) => x.forma !== "pix")) return erro("em_andamento");
   const valido = pendentes.find((x) => x.pixCopiaECola && x.pixExpiraEm && x.pixExpiraEm.getTime() > agora.getTime() + MARGEM_PIX_VALIDO_MS);

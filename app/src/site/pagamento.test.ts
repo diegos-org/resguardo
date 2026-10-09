@@ -73,6 +73,42 @@ describe("o que a página da cotação mostra do pagamento (M8.2a)", () => {
     expect(await vista(s.cotacaoId, minutos(92.6), true)).toMatchObject({ estado: "pix_esgotado", dinheiroSemDesfecho: false });
   });
 
+  it("Pix marcado como real (live_mode) no teste, cancelado na hora: a página não oferece outro Pix (nem 'Gerar outro Pix'), e gerar de novo é recusado sem gastar outro dos 3", async () => {
+    const s = await c.segurar();
+    c.provedor.aoVivo = true;
+    expect(await gerarPix(db, c.org, s.cotacaoId, minutos(1), c.provedor)).toMatchObject({ ok: false, codigo: "ao_vivo" });
+    const [t] = await db.select().from(pagamentos).where(eq(pagamentos.cotacaoId, s.cotacaoId));
+    expect(t).toMatchObject({ situacao: "cancelado", aoVivo: true });
+    // As datas continuam seguradas, mas sem oferta: "o pagamento pelo site não está disponível agora" (fale com a equipe).
+    expect(await vista(s.cotacaoId, minutos(1), true)).toMatchObject({ estado: "pix_vencido", podeGerar: false, pix: null, holdAte: minutos(30).toISOString() });
+    expect(await (await consultar(s.codigo, { token: token(s.cotacaoId), quando: minutos(2) })).json()).toMatchObject({ estado: "pix_vencido", podeGerar: false, pix: null });
+    // Mesmo que o próximo viesse normal, nenhum outro Pix é gerado nesta cotação.
+    c.provedor.aoVivo = false;
+    expect(await gerarPix(db, c.org, s.cotacaoId, minutos(3), c.provedor)).toMatchObject({ ok: false, codigo: "ao_vivo" });
+    expect(c.provedor.chamadas.filter((x) => x.metodo === "criarPix")).toHaveLength(1);
+    expect(MENSAGENS_PIX_HOSPEDE.ao_vivo).toContain("Fale com a equipe");
+  });
+
+  it("Pix marcado como real com o cancelamento falhando: nunca o QR nem 'aguardando' (mesmo com a autorização); 'conferindo' até o cancelamento pegar, sem reaproveitar o Pix", async () => {
+    const s = await c.segurar();
+    c.provedor.aoVivo = true;
+    c.provedor.falhas.cancelar = new ErroProvedor("indisponivel", "fora do ar");
+    expect(await gerarPix(db, c.org, s.cotacaoId, minutos(1), c.provedor)).toMatchObject({ ok: false, codigo: "ao_vivo" });
+    const [t] = await db.select().from(pagamentos).where(eq(pagamentos.cotacaoId, s.cotacaoId));
+    expect(t).toMatchObject({ situacao: "pendente", aoVivo: true });
+    expect(t.pixCopiaECola).not.toBeNull();
+    const v = await vista(s.cotacaoId, minutos(1), true);
+    expect(v).toMatchObject({ estado: "verificando", pix: null, podeGerar: false });
+    // "Gerar Pix" de novo: recusado, sem mostrar de novo o Pix real nem criar outro.
+    expect(await gerarPix(db, c.org, s.cotacaoId, minutos(2), c.provedor)).toMatchObject({ ok: false, codigo: "ao_vivo" });
+    expect(c.provedor.chamadas.filter((x) => x.metodo === "criarPix")).toHaveLength(1);
+    // A consulta da página lê a order e manda cancelar de novo; com o Mercado Pago de volta, cancela e fica sem oferta.
+    c.provedor.falhas.cancelar = null;
+    const r = await (await consultar(s.codigo, { token: token(s.cotacaoId), quando: minutos(3) })).json();
+    expect(r).toMatchObject({ estado: "pix_vencido", podeGerar: false, pix: null });
+    expect((await c.tentativa(t.id)).situacao).toBe("cancelado");
+  });
+
   it("Pix possível numa consulta ou cotação aberta: travas, situação disponível com valor, imóvel do site e motor sem pendência", async () => {
     const estadia = { imovel: { codigo: "403" }, checkin: "2026-10-12", checkout: "2026-10-15", situacao: "disponivel", total: TOTAL };
     expect(await pixPossivel(db, c.org, estadia, c.gate)).toBe(true);

@@ -24,7 +24,7 @@ const FORMA = { pix: "Pix", cartao: "Cartão" } as const;
 const DEVOLUCAO = {
   pedida: "pedida ao Mercado Pago, aguardando confirmação",
   confirmada: "confirmada pelo Mercado Pago",
-  recusada: "recusada três vezes pelo Mercado Pago: confira no painel do Mercado Pago se o dinheiro já voltou antes de pedir de novo ou de registrar uma devolução feita por fora",
+  recusada: "o Mercado Pago recusou ou não respondeu três vezes: confira no painel do Mercado Pago antes de tentar de novo ou de registrar a devolução feita por fora",
   por_fora: "feita por fora",
 } as const;
 
@@ -194,7 +194,8 @@ function Tentativa({ p, verValores, editar, hoje }: { p: PagamentoDoPainel } & O
               rotulo="Registrar taxa que não voltou"
               nome="Registrar taxa que não voltou"
               discreto
-              pergunta="Registrar a taxa que o Mercado Pago não devolveu? Ela entra como despesa da empresa (zero, se a taxa voltou toda) e só se registra uma vez."
+              pergunta={`Registrar {valor} como a taxa que o Mercado Pago não devolveu${verValores && p.taxa !== null ? ` (a taxa cobrada na aprovação foi ${formatBRL(p.taxa)})` : ""}? Ela entra como despesa da empresa (zero, se a taxa voltou toda) e só se registra uma vez.`}
+              valorNaPergunta="valor"
             >
               <label style={{ flex: "0 1 220px" }}>
                 Taxa que não voltou (R$)

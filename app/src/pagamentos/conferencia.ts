@@ -33,6 +33,8 @@ export type ResultadoConferencia = { ok: true; situacao: SituacaoPagamento; cons
 export const chaveCancelamento = (pagamentoId: string) => `pagamento:${pagamentoId}:cancelar:${randomUUID().slice(0, 8)}`;
 
 const mensagemDoErro = (e: unknown) => (e instanceof ErroProvedor ? e.message : "Não deu para falar com o Mercado Pago agora; tente de novo em instantes.");
+/** Falha de leitura que chegou ao provedor (limite de chamadas ou sem resposta): na página, a marca dos 15 s fica. */
+const falhaQueSegura = (e: unknown) => e instanceof ErroProvedor && (e.tipo === "limite" || e.tipo === "incerto");
 
 function precisaFinanceiro(p: Pagamento, c: Cobranca, agora: Date, forcar: boolean): boolean {
   // Taxa, líquido e liberação só servem enquanto aprovado (a taxa que não volta numa devolução a equipe informa).
@@ -101,8 +103,10 @@ export async function marcarAviso(db: Db, pagamentoId: string, aviso: string, li
 /**
  * Confere a tentativa com o provedor e aplica. Sem `forcar`, a leitura é reservada antes, num comando só
  * (`consultadoEm` passa a agora só se a última leitura tem 15 s ou mais): pedidos simultâneos da página ou da rotina
- * leem o provedor uma vez só. `forcar` ignora o intervalo (aviso assinado, "Conferir agora", depois de cancelar). A
- * página só deve chamar enquanto a tentativa está pendente/criando/incerta (ver `conferirCotacaoParaPagina`).
+ * leem o provedor uma vez só. Leitura que falha devolve a marca, salvo na página quando o provedor limitou as chamadas
+ * ou não respondeu (então a página continua lendo no máximo a cada 15 s). `forcar` ignora o intervalo (aviso
+ * assinado, "Conferir agora", depois de cancelar). A página só deve chamar enquanto a tentativa está
+ * pendente/criando/incerta (ver `conferirCotacaoParaPagina`).
  */
 export async function conferirTentativa(
   db: Db,
@@ -132,7 +136,10 @@ export async function conferirTentativa(
   try {
     leitura = await lerProvedor(p, provedor, agora, opcoes.forcar === true, opcoes.cobranca);
   } catch (e) {
-    await desfazerReserva();
+    // Salvo na página com o Mercado Pago limitando as chamadas (429) ou sem responder (tempo esgotado, 5xx): aí a
+    // marca fica, e a página lê no máximo uma vez a cada 15 s mesmo enquanto ele falha (o freio vale justamente
+    // quando a conta já está no limite). O pedido que nem saiu (`indisponivel`) e a rotina continuam desfazendo.
+    if (!(opcoes.origem === "pagina" && falhaQueSegura(e))) await desfazerReserva();
     return { ok: false, erro: mensagemDoErro(e) };
   }
   let efeitos: Efeitos | null;

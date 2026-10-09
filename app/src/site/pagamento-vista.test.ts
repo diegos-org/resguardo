@@ -24,6 +24,8 @@ describe("vista do pagamento para o navegador (M8.2a)", () => {
       reservaCodigo: null,
       pagamentoEmDobro: false,
       devolucao: { situacao: "pedida", em: new Date("2026-10-02T12:00:00Z") },
+      // Só para o servidor: não vai ao navegador (o toEqual abaixo confere).
+      pixAoVivo: true,
     };
     expect(paraOHospede(v)).toEqual({
       estado: "pix_aguardando",

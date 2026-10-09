@@ -207,6 +207,31 @@ describe("a página acompanha sozinha enquanto espera (M8.2a)", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("Pix vencido sem poder gerar outro (travas numa falha passageira): quando a rota volta a oferecer, recarrega uma vez (mesma situação, 'pode gerar' mudou)", async () => {
+    vi.useFakeTimers({ now: AGORA });
+    const vencido = (podeGerar: boolean) => new Response(JSON.stringify({ ...base, estado: "pix_vencido", pixRestantes: 2, podeGerar }), { status: 200 });
+    fetchMock.mockResolvedValueOnce(vencido(false)).mockResolvedValueOnce(vencido(false)).mockImplementation(async () => vencido(true));
+    const { container } = mostrar({ estado: "pix_vencido", pixRestantes: 2, podeGerar: false });
+    expect(container.textContent).toContain("não está disponível agora");
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    await act(() => vi.advanceTimersByTimeAsync(INTERVALO_ACOMPANHAMENTO_MS));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(m.refresh).not.toHaveBeenCalled();
+    await act(() => vi.advanceTimersByTimeAsync(INTERVALO_ACOMPANHAMENTO_MS));
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(m.refresh).toHaveBeenCalledTimes(1);
+    // A mesma resposta de novo (a página ainda não recarregou): não recarrega outra vez.
+    await act(() => vi.advanceTimersByTimeAsync(INTERVALO_ACOMPANHAMENTO_MS * 2));
+    expect(m.refresh).toHaveBeenCalledTimes(1);
+    // Resposta sem o campo "pode gerar" conta como sem mudança nele.
+    cleanup();
+    m.refresh.mockClear();
+    fetchMock.mockImplementation(async () => resposta("pix_vencido"));
+    mostrar({ estado: "pix_vencido", pixRestantes: 2, podeGerar: false });
+    await act(() => vi.advanceTimersByTimeAsync(INTERVALO_ACOMPANHAMENTO_MS * 2));
+    expect(m.refresh).not.toHaveBeenCalled();
+  });
+
   it("o Pix venceu na contagem: a página recarrega uma vez", async () => {
     vi.useFakeTimers({ now: new Date("2026-10-01T15:29:58Z") });
     fetchMock.mockResolvedValue(resposta("pix_aguardando"));

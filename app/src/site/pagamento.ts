@@ -73,8 +73,9 @@ export async function pixPossivel(
 /**
  * O que a página da cotação mostra do pagamento (a mesma resposta na página e na rota). "pagar" e "Gerar outro Pix"
  * só quando o site oferece o Pix nesta cotação — a oferta (travas e motor em seco) só é conferida quando é ela que
- * decide. Dinheiro ou Pix sem desfecho nunca aparece como "sem pagamento" nem como "Pix esgotado": a página mostra
- * "conferindo" e continua consultando (um Pix pago no último instante ainda confirma).
+ * decide — e nunca depois de um Pix marcado como real (live_mode) no teste. Dinheiro ou Pix sem desfecho nunca
+ * aparece como "sem pagamento" nem como "Pix esgotado": a página mostra "conferindo" e continua consultando (um Pix
+ * pago no último instante ainda confirma).
  */
 export async function vistaDoPagamento(
   db: Db,
@@ -85,7 +86,8 @@ export async function vistaDoPagamento(
 ): Promise<PagamentoDoHospede | null> {
   let vista = await vistaDaCotacaoParaHospede(db, organizacaoId, cotacaoId, agora, { comAutorizacao: o.comAutorizacao });
   let podeGerar = false;
-  if (vista && (vista.estado === "sem_pagamento" || vista.estado === "pix_vencido") && vista.holdAte) {
+  // Pix marcado como real (live_mode) no teste: nenhum outro é oferecido nesta cotação (o domínio também recusa).
+  if (vista && !vista.pixAoVivo && (vista.estado === "sem_pagamento" || vista.estado === "pix_vencido") && vista.holdAte) {
     const oferta = await ofertaDePix(db, organizacaoId, cotacaoId, agora, await o.gate());
     podeGerar = oferta.oferecer;
     if (oferta.oferecer && vista.estado === "sem_pagamento") vista = await vistaDaCotacaoParaHospede(db, organizacaoId, cotacaoId, agora, { comAutorizacao: o.comAutorizacao, oferecido: true });

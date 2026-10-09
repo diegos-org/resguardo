@@ -106,12 +106,40 @@ describe("conferência: freio da página e leituras antigas (M8.2a)", () => {
     const r = await Promise.all(Array.from({ length: 25 }, () => conferirCotacaoParaPagina(db, c.org, s.cotacaoId, c.provedor, quando)));
     expect(lidas() - antes).toBe(1);
     expect(r.filter((x) => x?.ok && x.consultou)).toHaveLength(1);
-    // Leitura que falha não conta: a marca volta e a próxima (15 s depois da última que valeu) lê de novo.
-    c.provedor.falhas.consultar = new ErroProvedor("incerto", "tempo");
+    // Leitura que nem chegou ao provedor não conta: a marca volta e a próxima (15 s depois da última que valeu) lê de novo.
+    c.provedor.falhas.consultar = new ErroProvedor("indisponivel", "sem conexão");
     expect(await conferirCotacaoParaPagina(db, c.org, s.cotacaoId, c.provedor, new Date(quando.getTime() + 15_000))).toMatchObject({ ok: false });
     expect((await db.select().from(pagamentos).where(eq(pagamentos.cotacaoId, s.cotacaoId)))[0].consultadoEm?.toISOString()).toBe(quando.toISOString());
     c.provedor.falhas.consultar = null;
     expect(await conferirCotacaoParaPagina(db, c.org, s.cotacaoId, c.provedor, new Date(quando.getTime() + 16_000))).toMatchObject({ ok: true, consultou: true });
+  });
+
+  it.each(["limite", "incerto"] as const)("Mercado Pago falhando (%s) com a página consultando a cada 5 s: no máximo uma leitura a cada 15 s (a marca fica); a rotina e o pedido que nem saiu devolvem a marca", async (tipo) => {
+    const s = await c.segurar();
+    const p = await c.pix(s.cotacaoId);
+    const lidas = () => c.provedor.chamadas.filter((x) => x.metodo === "consultar" || x.metodo === "buscarPorReferencia").length;
+    c.provedor.falhas.consultar = new ErroProvedor(tipo, tipo === "limite" ? "Muitas chamadas ao Mercado Pago." : "O Mercado Pago não respondeu.", tipo === "limite" ? 30 : null);
+    const inicio = new Date(AGORA.getTime() + 20_000);
+    const antes = lidas();
+    // Um minuto de consultas a cada 5 s, cada volta com 5 pedidos ao mesmo tempo (várias abas).
+    for (let i = 0; i < 12; i++) {
+      const quando = new Date(inicio.getTime() + i * 5_000);
+      await Promise.all(Array.from({ length: 5 }, () => conferirCotacaoParaPagina(db, c.org, s.cotacaoId, c.provedor, quando)));
+    }
+    expect(lidas() - antes).toBe(4);
+    const consultadoEm = async () => (await c.tentativa(p.pagamentoId)).consultadoEm?.toISOString();
+    expect(await consultadoEm()).toBe(new Date(inicio.getTime() + 45_000).toISOString());
+    // A rotina, falhando do mesmo jeito, devolve a marca (não atrasa a releitura dela).
+    const rotina = new Date(inicio.getTime() + 61_000);
+    expect(await conferirTentativa(db, c.org, p.pagamentoId, c.provedor, rotina, { origem: "rotina" })).toMatchObject({ ok: false });
+    expect(await consultadoEm()).toBe(new Date(inicio.getTime() + 45_000).toISOString());
+    // Pedido que nem saiu (sem conexão): a página também devolve a marca.
+    c.provedor.falhas.consultar = new ErroProvedor("indisponivel", "sem conexão");
+    expect(await conferirCotacaoParaPagina(db, c.org, s.cotacaoId, c.provedor, new Date(inicio.getTime() + 62_000))).toMatchObject({ ok: false });
+    expect(await consultadoEm()).toBe(new Date(inicio.getTime() + 45_000).toISOString());
+    // Voltou: a próxima leitura vale normalmente.
+    c.provedor.falhas.consultar = null;
+    expect(await conferirCotacaoParaPagina(db, c.org, s.cotacaoId, c.provedor, new Date(inicio.getTime() + 63_000))).toMatchObject({ ok: true, consultou: true });
   });
 
   it("aviso de cancelamento ligado e desligado num comando só: nunca apaga os outros avisos gravados", async () => {

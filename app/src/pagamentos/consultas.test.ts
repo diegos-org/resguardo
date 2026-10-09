@@ -7,7 +7,7 @@ import { estornar } from "@/financeiro/ledger";
 import { expirarHoldsVencidos } from "@/site/cotacoes";
 import { conferirTentativa } from "./conferencia";
 import { avisosDePagamento, listarPagamentos, pagamentoEmAndamentoOuAprovado, pagamentosDaReserva, vistaDaCotacaoParaHospede } from "./consultas";
-import { devolverPeloProvedor } from "./devolucao";
+import { devolverPeloProvedor, registrarDevolucaoPorFora } from "./devolucao";
 import { registrarEventoDeAviso } from "./eventos";
 import { gerarPix } from "./pix";
 import { ErroProvedor } from "./provedor";
@@ -116,7 +116,7 @@ describe("leituras que faltam dado e situações inesperadas (M8.2a)", () => {
     expect(await c.tentativa(p.pagamentoId)).toMatchObject({ pixExpiraEm: minutos(30), avisos: [] });
   });
 
-  it("devolvido em parte antes de o sistema decidir: o hóspede vê 'aprovado sem as datas' (nunca 'confirmando' para sempre); o painel pede atenção e oferece só a devolução por fora", async () => {
+  it("devolvido em parte antes de o sistema decidir: o hóspede vê 'aprovado sem as datas' (nunca 'confirmando' para sempre); o painel pede atenção, explica e só oferece Conferir agora (nada que o domínio recusaria)", async () => {
     const { cotacaoId, reservaId } = await c.segurar();
     const p = await c.pix(cotacaoId);
     c.provedor.aprovar(p.idProvedor);
@@ -124,8 +124,40 @@ describe("leituras que faltam dado e situações inesperadas (M8.2a)", () => {
     await conferir(p.pagamentoId, minutos(3));
     expect(await vista(cotacaoId, minutos(3))).toMatchObject({ estado: "aprovado_sem_datas", dinheiroSemDesfecho: true });
     const [q] = await pagamentosDaReserva(db, c.org, reservaId, minutos(3));
-    expect(q).toMatchObject({ situacao: "devolvido_parcial", pedeAtencao: true, motivoSemReservaTexto: expect.stringContaining("antes de o sistema decidir"), acoes: { devolver: false, devolucaoPorFora: true, registrarTaxaPerdida: false } });
+    expect(q).toMatchObject({ situacao: "devolvido_parcial", pedeAtencao: true, motivoSemReservaTexto: expect.stringContaining("antes de o sistema decidir"), acoes: { conferir: true, devolver: false, devolucaoPorFora: false, registrarTaxaPerdida: false } });
     expect(q.avisos.join(" ")).toContain("M8.2c");
+    // O domínio também recusa (o Mercado Pago sempre mostra a parte devolvida).
+    expect(await registrarDevolucaoPorFora(db, c.org, p.pagamentoId, { data: "2026-10-01", valor: TOTAL, nota: "" }, null, c.provedor, minutos(4))).toMatchObject({ ok: false });
+    // No Início: alerta próprio (resolver no painel do Mercado Pago), não "devolva ao hóspede".
+    const { alertas, contagens } = await avisosDePagamento(db, c.org, minutos(5), { env: env({}) });
+    expect(contagens).toMatchObject({ aprovadoSemDesfecho: 0, situacaoInesperada: 1 });
+    const textos = alertas.map((a) => a.texto).join("\n");
+    expect(textos).not.toContain("devolva ao hóspede");
+    expect(alertas).toContainEqual({
+      nivel: "atencao",
+      texto: "1 pagamento(s) do site que o Mercado Pago mostrou já devolvido(s) em parte ou contestado(s) antes de o sistema decidir a reserva: resolva pelo painel do Mercado Pago (o sistema passa a cuidar disso no M8.2c).",
+      link: "/painel/financeiro/pagamentos-site?atencao=1",
+    });
+  });
+
+  it("contestado antes de o sistema decidir: 'Registrar devolução feita por fora' continua oferecido; recusado enquanto o Mercado Pago mostra a contestação, aceito quando ele volta a mostrar aprovado", async () => {
+    const { cotacaoId, reservaId } = await c.segurar();
+    const p = await c.pix(cotacaoId);
+    c.provedor.aprovar(p.idProvedor);
+    c.provedor.contestar(p.idProvedor);
+    await conferir(p.pagamentoId, minutos(3));
+    const [q] = await pagamentosDaReserva(db, c.org, reservaId, minutos(3));
+    expect(q).toMatchObject({ situacao: "contestado", desfecho: null, motivoSemReserva: "situacao_inesperada", acoes: { devolver: false, devolucaoPorFora: true } });
+    expect((await avisosDePagamento(db, c.org, minutos(3), { env: env({}) })).contagens).toMatchObject({ aprovadoSemDesfecho: 0, situacaoInesperada: 1 });
+    const porFora = (quando: Date) => registrarDevolucaoPorFora(db, c.org, p.pagamentoId, { data: "2026-10-01", valor: TOTAL, nota: "" }, null, c.provedor, quando);
+    expect(await porFora(minutos(4))).toMatchObject({ ok: false, erro: expect.stringContaining("contestado") });
+    // A contestação se resolve (o Mercado Pago volta a mostrar aprovado); a situação local continua "contestado".
+    c.provedor.aprovar(p.idProvedor);
+    await conferir(p.pagamentoId, minutos(5));
+    const [q2] = await pagamentosDaReserva(db, c.org, reservaId, minutos(5));
+    expect(q2).toMatchObject({ situacao: "contestado", acoes: { devolucaoPorFora: true } });
+    expect(await porFora(minutos(6))).toEqual({ ok: true, situacao: "por_fora" });
+    expect((await avisosDePagamento(db, c.org, minutos(7), { env: env({}) })).contagens.situacaoInesperada).toBe(0);
   });
 });
 
@@ -190,7 +222,7 @@ describe("painel: pagamentos da reserva, lista e avisos do Início (M8.2a)", () 
     const recusada = await avisosDePagamento(db, c.org, minutos(11), { env: env({}) });
     expect(recusada.contagens.devolucaoRecusada).toBe(1);
     // O Início não afirma que o Mercado Pago não fez: manda conferir lá antes.
-    expect(recusada.alertas.map((x) => x.texto).join("\n")).toContain("confira no painel do Mercado Pago se o dinheiro já voltou");
+    expect(recusada.alertas.map((x) => x.texto).join("\n")).toContain("o Mercado Pago recusou ou não respondeu três vezes. Confira no painel do Mercado Pago antes de tentar de novo");
     await db.update(devolucoesPagamento).set({ situacao: "pedida" }).where(eq(devolucoesPagamento.pagamentoId, pa.pagamentoId));
     // Dinheiro sem cálculo: os lançamentos do motor da reserva paga somem (recálculo depois do fim do contrato).
     const motor = await db.select().from(lancamentos).where(and(eq(lancamentos.reservaId, b.reservaId), eq(lancamentos.origem, "motor")));

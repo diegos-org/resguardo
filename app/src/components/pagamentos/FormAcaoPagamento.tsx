@@ -1,8 +1,10 @@
 "use client";
 
-import { type ReactNode, startTransition, useActionState } from "react";
+import { type ReactNode, startTransition, useActionState, useRef } from "react";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import styles from "@/components/formularios.module.css";
+import { reaisParaCentavos } from "@/lib/dinheiro-form";
+import { formatBRL } from "@/lib/money";
 import type { EstadoAcaoPagamento } from "@/pagamentos/acoes-painel";
 
 type Props = {
@@ -14,6 +16,11 @@ type Props = {
   pagamentoId?: string;
   /** Pergunta de confirmação: toda ação que mexe em dinheiro passa por ela. Sem pergunta, envio direto (conferir). */
   pergunta?: string;
+  /**
+   * Nome do campo em reais cujo valor digitado entra na pergunta, no lugar de `{valor}` (ex.: "R$ 1.806,00"), na hora
+   * do clique: quem confirma vê o valor que vai ser gravado.
+   */
+  valorNaPergunta?: string;
   /** Botão secundário (ações raras ou de correção). */
   discreto?: boolean;
   children?: ReactNode;
@@ -24,11 +31,19 @@ type Props = {
  * mensagem que o servidor devolveu — de sucesso ou a recusa do domínio, como veio. Envia pelo `onSubmit` (não pelo
  * `action` do formulário) para o React não limpar os campos: numa recusa, o que foi digitado continua ali para corrigir.
  */
-export function FormAcaoPagamento({ acao, rotulo, nome, pagamentoId, pergunta, discreto, children }: Props) {
+export function FormAcaoPagamento({ acao, rotulo, nome, pagamentoId, pergunta, valorNaPergunta, discreto, children }: Props) {
   const [estado, enviar, enviando] = useActionState(acao, {});
+  const formulario = useRef<HTMLFormElement>(null);
   const classe = discreto ? styles.pequeno : undefined;
+  const perguntaComValor = () => {
+    if (!pergunta || !valorNaPergunta || !formulario.current) return pergunta ?? "";
+    const bruto = String(new FormData(formulario.current).get(valorNaPergunta) ?? "").trim();
+    const centavos = reaisParaCentavos(bruto);
+    return pergunta.replace("{valor}", typeof centavos === "number" ? formatBRL(centavos) : `"${bruto}"`);
+  };
   return (
     <form
+      ref={formulario}
       aria-label={nome}
       className={styles.linha}
       style={{ alignItems: "flex-end", margin: 0 }}
@@ -42,7 +57,7 @@ export function FormAcaoPagamento({ acao, rotulo, nome, pagamentoId, pergunta, d
       {children}
       <div className={discreto ? undefined : styles.acoes}>
         {pergunta ? (
-          <BotaoConfirmar pergunta={pergunta} disabled={enviando} className={classe}>
+          <BotaoConfirmar pergunta={valorNaPergunta ? perguntaComValor : pergunta} disabled={enviando} className={classe}>
             {enviando ? "Aguarde…" : rotulo}
           </BotaoConfirmar>
         ) : (

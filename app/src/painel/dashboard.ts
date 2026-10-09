@@ -11,6 +11,7 @@ import { listarDespesas, totaisDespesas } from "@/despesas/despesas";
 import { totaisPorTipo } from "@/financeiro/ledger";
 import { lancamentoDeConferenciaResolvida, reservasQueContam } from "@/portal/posse";
 import type { Imovel } from "@/imoveis/repositorio";
+import { ESPERA_TELA_MS, esperarNoMaximo } from "@/lib/prazo";
 import { contarPendentes as contarCadastrosPendentes } from "@/marketplace/cadastro";
 import { contaDeTesteConfirmada, estadoPagamentoDoAmbiente, provedorDoAmbiente } from "@/pagamentos/ambiente";
 import { avisosDePagamento } from "@/pagamentos/consultas";
@@ -44,15 +45,7 @@ export async function contaDeTesteParaInicio(o: { env?: NodeJS.ProcessEnv; prove
   const env = o.env ?? process.env;
   const provedor = o.provedor ?? (estadoPagamentoDoAmbiente(env).situacao === "teste" ? provedorDoAmbiente(env) : null);
   if (!provedor) return null;
-  let relogio: ReturnType<typeof setTimeout> | undefined;
-  const limite = new Promise<null>((r) => {
-    relogio = setTimeout(() => r(null), o.esperaMs ?? 2000);
-  });
-  try {
-    return await Promise.race([contaDeTesteConfirmada(provedor), limite]);
-  } finally {
-    clearTimeout(relogio);
-  }
+  return esperarNoMaximo(contaDeTesteConfirmada(provedor), o.esperaMs ?? ESPERA_TELA_MS, null);
 }
 
 const somaDias = (d: string, n: number) => new Date(Date.UTC(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10)) + n)).toISOString().slice(0, 10);

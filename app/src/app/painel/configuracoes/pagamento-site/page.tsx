@@ -9,6 +9,7 @@ import { nomeDaEmpresa } from "@/configuracoes/empresa";
 import { CARACTERES_VISIVEIS_FATURA, CATEGORIA_TAXA_PERDIDA, LIMITE_NOME_FATURA, lerConfigPagamentoSite } from "@/configuracoes/pagamento-site";
 import { getDb } from "@/db/client";
 import { listarCategorias } from "@/despesas/categorias";
+import { ESPERA_TELA_MS, esperarNoMaximo } from "@/lib/prazo";
 import { conferirAgoraAcao, salvarConfigPagamentoSiteAcao } from "@/pagamentos/acoes-painel";
 import { motivosPorImovel, podeCobrar, TEXTO_SEM_COBRANCA } from "@/pagamentos/oferta";
 
@@ -25,7 +26,13 @@ export default async function PagamentoNoSite() {
     motivosPorImovel(db, org),
     nomeDaEmpresa(db, org),
     // As travas de hoje (ambiente, chaves, a chave do painel e a conta de teste): sem elas, nenhum imóvel oferece o Pix.
-    podeCobrar(db, org).catch(() => ({ ok: false as const, motivo: "conta_nao_conferida" as const, texto: TEXTO_SEM_COBRANCA.conta_nao_conferida })),
+    // A conta é conferida no Mercado Pago: a tela espera no máximo alguns segundos (null = não deu para conferir agora;
+    // a conferência continua no fundo e fica lembrada para a próxima vez). A chave para desligar nunca fica presa.
+    esperarNoMaximo(
+      podeCobrar(db, org).catch(() => ({ ok: false as const, motivo: "conta_nao_conferida" as const, texto: TEXTO_SEM_COBRANCA.conta_nao_conferida })),
+      ESPERA_TELA_MS,
+      null,
+    ),
   ]);
   const editar = podeFazer(sessao.papel, "financeiro:editar");
   return (
@@ -51,10 +58,17 @@ export default async function PagamentoNoSite() {
           O Pix só aparece quando o cálculo do financeiro fecha sem pendência (contrato de gestão vigente, um proprietário, a empresa recebendo do site).
           Conferido aqui para uma entrada hoje; cada pedido é conferido de novo na data de entrada dele.
         </p>
-        {!gate.ok && (
-          <p role="status" style={{ fontSize: "0.8125rem", color: "var(--scl-erro-texto)", margin: 0 }}>
-            Hoje o site não oferece o Pix em nenhum imóvel: {gate.texto}
+        {gate === null ? (
+          <p role="status" style={{ fontSize: "0.8125rem", color: "var(--scl-aviso-texto)", margin: 0 }}>
+            Não deu para conferir a conta do Mercado Pago agora (ele demorou a responder): a lista abaixo mostra só o cálculo do financeiro. Recarregue a
+            página em instantes.
           </p>
+        ) : (
+          !gate.ok && (
+            <p role="status" style={{ fontSize: "0.8125rem", color: "var(--scl-erro-texto)", margin: 0 }}>
+              Hoje o site não oferece o Pix em nenhum imóvel: {gate.texto}
+            </p>
+          )
         )}
         {imoveis.length === 0 ? (
           <p>Nenhum imóvel ativo no site público.</p>
@@ -76,8 +90,10 @@ export default async function PagamentoNoSite() {
                     <td>
                       {!i.oferece ? (
                         <span style={{ color: "var(--scl-erro-texto)" }}>{i.texto}</span>
-                      ) : gate.ok ? (
+                      ) : gate?.ok ? (
                         <span aria-label="oferece o Pix">✓</span>
+                      ) : gate === null ? (
+                        <span>cálculo sem pendência (as travas não foram conferidas agora)</span>
                       ) : (
                         <span>cálculo sem pendência (o Pix aparece quando as travas acima liberarem)</span>
                       )}

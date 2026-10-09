@@ -2208,7 +2208,9 @@ ambiente).
       saber. Antes de registrar uma devolução **feita por fora**, o sistema confere no Mercado Pago se
       o dinheiro já não voltou por lá (se não der para conferir, ele não registra).
     - **Depois de uma devolução pelo Mercado Pago:** veja no Mercado Pago quanto da taxa ficou com ele
-      e informe em **Registrar taxa que não voltou**, na ficha (zero se voltou toda). O Mercado Pago não
+      e informe em **Registrar taxa que não voltou**, na ficha (em reais, com vírgula, ex.: 18,06; zero se
+      voltou toda; a confirmação mostra o valor digitado, e valor maior que a taxa que ele cobrou é
+      recusado). O Mercado Pago não
       informa isso sozinho; até você informar, fica um aviso. A regra de a empresa ficar com a taxa que
       não volta, quando o pagamento ficou sem reserva por falha do sistema, é minha sugestão: confirme
       se concorda.

@@ -108,6 +108,10 @@ export async function sincronizarReserva(
     for (const chave of chavesDaImportacao(organizacaoId, fonte, idFonte, dados)) {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${chave}))`);
     }
+    // NO KEY UPDATE: serializa quem muda a mesma reserva sem bloquear a conferência das chaves estrangeiras de quem
+    // grava lançamentos ou itens de repasse dela (a confirmação do pagamento do site chega aqui com a reserva já
+    // travada assim — um FOR UPDATE subiria a trava; ver pagamentos/travas.ts). O UPDATE abaixo, quando muda o id do
+    // Beds24 (chave única), sobe sozinho para FOR UPDATE.
     let [existente] = await tx
       .select()
       .from(reservas)
@@ -115,7 +119,7 @@ export async function sincronizarReserva(
         and(eq(reservas.fonte, fonte), eq(reservas.idFonte, idFonte)),
         fonte === "beds24" ? eq(reservas.beds24Id, idFonte) : undefined,
       )))
-      .for("update");
+      .for("no key update");
 
     if (!existente && (fonte === "beds24" || fonte === "csv") && dados.codigoCanal && ["airbnb", "booking"].includes(dados.origem)) {
       const candidatas = await tx.select().from(reservas).where(and(
@@ -388,11 +392,13 @@ export async function confirmarPedidoPago(
 ): Promise<{ ok: true; reserva: Reserva; avisos: string[]; protegido: boolean } | { ok: false; erro: string }> {
   if (!uuidValido(reservaId)) return { ok: false, erro: "Reserva não encontrada." };
   return db.transaction(async (tx) => {
+    // NO KEY UPDATE, como a trava da cotação (pagamentos/travas.ts): um FOR UPDATE aqui subiria a trava da reserva e
+    // bloquearia a conferência das chaves estrangeiras de quem grava lançamentos dela (impasse com a trava do motor).
     const [r] = await tx
       .select()
       .from(reservas)
       .where(and(eq(reservas.id, reservaId), eq(reservas.organizacaoId, organizacaoId)))
-      .for("update");
+      .for("no key update");
     if (!r || r.fonte !== "site" || !r.idFonte) return { ok: false as const, erro: "Pedido do site não encontrado." };
     if (r.estado === "confirmada") return { ok: false as const, erro: "A reserva já está confirmada." };
     const dados: DadosReserva = {

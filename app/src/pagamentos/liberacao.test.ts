@@ -8,6 +8,7 @@ import { preverRepasses } from "@/repasses/repasses";
 import { dinheiroComAEmpresa, estornarRecebimento, recebidoPorReserva, registrarRecebimento } from "@/repasses/recebimentos";
 import { aplicarNaTransacao, conferirTentativa } from "./conferencia";
 import { chaveRecebimento, estornarLiberacaoManual, registrarLiberacaoManual } from "./liberacao";
+import { conferirPendentes } from "./rotina";
 import { type Cenario, minutos, montarCenario, TOTAL } from "./testes";
 
 let db: Db, close: () => Promise<void>, c: Cenario;
@@ -187,15 +188,51 @@ describe("taxa, liberação e recebimento do pagamento no site (M8.2a)", () => {
     expect((await c.tentativa(x.pagamentoId)).avisos).toEqual([]);
   });
 
-  it("liberado sem o líquido: aviso, nada lançado; data da liberação à mão antes da aprovação: recusada", async () => {
+  it("liberado sem o líquido: aviso, nada lançado; data da liberação à mão antes da criação do Pix: recusada", async () => {
     const x = await paga({}, {});
     c.provedor.atualizarFinanceiro(x.idProvedor, { liberado: true, liberacaoPrevista: new Date("2026-10-02T18:00:00Z") });
     await conferir(x.pagamentoId, new Date("2026-10-03T12:00:00Z"));
     expect(await recebimentos(x.reservaId)).toEqual([]);
     expect((await c.tentativa(x.pagamentoId)).avisos).toEqual(["liberacao_sem_valor"]);
-    // Aprovado em 1/10 (São Paulo): liberação em 30/9 não existe.
-    expect(await registrarLiberacaoManual(db, c.org, x.pagamentoId, { data: "2026-09-30", liquido: LIQUIDO }, null, new Date("2026-10-03T12:00:00Z"))).toEqual({ ok: false, erro: "A data da liberação não pode ser antes da aprovação do pagamento (01/10/2026)." });
+    // Pix criado em 1/10 (São Paulo): liberação em 30/9 não existe.
+    expect(await registrarLiberacaoManual(db, c.org, x.pagamentoId, { data: "2026-09-30", liquido: LIQUIDO }, null, new Date("2026-10-03T12:00:00Z"))).toEqual({ ok: false, erro: "A data da liberação não pode ser antes da criação do Pix (01/10/2026)." });
     expect(await registrarLiberacaoManual(db, c.org, x.pagamentoId, { data: "2026-10-01", liquido: LIQUIDO }, null, new Date("2026-10-03T12:00:00Z"))).toEqual({ ok: true });
+  });
+
+  it("liberação à mão: o limite de baixo é o dia da criação do Pix, não a hora em que o sistema leu a aprovação (lida depois da meia-noite, a data real do dia anterior vale)", async () => {
+    // Pix criado em 1/10 às 12:00 (São Paulo), pago no mesmo dia e só lido em 2/10 às 00:05 (São Paulo).
+    const s = await c.segurar();
+    const p = await c.pix(s.cotacaoId);
+    c.provedor.aprovar(p.idProvedor, {});
+    await conferir(p.pagamentoId, new Date("2026-10-02T03:05:00Z"));
+    expect(await c.tentativa(p.pagamentoId)).toMatchObject({ desfecho: "reserva", aprovadoEm: new Date("2026-10-02T03:05:00Z") });
+    const depois = new Date("2026-10-02T15:00:00Z");
+    expect(await registrarLiberacaoManual(db, c.org, p.pagamentoId, { data: "2026-09-30", liquido: LIQUIDO }, null, depois)).toEqual({ ok: false, erro: "A data da liberação não pode ser antes da criação do Pix (01/10/2026)." });
+    expect(await registrarLiberacaoManual(db, c.org, p.pagamentoId, { data: "2026-10-01", liquido: LIQUIDO }, null, depois)).toEqual({ ok: true });
+    expect((await recebimentos(s.reservaId)).map((l) => [l.estado, l.montante, l.dataCaixa])).toEqual([["realizado", LIQUIDO, "2026-10-01"]]);
+  });
+
+  it("liberação divergente: estornar e registrar de novo o valor certo apaga o aviso, mesmo sem o sinal de liberado (como nas prévias)", async () => {
+    const x = await paga();
+    expect(await registrarLiberacaoManual(db, c.org, x.pagamentoId, { data: "2026-10-01", liquido: LIQUIDO - 10000 }, null, minutos(10))).toEqual({ ok: true });
+    await conferir(x.pagamentoId, minutos(20));
+    expect((await c.tentativa(x.pagamentoId)).avisos).toEqual(["liberacao_divergente"]);
+    // O estorno leva o aviso junto: o recebimento a que ele se referia saiu.
+    expect(await estornarLiberacaoManual(db, c.org, x.pagamentoId, "digitei errado", null, minutos(30))).toEqual({ ok: true });
+    expect((await c.tentativa(x.pagamentoId)).avisos).toEqual([]);
+    expect(await registrarLiberacaoManual(db, c.org, x.pagamentoId, { data: "2026-10-01", liquido: LIQUIDO }, null, minutos(40))).toEqual({ ok: true });
+    await conferir(x.pagamentoId, minutos(50));
+    await conferirPendentes(db, c.org, c.provedor, minutos(60 * 30));
+    expect(await c.tentativa(x.pagamentoId)).toMatchObject({ taxa: TAXA, liquido: LIQUIDO, liberacaoOrigem: "manual", avisos: [] });
+    expect((await recebidos(x.reservaId)).map((l) => [l.estado, l.montante])).toEqual([["realizado", LIQUIDO]]);
+    // Aviso que ficou de uma leitura antiga: a leitura cujo líquido bate com o registrado à mão o apaga.
+    await db.update(pagamentos).set({ avisos: ["liberacao_divergente"] }).where(eq(pagamentos.id, x.pagamentoId));
+    await conferir(x.pagamentoId, minutos(60 * 31));
+    expect((await c.tentativa(x.pagamentoId)).avisos).toEqual([]);
+    // Na mesma leitura, a liberação com outra data liga o aviso de novo (o líquido bate, a data não).
+    c.provedor.atualizarFinanceiro(x.idProvedor, { liquido: LIQUIDO, liberado: true, liberacaoPrevista: new Date("2026-09-30T18:00:00Z") });
+    await conferir(x.pagamentoId, minutos(60 * 32));
+    expect((await c.tentativa(x.pagamentoId)).avisos).toEqual(["liberacao_divergente"]);
   });
 
   it("só o pagamento que confirmou a reserva lança recebimento: o segundo, liberado, fica só na tentativa", async () => {

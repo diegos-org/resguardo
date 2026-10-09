@@ -25,16 +25,20 @@ const dia = (iso: string, fuso: string) => formato(fuso, { dateStyle: "short" })
 /**
  * Acompanha o pagamento (M8.2a): enquanto a situação é de espera, consulta a rota da cotação a cada 5 s (a primeira
  * logo ao abrir, para a página conferir quem volta pelo link), pausa com a aba escondida e volta quando ela aparece.
- * Mudou a situação: recarrega a página (o servidor mostra o que vale agora); situação final: para.
+ * Mudou a situação ou o "pode gerar outro Pix" (ex.: as travas voltaram depois de uma falha passageira): recarrega a
+ * página (o servidor mostra o que vale agora); situação final: para.
  */
-export function useAcompanharPagamento(codigo: string, estado: EstadoPagamentoHospede, ativo: boolean) {
+export function useAcompanharPagamento(codigo: string, estado: EstadoPagamentoHospede, podeGerar: boolean, ativo: boolean) {
   const router = useRouter();
   useEffect(() => {
     if (!ativo) return;
     let parado = false;
     let consultando = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
-    let ultimo: string = estado;
+    // Começa do que a página mostra; resposta sem `podeGerar` conta como sem mudança nele.
+    const assinatura = (e: string, g: boolean) => `${e}|${g}`;
+    let ultimo = assinatura(estado, podeGerar);
+    let ultimoPodeGerar = podeGerar;
     const escondida = () => document.visibilityState === "hidden";
     const agendar = (ms: number) => {
       if (parado || timer || escondida()) return;
@@ -49,9 +53,11 @@ export function useAcompanharPagamento(codigo: string, estado: EstadoPagamentoHo
         const r = await fetch(`/reservar/${encodeURIComponent(codigo)}/pagamento`, { cache: "no-store", headers: { accept: "application/json" } });
         if (r.status === 429) proxima = ESPERA_DEPOIS_DO_LIMITE_MS;
         else if (r.ok) {
-          const j = (await r.json()) as { estado?: EstadoPagamentoHospede };
-          if (!parado && j.estado && j.estado !== ultimo) {
-            ultimo = j.estado;
+          const j = (await r.json()) as { estado?: EstadoPagamentoHospede; podeGerar?: boolean };
+          const gerar = typeof j.podeGerar === "boolean" ? j.podeGerar : ultimoPodeGerar;
+          if (!parado && j.estado && assinatura(j.estado, gerar) !== ultimo) {
+            ultimo = assinatura(j.estado, gerar);
+            ultimoPodeGerar = gerar;
             if (!emEspera(j.estado)) parado = true;
             router.refresh();
           }
@@ -75,7 +81,7 @@ export function useAcompanharPagamento(codigo: string, estado: EstadoPagamentoHo
       if (timer) clearTimeout(timer);
       document.removeEventListener("visibilitychange", aoMudarVisibilidade);
     };
-  }, [codigo, estado, ativo, router]);
+  }, [codigo, estado, podeGerar, ativo, router]);
 }
 
 const assinarRelogio = (aviso: () => void) => {
@@ -233,7 +239,7 @@ export function PagamentoPix({
   gerarPix: AcaoPix;
   continuar: AcaoContinuar;
 }) {
-  useAcompanharPagamento(codigo, v.estado, emEspera(v.estado));
+  useAcompanharPagamento(codigo, v.estado, v.podeGerar, emEspera(v.estado));
   const prazo = v.holdAte ? (
     <p className={styles.texto}>
       As datas estão seguradas para você até <strong>{quando(v.holdAte, fuso)}</strong>.

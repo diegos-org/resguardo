@@ -5,8 +5,10 @@
  * fora. As duas exigem, sob a trava da tentativa, desfecho vazio, decisão "sem reserva" gravada e nenhuma
  * devolução pedida. Pelo provedor: `pedida` até a leitura da order dizer devolvido; cada pedido novo usa chave
  * nova, gravada antes, e relê a order antes (já devolvida = confirmada; devolução em andamento = não pede de novo).
- * Resposta incerta não é falha: continua pedida e a próxima volta relê a order. Só recusa explícita conta, e a
- * terceira só vira "recusada" (aviso) depois de reler a order sem nenhum sinal de devolução. Por fora: só depois
+ * Recusa e resposta incerta contam do mesmo jeito; a terceira só vira "recusada" (aviso) depois de reler a order sem
+ * nenhum sinal de devolução (feita, em parte ou em andamento): com sinal, continua pedida e a leitura confirma. Assim
+ * uma devolução que só recebe respostas incertas não fica "pedida" para sempre, e uma que saiu nunca é dada por
+ * recusada. Por fora: só depois
  * de reler a order no provedor (devolvida, em andamento ou contestada = recusa), e só o valor integral. A taxa que
  * não voltar a equipe informa depois da confirmação ("Registrar taxa que não voltou"): vira despesa da empresa.
  */
@@ -27,7 +29,7 @@ import type { SituacaoDevolucao } from "@/db/schema";
 import { textoMotivoSemReserva } from "./situacoes";
 import { type Devolucao, type Pagamento, type Travado, travarCotacao } from "./travas";
 
-/** Recusas explícitas do provedor até a devolução ficar "recusada" (resposta incerta não conta). */
+/** Recusas ou respostas incertas do provedor até a devolução ficar "recusada" (sempre depois de reler a order sem sinal de devolução). */
 export const MAXIMO_FALHAS_DEVOLUCAO = 3;
 /** Espera entre uma tentativa de devolução e a seguinte (a rotina relê a order antes). */
 export const ESPERA_DEVOLUCAO_MS = 10 * 60_000;
@@ -45,10 +47,11 @@ async function cotacaoDoPagamento(db: Db, organizacaoId: string, pagamentoId: st
 
 /**
  * Pode decidir o destino do dinheiro (devolver)? Sob a trava. Devolve o motivo da recusa, ou null. Por fora também
- * vale para o dinheiro que chegou já devolvido em parte ou contestado (a releitura no provedor decide antes).
+ * vale para o pagamento contestado (a situação local nunca volta a "aprovado"; a releitura no provedor decide antes e
+ * só aceita com a contestação resolvida). Devolvido em parte, não: o provedor sempre mostra a parte devolvida.
  */
 function recusaDaDevolucao(p: Pagamento, dev: Devolucao | undefined, porFora: boolean): string | null {
-  const situacoes = porFora ? ["aprovado", "devolvido_parcial", "contestado"] : ["aprovado"];
+  const situacoes = porFora ? ["aprovado", "contestado"] : ["aprovado"];
   if (!situacoes.includes(p.situacao)) return "Só um pagamento aprovado (e ainda não devolvido) pode ser devolvido.";
   if (p.desfecho !== null) return "Este pagamento já tem desfecho.";
   if (p.motivoSemReserva === null) return "Este pagamento ainda está sendo conferido ou confirmou a reserva: não se devolve na parte (a).";
@@ -112,10 +115,11 @@ export async function tentarDevolucao(db: Db, organizacaoId: string, devolucaoId
     if (n === null) return situacaoDaDevolucao(db, devolucaoId);
     res = await provedor.devolver(cobranca, chaveDevolucao(devolucaoId, n), null);
   }
-  // Antes de dar a devolução por recusada (a terceira recusa), a order é relida: a recusa pode ter cruzado com um
-  // pedido anterior que saiu. undefined = não deu para ler (então não se desiste).
+  // Antes de dar a devolução por recusada (a terceira recusa ou resposta incerta), a order é relida: a resposta pode
+  // ter cruzado com um pedido que saiu. undefined = não deu para ler (então não se desiste).
+  const falhou = res.situacao === "recusada" || res.situacao === "incerta";
   let releitura: Cobranca | null | undefined;
-  if (res.situacao === "recusada" && d.dev.falhas + 1 >= MAXIMO_FALHAS_DEVOLUCAO) {
+  if (falhou && d.dev.falhas + 1 >= MAXIMO_FALHAS_DEVOLUCAO) {
     try {
       releitura = await provedor.consultar(d.idProvedor);
     } catch {
@@ -130,8 +134,7 @@ export async function tentarDevolucao(db: Db, organizacaoId: string, devolucaoId
       if (res.idDevolucao) await tx.update(devolucoesPagamento).set({ idProvedor: res.idDevolucao, atualizadoEm: agora }).where(eq(devolucoesPagamento.id, dev.id));
       return;
     }
-    // Incerta: o pedido pode ter saído. Não é falha; continua pedida e a próxima volta relê a order antes.
-    if (res.situacao === "incerta") return;
+    // Recusada ou incerta (o pedido pode ter saído): conta; só desiste com a releitura sem nenhum sinal de devolução.
     const falhas = dev.falhas + 1;
     const semSinalDeDevolucao = releitura === null || (releitura !== undefined && !temDevolucao(releitura));
     const desistiu = falhas >= MAXIMO_FALHAS_DEVOLUCAO && semSinalDeDevolucao;
@@ -264,15 +267,26 @@ export async function registrarDevolucaoPorFora(
 
 /**
  * Taxa que o Mercado Pago não devolveu, informada pela equipe depois da devolução confirmada (o provedor só informa
- * a tarifa da aprovação, não o que voltou). Valor em centavos, zero se voltou toda. Vira despesa da empresa na
- * categoria da aba Pagamento no site, com chave própria (idempotente), e o aviso sai. Uma vez por devolução.
+ * a tarifa da aprovação, não o que voltou). Valor em centavos, zero se voltou toda, e nunca mais que a tarifa da
+ * aprovação (sem ela, que o valor pago). Vira despesa da empresa na categoria da aba Pagamento no site, com chave
+ * própria (idempotente), e o aviso sai. Uma vez por devolução.
  */
 export async function registrarTaxaPerdida(db: Db, organizacaoId: string, pagamentoId: string, valor: number, autorId: string | null, agora: Date = new Date()): Promise<ResultadoAcaoPagamento> {
   if (!Number.isSafeInteger(valor) || valor < 0) return { ok: false, erro: "Informe a taxa que não voltou, em reais (zero se voltou toda)." };
   return comPagamento(db, organizacaoId, pagamentoId, async (tx, t, p, dev) => {
     if (!dev || dev.situacao !== "confirmada") return { ok: false as const, erro: "A taxa que não voltou se registra depois da devolução confirmada pelo Mercado Pago." };
     if (dev.taxaPerdida !== null) return { ok: false as const, erro: `A taxa que não voltou já foi registrada (${formatBRL(dev.taxaPerdida)}).` };
-    if (valor > p.valor) return { ok: false as const, erro: `A taxa não pode passar do valor do pagamento (${formatBRL(p.valor)}).` };
+    // A taxa que não voltou nunca passa da que o Mercado Pago cobrou na aprovação (ou, sem ela, do valor pago): um
+    // valor maior é quase sempre digitação (ex.: 1806 por 18,06). Avisa com os dois valores, nunca grava.
+    const teto = p.taxa ?? p.valor;
+    if (valor > teto)
+      return {
+        ok: false as const,
+        erro:
+          p.taxa !== null
+            ? `A taxa que não voltou (${formatBRL(valor)}) não pode passar da taxa que o Mercado Pago cobrou neste pagamento (${formatBRL(p.taxa)}). Confira o valor (em reais, com vírgula: ex.: 18,06).`
+            : `A taxa que não voltou (${formatBRL(valor)}) não pode passar do valor do pagamento (${formatBRL(p.valor)}). Confira o valor (em reais, com vírgula: ex.: 18,06).`,
+      };
     let despesaLancamentoId: string | null = null;
     if (valor > 0) {
       const categoriaId = await categoriaDaTaxaPerdida(tx, organizacaoId, autorId);
