@@ -127,7 +127,7 @@ criar).
   cancelamento e, no reembolso integral, quem fica com a taxa do pagamento que não volta (a SCL;
   pergunta 5) — ver as respostas abaixo. **Continuam pendentes:** taxa do cartão/Pix (pergunta 3;
   vale a regra atual até decisão contrária) e a conferência por Diego, com o contador, da posição
-  sobre o arrependimento de 7 dias que o Claude escreve no M7.4. Nenhuma impede o M8.2 em
+  sobre o arrependimento de 7 dias, escrita pelo Claude no M7.4 (`PAGINAS-LEGAIS.md`). Nenhuma impede o M8.2 em
   sandbox; as duas precisam estar fechadas antes de o site receber pagamento de verdade.
 - **Pedido novo de Diego:** documento "como funciona" para o proprietário (inclusive quando e
   como recebe) com aceite registrado, e páginas legais do site com aceite no checkout: itens
