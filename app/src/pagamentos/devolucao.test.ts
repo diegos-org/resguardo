@@ -202,6 +202,32 @@ describe("devolução do pagamento sem reserva (M8.2a)", () => {
     expect(pedidos()).toHaveLength(1);
   });
 
+  it("pedido aceito e depois a order lida devolvida em parte ou contestada: continua pedida (nunca para), nada se envia de novo e o registro por fora é recusado", async () => {
+    for (const [n, variar] of [
+      [0, (o: Cobranca) => ({ ...o, situacao: "devolvido_parcial" as const, devolvido: 5000, devolucaoEmAndamento: false })],
+      [1, (o: Cobranca) => ({ ...o, situacao: "contestado" as const, devolucaoEmAndamento: false })],
+    ] as const) {
+      const x = await semReserva({ taxa: 1806 }, outras(n));
+      c.provedor.respostaDevolucao = "pedida";
+      await devolverPeloProvedor(db, c.org, x.pagamentoId, null, c.provedor, minutos(10));
+      c.provedor.respostaDevolucao = "confirmada";
+      expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "pedida", chaveAceita: true });
+      const antes = pedidos().length;
+      const [order] = c.provedor.todas().filter((o) => o.idProvedor === x.idProvedor);
+      vi.spyOn(c.provedor, "consultar").mockResolvedValue(variar(order));
+      for (const m of [21, 32, 43]) await tentarDevolucao(db, c.org, (await devolucao(x.pagamentoId)).id, c.provedor, minutos(m));
+      expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "pedida", chaveAceita: true });
+      expect(pedidos()).toHaveLength(antes);
+      const t = await c.tentativa(x.pagamentoId);
+      expect(t.situacao).toBe(n === 0 ? "devolvido_parcial" : "contestado");
+      expect(t.avisos).not.toContain("devolucao_parada");
+      expect(t.avisos).toContain("devolucao_sem_confirmacao");
+      expect(await porFora(x.pagamentoId, minutos(50))).toMatchObject({ ok: false });
+      vi.restoreAllMocks();
+      expect((await devolucao(x.pagamentoId)).situacao).toBe("pedida");
+    }
+  });
+
   it("order devolvida em parte ou contestada antes de pedir de novo: a leitura é aplicada e a devolução para (aviso), sem pedir o valor inteiro por cima", async () => {
     for (const [n, mexer] of [
       [0, (id: string) => c.provedor.devolverNoProvedor(id, 5000)],

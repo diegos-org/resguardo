@@ -9,8 +9,9 @@
  * nenhum sinal de devolução (feita, em parte ou em andamento): com sinal, continua pedida e a leitura confirma. Assim
  * uma devolução que só recebe respostas incertas não fica "pedida" para sempre, e uma que saiu nunca é dada por
  * recusada. Pedido ACEITO pelo provedor: nada se envia de novo (nem com outra chave, nem num pedido novo da equipe),
- * só a leitura confirma; três leituras sem a devolução viram aviso, e ela continua pedida. Order devolvida em parte
- * ou contestada antes de pedir: a leitura é aplicada e a devolução para (aviso; devolver o inteiro devolveria a mais).
+ * só a leitura confirma; três leituras sem a devolução viram aviso, e ela continua pedida, qualquer que seja a leitura
+ * (nunca para: parar abriria o registro por fora, em dobro). Order devolvida em parte ou contestada antes de pedir
+ * (pedido ainda não aceito): a leitura é aplicada e a devolução para (aviso; devolver o inteiro devolveria a mais).
  * O pedido só sai com a order relida aprovada e a mesma da tentativa; qualquer outra leitura também para (aviso).
  * Por fora: só depois
  * de reler a order no provedor (devolvida, em andamento ou contestada = recusa), e só o valor integral. A taxa que
@@ -60,6 +61,8 @@ function recusaDaDevolucao(p: Pagamento, dev: Devolucao | undefined, porFora: bo
   if (p.desfecho !== null) return "Este pagamento já tem desfecho.";
   if (p.motivoSemReserva === null) return "Este pagamento ainda está sendo conferido ou confirmou a reserva: não se devolve na parte (a).";
   if (dev?.situacao === "pedida") return "Já há uma devolução pedida ao Mercado Pago para este pagamento.";
+  // Um pedido que o Mercado Pago aceitou ainda pode sair por lá: registrar por fora devolveria em dobro.
+  if (porFora && dev?.chaveAceita) return "O Mercado Pago aceitou um pedido de devolução deste pagamento, que ainda pode sair por lá: a devolução por fora não é registrada. Confira no painel do Mercado Pago e resolva por lá até o M8.2c.";
   // Depois de 3 recusas (recusada), a equipe pode pedir de novo ou registrar a devolução feita por fora.
   if (dev && dev.situacao !== "recusada") return porFora ? "A devolução deste pagamento já foi registrada." : "A devolução deste pagamento já foi feita.";
   return null;
@@ -85,7 +88,8 @@ async function pararDevolucao(db: Db, organizacaoId: string, cotacaoId: string, 
   await db.transaction(async (tx) => {
     const t = await travarCotacao(tx, organizacaoId, cotacaoId);
     const dev = t?.devolucoes.find((x) => x.id === devolucaoId);
-    if (!t || !dev || dev.situacao !== "pedida") return;
+    // Pedido aceito pelo provedor nunca para (ainda pode sair): só a leitura o resolve.
+    if (!t || !dev || dev.situacao !== "pedida" || dev.chaveAceita) return;
     await tx.update(devolucoesPagamento).set({ situacao: "recusada", proximaTentativaEm: null, atualizadoEm: agora }).where(eq(devolucoesPagamento.id, dev.id));
     const p = t.tentativas.find((x) => x.id === dev.pagamentoId)!;
     await ligarAvisoNoPagamento(tx, p, "devolucao_parada", agora);
@@ -139,15 +143,18 @@ export async function tentarDevolucao(db: Db, organizacaoId: string, devolucaoId
     await adiarDevolucao(db, devolucaoId, agora);
     return "pedida";
   }
+  // Pedido já aceito pelo provedor: nada se envia de novo (nem com a mesma chave) e ele nunca para, qualquer que seja a
+  // leitura (em parte, contestada...): a devolução aceita ainda pode sair, e parar abriria o registro por fora (em
+  // dobro). A leitura é aplicada e confirma quando a order mostrar; três sem a devolução viram aviso.
+  if (d.dev.chaveAceita) {
+    if (cobranca) await conferirTentativa(db, organizacaoId, d.dev.pagamentoId, provedor, agora, { forcar: true, origem: "rotina", cobranca });
+    await esperarAceita(db, organizacaoId, d.cotacaoId, devolucaoId, agora);
+    return (await situacaoDaDevolucao(db, devolucaoId)) ?? null;
+  }
   // Devolvida em parte ou contestada: a leitura é aplicada e a devolução automática para (nunca o inteiro por cima).
   if (cobranca && (cobranca.situacao === "devolvido_parcial" || cobranca.situacao === "contestado" || cobranca.devolvido > 0)) {
     await conferirTentativa(db, organizacaoId, d.dev.pagamentoId, provedor, agora, { forcar: true, origem: "rotina", cobranca });
     await pararDevolucao(db, organizacaoId, d.cotacaoId, devolucaoId, agora);
-    return (await situacaoDaDevolucao(db, devolucaoId)) ?? null;
-  }
-  // Pedido já aceito pelo provedor: nada se envia de novo (nem com a mesma chave); a leitura confirma quando a order mostrar.
-  if (d.dev.chaveAceita) {
-    await esperarAceita(db, organizacaoId, d.cotacaoId, devolucaoId, agora);
     return (await situacaoDaDevolucao(db, devolucaoId)) ?? null;
   }
   // Só se pede com a order relida APROVADA e a mesma da tentativa (id e referência). Qualquer outra leitura

@@ -312,7 +312,10 @@ do M9.2 passa a valer para reservas pagas quando Diego ligar as mensagens.
   novo da equipe (depois de recusada). Pedido **aceito** pelo provedor (`chave_aceita`): daí em diante
   nada se envia de novo (nem com outra chave, nem num pedido novo da equipe); só a leitura da order
   confirma, e três leituras sem a devolução viram o aviso "o Mercado Pago aceitou a devolução, mas o
-  pagamento ainda não aparece como devolvido" (continua pedida). Antes de tentar de novo, relê a order
+  pagamento ainda não aparece como devolvido" (continua pedida). O pedido aceito **nunca para**, qualquer que
+  seja a leitura (devolvida em parte, contestada, outra situação): a devolução aceita ainda pode sair, e parar
+  abriria o registro por fora (em dobro); o registro por fora é recusado enquanto houver um pedido aceito. Antes
+  de tentar de novo um pedido ainda não aceito, relê a order
   (já devolvida = confirmada; devolução em andamento lá = não pede de novo; **devolvida em parte ou
   contestada** = a leitura é aplicada e a devolução para, recusada, com o aviso de que parou: devolver
   o valor inteiro por cima devolveria a mais ou correria com a contestação; **qualquer outra leitura que
