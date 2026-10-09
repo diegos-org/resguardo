@@ -90,7 +90,7 @@ export const MOTIVOS_SEM_RESERVA = {
   cancelada_pela_equipe: "O pedido foi cancelado pela equipe antes da aprovação.",
   valor_divergente: "O valor aprovado é diferente do total da cotação.",
   outra_tentativa: "Outro pagamento desta cotação já confirmou a reserva (pagamento em dobro).",
-  recebimento_manual: "A reserva já tinha sido confirmada pela equipe, com recebimento registrado à mão.",
+  recebimento_manual: "A reserva já tinha recebimento registrado à mão pela equipe: o pagamento do site não se liga a ela.",
   ao_vivo: "O Mercado Pago informou um pagamento real (live_mode) no ambiente de teste.",
   situacao_inesperada: "O Mercado Pago mostrou o pagamento já devolvido (no todo ou em parte) ou contestado antes de o sistema decidir a reserva.",
   outro: "A reserva não estava numa situação que permitisse confirmar pelo pagamento.",

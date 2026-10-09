@@ -71,8 +71,9 @@ describe("ordem e modo das travas do pagamento (M8.2a)", () => {
     const conferencia = e.comandos.findIndex((q) => /from "pagamentos"/.test(q));
     expect(trava).toBeGreaterThanOrEqual(0);
     expect(conferencia).toBeGreaterThan(trava);
-    // Com o Pix já criado (visto depois da trava), o recebimento à mão é recusado.
-    await c.pix(s.cotacaoId);
-    expect(await registrarRecebimento(db, c.org, { reservaId: s.reservaId, data: "2026-10-01", valor: 1000, nota: "" }, null, "2026-10-01")).toMatchObject({ ok: false, erro: expect.stringContaining("pagamento pelo site") });
+    // Em outra cotação, com o Pix já criado (visto depois da trava), o recebimento à mão é recusado.
+    const outra = await c.segurar({ entrada: "2026-11-02", saida: "2026-11-05", email: "outra@example.com" });
+    await c.pix(outra.cotacaoId);
+    expect(await registrarRecebimento(db, c.org, { reservaId: outra.reservaId, data: "2026-10-01", valor: 1000, nota: "" }, null, "2026-10-01")).toMatchObject({ ok: false, erro: expect.stringContaining("pagamento pelo site") });
   });
 });

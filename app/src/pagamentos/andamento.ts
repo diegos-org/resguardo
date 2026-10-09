@@ -2,8 +2,8 @@
  * Pagamento no site (M8.2a) — consultas pequenas que o resto do sistema (cotações, reservas, recebimentos,
  * extrato) usa para respeitar um pagamento em andamento. Só lê o banco: sem provedor, sem regra de confirmação.
  */
-import { and, eq, inArray, isNotNull, isNull, or } from "drizzle-orm";
-import { pagamentos } from "@/db/schema";
+import { and, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { lancamentos, pagamentos } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
 import { PIX_VALIDADE_MINIMA_MINUTOS } from "./provedor";
@@ -113,4 +113,29 @@ export async function liberacoesDoSite(db: Db, organizacaoId: string, reservaIds
     .from(pagamentos)
     .where(and(eq(pagamentos.organizacaoId, organizacaoId), inArray(pagamentos.reservaId, ids), eq(pagamentos.desfecho, "reserva")));
   return new Map(linhas.map((l) => [l.reservaId, l.prevista]));
+}
+
+/**
+ * A reserva tem recebimento registrado à mão, em vigor (não estornado)? Então o pagamento do site não se liga a ela:
+ * nem se gera o Pix, nem uma aprovação a confirma (a liberação do Mercado Pago lançaria um segundo recebimento e a
+ * parte do proprietário ficaria disponível duas vezes). Quem chama já travou a reserva (o recebimento à mão trava a
+ * mesma linha antes de conferir o pagamento).
+ */
+export async function temRecebimentoManual(db: Db, organizacaoId: string, reservaId: string): Promise<boolean> {
+  if (!uuidValido(reservaId)) return false;
+  const [manual] = await db
+    .select({ id: lancamentos.id })
+    .from(lancamentos)
+    .where(
+      and(
+        eq(lancamentos.organizacaoId, organizacaoId),
+        eq(lancamentos.reservaId, reservaId),
+        eq(lancamentos.tipo, "recebimento"),
+        eq(lancamentos.origem, "manual"),
+        isNull(lancamentos.estornoDe),
+        sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`,
+      ),
+    )
+    .limit(1);
+  return Boolean(manual);
 }

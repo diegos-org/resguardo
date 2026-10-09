@@ -18,6 +18,7 @@ import { type PendenciaDoCalculo, pendenciaDoCalculo } from "@/financeiro/motor"
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { esperarNoMaximo } from "@/lib/prazo";
+import { temRecebimentoManual } from "./andamento";
 import { ambienteMercadoPago, contaDeTesteConfirmada, estadoPagamentoDoAmbiente, provedorDoAmbiente } from "./ambiente";
 import type { ProvedorPagamento } from "./provedor";
 
@@ -93,7 +94,8 @@ export type MotivoSemPix =
   | "nao_segurada"
   | "prazo_vencido"
   | "a_confirmar"
-  | "imovel_fora_do_site";
+  | "imovel_fora_do_site"
+  | "recebimento_manual";
 
 export const TEXTO_SEM_PIX: Record<MotivoSemPix, string> = {
   ...TEXTO_SEM_COBRANCA,
@@ -109,6 +111,7 @@ export const TEXTO_SEM_PIX: Record<MotivoSemPix, string> = {
   prazo_vencido: "O prazo das datas desta cotação acabou.",
   a_confirmar: "Disponibilidade ou valor ainda a confirmar pela equipe: segue pela conversa.",
   imovel_fora_do_site: "Imóvel fora do site público.",
+  recebimento_manual: "Esta reserva já tem recebimento registrado à mão: segue pela conversa.",
 };
 
 /** O cálculo do motor em seco, na data de entrada, para o valor da cotação. null = sem pendência. */
@@ -133,6 +136,8 @@ export async function motivoSemPixDaCotacao(db: Db, organizacaoId: string, c: Co
   if (c.estado !== "segurada" || !c.reservaId || estadoReserva !== "pedido") return "nao_segurada";
   if (!c.holdAte || c.holdAte.getTime() <= agora.getTime()) return "prazo_vencido";
   if (c.situacao !== "disponivel") return "a_confirmar";
+  // Recebimento à mão já registrado na reserva: nenhum Pix (a fase 1 confere isso sob a trava da reserva).
+  if (await temRecebimentoManual(db, organizacaoId, c.reservaId)) return "recebimento_manual";
   const [im] = await db.select({ publico: imoveis.publico, ativo: imoveis.ativo }).from(imoveis).where(and(eq(imoveis.id, c.imovelId), eq(imoveis.organizacaoId, organizacaoId)));
   if (!im?.publico || !im.ativo) return "imovel_fora_do_site";
   return pendenciaDoMotor(db, organizacaoId, c.imovelId, c.checkin, c.checkout, c.total);

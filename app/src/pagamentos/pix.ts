@@ -166,8 +166,9 @@ async function criar(db: Db, organizacaoId: string, cotacaoId: string, f: Extrac
       const ef = await aplicarLeitura(tx, organizacaoId, t, p.id, leitura, agora);
       const pedidoValido = t.reserva.estado === "pedido" && t.cotacao.estado === "segurada";
       const cancelar = [...ef.cancelar];
-      // Pix marcado como real (live_mode) no teste: a leitura já o mandou cancelar; as datas não ficam presas a ele.
-      const aoVivo = cancelar.some((x) => x.id === p.id);
+      // Order marcada como real (live_mode) no teste: falha sempre, seja qual for a situação (pendente, já aprovada...);
+      // a pendente a leitura já mandou cancelar. As datas não ficam presas a ela.
+      const aoVivo = cancelar.some((x) => x.id === p.id) || leitura.cobranca?.aoVivo === true;
       // Criação recusada pelo provedor (order recusada, ou dados inválidos sem order) ou já encerrada: não há Pix para
       // pagar, e o prazo provisório das datas volta ao que era (10ª rodada do Codex).
       const semPixPagavel = ef.situacao === "recusado" || ef.situacao === "cancelado" || ef.situacao === "expirado";

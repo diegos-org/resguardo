@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { auditoria, cotacoes, pagamentos } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
+import { registrarRecebimento } from "@/repasses/recebimentos";
 import { expirarHoldsVencidos } from "@/site/cotacoes";
 import { conferirCotacaoParaPagina, conferirTentativa } from "./conferencia";
 import { EMAIL_PAGADOR_SANDBOX } from "./mercadopago";
@@ -155,6 +156,32 @@ describe("gerar o Pix (M8.2a)", () => {
     expect(p.avisos).toContain("ao_vivo");
     expect(c.provedor.chamadas.some((x) => x.metodo === "cancelar" && x.id === p.idProvedor)).toBe(true);
     expect((await c.cotacao(cotacaoId)).holdAte?.toISOString()).toBe(antes.toISOString());
+  });
+
+  it("order criada já aprovada e marcada como real (live_mode) no teste: falha como as outras do live_mode (nunca 'ok'), sem reserva, e as datas não ficam presas a ela", async () => {
+    const { cotacaoId } = await c.segurar();
+    const antes = (await c.cotacao(cotacaoId)).holdAte!;
+    c.provedor.aoVivo = true;
+    const criarOriginal = c.provedor.criarPix.bind(c.provedor);
+    c.provedor.criarPix = async (pedido) => {
+      const r = await criarOriginal(pedido);
+      if (!r.ok) return r;
+      c.provedor.aprovar(r.cobranca.idProvedor!);
+      return { ok: true, cobranca: c.provedor.todas().find((o) => o.idProvedor === r.cobranca.idProvedor)! };
+    };
+    expect(await gerarPix(db, c.org, cotacaoId, AGORA, c.provedor)).toMatchObject({ ok: false, codigo: "ao_vivo" });
+    const [p] = await db.select().from(pagamentos).where(eq(pagamentos.cotacaoId, cotacaoId));
+    expect(p).toMatchObject({ situacao: "aprovado", aoVivo: true, desfecho: null, motivoSemReserva: "ao_vivo" });
+    expect(p.avisos).toContain("ao_vivo");
+    expect((await c.cotacao(cotacaoId)).holdAte?.toISOString()).toBe(antes.toISOString());
+  });
+
+  it("reserva com recebimento registrado à mão: nenhum Pix é gerado (a conferência é feita sob a trava da reserva)", async () => {
+    const { cotacaoId, reservaId } = await c.segurar();
+    expect(await registrarRecebimento(db, c.org, { reservaId, data: "2026-10-01", valor: TOTAL, nota: "Pix na conta" }, null, "2026-10-01")).toMatchObject({ ok: true });
+    expect(await gerarPix(db, c.org, cotacaoId, AGORA, c.provedor)).toMatchObject({ ok: false, codigo: "nao_oferecido", erro: expect.stringContaining("recebimento registrado à mão") });
+    expect(await db.select().from(pagamentos).where(eq(pagamentos.cotacaoId, cotacaoId))).toEqual([]);
+    expect(c.provedor.chamadas.filter((x) => x.metodo === "criarPix")).toEqual([]);
   });
 
   it("trava não obtida (impasse 40P01 ou tempo-limite) na criação, na conferência inicial ou depois de cancelar: 'ocupado', nada pela metade", async () => {

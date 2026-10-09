@@ -14,13 +14,14 @@
  * 4. Reserva confirmada à mão (sem recebimento manual e sem outra tentativa com a reserva): o pagamento vira o
  *    desfecho `reserva` dela.
  */
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
-import { cotacoes, lancamentos, reservas } from "@/db/schema";
+import { cotacoes, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { aplicarMotor } from "@/financeiro/aplicar";
 import { confirmarPedidoPago } from "@/reservas/repositorio";
 import { noitesLivres } from "@/site/disponibilidade";
+import { temRecebimentoManual } from "./andamento";
 import type { Cobranca } from "./provedor";
 import type { MotivoSemReserva } from "./situacoes";
 import type { Pagamento, Travado } from "./travas";
@@ -55,6 +56,9 @@ export async function decidirAprovacao(tx: Db, organizacaoId: string, t: Travado
     return { desfecho: "reserva", desfechoMotivo: tardio ? "confirmada_tardia" : "confirmada", motivoSemReserva: null, confirmou: true, avisos: res.avisos };
   };
 
+  // Recebimento registrado à mão na reserva (ainda pedido, ou cancelada antes da confirmação tardia): o dinheiro do site
+  // não se liga a ela (a liberação lançaria um segundo recebimento).
+  if (r.estado !== "confirmada" && (await temRecebimentoManual(tx, organizacaoId, r.id))) return semReserva("recebimento_manual");
   if (r.estado === "pedido" && cot.estado === "segurada") {
     // Nunca liberadas, mas uma reserva de OTA importada no meio pode ter caído nas mesmas noites.
     const livres = await noitesLivres(tx, organizacaoId, r.imovelId, r.checkin, r.checkout, { excetoReservaId: r.id, exigirLeituraAtual: false, agora });
@@ -69,21 +73,7 @@ export async function decidirAprovacao(tx: Db, organizacaoId: string, t: Travado
   // Cancelado pela equipe (cotação cancelada, ou reserva cancelada com a cotação ainda segurada): nunca é revivido.
   if (cot.estado === "cancelada" || r.estado === "cancelada") return semReserva("cancelada_pela_equipe");
   if (r.estado === "confirmada") {
-    const [manual] = await tx
-      .select({ id: lancamentos.id })
-      .from(lancamentos)
-      .where(
-        and(
-          eq(lancamentos.organizacaoId, organizacaoId),
-          eq(lancamentos.reservaId, r.id),
-          eq(lancamentos.tipo, "recebimento"),
-          eq(lancamentos.origem, "manual"),
-          isNull(lancamentos.estornoDe),
-          sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`,
-        ),
-      )
-      .limit(1);
-    if (manual) return semReserva("recebimento_manual");
+    if (await temRecebimentoManual(tx, organizacaoId, r.id)) return semReserva("recebimento_manual");
     // Confirmada à mão pela equipe: o dinheiro é dela. Quem recebe passa a ser a empresa (é fato) e a taxa entra.
     const muda = r.recebimento !== "empresa" || (fin.taxa !== null && (r.taxaCanal !== fin.taxa || r.valorLiquido !== fin.liquido));
     if (muda) {

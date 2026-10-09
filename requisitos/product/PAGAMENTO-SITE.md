@@ -66,7 +66,8 @@ Aviso com `live_mode=true` (não é assinado; serve de alarme) vira aviso no pai
 gravadas fica o ambiente e o `live_mode` lido do provedor. **Desvio registrado (9/10):** uma order
 lida com `live_mode=true` no teste nunca confirma reserva (vira "aprovado sem reserva", motivo
 `ao_vivo`), e um Pix recém-criado assim é cancelado na hora: "Gerar Pix" responde falha (nunca "deu
-certo" com um Pix já cancelado) e o prazo provisório das datas volta ao que era. Depois disso a
+certo" com um Pix já cancelado, nem com uma order que a criação já devolve aprovada) e o prazo
+provisório das datas volta ao que era. Depois disso a
 cotação não gera outro Pix (nenhum dos 3 se gasta) e a página nunca mostra aquele QR: enquanto o
 cancelamento não se confirma, "conferindo" (cada consulta da página manda cancelar de novo); depois,
 "o pagamento pelo site não está disponível agora: fale com a equipe", sem "Gerar outro Pix".
@@ -233,7 +234,8 @@ noites nunca foram liberadas), seja qual for o relógio.
    nunca é revivido); valor aprovado diferente do total da cotação (`total_amount`, o valor da
    transação — que precisa vir na order — e o total pago, quando vier; no cartão, o pago pode passar
    pelos juros do hóspede); outra tentativa da mesma cotação já com desfecho `reserva`; reserva
-   confirmada à mão e com recebimento manual; dinheiro que chega **já devolvido em parte ou
+   com recebimento registrado à mão (confirmada à mão, ainda `pedido` ou cancelada; a mesma conferência
+   impede gerar o Pix, sob a trava da reserva que o recebimento à mão também toma); dinheiro que chega **já devolvido em parte ou
    contestado**, sem uma leitura "aprovado" antes (motivo "situação inesperada", com aviso: nunca
    confirma sozinho; o resto se resolve pelo Mercado Pago até o M8.2c).
 4. **Reserva confirmada à mão pela equipe** (sem recebimento manual e sem outra tentativa com

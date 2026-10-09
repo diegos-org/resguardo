@@ -247,6 +247,18 @@ describe("confirmação pelo pagamento (M8.2a)", () => {
     expect(await c.tentativa(y.pagamentoId)).toMatchObject({ desfecho: null, motivoSemReserva: "recebimento_manual" });
   });
 
+  it("pedido ainda segurado com recebimento registrado à mão (entre um Pix vencido e outro pago): a aprovação não confirma a reserva (nunca dois recebimentos)", async () => {
+    const x = await comPix();
+    c.provedor.expirar(x.idProvedor);
+    await conferir(x.pagamentoId, minutos(10));
+    expect((await c.reserva(x.reservaId)).estado).toBe("pedido");
+    expect(await registrarRecebimento(db, c.org, { reservaId: x.reservaId, data: "2026-10-01", valor: TOTAL, nota: "Pix na conta" }, null, "2026-10-01")).toMatchObject({ ok: true });
+    c.provedor.aprovar(x.idProvedor);
+    await conferir(x.pagamentoId, minutos(12));
+    expect(await c.tentativa(x.pagamentoId)).toMatchObject({ situacao: "aprovado", desfecho: null, motivoSemReserva: "recebimento_manual" });
+    expect((await c.reserva(x.reservaId)).estado).toBe("pedido");
+  });
+
   it("transições só pela leitura: recusado → aprovado vale; aprovado → pendente é ignorado; desconhecido vira aviso e não sobrescreve", async () => {
     const x = await comPix();
     c.provedor.recusar(x.idProvedor);
