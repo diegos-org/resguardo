@@ -116,7 +116,7 @@ imóvel (`FOR NO KEY UPDATE`) → reserva (`FOR NO KEY UPDATE`) → cotação �
 id) → devolução. Motor e livro travam depois, como já fazem. O imóvel e a reserva são travados com
 `NO KEY UPDATE`, não `FOR UPDATE`: serializam pagamento e hold entre si e com quem muda a mesma linha
 (bloqueios, contratos, confirmar ou cancelar à mão, recebimento lançado à mão, que trava a reserva antes de
-conferir o pagamento), mas não bloqueiam a conferência das chaves
+conferir o pagamento, e o estorno dele, que trava a reserva antes do lançamento), mas não bloqueiam a conferência das chaves
 estrangeiras de quem grava lançamentos, itens de repasse, limpezas ou pagamentos daquele imóvel ou
 daquela reserva (com `FOR UPDATE`, a confirmação à mão e o Pix entravam em impasse; e um estorno da
 liberação ou uma taxa tardia, que esperam a trava do motor, com um repasse ou recálculo que tem essa
@@ -302,7 +302,9 @@ do M9.2 passa a valer para reservas pagas quando Diego ligar as mensagens.
   pagamento ainda não aparece como devolvido" (continua pedida). Antes de tentar de novo, relê a order
   (já devolvida = confirmada; devolução em andamento lá = não pede de novo; **devolvida em parte ou
   contestada** = a leitura é aplicada e a devolução para, recusada, com o aviso de que parou: devolver
-  o valor inteiro por cima devolveria a mais ou correria com a contestação). `order_refund_already_in_process` = continua pedida; `already_refunded` =
+  o valor inteiro por cima devolveria a mais ou correria com a contestação). Sob a trava, antes de
+  gravar a chave, o pagamento ainda precisa estar aprovado e sem desfecho: uma leitura que cruzou e o
+  deixou devolvido em parte ou contestado também para a devolução, com o mesmo aviso. `order_refund_already_in_process` = continua pedida; `already_refunded` =
   confirmada. Recusa e resposta **incerta** (tempo esgotado, 5xx, resposta que o sistema não sabe
   ler) contam do mesmo jeito; na terceira, a order é relida antes e só sem nenhum sinal de devolução
   (feita, em parte ou em andamento) a devolução fica recusada, com o aviso "o Mercado Pago recusou ou

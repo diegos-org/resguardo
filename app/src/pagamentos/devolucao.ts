@@ -159,6 +159,17 @@ export async function tentarDevolucao(db: Db, organizacaoId: string, devolucaoId
       const dev = t?.devolucoes.find((x) => x.id === devolucaoId);
       // Sob a trava: ainda pedida, a vez dela chegou e ninguém pediu desde a leitura (painel e rotina ao mesmo tempo).
       if (!t || !dev || dev.situacao !== "pedida" || dev.chaveAceita || dev.tentativas !== d.dev.tentativas || (dev.proximaTentativaEm && dev.proximaTentativaEm.getTime() > agora.getTime())) return null;
+      // O pagamento ainda está aprovado e sem desfecho? Uma leitura que cruzou (Conferir agora, aviso) pode tê-lo
+      // levado a devolvido em parte ou contestado depois da releitura acima: então nada se pede por cima, e para.
+      const p = t.tentativas.find((x) => x.id === dev.pagamentoId);
+      if (!p || p.situacao !== "aprovado" || p.desfecho !== null) {
+        await tx.update(devolucoesPagamento).set({ situacao: "recusada", proximaTentativaEm: null, atualizadoEm: agora }).where(eq(devolucoesPagamento.id, dev.id));
+        if (p) {
+          await ligarAvisoNoPagamento(tx, p, "devolucao_parada", agora);
+          await registrarAuditoria(tx, { organizacaoId, usuarioId: null, acao: "pagamento.devolucao_parada", entidade: "pagamento", entidadeId: p.id, mudancas: { devolucao: ["pedida", "recusada"] } });
+        }
+        return null;
+      }
       const proxima = dev.tentativas + 1;
       const usar = dev.chaveEmDuvida && dev.chaveAtual ? dev.chaveAtual : chaveDevolucao(dev.id, proxima);
       await tx.update(devolucoesPagamento).set({ tentativas: proxima, chaveAtual: usar, proximaTentativaEm: new Date(agora.getTime() + ESPERA_DEVOLUCAO_MS), atualizadoEm: agora }).where(eq(devolucoesPagamento.id, dev.id));

@@ -81,6 +81,10 @@ export async function estornarRecebimento(db: Db, organizacaoId: string, lancame
   if (!m) return { ok: false, erro: "Informe o motivo do estorno." };
   if (!uuidValido(lancamentoId)) return { ok: false, erro: "Recebimento não encontrado." };
   return db.transaction(async (tx) => {
+    // A reserva primeiro (NO KEY UPDATE, a ordem do pagamento: reserva antes do livro): uma aprovação do pagamento
+    // pelo site, que confere se há recebimento à mão sob essa trava, nunca vê um recebimento que está sendo estornado.
+    const [alvo] = await tx.select({ reservaId: lancamentos.reservaId }).from(lancamentos).where(and(eq(lancamentos.id, lancamentoId), eq(lancamentos.organizacaoId, organizacaoId)));
+    if (alvo?.reservaId) await tx.select({ id: reservas.id }).from(reservas).where(and(eq(reservas.id, alvo.reservaId), eq(reservas.organizacaoId, organizacaoId))).for("no key update");
     const [l] = await tx
       .select()
       .from(lancamentos)

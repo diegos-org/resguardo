@@ -190,6 +190,25 @@ describe("devolução do pagamento sem reserva (M8.2a)", () => {
     }
   });
 
+  it("pagamento que deixou de estar aprovado entre a releitura e a trava (devolvido em parte por uma leitura que cruzou): a devolução para sob a trava, sem pedir o inteiro", async () => {
+    const x = await semReserva();
+    c.provedor.falhas.devolver = new ErroProvedor("incerto", "tempo");
+    await devolverPeloProvedor(db, c.org, x.pagamentoId, null, c.provedor, minutos(10));
+    c.provedor.falhas.devolver = null;
+    const [aprovada] = c.provedor.todas().filter((o) => o.idProvedor === x.idProvedor);
+    // Uma leitura (Conferir agora) aplica a devolução em parte feita no Mercado Pago...
+    c.provedor.devolverNoProvedor(x.idProvedor, 5000);
+    await conferir(x.pagamentoId, minutos(15));
+    expect((await c.tentativa(x.pagamentoId)).situacao).toBe("devolvido_parcial");
+    // ...enquanto a releitura da rotina ainda tinha a order aprovada.
+    vi.spyOn(c.provedor, "consultar").mockResolvedValue(aprovada);
+    await tentarDevolucao(db, c.org, (await devolucao(x.pagamentoId)).id, c.provedor, minutos(21));
+    vi.restoreAllMocks();
+    expect((await devolucao(x.pagamentoId)).situacao).toBe("recusada");
+    expect(pedidos()).toHaveLength(1);
+    expect((await c.tentativa(x.pagamentoId)).avisos).toContain("devolucao_parada");
+  });
+
   it("devolução feita no painel do Mercado Pago enquanto pedida: a releitura confirma", async () => {
     const x = await semReserva();
     c.provedor.respostaDevolucao = "pedida";

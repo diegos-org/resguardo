@@ -4,7 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import * as schema from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
-import { registrarRecebimento } from "@/repasses/recebimentos";
+import { estornarRecebimento, registrarRecebimento } from "@/repasses/recebimentos";
 import { criarReserva, sincronizarReserva } from "@/reservas/repositorio";
 import { conferirTentativa } from "./conferencia";
 import { estornarLiberacaoManual, registrarLiberacaoManual } from "./liberacao";
@@ -75,5 +75,17 @@ describe("ordem e modo das travas do pagamento (M8.2a)", () => {
     const outra = await c.segurar({ entrada: "2026-11-02", saida: "2026-11-05", email: "outra@example.com" });
     await c.pix(outra.cotacaoId);
     expect(await registrarRecebimento(db, c.org, { reservaId: outra.reservaId, data: "2026-10-01", valor: 1000, nota: "" }, null, "2026-10-01")).toMatchObject({ ok: false, erro: expect.stringContaining("pagamento pelo site") });
+  });
+
+  it("estorno do recebimento à mão trava a reserva (NO KEY UPDATE) antes do lançamento: a aprovação do pagamento pelo site nunca vê um recebimento a meio estorno", async () => {
+    const s = await c.segurar();
+    const r = await registrarRecebimento(db, c.org, { reservaId: s.reservaId, data: "2026-10-01", valor: 1000, nota: "" }, null, "2026-10-01");
+    if (!r.ok) throw new Error(r.erro);
+    const e = espiao();
+    expect(await estornarRecebimento(e.db, c.org, r.id, "registrado por engano", null)).toMatchObject({ ok: true });
+    const trava = e.comandos.findIndex((q) => /from "reservas"/.test(q) && /\bfor no key update\b/.test(q));
+    const livro = e.comandos.findIndex((q) => /from "lancamentos"/.test(q) && /\bfor update\b/.test(q));
+    expect(trava).toBeGreaterThanOrEqual(0);
+    expect(livro).toBeGreaterThan(trava);
   });
 });
