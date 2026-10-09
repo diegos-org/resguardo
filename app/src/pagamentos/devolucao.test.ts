@@ -10,7 +10,7 @@ import { type Cobranca, ErroProvedor, type ProvedorPagamento } from "./provedor"
 import { pagamentosDaReserva } from "./consultas";
 import { conferirPendentes } from "./rotina";
 import { textosDosAvisos } from "./situacoes";
-import { type Cenario, minutos, montarCenario, TOTAL } from "./testes";
+import { AGORA, type Cenario, minutos, montarCenario, TOTAL } from "./testes";
 
 let db: Db, close: () => Promise<void>, c: Cenario;
 beforeAll(async () => { ({ db, close } = await createTestDb()); });
@@ -164,6 +164,30 @@ describe("devolução do pagamento sem reserva (M8.2a)", () => {
     await conferirPendentes(db, c.org, c.provedor, minutos(65));
     expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "confirmada", chaveEmDuvida: false, chaveAceita: false });
     expect((await c.tentativa(x.pagamentoId)).avisos).not.toContain("devolucao_sem_confirmacao");
+    expect(pedidos()).toHaveLength(1);
+  });
+
+  it("pedido aceito que a order nunca mostra: passado o prazo de consulta do provedor (85 dias), a rotina para de ler e liga o aviso uma vez; continua pedida", async () => {
+    const x = await semReserva();
+    c.provedor.respostaDevolucao = "pedida";
+    await devolverPeloProvedor(db, c.org, x.pagamentoId, null, c.provedor, minutos(10));
+    const [order] = c.provedor.todas().filter((o) => o.idProvedor === x.idProvedor);
+    const consultar = vi.spyOn(c.provedor, "consultar").mockResolvedValue({ ...order, situacao: "aprovado", devolvido: 0, devolucaoEmAndamento: false });
+    const dia = (n: number) => new Date(AGORA.getTime() + n * 86_400_000);
+    // Dentro do prazo, a rotina ainda relê.
+    await conferirPendentes(db, c.org, c.provedor, dia(84));
+    expect((await devolucao(x.pagamentoId)).falhas).toBeGreaterThan(0);
+    expect((await c.tentativa(x.pagamentoId)).avisos).not.toContain("devolucao_fora_do_prazo");
+    // Depois de 85 dias: nenhuma leitura, só o aviso (uma vez, sem repetir nas voltas seguintes).
+    const antes = consultar.mock.calls.length;
+    expect(antes).toBeGreaterThan(0);
+    for (const n of [86, 87, 120]) await conferirPendentes(db, c.org, c.provedor, dia(n));
+    expect(consultar.mock.calls.length).toBe(antes);
+    vi.restoreAllMocks();
+    const t = await c.tentativa(x.pagamentoId);
+    expect(t.avisos.filter((a) => a === "devolucao_fora_do_prazo")).toHaveLength(1);
+    expect(textosDosAvisos(t.avisos).join(" ")).toContain("parou de conferir");
+    expect((await devolucao(x.pagamentoId)).situacao).toBe("pedida");
     expect(pedidos()).toHaveLength(1);
   });
 

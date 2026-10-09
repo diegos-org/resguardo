@@ -5,7 +5,9 @@
  *
  * - tentativas `criando`, `incerta` ou `pendente` (as sem order são procuradas pela referência);
  * - aprovadas ainda sem taxa ou sem liberação (só a que confirmou a reserva lança recebimento);
- * - devoluções pedidas cuja próxima tentativa chegou (relê a order antes; chave nova a cada pedido);
+ * - devoluções pedidas cuja próxima tentativa chegou (relê a order antes; chave nova a cada pedido), só de pagamentos
+ *   dos últimos 85 dias: depois disso a order não aparece mais, a rotina para de ler e liga o aviso
+ *   `devolucao_fora_do_prazo` (uma vez), para a equipe resolver pelo painel do Mercado Pago;
  * - Pix pendentes que sobraram numa cotação já confirmada (cancelados no provedor);
  * - uma vez por dia, os pagamentos dos últimos 85 dias (o provedor só consulta orders de até três meses) com desfecho (reserva, devolução ou devolução por fora) e
  *   os aprovados sem reserva à espera da devolução: devolução ou contestação feita por fora (ou devolução em dobro)
@@ -106,14 +108,31 @@ export async function conferirPendentes(db: Db, organizacaoId: string | null, pr
     }
   }
 
+  // Devoluções: o mesmo prazo das releituras diárias (o provedor só consulta orders de até três meses). Fora dele, nada
+  // se lê (a confirmação nunca chegaria e as leituras gastariam o limite do provedor sem fim): só o aviso, uma vez.
+  const corte = new Date(agora.getTime() - RELER_RESERVA_DIAS * 86_400_000);
+  const foraDoPrazo = sql`jsonb_build_array(${"devolucao_fora_do_prazo"}::text)`;
+  await db
+    .update(pagamentos)
+    .set({ avisos: sql`${pagamentos.avisos} || ${foraDoPrazo}`, atualizadoEm: agora })
+    .where(
+      and(
+        daOrg,
+        lt(pagamentos.criadoEm, corte),
+        sql`not (${pagamentos.avisos} @> ${foraDoPrazo})`,
+        sql`exists (select 1 from ${devolucoesPagamento} d where d.pagamento_id = ${pagamentos.id} and d.situacao = 'pedida')`,
+      ),
+    );
   const devolucoes = await db
     .select({ id: devolucoesPagamento.id, organizacaoId: devolucoesPagamento.organizacaoId })
     .from(devolucoesPagamento)
+    .innerJoin(pagamentos, eq(pagamentos.id, devolucoesPagamento.pagamentoId))
     .where(
       and(
         organizacaoId ? eq(devolucoesPagamento.organizacaoId, organizacaoId) : undefined,
         eq(devolucoesPagamento.situacao, "pedida"),
         or(isNull(devolucoesPagamento.proximaTentativaEm), lte(devolucoesPagamento.proximaTentativaEm, agora)),
+        gte(pagamentos.criadoEm, corte),
       ),
     );
   for (const d of devolucoes) {

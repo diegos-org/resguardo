@@ -211,7 +211,10 @@ dias, os pagamentos com desfecho (`reserva`, `devolucao`, `por_fora`) e os aprov
 espera da devolução: devolução ou contestação feita por fora, ou devolução em dobro, vira aviso, nunca
 estorno automático. O prazo é o do Mercado Pago: a consulta da order (`GET /v1/orders/{id}`) só vale
 para orders de até três meses; depois disso "não encontrada" é o limite do provedor e não vira aviso.
-Contestação tardia (até 180 dias) fica com o M8.2e, por outro caminho (Payments ou Chargebacks).
+O mesmo prazo de 85 dias vale para as devoluções pedidas: depois dele a rotina para de ler a order (a
+confirmação nunca chegaria e as leituras gastariam o limite do provedor sem fim) e liga, uma vez, o aviso
+de que o sistema parou de conferir aquela devolução; a equipe resolve pelo painel do Mercado Pago até o
+M8.2c. Contestação tardia (até 180 dias) fica com o M8.2e, por outro caminho (Payments ou Chargebacks).
 
 **Onde a rotina roda:** o cron da Vercel só roda no deploy de produção, onde o pagamento fica
 desligado. No teste (prévias), nada confere sozinho: a página do hóspede confere o próprio Pix e o

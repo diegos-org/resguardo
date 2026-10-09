@@ -205,6 +205,7 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
     desligar("devolucao_falhou");
     desligar("devolucao_sem_confirmacao");
     desligar("devolucao_parada");
+    desligar("devolucao_fora_do_prazo");
     await registrarAuditoria(tx, { organizacaoId, usuarioId: null, acao: "pagamento.devolucao_confirmada", entidade: "pagamento", entidadeId: p.id, mudancas: { devolucao: [antes, "confirmada"] } });
   } else if (devolvidoNoProvedor && desfecho === null && !dev) ligar("devolvido_por_fora");
   // Taxa que não voltou: o provedor não diz quanto da tarifa devolveu (a que ele informa é a da aprovação). Fica
