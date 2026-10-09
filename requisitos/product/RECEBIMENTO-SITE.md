@@ -153,6 +153,14 @@ criar).
   ("parcelamento com juros"); a SCL não assume o "sem juros", em que o provedor cobra do vendedor
   um acréscimo por parcela, que cresce com o número de parcelas. O número máximo de parcelas fica
   configurável no painel (padrão: o máximo que o Mercado Pago permitir).
+- **Feito no M8.2b (9/10/2026, em teste):** cartão de crédito com os juros pagos pelo hóspede (o
+  valor da reserva e a base da taxa são o total da cotação; os juros ficam com o Mercado Pago e só
+  aparecem no "pago pelo hóspede") e o "parcelamento sem acréscimo" detectado pelo dinheiro, com aviso e
+  sem taxa automática (`PAGAMENTO-SITE.md`, seção "Cartão (M8.2b)"). Quando o dinheiro do cartão é
+  liberado depende do plano da conta (na hora 4,98%, 14 dias 4,49%, 30 dias 3,98%) e de "receber à vista"
+  ligado (liberação de uma vez; com liberação por parcela, nada é lançado sozinho). A conferir no
+  sandbox e registrar aqui: se os juros e a taxa voltam na devolução integral e se dá para devolver antes
+  da liberação (itens 18 e 24 de "A conferir no sandbox").
 
 **Provedores** (fontes públicas consultadas em 4/10/2026; valores **aproximados e a confirmar**
 na abertura da conta — mudam por plano, prazo de recebimento, volume e negociação):
