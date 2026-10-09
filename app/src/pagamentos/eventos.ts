@@ -1,7 +1,9 @@
 /**
  * Pagamento no site (M8.2a) — registro dos avisos (webhooks) do provedor. Só entram avisos com assinatura válida
  * (a rota confere antes): tipo, ação, id, request-id, ts, quando e o resultado do processamento, sem nada do
- * corpo. A repetição (mesmo request-id, ts e id) não é processada de novo. Assinatura inválida só conta num número
+ * corpo. A repetição (mesmo request-id, ts e id) não é processada de novo. Sem request-id e sem ts não há como
+ * reconhecer a repetição: cada aviso é um evento e é processado (a leitura da order é idempotente; dois avisos
+ * diferentes da mesma order nunca se fundem num só). Assinatura inválida só conta num número
  * agregado do dia, ao lado do "último aviso válido em". Os eventos são apagados depois de 90 dias.
  */
 import { and, desc, eq, lt, sql } from "drizzle-orm";
@@ -26,12 +28,19 @@ export async function registrarEventoDeAviso(db: Db, e: DadosEvento, agora: Date
   const dataId = texto(e.dataId, 64);
   if (!dataId) return null;
   const valores = { tipo: codigo(e.tipo), acao: codigo(e.acao), dataId, requestId: texto(e.requestId, 128), ts: /^\d{1,20}$/.test(String(e.ts ?? "")) ? String(e.ts) : "", aoVivo: typeof e.aoVivo === "boolean" ? e.aoVivo : null, recebidoEm: agora };
-  const [novo] = await db.insert(eventosPagamento).values(valores).onConflictDoNothing({ target: [eventosPagamento.requestId, eventosPagamento.ts, eventosPagamento.dataId] }).returning({ id: eventosPagamento.id });
+  const reconhecivel = valores.requestId !== "" || valores.ts !== "";
+  const insercao = db.insert(eventosPagamento).values(valores);
+  const [novo] = reconhecivel
+    ? await insercao
+        .onConflictDoNothing({ target: [eventosPagamento.requestId, eventosPagamento.ts, eventosPagamento.dataId], where: sql`${eventosPagamento.requestId} <> '' or ${eventosPagamento.ts} <> ''` })
+        .returning({ id: eventosPagamento.id })
+    : await insercao.returning({ id: eventosPagamento.id });
   await db
     .insert(pagamentosAvisosDia)
     .values({ dia: hojeISO(FUSO, agora), ultimoValidoEm: agora })
     .onConflictDoUpdate({ target: pagamentosAvisosDia.dia, set: { ultimoValidoEm: agora } });
   if (novo) return { id: novo.id, novo: true };
+  if (!reconhecivel) return null;
   const [existente] = await db
     .select({ id: eventosPagamento.id })
     .from(eventosPagamento)

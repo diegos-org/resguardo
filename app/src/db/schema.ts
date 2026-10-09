@@ -1561,7 +1561,8 @@ export const eventosPagamento = pgTable(
     resultado: text("resultado").$type<ResultadoEventoPagamento>().notNull().default("pendente"),
     processadoEm: timestamp("processado_em", { withTimezone: true }),
   },
-  (t) => [uniqueIndex("eventos_pagamento_unico").on(t.requestId, t.ts, t.dataId), index("eventos_pagamento_recebido").on(t.recebidoEm)],
+  // A repetição só se reconhece com request-id ou ts: sem os dois, cada aviso é um evento (nunca se fundem).
+  (t) => [uniqueIndex("eventos_pagamento_unico").on(t.requestId, t.ts, t.dataId).where(sql`${t.requestId} <> '' or ${t.ts} <> ''`), index("eventos_pagamento_recebido").on(t.recebidoEm)],
 );
 
 /** Contas agregadas dos avisos por dia (São Paulo): assinaturas recusadas e o último aviso válido. Nenhum dado do pedido. */

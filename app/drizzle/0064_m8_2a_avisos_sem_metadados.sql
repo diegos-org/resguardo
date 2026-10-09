@@ -1,0 +1,2 @@
+DROP INDEX "eventos_pagamento_unico";--> statement-breakpoint
+CREATE UNIQUE INDEX "eventos_pagamento_unico" ON "eventos_pagamento" USING btree ("request_id","ts","data_id") WHERE "eventos_pagamento"."request_id" <> '' or "eventos_pagamento"."ts" <> '';

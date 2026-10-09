@@ -36,6 +36,20 @@ describe("avisos assinados (webhook) do provedor (M8.2a)", () => {
     expect(await db.select().from(eventosPagamento).where(eq(eventosPagamento.id, a!.id))).toEqual([]);
   });
 
+  it("aviso sem request-id e sem ts: cada um é um evento novo (nunca se funde com o anterior da mesma order); com um dos dois, a repetição é reconhecida", async () => {
+    const a = await registrarEventoDeAviso(db, { tipo: "order", acao: "order.processed", dataId: "ORDSEMMETA1" }, AGORA);
+    const b = await registrarEventoDeAviso(db, { tipo: "order", acao: "order.refunded", dataId: "ORDSEMMETA1" }, minutos(1));
+    expect(a).toMatchObject({ novo: true });
+    expect(b).toMatchObject({ novo: true });
+    expect(b!.id).not.toBe(a!.id);
+    expect(await db.select().from(eventosPagamento).where(eq(eventosPagamento.dataId, "ORDSEMMETA1"))).toHaveLength(2);
+    // Só o ts (sem request-id) ou só o request-id (sem ts): a repetição continua reconhecida.
+    const t1 = await registrarEventoDeAviso(db, { dataId: "ORDSEMMETA1", ts: "1759330800" }, minutos(2));
+    expect(await registrarEventoDeAviso(db, { dataId: "ORDSEMMETA1", ts: "1759330800" }, minutos(3))).toEqual({ id: t1!.id, novo: false });
+    const r1 = await registrarEventoDeAviso(db, { dataId: "ORDSEMMETA1", requestId: "req-so" }, minutos(2));
+    expect(await registrarEventoDeAviso(db, { dataId: "ORDSEMMETA1", requestId: "req-so" }, minutos(3))).toEqual({ id: r1!.id, novo: false });
+  });
+
   it("processar: id que não é de order é ignorado; order desconhecida não avisa; order conhecida é aplicada e o evento leva o resultado e a empresa", async () => {
     expect(idDeOrder("123456")).toBe(false);
     expect(await processarAvisoDeOrder(db, c.provedor, "123456", AGORA)).toBe("ignorado");

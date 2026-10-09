@@ -11,6 +11,7 @@
  * recusada. Pedido ACEITO pelo provedor: nada se envia de novo (nem com outra chave, nem num pedido novo da equipe),
  * só a leitura confirma; três leituras sem a devolução viram aviso, e ela continua pedida. Order devolvida em parte
  * ou contestada antes de pedir: a leitura é aplicada e a devolução para (aviso; devolver o inteiro devolveria a mais).
+ * O pedido só sai com a order relida aprovada e a mesma da tentativa; qualquer outra leitura também para (aviso).
  * Por fora: só depois
  * de reler a order no provedor (devolvida, em andamento ou contestada = recusa), e só o valor integral. A taxa que
  * não voltar a equipe informa depois da confirmação ("Registrar taxa que não voltou"): vira despesa da empresa.
@@ -115,7 +116,7 @@ async function esperarAceita(db: Db, organizacaoId: string, cotacaoId: string, d
 export async function tentarDevolucao(db: Db, organizacaoId: string, devolucaoId: string, provedor: ProvedorPagamento, agora: Date = new Date()): Promise<SituacaoDevolucao | null> {
   if (!uuidValido(devolucaoId)) return null;
   const [d] = await db
-    .select({ dev: devolucoesPagamento, cotacaoId: pagamentos.cotacaoId, idProvedor: pagamentos.idProvedor })
+    .select({ dev: devolucoesPagamento, cotacaoId: pagamentos.cotacaoId, idProvedor: pagamentos.idProvedor, referencia: pagamentos.referencia })
     .from(devolucoesPagamento)
     .innerJoin(pagamentos, eq(pagamentos.id, devolucoesPagamento.pagamentoId))
     .where(and(eq(devolucoesPagamento.id, devolucaoId), eq(devolucoesPagamento.organizacaoId, organizacaoId)));
@@ -147,6 +148,14 @@ export async function tentarDevolucao(db: Db, organizacaoId: string, devolucaoId
   // Pedido já aceito pelo provedor: nada se envia de novo (nem com a mesma chave); a leitura confirma quando a order mostrar.
   if (d.dev.chaveAceita) {
     await esperarAceita(db, organizacaoId, d.cotacaoId, devolucaoId, agora);
+    return (await situacaoDaDevolucao(db, devolucaoId)) ?? null;
+  }
+  // Só se pede com a order relida APROVADA e a mesma da tentativa (id e referência). Qualquer outra leitura
+  // (desconhecida, recusada, cancelada, vencida, pendente, de outra referência) é aplicada e a devolução automática
+  // para com aviso: a situação local "aprovado" pode estar velha, e o pedido não sai por cima dela.
+  if (cobranca && (cobranca.situacao !== "aprovado" || cobranca.idProvedor !== d.idProvedor || cobranca.referencia !== d.referencia)) {
+    await conferirTentativa(db, organizacaoId, d.dev.pagamentoId, provedor, agora, { forcar: true, origem: "rotina", cobranca });
+    await pararDevolucao(db, organizacaoId, d.cotacaoId, devolucaoId, agora);
     return (await situacaoDaDevolucao(db, devolucaoId)) ?? null;
   }
   let res: ResultadoDevolucao;

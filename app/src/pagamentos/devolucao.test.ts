@@ -6,7 +6,7 @@ import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { conferirTentativa } from "./conferencia";
 import { chaveDevolucao, chaveTaxaPerdida, devolverPeloProvedor, ERRO_POR_FORA_SEM_CONFERIR, MAXIMO_FALHAS_DEVOLUCAO, registrarDevolucaoPorFora, registrarTaxaPerdida, tentarDevolucao } from "./devolucao";
-import { ErroProvedor, type ProvedorPagamento } from "./provedor";
+import { type Cobranca, ErroProvedor, type ProvedorPagamento } from "./provedor";
 import { pagamentosDaReserva } from "./consultas";
 import { conferirPendentes } from "./rotina";
 import { textosDosAvisos } from "./situacoes";
@@ -207,6 +207,33 @@ describe("devolução do pagamento sem reserva (M8.2a)", () => {
     expect((await devolucao(x.pagamentoId)).situacao).toBe("recusada");
     expect(pedidos()).toHaveLength(1);
     expect((await c.tentativa(x.pagamentoId)).avisos).toContain("devolucao_parada");
+  });
+
+  it("releitura que não mostra a order aprovada e a mesma (desconhecida, cancelada, recusada, vencida, de outra referência): nada se pede; a leitura é aplicada e a devolução para (aviso)", async () => {
+    const variantes = [
+      (o: Cobranca) => ({ ...o, situacao: "desconhecido" as const }),
+      (o: Cobranca) => ({ ...o, situacao: "cancelado" as const }),
+      (o: Cobranca) => ({ ...o, situacao: "recusado" as const }),
+      (o: Cobranca) => ({ ...o, situacao: "expirado" as const }),
+      (o: Cobranca) => ({ ...o, referencia: "scl-outra" }),
+    ];
+    for (const [n, variar] of variantes.entries()) {
+      const x = await semReserva({ taxa: 1806 }, outras(n));
+      c.provedor.falhas.devolver = new ErroProvedor("incerto", "tempo");
+      await devolverPeloProvedor(db, c.org, x.pagamentoId, null, c.provedor, minutos(10));
+      c.provedor.falhas.devolver = null;
+      expect((await devolucao(x.pagamentoId)).situacao).toBe("pedida");
+      const antes = pedidos().length;
+      const [aprovada] = c.provedor.todas().filter((o) => o.idProvedor === x.idProvedor);
+      vi.spyOn(c.provedor, "consultar").mockResolvedValue(variar(aprovada));
+      await tentarDevolucao(db, c.org, (await devolucao(x.pagamentoId)).id, c.provedor, minutos(21));
+      vi.restoreAllMocks();
+      expect(pedidos()).toHaveLength(antes);
+      expect((await devolucao(x.pagamentoId)).situacao).toBe("recusada");
+      const t = await c.tentativa(x.pagamentoId);
+      expect(t.avisos).toContain("devolucao_parada");
+      expect(t.desfecho).toBeNull();
+    }
   });
 
   it("devolução feita no painel do Mercado Pago enquanto pedida: a releitura confirma", async () => {

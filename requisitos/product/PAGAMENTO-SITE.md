@@ -95,7 +95,9 @@ disso, a página mostra o fluxo de hoje, e a aba de pagamento lista cada imóvel
   tentativa, id da devolução no provedor.
 - **`eventos_pagamento`**: avisos com assinatura válida (tipo, ação, id, request-id, ts, quando,
   resultado), índice único por (request-id, ts, id) para não processar repetição; apagados depois de
-  90 dias. Assinaturas inválidas só contam num número agregado do dia ("assinaturas recusadas") e
+  90 dias. Sem request-id e sem ts não há como reconhecer a repetição: cada aviso é um evento novo e é
+  processado (a leitura da order é idempotente), para dois avisos diferentes da mesma order nunca se
+  fundirem num só. Assinaturas inválidas só contam num número agregado do dia ("assinaturas recusadas") e
   no "último aviso válido em".
 
 **Situação local** de uma tentativa: `criando` (gravada antes da chamada), `incerta` (a chamada
@@ -303,7 +305,10 @@ do M9.2 passa a valer para reservas pagas quando Diego ligar as mensagens.
   pagamento ainda não aparece como devolvido" (continua pedida). Antes de tentar de novo, relê a order
   (já devolvida = confirmada; devolução em andamento lá = não pede de novo; **devolvida em parte ou
   contestada** = a leitura é aplicada e a devolução para, recusada, com o aviso de que parou: devolver
-  o valor inteiro por cima devolveria a mais ou correria com a contestação). Sob a trava, antes de
+  o valor inteiro por cima devolveria a mais ou correria com a contestação; **qualquer outra leitura que
+  não seja a mesma order aprovada** (situação desconhecida, recusada, cancelada, vencida, pendente, ou
+  outra referência) também é aplicada e para a devolução, com o mesmo aviso: o pedido só sai com a
+  releitura aprovada, nunca pela situação local, que pode estar velha). Sob a trava, antes de
   gravar a chave, o pagamento ainda precisa estar aprovado e sem desfecho: uma leitura que cruzou e o
   deixou devolvido em parte ou contestado também para a devolução, com o mesmo aviso. `order_refund_already_in_process` = continua pedida; `already_refunded` =
   confirmada. Recusa e resposta **incerta** (tempo esgotado, 5xx, resposta que o sistema não sabe
