@@ -58,7 +58,8 @@ Cobrança só acontece com tudo isto (uma função só decide, para criar, cance
 3. as duas chaves presentes;
 4. **conta conferida como de teste no Mercado Pago** (`GET /users/me`; critério positivo, ex.:
    marca `test_user`, a conferir no sandbox; resposta estranha ou falha = não é teste; resultado
-   guardado alguns minutos, inclusive a falha);
+   guardado alguns minutos, inclusive a falha; nas telas do site e do painel a conferência espera no
+   máximo 2 s: passou disso, não cobra naquela hora, a página segue e a conferência continua no fundo);
 5. a chave "Oferecer pagamento no site" ligada no painel (começa **desligada**: o Diego liga na aba).
 
 Aviso com `live_mode=true` (não é assinado; serve de alarme) vira aviso no painel. Nas tentativas

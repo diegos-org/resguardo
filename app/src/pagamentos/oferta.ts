@@ -17,6 +17,7 @@ import { dadosDoMotor } from "@/financeiro/aplicar";
 import { type PendenciaDoCalculo, pendenciaDoCalculo } from "@/financeiro/motor";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
+import { esperarNoMaximo } from "@/lib/prazo";
 import { ambienteMercadoPago, contaDeTesteConfirmada, estadoPagamentoDoAmbiente, provedorDoAmbiente } from "./ambiente";
 import type { ProvedorPagamento } from "./provedor";
 
@@ -47,8 +48,14 @@ function provedorPeloAmbiente(env: NodeJS.ProcessEnv, injetado: ProvedorPagament
   return provedor ? { provedor } : { motivo: "desligado" };
 }
 
-async function contaConfere(provedor: ProvedorPagamento, agora: Date): Promise<MotivoSemCobranca | null> {
-  const conta = await contaDeTesteConfirmada(provedor, () => agora);
+/**
+ * A conta das chaves é de teste? `esperaMs` (telas do site): espera a conferência no máximo esse tanto; passou disso,
+ * "não conferida" (não cobra) e a conferência continua no fundo, lembrada para a próxima vez. Sem ele (aviso, rotina,
+ * ações do painel), espera a resposta do provedor.
+ */
+async function contaConfere(provedor: ProvedorPagamento, agora: Date, esperaMs?: number): Promise<MotivoSemCobranca | null> {
+  const conferencia = contaDeTesteConfirmada(provedor, () => agora);
+  const conta = esperaMs === undefined ? await conferencia : await esperarNoMaximo(conferencia, esperaMs, null);
   return conta === true ? null : conta === false ? "conta_nao_teste" : "conta_nao_conferida";
 }
 
@@ -56,20 +63,26 @@ async function contaConfere(provedor: ProvedorPagamento, agora: Date): Promise<M
  * Provedor para conferir, cancelar e devolver: ambiente de teste fora da produção, chaves e conta de TESTE
  * comprovada. Não olha a chave do painel.
  */
-export async function provedorDeConferencia(env: NodeJS.ProcessEnv = process.env, agora: Date = new Date(), o: { provedor?: ProvedorPagamento } = {}): Promise<PortaoCobranca> {
+export async function provedorDeConferencia(env: NodeJS.ProcessEnv = process.env, agora: Date = new Date(), o: { provedor?: ProvedorPagamento; esperaMs?: number } = {}): Promise<PortaoCobranca> {
   const p = provedorPeloAmbiente(env, o.provedor);
   if ("motivo" in p) return recusa(p.motivo);
-  const conta = await contaConfere(p.provedor, agora);
+  const conta = await contaConfere(p.provedor, agora, o.esperaMs);
   return conta ? recusa(conta) : { ok: true, provedor: p.provedor, ambiente: "teste" };
 }
 
 /** A função única que libera cobrar (criar Pix). Todas as travas, inclusive a chave do painel. */
-export async function podeCobrar(db: Db, organizacaoId: string, env: NodeJS.ProcessEnv = process.env, agora: Date = new Date(), o: { provedor?: ProvedorPagamento } = {}): Promise<PortaoCobranca> {
+export async function podeCobrar(
+  db: Db,
+  organizacaoId: string,
+  env: NodeJS.ProcessEnv = process.env,
+  agora: Date = new Date(),
+  o: { provedor?: ProvedorPagamento; esperaMs?: number } = {},
+): Promise<PortaoCobranca> {
   const p = provedorPeloAmbiente(env, o.provedor);
   if ("motivo" in p) return recusa(p.motivo);
   // A chave do painel antes da conferência da conta: com a oferta desligada, nem se pergunta ao provedor.
   if (!(await lerConfigPagamentoSite(db, organizacaoId)).oferecer) return recusa("desligado_no_painel");
-  const conta = await contaConfere(p.provedor, agora);
+  const conta = await contaConfere(p.provedor, agora, o.esperaMs);
   return conta ? recusa(conta) : { ok: true, provedor: p.provedor, ambiente: "teste" };
 }
 

@@ -8,6 +8,7 @@ import { conferirTentativa } from "@/pagamentos/conferencia";
 import { ERROS_LIMITE, LIMITES_PAGAMENTO } from "@/pagamentos/limites";
 import type { PortaoCobranca } from "@/pagamentos/oferta";
 import { type CodigoFalhaPix, gerarPix } from "@/pagamentos/pix";
+import { ProvedorFalso } from "@/pagamentos/falso";
 import { ErroProvedor } from "@/pagamentos/provedor";
 import { AGORA, type Cenario, EMAIL_HOSPEDE, env, minutos, montarCenario, TOTAL } from "@/pagamentos/testes";
 import { CACHE_PAGAMENTO, MENSAGENS_PIX_HOSPEDE, mensagemSemPix, pixPossivel, portaoDoSite, responderPagamento, vistaDoPagamento } from "./pagamento";
@@ -128,6 +129,19 @@ describe("o que a página da cotação mostra do pagamento (M8.2a)", () => {
   it("travas do site: sem as chaves, não cobra; com o provedor de teste, cobra", async () => {
     expect(await portaoDoSite(db, c.org, AGORA, { env: env() })).toMatchObject({ ok: false, motivo: "desligado" });
     expect(await portaoDoSite(db, c.org, AGORA, { env: env(), provedor: c.provedor })).toMatchObject({ ok: true, ambiente: "teste" });
+  });
+
+  it("conta do Mercado Pago que não responde: as travas do site e a consulta da página não ficam presas — não cobra e segue no prazo", async () => {
+    const s = await c.segurar();
+    const lento = new ProvedorFalso(() => AGORA);
+    lento.conferirContaDeTeste = () => new Promise<boolean | null>(() => {});
+    const inicio = performance.now();
+    expect(await portaoDoSite(db, c.org, AGORA, { env: env(), provedor: lento, esperaMs: 50 })).toMatchObject({ ok: false, motivo: "conta_nao_conferida" });
+    const r = await responderPagamento(db, s.codigo, { organizacao: async () => c.org, token: () => undefined, origem: "203.0.113.51", agora: minutos(1), env: env(), provedor: lento, esperaMs: 50 });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ estado: "sem_pagamento" });
+    expect(lento.chamadas.filter((x) => x.metodo === "consultar" || x.metodo === "buscarPorReferencia")).toEqual([]);
+    expect(performance.now() - inicio).toBeLessThan(2_000);
   });
 
   it("mensagens ao hóspede: uma para cada falha do Pix, sem texto do provedor nem motivo interno", () => {

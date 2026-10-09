@@ -10,6 +10,7 @@ import type { Db } from "@/db/types";
 import { autorizacaoValida } from "@/pagamentos/autorizacao";
 import { conferirCotacaoParaPagina } from "@/pagamentos/conferencia";
 import { vistaDaCotacaoParaHospede } from "@/pagamentos/consultas";
+import { ESPERA_TELA_MS } from "@/lib/prazo";
 import { conferirLimite } from "@/pagamentos/limites";
 import { type MotivoSemPix, ofertaDePix, type PortaoCobranca, pendenciaDoMotor, podeCobrar, provedorDeConferencia, TEXTO_SEM_COBRANCA } from "@/pagamentos/oferta";
 import { type CodigoFalhaPix, MAXIMO_PIX_POR_COTACAO } from "@/pagamentos/pix";
@@ -43,10 +44,19 @@ export function mensagemSemPix(m: MotivoSemPix): string {
   return MENSAGENS_PIX_HOSPEDE.nao_oferecido;
 }
 
-/** As travas do pagamento para as telas do site; qualquer falha inesperada = não cobra (deny-by-default). */
-export async function portaoDoSite(db: Db, organizacaoId: string, agora: Date = new Date(), o: { env?: NodeJS.ProcessEnv; provedor?: ProvedorPagamento } = {}): Promise<PortaoCobranca> {
+/**
+ * As travas do pagamento para as telas do site; qualquer falha inesperada = não cobra (deny-by-default). A conferência
+ * da conta no Mercado Pago espera no máximo `esperaMs` (padrão `ESPERA_TELA_MS`, 2 s): passou disso, não cobra e a
+ * página segue (a consulta, a ficha e a cotação nunca ficam presas a um Mercado Pago lento).
+ */
+export async function portaoDoSite(
+  db: Db,
+  organizacaoId: string,
+  agora: Date = new Date(),
+  o: { env?: NodeJS.ProcessEnv; provedor?: ProvedorPagamento; esperaMs?: number } = {},
+): Promise<PortaoCobranca> {
   try {
-    return await podeCobrar(db, organizacaoId, o.env ?? process.env, agora, { provedor: o.provedor });
+    return await podeCobrar(db, organizacaoId, o.env ?? process.env, agora, { provedor: o.provedor, esperaMs: o.esperaMs ?? ESPERA_TELA_MS });
   } catch {
     return { ok: false, motivo: "conta_nao_conferida", texto: TEXTO_SEM_COBRANCA.conta_nao_conferida };
   }
@@ -111,7 +121,16 @@ const resposta = (status: number, corpo: object, extra: Record<string, string> =
 export async function responderPagamento(
   db: Db,
   codigoBruto: string,
-  o: { organizacao: () => Promise<string | null>; token: (cotacaoId: string) => string | undefined; origem: string | null; agora?: Date; env?: NodeJS.ProcessEnv; provedor?: ProvedorPagamento },
+  o: {
+    organizacao: () => Promise<string | null>;
+    token: (cotacaoId: string) => string | undefined;
+    origem: string | null;
+    agora?: Date;
+    env?: NodeJS.ProcessEnv;
+    provedor?: ProvedorPagamento;
+    /** Espera máxima pela conferência da conta no Mercado Pago (padrão `ESPERA_TELA_MS`). */
+    esperaMs?: number;
+  },
 ): Promise<Response> {
   const agora = o.agora ?? new Date();
   const codigo = codigoBruto.trim().toUpperCase();
@@ -124,7 +143,8 @@ export async function responderPagamento(
   if (!c) return resposta(404, { erro: "Não encontrado." });
   const env = o.env ?? process.env;
   try {
-    const conferir = await provedorDeConferencia(env, agora, { provedor: o.provedor });
+    const esperaMs = o.esperaMs ?? ESPERA_TELA_MS;
+    const conferir = await provedorDeConferencia(env, agora, { provedor: o.provedor, esperaMs });
     if (conferir.ok) await conferirCotacaoParaPagina(db, organizacaoId, c.id, conferir.provedor, agora);
   } catch {
     // Falha ao conferir não derruba a consulta: a página mostra o que o banco já sabe e tenta de novo depois.
@@ -132,7 +152,7 @@ export async function responderPagamento(
   }
   const vista = await vistaDoPagamento(db, organizacaoId, c.id, agora, {
     comAutorizacao: autorizacaoValida(o.token(c.id), c.id, agora),
-    gate: () => portaoDoSite(db, organizacaoId, agora, { env, provedor: o.provedor }),
+    gate: () => portaoDoSite(db, organizacaoId, agora, { env, provedor: o.provedor, esperaMs: o.esperaMs }),
   });
   return vista ? resposta(200, vista) : resposta(404, { erro: "Não encontrado." });
 }
