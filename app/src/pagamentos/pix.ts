@@ -21,7 +21,7 @@
  * sandbox); a página nunca os recebe.
  */
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { nomeDaEmpresa } from "@/configuracoes/empresa";
 import { nomeNaFatura } from "@/configuracoes/pagamento-site";
 import { travaOcupada } from "@/db/erros";
@@ -29,7 +29,7 @@ import { pagamentos } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
 import { estenderHold, voltarHold } from "@/site/cotacoes";
-import { FOLGA_PRAZO_PIX_MS, MAXIMO_PIX_POR_COTACAO } from "./andamento";
+import { FOLGA_PRAZO_PIX_MS, MAXIMO_PIX_POR_COTACAO, paginaAindaLe } from "./andamento";
 import type { Leitura } from "./aplicar";
 import { aplicarLeitura } from "./aplicar";
 import { cancelarNoProvedor, chaveCancelamento, conferirTentativa } from "./conferencia";
@@ -212,13 +212,16 @@ async function conferirOuOcupado(...args: Parameters<typeof conferirTentativa>):
 /** Gera (ou mostra de novo) o Pix da cotação. `provedor` = o liberado por `podeCobrar`. */
 export async function gerarPix(db: Db, organizacaoId: string, cotacaoId: string, agora: Date, provedor: ProvedorPagamento): Promise<ResultadoPix> {
   if (!uuidValido(cotacaoId)) return falha("nao_encontrada");
-  // Antes de qualquer coisa nova: uma criação que ficou no ar é procurada pela referência.
-  const abertas = await db
-    .select({ id: pagamentos.id })
+  // Antes de qualquer coisa nova: uma criação que ficou no ar é procurada pela referência, e um Pix recusado, cancelado
+  // ou vencido há pouco (que ainda pode ter sido pago: `paginaAindaLe`) é relido; se virou dinheiro, nenhum outro sai.
+  // O pendente fica com a fase 1 (mostrado de novo, ou cancelado e relido antes do novo).
+  const tentativas = await db
+    .select({ id: pagamentos.id, situacao: pagamentos.situacao, idProvedor: pagamentos.idProvedor, pixExpiraEm: pagamentos.pixExpiraEm, criadoEm: pagamentos.criadoEm })
     .from(pagamentos)
-    .where(and(eq(pagamentos.cotacaoId, cotacaoId), eq(pagamentos.organizacaoId, organizacaoId), inArray(pagamentos.situacao, ["criando", "incerta"])));
+    .where(and(eq(pagamentos.cotacaoId, cotacaoId), eq(pagamentos.organizacaoId, organizacaoId)));
+  const reler = tentativas.filter((t) => t.situacao !== "pendente" && paginaAindaLe(t, agora));
   // Sem `forcar`: a leitura é reservada (no máximo uma a cada 15 s por tentativa, mesmo com cliques simultâneos).
-  for (const a of abertas) if ((await conferirOuOcupado(db, organizacaoId, a.id, provedor, agora, { origem: "pagina" })) === null) return falha("ocupado");
+  for (const a of reler) if ((await conferirOuOcupado(db, organizacaoId, a.id, provedor, agora, { origem: "pagina" })) === null) return falha("ocupado");
   for (let volta = 0; volta < 3; volta++) {
     let f: Fase1;
     try {

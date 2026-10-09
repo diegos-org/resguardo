@@ -197,7 +197,8 @@ leitura a cada 15 s por tentativa, enquanto pendente e também no Pix recusado, 
 pouco, até 15 min depois do prazo dele (ou do mínimo de 30 min desde a criação, sem prazo conhecido; nunca
 pela última atualização, que cada leitura muda), porque o cancelamento pode cruzar com o pagamento e o
 provedor pode corrigir uma recusa (a mesma regra, `paginaAindaLe`, mantém a página acompanhando nesse tempo,
-mesmo com os 3 Pix gastos ou depois do prazo das datas); a leitura é **reservada num comando só**
+mesmo com os 3 Pix gastos ou depois do prazo das datas, e relê essas tentativas antes de "Gerar outro Pix":
+se uma virou dinheiro, nenhum outro sai); a leitura é **reservada num comando só**
 antes de chamar o provedor, então pedidos simultâneos leem uma vez; leitura que nem chegou ao
 provedor não conta, mas na página o "muitas chamadas" (429) ou a falta de resposta (tempo esgotado,
 5xx) **contam**: a página lê no máximo uma vez a cada 15 s mesmo com o Mercado Pago falhando — o

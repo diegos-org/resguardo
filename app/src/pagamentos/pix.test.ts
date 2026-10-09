@@ -184,6 +184,20 @@ describe("gerar o Pix (M8.2a)", () => {
     expect(c.provedor.chamadas.filter((x) => x.metodo === "criarPix")).toEqual([]);
   });
 
+  it("Pix cancelado há pouco que acabou pago depois da última leitura: ao pedir outro, ele é relido antes e nenhum segundo Pix sai", async () => {
+    const { cotacaoId, reservaId } = await c.segurar();
+    const a = await c.pix(cotacaoId);
+    // A foi dado por cancelado, mas o pagamento dele cruzou e só aparece no provedor agora.
+    await db.update(pagamentos).set({ situacao: "cancelado" }).where(eq(pagamentos.id, a.pagamentoId));
+    c.provedor.aprovar(a.idProvedor);
+    const criados = () => c.provedor.chamadas.filter((x) => x.metodo === "criarPix").length;
+    const antes = criados();
+    expect((await gerarPix(db, c.org, cotacaoId, minutos(2), c.provedor)).ok).toBe(false);
+    expect(criados()).toBe(antes);
+    expect(await c.tentativa(a.pagamentoId)).toMatchObject({ situacao: "aprovado", desfecho: "reserva" });
+    expect((await c.reserva(reservaId)).estado).toBe("confirmada");
+  });
+
   it("trava não obtida (impasse 40P01 ou tempo-limite) na criação, na conferência inicial ou depois de cancelar: 'ocupado', nada pela metade", async () => {
     const impasse = () => Object.assign(new Error("deadlock detected"), { code: "40P01" });
     /** O banco, com a n-ésima transação abortada por impasse (como o Postgres faz). */
