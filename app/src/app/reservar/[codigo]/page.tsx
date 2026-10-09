@@ -5,7 +5,9 @@ import { FormSegurar } from "@/components/site/FormSegurar";
 import { Moldura, SiteEmConfiguracao } from "@/components/site/Moldura";
 import { PagamentoPix } from "@/components/site/PagamentoPix";
 import styles from "@/components/site/site.module.css";
+import { versaoAtualDaPaginaLegal } from "@/configuracoes/paginas-legais";
 import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
+import { aceiteParaPagina } from "@/site/aceites";
 import { segurarDatasAcao } from "@/site/acoes";
 import { continuarPagamentoAcao, gerarPixAcao } from "@/site/acoes-pagamento";
 import { autorizadoNaCotacao } from "@/site/checkout";
@@ -18,6 +20,8 @@ export const generateMetadata = () => metadadosDoSite("Cotação");
 
 /** Situações em que falar com a equipe é o caminho principal (não há Pix a pagar). */
 const CONTATO_PRINCIPAL = new Set(["pix_esgotado", "aprovado_sem_datas", "devolucao_pedida", "devolvido"]);
+/** Situações que mostram o aceite das páginas legais (M7.4): a caixa antes do Pix, ou o aceite da reserva confirmada. */
+const COM_ACEITE = new Set(["pagar", "pix_vencido", "confirmada"]);
 
 /**
  * Página pública da cotação (M8.1): sempre revalidada ao abrir; nada é gravado só por visitar. Com o pagamento no
@@ -45,6 +49,12 @@ export default async function PaginaCotacao({ params }: PageProps<"/reservar/[co
       ? await pixPossivel(db, organizacaoId, { imovel: { id: c.imovelId }, checkin: c.checkin, checkout: c.checkout, situacao: c.situacao, total: c.total }, gate)
       : false;
   const ambienteTeste = gate.ok || (pagamento?.ambienteTeste ?? false);
+  // M7.4: o aceite das páginas legais (caixa no "Gerar Pix", ou as versões aceitas na reserva confirmada) e, no
+  // formulário de segurar as datas, o link da Política de privacidade em vigor.
+  const aceite = pagamento && COM_ACEITE.has(pagamento.estado) ? await aceiteParaPagina(db, organizacaoId, { id: c.id, checkin: c.checkin, fuso: c.fuso, reservaId: c.reservaId }, agora) : null;
+  const mostraFormulario = vista.estado === "aberta" && !vista.mudou;
+  // A Política de privacidade vale assim que publicada, mesmo com os termos ou o cancelamento ainda em preparação.
+  const privacidade = mostraFormulario ? await versaoAtualDaPaginaLegal(db, organizacaoId, "privacidade") : null;
   const { textos } = conteudo;
   return (
     <Moldura conteudo={conteudo}>
@@ -63,7 +73,9 @@ export default async function PaginaCotacao({ params }: PageProps<"/reservar/[co
           whatsapp={conteudo.whatsapp}
           email={conteudo.email}
           pagamentoNoSite={pagamentoNoSite}
-          formulario={vista.estado === "aberta" && !vista.mudou ? <FormSegurar codigo={codigo} minutos={regras.site.minutosHold} acao={segurarDatasAcao} comPagamento={pagamentoNoSite} /> : null}
+          formulario={
+            mostraFormulario ? <FormSegurar codigo={codigo} minutos={regras.site.minutosHold} acao={segurarDatasAcao} comPagamento={pagamentoNoSite} privacidade={privacidade} /> : null
+          }
           pagamento={
             pagamento && pagamento.estado !== "sem_pagamento"
               ? {
@@ -93,6 +105,7 @@ export default async function PaginaCotacao({ params }: PageProps<"/reservar/[co
                       }
                       gerarPix={gerarPixAcao.bind(null, codigo)}
                       continuar={continuarPagamentoAcao}
+                      aceite={aceite}
                     />
                   ),
                 }

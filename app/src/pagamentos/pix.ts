@@ -2,10 +2,11 @@
  * Pagamento no site (M8.2a) — gerar o Pix de uma cotação segurada, em três fases (como o envio ao Beds24):
  *
  * 1. Transação curta, com a ordem única das travas (imóvel → reserva → cotação → tentativas) e tempo-limite de
- *    espera: confere a oferta, reaproveita um Pix ainda válido (mesmo QR, mesmo prazo), respeita o teto de 3 Pix por
- *    cotação (antes de cancelar qualquer coisa), manda cancelar antes o Pix pendente anterior, grava a tentativa
- *    `criando` (referência e chave de idempotência) e estende provisoriamente o prazo das datas para agora +
- *    validade + 2 minutos.
+ *    espera: confere a oferta, reaproveita um Pix ainda válido (mesmo QR, mesmo prazo), confere o aceite das páginas
+ *    legais nas versões publicadas agora (M7.4; o aceite enviado junto é gravado nesta mesma transação), respeita o
+ *    teto de 3 Pix por cotação (antes de cancelar qualquer coisa), manda cancelar antes o Pix pendente anterior, grava
+ *    a tentativa `criando` (referência, chave de idempotência e o aceite que valia) e estende provisoriamente o prazo
+ *    das datas para agora + validade + 2 minutos.
  * 2. A chamada ao provedor, sem transação.
  * 3. Transação curta: aplica o que voltou e estende o prazo das datas até o vencimento do Pix + 2 minutos (só com
  *    o pedido ainda em `pedido` e a cotação `segurada`; senão o Pix é cancelado). Assim o QR nunca vale mais que as
@@ -24,10 +25,12 @@ import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { nomeDaEmpresa } from "@/configuracoes/empresa";
 import { nomeNaFatura } from "@/configuracoes/pagamento-site";
+import type { VersoesLegais } from "@/configuracoes/paginas-legais-texto";
 import { travaOcupada } from "@/db/erros";
 import { pagamentos } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
+import { aceiteVigenteTravado } from "@/site/aceites";
 import { estenderHold, voltarHold } from "@/site/cotacoes";
 import { FOLGA_PRAZO_PIX_MS, MAXIMO_PIX_POR_COTACAO, paginaAindaLe } from "./andamento";
 import type { Leitura } from "./aplicar";
@@ -42,7 +45,7 @@ export { FOLGA_PRAZO_PIX_MS, MAXIMO_PIX_POR_COTACAO };
 /** Pix que vence em menos de um minuto não é mostrado de novo: gera-se outro. */
 export const MARGEM_PIX_VALIDO_MS = 60_000;
 
-export type CodigoFalhaPix = "nao_encontrada" | "nao_oferecido" | "em_andamento" | "ja_pago" | "limite" | "provedor" | "incerto" | "recusado" | "ocupado" | "ao_vivo";
+export type CodigoFalhaPix = "nao_encontrada" | "nao_oferecido" | "em_andamento" | "ja_pago" | "limite" | "provedor" | "incerto" | "recusado" | "ocupado" | "ao_vivo" | "aceite_pendente" | "aceite_mudou";
 export type ResultadoPix = { ok: true; pagamentoId: string; reaproveitado: boolean } | { ok: false; erro: string; codigo: CodigoFalhaPix };
 
 export const referenciaDaTentativa = (id: string) => `scl-${id}`;
@@ -59,6 +62,8 @@ const MENSAGENS: Record<CodigoFalhaPix, string> = {
   recusado: "O Mercado Pago não aceitou gerar o Pix agora. Tente de novo ou fale com a equipe.",
   ocupado: "Muitos pedidos neste apartamento agora. Tente de novo em instantes.",
   ao_vivo: "O Mercado Pago marcou este Pix como pagamento real no ambiente de teste: ele foi cancelado na hora. Fale com a equipe.",
+  aceite_pendente: "Para gerar o Pix, marque que leu e aceita os termos e a política de cancelamento.",
+  aceite_mudou: "Os termos ou as políticas mudaram enquanto a página estava aberta: leia a versão atual e marque de novo.",
 };
 const falha = (codigo: CodigoFalhaPix, erro = MENSAGENS[codigo]): ResultadoPix => ({ ok: false, codigo, erro });
 
@@ -68,7 +73,7 @@ type Fase1 =
   | { tipo: "cancelar"; id: string; idProvedor: string }
   | { tipo: "criar"; id: string; pedido: PedidoPix; holdAnterior: Date; holdProvisorio: Date | null };
 
-async function fase1(tx: Db, organizacaoId: string, cotacaoId: string, agora: Date): Promise<Fase1> {
+async function fase1(tx: Db, organizacaoId: string, cotacaoId: string, agora: Date, aceite: VersoesLegais | null): Promise<Fase1> {
   const erro = (codigo: CodigoFalhaPix, texto?: string): Fase1 => ({ tipo: "erro", resultado: falha(codigo, texto) });
   const t = await travarCotacao(tx, organizacaoId, cotacaoId);
   if (!t) return erro("nao_encontrada");
@@ -82,7 +87,12 @@ async function fase1(tx: Db, organizacaoId: string, cotacaoId: string, agora: Da
   const pendentes = t.tentativas.filter((x) => x.situacao === "pendente");
   if (pendentes.some((x) => x.forma !== "pix")) return erro("em_andamento");
   const valido = pendentes.find((x) => x.pixCopiaECola && x.pixExpiraEm && x.pixExpiraEm.getTime() > agora.getTime() + MARGEM_PIX_VALIDO_MS);
+  // Um Pix ainda válido continua com o aceite com que foi criado, mesmo que uma versão nova tenha sido publicada depois.
   if (valido) return { tipo: "reaproveitar", id: valido.id };
+  // M7.4: páginas legais aceitas nas versões publicadas agora (o aceite enviado junto é gravado nesta mesma transação,
+  // e fica gravado mesmo que o teto ou o cancelamento abaixo impeçam o Pix desta vez). Recusado: nada é criado.
+  const a = await aceiteVigenteTravado(tx, organizacaoId, { cotacaoId, reservaId: t.reserva.id }, aceite, "pix", agora);
+  if (!a.ok) return a.motivo === "nao_publicadas" ? erro("nao_oferecido", TEXTO_SEM_PIX.sem_paginas_legais) : erro(a.motivo === "mudou" ? "aceite_mudou" : "aceite_pendente");
   // Teto antes de cancelar: com 3 Pix já gerados, o último (ainda pagável) não é cancelado à toa.
   if (t.tentativas.filter((x) => x.forma === "pix").length >= MAXIMO_PIX_POR_COTACAO) return erro("limite");
   // Pix novo só depois de cancelar o anterior no provedor (cancelado, já cancelado ou vencido).
@@ -106,6 +116,7 @@ async function fase1(tx: Db, organizacaoId: string, cotacaoId: string, agora: Da
     chaveIdempotencia: chaveCriacao(id),
     situacao: "criando",
     valor: t.cotacao.total,
+    aceiteId: a.aceite.id,
     criadoEm: agora,
     atualizadoEm: agora,
   });
@@ -212,8 +223,18 @@ async function conferirOuOcupado(...args: Parameters<typeof conferirTentativa>):
   }
 }
 
-/** Gera (ou mostra de novo) o Pix da cotação. `provedor` = o liberado por `podeCobrar`. */
-export async function gerarPix(db: Db, organizacaoId: string, cotacaoId: string, agora: Date, provedor: ProvedorPagamento): Promise<ResultadoPix> {
+/**
+ * Gera (ou mostra de novo) o Pix da cotação. `provedor` = o liberado por `podeCobrar`. `o.aceite`: as versões das
+ * páginas legais que o hóspede acabou de aceitar (a caixa marcada); sem ele, vale o aceite já gravado na cotação.
+ */
+export async function gerarPix(
+  db: Db,
+  organizacaoId: string,
+  cotacaoId: string,
+  agora: Date,
+  provedor: ProvedorPagamento,
+  o: { aceite?: VersoesLegais | null } = {},
+): Promise<ResultadoPix> {
   if (!uuidValido(cotacaoId)) return falha("nao_encontrada");
   // Antes de qualquer coisa nova: uma criação que ficou no ar é procurada pela referência, e um Pix recusado, cancelado
   // ou vencido há pouco (que ainda pode ter sido pago: `paginaAindaLe`) é relido; se virou dinheiro, nenhum outro sai.
@@ -234,7 +255,7 @@ export async function gerarPix(db: Db, organizacaoId: string, cotacaoId: string,
   for (let volta = 0; volta < 3; volta++) {
     let f: Fase1;
     try {
-      f = await db.transaction((tx) => fase1(tx, organizacaoId, cotacaoId, agora));
+      f = await db.transaction((tx) => fase1(tx, organizacaoId, cotacaoId, agora, o.aceite ?? null));
     } catch (e) {
       if (travaOcupada(e)) return falha("ocupado");
       throw e;

@@ -30,6 +30,8 @@ export const MENSAGENS_PIX_HOSPEDE: Record<CodigoFalhaPix, string> = {
   recusado: "O Mercado Pago não aceitou gerar o Pix agora. Tente de novo ou fale com a equipe pelo WhatsApp.",
   ocupado: "Muitos pedidos neste apartamento agora. Tente de novo em instantes.",
   ao_vivo: "O pagamento pelo site não está disponível agora. Fale com a equipe pelo WhatsApp.",
+  aceite_pendente: "Para gerar o Pix, marque que leu e aceita os Termos de uso e a Política de cancelamento.",
+  aceite_mudou: "Os termos ou as políticas do site mudaram enquanto a página estava aberta. Leia a versão atual e marque de novo.",
 };
 
 /** Sem o cookie do pedido (outro aparelho, link repassado): nada é gerado. */

@@ -31,7 +31,7 @@ export const SECOES: readonly Secao[] = [
   { slug: "rotinas", titulo: "Rotinas", marco: "M6.5", descricao: "Tarefas que se repetem: conferência das faxinas, manutenção, lembretes." , exige: "rotina:ler", interno: true },
   { slug: "mensagens", titulo: "Mensagens", marco: "M10.1", descricao: "Caixa de entrada do WhatsApp e mensagens programadas." , exige: "mensagem:ler" },
   { slug: "sistema", titulo: "Sistema", marco: "M1.6", descricao: "Serviços ligados, automações e regras em vigor." , exige: "configuracao:editar" },
-  { slug: "configuracoes", titulo: "Configurações", marco: "M1.7", descricao: "Empresa, usuários, regras financeiras, integrações, categorias, modelos de mensagem e textos do site." , exige: "configuracao:editar" },
+  { slug: "configuracoes", titulo: "Configurações", marco: "M1.7", descricao: "Empresa, usuários, regras financeiras, integrações, categorias, modelos de mensagem, textos e páginas legais do site." , exige: "configuracao:editar" },
 ];
 
 /** Só as seções que este papel pode abrir. */

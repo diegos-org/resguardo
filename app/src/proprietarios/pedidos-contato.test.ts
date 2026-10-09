@@ -300,7 +300,7 @@ describe("tratamento no painel", () => {
 });
 
 describe("aviso por e-mail para a equipe", () => {
-  const empresa = { nome: "Sua Casa Exemplo", razaoSocial: "", cnpj: "", email: "contato@empresa-exemplo.com", telefone: "", endereco: "", site: "", chavePix: "" };
+  const empresa = { nome: "Sua Casa Exemplo", razaoSocial: "", cnpj: "", email: "contato@empresa-exemplo.com", telefone: "", endereco: "", encarregado: "", site: "", chavePix: "" };
 
   it("manda um e-mail restrito para o e-mail da empresa, com os dados e o link do painel", async () => {
     await salvarEmpresa(db, org, empresa, null);

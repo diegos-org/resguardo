@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
+import type { AceiteNaPagina } from "@/site/aceites";
 import type { CotacaoVista } from "@/site/cotacoes";
 import type { PagamentoDoHospede } from "@/site/pagamento-vista";
 import Page from "./page";
@@ -13,12 +14,16 @@ const m = vi.hoisted(() => ({
   pixPossivel: vi.fn(),
   autorizado: vi.fn(),
   gerarPix: vi.fn(),
+  aceite: vi.fn(),
+  versaoPrivacidade: vi.fn(),
 }));
 vi.mock("@/site/pagina", () => ({ carregarSite: m.site, metadadosDoSite: vi.fn() }));
 vi.mock("@/site/cotacoes", async (orig) => ({ ...(await orig<typeof import("@/site/cotacoes")>()), verCotacao: m.verCotacao }));
 vi.mock("@/calendario/regras-config", () => ({ lerRegrasCalendario: async () => ({ site: { minutosHold: 30 } }) }));
 vi.mock("@/site/pagamento", () => ({ portaoDoSite: m.portao, vistaDoPagamento: m.vistaPagamento, pixPossivel: m.pixPossivel }));
 vi.mock("@/site/checkout", () => ({ autorizadoNaCotacao: m.autorizado }));
+vi.mock("@/site/aceites", () => ({ aceiteParaPagina: m.aceite }));
+vi.mock("@/configuracoes/paginas-legais", () => ({ versaoAtualDaPaginaLegal: m.versaoPrivacidade }));
 vi.mock("@/site/acoes", () => ({ segurarDatasAcao: vi.fn() }));
 vi.mock("@/site/acoes-pagamento", () => ({ gerarPixAcao: m.gerarPix, continuarPagamentoAcao: vi.fn() }));
 vi.mock("next/navigation", () => ({
@@ -52,6 +57,8 @@ beforeEach(() => {
   m.verCotacao.mockResolvedValue(vistaCotacao("segurada"));
   m.vistaPagamento.mockResolvedValue(pagamento({}));
   m.gerarPix.mockResolvedValue({});
+  m.aceite.mockResolvedValue(null);
+  m.versaoPrivacidade.mockResolvedValue(null);
 });
 const html = async (codigo = "COT-ABCDEFGH") => renderToStaticMarkup(await Page({ params: Promise.resolve({ codigo }) } as PageProps<"/reservar/[codigo]">));
 
@@ -175,5 +182,57 @@ describe("página da cotação com o pagamento no site (M8.2a)", () => {
     const h = await html();
     expect(h).toContain("O tempo desta cotação acabou");
     expect(h).toContain("Fazer uma nova consulta");
+  });
+});
+
+describe("páginas legais na página da cotação (M7.4)", () => {
+  const ACEITE: AceiteNaPagina = {
+    versoes: { termos: 1, privacidade: 2, cancelamento: 1 },
+    aceito: null,
+    resumo: [{ tipo: "paragrafo", texto: "RESUMO DA POLITICA" }],
+    prazo: { tipo: "integral_ate", data: "2026-09-28" },
+  };
+
+  it("pagar: o aceite é lido para esta cotação (entrada, fuso, reserva) e a caixa vai no Gerar Pix com o resumo e o prazo", async () => {
+    m.portao.mockResolvedValue(GATE_OK);
+    m.vistaPagamento.mockResolvedValue(pagamento({ estado: "pagar" }));
+    m.aceite.mockResolvedValue(ACEITE);
+    const h = await html();
+    expect(m.aceite).toHaveBeenCalledWith({}, "org", { id: cotacao.id, checkin: "2026-10-12", fuso: "America/Sao_Paulo", reservaId: cotacao.reservaId }, expect.any(Date));
+    expect(h).toContain("Antes de pagar");
+    expect(h).toContain("RESUMO DA POLITICA");
+    expect(h).toContain("até <strong>23h59 de 28/09/2026</strong>");
+    expect(h).toContain('<input type="checkbox" required="" name="aceite" value="sim"/>');
+    expect(h).toContain('href="/privacidade?versao=2"');
+    // Datas seguradas: sem o formulário de segurar, nem se lê a versão da privacidade para ele.
+    expect(m.versaoPrivacidade).not.toHaveBeenCalled();
+  });
+
+  it("situações sem a caixa (Pix aguardando, devolução) nem leem o aceite; confirmada mostra o aceite da reserva", async () => {
+    m.vistaPagamento.mockResolvedValue(pagamento({ estado: "pix_aguardando", dinheiroSemDesfecho: true }));
+    await html();
+    m.vistaPagamento.mockResolvedValue(pagamento({ estado: "devolvido", devolucao: { situacao: "feita", em: holdAte.toISOString() } }));
+    await html();
+    expect(m.aceite).not.toHaveBeenCalled();
+    m.verCotacao.mockResolvedValue(vistaCotacao("convertida", { reserva: { codigo: "SCL-TESTE1", estado: "confirmada" } }));
+    m.vistaPagamento.mockResolvedValue(pagamento({ estado: "confirmada", reservaCodigo: "SCL-TESTE1" }));
+    m.aceite.mockResolvedValue({ ...ACEITE, aceito: { em: "2026-10-01T15:02:00.000Z", versoes: ACEITE.versoes } });
+    const h = await html();
+    expect(h).toContain("Você aceitou os");
+    expect(h).toContain("Política de privacidade (versão 2)");
+    expect(h).not.toContain('type="checkbox"');
+  });
+
+  it("cotação aberta: o formulário de segurar as datas aponta para a Política de privacidade em vigor; sem ela publicada, o aviso sem link", async () => {
+    m.verCotacao.mockResolvedValue(vistaCotacao("aberta", { reserva: null }));
+    // Só a privacidade publicada (termos e cancelamento ainda em preparação) já basta para o link.
+    m.versaoPrivacidade.mockResolvedValue(3);
+    let h = await html();
+    expect(m.versaoPrivacidade).toHaveBeenCalledWith({}, "org", "privacidade");
+    expect(h).toContain('<a href="/privacidade?versao=3" target="_blank" rel="noopener noreferrer">Política de privacidade</a>');
+    m.versaoPrivacidade.mockResolvedValue(null);
+    h = await html();
+    expect(h).toContain("Usamos seus dados só para confirmar a reserva com você. Nenhum pagamento é feito aqui.");
+    expect(h).not.toContain("/privacidade?versao=");
   });
 });

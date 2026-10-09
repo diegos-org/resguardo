@@ -230,7 +230,7 @@ export const convites = pgTable(
 /**
  * Aceite de um documento pelo proprietário (M5.6): quem (usuário do portal, em nome de qual proprietário),
  * quando e qual versão. Só inclusão: uma versão nova do documento pede um aceite novo; os antigos ficam.
- * `documento` hoje é só "como_funciona"; as páginas legais do site (M7.4) poderão usar a mesma tabela.
+ * `documento` hoje é só "como_funciona"; as páginas legais do site (M7.4) têm a própria tabela, `aceites_site` (o hóspede não tem usuário).
  */
 export const aceitesDocumento = pgTable(
   "aceites_documento",
@@ -1431,6 +1431,32 @@ export const RESULTADOS_EVENTO_PAGAMENTO = ["pendente", "aplicado", "ignorado", 
 export type ResultadoEventoPagamento = (typeof RESULTADOS_EVENTO_PAGAMENTO)[number];
 
 /**
+ * Aceite das páginas legais do site (M7.4): o hóspede marca "li e aceito" antes de gerar o pagamento. Uma linha por
+ * aceite, com as versões dos três documentos e quando. Só inclusão. Sem dado pessoal: a pessoa é a da reserva
+ * (cotação → reserva), e o IP não é guardado (a autorização é o cookie assinado do pedido).
+ */
+export const aceitesSite = pgTable(
+  "aceites_site",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    cotacaoId: uuid("cotacao_id").notNull().references(() => cotacoes.id),
+    reservaId: uuid("reserva_id").notNull().references(() => reservas.id),
+    versaoTermos: integer("versao_termos").notNull(),
+    versaoPrivacidade: integer("versao_privacidade").notNull(),
+    versaoCancelamento: integer("versao_cancelamento").notNull(),
+    /** Onde a caixa foi marcada: "pix" (M7.4) ou "cartao" (M8.2b). */
+    origem: text("origem").$type<"pix" | "cartao">().notNull(),
+    aceitoEm: timestamp("aceito_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("aceites_site_unico").on(t.cotacaoId, t.versaoTermos, t.versaoPrivacidade, t.versaoCancelamento),
+    index("aceites_site_reserva").on(t.reservaId),
+    index("aceites_site_organizacao").on(t.organizacaoId, t.aceitoEm),
+  ],
+);
+
+/**
  * Uma tentativa de pagamento (uma order do provedor, que aceita uma transação). `valor` é o que enviamos
  * (= `cotacoes.total`); `valorPago` só para mostrar. `taxa` = valor − líquido, numa leitura só. A liberação
  * prevista não libera nada; o recebimento no livro só nasce com o sinal explícito do provedor ou à mão.
@@ -1483,6 +1509,11 @@ export const pagamentos = pgTable(
     motivoSemReserva: text("motivo_sem_reserva"),
     /** Códigos de aviso (lista fechada em pagamentos/situacoes.ts). */
     avisos: jsonb("avisos").$type<string[]>().notNull().default([]),
+    /**
+     * Aceite das páginas legais que valia quando esta tentativa foi criada; M8.2c calcula a devolução pela política
+     * dessa versão. Null só nas tentativas de antes do M7.4.
+     */
+    aceiteId: uuid("aceite_id").references(() => aceitesSite.id),
     criadoEm: criadoEm(),
     atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
   },

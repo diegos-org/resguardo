@@ -12,7 +12,13 @@ const CAMPOS = [
   { nome: "cnpj", rotulo: "CNPJ", limite: 18 },
   { nome: "email", rotulo: "E-mail de contato", limite: 200, tipo: "email" },
   { nome: "telefone", rotulo: "Telefone / WhatsApp", limite: 30 },
-  { nome: "endereco", rotulo: "Endereço", limite: 200 },
+  { nome: "endereco", rotulo: "Endereço", limite: 200, dica: "Aparece nos Termos de uso e na Política de privacidade." },
+  {
+    nome: "encarregado",
+    rotulo: "Encarregado pela proteção de dados (LGPD)",
+    limite: 120,
+    dica: "Quem atende os pedidos sobre dados pessoais; aparece na Política de privacidade. Se a empresa usar a dispensa para pequeno porte, confirme o texto com o advogado.",
+  },
   { nome: "site", rotulo: "Site", limite: 200, dica: "Com https:// no começo." },
   { nome: "chavePix", rotulo: "Chave Pix da empresa", limite: 140, dica: "Aparece no portal para o proprietário que deve à empresa, depois do fechamento do mês." },
 ];

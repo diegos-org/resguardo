@@ -127,7 +127,7 @@ criar).
   cancelamento e, no reembolso integral, quem fica com a taxa do pagamento que não volta (a SCL;
   pergunta 5) — ver as respostas abaixo. **Continuam pendentes:** taxa do cartão/Pix (pergunta 3;
   vale a regra atual até decisão contrária) e a conferência por Diego, com o contador, da posição
-  sobre o arrependimento de 7 dias que o Claude escreve no M7.4. Nenhuma impede o M8.2 em
+  sobre o arrependimento de 7 dias, escrita pelo Claude no M7.4 (`PAGINAS-LEGAIS.md`). Nenhuma impede o M8.2 em
   sandbox; as duas precisam estar fechadas antes de o site receber pagamento de verdade.
 - **Pedido novo de Diego:** documento "como funciona" para o proprietário (inclusive quando e
   como recebe) com aceite registrado, e páginas legais do site com aceite no checkout: itens
@@ -217,7 +217,9 @@ cada vez.
    eletrônico; a regra de 24 horas é das passagens aéreas, da ANAC, e não vale para hospedagem) e
    Diego confere com o contador, de preferência também com um advogado, antes de ligar o pagamento
    de verdade. Com a base, o sistema calcula o valor a devolver pela antecedência e lança a taxa que
-   não voltar como custo da SCL.
+   não voltar como custo da SCL. **Posição escrita em 9/10/2026 no M7.4** (`PAGINAS-LEGAIS.md`,
+   seção "Posição sobre o arrependimento de 7 dias"); a conferência pelo contador e pelo advogado
+   continua pendente.
 6. **Respondida em 4/10/2026 (opção (a), ver "Decisão de Diego"; fica só como histórico).**
    Cartão com recebimento em 30 dias: uma reserva paga no fim do mês entraria no repasse do
    dia 1º antes de o Mercado Pago liberar o dinheiro. Opções: (a) repassar só quando o

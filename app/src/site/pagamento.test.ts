@@ -155,7 +155,7 @@ describe("o que a página da cotação mostra do pagamento (M8.2a)", () => {
   });
 
   it("mensagens ao hóspede: uma para cada falha do Pix, sem texto do provedor nem motivo interno", () => {
-    const codigos: CodigoFalhaPix[] = ["nao_encontrada", "nao_oferecido", "em_andamento", "ja_pago", "limite", "provedor", "incerto", "recusado", "ocupado", "ao_vivo"];
+    const codigos: CodigoFalhaPix[] = ["nao_encontrada", "nao_oferecido", "em_andamento", "ja_pago", "limite", "provedor", "incerto", "recusado", "ocupado", "ao_vivo", "aceite_pendente", "aceite_mudou"];
     expect(Object.keys(MENSAGENS_PIX_HOSPEDE).sort()).toEqual([...codigos].sort());
     for (const m of Object.values(MENSAGENS_PIX_HOSPEDE)) expect(m).not.toMatch(/Configurações|painel|Beds24|contrato|proprietário/i);
     expect(mensagemSemPix("prazo_vencido")).toBe("O prazo das datas desta cotação acabou.");

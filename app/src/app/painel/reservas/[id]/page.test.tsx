@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, it, vi } from "vitest";
 import type { PagamentoDoPainel } from "@/pagamentos/consultas";
 
-const m = vi.hoisted(() => ({ sessao: vi.fn(), reserva: vi.fn(), pagamentos: vi.fn(), lancamentos: vi.fn(), recebimentos: vi.fn() }));
+const m = vi.hoisted(() => ({ sessao: vi.fn(), reserva: vi.fn(), pagamentos: vi.fn(), lancamentos: vi.fn(), recebimentos: vi.fn(), aceites: vi.fn() }));
 vi.mock("next/navigation", () => ({ notFound: () => { throw new Error("NEXT_NOT_FOUND"); }, redirect: vi.fn() }));
 vi.mock("@/acesso/sessao-atual", () => ({ exigirSessaoPainel: m.sessao }));
 vi.mock("@/db/client", () => ({ getDb: () => ({}) }));
@@ -15,6 +15,7 @@ vi.mock("@/imoveis/recebimento", () => ({ lerRecebimento: async () => ({}) }));
 vi.mock("@/configuracoes/regras-financeiras", () => ({ lerRegrasFinanceiras: async () => ({ recebimento: { site: "empresa" } }) }));
 vi.mock("@/repasses/recebimentos", () => ({ recebimentosDaReserva: m.recebimentos, recebidoPorReserva: async () => new Map() }));
 vi.mock("@/pagamentos/consultas", () => ({ pagamentosDaReserva: m.pagamentos }));
+vi.mock("@/site/aceites", () => ({ aceitesDaReserva: m.aceites }));
 vi.mock("@/reservas/acoes", () => ({ cancelar: vi.fn(), confirmar: vi.fn(), resolverConferenciaAcao: vi.fn(), salvarEmailHospedeAcao: vi.fn() }));
 vi.mock("@/reservas/horarios-acoes", () => ({ alterarHorarioAcao: vi.fn() }));
 vi.mock("@/repasses/acoes", () => ({ estornarRecebimentoAcao: vi.fn(), registrarRecebimentoAcao: vi.fn() }));
@@ -79,6 +80,7 @@ beforeEach(() => {
   m.pagamentos.mockResolvedValue([pagamento]);
   m.lancamentos.mockResolvedValue([]);
   m.recebimentos.mockResolvedValue([]);
+  m.aceites.mockResolvedValue([]);
 });
 const html = async () => renderToStaticMarkup(await Page({ params: Promise.resolve({ id: "r1" }), searchParams: Promise.resolve({}) } as PageProps<"/painel/reservas/[id]">));
 
@@ -114,4 +116,23 @@ it("reserva de outra empresa (não encontrada pela sessão): 404 sem ler pagamen
   m.reserva.mockResolvedValue(null);
   await expect(html()).rejects.toThrow("NEXT_NOT_FOUND");
   expect(m.pagamentos).not.toHaveBeenCalled();
+});
+
+it("páginas legais aceitas no site (M7.4): a seção aparece para quem lê reservas, com as versões e o link de cada uma; sem aceite, nada", async () => {
+  m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  m.pagamentos.mockResolvedValue([]);
+  expect(await html()).not.toContain('aria-label="Páginas legais aceitas"');
+  expect(m.aceites).toHaveBeenCalledWith({}, "org", "r1");
+  m.aceites.mockResolvedValue([{ id: "a1", versoes: { termos: 2, privacidade: 1, cancelamento: 3 }, aceitoEm: new Date("2026-10-01T15:02:00Z"), origem: "pix" }]);
+  const h = await html();
+  expect(h).toContain('aria-label="Páginas legais aceitas"');
+  expect(h).toContain('<a href="/termos?versao=2" target="_blank" rel="noopener noreferrer">Termos de uso (versão 2)</a>');
+  expect(h).toContain('<a href="/privacidade?versao=1" target="_blank" rel="noopener noreferrer">Política de privacidade (versão 1)</a>');
+  expect(h).toContain('<a href="/cancelamento?versao=3" target="_blank" rel="noopener noreferrer">Política de cancelamento (versão 3)</a>');
+  expect(h).toContain("01/10/2026, 12:02, ao gerar o Pix");
+  // Sem reserva:ler (ex.: limpeza), nem se consulta.
+  m.aceites.mockClear();
+  m.sessao.mockResolvedValue({ papel: "limpeza", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  expect(await html()).not.toContain('aria-label="Páginas legais aceitas"');
+  expect(m.aceites).not.toHaveBeenCalled();
 });

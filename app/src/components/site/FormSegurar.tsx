@@ -13,8 +13,22 @@ const VAZIO: Valores = { nome: "", email: "", telefone: "" };
  * Contato do visitante para segurar as datas da cotação (M8.1). O servidor decide; aqui só o formulário. O que foi
  * digitado fica no navegador (o estado da ação nunca traz dado pessoal de volta) e volta aos campos depois de um erro.
  * `comPagamento` (M8.2a): o site oferece o Pix nesta cotação (muda o texto "nenhum pagamento é feito aqui").
+ * `privacidade` (M7.4): versão em vigor da Política de privacidade, para o aviso de como os dados são usados (onde
+ * eles são pedidos) apontar para ela; sem versão publicada, o aviso fica sem o link.
  */
-export function FormSegurar({ codigo, minutos, acao, comPagamento = false }: { codigo: string; minutos: number; acao: Acao; comPagamento?: boolean }) {
+export function FormSegurar({
+  codigo,
+  minutos,
+  acao,
+  comPagamento = false,
+  privacidade = null,
+}: {
+  codigo: string;
+  minutos: number;
+  acao: Acao;
+  comPagamento?: boolean;
+  privacidade?: number | null;
+}) {
   const [estado, enviar, enviando] = useActionState(async (_a: Estado, f: FormData): Promise<Estado> => {
     // O estado anterior não volta ao servidor (ele só traria de volta o que já foi digitado).
     const r = await acao({}, f);
@@ -24,13 +38,24 @@ export function FormSegurar({ codigo, minutos, acao, comPagamento = false }: { c
   const v = estado.valores ?? VAZIO;
   const e = estado.erros ?? {};
   const erro = (k: string) => (e[k] ? <span className={styles.erro}>{e[k]}</span> : null);
+  // Aviso de transparência da LGPD onde os dados são pedidos (não é consentimento: a base é a própria reserva).
+  const comoExplica = privacidade ? (
+    <>
+      , como explica a{" "}
+      <a href={`/privacidade?versao=${privacidade}`} target="_blank" rel="noopener noreferrer">
+        Política de privacidade
+      </a>
+    </>
+  ) : null;
   return (
     <form action={enviar} className={styles.formulario} aria-label="Segurar as datas">
       <strong>Segurar as datas por {minutos} minutos</strong>
       <p className={styles.miudo} style={{ margin: 0 }}>
-        {comPagamento
-          ? "Seus dados vão só para a equipe. Nada é cobrado ao segurar: o Pix aparece logo depois, nesta página."
-          : "Seus dados vão só para a equipe, para confirmar a reserva com você. Nenhum pagamento é feito aqui."}
+        {comPagamento ? (
+          <>Usamos seus dados só para a sua reserva{comoExplica}. Nada é cobrado ao segurar: o Pix aparece logo depois, nesta página.</>
+        ) : (
+          <>Usamos seus dados só para confirmar a reserva com você{comoExplica}. Nenhum pagamento é feito aqui.</>
+        )}
       </p>
       <input type="hidden" name="codigo" value={codigo} />
       <label>

@@ -15,6 +15,8 @@ export const ABAS_CONFIG: readonly { slug: string; titulo: string; exige: Acao }
   { slug: "categorias", titulo: "Categorias de despesa", exige: "despesa:editar" },
   { slug: "mensagens", titulo: "Modelos de mensagem", exige: "configuracao:editar" },
   { slug: "site", titulo: "Textos do site", exige: "configuracao:editar" },
+  // Termos de uso, Política de privacidade e Política de cancelamento do site (M7.4), versionados.
+  { slug: "paginas-legais", titulo: "Páginas legais do site", exige: "configuracao:editar" },
   { slug: "pagina-proprietarios", titulo: "Página para proprietários", exige: "configuracao:editar" },
   { slug: "como-funciona", titulo: "Como funciona (proprietário)", exige: "configuracao:editar" },
 ];
