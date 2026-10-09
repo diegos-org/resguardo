@@ -217,7 +217,9 @@ cada vez.
    eletrônico; a regra de 24 horas é das passagens aéreas, da ANAC, e não vale para hospedagem) e
    Diego confere com o contador, de preferência também com um advogado, antes de ligar o pagamento
    de verdade. Com a base, o sistema calcula o valor a devolver pela antecedência e lança a taxa que
-   não voltar como custo da SCL.
+   não voltar como custo da SCL. **Posição escrita em 9/10/2026 no M7.4** (`PAGINAS-LEGAIS.md`,
+   seção "Posição sobre o arrependimento de 7 dias"); a conferência pelo contador e pelo advogado
+   continua pendente.
 6. **Respondida em 4/10/2026 (opção (a), ver "Decisão de Diego"; fica só como histórico).**
    Cartão com recebimento em 30 dias: uma reserva paga no fim do mês entraria no repasse do
    dia 1º antes de o Mercado Pago liberar o dinheiro. Opções: (a) repassar só quando o

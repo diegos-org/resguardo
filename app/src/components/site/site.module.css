@@ -1942,3 +1942,54 @@
   font-size: 0.875rem;
   font-weight: 700;
 }
+
+/* No formulário do Pix (que alinha à esquerda), a caixa ocupa a largura toda */
+.pixAcao .aceiteLegal {
+  align-self: stretch;
+}
+
+.aceiteLegal .documentoLegal {
+  gap: 8px;
+}
+
+.aceiteLegal .documentoLegal ul,
+.aceiteLegal .documentoLegal ol {
+  font-size: 0.875rem;
+}
+
+/* Caixa de marcar ao lado do texto, com área de toque confortável no celular */
+.aceiteLegal .opcao {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--scl-tinta);
+  cursor: pointer;
+}
+
+.aceiteLegal input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  margin: 2px 0 0;
+  accent-color: var(--scl-floresta);
+}
+
+.aceiteLegal a,
+.aceiteFeito a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Aceite já feito: as versões aceitas e quando, no lugar da caixa */
+.aceiteFeito {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.aceiteFeito p {
+  margin: 0;
+}

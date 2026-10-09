@@ -8,7 +8,9 @@
 import { and, asc, desc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
 import { lerRegrasCalendario } from "@/calendario/regras-config";
 import { escritaBeds24Pronta } from "@/beds24/http";
-import { cotacoes, devolucoesPagamento, eventosPagamento, imoveis, lancamentos, pagamentos, reservas, type SituacaoDevolucao } from "@/db/schema";
+import { lerPaginaLegal } from "@/configuracoes/paginas-legais";
+import type { VersoesLegais } from "@/configuracoes/paginas-legais-texto";
+import { aceitesSite, cotacoes, devolucoesPagamento, eventosPagamento, imoveis, lancamentos, pagamentos, reservas, type SituacaoDevolucao } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
@@ -177,6 +179,11 @@ export type PagamentoDoPainel = {
   pedeAtencao: boolean;
   /** O que a ficha pode oferecer (quem chama ainda confere a permissão financeiro:editar). */
   acoes: AcoesDoPagamento;
+  /**
+   * Páginas legais aceitas quando a tentativa foi criada (M7.4) e o prazo do reembolso integral dessa Política de
+   * cancelamento; null = tentativa sem aceite (anterior ao M7.4). Opcional só para montar tentativas à mão nos testes.
+   */
+  aceite?: { versoes: VersoesLegais; aceitoEm: Date; diasReembolsoIntegral: number | null } | null;
 };
 
 const liberacaoVencida = (p: Pagamento, agora: Date) => p.desfecho === "reserva" && p.situacao === "aprovado" && !p.liberacaoConfirmadaEm && !!p.liberacaoPrevistaEm && p.liberacaoPrevistaEm.getTime() < agora.getTime();
@@ -254,7 +261,17 @@ async function montarPainel(db: Db, organizacaoId: string, lista: Pagamento[], a
       ),
     );
   const comManual = new Set(manuais.map((m) => m.chave.split(":")[1]));
-  return lista.map((p) => paraPainel(p, devs.find((d) => d.pagamentoId === p.id), comManual.has(p.id), agora));
+  // M7.4: o aceite com que cada tentativa foi criada e o prazo da Política de cancelamento dessa versão.
+  const aceiteIds = [...new Set(lista.map((p) => p.aceiteId).filter((x): x is string => x !== null))];
+  const aceites = aceiteIds.length ? await db.select().from(aceitesSite).where(and(eq(aceitesSite.organizacaoId, organizacaoId), inArray(aceitesSite.id, aceiteIds))) : [];
+  const politicas = aceites.length ? await lerPaginaLegal(db, organizacaoId, "cancelamento") : [];
+  const aceiteDe = (p: Pagamento): PagamentoDoPainel["aceite"] => {
+    const a = p.aceiteId ? aceites.find((x) => x.id === p.aceiteId) : undefined;
+    if (!a) return null;
+    const dias = politicas.find((v) => v.numero === a.versaoCancelamento)?.regras?.diasReembolsoIntegral ?? null;
+    return { versoes: { termos: a.versaoTermos, privacidade: a.versaoPrivacidade, cancelamento: a.versaoCancelamento }, aceitoEm: a.aceitoEm, diasReembolsoIntegral: dias };
+  };
+  return lista.map((p) => ({ ...paraPainel(p, devs.find((d) => d.pagamentoId === p.id), comManual.has(p.id), agora), aceite: aceiteDe(p) }));
 }
 
 /** Pagamentos do site de uma reserva (ficha da reserva), do mais antigo ao mais novo. */

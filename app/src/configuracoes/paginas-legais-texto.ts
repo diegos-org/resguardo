@@ -16,6 +16,8 @@ import type { DadosEmpresa } from "./empresa";
 export const DOCUMENTOS_LEGAIS = ["termos", "privacidade", "cancelamento"] as const;
 export type DocumentoLegal = (typeof DOCUMENTOS_LEGAIS)[number];
 export type VersoesLegais = Record<DocumentoLegal, number>;
+/** Campos escondidos do formulário do pagamento com a versão de cada documento que a página mostrou. */
+export const CAMPOS_VERSAO: Record<DocumentoLegal, string> = { termos: "versaoTermos", privacidade: "versaoPrivacidade", cancelamento: "versaoCancelamento" };
 export type SecaoLegal = "resumo" | "texto";
 
 const SECAO_TEXTO: DefinicaoSecao<SecaoLegal> = {

@@ -12,6 +12,7 @@ import { RASCUNHO_PAGINAS_LEGAIS } from "@/configuracoes/paginas-legais-rascunho
 import { CAMPOS_LEGAIS, DOCUMENTOS_LEGAIS, type DocumentoLegal, noMeioDaFrase, PAGINAS_LEGAIS, rotuloDoCampo, valoresDisponiveis } from "@/configuracoes/paginas-legais-texto";
 import { getDb } from "@/db/client";
 import { usuarios } from "@/db/schema";
+import { contarAceitesPorVersao } from "@/site/aceites";
 
 const br = (d: string) => d.split("-").reverse().join("/");
 const nota = { fontSize: "0.875rem", color: "var(--scl-texto-2)", margin: 0, maxWidth: 820 } as const;
@@ -20,7 +21,7 @@ const lista = (itens: string[]) => (itens.length > 1 ? `${itens.slice(0, -1).joi
 /**
  * Configurações → Páginas legais do site (M7.4): Termos de uso, Política de privacidade e Política de cancelamento.
  * Um documento por vez (`?doc=`), com a situação dos três, os avisos (dados da empresa mudaram depois da versão), o
- * formulário com prévia e o histórico de versões.
+ * formulário com prévia e o histórico de versões, com quantos aceites cada versão teve no site.
  */
 export default async function PaginasLegais({ searchParams }: PageProps<"/painel/configuracoes/paginas-legais">) {
   const sessao = await exigirSessaoPainel();
@@ -29,7 +30,7 @@ export default async function PaginasLegais({ searchParams }: PageProps<"/painel
   // Lista fechada: qualquer outro valor abre os Termos de uso.
   const doc: DocumentoLegal = typeof pedido === "string" && (DOCUMENTOS_LEGAIS as readonly string[]).includes(pedido) ? (pedido as DocumentoLegal) : "termos";
   const db = getDb();
-  const [todas, empresa] = await Promise.all([lerPaginasLegais(db, sessao.organizacaoId), lerEmpresa(db, sessao.organizacaoId)]);
+  const [todas, empresa, aceites] = await Promise.all([lerPaginasLegais(db, sessao.organizacaoId), lerEmpresa(db, sessao.organizacaoId), contarAceitesPorVersao(db, sessao.organizacaoId)]);
   const versoes = todas[doc];
   const atual = versaoAtual(versoes);
   const autorIds = [...new Set(versoes.map((v) => v.autorId).filter((x): x is string => Boolean(x)))];
@@ -100,6 +101,7 @@ export default async function PaginasLegais({ searchParams }: PageProps<"/painel
                   <th>Versão</th>
                   <th>Data</th>
                   <th>Por</th>
+                  <th>Aceites</th>
                   <th>No site</th>
                 </tr>
               </thead>
@@ -112,6 +114,7 @@ export default async function PaginasLegais({ searchParams }: PageProps<"/painel
                     </td>
                     <td>{br(v.data)}</td>
                     <td>{(v.autorId && autores.get(v.autorId)) || "—"}</td>
+                    <td>{aceites[doc].get(v.numero) ?? 0}</td>
                     <td>
                       <a href={`${rota}?versao=${v.numero}`} target="_blank" rel="noopener noreferrer">
                         Ver a versão {v.numero}

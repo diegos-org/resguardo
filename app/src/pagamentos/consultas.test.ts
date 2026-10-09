@@ -227,6 +227,22 @@ describe("painel: pagamentos da reserva, lista e avisos do Início (M8.2a)", () 
     expect((await listarPagamentos(db, c.org, { atencao: true }, minutos(600))).map((l) => l.id)).toEqual([pa.pagamentoId]);
   });
 
+  it("aceite das páginas legais por tentativa (M7.4): as versões e o prazo da política aceita; tentativa sem aceite (anterior ao M7.4), null; o mesmo na lista", async () => {
+    const a = await c.segurar();
+    const pa = await c.pix(a.cotacaoId);
+    const [q] = await pagamentosDaReserva(db, c.org, a.reservaId, minutos(1));
+    expect(q.aceite).toEqual({ versoes: { termos: 1, privacidade: 1, cancelamento: 1 }, aceitoEm: AGORA, diasReembolsoIntegral: 14 });
+    // Tentativa gravada sem aceite (como as de antes do M7.4).
+    const base = { organizacaoId: c.org, cotacaoId: a.cotacaoId, reservaId: a.reservaId, imovelId: c.imovel, ambiente: "teste" as const, forma: "pix" as const, valor: TOTAL, situacao: "cancelado" as const };
+    await db.insert(pagamentos).values({ ...base, referencia: "scl-antiga", chaveIdempotencia: "antiga", criadoEm: minutos(-60) });
+    const [antiga, nova] = await pagamentosDaReserva(db, c.org, a.reservaId, minutos(1));
+    expect(antiga.aceite).toBeNull();
+    expect(nova.id).toBe(pa.pagamentoId);
+    expect(nova.aceite?.diasReembolsoIntegral).toBe(14);
+    const lista = await listarPagamentos(db, c.org, {}, minutos(1));
+    expect(lista.find((l) => l.id === pa.pagamentoId)?.aceite?.versoes).toEqual({ termos: 1, privacidade: 1, cancelamento: 1 });
+  });
+
   it("Início: aprovado sem desfecho, devolução pedida/recusada, liberação vencida, live_mode, dinheiro sem cálculo, configuração inválida e o informativo das OTAs", async () => {
     const vazio = await avisosDePagamento(db, c.org, AGORA, { env: env({}) });
     expect(vazio.alertas).toEqual([]);

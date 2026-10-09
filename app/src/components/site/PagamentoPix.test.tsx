@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { AceiteNaPagina } from "@/site/aceites";
 import type { PagamentoDoHospede } from "@/site/pagamento-vista";
 import { ESPERA_DEPOIS_DO_LIMITE_MS, INTERVALO_ACOMPANHAMENTO_MS, PagamentoPix } from "./PagamentoPix";
 
@@ -262,5 +263,86 @@ describe("a página acompanha sozinha enquanto espera (M8.2a)", () => {
     expect(m.refresh).toHaveBeenCalledTimes(1);
     await act(() => vi.advanceTimersByTimeAsync(3000));
     expect(m.refresh).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("aceite das páginas legais antes do Pix (M7.4)", () => {
+  // Versões diferentes entre si, para cada link apontar para a sua.
+  const versoes = { termos: 2, privacidade: 1, cancelamento: 3 };
+  const pendente: AceiteNaPagina = {
+    versoes,
+    aceito: null,
+    resumo: [
+      { tipo: "lista", ordenada: false, inicio: 1, itens: ["Cancelamento até 14 dias antes da data de entrada: devolvemos o valor integral."] },
+      { tipo: "paragrafo", texto: "Os detalhes estão na Política de cancelamento." },
+    ],
+    prazo: { tipo: "integral_ate", data: "2026-09-28" },
+  };
+  const aceito: AceiteNaPagina = { ...pendente, aceito: { em: "2026-10-01T15:02:00.000Z", versoes } };
+  const comAceite = (aceite: AceiteNaPagina | null, over: Partial<PagamentoDoHospede> = {}, autorizado = true) =>
+    render(<PagamentoPix codigo="COT-ABCDEFGH" pagamento={{ ...base, ...over }} autorizado={autorizado} fuso="America/Sao_Paulo" total={182400} textos={textos} contato={null} gerarPix={acoes.gerarPix} continuar={acoes.continuar} aceite={aceite} />);
+  const link = (nome: string) => screen.getByRole("link", { name: nome });
+
+  it("pagar sem o aceite das versões em vigor: resumo da política, prazo desta reserva, caixa obrigatória com os links das versões e as versões escondidas; o formulário leva tudo", async () => {
+    acoes.gerarPix.mockResolvedValue({ ok: true });
+    const { container } = comAceite(pendente);
+    expect(screen.getByRole("group", { name: "Antes de pagar" })).toBeTruthy();
+    expect(screen.getByText("Cancelamento até 14 dias antes da data de entrada: devolvemos o valor integral.")).toBeTruthy();
+    expect(container.textContent).toContain("Para esta reserva, o reembolso integral vale para pedidos de cancelamento até 23h59 de 28/09/2026 (horário de Brasília).");
+    const caixa = screen.getByRole("checkbox") as HTMLInputElement;
+    expect(caixa.required).toBe(true);
+    expect(caixa.name).toBe("aceite");
+    expect(caixa.value).toBe("sim");
+    expect(caixa.closest("label")?.textContent).toBe("Li e aceito os Termos de uso e a Política de cancelamento, e li a Política de privacidade.");
+    for (const [nome, href] of [
+      ["Termos de uso", "/termos?versao=2"],
+      ["Política de cancelamento", "/cancelamento?versao=3"],
+      ["Política de privacidade", "/privacidade?versao=1"],
+    ]) {
+      expect(link(nome).getAttribute("href")).toBe(href);
+      expect(link(nome).getAttribute("target")).toBe("_blank");
+    }
+    const escondido = (n: string) => (container.querySelector(`input[type="hidden"][name="${n}"]`) as HTMLInputElement | null)?.value;
+    expect([escondido("versaoTermos"), escondido("versaoPrivacidade"), escondido("versaoCancelamento")]).toEqual(["2", "1", "3"]);
+    expect(screen.queryByText(/Você aceitou/)).toBeNull();
+    fireEvent.click(caixa);
+    fireEvent.click(screen.getByRole("button", { name: "Gerar Pix" }));
+    await waitFor(() => expect(acoes.gerarPix).toHaveBeenCalledTimes(1));
+    const enviado = acoes.gerarPix.mock.calls[0][1] as FormData;
+    expect([enviado.get("aceite"), enviado.get("versaoTermos"), enviado.get("versaoPrivacidade"), enviado.get("versaoCancelamento")]).toEqual(["sim", "2", "1", "3"]);
+  });
+
+  it("reserva já a menos do prazo da entrada: diz que pela política não há devolução; Pix vencido que pode gerar outro também pede o aceite", () => {
+    const { container } = comAceite({ ...pendente, prazo: { tipo: "sem_reembolso", dias: 14 } }, { estado: "pix_vencido", pixRestantes: 2 });
+    expect(container.textContent).toContain("Esta reserva já está a menos de 14 dias da entrada: pela política, o cancelamento não tem devolução, salvo os casos descritos nela.");
+    expect(screen.getByRole("checkbox")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Gerar outro Pix" })).toBeTruthy();
+  });
+
+  it("versões em vigor já aceitas: sem a caixa, a linha do aceite (versões com link e quando) e o botão; sem o cookie, nada do aceite", () => {
+    const { container } = comAceite(aceito);
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(container.querySelector('input[name="versaoTermos"]')).toBeNull();
+    expect(container.textContent).toContain(
+      "Você aceitou os Termos de uso (versão 2), a Política de cancelamento (versão 3) e leu a Política de privacidade (versão 1) em 01/10 às 12:02.",
+    );
+    expect(link("Termos de uso (versão 2)").getAttribute("href")).toBe("/termos?versao=2");
+    expect(screen.getByRole("button", { name: "Gerar Pix" })).toBeTruthy();
+    cleanup();
+    comAceite(pendente, {}, false);
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(screen.getByRole("button", { name: "Continuar o pagamento" })).toBeTruthy();
+  });
+
+  it("reserva confirmada: as versões aceitas no pagamento que confirmou e o prazo do reembolso; sem aceite (pagamento anterior às páginas), nada", () => {
+    const { container } = comAceite(aceito, { estado: "confirmada", holdAte: null, reservaCodigo: "SCL-TESTE1" });
+    expect(container.textContent).toContain("Você aceitou os Termos de uso (versão 2), a Política de cancelamento (versão 3)");
+    expect(container.textContent).toContain("Para esta reserva, o reembolso integral vale para pedidos de cancelamento até 23h59 de 28/09/2026 (horário de Brasília).");
+    expect(link("Política de cancelamento (versão 3)").getAttribute("href")).toBe("/cancelamento?versao=3");
+    cleanup();
+    const sem = comAceite(pendente, { estado: "confirmada", holdAte: null, reservaCodigo: "SCL-TESTE1" });
+    expect(sem.container.textContent).not.toContain("Você aceitou");
+    expect(sem.container.textContent).not.toContain("reembolso integral");
+    expect(screen.queryByRole("checkbox")).toBeNull();
   });
 });

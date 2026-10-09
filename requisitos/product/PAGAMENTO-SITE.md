@@ -20,8 +20,9 @@
 | **M8.2d** | Alteração de reserva paga (datas ou valor), com novas datas seguradas, cobrança da diferença ou devolução parcial. | M8.2c |
 | **M8.2e** | Contestação (chargeback): registro, conferência, decisão de quem arca, lançamentos. | M8.2b, M8.2c |
 
-O pagamento **de verdade** só liga com as cinco partes e o M7.4 feitos, e com as decisões pendentes
-de Diego: taxa do pagamento (hoje sai antes da divisão; se a SCL passar a arcar, o motor precisa de
+O pagamento **de verdade** só liga com as cinco partes e o M7.4 feitos (o M7.4 ficou pronto em
+9/10/2026: páginas legais e aceite antes do Pix, desenho em `PAGINAS-LEGAIS.md`; faltam o M8.2b a
+M8.2e), e com as decisões pendentes de Diego: taxa do pagamento (hoje sai antes da divisão; se a SCL passar a arcar, o motor precisa de
 base por canal, porque a opção atual vale para todos), arrependimento conferido com o contador e
 3DS ligado ou não (sem 3DS, contestação por cartão roubado fica com a SCL).
 
@@ -60,7 +61,10 @@ Cobrança só acontece com tudo isto (uma função só decide, para criar, cance
    marca `test_user`, a conferir no sandbox; resposta estranha ou falha = não é teste; resultado
    guardado alguns minutos, inclusive a falha; nas telas do site e do painel a conferência espera no
    máximo 2 s: passou disso, não cobra naquela hora, a página segue e a conferência continua no fundo);
-5. a chave "Oferecer pagamento no site" ligada no painel (começa **desligada**: o Diego liga na aba).
+5. a chave "Oferecer pagamento no site" ligada no painel (começa **desligada**: o Diego liga na aba);
+6. as três páginas legais publicadas — termos de uso, política de privacidade e política de
+   cancelamento (M7.4, motivo `sem_paginas_legais`, conferido depois da chave do painel e antes da
+   conta). Cancelar, conferir e devolver não dependem delas (`provedorDeConferencia`).
 
 Aviso com `live_mode=true` (não é assinado; serve de alarme) vira aviso no painel. Nas tentativas
 gravadas fica o ambiente e o `live_mode` lido do provedor. **Desvio registrado (9/10):** uma order
@@ -74,7 +78,8 @@ cancelamento não se confirma, "conferindo" (cada consulta da página manda canc
 
 ## Quando o site oferece o Pix
 
-Além das travas: cotação **segurada** com o pedido ainda em `pedido`; situação **disponível**
+Além das travas (entre elas, as três páginas legais publicadas: M7.4, `podeCobrar`): cotação
+**segurada** com o pedido ainda em `pedido`; situação **disponível**
 (cotação "a confirmar" segue pela conversa); e o **mesmo cálculo do motor**, em seco, na data de
 entrada, dá receita e parte do proprietário sem pendência (contrato de gestão vigente na entrada,
 um proprietário, quem recebe do site = empresa). Marketplace segue pela conversa até o M12.2. Fora
@@ -144,6 +149,13 @@ noites só ignora pedidos já vencidos).
   depois de cancelar o anterior no provedor (cancelado, já cancelado ou vencido). Até 3 Pix por
   cotação (constante, freio como os do M8.1), conferido **antes** de cancelar o anterior (o terceiro,
   ainda pagável, não é cancelado à toa).
+- **Aceite das páginas legais (M7.4):** a fase 1 confere o aceite das versões publicadas agora
+  (depois de reaproveitar um Pix válido, antes do teto), sob as travas compartilhadas dos três
+  documentos tomadas depois das travas da cotação; o aceite que o formulário manda é gravado na mesma
+  transação, e a tentativa nova guarda `pagamentos.aceite_id`. Sem aceite das versões em vigor,
+  `aceite_pendente`; versões que mudaram com a página aberta, `aceite_mudou` — nos dois casos nada é
+  criado e o prazo das datas não muda. Um Pix ainda válido continua com o aceite com que foi criado, e
+  a aprovação nunca confere aceite. Detalhes em `PAGINAS-LEGAIS.md`.
 - **Prazo:** o Pix vale no mínimo 30 minutos (regra do Mercado Pago). Na fase 1 o prazo das datas é
   estendido provisoriamente para agora + validade + 2 minutos; na fase 3, para o `date_of_expiration`
   devolvido + 2 minutos (só se o pedido ainda for `pedido` e a cotação `segurada`; senão o Pix é
@@ -385,6 +397,11 @@ consulta".
 | Aprovado sem as datas | "Recebemos seu pagamento, mas não conseguimos garantir as datas. A equipe vai falar com você e devolver o valor integral", com WhatsApp |
 | Devolução pedida / feita | o que foi pedido e quando; devolução que o Mercado Pago recusou ou não respondeu (parada, à espera da equipe) aparece como "pagamento recebido sem as datas" (a equipe fala com o hóspede), nunca como pedida; com mais de um pagamento sem reserva, "devolvido" só quando todos foram devolvidos |
 | Pix vencido sem pagar, datas ainda seguradas | gerar outro (até 3), só com o Pix ainda oferecido (a página que espera recarrega quando a oferta volta) |
+
+Desde o M7.4, o "Gerar Pix" (na primeira vez e no "Gerar outro Pix") leva a caixa de aceite das
+páginas legais enquanto a cotação não aceitou as versões em vigor: resumo da Política de
+cancelamento, a data-limite do reembolso integral desta reserva e "Li e aceito…" com o link de cada
+versão. Já aceitas, só a linha "Você aceitou…"; na reserva confirmada, as versões aceitas e o prazo.
 
 Os textos principais (convite para pagar, Pix aguardando, aprovado sem as datas) são editáveis em
 Textos do site, com texto-base. Os "nenhum pagamento é feito no site" passam a depender de o Pix

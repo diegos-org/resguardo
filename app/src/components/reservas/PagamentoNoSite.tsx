@@ -1,5 +1,7 @@
+import type { ReactNode } from "react";
 import styles from "@/components/formularios.module.css";
 import { FormAcaoPagamento } from "@/components/pagamentos/FormAcaoPagamento";
+import { DOCUMENTOS_LEGAIS, PAGINAS_LEGAIS } from "@/configuracoes/paginas-legais-texto";
 import { centavosParaCampo } from "@/lib/dinheiro-form";
 import { formatBRL } from "@/lib/money";
 import { conferirAgoraAcao, devolucaoPorForaAcao, devolverAcao, estornarLiberacaoAcao, registrarLiberacaoAcao, registrarTaxaPerdidaAcao } from "@/pagamentos/acoes-painel";
@@ -41,7 +43,7 @@ export function situacaoEmPalavras(p: PagamentoDoPainel): string {
   return NOMES_SITUACAO_PAGAMENTO[p.situacao];
 }
 
-function Linhas({ linhas }: { linhas: [string, string][] }) {
+function Linhas({ linhas }: { linhas: [string, ReactNode][] }) {
   return (
     <dl style={{ display: "grid", gridTemplateColumns: "minmax(140px, max-content) 1fr", gap: "4px 16px", margin: 0, fontSize: "0.875rem" }}>
       {linhas.map(([k, v]) => (
@@ -51,6 +53,27 @@ function Linhas({ linhas }: { linhas: [string, string][] }) {
         </div>
       ))}
     </dl>
+  );
+}
+
+/**
+ * As páginas legais que o hóspede aceitou antes de gerar esta tentativa (M7.4), com o link de cada versão no site e o
+ * prazo do reembolso integral dessa Política de cancelamento — a que vale para esta tentativa, nunca a em vigor hoje.
+ */
+function aceiteDaTentativa(a: NonNullable<PagamentoDoPainel["aceite"]>): ReactNode {
+  return (
+    <>
+      {DOCUMENTOS_LEGAIS.map((doc, i) => (
+        <span key={doc}>
+          {i > 0 && " · "}
+          <a href={`${PAGINAS_LEGAIS[doc].rota}?versao=${a.versoes[doc]}`} target="_blank" rel="noopener noreferrer">
+            {PAGINAS_LEGAIS[doc].curto} v{a.versoes[doc]}
+          </a>
+          {doc === "cancelamento" && a.diasReembolsoIntegral !== null && ` (reembolso integral até ${a.diasReembolsoIntegral} dias antes)`}
+        </span>
+      ))}
+      {` — ${quando(a.aceitoEm)}`}
+    </>
   );
 }
 
@@ -74,10 +97,12 @@ function devolucao(p: PagamentoDoPainel, verValores: boolean): string | null {
 }
 
 function Tentativa({ p, verValores, editar, hoje }: { p: PagamentoDoPainel } & Omit<Props, "pagamentos">) {
-  const linhas: [string, string][] = [
+  const linhas: [string, ReactNode][] = [
     ["Situação", situacaoEmPalavras(p)],
     ["Gerado em", quando(p.criadoEm)],
   ];
+  if (p.aceite) linhas.push(["Aceite", aceiteDaTentativa(p.aceite)]);
+  else if (p.aceite === null) linhas.push(["Aceite", "não registrado (tentativa anterior às páginas legais do site)"]);
   if (p.aprovadoEm) linhas.push(["Aprovado em", quando(p.aprovadoEm)]);
   if (p.desfechoEm && p.desfecho !== "reserva") linhas.push(["Encerrado em", quando(p.desfechoEm)]);
   if (p.consultadoEm) linhas.push(["Última conferência", quando(p.consultadoEm)]);

@@ -6,13 +6,14 @@ import { RASCUNHO_PAGINAS_LEGAIS } from "@/configuracoes/paginas-legais-rascunho
 import type { DocumentoLegal } from "@/configuracoes/paginas-legais-texto";
 import Page from "./page";
 
-const m = vi.hoisted(() => ({ sessao: vi.fn(), db: vi.fn(), paginas: vi.fn(), empresa: vi.fn(), redirect: vi.fn(), autores: vi.fn() }));
+const m = vi.hoisted(() => ({ sessao: vi.fn(), db: vi.fn(), paginas: vi.fn(), empresa: vi.fn(), redirect: vi.fn(), autores: vi.fn(), aceites: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: m.redirect }));
 vi.mock("@/acesso/sessao-atual", () => ({ exigirSessaoPainel: m.sessao }));
 vi.mock("@/db/client", () => ({ getDb: m.db }));
 vi.mock("@/configuracoes/acoes", () => ({ publicarPaginaLegalAcao: vi.fn() }));
 vi.mock("@/configuracoes/paginas-legais", async (orig) => ({ ...(await orig<typeof import("@/configuracoes/paginas-legais")>()), lerPaginasLegais: m.paginas }));
 vi.mock("@/configuracoes/empresa", async (orig) => ({ ...(await orig<typeof import("@/configuracoes/empresa")>()), lerEmpresa: m.empresa }));
+vi.mock("@/site/aceites", () => ({ contarAceitesPorVersao: m.aceites }));
 
 // Dados fictícios. A versão 2 dos termos congelou o CNPJ antigo; o cadastro da empresa já tem outro.
 const EMPRESA: DadosEmpresa = {
@@ -51,6 +52,7 @@ beforeEach(() => {
   ]);
   m.db.mockReturnValue({ select: () => ({ from: () => ({ where: m.autores }) }) });
   m.empresa.mockResolvedValue(EMPRESA);
+  m.aceites.mockResolvedValue({ termos: new Map(), privacidade: new Map(), cancelamento: new Map() });
   m.paginas.mockResolvedValue({ ...semNada, termos: [versao(1, "2026-10-01", U1), versao(2, "2026-10-10", U2)] });
 });
 const html = async (doc?: string) => renderToStaticMarkup(await Page({ params: Promise.resolve({}), searchParams: Promise.resolve(doc === undefined ? {} : { doc }) }));
@@ -78,13 +80,18 @@ it("situação dos três documentos, o pagamento desligado enquanto falta algum 
   expect(h).toContain("Texto da versão 2, CNPJ 11.111.111/0001-11.");
 });
 
-it("histórico: versões da mais nova para a mais antiga, com data, quem publicou, a em vigor marcada e o link para ver no site", async () => {
+it("histórico: versões da mais nova para a mais antiga, com data, quem publicou, quantos aceites, a em vigor marcada e o link para ver no site", async () => {
+  // Contagem por versão de cada documento (M7.4): a dos termos aparece no histórico dos termos; versão sem aceite, 0.
+  m.aceites.mockResolvedValue({ termos: new Map([[1, 3]]), privacidade: new Map([[2, 9]]), cancelamento: new Map() });
   const h = await html();
+  expect(m.aceites).toHaveBeenCalledWith(expect.anything(), "org");
   expect(m.autores).toHaveBeenCalledTimes(1);
   const linhas = h.slice(h.indexOf("<tbody>"), h.indexOf("</tbody>"));
+  expect(h).toContain("<th>Aceites</th>");
   expect(linhas.indexOf("2 (em vigor)")).toBeLessThan(linhas.indexOf("<td>1</td>"));
-  expect(linhas).toContain("<td>10/10/2026</td><td>Diego Exemplo</td>");
-  expect(linhas).toContain("<td>01/10/2026</td><td>Admin Exemplo</td>");
+  expect(linhas).toContain("<td>10/10/2026</td><td>Diego Exemplo</td><td>0</td>");
+  expect(linhas).toContain("<td>01/10/2026</td><td>Admin Exemplo</td><td>3</td>");
+  expect(linhas).not.toContain("<td>9</td>");
   expect(linhas).toContain('<a href="/termos?versao=2" target="_blank" rel="noopener noreferrer">Ver a versão 2</a>');
   expect(linhas).toContain('<a href="/termos?versao=1" target="_blank" rel="noopener noreferrer">Ver a versão 1</a>');
 });

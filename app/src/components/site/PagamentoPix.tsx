@@ -3,8 +3,10 @@
 import { useRouter } from "next/navigation";
 import { type ReactNode, useActionState, useEffect, useRef, useSyncExternalStore } from "react";
 import { BotaoCopiar } from "@/components/BotaoCopiar";
+import type { AceiteNaPagina } from "@/site/aceites";
 import type { EstadoContinuar, EstadoPix } from "@/site/acoes-pagamento";
 import { deveAcompanhar, type EstadoPagamentoHospede, type PagamentoDoHospede } from "@/site/pagamento-vista";
+import { AceiteFeito, BlocoAceite } from "./BlocoAceite";
 import styles from "./site.module.css";
 
 /** A página consulta a situação a cada 5 s enquanto espera; depois de um "muitas consultas", espera 1 minuto. */
@@ -116,10 +118,16 @@ function Contagem({ ate }: { ate: string }) {
   );
 }
 
-function GerarPix({ acao, rotulo }: { acao: AcaoPix; rotulo: string }) {
+/**
+ * "Gerar Pix". Enquanto a cotação não tem o aceite das versões em vigor das páginas legais (M7.4), o formulário leva a
+ * caixa de aceite (resumo da política, prazo desta reserva, a caixa obrigatória e as versões); já aceitas, só a linha
+ * do aceite feito. Quem confere é o servidor, na mesma transação do Pix.
+ */
+function GerarPix({ acao, rotulo, aceite, fuso }: { acao: AcaoPix; rotulo: string; aceite: AceiteNaPagina | null; fuso: string }) {
   const [estado, enviar, enviando] = useActionState(acao, {});
   return (
     <form action={enviar} className={styles.pixAcao}>
+      {aceite && (aceite.aceito ? <AceiteFeito aceito={aceite.aceito} fuso={fuso} /> : <BlocoAceite aceite={aceite} fuso={fuso} />)}
       <button type="submit" className={styles.botao} disabled={enviando}>
         {enviando ? "Gerando o Pix…" : rotulo}
       </button>
@@ -220,6 +228,8 @@ function PixAguardando({ pix, textos, fuso, total }: { pix: NonNullable<Pagament
  * aguardando (copia e cola, QR, prazo), vencido, esgotado, conferindo, recebido, confirmado, sem as datas e
  * devolução. Sem a autorização do pedido (cookie), mostra só a situação e "Continuar o pagamento". O servidor
  * decide tudo; aqui só se mostra e se acompanha. `contato` é o botão para falar com a equipe (opção secundária).
+ * `aceite` (M7.4): as páginas legais em vigor e o aceite que vale nesta cotação (caixa antes do Pix; na reserva
+ * confirmada, as versões aceitas e o prazo do reembolso); null quando as três não estão publicadas.
  */
 export function PagamentoPix({
   codigo,
@@ -231,6 +241,7 @@ export function PagamentoPix({
   contato,
   gerarPix,
   continuar,
+  aceite = null,
 }: {
   codigo: string;
   pagamento: PagamentoDoHospede;
@@ -241,6 +252,7 @@ export function PagamentoPix({
   contato: ReactNode;
   gerarPix: AcaoPix;
   continuar: AcaoContinuar;
+  aceite?: AceiteNaPagina | null;
 }) {
   useAcompanharPagamento(codigo, v.estado, v.podeGerar, deveAcompanhar(v));
   const prazo = v.holdAte ? (
@@ -254,7 +266,7 @@ export function PagamentoPix({
       {contato}
     </div>
   ) : null;
-  const pagarOuContinuar = (rotulo: string) => (autorizado ? <GerarPix acao={gerarPix} rotulo={rotulo} /> : <ContinuarPagamento codigo={codigo} acao={continuar} />);
+  const pagarOuContinuar = (rotulo: string) => (autorizado ? <GerarPix acao={gerarPix} rotulo={rotulo} aceite={aceite} fuso={fuso} /> : <ContinuarPagamento codigo={codigo} acao={continuar} />);
 
   switch (v.estado) {
     case "pagar":
@@ -339,6 +351,7 @@ export function PagamentoPix({
             <strong>Pagamento aprovado: reserva {v.reservaCodigo ?? ""} confirmada.</strong>
           </p>
           <p className={styles.texto}>Guarde este link. Os detalhes da estadia ficam em Minha reserva, com o e-mail usado ao segurar as datas.</p>
+          {aceite?.aceito && <AceiteFeito aceito={aceite.aceito} fuso={fuso} prazo={aceite.prazo} />}
           {v.pagamentoEmDobro && <p className={styles.aviso}>Recebemos mais de um pagamento desta cotação: a equipe vai devolver o valor pago a mais.</p>}
           <p>
             <a href="/hospede" className={styles.botao}>

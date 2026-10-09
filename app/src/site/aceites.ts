@@ -12,7 +12,7 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { lerPaginaLegal, versoesLegaisAtuais, versoesLegaisTravadas } from "@/configuracoes/paginas-legais";
-import { type Bloco, blocosDoDocumento, DOCUMENTOS_LEGAIS, type DocumentoLegal, prazoDoReembolso, preencherCampos, type RegrasCancelamento, type VersoesLegais } from "@/configuracoes/paginas-legais-texto";
+import { type Bloco, blocosDoDocumento, CAMPOS_VERSAO, DOCUMENTOS_LEGAIS, type DocumentoLegal, prazoDoReembolso, preencherCampos, type RegrasCancelamento, type VersoesLegais } from "@/configuracoes/paginas-legais-texto";
 import { travaOcupada } from "@/db/erros";
 import { aceitesSite, pagamentos } from "@/db/schema";
 import type { Db } from "@/db/types";
@@ -22,9 +22,6 @@ import { travarCotacao } from "@/pagamentos/travas";
 
 export type OrigemAceite = "pix" | "cartao";
 export type AceiteSite = { id: string; versoes: VersoesLegais; aceitoEm: Date; origem: OrigemAceite };
-
-/** Campos escondidos do formulário com a versão de cada documento que a página mostrou. */
-export const CAMPOS_VERSAO: Record<DocumentoLegal, string> = { termos: "versaoTermos", privacidade: "versaoPrivacidade", cancelamento: "versaoCancelamento" };
 
 const numeroDeVersao = (v: unknown): number | null => (typeof v === "string" && /^\d{1,6}$/.test(v) && Number(v) > 0 ? Number(v) : null);
 

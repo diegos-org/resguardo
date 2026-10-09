@@ -130,4 +130,19 @@ describe("quadro Pagamento no site", () => {
     const pendente: PagamentoDoPainel = { ...base, situacao: "pendente", desfecho: null, pixExpiraEm: new Date("2026-10-01T15:30:00Z"), acoes: { ...sem, conferir: true } };
     expect(situacaoEmPalavras(pendente)).toBe("Aguardando o pagamento do Pix (vale até 12:30 de 01/10/2026)");
   });
+
+  it("aceite das páginas legais (M7.4): por tentativa, as versões com link para cada uma, o prazo do reembolso dessa política e quando; tentativa sem aceite diz que não foi registrado", () => {
+    const comAceite: PagamentoDoPainel = { ...base, aceite: { versoes: { termos: 1, privacidade: 2, cancelamento: 3 }, aceitoEm: new Date("2026-10-01T15:02:00Z"), diasReembolsoIntegral: 14 } };
+    // Mesmo quem só lê reservas vê o aceite (não é valor).
+    const h = html([comAceite], { verValores: false, editar: false });
+    expect(h).toContain("<dt");
+    expect(h).toContain(">Aceite</dt>");
+    expect(h).toContain('<a href="/termos?versao=1" target="_blank" rel="noopener noreferrer">Termos v1</a>');
+    expect(h).toContain('<a href="/privacidade?versao=2" target="_blank" rel="noopener noreferrer">Privacidade v2</a>');
+    expect(h).toContain('<a href="/cancelamento?versao=3" target="_blank" rel="noopener noreferrer">Cancelamento v3</a> (reembolso integral até 14 dias antes)');
+    expect(h).toContain(" — 01/10/2026, 12:02");
+    expect(html([{ ...base, aceite: null }])).toContain("não registrado (tentativa anterior às páginas legais do site)");
+    // Sem o campo (tentativa montada sem ele), nada é dito.
+    expect(html([base])).not.toContain(">Aceite</dt>");
+  });
 });
