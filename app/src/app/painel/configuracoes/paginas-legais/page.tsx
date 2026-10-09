@@ -58,7 +58,7 @@ export default async function PaginasLegais({ searchParams }: PageProps<"/painel
             const situacao = v ? `versão ${v.numero}, de ${br(v.data)}` : "não publicada";
             return (
               <li key={d}>
-                {/* <a> e não <Link>: navegação completa, para o aviso de "sair sem publicar" valer também aqui. */}
+                {/* Com o texto mudado, o formulário pergunta antes de trocar de documento (como em qualquer link do painel). */}
                 <a href={`/painel/configuracoes/paginas-legais?doc=${d}`} aria-current={d === doc ? "page" : undefined} style={d === doc ? { fontWeight: 700 } : undefined}>
                   {PAGINAS_LEGAIS[d].titulo}
                 </a>{" "}

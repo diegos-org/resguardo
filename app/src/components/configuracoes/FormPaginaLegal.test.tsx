@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import Link from "next/link";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { CAMPOS_LEGAIS, type CampoLegal, MENSAGEM_SEM_PRAZO } from "@/configuracoes/paginas-legais-texto";
@@ -135,4 +136,96 @@ it("sair da página com o texto mudado pede confirmação (nada é guardado ante
   const link = screen.getAllByRole("link", { name: /Configurações → Empresa/ })[0];
   expect(fireEvent.click(link)).toBe(false);
   expect(confirmar).toHaveBeenCalledWith("Sair sem publicar? O texto mudado aqui se perde.");
+});
+
+it("links de fora do formulário (abas de Configurações, menu do painel) também perguntam; desistir fica na tela, confirmar sai sem perguntar de novo", () => {
+  // No lugar da troca de tela do <Link> do Next (sem recarregar, e por isso sem o aviso do navegador).
+  const navegar = vi.fn((e: { preventDefault: () => void }) => e.preventDefault());
+  render(
+    <>
+      <nav aria-label="Abas de configurações">
+        <Link href="/painel/configuracoes/empresa" onClick={navegar}>
+          Empresa
+        </Link>
+        <a href="/termos?versao=1" target="_blank" rel="noreferrer" onClick={navegar}>
+          Ver a versão 1
+        </a>
+        <a href="#versoes" onClick={navegar}>
+          Versões publicadas
+        </a>
+      </nav>
+      <FormPaginaLegal documento="termos" atual={null} valores={TERMOS} dias={null} campos={campos} salvar={vi.fn()} />
+    </>,
+  );
+  const sair = () => {
+    const ev = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(ev);
+    return ev.defaultPrevented;
+  };
+  const confirmar = vi.spyOn(window, "confirm").mockReturnValue(false);
+  const empresa = screen.getByRole("link", { name: "Empresa" });
+  // Sem mudança, o link anda sem perguntar.
+  fireEvent.click(empresa);
+  expect(confirmar).not.toHaveBeenCalled();
+  expect(navegar).toHaveBeenCalledTimes(1);
+  fireEvent.change(screen.getByLabelText(/^Texto/), { target: { value: `${TERMOS.texto}\n\nColado do advogado.` } });
+  // Desistiu: a tela fica, e o link nem chega a trocar de tela.
+  expect(fireEvent.click(empresa)).toBe(false);
+  expect(confirmar).toHaveBeenCalledWith("Sair sem publicar? O texto mudado aqui se perde.");
+  expect(navegar).toHaveBeenCalledTimes(1);
+  expect((screen.getByLabelText(/^Texto/) as HTMLTextAreaElement).value).toContain("Colado do advogado.");
+  // Outra aba, Ctrl+clique e o link que só rola esta página não tiram daqui: não perguntam.
+  fireEvent.click(screen.getByRole("link", { name: "Ver a versão 1" }));
+  fireEvent.click(empresa, { ctrlKey: true });
+  fireEvent.click(screen.getByRole("link", { name: "Versões publicadas" }));
+  expect(confirmar).toHaveBeenCalledTimes(1);
+  expect(navegar).toHaveBeenCalledTimes(4);
+  // Confirmou: sai, e o aviso do navegador não pergunta de novo no caminho.
+  confirmar.mockReturnValue(true);
+  fireEvent.click(empresa);
+  expect(navegar).toHaveBeenCalledTimes(5);
+  expect(sair()).toBe(false);
+  // Se a tela ficou e ele voltou a editar, a proteção volta.
+  fireEvent.change(screen.getByLabelText(/^Texto/), { target: { value: `${TERMOS.texto}\n\nMais uma mudança.` } });
+  expect(sair()).toBe(true);
+});
+
+it("Voltar do navegador com o texto mudado pergunta; desistir devolve esta tela ao histórico antes de o roteador agir", () => {
+  const tela = "/painel/configuracoes/paginas-legais?doc=termos";
+  window.history.replaceState({ __NA: true, tela: "paginas-legais" }, "", tela);
+  // Como o roteador do Next: ouve o popstate na janela, sem captura, e troca de tela.
+  const roteador = vi.fn();
+  window.addEventListener("popstate", roteador);
+  const voltar = (url: string) => {
+    window.history.replaceState({ __NA: true, tela: "anterior" }, "", url);
+    window.dispatchEvent(new PopStateEvent("popstate", { state: window.history.state }));
+  };
+  try {
+    const confirmar = vi.spyOn(window, "confirm").mockReturnValue(false);
+    mostrar();
+    // Sem mudança, o Voltar anda sem perguntar.
+    voltar("/painel/configuracoes/empresa");
+    expect(confirmar).not.toHaveBeenCalled();
+    expect(roteador).toHaveBeenCalledTimes(1);
+    window.history.replaceState({ __NA: true, tela: "paginas-legais" }, "", tela);
+    fireEvent.change(screen.getByLabelText(/^Texto/), { target: { value: `${TERMOS.texto}\n\nColado do advogado.` } });
+    // Desistiu: o roteador não fica sabendo e o endereço volta a ser esta tela, com o estado dela.
+    voltar("/painel/configuracoes/empresa");
+    expect(confirmar).toHaveBeenCalledWith("Sair sem publicar? O texto mudado aqui se perde.");
+    expect(roteador).toHaveBeenCalledTimes(1);
+    expect(window.location.pathname + window.location.search).toBe(tela);
+    expect(window.history.state).toMatchObject({ __NA: true, tela: "paginas-legais" });
+    // Voltar só de âncora (#) nesta mesma tela não pergunta.
+    voltar(`${tela}#versoes`);
+    expect(confirmar).toHaveBeenCalledTimes(1);
+    expect(roteador).toHaveBeenCalledTimes(2);
+    // Confirmou: o roteador troca de tela.
+    confirmar.mockReturnValue(true);
+    voltar("/painel/configuracoes/empresa");
+    expect(confirmar).toHaveBeenCalledTimes(2);
+    expect(roteador).toHaveBeenCalledTimes(3);
+  } finally {
+    window.removeEventListener("popstate", roteador);
+    window.history.replaceState(null, "", "/");
+  }
 });

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type MouseEvent, useActionState, useDeferredValue, useEffect, useState } from "react";
+import { useActionState, useDeferredValue, useEffect, useRef, useState } from "react";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import { BotaoCopiar } from "@/components/BotaoCopiar";
 import { DocumentoLegal } from "@/components/site/DocumentoLegal";
@@ -41,6 +41,23 @@ const br = (d: string) => d.split("-").reverse().join("/");
 const nota = { margin: 0, fontSize: "0.8125rem", color: "var(--scl-texto-2)" } as const;
 const PRAZO_PADRAO = 14;
 
+const SAIR = "Sair sem publicar? O texto mudado aqui se perde.";
+
+/**
+ * Clique que tira desta tela na mesma aba: um link para outra página (abas de Configurações, menu do painel, os links
+ * daqui). Não contam o que abre em outra aba ou janela, o que baixa um arquivo e o link que só rola esta página (#).
+ */
+function cliqueQueSai(e: MouseEvent): boolean {
+  if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return false;
+  const a = e.target instanceof Element ? e.target.closest("a[href]") : null;
+  if (!a || a.hasAttribute("download") || !["", "_self"].includes(a.getAttribute("target") ?? "")) return false;
+  const destino = new URL(a.getAttribute("href") ?? "", window.location.href);
+  if (destino.protocol !== "http:" && destino.protocol !== "https:") return false;
+  return !(destino.hash && mesmaPagina(destino, new URL(window.location.href)));
+}
+
+const mesmaPagina = (a: URL, b: URL) => a.origin === b.origin && a.pathname === b.pathname && a.search === b.search;
+
 /** Prazo digitado, se for um número inteiro de dias dentro do limite (a mesma conferência da publicação). */
 function diasDoCampo(t: string): number | null {
   const n = /^\d{1,3}$/.test(t.trim()) ? Number(t.trim()) : Number.NaN;
@@ -50,8 +67,8 @@ function diasDoCampo(t: string): number | null {
 /**
  * Texto de uma página legal do site (M7.4): o texto (e, na Política de cancelamento, o resumo e o prazo do reembolso
  * integral), a prévia de como fica no site com os dados da empresa de agora, o que impede publicar e a publicação, que
- * cria a versão seguinte datada de hoje. Nada é guardado antes de publicar: sair da página com o texto mudado pede
- * confirmação.
+ * cria a versão seguinte datada de hoje. Nada é guardado antes de publicar: sair da tela com o texto mudado (link do
+ * painel, Voltar do navegador, fechar ou recarregar) pede confirmação.
  */
 export function FormPaginaLegal({ documento, atual, valores, dias, campos, salvar }: Props) {
   const [estado, enviar, enviando] = useActionState(salvar, {});
@@ -60,22 +77,56 @@ export function FormPaginaLegal({ documento, atual, valores, dias, campos, salva
   const diasIniciais = cancelamento ? String(dias ?? PRAZO_PADRAO) : "";
   const [secoes, setSecoes] = useState<Record<string, string>>(() => Object.fromEntries(def.secoes.map((s) => [s.chave, valores[s.chave] ?? ""])));
   const [diasTexto, setDiasTexto] = useState(diasIniciais);
+  // Diego já confirmou sair sem publicar (não pergunta de novo no caminho); volta a proteger quando ele edita outra vez.
+  const saidaConfirmada = useRef(false);
   const alterado = def.secoes.some((s) => (secoes[s.chave] ?? "").trim() !== (valores[s.chave] ?? "").trim()) || diasTexto.trim() !== diasIniciais;
 
-  // Sem rascunho guardado: fechar ou recarregar a página com o texto mudado pede confirmação.
+  // Sem rascunho guardado: sair com o texto mudado pede confirmação. Fechar ou recarregar passa pelo aviso do navegador;
+  // os links do painel (<Link>, que trocam de tela sem recarregar) e o Voltar/Avançar do navegador não passam, e por isso
+  // são parados aqui antes de o roteador agir.
   useEffect(() => {
     if (!alterado) return;
+    saidaConfirmada.current = false;
+    // Esta tela no histórico, para voltar a ela se Diego desistir de sair pelo Voltar do navegador.
+    const aqui = { url: window.location.href, estado: window.history.state as unknown };
+    const confirmar = () => {
+      if (saidaConfirmada.current) return true;
+      saidaConfirmada.current = window.confirm(SAIR);
+      return saidaConfirmada.current;
+    };
     const avisar = (e: BeforeUnloadEvent) => {
+      if (saidaConfirmada.current) return;
       e.preventDefault();
       e.returnValue = "";
     };
+    // Na captura do documento: roda antes do <Link> (que ouve na raiz do React) e, se Diego desistir, ele nem fica sabendo.
+    const clicar = (e: MouseEvent) => {
+      if (!cliqueQueSai(e) || confirmar()) return;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    // Na captura da janela: roda antes do roteador do Next. Desistiu? A tela volta para o histórico, como se não tivesse saído.
+    const voltar = (e: PopStateEvent) => {
+      if (mesmaPagina(new URL(window.location.href), new URL(aqui.url)) || confirmar()) return;
+      e.stopImmediatePropagation();
+      window.history.pushState(aqui.estado, "", aqui.url);
+    };
     window.addEventListener("beforeunload", avisar);
-    return () => window.removeEventListener("beforeunload", avisar);
+    document.addEventListener("click", clicar, true);
+    window.addEventListener("popstate", voltar, true);
+    return () => {
+      window.removeEventListener("beforeunload", avisar);
+      document.removeEventListener("click", clicar, true);
+      window.removeEventListener("popstate", voltar, true);
+    };
   }, [alterado]);
-
-  // Link para outra tela do painel (navegação sem recarregar, que não passa pelo aviso do navegador): pergunta antes.
-  const confirmarSaida = (e: MouseEvent) => {
-    if (alterado && !window.confirm("Sair sem publicar? O texto mudado aqui se perde.")) e.preventDefault();
+  const editarSecao = (chave: string, valor: string) => {
+    saidaConfirmada.current = false;
+    setSecoes((atuais) => ({ ...atuais, [chave]: valor }));
+  };
+  const editarDias = (valor: string) => {
+    saidaConfirmada.current = false;
+    setDiasTexto(valor);
   };
 
   // Valores que a publicação usaria agora: os da empresa e, no cancelamento, o prazo digitado.
@@ -146,7 +197,7 @@ export function FormPaginaLegal({ documento, atual, valores, dias, campos, salva
             step={1}
             required
             value={diasTexto}
-            onChange={(e) => setDiasTexto(e.target.value)}
+            onChange={(e) => editarDias(e.target.value)}
             style={{ maxWidth: 120 }}
             aria-invalid={estado.erros?.diasReembolsoIntegral ? true : undefined}
             aria-describedby={estado.erros?.diasReembolsoIntegral ? "erro-diasReembolsoIntegral" : undefined}
@@ -165,7 +216,7 @@ export function FormPaginaLegal({ documento, atual, valores, dias, campos, salva
             rows={s.chave === "resumo" ? 8 : 30}
             maxLength={s.limite}
             value={secoes[s.chave] ?? ""}
-            onChange={(e) => setSecoes((atuais) => ({ ...atuais, [s.chave]: e.target.value }))}
+            onChange={(e) => editarSecao(s.chave, e.target.value)}
             aria-invalid={estado.erros?.[s.chave] ? true : undefined}
             aria-describedby={estado.erros?.[s.chave] ? `erro-${s.chave}` : undefined}
           />
@@ -190,9 +241,7 @@ export function FormPaginaLegal({ documento, atual, valores, dias, campos, salva
               ) : (
                 <>
                   falta preencher em{" "}
-                  <Link href="/painel/configuracoes/empresa" onClick={confirmarSaida}>
-                    Configurações → Empresa
-                  </Link>
+                  <Link href="/painel/configuracoes/empresa">Configurações → Empresa</Link>
                 </>
               )}
             </li>
@@ -226,9 +275,7 @@ export function FormPaginaLegal({ documento, atual, valores, dias, campos, salva
           </ul>
           {conferencia.vazios.some((k) => k !== "dias_reembolso_integral") && (
             <p style={{ margin: "4px 0 0" }}>
-              <Link href="/painel/configuracoes/empresa" onClick={confirmarSaida}>
-                Abrir Configurações → Empresa
-              </Link>{" "}
+              <Link href="/painel/configuracoes/empresa">Abrir Configurações → Empresa</Link>{" "}
               para preencher.
             </p>
           )}
