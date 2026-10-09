@@ -29,23 +29,27 @@ export async function registrarEventoDeAviso(db: Db, e: DadosEvento, agora: Date
   if (!dataId) return null;
   const valores = { tipo: codigo(e.tipo), acao: codigo(e.acao), dataId, requestId: texto(e.requestId, 128), ts: /^\d{1,20}$/.test(String(e.ts ?? "")) ? String(e.ts) : "", aoVivo: typeof e.aoVivo === "boolean" ? e.aoVivo : null, recebidoEm: agora };
   const reconhecivel = valores.requestId !== "" || valores.ts !== "";
-  const insercao = db.insert(eventosPagamento).values(valores);
-  const [novo] = reconhecivel
-    ? await insercao
-        .onConflictDoNothing({ target: [eventosPagamento.requestId, eventosPagamento.ts, eventosPagamento.dataId], where: sql`${eventosPagamento.requestId} <> '' or ${eventosPagamento.ts} <> ''` })
-        .returning({ id: eventosPagamento.id })
-    : await insercao.returning({ id: eventosPagamento.id });
-  await db
-    .insert(pagamentosAvisosDia)
-    .values({ dia: hojeISO(FUSO, agora), ultimoValidoEm: agora })
-    .onConflictDoUpdate({ target: pagamentosAvisosDia.dia, set: { ultimoValidoEm: agora } });
-  if (novo) return { id: novo.id, novo: true };
-  if (!reconhecivel) return null;
-  const [existente] = await db
-    .select({ id: eventosPagamento.id })
-    .from(eventosPagamento)
-    .where(and(eq(eventosPagamento.requestId, valores.requestId), eq(eventosPagamento.ts, valores.ts), eq(eventosPagamento.dataId, dataId)));
-  return existente ? { id: existente.id, novo: false } : null;
+  // Evento e "último aviso válido" numa transação só: se uma das gravações falhar, nada fica (a rota responde 500 e o
+  // provedor reenvia), e o reenvio é processado como novo, nunca dado por repetição de um evento que não foi adiante.
+  return db.transaction(async (tx) => {
+    const insercao = tx.insert(eventosPagamento).values(valores);
+    const [novo] = reconhecivel
+      ? await insercao
+          .onConflictDoNothing({ target: [eventosPagamento.requestId, eventosPagamento.ts, eventosPagamento.dataId], where: sql`${eventosPagamento.requestId} <> '' or ${eventosPagamento.ts} <> ''` })
+          .returning({ id: eventosPagamento.id })
+      : await insercao.returning({ id: eventosPagamento.id });
+    await tx
+      .insert(pagamentosAvisosDia)
+      .values({ dia: hojeISO(FUSO, agora), ultimoValidoEm: agora })
+      .onConflictDoUpdate({ target: pagamentosAvisosDia.dia, set: { ultimoValidoEm: agora } });
+    if (novo) return { id: novo.id, novo: true };
+    if (!reconhecivel) return null;
+    const [existente] = await tx
+      .select({ id: eventosPagamento.id })
+      .from(eventosPagamento)
+      .where(and(eq(eventosPagamento.requestId, valores.requestId), eq(eventosPagamento.ts, valores.ts), eq(eventosPagamento.dataId, dataId)));
+    return existente ? { id: existente.id, novo: false } : null;
+  });
 }
 
 /** Resultado do processamento (depois da resposta), para a rotina saber o que falhou. */

@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { eventosPagamento, pagamentos } from "@/db/schema";
+import { eventosPagamento, pagamentos, pagamentosAvisosDia } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { aplicarNaTransacao, conferirCotacaoParaPagina, conferirTentativa, idDeOrder, INTERVALO_CONSULTA_MS, marcarAviso, processarAvisoDeOrder } from "./conferencia";
@@ -48,6 +48,23 @@ describe("avisos assinados (webhook) do provedor (M8.2a)", () => {
     expect(await registrarEventoDeAviso(db, { dataId: "ORDSEMMETA1", ts: "1759330800" }, minutos(3))).toEqual({ id: t1!.id, novo: false });
     const r1 = await registrarEventoDeAviso(db, { dataId: "ORDSEMMETA1", requestId: "req-so" }, minutos(2));
     expect(await registrarEventoDeAviso(db, { dataId: "ORDSEMMETA1", requestId: "req-so" }, minutos(3))).toEqual({ id: r1!.id, novo: false });
+  });
+
+  it("falha ao gravar o 'último aviso válido': o evento também não fica, e o reenvio do provedor é processado como novo", async () => {
+    // Banco que falha na gravação da conta do dia (dentro ou fora de transação).
+    const falharNoDia = (alvo: Db): Db =>
+      new Proxy(alvo, {
+        get(t, k) {
+          if (k === "insert") return (tabela: unknown) => { if (tabela === pagamentosAvisosDia) throw new Error("queda"); return t.insert(tabela as typeof eventosPagamento); };
+          if (k === "transaction") return (f: (tx: Db) => Promise<unknown>) => t.transaction((tx) => f(falharNoDia(tx as Db)));
+          const v = Reflect.get(t, k);
+          return typeof v === "function" ? v.bind(t) : v;
+        },
+      });
+    const e = { tipo: "order", acao: "order.processed", dataId: "ORDQUEDA01", requestId: "req-queda", ts: "1759330900" };
+    await expect(registrarEventoDeAviso(falharNoDia(db), e, AGORA)).rejects.toThrow();
+    expect(await db.select().from(eventosPagamento).where(eq(eventosPagamento.dataId, "ORDQUEDA01"))).toEqual([]);
+    expect(await registrarEventoDeAviso(db, e, minutos(1))).toMatchObject({ novo: true });
   });
 
   it("processar: id que não é de order é ignorado; order desconhecida não avisa; order conhecida é aplicada e o evento leva o resultado e a empresa", async () => {

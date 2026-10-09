@@ -189,9 +189,12 @@ export async function tentarDevolucao(db: Db, organizacaoId: string, devolucaoId
       const proxima = dev.tentativas + 1;
       const usar = dev.chaveEmDuvida && dev.chaveAtual ? dev.chaveAtual : chaveDevolucao(dev.id, proxima);
       // O valor registrado é o que a order relida mostra como pago (a devolução integral devolve isso, não o da cotação).
+      // A chave já fica "em dúvida" antes do envio: se o processo cair depois de o provedor aceitar (e antes de gravar o
+      // resultado), o próximo envio repete a MESMA chave (o provedor não devolve duas vezes por ela). Só uma recusa
+      // clara tira a dúvida.
       await tx
         .update(devolucoesPagamento)
-        .set({ tentativas: proxima, chaveAtual: usar, valor: valorPagoNaOrder(cobranca), proximaTentativaEm: new Date(agora.getTime() + ESPERA_DEVOLUCAO_MS), atualizadoEm: agora })
+        .set({ tentativas: proxima, chaveAtual: usar, chaveEmDuvida: true, valor: valorPagoNaOrder(cobranca), proximaTentativaEm: new Date(agora.getTime() + ESPERA_DEVOLUCAO_MS), atualizadoEm: agora })
         .where(eq(devolucoesPagamento.id, dev.id));
       return usar;
     });

@@ -94,7 +94,8 @@ disso, a página mostra o fluxo de hoje, e a aba de pagamento lista cada imóvel
   `recusada`, `por_fora`), tentativas, chave da tentativa atual (`devolucao:<id>:<n>`), próxima
   tentativa, id da devolução no provedor.
 - **`eventos_pagamento`**: avisos com assinatura válida (tipo, ação, id, request-id, ts, quando,
-  resultado), índice único por (request-id, ts, id) para não processar repetição; apagados depois de
+  resultado), índice único por (request-id, ts, id) para não processar repetição (o evento e o "último
+  aviso válido" são gravados numa transação só: se um falhar, nada fica, e o reenvio é processado como novo); apagados depois de
   90 dias. Sem request-id e sem ts não há como reconhecer a repetição: cada aviso é um evento novo e é
   processado (a leitura da order é idempotente), para dois avisos diferentes da mesma order nunca se
   fundirem num só. Assinaturas inválidas só contam num número agregado do dia ("assinaturas recusadas") e
@@ -307,6 +308,8 @@ do M9.2 passa a valer para reservas pagas quando Diego ligar as mensagens.
 - Devolução pelo provedor: `pedida` até confirmar. A chave de cada pedido é gravada antes de chamar, junto
   com o valor que a order relida mostra como pago (é o que a devolução integral devolve; no valor divergente,
   não o total da cotação).
+  A chave já é gravada **em dúvida** antes do envio (se o processo cair depois de o provedor aceitar e
+  antes de gravar a resposta, o envio seguinte repete a mesma chave); só uma recusa clara tira a dúvida.
   Depois de uma resposta **incerta** (o pedido pode ter sido aceito), o pedido seguinte repete a
   **mesma** chave: o provedor nunca devolve duas vezes pela mesma chave (no pior caso responde
   "chave já usada", que conta como incerta). Chave nova só depois de uma recusa clara ou de um pedido

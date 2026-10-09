@@ -157,6 +157,28 @@ describe("devolução do pagamento sem reserva (M8.2a)", () => {
     expect(pedidos().map((ch) => ch.chave)).toEqual([chaveDevolucao(d.id, 1), chaveDevolucao(d.id, 1), chaveDevolucao(d.id, 3)]);
   });
 
+  it("o processo cai depois de enviar o pedido (antes de gravar a resposta): a chave já estava em dúvida, e o envio seguinte repete a mesma chave", async () => {
+    const x = await semReserva();
+    const original = c.provedor.devolver.bind(c.provedor);
+    // O provedor recebe o pedido e o processo cai antes de gravar a resposta.
+    const devolver = vi.spyOn(c.provedor, "devolver").mockImplementationOnce(async (...a) => {
+      await original(...a);
+      throw new Error("processo caiu");
+    });
+    c.provedor.respostaDevolucao = "pedida";
+    await expect(devolverPeloProvedor(db, c.org, x.pagamentoId, null, c.provedor, minutos(10))).rejects.toThrow();
+    const d = await devolucao(x.pagamentoId);
+    expect(d).toMatchObject({ situacao: "pedida", tentativas: 1, chaveEmDuvida: true });
+    // A order ainda não mostra a devolução (atraso): o próximo envio repete a chave.
+    const [order] = c.provedor.todas().filter((o) => o.idProvedor === x.idProvedor);
+    vi.spyOn(c.provedor, "consultar").mockResolvedValue({ ...order, situacao: "aprovado", devolvido: 0, devolucaoEmAndamento: false });
+    await tentarDevolucao(db, c.org, d.id, c.provedor, minutos(21));
+    vi.restoreAllMocks();
+    c.provedor.respostaDevolucao = "confirmada";
+    expect(devolver).toHaveBeenCalledTimes(2);
+    expect(pedidos().map((p) => p.chave)).toEqual([chaveDevolucao(d.id, 1), chaveDevolucao(d.id, 1)]);
+  });
+
   it("pedido aceito (pedida) com a order ainda sem mostrar a devolução: nada se envia de novo, nem depois de várias leituras (aviso na terceira, continua pedida); a leitura confirma quando a order mostra", async () => {
     const x = await semReserva();
     c.provedor.respostaDevolucao = "pedida";
