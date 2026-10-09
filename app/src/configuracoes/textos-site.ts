@@ -23,14 +23,20 @@ export const CAMPOS_TEXTOS_SITE = [
   { chave: "chamada", rotulo: "Chamada final (título da faixa verde antes do rodapé)", limite: 120, linhas: 1 },
   { chave: "contato", rotulo: "Texto de contato", limite: 500, linhas: 3 },
   { chave: "rodape", rotulo: "Rodapé", limite: 240, linhas: 2 },
-  { chave: "pagamentoConvite", rotulo: "Pagamento por Pix: convite para pagar (página da cotação, com as datas seguradas)", limite: 240, linhas: 2 },
+  { chave: "pagamentoConvite", rotulo: "Pagamento no site: convite para pagar (página da cotação, com as datas seguradas)", limite: 240, linhas: 2 },
   { chave: "pagamentoAguardando", rotulo: "Pagamento por Pix: instrução enquanto o Pix aguarda o pagamento", limite: 240, linhas: 2 },
-  { chave: "pagamentoSemDatas", rotulo: "Pagamento por Pix: pagamento recebido sem conseguir garantir as datas", limite: 400, linhas: 3 },
+  { chave: "pagamentoSemDatas", rotulo: "Pagamento no site: pagamento recebido sem conseguir garantir as datas", limite: 400, linhas: 3 },
+  {
+    chave: "pagamentoCartaoAnalise",
+    rotulo: "Pagamento com cartão: explicação enquanto o Mercado Pago analisa o pagamento (sem horário: a página mostra o prazo das datas abaixo)",
+    limite: 400,
+    linhas: 3,
+  },
 ] as const;
 export type ChaveTextoSite = (typeof CAMPOS_TEXTOS_SITE)[number]["chave"];
 export type TextosSite = Record<ChaveTextoSite, string>;
 /** Textos que não podem ficar vazios (o título e os do pagamento, que o hóspede precisa ler). */
-export const TEXTOS_SITE_OBRIGATORIOS: readonly ChaveTextoSite[] = ["titulo", "pagamentoConvite", "pagamentoAguardando", "pagamentoSemDatas"];
+export const TEXTOS_SITE_OBRIGATORIOS: readonly ChaveTextoSite[] = ["titulo", "pagamentoConvite", "pagamentoAguardando", "pagamentoSemDatas", "pagamentoCartaoAnalise"];
 
 export const TEXTOS_SITE_INICIAIS: TextosSite = {
   olho: "Rio de Janeiro · Brasil",
@@ -56,10 +62,13 @@ export const TEXTOS_SITE_INICIAIS: TextosSite = {
   chamada: "O Rio está logo ali.",
   contato: "",
   rodape: "",
-  // Pagamento no site (M8.2a): texto-base para Diego revisar.
-  pagamentoConvite: "Pague por Pix aqui mesmo: assim que o pagamento é aprovado, a reserva fica confirmada, sem precisar esperar a equipe.",
+  // Pagamento no site (M8.2a): texto-base para Diego revisar. O convite não cita a forma (M8.2b: Pix ou cartão).
+  pagamentoConvite: "Pague aqui mesmo: assim que o pagamento é aprovado, a reserva fica confirmada, sem precisar esperar a equipe.",
   pagamentoAguardando: "Abra o app do seu banco, escolha pagar com Pix e use o código copia e cola (ou leia o QR). O valor já vem preenchido.",
   pagamentoSemDatas: "Recebemos seu pagamento, mas não conseguimos garantir as datas. A equipe vai falar com você e devolver o valor integral.",
+  // Cartão em análise (M8.2b): sem horário (a página põe a linha do prazo das datas, que não é editável).
+  pagamentoCartaoAnalise:
+    "Seu pagamento com cartão está em análise pelo Mercado Pago, que pode levar até 2 dias úteis. Enquanto a análise não termina, não dá para pagar de outro jeito nesta cotação: fale com a equipe pelo WhatsApp se precisar.",
 };
 
 /**

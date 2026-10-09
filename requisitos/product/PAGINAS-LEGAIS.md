@@ -2,7 +2,7 @@
 
 > Situação: pronto em 9/10/2026. Termos de uso, Política de privacidade e Política de cancelamento no
 > site, com texto editável no painel, versão numerada e datada a cada publicação e aceite do hóspede
-> antes de gerar o Pix. **Os textos-base foram escritos pelo Claude a partir da lei e ainda não foram
+> antes de gerar o Pix (e, desde o M8.2b, de 9/10/2026, antes do formulário do cartão). **Os textos-base foram escritos pelo Claude a partir da lei e ainda não foram
 > conferidos por um advogado:** Diego revisa com o contador e, de preferência, com um advogado antes
 > de ligar o pagamento de verdade (pontos no fim deste documento). Base: ROADMAP (M7.4, M8.2,
 > M5.6, M5.9), `PAGAMENTO-SITE.md`, `RECEBIMENTO-SITE.md` (decisão 5) e
@@ -135,13 +135,24 @@ banco das prévias (que é separado do de produção).
 - Sugestão do texto-base: um botão "quero cancelar" em Minha reserva (o decreto pede o arrependimento
   pela mesma ferramenta usada para contratar), com confirmação imediata.
 
-## Para o M8.2b (cartão)
+## Para o M8.2b (cartão) — feito em 9/10/2026
 
-- O formulário do cartão usa a mesma `BlocoAceite` e manda as mesmas versões escondidas.
+- O formulário do cartão usa a mesma `BlocoAceite` e manda as mesmas versões escondidas. Com o aceite
+  pendente, a caixa aparece sozinha e o formulário do Mercado Pago só carrega depois de marcada: o
+  hóspede nunca digita o cartão antes de aceitar. A caixa aparece em toda situação em que o Pix ou o
+  cartão podem ser oferecidos (inclusive Pix esgotado, Pix aguardando e desafio do banco), pela mesma
+  lista que decide a oferta (`ESTADOS_QUE_PAGAM`).
 - A fase 1 do cartão chama `aceiteVigenteTravado(tx, org, { cotacaoId, reservaId }, aceite, "cartao",
   agora)` depois das travas da cotação, como o Pix, e grava `aceite_id` na tentativa.
+- O aceite é único por cotação e versões (`aceites_site_unico`): um cartão depois de um Pix aceito com
+  as mesmas versões reaproveita a linha, que fica com `origem = 'pix'`. O que o M8.2c lê é o
+  `aceite_id` da tentativa, não a origem.
 - `registrarAceiteDoHospede` existe para um aceite fora da criação do pagamento, na ordem certa das
   travas.
+- O texto-base da Política de privacidade passou a dizer, na linha do pagamento, o que o cartão guarda:
+  "no cartão, também a bandeira, o número de parcelas, o valor pago com os juros e o resultado da
+  verificação do banco, nunca o número do cartão". A versão publicada não muda sozinha: Diego publica uma
+  versão nova antes de ligar o cartão.
 
 ## Posição sobre o arrependimento de 7 dias
 
@@ -194,7 +205,8 @@ banco das prévias (que é separado do de produção).
   arrependimento, devolver tudo é obrigatório ("valores pagos a qualquer título"), então a taxa fica
   com a SCL de qualquer jeito.
 - Conferir no primeiro reembolso em teste se o Mercado Pago devolve a taxa no reembolso total e,
-  com o cartão, o que acontece com os juros do parcelamento pagos pelo hóspede.
+  com o cartão, o que acontece com os juros do parcelamento pagos pelo hóspede (item 18 de "A conferir
+  no sandbox", em `PAGAMENTO-SITE.md`).
 
 **O que o sistema precisa ter antes de vender (Decreto 7.962/2013)**
 - Identificação da empresa no site (art. 2º): razão social, CNPJ, endereço e e-mail preenchidos em
@@ -257,7 +269,7 @@ banco das prévias (que é separado do de produção).
 - Rotina de prazo de guarda dos dados do hóspede.
 - Guarda de 6 meses dos registros de acesso (Marco Civil).
 - Registro do consentimento nos formulários dos proprietários.
-- O cartão (M8.2b reaproveita a caixa e a conferência).
+- O cartão (feito no M8.2b, 9/10/2026, com a mesma caixa e a mesma conferência).
 - Lista das versões aceitas em Minha reserva (a página `/reservar/<código>` já mostra).
 - Mapa do site e robots.
 - Rascunho guardado e "despublicar" (D6 e D12).

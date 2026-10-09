@@ -4,16 +4,24 @@
  * transições (só por leitura do provedor; o desconhecido nunca sobrescreve), confirmação, taxa e motor, liberação,
  * devolução confirmada e avisos. Nada aqui chama o provedor; o que precisa de chamada (cancelar Pix que sobrou)
  * volta em `cancelar`, para quem chamou fazer depois da transação.
+ *
+ * Cartão (M8.2b), também só aqui: bandeira, parcelas e resultado da verificação do banco lidos; a etapa de um cartão
+ * pendente (desafio do banco, análise, processando) e o endereço do desafio; o prazo das datas no desafio (até o fim
+ * dele + 2 min) e a extensão única do cartão em análise; o "parcelamento sem acréscimo" e a liberação em parcelas (nada
+ * entra sozinho no livro); o encerramento da tentativa e se ela conta no disjuntor de recusas (avaliado por último).
  */
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
-import { devolucoesPagamento, pagamentos, reservas } from "@/db/schema";
+import { lerRegrasCalendario } from "@/calendario/regras-config";
+import { devolucoesPagamento, type EtapaCartao, pagamentos, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { inicioDoPrazoDeReleitura } from "./andamento";
+import { estenderHold } from "@/site/cotacoes";
+import { FOLGA_PRAZO_PAGAMENTO_MS, inicioDoPrazoDeReleitura } from "./andamento";
 import { decidirAprovacao } from "./confirmacao";
+import { avaliarDisjuntor, contaNoDisjuntor } from "./disjuntor";
 import { gravarTaxaNaReserva, liberarPeloProvedor, recebimentosDoPagamento } from "./liberacao";
-import { type Cobranca, type DetalheFinanceiro, RETENCAO_ORDERS_DIAS } from "./provedor";
-import { type CodigoAviso, comDinheiro, type SituacaoPagamento, situacaoLocal, transicaoPermitida } from "./situacoes";
+import { type Cobranca, DESAFIO_3DS_MINUTOS, type DetalheFinanceiro, PARCELAS_MAXIMAS, RETENCAO_ORDERS_DIAS, STATUS_TRES_DS, urlDoDesafio } from "./provedor";
+import { type CodigoAviso, comDinheiro, motivoDoDetalhe, type SituacaoPagamento, situacaoLocal, transicaoPermitida } from "./situacoes";
 import type { Pagamento, Travado } from "./travas";
 
 export type Leitura = {
@@ -23,8 +31,15 @@ export type Leitura = {
   financeiro?: DetalheFinanceiro | null;
   /** Criação sem resposta (não se sabe se a order existe). */
   incerta?: boolean;
-  /** Criação recusada pelo provedor sem order (dados inválidos): nada foi cobrado. */
-  recusadaSemOrder?: boolean;
+  /**
+   * Criação recusada sem order no corpo: pelo provedor (o 402 sem `data`: a transação falhou no banco ou na análise de
+   * risco) ou por dados inválidos (4xx). Nada foi cobrado.
+   */
+  recusadaSemOrder?: "recusado" | "dados_invalidos";
+  /** Código do motivo que a criação devolveu (`ResultadoCriacao.codigo`), quando houve. */
+  codigoRecusa?: string | null;
+  /** Leitura que veio da resposta da criação (fase 3): só ela traz o endereço do desafio do banco. */
+  daCriacao?: boolean;
   /** Procurada pela referência e não achada há tempo demais: a criação não aconteceu. */
   desistir?: boolean;
   /** Id da order com que a leitura foi feita (null = pela referência). Se mudou até a trava, a ausência lida é antiga. */
@@ -35,9 +50,13 @@ export type Efeitos = {
   situacao: SituacaoPagamento;
   mudou: boolean;
   confirmou: boolean;
-  /** Orders a cancelar no provedor depois da transação (Pix que sobrou, ou real no ambiente de teste). */
+  /** Orders a cancelar no provedor depois da transação (Pix que sobrou, real no ambiente de teste, desafio sem como seguir). */
   cancelar: { id: string; idProvedor: string }[];
 };
+
+const ENCERRADAS: readonly SituacaoPagamento[] = ["recusado", "cancelado", "expirado"];
+const BANDEIRA = /^[a-z0-9_-]{1,40}$/;
+const ID_PAGAMENTO = /^\d{1,30}$/;
 
 export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, pagamentoId: string, leitura: Leitura, agora: Date): Promise<Efeitos> {
   const p = t.tentativas.find((x) => x.id === pagamentoId);
@@ -62,7 +81,9 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
   if (leitura.incerta && situacao === "criando") situacao = "incerta";
   if (leitura.recusadaSemOrder && semOrder) {
     situacao = "recusado";
-    patch.detalheProvedor = "dados_invalidos";
+    // "recusado/<código>" ou "dados_invalidos/<código>" (só o código: `motivoDoDetalhe` lê o motivo para o painel).
+    const codigo = leitura.codigoRecusa && /^[a-z0-9_]{1,60}$/.test(leitura.codigoRecusa) ? leitura.codigoRecusa : "?";
+    patch.detalheProvedor = `${leitura.recusadaSemOrder}/${codigo}`;
   }
   const c = leitura.cobranca;
   let cobrancaAplicada: Cobranca | null = null;
@@ -130,7 +151,60 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
   }
   if (situacao === "aprovado" && !p.aprovadoEm) patch.aprovadoEm = agora;
   const aoVivo = patch.aoVivo ?? p.aoVivo;
-  if (situacao === "pendente" && aoVivo === true && (patch.idProvedor ?? p.idProvedor)) efeitos.cancelar.push({ id: p.id, idProvedor: (patch.idProvedor ?? p.idProvedor)! });
+  const idProvedor = patch.idProvedor ?? p.idProvedor;
+  /** Manda cancelar esta tentativa no provedor depois da transação; `quem` só é gravado se ninguém pediu antes. */
+  const cancelarEsta = (quem: "sistema") => {
+    if (!idProvedor) return;
+    if (!p.cancelamentoPor && !patch.cancelamentoPor) patch.cancelamentoPor = quem;
+    if (!efeitos.cancelar.some((x) => x.id === p.id)) efeitos.cancelar.push({ id: p.id, idProvedor });
+  };
+  if (situacao === "pendente" && aoVivo === true && idProvedor) cancelarEsta("sistema");
+
+  // Cartão (M8.2b): o que a order diz do cartão, a etapa de um cartão pendente e o prazo das datas.
+  if (p.forma === "cartao") {
+    const cc = cobrancaAplicada;
+    // Só valores válidos; uma leitura sem eles (o GET pode vir sem parcelas) nunca apaga o que já se sabia.
+    if (cc && Number.isInteger(cc.parcelas) && cc.parcelas! >= 1 && cc.parcelas! <= PARCELAS_MAXIMAS) patch.parcelas = cc.parcelas;
+    if (cc?.cartao?.bandeira && BANDEIRA.test(cc.cartao.bandeira)) patch.bandeira = cc.cartao.bandeira;
+    if (cc?.cartao?.tresDSStatus && (STATUS_TRES_DS as readonly string[]).includes(cc.cartao.tresDSStatus)) patch.tresDSStatus = cc.cartao.tresDSStatus;
+    if (f?.idPagamento && ID_PAGAMENTO.test(f.idPagamento)) patch.idPagamentoProvedor = f.idPagamento;
+    // Etapa só enquanto pendente; sem leitura aplicada da order, fica a que já se sabia.
+    let etapa: EtapaCartao | null = null;
+    if (situacao === "pendente") etapa = cc ? (cc.cartao?.desafio ? "desafio" : cc.situacao === "em_analise" ? (cc.cartao?.analise ? "analise" : "processando") : null) : p.etapaCartao;
+    patch.etapaCartao = etapa;
+    // O endereço do desafio só vem na resposta da criação (o GET não traz): a leitura seguinte mantém o guardado.
+    patch.desafioUrl = etapa === "desafio" ? (urlDoDesafio(cc?.cartao?.desafioUrl) ?? p.desafioUrl) : null;
+    const pedidoValido = t.reserva.estado === "pedido" && t.cotacao.estado === "segurada";
+    if (etapa === "desafio") {
+      if (patch.desafioUrl) desligar("desafio_sem_url");
+      if (!patch.desafioUrl && (leitura.daCriacao || avisos.has("desafio_sem_url"))) {
+        // O banco pediu a verificação, mas sem um endereço válido o hóspede não tem como fazê-la: cancela. Só a resposta
+        // da criação decide isso (uma leitura da página ou o aviso podem chegar antes dela, sem o endereço); depois de
+        // decidido (o aviso fica gravado), toda leitura manda cancelar de novo, até o Mercado Pago confirmar — um
+        // cancelamento que falhou não deixa o desafio inútil segurando as datas até vencer.
+        ligar("desafio_sem_url");
+        cancelarEsta("sistema");
+      } else if (!pedidoValido) {
+        // O pedido não está mais segurado (prazo acabou, equipe cancelou): a order ainda é cancelável no desafio.
+        cancelarEsta("sistema");
+      } else {
+        // As datas ficam seguradas até o fim do desafio (40 min desde a criação) + 2 min. Só estende; como o QR do Pix,
+        // não é desfeito quando o desafio acaba sem dinheiro (no máximo 3 cartões por cotação).
+        const ate = new Date(p.criadoEm.getTime() + DESAFIO_3DS_MINUTOS * 60_000 + FOLGA_PRAZO_PAGAMENTO_MS);
+        if (await estenderHold(tx, organizacaoId, t.cotacao.id, ate, agora, p.id)) t.cotacao.holdAte = ate;
+      }
+    } else if ((etapa === "analise" || etapa === "processando") && pedidoValido && !t.tentativas.some((x) => x.prazoAnaliseAte)) {
+      // Extensão única por cotação (a primeira leitura em análise ou processando): o tanto editável em Configurações →
+      // Calendário; 0 = nenhuma. Depois vale a carência e a regra da aprovação tardia.
+      const minutos = (await lerRegrasCalendario(tx, organizacaoId)).site.minutosAnaliseCartao;
+      if (minutos > 0) {
+        const holdAte = t.cotacao.holdAte?.getTime() ?? 0;
+        const ate = new Date(Math.max(holdAte, agora.getTime() + minutos * 60_000));
+        if (await estenderHold(tx, organizacaoId, t.cotacao.id, ate, agora, p.id)) t.cotacao.holdAte = ate;
+        patch.prazoAnaliseAte = ate;
+      }
+    }
+  }
 
   // Taxa e líquido: a partir do líquido informado nesta leitura (taxa = valor − líquido), só enquanto aprovado. O
   // registrado à mão nunca muda sozinho (diferente = aviso); o do provedor é atualizado enquanto nenhum recebimento
@@ -140,7 +214,42 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
   /** Líquido informado pelo provedor nesta leitura, válido: é ele que vira o recebimento (nunca o guardado). */
   let liquidoInformado: number | null = null;
   if (f?.liberacaoPrevista) patch.liberacaoPrevistaEm = f.liberacaoPrevista;
-  if (f && f.liquido !== null && situacao === "aprovado") {
+  // "Parcelamento sem acréscimo" (M8.2b): o Mercado Pago cobrou da SCL o custo das parcelas e ele está dentro da taxa.
+  // Lançado sozinho, o motor tiraria esse custo da parte do proprietário. A trava (nada de taxa, de taxa na reserva nem
+  // de liberação automática) não é decidida por leitura: vale enquanto houver qualquer sinal — o custo lido agora ou
+  // numa leitura anterior, o aviso já ligado (o parcelado aprovado sem juros também o liga) — e também num parcelado
+  // com o custo ainda desconhecido (nunca supor zero; aviso próprio). A reserva confirma com a taxa desconhecida (como
+  // um Pix sem o financeiro). Só a liberação registrada à mão pela equipe solta a trava e apaga os avisos.
+  const custoLido = p.forma === "cartao" ? (f?.custoParcelasVendedor ?? null) : null;
+  if (custoLido !== null && Number.isSafeInteger(custoLido) && custoLido >= 0) patch.custoParcelasVendedor = custoLido;
+  let semTaxaAutomatica = false;
+  if (p.forma === "cartao") {
+    // Liberação registrada: à mão (a origem diz), ou um recebimento em vigor (o registrado à mão que o Mercado Pago
+    // conciliou passa a ter origem "provedor"; um estorno tira o recebimento e a trava volta). Com o recebimento em
+    // vigor, a taxa já não muda sozinha (diferente = aviso): a trava cumpriu o papel.
+    const liberacaoRegistrada =
+      !!p.liberacaoConfirmadaEm && (p.liberacaoOrigem === "manual" || (await recebimentosDoPagamento(tx, organizacaoId, p.id)).emVigor.length > 0);
+    if (liberacaoRegistrada) {
+      // A equipe já registrou a liberação à mão (com o líquido que decidiu): os avisos cumpriram o papel.
+      desligar("parcelas_sem_juros");
+      desligar("custo_parcelas_desconhecido");
+      desligar("liberacao_em_parcelas");
+    } else {
+      const parcelas = patch.parcelas ?? p.parcelas ?? cobrancaAplicada?.parcelas ?? null;
+      const parcelado = (parcelas ?? 1) > 1;
+      // O custo lido nesta leitura ou, sem ele (fee_details ausente ou ilegível), o da última leitura que o trouxe.
+      const custo = patch.custoParcelasVendedor ?? p.custoParcelasVendedor ?? null;
+      // Juros das parcelas são do hóspede: parcelado com o custo cobrado da SCL, ou aprovado sem nenhum juro, é aviso.
+      if (parcelado && ((custo ?? 0) > 0 || (situacao === "aprovado" && cobrancaAplicada?.pago === p.valor))) ligar("parcelas_sem_juros");
+      // Parcelado com o líquido informado, mas sem dizer se cobrou da SCL o custo das parcelas: aviso, nada lançado.
+      if (parcelado && custo === null && f && f.liquido !== null && situacao === "aprovado") ligar("custo_parcelas_desconhecido");
+      else if (custo !== null) desligar("custo_parcelas_desconhecido");
+      semTaxaAutomatica = (custo ?? 0) > 0 || avisos.has("parcelas_sem_juros") || (parcelado && custo === null);
+      // Liberação parcela a parcela: `liberado` já vem null, nada é lançado; a equipe registra à mão.
+      if (f?.liberacaoEmParcelas) ligar("liberacao_em_parcelas");
+    }
+  }
+  if (f && f.liquido !== null && situacao === "aprovado" && !semTaxaAutomatica) {
     const lida = p.valor - f.liquido;
     if (lida < 0 || f.liquido > p.valor) ligar("taxa_invalida");
     else {
@@ -170,6 +279,7 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
     desfecho = d.desfecho;
     motivoSemReserva = d.motivoSemReserva;
     efeitos.confirmou = d.confirmou;
+    for (const a of d.avisosPagamento ?? []) ligar(a);
     if (d.desfecho) {
       patch.desfecho = d.desfecho;
       patch.desfechoMotivo = d.desfechoMotivo;
@@ -182,7 +292,7 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
     motivoSemReserva = "situacao_inesperada";
     patch.motivoSemReserva = motivoSemReserva;
     ligar("situacao_inesperada");
-  } else if (desfecho === "reserva" && taxa !== null && liquido !== null && p.liberacaoOrigem !== "manual" && (patch.taxa !== undefined || t.reserva.taxaCanal !== taxa)) {
+  } else if (desfecho === "reserva" && !semTaxaAutomatica && taxa !== null && liquido !== null && p.liberacaoOrigem !== "manual" && (patch.taxa !== undefined || t.reserva.taxaCanal !== taxa)) {
     // Taxa conhecida (ou atualizada) depois da confirmação: entra na reserva e o motor roda (nessa ordem), antes de
     // qualquer recebimento desta leitura.
     await gravarTaxaNaReserva(tx, organizacaoId, t.reserva.id, taxa, liquido, null, p.id, agora);
@@ -193,8 +303,14 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
   // Fora do prazo de releitura, o provedor nem mostra a order: fica o aviso de andamento fora do prazo.
   if (comDinheiro(situacao)) {
     const inicio = inicioDoPrazoDeReleitura(agora).getTime();
-    for (const x of t.tentativas)
-      if (x.id !== p.id && x.situacao === "pendente" && x.idProvedor && x.criadoEm.getTime() >= inicio && !efeitos.cancelar.some((y) => y.id === x.id)) efeitos.cancelar.push({ id: x.id, idProvedor: x.idProvedor });
+    const sobrando = t.tentativas.filter((x) => x.id !== p.id && x.situacao === "pendente" && x.idProvedor && x.criadoEm.getTime() >= inicio && !efeitos.cancelar.some((y) => y.id === x.id));
+    for (const x of sobrando) efeitos.cancelar.push({ id: x.id, idProvedor: x.idProvedor! });
+    // Quem pediu o cancelamento delas foi o sistema (nunca conta no disjuntor do cartão).
+    const semQuem = sobrando.filter((x) => !x.cancelamentoPor).map((x) => x.id);
+    if (semQuem.length) {
+      await tx.update(pagamentos).set({ cancelamentoPor: "sistema" }).where(and(inArray(pagamentos.id, semQuem), isNull(pagamentos.cancelamentoPor)));
+      for (const x of sobrando) x.cancelamentoPor ??= "sistema";
+    }
   }
 
   // Devolução feita, contestação, ou devolução fora do sistema: só avisos (partes c e e cuidam da reserva).
@@ -248,6 +364,21 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
     }
   }
 
+  // Encerramento (qualquer forma): a primeira vez que sai do andamento para recusado, cancelado ou vencido. No cartão,
+  // decide uma vez se conta no disjuntor, com a etapa e o endereço do desafio de antes desta leitura.
+  if (ENCERRADAS.includes(situacao) && !ENCERRADAS.includes(p.situacao) && !p.encerradoEm) {
+    patch.encerradoEm = agora;
+    if (p.forma === "cartao") {
+      const codigo = leitura.codigoRecusa ?? motivoDoDetalhe(patch.detalheProvedor ?? p.detalheProvedor);
+      patch.contaNoDisjuntor = contaNoDisjuntor({ ...p, cancelamentoPor: p.cancelamentoPor ?? patch.cancelamentoPor ?? null }, situacao, {
+        recusadaSemOrder: leitura.recusadaSemOrder,
+        codigo,
+        idProvedor,
+        aoVivo,
+      });
+    }
+  }
+
   if (situacao !== p.situacao) patch.situacao = situacao;
   patch.avisos = [...avisos];
   await tx.update(pagamentos).set(patch).where(eq(pagamentos.id, p.id));
@@ -268,6 +399,8 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
   }
   // A tentativa travada reflete o que foi gravado (a mesma transação pode aplicar mais de uma leitura).
   Object.assign(p, patch);
+  // Por último, com todas as travas do pagamento já tomadas: a tentativa que conta pode desligar o cartão.
+  if (patch.contaNoDisjuntor === true) await avaliarDisjuntor(tx, organizacaoId, agora);
   efeitos.situacao = situacao;
   efeitos.mudou = mudou;
   return efeitos;

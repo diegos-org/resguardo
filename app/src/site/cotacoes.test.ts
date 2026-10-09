@@ -8,7 +8,25 @@ import { beds24Calendario, bloqueios, cotacoes, idsExternos, imoveis, imoveisDet
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { cancelarReserva, confirmarReserva } from "@/reservas/repositorio";
-import { codigoCotacaoValido, criarCotacao, expirarHoldsVencidos, MAXIMO_COTACOES_ABERTAS_POR_IMOVEL, MAXIMO_HOLDS_POR_IMOVEL, motivoDaMudanca, segurarDatas, textoDaCotacao, validarContato, verCotacao } from "./cotacoes";
+import { PRAZO_CARTAO_SEM_RESPOSTA_DIAS } from "@/pagamentos/andamento";
+import { conferirTentativa } from "@/pagamentos/conferencia";
+import { ErroProvedor } from "@/pagamentos/provedor";
+import { AGORA, type Cenario, EMAIL_HOSPEDE, minutos, montarCenario } from "@/pagamentos/testes";
+import {
+  codigoCotacaoValido,
+  criarCotacao,
+  ERRO_EMAIL_EM_ANDAMENTO,
+  estenderHold,
+  expirarHoldsVencidos,
+  MAXIMO_COTACOES_ABERTAS_POR_IMOVEL,
+  MAXIMO_HOLDS_POR_IMOVEL,
+  motivoDaMudanca,
+  segurarDatas,
+  textoDaCotacao,
+  validarContato,
+  verCotacao,
+  voltarHold,
+} from "./cotacoes";
 import { consultarDisponibilidade } from "./disponibilidade";
 
 let db: Db, close: () => Promise<void>, org: string, im: string;
@@ -272,5 +290,66 @@ describe("cotação do site (M8.1)", () => {
     expect([ra.ok, rb.ok].filter(Boolean)).toHaveLength(1);
     expect((await minhasReservas()).filter((r) => r.estado === "pedido")).toHaveLength(1);
     expect([ra, rb].find((r) => !r.ok)).toMatchObject({ erro: "Essas datas acabaram de ficar indisponíveis." });
+  });
+});
+
+describe("o mesmo e-mail com um cartão sem resposta (M8.2b)", () => {
+  const dia = 24 * 60;
+  const segurarDeNovo = async (c: Cenario, quando: Date, n = 0) => {
+    const r = await criarCotacao(db, c.org, { imovel: "403", entrada: `2026-11-${String(2 + n * 4).padStart(2, "0")}`, saida: `2026-11-${String(5 + n * 4).padStart(2, "0")}`, hospedes: "2" }, quando);
+    if (!r.ok) throw new Error(r.erro);
+    return segurarDatas(db, c.org, r.cotacao.codigo, { nome: "Visitante Fictício", email: EMAIL_HOSPEDE, telefone: "(21) 99999-0000" }, quando);
+  };
+
+  it("cartão em análise prende o e-mail por até 5 dias (muito além da carência), com o texto de sempre; depois, ou assim que o Mercado Pago decide, solta", async () => {
+    const c = await montarCenario(db);
+    const s = await c.segurar();
+    c.provedor.respostaCartao = "em_analise";
+    await c.cartao(s.cotacaoId);
+    expect(PRAZO_CARTAO_SEM_RESPOSTA_DIAS).toBe(5);
+    expect(await segurarDeNovo(c, minutos(4 * dia))).toEqual({ ok: false, erro: ERRO_EMAIL_EM_ANDAMENTO });
+    expect(ERRO_EMAIL_EM_ANDAMENTO).toBe("Já existe uma reserva ou um pagamento em andamento com este e-mail. Use o link daquela cotação ou fale com a equipe pelo WhatsApp.");
+    expect((await segurarDeNovo(c, minutos(5 * dia + 1))).ok).toBe(true);
+
+    const o = await montarCenario(db);
+    const t = await o.segurar();
+    o.provedor.respostaCartao = "em_analise";
+    const r = await o.cartao(t.cotacaoId);
+    expect(await segurarDeNovo(o, minutos(2 * dia))).toEqual({ ok: false, erro: ERRO_EMAIL_EM_ANDAMENTO });
+    o.provedor.concluirAnalise(r.idProvedor!, "recusado");
+    await conferirTentativa(db, o.org, r.pagamentoId!, o.provedor, minutos(2 * dia), { origem: "rotina", forcar: true });
+    expect((await segurarDeNovo(o, minutos(2 * dia + 1))).ok).toBe(true);
+  });
+
+  it("processando ou com a criação sem resposta (incerta) depois da carência: prende; no desafio do banco (acaba em 40 minutos), depois da carência não prende", async () => {
+    const a = await montarCenario(db);
+    const sa = await a.segurar();
+    a.provedor.respostaCartao = "processando";
+    await a.cartao(sa.cotacaoId);
+    expect(await segurarDeNovo(a, minutos(120))).toEqual({ ok: false, erro: ERRO_EMAIL_EM_ANDAMENTO });
+
+    const b = await montarCenario(db);
+    const sb = await b.segurar();
+    b.provedor.falhas.criarCartao = new ErroProvedor("incerto", "tempo");
+    await b.cartao(sb.cotacaoId);
+    expect(await segurarDeNovo(b, minutos(120))).toEqual({ ok: false, erro: ERRO_EMAIL_EM_ANDAMENTO });
+
+    const d = await montarCenario(db);
+    const sd = await d.segurar();
+    d.provedor.respostaCartao = "desafio";
+    await d.cartao(sd.cotacaoId);
+    // Na carência do prazo das datas (até 42 + 15 min), ainda prende; depois, não.
+    expect(await segurarDeNovo(d, minutos(50))).toEqual({ ok: false, erro: ERRO_EMAIL_EM_ANDAMENTO });
+    expect((await segurarDeNovo(d, minutos(58))).ok).toBe(true);
+  });
+
+  it("a observação do pedido diz que o pagamento estendeu o prazo; o texto antigo (estendido pelo Pix) também é trocado", async () => {
+    const c = await montarCenario(db);
+    const s = await c.segurar();
+    await db.update(reservas).set({ observacoes: "Pedido pelo site — cotação X. Datas seguradas até 01/10, 12:30 (estendido pelo Pix); depois disso o pedido vence sozinho." }).where(eq(reservas.id, s.reservaId));
+    await db.transaction((tx) => estenderHold(tx, c.org, s.cotacaoId, minutos(40), AGORA, null));
+    expect((await c.reserva(s.reservaId)).observacoes).toBe("Pedido pelo site — cotação X. Datas seguradas até 01/10, 12:40 (estendido pelo pagamento); depois disso o pedido vence sozinho.");
+    await db.transaction((tx) => voltarHold(tx, c.org, s.cotacaoId, minutos(30), minutos(40), AGORA, null));
+    expect((await c.reserva(s.reservaId)).observacoes).toBe("Pedido pelo site — cotação X. Datas seguradas até 01/10, 12:30; depois disso o pedido vence sozinho.");
   });
 });

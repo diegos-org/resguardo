@@ -4,6 +4,10 @@
  *
  * Na página do hóspede, um pagamento aprovado ou pendente sempre vence "expirada" e "cancelada"; enquanto houver
  * dinheiro sem desfecho, a página nunca convida a fazer uma nova consulta.
+ *
+ * Cartão (M8.2b): o hóspede vê o desafio do banco (o endereço só com a autorização), o cartão em análise e o cartão
+ * recusado sempre com o mesmo texto (o motivo nunca: só a equipe com acesso ao financeiro vê no painel). O painel nunca
+ * mostra BIN, últimos dígitos nem titular (nada disso é guardado).
  */
 import { and, asc, desc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
 import { lerRegrasCalendario } from "@/calendario/regras-config";
@@ -14,9 +18,24 @@ import { aceitesSite, cotacoes, devolucoesPagamento, eventosPagamento, imoveis, 
 import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
-import { CARENCIA_PAGAMENTO_MS, MAXIMO_PIX_POR_COTACAO, paginaAindaLe } from "./andamento";
+import { ALERTA_ANALISE_CARTAO_HORAS, CARENCIA_PAGAMENTO_MS, MAXIMO_CARTAO_POR_COTACAO, MAXIMO_PIX_POR_COTACAO, paginaAindaLe } from "./andamento";
 import { ambienteMercadoPago, estadoPagamentoDoAmbiente } from "./ambiente";
-import { AVISOS_PAGAMENTO, type CodigoAviso, codigoMotivo, comDinheiro, emAndamento, type SituacaoPagamento, textoMotivoSemReserva, textosDosAvisos } from "./situacoes";
+import { recusaDoCartao } from "./cartao";
+import { porForaPermitidoNoCartao } from "./devolucao";
+import { ALERTA_RECUSAS_24H, ALERTA_TOKEN_INVALIDO_1H, disjuntorAberto, RECUSAS_PARA_DESLIGAR_24H, recusasNasUltimas24h, recusasPorTokenNaUltimaHora } from "./disjuntor";
+import { type ModoTresDS, type StatusTresDS, urlDoDesafio } from "./provedor";
+import {
+  AVISOS_PAGAMENTO,
+  type CodigoAviso,
+  codigoMotivo,
+  comDinheiro,
+  emAndamento,
+  motivoDoDetalhe,
+  type SituacaoPagamento,
+  textoMotivoRecusaCartao,
+  textoMotivoSemReserva,
+  textosDosAvisos,
+} from "./situacoes";
 import type { Devolucao, Pagamento } from "./travas";
 
 export { pagamentoEmAndamentoOuAprovado } from "./andamento";
@@ -32,7 +51,10 @@ export type EstadoPagamentoHospede =
   | "confirmada"
   | "aprovado_sem_datas"
   | "devolucao_pedida"
-  | "devolvido";
+  | "devolvido"
+  | "cartao_desafio"
+  | "cartao_em_analise"
+  | "cartao_recusado";
 
 export type VistaPagamentoHospede = {
   estado: EstadoPagamentoHospede;
@@ -46,16 +68,29 @@ export type VistaPagamentoHospede = {
   pix: { copiaECola: string; imagemBase64: string | null; link: string | null; expiraEm: Date | null } | null;
   /** Quantos Pix ainda podem ser gerados nesta cotação. */
   pixRestantes: number;
+  /** Quantas tentativas com cartão ainda cabem nesta cotação. */
+  cartaoRestantes: number;
+  /** Forma da tentativa que manda na página (a com dinheiro, senão a mais recente); null sem tentativa. */
+  forma: "pix" | "cartao" | null;
+  /** Endereço do desafio do banco (https de domínio do Mercado Pago) — só com a autorização do pedido. */
+  desafioUrl: string | null;
+  /** Cartão encerrado sem dinheiro: recusado (o mesmo texto para todo motivo) ou a verificação do banco não concluída. */
+  recusa: "cartao" | "verificacao" | null;
+  /**
+   * Fim do prazo das datas, mesmo já passado — só no cartão em análise, para a linha fixa da página ("seguradas até…" ou
+   * "o prazo acabou às…"); null nas outras situações.
+   */
+  prazoDasDatas: Date | null;
   /** Código SCL da reserva confirmada pelo pagamento. */
   reservaCodigo: string | null;
   /** Reserva confirmada e outro pagamento da mesma cotação será devolvido (pagamento em dobro). */
   pagamentoEmDobro: boolean;
   devolucao: { situacao: "pedida" | "feita"; em: Date | null } | null;
   /**
-   * Algum Pix desta cotação foi marcado como real (live_mode) no ambiente de teste: o site não gera outro nem mostra
-   * aquele (quem chama não oferece "Gerar outro Pix"). Não vai ao navegador.
+   * Algum pagamento desta cotação (Pix ou cartão) foi marcado como real (live_mode) no ambiente de teste: o site não
+   * oferece outro nem mostra aquele (quem chama não oferece "Gerar outro Pix" nem o cartão). Não vai ao navegador.
    */
-  pixAoVivo: boolean;
+  aoVivo: boolean;
   /**
    * Alguma tentativa ainda pode virar dinheiro e a página ainda a lê (`paginaAindaLe`): a página continua
    * acompanhando mesmo numa situação que não é de espera (ex.: os 3 Pix gastos, o último recusado há pouco).
@@ -64,8 +99,9 @@ export type VistaPagamentoHospede = {
 };
 
 /**
- * O que a página da cotação mostra sobre o pagamento (design "O que o hóspede vê"). `oferecido` = resultado de
- * `ofertaDePix` (sem ele, cotação segurada sem tentativa fica "sem_pagamento", o fluxo pela conversa).
+ * O que a página da cotação mostra sobre o pagamento (design "O que o hóspede vê"). `oferecido` = o site oferece o
+ * pagamento nesta cotação (`ofertaDePix` ou `ofertaDeCartao`; sem ele, cotação segurada sem tentativa fica
+ * "sem_pagamento", o fluxo pela conversa).
  */
 export async function vistaDaCotacaoParaHospede(db: Db, organizacaoId: string, cotacaoId: string, agora: Date, o: { comAutorizacao: boolean; oferecido?: boolean }): Promise<VistaPagamentoHospede | null> {
   if (!uuidValido(cotacaoId)) return null;
@@ -80,7 +116,9 @@ export async function vistaDaCotacaoParaHospede(db: Db, organizacaoId: string, c
   const devDe = (p: Pagamento) => devolucoes.find((d) => d.pagamentoId === p.id);
   const segurada = c.estado === "segurada" && c.reservaEstado === "pedido" && !!c.holdAte && c.holdAte.getTime() > agora.getTime();
   const pixRestantes = Math.max(0, MAXIMO_PIX_POR_COTACAO - tentativas.filter((t) => t.forma === "pix").length);
+  const cartaoRestantes = Math.max(0, MAXIMO_CARTAO_POR_COTACAO - tentativas.filter((t) => t.forma === "cartao").length);
   const dinheiroSemDesfecho = tentativas.some((t) => emAndamento(t.situacao) || (comDinheiro(t.situacao) && t.desfecho === null));
+  const quemManda = tentativas.find((t) => t.desfecho === "reserva") ?? tentativas.find((t) => comDinheiro(t.situacao)) ?? tentativas[0];
   const base: VistaPagamentoHospede = {
     estado: "sem_pagamento",
     ambienteTeste: tentativas.some((t) => t.ambiente === "teste") || tentativas.length === 0,
@@ -88,10 +126,15 @@ export async function vistaDaCotacaoParaHospede(db: Db, organizacaoId: string, c
     holdAte: segurada ? c.holdAte : null,
     pix: null,
     pixRestantes,
+    cartaoRestantes,
+    forma: quemManda?.forma ?? null,
+    desafioUrl: null,
+    recusa: null,
+    prazoDasDatas: null,
     reservaCodigo: null,
     pagamentoEmDobro: false,
     devolucao: null,
-    pixAoVivo: tentativas.some((t) => t.forma === "pix" && t.aoVivo === true),
+    aoVivo: tentativas.some((t) => t.aoVivo === true),
     acompanhar: tentativas.some((t) => paginaAindaLe(t, agora)),
   };
   // Dinheiro que já voltou ao hóspede: desfecho de devolução (pelo provedor ou por fora) ou devolvido no provedor.
@@ -124,15 +167,29 @@ export async function vistaDaCotacaoParaHospede(db: Db, organizacaoId: string, c
     return { ...base, estado: "aprovado_sem_datas" };
   }
   const ultima = tentativas[0];
-  // Pix marcado como real (live_mode) no teste: nunca o QR nem "aguardando" (ele é cancelado na hora). Enquanto o
-  // cancelamento não se confirma, "conferindo" (a página continua lendo, e cada leitura manda cancelar de novo);
-  // depois, uma situação sem oferta (quem chama não oferece outro Pix).
-  if (ultima?.forma === "pix" && ultima.aoVivo === true) {
+  // Pagamento marcado como real (live_mode) no teste: nunca o QR, o desafio nem "aguardando" (é cancelado na hora).
+  // Enquanto o cancelamento não se confirma, "conferindo" (a página continua lendo, e cada leitura manda cancelar de
+  // novo); depois, uma situação sem oferta (quem chama não oferece outro pagamento).
+  if (ultima?.aoVivo === true) {
     if (emAndamento(ultima.situacao)) return { ...base, estado: "verificando" };
     if (!segurada) return base;
+    if (ultima.forma === "cartao") return { ...base, estado: "cartao_recusado", recusa: "cartao" };
     return { ...base, estado: pixRestantes > 0 ? "pix_vencido" : "pix_esgotado" };
   }
   if (ultima && (ultima.situacao === "criando" || ultima.situacao === "incerta")) return { ...base, estado: "verificando" };
+  if (ultima?.forma === "cartao") {
+    if (ultima.situacao === "pendente") {
+      // Desafio do banco: o endereço só com a autorização do pedido, conferido de novo (https de domínio do Mercado
+      // Pago); sem ele, a página diz que não deu para abrir a verificação e oferece os outros caminhos.
+      if (ultima.etapaCartao === "desafio") return { ...base, estado: "cartao_desafio", desafioUrl: o.comAutorizacao ? urlDoDesafio(ultima.desafioUrl) : null };
+      // Em análise, mesmo depois do prazo das datas: o pagamento ainda pode ser aprovado.
+      if (ultima.etapaCartao === "analise") return { ...base, estado: "cartao_em_analise", prazoDasDatas: c.holdAte };
+      return { ...base, estado: "verificando" };
+    }
+    // Recusado, cancelado ou vencido: com as datas seguradas, o hóspede tenta de novo (o mesmo texto para toda recusa).
+    if (!segurada) return base;
+    return { ...base, estado: "cartao_recusado", recusa: recusaDoCartao(ultima) === "verificacao" ? "verificacao" : "cartao" };
+  }
   if (ultima && ultima.situacao === "pendente") {
     // Prazo do Pix desconhecido (o provedor não informou; o painel tem o aviso): continua aguardando, nunca "vencido".
     const semPrazoConhecido = !ultima.pixExpiraEm && !!ultima.pixCopiaECola;
@@ -149,6 +206,10 @@ export async function vistaDaCotacaoParaHospede(db: Db, organizacaoId: string, c
 }
 
 export type AcoesDoPagamento = { conferir: boolean; devolver: boolean; devolucaoPorFora: boolean; registrarLiberacao: boolean; estornarLiberacao: boolean; registrarTaxaPerdida: boolean };
+
+/** Nome da bandeira para o painel (o código do Mercado Pago quando o sistema não conhece). */
+export const NOMES_BANDEIRA: Record<string, string> = { master: "Mastercard", visa: "Visa", elo: "Elo", amex: "American Express", hipercard: "Hipercard" };
+export const nomeDaBandeira = (b: string | null): string | null => (b ? (Object.hasOwn(NOMES_BANDEIRA, b) ? NOMES_BANDEIRA[b] : b) : null);
 
 export type PagamentoDoPainel = {
   id: string;
@@ -184,14 +245,32 @@ export type PagamentoDoPainel = {
    * cancelamento; null = tentativa sem aceite (anterior ao M7.4). Opcional só para montar tentativas à mão nos testes.
    */
   aceite?: { versoes: VersoesLegais; aceitoEm: Date; diasReembolsoIntegral: number | null } | null;
+  // M8.2b: sempre preenchidos pelo domínio; opcionais só para montar tentativas à mão nos testes (como `aceite`).
+  /** Identificadores no Mercado Pago (não são dados pessoais): a order (ORD…), a referência (scl-…) e o pagamento. */
+  idProvedor?: string | null;
+  referencia?: string;
+  idPagamentoProvedor?: string | null;
+  // --- Cartão; null no Pix. Nunca BIN, últimos dígitos nem titular.
+  parcelas?: number | null;
+  /** Código da bandeira (`master`, `visa`…); o nome vem de `nomeDaBandeira`. */
+  bandeira?: string | null;
+  tresDS?: ModoTresDS | null;
+  tresDSStatus?: StatusTresDS | null;
+  etapaCartao?: Pagamento["etapaCartao"];
+  /** Centavos de juros do parcelamento pagos pelo hóspede (pago − valor), quando > 0; ficam com o Mercado Pago. */
+  juros?: number | null;
+  /** Centavos do custo do "parcelamento sem acréscimo" cobrado da SCL, quando lido (> 0 = aviso `parcelas_sem_juros`). */
+  custoParcelasVendedor?: number | null;
+  /** Motivo de uma recusa de cartão — só para quem tem `financeiro:ler` ("não informe ao hóspede"). */
+  motivoRecusa?: string | null;
 };
 
 const liberacaoVencida = (p: Pagamento, agora: Date) => p.desfecho === "reserva" && p.situacao === "aprovado" && !p.liberacaoConfirmadaEm && !!p.liberacaoPrevistaEm && p.liberacaoPrevistaEm.getTime() < agora.getTime();
 
-/** Tentativa `criando`/`incerta` sem resposta há mais que a carência: a criação do Pix não se resolve sozinha. */
+/** Tentativa `criando`/`incerta` sem resposta há mais que a carência: a criação do pagamento não se resolve sozinha. */
 const criacaoPresa = (p: Pagamento, agora: Date) => (p.situacao === "criando" || p.situacao === "incerta") && p.criadoEm.getTime() + CARENCIA_PAGAMENTO_MS < agora.getTime();
 
-function paraPainel(p: Pagamento, dev: Devolucao | undefined, temRecebimentoManual: boolean, agora: Date): PagamentoDoPainel {
+function paraPainel(p: Pagamento, dev: Devolucao | undefined, temRecebimentoManual: boolean, agora: Date): Omit<PagamentoDoPainel, "aceite"> {
   const semDecisao = p.situacao === "aprovado" && p.desfecho === null;
   // Dinheiro que chegou já devolvido em parte ou contestado, sem decisão do sistema (situação inesperada).
   const inesperada = (p.situacao === "devolvido_parcial" || p.situacao === "contestado") && p.desfecho === null;
@@ -202,6 +281,9 @@ function paraPainel(p: Pagamento, dev: Devolucao | undefined, temRecebimentoManu
   // (o domínio relê a order antes e só aceita quando o Mercado Pago mostra o pagamento aprovado de novo). Devolvido em
   // parte, não: o Mercado Pago sempre mostra a parte devolvida e o domínio recusaria; resolve-se por lá até o M8.2c.
   const contestadoSemDesfecho = p.situacao === "contestado" && p.desfecho === null && p.motivoSemReserva !== null && semDevolucaoAberta;
+  // Cartão: por fora só quando a devolução pelo Mercado Pago não deu ou o pagamento passou de 180 dias (a mesma regra do domínio).
+  const porForaNoCartao = porForaPermitidoNoCartao(p, dev, agora);
+  const cartao = p.forma === "cartao";
   return {
     id: p.id,
     cotacaoId: p.cotacaoId,
@@ -229,12 +311,23 @@ function paraPainel(p: Pagamento, dev: Devolucao | undefined, temRecebimentoManu
     devolucao: dev
       ? { situacao: dev.situacao, valor: dev.valor, tentativas: dev.tentativas, falhas: dev.falhas, confirmadaEm: dev.confirmadaEm, porForaData: dev.porForaData, porForaValor: dev.porForaValor, porForaNota: dev.porForaNota, taxaPerdida: dev.taxaPerdida }
       : null,
+    idProvedor: p.idProvedor,
+    referencia: p.referencia,
+    idPagamentoProvedor: p.idPagamentoProvedor,
+    parcelas: cartao ? p.parcelas : null,
+    bandeira: cartao ? p.bandeira : null,
+    tresDS: cartao ? p.tresDS : null,
+    tresDSStatus: cartao ? p.tresDSStatus : null,
+    etapaCartao: cartao && p.situacao === "pendente" ? p.etapaCartao : null,
+    juros: cartao && p.valorPago !== null && p.valorPago > p.valor ? p.valorPago - p.valor : null,
+    custoParcelasVendedor: cartao ? p.custoParcelasVendedor : null,
+    motivoRecusa: cartao && p.situacao === "recusado" ? textoMotivoRecusaCartao(motivoDoDetalhe(p.detalheProvedor)) : null,
     pedeAtencao: semDecisao || inesperada || devolucaoAberta || p.avisos.length > 0 || p.situacao === "incerta" || criacaoPresa(p, agora) || liberacaoVencida(p, agora),
     acoes: {
       conferir: p.idProvedor !== null || emAndamento(p.situacao) || !!dev,
       devolver: podeDecidir,
       // A devolução por fora relê antes a order no Mercado Pago (devolvida, em andamento ou contestada = recusa).
-      devolucaoPorFora: podeDecidir || contestadoSemDesfecho,
+      devolucaoPorFora: (podeDecidir || contestadoSemDesfecho) && porForaNoCartao,
       registrarLiberacao: p.desfecho === "reserva" && p.situacao === "aprovado" && !p.liberacaoConfirmadaEm,
       estornarLiberacao: p.liberacaoOrigem === "manual" && temRecebimentoManual,
       registrarTaxaPerdida: dev?.situacao === "confirmada" && dev.taxaPerdida === null,
@@ -332,11 +425,20 @@ export type ContagensPagamento = {
   aoVivo: number;
   semCalculo: number;
   pagasAbertas: number;
-  /** Criação do Pix sem resposta do Mercado Pago há mais que a carência (busca pela referência falhando). */
+  /** Criação do pagamento sem resposta do Mercado Pago há mais que a carência (busca pela referência falhando). */
   criacaoPresa: number;
+  /** Cartões em análise no Mercado Pago há mais de um dia (M8.2b). */
+  cartaoEmAnalise: number;
+  /** Tentativas de cartão que contaram no disjuntor nas últimas 24 h (M8.2b). */
+  recusasCartao24h: number;
+  /** Cartões recusados por dados do cartão inválidos na última hora (M8.2b). */
+  recusasPorToken: number;
 };
 
 const LINK_PAGAMENTOS = "/painel/financeiro/pagamentos-site";
+const LINK_CONFIG_PAGAMENTO = "/painel/configuracoes/pagamento-site";
+/** Hora em São Paulo (dd/mm, hh:mm) para os alertas. */
+const horaSP = (d: Date) => new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(d);
 
 /**
  * Avisos do pagamento no site para o Início (da empresa toda, sem depender do filtro de imóveis). `contaDeTeste`
@@ -360,12 +462,28 @@ export async function avisosDePagamento(
           eq(pagamentos.desfecho, "reserva"),
           sql`jsonb_array_length(${pagamentos.avisos}) > 0`,
           inArray(pagamentos.situacao, ["criando", "incerta"]),
+          and(eq(pagamentos.forma, "cartao"), eq(pagamentos.situacao, "pendente"), eq(pagamentos.etapaCartao, "analise")),
         ),
       ),
     );
   const devs = lista.length ? await db.select().from(devolucoesPagamento).where(inArray(devolucoesPagamento.pagamentoId, lista.map((p) => p.id))) : [];
   const devDe = (id: string) => devs.find((d) => d.pagamentoId === id);
-  const contagens: ContagensPagamento = { aprovadoSemDesfecho: 0, situacaoInesperada: 0, devolucaoPedida: 0, devolucaoRecusada: 0, liberacaoVencida: 0, comAviso: 0, aoVivo: 0, semCalculo: 0, pagasAbertas: 0, criacaoPresa: 0 };
+  const contagens: ContagensPagamento = {
+    aprovadoSemDesfecho: 0,
+    situacaoInesperada: 0,
+    devolucaoPedida: 0,
+    devolucaoRecusada: 0,
+    liberacaoVencida: 0,
+    comAviso: 0,
+    aoVivo: 0,
+    semCalculo: 0,
+    pagasAbertas: 0,
+    criacaoPresa: 0,
+    cartaoEmAnalise: 0,
+    recusasCartao24h: 0,
+    recusasPorToken: 0,
+  };
+  const analiseDesde = agora.getTime() - ALERTA_ANALISE_CARTAO_HORAS * 3_600_000;
   for (const p of lista) {
     const dev = devDe(p.id);
     if (comDinheiro(p.situacao) && p.situacao !== "devolvido" && p.desfecho === null) {
@@ -377,6 +495,7 @@ export async function avisosDePagamento(
     }
     if (liberacaoVencida(p, agora)) contagens.liberacaoVencida++;
     if (criacaoPresa(p, agora)) contagens.criacaoPresa++;
+    if (p.forma === "cartao" && p.situacao === "pendente" && p.etapaCartao === "analise" && p.criadoEm.getTime() < analiseDesde) contagens.cartaoEmAnalise++;
     if (p.avisos.some((a) => a !== "ao_vivo" && a in AVISOS_PAGAMENTO)) contagens.comAviso++;
     if (p.aoVivo === true || p.avisos.includes("ao_vivo")) contagens.aoVivo++;
   }
@@ -405,7 +524,36 @@ export async function avisosDePagamento(
     contagens.pagasAbertas = abertas?.n ?? 0;
   }
 
+  // Cartão (M8.2b): o disjuntor de recusas e os sinais de alguém testando cartões ou de chaves trocadas.
+  const disjuntor = await disjuntorAberto(db, organizacaoId, agora);
+  contagens.recusasCartao24h = await recusasNasUltimas24h(db, organizacaoId, agora);
+  contagens.recusasPorToken = await recusasPorTokenNaUltimaHora(db, organizacaoId, agora);
+
   const alertas: AvisoPagamento[] = [];
+  if (disjuntor) {
+    const texto = disjuntor.ate
+      ? `Pagamento com cartão desligado até ${horaSP(disjuntor.ate)}: ${disjuntor.recusas} recusas em 30 minutos (pode ser alguém testando cartões roubados). O Pix continua.`
+      : `Pagamento com cartão desligado até alguém religar: ${disjuntor.recusas} recusas em ${disjuntor.janela === "24h" ? "24 horas" : "30 minutos, pela terceira vez no dia"} (pode ser alguém testando cartões roubados). O Pix continua.`;
+    alertas.push({ nivel: "atencao", texto, link: LINK_CONFIG_PAGAMENTO });
+  } else if (contagens.recusasCartao24h >= ALERTA_RECUSAS_24H) {
+    alertas.push({
+      nivel: "atencao",
+      texto: `${contagens.recusasCartao24h} pagamentos com cartão recusados nas últimas 24 horas: se não reconhece esse movimento, pode ser alguém testando cartões. O cartão desliga sozinho com ${RECUSAS_PARA_DESLIGAR_24H}.`,
+      link: LINK_CONFIG_PAGAMENTO,
+    });
+  }
+  if (contagens.recusasPorToken >= ALERTA_TOKEN_INVALIDO_1H)
+    alertas.push({
+      nivel: "atencao",
+      texto: `${contagens.recusasPorToken} pagamentos com cartão recusados por dados do cartão inválidos na última hora: confira se a chave pública e o token do Mercado Pago são da mesma conta (Integrações).`,
+      link: "/painel/configuracoes/integracoes",
+    });
+  if (contagens.cartaoEmAnalise)
+    alertas.push({
+      nivel: "atencao",
+      texto: `${contagens.cartaoEmAnalise} pagamento(s) com cartão em análise há mais de um dia: o Mercado Pago decide em até 2 dias úteis; se aprovar com as noites ocupadas, o pagamento fica para devolver.`,
+      link: `${LINK_PAGAMENTOS}?atencao=1`,
+    });
   const ambiente = estadoPagamentoDoAmbiente(env);
   if (ambiente.situacao === "desligado" && ambienteMercadoPago(env.MERCADOPAGO_AMBIENTE) === null) alertas.push({ nivel: "atencao", texto: "Configuração inválida do Mercado Pago: MERCADOPAGO_AMBIENTE só aceita teste ou producao. O pagamento no site está desligado.", link: "/painel/configuracoes/integracoes" });
   if (o.contaDeTeste === false) alertas.push({ nivel: "atencao", texto: "A conta das chaves do Mercado Pago não é de teste: nenhuma cobrança é feita até trocar as chaves.", link: "/painel/configuracoes/integracoes" });
@@ -419,7 +567,7 @@ export async function avisosDePagamento(
     });
   if (contagens.devolucaoPedida) alertas.push({ nivel: "info", texto: `${contagens.devolucaoPedida} devolução(ões) pedida(s) ao Mercado Pago aguardando confirmação.`, link: `${LINK_PAGAMENTOS}?atencao=1` });
   if (contagens.devolucaoRecusada) alertas.push({ nivel: "atencao", texto: `${contagens.devolucaoRecusada} devolução(ões) parada(s): o Mercado Pago recusou ou não respondeu três vezes. Confira no painel do Mercado Pago antes de tentar de novo ou de registrar a devolução feita por fora.`, link: `${LINK_PAGAMENTOS}?atencao=1` });
-  if (contagens.criacaoPresa) alertas.push({ nivel: "atencao", texto: `${contagens.criacaoPresa} Pix do site sem resposta do Mercado Pago sobre a criação há mais de ${CARENCIA_PAGAMENTO_MS / 60_000} minutos: confira no painel do Mercado Pago e use Conferir agora.`, link: `${LINK_PAGAMENTOS}?atencao=1` });
+  if (contagens.criacaoPresa) alertas.push({ nivel: "atencao", texto: `${contagens.criacaoPresa} pagamento(s) do site sem resposta do Mercado Pago sobre a criação há mais de ${CARENCIA_PAGAMENTO_MS / 60_000} minutos: confira no painel do Mercado Pago e use Conferir agora.`, link: `${LINK_PAGAMENTOS}?atencao=1` });
   if (contagens.liberacaoVencida) alertas.push({ nivel: "info", texto: `${contagens.liberacaoVencida} pagamento(s) do site com a liberação prevista vencida e sem confirmação do Mercado Pago: confira e, se o dinheiro caiu, registre a liberação na reserva.`, link: `${LINK_PAGAMENTOS}?atencao=1` });
   if (contagens.semCalculo) alertas.push({ nivel: "atencao", texto: `${contagens.semCalculo} reserva(s) paga(s) pelo site com dinheiro recebido sem cálculo no financeiro: confira o contrato na data da entrada.`, link: LINK_PAGAMENTOS });
   if (contagens.comAviso) alertas.push({ nivel: "atencao", texto: `${contagens.comAviso} pagamento(s) do site com aviso: confira na lista.`, link: `${LINK_PAGAMENTOS}?atencao=1` });

@@ -1,12 +1,14 @@
 import type { ReactNode } from "react";
+import { BotaoCopiar } from "@/components/BotaoCopiar";
 import styles from "@/components/formularios.module.css";
 import { FormAcaoPagamento } from "@/components/pagamentos/FormAcaoPagamento";
 import { DOCUMENTOS_LEGAIS, PAGINAS_LEGAIS } from "@/configuracoes/paginas-legais-texto";
 import { centavosParaCampo } from "@/lib/dinheiro-form";
 import { formatBRL } from "@/lib/money";
 import { conferirAgoraAcao, devolucaoPorForaAcao, devolverAcao, estornarLiberacaoAcao, registrarLiberacaoAcao, registrarTaxaPerdidaAcao } from "@/pagamentos/acoes-painel";
-import type { PagamentoDoPainel } from "@/pagamentos/consultas";
-import { NOMES_DESFECHO, NOMES_SITUACAO_PAGAMENTO } from "@/pagamentos/situacoes";
+import { nomeDaBandeira, type PagamentoDoPainel } from "@/pagamentos/consultas";
+import { DESAFIO_3DS_MINUTOS, type ModoTresDS, type StatusTresDS } from "@/pagamentos/provedor";
+import { AVISOS_PAGAMENTO, NOMES_DESFECHO, NOMES_SITUACAO_PAGAMENTO } from "@/pagamentos/situacoes";
 
 type Props = {
   pagamentos: readonly PagamentoDoPainel[];
@@ -22,7 +24,22 @@ const quando = (d: Date) => d.toLocaleString("pt-BR", { timeZone: FUSO, dateStyl
 const dia = (d: Date) => d.toLocaleDateString("pt-BR", { timeZone: FUSO });
 const hora = (d: Date) => d.toLocaleTimeString("pt-BR", { timeZone: FUSO, hour: "2-digit", minute: "2-digit" });
 const dataBr = (d: string) => d.split("-").reverse().join("/");
-const FORMA = { pix: "Pix", cartao: "Cartão" } as const;
+const FORMA = { pix: "Pix", cartao: "Cartão de crédito" } as const;
+/** Verificação do banco (3DS) pedida e o resultado lido, em palavras (só para quem lê o financeiro). */
+const TRES_DS: Record<ModoTresDS, string> = { on_fraud_risk: "quando houver risco", never: "nunca" };
+const RESULTADO_TRES_DS: Record<StatusTresDS, string> = {
+  AUTHENTICATED: "autenticado pelo banco",
+  NOT_AUTHENTICATED: "não autenticado",
+  CHALLENGE: "o banco pediu a verificação",
+  ATTEMPTED: "tentada, sem desafio",
+  REJECTED: "recusada pelo banco",
+  ERROR: "erro na verificação",
+};
+/** No cartão, a devolução recusada pode ser falta de saldo no Mercado Pago (antes da liberação): o texto diz isso. */
+export const DEVOLUCAO_FALHOU_CARTAO =
+  "O Mercado Pago recusou ou não respondeu três vezes: confira no painel do Mercado Pago (no cartão, a devolução antes de o Mercado Pago liberar o dinheiro pode precisar de saldo disponível na conta) e, se devolver por lá, use Conferir agora: a devolução aparece aqui quando o Mercado Pago mostrar.";
+/** Linha fixa junto do motivo de uma recusa de cartão (a equipe nunca vira oráculo de quem testa cartões). */
+export const NAO_INFORME_O_MOTIVO = "Não informe o motivo ao hóspede: peça outro cartão ou o Pix.";
 const DEVOLUCAO = {
   pedida: "pedida ao Mercado Pago, aguardando confirmação",
   confirmada: "confirmada pelo Mercado Pago",
@@ -30,8 +47,23 @@ const DEVOLUCAO = {
   por_fora: "feita por fora",
 } as const;
 
-/** A situação da tentativa em palavras simples, com o desfecho quando houver. */
+/**
+ * A situação da tentativa em palavras simples, com o desfecho quando houver. No cartão, igual para toda a equipe: o
+ * motivo de uma recusa só aparece no bloco do financeiro.
+ */
 export function situacaoEmPalavras(p: PagamentoDoPainel): string {
+  if (p.forma === "cartao") {
+    if (p.situacao === "pendente") {
+      if (p.etapaCartao === "desafio") {
+        const ate = new Date(p.criadoEm.getTime() + DESAFIO_3DS_MINUTOS * 60_000);
+        return `Aguardando a verificação do banco do hóspede (até ${hora(ate)})`;
+      }
+      if (p.etapaCartao === "analise") return "Em análise no Mercado Pago (pode levar até 2 dias úteis)";
+      return "O Mercado Pago está processando";
+    }
+    if (p.situacao === "criando" || p.situacao === "incerta") return "Conferindo no Mercado Pago se o pagamento foi criado";
+    if (p.situacao === "recusado") return "Recusado pelo Mercado Pago";
+  }
   if (p.situacao === "pendente") return p.pixExpiraEm ? `Aguardando o pagamento do Pix (vale até ${hora(p.pixExpiraEm)} de ${dia(p.pixExpiraEm)})` : "Aguardando o pagamento";
   if (p.situacao === "criando" || p.situacao === "incerta") return "Conferindo no Mercado Pago se o Pix foi criado";
   if (p.desfecho === "reserva") return p.situacao === "aprovado" ? "Aprovado: confirmou a reserva" : `${NOMES_SITUACAO_PAGAMENTO[p.situacao]} (tinha confirmado a reserva)`;
@@ -96,11 +128,44 @@ function devolucao(p: PagamentoDoPainel, verValores: boolean): string | null {
   return partes.join(" · ");
 }
 
+/** Os identificadores no Mercado Pago (não são dado pessoal), cada um com o botão de copiar: é por eles que se acha o pagamento lá. */
+function Identificadores({ p }: { p: PagamentoDoPainel }) {
+  const ids: [string, string][] = [];
+  if (p.idProvedor) ids.push(["", p.idProvedor]);
+  if (p.referencia) ids.push(["", p.referencia]);
+  if (p.idPagamentoProvedor) ids.push(["pagamento ", p.idPagamentoProvedor]);
+  return (
+    <span style={{ display: "inline-flex", flexWrap: "wrap", gap: "4px 10px", alignItems: "center" }}>
+      {ids.map(([prefixo, id]) => (
+        <span key={id} style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+          <code>
+            {prefixo}
+            {id}
+          </code>
+          <BotaoCopiar texto={id} rotulo="Copiar" className={styles.pequeno} />
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** "Cartão de crédito · Visa · 3x" (bandeira e parcelas; nunca BIN nem últimos dígitos). */
+function cabecalhoDaForma(p: PagamentoDoPainel): string {
+  if (p.forma !== "cartao") return FORMA[p.forma];
+  const partes: string[] = [FORMA.cartao];
+  const bandeira = nomeDaBandeira(p.bandeira ?? null);
+  if (bandeira) partes.push(bandeira);
+  if (p.parcelas) partes.push(`${p.parcelas}x`);
+  return partes.join(" · ");
+}
+
 function Tentativa({ p, verValores, editar, hoje }: { p: PagamentoDoPainel } & Omit<Props, "pagamentos">) {
+  const cartao = p.forma === "cartao";
   const linhas: [string, ReactNode][] = [
     ["Situação", situacaoEmPalavras(p)],
-    ["Gerado em", quando(p.criadoEm)],
+    [cartao ? "Criado em" : "Gerado em", quando(p.criadoEm)],
   ];
+  if (p.idProvedor || p.idPagamentoProvedor) linhas.push(["No Mercado Pago", <Identificadores key="ids" p={p} />]);
   if (p.aceite) linhas.push(["Aceite", aceiteDaTentativa(p.aceite)]);
   else if (p.aceite === null) linhas.push(["Aceite", "não registrado (tentativa anterior às páginas legais do site)"]);
   if (p.aprovadoEm) linhas.push(["Aprovado em", quando(p.aprovadoEm)]);
@@ -109,8 +174,24 @@ function Tentativa({ p, verValores, editar, hoje }: { p: PagamentoDoPainel } & O
   const dev = devolucao(p, verValores);
   if (dev) linhas.push(["Devolução", dev]);
   if (verValores) {
-    linhas.push(["Valor", formatBRL(p.valor)]);
-    if (p.valorPago !== null && p.valorPago !== p.valor) linhas.push(["Pago pelo hóspede", formatBRL(p.valorPago)]);
+    linhas.push([cartao ? "Valor da reserva" : "Valor", formatBRL(p.valor)]);
+    if (p.valorPago !== null && p.valorPago !== p.valor)
+      linhas.push([
+        "Pago pelo hóspede",
+        cartao && p.juros ? `${formatBRL(p.valorPago)} (inclui ${formatBRL(p.juros)} de juros do parcelamento, que ficam com o Mercado Pago)` : formatBRL(p.valorPago),
+      ]);
+    if (cartao) {
+      // Só para quem lê o financeiro: o motivo da recusa, a verificação do banco e o custo do "sem acréscimo".
+      if (p.motivoRecusa)
+        linhas.push([
+          "Motivo (só para a equipe)",
+          <span key="motivo">
+            {p.motivoRecusa} <strong>{NAO_INFORME_O_MOTIVO}</strong>
+          </span>,
+        ]);
+      if (p.tresDS) linhas.push(["Verificação do banco", `${TRES_DS[p.tresDS]}${p.tresDSStatus ? ` (resultado deste pagamento: ${RESULTADO_TRES_DS[p.tresDSStatus]})` : ""}`]);
+      if (p.custoParcelasVendedor) linhas.push(["Custo do parcelamento sem acréscimo cobrado da SCL", formatBRL(p.custoParcelasVendedor)]);
+    }
     linhas.push(["Taxa do Mercado Pago", p.taxa === null ? "ainda não informada" : formatBRL(p.taxa)]);
     linhas.push(["Líquido", p.liquido === null ? "ainda não informado" : formatBRL(p.liquido)]);
     const lib = liberacao(p);
@@ -122,7 +203,7 @@ function Tentativa({ p, verValores, editar, hoje }: { p: PagamentoDoPainel } & O
   return (
     <article aria-label={`Pagamento ${FORMA[p.forma]} de ${quando(p.criadoEm)}`} style={{ border: "1px solid var(--scl-borda)", borderRadius: "var(--scl-raio-cartao)", padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
       <div className={styles.linha} style={{ alignItems: "center", gap: 8 }}>
-        <strong>{FORMA[p.forma]}</strong>
+        <strong>{cabecalhoDaForma(p)}</strong>
         <span className={styles.etiqueta} style={{ background: p.situacao === "aprovado" ? "var(--scl-ok-fundo)" : undefined }}>
           {NOMES_SITUACAO_PAGAMENTO[p.situacao]}
         </span>
@@ -141,7 +222,7 @@ function Tentativa({ p, verValores, editar, hoje }: { p: PagamentoDoPainel } & O
       {p.avisos.length > 0 && (
         <ul role="note" className={styles.alerta} style={{ margin: 0, paddingLeft: 28, fontSize: "0.875rem" }}>
           {p.avisos.map((t) => (
-            <li key={t}>{t}</li>
+            <li key={t}>{cartao && t === AVISOS_PAGAMENTO.devolucao_falhou ? DEVOLUCAO_FALHOU_CARTAO : t}</li>
           ))}
         </ul>
       )}
@@ -197,7 +278,7 @@ function Tentativa({ p, verValores, editar, hoje }: { p: PagamentoDoPainel } & O
               rotulo="Registrar devolução feita por fora"
               nome="Registrar devolução feita por fora"
               discreto
-              pergunta="Registrar que o dinheiro já voltou ao hóspede por fora do Mercado Pago? Vale só o valor integral pago, e antes o sistema confere no Mercado Pago que a devolução não foi feita por lá. O pagamento fica encerrado como devolvido por fora e não pode mais ser devolvido pelo Mercado Pago."
+              pergunta={`Registrar que o dinheiro já voltou ao hóspede por fora do Mercado Pago? Vale só o valor integral pago, e antes o sistema confere no Mercado Pago que a devolução não foi feita por lá. O pagamento fica encerrado como devolvido por fora e não pode mais ser devolvido pelo Mercado Pago.${cartao ? " O hóspede pode também contestar a cobrança no cartão e receber de novo: só registre se a devolução já foi feita e combinada com ele." : ""}`}
             >
               <label style={{ flex: "0 1 180px" }}>
                 Data da devolução
@@ -236,9 +317,11 @@ function Tentativa({ p, verValores, editar, hoje }: { p: PagamentoDoPainel } & O
 }
 
 /**
- * Ficha da reserva → quadro "Pagamento no site" (M8.2a): cada tentativa com forma, situação em palavras e datas
- * (quem lê reservas); valores para quem lê o financeiro; ações para quem edita o financeiro, só as que o pagamento
- * permite, e cada uma que mexe em dinheiro com confirmação.
+ * Ficha da reserva → quadro "Pagamento no site" (M8.2a): cada tentativa com forma, situação em palavras, datas e os
+ * identificadores no Mercado Pago (quem lê reservas); valores para quem lê o financeiro — no cartão (M8.2b), também os
+ * juros, a verificação do banco e o motivo de uma recusa, com a linha de não informar o motivo ao hóspede; ações para
+ * quem edita o financeiro, só as que o pagamento permite, e cada uma que mexe em dinheiro com confirmação. Nunca BIN,
+ * últimos dígitos nem titular do cartão (nada disso é guardado).
  */
 export function PagamentoNoSite({ pagamentos, verValores, editar, hoje }: Props) {
   if (!pagamentos.length) return null;
@@ -246,8 +329,8 @@ export function PagamentoNoSite({ pagamentos, verValores, editar, hoje }: Props)
     <section aria-label="Pagamento no site" style={{ maxWidth: 820, display: "flex", flexDirection: "column", gap: 8 }}>
       <h2 style={{ fontSize: "1.25rem", margin: 0 }}>Pagamento no site</h2>
       <p style={{ margin: 0, color: "var(--scl-texto-2)", fontSize: "0.875rem" }}>
-        Cada Pix gerado pelo hóspede no site. A situação só muda pelo que o Mercado Pago informa; o recebimento desta reserva vem da liberação do pagamento
-        (pelo Mercado Pago ou registrada aqui), nunca da lista de recebimentos.
+        Cada tentativa de pagamento (Pix ou cartão) feita pelo hóspede no site. A situação só muda pelo que o Mercado Pago informa; o recebimento desta
+        reserva vem da liberação do pagamento (pelo Mercado Pago ou registrada aqui), nunca da lista de recebimentos.
       </p>
       {pagamentos.map((p) => (
         <Tentativa key={p.id} p={p} verValores={verValores} editar={editar} hoje={hoje} />

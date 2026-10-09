@@ -7,6 +7,7 @@ import type { DesfechoPagamento, SituacaoPagamento } from "@/db/schema";
 import type { SituacaoCobranca } from "./provedor";
 
 export type { DesfechoPagamento, SituacaoPagamento };
+export { CODIGOS_FALHA_DO_PROVEDOR, CODIGOS_TOKEN } from "./provedor";
 
 /** Tentativas ainda sem resposta final do provedor: seguram as datas (com a carência) e travam ações da equipe. */
 export const SITUACOES_EM_ANDAMENTO = ["criando", "incerta", "pendente"] as const satisfies readonly SituacaoPagamento[];
@@ -16,7 +17,10 @@ export const SITUACOES_COM_DINHEIRO = ["aprovado", "devolvido_parcial", "devolvi
 export const emAndamento = (s: SituacaoPagamento) => (SITUACOES_EM_ANDAMENTO as readonly string[]).includes(s);
 export const comDinheiro = (s: SituacaoPagamento) => (SITUACOES_COM_DINHEIRO as readonly string[]).includes(s);
 
-/** Situação do provedor → situação local; null = desconhecida (vira aviso, nunca palpite). Pix "em análise" segue pendente. */
+/**
+ * Situação do provedor → situação local; null = desconhecida (vira aviso, nunca palpite). "Em análise" (Pix ou cartão)
+ * segue pendente; no cartão, a etapa (desafio, análise ou processando) vai em `pagamentos.etapa_cartao` (M8.2b).
+ */
 export function situacaoLocal(s: SituacaoCobranca): SituacaoPagamento | null {
   switch (s) {
     case "pendente":
@@ -137,8 +141,60 @@ export const AVISOS_PAGAMENTO = {
   devolucao_sem_confirmacao: "O Mercado Pago aceitou a devolução, mas o pagamento ainda não aparece como devolvido: confira no painel do Mercado Pago. O sistema não pede de novo (poderia devolver duas vezes) e confirma sozinho quando a devolução aparecer.",
   andamento_fora_do_prazo: "Este pagamento ficou em andamento por mais de 85 dias e o Mercado Pago só deixa consultar pagamentos de até três meses: o sistema parou de conferir. Confira no painel do Mercado Pago e resolva por lá até o M8.2c.",
   devolucao_fora_do_prazo: "A devolução foi pedida, mas o pagamento tem mais de 85 dias e o Mercado Pago só deixa consultar pagamentos de até três meses: o sistema parou de conferir esta devolução. Confira no painel do Mercado Pago e resolva por lá até o M8.2c.",
-  cancelamento_pendente: "Não deu para cancelar no Mercado Pago um Pix que ficou sobrando: use Conferir agora para tentar de novo (no teste, nada é conferido sozinho).",
+  cancelamento_pendente: "Não deu para cancelar no Mercado Pago um pagamento que ficou sobrando: use Conferir agora para tentar de novo (no teste, nada é conferido sozinho).",
+  parcelas_sem_juros:
+    "O parcelamento saiu sem acréscimo para o hóspede: o Mercado Pago cobrou da SCL o custo das parcelas. A taxa não foi lançada sozinha: decida quem paga esse custo e registre a liberação à mão. Para não acontecer de novo, desligue o \"parcelamento sem acréscimo\" no Mercado Pago.",
+  custo_parcelas_desconhecido:
+    "Pagamento parcelado: o Mercado Pago informou o líquido, mas não se cobrou da SCL algum custo das parcelas. A taxa não foi lançada sozinha (o sistema nunca supõe que não houve custo) e o sistema confere de novo; se continuar assim, confira no Mercado Pago e registre a liberação à mão.",
+  liberacao_em_parcelas:
+    "O Mercado Pago libera este pagamento parcela a parcela: nada foi lançado sozinho. Registre a liberação à mão quando o valor inteiro cair (ou cada parte, conforme o extrato do Mercado Pago).",
+  desafio_sem_url: "O Mercado Pago pediu a verificação do banco, mas não mandou um endereço válido para ela: o pagamento foi cancelado.",
+  outra_reserva_mesmo_email:
+    "Este pagamento confirmou a reserva depois que o mesmo e-mail já tinha outra reserva confirmada pelo site: o hóspede pode ter pago duas vezes. Confira com ele.",
 } as const;
 export type CodigoAviso = keyof typeof AVISOS_PAGAMENTO;
 
 export const textosDosAvisos = (codigos: readonly string[]) => codigos.filter((c): c is CodigoAviso => c in AVISOS_PAGAMENTO).map((c) => AVISOS_PAGAMENTO[c]);
+
+// ---------------------------------------------------------------- cartão (M8.2b)
+
+/**
+ * Motivo de uma recusa de cartão, SÓ para a equipe com acesso ao financeiro (nunca para o hóspede, que vê sempre a
+ * mesma mensagem: quem testa cartões roubados usa o motivo como oráculo). Chaves = status_detail documentados da
+ * Orders API para `failed`, mais o do desafio 3DS; nomes no estilo da Payments API (bad_filled_security_code,
+ * blacklist…) são desconhecidos aqui e caem no texto genérico.
+ */
+export const MOTIVOS_RECUSA_CARTAO: Record<string, string> = {
+  bad_filled_card_data: "Dados do cartão preenchidos errado (número, validade ou código de segurança).",
+  invalid_card_token: "Os dados do cartão expiraram ou são inválidos (formulário vencido, ou a chave pública e o token do Mercado Pago de contas diferentes).",
+  card_token_not_found: "Os dados do cartão expiraram ou são inválidos (formulário vencido, ou a chave pública e o token do Mercado Pago de contas diferentes).",
+  invalid_token: "Os dados do cartão expiraram ou são inválidos (formulário vencido, ou a chave pública e o token do Mercado Pago de contas diferentes).",
+  high_risk: "Recusado pela análise de segurança do Mercado Pago.",
+  rejected_by_issuer: "Recusado pelo banco emissor do cartão.",
+  required_call_for_authorize: "O banco emissor pede que o titular ligue para autorizar o pagamento.",
+  max_attempts_exceeded: "Limite de tentativas do cartão atingido.",
+  card_disabled: "Cartão desabilitado no banco emissor.",
+  insufficient_amount: "Saldo ou limite insuficiente.",
+  card_insufficient_amount: "Saldo ou limite insuficiente.",
+  amount_limit_exceeded: "O valor passa do limite do cartão.",
+  processing_error: "Erro técnico do Mercado Pago ao processar o pagamento (não é recusa do banco).",
+  invalid_installments: "Número de parcelas não aceito para este cartão.",
+  "3ds_challenge_expired": "A verificação do banco (3DS) não foi concluída a tempo.",
+  cc_rejected_3ds_challenge: "A verificação do banco (3DS) não foi concluída ou foi recusada.",
+};
+/** Recusa sem motivo conhecido (ou com um código que o sistema não conhece). */
+export const MOTIVO_RECUSA_CARTAO_GENERICO = "Recusado pelo Mercado Pago sem um motivo que o sistema conheça: confira no painel do Mercado Pago.";
+
+/** Texto do motivo de recusa para o painel (só `financeiro:ler`). */
+export const textoMotivoRecusaCartao = (codigo: string | null): string => (codigo && Object.hasOwn(MOTIVOS_RECUSA_CARTAO, codigo) ? MOTIVOS_RECUSA_CARTAO[codigo] : MOTIVO_RECUSA_CARTAO_GENERICO);
+
+/**
+ * O código do motivo num `detalhe_provedor`: o último código de "status/detalhe; pagamento status/detalhe",
+ * "recusado/<codigo>" ou "dados_invalidos/<codigo>". null quando não há ("?" ou texto fora do formato).
+ */
+export function motivoDoDetalhe(detalhe: string | null | undefined): string | null {
+  if (typeof detalhe !== "string") return null;
+  const ultimo = detalhe.split(";").pop()!.trim().replace(/^pagamento\s+/, "");
+  const codigo = ultimo.split("/").pop()!.trim();
+  return /^[a-z0-9_]{1,60}$/.test(codigo) ? codigo : null;
+}

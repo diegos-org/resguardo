@@ -5,8 +5,20 @@ import type { AceiteNaPagina } from "@/site/aceites";
 import type { PagamentoDoHospede } from "@/site/pagamento-vista";
 import { ESPERA_DEPOIS_DO_LIMITE_MS, INTERVALO_ACOMPANHAMENTO_MS, PagamentoPix } from "./PagamentoPix";
 
-const m = vi.hoisted(() => ({ refresh: vi.fn() }));
+const m = vi.hoisted(() => ({ refresh: vi.fn(), carregar: vi.fn(), criados: 0, desmontados: 0 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: m.refresh }) }));
+// O SDK do Mercado Pago nunca carrega nos testes: um formulário falso conta quantas vezes foi criado e desmontado.
+vi.mock("./sdk-mercadopago", async (orig) => ({ ...(await orig<typeof import("./sdk-mercadopago")>()), carregarSdkMercadoPago: m.carregar }));
+class MercadoPagoFalso {
+  bricks() {
+    return {
+      create: async () => {
+        m.criados++;
+        return { unmount: () => void m.desmontados++ };
+      },
+    };
+  }
+}
 
 const AGORA = new Date("2026-10-01T15:00:00Z"); // 12:00 em São Paulo
 const base: PagamentoDoHospede = {
@@ -21,9 +33,16 @@ const base: PagamentoDoHospede = {
   pagamentoEmDobro: false,
   devolucao: null,
   acompanhar: false,
+  podePagarCartao: false,
+  cartao: null,
+  cartaoRestantes: 3,
+  desafioUrl: null,
+  forma: null,
+  recusa: null,
+  prazoDasDatas: null,
 };
 const pix = { copiaECola: "00020126580014br.gov.bcb.pix0136FALSO-ORDTST0001", imagem: "data:image/png;base64,RkFMU08=", link: "https://pagamento.falso.invalid/pix/1", expiraEm: "2026-10-01T15:30:00.000Z" };
-const textos = { convite: "CONVITE EDITAVEL", aguardando: "AGUARDANDO EDITAVEL", semDatas: "SEM DATAS EDITAVEL" };
+const textos = { convite: "CONVITE EDITAVEL", aguardando: "AGUARDANDO EDITAVEL", semDatas: "SEM DATAS EDITAVEL", cartaoAnalise: "ANALISE EDITAVEL" };
 const acoes = { gerarPix: vi.fn(), continuar: vi.fn() };
 
 const mostrar = (over: Partial<PagamentoDoHospede> = {}, autorizado = true, contato: React.ReactNode = <a href="https://wa.me/55">Falar com a equipe pelo WhatsApp</a>) =>
@@ -33,6 +52,9 @@ let visibilidade: DocumentVisibilityState = "visible";
 const fetchMock = vi.fn();
 beforeEach(() => {
   vi.resetAllMocks();
+  m.carregar.mockResolvedValue(MercadoPagoFalso);
+  m.criados = 0;
+  m.desmontados = 0;
   visibilidade = "visible";
   Object.defineProperty(document, "visibilityState", { configurable: true, get: () => visibilidade });
   vi.stubGlobal("fetch", fetchMock);
@@ -344,5 +366,197 @@ describe("aceite das páginas legais antes do Pix (M7.4)", () => {
     expect(sem.container.textContent).not.toContain("Você aceitou");
     expect(sem.container.textContent).not.toContain("reembolso integral");
     expect(screen.queryByRole("checkbox")).toBeNull();
+  });
+});
+
+describe("Pix e cartão de crédito (M8.2b)", () => {
+  const CARTAO = { chavePublica: "TEST-chave-publica-ficticia", valor: 182400, parcelasMaximas: null, emailTeste: "test@testuser.com" };
+  const versoes = { termos: 1, privacidade: 1, cancelamento: 1 };
+  const pendente: AceiteNaPagina = { versoes, aceito: null, resumo: [{ tipo: "paragrafo", texto: "RESUMO" }], prazo: { tipo: "integral_ate", data: "2026-09-28" } };
+  const aceito: AceiteNaPagina = { ...pendente, aceito: { em: "2026-10-01T15:02:00.000Z", versoes } };
+  const pagarComCartao = vi.fn();
+  const comCartao = (over: Partial<PagamentoDoHospede> = {}, o: { autorizado?: boolean; aceite?: AceiteNaPagina | null; linhaAnalise?: string | null } = {}) =>
+    render(
+      <PagamentoPix
+        codigo="COT-ABCDEFGH"
+        pagamento={{ ...base, podePagarCartao: true, cartao: CARTAO, ...over }}
+        autorizado={o.autorizado ?? true}
+        fuso="America/Sao_Paulo"
+        total={182400}
+        textos={textos}
+        contato={<a href="https://wa.me/55">Falar com a equipe pelo WhatsApp</a>}
+        gerarPix={acoes.gerarPix}
+        continuar={acoes.continuar}
+        pagarComCartao={pagarComCartao}
+        aceite={o.aceite === undefined ? aceito : o.aceite}
+        linhaAnalise={o.linhaAnalise ?? null}
+      />,
+    );
+  const radio = (nome: RegExp) => screen.getByRole("radio", { name: nome }) as HTMLInputElement;
+
+  it("as duas formas: a escolha com o Pix marcado e em destaque, a nota dos juros junto do cartão; escolher o cartão troca o Gerar Pix pelo formulário", async () => {
+    const { container } = comCartao();
+    expect(screen.getByRole("heading", { name: "Pagamento" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Pagamento" })).toBeTruthy();
+    expect(radio(/Pix \(recomendado\)/).checked).toBe(true);
+    expect(radio(/Pix \(recomendado\)/).closest("label")?.className).toContain("formaRecomendada");
+    expect(radio(/Cartão de crédito/).closest("label")?.textContent).toContain("No cartão parcelado há juros do Mercado Pago, pagos por você");
+    expect(screen.getByRole("button", { name: "Gerar Pix" })).toBeTruthy();
+    expect(container.textContent).not.toContain("Pagamento processado pelo Mercado Pago");
+    fireEvent.click(radio(/Cartão de crédito/));
+    expect(screen.queryByRole("button", { name: "Gerar Pix" })).toBeNull();
+    await waitFor(() => expect(m.criados).toBe(1));
+    expect(container.textContent).toContain("Pagamento processado pelo Mercado Pago");
+    fireEvent.click(radio(/Pix \(recomendado\)/));
+    await waitFor(() => expect(m.desmontados).toBe(1));
+  });
+
+  it("só uma forma: ela direto (o cartão com a nota dos juros); sem o cookie, 'Continuar o pagamento' e nada do formulário", async () => {
+    comCartao({ podeGerar: false });
+    expect(screen.getByRole("heading", { name: "Pague com cartão de crédito" })).toBeTruthy();
+    expect(screen.queryByRole("radio")).toBeNull();
+    expect(screen.getByText(/No cartão parcelado há juros/)).toBeTruthy();
+    await waitFor(() => expect(m.criados).toBe(1));
+    cleanup();
+    comCartao({ podePagarCartao: false, cartao: null });
+    expect(screen.getByRole("heading", { name: "Pague com Pix" })).toBeTruthy();
+    expect(screen.queryByRole("radio")).toBeNull();
+    cleanup();
+    comCartao({ cartao: null }, { autorizado: false });
+    expect(screen.getByRole("button", { name: "Continuar o pagamento" })).toBeTruthy();
+    expect(screen.queryByRole("radio")).toBeNull();
+    await act(async () => {});
+    expect(m.carregar).toHaveBeenCalledTimes(1);
+  });
+
+  it("textos pelas formas disponíveis: Pix esgotado com o cartão, Pix vencido só com o cartão ou com as duas", () => {
+    const { container } = comCartao({ estado: "pix_esgotado", podeGerar: false, pixRestantes: 0 });
+    expect(container.textContent).toContain("Esta cotação já gerou o máximo de Pix. Você ainda pode pagar com cartão de crédito.");
+    expect(container.textContent).toContain("Prefere combinar com a equipe?");
+    cleanup();
+    comCartao({ estado: "pix_vencido", podeGerar: false, pixRestantes: 2 });
+    expect(screen.getByText("O Pix venceu sem pagamento. Você pode pagar com cartão de crédito.")).toBeTruthy();
+    cleanup();
+    comCartao({ estado: "pix_vencido", pixRestantes: 2 });
+    expect(screen.getByText(/Gere outro Pix \(ainda dá para gerar 2\) ou pague com cartão de crédito/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Gerar outro Pix" })).toBeTruthy();
+  });
+
+  it("Pix esgotado com páginas legais novas: a caixa do aceite vem no cartão, e o formulário só depois de marcada", async () => {
+    comCartao({ estado: "pix_esgotado", podeGerar: false, pixRestantes: 0 }, { aceite: pendente });
+    expect(screen.getByRole("group", { name: "Antes de pagar" })).toBeTruthy();
+    await act(async () => {});
+    expect(m.carregar).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("checkbox"));
+    await waitFor(() => expect(m.criados).toBe(1));
+  });
+
+  it("Pix aguardando: 'Prefere pagar com cartão?' troca o QR pelo formulário (o Pix é cancelado ao pagar) e 'Voltar ao Pix' desfaz", async () => {
+    comCartao({ estado: "pix_aguardando", pix, podeGerar: false, dinheiroSemDesfecho: true });
+    expect(screen.getByRole("img", { name: "QR code do Pix" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Prefere pagar com cartão?" }));
+    expect(screen.queryByRole("img", { name: "QR code do Pix" })).toBeNull();
+    expect(screen.getByText(/Ao pagar com cartão, o Pix desta cotação é cancelado/)).toBeTruthy();
+    await waitFor(() => expect(m.criados).toBe(1));
+    fireEvent.click(screen.getByRole("button", { name: "Voltar ao Pix" }));
+    expect(screen.getByRole("img", { name: "QR code do Pix" })).toBeTruthy();
+  });
+
+  it("cartão em análise: o texto editável, a linha fixa do prazo e a equipe; nenhuma forma de pagar", () => {
+    const { container } = comCartao({ estado: "cartao_em_analise", forma: "cartao", podeGerar: false, podePagarCartao: false, cartao: null }, { linhaAnalise: "As datas estão seguradas até 13:30." });
+    expect(container.textContent).toContain("ANALISE EDITAVEL");
+    expect(container.textContent).toContain("As datas estão seguradas até 13:30.");
+    expect(screen.getByRole("link", { name: "Falar com a equipe pelo WhatsApp" })).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("cartão recusado: o mesmo texto para toda recusa (ou o da verificação do banco) e as formas que sobram", () => {
+    const { container } = comCartao({ estado: "cartao_recusado", forma: "cartao", recusa: "cartao" });
+    expect(container.textContent).toContain("Não foi possível aprovar o pagamento com este cartão. Confira os dados, use outro cartão ou pague com Pix.");
+    expect(radio(/Pix \(recomendado\)/).checked).toBe(true);
+    cleanup();
+    const v = comCartao({ estado: "cartao_recusado", forma: "cartao", recusa: "verificacao", podeGerar: false, podePagarCartao: false, cartao: null });
+    expect(v.container.textContent).toContain("A verificação do seu banco não foi concluída. Tente de novo ou pague com Pix.");
+    expect(v.container.textContent).toContain("O pagamento pelo site não está disponível agora.");
+  });
+
+  it("desafio do banco: o quadro, e 'Pagar com Pix' ou 'Usar outro cartão' trocam o quadro pelo formulário (o desafio é cancelado antes)", async () => {
+    vi.stubGlobal("fetch", fetchMock);
+    comCartao({ estado: "cartao_desafio", forma: "cartao", dinheiroSemDesfecho: true, desafioUrl: "https://www.mercadopago.com.br/checkout/v1/3ds/FALSO1" });
+    expect(screen.getByTitle("Verificação do seu banco")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Pagar com Pix" }));
+    expect(screen.queryByTitle("Verificação do seu banco")).toBeNull();
+    expect(screen.getByRole("button", { name: "Gerar Pix" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Voltar à verificação do banco" }));
+    fireEvent.click(screen.getByRole("button", { name: "Usar outro cartão" }));
+    await waitFor(() => expect(m.criados).toBe(1));
+  });
+});
+
+describe("acompanhamento com o cartão (M8.2b)", () => {
+  const CARTAO = { chavePublica: "TEST-chave-publica-ficticia", valor: 182400, parcelasMaximas: null, emailTeste: "test@testuser.com" };
+  const aceito: AceiteNaPagina = { versoes: { termos: 1, privacidade: 1, cancelamento: 1 }, aceito: { em: "2026-10-01T15:02:00.000Z", versoes: { termos: 1, privacidade: 1, cancelamento: 1 } }, resumo: [], prazo: { tipo: "integral_ate", data: "2026-09-28" } };
+  const resposta = (o: Record<string, unknown>) => new Response(JSON.stringify({ ...base, ...o }), { status: 200 });
+  const aguardando = (over: Partial<PagamentoDoHospede> = {}) =>
+    render(
+      <PagamentoPix
+        codigo="COT-ABCDEFGH"
+        pagamento={{ ...base, estado: "pix_aguardando", pix, podeGerar: false, podePagarCartao: true, cartao: CARTAO, dinheiroSemDesfecho: true, ...over }}
+        autorizado
+        fuso="America/Sao_Paulo"
+        total={182400}
+        textos={textos}
+        contato={null}
+        gerarPix={acoes.gerarPix}
+        continuar={acoes.continuar}
+        pagarComCartao={vi.fn()}
+        aceite={aceito}
+      />,
+    );
+
+  it("mudou só o 'pode pagar com cartão': recarrega (o formulário fechado); resposta sem o campo conta como sem mudança", async () => {
+    vi.useFakeTimers({ now: AGORA });
+    const semCampo = new Response(JSON.stringify({ estado: "pix_aguardando", podeGerar: false }), { status: 200 });
+    fetchMock.mockResolvedValueOnce(semCampo).mockResolvedValue(resposta({ estado: "pix_aguardando", podeGerar: false, podePagarCartao: false }));
+    aguardando();
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(m.refresh).not.toHaveBeenCalled();
+    await act(() => vi.advanceTimersByTimeAsync(INTERVALO_ACOMPANHAMENTO_MS));
+    expect(m.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("com o formulário do cartão aberto, a mudança fica para quando ele fechar; dinheiro recarrega na hora", async () => {
+    vi.useFakeTimers({ now: AGORA });
+    fetchMock.mockResolvedValue(resposta({ estado: "pix_aguardando", podeGerar: false, podePagarCartao: true }));
+    aguardando();
+    fireEvent.click(screen.getByRole("button", { name: "Prefere pagar com cartão?" }));
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(m.criados).toBe(1);
+    fetchMock.mockResolvedValue(resposta({ estado: "pix_vencido", podeGerar: true, podePagarCartao: true }));
+    await act(() => vi.advanceTimersByTimeAsync(INTERVALO_ACOMPANHAMENTO_MS));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(m.refresh).not.toHaveBeenCalled();
+    // Fechou o formulário: a recarga guardada acontece.
+    fireEvent.click(screen.getByRole("button", { name: "Voltar ao Pix" }));
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(m.refresh).toHaveBeenCalledTimes(1);
+    cleanup();
+    m.refresh.mockClear();
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue(resposta({ estado: "pix_aguardando", podeGerar: false, podePagarCartao: true }));
+    aguardando();
+    fireEvent.click(screen.getByRole("button", { name: "Prefere pagar com cartão?" }));
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    fetchMock.mockResolvedValue(resposta({ estado: "confirmada", reservaCodigo: "SCL-TESTE1" }));
+    await act(() => vi.advanceTimersByTimeAsync(INTERVALO_ACOMPANHAMENTO_MS));
+    expect(m.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("desafio do banco e cartão em análise: a página acompanha sozinha", async () => {
+    vi.useFakeTimers({ now: AGORA });
+    fetchMock.mockResolvedValue(resposta({ estado: "cartao_em_analise" }));
+    aguardando({ estado: "cartao_em_analise", forma: "cartao", pix: null, podePagarCartao: false, cartao: null });
+    await act(() => vi.advanceTimersByTimeAsync(INTERVALO_ACOMPANHAMENTO_MS));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

@@ -1,6 +1,7 @@
 /**
  * Cliente HTTP do Mercado Pago (M8.2): Checkout Transparente pela Orders API
- * (https://api.mercadopago.com/v1/orders), conferido na documentação oficial em 8/10/2026.
+ * (https://api.mercadopago.com/v1/orders), conferido na documentação oficial em 8/10/2026 (cartão, 3DS,
+ * contestações e liberação em parcelas: M8.2b, em 9/10/2026).
  * Taxa, líquido e liberação não existem na Orders: vêm da Payments API, procurando o pagamento
  * pela referência (`detalheFinanceiro`, ver o comentário lá).
  *
@@ -9,8 +10,14 @@
  * (POST) leva X-Idempotency-Key e NUNCA é repetida aqui dentro com outra chave: em dúvida, o
  * resultado é "incerto" e quem chama procura pela referência antes de tentar de novo.
  */
-import { chaveIdempotenciaValida, emailPlausivel, ErroProvedor, idProvedorValido, problemaNoCartao, problemaNoPedido, referenciaValida, validadePixMinutos, valorPagoNaOrder } from "./provedor";
-import type { Cobranca, DetalheFinanceiro, FormaPagamento, PedidoCartao, PedidoPix, ProvedorPagamento, ResultadoCancelamento, ResultadoCriacao, ResultadoDevolucao, SituacaoCobranca } from "./provedor";
+import {
+  chaveIdempotenciaValida, CODIGOS_TOKEN, emailPlausivel, ErroProvedor, idProvedorValido, problemaNoCartao, problemaNoPedido, RECUSA_GENERICA, referenciaValida,
+  STATUS_TRES_DS, urlDoDesafio, validadePixMinutos, valorPagoNaOrder,
+} from "./provedor";
+import type {
+  Cobranca, DadosCartao, DetalheFinanceiro, FormaPagamento, PedidoCartao, PedidoPix, ProvedorPagamento, ResultadoCancelamento, ResultadoCriacao, ResultadoDevolucao, SituacaoCobranca,
+  StatusTresDS,
+} from "./provedor";
 
 const BASE = "https://api.mercadopago.com";
 /** O sandbox só aceita e-mail de pagador @testuser.com (erro invalid_email_for_sandbox). */
@@ -62,6 +69,8 @@ const data = (v: unknown): Date | null => {
 // ---------------------------------------------------------------- situação
 
 const ACAO_PENDENTE = new Set(["waiting_transfer", "waiting_payment", "pending_waiting_payment", "pending_challenge", "waiting_capture", "waiting_retry"]);
+/** Contestação que ainda vale (reimbursed = a contestação terminou e o dinheiro voltou à SCL). */
+const CONTESTACAO_ABERTA = new Set(["in_process", "settled"]);
 
 type ParSituacao = { status?: unknown; status_detail?: unknown };
 
@@ -76,8 +85,13 @@ type ParSituacao = { status?: unknown; status_detail?: unknown };
  * waiting_*, canceled/canceled|canceled_transaction|expired (3DS vencido), charged_back/
  * in_process|settled|reimbursed, expired, failed, refunded) e transação (processing/
  * pending_review_manual|in_review, in_review, action_required/pending_challenge, failed/<motivo>).
+ *
+ * Contestação (M8.2b, gancho do M8.2e): é por transação. A transação charged_back/* ou uma contestação in_process/
+ * settled em `transactions.chargebacks[]` (`contestacoes`, só os status) dão `contestado`, seja qual for a order.
  */
-export function normalizarSituacao(order: ParSituacao, transacao?: ParSituacao | null): SituacaoCobranca {
+export function normalizarSituacao(order: ParSituacao, transacao?: ParSituacao | null, contestacoes: readonly string[] = []): SituacaoCobranca {
+  if (transacao && codigo(transacao.status) === "charged_back") return "contestado";
+  if (contestacoes.some((c) => CONTESTACAO_ABERTA.has(c))) return "contestado";
   const s = codigo(order.status);
   const d = codigo(order.status_detail);
   switch (s) {
@@ -118,31 +132,14 @@ export function detalheDaOrder(order: ParSituacao, transacao?: ParSituacao | nul
   return daTransacao === daOrder ? daOrder : `${daOrder}; pagamento ${daTransacao}`;
 }
 
-const RECUSAS: Record<string, string> = {
-  bad_filled_card_data: "Confira os dados do cartão e tente de novo.",
-  invalid_card_token: "Os dados do cartão expiraram ou são inválidos; preencha de novo.",
-  high_risk: "Pagamento recusado pela análise de segurança. Tente outro cartão ou o Pix.",
-  rejected_by_issuer: "O banco emissor recusou o pagamento. Tente outro cartão ou o Pix.",
-  required_call_for_authorize: "O banco emissor pede autorização: ligue para o banco ou use outro cartão.",
-  max_attempts_exceeded: "Limite de tentativas atingido. Use outro cartão ou o Pix.",
-  card_disabled: "Cartão desabilitado. Ligue para o banco ou use outro cartão.",
-  insufficient_amount: "Saldo ou limite insuficiente. Tente outro cartão ou o Pix.",
-  card_insufficient_amount: "Saldo ou limite insuficiente. Tente outro cartão ou o Pix.",
-  amount_limit_exceeded: "O valor passa do limite deste cartão. Tente outro cartão ou o Pix.",
-  processing_error: "Erro ao processar o pagamento. Tente de novo.",
-  invalid_installments: "Número de parcelas não aceito para este cartão.",
-  "3ds_challenge_expired": "A verificação do banco não foi concluída a tempo.",
-  cc_rejected_3ds_challenge: "A verificação do banco não foi concluída.",
-};
-const RECUSA_GENERICA = "Pagamento recusado. Tente outro cartão ou o Pix.";
-
-/** Mensagem (lista fechada) para o primeiro motivo de recusa conhecido. */
-export function mensagemRecusa(motivos: (string | null | undefined)[]): string {
-  for (const m of motivos) {
-    const c = codigo(m);
-    if (c && Object.hasOwn(RECUSAS, c)) return RECUSAS[c];
-  }
-  return RECUSA_GENERICA;
+/**
+ * Código do motivo de uma criação que falhou: o primeiro válido da lista (na ordem: detalhes do 402, status_detail da
+ * transação e da order, códigos de erro), com os de token na frente — é o único que muda a resposta ao hóspede
+ * ("preencha de novo"). A MENSAGEM de toda recusa é a mesma (`RECUSA_GENERICA`); o motivo só vai ao painel da equipe.
+ */
+export function primeiroCodigo(candidatos: Iterable<unknown>): string | null {
+  const validos = [...candidatos].map((c) => codigo(c)).filter((c): c is string => c !== null);
+  return validos.find((c) => (CODIGOS_TOKEN as readonly string[]).includes(c)) ?? validos[0] ?? null;
 }
 
 const STATUS_DEVOLUCAO_CONFIRMADA = new Set(["processed", "approved"]);
@@ -155,6 +152,31 @@ const formaDe = (pm: Obj | null): FormaPagamento | null => {
   if (tipo === "credit_card" || tipo === "debit_card" || tipo === "prepaid_card") return "cartao";
   return texto(pm?.qr_code) ? "pix" : null;
 };
+
+/** Detalhes de transação em análise (manual ou automática); `in_review` também vem como status. */
+const DETALHES_ANALISE = new Set(["in_review", "pending_review_manual"]);
+const BANDEIRA = /^[a-z0-9_-]{1,40}$/;
+
+/**
+ * O que a order diz do cartão, por lista branca: desafio 3DS (e o endereço dele, só de domínio do Mercado Pago),
+ * análise, resultado da verificação do banco (maiúsculo, lista fechada; a tabela de testes escreve minúsculo) e a
+ * bandeira. Nunca lê first_six_digits, last_four_digits, cardholder, a identificação do pagador ou
+ * `config.payment_method` (o installments_cost não é sinal confiável de "sem acréscimo").
+ */
+function dadosDoCartao(order: Obj, pagamento: Obj | null, pm: Obj | null): DadosCartao {
+  const t = pagamento ?? order;
+  const seguranca = pm && obj(pm.transaction_security) ? pm.transaction_security : null;
+  const status = texto(seguranca?.status)?.toUpperCase() ?? null;
+  const bandeira = texto(pm?.id)?.toLowerCase() ?? null;
+  const emAnalise = (p: Obj | null) => !!p && (codigo(p.status) === "in_review" || DETALHES_ANALISE.has(codigo(p.status_detail) ?? ""));
+  return {
+    desafioUrl: urlDoDesafio(seguranca?.url),
+    desafio: codigo(t.status) === "action_required" && codigo(t.status_detail) === "pending_challenge",
+    analise: emAnalise(order) || emAnalise(pagamento),
+    tresDSStatus: status && (STATUS_TRES_DS as readonly string[]).includes(status) ? (status as StatusTresDS) : null,
+    bandeira: bandeira && BANDEIRA.test(bandeira) ? bandeira : null,
+  };
+}
 
 const linkSeguro = (v: unknown): string | null => {
   const t = texto(v);
@@ -172,15 +194,18 @@ const linkSeguro = (v: unknown): string | null => {
  * documentado — ou approved, dos tipos do SDK); o GET da order nem documenta refunds[].
  * `devolucaoEmAndamento`: alguma devolução que não é confirmada nem comprovadamente falha
  * (in_process, pending ou situação desconhecida). `valorTransacao` = amount do pagamento.
+ * `formaPedida` completa a forma quando a resposta vem sem o meio (os exemplos da criação trazem null).
+ * Das contestações (`transactions.chargebacks[]`) só o status é lido; nunca case_id, id ou references.
  */
-export function cobrancaDaOrder(dados: unknown): Cobranca | null {
+export function cobrancaDaOrder(dados: unknown, formaPedida: FormaPagamento | null = null): Cobranca | null {
   if (!obj(dados) || !idProvedorValido(dados.id)) return null;
   const valor = valorApiParaCentavos(dados.total_amount);
   if (valor === null) return null;
   const transacoes = obj(dados.transactions) ? dados.transactions : {};
   const pagamento = lista(transacoes.payments).find(obj) ?? null;
   const pm = pagamento && obj(pagamento.payment_method) ? pagamento.payment_method : null;
-  const forma = formaDe(pm);
+  const forma = formaDe(pm) ?? formaPedida;
+  const contestacoes = lista(transacoes.chargebacks).slice(0, 20).map((x) => (obj(x) ? codigo(x.status) : null)).filter((c): c is string => c !== null);
   let devolvido = 0;
   let devolucaoEmAndamento = false;
   for (const r of lista(transacoes.refunds)) {
@@ -199,7 +224,7 @@ export function cobrancaDaOrder(dados: unknown): Cobranca | null {
   return {
     idProvedor: dados.id,
     referencia: typeof dados.external_reference === "string" ? dados.external_reference : "",
-    situacao: normalizarSituacao(dados, pagamento),
+    situacao: normalizarSituacao(dados, pagamento, contestacoes),
     detalhe: detalheDaOrder(dados, pagamento),
     forma,
     valor,
@@ -218,12 +243,39 @@ export function cobrancaDaOrder(dados: unknown): Cobranca | null {
           expiraEm: data(pagamento?.date_of_expiration) ?? data(pm?.date_of_expiration),
         }
       : null,
+    cartao: forma === "cartao" ? dadosDoCartao(dados, pagamento, pm) : null,
   };
 }
 
 // ---------------------------------------------------------------- financeiro (Payments API)
 
-const NADA: DetalheFinanceiro = { taxa: null, liquido: null, liberacaoPrevista: null, liberado: null, idPagamento: null };
+const NADA: DetalheFinanceiro = { taxa: null, liquido: null, liberacaoPrevista: null, liberado: null, idPagamento: null, liberacaoEmParcelas: false, custoParcelasVendedor: null };
+
+/**
+ * Custo do "parcelamento sem acréscimo" cobrado da SCL: soma das tarifas financing_fee com fee_payer diferente de
+ * "payer". 0 = tarifas lidas e nenhuma assim; null = sem a lista ou com item ilegível (nunca palpite).
+ */
+function custoDoParcelamento(tarifas: unknown): number | null {
+  if (!Array.isArray(tarifas)) return null;
+  let soma = 0;
+  for (const t of tarifas) {
+    if (!obj(t)) return null;
+    if (codigo(t.type) !== "financing_fee" || codigo(t.fee_payer) === "payer") continue;
+    const v = valorApiParaCentavos(t.amount);
+    if (v === null) return null;
+    soma += v;
+  }
+  return soma;
+}
+
+/** money_release_schema com qualquer valor (ex.: "payment_in_flow"): o dinheiro sai parcela a parcela. Ausente, null ou vazio = de uma vez. */
+function liberaEmParcelas(v: unknown): boolean {
+  if (v === null || v === undefined) return false;
+  if (typeof v === "string") return v.trim() !== "";
+  if (Array.isArray(v)) return v.length > 0;
+  if (obj(v)) return Object.keys(v).length > 0;
+  return true;
+}
 
 /**
  * Pagamento da Payments API → taxa, líquido e liberação.
@@ -236,6 +288,9 @@ const NADA: DetalheFinanceiro = { taxa: null, liquido: null, liberacaoPrevista: 
  *   documenta MONEY_RELEASE_DATE como "data de previsão da liberação" e IS_RELEASED à parte
  *   (https://www.mercadopago.com.br/developers/pt/docs/reports/account-money/report-fields).
  *   Data passada sem aviso explícito = null (desconhecido), nunca true.
+ * - liberação em parcelas (M8.2b): money_release_schema não vazio ⇒ `liberado` null e `liberacaoEmParcelas`;
+ *   o recebimento nunca é lançado inteiro sozinho (a equipe registra à mão).
+ * - custoParcelasVendedor: ver `custoDoParcelamento` (o custo já está dentro da `taxa`; quem decide é o domínio).
  */
 export function financeiroDoPagamento(pg: unknown): DetalheFinanceiro {
   if (!obj(pg)) return NADA;
@@ -259,7 +314,8 @@ export function financeiroDoPagamento(pg: unknown): DetalheFinanceiro {
     if (bruto !== null && liquido !== null && bruto >= liquido) taxa = bruto - liquido;
   }
   const situacaoLiberacao = codigo(pg.money_release_status) ?? codigo(pg.money_release_date);
-  const liberado = situacaoLiberacao === "released" ? true : situacaoLiberacao === "pending" ? false : null;
+  const liberacaoEmParcelas = liberaEmParcelas(pg.money_release_schema);
+  const liberado = liberacaoEmParcelas ? null : situacaoLiberacao === "released" ? true : situacaoLiberacao === "pending" ? false : null;
   const id = pg.id;
   return {
     taxa,
@@ -267,6 +323,8 @@ export function financeiroDoPagamento(pg: unknown): DetalheFinanceiro {
     liberacaoPrevista: data(pg.money_release_date),
     liberado,
     idPagamento: (typeof id === "number" && Number.isSafeInteger(id) && id > 0) || (typeof id === "string" && /^\d{1,30}$/.test(id)) ? String(id) : null,
+    liberacaoEmParcelas,
+    custoParcelasVendedor: custoDoParcelamento(pg.fee_details),
   };
 }
 
@@ -475,34 +533,34 @@ export class ClienteMercadoPagoHttp implements ProvedorPagamento {
     return this.ambiente === "teste" ? EMAIL_PAGADOR_SANDBOX : email.trim();
   }
 
-  /** Resposta do POST /v1/orders → resultado. `forma` completa a resposta quando ela vem sem o meio (os exemplos trazem null). */
+  /**
+   * Resposta do POST /v1/orders → resultado. `forma` completa a resposta quando ela vem sem o meio (os exemplos trazem
+   * null). Toda recusa leva a mesma mensagem (`RECUSA_GENERICA`); o motivo vai em `codigo` (ver `primeiroCodigo`).
+   */
   private resultadoCriacao(r: Resposta, forma: FormaPagamento): ResultadoCriacao {
-    const ler = (dados: unknown) => {
-      const c = cobrancaDaOrder(dados);
-      return c && !c.forma ? { ...c, forma, parcelas: forma === "pix" ? null : c.parcelas } : c;
-    };
+    const ler = (dados: unknown) => cobrancaDaOrder(dados, forma);
+    const incerto = (codigo: string | null = null): ResultadoCriacao => ({ ok: false, motivo: "incerto", mensagem: MENSAGENS.incertoCriacao, cobranca: null, codigo });
     if (r.status === 200 || r.status === 201) {
       const c = ler(r.corpo);
-      if (!c) return { ok: false, motivo: "incerto", mensagem: MENSAGENS.incertoCriacao, cobranca: null };
+      if (!c) return incerto();
       // Order criada mas já recusada: mesmo desfecho do 402.
-      if (c.situacao === "recusado") return { ok: false, motivo: "recusado", mensagem: mensagemRecusa(this.motivos(r.corpo)), cobranca: c };
+      if (c.situacao === "recusado") return { ok: false, motivo: "recusado", mensagem: RECUSA_GENERICA, cobranca: c, codigo: primeiroCodigo(this.motivos(r.corpo)) };
       return { ok: true, cobranca: c };
     }
-    if (r.status === 402) {
-      const dados = obj(r.corpo) ? r.corpo.data : null;
-      return { ok: false, motivo: "recusado", mensagem: mensagemRecusa([...motivosDosDetalhes(r.corpo), ...this.motivos(dados)]), cobranca: ler(dados) };
-    }
     const codigos = codigosDeErro(r.corpo);
-    if (r.status === 409 || r.status === 423 || (r.status >= 500 && codigos.has("idempotency_validation_failed"))) {
-      return { ok: false, motivo: "incerto", mensagem: MENSAGENS.incertoCriacao, cobranca: null };
+    if (r.status === 402) {
+      // Order criada e transação recusada; sem `data`, a recusa vem sem a order (nada foi cobrado, mas o banco viu o cartão).
+      const dados = obj(r.corpo) ? r.corpo.data : null;
+      return { ok: false, motivo: "recusado", mensagem: RECUSA_GENERICA, cobranca: ler(dados), codigo: primeiroCodigo([...motivosDosDetalhes(r.corpo), ...this.motivos(dados), ...codigos]) };
     }
+    if (r.status === 409 || r.status === 423 || (r.status >= 500 && codigos.has("idempotency_validation_failed"))) return incerto(primeiroCodigo(codigos));
     if (r.status >= 500) throw new ErroProvedor("incerto", MENSAGENS.erroServidor);
-    if (r.status >= 400) return { ok: false, motivo: "dados_invalidos", mensagem: mensagemDadosInvalidos(r.corpo), cobranca: null };
+    if (r.status >= 400) return { ok: false, motivo: "dados_invalidos", mensagem: mensagemDadosInvalidos(r.corpo), cobranca: null, codigo: primeiroCodigo(codigos) };
     // 1xx/3xx inesperados: não dá para saber.
-    return { ok: false, motivo: "incerto", mensagem: MENSAGENS.incertoCriacao, cobranca: null };
+    return incerto();
   }
 
-  /** status_detail da order e da transação, para escolher a mensagem de recusa. */
+  /** status_detail da transação e da order, para o código do motivo da recusa. */
   private motivos(dados: unknown): string[] {
     if (!obj(dados)) return [];
     const pagamento = lista(obj(dados.transactions) ? dados.transactions.payments : null).find(obj);
@@ -510,7 +568,7 @@ export class ClienteMercadoPagoHttp implements ProvedorPagamento {
   }
 
   async criarPix(p: PedidoPix): Promise<ResultadoCriacao> {
-    const invalido = (mensagem: string): ResultadoCriacao => ({ ok: false, motivo: "dados_invalidos", mensagem, cobranca: null });
+    const invalido = (mensagem: string): ResultadoCriacao => ({ ok: false, motivo: "dados_invalidos", mensagem, cobranca: null, codigo: null });
     const problema = problemaNoPedido(p);
     if (problema) return invalido(problema);
     const validade = validadePixMinutos(p.validadeMinutos);
@@ -541,10 +599,13 @@ export class ClienteMercadoPagoHttp implements ProvedorPagamento {
   /**
    * Cartão: a Orders API não documenta o emissor (issuer_id) no pedido, então `emissor` não é
    * enviado (campo desconhecido dá 400 unsupported_properties). Débito vai sem parcelas, como no
-   * exemplo da documentação.
+   * exemplo da documentação. `capture_mode` vai explícito ("automatic": sem ele, o exemplo da
+   * documentação voltou "automatic_async"); a verificação do banco (3DS) vai em
+   * config.online.transaction_security — com "never", sem liability_shift (a documentação proíbe).
+   * O token e o documento existem só nesta chamada: nada aqui guarda ou registra os dois.
    */
   async criarCartao(p: PedidoCartao): Promise<ResultadoCriacao> {
-    const invalido = (mensagem: string): ResultadoCriacao => ({ ok: false, motivo: "dados_invalidos", mensagem, cobranca: null });
+    const invalido = (mensagem: string): ResultadoCriacao => ({ ok: false, motivo: "dados_invalidos", mensagem, cobranca: null, codigo: null });
     const problema = problemaNoCartao(p);
     if (problema) return invalido(problema);
     if (!emailPlausivel(p.email?.trim())) return invalido(MENSAGENS.emailInvalido);
@@ -561,10 +622,12 @@ export class ClienteMercadoPagoHttp implements ProvedorPagamento {
     const corpo = {
       type: "online",
       processing_mode: "automatic",
+      capture_mode: "automatic",
       total_amount: valor,
       external_reference: p.referencia,
       ...(cortar(p.descricao, 255) ? { description: cortar(p.descricao, 255) } : {}),
       payer: { email: this.emailParaProvedor(p.email), ...(identificacao ? { identification: identificacao } : {}) },
+      config: { online: { transaction_security: p.tresDS === "never" ? { validation: "never" } : { validation: "on_fraud_risk", liability_shift: "required" } } },
       transactions: {
         payments: [{
           amount: valor,
@@ -620,6 +683,11 @@ export class ClienteMercadoPagoHttp implements ProvedorPagamento {
     return resumo;
   }
 
+  /** GET /v1/payments/search pela external_reference, os mais recentes primeiro. */
+  private buscarPagamentos(referencia: string): Promise<Resposta> {
+    return this.chamar("GET", "/v1/payments/search", { params: { external_reference: referencia, sort: "date_created", criteria: "desc" } });
+  }
+
   /**
    * INCERTO por natureza: a Orders não informa taxa, líquido nem liberação, e a ligação entre a
    * order (ORD…/PAY…) e o pagamento numérico da Payments API não é documentada. Procuramos em
@@ -629,13 +697,27 @@ export class ClienteMercadoPagoHttp implements ProvedorPagamento {
   async detalheFinanceiro(c: Cobranca): Promise<DetalheFinanceiro> {
     if (!referenciaValida(c.referencia)) return NADA;
     try {
-      const r = await this.chamar("GET", "/v1/payments/search", { params: { external_reference: c.referencia, sort: "date_created", criteria: "desc" } });
+      const r = await this.buscarPagamentos(c.referencia);
       if (r.status !== 200 || !obj(r.corpo)) return NADA;
       const pg = lista(r.corpo.results).find((x) => obj(x) && x.external_reference === c.referencia);
       return pg ? financeiroDoPagamento(pg) : NADA;
     } catch {
       return NADA;
     }
+  }
+
+  /**
+   * A mesma busca do `detalheFinanceiro`, mas aqui a falha LANÇA: só um 200 legível sem a referência idêntica diz
+   * "não existe" (um cartão sem order conhecida pode já ter sido cobrado, D18). A data não entra na busca (a lista vem
+   * dos mais recentes para os mais antigos). Referência inválida = false sem rede (nunca criamos uma assim).
+   */
+  async existePagamentoPorReferencia(referencia: string, _desde: Date): Promise<boolean> {
+    void _desde; // A Payments API não filtra por data nesta busca (a referência é única por tentativa).
+    if (!referenciaValida(referencia)) return false;
+    const r = await this.buscarPagamentos(referencia);
+    if (r.status >= 500) throw new ErroProvedor("incerto", MENSAGENS.erroServidor);
+    if (r.status !== 200 || !obj(r.corpo) || !Array.isArray(r.corpo.results)) throw new ErroProvedor("incerto", MENSAGENS.buscaIndisponivel);
+    return r.corpo.results.some((x) => obj(x) && x.external_reference === referencia);
   }
 
   /** Só cancela o que não foi pago (created/action_required). Nunca lança. */

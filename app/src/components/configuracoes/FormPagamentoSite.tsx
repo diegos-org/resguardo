@@ -16,16 +16,20 @@ type Props = {
   limiteNome: number;
   visiveis: number;
   categoriaPadrao: string;
+  /** Cartão (M8.2b): o teto de parcelas do Mercado Pago e as opções da verificação do banco, com os textos do servidor. */
+  parcelasLimite: number;
+  opcoesTresDS: readonly { valor: string; texto: string }[];
   /** financeiro:editar; sem ela, só leitura. */
   editar: boolean;
   salvar: (a: EstadoConfigPagamento, f: FormData) => Promise<EstadoConfigPagamento>;
 };
 
 /**
- * Configurações → Pagamento no site (M8.2a): oferecer ou não o Pix no site, o nome na fatura (para o cartão; vazio = o
- * nome da empresa) e a categoria da despesa da taxa que o Mercado Pago não devolve. Vale para as tentativas novas.
+ * Configurações → Pagamento no site (M8.2a): oferecer ou não o pagamento no site, o cartão de crédito (M8.2b: ligado ou
+ * não, o máximo de parcelas e a verificação do banco), o nome na fatura (para o cartão; vazio = o nome da empresa) e a
+ * categoria da despesa da taxa que o Mercado Pago não devolve. Vale para as tentativas novas.
  */
-export function FormPagamentoSite({ config, categorias, nomeEmpresa, limiteNome, visiveis, categoriaPadrao, editar, salvar }: Props) {
+export function FormPagamentoSite({ config, categorias, nomeEmpresa, limiteNome, visiveis, categoriaPadrao, parcelasLimite, opcoesTresDS, editar, salvar }: Props) {
   const [estado, enviar, enviando] = useActionState(salvar, {});
   const [nome, setNome] = useState(estado.valores?.nomeFatura ?? config.nomeFatura ?? "");
   const naFatura = (nome.trim() || nomeEmpresa).slice(0, visiveis);
@@ -50,6 +54,41 @@ export function FormPagamentoSite({ config, categorias, nomeEmpresa, limiteNome,
         <p style={nota}>
           Desligado, o site volta ao pedido pela conversa nos pedidos novos. O que já foi pago continua sendo conferido, e pode ser devolvido, normalmente.
         </p>
+        <label className={styles.check}>
+          <input type="checkbox" name="cartao" defaultChecked={estado.valores ? estado.valores.cartao === "on" : config.cartao} /> Oferecer cartão de crédito
+        </label>
+        <p style={nota}>
+          Ao lado do Pix (que continua em destaque), só com &ldquo;Oferecer pagamento no site&rdquo; ligado. Só crédito: débito e pré-pago não são
+          aceitos. Os juros do parcelamento são do Mercado Pago e pagos pelo hóspede (o formulário mostra o total antes de confirmar); a SCL nunca
+          oferece &ldquo;parcelamento sem acréscimo&rdquo; — deixe essa opção desligada no Mercado Pago.
+        </p>
+        <label>
+          Número máximo de parcelas
+          <input
+            name="parcelasMaximas"
+            type="number"
+            min={1}
+            max={parcelasLimite}
+            inputMode="numeric"
+            placeholder="máximo do Mercado Pago"
+            defaultValue={estado.valores ? estado.valores.parcelasMaximas ?? "" : config.parcelasMaximas ?? ""}
+            aria-invalid={estado.erros?.parcelasMaximas ? true : undefined}
+            aria-describedby={estado.erros?.parcelasMaximas ? "erro-parcelasMaximas" : undefined}
+          />
+          {erro("parcelasMaximas")}
+        </label>
+        <p style={nota}>Vazio = o máximo que o Mercado Pago oferecer para o cartão (até {parcelasLimite}).</p>
+        <label>
+          Verificação do banco (3DS)
+          <select name="tresDS" defaultValue={estado.valores?.tresDS ?? config.tresDS} aria-invalid={estado.erros?.tresDS ? true : undefined}>
+            {opcoesTresDS.map((o) => (
+              <option key={o.valor} value={o.valor}>
+                {o.texto}
+              </option>
+            ))}
+          </select>
+          {erro("tresDS")}
+        </label>
         <label>
           Nome na fatura (cartão)
           <input

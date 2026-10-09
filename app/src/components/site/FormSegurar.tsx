@@ -12,7 +12,8 @@ const VAZIO: Valores = { nome: "", email: "", telefone: "" };
 /**
  * Contato do visitante para segurar as datas da cotação (M8.1). O servidor decide; aqui só o formulário. O que foi
  * digitado fica no navegador (o estado da ação nunca traz dado pessoal de volta) e volta aos campos depois de um erro.
- * `comPagamento` (M8.2a): o site oferece o Pix nesta cotação (muda o texto "nenhum pagamento é feito aqui").
+ * `comPagamento` (M8.2a): o site oferece o Pix nesta cotação (muda o texto "nenhum pagamento é feito aqui");
+ * `comCartao` (M8.2b): o cartão de crédito também está ligado.
  * `privacidade` (M7.4): versão em vigor da Política de privacidade, para o aviso de como os dados são usados (onde
  * eles são pedidos) apontar para ela; sem versão publicada, o aviso fica sem o link.
  */
@@ -21,12 +22,14 @@ export function FormSegurar({
   minutos,
   acao,
   comPagamento = false,
+  comCartao = false,
   privacidade = null,
 }: {
   codigo: string;
   minutos: number;
   acao: Acao;
   comPagamento?: boolean;
+  comCartao?: boolean;
   privacidade?: number | null;
 }) {
   const [estado, enviar, enviando] = useActionState(async (_a: Estado, f: FormData): Promise<Estado> => {
@@ -52,7 +55,9 @@ export function FormSegurar({
       <strong>Segurar as datas por {minutos} minutos</strong>
       <p className={styles.miudo} style={{ margin: 0 }}>
         {comPagamento ? (
-          <>Usamos seus dados só para a sua reserva{comoExplica}. Nada é cobrado ao segurar: o Pix aparece logo depois, nesta página.</>
+          <>
+            Usamos seus dados só para a sua reserva{comoExplica}. Nada é cobrado ao segurar: {comCartao ? "o pagamento por Pix ou cartão" : "o Pix"} aparece logo depois, nesta página.
+          </>
         ) : (
           <>Usamos seus dados só para confirmar a reserva com você{comoExplica}. Nenhum pagamento é feito aqui.</>
         )}

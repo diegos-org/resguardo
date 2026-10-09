@@ -18,11 +18,14 @@
  * Trava não obtida (tempo-limite ou impasse desfeito pelo Postgres) em qualquer transação = "ocupado": nada foi
  * gravado pela metade e o hóspede tenta de novo.
  *
+ * Com o cartão (M8.2b): um cartão no desafio do banco é cancelado no provedor antes do Pix (o hóspede desistiu da
+ * verificação para pagar por Pix); um cartão em análise impede o Pix (`em_analise`), e um processando, `em_andamento`.
+ *
  * O e-mail e o nome do pagador saem da reserva, no servidor (no teste, o adaptador troca o e-mail pelo do
  * sandbox); a página nunca os recebe.
  */
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { nomeDaEmpresa } from "@/configuracoes/empresa";
 import { nomeNaFatura } from "@/configuracoes/pagamento-site";
 import type { VersoesLegais } from "@/configuracoes/paginas-legais-texto";
@@ -32,29 +35,42 @@ import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
 import { aceiteVigenteTravado } from "@/site/aceites";
 import { estenderHold, voltarHold } from "@/site/cotacoes";
-import { FOLGA_PRAZO_PIX_MS, MAXIMO_PIX_POR_COTACAO, paginaAindaLe } from "./andamento";
-import type { Leitura } from "./aplicar";
+import { FOLGA_PRAZO_PIX_MS, MAXIMO_PIX_POR_COTACAO } from "./andamento";
 import { aplicarLeitura } from "./aplicar";
-import { cancelarNoProvedor, chaveCancelamento, conferirTentativa } from "./conferencia";
+import { cancelarNoProvedor, chaveCancelamento } from "./conferencia";
+import { chaveCriacao, conferirOuOcupado, leituraDaCriacao, referenciaDaTentativa, relerEncerradasRecentes } from "./criacao";
 import { motivoSemPixDaCotacao, TEXTO_SEM_PIX } from "./oferta";
 import { ErroProvedor, type PedidoPix, PIX_VALIDADE_MINIMA_MINUTOS, type ProvedorPagamento, type ResultadoCriacao } from "./provedor";
 import { comDinheiro, type SituacaoPagamento } from "./situacoes";
 import { travarCotacao } from "./travas";
 
 export { FOLGA_PRAZO_PIX_MS, MAXIMO_PIX_POR_COTACAO };
+// Movidas para `criacao.ts` (o cartão usa as mesmas); reexportadas aqui para quem já importava do Pix.
+export { chaveCriacao, conferirOuOcupado, leituraDaCriacao, referenciaDaTentativa };
 /** Pix que vence em menos de um minuto não é mostrado de novo: gera-se outro. */
 export const MARGEM_PIX_VALIDO_MS = 60_000;
 
-export type CodigoFalhaPix = "nao_encontrada" | "nao_oferecido" | "em_andamento" | "ja_pago" | "limite" | "provedor" | "incerto" | "recusado" | "ocupado" | "ao_vivo" | "aceite_pendente" | "aceite_mudou";
+export type CodigoFalhaPix =
+  | "nao_encontrada"
+  | "nao_oferecido"
+  | "em_andamento"
+  | "em_analise"
+  | "ja_pago"
+  | "limite"
+  | "provedor"
+  | "incerto"
+  | "recusado"
+  | "ocupado"
+  | "ao_vivo"
+  | "aceite_pendente"
+  | "aceite_mudou";
 export type ResultadoPix = { ok: true; pagamentoId: string; reaproveitado: boolean } | { ok: false; erro: string; codigo: CodigoFalhaPix };
-
-export const referenciaDaTentativa = (id: string) => `scl-${id}`;
-export const chaveCriacao = (id: string) => `pagamento:${id}:criar`;
 
 const MENSAGENS: Record<CodigoFalhaPix, string> = {
   nao_encontrada: "Cotação não encontrada.",
   nao_oferecido: "O pagamento pelo site não está disponível para esta cotação: fale com a equipe.",
   em_andamento: "Estamos conferindo o Pix gerado há pouco. Atualize a página em instantes.",
+  em_analise: "Há um pagamento com cartão desta cotação em análise no Mercado Pago. Enquanto a análise não termina, não dá para pagar de outro jeito: fale com a equipe pelo WhatsApp se precisar.",
   ja_pago: "Já recebemos um pagamento desta cotação.",
   limite: `Esta cotação já gerou ${MAXIMO_PIX_POR_COTACAO} Pix. Para continuar, fale com a equipe.`,
   provedor: "Não deu para falar com o Mercado Pago agora. Tente de novo em instantes ou fale com a equipe.",
@@ -81,11 +97,16 @@ async function fase1(tx: Db, organizacaoId: string, cotacaoId: string, agora: Da
   if (motivo) return erro("nao_oferecido", TEXTO_SEM_PIX[motivo]);
   if (t.tentativas.some((x) => x.situacao === "criando" || x.situacao === "incerta")) return erro("em_andamento");
   if (t.tentativas.some((x) => comDinheiro(x.situacao))) return erro("ja_pago");
-  // Um Pix desta cotação já veio marcado como real (live_mode) no teste: nenhum outro (nem o mesmo, se o cancelamento
-  // ainda não pegou) — os 3 Pix da cotação não se gastam à toa. A equipe confere no painel do Mercado Pago.
-  if (t.tentativas.some((x) => x.forma === "pix" && x.aoVivo === true)) return erro("ao_vivo", "O Mercado Pago marcou um Pix desta cotação como pagamento real no ambiente de teste: nenhum outro é gerado. Fale com a equipe.");
+  // Um pagamento desta cotação (Pix ou cartão) já veio marcado como real (live_mode) no teste: nenhum Pix (nem o mesmo,
+  // se o cancelamento ainda não pegou) — as tentativas da cotação não se gastam à toa. A equipe confere no painel do
+  // Mercado Pago.
+  if (t.tentativas.some((x) => x.aoVivo === true)) return erro("ao_vivo", "O Mercado Pago marcou um pagamento desta cotação como pagamento real no ambiente de teste: nenhum Pix é gerado. Fale com a equipe.");
   const pendentes = t.tentativas.filter((x) => x.situacao === "pendente");
-  if (pendentes.some((x) => x.forma !== "pix")) return erro("em_andamento");
+  // Cartão pendente (M8.2b): em análise, nada de outro jeito (o Mercado Pago não cancela e pode aprovar); processando
+  // (ou sem etapa), espera; no desafio do banco com a order conhecida, é cancelado mais abaixo (como um Pix anterior).
+  const cartoes = pendentes.filter((x) => x.forma === "cartao");
+  if (cartoes.some((x) => x.etapaCartao === "analise")) return erro("em_analise");
+  if (cartoes.some((x) => x.etapaCartao !== "desafio" || !x.idProvedor)) return erro("em_andamento");
   const valido = pendentes.find((x) => x.pixCopiaECola && x.pixExpiraEm && x.pixExpiraEm.getTime() > agora.getTime() + MARGEM_PIX_VALIDO_MS);
   // Um Pix ainda válido continua com o aceite com que foi criado, mesmo que uma versão nova tenha sido publicada depois.
   if (valido) return { tipo: "reaproveitar", id: valido.id };
@@ -95,9 +116,13 @@ async function fase1(tx: Db, organizacaoId: string, cotacaoId: string, agora: Da
   if (!a.ok) return a.motivo === "nao_publicadas" ? erro("nao_oferecido", TEXTO_SEM_PIX.sem_paginas_legais) : erro(a.motivo === "mudou" ? "aceite_mudou" : "aceite_pendente");
   // Teto antes de cancelar: com 3 Pix já gerados, o último (ainda pagável) não é cancelado à toa.
   if (t.tentativas.filter((x) => x.forma === "pix").length >= MAXIMO_PIX_POR_COTACAO) return erro("limite");
-  // Pix novo só depois de cancelar o anterior no provedor (cancelado, já cancelado ou vencido).
+  // Pix novo só depois de cancelar o anterior no provedor (cancelado, já cancelado ou vencido), ou o cartão no desafio do
+  // banco: quem pediu o cancelamento foi o hóspede (conta no disjuntor do cartão, se o desafio tinha endereço).
   const anterior = pendentes.find((x) => x.idProvedor);
-  if (anterior) return { tipo: "cancelar", id: anterior.id, idProvedor: anterior.idProvedor! };
+  if (anterior) {
+    if (!anterior.cancelamentoPor) await tx.update(pagamentos).set({ cancelamentoPor: "hospede", atualizadoEm: agora }).where(and(eq(pagamentos.id, anterior.id), isNull(pagamentos.cancelamentoPor)));
+    return { tipo: "cancelar", id: anterior.id, idProvedor: anterior.idProvedor! };
+  }
   if (pendentes.length) return erro("em_andamento");
 
   const id = randomUUID();
@@ -140,15 +165,6 @@ async function fase1(tx: Db, organizacaoId: string, cotacaoId: string, agora: Da
       descricaoFatura: await nomeNaFatura(tx, organizacaoId),
     },
   };
-}
-
-/** Leitura que a criação devolveu. null = nada chegou ao provedor (a tentativa é apagada). */
-function leituraDaCriacao(res: ResultadoCriacao | null, erro: unknown): Leitura | null {
-  if (erro) return erro instanceof ErroProvedor && erro.tipo !== "incerto" ? null : { incerta: true };
-  if (!res) return { incerta: true };
-  if (res.ok) return { cobranca: res.cobranca };
-  if (res.motivo === "incerto") return { incerta: true };
-  return res.cobranca ? { cobranca: res.cobranca } : { recusadaSemOrder: true };
 }
 
 async function criar(db: Db, organizacaoId: string, cotacaoId: string, f: Extract<Fase1, { tipo: "criar" }>, agora: Date, provedor: ProvedorPagamento): Promise<ResultadoPix> {
@@ -213,16 +229,6 @@ async function desfazerProvisorio(tx: Db, organizacaoId: string, cotacaoId: stri
   if (f.holdProvisorio) await voltarHold(tx, organizacaoId, cotacaoId, f.holdAnterior, f.holdProvisorio, agora, f.id);
 }
 
-/** Leitura com trava (conferência): trava não obtida vira null ("ocupado"); o resto sobe. */
-async function conferirOuOcupado(...args: Parameters<typeof conferirTentativa>): Promise<Awaited<ReturnType<typeof conferirTentativa>> | null> {
-  try {
-    return await conferirTentativa(...args);
-  } catch (e) {
-    if (travaOcupada(e)) return null;
-    throw e;
-  }
-}
-
 /**
  * Gera (ou mostra de novo) o Pix da cotação. `provedor` = o liberado por `podeCobrar`. `o.aceite`: as versões das
  * páginas legais que o hóspede acabou de aceitar (a caixa marcada); sem ele, vale o aceite já gravado na cotação.
@@ -236,22 +242,13 @@ export async function gerarPix(
   o: { aceite?: VersoesLegais | null } = {},
 ): Promise<ResultadoPix> {
   if (!uuidValido(cotacaoId)) return falha("nao_encontrada");
-  // Antes de qualquer coisa nova: uma criação que ficou no ar é procurada pela referência, e um Pix recusado, cancelado
-  // ou vencido há pouco (que ainda pode ter sido pago: `paginaAindaLe`) é relido; se virou dinheiro, nenhum outro sai.
-  // O pendente fica com a fase 1 (mostrado de novo, ou cancelado e relido antes do novo).
-  const tentativas = await db
-    .select({ id: pagamentos.id, situacao: pagamentos.situacao, idProvedor: pagamentos.idProvedor, pixExpiraEm: pagamentos.pixExpiraEm, criadoEm: pagamentos.criadoEm })
-    .from(pagamentos)
-    .where(and(eq(pagamentos.cotacaoId, cotacaoId), eq(pagamentos.organizacaoId, organizacaoId)));
-  const reler = tentativas.filter((t) => t.situacao !== "pendente" && paginaAindaLe(t, agora));
-  // Leitura NOVA, sem o intervalo de 15 s: a última (da página, segundos antes) pode ser de antes de o Pix virar dinheiro,
-  // e é esta leitura que decide se outro Pix pode sair. Os cliques já passam pelo freio por endereço ("gerar_pix").
-  // Sem leitura (o provedor falhou), nenhum outro Pix sai.
-  for (const a of reler) {
-    const lida = await conferirOuOcupado(db, organizacaoId, a.id, provedor, agora, { forcar: true, origem: "pagina" });
-    if (lida === null) return falha("ocupado");
-    if (!lida.ok) return falha("provedor", lida.erro);
-  }
+  // Antes de qualquer coisa nova: uma criação que ficou no ar é procurada pela referência, e uma tentativa encerrada há
+  // pouco (que ainda pode ter sido paga: `paginaAindaLe`) é relida; se virou dinheiro, nenhum outro Pix sai. A pendente
+  // fica com a fase 1 (mostrada de novo, ou cancelada e relida antes do novo). Os cliques já passam pelo freio por
+  // endereço ("gerar_pix").
+  const relida = await relerEncerradasRecentes(db, organizacaoId, cotacaoId, provedor, agora);
+  if (relida.tipo === "ocupado") return falha("ocupado");
+  if (relida.tipo === "provedor") return falha("provedor", relida.erro);
   for (let volta = 0; volta < 3; volta++) {
     let f: Fase1;
     try {
@@ -263,12 +260,13 @@ export async function gerarPix(
     if (f.tipo === "erro") return f.resultado;
     if (f.tipo === "reaproveitar") return { ok: true, pagamentoId: f.id, reaproveitado: true };
     if (f.tipo === "criar") return criar(db, organizacaoId, cotacaoId, f, agora, provedor);
-    // Cancela o Pix anterior e relê: só a leitura muda a situação (o cancelamento pode cruzar com o pagamento).
+    // Cancela o Pix anterior (ou o cartão no desafio) e relê: só a leitura muda a situação (o cancelamento pode cruzar
+    // com o pagamento).
     const cancelado = await provedor.cancelar(f.idProvedor, chaveCancelamento(f.id));
     const lido = await conferirOuOcupado(db, organizacaoId, f.id, provedor, agora, { forcar: true, origem: "pagina", semCancelar: true });
     if (lido === null) return falha("ocupado");
     if (!lido.ok) return falha("provedor", lido.erro);
-    if (lido.situacao === "pendente") return falha("provedor", cancelado === "erro" ? "Não deu para cancelar o Pix anterior no Mercado Pago. Tente de novo em instantes." : MENSAGENS.provedor);
+    if (lido.situacao === "pendente") return falha("provedor", cancelado === "erro" ? "Não deu para cancelar o pagamento anterior no Mercado Pago. Tente de novo em instantes." : MENSAGENS.provedor);
   }
   return falha("provedor");
 }

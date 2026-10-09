@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { boolean, customType, date, index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type { FontePrecos } from "@/imoveis/fonte-precos";
+import type { ModoTresDS, StatusTresDS } from "@/pagamentos/provedor";
 import type { PeriodicidadeRepasse } from "@/repasses/periodicidade";
 
 /**
@@ -1429,6 +1430,16 @@ export const SITUACOES_DEVOLUCAO = ["pedida", "confirmada", "recusada", "por_for
 export type SituacaoDevolucao = (typeof SITUACOES_DEVOLUCAO)[number];
 export const RESULTADOS_EVENTO_PAGAMENTO = ["pendente", "aplicado", "ignorado", "desconhecido", "erro"] as const;
 export type ResultadoEventoPagamento = (typeof RESULTADOS_EVENTO_PAGAMENTO)[number];
+/**
+ * Etapa de um cartão ainda `pendente` (M8.2b): o banco pediu a verificação ao hóspede (desafio 3DS), o Mercado Pago está
+ * analisando (in_review) ou processando em segundo plano. A situação local continua `pendente`; a etapa só muda texto,
+ * prazo das datas, intervalo de leitura e o que dá para cancelar.
+ */
+export const ETAPAS_CARTAO = ["desafio", "analise", "processando"] as const;
+export type EtapaCartao = (typeof ETAPAS_CARTAO)[number];
+/** Quem pediu ao provedor o cancelamento de uma tentativa: o hóspede (trocou de forma ou de cartão), o sistema ou a equipe. */
+export const QUEM_CANCELA_PAGAMENTO = ["hospede", "sistema", "equipe"] as const;
+export type QuemCancelaPagamento = (typeof QUEM_CANCELA_PAGAMENTO)[number];
 
 /**
  * Aceite das páginas legais do site (M7.4): o hóspede marca "li e aceito" antes de gerar o pagamento. Uma linha por
@@ -1514,6 +1525,36 @@ export const pagamentos = pgTable(
      * dessa versão. Null só nas tentativas de antes do M7.4.
      */
     aceiteId: uuid("aceite_id").references(() => aceitesSite.id),
+    // --- Cartão (M8.2b). Nunca BIN, últimos dígitos, titular, documento, token ou o id do aparelho.
+    /** Parcelas enviadas (1 a 36), atualizadas pela leitura só com valor válido; null no Pix. */
+    parcelas: integer("parcelas"),
+    /** payment_method_id (visa, master, elo…), atualizado pela leitura. */
+    bandeira: text("bandeira"),
+    /** Verificação do banco (3DS) pedida: retrato do painel na criação. */
+    tresDS: text("tres_ds").$type<ModoTresDS>(),
+    /** Último resultado da verificação do banco lido do provedor (lista fechada, maiúsculo). */
+    tresDSStatus: text("tres_ds_status").$type<StatusTresDS>(),
+    /** Só com a situação `pendente`; null nas outras. */
+    etapaCartao: text("etapa_cartao").$type<EtapaCartao>(),
+    /** Endereço do desafio 3DS (https de domínio do Mercado Pago); apagado quando a etapa deixa de ser `desafio`. */
+    desafioUrl: text("desafio_url"),
+    /** Prazo das datas dado pela extensão única de cartão em análise/processando (preenchido = a cotação já usou a extensão). */
+    prazoAnaliseAte: timestamp("prazo_analise_ate", { withTimezone: true }),
+    /** O pedido trouxe um id de aparelho válido (o id em si nunca é guardado). */
+    comDispositivo: boolean("com_dispositivo"),
+    /** Primeira vez que a tentativa saiu de "em andamento" para recusado, cancelado ou expirado (qualquer forma). */
+    encerradoEm: timestamp("encerrado_em", { withTimezone: true }),
+    /** Quem pediu ao provedor o cancelamento desta tentativa (gravado na fila do cancelamento, só se vazio). */
+    cancelamentoPor: text("cancelamento_por").$type<QuemCancelaPagamento>(),
+    /** Esta tentativa de cartão encerrada conta no disjuntor de recusas (decidido uma vez, na transição que a encerra). */
+    contaNoDisjuntor: boolean("conta_no_disjuntor").notNull().default(false),
+    /** Id numérico do pagamento na Payments API (as contestações chegam por ele, no M8.2e). */
+    idPagamentoProvedor: text("id_pagamento_provedor"),
+    /**
+     * Centavos do custo do "parcelamento sem acréscimo" cobrado da SCL (financing_fee que não é do comprador), da última
+     * leitura da Payments API que o trouxe; null = não lido. Com ele > 0 a taxa não entra sozinha (aviso `parcelas_sem_juros`).
+     */
+    custoParcelasVendedor: integer("custo_parcelas_vendedor"),
     criadoEm: criadoEm(),
     atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -1527,7 +1568,32 @@ export const pagamentos = pgTable(
     index("pagamentos_reserva").on(t.reservaId),
     index("pagamentos_situacao").on(t.organizacaoId, t.situacao),
     index("pagamentos_criado").on(t.organizacaoId, t.criadoEm),
+    // Limite geral de cartões por hora e disjuntor de recusas (M8.2b).
+    index("pagamentos_cartao_org_criado").on(t.organizacaoId, t.criadoEm).where(sql`${t.forma} = 'cartao'`),
   ],
+);
+
+/**
+ * Disjuntor do cartão (M8.2b): cada vez que as recusas passam do limite, uma linha. Aberto ⇔ `religado_em` vazio e
+ * (`ate` vazio ou no futuro). Só contas, horários e quem religou: nenhum IP, e-mail ou dado de cartão.
+ */
+export const disjuntoresCartao = pgTable(
+  "disjuntores_cartao",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    abertoEm: timestamp("aberto_em", { withTimezone: true }).notNull(),
+    /** Até quando o cartão fica desligado; null = só religando à mão (20 em 24 h ou terceiro disparo em 24 h). */
+    ate: timestamp("ate", { withTimezone: true }),
+    /** Recusas contadas na janela quando disparou. */
+    recusas: integer("recusas").notNull(),
+    /** "30min" ou "24h": qual janela disparou. */
+    janela: text("janela").$type<"30min" | "24h">().notNull(),
+    reincidente: boolean("reincidente").notNull().default(false),
+    religadoEm: timestamp("religado_em", { withTimezone: true }),
+    religadoPor: uuid("religado_por").references(() => usuarios.id, { onDelete: "set null" }),
+  },
+  (t) => [index("disjuntores_cartao_org").on(t.organizacaoId, t.abertoEm)],
 );
 
 /** Devolução de um pagamento (uma por pagamento): pelo provedor (pedida → confirmada/recusada) ou feita por fora. */

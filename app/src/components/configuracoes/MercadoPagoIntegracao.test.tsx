@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, it } from "vitest";
 import type { SituacaoMercadoPago } from "@/pagamentos/integracao";
-import { MercadoPagoIntegracao, textoAmbiente } from "./MercadoPagoIntegracao";
+import { chavesDesencontradas, MercadoPagoIntegracao, textoAmbiente } from "./MercadoPagoIntegracao";
 
 const ENDERECO = "https://scl-reconstrucao.vercel.app/api/pagamentos/mercadopago";
 const mp = (o: Partial<SituacaoMercadoPago> = {}): SituacaoMercadoPago => ({
@@ -48,4 +48,20 @@ it("conta que não é de teste, desligado com o motivo e o ambiente inválido", 
   expect(producao).not.toContain("Falta configurar");
   expect(textoAmbiente(env({ MERCADOPAGO_AMBIENTE: "prod" }))).toBe("valor inválido em MERCADOPAGO_AMBIENTE (desligado) · computador de desenvolvimento");
   expect(textoAmbiente(env({ MERCADOPAGO_AMBIENTE: "producao", VERCEL_ENV: "production" }))).toBe("produção (travado nesta fase) · deploy de produção");
+});
+
+it("cartão (M8.2b): a chave pública é do formulário do cartão; chave pública e token de contas ou ambientes diferentes viram aviso (só pelo prefixo, nunca a chave)", () => {
+  const trocadas = env({ VERCEL_ENV: "preview", MERCADOPAGO_PUBLIC_KEY: "TEST-chave-publica-ficticia", MERCADOPAGO_ACCESS_TOKEN: "APP_USR-token-ficticio" });
+  expect(chavesDesencontradas(trocadas)).toBe(true);
+  const h = renderToStaticMarkup(<MercadoPagoIntegracao mp={mp()} env={trocadas} />);
+  expect(h).toContain("Usa a chave pública (MERCADOPAGO_PUBLIC_KEY)");
+  expect(h).toContain("A chave pública e o token do Mercado Pago parecem ser de contas ou ambientes diferentes: o cartão vai recusar todos os pagamentos.");
+  expect(h).not.toContain("chave-publica-ficticia");
+  expect(h).not.toContain("token-ficticio");
+  expect(chavesDesencontradas(env({ MERCADOPAGO_PUBLIC_KEY: "APP_USR-a", MERCADOPAGO_ACCESS_TOKEN: "APP_USR-b" }))).toBe(false);
+  expect(chavesDesencontradas(env({ MERCADOPAGO_PUBLIC_KEY: "TEST-a", MERCADOPAGO_ACCESS_TOKEN: "TEST-b" }))).toBe(false);
+  expect(chavesDesencontradas(env({ MERCADOPAGO_ACCESS_TOKEN: "APP_USR-b" }))).toBe(false);
+  const semChave = renderToStaticMarkup(<MercadoPagoIntegracao mp={mp()} env={env({ VERCEL_ENV: "preview" })} />);
+  expect(semChave).toContain("Falta MERCADOPAGO_PUBLIC_KEY: o cartão não é oferecido (o Pix não depende dela)");
+  expect(semChave).not.toContain("contas ou ambientes diferentes");
 });

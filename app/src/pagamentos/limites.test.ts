@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { tentativasLogin } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { autorizacaoValida, emitirAutorizacao, validadeDaAutorizacao } from "./autorizacao";
@@ -32,7 +33,7 @@ describe("freios das ações públicas do pagamento (M8.2a)", () => {
     expect(await conferirLimite(db, c.org, "segurar", "192.0.2.1", minutos(1))).toEqual({ ok: false, erro: ERROS_LIMITE.segurar });
     // Os tetos são por organização.
     expect(await conferirLimite(db, "00000000-0000-4000-8000-000000000123", "segurar", "192.0.2.1", minutos(1))).toEqual({ ok: true });
-    expect(Object.keys(LIMITES_PAGAMENTO).sort()).toEqual(["consulta", "continuar", "gerar_pix", "segurar"]);
+    expect(Object.keys(LIMITES_PAGAMENTO).sort()).toEqual(["cartao", "consulta", "continuar", "gerar_pix", "segurar"]);
   });
 
   it("uma origem só não esgota o teto geral: o que ela manda depois do teto dela não conta para os outros", async () => {
@@ -58,6 +59,23 @@ describe("freios das ações públicas do pagamento (M8.2a)", () => {
     expect(await conferirLimite(db, c.org, "gerar_pix", "2001:db8:abcd:12:ffff::99", AGORA)).toMatchObject({ ok: false });
     // Outra /64 segue.
     expect(await conferirLimite(db, c.org, "gerar_pix", "2001:db8:abcd:13::1", AGORA)).toEqual({ ok: true });
+  });
+
+  it("cartão (M8.2b): 5 por endereço por hora (IPv6 pela /64), 10 sem origem; com `semGeral`, a chave geral da organização nunca é tocada", async () => {
+    expect(LIMITES_PAGAMENTO.cartao.origem.tentativas).toBe(5);
+    expect(LIMITES_PAGAMENTO.cartao.semOrigem.tentativas).toBe(10);
+    const cartao = (origem: string | null, quando = AGORA) => conferirLimite(db, c.org, "cartao", origem, quando, { semGeral: true });
+    for (let i = 0; i < 5; i++) expect(await cartao(`2001:db8:abcd:12::${i + 1}`)).toEqual({ ok: true });
+    expect(await cartao("2001:db8:abcd:12:ffff::9")).toEqual({ ok: false, erro: ERROS_LIMITE.cartao });
+    expect(ERROS_LIMITE.cartao).toBe("Muitas tentativas com cartão agora há pouco. Pague com Pix ou fale com a equipe pelo WhatsApp.");
+    expect(await cartao("2001:db8:abcd:13::1")).toEqual({ ok: true });
+    for (let i = 0; i < 10; i++) expect(await cartao(null)).toEqual({ ok: true });
+    expect(await cartao(null)).toMatchObject({ ok: false });
+    expect(await cartao("203.0.113.7", minutos(61))).toEqual({ ok: true });
+    // Nenhum envio do cartão contou na chave geral: o teto geral do cartão é o das linhas que chegam ao Mercado Pago.
+    const chaves = (await db.select({ chave: tentativasLogin.chave }).from(tentativasLogin)).map((t) => t.chave).filter((k) => k.includes(c.org) && k.startsWith("pagamento-cartao"));
+    expect(chaves.length).toBeGreaterThan(0);
+    expect(chaves.some((k) => k.includes(":geral:"))).toBe(false);
   });
 
   it("Continuar o pagamento: confere o e-mail do pedido sem dizer nada dele; tentativas limitadas por cotação", async () => {
@@ -87,8 +105,9 @@ describe("autorização do pagamento (cookie assinado, M8.2a)", () => {
     expect(autorizacaoValida(t, cot, minutos(1), undefined)).toBe(false);
     expect(() => emitirAutorizacao(cot, ate, undefined)).toThrow("AUTH_SECRET");
     expect(() => emitirAutorizacao("nada", ate, SEGREDO)).toThrow();
-    // Cobre o prazo das datas estendido pelos 3 Pix e a carência.
-    expect(validadeDaAutorizacao(minutos(30), AGORA).getTime()).toBe(minutos(30 + 3 * 32 + 15).getTime());
+    // Cobre o prazo das datas estendido pelos 3 Pix, pelos 3 desafios do banco no cartão (M8.2b), pela extensão mais longa
+    // do cartão em análise (240 min, o máximo do painel) com a carência, e mais uma carência.
+    expect(validadeDaAutorizacao(minutos(30), AGORA).getTime()).toBe(minutos(30 + 3 * 32 + 3 * 42 + (240 + 15) + 15).getTime());
     expect(validadeDaAutorizacao(null, AGORA).getTime()).toBeGreaterThan(minutos(30).getTime());
   });
 });

@@ -13,8 +13,12 @@
  *    equipe, valor diferente, outra tentativa já com a reserva, reserva confirmada à mão com recebimento manual).
  * 4. Reserva confirmada à mão (sem recebimento manual e sem outra tentativa com a reserva): o pagamento vira o
  *    desfecho `reserva` dela.
+ *
+ * Confirmação tardia com outra reserva do site do mesmo e-mail confirmada depois que esta tentativa foi criada (M8.2b):
+ * a regra de reviver não muda, mas o pagamento ganha o aviso `outra_reserva_mesmo_email` (o hóspede pode ter pago duas
+ * vezes, por exemplo um cartão em análise e depois um Pix noutro aparelho).
  */
-import { eq } from "drizzle-orm";
+import { and, eq, gt, ne } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { cotacoes, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
@@ -23,20 +27,37 @@ import { confirmarPedidoPago } from "@/reservas/repositorio";
 import { noitesLivres } from "@/site/disponibilidade";
 import { temRecebimentoManual } from "./andamento";
 import type { Cobranca } from "./provedor";
-import type { MotivoSemReserva } from "./situacoes";
+import type { CodigoAviso, MotivoSemReserva } from "./situacoes";
 import type { Pagamento, Travado } from "./travas";
 
-export type Decisao = { desfecho: "reserva" | null; desfechoMotivo: string | null; motivoSemReserva: string | null; confirmou: boolean; avisos: string[] };
+/** `avisos`: os do motor; `avisosPagamento`: códigos de aviso para a própria tentativa (ligados por `aplicarLeitura`). */
+export type Decisao = { desfecho: "reserva" | null; desfechoMotivo: string | null; motivoSemReserva: string | null; confirmou: boolean; avisos: string[]; avisosPagamento?: CodigoAviso[] };
 
 /**
  * O valor aprovado é o total da cotação? O que enviamos (total_amount), o valor da transação de pagamento (precisa vir
- * na order: sem ele, não se confirma) e o total pago quando vier. No cartão, o pago pode passar do total pelos juros
- * das parcelas, que são do hóspede (M8.2b); no Pix, precisa ser igual.
+ * na order: sem ele, não se confirma) e o total pago quando vier. No cartão parcelado, o pago pode passar do total pelos
+ * juros, que são do hóspede (M8.2b): decidido pela tentativa (forma e parcelas que o Mercado Pago validou na criação),
+ * não pela leitura (o GET pode vir sem o tipo e as parcelas). No Pix e no cartão à vista, precisa ser igual.
  */
-function valorConfere(c: Cobranca | null, p: Pagamento, total: number): boolean {
+export function valorConfere(c: Cobranca | null, p: Pick<Pagamento, "valor" | "forma" | "parcelas">, total: number): boolean {
   if (p.valor !== total || !c) return false;
   if (c.valor !== total || c.valorTransacao !== total) return false;
-  return c.pago === null || c.pago === total || (c.forma === "cartao" && c.pago > total);
+  if (c.pago === null || c.pago === total) return true;
+  return p.forma === "cartao" && (c.parcelas ?? p.parcelas ?? 1) > 1 && c.pago > total;
+}
+
+/**
+ * Outra reserva do site com o mesmo e-mail, confirmada depois que a tentativa foi criada? (Só se pergunta na confirmação
+ * tardia: enquanto o pedido estava segurado, o mesmo e-mail não segurava outras datas.)
+ */
+async function outraReservaDoMesmoEmail(tx: Db, organizacaoId: string, r: Travado["reserva"], desde: Date): Promise<boolean> {
+  if (!r.hospedeEmail) return false;
+  const [outra] = await tx
+    .select({ id: reservas.id })
+    .from(reservas)
+    .where(and(eq(reservas.organizacaoId, organizacaoId), eq(reservas.origem, "site"), eq(reservas.hospedeEmail, r.hospedeEmail), eq(reservas.estado, "confirmada"), ne(reservas.id, r.id), gt(reservas.confirmadaEm, desde)))
+    .limit(1);
+  return Boolean(outra);
 }
 
 const semReserva = (m: MotivoSemReserva, detalhe?: string | null): Decisao => ({ desfecho: null, desfechoMotivo: null, motivoSemReserva: detalhe ? `${m}:${detalhe}` : m, confirmou: false, avisos: [] });
@@ -53,7 +74,8 @@ export async function decidirAprovacao(tx: Db, organizacaoId: string, t: Travado
     const res = await confirmarPedidoPago(tx, organizacaoId, r.id, { agora, tardio, pagamentoId: p.id, taxaCanal: fin.taxa, valorLiquido: fin.liquido });
     if (!res.ok) return semReserva("outro");
     await tx.update(cotacoes).set({ estado: "convertida", atualizadaEm: agora }).where(eq(cotacoes.id, cot.id));
-    return { desfecho: "reserva", desfechoMotivo: tardio ? "confirmada_tardia" : "confirmada", motivoSemReserva: null, confirmou: true, avisos: res.avisos };
+    const avisosPagamento: CodigoAviso[] = tardio && (await outraReservaDoMesmoEmail(tx, organizacaoId, r, p.criadoEm)) ? ["outra_reserva_mesmo_email"] : [];
+    return { desfecho: "reserva", desfechoMotivo: tardio ? "confirmada_tardia" : "confirmada", motivoSemReserva: null, confirmou: true, avisos: res.avisos, avisosPagamento };
   };
 
   // Recebimento registrado à mão na reserva (ainda pedido, ou cancelada antes da confirmação tardia): o dinheiro do site

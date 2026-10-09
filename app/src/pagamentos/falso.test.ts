@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ProvedorFalso } from "./falso";
-import { ErroProvedor, type PedidoCartao, type PedidoPix } from "./provedor";
+import { ErroProvedor, type PedidoCartao, type PedidoPix, RECUSA_GENERICA, urlDoDesafio } from "./provedor";
 
 const AGORA = new Date("2026-10-08T15:00:00.000Z");
 const novo = () => new ProvedorFalso(() => AGORA);
@@ -13,8 +13,9 @@ const pix = (over: Partial<PedidoPix> = {}): PedidoPix => ({
 const cartao = (over: Partial<PedidoCartao> = {}): PedidoCartao => ({
   referencia: "scl-2", chaveIdempotencia: "k-cartao-1", valor: 50_000, token: "1c87b6b301010101ddcd92f9bbbb3be2", bandeira: "master",
   tipo: "credit_card", parcelas: 2, emissor: null, email: "hospede@example.com", documento: null, sessaoDispositivo: null,
-  descricao: "Reserva", descricaoFatura: null, ...over,
+  descricao: "Reserva", descricaoFatura: null, tresDS: "on_fraud_risk", ...over,
 });
+const NADA_FINANCEIRO = { taxa: null, liquido: null, liberacaoPrevista: null, liberado: null, idPagamento: null, liberacaoEmParcelas: false, custoParcelasVendedor: null };
 
 describe("ProvedorFalso: criação", () => {
   it("Pix pendente com ids determinísticos, copia e cola e prazo = agora + validade", async () => {
@@ -41,15 +42,61 @@ describe("ProvedorFalso: criação", () => {
     expect(p.todas()).toHaveLength(0);
   });
 
-  it("cartão: aprovado, recusado (com a order), em análise e pendente (3DS)", async () => {
+  it("cartão: aprovado, recusado (com a order), em análise, processando e desafio (3DS)", async () => {
     const p = novo();
-    expect(await p.criarCartao(cartao())).toMatchObject({ ok: true, cobranca: { situacao: "aprovado", pago: 50_000, parcelas: 2, forma: "cartao", detalhe: "processed/accredited" } });
+    expect(await p.criarCartao(cartao())).toMatchObject({ ok: true, cobranca: { situacao: "aprovado", pago: 50_000, parcelas: 2, forma: "cartao", detalhe: "processed/accredited", cartao: { desafio: false, analise: false, tresDSStatus: "AUTHENTICATED", bandeira: "master" } } });
     p.respostaCartao = "recusado";
-    expect(await p.criarCartao(cartao({ referencia: "scl-3", chaveIdempotencia: "k2" }))).toMatchObject({ ok: false, motivo: "recusado", cobranca: { situacao: "recusado", pago: null } });
+    expect(await p.criarCartao(cartao({ referencia: "scl-3", chaveIdempotencia: "k2" }))).toEqual({
+      ok: false, motivo: "recusado", mensagem: RECUSA_GENERICA, codigo: "rejected_by_issuer", cobranca: expect.objectContaining({ situacao: "recusado", pago: null, detalhe: "failed/failed; pagamento failed/rejected_by_issuer" }),
+    });
+    p.motivoRecusaCartao = "high_risk";
+    expect(await p.criarCartao(cartao({ referencia: "scl-3b", chaveIdempotencia: "k2b" }))).toMatchObject({ ok: false, codigo: "high_risk", mensagem: RECUSA_GENERICA, cobranca: { detalhe: "failed/failed; pagamento failed/high_risk" } });
     p.respostaCartao = "em_analise";
-    expect(await p.criarCartao(cartao({ referencia: "scl-4", chaveIdempotencia: "k3" }))).toMatchObject({ ok: true, cobranca: { situacao: "em_analise" } });
-    p.respostaCartao = "pendente";
-    expect(await p.criarCartao(cartao({ referencia: "scl-5", chaveIdempotencia: "k4" }))).toMatchObject({ ok: true, cobranca: { situacao: "pendente" } });
+    expect(await p.criarCartao(cartao({ referencia: "scl-4", chaveIdempotencia: "k3" }))).toMatchObject({ ok: true, cobranca: { situacao: "em_analise", detalhe: "processing/in_review", cartao: { analise: true, desafio: false } } });
+    p.respostaCartao = "processando";
+    expect(await p.criarCartao(cartao({ referencia: "scl-4b", chaveIdempotencia: "k3b" }))).toMatchObject({ ok: true, cobranca: { situacao: "em_analise", detalhe: "processing/in_process", cartao: { analise: false, desafio: false } } });
+    p.respostaCartao = "desafio";
+    expect(await p.criarCartao(cartao({ referencia: "scl-5", chaveIdempotencia: "k4" }))).toMatchObject({ ok: true, cobranca: { situacao: "pendente", detalhe: "action_required/pending_challenge", cartao: { desafio: true, tresDSStatus: "CHALLENGE" } } });
+  });
+
+  it("desafio: o endereço (de domínio do Mercado Pago) só na resposta da criação; consultar e buscar não trazem", async () => {
+    const p = novo();
+    p.respostaCartao = "desafio";
+    const r = await p.criarCartao(cartao());
+    if (!r.ok) throw new Error();
+    expect(r.cobranca.cartao?.desafioUrl).toBe("https://www.mercadopago.com.br/checkout/v1/3ds/FALSO0001");
+    expect(urlDoDesafio(r.cobranca.cartao?.desafioUrl)).toBe(r.cobranca.cartao?.desafioUrl);
+    expect((await p.consultar("ORDTST0001"))!.cartao).toMatchObject({ desafio: true, desafioUrl: null });
+    expect((await p.buscarPorReferencia("scl-2", AGORA))!.cartao).toMatchObject({ desafio: true, desafioUrl: null });
+    const segundo = await p.criarCartao(cartao({ referencia: "scl-3", chaveIdempotencia: "k2" }));
+    if (segundo.ok) expect(segundo.cobranca.cartao?.desafioUrl).toBe("https://www.mercadopago.com.br/checkout/v1/3ds/FALSO0002");
+    // Sem 3DS pedido, nenhum resultado de verificação.
+    p.respostaCartao = "aprovado";
+    expect(await p.criarCartao(cartao({ referencia: "scl-4", chaveIdempotencia: "k3", tresDS: "never" }))).toMatchObject({ ok: true, cobranca: { cartao: { tresDSStatus: null } } });
+  });
+
+  it("recusado sem order (402 sem data): nada registrado, a busca não acha; mesma chave depois = incerto", async () => {
+    const p = novo();
+    p.respostaCartao = "recusado_sem_order";
+    p.motivoRecusaCartao = "high_risk";
+    expect(await p.criarCartao(cartao())).toEqual({ ok: false, motivo: "recusado", mensagem: RECUSA_GENERICA, cobranca: null, codigo: "high_risk" });
+    expect(p.todas()).toHaveLength(0);
+    expect(await p.buscarPorReferencia("scl-2", AGORA)).toBeNull();
+    expect(await p.existePagamentoPorReferencia("scl-2", AGORA)).toBe(false);
+    expect(await p.criarCartao(cartao())).toMatchObject({ ok: false, motivo: "incerto", cobranca: null });
+    p.chaveRepetida = "mesma_resposta";
+    expect(await p.criarCartao(cartao())).toMatchObject({ ok: false, motivo: "recusado", cobranca: null, codigo: "high_risk" });
+  });
+
+  it("guarda o último cartão recebido sem o token (3DS, parcelas, documento e aparelho chegam ao provedor)", async () => {
+    const p = novo();
+    await p.criarCartao(cartao({ parcelas: 3, tresDS: "never", documento: { tipo: "CPF", numero: "12345678909" }, sessaoDispositivo: "dispositivo-ficticio-0001" }));
+    expect(p.ultimoPedidoCartao).toMatchObject({ parcelas: 3, tresDS: "never", documento: { tipo: "CPF", numero: "12345678909" }, sessaoDispositivo: "dispositivo-ficticio-0001", comToken: true });
+    expect(JSON.stringify(p.ultimoPedidoCartao)).not.toContain("1c87b6b301010101ddcd92f9bbbb3be2");
+    expect(p.ultimoPedidoCartao).not.toHaveProperty("token");
+    // Pedido inválido (3DS fora da lista) também fica registrado, mas nada é criado.
+    expect(await p.criarCartao(cartao({ chaveIdempotencia: "k2", tresDS: "always" as never }))).toMatchObject({ ok: false, motivo: "dados_invalidos", codigo: null });
+    expect(p.todas()).toHaveLength(1);
   });
 
   it("chave repetida: por padrão responde como a API real (incerto), sem criar outra order", async () => {
@@ -116,7 +163,8 @@ describe("ProvedorFalso: falhas injetadas", () => {
     p.falhar = new ErroProvedor("incerto", "tempo");
     expect(await p.cancelar(c.idProvedor, "k")).toBe("erro");
     expect(await p.devolver(c, "k", null)).toMatchObject({ situacao: "incerta" });
-    expect(await p.detalheFinanceiro(c)).toEqual({ taxa: null, liquido: null, liberacaoPrevista: null, liberado: null, idPagamento: null });
+    expect(await p.detalheFinanceiro(c)).toEqual(NADA_FINANCEIRO);
+    expect(await p.existePagamentoPorReferencia("scl-2", AGORA).catch((e: ErroProvedor) => e.tipo)).toBe("incerto");
     expect(await p.conferirContaDeTeste()).toBeNull();
     p.falhar = new ErroProvedor("credencial", "chave");
     expect(await p.devolver(c, "k", null)).toMatchObject({ situacao: "recusada" });
@@ -153,11 +201,115 @@ describe("ProvedorFalso: consulta, busca e simuladores", () => {
     p.aprovar("ORDTST0001", { taxa: 990, liberacaoPrevista: previsao, liberado: false });
     const c = (await p.consultar("ORDTST0001"))!;
     expect(c).toMatchObject({ situacao: "aprovado", pago: 100_000, detalhe: "processed/accredited" });
-    expect(await p.detalheFinanceiro(c)).toEqual({ taxa: 990, liquido: 99_010, liberacaoPrevista: previsao, liberado: false, idPagamento: "9000000001" });
+    expect(await p.detalheFinanceiro(c)).toEqual({ taxa: 990, liquido: 99_010, liberacaoPrevista: previsao, liberado: false, idPagamento: "9000000001", liberacaoEmParcelas: false, custoParcelasVendedor: null });
     p.atualizarFinanceiro("ORDTST0001", { liberado: true });
     expect((await p.detalheFinanceiro(c)).liberado).toBe(true);
     p.aprovar("ORDTST0002");
     expect(await p.detalheFinanceiro((await p.consultar("ORDTST0002"))!)).toMatchObject({ taxa: null, liquido: null, liberacaoPrevista: null, liberado: null });
+  });
+
+  it("busca e Payments API pela referência só acham depois do atraso (atrasoBuscaMs)", async () => {
+    const relogio = { agora: AGORA };
+    const p = new ProvedorFalso(() => relogio.agora);
+    p.atrasoBuscaMs = 20 * 60_000;
+    await p.criarCartao(cartao());
+    expect(await p.buscarPorReferencia("scl-2", AGORA)).toBeNull();
+    expect(await p.existePagamentoPorReferencia("scl-2", AGORA)).toBe(false);
+    relogio.agora = new Date(AGORA.getTime() + 19 * 60_000);
+    expect(await p.existePagamentoPorReferencia("scl-2", AGORA)).toBe(false);
+    relogio.agora = new Date(AGORA.getTime() + 20 * 60_000);
+    expect(await p.buscarPorReferencia("scl-2", AGORA)).toMatchObject({ idProvedor: "ORDTST0001" });
+    expect(await p.existePagamentoPorReferencia("scl-2", AGORA)).toBe(true);
+    expect(await p.existePagamentoPorReferencia("scl-9", AGORA)).toBe(false);
+    expect(await p.existePagamentoPorReferencia("scl 2", AGORA)).toBe(false);
+    expect(p.chamadas.filter((x) => x.metodo === "existePagamentoPorReferencia")).toHaveLength(5);
+    p.falhas.existePagamentoPorReferencia = new ErroProvedor("incerto", "tempo");
+    await expect(p.existePagamentoPorReferencia("scl-2", AGORA)).rejects.toMatchObject({ tipo: "incerto" });
+  });
+
+  it("juros do parcelamento: do hóspede (pago = valor + juros) ou da SCL (sem acréscimo: pago = valor e custo no financeiro)", async () => {
+    const p = novo();
+    p.jurosCartao = 3_742;
+    expect(await p.criarCartao(cartao({ parcelas: 3 }))).toMatchObject({ ok: true, cobranca: { valor: 50_000, valorTransacao: 50_000, pago: 53_742 } });
+    expect(await p.detalheFinanceiro((await p.consultar("ORDTST0001"))!)).toMatchObject({ custoParcelasVendedor: 0, idPagamento: "9000000001" });
+    // À vista não tem juros.
+    expect(await p.criarCartao(cartao({ referencia: "scl-3", chaveIdempotencia: "k2", parcelas: 1 }))).toMatchObject({ ok: true, cobranca: { pago: 50_000 } });
+    p.jurosPor = "vendedor";
+    p.respostaCartao = "em_analise";
+    await p.criarCartao(cartao({ referencia: "scl-4", chaveIdempotencia: "k3", parcelas: 3 }));
+    p.aprovar("ORDTST0003", { taxa: 2_000, liberado: true });
+    const vendedor = (await p.consultar("ORDTST0003"))!;
+    expect(vendedor).toMatchObject({ situacao: "aprovado", pago: 50_000 });
+    // O custo entra na taxa e sai do líquido, como a financing_fee da SCL na Payments API.
+    expect(await p.detalheFinanceiro(vendedor)).toMatchObject({ taxa: 5_742, liquido: 44_258, custoParcelasVendedor: 3_742, liberado: true });
+    // Sem `jurosCartao`, o custo é 5% do valor; à vista, nenhum.
+    p.jurosCartao = 0;
+    p.respostaCartao = "aprovado";
+    await p.criarCartao(cartao({ referencia: "scl-5", chaveIdempotencia: "k4", parcelas: 2 }));
+    expect(await p.detalheFinanceiro((await p.consultar("ORDTST0004"))!)).toMatchObject({ custoParcelasVendedor: 2_500 });
+    await p.criarCartao(cartao({ referencia: "scl-6", chaveIdempotencia: "k5", parcelas: 1 }));
+    expect(await p.detalheFinanceiro((await p.consultar("ORDTST0005"))!)).toMatchObject({ custoParcelasVendedor: 0 });
+  });
+
+  it("liberação em parcelas: o financeiro do cartão nunca vem 'liberado'; o Pix não muda", async () => {
+    const p = novo();
+    p.liberacaoEmParcelas = true;
+    await p.criarCartao(cartao());
+    p.aprovar("ORDTST0001", { taxa: 990, liberado: true });
+    expect(await p.detalheFinanceiro((await p.consultar("ORDTST0001"))!)).toMatchObject({ liberado: null, liberacaoEmParcelas: true, taxa: 990 });
+    await p.criarPix(pix({ referencia: "scl-9", chaveIdempotencia: "k9" }));
+    p.aprovar("ORDTST0002", { taxa: 990, liberado: true });
+    expect(await p.detalheFinanceiro((await p.consultar("ORDTST0002"))!)).toMatchObject({ liberado: true, liberacaoEmParcelas: false });
+  });
+
+  it("concluirDesafio: aprovado (autenticado), recusado como o sandbox (failed/failed, NOT_AUTHENTICATED) ou com o detalhe dado, expirado", async () => {
+    const p = novo();
+    p.respostaCartao = "desafio";
+    for (let i = 1; i <= 4; i++) await p.criarCartao(cartao({ referencia: `scl-${i}`, chaveIdempotencia: `k${i}`, parcelas: 1 }));
+    p.concluirDesafio("ORDTST0001", "aprovado");
+    p.concluirDesafio("ORDTST0002", "recusado");
+    p.concluirDesafio("ORDTST0003", "recusado", { detalhe: "cc_rejected_3ds_challenge" });
+    p.concluirDesafio("ORDTST0004", "expirado");
+    const [a, b, c, d] = p.todas();
+    expect(a).toMatchObject({ situacao: "aprovado", pago: 50_000, detalhe: "processed/accredited", cartao: { desafio: false, tresDSStatus: "AUTHENTICATED" } });
+    expect(b).toMatchObject({ situacao: "recusado", pago: null, detalhe: "failed/failed", cartao: { desafio: false, tresDSStatus: "NOT_AUTHENTICATED" } });
+    expect(c).toMatchObject({ situacao: "recusado", detalhe: "failed/failed; pagamento failed/cc_rejected_3ds_challenge", cartao: { tresDSStatus: "NOT_AUTHENTICATED" } });
+    expect(d).toMatchObject({ situacao: "expirado", detalhe: "canceled/expired", cartao: { desafio: false } });
+  });
+
+  it("concluirAnalise: aprovado ou recusado (com o motivo da próxima recusa); em análise ou processando não se cancela", async () => {
+    const p = novo();
+    p.respostaCartao = "em_analise";
+    await p.criarCartao(cartao());
+    await p.criarCartao(cartao({ referencia: "scl-3", chaveIdempotencia: "k2" }));
+    p.respostaCartao = "processando";
+    await p.criarCartao(cartao({ referencia: "scl-4", chaveIdempotencia: "k3" }));
+    expect(await p.cancelar("ORDTST0001", "c1")).toBe("nao_cancelavel");
+    expect(await p.cancelar("ORDTST0003", "c2")).toBe("nao_cancelavel");
+    expect((await p.consultar("ORDTST0001"))!.situacao).toBe("em_analise");
+    p.concluirAnalise("ORDTST0001", "aprovado");
+    p.motivoRecusaCartao = "high_risk";
+    p.concluirAnalise("ORDTST0002", "recusado");
+    expect(await p.consultar("ORDTST0001")).toMatchObject({ situacao: "aprovado", pago: 50_000, cartao: { analise: false } });
+    expect(await p.consultar("ORDTST0002")).toMatchObject({ situacao: "recusado", detalhe: "failed/failed; pagamento failed/high_risk", cartao: { analise: false } });
+    // O desafio (action_required) se cancela.
+    p.respostaCartao = "desafio";
+    await p.criarCartao(cartao({ referencia: "scl-5", chaveIdempotencia: "k4" }));
+    expect(await p.cancelar("ORDTST0004", "c3")).toBe("cancelado");
+    expect(await p.consultar("ORDTST0004")).toMatchObject({ situacao: "cancelado", cartao: { desafio: false } });
+  });
+
+  it("contestar: a order inteira (padrão), só a transação ou uma entrada na lista de contestações", async () => {
+    const p = novo();
+    for (let i = 1; i <= 3; i++) await p.criarCartao(cartao({ referencia: `scl-${i}`, chaveIdempotencia: `k${i}` }));
+    p.contestar("ORDTST0001");
+    p.contestar("ORDTST0002", "transacao");
+    p.contestar("ORDTST0003", "lista");
+    expect(p.todas().map((c) => [c.situacao, c.detalhe])).toEqual([
+      ["contestado", "charged_back/in_process"],
+      ["contestado", "processed/accredited; pagamento charged_back/in_process"],
+      ["contestado", "processed/accredited"],
+    ]);
   });
 
   it("recusar, expirar, cancelar no provedor e contestar mudam a situação", async () => {

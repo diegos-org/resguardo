@@ -9,22 +9,27 @@
 > `COTACAO-E-HOLD-SITE.md` e `REPASSES-POR-PERIODICIDADE.md`. API conferida
 > na documentação oficial do Mercado Pago em 8/10/2026 (Checkout Transparente pela Orders API); o
 > que a documentação deixa em aberto está em "A conferir no sandbox".
+> **M8.2b (cartão) pronto em 9/10/2026**, só no teste, com o desenho revisado por uma leitura
+> adversarial (dinheiro, segurança, API e produto) e a documentação de Orders e do Card Payment Brick
+> relida em 9/10/2026: seção "Cartão (M8.2b)" e itens 9 a 29 de "A conferir no sandbox".
 
 ## As cinco partes
 
 | Parte | O que entrega | Depende de |
 |---|---|---|
 | **M8.2a** | **Pix em teste e a base de tudo:** adaptador, aviso assinado, conferência, confirmação só com as datas seguradas (inclusive aprovação tardia), taxa real, liberação virando o recebimento do M4.10, devolução do pagamento que ficou sem reserva, o que o hóspede vê em cada situação, painel e as travas. | M8.1 |
-| **M8.2b** | **Cartão:** Card Payment Brick, parcelas com juros do hóspede e máximo configurável, freios contra teste de cartão roubado, identificação do aparelho, análise do cartão. | M8.2a |
+| **M8.2b** | **Cartão** (pronto em 9/10/2026, seção "Cartão (M8.2b)"): Card Payment Brick, parcelas com juros do hóspede e máximo configurável, freios contra teste de cartão roubado, identificação do aparelho, análise do cartão. | M8.2a |
 | **M8.2c** | Cancelamento de reserva paga pela política (integral até 14 dias antes; nada depois), lançamentos por componente, taxa que não volta com a SCL, dinheiro retido no cancelamento sem reembolso. | M8.2a |
 | **M8.2d** | Alteração de reserva paga (datas ou valor), com novas datas seguradas, cobrança da diferença ou devolução parcial. | M8.2c |
 | **M8.2e** | Contestação (chargeback): registro, conferência, decisão de quem arca, lançamentos. | M8.2b, M8.2c |
 
 O pagamento **de verdade** só liga com as cinco partes e o M7.4 feitos (o M7.4 ficou pronto em
-9/10/2026: páginas legais e aceite antes do Pix, desenho em `PAGINAS-LEGAIS.md`; faltam o M8.2b a
-M8.2e), e com as decisões pendentes de Diego: taxa do pagamento (hoje sai antes da divisão; se a SCL passar a arcar, o motor precisa de
-base por canal, porque a opção atual vale para todos), arrependimento conferido com o contador e
-3DS ligado ou não (sem 3DS, contestação por cartão roubado fica com a SCL).
+9/10/2026: páginas legais e aceite antes do Pix, desenho em `PAGINAS-LEGAIS.md`; o M8.2b ficou pronto
+em 9/10/2026; faltam o M8.2c a M8.2e), e com as decisões pendentes de Diego: taxa do pagamento (hoje sai antes da divisão; se a SCL passar a arcar, o motor precisa de
+base por canal, porque a opção atual vale para todos), arrependimento conferido com o contador,
+a verificação do banco (3DS) do cartão (padrão "quando houver risco"; com "nunca", toda contestação
+por cartão roubado fica com a SCL), a devolução por fora do cartão e o campo de e-mail do formulário do
+cartão em produção (seção "Cartão (M8.2b)").
 
 ## Perímetro do teste (parte a)
 
@@ -45,7 +50,7 @@ base por canal, porque a opção atual vale para todos), arrependimento conferid
 
 | Variável | Para quê |
 |---|---|
-| `MERCADOPAGO_PUBLIC_KEY` | chave pública (usada no cartão, parte b) |
+| `MERCADOPAGO_PUBLIC_KEY` | chave pública: desde o M8.2b, usada pelo formulário do cartão no navegador (sem ela, o cartão não é oferecido; o Pix continua) |
 | `MERCADOPAGO_ACCESS_TOKEN` | chave privada, só no servidor |
 | `MERCADOPAGO_WEBHOOK_SECRET` | assinatura secreta dos avisos |
 | `MERCADOPAGO_AMBIENTE` | ausente ou exatamente `teste` = teste; exatamente `producao` = travado; qualquer outro valor = configuração inválida, travado, com aviso |
@@ -66,6 +71,10 @@ Cobrança só acontece com tudo isto (uma função só decide, para criar, cance
    cancelamento (M7.4, motivo `sem_paginas_legais`, conferido depois da chave do painel e antes da
    conta). Cancelar, conferir e devolver não dependem delas (`provedorDeConferencia`).
 
+O **cartão** (M8.2b) precisa, além disso, de "Oferecer cartão de crédito" ligado (começa
+**desligado**), da chave pública e do disjuntor de recusas fechado (`ofertaDeCartao`). Nada disso
+entra na função acima: com o cartão desligado ou o disjuntor aberto, o Pix continua.
+
 Aviso com `live_mode=true` (não é assinado; serve de alarme) vira aviso no painel. Nas tentativas
 gravadas fica o ambiente e o `live_mode` lido do provedor. **Desvio registrado (9/10):** uma order
 lida com `live_mode=true` no teste nunca confirma reserva (vira "aprovado sem reserva", motivo
@@ -85,7 +94,7 @@ entrada, dá receita e parte do proprietário sem pendência (contrato de gestã
 um proprietário, quem recebe do site = empresa). Marketplace segue pela conversa até o M12.2. Fora
 disso, a página mostra o fluxo de hoje, e a aba de pagamento lista cada imóvel com o motivo.
 
-## Tabelas (migração 0061, colunas em texto como nas tabelas novas)
+## Tabelas (migração 0061; cartão na 0066; colunas em texto como nas tabelas novas)
 
 - **`pagamentos`**: uma linha por tentativa (cada order aceita uma transação). Cotação, reserva,
   imóvel, ambiente, forma, referência única (`scl-<id>`), chave de idempotência da criação,
@@ -105,6 +114,21 @@ disso, a página mostra o fluxo de hoje, e a aba de pagamento lista cada imóvel
   processado (a leitura da order é idempotente), para dois avisos diferentes da mesma order nunca se
   fundirem num só. Assinaturas inválidas só contam num número agregado do dia ("assinaturas recusadas") e
   no "último aviso válido em".
+- **Migração 0066 (M8.2b), colunas novas em `pagamentos`** (texto sem CHECK, como as outras):
+  `parcelas`, `bandeira` (`payment_method_id`), `tres_ds` (modo pedido, retrato do painel na criação),
+  `tres_ds_status` (último resultado lido, maiúsculo, lista fechada), `etapa_cartao` (`desafio`,
+  `analise`, `processando`; só com a situação `pendente`), `desafio_url` (apagado quando a etapa deixa de
+  ser `desafio`), `prazo_analise_ate` (a extensão única da análise; preenchido em qualquer tentativa da
+  cotação = já usada), `com_dispositivo` (o pedido trouxe um id de aparelho válido; o id nunca é
+  guardado), `encerrado_em` (primeira saída para recusado, cancelado ou vencido, qualquer forma),
+  `cancelamento_por` (`hospede`, `sistema`, `equipe`), `conta_no_disjuntor`, `id_pagamento_provedor`
+  (id numérico da Payments API, para as contestações do M8.2e) e `custo_parcelas_vendedor` (custo do
+  "parcelamento sem acréscimo" cobrado da SCL, da última leitura que o trouxe). `valor_pago` passa a
+  guardar também o total pago com os juros. Índice parcial dos cartões por organização e data (teto
+  geral e disjuntor).
+- **`disjuntores_cartao`** (M8.2b): uma linha por disparo do disjuntor (aberto em, até quando — vazio =
+  só religando à mão —, recusas contadas, janela `30min` ou `24h`, reincidente, religado em e por quem).
+  Aberto = sem `religado_em` e com `ate` vazio ou no futuro. Nada de IP, e-mail ou dado de cartão.
 
 **Situação local** de uma tentativa: `criando` (gravada antes da chamada), `incerta` (a chamada
 caiu e não se sabe se a order existe), `pendente`, `aprovado`, `recusado`, `cancelado`, `expirado`,
@@ -115,6 +139,11 @@ dinheiro); `aprovado` → `devolvido_parcial`, `devolvido`, `contestado`; `devol
 `devolvido`, `contestado`. Desconhecido nunca sobrescreve uma situação conhecida (vira aviso).
 Tentativa com desfecho `reserva` que vira devolvida ou contestada por fora gera aviso, sem mexer na
 reserva (partes c e e).
+
+**Etapa do cartão (M8.2b):** a verificação do banco, a análise e o processamento do Mercado Pago
+continuam `pendente`; a etapa vai em `etapa_cartao` e muda só o texto, o prazo das datas, o intervalo de
+leitura e o que dá para cancelar. Nenhuma situação nova: a carência, a trava das ações da equipe, as
+transições e a rotina do `pendente` valem iguais.
 
 A reserva continua `pedido` enquanto o hóspede paga. Não há estado novo de reserva.
 
@@ -142,6 +171,15 @@ com trava aberta: três fases, como no envio ao Beds24 (gravar a intenção; cha
 reler e aplicar). A rotina de vencimento de holds passa a vencer cada hold numa transação curta,
 travando o imóvel primeiro; e o pagamento nunca vence holds de outras cotações (a conferência das
 noites só ignora pedidos já vencidos).
+
+Cartão (M8.2b): a trava do disjuntor (advisory por organização) é a **última** de todas — imóvel →
+reserva → cotação → tentativas → devoluções → páginas legais → disjuntor —, tomada só no fim de
+`aplicarLeitura`, quando a tentativa que encerra conta no disjuntor; "Religar o cartão" toma só ela, então
+não há ciclo. Depois da chamada ao Mercado Pago, trava não obtida na fase 3 nunca é "ocupado" (o cartão
+pode ter sido cobrado): `guardarIdDaOrder` grava o id da order num comando só (`update … where id = ? and
+id_provedor is null`, com o mesmo tempo-limite, esperando só aquela linha e sem segurar outra), e a fase 3
+é tentada mais uma vez com a leitura em memória; falhou de novo, a tentativa fica `incerta` e as leituras
+seguintes vão pelo id.
 
 ## Pix
 
@@ -178,6 +216,285 @@ noites só ignora pedidos já vencidos).
 - O e-mail do pagador enviado ao Mercado Pago sai do servidor: no teste, `test@testuser.com`
   (exigência do sandbox). A página nunca recebe nome, e-mail ou telefone da reserva.
 
+## Cartão (M8.2b)
+
+Pronto em 9/10/2026, só no teste, com as mesmas travas do Pix. Código: `app/src/pagamentos/cartao.ts`
+(criação em três fases), `criacao.ts` (peças comuns com o Pix), `disjuntor.ts`, `aplicar.ts` (os efeitos
+do cartão, num lugar só), `app/src/site/acoes-pagamento.ts` (`pagarComCartaoAcao`),
+`app/src/site/mensagens-cartao.ts`, `app/src/components/site/PagamentoCartao.tsx`, `DesafioCartao.tsx` e
+`sdk-mercadopago.ts`; migração 0066.
+
+### Quando o site oferece o cartão
+
+Tudo o que oferece o Pix (`podeCobrar`, cotação segurada, motor em seco sem pendência) **e**:
+"Oferecer cartão de crédito" ligado em Configurações → Pagamento no site (vem **desligado** e só vale
+com "Oferecer pagamento no site"), a chave pública presente e com formato válido, e o disjuntor fechado
+(`ofertaDeCartao`; motivos `cartao_desligado`, `disjuntor` e `sem_chave_publica`, além dos do Pix). O
+disjuntor e a chave do cartão nunca entram em `podeCobrar`: o Pix continua. Até 3 tentativas de cartão
+por cotação, à parte dos 3 Pix.
+
+### Formulário
+
+- **Card Payment Brick** do Mercado Pago, carregado do endereço oficial
+  (`https://sdk.mercadopago.com/js/v2`, sem pacote npm), só no componente do cartão e só com a oferta, o
+  cookie da cotação e o aceite das páginas legais marcado (ou já registrado): o hóspede nunca digita o
+  cartão antes de aceitar.
+- **Só crédito:** o Brick esconde débito e pré-pago (`types.excluded`) e o servidor recusa qualquer outro
+  tipo (`so_credito`), que é a trava de verdade; o erro do Brick `payment_method_not_in_allowed_types`
+  mostra o mesmo texto.
+- **Parcelas:** o máximo do painel (`parcelasMaximas`; vazio = o máximo que o Mercado Pago permitir, até
+  36); o servidor confere de 1 até o teto antes de chamar o provedor. As opções, com os juros, o Brick
+  busca no Mercado Pago com a chave pública; o servidor não busca parcelas (precisaria do BIN, que ele
+  nunca recebe).
+- **Juros do hóspede** (Diego, 4/10): o valor enviado (`total_amount`) é o total da cotação; os juros
+  entram por cima, no que o hóspede paga (`valor_pago`), só para mostrar, nunca no livro. A página
+  avisa: "No cartão parcelado há juros do Mercado Pago, pagos por você; o total aparece no formulário
+  antes de confirmar." A confirmação aceita o pago maior que o total só pela própria tentativa: forma
+  cartão e mais de 1 parcela (as parcelas da leitura ou, sem elas, as da tentativa: o GET pode vir sem
+  esses campos).
+- **E-mail:** no teste, o Brick já vem com `test@testuser.com` (o mesmo que o servidor envia), o que
+  esconde o campo; a página continua sem receber o e-mail da reserva. Em produção, decidir junto com os
+  e-mails do Mercado Pago ao comprador recusado (Limites).
+- **CPF e aparelho:** o CPF digitado no Brick e o id do aparelho (`window.MP_DEVICE_SESSION_ID`, posto
+  pelo SDK, enviado como `X-meli-session-id`) só passam pelo servidor a caminho do Mercado Pago; nada é
+  guardado ou registrado (só `com_dispositivo`). Sem o id (bloqueador de anúncios), o pagamento segue.
+- **Marca do Mercado Pago:** a linha fixa "Pagamento processado pelo Mercado Pago" e o título do Brick,
+  com as bandeiras aceitas, visível (sem `hideFormTitle`).
+- **O que o servidor lê:** só token, bandeira, tipo, parcelas, documento, aparelho, aceite e as versões
+  das páginas legais, com tamanho limitado. E-mail, valor, emissor, BIN, últimos dígitos e titular
+  mandados pelo navegador são ignorados; a resposta nunca devolve o que veio; o registro de erro leva só
+  o tipo do erro.
+- **Erros do Brick:** erro crítico → "Não deu para carregar o formulário do cartão. Recarregue a página
+  ou pague com Pix.", com o Pix ao lado; débito ou pré-pago → o texto do `so_credito`; os outros erros de
+  campo o próprio Brick mostra. Só a causa (`cause`, formato fechado) vai para o registro, nunca a
+  mensagem.
+- **Depois de uma recusa** o Brick é recriado (o token é de uso único); quando o teto, as parcelas ou a
+  oferta mudaram, a página recarrega antes. Enquanto o formulário está aberto, a consulta de rotina da
+  página não o apaga: a atualização espera, salvo quando chega dinheiro.
+
+### Três fases e uma tentativa por vez
+
+Como o Pix. Fase 1 sob as travas: oferta e disjuntor, tentativa em andamento, dinheiro, `live_mode`,
+aceite, tetos (antes de cancelar qualquer coisa), cancelamento do pendente que dá para trocar, e a
+tentativa gravada como `criando` (com `parcelas`, `bandeira`, `tres_ds` e `com_dispositivo`). Fase 2: a
+chamada ao Mercado Pago, sem transação nem trava; o token e o CPF vivem só na memória dessa chamada.
+Fase 3: aplica a resposta (confirma na mesma transação quando vem aprovada). Corpo: `processing_mode` e
+`capture_mode` automáticos, `transaction_security` conforme o painel (3DS, abaixo), chave
+`pagamento:<id>:criar`, referência `scl-<id>`, sem `issuer_id`. Não há prazo provisório das datas na
+fase 1 (a carência protege a tentativa `criando`; recusa não tem o que desfazer).
+
+| Situação | Pix novo | Cartão novo |
+|---|---|---|
+| Pix pendente válido | mostra o mesmo | cancela o Pix no Mercado Pago (pedido pelo hóspede), relê e só então cria (pago nesse meio = `ja_pago`) |
+| Cartão no desafio do banco | cancela o desafio, relê e cria o Pix | cancela, relê e cria (conta nos 3) |
+| Cartão em análise | `em_analise` | `em_analise` |
+| Cartão processando, ou qualquer tentativa `criando`/`incerta` | `em_andamento` | `em_andamento` |
+| Algum dinheiro | `ja_pago` | `ja_pago` |
+| Alguma tentativa com `live_mode` | bloqueado | bloqueado |
+| Teto da forma pedida | `limite` (a outra forma não é cancelada) | `limite` ou `limite_geral` (o Pix válido não é cancelado) |
+
+### Criação sem resposta
+
+Com captura automática, o cartão pode ser cobrado durante a chamada; um Pix que talvez não exista não
+pode ser pago, um cartão pode já ter sido. Por isso:
+- depois da fase 2, trava não obtida nunca é "ocupado" (ver "Ordem das travas"): o id da order é gravado
+  e a fase 3 tentada de novo uma vez; senão, `incerto` ("Não deu para confirmar se o pagamento com cartão
+  foi feito. Não pague de novo: a página atualiza sozinha assim que o Mercado Pago responder.");
+- tentativa de cartão `criando`/`incerta` sem id da order só é dada por não criada
+  (`cancelado/nao_criada`) depois de **24 horas** (`DESISTIR_SEM_ORDER_CARTAO_MS`) **e** com a busca de
+  orders e a Payments API pela referência (`existePagamentoPorReferencia`) vazias na mesma leitura. Até
+  lá fica `incerta`: a cotação responde `em_andamento`, o e-mail fica preso (abaixo) e o Início lista a
+  tentativa depois da carência. O Pix continua com os 15 minutos;
+- resposta incerta (409/423/500 `idempotency_validation_failed`, tempo esgotado, 5xx) = `incerta`,
+  resolvida só por leitura (pelo id quando se sabe, senão pela referência), nunca com chave nova.
+
+### Verificação do banco (3DS)
+
+- **Painel:** "Verificação do banco (3DS)" com duas opções, nestas palavras: **Quando houver risco
+  (recomendado)** — "o banco pede a verificação só nos pagamentos arriscados; quando o hóspede passa pela
+  verificação, a contestação por cartão roubado fica com a bandeira; nos outros pagamentos, continua com
+  a SCL" — e **Nunca** — "nenhuma verificação; toda contestação por cartão roubado fica com a SCL".
+  Padrão: quando houver risco (decisão pendente de Diego). "Sempre" não é oferecido (não aparece na
+  documentação de Orders do Brasil; sandbox, item 15).
+- **Corpo:** `{ validation: "on_fraud_risk", liability_shift: "required" }` ou `{ validation: "never" }`.
+  O modo fica em `pagamentos.tres_ds` (retrato do painel em cada tentativa) e o resultado lido em
+  `tres_ds_status` (`AUTHENTICATED`, `NOT_AUTHENTICATED`, `CHALLENGE`, `ATTEMPTED`, `REJECTED`, `ERROR`).
+- **O M8.2e decide quem arca com a contestação pelo `tres_ds_status = AUTHENTICATED` de cada pagamento,
+  nunca pelo modo `tres_ds`.** Se `ATTEMPTED` também passa a responsabilidade é pergunta ao Mercado Pago
+  (sandbox, item 15).
+- **Desafio:** transação `action_required/pending_challenge` = etapa `desafio`. O endereço vem só na
+  resposta da criação (o GET não o documenta) e só vale com https e domínio (ou subdomínio) de
+  `mercadopago.com`, `mercadopago.com.br`, `mercadolibre.com` ou `mercadolivre.com.br`
+  (`DOMINIOS_DESAFIO`); fica em `desafio_url` até a etapa mudar. A página mostra o desafio num quadro
+  (`DesafioCartao`), que só aceita mensagens dessas origens e, com `COMPLETE`, consulta o servidor na hora
+  (nunca confia no navegador; a consulta de rotina continua).
+- **Prazo:** o Mercado Pago dá 40 minutos ao hóspede (`DESAFIO_3DS_MINUTOS`); as datas ficam seguradas
+  até a criação + 42 minutos (só alonga; como o QR do Pix, não volta se o desafio terminar sem dinheiro,
+  e são no máximo 3 cartões por cotação).
+- **Desafio sem endereço válido** na resposta da criação → cancelado pelo sistema, aviso
+  `desafio_sem_url`, o hóspede vê "verificação não concluída". Uma leitura que não é a da criação
+  (aviso, página) nunca liga esse aviso, e uma leitura seguinte com o endereço guardado o desliga.
+  **Desafio com as datas já vencidas** → cancelado pelo sistema (`prazo`: "O prazo das datas desta
+  cotação acabou durante o pagamento: nada foi cobrado.").
+- **Verificação que falhou** é decidida pela situação, não pelo código (o sandbox encerra o desafio
+  recusado como `failed/failed`): a tentativa estava no desafio, ou `tres_ds_status` é
+  `NOT_AUTHENTICATED`/`REJECTED`, ou o código é `cc_rejected_3ds_challenge`/`3ds_challenge_expired` →
+  `verificacao` ("A verificação do seu banco não foi concluída. Tente de novo ou pague com Pix."). Desafio
+  cancelado ou vencido também.
+
+### Cartão em análise ou processando
+
+- A situação continua `pendente`; a etapa é `analise` (`in_review`, `pending_review_manual`) ou
+  `processando` (`processing/in_process`, o processamento em segundo plano).
+- **Prazo das datas:** na primeira leitura em análise ou processando, uma vez por cotação, as datas
+  ficam seguradas até `max(prazo atual, agora + minutos)`, com os minutos de **Configurações →
+  Calendário e preços** ("Minutos a mais que um cartão em análise segura as datas", de 0 a 240, padrão
+  60; 0 = nenhum), gravado em `prazo_analise_ate`. Depois, a carência normal e a aprovação tardia do
+  M8.2a: noites livres com leitura atual = confirma; senão, "aprovado sem reserva" e devolução.
+- **Nada mais nesta cotação** enquanto um cartão está em análise (`em_analise`: nem Pix nem outro cartão;
+  o Mercado Pago não cancela um cartão em análise), e a equipe também não cancela nem confirma à mão.
+- **Na página:** o texto editável `pagamentoCartaoAnalise` (texto-base: "…pode levar até 2 dias úteis…",
+  sem horário; só na análise — o processando usa o texto de "conferindo") e uma linha fixa do prazo das
+  datas, no fuso do imóvel: antes do fim, "As datas estão seguradas até HH:MM."; depois, "O prazo das
+  datas acabou às HH:MM: se a análise aprovar e as datas ainda estiverem livres, confirmamos a reserva;
+  senão, devolvemos o valor integral." A página lê no máximo uma vez por minuto nessa etapa
+  (`INTERVALO_ANALISE_MS`), não a cada 15 s.
+- **O mesmo e-mail:** além da regra do Pix, segurar outras datas com o mesmo e-mail fica recusado
+  enquanto houver um cartão `criando`/`incerta`, ou pendente fora do desafio (análise ou processando),
+  criado nos últimos **5 dias** (`PRAZO_CARTAO_SEM_RESPOSTA_DIAS`: "até 2 dias úteis" num feriadão passa
+  de 4 dias corridos); solta sozinho assim que o Mercado Pago decide. A mensagem é uma só para todos os
+  casos: "Já existe uma reserva ou um pagamento em andamento com este e-mail. Use o link daquela cotação
+  ou fale com a equipe pelo WhatsApp."
+- **Pagou duas vezes?** Uma confirmação tardia de cartão, com outra reserva do site do mesmo e-mail
+  confirmada depois que esta tentativa foi criada, liga o aviso `outra_reserva_mesmo_email` ("o hóspede
+  pode ter pago duas vezes. Confira com ele."). A regra de reviver o pedido não muda.
+- **Início:** "N pagamento(s) com cartão em análise há mais de um dia…" (24 horas,
+  `ALERTA_ANALISE_CARTAO_HORAS`, só o alerta).
+
+### Freios
+
+Constantes (defesa, como os do M8.1, não regra de venda), mostradas só para ler na aba Pagamento no
+site; mudar é código, a pedido:
+- **Por origem**, a cada envio do formulário que passa pelo cookie (token adulterado conta também): 5
+  por hora por endereço de internet (IPv6 pela rede /64), 10 por hora sem origem conhecida. Este freio
+  não conta no geral (`semGeral`): cliques que nunca chegam ao Mercado Pago não gastam a vez de ninguém.
+- **Geral:** 30 tentativas de cartão por hora na empresa toda, contadas na fase 1 pelas linhas que
+  chegaram ao Mercado Pago (`limite_geral`). Não é serializado entre cotações: algumas tentativas em
+  paralelo podem passar da linha; quem para de verdade é o disjuntor.
+- **Por cotação:** 3 tentativas de cartão (linhas que chegaram ao Mercado Pago, inclusive as recusadas
+  por dados inválidos; linha apagada por falha de transporte não conta), uma em andamento por vez.
+- **Disjuntor** (`disjuntor.ts`, tabela `disjuntores_cartao`): 8 recusas que contam em 30 minutos desligam
+  o cartão por 60 minutos; no terceiro disparo em 24 horas, ou com 20 recusas em 24 horas, o cartão fica
+  desligado até alguém religar. O Pix nunca é afetado.
+  - **Contam** (decidido uma vez, na transição que encerra a tentativa, e gravado em
+    `conta_no_disjuntor`): recusa que chegou ao banco ou à análise de risco (com order, ou o 402 sem
+    `data`), salvo os códigos de token e `processing_error`; recusa ou vencimento que encerra um desafio
+    com endereço (inclusive o `failed/failed`); cancelamento pedido pelo hóspede de um desafio com
+    endereço (trocou por outro cartão ou pelo Pix: chegar ao desafio já diz a quem testa que o cartão
+    vale).
+  - **Nunca contam:** dados inválidos (4xx sem order), token (`invalid_card_token`,
+    `card_token_not_found`, `invalid_token`), `processing_error`, falha de transporte, criação não feita,
+    aprovações, análises, cancelamentos do sistema ou da equipe, `live_mode`.
+  - A janela de 30 minutos conta desde o fim do último disparo; a de 24 horas, desde o último "Religar o
+    cartão" (o fim automático de um disparo de 30 minutos não a zera). Recusas de antes de religar nunca
+    disparam de novo. Duas recusas em paralelo no limite criam um disparo só (a trava do disjuntor). A
+    contagem não tem limite de cima: `encerrado_em` é a hora em que o pedido começou, e uma recusa que
+    começou antes pode terminar depois de outra; quem pega a trava por último conta todas as já gravadas.
+  - Conferido em `ofertaDeCartao` (a página esconde o cartão), na ação (antes do provedor) e na fase 1
+    (sob trava); nunca em `podeCobrar`, na conferência, no cancelamento ou na devolução.
+  - **Religar o cartão:** só quem edita o financeiro, com confirmação; auditado
+    (`pagamento.disjuntor_religado`). O disparo também é auditado (`pagamento.disjuntor_aberto`), só com
+    contagens, janela e horário.
+  - **Início:** disjuntor aberto (atenção, com link para a aba); alerta a partir de 10 recusas em 24 horas
+    com o cartão ainda ligado; 3 recusas por token numa hora ("confira se a chave pública e o token do
+    Mercado Pago são da mesma conta"). **Integrações** avisa quando a chave pública e o token parecem de
+    contas ou ambientes diferentes (prefixos `TEST-` × `APP_USR-`).
+- Ficaram de fora: teto por e-mail e contador de recusas por origem (quem testa troca de e-mail; o teto
+  por origem já limita uma origem).
+
+### Mensagens ao hóspede
+
+Lista fechada (`MENSAGENS_CARTAO_HOSPEDE`, em `app/src/site/pagamento.ts` com os textos de
+`mensagens-cartao.ts`), não editável: a recusa precisa continuar a mesma para todo motivo. Todo motivo do
+banco ou da análise de risco (`bad_filled_card_data`, `high_risk`, `rejected_by_issuer`,
+`required_call_for_authorize`, `max_attempts_exceeded`, `card_disabled`, `insufficient_amount`,
+`card_insufficient_amount`, `amount_limit_exceeded`, `invalid_installments` e qualquer código
+desconhecido) dá **o mesmo texto**: "Não foi possível aprovar o pagamento com este cartão. Confira os
+dados, use outro cartão ou pague com Pix." As exceções não servem de pista a quem testa cartões: token
+vencido ou inválido ("Os dados do cartão expiraram. Preencha de novo."), verificação do banco não
+concluída (pela situação, acima) e `processing_error` (falha do próprio Mercado Pago: "Não deu para falar
+com o Mercado Pago agora…", fora do disjuntor). Nunca um limite, nunca quando o disjuntor volta, nunca o
+texto do provedor, nunca "Beds24". O adaptador devolve para toda recusa a mesma `mensagem` ("Pagamento
+recusado pelo Mercado Pago."); o motivo vai num código, e os textos por motivo ficam só no painel
+(`MOTIVOS_RECUSA_CARTAO`), para quem lê o financeiro. Sem a tela de situação do Mercado Pago (Status
+Screen Brick).
+
+### Devolução
+
+- **Pelo Mercado Pago:** igual ao Pix (integral, corpo vazio); o valor registrado é o pago na order
+  (com os juros, quando o Mercado Pago os mostra; sandbox, item 18).
+- **Por fora, no cartão, só quando o Mercado Pago não pode devolver:** a devolução pelo Mercado Pago foi
+  recusada (`recusada`) ou ficou com o aviso `devolucao_falhou`, ou o pagamento passou dos 180 dias do
+  Mercado Pago (`PRAZO_DEVOLUCAO_CARTAO_DIAS`). Fora disso, recusa: "Pagamento com cartão: devolva pelo
+  Mercado Pago. A devolução por fora só é registrada quando o Mercado Pago recusou a devolução ou o
+  pagamento passou de 180 dias (a cobrança ficaria no cartão do hóspede e uma contestação poderia
+  devolver de novo)." A releitura da order antes de registrar continua, e a confirmação avisa que o
+  hóspede pode também contestar a cobrança no cartão e receber de novo. Order que não volta na releitura:
+  dentro do prazo de releitura (85 dias), nada se registra; depois dele (o Mercado Pago só guarda a order
+  por 90 dias, então o cartão depois dos 180 dias cai sempre aqui), vale o último valor pago que o sistema
+  conferiu, com as mesmas regras locais (sem desfecho, sem pedido aceito à espera). Padrão com decisão pendente de
+  Diego (GUIA, seção 7).
+- **Antes da liberação:** no cartão, devolver antes de o Mercado Pago liberar o dinheiro pode pedir saldo
+  disponível na conta; o texto de `devolucao_falhou` do cartão diz isso e manda conferir no Mercado Pago
+  (sandbox, item 24).
+- Devolução de parte do valor continua no M8.2c.
+
+### Taxa e liberação
+
+- **Taxa** = valor − líquido, de uma leitura da Payments API; os juros (`fee_payer: payer`) ficam de
+  fora. A divisão (a taxa sai antes da divisão, na proporção) é a decisão pendente 3 de Diego e vale igual
+  para o cartão, agora com taxas de ~4% a 5%.
+- **Parcelamento sem acréscimo**, detectado pelo dinheiro e não pelo campo `installments_cost` (o exemplo
+  da documentação mostra `"seller"` numa order comum): `custoParcelasVendedor` = soma dos `fee_details` do
+  tipo `financing_fee` que não são do comprador (`pagamentos.custo_parcelas_vendedor`). Com mais de 1
+  parcela e (custo > 0, ou aprovado com o pago igual ao valor) → aviso `parcelas_sem_juros`. Com o aviso
+  ligado ou o custo > 0 (lido agora ou numa leitura anterior), a taxa não entra sozinha na reserva e a
+  liberação não é lançada sozinha (o motor tiraria esse custo da parte do proprietário): a equipe decide
+  quem paga e registra a liberação à mão. A trava não é decidida leitura a leitura: uma leitura seguinte
+  sem o custo (`fee_details` ausente ou ilegível) não a solta. Parcelado com o líquido informado e o custo
+  desconhecido também trava (nunca supor zero), com o aviso `custo_parcelas_desconhecido`, que sai quando o
+  custo vem. Só a liberação registrada à mão (um recebimento em vigor, inclusive depois de o Mercado Pago
+  conciliá-la) solta a trava e apaga os avisos; estornada, a trava volta. A SCL nunca oferece
+  "parcelamento sem acréscimo"; Diego deixa a opção desligada no Mercado Pago.
+- **Liberação em parcelas:** `money_release_schema` não vazio (ex.: `payment_in_flow`) ⇒ `liberado =
+  null` e aviso `liberacao_em_parcelas`, nunca recebimento automático; a equipe registra a liberação à mão
+  (feito no M8.2b, em `financeiroDoPagamento`, `mercadopago.ts`).
+- **Prazo:** o cartão libera conforme o plano da conta (na hora 4,98%, 14 dias 4,49%, 30 dias 3,98%; a
+  confirmar nos termos vigentes). A reserva fica "a liberar" até o sinal explícito `released`, com "o
+  Mercado Pago libera em dd/mm"; a releitura de 6 em 6 horas e os 85 dias cobrem os 30 dias.
+
+### Contestação (gancho para o M8.2e)
+
+A leitura da order dá `contestado` quando uma transação está `charged_back/*` ou algum
+`transactions.chargebacks[].status` é `in_process` ou `settled`, qualquer que seja a situação da order
+(só o `status` é lido: nunca `case_id`, `id` ou `references`). O id numérico da Payments API (é o que chega
+nos avisos de contestação, cujo prazo de 180 dias passa da janela de leitura das orders) fica em
+`pagamentos.id_pagamento_provedor`. Registro, decisão de quem arca e lançamentos são do M8.2e; o aviso
+assinado continua ignorando ids numéricos.
+
+### Limites do M8.2b
+
+- Sem captura manual (autorizar e capturar depois): a aprovação tardia do M8.2a já dá um desfecho a
+  toda aprovação.
+- **Antes do pagamento de verdade:** o campo de e-mail do Brick (preenchido ou à mostra), decidido junto
+  com os e-mails do Mercado Pago ao comprador recusado (se dizem o motivo e se dá para desligar; no teste
+  o e-mail é sempre `test@testuser.com`, então o sandbox não mostra); uma política de conteúdo com nonce
+  (`script-src`/`connect-src`) em `/reservar` (o SAQ A do PCI pede a página do pagamento protegida
+  contra script injetado; hoje só o `frame-src` está restrito); uma versão nova publicada da Política de
+  privacidade.
+- Juros e taxa na devolução, devolução antes da liberação, liberação das parcelas e o risco de
+  `payments[0].amount` incluir os juros dependem do sandbox (itens 12, 14, 18 e 24).
+
 ## Quem pode pagar
 
 O código da cotação circula no WhatsApp e não é credencial. Ao segurar as datas, o navegador recebe
@@ -188,7 +505,11 @@ página mostra só a situação. Freios por endereço de internet e geral por or
 para "Continuar o pagamento", para a consulta da página e também para segurar as datas: a origem é
 conferida **primeiro** e só o pedido que ainda cabe no teto dela conta no geral (uma origem só não
 tira a vez de todo mundo, como na entrada com senha); IPv6 conta pela rede /64; origem desconhecida
-conta numa chave compartilhada com teto baixo.
+conta numa chave compartilhada com teto baixo. O cartão (M8.2b) exige o mesmo cookie antes de qualquer
+coisa (sem ele, nenhum token se gasta); o freio dele por origem não conta no geral, que é contado pelas
+tentativas que chegam ao Mercado Pago (seção "Cartão", "Freios"). A validade do cookie cobre o prazo das
+datas mais longo possível: 3 Pix, 3 desafios do banco e a maior extensão de cartão em análise (240
+minutos), com as carências.
 
 ## Aviso assinado (webhook)
 
@@ -238,6 +559,13 @@ confirmação nunca chegaria e as leituras gastariam o limite do provedor sem fi
 de que o sistema parou de conferir aquela devolução; a equipe resolve pelo painel do Mercado Pago até o
 M8.2c. Contestação tardia (até 180 dias) fica com o M8.2e, por outro caminho (Payments ou Chargebacks).
 
+No cartão (M8.2b), `paginaAindaLe` considera a forma: cartão recusado não é relido (order `failed` é
+final); cartão cancelado ou vencido no desafio é relido até 15 minutos depois de encerrado (ou da criação
++ 40 minutos), porque o cancelamento pode cruzar com o fim do desafio. Na análise ou no processamento, a
+página e a rotina leem no máximo uma vez por minuto (`INTERVALO_ANALISE_MS`); as leituras forçadas (aviso,
+"Conferir agora", releitura da fase 1) não mudam. A criação sem resposta segue a regra das 24 horas
+(seção "Cartão").
+
 **Onde a rotina roda:** o cron da Vercel só roda no deploy de produção, onde o pagamento fica
 desligado. No teste (prévias), nada confere sozinho: a página do hóspede confere o próprio Pix e o
 **Conferir agora** do painel faz o papel da rotina (os avisos dizem isso). A limpeza dos avisos com
@@ -262,8 +590,9 @@ noites nunca foram liberadas), seja qual for o relógio.
    (depois disso só a equipe muda): noites ocupadas ou sem leitura atual para conferir; pedido
    cancelado pela equipe (cotação `cancelada`, ou reserva cancelada com a cotação ainda segurada:
    nunca é revivido); valor aprovado diferente do total da cotação (`total_amount`, o valor da
-   transação — que precisa vir na order — e o total pago, quando vier; no cartão, o pago pode passar
-   pelos juros do hóspede); outra tentativa da mesma cotação já com desfecho `reserva`; reserva
+   transação — que precisa vir na order — e o total pago, quando vier; no cartão parcelado, o pago pode
+   passar do total pelos juros do hóspede, decidido pela própria tentativa: forma cartão e mais de 1
+   parcela, M8.2b); outra tentativa da mesma cotação já com desfecho `reserva`; reserva
    com recebimento registrado à mão (confirmada à mão, ainda `pedido` ou cancelada; a mesma conferência
    impede gerar o Pix, sob a trava da reserva que o recebimento à mão também toma); dinheiro que chega **já devolvido em parte ou
    contestado**, sem uma leitura "aprovado" antes (motivo "situação inesperada", com aviso: nunca
@@ -293,7 +622,9 @@ do M9.2 passa a valer para reservas pagas quando Diego ligar as mensagens.
 - Só o pagamento com desfecho `reserva`, com a reserva confirmada e a situação ainda `aprovado`,
   lança o `recebimento`, e só quando o provedor disser **explicitamente** que liberou (campo e valor
   exatos a conferir no sandbox; data passada sozinha nunca basta; liberação em parcelas não lança
-  sozinha). Recebimento: montante = o líquido **informado pelo provedor nessa leitura** (nunca o
+  sozinha: desde o M8.2b, `financeiroDoPagamento` lê o `money_release_schema` e, não vazio, deixa
+  `liberado` vazio e liga o aviso `liberacao_em_parcelas` — seção "Cartão", "Taxa e liberação").
+  Recebimento: montante = o líquido **informado pelo provedor nessa leitura** (nunca o
   guardado antes), data de caixa = o dia (em São Paulo) da leitura que viu o sinal — a data informada
   é a prevista e, com retenção ou contestação, o dinheiro sai depois dela; nunca se lança o caixa antes
   de o dinheiro estar liberado —, `conciliado`, origem
@@ -320,8 +651,10 @@ do M9.2 passa a valer para reservas pagas quando Diego ligar as mensagens.
 ## Devolução na parte (a): só do pagamento sem reserva
 
 - A equipe escolhe (com confirmação), na ficha: **Devolver pelo Mercado Pago** (integral) ou
-  **Registrar devolução feita por fora** (data, valor, nota; a data entre o dia em que o Pix foi
-  criado e hoje). Exigem desfecho vazio e nenhuma devolução pedida, sob a trava da tentativa.
+  **Registrar devolução feita por fora** (data, valor, nota; a data entre o dia em que o pagamento foi
+  criado e hoje). Exigem desfecho vazio e nenhuma devolução pedida, sob a trava da tentativa. No
+  cartão, a devolução por fora só quando o Mercado Pago não pode devolver (seção "Cartão",
+  "Devolução").
 - Devolução pelo provedor: `pedida` até confirmar. A chave de cada pedido é gravada antes de chamar, junto
   com o valor que a order relida mostra como pago (é o que a devolução integral devolve; no valor divergente,
   não o total da cotação).
@@ -397,15 +730,33 @@ consulta".
 | Aprovado sem as datas | "Recebemos seu pagamento, mas não conseguimos garantir as datas. A equipe vai falar com você e devolver o valor integral", com WhatsApp |
 | Devolução pedida / feita | o que foi pedido e quando; devolução que o Mercado Pago recusou ou não respondeu (parada, à espera da equipe) aparece como "pagamento recebido sem as datas" (a equipe fala com o hóspede), nunca como pedida; com mais de um pagamento sem reserva, "devolvido" só quando todos foram devolvidos |
 | Pix vencido sem pagar, datas ainda seguradas | gerar outro (até 3), só com o Pix ainda oferecido (a página que espera recarrega quando a oferta volta) |
+| Cartão: verificação do banco (M8.2b) | "Verificação do seu banco": o quadro do banco (endereço só com o cookie, conferido de novo; sem endereço válido, "Não deu para abrir a verificação do banco" e as outras opções), mais "Pagar com Pix" e "Usar outro cartão" quando oferecidos (os dois cancelam o desafio antes) |
+| Cartão em análise (M8.2b) | "Pagamento em análise": o texto editável da análise e a linha fixa do prazo das datas (antes e depois do fim); continua assim mesmo depois do prazo das datas, porque a análise ainda pode aprovar |
+| Cartão recusado, datas ainda seguradas (M8.2b) | "Datas seguradas" com a mensagem genérica (recusa ou verificação não concluída) e as opções que restam: outro cartão, Pix, WhatsApp; com as datas já vencidas, igual ao Pix (sem pagamento) |
+
+Desde o M8.2b, com as duas formas oferecidas, o quadro se chama "Pagamento" e começa pela escolha
+**Pix (recomendado)**, marcado e em destaque, ou **Cartão de crédito**, com a nota dos juros embaixo do
+cartão; só aparecem as formas oferecidas, e cada texto muda conforme elas (por exemplo, com o máximo de
+Pix e o cartão ainda oferecido: "Esta cotação já gerou o máximo de Pix. Você ainda pode pagar com cartão
+de crédito."). No Pix aguardando, "Prefere pagar com cartão?" abre o formulário (o envio cancela o Pix no
+Mercado Pago e o relê: pago nesse meio = "já recebemos"). A caixa de aceite aparece em toda situação em
+que o Pix ou o cartão podem ser oferecidos (uma lista só, `ESTADOS_QUE_PAGAM`, que decide também a
+oferta). Nunca "Gerar outro Pix" para um cartão. Com o cartão ligado, "por Pix" vira "por Pix ou cartão"
+na cotação e ao segurar as datas.
 
 Desde o M7.4, o "Gerar Pix" (na primeira vez e no "Gerar outro Pix") leva a caixa de aceite das
 páginas legais enquanto a cotação não aceitou as versões em vigor: resumo da Política de
 cancelamento, a data-limite do reembolso integral desta reserva e "Li e aceito…" com o link de cada
 versão. Já aceitas, só a linha "Você aceitou…"; na reserva confirmada, as versões aceitas e o prazo.
 
-Os textos principais (convite para pagar, Pix aguardando, aprovado sem as datas) são editáveis em
-Textos do site, com texto-base. Os "nenhum pagamento é feito no site" passam a depender de o Pix
-estar oferecido para aquele imóvel. A página proíbe ser enquadrada por outro site.
+Os textos principais (convite para pagar, Pix aguardando, aprovado sem as datas e, desde o M8.2b, o
+cartão em análise) são editáveis em Textos do site, com texto-base. O convite tem texto-base neutro desde
+o M8.2b ("Pague aqui mesmo: …", sem citar a forma); uma cópia salva antes continua com o texto antigo,
+que fala de Pix, até Diego revisar. As mensagens de recusa do cartão não são editáveis. Os "nenhum
+pagamento é feito no site" passam a depender de o Pix estar oferecido para aquele imóvel. A página
+proíbe ser enquadrada por outro site e, desde o M8.2b, só enquadra o próprio site e os domínios do
+Mercado Pago (`frame-src` montado de `DOMINIOS_DESAFIO`, `app/src/site/politica-de-frames.ts`): o
+navegador também barra um desafio em outro endereço.
 
 ## Painel
 
@@ -421,11 +772,34 @@ estar oferecido para aquele imóvel. A página proíbe ser enquadrada por outro 
 - **Ficha da reserva:** quadro "Pagamento no site". Situação, forma e datas para quem lê reservas;
   valores para quem lê o financeiro; ações (devolver, devolução por fora, registrar liberação,
   conferir agora) para quem edita o financeiro, com confirmação.
+- **Cartão no painel (M8.2b):**
+  - Configurações → Pagamento no site: "Oferecer cartão de crédito" (desligado), "Número máximo de
+    parcelas" (vazio = o máximo do Mercado Pago; de 1 a 36) e "Verificação do banco (3DS)" com as duas
+    opções; um bloco **Cartão** com a situação do disjuntor ("Ligado", "Desligado pelo disjuntor até
+    HH:MM — N recusas em 30 minutos", "Desligado até alguém religar — N recusas em 24 horas"), as recusas
+    das últimas 24 horas, os 5 últimos disparos, os freios fixos e **Religar o cartão** (só quem edita o
+    financeiro, com confirmação). Os valores valem para as tentativas novas.
+  - Configurações → Calendário e preços: "Minutos a mais que um cartão em análise segura as datas (uma vez
+    por cotação; 0 = nenhum)", e a nota do prazo das datas passa a falar do cartão.
+  - Ficha da reserva: "Cartão de crédito · Visa · 3x", "Valor da reserva" e a linha **No Mercado Pago**
+    (order `ORD…`, referência `scl-…` e o número do pagamento na Payments API, com botão de copiar), para
+    quem lê reservas: não são dados pessoais e servem para achar o pagamento no Mercado Pago. A situação
+    do cartão é genérica para todos (verificação do banco até HH:MM, em análise, processando, recusado).
+    Só para quem lê o financeiro: o motivo interno da recusa, com a linha fixa "Não informe o motivo ao
+    hóspede: peça outro cartão ou o Pix."; a verificação do banco pedida e o resultado deste pagamento; o
+    pago pelo hóspede com os juros ("inclui R$ X de juros do parcelamento, que ficam com o Mercado
+    Pago"); o custo do parcelamento sem acréscimo cobrado da SCL. Nunca BIN, últimos dígitos ou titular,
+    mesmo que o Mercado Pago os mande (a leitura por lista branca os ignora). Bandeiras por extenso
+    (`master` → Mastercard, `amex` → American Express…).
+  - Início (empresa toda): disjuntor aberto, recusas a partir de 10 em 24 horas, recusas por token, cartão
+    em análise há mais de um dia (seção "Cartão"), e o alerta de criação sem resposta fala de
+    "pagamento(s) do site", não só de Pix. Integrações: o aviso de chave pública e token de contas
+    diferentes.
 - **Financeiro → Pagamentos do site:** lista por período com filtro "pede atenção".
 - **Início** (para a empresa toda, sem depender do filtro de imóveis): aprovado sem desfecho (a
   devolver), dinheiro que chegou já devolvido em parte ou contestado antes da decisão (alerta
   próprio: resolver no painel do Mercado Pago até o M8.2c), devolução pedida ou recusada,
-  liberação prevista vencida sem sinal, criação do Pix sem resposta do Mercado Pago há mais que a
+  liberação prevista vencida sem sinal, criação do pagamento sem resposta do Mercado Pago há mais que a
   carência, conta das chaves que não é de teste, configuração inválida,
   aviso com `live_mode`, dinheiro sem cálculo, e o informativo "N reserva(s) do site paga(s): feche as
   datas nas OTAs enquanto o envio ao Beds24 estiver desligado".
@@ -440,6 +814,23 @@ registro do servidor só leva códigos. Nada de dado do pagador em tentativas, e
 estado das ações. Teste: depois de um fluxo completo com o provedor falso, nenhum e-mail ou documento
 do pagador aparece nessas tabelas.
 
+**Cartão (M8.2b).** Pode ser guardado: forma, tipo (crédito), bandeira, parcelas, valor pago (com os
+juros), códigos de detalhe, `tres_ds`, `tres_ds_status`, `etapa_cartao`, `desafio_url` (apagado depois),
+`com_dispositivo`, `encerrado_em`, `cancelamento_por`, `conta_no_disjuntor`, `id_pagamento_provedor`,
+`custo_parcelas_vendedor`, `aceite_id` e `live_mode`. **Nunca** guardado nem registrado: token do cartão,
+BIN, últimos dígitos, titular, CPF ou outro documento, e-mail do pagador, id do aparelho, ids dos casos de
+contestação, IP (além das chaves do freio, de cerca de 24 h), os dados crus do Brick (`formData`,
+`additionalData`, a mensagem de erro) e a resposta crua do provedor. Disparos do disjuntor e auditorias
+só com contagens, horários e ids de usuário. O motivo da recusa só aparece para quem lê o financeiro. O
+teste de dados pessoais (`semDadosPessoais`) percorre `pagamentos`, `eventos_pagamento`, `auditoria`,
+`aceites_site`, `disjuntores_cartao` e `tentativas_login` depois dos fluxos aprovado, recusado, em análise
+e com desafio (token, CPF, id do aparelho, e-mails e o nome de teste "APRO").
+
+O texto-base da Política de privacidade (`paginas-legais-rascunho.ts`) diz agora, na linha do
+pagamento: "no cartão, também a bandeira, o número de parcelas, o valor pago com os juros e o resultado
+da verificação do banco, nunca o número do cartão". Versão publicada nunca muda por código: Diego
+publica uma versão nova antes de ligar o cartão.
+
 ## A conferir no sandbox (Diego e Claude)
 
 1. Qual campo de `GET /users/me` marca a conta de teste.
@@ -453,3 +844,72 @@ do pagador aparece nessas tabelas.
    informa a taxa que não voltou.
 8. O valor de `live_mode` nas orders do usuário de teste (se vier `true`, todo Pix do teste é
    cancelado na hora: ver o desvio em "Variáveis e travas").
+
+Cartão (M8.2b):
+
+9. Se o corpo do cartão é aceito com `capture_mode: "automatic"` e `config.online.transaction_security`,
+   e se o resultado vem na hora (não `processing/in_process` toda vez). Se o Mercado Pago recusar o campo
+   `capture_mode`, tirá-lo.
+10. O formato do 402 de um cartão recusado (`errors[]` com `data` trazendo a order, ou sem `data`), o
+    prefixo do id da order (`ORD`, `ORDTST` ou nenhum) e onde vem o `status_detail`. Os dois formatos
+    contam no disjuntor.
+11. Situação e `status_detail` de cada nome de titular de teste (APRO, OTHE, CONT, CALL, FUND, SECU, EXPI,
+    FORM, INST, DUPL, LOCK, CTNA, BLAC…): toda recusa precisa mostrar o mesmo texto ao hóspede; se CONT
+    dá `in_review`, `pending_review_manual` ou `in_process`, e se algum dia se resolve.
+12. Com parcelas: `total_amount`, `payments[0].amount`, `paid_amount`, `total_paid_amount`,
+    `installment_amount`, e se o GET devolve `payment_method.type` e `installments` (o exemplo da
+    referência traz null). **Risco:** se `payments[0].amount` incluir os juros, todo pagamento parcelado
+    vira `valor_divergente` (saída: comparar `total_amount` e aceitar o valor da transação maior que o
+    total só com mais de 1 parcela). Se `total_paid_amount` nunca incluir os juros, tirar o sinal "pago
+    igual ao valor" do parcelamento sem acréscimo.
+13. `config.payment_method.installments_cost` nas orders de 1x e de várias parcelas da conta de teste
+    (só para registro; não é usado).
+14. Payments API pela referência no cartão: `fee_details` (`financing_fee` do comprador e
+    `mercadopago_fee` da SCL; `financing_fee` da SCL com o "parcelamento sem acréscimo" ligado),
+    `net_received_amount` sem os juros (senão `taxa_invalida`), `money_release_date` por plano (14 e 30
+    dias), `money_release_status` de pendente a liberado, os valores de `money_release_schema` em 1x e
+    parcelado com "receber à vista" ligado e desligado, e quanto tempo o pagamento leva para aparecer em
+    `/v1/payments/search` depois da criação da order (regra das 24 horas).
+15. 3DS com `on_fraud_risk` e os titulares APRO-CHOK, OTHE-CHNO, APRO-AUTH, APRO-ATMT e OTHE-NAUT no
+    Brasil: `action_required/pending_challenge` só para CHOK e CHNO; onde vem o endereço do desafio e em
+    que domínio (o exemplo da documentação é `www.mercadopago.com.ar`: se o sandbox do Brasil também usar
+    `.com.ar`, acrescentar a `DOMINIOS_DESAFIO`); se o GET também traz o endereço; o tamanho do quadro; se
+    o atributo `sandbox` do iframe atrapalha; origem e conteúdo do `postMessage`; os códigos finais
+    (documentado: `failed/failed` para CHNO e NAUT; `canceled/expired` ou `failed/3ds_challenge_expired`
+    depois de 40 minutos); maiúsculas ou minúsculas no `tres_ds_status`; se `ATTEMPTED` passa a
+    responsabilidade; e se `validation: "always"` existe no Brasil. Desafios que falham ou vencem contam no
+    disjuntor.
+16. Aparelho: se o SDK v2 sozinho preenche `window.MP_DEVICE_SESSION_ID` (senão, acrescentar o
+    `security.js`); se o `X-meli-session-id` é aceito no `POST /v1/orders`; se a falta dele dá
+    `transaction_security.status = ERROR`.
+17. Cancelar uma order de cartão em `processing` ou `in_review`: 409 (o nosso `nao_cancelavel`)?
+18. Devolução integral de um cartão parcelado: se o hóspede recebe os juros de volta, se a taxa do
+    Mercado Pago volta e o que `refunds[].amount` mostra (registrar em `RECEBIMENTO-SITE.md`; o M8.2c
+    precisa da base da devolução parcial).
+19. Que chave pública faz par com o token do vendedor de teste (credenciais de produção do usuário de
+    teste, `APP_USR-…`); um par trocado provavelmente dá `invalid_card_token` (400 ou 402?) — o alerta de
+    token do Início precisa aparecer.
+20. O Brick em português mostra juros e total por parcela; `maxInstallments` acima da oferta do Mercado
+    Pago é ignorado; o e-mail preenchido esconde o campo; a marca do Mercado Pago e as bandeiras aceitas
+    aparecem; `types.excluded` esconde o débito — **digitar um cartão pré-pago de teste** e conferir que é
+    recusado com `payment_method_not_in_allowed_types`; se não for, trocar por (ou somar) `prepaid-card`,
+    a grafia da referência do SDK.
+21. `statement_descriptor`: quantos caracteres aparecem de fato na fatura (50, ~10 ou 13) e se vem um
+    prefixo "MERCADOPAGO*".
+22. `idempotency_validation_failed` (500) no cartão: tratado como `incerto` (nunca chave nova).
+23. O disjuntor na prática: 8 recusas de teste em 30 minutos o desligam na prévia (esperado); "Religar o
+    cartão" funciona.
+24. Devolução de um cartão aprovado **antes** de `money_release_status` virar `released`: o Mercado Pago
+    tira do dinheiro a liberar ou exige saldo disponível (`devolucao_falhou`)?
+25. Várias tentativas seguidas com o mesmo pagador (`test@testuser.com`) e o mesmo valor: aparece
+    `high_risk` (regra de duplicidade do antifraude)? Se sim, anotar nos passos de teste do GUIA.
+26. As causas de `onError` que o Brick emite de fato para: cartão de débito digitado, campos incompletos,
+    BIN desconhecido, falha ao buscar as parcelas.
+27. Os endereços que o Brick e o SDK carregam de fato em `/reservar` (script, quadro, conexão), com o
+    `frame-src` restrito: registrar para o `script-src`/`connect-src` da produção e acrescentar qualquer
+    domínio de quadro que falte (por exemplo, `*.mlstatic.com`).
+28. A leitura da order depois de uma contestação (se o sandbox simular): os formatos da transação
+    `charged_back/*` e de `transactions.chargebacks[]`.
+29. Parcelamento sem acréscimo: com a opção ligada na conta de teste, um pagamento em 3x mostra
+    `financing_fee` com `fee_payer: collector` e o pago igual ao valor (aviso `parcelas_sem_juros`, sem
+    taxa automática).

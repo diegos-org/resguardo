@@ -1853,6 +1853,106 @@
   }
 }
 
+/* Cartão de crédito no site (M8.2b): a escolha entre Pix e cartão, o formulário do Mercado Pago e o desafio do banco */
+.formasPagamento {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.formasPagamento legend {
+  margin-bottom: 6px;
+  padding: 0;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.formaPagamento {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--scl-papel);
+  border: 1px solid var(--scl-borda);
+  border-radius: var(--scl-raio-campo);
+  font-size: 0.9375rem;
+  color: var(--scl-tinta);
+  cursor: pointer;
+}
+
+.formaPagamento span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.formaPagamento input[type="radio"] {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  accent-color: var(--scl-floresta);
+}
+
+/* O Pix (recomendado) em destaque */
+.formaRecomendada {
+  border: 2px solid var(--scl-musgo);
+  font-weight: 600;
+}
+
+.cartaoPagamento {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.cartaoPagamento p {
+  margin: 0;
+}
+
+.cartaoFormulario {
+  min-width: 0;
+  min-height: 120px;
+}
+
+.cartaoOpcoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.desafioCartao {
+  width: 100%;
+  height: 600px;
+  max-height: 80vh;
+  background: var(--scl-branco);
+  border: 1px solid var(--scl-borda);
+  border-radius: var(--scl-raio-campo);
+}
+
+/* Ação secundária com cara de link ("Prefere pagar com cartão?") */
+.linkBotao {
+  padding: 0;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 0.9375rem;
+  color: var(--scl-floresta);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+@media (max-width: 600px) {
+  .cartaoOpcoes .botao {
+    width: 100%;
+  }
+}
+
 /* Páginas legais (M7.4): texto longo legível no celular, o resumo da política em destaque e as outras versões */
 .documentoLegal {
   display: flex;

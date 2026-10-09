@@ -12,16 +12,21 @@ import { eventosPagamento, pagamentos } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
 import { aplicarLeitura, type Efeitos, type Leitura } from "./aplicar";
-import { paginaAindaLe } from "./andamento";
+import { DESISTIR_SEM_ORDER_CARTAO_MS, paginaAindaLe } from "./andamento";
 import { type Cobranca, ErroProvedor, type ProvedorPagamento } from "./provedor";
 import type { SituacaoPagamento } from "./situacoes";
 import { type Pagamento, travarCotacao } from "./travas";
 
 /** A página e os outros gatilhos não leem o provedor mais de uma vez a cada 15 s por tentativa (salvo `forcar`). */
 export const INTERVALO_CONSULTA_MS = 15_000;
+/**
+ * Cartão em análise ou processando (M8.2b): no máximo uma leitura por minuto (a análise pode levar dias e a página
+ * fica consultando por horas). Leituras forçadas (aviso, "Conferir agora", releitura antes de criar) não esperam.
+ */
+export const INTERVALO_ANALISE_MS = 60_000;
 /** Taxa, líquido e liberação (Payments API): no máximo a cada 5 minutos por tentativa. */
 export const INTERVALO_FINANCEIRO_MS = 5 * 60_000;
-/** Tentativa sem order, procurada pela referência e não achada por este tempo: a criação não aconteceu. */
+/** Pix sem order, procurado pela referência e não achado por este tempo: a criação não aconteceu (cartão: ver `lerProvedor`). */
 export const DESISTIR_SEM_ORDER_MS = 15 * 60_000;
 
 export type OrigemConferencia = "aviso" | "pagina" | "rotina" | "painel";
@@ -54,13 +59,23 @@ function precisaFinanceiro(p: Pagamento, c: Cobranca, agora: Date, forcar: boole
   return false;
 }
 
-/** Lê o provedor para a tentativa (fora de transação). Falha de transporte lança `ErroProvedor`. */
+/**
+ * Lê o provedor para a tentativa (fora de transação). Falha de transporte lança `ErroProvedor`. Sem order achada pela
+ * referência, a criação é dada por não feita: no Pix, depois de 15 minutos; no cartão (que pode ter sido cobrado durante
+ * a criação), só depois de 24 h e com a Payments API também sem nenhum pagamento da referência (a chamada a mais só
+ * acontece nesse caso; se ela falha, nada se decide).
+ */
 async function lerProvedor(p: Pagamento, provedor: ProvedorPagamento, agora: Date, forcar: boolean, conhecida?: Cobranca): Promise<Leitura> {
   let cobranca: Cobranca | null;
   if (conhecida) cobranca = conhecida;
   else if (p.idProvedor) cobranca = await provedor.consultar(p.idProvedor);
   else cobranca = await provedor.buscarPorReferencia(p.referencia, p.criadoEm);
-  const desistir = !p.idProvedor && cobranca === null && agora.getTime() - p.criadoEm.getTime() >= DESISTIR_SEM_ORDER_MS;
+  const idade = agora.getTime() - p.criadoEm.getTime();
+  let desistir = false;
+  if (!p.idProvedor && cobranca === null) {
+    if (p.forma !== "cartao") desistir = idade >= DESISTIR_SEM_ORDER_MS;
+    else if (idade >= DESISTIR_SEM_ORDER_CARTAO_MS) desistir = !(await provedor.existePagamentoPorReferencia(p.referencia, p.criadoEm));
+  }
   const financeiro = cobranca && precisaFinanceiro(p, cobranca, agora, forcar) ? await provedor.detalheFinanceiro(cobranca) : null;
   return { cobranca, financeiro, desistir, idLido: p.idProvedor };
 }
@@ -74,7 +89,7 @@ export async function aplicarNaTransacao(db: Db, organizacaoId: string, p: Pick<
   });
 }
 
-/** Cancela no provedor as orders que sobraram e relê cada uma (melhor esforço: o que falhar fica com o aviso `cancelamento_pendente` e a próxima conferência — rotina ou "Conferir agora" — tenta de novo). */
+/** Cancela no provedor as orders que sobraram (ou um desafio do cartão sem como seguir) e relê cada uma (melhor esforço: o que falhar fica com o aviso `cancelamento_pendente` e a próxima conferência — rotina ou "Conferir agora" — tenta de novo). */
 export async function cancelarNoProvedor(db: Db, organizacaoId: string, lista: { id: string; idProvedor: string }[], provedor: ProvedorPagamento, agora: Date): Promise<number> {
   let canceladas = 0;
   for (const x of lista) {
@@ -123,10 +138,11 @@ export async function conferirTentativa(
   if (!p) return { ok: false, erro: "Pagamento não encontrado." };
   const reservar = !opcoes.forcar && !opcoes.cobranca;
   if (reservar) {
+    const intervalo = p.forma === "cartao" && (p.etapaCartao === "analise" || p.etapaCartao === "processando") ? INTERVALO_ANALISE_MS : INTERVALO_CONSULTA_MS;
     const [reservada] = await db
       .update(pagamentos)
       .set({ consultadoEm: agora })
-      .where(and(eq(pagamentos.id, p.id), or(isNull(pagamentos.consultadoEm), lt(pagamentos.consultadoEm, new Date(agora.getTime() - INTERVALO_CONSULTA_MS + 1)))))
+      .where(and(eq(pagamentos.id, p.id), or(isNull(pagamentos.consultadoEm), lt(pagamentos.consultadoEm, new Date(agora.getTime() - intervalo + 1)))))
       .returning({ id: pagamentos.id });
     if (!reservada) return { ok: true, situacao: p.situacao, consultou: false, mudou: false };
   }
@@ -168,7 +184,7 @@ export { FOLGA_LEITURA_PIX_ENCERRADO_MS } from "./andamento";
 export async function conferirCotacaoParaPagina(db: Db, organizacaoId: string, cotacaoId: string, provedor: ProvedorPagamento, agora: Date = new Date()): Promise<ResultadoConferencia | null> {
   if (!uuidValido(cotacaoId)) return null;
   const tentativas = await db
-    .select({ id: pagamentos.id, situacao: pagamentos.situacao, idProvedor: pagamentos.idProvedor, pixExpiraEm: pagamentos.pixExpiraEm, criadoEm: pagamentos.criadoEm })
+    .select({ id: pagamentos.id, forma: pagamentos.forma, situacao: pagamentos.situacao, idProvedor: pagamentos.idProvedor, pixExpiraEm: pagamentos.pixExpiraEm, criadoEm: pagamentos.criadoEm, encerradoEm: pagamentos.encerradoEm })
     .from(pagamentos)
     .where(and(eq(pagamentos.cotacaoId, cotacaoId), eq(pagamentos.organizacaoId, organizacaoId)))
     .orderBy(desc(pagamentos.criadoEm), desc(pagamentos.id));

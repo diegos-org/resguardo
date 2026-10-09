@@ -1,15 +1,16 @@
 import { eq, like } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { CONFIG_PAGAMENTO_SITE_PADRAO, salvarConfigPagamentoSite } from "@/configuracoes/pagamento-site";
 import { aceitesSite, pagamentos, tentativasLogin } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { autorizacaoValida, CAMINHO_COOKIE_CHECKOUT, emitirAutorizacao, validadeDaAutorizacao } from "@/pagamentos/autorizacao";
 import { ERRO_EMAIL_DO_PEDIDO, ERROS_LIMITE, LIMITES_PAGAMENTO } from "@/pagamentos/limites";
 import { ErroProvedor } from "@/pagamentos/provedor";
-import { AGORA, type Cenario, EMAIL_HOSPEDE, minutos, montarCenario } from "@/pagamentos/testes";
+import { AGORA, type Cenario, DISPOSITIVO_FICTICIO, DOCUMENTO_FICTICIO, EMAIL_HOSPEDE, minutos, montarCenario, semDadosPessoais, TOKEN_FICTICIO, TOTAL } from "@/pagamentos/testes";
 import { nomeDoCookieDoPedido } from "./checkout";
 import { criarCotacao } from "./cotacoes";
-import { MENSAGEM_SEM_AUTORIZACAO, MENSAGENS_PIX_HOSPEDE } from "./pagamento";
+import { MENSAGEM_SEM_AUTORIZACAO, MENSAGENS_CARTAO_HOSPEDE, MENSAGENS_PIX_HOSPEDE } from "./pagamento";
 
 type Gravado = { value: string; opcoes: Record<string, unknown> };
 const m = vi.hoisted(() => ({
@@ -38,7 +39,7 @@ vi.mock("./site", async (orig) => ({
 // As travas reais leem as variáveis do processo (sem chaves = desligado): aqui, o portão do cenário (provedor falso).
 vi.mock("./pagamento", async (orig) => ({ ...(await orig<typeof import("./pagamento")>()), portaoDoSite: m.portao }));
 
-const { continuarPagamentoAcao, gerarPixAcao } = await import("./acoes-pagamento");
+const { continuarPagamentoAcao, gerarPixAcao, pagarComCartaoAcao } = await import("./acoes-pagamento");
 const { segurarDatasAcao } = await import("./acoes");
 
 let db: Db, close: () => Promise<void>, c: Cenario;
@@ -256,5 +257,136 @@ describe("Segurar as datas (M8.1 + M8.2a)", () => {
     expect(await segurarDatasAcao({}, form({ codigo: cot.codigo, ...contato }))).toEqual({});
     expect((await c.cotacao(cot.id)).estado).toBe("segurada");
     expect(m.jarra.size).toBe(0);
+  });
+});
+
+describe("Pagar com cartão (M8.2b)", () => {
+  /** O que o formulário do cartão manda (token gerado no navegador, nunca o número), mais campos que nunca são lidos. */
+  const formCartao = (over: Record<string, string> = {}) =>
+    form({
+      token: TOKEN_FICTICIO,
+      bandeira: "master",
+      tipo: "credit_card",
+      parcelas: "1",
+      documentoTipo: "CPF",
+      documentoNumero: DOCUMENTO_FICTICIO,
+      dispositivo: DISPOSITIVO_FICTICIO,
+      // Nada disto é lido pela ação (nem que o navegador mande).
+      email: "forjado@example.com",
+      transaction_amount: "1.00",
+      issuer_id: "999",
+      bin: "548083",
+      lastFourDigits: "3311",
+      cardholderName: "APRO",
+      organizacaoId: "outra-org",
+      ...over,
+    });
+  const cartoesDa = async (cotacaoId: string) => (await tentativasDa(cotacaoId)).filter((t) => t.forma === "cartao");
+
+  it("ordem: sem o cookie do pedido, recusa antes do freio (nada gasto); depois o freio por endereço, só a origem (o teto geral nunca é tocado)", async () => {
+    const s = await c.segurar();
+    for (let i = 0; i < LIMITES_PAGAMENTO.cartao.origem.tentativas + 2; i++) expect(await pagarComCartaoAcao(s.codigo, formCartao())).toEqual({ erro: MENSAGEM_SEM_AUTORIZACAO });
+    expect(await db.select().from(tentativasLogin).where(like(tentativasLogin.chave, `pagamento-cartao:%`))).toEqual([]);
+    expect(c.provedor.chamadas.filter((x) => x.metodo === "criarCartao")).toEqual([]);
+    comCookie(s.cotacaoId);
+    await db.insert(tentativasLogin).values({ chave: `pagamento-cartao:origem:${c.org}:${m.ip}`, erros: LIMITES_PAGAMENTO.cartao.origem.tentativas, atualizadoEm: AGORA });
+    expect(await pagarComCartaoAcao(s.codigo, formCartao())).toEqual({ erro: ERROS_LIMITE.cartao });
+    expect(await cartoesDa(s.cotacaoId)).toEqual([]);
+    m.ip = "203.0.113.11";
+    expect(await pagarComCartaoAcao(s.codigo, formCartao())).toEqual({ ok: true, situacao: "aprovado" });
+    expect(await db.select().from(tentativasLogin).where(like(tentativasLogin.chave, `pagamento-cartao:geral:%`))).toEqual([]);
+    expect(await pagarComCartaoAcao("COT-INEXIST", formCartao())).toEqual({ erro: MENSAGENS_CARTAO_HOSPEDE.nao_encontrada });
+  });
+
+  it("aprovado: confirma a reserva, recarrega a página; do formulário só os campos conhecidos chegam ao provedor; o estado não devolve nada do que foi enviado", async () => {
+    const s = await c.segurar();
+    comCookie(s.cotacaoId);
+    const r = await pagarComCartaoAcao(s.codigo.toLowerCase(), formCartao({ parcelas: "3" }));
+    expect(r).toEqual({ ok: true, situacao: "aprovado" });
+    expect(m.revalidar).toHaveBeenCalledWith(`/reservar/${s.codigo}`);
+    expect((await c.reserva(s.reservaId)).estado).toBe("confirmada");
+    const pedido = c.provedor.ultimoPedidoCartao!;
+    // E-mail da reserva (no servidor), valor da cotação, nunca o que o formulário dizia.
+    expect(pedido).toMatchObject({ email: EMAIL_HOSPEDE, valor: TOTAL, bandeira: "master", tipo: "credit_card", parcelas: 3, emissor: null, comToken: true, documento: { tipo: "CPF", numero: DOCUMENTO_FICTICIO }, sessaoDispositivo: DISPOSITIVO_FICTICIO });
+    // Nenhum valor forjado chegou ao provedor (comparação campo a campo: ids aleatórios nunca dão falso alarme).
+    const valores = Object.values(pedido).flatMap((v) => (v && typeof v === "object" ? Object.values(v) : [v])).map(String);
+    for (const forjado of ["forjado@example.com", "1.00", "999", "548083", "3311", "APRO", "outra-org"]) expect(valores).not.toContain(forjado);
+    expect(JSON.stringify(r)).not.toMatch(new RegExp([TOKEN_FICTICIO, DOCUMENTO_FICTICIO, DISPOSITIVO_FICTICIO, EMAIL_HOSPEDE].join("|")));
+    expect(await semDadosPessoais(db, [TOKEN_FICTICIO, DOCUMENTO_FICTICIO, DISPOSITIVO_FICTICIO, "548083", "APRO"])).toEqual([]);
+  });
+
+  it("recusado: o mesmo texto para todo motivo (o do banco, o da análise de risco), nunca o código", async () => {
+    const s = await c.segurar();
+    comCookie(s.cotacaoId);
+    c.provedor.respostaCartao = "recusado";
+    const respostas = [];
+    for (const motivo of ["rejected_by_issuer", "high_risk"]) {
+      c.provedor.motivoRecusaCartao = motivo;
+      respostas.push(await pagarComCartaoAcao(s.codigo, formCartao()));
+    }
+    expect(respostas).toEqual([{ erro: MENSAGENS_CARTAO_HOSPEDE.recusado }, { erro: MENSAGENS_CARTAO_HOSPEDE.recusado }]);
+    expect(JSON.stringify(respostas)).not.toMatch(/rejected|risk/);
+    // Só crédito: recusado antes de chegar ao provedor.
+    c.provedor.chamadas.length = 0;
+    expect(await pagarComCartaoAcao(s.codigo, formCartao({ tipo: "debit_card" }))).toEqual({ erro: MENSAGENS_CARTAO_HOSPEDE.so_credito });
+    expect(c.provedor.chamadas.filter((x) => x.metodo === "criarCartao")).toEqual([]);
+  });
+
+  it("parcelas acima do painel ou cartão indisponível: a mensagem curta e a página recarrega antes do formulário novo", async () => {
+    const s = await c.segurar();
+    comCookie(s.cotacaoId);
+    await salvarConfigPagamentoSite(db, c.org, { ...CONFIG_PAGAMENTO_SITE_PADRAO, oferecer: true, cartao: true, parcelasMaximas: 3 }, null);
+    expect(await pagarComCartaoAcao(s.codigo, formCartao({ parcelas: "6" }))).toEqual({ erro: MENSAGENS_CARTAO_HOSPEDE.parcelas, recarregar: true });
+    // Campo fora do formato (ou maior que o tamanho máximo): o domínio recusa sem chamar o provedor.
+    expect(await pagarComCartaoAcao(s.codigo, formCartao({ parcelas: "x" }))).toEqual({ erro: MENSAGENS_CARTAO_HOSPEDE.parcelas, recarregar: true });
+    expect(await pagarComCartaoAcao(s.codigo, formCartao({ token: "t".repeat(129) }))).toEqual({ erro: MENSAGENS_CARTAO_HOSPEDE.dados_cartao });
+    await salvarConfigPagamentoSite(db, c.org, { ...CONFIG_PAGAMENTO_SITE_PADRAO, oferecer: true, cartao: false }, null);
+    expect(await pagarComCartaoAcao(s.codigo, formCartao())).toEqual({ erro: MENSAGENS_CARTAO_HOSPEDE.indisponivel, recarregar: true });
+    m.portao.mockResolvedValue({ ok: false, motivo: "desligado_no_painel", texto: "Oferecer pagamento no site está desligado em Configurações → Pagamento no site." });
+    expect(await pagarComCartaoAcao(s.codigo, formCartao())).toEqual({ erro: MENSAGENS_CARTAO_HOSPEDE.nao_oferecido, recarregar: true });
+    // O sexto envio na hora pelo mesmo endereço já para no freio (5 por hora); de outro endereço, segue.
+    expect(await pagarComCartaoAcao(s.codigo, formCartao())).toEqual({ erro: ERROS_LIMITE.cartao });
+    m.ip = "203.0.113.12";
+    // Prazo das datas acabado: o texto do prazo (não "cartão indisponível").
+    m.portao.mockResolvedValue(c.gate);
+    await salvarConfigPagamentoSite(db, c.org, { ...CONFIG_PAGAMENTO_SITE_PADRAO, oferecer: true, cartao: true }, null);
+    vi.setSystemTime(minutos(31));
+    expect(await pagarComCartaoAcao(s.codigo, formCartao())).toEqual({ erro: "O prazo das datas desta cotação acabou.", recarregar: true });
+    expect(await cartoesDa(s.cotacaoId)).toEqual([]);
+    expect(c.provedor.chamadas.filter((x) => x.metodo === "criarCartao")).toEqual([]);
+  });
+
+  it("aceite das páginas legais: sem a caixa numa cotação sem aceite, pede o aceite; marcada, grava o aceite do cartão na mesma transação", async () => {
+    const s = await c.segurar({ semAceite: true });
+    comCookie(s.cotacaoId);
+    expect(await pagarComCartaoAcao(s.codigo, formCartao())).toEqual({ erro: MENSAGENS_CARTAO_HOSPEDE.aceite_pendente });
+    expect(await pagarComCartaoAcao(s.codigo, formCartao({ aceite: "sim", versaoTermos: "1", versaoPrivacidade: "x", versaoCancelamento: "1" }))).toEqual({ erro: "Recarregue a página e tente de novo.", recarregar: true });
+    expect(await pagarComCartaoAcao(s.codigo, formCartao({ aceite: "sim", versaoTermos: "2", versaoPrivacidade: "1", versaoCancelamento: "1" }))).toEqual({ erro: MENSAGENS_CARTAO_HOSPEDE.aceite_mudou });
+    expect(await cartoesDa(s.cotacaoId)).toEqual([]);
+    expect(await pagarComCartaoAcao(s.codigo, formCartao({ aceite: "sim", versaoTermos: "1", versaoPrivacidade: "1", versaoCancelamento: "1" }))).toEqual({ ok: true, situacao: "aprovado" });
+    const [aceite] = await db.select().from(aceitesSite).where(eq(aceitesSite.cotacaoId, s.cotacaoId));
+    expect(aceite).toMatchObject({ origem: "cartao", versaoTermos: 1 });
+    expect((await cartoesDa(s.cotacaoId))[0].aceiteId).toBe(aceite.id);
+  });
+
+  it("desafio do banco e análise voltam como situação (a página mostra); falha inesperada vira a mensagem curta e o registro leva só o tipo do erro", async () => {
+    const s = await c.segurar();
+    comCookie(s.cotacaoId);
+    c.provedor.respostaCartao = "desafio";
+    expect(await pagarComCartaoAcao(s.codigo, formCartao())).toEqual({ ok: true, situacao: "desafio" });
+    const outra = await c.segurar({ entrada: "2026-11-02", saida: "2026-11-05", email: "outra@example.com" });
+    comCookie(outra.cotacaoId);
+    c.provedor.respostaCartao = "em_analise";
+    expect(await pagarComCartaoAcao(outra.codigo, formCartao())).toEqual({ ok: true, situacao: "analise" });
+    expect(await pagarComCartaoAcao(outra.codigo, formCartao())).toEqual({ erro: MENSAGENS_CARTAO_HOSPEDE.em_analise, recarregar: true });
+    const terceira = await c.segurar({ entrada: "2026-11-20", saida: "2026-11-23", email: "terceira@example.com" });
+    comCookie(terceira.cotacaoId);
+    const erro = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(db, "transaction").mockImplementationOnce(() => {
+      throw new TypeError(`falha com ${TOKEN_FICTICIO}`);
+    });
+    expect(await pagarComCartaoAcao(terceira.codigo, formCartao())).toEqual({ erro: MENSAGENS_CARTAO_HOSPEDE.provedor });
+    expect(erro).toHaveBeenCalledWith("[site] falha no pagamento com cartão", "TypeError");
+    expect(JSON.stringify(erro.mock.calls)).not.toContain(TOKEN_FICTICIO);
   });
 });

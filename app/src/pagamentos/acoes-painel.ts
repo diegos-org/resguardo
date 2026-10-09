@@ -3,7 +3,8 @@
 /**
  * Pagamento no site (M8.2a) — ações do painel: conferir agora (uma tentativa ou todas as pendentes da empresa),
  * devolver pelo Mercado Pago, registrar a devolução feita por fora, registrar a taxa que não voltou, registrar e
- * estornar a liberação à mão, e salvar a aba Configurações → Pagamento no site.
+ * estornar a liberação à mão, salvar a aba Configurações → Pagamento no site e religar o cartão desligado pelo
+ * disjuntor de recusas (M8.2b).
  *
  * Sempre nesta ordem: sessão (a empresa vem só dela) → permissão `financeiro:editar` → validação → domínio. Conferir,
  * cancelar, devolver e a devolução por fora (que relê a order antes) usam `provedorDeConferencia` (sem a chave do
@@ -21,6 +22,7 @@ import { uuidValido } from "@/lib/ids";
 import { dataValida } from "@/reservas/regras";
 import { conferirTentativa } from "./conferencia";
 import { devolverPeloProvedor, registrarDevolucaoPorFora, registrarTaxaPerdida } from "./devolucao";
+import { religarCartao } from "./disjuntor";
 import { estornarLiberacaoManual, registrarLiberacaoManual } from "./liberacao";
 import { provedorDeConferencia } from "./oferta";
 import { ErroProvedor } from "./provedor";
@@ -200,7 +202,20 @@ export async function salvarConfigPagamentoSiteAcao(_e: EstadoConfigPagamento, f
   return {
     ok: true,
     aviso: v.config.oferecer
-      ? "Salvo. Vale para os Pix novos; os já gerados seguem como estavam."
-      : "Salvo. O site deixa de oferecer o Pix nos pedidos novos; o que já foi pago continua sendo conferido e pode ser devolvido.",
+      ? "Salvo. Vale para os pagamentos novos; os já criados seguem como estavam."
+      : "Salvo. O site deixa de oferecer o pagamento nos pedidos novos; o que já foi pago continua sendo conferido e pode ser devolvido.",
   };
+}
+
+/**
+ * "Religar o cartão" (M8.2b): fecha o disjuntor de recusas aberto (auditado, com confirmação na tela). Nada do formulário
+ * é lido. As recusas de antes não desligam de novo; as próximas contam do zero.
+ */
+export async function religarCartaoAcao(): Promise<EstadoAcaoPagamento> {
+  const sessao = await sessaoFinanceira();
+  const r = await religarCartao(getDb(), sessao.organizacaoId, sessao.usuarioId, new Date());
+  if (!r.ok) return { mensagem: r.erro };
+  revalidar();
+  revalidatePath("/reservar/[codigo]", "page");
+  return { ok: true, mensagem: "Cartão religado: o site volta a oferecer o cartão de crédito nos pedidos novos." };
 }

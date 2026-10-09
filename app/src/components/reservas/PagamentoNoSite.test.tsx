@@ -2,7 +2,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { PagamentoDoPainel } from "@/pagamentos/consultas";
 vi.mock("@/pagamentos/acoes-painel", () => ({ conferirAgoraAcao: vi.fn(), devolverAcao: vi.fn(), devolucaoPorForaAcao: vi.fn(), registrarLiberacaoAcao: vi.fn(), estornarLiberacaoAcao: vi.fn(), registrarTaxaPerdidaAcao: vi.fn() }));
-import { PagamentoNoSite, situacaoEmPalavras } from "./PagamentoNoSite";
+import { AVISOS_PAGAMENTO } from "@/pagamentos/situacoes";
+import { DEVOLUCAO_FALHOU_CARTAO, NAO_INFORME_O_MOTIVO, PagamentoNoSite, situacaoEmPalavras } from "./PagamentoNoSite";
 
 const sem = { conferir: false, devolver: false, devolucaoPorFora: false, registrarLiberacao: false, estornarLiberacao: false, registrarTaxaPerdida: false };
 const base: PagamentoDoPainel = {
@@ -144,5 +145,77 @@ describe("quadro Pagamento no site", () => {
     expect(html([{ ...base, aceite: null }])).toContain("não registrado (tentativa anterior às páginas legais do site)");
     // Sem o campo (tentativa montada sem ele), nada é dito.
     expect(html([base])).not.toContain(">Aceite</dt>");
+  });
+});
+
+describe("cartão de crédito no quadro (M8.2b)", () => {
+  const cartao: PagamentoDoPainel = {
+    ...base,
+    forma: "cartao",
+    valorPago: 191520,
+    idProvedor: "ORDTST0001",
+    referencia: "scl-11111111-1111-4111-8111-111111111111",
+    idPagamentoProvedor: "123456789",
+    parcelas: 3,
+    bandeira: "visa",
+    tresDS: "on_fraud_risk",
+    tresDSStatus: "AUTHENTICATED",
+    etapaCartao: null,
+    juros: 9120,
+    custoParcelasVendedor: null,
+    motivoRecusa: null,
+  };
+  const recusado: PagamentoDoPainel = { ...cartao, situacao: "recusado", desfecho: null, desfechoEm: null, valorPago: null, juros: null, tresDSStatus: "NOT_AUTHENTICATED", motivoRecusa: "Recusado pelo banco emissor do cartão.", acoes: { ...sem, conferir: true } };
+
+  it("quem só lê reservas: forma com bandeira e parcelas, situação genérica e os identificadores no Mercado Pago com copiar — nenhum motivo, verificação do banco, juros ou valor", () => {
+    const h = html([recusado], { verValores: false, editar: false });
+    expect(h).toContain("<strong>Cartão de crédito · Visa · 3x</strong>");
+    expect(h).toContain("Recusado pelo Mercado Pago");
+    expect(h).toContain("<code>ORDTST0001</code>");
+    expect(h).toContain("<code>scl-11111111-1111-4111-8111-111111111111</code>");
+    expect(h).toContain("<code>pagamento 123456789</code>");
+    expect(h.match(/>Copiar</g)).toHaveLength(3);
+    expect(h).not.toContain("banco emissor");
+    expect(h).not.toContain(NAO_INFORME_O_MOTIVO);
+    expect(h).not.toContain("Verificação do banco");
+    expect(h).not.toContain("juros");
+    expect(h).not.toContain("R$");
+    // Nunca BIN, últimos dígitos ou titular (nem existem na tentativa).
+    expect(h).not.toMatch(/últimos|BIN|titular/i);
+  });
+
+  it("quem lê o financeiro: o motivo com a linha de não informar ao hóspede, a verificação do banco e o resultado, os juros e o custo do sem acréscimo", () => {
+    const h = html([recusado], { editar: false });
+    expect(h).toContain("Motivo (só para a equipe)");
+    expect(h).toContain("Recusado pelo banco emissor do cartão.");
+    expect(h).toContain(`<strong>${NAO_INFORME_O_MOTIVO}</strong>`);
+    expect(h).toContain("quando houver risco (resultado deste pagamento: não autenticado)");
+    const pago = html([{ ...cartao, custoParcelasVendedor: 4560 }], { editar: false });
+    expect(pago).toContain("Valor da reserva");
+    expect(pago).toContain("R$ 1.915,20 (inclui R$ 91,20 de juros do parcelamento, que ficam com o Mercado Pago)");
+    expect(pago).toContain("quando houver risco (resultado deste pagamento: autenticado pelo banco)");
+    expect(pago).toContain("Custo do parcelamento sem acréscimo cobrado da SCL");
+    expect(pago).toContain("R$ 45,60");
+  });
+
+  it("situação em palavras do cartão (igual para toda a equipe): desafio até quando, análise, processando, criação sem resposta", () => {
+    const pendente = { ...cartao, situacao: "pendente" as const, desfecho: null };
+    expect(situacaoEmPalavras({ ...pendente, etapaCartao: "desafio" })).toBe("Aguardando a verificação do banco do hóspede (até 12:40)");
+    expect(situacaoEmPalavras({ ...pendente, etapaCartao: "analise" })).toBe("Em análise no Mercado Pago (pode levar até 2 dias úteis)");
+    expect(situacaoEmPalavras({ ...pendente, etapaCartao: "processando" })).toBe("O Mercado Pago está processando");
+    expect(situacaoEmPalavras({ ...cartao, situacao: "incerta", desfecho: null })).toBe("Conferindo no Mercado Pago se o pagamento foi criado");
+    expect(situacaoEmPalavras(cartao)).toBe("Aprovado: confirmou a reserva");
+  });
+
+  it("devolução recusada no cartão: o aviso fala do saldo antes da liberação; por fora pergunta com o risco da contestação", () => {
+    const parada: PagamentoDoPainel = { ...cartao, desfecho: null, motivoSemReserva: "noites_ocupadas", motivoSemReservaTexto: "As noites ficaram ocupadas.", avisos: [AVISOS_PAGAMENTO.devolucao_falhou], acoes: { ...sem, devolucaoPorFora: true } };
+    const h = html([parada]);
+    expect(h).toContain(DEVOLUCAO_FALHOU_CARTAO);
+    expect(html([{ ...parada, forma: "pix" }])).toContain(AVISOS_PAGAMENTO.devolucao_falhou);
+    expect(h).toContain("Registrar devolução feita por fora");
+  });
+
+  it("introdução fala de Pix e cartão", () => {
+    expect(html([cartao])).toContain("Cada tentativa de pagamento (Pix ou cartão) feita pelo hóspede no site.");
   });
 });

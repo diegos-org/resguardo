@@ -6,7 +6,7 @@ import type { Db } from "@/db/types";
 import { estornar } from "@/financeiro/ledger";
 import { expirarHoldsVencidos } from "@/site/cotacoes";
 import { conferirTentativa } from "./conferencia";
-import { avisosDePagamento, listarPagamentos, pagamentoEmAndamentoOuAprovado, pagamentosDaReserva, vistaDaCotacaoParaHospede } from "./consultas";
+import { avisosDePagamento, listarPagamentos, nomeDaBandeira, pagamentoEmAndamentoOuAprovado, pagamentosDaReserva, vistaDaCotacaoParaHospede } from "./consultas";
 import { devolverPeloProvedor, registrarDevolucaoPorFora } from "./devolucao";
 import { registrarEventoDeAviso } from "./eventos";
 import { gerarPix } from "./pix";
@@ -320,5 +320,90 @@ describe("painel: pagamentos da reserva, lista e avisos do Início (M8.2a)", () 
     // A auditoria geral da reserva continua sem o contato por extenso (regra do M8.1).
     const geral = JSON.stringify(await db.select().from(auditoria).where(eq(auditoria.organizacaoId, c.org)));
     expect(geral).not.toContain(EMAIL_HOSPEDE);
+  });
+});
+
+describe("o cartão na página do hóspede e no painel (M8.2b)", () => {
+  it("desafio do banco: o endereço só com a autorização (e só de domínio do Mercado Pago); em análise, mesmo depois do prazo das datas; recusado com as datas seguradas; sem as datas, sem pagamento", async () => {
+    const s = await c.segurar();
+    c.provedor.respostaCartao = "desafio";
+    const r = await c.cartao(s.cotacaoId);
+    const com = await vista(s.cotacaoId, minutos(1));
+    expect(com).toMatchObject({ estado: "cartao_desafio", forma: "cartao", cartaoRestantes: 2, pixRestantes: 3, desafioUrl: expect.stringMatching(/^https:\/\/www\.mercadopago\.com\.br\//) });
+    expect(await vista(s.cotacaoId, minutos(1), false)).toMatchObject({ estado: "cartao_desafio", desafioUrl: null });
+    // Endereço adulterado no banco: não sai (a vista confere de novo).
+    await db.update(pagamentos).set({ desafioUrl: "https://exemplo.invalid/3ds" }).where(eq(pagamentos.id, r.pagamentoId!));
+    expect(await vista(s.cotacaoId, minutos(1))).toMatchObject({ estado: "cartao_desafio", desafioUrl: null });
+    c.provedor.concluirDesafio(r.idProvedor!, "expirado");
+    await conferir(r.pagamentoId!, minutos(41));
+    expect(await vista(s.cotacaoId, minutos(41))).toMatchObject({ estado: "cartao_recusado", recusa: "verificacao", acompanhar: true });
+    // Datas não mais seguradas e nada que ainda possa virar dinheiro: o fluxo pela conversa.
+    expect(await vista(s.cotacaoId, minutos(60))).toMatchObject({ estado: "sem_pagamento", acompanhar: false });
+
+    const a = await c.segurar(outras(0));
+    c.provedor.respostaCartao = "em_analise";
+    await c.cartao(a.cotacaoId);
+    expect(await vista(a.cotacaoId, minutos(2))).toMatchObject({ estado: "cartao_em_analise", dinheiroSemDesfecho: true });
+    await expirarHoldsVencidos(db, c.org, minutos(80));
+    expect(await vista(a.cotacaoId, minutos(80))).toMatchObject({ estado: "cartao_em_analise", holdAte: null });
+
+    const p = await c.segurar(outras(1));
+    c.provedor.respostaCartao = "processando";
+    await c.cartao(p.cotacaoId);
+    expect(await vista(p.cotacaoId, minutos(2))).toMatchObject({ estado: "verificando" });
+
+    const x = await c.segurar(outras(2));
+    c.provedor.respostaCartao = "recusado";
+    await c.cartao(x.cotacaoId);
+    expect(await vista(x.cotacaoId, minutos(2))).toMatchObject({ estado: "cartao_recusado", recusa: "cartao", cartaoRestantes: 2, acompanhar: false });
+    // Um Pix gerado depois: a página volta a ser do Pix.
+    await c.pix(x.cotacaoId, minutos(3));
+    expect(await vista(x.cotacaoId, minutos(4))).toMatchObject({ estado: "pix_aguardando", forma: "pix", cartaoRestantes: 2 });
+    // Nada pessoal na vista.
+    expect(JSON.stringify(await vista(x.cotacaoId, minutos(4)))).not.toContain(EMAIL_HOSPEDE);
+  });
+
+  it("painel: bandeira, parcelas, verificação do banco, identificadores no Mercado Pago, juros e o motivo da recusa (o texto do painel); nunca dados do cartão", async () => {
+    const s = await c.segurar();
+    c.provedor.respostaCartao = "recusado";
+    c.provedor.motivoRecusaCartao = "high_risk";
+    await c.cartao(s.cotacaoId);
+    c.provedor.respostaCartao = "aprovado";
+    c.provedor.jurosCartao = 9_000;
+    const ok = await c.cartao(s.cotacaoId, { parcelas: 3, bandeira: "visa" }, minutos(1));
+    c.provedor.atualizarFinanceiro(ok.idProvedor!, { taxa: 9_100, liquido: TOTAL - 9_100 });
+    await conferir(ok.pagamentoId!, minutos(2));
+    const [recusado, aprovado] = await pagamentosDaReserva(db, c.org, s.reservaId, minutos(3));
+    expect(recusado).toMatchObject({ forma: "cartao", situacao: "recusado", bandeira: "master", parcelas: 1, tresDS: "on_fraud_risk", motivoRecusa: "Recusado pela análise de segurança do Mercado Pago.", juros: null, idProvedor: expect.stringMatching(/^ORDTST/) });
+    expect(recusado.referencia).toMatch(/^scl-/);
+    expect(aprovado).toMatchObject({
+      situacao: "aprovado",
+      bandeira: "visa",
+      parcelas: 3,
+      tresDSStatus: "AUTHENTICATED",
+      juros: 9_000,
+      custoParcelasVendedor: 0,
+      motivoRecusa: null,
+      etapaCartao: null,
+      idPagamentoProvedor: expect.stringMatching(/^\d+$/),
+    });
+    expect(nomeDaBandeira("master")).toBe("Mastercard");
+    expect(nomeDaBandeira("visa")).toBe("Visa");
+    expect(nomeDaBandeira("naranja")).toBe("naranja");
+    // Um Pix no painel não tem campos de cartão.
+    const outro = await c.segurar(outras(0));
+    await c.pix(outro.cotacaoId);
+    const [pix] = await pagamentosDaReserva(db, c.org, outro.reservaId, minutos(3));
+    expect(pix).toMatchObject({ forma: "pix", bandeira: null, parcelas: null, tresDS: null, juros: null, motivoRecusa: null });
+  });
+
+  it("Início: criação sem resposta conta para o cartão também (o texto fala de pagamento)", async () => {
+    const s = await c.segurar();
+    c.provedor.falhas.criarCartao = new ErroProvedor("incerto", "tempo");
+    await c.cartao(s.cotacaoId);
+    c.provedor.falhas.criarCartao = null;
+    const r = await avisosDePagamento(db, c.org, minutos(20), { env: env({}) });
+    expect(r.contagens.criacaoPresa).toBe(1);
+    expect(r.alertas.map((x) => x.texto).join("\n")).toContain("1 pagamento(s) do site sem resposta do Mercado Pago sobre a criação");
   });
 });

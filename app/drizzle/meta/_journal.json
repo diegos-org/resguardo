@@ -463,6 +463,13 @@
       "when": 1791556937463,
       "tag": "0065_m7_4_aceites_site",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1791572770269,
+      "tag": "0066_m8_2b_cartao",
+      "breakpoints": true
     }
   ]
 }

@@ -16,6 +16,10 @@
  * Por fora: só depois
  * de reler a order no provedor (devolvida, em andamento ou contestada = recusa), e só o valor integral. A taxa que
  * não voltar a equipe informa depois da confirmação ("Registrar taxa que não voltou"): vira despesa da empresa.
+ *
+ * Cartão (M8.2b): devolve-se pelo Mercado Pago (integral = o pago, com os juros quando ele mostra). Por fora, só quando
+ * a devolução pelo Mercado Pago não deu (recusada, ou com o aviso de que falhou) ou o pagamento passou dos 180 dias em
+ * que o Mercado Pago ainda devolve: senão a cobrança ficaria no cartão do hóspede e uma contestação devolveria de novo.
  */
 import { and, eq } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
@@ -27,6 +31,7 @@ import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { formatBRL } from "@/lib/money";
 import { dataValida } from "@/reservas/regras";
+import { inicioDoPrazoDeReleitura } from "./andamento";
 import { conferirTentativa } from "./conferencia";
 import { FUSO_PAGAMENTO } from "./liberacao";
 import { type Cobranca, type ProvedorPagamento, type ResultadoDevolucao, valorPagoNaOrder } from "./provedor";
@@ -39,6 +44,22 @@ export const MAXIMO_FALHAS_DEVOLUCAO = 3;
 /** Espera entre uma tentativa de devolução e a seguinte (a rotina relê a order antes). */
 export const ESPERA_DEVOLUCAO_MS = 10 * 60_000;
 export const chaveDevolucao = (devolucaoId: string, n: number) => `devolucao:${devolucaoId}:${n}`;
+/** Por quantos dias depois da aprovação o Mercado Pago ainda devolve um pagamento com cartão. */
+export const PRAZO_DEVOLUCAO_CARTAO_DIAS = 180;
+export const ERRO_POR_FORA_CARTAO =
+  "Pagamento com cartão: devolva pelo Mercado Pago. A devolução por fora só é registrada quando o Mercado Pago recusou a devolução ou o pagamento passou de 180 dias (a cobrança ficaria no cartão do hóspede e uma contestação poderia devolver de novo).";
+
+/**
+ * Cartão: a devolução por fora é permitida? Só quando a devolução pelo Mercado Pago não deu (a devolução ficou recusada,
+ * ou o pagamento tem o aviso de que ela falhou) ou o pagamento passou do prazo em que o Mercado Pago devolve. Pix: sempre
+ * (as outras condições continuam em `recusaDaDevolucao`). Puro: o quadro do pagamento usa a mesma regra.
+ */
+export function porForaPermitidoNoCartao(p: Pick<Pagamento, "forma" | "avisos" | "aprovadoEm">, dev: Pick<Devolucao, "situacao"> | undefined, agora: Date): boolean {
+  if (p.forma !== "cartao") return true;
+  if (dev?.situacao === "recusada" || p.avisos.includes("devolucao_falhou")) return true;
+  return !!p.aprovadoEm && p.aprovadoEm.getTime() + PRAZO_DEVOLUCAO_CARTAO_DIAS * 86_400_000 < agora.getTime();
+}
+
 /** Despesa da taxa que o provedor não devolveu (uma por tentativa; idempotente). */
 export const chaveTaxaPerdida = (pagamentoId: string) => `mercadopago:${pagamentoId}:taxa_perdida`;
 
@@ -55,7 +76,7 @@ async function cotacaoDoPagamento(db: Db, organizacaoId: string, pagamentoId: st
  * vale para o pagamento contestado (a situação local nunca volta a "aprovado"; a releitura no provedor decide antes e
  * só aceita com a contestação resolvida). Devolvido em parte, não: o provedor sempre mostra a parte devolvida.
  */
-function recusaDaDevolucao(p: Pagamento, dev: Devolucao | undefined, porFora: boolean): string | null {
+function recusaDaDevolucao(p: Pagamento, dev: Devolucao | undefined, porFora: boolean, agora: Date): string | null {
   const situacoes = porFora ? ["aprovado", "contestado"] : ["aprovado"];
   if (!situacoes.includes(p.situacao)) return "Só um pagamento aprovado (e ainda não devolvido) pode ser devolvido.";
   if (p.desfecho !== null) return "Este pagamento já tem desfecho.";
@@ -65,6 +86,7 @@ function recusaDaDevolucao(p: Pagamento, dev: Devolucao | undefined, porFora: bo
   if (porFora && dev?.chaveAceita) return "O Mercado Pago aceitou um pedido de devolução deste pagamento, que ainda pode sair por lá: a devolução por fora não é registrada. Confira no painel do Mercado Pago e resolva por lá até o M8.2c.";
   // Depois de 3 recusas (recusada), a equipe pode pedir de novo ou registrar a devolução feita por fora.
   if (dev && dev.situacao !== "recusada") return porFora ? "A devolução deste pagamento já foi registrada." : "A devolução deste pagamento já foi feita.";
+  if (porFora && !porForaPermitidoNoCartao(p, dev, agora)) return ERRO_POR_FORA_CARTAO;
   return null;
 }
 
@@ -271,7 +293,7 @@ async function comPagamento<T>(db: Db, organizacaoId: string, pagamentoId: strin
 /** Devolver pelo Mercado Pago (integral). A equipe confirma na tela; autorização conferida por quem chama. */
 export async function devolverPeloProvedor(db: Db, organizacaoId: string, pagamentoId: string, autorId: string | null, provedor: ProvedorPagamento, agora: Date = new Date()): Promise<ResultadoAcaoPagamento> {
   const r = await comPagamento(db, organizacaoId, pagamentoId, async (tx, _t, p, dev) => {
-    const recusa = recusaDaDevolucao(p, dev, false);
+    const recusa = recusaDaDevolucao(p, dev, false, agora);
     if (recusa) return { ok: false as const, erro: recusa };
     const motivo = textoMotivoSemReserva(p.motivoSemReserva) ?? "Pagamento sem reserva.";
     // O que o hóspede pagou pela última leitura (a devolução integral devolve isso); cada envio regrava pela releitura.
@@ -333,7 +355,7 @@ export async function registrarDevolucaoPorFora(
   if (d.data > hojeISO(FUSO_PAGAMENTO, agora)) return { ok: false, erro: "A data da devolução não pode ser no futuro." };
   if (!Number.isSafeInteger(d.valor) || d.valor <= 0) return { ok: false, erro: "Informe o valor devolvido (maior que zero)." };
   if (!uuidValido(pagamentoId)) return { ok: false, erro: "Pagamento não encontrado." };
-  const [lido] = await db.select({ idProvedor: pagamentos.idProvedor, referencia: pagamentos.referencia }).from(pagamentos).where(and(eq(pagamentos.id, pagamentoId), eq(pagamentos.organizacaoId, organizacaoId)));
+  const [lido] = await db.select({ idProvedor: pagamentos.idProvedor, referencia: pagamentos.referencia, criadoEm: pagamentos.criadoEm }).from(pagamentos).where(and(eq(pagamentos.id, pagamentoId), eq(pagamentos.organizacaoId, organizacaoId)));
   if (!lido) return { ok: false, erro: "Pagamento não encontrado." };
   if (!provedor) return { ok: false, erro: ERRO_POR_FORA_SEM_CONFERIR };
   if (!lido.idProvedor) return { ok: false, erro: "Este pagamento não tem identificação no Mercado Pago para conferir: confira no painel do Mercado Pago." };
@@ -343,27 +365,35 @@ export async function registrarDevolucaoPorFora(
   } catch {
     return { ok: false, erro: ERRO_POR_FORA_SEM_CONFERIR };
   }
-  if (!cobranca) return { ok: false, erro: "O Mercado Pago não encontrou este pagamento: confira no painel do Mercado Pago antes de registrar a devolução por fora." };
-  // O que o provedor mostra também vale para o sistema (situação nova, devolução pedida que saiu…).
-  try {
-    await conferirTentativa(db, organizacaoId, pagamentoId, provedor, agora, { forcar: true, origem: "painel", cobranca });
-  } catch {
-    // A recusa abaixo vem da leitura, não da aplicação.
+  // Order não encontrada: dentro do prazo de releitura, nada se registra sem conferir. Passado esse prazo (o Mercado Pago
+  // só guarda a order por RETENCAO_ORDERS_DIAS; o cartão depois dos 180 dias em que ele devolve cai sempre aqui), não
+  // há mais o que reler: vale o que o sistema já conferiu enquanto ela existia, com as regras locais de sempre.
+  const semOrderParaReler = !cobranca && lido.criadoEm.getTime() < inicioDoPrazoDeReleitura(agora).getTime();
+  if (!cobranca && !semOrderParaReler) return { ok: false, erro: "O Mercado Pago não encontrou este pagamento: confira no painel do Mercado Pago antes de registrar a devolução por fora." };
+  if (cobranca) {
+    // O que o provedor mostra também vale para o sistema (situação nova, devolução pedida que saiu…).
+    try {
+      await conferirTentativa(db, organizacaoId, pagamentoId, provedor, agora, { forcar: true, origem: "painel", cobranca });
+    } catch {
+      // A recusa abaixo vem da leitura, não da aplicação.
+    }
+    // A order lida precisa ser a deste pagamento (id e referência): a de outra tentativa não diz nada sobre esta.
+    if (cobranca.idProvedor !== lido.idProvedor || cobranca.referencia !== lido.referencia)
+      return { ok: false, erro: "A resposta do Mercado Pago não bate com este pagamento (referência ou identificação diferentes): nada foi registrado. Confira no painel do Mercado Pago." };
+    const peloProvedor = recusaPeloProvedor(cobranca);
+    if (peloProvedor) return { ok: false, erro: peloProvedor };
   }
-  // A order lida precisa ser a deste pagamento (id e referência): a de outra tentativa não diz nada sobre esta.
-  if (cobranca.idProvedor !== lido.idProvedor || cobranca.referencia !== lido.referencia)
-    return { ok: false, erro: "A resposta do Mercado Pago não bate com este pagamento (referência ou identificação diferentes): nada foi registrado. Confira no painel do Mercado Pago." };
-  const peloProvedor = recusaPeloProvedor(cobranca);
-  if (peloProvedor) return { ok: false, erro: peloProvedor };
-  // Integral = o que o hóspede pagou, pela leitura de agora (pode diferir do valor da cotação: valor divergente).
-  const integral = valorPagoNaOrder(cobranca);
+  // Integral = o que o hóspede pagou: pela leitura de agora (pode diferir do valor da cotação: valor divergente) ou, sem
+  // order para reler, pelo último valor pago que o sistema conferiu.
+  const integralLido = cobranca ? valorPagoNaOrder(cobranca) : null;
   const nota = d.nota.trim().slice(0, 300);
   return comPagamento(db, organizacaoId, pagamentoId, async (tx, _t, p, dev) => {
-    const recusa = recusaDaDevolucao(p, dev, true);
+    const recusa = recusaDaDevolucao(p, dev, true, agora);
     if (recusa) return { ok: false as const, erro: recusa };
+    const integral = integralLido ?? valorPagoNaOrder({ pago: p.valorPago, valor: p.valor });
     if (d.valor !== integral)
-      return { ok: false as const, erro: `Nesta fase, a devolução feita por fora registra só o valor integral pago (${formatBRL(integral)}, pelo Mercado Pago). Devolução de parte do valor chega com o M8.2c.` };
-    // A devolução não pode ser de antes do pagamento existir (o Pix foi criado neste dia, em São Paulo).
+      return { ok: false as const, erro: `Nesta fase, a devolução feita por fora registra só o valor integral pago (${formatBRL(integral)}, ${integralLido === null ? "o último conferido no Mercado Pago" : "pelo Mercado Pago"}). Devolução de parte do valor chega com o M8.2c.` };
+    // A devolução não pode ser de antes do pagamento existir (o pagamento foi criado neste dia, em São Paulo).
     const criadoNoDia = hojeISO(FUSO_PAGAMENTO, p.criadoEm);
     if (d.data < criadoNoDia) return { ok: false as const, erro: `A data da devolução não pode ser antes do pagamento (${criadoNoDia.split("-").reverse().join("/")}). Confira a data.` };
     const motivo = textoMotivoSemReserva(p.motivoSemReserva) ?? "Pagamento sem reserva.";

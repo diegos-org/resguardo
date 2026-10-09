@@ -5,7 +5,19 @@ import { categoriasDespesa, cotacoes, devolucoesPagamento, lancamentos } from "@
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { conferirTentativa } from "./conferencia";
-import { chaveDevolucao, chaveTaxaPerdida, devolverPeloProvedor, ERRO_POR_FORA_SEM_CONFERIR, MAXIMO_FALHAS_DEVOLUCAO, registrarDevolucaoPorFora, registrarTaxaPerdida, tentarDevolucao } from "./devolucao";
+import {
+  chaveDevolucao,
+  chaveTaxaPerdida,
+  devolverPeloProvedor,
+  ERRO_POR_FORA_CARTAO,
+  ERRO_POR_FORA_SEM_CONFERIR,
+  MAXIMO_FALHAS_DEVOLUCAO,
+  PRAZO_DEVOLUCAO_CARTAO_DIAS,
+  porForaPermitidoNoCartao,
+  registrarDevolucaoPorFora,
+  registrarTaxaPerdida,
+  tentarDevolucao,
+} from "./devolucao";
 import { type Cobranca, ErroProvedor, type ProvedorPagamento } from "./provedor";
 import { pagamentosDaReserva } from "./consultas";
 import { conferirPendentes } from "./rotina";
@@ -604,5 +616,83 @@ describe("devolução do pagamento sem reserva (M8.2a)", () => {
     expect(await devolverPeloProvedor(db, c.org, x.pagamentoId, null, c.provedor, minutos(11))).toMatchObject({ ok: false, erro: expect.stringContaining("Já há uma devolução pedida") });
     expect(await porFora(x.pagamentoId, minutos(11))).toMatchObject({ ok: false });
     expect(await devolverPeloProvedor(db, "00000000-0000-4000-8000-000000000009", x.pagamentoId, null, c.provedor, minutos(11))).toMatchObject({ ok: false, erro: "Pagamento não encontrado." });
+  });
+});
+
+describe("devolução do cartão (M8.2b)", () => {
+  /** Cartão aprovado sem reserva (valor diferente do total da cotação), à espera da devolução. */
+  async function cartaoSemReserva(parcelas = 1) {
+    const s = await c.segurar();
+    c.provedor.respostaCartao = "processando";
+    c.provedor.jurosCartao = 9_000;
+    const r = await c.cartao(s.cotacaoId, { parcelas });
+    await db.update(cotacoes).set({ total: TOTAL + 1 }).where(eq(cotacoes.id, s.cotacaoId));
+    c.provedor.concluirAnalise(r.idProvedor!, "aprovado");
+    await conferir(r.pagamentoId!, minutos(3));
+    expect((await c.tentativa(r.pagamentoId!)).motivoSemReserva).toBe("valor_divergente");
+    return { ...s, pagamentoId: r.pagamentoId!, idProvedor: r.idProvedor! };
+  }
+  const acoes = async (reservaId: string, quando: Date) => (await pagamentosDaReserva(db, c.org, reservaId, quando))[0].acoes;
+
+  it("pelo Mercado Pago: o integral é o que o hóspede pagou, com os juros do parcelamento", async () => {
+    const x = await cartaoSemReserva(3);
+    expect((await c.tentativa(x.pagamentoId)).valorPago).toBe(TOTAL + 9_000);
+    expect(await devolverPeloProvedor(db, c.org, x.pagamentoId, null, c.provedor, minutos(10))).toMatchObject({ ok: true, situacao: "confirmada" });
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ valor: TOTAL + 9_000, situacao: "confirmada" });
+    expect(pedidos()[0]).toMatchObject({ valor: null });
+    expect(await c.tentativa(x.pagamentoId)).toMatchObject({ desfecho: "devolucao", situacao: "devolvido" });
+  });
+
+  it("por fora: recusado enquanto dá para devolver pelo Mercado Pago (relendo a order antes); aceito depois que o Mercado Pago recusou a devolução; o quadro do pagamento segue a mesma regra", async () => {
+    const x = await cartaoSemReserva();
+    expect((await acoes(x.reservaId, minutos(5))).devolucaoPorFora).toBe(false);
+    expect((await acoes(x.reservaId, minutos(5))).devolver).toBe(true);
+    const lidas = () => c.provedor.chamadas.filter((ch) => ch.metodo === "consultar").length;
+    const antes = lidas();
+    expect(await porFora(x.pagamentoId, minutos(5))).toEqual({ ok: false, erro: ERRO_POR_FORA_CARTAO });
+    expect(lidas()).toBe(antes + 1);
+    expect(ERRO_POR_FORA_CARTAO).toContain("devolva pelo Mercado Pago");
+    expect(await c.tentativa(x.pagamentoId)).toMatchObject({ desfecho: null });
+    // Três recusas do Mercado Pago (relida a order sem sinal de devolução): a devolução por fora passa a valer.
+    c.provedor.falhas.devolver = new ErroProvedor("credencial", "Chave recusada pelo Mercado Pago.");
+    await devolverPeloProvedor(db, c.org, x.pagamentoId, null, c.provedor, minutos(10));
+    await conferirPendentes(db, c.org, c.provedor, minutos(21));
+    await conferirPendentes(db, c.org, c.provedor, minutos(32));
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "recusada" });
+    expect((await c.tentativa(x.pagamentoId)).avisos).toContain("devolucao_falhou");
+    expect((await acoes(x.reservaId, minutos(40))).devolucaoPorFora).toBe(true);
+    c.provedor.falhas.devolver = null;
+    expect(await porFora(x.pagamentoId, minutos(40))).toEqual({ ok: true, situacao: "por_fora" });
+  });
+
+  it("por fora depois dos 180 dias em que o Mercado Pago devolve: aceito (relendo a order antes)", async () => {
+    expect(PRAZO_DEVOLUCAO_CARTAO_DIAS).toBe(180);
+    const x = await cartaoSemReserva();
+    const aprovadoEm = (await c.tentativa(x.pagamentoId)).aprovadoEm!;
+    const dia179 = new Date(aprovadoEm.getTime() + 179 * 86_400_000);
+    const dia181 = new Date(aprovadoEm.getTime() + 181 * 86_400_000);
+    expect(await porFora(x.pagamentoId, dia179)).toEqual({ ok: false, erro: ERRO_POR_FORA_CARTAO });
+    expect((await acoes(x.reservaId, dia181)).devolucaoPorFora).toBe(true);
+    expect(await porFora(x.pagamentoId, dia181)).toEqual({ ok: true, situacao: "por_fora" });
+    // A regra pura, para o Pix: sempre (as outras condições continuam).
+    expect(porForaPermitidoNoCartao({ forma: "pix", avisos: [], aprovadoEm: null }, undefined, AGORA)).toBe(true);
+  });
+
+  it("por fora depois dos 180 dias, com a order já fora do tempo em que o Mercado Pago a guarda: aceito pelo último valor pago conferido; dentro do prazo de releitura, sem a order, nada se registra", async () => {
+    const x = await cartaoSemReserva(3);
+    const p = await c.tentativa(x.pagamentoId);
+    const sumiu = vi.spyOn(c.provedor, "consultar").mockResolvedValue(null);
+    // Dentro do prazo de releitura (85 dias), a order sumida não é motivo para registrar sem conferir.
+    expect(await porFora(x.pagamentoId, minutos(40))).toMatchObject({ ok: false, erro: expect.stringContaining("não encontrou") });
+    const dia181 = new Date(p.aprovadoEm!.getTime() + 181 * 86_400_000);
+    expect(await porFora(x.pagamentoId, dia181, { valor: TOTAL })).toMatchObject({ ok: false, erro: expect.stringContaining("o último conferido no Mercado Pago") });
+    expect(await porFora(x.pagamentoId, dia181, { valor: p.valorPago! })).toEqual({ ok: true, situacao: "por_fora" });
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "por_fora", porForaValor: p.valorPago });
+    expect(await c.tentativa(x.pagamentoId)).toMatchObject({ desfecho: "por_fora" });
+    sumiu.mockRestore();
+  });
+
+  it("regra pura do cartão e do Pix", async () => {
+    expect(porForaPermitidoNoCartao({ forma: "pix", avisos: [], aprovadoEm: null }, undefined, AGORA)).toBe(true);
   });
 });

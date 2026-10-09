@@ -9,11 +9,13 @@
  *   montante = o líquido INFORMADO pelo provedor nessa leitura, data de caixa = o dia (em São Paulo) da leitura que
  *   viu o sinal (a data que o provedor informa é a PREVISTA e pode ser anterior à liberação de fato),
  *   `conciliado`, origem `sincronizacao`, chave `mercadopago:<tentativa>:recebimento` (`#N` depois de um estorno).
- * - Sem o sinal, a equipe registra a liberação à mão (data entre o dia da criação do Pix e hoje, e o líquido): a taxa é
+ * - Sem o sinal, a equipe registra a liberação à mão (data entre o dia da criação do pagamento e hoje, e o líquido): a taxa é
  *   derivada, o recebimento fica `realizado` com a mesma chave. O provedor confirmando depois com o mesmo líquido passa
  *   a `conciliado` (a data fica a que a equipe viu no Mercado Pago); outro líquido (ou um recebimento já lançado com
  *   outro valor), aviso, sem mexer.
  *   Só o manual se estorna, e só por aqui: a taxa volta ao que o provedor tinha informado antes (ou a nada).
+ * - Cartão (M8.2b): a mesma regra. Liberação parcela a parcela (money_release_schema) e "parcelamento sem acréscimo"
+ *   nunca lançam sozinhos (`aplicarLeitura` liga o aviso); a equipe registra à mão.
  */
 import { and, desc, eq, inArray, like, or } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
@@ -119,7 +121,7 @@ async function cotacaoDoPagamento(db: Db, organizacaoId: string, pagamentoId: st
 }
 
 /**
- * Liberação registrada à mão (sem o sinal do provedor): data entre o dia (em São Paulo) da criação do Pix e hoje, e o
+ * Liberação registrada à mão (sem o sinal do provedor): data entre o dia (em São Paulo) da criação do pagamento e hoje, e o
  * líquido que caiu. O limite de baixo é a criação, não `aprovadoEm`: este é a hora da primeira leitura da aprovação,
  * que pode vir dias depois do pagamento (nas prévias nada confere sozinho). A taxa é
  * derivada (valor − líquido) e gravada na reserva com o motor; o recebimento fica `realizado`, com a chave do
@@ -139,9 +141,9 @@ export async function registrarLiberacaoManual(db: Db, organizacaoId: string, pa
     if (p.situacao !== "aprovado") return { ok: false as const, erro: "Este pagamento não está mais aprovado no Mercado Pago: confira antes de registrar a liberação." };
     if (t.reserva.estado !== "confirmada") return { ok: false as const, erro: "A reserva não está confirmada." };
     if (d.liquido > p.valor) return { ok: false as const, erro: `O líquido não pode passar do valor pago (${formatBRL(p.valor)}).` };
-    // O dinheiro não cai antes de o Pix existir (a hora da criação é nossa e confiável).
+    // O dinheiro não cai antes de o pagamento existir (a hora da criação é nossa e confiável).
     const criadoNoDia = hojeISO(FUSO_PAGAMENTO, p.criadoEm);
-    if (d.data < criadoNoDia) return { ok: false as const, erro: `A data da liberação não pode ser antes da criação do Pix (${dataBr(criadoNoDia)}).` };
+    if (d.data < criadoNoDia) return { ok: false as const, erro: `A data da liberação não pode ser antes da criação do pagamento (${dataBr(criadoNoDia)}).` };
     const { emVigor, proxima } = await recebimentosDoPagamento(tx, organizacaoId, p.id);
     if (emVigor.length) return { ok: false as const, erro: emVigor[0].estado === "conciliado" ? "A liberação já foi confirmada pelo Mercado Pago." : "A liberação já está registrada: estorne a registrada à mão antes de registrar de novo." };
     const taxa = p.valor - d.liquido;

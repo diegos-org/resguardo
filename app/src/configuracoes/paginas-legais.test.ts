@@ -200,6 +200,10 @@ describe("textos-base das páginas legais (M7.4)", () => {
     expect(RASCUNHO_PAGINAS_LEGAIS.cancelamento.secoes.texto).not.toContain("## Resumo");
     expect(RASCUNHO_PAGINAS_LEGAIS.cancelamento.secoes.resumo).toContain("Os detalhes estão na Política de cancelamento.");
     expect(RASCUNHO_PAGINAS_LEGAIS.privacidade.secoes.texto).toMatch(/- Pagamento: [^\n]+\n- Aceite dos termos: quais versões/);
+    // M8.2b: o que o cartão guarda (bandeira, parcelas, valor pago com os juros, resultado da verificação), nunca o número.
+    const pagamento = /- Pagamento: ([^\n]+)/.exec(RASCUNHO_PAGINAS_LEGAIS.privacidade.secoes.texto)![1];
+    expect(pagamento).toContain("no cartão, também a bandeira, o número de parcelas, o valor pago com os juros e o resultado da verificação do banco, nunca o número do cartão");
+    expect(pagamento).not.toMatch(/últimos dígitos|final do cartão/);
   });
 });
 

@@ -1,10 +1,12 @@
 /**
- * Pagamento no site (M8.2a) — freios das ações públicas: gerar Pix, "Continuar o pagamento" (conferir o e-mail
- * do pedido), a consulta da página que espera o Pix e segurar as datas. Para cada uma, um teto por endereço de
+ * Pagamento no site (M8.2a) — freios das ações públicas: gerar Pix, pagar com cartão (M8.2b), "Continuar o pagamento"
+ * (conferir o e-mail do pedido), a consulta da página que espera o pagamento e segurar as datas. Para cada uma, um teto por endereço de
  * internet (IPv6 agrupado pela rede /64) e um teto geral por organização. A origem é contada PRIMEIRO, e só o pedido
  * que ainda cabe no teto dela conta no geral (como na entrada com senha): uma origem só não tira a vez de todo
  * mundo. Origem desconhecida conta numa chave compartilhada, com teto baixo (nunca "sem teto"). Mesmas contas de
- * `contarNaJanela` do login.
+ * `contarNaJanela` do login. No cartão, só a origem conta a cada envio (`semGeral`): o teto geral do cartão conta as
+ * tentativas que chegam ao Mercado Pago, pelas linhas gravadas (ver `cartao.ts`), para cliques que nunca chegam lá não
+ * tirarem a vez de quem paga.
  */
 import { createHash, timingSafeEqual } from "node:crypto";
 import { and, eq } from "drizzle-orm";
@@ -14,7 +16,7 @@ import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
 import { validadeDaAutorizacao } from "./autorizacao";
 
-export type AcaoLimitada = "gerar_pix" | "continuar" | "consulta" | "segurar";
+export type AcaoLimitada = "gerar_pix" | "cartao" | "continuar" | "consulta" | "segurar";
 export type LimitesDaAcao = { geral: Limite; origem: Limite; semOrigem: Limite };
 
 const HORA = 60 * 60_000;
@@ -23,6 +25,8 @@ const QUINZE_MIN = 15 * 60_000;
 /** Tetos por ação (constantes, como os freios do M8.1). */
 export const LIMITES_PAGAMENTO: Record<AcaoLimitada, LimitesDaAcao> = {
   gerar_pix: { geral: { tentativas: 200, janelaMs: HORA }, origem: { tentativas: 10, janelaMs: HORA }, semOrigem: { tentativas: 20, janelaMs: HORA } },
+  // O geral do cartão não é contado aqui (a ação usa `semGeral`): vale o de `CARTOES_POR_HORA_NA_ORGANIZACAO`.
+  cartao: { geral: { tentativas: 30, janelaMs: HORA }, origem: { tentativas: 5, janelaMs: HORA }, semOrigem: { tentativas: 10, janelaMs: HORA } },
   continuar: { geral: { tentativas: 100, janelaMs: QUINZE_MIN }, origem: { tentativas: 5, janelaMs: QUINZE_MIN }, semOrigem: { tentativas: 10, janelaMs: QUINZE_MIN } },
   // A página do Pix consulta a cada poucos segundos enquanto espera.
   consulta: { geral: { tentativas: 6000, janelaMs: QUINZE_MIN }, origem: { tentativas: 300, janelaMs: QUINZE_MIN }, semOrigem: { tentativas: 600, janelaMs: QUINZE_MIN } },
@@ -33,6 +37,7 @@ export const LIMITE_EMAIL_POR_COTACAO: Limite = { tentativas: 5, janelaMs: HORA 
 
 export const ERROS_LIMITE: Record<AcaoLimitada, string> = {
   gerar_pix: "Muitos pedidos de Pix agora há pouco. Tente de novo mais tarde ou fale com a equipe pelo WhatsApp.",
+  cartao: "Muitas tentativas com cartão agora há pouco. Pague com Pix ou fale com a equipe pelo WhatsApp.",
   continuar: "Muitas tentativas agora há pouco. Espere alguns minutos ou fale com a equipe pelo WhatsApp.",
   consulta: "Muitas consultas agora há pouco. Atualize a página daqui a alguns minutos.",
   segurar: "Muitos pedidos agora há pouco. Tente de novo mais tarde ou fale com a equipe pelo WhatsApp.",
@@ -58,12 +63,23 @@ export function chaveDaOrigem(origem: string): string {
   return `${rede.join(":")}::/64`;
 }
 
-/** Conta a tentativa nos tetos da ação: a origem (ou a chave sem origem) primeiro; só dentro dela, o geral da organização. */
-export async function conferirLimite(db: Db, organizacaoId: string, acao: AcaoLimitada, origem: string | null, agora: Date = new Date()): Promise<{ ok: true } | { ok: false; erro: string }> {
+/**
+ * Conta a tentativa nos tetos da ação: a origem (ou a chave sem origem) primeiro; só dentro dela, o geral da organização.
+ * `semGeral`: só a origem (a chave geral nem é tocada).
+ */
+export async function conferirLimite(
+  db: Db,
+  organizacaoId: string,
+  acao: AcaoLimitada,
+  origem: string | null,
+  agora: Date = new Date(),
+  o: { semGeral?: boolean } = {},
+): Promise<{ ok: true } | { ok: false; erro: string }> {
   const l = LIMITES_PAGAMENTO[acao];
   const [chave, teto] = origem ? [`pagamento-${acao}:origem:${organizacaoId}:${chaveDaOrigem(origem)}`, l.origem] : [`pagamento-${acao}:sem-origem:${organizacaoId}`, l.semOrigem];
   // A origem que passou do teto não gasta a conta geral.
   if ((await contarNaJanela(db, chave, teto, agora)) > teto.tentativas) return { ok: false, erro: ERROS_LIMITE[acao] };
+  if (o.semGeral) return { ok: true };
   const geral = await contarNaJanela(db, `pagamento-${acao}:geral:${organizacaoId}`, l.geral, agora);
   if (geral === 1) await apagarContasVelhas(db, agora);
   if (geral > l.geral.tentativas) return { ok: false, erro: ERROS_LIMITE[acao] };
