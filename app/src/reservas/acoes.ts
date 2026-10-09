@@ -8,7 +8,7 @@ import { getDb } from "@/db/client";
 import { lerFormReserva } from "./formulario";
 import type { ErrosReserva } from "./regras";
 import { analisarCsv, importarCsv, type ResultadoImportacao, type SituacaoLinha } from "./importacao";
-import { cancelarReserva, confirmarReserva, criarReserva, resolverConferencia, salvarEmailHospede } from "./repositorio";
+import { confirmarReserva, criarReserva, resolverConferencia, salvarEmailHospede, tentarCancelarReserva } from "./repositorio";
 
 export type EstadoFormReserva = { erros?: ErrosReserva; mensagem?: string };
 
@@ -32,9 +32,11 @@ export async function cancelar(form: FormData): Promise<void> {
   const sessao = await exigirSessaoPainel();
   exigir(sessao, "reserva:editar", { organizacaoId: sessao.organizacaoId });
   const id = String(form.get("id") ?? "");
-  await cancelarReserva(getDb(), sessao.organizacaoId, id, sessao.usuarioId);
+  // Recusa com motivo (ex.: pagamento do site em andamento ou aprovado, M8.2a): a ficha mostra a mensagem.
+  const r = await tentarCancelarReserva(getDb(), sessao.organizacaoId, id, sessao.usuarioId);
   revalidatePath(`/painel/reservas/${id}`);
   revalidatePath("/painel/reservas");
+  if (r.aviso) redirect(`/painel/reservas/${id}?erro=${encodeURIComponent(r.aviso)}`);
 }
 
 export async function confirmar(form: FormData): Promise<void> {

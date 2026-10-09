@@ -1,0 +1,186 @@
+import { eq } from "drizzle-orm";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { eventosPagamento, pagamentos } from "@/db/schema";
+import { createTestDb } from "@/db/testing";
+import type { Db } from "@/db/types";
+import { aplicarNaTransacao, conferirCotacaoParaPagina, conferirTentativa, idDeOrder, INTERVALO_CONSULTA_MS, processarAvisoDeOrder } from "./conferencia";
+import { apagarEventosAntigos, GUARDAR_EVENTOS_DIAS, marcarResultadoDoEvento, registrarAssinaturaRecusada, registrarEventoDeAviso, situacaoDosAvisos } from "./eventos";
+import { ErroProvedor } from "./provedor";
+import { situacaoDoMercadoPago, ENDERECO_WEBHOOK, segredoDoWebhook } from "./integracao";
+import { conferirPendentes, rotinaDoSite } from "./rotina";
+import { AGORA, type Cenario, env, minutos, montarCenario, TOTAL } from "./testes";
+
+let db: Db, close: () => Promise<void>, c: Cenario;
+beforeAll(async () => { ({ db, close } = await createTestDb()); });
+afterAll(() => close());
+beforeEach(async () => { c = await montarCenario(db); });
+
+describe("avisos assinados (webhook) do provedor (M8.2a)", () => {
+  it("evento válido gravado uma vez (repetição não processa); assinatura recusada só conta no dia; último aviso válido; limpeza depois de 90 dias", async () => {
+    const e = { tipo: "order", acao: "order.processed", dataId: "ORDTST9999", requestId: "req-abc", ts: "1759330800", aoVivo: false };
+    const a = await registrarEventoDeAviso(db, e, AGORA);
+    expect(a).toMatchObject({ novo: true });
+    expect(await registrarEventoDeAviso(db, e, minutos(1))).toEqual({ id: a!.id, novo: false });
+    // Outro ts (reenvio) é outro evento.
+    expect(await registrarEventoDeAviso(db, { ...e, ts: "1759331700" }, minutos(15))).toMatchObject({ novo: true });
+    await registrarAssinaturaRecusada(db, minutos(2));
+    await registrarAssinaturaRecusada(db, minutos(3));
+    expect(await situacaoDosAvisos(db, minutos(20))).toEqual({ recusadasHoje: 2, ultimoValidoEm: minutos(15) });
+    await marcarResultadoDoEvento(db, a!.id, "desconhecido", minutos(1));
+    const [gravado] = await db.select().from(eventosPagamento).where(eq(eventosPagamento.id, a!.id));
+    expect(gravado).toMatchObject({ tipo: "order", acao: "order.processed", dataId: "ORDTST9999", requestId: "req-abc", resultado: "desconhecido", aoVivo: false });
+    // Campos estranhos não entram (nada do corpo é guardado por extenso).
+    expect(await registrarEventoDeAviso(db, { dataId: "ORD com espaço" }, AGORA)).toBeNull();
+    expect(await apagarEventosAntigos(db, new Date(minutos(16).getTime() + (GUARDAR_EVENTOS_DIAS + 1) * 86_400_000))).toBeGreaterThanOrEqual(2);
+    expect(await db.select().from(eventosPagamento).where(eq(eventosPagamento.id, a!.id))).toEqual([]);
+  });
+
+  it("processar: id que não é de order é ignorado; order desconhecida não avisa; order conhecida é aplicada e o evento leva o resultado e a empresa", async () => {
+    expect(idDeOrder("123456")).toBe(false);
+    expect(await processarAvisoDeOrder(db, c.provedor, "123456", AGORA)).toBe("ignorado");
+    expect(await processarAvisoDeOrder(db, c.provedor, "ORDNAOEXISTE", AGORA)).toBe("desconhecido");
+    const s = await c.segurar();
+    const p = await c.pix(s.cotacaoId);
+    c.provedor.aprovar(p.idProvedor);
+    const ev = await registrarEventoDeAviso(db, { tipo: "order", acao: "order.processed", dataId: p.idProvedor, requestId: "r-2", ts: "2" }, minutos(2));
+    // Mesmo logo depois de outra leitura (menos de 15 s), o aviso lê o provedor.
+    await conferirTentativa(db, c.org, p.pagamentoId, c.provedor, minutos(2), { origem: "pagina" });
+    expect(await processarAvisoDeOrder(db, c.provedor, p.idProvedor, new Date(minutos(2).getTime() + 1000), { eventoId: ev!.id })).toBe("aplicado");
+    expect((await c.reserva(s.reservaId)).estado).toBe("confirmada");
+    const [gravado] = await db.select().from(eventosPagamento).where(eq(eventosPagamento.id, ev!.id));
+    expect(gravado).toMatchObject({ resultado: "aplicado", organizacaoId: c.org });
+    expect(INTERVALO_CONSULTA_MS).toBe(15_000);
+  });
+
+  it("aviso que chega antes de a criação gravar o id da order: acha a tentativa pela referência e grava o id", async () => {
+    const s = await c.segurar();
+    // A criação no ar: a tentativa ainda "criando", sem id; a order já existe no provedor.
+    const id = "11111111-1111-4111-8111-111111111111";
+    await db.insert(pagamentos).values({ id, organizacaoId: c.org, cotacaoId: s.cotacaoId, reservaId: s.reservaId, imovelId: c.imovel, ambiente: "teste", forma: "pix", referencia: `scl-${id}`, chaveIdempotencia: `pagamento:${id}:criar`, situacao: "criando", valor: TOTAL, criadoEm: AGORA });
+    const r = await c.provedor.criarPix({ referencia: `scl-${id}`, chaveIdempotencia: `pagamento:${id}:criar`, valor: TOTAL, email: "test@testuser.com", nome: "", validadeMinutos: 30, descricao: "", descricaoFatura: null });
+    if (!r.ok) throw new Error("order");
+    c.provedor.aprovar(r.cobranca.idProvedor);
+    expect(await processarAvisoDeOrder(db, c.provedor, r.cobranca.idProvedor, minutos(1))).toBe("aplicado");
+    expect(await c.tentativa(id)).toMatchObject({ idProvedor: r.cobranca.idProvedor, situacao: "aprovado", desfecho: "reserva" });
+  });
+
+  it("falha do provedor no processamento: o evento fica com erro e a exceção sobe (a rotina confere depois)", async () => {
+    const s = await c.segurar();
+    const p = await c.pix(s.cotacaoId);
+    const ev = await registrarEventoDeAviso(db, { dataId: p.idProvedor, requestId: "r-3", ts: "3" }, minutos(1));
+    c.provedor.falhas.consultar = new ErroProvedor("incerto", "tempo");
+    await expect(processarAvisoDeOrder(db, c.provedor, p.idProvedor, minutos(1), { eventoId: ev!.id })).rejects.toBeInstanceOf(ErroProvedor);
+    expect((await db.select().from(eventosPagamento).where(eq(eventosPagamento.id, ev!.id)))[0].resultado).toBe("erro");
+    c.provedor.falhas.consultar = null;
+    c.provedor.aprovar(p.idProvedor);
+    expect(await conferirPendentes(db, c.org, c.provedor, minutos(2))).toMatchObject({ conferidas: 1, mudaram: 1, falhas: 0 });
+    expect((await c.reserva(s.reservaId)).estado).toBe("confirmada");
+  });
+});
+
+describe("conferência: freio da página e leituras antigas (M8.2a)", () => {
+  it("a página lê o provedor no máximo a cada 15 s por tentativa, e só enquanto o Pix está pendente", async () => {
+    const s = await c.segurar();
+    const p = await c.pix(s.cotacaoId);
+    const lidas = () => c.provedor.chamadas.filter((x) => x.metodo === "consultar").length;
+    const antes = lidas();
+    expect(await conferirCotacaoParaPagina(db, c.org, s.cotacaoId, c.provedor, new Date(AGORA.getTime() + 5_000))).toMatchObject({ ok: true, consultou: false });
+    expect(lidas()).toBe(antes);
+    expect(await conferirCotacaoParaPagina(db, c.org, s.cotacaoId, c.provedor, new Date(AGORA.getTime() + 15_000))).toMatchObject({ ok: true, consultou: true });
+    expect(await conferirCotacaoParaPagina(db, c.org, s.cotacaoId, c.provedor, new Date(AGORA.getTime() + 20_000))).toMatchObject({ consultou: false });
+    c.provedor.aprovar(p.idProvedor);
+    await conferirCotacaoParaPagina(db, c.org, s.cotacaoId, c.provedor, minutos(1));
+    expect((await c.reserva(s.reservaId)).estado).toBe("confirmada");
+    // Aprovado: a página para de consultar o provedor.
+    const depois = lidas();
+    expect(await conferirCotacaoParaPagina(db, c.org, s.cotacaoId, c.provedor, minutos(5))).toBeNull();
+    expect(lidas()).toBe(depois);
+  });
+
+  it("ausência lida pela referência antes de a criação gravar o id da order não vira aviso", async () => {
+    const s = await c.segurar();
+    const p = await c.pix(s.cotacaoId);
+    await aplicarNaTransacao(db, c.org, { id: p.pagamentoId, cotacaoId: s.cotacaoId }, { cobranca: null, idLido: null }, minutos(1));
+    expect(await c.tentativa(p.pagamentoId)).toMatchObject({ situacao: "pendente", avisos: [] });
+    await aplicarNaTransacao(db, c.org, { id: p.pagamentoId, cotacaoId: s.cotacaoId }, { cobranca: null, idLido: p.idProvedor }, minutos(2));
+    expect((await c.tentativa(p.pagamentoId)).avisos).toEqual(["order_nao_encontrada"]);
+  });
+});
+
+describe("rotina de conferência (M8.2a)", () => {
+  it("relê uma vez por dia o que confirmou a reserva: devolução ou contestação feitas por fora viram aviso, sem mexer na reserva", async () => {
+    const s = await c.segurar();
+    const p = await c.pix(s.cotacaoId);
+    c.provedor.aprovar(p.idProvedor, { taxa: 1806, liberado: true });
+    await conferirPendentes(db, c.org, c.provedor, minutos(2));
+    expect((await c.tentativa(p.pagamentoId)).desfecho).toBe("reserva");
+    c.provedor.devolverNoProvedor(p.idProvedor, 1000);
+    // Antes de um dia, não relê.
+    expect((await conferirPendentes(db, c.org, c.provedor, minutos(60))).conferidas).toBe(0);
+    await conferirPendentes(db, c.org, c.provedor, minutos(24 * 60 + 5));
+    expect(await c.tentativa(p.pagamentoId)).toMatchObject({ situacao: "devolvido_parcial", desfecho: "reserva" });
+    expect((await c.tentativa(p.pagamentoId)).avisos).toContain("devolvido_por_fora");
+    expect((await c.reserva(s.reservaId)).estado).toBe("confirmada");
+    c.provedor.contestar(p.idProvedor);
+    await conferirPendentes(db, c.org, c.provedor, minutos(2 * 24 * 60 + 10));
+    expect(await c.tentativa(p.pagamentoId)).toMatchObject({ situacao: "contestado", avisos: expect.arrayContaining(["contestado"]) });
+  });
+
+  it("à espera da liberação: no primeiro dia a cada volta; depois, a cada 6 h", async () => {
+    const s = await c.segurar();
+    const p = await c.pix(s.cotacaoId);
+    c.provedor.aprovar(p.idProvedor, { taxa: 1806 });
+    await conferirPendentes(db, c.org, c.provedor, minutos(2));
+    expect((await conferirPendentes(db, c.org, c.provedor, minutos(12))).conferidas).toBe(1);
+    const dia = 24 * 60;
+    expect((await conferirPendentes(db, c.org, c.provedor, minutos(dia + 10))).conferidas).toBe(1);
+    expect((await conferirPendentes(db, c.org, c.provedor, minutos(dia + 20))).conferidas).toBe(0);
+    expect((await conferirPendentes(db, c.org, c.provedor, minutos(dia + 6 * 60 + 11))).conferidas).toBe(1);
+  });
+
+  it("Pix que sobrou numa cotação confirmada e cujo cancelamento falhou: a rotina cancela de novo", async () => {
+    const z = await c.segurar();
+    const a = await c.pix(z.cotacaoId);
+    const extra = await c.provedor.criarPix({ referencia: "scl-sobra", chaveIdempotencia: "sobra", valor: TOTAL, email: "test@testuser.com", nome: "", validadeMinutos: 30, descricao: "", descricaoFatura: null });
+    if (!extra.ok) throw new Error("extra");
+    const [sobra] = await db.insert(pagamentos).values({ organizacaoId: c.org, cotacaoId: z.cotacaoId, reservaId: z.reservaId, imovelId: c.imovel, ambiente: "teste", forma: "pix", referencia: "scl-sobra", chaveIdempotencia: "sobra", situacao: "pendente", idProvedor: extra.cobranca.idProvedor, valor: TOTAL }).returning();
+    c.provedor.falhas.cancelar = new ErroProvedor("incerto", "tempo");
+    c.provedor.aprovar(a.idProvedor);
+    await conferirTentativa(db, c.org, a.pagamentoId, c.provedor, minutos(2), { origem: "rotina", forcar: true });
+    expect(await c.tentativa(sobra.id)).toMatchObject({ situacao: "pendente", avisos: ["cancelamento_pendente"] });
+    c.provedor.falhas.cancelar = null;
+    const r = await conferirPendentes(db, c.org, c.provedor, minutos(15));
+    expect(r.canceladas).toBe(1);
+    expect(await c.tentativa(sobra.id)).toMatchObject({ situacao: "cancelado", avisos: [] });
+    // Cada pedido de cancelamento usa chave nova (repetir a chave dá "chave já usada" no provedor).
+    const chaves = c.provedor.chamadas.filter((x) => x.metodo === "cancelar" && x.id === extra.cobranca.idProvedor).map((x) => x.chave);
+    expect(chaves).toHaveLength(2);
+    expect(new Set(chaves).size).toBe(2);
+  });
+});
+
+describe("rotina do site e situação do Mercado Pago (M8.2a)", () => {
+  it("a rotina confere os pagamentos ANTES de vencer holds: Pix pago e ainda não lido depois da carência confirma, não vence", async () => {
+    const s = await c.segurar();
+    const p = await c.pix(s.cotacaoId);
+    const T = (await c.cotacao(s.cotacaoId)).holdAte!;
+    c.provedor.aprovar(p.idProvedor);
+    const r = await rotinaDoSite(db, c.provedor, new Date(T.getTime() + 20 * 60_000));
+    expect(r.pagamentos).toMatchObject({ mudaram: 1 });
+    expect((await c.reserva(s.reservaId)).estado).toBe("confirmada");
+    // Sem provedor (pagamento desligado), só vence os holds.
+    expect((await rotinaDoSite(db, null, new Date(T.getTime() + 21 * 60_000))).pagamentos).toBeNull();
+  });
+
+  it("Integrações: situação, conta conferida, segredo do webhook, avisos — sem chaves nem segredo na resposta", async () => {
+    const chaves = { MERCADOPAGO_ACCESS_TOKEN: "APP_USR-ficticio", MERCADOPAGO_PUBLIC_KEY: "APP_USR-publica", MERCADOPAGO_WEBHOOK_SECRET: "segredo-ficticio" };
+    const previa = await situacaoDoMercadoPago(db, env({ ...chaves, VERCEL_ENV: "production" }), AGORA);
+    expect(previa).toMatchObject({ situacao: "so_nas_previas", contaDeTeste: null, segredoWebhook: true, enderecoWebhook: ENDERECO_WEBHOOK });
+    const teste = await situacaoDoMercadoPago(db, env(chaves), AGORA, { provedor: c.provedor });
+    expect(teste).toMatchObject({ situacao: "teste", contaDeTeste: true, segredoWebhook: true });
+    expect(JSON.stringify(teste)).not.toContain("segredo-ficticio");
+    expect(JSON.stringify(teste)).not.toContain("APP_USR");
+    expect(await situacaoDoMercadoPago(db, env(), AGORA)).toMatchObject({ situacao: "desligado", motivo: expect.stringContaining("Falta configurar"), segredoWebhook: false });
+    expect(segredoDoWebhook(env({ MERCADOPAGO_WEBHOOK_SECRET: "  " }))).toBeNull();
+  });
+});

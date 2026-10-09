@@ -7,12 +7,13 @@
  * usar este mesmo hold. Nada é escrito no Beds24 aqui (M8.3).
  */
 import { randomInt } from "node:crypto";
-import { and, count, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { lerRegrasCalendario } from "@/calendario/regras-config";
-import { violouUnicidade } from "@/db/erros";
-import { cotacoes, type EstadoCotacao, imoveis, reservas } from "@/db/schema";
+import { travaOcupada, violouUnicidade } from "@/db/erros";
+import { cotacoes, type EstadoCotacao, imoveis, pagamentos, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { CARENCIA_PAGAMENTO_MINUTOS, CARENCIA_PAGAMENTO_MS, cotacaoEmCarencia, tentativaSeguraAsDatas } from "@/pagamentos/andamento";
 import { cancelarReserva, sincronizarReserva } from "@/reservas/repositorio";
 import { consultarDisponibilidade, type Disponibilidade } from "./disponibilidade";
 import type { PedidoConsulta } from "./site";
@@ -29,6 +30,11 @@ export const MAXIMO_COTACOES_ABERTAS_POR_IMOVEL = 100;
 export const REAPROVEITAR_COTACAO_MS = 24 * 3_600_000;
 /** Cotação que nunca virou pedido é apagada depois deste prazo (não há histórico a preservar). */
 export const GUARDAR_COTACAO_SEM_PEDIDO_DIAS = 30;
+/**
+ * Carência do pagamento no site (M8.2a): pedido com Pix em andamento, ou aprovado ainda sem decisão, só vence 15
+ * minutos depois do prazo das datas. Nesse tempo as noites continuam ocupadas.
+ */
+export { CARENCIA_PAGAMENTO_MINUTOS, CARENCIA_PAGAMENTO_MS };
 
 const ALFABETO = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sem 0/O/1/I
 /** Código público da cotação, ex.: COT-7K2QXM9A. Não é credencial. */
@@ -235,17 +241,20 @@ export async function segurarDatas(db: Db, organizacaoId: string, codigo: string
   if (!v.ok) return { ok: false, erro: "Confira seus dados.", erros: v.erros };
   if (!codigoCotacaoValido(codigo)) return { ok: false, erro: "Cotação não encontrada." };
   return db.transaction(async (tx) => {
-    const [c] = await tx.select().from(cotacoes).where(and(eq(cotacoes.organizacaoId, organizacaoId), eq(cotacoes.codigo, codigo))).for("update");
+    const [antes] = await tx.select({ id: cotacoes.id, imovelId: cotacoes.imovelId }).from(cotacoes).where(and(eq(cotacoes.organizacaoId, organizacaoId), eq(cotacoes.codigo, codigo)));
+    if (!antes) return { ok: false as const, erro: "Cotação não encontrada." };
+    // Ordem única das travas (M8.2a): imóvel → reserva → cotação → pagamentos. A trava do imóvel (a mesma dos
+    // bloqueios) também impede dois visitantes de segurarem as mesmas noites ao mesmo tempo.
+    const [im] = await tx.select({ id: imoveis.id, codigo: imoveis.codigo, fuso: imoveis.fuso }).from(imoveis).where(and(eq(imoveis.id, antes.imovelId), eq(imoveis.organizacaoId, organizacaoId))).for("update");
+    if (!im) return { ok: false as const, erro: "Imóvel não encontrado." };
+    const [c] = await tx.select().from(cotacoes).where(eq(cotacoes.id, antes.id)).for("update");
     if (!c) return { ok: false as const, erro: "Cotação não encontrada." };
     // Só cotação aberta segue: decidido antes de vencer holds, para esta transação nunca segurar uma cotação
-    // já segurada e depois pedir a reserva dela (a confirmação no painel trava reserva → cotação).
+    // já segurada e depois pedir a reserva dela.
     if (c.estado !== "aberta") {
       const efetivo: EstadoCotacao = c.estado === "segurada" && c.holdAte && c.holdAte.getTime() <= agora.getTime() ? "expirada" : (c.estado as EstadoCotacao);
       return { ok: false as const, erro: MENSAGEM_ESTADO[efetivo], estado: efetivo };
     }
-    // Trava do imóvel (a mesma dos bloqueios): dois visitantes não seguram as mesmas noites ao mesmo tempo.
-    const [im] = await tx.select({ id: imoveis.id, codigo: imoveis.codigo, fuso: imoveis.fuso }).from(imoveis).where(and(eq(imoveis.id, c.imovelId), eq(imoveis.organizacaoId, organizacaoId))).for("update");
-    if (!im) return { ok: false as const, erro: "Imóvel não encontrado." };
     // Holds vencidos deste imóvel liberam as noites antes da conferência.
     await expirarHoldsVencidos(tx, organizacaoId, agora, im.id);
     const d = await consultarDisponibilidade(tx, organizacaoId, { imovel: im.codigo, entrada: c.checkin, saida: c.checkout, hospedes: String(c.hospedes) }, agora);
@@ -258,11 +267,21 @@ export async function segurarDatas(db: Db, organizacaoId: string, codigo: string
     // sempre depois da do imóvel, para não haver espera cruzada).
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`cotacao-email:${organizacaoId}:${v.dados.email}`}))`);
     const ativos = await tx
-      .select({ imovelId: cotacoes.imovelId, email: reservas.hospedeEmail })
+      .select({ imovelId: cotacoes.imovelId, email: reservas.hospedeEmail, holdAte: cotacoes.holdAte })
       .from(cotacoes)
       .innerJoin(reservas, eq(reservas.id, cotacoes.reservaId))
-      .where(and(eq(cotacoes.organizacaoId, organizacaoId), eq(cotacoes.estado, "segurada"), gt(cotacoes.holdAte, agora), eq(reservas.estado, "pedido")));
-    if (ativos.some((a) => a.email === v.dados.email)) return { ok: false as const, erro: "Já existe uma reserva em andamento com este e-mail. Conclua aquela ou aguarde o prazo dela acabar." };
+      .where(and(eq(cotacoes.organizacaoId, organizacaoId), eq(cotacoes.estado, "segurada"), eq(reservas.estado, "pedido")));
+    if (ativos.some((a) => a.email === v.dados.email && a.holdAte && a.holdAte.getTime() > agora.getTime())) return { ok: false as const, erro: "Já existe uma reserva em andamento com este e-mail. Conclua aquela ou aguarde o prazo dela acabar." };
+    // Pagamento do site em andamento, ou aprovado e ainda sem desfecho, com este e-mail (M8.2a): mesmo com o prazo
+    // daquelas datas vencido, não segura outras — senão o mesmo hóspede pagaria duas vezes.
+    const [pagando] = await tx
+      .select({ id: pagamentos.id })
+      .from(pagamentos)
+      .innerJoin(reservas, eq(reservas.id, pagamentos.reservaId))
+      .where(and(eq(pagamentos.organizacaoId, organizacaoId), eq(reservas.hospedeEmail, v.dados.email), or(tentativaSeguraAsDatas(), and(eq(pagamentos.situacao, "aprovado"), isNull(pagamentos.desfecho)))))
+      .limit(1);
+    if (pagando) return { ok: false as const, erro: "Você tem um pagamento em andamento com este e-mail. Aguarde a confirmação dele ou fale com a equipe." };
+    // Os holds deste imóvel que sobraram depois do vencimento acima ainda valem (ou estão na carência de um pagamento).
     if (ativos.filter((a) => a.imovelId === im.id).length >= MAXIMO_HOLDS_POR_IMOVEL) return { ok: false as const, erro: "Há muitas reservas em andamento neste apartamento agora. Tente de novo em alguns minutos ou fale com a equipe." };
     const regras = await lerRegrasCalendario(tx, organizacaoId);
     const holdAte = new Date(agora.getTime() + regras.site.minutosHold * 60_000);
@@ -302,17 +321,44 @@ export async function segurarDatas(db: Db, organizacaoId: string, codigo: string
 export type ResumoExpiracao = { expiradas: number; convertidas: number; canceladas: number; removidas: number };
 
 /**
- * Fecha o ciclo dos holds: pedido vencido é cancelado (as noites voltam à venda) e a cotação fica expirada;
- * pedido que a equipe já confirmou vira cotação convertida; pedido que a equipe cancelou, cancelada. Sem
- * `imovelId` (rotina), também apaga cotações que nunca viraram pedido depois de 30 dias.
- * `organizacaoId` null = todas as empresas (rotina); `imovelId` restringe a um imóvel (antes de segurar).
+ * Fecha o ciclo de um hold, já com as travas imóvel → reserva → cotação tomadas por quem chama. Pedido vencido é
+ * cancelado (as noites voltam à venda) e a cotação fica expirada — salvo na carência de um pagamento (M8.2a);
+ * pedido que a equipe já confirmou vira cotação convertida; pedido que a equipe cancelou, cancelada.
+ */
+async function fecharHold(tx: Db, c: { id: string; organizacaoId: string; reservaId: string }, agora: Date, resumo: ResumoExpiracao): Promise<void> {
+  const [r] = await tx.select({ estado: reservas.estado }).from(reservas).where(eq(reservas.id, c.reservaId)).for("update");
+  const [cot] = await tx.select({ estado: cotacoes.estado, holdAte: cotacoes.holdAte }).from(cotacoes).where(eq(cotacoes.id, c.id)).for("update");
+  // Relê depois das travas: outra transação pode ter fechado esta cotação no meio.
+  if (!r || !cot || cot.estado !== "segurada") return;
+  let estado: EstadoCotacao;
+  if (r.estado === "pedido") {
+    if (!cot.holdAte || cot.holdAte.getTime() > agora.getTime()) return;
+    // Pix pago no último minuto: o aviso ainda pode estar a caminho. O pedido segue ocupando as noites.
+    if (await cotacaoEmCarencia(tx, c.id, cot.holdAte, agora)) return;
+    await cancelarReserva(tx, c.organizacaoId, c.reservaId, null, { vencimento: true, agora });
+    estado = "expirada";
+    resumo.expiradas++;
+  } else if (r.estado === "cancelada") {
+    estado = "cancelada";
+    resumo.canceladas++;
+  } else {
+    estado = "convertida";
+    resumo.convertidas++;
+  }
+  await tx.update(cotacoes).set({ estado, atualizadaEm: agora }).where(eq(cotacoes.id, c.id));
+}
+
+/**
+ * Fecha o ciclo dos holds (ver `fecharHold`). Sem `imovelId` (rotina), cada hold vence numa transação curta
+ * própria, travando o imóvel primeiro (a ordem única: imóvel → reserva → cotação → pagamentos), e a rotina
+ * também apaga cotações que nunca viraram pedido depois de 30 dias. Com `imovelId` (antes de segurar), roda na
+ * transação de quem chama, que já travou o imóvel. `organizacaoId` null = todas as empresas (rotina).
  */
 export async function expirarHoldsVencidos(db: Db, organizacaoId: string | null, agora = new Date(), imovelId?: string): Promise<ResumoExpiracao> {
-  return db.transaction(async (tx) => {
-    // Candidatas sem trava; cada uma é travada em seguida na ordem reserva → cotação, a mesma da confirmação
-    // no painel, para as duas transações nunca esperarem uma pela outra em círculo.
-    const candidatas = await tx
-      .select({ id: cotacoes.id, organizacaoId: cotacoes.organizacaoId, reservaId: reservas.id })
+  const resumo: ResumoExpiracao = { expiradas: 0, convertidas: 0, canceladas: 0, removidas: 0 };
+  const candidatas = (q: Db) =>
+    q
+      .select({ id: cotacoes.id, organizacaoId: cotacoes.organizacaoId, imovelId: cotacoes.imovelId, reservaId: reservas.id })
       .from(cotacoes)
       .innerJoin(reservas, eq(reservas.id, cotacoes.reservaId))
       .where(
@@ -322,44 +368,61 @@ export async function expirarHoldsVencidos(db: Db, organizacaoId: string | null,
           imovelId ? eq(cotacoes.imovelId, imovelId) : undefined,
           or(lte(cotacoes.holdAte, agora), ne(reservas.estado, "pedido")),
         ),
-      );
-    const resumo: ResumoExpiracao = { expiradas: 0, convertidas: 0, canceladas: 0, removidas: 0 };
-    for (const c of candidatas) {
-      const [r] = await tx.select({ estado: reservas.estado }).from(reservas).where(eq(reservas.id, c.reservaId)).for("update");
-      const [cot] = await tx.select({ estado: cotacoes.estado, holdAte: cotacoes.holdAte }).from(cotacoes).where(eq(cotacoes.id, c.id)).for("update");
-      // Relê depois das travas: outra transação pode ter fechado esta cotação no meio.
-      if (!r || !cot || cot.estado !== "segurada") continue;
-      let estado: EstadoCotacao;
-      if (r.estado === "pedido") {
-        if (!cot.holdAte || cot.holdAte.getTime() > agora.getTime()) continue;
-        await cancelarReserva(tx, c.organizacaoId, c.reservaId, null);
-        estado = "expirada";
-        resumo.expiradas++;
-      } else if (r.estado === "cancelada") {
-        estado = "cancelada";
-        resumo.canceladas++;
-      } else {
-        estado = "convertida";
-        resumo.convertidas++;
-      }
-      await tx.update(cotacoes).set({ estado, atualizadaEm: agora }).where(eq(cotacoes.id, c.id));
+      )
+      .orderBy(cotacoes.id);
+  if (imovelId) {
+    return db.transaction(async (tx) => {
+      for (const c of await candidatas(tx)) await fecharHold(tx, c, agora, resumo);
+      return resumo;
+    });
+  }
+  for (const c of await candidatas(db)) {
+    try {
+      await db.transaction(async (tx) => {
+        await tx.execute(sql`set local lock_timeout = '15s'`);
+        await tx.select({ id: imoveis.id }).from(imoveis).where(eq(imoveis.id, c.imovelId)).for("update");
+        await fecharHold(tx, c, agora, resumo);
+      });
+    } catch (e) {
+      // Imóvel ocupado por outra transação além do tempo-limite: este hold fica para a próxima volta da rotina.
+      if (!travaOcupada(e)) throw e;
     }
-    if (!imovelId) {
-      const antigas = await tx
-        .delete(cotacoes)
-        .where(
-          and(
-            organizacaoId ? eq(cotacoes.organizacaoId, organizacaoId) : undefined,
-            inArray(cotacoes.estado, ["aberta", "desatualizada"]),
-            isNull(cotacoes.reservaId),
-            lt(cotacoes.criadaEm, new Date(agora.getTime() - GUARDAR_COTACAO_SEM_PEDIDO_DIAS * 86_400_000)),
-          ),
-        )
-        .returning({ id: cotacoes.id });
-      resumo.removidas = antigas.length;
-    }
-    return resumo;
-  });
+  }
+  const antigas = await db
+    .delete(cotacoes)
+    .where(
+      and(
+        organizacaoId ? eq(cotacoes.organizacaoId, organizacaoId) : undefined,
+        inArray(cotacoes.estado, ["aberta", "desatualizada"]),
+        isNull(cotacoes.reservaId),
+        lt(cotacoes.criadaEm, new Date(agora.getTime() - GUARDAR_COTACAO_SEM_PEDIDO_DIAS * 86_400_000)),
+      ),
+    )
+    .returning({ id: cotacoes.id });
+  resumo.removidas = antigas.length;
+  return resumo;
+}
+
+/**
+ * Estende o prazo das datas de uma cotação segurada (M8.2a: cada Pix segura as datas por pelo menos o tempo dele
+ * e mais uma folga). Só estende, nunca encurta; quem chama já tem as travas. Auditoria sem dados pessoais.
+ */
+export async function estenderHold(tx: Db, organizacaoId: string, cotacaoId: string, ate: Date, agora: Date, pagamentoId: string | null): Promise<boolean> {
+  const [c] = await tx
+    .select({ estado: cotacoes.estado, holdAte: cotacoes.holdAte, reservaId: cotacoes.reservaId, fuso: imoveis.fuso })
+    .from(cotacoes)
+    .innerJoin(imoveis, eq(imoveis.id, cotacoes.imovelId))
+    .where(and(eq(cotacoes.id, cotacaoId), eq(cotacoes.organizacaoId, organizacaoId)));
+  if (!c || c.estado !== "segurada" || !c.holdAte || c.holdAte.getTime() >= ate.getTime()) return false;
+  await tx.update(cotacoes).set({ holdAte: ate, atualizadaEm: agora }).where(eq(cotacoes.id, cotacaoId));
+  // A observação do pedido diz até quando as datas estão seguradas: acompanha a extensão (campo fora do financeiro).
+  if (c.reservaId) {
+    const [r] = await tx.select({ observacoes: reservas.observacoes }).from(reservas).where(eq(reservas.id, c.reservaId));
+    const nova = r?.observacoes.replace(/Datas seguradas até [^;.]+(?: \(estendido pelo Pix\))?;/, `Datas seguradas até ${horaBr(ate, c.fuso)} (estendido pelo Pix);`);
+    if (r && nova !== r.observacoes) await tx.update(reservas).set({ observacoes: nova }).where(eq(reservas.id, c.reservaId));
+  }
+  await registrarAuditoria(tx, { organizacaoId, usuarioId: null, acao: "cotacao.estender", entidade: "cotacao", entidadeId: cotacaoId, mudancas: { holdAte: [c.holdAte.toISOString(), ate.toISOString()], ...(pagamentoId ? { pagamento: [null, pagamentoId] } : {}) } });
+  return true;
 }
 
 /** Mensagem que o visitante manda à equipe com a cotação (e o prazo do hold, quando segurada). */

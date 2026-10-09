@@ -7,6 +7,7 @@ import { aplicarMotor } from "@/financeiro/aplicar";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
 import { hojeISO } from "@/lib/datas";
+import { pagamentoEmAndamentoOuAprovado, type PagamentoQuePrende } from "@/pagamentos/andamento";
 import { chavesDaImportacao } from "./travas-importacao";
 import { type DadosReserva, type ErrosReserva, gerarCodigo, validarReserva } from "./regras";
 
@@ -93,6 +94,8 @@ export async function sincronizarReserva(
   dados: DadosReserva,
   /** Quem fez (importação por planilha); null = sistema (Beds24). */
   autorId: string | null = null,
+  /** Relógio das datas de confirmação/cancelamento (o pagamento do site passa o seu). */
+  agora: Date = new Date(),
 ): Promise<ResultadoReserva> {
   if (!fonte || !idFonte) return { ok: false, erros: { geral: "Fonte e id da fonte são obrigatórios." } };
   const erros = validarReserva(dados);
@@ -148,8 +151,8 @@ export async function sincronizarReserva(
     }
 
     if (!existente) {
-      const canceladaEm = dados.estado === "cancelada" ? new Date() : null;
-      const reserva = await inserirComCodigo(tx, { ...dados, ...vinculo, organizacaoId, codigo: "", fonte, idFonte, canceladaEm, confirmadaEm: dados.estado === "confirmada" && fonte !== "beds24" ? new Date() : null });
+      const canceladaEm = dados.estado === "cancelada" ? agora : null;
+      const reserva = await inserirComCodigo(tx, { ...dados, ...vinculo, organizacaoId, codigo: "", fonte, idFonte, canceladaEm, confirmadaEm: dados.estado === "confirmada" && fonte !== "beds24" ? agora : null });
       await registrarAuditoria(tx, {
         organizacaoId,
         usuarioId: autorId,
@@ -175,15 +178,15 @@ export async function sincronizarReserva(
       return { ok: true as const, reserva: existente, criada: false, financeiroNaoAtualizado: m?.protegido, avisosFinanceiro: m?.avisos };
     }
     // Cancelou agora → data de agora; continua cancelada → mantém; voltou a valer → limpa.
-    const canceladaEm = dados.estado !== "cancelada" ? null : existente.estado === "cancelada" ? existente.canceladaEm : new Date();
+    const canceladaEm = dados.estado !== "cancelada" ? null : existente.estado === "cancelada" ? existente.canceladaEm : agora;
     // Passou a confirmada agora → data de agora; continua confirmada → mantém; deixou de ser → limpa.
-    const confirmadaEm = dados.estado !== "confirmada" ? null : existente.estado === "confirmada" ? existente.confirmadaEm : fonte === "beds24" ? null : new Date();
+    const confirmadaEm = dados.estado !== "confirmada" ? null : existente.estado === "confirmada" ? existente.confirmadaEm : fonte === "beds24" ? null : agora;
     const [reserva] = await tx
       .update(reservas)
       // Mudou algo que pesa no financeiro (situação, valores, datas, imóvel, canal…): uma conferência
       // dada por resolvida antes volta a valer (M4.8) — a decisão foi tomada sobre os dados de antes.
       // Nome, contato ou observação do hóspede não reabrem.
-      .set({ ...dados, ...vinculo, canceladaEm, confirmadaEm, conferenciaResolvidaEm: CAMPOS_DO_FINANCEIRO.some((c) => c in mudancas) ? null : existente.conferenciaResolvidaEm, atualizadoEm: new Date() })
+      .set({ ...dados, ...vinculo, canceladaEm, confirmadaEm, conferenciaResolvidaEm: CAMPOS_DO_FINANCEIRO.some((c) => c in mudancas) ? null : existente.conferenciaResolvidaEm, atualizadoEm: agora })
       .where(eq(reservas.id, existente.id))
       .returning();
     await registrarAuditoria(tx, {
@@ -237,27 +240,66 @@ export async function salvarEmailHospede(
   });
 }
 
-export async function cancelarReserva(db: Db, organizacaoId: string, id: string, autorId: string | null): Promise<boolean> {
-  if (!uuidValido(id)) return false;
+const horaBr = (d: Date, fuso: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, hour: "2-digit", minute: "2-digit" }).format(d);
+
+/** Por que a equipe não mexe à mão num pedido com pagamento do site (M8.2a). */
+function avisoDoPagamento(p: PagamentoQuePrende, fuso: string, acao: "cancelar" | "confirmar"): string {
+  if (p.situacao === "criando" || p.situacao === "incerta" || p.situacao === "pendente") {
+    const ate = p.forma === "pix" && p.pixExpiraEm ? ` até ${horaBr(p.pixExpiraEm, fuso)}` : "";
+    return acao === "confirmar"
+      ? `Não confirmada: há um ${p.forma === "pix" ? "Pix" : "pagamento"} em andamento${ate}. Aguarde o pagamento (ou o prazo dele) antes de confirmar à mão.`
+      : `Não cancelada: há um ${p.forma === "pix" ? "Pix" : "pagamento"} do site em andamento${ate}. Aguarde o prazo dele; o cancelamento com devolução chega no M8.2c.`;
+  }
+  return acao === "confirmar"
+    ? "Não confirmada: há um pagamento do site aprovado sendo processado. Atualize a página em instantes."
+    : "Não cancelada: esta reserva tem pagamento aprovado pelo site. O cancelamento com devolução chega no M8.2c.";
+}
+
+/**
+ * Cancela a reserva. Recusa (com o motivo em `aviso`) quando há pagamento do site em andamento ou aprovado
+ * (M8.2a: o cancelamento com devolução é o M8.2c) — salvo `vencimento`, o pedido que vence sozinho pela rotina,
+ * que já respeitou a carência.
+ */
+export async function tentarCancelarReserva(
+  db: Db,
+  organizacaoId: string,
+  id: string,
+  autorId: string | null,
+  o: { vencimento?: boolean; agora?: Date } = {},
+): Promise<{ ok: boolean; aviso?: string }> {
+  if (!uuidValido(id)) return { ok: false };
+  const agora = o.agora ?? new Date();
   return db.transaction(async (tx) => {
     const [r] = await tx
       .select()
       .from(reservas)
       .where(and(eq(reservas.id, id), eq(reservas.organizacaoId, organizacaoId)))
       .for("update");
-    if (!r || r.estado === "cancelada") return false;
-    await tx.update(reservas).set({ estado: "cancelada", canceladaEm: new Date(), confirmadaEm: null, conferenciaResolvidaEm: null, atualizadoEm: new Date() }).where(eq(reservas.id, id));
+    if (!r || r.estado === "cancelada") return { ok: false };
+    if (!o.vencimento) {
+      const p = await pagamentoEmAndamentoOuAprovado(tx, r.id);
+      if (p) {
+        const [im] = await tx.select({ fuso: imoveis.fuso }).from(imoveis).where(eq(imoveis.id, r.imovelId));
+        return { ok: false, aviso: avisoDoPagamento(p, im?.fuso ?? "America/Sao_Paulo", "cancelar") };
+      }
+    }
+    await tx.update(reservas).set({ estado: "cancelada", canceladaEm: agora, confirmadaEm: null, conferenciaResolvidaEm: null, atualizadoEm: agora }).where(eq(reservas.id, id));
     await registrarAuditoria(tx, {
       organizacaoId,
       usuarioId: autorId,
       acao: "reserva.cancelar",
       entidade: "reserva",
       entidadeId: id,
-      mudancas: { estado: [r.estado, "cancelada"] },
+      mudancas: { estado: [r.estado, "cancelada"], ...(o.vencimento ? { motivo: [null, "prazo do pedido do site vencido"] } : {}) },
     });
     await aplicarMotor(tx, organizacaoId, id, autorId);
-    return true;
+    return { ok: true };
   });
+}
+
+/** Cancela a reserva; false se não existe, já está cancelada ou tem pagamento do site que a prende (ver `tentarCancelarReserva`). */
+export async function cancelarReserva(db: Db, organizacaoId: string, id: string, autorId: string | null, o: { vencimento?: boolean; agora?: Date } = {}): Promise<boolean> {
+  return (await tentarCancelarReserva(db, organizacaoId, id, autorId, o)).ok;
 }
 
 class ConfirmacaoRecusada extends Error {}
@@ -291,6 +333,13 @@ async function confirmarNaTransacao(db: Db, organizacaoId: string, id: string, a
     // rotina faria, e a equipe pede uma cotação nova ao hóspede. A página da cotação já o mostra vencido.
     if (r.estado === "pedido" && r.fonte === "site") {
       const [cot] = await tx.select({ id: cotacoes.id, estado: cotacoes.estado, holdAte: cotacoes.holdAte }).from(cotacoes).where(eq(cotacoes.reservaId, r.id)).for("update");
+      // Pix em andamento (ou aprovado e ainda sendo processado): a equipe não confirma à mão nem vence o pedido
+      // (M8.2a) — o pagamento decide; se ele não vier, o pedido vence sozinho depois da carência.
+      const p = await pagamentoEmAndamentoOuAprovado(tx, r.id);
+      if (p) {
+        const [im] = await tx.select({ fuso: imoveis.fuso }).from(imoveis).where(eq(imoveis.id, r.imovelId));
+        return { ok: false, aviso: avisoDoPagamento(p, im?.fuso ?? "America/Sao_Paulo", "confirmar") };
+      }
       if (cot && (cot.estado !== "segurada" || !cot.holdAte || cot.holdAte.getTime() <= agora.getTime())) {
         await tx.update(reservas).set({ estado: "cancelada", canceladaEm: new Date(), confirmadaEm: null, conferenciaResolvidaEm: null, atualizadoEm: new Date() }).where(eq(reservas.id, id));
         await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "reserva.cancelar", entidade: "reserva", entidadeId: id, mudancas: { estado: [r.estado, "cancelada"], motivo: [null, "prazo do pedido do site vencido"] } });
@@ -315,6 +364,63 @@ async function confirmarNaTransacao(db: Db, organizacaoId: string, id: string, a
         "Não confirmada: esta reserva já movimentou dinheiro e os valores atuais não batem com o que está no financeiro. Faça o ajuste manual e dê a conferência por resolvida.",
       );
     return { ok: true };
+  });
+}
+
+/**
+ * Confirmação de um pedido do site pelo pagamento (M8.2a), dentro da transação de quem conferiu o pagamento (com
+ * as travas imóvel → reserva → cotação já tomadas). Os dados saem da PRÓPRIA reserva (nunca da cotação: o contato
+ * do hóspede só está aqui), com quem recebe = empresa e a taxa do pagamento quando já conhecida; passa pela porta
+ * única da sincronização (fonte `site`), que audita e aplica o motor. `tardio`: o pedido tinha vencido e as noites
+ * estavam livres — a mesma reserva (mesmo código SCL) volta a valer. Auditoria própria, sem dados do pagador.
+ */
+export async function confirmarPedidoPago(
+  db: Db,
+  organizacaoId: string,
+  reservaId: string,
+  o: { agora: Date; tardio: boolean; pagamentoId: string; taxaCanal?: number | null; valorLiquido?: number | null },
+): Promise<{ ok: true; reserva: Reserva; avisos: string[]; protegido: boolean } | { ok: false; erro: string }> {
+  if (!uuidValido(reservaId)) return { ok: false, erro: "Reserva não encontrada." };
+  return db.transaction(async (tx) => {
+    const [r] = await tx
+      .select()
+      .from(reservas)
+      .where(and(eq(reservas.id, reservaId), eq(reservas.organizacaoId, organizacaoId)))
+      .for("update");
+    if (!r || r.fonte !== "site" || !r.idFonte) return { ok: false as const, erro: "Pedido do site não encontrado." };
+    if (r.estado === "confirmada") return { ok: false as const, erro: "A reserva já está confirmada." };
+    const dados: DadosReserva = {
+      imovelId: r.imovelId,
+      origem: r.origem,
+      estado: "confirmada",
+      reservadaEm: r.reservadaEm,
+      checkin: r.checkin,
+      checkout: r.checkout,
+      hospedes: r.hospedes,
+      hospedeNome: r.hospedeNome,
+      hospedeEmail: r.hospedeEmail,
+      hospedeTelefone: r.hospedeTelefone,
+      hospedeOrigem: r.hospedeOrigem,
+      moeda: r.moeda,
+      valorBruto: r.valorBruto,
+      taxaCanal: o.taxaCanal !== undefined && o.taxaCanal !== null ? o.taxaCanal : r.taxaCanal,
+      valorLiquido: o.valorLiquido !== undefined && o.valorLiquido !== null ? o.valorLiquido : r.valorLiquido,
+      // O dinheiro entrou na conta da empresa: é fato, não regra configurada.
+      recebimento: "empresa",
+      codigoCanal: r.codigoCanal,
+      observacoes: r.observacoes,
+    };
+    const s = await sincronizarReserva(tx, organizacaoId, r.fonte, r.idFonte, dados, null, o.agora);
+    if (!s.ok) return { ok: false as const, erro: Object.values(s.erros)[0] ?? "Não foi possível confirmar a reserva." };
+    await registrarAuditoria(tx, {
+      organizacaoId,
+      usuarioId: null,
+      acao: o.tardio ? "pagamento.confirmar_tardio" : "pagamento.confirmar",
+      entidade: "reserva",
+      entidadeId: r.id,
+      mudancas: { estado: [r.estado, "confirmada"], pagamento: [null, o.pagamentoId] },
+    });
+    return { ok: true as const, reserva: s.reserva, avisos: s.avisosFinanceiro ?? [], protegido: s.financeiroNaoAtualizado === true };
   });
 }
 

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, asc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { listarContratos } from "@/contratos/repositorio";
-import { lancamentos, proprietarioImoveis, recebimentoPorCanal, repasseItens, reservas } from "@/db/schema";
+import { lancamentos, type OrigemReserva, proprietarioImoveis, type RecebimentoReserva, recebimentoPorCanal, repasseItens, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
@@ -19,6 +19,26 @@ const assinatura = (l: NovoLancamento) =>
 
 /** Chave gravada = base ou base#N (N-ésima vez que o mesmo cálculo volta a valer). */
 const baseDaChave = (chave: string) => chave.replace(/#\d+$/, "");
+
+/**
+ * O que o motor lê para calcular uma reserva do imóvel com essa entrada: contratos, donos, quem recebe por canal
+ * no imóvel e as regras vigentes na data de entrada. Um lugar só: `aplicarMotor` e o cálculo em seco do
+ * pagamento no site (M8.2a) leem daqui.
+ */
+export async function dadosDoMotor(db: Db, organizacaoId: string, imovelId: string, checkin: string, regras?: RegrasMotor) {
+  const contratos = await listarContratos(db, organizacaoId, imovelId);
+  const donos = await db
+    .select({ id: proprietarioImoveis.proprietarioId })
+    .from(proprietarioImoveis)
+    .where(eq(proprietarioImoveis.imovelId, imovelId))
+    .orderBy(asc(proprietarioImoveis.proprietarioId));
+  const config = await db
+    .select({ origem: recebimentoPorCanal.origem, recebimento: recebimentoPorCanal.recebimento })
+    .from(recebimentoPorCanal)
+    .where(and(eq(recebimentoPorCanal.imovelId, imovelId), eq(recebimentoPorCanal.organizacaoId, organizacaoId)));
+  const recebimentoDoImovel: Partial<Record<OrigemReserva, RecebimentoReserva>> = Object.fromEntries(config.map((c) => [c.origem, c.recebimento]));
+  return { contratos, donos: donos.map((x) => x.id), recebimentoDoImovel, regras: regras ?? (await lerRegrasFinanceiras(db, organizacaoId, checkin)) };
+}
 
 /** `protegido`: o cálculo mudou, mas a reserva já movimentou dinheiro e nada foi alterado. */
 export type ResultadoAplicacao = { criados: number; estornados: number; mantidos: number; avisos: string[]; protegido?: boolean };
@@ -48,18 +68,8 @@ export async function aplicarMotor(
       .where(and(eq(reservas.id, reservaId), eq(reservas.organizacaoId, organizacaoId)));
     if (!r) return null;
 
-    const contratos = await listarContratos(tx, organizacaoId, r.imovelId);
-    const donos = await tx
-      .select({ id: proprietarioImoveis.proprietarioId })
-      .from(proprietarioImoveis)
-      .where(eq(proprietarioImoveis.imovelId, r.imovelId))
-      .orderBy(asc(proprietarioImoveis.proprietarioId));
-    const config = await tx
-      .select({ origem: recebimentoPorCanal.origem, recebimento: recebimentoPorCanal.recebimento })
-      .from(recebimentoPorCanal)
-      .where(and(eq(recebimentoPorCanal.imovelId, r.imovelId), eq(recebimentoPorCanal.organizacaoId, organizacaoId)));
-    const recebimentoDoImovel = Object.fromEntries(config.map((c) => [c.origem, c.recebimento]));
-    const { lancamentos: calculados, avisos } = calcularReserva(r, contratos, donos.map((d) => d.id), regras ?? (await lerRegrasFinanceiras(tx, organizacaoId, r.checkin)), recebimentoDoImovel);
+    const d = await dadosDoMotor(tx, organizacaoId, r.imovelId, r.checkin, regras);
+    const { lancamentos: calculados, avisos } = calcularReserva(r, d.contratos, d.donos, d.regras, d.recebimentoDoImovel);
     const desejados = calculados.map((l) => ({ ...l, chaveOrigem: `${l.chaveOrigem}:${assinatura(l)}` }));
 
     const doMotor = await tx

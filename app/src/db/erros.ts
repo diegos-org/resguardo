@@ -9,3 +9,11 @@ export function violouUnicidade(erro: unknown, indice?: string): boolean {
   }
   return false;
 }
+
+/** Trava não obtida dentro do `lock_timeout` (código 55P03), vinda direto ou embrulhada pelo Drizzle. */
+export function travaOcupada(erro: unknown): boolean {
+  for (let e: unknown = erro, i = 0; e && i < 5; e = (e as { cause?: unknown }).cause, i++) {
+    if ((e as { code?: unknown }).code === "55P03") return true;
+  }
+  return false;
+}
