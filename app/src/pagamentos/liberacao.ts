@@ -6,11 +6,13 @@
  *   outro líquido antes de qualquer recebimento lançado, a taxa é atualizada (e o motor roda) antes de lançar.
  * - Só o pagamento com desfecho `reserva`, com a reserva confirmada e a situação ainda `aprovado`, lança o
  *   recebimento, e só quando o provedor diz EXPLICITAMENTE que liberou (data passada sozinha nunca basta):
- *   montante = o líquido INFORMADO pelo provedor nessa leitura, data de caixa = data da liberação em São Paulo,
+ *   montante = o líquido INFORMADO pelo provedor nessa leitura, data de caixa = o dia (em São Paulo) da leitura que
+ *   viu o sinal (a data que o provedor informa é a PREVISTA e pode ser anterior à liberação de fato),
  *   `conciliado`, origem `sincronizacao`, chave `mercadopago:<tentativa>:recebimento` (`#N` depois de um estorno).
  * - Sem o sinal, a equipe registra a liberação à mão (data entre o dia da criação do Pix e hoje, e o líquido): a taxa é
- *   derivada, o recebimento fica `realizado` com a mesma chave. O provedor confirmando depois com o mesmo líquido e
- *   a mesma data passa a `conciliado`; diferentes (ou um recebimento já lançado com outro valor), aviso, sem mexer.
+ *   derivada, o recebimento fica `realizado` com a mesma chave. O provedor confirmando depois com o mesmo líquido passa
+ *   a `conciliado` (a data fica a que a equipe viu no Mercado Pago); outro líquido (ou um recebimento já lançado com
+ *   outro valor), aviso, sem mexer.
  *   Só o manual se estorna, e só por aqui: a taxa volta ao que o provedor tinha informado antes (ou a nada).
  */
 import { and, desc, eq, inArray, like, or } from "drizzle-orm";
@@ -64,22 +66,25 @@ export async function gravarTaxaNaReserva(tx: Db, organizacaoId: string, reserva
 }
 
 /**
- * O provedor disse que liberou: lança o recebimento conciliado com o líquido INFORMADO por ele nesta leitura (ou
- * concilia o registrado à mão, se o valor e a data batem). Recebimento já lançado com outro valor ou outra data:
- * aviso, sem mexer. Quem chama já conferiu desfecho `reserva`, reserva confirmada e situação aprovada, dentro das
- * travas, e já gravou a taxa desse líquido na reserva (quando não havia recebimento).
+ * O provedor disse que liberou: lança o recebimento conciliado com o líquido INFORMADO por ele nesta leitura, com a
+ * data de caixa no dia desta leitura (ou concilia o registrado à mão, se o valor bate; a data dele fica). Recebimento
+ * já lançado com outro valor: aviso, sem mexer. Quem chama já conferiu desfecho `reserva`, reserva confirmada e
+ * situação aprovada, dentro das travas, e já gravou a taxa desse líquido na reserva (quando não havia recebimento).
  */
-export async function liberarPeloProvedor(tx: Db, organizacaoId: string, p: Pagamento, r: ReservaTravada, liquidoInformado: number, dataLiberacao: Date | null, agora: Date): Promise<{ aviso: CodigoAviso | null; confirmada: boolean }> {
-  // Liberado sem data: vale o dia em que o provedor disse que liberou; liberado com data futura não fecha.
-  if (dataLiberacao && dataLiberacao.getTime() > agora.getTime()) return { aviso: "liberacao_futura", confirmada: false };
-  const data = hojeISO(FUSO_PAGAMENTO, dataLiberacao ?? agora);
+export async function liberarPeloProvedor(tx: Db, organizacaoId: string, p: Pagamento, r: ReservaTravada, liquidoInformado: number, liberacaoPrevista: Date | null, agora: Date): Promise<{ aviso: CodigoAviso | null; confirmada: boolean }> {
+  // "Liberado" com a data prevista ainda no futuro: sinais que não batem, não fecha (aviso).
+  if (liberacaoPrevista && liberacaoPrevista.getTime() > agora.getTime()) return { aviso: "liberacao_futura", confirmada: false };
+  // Data de caixa = o dia desta leitura: a data informada é a prevista (com retenção ou contestação, o dinheiro sai
+  // depois dela) e o sinal só diz que já saiu; nunca se lança o caixa num dia antes de o dinheiro estar liberado.
+  const data = hojeISO(FUSO_PAGAMENTO, agora);
   const { emVigor, proxima } = await recebimentosDoPagamento(tx, organizacaoId, p.id);
   const atual = emVigor[0];
   if (atual) {
-    if (atual.montante !== liquidoInformado || atual.dataCaixa !== data) return { aviso: "liberacao_divergente", confirmada: false };
+    // Já lançado (à mão pela equipe, com a data vista no Mercado Pago, ou por uma leitura anterior): o valor decide.
+    if (atual.montante !== liquidoInformado) return { aviso: "liberacao_divergente", confirmada: false };
     if (atual.estado !== "conciliado") {
       await mudarEstado(tx, organizacaoId, atual.id, "conciliado", null);
-      await registrarAuditoria(tx, { organizacaoId, usuarioId: null, acao: "pagamento.liberacao", entidade: "pagamento", entidadeId: p.id, mudancas: { liberacao: ["manual", `conciliada em ${data}`] } });
+      await registrarAuditoria(tx, { organizacaoId, usuarioId: null, acao: "pagamento.liberacao", entidade: "pagamento", entidadeId: p.id, mudancas: { liberacao: ["manual", `conciliada (caixa em ${atual.dataCaixa})`] } });
     }
     return { aviso: null, confirmada: true };
   }

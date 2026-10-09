@@ -61,8 +61,10 @@ contestação de cartão (M8.2e). O dinheiro de verdade só liga com as cinco pa
   como reserva, senão a importação cria uma segunda reserva).
 - **O dinheiro:** a taxa real do Mercado Pago entra na reserva. A parte do proprietário só fica
   disponível depois do check-in **e** de o Mercado Pago liberar o dinheiro. A data de liberação que
-  o Mercado Pago mostra é só uma previsão; a liberação conta quando ele disser que liberou, ou quando
-  você registrar à mão, conferindo no Mercado Pago.
+  o Mercado Pago mostra é só uma previsão; a liberação conta quando ele disser que liberou (o
+  recebimento entra no caixa no dia em que o sistema viu isso), ou quando você registrar à mão,
+  conferindo no Mercado Pago (vale a data que você informar; se depois o Mercado Pago confirmar o
+  mesmo valor, o registro fica conferido).
 - **No painel:** a ficha da reserva ganha o quadro **Pagamento no site** (situação, valores e os botões
   **Conferir agora**, **Registrar liberação** (e **Estornar liberação**, se registrou errado),
   **Devolver pelo Mercado Pago**, **Registrar devolução feita por fora** e, depois de uma devolução,

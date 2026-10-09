@@ -70,7 +70,7 @@ describe("taxa, liberação e recebimento do pagamento no site (M8.2a)", () => {
     expect(await c.tentativa(y.pagamentoId)).toMatchObject({ taxa: null, avisos: ["taxa_invalida"] });
   });
 
-  it("liberação só com o sinal explícito: a data prevista (mesmo passada) não lança nada; o sinal lança o recebimento conciliado uma vez", async () => {
+  it("liberação só com o sinal explícito: a data prevista (mesmo passada) não lança nada; o sinal lança o recebimento conciliado uma vez, com o caixa no dia em que o sinal foi visto (nunca na data prevista)", async () => {
     const x = await paga({}, { liquido: LIQUIDO, liberado: false, liberacaoPrevista: new Date("2026-10-05T12:00:00Z") });
     expect((await c.tentativa(x.pagamentoId)).liberacaoPrevistaEm?.toISOString()).toBe("2026-10-05T12:00:00.000Z");
     await conferir(x.pagamentoId, new Date("2026-10-08T12:00:00Z"));
@@ -83,12 +83,14 @@ describe("taxa, liberação e recebimento do pagamento no site (M8.2a)", () => {
     await conferir(x.pagamentoId, new Date("2026-10-09T14:00:00Z"));
     const [rec, ...resto] = await recebimentos(x.reservaId);
     expect(resto).toEqual([]);
-    expect(rec).toMatchObject({ estado: "conciliado", origem: "sincronizacao", montante: LIQUIDO, valor: 0, dataCaixa: "2026-10-05", competencia: "2026-10-05", chaveOrigem: chaveRecebimento(x.pagamentoId) });
+    // A prevista era 05/10, mas o dinheiro só saiu depois (retenção): o caixa fica em 09/10, o dia em que o sinal veio.
+    expect(rec).toMatchObject({ estado: "conciliado", origem: "sincronizacao", montante: LIQUIDO, valor: 0, dataCaixa: "2026-10-09", competencia: "2026-10-09", chaveOrigem: chaveRecebimento(x.pagamentoId) });
+    expect((await c.tentativa(x.pagamentoId)).liberacaoPrevistaEm?.toISOString()).toBe("2026-10-05T12:00:00.000Z");
     expect(await c.tentativa(x.pagamentoId)).toMatchObject({ liberacaoOrigem: "provedor" });
     expect((await c.tentativa(x.pagamentoId)).liberacaoConfirmadaEm).not.toBeNull();
   });
 
-  it("liberação registrada à mão: deriva a taxa, recebimento realizado com a chave do pagamento; o provedor igual concilia, diferente vira aviso", async () => {
+  it("liberação registrada à mão: deriva a taxa, recebimento realizado com a chave do pagamento; o provedor com o mesmo líquido concilia (a data da equipe fica), outro líquido vira aviso", async () => {
     const x = await paga({}, {});
     expect(await registrarLiberacaoManual(db, c.org, x.pagamentoId, { data: "2026-10-02", liquido: LIQUIDO }, null, minutos(10))).toMatchObject({ ok: false, erro: expect.stringContaining("futuro") });
     expect(await registrarLiberacaoManual(db, c.org, x.pagamentoId, { data: "2026-10-01", liquido: TOTAL + 1 }, null, minutos(10))).toMatchObject({ ok: false });
@@ -103,13 +105,13 @@ describe("taxa, liberação e recebimento do pagamento no site (M8.2a)", () => {
     await conferir(x.pagamentoId, minutos(600));
     expect((await recebimentos(x.reservaId)).map((l) => l.estado)).toEqual(["conciliado"]);
 
-    // Outro pagamento: manual com data diferente da que o provedor informa → aviso, nada muda.
+    // Outro pagamento: a data prevista do provedor é outra, mas o líquido bate → concilia, com a data que a equipe viu.
     const y = await paga({ entrada: "2026-11-02", saida: "2026-11-05", email: "y@example.com" }, {});
     await registrarLiberacaoManual(db, c.org, y.pagamentoId, { data: "2026-10-01", liquido: LIQUIDO }, null, minutos(10));
     c.provedor.atualizarFinanceiro(y.idProvedor, { liquido: LIQUIDO, liberado: true, liberacaoPrevista: new Date("2026-09-30T18:00:00Z") });
     await conferir(y.pagamentoId, minutos(600));
-    expect((await recebimentos(y.reservaId)).map((l) => [l.estado, l.dataCaixa])).toEqual([["realizado", "2026-10-01"]]);
-    expect((await c.tentativa(y.pagamentoId)).avisos).toContain("liberacao_divergente");
+    expect((await recebimentos(y.reservaId)).map((l) => [l.estado, l.dataCaixa])).toEqual([["conciliado", "2026-10-01"]]);
+    expect((await c.tentativa(y.pagamentoId)).avisos).not.toContain("liberacao_divergente");
   });
 
   it("estorno da liberação manual: só pelo quadro do pagamento; registrar de novo usa a chave seguinte (#2); a do provedor não se estorna", async () => {
@@ -240,10 +242,11 @@ describe("taxa, liberação e recebimento do pagamento no site (M8.2a)", () => {
     await db.update(pagamentos).set({ avisos: ["liberacao_divergente"] }).where(eq(pagamentos.id, x.pagamentoId));
     await conferir(x.pagamentoId, minutos(60 * 31));
     expect((await c.tentativa(x.pagamentoId)).avisos).toEqual([]);
-    // Na mesma leitura, a liberação com outra data liga o aviso de novo (o líquido bate, a data não).
+    // O sinal de liberado com o mesmo líquido (e outra data prevista) concilia o registrado à mão, sem aviso.
     c.provedor.atualizarFinanceiro(x.idProvedor, { liquido: LIQUIDO, liberado: true, liberacaoPrevista: new Date("2026-09-30T18:00:00Z") });
     await conferir(x.pagamentoId, minutos(60 * 32));
-    expect((await c.tentativa(x.pagamentoId)).avisos).toEqual(["liberacao_divergente"]);
+    expect((await c.tentativa(x.pagamentoId)).avisos).toEqual([]);
+    expect((await recebidos(x.reservaId)).map((l) => [l.estado, l.montante, l.dataCaixa])).toEqual([["conciliado", LIQUIDO, "2026-10-01"]]);
   });
 
   it("só o pagamento que confirmou a reserva lança recebimento: o segundo, liberado, fica só na tentativa", async () => {

@@ -262,15 +262,17 @@ do M9.2 passa a valer para reservas pagas quando Diego ligar as mensagens.
   lança o `recebimento`, e só quando o provedor disser **explicitamente** que liberou (campo e valor
   exatos a conferir no sandbox; data passada sozinha nunca basta; liberação em parcelas não lança
   sozinha). Recebimento: montante = o líquido **informado pelo provedor nessa leitura** (nunca o
-  guardado antes), data de caixa = data da liberação no fuso de São Paulo, `conciliado`, origem
+  guardado antes), data de caixa = o dia (em São Paulo) da leitura que viu o sinal — a data informada
+  é a prevista e, com retenção ou contestação, o dinheiro sai depois dela; nunca se lança o caixa antes
+  de o dinheiro estar liberado —, `conciliado`, origem
   `sincronizacao`, chave `mercadopago:<tentativa>:recebimento`. Liberado sem o líquido: aviso, nada
   lançado.
 - Sem o sinal, a equipe registra a liberação à mão (com confirmação): informa a data (entre o dia
   da criação do Pix, em São Paulo, e hoje — não a hora da aprovação gravada, que é a da primeira
   leitura e pode vir dias depois do pagamento) e o líquido; o sistema deriva a taxa, grava
   `taxaCanal` e lança o recebimento `realizado` com a mesma chave. Se o provedor confirmar depois
-  com o mesmo líquido e a mesma data,
-  passa a `conciliado`; diferentes, aviso, sem mexer (o aviso não é apagado pela mesma leitura que o
+  com o mesmo líquido, passa a `conciliado` (a data fica a que a equipe viu no Mercado Pago); outro
+  líquido, aviso, sem mexer (o aviso não é apagado pela mesma leitura que o
   ligou; sai com uma leitura cujo líquido bate com o registrado, ou com o estorno). No estorno da
   manual, a taxa e o líquido voltam ao que o provedor tinha informado antes (ou a desconhecidos), o
   aviso de liberação divergente sai, a reserva recebe essa taxa com o motor e a próxima conferência
