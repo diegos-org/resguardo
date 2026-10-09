@@ -1,6 +1,6 @@
 import { eq, like } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { pagamentos, tentativasLogin } from "@/db/schema";
+import { aceitesSite, pagamentos, tentativasLogin } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { autorizacaoValida, CAMINHO_COOKIE_CHECKOUT, emitirAutorizacao, validadeDaAutorizacao } from "@/pagamentos/autorizacao";
@@ -126,6 +126,45 @@ describe("Gerar Pix (M8.2a)", () => {
     expect(JSON.stringify(r)).not.toContain("TEXTO-DO-PROVEDOR");
     c.provedor.falhas.criarPix = new ErroProvedor("incerto", "tempo");
     expect(await gerarPixAcao(s.codigo)).toEqual({ erro: MENSAGENS_PIX_HOSPEDE.incerto });
+  });
+});
+
+describe("Gerar Pix com o aceite das páginas legais (M7.4)", () => {
+  const aceiteDoFormulario = (versoes: Record<string, string> = { versaoTermos: "1", versaoPrivacidade: "1", versaoCancelamento: "1" }) => form({ aceite: "sim", ...versoes });
+  const aceitesDa = (cotacaoId: string) => db.select().from(aceitesSite).where(eq(aceitesSite.cotacaoId, cotacaoId));
+
+  it("caixa marcada com as versões da página: gera o Pix e grava o aceite; sem a caixa, numa cotação ainda sem aceite, pede o aceite", async () => {
+    const s = await c.segurar({ semAceite: true });
+    comCookie(s.cotacaoId);
+    expect(await gerarPixAcao(s.codigo, {}, form({}))).toEqual({ erro: MENSAGENS_PIX_HOSPEDE.aceite_pendente });
+    expect(await gerarPixAcao(s.codigo)).toEqual({ erro: MENSAGENS_PIX_HOSPEDE.aceite_pendente });
+    expect(await tentativasDa(s.cotacaoId)).toEqual([]);
+    // A página recarrega e mostra a caixa de novo.
+    expect(m.revalidar).toHaveBeenCalledWith(`/reservar/${s.codigo}`);
+    const r = await gerarPixAcao(s.codigo, {}, aceiteDoFormulario());
+    expect(r).toEqual({ ok: true });
+    const [aceite] = await aceitesDa(s.cotacaoId);
+    expect(aceite).toMatchObject({ versaoTermos: 1, versaoPrivacidade: 1, versaoCancelamento: 1, origem: "pix" });
+    expect((await tentativasDa(s.cotacaoId))[0].aceiteId).toBe(aceite.id);
+    // O estado não leva nada pessoal.
+    expect(JSON.stringify(r)).not.toContain(EMAIL_HOSPEDE);
+  });
+
+  it("caixa marcada com versão fora do formato: pede para recarregar, sem gerar nada; versões que não são as publicadas: a página mudou", async () => {
+    const s = await c.segurar({ semAceite: true });
+    comCookie(s.cotacaoId);
+    expect(await gerarPixAcao(s.codigo, {}, aceiteDoFormulario({ versaoTermos: "1", versaoPrivacidade: "x", versaoCancelamento: "1" }))).toEqual({ erro: "Recarregue a página e tente de novo." });
+    expect(await gerarPixAcao(s.codigo, {}, aceiteDoFormulario({ versaoTermos: "1", versaoCancelamento: "1" }))).toEqual({ erro: "Recarregue a página e tente de novo." });
+    expect(await gerarPixAcao(s.codigo, {}, aceiteDoFormulario({ versaoTermos: "2", versaoPrivacidade: "1", versaoCancelamento: "1" }))).toEqual({ erro: MENSAGENS_PIX_HOSPEDE.aceite_mudou });
+    expect(await tentativasDa(s.cotacaoId)).toEqual([]);
+    expect(await aceitesDa(s.cotacaoId)).toEqual([]);
+  });
+
+  it("sem o cookie do pedido: recusa antes de olhar o aceite, e nada é gravado", async () => {
+    const s = await c.segurar({ semAceite: true });
+    expect(await gerarPixAcao(s.codigo, {}, aceiteDoFormulario())).toEqual({ erro: MENSAGEM_SEM_AUTORIZACAO });
+    expect(await aceitesDa(s.cotacaoId)).toEqual([]);
+    expect(await tentativasDa(s.cotacaoId)).toEqual([]);
   });
 });
 

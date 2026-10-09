@@ -1,15 +1,18 @@
 /**
  * Apoio aos testes do pagamento no site (M8.2a): um cenário fictício completo (empresa, imóvel do site com
- * leitura do Beds24 livre, proprietário, contrato de gestão), relógio fixo controlável e o provedor falso.
- * Só testes importam daqui; nada usa rede nem credenciais.
+ * leitura do Beds24 livre, proprietário, contrato de gestão, páginas legais publicadas — M7.4), relógio fixo
+ * controlável e o provedor falso. Só testes importam daqui; nada usa rede nem credenciais.
  */
 import { and, eq } from "drizzle-orm";
 import { CONFIG_PAGAMENTO_SITE_PADRAO, salvarConfigPagamentoSite } from "@/configuracoes/pagamento-site";
+import type { VersoesLegais } from "@/configuracoes/paginas-legais-texto";
+import { publicarPaginasLegaisDeTeste } from "@/configuracoes/paginas-legais-testes";
 import { criarContrato } from "@/contratos/repositorio";
 import { beds24Calendario, cotacoes, idsExternos, imoveis, imoveisDetalhes, organizacoes, pagamentos, proprietarioImoveis, proprietarios, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { PESOS_PADRAO_ANTIGO, PRECOS_MARKETPLACE_PADRAO } from "@/marketplace/precos";
 import { salvarPrecosMarketplace } from "@/marketplace/precos-config";
+import { registrarAceiteDoHospede } from "@/site/aceites";
 import { criarCotacao, segurarDatas } from "@/site/cotacoes";
 import { esquecerProvedorDoAmbiente } from "./ambiente";
 import { ProvedorFalso } from "./falso";
@@ -36,8 +39,13 @@ export type Cenario = {
   relogio: { agora: Date };
   provedor: ProvedorFalso;
   gate: PortaoCobranca;
-  /** Cota e segura as datas (entrada 12/10, saída 15/10, 4 pessoas, salvo `over`). */
-  segurar: (over?: Partial<{ entrada: string; saida: string; hospedes: string; email: string }>, quando?: Date) => Promise<{ cotacaoId: string; reservaId: string; codigo: string }>;
+  /** Versões publicadas das páginas legais (null com `semPaginasLegais`). */
+  versoesLegais: VersoesLegais | null;
+  /**
+   * Cota e segura as datas (entrada 12/10, saída 15/10, 4 pessoas, salvo `over`) e, como o hóspede que marca a caixa,
+   * aceita as páginas legais publicadas (salvo `semAceite` ou sem páginas publicadas).
+   */
+  segurar: (over?: Partial<{ entrada: string; saida: string; hospedes: string; email: string; semAceite: boolean }>, quando?: Date) => Promise<{ cotacaoId: string; reservaId: string; codigo: string }>;
   /** Gera o Pix e devolve a tentativa (e o id da order no provedor). */
   pix: (cotacaoId: string, quando?: Date) => Promise<{ pagamentoId: string; idProvedor: string }>;
   tentativa: (id: string) => Promise<typeof pagamentos.$inferSelect>;
@@ -45,7 +53,8 @@ export type Cenario = {
   cotacao: (id: string) => Promise<typeof cotacoes.$inferSelect>;
 };
 
-export async function montarCenario(db: Db): Promise<Cenario> {
+/** `semPaginasLegais`: a empresa ainda não publicou os termos e as políticas (o pagamento não é oferecido). */
+export async function montarCenario(db: Db, o: { semPaginasLegais?: boolean } = {}): Promise<Cenario> {
   esquecerProvedorDoAmbiente();
   const [{ id: org }] = await db.insert(organizacoes).values({ nome: "Sua Casa Exemplo" }).returning();
   const [{ id: imovel }] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "403", nome: "Studio Exemplo", publico: true, capacidade: 4 }).returning();
@@ -60,6 +69,8 @@ export async function montarCenario(db: Db): Promise<Cenario> {
   // "Oferecer pagamento no site" começa desligado: o cenário liga, como o Diego na aba.
   const config = await salvarConfigPagamentoSite(db, org, { ...CONFIG_PAGAMENTO_SITE_PADRAO, oferecer: true }, null);
   if (!config.ok) throw new Error(JSON.stringify(config.erros));
+  // As três páginas legais na versão 1 (texto-base, dados fictícios), sem mexer em Configurações → Empresa.
+  const versoesLegais = o.semPaginasLegais ? null : await publicarPaginasLegaisDeTeste(db, org);
   const relogio = { agora: AGORA };
   const provedor = new ProvedorFalso(() => relogio.agora);
   const gate = await podeCobrar(db, org, env(), AGORA, { provedor });
@@ -71,11 +82,16 @@ export async function montarCenario(db: Db): Promise<Cenario> {
     relogio,
     provedor,
     gate,
+    versoesLegais,
     async segurar(over = {}, quando = relogio.agora) {
       const r = await criarCotacao(db, org, { imovel: "403", entrada: over.entrada ?? "2026-10-12", saida: over.saida ?? "2026-10-15", hospedes: over.hospedes ?? "4" }, quando);
       if (!r.ok) throw new Error(r.erro);
       const h = await segurarDatas(db, org, r.cotacao.codigo, { nome: "Visitante Fictício", email: over.email ?? EMAIL_HOSPEDE, telefone: "(21) 99999-0000" }, quando);
       if (!h.ok) throw new Error(h.erro);
+      if (!over.semAceite && c.versoesLegais) {
+        const a = await registrarAceiteDoHospede(db, org, h.cotacao.id, c.versoesLegais, "pix", quando);
+        if (!a.ok) throw new Error(a.erro);
+      }
       return { cotacaoId: h.cotacao.id, reservaId: h.cotacao.reservaId!, codigo: h.cotacao.codigo };
     },
     async pix(cotacaoId, quando = relogio.agora) {

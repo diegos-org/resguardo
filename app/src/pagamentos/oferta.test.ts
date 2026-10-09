@@ -54,6 +54,21 @@ describe("podeCobrar: a função única das travas (M8.2a)", () => {
     expect(await podeCobrar(db, nova, env(), AGORA, { provedor: falsa })).toMatchObject({ ok: false, motivo: "desligado_no_painel", texto: TEXTO_SEM_COBRANCA.desligado_no_painel });
     expect(falsa.chamadas).toEqual([]);
   });
+
+  it("páginas legais (M7.4): sem as três publicadas não cobra, nem pergunta a conta ao provedor; a chave do painel vem antes; conferir não depende delas", async () => {
+    const s = await montarCenario(db, { semPaginasLegais: true });
+    const falsa = new ProvedorFalso(() => AGORA);
+    expect(await podeCobrar(db, s.org, env(), AGORA, { provedor: falsa })).toEqual({ ok: false, motivo: "sem_paginas_legais", texto: TEXTO_SEM_COBRANCA.sem_paginas_legais });
+    expect(falsa.chamadas).toEqual([]);
+    expect(TEXTO_SEM_PIX.sem_paginas_legais).toBe(TEXTO_SEM_COBRANCA.sem_paginas_legais);
+    const h = await s.segurar();
+    expect(await ofertaDePix(db, s.org, h.cotacaoId, AGORA, s.gate)).toEqual({ oferecer: false, motivo: "sem_paginas_legais" });
+    // Conferir, cancelar e devolver o que já foi cobrado nunca dependem das páginas legais.
+    expect(await provedorDeConferencia(env(), AGORA, { provedor: falsa })).toMatchObject({ ok: true });
+    // Oferta desligada no painel: esse é o motivo, mesmo sem as páginas.
+    await salvarConfigPagamentoSite(db, s.org, { oferecer: false, nomeFatura: null, categoriaTaxaId: null }, null);
+    expect(await podeCobrar(db, s.org, env(), AGORA, { provedor: falsa })).toMatchObject({ ok: false, motivo: "desligado_no_painel" });
+  });
 });
 
 describe("quando o site oferece o Pix (M8.2a)", () => {

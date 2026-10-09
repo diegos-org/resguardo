@@ -7,6 +7,7 @@ import { getDb } from "@/db/client";
 import { conferirEmailDoPedido, conferirLimite } from "@/pagamentos/limites";
 import { ofertaDePix } from "@/pagamentos/oferta";
 import { gerarPix } from "@/pagamentos/pix";
+import { versoesDoFormulario } from "./aceites";
 import { autorizadoNaCotacao, gravarAutorizacao } from "./checkout";
 import { codigoCotacaoValido, obterCotacao } from "./cotacoes";
 import { MENSAGEM_INDISPONIVEL, MENSAGEM_SEM_AUTORIZACAO, MENSAGENS_PIX_HOSPEDE, mensagemSemPix, portaoDoSite } from "./pagamento";
@@ -20,12 +21,13 @@ const EM_CONFIGURACAO = "O site ainda está em configuração.";
 const lerCodigo = (v: unknown) => (typeof v === "string" ? v.trim().toUpperCase().slice(0, 20) : "");
 
 /**
- * "Gerar Pix" na página da cotação (`codigo` vem ligado pela página; o estado anterior e o formulário que o
- * `useActionState` acrescenta são ignorados). A organização é a do site, nunca do formulário. Sem o cookie do
- * pedido, recusa antes de gastar qualquer tentativa; depois, o freio por endereço, as travas (`podeCobrar`), a
- * oferta e o domínio (`gerarPix`), que reaproveita um Pix ainda válido.
+ * "Gerar Pix" na página da cotação (`codigo` vem ligado pela página; o estado anterior que o `useActionState`
+ * acrescenta é ignorado). A organização é a do site, nunca do formulário. Sem o cookie do pedido, recusa antes de
+ * gastar qualquer tentativa; depois, o freio por endereço, as travas (`podeCobrar`), a oferta e o domínio
+ * (`gerarPix`), que reaproveita um Pix ainda válido. Do formulário só se lê a caixa do aceite das páginas legais e as
+ * versões que a página mostrou (M7.4); quem confere se são as publicadas é o domínio, na mesma transação do Pix.
  */
-export async function gerarPixAcao(codigo: string): Promise<EstadoPix> {
+export async function gerarPixAcao(codigo: string, _estado?: EstadoPix, form?: FormData): Promise<EstadoPix> {
   const cod = lerCodigo(codigo);
   if (!codigoCotacaoValido(cod)) return { erro: MENSAGENS_PIX_HOSPEDE.nao_encontrada };
   const db = getDb();
@@ -41,9 +43,12 @@ export async function gerarPixAcao(codigo: string): Promise<EstadoPix> {
   if (!gate.ok) return { erro: MENSAGENS_PIX_HOSPEDE.nao_oferecido };
   const oferta = await ofertaDePix(db, organizacaoId, c.id, agora, gate);
   if (!oferta.oferecer) return { erro: mensagemSemPix(oferta.motivo) };
+  const marcado = form?.get("aceite") === "sim";
+  const aceite = marcado && form ? versoesDoFormulario(form) : null;
+  if (marcado && !aceite) return { erro: "Recarregue a página e tente de novo." };
   let resultado: EstadoPix;
   try {
-    const r = await gerarPix(db, organizacaoId, c.id, agora, gate.provedor);
+    const r = await gerarPix(db, organizacaoId, c.id, agora, gate.provedor, { aceite });
     resultado = r.ok ? { ok: true } : { erro: MENSAGENS_PIX_HOSPEDE[r.codigo] };
   } catch (e) {
     // O registro leva só o tipo do erro (nada da cotação nem do hóspede).

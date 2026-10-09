@@ -2,15 +2,17 @@
  * Pagamento no site (M8.2a) — quem decide se pode cobrar e quando o site oferece o Pix.
  *
  * `podeCobrar` é a função única das travas (design "Variáveis e travas"): fora do deploy de produção, ambiente
- * `teste`, as duas chaves presentes, conta conferida como de TESTE no provedor e a chave "Oferecer pagamento no
- * site" ligada no painel. Cancelar e devolver passam por `provedorDeConferencia` (as mesmas travas, menos a do
- * painel: desligar a oferta nunca impede de conferir, cancelar ou devolver o que já foi cobrado).
+ * `teste`, as duas chaves presentes, conta conferida como de TESTE no provedor, a chave "Oferecer pagamento no
+ * site" ligada no painel e as três páginas legais do site publicadas (M7.4). Cancelar e devolver passam por
+ * `provedorDeConferencia` (as mesmas travas, menos a do painel e a das páginas legais: desligar a oferta nunca
+ * impede de conferir, cancelar ou devolver o que já foi cobrado).
  *
  * `ofertaDePix`: além das travas, a cotação segurada com o pedido ainda em `pedido`, situação disponível (a
  * confirmar segue pela conversa) e o mesmo cálculo do motor, em seco, na data de entrada, sem pendência.
  */
 import { and, asc, eq } from "drizzle-orm";
 import { lerConfigPagamentoSite } from "@/configuracoes/pagamento-site";
+import { versoesLegaisAtuais } from "@/configuracoes/paginas-legais";
 import { cotacoes, imoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { dadosDoMotor } from "@/financeiro/aplicar";
@@ -22,7 +24,7 @@ import { temRecebimentoManual } from "./andamento";
 import { ambienteMercadoPago, contaDeTesteConfirmada, estadoPagamentoDoAmbiente, provedorDoAmbiente } from "./ambiente";
 import type { ProvedorPagamento } from "./provedor";
 
-export type MotivoSemCobranca = "desligado" | "configuracao_invalida" | "so_nas_previas" | "producao_travada" | "desligado_no_painel" | "conta_nao_teste" | "conta_nao_conferida";
+export type MotivoSemCobranca = "desligado" | "configuracao_invalida" | "so_nas_previas" | "producao_travada" | "desligado_no_painel" | "sem_paginas_legais" | "conta_nao_teste" | "conta_nao_conferida";
 
 export const TEXTO_SEM_COBRANCA: Record<MotivoSemCobranca, string> = {
   desligado: "Pagamento no site desligado: faltam as chaves do Mercado Pago na Vercel.",
@@ -30,6 +32,8 @@ export const TEXTO_SEM_COBRANCA: Record<MotivoSemCobranca, string> = {
   so_nas_previas: "O teste do pagamento roda nas prévias da Vercel, não no deploy de produção.",
   producao_travada: "Ambiente de produção do Mercado Pago: travado nesta fase (só teste).",
   desligado_no_painel: "Oferecer pagamento no site está desligado em Configurações → Pagamento no site.",
+  sem_paginas_legais:
+    "Faltam publicar as páginas legais do site em Configurações → Páginas legais do site: o pagamento só é oferecido com os termos de uso, a política de privacidade e a política de cancelamento publicados.",
   conta_nao_teste: "A conta das chaves do Mercado Pago não é de teste: nenhuma cobrança é feita.",
   conta_nao_conferida: "Não deu para conferir no Mercado Pago se a conta das chaves é de teste: nenhuma cobrança é feita.",
 };
@@ -71,7 +75,7 @@ export async function provedorDeConferencia(env: NodeJS.ProcessEnv = process.env
   return conta ? recusa(conta) : { ok: true, provedor: p.provedor, ambiente: "teste" };
 }
 
-/** A função única que libera cobrar (criar Pix). Todas as travas, inclusive a chave do painel. */
+/** A função única que libera cobrar (criar Pix). Todas as travas, inclusive a chave do painel e as páginas legais. */
 export async function podeCobrar(
   db: Db,
   organizacaoId: string,
@@ -83,6 +87,8 @@ export async function podeCobrar(
   if ("motivo" in p) return recusa(p.motivo);
   // A chave do painel antes da conferência da conta: com a oferta desligada, nem se pergunta ao provedor.
   if (!(await lerConfigPagamentoSite(db, organizacaoId)).oferecer) return recusa("desligado_no_painel");
+  // Sem os termos, a privacidade e o cancelamento publicados, o hóspede não tem o que aceitar antes de pagar (M7.4).
+  if (!(await versoesLegaisAtuais(db, organizacaoId))) return recusa("sem_paginas_legais");
   const conta = await contaConfere(p.provedor, agora, o.esperaMs);
   return conta ? recusa(conta) : { ok: true, provedor: p.provedor, ambiente: "teste" };
 }
