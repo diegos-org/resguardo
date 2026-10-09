@@ -43,6 +43,16 @@ describe("o que a página da cotação mostra do pagamento (M8.2a)", () => {
     expect(JSON.stringify(com)).not.toContain("Visitante");
   });
 
+  it("prazo das datas acabado com o último Pix cancelado há pouco (ainda pode virar dinheiro): 'conferindo', e a página continua acompanhando até o fim da leitura", async () => {
+    const s = await c.segurar();
+    const p = await c.pix(s.cotacaoId);
+    await db.update(pagamentos).set({ situacao: "cancelado" }).where(eq(pagamentos.id, p.pagamentoId));
+    // 35 min: prazo das datas (30 min + 2) passado; o Pix (vencia aos 30) ainda está na folga de 15 min da leitura.
+    expect(await vista(s.cotacaoId, minutos(35), true)).toMatchObject({ estado: "verificando", acompanhar: true, podeGerar: false });
+    // Depois da folga, nada mais a acompanhar.
+    expect(await vista(s.cotacaoId, minutos(50), true)).toMatchObject({ estado: "sem_pagamento", acompanhar: false });
+  });
+
   it("dinheiro sem desfecho nunca aparece como 'sem pagamento' (nem com o pedido vencido): mostra 'conferindo'", async () => {
     const s = await c.segurar();
     const base = { organizacaoId: c.org, cotacaoId: s.cotacaoId, reservaId: s.reservaId, imovelId: c.imovel, ambiente: "teste" as const, forma: "pix" as const, valor: TOTAL };

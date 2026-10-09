@@ -200,7 +200,8 @@ leitura a cada 15 s por tentativa, enquanto pendente e também no Pix recusado, 
 pouco, até 15 min depois do prazo dele (ou do mínimo de 30 min desde a criação, sem prazo conhecido; nunca
 pela última atualização, que cada leitura muda), porque o cancelamento pode cruzar com o pagamento e o
 provedor pode corrigir uma recusa (a mesma regra, `paginaAindaLe`, mantém a página acompanhando nesse tempo,
-mesmo com os 3 Pix gastos ou depois do prazo das datas, e relê essas tentativas antes de "Gerar outro Pix":
+mesmo com os 3 Pix gastos ou depois do prazo das datas (sem outro pagamento a mostrar, a página fica em
+"conferindo" até o fim dessa leitura), e relê essas tentativas antes de "Gerar outro Pix":
 se uma virou dinheiro, nenhum outro sai; essa releitura é sempre **nova**, sem o intervalo de 15 s, porque a
 última leitura da página pode ser de segundos antes do pagamento, e sem ela, com o provedor falhando, nenhum
 outro Pix sai; os cliques já passam pelo freio por endereço); nas outras, a leitura é **reservada num comando só**

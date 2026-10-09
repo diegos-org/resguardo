@@ -104,7 +104,11 @@ export async function vistaDoPagamento(
   }
   if (!vista) return null;
   const r = { ...paraOHospede(vista), podeGerar };
-  return (r.estado === "sem_pagamento" || r.estado === "pix_esgotado") && r.dinheiroSemDesfecho ? { ...r, estado: "verificando", podeGerar: false } : r;
+  if ((r.estado === "sem_pagamento" || r.estado === "pix_esgotado") && r.dinheiroSemDesfecho) return { ...r, estado: "verificando", podeGerar: false };
+  // Sem pagamento a mostrar, mas um Pix recusado, cancelado ou vencido há pouco ainda pode virar dinheiro (mesmo com o
+  // prazo das datas acabado): "conferindo", para a página continuar acompanhando até o fim da leitura (`acompanhar`).
+  if (r.estado === "sem_pagamento" && r.acompanhar) return { ...r, estado: "verificando", podeGerar: false };
+  return r;
 }
 
 export const CACHE_PAGAMENTO = "no-store";
