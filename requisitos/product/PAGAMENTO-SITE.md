@@ -277,10 +277,13 @@ do M9.2 passa a valer para reservas pagas quando Diego ligar as mensagens.
 ## Devolução na parte (a): só do pagamento sem reserva
 
 - A equipe escolhe (com confirmação), na ficha: **Devolver pelo Mercado Pago** (integral) ou
-  **Registrar devolução feita por fora** (data, valor, nota). Exigem desfecho vazio e nenhuma
-  devolução pedida, sob a trava da tentativa.
-- Devolução pelo provedor: `pedida` até confirmar. Cada tentativa nova usa chave nova, gravada antes;
-  antes de tentar de novo, relê a order (já devolvida = confirmada; devolução em andamento lá = não
+  **Registrar devolução feita por fora** (data, valor, nota; a data entre o dia em que o Pix foi
+  criado e hoje). Exigem desfecho vazio e nenhuma devolução pedida, sob a trava da tentativa.
+- Devolução pelo provedor: `pedida` até confirmar. A chave de cada pedido é gravada antes de chamar.
+  Depois de uma resposta **incerta** (o pedido pode ter sido aceito), o pedido seguinte repete a
+  **mesma** chave: o provedor nunca devolve duas vezes pela mesma chave (no pior caso responde
+  "chave já usada", que conta como incerta). Chave nova só depois de uma recusa clara ou de um pedido
+  novo da equipe (depois de recusada). Antes de tentar de novo, relê a order (já devolvida = confirmada; devolução em andamento lá = não
   pede de novo). `order_refund_already_in_process` = continua pedida; `already_refunded` =
   confirmada. Recusa e resposta **incerta** (tempo esgotado, 5xx, resposta que o sistema não sabe
   ler) contam do mesmo jeito; na terceira, a order é relida antes e só sem nenhum sinal de devolução

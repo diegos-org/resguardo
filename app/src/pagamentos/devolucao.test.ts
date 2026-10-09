@@ -129,6 +129,23 @@ describe("devolução do pagamento sem reserva (M8.2a)", () => {
     expect((await c.tentativa(x.pagamentoId)).desfecho).toBe("devolucao");
   });
 
+  it("chave do pedido: repetida depois de resposta incerta, nova depois de recusa clara e no pedido novo da equipe", async () => {
+    const x = await semReserva();
+    // 1º pedido: incerta → o 2º repete a chave.
+    c.provedor.falhas.devolver = new ErroProvedor("incerto", "tempo");
+    await devolverPeloProvedor(db, c.org, x.pagamentoId, null, c.provedor, minutos(10));
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "pedida", tentativas: 1, chaveEmDuvida: true });
+    // 2º pedido: recusa clara (credencial recusada) → o 3º leva chave nova.
+    c.provedor.falhas.devolver = new ErroProvedor("credencial", "recusada");
+    await conferirPendentes(db, c.org, c.provedor, minutos(21));
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "pedida", tentativas: 2, chaveEmDuvida: false });
+    c.provedor.falhas.devolver = null;
+    await conferirPendentes(db, c.org, c.provedor, minutos(32));
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "confirmada", tentativas: 3, chaveEmDuvida: false });
+    const d = await devolucao(x.pagamentoId);
+    expect(pedidos().map((ch) => ch.chave)).toEqual([chaveDevolucao(d.id, 1), chaveDevolucao(d.id, 1), chaveDevolucao(d.id, 3)]);
+  });
+
   it("devolução feita no painel do Mercado Pago enquanto pedida: a releitura confirma", async () => {
     const x = await semReserva();
     c.provedor.respostaDevolucao = "pedida";
@@ -154,10 +171,11 @@ describe("devolução do pagamento sem reserva (M8.2a)", () => {
     c.provedor.falhasDepois.devolver = new ErroProvedor("incerto", "tempo");
     await conferirPendentes(db, c.org, c.provedor, minutos(32));
     c.provedor.falhasDepois.devolver = null;
-    // A releitura antes de desistir mostra a devolução: confirmada pela leitura, com chave nova a cada pedido.
+    // A releitura antes de desistir mostra a devolução: confirmada pela leitura. Depois de cada resposta incerta, o
+    // pedido seguinte repete a MESMA chave (o provedor nunca devolve duas vezes pela mesma chave).
     const d = await devolucao(x.pagamentoId);
-    expect(d).toMatchObject({ situacao: "confirmada", tentativas: 3 });
-    expect(pedidos().map((ch) => ch.chave)).toEqual([1, 2, 3].map((n) => chaveDevolucao(d.id, n)));
+    expect(d).toMatchObject({ situacao: "confirmada", tentativas: 3, chaveEmDuvida: false });
+    expect(pedidos().map((ch) => ch.chave)).toEqual([1, 1, 1].map((n) => chaveDevolucao(d.id, n)));
     expect(await c.tentativa(x.pagamentoId)).toMatchObject({ situacao: "devolvido", desfecho: "devolucao" });
     expect((await c.tentativa(x.pagamentoId)).avisos).not.toContain("devolucao_falhou");
     await conferirPendentes(db, c.org, c.provedor, minutos(43));
@@ -283,6 +301,15 @@ describe("devolução do pagamento sem reserva (M8.2a)", () => {
     expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "confirmada" });
     expect(await c.tentativa(x.pagamentoId)).toMatchObject({ situacao: "devolvido", desfecho: "devolucao" });
     expect((await c.tentativa(x.pagamentoId)).avisos).not.toContain("devolucao_falhou");
+  });
+
+  it("por fora com data de antes do pagamento (digitação do ano, por exemplo): recusa e nada muda", async () => {
+    const x = await semReserva();
+    const r = await registrarDevolucaoPorFora(db, c.org, x.pagamentoId, { data: "2026-09-30", valor: TOTAL, nota: "" }, null, c.provedor, minutos(10));
+    expect(r).toEqual({ ok: false, erro: "A data da devolução não pode ser antes do pagamento (01/10/2026). Confira a data." });
+    expect(await devolucao(x.pagamentoId)).toBeUndefined();
+    expect((await c.tentativa(x.pagamentoId)).desfecho).toBeNull();
+    expect(await porFora(x.pagamentoId, minutos(11))).toMatchObject({ ok: true });
   });
 
   it("por fora relê a order antes: sem provedor ou sem leitura, recusa; devolvida, em parte, em andamento ou contestada no Mercado Pago, recusa", async () => {

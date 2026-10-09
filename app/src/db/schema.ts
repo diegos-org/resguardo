@@ -1509,11 +1509,17 @@ export const devolucoesPagamento = pgTable(
     motivo: text("motivo").notNull(),
     valor: integer("valor").notNull(),
     situacao: text("situacao").$type<SituacaoDevolucao>().notNull().default("pedida"),
-    /** Pedidos enviados ao provedor; cada um com chave nova (`chaveAtual`, gravada antes). */
+    /** Pedidos enviados ao provedor (`chaveAtual`, gravada antes). Chave nova a cada pedido, salvo depois de resposta incerta. */
     tentativas: integer("tentativas").notNull().default(0),
     /** Pedidos recusados pelo provedor (resposta incerta não conta): depois de 3, relida a order, a devolução fica recusada (aviso). */
     falhas: integer("falhas").notNull().default(0),
     chaveAtual: text("chave_atual"),
+    /**
+     * A última resposta ao pedido com `chaveAtual` foi incerta (o pedido pode ter sido aceito): o próximo envio repete
+     * a MESMA chave (o provedor nunca devolve duas vezes pela mesma chave). Chave nova só depois de uma recusa clara ou
+     * de um pedido novo da equipe.
+     */
+    chaveEmDuvida: boolean("chave_em_duvida").notNull().default(false),
     proximaTentativaEm: timestamp("proxima_tentativa_em", { withTimezone: true }),
     idProvedor: text("id_provedor"),
     confirmadaEm: timestamp("confirmada_em", { withTimezone: true }),

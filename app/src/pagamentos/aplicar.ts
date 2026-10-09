@@ -191,7 +191,7 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
   // Pedida (ou dada por recusada depois de 3 recusas, mas que acabou saindo): a leitura confirma.
   if (situacao === "devolvido" && (dev?.situacao === "pedida" || dev?.situacao === "recusada") && desfecho === null) {
     const antes = dev.situacao;
-    await tx.update(devolucoesPagamento).set({ situacao: "confirmada", confirmadaEm: agora, proximaTentativaEm: null, atualizadoEm: agora }).where(eq(devolucoesPagamento.id, dev.id));
+    await tx.update(devolucoesPagamento).set({ situacao: "confirmada", confirmadaEm: agora, proximaTentativaEm: null, chaveEmDuvida: false, atualizadoEm: agora }).where(eq(devolucoesPagamento.id, dev.id));
     dev.situacao = "confirmada";
     dev.confirmadaEm = agora;
     desfecho = "devolucao";

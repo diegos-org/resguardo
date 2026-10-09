@@ -102,18 +102,20 @@ export async function tentarDevolucao(db: Db, organizacaoId: string, devolucaoId
   let res: ResultadoDevolucao;
   if (!cobranca) res = { situacao: "recusada", idDevolucao: null, mensagem: "O Mercado Pago não encontrou o pagamento." };
   else {
-    // Grava a chave da tentativa nova antes de chamar, sob as travas.
-    const n = await db.transaction(async (tx) => {
+    // Grava a chave antes de chamar, sob as travas. Depois de uma resposta incerta, a MESMA chave de novo (o pedido
+    // anterior pode ter sido aceito: o provedor não devolve duas vezes pela mesma chave); senão, chave nova.
+    const chave = await db.transaction(async (tx) => {
       const t = await travarCotacao(tx, organizacaoId, d.cotacaoId);
       const dev = t?.devolucoes.find((x) => x.id === devolucaoId);
       // Sob a trava: ainda pedida, a vez dela chegou e ninguém pediu desde a leitura (painel e rotina ao mesmo tempo).
       if (!t || !dev || dev.situacao !== "pedida" || dev.tentativas !== d.dev.tentativas || (dev.proximaTentativaEm && dev.proximaTentativaEm.getTime() > agora.getTime())) return null;
       const proxima = dev.tentativas + 1;
-      await tx.update(devolucoesPagamento).set({ tentativas: proxima, chaveAtual: chaveDevolucao(dev.id, proxima), proximaTentativaEm: new Date(agora.getTime() + ESPERA_DEVOLUCAO_MS), atualizadoEm: agora }).where(eq(devolucoesPagamento.id, dev.id));
-      return proxima;
+      const usar = dev.chaveEmDuvida && dev.chaveAtual ? dev.chaveAtual : chaveDevolucao(dev.id, proxima);
+      await tx.update(devolucoesPagamento).set({ tentativas: proxima, chaveAtual: usar, proximaTentativaEm: new Date(agora.getTime() + ESPERA_DEVOLUCAO_MS), atualizadoEm: agora }).where(eq(devolucoesPagamento.id, dev.id));
+      return usar;
     });
-    if (n === null) return situacaoDaDevolucao(db, devolucaoId);
-    res = await provedor.devolver(cobranca, chaveDevolucao(devolucaoId, n), null);
+    if (chave === null) return situacaoDaDevolucao(db, devolucaoId);
+    res = await provedor.devolver(cobranca, chave, null);
   }
   // Antes de dar a devolução por recusada (a terceira recusa ou resposta incerta), a order é relida: a resposta pode
   // ter cruzado com um pedido que saiu. undefined = não deu para ler (então não se desiste).
@@ -131,7 +133,7 @@ export async function tentarDevolucao(db: Db, organizacaoId: string, devolucaoId
     const dev = t?.devolucoes.find((x) => x.id === devolucaoId);
     if (!t || !dev || dev.situacao !== "pedida") return;
     if (res.situacao === "confirmada" || res.situacao === "pedida") {
-      if (res.idDevolucao) await tx.update(devolucoesPagamento).set({ idProvedor: res.idDevolucao, atualizadoEm: agora }).where(eq(devolucoesPagamento.id, dev.id));
+      await tx.update(devolucoesPagamento).set({ chaveEmDuvida: false, ...(res.idDevolucao ? { idProvedor: res.idDevolucao } : {}), atualizadoEm: agora }).where(eq(devolucoesPagamento.id, dev.id));
       return;
     }
     // Recusada ou incerta (o pedido pode ter saído): conta; só desiste com a releitura sem nenhum sinal de devolução.
@@ -140,7 +142,8 @@ export async function tentarDevolucao(db: Db, organizacaoId: string, devolucaoId
     const desistiu = falhas >= MAXIMO_FALHAS_DEVOLUCAO && semSinalDeDevolucao;
     await tx
       .update(devolucoesPagamento)
-      .set({ falhas, ...(desistiu ? { situacao: "recusada" as const, proximaTentativaEm: null } : {}), atualizadoEm: agora })
+      // Incerta: o próximo envio repete a chave. Recusa clara: o próximo leva chave nova.
+      .set({ falhas, chaveEmDuvida: res.situacao === "incerta", ...(desistiu ? { situacao: "recusada" as const, proximaTentativaEm: null } : {}), atualizadoEm: agora })
       .where(eq(devolucoesPagamento.id, dev.id));
     if (desistiu) {
       const p = t.tentativas.find((x) => x.id === dev.pagamentoId)!;
@@ -178,8 +181,9 @@ export async function devolverPeloProvedor(db: Db, organizacaoId: string, pagame
     const motivo = textoMotivoSemReserva(p.motivoSemReserva) ?? "Pagamento sem reserva.";
     let id: string;
     if (dev) {
-      // Devolução que desistiu depois de 3 recusas: a equipe pede de novo (as falhas recomeçam; as chaves continuam).
-      await tx.update(devolucoesPagamento).set({ situacao: "pedida", falhas: 0, proximaTentativaEm: agora, autorId, atualizadoEm: agora }).where(eq(devolucoesPagamento.id, dev.id));
+      // Devolução que desistiu depois de 3 recusas (relida a order, sem sinal de devolução): a equipe pede de novo, com
+      // chave nova (as falhas recomeçam; a numeração das chaves continua).
+      await tx.update(devolucoesPagamento).set({ situacao: "pedida", falhas: 0, chaveEmDuvida: false, proximaTentativaEm: agora, autorId, atualizadoEm: agora }).where(eq(devolucoesPagamento.id, dev.id));
       id = dev.id;
     } else {
       [{ id }] = await tx
@@ -252,6 +256,9 @@ export async function registrarDevolucaoPorFora(
     if (recusa) return { ok: false as const, erro: recusa };
     if (d.valor !== p.valor)
       return { ok: false as const, erro: `Nesta fase, a devolução feita por fora registra só o valor integral do pagamento (${formatBRL(p.valor)}). Devolução de parte do valor chega com o M8.2c.` };
+    // A devolução não pode ser de antes do pagamento existir (o Pix foi criado neste dia, em São Paulo).
+    const criadoNoDia = hojeISO(FUSO_PAGAMENTO, p.criadoEm);
+    if (d.data < criadoNoDia) return { ok: false as const, erro: `A data da devolução não pode ser antes do pagamento (${criadoNoDia.split("-").reverse().join("/")}). Confira a data.` };
     const motivo = textoMotivoSemReserva(p.motivoSemReserva) ?? "Pagamento sem reserva.";
     const valores = { situacao: "por_fora" as const, porForaData: d.data, porForaValor: d.valor, porForaNota: nota, proximaTentativaEm: null, autorId, atualizadoEm: agora };
     if (dev) await tx.update(devolucoesPagamento).set(valores).where(eq(devolucoesPagamento.id, dev.id));
