@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DETALHES_VAZIOS, regrasDeVenda } from "@/imoveis/detalhes";
-import { elevarParaPiso, faixasDeEnvio, janelasDeFeriado, planejarCalendario, reduzir, resumirPlano, type EntradaPlano, type LinhaPlano } from "./motor";
+import { elevarParaPiso, faixasDeEnvio, intervaloDasReservas, janelasDeFeriado, planejarCalendario, reduzir, resumirPlano, type EntradaPlano, type LinhaPlano } from "./motor";
 import { REGRAS_CALENDARIO_PADRAO, type RegrasCalendario } from "./regras-config";
 
 const IM = "11111111-1111-4111-8111-111111111111";
@@ -45,7 +45,7 @@ describe("preço de referência", () => {
     expect(porData(linhas, "2026-10-09")).toMatchObject({ fontePreco: "base", precoReferencia: 45000, precoEnviar: 45000, precoFinalEsperado: 45000, motivoPreco: "Preço base" });
   });
   it("período explícito substitui multiplicadores e não é limitado ao teto", () => {
-    const ev = { id: OUTRO, nome: "Carnaval", inicio: "2026-10-05", fim: "2026-10-09", multiplicador: 400, estadiaMinima: 5, todosImoveis: true, imoveis: [] };
+    const ev = { id: OUTRO, nome: "Carnaval", inicio: "2026-10-05", fim: "2026-10-09", multiplicador: 400, estadiaMinima: 5, minimoNormalComReserva: true, todosImoveis: true, imoveis: [] };
     const linhas = planejarCalendario(entrada({
       regras: regras({ eventos: [ev] }),
       imovel: imovel({ periodos: [{ nome: "Réveillon", inicio: "2026-10-08", fim: "2026-10-09", precoNoite: 300000, estadiaMinima: null }] }, { precoDinamico: true, precoMinimo: 40000, precoMaximo: 60000 }),
@@ -54,9 +54,9 @@ describe("preço de referência", () => {
     expect(porData(linhas, "2026-10-07")).toMatchObject({ fontePreco: "evento", precoReferencia: 180000, motivoPreco: "Evento Carnaval (4× a base)" });
   });
   it("multiplicadores não somam: vale o maior; evento só nos imóveis escolhidos", () => {
-    const alta = { id: OUTRO, nome: "Alta temporada", inicio: "2026-10-01", fim: "2026-10-10", multiplicador: 200, estadiaMinima: null, todosImoveis: false, imoveis: [IM] };
-    const carnaval = { id: IM, nome: "Carnaval", inicio: "2026-10-05", fim: "2026-10-06", multiplicador: 400, estadiaMinima: 5, todosImoveis: false, imoveis: [IM] };
-    const soOutro = { id: "33333333-3333-4333-8333-333333333333", nome: "Búzios", inicio: "2026-10-01", fim: "2026-10-10", multiplicador: 1000, estadiaMinima: null, todosImoveis: false, imoveis: [OUTRO] };
+    const alta = { id: OUTRO, nome: "Alta temporada", inicio: "2026-10-01", fim: "2026-10-10", multiplicador: 200, estadiaMinima: null, minimoNormalComReserva: true, todosImoveis: false, imoveis: [IM] };
+    const carnaval = { id: IM, nome: "Carnaval", inicio: "2026-10-05", fim: "2026-10-06", multiplicador: 400, estadiaMinima: 5, minimoNormalComReserva: true, todosImoveis: false, imoveis: [IM] };
+    const soOutro = { id: "33333333-3333-4333-8333-333333333333", nome: "Búzios", inicio: "2026-10-01", fim: "2026-10-10", multiplicador: 1000, estadiaMinima: null, minimoNormalComReserva: true, todosImoveis: false, imoveis: [OUTRO] };
     const linhas = planejarCalendario(entrada({ regras: regras({ eventos: [alta, carnaval, soOutro] }) }));
     expect(porData(linhas, "2026-10-05")).toMatchObject({ precoReferencia: 180000, motivoPreco: "Evento Carnaval (4× a base); multiplicadores não somam, vale o maior", minimoRegra: 5 });
     expect(porData(linhas, "2026-10-04")).toMatchObject({ precoReferencia: 90000, motivoPreco: "Evento Alta temporada (2× a base)", minimoRegra: 1 });
@@ -64,7 +64,7 @@ describe("preço de referência", () => {
   });
   it("feriadão multiplica e eleva o mínimo só nos imóveis escolhidos; multiplicador com decimais arredonda em centavos", () => {
     // 15/10/2026 quinta → janela 14/10 a 18/10.
-    const r = regras({ feriados: [{ data: "2026-10-15", nome: "Professores" }], janelaFeriado: { estadiaMinima: 3, multiplicador: 250, todosImoveis: false, imoveis: [IM] } });
+    const r = regras({ feriados: [{ data: "2026-10-15", nome: "Professores" }], janelaFeriado: { estadiaMinima: 3, multiplicador: 250, minimoNormalComReserva: true, todosImoveis: false, imoveis: [IM] } });
     const linhas = planejarCalendario(entrada({ regras: r, inicio: "2026-10-13", fim: "2026-10-19", imovel: imovel({}, { precoBase: 45001 }) }));
     expect(porData(linhas, "2026-10-13")).toMatchObject({ precoReferencia: 45001, minimoRegra: 1 });
     expect(porData(linhas, "2026-10-14")).toMatchObject({ fontePreco: "feriado", precoReferencia: 112503, motivoPreco: "Feriadão Professores (2,5× a base)", minimoRegra: 3, motivoMinimo: "Feriadão Professores" });
@@ -143,7 +143,8 @@ describe("estadia mínima, máxima e sobras", () => {
     expect(proprio[0]).toMatchObject({ motivoMinimo: "Cadastro do imóvel", maximoEnviar: 10 });
   });
   it("sobras: mínimo ajustado ao número de noites livres até a próxima reserva ou bloqueio (3, 2, 1), sem mexer no que está ocupado", () => {
-    const ev = { id: OUTRO, nome: "Réveillon", inicio: "2026-10-01", fim: "2026-10-10", multiplicador: 400, estadiaMinima: 5, todosImoveis: true, imoveis: [] };
+    // Regra de 6/10 desligada no evento (ex.: temporada longa): vale só a regra geral das sobras.
+    const ev = { id: OUTRO, nome: "Réveillon", inicio: "2026-10-01", fim: "2026-10-10", multiplicador: 400, estadiaMinima: 5, minimoNormalComReserva: false, todosImoveis: true, imoveis: [] };
     const linhas = planejarCalendario(entrada({
       regras: regras({ eventos: [ev] }),
       reservas: [{ checkin: "2026-10-04", checkout: "2026-10-09", estado: "confirmada" }, { checkin: "2026-10-09", checkout: "2026-10-12", estado: "consulta" }],
@@ -152,6 +153,98 @@ describe("estadia mínima, máxima e sobras", () => {
     expect(linhas.map((l) => [l.livresSeguidas, l.minimoEnviar])).toEqual([[3, 3], [2, 2], [1, 1], [0, 5], [0, 5], [0, 5], [0, 5], [0, 5], [null, 5], [null, 5]]);
     expect(porData(linhas, "2026-10-02").motivoMinimo).toBe("Evento Réveillon; sobra de 2 noite(s) até a próxima reserva/bloqueio");
     expect(porData(linhas, "2026-10-04")).toMatchObject({ reservas: 1, minimoEnviar: 5 });
+  });
+  it("regra de 6/10: evento com reserva confirmada no período usa o mínimo normal da semana nas noites livres, antes e depois da reserva, e mantém o preço", () => {
+    // 1/10 quinta, 2/10 sexta, 3/10 sábado; reserva confirmada de 4/10 a 9/10 no meio do evento.
+    const ev = { id: OUTRO, nome: "Réveillon", inicio: "2026-10-01", fim: "2026-10-10", multiplicador: 400, estadiaMinima: 5, minimoNormalComReserva: true, todosImoveis: true, imoveis: [] };
+    const linhas = planejarCalendario(entrada({ regras: regras({ eventos: [ev] }), reservas: [{ checkin: "2026-10-04", checkout: "2026-10-09", estado: "confirmada" }], fimDados: "2026-10-20" }));
+    // Quinta 1 noite; sexta e sábado 2, limitado às noites livres seguidas (o sábado sobra sozinho: 1). Depois da reserva, 9/10 sexta e 10/10 sábado: 2.
+    expect(linhas.map((l) => [l.data, l.minimoRegra, l.minimoEnviar])).toEqual([
+      ["2026-10-01", 1, 1], ["2026-10-02", 2, 2], ["2026-10-03", 2, 1], ["2026-10-04", 1, 1], ["2026-10-05", 1, 1], ["2026-10-06", 1, 1], ["2026-10-07", 1, 1], ["2026-10-08", 1, 1], ["2026-10-09", 2, 2], ["2026-10-10", 2, 2],
+    ]);
+    expect(porData(linhas, "2026-10-01").motivoMinimo).toBe("Semana normal; Evento Réveillon já tem reserva confirmada: noites livres com o mínimo normal");
+    expect(porData(linhas, "2026-10-03").motivoMinimo).toBe("Semana normal; Evento Réveillon já tem reserva confirmada: noites livres com o mínimo normal; sobra de 1 noite(s) até a próxima reserva/bloqueio");
+    // O preço do evento continua em todas as noites da janela, antes e depois da reserva.
+    expect(linhas.every((l) => l.precoReferencia === 180000 && l.fontePreco === "evento")).toBe(true);
+    // Depois da janela, volta ao normal da data (11/10 domingo: 1 noite, preço base).
+    const depois = planejarCalendario(entrada({ regras: regras({ eventos: [ev] }), reservas: [{ checkin: "2026-10-04", checkout: "2026-10-09", estado: "confirmada" }], inicio: "2026-10-11", fim: "2026-10-11" }));
+    expect(depois[0]).toMatchObject({ minimoRegra: 1, precoReferencia: 45000, motivoMinimo: "Semana normal" });
+  });
+  it("regra de 6/10: sem reserva confirmada no período (só consulta, pedido do site ou pendente), o mínimo do evento vale na janela inteira", () => {
+    const ev = { id: OUTRO, nome: "Carnaval", inicio: "2026-10-01", fim: "2026-10-10", multiplicador: 400, estadiaMinima: 5, minimoNormalComReserva: true, todosImoveis: true, imoveis: [] };
+    for (const estado of ["consulta", "pedido", "pendente", "cancelada"] as const) {
+      const linhas = planejarCalendario(entrada({ regras: regras({ eventos: [ev] }), reservas: [{ checkin: "2026-10-04", checkout: "2026-10-06", estado }] }));
+      expect(porData(linhas, "2026-10-01").minimoRegra).toBe(5);
+      expect(porData(linhas, "2026-10-08")).toMatchObject({ minimoRegra: 5, motivoMinimo: "Evento Carnaval" });
+    }
+    // Reserva confirmada fora do período (antes ou depois) não conta; de outro evento também não.
+    const fora = planejarCalendario(entrada({ regras: regras({ eventos: [ev] }), reservas: [{ checkin: "2026-09-28", checkout: "2026-10-01", estado: "confirmada" }, { checkin: "2026-10-11", checkout: "2026-10-13", estado: "confirmada" }], fimDados: "2026-10-20" }));
+    expect(porData(fora, "2026-10-05").minimoRegra).toBe(5);
+    // Reserva que só toca a última noite do período conta (entra em 10/10).
+    const ultima = planejarCalendario(entrada({ regras: regras({ eventos: [ev] }), reservas: [{ checkin: "2026-10-10", checkout: "2026-10-12", estado: "confirmada" }] }));
+    expect(porData(ultima, "2026-10-01").minimoRegra).toBe(1);
+  });
+  it("regra de 6/10: reserva confirmada anterior a hoje, dentro do período, ainda conta; evento sem a regra mantém o mínimo; vale o maior dos que não cedem", () => {
+    const reveillon = { id: OUTRO, nome: "Réveillon", inicio: "2026-09-28", fim: "2026-10-06", multiplicador: 400, estadiaMinima: 5, minimoNormalComReserva: true, todosImoveis: true, imoveis: [] };
+    const passada = [{ checkin: "2026-09-28", checkout: "2026-09-30", estado: "confirmada" as const }];
+    expect(porData(planejarCalendario(entrada({ regras: regras({ eventos: [reveillon] }), reservas: passada })), "2026-10-01").minimoRegra).toBe(1);
+    // Temporada longa com a regra desligada continua exigindo o mínimo dela mesmo com o Réveillon cedendo.
+    const alta = { id: IM, nome: "Alta temporada", inicio: "2026-09-01", fim: "2026-10-31", multiplicador: 200, estadiaMinima: 3, minimoNormalComReserva: false, todosImoveis: true, imoveis: [] };
+    const linhas = planejarCalendario(entrada({ regras: regras({ eventos: [reveillon, alta] }), reservas: passada }));
+    expect(porData(linhas, "2026-10-01")).toMatchObject({ minimoRegra: 3, motivoMinimo: "Evento Alta temporada; Evento Réveillon já tem reserva confirmada: noites livres com o mínimo normal" });
+    // O cadastro do imóvel faz parte do mínimo normal e continua valendo.
+    const cadastro = planejarCalendario(entrada({ imovel: imovel({}, { estadiaMinima: 2 }), regras: regras({ eventos: [reveillon] }), reservas: passada }));
+    expect(porData(cadastro, "2026-10-01")).toMatchObject({ minimoRegra: 2, motivoMinimo: "Cadastro do imóvel; Evento Réveillon já tem reserva confirmada: noites livres com o mínimo normal" });
+    // Período explícito do imóvel com mínimo substitui tudo, como antes.
+    const periodo = planejarCalendario(entrada({ imovel: imovel({ periodos: [{ nome: "Réveillon do imóvel", inicio: "2026-10-01", fim: "2026-10-02", precoNoite: null, estadiaMinima: 4 }] }), regras: regras({ eventos: [reveillon] }), reservas: passada }));
+    expect(porData(periodo, "2026-10-01")).toMatchObject({ minimoRegra: 4, motivoMinimo: "Período Réveillon do imóvel" });
+  });
+  it("regra de 6/10 também no feriadão (janela inteira, com a opção ligada); desligada, mantém o mínimo do feriadão", () => {
+    // 15/10/2026 quinta → janela 14/10 (quarta) a 18/10 (domingo); reserva confirmada de 15 a 17/10.
+    const base = regras({ feriados: [{ data: "2026-10-15", nome: "Professores" }], janelaFeriado: { estadiaMinima: 3, multiplicador: 200, minimoNormalComReserva: true, todosImoveis: true, imoveis: [] } });
+    const reservas = [{ checkin: "2026-10-15", checkout: "2026-10-17", estado: "confirmada" as const }];
+    const linhas = planejarCalendario(entrada({ regras: base, reservas, inicio: "2026-10-14", fim: "2026-10-18", fimDados: "2026-10-30" }));
+    expect(linhas.map((l) => [l.data, l.minimoEnviar, l.precoReferencia])).toEqual([
+      ["2026-10-14", 1, 90000], ["2026-10-15", 1, 90000], ["2026-10-16", 2, 90000], ["2026-10-17", 2, 90000], ["2026-10-18", 1, 90000],
+    ]);
+    expect(porData(linhas, "2026-10-14").motivoMinimo).toContain("Feriadão Professores já tem reserva confirmada");
+    // Desligada: o mínimo do feriadão (3) volta, só encurtado pela regra geral da sobra (reserva fora da janela em 19/10).
+    const desligada = planejarCalendario(entrada({ regras: { ...base, janelaFeriado: { ...base.janelaFeriado, minimoNormalComReserva: false } }, reservas: [...reservas, { checkin: "2026-10-19", checkout: "2026-10-21", estado: "confirmada" }], inicio: "2026-10-17", fim: "2026-10-17", fimDados: "2026-10-30" }));
+    expect(desligada[0]).toMatchObject({ minimoRegra: 3, minimoEnviar: 2, motivoMinimo: "Feriadão Professores; sobra de 2 noite(s) até a próxima reserva/bloqueio" });
+  });
+  it("regra de 6/10 noite a noite: feriadão dentro do Réveillon ou do Carnaval cede junto quando o evento já tem reserva", () => {
+    // Réveillon 25/12/2026 a 1/1/2027 (mínimo 5); Natal 25/12 (sexta: janela 24–27/12) e Confraternização 1/1/2027
+    // (sexta: janela 31/12–3/1), mínimo do feriadão 3; uma reserva confirmada de 28 a 30/12, no miolo do Réveillon.
+    const reveillon = { id: OUTRO, nome: "Réveillon", inicio: "2026-12-25", fim: "2027-01-01", multiplicador: 400, estadiaMinima: 5, minimoNormalComReserva: true, todosImoveis: true, imoveis: [] };
+    const r = regras({ eventos: [reveillon], feriados: [{ data: "2026-12-25", nome: "Natal" }, { data: "2027-01-01", nome: "Confraternização" }], janelaFeriado: { estadiaMinima: 3, multiplicador: 200, minimoNormalComReserva: true, todosImoveis: true, imoveis: [] } });
+    const linhas = planejarCalendario(entrada({ regras: r, hoje: "2026-12-01", inicio: "2026-12-24", fim: "2027-01-03", reservas: [{ checkin: "2026-12-28", checkout: "2026-12-30", estado: "confirmada" }], fimDados: "2027-01-20" }));
+    // 24/12 (quinta) é só do feriadão do Natal, sem reserva nele: mantém 3. 25/12 a 1/1: mínimo normal (sexta e sábado 2,
+    // limitado à sobra). 2/1 e 3/1 estão só na janela da Confraternização, sem reserva nela: mantêm 3 (limitado ao que sobra).
+    expect(linhas.map((l) => [l.data, l.minimoRegra])).toEqual([
+      ["2026-12-24", 3], ["2026-12-25", 2], ["2026-12-26", 2], ["2026-12-27", 1], ["2026-12-28", 1], ["2026-12-29", 1], ["2026-12-30", 1], ["2026-12-31", 1], ["2027-01-01", 2], ["2027-01-02", 3], ["2027-01-03", 3],
+    ]);
+    expect(porData(linhas, "2026-12-31").motivoMinimo).toBe("Semana normal; Evento Réveillon já tem reserva confirmada: noites livres com o mínimo normal");
+    // Carnaval 1/2 a 10/2/2027 (mínimo 5) e feriado estadual numa terça, 9/2 (janela 5/2–9/2, mínimo 3); reserva de 1 a 4/2.
+    const carnaval = { ...reveillon, nome: "Carnaval", inicio: "2027-02-01", fim: "2027-02-10" };
+    const c = regras({ eventos: [carnaval], feriados: [{ data: "2027-02-09", nome: "Feriado fictício" }], janelaFeriado: { estadiaMinima: 3, multiplicador: 200, minimoNormalComReserva: true, todosImoveis: true, imoveis: [] } });
+    const lc = planejarCalendario(entrada({ regras: c, hoje: "2027-01-10", inicio: "2027-02-05", fim: "2027-02-09", reservas: [{ checkin: "2027-02-01", checkout: "2027-02-04", estado: "confirmada" }] }));
+    expect(lc.map((l) => l.minimoRegra)).toEqual([2, 2, 1, 1, 1]);
+    // Temporada longa com a regra desligada não cede, mesmo na noite em que o Réveillon cedeu.
+    const alta = { ...reveillon, id: IM, nome: "Alta temporada", inicio: "2026-12-15", fim: "2027-02-28", multiplicador: 200, estadiaMinima: 4, minimoNormalComReserva: false };
+    const comAlta = planejarCalendario(entrada({ regras: { ...r, eventos: [reveillon, alta] }, hoje: "2026-12-01", inicio: "2026-12-31", fim: "2026-12-31", reservas: [{ checkin: "2026-12-28", checkout: "2026-12-30", estado: "confirmada" }], fimDados: "2027-01-20" }));
+    expect(comAlta[0]).toMatchObject({ minimoRegra: 4, motivoMinimo: "Evento Alta temporada; Evento Réveillon já tem reserva confirmada: noites livres com o mínimo normal" });
+  });
+  it("intervaloDasReservas estende a carga ao período inteiro dos eventos e feriadões com a regra ligada que tocam as noites", () => {
+    const ev = { id: OUTRO, nome: "Réveillon", inicio: "2026-12-25", fim: "2027-01-01", multiplicador: 400, estadiaMinima: 5, minimoNormalComReserva: true, todosImoveis: true, imoveis: [] };
+    const semMinimo = { ...ev, id: IM, nome: "Alta", inicio: "2026-12-01", fim: "2027-02-28", estadiaMinima: null };
+    const desligado = { ...ev, id: "33333333-3333-4333-8333-333333333333", inicio: "2026-12-20", fim: "2027-01-05", minimoNormalComReserva: false };
+    const outroImovel = { ...ev, id: "44444444-4444-4444-8444-444444444444", inicio: "2026-12-10", fim: "2027-01-10", todosImoveis: false, imoveis: [OUTRO] };
+    const r = regras({ eventos: [ev, semMinimo, desligado, outroImovel], feriados: [{ data: "2027-01-01", nome: "Confraternização" }], janelaFeriado: { estadiaMinima: 3, multiplicador: 200, minimoNormalComReserva: true, todosImoveis: true, imoveis: [] } });
+    // 1/1/2027 sexta → janela 31/12 a 3/1.
+    expect(intervaloDasReservas(r, IM, "2026-12-30", "2026-12-30")).toEqual({ inicio: "2026-12-25", fim: "2027-01-01" });
+    expect(intervaloDasReservas(r, IM, "2027-01-02", "2027-01-02")).toEqual({ inicio: "2026-12-31", fim: "2027-01-03" });
+    expect(intervaloDasReservas(r, IM, "2027-01-20", "2027-01-25")).toEqual({ inicio: "2027-01-20", fim: "2027-01-25" });
+    expect(intervaloDasReservas({ ...r, janelaFeriado: { ...r.janelaFeriado, minimoNormalComReserva: false } }, IM, "2027-01-02", "2027-01-02")).toEqual({ inicio: "2027-01-02", fim: "2027-01-02" });
   });
   it("sobra limitada pelos dados carregados: sem fim conhecido não reduz; bloqueio importado também conta como ocupação", () => {
     const linhas = planejarCalendario(entrada({ imovel: imovel({}, { estadiaMinima: 4 }), bloqueios: [{ inicio: "2026-10-12", fim: "2026-10-14", fonte: "beds24" }], fim: "2026-10-10", fimDados: "2026-10-15" }));
@@ -282,7 +375,7 @@ describe("faixas de envio e resumo", () => {
 });
 
 describe("fonte de preços por imóvel (M3.9)", () => {
-  const evento = { id: "e", nome: "Evento", inicio: "2026-10-03", fim: "2026-10-03", multiplicador: 300, estadiaMinima: null, todosImoveis: true, imoveis: [] };
+  const evento = { id: "e", nome: "Evento", inicio: "2026-10-03", fim: "2026-10-03", multiplicador: 300, estadiaMinima: null, minimoNormalComReserva: true, todosImoveis: true, imoveis: [] };
   it("beds24: o SCL não envia preço; o preço esperado é o lido do Beds24; sem leitura a noite fica sem preço e com aviso; mínimos continuam do SCL", () => {
     const linhas = planejarCalendario(entrada({ imovel: imovel({ fontePrecos: "beds24" }), regras: regras({ eventos: [evento] }), observacoes: [obs("2026-10-02", { preco: 52000 }), obs("2026-10-03", { preco: 61000 })] }));
     const l2 = porData(linhas, "2026-10-02");

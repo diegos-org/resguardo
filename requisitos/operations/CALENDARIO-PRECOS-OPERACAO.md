@@ -84,7 +84,7 @@ Fora dessa exceção, permanece a regra geral de sobra: em cada data de entrada,
 
 Depois da janela, voltar ao preço e ao mínimo normais aplicáveis à data. “Normal” inclui a alta temporada quando documentada: 2/1 e a quinta-feira após Cinzas podem continuar sujeitos à alta temporada, sem prolongar o multiplicador ou mínimo do evento. Búzios agora adota a mesma regra de alta temporada por confirmação expressa de 6/10; os demais multiplicadores não são herdados por inferência.
 
-Esta atualização documenta a decisão; aplicação e releitura dos resultados precisam ser registradas por imóvel/período. Não apresentar a mudança como implementada no motor SCL nem como aplicada na plataforma apenas porque o guia foi alterado.
+Esta atualização documenta a decisão; aplicação e releitura dos resultados precisam ser registradas por imóvel/período. Não apresentar a mudança como implementada no motor SCL nem como aplicada na plataforma apenas porque o guia foi alterado. **Situação em 9/10/2026 (M3.10):** a regra está no motor do SCL (envio ao Beds24, prévia e site): só reserva confirmada conta, o mínimo ordinário inclui o mínimo do cadastro do imóvel, período explícito do imóvel continua substituindo, e a regra vem ligada, com opção no painel para desligá-la por evento (temporadas longas, como a alta temporada) e para os feriadões. Aplicação na plataforma só pelo envio ao Beds24, ainda desligado até Diego ligar, e continua exigindo a conferência por imóvel/período.
 
 Sábado livre após checkout com sexta ocupada pode ter mínimo 1, conferindo exceções especiais. Aplicar também a sobras de hoje, mantendo avaliação manual e limpeza. A redução do mínimo não autoriza desconto ou desbloqueio.
 

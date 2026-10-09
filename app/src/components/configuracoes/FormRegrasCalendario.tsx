@@ -56,6 +56,7 @@ export function FormRegrasCalendario({ regras, imoveis, salvar }: Props) {
         <label>Mínimo de noites no feriadão<input name="feriadoMinimo" type="number" min={1} max={30} defaultValue={campo("feriadoMinimo", String(regras.janelaFeriado.estadiaMinima))} {...invalido("feriadoMinimo")} />{erro("feriadoMinimo")}</label>
         <label>Multiplicador do preço base (ex.: 2 = o dobro)<input name="feriadoMultiplicador" inputMode="decimal" defaultValue={campo("feriadoMultiplicador", centesimosParaMultiplicador(regras.janelaFeriado.multiplicador))} {...invalido("feriadoMultiplicador")} />{erro("feriadoMultiplicador")}</label>
       </div>
+      <label className={styles.check}><input type="checkbox" name="feriadoMinimoNormal" defaultChecked={marcado("feriadoMinimoNormal", regras.janelaFeriado.minimoNormalComReserva)} /> Quando o feriadão já tiver uma reserva confirmada, as noites livres dele usam o mínimo normal da semana (o preço do feriadão continua)</label>
       <label className={styles.check}><input type="checkbox" name="feriadoTodos" defaultChecked={marcado("feriadoTodos", regras.janelaFeriado.todosImoveis)} /> Aplicar os feriadões a todos os imóveis</label>
       <p style={nota}>Ou escolha os imóveis (Búzios tem regra própria e pode ficar de fora):</p>
       {listaImoveis("feriadoImoveis", regras.janelaFeriado.imoveis)}
