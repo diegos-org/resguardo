@@ -240,7 +240,7 @@ describe("envio (M9.2)", () => {
   });
 
   it("contato da empresa no {empresa} vem do cadastro", async () => {
-    await salvarEmpresa(db, org, { nome: "Empresa Fictícia", razaoSocial: "", cnpj: "", email: "", telefone: "", endereco: "", site: "", chavePix: "" }, null);
+    await salvarEmpresa(db, org, { nome: "Empresa Fictícia", razaoSocial: "", cnpj: "", email: "", telefone: "", endereco: "", encarregado: "", site: "", chavePix: "" }, null);
     await ligar();
     await db.insert(reservas).values(reserva());
     await enviarMensagensHospede(db, org, correio, sp("2026-09-20", "14:00"));

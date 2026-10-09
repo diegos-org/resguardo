@@ -82,7 +82,7 @@ describe("site público (M7.1)", () => {
     let c = await conteudoDoSite(db);
     expect(c).toMatchObject({ organizacaoId: org, nomeEmpresa: "Sua Casa Exemplo", whatsapp: null, textos: { titulo: TEXTOS_SITE_INICIAIS.titulo } });
     await salvarTextosSite(db, org, { ...TEXTOS_SITE_INICIAIS, titulo: "Título novo", porque: "Sobre nós." }, null);
-    await salvarEmpresa(db, org, { nome: "Sua Casa Exemplo", razaoSocial: "", cnpj: "", email: "contato@example.com", telefone: "(21) 90000-0000", endereco: "", site: "", chavePix: "" }, null);
+    await salvarEmpresa(db, org, { nome: "Sua Casa Exemplo", razaoSocial: "", cnpj: "", email: "contato@example.com", telefone: "(21) 90000-0000", endereco: "", encarregado: "", site: "", chavePix: "" }, null);
     c = await conteudoDoSite(db);
     expect(c).toMatchObject({ whatsapp: "5521900000000", email: "contato@example.com", textos: { titulo: "Título novo", porque: "Sobre nós." } });
   });

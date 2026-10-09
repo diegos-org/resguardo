@@ -215,7 +215,7 @@ describe("regras financeiras", () => {
 });
 
 describe("empresa", () => {
-  const base = { nome: "Sua Casa Leblon", razaoSocial: "", cnpj: "", email: "", telefone: "", endereco: "", site: "", chavePix: "" };
+  const base = { nome: "Sua Casa Leblon", razaoSocial: "", cnpj: "", email: "", telefone: "", endereco: "", encarregado: "", site: "", chavePix: "" };
 
   it("valida nome, e-mail, CNPJ e site", () => {
     expect(validarEmpresa({ ...base, nome: " " })).toMatchObject({ ok: false, erros: { nome: expect.any(String) } });
@@ -237,6 +237,17 @@ describe("empresa", () => {
     expect(await nomeDaEmpresa(db, org)).toBe("SCL");
     expect(await nomeDaEmpresaPorEmail(db, "ADMIN@example.com")).toBe("SCL");
     expect(["SCL", "B"]).toContain(await nomeDaEmpresaPorEmail(db, "ninguem@example.com")); // sem usuário: organização mais antiga
+  });
+
+  it("encarregado pela proteção de dados (M7.4): validado no limite, gravado e lido como os demais campos", async () => {
+    expect(validarEmpresa({ ...base, encarregado: "  Pessoa Exemplo  " })).toMatchObject({ ok: true, dados: { encarregado: "Pessoa Exemplo" } });
+    expect(validarEmpresa({ ...base, encarregado: "x".repeat(121) })).toEqual({ ok: false, erros: { encarregado: "Máximo de 120 caracteres." } });
+    expect(validarEmpresa({ ...base, encarregado: undefined })).toMatchObject({ ok: true, dados: { encarregado: "" } });
+    await salvarEmpresa(db, org, { ...base, encarregado: "Pessoa Exemplo" }, admin);
+    expect(await lerEmpresa(db, org)).toMatchObject({ encarregado: "Pessoa Exemplo", endereco: "" });
+    expect((await lerEmpresa(db, outraOrg)).encarregado).toBe("");
+    const h = await db.select().from(auditoria).where(and(eq(auditoria.organizacaoId, org), eq(auditoria.acao, "configuracao.empresa")));
+    expect(h.map((x) => (x.mudancas as Record<string, unknown>).encarregado).filter(Boolean)).toEqual([[null, "Pessoa Exemplo"]]);
   });
 
   it("a chave Pix da empresa não fica em claro no histórico", async () => {

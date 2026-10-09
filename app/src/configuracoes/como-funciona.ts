@@ -6,10 +6,22 @@
  * O que é dado do proprietário (contrato, comissão, periodicidade escolhida) não fica no texto: o portal lê do
  * cadastro e mostra junto, no quadro "Seus dados" — uma regra, um lugar. No texto, `{empresa}` vira o nome da empresa.
  */
-import { registrarAuditoria } from "@/auditoria/auditoria";
 import type { Db } from "@/db/types";
-import { dataValida } from "@/reservas/regras";
-import { gravarConfig, lerConfig, travarConfig } from "./armazem";
+import {
+  type DefinicaoDocumento,
+  lerVersoes,
+  normalizarSecoes as normalizarSecoesDoDocumento,
+  paragrafos,
+  publicarVersao,
+  type ResultadoPublicacao as ResultadoPublicacaoDoDocumento,
+  secoesIguais as secoesIguaisDoDocumento,
+  textoLimpo,
+  validarSecoes as validarSecoesDoDocumento,
+  versaoAtual as versaoAtualDoDocumento,
+  versaoBaseDoFormulario,
+  type VersaoDocumento,
+  versoesDe,
+} from "./documentos-versionados";
 import { nomeDaEmpresa } from "./empresa";
 
 export const DOCUMENTO_COMO_FUNCIONA = "como_funciona";
@@ -26,17 +38,14 @@ export const SECOES_COMO_FUNCIONA = [
 ] as const;
 export type ChaveSecao = (typeof SECOES_COMO_FUNCIONA)[number]["chave"];
 export type SecoesComoFunciona = Record<ChaveSecao, string>;
-export type VersaoComoFunciona = {
-  numero: number;
-  data: string;
-  autorId: string | null;
-  secoes: SecoesComoFunciona;
+type ExtraComoFunciona = {
   /**
    * Nome da empresa no momento da publicação: o texto aceito é mostrado sempre com ele, mesmo que o cadastro mude
    * depois (mudar o nome e publicar de novo cria outra versão). Vazio só em versão gravada antes deste campo.
    */
   empresa: string;
 };
+export type VersaoComoFunciona = VersaoDocumento<ChaveSecao, ExtraComoFunciona>;
 
 /** Ponto de partida oferecido no painel enquanto não há versão publicada. Diego revisa e salva: só então vale. */
 export const RASCUNHO_COMO_FUNCIONA: SecoesComoFunciona = {
@@ -56,53 +65,36 @@ export const RASCUNHO_COMO_FUNCIONA: SecoesComoFunciona = {
   duvidas: "Qualquer dúvida sobre uma reserva, um valor ou um repasse: fale com a {empresa} pelo WhatsApp ou pelo e-mail de sempre. Se algo no extrato não bater, avise — o item fica em conferência até a resposta.",
 };
 
-const texto = (v: unknown) => (typeof v === "string" ? v.replace(/\r\n/g, "\n").trim() : "");
+/**
+ * O "Como funciona" no motor de documentos versionados: oito seções e, gravado em cada versão, o nome da empresa
+ * no momento da publicação (nome novo com o mesmo texto é versão nova).
+ */
+const DEF: DefinicaoDocumento<ChaveSecao, ExtraComoFunciona> = {
+  chave: "como_funciona",
+  acaoAuditoria: "configuracao.como_funciona",
+  secoes: SECOES_COMO_FUNCIONA,
+  lerExtra: (x) => ({ empresa: textoLimpo(x.empresa).slice(0, 200) }),
+  mudancasDoExtra: (a, b): Record<string, [unknown, unknown]> => ((a?.empresa ?? null) !== b.empresa ? { empresa: [a?.empresa ?? null, b.empresa] } : {}),
+};
 
 /** Seções a partir de um valor qualquer (JSON gravado): o que faltar vira vazio. */
-export function normalizarSecoes(v: unknown): SecoesComoFunciona {
-  const o = v && typeof v === "object" ? (v as Record<string, unknown>) : {};
-  return Object.fromEntries(SECOES_COMO_FUNCIONA.map((s) => [s.chave, texto(o[s.chave]).slice(0, s.limite)])) as SecoesComoFunciona;
-}
+export const normalizarSecoes = (v: unknown): SecoesComoFunciona => normalizarSecoesDoDocumento(DEF, v);
 
 /** Versões gravadas, da mais antiga para a mais nova; entradas inválidas são ignoradas. */
-export function versoesComoFuncionaDe(v: Record<string, unknown> | null): VersaoComoFunciona[] {
-  const lista = Array.isArray(v?.versoes) ? (v!.versoes as unknown[]) : [];
-  return lista
-    .filter((x): x is Record<string, unknown> => Boolean(x) && typeof x === "object")
-    .map((x) => ({
-      numero: typeof x.numero === "number" && Number.isInteger(x.numero) && x.numero > 0 ? x.numero : 0,
-      data: typeof x.data === "string" && dataValida(x.data) ? x.data : "",
-      autorId: typeof x.autorId === "string" ? x.autorId : null,
-      secoes: normalizarSecoes(x.secoes),
-      empresa: texto(x.empresa).slice(0, 200),
-    }))
-    .filter((x) => x.numero > 0 && x.data)
-    .sort((a, b) => a.numero - b.numero);
-}
+export const versoesComoFuncionaDe = (v: Record<string, unknown> | null): VersaoComoFunciona[] => versoesDe(DEF, v);
 
-export const versaoAtual = (versoes: readonly VersaoComoFunciona[]): VersaoComoFunciona | null => versoes.at(-1) ?? null;
+export const versaoAtual = (versoes: readonly VersaoComoFunciona[]): VersaoComoFunciona | null => versaoAtualDoDocumento(versoes);
 
-export const secoesIguais = (a: SecoesComoFunciona, b: SecoesComoFunciona): boolean => SECOES_COMO_FUNCIONA.every((s) => a[s.chave] === b[s.chave]);
+export const secoesIguais = (a: SecoesComoFunciona, b: SecoesComoFunciona): boolean => secoesIguaisDoDocumento(DEF, a, b);
 
 /** Lê o formulário do painel: cada seção dentro do limite e pelo menos uma escrita. */
-export function validarSecoes(bruto: Record<string, unknown>): { ok: true; secoes: SecoesComoFunciona } | { ok: false; erros: Partial<Record<ChaveSecao, string>>; mensagem: string } {
-  const secoes = {} as SecoesComoFunciona;
-  const erros: Partial<Record<ChaveSecao, string>> = {};
-  for (const s of SECOES_COMO_FUNCIONA) {
-    const v = texto(bruto[s.chave]);
-    if (v.length > s.limite) erros[s.chave] = `Máximo de ${s.limite} caracteres.`;
-    secoes[s.chave] = v;
-  }
-  if (Object.keys(erros).length) return { ok: false, erros, mensagem: "Confira os campos destacados." };
-  if (!SECOES_COMO_FUNCIONA.some((s) => secoes[s.chave])) return { ok: false, erros, mensagem: "Escreva pelo menos uma seção antes de publicar." };
-  return { ok: true, secoes };
-}
+export const validarSecoes = (bruto: Record<string, unknown>) => validarSecoesDoDocumento(DEF, bruto);
 
 export async function lerComoFunciona(db: Db, organizacaoId: string): Promise<VersaoComoFunciona[]> {
-  return versoesComoFuncionaDe(await lerConfig(db, organizacaoId, "como_funciona"));
+  return lerVersoes(db, DEF, organizacaoId);
 }
 
-export type ResultadoPublicacao = { ok: true; mudou: boolean; versao: VersaoComoFunciona } | { ok: false; erro: string; atual: VersaoComoFunciona | null };
+export type ResultadoPublicacao = ResultadoPublicacaoDoDocumento<VersaoComoFunciona>;
 
 /**
  * Publica uma versão nova (número seguinte, datada de hoje) quando algum texto mudou; texto igual não cria versão.
@@ -111,47 +103,14 @@ export type ResultadoPublicacao = { ok: true; mudou: boolean; versao: VersaoComo
  * recusada em vez de passar por cima do texto dela (quem edita recarrega, confere e publica de novo).
  */
 export async function publicarComoFunciona(db: Db, organizacaoId: string, secoes: SecoesComoFunciona, autorId: string | null, hoje: string, versaoBase?: number): Promise<ResultadoPublicacao> {
-  if (!dataValida(hoje)) throw new Error("Data inválida.");
-  return db.transaction(async (tx) => {
-    await travarConfig(tx, organizacaoId, "como_funciona");
-    const versoes = await lerComoFunciona(tx, organizacaoId);
-    const atual = versaoAtual(versoes);
-    if (versaoBase !== undefined && (atual?.numero ?? 0) !== versaoBase) {
-      return { ok: false as const, erro: `Enquanto você editava, a versão ${atual?.numero ?? 0} foi publicada por outra pessoa${atual ? ` em ${atual.data.split("-").reverse().join("/")}` : ""}. Recarregue a página, confira o texto atual e publique de novo.`, atual };
-    }
-    // O nome da empresa entra na versão (é o que o proprietário lê e aceita): nome novo com o mesmo texto é versão nova.
-    const empresa = await nomeDaEmpresa(tx, organizacaoId);
-    if (atual && secoesIguais(atual.secoes, secoes) && atual.empresa === empresa) return { ok: true as const, mudou: false, versao: atual };
-    const nova: VersaoComoFunciona = { numero: (atual?.numero ?? 0) + 1, data: hoje, autorId, secoes: { ...secoes }, empresa };
-    await gravarConfig(tx, organizacaoId, "como_funciona", { versoes: [...versoes, nova] }, autorId, false);
-    const mudancas: Record<string, [unknown, unknown]> = { versao: [atual?.numero ?? null, nova.numero] };
-    if ((atual?.empresa ?? null) !== empresa) mudancas.empresa = [atual?.empresa ?? null, empresa];
-    for (const s of SECOES_COMO_FUNCIONA) if ((atual?.secoes[s.chave] ?? "") !== secoes[s.chave]) mudancas[`secao.${s.chave}`] = [atual?.secoes[s.chave] ?? null, secoes[s.chave]];
-    await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "configuracao.como_funciona", entidade: "configuracao", entidadeId: organizacaoId, mudancas });
-    return { ok: true as const, mudou: true, versao: nova };
-  });
+  // O nome da empresa entra na versão (é o que o proprietário lê e aceita): nome novo com o mesmo texto é versão nova.
+  return publicarVersao(db, DEF, organizacaoId, secoes, autorId, hoje, versaoBase, async (tx) => ({ ok: true, extra: { empresa: await nomeDaEmpresa(tx, organizacaoId) } }));
 }
 
-/**
- * Versão que o formulário declara como base ao publicar: a que ele mostrava quando foi preenchido. Depois de uma recusa,
- * a ação devolve os valores enviados (com `versaoBase`), e é essa base — não a publicada agora — que o formulário mantém:
- * reenviar o texto velho sem recarregar a página é recusado de novo, em vez de passar por cima da versão nova.
- */
-export function versaoBaseDoFormulario(valores: Record<string, string> | undefined, atual: { numero: number } | null): number {
-  const enviada = valores?.versaoBase;
-  if (enviada !== undefined && /^\d{1,6}$/.test(enviada)) return Number(enviada);
-  return atual?.numero ?? 0;
-}
+export { paragrafos, versaoBaseDoFormulario };
 
 /** `{empresa}` no texto vira o nome da empresa. */
 export const preencherEmpresa = (texto: string, empresa: string): string => texto.replaceAll("{empresa}", empresa.trim() || "empresa");
-
-/** Parágrafos de uma seção: blocos separados por linha em branco. */
-export const paragrafos = (texto: string): string[] =>
-  texto
-    .split(/\n\s*\n/)
-    .map((p) => p.trim())
-    .filter(Boolean);
 
 /**
  * Seções com texto, na ordem oficial, já com o nome da empresa — o gravado na versão (o que foi lido e aceito);

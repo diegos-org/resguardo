@@ -147,7 +147,7 @@ describe("portal do hóspede: o que ele vê (M9.1)", () => {
 
   it("contato da empresa para dúvidas vem do cadastro da empresa", async () => {
     await db.insert(reservas).values(reserva());
-    await salvarEmpresa(db, org, { nome: "Sua Casa Exemplo", razaoSocial: "", cnpj: "", email: "contato@example.com", telefone: "(21) 90000-0000", endereco: "", site: "", chavePix: "" }, null);
+    await salvarEmpresa(db, org, { nome: "Sua Casa Exemplo", razaoSocial: "", cnpj: "", email: "contato@example.com", telefone: "(21) 90000-0000", endereco: "", encarregado: "", site: "", chavePix: "" }, null);
     const [r] = await reservasDoHospede(db, org, "ana@example.com", agora);
     expect(r.contato).toEqual({ empresa: "Sua Casa Exemplo", whatsapp: "5521900000000", email: "contato@example.com" });
   });
