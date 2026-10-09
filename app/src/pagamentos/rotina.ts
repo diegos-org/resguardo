@@ -116,6 +116,8 @@ export async function conferirPendentes(db: Db, organizacaoId: string | null, pr
         daOrg,
         eq(pagamentos.situacao, "pendente"),
         isNotNull(pagamentos.idProvedor),
+        // Fora do prazo do provedor, nem cancela nem relê (o aviso de andamento fora do prazo fica para a equipe).
+        gte(pagamentos.criadoEm, corte),
         sql`exists (select 1 from ${pagamentos} p2 where p2.cotacao_id = ${pagamentos.cotacaoId} and p2.id <> ${pagamentos.id} and p2.desfecho = 'reserva')`,
       ),
     );

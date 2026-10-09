@@ -9,6 +9,7 @@ import { criarCotacao, expirarHoldsVencidos, segurarDatas } from "@/site/cotacoe
 import { CARENCIA_PAGAMENTO_MS } from "./andamento";
 import { conferirTentativa } from "./conferencia";
 import { gerarPix } from "./pix";
+import { conferirPendentes } from "./rotina";
 import type { Cobranca } from "./provedor";
 import { AGORA, type Cenario, EMAIL_HOSPEDE, minutos, montarCenario, TOTAL } from "./testes";
 
@@ -225,6 +226,24 @@ describe("confirmação pelo pagamento (M8.2a)", () => {
     c.provedor.aprovar(z.idProvedor);
     await conferir(z.pagamentoId, minutos(4));
     expect((await c.tentativa(segunda.id)).situacao).toBe("cancelado");
+  });
+
+  it("Pix que sobrou pendente numa cotação confirmada, mas fora do prazo do provedor (85 dias): a rotina não cancela nem relê; fica o aviso", async () => {
+    const z = await comPix();
+    c.provedor.aprovar(z.idProvedor);
+    await conferir(z.pagamentoId, minutos(4));
+    expect((await c.tentativa(z.pagamentoId)).desfecho).toBe("reserva");
+    const extra = await c.provedor.criarPix({ referencia: "scl-extra-0003", chaveIdempotencia: "extra-0003", valor: TOTAL, email: "test@testuser.com", nome: "", validadeMinutos: 30, descricao: "", descricaoFatura: null });
+    if (!extra.ok) throw new Error("extra");
+    const [velha] = await db
+      .insert(pagamentos)
+      .values({ organizacaoId: c.org, cotacaoId: z.cotacaoId, reservaId: z.reservaId, imovelId: c.imovel, ambiente: "teste", forma: "pix", referencia: "scl-extra-0003", chaveIdempotencia: "extra-0003", situacao: "pendente", idProvedor: extra.cobranca.idProvedor, valor: TOTAL, criadoEm: new Date(AGORA.getTime() - 100 * 86_400_000) })
+      .returning();
+    const chamadas = () => c.provedor.chamadas.filter((ch) => (ch.metodo === "cancelar" || ch.metodo === "consultar") && ch.id === extra.cobranca.idProvedor).length;
+    const antes = chamadas();
+    await conferirPendentes(db, c.org, c.provedor, minutos(5));
+    expect(chamadas()).toBe(antes);
+    expect(await c.tentativa(velha.id)).toMatchObject({ situacao: "pendente", avisos: expect.arrayContaining(["andamento_fora_do_prazo"]) });
   });
 
   it("reserva confirmada à mão: sem recebimento manual o pagamento vira o desfecho dela; com recebimento manual, aprovado sem reserva", async () => {

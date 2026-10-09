@@ -228,6 +228,24 @@ describe("devolução do pagamento sem reserva (M8.2a)", () => {
     }
   });
 
+  it("pedido aceito, lido contestado e depois devolvido no Mercado Pago: a leitura confirma a devolução (contestado → devolvido só com o pedido aceito)", async () => {
+    const x = await semReserva();
+    c.provedor.respostaDevolucao = "pedida";
+    await devolverPeloProvedor(db, c.org, x.pagamentoId, null, c.provedor, minutos(10));
+    c.provedor.respostaDevolucao = "confirmada";
+    const [order] = c.provedor.todas().filter((o) => o.idProvedor === x.idProvedor);
+    const consultar = vi.spyOn(c.provedor, "consultar").mockResolvedValue({ ...order, situacao: "contestado", devolucaoEmAndamento: false });
+    await tentarDevolucao(db, c.org, (await devolucao(x.pagamentoId)).id, c.provedor, minutos(21));
+    expect((await c.tentativa(x.pagamentoId)).situacao).toBe("contestado");
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "pedida", chaveAceita: true });
+    consultar.mockResolvedValue({ ...order, situacao: "devolvido", devolvido: TOTAL, devolucaoEmAndamento: false });
+    await tentarDevolucao(db, c.org, (await devolucao(x.pagamentoId)).id, c.provedor, minutos(32));
+    vi.restoreAllMocks();
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "confirmada", chaveAceita: false });
+    expect(await c.tentativa(x.pagamentoId)).toMatchObject({ situacao: "devolvido", desfecho: "devolucao" });
+    expect(pedidos()).toHaveLength(1);
+  });
+
   it("order devolvida em parte ou contestada antes de pedir de novo: a leitura é aplicada e a devolução para (aviso), sem pedir o valor inteiro por cima", async () => {
     for (const [n, mexer] of [
       [0, (id: string) => c.provedor.devolverNoProvedor(id, 5000)],

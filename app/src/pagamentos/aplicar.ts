@@ -101,7 +101,10 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
       if (nova === null) ligar("situacao_desconhecida");
       else {
         desligar("situacao_desconhecida");
-        if (transicaoPermitida(situacao, nova)) situacao = nova;
+        // Contestado → devolvido só com um pedido de devolução aceito à espera: ele nunca para (nem com a contestação)
+        // e a leitura que mostra o dinheiro devolvido é o que o confirma.
+        const aceitaAEspera = t.devolucoes.some((x) => x.pagamentoId === p.id && x.situacao === "pedida" && x.chaveAceita);
+        if (transicaoPermitida(situacao, nova) || (aceitaAEspera && situacao === "contestado" && nova === "devolvido")) situacao = nova;
       }
       if (situacao === "pendente" && c.pix) {
         // Uma leitura que não traz o prazo (ou a imagem, ou o link) não apaga o que já se sabia do mesmo Pix.

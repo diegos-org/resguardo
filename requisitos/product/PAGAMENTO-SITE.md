@@ -214,7 +214,8 @@ espera da devolução: devolução ou contestação feita por fora, ou devoluç�
 estorno automático. O prazo é o do Mercado Pago: a consulta da order (`GET /v1/orders/{id}`) só vale
 para orders de até três meses; depois disso "não encontrada" é o limite do provedor e não vira aviso.
 O mesmo prazo de 85 dias (uma regra só, `PRAZO_RELEITURA_DIAS`) vale para a tentativa que ficou em andamento
-(nem a página nem a rotina leem mais; o aviso "o sistema parou de conferir" liga uma vez), para a releitura a
+(nem a página nem a rotina leem mais, nem o cancelamento do Pix que sobrou numa cotação confirmada; o aviso "o
+sistema parou de conferir" liga uma vez), para a releitura a
 cada 6 h da taxa e da liberação que não chegaram (depois dele, a equipe registra à mão) e para as devoluções
 pedidas: depois dele a rotina para de ler a order (a
 confirmação nunca chegaria e as leituras gastariam o limite do provedor sem fim) e liga, uma vez, o aviso
@@ -314,7 +315,8 @@ do M9.2 passa a valer para reservas pagas quando Diego ligar as mensagens.
   confirma, e três leituras sem a devolução viram o aviso "o Mercado Pago aceitou a devolução, mas o
   pagamento ainda não aparece como devolvido" (continua pedida). O pedido aceito **nunca para**, qualquer que
   seja a leitura (devolvida em parte, contestada, outra situação): a devolução aceita ainda pode sair, e parar
-  abriria o registro por fora (em dobro); o registro por fora é recusado enquanto houver um pedido aceito. Antes
+  abriria o registro por fora (em dobro); o registro por fora é recusado enquanto houver um pedido aceito. Com um
+  pedido aceito à espera, a leitura pode levar o pagamento de contestado a devolvido (é o que o confirma). Antes
   de tentar de novo um pedido ainda não aceito, relê a order
   (já devolvida = confirmada; devolução em andamento lá = não pede de novo; **devolvida em parte ou
   contestada** = a leitura é aplicada e a devolução para, recusada, com o aviso de que parou: devolver
