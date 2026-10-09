@@ -15,7 +15,7 @@ const m = vi.hoisted(() => ({
   autorizado: vi.fn(),
   gerarPix: vi.fn(),
   aceite: vi.fn(),
-  versoesLegais: vi.fn(),
+  versaoPrivacidade: vi.fn(),
 }));
 vi.mock("@/site/pagina", () => ({ carregarSite: m.site, metadadosDoSite: vi.fn() }));
 vi.mock("@/site/cotacoes", async (orig) => ({ ...(await orig<typeof import("@/site/cotacoes")>()), verCotacao: m.verCotacao }));
@@ -23,7 +23,7 @@ vi.mock("@/calendario/regras-config", () => ({ lerRegrasCalendario: async () => 
 vi.mock("@/site/pagamento", () => ({ portaoDoSite: m.portao, vistaDoPagamento: m.vistaPagamento, pixPossivel: m.pixPossivel }));
 vi.mock("@/site/checkout", () => ({ autorizadoNaCotacao: m.autorizado }));
 vi.mock("@/site/aceites", () => ({ aceiteParaPagina: m.aceite }));
-vi.mock("@/configuracoes/paginas-legais", () => ({ versoesLegaisAtuais: m.versoesLegais }));
+vi.mock("@/configuracoes/paginas-legais", () => ({ versaoAtualDaPaginaLegal: m.versaoPrivacidade }));
 vi.mock("@/site/acoes", () => ({ segurarDatasAcao: vi.fn() }));
 vi.mock("@/site/acoes-pagamento", () => ({ gerarPixAcao: m.gerarPix, continuarPagamentoAcao: vi.fn() }));
 vi.mock("next/navigation", () => ({
@@ -58,7 +58,7 @@ beforeEach(() => {
   m.vistaPagamento.mockResolvedValue(pagamento({}));
   m.gerarPix.mockResolvedValue({});
   m.aceite.mockResolvedValue(null);
-  m.versoesLegais.mockResolvedValue(null);
+  m.versaoPrivacidade.mockResolvedValue(null);
 });
 const html = async (codigo = "COT-ABCDEFGH") => renderToStaticMarkup(await Page({ params: Promise.resolve({ codigo }) } as PageProps<"/reservar/[codigo]">));
 
@@ -205,7 +205,7 @@ describe("páginas legais na página da cotação (M7.4)", () => {
     expect(h).toContain('<input type="checkbox" required="" name="aceite" value="sim"/>');
     expect(h).toContain('href="/privacidade?versao=2"');
     // Datas seguradas: sem o formulário de segurar, nem se lê a versão da privacidade para ele.
-    expect(m.versoesLegais).not.toHaveBeenCalled();
+    expect(m.versaoPrivacidade).not.toHaveBeenCalled();
   });
 
   it("situações sem a caixa (Pix aguardando, devolução) nem leem o aceite; confirmada mostra o aceite da reserva", async () => {
@@ -225,11 +225,12 @@ describe("páginas legais na página da cotação (M7.4)", () => {
 
   it("cotação aberta: o formulário de segurar as datas aponta para a Política de privacidade em vigor; sem ela publicada, o aviso sem link", async () => {
     m.verCotacao.mockResolvedValue(vistaCotacao("aberta", { reserva: null }));
-    m.versoesLegais.mockResolvedValue({ termos: 1, privacidade: 3, cancelamento: 1 });
+    // Só a privacidade publicada (termos e cancelamento ainda em preparação) já basta para o link.
+    m.versaoPrivacidade.mockResolvedValue(3);
     let h = await html();
-    expect(m.versoesLegais).toHaveBeenCalledWith({}, "org");
+    expect(m.versaoPrivacidade).toHaveBeenCalledWith({}, "org", "privacidade");
     expect(h).toContain('<a href="/privacidade?versao=3" target="_blank" rel="noopener noreferrer">Política de privacidade</a>');
-    m.versoesLegais.mockResolvedValue(null);
+    m.versaoPrivacidade.mockResolvedValue(null);
     h = await html();
     expect(h).toContain("Usamos seus dados só para confirmar a reserva com você. Nenhum pagamento é feito aqui.");
     expect(h).not.toContain("/privacidade?versao=");

@@ -97,6 +97,15 @@ export async function versoesLegaisAtuais(db: Db, organizacaoId: string): Promis
 }
 
 /**
+ * Número da versão em vigor de um só documento, ou null se ainda não foi publicado. Para o aviso da Política de
+ * privacidade no formulário de segurar as datas, que vale assim que ela é publicada (o portão do pagamento é que
+ * espera os três).
+ */
+export async function versaoAtualDaPaginaLegal(db: Db, organizacaoId: string, doc: DocumentoLegal): Promise<number | null> {
+  return versaoAtual(await lerPaginaLegal(db, organizacaoId, doc))?.numero ?? null;
+}
+
+/**
  * O mesmo, sob a trava **compartilhada** de cada documento (na ordem de `DOCUMENTOS_LEGAIS`), até o fim da transação:
  * ninguém publica no meio, e os hóspedes não esperam uns pelos outros. Só dentro de uma transação, e só depois das
  * travas de linha do pagamento (imóvel → reserva → cotação): a publicação não trava linha nenhuma, então não há ciclo.

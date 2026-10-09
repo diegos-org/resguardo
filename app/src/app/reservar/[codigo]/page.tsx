@@ -5,7 +5,7 @@ import { FormSegurar } from "@/components/site/FormSegurar";
 import { Moldura, SiteEmConfiguracao } from "@/components/site/Moldura";
 import { PagamentoPix } from "@/components/site/PagamentoPix";
 import styles from "@/components/site/site.module.css";
-import { versoesLegaisAtuais } from "@/configuracoes/paginas-legais";
+import { versaoAtualDaPaginaLegal } from "@/configuracoes/paginas-legais";
 import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
 import { aceiteParaPagina } from "@/site/aceites";
 import { segurarDatasAcao } from "@/site/acoes";
@@ -53,7 +53,8 @@ export default async function PaginaCotacao({ params }: PageProps<"/reservar/[co
   // formulário de segurar as datas, o link da Política de privacidade em vigor.
   const aceite = pagamento && COM_ACEITE.has(pagamento.estado) ? await aceiteParaPagina(db, organizacaoId, { id: c.id, checkin: c.checkin, fuso: c.fuso, reservaId: c.reservaId }, agora) : null;
   const mostraFormulario = vista.estado === "aberta" && !vista.mudou;
-  const privacidade = mostraFormulario ? ((await versoesLegaisAtuais(db, organizacaoId))?.privacidade ?? null) : null;
+  // A Política de privacidade vale assim que publicada, mesmo com os termos ou o cancelamento ainda em preparação.
+  const privacidade = mostraFormulario ? await versaoAtualDaPaginaLegal(db, organizacaoId, "privacidade") : null;
   const { textos } = conteudo;
   return (
     <Moldura conteudo={conteudo}>

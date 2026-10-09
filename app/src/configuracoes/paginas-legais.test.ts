@@ -7,7 +7,7 @@ import type { Db } from "@/db/types";
 import { travarConfig, travarConfigCompartilhada } from "./armazem";
 import { versaoAtual } from "./documentos-versionados";
 import { type DadosEmpresa, lerEmpresa, salvarEmpresa } from "./empresa";
-import { camposDesatualizados, lerPaginaLegal, lerPaginasLegais, publicarPaginaLegal, regraDaPoliticaDeCancelamento, versoesLegaisAtuais, versoesLegaisTravadas } from "./paginas-legais";
+import { camposDesatualizados, lerPaginaLegal, lerPaginasLegais, publicarPaginaLegal, regraDaPoliticaDeCancelamento, versaoAtualDaPaginaLegal, versoesLegaisAtuais, versoesLegaisTravadas } from "./paginas-legais";
 import { RASCUNHO_PAGINAS_LEGAIS } from "./paginas-legais-rascunho";
 import { publicarPaginasLegaisDeTeste, VALORES_LEGAIS_DE_TESTE } from "./paginas-legais-testes";
 import {
@@ -218,8 +218,12 @@ describe("publicar as páginas legais (M7.4)", () => {
     await salvarEmpresa(db, org, EMPRESA, admin);
     expect(await versoesLegaisAtuais(db, org)).toBeNull();
     expect(await publicar("termos", "2026-10-10", 0)).toMatchObject({ ok: true, mudou: true, versao: { numero: 1, data: "2026-10-10", autorId: admin, regras: null } });
+    expect(await versaoAtualDaPaginaLegal(db, org, "privacidade")).toBeNull();
     expect(await publicar("privacidade", "2026-10-10", 0)).toMatchObject({ ok: true, versao: { numero: 1 } });
     expect(await versoesLegaisAtuais(db, org)).toBeNull();
+    // A privacidade sozinha já tem versão em vigor (o aviso do formulário de segurar as datas não espera os outros).
+    expect(await versaoAtualDaPaginaLegal(db, org, "privacidade")).toBe(1);
+    expect(await versaoAtualDaPaginaLegal(db, org, "cancelamento")).toBeNull();
     const c1 = await publicar("cancelamento", "2026-10-10", 0);
     expect(c1).toMatchObject({ ok: true, versao: { numero: 1, regras: { diasReembolsoIntegral: 14 } } });
     expect(await versoesLegaisAtuais(db, org)).toEqual({ termos: 1, privacidade: 1, cancelamento: 1 });
