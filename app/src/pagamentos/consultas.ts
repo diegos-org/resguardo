@@ -92,19 +92,22 @@ export async function vistaDaCotacaoParaHospede(db: Db, organizacaoId: string, c
     pixAoVivo: tentativas.some((t) => t.forma === "pix" && t.aoVivo === true),
     acompanhar: tentativas.some((t) => paginaAindaLe(t, agora)),
   };
+  // Dinheiro que já voltou ao hóspede: desfecho de devolução (pelo provedor ou por fora) ou devolvido no provedor.
+  const devolvida = (p: Pagamento) => {
+    const dev = devDe(p);
+    return p.desfecho === "devolucao" || p.desfecho === "por_fora" || dev?.situacao === "confirmada" || dev?.situacao === "por_fora" || p.situacao === "devolvido";
+  };
   const comReserva = tentativas.find((t) => t.desfecho === "reserva");
   if (comReserva) {
-    return { ...base, estado: "confirmada", reservaCodigo: c.reservaCodigo, pagamentoEmDobro: tentativas.some((t) => t.id !== comReserva.id && comDinheiro(t.situacao)) };
+    // Pagamento em dobro: só enquanto o outro pagamento ainda não voltou ao hóspede (devolvido, o aviso sai).
+    const emDobro = tentativas.some((t) => t.id !== comReserva.id && comDinheiro(t.situacao) && !devolvida(t));
+    return { ...base, estado: "confirmada", reservaCodigo: c.reservaCodigo, pagamentoEmDobro: emDobro };
   }
   // Dinheiro sem a reserva: confirmando, aprovado sem as datas, devolução pedida ou feita. Com mais de um pagamento,
   // "devolvido" só quando todos foram devolvidos; antes disso vale o que ainda está em aberto, nesta ordem: ainda
   // sem decisão (confirmando), sem as datas (a equipe resolve), devolução pedida.
   const comDinheiroSemReserva = tentativas.filter((t) => comDinheiro(t.situacao));
   if (comDinheiroSemReserva.length) {
-    const devolvida = (p: Pagamento) => {
-      const dev = devDe(p);
-      return p.desfecho === "devolucao" || p.desfecho === "por_fora" || dev?.situacao === "confirmada" || dev?.situacao === "por_fora" || p.situacao === "devolvido";
-    };
     const emAberto = comDinheiroSemReserva.filter((p) => !devolvida(p));
     if (!emAberto.length) {
       const p = comDinheiroSemReserva[0];

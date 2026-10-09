@@ -74,8 +74,16 @@ describe("o que o hóspede vê (M8.2a)", () => {
     const reserva = await c.reserva(b.reservaId);
     expect(await vista(b.cotacaoId, minutos(3))).toMatchObject({ estado: "confirmada", reservaCodigo: reserva.codigo, pagamentoEmDobro: false, dinheiroSemDesfecho: false });
     // Outra tentativa aprovada na mesma cotação: confirmada, avisando que um pagamento será devolvido.
-    await db.insert(pagamentos).values({ organizacaoId: c.org, cotacaoId: b.cotacaoId, reservaId: b.reservaId, imovelId: c.imovel, ambiente: "teste", forma: "pix", referencia: "scl-dobro", chaveIdempotencia: "dobro", situacao: "aprovado", valor: TOTAL, motivoSemReserva: "outra_tentativa" });
+    const [dobro] = await db
+      .insert(pagamentos)
+      .values({ organizacaoId: c.org, cotacaoId: b.cotacaoId, reservaId: b.reservaId, imovelId: c.imovel, ambiente: "teste", forma: "pix", referencia: "scl-dobro", chaveIdempotencia: "dobro", situacao: "aprovado", valor: TOTAL, motivoSemReserva: "outra_tentativa" })
+      .returning({ id: pagamentos.id });
     expect(await vista(b.cotacaoId, minutos(4))).toMatchObject({ estado: "confirmada", pagamentoEmDobro: true, dinheiroSemDesfecho: true });
+    // Devolvido o pagamento a mais (pelo provedor, ou com desfecho de devolução feita por fora), o aviso sai.
+    await db.update(pagamentos).set({ situacao: "devolvido", desfecho: "devolucao", desfechoEm: minutos(5) }).where(eq(pagamentos.id, dobro.id));
+    expect(await vista(b.cotacaoId, minutos(5))).toMatchObject({ estado: "confirmada", pagamentoEmDobro: false });
+    await db.update(pagamentos).set({ situacao: "aprovado", desfecho: "por_fora" }).where(eq(pagamentos.id, dobro.id));
+    expect(await vista(b.cotacaoId, minutos(6))).toMatchObject({ estado: "confirmada", pagamentoEmDobro: false });
   });
 
   it("aprovado sem as datas, devolução pedida, devolvido; Pix aguardando vence 'expirada' na tela durante a carência", async () => {
