@@ -154,20 +154,34 @@ export async function conferirTentativa(
   return { ok: true, situacao: efeitos.situacao, consultou: true, mudou: efeitos.mudou };
 }
 
+/** Depois do prazo do Pix (ou do cancelamento sem prazo conhecido), por quanto tempo a página ainda lê a order. */
+export const FOLGA_LEITURA_PIX_ENCERRADO_MS = 15 * 60_000;
+
 /**
- * Página do hóspede esperando o Pix: confere a tentativa mais recente da cotação só enquanto ela está
- * pendente/criando/incerta, com o intervalo de 15 s. Quem chama aplica antes o freio por endereço de internet.
+ * Página do hóspede esperando o Pix: confere, com o intervalo de 15 s por tentativa, toda tentativa da cotação que
+ * ainda pode virar dinheiro: as em andamento (criando, incerta, pendente) e as canceladas ou vencidas há pouco (até
+ * o prazo do Pix mais a folga): o cancelamento de um Pix pode cruzar com o pagamento dele, e na prévia nem o aviso do
+ * Mercado Pago nem a rotina conferem por ela. Quem chama aplica antes o freio por endereço de internet. Devolve o
+ * resultado da mais recente conferida.
  */
 export async function conferirCotacaoParaPagina(db: Db, organizacaoId: string, cotacaoId: string, provedor: ProvedorPagamento, agora: Date = new Date()): Promise<ResultadoConferencia | null> {
   if (!uuidValido(cotacaoId)) return null;
-  const [ultima] = await db
-    .select({ id: pagamentos.id, situacao: pagamentos.situacao })
+  const tentativas = await db
+    .select({ id: pagamentos.id, situacao: pagamentos.situacao, idProvedor: pagamentos.idProvedor, pixExpiraEm: pagamentos.pixExpiraEm, atualizadoEm: pagamentos.atualizadoEm })
     .from(pagamentos)
     .where(and(eq(pagamentos.cotacaoId, cotacaoId), eq(pagamentos.organizacaoId, organizacaoId)))
-    .orderBy(desc(pagamentos.criadoEm), desc(pagamentos.id))
-    .limit(1);
-  if (!ultima || !emAndamento(ultima.situacao)) return null;
-  return conferirTentativa(db, organizacaoId, ultima.id, provedor, agora, { origem: "pagina" });
+    .orderBy(desc(pagamentos.criadoEm), desc(pagamentos.id));
+  const encerradaHaPouco = (t: (typeof tentativas)[number]) =>
+    (t.situacao === "cancelado" || t.situacao === "expirado") &&
+    !!t.idProvedor &&
+    agora.getTime() < Math.max(t.pixExpiraEm?.getTime() ?? 0, t.atualizadoEm.getTime()) + FOLGA_LEITURA_PIX_ENCERRADO_MS;
+  const alvos = tentativas.filter((t) => emAndamento(t.situacao) || encerradaHaPouco(t));
+  let resultado: ResultadoConferencia | null = null;
+  for (const t of alvos) {
+    const r = await conferirTentativa(db, organizacaoId, t.id, provedor, agora, { origem: "pagina" });
+    resultado ??= r;
+  }
+  return resultado;
 }
 
 /** Formato de id de order (ORD…): ids numéricos (pagamento, contestação, alerta de fraude) são ignorados na parte (a). */

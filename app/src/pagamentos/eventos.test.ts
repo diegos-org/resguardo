@@ -97,6 +97,26 @@ describe("conferência: freio da página e leituras antigas (M8.2a)", () => {
     expect(lidas()).toBe(depois);
   });
 
+  it("Pix cancelado há pouco que acabou pago (o cancelamento cruzou com o pagamento): a página também o lê e confirma; bem depois do prazo dele, não lê mais", async () => {
+    const s = await c.segurar();
+    const a = await c.pix(s.cotacaoId);
+    // A foi cancelado para dar lugar a outro Pix, mas o hóspede pagou A no mesmo instante.
+    await db.update(pagamentos).set({ situacao: "cancelado", atualizadoEm: minutos(1) }).where(eq(pagamentos.id, a.pagamentoId));
+    c.provedor.aprovar(a.idProvedor);
+    await conferirCotacaoParaPagina(db, c.org, s.cotacaoId, c.provedor, minutos(2));
+    expect(await c.tentativa(a.pagamentoId)).toMatchObject({ situacao: "aprovado", desfecho: "reserva" });
+    expect((await c.reserva(s.reservaId)).estado).toBe("confirmada");
+
+    const outra = await c.segurar({ entrada: "2026-11-02", saida: "2026-11-05", email: "outra@example.com" });
+    const b = await c.pix(outra.cotacaoId);
+    await db.update(pagamentos).set({ situacao: "expirado", atualizadoEm: minutos(31) }).where(eq(pagamentos.id, b.pagamentoId));
+    const lidas = () => c.provedor.chamadas.filter((x) => x.metodo === "consultar" && x.id === b.idProvedor).length;
+    const antes = lidas();
+    // O prazo do Pix (30 min) mais a folga (15 min) já passou: nada é lido.
+    expect(await conferirCotacaoParaPagina(db, c.org, outra.cotacaoId, c.provedor, minutos(50))).toBeNull();
+    expect(lidas()).toBe(antes);
+  });
+
   it("leituras simultâneas da página: a leitura é reservada num comando só — 25 pedidos ao mesmo tempo, uma leitura do provedor", async () => {
     const s = await c.segurar();
     await c.pix(s.cotacaoId);

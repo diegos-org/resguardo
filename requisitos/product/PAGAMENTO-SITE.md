@@ -189,7 +189,8 @@ conta numa chave compartilhada com teto baixo.
 `conferirPagamento(tentativa)`: lê a order (pelo id, ou pela referência quando a tentativa está
 `criando`/`incerta`), lê taxa/líquido/liberação na Payments API só quando faltam (no máximo a cada
 alguns minutos), e aplica numa transação curta. Gatilhos: aviso, página do hóspede (no máximo uma
-leitura a cada 15 s por tentativa, só enquanto pendente; a leitura é **reservada num comando só**
+leitura a cada 15 s por tentativa, enquanto pendente e também no Pix cancelado ou vencido há pouco, até
+15 min depois do prazo dele, porque o cancelamento pode cruzar com o pagamento; a leitura é **reservada num comando só**
 antes de chamar o provedor, então pedidos simultâneos leem uma vez; leitura que nem chegou ao
 provedor não conta, mas na página o "muitas chamadas" (429) ou a falta de resposta (tempo esgotado,
 5xx) **contam**: a página lê no máximo uma vez a cada 15 s mesmo com o Mercado Pago falhando — o
