@@ -1,5 +1,5 @@
 /**
- * Pagamento no site (M8.2a) — quem decide se pode cobrar e quando o site oferece o Pix.
+ * Pagamento no site (M8.2a) — quem decide se pode cobrar e quando o site oferece o pagamento (Pix e, no M8.2b, cartão).
  *
  * `podeCobrar` é a função única das travas (design "Variáveis e travas"): fora do deploy de produção, ambiente
  * `teste`, as duas chaves presentes, conta conferida como de TESTE no provedor, a chave "Oferecer pagamento no
@@ -9,6 +9,9 @@
  *
  * `ofertaDePix`: além das travas, a cotação segurada com o pedido ainda em `pedido`, situação disponível (a
  * confirmar segue pela conversa) e o mesmo cálculo do motor, em seco, na data de entrada, sem pendência.
+ *
+ * `ofertaDeCartao` (M8.2b): tudo o que vale para o Pix, mais o cartão ligado no painel, o disjuntor de recusas fechado e
+ * a chave pública do formulário. O cartão e o disjuntor nunca entram em `podeCobrar`: o Pix continua de qualquer jeito.
  */
 import { and, asc, eq } from "drizzle-orm";
 import { lerConfigPagamentoSite } from "@/configuracoes/pagamento-site";
@@ -22,6 +25,7 @@ import { uuidValido } from "@/lib/ids";
 import { esperarNoMaximo } from "@/lib/prazo";
 import { temRecebimentoManual } from "./andamento";
 import { ambienteMercadoPago, contaDeTesteConfirmada, estadoPagamentoDoAmbiente, provedorDoAmbiente } from "./ambiente";
+import { disjuntorAberto } from "./disjuntor";
 import type { ProvedorPagamento } from "./provedor";
 
 export type MotivoSemCobranca = "desligado" | "configuracao_invalida" | "so_nas_previas" | "producao_travada" | "desligado_no_painel" | "sem_paginas_legais" | "conta_nao_teste" | "conta_nao_conferida";
@@ -87,7 +91,10 @@ export async function provedorDeConferencia(env: NodeJS.ProcessEnv = process.env
   return conta ? recusa(conta) : { ok: true, provedor: p.provedor, ambiente: "teste", chavePublica: p.chavePublica };
 }
 
-/** A função única que libera cobrar (criar Pix). Todas as travas, inclusive a chave do painel e as páginas legais. */
+/**
+ * A função única que libera cobrar (criar Pix ou cartão). Todas as travas, inclusive a chave do painel e as páginas
+ * legais. O cartão desligado e o disjuntor não entram aqui (ver `ofertaDeCartao`): o Pix nunca para por eles.
+ */
 export async function podeCobrar(
   db: Db,
   organizacaoId: string,
@@ -175,10 +182,59 @@ export async function ofertaDePix(db: Db, organizacaoId: string, cotacaoId: stri
   return motivo ? { oferecer: false, motivo } : { oferecer: true };
 }
 
+export type MotivoSemCartao = MotivoSemPix | "cartao_desligado" | "disjuntor" | "sem_chave_publica";
+
+/** Textos do painel (nunca do hóspede). */
+export const TEXTO_SEM_CARTAO: Record<MotivoSemCartao, string> = {
+  ...TEXTO_SEM_PIX,
+  cartao_desligado: "Cartão desligado em Configurações → Pagamento no site.",
+  disjuntor: "Cartão desligado pelo disjuntor de recusas (possível teste de cartões roubados): o Pix continua.",
+  sem_chave_publica: "Falta a chave pública do Mercado Pago (MERCADOPAGO_PUBLIC_KEY).",
+};
+
+/** Motivos do cartão que não são do Pix (a cotação poderia pagar por Pix). */
+export const motivoSoDoCartao = (m: MotivoSemCartao): m is "cartao_desligado" | "disjuntor" | "sem_chave_publica" => m === "cartao_desligado" || m === "disjuntor" || m === "sem_chave_publica";
+
+/**
+ * As condições da cotação para o cartão: as do Pix, o cartão ligado no painel (só vale com "Oferecer pagamento no site",
+ * conferido no portão) e o disjuntor fechado. Lida também dentro da fase 1 do cartão, sob as travas.
+ */
+export async function motivoSemCartaoDaCotacao(db: Db, organizacaoId: string, c: CotacaoParaOferta, estadoReserva: string | null, agora: Date): Promise<MotivoSemCartao | null> {
+  if (!(await lerConfigPagamentoSite(db, organizacaoId)).cartao) return "cartao_desligado";
+  const motivo = await motivoSemPixDaCotacao(db, organizacaoId, c, estadoReserva, agora);
+  if (motivo) return motivo;
+  return (await disjuntorAberto(db, organizacaoId, agora)) ? "disjuntor" : null;
+}
+
+/**
+ * O site oferece o cartão nesta cotação agora? `gate` = resultado de `podeCobrar` (traz a chave pública). Devolve o que o
+ * formulário precisa: a chave pública e o número máximo de parcelas do painel (null = o máximo do Mercado Pago).
+ */
+export async function ofertaDeCartao(
+  db: Db,
+  organizacaoId: string,
+  cotacaoId: string,
+  agora: Date,
+  gate: PortaoCobranca,
+): Promise<{ oferecer: true; chavePublica: string; parcelasMaximas: number | null } | { oferecer: false; motivo: MotivoSemCartao }> {
+  if (!gate.ok) return { oferecer: false, motivo: gate.motivo };
+  if (!chavePublicaValida(gate.chavePublica)) return { oferecer: false, motivo: "sem_chave_publica" };
+  if (!uuidValido(cotacaoId)) return { oferecer: false, motivo: "cotacao_nao_encontrada" };
+  const [c] = await db
+    .select({ cotacao: cotacoes, estadoReserva: reservas.estado })
+    .from(cotacoes)
+    .leftJoin(reservas, eq(reservas.id, cotacoes.reservaId))
+    .where(and(eq(cotacoes.id, cotacaoId), eq(cotacoes.organizacaoId, organizacaoId)));
+  if (!c) return { oferecer: false, motivo: "cotacao_nao_encontrada" };
+  const motivo = await motivoSemCartaoDaCotacao(db, organizacaoId, c.cotacao, c.estadoReserva, agora);
+  if (motivo) return { oferecer: false, motivo };
+  return { oferecer: true, chavePublica: gate.chavePublica, parcelasMaximas: (await lerConfigPagamentoSite(db, organizacaoId)).parcelasMaximas };
+}
+
 export type OfertaDoImovel = { imovelId: string; codigo: string; nome: string; oferece: boolean; motivo: MotivoSemPix | null; texto: string | null };
 
 /**
- * Para a aba do painel: cada imóvel do site público com ✓ ou o motivo de não oferecer o Pix. O motor é calculado
+ * Para a aba do painel: cada imóvel do site público com ✓ ou o motivo de não oferecer o pagamento. O motor é calculado
  * em seco para uma entrada hoje (as reservas reais são conferidas na data de entrada de cada uma).
  */
 export async function motivosPorImovel(db: Db, organizacaoId: string, agora: Date = new Date()): Promise<OfertaDoImovel[]> {

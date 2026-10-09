@@ -38,7 +38,7 @@ describe("gerar o Pix (M8.2a)", () => {
     expect(p.pixExpiraEm?.toISOString()).toBe(minutos(30).toISOString());
     expect((await c.cotacao(cotacaoId)).holdAte?.toISOString()).toBe(new Date(minutos(30).getTime() + FOLGA_PRAZO_PIX_MS).toISOString());
     // A observação do pedido acompanha o prazo novo (12:32 em São Paulo).
-    expect((await c.reserva(reservaId)).observacoes).toContain("Datas seguradas até 01/10, 12:32 (estendido pelo Pix);");
+    expect((await c.reserva(reservaId)).observacoes).toContain("Datas seguradas até 01/10, 12:32 (estendido pelo pagamento);");
     const estender = await db.select().from(auditoria).where(and(eq(auditoria.organizacaoId, c.org), eq(auditoria.acao, "cotacao.estender")));
     expect(estender.length).toBeGreaterThanOrEqual(1);
     expect(JSON.stringify(estender)).not.toContain(EMAIL_HOSPEDE);
@@ -326,5 +326,45 @@ describe("gerar o Pix (M8.2a)", () => {
     expect((await c.cotacao(cotacaoId)).holdAte!.getTime()).toBeGreaterThanOrEqual(minutos(42).getTime());
     expect(await expirarHoldsVencidos(db, c.org, minutos(44))).toMatchObject({ expiradas: 0 });
     expect((await c.cotacao(cotacaoId)).estado).toBe("segurada");
+  });
+});
+
+describe("Pix ao lado do cartão (M8.2b)", () => {
+  it("cartão no desafio do banco: o Pix cancela o desafio no provedor (quem pediu: o hóspede), relê e sai", async () => {
+    const { cotacaoId } = await c.segurar();
+    c.provedor.respostaCartao = "desafio";
+    const cartao = await c.cartao(cotacaoId);
+    expect(cartao.resultado).toMatchObject({ ok: true, situacao: "desafio" });
+    const r = await gerarPix(db, c.org, cotacaoId, minutos(2), c.provedor);
+    expect(r).toMatchObject({ ok: true, reaproveitado: false });
+    expect(await c.tentativa(cartao.pagamentoId!)).toMatchObject({ situacao: "cancelado", cancelamentoPor: "hospede", contaNoDisjuntor: true });
+  });
+
+  it("cartão em análise: nenhum Pix (o Mercado Pago não cancela e pode aprovar); cartão marcado como real (live_mode): nenhum Pix", async () => {
+    const a = await c.segurar();
+    c.provedor.respostaCartao = "em_analise";
+    await c.cartao(a.cotacaoId);
+    const emAnalise = await gerarPix(db, c.org, a.cotacaoId, minutos(1), c.provedor);
+    expect(emAnalise).toMatchObject({ ok: false, codigo: "em_analise" });
+    if (!emAnalise.ok) expect(emAnalise.erro).toContain("em análise no Mercado Pago");
+    const b = await c.segurar({ entrada: "2026-11-02", saida: "2026-11-05", email: "outra@example.com" });
+    // Um desafio marcado como real é cancelado na hora (sem dinheiro): mesmo assim, nenhum Pix depois dele.
+    c.provedor.respostaCartao = "desafio";
+    c.provedor.aoVivo = true;
+    await c.cartao(b.cotacaoId);
+    c.provedor.aoVivo = false;
+    expect(await gerarPix(db, c.org, b.cotacaoId, minutos(1), c.provedor)).toMatchObject({ ok: false, codigo: "ao_vivo" });
+    expect(c.provedor.chamadas.filter((x) => x.metodo === "criarPix")).toHaveLength(0);
+  });
+
+  it("criação recusada sem order: o detalhe guarda o motivo (dados inválidos e o código, ou ? sem código)", async () => {
+    const { cotacaoId } = await c.segurar();
+    c.provedor.criarPix = async () => ({ ok: false, motivo: "dados_invalidos", mensagem: "Dados do pagador inválidos.", cobranca: null, codigo: "invalid_payer_email" });
+    await gerarPix(db, c.org, cotacaoId, AGORA, c.provedor);
+    c.provedor.criarPix = async () => ({ ok: false, motivo: "dados_invalidos", mensagem: "Dados do pagador inválidos.", cobranca: null, codigo: null });
+    await gerarPix(db, c.org, cotacaoId, minutos(1), c.provedor);
+    const detalhes = (await db.select().from(pagamentos).where(eq(pagamentos.cotacaoId, cotacaoId))).map((t) => t.detalheProvedor).sort();
+    expect(detalhes).toEqual(["dados_invalidos/?", "dados_invalidos/invalid_payer_email"]);
+    expect(detalhes.every((d) => d.startsWith("dados_invalidos"))).toBe(true);
   });
 });

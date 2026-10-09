@@ -23,6 +23,7 @@ export const MENSAGENS_PIX_HOSPEDE: Record<CodigoFalhaPix, string> = {
   nao_encontrada: "Cotação não encontrada.",
   nao_oferecido: "O pagamento pelo site não está disponível para esta cotação agora. Fale com a equipe pelo WhatsApp.",
   em_andamento: "Estamos conferindo o Pix gerado há pouco. A página atualiza sozinha em instantes.",
+  em_analise: "Há um pagamento com cartão desta cotação em análise no Mercado Pago. Enquanto a análise não termina, não dá para pagar de outro jeito: fale com a equipe pelo WhatsApp se precisar.",
   ja_pago: "Já recebemos um pagamento desta cotação.",
   limite: `Esta cotação já gerou ${MAXIMO_PIX_POR_COTACAO} Pix. Para continuar, fale com a equipe pelo WhatsApp.`,
   provedor: "Não deu para gerar o Pix agora. Tente de novo em instantes ou fale com a equipe pelo WhatsApp.",
@@ -99,7 +100,7 @@ export async function vistaDoPagamento(
   let vista = await vistaDaCotacaoParaHospede(db, organizacaoId, cotacaoId, agora, { comAutorizacao: o.comAutorizacao });
   let podeGerar = false;
   // Pix marcado como real (live_mode) no teste: nenhum outro é oferecido nesta cotação (o domínio também recusa).
-  if (vista && !vista.pixAoVivo && (vista.estado === "sem_pagamento" || vista.estado === "pix_vencido") && vista.holdAte) {
+  if (vista && !vista.aoVivo && (vista.estado === "sem_pagamento" || vista.estado === "pix_vencido") && vista.holdAte) {
     const oferta = await ofertaDePix(db, organizacaoId, cotacaoId, agora, await o.gate());
     podeGerar = oferta.oferecer;
     if (oferta.oferecer && vista.estado === "sem_pagamento") vista = await vistaDaCotacaoParaHospede(db, organizacaoId, cotacaoId, agora, { comAutorizacao: o.comAutorizacao, oferecido: true });

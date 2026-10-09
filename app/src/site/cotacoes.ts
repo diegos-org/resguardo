@@ -13,7 +13,7 @@ import { lerRegrasCalendario } from "@/calendario/regras-config";
 import { travaOcupada, violouUnicidade } from "@/db/erros";
 import { cotacoes, type EstadoCotacao, imoveis, pagamentos, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { CARENCIA_PAGAMENTO_MINUTOS, CARENCIA_PAGAMENTO_MS, cotacaoEmCarencia } from "@/pagamentos/andamento";
+import { CARENCIA_PAGAMENTO_MINUTOS, CARENCIA_PAGAMENTO_MS, cotacaoEmCarencia, PRAZO_CARTAO_SEM_RESPOSTA_DIAS } from "@/pagamentos/andamento";
 import { cancelarReserva, sincronizarReserva } from "@/reservas/repositorio";
 import { consultarDisponibilidade, type Disponibilidade } from "./disponibilidade";
 import type { PedidoConsulta } from "./site";
@@ -228,7 +228,9 @@ export type ResultadoHold =
 
 const dataBr = (d: string) => d.split("-").reverse().join("/");
 /** Mesmo texto para reserva ou pagamento em andamento com o e-mail: não revela nada do pedido de outra pessoa. */
-const ERRO_EMAIL_EM_ANDAMENTO = "Já existe uma reserva em andamento com este e-mail. Conclua aquela ou aguarde o prazo dela acabar.";
+export const ERRO_EMAIL_EM_ANDAMENTO = "Já existe uma reserva ou um pagamento em andamento com este e-mail. Use o link daquela cotação ou fale com a equipe pelo WhatsApp.";
+/** A observação do pedido diz até quando as datas estão seguradas (e se um pagamento estendeu); aceita o texto antigo. */
+const OBSERVACAO_PRAZO = /Datas seguradas até [^;.]+(?: \(estendido pelo (?:Pix|pagamento)\))?;/;
 const brl = (c: number) => `R$ ${(c / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const horaBr = (d: Date, fuso: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(d);
 
@@ -277,8 +279,10 @@ export async function segurarDatas(db: Db, organizacaoId: string, codigo: string
     if (ativos.some((a) => a.email === v.dados.email && a.holdAte && a.holdAte.getTime() > agora.getTime())) return { ok: false as const, erro: ERRO_EMAIL_EM_ANDAMENTO };
     // Pagamento do site com este e-mail (M8.2a): em andamento ainda na carência das datas daquela cotação, ou aprovado
     // e ainda sem desfecho (dinheiro a confirmar ou a devolver). Senão o mesmo hóspede pagaria duas vezes. Uma tentativa
-    // que nunca se resolve não prende o e-mail depois da carência. A resposta é a mesma de "reserva em andamento":
-    // nada se descobre sobre o pagamento de outra pessoa.
+    // que nunca se resolve não prende o e-mail depois da carência. Cartão (M8.2b): criado nos últimos 5 dias e ainda sem
+    // resposta final (criando, incerta, em análise ou processando; o desafio do banco não, ele acaba em 40 minutos)
+    // prende o e-mail além da carência — a análise pode aprovar dias depois; assim que o Mercado Pago decide, solta. A
+    // resposta é a mesma de "reserva em andamento": nada se descobre sobre o pagamento de outra pessoa.
     const [pagando] = await tx
       .select({ id: pagamentos.id })
       .from(pagamentos)
@@ -291,6 +295,11 @@ export async function segurarDatas(db: Db, organizacaoId: string, codigo: string
           or(
             and(inArray(pagamentos.situacao, ["criando", "incerta", "pendente"]), gt(cotacoes.holdAte, new Date(agora.getTime() - CARENCIA_PAGAMENTO_MS))),
             and(eq(pagamentos.situacao, "aprovado"), isNull(pagamentos.desfecho)),
+            and(
+              eq(pagamentos.forma, "cartao"),
+              gt(pagamentos.criadoEm, new Date(agora.getTime() - PRAZO_CARTAO_SEM_RESPOSTA_DIAS * 86_400_000)),
+              or(inArray(pagamentos.situacao, ["criando", "incerta"]), and(eq(pagamentos.situacao, "pendente"), sql`coalesce(${pagamentos.etapaCartao}, '') <> 'desafio'`)),
+            ),
           ),
         ),
       )
@@ -428,7 +437,8 @@ export async function expirarHoldsVencidos(db: Db, organizacaoId: string | null,
 
 /**
  * Estende o prazo das datas de uma cotação segurada (M8.2a: cada Pix segura as datas por pelo menos o tempo dele
- * e mais uma folga). Só estende, nunca encurta; quem chama já tem as travas. Auditoria sem dados pessoais.
+ * e mais uma folga; M8.2b: o desafio do banco no cartão e a extensão única do cartão em análise). Só estende, nunca
+ * encurta; quem chama já tem as travas. Auditoria sem dados pessoais.
  */
 export async function estenderHold(tx: Db, organizacaoId: string, cotacaoId: string, ate: Date, agora: Date, pagamentoId: string | null): Promise<boolean> {
   const [c] = await tx
@@ -441,7 +451,7 @@ export async function estenderHold(tx: Db, organizacaoId: string, cotacaoId: str
   // A observação do pedido diz até quando as datas estão seguradas: acompanha a extensão (campo fora do financeiro).
   if (c.reservaId) {
     const [r] = await tx.select({ observacoes: reservas.observacoes }).from(reservas).where(eq(reservas.id, c.reservaId));
-    const nova = r?.observacoes.replace(/Datas seguradas até [^;.]+(?: \(estendido pelo Pix\))?;/, `Datas seguradas até ${horaBr(ate, c.fuso)} (estendido pelo Pix);`);
+    const nova = r?.observacoes.replace(OBSERVACAO_PRAZO, `Datas seguradas até ${horaBr(ate, c.fuso)} (estendido pelo pagamento);`);
     if (r && nova !== r.observacoes) await tx.update(reservas).set({ observacoes: nova }).where(eq(reservas.id, c.reservaId));
   }
   await registrarAuditoria(tx, { organizacaoId, usuarioId: null, acao: "cotacao.estender", entidade: "cotacao", entidadeId: cotacaoId, mudancas: { holdAte: [c.holdAte.toISOString(), ate.toISOString()], ...(pagamentoId ? { pagamento: [null, pagamentoId] } : {}) } });
@@ -463,7 +473,7 @@ export async function voltarHold(tx: Db, organizacaoId: string, cotacaoId: strin
   await tx.update(cotacoes).set({ holdAte: ate, atualizadaEm: agora }).where(eq(cotacoes.id, cotacaoId));
   if (c.reservaId) {
     const [r] = await tx.select({ observacoes: reservas.observacoes }).from(reservas).where(eq(reservas.id, c.reservaId));
-    const nova = r?.observacoes.replace(/Datas seguradas até [^;.]+(?: \(estendido pelo Pix\))?;/, `Datas seguradas até ${horaBr(ate, c.fuso)};`);
+    const nova = r?.observacoes.replace(OBSERVACAO_PRAZO, `Datas seguradas até ${horaBr(ate, c.fuso)};`);
     if (r && nova !== r.observacoes) await tx.update(reservas).set({ observacoes: nova }).where(eq(reservas.id, c.reservaId));
   }
   await registrarAuditoria(tx, { organizacaoId, usuarioId: null, acao: "cotacao.voltar_prazo", entidade: "cotacao", entidadeId: cotacaoId, mudancas: { holdAte: [c.holdAte.toISOString(), ate.toISOString()], ...(pagamentoId ? { pagamento: [null, pagamentoId] } : {}) } });

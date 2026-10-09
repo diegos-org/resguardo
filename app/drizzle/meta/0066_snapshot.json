@@ -1,5 +1,5 @@
 {
-  "id": "db95b49f-e9cc-49d2-b4b8-e2bf5618aeca",
+  "id": "7d8cd8cd-840e-4ff7-8134-9d246d7dad7a",
   "prevId": "7654c201-9071-4098-a4c4-3f674becc480",
   "version": "7",
   "dialect": "postgresql",
@@ -6172,6 +6172,12 @@
         "id_pagamento_provedor": {
           "name": "id_pagamento_provedor",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "custo_parcelas_vendedor": {
+          "name": "custo_parcelas_vendedor",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false
         },

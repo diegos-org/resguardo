@@ -1,7 +1,7 @@
 /**
  * Pagamento no site (M8.2a) — a rotina e o "Conferir agora" do painel: confere os pagamentos que ainda esperam
  * alguma coisa do provedor, uma transação curta por tentativa (leitura sempre fora dela). A rotina de holds chama
- * isto ANTES de vencer holds, para nunca vencer um pedido cujo Pix já foi pago.
+ * isto ANTES de vencer holds, para nunca vencer um pedido cujo pagamento (Pix ou cartão) já entrou.
  *
  * - tentativas `criando`, `incerta` ou `pendente` (as sem order são procuradas pela referência), dos últimos 85 dias
  *   (depois, aviso `andamento_fora_do_prazo`, uma vez, para a equipe);
@@ -10,7 +10,8 @@
  * - devoluções pedidas cuja próxima tentativa chegou (relê a order antes; chave nova a cada pedido), só de pagamentos
  *   dos últimos 85 dias: depois disso a order não aparece mais, a rotina para de ler e liga o aviso
  *   `devolucao_fora_do_prazo` (uma vez), para a equipe resolver pelo painel do Mercado Pago;
- * - Pix pendentes que sobraram numa cotação em que outro pagamento já trouxe dinheiro (cancelados no provedor);
+ * - pagamentos pendentes que sobraram numa cotação em que outro já trouxe dinheiro (cancelados no provedor; quem
+ *   pediu o cancelamento foi o sistema);
  * - uma vez por dia, os pagamentos dos últimos 85 dias (o provedor só consulta orders de até três meses) com desfecho (reserva, devolução ou devolução por fora) e
  *   os aprovados sem reserva à espera da devolução: devolução ou contestação feita por fora (ou devolução em dobro)
  *   vira aviso, nunca estorno automático.
@@ -115,8 +116,8 @@ export async function conferirPendentes(db: Db, organizacaoId: string | null, pr
     }
   }
 
-  // Pix pendente que sobrou numa cotação em que outro pagamento já trouxe dinheiro (confirmando a reserva ou não):
-  // cancelar no provedor (nunca dois Pix pagáveis com um já pago).
+  // Pagamento pendente que sobrou numa cotação em que outro já trouxe dinheiro (confirmando a reserva ou não): cancelar
+  // no provedor (nunca dois pagáveis com um já pago). Quem pediu foi o sistema (nunca conta no disjuntor do cartão).
   const sobrando = await db
     .select({ id: pagamentos.id, organizacaoId: pagamentos.organizacaoId, idProvedor: pagamentos.idProvedor })
     .from(pagamentos)
@@ -132,6 +133,7 @@ export async function conferirPendentes(db: Db, organizacaoId: string | null, pr
     );
   for (const x of sobrando) {
     try {
+      await db.update(pagamentos).set({ cancelamentoPor: "sistema" }).where(and(eq(pagamentos.id, x.id), isNull(pagamentos.cancelamentoPor)));
       resumo.canceladas += await cancelarNoProvedor(db, x.organizacaoId, [{ id: x.id, idProvedor: x.idProvedor! }], provedor, agora);
     } catch {
       resumo.falhas++;
@@ -165,7 +167,7 @@ export async function conferirPendentes(db: Db, organizacaoId: string | null, pr
 
 /**
  * A rotina do site (a de holds, a cada 10 min): primeiro confere os pagamentos e só depois vence os holds, para
- * nunca vencer um pedido cujo Pix já foi pago. Sem provedor (pagamento desligado, como no deploy de produção), só
+ * nunca vencer um pedido cujo pagamento já entrou. Sem provedor (pagamento desligado, como no deploy de produção), só
  * vence os holds — a carência de um pagamento em andamento continua valendo. Em qualquer caso, apaga os avisos do
  * Mercado Pago com mais de 90 dias (o webhook grava no deploy de produção).
  */

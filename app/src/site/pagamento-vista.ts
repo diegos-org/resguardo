@@ -44,6 +44,9 @@ export const TITULO_PAGAMENTO: Record<Exclude<EstadoPagamentoHospede, "sem_pagam
   aprovado_sem_datas: "Pagamento recebido",
   devolucao_pedida: "Devolução pedida",
   devolvido: "Valor devolvido",
+  cartao_desafio: "Verificação do seu banco",
+  cartao_em_analise: "Pagamento em análise",
+  cartao_recusado: "Datas seguradas",
 };
 
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;

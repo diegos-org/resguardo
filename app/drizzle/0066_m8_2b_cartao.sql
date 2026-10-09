@@ -22,6 +22,7 @@ ALTER TABLE "pagamentos" ADD COLUMN "encerrado_em" timestamp with time zone;--> 
 ALTER TABLE "pagamentos" ADD COLUMN "cancelamento_por" text;--> statement-breakpoint
 ALTER TABLE "pagamentos" ADD COLUMN "conta_no_disjuntor" boolean DEFAULT false NOT NULL;--> statement-breakpoint
 ALTER TABLE "pagamentos" ADD COLUMN "id_pagamento_provedor" text;--> statement-breakpoint
+ALTER TABLE "pagamentos" ADD COLUMN "custo_parcelas_vendedor" integer;--> statement-breakpoint
 ALTER TABLE "disjuntores_cartao" ADD CONSTRAINT "disjuntores_cartao_organizacao_id_organizacoes_id_fk" FOREIGN KEY ("organizacao_id") REFERENCES "public"."organizacoes"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "disjuntores_cartao" ADD CONSTRAINT "disjuntores_cartao_religado_por_usuarios_id_fk" FOREIGN KEY ("religado_por") REFERENCES "public"."usuarios"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "disjuntores_cartao_org" ON "disjuntores_cartao" USING btree ("organizacao_id","aberto_em");--> statement-breakpoint

@@ -6,19 +6,25 @@
  */
 import { uuidValido } from "@/lib/ids";
 import { criarToken, lerToken } from "@/lib/token-assinado";
-import { CARENCIA_PAGAMENTO_MS, FOLGA_PRAZO_PIX_MS, MAXIMO_PIX_POR_COTACAO } from "./andamento";
-import { PIX_VALIDADE_MINIMA_MINUTOS } from "./provedor";
+import { LIMITE_MINUTOS_ANALISE_CARTAO } from "@/calendario/regras-config";
+import { CARENCIA_PAGAMENTO_MS, FOLGA_PRAZO_PAGAMENTO_MS, FOLGA_PRAZO_PIX_MS, MAXIMO_CARTAO_POR_COTACAO, MAXIMO_PIX_POR_COTACAO } from "./andamento";
+import { DESAFIO_3DS_MINUTOS, PIX_VALIDADE_MINIMA_MINUTOS } from "./provedor";
 
 export const COOKIE_CHECKOUT = "scl_checkout";
 export const CAMINHO_COOKIE_CHECKOUT = "/reservar";
 
 /**
- * Até quando vale a autorização de um pedido: o prazo das datas mais o que os Pix podem estendê-lo (até 3, de
- * pelo menos 30 minutos cada, mais a folga) e a carência. Nunca menos de 30 minutos a partir de agora.
+ * Até quando vale a autorização de um pedido: o prazo das datas mais tudo o que os pagamentos podem estendê-lo — os Pix
+ * (até 3, de pelo menos 30 minutos cada, mais a folga), os desafios do banco no cartão (até 3, de 40 minutos mais a
+ * folga) e a extensão única do cartão em análise (pelo maior valor que o painel aceita, para continuar puro) com a
+ * carência — e mais uma carência. Uns 8 h além do prazo das datas.
  */
 export function validadeDaAutorizacao(holdAte: Date | null, agora: Date): Date {
   const base = Math.max(holdAte?.getTime() ?? 0, agora.getTime());
-  return new Date(base + MAXIMO_PIX_POR_COTACAO * (PIX_VALIDADE_MINIMA_MINUTOS * 60_000 + FOLGA_PRAZO_PIX_MS) + CARENCIA_PAGAMENTO_MS);
+  const pix = MAXIMO_PIX_POR_COTACAO * (PIX_VALIDADE_MINIMA_MINUTOS * 60_000 + FOLGA_PRAZO_PIX_MS);
+  const desafios = MAXIMO_CARTAO_POR_COTACAO * (DESAFIO_3DS_MINUTOS * 60_000 + FOLGA_PRAZO_PAGAMENTO_MS);
+  const analise = LIMITE_MINUTOS_ANALISE_CARTAO * 60_000 + CARENCIA_PAGAMENTO_MS;
+  return new Date(base + pix + desafios + analise + CARENCIA_PAGAMENTO_MS);
 }
 
 /** Token da autorização (assinado com AUTH_SECRET). Sem o segredo configurado, lança: ninguém paga sem ele. */

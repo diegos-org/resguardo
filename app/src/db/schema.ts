@@ -1550,6 +1550,11 @@ export const pagamentos = pgTable(
     contaNoDisjuntor: boolean("conta_no_disjuntor").notNull().default(false),
     /** Id numérico do pagamento na Payments API (as contestações chegam por ele, no M8.2e). */
     idPagamentoProvedor: text("id_pagamento_provedor"),
+    /**
+     * Centavos do custo do "parcelamento sem acréscimo" cobrado da SCL (financing_fee que não é do comprador), da última
+     * leitura da Payments API que o trouxe; null = não lido. Com ele > 0 a taxa não entra sozinha (aviso `parcelas_sem_juros`).
+     */
+    custoParcelasVendedor: integer("custo_parcelas_vendedor"),
     criadoEm: criadoEm(),
     atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
   },

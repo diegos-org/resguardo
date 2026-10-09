@@ -6,7 +6,7 @@ import { and, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { lancamentos, pagamentos } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
-import { PIX_VALIDADE_MINIMA_MINUTOS, RETENCAO_ORDERS_DIAS } from "./provedor";
+import { DESAFIO_3DS_MINUTOS, type FormaPagamento, PIX_VALIDADE_MINIMA_MINUTOS, RETENCAO_ORDERS_DIAS } from "./provedor";
 import { emAndamento, type SituacaoPagamento } from "./situacoes";
 
 /**
@@ -20,6 +20,28 @@ export const CARENCIA_PAGAMENTO_MS = CARENCIA_PAGAMENTO_MINUTOS * 60_000;
 export const MAXIMO_PIX_POR_COTACAO = 3;
 /** Folga entre o vencimento do Pix e o prazo das datas (o QR nunca vale mais que as datas). */
 export const FOLGA_PRAZO_PIX_MS = 2 * 60_000;
+/** A mesma folga, no cartão: o prazo das datas fica 2 minutos depois do fim do desafio do banco. */
+export const FOLGA_PRAZO_PAGAMENTO_MS = FOLGA_PRAZO_PIX_MS;
+
+// ---------------------------------------------------------------- cartão (M8.2b): freios (constantes, como os do M8.1)
+/** Tentativas de cartão por cotação que chegaram ao provedor (linhas `forma = 'cartao'`), à parte dos 3 Pix. */
+export const MAXIMO_CARTAO_POR_COTACAO = 3;
+/** Tentativas de cartão por hora na organização que chegaram ao provedor (contadas pelas linhas, nunca pelos cliques). */
+export const CARTOES_POR_HORA_NA_ORGANIZACAO = 30;
+/**
+ * Cartão sem resposta final (criando, incerta, em análise ou processando): por quantos dias corridos desde a criação o
+ * mesmo e-mail não segura outras datas. "Até 2 dias úteis" do Mercado Pago passando por um fim de semana ou feriado dá
+ * 4 a 5 dias corridos; assim que o Mercado Pago decide, o e-mail fica livre.
+ */
+export const PRAZO_CARTAO_SEM_RESPOSTA_DIAS = 5;
+/** Início: alerta de cartão em análise há mais de um dia (só o alerta; o e-mail segue `PRAZO_CARTAO_SEM_RESPOSTA_DIAS`). */
+export const ALERTA_ANALISE_CARTAO_HORAS = 24;
+/**
+ * Cartão criado sem resposta e sem order achada: só é dado por não criado depois de 24 h e com as duas buscas vazias
+ * (Orders e Payments API pela referência). No cartão a cobrança acontece durante a criação: um Pix que talvez não
+ * exista não pode ser pago, um cartão pode já ter sido cobrado.
+ */
+export const DESISTIR_SEM_ORDER_CARTAO_MS = 24 * 3_600_000;
 
 /**
  * Prazo das leituras que se repetem (página, rotina: em andamento, diária, taxa e liberação, devoluções): o provedor só
@@ -32,6 +54,8 @@ export const inicioDoPrazoDeReleitura = (agora: Date) => new Date(agora.getTime(
 
 /** Depois do prazo do Pix, por quanto tempo a página ainda lê a order de um Pix recusado, cancelado ou vencido. */
 export const FOLGA_LEITURA_PIX_ENCERRADO_MS = 15 * 60_000;
+/** A mesma folga para um desafio do cartão cancelado ou vencido (o cancelamento pode cruzar com a verificação concluída). */
+export const FOLGA_LEITURA_CARTAO_ENCERRADO_MS = FOLGA_LEITURA_PIX_ENCERRADO_MS;
 
 /** Situações encerradas sem dinheiro que a leitura ainda pode levar a aprovado (ver `transicaoPermitida`). */
 const ENCERRADAS_SEM_DINHEIRO: readonly SituacaoPagamento[] = ["recusado", "cancelado", "expirado"];
@@ -46,13 +70,24 @@ function fimDaLeituraEncerrada(t: { pixExpiraEm: Date | null; criadoEm: Date }):
 
 /**
  * A página do hóspede ainda lê esta tentativa (ela ainda pode virar dinheiro)? Em andamento (criando, incerta,
- * pendente) dentro do prazo de releitura, ou recusada, cancelada ou vencida há pouco, com order no provedor, até o prazo do Pix mais a folga: o
- * cancelamento pode cruzar com o pagamento e o provedor pode corrigir uma recusa. A mesma regra decide o que a página
- * lê (`conferirCotacaoParaPagina`) e se ela continua acompanhando (`acompanhar` da vista do hóspede).
+ * pendente) dentro do prazo de releitura, ou encerrada há pouco com order no provedor: o cancelamento pode cruzar com o
+ * pagamento e o provedor pode corrigir uma recusa. Pix recusado, cancelado ou vencido: até o prazo do Pix mais a folga.
+ * Cartão (M8.2b): recusado é final (uma order `failed` não volta; nada se relê antes de cada tentativa nova); cancelado
+ * ou vencido (desafio do banco) até o encerramento (ou, sem ele, os 40 minutos do desafio desde a criação) mais a folga.
+ * A mesma regra decide o que a página lê (`conferirCotacaoParaPagina`), o que se relê antes de criar outra tentativa e
+ * se a página continua acompanhando (`acompanhar` da vista do hóspede).
  */
-export function paginaAindaLe(t: { situacao: SituacaoPagamento; idProvedor: string | null; pixExpiraEm: Date | null; criadoEm: Date }, agora: Date): boolean {
+export function paginaAindaLe(
+  t: { forma: FormaPagamento; situacao: SituacaoPagamento; idProvedor: string | null; pixExpiraEm: Date | null; criadoEm: Date; encerradoEm: Date | null },
+  agora: Date,
+): boolean {
   // Em andamento, só dentro do prazo de releitura (depois, a order não aparece mais: aviso para a equipe, pela rotina).
   if (emAndamento(t.situacao)) return t.criadoEm.getTime() >= inicioDoPrazoDeReleitura(agora).getTime();
+  if (t.forma === "cartao") {
+    if ((t.situacao !== "cancelado" && t.situacao !== "expirado") || !t.idProvedor) return false;
+    const fim = t.encerradoEm?.getTime() ?? t.criadoEm.getTime() + DESAFIO_3DS_MINUTOS * 60_000;
+    return agora.getTime() < fim + FOLGA_LEITURA_CARTAO_ENCERRADO_MS;
+  }
   return ENCERRADAS_SEM_DINHEIRO.includes(t.situacao) && !!t.idProvedor && agora.getTime() < fimDaLeituraEncerrada(t);
 }
 

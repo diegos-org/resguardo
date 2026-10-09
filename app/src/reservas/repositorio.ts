@@ -258,10 +258,17 @@ const horaBr = (d: Date, fuso: string) => new Intl.DateTimeFormat("pt-BR", { tim
 /** Por que a equipe não mexe à mão num pedido com pagamento do site (M8.2a). */
 function avisoDoPagamento(p: PagamentoQuePrende, fuso: string, acao: "cancelar" | "confirmar"): string {
   if (p.situacao === "criando" || p.situacao === "incerta" || p.situacao === "pendente") {
-    const ate = p.forma === "pix" && p.pixExpiraEm ? ` até ${horaBr(p.pixExpiraEm, fuso)}` : "";
+    if (p.forma === "cartao") {
+      // M8.2b: um cartão em andamento (verificação do banco, processamento ou análise) não tem prazo que a equipe veja.
+      const andamento = "há um pagamento com cartão em andamento (verificação do banco, processamento ou análise do Mercado Pago)";
+      return acao === "confirmar"
+        ? `Não confirmada: ${andamento}. Aguarde a resposta do Mercado Pago antes de confirmar à mão.`
+        : `Não cancelada: ${andamento}. Aguarde a resposta dele; o cancelamento com devolução chega no M8.2c.`;
+    }
+    const ate = p.pixExpiraEm ? ` até ${horaBr(p.pixExpiraEm, fuso)}` : "";
     return acao === "confirmar"
-      ? `Não confirmada: há um ${p.forma === "pix" ? "Pix" : "pagamento"} em andamento${ate}. Aguarde o pagamento (ou o prazo dele) antes de confirmar à mão.`
-      : `Não cancelada: há um ${p.forma === "pix" ? "Pix" : "pagamento"} do site em andamento${ate}. Aguarde o prazo dele; o cancelamento com devolução chega no M8.2c.`;
+      ? `Não confirmada: há um Pix em andamento${ate}. Aguarde o pagamento (ou o prazo dele) antes de confirmar à mão.`
+      : `Não cancelada: há um Pix do site em andamento${ate}. Aguarde o prazo dele; o cancelamento com devolução chega no M8.2c.`;
   }
   return acao === "confirmar"
     ? "Não confirmada: há um pagamento do site aprovado sendo processado. Atualize a página em instantes."

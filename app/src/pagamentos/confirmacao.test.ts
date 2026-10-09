@@ -5,12 +5,14 @@ import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { registrarRecebimento } from "@/repasses/recebimentos";
 import { confirmarReserva, criarReserva, tentarCancelarReserva } from "@/reservas/repositorio";
-import { criarCotacao, expirarHoldsVencidos, segurarDatas } from "@/site/cotacoes";
+import { criarCotacao, ERRO_EMAIL_EM_ANDAMENTO, expirarHoldsVencidos, segurarDatas } from "@/site/cotacoes";
 import { CARENCIA_PAGAMENTO_MS } from "./andamento";
 import { conferirTentativa } from "./conferencia";
+import { valorConfere } from "./confirmacao";
 import { gerarPix } from "./pix";
 import { conferirPendentes } from "./rotina";
 import type { Cobranca } from "./provedor";
+import { textosDosAvisos } from "./situacoes";
 import { AGORA, type Cenario, EMAIL_HOSPEDE, minutos, montarCenario, TOTAL } from "./testes";
 
 let db: Db, close: () => Promise<void>, c: Cenario;
@@ -351,9 +353,8 @@ describe("confirmação pelo pagamento (M8.2a)", () => {
     if (!r.ok) throw new Error(r.erro);
     const segurarCom = (codigo: string, email: string, quando: Date) => segurarDatas(db, c.org, codigo, { nome: "Visitante Fictício", email, telefone: "(21) 99999-0000" }, quando);
     const naCarencia = await segurarCom(r.cotacao.codigo, EMAIL_HOSPEDE, new Date(x.T.getTime() + 60_000));
-    // A mesma resposta de "reserva em andamento": nada diz que essa pessoa está pagando.
-    expect(naCarencia).toMatchObject({ ok: false, erro: "Já existe uma reserva em andamento com este e-mail. Conclua aquela ou aguarde o prazo dela acabar." });
-    expect(JSON.stringify(naCarencia)).not.toMatch(/pagamento/i);
+    // A mesma resposta de "reserva em andamento" (M8.2b: um texto só para os dois casos): nada diz que essa pessoa está pagando.
+    expect(naCarencia).toEqual({ ok: false, erro: ERRO_EMAIL_EM_ANDAMENTO });
     // Outro e-mail segura normalmente.
     expect((await segurarCom(r.cotacao.codigo, "outra@example.com", new Date(x.T.getTime() + 60_000))).ok).toBe(true);
     // Passada a carência, o Pix que nunca teve resposta (ainda "pendente" no sistema) não prende mais o e-mail.
@@ -371,7 +372,7 @@ describe("confirmação pelo pagamento (M8.2a)", () => {
     const tresDias = minutos(3 * 24 * 60);
     const r3 = await criarCotacao(db, c.org, { imovel: "403", entrada: "2026-11-27", saida: "2026-11-29", hospedes: "2" }, tresDias);
     if (!r3.ok) throw new Error(r3.erro);
-    expect(await segurarCom(r3.cotacao.codigo, "y@example.com", tresDias)).toMatchObject({ ok: false, erro: expect.stringContaining("reserva em andamento") });
+    expect(await segurarCom(r3.cotacao.codigo, "y@example.com", tresDias)).toEqual({ ok: false, erro: ERRO_EMAIL_EM_ANDAMENTO });
   });
 
   it("rotina de holds: um hold que não dá para fechar (impasse, trava ocupada ou outro erro) é contado e os seguintes continuam", async () => {
@@ -398,5 +399,75 @@ describe("confirmação pelo pagamento (M8.2a)", () => {
     await conferir(x.pagamentoId, minutos(3));
     expect(await gerarPix(db, c.org, x.cotacaoId, minutos(4), c.provedor)).toMatchObject({ ok: false, codigo: "nao_oferecido" });
     expect(AGORA.toISOString()).toBe("2026-10-01T15:00:00.000Z");
+  });
+});
+
+describe("confirmação pelo cartão (M8.2b)", () => {
+  const cobranca = (o: Partial<Cobranca> = {}): Cobranca => ({
+    idProvedor: "ORDTST9999",
+    referencia: "scl-x",
+    situacao: "aprovado",
+    detalhe: "processed/accredited",
+    forma: "cartao",
+    valor: TOTAL,
+    valorTransacao: TOTAL,
+    pago: TOTAL,
+    devolvido: 0,
+    devolucaoEmAndamento: false,
+    parcelas: 1,
+    idTransacao: "PAYTST9999",
+    aoVivo: false,
+    pix: null,
+    cartao: null,
+    ...o,
+  });
+  it("o valor confere: Pix igual; cartão à vista igual; cartão parcelado com juros (pela tentativa, mesmo com a leitura sem tipo e parcelas); à vista com a mais e transação diferente, não", () => {
+    const pix = { valor: TOTAL, forma: "pix" as const, parcelas: null };
+    const cartao = (parcelas: number | null) => ({ valor: TOTAL, forma: "cartao" as const, parcelas });
+    expect(valorConfere(cobranca({ forma: "pix", parcelas: null }), pix, TOTAL)).toBe(true);
+    expect(valorConfere(cobranca({ forma: "pix", parcelas: null, pago: TOTAL + 1 }), pix, TOTAL)).toBe(false);
+    expect(valorConfere(cobranca(), cartao(1), TOTAL)).toBe(true);
+    expect(valorConfere(cobranca({ parcelas: 3, pago: TOTAL + 9_000 }), cartao(3), TOTAL)).toBe(true);
+    // O GET pode vir sem o tipo e as parcelas: vale o que a tentativa mandou e o Mercado Pago validou na criação.
+    expect(valorConfere(cobranca({ parcelas: null, forma: null, pago: TOTAL + 9_000 }), cartao(3), TOTAL)).toBe(true);
+    expect(valorConfere(cobranca({ parcelas: null, forma: null, pago: TOTAL + 9_000 }), cartao(1), TOTAL)).toBe(false);
+    expect(valorConfere(cobranca({ pago: TOTAL + 100 }), cartao(1), TOTAL)).toBe(false);
+    expect(valorConfere(cobranca({ parcelas: 3, pago: TOTAL - 1 }), cartao(3), TOTAL)).toBe(false);
+    expect(valorConfere(cobranca({ parcelas: 3, valorTransacao: TOTAL + 9_000, pago: TOTAL + 9_000 }), cartao(3), TOTAL)).toBe(false);
+    expect(valorConfere(cobranca({ pago: null }), cartao(1), TOTAL)).toBe(true);
+    expect(valorConfere(null, cartao(1), TOTAL)).toBe(false);
+  });
+
+  it("cartão 3x lido com parcelas e tipo vazios e o pago com juros: confirma a reserva", async () => {
+    const s = await c.segurar();
+    c.provedor.respostaCartao = "processando";
+    const r = await c.cartao(s.cotacaoId, { parcelas: 3 });
+    const lida = { ...(await c.provedor.consultar(r.idProvedor!))!, situacao: "aprovado" as const, detalhe: "processed/accredited", parcelas: null, forma: null, pago: TOTAL + 9_000 };
+    expect(await conferir(r.pagamentoId!, minutos(2), { cobranca: lida })).toMatchObject({ ok: true, situacao: "aprovado" });
+    expect(await c.tentativa(r.pagamentoId!)).toMatchObject({ desfecho: "reserva", parcelas: 3, valorPago: TOTAL + 9_000 });
+    expect((await c.reserva(s.reservaId)).estado).toBe("confirmada");
+  });
+
+  it("confirmação tardia com outra reserva do site do mesmo e-mail confirmada depois que o cartão foi criado: aviso de possível pagamento em dobro (a regra de reviver não muda)", async () => {
+    const s = await c.segurar();
+    c.provedor.respostaCartao = "em_analise";
+    const r = await c.cartao(s.cotacaoId);
+    await expirarHoldsVencidos(db, c.org, minutos(76));
+    expect((await c.cotacao(s.cotacaoId)).estado).toBe("expirada");
+    // Outro aparelho, outro e-mail digitado na hora, depois corrigido para o mesmo: outra reserva do site confirmada.
+    const outra = await c.segurar({ entrada: "2026-11-02", saida: "2026-11-05", email: "outra@example.com" }, minutos(77));
+    const pix = await c.pix(outra.cotacaoId, minutos(77));
+    c.provedor.aprovar(pix.idProvedor);
+    await conferir(pix.pagamentoId, minutos(78));
+    await db.update(reservas).set({ hospedeEmail: EMAIL_HOSPEDE }).where(eq(reservas.id, outra.reservaId));
+    expect((await c.reserva(outra.reservaId)).estado).toBe("confirmada");
+    c.provedor.concluirAnalise(r.idProvedor!, "aprovado");
+    await conferir(r.pagamentoId!, minutos(80));
+    const p = await c.tentativa(r.pagamentoId!);
+    expect(p).toMatchObject({ desfecho: "reserva", desfechoMotivo: "confirmada_tardia" });
+    expect(p.avisos).toContain("outra_reserva_mesmo_email");
+    expect(textosDosAvisos(p.avisos).join(" ")).toContain("o hóspede pode ter pago duas vezes");
+    // Sem outra reserva do mesmo e-mail, nenhum aviso.
+    expect((await c.tentativa(pix.pagamentoId)).avisos).not.toContain("outra_reserva_mesmo_email");
   });
 });

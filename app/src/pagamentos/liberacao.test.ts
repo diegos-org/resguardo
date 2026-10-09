@@ -231,14 +231,14 @@ describe("taxa, liberação e recebimento do pagamento no site (M8.2a)", () => {
     expect((await c.tentativa(x.pagamentoId)).avisos).toEqual([]);
   });
 
-  it("liberado sem o líquido: aviso, nada lançado; data da liberação à mão antes da criação do Pix: recusada", async () => {
+  it("liberado sem o líquido: aviso, nada lançado; data da liberação à mão antes da criação do pagamento: recusada", async () => {
     const x = await paga({}, {});
     c.provedor.atualizarFinanceiro(x.idProvedor, { liberado: true, liberacaoPrevista: new Date("2026-10-02T18:00:00Z") });
     await conferir(x.pagamentoId, new Date("2026-10-03T12:00:00Z"));
     expect(await recebimentos(x.reservaId)).toEqual([]);
     expect((await c.tentativa(x.pagamentoId)).avisos).toEqual(["liberacao_sem_valor"]);
     // Pix criado em 1/10 (São Paulo): liberação em 30/9 não existe.
-    expect(await registrarLiberacaoManual(db, c.org, x.pagamentoId, { data: "2026-09-30", liquido: LIQUIDO }, null, new Date("2026-10-03T12:00:00Z"))).toEqual({ ok: false, erro: "A data da liberação não pode ser antes da criação do Pix (01/10/2026)." });
+    expect(await registrarLiberacaoManual(db, c.org, x.pagamentoId, { data: "2026-09-30", liquido: LIQUIDO }, null, new Date("2026-10-03T12:00:00Z"))).toEqual({ ok: false, erro: "A data da liberação não pode ser antes da criação do pagamento (01/10/2026)." });
     expect(await registrarLiberacaoManual(db, c.org, x.pagamentoId, { data: "2026-10-01", liquido: LIQUIDO }, null, new Date("2026-10-03T12:00:00Z"))).toEqual({ ok: true });
   });
 
@@ -250,7 +250,7 @@ describe("taxa, liberação e recebimento do pagamento no site (M8.2a)", () => {
     await conferir(p.pagamentoId, new Date("2026-10-02T03:05:00Z"));
     expect(await c.tentativa(p.pagamentoId)).toMatchObject({ desfecho: "reserva", aprovadoEm: new Date("2026-10-02T03:05:00Z") });
     const depois = new Date("2026-10-02T15:00:00Z");
-    expect(await registrarLiberacaoManual(db, c.org, p.pagamentoId, { data: "2026-09-30", liquido: LIQUIDO }, null, depois)).toEqual({ ok: false, erro: "A data da liberação não pode ser antes da criação do Pix (01/10/2026)." });
+    expect(await registrarLiberacaoManual(db, c.org, p.pagamentoId, { data: "2026-09-30", liquido: LIQUIDO }, null, depois)).toEqual({ ok: false, erro: "A data da liberação não pode ser antes da criação do pagamento (01/10/2026)." });
     expect(await registrarLiberacaoManual(db, c.org, p.pagamentoId, { data: "2026-10-01", liquido: LIQUIDO }, null, depois)).toEqual({ ok: true });
     expect((await recebimentos(s.reservaId)).map((l) => [l.estado, l.montante, l.dataCaixa])).toEqual([["realizado", LIQUIDO, "2026-10-01"]]);
   });

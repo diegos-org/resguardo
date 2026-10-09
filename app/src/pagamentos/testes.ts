@@ -1,20 +1,38 @@
 /**
  * Apoio aos testes do pagamento no site (M8.2a): um cenário fictício completo (empresa, imóvel do site com
  * leitura do Beds24 livre, proprietário, contrato de gestão, páginas legais publicadas — M7.4), relógio fixo
- * controlável e o provedor falso. Só testes importam daqui; nada usa rede nem credenciais.
+ * controlável e o provedor falso. Só testes importam daqui; nada usa rede nem credenciais. Cartão (M8.2b): dados
+ * fictícios do formulário (token, aparelho, documento) e a varredura de dados pessoais nas tabelas do pagamento.
  */
 import { and, eq } from "drizzle-orm";
 import { CONFIG_PAGAMENTO_SITE_PADRAO, salvarConfigPagamentoSite } from "@/configuracoes/pagamento-site";
 import type { VersoesLegais } from "@/configuracoes/paginas-legais-texto";
 import { publicarPaginasLegaisDeTeste } from "@/configuracoes/paginas-legais-testes";
 import { criarContrato } from "@/contratos/repositorio";
-import { beds24Calendario, cotacoes, idsExternos, imoveis, imoveisDetalhes, organizacoes, pagamentos, proprietarioImoveis, proprietarios, reservas } from "@/db/schema";
+import {
+  aceitesSite,
+  auditoria,
+  beds24Calendario,
+  cotacoes,
+  disjuntoresCartao,
+  eventosPagamento,
+  idsExternos,
+  imoveis,
+  imoveisDetalhes,
+  organizacoes,
+  pagamentos,
+  proprietarioImoveis,
+  proprietarios,
+  reservas,
+  tentativasLogin,
+} from "@/db/schema";
 import type { Db } from "@/db/types";
 import { PESOS_PADRAO_ANTIGO, PRECOS_MARKETPLACE_PADRAO } from "@/marketplace/precos";
 import { salvarPrecosMarketplace } from "@/marketplace/precos-config";
 import { registrarAceiteDoHospede } from "@/site/aceites";
 import { criarCotacao, segurarDatas } from "@/site/cotacoes";
 import { esquecerProvedorDoAmbiente } from "./ambiente";
+import { type DadosCartaoDoHospede, pagarComCartao, type ResultadoCartao } from "./cartao";
 import { ProvedorFalso } from "./falso";
 import { type PortaoCobranca, podeCobrar } from "./oferta";
 import { gerarPix } from "./pix";
@@ -28,6 +46,19 @@ export const EMAIL_HOSPEDE = "visitante@example.com";
 export const DOCUMENTO_FICTICIO = "12345678909";
 /** Chave pública fictícia do formulário do cartão (M8.2b), no formato das de teste do Mercado Pago. */
 export const CHAVE_PUBLICA_FICTICIA = "TEST-chave-publica-ficticia";
+/** Token fictício do cartão (o formulário gera um por tentativa; nunca é guardado). */
+export const TOKEN_FICTICIO = "tokFicticio0123456789abcdef0123456";
+/** Id fictício do aparelho (SDK do Mercado Pago); nunca é guardado. */
+export const DISPOSITIVO_FICTICIO = "dispositivo-ficticio-0001";
+/** O que o formulário do cartão manda por padrão nos testes: Mastercard de crédito, à vista, com CPF e aparelho fictícios. */
+export const CARTAO_FICTICIO: DadosCartaoDoHospede = {
+  token: TOKEN_FICTICIO,
+  bandeira: "master",
+  tipo: "credit_card",
+  parcelas: 1,
+  documento: { tipo: "CPF", numero: DOCUMENTO_FICTICIO },
+  dispositivo: DISPOSITIVO_FICTICIO,
+};
 /** Variáveis de ambiente de teste (nunca as do processo). */
 export const env = (v: Record<string, string> = {}) => v as unknown as NodeJS.ProcessEnv;
 
@@ -47,9 +78,21 @@ export type Cenario = {
    * Cota e segura as datas (entrada 12/10, saída 15/10, 4 pessoas, salvo `over`) e, como o hóspede que marca a caixa,
    * aceita as páginas legais publicadas (salvo `semAceite` ou sem páginas publicadas).
    */
-  segurar: (over?: Partial<{ entrada: string; saida: string; hospedes: string; email: string; semAceite: boolean }>, quando?: Date) => Promise<{ cotacaoId: string; reservaId: string; codigo: string }>;
+  segurar: (
+    over?: Partial<{ entrada: string; saida: string; hospedes: string; email: string; semAceite: boolean; origemAceite: "pix" | "cartao" }>,
+    quando?: Date,
+  ) => Promise<{ cotacaoId: string; reservaId: string; codigo: string }>;
   /** Gera o Pix e devolve a tentativa (e o id da order no provedor). */
   pix: (cotacaoId: string, quando?: Date) => Promise<{ pagamentoId: string; idProvedor: string }>;
+  /**
+   * Paga com cartão (`CARTAO_FICTICIO`, salvo `over`) e devolve o resultado e a tentativa que esta chamada criou
+   * (null quando nenhuma foi criada: recusado antes de chegar ao provedor).
+   */
+  cartao: (
+    cotacaoId: string,
+    over?: Partial<DadosCartaoDoHospede>,
+    quando?: Date,
+  ) => Promise<{ resultado: ResultadoCartao; pagamentoId: string | null; idProvedor: string | null }>;
   tentativa: (id: string) => Promise<typeof pagamentos.$inferSelect>;
   reserva: (id: string) => Promise<typeof reservas.$inferSelect>;
   cotacao: (id: string) => Promise<typeof cotacoes.$inferSelect>;
@@ -91,7 +134,7 @@ export async function montarCenario(db: Db, o: { semPaginasLegais?: boolean } = 
       const h = await segurarDatas(db, org, r.cotacao.codigo, { nome: "Visitante Fictício", email: over.email ?? EMAIL_HOSPEDE, telefone: "(21) 99999-0000" }, quando);
       if (!h.ok) throw new Error(h.erro);
       if (!over.semAceite && c.versoesLegais) {
-        const a = await registrarAceiteDoHospede(db, org, h.cotacao.id, c.versoesLegais, "pix", quando);
+        const a = await registrarAceiteDoHospede(db, org, h.cotacao.id, c.versoesLegais, over.origemAceite ?? "pix", quando);
         if (!a.ok) throw new Error(a.erro);
       }
       return { cotacaoId: h.cotacao.id, reservaId: h.cotacao.reservaId!, codigo: h.cotacao.codigo };
@@ -101,6 +144,13 @@ export async function montarCenario(db: Db, o: { semPaginasLegais?: boolean } = 
       if (!r.ok) throw new Error(`${r.codigo}: ${r.erro}`);
       const p = await c.tentativa(r.pagamentoId);
       return { pagamentoId: p.id, idProvedor: p.idProvedor! };
+    },
+    async cartao(cotacaoId, over = {}, quando = relogio.agora) {
+      const doCartao = and(eq(pagamentos.cotacaoId, cotacaoId), eq(pagamentos.forma, "cartao"));
+      const antes = new Set((await db.select({ id: pagamentos.id }).from(pagamentos).where(doCartao)).map((x) => x.id));
+      const resultado = await pagarComCartao(db, org, cotacaoId, quando, provedor, { ...CARTAO_FICTICIO, ...over });
+      const nova = (await db.select().from(pagamentos).where(doCartao)).find((x) => !antes.has(x.id));
+      return { resultado, pagamentoId: nova?.id ?? null, idProvedor: nova?.idProvedor ?? null };
     },
     async tentativa(id) {
       const [p] = await db.select().from(pagamentos).where(and(eq(pagamentos.id, id), eq(pagamentos.organizacaoId, org)));
@@ -116,4 +166,21 @@ export async function montarCenario(db: Db, o: { semPaginasLegais?: boolean } = 
     },
   };
   return c;
+}
+
+/**
+ * Varre as tabelas do pagamento (pagamentos, eventos, auditoria, aceites, disjuntor, freios de tentativas) atrás de
+ * `valores` (token, documento, id do aparelho, e-mails, nome do titular…) e devolve os que apareceram — o esperado é
+ * nenhum.
+ */
+export async function semDadosPessoais(db: Db, valores: string[]): Promise<string[]> {
+  const tudo = JSON.stringify([
+    await db.select().from(pagamentos),
+    await db.select().from(eventosPagamento),
+    await db.select().from(auditoria),
+    await db.select().from(aceitesSite),
+    await db.select().from(disjuntoresCartao),
+    await db.select().from(tentativasLogin),
+  ]);
+  return valores.filter((v) => v && tudo.includes(v));
 }
