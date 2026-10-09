@@ -57,3 +57,25 @@ describe("textos do pagamento por Pix (M8.2a): editáveis, com texto-base", () =
     for (const k of ["pagamentoConvite", "pagamentoAguardando", "pagamentoSemDatas"] as const) expect(TEXTOS_SITE_INICIAIS[k]).not.toMatch(/beds24|cart[ãa]o/i);
   });
 });
+
+describe("textos do pagamento com cartão (M8.2b)", () => {
+  it("o convite não cita a forma (vale para Pix e cartão) e os rótulos falam do pagamento no site", () => {
+    expect(TEXTOS_SITE_INICIAIS.pagamentoConvite).toBe("Pague aqui mesmo: assim que o pagamento é aprovado, a reserva fica confirmada, sem precisar esperar a equipe.");
+    expect(TEXTOS_SITE_INICIAIS.pagamentoConvite).not.toMatch(/pix/i);
+    const rotulo = (k: string) => CAMPOS_TEXTOS_SITE.find((c) => c.chave === k)!.rotulo;
+    expect(rotulo("pagamentoConvite")).toMatch(/^Pagamento no site:/);
+    expect(rotulo("pagamentoSemDatas")).toMatch(/^Pagamento no site:/);
+    expect(rotulo("pagamentoAguardando")).toMatch(/^Pagamento por Pix:/);
+  });
+
+  it("cartão em análise: editável, obrigatório, sem horário (a página mostra o prazo numa linha fixa) e sem citar o Beds24", () => {
+    const campo = CAMPOS_TEXTOS_SITE.find((c) => c.chave === "pagamentoCartaoAnalise")!;
+    expect(campo).toMatchObject({ limite: 400, linhas: 3 });
+    expect(TEXTOS_SITE_OBRIGATORIOS).toContain("pagamentoCartaoAnalise");
+    const texto = TEXTOS_SITE_INICIAIS.pagamentoCartaoAnalise;
+    expect(texto).toContain("até 2 dias úteis");
+    expect(texto.length).toBeLessThanOrEqual(campo.limite);
+    expect(texto).not.toMatch(/\d{1,2}:\d{2}|beds24/i);
+    expect(validarTextosSite({ ...TEXTOS_SITE_INICIAIS, pagamentoCartaoAnalise: " " })).toMatchObject({ ok: false, erros: { pagamentoCartaoAnalise: "Este texto não pode ficar vazio." } });
+  });
+});

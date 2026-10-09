@@ -9,23 +9,25 @@ import { versaoAtualDaPaginaLegal } from "@/configuracoes/paginas-legais";
 import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
 import { aceiteParaPagina } from "@/site/aceites";
 import { segurarDatasAcao } from "@/site/acoes";
-import { continuarPagamentoAcao, gerarPixAcao } from "@/site/acoes-pagamento";
+import { continuarPagamentoAcao, gerarPixAcao, pagarComCartaoAcao } from "@/site/acoes-pagamento";
 import { autorizadoNaCotacao } from "@/site/checkout";
 import { codigoCotacaoValido, textoDaCotacao, verCotacao } from "@/site/cotacoes";
-import { pixPossivel, portaoDoSite, vistaDoPagamento } from "@/site/pagamento";
-import { mensagemDoContato, TITULO_PAGAMENTO } from "@/site/pagamento-vista";
+import { cartaoNoSite, pixPossivel, portaoDoSite, vistaDoPagamento } from "@/site/pagamento";
+import { contatoPrincipal, ESTADOS_QUE_PAGAM, linhaDaAnalise, mensagemDoContato, TITULO_PAGAMENTO } from "@/site/pagamento-vista";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
 
 export const generateMetadata = () => metadadosDoSite("Cotação");
 
-/** Situações em que falar com a equipe é o caminho principal (não há Pix a pagar). */
-const CONTATO_PRINCIPAL = new Set(["pix_esgotado", "aprovado_sem_datas", "devolucao_pedida", "devolvido"]);
-/** Situações que mostram o aceite das páginas legais (M7.4): a caixa antes do Pix, ou o aceite da reserva confirmada. */
-const COM_ACEITE = new Set(["pagar", "pix_vencido", "confirmada"]);
+/**
+ * Situações que mostram o aceite das páginas legais (M7.4): a caixa antes do Pix ou do cartão (M8.2b) em toda situação
+ * que pode pagar — a mesma lista que decide a oferta —, ou o aceite da reserva confirmada.
+ */
+const COM_ACEITE = new Set([...ESTADOS_QUE_PAGAM, "confirmada"]);
 
 /**
  * Página pública da cotação (M8.1): sempre revalidada ao abrir; nada é gravado só por visitar. Com o pagamento no
- * site (M8.2a), a situação do pagamento vence a da cotação ("expirada", "cancelada") e o Pix vem primeiro.
+ * site (M8.2a), a situação do pagamento vence a da cotação ("expirada", "cancelada") e o pagamento vem primeiro (o Pix
+ * em destaque; o cartão de crédito ao lado quando ligado, M8.2b).
  */
 export default async function PaginaCotacao({ params }: PageProps<"/reservar/[codigo]">) {
   const { codigo: bruto } = await params;
@@ -49,9 +51,12 @@ export default async function PaginaCotacao({ params }: PageProps<"/reservar/[co
       ? await pixPossivel(db, organizacaoId, { imovel: { id: c.imovelId }, checkin: c.checkin, checkout: c.checkout, situacao: c.situacao, total: c.total }, gate)
       : false;
   const ambienteTeste = gate.ok || (pagamento?.ambienteTeste ?? false);
-  // M7.4: o aceite das páginas legais (caixa no "Gerar Pix", ou as versões aceitas na reserva confirmada) e, no
-  // formulário de segurar as datas, o link da Política de privacidade em vigor.
-  const aceite = pagamento && COM_ACEITE.has(pagamento.estado) ? await aceiteParaPagina(db, organizacaoId, { id: c.id, checkin: c.checkin, fuso: c.fuso, reservaId: c.reservaId }, agora) : null;
+  // Com o cartão ligado (M8.2b), os textos de antes de segurar dizem "por Pix ou cartão".
+  const cartaoNoPagamento = pagamentoNoSite && (await cartaoNoSite(db, organizacaoId, gate, agora));
+  // M7.4: o aceite das páginas legais (caixa no "Gerar Pix" ou no cartão, só quando algum pode aparecer; ou as versões
+  // aceitas na reserva confirmada) e, no formulário de segurar as datas, o link da Política de privacidade em vigor.
+  const comFormulario = !!pagamento && (pagamento.estado === "confirmada" || pagamento.podeGerar || pagamento.podePagarCartao);
+  const aceite = pagamento && COM_ACEITE.has(pagamento.estado) && comFormulario ? await aceiteParaPagina(db, organizacaoId, { id: c.id, checkin: c.checkin, fuso: c.fuso, reservaId: c.reservaId }, agora) : null;
   const mostraFormulario = vista.estado === "aberta" && !vista.mudou;
   // A Política de privacidade vale assim que publicada, mesmo com os termos ou o cancelamento ainda em preparação.
   const privacidade = mostraFormulario ? await versaoAtualDaPaginaLegal(db, organizacaoId, "privacidade") : null;
@@ -73,8 +78,11 @@ export default async function PaginaCotacao({ params }: PageProps<"/reservar/[co
           whatsapp={conteudo.whatsapp}
           email={conteudo.email}
           pagamentoNoSite={pagamentoNoSite}
+          comCartao={cartaoNoPagamento}
           formulario={
-            mostraFormulario ? <FormSegurar codigo={codigo} minutos={regras.site.minutosHold} acao={segurarDatasAcao} comPagamento={pagamentoNoSite} privacidade={privacidade} /> : null
+            mostraFormulario ? (
+              <FormSegurar codigo={codigo} minutos={regras.site.minutosHold} acao={segurarDatasAcao} comPagamento={pagamentoNoSite} comCartao={cartaoNoPagamento} privacidade={privacidade} />
+            ) : null
           }
           pagamento={
             pagamento && pagamento.estado !== "sem_pagamento"
@@ -91,6 +99,7 @@ export default async function PaginaCotacao({ params }: PageProps<"/reservar/[co
                         convite: textos.pagamentoConvite || TEXTOS_SITE_INICIAIS.pagamentoConvite,
                         aguardando: textos.pagamentoAguardando || TEXTOS_SITE_INICIAIS.pagamentoAguardando,
                         semDatas: textos.pagamentoSemDatas || TEXTOS_SITE_INICIAIS.pagamentoSemDatas,
+                        cartaoAnalise: textos.pagamentoCartaoAnalise || TEXTOS_SITE_INICIAIS.pagamentoCartaoAnalise,
                       }}
                       contato={
                         conteudo.whatsapp || conteudo.email ? (
@@ -98,14 +107,16 @@ export default async function PaginaCotacao({ params }: PageProps<"/reservar/[co
                             whatsapp={conteudo.whatsapp}
                             email={conteudo.email}
                             codigo={c.codigo}
-                            texto={mensagemDoContato(textoDaCotacao(vista), pagamento.estado, pagamento.reservaCodigo)}
-                            secundario={!CONTATO_PRINCIPAL.has(pagamento.estado)}
+                            texto={mensagemDoContato(textoDaCotacao(vista), pagamento.estado, pagamento.reservaCodigo, pagamento.forma)}
+                            secundario={!contatoPrincipal(pagamento)}
                           />
                         ) : null
                       }
                       gerarPix={gerarPixAcao.bind(null, codigo)}
                       continuar={continuarPagamentoAcao}
+                      pagarComCartao={pagarComCartaoAcao.bind(null, codigo)}
                       aceite={aceite}
+                      linhaAnalise={pagamento.estado === "cartao_em_analise" ? linhaDaAnalise(pagamento.prazoDasDatas, agora, c.fuso) : null}
                     />
                   ),
                 }

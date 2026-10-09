@@ -36,10 +36,11 @@ export function BotaoContato({ whatsapp, email, codigo, texto, secundario = fals
   return null;
 }
 
-/** "Nenhum pagamento é feito no site…": com o Pix oferecido para a cotação, diz como é o pagamento. */
+/** "Nenhum pagamento é feito no site…": com o pagamento oferecido para a cotação, diz como é o pagamento. */
 export const RODAPE_COTACAO = {
   semPagamento: "Nenhum pagamento é feito no site por enquanto. A reserva é confirmada pela equipe.",
   comPagamento: "Nada é cobrado ao segurar as datas: o pagamento é por Pix, aqui no site, com as datas seguradas.",
+  comCartao: "Nada é cobrado ao segurar as datas: o pagamento é por Pix ou cartão de crédito, aqui no site, com as datas seguradas.",
 } as const;
 
 /**
@@ -48,7 +49,8 @@ export const RODAPE_COTACAO = {
  * consultar de novo. `formulario` é o formulário de contato (só faz sentido na cotação aberta e válida).
  * `pagamento` (M8.2a): quando há pagamento no site (Pix oferecido, aguardando, recebido…), o título e o quadro
  * dele vêm primeiro e substituem o que o estado da cotação diria — um pagamento vence "expirada" e "cancelada".
- * `pagamentoNoSite`: o site oferece o Pix para esta cotação (muda o texto "nenhum pagamento é feito no site").
+ * `pagamentoNoSite`: o site oferece o Pix para esta cotação (muda o texto "nenhum pagamento é feito no site");
+ * `comCartao` (M8.2b): o cartão de crédito também está ligado ("por Pix ou cartão").
  */
 export function Cotacao({
   vista,
@@ -57,6 +59,7 @@ export function Cotacao({
   formulario,
   pagamento,
   pagamentoNoSite = false,
+  comCartao = false,
 }: {
   vista: CotacaoVista;
   whatsapp: string | null;
@@ -64,6 +67,7 @@ export function Cotacao({
   formulario?: ReactNode;
   pagamento?: { titulo: string; conteudo: ReactNode };
   pagamentoNoSite?: boolean;
+  comCartao?: boolean;
 }) {
   const c = vista.cotacao;
   const novaConsulta = `/consulta?${new URLSearchParams({ imovel: c.imovelCodigo, entrada: c.checkin, saida: c.checkout, hospedes: String(c.hospedes) })}`;
@@ -117,7 +121,7 @@ export function Cotacao({
         <>
           <p className={styles.texto} style={{ marginTop: 12 }}>
             {pagamentoNoSite
-              ? "Valor conferido agora. Para garantir as datas, deixe seu contato: elas ficam seguradas para você por alguns minutos, para pagar por Pix aqui mesmo ou falar com a equipe. Sem pagamento ou confirmação até lá, voltam à venda."
+              ? `Valor conferido agora. Para garantir as datas, deixe seu contato: elas ficam seguradas para você por alguns minutos, para pagar por ${comCartao ? "Pix ou cartão" : "Pix"} aqui mesmo ou falar com a equipe. Sem pagamento ou confirmação até lá, voltam à venda.`
               : "Valor conferido agora. Para garantir as datas enquanto fala com a equipe, deixe seu contato: elas ficam seguradas para você por alguns minutos e, se não houver confirmação até lá, voltam à venda."}
           </p>
           {formulario}
@@ -175,7 +179,7 @@ export function Cotacao({
       )}
       {!pagamento && (
         <p className={styles.miudo} style={{ marginTop: 12 }}>
-          {pagamentoNoSite ? RODAPE_COTACAO.comPagamento : RODAPE_COTACAO.semPagamento}
+          {pagamentoNoSite ? (comCartao ? RODAPE_COTACAO.comCartao : RODAPE_COTACAO.comPagamento) : RODAPE_COTACAO.semPagamento}
         </p>
       )}
     </section>

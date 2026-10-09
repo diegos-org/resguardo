@@ -1,17 +1,19 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { cotacoes, imoveis, pagamentos, tentativasLogin } from "@/db/schema";
+import { CONFIG_PAGAMENTO_SITE_PADRAO, salvarConfigPagamentoSite } from "@/configuracoes/pagamento-site";
+import { cotacoes, disjuntoresCartao, imoveis, pagamentos, tentativasLogin } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { emitirAutorizacao, validadeDaAutorizacao } from "@/pagamentos/autorizacao";
 import { conferirTentativa } from "@/pagamentos/conferencia";
 import { ERROS_LIMITE, LIMITES_PAGAMENTO } from "@/pagamentos/limites";
 import type { PortaoCobranca } from "@/pagamentos/oferta";
+import type { CodigoFalhaCartao } from "@/pagamentos/cartao";
 import { type CodigoFalhaPix, gerarPix } from "@/pagamentos/pix";
 import { ProvedorFalso } from "@/pagamentos/falso";
 import { ErroProvedor } from "@/pagamentos/provedor";
-import { AGORA, type Cenario, EMAIL_HOSPEDE, env, minutos, montarCenario, TOTAL } from "@/pagamentos/testes";
-import { CACHE_PAGAMENTO, MENSAGENS_PIX_HOSPEDE, mensagemSemPix, pixPossivel, portaoDoSite, responderPagamento, vistaDoPagamento } from "./pagamento";
+import { AGORA, type Cenario, CHAVE_PUBLICA_FICTICIA, EMAIL_HOSPEDE, env, minutos, montarCenario, TOTAL } from "@/pagamentos/testes";
+import { CACHE_PAGAMENTO, cartaoNoSite, MENSAGENS_CARTAO_HOSPEDE, MENSAGENS_PIX_HOSPEDE, mensagemSemPix, pixPossivel, portaoDoSite, responderPagamento, vistaDoPagamento } from "./pagamento";
 
 let db: Db, close: () => Promise<void>, c: Cenario;
 beforeAll(async () => { ({ db, close } = await createTestDb()); });
@@ -25,7 +27,15 @@ const desligado: PortaoCobranca = { ok: false, motivo: "desligado", texto: "desl
 const vista = (cotacaoId: string, quando: Date, comAutorizacao: boolean, gate: PortaoCobranca = c.gate) => vistaDoPagamento(db, c.org, cotacaoId, quando, { comAutorizacao, gate: async () => gate });
 const token = (cotacaoId: string) => emitirAutorizacao(cotacaoId, validadeDaAutorizacao(minutos(30), AGORA));
 const consultar = (codigo: string, o: { token?: string; origem?: string | null; quando?: Date; organizacao?: string | null } = {}) =>
-  responderPagamento(db, codigo, { organizacao: async () => (o.organizacao === undefined ? c.org : o.organizacao), token: () => o.token, origem: o.origem === undefined ? "203.0.113.50" : o.origem, agora: o.quando ?? minutos(1), env: env(), provedor: c.provedor });
+  responderPagamento(db, codigo, {
+    organizacao: async () => (o.organizacao === undefined ? c.org : o.organizacao),
+    token: () => o.token,
+    origem: o.origem === undefined ? "203.0.113.50" : o.origem,
+    agora: o.quando ?? minutos(1),
+    env: env(),
+    provedor: c.provedor,
+    chavePublica: CHAVE_PUBLICA_FICTICIA,
+  });
 
 describe("o que a página da cotação mostra do pagamento (M8.2a)", () => {
   it("'pagar' só com o Pix oferecido (a oferta só é conferida quando decide); QR só com a autorização, já pronto para o navegador", async () => {
@@ -234,5 +244,116 @@ describe("rota que a página consulta enquanto espera (M8.2a)", () => {
     expect(await (await consultar(s.codigo, { quando: minutos(5) })).json()).toMatchObject({ estado: "pagar" });
     await db.update(cotacoes).set({ holdAte: minutos(1) }).where(eq(cotacoes.id, s.cotacaoId));
     expect(await (await consultar(s.codigo, { quando: minutos(5) })).json()).toMatchObject({ estado: "sem_pagamento", holdAte: null });
+  });
+});
+
+describe("cartão de crédito na página da cotação (M8.2b)", () => {
+  const FORMULARIO = { chavePublica: CHAVE_PUBLICA_FICTICIA, valor: TOTAL, parcelasMaximas: null, emailTeste: "test@testuser.com" };
+  const desligarCartao = () => salvarConfigPagamentoSite(db, c.org, { ...CONFIG_PAGAMENTO_SITE_PADRAO, oferecer: true, cartao: false }, null);
+
+  it("oferecido ao lado do Pix: o formulário (chave pública, valor da cotação, parcelas, e-mail de teste) só com o cookie; nada pessoal", async () => {
+    const s = await c.segurar();
+    const com = await vista(s.cotacaoId, AGORA, true);
+    expect(com).toMatchObject({ estado: "pagar", podeGerar: true, podePagarCartao: true, cartao: FORMULARIO, cartaoRestantes: 3 });
+    expect(await vista(s.cotacaoId, AGORA, false)).toMatchObject({ estado: "pagar", podeGerar: true, podePagarCartao: true, cartao: null });
+    expect(JSON.stringify(com)).not.toContain(EMAIL_HOSPEDE);
+    // Parcelas do painel vão ao formulário.
+    await salvarConfigPagamentoSite(db, c.org, { ...CONFIG_PAGAMENTO_SITE_PADRAO, oferecer: true, cartao: true, parcelasMaximas: 6 }, null);
+    expect((await vista(s.cotacaoId, AGORA, true))?.cartao).toEqual({ ...FORMULARIO, parcelasMaximas: 6 });
+  });
+
+  it("cartão desligado no painel, sem chave pública ou com o disjuntor aberto: só o Pix (o Pix nunca para por eles)", async () => {
+    const s = await c.segurar();
+    await desligarCartao();
+    expect(await vista(s.cotacaoId, AGORA, true)).toMatchObject({ estado: "pagar", podeGerar: true, podePagarCartao: false, cartao: null });
+    await salvarConfigPagamentoSite(db, c.org, { ...CONFIG_PAGAMENTO_SITE_PADRAO, oferecer: true, cartao: true }, null);
+    if (!c.gate.ok) throw new Error("portão");
+    expect(await vista(s.cotacaoId, AGORA, true, { ...c.gate, chavePublica: null })).toMatchObject({ podeGerar: true, podePagarCartao: false, cartao: null });
+    await db.insert(disjuntoresCartao).values({ organizacaoId: c.org, abertoEm: AGORA, ate: minutos(60), recusas: 8, janela: "30min" });
+    expect(await vista(s.cotacaoId, minutos(1), true)).toMatchObject({ estado: "pagar", podeGerar: true, podePagarCartao: false, cartao: null });
+  });
+
+  it("Pix aguardando: sem 'Gerar Pix' (seria o mesmo), mas o cartão é outra forma; a rota leva os dois sinais", async () => {
+    const s = await c.segurar();
+    await c.pix(s.cotacaoId);
+    expect(await vista(s.cotacaoId, minutos(1), true)).toMatchObject({ estado: "pix_aguardando", podeGerar: false, podePagarCartao: true, cartao: FORMULARIO });
+    const j = await (await consultar(s.codigo, { token: token(s.cotacaoId), quando: minutos(1) })).json();
+    expect(j).toMatchObject({ estado: "pix_aguardando", podeGerar: false, podePagarCartao: true, cartao: FORMULARIO });
+    expect(await (await consultar(s.codigo, { quando: minutos(1) })).json()).toMatchObject({ podePagarCartao: true, cartao: null });
+  });
+
+  it("os 3 Pix gastos: esgotado, mas ainda dá para pagar com cartão", async () => {
+    const s = await c.segurar();
+    const conferir = (id: string, quando: Date) => conferirTentativa(db, c.org, id, c.provedor, quando, { origem: "rotina", forcar: true });
+    for (const t of [0, 31, 62]) {
+      const r = await gerarPix(db, c.org, s.cotacaoId, minutos(t), c.provedor);
+      if (!r.ok) throw new Error(r.erro);
+      c.provedor.expirar((await c.tentativa(r.pagamentoId)).idProvedor!);
+      await conferir(r.pagamentoId, minutos(t + 30.5));
+    }
+    expect(await vista(s.cotacaoId, minutos(93), true)).toMatchObject({ estado: "pix_esgotado", podeGerar: false, podePagarCartao: true, cartao: FORMULARIO });
+  });
+
+  it("desafio do banco: o endereço só com o cookie; o Pix e outro cartão continuam oferecidos (o domínio cancela o desafio antes)", async () => {
+    const s = await c.segurar();
+    c.provedor.respostaCartao = "desafio";
+    const { resultado } = await c.cartao(s.cotacaoId);
+    expect(resultado).toMatchObject({ ok: true, situacao: "desafio" });
+    const com = await vista(s.cotacaoId, minutos(1), true);
+    expect(com).toMatchObject({ estado: "cartao_desafio", forma: "cartao", podeGerar: true, podePagarCartao: true, cartaoRestantes: 2 });
+    expect(com?.desafioUrl).toMatch(/^https:\/\/www\.mercadopago\.com\.br\//);
+    expect(await vista(s.cotacaoId, minutos(1), false)).toMatchObject({ estado: "cartao_desafio", desafioUrl: null, cartao: null });
+  });
+
+  it("cartão em análise: nada de outro jeito (nem Pix nem cartão), o prazo das datas vai para a linha fixa, e a página acompanha", async () => {
+    const s = await c.segurar();
+    c.provedor.respostaCartao = "em_analise";
+    await c.cartao(s.cotacaoId);
+    const v = await vista(s.cotacaoId, minutos(2), true);
+    expect(v).toMatchObject({ estado: "cartao_em_analise", podeGerar: false, podePagarCartao: false, cartao: null, forma: "cartao" });
+    expect(v?.prazoDasDatas).toBe((await c.cotacao(s.cotacaoId)).holdAte!.toISOString());
+  });
+
+  it("cartão recusado: o mesmo texto para todo motivo (o motivo nunca chega); esgotadas as 3 tentativas, só o Pix", async () => {
+    const s = await c.segurar();
+    c.provedor.respostaCartao = "recusado";
+    await c.cartao(s.cotacaoId);
+    const v = await vista(s.cotacaoId, minutos(1), true);
+    expect(v).toMatchObject({ estado: "cartao_recusado", recusa: "cartao", podeGerar: true, podePagarCartao: true, cartaoRestantes: 2 });
+    expect(JSON.stringify(v)).not.toContain("rejected_by_issuer");
+    await c.cartao(s.cotacaoId, {}, minutos(2));
+    await c.cartao(s.cotacaoId, {}, minutos(3));
+    expect(await vista(s.cotacaoId, minutos(4), true)).toMatchObject({ estado: "cartao_recusado", cartaoRestantes: 0, podeGerar: true, podePagarCartao: false, cartao: null });
+  });
+
+  it("cartão marcado como real (live_mode) no teste: nenhuma oferta, de nenhuma forma", async () => {
+    const s = await c.segurar();
+    c.provedor.aoVivo = true;
+    expect((await c.cartao(s.cotacaoId)).resultado).toMatchObject({ ok: false, codigo: "ao_vivo" });
+    expect(await vista(s.cotacaoId, minutos(1), true)).toMatchObject({ podeGerar: false, podePagarCartao: false, cartao: null });
+  });
+
+  it("textos de antes de segurar: o cartão ligado só com as travas, a chave pública, a chave do painel e o disjuntor fechado", async () => {
+    expect(await cartaoNoSite(db, c.org, c.gate, AGORA)).toBe(true);
+    expect(await cartaoNoSite(db, c.org, desligado, AGORA)).toBe(false);
+    if (!c.gate.ok) throw new Error("portão");
+    expect(await cartaoNoSite(db, c.org, { ...c.gate, chavePublica: null }, AGORA)).toBe(false);
+    await db.insert(disjuntoresCartao).values({ organizacaoId: c.org, abertoEm: AGORA, ate: null, recusas: 20, janela: "24h", reincidente: true });
+    expect(await cartaoNoSite(db, c.org, c.gate, minutos(1))).toBe(false);
+    await db.delete(disjuntoresCartao);
+    await desligarCartao();
+    expect(await cartaoNoSite(db, c.org, c.gate, AGORA)).toBe(false);
+  });
+
+  it("mensagens ao hóspede: uma para cada falha do cartão; toda recusa com o mesmo texto; nada de painel, Beds24 ou texto do provedor", () => {
+    const codigos: CodigoFalhaCartao[] = [
+      "nao_encontrada", "nao_oferecido", "indisponivel", "em_andamento", "em_analise", "ja_pago", "limite", "limite_geral", "parcelas", "so_credito",
+      "dados_cartao", "recusado", "verificacao", "provedor", "incerto", "ocupado", "ao_vivo", "aceite_pendente", "aceite_mudou", "prazo",
+    ];
+    expect(Object.keys(MENSAGENS_CARTAO_HOSPEDE).sort()).toEqual([...codigos].sort());
+    for (const m of Object.values(MENSAGENS_CARTAO_HOSPEDE)) expect(m).not.toMatch(/Configurações|painel|Beds24|contrato|proprietário|disjuntor|recusas|rejected|high_risk/i);
+    expect(MENSAGENS_CARTAO_HOSPEDE.recusado).toBe("Não foi possível aprovar o pagamento com este cartão. Confira os dados, use outro cartão ou pague com Pix.");
+    expect(MENSAGENS_CARTAO_HOSPEDE.limite_geral).toBe("Muitas tentativas com cartão agora há pouco. Pague com Pix ou fale com a equipe pelo WhatsApp.");
+    expect(MENSAGENS_CARTAO_HOSPEDE.incerto).toContain("Não pague de novo");
   });
 });

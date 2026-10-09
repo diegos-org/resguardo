@@ -10,6 +10,11 @@ const props = {
   limiteNome: 22,
   visiveis: 10,
   categoriaPadrao: "Taxa do pagamento do site",
+  parcelasLimite: 36,
+  opcoesTresDS: [
+    { valor: "on_fraud_risk", texto: "Quando houver risco (recomendado): texto do servidor" },
+    { valor: "never", texto: "Nunca: texto do servidor" },
+  ],
   editar: true,
 };
 afterEach(cleanup);
@@ -39,4 +44,38 @@ it("quem só lê o financeiro vê as regras sem poder salvar", () => {
   expect((screen.getByLabelText(/Oferecer pagamento no site/).closest("fieldset") as HTMLFieldSetElement).disabled).toBe(true);
   expect(screen.queryByRole("button", { name: "Salvar" })).toBeNull();
   expect(screen.getByText("Só quem edita o financeiro muda estas regras.")).toBeTruthy();
+});
+
+it("cartão de crédito (M8.2b): ligar, máximo de parcelas (vazio = o do Mercado Pago) e a verificação do banco com os textos do servidor; juros do hóspede", async () => {
+  const salvar = vi.fn().mockResolvedValue({ ok: true, aviso: "Salvo." });
+  const { container } = render(<FormPagamentoSite {...props} salvar={salvar} />);
+  const cartao = screen.getByLabelText(/Oferecer cartão de crédito/) as HTMLInputElement;
+  expect(cartao.checked).toBe(false);
+  const parcelas = screen.getByLabelText(/Número máximo de parcelas/) as HTMLInputElement;
+  expect(parcelas.value).toBe("");
+  expect(parcelas.placeholder).toBe("máximo do Mercado Pago");
+  expect(parcelas.max).toBe("36");
+  const tresDS = screen.getByLabelText(/Verificação do banco/) as HTMLSelectElement;
+  expect(tresDS.value).toBe("on_fraud_risk");
+  expect([...tresDS.options].map((o) => o.textContent)).toEqual(["Quando houver risco (recomendado): texto do servidor", "Nunca: texto do servidor"]);
+  expect(container.textContent).toContain("pagos pelo hóspede");
+  expect(container.textContent).toContain("nunca oferece “parcelamento sem acréscimo”");
+  fireEvent.click(cartao);
+  fireEvent.change(parcelas, { target: { value: "6" } });
+  fireEvent.change(tresDS, { target: { value: "never" } });
+  fireEvent.submit(screen.getByRole("form", { name: "Pagamento no site" }));
+  await waitFor(() => expect(salvar).toHaveBeenCalledTimes(1));
+  const [, dados] = salvar.mock.calls[0] as [unknown, FormData];
+  expect([dados.get("cartao"), dados.get("parcelasMaximas"), dados.get("tresDS")]).toEqual(["on", "6", "never"]);
+});
+
+it("cartão: o que estava salvo aparece; um erro devolve o que foi digitado com a mensagem no campo", async () => {
+  const salvar = vi.fn().mockResolvedValue({ erros: { parcelasMaximas: "Use um número de 1 a 36 (vazio = o máximo que o Mercado Pago permitir)." }, mensagem: "Confira os campos destacados.", valores: { cartao: "on", parcelasMaximas: "40", tresDS: "never" } });
+  render(<FormPagamentoSite {...props} config={{ ...props.config, cartao: true, parcelasMaximas: 3, tresDS: "never" }} salvar={salvar} />);
+  expect((screen.getByLabelText(/Oferecer cartão de crédito/) as HTMLInputElement).checked).toBe(true);
+  expect((screen.getByLabelText(/Número máximo de parcelas/) as HTMLInputElement).value).toBe("3");
+  expect((screen.getByLabelText(/Verificação do banco/) as HTMLSelectElement).value).toBe("never");
+  fireEvent.submit(screen.getByRole("form", { name: "Pagamento no site" }));
+  await waitFor(() => expect(screen.getByText("Use um número de 1 a 36 (vazio = o máximo que o Mercado Pago permitir).")).toBeTruthy());
+  expect((screen.getByLabelText(/Número máximo de parcelas/) as HTMLInputElement).getAttribute("aria-invalid")).toBe("true");
 });

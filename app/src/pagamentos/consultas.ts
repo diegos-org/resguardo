@@ -76,6 +76,11 @@ export type VistaPagamentoHospede = {
   desafioUrl: string | null;
   /** Cartão encerrado sem dinheiro: recusado (o mesmo texto para todo motivo) ou a verificação do banco não concluída. */
   recusa: "cartao" | "verificacao" | null;
+  /**
+   * Fim do prazo das datas, mesmo já passado — só no cartão em análise, para a linha fixa da página ("seguradas até…" ou
+   * "o prazo acabou às…"); null nas outras situações.
+   */
+  prazoDasDatas: Date | null;
   /** Código SCL da reserva confirmada pelo pagamento. */
   reservaCodigo: string | null;
   /** Reserva confirmada e outro pagamento da mesma cotação será devolvido (pagamento em dobro). */
@@ -125,6 +130,7 @@ export async function vistaDaCotacaoParaHospede(db: Db, organizacaoId: string, c
     forma: quemManda?.forma ?? null,
     desafioUrl: null,
     recusa: null,
+    prazoDasDatas: null,
     reservaCodigo: null,
     pagamentoEmDobro: false,
     devolucao: null,
@@ -177,7 +183,7 @@ export async function vistaDaCotacaoParaHospede(db: Db, organizacaoId: string, c
       // Pago); sem ele, a página diz que não deu para abrir a verificação e oferece os outros caminhos.
       if (ultima.etapaCartao === "desafio") return { ...base, estado: "cartao_desafio", desafioUrl: o.comAutorizacao ? urlDoDesafio(ultima.desafioUrl) : null };
       // Em análise, mesmo depois do prazo das datas: o pagamento ainda pode ser aprovado.
-      if (ultima.etapaCartao === "analise") return { ...base, estado: "cartao_em_analise" };
+      if (ultima.etapaCartao === "analise") return { ...base, estado: "cartao_em_analise", prazoDasDatas: c.holdAte };
       return { ...base, estado: "verificando" };
     }
     // Recusado, cancelado ou vencido: com as datas seguradas, o hóspede tenta de novo (o mesmo texto para toda recusa).

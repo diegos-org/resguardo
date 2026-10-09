@@ -13,6 +13,7 @@ const m = vi.hoisted(() => ({
   liberar: vi.fn(),
   estornar: vi.fn(),
   salvar: vi.fn(),
+  religar: vi.fn(),
 }));
 vi.mock("@/acesso/sessao-atual", () => ({ exigirSessaoPainel: m.sessao }));
 vi.mock("@/db/client", () => ({ getDb: () => ({ banco: true }) }));
@@ -22,8 +23,9 @@ vi.mock("./conferencia", () => ({ conferirTentativa: m.conferir }));
 vi.mock("./rotina", () => ({ conferirPendentes: m.pendentes }));
 vi.mock("./devolucao", () => ({ devolverPeloProvedor: m.devolver, registrarDevolucaoPorFora: m.porFora, registrarTaxaPerdida: m.taxa }));
 vi.mock("./liberacao", () => ({ registrarLiberacaoManual: m.liberar, estornarLiberacaoManual: m.estornar }));
+vi.mock("./disjuntor", () => ({ religarCartao: m.religar }));
 vi.mock("@/configuracoes/pagamento-site", async (original) => ({ ...(await original<typeof import("@/configuracoes/pagamento-site")>()), salvarConfigPagamentoSite: m.salvar }));
-import { conferirAgoraAcao, devolucaoPorForaAcao, devolverAcao, estornarLiberacaoAcao, registrarLiberacaoAcao, registrarTaxaPerdidaAcao, salvarConfigPagamentoSiteAcao } from "./acoes-painel";
+import { conferirAgoraAcao, devolucaoPorForaAcao, devolverAcao, estornarLiberacaoAcao, registrarLiberacaoAcao, registrarTaxaPerdidaAcao, religarCartaoAcao, salvarConfigPagamentoSiteAcao } from "./acoes-painel";
 
 const ID = "11111111-1111-4111-8111-111111111111";
 const provedor = { falso: true };
@@ -53,11 +55,12 @@ describe("permissão (deny-by-default)", () => {
     () => estornarLiberacaoAcao({}, form({ pagamentoId: ID, motivo: "erro" })),
     () => registrarTaxaPerdidaAcao({}, form({ pagamentoId: ID, valor: "18,06" })),
     () => salvarConfigPagamentoSiteAcao({}, form({ oferecer: "on" })),
+    () => religarCartaoAcao(),
   ];
   it.each(["operacao", "proprietario", "limpeza", "hospede"])("%s não executa nenhuma ação de dinheiro", async (papel) => {
     m.sessao.mockResolvedValue({ papel, organizacaoId: "org", usuarioId: "u", imovelIds: [] });
     for (const f of todas) await expect(f()).rejects.toThrow("Acesso negado");
-    for (const fn of [m.gate, m.conferir, m.pendentes, m.devolver, m.porFora, m.taxa, m.liberar, m.estornar, m.salvar]) expect(fn).not.toHaveBeenCalled();
+    for (const fn of [m.gate, m.conferir, m.pendentes, m.devolver, m.porFora, m.taxa, m.liberar, m.estornar, m.salvar, m.religar]) expect(fn).not.toHaveBeenCalled();
   });
 });
 
@@ -182,11 +185,15 @@ describe("salvar a aba Pagamento no site", () => {
   it("valida, grava auditado com a empresa da sessão e revalida", async () => {
     m.salvar.mockResolvedValue({ ok: true, mudou: true });
     const r = await salvarConfigPagamentoSiteAcao({}, form({ oferecer: "on", nomeFatura: " SCL  Leblon ", categoriaTaxaId: "" }));
-    expect(r).toEqual({ ok: true, aviso: "Salvo. Vale para os Pix novos; os já gerados seguem como estavam." });
+    expect(r).toEqual({ ok: true, aviso: "Salvo. Vale para os pagamentos novos; os já criados seguem como estavam." });
     expect(m.salvar).toHaveBeenCalledWith({ banco: true }, "org", { oferecer: true, nomeFatura: "SCL Leblon", categoriaTaxaId: null, cartao: false, parcelasMaximas: null, tresDS: "on_fraud_risk" }, "u");
     expect(m.revalidar).toHaveBeenCalledWith("/painel", "layout");
     // Desligar: a caixa desmarcada não vem no formulário.
-    expect((await salvarConfigPagamentoSiteAcao({}, form({ nomeFatura: "" }))).aviso).toContain("deixa de oferecer o Pix");
+    expect((await salvarConfigPagamentoSiteAcao({}, form({ nomeFatura: "" }))).aviso).toContain("deixa de oferecer o pagamento");
+    // Cartão (M8.2b): ligado, parcelas e verificação do banco vêm do formulário.
+    m.salvar.mockClear();
+    await salvarConfigPagamentoSiteAcao({}, form({ oferecer: "on", cartao: "on", parcelasMaximas: "6", tresDS: "never" }));
+    expect(m.salvar).toHaveBeenCalledWith({ banco: true }, "org", expect.objectContaining({ cartao: true, parcelasMaximas: 6, tresDS: "never" }), "u");
     m.salvar.mockResolvedValue({ ok: true, mudou: false });
     expect((await salvarConfigPagamentoSiteAcao({}, form({ oferecer: "on" }))).aviso).toBe("Nada mudou.");
   });
@@ -198,5 +205,17 @@ describe("salvar a aba Pagamento no site", () => {
     expect(m.salvar).not.toHaveBeenCalled();
     m.salvar.mockResolvedValue({ ok: false, erros: { categoriaTaxaId: "Categoria não encontrada ou arquivada." } });
     expect((await salvarConfigPagamentoSiteAcao({}, form({ oferecer: "on", categoriaTaxaId: ID }))).erros).toEqual({ categoriaTaxaId: "Categoria não encontrada ou arquivada." });
+  });
+});
+
+describe("religar o cartão (M8.2b)", () => {
+  it("fecha o disjuntor com a empresa e o usuário da sessão, revalida o painel e o site; sem disjuntor aberto, a mensagem do domínio", async () => {
+    m.religar.mockResolvedValue({ ok: true });
+    expect(await religarCartaoAcao()).toEqual({ ok: true, mensagem: "Cartão religado: o site volta a oferecer o cartão de crédito nos pedidos novos." });
+    expect(m.religar).toHaveBeenCalledWith({ banco: true }, "org", "u", expect.any(Date));
+    expect(m.revalidar).toHaveBeenCalledWith("/painel", "layout");
+    expect(m.revalidar).toHaveBeenCalledWith("/reservar/[codigo]", "page");
+    m.religar.mockResolvedValue({ ok: false, erro: "O cartão não está desligado pelo disjuntor." });
+    expect(await religarCartaoAcao()).toEqual({ mensagem: "O cartão não está desligado pelo disjuntor." });
   });
 });

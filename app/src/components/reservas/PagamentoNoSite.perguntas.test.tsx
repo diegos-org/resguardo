@@ -51,4 +51,11 @@ describe("quadro Pagamento no site: perguntas de confirmação", () => {
     expect(h).not.toContain("valor integral de R$ 1.824,00");
     expect(h).toContain('value="1724,00"');
   });
+
+  it("cartão (M8.2b): registrar a devolução por fora avisa que o hóspede pode contestar no cartão e receber de novo; no Pix, não", () => {
+    const cartao = renderToStaticMarkup(<PagamentoNoSite pagamentos={[{ ...pagamento, forma: "cartao" }]} verValores editar hoje="2026-10-09" />);
+    expect(cartao).toContain("O hóspede pode também contestar a cobrança no cartão e receber de novo: só registre se a devolução já foi feita e combinada com ele.");
+    const pix = renderToStaticMarkup(<PagamentoNoSite pagamentos={[pagamento]} verValores editar hoje="2026-10-09" />);
+    expect(pix).not.toContain("contestar a cobrança no cartão");
+  });
 });

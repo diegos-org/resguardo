@@ -16,16 +16,18 @@ const m = vi.hoisted(() => ({
   gerarPix: vi.fn(),
   aceite: vi.fn(),
   versaoPrivacidade: vi.fn(),
+  cartaoNoSite: vi.fn(),
+  pagarComCartao: vi.fn(),
 }));
 vi.mock("@/site/pagina", () => ({ carregarSite: m.site, metadadosDoSite: vi.fn() }));
 vi.mock("@/site/cotacoes", async (orig) => ({ ...(await orig<typeof import("@/site/cotacoes")>()), verCotacao: m.verCotacao }));
 vi.mock("@/calendario/regras-config", () => ({ lerRegrasCalendario: async () => ({ site: { minutosHold: 30 } }) }));
-vi.mock("@/site/pagamento", () => ({ portaoDoSite: m.portao, vistaDoPagamento: m.vistaPagamento, pixPossivel: m.pixPossivel }));
+vi.mock("@/site/pagamento", () => ({ portaoDoSite: m.portao, vistaDoPagamento: m.vistaPagamento, pixPossivel: m.pixPossivel, cartaoNoSite: m.cartaoNoSite }));
 vi.mock("@/site/checkout", () => ({ autorizadoNaCotacao: m.autorizado }));
 vi.mock("@/site/aceites", () => ({ aceiteParaPagina: m.aceite }));
 vi.mock("@/configuracoes/paginas-legais", () => ({ versaoAtualDaPaginaLegal: m.versaoPrivacidade }));
 vi.mock("@/site/acoes", () => ({ segurarDatasAcao: vi.fn() }));
-vi.mock("@/site/acoes-pagamento", () => ({ gerarPixAcao: m.gerarPix, continuarPagamentoAcao: vi.fn() }));
+vi.mock("@/site/acoes-pagamento", () => ({ gerarPixAcao: m.gerarPix, continuarPagamentoAcao: vi.fn(), pagarComCartaoAcao: m.pagarComCartao }));
 vi.mock("next/navigation", () => ({
   notFound: () => {
     throw new Error("NAO_ENCONTRADA");
@@ -43,8 +45,10 @@ const cotacao: CotacaoVista["cotacao"] = {
 };
 const vistaCotacao = (estado: CotacaoVista["estado"], over: Partial<CotacaoVista> = {}): CotacaoVista => ({ cotacao: { ...cotacao, estado }, estado, atual: null, mudou: false, reserva: { codigo: "SCL-TESTE1", estado: "pedido" }, ...over });
 const pagamento = (over: Partial<PagamentoDoHospede>): PagamentoDoHospede => ({
-  estado: "sem_pagamento", ambienteTeste: true, dinheiroSemDesfecho: false, holdAte: holdAte.toISOString(), pix: null, pixRestantes: 3, podeGerar: true, reservaCodigo: null, pagamentoEmDobro: false, devolucao: null, acompanhar: false, ...over,
+  estado: "sem_pagamento", ambienteTeste: true, dinheiroSemDesfecho: false, holdAte: holdAte.toISOString(), pix: null, pixRestantes: 3, podeGerar: true, reservaCodigo: null, pagamentoEmDobro: false, devolucao: null, acompanhar: false,
+  podePagarCartao: false, cartao: null, cartaoRestantes: 3, desafioUrl: null, forma: null, recusa: null, prazoDasDatas: null, ...over,
 });
+const CARTAO = { chavePublica: "TEST-chave-publica-ficticia", valor: 182400, parcelasMaximas: null, emailTeste: "test@testuser.com" };
 const GATE_OK = { ok: true, ambiente: "teste", provedor: {} };
 const GATE_NAO = { ok: false, motivo: "desligado", texto: "desligado" };
 
@@ -59,6 +63,8 @@ beforeEach(() => {
   m.gerarPix.mockResolvedValue({});
   m.aceite.mockResolvedValue(null);
   m.versaoPrivacidade.mockResolvedValue(null);
+  m.cartaoNoSite.mockResolvedValue(false);
+  m.pagarComCartao.mockResolvedValue({});
 });
 const html = async (codigo = "COT-ABCDEFGH") => renderToStaticMarkup(await Page({ params: Promise.resolve({ codigo }) } as PageProps<"/reservar/[codigo]">));
 
@@ -208,8 +214,9 @@ describe("páginas legais na página da cotação (M7.4)", () => {
     expect(m.versaoPrivacidade).not.toHaveBeenCalled();
   });
 
-  it("situações sem a caixa (Pix aguardando, devolução) nem leem o aceite; confirmada mostra o aceite da reserva", async () => {
-    m.vistaPagamento.mockResolvedValue(pagamento({ estado: "pix_aguardando", dinheiroSemDesfecho: true }));
+  it("situações sem a caixa (Pix aguardando sem o cartão, devolução) nem leem o aceite; confirmada mostra o aceite da reserva", async () => {
+    // M8.2b: com o Pix aguardando, a caixa só aparece quando o cartão também é oferecido (é outra forma de pagar).
+    m.vistaPagamento.mockResolvedValue(pagamento({ estado: "pix_aguardando", dinheiroSemDesfecho: true, podeGerar: false }));
     await html();
     m.vistaPagamento.mockResolvedValue(pagamento({ estado: "devolvido", devolucao: { situacao: "feita", em: holdAte.toISOString() } }));
     await html();
@@ -234,5 +241,89 @@ describe("páginas legais na página da cotação (M7.4)", () => {
     h = await html();
     expect(h).toContain("Usamos seus dados só para confirmar a reserva com você. Nenhum pagamento é feito aqui.");
     expect(h).not.toContain("/privacidade?versao=");
+  });
+});
+
+describe("cartão de crédito na página da cotação (M8.2b)", () => {
+  const ACEITE: AceiteNaPagina = { versoes: { termos: 1, privacidade: 1, cancelamento: 1 }, aceito: null, resumo: [{ tipo: "paragrafo", texto: "RESUMO DA POLITICA" }], prazo: { tipo: "integral_ate", data: "2026-09-28" } };
+
+  it("cotação aberta com o cartão ligado: os textos dizem 'por Pix ou cartão'; sem ele, só Pix", async () => {
+    m.verCotacao.mockResolvedValue(vistaCotacao("aberta", { reserva: null }));
+    m.portao.mockResolvedValue(GATE_OK);
+    m.pixPossivel.mockResolvedValue(true);
+    m.cartaoNoSite.mockResolvedValue(true);
+    let h = await html();
+    expect(m.cartaoNoSite).toHaveBeenCalledWith({}, "org", GATE_OK, expect.any(Date));
+    expect(h).toContain("para pagar por Pix ou cartão aqui mesmo");
+    expect(h).toContain("Nada é cobrado ao segurar: o pagamento por Pix ou cartão aparece logo depois");
+    expect(h).toContain("o pagamento é por Pix ou cartão de crédito, aqui no site");
+    m.cartaoNoSite.mockResolvedValue(false);
+    h = await html();
+    expect(h).not.toContain("cartão");
+  });
+
+  it("datas seguradas com Pix e cartão: a escolha (Pix recomendado, marcado), a nota dos juros, a caixa do aceite e o Gerar Pix; o formulário do cartão só quando escolhido", async () => {
+    m.portao.mockResolvedValue(GATE_OK);
+    m.vistaPagamento.mockResolvedValue(pagamento({ estado: "pagar", podePagarCartao: true, cartao: CARTAO }));
+    m.aceite.mockResolvedValue(ACEITE);
+    const h = await html();
+    expect(h).toContain("<h3>Pagamento</h3>");
+    expect(h).toContain('aria-label="Pagamento"');
+    expect(h).toContain('<input type="radio" name="formaPagamento" checked="" value="pix"/><span>Pix (recomendado)</span>');
+    expect(h).toContain("Cartão de crédito");
+    expect(h).toContain("No cartão parcelado há juros do Mercado Pago, pagos por você; o total aparece no formulário antes de confirmar.");
+    expect(h).toContain("Gerar Pix");
+    expect(h).toContain("Antes de pagar");
+    // O SDK do Mercado Pago nunca vai na página do servidor.
+    expect(h).not.toContain("sdk.mercadopago.com");
+  });
+
+  it("Pix esgotado com o cartão: o aceite é lido (a caixa vai no cartão), o texto oferece o cartão e a equipe é opção secundária", async () => {
+    m.portao.mockResolvedValue(GATE_OK);
+    m.vistaPagamento.mockResolvedValue(pagamento({ estado: "pix_esgotado", podeGerar: false, pixRestantes: 0, podePagarCartao: true, cartao: CARTAO }));
+    m.aceite.mockResolvedValue(ACEITE);
+    const h = await html();
+    expect(m.aceite).toHaveBeenCalled();
+    expect(h).toContain("Esta cotação já gerou o máximo de Pix. Você ainda pode pagar com cartão de crédito.");
+    expect(h).toContain("Prefere combinar com a equipe?");
+  });
+
+  it("cartão em análise: o texto editável e a linha fixa do prazo das datas (hora no fuso do imóvel); a equipe é o caminho principal", async () => {
+    m.site.mockResolvedValue({ db: {}, conteudo: { ...conteudo, textos: { ...conteudo.textos, pagamentoCartaoAnalise: "Texto do Diego para a análise." } } });
+    m.vistaPagamento.mockResolvedValue(pagamento({ estado: "cartao_em_analise", forma: "cartao", podeGerar: false, dinheiroSemDesfecho: true, prazoDasDatas: "2099-10-01T16:30:00.000Z" }));
+    const h = await html();
+    expect(h).toContain("<h2>Pagamento em análise</h2>");
+    expect(h).toContain("Texto do Diego para a análise.");
+    expect(h).toContain("As datas estão seguradas até 01/10, 13:30.");
+    expect(decodeURIComponent(h)).toContain("Paguei com cartão e a página diz que o pagamento está em análise.");
+    expect(h).not.toContain("Prefere combinar com a equipe?");
+    expect(m.aceite).not.toHaveBeenCalled();
+  });
+
+  it("desafio do banco: o quadro do banco com o endereço conferido e os outros caminhos; sem o endereço, o aviso", async () => {
+    m.portao.mockResolvedValue(GATE_OK);
+    m.vistaPagamento.mockResolvedValue(pagamento({ estado: "cartao_desafio", forma: "cartao", dinheiroSemDesfecho: true, podePagarCartao: true, cartao: CARTAO, desafioUrl: "https://www.mercadopago.com.br/checkout/v1/3ds/FALSO1" }));
+    let h = await html();
+    expect(h).toContain("<h2>Verificação do seu banco</h2>");
+    expect(h).toContain('<iframe src="https://www.mercadopago.com.br/checkout/v1/3ds/FALSO1" title="Verificação do seu banco" referrerPolicy="no-referrer"');
+    expect(h).toContain("Pagar com Pix");
+    expect(h).toContain("Usar outro cartão");
+    m.vistaPagamento.mockResolvedValue(pagamento({ estado: "cartao_desafio", forma: "cartao", dinheiroSemDesfecho: true, desafioUrl: null }));
+    h = await html();
+    expect(h).toContain("Não deu para abrir a verificação do banco.");
+    expect(h).not.toContain("<iframe");
+  });
+
+  it("cartão recusado: o texto genérico (ou o da verificação), e as formas que sobram", async () => {
+    m.portao.mockResolvedValue(GATE_OK);
+    m.vistaPagamento.mockResolvedValue(pagamento({ estado: "cartao_recusado", forma: "cartao", recusa: "cartao", podePagarCartao: true, cartao: CARTAO }));
+    let h = await html();
+    expect(h).toContain("<h2>Datas seguradas</h2>");
+    expect(h).toContain("Não foi possível aprovar o pagamento com este cartão. Confira os dados, use outro cartão ou pague com Pix.");
+    expect(h).toContain("Pix (recomendado)");
+    m.vistaPagamento.mockResolvedValue(pagamento({ estado: "cartao_recusado", forma: "cartao", recusa: "verificacao", podeGerar: false }));
+    h = await html();
+    expect(h).toContain("A verificação do seu banco não foi concluída. Tente de novo ou pague com Pix.");
+    expect(h).toContain("O pagamento pelo site não está disponível agora.");
   });
 });

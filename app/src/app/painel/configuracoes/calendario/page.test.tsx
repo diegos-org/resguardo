@@ -48,6 +48,7 @@ it("admin vê as regras, feriados, eventos, imóveis com vínculo e o sinal da V
   expect(h).toContain('name="ligado" value="sim"');
   expect(h).toMatch(/name="feriadoMinimoNormal" checked=""/);
   expect(h).toMatch(/name="minimoNormalComReserva" checked=""/);
-  // M8.2a: perto do prazo de "segurar as datas", quanto cada Pix segura.
-  expect(h).toContain("Com o pagamento no site ligado, cada Pix segura as datas por pelo menos 30 minutos (até 3 por cotação, um de cada vez).");
+  // M8.2a: perto do prazo de "segurar as datas", quanto cada Pix segura; M8.2b: e o cartão (desafio e análise, editável).
+  expect(h).toContain("Com o pagamento no site ligado, cada Pix segura as datas por pelo menos 30 minutos (até 3 por cotação, um de cada vez); com o cartão, a verificação do banco segura as datas por até 42 minutos e o cartão em análise por mais 60 minutos (uma vez por cotação).");
+  expect(h).toContain('name="siteMinutosAnaliseCartao" value="60"');
 });

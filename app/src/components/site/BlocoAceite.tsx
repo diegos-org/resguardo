@@ -34,12 +34,13 @@ export function PrazoDoReembolso({ prazo, fuso }: { prazo: AceiteNaPagina["prazo
 }
 
 /**
- * Caixa de aceite antes de pagar (M7.4), dentro do formulário que gera o pagamento (Pix hoje; o cartão, M8.2b, usa a
+ * Caixa de aceite antes de pagar (M7.4), dentro do formulário que gera o pagamento (o Pix e o cartão, M8.2b, usam a
  * mesma): o resumo da Política de cancelamento em vigor, o prazo do reembolso desta reserva, a caixa obrigatória com os
  * links para as versões que a página mostra e, escondidas, essas versões — o servidor confere se ainda são as
- * publicadas e grava o aceite na mesma transação do pagamento.
+ * publicadas e grava o aceite na mesma transação do pagamento. `aoMarcar` (cartão): avisa quem usa a caixa quando ela é
+ * marcada ou desmarcada (o formulário do cartão só carrega depois da caixa marcada).
  */
-export function BlocoAceite({ aceite, fuso }: { aceite: AceiteNaPagina; fuso: string }) {
+export function BlocoAceite({ aceite, fuso, aoMarcar }: { aceite: AceiteNaPagina; fuso: string; aoMarcar?: (marcado: boolean) => void }) {
   const { versoes } = aceite;
   return (
     <fieldset className={styles.aceiteLegal}>
@@ -48,7 +49,7 @@ export function BlocoAceite({ aceite, fuso }: { aceite: AceiteNaPagina; fuso: st
       <DocumentoLegal blocos={aceite.resumo} />
       <PrazoDoReembolso prazo={aceite.prazo} fuso={fuso} />
       <label className={styles.opcao}>
-        <input type="checkbox" name="aceite" value="sim" required />
+        <input type="checkbox" name="aceite" value="sim" required onChange={aoMarcar ? (e) => aoMarcar(e.currentTarget.checked) : undefined} />
         <span>
           Li e aceito os <LinkLegal doc="termos" versoes={versoes} /> e a <LinkLegal doc="cancelamento" versoes={versoes} />, e li a{" "}
           <LinkLegal doc="privacidade" versoes={versoes} />.
