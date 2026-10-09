@@ -113,7 +113,8 @@ A reserva continua `pedido` enquanto o hóspede paga. Não há estado novo de re
 imóvel (`FOR NO KEY UPDATE`) → reserva (`FOR NO KEY UPDATE`) → cotação → tentativas da cotação (por
 id) → devolução. Motor e livro travam depois, como já fazem. O imóvel e a reserva são travados com
 `NO KEY UPDATE`, não `FOR UPDATE`: serializam pagamento e hold entre si e com quem muda a mesma linha
-(bloqueios, contratos, confirmar ou cancelar à mão), mas não bloqueiam a conferência das chaves
+(bloqueios, contratos, confirmar ou cancelar à mão, recebimento lançado à mão, que trava a reserva antes de
+conferir o pagamento), mas não bloqueiam a conferência das chaves
 estrangeiras de quem grava lançamentos, itens de repasse, limpezas ou pagamentos daquele imóvel ou
 daquela reserva (com `FOR UPDATE`, a confirmação à mão e o Pix entravam em impasse; e um estorno da
 liberação ou uma taxa tardia, que esperam a trava do motor, com um repasse ou recálculo que tem essa

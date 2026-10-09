@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import * as schema from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
+import { registrarRecebimento } from "@/repasses/recebimentos";
 import { criarReserva, sincronizarReserva } from "@/reservas/repositorio";
 import { conferirTentativa } from "./conferencia";
 import { estornarLiberacaoManual, registrarLiberacaoManual } from "./liberacao";
@@ -59,5 +60,19 @@ describe("ordem e modo das travas do pagamento (M8.2a)", () => {
     const primeiraReserva = e.comandos.findIndex((q) => /from "reservas"/.test(q) && /\bfor (no key )?update\b/.test(q));
     expect(primeiroImovel).toBeGreaterThanOrEqual(0);
     expect(primeiraReserva === -1 || primeiroImovel < primeiraReserva).toBe(true);
+  });
+
+  it("recebimento à mão trava a reserva (NO KEY UPDATE) antes de conferir o pagamento pelo site: não cruza com o Pix criado ou aprovado ao mesmo tempo", async () => {
+    const s = await c.segurar();
+    const e = espiao();
+    const r = await registrarRecebimento(e.db, c.org, { reservaId: s.reservaId, data: "2026-10-01", valor: 1000, nota: "" }, null, "2026-10-01");
+    expect(r).toMatchObject({ ok: true });
+    const trava = e.comandos.findIndex((q) => /from "reservas"/.test(q) && /\bfor no key update\b/.test(q));
+    const conferencia = e.comandos.findIndex((q) => /from "pagamentos"/.test(q));
+    expect(trava).toBeGreaterThanOrEqual(0);
+    expect(conferencia).toBeGreaterThan(trava);
+    // Com o Pix já criado (visto depois da trava), o recebimento à mão é recusado.
+    await c.pix(s.cotacaoId);
+    expect(await registrarRecebimento(db, c.org, { reservaId: s.reservaId, data: "2026-10-01", valor: 1000, nota: "" }, null, "2026-10-01")).toMatchObject({ ok: false, erro: expect.stringContaining("pagamento pelo site") });
   });
 });

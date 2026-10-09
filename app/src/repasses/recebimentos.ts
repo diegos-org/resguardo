@@ -39,10 +39,13 @@ export async function registrarRecebimento(
   if (!Number.isSafeInteger(d.valor) || d.valor <= 0) return { ok: false, erro: "Informe o valor recebido (maior que zero)." };
   const nota = d.nota.trim().slice(0, 200);
   return db.transaction(async (tx) => {
+    // A reserva fica travada (NO KEY UPDATE, o modo do pagamento) antes de conferir o pagamento pelo site: um Pix
+    // criado ou aprovado ao mesmo tempo espera este recebimento, ou este espera o Pix e o vê (9ª rodada do Codex).
     const [r] = await tx
       .select({ id: reservas.id, codigo: reservas.codigo, imovelId: reservas.imovelId, estado: reservas.estado })
       .from(reservas)
-      .where(and(eq(reservas.id, d.reservaId), eq(reservas.organizacaoId, organizacaoId)));
+      .where(and(eq(reservas.id, d.reservaId), eq(reservas.organizacaoId, organizacaoId)))
+      .for("no key update");
     if (!r) return { ok: false as const, erro: "Reserva não encontrada." };
     if (r.estado === "cancelada") return { ok: false as const, erro: "Reserva cancelada: registre um ajuste em vez de recebimento." };
     // Pagamento pelo site em andamento ou aprovado: o recebimento vem da liberação do Mercado Pago (M8.2a).
