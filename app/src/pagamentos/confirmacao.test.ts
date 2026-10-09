@@ -268,6 +268,19 @@ describe("confirmação pelo pagamento (M8.2a)", () => {
     expect(await c.tentativa(x.pagamentoId)).toMatchObject({ situacao: "aprovado", avisos: ["referencia_divergente"] });
   });
 
+  it("reserva paga pelo site e depois devolvida no painel do Mercado Pago: continua presa ao pagamento (nem cancelar nem recebimento à mão, até o M8.2c)", async () => {
+    const x = await comPix();
+    c.provedor.aprovar(x.idProvedor);
+    await conferir(x.pagamentoId, minutos(3));
+    expect(await c.reserva(x.reservaId)).toMatchObject({ estado: "confirmada" });
+    c.provedor.devolverNoProvedor(x.idProvedor, TOTAL);
+    await conferir(x.pagamentoId, minutos(10));
+    expect(await c.tentativa(x.pagamentoId)).toMatchObject({ situacao: "devolvido", desfecho: "reserva" });
+    expect(await tentarCancelarReserva(db, c.org, x.reservaId, null)).toEqual({ ok: false, aviso: expect.stringContaining("foi paga pelo site") });
+    expect(await c.reserva(x.reservaId)).toMatchObject({ estado: "confirmada" });
+    expect(await registrarRecebimento(db, c.org, { reservaId: x.reservaId, data: "2026-10-01", valor: TOTAL, nota: "Pix na conta" }, null, "2026-10-01")).toMatchObject({ ok: false });
+  });
+
   it("painel: confirmar à mão e cancelar um pedido com Pix em andamento são recusados (com a hora); depois do Pix vencido, valem", async () => {
     const x = await comPix();
     const conf = await confirmarReserva(db, c.org, x.reservaId, null, minutos(5));
@@ -279,7 +292,7 @@ describe("confirmação pelo pagamento (M8.2a)", () => {
     // Reserva paga: cancelar continua recusado.
     c.provedor.aprovar(x.idProvedor);
     await conferir(x.pagamentoId, minutos(6));
-    expect(await tentarCancelarReserva(db, c.org, x.reservaId, null)).toMatchObject({ ok: false, aviso: expect.stringContaining("pagamento aprovado pelo site") });
+    expect(await tentarCancelarReserva(db, c.org, x.reservaId, null)).toMatchObject({ ok: false, aviso: expect.stringContaining("foi paga pelo site") });
   });
 
   it("segurar: o mesmo e-mail com Pix em andamento não segura outras datas na carência; depois dela, a tentativa que nunca se resolve não prende o e-mail; aprovado sem desfecho prende sempre; a resposta não revela o pagamento", async () => {

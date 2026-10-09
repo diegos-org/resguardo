@@ -86,6 +86,21 @@ describe("o que o hóspede vê (M8.2a)", () => {
     await conferir(pa.pagamentoId, minutos(6));
     expect(await vista(a.cotacaoId, minutos(6))).toMatchObject({ estado: "devolvido", devolucao: { situacao: "feita", em: minutos(6) }, dinheiroSemDesfecho: false });
 
+    // Outro pagamento sem reserva na mesma cotação, mais antigo e ainda a devolver: a página não diz "devolvido".
+    const base = { organizacaoId: c.org, cotacaoId: a.cotacaoId, reservaId: a.reservaId, imovelId: c.imovel, ambiente: "teste" as const, forma: "pix" as const, valor: TOTAL };
+    const [antigo] = await db
+      .insert(pagamentos)
+      .values({ ...base, referencia: "scl-antigo", chaveIdempotencia: "antigo", situacao: "aprovado", motivoSemReserva: "outra_tentativa", criadoEm: minutos(-30) })
+      .returning();
+    expect(await vista(a.cotacaoId, minutos(7))).toMatchObject({ estado: "aprovado_sem_datas", dinheiroSemDesfecho: true });
+    // Devolução dele parada (o Mercado Pago recusou três vezes): nunca "devolução pedida"; a equipe resolve.
+    await db.insert(devolucoesPagamento).values({ organizacaoId: c.org, pagamentoId: antigo.id, motivo: "outra tentativa", valor: TOTAL, situacao: "recusada", falhas: 3, tentativas: 3, criadoEm: minutos(7), atualizadoEm: minutos(7) });
+    expect(await vista(a.cotacaoId, minutos(8))).toMatchObject({ estado: "aprovado_sem_datas" });
+    // Os dois devolvidos: aí sim, "devolvido".
+    await db.update(devolucoesPagamento).set({ situacao: "por_fora", porForaData: "2026-10-01", porForaValor: TOTAL }).where(eq(devolucoesPagamento.pagamentoId, antigo.id));
+    await db.update(pagamentos).set({ desfecho: "por_fora", desfechoEm: minutos(9) }).where(eq(pagamentos.id, antigo.id));
+    expect(await vista(a.cotacaoId, minutos(9))).toMatchObject({ estado: "devolvido", dinheiroSemDesfecho: false });
+
     const b = await c.segurar(outras(1));
     await c.pix(b.cotacaoId);
     const T = (await c.cotacao(b.cotacaoId)).holdAte!;

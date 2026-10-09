@@ -265,7 +265,7 @@ function avisoDoPagamento(p: PagamentoQuePrende, fuso: string, acao: "cancelar" 
   }
   return acao === "confirmar"
     ? "Não confirmada: há um pagamento do site aprovado sendo processado. Atualize a página em instantes."
-    : "Não cancelada: esta reserva tem pagamento aprovado pelo site. O cancelamento com devolução chega no M8.2c.";
+    : "Não cancelada: esta reserva foi paga pelo site (mesmo que o Mercado Pago mostre o valor devolvido depois). O cancelamento com devolução chega no M8.2c.";
 }
 
 /**

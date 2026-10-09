@@ -34,10 +34,11 @@ export async function cotacaoEmCarencia(db: Db, cotacaoId: string, holdAte: Date
 export type PagamentoQuePrende = { id: string; forma: "pix" | "cartao"; situacao: SituacaoPagamento; pixExpiraEm: Date | null; desfecho: string | null };
 
 /**
- * O pagamento do site que "prende" a reserva: em andamento (criando, incerta, pendente) ou com o dinheiro dela
- * (aprovado com desfecho `reserva`, ou aprovado ainda sem decisão). Um pagamento já decidido como "sem reserva"
- * não prende (é dinheiro a devolver, não desta reserva). Cancelar, confirmar à mão e registrar recebimento à mão
- * leem daqui (uma regra, um lugar). O em andamento vem primeiro.
+ * O pagamento do site que "prende" a reserva: em andamento (criando, incerta, pendente), o que confirmou a reserva
+ * (desfecho `reserva`, em qualquer situação: devolvido ou contestado depois no Mercado Pago continua ligado a ela, e
+ * o cancelamento e o acerto disso são do M8.2c) ou com dinheiro ainda sem decisão. Um pagamento já decidido como
+ * "sem reserva" não prende (é dinheiro a devolver, não desta reserva). Cancelar, confirmar à mão e registrar
+ * recebimento à mão leem daqui (uma regra, um lugar). O em andamento vem primeiro.
  */
 export async function pagamentoEmAndamentoOuAprovado(db: Db, reservaId: string): Promise<PagamentoQuePrende | null> {
   if (!uuidValido(reservaId)) return null;
@@ -49,10 +50,8 @@ export async function pagamentoEmAndamentoOuAprovado(db: Db, reservaId: string):
         eq(pagamentos.reservaId, reservaId),
         or(
           inArray(pagamentos.situacao, ["criando", "incerta", "pendente"]),
-          and(
-            inArray(pagamentos.situacao, ["aprovado", "devolvido_parcial", "contestado"]),
-            or(eq(pagamentos.desfecho, "reserva"), and(isNull(pagamentos.desfecho), isNull(pagamentos.motivoSemReserva))),
-          ),
+          eq(pagamentos.desfecho, "reserva"),
+          and(inArray(pagamentos.situacao, ["aprovado", "devolvido_parcial", "contestado"]), isNull(pagamentos.desfecho), isNull(pagamentos.motivoSemReserva)),
         ),
       ),
     );

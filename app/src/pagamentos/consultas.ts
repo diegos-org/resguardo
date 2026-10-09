@@ -90,17 +90,27 @@ export async function vistaDaCotacaoParaHospede(db: Db, organizacaoId: string, c
   if (comReserva) {
     return { ...base, estado: "confirmada", reservaCodigo: c.reservaCodigo, pagamentoEmDobro: tentativas.some((t) => t.id !== comReserva.id && comDinheiro(t.situacao)) };
   }
-  // Dinheiro sem a reserva: confirmando, aprovado sem as datas, devolução pedida ou feita.
-  const comDinheiroSemReserva = tentativas.find((t) => comDinheiro(t.situacao));
-  if (comDinheiroSemReserva) {
-    const p = comDinheiroSemReserva;
-    const dev = devDe(p);
-    if (p.desfecho === "devolucao" || p.desfecho === "por_fora" || dev?.situacao === "confirmada" || dev?.situacao === "por_fora" || p.situacao === "devolvido") {
+  // Dinheiro sem a reserva: confirmando, aprovado sem as datas, devolução pedida ou feita. Com mais de um pagamento,
+  // "devolvido" só quando todos foram devolvidos; antes disso vale o que ainda está em aberto, nesta ordem: ainda
+  // sem decisão (confirmando), sem as datas (a equipe resolve), devolução pedida.
+  const comDinheiroSemReserva = tentativas.filter((t) => comDinheiro(t.situacao));
+  if (comDinheiroSemReserva.length) {
+    const devolvida = (p: Pagamento) => {
+      const dev = devDe(p);
+      return p.desfecho === "devolucao" || p.desfecho === "por_fora" || dev?.situacao === "confirmada" || dev?.situacao === "por_fora" || p.situacao === "devolvido";
+    };
+    const emAberto = comDinheiroSemReserva.filter((p) => !devolvida(p));
+    if (!emAberto.length) {
+      const p = comDinheiroSemReserva[0];
+      const dev = devDe(p);
       return { ...base, estado: "devolvido", devolucao: { situacao: "feita", em: dev?.confirmadaEm ?? (dev?.porForaData ? new Date(`${dev.porForaData}T12:00:00-03:00`) : p.desfechoEm) } };
     }
-    if (dev?.situacao === "pedida" || dev?.situacao === "recusada") return { ...base, estado: "devolucao_pedida", devolucao: { situacao: "pedida", em: dev.criadoEm } };
-    if (p.motivoSemReserva) return { ...base, estado: "aprovado_sem_datas" };
-    return { ...base, estado: "confirmando" };
+    if (emAberto.some((p) => !p.motivoSemReserva && !devDe(p))) return { ...base, estado: "confirmando" };
+    // Devolução que o Mercado Pago recusou ou não respondeu (parada, à espera da equipe) não é "pedida": a página
+    // diz o mesmo que sem as datas (a equipe fala com o hóspede e devolve), nunca que a devolução está andando.
+    const pedida = emAberto.find((p) => devDe(p)?.situacao === "pedida");
+    if (pedida && emAberto.every((p) => devDe(p)?.situacao === "pedida")) return { ...base, estado: "devolucao_pedida", devolucao: { situacao: "pedida", em: devDe(pedida)!.criadoEm } };
+    return { ...base, estado: "aprovado_sem_datas" };
   }
   const ultima = tentativas[0];
   // Pix marcado como real (live_mode) no teste: nunca o QR nem "aguardando" (ele é cancelado na hora). Enquanto o

@@ -327,7 +327,7 @@ consulta".
 | Pagamento recebido, confirmando | "Pagamento recebido, confirmando sua reserva" |
 | Confirmada | "Pagamento aprovado: reserva SCL-… confirmada", link para Minha reserva, "guarde este link" |
 | Aprovado sem as datas | "Recebemos seu pagamento, mas não conseguimos garantir as datas. A equipe vai falar com você e devolver o valor integral", com WhatsApp |
-| Devolução pedida / feita | o que foi pedido e quando |
+| Devolução pedida / feita | o que foi pedido e quando; devolução que o Mercado Pago recusou ou não respondeu (parada, à espera da equipe) aparece como "pagamento recebido sem as datas" (a equipe fala com o hóspede), nunca como pedida; com mais de um pagamento sem reserva, "devolvido" só quando todos foram devolvidos |
 | Pix vencido sem pagar, datas ainda seguradas | gerar outro (até 3), só com o Pix ainda oferecido (a página que espera recarrega quando a oferta volta) |
 
 Os textos principais (convite para pagar, Pix aguardando, aprovado sem as datas) são editáveis em
