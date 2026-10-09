@@ -116,6 +116,8 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
   // Pix pendente com o copia e cola, mas sem prazo conhecido: aviso (nunca um prazo suposto).
   if (situacao === "pendente" && (patch.pixCopiaECola ?? p.pixCopiaECola) && !(patch.pixExpiraEm ?? p.pixExpiraEm)) ligar("pix_sem_prazo");
   else desligar("pix_sem_prazo");
+  // Saiu do andamento (uma leitura ainda chegou, pelo "Conferir agora"): o aviso de fora do prazo não vale mais.
+  if (situacao !== "criando" && situacao !== "incerta" && situacao !== "pendente") desligar("andamento_fora_do_prazo");
   // Pix pago, vencido ou cancelado: o copia e cola e a imagem saem do banco (o prazo fica, para o histórico).
   if (situacao !== "pendente" && situacao !== "criando" && situacao !== "incerta" && (p.pixCopiaECola || p.pixImagem || p.pixLink)) {
     patch.pixCopiaECola = null;

@@ -135,6 +135,7 @@ export const AVISOS_PAGAMENTO = {
   devolucao_falhou: "O Mercado Pago recusou ou não respondeu três vezes: confira no painel do Mercado Pago antes de tentar de novo ou de registrar a devolução feita por fora.",
   devolucao_parada: "O Mercado Pago não mostra este pagamento como aprovado e inteiro (devolvido em parte, contestado ou em outra situação): a devolução pelo sistema parou (devolver o valor inteiro agora poderia devolver a mais). Confira no painel do Mercado Pago e resolva por lá até o M8.2c.",
   devolucao_sem_confirmacao: "O Mercado Pago aceitou a devolução, mas o pagamento ainda não aparece como devolvido: confira no painel do Mercado Pago. O sistema não pede de novo (poderia devolver duas vezes) e confirma sozinho quando a devolução aparecer.",
+  andamento_fora_do_prazo: "Este pagamento ficou em andamento por mais de 85 dias e o Mercado Pago só deixa consultar pagamentos de até três meses: o sistema parou de conferir. Confira no painel do Mercado Pago e resolva por lá até o M8.2c.",
   devolucao_fora_do_prazo: "A devolução foi pedida, mas o pagamento tem mais de 85 dias e o Mercado Pago só deixa consultar pagamentos de até três meses: o sistema parou de conferir esta devolução. Confira no painel do Mercado Pago e resolva por lá até o M8.2c.",
   cancelamento_pendente: "Não deu para cancelar no Mercado Pago um Pix que ficou sobrando: use Conferir agora para tentar de novo (no teste, nada é conferido sozinho).",
 } as const;

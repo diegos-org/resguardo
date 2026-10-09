@@ -3,7 +3,8 @@
  * alguma coisa do provedor, uma transação curta por tentativa (leitura sempre fora dela). A rotina de holds chama
  * isto ANTES de vencer holds, para nunca vencer um pedido cujo Pix já foi pago.
  *
- * - tentativas `criando`, `incerta` ou `pendente` (as sem order são procuradas pela referência);
+ * - tentativas `criando`, `incerta` ou `pendente` (as sem order são procuradas pela referência), dos últimos 85 dias
+ *   (depois, aviso `andamento_fora_do_prazo`, uma vez, para a equipe);
  * - aprovadas ainda sem taxa ou sem liberação (só a que confirmou a reserva lança recebimento), dos últimos 85 dias
  *   (depois, a equipe registra à mão);
  * - devoluções pedidas cuja próxima tentativa chegou (relê a order antes; chave nova a cada pedido), só de pagamentos
@@ -18,13 +19,15 @@
  * roda pelo "Conferir agora" do painel (e a página do hóspede confere o próprio Pix). A limpeza dos avisos com mais
  * de 90 dias roda na rotina do site, em qualquer ambiente (fora desta função, que o painel também chama).
  */
-import { and, eq, gte, inArray, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, isNull, lt, lte, or, type SQL, sql } from "drizzle-orm";
 import { devolucoesPagamento, pagamentos } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { cancelarNoProvedor, conferirTentativa } from "./conferencia";
 import { tentarDevolucao } from "./devolucao";
 import { apagarEventosAntigos } from "./eventos";
-import { type ProvedorPagamento, RETENCAO_ORDERS_DIAS } from "./provedor";
+import { inicioDoPrazoDeReleitura, PRAZO_RELEITURA_DIAS } from "./andamento";
+import type { ProvedorPagamento } from "./provedor";
+import type { CodigoAviso } from "./situacoes";
 import { expirarHoldsVencidos, type ResumoExpiracao } from "@/site/cotacoes";
 
 /**
@@ -32,7 +35,7 @@ import { expirarHoldsVencidos, type ResumoExpiracao } from "@/site/cotacoes";
  * Mercado Pago): dentro do prazo em que o provedor ainda consulta a order (três meses), com folga. Contestação depois
  * disso é do M8.2e, por outro caminho.
  */
-export const RELER_RESERVA_DIAS = RETENCAO_ORDERS_DIAS - 5;
+export const RELER_RESERVA_DIAS = PRAZO_RELEITURA_DIAS;
 export const RELER_RESERVA_A_CADA_MS = 24 * 3_600_000;
 /** Aprovado há mais de um dia à espera da taxa ou da liberação: relido a cada 6 h. */
 export const ESPERA_LIBERACAO_MS = 6 * 3_600_000;
@@ -43,9 +46,19 @@ export type ResumoConferencia = { conferidas: number; mudaram: number; devolucoe
 export async function conferirPendentes(db: Db, organizacaoId: string | null, provedor: ProvedorPagamento, agora: Date = new Date()): Promise<ResumoConferencia> {
   const resumo: ResumoConferencia = { conferidas: 0, mudaram: 0, devolucoes: 0, canceladas: 0, falhas: 0 };
   const daOrg = organizacaoId ? eq(pagamentos.organizacaoId, organizacaoId) : undefined;
-  // Prazo único das leituras que se repetem (diária, taxa e liberação, devoluções): o provedor só consulta orders de até
-  // três meses; depois disso a leitura nunca traria nada e só gastaria o limite de chamadas.
-  const corte = new Date(agora.getTime() - RELER_RESERVA_DIAS * 86_400_000);
+  // Prazo único das leituras que se repetem (em andamento, diária, taxa e liberação, devoluções): o provedor só consulta
+  // orders de até três meses; depois disso a leitura nunca traria nada e só gastaria o limite de chamadas.
+  const corte = inicioDoPrazoDeReleitura(agora);
+  // Fora do prazo, o que ainda esperava o provedor ganha o aviso (uma vez), para a equipe resolver pelo painel do
+  // Mercado Pago: tentativa ainda em andamento e devolução ainda pedida.
+  const avisarForaDoPrazo = async (aviso: CodigoAviso, condicao: SQL) => {
+    const item = sql`jsonb_build_array(${aviso}::text)`;
+    await db
+      .update(pagamentos)
+      .set({ avisos: sql`${pagamentos.avisos} || ${item}`, atualizadoEm: agora })
+      .where(and(daOrg, lt(pagamentos.criadoEm, corte), sql`not (${pagamentos.avisos} @> ${item})`, condicao));
+  };
+  await avisarForaDoPrazo("andamento_fora_do_prazo", inArray(pagamentos.situacao, ["criando", "incerta", "pendente"]));
   const alvos = await db
     .select({ id: pagamentos.id, organizacaoId: pagamentos.organizacaoId })
     .from(pagamentos)
@@ -53,7 +66,7 @@ export async function conferirPendentes(db: Db, organizacaoId: string | null, pr
       and(
         daOrg,
         or(
-          inArray(pagamentos.situacao, ["criando", "incerta", "pendente"]),
+          and(inArray(pagamentos.situacao, ["criando", "incerta", "pendente"]), gte(pagamentos.criadoEm, corte)),
           and(
             inArray(pagamentos.situacao, ["aprovado", "devolvido_parcial"]),
             or(isNull(pagamentos.taxa), and(eq(pagamentos.desfecho, "reserva"), or(isNull(pagamentos.liberacaoConfirmadaEm), eq(pagamentos.liberacaoOrigem, "manual")))),
@@ -115,18 +128,7 @@ export async function conferirPendentes(db: Db, organizacaoId: string | null, pr
   }
 
   // Devoluções: o mesmo prazo. Fora dele, nada se lê (a confirmação nunca chegaria): só o aviso, uma vez.
-  const foraDoPrazo = sql`jsonb_build_array(${"devolucao_fora_do_prazo"}::text)`;
-  await db
-    .update(pagamentos)
-    .set({ avisos: sql`${pagamentos.avisos} || ${foraDoPrazo}`, atualizadoEm: agora })
-    .where(
-      and(
-        daOrg,
-        lt(pagamentos.criadoEm, corte),
-        sql`not (${pagamentos.avisos} @> ${foraDoPrazo})`,
-        sql`exists (select 1 from ${devolucoesPagamento} d where d.pagamento_id = ${pagamentos.id} and d.situacao = 'pedida')`,
-      ),
-    );
+  await avisarForaDoPrazo("devolucao_fora_do_prazo", sql`exists (select 1 from ${devolucoesPagamento} d where d.pagamento_id = ${pagamentos.id} and d.situacao = 'pedida')`);
   const devolucoes = await db
     .select({ id: devolucoesPagamento.id, organizacaoId: devolucoesPagamento.organizacaoId })
     .from(devolucoesPagamento)

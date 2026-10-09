@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { auditoria, cotacoes, pagamentos } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
@@ -9,6 +9,8 @@ import { conferirCotacaoParaPagina, conferirTentativa } from "./conferencia";
 import { EMAIL_PAGADOR_SANDBOX } from "./mercadopago";
 import { chaveCriacao, FOLGA_PRAZO_PIX_MS, gerarPix, MAXIMO_PIX_POR_COTACAO, referenciaDaTentativa } from "./pix";
 import { ErroProvedor } from "./provedor";
+import { conferirPendentes } from "./rotina";
+import { textosDosAvisos } from "./situacoes";
 import { AGORA, type Cenario, EMAIL_HOSPEDE, minutos, montarCenario, TOTAL } from "./testes";
 
 let db: Db, close: () => Promise<void>, c: Cenario;
@@ -218,6 +220,27 @@ describe("gerar o Pix (M8.2a)", () => {
     expect(criados()).toBe(antes);
     expect(await c.tentativa(a.pagamentoId)).toMatchObject({ situacao: "aprovado", desfecho: "reserva" });
     expect((await c.reserva(reservaId)).estado).toBe("confirmada");
+  });
+
+  it("Pix que fica em andamento além do prazo de consulta do provedor (85 dias): nem a página nem a rotina leem mais; aviso uma vez para a equipe", async () => {
+    const { cotacaoId } = await c.segurar();
+    const a = await c.pix(cotacaoId);
+    const [order] = c.provedor.todas().filter((o) => o.idProvedor === a.idProvedor);
+    // A order continua "pendente" a cada leitura (o provedor nunca encerra).
+    const consultar = vi.spyOn(c.provedor, "consultar").mockResolvedValue(order);
+    const dia = (n: number) => new Date(AGORA.getTime() + n * 86_400_000);
+    await conferirPendentes(db, c.org, c.provedor, dia(84));
+    expect(consultar.mock.calls.length).toBe(1);
+    expect((await c.tentativa(a.pagamentoId)).situacao).toBe("pendente");
+    for (const n of [86, 87, 120]) {
+      await conferirPendentes(db, c.org, c.provedor, dia(n));
+      await conferirCotacaoParaPagina(db, c.org, cotacaoId, c.provedor, dia(n));
+    }
+    expect(consultar.mock.calls.length).toBe(1);
+    vi.restoreAllMocks();
+    const t = await c.tentativa(a.pagamentoId);
+    expect(t.avisos.filter((x) => x === "andamento_fora_do_prazo")).toHaveLength(1);
+    expect(textosDosAvisos(t.avisos).join(" ")).toContain("parou de conferir");
   });
 
   it("trava não obtida (impasse 40P01 ou tempo-limite) na criação, na conferência inicial ou depois de cancelar: 'ocupado', nada pela metade", async () => {

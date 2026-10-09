@@ -213,8 +213,10 @@ dias, os pagamentos com desfecho (`reserva`, `devolucao`, `por_fora`) e os aprov
 espera da devolução: devolução ou contestação feita por fora, ou devolução em dobro, vira aviso, nunca
 estorno automático. O prazo é o do Mercado Pago: a consulta da order (`GET /v1/orders/{id}`) só vale
 para orders de até três meses; depois disso "não encontrada" é o limite do provedor e não vira aviso.
-O mesmo prazo de 85 dias vale para a releitura a cada 6 h da taxa e da liberação que não chegaram (depois
-dele, a equipe registra à mão) e para as devoluções pedidas: depois dele a rotina para de ler a order (a
+O mesmo prazo de 85 dias (uma regra só, `PRAZO_RELEITURA_DIAS`) vale para a tentativa que ficou em andamento
+(nem a página nem a rotina leem mais; o aviso "o sistema parou de conferir" liga uma vez), para a releitura a
+cada 6 h da taxa e da liberação que não chegaram (depois dele, a equipe registra à mão) e para as devoluções
+pedidas: depois dele a rotina para de ler a order (a
 confirmação nunca chegaria e as leituras gastariam o limite do provedor sem fim) e liga, uma vez, o aviso
 de que o sistema parou de conferir aquela devolução; a equipe resolve pelo painel do Mercado Pago até o
 M8.2c. Contestação tardia (até 180 dias) fica com o M8.2e, por outro caminho (Payments ou Chargebacks).

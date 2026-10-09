@@ -6,7 +6,7 @@ import { and, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { lancamentos, pagamentos } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
-import { PIX_VALIDADE_MINIMA_MINUTOS } from "./provedor";
+import { PIX_VALIDADE_MINIMA_MINUTOS, RETENCAO_ORDERS_DIAS } from "./provedor";
 import { emAndamento, type SituacaoPagamento } from "./situacoes";
 
 /**
@@ -20,6 +20,15 @@ export const CARENCIA_PAGAMENTO_MS = CARENCIA_PAGAMENTO_MINUTOS * 60_000;
 export const MAXIMO_PIX_POR_COTACAO = 3;
 /** Folga entre o vencimento do Pix e o prazo das datas (o QR nunca vale mais que as datas). */
 export const FOLGA_PRAZO_PIX_MS = 2 * 60_000;
+
+/**
+ * Prazo das leituras que se repetem (página, rotina: em andamento, diária, taxa e liberação, devoluções): o provedor só
+ * consulta orders de até três meses; com folga, 85 dias desde a criação. Depois disso nada se relê sozinho (a leitura
+ * nunca traria nada) e o que faltar fica com aviso para a equipe. Uma regra, um lugar.
+ */
+export const PRAZO_RELEITURA_DIAS = RETENCAO_ORDERS_DIAS - 5;
+/** Tentativas criadas antes deste momento estão fora do prazo de releitura. */
+export const inicioDoPrazoDeReleitura = (agora: Date) => new Date(agora.getTime() - PRAZO_RELEITURA_DIAS * 86_400_000);
 
 /** Depois do prazo do Pix, por quanto tempo a página ainda lê a order de um Pix recusado, cancelado ou vencido. */
 export const FOLGA_LEITURA_PIX_ENCERRADO_MS = 15 * 60_000;
@@ -37,12 +46,13 @@ function fimDaLeituraEncerrada(t: { pixExpiraEm: Date | null; criadoEm: Date }):
 
 /**
  * A página do hóspede ainda lê esta tentativa (ela ainda pode virar dinheiro)? Em andamento (criando, incerta,
- * pendente), ou recusada, cancelada ou vencida há pouco, com order no provedor, até o prazo do Pix mais a folga: o
+ * pendente) dentro do prazo de releitura, ou recusada, cancelada ou vencida há pouco, com order no provedor, até o prazo do Pix mais a folga: o
  * cancelamento pode cruzar com o pagamento e o provedor pode corrigir uma recusa. A mesma regra decide o que a página
  * lê (`conferirCotacaoParaPagina`) e se ela continua acompanhando (`acompanhar` da vista do hóspede).
  */
 export function paginaAindaLe(t: { situacao: SituacaoPagamento; idProvedor: string | null; pixExpiraEm: Date | null; criadoEm: Date }, agora: Date): boolean {
-  if (emAndamento(t.situacao)) return true;
+  // Em andamento, só dentro do prazo de releitura (depois, a order não aparece mais: aviso para a equipe, pela rotina).
+  if (emAndamento(t.situacao)) return t.criadoEm.getTime() >= inicioDoPrazoDeReleitura(agora).getTime();
   return ENCERRADAS_SEM_DINHEIRO.includes(t.situacao) && !!t.idProvedor && agora.getTime() < fimDaLeituraEncerrada(t);
 }
 
