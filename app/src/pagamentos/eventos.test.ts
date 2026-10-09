@@ -186,6 +186,20 @@ describe("rotina de conferência (M8.2a)", () => {
     expect(await c.tentativa(p.pagamentoId)).toMatchObject({ situacao: "contestado", avisos: expect.arrayContaining(["contestado"]) });
   });
 
+  it("a releitura diária para antes do prazo de consulta do Mercado Pago (três meses); order velha não encontrada não vira aviso", async () => {
+    const s = await c.segurar();
+    const p = await c.pix(s.cotacaoId);
+    c.provedor.aprovar(p.idProvedor, { taxa: 1806, liberado: true });
+    await conferirPendentes(db, c.org, c.provedor, minutos(2));
+    expect((await c.tentativa(p.pagamentoId)).desfecho).toBe("reserva");
+    const dia = 24 * 60;
+    expect((await conferirPendentes(db, c.org, c.provedor, minutos(84 * dia))).conferidas).toBe(1);
+    expect((await conferirPendentes(db, c.org, c.provedor, minutos(86 * dia))).conferidas).toBe(0);
+    // Lida à mão depois do prazo de consulta: o provedor não acha a order, e isso não pede atenção.
+    await aplicarNaTransacao(db, c.org, { id: p.pagamentoId, cotacaoId: s.cotacaoId }, { cobranca: null, idLido: p.idProvedor }, minutos(91 * dia));
+    expect((await c.tentativa(p.pagamentoId)).avisos).not.toContain("order_nao_encontrada");
+  });
+
   it("à espera da liberação: no primeiro dia a cada volta; depois, a cada 6 h", async () => {
     const s = await c.segurar();
     const p = await c.pix(s.cotacaoId);

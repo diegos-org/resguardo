@@ -195,10 +195,12 @@ provedor não conta, mas na página o "muitas chamadas" (429) ou a falta de resp
 5xx) **contam**: a página lê no máximo uma vez a cada 15 s mesmo com o Mercado Pago falhando — o
 freio vale justamente quando a conta está no limite; na rotina, a leitura que falha não conta; freio
 por endereço de internet), rotina (a de holds, que primeiro confere os pagamentos e só depois
-vence holds) e **Conferir agora** no painel (sem o intervalo). A rotina relê uma vez por dia, por 180
+vence holds) e **Conferir agora** no painel (sem o intervalo). A rotina relê uma vez por dia, por 85
 dias, os pagamentos com desfecho (`reserva`, `devolucao`, `por_fora`) e os aprovados sem reserva à
 espera da devolução: devolução ou contestação feita por fora, ou devolução em dobro, vira aviso, nunca
-estorno automático.
+estorno automático. O prazo é o do Mercado Pago: a consulta da order (`GET /v1/orders/{id}`) só vale
+para orders de até três meses; depois disso "não encontrada" é o limite do provedor e não vira aviso.
+Contestação tardia (até 180 dias) fica com o M8.2e, por outro caminho (Payments ou Chargebacks).
 
 **Onde a rotina roda:** o cron da Vercel só roda no deploy de produção, onde o pagamento fica
 desligado. No teste (prévias), nada confere sozinho: a página do hóspede confere o próprio Pix e o

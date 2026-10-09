@@ -62,6 +62,12 @@ export type Cobranca = {
 };
 
 /** Taxa, líquido e liberação. Tudo null = desconhecido (o painel avisa; nunca palpite). */
+/**
+ * O Mercado Pago só consulta (GET /v1/orders/{id}) orders criadas há menos de três meses. Depois disso a order
+ * "não existe" para a leitura: não é aviso, é o limite do provedor (a contestação tardia é do M8.2e, por outro caminho).
+ */
+export const RETENCAO_ORDERS_DIAS = 90;
+
 export type DetalheFinanceiro = {
   /** Centavos que o provedor ficou (só as tarifas pagas pela SCL). */
   taxa: number | null;

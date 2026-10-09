@@ -7,7 +7,7 @@
  * - aprovadas ainda sem taxa ou sem liberação (só a que confirmou a reserva lança recebimento);
  * - devoluções pedidas cuja próxima tentativa chegou (relê a order antes; chave nova a cada pedido);
  * - Pix pendentes que sobraram numa cotação já confirmada (cancelados no provedor);
- * - uma vez por dia, os pagamentos dos últimos 180 dias com desfecho (reserva, devolução ou devolução por fora) e
+ * - uma vez por dia, os pagamentos dos últimos 85 dias (o provedor só consulta orders de até três meses) com desfecho (reserva, devolução ou devolução por fora) e
  *   os aprovados sem reserva à espera da devolução: devolução ou contestação feita por fora (ou devolução em dobro)
  *   vira aviso, nunca estorno automático.
  *
@@ -21,11 +21,15 @@ import type { Db } from "@/db/types";
 import { cancelarNoProvedor, conferirTentativa } from "./conferencia";
 import { tentarDevolucao } from "./devolucao";
 import { apagarEventosAntigos } from "./eventos";
-import type { ProvedorPagamento } from "./provedor";
+import { type ProvedorPagamento, RETENCAO_ORDERS_DIAS } from "./provedor";
 import { expirarHoldsVencidos, type ResumoExpiracao } from "@/site/cotacoes";
 
-/** Por quanto tempo os pagamentos que confirmaram uma reserva são relidos (janela de devolução e contestação). */
-export const RELER_RESERVA_DIAS = 180;
+/**
+ * Por quanto tempo os pagamentos com desfecho são relidos uma vez por dia (devolução e contestação feitas no painel do
+ * Mercado Pago): dentro do prazo em que o provedor ainda consulta a order (três meses), com folga. Contestação depois
+ * disso é do M8.2e, por outro caminho.
+ */
+export const RELER_RESERVA_DIAS = RETENCAO_ORDERS_DIAS - 5;
 export const RELER_RESERVA_A_CADA_MS = 24 * 3_600_000;
 /** Aprovado há mais de um dia à espera da taxa ou da liberação: relido a cada 6 h. */
 export const ESPERA_LIBERACAO_MS = 6 * 3_600_000;

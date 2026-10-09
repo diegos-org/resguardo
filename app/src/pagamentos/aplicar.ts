@@ -11,7 +11,7 @@ import { devolucoesPagamento, pagamentos, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { decidirAprovacao } from "./confirmacao";
 import { gravarTaxaNaReserva, liberarPeloProvedor, recebimentosDoPagamento } from "./liberacao";
-import type { Cobranca, DetalheFinanceiro } from "./provedor";
+import { type Cobranca, type DetalheFinanceiro, RETENCAO_ORDERS_DIAS } from "./provedor";
 import { type CodigoAviso, comDinheiro, type SituacaoPagamento, situacaoLocal, transicaoPermitida } from "./situacoes";
 import type { Pagamento, Travado } from "./travas";
 
@@ -69,7 +69,10 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
     // Leitura feita antes de outra transação gravar o id da order (a criação terminou no meio): já não vale.
     if (leitura.idLido !== undefined && leitura.idLido !== p.idProvedor) {
       /* nada */
-    } else if (p.idProvedor) ligar("order_nao_encontrada");
+    } else if (p.idProvedor) {
+      // Order mais velha que o prazo de consulta do provedor: "não encontrada" é o limite dele, não um problema.
+      if (agora.getTime() - p.criadoEm.getTime() < RETENCAO_ORDERS_DIAS * 86_400_000) ligar("order_nao_encontrada");
+    }
     else if (leitura.desistir && semOrder) {
       // Procurada pela referência por tempo bastante e nunca achada: a criação não chegou a acontecer.
       situacao = "cancelado";
