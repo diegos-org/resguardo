@@ -322,9 +322,11 @@ do M9.2 passa a valer para reservas pagas quando Diego ligar as mensagens.
   devolução que só recebe respostas incertas não fica pedida para sempre. Sob a trava, a
   vez e o número de tentativas são conferidos de novo (painel e rotina juntos não pedem duas vezes).
 - **Registrar devolução feita por fora** relê antes a order no Mercado Pago (fora da transação):
-  devolvida (no todo ou em parte), com devolução em andamento ou contestada = recusa; sem conseguir
-  ler (ou sem o provedor, como no deploy de produção) = recusa também. Nesta parte, só o valor
-  integral (devolução de parte do valor é o M8.2c). O dinheiro que chegou já **contestado** (situação
+  outra order (id ou referência diferentes dos deste pagamento), devolvida (no todo ou em parte), com
+  devolução em andamento ou contestada = recusa; sem conseguir ler (ou sem o provedor, como no deploy
+  de produção) = recusa também. Nesta parte, só o valor integral **pago**, pela leitura de agora (o
+  total pago quando vier, senão o valor da order: no valor divergente, o que o hóspede pagou, não o
+  total da cotação; devolução de parte do valor é o M8.2c). O dinheiro que chegou já **contestado** (situação
   inesperada) continua com essa opção: a situação local nunca volta a "aprovado", e a releitura só
   aceita quando o Mercado Pago mostra o pagamento aprovado de novo (contestação resolvida). O que
   chegou já **devolvido em parte** não tem essa opção (o Mercado Pago sempre mostra a parte

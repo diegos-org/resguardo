@@ -451,6 +451,30 @@ describe("devolução do pagamento sem reserva (M8.2a)", () => {
     expect(await porFora(z.pagamentoId, minutos(14))).toMatchObject({ ok: false, erro: expect.stringContaining("contestado") });
   });
 
+  it("por fora: a order relida precisa ser a deste pagamento (id e referência); outra order aprovada não serve, e nada é registrado", async () => {
+    const x = await semReserva();
+    const [order] = c.provedor.todas().filter((o) => o.idProvedor === x.idProvedor);
+    for (const outra of [{ ...order, referencia: "scl-outra" }, { ...order, idProvedor: "ORDTSTOUTRA" }]) {
+      vi.spyOn(c.provedor, "consultar").mockResolvedValue(outra);
+      expect(await porFora(x.pagamentoId, minutos(10))).toMatchObject({ ok: false, erro: expect.stringContaining("não bate com este pagamento") });
+      vi.restoreAllMocks();
+    }
+    expect(await devolucao(x.pagamentoId)).toBeUndefined();
+    expect((await c.tentativa(x.pagamentoId)).desfecho).toBeNull();
+  });
+
+  it("por fora: o integral é o que o hóspede pagou pela leitura (valor divergente da cotação), não o valor pedido na criação", async () => {
+    const x = await semReserva();
+    const [order] = c.provedor.todas().filter((o) => o.idProvedor === x.idProvedor);
+    const pago = TOTAL - 10_000;
+    vi.spyOn(c.provedor, "consultar").mockResolvedValue({ ...order, pago });
+    expect(await porFora(x.pagamentoId, minutos(10))).toMatchObject({ ok: false, erro: expect.stringContaining("valor integral pago") });
+    expect(await porFora(x.pagamentoId, minutos(11), { valor: pago })).toEqual({ ok: true, situacao: "por_fora" });
+    vi.restoreAllMocks();
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "por_fora", porForaValor: pago });
+    expect(await c.tentativa(x.pagamentoId)).toMatchObject({ desfecho: "por_fora", valorPago: pago });
+  });
+
   it("devolvido pelo Mercado Pago depois de registrado por fora: a releitura diária avisa da devolução em dobro", async () => {
     const x = await semReserva();
     expect(await porFora(x.pagamentoId, minutos(10))).toEqual({ ok: true, situacao: "por_fora" });

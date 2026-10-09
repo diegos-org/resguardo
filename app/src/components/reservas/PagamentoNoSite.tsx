@@ -171,7 +171,7 @@ function Tentativa({ p, verValores, editar, hoje }: { p: PagamentoDoPainel } & O
               rotulo="Registrar devolução feita por fora"
               nome="Registrar devolução feita por fora"
               discreto
-              pergunta="Registrar que o dinheiro já voltou ao hóspede por fora do Mercado Pago? Vale só o valor integral, e antes o sistema confere no Mercado Pago que a devolução não foi feita por lá. O pagamento fica encerrado como devolvido por fora e não pode mais ser devolvido pelo Mercado Pago."
+              pergunta="Registrar que o dinheiro já voltou ao hóspede por fora do Mercado Pago? Vale só o valor integral pago, e antes o sistema confere no Mercado Pago que a devolução não foi feita por lá. O pagamento fica encerrado como devolvido por fora e não pode mais ser devolvido pelo Mercado Pago."
             >
               <label style={{ flex: "0 1 180px" }}>
                 Data da devolução
@@ -179,7 +179,7 @@ function Tentativa({ p, verValores, editar, hoje }: { p: PagamentoDoPainel } & O
               </label>
               <label style={{ flex: "0 1 160px" }}>
                 Valor devolvido (R$)
-                <input name="valor" inputMode="decimal" defaultValue={verValores ? centavosParaCampo(p.valor) : ""} required />
+                <input name="valor" inputMode="decimal" defaultValue={verValores ? centavosParaCampo(p.valorPago ?? p.valor) : ""} required />
               </label>
               <label style={{ flex: "1 1 200px" }}>
                 Nota (opcional)

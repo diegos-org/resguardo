@@ -61,6 +61,9 @@ export type Cobranca = {
   pix: DadosPix | null;
 };
 
+/** O que o hóspede pagou na order: o total pago quando vier, senão o valor da order. É o "integral" de uma devolução. */
+export const valorPagoNaOrder = (c: Pick<Cobranca, "pago" | "valor">): number => c.pago ?? c.valor;
+
 /** Taxa, líquido e liberação. Tudo null = desconhecido (o painel avisa; nunca palpite). */
 /**
  * O Mercado Pago só consulta (GET /v1/orders/{id}) orders criadas há menos de três meses. Depois disso a order

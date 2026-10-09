@@ -9,7 +9,7 @@
  * (POST) leva X-Idempotency-Key e NUNCA é repetida aqui dentro com outra chave: em dúvida, o
  * resultado é "incerto" e quem chama procura pela referência antes de tentar de novo.
  */
-import { chaveIdempotenciaValida, emailPlausivel, ErroProvedor, idProvedorValido, problemaNoCartao, problemaNoPedido, referenciaValida, validadePixMinutos } from "./provedor";
+import { chaveIdempotenciaValida, emailPlausivel, ErroProvedor, idProvedorValido, problemaNoCartao, problemaNoPedido, referenciaValida, validadePixMinutos, valorPagoNaOrder } from "./provedor";
 import type { Cobranca, DetalheFinanceiro, FormaPagamento, PedidoCartao, PedidoPix, ProvedorPagamento, ResultadoCancelamento, ResultadoCriacao, ResultadoDevolucao, SituacaoCobranca } from "./provedor";
 
 const BASE = "https://api.mercadopago.com";
@@ -669,7 +669,7 @@ export class ClienteMercadoPagoHttp implements ProvedorPagamento {
     if (!chaveIdempotenciaValida(chaveIdempotencia)) return recusada("Chave de idempotência inválida.");
     if (valor !== null) {
       if (!Number.isSafeInteger(valor) || valor <= 0) return recusada("Valor da devolução inválido.");
-      if (valor > (c.pago ?? c.valor) - c.devolvido) return recusada("O valor passa do que ainda pode ser devolvido.");
+      if (valor > valorPagoNaOrder(c) - c.devolvido) return recusada("O valor passa do que ainda pode ser devolvido.");
       if (!c.idTransacao || !idProvedorValido(c.idTransacao)) return recusada("Falta o id da transação para a devolução parcial.");
     }
     const corpo = valor === null ? {} : { transactions: [{ id: c.idTransacao, amount: centavosParaValorApi(valor) }] };
