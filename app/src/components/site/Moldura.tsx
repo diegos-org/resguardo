@@ -46,6 +46,9 @@ export function Moldura({ conteudo, children, largura = "miolo" }: { conteudo: C
   const nome = conteudo?.nomeEmpresa.trim() || "Início";
   const marca = conteudo?.imagens.marca ?? MARCA_PADRAO;
   const ano = new Date().getFullYear();
+  // Quem vende (Decreto 7.962, art. 2º): razão social, CNPJ e endereço da empresa, quando preenchidos em Configurações → Empresa.
+  const id = conteudo?.identidade;
+  const identidade = id && (id.razaoSocial || id.cnpj) ? [id.razaoSocial, id.cnpj && `CNPJ ${id.cnpj}`, id.endereco].filter(Boolean).join(" · ") : null;
   return (
     <div className={styles.pagina}>
       <header className={styles.topo}>
@@ -91,6 +94,13 @@ export function Moldura({ conteudo, children, largura = "miolo" }: { conteudo: C
             <Link href="/anunciar">Anuncie seu imóvel</Link>
             <Link href="/painel">Área da equipe</Link>
           </div>
+          {/* Páginas legais (M7.4): sempre no rodapé; antes da versão 1, cada uma diz que está em preparação. */}
+          <div className={styles.rodapeLegal}>
+            <Link href="/termos">Termos de uso</Link>
+            <Link href="/privacidade">Privacidade</Link>
+            <Link href="/cancelamento">Cancelamento</Link>
+          </div>
+          {identidade && <small className={styles.rodapeIdentidade}>{identidade}</small>}
           <small>
             © {ano} {nome}
           </small>

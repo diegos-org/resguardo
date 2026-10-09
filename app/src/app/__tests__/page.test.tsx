@@ -60,6 +60,39 @@ describe("site público (M7.1)", () => {
     expect(screen.getByRole("link", { name: "Falar com Casa pelo WhatsApp" }).getAttribute("href")).toMatch(/^https:\/\/wa\.me\/5521900000000\?text=/);
   });
 
+  it("rodapé (M7.4): as três páginas legais em todas as páginas e, com razão social ou CNPJ no cadastro, a identificação da empresa", () => {
+    const conteudo = { organizacaoId: "x", nomeEmpresa: "Casa Exemplo", textos: TEXTOS_SITE_INICIAIS, whatsapp: null, email: "", imagens: { capa: null, marca: "/marca.png" } };
+    render(
+      <Moldura conteudo={conteudo}>
+        <h1>Oi</h1>
+      </Moldura>,
+    );
+    const rodape = within(screen.getByRole("contentinfo"));
+    expect(rodape.getByRole("link", { name: "Termos de uso" }).getAttribute("href")).toBe("/termos");
+    expect(rodape.getByRole("link", { name: "Privacidade" }).getAttribute("href")).toBe("/privacidade");
+    expect(rodape.getByRole("link", { name: "Cancelamento" }).getAttribute("href")).toBe("/cancelamento");
+    expect(screen.getByRole("contentinfo").textContent).not.toContain("CNPJ");
+    cleanup();
+    // Só o endereço, sem razão social nem CNPJ: a linha não aparece.
+    render(
+      <Moldura conteudo={{ ...conteudo, identidade: { razaoSocial: "", cnpj: "", endereco: "Rua Fictícia, 100" } }}>
+        <h1>Oi</h1>
+      </Moldura>,
+    );
+    expect(screen.getByRole("contentinfo").textContent).not.toContain("Rua Fictícia");
+    cleanup();
+    render(
+      <Moldura conteudo={{ ...conteudo, identidade: { razaoSocial: "Casa Exemplo Temporada Ltda.", cnpj: "00.000.000/0001-00", endereco: "Rua Fictícia, 100" } }}>
+        <h1>Oi</h1>
+      </Moldura>,
+    );
+    expect(screen.getByText("Casa Exemplo Temporada Ltda. · CNPJ 00.000.000/0001-00 · Rua Fictícia, 100")).toBeTruthy();
+    cleanup();
+    // Sem organização (site em configuração), os links continuam.
+    render(<SiteEmConfiguracao />);
+    expect(within(screen.getByRole("contentinfo")).getByRole("link", { name: "Termos de uso" })).toBeTruthy();
+  });
+
   it("sem organização definida, avisa que está em configuração", () => {
     render(<SiteEmConfiguracao />);
     expect(screen.getByRole("note").textContent).toContain("Site em configuração");

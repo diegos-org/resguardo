@@ -87,6 +87,13 @@ describe("site público (M7.1)", () => {
     expect(c).toMatchObject({ whatsapp: "5521900000000", email: "contato@example.com", textos: { titulo: "Título novo", porque: "Sobre nós." } });
   });
 
+  it("identificação da empresa para o rodapé (M7.4): razão social, CNPJ e endereço de agora, do cadastro da empresa", async () => {
+    expect((await conteudoDoSite(db))?.identidade).toEqual({ razaoSocial: "", cnpj: "", endereco: "" });
+    const empresa = { nome: "Sua Casa Exemplo", razaoSocial: "Casa Exemplo Temporada Ltda.", cnpj: "00.000.000/0001-00", email: "", telefone: "", endereco: "Rua Fictícia, 100", encarregado: "", site: "", chavePix: "" };
+    await salvarEmpresa(db, org, empresa, null);
+    expect((await conteudoDoSite(db))?.identidade).toEqual({ razaoSocial: "Casa Exemplo Temporada Ltda.", cnpj: "00.000.000/0001-00", endereco: "Rua Fictícia, 100" });
+  });
+
   it("número do WhatsApp a partir do telefone do cadastro", () => {
     expect(numeroWhatsapp("(21) 90000-0000")).toBe("5521900000000");
     expect(numeroWhatsapp("+55 21 3000-0000")).toBe("552130000000");

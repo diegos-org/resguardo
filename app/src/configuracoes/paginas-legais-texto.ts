@@ -124,7 +124,7 @@ export function conferirCampos(doc: DocumentoLegal, secoes: Record<string, strin
 }
 
 /** Primeira letra minúscula, menos em sigla ("CNPJ" fica, "Razão social" vira "razão social"). */
-const noMeioDaFrase = (r: string) => (/^\p{Lu}[\p{Ll}-]/u.test(r) ? r[0].toLowerCase() + r.slice(1) : r);
+export const noMeioDaFrase = (r: string) => (/^\p{Lu}[\p{Ll}-]/u.test(r) ? r[0].toLowerCase() + r.slice(1) : r);
 
 /** O que impede publicar, em linguagem simples; null = os campos estão em ordem. */
 export function mensagemDosCampos(c: ConferenciaCampos): string | null {
@@ -142,6 +142,9 @@ export function mensagemDosCampos(c: ConferenciaCampos): string | null {
   if (c.vazios.includes("dias_reembolso_integral")) partes.push("Informe em quantos dias antes da entrada vale o reembolso integral.");
   return partes.length ? partes.join(" ") : null;
 }
+
+/** Recusa da Política de cancelamento que não mostra o prazo pelo campo (publicação e aviso do painel usam a mesma frase). */
+export const MENSAGEM_SEM_PRAZO = "A política precisa mostrar o prazo do reembolso pelo campo {{dias_reembolso_integral}}, para o texto e a devolução nunca discordarem.";
 
 /** `{{campo}}` → valor. `faltando` decide o que mostra um valor ausente (site: nada; prévia do painel: "[falta: CNPJ]"). */
 export function preencherCampos(texto: string, valores: Partial<Record<CampoLegal, string>>, faltando?: (campo: string) => string): string {

@@ -19,6 +19,7 @@ import {
   DIAS_REEMBOLSO_MIN,
   DOCUMENTOS_LEGAIS,
   type DocumentoLegal,
+  MENSAGEM_SEM_PRAZO,
   mensagemDosCampos,
   PAGINAS_LEGAIS,
   type RegrasCancelamento,
@@ -128,7 +129,7 @@ export async function publicarPaginaLegal(
     const problema = mensagemDosCampos(c);
     if (problema) return { ok: false, erro: problema };
     if (doc === "cancelamento" && !c.usados.includes("dias_reembolso_integral")) {
-      return { ok: false, erro: "A política precisa mostrar o prazo do reembolso pelo campo {{dias_reembolso_integral}}, para o texto e a devolução nunca discordarem." };
+      return { ok: false, erro: MENSAGEM_SEM_PRAZO };
     }
     return { ok: true, extra: { valores: c.valoresUsados, regras } };
   });

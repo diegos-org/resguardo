@@ -19,6 +19,10 @@ const PASTAS = [
   "app/property",
   "app/reservar",
   "app/consulta",
+  // Páginas legais do site (M7.4).
+  "app/termos",
+  "app/privacidade",
+  "app/cancelamento",
   // Rotas públicas do site (calendário da consulta); a da situação do pagamento fica em app/reservar.
   "app/api/site",
   "components/portal",
@@ -35,7 +39,15 @@ const PASTAS = [
   "repasses",
   "fechamento",
 ];
-const ARQUIVOS_SOLTOS = ["app/page.tsx", "app/layout.tsx"];
+const ARQUIVOS_SOLTOS = [
+  "app/page.tsx",
+  "app/layout.tsx",
+  // Páginas legais (M7.4): o texto-base e as regras que montam o que o hóspede lê. O texto que Diego publicar só ganha
+  // um aviso no painel (o advogado pode pedir para citar quem trata os dados).
+  "configuracoes/paginas-legais.ts",
+  "configuracoes/paginas-legais-texto.ts",
+  "configuracoes/paginas-legais-rascunho.ts",
+];
 
 function arquivos(pasta: string): string[] {
   const caminho = join(RAIZ, pasta);

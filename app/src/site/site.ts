@@ -52,6 +52,11 @@ export type ConteudoSite = {
   email: string;
   /** Endereços das imagens do site (M7.6): foto da capa (null = o fundo verde) e marca (sem a enviada, a do estudo). */
   imagens: { capa: string | null; marca: string };
+  /**
+   * Identificação da empresa no rodapé (M7.4, Decreto 7.962, art. 2º): os dados atuais de Configurações → Empresa. As
+   * páginas legais mostram os dados congelados na versão; o rodapé, sempre os de agora. Opcional só para os testes.
+   */
+  identidade?: { razaoSocial: string; cnpj: string; endereco: string };
 };
 
 /** Marca do estudo (o ícone do logotipo), usada enquanto nenhuma outra é enviada em Configurações → Site. */
@@ -91,6 +96,7 @@ export async function conteudoDoSite(db: Db): Promise<ConteudoSite | null> {
     whatsapp: numeroWhatsapp(empresa.telefone),
     email: empresa.email,
     imagens: { capa: imagens.capa && enderecoImagemSite(imagens.capa), marca: imagens.marca ? enderecoImagemSite(imagens.marca) : MARCA_PADRAO },
+    identidade: { razaoSocial: empresa.razaoSocial, cnpj: empresa.cnpj, endereco: empresa.endereco },
   };
 }
 
