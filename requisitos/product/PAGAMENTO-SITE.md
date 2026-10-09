@@ -200,7 +200,9 @@ pouco, até 15 min depois do prazo dele (ou do mínimo de 30 min desde a criaç�
 pela última atualização, que cada leitura muda), porque o cancelamento pode cruzar com o pagamento e o
 provedor pode corrigir uma recusa (a mesma regra, `paginaAindaLe`, mantém a página acompanhando nesse tempo,
 mesmo com os 3 Pix gastos ou depois do prazo das datas, e relê essas tentativas antes de "Gerar outro Pix":
-se uma virou dinheiro, nenhum outro sai); a leitura é **reservada num comando só**
+se uma virou dinheiro, nenhum outro sai; essa releitura é sempre **nova**, sem o intervalo de 15 s, porque a
+última leitura da página pode ser de segundos antes do pagamento, e sem ela, com o provedor falhando, nenhum
+outro Pix sai; os cliques já passam pelo freio por endereço); nas outras, a leitura é **reservada num comando só**
 antes de chamar o provedor, então pedidos simultâneos leem uma vez; leitura que nem chegou ao
 provedor não conta, mas na página o "muitas chamadas" (429) ou a falta de resposta (tempo esgotado,
 5xx) **contam**: a página lê no máximo uma vez a cada 15 s mesmo com o Mercado Pago falhando — o
@@ -211,7 +213,8 @@ dias, os pagamentos com desfecho (`reserva`, `devolucao`, `por_fora`) e os aprov
 espera da devolução: devolução ou contestação feita por fora, ou devolução em dobro, vira aviso, nunca
 estorno automático. O prazo é o do Mercado Pago: a consulta da order (`GET /v1/orders/{id}`) só vale
 para orders de até três meses; depois disso "não encontrada" é o limite do provedor e não vira aviso.
-O mesmo prazo de 85 dias vale para as devoluções pedidas: depois dele a rotina para de ler a order (a
+O mesmo prazo de 85 dias vale para a releitura a cada 6 h da taxa e da liberação que não chegaram (depois
+dele, a equipe registra à mão) e para as devoluções pedidas: depois dele a rotina para de ler a order (a
 confirmação nunca chegaria e as leituras gastariam o limite do provedor sem fim) e liga, uma vez, o aviso
 de que o sistema parou de conferir aquela devolução; a equipe resolve pelo painel do Mercado Pago até o
 M8.2c. Contestação tardia (até 180 dias) fica com o M8.2e, por outro caminho (Payments ou Chargebacks).
@@ -298,7 +301,9 @@ do M9.2 passa a valer para reservas pagas quando Diego ligar as mensagens.
 - A equipe escolhe (com confirmação), na ficha: **Devolver pelo Mercado Pago** (integral) ou
   **Registrar devolução feita por fora** (data, valor, nota; a data entre o dia em que o Pix foi
   criado e hoje). Exigem desfecho vazio e nenhuma devolução pedida, sob a trava da tentativa.
-- Devolução pelo provedor: `pedida` até confirmar. A chave de cada pedido é gravada antes de chamar.
+- Devolução pelo provedor: `pedida` até confirmar. A chave de cada pedido é gravada antes de chamar, junto
+  com o valor que a order relida mostra como pago (é o que a devolução integral devolve; no valor divergente,
+  não o total da cotação).
   Depois de uma resposta **incerta** (o pedido pode ter sido aceito), o pedido seguinte repete a
   **mesma** chave: o provedor nunca devolve duas vezes pela mesma chave (no pior caso responde
   "chave já usada", que conta como incerta). Chave nova só depois de uma recusa clara ou de um pedido

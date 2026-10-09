@@ -220,8 +220,14 @@ export async function gerarPix(db: Db, organizacaoId: string, cotacaoId: string,
     .from(pagamentos)
     .where(and(eq(pagamentos.cotacaoId, cotacaoId), eq(pagamentos.organizacaoId, organizacaoId)));
   const reler = tentativas.filter((t) => t.situacao !== "pendente" && paginaAindaLe(t, agora));
-  // Sem `forcar`: a leitura é reservada (no máximo uma a cada 15 s por tentativa, mesmo com cliques simultâneos).
-  for (const a of reler) if ((await conferirOuOcupado(db, organizacaoId, a.id, provedor, agora, { origem: "pagina" })) === null) return falha("ocupado");
+  // Leitura NOVA, sem o intervalo de 15 s: a última (da página, segundos antes) pode ser de antes de o Pix virar dinheiro,
+  // e é esta leitura que decide se outro Pix pode sair. Os cliques já passam pelo freio por endereço ("gerar_pix").
+  // Sem leitura (o provedor falhou), nenhum outro Pix sai.
+  for (const a of reler) {
+    const lida = await conferirOuOcupado(db, organizacaoId, a.id, provedor, agora, { forcar: true, origem: "pagina" });
+    if (lida === null) return falha("ocupado");
+    if (!lida.ok) return falha("provedor", lida.erro);
+  }
   for (let volta = 0; volta < 3; volta++) {
     let f: Fase1;
     try {

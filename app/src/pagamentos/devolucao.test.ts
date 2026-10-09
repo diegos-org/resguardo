@@ -54,6 +54,17 @@ describe("devolução do pagamento sem reserva (M8.2a)", () => {
     expect(pedidos()).toHaveLength(1);
   });
 
+  it("pelo Mercado Pago com valor divergente: o valor registrado é o que a order relida mostra como pago, não o da criação", async () => {
+    const x = await semReserva();
+    const [order] = c.provedor.todas().filter((o) => o.idProvedor === x.idProvedor);
+    const pago = TOTAL - 10_000;
+    vi.spyOn(c.provedor, "consultar").mockResolvedValue({ ...order, pago });
+    await devolverPeloProvedor(db, c.org, x.pagamentoId, null, c.provedor, minutos(10));
+    vi.restoreAllMocks();
+    expect(pedidos()).toHaveLength(1);
+    expect((await devolucao(x.pagamentoId)).valor).toBe(pago);
+  });
+
   it("taxa que não voltou: a equipe informa (zero se voltou toda); despesa da empresa com chave própria, categoria criada no primeiro uso, uma vez só", async () => {
     const x = await semReserva();
     expect(await registrarTaxaPerdida(db, c.org, x.pagamentoId, 900, null, minutos(5))).toMatchObject({ ok: false, erro: expect.stringContaining("depois da devolução confirmada") });

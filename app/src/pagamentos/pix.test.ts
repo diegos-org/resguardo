@@ -198,6 +198,28 @@ describe("gerar o Pix (M8.2a)", () => {
     expect((await c.reserva(reservaId)).estado).toBe("confirmada");
   });
 
+  it("Pix cancelado lido pela página segundos antes de ser pago: ao pedir outro dentro dos 15 s, a leitura é nova (sem o intervalo) e nenhum segundo Pix sai; sem leitura, também não", async () => {
+    const { cotacaoId, reservaId } = await c.segurar();
+    const a = await c.pix(cotacaoId);
+    await db.update(pagamentos).set({ situacao: "cancelado" }).where(eq(pagamentos.id, a.pagamentoId));
+    // A página lê o cancelado (marca de 15 s gravada)...
+    await conferirCotacaoParaPagina(db, c.org, cotacaoId, c.provedor, minutos(2));
+    expect((await c.tentativa(a.pagamentoId)).situacao).toBe("cancelado");
+    const criados = () => c.provedor.chamadas.filter((x) => x.metodo === "criarPix").length;
+    const antes = criados();
+    // ...o provedor falha na hora de pedir outro: nada sai.
+    c.provedor.falhas.consultar = new ErroProvedor("incerto", "tempo");
+    expect(await gerarPix(db, c.org, cotacaoId, new Date(minutos(2).getTime() + 1000), c.provedor)).toMatchObject({ ok: false });
+    c.provedor.falhas.consultar = null;
+    expect(criados()).toBe(antes);
+    // ...e o Pix é pago um segundo depois; o hóspede pede outro dentro dos 15 s.
+    c.provedor.aprovar(a.idProvedor);
+    expect((await gerarPix(db, c.org, cotacaoId, new Date(minutos(2).getTime() + 2000), c.provedor)).ok).toBe(false);
+    expect(criados()).toBe(antes);
+    expect(await c.tentativa(a.pagamentoId)).toMatchObject({ situacao: "aprovado", desfecho: "reserva" });
+    expect((await c.reserva(reservaId)).estado).toBe("confirmada");
+  });
+
   it("trava não obtida (impasse 40P01 ou tempo-limite) na criação, na conferência inicial ou depois de cancelar: 'ocupado', nada pela metade", async () => {
     const impasse = () => Object.assign(new Error("deadlock detected"), { code: "40P01" });
     /** O banco, com a n-ésima transação abortada por impasse (como o Postgres faz). */

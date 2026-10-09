@@ -181,7 +181,11 @@ export async function tentarDevolucao(db: Db, organizacaoId: string, devolucaoId
       }
       const proxima = dev.tentativas + 1;
       const usar = dev.chaveEmDuvida && dev.chaveAtual ? dev.chaveAtual : chaveDevolucao(dev.id, proxima);
-      await tx.update(devolucoesPagamento).set({ tentativas: proxima, chaveAtual: usar, proximaTentativaEm: new Date(agora.getTime() + ESPERA_DEVOLUCAO_MS), atualizadoEm: agora }).where(eq(devolucoesPagamento.id, dev.id));
+      // O valor registrado é o que a order relida mostra como pago (a devolução integral devolve isso, não o da cotação).
+      await tx
+        .update(devolucoesPagamento)
+        .set({ tentativas: proxima, chaveAtual: usar, valor: valorPagoNaOrder(cobranca), proximaTentativaEm: new Date(agora.getTime() + ESPERA_DEVOLUCAO_MS), atualizadoEm: agora })
+        .where(eq(devolucoesPagamento.id, dev.id));
       return usar;
     });
     if (chave === null) return situacaoDaDevolucao(db, devolucaoId);
@@ -254,6 +258,8 @@ export async function devolverPeloProvedor(db: Db, organizacaoId: string, pagame
     const recusa = recusaDaDevolucao(p, dev, false);
     if (recusa) return { ok: false as const, erro: recusa };
     const motivo = textoMotivoSemReserva(p.motivoSemReserva) ?? "Pagamento sem reserva.";
+    // O que o hóspede pagou pela última leitura (a devolução integral devolve isso); cada envio regrava pela releitura.
+    const integral = valorPagoNaOrder({ pago: p.valorPago, valor: p.valor });
     let id: string;
     if (dev) {
       // Devolução que desistiu depois de 3 recusas (relida a order, sem sinal de devolução): a equipe pede de novo, com
@@ -267,11 +273,11 @@ export async function devolverPeloProvedor(db: Db, organizacaoId: string, pagame
     } else {
       [{ id }] = await tx
         .insert(devolucoesPagamento)
-        .values({ organizacaoId, pagamentoId: p.id, motivo, valor: p.valor, situacao: "pedida", proximaTentativaEm: agora, autorId, criadoEm: agora, atualizadoEm: agora })
+        .values({ organizacaoId, pagamentoId: p.id, motivo, valor: integral, situacao: "pedida", proximaTentativaEm: agora, autorId, criadoEm: agora, atualizadoEm: agora })
         .returning({ id: devolucoesPagamento.id });
     }
     await tx.update(pagamentos).set({ avisos: p.avisos.filter((a) => a !== "devolucao_falhou" && a !== "devolucao_parada"), atualizadoEm: agora }).where(eq(pagamentos.id, p.id));
-    await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "pagamento.devolver", entidade: "pagamento", entidadeId: p.id, mudancas: { devolucao: [dev?.situacao ?? null, "pedida"], valor: [null, p.valor] } });
+    await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "pagamento.devolver", entidade: "pagamento", entidadeId: p.id, mudancas: { devolucao: [dev?.situacao ?? null, "pedida"], valor: [null, integral] } });
     return { ok: true as const, id };
   });
   if (!r.ok) return r;

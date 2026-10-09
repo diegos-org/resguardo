@@ -4,7 +4,8 @@
  * isto ANTES de vencer holds, para nunca vencer um pedido cujo Pix já foi pago.
  *
  * - tentativas `criando`, `incerta` ou `pendente` (as sem order são procuradas pela referência);
- * - aprovadas ainda sem taxa ou sem liberação (só a que confirmou a reserva lança recebimento);
+ * - aprovadas ainda sem taxa ou sem liberação (só a que confirmou a reserva lança recebimento), dos últimos 85 dias
+ *   (depois, a equipe registra à mão);
  * - devoluções pedidas cuja próxima tentativa chegou (relê a order antes; chave nova a cada pedido), só de pagamentos
  *   dos últimos 85 dias: depois disso a order não aparece mais, a rotina para de ler e liga o aviso
  *   `devolucao_fora_do_prazo` (uma vez), para a equipe resolver pelo painel do Mercado Pago;
@@ -42,6 +43,9 @@ export type ResumoConferencia = { conferidas: number; mudaram: number; devolucoe
 export async function conferirPendentes(db: Db, organizacaoId: string | null, provedor: ProvedorPagamento, agora: Date = new Date()): Promise<ResumoConferencia> {
   const resumo: ResumoConferencia = { conferidas: 0, mudaram: 0, devolucoes: 0, canceladas: 0, falhas: 0 };
   const daOrg = organizacaoId ? eq(pagamentos.organizacaoId, organizacaoId) : undefined;
+  // Prazo único das leituras que se repetem (diária, taxa e liberação, devoluções): o provedor só consulta orders de até
+  // três meses; depois disso a leitura nunca traria nada e só gastaria o limite de chamadas.
+  const corte = new Date(agora.getTime() - RELER_RESERVA_DIAS * 86_400_000);
   const alvos = await db
     .select({ id: pagamentos.id, organizacaoId: pagamentos.organizacaoId })
     .from(pagamentos)
@@ -53,6 +57,8 @@ export async function conferirPendentes(db: Db, organizacaoId: string | null, pr
           and(
             inArray(pagamentos.situacao, ["aprovado", "devolvido_parcial"]),
             or(isNull(pagamentos.taxa), and(eq(pagamentos.desfecho, "reserva"), or(isNull(pagamentos.liberacaoConfirmadaEm), eq(pagamentos.liberacaoOrigem, "manual")))),
+            // Taxa ou liberação que nunca chegou: depois do prazo do provedor, fica para a equipe (registro à mão).
+            gte(pagamentos.criadoEm, corte),
             // No primeiro dia, a cada volta; depois, a cada 6 h (no teste o sinal de liberação nunca chega).
             or(
               gte(pagamentos.aprovadoEm, new Date(agora.getTime() - 24 * 3_600_000)),
@@ -68,7 +74,7 @@ export async function conferirPendentes(db: Db, organizacaoId: string | null, pr
               inArray(pagamentos.desfecho, ["reserva", "devolucao", "por_fora"]),
               and(isNull(pagamentos.desfecho), inArray(pagamentos.situacao, ["aprovado", "devolvido_parcial", "contestado"])),
             ),
-            gte(pagamentos.criadoEm, new Date(agora.getTime() - RELER_RESERVA_DIAS * 86_400_000)),
+            gte(pagamentos.criadoEm, corte),
             or(isNull(pagamentos.consultadoEm), lt(pagamentos.consultadoEm, new Date(agora.getTime() - RELER_RESERVA_A_CADA_MS))),
           ),
         ),
@@ -108,9 +114,7 @@ export async function conferirPendentes(db: Db, organizacaoId: string | null, pr
     }
   }
 
-  // Devoluções: o mesmo prazo das releituras diárias (o provedor só consulta orders de até três meses). Fora dele, nada
-  // se lê (a confirmação nunca chegaria e as leituras gastariam o limite do provedor sem fim): só o aviso, uma vez.
-  const corte = new Date(agora.getTime() - RELER_RESERVA_DIAS * 86_400_000);
+  // Devoluções: o mesmo prazo. Fora dele, nada se lê (a confirmação nunca chegaria): só o aviso, uma vez.
   const foraDoPrazo = sql`jsonb_build_array(${"devolucao_fora_do_prazo"}::text)`;
   await db
     .update(pagamentos)

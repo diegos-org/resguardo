@@ -31,6 +31,21 @@ async function paga(over: Parameters<Cenario["segurar"]>[0] = {}, financeiro: Pa
 }
 
 describe("taxa, liberação e recebimento do pagamento no site (M8.2a)", () => {
+  it("liberação ou taxa que nunca chegam: a rotina relê a cada 6 h só até o prazo do provedor (85 dias); depois para, e fica para a equipe", async () => {
+    // Aprovado sem a taxa e sem a liberação (o sinal nunca chega).
+    const x = await paga({}, { liquido: null });
+    expect(await c.tentativa(x.pagamentoId)).toMatchObject({ taxa: null, desfecho: "reserva", liberacaoConfirmadaEm: null });
+    const leituras = () => c.provedor.chamadas.filter((ch) => ch.metodo === "consultar" && ch.id === x.idProvedor).length;
+    const dia = (n: number) => new Date(minutos(3).getTime() + n * 86_400_000);
+    const antes = leituras();
+    await conferirPendentes(db, c.org, c.provedor, dia(84));
+    expect(leituras()).toBe(antes + 1);
+    for (const n of [86, 86.5, 120]) await conferirPendentes(db, c.org, c.provedor, dia(n));
+    expect(leituras()).toBe(antes + 1);
+    // Continua à espera da equipe (registrar a liberação à mão).
+    expect(await c.tentativa(x.pagamentoId)).toMatchObject({ taxa: null, liberacaoConfirmadaEm: null });
+  });
+
   it("taxa = valor − líquido numa leitura só, em reservas.taxaCanal antes do motor; recebido == devido, ao centavo", async () => {
     const x = await paga();
     expect(await c.tentativa(x.pagamentoId)).toMatchObject({ taxa: TAXA, liquido: LIQUIDO });
