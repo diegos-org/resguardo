@@ -163,6 +163,8 @@ async function criar(db: Db, organizacaoId: string, cotacaoId: string, f: Extrac
         await desfazerProvisorio(tx, organizacaoId, cotacaoId, f, agora);
         return { situacao: null, cancelar: [], pedidoValido: true, aoVivo: false };
       }
+      // `aplicarLeitura` atualiza este mesmo objeto (`p`, de `t.tentativas`) com o que gravou: daqui em diante ele já
+      // tem o id da order e o prazo do Pix que o provedor devolveu.
       const ef = await aplicarLeitura(tx, organizacaoId, t, p.id, leitura, agora);
       const pedidoValido = t.reserva.estado === "pedido" && t.cotacao.estado === "segurada";
       const cancelar = [...ef.cancelar];

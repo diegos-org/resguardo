@@ -144,6 +144,31 @@ describe("gerar o Pix (M8.2a)", () => {
     }
   });
 
+  it("prazo do Pix que o Mercado Pago devolve maior que o provisório: as datas ficam seguradas até ele + 2 min (pelo que a criação gravou)", async () => {
+    const { cotacaoId } = await c.segurar();
+    const original = c.provedor.criarPix.bind(c.provedor);
+    c.provedor.criarPix = async (p) => {
+      const r = await original(p);
+      return r.ok && r.cobranca.pix ? { ...r, cobranca: { ...r.cobranca, pix: { ...r.cobranca.pix, expiraEm: minutos(45) } } } : r;
+    };
+    expect((await gerarPix(db, c.org, cotacaoId, AGORA, c.provedor)).ok).toBe(true);
+    expect((await c.cotacao(cotacaoId)).holdAte?.toISOString()).toBe(new Date(minutos(45).getTime() + FOLGA_PRAZO_PIX_MS).toISOString());
+  });
+
+  it("o pedido deixa de valer enquanto o Mercado Pago cria o Pix: a order nova é cancelada no provedor e a resposta é de falha", async () => {
+    const { cotacaoId } = await c.segurar();
+    const original = c.provedor.criarPix.bind(c.provedor);
+    c.provedor.criarPix = async (p) => {
+      const r = await original(p);
+      // Durante a chamada, a cotação deixa de estar segurada (vencida pela rotina, por exemplo).
+      await db.update(cotacoes).set({ estado: "expirada" }).where(eq(cotacoes.id, cotacaoId));
+      return r;
+    };
+    expect(await gerarPix(db, c.org, cotacaoId, AGORA, c.provedor)).toMatchObject({ ok: false, codigo: "nao_oferecido" });
+    const [criada] = c.provedor.todas();
+    expect(c.provedor.chamadas.some((x) => x.metodo === "cancelar" && x.id === criada.idProvedor)).toBe(true);
+  });
+
   it("teto antes de cancelar: com 3 Pix gerados, pedir outro não cancela o terceiro, ainda pagável", async () => {
     const { cotacaoId } = await c.segurar();
     for (const [gerar, vencer] of [[0, 31], [31, 62]]) {
