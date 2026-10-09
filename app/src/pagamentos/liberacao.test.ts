@@ -31,6 +31,21 @@ async function paga(over: Parameters<Cenario["segurar"]>[0] = {}, financeiro: Pa
 }
 
 describe("taxa, liberação e recebimento do pagamento no site (M8.2a)", () => {
+  it("'Conferir agora' de tudo (forçado): lê agora o que a rotina só releria depois (taxa e liberação a cada 6 h, releitura diária); a rotina continua com os intervalos", async () => {
+    const x = await paga({}, { liquido: LIQUIDO });
+    const leituras = () => c.provedor.chamadas.filter((ch) => ch.metodo === "consultar" && ch.id === x.idProvedor).length;
+    // Dois dias depois da aprovação, a rotina relê (6 h da liberação que não chegou)...
+    const t = new Date(minutos(3).getTime() + 2 * 86_400_000);
+    await conferirPendentes(db, c.org, c.provedor, t);
+    const antes = leituras();
+    // ...e uma hora depois não relê de novo (intervalo de 6 h)...
+    await conferirPendentes(db, c.org, c.provedor, new Date(t.getTime() + 3_600_000));
+    expect(leituras()).toBe(antes);
+    // ...mas o "Conferir agora" lê.
+    expect(await conferirPendentes(db, c.org, c.provedor, new Date(t.getTime() + 3_660_000), { forcar: true })).toMatchObject({ conferidas: 1 });
+    expect(leituras()).toBe(antes + 1);
+  });
+
   it("liberação ou taxa que nunca chegam: a rotina relê a cada 6 h só até o prazo do provedor (85 dias); depois para, e fica para a equipe", async () => {
     // Aprovado sem a taxa e sem a liberação (o sinal nunca chega).
     const x = await paga({}, { liquido: null });

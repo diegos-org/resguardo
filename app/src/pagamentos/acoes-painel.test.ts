@@ -84,7 +84,7 @@ describe("conferir agora", () => {
   it("todas as pendentes da empresa (nunca de todas as empresas)", async () => {
     m.pendentes.mockResolvedValue({ conferidas: 3, mudaram: 1, devolucoes: 1, canceladas: 0, falhas: 1 });
     const r = await conferirAgoraAcao({}, form({}));
-    expect(m.pendentes).toHaveBeenCalledWith({ banco: true }, "org", provedor);
+    expect(m.pendentes).toHaveBeenCalledWith({ banco: true }, "org", provedor, expect.any(Date), { forcar: true });
     expect(r).toEqual({ ok: true, mensagem: "3 pagamento(s) conferido(s) com o Mercado Pago, 1 com mudança, 1 devolução(ões) confirmada(s). 1 não deu para conferir agora: tente de novo em instantes." });
     m.pendentes.mockResolvedValue({ conferidas: 0, mudaram: 0, devolucoes: 0, canceladas: 0, falhas: 0 });
     expect((await conferirAgoraAcao({}, form({}))).mensagem).toBe("Nada pendente para conferir com o Mercado Pago.");
@@ -105,6 +105,11 @@ describe("devoluções", () => {
     expect(m.devolver).toHaveBeenCalledWith({ banco: true }, "org", ID, "u", provedor);
     m.devolver.mockResolvedValue({ ok: true, situacao: "confirmada" });
     expect(await devolverAcao({}, form({ pagamentoId: ID }))).toEqual({ ok: true, mensagem: "Devolução confirmada pelo Mercado Pago." });
+    // Parada logo na releitura (nada pedido): nunca aparece como pedida.
+    m.devolver.mockResolvedValue({ ok: true, situacao: "recusada" });
+    const parada = await devolverAcao({}, form({ pagamentoId: ID }));
+    expect(parada.ok).toBeUndefined();
+    expect(parada.mensagem).toContain("não foi pedida");
     m.devolver.mockResolvedValue({ ok: false, erro: "Este pagamento já tem desfecho." });
     expect(await devolverAcao({}, form({ pagamentoId: ID }))).toEqual({ mensagem: "Este pagamento já tem desfecho." });
     m.gate.mockResolvedValue({ ok: false, motivo: "conta_nao_teste", texto: "A conta das chaves do Mercado Pago não é de teste: nenhuma cobrança é feita." });

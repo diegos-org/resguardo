@@ -42,8 +42,13 @@ export const ESPERA_LIBERACAO_MS = 6 * 3_600_000;
 
 export type ResumoConferencia = { conferidas: number; mudaram: number; devolucoes: number; canceladas: number; falhas: number };
 
-/** Confere o que está pendente. `organizacaoId` null = todas as empresas (rotina). */
-export async function conferirPendentes(db: Db, organizacaoId: string | null, provedor: ProvedorPagamento, agora: Date = new Date()): Promise<ResumoConferencia> {
+/**
+ * Confere o que está pendente. `organizacaoId` null = todas as empresas (rotina). `forcar` (o "Conferir agora" do
+ * painel): lê agora tudo o que está dentro do prazo, sem os intervalos da rotina (15 s, 6 h da taxa e da liberação,
+ * 24 h da releitura diária). As devoluções seguem a espera entre tentativas (é um envio, não uma leitura).
+ */
+export async function conferirPendentes(db: Db, organizacaoId: string | null, provedor: ProvedorPagamento, agora: Date = new Date(), o: { forcar?: boolean } = {}): Promise<ResumoConferencia> {
+  const forcar = o.forcar === true;
   const resumo: ResumoConferencia = { conferidas: 0, mudaram: 0, devolucoes: 0, canceladas: 0, falhas: 0 };
   const daOrg = organizacaoId ? eq(pagamentos.organizacaoId, organizacaoId) : undefined;
   // Prazo único das leituras que se repetem (em andamento, diária, taxa e liberação, devoluções): o provedor só consulta
@@ -73,11 +78,13 @@ export async function conferirPendentes(db: Db, organizacaoId: string | null, pr
             // Taxa ou liberação que nunca chegou: depois do prazo do provedor, fica para a equipe (registro à mão).
             gte(pagamentos.criadoEm, corte),
             // No primeiro dia, a cada volta; depois, a cada 6 h (no teste o sinal de liberação nunca chega).
-            or(
-              gte(pagamentos.aprovadoEm, new Date(agora.getTime() - 24 * 3_600_000)),
-              isNull(pagamentos.consultadoEm),
-              lt(pagamentos.consultadoEm, new Date(agora.getTime() - ESPERA_LIBERACAO_MS)),
-            ),
+            forcar
+              ? undefined
+              : or(
+                  gte(pagamentos.aprovadoEm, new Date(agora.getTime() - 24 * 3_600_000)),
+                  isNull(pagamentos.consultadoEm),
+                  lt(pagamentos.consultadoEm, new Date(agora.getTime() - ESPERA_LIBERACAO_MS)),
+                ),
           ),
           and(
             // O que confirmou a reserva, o que já foi devolvido (pelo Mercado Pago ou por fora: devolução em dobro) e o
@@ -88,7 +95,7 @@ export async function conferirPendentes(db: Db, organizacaoId: string | null, pr
               and(isNull(pagamentos.desfecho), inArray(pagamentos.situacao, ["aprovado", "devolvido_parcial", "contestado"])),
             ),
             gte(pagamentos.criadoEm, corte),
-            or(isNull(pagamentos.consultadoEm), lt(pagamentos.consultadoEm, new Date(agora.getTime() - RELER_RESERVA_A_CADA_MS))),
+            forcar ? undefined : or(isNull(pagamentos.consultadoEm), lt(pagamentos.consultadoEm, new Date(agora.getTime() - RELER_RESERVA_A_CADA_MS))),
           ),
         ),
       ),
@@ -96,7 +103,7 @@ export async function conferirPendentes(db: Db, organizacaoId: string | null, pr
     .orderBy(pagamentos.criadoEm);
   for (const a of alvos) {
     try {
-      const r = await conferirTentativa(db, a.organizacaoId, a.id, provedor, agora, { origem: "rotina" });
+      const r = await conferirTentativa(db, a.organizacaoId, a.id, provedor, agora, forcar ? { forcar: true, origem: "painel" } : { origem: "rotina" });
       if (!r.ok) resumo.falhas++;
       else if (r.consultou) {
         resumo.conferidas++;

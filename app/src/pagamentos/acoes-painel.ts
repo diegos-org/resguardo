@@ -87,7 +87,8 @@ export async function conferirAgoraAcao(_e: EstadoAcaoPagamento, form: FormData)
       const situacao = NOMES_SITUACAO_PAGAMENTO[r.situacao].toLowerCase();
       return { ok: true, mensagem: r.mudou ? `Conferido com o Mercado Pago: atualizado (${situacao}).` : `Conferido com o Mercado Pago: nada mudou (${situacao}).` };
     }
-    const resumo = await conferirPendentes(db, sessao.organizacaoId, gate.provedor);
+    // Do painel, lê agora (sem os intervalos da rotina): o botão promete conferir tudo o que está pendente.
+    const resumo = await conferirPendentes(db, sessao.organizacaoId, gate.provedor, new Date(), { forcar: true });
     revalidar();
     return { ok: true, mensagem: resumo.conferidas || resumo.falhas || resumo.devolucoes || resumo.canceladas ? textoDoResumo(resumo) : "Nada pendente para conferir com o Mercado Pago." };
   } catch (e) {
@@ -106,6 +107,9 @@ export async function devolverAcao(_e: EstadoAcaoPagamento, form: FormData): Pro
     const r = await devolverPeloProvedor(getDb(), sessao.organizacaoId, pagamentoId, sessao.usuarioId, gate.provedor);
     if (!r.ok) return { mensagem: r.erro };
     revalidar();
+    // Parada logo na releitura (em parte, contestada, fora de "aprovado"...): nada foi pedido, e a equipe resolve.
+    if (r.situacao === "recusada")
+      return { mensagem: "A devolução não foi pedida: o Mercado Pago não mostra este pagamento aprovado e inteiro. Veja o aviso no quadro do pagamento e confira no painel do Mercado Pago." };
     return {
       ok: true,
       mensagem: r.situacao === "confirmada" ? "Devolução confirmada pelo Mercado Pago." : "Devolução pedida ao Mercado Pago: a confirmação aparece no quadro do pagamento quando ele concluir (use Conferir agora).",
