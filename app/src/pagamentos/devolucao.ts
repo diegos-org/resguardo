@@ -31,6 +31,7 @@ import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { formatBRL } from "@/lib/money";
 import { dataValida } from "@/reservas/regras";
+import { inicioDoPrazoDeReleitura } from "./andamento";
 import { conferirTentativa } from "./conferencia";
 import { FUSO_PAGAMENTO } from "./liberacao";
 import { type Cobranca, type ProvedorPagamento, type ResultadoDevolucao, valorPagoNaOrder } from "./provedor";
@@ -354,7 +355,7 @@ export async function registrarDevolucaoPorFora(
   if (d.data > hojeISO(FUSO_PAGAMENTO, agora)) return { ok: false, erro: "A data da devolução não pode ser no futuro." };
   if (!Number.isSafeInteger(d.valor) || d.valor <= 0) return { ok: false, erro: "Informe o valor devolvido (maior que zero)." };
   if (!uuidValido(pagamentoId)) return { ok: false, erro: "Pagamento não encontrado." };
-  const [lido] = await db.select({ idProvedor: pagamentos.idProvedor, referencia: pagamentos.referencia }).from(pagamentos).where(and(eq(pagamentos.id, pagamentoId), eq(pagamentos.organizacaoId, organizacaoId)));
+  const [lido] = await db.select({ idProvedor: pagamentos.idProvedor, referencia: pagamentos.referencia, criadoEm: pagamentos.criadoEm }).from(pagamentos).where(and(eq(pagamentos.id, pagamentoId), eq(pagamentos.organizacaoId, organizacaoId)));
   if (!lido) return { ok: false, erro: "Pagamento não encontrado." };
   if (!provedor) return { ok: false, erro: ERRO_POR_FORA_SEM_CONFERIR };
   if (!lido.idProvedor) return { ok: false, erro: "Este pagamento não tem identificação no Mercado Pago para conferir: confira no painel do Mercado Pago." };
@@ -364,26 +365,34 @@ export async function registrarDevolucaoPorFora(
   } catch {
     return { ok: false, erro: ERRO_POR_FORA_SEM_CONFERIR };
   }
-  if (!cobranca) return { ok: false, erro: "O Mercado Pago não encontrou este pagamento: confira no painel do Mercado Pago antes de registrar a devolução por fora." };
-  // O que o provedor mostra também vale para o sistema (situação nova, devolução pedida que saiu…).
-  try {
-    await conferirTentativa(db, organizacaoId, pagamentoId, provedor, agora, { forcar: true, origem: "painel", cobranca });
-  } catch {
-    // A recusa abaixo vem da leitura, não da aplicação.
+  // Order não encontrada: dentro do prazo de releitura, nada se registra sem conferir. Passado esse prazo (o Mercado Pago
+  // só guarda a order por RETENCAO_ORDERS_DIAS; o cartão depois dos 180 dias em que ele devolve cai sempre aqui), não
+  // há mais o que reler: vale o que o sistema já conferiu enquanto ela existia, com as regras locais de sempre.
+  const semOrderParaReler = !cobranca && lido.criadoEm.getTime() < inicioDoPrazoDeReleitura(agora).getTime();
+  if (!cobranca && !semOrderParaReler) return { ok: false, erro: "O Mercado Pago não encontrou este pagamento: confira no painel do Mercado Pago antes de registrar a devolução por fora." };
+  if (cobranca) {
+    // O que o provedor mostra também vale para o sistema (situação nova, devolução pedida que saiu…).
+    try {
+      await conferirTentativa(db, organizacaoId, pagamentoId, provedor, agora, { forcar: true, origem: "painel", cobranca });
+    } catch {
+      // A recusa abaixo vem da leitura, não da aplicação.
+    }
+    // A order lida precisa ser a deste pagamento (id e referência): a de outra tentativa não diz nada sobre esta.
+    if (cobranca.idProvedor !== lido.idProvedor || cobranca.referencia !== lido.referencia)
+      return { ok: false, erro: "A resposta do Mercado Pago não bate com este pagamento (referência ou identificação diferentes): nada foi registrado. Confira no painel do Mercado Pago." };
+    const peloProvedor = recusaPeloProvedor(cobranca);
+    if (peloProvedor) return { ok: false, erro: peloProvedor };
   }
-  // A order lida precisa ser a deste pagamento (id e referência): a de outra tentativa não diz nada sobre esta.
-  if (cobranca.idProvedor !== lido.idProvedor || cobranca.referencia !== lido.referencia)
-    return { ok: false, erro: "A resposta do Mercado Pago não bate com este pagamento (referência ou identificação diferentes): nada foi registrado. Confira no painel do Mercado Pago." };
-  const peloProvedor = recusaPeloProvedor(cobranca);
-  if (peloProvedor) return { ok: false, erro: peloProvedor };
-  // Integral = o que o hóspede pagou, pela leitura de agora (pode diferir do valor da cotação: valor divergente).
-  const integral = valorPagoNaOrder(cobranca);
+  // Integral = o que o hóspede pagou: pela leitura de agora (pode diferir do valor da cotação: valor divergente) ou, sem
+  // order para reler, pelo último valor pago que o sistema conferiu.
+  const integralLido = cobranca ? valorPagoNaOrder(cobranca) : null;
   const nota = d.nota.trim().slice(0, 300);
   return comPagamento(db, organizacaoId, pagamentoId, async (tx, _t, p, dev) => {
     const recusa = recusaDaDevolucao(p, dev, true, agora);
     if (recusa) return { ok: false as const, erro: recusa };
+    const integral = integralLido ?? valorPagoNaOrder({ pago: p.valorPago, valor: p.valor });
     if (d.valor !== integral)
-      return { ok: false as const, erro: `Nesta fase, a devolução feita por fora registra só o valor integral pago (${formatBRL(integral)}, pelo Mercado Pago). Devolução de parte do valor chega com o M8.2c.` };
+      return { ok: false as const, erro: `Nesta fase, a devolução feita por fora registra só o valor integral pago (${formatBRL(integral)}, ${integralLido === null ? "o último conferido no Mercado Pago" : "pelo Mercado Pago"}). Devolução de parte do valor chega com o M8.2c.` };
     // A devolução não pode ser de antes do pagamento existir (o pagamento foi criado neste dia, em São Paulo).
     const criadoNoDia = hojeISO(FUSO_PAGAMENTO, p.criadoEm);
     if (d.data < criadoNoDia) return { ok: false as const, erro: `A data da devolução não pode ser antes do pagamento (${criadoNoDia.split("-").reverse().join("/")}). Confira a data.` };

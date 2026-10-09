@@ -439,7 +439,10 @@ Screen Brick).
   Mercado Pago. A devolução por fora só é registrada quando o Mercado Pago recusou a devolução ou o
   pagamento passou de 180 dias (a cobrança ficaria no cartão do hóspede e uma contestação poderia
   devolver de novo)." A releitura da order antes de registrar continua, e a confirmação avisa que o
-  hóspede pode também contestar a cobrança no cartão e receber de novo. Padrão com decisão pendente de
+  hóspede pode também contestar a cobrança no cartão e receber de novo. Order que não volta na releitura:
+  dentro do prazo de releitura (85 dias), nada se registra; depois dele (o Mercado Pago só guarda a order
+  por 90 dias, então o cartão depois dos 180 dias cai sempre aqui), vale o último valor pago que o sistema
+  conferiu, com as mesmas regras locais (sem desfecho, sem pedido aceito à espera). Padrão com decisão pendente de
   Diego (GUIA, seção 7).
 - **Antes da liberação:** no cartão, devolver antes de o Mercado Pago liberar o dinheiro pode pedir saldo
   disponível na conta; o texto de `devolucao_falhou` do cartão diz isso e manda conferir no Mercado Pago

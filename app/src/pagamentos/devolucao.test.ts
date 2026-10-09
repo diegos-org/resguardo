@@ -677,4 +677,22 @@ describe("devolução do cartão (M8.2b)", () => {
     // A regra pura, para o Pix: sempre (as outras condições continuam).
     expect(porForaPermitidoNoCartao({ forma: "pix", avisos: [], aprovadoEm: null }, undefined, AGORA)).toBe(true);
   });
+
+  it("por fora depois dos 180 dias, com a order já fora do tempo em que o Mercado Pago a guarda: aceito pelo último valor pago conferido; dentro do prazo de releitura, sem a order, nada se registra", async () => {
+    const x = await cartaoSemReserva(3);
+    const p = await c.tentativa(x.pagamentoId);
+    const sumiu = vi.spyOn(c.provedor, "consultar").mockResolvedValue(null);
+    // Dentro do prazo de releitura (85 dias), a order sumida não é motivo para registrar sem conferir.
+    expect(await porFora(x.pagamentoId, minutos(40))).toMatchObject({ ok: false, erro: expect.stringContaining("não encontrou") });
+    const dia181 = new Date(p.aprovadoEm!.getTime() + 181 * 86_400_000);
+    expect(await porFora(x.pagamentoId, dia181, { valor: TOTAL })).toMatchObject({ ok: false, erro: expect.stringContaining("o último conferido no Mercado Pago") });
+    expect(await porFora(x.pagamentoId, dia181, { valor: p.valorPago! })).toEqual({ ok: true, situacao: "por_fora" });
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "por_fora", porForaValor: p.valorPago });
+    expect(await c.tentativa(x.pagamentoId)).toMatchObject({ desfecho: "por_fora" });
+    sumiu.mockRestore();
+  });
+
+  it("regra pura do cartão e do Pix", async () => {
+    expect(porForaPermitidoNoCartao({ forma: "pix", avisos: [], aprovadoEm: null }, undefined, AGORA)).toBe(true);
+  });
 });
