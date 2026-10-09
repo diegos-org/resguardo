@@ -11,7 +11,7 @@ import { getDb } from "@/db/client";
 import { listarImoveis } from "@/imoveis/repositorio";
 import { criarBloqueio, excluirBloqueio } from "@/reservas/bloqueios";
 import { enviarCalendarioBeds24, type ResultadoEnvio } from "./envio";
-import { adicionarEvento, type ErrosRegrasCalendario, lerRegrasCalendario, removerEvento, salvarRegrasCalendario, validarEvento, validarFormRegras } from "./regras-config";
+import { adicionarEvento, definirMinimoNormalDoEvento, type ErrosRegrasCalendario, lerRegrasCalendario, removerEvento, salvarRegrasCalendario, validarEvento, validarFormRegras } from "./regras-config";
 
 export type EstadoRegrasCalendario = { ok?: boolean; mensagem?: string; aviso?: string; erros?: ErrosRegrasCalendario; valores?: Record<string, string | string[]> };
 export type EstadoEvento = { ok?: boolean; erro?: string; valores?: Record<string, string | string[]> };
@@ -66,6 +66,16 @@ export async function removerEventoAcao(form: FormData): Promise<void> {
   const sessao = await sessaoConfig();
   await removerEvento(getDb(), sessao.organizacaoId, String(form.get("id") ?? ""), sessao.usuarioId);
   revalidatePath(ABA);
+}
+
+/** Liga ou desliga, num evento cadastrado, o mínimo normal nas noites livres quando já há reserva (regra de 6/10). */
+export async function alternarMinimoNormalEventoAcao(form: FormData): Promise<void> {
+  const sessao = await sessaoConfig();
+  const ligado = form.get("ligado");
+  if (ligado !== "sim" && ligado !== "nao") return;
+  await definirMinimoNormalDoEvento(getDb(), sessao.organizacaoId, String(form.get("id") ?? ""), ligado === "sim", sessao.usuarioId);
+  revalidatePath(ABA);
+  revalidatePath("/painel/calendario/previa");
 }
 
 /** Simula ou envia um imóvel (ou todos os ligados) ao Beds24. Só o administrador; envio real exige confirmação explícita. */

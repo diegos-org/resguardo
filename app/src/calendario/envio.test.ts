@@ -786,3 +786,16 @@ describe("rotina diária de envio", () => {
     expect(beds.escritas).toHaveLength(0);
   });
 });
+
+describe("regra de 6/10 na carga do plano (M3.10)", () => {
+  it("reserva confirmada no começo do evento, antes de hoje e antes das noites pedidas, ainda faz as noites livres usarem o mínimo normal", async () => {
+    const ev = { id: "33333333-3333-4333-8333-333333333333", nome: "Réveillon", inicio: "2026-09-25", fim: "2026-10-06", multiplicador: 400, estadiaMinima: 5, minimoNormalComReserva: true, todosImoveis: true, imoveis: [] };
+    await db.insert(reservas).values({ organizacaoId: org, imovelId: im, codigo: "SCL-TESTE610", origem: "airbnb", estado: "confirmada", checkin: "2026-09-25", checkout: "2026-09-28", hospedeNome: "Hóspede Fictício", fonte: "manual", idFonte: "" });
+    // 3/10/2026 é sábado (mínimo normal 2); 4/10 domingo (1). O preço do evento continua.
+    const plano = await planejarImovel(db, org, regras({ eventos: [ev] }), { id: im, fuso: "America/Sao_Paulo" }, agora, { inicio: "2026-10-03", fim: "2026-10-04" });
+    expect(plano.linhas.map(l => [l.data, l.minimoRegra, l.precoReferencia])).toEqual([["2026-10-03", 2, 180000], ["2026-10-04", 1, 180000]]);
+    // Com a regra desligada no evento, o mínimo do evento volta.
+    const desligada = await planejarImovel(db, org, regras({ eventos: [{ ...ev, minimoNormalComReserva: false }] }), { id: im, fuso: "America/Sao_Paulo" }, agora, { inicio: "2026-10-03", fim: "2026-10-04" });
+    expect(desligada.linhas.map(l => l.minimoRegra)).toEqual([5, 5]);
+  });
+});

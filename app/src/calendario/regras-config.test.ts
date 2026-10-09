@@ -3,27 +3,27 @@ import { historicoDe } from "@/auditoria/auditoria";
 import { imoveis, organizacoes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
-import { adicionarEvento, lerData, lerRegrasCalendario, multiplicadorParaCentesimos, REGRAS_CALENDARIO_PADRAO, regrasDeJson, removerEvento, salvarRegrasCalendario, validarEvento, validarFormRegras } from "./regras-config";
+import { adicionarEvento, definirMinimoNormalDoEvento, lerData, lerRegrasCalendario, multiplicadorParaCentesimos, REGRAS_CALENDARIO_PADRAO, regrasDeJson, removerEvento, salvarRegrasCalendario, validarEvento, validarFormRegras } from "./regras-config";
 
 const IM = "11111111-1111-4111-8111-111111111111";
 const form = (over: Record<string, unknown> = {}) => ({
   minimo_0: "1", minimo_1: "1", minimo_2: "1", minimo_3: "1", minimo_4: "1", minimo_5: "2", minimo_6: "2",
   estadiaMaxima: "27", horizonteDias: "270", feriados: "02/11/2026 Finados\n2026-11-20 Consciência Negra\n02/11/2026 repetido",
-  feriadoMinimo: "3", feriadoMultiplicador: "2", feriadoTodos: "", feriadoImoveis: [IM, "lixo"],
+  feriadoMinimo: "3", feriadoMultiplicador: "2", feriadoMinimoNormal: "on", feriadoTodos: "", feriadoImoveis: [IM, "lixo"],
   ultimaHoraModo: "beds24", faixa1De: "3", faixa1Ate: "7", faixa1Pct: "15", faixa2De: "0", faixa2Ate: "2", faixa2Pct: "25",
   envioImoveis: IM, envioAutomatico: "on", siteValidadeHoras: "36", siteMaximoNoites: "90", siteMinutosHold: "30", ...over,
 });
 
 describe("formulário das regras", () => {
   it("lê números, feriados em duas grafias (sem repetir), seleções de imóveis só da empresa e preserva os eventos", () => {
-    const atual = { ...REGRAS_CALENDARIO_PADRAO, eventos: [{ id: IM, nome: "X", inicio: "2026-12-25", fim: "2027-01-01", multiplicador: 400, estadiaMinima: 5, todosImoveis: true, imoveis: [] }] };
+    const atual = { ...REGRAS_CALENDARIO_PADRAO, eventos: [{ id: IM, nome: "X", inicio: "2026-12-25", fim: "2027-01-01", multiplicador: 400, estadiaMinima: 5, minimoNormalComReserva: true, todosImoveis: true, imoveis: [] }] };
     const r = validarFormRegras(form(), atual, [IM]);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.regras).toMatchObject({
       minimoPorDia: [1, 1, 1, 1, 1, 2, 2], estadiaMaxima: 27, horizonteDias: 270,
       feriados: [{ data: "2026-11-02", nome: "Finados" }, { data: "2026-11-20", nome: "Consciência Negra" }],
-      janelaFeriado: { estadiaMinima: 3, multiplicador: 200, todosImoveis: false, imoveis: [IM] },
+      janelaFeriado: { estadiaMinima: 3, multiplicador: 200, minimoNormalComReserva: true, todosImoveis: false, imoveis: [IM] },
       ultimaHora: { aplicadoPor: "beds24", faixas: [{ deDias: 3, ateDias: 7, percentual: 15 }, { deDias: 0, ateDias: 2, percentual: 25 }] },
       envio: { imoveis: [IM], automatico: true },
       site: { validadeLeituraHoras: 36, maximoNoitesConsulta: 90, minutosHold: 30 },
@@ -53,9 +53,10 @@ describe("formulário das regras", () => {
     expect([lerData("25/12/2026"), lerData("2026-12-25"), lerData("31/02/2026"), lerData("x")]).toEqual(["2026-12-25", "2026-12-25", null, null]);
   });
   it("evento: nome, datas, multiplicador, mínimo e imóveis (todos ou escolhidos)", () => {
-    const ok = validarEvento({ nome: "Carnaval 2027", inicio: "01/02/2027", fim: "2027-02-10", multiplicador: "4", estadiaMinima: "5", imoveis: [IM, "outro"] }, [IM]);
-    expect(ok).toEqual({ ok: true, evento: { nome: "Carnaval 2027", inicio: "2027-02-01", fim: "2027-02-10", multiplicador: 400, estadiaMinima: 5, todosImoveis: false, imoveis: [IM] } });
-    expect(validarEvento({ nome: "Rock in Rio", inicio: "2027-09-10", fim: "2027-09-12", multiplicador: "3", estadiaMinima: "", todosImoveis: "on" }, [IM])).toMatchObject({ ok: true, evento: { estadiaMinima: null, todosImoveis: true, imoveis: [] } });
+    const ok = validarEvento({ nome: "Carnaval 2027", inicio: "01/02/2027", fim: "2027-02-10", multiplicador: "4", estadiaMinima: "5", minimoNormalComReserva: "on", imoveis: [IM, "outro"] }, [IM]);
+    expect(ok).toEqual({ ok: true, evento: { nome: "Carnaval 2027", inicio: "2027-02-01", fim: "2027-02-10", multiplicador: 400, estadiaMinima: 5, minimoNormalComReserva: true, todosImoveis: false, imoveis: [IM] } });
+    // Caixa da regra de 6/10 desmarcada (temporada longa): o formulário não manda o campo.
+    expect(validarEvento({ nome: "Rock in Rio", inicio: "2027-09-10", fim: "2027-09-12", multiplicador: "3", estadiaMinima: "", todosImoveis: "on" }, [IM])).toMatchObject({ ok: true, evento: { estadiaMinima: null, minimoNormalComReserva: false, todosImoveis: true, imoveis: [] } });
     const erro = (e: Record<string, unknown>) => { const r = validarEvento({ nome: "E", inicio: "2027-01-01", fim: "2027-01-02", multiplicador: "2", todosImoveis: "on", ...e }, [IM]); return r.ok ? "ok" : r.erro; };
     expect(erro({ nome: "" })).toContain("nome");
     expect(erro({ fim: "2026-12-31" })).toContain("antes da primeira");
@@ -63,13 +64,26 @@ describe("formulário das regras", () => {
     expect(erro({ estadiaMinima: "40" })).toContain("1 a 30");
     expect(erro({ todosImoveis: "", imoveis: ["outro"] })).toContain("Escolha os imóveis");
   });
+  it("regra de 6/10 desligada e gravada continua desligada; qualquer outro valor vale como ligada", () => {
+    const ev = { id: IM, nome: "Alta", inicio: "2026-12-15", fim: "2027-02-28", multiplicador: 200, estadiaMinima: 3, imoveis: [] };
+    const r = regrasDeJson({ eventos: [{ ...ev, minimoNormalComReserva: false }], janelaFeriado: { minimoNormalComReserva: false } });
+    expect(r.eventos[0].minimoNormalComReserva).toBe(false);
+    expect(r.janelaFeriado.minimoNormalComReserva).toBe(false);
+    const s = regrasDeJson({ eventos: [{ ...ev, minimoNormalComReserva: "x" }], janelaFeriado: {} });
+    expect(s.eventos[0].minimoNormalComReserva).toBe(true);
+    expect(s.janelaFeriado.minimoNormalComReserva).toBe(true);
+    // No formulário geral, a caixa desmarcada não manda o campo: desliga.
+    const f = validarFormRegras(form({ feriadoMinimoNormal: undefined }), REGRAS_CALENDARIO_PADRAO, [IM]);
+    expect(f.ok && f.regras.janelaFeriado.minimoNormalComReserva).toBe(false);
+  });
   it("JSON gravado inválido volta ao padrão sem inventar feriados ou eventos", () => {
     expect(regrasDeJson(null)).toEqual(REGRAS_CALENDARIO_PADRAO);
     const r = regrasDeJson({ minimoPorDia: [1, 2], estadiaMaxima: "x", horizonteDias: 900, feriados: [{ data: "2026-02-30", nome: "falsa" }, { data: "2026-12-25", nome: 7 }, { data: "2026-12-25" }], eventos: [{ id: "sem-uuid" }, { id: IM, nome: "Ok", inicio: "2026-12-25", fim: "2027-01-01", multiplicador: 400, estadiaMinima: 99, imoveis: ["lixo", IM] }], janelaFeriado: { multiplicador: 50 }, ultimaHora: { aplicadoPor: "scl", faixas: [{ deDias: 9, ateDias: 3, percentual: 15 }] }, envio: { imoveis: [IM], automatico: "sim" }, site: { validadeLeituraHoras: 12, maximoNoitesConsulta: "x" } });
     expect(r).toEqual({
       ...REGRAS_CALENDARIO_PADRAO,
       feriados: [{ data: "2026-12-25", nome: "" }],
-      eventos: [{ id: IM, nome: "Ok", inicio: "2026-12-25", fim: "2027-01-01", multiplicador: 400, estadiaMinima: null, todosImoveis: false, imoveis: [IM] }],
+      // Evento e feriadão gravados antes da regra de 6/10 (sem o campo) ficam com ela ligada.
+      eventos: [{ id: IM, nome: "Ok", inicio: "2026-12-25", fim: "2027-01-01", multiplicador: 400, estadiaMinima: null, minimoNormalComReserva: true, todosImoveis: false, imoveis: [IM] }],
       ultimaHora: { ...REGRAS_CALENDARIO_PADRAO.ultimaHora, aplicadoPor: "scl" },
       envio: { imoveis: [IM], automatico: false },
       site: { validadeLeituraHoras: 12, maximoNoitesConsulta: 90, minutosHold: 30 },
@@ -107,6 +121,14 @@ describe("com banco", () => {
     const depois = await lerRegrasCalendario(db, org);
     expect(depois.horizonteDias).toBe(120);
     expect(depois.eventos).toHaveLength(1);
+    // Regra de 6/10 ligada ou desligada num evento já cadastrado, só na própria organização.
+    expect(lidas.eventos[0].minimoNormalComReserva).toBe(false);
+    expect(await definirMinimoNormalDoEvento(db, outra, lidas.eventos[0].id, true, null)).toBe(false);
+    expect(await definirMinimoNormalDoEvento(db, org, "nao-uuid", true, null)).toBe(false);
+    expect(await definirMinimoNormalDoEvento(db, org, lidas.eventos[0].id, true, null)).toBe(true);
+    expect((await lerRegrasCalendario(db, org)).eventos[0]).toMatchObject({ nome: "Réveillon", minimoNormalComReserva: true, multiplicador: 400 });
+    expect(await definirMinimoNormalDoEvento(db, org, lidas.eventos[0].id, false, null)).toBe(true);
+    expect((await lerRegrasCalendario(db, org)).eventos[0].minimoNormalComReserva).toBe(false);
     expect(await removerEvento(db, outra, lidas.eventos[0].id, null)).toBe(false);
     expect(await removerEvento(db, org, "nao-uuid", null)).toBe(false);
     expect(await removerEvento(db, org, lidas.eventos[0].id, null)).toBe(true);

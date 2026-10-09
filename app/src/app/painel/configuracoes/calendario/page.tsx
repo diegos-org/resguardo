@@ -4,7 +4,7 @@ import { podeFazer } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { listarMapeamentosBeds24 } from "@/beds24/configuracao";
 import { escritaBeds24Ligada } from "@/beds24/http";
-import { novoEventoAcao, removerEventoAcao, salvarRegrasCalendarioAcao } from "@/calendario/acoes";
+import { alternarMinimoNormalEventoAcao, novoEventoAcao, removerEventoAcao, salvarRegrasCalendarioAcao } from "@/calendario/acoes";
 import { lerRegrasCalendario } from "@/calendario/regras-config";
 import { EventosCalendario } from "@/components/configuracoes/EventosCalendario";
 import { FormRegrasCalendario } from "@/components/configuracoes/FormRegrasCalendario";
@@ -25,6 +25,6 @@ export default async function CalendarioRegras() {
       O SCL é a fonte oficial de calendário e preços: estas regras, mais o cadastro de cada imóvel (preço base, períodos especiais, pisos), definem o que vai ao Beds24 e dele às OTAs. Salvar aqui não envia nada: o envio é conferido e disparado em <Link href="/painel/calendario/previa">Calendário → Conferir calendário e preços</Link>. Sinal de escrita na Vercel: <strong>{escritaBeds24Ligada() ? "ligado" : "desligado"}</strong>.
     </p>
     <FormRegrasCalendario regras={regras} imoveis={opcoes} salvar={salvarRegrasCalendarioAcao} />
-    <EventosCalendario eventos={regras.eventos} imoveis={opcoes} criar={novoEventoAcao} remover={removerEventoAcao} />
+    <EventosCalendario eventos={regras.eventos} imoveis={opcoes} criar={novoEventoAcao} remover={removerEventoAcao} alternarMinimoNormal={alternarMinimoNormalEventoAcao} />
   </>;
 }
