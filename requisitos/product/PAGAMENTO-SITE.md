@@ -397,7 +397,9 @@ site; mudar é código, a pedido:
     aprovações, análises, cancelamentos do sistema ou da equipe, `live_mode`.
   - A janela de 30 minutos conta desde o fim do último disparo; a de 24 horas, desde o último "Religar o
     cartão" (o fim automático de um disparo de 30 minutos não a zera). Recusas de antes de religar nunca
-    disparam de novo. Duas recusas em paralelo no limite criam um disparo só (a trava do disjuntor).
+    disparam de novo. Duas recusas em paralelo no limite criam um disparo só (a trava do disjuntor). A
+    contagem não tem limite de cima: `encerrado_em` é a hora em que o pedido começou, e uma recusa que
+    começou antes pode terminar depois de outra; quem pega a trava por último conta todas as já gravadas.
   - Conferido em `ofertaDeCartao` (a página esconde o cartão), na ação (antes do provedor) e na fase 1
     (sob trava); nunca em `podeCobrar`, na conferência, no cancelamento ou na devolução.
   - **Religar o cartão:** só quem edita o financeiro, com confirmação; auditado
@@ -452,9 +454,14 @@ Screen Brick).
 - **Parcelamento sem acréscimo**, detectado pelo dinheiro e não pelo campo `installments_cost` (o exemplo
   da documentação mostra `"seller"` numa order comum): `custoParcelasVendedor` = soma dos `fee_details` do
   tipo `financing_fee` que não são do comprador (`pagamentos.custo_parcelas_vendedor`). Com mais de 1
-  parcela e (custo > 0, ou aprovado com o pago igual ao valor) → aviso `parcelas_sem_juros`. Com custo >
-  0, a taxa não entra sozinha na reserva e a liberação não é lançada sozinha (o motor tiraria esse custo
-  da parte do proprietário): a equipe decide quem paga e registra a liberação à mão. A SCL nunca oferece
+  parcela e (custo > 0, ou aprovado com o pago igual ao valor) → aviso `parcelas_sem_juros`. Com o aviso
+  ligado ou o custo > 0 (lido agora ou numa leitura anterior), a taxa não entra sozinha na reserva e a
+  liberação não é lançada sozinha (o motor tiraria esse custo da parte do proprietário): a equipe decide
+  quem paga e registra a liberação à mão. A trava não é decidida leitura a leitura: uma leitura seguinte
+  sem o custo (`fee_details` ausente ou ilegível) não a solta. Parcelado com o líquido informado e o custo
+  desconhecido também trava (nunca supor zero), com o aviso `custo_parcelas_desconhecido`, que sai quando o
+  custo vem. Só a liberação registrada à mão (um recebimento em vigor, inclusive depois de o Mercado Pago
+  conciliá-la) solta a trava e apaga os avisos; estornada, a trava volta. A SCL nunca oferece
   "parcelamento sem acréscimo"; Diego deixa a opção desligada no Mercado Pago.
 - **Liberação em parcelas:** `money_release_schema` não vazio (ex.: `payment_in_flow`) ⇒ `liberado =
   null` e aviso `liberacao_em_parcelas`, nunca recebimento automático; a equipe registra a liberação à mão

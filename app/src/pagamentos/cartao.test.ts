@@ -12,6 +12,7 @@ import { pagarComCartao, recusaDoCartao } from "./cartao";
 import { conferirTentativa, processarAvisoDeOrder } from "./conferencia";
 import { vistaDaCotacaoParaHospede } from "./consultas";
 import { chaveCriacao, referenciaDaTentativa } from "./criacao";
+import { registrarLiberacaoManual } from "./liberacao";
 import { gerarPix } from "./pix";
 import { ErroProvedor } from "./provedor";
 import { textosDosAvisos } from "./situacoes";
@@ -557,6 +558,85 @@ describe("juros, parcelamento sem acréscimo e liberação", () => {
     expect(p2.avisos).not.toContain("parcelas_sem_juros");
     expect(p2).toMatchObject({ taxa: 9_100, custoParcelasVendedor: 0 });
     expect((await c.reserva(o.reservaId)).taxaCanal).toBe(9_100);
+  });
+
+  it("parcelamento sem acréscimo: a trava fica de uma leitura para a outra (o custo lido uma vez e depois ausente nunca deixa a taxa nem a liberação entrarem sozinhas); só a liberação registrada à mão a solta", async () => {
+    const s = await c.segurar();
+    c.provedor.jurosPor = "vendedor";
+    c.provedor.jurosCartao = 9_000;
+    const r = await c.cartao(s.cotacaoId, { parcelas: 3 });
+    c.provedor.atualizarFinanceiro(r.idProvedor!, { taxa: 9_000 + 9_100, liquido: TOTAL - 18_100 });
+    await conferir(r.pagamentoId!, minutos(5));
+    expect(await c.tentativa(r.pagamentoId!)).toMatchObject({ taxa: null, custoParcelasVendedor: 9_000 });
+    // Leitura seguinte sem o custo (fee_details ausente ou ilegível), já liberado: nada entra sozinho.
+    c.provedor.atualizarFinanceiro(r.idProvedor!, { custoParcelasVendedor: null, liberado: true, liberacaoPrevista: minutos(-1) });
+    await conferir(r.pagamentoId!, minutos(10));
+    const p = await c.tentativa(r.pagamentoId!);
+    expect(p.avisos).toContain("parcelas_sem_juros");
+    expect(p).toMatchObject({ taxa: null, custoParcelasVendedor: 9_000, liberacaoConfirmadaEm: null, liberacaoOrigem: null });
+    expect((await c.reserva(s.reservaId)).taxaCanal).toBeNull();
+    const recebimentos = () => db.select().from(lancamentos).where(and(eq(lancamentos.reservaId, s.reservaId), eq(lancamentos.tipo, "recebimento")));
+    expect(await recebimentos()).toEqual([]);
+    // A equipe decide (a SCL fica com o custo) e registra a liberação à mão: o aviso sai e a taxa dela fica.
+    expect(await registrarLiberacaoManual(db, c.org, r.pagamentoId!, { data: "2026-10-01", liquido: TOTAL - 9_100 }, null, minutos(15))).toEqual({ ok: true });
+    await conferir(r.pagamentoId!, minutos(20));
+    const depois = await c.tentativa(r.pagamentoId!);
+    expect(depois.avisos).not.toContain("parcelas_sem_juros");
+    expect(depois).toMatchObject({ taxa: 9_100, liberacaoOrigem: "manual" });
+    expect((await c.reserva(s.reservaId)).taxaCanal).toBe(9_100);
+    expect(await recebimentos()).toMatchObject([{ montante: TOTAL - 9_100, estado: "realizado" }]);
+  });
+
+  it("parcelamento sem acréscimo registrado à mão com o líquido do Mercado Pago e depois conciliado por ele: o aviso e a trava não voltam", async () => {
+    const s = await c.segurar();
+    c.provedor.jurosPor = "vendedor";
+    c.provedor.jurosCartao = 9_000;
+    const r = await c.cartao(s.cotacaoId, { parcelas: 3 });
+    c.provedor.atualizarFinanceiro(r.idProvedor!, { taxa: 18_100, liquido: TOTAL - 18_100 });
+    await conferir(r.pagamentoId!, minutos(5));
+    expect(await registrarLiberacaoManual(db, c.org, r.pagamentoId!, { data: "2026-10-01", liquido: TOTAL - 18_100 }, null, minutos(10))).toEqual({ ok: true });
+    c.provedor.atualizarFinanceiro(r.idProvedor!, { liberado: true, liberacaoPrevista: minutos(-1) });
+    await conferir(r.pagamentoId!, minutos(20));
+    expect(await c.tentativa(r.pagamentoId!)).toMatchObject({ liberacaoOrigem: "provedor", taxa: 18_100 });
+    expect(await db.select().from(lancamentos).where(and(eq(lancamentos.reservaId, s.reservaId), eq(lancamentos.tipo, "recebimento")))).toMatchObject([{ montante: TOTAL - 18_100, estado: "conciliado" }]);
+    await conferir(r.pagamentoId!, minutos(30));
+    expect((await c.tentativa(r.pagamentoId!)).avisos).toEqual([]);
+  });
+
+  it("parcelado aprovado sem nenhum juro (pago igual ao valor) e custo zero: aviso e a mesma trava — taxa e liberação ficam para a equipe", async () => {
+    const s = await c.segurar();
+    const r = await c.cartao(s.cotacaoId, { parcelas: 3 });
+    expect(await c.tentativa(r.pagamentoId!)).toMatchObject({ desfecho: "reserva", valorPago: TOTAL });
+    c.provedor.atualizarFinanceiro(r.idProvedor!, { taxa: 9_100, liquido: TOTAL - 9_100, liberado: true, liberacaoPrevista: minutos(-1) });
+    await conferir(r.pagamentoId!, minutos(5));
+    const p = await c.tentativa(r.pagamentoId!);
+    expect(p.avisos).toContain("parcelas_sem_juros");
+    expect(p).toMatchObject({ taxa: null, custoParcelasVendedor: 0, liberacaoConfirmadaEm: null });
+    expect((await c.reserva(s.reservaId)).taxaCanal).toBeNull();
+    expect(await db.select().from(lancamentos).where(and(eq(lancamentos.reservaId, s.reservaId), eq(lancamentos.tipo, "recebimento")))).toEqual([]);
+  });
+
+  it("parcelado com o custo das parcelas desconhecido: aviso próprio, nada lançado (nunca supor zero); quando o custo vem zero, taxa e liberação entram", async () => {
+    const s = await c.segurar();
+    c.provedor.jurosCartao = 9_000;
+    const r = await c.cartao(s.cotacaoId, { parcelas: 3 });
+    c.provedor.atualizarFinanceiro(r.idProvedor!, { taxa: 9_100, liquido: TOTAL - 9_100, custoParcelasVendedor: null, liberado: true, liberacaoPrevista: minutos(-1) });
+    await conferir(r.pagamentoId!, minutos(5));
+    const p = await c.tentativa(r.pagamentoId!);
+    expect(p.avisos).toContain("custo_parcelas_desconhecido");
+    expect(p.avisos).not.toContain("parcelas_sem_juros");
+    expect(textosDosAvisos(p.avisos)[0]).toContain("não se cobrou da SCL algum custo das parcelas");
+    expect(p).toMatchObject({ taxa: null, custoParcelasVendedor: null, liberacaoConfirmadaEm: null });
+    expect((await c.reserva(s.reservaId)).taxaCanal).toBeNull();
+    const recebimentos = () => db.select().from(lancamentos).where(and(eq(lancamentos.reservaId, s.reservaId), eq(lancamentos.tipo, "recebimento")));
+    expect(await recebimentos()).toEqual([]);
+    c.provedor.atualizarFinanceiro(r.idProvedor!, { custoParcelasVendedor: 0 });
+    await conferir(r.pagamentoId!, minutos(10));
+    const depois = await c.tentativa(r.pagamentoId!);
+    expect(depois.avisos).not.toContain("custo_parcelas_desconhecido");
+    expect(depois).toMatchObject({ taxa: 9_100, custoParcelasVendedor: 0, liberacaoOrigem: "provedor" });
+    expect((await c.reserva(s.reservaId)).taxaCanal).toBe(9_100);
+    expect(await recebimentos()).toMatchObject([{ montante: TOTAL - 9_100, estado: "conciliado" }]);
   });
 
   it("liberação parcela a parcela: liberado nunca lança o recebimento; aviso para registrar à mão", async () => {

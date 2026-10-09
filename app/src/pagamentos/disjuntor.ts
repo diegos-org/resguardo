@@ -81,12 +81,26 @@ export async function disjuntorAberto(db: Db, organizacaoId: string, agora: Date
   return d ? { ate: d.ate, recusas: d.recusas, abertoEm: d.abertoEm, janela: d.janela } : null;
 }
 
-/** Tentativas de cartão encerradas que contam no disjuntor, de `desde` (exclusive) até agora. */
-async function contar(tx: Db, organizacaoId: string, desde: Date, agora: Date): Promise<number> {
+/**
+ * Tentativas de cartão encerradas que contam no disjuntor, de `desde` (exclusive) até `ate` (inclusive; sem ele, todas
+ * as já gravadas). O disjuntor conta sem limite de cima: o `encerrado_em` é o `agora` de quem aplicou a leitura — na
+ * criação, a hora em que o pedido começou, antes da chamada ao Mercado Pago —, e um pedido que começou antes pode
+ * terminar depois de outro: quem pega a trava por último precisa ver todas as recusas já gravadas, nem que tenham hora
+ * depois da sua.
+ */
+async function contar(tx: Db, organizacaoId: string, desde: Date, ate?: Date): Promise<number> {
   const [r] = await tx
     .select({ n: sql<number>`count(*)::int` })
     .from(pagamentos)
-    .where(and(eq(pagamentos.organizacaoId, organizacaoId), eq(pagamentos.forma, "cartao"), eq(pagamentos.contaNoDisjuntor, true), gt(pagamentos.encerradoEm, desde), lte(pagamentos.encerradoEm, agora)));
+    .where(
+      and(
+        eq(pagamentos.organizacaoId, organizacaoId),
+        eq(pagamentos.forma, "cartao"),
+        eq(pagamentos.contaNoDisjuntor, true),
+        gt(pagamentos.encerradoEm, desde),
+        ate ? lte(pagamentos.encerradoEm, ate) : undefined,
+      ),
+    );
   return r?.n ?? 0;
 }
 
@@ -100,7 +114,8 @@ async function travarDisjuntor(tx: Db, organizacaoId: string): Promise<void> {
 /**
  * Confere as duas janelas depois de uma tentativa que conta (dentro da transação de `aplicarLeitura`, por último) e,
  * passado o limite, abre o disjuntor (uma linha, auditada). Já aberto: nada. Duas recusas ao mesmo tempo no limite
- * abrem uma linha só (a segunda espera a trava e o encontra aberto). Devolve se abriu agora.
+ * abrem uma linha só (a segunda espera a trava e o encontra aberto); fora da ordem (a que começou antes termina
+ * depois), a última a pegar a trava conta as duas. Devolve se abriu agora.
  */
 export async function avaliarDisjuntor(tx: Db, organizacaoId: string, agora: Date): Promise<boolean> {
   await travarDisjuntor(tx, organizacaoId);
@@ -117,8 +132,9 @@ export async function avaliarDisjuntor(tx: Db, organizacaoId: string, agora: Dat
   const desde30 = maior(new Date(agora.getTime() - JANELA_RECUSAS_MS), ultimo ? (ultimo.religadoEm ?? ultimo.ate) : null);
   const ultimoReligado = anteriores.reduce<Date | null>((m, d) => (d.religadoEm && (!m || d.religadoEm.getTime() > m.getTime()) ? d.religadoEm : m), null);
   const desde24 = maior(new Date(agora.getTime() - JANELA_24H_MS), ultimoReligado);
-  const n24 = await contar(tx, organizacaoId, desde24, agora);
-  const n30 = await contar(tx, organizacaoId, desde30, agora);
+  // Sem limite de cima: duas recusas que terminam fora da ordem em que começaram contam as duas (ver `contar`).
+  const n24 = await contar(tx, organizacaoId, desde24);
+  const n30 = await contar(tx, organizacaoId, desde30);
   let linha: { janela: JanelaDisjuntor; recusas: number; ate: Date | null; reincidente: boolean } | null = null;
   // A de 24 h é a mais dura (só religando à mão): vale ela quando as duas passam do limite juntas.
   if (n24 >= RECUSAS_PARA_DESLIGAR_24H) linha = { janela: "24h", recusas: n24, ate: null, reincidente: true };

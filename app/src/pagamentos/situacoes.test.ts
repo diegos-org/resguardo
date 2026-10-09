@@ -40,7 +40,7 @@ describe("situações e transições do pagamento (M8.2a)", () => {
   });
 
   it("avisos do cartão (M8.2b) em lista fechada; o do cancelamento pendente vale para qualquer forma", () => {
-    for (const c of ["parcelas_sem_juros", "liberacao_em_parcelas", "desafio_sem_url", "outra_reserva_mesmo_email"] as const) expect(textosDosAvisos([c])).toEqual([AVISOS_PAGAMENTO[c]]);
+    for (const c of ["parcelas_sem_juros", "custo_parcelas_desconhecido", "liberacao_em_parcelas", "desafio_sem_url", "outra_reserva_mesmo_email"] as const) expect(textosDosAvisos([c])).toEqual([AVISOS_PAGAMENTO[c]]);
     expect(AVISOS_PAGAMENTO.parcelas_sem_juros).toContain("parcelamento sem acréscimo");
     expect(AVISOS_PAGAMENTO.cancelamento_pendente).toContain("um pagamento que ficou sobrando");
     expect(AVISOS_PAGAMENTO.cancelamento_pendente).not.toContain("Pix");

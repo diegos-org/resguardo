@@ -144,6 +144,8 @@ export const AVISOS_PAGAMENTO = {
   cancelamento_pendente: "Não deu para cancelar no Mercado Pago um pagamento que ficou sobrando: use Conferir agora para tentar de novo (no teste, nada é conferido sozinho).",
   parcelas_sem_juros:
     "O parcelamento saiu sem acréscimo para o hóspede: o Mercado Pago cobrou da SCL o custo das parcelas. A taxa não foi lançada sozinha: decida quem paga esse custo e registre a liberação à mão. Para não acontecer de novo, desligue o \"parcelamento sem acréscimo\" no Mercado Pago.",
+  custo_parcelas_desconhecido:
+    "Pagamento parcelado: o Mercado Pago informou o líquido, mas não se cobrou da SCL algum custo das parcelas. A taxa não foi lançada sozinha (o sistema nunca supõe que não houve custo) e o sistema confere de novo; se continuar assim, confira no Mercado Pago e registre a liberação à mão.",
   liberacao_em_parcelas:
     "O Mercado Pago libera este pagamento parcela a parcela: nada foi lançado sozinho. Registre a liberação à mão quando o valor inteiro cair (ou cada parte, conforme o extrato do Mercado Pago).",
   desafio_sem_url: "O Mercado Pago pediu a verificação do banco, mas não mandou um endereço válido para ela: o pagamento foi cancelado.",

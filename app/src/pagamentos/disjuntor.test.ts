@@ -215,10 +215,12 @@ describe("disjuntor de recusas do cartão (M8.2b)", () => {
     const antes = c;
     c = outro;
     const instantes: Date[] = [];
-    // 7 recusas a cada 30 minutos (nunca 8 numa janela de 30), por 90 minutos.
+    // 7 recusas a cada 30 minutos (nunca 8 numa janela de 30), por 90 minutos; cada uma avaliada quando é gravada.
     for (let bloco = 0; bloco < 3; bloco++) for (let k = 0; k < 7; k++) instantes.push(minutos(bloco * 31 + k * 4));
-    await recusasEm(instantes.slice(0, 19));
-    for (const q of instantes.slice(0, 19)) expect(await avaliar(q)).toBe(false);
+    for (const q of instantes.slice(0, 19)) {
+      await recusasEm([q]);
+      expect(await avaliar(q)).toBe(false);
+    }
     await recusasEm([instantes[19]]);
     expect(await avaliar(instantes[19])).toBe(true);
     const [linha] = await linhas();
@@ -257,6 +259,24 @@ describe("disjuntor de recusas do cartão (M8.2b)", () => {
     const [a, b] = await Promise.all([avaliar(minutos(8)), avaliar(minutos(8))]);
     expect([a, b].filter(Boolean)).toHaveLength(1);
     expect(await linhas()).toHaveLength(1);
+  });
+
+  it("recusas que terminam fora da ordem em que começaram (o Mercado Pago respondeu antes a que começou depois): a última a avaliar conta todas as gravadas e a 8ª desliga", async () => {
+    c.provedor.respostaCartao = "recusado";
+    const [a, b] = [await c.segurar(estadia(0)), await c.segurar(estadia(1))];
+    for (let i = 0; i < RECUSAS_PARA_DESLIGAR - 2; i++) await c.cartao((i < 3 ? a : b).cotacaoId, {}, minutos(i));
+    const [x, y] = [await c.segurar(estadia(2), minutos(15)), await c.segurar(estadia(3), minutos(15))];
+    // X começou às 20:00,0 e Y meio segundo depois; Y termina (e grava) primeiro.
+    const inicioX = minutos(20);
+    expect((await c.cartao(y.cotacaoId, {}, new Date(inicioX.getTime() + 500))).resultado).toMatchObject({ ok: false, codigo: "recusado" });
+    expect(await disjuntorAberto(db, c.org, minutos(21))).toBeNull();
+    expect((await c.cartao(x.cotacaoId, {}, inicioX)).resultado).toMatchObject({ ok: false, codigo: "recusado" });
+    expect(await disjuntorAberto(db, c.org, minutos(21))).toMatchObject({ recusas: RECUSAS_PARA_DESLIGAR, janela: "30min" });
+    expect(await linhas()).toHaveLength(1);
+    // A próxima tentativa nem chega ao provedor.
+    const antes = chamadas("criarCartao");
+    expect((await c.cartao(x.cotacaoId, {}, minutos(22))).resultado).toMatchObject({ ok: false, codigo: "indisponivel" });
+    expect(chamadas("criarCartao")).toBe(antes);
   });
 
   it("Início: o disjuntor aberto (até a hora ou até religar), o alerta a partir de 10 recusas em 24 h e o cartão em análise há mais de um dia", async () => {

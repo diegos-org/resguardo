@@ -95,6 +95,16 @@ export function PagamentoCartao({ codigo, chavePublica, valor, parcelasMaximas, 
   const [marcado, setMarcado] = useState(false);
   // Depois de marcada a primeira vez, o formulário fica (desmarcar só impede o envio).
   const [liberado, setLiberado] = useState(false);
+  // As versões publicadas mudaram (ou o aceite voltou a ficar pendente) enquanto a página estava aberta: a caixa
+  // recomeça desmarcada (é outra, pela `key`) e o formulário fecha até o hóspede marcar de novo — nunca um aceite
+  // de versões que ele não marcou. A mensagem do servidor ("Leia a versão atual e marque de novo") fica.
+  const chaveAceite = aceite ? `${aceitePendente ? "pendente" : "aceito"}:${DOCUMENTOS_LEGAIS.map((d) => aceite.versoes[d]).join("-")}` : "";
+  const [aceiteVisto, setAceiteVisto] = useState(chaveAceite);
+  if (aceiteVisto !== chaveAceite) {
+    setAceiteVisto(chaveAceite);
+    setMarcado(false);
+    setLiberado(false);
+  }
   const [mensagem, setMensagem] = useState<string | null>(null);
   const [falhou, setFalhou] = useState(false);
   const [geracao, setGeracao] = useState(0);
@@ -179,7 +189,7 @@ export function PagamentoCartao({ codigo, chavePublica, valor, parcelasMaximas, 
 
   return (
     <div className={styles.cartaoPagamento}>
-      {aceite && (aceite.aceito ? <AceiteFeito aceito={aceite.aceito} fuso={fuso} /> : <BlocoAceite aceite={aceite} fuso={fuso} aoMarcar={aoMarcar} />)}
+      {aceite && (aceite.aceito ? <AceiteFeito aceito={aceite.aceito} fuso={fuso} /> : <BlocoAceite key={chaveAceite} aceite={aceite} fuso={fuso} aoMarcar={aoMarcar} />)}
       {falhou ? (
         <div role="alert" className={styles.aviso}>
           <p>{MENSAGEM_FORMULARIO_FALHOU}</p>

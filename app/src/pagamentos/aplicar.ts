@@ -213,20 +213,36 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
   let liquidoInformado: number | null = null;
   if (f?.liberacaoPrevista) patch.liberacaoPrevistaEm = f.liberacaoPrevista;
   // "Parcelamento sem acréscimo" (M8.2b): o Mercado Pago cobrou da SCL o custo das parcelas e ele está dentro da taxa.
-  // Lançado sozinho, o motor tiraria esse custo da parte do proprietário: nada de taxa nem de liberação automática nesta
-  // leitura (a reserva confirma com a taxa desconhecida, como um Pix sem o financeiro). A equipe decide e registra à mão.
-  const custoParcelas = p.forma === "cartao" ? (f?.custoParcelasVendedor ?? null) : null;
-  if (custoParcelas !== null && Number.isSafeInteger(custoParcelas) && custoParcelas >= 0) patch.custoParcelasVendedor = custoParcelas;
-  const semTaxaAutomatica = (custoParcelas ?? 0) > 0;
+  // Lançado sozinho, o motor tiraria esse custo da parte do proprietário. A trava (nada de taxa, de taxa na reserva nem
+  // de liberação automática) não é decidida por leitura: vale enquanto houver qualquer sinal — o custo lido agora ou
+  // numa leitura anterior, o aviso já ligado (o parcelado aprovado sem juros também o liga) — e também num parcelado
+  // com o custo ainda desconhecido (nunca supor zero; aviso próprio). A reserva confirma com a taxa desconhecida (como
+  // um Pix sem o financeiro). Só a liberação registrada à mão pela equipe solta a trava e apaga os avisos.
+  const custoLido = p.forma === "cartao" ? (f?.custoParcelasVendedor ?? null) : null;
+  if (custoLido !== null && Number.isSafeInteger(custoLido) && custoLido >= 0) patch.custoParcelasVendedor = custoLido;
+  let semTaxaAutomatica = false;
   if (p.forma === "cartao") {
-    if (p.liberacaoOrigem === "manual" && p.liberacaoConfirmadaEm) {
-      // A equipe já registrou a liberação à mão (com o líquido que decidiu): os dois avisos cumpriram o papel.
+    // Liberação registrada: à mão (a origem diz), ou um recebimento em vigor (o registrado à mão que o Mercado Pago
+    // conciliou passa a ter origem "provedor"; um estorno tira o recebimento e a trava volta). Com o recebimento em
+    // vigor, a taxa já não muda sozinha (diferente = aviso): a trava cumpriu o papel.
+    const liberacaoRegistrada =
+      !!p.liberacaoConfirmadaEm && (p.liberacaoOrigem === "manual" || (await recebimentosDoPagamento(tx, organizacaoId, p.id)).emVigor.length > 0);
+    if (liberacaoRegistrada) {
+      // A equipe já registrou a liberação à mão (com o líquido que decidiu): os avisos cumpriram o papel.
       desligar("parcelas_sem_juros");
+      desligar("custo_parcelas_desconhecido");
       desligar("liberacao_em_parcelas");
     } else {
       const parcelas = patch.parcelas ?? p.parcelas ?? cobrancaAplicada?.parcelas ?? null;
+      const parcelado = (parcelas ?? 1) > 1;
+      // O custo lido nesta leitura ou, sem ele (fee_details ausente ou ilegível), o da última leitura que o trouxe.
+      const custo = patch.custoParcelasVendedor ?? p.custoParcelasVendedor ?? null;
       // Juros das parcelas são do hóspede: parcelado com o custo cobrado da SCL, ou aprovado sem nenhum juro, é aviso.
-      if ((parcelas ?? 1) > 1 && (semTaxaAutomatica || (situacao === "aprovado" && cobrancaAplicada?.pago === p.valor))) ligar("parcelas_sem_juros");
+      if (parcelado && ((custo ?? 0) > 0 || (situacao === "aprovado" && cobrancaAplicada?.pago === p.valor))) ligar("parcelas_sem_juros");
+      // Parcelado com o líquido informado, mas sem dizer se cobrou da SCL o custo das parcelas: aviso, nada lançado.
+      if (parcelado && custo === null && f && f.liquido !== null && situacao === "aprovado") ligar("custo_parcelas_desconhecido");
+      else if (custo !== null) desligar("custo_parcelas_desconhecido");
+      semTaxaAutomatica = (custo ?? 0) > 0 || avisos.has("parcelas_sem_juros") || (parcelado && custo === null);
       // Liberação parcela a parcela: `liberado` já vem null, nada é lançado; a equipe registra à mão.
       if (f?.liberacaoEmParcelas) ligar("liberacao_em_parcelas");
     }

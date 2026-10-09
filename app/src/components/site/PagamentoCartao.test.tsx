@@ -130,6 +130,63 @@ describe("formulário do cartão (M8.2b)", () => {
     expect(screen.getByRole("alert").textContent).toBe(MENSAGEM_ACEITE_PENDENTE_CARTAO);
   });
 
+  it("as versões mudaram durante o pagamento (o servidor recusa e a página volta com as novas): a caixa recomeça desmarcada e o formulário fecha; o aceite das novas só vai depois de marcar de novo", async () => {
+    const MUDOU = "Os termos ou as políticas do site mudaram enquanto a página estava aberta. Leia a versão atual e marque de novo.";
+    acao.mockResolvedValue({ erro: MUDOU });
+    const { container, rerender } = mostrar({ aceite: pendente });
+    fireEvent.click(screen.getByRole("checkbox"));
+    await esperarFormulario();
+    await act(async () => {
+      await expect(ultimo().config.callbacks.onSubmit(DADOS, ADICIONAIS)).rejects.toThrow();
+    });
+    const novas = { ...versoes, privacidade: 2 };
+    rerender(<PagamentoCartao {...props} aceite={{ ...pendente, versoes: novas }} />);
+    await act(async () => {});
+    expect((screen.getByRole("checkbox") as HTMLInputElement).checked).toBe(false);
+    expect(container.querySelector('a[href="/privacidade?versao=2"]')).toBeTruthy();
+    expect(container.textContent).toContain("Marque a caixa acima para abrir o formulário do cartão.");
+    expect(criados.every((x) => x.controle.unmount.mock.calls.length > 0)).toBe(true);
+    expect(screen.getByRole("alert").textContent).toBe(MUDOU);
+    // Um envio que ainda chegue do formulário antigo não leva aceite nenhum: pede para marcar.
+    await act(async () => {
+      await expect(ultimo().config.callbacks.onSubmit(DADOS, ADICIONAIS)).rejects.toThrow();
+    });
+    expect(acao).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("alert").textContent).toBe(MENSAGEM_ACEITE_PENDENTE_CARTAO);
+    // Marcada de novo: formulário novo, e o envio leva o aceite das versões novas.
+    acao.mockResolvedValue({ ok: true, situacao: "aprovado" });
+    const n = criados.length;
+    fireEvent.click(screen.getByRole("checkbox"));
+    await esperarFormulario(n + 1);
+    await act(() => ultimo().config.callbacks.onSubmit(DADOS, ADICIONAIS));
+    expect(Object.fromEntries((acao.mock.calls[1][0] as FormData).entries())).toMatchObject({ aceite: "sim", versaoTermos: "2", versaoPrivacidade: "2", versaoCancelamento: "3" });
+  });
+
+  it("aceite gravado numa recusa e depois uma versão nova publicada: a caixa nova vem desmarcada, o formulário fecha e o envio não leva aceite sem marcar", async () => {
+    acao.mockResolvedValue({ erro: "MENSAGEM GENERICA" });
+    const { container, rerender } = mostrar({ aceite: pendente });
+    fireEvent.click(screen.getByRole("checkbox"));
+    await esperarFormulario();
+    await act(async () => {
+      await expect(ultimo().config.callbacks.onSubmit(DADOS, ADICIONAIS)).rejects.toThrow();
+    });
+    // O aceite da versão 1 ficou gravado (a fase 1 grava antes do Mercado Pago): a página mostra o aceite feito.
+    rerender(<PagamentoCartao {...props} aceite={aceito} />);
+    await act(async () => {});
+    expect(screen.getByText(/Você aceitou os/)).toBeTruthy();
+    // O Diego publica a versão 2 da Política de privacidade: o aceite volta a ficar pendente.
+    rerender(<PagamentoCartao {...props} aceite={{ ...pendente, versoes: { ...versoes, privacidade: 2 } }} />);
+    await act(async () => {});
+    expect((screen.getByRole("checkbox") as HTMLInputElement).checked).toBe(false);
+    expect(container.textContent).toContain("Marque a caixa acima para abrir o formulário do cartão.");
+    expect(criados.every((x) => x.controle.unmount.mock.calls.length > 0)).toBe(true);
+    await act(async () => {
+      await expect(ultimo().config.callbacks.onSubmit(DADOS, ADICIONAIS)).rejects.toThrow();
+    });
+    expect(acao).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("alert").textContent).toBe(MENSAGEM_ACEITE_PENDENTE_CARTAO);
+  });
+
   it("recusa: a mensagem do servidor e um formulário novo (o token não serve de novo); quando o servidor pede, a página recarrega antes", async () => {
     acao.mockResolvedValue({ erro: "MENSAGEM GENERICA" });
     mostrar();
