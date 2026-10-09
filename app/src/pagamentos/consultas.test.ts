@@ -108,6 +108,10 @@ describe("o que o hóspede vê (M8.2a)", () => {
     expect(await vista(b.cotacaoId, new Date(T.getTime() + 60_000))).toMatchObject({ estado: "verificando", dinheiroSemDesfecho: true });
     // QR vencido, datas ainda seguradas: gerar outro.
     expect(await vista(b.cotacaoId, new Date(T.getTime() - 30_000))).toMatchObject({ estado: "pix_vencido" });
+    // Pix pendente sem o prazo informado pelo provedor: continua aguardando (sem contagem), nunca "vencido".
+    const [pbx] = await db.select().from(pagamentos).where(eq(pagamentos.cotacaoId, b.cotacaoId));
+    await db.update(pagamentos).set({ pixExpiraEm: null }).where(eq(pagamentos.id, pbx.id));
+    expect(await vista(b.cotacaoId, new Date(T.getTime() - 30_000))).toMatchObject({ estado: "pix_aguardando", pix: { expiraEm: null } });
     expect(await vista("00000000-0000-4000-8000-000000000000", AGORA)).toBeNull();
   });
 });

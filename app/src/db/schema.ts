@@ -1515,9 +1515,9 @@ export const devolucoesPagamento = pgTable(
     falhas: integer("falhas").notNull().default(0),
     chaveAtual: text("chave_atual"),
     /**
-     * A última resposta ao pedido com `chaveAtual` foi incerta (o pedido pode ter sido aceito): o próximo envio repete
-     * a MESMA chave (o provedor nunca devolve duas vezes pela mesma chave). Chave nova só depois de uma recusa clara ou
-     * de um pedido novo da equipe.
+     * O pedido com `chaveAtual` pode ter sido aceito (resposta incerta) ou foi aceito (pedida/confirmada, à espera de a
+     * order mostrar): o próximo envio repete a MESMA chave (o provedor nunca devolve duas vezes pela mesma chave). Chave
+     * nova só depois de uma recusa clara ou de um pedido novo da equipe. Desliga quando a leitura confirma.
      */
     chaveEmDuvida: boolean("chave_em_duvida").notNull().default(false),
     proximaTentativaEm: timestamp("proxima_tentativa_em", { withTimezone: true }),

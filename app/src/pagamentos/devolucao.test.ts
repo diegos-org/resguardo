@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { ERRO_CATEGORIA_TAXA_PADRAO_ARQUIVADA, lerConfigPagamentoSite } from "@/configuracoes/pagamento-site";
 import { categoriasDespesa, cotacoes, devolucoesPagamento, lancamentos } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
@@ -144,6 +144,24 @@ describe("devolução do pagamento sem reserva (M8.2a)", () => {
     expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "confirmada", tentativas: 3, chaveEmDuvida: false });
     const d = await devolucao(x.pagamentoId);
     expect(pedidos().map((ch) => ch.chave)).toEqual([chaveDevolucao(d.id, 1), chaveDevolucao(d.id, 1), chaveDevolucao(d.id, 3)]);
+  });
+
+  it("pedido aceito (pedida) com a order ainda sem mostrar a devolução: um novo envio repete a mesma chave (nunca devolve de novo)", async () => {
+    const x = await semReserva();
+    c.provedor.respostaDevolucao = "pedida";
+    await devolverPeloProvedor(db, c.org, x.pagamentoId, null, c.provedor, minutos(10));
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "pedida", tentativas: 1, chaveEmDuvida: true });
+    // A order lida ainda não mostra a devolução (atraso do provedor).
+    const [order] = c.provedor.todas().filter((o) => o.idProvedor === x.idProvedor);
+    vi.spyOn(c.provedor, "consultar").mockResolvedValue({ ...order, situacao: "aprovado", devolvido: 0, devolucaoEmAndamento: false });
+    await conferirPendentes(db, c.org, c.provedor, minutos(21));
+    vi.restoreAllMocks();
+    const d = await devolucao(x.pagamentoId);
+    expect(pedidos().map((ch) => ch.chave)).toEqual([chaveDevolucao(d.id, 1), chaveDevolucao(d.id, 1)]);
+    // Quando a order mostra, a leitura confirma.
+    c.provedor.confirmarDevolucoes(x.idProvedor);
+    await conferirPendentes(db, c.org, c.provedor, minutos(32));
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "confirmada", chaveEmDuvida: false });
   });
 
   it("devolução feita no painel do Mercado Pago enquanto pedida: a releitura confirma", async () => {

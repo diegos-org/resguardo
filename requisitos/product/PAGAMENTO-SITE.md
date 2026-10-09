@@ -282,8 +282,8 @@ do M9.2 passa a valer para reservas pagas quando Diego ligar as mensagens.
   **Registrar devolução feita por fora** (data, valor, nota; a data entre o dia em que o Pix foi
   criado e hoje). Exigem desfecho vazio e nenhuma devolução pedida, sob a trava da tentativa.
 - Devolução pelo provedor: `pedida` até confirmar. A chave de cada pedido é gravada antes de chamar.
-  Depois de uma resposta **incerta** (o pedido pode ter sido aceito), o pedido seguinte repete a
-  **mesma** chave: o provedor nunca devolve duas vezes pela mesma chave (no pior caso responde
+  Depois de uma resposta **incerta** (o pedido pode ter sido aceito) ou de um pedido **aceito** cuja
+  devolução a order ainda não mostra, o pedido seguinte repete a **mesma** chave: o provedor nunca devolve duas vezes pela mesma chave (no pior caso responde
   "chave já usada", que conta como incerta). Chave nova só depois de uma recusa clara ou de um pedido
   novo da equipe (depois de recusada). Antes de tentar de novo, relê a order (já devolvida = confirmada; devolução em andamento lá = não
   pede de novo). `order_refund_already_in_process` = continua pedida; `already_refunded` =
@@ -328,7 +328,7 @@ consulta".
 | Situação | Na tela |
 |---|---|
 | Datas seguradas, Pix oferecido | Pix em destaque, prazo das datas; WhatsApp como opção |
-| Pix aguardando | copia e cola com botão de copiar, QR, prazo; "pode fechar e voltar por este link" |
+| Pix aguardando | copia e cola com botão de copiar, QR, prazo; "pode fechar e voltar por este link"; sem o prazo informado pelo provedor, continua aguardando, sem contagem (nunca "vencido") |
 | Pagamento recebido, confirmando | "Pagamento recebido, confirmando sua reserva" |
 | Confirmada | "Pagamento aprovado: reserva SCL-… confirmada", link para Minha reserva, "guarde este link" |
 | Aprovado sem as datas | "Recebemos seu pagamento, mas não conseguimos garantir as datas. A equipe vai falar com você e devolver o valor integral", com WhatsApp |

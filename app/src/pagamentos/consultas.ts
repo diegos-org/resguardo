@@ -123,7 +123,9 @@ export async function vistaDaCotacaoParaHospede(db: Db, organizacaoId: string, c
   }
   if (ultima && (ultima.situacao === "criando" || ultima.situacao === "incerta")) return { ...base, estado: "verificando" };
   if (ultima && ultima.situacao === "pendente") {
-    if (ultima.pixExpiraEm && ultima.pixExpiraEm.getTime() > agora.getTime()) {
+    // Prazo do Pix desconhecido (o provedor não informou; o painel tem o aviso): continua aguardando, nunca "vencido".
+    const semPrazoConhecido = !ultima.pixExpiraEm && !!ultima.pixCopiaECola;
+    if (semPrazoConhecido || (ultima.pixExpiraEm && ultima.pixExpiraEm.getTime() > agora.getTime())) {
       const pix = o.comAutorizacao && ultima.pixCopiaECola ? { copiaECola: ultima.pixCopiaECola, imagemBase64: ultima.pixImagem, link: ultima.pixLink, expiraEm: ultima.pixExpiraEm } : null;
       return { ...base, estado: "pix_aguardando", pix };
     }

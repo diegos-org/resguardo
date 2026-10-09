@@ -133,7 +133,9 @@ export async function tentarDevolucao(db: Db, organizacaoId: string, devolucaoId
     const dev = t?.devolucoes.find((x) => x.id === devolucaoId);
     if (!t || !dev || dev.situacao !== "pedida") return;
     if (res.situacao === "confirmada" || res.situacao === "pedida") {
-      await tx.update(devolucoesPagamento).set({ chaveEmDuvida: false, ...(res.idDevolucao ? { idProvedor: res.idDevolucao } : {}), atualizadoEm: agora }).where(eq(devolucoesPagamento.id, dev.id));
+      // Aceito pelo provedor: até a leitura da order confirmar, qualquer novo envio repete esta MESMA chave (a order pode
+      // demorar a mostrar a devolução; uma chave nova devolveria de novo).
+      await tx.update(devolucoesPagamento).set({ chaveEmDuvida: true, ...(res.idDevolucao ? { idProvedor: res.idDevolucao } : {}), atualizadoEm: agora }).where(eq(devolucoesPagamento.id, dev.id));
       return;
     }
     // Recusada ou incerta (o pedido pode ter saído): conta; só desiste com a releitura sem nenhum sinal de devolução.
