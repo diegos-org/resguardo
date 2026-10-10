@@ -357,6 +357,9 @@ async function conferirReserva(db: Db, organizacaoId: string, t: Travado, agora:
         `A devolução de ${formatBRL(esperando.valor)} espera o Mercado Pago liberar o pagamento${p.liberacaoPrevistaEm ? ` (previsto para ${diaBr(p.liberacaoPrevistaEm)})` : ""}: depois disso a reserva pode ser alterada de novo.`,
       );
     if (devs.some(chaveEmVoo)) return recusa("devolucao_em_andamento", TEXTO_DEVOLUCAO_EM_ANDAMENTO);
+    // Pedida e ainda não enviada (a fase 2 não chegou ao Mercado Pago, ou sem provedor): a rotina e o "Conferir agora" a
+    // pedem; outra redução esbarraria nela (uma pedida por pagamento).
+    if (devs.some((d) => d.situacao === "pedida")) return recusa("devolucao_em_andamento", TEXTO_DEVOLUCAO_EM_ANDAMENTO);
   }
   // 7. D1: só antes do instante da entrada atual.
   const entrada = await momentosDaEntrada(db, organizacaoId, { imovelId: t.imovel.id, checkin: r.checkin, fuso });
@@ -1155,6 +1158,8 @@ export async function segurarAlteracao(
     if (travaOcupada(erro)) return recusa("ocupado", TEXTO_OCUPADO);
     // Outra alteração segurada ao mesmo tempo (índice único da segurada por reserva).
     if (violouUnicidade(erro, "alteracoes_reserva_uma_segurada")) return recusa("ha_alteracao", "Esta reserva acabou de receber outra alteração: atualize a página.");
+    // Uma devolução pedida do mesmo pagamento (uma por pagamento): a regra 4 já recusa; o índice é a última guarda.
+    if (violouUnicidade(erro, "devolucoes_pagamento_uma_pedida")) return recusa("devolucao_em_andamento", TEXTO_DEVOLUCAO_EM_ANDAMENTO);
     throw erro;
   }
   if (!feito.ok) return feito;
@@ -1297,6 +1302,7 @@ export async function aplicarAlteracaoPelaEquipe(
     if (erro instanceof RecusaNaTransacao) return erro.recusa;
     if (erro instanceof ErroAlteracaoProtegida) return recusa("financeiro_movimentado", TEXTO_FINANCEIRO_MOVIMENTADO);
     if (travaOcupada(erro)) return recusa("ocupado", TEXTO_OCUPADO);
+    if (violouUnicidade(erro, "devolucoes_pagamento_uma_pedida")) return recusa("devolucao_em_andamento", TEXTO_DEVOLUCAO_EM_ANDAMENTO);
     throw erro;
   }
   if (!feito.ok) return feito;

@@ -171,10 +171,19 @@ export async function pagamentoSemReservaADevolver(db: Db, reservaId: string): P
  * todos já recebidos, a do último. null = liberação a confirmar.
  */
 export async function liberacoesDoSite(db: Db, organizacaoId: string, reservaIds: readonly string[]): Promise<Map<string, Date | null>> {
+  return new Map([...(await liberacoesDoSiteComAlvo(db, organizacaoId, reservaIds))].map(([id, x]) => [id, x.prevista]));
+}
+
+/**
+ * Como `liberacoesDoSite`, dizendo também se o que falta liberar é só o pagamento da diferença de uma alteração (M8.2d,
+ * §7): o extrato diz "a liberação do pagamento da diferença". `daDiferenca` é falso quando o pagamento que confirmou a
+ * reserva também falta (ou quando tudo já entrou).
+ */
+export async function liberacoesDoSiteComAlvo(db: Db, organizacaoId: string, reservaIds: readonly string[]): Promise<Map<string, { prevista: Date | null; daDiferenca: boolean }>> {
   const ids = [...new Set(reservaIds.filter(uuidValido))];
   if (!ids.length) return new Map();
   const linhas = await db
-    .select({ id: pagamentos.id, reservaId: pagamentos.reservaId, prevista: pagamentos.liberacaoPrevistaEm, criadoEm: pagamentos.criadoEm })
+    .select({ id: pagamentos.id, reservaId: pagamentos.reservaId, prevista: pagamentos.liberacaoPrevistaEm, criadoEm: pagamentos.criadoEm, desfecho: pagamentos.desfecho })
     .from(pagamentos)
     .where(and(eq(pagamentos.organizacaoId, organizacaoId), inArray(pagamentos.reservaId, ids), inArray(pagamentos.desfecho, ["reserva", "alteracao"])));
   const recebidos = linhas.length
@@ -198,11 +207,14 @@ export async function liberacoesDoSite(db: Db, organizacaoId: string, reservaIds
     : new Set<string>();
   const porReserva = new Map<string, typeof linhas>();
   for (const l of linhas) porReserva.set(l.reservaId, [...(porReserva.get(l.reservaId) ?? []), l]);
-  const resultado = new Map<string, Date | null>();
+  const resultado = new Map<string, { prevista: Date | null; daDiferenca: boolean }>();
   for (const [reservaId, ps] of porReserva) {
     const faltam = ps.filter((x) => !recebidos.has(x.id));
     const alvo = faltam.length ? faltam : [ps.sort((a, b) => a.criadoEm.getTime() - b.criadoEm.getTime()).at(-1)!];
-    resultado.set(reservaId, alvo.some((x) => !x.prevista) ? null : new Date(Math.max(...alvo.map((x) => x.prevista!.getTime()))));
+    resultado.set(reservaId, {
+      prevista: alvo.some((x) => !x.prevista) ? null : new Date(Math.max(...alvo.map((x) => x.prevista!.getTime()))),
+      daDiferenca: faltam.length > 0 && faltam.every((x) => x.desfecho === "alteracao"),
+    });
   }
   return resultado;
 }

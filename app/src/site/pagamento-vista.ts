@@ -430,8 +430,9 @@ function porqueDaReducao(r: NonNullable<AlteracaoParaHospede["reducao"]>, entrad
 export function textoDaAlteracao(a: AlteracaoParaHospede | AlteracaoDoHospede, textos: TextosDaAlteracao, codigo: string, fuso: string = BRASILIA): TextoDaAlteracao {
   const linhas: string[] = [];
   let comoVolta: string | null = null;
+  // A linha da política vale sempre (§8.2): a versão aceita no pagamento da reserva e a entrada de que os prazos contam agora.
   const politica =
-    a.politicaVersao !== null ? juntar(`Versão ${a.politicaVersao} da Política de cancelamento, aceita no pagamento da reserva; prazos contados da entrada de ${diaIso(a.entradaDaPolitica)}.`, textos.alteracaoPolitica) : textos.alteracaoPolitica;
+    a.politicaVersao !== null ? juntar(`Versão ${a.politicaVersao} da Política de cancelamento, aceita no pagamento da reserva; prazos contados da entrada de ${diaIso(a.entradaDosPrazos)}.`, textos.alteracaoPolitica) : textos.alteracaoPolitica;
   const devolvida = a.reducao?.direito === "integral";
   if (a.situacao === "segurada") {
     const ate = quando(a.holdAte);
@@ -445,7 +446,6 @@ export function textoDaAlteracao(a: AlteracaoParaHospede | AlteracaoDoHospede, t
       ),
     );
     if (a.rumo === "reducao" && a.reducao) linhas.push(`Pela política, a diferença de ${formatBRL(-a.diferenca)} ${devolvida ? "é devolvida" : "não é devolvida"} (${porqueDaReducao(a.reducao, a.entradaDaPolitica)}).`);
-    if (politica) linhas.push(politica);
   } else if (a.situacao === "aplicada") {
     const em = quando(a.aplicadaEm);
     linhas.push(juntar(`Alteração confirmada${em ? ` em ${diaMes(em, fuso)}` : ""}: ${diaIso(a.depois.checkin)}–${diaIso(a.depois.checkout)}, ${plural(a.depois.hospedes, "pessoa", "pessoas")}, ${formatBRL(a.valorNovo)}.`, textos.alteracaoConfirmada));
@@ -477,6 +477,7 @@ export function textoDaAlteracao(a: AlteracaoParaHospede | AlteracaoDoHospede, t
     const em = quando(a.preparadaEm);
     linhas.push(juntar(`A alteração preparada${em ? ` em ${diaMes(em, fuso)}` : ""} não vale mais.`, textos.alteracaoNaoVale));
   }
+  if (politica) linhas.push(politica);
   const limpas = linhas.filter((l) => l.trim());
   return { linhas: limpas, resumo: limpas.join(" "), comoVolta };
 }

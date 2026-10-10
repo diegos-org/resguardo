@@ -72,7 +72,7 @@ describe("mensagens da alteração pelo motor (M8.2d)", () => {
     await pagarDiferenca(c, x.cotacaoId, resultado.alteracaoId, { quando: minutos(25) });
     expect(await enviarMensagensHospede(db, c.org, correio, minutos(30))).toMatchObject({ enviadas: 1, avisos: [] });
     expect(correio.enviadas.at(-1)!.texto).toBe(
-      `Olá, Visitante Fictício! A alteração da sua reserva ${x.reservaCodigo} está confirmada: Alteração confirmada em 01/10: 12/10–16/10, 4 pessoas, R$ 2.352,00. ${TEXTOS_SITE_INICIAIS.alteracaoConfirmada} Acompanhe em ${SITE}/reservar/${x.codigo}. Qualquer dúvida, é só responder esta mensagem.`,
+      `Olá, Visitante Fictício! A alteração da sua reserva ${x.reservaCodigo} está confirmada: Alteração confirmada em 01/10: 12/10–16/10, 4 pessoas, R$ 2.352,00. ${TEXTOS_SITE_INICIAIS.alteracaoConfirmada} Versão 1 da Política de cancelamento, aceita no pagamento da reserva; prazos contados da entrada de 12/10. ${TEXTOS_SITE_INICIAIS.alteracaoPolitica} Acompanhe em ${SITE}/reservar/${x.codigo}. Qualquer dúvida, é só responder esta mensagem.`,
     );
     expect(await alteracaoGravada(c, resultado.alteracaoId)).toMatchObject({ hospedeAvisadoConfirmacaoEm: minutos(30) });
     expect(await enviarMensagensHospede(db, c.org, correio, minutos(31))).toMatchObject({ enviadas: 0 });

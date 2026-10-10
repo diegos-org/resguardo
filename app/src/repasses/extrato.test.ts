@@ -159,3 +159,27 @@ describe("cancelamento pela política do site (M8.2c, regra pura)", () => {
     expect(classificarParte({ ...retida, hoje: "2026-12-11", recebido: { recebido: 0, devido: 85000 } }).motivo).toContain("ainda não registrou o recebimento");
   });
 });
+
+describe("reserva paga pelo site com dinheiro ainda no Mercado Pago (M8.2a, M8.2d §7, regra pura)", () => {
+  const site: ParteBruta = { ...base, origem: "site", checkin: "2026-10-20", checkout: "2026-10-23", hoje: "2026-10-12", recebido: { recebido: 148515, devido: 188119 }, liberacaoSite: { prevista: "2026-11-15" } };
+
+  it("antes do check-in: libera depois dele e da liberação do pagamento (da diferença, depois de um aumento), com a data prevista", () => {
+    expect(classificarParte(site)).toMatchObject({ situacao: "a_liberar", motivo: "Libera depois do check-in (20/10/2026) e da liberação do pagamento pelo Mercado Pago (prevista para 15/11/2026)." });
+    expect(classificarParte({ ...site, liberacaoSite: { prevista: "2026-11-15", daDiferenca: true } }).motivo).toBe(
+      "Libera depois do check-in (20/10/2026) e da liberação do pagamento da diferença pelo Mercado Pago (prevista para 15/11/2026).",
+    );
+    expect(classificarParte({ ...site, liberacaoSite: { prevista: null, daDiferenca: true } }).motivo).toBe("Libera depois do check-in (20/10/2026) e da liberação do pagamento da diferença pelo Mercado Pago (a confirmar).");
+    // O dinheiro já com a empresa: o texto de sempre.
+    expect(classificarParte({ ...site, recebido: { recebido: 188119, devido: 188119 } }).motivo).toBe("Libera depois do check-in (20/10/2026), com o dinheiro já com a empresa.");
+  });
+
+  it("depois do check-in: a liberação que falta (a do pagamento da diferença, quando só ela falta); com o dinheiro todo, disponível", () => {
+    const depois = { ...site, hoje: "2026-10-21" };
+    expect(classificarParte(depois).motivo).toBe("Reserva paga pelo site: o Mercado Pago libera em 15/11/2026; nunca se repassa o que ainda não entrou.");
+    expect(classificarParte({ ...depois, liberacaoSite: { prevista: "2026-11-15", daDiferenca: true } }).motivo).toBe(
+      "Reserva paga pelo site: o Mercado Pago libera o pagamento da diferença em 15/11/2026; nunca se repassa o que ainda não entrou.",
+    );
+    expect(classificarParte({ ...depois, liberacaoSite: { prevista: null, daDiferenca: true } }).motivo).toContain("liberação do pagamento da diferença pelo Mercado Pago a confirmar");
+    expect(classificarParte({ ...depois, recebido: { recebido: 188119, devido: 188119 } }).situacao).toBe("disponivel");
+  });
+});

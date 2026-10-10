@@ -13,6 +13,7 @@ import { and, asc, desc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
 import { lerRegrasCalendario } from "@/calendario/regras-config";
 import { escritaBeds24Pronta } from "@/beds24/http";
 import { lerPaginaLegal } from "@/configuracoes/paginas-legais";
+import { entradaQueConta } from "@/configuracoes/politica-cancelamento";
 import type { VersoesLegais } from "@/configuracoes/paginas-legais-texto";
 import {
   aceitesSite,
@@ -175,7 +176,13 @@ export type AlteracaoParaHospede = {
   /** Só na segurada com aumento: o pagamento da diferença (o mesmo formato da página da cotação). */
   pagamento: VistaPagamentoHospede | null;
   politicaVersao: number | null;
+  /** A entrada de que a política contou a decisão desta alteração (o retrato: a menor entre a original e a de então). */
   entradaDaPolitica: string;
+  /**
+   * A entrada de que os prazos da reserva contam agora (`entradaQueConta` da entrada original e da atual): a linha da
+   * política, que vale sempre (§8.2). Na aplicada, já com as datas novas.
+   */
+  entradaDosPrazos: string;
 };
 
 export type VistaPagamentoHospede = {
@@ -242,7 +249,7 @@ export async function vistaDaCotacaoParaHospede(
 ): Promise<VistaPagamentoHospede | null> {
   if (!uuidValido(cotacaoId)) return null;
   const [c] = await db
-    .select({ estado: cotacoes.estado, holdAte: cotacoes.holdAte, reservaId: cotacoes.reservaId, reservaEstado: reservas.estado, reservaCodigo: reservas.codigo })
+    .select({ estado: cotacoes.estado, holdAte: cotacoes.holdAte, checkin: cotacoes.checkin, reservaId: cotacoes.reservaId, reservaEstado: reservas.estado, reservaCodigo: reservas.codigo, reservaCheckin: reservas.checkin })
     .from(cotacoes)
     .leftJoin(reservas, eq(reservas.id, cotacoes.reservaId))
     .where(and(eq(cotacoes.id, cotacaoId), eq(cotacoes.organizacaoId, organizacaoId)));
@@ -302,7 +309,7 @@ export async function vistaDaCotacaoParaHospede(
     // de uma alteração (M8.2d) é dinheiro da reserva, nunca "em dobro".
     const emDobro = tentativas.some((t) => t.id !== comReserva.id && !dinheiroDaReserva(t) && !t.alteracaoId && comDinheiro(t.situacao) && !devolvida(t));
     const pedido = canc?.situacao === "pedido" ? canc : null;
-    const alteracao = c.reservaId ? await alteracaoParaHospede(db, organizacaoId, c.reservaId, tentativas, devolucoes, base, agora, o) : null;
+    const alteracao = c.reservaId ? await alteracaoParaHospede(db, organizacaoId, c.reservaId, tentativas, devolucoes, base, agora, { ...o, entradas: { original: c.checkin, atual: c.reservaCheckin } }) : null;
     return {
       ...base,
       estado: "confirmada",
@@ -405,20 +412,25 @@ async function alteracaoParaHospede(
   devolucoes: readonly Devolucao[],
   base: VistaPagamentoHospede,
   agora: Date,
-  o: { comAutorizacao: boolean; oferecidoAlteracao?: boolean },
+  o: { comAutorizacao: boolean; oferecidoAlteracao?: boolean; entradas: EntradasDaReserva },
 ): Promise<AlteracaoParaHospede | null> {
   const x = await escolherAlteracaoParaHospede(db, organizacaoId, reservaId, tentativas, devolucoes, base, agora, o);
-  return x ? comVersaoDaPolitica(db, organizacaoId, x, tentativas) : null;
+  return x ? comVersaoDaPolitica(db, organizacaoId, x, tentativas, o.entradas) : null;
 }
+
+/** A entrada da cotação (a original) e a da reserva agora (null sem reserva). */
+type EntradasDaReserva = { original: string; atual: string | null };
 
 /**
  * A linha da política vale sempre (§8.2): o retrato da alteração só guarda a versão na redução; nas outras, a versão é a
- * do aceite do pagamento que confirmou a reserva (a que continua valendo para ela).
+ * do aceite do pagamento que confirmou a reserva (a que continua valendo para ela). Os prazos contam da entrada que conta
+ * agora (a menor entre a original e a atual: depois de aplicada, já a nova).
  */
-async function comVersaoDaPolitica<T extends AlteracaoParaHospede>(db: Db, organizacaoId: string, x: T, tentativas: readonly Pick<Pagamento, "id" | "desfecho">[]): Promise<T> {
-  if (x.politicaVersao !== null) return x;
+async function comVersaoDaPolitica<T extends AlteracaoParaHospede>(db: Db, organizacaoId: string, x: T, tentativas: readonly Pick<Pagamento, "id" | "desfecho">[], entradas: EntradasDaReserva): Promise<T> {
+  const comPrazos = entradas.atual ? { ...x, entradaDosPrazos: entradaQueConta(entradas.original, entradas.atual) } : x;
+  if (comPrazos.politicaVersao !== null) return comPrazos;
   const p0 = tentativas.find((t) => t.desfecho === "reserva");
-  return p0 ? { ...x, politicaVersao: await versaoDaPoliticaDoPagamento(db, organizacaoId, p0.id) } : x;
+  return p0 ? { ...comPrazos, politicaVersao: await versaoDaPoliticaDoPagamento(db, organizacaoId, p0.id) } : comPrazos;
 }
 
 async function escolherAlteracaoParaHospede(
@@ -525,6 +537,7 @@ const comum = (a: Alteracao, situacao: AlteracaoParaHospede["situacao"]): Altera
   pagamento: null,
   politicaVersao: a.politicaVersao,
   entradaDaPolitica: a.entradaDaPolitica,
+  entradaDosPrazos: a.entradaDaPolitica,
 });
 
 /**
@@ -538,8 +551,13 @@ export async function alteracaoParaMensagem(db: Db, organizacaoId: string, alter
   if (!a) return null;
   const tentativas = await db.select().from(pagamentos).where(and(eq(pagamentos.cotacaoId, a.cotacaoId), eq(pagamentos.organizacaoId, organizacaoId)));
   const devolucoes = tentativas.length ? await db.select().from(devolucoesPagamento).where(inArray(devolucoesPagamento.pagamentoId, tentativas.map((t) => t.id))) : [];
+  const [entradas] = await db
+    .select({ original: cotacoes.checkin, atual: reservas.checkin })
+    .from(cotacoes)
+    .innerJoin(reservas, eq(reservas.id, a.reservaId))
+    .where(and(eq(cotacoes.id, a.cotacaoId), eq(cotacoes.organizacaoId, organizacaoId)));
   const extra = { reservaId: a.reservaId, cotacaoId: a.cotacaoId };
-  const comPolitica = (x: AlteracaoParaHospede) => comVersaoDaPolitica(db, organizacaoId, { ...x, ...extra }, tentativas);
+  const comPolitica = (x: AlteracaoParaHospede) => comVersaoDaPolitica(db, organizacaoId, { ...x, ...extra }, tentativas, entradas ?? { original: a.entradaDaPolitica, atual: null });
   if (situacaoEfetiva(a, agora, carenciaNoTravado({ tentativas }, agora)(a)) === "segurada") return comPolitica(comum(a, "segurada"));
   if (a.situacao === "aplicada") return comPolitica({ ...comum(a, "aplicada"), devolucao: devolucaoDaAlteracao(a, tentativas, devolucoes, agora) });
   const paga = tentativas.find((t) => t.alteracaoId === a.id && comDinheiro(t.situacao) && t.desfecho !== "alteracao" && codigoMotivo(t.motivoSemReserva)?.startsWith("alteracao_"));

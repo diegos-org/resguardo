@@ -10,7 +10,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { gravarConfig, lerConfig } from "@/configuracoes/armazem";
 import { PAGINAS_LEGAIS } from "@/configuracoes/paginas-legais-texto";
 import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
-import { aceitesSite, alteracoesReserva, pagamentos, reservas } from "@/db/schema";
+import { aceitesSite, alteracoesReserva, auditoria, contratos, pagamentos, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { listarImoveis } from "@/imoveis/repositorio";
@@ -22,8 +22,10 @@ import { desistirDaAlteracao } from "./alteracao";
 import { pagarComCartao } from "./cartao";
 import { conferirTentativa } from "./conferencia";
 import { listarPagamentos } from "./consultas";
+import { ofertaDeCartao, ofertaDePix, type PortaoCobranca, TEXTO_SEM_COBRANCA, TEXTO_SEM_PIX } from "./oferta";
 import { gerarPix } from "./pix";
-import { alteracaoGravada, alterar, CARTAO_FICTICIO, type Cenario, env, minutos, montarCenario, pagarDiferenca, pagarEConfirmar, semDadosDoHospede, TOTAL, usuarioDeTeste } from "./testes";
+import { ErroProvedor } from "./provedor";
+import { alteracaoGravada, alterar, CARTAO_FICTICIO, type Cenario, env, envelhecer, minutos, montarCenario, pagarDiferenca, pagarEConfirmar, semDadosDoHospede, TOTAL, usuarioDeTeste } from "./testes";
 
 let db: Db, close: () => Promise<void>, c: Cenario, equipe: string;
 beforeAll(async () => {
@@ -100,8 +102,93 @@ describe("a página da reserva mostra a alteração", () => {
     expect(await desistirDaAlteracao(db, c.org, resultado.alteracaoId, "O hóspede desistiu", equipe, c.provedor, minutos(22))).toEqual({ ok: true });
     const v = await pagina(x.cotacaoId, minutos(23));
     expect(v?.alteracao).toMatchObject({ situacao: "nao_vale" });
-    expect(texto(v!.alteracao!, x.reservaCodigo).resumo).toBe(`A alteração preparada em 01/10 não vale mais. ${TEXTOS_SITE_INICIAIS.alteracaoNaoVale}`);
+    // A linha da política vale sempre (§8.2).
+    expect(texto(v!.alteracao!, x.reservaCodigo).resumo).toBe(
+      `A alteração preparada em 01/10 não vale mais. ${TEXTOS_SITE_INICIAIS.alteracaoNaoVale} Versão 1 da Política de cancelamento, aceita no pagamento da reserva; prazos contados da entrada de 12/10. ${TEXTOS_SITE_INICIAIS.alteracaoPolitica}`,
+    );
     expect((await pagina(x.cotacaoId, new Date(minutos(23).getTime() + 8 * 86_400_000)))?.alteracao ?? null).toBeNull();
+  });
+});
+
+describe("a página da reserva: os outros estados da alteração (M8.2d §8)", () => {
+  const politica = `Versão 1 da Política de cancelamento, aceita no pagamento da reserva; prazos contados da entrada de 12/10. ${TEXTOS_SITE_INICIAIS.alteracaoPolitica}`;
+  const menos200 = { origem: "digitado" as const, valor: TOTAL - 20_000, motivo: "acordo_com_hospede" as const, nota: "Saída um dia antes" };
+
+  it("segurada numa redução e no mesmo valor: o hóspede confirma respondendo à mensagem (sem pagamento); a redução diz se a diferença volta", async () => {
+    const x = await pagarEConfirmar(c);
+    const { resultado } = await alterar(c, x.reservaId, { checkout: "2026-10-14", valor: menos200 }, minutos(20), { autorId: equipe });
+    expect(resultado).toMatchObject({ ok: true, situacao: "segurada" });
+    const v = await pagina(x.cotacaoId, minutos(21));
+    expect(v?.alteracao).toMatchObject({ situacao: "segurada", rumo: "reducao", pagamento: null, reducao: { direito: "integral", base: "arrependimento" } });
+    expect(texto(v!.alteracao!, x.reservaCodigo).linhas).toEqual([
+      `Alteração da reserva ${x.reservaCodigo}: de 12/10–15/10 (3 noites, 4 pessoas) para 12/10–14/10 (2 noites, 4 pessoas). Valor: de R$ 1.824,00 para R$ 1.624,00 — diferença de R$ 200,00. Datas seguradas até 13:20 (horário de Brasília). ${TEXTOS_SITE_INICIAIS.alteracaoAguardaConfirmacao}`,
+      "Pela política, a diferença de R$ 200,00 é devolvida (direito de arrependimento: até 7 dias depois do pagamento).",
+      politica,
+    ]);
+    // Mesmo valor (outra reserva: só as datas mudam).
+    const y = await pagarEConfirmar(c, { entrada: "2026-10-20", saida: "2026-10-23", email: "y@example.com" });
+    const mantido = { origem: "mantido" as const, motivo: "acordo_com_hospede" as const, nota: "Mesmas noites em outra semana" };
+    expect((await alterar(c, y.reservaId, { checkin: "2026-10-24", checkout: "2026-10-27", valor: mantido }, minutos(20), { autorId: equipe })).resultado).toMatchObject({ ok: true, situacao: "segurada" });
+    const vy = await pagina(y.cotacaoId, minutos(21));
+    expect(vy?.alteracao).toMatchObject({ situacao: "segurada", rumo: "igual", pagamento: null });
+    expect(texto(vy!.alteracao!, y.reservaCodigo).linhas[0]).toBe(
+      `Alteração da reserva ${y.reservaCodigo}: de 20/10–23/10 (3 noites, 4 pessoas) para 24/10–27/10 (3 noites, 4 pessoas). Valor: o mesmo (R$ 1.824,00). Datas seguradas até 13:20 (horário de Brasília). ${TEXTOS_SITE_INICIAIS.alteracaoAguardaConfirmacao}`,
+    );
+  });
+
+  it("não aplicada: a diferença paga depois de a equipe desistir — recebemos o pagamento e vamos devolver; com a linha da política", async () => {
+    const x = await pagarEConfirmar(c);
+    const { resultado } = await alterar(c, x.reservaId, { checkout: "2026-10-16" }, minutos(20), { autorId: equipe });
+    if (!resultado.ok) throw new Error(resultado.erro);
+    const pix = await pagarDiferenca(c, x.cotacaoId, resultado.alteracaoId, { quando: minutos(25), aprovar: false });
+    c.provedor.aprovar(pix.idProvedor, { taxa: 528 });
+    expect(await desistirDaAlteracao(db, c.org, resultado.alteracaoId, "O hóspede desistiu", equipe, c.provedor, minutos(30))).toEqual({ ok: true });
+    await conferirTentativa(db, c.org, pix.pagamentoId, c.provedor, minutos(31), { origem: "rotina", forcar: true });
+    expect(await c.tentativa(pix.pagamentoId)).toMatchObject({ desfecho: null, motivoSemReserva: "alteracao_desistida" });
+    const v = await pagina(x.cotacaoId, minutos(32));
+    expect(v?.alteracao).toMatchObject({ situacao: "nao_aplicada", pagoSemAlteracao: { valor: 52800 } });
+    expect(texto(v!.alteracao!, x.reservaCodigo).linhas).toEqual([`Recebemos o pagamento da diferença (R$ 528,00) em 01/10. ${TEXTOS_SITE_INICIAIS.alteracaoNaoAplicada}`, politica]);
+    expect(texto(v!.alteracao!, x.reservaCodigo).resumo).not.toMatch(/Beds24|visitante@example\.com|99999/);
+  });
+
+  it("aplicada com a devolução pedida (enviada, esperando o Mercado Pago), com a equipe (Pix com mais de 78 dias: nada pedido) e em conferência (devolvida a menor)", async () => {
+    const casos = [
+      { email: "pedida@example.com", entrada: "2026-10-12", preparar: async () => void (c.provedor.respostaDevolucao = "pedida"), estado: "pedida", linha: `Devolução da diferença: R$ 200,00. ${TEXTOS_SITE_INICIAIS.cancelamentoDevolucaoPedida}` },
+      {
+        email: "equipe@example.com",
+        entrada: "2026-11-20",
+        preparar: (x: { pagamentoId: string }) => envelhecer(c, x.pagamentoId, 80),
+        estado: "com_a_equipe",
+        linha: `Devolução da diferença: R$ 200,00. A devolução pelo Mercado Pago não foi possível. ${TEXTOS_SITE_INICIAIS.cancelamentoComAEquipe}`,
+      },
+      { email: "menor@example.com", entrada: "2026-11-02", preparar: async () => c.provedor.devolverAMenos(15_000), estado: "em_conferencia", linha: `Devolução da diferença: R$ 200,00. ${TEXTOS_SITE_INICIAIS.cancelamentoEmConferencia}` },
+    ] as const;
+    for (const caso of casos) {
+      c.provedor.respostaDevolucao = "confirmada";
+      const saida = new Date(Date.parse(`${caso.entrada}T00:00:00Z`) + 3 * 86_400_000).toISOString().slice(0, 10);
+      const antesDaSaida = new Date(Date.parse(`${caso.entrada}T00:00:00Z`) + 2 * 86_400_000).toISOString().slice(0, 10);
+      const x = await pagarEConfirmar(c, { entrada: caso.entrada, saida, email: caso.email, liberar: true });
+      await caso.preparar(x);
+      const { resultado } = await alterar(c, x.reservaId, { checkout: antesDaSaida, valor: menos200 }, minutos(20), { autorId: equipe, aplicar: true });
+      expect(resultado).toMatchObject({ ok: true, situacao: "aplicada" });
+      const v = await pagina(x.cotacaoId, minutos(25));
+      expect(v?.alteracao).toMatchObject({ situacao: "aplicada", rumo: "reducao", devolucao: { estado: caso.estado, valor: 20_000 } });
+      const t = texto(v!.alteracao!, x.reservaCodigo);
+      expect(t.linhas).toContain(caso.linha);
+      expect(t.linhas.at(-1)).toBe(`Versão 1 da Política de cancelamento, aceita no pagamento da reserva; prazos contados da entrada de ${caso.entrada.slice(8, 10)}/${caso.entrada.slice(5, 7)}. ${TEXTOS_SITE_INICIAIS.alteracaoPolitica}`);
+      // Nunca "já pedimos" fora da pedida.
+      if (caso.estado !== "pedida") expect(t.resumo).not.toContain(TEXTOS_SITE_INICIAIS.cancelamentoDevolucaoPedida);
+    }
+    expect(await semDadosDoHospede(db)).toEqual([]);
+  });
+
+  it("aplicada depois de adiantar a estadia: a linha da política conta da entrada nova (a menor), a decisão, da de então", async () => {
+    const x = await pagarEConfirmar(c, { entrada: "2026-11-20", saida: "2026-11-23" });
+    const mantido = { origem: "mantido" as const, motivo: "acordo_com_hospede" as const, nota: "Adiantou a viagem" };
+    expect((await alterar(c, x.reservaId, { checkin: "2026-10-12", checkout: "2026-10-15", valor: mantido }, minutos(20), { autorId: equipe, aplicar: true })).resultado).toMatchObject({ ok: true, situacao: "aplicada" });
+    const v = await pagina(x.cotacaoId, minutos(25));
+    expect(v?.alteracao).toMatchObject({ situacao: "aplicada", entradaDaPolitica: "2026-11-20", entradaDosPrazos: "2026-10-12" });
+    expect(texto(v!.alteracao!, x.reservaCodigo).linhas.at(-1)).toBe(`Versão 1 da Política de cancelamento, aceita no pagamento da reserva; prazos contados da entrada de 12/10. ${TEXTOS_SITE_INICIAIS.alteracaoPolitica}`);
   });
 });
 
@@ -186,6 +273,66 @@ describe("o pagamento da diferença (o alvo da cobrança)", () => {
     const p = await c.tentativa(ok.pagamentoId);
     const [aceite] = await db.select().from(aceitesSite).where(eq(aceitesSite.id, p.aceiteId!));
     expect(aceite).toMatchObject({ versaoTermos: 2, versaoPrivacidade: 1, versaoCancelamento: 1 });
+  });
+});
+
+describe("o pagamento da diferença recusado (o alvo e a oferta da alteração)", () => {
+  const menos = { origem: "digitado" as const, valor: TOTAL - 10_000, motivo: "cortesia_comercial" as const, nota: "Cortesia" };
+
+  it("vencida (prazo sem carência), sem diferença a pagar (redução ou mesmo valor): Pix e cartão recusam como 'alteração mudou'", async () => {
+    const x = await pagarEConfirmar(c);
+    const { resultado } = await alterar(c, x.reservaId, { checkout: "2026-10-16" }, minutos(20), { autorId: equipe });
+    if (!resultado.ok) throw new Error(resultado.erro);
+    // O prazo (13:20) passou e nenhuma tentativa da diferença segura carência.
+    expect(await gerarPix(db, c.org, x.cotacaoId, minutos(81), c.provedor, { alteracaoId: resultado.alteracaoId })).toMatchObject({ ok: false, codigo: "alteracao_mudou" });
+    expect(await pagarComCartao(db, c.org, x.cotacaoId, minutos(81), c.provedor, CARTAO_FICTICIO, { alteracaoId: resultado.alteracaoId })).toMatchObject({ ok: false, codigo: "alteracao_mudou" });
+    // Uma redução segurada (a diferença é a devolver, não a pagar).
+    const b = await alterar(c, x.reservaId, { checkout: "2026-10-14", valor: menos }, minutos(82), { autorId: equipe });
+    if (!b.resultado.ok) throw new Error(b.resultado.erro);
+    expect(await gerarPix(db, c.org, x.cotacaoId, minutos(83), c.provedor, { alteracaoId: b.resultado.alteracaoId })).toMatchObject({ ok: false, codigo: "alteracao_mudou" });
+    expect(await pagarComCartao(db, c.org, x.cotacaoId, minutos(83), c.provedor, CARTAO_FICTICIO, { alteracaoId: b.resultado.alteracaoId })).toMatchObject({ ok: false, codigo: "alteracao_mudou" });
+    expect(await db.select().from(pagamentos).where(and(eq(pagamentos.cotacaoId, x.cotacaoId), eq(pagamentos.organizacaoId, c.org)))).toHaveLength(1);
+  });
+
+  it("o portão desligado (oferta e página) e uma pendência do motor nas novas datas (o contrato acabou durante o prazo): nada é oferecido nem gerado", async () => {
+    const x = await pagarEConfirmar(c);
+    const { resultado } = await alterar(c, x.reservaId, { checkout: "2026-10-16" }, minutos(20), { autorId: equipe });
+    if (!resultado.ok) throw new Error(resultado.erro);
+    const alteracaoId = resultado.alteracaoId;
+    const desligado: PortaoCobranca = { ok: false, motivo: "desligado_no_painel", texto: TEXTO_SEM_COBRANCA.desligado_no_painel };
+    expect(await ofertaDePix(db, c.org, x.cotacaoId, minutos(21), desligado, { alteracaoId })).toEqual({ oferecer: false, motivo: "desligado_no_painel" });
+    expect(await ofertaDeCartao(db, c.org, x.cotacaoId, minutos(21), desligado, { alteracaoId })).toEqual({ oferecer: false, motivo: "desligado_no_painel" });
+    const semPortao = await vistaDoPagamento(db, c.org, x.cotacaoId, minutos(21), { comAutorizacao: true, gate: async () => desligado });
+    expect(semPortao?.alteracao?.pagamento).toMatchObject({ podeGerar: false, podePagarCartao: false, cartao: null });
+    // Com o portão ligado, oferecido; o contrato termina antes da entrada: a diferença não sai mais (sem contrato vigente).
+    expect(await ofertaDePix(db, c.org, x.cotacaoId, minutos(21), c.gate, { alteracaoId })).toEqual({ oferecer: true });
+    await db.update(contratos).set({ fim: "2026-10-01" }).where(eq(contratos.imovelId, c.imovel));
+    const criacoes = () => c.provedor.chamadas.filter((ch) => ch.metodo === "criarPix" || ch.metodo === "criarCartao").length;
+    const antes = criacoes();
+    expect(await ofertaDePix(db, c.org, x.cotacaoId, minutos(22), c.gate, { alteracaoId })).toEqual({ oferecer: false, motivo: "sem_contrato" });
+    expect(await gerarPix(db, c.org, x.cotacaoId, minutos(22), c.provedor, { alteracaoId })).toMatchObject({ ok: false, codigo: "nao_oferecido", erro: TEXTO_SEM_PIX.sem_contrato });
+    expect(await pagarComCartao(db, c.org, x.cotacaoId, minutos(22), c.provedor, CARTAO_FICTICIO, { alteracaoId })).toMatchObject({ ok: false, codigo: "nao_oferecido", erro: TEXTO_SEM_PIX.sem_contrato });
+    expect(criacoes()).toBe(antes);
+  });
+
+  it("o Pix da diferença que não chega ao Mercado Pago: a tentativa some e o prazo provisório da alteração volta ao que era (alvo.voltar)", async () => {
+    const x = await pagarEConfirmar(c);
+    const { resultado } = await alterar(c, x.reservaId, { checkout: "2026-10-16" }, minutos(20), { autorId: equipe });
+    if (!resultado.ok) throw new Error(resultado.erro);
+    const portador = async () => (await db.select().from(reservas).where(and(eq(reservas.organizacaoId, c.org), eq(reservas.fonte, "alteracao"))))[0];
+    const observacao = (await portador()).observacoes;
+    c.provedor.falhas.criarPix = new ErroProvedor("indisponivel", "Não deu para falar com o Mercado Pago.");
+    // Aos 70 minutos o Pix (30 min + 2) passaria do prazo (13:20): a extensão provisória é desfeita quando nada é criado.
+    expect(await gerarPix(db, c.org, x.cotacaoId, minutos(70), c.provedor, { alteracaoId: resultado.alteracaoId })).toMatchObject({ ok: false, codigo: "provedor" });
+    expect((await alteracaoGravada(c, resultado.alteracaoId)).holdAte).toEqual(minutos(80));
+    expect((await portador()).observacoes).toBe(observacao);
+    expect(await db.select().from(pagamentos).where(and(eq(pagamentos.cotacaoId, x.cotacaoId), eq(pagamentos.alteracaoId, resultado.alteracaoId)))).toEqual([]);
+    const acoes = (await db.select({ acao: auditoria.acao }).from(auditoria).where(and(eq(auditoria.organizacaoId, c.org), eq(auditoria.entidadeId, resultado.alteracaoId)))).map((a) => a.acao);
+    expect(acoes).toEqual(expect.arrayContaining(["alteracao.estender", "alteracao.voltar_prazo"]));
+    // O Mercado Pago volta: o Pix sai e estende o prazo de verdade.
+    c.provedor.falhas.criarPix = null;
+    expect(await gerarPix(db, c.org, x.cotacaoId, minutos(71), c.provedor, { alteracaoId: resultado.alteracaoId })).toMatchObject({ ok: true });
+    expect((await alteracaoGravada(c, resultado.alteracaoId)).holdAte!.getTime()).toBeGreaterThan(minutos(100).getTime());
   });
 });
 

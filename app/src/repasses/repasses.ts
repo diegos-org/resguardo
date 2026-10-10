@@ -307,7 +307,7 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
     const outras = foraDoFechamento.filter((x) => !x.liberacaoSite);
     const porReserva = [...new Map(doSite.map((x) => [x.reservaId, x])).values()];
     const site = porReserva.length
-      ? ` Pagas pelo site, o dinheiro vem do Mercado Pago: ${porReserva.map((x) => `${x.codigoReserva}, ${x.liberacaoSite!.prevista ? `o Mercado Pago libera em ${dataBr(x.liberacaoSite!.prevista)}` : "liberação a confirmar"}`).join("; ")}.`
+      ? ` Pagas pelo site, o dinheiro vem do Mercado Pago: ${porReserva.map((x) => `${x.codigoReserva}, ${x.liberacaoSite!.prevista ? `o Mercado Pago libera ${x.liberacaoSite!.daDiferenca ? "o pagamento da diferença " : ""}em ${dataBr(x.liberacaoSite!.prevista)}` : "liberação a confirmar"}`).join("; ")}.`
       : "";
     avisos.push(`${brl(calc.fora)} da competência ficam fora deste repasse e passam para o seguinte: dinheiro ainda não registrado com a empresa (reservas ${codigosDe(foraDoFechamento)}).${outras.length ? " Registre o recebimento na reserva quando o canal pagar." : ""}${site}`);
   }

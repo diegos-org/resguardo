@@ -104,6 +104,19 @@ describe("aplicarMotor", () => {
     expect(await aplicarMotor(db, org, id, null, undefined, { motivoEstorno: "Outro" })).toMatchObject({ criados: 0, estornados: 0, mantidos: 4 });
   });
 
+  it("protegido (M8.2d): com dinheiro movimentado, a sincronização com o motivo da alteração não estorna nem lança nada e avisa (quem chama desfaz)", async () => {
+    const id = await sinc();
+    const antes = await ativosDoMotor(id);
+    const receita = antes.find((l) => l.tipo === "receita_bruta")!;
+    await mudarEstado(db, org, receita.id, "realizado", null, "2030-10-14");
+    const r = await sincronizarReserva(db, org, "beds24", "1", dados({ checkin: "2030-11-10", checkout: "2030-11-13", valorBruto: 200000, taxaCanal: 30000 }), null, new Date(), { motivoEstorno: "Alteração x da reserva y: recalculado" });
+    expect(r).toMatchObject({ ok: true, financeiroNaoAtualizado: true });
+    const todos = await listarLancamentos(db, org, { reservaId: id });
+    expect(todos.filter((l) => l.estornoDe)).toEqual([]);
+    expect((await ativosDoMotor(id)).map((l) => l.id).sort()).toEqual(antes.map((l) => l.id).sort());
+    expect(todos.some((l) => l.competencia.startsWith("2030-11"))).toBe(false);
+  });
+
   it("valor volta ao cálculo anterior (A → B → A): lança de novo em vez de reaproveitar o estornado", async () => {
     const id = await sinc();
     await sinc({ valorBruto: 200000, taxaCanal: 30000 });

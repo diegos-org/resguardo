@@ -190,3 +190,23 @@ describe("reserva do site e a reserva-pedido de uma alteração (M8.2d)", () => 
     expect(await db.transaction((tx) => cancelarPortador(tx, outra, { id: alteracaoId, reservaId: alterada.reserva.id, holdReservaId: portador.reserva.id }, null, agora, "teste"))).toBe(false);
   });
 });
+
+describe("a importação do Beds24 e a reserva-pedido de uma alteração (M8.2d)", () => {
+  it("nunca acha a reserva-pedido: nem pelo id da fonte (o da alteração), nem pelo canal e código; cria a dela e a reserva-pedido fica como estava", async () => {
+    const alterada = await sincronizarReserva(db, org, "site", "cot-3", dados({ origem: "site", codigoCanal: "" }));
+    if (!alterada.ok) throw new Error("falhou");
+    const alteracaoId = crypto.randomUUID();
+    const portador = await sincronizarReserva(db, org, FONTE_ALTERACAO, alteracaoId, dados({ origem: "site", estado: "pedido", checkin: "2026-10-13", checkout: "2026-10-14", hospedeNome: `Alteração ${alterada.reserva.codigo}`, hospedeEmail: "", valorBruto: null, taxaCanal: null, valorLiquido: null, codigoCanal: "" }));
+    if (!portador.ok) throw new Error("falhou");
+    // O pior caso: o Beds24 manda uma reserva com o mesmo id da alteração, nas mesmas noites (e outra pelo canal e código vazio).
+    const mesmoId = await sincronizarReserva(db, org, "beds24", alteracaoId, dados({ checkin: "2026-10-13", checkout: "2026-10-14", codigoCanal: "HM999" }));
+    const semCodigo = await sincronizarReserva(db, org, "beds24", "555", dados({ origem: "booking", checkin: "2026-10-13", checkout: "2026-10-14", codigoCanal: "" }));
+    for (const s of [mesmoId, semCodigo]) {
+      if (!s.ok) throw new Error("falhou");
+      expect(s).toMatchObject({ criada: true });
+      expect(s.reserva.id).not.toBe(portador.reserva.id);
+      expect(s.reserva.fonte).toBe("beds24");
+    }
+    expect(await obterReserva(db, org, portador.reserva.id)).toMatchObject({ fonte: FONTE_ALTERACAO, idFonte: alteracaoId, estado: "pedido", hospedeNome: `Alteração ${alterada.reserva.codigo}`, beds24Id: null, valorBruto: null });
+  });
+});

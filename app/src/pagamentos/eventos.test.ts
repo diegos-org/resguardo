@@ -11,7 +11,7 @@ import { ProvedorFalso } from "./falso";
 import { ErroProvedor } from "./provedor";
 import { situacaoDoMercadoPago, ENDERECO_WEBHOOK, segredoDoWebhook } from "./integracao";
 import { conferirPendentes, rotinaDoSite } from "./rotina";
-import { AGORA, alteracaoSeguradaDeTeste, aumentarDeTeste, type Cenario, env, liberar, minutos, montarCenario, pagarEConfirmar, reduzirDeTeste, TOTAL } from "./testes";
+import { AGORA, alteracaoGravada, alteracaoSeguradaDeTeste, alterar, aumentarDeTeste, type Cenario, env, liberar, minutos, montarCenario, pagarDiferenca, pagarEConfirmar, reduzirDeTeste, TOTAL, usuarioDeTeste } from "./testes";
 
 let db: Db, close: () => Promise<void>, c: Cenario;
 beforeAll(async () => { ({ db, close } = await createTestDb()); });
@@ -428,5 +428,52 @@ describe("a leitura com vários pagamentos e devoluções de parte (M8.2d)", () 
     const inc = await aumentarDeTeste(c, x, TOTAL + 10000, { quando: minutos(35) });
     await liberar(c, inc.pagamentoId, { manual: false, quando: minutos(40) });
     expect((await livro("recebimento")).find((l) => l.chaveOrigem === `mercadopago:${inc.pagamentoId}:recebimento`)).toMatchObject({ montante: 40000 - 400, estado: "conciliado" });
+  });
+});
+
+describe("o cartão da diferença na leitura: o alvo da cobrança é a alteração (M8.2d, F11)", () => {
+  const conferir = (id: string, quando: Date) => conferirTentativa(db, c.org, id, c.provedor, quando, { origem: "rotina", forcar: true });
+
+  it("cartão da diferença no desafio do banco: o desafio continua e as datas da alteração ficam seguradas até a criação + 42 min (a cotação não muda)", async () => {
+    const equipe = await usuarioDeTeste(c);
+    const x = await pagarEConfirmar(c);
+    const holdDaCotacao = (await c.cotacao(x.cotacaoId)).holdAte;
+    const { resultado } = await alterar(c, x.reservaId, { checkout: "2026-10-16" }, minutos(20), { autorId: equipe });
+    if (!resultado.ok) throw new Error(resultado.erro);
+    expect((await alteracaoGravada(c, resultado.alteracaoId)).holdAte).toEqual(minutos(80));
+    c.provedor.respostaCartao = "desafio";
+    const cartao = await pagarDiferenca(c, x.cotacaoId, resultado.alteracaoId, { forma: "cartao", quando: minutos(50) });
+    expect(cartao.resultado).toBe("desafio");
+    expect(await c.tentativa(cartao.pagamentoId)).toMatchObject({ situacao: "pendente", etapaCartao: "desafio", alteracaoId: resultado.alteracaoId, desafioUrl: expect.stringContaining("https://") });
+    expect((await alteracaoGravada(c, resultado.alteracaoId)).holdAte).toEqual(minutos(92));
+    // A leitura seguinte (GET, sem o endereço) não cancela o desafio nem mexe no prazo; a cotação nunca muda.
+    await conferir(cartao.pagamentoId, minutos(55));
+    expect(c.provedor.chamadas.some((ch) => ch.metodo === "cancelar")).toBe(false);
+    expect(await c.tentativa(cartao.pagamentoId)).toMatchObject({ situacao: "pendente", etapaCartao: "desafio" });
+    expect((await alteracaoGravada(c, resultado.alteracaoId)).holdAte).toEqual(minutos(92));
+    expect((await c.cotacao(x.cotacaoId)).holdAte).toEqual(holdDaCotacao);
+    // O banco aprova: a alteração vale.
+    c.provedor.concluirDesafio(cartao.idProvedor, "aprovado");
+    await conferir(cartao.pagamentoId, minutos(60));
+    expect(await alteracaoGravada(c, resultado.alteracaoId)).toMatchObject({ situacao: "aplicada" });
+  });
+
+  it("extensão da análise uma vez por alteração: vale mesmo depois de o cartão da reserva tê-la usado; o segundo cartão da mesma alteração não estende", async () => {
+    const equipe = await usuarioDeTeste(c);
+    const x = await pagarEConfirmar(c, { forma: "cartao" });
+    expect((await c.tentativa(x.pagamentoId)).prazoAnaliseAte).not.toBeNull();
+    const { resultado } = await alterar(c, x.reservaId, { checkout: "2026-10-16" }, minutos(20), { autorId: equipe });
+    if (!resultado.ok) throw new Error(resultado.erro);
+    c.provedor.respostaCartao = "em_analise";
+    const primeiro = await pagarDiferenca(c, x.cotacaoId, resultado.alteracaoId, { forma: "cartao", quando: minutos(25) });
+    expect(await c.tentativa(primeiro.pagamentoId)).toMatchObject({ etapaCartao: "analise", prazoAnaliseAte: minutos(85) });
+    expect((await alteracaoGravada(c, resultado.alteracaoId)).holdAte).toEqual(minutos(85));
+    // Recusado na análise; um segundo cartão da mesma alteração em análise não estende de novo.
+    c.provedor.motivoRecusaCartao = "rejected_by_issuer";
+    c.provedor.concluirAnalise(primeiro.idProvedor, "recusado");
+    await conferir(primeiro.pagamentoId, minutos(30));
+    const segundo = await pagarDiferenca(c, x.cotacaoId, resultado.alteracaoId, { forma: "cartao", quando: minutos(40) });
+    expect(await c.tentativa(segundo.pagamentoId)).toMatchObject({ etapaCartao: "analise", prazoAnaliseAte: null, alteracaoId: resultado.alteracaoId });
+    expect((await alteracaoGravada(c, resultado.alteracaoId)).holdAte).toEqual(minutos(85));
   });
 });
