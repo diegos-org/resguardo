@@ -251,6 +251,11 @@ describe("textoDoCancelamento: o texto único da página e das mensagens (M8.2c)
     expect(texto("cancelada_em_conferencia").decisao).toContain("[em conferência]");
   });
 
+  it("devoluções por meios diferentes (reserva no Pix, diferença no cartão): as duas frases de como o dinheiro volta", () => {
+    expect(texto("cancelada_devolucao_pedida", { forma: null }).comoVolta).toBe("[volta Pix] [volta cartão]");
+    expect(texto("cancelada_devolvida", { forma: null, devolucaoEm: "2026-10-06T15:00:00.000Z", confirmadaPor: "leitura" }).linhas).toContain("[volta Pix] [volta cartão]");
+  });
+
   it("quem cancela e a base: a SCL (com o motivo), exceção (decisão da equipe), sem devolução pelo prazo (o arrependimento só quando vai além), não comparecimento, sem política", () => {
     expect(texto("cancelada_devolucao_pedida", { quemCancela: "empresa", base: "empresa", motivoEmpresa: "imovel_sem_condicoes" }).linhas[0]).toBe("Nós cancelamos a sua reserva SCL-ABC123: o apartamento ficou sem condições de receber você.");
     expect(texto("cancelada_devolucao_pedida", { quemCancela: "empresa", base: "empresa", motivoEmpresa: "outro" }).linhas[0]).toBe("Nós cancelamos a sua reserva SCL-ABC123.");

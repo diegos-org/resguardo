@@ -352,7 +352,8 @@ export function textoDoCancelamento(
   const pelaPolitica = c.politicaVersao !== null && (c.base === "prazo" || c.base === "arrependimento" || c.base === "empresa");
   const decisoes: string[] = [];
   let comoVolta: string | null = null;
-  const voltaPeloMercadoPago = c.forma === "cartao" ? textos.cancelamentoVoltaCartao : textos.cancelamentoVoltaPix;
+  // Devoluções por meios diferentes (forma null): as duas frases, cada pagamento volta pelo seu meio.
+  const voltaPeloMercadoPago = c.forma === "cartao" ? textos.cancelamentoVoltaCartao : c.forma === "pix" ? textos.cancelamentoVoltaPix : juntar(textos.cancelamentoVoltaPix, textos.cancelamentoVoltaCartao);
   if (c.direito === "integral") {
     const quem = pelaPolitica ? `Pela Política de cancelamento que você aceitou (versão ${c.politicaVersao})` : "Por decisão da nossa equipe";
     decisoes.push(juntar(`${quem}, devolvemos o valor integral pago, ${formatBRL(valor)},`, textos.cancelamentoSemTaxas));

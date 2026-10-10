@@ -127,7 +127,8 @@ export type CancelamentoParaHospede = {
    * foi pedido ainda, e a página nunca diz "já pedimos"; a data prevista quando há. null nas outras situações.
    */
   aguardandoLiberacao?: { previstaEm: string | null } | null;
-  forma: "pix" | "cartao";
+  /** O meio por onde a devolução volta; null quando as devoluções saem por meios diferentes (M8.2d: reserva no Pix, diferença no cartão). */
+  forma: "pix" | "cartao" | null;
   /**
    * Cartão com mais de 78 dias: o sistema não pede a devolução; a equipe faz o estorno pelo painel do Mercado Pago. Só
    * enquanto a devolução por fora do cartão não abriu (recusa do painel registrada, 180 dias...): aberta, o estorno no
@@ -713,7 +714,7 @@ function estadoDoCancelamento(
     devolucaoEm: ultima ? quando(ultima) : null,
     porFora: devs.length > 0 && devs.every((d) => d.situacao === "por_fora"),
     confirmadaPor: principal?.situacao === "confirmada" ? (principal.confirmadaPor ?? "leitura") : null,
-    forma: p0.forma,
+    forma: ((formas) => (formas.size > 1 ? null : (formas.values().next().value ?? p0.forma)))(new Set(devs.map((d) => doPagamento(d).forma))),
     // A mesma regra do quadro do pagamento (`porForaPermitidoNoCartao`): aberta a devolução por fora, o cartão não é mais o caminho.
     estornoPelaEquipe: devs.some((d) => estornaPelaEquipe(doPagamento(d), d, agora)),
     integralAte: canc.integralAte,

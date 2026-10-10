@@ -7,7 +7,7 @@
  */
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { alteracoesReserva, auditoria, cancelamentosReserva, devolucoesPagamento, lancamentos, reservas } from "@/db/schema";
+import { alteracoesReserva, auditoria, cancelamentosReserva, devolucoesPagamento, lancamentos, pagamentos, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { cancelarReservaPaga, previaDoCancelamento, TEXTO_ALTERACAO_EM_ANDAMENTO, TEXTO_DEVOLUCAO_A_MENOR, TEXTO_DEVOLUCAO_EM_VOO, TEXTO_FORA_SEM_VALOR } from "./cancelamento";
@@ -382,6 +382,23 @@ describe("o hóspede depois do cancelamento de uma reserva alterada (M8.2d)", ()
     const v = await vista(minutos(81));
     expect(v).toMatchObject({ estado: "cancelada_devolvida", cancelamento: { valor: TOTAL + 40000 } });
     expect((await cancelamentoDe(x.reservaId)).caixaLancadoEm).not.toBeNull();
+  });
+});
+
+describe("revisão do M8.2d: como o dinheiro volta com pagamentos por meios diferentes", () => {
+  it("reserva paga no Pix e diferença no cartão: o cancelamento devolve cada um pelo seu meio, e a página não diz que tudo volta pelo Pix", async () => {
+    const x = await pagarEConfirmar(c, { ...longe, liberar: true });
+    const inc = await aumentarDeTeste(c, x, TOTAL + 40000, { quando: minutos(15) });
+    await db.update(pagamentos).set({ forma: "cartao" }).where(eq(pagamentos.id, inc.pagamentoId));
+    c.provedor.respostaDevolucao = "pedida";
+    await cancelar(c, x.reservaId, empresa(), equipe, minutos(60));
+    const v = await vistaDaCotacaoParaHospede(db, c.org, x.cotacaoId, minutos(61), { comAutorizacao: true, oferecido: true });
+    expect(v).toMatchObject({ estado: "cancelada_devolucao_pedida", cancelamento: { forma: null } });
+    // Só o Pix: continua "pix".
+    const y = await pagarEConfirmar(c, { entrada: "2026-11-25", saida: "2026-11-28", liberar: true });
+    await aumentarDeTeste(c, y, TOTAL + 40000, { quando: minutos(65) });
+    await cancelar(c, y.reservaId, empresa(), equipe, minutos(70));
+    expect((await vistaDaCotacaoParaHospede(db, c.org, y.cotacaoId, minutos(71), { comAutorizacao: true, oferecido: true }))?.cancelamento?.forma).toBe("pix");
   });
 });
 
