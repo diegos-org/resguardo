@@ -174,6 +174,22 @@ export const integralIntocada = (p: Pick<Pagamento, "valorPago" | "valor" | "dev
   devs.every((x) => x.id === d.id || x.situacao === "substituida") && p.devolvidoLido === 0 && p.devolvidoForaReconhecido === 0 && d.valor === valorPagoAprovado(p);
 
 /**
+ * D13: a devolução precisa esperar a liberação do pagamento (do dinheiro da reserva, não é a integral de um pagamento
+ * intocado, e o pagamento ainda não foi liberado ou a taxa não é conhecida). Só o pedido que pode já estar no Mercado Pago
+ * (enviado, com a chave em dúvida ou aceita) nunca espera: a leitura o segue. Um pedido recusado com clareza e pedido de
+ * novo pela equipe espera de novo (a liberação pode ter sido estornada entre um e outro).
+ */
+export function esperaLiberacao(
+  p: Pick<Pagamento, "desfecho" | "valorPago" | "valor" | "devolvidoLido" | "devolvidoForaReconhecido" | "liberacaoConfirmadaEm" | "taxa">,
+  dev: Pick<Devolucao, "id" | "valor" | "situacao" | "tentativas" | "chaveEmDuvida" | "chaveAceita">,
+  devs: readonly Pick<Devolucao, "id" | "situacao">[],
+): boolean {
+  if (!dinheiroDaReserva(p) || possivelmenteNoProvedor(dev)) return false;
+  if (integralIntocada(p, dev, devs)) return false;
+  return !p.liberacaoConfirmadaEm || p.taxa === null;
+}
+
+/**
  * D27: a situação que a leitura vale para este pagamento. Uma order "processed/refunded" (lida como desconhecida de
  * propósito) depois de uma devolução de parte do valor é explicada quando as nossas devoluções enviadas mais o reconhecido
  * explicam o devolvido (ou, sem os valores, quando há devolução nossa enviada): vira devolvido (alcançaram o pago) ou

@@ -22,8 +22,9 @@
  * original e a atual) e "a estadia começou" conta da atual; a política é a aceita no pagamento que confirmou a reserva. A
  * base é o que ainda se pode devolver de cada pagamento da reserva (o pago menos as outras devoluções e o reconhecido
  * devolvido fora pelo painel do Mercado Pago, D17); uma devolução do cancelamento por pagamento com saldo. O cancelamento
- * integral absorve a devolução de uma alteração que nunca chegou ao Mercado Pago (fica `substituida`, D23), e desiste de uma
- * alteração com as datas seguradas sem pagamento da diferença em andamento. Recusa enquanto uma devolução da reserva tem
+ * integral absorve a devolução de uma alteração que nunca chegou ao Mercado Pago (fica `substituida`, D23), e todo
+ * cancelamento (com ou sem devolução) desiste de uma alteração com as datas seguradas sem pagamento da diferença em
+ * andamento (com ele, o cancelamento espera). Recusa enquanto uma devolução da reserva tem
  * a chave em voo, ou uma devolvida a menos não tem o restante resolvido.
  *
  * O pedido (do hóspede em Minha reserva, com o horário do servidor travado; ou registrado pela equipe), o descarte, a
@@ -322,7 +323,7 @@ type Montada = {
   partes: Parte[];
   /** O reconhecido devolvido fora de cada pagamento da reserva (D17), gravado no cancelamento. */
   reconhecidos: Map<string, number>;
-  /** A alteração com as datas seguradas, sem pagamento da diferença em andamento: o cancelamento desiste dela. */
+  /** A alteração com as datas seguradas, sem pagamento da diferença em andamento: o cancelamento (integral ou não) desiste dela. */
   alteracaoADesistir: Alteracao | null;
   /** O pedido ativo (situação "pedido"), quando há. */
   ativo: Cancelamento | null;
@@ -356,7 +357,8 @@ async function montarDecisao(db: Db, organizacaoId: string, t: Travado, e: Entra
   if (!p) return recusa("nao_paga_pelo_site", NAO_PAGA);
   const daReserva = pagamentosDaReserva(t);
   // 3. Uma alteração com as datas seguradas (M8.2d): com o pagamento da diferença em andamento, espera; sem ele, o
-  // cancelamento integral desiste dela.
+  // cancelamento desiste dela (com ou sem devolução: a reserva cancelada não muda mais de datas, e as novas noites voltam
+  // à venda na hora, sem esperar o prazo delas vencer).
   const inicioLeitura = inicioDoPrazoDeReleitura(agora).getTime();
   const carencia = carenciaNoTravado(t, agora);
   const segurada = t.alteracoes.find((a) => situacaoEfetiva(a, agora, carencia(a)) === "segurada") ?? null;
@@ -598,7 +600,7 @@ async function montarDecisao(db: Db, organizacaoId: string, t: Travado, e: Entra
   for (const x of partes)
     if (x.reconhecido > x.p.devolvidoForaReconhecido || x.reconhecido > 0)
       avisos.push(`O Mercado Pago já mostra ${formatBRL(x.reconhecido)} devolvidos pelo painel dele neste pagamento: a devolução do cancelamento é do restante (${formatBRL(x.valor)}).`);
-  if (segurada && direito === "integral") avisos.push(`A alteração preparada em ${diaBr(segurada.criadoEm)} (datas seguradas) é desfeita pelo cancelamento: as novas datas voltam à venda.`);
+  if (segurada) avisos.push(`A alteração preparada em ${diaBr(segurada.criadoEm)} (datas seguradas) é desfeita pelo cancelamento: as novas datas voltam à venda.`);
   if (direito === "integral" && perdaDoProprietario > 0)
     avisos.push(
       `O proprietário deixa de receber ${formatBRL(perdaDoProprietario)} que receberia pela política (sem devolução, o valor seria dividido normalmente).${descontoJaRepassado > 0 ? ` ${formatBRL(descontoJaRepassado)} já repassados serão descontados no próximo repasse dele.` : ""}`,
@@ -689,7 +691,7 @@ async function montarDecisao(db: Db, organizacaoId: string, t: Travado, e: Entra
   };
   return {
     ok: true,
-    m: { t, p, partes, reconhecidos, alteracaoADesistir: direito === "integral" ? segurada : null, ativo, registradoOriginal, motivoMomento, nota, motivoDecisao, motivoExcecao: base === "excecao" ? e.motivoExcecao : null, motivoEmpresa: e.quemCancela === "empresa" ? e.motivoEmpresa : null, quemCancela: e.quemCancela, previa },
+    m: { t, p, partes, reconhecidos, alteracaoADesistir: segurada, ativo, registradoOriginal, motivoMomento, nota, motivoDecisao, motivoExcecao: base === "excecao" ? e.motivoExcecao : null, motivoEmpresa: e.quemCancela === "empresa" ? e.motivoEmpresa : null, quemCancela: e.quemCancela, previa },
   };
 }
 
@@ -892,12 +894,13 @@ async function gravarCancelamento(tx: Db, organizacaoId: string, m: Montada, aut
   const pedidas: string[] = [];
   const cancelarNoMp: { id: string; idProvedor: string }[] = [];
   let principal: Devolucao | null = null;
+  // A alteração com as datas seguradas e sem pagamento da diferença em andamento é desfeita pelo cancelamento (D23, F18),
+  // com devolução ou sem: a reserva cancelada não muda mais de datas.
+  if (m.alteracaoADesistir) cancelarNoMp.push(...(await desistirPeloCancelamento(tx, organizacaoId, t, m.alteracaoADesistir, autorId, agora)));
   if (previa.direito === "nenhum") {
     const [c] = await tx.update(cancelamentosReserva).set({ caixaLancadoEm: agora, atualizadoEm: agora }).where(eq(cancelamentosReserva.id, linha.id)).returning();
     Object.assign(linha, c);
   } else {
-    // A alteração com as datas seguradas e sem pagamento da diferença em andamento é desfeita pelo cancelamento (D23).
-    if (m.alteracaoADesistir) cancelarNoMp.push(...(await desistirPeloCancelamento(tx, organizacaoId, t, m.alteracaoADesistir, autorId, agora)));
     for (const parte of m.partes) {
       const x = parte.p;
       // D17: o devolvido pelo painel do Mercado Pago fora do sistema, reconhecido agora (só cresce, auditado).
@@ -962,7 +965,7 @@ async function gravarCancelamento(tx: Db, organizacaoId: string, m: Montada, aut
 }
 
 /**
- * O cancelamento integral desfaz a alteração com as datas seguradas (sem pagamento da diferença em andamento, D23): a
+ * O cancelamento desfaz a alteração com as datas seguradas (sem pagamento da diferença em andamento, D23): a
  * alteração fica desistida, a reserva-pedido que segurava as novas noites é cancelada (FOR NO KEY UPDATE, depois do motor
  * da reserva) e as tentativas da diferença ainda pendentes no Mercado Pago voltam para serem canceladas lá depois da
  * transação. Sob as travas de quem chama.

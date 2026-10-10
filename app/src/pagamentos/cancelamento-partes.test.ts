@@ -7,14 +7,16 @@
  */
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { alteracoesReserva, auditoria, cancelamentosReserva, devolucoesPagamento, lancamentos } from "@/db/schema";
+import { alteracoesReserva, auditoria, cancelamentosReserva, devolucoesPagamento, lancamentos, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { cancelarReservaPaga, previaDoCancelamento, TEXTO_ALTERACAO_EM_ANDAMENTO, TEXTO_DEVOLUCAO_A_MENOR, TEXTO_DEVOLUCAO_EM_VOO, TEXTO_FORA_SEM_VALOR } from "./cancelamento";
 import { conferirTentativa } from "./conferencia";
-import { vistaDaCotacaoParaHospede } from "./consultas";
-import { confirmarDevolucaoVistaNoProvedor, devolverPeloProvedor, pedirRestanteDaDevolucao, registrarTaxaPerdida, tentarDevolucao } from "./devolucao";
+import { pagamentosDaReserva, vistaDaCotacaoParaHospede } from "./consultas";
+import { confirmarDevolucaoVistaNoProvedor, devolverPeloProvedor, pedirRestanteDaDevolucao, registrarDevolucaoPorFora, registrarTaxaPerdida, tentarDevolucao } from "./devolucao";
 import { pessimista } from "./falso";
+import { registrarLiberacaoManual } from "./liberacao";
+import { TEXTO_CAIXA_COM_DEVOLVIDO_FORA } from "./situacoes";
 import { conferirPendentes } from "./rotina";
 import {
   alteracaoSeguradaDeTeste,
@@ -152,6 +154,146 @@ describe("cancelamento depois de uma alteração (M8.2d)", () => {
   });
 });
 
+describe("o prazo do cancelamento depois de uma alteração (M8.2d)", () => {
+  /** A reserva como uma alteração aplicada a deixa: as datas novas na reserva, a cotação com as originais. */
+  const mudarDatas = (reservaId: string, checkin: string, checkout: string) => db.update(reservas).set({ checkin, checkout }).where(eq(reservas.id, reservaId));
+  const pedidoEm = (iso: string) => entradaPadrao({ recebidoEm: new Date(iso), canal: "email" });
+
+  it("conta da entrada que conta (a menor entre a original e a atual): mudar para depois não estende o prazo; mudar para antes o encurta; a estadia começa pela atual", async () => {
+    const pedido = "2026-11-01T12:00:00-03:00";
+    const decidido = new Date("2026-11-01T13:00:00-03:00");
+    // Original 10/11 (integral até 27/10), mudada para 26/11 (que daria até 12/11). Pedido em 01/11: pela original, sem devolução.
+    const x = await pagarEConfirmar(c, { entrada: "2026-11-10", saida: "2026-11-13" });
+    await mudarDatas(x.reservaId, "2026-11-26", "2026-11-29");
+    const depois = await previaDoCancelamento(db, c.org, x.reservaId, pedidoEm(pedido), c.provedor, decidido);
+    if (!depois.ok) throw new Error(depois.erro);
+    expect(depois.previa).toMatchObject({ direito: "nenhum", base: "fora_do_prazo", decisao: { integralAte: "2026-10-27" } });
+
+    // Original 20/11 (integral até 06/11), mudada para 14/11 (integral até 31/10). Pedido em 01/11: pela atual (a menor), sem devolução.
+    const y = await pagarEConfirmar(c, { entrada: "2026-11-20", saida: "2026-11-23", email: "y@example.com" });
+    await mudarDatas(y.reservaId, "2026-11-14", "2026-11-17");
+    const antes = await previaDoCancelamento(db, c.org, y.reservaId, pedidoEm(pedido), c.provedor, decidido);
+    if (!antes.ok) throw new Error(antes.erro);
+    expect(antes.previa).toMatchObject({ direito: "nenhum", base: "fora_do_prazo", decisao: { integralAte: "2026-10-31" } });
+    // E no meio da estadia nova (exemplo C′): a estadia começou pela entrada atual (14/11, 15:00); não é cancelamento.
+    expect(await previaDoCancelamento(db, c.org, y.reservaId, pedidoEm("2026-11-15T10:00:00-03:00"), c.provedor, new Date("2026-11-15T11:00:00-03:00"))).toMatchObject({
+      ok: false,
+      codigo: "estadia_iniciada",
+    });
+    // Sem a alteração, o mesmo pedido de 01/11 numa reserva de 20/11 recebe tudo (integral até 06/11).
+    const z = await pagarEConfirmar(c, { entrada: "2026-11-20", saida: "2026-11-23", email: "z@example.com" });
+    const semMudar = await previaDoCancelamento(db, c.org, z.reservaId, pedidoEm(pedido), c.provedor, decidido);
+    expect(semMudar.ok && semMudar.previa).toMatchObject({ direito: "integral", decisao: { integralAte: "2026-11-06" } });
+  });
+});
+
+describe("o restante do cancelamento depois de uma redução (M8.2d)", () => {
+  it("o restante recusado pelo Mercado Pago depois de uma redução confirmada: a página e o quadro mostram a devolução pedida, depois com a equipe (Pix) — nunca em conferência; feita por fora, devolvida", async () => {
+    const x = await pagarEConfirmar(c, { ...longe, liberar: true });
+    const red = await reduzirDeTeste(c, x, TOTAL - 30000, { quando: minutos(15) });
+    expect(await tentarDevolucao(db, c.org, red.devolucaoIds[0], c.provedor, minutos(20))).toBe("confirmada");
+    c.provedor.respostaDevolucao = "saldo_insuficiente";
+    const { resultado } = await cancelar(c, x.reservaId, empresa(), equipe, minutos(60));
+    expect(resultado).toMatchObject({ ok: true, direito: "integral", devolucoes: ["pedida"] });
+    const d = (await devolucoesDe(x.pagamentoId)).find((y) => y.origem === "cancelamento")!;
+    expect(d).toMatchObject({ situacao: "pedida", falhas: 1, valor: TOTAL - 30000, ultimoCodigo: "saldo_insuficiente" });
+    const vista = async (quando: Date) => (await vistaDaCotacaoParaHospede(db, c.org, x.cotacaoId, quando, { comAutorizacao: true, oferecido: true }))?.estado;
+    const noQuadro = async (quando: Date) => (await pagamentosDaReserva(db, c.org, x.reservaId, quando)).find((q) => q.id === x.pagamentoId)?.cancelada?.estado;
+    // O pagamento está devolvido em parte pela redução (nossa): nada a conferir.
+    expect((await c.tentativa(x.pagamentoId)).situacao).toBe("devolvido_parcial");
+    expect(await vista(minutos(61))).toBe("cancelada_devolucao_pedida");
+    expect(await noQuadro(minutos(61))).toBe("cancelada_devolucao_pedida");
+    for (const m of [71, 82]) await tentarDevolucao(db, c.org, d.id, c.provedor, minutos(m));
+    expect(await devolucao(d.id)).toMatchObject({ situacao: "recusada", avisos: expect.arrayContaining(["devolucao_falhou"]) });
+    // Pix recusado: com a equipe (que devolve por fora).
+    expect(await vista(minutos(83))).toBe("cancelada_com_a_equipe");
+    expect(await noQuadro(minutos(83))).toBe("cancelada_com_a_equipe");
+    c.provedor.respostaDevolucao = "confirmada";
+    expect(await registrarDevolucaoPorFora(db, c.org, { devolucaoId: d.id }, { data: "2026-10-01", valor: TOTAL - 30000, nota: "Pix da conta da empresa" }, equipe, c.provedor, minutos(90))).toEqual({
+      ok: true,
+      situacao: "por_fora",
+    });
+    const v = await vistaDaCotacaoParaHospede(db, c.org, x.cotacaoId, minutos(91), { comAutorizacao: true, oferecido: true });
+    expect(v).toMatchObject({ estado: "cancelada_devolvida", cancelamento: { valor: TOTAL - 30000, porFora: true } });
+    expect(await noQuadro(minutos(91))).toBe("cancelada_devolvida");
+  });
+
+  it("o restante que espera a liberação numa reserva cancelada com devolução integral: a liberação à mão destrava (só registrada no pagamento, nada no livro) e a devolução sai", async () => {
+    // Não liberado, com R$ 10,00 devolvidos pelo painel do Mercado Pago: o pagamento não está intocado, o restante espera (D13).
+    const x = await pagarEConfirmar(c, longe);
+    c.provedor.devolverNoProvedor(x.idProvedor, 1000);
+    const { resultado } = await cancelar(c, x.reservaId, empresa(), equipe, minutos(60));
+    expect(resultado).toMatchObject({ ok: true, direito: "integral", devolucoes: ["pedida"] });
+    const [d] = (await devolucoesDe(x.pagamentoId)).filter((y) => y.origem === "cancelamento");
+    expect(d).toMatchObject({ situacao: "pedida", tentativas: 0, valor: TOTAL - 1000, ultimoCodigo: "aguardando_liberacao" });
+    expect(pedidos()).toEqual([]);
+    const [q] = await pagamentosDaReserva(db, c.org, x.reservaId, minutos(61));
+    expect(q.acoes.registrarLiberacao).toBe(true);
+    expect(q.devolucoes!.find((y) => y.id === d.id)).toMatchObject({ aguardandoLiberacao: true });
+    expect((await vistaDaCotacaoParaHospede(db, c.org, x.cotacaoId, minutos(61), { comAutorizacao: true, oferecido: true }))?.cancelamento?.aguardandoLiberacao).toEqual({ previstaEm: null });
+
+    expect(await registrarLiberacaoManual(db, c.org, x.pagamentoId, { data: "2026-10-01", liquido: TOTAL - 1824 }, equipe, minutos(70))).toEqual({ ok: true });
+    expect(await c.tentativa(x.pagamentoId)).toMatchObject({ liberacaoOrigem: "manual", taxa: 1824, liquido: TOTAL - 1824 });
+    expect(await db.select().from(lancamentos).where(and(eq(lancamentos.reservaId, x.reservaId), eq(lancamentos.tipo, "recebimento")))).toEqual([]);
+    expect(await c.reserva(x.reservaId)).toMatchObject({ estado: "cancelada" });
+    expect((await devolucao(d.id)).proximaTentativaEm).toEqual(minutos(70));
+    expect(await tentarDevolucao(db, c.org, d.id, c.provedor, minutos(71))).toBe("confirmada");
+    expect(pedidos()).toHaveLength(1);
+    expect(pedidos()[0]).toMatchObject({ valor: TOTAL - 1000 });
+    // Nada entrou no livro, nada sai; o caixa da devolução e o do cancelamento ficam acertados.
+    expect(await saidas(x.reservaId)).toEqual([]);
+    expect((await devolucao(d.id)).caixaLancadoEm).not.toBeNull();
+    expect((await cancelamentoDe(x.reservaId)).caixaLancadoEm).not.toBeNull();
+    const [depois] = await pagamentosDaReserva(db, c.org, x.reservaId, minutos(72));
+    expect(depois.acoes.registrarLiberacao).toBe(false);
+
+    // Sem uma devolução esperando a liberação (a integral de um pagamento intocado sai na hora: aqui, pedida e ainda sem
+    // confirmação), a reserva cancelada com devolução integral continua sem liberação à mão.
+    const y = await pagarEConfirmar(c, { entrada: "2026-11-25", saida: "2026-11-27", email: "y@example.com" });
+    c.provedor.respostaDevolucao = "pedida";
+    await cancelar(c, y.reservaId, empresa(), equipe, minutos(80));
+    expect((await c.tentativa(y.pagamentoId)).situacao).toBe("aprovado");
+    expect(await registrarLiberacaoManual(db, c.org, y.pagamentoId, { data: "2026-10-01", liquido: (await c.tentativa(y.pagamentoId)).valor - 1824 }, equipe, minutos(81))).toMatchObject({
+      ok: false,
+      erro: expect.stringContaining("volta ao hóspede"),
+    });
+  });
+
+  it("a liberação lida do Mercado Pago sem o líquido, numa reserva cancelada com devolução integral: a equipe informa o líquido (a taxa) e o restante que esperava sai", async () => {
+    const x = await pagarEConfirmar(c, { ...longe, financeiro: { taxa: null } });
+    c.provedor.devolverNoProvedor(x.idProvedor, 1000);
+    await cancelar(c, x.reservaId, empresa(), equipe, minutos(60));
+    const [d] = (await devolucoesDe(x.pagamentoId)).filter((y) => y.origem === "cancelamento");
+    expect(d).toMatchObject({ situacao: "pedida", tentativas: 0, ultimoCodigo: "aguardando_liberacao" });
+    c.provedor.atualizarFinanceiro(x.idProvedor, { liberado: true, liberacaoPrevista: minutos(60) });
+    await conferirTentativa(db, c.org, x.pagamentoId, c.provedor, minutos(65), { origem: "rotina", forcar: true });
+    expect(await c.tentativa(x.pagamentoId)).toMatchObject({ liberacaoOrigem: "provedor", taxa: null });
+    // Liberado, mas sem a taxa: a devolução de parte do valor continua esperando; a equipe informa o líquido.
+    expect(await tentarDevolucao(db, c.org, d.id, c.provedor, minutos(66))).toBe("pedida");
+    expect(pedidos()).toEqual([]);
+    const [q] = await pagamentosDaReserva(db, c.org, x.reservaId, minutos(67));
+    expect(q.acoes.registrarLiberacao).toBe(true);
+    expect(await registrarLiberacaoManual(db, c.org, x.pagamentoId, { data: "2026-10-01", liquido: TOTAL - 1824 }, equipe, minutos(68))).toEqual({ ok: true });
+    expect(await c.tentativa(x.pagamentoId)).toMatchObject({ liberacaoOrigem: "provedor", taxa: 1824 });
+    expect(await tentarDevolucao(db, c.org, d.id, c.provedor, minutos(69))).toBe("confirmada");
+    expect(pedidos()).toMatchObject([{ valor: TOTAL - 1000 }]);
+    expect(await saidas(x.reservaId)).toEqual([]);
+  });
+
+  it("o restante que completa um pagamento com parte devolvida pelo painel do Mercado Pago leva todo o caixa, com o aviso para conferir a data", async () => {
+    const x = await pagarEConfirmar(c, { ...longe, liberar: true });
+    c.provedor.devolverNoProvedor(x.idProvedor, 1000);
+    const { resultado } = await cancelar(c, x.reservaId, empresa(), equipe, minutos(60));
+    expect(resultado).toMatchObject({ ok: true, devolucoes: ["confirmada"] });
+    // A parte do painel não tem saída própria: o que entrou (o líquido) sai todo nesta devolução.
+    expect(await saidas(x.reservaId)).toEqual([TOTAL - 1824]);
+    const [d] = await devolucoesDe(x.pagamentoId);
+    expect(d.avisos).toContain("devolucao_data_a_conferir");
+    const [q] = await pagamentosDaReserva(db, c.org, x.reservaId, minutos(61));
+    expect(q.avisos).toContain(TEXTO_CAIXA_COM_DEVOLVIDO_FORA);
+  });
+});
+
 describe("o que o cancelamento recusa ou resolve antes (M8.2d)", () => {
   it("uma devolução com o pedido já enviado e sem confirmação recusa; a devolvida a menos sem o restante também, até a equipe pedir o restante", async () => {
     const x = await pagarEConfirmar(c, { ...longe, liberar: true });
@@ -209,6 +351,17 @@ describe("o que o cancelamento recusa ou resolve antes (M8.2d)", () => {
     const y = await pagarEConfirmar(c, { entrada: "2026-11-25", saida: "2026-11-27", email: "y@example.com" });
     await alteracaoSeguradaDeTeste(c, y, TOTAL + 20000, { quando: minutos(10), tentativa: true });
     expect(await previaDoCancelamento(db, c.org, y.reservaId, empresa(), c.provedor, minutos(20))).toEqual({ ok: false, codigo: "ha_alteracao", erro: TEXTO_ALTERACAO_EM_ANDAMENTO });
+  });
+
+  it("alteração segurada e o cancelamento sem devolução pela política: desiste dela também (as novas noites não ficam presas até o prazo)", async () => {
+    const x = await pagarEConfirmar(c);
+    const a = await alteracaoSeguradaDeTeste(c, x, TOTAL + 20000, { quando: minutos(10), holdAte: new Date("2026-10-10T18:00:00-03:00") });
+    const { previa, resultado } = await cancelar(c, x.reservaId, retida(), equipe, DECIDIDO_TARDE);
+    expect(previa.ok && previa.previa.avisos.join(" ")).toContain("é desfeita pelo cancelamento");
+    expect(resultado).toMatchObject({ ok: true, direito: "nenhum" });
+    const [alt] = await db.select().from(alteracoesReserva).where(eq(alteracoesReserva.id, a.alteracaoId));
+    expect(alt).toMatchObject({ situacao: "desistida", desistidaEm: DECIDIDO_TARDE, desistenciaMotivo: "cancelamento da reserva" });
+    expect(await db.select().from(auditoria).where(and(eq(auditoria.entidadeId, a.alteracaoId), eq(auditoria.acao, "alteracao.desistir")))).toHaveLength(1);
   });
 });
 

@@ -285,7 +285,11 @@ function Tentativa({ p, verValores, editar, hoje }: { p: PagamentoDoPainel } & O
               pagamentoId={p.id}
               rotulo="Registrar liberação"
               nome="Registrar liberação"
-              pergunta="Registrar a liberação deste pagamento com a data e o líquido informados? O recebimento entra na reserva (libera a parte do proprietário para repasse) e a taxa do Mercado Pago (valor − líquido) é gravada."
+              pergunta={
+                p.cancelada && p.cancelada.estado !== "cancelada_sem_devolucao"
+                  ? "Registrar a liberação deste pagamento com a data e o líquido informados? A reserva foi cancelada com devolução integral: nada entra no financeiro; a taxa do Mercado Pago (valor − líquido) fica no pagamento e a devolução que esperava a liberação é pedida em seguida."
+                  : "Registrar a liberação deste pagamento com a data e o líquido informados? O recebimento entra na reserva (libera a parte do proprietário para repasse) e a taxa do Mercado Pago (valor − líquido) é gravada."
+              }
             >
               <label style={{ flex: "0 1 180px" }}>
                 Data em que caiu na conta

@@ -76,6 +76,7 @@ import {
   devolvidoForaSemValor,
   devolvidoProprio,
   dinheiroDaReserva,
+  esperaLiberacao,
   integralIntocada,
   jurosDaDevolucao,
   type Pagamento,
@@ -89,7 +90,7 @@ import {
 } from "./travas";
 
 export { chaveSaidaDevolucao } from "./acerto-cancelamento";
-export { cabeNoPagamento } from "./travas";
+export { cabeNoPagamento, esperaLiberacao } from "./travas";
 export { MAXIMO_FALHAS_DEVOLUCAO };
 /** Espera entre uma tentativa de devolução e a seguinte (a rotina relê a order antes). */
 export const ESPERA_DEVOLUCAO_MS = 10 * 60_000;
@@ -183,16 +184,6 @@ function devolucaoDoAlvo(devs: readonly Devolucao[], devolucaoId: string | null,
   if (devolucaoId) return devs.find((d) => d.id === devolucaoId);
   const ordem = [...devs].reverse();
   return ordem.find(preferir) ?? ordem[0];
-}
-
-/**
- * D13: a devolução precisa esperar a liberação do pagamento (não é a integral de um pagamento intocado, e o pagamento ainda
- * não foi liberado ou a taxa não é conhecida). O pedido que pode já estar no Mercado Pago nunca espera (só a leitura o segue).
- */
-export function esperaLiberacao(p: Pagamento, dev: Devolucao, devs: readonly Devolucao[]): boolean {
-  if (!dinheiroDaReserva(p) || possivelmenteNoProvedor(dev) || dev.tentativas > 0) return false;
-  if (integralIntocada(p, dev, devs)) return false;
-  return !p.liberacaoConfirmadaEm || p.taxa === null;
 }
 
 /** A espera pela liberação passou da data prevista (ou de 35 dias da aprovação, sem previsão). */
@@ -485,6 +476,20 @@ export async function tentarDevolucao(db: Db, organizacaoId: string, devolucaoId
       await tx.update(devolucoesPagamento).set({ chaveEmDuvida: true, ultimoCodigo, atualizadoEm: agora }).where(eq(devolucoesPagamento.id, d.id));
       return;
     }
+    // D15: o restante de uma devolução que o Mercado Pago fez a menos, recusado com "valor acima do que se pode devolver"
+    // ou "não permitido" (com chave nova: nada desta chave está lá): o restante pode já ter saído pelo painel dele, ou não
+    // sair mais pelo sistema. Nada se pede de novo sozinho; fica recusado com o aviso de a menor, e a equipe confere no
+    // painel do Mercado Pago (confirma com o valor visto, registra por fora, a recusa do painel ou um ajuste).
+    if (res.situacao === "recusada" && d.origemDevolucaoId && !chaveRepetida && (res.codigo === "valor_excede" || res.codigo === "nao_permitido")) {
+      await tx
+        .update(devolucoesPagamento)
+        .set({ situacao: "recusada", falhas: d.falhas + 1, chaveEmDuvida: false, ultimoCodigo, proximaTentativaEm: null, atualizadoEm: agora })
+        .where(eq(devolucoesPagamento.id, d.id));
+      Object.assign(d, { situacao: "recusada" as const, falhas: d.falhas + 1, chaveEmDuvida: false, ultimoCodigo, proximaTentativaEm: null });
+      await avisosNaDevolucao(tx, t, pt, d, { ligar: ["devolucao_a_menor"] }, agora);
+      await registrarAuditoria(tx, { organizacaoId, usuarioId: null, acao: "pagamento.devolucao_a_menor", entidade: "pagamento", entidadeId: pt.id, mudancas: { restante: [null, d.valor], recusa: [null, ultimoCodigo] } });
+      return;
+    }
     // Recusada (`ja_devolvido` inclusive: a próxima leitura decide) ou incerta (o pedido pode ter saído): conta; só desiste
     // com a releitura sem nenhuma devolução nova desde o pedido.
     const falhas = d.falhas + 1;
@@ -576,8 +581,14 @@ function recusaDoPedido(p: Pagamento, dev: Devolucao | undefined, devs: readonly
     // Um pedido que o Mercado Pago aceitou ainda pode sair por lá: registrar por fora devolveria em dobro.
     if (porFora && dev.chaveAceita)
       return "O Mercado Pago aceitou um pedido de devolução deste pagamento, que ainda pode sair por lá: a devolução por fora não é registrada. Confira no painel do Mercado Pago; se lá a devolução aparecer recusada, use Conferir agora.";
-    // Parada com a chave ainda em dúvida (D16): aquele pedido pode estar no Mercado Pago.
+    // Parada com a chave ainda em dúvida (D16): aquele pedido pode estar no Mercado Pago. A recusada depois de três
+    // respostas incertas também tem a chave em dúvida, mas só desiste com a order relida sem nenhuma devolução nova desde
+    // o pedido (M8.2a), e a por fora relê a order de novo antes (`recusaPeloProvedor`): fica aberta, como no M8.2a.
     if (porFora && dev.situacao === "recusada" && dev.chaveEmDuvida && dev.avisos.includes("devolucao_parada")) return ERRO_POR_FORA_CHAVE_ENVIADA;
+    // O restante que o Mercado Pago recusou (D15: valor acima do que se pode devolver, ou não permitido) não se pede de
+    // novo: pedir de novo daria a mesma recusa. A equipe confere no painel dele (confirma o que vê, ou registra por fora).
+    if (!porFora && dev.situacao === "recusada" && dev.avisos.includes("devolucao_a_menor"))
+      return 'O Mercado Pago recusou o pedido deste restante: confira no painel do Mercado Pago e use "Confirmar devolução feita no painel do Mercado Pago" (com o valor visto) ou registre o restante devolvido por fora.';
   }
   if (porFora && !porForaPermitidoNoCartao(p, dev, agora)) return ERRO_POR_FORA_CARTAO;
   if (!porFora && origem !== "sem_reserva" && p.criadoEm.getTime() < inicioDoPrazoDePedirDevolucao(agora).getTime())
@@ -969,7 +980,7 @@ export async function registrarDevolucaoPorFora(
     const vivas = devolucoesDoPagamento(t, p.id);
     const daReserva = linha.origem !== "sem_reserva";
     // O caixa da devolução da reserva (o desfecho continua o da reserva), com a data informada; antes da taxa derivada.
-    if (daReserva) await acertarCaixaDaDevolucao(tx, organizacaoId, t, p, linha, { data: d.data, estado: "realizado", origem: "manual" }, agora, autorId);
+    const caixa = daReserva ? await acertarCaixaDaDevolucao(tx, organizacaoId, t, p, linha, { data: d.data, estado: "realizado", origem: "manual" }, agora, autorId) : { avisos: [] };
     const taxa = await taxaPerdidaDerivada(tx, organizacaoId, p, linha, vivas, agora);
     let semTaxa = taxa === null;
     if (taxa !== null && linha.taxaPerdida === null) {
@@ -985,12 +996,21 @@ export async function registrarDevolucaoPorFora(
       }
     }
     if (!daReserva) await desfechoSemReserva(tx, p, vivas, { motivo: nota || motivo, autorId }, agora);
+    // O aviso de a menor do restante que o Mercado Pago recusou (D15) sai: o restante foi devolvido por fora.
     await trocarAvisosDaDevolucao(
       tx,
       linha,
       {
-        desligar: ["devolucao_falhou", "devolucao_parada", "devolucao_sem_confirmacao", "devolucao_fora_do_prazo", "devolucao_aguardando_liberacao_atrasada", ...(semTaxa ? [] : (["taxa_perdida_desconhecida"] as CodigoAviso[]))],
-        ligar: semTaxa ? ["taxa_perdida_desconhecida"] : [],
+        desligar: [
+          "devolucao_falhou",
+          "devolucao_parada",
+          "devolucao_sem_confirmacao",
+          "devolucao_fora_do_prazo",
+          "devolucao_aguardando_liberacao_atrasada",
+          "devolucao_a_menor",
+          ...(semTaxa ? [] : (["taxa_perdida_desconhecida"] as CodigoAviso[])),
+        ],
+        ligar: [...(semTaxa ? (["taxa_perdida_desconhecida"] as CodigoAviso[]) : []), ...caixa.avisos.filter((a) => a !== "taxa_perdida_desconhecida")],
       },
       agora,
     );
@@ -1110,14 +1130,15 @@ export async function confirmarDevolucaoVistaNoProvedor(
       dev.taxaAtribuida = null;
       await tx.update(devolucoesPagamento).set({ taxaAtribuida: null }).where(eq(devolucoesPagamento.id, dev.id));
     }
+    let caixa: CodigoAviso[] = [];
     if (dev.origem === "sem_reserva") await desfechoSemReserva(tx, p, devs, { motivo: dev.motivo, autorId }, agora);
-    else await acertarCaixaDaDevolucao(tx, organizacaoId, t, p, dev, { data: d.data, estado: "realizado", origem: "manual" }, agora, autorId);
+    else caixa = (await acertarCaixaDaDevolucao(tx, organizacaoId, t, p, dev, { data: d.data, estado: "realizado", origem: "manual" }, agora, autorId)).avisos;
     await trocarAvisosDaDevolucao(
       tx,
       dev,
       {
         desligar: ["devolucao_fora_do_prazo", "devolucao_sem_confirmacao", "devolucao_falhou", "devolucao_parada", "devolucao_aguardando_liberacao_atrasada", ...(aMenor ? [] : (["devolucao_a_menor"] as CodigoAviso[]))],
-        ligar: [...(dev.taxaPerdida === null ? (["taxa_perdida_desconhecida"] as CodigoAviso[]) : []), ...(aMenor ? (["devolucao_a_menor"] as CodigoAviso[]) : [])],
+        ligar: [...(dev.taxaPerdida === null ? (["taxa_perdida_desconhecida"] as CodigoAviso[]) : []), ...(aMenor ? (["devolucao_a_menor"] as CodigoAviso[]) : []), ...caixa],
       },
       agora,
     );

@@ -9,14 +9,15 @@ import { lerEmpresa, salvarEmpresa } from "@/configuracoes/empresa";
 import { atualizarModelo, criarModelo } from "@/configuracoes/modelos";
 import { TEXTOS_BASE_CANCELAMENTO } from "@/configuracoes/modelos-texto";
 import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
-import { cancelamentosReserva, mensagensHospede, modelosMensagem } from "@/db/schema";
+import { cancelamentosReserva, devolucoesPagamento, mensagensHospede, modelosMensagem } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { CorreioMemoria } from "@/email/correio";
 import { pedirCancelamentoPeloHospede } from "@/hospede/cancelamento";
 import { marcarHospedeAvisado } from "@/pagamentos/cancelamento";
 import { conferirTentativa } from "@/pagamentos/conferencia";
-import { AGORA, aumentarDeTeste, type Cenario, cancelar, EMAIL_HOSPEDE, entradaPadrao, minutos, montarCenario, pagarEConfirmar, pedir, TOTAL, usuarioDeTeste } from "@/pagamentos/testes";
+import { registrarDevolucaoPorFora, tentarDevolucao } from "@/pagamentos/devolucao";
+import { AGORA, aumentarDeTeste, type Cenario, cancelar, EMAIL_HOSPEDE, entradaPadrao, minutos, montarCenario, pagarEConfirmar, pedir, reduzirDeTeste, TOTAL, usuarioDeTeste } from "@/pagamentos/testes";
 import { enviarMensagensHospede, mensagensDoCancelamento, salvarConfigMensagens } from "./hospede";
 
 let db: Db, close: () => Promise<void>, c: Cenario, correio: CorreioMemoria, equipe: string;
@@ -205,5 +206,24 @@ describe("a devolução feita do cancelamento de uma reserva alterada (M8.2d)", 
     expect(correio.enviadas.at(-1)?.texto).toContain("A devolução de R$ 2.224,00");
     expect(await enviarMensagensHospede(db, c.org, correio, minutos(82))).toMatchObject({ enviadas: 0 });
     expect((await cancelamentoDe(x.reservaId)).hospedeAvisadoDevolucaoEm).toEqual(minutos(81));
+  });
+
+  it("depois de uma redução confirmada, o restante recusado pelo Mercado Pago: nada de 'devolução feita' enquanto ele não sai; feito por fora, a mensagem sai uma vez, com o valor do cancelamento", async () => {
+    await ligar();
+    const x = await pagarEConfirmar(c, { ...longe, liberar: true });
+    const red = await reduzirDeTeste(c, x, TOTAL - 30000, { quando: minutos(15) });
+    expect(await tentarDevolucao(db, c.org, red.devolucaoIds[0], c.provedor, minutos(20))).toBe("confirmada");
+    c.provedor.respostaDevolucao = "saldo_insuficiente";
+    await cancelar(c, x.reservaId, entradaPadrao({ quemCancela: "empresa", motivoEmpresa: "forca_maior" }), equipe, minutos(60));
+    const [d] = (await db.select().from(devolucoesPagamento).where(eq(devolucoesPagamento.pagamentoId, x.pagamentoId))).filter((y) => y.origem === "cancelamento");
+    for (const m of [71, 82]) await tentarDevolucao(db, c.org, d.id, c.provedor, minutos(m));
+    expect(await enviarMensagensHospede(db, c.org, correio, minutos(83))).toMatchObject({ enviadas: 1 });
+    expect(correio.enviadas.map((m) => m.assunto)).not.toContainEqual(expect.stringContaining("Devolução"));
+    c.provedor.respostaDevolucao = "confirmada";
+    expect(await registrarDevolucaoPorFora(db, c.org, { devolucaoId: d.id }, { data: "2026-10-01", valor: TOTAL - 30000, nota: "Pix da conta da empresa" }, equipe, c.provedor, minutos(90))).toMatchObject({ ok: true });
+    expect(await enviarMensagensHospede(db, c.org, correio, minutos(91))).toMatchObject({ enviadas: 1 });
+    expect(correio.enviadas.at(-1)?.texto).toContain("A devolução de R$ 1.524,00");
+    expect(await enviarMensagensHospede(db, c.org, correio, minutos(92))).toMatchObject({ enviadas: 0 });
+    expect((await cancelamentoDe(x.reservaId)).hospedeAvisadoDevolucaoEm).toEqual(minutos(91));
   });
 });

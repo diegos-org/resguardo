@@ -187,7 +187,8 @@ export async function acertarResultado(tx: Db, organizacaoId: string, t: Travado
  * - Sem reserva: nada entrou no livro, nada sai (só a marca).
  * - O recebimento do pagamento já entrou (E = o que entrou menos as saídas das outras devoluções): a devolução que completa
  *   o pagamento leva tudo o que resta (M8.2c: X = E); as outras, o devolvido menos a taxa atribuída ao principal dela
- *   (X = min(E, A − F)).
+ *   (X = min(E, A − F)). Com parte do pagamento devolvida pelo painel do Mercado Pago fora do sistema (D17), a que completa
+ *   leva também o caixa dessa parte, e ganha o aviso de data a conferir.
  * - Ainda não entrou: se o dinheiro ainda vai entrar (a reserva o motor calcula, o pagamento não fica completo pelas
  *   devoluções e esta não saiu pelo Mercado Pago antes da liberação), a saída espera (`caixaLancadoEm` vazio) e
  *   `acertarCaixasPendentes` a lança logo depois do recebimento; senão nada vai entrar e nada se lança.
@@ -258,6 +259,9 @@ export async function acertarCaixaDaDevolucao(
     );
     await tx.update(devolucoesPagamento).set({ saidaLancamentoId: l.id, atualizadoEm: agora }).where(eq(devolucoesPagamento.id, dev.id));
     dev.saidaLancamentoId = l.id;
+    // D17: a parte devolvida pelo painel do Mercado Pago, fora do sistema, não tem saída própria — a que completa o
+    // pagamento leva tudo o que resta, no dia dela. A equipe confere a data (aviso, nunca uma data suposta).
+    if (completa && p.devolvidoForaReconhecido > 0) avisos.push("devolucao_data_a_conferir");
   }
   await marcarCaixa(tx, dev, agora);
   // O cancelamento fica com o caixa acertado quando todas as devoluções dele acertaram (M8.2c: a única devolução dele).
