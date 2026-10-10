@@ -573,7 +573,7 @@ export async function editarProfissional(db: Db, organizacaoId: string, id: stri
         .returning();
       // Arquivada ou reativada: quem tinha entrado pelo celular antes precisa entrar de novo.
       if (antes.ativo !== depois.ativo && depois.usuarioId)
-        await tx.update(usuarios).set({ sessaoValidaDesde: new Date() }).where(and(eq(usuarios.id, depois.usuarioId), eq(usuarios.organizacaoId, organizacaoId)));
+        await tx.update(usuarios).set({ sessaoValidaDesde: new Date() }).where(and(eq(usuarios.id, depois.usuarioId), eq(usuarios.organizacaoId, organizacaoId), eq(usuarios.papel, "limpeza")));
       const mudancas = calcularMudancas(antes, depois);
       if (Object.keys(mudancas).length)
         await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "profissional_limpeza.editar", entidade: "profissional_limpeza", entidadeId: id, mudancas });
@@ -584,3 +584,4 @@ export async function editarProfissional(db: Db, organizacaoId: string, id: stri
     throw e;
   }
 }
+
