@@ -24,6 +24,7 @@ describe("notas sem dados pessoais (M8.2c)", () => {
     ["chave com CPF", "chave Pix 123.456.789-00"],
     ["chave com telefone", "chave: (21) 9999-0000"],
     ["id de transação", "e2e E12345678202610101200abcdef"],
+    ["CPF digitado com vírgula, sem R$", "documento 123.456.789,09"],
   ])("recusa %s", (_, texto) => {
     expect(temDadosPessoais(texto)).toBe(true);
     expect(textoSemDadosPessoais(texto)).toBeNull();
@@ -38,6 +39,9 @@ describe("notas sem dados pessoais (M8.2c)", () => {
     "R$ 1.500,00",
     "devolvido R$ 150.000,00.",
     "devolvido 1.500,00 e mais R$ 1500",
+    "R$ 1.500.000,00",
+    "devolvido R$ 12.345.678,90.",
+    "total de R$1.500.000",
     "reserva SCL-AB12, apartamento 403",
     "a chave do apartamento ficou na portaria",
     "o hóspede desistiu no final de semana",

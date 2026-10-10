@@ -413,6 +413,13 @@ describe("limite do arrependimento na Política de cancelamento (M8.2c, regra po
     // Com o texto mudado (o prazo de 21 dias), a v2 nasce com o limite.
     const v2 = await publicarPaginaLegal(db, org, "cancelamento", { ...form.entrada, diasReembolsoIntegral: 21 }, admin, "2026-10-12", 1);
     expect(v2).toMatchObject({ ok: true, mudou: true, versao: { numero: 2, regras: { diasReembolsoIntegral: 21, arrependimentoAteEntrada: true } } });
+    // A v1 aceita continua gravada como foi publicada (o padrão da leitura não entra no JSON dela); só a v2 traz o campo.
+    const [depois] = await db.select().from(configuracoes).where(and(eq(configuracoes.organizacaoId, org), eq(configuracoes.chave, "politica_cancelamento")));
+    const versoes = (depois.valor as { versoes: Record<string, unknown>[] }).versoes;
+    expect(versoes).toHaveLength(2);
+    expect(versoes[0]).toEqual((gravada[0].valor as { versoes: unknown[] }).versoes[0]);
+    expect(JSON.stringify(versoes[0])).not.toContain("arrependimentoAteEntrada");
+    expect(versoes[1].regras).toEqual({ diasReembolsoIntegral: 21, arrependimentoAteEntrada: true });
   });
 
   it("a leitura guarda só os campos conhecidos da regra (o resto é descartado)", async () => {

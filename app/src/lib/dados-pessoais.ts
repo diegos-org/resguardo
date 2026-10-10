@@ -36,8 +36,9 @@ const PERMITIDOS: readonly RegExp[] = [
   /(?<!\d)\d{4}-\d{2}-\d{2}(?!\d)/g,
   /(?<![\d/])\d{1,2}\/\d{1,2}(?:\/(?:\d{4}|\d{2}))?(?![\d/])/g,
   /(?<!\d)\d{1,2}(?::\d{2}(?::\d{2})?|h(?:\d{2})?)(?![\d:])/gi,
-  // Valores: o ponto ou a vírgula do fim da frase não atrapalham ("R$ 150.000,00.").
-  /R\$\s?\d{1,3}(?:\.\d{3})?(?:,\d{2})?(?!\d|[.,]\d)/g,
+  // Valores: o ponto ou a vírgula do fim da frase não atrapalham ("R$ 150.000,00."); com "R$", quantos grupos de milhar
+  // houver ("R$ 1.500.000,00"). Sem "R$", um grupo só: "123.456.789,09" tem cara de CPF digitado com vírgula.
+  /R\$\s?\d{1,3}(?:\.\d{3})*(?:,\d{2})?(?!\d|[.,]\d)/g,
   /R\$\s?\d{1,6}(?:,\d{2})?(?!\d|[.,]\d)/g,
   /(?<![\d.,])\d{1,3}(?:\.\d{3})?,\d{2}(?!\d|[.,]\d)/g,
 ];

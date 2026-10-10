@@ -8,7 +8,8 @@
  * Recusa e resposta incerta contam do mesmo jeito; a terceira só vira "recusada" (aviso) depois de reler a order sem
  * nenhum sinal de devolução (feita, em parte ou em andamento): com sinal, continua pedida e a leitura confirma. Assim
  * uma devolução que só recebe respostas incertas não fica "pedida" para sempre, e uma que saiu nunca é dada por
- * recusada. Pedido ACEITO pelo provedor: nada se envia de novo (nem com outra chave, nem num pedido novo da equipe),
+ * recusada. A resposta "aguarde" (M8.2c: outra devolução em andamento ou espera pedida pelo Mercado Pago) não conta: a
+ * chave fica em dúvida, nada fica aceito e a rotina tenta de novo depois, relendo a order. Pedido ACEITO pelo provedor: nada se envia de novo (nem com outra chave, nem num pedido novo da equipe),
  * só a leitura confirma; três leituras sem a devolução viram aviso, e ela continua pedida, qualquer que seja a leitura
  * (nunca para: parar abriria o registro por fora, em dobro). Order devolvida em parte ou contestada antes de pedir
  * (pedido ainda não aceito): a leitura é aplicada e a devolução para (aviso; devolver o inteiro devolveria a mais).
@@ -241,27 +242,36 @@ export async function tentarDevolucao(db: Db, organizacaoId: string, devolucaoId
     const t = await travarCotacao(tx, organizacaoId, d.cotacaoId);
     const dev = t?.devolucoes.find((x) => x.id === devolucaoId);
     if (!t || !dev || dev.situacao !== "pedida") return;
+    // O código da resposta (lista fechada) fica guardado em toda resposta: o quadro do pagamento explica a espera ou a recusa.
+    const ultimoCodigo = res.codigo;
     if (res.situacao === "confirmada" || res.situacao === "pedida") {
       // Aceito pelo provedor: daí em diante nada se envia de novo (a order pode demorar a mostrar a devolução; um envio
       // novo poderia devolver de novo). Só a leitura confirma; as falhas recomeçam a contar as leituras sem a devolução.
       await tx
         .update(devolucoesPagamento)
-        .set({ chaveEmDuvida: true, chaveAceita: true, falhas: 0, ...(res.idDevolucao ? { idProvedor: res.idDevolucao } : {}), atualizadoEm: agora })
+        .set({ chaveEmDuvida: true, chaveAceita: true, falhas: 0, ultimoCodigo, ...(res.idDevolucao ? { idProvedor: res.idDevolucao } : {}), atualizadoEm: agora })
         .where(eq(devolucoesPagamento.id, dev.id));
       return;
     }
-    // Recusada, incerta (o pedido pode ter saído) ou "aguarde" (nada aceito, mas o Mercado Pago pediu para esperar): conta;
-    // só desiste com a releitura sem nenhum sinal de devolução (que o "aguarde" não faz: ele nunca desiste sozinho).
+    if (res.situacao === "aguarde") {
+      // "Aguarde" (outra devolução em andamento no Mercado Pago, ou espera pedida por ele): nada foi aceito por esta chave
+      // e não conta falha — nunca leva à desistência nem abre a devolução por fora. A chave continua em dúvida (o próximo
+      // envio repete a mesma) e não fica aceita. A próxima volta relê a order antes: espera enquanto houver devolução em
+      // andamento, confirma quando a order mostrar devolvida, para numa devolução em parte e, sem nada disso, pede de novo.
+      await tx.update(devolucoesPagamento).set({ chaveEmDuvida: true, ultimoCodigo, atualizadoEm: agora }).where(eq(devolucoesPagamento.id, dev.id));
+      return;
+    }
+    // Recusada ou incerta (o pedido pode ter saído): conta; só desiste com a releitura sem nenhum sinal de devolução.
     const falhas = dev.falhas + 1;
     const semSinalDeDevolucao = releitura === null || (releitura !== undefined && !temDevolucao(releitura));
     const desistiu = falhas >= MAXIMO_FALHAS_DEVOLUCAO && semSinalDeDevolucao;
     await tx
       .update(devolucoesPagamento)
-      // Incerta ou "aguarde": o próximo envio repete a chave. Recusa clara de uma chave nova: o próximo leva chave nova.
-      // Uma chave que já estava em dúvida continua em dúvida mesmo recusada agora (a recusa pode vir antes de o provedor
-      // conferir a chave, e o pedido anterior com ela pode ter saído): só a desistência, com a order relida sem sinal de
+      // Incerta: o próximo envio repete a chave. Recusa clara de uma chave nova: o próximo leva chave nova. Uma chave que
+      // já estava em dúvida continua em dúvida mesmo recusada agora (a recusa pode vir antes de o provedor conferir a
+      // chave, e o pedido anterior com ela pode ter saído): só a desistência, com a order relida sem sinal de
       // devolução, deixa a equipe pedir com chave nova.
-      .set({ falhas, chaveEmDuvida: res.situacao === "incerta" || res.situacao === "aguarde" || chaveRepetida, ...(desistiu ? { situacao: "recusada" as const, proximaTentativaEm: null } : {}), atualizadoEm: agora })
+      .set({ falhas, chaveEmDuvida: res.situacao === "incerta" || chaveRepetida, ultimoCodigo, ...(desistiu ? { situacao: "recusada" as const, proximaTentativaEm: null } : {}), atualizadoEm: agora })
       .where(eq(devolucoesPagamento.id, dev.id));
     if (desistiu) {
       const p = t.tentativas.find((x) => x.id === dev.pagamentoId)!;

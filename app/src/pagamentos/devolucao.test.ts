@@ -619,6 +619,65 @@ describe("devolução do pagamento sem reserva (M8.2a)", () => {
   });
 });
 
+describe('resposta "aguarde" do Mercado Pago (M8.2c)', () => {
+  it("devolução em andamento ou espera pedida: não conta falha, a chave fica em dúvida (nunca aceita), o código fica guardado e o envio seguinte repete a mesma chave; uma recusa depois conta só ela", async () => {
+    for (const [n, codigo] of [
+      [0, "em_andamento"],
+      [1, "transitorio"],
+    ] as const) {
+      const x = await semReserva({ taxa: 1806 }, outras(n));
+      const antes = pedidos().length;
+      c.provedor.respostaDevolucao = codigo;
+      expect(await devolverPeloProvedor(db, c.org, x.pagamentoId, null, c.provedor, minutos(10))).toEqual({ ok: true, situacao: "pedida" });
+      expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "pedida", tentativas: 1, falhas: 0, chaveEmDuvida: true, chaveAceita: false, ultimoCodigo: codigo, idProvedor: null });
+      // Esperas seguidas (mais do que o limite de falhas) nunca desistem: continua pedida, sem aviso de falha.
+      for (const m of [21, 32, 43, 54]) await conferirPendentes(db, c.org, c.provedor, minutos(m));
+      const d = await devolucao(x.pagamentoId);
+      expect(d).toMatchObject({ situacao: "pedida", tentativas: 5, falhas: 0, chaveEmDuvida: true, chaveAceita: false, ultimoCodigo: codigo });
+      expect((await c.tentativa(x.pagamentoId)).avisos).not.toContain("devolucao_falhou");
+      // Uma recusa clara depois das esperas conta uma falha só (não chega ao limite nem dá por recusada).
+      c.provedor.falhas.devolver = new ErroProvedor("credencial", "Chave recusada pelo Mercado Pago.");
+      await conferirPendentes(db, c.org, c.provedor, minutos(65));
+      c.provedor.falhas.devolver = null;
+      expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "pedida", tentativas: 6, falhas: 1, chaveEmDuvida: true, ultimoCodigo: null });
+      expect((await c.tentativa(x.pagamentoId)).avisos).not.toContain("devolucao_falhou");
+      // O Mercado Pago aceita: sai com a mesma chave de sempre (nada foi aceito por ela antes).
+      c.provedor.respostaDevolucao = "confirmada";
+      await conferirPendentes(db, c.org, c.provedor, minutos(76));
+      expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "confirmada", tentativas: 7 });
+      expect(new Set(pedidos().slice(antes).map((ch) => ch.chave))).toEqual(new Set([chaveDevolucao(d.id, 1)]));
+      expect(await c.tentativa(x.pagamentoId)).toMatchObject({ situacao: "devolvido", desfecho: "devolucao" });
+    }
+  });
+
+  it("em andamento e depois uma devolução em parte feita no painel do Mercado Pago: a releitura aplica a leitura e a devolução para (aviso), nunca fica presa", async () => {
+    const x = await semReserva();
+    c.provedor.respostaDevolucao = "em_andamento";
+    await devolverPeloProvedor(db, c.org, x.pagamentoId, null, c.provedor, minutos(10));
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "pedida", falhas: 0, chaveAceita: false });
+    c.provedor.devolverNoProvedor(x.idProvedor, 5000);
+    await conferirPendentes(db, c.org, c.provedor, minutos(21));
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "recusada", falhas: 0 });
+    const t = await c.tentativa(x.pagamentoId);
+    expect(t.situacao).toBe("devolvido_parcial");
+    expect(t.avisos).toContain("devolucao_parada");
+    expect(t.avisos).not.toContain("devolucao_falhou");
+    expect(pedidos()).toHaveLength(1);
+  });
+
+  it("o código de cada resposta fica guardado: recusa com código (saldo insuficiente) conta falha e o próximo pedido leva chave nova; o aceite limpa o código", async () => {
+    const x = await semReserva();
+    c.provedor.respostaDevolucao = "saldo_insuficiente";
+    await devolverPeloProvedor(db, c.org, x.pagamentoId, null, c.provedor, minutos(10));
+    const d = await devolucao(x.pagamentoId);
+    expect(d).toMatchObject({ situacao: "pedida", falhas: 1, chaveEmDuvida: false, ultimoCodigo: "saldo_insuficiente" });
+    c.provedor.respostaDevolucao = "confirmada";
+    await conferirPendentes(db, c.org, c.provedor, minutos(21));
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "confirmada", ultimoCodigo: null });
+    expect(pedidos().map((ch) => ch.chave)).toEqual([chaveDevolucao(d.id, 1), chaveDevolucao(d.id, 2)]);
+  });
+});
+
 describe("devolução do cartão (M8.2b)", () => {
   /** Cartão aprovado sem reserva (valor diferente do total da cotação), à espera da devolução. */
   async function cartaoSemReserva(parcelas = 1) {
