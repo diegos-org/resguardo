@@ -414,6 +414,7 @@ describe("confirmação pelo cartão (M8.2b)", () => {
     pago: TOTAL,
     devolvido: 0,
     devolucaoEmAndamento: false,
+    devolucoes: [],
     parcelas: 1,
     idTransacao: "PAYTST9999",
     aoVivo: false,

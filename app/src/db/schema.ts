@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
-import { boolean, customType, date, index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, customType, date, foreignKey, index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type { FontePrecos } from "@/imoveis/fonte-precos";
-import type { ModoTresDS, StatusTresDS } from "@/pagamentos/provedor";
+import type { CodigoDevolucao, ModoTresDS, StatusTresDS } from "@/pagamentos/provedor";
 import type { PeriodicidadeRepasse } from "@/repasses/periodicidade";
 
 /**
@@ -408,6 +408,11 @@ export const reservas = pgTable(
     divergenciaEm: timestamp("divergencia_em", { withTimezone: true }),
     /** O cálculo divergente que ficou em conferência (M4.8): outro cálculo divergente reabre a conferência. */
     divergenciaCalculo: text("divergencia_calculo"),
+    /**
+     * Centavos que ficaram com a empresa de uma reserva CANCELADA sem devolução (M8.2c, política de cancelamento): o motor
+     * divide esse valor como uma reserva normal. null = nada retido. Só o cancelamento pela política grava.
+     */
+    valorRetido: integer("valor_retido"),
     criadoEm: criadoEm(),
     atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -546,6 +551,7 @@ export const TIPOS_LANCAMENTO = [
   "adiantamento", // empresa pagou algo devido pelo proprietário
   "reembolso", // proprietário devolveu adiantamento
   "ajuste", // correção/ajuste de canal (motivo obrigatório)
+  "devolucao", // dinheiro que voltou ao hóspede (saída; `montante` = o que saiu, `valor` 0) — M8.2c
 ] as const;
 export type TipoLancamento = (typeof TIPOS_LANCAMENTO)[number];
 export const tipoLancamentoEnum = pgEnum("tipo_lancamento", TIPOS_LANCAMENTO);
@@ -1211,7 +1217,8 @@ export const rotinaExecucoes = pgTable(
 // gravado antes de chamar o provedor — é ele que impede mandar a mesma mensagem duas vezes.
 // ---------------------------------------------------------------------------
 
-export const TIPOS_MENSAGEM_HOSPEDE = ["confirmacao", "checkin", "checkout", "agradecimento"] as const;
+/** As três últimas são do cancelamento de reserva paga pelo site (M8.2c): pedido recebido, decisão e devolução feita. */
+export const TIPOS_MENSAGEM_HOSPEDE = ["confirmacao", "checkin", "checkout", "agradecimento", "cancelamento_recebido", "cancelamento_decidido", "devolucao_concluida"] as const;
 export type TipoMensagemHospede = (typeof TIPOS_MENSAGEM_HOSPEDE)[number];
 /** enviando: pedido em curso (se ficar assim, não se sabe se saiu); incerto: sem confirmação do provedor. */
 export const ESTADOS_ENVIO_HOSPEDE = ["enviando", "enviado", "falhou", "incerto"] as const;
@@ -1555,6 +1562,13 @@ export const pagamentos = pgTable(
      * leitura da Payments API que o trouxe; null = não lido. Com ele > 0 a taxa não entra sozinha (aviso `parcelas_sem_juros`).
      */
     custoParcelasVendedor: integer("custo_parcelas_vendedor"),
+    // --- O que a última leitura da order mostrou das devoluções (M8.2c): só valores, nunca dado pessoal.
+    /** Centavos já devolvidos (`Cobranca.devolvido`) na última leitura que bateu com a tentativa. */
+    devolvidoLido: integer("devolvido_lido").notNull().default(0),
+    /** A última leitura que bateu mostrou devolução em andamento (`Cobranca.devolucaoEmAndamento`). */
+    devolucaoEmAndamentoLida: boolean("devolucao_em_andamento_lida").notNull().default(false),
+    /** Primeira leitura com a situação `devolvido` (gravada uma vez só): o dia em que o dinheiro voltou ao hóspede. */
+    devolvidoVistoEm: timestamp("devolvido_visto_em", { withTimezone: true }),
     criadoEm: criadoEm(),
     atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -1596,6 +1610,118 @@ export const disjuntoresCartao = pgTable(
   (t) => [index("disjuntores_cartao_org").on(t.organizacaoId, t.abertoEm)],
 );
 
+// ---------------------------------------------------------------------------
+// Cancelamento de reserva paga pelo site (M8.2c): o pedido (do hóspede em Minha reserva ou registrado pela equipe), o
+// retrato da política aceita no pagamento, a decisão e o acerto. Listas fechadas aqui; colunas de texto sem CHECK, como
+// as do M8.2a. Nenhum dado pessoal: as notas (até 300) passam por `textoSemDadosPessoais`.
+// ---------------------------------------------------------------------------
+
+/** pedido: aguarda a equipe; cancelada: decidida (não volta atrás); descartado: o pedido não vale (fica no histórico). */
+export const SITUACOES_CANCELAMENTO = ["pedido", "cancelada", "descartado"] as const;
+export type SituacaoCancelamento = (typeof SITUACOES_CANCELAMENTO)[number];
+/** Por onde o pedido chegou; `site` = o hóspede em Minha reserva (o horário é o do servidor, travado). */
+export const CANAIS_PEDIDO_CANCELAMENTO = ["site", "whatsapp", "email", "telefone", "presencial", "outro"] as const;
+export type CanalPedidoCancelamento = (typeof CANAIS_PEDIDO_CANCELAMENTO)[number];
+export const QUEM_CANCELA_RESERVA = ["hospede", "empresa", "nao_comparecimento"] as const;
+export type QuemCancelaReserva = (typeof QUEM_CANCELA_RESERVA)[number];
+export const MOTIVOS_CANCELAMENTO_EMPRESA = ["imovel_sem_condicoes", "forca_maior", "outro"] as const;
+export type MotivoCancelamentoEmpresa = (typeof MOTIVOS_CANCELAMENTO_EMPRESA)[number];
+/** Motivo da devolução integral por exceção (lista fechada; a nota vai em `motivo_decisao` e nunca ao hóspede nem ao proprietário). */
+export const MOTIVOS_EXCECAO = ["erro_da_scl", "forca_maior", "cortesia_comercial", "saude_ou_familia", "outro"] as const;
+export type MotivoExcecao = (typeof MOTIVOS_EXCECAO)[number];
+/** O que a decisão final dá ao hóspede: tudo de volta ou nada (a devolução de parte do valor é do M8.2d). */
+export const DIREITOS_CANCELAMENTO = ["integral", "nenhum"] as const;
+export type DireitoCancelamento = (typeof DIREITOS_CANCELAMENTO)[number];
+/** O que a política diz (calculado), antes de qualquer decisão da equipe. */
+export const CALCULOS_CANCELAMENTO = ["integral", "nenhum", "sem_politica"] as const;
+export type CalculoCancelamento = (typeof CALCULOS_CANCELAMENTO)[number];
+export const BASES_CANCELAMENTO = ["prazo", "arrependimento", "empresa", "excecao", "sem_politica", "fora_do_prazo", "estadia_iniciada", "nao_comparecimento"] as const;
+export type BaseCancelamento = (typeof BASES_CANCELAMENTO)[number];
+
+export const cancelamentosReserva = pgTable(
+  "cancelamentos_reserva",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    reservaId: uuid("reserva_id").notNull().references(() => reservas.id),
+    /** O pagamento que confirmou a reserva (desfecho 'reserva'). */
+    pagamentoId: uuid("pagamento_id").notNull().references(() => pagamentos.id),
+    situacao: text("situacao").$type<SituacaoCancelamento>().notNull().default("pedido"),
+    /** Quando a SCL recebeu o pedido (o que a política conta). Hóspede pelo site: relógio do servidor (travado). */
+    pedidoRecebidoEm: timestamp("pedido_recebido_em", { withTimezone: true }).notNull(),
+    /** O momento registrado pela equipe, quando o financeiro o corrigiu ao cancelar (auditado). */
+    pedidoRegistradoOriginalEm: timestamp("pedido_registrado_original_em", { withTimezone: true }),
+    motivoMomento: text("motivo_momento").notNull().default(""),
+    /** null quando a SCL cancela ou no não comparecimento. */
+    canal: text("canal").$type<CanalPedidoCancelamento>(),
+    quemCancela: text("quem_cancela").$type<QuemCancelaReserva>().notNull().default("hospede"),
+    motivoEmpresa: text("motivo_empresa").$type<MotivoCancelamentoEmpresa>(),
+    motivoExcecao: text("motivo_excecao").$type<MotivoExcecao>(),
+    /** Onde está o pedido (ex.: "WhatsApp da empresa, 14h10"); até 300; validado sem dados pessoais. */
+    nota: text("nota").notNull().default(""),
+    /** Nota obrigatória da exceção ou da decisão sem política; até 300; validada. Nunca vai ao hóspede nem ao proprietário. */
+    motivoDecisao: text("motivo_decisao").notNull().default(""),
+    /** Quem registrou o pedido; null = o hóspede, em Minha reserva. */
+    pedidoPor: uuid("pedido_por").references(() => usuarios.id, { onDelete: "set null" }),
+    // --- Retrato da política e da decisão (preenchido ao cancelar; nunca muda depois)
+    politicaVersao: integer("politica_versao"),
+    diasReembolsoIntegral: integer("dias_reembolso_integral"),
+    arrependimentoAteEntrada: boolean("arrependimento_ate_entrada"),
+    integralAte: date("integral_ate", { mode: "string" }),
+    arrependimentoAte: date("arrependimento_ate", { mode: "string" }),
+    entradaEm: timestamp("entrada_em", { withTimezone: true }),
+    calculado: text("calculado").$type<CalculoCancelamento>(),
+    direito: text("direito").$type<DireitoCancelamento>(),
+    base: text("base").$type<BaseCancelamento>(),
+    /** O que o hóspede pagou (valorPagoNaOrder) e o que a decisão devolve (0 ou o pago). */
+    valorPago: integer("valor_pago"),
+    valorADevolver: integer("valor_a_devolver"),
+    canceladaEm: timestamp("cancelada_em", { withTimezone: true }),
+    canceladaPor: uuid("cancelada_por").references(() => usuarios.id, { onDelete: "set null" }),
+    /** Componentes de resultado lançados (fase 1, sempre junto com o cancelamento). */
+    resultadoLancadoEm: timestamp("resultado_lancado_em", { withTimezone: true }),
+    /** Espelhos lançados no mês do cancelamento (algo já tinha movimentado dinheiro): o motor não recalcula mais a reserva. */
+    espelhado: boolean("espelhado").notNull().default(false),
+    /** Componentes de caixa lançados (devolução realizada; na retenção, nada a lançar). */
+    caixaLancadoEm: timestamp("caixa_lancado_em", { withTimezone: true }),
+    /** M8.3: datas reabertas nas OTAs (à mão até o M8.3; o M8.3 grava sozinho). */
+    otaLiberadaEm: timestamp("ota_liberada_em", { withTimezone: true }),
+    otaLiberadaPor: uuid("ota_liberada_por").references(() => usuarios.id, { onDelete: "set null" }),
+    /** Mensagens ao hóspede (copiadas e enviadas pela equipe, ou enviadas pelo M9.2; por null = o sistema). */
+    hospedeAvisadoPedidoEm: timestamp("hospede_avisado_pedido_em", { withTimezone: true }),
+    hospedeAvisadoPedidoPor: uuid("hospede_avisado_pedido_por").references(() => usuarios.id, { onDelete: "set null" }),
+    hospedeAvisadoDecisaoEm: timestamp("hospede_avisado_decisao_em", { withTimezone: true }),
+    // A chave estrangeira desta e da seguinte tem nome próprio (abaixo): o nome automático passaria dos 63 caracteres do Postgres.
+    hospedeAvisadoDecisaoPor: uuid("hospede_avisado_decisao_por"),
+    hospedeAvisadoDevolucaoEm: timestamp("hospede_avisado_devolucao_em", { withTimezone: true }),
+    hospedeAvisadoDevolucaoPor: uuid("hospede_avisado_devolucao_por"),
+    descartadoEm: timestamp("descartado_em", { withTimezone: true }),
+    descartadoPor: uuid("descartado_por").references(() => usuarios.id, { onDelete: "set null" }),
+    descarteMotivo: text("descarte_motivo").notNull().default(""),
+    /** Pedido pelo site descartado: só como desistência do hóspede, com o canal e a hora da desistência. */
+    desistenciaCanal: text("desistencia_canal").$type<CanalPedidoCancelamento>(),
+    desistenciaEm: timestamp("desistencia_em", { withTimezone: true }),
+    criadoEm: criadoEm(),
+    atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // Um pedido ou cancelamento ativo por reserva; os descartados ficam (nunca são apagados).
+    uniqueIndex("cancelamentos_reserva_um_ativo").on(t.reservaId).where(sql`${t.situacao} in ('pedido', 'cancelada')`),
+    foreignKey({ columns: [t.hospedeAvisadoDecisaoPor], foreignColumns: [usuarios.id], name: "cancelamentos_reserva_hospede_avisado_decisao_por_fk" }).onDelete("set null"),
+    foreignKey({ columns: [t.hospedeAvisadoDevolucaoPor], foreignColumns: [usuarios.id], name: "cancelamentos_reserva_hospede_avisado_devolucao_por_fk" }).onDelete("set null"),
+    index("cancelamentos_reserva_org").on(t.organizacaoId, t.situacao),
+    index("cancelamentos_reserva_reserva").on(t.reservaId),
+  ],
+);
+
+/**
+ * De onde veio a devolução: `sem_reserva` (M8.2a: pagamento aprovado que não confirmou a reserva) ou `cancelamento`
+ * (M8.2c: reserva cancelada pela política). O M8.2d acrescenta `alteracao`. A coluna é texto livre de propósito: um
+ * banco de preview compartilhado pode ter origens que esta versão não conhece, e quem lê ignora essas linhas.
+ */
+export const ORIGENS_DEVOLUCAO = ["sem_reserva", "cancelamento"] as const;
+export type OrigemDevolucao = (typeof ORIGENS_DEVOLUCAO)[number];
+
 /** Devolução de um pagamento (uma por pagamento): pelo provedor (pedida → confirmada/recusada) ou feita por fora. */
 export const devolucoesPagamento = pgTable(
   "devolucoes_pagamento",
@@ -1608,7 +1734,10 @@ export const devolucoesPagamento = pgTable(
     situacao: text("situacao").$type<SituacaoDevolucao>().notNull().default("pedida"),
     /** Pedidos enviados ao provedor (`chaveAtual`, gravada antes). Chave nova a cada pedido, salvo depois de resposta incerta. */
     tentativas: integer("tentativas").notNull().default(0),
-    /** Pedidos recusados pelo provedor (resposta incerta não conta): depois de 3, relida a order, a devolução fica recusada (aviso). */
+    /**
+     * Pedidos recusados ou sem resposta clara do provedor (a resposta incerta conta; "aguarde" — devolução em andamento ou
+     * espera pedida pelo Mercado Pago — não conta): depois de 3, relida a order, a devolução fica recusada (aviso).
+     */
     falhas: integer("falhas").notNull().default(0),
     chaveAtual: text("chave_atual"),
     /**
@@ -1632,10 +1761,36 @@ export const devolucoesPagamento = pgTable(
     taxaPerdida: integer("taxa_perdida"),
     despesaLancamentoId: uuid("despesa_lancamento_id").references(() => lancamentos.id),
     autorId: uuid("autor_id").references(() => usuarios.id, { onDelete: "set null" }),
+    // --- M8.2c
+    /** Ver `ORIGENS_DEVOLUCAO`; as linhas antigas (M8.2a) ficam `sem_reserva` pelo padrão. */
+    origem: text("origem").notNull().default("sem_reserva"),
+    /** O cancelamento que pediu esta devolução (origem `cancelamento`). Chave estrangeira com nome próprio (abaixo): o automático passaria de 63 caracteres. */
+    cancelamentoId: uuid("cancelamento_id"),
+    /** O lançamento `devolucao` (saída do caixa), quando houve. */
+    saidaLancamentoId: uuid("saida_lancamento_id").references(() => lancamentos.id),
+    /** Quem confirmou: uma leitura da order ou a equipe (devolução vista no painel do Mercado Pago). */
+    confirmadaPor: text("confirmada_por").$type<"leitura" | "equipe">(),
+    /** Nota obrigatória da confirmação pela equipe (até 300, validada sem dados pessoais). */
+    confirmadaNota: text("confirmada_nota").notNull().default(""),
+    /** Soma das devoluções confirmadas na leitura que confirmou; null = a leitura não trouxe a lista de devoluções. */
+    valorConfirmado: integer("valor_confirmado"),
+    /** Último código de `devolver` (lista fechada `CODIGOS_DEVOLUCAO`); null = nenhum. */
+    ultimoCodigo: text("ultimo_codigo").$type<CodigoDevolucao>(),
+    /** A equipe registrou que o painel do Mercado Pago recusou a devolução (libera a devolução por fora no cartão). */
+    recusaNoPainelEm: timestamp("recusa_no_painel_em", { withTimezone: true }),
+    recusaNoPainelPor: uuid("recusa_no_painel_por").references(() => usuarios.id, { onDelete: "set null" }),
+    recusaNoPainelNota: text("recusa_no_painel_nota").notNull().default(""),
+    /** "Parar a devolução pedida" (passou do prazo de leitura do Mercado Pago). */
+    paradaEm: timestamp("parada_em", { withTimezone: true }),
+    paradaNota: text("parada_nota").notNull().default(""),
     criadoEm: criadoEm(),
     atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("devolucoes_pagamento_um_por_pagamento").on(t.pagamentoId), index("devolucoes_pagamento_situacao").on(t.organizacaoId, t.situacao)],
+  (t) => [
+    uniqueIndex("devolucoes_pagamento_um_por_pagamento").on(t.pagamentoId),
+    index("devolucoes_pagamento_situacao").on(t.organizacaoId, t.situacao),
+    foreignKey({ columns: [t.cancelamentoId], foreignColumns: [cancelamentosReserva.id], name: "devolucoes_pagamento_cancelamento_id_fk" }),
+  ],
 );
 
 /**

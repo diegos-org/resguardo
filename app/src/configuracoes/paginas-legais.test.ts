@@ -4,7 +4,7 @@ import { historicoDe } from "@/auditoria/auditoria";
 import { auditoria, configuracoes, organizacoes, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
-import { travarConfig, travarConfigCompartilhada } from "./armazem";
+import { gravarConfig, travarConfig, travarConfigCompartilhada } from "./armazem";
 import { versaoAtual } from "./documentos-versionados";
 import { type DadosEmpresa, lerEmpresa, salvarEmpresa } from "./empresa";
 import { camposDesatualizados, lerPaginaLegal, lerPaginasLegais, publicarPaginaLegal, regraDaPoliticaDeCancelamento, versaoAtualDaPaginaLegal, versoesLegaisAtuais, versoesLegaisTravadas } from "./paginas-legais";
@@ -17,10 +17,13 @@ import {
   conferirCampos,
   DOCUMENTOS_LEGAIS,
   type DocumentoLegal,
+  FRASE_LIMITE_ARREPENDIMENTO,
+  MENSAGEM_ARREPENDIMENTO_SEM_LIMITE,
   mensagemDosCampos,
   PAGINAS_LEGAIS,
   prazoDoReembolso,
   preencherCampos,
+  regrasComPadrao,
   rotuloDoCampo,
   validarPaginaLegal,
   valoresDisponiveis,
@@ -151,10 +154,11 @@ describe("texto das páginas legais em blocos (M7.4)", () => {
     for (const dias of ["0", "366", "1.5", "", "abc", "-3", "1000"]) {
       expect(validarPaginaLegal("cancelamento", { resumo: "R", texto: "T", diasReembolsoIntegral: dias })).toMatchObject({ ok: false, erros: { diasReembolsoIntegral: "Informe um número de dias entre 1 e 365." } });
     }
-    expect(validarPaginaLegal("cancelamento", { resumo: " R\r\n\r\nS ", texto: "T", diasReembolsoIntegral: " 14 " })).toEqual({ ok: true, entrada: { secoes: { resumo: "R\n\nS", texto: "T" }, diasReembolsoIntegral: 14 } });
+    // A caixa do limite do arrependimento (M8.2c) vem desmarcada quando o formulário não a manda: o texto "T" não diz o contrário.
+    expect(validarPaginaLegal("cancelamento", { resumo: " R\r\n\r\nS ", texto: "T", diasReembolsoIntegral: " 14 " })).toEqual({ ok: true, entrada: { secoes: { resumo: "R\n\nS", texto: "T" }, diasReembolsoIntegral: 14, arrependimentoAteEntrada: false } });
     expect(validarPaginaLegal("cancelamento", { resumo: "R", texto: "T", diasReembolsoIntegral: 365 })).toMatchObject({ ok: true, entrada: { diasReembolsoIntegral: 365 } });
     // Termos: só o texto (o resumo e o prazo enviados são ignorados), dentro do limite.
-    expect(validarPaginaLegal("termos", { texto: "T", resumo: "ignorado", diasReembolsoIntegral: "0" })).toEqual({ ok: true, entrada: { secoes: { texto: "T" }, diasReembolsoIntegral: null } });
+    expect(validarPaginaLegal("termos", { texto: "T", resumo: "ignorado", diasReembolsoIntegral: "0", arrependimentoAteEntrada: "on" })).toEqual({ ok: true, entrada: { secoes: { texto: "T" }, diasReembolsoIntegral: null, arrependimentoAteEntrada: null } });
     expect(validarPaginaLegal("privacidade", { texto: "x".repeat(30_001) })).toMatchObject({ ok: false, erros: { texto: "Máximo de 30000 caracteres." } });
     expect(validarPaginaLegal("privacidade", {})).toMatchObject({ ok: false, erros: { texto: "Escreva esta parte antes de publicar." } });
   });
@@ -175,7 +179,8 @@ describe("textos-base das páginas legais (M7.4)", () => {
       expect(c.desconhecidos, doc).toEqual([]);
       expect(c.foraDoLugar, doc).toEqual([]);
       expect(mensagemDosCampos(c), doc).toBeNull();
-      expect(validarPaginaLegal(doc, { ...r.secoes, diasReembolsoIntegral: String(r.diasReembolsoIntegral ?? "") }).ok, doc).toBe(true);
+      // O formulário manda a caixa do limite do arrependimento como o texto-base (M8.2c).
+      expect(validarPaginaLegal(doc, { ...r.secoes, diasReembolsoIntegral: String(r.diasReembolsoIntegral ?? ""), arrependimentoAteEntrada: r.arrependimentoAteEntrada ? "on" : "" }).ok, doc).toBe(true);
       // Cada texto começa por um título e não tem marcador quebrado.
       expect(blocosDoDocumento(r.secoes.texto)[0].tipo, doc).toBe("titulo");
       for (const t of Object.values(r.secoes)) expect(t).not.toMatch(/\{\{(?![a-z_]+\}\})|(?<!\{\{[a-z_]+)\}\}/);
@@ -231,7 +236,7 @@ describe("publicar as páginas legais (M7.4)", () => {
     const c1 = await publicar("cancelamento", "2026-10-10", 0);
     expect(c1).toMatchObject({ ok: true, versao: { numero: 1, regras: { diasReembolsoIntegral: 14 } } });
     expect(await versoesLegaisAtuais(db, org)).toEqual({ termos: 1, privacidade: 1, cancelamento: 1 });
-    expect(await regraDaPoliticaDeCancelamento(db, org, 1)).toEqual({ diasReembolsoIntegral: 14 });
+    expect(await regraDaPoliticaDeCancelamento(db, org, 1)).toEqual({ diasReembolsoIntegral: 14, arrependimentoAteEntrada: true });
     expect(await regraDaPoliticaDeCancelamento(db, org, 2)).toBeNull();
 
     // Só os campos usados ficam na versão (o termos não usa o encarregado; o cancelamento não usa o CNPJ).
@@ -280,8 +285,8 @@ describe("publicar as páginas legais (M7.4)", () => {
     await salvarEmpresa(db, org, EMPRESA, admin);
     await publicar("cancelamento", "2026-10-10", 0);
     expect(await publicar("cancelamento", "2026-10-15", 1, { dias: 21 })).toMatchObject({ ok: true, mudou: true, versao: { numero: 2, data: "2026-10-15", regras: { diasReembolsoIntegral: 21 }, valores: { dias_reembolso_integral: "21" } } });
-    expect(await regraDaPoliticaDeCancelamento(db, org, 1)).toEqual({ diasReembolsoIntegral: 14 });
-    expect(await regraDaPoliticaDeCancelamento(db, org, 2)).toEqual({ diasReembolsoIntegral: 21 });
+    expect(await regraDaPoliticaDeCancelamento(db, org, 1)).toEqual({ diasReembolsoIntegral: 14, arrependimentoAteEntrada: true });
+    expect(await regraDaPoliticaDeCancelamento(db, org, 2)).toEqual({ diasReembolsoIntegral: 21, arrependimentoAteEntrada: true });
     const mudancas = (await historicoDe(db, org, "configuracao", org)).find((h) => JSON.stringify(h.mudancas.versao) === "[1,2]")!.mudancas;
     expect(mudancas).toEqual({ versao: [1, 2], "campo.dias_reembolso_integral": ["14", "21"], "regra.diasReembolsoIntegral": [14, 21] });
   });
@@ -340,6 +345,82 @@ describe("publicar as páginas legais (M7.4)", () => {
     ]);
     expect(vi.mocked(travarConfig)).not.toHaveBeenCalled();
     expect(await db.transaction((tx) => versoesLegaisTravadas(tx, outra))).toBeNull();
+  });
+});
+
+describe("limite do arrependimento na Política de cancelamento (M8.2c, regra por versão)", () => {
+  /** O texto-base sem a frase do limite (como se o advogado a tirasse). */
+  const semLimite = () => {
+    const r = RASCUNHO_PAGINAS_LEGAIS.cancelamento.secoes;
+    const tirar = (t: string) => t.replaceAll(FRASE_LIMITE_ARREPENDIMENTO, "até o fim do prazo de 7 dias");
+    return { resumo: tirar(r.resumo), texto: tirar(r.texto) };
+  };
+
+  it("o texto-base traz a frase do limite e começa com a caixa marcada; sem o campo, a regra vale 'sim'", () => {
+    const r = RASCUNHO_PAGINAS_LEGAIS.cancelamento;
+    expect(r.arrependimentoAteEntrada).toBe(true);
+    expect(r.secoes.texto).toContain(FRASE_LIMITE_ARREPENDIMENTO);
+    expect(RASCUNHO_PAGINAS_LEGAIS.termos.arrependimentoAteEntrada).toBeNull();
+    expect(regrasComPadrao({ diasReembolsoIntegral: 14 })).toEqual({ diasReembolsoIntegral: 14, arrependimentoAteEntrada: true });
+    expect(regrasComPadrao({ diasReembolsoIntegral: 14, arrependimentoAteEntrada: false })).toEqual({ diasReembolsoIntegral: 14, arrependimentoAteEntrada: false });
+  });
+
+  it("formulário: caixa desmarcada com a frase ainda no texto é recusada (mesmo com outra caixa e espaços); sem a frase, passa", () => {
+    const r = RASCUNHO_PAGINAS_LEGAIS.cancelamento.secoes;
+    const recusa = validarPaginaLegal("cancelamento", { ...r, diasReembolsoIntegral: "14" });
+    expect(recusa).toEqual({ ok: false, erros: { arrependimentoAteEntrada: MENSAGEM_ARREPENDIMENTO_SEM_LIMITE }, mensagem: "Confira os campos destacados." });
+    expect(MENSAGEM_ARREPENDIMENTO_SEM_LIMITE).toBe(
+      'Você desmarcou o limite do arrependimento, mas o texto ainda diz que ele vale até o horário de entrada no dia do check-in: ajuste a seção "Direito de arrependimento" ou marque a caixa.',
+    );
+    expect(validarPaginaLegal("cancelamento", { resumo: "Vale ATÉ O HORÁRIO de entrada\nno dia do check-in.", texto: "T", diasReembolsoIntegral: "14" })).toMatchObject({ ok: false, erros: { arrependimentoAteEntrada: expect.any(String) } });
+    expect(validarPaginaLegal("cancelamento", { ...r, diasReembolsoIntegral: "14", arrependimentoAteEntrada: "on" })).toMatchObject({ ok: true, entrada: { arrependimentoAteEntrada: true } });
+    expect(validarPaginaLegal("cancelamento", { ...semLimite(), diasReembolsoIntegral: "14" })).toMatchObject({ ok: true, entrada: { arrependimentoAteEntrada: false } });
+  });
+
+  it("a versão guarda a regra; só a caixa mudou já cria versão nova (com a regra no histórico); a anterior continua com a dela", async () => {
+    await salvarEmpresa(db, org, EMPRESA, admin);
+    const v1 = await publicarPaginaLegal(db, org, "cancelamento", { secoes: semLimite(), diasReembolsoIntegral: 14, arrependimentoAteEntrada: true }, admin, "2026-10-10", 0);
+    expect(v1).toMatchObject({ ok: true, mudou: true, versao: { numero: 1, regras: { diasReembolsoIntegral: 14, arrependimentoAteEntrada: true } } });
+    const v2 = await publicarPaginaLegal(db, org, "cancelamento", { secoes: semLimite(), diasReembolsoIntegral: 14, arrependimentoAteEntrada: false }, admin, "2026-10-11", 1);
+    expect(v2).toMatchObject({ ok: true, mudou: true, versao: { numero: 2, regras: { diasReembolsoIntegral: 14, arrependimentoAteEntrada: false } } });
+    expect(await regraDaPoliticaDeCancelamento(db, org, 1)).toEqual({ diasReembolsoIntegral: 14, arrependimentoAteEntrada: true });
+    expect(await regraDaPoliticaDeCancelamento(db, org, 2)).toEqual({ diasReembolsoIntegral: 14, arrependimentoAteEntrada: false });
+    const mudancas = (await historicoDe(db, org, "configuracao", org)).find((h) => JSON.stringify(h.mudancas.versao) === "[1,2]")!.mudancas;
+    expect(mudancas).toEqual({ versao: [1, 2], "regra.arrependimentoAteEntrada": [true, false] });
+    // Desmarcada com a frase de volta no texto: recusada também na publicação (deny-by-default), nada gravado.
+    const r = RASCUNHO_PAGINAS_LEGAIS.cancelamento.secoes;
+    expect(await publicarPaginaLegal(db, org, "cancelamento", { secoes: r, diasReembolsoIntegral: 14, arrependimentoAteEntrada: false }, admin, "2026-10-12", 2)).toMatchObject({
+      ok: false,
+      erros: { arrependimentoAteEntrada: MENSAGEM_ARREPENDIMENTO_SEM_LIMITE },
+      atual: { numero: 2 },
+    });
+    expect((await lerPaginaLegal(db, org, "cancelamento")).map((v) => v.numero)).toEqual([1, 2]);
+  });
+
+  it("v1 publicada sem o campo: lida como 'sim'; republicar sem mexer na caixa mantém o limite e, sem outra mudança, não cria versão", async () => {
+    await publicarPaginasLegaisDeTeste(db, org);
+    await salvarEmpresa(db, org, EMPRESA, admin);
+    // Gravada como antes do M8.2c: sem o campo na regra.
+    const gravada = await db.select().from(configuracoes).where(and(eq(configuracoes.organizacaoId, org), eq(configuracoes.chave, "politica_cancelamento")));
+    expect(JSON.stringify(gravada[0].valor)).not.toContain("arrependimentoAteEntrada");
+    const [v1] = await lerPaginaLegal(db, org, "cancelamento");
+    expect(v1.regras).toEqual({ diasReembolsoIntegral: 14, arrependimentoAteEntrada: true });
+    // O formulário abre com o valor da versão (com o padrão): marcada. Enviado assim, sem outra mudança, nada muda.
+    const caixa = regrasComPadrao(v1.regras!).arrependimentoAteEntrada ? "on" : "";
+    const form = validarPaginaLegal("cancelamento", { ...v1.secoes, diasReembolsoIntegral: "14", arrependimentoAteEntrada: caixa });
+    if (!form.ok) throw new Error(form.mensagem);
+    expect(await publicarPaginaLegal(db, org, "cancelamento", form.entrada, admin, "2026-10-12", 1)).toMatchObject({ ok: true, mudou: false, versao: { numero: 1 } });
+    // Com o texto mudado (o prazo de 21 dias), a v2 nasce com o limite.
+    const v2 = await publicarPaginaLegal(db, org, "cancelamento", { ...form.entrada, diasReembolsoIntegral: 21 }, admin, "2026-10-12", 1);
+    expect(v2).toMatchObject({ ok: true, mudou: true, versao: { numero: 2, regras: { diasReembolsoIntegral: 21, arrependimentoAteEntrada: true } } });
+  });
+
+  it("a leitura guarda só os campos conhecidos da regra (o resto é descartado)", async () => {
+    const versao = (regras: unknown) => ({ numero: 1, data: "2026-10-01", autorId: null, secoes: RASCUNHO_PAGINAS_LEGAIS.cancelamento.secoes, valores: {}, regras });
+    await gravarConfig(db, org, "politica_cancelamento", { versoes: [versao({ diasReembolsoIntegral: 10, arrependimentoAteEntrada: false, outra: "x" })] }, null, false);
+    expect((await lerPaginaLegal(db, org, "cancelamento"))[0].regras).toEqual({ diasReembolsoIntegral: 10, arrependimentoAteEntrada: false });
+    await gravarConfig(db, outra, "politica_cancelamento", { versoes: [versao({ diasReembolsoIntegral: 10, arrependimentoAteEntrada: "nao" })] }, null, false);
+    expect((await lerPaginaLegal(db, outra, "cancelamento"))[0].regras).toEqual({ diasReembolsoIntegral: 10, arrependimentoAteEntrada: true });
   });
 });
 

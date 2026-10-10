@@ -4,7 +4,10 @@
  * do cliente real, e simuladores para o que no Mercado Pago acontece "do lado de lá"
  * (aprovar, recusar, expirar, contestar, devolver pelo painel…). Cartão (M8.2b): desafio 3DS (o endereço só na
  * resposta da criação, como na API), análise, processamento, recusa sem order, juros do parcelamento pagos pelo
- * hóspede ou pela SCL, liberação em parcelas e atraso da busca pela referência.
+ * hóspede ou pela SCL, liberação em parcelas e atraso da busca pela referência. Devoluções (M8.2c): cada uma tem id (REFTST…;
+ * as feitas no painel do provedor, REFPNL…) e aparece na leitura (`devolucoes`); respostas de recusa e de espera com o
+ * código, devolução que falha depois de aceita, atraso da listagem, devolução a menos, order devolvida que a leitura não
+ * reconhece (processed/refunded) e order que some da leitura (mais de 90 dias).
  *
  * Falhas: `falhar` (todas as chamadas) e `falhas[metodo]` lançam antes de fazer qualquer coisa;
  * `falhasDepois[metodo]` faz a operação e lança em seguida (resposta perdida no caminho). Como
@@ -15,7 +18,10 @@ import {
   chaveIdempotenciaValida, emailPlausivel, ErroProvedor, idProvedorValido, PIX_VALIDADE_MINIMA_MINUTOS, problemaNoCartao, problemaNoPedido, RECUSA_GENERICA, referenciaValida,
   validadePixMinutos,
 } from "./provedor";
-import type { Cobranca, DadosCartao, DetalheFinanceiro, ModoTresDS, PedidoCartao, PedidoPix, ProvedorPagamento, ResultadoCancelamento, ResultadoCriacao, ResultadoDevolucao, SituacaoCobranca, StatusTresDS } from "./provedor";
+import type {
+  Cobranca, CodigoDevolucao, DadosCartao, DetalheFinanceiro, EstadoDevolucaoLida, ModoTresDS, PedidoCartao, PedidoPix, ProvedorPagamento, ResultadoCancelamento, ResultadoCriacao,
+  ResultadoDevolucao, SituacaoCobranca, StatusTresDS,
+} from "./provedor";
 
 export type MetodoProvedor =
   | "criarPix" | "criarCartao" | "consultar" | "buscarPorReferencia" | "existePagamentoPorReferencia" | "detalheFinanceiro" | "cancelar" | "devolver" | "conferirContaDeTeste";
@@ -24,8 +30,13 @@ export type OpcoesAprovacao = { taxa?: number | null; liquido?: number | null; l
 /** O que chegou ao provedor no último cartão, sem o token (só se ele veio): para os testes conferirem o que passou por aqui. */
 export type PedidoCartaoRecebido = Omit<PedidoCartao, "token"> & { comToken: boolean };
 
-/** `tresDS` = a verificação do banco pedida na criação (null no Pix). */
-type Registro = { cobranca: Cobranca; criadaEm: Date; financeiro: DetalheFinanceiro; pendentes: { id: string; valor: number }[]; tresDS: ModoTresDS | null };
+/**
+ * Uma devolução da order. `valor`: o pedido enquanto está em andamento e o que de fato voltou depois de concluída;
+ * `completaCom`: quanto ela devolve ao concluir (`devolverAMenos`); `ocultaLeituras`: quantas leituras ainda não a mostram.
+ */
+type DevolucaoFalsa = { id: string; estado: EstadoDevolucaoLida; valor: number; completaCom: number; ocultaLeituras: number };
+/** `tresDS` = a verificação do banco pedida na criação (null no Pix); `esquecida` = a leitura não acha mais a order. */
+type Registro = { cobranca: Cobranca; criadaEm: Date; financeiro: DetalheFinanceiro; devolucoes: DevolucaoFalsa[]; tresDS: ModoTresDS | null; esquecida: boolean };
 type Lembrado =
   | { metodo: "criarPix" | "criarCartao"; id: string | null; resultado: ResultadoCriacao }
   | { metodo: "cancelar"; resultado: ResultadoCancelamento }
@@ -37,6 +48,7 @@ const INCERTO_CRIACAO = "Não deu para saber se o pagamento foi criado; conferir
 
 const copiar = (c: Cobranca): Cobranca => ({
   ...c,
+  devolucoes: c.devolucoes.map((d) => ({ ...d })),
   pix: c.pix ? { ...c.pix, expiraEm: c.pix.expiraEm ? new Date(c.pix.expiraEm) : null } : null,
   cartao: c.cartao ? { ...c.cartao } : null,
 });
@@ -81,8 +93,14 @@ export class ProvedorFalso implements ProvedorPagamento {
   atrasoBuscaMs = 0;
   /** Último cartão que chegou aqui (sem o token). */
   ultimoPedidoCartao: PedidoCartaoRecebido | null = null;
-  /** "pedida" deixa a devolução esperando `confirmarDevolucoes`. */
-  respostaDevolucao: "confirmada" | "pedida" = "confirmada";
+  /**
+   * Resposta das próximas devoluções: "pedida" deixa a devolução esperando `confirmarDevolucoes`; "saldo_insuficiente" e
+   * "prazo" recusam com esse código; "em_andamento" e "transitorio" respondem "aguarde" com esse código. As recusas e as
+   * esperas não mexem na order, e a espera não guarda a chave (nada foi aceito: a mesma chave vale de novo depois).
+   */
+  respostaDevolucao: "confirmada" | "pedida" | "saldo_insuficiente" | "prazo" | "em_andamento" | "transitorio" = "confirmada";
+  /** Como a order inteiramente devolvida aparece na leitura: "processed/refunded" (exemplo da documentação) vem `desconhecido`. */
+  detalheDevolvido: "refunded/refunded" | "processed/refunded" = "refunded/refunded";
   /** Resposta de `conferirContaDeTeste`. */
   contaDeTeste: boolean | null = true;
   /** Imagem do QR devolvida no Pix (null simula o sandbox que manda ""). */
@@ -96,13 +114,28 @@ export class ProvedorFalso implements ProvedorPagamento {
   private readonly chaves = new Map<string, Lembrado>();
   private orders = 0;
   private devolucoes = 0;
+  private devolucoesNoPainel = 0;
   private desafios = 0;
+  /** Leituras que a próxima devolução aceita fica sem aparecer (`atrasarListagem`). */
+  private atrasoListagem = 0;
+  /** Quanto a próxima devolução aceita devolve de fato (`devolverAMenos`). */
+  private proximaAMenos: number | null = null;
 
   constructor(private readonly agora: () => Date = () => new Date()) {}
 
-  /** Cópia de todas as orders, na ordem de criação. */
+  /** Cópia de todas as orders, na ordem de criação (com as devoluções que a leitura mostraria agora). */
   todas(): Cobranca[] {
-    return [...this.registros.values()].map((r) => copiar(r.cobranca));
+    return [...this.registros.values()].map((r) => this.vista(r));
+  }
+
+  /**
+   * A order como a leitura mostra: as devoluções visíveis (sem as atrasadas) e, delas, se há alguma em andamento.
+   * `contar`: esta leitura conta para o atraso da listagem (só `consultar`).
+   */
+  private vista(r: Registro, contar = false): Cobranca {
+    const visiveis = r.devolucoes.filter((d) => d.ocultaLeituras === 0);
+    if (contar) for (const d of r.devolucoes) if (d.ocultaLeituras > 0) d.ocultaLeituras--;
+    return copiar({ ...r.cobranca, devolucoes: visiveis.map((d) => ({ id: d.id, estado: d.estado, valor: d.valor })), devolucaoEmAndamento: visiveis.some((d) => d.estado === "andamento") });
   }
 
   private registrar(metodo: MetodoProvedor, o: Partial<Omit<ChamadaFalsa, "metodo">> = {}) {
@@ -128,14 +161,15 @@ export class ProvedorFalso implements ProvedorPagamento {
     return r;
   }
 
-  private novaOrder(base: Omit<Cobranca, "idProvedor" | "idTransacao" | "devolvido" | "devolucaoEmAndamento" | "aoVivo" | "valorTransacao">, tresDS: ModoTresDS | null = null): Registro {
+  private novaOrder(base: Omit<Cobranca, "idProvedor" | "idTransacao" | "devolvido" | "devolucaoEmAndamento" | "devolucoes" | "aoVivo" | "valorTransacao">, tresDS: ModoTresDS | null = null): Registro {
     const n = ++this.orders;
     const registro: Registro = {
-      cobranca: { ...base, idProvedor: `ORDTST${seq(n)}`, idTransacao: `PAYTST${seq(n)}`, valorTransacao: base.valor, devolvido: 0, devolucaoEmAndamento: false, aoVivo: this.aoVivo },
+      cobranca: { ...base, idProvedor: `ORDTST${seq(n)}`, idTransacao: `PAYTST${seq(n)}`, valorTransacao: base.valor, devolvido: 0, devolucaoEmAndamento: false, devolucoes: [], aoVivo: this.aoVivo },
       criadaEm: this.agora(),
       financeiro: { ...NADA },
-      pendentes: [],
+      devolucoes: [],
       tresDS,
+      esquecida: false,
     };
     this.registros.set(registro.cobranca.idProvedor, registro);
     return registro;
@@ -244,7 +278,7 @@ export class ProvedorFalso implements ProvedorPagamento {
     if (antes) throw antes;
     if (!idProvedorValido(idProvedor)) return null;
     const r = this.registros.get(idProvedor);
-    return r ? copiar(r.cobranca) : null;
+    return r && !r.esquecida ? this.vista(r, true) : null;
   }
 
   async buscarPorReferencia(referencia: string, desde: Date): Promise<Cobranca | null> {
@@ -254,7 +288,7 @@ export class ProvedorFalso implements ProvedorPagamento {
     if (!referenciaValida(referencia)) return null;
     const inicio = Math.min(desde.getTime(), this.agora().getTime()) - MARGEM_BUSCA_MS;
     for (const r of this.registros.values()) {
-      if (r.cobranca.referencia === referencia && r.criadaEm.getTime() >= inicio && this.jaAparece(r)) return copiar(r.cobranca);
+      if (!r.esquecida && r.cobranca.referencia === referencia && r.criadaEm.getTime() >= inicio && this.jaAparece(r)) return this.vista(r);
     }
     return null;
   }
@@ -303,54 +337,77 @@ export class ProvedorFalso implements ProvedorPagamento {
     return this.falhasDepois.cancelar ? "erro" : resultado;
   }
 
+  /**
+   * Como o cliente real: confirmada/pedida com o id da devolução nova; o 409 order_already_refunded vira confirmada sem id;
+   * outra devolução em andamento (409 order_refund_already_in_process) vira "aguarde"; order que a leitura não acha mais,
+   * recusada/nao_encontrado. Toda resposta traz `codigo` (null nas aceitas e nas validações locais).
+   */
   async devolver(c: Cobranca, chaveIdempotencia: string, valor: number | null): Promise<ResultadoDevolucao> {
     this.registrar("devolver", { id: c.idProvedor, chave: chaveIdempotencia, valor });
-    const recusada = (mensagem: string): ResultadoDevolucao => ({ situacao: "recusada", idDevolucao: null, mensagem });
+    const recusada = (mensagem: string, codigo: CodigoDevolucao | null = null): ResultadoDevolucao => ({ situacao: "recusada", idDevolucao: null, mensagem, codigo });
+    const incerta = (mensagem: string): ResultadoDevolucao => ({ situacao: "incerta", idDevolucao: null, mensagem, codigo: null });
     const antes = this.falhaAntes("devolver");
-    if (antes) return antes.tipo === "credencial" ? recusada(antes.message) : { situacao: "incerta", idDevolucao: null, mensagem: antes.message };
+    if (antes) return antes.tipo === "credencial" ? recusada(antes.message) : incerta(antes.message);
     if (!idProvedorValido(c.idProvedor)) return recusada("Pagamento sem identificação válida no Mercado Pago.");
     if (!chaveIdempotenciaValida(chaveIdempotencia)) return recusada("Chave de idempotência inválida.");
     const lembrado = this.chaves.get(chaveIdempotencia);
     if (lembrado) {
       return this.chaveRepetida === "mesma_resposta" && lembrado.metodo === "devolver"
         ? { ...lembrado.resultado }
-        : { situacao: "incerta", idDevolucao: null, mensagem: "Chave já usada: conferir a devolução no Mercado Pago antes de tentar de novo." };
+        : incerta("Chave já usada: conferir a devolução no Mercado Pago antes de tentar de novo.");
     }
     const r = this.registros.get(c.idProvedor);
-    if (!r) return recusada("O Mercado Pago não encontrou o pagamento ou a transação.");
+    if (!r || r.esquecida) return recusada("O Mercado Pago não encontrou o pagamento ou a transação.", "nao_encontrado");
     const situacao = r.cobranca.situacao;
     const pago = r.cobranca.pago ?? r.cobranca.valor;
-    const pendente = r.pendentes.reduce((s, d) => s + d.valor, 0);
+    const pendente = r.devolucoes.filter((d) => d.estado === "andamento").reduce((s, d) => s + d.valor, 0);
     const disponivel = pago - r.cobranca.devolvido - pendente;
     const quanto = valor ?? disponivel;
+    const aguarde = (codigo: "em_andamento" | "transitorio"): ResultadoDevolucao => ({
+      situacao: "aguarde",
+      idDevolucao: null,
+      mensagem: codigo === "em_andamento" ? "Já há uma devolução em andamento para este pagamento: aguardar o Mercado Pago concluir." : "O Mercado Pago pediu para esperar antes de devolver; tentar de novo mais tarde com a mesma chave.",
+      codigo,
+    });
     let resultado: ResultadoDevolucao;
-    if (situacao === "devolvido") {
+    if (situacao === "devolvido" || (r.cobranca.devolvido >= pago && pago > 0)) {
       // Como o 409 order_already_refunded da API.
-      resultado = { situacao: "confirmada", idDevolucao: null, mensagem: "O Mercado Pago informa que o pagamento já foi devolvido." };
+      resultado = { situacao: "confirmada", idDevolucao: null, mensagem: "O Mercado Pago informa que o pagamento já foi devolvido.", codigo: null };
     } else if (situacao !== "aprovado" && situacao !== "devolvido_parcial") {
-      resultado = recusada("O Mercado Pago não permite devolver este pagamento agora.");
+      resultado = recusada("O Mercado Pago não permite devolver este pagamento agora.", "nao_permitido");
     } else if (valor !== null && (!Number.isSafeInteger(valor) || valor <= 0)) {
       resultado = recusada("Valor da devolução inválido.");
     } else if (valor !== null && !c.idTransacao) {
       resultado = recusada("Falta o id da transação para a devolução parcial.");
     } else if (valor === null && pendente > 0) {
       // Como o 409 order_refund_already_in_process.
-      resultado = { situacao: "pedida", idDevolucao: null, mensagem: "Já há uma devolução em andamento para este pagamento." };
+      resultado = aguarde("em_andamento");
+    } else if (this.respostaDevolucao === "em_andamento" || this.respostaDevolucao === "transitorio") {
+      // Espera pedida pelo provedor: a order não muda.
+      resultado = aguarde(this.respostaDevolucao);
+    } else if (this.respostaDevolucao === "saldo_insuficiente") {
+      resultado = recusada("O Mercado Pago pediu saldo disponível na conta para fazer a devolução.", "saldo_insuficiente");
+    } else if (this.respostaDevolucao === "prazo") {
+      resultado = recusada("O prazo para devolver este pagamento pelo Mercado Pago acabou.", "prazo");
     } else if (quanto <= 0 || quanto > disponivel) {
-      resultado = recusada("O valor passa do que ainda pode ser devolvido.");
+      resultado = recusada("O valor passa do que ainda pode ser devolvido.", "valor_excede");
     } else {
       const id = `REFTST${seq(++this.devolucoes)}`;
+      const completaCom = this.proximaAMenos !== null ? Math.min(this.proximaAMenos, quanto) : quanto;
+      const nova: DevolucaoFalsa = { id, estado: "andamento", valor: quanto, completaCom, ocultaLeituras: this.atrasoListagem };
+      this.proximaAMenos = null;
+      this.atrasoListagem = 0;
+      r.devolucoes.push(nova);
       if (this.respostaDevolucao === "pedida") {
-        r.pendentes.push({ id, valor: quanto });
-        r.cobranca = { ...r.cobranca, devolucaoEmAndamento: true };
-        resultado = { situacao: "pedida", idDevolucao: id, mensagem: "Devolução pedida; aguardando confirmação do Mercado Pago." };
+        resultado = { situacao: "pedida", idDevolucao: id, mensagem: "Devolução pedida; aguardando confirmação do Mercado Pago.", codigo: null };
       } else {
-        this.aplicarDevolucao(r, quanto);
-        resultado = { situacao: "confirmada", idDevolucao: id, mensagem: "Devolução confirmada pelo Mercado Pago." };
+        this.concluirDevolucao(r, nova);
+        resultado = { situacao: "confirmada", idDevolucao: id, mensagem: "Devolução confirmada pelo Mercado Pago.", codigo: null };
       }
     }
-    this.chaves.set(chaveIdempotencia, { metodo: "devolver", resultado: { ...resultado } });
-    if (this.falhasDepois.devolver) return { situacao: "incerta", idDevolucao: null, mensagem: this.falhasDepois.devolver.message };
+    // "Aguarde": nada foi aceito por esta chave, que não fica guardada (a mesma chave vale de novo depois).
+    if (resultado.situacao !== "aguarde") this.chaves.set(chaveIdempotencia, { metodo: "devolver", resultado: { ...resultado } });
+    if (this.falhasDepois.devolver) return incerta(this.falhasDepois.devolver.message);
     return resultado;
   }
 
@@ -360,11 +417,23 @@ export class ProvedorFalso implements ProvedorPagamento {
     return this.contaDeTeste;
   }
 
+  /** Dinheiro devolvido na order: inteira = devolvida (ou processed/refunded, que a leitura não reconhece); senão, em parte. */
   private aplicarDevolucao(r: Registro, valor: number) {
     const pago = r.cobranca.pago ?? r.cobranca.valor;
     const devolvido = r.cobranca.devolvido + valor;
-    const total = devolvido >= pago;
-    r.cobranca = { ...r.cobranca, devolvido, situacao: total ? "devolvido" : "devolvido_parcial", detalhe: total ? "refunded/refunded" : "processed/partially_refunded" };
+    if (devolvido < pago) {
+      r.cobranca = { ...r.cobranca, devolvido, situacao: "devolvido_parcial", detalhe: "processed/partially_refunded" };
+      return;
+    }
+    const naoReconhecida = this.detalheDevolvido === "processed/refunded";
+    r.cobranca = { ...r.cobranca, devolvido, situacao: naoReconhecida ? "desconhecido" : "devolvido", detalhe: this.detalheDevolvido };
+  }
+
+  /** A devolução sai: confirmada, com o valor que de fato voltou (`devolverAMenos`). */
+  private concluirDevolucao(r: Registro, d: DevolucaoFalsa) {
+    d.estado = "confirmada";
+    d.valor = d.completaCom;
+    this.aplicarDevolucao(r, d.completaCom);
   }
 
   // ------------------------------------------------------------ simuladores ("do lado do provedor")
@@ -454,17 +523,41 @@ export class ProvedorFalso implements ProvedorPagamento {
     this.mudar(id, "contestado", detalhe);
   }
 
-  /** Devolução feita fora do sistema (painel do Mercado Pago). */
+  /** Devolução feita fora do sistema (painel do Mercado Pago): aparece na leitura com id REFPNL…, já confirmada. */
   devolverNoProvedor(id: string, valor: number) {
     const r = this.registro(id);
     if (!Number.isSafeInteger(valor) || valor <= 0) throw new Error("Valor de devolução falsa inválido.");
+    r.devolucoes.push({ id: `REFPNL${seq(++this.devolucoesNoPainel)}`, estado: "confirmada", valor, completaCom: valor, ocultaLeituras: 0 });
     this.aplicarDevolucao(r, valor);
   }
 
   /** Confirma as devoluções que ficaram "pedidas". */
   confirmarDevolucoes(id: string) {
     const r = this.registro(id);
-    for (const d of r.pendentes.splice(0)) this.aplicarDevolucao(r, d.valor);
-    r.cobranca = { ...r.cobranca, devolucaoEmAndamento: false };
+    for (const d of r.devolucoes) if (d.estado === "andamento") this.concluirDevolucao(r, d);
+  }
+
+  /** A devolução aceita não saiu: passa a "falhou" na leitura (o devolvido e a situação da order não mudam). */
+  falharDevolucao(idDevolucao: string) {
+    const d = [...this.registros.values()].flatMap((r) => r.devolucoes).find((x) => x.id === idDevolucao);
+    if (!d) throw new Error(`Devolução falsa inexistente: ${idDevolucao}`);
+    d.estado = "falhou";
+  }
+
+  /** A próxima devolução aceita fica fora das próximas `leituras` leituras (`consultar`), como o atraso do GET do provedor. */
+  atrasarListagem(leituras: number) {
+    if (!Number.isInteger(leituras) || leituras < 0) throw new Error("Número de leituras inválido.");
+    this.atrasoListagem = leituras;
+  }
+
+  /** A próxima devolução aceita devolve só `centavos` ao concluir (a order fica devolvida em parte). */
+  devolverAMenos(centavos: number) {
+    if (!Number.isSafeInteger(centavos) || centavos <= 0) throw new Error("Valor de devolução falsa inválido.");
+    this.proximaAMenos = centavos;
+  }
+
+  /** A order sai da leitura (como depois de três meses no Mercado Pago): `consultar` dá null e `devolver`, nao_encontrado. */
+  esquecerOrder(id: string) {
+    this.registro(id).esquecida = true;
   }
 }

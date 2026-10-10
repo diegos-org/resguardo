@@ -58,13 +58,24 @@ describe("publicar uma página legal pelo painel (M7.4)", () => {
 
   it("Política de cancelamento com o prazo do formulário; prazo inválido volta como erro do campo, com o que foi digitado", async () => {
     await salvarEmpresa(db, org, EMPRESA, admin);
-    const base = { documento: "cancelamento", versaoBase: "0", ...RASCUNHO_PAGINAS_LEGAIS.cancelamento.secoes };
+    // A caixa do limite do arrependimento (M8.2c) vem marcada, como o formulário abre com o texto-base.
+    const base = { documento: "cancelamento", versaoBase: "0", arrependimentoAteEntrada: "on", ...RASCUNHO_PAGINAS_LEGAIS.cancelamento.secoes };
     const recusa = await publicarPaginaLegalAcao({}, formulario({ ...base, diasReembolsoIntegral: "0" }));
     expect(recusa).toMatchObject({ mensagem: "Confira os campos destacados.", erros: { diasReembolsoIntegral: "Informe um número de dias entre 1 e 365." }, valores: { diasReembolsoIntegral: "0", versaoBase: "0" } });
     expect(m.revalidar).not.toHaveBeenCalled();
     expect(await publicarPaginaLegalAcao({}, formulario({ ...base, diasReembolsoIntegral: "21" }))).toMatchObject({ ok: true });
     expect(m.revalidar).toHaveBeenCalledWith("/cancelamento");
-    expect((await lerPaginaLegal(db, org, "cancelamento"))[0]).toMatchObject({ regras: { diasReembolsoIntegral: 21 }, valores: { dias_reembolso_integral: "21" } });
+    expect((await lerPaginaLegal(db, org, "cancelamento"))[0]).toMatchObject({ regras: { diasReembolsoIntegral: 21, arrependimentoAteEntrada: true }, valores: { dias_reembolso_integral: "21" } });
+  });
+
+  it("Política de cancelamento com a caixa do limite do arrependimento desmarcada e a frase no texto: recusada no campo, nada publicado (M8.2c)", async () => {
+    await salvarEmpresa(db, org, EMPRESA, admin);
+    // Caixa desmarcada: o navegador não manda o campo.
+    const semCaixa = { documento: "cancelamento", versaoBase: "0", diasReembolsoIntegral: "14", ...RASCUNHO_PAGINAS_LEGAIS.cancelamento.secoes };
+    const r = await publicarPaginaLegalAcao({}, formulario(semCaixa));
+    expect(r).toMatchObject({ mensagem: "Confira os campos destacados.", erros: { arrependimentoAteEntrada: expect.stringContaining("Você desmarcou o limite do arrependimento") } });
+    expect(await lerPaginaLegal(db, org, "cancelamento")).toEqual([]);
+    expect(m.revalidar).not.toHaveBeenCalled();
   });
 
   it("recusada (falta dado da empresa, outra pessoa publicou no meio): nada é revalidado e o texto digitado volta com a versão base", async () => {

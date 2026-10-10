@@ -1,7 +1,7 @@
 import { eq as eq_ } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { salvarEmpresa } from "@/configuracoes/empresa";
-import { atualizarModelo, garantirModelosIniciais, listarModelos } from "@/configuracoes/modelos";
+import { atualizarModelo, criarModelo, garantirModelosIniciais, listarModelos, TEXTOS_BASE_CANCELAMENTO } from "@/configuracoes/modelos";
 import { execucoesAutomacao, imoveis, mensagensHospede, organizacoes, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
@@ -10,7 +10,7 @@ import { DETALHES_VAZIOS, salvarDetalhes } from "@/imoveis/detalhes";
 import { cancelarReserva, confirmarReserva, criarReserva, sincronizarReserva } from "@/reservas/repositorio";
 import type { DadosReserva } from "@/reservas/regras";
 import { mensagensDeTodas } from "./cron";
-import { enviarMensagensHospede, lerConfigMensagens, MAX_TENTATIVAS, prazoDaMensagem, resumoMensagens, salvarConfigMensagens, ultimaExecucaoDaOrganizacao, ultimosEnvios } from "./hospede";
+import { type DadosPrazo, enviarMensagensHospede, lerConfigMensagens, MAX_TENTATIVAS, prazoDaMensagem, resumoMensagens, salvarConfigMensagens, ultimaExecucaoDaOrganizacao, ultimosEnvios } from "./hospede";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -86,6 +86,38 @@ describe("configuração (M9.2)", () => {
     expect(await salvarConfigMensagens(db, org, { ativo: true, origens: ["direta"], modelos: {} }, null)).toMatchObject({ ok: false });
     expect(await salvarConfigMensagens(db, org, { ativo: true, origens: [], modelos: { confirmacao: modelo.confirmacao } }, null)).toMatchObject({ ok: false });
     expect(await salvarConfigMensagens(db, org, { ativo: false, origens: ["direta"], modelos: { confirmacao: "nao-e-id" } }, null)).toMatchObject({ ok: false });
+  });
+});
+
+describe("mensagens do cancelamento (M8.2c) na configuração", () => {
+  it("escolher o modelo de uma mensagem do cancelamento confere onde cada variável vale e as obrigatórias", async () => {
+    const criar = async (nome: string, texto: string) => {
+      const r = await criarModelo(db, org, { nome, quando: "", texto }, null);
+      if (!r.ok || !r.modelo) throw new Error(JSON.stringify(r));
+      return r.modelo.id;
+    };
+    const recebidoComValor = await criar("Recebido com valor", "Olá, {hospede}! Recebemos o pedido da reserva {codigo} em {recebido}. Valor: {valor}.");
+    const recebidoSemHora = await criar("Recebido sem hora", "Olá, {hospede}! Recebemos o pedido da reserva {codigo}.");
+    const recebido = await criar("Pedido recebido", TEXTOS_BASE_CANCELAMENTO.cancelamento_recebido);
+    const devolucao = await criar("Devolução feita", TEXTOS_BASE_CANCELAMENTO.devolucao_concluida);
+    const salvar = (modelos: Record<string, string>) => salvarConfigMensagens(db, org, { ativo: false, origens: ["site"], modelos }, null);
+    expect(await salvar({ cancelamento_recebido: recebidoComValor })).toEqual({ ok: false, erro: expect.stringContaining("não pode usar {valor}") });
+    expect(await salvar({ cancelamento_recebido: recebidoSemHora })).toEqual({ ok: false, erro: "“Cancelamento: pedido recebido” precisa usar {recebido}." });
+    // Uma variável do cancelamento numa mensagem da estadia.
+    expect(await salvar({ confirmacao: devolucao })).toEqual({ ok: false, erro: expect.stringContaining("“Confirmação da reserva” não pode usar {valor}") });
+    expect(await salvar({ cancelamento_recebido: recebido, devolucao_concluida: devolucao })).toEqual({ ok: true });
+    expect((await lerConfigMensagens(db, org)).modelos).toMatchObject({ cancelamento_recebido: recebido, cancelamento_decidido: null, devolucao_concluida: devolucao });
+  });
+
+  it("as mensagens do cancelamento nunca saem de uma reserva confirmada; um modelo editado para usar variável do cancelamento não sai, avisa", async () => {
+    const r: DadosPrazo = { checkin: "2026-10-10", checkout: "2026-10-13", confirmadaEm: sp("2026-09-20", "12:00"), fuso: "America/Sao_Paulo", entradaAPartirDe: "15:00", saidaAte: "11:00" };
+    for (const t of ["cancelamento_recebido", "cancelamento_decidido", "devolucao_concluida"] as const) expect(prazoDaMensagem(t, r), t).toBeNull();
+    await ligar();
+    await atualizarModelo(db, org, modelo.confirmacao, { dados: { nome: "Confirmação da reserva", quando: "", texto: "Olá, {hospede}! Valor: {valor}." } }, null);
+    await db.insert(reservas).values(reserva());
+    const res = await enviarMensagensHospede(db, org, correio, sp("2026-09-20", "14:00"));
+    expect(res.avisos[0]).toContain("o modelo usa {valor}, que só vale nas mensagens do cancelamento");
+    expect(correio.enviadas).toHaveLength(0);
   });
 });
 

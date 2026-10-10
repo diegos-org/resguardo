@@ -5,12 +5,15 @@ import { auditoria, categoriasDespesa, organizacoes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import {
-  categoriaDaTaxaPerdida, CATEGORIA_TAXA_PERDIDA, ERRO_CATEGORIA_TAXA_ARQUIVADA, ERRO_CATEGORIA_TAXA_PADRAO_ARQUIVADA, ERRO_PARCELAS_MAXIMAS, CONFIG_PAGAMENTO_SITE_PADRAO, configDeJson,
-  lerConfigPagamentoSite, LIMITE_NOME_FATURA, nomeNaFatura, salvarConfigPagamentoSite, TEXTOS_TRES_DS, validarConfigPagamentoSite,
+  categoriaDaTaxaPerdida, CATEGORIA_TAXA_PERDIDA, ERRO_CATEGORIA_TAXA_ARQUIVADA, ERRO_CATEGORIA_TAXA_PADRAO_ARQUIVADA, ERRO_NAO_COMPARECIMENTO_HORAS, ERRO_PARCELAS_MAXIMAS,
+  CONFIG_PAGAMENTO_SITE_PADRAO, configDeJson, lerConfigPagamentoSite, LIMITE_NOME_FATURA, nomeNaFatura, salvarConfigPagamentoSite, TEXTOS_TRES_DS, validarConfigPagamentoSite,
 } from "./pagamento-site";
 
 /** Os campos do cartão (M8.2b) no padrão, para os casos que não falam deles. */
 const SEM_CARTAO = { cartao: false, parcelasMaximas: null, tresDS: "on_fraud_risk" } as const;
+/** Os campos do cancelamento (M8.2c) no padrão gravado e num formulário enviado sem a caixa marcada. */
+const CANCELAMENTO_PADRAO = { pedidoCancelamentoNoPortal: true, naoComparecimentoHoras: 21 } as const;
+const CANCELAMENTO_SEM_CAIXA = { pedidoCancelamentoNoPortal: false, naoComparecimentoHoras: 21 } as const;
 
 let db: Db, close: () => Promise<void>, org: string;
 beforeAll(async () => { ({ db, close } = await createTestDb()); });
@@ -26,16 +29,16 @@ describe("Configurações → Pagamento no site (M8.2a)", () => {
   });
 
   it("valida e grava (auditado), só com categoria ativa desta organização", async () => {
-    expect(validarConfigPagamentoSite({ oferecer: "on", nomeFatura: "  SCL   Leblon ", categoriaTaxaId: "" })).toEqual({ ok: true, config: { oferecer: true, nomeFatura: "SCL Leblon", categoriaTaxaId: null, ...SEM_CARTAO } });
+    expect(validarConfigPagamentoSite({ oferecer: "on", nomeFatura: "  SCL   Leblon ", categoriaTaxaId: "" })).toEqual({ ok: true, config: { oferecer: true, nomeFatura: "SCL Leblon", categoriaTaxaId: null, ...SEM_CARTAO, ...CANCELAMENTO_SEM_CAIXA } });
     expect(validarConfigPagamentoSite({ nomeFatura: "x".repeat(LIMITE_NOME_FATURA + 1) })).toMatchObject({ ok: false, erros: { nomeFatura: expect.any(String) } });
     expect(validarConfigPagamentoSite({ nomeFatura: "SCL <script>" })).toMatchObject({ ok: false });
     expect(validarConfigPagamentoSite({ categoriaTaxaId: "abc" })).toMatchObject({ ok: false, erros: { categoriaTaxaId: expect.any(String) } });
-    expect(validarConfigPagamentoSite({})).toEqual({ ok: true, config: { oferecer: false, nomeFatura: null, categoriaTaxaId: null, ...SEM_CARTAO } });
-    expect(await salvarConfigPagamentoSite(db, org, { ...SEM_CARTAO, oferecer: false, nomeFatura: "SCL Leblon", categoriaTaxaId: "00000000-0000-4000-8000-000000000000" }, null)).toMatchObject({ ok: false });
+    expect(validarConfigPagamentoSite({})).toEqual({ ok: true, config: { oferecer: false, nomeFatura: null, categoriaTaxaId: null, ...SEM_CARTAO, ...CANCELAMENTO_SEM_CAIXA } });
+    expect(await salvarConfigPagamentoSite(db, org, { ...SEM_CARTAO, ...CANCELAMENTO_PADRAO, oferecer: false, nomeFatura: "SCL Leblon", categoriaTaxaId: "00000000-0000-4000-8000-000000000000" }, null)).toMatchObject({ ok: false });
     const cat = await criarCategoria(db, org, "Taxas", null);
     if (!cat.ok) throw new Error(cat.erro);
-    expect(await salvarConfigPagamentoSite(db, org, { ...SEM_CARTAO, oferecer: false, nomeFatura: "SCL Leblon", categoriaTaxaId: cat.categoria.id }, null)).toEqual({ ok: true, mudou: true });
-    expect(await salvarConfigPagamentoSite(db, org, { ...SEM_CARTAO, oferecer: false, nomeFatura: "SCL Leblon", categoriaTaxaId: cat.categoria.id }, null)).toEqual({ ok: true, mudou: false });
+    expect(await salvarConfigPagamentoSite(db, org, { ...SEM_CARTAO, ...CANCELAMENTO_PADRAO, oferecer: false, nomeFatura: "SCL Leblon", categoriaTaxaId: cat.categoria.id }, null)).toEqual({ ok: true, mudou: true });
+    expect(await salvarConfigPagamentoSite(db, org, { ...SEM_CARTAO, ...CANCELAMENTO_PADRAO, oferecer: false, nomeFatura: "SCL Leblon", categoriaTaxaId: cat.categoria.id }, null)).toEqual({ ok: true, mudou: false });
     expect(await nomeNaFatura(db, org)).toBe("SCL Leblon");
     expect(await db.select().from(auditoria).where(and(eq(auditoria.organizacaoId, org), eq(auditoria.acao, "configuracao.pagamento_site")))).toHaveLength(1);
     expect(await categoriaDaTaxaPerdida(db, org, null)).toEqual({ ok: true, id: cat.categoria.id });
@@ -48,7 +51,7 @@ describe("Configurações → Pagamento no site (M8.2a)", () => {
       expect(configDeJson(estranho)).toMatchObject(SEM_CARTAO);
     }
     // Configuração gravada antes do cartão (só os campos do Pix): o cartão fica desligado.
-    expect(configDeJson({ oferecer: true, nomeFatura: "SCL", categoriaTaxaId: null })).toEqual({ oferecer: true, nomeFatura: "SCL", categoriaTaxaId: null, ...SEM_CARTAO });
+    expect(configDeJson({ oferecer: true, nomeFatura: "SCL", categoriaTaxaId: null })).toEqual({ oferecer: true, nomeFatura: "SCL", categoriaTaxaId: null, ...SEM_CARTAO, ...CANCELAMENTO_PADRAO });
     expect(TEXTOS_TRES_DS.on_fraud_risk).toMatch(/^Quando houver risco \(recomendado\)/);
     expect(TEXTOS_TRES_DS.never).toMatch(/^Nunca: nenhuma verificação/);
   });
@@ -76,6 +79,39 @@ describe("Configurações → Pagamento no site (M8.2a)", () => {
     expect(await lerConfigPagamentoSite(db, org)).toEqual(config);
     const [audit] = await db.select().from(auditoria).where(and(eq(auditoria.organizacaoId, org), eq(auditoria.acao, "configuracao.pagamento_site")));
     expect(JSON.stringify(audit.mudancas)).toContain("parcelasMaximas");
+  });
+
+  it("cancelamento (M8.2c): pedido em Minha reserva LIGADO e não comparecimento 21 horas depois da entrada; gravado estranho volta ao padrão", async () => {
+    expect(CONFIG_PAGAMENTO_SITE_PADRAO).toMatchObject({ pedidoCancelamentoNoPortal: true, naoComparecimentoHoras: 21 });
+    expect(await lerConfigPagamentoSite(db, org)).toMatchObject(CANCELAMENTO_PADRAO);
+    // Configuração gravada antes do M8.2c: o padrão.
+    expect(configDeJson({ oferecer: true, cartao: true })).toMatchObject(CANCELAMENTO_PADRAO);
+    expect(configDeJson({ pedidoCancelamentoNoPortal: false, naoComparecimentoHoras: 0 })).toMatchObject({ pedidoCancelamentoNoPortal: false, naoComparecimentoHoras: 0 });
+    expect(configDeJson({ naoComparecimentoHoras: 72 }).naoComparecimentoHoras).toBe(72);
+    for (const estranho of [{ pedidoCancelamentoNoPortal: "nao", naoComparecimentoHoras: 73 }, { pedidoCancelamentoNoPortal: 0, naoComparecimentoHoras: -1 }, { naoComparecimentoHoras: 1.5 }, { naoComparecimentoHoras: "12" }]) {
+      expect(configDeJson(estranho)).toMatchObject(CANCELAMENTO_PADRAO);
+    }
+  });
+
+  it("cancelamento (M8.2c): formulário — caixa do pedido (desmarcada = desligado) e horas de 0 a 72 (vazio = 21); grava auditado", async () => {
+    const ok = (bruto: Record<string, unknown>) => {
+      const v = validarConfigPagamentoSite(bruto);
+      if (!v.ok) throw new Error(JSON.stringify(v.erros));
+      return v.config;
+    };
+    expect(ok({ pedidoCancelamentoNoPortal: "on", naoComparecimentoHoras: " 12 " })).toMatchObject({ pedidoCancelamentoNoPortal: true, naoComparecimentoHoras: 12 });
+    expect(ok({ pedidoCancelamentoNoPortal: "on", naoComparecimentoHoras: "" })).toMatchObject({ pedidoCancelamentoNoPortal: true, naoComparecimentoHoras: 21 });
+    expect(ok({ naoComparecimentoHoras: "0" })).toMatchObject({ pedidoCancelamentoNoPortal: false, naoComparecimentoHoras: 0 });
+    expect(ok({ naoComparecimentoHoras: "72" }).naoComparecimentoHoras).toBe(72);
+    for (const ruim of ["73", "-1", "2,5", "1.0", "doze", "100"]) {
+      expect(validarConfigPagamentoSite({ naoComparecimentoHoras: ruim })).toEqual({ ok: false, erros: { naoComparecimentoHoras: ERRO_NAO_COMPARECIMENTO_HORAS } });
+    }
+    expect(ERRO_NAO_COMPARECIMENTO_HORAS).toBe("Use um número inteiro de horas de 0 a 72 (vazio = 21).");
+    const config = { ...CONFIG_PAGAMENTO_SITE_PADRAO, pedidoCancelamentoNoPortal: false, naoComparecimentoHoras: 30 };
+    expect(await salvarConfigPagamentoSite(db, org, config, null)).toEqual({ ok: true, mudou: true });
+    expect(await lerConfigPagamentoSite(db, org)).toEqual(config);
+    const [audit] = await db.select().from(auditoria).where(and(eq(auditoria.organizacaoId, org), eq(auditoria.acao, "configuracao.pagamento_site")));
+    expect(JSON.stringify(audit.mudancas)).toContain("naoComparecimentoHoras");
   });
 
   it("categoria da taxa perdida: criada no primeiro uso, guardada e reaproveitada", async () => {

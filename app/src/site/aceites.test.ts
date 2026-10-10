@@ -145,8 +145,8 @@ describe("aceite ao gerar o Pix (M7.4)", () => {
     expect((await c.tentativa(b.pagamentoId)).aceiteId).toBe(aceiteV2.id);
     expect(await c.tentativa(a.pagamentoId)).toMatchObject({ situacao: "cancelado", aceiteId: aceiteV1.id });
     // A devolução (M8.2c) lê a política de cada tentativa, nunca a em vigor.
-    expect(await politicaDoPagamento(db, c.org, a.pagamentoId)).toEqual({ versao: 1, data: "2026-10-01", regras: { diasReembolsoIntegral: 14 } });
-    expect(await politicaDoPagamento(db, c.org, b.pagamentoId)).toEqual({ versao: 2, data: "2026-10-01", regras: { diasReembolsoIntegral: 7 } });
+    expect(await politicaDoPagamento(db, c.org, a.pagamentoId)).toEqual({ versao: 1, data: "2026-10-01", regras: { diasReembolsoIntegral: 14, arrependimentoAteEntrada: true } });
+    expect(await politicaDoPagamento(db, c.org, b.pagamentoId)).toEqual({ versao: 2, data: "2026-10-01", regras: { diasReembolsoIntegral: 7, arrependimentoAteEntrada: true } });
   });
 
   it("a aprovação nunca confere aceite: versão nova publicada depois do Pix e o pagamento aprovado confirma a reserva", async () => {
@@ -264,7 +264,7 @@ describe("prova do aceite (M7.4)", () => {
     expect([...contagem.privacidade]).toEqual([[1, 3]]);
     expect(new Map(contagem.cancelamento)).toEqual(new Map([[1, 1], [2, 2]]));
     expect((await contarAceitesPorVersao(db, sem.org)).termos.size).toBe(0);
-    expect(await politicaDoPagamento(db, c.org, p.pagamentoId)).toEqual({ versao: 1, data: "2026-10-01", regras: { diasReembolsoIntegral: 14 } });
+    expect(await politicaDoPagamento(db, c.org, p.pagamentoId)).toEqual({ versao: 1, data: "2026-10-01", regras: { diasReembolsoIntegral: 14, arrependimentoAteEntrada: true } });
     expect(await politicaDoPagamento(db, sem.org, p.pagamentoId)).toBeNull();
     expect(await politicaDoPagamento(db, c.org, "nada")).toBeNull();
   });

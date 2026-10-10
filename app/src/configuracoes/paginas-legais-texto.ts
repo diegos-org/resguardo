@@ -6,7 +6,9 @@
  * O texto é um campo longo: `## ` no começo da linha abre um título, linha em branco separa parágrafos e `- ` / `1. `
  * abrem itens de lista. `{{campo}}` vira um dado da empresa (Configurações → Empresa) ou, na Política de
  * cancelamento, o prazo do reembolso integral, que é um campo próprio da política (o texto e a devolução leem o mesmo
- * número). Os valores usados ficam congelados em cada versão: o que o hóspede leu e aceitou nunca muda.
+ * número). Os valores usados ficam congelados em cada versão: o que o hóspede leu e aceitou nunca muda. A política
+ * também guarda, por versão, se o arrependimento vale só até o horário de entrada (M8.2c): a devolução lê a regra da
+ * versão aceita, e a publicação recusa a caixa desmarcada com o texto ainda dizendo o contrário.
  */
 import type { ChaveConfig } from "./armazem";
 import type { DefinicaoSecao } from "./documentos-versionados";
@@ -52,9 +54,29 @@ export const CAMPOS_LEGAIS = [
   { chave: "dias_reembolso_integral", rotulo: "Dias para o reembolso integral", so: "cancelamento" },
 ] as const;
 export type CampoLegal = (typeof CAMPOS_LEGAIS)[number]["chave"];
-export type RegrasCancelamento = { diasReembolsoIntegral: number };
+/**
+ * Regras da Política de cancelamento que a devolução (M8.2c) usa, congeladas em cada versão. `arrependimentoAteEntrada`:
+ * o arrependimento (7 dias, CDC art. 49) vale só até o horário de entrada no dia do check-in; ausente = sim (a versão 1
+ * do texto-base tem esse limite e foi publicada antes de o campo existir) — ver `regrasComPadrao`.
+ */
+export type RegrasCancelamento = { diasReembolsoIntegral: number; arrependimentoAteEntrada?: boolean };
 export const DIAS_REEMBOLSO_MIN = 1;
 export const DIAS_REEMBOLSO_MAX = 365;
+
+/** As regras com o padrão de cada campo ausente (uma regra, um lugar: a leitura das versões e o formulário usam esta). */
+export const regrasComPadrao = (r: RegrasCancelamento): Required<RegrasCancelamento> => ({
+  diasReembolsoIntegral: r.diasReembolsoIntegral,
+  arrependimentoAteEntrada: typeof r.arrependimentoAteEntrada === "boolean" ? r.arrependimentoAteEntrada : true,
+});
+
+/** A frase do texto-base que limita o arrependimento ao horário de entrada (conferida sem caixa e espaços extras). */
+export const FRASE_LIMITE_ARREPENDIMENTO = "até o horário de entrada no dia do check-in";
+export const MENSAGEM_ARREPENDIMENTO_SEM_LIMITE =
+  'Você desmarcou o limite do arrependimento, mas o texto ainda diz que ele vale até o horário de entrada no dia do check-in: ajuste a seção "Direito de arrependimento" ou marque a caixa.';
+const normalizado = (t: string) => t.toLowerCase().replace(/\s+/g, " ");
+/** Alguma seção do texto ainda traz a frase do limite do arrependimento? */
+export const textoLimitaArrependimento = (secoes: Record<string, string>): boolean =>
+  Object.values(secoes).some((t) => normalizado(t).includes(FRASE_LIMITE_ARREPENDIMENTO));
 
 const CAMPOS = new Map<string, (typeof CAMPOS_LEGAIS)[number]>(CAMPOS_LEGAIS.map((c) => [c.chave, c]));
 const soDe = (c: (typeof CAMPOS_LEGAIS)[number]): DocumentoLegal | undefined => ("so" in c ? c.so : undefined);
@@ -205,15 +227,20 @@ export function prazoDoReembolso(checkin: string, dias: number, hoje: string): {
 
 /** Texto de um campo do formulário: quebras do Windows viram `\n`, sem espaço nas pontas. */
 const limpo = (v: unknown) => (typeof v === "string" ? v.replace(/\r\n/g, "\n").trim() : "");
+/** Caixa do formulário: marcada só com "on" (ou true); ausente = desmarcada. */
+const marcada = (v: unknown) => v === true || v === "on" || v === "true" || v === "1";
 
 /**
  * Lê o formulário do painel: todas as seções do documento escritas e dentro do limite; na Política de cancelamento,
- * o prazo do reembolso integral em dias inteiros, de 1 a 365.
+ * o prazo do reembolso integral em dias inteiros, de 1 a 365, e a caixa do limite do arrependimento (desmarcada é
+ * recusada enquanto o texto ainda traz a frase do limite: o texto e a devolução nunca discordam).
  */
 export function validarPaginaLegal(
   doc: DocumentoLegal,
   bruto: Record<string, unknown>,
-): { ok: true; entrada: { secoes: Record<string, string>; diasReembolsoIntegral: number | null } } | { ok: false; erros: Record<string, string>; mensagem: string } {
+):
+  | { ok: true; entrada: { secoes: Record<string, string>; diasReembolsoIntegral: number | null; arrependimentoAteEntrada: boolean | null } }
+  | { ok: false; erros: Record<string, string>; mensagem: string } {
   const secoes: Record<string, string> = {};
   const erros: Record<string, string> = {};
   for (const s of PAGINAS_LEGAIS[doc].secoes) {
@@ -223,14 +250,17 @@ export function validarPaginaLegal(
     secoes[s.chave] = v;
   }
   let dias: number | null = null;
+  let arrependimentoAteEntrada: boolean | null = null;
   if (doc === "cancelamento") {
     const t = typeof bruto.diasReembolsoIntegral === "number" ? String(bruto.diasReembolsoIntegral) : limpo(bruto.diasReembolsoIntegral);
     const n = /^\d{1,3}$/.test(t) ? Number(t) : Number.NaN;
     if (n >= DIAS_REEMBOLSO_MIN && n <= DIAS_REEMBOLSO_MAX) dias = n;
     else erros.diasReembolsoIntegral = `Informe um número de dias entre ${DIAS_REEMBOLSO_MIN} e ${DIAS_REEMBOLSO_MAX}.`;
+    arrependimentoAteEntrada = marcada(bruto.arrependimentoAteEntrada);
+    if (!arrependimentoAteEntrada && textoLimitaArrependimento(secoes)) erros.arrependimentoAteEntrada = MENSAGEM_ARREPENDIMENTO_SEM_LIMITE;
   }
   if (Object.keys(erros).length) return { ok: false, erros, mensagem: "Confira os campos destacados." };
-  return { ok: true, entrada: { secoes, diasReembolsoIntegral: dias } };
+  return { ok: true, entrada: { secoes, diasReembolsoIntegral: dias, arrependimentoAteEntrada } };
 }
 
 /** O texto cita o Beds24? Só um aviso no painel (decisão de 7/10, M5.9: o hóspede não vê esse nome). */

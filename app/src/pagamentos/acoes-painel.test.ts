@@ -186,7 +186,13 @@ describe("salvar a aba Pagamento no site", () => {
     m.salvar.mockResolvedValue({ ok: true, mudou: true });
     const r = await salvarConfigPagamentoSiteAcao({}, form({ oferecer: "on", nomeFatura: " SCL  Leblon ", categoriaTaxaId: "" }));
     expect(r).toEqual({ ok: true, aviso: "Salvo. Vale para os pagamentos novos; os já criados seguem como estavam." });
-    expect(m.salvar).toHaveBeenCalledWith({ banco: true }, "org", { oferecer: true, nomeFatura: "SCL Leblon", categoriaTaxaId: null, cartao: false, parcelasMaximas: null, tresDS: "on_fraud_risk" }, "u");
+    // Cancelamento (M8.2c): sem a caixa no formulário, o pedido em Minha reserva fica desligado; horas vazias = 21.
+    expect(m.salvar).toHaveBeenCalledWith(
+      { banco: true },
+      "org",
+      { oferecer: true, nomeFatura: "SCL Leblon", categoriaTaxaId: null, cartao: false, parcelasMaximas: null, tresDS: "on_fraud_risk", pedidoCancelamentoNoPortal: false, naoComparecimentoHoras: 21 },
+      "u",
+    );
     expect(m.revalidar).toHaveBeenCalledWith("/painel", "layout");
     // Desligar: a caixa desmarcada não vem no formulário.
     expect((await salvarConfigPagamentoSiteAcao({}, form({ nomeFatura: "" }))).aviso).toContain("deixa de oferecer o pagamento");
@@ -194,6 +200,10 @@ describe("salvar a aba Pagamento no site", () => {
     m.salvar.mockClear();
     await salvarConfigPagamentoSiteAcao({}, form({ oferecer: "on", cartao: "on", parcelasMaximas: "6", tresDS: "never" }));
     expect(m.salvar).toHaveBeenCalledWith({ banco: true }, "org", expect.objectContaining({ cartao: true, parcelasMaximas: 6, tresDS: "never" }), "u");
+    // Cancelamento (M8.2c): a caixa e as horas vêm do formulário.
+    m.salvar.mockClear();
+    await salvarConfigPagamentoSiteAcao({}, form({ oferecer: "on", pedidoCancelamentoNoPortal: "on", naoComparecimentoHoras: "12" }));
+    expect(m.salvar).toHaveBeenCalledWith({ banco: true }, "org", expect.objectContaining({ pedidoCancelamentoNoPortal: true, naoComparecimentoHoras: 12 }), "u");
     m.salvar.mockResolvedValue({ ok: true, mudou: false });
     expect((await salvarConfigPagamentoSiteAcao({}, form({ oferecer: "on" }))).aviso).toBe("Nada mudou.");
   });

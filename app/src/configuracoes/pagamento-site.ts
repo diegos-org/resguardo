@@ -5,7 +5,10 @@
  * taxa perdida recebe a despesa da taxa que o provedor não devolve (criada no primeiro uso, editável depois).
  * Cartão (M8.2b): `cartao` começa DESLIGADO e só vale com `oferecer`; `parcelasMaximas` null = o máximo que o
  * Mercado Pago permitir (juros pagos pelo hóspede); `tresDS` = a verificação do banco pedida em cada cartão novo.
- * Tudo auditado, valendo para as tentativas novas.
+ * Cancelamento (M8.2c): `pedidoCancelamentoNoPortal` mostra o botão "Pedir o cancelamento" em Minha reserva (começa
+ * LIGADO: o hóspede só pede, quem cancela é a equipe); `naoComparecimentoHoras` = quantas horas depois do horário de
+ * entrada a equipe pode registrar o não comparecimento (o hóspede pode chegar atrasado e avisar).
+ * Tudo auditado, valendo para as tentativas novas (e, no cancelamento, para os pedidos e cancelamentos de agora em diante).
  */
 import { and, eq, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
@@ -26,10 +29,28 @@ export type ConfigPagamentoSite = {
   parcelasMaximas: number | null;
   /** Verificação do banco (3DS) pedida nos cartões novos. */
   tresDS: ModoTresDS;
+  /** O hóspede pode pedir o cancelamento em Minha reserva (reservas pagas pelo site). */
+  pedidoCancelamentoNoPortal: boolean;
+  /** Horas depois do horário de entrada até a equipe poder registrar o não comparecimento (0 a 72). */
+  naoComparecimentoHoras: number;
 };
 export type ErrosPagamentoSite = Partial<Record<keyof ConfigPagamentoSite, string>>;
 
-export const CONFIG_PAGAMENTO_SITE_PADRAO: ConfigPagamentoSite = { oferecer: false, nomeFatura: null, categoriaTaxaId: null, cartao: false, parcelasMaximas: null, tresDS: "on_fraud_risk" };
+/** Faixa e padrão da tolerância do não comparecimento: 21 horas = 12h do dia seguinte, com entrada às 15h. */
+export const NAO_COMPARECIMENTO_HORAS_MAX = 72;
+export const NAO_COMPARECIMENTO_HORAS_PADRAO = 21;
+export const ERRO_NAO_COMPARECIMENTO_HORAS = `Use um número inteiro de horas de 0 a ${NAO_COMPARECIMENTO_HORAS_MAX} (vazio = ${NAO_COMPARECIMENTO_HORAS_PADRAO}).`;
+
+export const CONFIG_PAGAMENTO_SITE_PADRAO: ConfigPagamentoSite = {
+  oferecer: false,
+  nomeFatura: null,
+  categoriaTaxaId: null,
+  cartao: false,
+  parcelasMaximas: null,
+  tresDS: "on_fraud_risk",
+  pedidoCancelamentoNoPortal: true,
+  naoComparecimentoHoras: NAO_COMPARECIMENTO_HORAS_PADRAO,
+};
 /** Textos das opções da verificação do banco (3DS) no painel. */
 export const TEXTOS_TRES_DS: Record<ModoTresDS, string> = {
   on_fraud_risk:
@@ -47,6 +68,7 @@ export const CATEGORIA_TAXA_PERDIDA = "Taxa do pagamento do site";
 const ligado = (v: unknown) => v === true || v === "on" || v === "true" || v === "1";
 const parcelasValidas = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= PARCELAS_MAXIMAS;
 const modoTresDS = (v: unknown): v is ModoTresDS => typeof v === "string" && (MODOS_TRES_DS as readonly string[]).includes(v);
+const horasValidas = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= NAO_COMPARECIMENTO_HORAS_MAX;
 
 /** Valor gravado → configuração; campo ausente ou estranho volta ao padrão (nunca inventa dado). */
 export function configDeJson(v: Record<string, unknown> | null): ConfigPagamentoSite {
@@ -58,12 +80,16 @@ export function configDeJson(v: Record<string, unknown> | null): ConfigPagamento
     cartao: typeof c.cartao === "boolean" ? c.cartao : CONFIG_PAGAMENTO_SITE_PADRAO.cartao,
     parcelasMaximas: parcelasValidas(c.parcelasMaximas) ? c.parcelasMaximas : CONFIG_PAGAMENTO_SITE_PADRAO.parcelasMaximas,
     tresDS: modoTresDS(c.tresDS) ? c.tresDS : CONFIG_PAGAMENTO_SITE_PADRAO.tresDS,
+    pedidoCancelamentoNoPortal: typeof c.pedidoCancelamentoNoPortal === "boolean" ? c.pedidoCancelamentoNoPortal : CONFIG_PAGAMENTO_SITE_PADRAO.pedidoCancelamentoNoPortal,
+    naoComparecimentoHoras: horasValidas(c.naoComparecimentoHoras) ? c.naoComparecimentoHoras : CONFIG_PAGAMENTO_SITE_PADRAO.naoComparecimentoHoras,
   };
 }
 
 /**
  * Formulário do painel → configuração. Nome na fatura: letras, números, espaço, ponto e hífen. Parcelas: vazio = o
  * máximo do Mercado Pago, senão inteiro de 1 a 36. Verificação do banco: uma das opções (sem o campo, a recomendada).
+ * Cancelamento: a caixa do pedido em Minha reserva (desmarcada = desligado, como toda caixa do formulário) e as horas do
+ * não comparecimento (vazio = o padrão, senão inteiro de 0 a 72).
  */
 export function validarConfigPagamentoSite(bruto: Record<string, unknown>): { ok: true; config: ConfigPagamentoSite } | { ok: false; erros: ErrosPagamentoSite } {
   const erros: ErrosPagamentoSite = {};
@@ -77,10 +103,22 @@ export function validarConfigPagamentoSite(bruto: Record<string, unknown>): { ok
   if (parcelasMaximas !== null && !parcelasValidas(parcelasMaximas)) erros.parcelasMaximas = ERRO_PARCELAS_MAXIMAS;
   const tresDS = typeof bruto.tresDS === "string" && bruto.tresDS.trim() ? bruto.tresDS.trim() : CONFIG_PAGAMENTO_SITE_PADRAO.tresDS;
   if (!modoTresDS(tresDS)) erros.tresDS = "Escolha uma das opções da verificação do banco.";
+  const horasTexto = typeof bruto.naoComparecimentoHoras === "string" ? bruto.naoComparecimentoHoras.trim() : "";
+  const naoComparecimentoHoras = horasTexto === "" ? NAO_COMPARECIMENTO_HORAS_PADRAO : /^\d{1,2}$/.test(horasTexto) ? Number(horasTexto) : Number.NaN;
+  if (!horasValidas(naoComparecimentoHoras)) erros.naoComparecimentoHoras = ERRO_NAO_COMPARECIMENTO_HORAS;
   if (Object.keys(erros).length) return { ok: false, erros };
   return {
     ok: true,
-    config: { oferecer: ligado(bruto.oferecer), nomeFatura: nome || null, categoriaTaxaId: categoria || null, cartao: ligado(bruto.cartao), parcelasMaximas, tresDS: tresDS as ModoTresDS },
+    config: {
+      oferecer: ligado(bruto.oferecer),
+      nomeFatura: nome || null,
+      categoriaTaxaId: categoria || null,
+      cartao: ligado(bruto.cartao),
+      parcelasMaximas,
+      tresDS: tresDS as ModoTresDS,
+      pedidoCancelamentoNoPortal: ligado(bruto.pedidoCancelamentoNoPortal),
+      naoComparecimentoHoras,
+    },
   };
 }
 

@@ -57,6 +57,14 @@ export type DadosPix = {
   expiraEm: Date | null;
 };
 
+/**
+ * Uma devolução lida na order (M8.2c), por lista branca de status: `confirmada` (processed/approved), `falhou`
+ * (failed/rejected/canceled/cancelled) ou `andamento` (qualquer outro). Só em memória: o id só é gravado como
+ * `devolucoes_pagamento.id_provedor` (a nossa), e nada mais da devolução (e2e_id, reference_id) é lido.
+ */
+export type EstadoDevolucaoLida = "confirmada" | "andamento" | "falhou";
+export type DevolucaoLida = { id: string; estado: EstadoDevolucaoLida; valor: number };
+
 export type Cobranca = {
   /** Id da order (ORD…). */
   idProvedor: string;
@@ -76,6 +84,11 @@ export type Cobranca = {
   devolvido: number;
   /** Há devolução pedida e ainda não confirmada (ou numa situação que o sistema não conhece) na order. */
   devolucaoEmAndamento: boolean;
+  /**
+   * As devoluções da order que a leitura trouxe (até 20, com id válido; valor em centavos, 0 se ilegível). Vazia quando a
+   * resposta não lista devoluções (o GET da Checkout API não documenta `transactions.refunds[]`): não quer dizer "nenhuma".
+   */
+  devolucoes: DevolucaoLida[];
   parcelas: number | null;
   /** Id do pagamento dentro da order (PAY…), usado na devolução parcial. */
   idTransacao: string | null;
@@ -177,13 +190,29 @@ export type PedidoCartao = {
   descricaoFatura: string | null;
 };
 
+/** Código do resultado de uma devolução (lista fechada; nunca tirado de texto livre do provedor). */
+export const CODIGOS_DEVOLUCAO = ["saldo_insuficiente", "prazo", "valor_excede", "em_andamento", "transitorio", "nao_permitido", "nao_encontrado"] as const;
+export type CodigoDevolucao = (typeof CODIGOS_DEVOLUCAO)[number];
+/** Recusas que o Mercado Pago não reverte sozinho (abrem a devolução por fora no cartão). */
+export const RECUSAS_DEFINITIVAS: readonly CodigoDevolucao[] = ["nao_permitido", "prazo", "nao_encontrado"];
+
 /**
  * - `confirmada`: o provedor confirmou a devolução.
  * - `pedida`: aceita, aguardando confirmação (reconsultar depois).
  * - `recusada`: o provedor (ou a validação local) recusou.
  * - `incerta`: não dá para saber; repetir com a MESMA chave mais tarde.
+ * - `aguarde`: há uma devolução em andamento na order ou o Mercado Pago pediu para esperar; nada foi aceito por esta
+ *   chave (repetir com a MESMA chave mais tarde, sem contar como falha).
+ *
+ * `idDevolucao`: a devolução que ESTE pedido criou (a que não estava na leitura de antes do pedido), ou null quando não dá
+ * para saber qual é. `codigo`: o motivo, de `CODIGOS_DEVOLUCAO`; null = nenhum (inclusive nas aceitas).
  */
-export type ResultadoDevolucao = { situacao: "confirmada" | "pedida" | "recusada" | "incerta"; idDevolucao: string | null; mensagem: string };
+export type ResultadoDevolucao = {
+  situacao: "confirmada" | "pedida" | "recusada" | "incerta" | "aguarde";
+  idDevolucao: string | null;
+  mensagem: string;
+  codigo: CodigoDevolucao | null;
+};
 
 export type ResultadoCancelamento = "cancelado" | "nao_cancelavel" | "erro";
 
@@ -223,7 +252,10 @@ export interface ProvedorPagamento {
   /** Taxa, líquido e liberação. Qualquer falha ou ausência = campos null (nunca lança). */
   detalheFinanceiro(c: Cobranca): Promise<DetalheFinanceiro>;
   cancelar(idProvedor: string, chaveIdempotencia: string): Promise<ResultadoCancelamento>;
-  /** `valor` null = integral (o que falta devolver). Nunca lança: falhas viram `recusada`/`incerta`. */
+  /**
+   * `valor` null = integral (o que falta devolver). Nunca lança: falhas viram `recusada`/`incerta`/`aguarde`. `c` é a
+   * leitura de antes do pedido: as devoluções dela (`c.devolucoes`) separam a nova das que já existiam.
+   */
   devolver(c: Cobranca, chaveIdempotencia: string, valor: number | null): Promise<ResultadoDevolucao>;
   /**
    * A conta por trás da chave é, comprovadamente, uma conta de TESTE do provedor? true só com
@@ -280,6 +312,9 @@ export const chaveIdempotenciaValida = (c: unknown): c is string => typeof c ===
 
 /** Id de order/transação do provedor: letras, números, hífen e sublinhado (ex.: ORD01…, pay_01…). Impede injeção no caminho da URL. */
 export const idProvedorValido = (id: unknown): id is string => typeof id === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(id);
+
+/** Id de uma devolução do provedor: um id válido que começa com REF (ex.: REF01J49MMW3SSBK5PSV3DFR32959; maiúsculo ou não). */
+export const idDevolucaoValido = (id: unknown): id is string => idProvedorValido(id) && /^ref/i.test(id);
 
 /** E-mail com cara de e-mail (o provedor faz a conferência de verdade). */
 export const emailPlausivel = (e: unknown): e is string => typeof e === "string" && e.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);

@@ -21,7 +21,7 @@ import { and, desc, eq, gte, inArray, isNotNull, lte, or, sql } from "drizzle-or
 import { emailValido } from "@/acesso/codigo-email";
 import { gravarConfig, lerConfig } from "@/configuracoes/armazem";
 import { lerEmpresa } from "@/configuracoes/empresa";
-import { preencherModelo, type Variavel, variaveisDoTexto } from "@/configuracoes/modelos-texto";
+import { NOMES_TIPO, preencherModelo, problemaDoModeloNoTipo, type Variavel, variaveisDoTexto, variaveisForaDoLugar } from "@/configuracoes/modelos-texto";
 import {
   appSettings,
   imoveis,
@@ -40,12 +40,7 @@ import { instanteLocal, liberacaoDasInstrucoes } from "@/hospede/portal";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 
-export const NOMES_TIPO: Record<TipoMensagemHospede, string> = {
-  confirmacao: "Confirmação da reserva",
-  checkin: "Instruções de check-in (2 dias antes da entrada, 10h)",
-  checkout: "Lembrete de check-out (1 dia antes da saída, 14h)",
-  agradecimento: "Agradecimento (3 dias depois da saída, 10h)",
-};
+export { NOMES_TIPO };
 
 /** Recusas seguidas do provedor antes de desistir de uma mensagem. */
 export const MAX_TENTATIVAS = 3;
@@ -93,9 +88,9 @@ export async function salvarConfigMensagens(
   for (const t of TIPOS_MENSAGEM_HOSPEDE) {
     const id = c.modelos[t] || null;
     if (id && !porId.get(id)?.ativo) return { ok: false, erro: `Modelo escolhido para "${NOMES_TIPO[t]}" não existe ou está arquivado.` };
-    // O endereço só é liberado 2 dias antes da entrada: a confirmação sai antes disso.
-    if (id && t === "confirmacao" && variaveisDoTexto(porId.get(id)!.texto).includes("endereco"))
-      return { ok: false, erro: "A confirmação não pode usar {endereco}: o endereço só é enviado 2 dias antes da entrada (use no modelo de check-in)." };
+    // Variável fora do lugar, endereço onde ele não vai (a confirmação sai antes da liberação dele) ou variável que falta.
+    const problema = id ? problemaDoModeloNoTipo(t, porId.get(id)!.texto) : null;
+    if (problema) return { ok: false, erro: problema };
     modelos[t] = id;
   }
   if (c.ativo && !Object.values(modelos).some(Boolean)) return { ok: false, erro: "Escolha o modelo de ao menos uma mensagem para ligar o envio." };
@@ -132,6 +127,12 @@ export function prazoDaMensagem(tipo: TipoMensagemHospede, r: DadosPrazo): { ini
       const inicio = instanteLocal(somarDias(r.checkout, 3), "10:00", r.fuso);
       return { inicio, fim: new Date(inicio.getTime() + PRAZO_AGRADECIMENTO_MS), referencia: r.checkout };
     }
+    // Mensagens do cancelamento (M8.2c): não saem de uma reserva confirmada (os prazos contam do pedido, da decisão e da
+    // devolução, que vêm do cancelamento).
+    case "cancelamento_recebido":
+    case "cancelamento_decidido":
+    case "devolucao_concluida":
+      return null;
   }
 }
 
@@ -221,6 +222,12 @@ export async function enviarMensagensHospede(db: Db, organizacaoId: string, corr
         continue;
       }
       const usadas = variaveisDoTexto(modelo.texto) as Variavel[];
+      // Modelo editado depois de escolhido para usar uma variável do cancelamento: não manda, avisa.
+      const fora = variaveisForaDoLugar(tipo, modelo.texto);
+      if (fora.length) {
+        aviso(`o modelo usa {${fora[0]}}, que só vale nas mensagens do cancelamento`);
+        continue;
+      }
       const liberado = agora >= liberacaoDasInstrucoes(l.checkin, fuso);
       if (usadas.includes("endereco") && !liberado) {
         aviso("o modelo usa {endereco}, que só é enviado 2 dias antes da entrada");
@@ -237,6 +244,13 @@ export async function enviarMensagensHospede(db: Db, organizacaoId: string, corr
         noites: String(noites),
         codigo: l.codigo,
         empresa: empresa.nome.trim(),
+        // Só nas mensagens do cancelamento (recusadas acima nas outras).
+        recebido: "",
+        decisao: "",
+        valor: "",
+        data: "",
+        comovolta: "",
+        link: "",
       };
       const faltando = usadas.filter((v) => !valores[v]);
       if (faltando.length) {

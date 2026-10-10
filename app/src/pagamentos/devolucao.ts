@@ -189,7 +189,7 @@ export async function tentarDevolucao(db: Db, organizacaoId: string, devolucaoId
   }
   let res: ResultadoDevolucao;
   let chaveRepetida = false;
-  if (!cobranca) res = { situacao: "recusada", idDevolucao: null, mensagem: "O Mercado Pago não encontrou o pagamento." };
+  if (!cobranca) res = { situacao: "recusada", idDevolucao: null, mensagem: "O Mercado Pago não encontrou o pagamento.", codigo: "nao_encontrado" };
   else {
     // Grava a chave antes de chamar, sob as travas. Depois de uma resposta incerta, a MESMA chave de novo (o pedido
     // anterior pode ter sido aceito: o provedor não devolve duas vezes pela mesma chave); senão, chave nova.
@@ -250,17 +250,18 @@ export async function tentarDevolucao(db: Db, organizacaoId: string, devolucaoId
         .where(eq(devolucoesPagamento.id, dev.id));
       return;
     }
-    // Recusada ou incerta (o pedido pode ter saído): conta; só desiste com a releitura sem nenhum sinal de devolução.
+    // Recusada, incerta (o pedido pode ter saído) ou "aguarde" (nada aceito, mas o Mercado Pago pediu para esperar): conta;
+    // só desiste com a releitura sem nenhum sinal de devolução (que o "aguarde" não faz: ele nunca desiste sozinho).
     const falhas = dev.falhas + 1;
     const semSinalDeDevolucao = releitura === null || (releitura !== undefined && !temDevolucao(releitura));
     const desistiu = falhas >= MAXIMO_FALHAS_DEVOLUCAO && semSinalDeDevolucao;
     await tx
       .update(devolucoesPagamento)
-      // Incerta: o próximo envio repete a chave. Recusa clara de uma chave nova: o próximo leva chave nova. Uma chave que
-      // já estava em dúvida continua em dúvida mesmo recusada agora (a recusa pode vir antes de o provedor conferir a
-      // chave, e o pedido anterior com ela pode ter saído): só a desistência, com a order relida sem sinal de
+      // Incerta ou "aguarde": o próximo envio repete a chave. Recusa clara de uma chave nova: o próximo leva chave nova.
+      // Uma chave que já estava em dúvida continua em dúvida mesmo recusada agora (a recusa pode vir antes de o provedor
+      // conferir a chave, e o pedido anterior com ela pode ter saído): só a desistência, com a order relida sem sinal de
       // devolução, deixa a equipe pedir com chave nova.
-      .set({ falhas, chaveEmDuvida: res.situacao === "incerta" || chaveRepetida, ...(desistiu ? { situacao: "recusada" as const, proximaTentativaEm: null } : {}), atualizadoEm: agora })
+      .set({ falhas, chaveEmDuvida: res.situacao === "incerta" || res.situacao === "aguarde" || chaveRepetida, ...(desistiu ? { situacao: "recusada" as const, proximaTentativaEm: null } : {}), atualizadoEm: agora })
       .where(eq(devolucoesPagamento.id, dev.id));
     if (desistiu) {
       const p = t.tentativas.find((x) => x.id === dev.pagamentoId)!;
