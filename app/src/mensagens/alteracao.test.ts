@@ -16,7 +16,7 @@ import type { Db } from "@/db/types";
 import { CorreioMemoria } from "@/email/correio";
 import { marcarHospedeAvisadoDaAlteracao } from "@/pagamentos/alteracao";
 import { tentarDevolucao } from "@/pagamentos/devolucao";
-import { AGORA, alteracaoGravada, alterar, type Cenario, EMAIL_HOSPEDE, liberar, minutos, montarCenario, pagarDiferenca, pagarEConfirmar, usuarioDeTeste } from "@/pagamentos/testes";
+import { AGORA, alteracaoGravada, alterar, type Cenario, cancelar, EMAIL_HOSPEDE, entradaPadrao, liberar, minutos, montarCenario, pagarDiferenca, pagarEConfirmar, usuarioDeTeste } from "@/pagamentos/testes";
 import { enviarMensagensHospede, mensagensDaAlteracao, salvarConfigMensagens } from "./hospede";
 
 let db: Db, close: () => Promise<void>, c: Cenario, correio: CorreioMemoria, equipe: string;
@@ -95,6 +95,35 @@ describe("mensagens da alteração pelo motor (M8.2d)", () => {
     expect(correio.enviadas.at(-1)!.texto).toBe(`Olá, Visitante Fictício! A devolução de R$ 528,00 da reserva ${x.reservaCodigo} foi feita em 01/10/2026. ${TEXTOS_SITE_INICIAIS.cancelamentoVoltaPix}`);
     expect(await alteracaoGravada(c, resultado.alteracaoId)).toMatchObject({ hospedeAvisadoDevolucaoEm: minutos(42), hospedeAvisadoDevolucaoPor: null });
     expect(await enviarMensagensHospede(db, c.org, correio, minutos(43))).toMatchObject({ enviadas: 0 });
+  });
+
+  it("reserva cancelada sem devolução depois da redução: a devolução da diferença que continuou ainda tem a mensagem 'Devolução feita' (pelo motor e para copiar); a confirmação da alteração, não", async () => {
+    await ligar();
+    const x = await pagarEConfirmar(c);
+    const { resultado } = await alterar(c, x.reservaId, { checkout: "2026-10-14" }, minutos(20), { autorId: equipe, aplicar: true });
+    if (!resultado.ok) throw new Error(resultado.erro);
+    await enviarMensagensHospede(db, c.org, correio, minutos(21));
+    // O hóspede pede o cancelamento em 10/10 para a entrada de 12/10: fora do prazo, sem devolução; a da diferença continua.
+    const pedido = new Date("2026-10-10T10:00:00-03:00");
+    const decidido = new Date("2026-10-10T11:00:00-03:00");
+    const canc = await cancelar(c, x.reservaId, entradaPadrao({ recebidoEm: pedido, canal: "email" }), equipe, decidido);
+    expect(canc.resultado).toMatchObject({ ok: true, direito: "nenhum" });
+    const [d] = await db.select().from(devolucoesPagamento).where(eq(devolucoesPagamento.alteracaoId, resultado.alteracaoId));
+    expect(d.situacao).toBe("pedida");
+    // Antes de sair, nada a copiar sobre ela; a confirmação da alteração não é mais oferecida.
+    expect(await mensagensDaAlteracao(db, c.org, resultado.alteracaoId, decidido)).toMatchObject({ proposta: null, confirmada: null, devolvida: null });
+    const depois = new Date("2026-10-10T12:00:00-03:00");
+    await liberar(c, x.pagamentoId, { quando: depois });
+    expect(await tentarDevolucao(db, c.org, d.id, c.provedor, new Date("2026-10-10T12:01:00-03:00"))).toBe("confirmada");
+    const prontas = await mensagensDaAlteracao(db, c.org, resultado.alteracaoId, new Date("2026-10-10T12:02:00-03:00"));
+    expect(prontas.confirmada).toBeNull();
+    expect(prontas.devolvida?.texto).toContain(`A devolução de R$ 528,00 da reserva ${x.reservaCodigo} foi feita`);
+    const antes = correio.enviadas.length;
+    expect(await enviarMensagensHospede(db, c.org, correio, new Date("2026-10-10T12:03:00-03:00"))).toMatchObject({ avisos: [] });
+    const novas = correio.enviadas.slice(antes).map((m) => m.texto);
+    expect(novas.filter((t) => t.includes(`A devolução de R$ 528,00 da reserva ${x.reservaCodigo} foi feita`))).toHaveLength(1);
+    expect(await alteracaoGravada(c, resultado.alteracaoId)).toMatchObject({ hospedeAvisadoDevolucaoPor: null });
+    expect((await alteracaoGravada(c, resultado.alteracaoId)).hospedeAvisadoDevolucaoEm).not.toBeNull();
   });
 
   it("o que a equipe marcou como enviado não sai pelo motor; a marca vale uma vez e só no momento certo", async () => {

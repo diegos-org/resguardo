@@ -176,19 +176,30 @@ describe("formulário do cancelamento pela política (M8.2c)", () => {
     expect(screen.queryByText(/Pagamento sem a política aceita/)).toBeNull();
   });
 
-  it("M8.2d (D17): o Mercado Pago mostra parte devolvida pelo painel sem dizer quanto — a recusa pede o valor visto lá, e ele vai no cálculo seguinte", async () => {
-    calcular.mockResolvedValueOnce({ codigo: "devolvido_fora_sem_valor", mensagem: "O Mercado Pago mostra parte deste pagamento devolvida pelo painel, sem informar quanto." });
-    calcular.mockResolvedValueOnce({ ok: true, previa: previa(), valores: { valorForaInformado: "300,00" } });
+  it("M8.2d (D17): o Mercado Pago mostra parte devolvida pelo painel sem dizer quanto — a recusa pede o valor visto lá de cada pagamento, e eles vão no cálculo seguinte", async () => {
+    const P1 = "33333333-3333-4333-8333-333333333333";
+    const P2 = "44444444-4444-4444-8444-444444444444";
+    const foraSemValor = [
+      { pagamentoId: P1, rotulo: "Pix de 01/10 (R$ 1.824,00)" },
+      { pagamentoId: P2, rotulo: "Cartão de 02/10 (R$ 400,00)" },
+    ];
+    calcular.mockResolvedValueOnce({ codigo: "devolvido_fora_sem_valor", mensagem: "O Mercado Pago mostra parte deste pagamento devolvida pelo painel, sem informar quanto.", foraSemValor });
+    calcular.mockResolvedValueOnce({
+      ok: true,
+      previa: previa(),
+      valores: { [`valorFora:${P1}`]: "300,00", [`valorForaRotulo:${P1}`]: foraSemValor[0].rotulo, [`valorFora:${P2}`]: "5,00", [`valorForaRotulo:${P2}`]: foraSemValor[1].rotulo },
+    });
     mostrar();
     expect(screen.queryByLabelText(/Valor que o painel do Mercado Pago mostra devolvido/)).toBeNull();
     fireEvent.change(screen.getByLabelText("Como chegou"), { target: { value: "email" } });
     fireEvent.click(screen.getByRole("button", { name: "Calcular o cancelamento pela política" }));
-    fireEvent.change(await screen.findByLabelText(/Valor que o painel do Mercado Pago mostra devolvido/), { target: { value: "300,00" } });
+    fireEvent.change(await screen.findByLabelText(/devolvido fora do sistema, Pix de 01\/10/), { target: { value: "300,00" } });
+    fireEvent.change(screen.getByLabelText(/devolvido fora do sistema, Cartão de 02\/10/), { target: { value: "5,00" } });
     fireEvent.click(screen.getByRole("button", { name: "Calcular o cancelamento pela política" }));
     await screen.findByRole("button", { name: "Cancelar a reserva" });
-    expect(Object.fromEntries(calcular.mock.calls[1][1])).toMatchObject({ valorForaInformado: "300,00" });
-    // Com a prévia (o valor veio no formulário), o campo continua na tela para o cancelamento.
-    expect(screen.getByLabelText(/Valor que o painel do Mercado Pago mostra devolvido/)).toBeTruthy();
+    expect(Object.fromEntries(calcular.mock.calls[1][1])).toMatchObject({ [`valorFora:${P1}`]: "300,00", [`valorFora:${P2}`]: "5,00", [`valorForaRotulo:${P2}`]: foraSemValor[1].rotulo });
+    // Com a prévia (os valores vieram no formulário), os dois campos continuam na tela para o cancelamento.
+    expect(screen.getAllByLabelText(/Valor que o painel do Mercado Pago mostra devolvido/)).toHaveLength(2);
   });
 
   it("recusa de antes da decisão (nota com dado pessoal): a exceção que estava na tela continua, com o que foi digitado; a política dando o integral, ela some", async () => {

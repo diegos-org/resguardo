@@ -32,10 +32,12 @@ import {
   type EscolhaDaEquipe,
   marcarHospedeAvisado,
   marcarOtaLiberada,
+  type PagamentoSemValorFora,
   previaDoCancelamento,
   registrarPedidoDeCancelamento,
   TEXTO_PREVIA_MUDOU,
 } from "./cancelamento";
+import { CAMPO_VALOR_FORA } from "./campos-cancelamento";
 import { type PreviaParaTela, previaParaTela, type ResultadoDoCancelamento, resultadoDoCancelamento } from "./cancelamento-tela";
 import { provedorDeConferencia } from "./oferta";
 import type { ProvedorPagamento } from "./provedor";
@@ -52,7 +54,10 @@ export type EstadoCancelamentoPainel = {
   escolha?: EscolhaDaEquipe | null;
   previa?: PreviaParaTela;
   valores?: Record<string, string>;
+  /** D17: os pagamentos cujo valor devolvido pelo painel do Mercado Pago a equipe precisa informar (um campo por pagamento). */
+  foraSemValor?: PagamentoSemValorFora[];
 };
+
 
 const FUSO = "America/Sao_Paulo";
 const LIMITE_NOTA = 300;
@@ -130,14 +135,20 @@ function entradaDoForm(form: FormData): { ok: true; reservaId: string; e: Entrad
     const problema = problemaDaNota(n, null);
     if (problema) return { ok: false, mensagem: problema };
   }
-  // D17: o valor que o painel do Mercado Pago mostra devolvido fora do sistema (só quando a leitura não diz quanto).
-  const foraBruto = texto(form, "valorForaInformado");
-  const valorForaInformado = foraBruto ? reaisParaCentavos(foraBruto) : undefined;
-  if (foraBruto && (typeof valorForaInformado !== "number" || valorForaInformado <= 0)) return { ok: false, mensagem: "Informe o valor que o painel do Mercado Pago mostra devolvido, em reais (ex.: 300,00)." };
+  // D17: o valor que o painel do Mercado Pago mostra devolvido fora do sistema, de cada pagamento (só quando a leitura não diz quanto).
+  const valoresForaInformados: Record<string, number> = {};
+  for (const [campo, bruto] of form.entries()) {
+    if (typeof bruto !== "string" || !campo.startsWith(CAMPO_VALOR_FORA) || !bruto.trim()) continue;
+    const pagamentoId = campo.slice(CAMPO_VALOR_FORA.length);
+    if (!uuidValido(pagamentoId)) continue;
+    const valor = reaisParaCentavos(bruto.trim());
+    if (typeof valor !== "number" || valor <= 0) return { ok: false, mensagem: "Informe o valor que o painel do Mercado Pago mostra devolvido, em reais (ex.: 300,00)." };
+    valoresForaInformados[pagamentoId] = valor;
+  }
   return {
     ok: true,
     reservaId,
-    e: { recebidoEm, motivoMomento, canal, quemCancela, motivoEmpresa, decisao, motivoExcecao, motivoDecisao, nota, ...(typeof valorForaInformado === "number" ? { valorForaInformado } : {}) },
+    e: { recebidoEm, motivoMomento, canal, quemCancela, motivoEmpresa, decisao, motivoExcecao, motivoDecisao, nota, ...(Object.keys(valoresForaInformados).length ? { valoresForaInformados } : {}) },
   };
 }
 
@@ -157,7 +168,7 @@ export async function calcularCancelamentoAcao(_e: EstadoCancelamentoPainel, for
   const v = entradaDoForm(form);
   if (!v.ok) return { mensagem: v.mensagem, valores };
   const r = await previaDoCancelamento(getDb(), sessao.organizacaoId, v.reservaId, v.e, await provedorDaLeitura(), new Date());
-  if (!r.ok) return { mensagem: r.erro, codigo: r.codigo, ...("escolha" in r ? { escolha: r.escolha } : {}), valores };
+  if (!r.ok) return { mensagem: r.erro, codigo: r.codigo, ...("escolha" in r ? { escolha: r.escolha } : {}), ...(r.foraSemValor ? { foraSemValor: r.foraSemValor } : {}), valores };
   // A releitura pode ter mudado o pagamento (situação, taxa, liberação): a ficha mostra o que vale agora.
   revalidar();
   return { ok: true, previa: previaParaTela(r.previa), valores };
@@ -175,7 +186,7 @@ export async function cancelarReservaPagaAcao(_e: EstadoCancelamentoPainel, form
   const assinatura = texto(form, "assinatura");
   if (!ASSINATURA.test(assinatura)) return { mensagem: TEXTO_PREVIA_MUDOU, codigo: "previa_mudou", valores };
   const r = await cancelarReservaPaga(getDb(), sessao.organizacaoId, v.reservaId, v.e, sessao.usuarioId, await provedorDaLeitura(), new Date(), assinatura);
-  if (!r.ok) return { mensagem: r.erro, codigo: r.codigo, ...("escolha" in r ? { escolha: r.escolha } : {}), valores };
+  if (!r.ok) return { mensagem: r.erro, codigo: r.codigo, ...("escolha" in r ? { escolha: r.escolha } : {}), ...(r.foraSemValor ? { foraSemValor: r.foraSemValor } : {}), valores };
   revalidar();
   // A rota vem da prévia que a equipe viu (só escolhe o texto do resultado; o domínio já decidiu tudo).
   return paraFicha(v.reservaId, resultadoDoCancelamento(r, texto(form, "rota")));

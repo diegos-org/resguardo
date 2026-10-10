@@ -115,10 +115,10 @@ export type EntradaCancelamento = {
   /** 0..300 */
   nota: string;
   /**
-   * D17: o valor que o painel do Mercado Pago mostra devolvido fora do sistema, quando a leitura não diz quanto
-   * (obrigatório só nesse caso).
+   * D17: o valor que o painel do Mercado Pago mostra devolvido fora do sistema, por pagamento (o id dele → centavos),
+   * quando a leitura não diz quanto (obrigatório só nesse caso; depois de um aumento, cada pagamento tem o seu).
    */
-  valorForaInformado?: number;
+  valoresForaInformados?: Readonly<Record<string, number>>;
 };
 
 export type CodigoRecusaCancelamento =
@@ -195,7 +195,9 @@ export const escolhaDaEquipe = (calculado: DecisaoPolitica["calculado"]): Escolh
  * política, também quando a recusa chega antes de uma prévia: saída antecipada, pagamento já devolvido no painel do
  * Mercado Pago); sem ela, a recusa veio antes de decidir.
  */
-type Recusa = { ok: false; codigo: CodigoRecusaCancelamento; erro: string; escolha?: EscolhaDaEquipe | null };
+/** Um pagamento da reserva com parte devolvida pelo painel do Mercado Pago sem a leitura dizer quanto (D17): a equipe informa o valor dele. */
+export type PagamentoSemValorFora = { pagamentoId: string; rotulo: string };
+type Recusa = { ok: false; codigo: CodigoRecusaCancelamento; erro: string; escolha?: EscolhaDaEquipe | null; foraSemValor?: PagamentoSemValorFora[] };
 const recusa = (codigo: CodigoRecusaCancelamento, erro: string): Recusa => ({ ok: false, codigo, erro });
 
 export const TEXTO_PREVIA_MUDOU = "O cálculo mudou desde a prévia (pagamento, pedido, repasse ou leitura do Mercado Pago mudaram): calcule de novo antes de cancelar.";
@@ -213,7 +215,7 @@ export const TEXTO_DEVOLUCAO_EM_VOO = "Há uma devolução desta reserva esperan
 export const TEXTO_DEVOLUCAO_A_MENOR =
   "O Mercado Pago devolveu menos do que foi pedido numa devolução desta reserva: peça o restante ao Mercado Pago ou registre o restante por fora antes de cancelar.";
 export const TEXTO_FORA_SEM_VALOR =
-  "O Mercado Pago mostra parte deste pagamento devolvida pelo painel, sem informar quanto: informe o valor que aparece no painel do Mercado Pago antes de cancelar.";
+  "O Mercado Pago mostra parte deste pagamento devolvida pelo painel, sem informar quanto: informe o valor que aparece no painel do Mercado Pago (de cada pagamento pedido) antes de cancelar.";
 export const TEXTO_ALTERACAO_EM_ANDAMENTO =
   "Há uma alteração desta reserva com o pagamento da diferença em andamento: espere o pagamento terminar ou desista da alteração antes de cancelar.";
 export const TEXTO_CONTESTADO = "Pagamento contestado no Mercado Pago: o cancelamento espera a contestação (M8.2e).";
@@ -406,8 +408,9 @@ async function montarDecisao(db: Db, organizacaoId: string, t: Travado, e: Entra
   if (emParte) return recusa("devolvido_em_parte", TEXTO_DEVOLVIDO_EM_PARTE);
   // D17: o devolvido pelo painel do Mercado Pago fora do sistema fica reconhecido no cancelamento (da leitura, ou do valor
   // que a equipe informa quando a leitura não diz quanto).
+  // Cada pagamento com o seu valor (depois de um aumento, a reserva tem mais de um): faltando algum, a recusa diz quais.
   const reconhecidos = new Map<string, number>();
-  let informadoUsado = false;
+  const semValor: Pagamento[] = [];
   for (const x of daReserva) {
     const devs = devolucoesDoPagamento(t, x.id);
     if (x.situacao === "devolvido" || !devolucaoInexplicada(x, devs)) {
@@ -415,13 +418,21 @@ async function montarDecisao(db: Db, organizacaoId: string, t: Travado, e: Entra
       continue;
     }
     if (devolvidoForaSemValor(x, devs)) {
-      if (e.valorForaInformado === undefined || informadoUsado) return recusa("devolvido_fora_sem_valor", TEXTO_FORA_SEM_VALOR);
+      const informado = e.valoresForaInformados && Object.hasOwn(e.valoresForaInformados, x.id) ? e.valoresForaInformados[x.id] : undefined;
+      if (informado === undefined) {
+        semValor.push(x);
+        continue;
+      }
       const teto = valorPagoAprovado(x) - comprometidoNoPagamento(devs);
-      if (!Number.isSafeInteger(e.valorForaInformado) || e.valorForaInformado < 1 || e.valorForaInformado > teto) return recusa("dados", ERRO_FORA_SEM_VALOR);
-      informadoUsado = true;
-      reconhecidos.set(x.id, Math.max(x.devolvidoForaReconhecido, e.valorForaInformado));
+      if (!Number.isSafeInteger(informado) || informado < 1 || informado > teto) return recusa("dados", ERRO_FORA_SEM_VALOR);
+      reconhecidos.set(x.id, Math.max(x.devolvidoForaReconhecido, informado));
     } else reconhecidos.set(x.id, Math.max(x.devolvidoForaReconhecido, x.devolvidoLido - devolvidoProprio(devs)));
   }
+  if (semValor.length)
+    return {
+      ...recusa("devolvido_fora_sem_valor", TEXTO_FORA_SEM_VALOR),
+      foraSemValor: semValor.map((x) => ({ pagamentoId: x.id, rotulo: `${x.forma === "cartao" ? "Cartão" : "Pix"} de ${diaBr(x.aprovadoEm ?? x.criadoEm, fuso)} (${formatBRL(valorPagoAprovado(x))})` })),
+    };
   // 15 (antes do resto: é dado de entrada). Listas fechadas e notas sem dado pessoal.
   const nota = e.nota.trim();
   const motivoDecisao = e.motivoDecisao.trim();

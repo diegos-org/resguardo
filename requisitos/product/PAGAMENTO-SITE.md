@@ -1560,6 +1560,12 @@ e está no "Entregue em" do ROADMAP.
 - O estado do cancelamento na página e no quadro é o da devolução menos adiantada (esperando a liberação > pedida >
   com a equipe > em conferência > feita), com o valor somado; a mensagem "Devolução feita" sai uma vez, quando todas
   se realizam.
+- Parte devolvida pelo painel do Mercado Pago sem a leitura dizer quanto (D17), em mais de um pagamento da reserva: a
+  equipe informa o valor de cada pagamento (um campo por pagamento, com a forma, o dia e o valor dele); faltando
+  algum, a recusa diz quais. Um valor nunca vale para dois pagamentos.
+- Cancelamento sem devolução depois de uma redução aplicada: a devolução da diferença continua (não é absorvida), e a
+  mensagem "Devolução feita" dela sai quando se realiza, com a reserva já cancelada (a proposta e a confirmação da
+  alteração não saem mais).
 
 ### O que o hóspede vê (alteração)
 

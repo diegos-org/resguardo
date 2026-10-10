@@ -145,7 +145,8 @@ nas prévias da Vercel e com a conta de teste do Mercado Pago (item 44 da seçã
   - **a devolução por fora** registra exatamente o que aquela devolução ainda deve, e só se ela nunca foi pedida ao
     Mercado Pago (ou foi recusada sem dúvida), para o hóspede não receber duas vezes;
   - uma reserva confirmada com parte devolvida no painel do Mercado Pago pode ser cancelada pela política (devolve o
-    restante), informando o valor que aparece lá quando ele não diz.
+    restante), informando o valor que aparece lá quando ele não diz. Se a reserva tem mais de um pagamento (a
+    diferença de um aumento, por exemplo), o sistema pede o valor de cada um, com um campo para cada pagamento.
 - **O que o hóspede vê:** na página da reserva, a alteração preparada (com o pagamento da diferença, quando o valor
   sobe), a alteração confirmada com a devolução (esperando a liberação, pedida ou feita), "A alteração não pôde ser
   feita" (a diferença foi paga, mas as novas datas não puderam ser seguradas: o valor volta) e "Alteração que não vale
@@ -158,7 +159,8 @@ nas prévias da Vercel e com a conta de teste do Mercado Pago (item 44 da seçã
   seguradas) e a alteração confirmada — e "Devolução feita", que agora serve ao cancelamento e à alteração. Enquanto as
   mensagens automáticas estiverem desligadas, a ficha mostra cada uma pronta para copiar, com "Mensagem enviada ao
   hóspede". Só quem vê o financeiro copia (elas levam valores). Depois de uma alteração, a mensagem de confirmação da
-  reserva não sai de novo.
+  reserva não sai de novo. Se a reserva for cancelada sem devolução depois de uma redução, a devolução da diferença
+  continua, e o "Devolução feita" dela ainda sai quando o dinheiro voltar (a confirmação da alteração, não).
 - **OTAs:** nada é escrito no Beds24. Quando uma alteração muda as datas, o Início avisa "mude o bloqueio nas OTAs (no
   Beds24, feche as novas datas e reabra as antigas)" e, depois de mudar, você marca **"Datas atualizadas nas OTAs"** na
   ficha. O aviso aparece mesmo com o envio ao Beds24 ligado, porque o envio manda só os bloqueios que você cria no

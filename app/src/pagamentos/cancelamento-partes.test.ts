@@ -329,14 +329,40 @@ describe("o que o cancelamento recusa ou resolve antes (M8.2d)", () => {
     c.provedor.listaNaLeitura = false;
     c.provedor.devolverNoProvedor(x.idProvedor, 1000);
     expect(await previaDoCancelamento(db, c.org, x.reservaId, empresa(), c.provedor, minutos(60))).toMatchObject({ ok: false, codigo: "devolvido_fora_sem_valor", erro: TEXTO_FORA_SEM_VALOR });
-    const com = await previaDoCancelamento(db, c.org, x.reservaId, empresa({ valorForaInformado: 1000 }), c.provedor, minutos(60));
+    const com = await previaDoCancelamento(db, c.org, x.reservaId, empresa({ valoresForaInformados: { [x.pagamentoId]: 1000 } }), c.provedor, minutos(60));
     if (!com.ok) throw new Error(com.erro);
     expect(com.previa).toMatchObject({ valorADevolver: TOTAL - 1000, pagamentos: [{ valor: TOTAL - 1000, foraReconhecido: 1000 }] });
-    const r = await cancelarReservaPaga(db, c.org, x.reservaId, empresa({ valorForaInformado: 1000 }), equipe, c.provedor, minutos(60), com.previa.assinatura);
+    const r = await cancelarReservaPaga(db, c.org, x.reservaId, empresa({ valoresForaInformados: { [x.pagamentoId]: 1000 } }), equipe, c.provedor, minutos(60), com.previa.assinatura);
     expect(r).toMatchObject({ ok: true, direito: "integral" });
     expect(pedidos().at(-1)).toMatchObject({ valor: TOTAL - 1000 });
     expect(await c.tentativa(x.pagamentoId)).toMatchObject({ devolvidoForaReconhecido: 1000, situacao: "devolvido" });
     expect(await devolucoesDe(x.pagamentoId)).toMatchObject([{ situacao: "confirmada", valor: TOTAL - 1000 }]);
+  });
+
+  it("dois pagamentos (reserva e aumento) com parte devolvida pelo painel sem o valor na leitura: a recusa diz quais faltam; com os dois valores, cada um reconhecido no seu pagamento", async () => {
+    const x = await pagarEConfirmar(c, { ...longe, liberar: true });
+    const inc = await aumentarDeTeste(c, x, TOTAL + 40000, { quando: minutos(15) });
+    c.provedor.listaNaLeitura = false;
+    c.provedor.devolverNoProvedor(x.idProvedor, 1000);
+    c.provedor.devolverNoProvedor(inc.idProvedor, 500);
+    const sem = await previaDoCancelamento(db, c.org, x.reservaId, empresa(), c.provedor, minutos(60));
+    expect(sem).toMatchObject({ ok: false, codigo: "devolvido_fora_sem_valor", erro: TEXTO_FORA_SEM_VALOR });
+    expect(!sem.ok && sem.foraSemValor?.map((f) => f.pagamentoId)).toEqual([x.pagamentoId, inc.pagamentoId]);
+    expect(!sem.ok && sem.foraSemValor?.[1].rotulo).toMatch(/^Pix de \d{2}\/\d{2} \(R\$ 400,00\)$/);
+    // Só um dos valores: a recusa pede o outro (nunca usa o mesmo valor nos dois).
+    const umSo = await previaDoCancelamento(db, c.org, x.reservaId, empresa({ valoresForaInformados: { [x.pagamentoId]: 1000 } }), c.provedor, minutos(60));
+    expect(!umSo.ok && umSo.foraSemValor?.map((f) => f.pagamentoId)).toEqual([inc.pagamentoId]);
+    const valores = { valoresForaInformados: { [x.pagamentoId]: 1000, [inc.pagamentoId]: 500 } };
+    const com = await previaDoCancelamento(db, c.org, x.reservaId, empresa(valores), c.provedor, minutos(60));
+    if (!com.ok) throw new Error(com.erro);
+    expect(com.previa.valorADevolver).toBe(TOTAL + 40000 - 1500);
+    expect(com.previa.pagamentos).toEqual(
+      expect.arrayContaining([expect.objectContaining({ pagamentoId: x.pagamentoId, foraReconhecido: 1000 }), expect.objectContaining({ pagamentoId: inc.pagamentoId, foraReconhecido: 500 })]),
+    );
+    const r = await cancelarReservaPaga(db, c.org, x.reservaId, empresa(valores), equipe, c.provedor, minutos(60), com.previa.assinatura);
+    expect(r).toMatchObject({ ok: true, direito: "integral" });
+    expect(await c.tentativa(x.pagamentoId)).toMatchObject({ devolvidoForaReconhecido: 1000 });
+    expect(await c.tentativa(inc.pagamentoId)).toMatchObject({ devolvidoForaReconhecido: 500 });
   });
 
   it("alteração segurada: sem o pagamento da diferença, o cancelamento desiste dela; com o Pix da diferença pendente, espera", async () => {

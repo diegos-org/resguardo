@@ -645,6 +645,11 @@ type AlvoAlteracao = {
   pedidoRecebidoEm: Date | null;
   /** A devolução da diferença feita mais recente (a referência da mensagem), quando todas estão feitas. */
   ultimaDevolucaoId: string | null;
+  /**
+   * A reserva foi cancelada depois da alteração: só a devolução da diferença que continuou (o cancelamento sem devolução
+   * não a absorve) ainda tem mensagem; a proposta e a confirmação, não.
+   */
+  reservaCancelada: boolean;
   avisados: Record<MensagemDaAlteracao, Date | null>;
 };
 
@@ -653,6 +658,7 @@ async function alvosDeAlteracao(db: Db, organizacaoId: string, f: { alteracaoId?
     .select({
       a: alteracoesReserva,
       codigo: reservas.codigo,
+      estado: reservas.estado,
       checkin: reservas.checkin,
       checkout: reservas.checkout,
       origem: reservas.origem,
@@ -669,7 +675,15 @@ async function alvosDeAlteracao(db: Db, organizacaoId: string, f: { alteracaoId?
     .where(
       and(
         eq(alteracoesReserva.organizacaoId, organizacaoId),
-        eq(reservas.estado, "confirmada"),
+        or(
+          eq(reservas.estado, "confirmada"),
+          // Cancelada depois de uma redução aplicada: a devolução da diferença que continuou ainda é avisada quando sair.
+          and(
+            eq(reservas.estado, "cancelada"),
+            eq(alteracoesReserva.situacao, "aplicada"),
+            sql`exists (select 1 from ${devolucoesPagamento} d where d.alteracao_id = ${alteracoesReserva.id} and d.situacao <> 'substituida')`,
+          ),
+        ),
         f.alteracaoId ? eq(alteracoesReserva.id, f.alteracaoId) : undefined,
         // A recente: segurada, mexida ou aplicada desde então, ou com uma devolução da diferença feita desde então (a
         // devolução que esperou a liberação do Mercado Pago sai dias depois da aplicação).
@@ -707,6 +721,7 @@ async function alvosDeAlteracao(db: Db, organizacaoId: string, f: { alteracaoId?
       cotacaoCodigo: l.cotacaoCodigo,
       pedidoRecebidoEm: l.a.pedidoRecebidoEm,
       ultimaDevolucaoId: ultima?.d.id ?? null,
+      reservaCancelada: l.estado === "cancelada",
       avisados: { proposta: l.a.hospedeAvisadoPropostaEm, confirmacao: l.a.hospedeAvisadoConfirmacaoEm, devolucao: l.a.hospedeAvisadoDevolucaoEm },
     };
   });
@@ -737,12 +752,16 @@ export async function alteracoesComMensagemPendente(db: Db, organizacaoId: strin
  * confirmação da aplicação até 7 dias depois; a devolução da diferença feita, dela até 7 dias depois. `referencia`: a
  * alteração (proposta e confirmação) ou a última devolução dela.
  */
-export function prazoDaMensagemDaAlteracao(tipo: TipoDaAlteracao, a: Pick<AlvoAlteracao, "alteracaoId" | "ultimaDevolucaoId">, v: AlteracaoParaHospede): { inicio: Date; fim: Date; referencia: string } | null {
+export function prazoDaMensagemDaAlteracao(
+  tipo: TipoDaAlteracao,
+  a: Pick<AlvoAlteracao, "alteracaoId" | "ultimaDevolucaoId"> & Partial<Pick<AlvoAlteracao, "reservaCancelada">>,
+  v: AlteracaoParaHospede,
+): { inicio: Date; fim: Date; referencia: string } | null {
   switch (tipo) {
     case "alteracao_proposta":
-      return v.situacao === "segurada" && v.holdAte ? { inicio: v.preparadaEm, fim: v.holdAte, referencia: a.alteracaoId } : null;
+      return v.situacao === "segurada" && v.holdAte && !a.reservaCancelada ? { inicio: v.preparadaEm, fim: v.holdAte, referencia: a.alteracaoId } : null;
     case "alteracao_confirmada":
-      return v.situacao === "aplicada" && v.aplicadaEm ? { inicio: v.aplicadaEm, fim: new Date(v.aplicadaEm.getTime() + PRAZO_ALTERACAO_MS), referencia: a.alteracaoId } : null;
+      return v.situacao === "aplicada" && v.aplicadaEm && !a.reservaCancelada ? { inicio: v.aplicadaEm, fim: new Date(v.aplicadaEm.getTime() + PRAZO_ALTERACAO_MS), referencia: a.alteracaoId } : null;
     case "devolucao_concluida":
       return v.situacao === "aplicada" && v.devolucao?.estado === "feita" && v.devolucao.em && a.ultimaDevolucaoId
         ? { inicio: v.devolucao.em, fim: new Date(v.devolucao.em.getTime() + PRAZO_ALTERACAO_MS), referencia: a.ultimaDevolucaoId }
@@ -802,8 +821,9 @@ export async function mensagensDaAlteracao(db: Db, organizacaoId: string, altera
   };
   return {
     // A proposta pode ser copiada de novo enquanto a alteração vale (segurada); a confirmação e a devolução, nos prazos delas.
-    proposta: v.situacao === "segurada" ? montar("alteracao_proposta") : null,
-    confirmada: v.situacao === "aplicada" ? montar("alteracao_confirmada") : null,
+    // Na reserva cancelada depois, só a devolução da diferença (a proposta e a confirmação não valem mais).
+    proposta: v.situacao === "segurada" && !a.reservaCancelada ? montar("alteracao_proposta") : null,
+    confirmada: v.situacao === "aplicada" && !a.reservaCancelada ? montar("alteracao_confirmada") : null,
     devolvida: prazoDaMensagemDaAlteracao("devolucao_concluida", a, v) || (v.situacao === "aplicada" && v.devolucao?.estado === "feita") ? montar("devolucao_concluida") : null,
   };
 }
@@ -826,7 +846,7 @@ export async function propostaDaPrevia(
     .innerJoin(cotacoes, eq(cotacoes.reservaId, reservas.id))
     .where(and(eq(reservas.id, reservaId), eq(reservas.organizacaoId, organizacaoId)));
   if (!r) return null;
-  const alvo: AlvoAlteracao = { ...r, alteracaoId: "", reservaId, fuso: r.fuso || "America/Sao_Paulo", pedidoRecebidoEm: null, ultimaDevolucaoId: null, avisados: { proposta: null, confirmacao: null, devolucao: null } };
+  const alvo: AlvoAlteracao = { ...r, alteracaoId: "", reservaId, fuso: r.fuso || "America/Sao_Paulo", pedidoRecebidoEm: null, ultimaDevolucaoId: null, reservaCancelada: false, avisados: { proposta: null, confirmacao: null, devolucao: null } };
   const vista: AlteracaoParaHospede = { ...v, id: "", situacao: "segurada", aplicadaEm: null, devolucao: null, pagoSemAlteracao: null, pagamento: null };
   const cfg = await lerConfigMensagens(db, organizacaoId);
   const id = cfg.modelos.alteracao_proposta;
