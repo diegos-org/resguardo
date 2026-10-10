@@ -52,6 +52,16 @@ describe("operação", () => {
   });
 });
 
+describe("equipe de limpeza", () => {
+  it("só tem a ação da própria limpeza; nenhum vínculo de imóvel abre painel ou financeiro", () => {
+    const equipe: Sessao = { ...dono, usuarioId: "u-equipe", papel: "limpeza", profissionalId: "prof-ana", imovelIds: ["im-403", "im-102"] };
+    for (const acao of ACOES) {
+      expect(ok(equipe, acao, "im-403")).toBe(acao === "limpeza:propria");
+      expect(ok(equipe, acao, "im-102", "outra-org")).toBe(false);
+    }
+  });
+});
+
 describe("admin", () => {
   it("pode tudo, mas só dentro da própria organização", () => {
     for (const acao of ACOES) expect(ok(admin, acao, "im-102")).toBe(true);
@@ -91,3 +101,4 @@ describe("exigir / podeFazer", () => {
     expect(podeFazer("admin", "financeiro:editar")).toBe(true);
   });
 });
+

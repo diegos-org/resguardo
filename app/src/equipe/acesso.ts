@@ -12,6 +12,7 @@ import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
 import type { Resultado } from "@/limpezas/limpezas";
 import { chaveDoLogin, conferirSenha, gerarSenhaProvisoria, hashSenha, normalizarLogin, travarEntrada, validarLogin, validarSenha } from "@/acesso/senha";
+import { ACESSO_INCONSISTENTE, contaDaEquipe, usuarioDaEquipe } from "./vinculo";
 
 const SEM_PROFISSIONAL = "Profissional não encontrada.";
 
@@ -58,11 +59,9 @@ export async function definirSenhaPelaEmpresa(
     // A senha nova vale na hora: a espera por erros com este usuário (e com o antigo, e com o e-mail) acaba aqui.
     const contas = new Set([chaveDoLogin(login)]);
     if (usuarioId) {
-      const [u] = await tx
-        .select({ login: usuarios.login, email: usuarios.email, temSenha: sql<boolean>`${usuarios.senhaHash} is not null` })
-        .from(usuarios)
-        .where(eq(usuarios.id, usuarioId));
-      antes = u ? `${u.login ? `usuário ${u.login}` : "sem usuário"}${u.temSenha ? " com senha" : ""}` : null;
+      const u = await usuarioDaEquipe(tx, organizacaoId, usuarioId);
+      if (!u) return { ok: false as const, erro: ACESSO_INCONSISTENTE };
+      antes = `${u.login ? `usuário ${u.login}` : "sem usuário"}${u.senhaHash ? " com senha" : ""}`;
       if (u?.login) contas.add(chaveDoLogin(u.login));
       if (u?.email) contas.add(chaveDoLogin(u.email));
     }
@@ -71,10 +70,12 @@ export async function definirSenhaPelaEmpresa(
     for (const chave of [...contas].sort()) await travarEntrada(tx, chave);
     const corte = new Date(Math.max(agora.getTime(), Date.now()));
     if (usuarioId) {
-      await tx
+      const [alterado] = await tx
         .update(usuarios)
         .set({ login, senhaHash, senhaProvisoria: true, ativo: true, nome: p.nome, sessaoValidaDesde: corte })
-        .where(and(eq(usuarios.id, usuarioId), eq(usuarios.organizacaoId, organizacaoId)));
+        .where(contaDaEquipe(organizacaoId, usuarioId))
+        .returning({ id: usuarios.id });
+      if (!alterado) return { ok: false as const, erro: ACESSO_INCONSISTENTE };
     } else {
       const [u] = await tx
         .insert(usuarios)
@@ -190,3 +191,4 @@ export async function situacaoDaSenha(db: Db, usuarioId: string): Promise<{ temS
   const [u] = await db.select({ temSenha: sql<boolean>`${usuarios.senhaHash} is not null`, provisoria: usuarios.senhaProvisoria }).from(usuarios).where(eq(usuarios.id, usuarioId));
   return { temSenha: Boolean(u?.temSenha), provisoria: Boolean(u?.temSenha && u.provisoria) };
 }
+

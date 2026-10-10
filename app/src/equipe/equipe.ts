@@ -14,6 +14,7 @@ import { temConvitePendente, travarEmail } from "@/convites/convites";
 import type { Correio } from "@/email/correio";
 import { uuidValido } from "@/lib/ids";
 import { realizarPelaProfissional, type Resultado } from "@/limpezas/limpezas";
+import { ACESSO_INCONSISTENTE, contaDaEquipe, usuarioDaEquipe } from "./vinculo";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const somaDias = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
@@ -113,7 +114,7 @@ export async function acessosDasProfissionais(db: Db, organizacaoId: string): Pr
       senhaProvisoria: usuarios.senhaProvisoria,
     })
     .from(profissionaisLimpeza)
-    .innerJoin(usuarios, eq(usuarios.id, profissionaisLimpeza.usuarioId))
+    .innerJoin(usuarios, contaDaEquipe(organizacaoId, profissionaisLimpeza.usuarioId))
     .where(eq(profissionaisLimpeza.organizacaoId, organizacaoId));
   return new Map(linhas.map(({ profissionalId, ...a }) => [profissionalId, a]));
 }
@@ -144,12 +145,15 @@ export async function darAcesso(db: Db, organizacaoId: string, profissionalId: s
     if (usuarioId) {
       // Já tinha acesso: reativa e, se mudou, troca o e-mail. E-mail trocado ou acesso devolvido:
       // quem tinha entrado antes (com o e-mail antigo) precisa entrar de novo.
-      const [u] = await tx.select({ email: usuarios.email, ativo: usuarios.ativo }).from(usuarios).where(eq(usuarios.id, usuarioId));
-      const mudou = !u || !u.ativo || u.email.toLowerCase() !== email;
-      await tx
+      const u = await usuarioDaEquipe(tx, organizacaoId, usuarioId);
+      if (!u) return { ok: false as const, erro: ACESSO_INCONSISTENTE };
+      const mudou = !u.ativo || u.email.toLowerCase() !== email;
+      const [alterado] = await tx
         .update(usuarios)
         .set({ email, ativo: true, nome: p.nome, ...(mudou ? { sessaoValidaDesde: new Date() } : {}) })
-        .where(and(eq(usuarios.id, usuarioId), eq(usuarios.organizacaoId, organizacaoId)));
+        .where(contaDaEquipe(organizacaoId, usuarioId))
+        .returning({ id: usuarios.id });
+      if (!alterado) return { ok: false as const, erro: ACESSO_INCONSISTENTE };
     } else {
       const [u] = await tx.insert(usuarios).values({ organizacaoId, email, nome: p.nome, papel: "limpeza" }).returning({ id: usuarios.id });
       usuarioId = u.id;
@@ -174,9 +178,11 @@ export async function tirarAcesso(db: Db, organizacaoId: string, profissionalId:
     const [p] = await tx
       .select()
       .from(profissionaisLimpeza)
-      .where(and(eq(profissionaisLimpeza.id, profissionalId), eq(profissionaisLimpeza.organizacaoId, organizacaoId)));
+      .where(and(eq(profissionaisLimpeza.id, profissionalId), eq(profissionaisLimpeza.organizacaoId, organizacaoId)))
+      .for("update");
     if (!p?.usuarioId) return { ok: false as const, erro: "Essa profissional não tem acesso." };
-    await tx.update(usuarios).set({ ativo: false }).where(and(eq(usuarios.id, p.usuarioId), eq(usuarios.organizacaoId, organizacaoId)));
+    const [alterado] = await tx.update(usuarios).set({ ativo: false }).where(contaDaEquipe(organizacaoId, p.usuarioId)).returning({ id: usuarios.id });
+    if (!alterado) return { ok: false as const, erro: ACESSO_INCONSISTENTE };
     await registrarAuditoria(tx, {
       organizacaoId,
       usuarioId: autorId,
@@ -217,8 +223,8 @@ export async function avisarAtribuicao(
     .from(limpezas)
     .innerJoin(imoveis, eq(imoveis.id, limpezas.imovelId))
     .innerJoin(profissionaisLimpeza, eq(profissionaisLimpeza.id, limpezas.profissionalId))
-    .innerJoin(usuarios, eq(usuarios.id, profissionaisLimpeza.usuarioId))
-    .where(and(eq(limpezas.id, limpezaId), eq(limpezas.organizacaoId, organizacaoId)));
+    .innerJoin(usuarios, contaDaEquipe(organizacaoId, profissionaisLimpeza.usuarioId))
+    .where(and(eq(limpezas.id, limpezaId), eq(limpezas.organizacaoId, organizacaoId), eq(profissionaisLimpeza.organizacaoId, organizacaoId), eq(profissionaisLimpeza.ativo, true)));
   // Sem acesso pelo celular, ou acesso só com usuário e senha (sem e-mail, M6.8): nada a avisar por e-mail (a equipe
   // vê na tela dela e o aviso vai pelo WhatsApp quando ele ligar).
   if (!l || !l.ativo || l.estado !== "confirmada" || !l.email) return { enviado: false, aviso: null };
@@ -237,3 +243,4 @@ export async function avisarAtribuicao(
     return { enviado: false, aviso: `A limpeza foi confirmada, mas o e-mail para a profissional falhou (${e instanceof Error ? e.message : String(e)}).` };
   }
 }
+
