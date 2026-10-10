@@ -22,12 +22,12 @@ import {
   vistaDaCotacaoParaHospede,
 } from "./consultas";
 import { marcarHospedeAvisado, marcarOtaLiberada } from "./cancelamento";
-import { devolverPeloProvedor, registrarDevolucaoPorFora, registrarRecusaNoPainel, registrarTaxaPerdida } from "./devolucao";
+import { devolverPeloProvedor, registrarDevolucaoPorFora, registrarRecusaNoPainel, registrarTaxaPerdida, tentarDevolucao } from "./devolucao";
 import { registrarEventoDeAviso } from "./eventos";
 import { conferirPendentes } from "./rotina";
 import { gerarPix } from "./pix";
 import { ErroProvedor } from "./provedor";
-import { AGORA, type Cenario, cancelar, DOCUMENTO_FICTICIO, EMAIL_HOSPEDE, entradaPadrao, env, envelhecer, minutos, montarCenario, pagarEConfirmar, pedir, TOTAL, usuarioDeTeste } from "./testes";
+import { alteracaoSeguradaDeTeste, AGORA, type Cenario, cancelar, DOCUMENTO_FICTICIO, EMAIL_HOSPEDE, entradaPadrao, env, envelhecer, liberar, minutos, montarCenario, pagarEConfirmar, pedir, reduzirDeTeste, TOTAL, usuarioDeTeste } from "./testes";
 
 let db: Db, close: () => Promise<void>, c: Cenario;
 beforeAll(async () => { ({ db, close } = await createTestDb()); });
@@ -165,7 +165,7 @@ describe("leituras que faltam dado e situações inesperadas (M8.2a)", () => {
     expect(await c.tentativa(p.pagamentoId)).toMatchObject({ pixExpiraEm: minutos(30), avisos: [] });
   });
 
-  it("devolvido em parte antes de o sistema decidir: o hóspede vê 'aprovado sem as datas' (nunca 'confirmando' para sempre); o painel pede atenção, explica e só oferece Conferir agora (nada que o domínio recusaria)", async () => {
+  it("devolvido em parte antes de o sistema decidir: o hóspede vê 'aprovado sem as datas' (nunca 'confirmando' para sempre); o painel pede atenção, explica e oferece devolver o restante (D17, M8.2d)", async () => {
     const { cotacaoId, reservaId } = await c.segurar();
     const p = await c.pix(cotacaoId);
     c.provedor.aprovar(p.idProvedor);
@@ -173,18 +173,20 @@ describe("leituras que faltam dado e situações inesperadas (M8.2a)", () => {
     await conferir(p.pagamentoId, minutos(3));
     expect(await vista(cotacaoId, minutos(3))).toMatchObject({ estado: "aprovado_sem_datas", dinheiroSemDesfecho: true });
     const [q] = await pagamentosDaReserva(db, c.org, reservaId, minutos(3));
-    expect(q).toMatchObject({ situacao: "devolvido_parcial", pedeAtencao: true, motivoSemReservaTexto: expect.stringContaining("antes de o sistema decidir"), acoes: { conferir: true, devolver: false, devolucaoPorFora: false, registrarTaxaPerdida: false } });
-    expect(q.avisos.join(" ")).toContain("M8.2d");
-    // O domínio também recusa (o Mercado Pago sempre mostra a parte devolvida).
-    expect(await registrarDevolucaoPorFora(db, c.org, p.pagamentoId, { data: "2026-10-01", valor: TOTAL, nota: "" }, null, c.provedor, minutos(4))).toMatchObject({ ok: false });
-    // No Início: alerta próprio (resolver no painel do Mercado Pago), não "devolva ao hóspede".
+    // M8.2d (D17): o restante (o pago menos a parte devolvida pelo painel) pode ser devolvido pelo Mercado Pago ou por fora.
+    expect(q).toMatchObject({ situacao: "devolvido_parcial", pedeAtencao: true, motivoSemReservaTexto: expect.stringContaining("antes de o sistema decidir"), acoes: { conferir: true, devolver: true, devolucaoPorFora: true, registrarTaxaPerdida: false } });
+    expect(q.avisos.join(" ")).toContain('Devolvido em parte: use "Devolver o restante ao hóspede"');
+    expect(q.avisos.join(" ")).not.toContain("M8.2d");
+    // O integral por fora é recusado (a parte devolvida pelo painel não volta duas vezes): só o restante.
+    expect(await registrarDevolucaoPorFora(db, c.org, p.pagamentoId, { data: "2026-10-01", valor: TOTAL, nota: "" }, null, c.provedor, minutos(4))).toEqual({ ok: false, erro: "A devolução por fora registra o valor desta devolução: R$ 1.814,00." });
+    // No Início: alerta próprio (devolver o restante pelo quadro do pagamento), não "devolva ao hóspede".
     const { alertas, contagens } = await avisosDePagamento(db, c.org, minutos(5), { env: env({}) });
     expect(contagens).toMatchObject({ aprovadoSemDesfecho: 0, situacaoInesperada: 1 });
     const textos = alertas.map((a) => a.texto).join("\n");
     expect(textos).not.toContain("devolva ao hóspede");
     expect(alertas).toContainEqual({
       nivel: "atencao",
-      texto: "1 pagamento(s) do site que o Mercado Pago mostrou já devolvido(s) em parte ou contestado(s) antes de o sistema decidir a reserva: resolva pelo painel do Mercado Pago (o sistema passa a cuidar disso no M8.2d).",
+      texto: "1 pagamento(s) do site que o Mercado Pago mostrou já devolvido(s) em parte ou contestado(s) antes de o sistema decidir a reserva: devolva o restante pelo quadro do pagamento (ou resolva a contestação pelo painel do Mercado Pago).",
       link: "/painel/financeiro/pagamentos-site?atencao=1",
     });
   });
@@ -736,11 +738,91 @@ describe("cancelamento pela política: a página do hóspede, o quadro do pagame
     expect(contagens).toMatchObject({ devolucaoAMenor: 1, reservaDevolvidaNoProvedor: 1 });
     expect(alertas.map((a) => a.texto)).toEqual(
       expect.arrayContaining([
-        "1 devolução(ões) de cancelamento que o Mercado Pago fez a menos do que o pedido: confira no painel do Mercado Pago.",
+        // M8.2d (D15): conta as devoluções de qualquer origem, e o caminho é pedir o restante (ou registrá-lo por fora).
+        "1 devolução(ões) que o Mercado Pago fez a menos do que o pedido: peça o restante ao Mercado Pago ou registre o restante devolvido por fora (quadro do pagamento).",
         "1 reserva(s) paga(s) pelo site que o Mercado Pago mostra devolvida(s) fora do sistema: a parte do proprietário ficou em conferência. Cancele pela política ou registre um ajuste.",
       ]),
     );
     // O quadro mostra o aviso com os dois valores.
     expect((await acoes(x.reservaId, minutos(80))).avisos).toContainEqual(expect.stringContaining("R$ 50,00"));
+  });
+});
+
+describe("devoluções de parte do valor no painel, no Início e na página do hóspede (M8.2d)", () => {
+  const longe = { entrada: "2026-11-20", saida: "2026-11-23" };
+  const quadro = async (reservaId: string, quando: Date) => (await pagamentosDaReserva(db, c.org, reservaId, quando)).find((q) => q.desfecho === "reserva")!;
+
+  it("Início: devoluções esperando a liberação (e as atrasadas) contam e avisam sem valores; somem quando a devolução sai", async () => {
+    const x = await pagarEConfirmar(c, longe);
+    const { devolucaoIds } = await reduzirDeTeste(c, x, TOTAL - 30000, { quando: minutos(15) });
+    await tentarDevolucao(db, c.org, devolucaoIds[0], c.provedor, minutos(20));
+    let r = await avisosDePagamento(db, c.org, minutos(30), { env: env() });
+    expect(r.contagens).toMatchObject({ aguardandoLiberacao: 1, aguardandoLiberacaoAtrasada: 0 });
+    const esperando = r.alertas.find((a) => a.texto.includes("esperando o Mercado Pago liberar"));
+    expect(esperando?.texto).toBe("1 devolução(ões) de parte do valor esperando o Mercado Pago liberar o pagamento: o sistema pede assim que ele liberar (no teste, registre a liberação à mão no quadro do pagamento).");
+    expect(esperando?.texto).not.toContain("R$");
+    await db.update(pagamentos).set({ liberacaoPrevistaEm: minutos(25) }).where(eq(pagamentos.id, x.pagamentoId));
+    r = await avisosDePagamento(db, c.org, minutos(30), { env: env() });
+    expect(r.contagens).toMatchObject({ aguardandoLiberacao: 1, aguardandoLiberacaoAtrasada: 1 });
+    expect(r.alertas.map((a) => a.texto).join("\n")).toContain("passou da data prevista");
+    await liberar(c, x.pagamentoId, { quando: minutos(40) });
+    await tentarDevolucao(db, c.org, devolucaoIds[0], c.provedor, minutos(41));
+    r = await avisosDePagamento(db, c.org, minutos(50), { env: env() });
+    expect(r.contagens).toMatchObject({ aguardandoLiberacao: 0, aguardandoLiberacaoAtrasada: 0 });
+  });
+
+  it("Início: a diferença de uma alteração aprovada sem a alteração conta (devolver ao hóspede)", async () => {
+    const x = await pagarEConfirmar(c, longe);
+    const a = await alteracaoSeguradaDeTeste(c, x, TOTAL + 20000, { quando: minutos(10), tentativa: true });
+    await db.update(pagamentos).set({ situacao: "aprovado", aprovadoEm: minutos(12), motivoSemReserva: "alteracao_desistida" }).where(eq(pagamentos.id, a.pagamentoId!));
+    const r = await avisosDePagamento(db, c.org, minutos(30), { env: env() });
+    expect(r.contagens).toMatchObject({ diferencaSemAlteracao: 1 });
+    expect(r.alertas.map((x) => x.texto)).toContain("1 pagamento(s) da diferença de uma alteração aprovado(s) sem a alteração: devolva ao hóspede (quadro do pagamento).");
+  });
+
+  it("o quadro do pagamento: as ações de cada devolução (esperando a liberação, a menor, no cartão)", async () => {
+    const x = await pagarEConfirmar(c, longe);
+    const { devolucaoIds } = await reduzirDeTeste(c, x, TOTAL - 30000, { quando: minutos(15) });
+    await tentarDevolucao(db, c.org, devolucaoIds[0], c.provedor, minutos(20));
+    let q = await quadro(x.reservaId, minutos(21));
+    let linha = q.devolucoes!.find((d) => d.id === devolucaoIds[0])!;
+    expect(linha).toMatchObject({ situacao: "pedida", aguardandoLiberacao: true });
+    // Nunca enviada: por fora vale (Pix); pedir de novo, confirmar no painel do Mercado Pago, parar: não.
+    expect(linha.acoes).toMatchObject({ porFora: true, pedirDeNovo: false, confirmarVista: false, parar: false, pedirRestante: false, restantePorFora: false });
+    expect(q.aberta?.id).toBe(devolucaoIds[0]);
+    // Liberado, sai; o Mercado Pago devolve a menos: pedir o restante e o restante por fora (Pix).
+    await liberar(c, x.pagamentoId, { quando: minutos(30) });
+    c.provedor.devolverAMenos(25000);
+    await tentarDevolucao(db, c.org, devolucaoIds[0], c.provedor, minutos(31));
+    q = await quadro(x.reservaId, minutos(32));
+    linha = q.devolucoes!.find((d) => d.id === devolucaoIds[0])!;
+    expect(linha).toMatchObject({ situacao: "confirmada", valorConfirmado: 25000, temRestante: false });
+    expect(linha.acoes).toMatchObject({ pedirRestante: true, restantePorFora: true, registrarTaxa: true });
+    expect(q.avisos.join(" ")).toContain("R$ 250,00 de R$ 300,00");
+    // No cartão, a devolução por fora do restante fica fechada (o Mercado Pago ainda devolve): só pedir o restante.
+    const y = await pagarEConfirmar(c, { entrada: "2026-11-25", saida: "2026-11-27", email: "y@example.com", forma: "cartao", liberar: true });
+    const valorY = (await c.reserva(y.reservaId)).valorBruto!;
+    const redY = await reduzirDeTeste(c, y, valorY - 30000, { quando: minutos(15) });
+    c.provedor.devolverAMenos(25000);
+    await tentarDevolucao(db, c.org, redY.devolucaoIds[0], c.provedor, minutos(31));
+    const linhaY = (await quadro(y.reservaId, minutos(32))).devolucoes!.find((d) => d.id === redY.devolucaoIds[0])!;
+    expect(linhaY.acoes).toMatchObject({ pedirRestante: true, restantePorFora: false });
+  });
+
+  it("página do hóspede: o cancelamento com a devolução esperando a liberação mostra a previsão (nunca 'pedimos')", async () => {
+    const equipe = await usuarioDeTeste(c);
+    const x = await pagarEConfirmar(c, longe);
+    await db.update(pagamentos).set({ liberacaoPrevistaEm: new Date("2026-10-31T15:00:00Z") }).where(eq(pagamentos.id, x.pagamentoId));
+    // Uma parte devolvida pelo painel antes: o restante é de parte do valor e espera a liberação (D13).
+    c.provedor.devolverNoProvedor(x.idProvedor, 1000);
+    const { resultado } = await cancelar(c, x.reservaId, entradaPadrao({ quemCancela: "empresa", motivoEmpresa: "forca_maior" }), equipe, minutos(60));
+    expect(resultado).toMatchObject({ ok: true, devolucoes: ["pedida"] });
+    const v = (await vista(x.cotacaoId, minutos(61)))!;
+    expect(v.estado).toBe("cancelada_devolucao_pedida");
+    expect(v.cancelamento?.aguardandoLiberacao).toEqual({ previstaEm: "2026-10-31" });
+    const t = { ...TEXTOS_SITE_INICIAIS };
+    const linhas = textoDoCancelamento(v, t).linhas.join(" ");
+    expect(linhas).toContain("(previsto para 31/10)");
+    expect(linhas).not.toMatch(/pedimos/i);
   });
 });

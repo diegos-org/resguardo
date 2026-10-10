@@ -9,10 +9,12 @@
  *   (depois, a equipe registra à mão);
  * - devoluções pedidas cuja próxima tentativa chegou (relê a order antes; chave nova a cada pedido), só de pagamentos
  *   dos últimos 85 dias: depois disso a order não aparece mais, a rotina para de ler e liga o aviso
- *   `devolucao_fora_do_prazo` (uma vez), para a equipe resolver pelo painel do Mercado Pago. Vale para as duas origens
- *   (sem reserva, M8.2a; cancelamento, M8.2c); origem desconhecida (prévia com banco compartilhado) fica de fora;
- * - pagamentos pendentes que sobraram numa cotação em que outro já trouxe dinheiro (cancelados no provedor; quem
- *   pediu o cancelamento foi o sistema);
+ *   `devolucao_fora_do_prazo` (uma vez, na devolução e no pagamento), para a equipe resolver pelo painel do Mercado Pago.
+ *   Vale para todas as origens conhecidas (sem reserva, M8.2a; cancelamento, M8.2c; alteração, M8.2d); origem
+ *   desconhecida (prévia com banco compartilhado) fica de fora; a que o Mercado Pago devolveu a menos espera a equipe (pelo
+ *   aviso da própria devolução); a de parte do valor que espera a liberação só é pedida depois dela (D13);
+ * - pagamentos pendentes que sobraram numa cotação em que outro DO MESMO ALVO já trouxe dinheiro (a reserva, ou a
+ *   diferença da mesma alteração, M8.2d; cancelados no provedor; quem pediu o cancelamento foi o sistema);
  * - uma vez por dia, os pagamentos dos últimos 85 dias (o provedor só consulta orders de até três meses) com desfecho (reserva, devolução ou devolução por fora) e
  *   os aprovados sem reserva à espera da devolução: devolução ou contestação feita por fora (ou devolução em dobro)
  *   vira aviso, nunca estorno automático.
@@ -23,6 +25,7 @@
  */
 import { and, eq, gte, inArray, isNotNull, isNull, lt, lte, or, type SQL, sql } from "drizzle-orm";
 import { devolucoesPagamento, pagamentos } from "@/db/schema";
+import { dinheiroDaReservaSql } from "./travas";
 import type { Db } from "@/db/types";
 import { cancelarNoProvedor, conferirTentativa } from "./conferencia";
 import { tentarDevolucao } from "./devolucao";
@@ -76,7 +79,7 @@ export async function conferirPendentes(db: Db, organizacaoId: string | null, pr
           and(inArray(pagamentos.situacao, ["criando", "incerta", "pendente"]), gte(pagamentos.criadoEm, corte)),
           and(
             inArray(pagamentos.situacao, ["aprovado", "devolvido_parcial"]),
-            or(isNull(pagamentos.taxa), and(eq(pagamentos.desfecho, "reserva"), or(isNull(pagamentos.liberacaoConfirmadaEm), eq(pagamentos.liberacaoOrigem, "manual")))),
+            or(isNull(pagamentos.taxa), and(dinheiroDaReservaSql(pagamentos.desfecho), or(isNull(pagamentos.liberacaoConfirmadaEm), eq(pagamentos.liberacaoOrigem, "manual")))),
             // Taxa ou liberação que nunca chegou: depois do prazo do provedor, fica para a equipe (registro à mão).
             gte(pagamentos.criadoEm, corte),
             // No primeiro dia, a cada volta; depois, a cada 6 h (no teste o sinal de liberação nunca chega).
@@ -93,7 +96,7 @@ export async function conferirPendentes(db: Db, organizacaoId: string | null, pr
             // aprovado sem reserva à espera da devolução (devolvido pelo painel do Mercado Pago, por exemplo): relidos
             // uma vez por dia.
             or(
-              inArray(pagamentos.desfecho, ["reserva", "devolucao", "por_fora"]),
+              inArray(pagamentos.desfecho, ["reserva", "alteracao", "devolucao", "por_fora"]),
               and(isNull(pagamentos.desfecho), inArray(pagamentos.situacao, ["aprovado", "devolvido_parcial", "contestado"])),
             ),
             gte(pagamentos.criadoEm, corte),
@@ -129,7 +132,8 @@ export async function conferirPendentes(db: Db, organizacaoId: string | null, pr
         isNotNull(pagamentos.idProvedor),
         // Fora do prazo do provedor, nem cancela nem relê (o aviso de andamento fora do prazo fica para a equipe).
         gte(pagamentos.criadoEm, corte),
-        sql`exists (select 1 from ${pagamentos} p2 where p2.cotacao_id = ${pagamentos.cotacaoId} and p2.id <> ${pagamentos.id} and p2.situacao in ('aprovado', 'devolvido_parcial', 'devolvido', 'contestado'))`,
+        // Só do mesmo alvo (M8.2d): a reserva, ou a diferença da mesma alteração.
+        sql`exists (select 1 from ${pagamentos} p2 where p2.cotacao_id = ${pagamentos.cotacaoId} and p2.id <> ${pagamentos.id} and p2.alteracao_id is not distinct from ${pagamentos.alteracaoId} and p2.situacao in ('aprovado', 'devolvido_parcial', 'devolvido', 'contestado'))`,
       ),
     );
   for (const x of sobrando) {
@@ -141,9 +145,23 @@ export async function conferirPendentes(db: Db, organizacaoId: string | null, pr
     }
   }
 
-  // Devoluções: o mesmo prazo. Fora dele, nada se lê (a confirmação nunca chegaria): só o aviso, uma vez. Só as de origem
-  // que esta versão conhece (M8.2c); a que o Mercado Pago devolveu a menos espera a equipe (a rotina não relê).
+  // Devoluções: o mesmo prazo. Fora dele, nada se lê (a confirmação nunca chegaria): só o aviso, uma vez, na devolução e no
+  // pagamento (que leva a união dos avisos das devoluções, M8.2d). Só as de origem que esta versão conhece; a que o Mercado
+  // Pago devolveu a menos espera a equipe (a rotina não relê).
   const conhecidas = sql.join(ORIGENS_DEVOLUCAO_CONHECIDAS.map((o) => sql`${o}`), sql`, `);
+  const foraDoPrazo = sql`jsonb_build_array('devolucao_fora_do_prazo'::text)`;
+  await db
+    .update(devolucoesPagamento)
+    .set({ avisos: sql`${devolucoesPagamento.avisos} || ${foraDoPrazo}`, atualizadoEm: agora })
+    .where(
+      and(
+        organizacaoId ? eq(devolucoesPagamento.organizacaoId, organizacaoId) : undefined,
+        eq(devolucoesPagamento.situacao, "pedida"),
+        sql`${devolucoesPagamento.origem} in (${conhecidas})`,
+        sql`not (${devolucoesPagamento.avisos} @> ${foraDoPrazo})`,
+        sql`exists (select 1 from ${pagamentos} p where p.id = ${devolucoesPagamento.pagamentoId} and p.criado_em < ${corte})`,
+      ),
+    );
   await avisarForaDoPrazo("devolucao_fora_do_prazo", sql`exists (select 1 from ${devolucoesPagamento} d where d.pagamento_id = ${pagamentos.id} and d.situacao = 'pedida' and d.origem in (${conhecidas}))`);
   const devolucoes = await db
     .select({ id: devolucoesPagamento.id, organizacaoId: devolucoesPagamento.organizacaoId })
@@ -154,7 +172,7 @@ export async function conferirPendentes(db: Db, organizacaoId: string | null, pr
         organizacaoId ? eq(devolucoesPagamento.organizacaoId, organizacaoId) : undefined,
         eq(devolucoesPagamento.situacao, "pedida"),
         inArray(devolucoesPagamento.origem, [...ORIGENS_DEVOLUCAO_CONHECIDAS]),
-        sql`not (${pagamentos.avisos} @> '["devolucao_a_menor"]'::jsonb)`,
+        sql`not (${devolucoesPagamento.avisos} @> '["devolucao_a_menor"]'::jsonb)`,
         or(isNull(devolucoesPagamento.proximaTentativaEm), lte(devolucoesPagamento.proximaTentativaEm, agora)),
         gte(pagamentos.criadoEm, corte),
       ),

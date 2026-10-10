@@ -247,7 +247,9 @@ export type TextosDoCancelamento = Pick<
   | "cancelamentoSemDevolucaoEquipe"
   | "cancelamentoFecho"
   | "cancelamentoPedidoRecebido"
->;
+> &
+  // M8.2d: a devolução de parte do valor que espera a liberação do pagamento (opcional para quem monta os textos à mão).
+  Partial<Pick<TextosSite, "devolucaoAguardaLiberacao">>;
 
 /** O texto do cancelamento em partes: as linhas da página e o que as mensagens usam (`{decisao}`, `{comovolta}`). */
 export type TextoDoCancelamento = {
@@ -322,6 +324,11 @@ export function textoDoCancelamento(
         decisoes.push(c.confirmadaPor === "equipe" ? `Devolução de ${formatBRL(valor)} feita pelo Mercado Pago${dia}.` : `Devolução de ${formatBRL(c.valorConfirmado ?? valor)} confirmada pelo Mercado Pago${dia}.`);
         comoVolta = voltaPeloMercadoPago || null;
       }
+    } else if (v.estado === "cancelada_devolucao_pedida" && c.aguardandoLiberacao) {
+      // M8.2d (D13): nada foi pedido ainda — a devolução sai quando o Mercado Pago liberar o pagamento (nunca "já pedimos").
+      const prevista = c.aguardandoLiberacao.previstaEm ? ` (previsto para ${diaIso(c.aguardandoLiberacao.previstaEm)})` : "";
+      decisoes.push(juntar(`Devolução de ${formatBRL(valor)}${prevista}.`, textos.devolucaoAguardaLiberacao ?? ""));
+      comoVolta = voltaPeloMercadoPago || null;
     } else if (v.estado === "cancelada_devolucao_pedida") {
       decisoes.push(c.estornoPelaEquipe ? textos.cancelamentoEstornoNoCartao : textos.cancelamentoDevolucaoPedida);
       comoVolta = voltaPeloMercadoPago || null;

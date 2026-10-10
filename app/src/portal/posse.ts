@@ -9,7 +9,7 @@
  */
 import { type AnyColumn, and, eq, exists, gt, gte, isNotNull, isNull, lt, not, notInArray, inArray, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { cancelamentosReserva, lancamentos, pagamentos, proprietarioImoveis, reservas } from "@/db/schema";
+import { cancelamentosReserva, devolucoesPagamento, lancamentos, pagamentos, proprietarioImoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 
 /** Lançamento em vigor: não é estorno e não foi estornado. */
@@ -25,13 +25,22 @@ export function lancamentoEmVigor(db: Db) {
 export const reservaCalculadaSql = () => sql`(${reservas.estado} = 'confirmada' or (${reservas.estado} = 'cancelada' and coalesce(${reservas.valorRetido}, 0) > 0))`;
 
 /**
- * Condição sobre `reservas` (D21, M8.2c): o pagamento do site que confirmou a reserva aparece devolvido no Mercado Pago
- * (no todo, em parte, ou com o aviso de devolução por fora) fora do cancelamento pela política com devolução integral.
- * O dinheiro já voltou ao hóspede: a parte do proprietário fica em conferência e não é repassada. Gêmeo TS:
- * `devolvidaNoProvedor` (`pagamentos/consultas.ts`).
+ * Condição sobre `reservas` (D21, M8.2c; M8.2d): algum pagamento do site com o dinheiro da reserva (o que a confirmou e as
+ * diferenças de alteração) mostra no Mercado Pago devolvido além do que as nossas devoluções e o reconhecido explicam —
+ * mais devolvido lido do que o reconhecido devolvido fora mais as nossas (confirmadas, cada uma pelo que voltou até o
+ * valor dela, e as pedidas possivelmente no provedor: enviadas, com a chave em dúvida ou aceita), ou devolvido sem nada
+ * nosso nem reconhecido — fora do cancelamento pela política com devolução integral. O dinheiro já voltou ao hóspede: a
+ * parte do proprietário fica em conferência e não é repassada. Gêmeo TS: `devolucaoInexplicada` (`pagamentos/travas.ts`),
+ * por pagamento, em `devolvidaNoProvedor` (`pagamentos/consultas.ts`). O aviso `devolvido_por_fora` é saída disto, nunca
+ * entrada.
  */
-export const devolvidaNoProvedorSql = () => sql`(exists (select 1 from ${pagamentos} p where p.reserva_id = ${reservas.id} and p.desfecho = 'reserva'
-    and (p.situacao in ('devolvido', 'devolvido_parcial') or p.devolvido_lido > 0 or p.avisos @> '["devolvido_por_fora"]'::jsonb))
+export const devolvidaNoProvedorSql = () => sql`(exists (select 1 from ${pagamentos} p where p.reserva_id = ${reservas.id} and p.desfecho in ('reserva', 'alteracao')
+    and (p.devolvido_lido > p.devolvido_fora_reconhecido + (select coalesce(sum(case
+            when d.situacao = 'confirmada' then least(coalesce(d.valor_confirmado, d.valor), d.valor)
+            when d.situacao = 'pedida' and d.tentativas > 0 and (d.chave_aceita or d.chave_em_duvida) then d.valor
+            else 0 end), 0) from ${devolucoesPagamento} d where d.pagamento_id = p.id)
+      or (p.situacao in ('devolvido', 'devolvido_parcial') and p.devolvido_fora_reconhecido = 0 and not exists (select 1 from ${devolucoesPagamento} d
+            where d.pagamento_id = p.id and (d.situacao = 'confirmada' or (d.situacao = 'pedida' and d.tentativas > 0 and (d.chave_aceita or d.chave_em_duvida)))))))
   and not exists (select 1 from ${cancelamentosReserva} c where c.reserva_id = ${reservas.id} and c.situacao = 'cancelada' and c.direito = 'integral'))`;
 
 /**

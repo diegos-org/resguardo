@@ -2,7 +2,7 @@
  * Cancelamento de reserva paga pelo site, pela política (M8.2c; desenho §5.4).
  *
  * Quem decide é a Política de cancelamento na versão aceita pelo hóspede ao pagar (`decidirPelaPolitica`), no momento em
- * que a SCL recebeu o pedido: devolução integral ou nada (a devolução de parte do valor é do M8.2d). A equipe só escolhe
+ * que a SCL recebeu o pedido: devolução integral ou nada. A equipe só escolhe
  * onde a política não decide: a exceção (integral quando a política não dá nada, com motivo da lista e nota) e o caso sem
  * política (pagamento sem o aceite). Um direito integral nunca vira "nada": o não comparecimento é recusado com um pedido
  * ativo, e o pedido do hóspede que chega depois do início da estadia sem direito a devolução é saída antecipada, não
@@ -18,6 +18,14 @@
  * - **Fase 2** (fora da transação): o pedido da devolução ao Mercado Pago (`tentarDevolucao`); a rotina e o "Conferir
  *   agora" o retomam se falhar aqui.
  *
+ * Depois de uma alteração (M8.2d): os prazos contam da entrada que conta (`entradaQueConta`: a menor entre a da cotação
+ * original e a atual) e "a estadia começou" conta da atual; a política é a aceita no pagamento que confirmou a reserva. A
+ * base é o que ainda se pode devolver de cada pagamento da reserva (o pago menos as outras devoluções e o reconhecido
+ * devolvido fora pelo painel do Mercado Pago, D17); uma devolução do cancelamento por pagamento com saldo. O cancelamento
+ * integral absorve a devolução de uma alteração que nunca chegou ao Mercado Pago (fica `substituida`, D23), e desiste de uma
+ * alteração com as datas seguradas sem pagamento da diferença em andamento. Recusa enquanto uma devolução da reserva tem
+ * a chave em voo, ou uma devolvida a menos não tem o restante resolvido.
+ *
  * O pedido (do hóspede em Minha reserva, com o horário do servidor travado; ou registrado pela equipe), o descarte, a
  * marca das OTAs e a de "mensagem enviada ao hóspede" também moram aqui. Nenhuma nota guarda dado pessoal
  * (`textoSemDadosPessoais`); a auditoria nunca copia notas nem nomes.
@@ -26,9 +34,10 @@ import { createHash } from "node:crypto";
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { lerConfigPagamentoSite } from "@/configuracoes/pagamento-site";
-import { DIAS_ARREPENDIMENTO, type DecisaoPolitica, decidirPelaPolitica, HORA_ENTRADA_PADRAO, horaDeEntrada, type QuemCancela, regrasComPadrao } from "@/configuracoes/politica-cancelamento";
+import { DIAS_ARREPENDIMENTO, type DecisaoPolitica, decidirPelaPolitica, entradaQueConta, HORA_ENTRADA_PADRAO, horaDeEntrada, type QuemCancela, regrasComPadrao } from "@/configuracoes/politica-cancelamento";
 import { travaOcupada, violouUnicidade } from "@/db/erros";
 import {
+  alteracoesReserva,
   type BaseCancelamento,
   CANAIS_PEDIDO_CANCELAMENTO,
   cancelamentosReserva,
@@ -57,14 +66,34 @@ import { formatBRL } from "@/lib/money";
 import { repasseAPagarDaReservaDados } from "@/repasses/recebimentos";
 import { avisoDoPagamento } from "@/reservas/repositorio";
 import { politicaDoPagamento } from "@/site/aceites";
-import { acertarCaixa, acertarResultado, auditoriaDoDevolvido, fatoDoDevolvidoNoPainel, lancamentosDoMotor } from "./acerto-cancelamento";
+import { acertarCaixaDaDevolucao, acertarResultado, auditoriaDoDevolvido, fatoDoDevolvidoNoPainel, lancamentosDoMotor } from "./acerto-cancelamento";
+import { situacaoEfetiva } from "./alteracao-regras";
 import { inicioDoPrazoDePedirDevolucao, inicioDoPrazoDeReleitura } from "./andamento";
-import { conferirTentativa } from "./conferencia";
-import { PRAZO_DEVOLUCAO_CARTAO_DIAS, tentarDevolucao } from "./devolucao";
-import { FUSO_PAGAMENTO } from "./liberacao";
-import { type ProvedorPagamento, valorPagoNaOrder } from "./provedor";
+import { sincronizarAvisosDoPagamento, trocarAvisosDaDevolucao } from "./avisos-devolucao";
+import { cancelarNoProvedor, conferirTentativa } from "./conferencia";
+import { ERRO_FORA_SEM_VALOR, PRAZO_DEVOLUCAO_CARTAO_DIAS, tentarDevolucao } from "./devolucao";
+import { FUSO_PAGAMENTO, taxaCanalDaReserva } from "./liberacao";
+import type { ProvedorPagamento } from "./provedor";
 import { type CodigoAviso, emAndamento, NOMES_SITUACAO_PAGAMENTO } from "./situacoes";
-import { type Cancelamento, type Devolucao, lerCotacaoSemTravar, type Pagamento, type Travado, travarCotacao } from "./travas";
+import {
+  type Alteracao,
+  carenciaNoTravado,
+  chaveEmVoo,
+  comprometidoNoPagamento,
+  type Cancelamento,
+  type Devolucao,
+  devolucaoInexplicada,
+  devolucoesDoPagamento,
+  devolvidoForaSemValor,
+  devolvidoProprio,
+  lerCotacaoSemTravar,
+  type Pagamento,
+  pagamentosDaReserva,
+  saldoDevolvivel,
+  type Travado,
+  travarCotacao,
+  valorPagoAprovado,
+} from "./travas";
 
 export type EntradaCancelamento = {
   /** Sem pedido registrado: obrigatório. Pedido da equipe: o registrado, ou um novo com `motivoMomento`. Pedido pelo site: ignorado (travado). */
@@ -82,6 +111,11 @@ export type EntradaCancelamento = {
   motivoDecisao: string;
   /** 0..300 */
   nota: string;
+  /**
+   * D17: o valor que o painel do Mercado Pago mostra devolvido fora do sistema, quando a leitura não diz quanto
+   * (obrigatório só nesse caso).
+   */
+  valorForaInformado?: number;
 };
 
 export type CodigoRecusaCancelamento =
@@ -90,6 +124,9 @@ export type CodigoRecusaCancelamento =
   | "ja_cancelada"
   | "em_andamento"
   | "devolvido_em_parte"
+  | "devolvido_fora_sem_valor"
+  | "devolucao_a_menor"
+  | "ha_alteracao"
   | "contestado"
   | "sem_leitura"
   | "repasse_a_pagar"
@@ -130,6 +167,11 @@ export type Previa = {
     ajustes: { id: string; descricao: string; valor: number }[];
   };
   leitura: { em: Date | null; situacao: SituacaoPagamento; devolvidoLido: number; emAndamento: boolean };
+  /**
+   * M8.2d: a devolução de cada pagamento da reserva com saldo (o que a confirmou e as diferenças), a rota dela, as
+   * devoluções de alteração que ela absorve (nunca chegaram ao Mercado Pago) e o reconhecido devolvido fora pelo painel.
+   */
+  pagamentos?: { pagamentoId: string; forma: "pix" | "cartao"; valor: number; rota: Exclude<RotaDevolucao, "nenhuma">; substitui: string[]; foraReconhecido: number }[];
   descartados: { em: Date; canal: CanalPedidoCancelamento | null; por: string | null; motivo: string }[];
   avisos: string[];
   assinatura: string;
@@ -163,7 +205,14 @@ export const TEXTO_EMPRESA_SEMPRE_INTEGRAL = "Quando a SCL cancela, o hóspede r
 export const TEXTO_SEM_POLITICA = "Este pagamento foi feito sem o aceite das páginas legais (antes de 9/10): o sistema não calcula a devolução. Escolha o que fazer e escreva o motivo.";
 export const TEXTO_INTEGRAL_NAO_SE_NEGA = "Pela política aceita, o hóspede tem direito ao valor integral: a equipe não decide outra coisa.";
 export const TEXTO_DEVOLVIDO_EM_PARTE =
-  "O Mercado Pago mostra parte deste pagamento devolvida, uma devolução em andamento ou uma situação que o sistema não reconhece: o cancelamento pela política espera isso se resolver. Confira no painel do Mercado Pago e use Conferir agora; a devolução de parte do valor chega com o M8.2d.";
+  "O Mercado Pago mostra uma devolução em andamento ou uma situação que o sistema não reconhece neste pagamento: o cancelamento espera isso se resolver. Confira no painel do Mercado Pago e use Conferir agora.";
+export const TEXTO_DEVOLUCAO_EM_VOO = "Há uma devolução desta reserva esperando o Mercado Pago: espere ela ser confirmada (use Conferir agora) antes de cancelar.";
+export const TEXTO_DEVOLUCAO_A_MENOR =
+  "O Mercado Pago devolveu menos do que foi pedido numa devolução desta reserva: peça o restante ao Mercado Pago ou registre o restante por fora antes de cancelar.";
+export const TEXTO_FORA_SEM_VALOR =
+  "O Mercado Pago mostra parte deste pagamento devolvida pelo painel, sem informar quanto: informe o valor que aparece no painel do Mercado Pago antes de cancelar.";
+export const TEXTO_ALTERACAO_EM_ANDAMENTO =
+  "Há uma alteração desta reserva com o pagamento da diferença em andamento: espere o pagamento terminar ou desista da alteração antes de cancelar.";
 export const TEXTO_CONTESTADO = "Pagamento contestado no Mercado Pago: o cancelamento espera a contestação (M8.2e).";
 export const TEXTO_MOMENTO = "Informe quando o pedido chegou (não pode ser no futuro nem antes do pagamento).";
 
@@ -197,32 +246,44 @@ const dataIsoBr = (d: string) => d.slice(0, 10).split("-").reverse().slice(0, 2)
 const minuto = (d: Date) => Math.floor(d.getTime() / 60_000);
 const emVigor = () => and(isNull(lancamentos.estornoDe), sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`);
 
-/** O pagamento que confirmou a reserva (desfecho "reserva") e a cotação dele: uma leitura, sem trava. */
+/**
+ * O pagamento que confirmou a reserva (desfecho "reserva") e a cotação dele, e todos os pagamentos com o dinheiro da
+ * reserva (M8.2d: também as diferenças de alteração): uma leitura, sem trava.
+ */
 async function localizar(db: Db, organizacaoId: string, reservaId: string) {
   if (!uuidValido(reservaId)) return null;
   const [r] = await db.select({ id: reservas.id, estado: reservas.estado }).from(reservas).where(and(eq(reservas.id, reservaId), eq(reservas.organizacaoId, organizacaoId)));
   if (!r) return null;
-  const [p] = await db
-    .select({ id: pagamentos.id, cotacaoId: pagamentos.cotacaoId, idProvedor: pagamentos.idProvedor, criadoEm: pagamentos.criadoEm })
+  const daReserva = await db
+    .select({ id: pagamentos.id, cotacaoId: pagamentos.cotacaoId, idProvedor: pagamentos.idProvedor, criadoEm: pagamentos.criadoEm, desfecho: pagamentos.desfecho })
     .from(pagamentos)
-    .where(and(eq(pagamentos.reservaId, r.id), eq(pagamentos.organizacaoId, organizacaoId), eq(pagamentos.desfecho, "reserva")));
-  return { reserva: r, pagamento: p ?? null };
+    .where(and(eq(pagamentos.reservaId, r.id), eq(pagamentos.organizacaoId, organizacaoId), inArray(pagamentos.desfecho, ["reserva", "alteracao"])));
+  const p = daReserva.find((x) => x.desfecho === "reserva");
+  return { reserva: r, pagamento: p ?? null, pagamentos: daReserva };
 }
 
 const NAO_PAGA = 'Esta reserva não foi paga pelo site: cancele pelo botão "Cancelar reserva" de sempre.';
 
 /**
- * Fase 0 (e a releitura da prévia): lê o pagamento de novo no Mercado Pago, forçado, quando ainda dá (dentro do prazo de
- * leitura). true = uma leitura que bateu com a tentativa foi aplicada agora.
+ * Fase 0 (e a releitura da prévia): lê de novo no Mercado Pago, forçado, cada pagamento da reserva quando ainda dá (dentro
+ * do prazo de leitura). true = todo pagamento dentro do prazo teve uma leitura que bateu com a tentativa aplicada agora.
  */
-async function releitura(db: Db, organizacaoId: string, p: { id: string; idProvedor: string | null; criadoEm: Date }, provedor: ProvedorPagamento | null, agora: Date): Promise<boolean> {
-  if (!provedor || !p.idProvedor || p.criadoEm.getTime() < inicioDoPrazoDeReleitura(agora).getTime()) return false;
-  try {
-    const r = await conferirTentativa(db, organizacaoId, p.id, provedor, agora, { forcar: true, origem: "painel" });
-    return r.ok && r.aplicada === true;
-  } catch {
-    return false;
+async function releitura(db: Db, organizacaoId: string, ps: readonly { id: string; idProvedor: string | null; criadoEm: Date }[], provedor: ProvedorPagamento | null, agora: Date): Promise<boolean> {
+  let todas = true;
+  for (const p of ps) {
+    if (p.criadoEm.getTime() < inicioDoPrazoDeReleitura(agora).getTime()) continue;
+    if (!provedor || !p.idProvedor) {
+      todas = false;
+      continue;
+    }
+    try {
+      const r = await conferirTentativa(db, organizacaoId, p.id, provedor, agora, { forcar: true, origem: "painel" });
+      if (!(r.ok && r.aplicada === true)) todas = false;
+    } catch {
+      todas = false;
+    }
   }
+  return todas;
 }
 
 /** Nomes dos usuários (para os textos do painel: quem registrou, quem descartou). */
@@ -251,9 +312,18 @@ export async function momentosDaEntrada(
   return { horaEntrada, cadastrado: !!detalhe, entradaEm, naoComparecimentoApos: new Date(entradaEm.getTime() + horas * 3_600_000) };
 }
 
+/** A devolução de um pagamento no cancelamento (M8.2d: uma por pagamento da reserva com saldo). */
+type Parte = { p: Pagamento; valor: number; rota: Exclude<RotaDevolucao, "nenhuma">; absorver: Devolucao[]; reconhecido: number };
+
 type Montada = {
   t: Travado;
   p: Pagamento;
+  /** As devoluções do cancelamento integral, por pagamento (vazio sem devolução). */
+  partes: Parte[];
+  /** O reconhecido devolvido fora de cada pagamento da reserva (D17), gravado no cancelamento. */
+  reconhecidos: Map<string, number>;
+  /** A alteração com as datas seguradas, sem pagamento da diferença em andamento: o cancelamento desiste dela. */
+  alteracaoADesistir: Alteracao | null;
   /** O pedido ativo (situação "pedido"), quando há. */
   ativo: Cancelamento | null;
   /** O momento corrigido pelo financeiro (o registrado antes), quando mudou. */
@@ -281,23 +351,48 @@ async function montarDecisao(db: Db, organizacaoId: string, t: Travado, e: Entra
     return recusa("ja_cancelada", `Esta reserva já foi cancelada${em ? ` em ${diaBr(em)}` : ""}.`);
   }
   if (r.estado !== "confirmada") return recusa("nao_encontrada", "Só uma reserva confirmada pode ser cancelada por aqui.");
-  // 2. O pagamento que a confirmou.
+  // 2. O pagamento que a confirmou (a política é a dele) e todos os do dinheiro da reserva (M8.2d: as diferenças também).
   const p = t.tentativas.find((x) => x.desfecho === "reserva");
   if (!p) return recusa("nao_paga_pelo_site", NAO_PAGA);
-  // 3. Tentativa sem resposta dentro do prazo de leitura: espera. Fora dele, só o aviso da prévia.
+  const daReserva = pagamentosDaReserva(t);
+  // 3. Uma alteração com as datas seguradas (M8.2d): com o pagamento da diferença em andamento, espera; sem ele, o
+  // cancelamento integral desiste dela.
   const inicioLeitura = inicioDoPrazoDeReleitura(agora).getTime();
+  const carencia = carenciaNoTravado(t, agora);
+  const segurada = t.alteracoes.find((a) => situacaoEfetiva(a, agora, carencia(a)) === "segurada") ?? null;
+  if (segurada && t.tentativas.some((x) => x.alteracaoId === segurada.id && ((emAndamento(x.situacao) && x.criadoEm.getTime() >= inicioLeitura) || (x.forma === "cartao" && x.situacao === "pendente" && x.etapaCartao === "analise"))))
+    return recusa("ha_alteracao", TEXTO_ALTERACAO_EM_ANDAMENTO);
+  // Tentativa sem resposta dentro do prazo de leitura: espera. Fora dele, só o aviso da prévia.
   const andando = t.tentativas.find((x) => emAndamento(x.situacao) && x.criadoEm.getTime() >= inicioLeitura);
   if (andando) return recusa("em_andamento", avisoDoPagamento({ id: andando.id, forma: andando.forma, situacao: andando.situacao, pixExpiraEm: andando.pixExpiraEm, desfecho: andando.desfecho }, fuso, "cancelar"));
   const andandoAntiga = t.tentativas.some((x) => emAndamento(x.situacao) && x.criadoEm.getTime() < inicioLeitura);
-  // 4. O que o Mercado Pago mostra do pagamento (pela leitura gravada).
-  if (p.situacao === "contestado") return recusa("contestado", TEXTO_CONTESTADO);
-  const emParte =
-    p.situacao === "devolvido_parcial" ||
-    (p.devolvidoLido > 0 && p.situacao !== "devolvido") ||
-    p.devolucaoEmAndamentoLida ||
-    p.avisos.includes("situacao_desconhecida") ||
-    (p.situacao !== "aprovado" && p.situacao !== "devolvido");
+  // 4. O que o Mercado Pago mostra de cada pagamento (pela leitura gravada) e as devoluções dele.
+  if (daReserva.some((x) => x.situacao === "contestado")) return recusa("contestado", TEXTO_CONTESTADO);
+  for (const x of daReserva) {
+    const devs = devolucoesDoPagamento(t, x.id);
+    if (devs.some(chaveEmVoo)) return recusa("em_andamento", TEXTO_DEVOLUCAO_EM_VOO);
+    if (devs.some((d) => d.avisos.includes("devolucao_a_menor") && !devs.some((y) => y.origemDevolucaoId === d.id))) return recusa("devolucao_a_menor", TEXTO_DEVOLUCAO_A_MENOR);
+  }
+  const emParte = daReserva.some((x) => x.devolucaoEmAndamentoLida || x.avisos.includes("situacao_desconhecida") || (x.situacao !== "aprovado" && x.situacao !== "devolvido" && x.situacao !== "devolvido_parcial"));
   if (emParte) return recusa("devolvido_em_parte", TEXTO_DEVOLVIDO_EM_PARTE);
+  // D17: o devolvido pelo painel do Mercado Pago fora do sistema fica reconhecido no cancelamento (da leitura, ou do valor
+  // que a equipe informa quando a leitura não diz quanto).
+  const reconhecidos = new Map<string, number>();
+  let informadoUsado = false;
+  for (const x of daReserva) {
+    const devs = devolucoesDoPagamento(t, x.id);
+    if (x.situacao === "devolvido" || !devolucaoInexplicada(x, devs)) {
+      reconhecidos.set(x.id, x.devolvidoForaReconhecido);
+      continue;
+    }
+    if (devolvidoForaSemValor(x, devs)) {
+      if (e.valorForaInformado === undefined || informadoUsado) return recusa("devolvido_fora_sem_valor", TEXTO_FORA_SEM_VALOR);
+      const teto = valorPagoAprovado(x) - comprometidoNoPagamento(devs);
+      if (!Number.isSafeInteger(e.valorForaInformado) || e.valorForaInformado < 1 || e.valorForaInformado > teto) return recusa("dados", ERRO_FORA_SEM_VALOR);
+      informadoUsado = true;
+      reconhecidos.set(x.id, Math.max(x.devolvidoForaReconhecido, e.valorForaInformado));
+    } else reconhecidos.set(x.id, Math.max(x.devolvidoForaReconhecido, x.devolvidoLido - devolvidoProprio(devs)));
+  }
   // 15 (antes do resto: é dado de entrada). Listas fechadas e notas sem dado pessoal.
   const nota = e.nota.trim();
   const motivoDecisao = e.motivoDecisao.trim();
@@ -355,8 +450,26 @@ async function montarDecisao(db: Db, organizacaoId: string, t: Travado, e: Entra
   // 8. A SCL cancela: o motivo dela.
   if (e.quemCancela === "empresa" && !e.motivoEmpresa) return recusa("dados", "Escolha o motivo da SCL (apartamento sem condições, força maior ou outro).");
   const politica = await politicaDoPagamento(db, organizacaoId, p.id);
-  const valorPago = valorPagoNaOrder({ pago: p.valorPago, valor: p.valor });
-  const entradaPolitica = { regras: politica?.regras ?? null, checkin: r.checkin, horaEntrada, fuso, aprovadoEm: p.aprovadoEm ?? p.criadoEm, pedidoRecebidoEm: recebidoEm, valorBase: valorPago };
+  // M8.2d: a base é o que ainda se pode devolver de cada pagamento da reserva, com o reconhecido devolvido fora e sem as
+  // devoluções de alteração que nunca chegaram ao Mercado Pago (o cancelamento integral as absorve, D23).
+  const absorviveis = (x: Pagamento) =>
+    devolucoesDoPagamento(t, x.id).filter((d) => d.origem === "alteracao" && ((d.situacao === "pedida" && d.tentativas === 0) || (d.situacao === "recusada" && !d.chaveEmDuvida && !d.chaveAceita)));
+  const saldoDe = (x: Pagamento) => {
+    const fora = absorviveis(x).map((d) => d.id);
+    return saldoDevolvivel({ ...x, devolvidoForaReconhecido: reconhecidos.get(x.id) ?? x.devolvidoForaReconhecido }, devolucoesDoPagamento(t, x.id).filter((d) => !fora.includes(d.id)));
+  };
+  const valorPago = daReserva.reduce((soma, x) => soma + Math.max(0, saldoDe(x)), 0);
+  // A política conta da entrada que conta (a menor entre a da cotação original e a atual); "a estadia começou", da atual.
+  const entradaPolitica = {
+    regras: politica?.regras ?? null,
+    checkin: entradaQueConta(t.cotacao.checkin, r.checkin),
+    entradaAtual: r.checkin,
+    horaEntrada,
+    fuso,
+    aprovadoEm: p.aprovadoEm ?? p.criadoEm,
+    pedidoRecebidoEm: recebidoEm,
+    valorBase: valorPago,
+  };
   const calculada = decidirPelaPolitica({ ...entradaPolitica, quemCancela: e.quemCancela });
   // D5: a SCL cancela → sempre integral, também num pagamento sem a política aceita (a escolha "sem política" é só do
   // pedido do hóspede; a SCL nunca fica com o dinheiro de uma reserva que ela mesma cancelou).
@@ -386,16 +499,25 @@ async function montarDecisao(db: Db, organizacaoId: string, t: Travado, e: Entra
     direito = "integral";
     base = decisao.base;
   }
-  if (p.situacao === "devolvido" && direito === "nenhum")
+  if (daReserva.some((x) => x.situacao === "devolvido") && direito === "nenhum")
     return recusaDecidida("decisao_obrigatoria", "O Mercado Pago já mostra este pagamento devolvido por inteiro: registre como devolução integral (pela política ou por exceção, com o motivo).");
+  // D17: sem devolução pela política, com dinheiro já devolvido pelo painel do Mercado Pago fora do sistema: nunca suposto.
+  const foraDoSistema = daReserva.find((x) => devolucaoInexplicada(x, devolucoesDoPagamento(t, x.id)));
+  if (foraDoSistema && direito === "nenhum") {
+    const fora = (reconhecidos.get(foraDoSistema.id) ?? 0) || foraDoSistema.devolvidoLido;
+    return recusaDecidida(
+      "decisao_obrigatoria",
+      `O Mercado Pago mostra ${formatBRL(fora)} devolvidos pelo painel, fora do sistema, e a política não dá devolução: decida por exceção (devolução integral) ou registre um ajuste.`,
+    );
+  }
   // 10. Saída antecipada não é cancelamento (a exceção, com o motivo, continua possível).
   if (e.quemCancela === "hospede" && decisao.comecou && direito === "nenhum")
     return recusaDecidida(
       "estadia_iniciada",
       `O pedido chegou depois do início da estadia (${diaHoraBr(entradaEm, fuso)}): pela política não há devolução e a reserva continua como está (saída antecipada não é cancelamento). Descarte o pedido com o motivo, se for o caso.`,
     );
-  // 11. Integral de um pagamento ainda no prazo de leitura: só com a leitura de agora aplicada.
-  if (direito === "integral" && p.criadoEm.getTime() >= inicioLeitura && !extras.leituraAplicada)
+  // 11. Integral de um pagamento ainda no prazo de leitura: só com a leitura de agora aplicada (de cada um).
+  if (direito === "integral" && daReserva.some((x) => x.criadoEm.getTime() >= inicioLeitura) && !extras.leituraAplicada)
     return recusaDecidida("sem_leitura", `${TEXTO_SEM_LEITURA}${ativo ? SEM_LEITURA_PEDIDO_REGISTRADO : e.quemCancela === "hospede" ? SEM_LEITURA_PEDIDO_NAO_GUARDADO : ""}`);
   // 12. Os componentes (sob a trava do motor na fase 1) e a parte num repasse ainda não pago.
   const motor = await lancamentosDoMotor(db, organizacaoId, r.id, { travar: extras.travar });
@@ -428,11 +550,23 @@ async function montarDecisao(db: Db, organizacaoId: string, t: Travado, e: Entra
     .from(lancamentos)
     .where(and(eq(lancamentos.organizacaoId, organizacaoId), eq(lancamentos.reservaId, r.id), eq(lancamentos.tipo, "ajuste"), emVigor()))
     .orderBy(asc(lancamentos.criadoEm));
-  // 13 e 14. Os valores e a rota da devolução.
+  // 13 e 14. Os valores e a rota de cada devolução (uma por pagamento da reserva com saldo).
   const valorADevolver = direito === "integral" ? valorPago : 0;
-  const valorRetido = direito === "nenhum" ? p.valor : 0;
-  const rota: RotaDevolucao =
-    direito === "nenhum" ? "nenhuma" : p.situacao === "devolvido" ? "ja_devolvida" : p.criadoEm.getTime() < inicioDoPrazoDePedirDevolucao(agora).getTime() ? "fora_do_prazo" : "pedida";
+  // Retido: o valor de cada pagamento menos o principal das devoluções de alteração decididas (a absorvível continua, sem devolução).
+  const retido = daReserva.reduce((soma, x) => {
+    const daAlteracao = devolucoesDoPagamento(t, x.id).filter((d) => d.origem === "alteracao");
+    return soma + Math.max(0, x.valor - comprometidoNoPagamento(daAlteracao));
+  }, 0);
+  const valorRetido = direito === "nenhum" ? retido : 0;
+  const rotaDe = (x: Pagamento): Exclude<RotaDevolucao, "nenhuma"> =>
+    x.situacao === "devolvido" ? "ja_devolvida" : x.criadoEm.getTime() < inicioDoPrazoDePedirDevolucao(agora).getTime() ? "fora_do_prazo" : "pedida";
+  const partes: Parte[] =
+    direito === "integral"
+      ? daReserva
+          .map((x) => ({ p: x, valor: Math.max(0, saldoDe(x)), rota: rotaDe(x), absorver: absorviveis(x), reconhecido: reconhecidos.get(x.id) ?? x.devolvidoForaReconhecido }))
+          .filter((x) => x.valor > 0)
+      : [];
+  const rota: RotaDevolucao = direito === "nenhum" ? "nenhuma" : (partes.find((x) => x.p.id === p.id)?.rota ?? partes[0]?.rota ?? rotaDe(p));
 
   // Pedidos descartados (ficam no histórico) e os nomes de quem registrou e descartou.
   const descartadas = await db
@@ -444,7 +578,7 @@ async function montarDecisao(db: Db, organizacaoId: string, t: Travado, e: Entra
   const descartados = descartadas.map((x) => ({ em: x.pedidoRecebidoEm, canal: x.canal, por: x.descartadoPor ? (nomes.get(x.descartadoPor) ?? null) : null, motivo: x.descarteMotivo, descartadoEm: x.descartadoEm }));
 
   const regras = politica ? regrasComPadrao(politica.regras) : null;
-  const componentes: Previa["componentes"] = { comissao, parteProprietario, taxa: p.taxa, jaRepassada, perdaDoProprietario, ajustes };
+  const componentes: Previa["componentes"] = { comissao, parteProprietario, taxa: daReserva.length > 1 ? taxaCanalDaReserva(t) : p.taxa, jaRepassada, perdaDoProprietario, ajustes };
   const leitura: Previa["leitura"] = { em: p.consultadoEm, situacao: p.situacao, devolvidoLido: p.devolvidoLido, emAndamento: p.devolucaoEmAndamentoLida };
   const descontoJaRepassado = jaRepassada.reduce((s, x) => s + x.valor, 0);
 
@@ -454,10 +588,17 @@ async function montarDecisao(db: Db, organizacaoId: string, t: Travado, e: Entra
   if (fuso !== FUSO_PAGAMENTO) avisos.push("A política conta no horário de Brasília e este imóvel está em outro fuso: confira as datas.");
   if (!entrada.cadastrado) avisos.push(`Este imóvel não tem horário de entrada cadastrado: vale o padrão ${HORA_ENTRADA_PADRAO}.`);
   if (direito === "nenhum" && p.taxa === null) avisos.push("A taxa do Mercado Pago ainda não foi informada: a divisão usa taxa zero até ele informar (aviso no Início).");
-  if (direito === "nenhum" && r.valorBruto !== p.valor)
+  if (direito === "nenhum" && r.valorBruto !== retido)
     avisos.push(
-      `O valor retido (${formatBRL(p.valor)}, o que o hóspede pagou) é diferente do valor da reserva (${formatBRL(r.valorBruto ?? 0)}): a divisão muda.${motor.movidos.size ? " Como a parte já foi repassada, a reserva fica em conferência para um ajuste manual." : ""}`,
+      `O valor retido (${formatBRL(retido)}, o que o hóspede pagou) é diferente do valor da reserva (${formatBRL(r.valorBruto ?? 0)}): a divisão muda.${motor.movidos.size ? " Como a parte já foi repassada, a reserva fica em conferência para um ajuste manual." : ""}`,
     );
+  for (const x of partes)
+    for (const d of x.absorver)
+      avisos.push(`Inclui a devolução da alteração de ${diaBr(d.criadoEm)} ainda não pedida ao Mercado Pago (${formatBRL(d.valor)}): ela passa a fazer parte da devolução do cancelamento.`);
+  for (const x of partes)
+    if (x.reconhecido > x.p.devolvidoForaReconhecido || x.reconhecido > 0)
+      avisos.push(`O Mercado Pago já mostra ${formatBRL(x.reconhecido)} devolvidos pelo painel dele neste pagamento: a devolução do cancelamento é do restante (${formatBRL(x.valor)}).`);
+  if (segurada && direito === "integral") avisos.push(`A alteração preparada em ${diaBr(segurada.criadoEm)} (datas seguradas) é desfeita pelo cancelamento: as novas datas voltam à venda.`);
   if (direito === "integral" && perdaDoProprietario > 0)
     avisos.push(
       `O proprietário deixa de receber ${formatBRL(perdaDoProprietario)} que receberia pela política (sem devolução, o valor seria dividido normalmente).${descontoJaRepassado > 0 ? ` ${formatBRL(descontoJaRepassado)} já repassados serão descontados no próximo repasse dele.` : ""}`,
@@ -518,6 +659,10 @@ async function montarDecisao(db: Db, organizacaoId: string, t: Travado, e: Entra
         // (sem isto, o descarte de um pedido da equipe com o mesmo minuto e canal passaria como pedido novo).
         ativo?.id ?? null,
         descartadas.map((x) => x.id),
+        // M8.2d: cada pagamento da reserva (leitura, devoluções) e as partes da devolução.
+        daReserva.map((x) => [x.id, x.situacao, x.devolvidoLido, x.devolucaoEmAndamentoLida, x.devolvidoForaReconhecido, comprometidoNoPagamento(devolucoesDoPagamento(t, x.id))]),
+        partes.map((x) => [x.p.id, x.valor, x.rota, x.absorver.map((d) => d.id), x.reconhecido]),
+        segurada?.id ?? null,
       ]),
     )
     .digest("hex")
@@ -537,13 +682,14 @@ async function montarDecisao(db: Db, organizacaoId: string, t: Travado, e: Entra
     componentes,
     leitura,
     descartados: descartados.map(({ em, canal: c, por, motivo }) => ({ em, canal: c, por, motivo })),
+    pagamentos: partes.map((x) => ({ pagamentoId: x.p.id, forma: x.p.forma, valor: x.valor, rota: x.rota, substitui: x.absorver.map((d) => d.id), foraReconhecido: x.reconhecido })),
     avisos,
     assinatura,
-    pergunta: perguntaDoCancelamento({ codigo: r.codigo, checkin: r.checkin, direito, base, rota, valorADevolver, valorRetido: p.valor, comissao, parteProprietario, perdaDoProprietario, descontoJaRepassado, quemCancela: e.quemCancela }),
+    pergunta: perguntaDoCancelamento({ codigo: r.codigo, checkin: r.checkin, direito, base, rota, valorADevolver, valorRetido: retido, comissao, parteProprietario, perdaDoProprietario, descontoJaRepassado, quemCancela: e.quemCancela }),
   };
   return {
     ok: true,
-    m: { t, p, ativo, registradoOriginal, motivoMomento, nota, motivoDecisao, motivoExcecao: base === "excecao" ? e.motivoExcecao : null, motivoEmpresa: e.quemCancela === "empresa" ? e.motivoEmpresa : null, quemCancela: e.quemCancela, previa },
+    m: { t, p, partes, reconhecidos, alteracaoADesistir: direito === "integral" ? segurada : null, ativo, registradoOriginal, motivoMomento, nota, motivoDecisao, motivoExcecao: base === "excecao" ? e.motivoExcecao : null, motivoEmpresa: e.quemCancela === "empresa" ? e.motivoEmpresa : null, quemCancela: e.quemCancela, previa },
   };
 }
 
@@ -592,7 +738,7 @@ export async function previaDoCancelamento(
   const alvo = await localizar(db, organizacaoId, reservaId);
   if (!alvo) return recusa("nao_encontrada", "Reserva não encontrada.");
   if (!alvo.pagamento) return alvo.reserva.estado === "cancelada" ? recusa("ja_cancelada", "Esta reserva já foi cancelada.") : recusa("nao_paga_pelo_site", NAO_PAGA);
-  const leituraAplicada = await releitura(db, organizacaoId, alvo.pagamento, provedor, agora);
+  const leituraAplicada = await releitura(db, organizacaoId, alvo.pagamentos, provedor, agora);
   const t = await lerCotacaoSemTravar(db, organizacaoId, alvo.pagamento.cotacaoId);
   if (!t) return recusa("nao_encontrada", "Reserva não encontrada.");
   const r = await montarDecisao(db, organizacaoId, t, e, agora, { leituraAplicada, travar: false });
@@ -613,14 +759,16 @@ export async function cancelarReservaPaga(
   provedor: ProvedorPagamento | null,
   agora: Date,
   assinatura: string,
-): Promise<{ ok: true; cancelamentoId: string; direito: "integral" | "nenhum"; devolucao: SituacaoDevolucao | null } | Recusa> {
+): Promise<{ ok: true; cancelamentoId: string; direito: "integral" | "nenhum"; devolucao: SituacaoDevolucao | null; devolucoes?: SituacaoDevolucao[] } | Recusa> {
   const alvo = await localizar(db, organizacaoId, reservaId);
   if (!alvo) return recusa("nao_encontrada", "Reserva não encontrada.");
   if (!alvo.pagamento) return alvo.reserva.estado === "cancelada" ? recusa("ja_cancelada", "Esta reserva já foi cancelada.") : recusa("nao_paga_pelo_site", NAO_PAGA);
   // Fase 0: a releitura (sem trava; o provedor nunca é chamado com trava aberta).
-  const leituraAplicada = await releitura(db, organizacaoId, alvo.pagamento, provedor, agora);
+  const leituraAplicada = await releitura(db, organizacaoId, alvo.pagamentos, provedor, agora);
   const cotacaoId = alvo.pagamento.cotacaoId;
-  let feito: { ok: true; cancelamentoId: string; direito: "integral" | "nenhum"; devolucaoId: string | null; situacao: SituacaoDevolucao | null } | Recusa;
+  let feito:
+    | { ok: true; cancelamentoId: string; direito: "integral" | "nenhum"; devolucaoId: string | null; situacao: SituacaoDevolucao | null; pedidas: string[]; cancelarNoMp: { id: string; idProvedor: string }[] }
+    | Recusa;
   try {
     feito = await db.transaction(async (tx) => {
       // Fase 1: travas (cotação → motor) e só então a decisão, sob elas.
@@ -640,16 +788,24 @@ export async function cancelarReservaPaga(
     throw erro;
   }
   if (!feito.ok) return feito;
-  // Fase 2: o pedido ao Mercado Pago, fora da transação (a rotina e o "Conferir agora" retomam se falhar aqui).
+  // Fase 2: os pedidos ao Mercado Pago, fora da transação (a rotina e o "Conferir agora" retomam se falhar aqui), e o
+  // cancelamento no provedor das tentativas da diferença de uma alteração desfeita pelo cancelamento.
   let situacao = feito.situacao;
-  if (situacao === "pedida" && feito.devolucaoId && provedor) {
-    try {
-      situacao = (await tentarDevolucao(db, organizacaoId, feito.devolucaoId, provedor, agora)) ?? situacao;
-    } catch {
-      /* fica pedida: a rotina tenta de novo */
+  const devolucoes: SituacaoDevolucao[] = [];
+  if (provedor) {
+    for (const id of feito.pedidas) {
+      try {
+        const s2 = await tentarDevolucao(db, organizacaoId, id, provedor, agora);
+        if (id === feito.devolucaoId) situacao = s2 ?? situacao;
+        devolucoes.push(s2 ?? "pedida");
+      } catch {
+        /* fica pedida: a rotina tenta de novo */
+        devolucoes.push("pedida");
+      }
     }
+    if (feito.cancelarNoMp.length) await cancelarNoProvedor(db, organizacaoId, feito.cancelarNoMp, provedor, agora).catch(() => 0);
   }
-  return { ok: true, cancelamentoId: feito.cancelamentoId, direito: feito.direito, devolucao: situacao };
+  return { ok: true, cancelamentoId: feito.cancelamentoId, direito: feito.direito, devolucao: situacao, devolucoes };
 }
 
 /** As escritas da fase 1 (§5.4.2, passos 4 a 9), com o retrato `t` sempre atualizado junto. */
@@ -700,7 +856,7 @@ async function gravarCancelamento(tx: Db, organizacaoId: string, m: Montada, aut
   }
   t.cancelamento = linha;
   // 5. A reserva cancelada (colunas fora das chaves: a trava NO KEY UPDATE já tomada basta).
-  const mudancaReserva = { estado: "cancelada" as const, canceladaEm: agora, confirmadaEm: null, conferenciaResolvidaEm: null, valorRetido: previa.direito === "nenhum" ? p.valor : null, atualizadoEm: agora };
+  const mudancaReserva = { estado: "cancelada" as const, canceladaEm: agora, confirmadaEm: null, conferenciaResolvidaEm: null, valorRetido: previa.direito === "nenhum" ? previa.valorRetido : null, atualizadoEm: agora };
   await tx.update(reservas).set(mudancaReserva).where(eq(reservas.id, r.id));
   Object.assign(r, mudancaReserva);
   // 6. A cotação (exibição e defesa: uma aprovação tardia de outra tentativa já é "outra tentativa").
@@ -731,42 +887,99 @@ async function gravarCancelamento(tx: Db, organizacaoId: string, m: Montada, aut
   });
   // 8. O resultado, todo agora (o lado do proprietário também).
   await acertarResultado(tx, organizacaoId, t, p, { direito: previa.direito }, autorId, agora);
-  // 9. O caixa, pela rota da devolução.
-  let devolucao: Devolucao | null = null;
+  // 9. O caixa, pela rota da devolução de cada pagamento da reserva (M8.2d: uma por pagamento com saldo).
   const motivo = `Cancelamento da reserva ${r.codigo} pela política`;
-  const avisos = new Set<string>(p.avisos);
-  const novaDevolucao = async (v: Partial<typeof devolucoesPagamento.$inferInsert> & { situacao: SituacaoDevolucao }) => {
-    const [d] = await tx
-      .insert(devolucoesPagamento)
-      .values({ organizacaoId, pagamentoId: p.id, motivo, valor: previa.valorPago, origem: "cancelamento", cancelamentoId: linha.id, autorId, criadoEm: agora, atualizadoEm: agora, ...v })
-      .returning();
-    t.devolucoes.push(d);
-    return d;
-  };
-  if (previa.rota === "nenhuma") {
+  const pedidas: string[] = [];
+  const cancelarNoMp: { id: string; idProvedor: string }[] = [];
+  let principal: Devolucao | null = null;
+  if (previa.direito === "nenhum") {
     const [c] = await tx.update(cancelamentosReserva).set({ caixaLancadoEm: agora, atualizadoEm: agora }).where(eq(cancelamentosReserva.id, linha.id)).returning();
     Object.assign(linha, c);
-  } else if (previa.rota === "ja_devolvida") {
-    // D15: o dinheiro já voltou pelo painel do Mercado Pago. O dia do caixa é o da primeira leitura que viu "devolvido".
-    const auditoria = p.devolvidoVistoEm ? null : await auditoriaDoDevolvido(tx, organizacaoId, p.id);
-    const fato = fatoDoDevolvidoNoPainel(p, auditoria, agora);
-    devolucao = await novaDevolucao({ situacao: "confirmada", confirmadaEm: p.devolvidoVistoEm ?? auditoria ?? agora, confirmadaPor: "leitura", valorConfirmado: p.devolvidoLido > 0 ? p.devolvidoLido : null });
-    const caixa = await acertarCaixa(tx, organizacaoId, t, p, devolucao, fato, agora, autorId);
-    avisos.delete("devolvido_por_fora");
-    if (fato.aviso) avisos.add(fato.aviso);
-    for (const a of caixa.avisos) avisos.add(a);
-  } else if (previa.rota === "fora_do_prazo") {
-    // D12: nenhuma chamada ao Mercado Pago (não daria tempo de conferir); a equipe devolve pelo painel dele ou por fora.
-    devolucao = await novaDevolucao({ situacao: "recusada", falhas: 0, proximaTentativaEm: null });
-    avisos.add("devolucao_fora_do_prazo");
-  } else devolucao = await novaDevolucao({ situacao: "pedida", proximaTentativaEm: agora });
-  if (devolucao) await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "pagamento.devolver", entidade: "pagamento", entidadeId: p.id, mudancas: { devolucao: [null, devolucao.situacao], valor: [null, previa.valorADevolver] } });
-  const lista = [...avisos] as CodigoAviso[];
-  if (lista.length !== p.avisos.length || lista.some((a, i) => a !== p.avisos[i])) {
-    await tx.update(pagamentos).set({ avisos: lista, atualizadoEm: agora }).where(eq(pagamentos.id, p.id));
-    p.avisos = lista;
+  } else {
+    // A alteração com as datas seguradas e sem pagamento da diferença em andamento é desfeita pelo cancelamento (D23).
+    if (m.alteracaoADesistir) cancelarNoMp.push(...(await desistirPeloCancelamento(tx, organizacaoId, t, m.alteracaoADesistir, autorId, agora)));
+    for (const parte of m.partes) {
+      const x = parte.p;
+      // D17: o devolvido pelo painel do Mercado Pago fora do sistema, reconhecido agora (só cresce, auditado).
+      if (parte.reconhecido !== x.devolvidoForaReconhecido) {
+        await tx.update(pagamentos).set({ devolvidoForaReconhecido: parte.reconhecido, atualizadoEm: agora }).where(eq(pagamentos.id, x.id));
+        await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "pagamento.devolvido_fora_reconhecido", entidade: "pagamento", entidadeId: x.id, mudancas: { devolvidoForaReconhecido: [x.devolvidoForaReconhecido, parte.reconhecido] } });
+        x.devolvidoForaReconhecido = parte.reconhecido;
+      }
+      // D23: a devolução da alteração que nunca chegou ao Mercado Pago passa a fazer parte desta (nunca apagada).
+      for (const d of parte.absorver) {
+        await tx.update(devolucoesPagamento).set({ situacao: "substituida", proximaTentativaEm: null, atualizadoEm: agora }).where(eq(devolucoesPagamento.id, d.id));
+        d.situacao = "substituida";
+        d.proximaTentativaEm = null;
+        await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "pagamento.devolucao_substituida", entidade: "pagamento", entidadeId: x.id, mudancas: { devolucao: [d.id, "substituida"], cancelamento: [null, linha.id] } });
+      }
+      const nova = async (v: Partial<typeof devolucoesPagamento.$inferInsert> & { situacao: SituacaoDevolucao }) => {
+        const [d] = await tx
+          .insert(devolucoesPagamento)
+          .values({ organizacaoId, pagamentoId: x.id, motivo, valor: parte.valor, origem: "cancelamento", cancelamentoId: linha.id, autorId, criadoEm: agora, atualizadoEm: agora, ...v })
+          .returning();
+        t.devolucoes.push(d);
+        return d;
+      };
+      let d: Devolucao;
+      if (parte.rota === "ja_devolvida") {
+        // D15: o dinheiro já voltou pelo painel do Mercado Pago. O dia do caixa é o da primeira leitura que viu "devolvido".
+        const auditoria = x.devolvidoVistoEm ? null : await auditoriaDoDevolvido(tx, organizacaoId, x.id);
+        const fato = fatoDoDevolvidoNoPainel(x, auditoria, agora);
+        const proprio = devolvidoProprio(devolucoesDoPagamento(t, x.id));
+        const lido = x.devolvidoLido - proprio - parte.reconhecido;
+        d = await nova({ situacao: "confirmada", confirmadaEm: x.devolvidoVistoEm ?? auditoria ?? agora, confirmadaPor: "leitura", valorConfirmado: lido > 0 ? lido : null });
+        const caixa = await acertarCaixaDaDevolucao(tx, organizacaoId, t, x, d, fato, agora, autorId);
+        await trocarAvisosDaDevolucao(tx, d, { ligar: [...(fato.aviso ? [fato.aviso] : []), ...caixa.avisos] }, agora);
+      } else if (parte.rota === "fora_do_prazo") {
+        // D12: nenhuma chamada ao Mercado Pago (não daria tempo de conferir); a equipe devolve pelo painel dele ou por fora.
+        d = await nova({ situacao: "recusada", falhas: 0, proximaTentativaEm: null, avisos: ["devolucao_fora_do_prazo"] });
+      } else {
+        d = await nova({ situacao: "pedida", proximaTentativaEm: agora });
+        pedidas.push(d.id);
+      }
+      // A devolução que a resposta mostra: a do pagamento que confirmou a reserva (no M8.2c, a única), senão a primeira.
+      if (x.id === p.id || !principal) principal = d;
+      await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "pagamento.devolver", entidade: "pagamento", entidadeId: x.id, mudancas: { devolucao: [null, d.situacao], valor: [null, parte.valor] } });
+    }
+    // As devoluções já realizadas que esperavam a liberação para o caixa: a reserva cancelada com devolução integral não
+    // recebe mais nada, então se acertam sem lançar (M8.2c: nada entrou, nada sai).
+    for (const x of pagamentosDaReserva(t))
+      for (const d of devolucoesDoPagamento(t, x.id))
+        if (!d.caixaLancadoEm && (d.situacao === "confirmada" || d.situacao === "por_fora") && d.origem !== "sem_reserva") await acertarCaixaDaDevolucao(tx, organizacaoId, t, x, d, { data: hojeISO(FUSO_PAGAMENTO, agora), estado: "realizado", origem: "manual" }, agora, autorId);
   }
-  return { ok: true as const, cancelamentoId: linha.id, direito: previa.direito, devolucaoId: devolucao?.id ?? null, situacao: devolucao?.situacao ?? null };
+  // Os avisos de cada pagamento: os dele mais a união dos das devoluções (o "devolvido por fora" sai quando a devolução nossa o explica).
+  for (const x of pagamentosDaReserva(t)) {
+    if (!devolucaoInexplicada(x, devolucoesDoPagamento(t, x.id)) && x.avisos.includes("devolvido_por_fora")) {
+      const avisos = x.avisos.filter((a) => a !== "devolvido_por_fora") as CodigoAviso[];
+      await tx.update(pagamentos).set({ avisos, atualizadoEm: agora }).where(eq(pagamentos.id, x.id));
+      x.avisos = avisos;
+    }
+    await sincronizarAvisosDoPagamento(tx, t, x, agora);
+  }
+  const fim: Devolucao | null = principal;
+  return { ok: true as const, cancelamentoId: linha.id, direito: previa.direito, devolucaoId: fim?.id ?? null, situacao: fim?.situacao ?? null, pedidas, cancelarNoMp };
+}
+
+/**
+ * O cancelamento integral desfaz a alteração com as datas seguradas (sem pagamento da diferença em andamento, D23): a
+ * alteração fica desistida, a reserva-pedido que segurava as novas noites é cancelada (FOR NO KEY UPDATE, depois do motor
+ * da reserva) e as tentativas da diferença ainda pendentes no Mercado Pago voltam para serem canceladas lá depois da
+ * transação. Sob as travas de quem chama.
+ */
+async function desistirPeloCancelamento(tx: Db, organizacaoId: string, t: Travado, a: Alteracao, autorId: string | null, agora: Date): Promise<{ id: string; idProvedor: string }[]> {
+  const mudanca = { situacao: "desistida" as const, desistidaEm: agora, desistidaPor: autorId, desistenciaMotivo: "cancelamento da reserva", atualizadoEm: agora };
+  await tx.update(alteracoesReserva).set(mudanca).where(eq(alteracoesReserva.id, a.id));
+  Object.assign(a, mudanca);
+  if (a.holdReservaId) {
+    const [portador] = await tx.select({ id: reservas.id, estado: reservas.estado }).from(reservas).where(and(eq(reservas.id, a.holdReservaId), eq(reservas.organizacaoId, organizacaoId))).for("no key update");
+    if (portador && portador.estado !== "cancelada") {
+      await tx.update(reservas).set({ estado: "cancelada", canceladaEm: agora, atualizadoEm: agora }).where(eq(reservas.id, portador.id));
+      await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "reserva.cancelar", entidade: "reserva", entidadeId: portador.id, mudancas: { estado: [portador.estado, "cancelada"], motivo: [null, "alteração desfeita pelo cancelamento da reserva"] } });
+    }
+  }
+  await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "alteracao.desistir", entidade: "alteracao", entidadeId: a.id, mudancas: { situacao: ["segurada", "desistida"], motivo: [null, "cancelamento da reserva"] } });
+  return t.tentativas.filter((x) => x.alteracaoId === a.id && x.situacao === "pendente" && x.idProvedor).map((x) => ({ id: x.id, idProvedor: x.idProvedor! }));
 }
 
 // ---------------------------------------------------------------- pedido, descarte, OTAs e "avisado" (§5.4.4)
@@ -947,8 +1160,9 @@ export async function marcarHospedeAvisado(db: Db, organizacaoId: string, reserv
   if (!c) return { ok: false, erro: "Esta reserva não tem pedido nem cancelamento pela política." };
   if (qual !== "pedido" && c.situacao !== "cancelada") return { ok: false, erro: "O cancelamento ainda não foi decidido." };
   if (qual === "devolucao") {
-    const [dev] = await db.select({ situacao: devolucoesPagamento.situacao }).from(devolucoesPagamento).where(eq(devolucoesPagamento.cancelamentoId, c.id));
-    if (dev?.situacao !== "confirmada" && dev?.situacao !== "por_fora") return { ok: false, erro: "A devolução ainda não foi feita." };
+    // M8.2d: uma devolução por pagamento da reserva; a mensagem é da devolução toda (todas feitas; a substituída não conta).
+    const devs = (await db.select({ situacao: devolucoesPagamento.situacao }).from(devolucoesPagamento).where(eq(devolucoesPagamento.cancelamentoId, c.id))).filter((d) => d.situacao !== "substituida");
+    if (!devs.length || devs.some((d) => d.situacao !== "confirmada" && d.situacao !== "por_fora")) return { ok: false, erro: "A devolução ainda não foi feita." };
   }
   if (!(await marcarAvisado(db, organizacaoId, c.id, qual, autorId, agora))) return { ok: false, erro: "Esta mensagem já foi marcada como enviada." };
   return { ok: true };

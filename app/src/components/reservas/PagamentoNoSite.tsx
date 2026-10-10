@@ -87,7 +87,7 @@ export function situacaoEmPalavras(p: PagamentoDoPainel): string {
   if (p.desfecho) return NOMES_DESFECHO[p.desfecho];
   if (p.situacao === "aprovado" && p.motivoSemReservaTexto) return `Aprovado sem reserva: ${p.motivoSemReservaTexto} O valor precisa ser devolvido ao hóspede.`;
   if ((p.situacao === "devolvido_parcial" || p.situacao === "contestado") && p.motivoSemReservaTexto)
-    return `${NOMES_SITUACAO_PAGAMENTO[p.situacao]} sem reserva: ${p.motivoSemReservaTexto} O que falta resolver se resolve pelo painel do Mercado Pago (a devolução de parte do valor pelo sistema chega no M8.2d).`;
+    return `${NOMES_SITUACAO_PAGAMENTO[p.situacao]} sem reserva: ${p.motivoSemReservaTexto} ${p.situacao === "devolvido_parcial" ? "Devolva o restante pelo quadro do pagamento." : "A contestação se resolve pelo painel do Mercado Pago."}`;
   if (p.situacao === "aprovado") return "Aprovado: confirmando a reserva";
   return NOMES_SITUACAO_PAGAMENTO[p.situacao];
 }

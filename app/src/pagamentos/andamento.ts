@@ -165,17 +165,46 @@ export async function pagamentoSemReservaADevolver(db: Db, reservaId: string): P
 }
 
 /**
- * Reservas pagas pelo site (pagamento com desfecho `reserva`): a liberação prevista do Mercado Pago, para os
- * textos do extrato e do fechamento ("o Mercado Pago libera em dd/mm"). null = liberação a confirmar.
+ * Reservas pagas pelo site (pagamentos com o dinheiro da reserva: o que a confirmou e as diferenças aplicadas, M8.2d): a
+ * liberação prevista do Mercado Pago, para os textos do extrato e do fechamento ("o Mercado Pago libera em dd/mm"). Com
+ * mais de um pagamento ainda sem o recebimento em vigor, a mais tardia entre eles (null se algum não tem a data);
+ * todos já recebidos, a do último. null = liberação a confirmar.
  */
 export async function liberacoesDoSite(db: Db, organizacaoId: string, reservaIds: readonly string[]): Promise<Map<string, Date | null>> {
   const ids = [...new Set(reservaIds.filter(uuidValido))];
   if (!ids.length) return new Map();
   const linhas = await db
-    .select({ reservaId: pagamentos.reservaId, prevista: pagamentos.liberacaoPrevistaEm })
+    .select({ id: pagamentos.id, reservaId: pagamentos.reservaId, prevista: pagamentos.liberacaoPrevistaEm, criadoEm: pagamentos.criadoEm })
     .from(pagamentos)
-    .where(and(eq(pagamentos.organizacaoId, organizacaoId), inArray(pagamentos.reservaId, ids), eq(pagamentos.desfecho, "reserva")));
-  return new Map(linhas.map((l) => [l.reservaId, l.prevista]));
+    .where(and(eq(pagamentos.organizacaoId, organizacaoId), inArray(pagamentos.reservaId, ids), inArray(pagamentos.desfecho, ["reserva", "alteracao"])));
+  const recebidos = linhas.length
+    ? new Set(
+        (
+          await db
+            .select({ chave: lancamentos.chaveOrigem })
+            .from(lancamentos)
+            .where(
+              and(
+                eq(lancamentos.organizacaoId, organizacaoId),
+                eq(lancamentos.tipo, "recebimento"),
+                inArray(lancamentos.reservaId, ids),
+                sql`${lancamentos.chaveOrigem} like 'mercadopago:%:recebimento%'`,
+                isNull(lancamentos.estornoDe),
+                sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`,
+              ),
+            )
+        ).map((l) => l.chave.split(":")[1]),
+      )
+    : new Set<string>();
+  const porReserva = new Map<string, typeof linhas>();
+  for (const l of linhas) porReserva.set(l.reservaId, [...(porReserva.get(l.reservaId) ?? []), l]);
+  const resultado = new Map<string, Date | null>();
+  for (const [reservaId, ps] of porReserva) {
+    const faltam = ps.filter((x) => !recebidos.has(x.id));
+    const alvo = faltam.length ? faltam : [ps.sort((a, b) => a.criadoEm.getTime() - b.criadoEm.getTime()).at(-1)!];
+    resultado.set(reservaId, alvo.some((x) => !x.prevista) ? null : new Date(Math.max(...alvo.map((x) => x.prevista!.getTime()))));
+  }
+  return resultado;
 }
 
 /**
@@ -195,6 +224,9 @@ export async function temRecebimentoManual(db: Db, organizacaoId: string, reserv
         eq(lancamentos.reservaId, reservaId),
         eq(lancamentos.tipo, "recebimento"),
         eq(lancamentos.origem, "manual"),
+        // A liberação do Mercado Pago registrada à mão (M8.2d: com vários pagamentos, a da diferença também) não é
+        // recebimento à mão da equipe: tem a chave do pagamento.
+        sql`coalesce(${lancamentos.chaveOrigem}, '') not like 'mercadopago:%'`,
         isNull(lancamentos.estornoDe),
         sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`,
       ),

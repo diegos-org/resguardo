@@ -260,7 +260,7 @@ describe("reserva cancelada pela política no quadro (M8.2c)", () => {
   });
   const cancelado = (over: Partial<PagamentoDoPainel> = {}): PagamentoDoPainel => ({ ...base, cancelada: { estado: "cancelada_devolucao_pedida", estornoPelaEquipe: false }, devolucao: devolucao(), acoes: sem, ...over });
 
-  it("a situação em palavras é a da reserva cancelada (as mesmas da página do hóspede); o texto antigo do M8.2c virou M8.2d", () => {
+  it("a situação em palavras é a da reserva cancelada (as mesmas da página do hóspede); o devolvido em parte sem reserva diz como devolver o restante (M8.2d)", () => {
     expect(situacaoEmPalavras(cancelado())).toBe("Reserva cancelada: devolução pedida");
     expect(situacaoEmPalavras(cancelado({ cancelada: { estado: "cancelada_devolucao_pedida", estornoPelaEquipe: true } }))).toBe(
       "Reserva cancelada: devolução pelo painel do Mercado Pago (pagamento com mais de 78 dias)",
@@ -270,8 +270,9 @@ describe("reserva cancelada pela política no quadro (M8.2c)", () => {
     expect(situacaoEmPalavras(cancelado({ cancelada: { estado: "cancelada_em_conferencia", estornoPelaEquipe: false } }))).toBe("Reserva cancelada: em conferência");
     expect(situacaoEmPalavras(cancelado({ cancelada: { estado: "cancelada_sem_devolucao", estornoPelaEquipe: false }, devolucao: null }))).toBe("Reserva cancelada: sem devolução (valor retido)");
     const parcial: PagamentoDoPainel = { ...base, situacao: "devolvido_parcial", desfecho: null, motivoSemReservaTexto: "Chegou já devolvido em parte." };
-    expect(situacaoEmPalavras(parcial)).toContain("a devolução de parte do valor pelo sistema chega no M8.2d");
-    expect(situacaoEmPalavras(parcial)).not.toContain("M8.2c");
+    expect(situacaoEmPalavras(parcial)).toBe("Devolvido em parte sem reserva: Chegou já devolvido em parte. Devolva o restante pelo quadro do pagamento.");
+    expect(situacaoEmPalavras({ ...parcial, situacao: "contestado" })).toContain("A contestação se resolve pelo painel do Mercado Pago.");
+    expect(situacaoEmPalavras(parcial)).not.toMatch(/M8\.2/);
   });
 
   it("a linha da devolução explica a espera ou a recusa pelo último código do Mercado Pago, a confirmação da equipe e a parada pelo prazo", () => {

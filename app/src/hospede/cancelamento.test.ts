@@ -7,11 +7,14 @@ import { and, eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { lerEmpresa, salvarEmpresa } from "@/configuracoes/empresa";
 import { lerConfigPagamentoSite, salvarConfigPagamentoSite } from "@/configuracoes/pagamento-site";
-import { auditoria, cancelamentosReserva } from "@/db/schema";
+import { auditoria, cancelamentosReserva, reservas } from "@/db/schema";
+import { previaDoCancelamento } from "@/pagamentos/cancelamento";
+import { conferirTentativa } from "@/pagamentos/conferencia";
+import { tentarDevolucao } from "@/pagamentos/devolucao";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { CorreioMemoria } from "@/email/correio";
-import { type Cenario, cancelar, EMAIL_HOSPEDE, entradaPadrao, minutos, montarCenario, NOME_HOSPEDE, pagarEConfirmar, pedir, semDadosDoHospede, TELEFONE_HOSPEDE, usuarioDeTeste } from "@/pagamentos/testes";
+import { type Cenario, cancelar, EMAIL_HOSPEDE, entradaPadrao, minutos, montarCenario, NOME_HOSPEDE, pagarEConfirmar, pedir, reduzirDeTeste, semDadosDoHospede, TELEFONE_HOSPEDE, TOTAL, usuarioDeTeste } from "@/pagamentos/testes";
 import { avisarEquipeDoPedido, cancelamentoNoPortal, mensagemPedidoDeCancelamento, pedirCancelamentoPeloHospede } from "./cancelamento";
 
 let db: Db, close: () => Promise<void>, c: Cenario;
@@ -166,5 +169,34 @@ describe("Minha reserva: o quadro 'Cancelar a reserva' (M8.2c)", () => {
       assunto: "Pedido de cancelamento pelo site: reserva SCL-ABC123",
       texto: "Pedido de cancelamento pelo site: reserva SCL-ABC123 (403), recebido em 10/10 às 23:59 (horário de Brasília). Veja no painel: /painel/reservas/1.\n",
     });
+  });
+});
+
+describe("Minha reserva depois de uma alteração ou de uma devolução em parte (M8.2d)", () => {
+  const longe = { entrada: "2026-11-20", saida: "2026-11-23" };
+
+  it("reserva movida para antes: o prazo do quadro é o mesmo do painel (conta da entrada que conta)", async () => {
+    const x = await pagarEConfirmar(c, longe);
+    await db.update(reservas).set({ checkin: "2026-11-10", checkout: "2026-11-13" }).where(eq(reservas.id, x.reservaId));
+    const quadro = await cancelamentoNoPortal(db, c.org, EMAIL_HOSPEDE, x.reservaCodigo, minutos(60));
+    const previa = await previaDoCancelamento(db, c.org, x.reservaId, entradaPadrao({ recebidoEm: minutos(50), canal: "whatsapp" }), c.provedor, minutos(60));
+    if (!previa.ok) throw new Error(previa.erro);
+    expect(quadro?.integralAte).toBe("2026-10-27");
+    expect(previa.previa.decisao.integralAte).toBe(quadro?.integralAte);
+  });
+
+  it("devolvida em parte pela redução (do sistema): o botão continua e o pedido é gravado; devolvida em parte pelo painel do Mercado Pago (fora do sistema): o botão some", async () => {
+    const x = await pagarEConfirmar(c, { ...longe, liberar: true });
+    const { devolucaoIds } = await reduzirDeTeste(c, x, TOTAL - 30000, { quando: minutos(15) });
+    expect(await tentarDevolucao(db, c.org, devolucaoIds[0], c.provedor, minutos(20))).toBe("confirmada");
+    expect((await c.tentativa(x.pagamentoId)).situacao).toBe("devolvido_parcial");
+    expect((await cancelamentoNoPortal(db, c.org, EMAIL_HOSPEDE, x.reservaCodigo, minutos(60)))?.podePedir).toBe(true);
+    expect(await pedirCancelamentoPeloHospede(db, c.org, EMAIL_HOSPEDE, x.reservaCodigo, minutos(60))).toMatchObject({ ok: true, novo: true });
+
+    const y = await pagarEConfirmar(c, { entrada: "2026-11-25", saida: "2026-11-27", email: "y@example.com" });
+    c.provedor.devolverNoProvedor(y.idProvedor, 1000);
+    await conferirTentativa(db, c.org, y.pagamentoId, c.provedor, minutos(30), { origem: "rotina", forcar: true });
+    expect((await cancelamentoNoPortal(db, c.org, "y@example.com", y.reservaCodigo, minutos(60)))?.podePedir).toBe(false);
+    expect(await pedirCancelamentoPeloHospede(db, c.org, "y@example.com", y.reservaCodigo, minutos(60))).toEqual({ ok: false, erro: NAO_DA });
   });
 });

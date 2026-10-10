@@ -15,7 +15,8 @@ import type { Db } from "@/db/types";
 import { CorreioMemoria } from "@/email/correio";
 import { pedirCancelamentoPeloHospede } from "@/hospede/cancelamento";
 import { marcarHospedeAvisado } from "@/pagamentos/cancelamento";
-import { AGORA, type Cenario, cancelar, EMAIL_HOSPEDE, entradaPadrao, minutos, montarCenario, pagarEConfirmar, pedir, usuarioDeTeste } from "@/pagamentos/testes";
+import { conferirTentativa } from "@/pagamentos/conferencia";
+import { AGORA, aumentarDeTeste, type Cenario, cancelar, EMAIL_HOSPEDE, entradaPadrao, minutos, montarCenario, pagarEConfirmar, pedir, TOTAL, usuarioDeTeste } from "@/pagamentos/testes";
 import { enviarMensagensHospede, mensagensDoCancelamento, salvarConfigMensagens } from "./hospede";
 
 let db: Db, close: () => Promise<void>, c: Cenario, correio: CorreioMemoria, equipe: string;
@@ -183,5 +184,26 @@ describe("mensagens prontas para copiar no painel (M8.2c)", () => {
     expect(m.recebido?.texto).toContain("Recebemos o seu pedido de cancelamento");
     expect(m.recebido?.texto).not.toContain("que você aceitou");
     expect(m.recebido?.texto).toContain("confirmamos com você, por escrito, o valor da devolução");
+  });
+});
+
+describe("a devolução feita do cancelamento de uma reserva alterada (M8.2d)", () => {
+  it("duas devoluções (o pagamento da reserva e a diferença): a mensagem sai uma vez, só quando as duas se realizaram, com o total", async () => {
+    await ligar();
+    const x = await pagarEConfirmar(c, { ...longe, liberar: true });
+    const inc = await aumentarDeTeste(c, x, TOTAL + 40000, { quando: minutos(15) });
+    c.provedor.respostaDevolucao = "pedida";
+    await cancelar(c, x.reservaId, entradaPadrao({ quemCancela: "empresa", motivoEmpresa: "forca_maior" }), equipe, minutos(60));
+    expect(await enviarMensagensHospede(db, c.org, correio, minutos(61))).toMatchObject({ enviadas: 1 });
+    expect(correio.enviadas.map((m) => m.assunto)).not.toContainEqual(expect.stringContaining("Devolução"));
+    c.provedor.confirmarDevolucoes(x.idProvedor);
+    await conferirTentativa(db, c.org, x.pagamentoId, c.provedor, minutos(70), { origem: "rotina", forcar: true });
+    expect(await enviarMensagensHospede(db, c.org, correio, minutos(71))).toMatchObject({ enviadas: 0 });
+    c.provedor.confirmarDevolucoes(inc.idProvedor);
+    await conferirTentativa(db, c.org, inc.pagamentoId, c.provedor, minutos(80), { origem: "rotina", forcar: true });
+    expect(await enviarMensagensHospede(db, c.org, correio, minutos(81))).toMatchObject({ enviadas: 1 });
+    expect(correio.enviadas.at(-1)?.texto).toContain("A devolução de R$ 2.224,00");
+    expect(await enviarMensagensHospede(db, c.org, correio, minutos(82))).toMatchObject({ enviadas: 0 });
+    expect((await cancelamentoDe(x.reservaId)).hospedeAvisadoDevolucaoEm).toEqual(minutos(81));
   });
 });

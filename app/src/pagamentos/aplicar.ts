@@ -9,23 +9,47 @@
  * pendente (desafio do banco, análise, processando) e o endereço do desafio; o prazo das datas no desafio (até o fim
  * dele + 2 min) e a extensão única do cartão em análise; o "parcelamento sem acréscimo" e a liberação em parcelas (nada
  * entra sozinho no livro); o encerramento da tentativa e se ela conta no disjuntor de recusas (avaliado por último).
+ *
+ * Várias devoluções por pagamento (M8.2d): o pago fica congelado na aprovação (D28); a order "processed/refunded" depois de
+ * uma devolução nossa de parte do valor é explicada pela situação (D27); cada devolução viva é conferida por ela mesma (o
+ * id da nossa devolução, o valor somado desde o pedido, ou porque completou o pagamento) e acerta o seu caixa; os avisos
+ * dela ficam nela e o pagamento leva a união; o "devolvido por fora" é recalculado a cada leitura (D21). A tentativa da
+ * diferença de uma alteração tem o próprio alvo no cartão (as datas da alteração) e só as tentativas do mesmo alvo são
+ * canceladas quando o dinheiro chega numa delas.
  */
-import { and, eq, inArray, isNull, ne } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, ne, or } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { lerRegrasCalendario } from "@/calendario/regras-config";
-import { devolucoesPagamento, type EtapaCartao, pagamentos, reservas } from "@/db/schema";
+import { alteracoesReserva, devolucoesPagamento, type EtapaCartao, pagamentos, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { reservaCalculadaPeloMotor } from "@/financeiro/motor";
 import { hojeISO } from "@/lib/datas";
 import { estenderHold } from "@/site/cotacoes";
-import { acertarCaixa } from "./acerto-cancelamento";
+import { acertarCaixaDaDevolucao, acertarCaixasPendentes } from "./acerto-cancelamento";
+import { situacaoEfetiva } from "./alteracao-regras";
 import { FOLGA_PRAZO_PAGAMENTO_MS, inicioDoPrazoDeReleitura } from "./andamento";
+import { avisosComDevolucoes, trocarAvisosDaDevolucao } from "./avisos-devolucao";
 import { decidirAprovacao } from "./confirmacao";
 import { avaliarDisjuntor, contaNoDisjuntor } from "./disjuntor";
-import { FUSO_PAGAMENTO, gravarTaxaNaReserva, liberarPeloProvedor, recebimentosDoPagamento } from "./liberacao";
+import { acordarDevolucoesQueEsperam, FUSO_PAGAMENTO, gravarTaxaNaReserva, liberarPeloProvedor, recebimentosDoPagamento, taxaCanalDaReserva } from "./liberacao";
 import { type Cobranca, DESAFIO_3DS_MINUTOS, type DetalheFinanceiro, PARCELAS_MAXIMAS, RETENCAO_ORDERS_DIAS, STATUS_TRES_DS, urlDoDesafio } from "./provedor";
-import { type CodigoAviso, comDinheiro, MAXIMO_FALHAS_DEVOLUCAO, motivoDoDetalhe, origemDeDevolucaoConhecida, type SituacaoPagamento, situacaoLocal, transicaoPermitida } from "./situacoes";
-import { devolucaoDoPagamento, type Pagamento, type Travado } from "./travas";
+import { type CodigoAviso, comDinheiro, MAXIMO_FALHAS_DEVOLUCAO, motivoDoDetalhe, origemDeDevolucaoConhecida, type SituacaoPagamento, transicaoPermitida } from "./situacoes";
+import {
+  cabeNoPagamento,
+  carenciaNoTravado,
+  comprometido,
+  comprometidoNoPagamento,
+  type Devolucao,
+  devolucaoInexplicada,
+  devolucoesDoPagamento,
+  devolvidoProprio,
+  dinheiroDaReserva,
+  type Pagamento,
+  possivelmenteNoProvedor,
+  situacaoExplicada,
+  type Travado,
+  valorPagoAprovado,
+} from "./travas";
 
 export type Leitura = {
   /** A order lida; null = o provedor não achou; undefined = não houve leitura da order. */
@@ -123,14 +147,16 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
       patch.detalheProvedor = c.detalhe.slice(0, 120);
       if (c.aoVivo !== null) patch.aoVivo = c.aoVivo;
       if (c.aoVivo === true) ligar("ao_vivo");
-      if (c.pago !== null) patch.valorPago = c.pago;
-      const nova = situacaoLocal(c.situacao);
+      // D28: o pago fica congelado na aprovação (o total pago lido depois de uma devolução pode já vir líquido dela).
+      if (c.pago !== null && !(p.aprovadoEm && p.valorPago !== null)) patch.valorPago = c.pago;
+      // D27: "processed/refunded" depois de uma devolução nossa de parte do valor é explicada pelas nossas devoluções.
+      const nova = situacaoExplicada(c, p, devolucoesDoPagamento(t, p.id));
       if (nova === null) ligar("situacao_desconhecida");
       else {
         desligar("situacao_desconhecida");
         // Contestado → devolvido só com um pedido de devolução aceito à espera: ele nunca para (nem com a contestação)
         // e a leitura que mostra o dinheiro devolvido é o que o confirma.
-        const aceitaAEspera = devolucaoDoPagamento(t, p.id)?.situacao === "pedida" && devolucaoDoPagamento(t, p.id)?.chaveAceita === true;
+        const aceitaAEspera = devolucoesDoPagamento(t, p.id).some((d) => d.situacao === "pedida" && d.chaveAceita);
         if (transicaoPermitida(situacao, nova) || (aceitaAEspera && situacao === "contestado" && nova === "devolvido")) situacao = nova;
       }
       if (situacao === "pendente" && c.pix) {
@@ -186,7 +212,9 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
     patch.etapaCartao = etapa;
     // O endereço do desafio só vem na resposta da criação (o GET não traz): a leitura seguinte mantém o guardado.
     patch.desafioUrl = etapa === "desafio" ? (urlDoDesafio(cc?.cartao?.desafioUrl) ?? p.desafioUrl) : null;
-    const pedidoValido = t.reserva.estado === "pedido" && t.cotacao.estado === "segurada";
+    // O alvo da cobrança desta tentativa (M8.2d): o pedido segurado da cotação, ou a alteração cuja diferença ela cobra.
+    const alvo = alvoDoCartao(tx, organizacaoId, t, p, agora);
+    const pedidoValido = alvo.valido;
     if (etapa === "desafio") {
       if (patch.desafioUrl) desligar("desafio_sem_url");
       if (!patch.desafioUrl && (leitura.daCriacao || avisos.has("desafio_sem_url"))) {
@@ -203,16 +231,16 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
         // As datas ficam seguradas até o fim do desafio (40 min desde a criação) + 2 min. Só estende; como o QR do Pix,
         // não é desfeito quando o desafio acaba sem dinheiro (no máximo 3 cartões por cotação).
         const ate = new Date(p.criadoEm.getTime() + DESAFIO_3DS_MINUTOS * 60_000 + FOLGA_PRAZO_PAGAMENTO_MS);
-        if (await estenderHold(tx, organizacaoId, t.cotacao.id, ate, agora, p.id)) t.cotacao.holdAte = ate;
+        await alvo.estender(ate, p.id);
       }
-    } else if ((etapa === "analise" || etapa === "processando") && pedidoValido && !t.tentativas.some((x) => x.prazoAnaliseAte)) {
-      // Extensão única por cotação (a primeira leitura em análise ou processando): o tanto editável em Configurações →
-      // Calendário; 0 = nenhuma. Depois vale a carência e a regra da aprovação tardia.
+    } else if ((etapa === "analise" || etapa === "processando") && pedidoValido && !alvo.tentativas.some((x) => x.prazoAnaliseAte)) {
+      // Extensão única por alvo (a primeira leitura em análise ou processando de uma tentativa dele): o tanto editável em
+      // Configurações → Calendário; 0 = nenhuma. Depois vale a carência e a regra da aprovação tardia.
       const minutos = (await lerRegrasCalendario(tx, organizacaoId)).site.minutosAnaliseCartao;
       if (minutos > 0) {
-        const holdAte = t.cotacao.holdAte?.getTime() ?? 0;
+        const holdAte = alvo.holdAte?.getTime() ?? 0;
         const ate = new Date(Math.max(holdAte, agora.getTime() + minutos * 60_000));
-        if (await estenderHold(tx, organizacaoId, t.cotacao.id, ate, agora, p.id)) t.cotacao.holdAte = ate;
+        await alvo.estender(ate, p.id);
         patch.prazoAnaliseAte = ate;
       }
     }
@@ -282,6 +310,9 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
         desligar("taxa_divergente");
       }
     }
+  } else if (f && f.liquido !== null && situacao === "devolvido_parcial" && !semTaxaAutomatica && f.liquido >= 0 && f.liquido <= p.valor) {
+    // Devolvido em parte pelas nossas devoluções (M8.2d): a liberação ainda vale (com o líquido informado); a taxa não muda.
+    liquidoInformado = f.liquido;
   }
 
   let desfecho = p.desfecho;
@@ -304,19 +335,13 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
     motivoSemReserva = "situacao_inesperada";
     patch.motivoSemReserva = motivoSemReserva;
     ligar("situacao_inesperada");
-  } else if (
-    desfecho === "reserva" &&
-    reservaCalculadaPeloMotor(t.reserva) &&
-    !semTaxaAutomatica &&
-    taxa !== null &&
-    liquido !== null &&
-    p.liberacaoOrigem !== "manual" &&
-    (patch.taxa !== undefined || t.reserva.taxaCanal !== taxa)
-  ) {
-    // Taxa conhecida (ou atualizada) depois da confirmação: entra na reserva e o motor roda (nessa ordem), antes de
-    // qualquer recebimento desta leitura. Reserva cancelada com devolução integral (M8.2c) não recebe a taxa: não há o
-    // que dividir, e gravar a taxa reabriria a conferência dela. A taxa e o líquido do próprio pagamento ficam gravados.
-    await gravarTaxaNaReserva(tx, organizacaoId, t.reserva.id, taxa, liquido, null, p.id, agora);
+  } else if (dinheiroDaReserva({ desfecho }) && reservaCalculadaPeloMotor(t.reserva) && !semTaxaAutomatica && taxa !== null && liquido !== null && p.liberacaoOrigem !== "manual") {
+    // Taxa conhecida (ou atualizada) depois da confirmação: entra na reserva (a regra única `taxaDaReserva`, M8.2d: a
+    // soma das taxas conhecidas dos pagamentos dela) e o motor roda (nessa ordem), antes de qualquer recebimento desta
+    // leitura. Reserva cancelada com devolução integral (M8.2c) não recebe a taxa: não há o que dividir, e gravar a taxa
+    // reabriria a conferência dela. A taxa e o líquido do próprio pagamento ficam gravados.
+    Object.assign(p, { taxa, liquido });
+    if (patch.taxa !== undefined || t.reserva.taxaCanal !== taxaCanalDaReserva(t)) await gravarTaxaNaReserva(tx, organizacaoId, t, null, p.id, agora);
   }
 
   // Dinheiro chegou nesta tentativa (confirmando a reserva ou não): as outras pendentes da cotação são canceladas no
@@ -324,7 +349,9 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
   // Fora do prazo de releitura, o provedor nem mostra a order: fica o aviso de andamento fora do prazo.
   if (comDinheiro(situacao)) {
     const inicio = inicioDoPrazoDeReleitura(agora).getTime();
-    const sobrando = t.tentativas.filter((x) => x.id !== p.id && x.situacao === "pendente" && x.idProvedor && x.criadoEm.getTime() >= inicio && !efeitos.cancelar.some((y) => y.id === x.id));
+    // Só as do mesmo alvo (M8.2d): o Pix da diferença de uma alteração nunca é cancelado pelo dinheiro da reserva, nem o contrário.
+    const mesmoAlvo = (x: Pagamento) => (x.alteracaoId ?? null) === (p.alteracaoId ?? null);
+    const sobrando = t.tentativas.filter((x) => x.id !== p.id && mesmoAlvo(x) && x.situacao === "pendente" && x.idProvedor && x.criadoEm.getTime() >= inicio && !efeitos.cancelar.some((y) => y.id === x.id));
     for (const x of sobrando) efeitos.cancelar.push({ id: x.id, idProvedor: x.idProvedor! });
     // Quem pediu o cancelamento delas foi o sistema (nunca conta no disjuntor do cartão).
     const semQuem = sobrando.filter((x) => !x.cancelamentoPor).map((x) => x.id);
@@ -334,99 +361,117 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
     }
   }
 
-  // Devolução feita, contestação, ou devolução fora do sistema: só avisos (partes c e e cuidam da reserva).
-  const dev = devolucaoDoPagamento(t, p.id);
-  const devolvidoNoProvedor = situacao === "devolvido" || situacao === "devolvido_parcial";
-  // M8.2c: a devolução do próprio cancelamento pela política não é "devolvido por fora" (a registrada por fora, sim: em dobro abaixo).
-  const daPropriaDevolucao = !!dev && dev.origem === "cancelamento" && dev.situacao !== "por_fora";
-  if (desfecho === "reserva" && devolvidoNoProvedor && !daPropriaDevolucao) ligar("devolvido_por_fora");
-  // Devolvido (ou com devolução em andamento) no provedor e também registrado como devolvido por fora: em dobro.
-  const porForaRegistrada = desfecho === "por_fora" || dev?.situacao === "por_fora";
-  if (porForaRegistrada && (devolvidoNoProvedor || (cobrancaAplicada !== null && (cobrancaAplicada.devolvido > 0 || cobrancaAplicada.devolucaoEmAndamento)))) ligar("devolucao_em_dobro");
-  if (situacao === "contestado") ligar("contestado");
-
-  // A devolução pedida, uma regra para as duas origens (M8.2a sem reserva, M8.2c cancelamento). Origem que esta versão não
-  // conhece (um banco de prévia compartilhado com uma versão mais nova) fica de fora.
-  const conhecida = !!dev && origemDeDevolucaoConhecida(dev.origem);
-  const doSemReserva = conhecida && dev!.origem === "sem_reserva" && desfecho === null;
-  const doCancelamento = conhecida && dev!.origem === "cancelamento" && desfecho === "reserva" && t.cancelamento?.situacao === "cancelada" && t.cancelamento.direito === "integral";
-  /** O integral pedido (o que o hóspede pagou pela leitura do pedido). */
-  const devido = dev ? dev.valor : 0;
+  // Devoluções (M8.2d: várias por pagamento), cada uma por ela mesma, em ordem de id. Origem que esta versão não conhece
+  // (um banco de prévia compartilhado com uma versão mais nova) fica de fora.
+  const devs = devolucoesDoPagamento(t, p.id);
   const lidas = cobrancaAplicada?.devolucoes ?? [];
-  const confirmadasLidas = lidas.filter((x) => x.estado === "confirmada").reduce((s, x) => s + x.valor, 0);
   const emAndamentoLido = lidas.some((x) => x.estado === "andamento") || !!cobrancaAplicada?.devolucaoEmAndamento;
-
-  // Pedido aceito que o Mercado Pago mostra que falhou: só quando a devolução que falhou é a NOSSA (o id gravado), e nada
-  // mais está confirmado ou em andamento nem devolvido. Sem o id (a resposta não trouxe uma devolução nova), nunca solta
-  // sozinho: fica o aviso de sempre e a equipe resolve pelo painel do Mercado Pago.
-  if (
-    (doSemReserva || doCancelamento) &&
-    dev!.situacao === "pedida" &&
-    dev!.chaveAceita &&
-    dev!.idProvedor !== null &&
-    lidas.some((x) => x.id === dev!.idProvedor && x.estado === "falhou") &&
-    !lidas.some((x) => x.estado === "confirmada" || x.estado === "andamento") &&
-    cobrancaAplicada?.devolvido === 0 &&
-    situacao === "aprovado"
-  ) {
-    await liberarPedidoQueFalhou(tx, organizacaoId, p, dev!, agora);
-    ligar("devolucao_falhou");
-    desligar("devolucao_sem_confirmacao");
-  }
-
-  // Confirmada pela situação ou, com o pedido aceito, pelo valor: a leitura "processed/refunded" é "desconhecido" de
-  // propósito (nunca palpite), mas a soma das devoluções confirmadas que alcança o devido confirma.
-  const peloValor = !!dev?.chaveAceita && devido > 0 && confirmadasLidas >= devido && !emAndamentoLido;
-  if ((situacao === "devolvido" || peloValor) && (dev?.situacao === "pedida" || dev?.situacao === "recusada") && (doSemReserva || doCancelamento)) {
+  const devolvidoLido = patch.devolvidoLido ?? p.devolvidoLido;
+  const reconhecido = p.devolvidoForaReconhecido;
+  const pago = valorPagoAprovado({ valorPago: p.valorPago ?? patch.valorPago ?? null, valor: p.valor });
+  for (const dev of devs) {
+    if (!origemDeDevolucaoConhecida(dev.origem) || (dev.situacao !== "pedida" && dev.situacao !== "recusada") || !cabeNoPagamento(dev, { desfecho }, t)) continue;
+    const meu = dev.idProvedor ? lidas.find((x) => x.id === dev.idProvedor) : undefined;
+    const confirmadasOutras = devs.filter((x) => x.id !== dev.id && x.situacao === "confirmada");
+    const outrasConfirmadas = comprometidoNoPagamento(confirmadasOutras);
+    /** O devolvido que a leitura mostra além das outras confirmadas e do reconhecido. */
+    const novo = devolvidoLido - outrasConfirmadas - reconhecido;
+    const emDuvida = dev.chaveAceita || dev.chaveEmDuvida;
+    // Pedido aceito que o Mercado Pago mostra que falhou: só quando a devolução que falhou é a NOSSA (o id gravado), nada
+    // mais em andamento e nada devolvido além do que as nossas confirmadas e o reconhecido explicam. Sem o id (a resposta
+    // não trouxe a devolução nova), nunca solta sozinho: fica o aviso de sempre e a equipe resolve pelo painel.
+    if (cobrancaAplicada && dev.situacao === "pedida" && dev.chaveAceita && meu?.estado === "falhou" && !emAndamentoLido && devolvidoLido <= devolvidoProprio(confirmadasOutras) + reconhecido) {
+      await liberarPedidoQueFalhou(tx, organizacaoId, p, dev, agora);
+      await trocarAvisosDaDevolucao(tx, dev, { ligar: ["devolucao_falhou"], desligar: ["devolucao_sem_confirmacao"] }, agora);
+      continue;
+    }
+    let confirmar: { valor: number | null; aMenor: boolean } | null = null;
+    if (meu?.estado === "confirmada") {
+      // Pelo id: o que voltou nesta devolução. A menos que o pedido (D15): confirmada pelo que voltou, com o aviso. A
+      // integral que deixou a order inteira devolvida não é "a menos" (o resto saiu por outro caminho, que o D21 aponta).
+      confirmar = { valor: meu.valor, aMenor: meu.valor < dev.valor && situacao !== "devolvido" };
+    } else if (cobrancaAplicada && !meu && emDuvida && dev.situacao === "pedida" && !emAndamentoLido && novo >= dev.valor) {
+      // Pelo valor somado desde o pedido (a leitura sem o id da nossa): o excesso, se houver, fica inexplicado (D21).
+      confirmar = { valor: dev.valor, aMenor: false };
+    } else if (situacao === "devolvido" && (meu?.estado !== "andamento" || cobrancaAplicada?.devolucaoEmAndamento === false) && outrasConfirmadas + reconhecido + dev.valor === pago) {
+      // Porque completou o pagamento (a order inteira devolvida, e esta é a que faltava): a integral em dúvida (M8.2c). A
+      // order devolvida sem devolução em andamento vale mais do que a lista atrasada que ainda mostra a nossa em andamento.
+      confirmar = { valor: novo > 0 ? novo : null, aMenor: false };
+    } else if (cobrancaAplicada && (dev.chaveAceita || (dev.chaveEmDuvida && dev.corpoIntegral === false)) && dev.situacao === "pedida" && !emAndamentoLido && novo > 0 && novo < dev.valor && !dev.avisos.includes("devolucao_a_menor")) {
+      // A menos, sem o id (D15): nada é acertado sozinho; o aviso com os dois valores, a espera para (a rotina deixa de
+      // reler esta devolução) e a equipe confirma o valor visto no painel do Mercado Pago, ou registra um ajuste. Só um
+      // pedido que pode ter devolvido esta parte: aceito, ou em dúvida com o corpo de parte do valor (o integral em dúvida
+      // que nunca foi aceito não devolve uma parte: essa parte é de fora, e o D21 a aponta).
+      await tx.update(devolucoesPagamento).set({ proximaTentativaEm: null, atualizadoEm: agora }).where(eq(devolucoesPagamento.id, dev.id));
+      dev.proximaTentativaEm = null;
+      await trocarAvisosDaDevolucao(tx, dev, { ligar: ["devolucao_a_menor"] }, agora);
+      await registrarAuditoria(tx, { organizacaoId, usuarioId: null, acao: "pagamento.devolucao_a_menor", entidade: "pagamento", entidadeId: p.id, mudancas: { devolvido: [null, novo], devido: [null, dev.valor] } });
+    }
+    if (!confirmar) continue;
     const antes = dev.situacao;
-    const confirmadaEm = agora;
-    const valorConfirmado = confirmadasLidas > 0 ? confirmadasLidas : null;
-    await tx
-      .update(devolucoesPagamento)
-      .set({ situacao: "confirmada", confirmadaEm, confirmadaPor: "leitura", valorConfirmado, proximaTentativaEm: null, chaveEmDuvida: false, chaveAceita: false, atualizadoEm: agora })
-      .where(eq(devolucoesPagamento.id, dev.id));
-    Object.assign(dev, { situacao: "confirmada" as const, confirmadaEm, confirmadaPor: "leitura" as const, valorConfirmado, proximaTentativaEm: null, chaveEmDuvida: false, chaveAceita: false });
-    for (const a of ["devolucao_falhou", "devolucao_sem_confirmacao", "devolucao_parada", "devolucao_fora_do_prazo", "devolucao_a_menor"] as CodigoAviso[]) desligar(a);
-    if (doSemReserva) {
-      desfecho = "devolucao";
-      patch.desfecho = "devolucao";
-      patch.desfechoMotivo = dev.motivo;
-      patch.desfechoEm = agora;
-      patch.desfechoPor = dev.autorId;
+    const mudanca = { situacao: "confirmada" as const, confirmadaEm: agora, confirmadaPor: "leitura" as const, valorConfirmado: confirmar.valor, proximaTentativaEm: null, chaveEmDuvida: false, chaveAceita: false, atualizadoEm: agora };
+    // D15: na realização a menor, a taxa atribuída congela de novo (uma vez), no que de fato voltou.
+    const reTaxa = confirmar.aMenor && dev.taxaAtribuida !== null ? { taxaAtribuida: null } : {};
+    await tx.update(devolucoesPagamento).set({ ...mudanca, ...reTaxa }).where(eq(devolucoesPagamento.id, dev.id));
+    Object.assign(dev, mudanca, reTaxa);
+    await trocarAvisosDaDevolucao(
+      tx,
+      dev,
+      {
+        desligar: ["devolucao_falhou", "devolucao_sem_confirmacao", "devolucao_parada", "devolucao_fora_do_prazo", "devolucao_aguardando_liberacao_atrasada", ...(confirmar.aMenor ? [] : (["devolucao_a_menor"] as CodigoAviso[]))],
+        ligar: confirmar.aMenor ? ["devolucao_a_menor"] : [],
+      },
+      agora,
+    );
+    if (confirmar.aMenor) await registrarAuditoria(tx, { organizacaoId, usuarioId: null, acao: "pagamento.devolucao_a_menor", entidade: "pagamento", entidadeId: p.id, mudancas: { devolvido: [null, confirmar.valor], devido: [null, dev.valor] } });
+    if (dev.origem === "sem_reserva") {
+      // §5.9: o desfecho do pagamento sem reserva quando ele fica completo (por fora se alguma parte saiu por fora).
+      const realizadas = devs.filter((x) => x.situacao === "confirmada" || x.situacao === "por_fora");
+      const completo = situacao === "devolvido" || reconhecido + realizadas.reduce((s2, x) => s2 + comprometido(x), 0) >= pago;
+      if (completo && desfecho === null) {
+        desfecho = realizadas.some((x) => x.situacao === "por_fora") ? "por_fora" : "devolucao";
+        patch.desfecho = desfecho;
+        patch.desfechoMotivo = dev.motivo;
+        patch.desfechoEm = agora;
+        patch.desfechoPor = dev.autorId;
+      }
     } else {
-      // Cancelamento: os componentes de caixa (a saída do que tinha entrado), com o dia desta leitura, conciliados.
-      const caixa = await acertarCaixa(tx, organizacaoId, t, p, dev, { data: hojeISO(FUSO_PAGAMENTO, agora), estado: "conciliado", origem: "sincronizacao" }, agora);
-      for (const a of caixa.avisos) ligar(a);
+      // Cancelamento e alteração: o caixa desta devolução (a saída do que tinha entrado), com o dia desta leitura, conciliado.
+      const caixa = await acertarCaixaDaDevolucao(tx, organizacaoId, t, p, dev, { data: hojeISO(FUSO_PAGAMENTO, agora), estado: "conciliado", origem: "sincronizacao" }, agora);
+      if (caixa.avisos.length) await trocarAvisosDaDevolucao(tx, dev, { ligar: caixa.avisos }, agora);
     }
     await registrarAuditoria(tx, { organizacaoId, usuarioId: null, acao: "pagamento.devolucao_confirmada", entidade: "pagamento", entidadeId: p.id, mudancas: { devolucao: [antes, "confirmada"] } });
-  } else if (devolvidoNoProvedor && desfecho === null && !dev) ligar("devolvido_por_fora");
-  else if (
-    (doSemReserva || doCancelamento) &&
-    dev!.situacao === "pedida" &&
-    dev!.chaveAceita &&
-    !emAndamentoLido &&
-    (situacao === "devolvido_parcial" || (confirmadasLidas > 0 && confirmadasLidas < devido)) &&
-    !avisos.has("devolucao_a_menor")
-  ) {
-    // D14: o Mercado Pago devolveu menos que o integral pedido. Nada é acertado sozinho (a devolução de parte do valor é do
-    // M8.2d): o aviso com os dois valores, a espera para (a rotina deixa de reler esta devolução) e a equipe resolve pelo
-    // painel do Mercado Pago ("Confirmar devolução feita no painel do Mercado Pago", só o integral) ou com um ajuste.
-    ligar("devolucao_a_menor");
-    await tx.update(devolucoesPagamento).set({ proximaTentativaEm: null, atualizadoEm: agora }).where(eq(devolucoesPagamento.id, dev!.id));
-    dev!.proximaTentativaEm = null;
-    const devolvido = confirmadasLidas > 0 ? confirmadasLidas : (cobrancaAplicada?.devolvido ?? 0);
-    await registrarAuditoria(tx, { organizacaoId, usuarioId: null, acao: "pagamento.devolucao_a_menor", entidade: "pagamento", entidadeId: p.id, mudancas: { devolvido: [null, devolvido], devido: [null, devido] } });
   }
+  // Taxa que não voltou: o provedor não diz quanto da tarifa devolveu (a que ele informa é a da aprovação). Fica pendente,
+  // em cada devolução confirmada, até a equipe informar no quadro do pagamento (nunca palpite).
+  for (const dev of devs) if (dev.situacao === "confirmada" && dev.taxaPerdida === null) await trocarAvisosDaDevolucao(tx, dev, { ligar: ["taxa_perdida_desconhecida"] }, agora);
+
+  // D21, recalculado a cada leitura: o Mercado Pago mostra devolvido além do que as nossas devoluções e o reconhecido
+  // explicam (ou devolvido sem nada nosso). Na reserva, a parte do proprietário fica em conferência; sem reserva, o aviso.
+  const lido = { situacao, devolvidoLido, devolvidoForaReconhecido: reconhecido };
+  const inexplicada = devolucaoInexplicada(lido, devs);
+  // Já devolvido (desfecho devolução ou por fora): não liga mais (o em dobro abaixo é o aviso dele), mas desliga o que a
+  // devolução nossa ou o reconhecido passou a explicar (o restante sem reserva, D17).
+  if (inexplicada && desfecho !== "por_fora" && desfecho !== "devolucao") ligar("devolvido_por_fora");
+  else if (!inexplicada) desligar("devolvido_por_fora");
+  // Devolvido no provedor além das nossas devoluções (ou em andamento sem pedido nosso) e também registrado por fora: em dobro.
+  const devolvidoNoProvedor = situacao === "devolvido" || situacao === "devolvido_parcial";
+  const porForaRegistrada = desfecho === "por_fora" || devs.some((d) => d.situacao === "por_fora");
+  const proprio = devolvidoProprio(devs);
+  if (
+    porForaRegistrada &&
+    (devolvidoLido > proprio + reconhecido || (devolvidoNoProvedor && devolvidoLido === 0 && proprio + reconhecido === 0) || (emAndamentoLido && !devs.some((d) => possivelmenteNoProvedor(d))))
+  )
+    ligar("devolucao_em_dobro");
+  if (situacao === "contestado") ligar("contestado");
   // O dia em que o sistema viu "devolvido" pela primeira vez: só na leitura que leva a "devolvido". O pagamento que já estava
   // devolvido antes da coluna (M8.2c) fica sem ele, e o caixa do cancelamento usa o dia da auditoria dessa leitura.
   if (situacao === "devolvido" && p.situacao !== "devolvido" && !p.devolvidoVistoEm) patch.devolvidoVistoEm = agora;
-  // Taxa que não voltou: o provedor não diz quanto da tarifa devolveu (a que ele informa é a da aprovação). Fica
-  // pendente até a equipe informar no quadro do pagamento (nunca palpite).
-  if (dev?.situacao === "confirmada" && dev.taxaPerdida === null) ligar("taxa_perdida_desconhecida");
 
-  // Liberação: só o pagamento que confirmou a reserva, ainda aprovado, e só com o sinal explícito.
+  // Liberação: só o dinheiro da reserva (o que a confirmou e a diferença aplicada, M8.2d), ainda aprovado (ou devolvido
+  // em parte pelas nossas devoluções), e só com o sinal explícito.
   if (f?.liberado === true) {
-    if (desfecho === "reserva" && situacao === "aprovado") {
+    if (dinheiroDaReserva({ desfecho }) && (situacao === "aprovado" || (situacao === "devolvido_parcial" && !inexplicada))) {
       const [r] = await tx.select().from(reservas).where(eq(reservas.id, t.reserva.id));
       if (r && reservaCalculadaPeloMotor(r)) {
         // Confirmada, ou cancelada com valor retido (M8.2c): o dinheiro ficou com a empresa e entra como recebimento.
@@ -439,12 +484,22 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
             patch.liberacaoConfirmadaEm = agora;
             patch.liberacaoOrigem = "provedor";
           }
+          if (res.confirmada) {
+            // As saídas de caixa que esperavam este recebimento e as devoluções de parte do valor que esperavam a liberação (D13).
+            p.liberacaoConfirmadaEm ??= agora;
+            await acertarCaixasPendentes(tx, organizacaoId, t, p, hojeISO(FUSO_PAGAMENTO, agora), agora);
+            await acordarDevolucoesQueEsperam(tx, t, p, agora);
+          }
         }
       } else if (r?.estado === "cancelada" && !p.liberacaoConfirmadaEm) {
         // Cancelada com devolução integral (M8.2c): o dinheiro volta ao hóspede e nunca entra no livro; a liberação fica
-        // registrada só aqui.
+        // registrada só aqui. M8.2d: as devoluções que esperavam a liberação (D13) seguem, e as realizadas antes ficam
+        // acertadas sem lançar nada (nada vai entrar).
         patch.liberacaoConfirmadaEm = agora;
         patch.liberacaoOrigem = "provedor";
+        p.liberacaoConfirmadaEm = agora;
+        await acertarCaixasPendentes(tx, organizacaoId, t, p, hojeISO(FUSO_PAGAMENTO, agora), agora);
+        await acordarDevolucoesQueEsperam(tx, t, p, agora);
       }
     } else if (!p.liberacaoConfirmadaEm) {
       // Liberação de tentativa sem a reserva: fica registrada só aqui, nunca no livro.
@@ -469,7 +524,8 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
   }
 
   if (situacao !== p.situacao) patch.situacao = situacao;
-  patch.avisos = [...avisos];
+  // Os avisos do pagamento: os dele mais a união dos avisos das devoluções (M8.2d).
+  patch.avisos = avisosComDevolucoes([...avisos], t.devolucoes, p.id);
   await tx.update(pagamentos).set(patch).where(eq(pagamentos.id, p.id));
   const mudou = situacao !== p.situacao || desfecho !== p.desfecho || motivoSemReserva !== p.motivoSemReserva;
   if (mudou) {
@@ -500,9 +556,46 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
  * sem chave em dúvida nem aceita e com as falhas no máximo — a equipe pede de novo (chave nova) ou, pelas regras de
  * sempre, registra por fora. Sob as travas de quem chama; o aviso fica com `aplicarLeitura`.
  */
-async function liberarPedidoQueFalhou(tx: Db, organizacaoId: string, p: Pagamento, dev: Travado["devolucoes"][number], agora: Date): Promise<void> {
+async function liberarPedidoQueFalhou(tx: Db, organizacaoId: string, p: Pagamento, dev: Devolucao, agora: Date): Promise<void> {
   const mudanca = { situacao: "recusada" as const, chaveAceita: false, chaveEmDuvida: false, falhas: MAXIMO_FALHAS_DEVOLUCAO, proximaTentativaEm: null, atualizadoEm: agora };
   await tx.update(devolucoesPagamento).set(mudanca).where(eq(devolucoesPagamento.id, dev.id));
   Object.assign(dev, mudanca);
   await registrarAuditoria(tx, { organizacaoId, usuarioId: null, acao: "pagamento.devolucao_recusada", entidade: "pagamento", entidadeId: p.id, mudancas: { devolucao: ["pedida", "recusada"], motivo: [null, "o Mercado Pago informou que a devolução pedida não saiu"] } });
+}
+
+/**
+ * O alvo da cobrança de uma tentativa no cartão (M8.2d): o pedido segurado da cotação (a tentativa da reserva) ou as datas
+ * seguradas de uma alteração (a tentativa da diferença). Se ele ainda vale, o prazo dele, as tentativas dele e como
+ * estender o prazo (só estende; o retrato acompanha). O M8.2d inteiro usa a mesma regra para o Pix e o cartão
+ * (`alvoDaCobranca`); a leitura do cartão precisa só disto.
+ */
+function alvoDoCartao(tx: Db, organizacaoId: string, t: Travado, p: Pagamento, agora: Date) {
+  if (!p.alteracaoId) {
+    return {
+      valido: t.reserva.estado === "pedido" && t.cotacao.estado === "segurada",
+      holdAte: t.cotacao.holdAte,
+      tentativas: t.tentativas.filter((x) => !x.alteracaoId),
+      estender: async (ate: Date, pagamentoId: string) => {
+        if (await estenderHold(tx, organizacaoId, t.cotacao.id, ate, agora, pagamentoId)) t.cotacao.holdAte = ate;
+      },
+    };
+  }
+  const a = t.alteracoes.find((x) => x.id === p.alteracaoId);
+  const segurada = !!a && situacaoEfetiva(a, agora, carenciaNoTravado(t, agora)(a)) === "segurada";
+  return {
+    valido: segurada && t.reserva.estado === "confirmada" && !t.cancelamento,
+    holdAte: a?.holdAte ?? null,
+    tentativas: t.tentativas.filter((x) => x.alteracaoId === p.alteracaoId),
+    estender: async (ate: Date, pagamentoId: string) => {
+      if (!a) return;
+      const [feita] = await tx
+        .update(alteracoesReserva)
+        .set({ holdAte: ate, atualizadoEm: agora })
+        .where(and(eq(alteracoesReserva.id, a.id), eq(alteracoesReserva.situacao, "segurada"), or(isNull(alteracoesReserva.holdAte), lt(alteracoesReserva.holdAte, ate))))
+        .returning({ id: alteracoesReserva.id });
+      if (!feita) return;
+      await registrarAuditoria(tx, { organizacaoId, usuarioId: null, acao: "alteracao.estender", entidade: "alteracao", entidadeId: a.id, mudancas: { holdAte: [a.holdAte?.toISOString() ?? null, ate.toISOString()], pagamento: [null, pagamentoId] } });
+      a.holdAte = ate;
+    },
+  };
 }

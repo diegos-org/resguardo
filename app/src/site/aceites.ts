@@ -13,8 +13,9 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { lerPaginaLegal, versoesLegaisAtuais, versoesLegaisTravadas } from "@/configuracoes/paginas-legais";
 import { type Bloco, blocosDoDocumento, CAMPOS_VERSAO, DOCUMENTOS_LEGAIS, type DocumentoLegal, prazoDoReembolso, preencherCampos, type RegrasCancelamento, type VersoesLegais } from "@/configuracoes/paginas-legais-texto";
+import { entradaQueConta } from "@/configuracoes/politica-cancelamento";
 import { travaOcupada } from "@/db/erros";
-import { aceitesSite, pagamentos } from "@/db/schema";
+import { aceitesSite, pagamentos, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
@@ -203,8 +204,16 @@ export async function aceiteParaPagina(
     versoes,
     aceito: aceito ? { em: aceito.aceitoEm.toISOString(), versoes: aceito.versoes } : null,
     resumo: blocosDoDocumento(preencherCampos(emVigor.secoes.resumo ?? "", emVigor.valores)),
-    prazo: prazoDoReembolso(c.checkin, daRegra.regras.diasReembolsoIntegral, hojeISO(c.fuso, agora)),
+    // M8.2d: depois de uma alteração, o prazo conta da entrada que conta (a menor entre a da cotação e a atual da reserva),
+    // a mesma data do painel e de Minha reserva.
+    prazo: prazoDoReembolso(c.reservaId ? entradaQueConta(c.checkin, (await checkinDaReserva(db, organizacaoId, c.reservaId)) ?? c.checkin) : c.checkin, daRegra.regras.diasReembolsoIntegral, hojeISO(c.fuso, agora)),
   };
+}
+
+/** A entrada atual da reserva (depois de uma alteração, pode diferir da cotação); null = não achada. */
+async function checkinDaReserva(db: Db, organizacaoId: string, reservaId: string): Promise<string | null> {
+  const [r] = await db.select({ checkin: reservas.checkin }).from(reservas).where(and(eq(reservas.id, reservaId), eq(reservas.organizacaoId, organizacaoId)));
+  return r?.checkin ?? null;
 }
 
 /** Prova no painel: todos os aceites de uma reserva, do mais novo para o mais antigo. */

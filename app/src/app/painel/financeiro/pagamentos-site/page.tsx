@@ -32,7 +32,7 @@ function desfechoEmPalavras(p: Pick<LinhaPagamento, "desfecho" | "devolucao" | "
   if (p.devolucao?.situacao === "recusada") return "Devolução parada: o Mercado Pago recusou ou não respondeu três vezes. Confira no painel do Mercado Pago antes de tentar de novo ou de registrar a devolução feita por fora";
   if (p.situacao === "aprovado" && p.motivoSemReservaTexto) return `Sem reserva, a devolver: ${p.motivoSemReservaTexto}`;
   if ((p.situacao === "devolvido_parcial" || p.situacao === "contestado") && p.motivoSemReservaTexto)
-    return `Sem reserva: ${p.motivoSemReservaTexto} O resto se resolve pelo painel do Mercado Pago (a devolução de parte do valor pelo sistema chega no M8.2d).`;
+    return `Sem reserva: ${p.motivoSemReservaTexto} ${p.situacao === "devolvido_parcial" ? "Devolva o restante pelo quadro do pagamento." : "A contestação se resolve pelo painel do Mercado Pago."}`;
   if (p.situacao === "aprovado") return "Confirmando a reserva";
   return "—";
 }

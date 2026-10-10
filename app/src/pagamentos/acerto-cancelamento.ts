@@ -13,8 +13,9 @@
  *   (`registrarTaxaPerdida`, ou derivada na devolução por fora). Conciliada quando a leitura do Mercado Pago confirma,
  *   realizada quando a devolução foi por fora ou confirmada pela equipe.
  *
- * Idempotente: `resultadoLancadoEm` e `caixaLancadoEm` no cancelamento, e as chaves no livro (por cancelamento e lançamento
- * original nos espelhos, por devolução na saída).
+ * Idempotente: `resultadoLancadoEm` no cancelamento, `caixaLancadoEm` na devolução (M8.2d: várias por pagamento; o
+ * cancelamento ganha a marca quando todas as dele acertaram), e as chaves no livro (por cancelamento e lançamento original
+ * nos espelhos, por devolução na saída).
  */
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
@@ -26,9 +27,11 @@ import { travarMotorDaReserva } from "@/financeiro/trava";
 import { hojeISO } from "@/lib/datas";
 import { formatBRL } from "@/lib/money";
 import { chaveEspelhoDoCancelamento, lancarDescontoDoProprietario, mesDoDesconto, ORIGEM_CANCELAMENTO } from "@/repasses/descontos";
+import { reservaCalculadaPeloMotor } from "@/financeiro/motor";
+import { trocarAvisosDaDevolucao } from "./avisos-devolucao";
 import { FUSO_PAGAMENTO, recebimentosDoPagamento } from "./liberacao";
 import type { CodigoAviso } from "./situacoes";
-import type { Devolucao, Pagamento, Travado } from "./travas";
+import { comprometido, type Devolucao, devolucoesDoPagamento, type Pagamento, taxaAtribuidaDaDevolucao, type Travado, valorPagoAprovado } from "./travas";
 
 /** A saída do caixa de uma devolução (uma por devolução). Começa com `mercadopago:` (não se estorna pelas listas) e não tem "recebimento". */
 export const chaveSaidaDevolucao = (pagamentoId: string, devolucaoId: string) => `mercadopago:${pagamentoId}:devolucao:${devolucaoId}:saida`;
@@ -177,18 +180,57 @@ export async function acertarResultado(tx: Db, organizacaoId: string, t: Travado
 }
 
 /**
- * Na devolução realizada (leitura que confirma, por fora, confirmação da equipe, ou já devolvida no Mercado Pago ao
- * cancelar): só os componentes de caixa. A saída espelha os recebimentos em vigor do pagamento (nada entrou = nada a
- * lançar). Idempotente (`caixaLancadoEm`). Dentro das travas de quem chama (cotação → motor → livro).
+ * O caixa de UMA devolução realizada (leitura que confirma, por fora, confirmação da equipe, ou já devolvida no Mercado
+ * Pago ao cancelar): só os componentes de caixa (M8.2c §6; M8.2d §6.2, várias devoluções por pagamento). Idempotente
+ * pela devolução (`caixaLancadoEm`). Dentro das travas de quem chama (cotação → motor → livro).
+ *
+ * - Sem reserva: nada entrou no livro, nada sai (só a marca).
+ * - O recebimento do pagamento já entrou (E = o que entrou menos as saídas das outras devoluções): a devolução que completa
+ *   o pagamento leva tudo o que resta (M8.2c: X = E); as outras, o devolvido menos a taxa atribuída ao principal dela
+ *   (X = min(E, A − F)).
+ * - Ainda não entrou: se o dinheiro ainda vai entrar (a reserva o motor calcula, o pagamento não fica completo pelas
+ *   devoluções e esta não saiu pelo Mercado Pago antes da liberação), a saída espera (`caixaLancadoEm` vazio) e
+ *   `acertarCaixasPendentes` a lança logo depois do recebimento; senão nada vai entrar e nada se lança.
+ * O cancelamento ganha a marca quando todas as devoluções dele acertaram o caixa.
  */
-export async function acertarCaixa(tx: Db, organizacaoId: string, t: Travado, p: Pagamento, dev: Devolucao, fato: FatoDaDevolucao, agora: Date, autorId: string | null = null): Promise<{ avisos: CodigoAviso[] }> {
-  const c = t.cancelamento;
-  if (!c || c.situacao !== "cancelada" || c.caixaLancadoEm) return { avisos: [] };
+export async function acertarCaixaDaDevolucao(
+  tx: Db,
+  organizacaoId: string,
+  t: Travado,
+  p: Pagamento,
+  dev: Devolucao,
+  fato: FatoDaDevolucao,
+  agora: Date,
+  autorId: string | null = null,
+): Promise<{ avisos: CodigoAviso[] }> {
+  const avisos: CodigoAviso[] = dev.situacao === "confirmada" && dev.taxaPerdida === null ? ["taxa_perdida_desconhecida"] : [];
+  if (dev.caixaLancadoEm) return { avisos: [] };
+  if (dev.origem === "sem_reserva") {
+    await marcarCaixa(tx, dev, agora);
+    return { avisos };
+  }
   await travarMotorDaReserva(tx, organizacaoId, t.reserva.id);
+  const devs = devolucoesDoPagamento(t, p.id);
+  const outras = devs.filter((x) => x.id !== dev.id);
   const { emVigor: recebidos } = await recebimentosDoPagamento(tx, organizacaoId, p.id);
-  const soma = recebidos.filter((l) => l.estado === "realizado" || l.estado === "conciliado").reduce((s, l) => s + (l.montante ?? 0), 0);
-  if (soma > 0) {
-    const devolvido = dev.valorConfirmado ?? dev.porForaValor ?? dev.valor;
+  const entrou = recebidos.filter((l) => l.estado === "realizado" || l.estado === "conciliado").reduce((s, l) => s + (l.montante ?? 0), 0);
+  const devolvido = dev.valorConfirmado ?? dev.porForaValor ?? dev.valor;
+  const realizadasOutras = outras.filter((x) => x.situacao === "confirmada" || x.situacao === "por_fora").reduce((s, x) => s + comprometido(x), 0);
+  const completa = p.devolvidoForaReconhecido + realizadasOutras + devolvido >= valorPagoAprovado(p);
+  const taxa = await congelarTaxaAtribuida(tx, p, dev, devs, agora);
+  let saida = 0;
+  if (entrou > 0) {
+    const saidasOutras = await saidasEmVigor(tx, organizacaoId, outras);
+    const resta = Math.max(0, entrou - saidasOutras);
+    saida = completa ? resta : Math.min(resta, Math.max(0, devolvido - (taxa ?? 0)));
+  } else {
+    // A devolução que saiu pelo Mercado Pago antes da liberação (só a integral de um pagamento intocado, D13) leva o
+    // dinheiro de volta antes de ele entrar: nada vai entrar por este pagamento.
+    const saiuAntes = dev.situacao === "confirmada" && dev.corpoIntegral !== false && !p.liberacaoConfirmadaEm;
+    const aindaEntra = reservaCalculadaPeloMotor(t.reserva) && !completa && !saiuAntes;
+    if (aindaEntra) return { avisos };
+  }
+  if (saida > 0) {
     const como = dev.situacao === "por_fora" ? "por fora" : dev.confirmadaPor === "equipe" ? "confirmada pela equipe" : "pelo Mercado Pago";
     const [l] = await lancar(
       tx,
@@ -196,10 +238,13 @@ export async function acertarCaixa(tx: Db, organizacaoId: string, t: Travado, p:
       [
         {
           tipo: "devolucao",
-          descricao: `Reserva ${t.reserva.codigo} — devolução de ${formatBRL(devolvido)} ao hóspede (${como} em ${dataBr(fato.data)}): sai o líquido de ${formatBRL(soma)} que entrou; a taxa que não voltou é despesa da empresa`,
+          // A que completa o pagamento leva o líquido que resta (o texto do M8.2c); uma parte, o devolvido menos a taxa dela.
+          descricao: completa
+            ? `Reserva ${t.reserva.codigo} — devolução de ${formatBRL(devolvido)} ao hóspede (${como} em ${dataBr(fato.data)}): sai o líquido de ${formatBRL(saida)} que entrou; a taxa que não voltou é despesa da empresa`
+            : `Reserva ${t.reserva.codigo} — devolução de ${formatBRL(devolvido)} ao hóspede (${como} em ${dataBr(fato.data)}): sai ${formatBRL(saida)} do que entrou; a taxa do Mercado Pago sobre a parte devolvida que não voltar é despesa da empresa`,
           valor: 0,
           efeitoSaldo: 0,
-          montante: soma,
+          montante: saida,
           competencia: fato.data,
           dataCaixa: fato.data,
           estado: fato.estado,
@@ -214,10 +259,68 @@ export async function acertarCaixa(tx: Db, organizacaoId: string, t: Travado, p:
     await tx.update(devolucoesPagamento).set({ saidaLancamentoId: l.id, atualizadoEm: agora }).where(eq(devolucoesPagamento.id, dev.id));
     dev.saidaLancamentoId = l.id;
   }
-  const [linha] = await tx.update(cancelamentosReserva).set({ caixaLancadoEm: agora, atualizadoEm: agora }).where(eq(cancelamentosReserva.id, c.id)).returning();
-  Object.assign(c, linha);
-  await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "pagamento.cancelamento_caixa", entidade: "pagamento", entidadeId: p.id, mudancas: { saida: [null, soma] } });
-  return { avisos: dev.situacao === "confirmada" && dev.taxaPerdida === null ? ["taxa_perdida_desconhecida"] : [] };
+  await marcarCaixa(tx, dev, agora);
+  // O cancelamento fica com o caixa acertado quando todas as devoluções dele acertaram (M8.2c: a única devolução dele).
+  const c = t.cancelamento;
+  if (dev.origem === "cancelamento" && c && c.id === dev.cancelamentoId && !c.caixaLancadoEm) {
+    const doCancelamento = t.devolucoes.filter((x) => x.cancelamentoId === c.id && x.situacao !== "substituida");
+    if (doCancelamento.every((x) => x.caixaLancadoEm)) {
+      const [linha] = await tx.update(cancelamentosReserva).set({ caixaLancadoEm: agora, atualizadoEm: agora }).where(eq(cancelamentosReserva.id, c.id)).returning();
+      Object.assign(c, linha);
+    }
+  }
+  // A auditoria do M8.2c continua com o nome dela para a devolução do cancelamento.
+  await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: dev.origem === "cancelamento" ? "pagamento.cancelamento_caixa" : "pagamento.devolucao_caixa", entidade: "pagamento", entidadeId: p.id, mudancas: { saida: [null, saida] } });
+  return { avisos };
+}
+
+/** M8.2c: o nome de antes (uma devolução por cancelamento). */
+export const acertarCaixa = acertarCaixaDaDevolucao;
+
+async function marcarCaixa(tx: Db, dev: Devolucao, agora: Date): Promise<void> {
+  await tx.update(devolucoesPagamento).set({ caixaLancadoEm: agora, atualizadoEm: agora }).where(eq(devolucoesPagamento.id, dev.id));
+  dev.caixaLancadoEm = agora;
+}
+
+/** As saídas de caixa em vigor (não estornadas) das devoluções dadas. */
+async function saidasEmVigor(tx: Db, organizacaoId: string, devs: readonly Devolucao[]): Promise<number> {
+  const ids = devs.map((d) => d.saidaLancamentoId).filter((x): x is string => !!x);
+  if (!ids.length) return 0;
+  const linhas = await tx
+    .select({ montante: lancamentos.montante })
+    .from(lancamentos)
+    .where(and(eq(lancamentos.organizacaoId, organizacaoId), inArray(lancamentos.id, ids), emVigor()));
+  return linhas.reduce((s, l) => s + (l.montante ?? 0), 0);
+}
+
+/**
+ * Congela a taxa atribuída ao principal da devolução (D19) na primeira vez que dá para calcular (a taxa do pagamento
+ * conhecida); devolve a congelada (ou null, ainda desconhecida). Sob as travas de quem chama.
+ */
+export async function congelarTaxaAtribuida(tx: Db, p: Pagamento, dev: Devolucao, devs: readonly Devolucao[], agora: Date): Promise<number | null> {
+  if (dev.taxaAtribuida !== null) return dev.taxaAtribuida;
+  const taxa = taxaAtribuidaDaDevolucao(p, dev, devs);
+  if (taxa === null) return null;
+  await tx.update(devolucoesPagamento).set({ taxaAtribuida: taxa, atualizadoEm: agora }).where(eq(devolucoesPagamento.id, dev.id));
+  dev.taxaAtribuida = taxa;
+  return taxa;
+}
+
+/**
+ * Depois do recebimento do pagamento entrar no livro (liberação pelo Mercado Pago ou registrada à mão): lança as saídas
+ * de caixa que esperavam por ele (devoluções realizadas antes, por fora ou confirmadas), no dia da liberação. Sob as
+ * travas de quem chama; idempotente por devolução.
+ */
+export async function acertarCaixasPendentes(tx: Db, organizacaoId: string, t: Travado, p: Pagamento, data: string, agora: Date): Promise<CodigoAviso[]> {
+  const avisos: CodigoAviso[] = [];
+  for (const dev of devolucoesDoPagamento(t, p.id)) {
+    if (dev.caixaLancadoEm || (dev.situacao !== "confirmada" && dev.situacao !== "por_fora") || (dev.origem !== "cancelamento" && dev.origem !== "alteracao")) continue;
+    const fato: FatoDaDevolucao = dev.situacao === "confirmada" && dev.confirmadaPor !== "equipe" ? { data, estado: "conciliado", origem: "sincronizacao" } : { data, estado: "realizado", origem: "manual" };
+    const r = await acertarCaixaDaDevolucao(tx, organizacaoId, t, p, dev, fato, agora);
+    if (r.avisos.length) await trocarAvisosDaDevolucao(tx, dev, { ligar: r.avisos }, agora);
+    avisos.push(...r.avisos);
+  }
+  return avisos;
 }
 
 /**

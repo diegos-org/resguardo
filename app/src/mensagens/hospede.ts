@@ -259,8 +259,14 @@ async function alvosDeCancelamento(db: Db, organizacaoId: string, f: { reservaId
     .from(devolucoesPagamento)
     .where(inArray(devolucoesPagamento.cancelamentoId, linhas.map((l) => l.c.id)));
   return linhas.map((l) => {
-    const d = devs.find((x) => x.cancelamentoId === l.c.id);
-    const em = d?.situacao === "confirmada" ? d.confirmadaEm : d?.situacao === "por_fora" && d.porForaData ? instanteLocal(d.porForaData, "12:00", "America/Sao_Paulo") : null;
+    // M8.2d: uma devolução por pagamento da reserva. A mensagem da devolução feita sai uma vez, quando TODAS as devoluções
+    // do cancelamento se realizaram (a referência e o dia são os da última); a substituída não conta.
+    const doCancelamento = devs.filter((x) => x.cancelamentoId === l.c.id && x.situacao !== "substituida");
+    const quando = (d: (typeof devs)[number]) => (d.situacao === "confirmada" ? d.confirmadaEm : d.situacao === "por_fora" && d.porForaData ? instanteLocal(d.porForaData, "12:00", "America/Sao_Paulo") : null);
+    const feitas = doCancelamento.map((d) => ({ d, em: quando(d) }));
+    const ultima = feitas.length && feitas.every((x) => x.em) ? feitas.sort((a, b) => a.em!.getTime() - b.em!.getTime()).at(-1)! : null;
+    const d = ultima?.d;
+    const em = ultima?.em ?? null;
     return {
       cancelamentoId: l.c.id,
       situacao: l.c.situacao,

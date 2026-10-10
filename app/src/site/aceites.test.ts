@@ -5,13 +5,13 @@ import { salvarEmpresa } from "@/configuracoes/empresa";
 import { publicarPaginaLegal } from "@/configuracoes/paginas-legais";
 import { RASCUNHO_PAGINAS_LEGAIS } from "@/configuracoes/paginas-legais-rascunho";
 import { publicarPaginasLegaisDeTeste } from "@/configuracoes/paginas-legais-testes";
-import { aceitesSite, auditoria, cotacoes, organizacoes, pagamentos } from "@/db/schema";
+import { aceitesSite, auditoria, cotacoes, organizacoes, pagamentos, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { conferirTentativa } from "@/pagamentos/conferencia";
 import { podeCobrar, TEXTO_SEM_COBRANCA } from "@/pagamentos/oferta";
 import { gerarPix } from "@/pagamentos/pix";
-import { AGORA, type Cenario, EMAIL_HOSPEDE, env, minutos, montarCenario } from "@/pagamentos/testes";
+import { AGORA, type Cenario, EMAIL_HOSPEDE, env, minutos, montarCenario, pagarEConfirmar } from "@/pagamentos/testes";
 import { travarCotacao } from "@/pagamentos/travas";
 import { aceiteParaPagina, aceitesDaReserva, contarAceitesPorVersao, MENSAGENS_ACEITE, politicaDoPagamento, registrarAceiteDoHospede, versoesDoFormulario } from "./aceites";
 import { criarCotacao } from "./cotacoes";
@@ -267,5 +267,18 @@ describe("prova do aceite (M7.4)", () => {
     expect(await politicaDoPagamento(db, c.org, p.pagamentoId)).toEqual({ versao: 1, data: "2026-10-01", regras: { diasReembolsoIntegral: 14, arrependimentoAteEntrada: true } });
     expect(await politicaDoPagamento(db, sem.org, p.pagamentoId)).toBeNull();
     expect(await politicaDoPagamento(db, c.org, "nada")).toBeNull();
+  });
+});
+
+describe("o prazo da página depois de uma alteração (M8.2d)", () => {
+  it("reserva movida para antes: o prazo conta da entrada que conta (a menor), o mesmo do painel; movida para depois, continua da original", async () => {
+    const x = await pagarEConfirmar(c, { entrada: "2026-11-20", saida: "2026-11-23" });
+    const cot = await c.cotacao(x.cotacaoId);
+    const pagina = async () => (await aceiteParaPagina(db, c.org, { id: cot.id, checkin: cot.checkin, fuso: "America/Sao_Paulo", reservaId: cot.reservaId }, minutos(4)))?.prazo;
+    expect(await pagina()).toEqual({ tipo: "integral_ate", data: "2026-11-06" });
+    await db.update(reservas).set({ checkin: "2026-11-10", checkout: "2026-11-13" }).where(eq(reservas.id, x.reservaId));
+    expect(await pagina()).toEqual({ tipo: "integral_ate", data: "2026-10-27" });
+    await db.update(reservas).set({ checkin: "2026-11-27", checkout: "2026-11-30" }).where(eq(reservas.id, x.reservaId));
+    expect(await pagina()).toEqual({ tipo: "integral_ate", data: "2026-11-06" });
   });
 });

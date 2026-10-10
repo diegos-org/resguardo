@@ -29,6 +29,7 @@ import {
   previaDoCancelamento,
   TEXTO_DEVOLVIDO_EM_PARTE,
   TEXTO_EMPRESA_SEMPRE_INTEGRAL,
+  TEXTO_FORA_SEM_VALOR,
   TEXTO_INTEGRAL_NAO_SE_NEGA,
   TEXTO_OCUPADO,
   TEXTO_PREVIA_MUDOU,
@@ -443,13 +444,24 @@ describe("recusas e a assinatura da prévia (M8.2c)", () => {
     const x = await pagarEConfirmar(c, longe);
     // Sem provedor: nada é relido (o estado gravado vale).
     const previa = () => previaDoCancelamento(db, c.org, x.reservaId, entrada(), null, minutos(60));
-    for (const mudanca of [{ situacao: "devolvido_parcial" as const }, { devolvidoLido: 1000 }, { devolucaoEmAndamentoLida: true }, { avisos: ["situacao_desconhecida"] }]) {
+    const limpar = () => db.update(pagamentos).set({ situacao: "aprovado", devolvidoLido: 0, devolucaoEmAndamentoLida: false, avisos: [] }).where(eq(pagamentos.id, x.pagamentoId));
+    // M8.2d (D17): parte devolvida pelo painel do Mercado Pago sem o valor → a equipe informa o valor visto lá; com o valor
+    // lido, o cancelamento vale, o devolvido fora fica reconhecido e a integral devolve só o restante.
+    await db.update(pagamentos).set({ situacao: "devolvido_parcial" }).where(eq(pagamentos.id, x.pagamentoId));
+    expect(await previa()).toEqual({ ok: false, codigo: "devolvido_fora_sem_valor", erro: TEXTO_FORA_SEM_VALOR });
+    await limpar();
+    for (const mudanca of [{ devolucaoEmAndamentoLida: true }, { avisos: ["situacao_desconhecida"] }]) {
       await db.update(pagamentos).set(mudanca).where(eq(pagamentos.id, x.pagamentoId));
       expect(await previa()).toEqual({ ok: false, codigo: "devolvido_em_parte", erro: TEXTO_DEVOLVIDO_EM_PARTE });
-      await db.update(pagamentos).set({ situacao: "aprovado", devolvidoLido: 0, devolucaoEmAndamentoLida: false, avisos: [] }).where(eq(pagamentos.id, x.pagamentoId));
+      await limpar();
     }
     await db.update(pagamentos).set({ situacao: "contestado" }).where(eq(pagamentos.id, x.pagamentoId));
     expect(await previa()).toMatchObject({ ok: false, codigo: "contestado", erro: expect.stringContaining("M8.2e") });
+    await limpar();
+    // Com o valor lido (a releitura mostra R$ 10,00 devolvidos pelo painel): o cancelamento vale e a integral devolve o restante.
+    c.provedor.devolverNoProvedor(x.idProvedor, 1000);
+    const comFora = await previaDoCancelamento(db, c.org, x.reservaId, entrada(), c.provedor, minutos(60));
+    expect(comFora.ok && comFora.previa).toMatchObject({ direito: "integral", valorADevolver: TOTAL - 1000, pagamentos: [{ pagamentoId: x.pagamentoId, valor: TOTAL - 1000, foraReconhecido: 1000 }] });
   });
 
   it("integral dentro do prazo de leitura sem conseguir ler o Mercado Pago agora: recusado, nada gravado", async () => {

@@ -1,6 +1,8 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { eventosPagamento, pagamentos, pagamentosAvisosDia } from "@/db/schema";
+import { devolucoesPagamento, eventosPagamento, lancamentos, pagamentos, pagamentosAvisosDia } from "@/db/schema";
+import { devolvidaNoProvedorDaReserva } from "@/reservas/repositorio";
+import { registrarDevolucaoPorFora, tentarDevolucao } from "./devolucao";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { aplicarNaTransacao, conferirCotacaoParaPagina, conferirTentativa, idDeOrder, INTERVALO_CONSULTA_MS, marcarAviso, processarAvisoDeOrder } from "./conferencia";
@@ -9,7 +11,7 @@ import { ProvedorFalso } from "./falso";
 import { ErroProvedor } from "./provedor";
 import { situacaoDoMercadoPago, ENDERECO_WEBHOOK, segredoDoWebhook } from "./integracao";
 import { conferirPendentes, rotinaDoSite } from "./rotina";
-import { AGORA, type Cenario, env, minutos, montarCenario, TOTAL } from "./testes";
+import { AGORA, alteracaoSeguradaDeTeste, aumentarDeTeste, type Cenario, env, liberar, minutos, montarCenario, pagarEConfirmar, reduzirDeTeste, TOTAL } from "./testes";
 
 let db: Db, close: () => Promise<void>, c: Cenario;
 beforeAll(async () => { ({ db, close } = await createTestDb()); });
@@ -345,5 +347,86 @@ describe("rotina do site e situação do Mercado Pago (M8.2a)", () => {
     const r = await situacaoDoMercadoPago(db, env(chaves), AGORA, { provedor: lento, esperaMs: 50 });
     expect(r).toMatchObject({ situacao: "teste", contaDeTeste: null });
     expect(performance.now() - inicio).toBeLessThan(1_000);
+  });
+});
+
+describe("a leitura com vários pagamentos e devoluções de parte (M8.2d)", () => {
+  const longe = { entrada: "2026-11-20", saida: "2026-11-23" };
+  const conferir = (id: string, quando: Date) => conferirTentativa(db, c.org, id, c.provedor, quando, { origem: "rotina", forcar: true });
+  const canceladas = () => c.provedor.chamadas.filter((ch) => ch.metodo === "cancelar").map((ch) => ch.id);
+
+  it("irmãs: a releitura do pagamento da reserva (e a rotina) nunca cancela o Pix da diferença de uma alteração; uma pendente do mesmo alvo, sim", async () => {
+    const x = await pagarEConfirmar(c, longe);
+    const a = await alteracaoSeguradaDeTeste(c, x, TOTAL + 20000, { quando: minutos(10), tentativa: true });
+    const pix = await c.tentativa(a.pagamentoId!);
+    await conferir(x.pagamentoId, minutos(12));
+    await conferirPendentes(db, c.org, c.provedor, minutos(13));
+    expect(canceladas()).not.toContain(pix.idProvedor);
+    expect((await c.tentativa(a.pagamentoId!)).situacao).toBe("pendente");
+    // O mesmo Pix como uma pendente da própria reserva (sem alteração), ao lado da paga: a releitura o cancela.
+    await db.update(pagamentos).set({ alteracaoId: null }).where(eq(pagamentos.id, a.pagamentoId!));
+    await conferir(x.pagamentoId, minutos(20));
+    expect(canceladas()).toContain(pix.idProvedor);
+  });
+
+  it("devolução de alteração nossa: nada de 'devolvido por fora' nem conferência; uma pelo painel por cima liga os dois; explicada (reconhecida), desliga", async () => {
+    const x = await pagarEConfirmar(c, { ...longe, liberar: true });
+    const { devolucaoIds } = await reduzirDeTeste(c, x, TOTAL - 30000, { quando: minutos(15) });
+    await tentarDevolucao(db, c.org, devolucaoIds[0], c.provedor, minutos(20));
+    expect((await c.tentativa(x.pagamentoId)).avisos).not.toContain("devolvido_por_fora");
+    expect(await devolvidaNoProvedorDaReserva(db, c.org, x.reservaId)).toBe(false);
+    c.provedor.devolverNoProvedor(x.idProvedor, 1000);
+    await conferir(x.pagamentoId, minutos(30));
+    expect((await c.tentativa(x.pagamentoId)).avisos).toContain("devolvido_por_fora");
+    expect(await devolvidaNoProvedorDaReserva(db, c.org, x.reservaId)).toBe(true);
+    await db.update(pagamentos).set({ devolvidoForaReconhecido: 1000 }).where(eq(pagamentos.id, x.pagamentoId));
+    await conferir(x.pagamentoId, minutos(40));
+    expect((await c.tentativa(x.pagamentoId)).avisos).not.toContain("devolvido_por_fora");
+    expect(await devolvidaNoProvedorDaReserva(db, c.org, x.reservaId)).toBe(false);
+  });
+
+  it("'processed/refunded' sem devolução nossa que explique: a situação fica, com o aviso de situação desconhecida (D27 só vale para as nossas)", async () => {
+    const x = await pagarEConfirmar(c, longe);
+    c.provedor.detalheParcial = "processed/refunded";
+    c.provedor.devolverNoProvedor(x.idProvedor, 1000);
+    await conferir(x.pagamentoId, minutos(30));
+    const p = await c.tentativa(x.pagamentoId);
+    expect(p.situacao).toBe("aprovado");
+    expect(p.avisos).toEqual(expect.arrayContaining(["situacao_desconhecida", "devolvido_por_fora"]));
+  });
+
+  it("o pago fica congelado na aprovação (D28): a leitura com o total pago líquido das devoluções não muda o pago", async () => {
+    const x = await pagarEConfirmar(c, { ...longe, liberar: true });
+    c.provedor.pagoLiquidoDeDevolucoes = true;
+    const { devolucaoIds } = await reduzirDeTeste(c, x, TOTAL - 30000, { quando: minutos(15) });
+    await tentarDevolucao(db, c.org, devolucaoIds[0], c.provedor, minutos(20));
+    expect(await c.tentativa(x.pagamentoId)).toMatchObject({ valorPago: TOTAL, situacao: "devolvido_parcial", devolvidoLido: 30000 });
+  });
+
+  it("devolução em dobro só além das nossas: uma confirmada pelo Mercado Pago e outra por fora não acendem; o painel devolvendo a por fora de novo, sim", async () => {
+    const x = await pagarEConfirmar(c, { ...longe, liberar: true });
+    await tentarDevolucao(db, c.org, (await reduzirDeTeste(c, x, TOTAL - 30000, { quando: minutos(15) })).devolucaoIds[0], c.provedor, minutos(20));
+    const [d2] = (await reduzirDeTeste(c, x, TOTAL - 50000, { quando: minutos(25) })).devolucaoIds;
+    expect(await registrarDevolucaoPorFora(db, c.org, { devolucaoId: d2 }, { data: "2026-10-01", valor: 20000, nota: "Pix da conta da empresa" }, null, c.provedor, minutos(30))).toEqual({ ok: true, situacao: "por_fora" });
+    await conferir(x.pagamentoId, minutos(40));
+    expect((await c.tentativa(x.pagamentoId)).avisos).not.toContain("devolucao_em_dobro");
+    c.provedor.devolverNoProvedor(x.idProvedor, 20000);
+    await conferir(x.pagamentoId, minutos(50));
+    expect((await c.tentativa(x.pagamentoId)).avisos).toContain("devolucao_em_dobro");
+  });
+
+  it("liberação lida: a do pagamento devolvido em parte pelas nossas lança o recebimento (e a saída que esperava); a da diferença, o recebimento com a chave dela", async () => {
+    const x = await pagarEConfirmar(c, longe);
+    const { devolucaoIds } = await reduzirDeTeste(c, x, TOTAL - 30000, { quando: minutos(15) });
+    // Retrato: a nossa devolução confirmada antes da liberação (como numa versão em que ela saiu) e a order devolvida em parte.
+    c.provedor.devolverNoProvedor(x.idProvedor, 30000);
+    await db.update(devolucoesPagamento).set({ situacao: "confirmada", tentativas: 1, confirmadaEm: minutos(16), confirmadaPor: "leitura", valorConfirmado: 30000, corpoIntegral: false }).where(eq(devolucoesPagamento.id, devolucaoIds[0]));
+    await liberar(c, x.pagamentoId, { manual: false, quando: minutos(30) });
+    const livro = async (tipo: "recebimento" | "devolucao") => db.select().from(lancamentos).where(and(eq(lancamentos.reservaId, x.reservaId), eq(lancamentos.tipo, tipo)));
+    expect(await livro("recebimento")).toMatchObject([{ chaveOrigem: `mercadopago:${x.pagamentoId}:recebimento`, montante: TOTAL - 1824, estado: "conciliado" }]);
+    expect((await livro("devolucao")).map((l) => l.montante)).toEqual([29700]);
+    const inc = await aumentarDeTeste(c, x, TOTAL + 10000, { quando: minutos(35) });
+    await liberar(c, inc.pagamentoId, { manual: false, quando: minutos(40) });
+    expect((await livro("recebimento")).find((l) => l.chaveOrigem === `mercadopago:${inc.pagamentoId}:recebimento`)).toMatchObject({ montante: 40000 - 400, estado: "conciliado" });
   });
 });

@@ -91,7 +91,7 @@ it("filtro pede atenção e período informado; datas inválidas voltam ao padr�
   expect(await html({ atencao: "1" })).toContain("Nenhum pagamento do site pedindo atenção.");
 });
 
-it("M8.2c: reserva paga cancelada pela política — o desfecho diz o que houve com a devolução; o texto antigo do M8.2c virou M8.2d", async () => {
+it("M8.2c: reserva paga cancelada pela política — o desfecho diz o que houve com a devolução; o devolvido em parte sem reserva diz como devolver o restante (M8.2d)", async () => {
   const cancelada = (estado: "cancelada_devolucao_pedida" | "cancelada_sem_devolucao" | "cancelada_devolvida") => ({
     ...linha,
     id: `${estado}-1`,
@@ -109,6 +109,6 @@ it("M8.2c: reserva paga cancelada pela política — o desfecho diz o que houve 
   expect(h).toContain("Reserva cancelada: devolvida");
   m.listar.mockResolvedValue([{ ...linha, situacao: "devolvido_parcial", motivoSemReservaTexto: "Chegou já devolvido em parte." }]);
   const parcial = await html();
-  expect(parcial).toContain("a devolução de parte do valor pelo sistema chega no M8.2d");
-  expect(parcial).not.toContain("M8.2c");
+  expect(parcial).toContain("Sem reserva: Chegou já devolvido em parte. Devolva o restante pelo quadro do pagamento.");
+  expect(parcial).not.toMatch(/M8\.2/);
 });
