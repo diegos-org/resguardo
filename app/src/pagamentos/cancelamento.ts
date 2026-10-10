@@ -26,7 +26,7 @@ import { createHash } from "node:crypto";
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { lerConfigPagamentoSite } from "@/configuracoes/pagamento-site";
-import { DIAS_ARREPENDIMENTO, type DecisaoPolitica, decidirPelaPolitica, type QuemCancela, regrasComPadrao } from "@/configuracoes/politica-cancelamento";
+import { DIAS_ARREPENDIMENTO, type DecisaoPolitica, decidirPelaPolitica, HORA_ENTRADA_PADRAO, horaDeEntrada, type QuemCancela, regrasComPadrao } from "@/configuracoes/politica-cancelamento";
 import { travaOcupada, violouUnicidade } from "@/db/erros";
 import {
   type BaseCancelamento,
@@ -137,7 +137,20 @@ export type Previa = {
   pergunta: string;
 };
 
-type Recusa = { ok: false; codigo: CodigoRecusaCancelamento; erro: string };
+/**
+ * O que a equipe pode escolher onde a política não decide: a exceção (devolver tudo quando a política não dá nada) ou,
+ * sem política aceita, devolver tudo ou não devolver; null = nada a escolher (a política dá o integral).
+ */
+export type EscolhaDaEquipe = "excecao" | "sem_politica";
+export const escolhaDaEquipe = (calculado: DecisaoPolitica["calculado"]): EscolhaDaEquipe | null =>
+  calculado === "sem_politica" ? "sem_politica" : calculado === "nenhum" ? "excecao" : null;
+
+/**
+ * Uma recusa. `escolha` vem nas recusas de depois da decisão pela política (a tela oferece a exceção, ou a escolha sem
+ * política, também quando a recusa chega antes de uma prévia: saída antecipada, pagamento já devolvido no painel do
+ * Mercado Pago); sem ela, a recusa veio antes de decidir.
+ */
+type Recusa = { ok: false; codigo: CodigoRecusaCancelamento; erro: string; escolha?: EscolhaDaEquipe | null };
 const recusa = (codigo: CodigoRecusaCancelamento, erro: string): Recusa => ({ ok: false, codigo, erro });
 
 export const TEXTO_PREVIA_MUDOU = "O cálculo mudou desde a prévia (pagamento, pedido, repasse ou leitura do Mercado Pago mudaram): calcule de novo antes de cancelar.";
@@ -170,7 +183,6 @@ const LIMITE_NOTA = 300;
 const FOLGA_MOMENTO_MS = 59_000;
 /** Um pedido registrado mais de 48 h depois de chegar pede conferência. */
 const REGISTRO_TARDIO_MS = 48 * 3_600_000;
-const HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 const fmt = (d: Date, fuso: string, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, ...o }).format(d);
 /** "dd/mm" no fuso. */
@@ -215,6 +227,24 @@ async function nomesDe(db: Db, organizacaoId: string, ids: (string | null)[]): P
   if (!validos.length) return new Map();
   const linhas = await db.select({ id: usuarios.id, nome: usuarios.nome }).from(usuarios).where(and(eq(usuarios.organizacaoId, organizacaoId), inArray(usuarios.id, validos)));
   return new Map(linhas.map((l) => [l.id, l.nome]));
+}
+
+/**
+ * O instante da entrada da reserva (o horário de entrada do imóvel no dia da entrada, no fuso do imóvel; sem cadastro,
+ * 15:00) e a partir de quando o não comparecimento vale (a tolerância de Configurações → Pagamento no site). Uma regra
+ * só: a decisão (`montarDecisao`) confere por ela e o formulário da ficha mostra o horário dela. `cadastrado` = o imóvel
+ * tem a linha dos detalhes (sem ela, a prévia avisa que vale o padrão).
+ */
+export async function momentosDaEntrada(
+  db: Db,
+  organizacaoId: string,
+  d: { imovelId: string; checkin: string; fuso: string },
+): Promise<{ horaEntrada: string; cadastrado: boolean; entradaEm: Date; naoComparecimentoApos: Date }> {
+  const [detalhe] = await db.select({ hora: imoveisDetalhes.checkinAPartirDe }).from(imoveisDetalhes).where(eq(imoveisDetalhes.imovelId, d.imovelId));
+  const horaEntrada = horaDeEntrada(detalhe?.hora);
+  const entradaEm = instanteLocal(d.checkin, horaEntrada, d.fuso);
+  const horas = (await lerConfigPagamentoSite(db, organizacaoId)).naoComparecimentoHoras;
+  return { horaEntrada, cadastrado: !!detalhe, entradaEm, naoComparecimentoApos: new Date(entradaEm.getTime() + horas * 3_600_000) };
 }
 
 type Montada = {
@@ -309,16 +339,14 @@ async function montarDecisao(db: Db, organizacaoId: string, t: Travado, e: Entra
     recebidoEm = e.recebidoEm;
     canal = e.canal;
   }
-  // O horário de entrada do imóvel (sem cadastro, o padrão) e a política aceita no pagamento.
-  const [detalhe] = await db.select({ hora: imoveisDetalhes.checkinAPartirDe }).from(imoveisDetalhes).where(eq(imoveisDetalhes.imovelId, t.imovel.id));
-  const horaEntrada = detalhe && HORA.test(detalhe.hora) ? detalhe.hora : "15:00";
-  const entradaEm = instanteLocal(r.checkin, horaEntrada, fuso);
+  // O horário de entrada do imóvel (sem cadastro, o padrão), a tolerância do não comparecimento e a política aceita no pagamento.
+  const entrada = await momentosDaEntrada(db, organizacaoId, { imovelId: t.imovel.id, checkin: r.checkin, fuso });
+  const { horaEntrada, entradaEm } = entrada;
   // 7. Não comparecimento: nunca com um pedido ativo (vale o pedido), e só depois da tolerância editável.
   if (e.quemCancela === "nao_comparecimento") {
     if (ativo) return recusa("ha_pedido", `Há um pedido de cancelamento do hóspede recebido em ${diaHoraBr(ativo.pedidoRecebidoEm)}: não é não comparecimento. Cancele como pedido do hóspede (vale o horário do pedido).`);
-    const horas = (await lerConfigPagamentoSite(db, organizacaoId)).naoComparecimentoHoras;
-    const libera = new Date(entradaEm.getTime() + horas * 3_600_000);
-    if (agora.getTime() < libera.getTime()) return recusa("cedo_para_nao_comparecimento", `Não comparecimento só depois de ${diaHoraBr(libera, fuso)} (o hóspede pode chegar atrasado e avisar).`);
+    if (agora.getTime() < entrada.naoComparecimentoApos.getTime())
+      return recusa("cedo_para_nao_comparecimento", `Não comparecimento só depois de ${diaHoraBr(entrada.naoComparecimentoApos, fuso)} (o hóspede pode chegar atrasado e avisar).`);
   }
   // 8. A SCL cancela: o motivo dela.
   if (e.quemCancela === "empresa" && !e.motivoEmpresa) return recusa("dados", "Escolha o motivo da SCL (apartamento sem condições, força maior ou outro).");
@@ -326,37 +354,40 @@ async function montarDecisao(db: Db, organizacaoId: string, t: Travado, e: Entra
   const valorPago = valorPagoNaOrder({ pago: p.valorPago, valor: p.valor });
   const entradaPolitica = { regras: politica?.regras ?? null, checkin: r.checkin, horaEntrada, fuso, aprovadoEm: p.aprovadoEm ?? p.criadoEm, pedidoRecebidoEm: recebidoEm, valorBase: valorPago };
   const decisao = decidirPelaPolitica({ ...entradaPolitica, quemCancela: e.quemCancela });
+  // Daqui em diante, toda recusa diz o que a equipe pode escolher (a tela oferece a exceção mesmo sem prévia).
+  const escolha = escolhaDaEquipe(decisao.calculado);
+  const recusaDecidida = (codigo: CodigoRecusaCancelamento, erro: string): Recusa => ({ ...recusa(codigo, erro), escolha });
   // 9. A decisão final: só onde a política não decide.
   let direito: "integral" | "nenhum";
   let base: BaseCancelamento;
   if (decisao.calculado === "sem_politica") {
-    if ((e.decisao !== "integral" && e.decisao !== "nenhum") || !motivoDecisao) return recusa("decisao_obrigatoria", TEXTO_SEM_POLITICA);
+    if ((e.decisao !== "integral" && e.decisao !== "nenhum") || !motivoDecisao) return recusaDecidida("decisao_obrigatoria", TEXTO_SEM_POLITICA);
     direito = e.decisao;
     base = "sem_politica";
   } else if (decisao.calculado === "nenhum") {
     if (e.decisao === "excecao") {
-      if (!e.motivoExcecao || !motivoDecisao) return recusa("dados", "Na exceção, escolha o motivo da lista e escreva a nota (obrigatória, sem dados pessoais).");
+      if (!e.motivoExcecao || !motivoDecisao) return recusaDecidida("dados", "Na exceção, escolha o motivo da lista e escreva a nota (obrigatória, sem dados pessoais).");
       direito = "integral";
       base = "excecao";
     } else if (e.decisao === "politica" || e.decisao === "nenhum") {
       direito = "nenhum";
       base = decisao.base;
-    } else return recusa("dados", "Pela política aceita não há devolução: para devolver tudo, escolha a exceção, com o motivo.");
+    } else return recusaDecidida("dados", "Pela política aceita não há devolução: para devolver tudo, escolha a exceção, com o motivo.");
   } else {
-    if (e.decisao !== "politica") return recusa("integral_nao_se_nega", TEXTO_INTEGRAL_NAO_SE_NEGA);
+    if (e.decisao !== "politica") return recusaDecidida("integral_nao_se_nega", TEXTO_INTEGRAL_NAO_SE_NEGA);
     direito = "integral";
     base = decisao.base;
   }
   if (p.situacao === "devolvido" && direito === "nenhum")
-    return recusa("decisao_obrigatoria", "O Mercado Pago já mostra este pagamento devolvido por inteiro: registre como devolução integral (pela política ou por exceção, com o motivo).");
-  // 10. Saída antecipada não é cancelamento.
+    return recusaDecidida("decisao_obrigatoria", "O Mercado Pago já mostra este pagamento devolvido por inteiro: registre como devolução integral (pela política ou por exceção, com o motivo).");
+  // 10. Saída antecipada não é cancelamento (a exceção, com o motivo, continua possível).
   if (e.quemCancela === "hospede" && decisao.comecou && direito === "nenhum")
-    return recusa(
+    return recusaDecidida(
       "estadia_iniciada",
       `O pedido chegou depois do início da estadia (${diaHoraBr(entradaEm, fuso)}): pela política não há devolução e a reserva continua como está (saída antecipada não é cancelamento). Descarte o pedido com o motivo, se for o caso.`,
     );
   // 11. Integral de um pagamento ainda no prazo de leitura: só com a leitura de agora aplicada.
-  if (direito === "integral" && p.criadoEm.getTime() >= inicioLeitura && !extras.leituraAplicada) return recusa("sem_leitura", TEXTO_SEM_LEITURA);
+  if (direito === "integral" && p.criadoEm.getTime() >= inicioLeitura && !extras.leituraAplicada) return recusaDecidida("sem_leitura", TEXTO_SEM_LEITURA);
   // 12. Os componentes (sob a trava do motor na fase 1) e a parte num repasse ainda não pago.
   const motor = await lancamentosDoMotor(db, organizacaoId, r.id, { travar: extras.travar });
   const somar = (tipo: string) => motor.ativos.filter((a) => a.tipo === tipo).reduce((s, a) => s + a.valor, 0);
@@ -365,7 +396,7 @@ async function montarDecisao(db: Db, organizacaoId: string, t: Travado, e: Entra
   if (direito === "integral") {
     const preso = await repasseAPagarDaReservaDados(db, organizacaoId, r.id);
     if (preso)
-      return recusa(
+      return recusaDecidida(
         "repasse_a_pagar",
         `A parte desta reserva já compõe o repasse ${preso.tipo === "antecipado" ? "antecipado" : preso.tipo === "fechamento" ? "do fechamento" : "por fora"} de ${dataIsoBr(preso.data)}, ainda não pago: estorne esse repasse (o proprietário recebe o resto no próximo) e então cancele. Se ele já foi pago de fato, marque-o como pago antes — a parte paga é descontada no próximo repasse.`,
       );
@@ -411,7 +442,7 @@ async function montarDecisao(db: Db, organizacaoId: string, t: Travado, e: Entra
   const avisos: string[] = [];
   if (decisao.calculado === "sem_politica") avisos.push(TEXTO_SEM_POLITICA);
   if (fuso !== FUSO_PAGAMENTO) avisos.push("A política conta no horário de Brasília e este imóvel está em outro fuso: confira as datas.");
-  if (!detalhe) avisos.push("Este imóvel não tem horário de entrada cadastrado: vale o padrão 15:00.");
+  if (!entrada.cadastrado) avisos.push(`Este imóvel não tem horário de entrada cadastrado: vale o padrão ${HORA_ENTRADA_PADRAO}.`);
   if (direito === "nenhum" && p.taxa === null) avisos.push("A taxa do Mercado Pago ainda não foi informada: a divisão usa taxa zero até ele informar (aviso no Início).");
   if (direito === "nenhum" && r.valorBruto !== p.valor)
     avisos.push(

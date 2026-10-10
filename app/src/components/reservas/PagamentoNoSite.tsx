@@ -141,8 +141,9 @@ const DICA_DO_CODIGO: Partial<Record<string, string>> = {
 function situacaoDaDevolucao(d: NonNullable<PagamentoDoPainel["devolucao"]>): string {
   if (d.situacao === "recusada" && d.recusaNoPainelEm) return "recusada no painel do Mercado Pago (registrado pela equipe): a devolução por fora fica liberada";
   if (d.situacao === "recusada" && d.paradaEm) return "parada pela equipe depois do prazo de leitura do Mercado Pago";
-  // Parada pelo prazo (pagamento com mais de 78 dias, M8.2c): o Mercado Pago não recusou nada; o sistema não pede mais.
-  if (d.situacao === "recusada" && d.origem === "cancelamento" && d.falhas === 0 && !d.ultimoCodigo)
+  // Parada pelo prazo (pagamento com mais de 78 dias, M8.2c), pela regra do domínio: o Mercado Pago não recusou nada; o
+  // sistema não pede mais. A parada por outro motivo (devolvido em parte, contestado) não é esta: o aviso dela explica.
+  if (d.situacao === "recusada" && d.paradaPeloPrazo)
     return "parada pelo prazo: o pagamento tem mais de 78 dias e o sistema não pede mais a devolução ao Mercado Pago (devolva pelo painel dele e confirme aqui, ou por fora)";
   return DEVOLUCAO[d.situacao];
 }
@@ -162,7 +163,9 @@ function devolucao(p: PagamentoDoPainel, verValores: boolean): string | null {
   // M8.2c: confirmada pela equipe (vista no painel do Mercado Pago); a nota, só para quem lê o financeiro.
   if (d.situacao === "confirmada" && d.confirmadaPor === "equipe") partes.push(`confirmada pela equipe${verValores && d.confirmadaNota ? `: ${d.confirmadaNota}` : ""}`);
   if (d.situacao === "pedida" && d.tentativas) partes.push(`${d.tentativas} pedido(s) ao Mercado Pago${d.falhas ? `, ${d.falhas} falha(s)` : ""}`);
-  const dica = (d.situacao === "pedida" || d.situacao === "recusada") && d.ultimoCodigo ? DICA_DO_CODIGO[d.ultimoCodigo] : undefined;
+  // "Pediu para esperar" só vale enquanto a devolução está pedida (a recusada, parada, não tenta de novo sozinha); a falta
+  // de saldo explica também a recusada.
+  const dica = d.ultimoCodigo && (d.situacao === "pedida" || (d.situacao === "recusada" && d.ultimoCodigo === "saldo_insuficiente")) ? DICA_DO_CODIGO[d.ultimoCodigo] : undefined;
   if (dica) partes.push(dica);
   if (verValores && d.situacao === "confirmada" && d.valorConfirmado !== null && d.valorConfirmado !== undefined && d.valorConfirmado !== d.valor) partes.push(`o Mercado Pago mostrou ${formatBRL(d.valorConfirmado)} devolvidos`);
   if (verValores && d.taxaPerdida !== null) partes.push(`taxa que ficou com o Mercado Pago: ${formatBRL(d.taxaPerdida)}`);

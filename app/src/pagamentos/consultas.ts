@@ -416,6 +416,8 @@ export type PagamentoDoPainel = {
     valorConfirmado?: number | null;
     recusaNoPainelEm?: Date | null;
     paradaEm?: Date | null;
+    /** Parada pelo prazo (pagamento com mais de 78 dias, D12), pela regra do domínio (`devolucaoParadaPeloPrazo`), não por recusa. */
+    paradaPeloPrazo?: boolean;
   } | null;
   /**
    * M8.2c: a reserva que este pagamento confirmou foi cancelada pela política — a situação pela devolução (a mesma da
@@ -551,6 +553,7 @@ function paraPainel(p: Pagamento, dev: Devolucao | undefined, temRecebimentoManu
           valorConfirmado: dev.valorConfirmado,
           recusaNoPainelEm: dev.recusaNoPainelEm,
           paradaEm: dev.paradaEm,
+          paradaPeloPrazo: devolucaoParadaPeloPrazo(p, dev),
         }
       : null,
     idProvedor: p.idProvedor,

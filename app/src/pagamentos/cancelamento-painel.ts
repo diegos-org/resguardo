@@ -5,7 +5,6 @@
  * `financeiro:ler`; as mensagens com `{valor}` também). Nada daqui é gravado: as mensagens são montadas na hora.
  */
 import { and, asc, eq, inArray, isNull, lt, not } from "drizzle-orm";
-import { lerConfigPagamentoSite } from "@/configuracoes/pagamento-site";
 import {
   type BaseCancelamento,
   type CalculoCancelamento,
@@ -13,7 +12,6 @@ import {
   cancelamentosReserva,
   type DireitoCancelamento,
   imoveis,
-  imoveisDetalhes,
   lancamentos,
   type MotivoCancelamentoEmpresa,
   type MotivoExcecao,
@@ -25,11 +23,12 @@ import {
   usuarios,
 } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { instanteLocal } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { type MensagemPronta, mensagensDoCancelamento } from "@/mensagens/hospede";
 import { lancamentoEmVigor } from "@/portal/posse";
 import { espelhoAnulaAParte, ORIGEM_CANCELAMENTO } from "@/repasses/descontos";
+import { momentosDaEntrada } from "./cancelamento";
+import { FUSO_PAGAMENTO } from "./liberacao";
 
 type Marca = { em: Date; por: string | null } | null;
 
@@ -152,24 +151,20 @@ export async function cancelamentoDaReserva(db: Db, organizacaoId: string, reser
   };
 }
 
-const HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
-
 /**
- * Os momentos que o formulário do cancelamento mostra: o horário de entrada da reserva (no fuso do imóvel; sem cadastro,
- * 15:00, como a regra) e a partir de quando o não comparecimento é aceito (a tolerância de Configurações → Pagamento no
- * site). null = reserva não encontrada.
+ * Os momentos que o formulário do cancelamento mostra: o horário de entrada da reserva e a partir de quando o não
+ * comparecimento é aceito — os mesmos que a decisão confere (`momentosDaEntrada`, no fuso do imóvel). null = reserva não
+ * encontrada.
  */
 export async function momentosDoCancelamento(db: Db, organizacaoId: string, reservaId: string): Promise<{ entradaEm: Date; naoComparecimentoApos: Date; fuso: string } | null> {
   if (!uuidValido(reservaId)) return null;
   const [r] = await db
-    .select({ checkin: reservas.checkin, fuso: imoveis.fuso, hora: imoveisDetalhes.checkinAPartirDe })
+    .select({ checkin: reservas.checkin, imovelId: imoveis.id, fuso: imoveis.fuso })
     .from(reservas)
     .innerJoin(imoveis, eq(imoveis.id, reservas.imovelId))
-    .leftJoin(imoveisDetalhes, eq(imoveisDetalhes.imovelId, imoveis.id))
     .where(and(eq(reservas.id, reservaId), eq(reservas.organizacaoId, organizacaoId)));
   if (!r) return null;
-  const fuso = r.fuso || "America/Sao_Paulo";
-  const entradaEm = instanteLocal(r.checkin, r.hora && HORA.test(r.hora) ? r.hora : "15:00", fuso);
-  const horas = (await lerConfigPagamentoSite(db, organizacaoId)).naoComparecimentoHoras;
-  return { entradaEm, naoComparecimentoApos: new Date(entradaEm.getTime() + horas * 3_600_000), fuso };
+  const fuso = r.fuso || FUSO_PAGAMENTO;
+  const { entradaEm, naoComparecimentoApos } = await momentosDaEntrada(db, organizacaoId, { imovelId: r.imovelId, checkin: r.checkin, fuso });
+  return { entradaEm, naoComparecimentoApos, fuso };
 }

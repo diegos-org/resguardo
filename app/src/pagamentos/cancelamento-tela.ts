@@ -4,7 +4,7 @@
  */
 import type { SituacaoDevolucao } from "@/db/schema";
 import { formatBRL } from "@/lib/money";
-import { diaHoraBr, NOMES_BASE_CANCELAMENTO, NOMES_CANAL_PEDIDO, type Previa, type RotaDevolucao } from "./cancelamento";
+import { diaHoraBr, type EscolhaDaEquipe, escolhaDaEquipe, NOMES_BASE_CANCELAMENTO, NOMES_CANAL_PEDIDO, type Previa, type RotaDevolucao } from "./cancelamento";
 
 /** A prévia como vai ao navegador: só textos, a assinatura (conferida de novo no servidor) e a pergunta do BotaoConfirmar. */
 export type PreviaParaTela = {
@@ -13,8 +13,10 @@ export type PreviaParaTela = {
   pergunta: string;
   rota: RotaDevolucao;
   direito: "integral" | "nenhum";
-  /** O que a política diz (antes da decisão da equipe): com "nenhum", a tela oferece a exceção. */
+  /** O que a política diz (antes da decisão da equipe). */
   calculado: "integral" | "nenhum" | "sem_politica";
+  /** O que a equipe pode escolher (a mesma regra das recusas): a exceção, ou devolver tudo / não devolver sem política. */
+  escolha: EscolhaDaEquipe | null;
   /** O momento que a política conta (e por onde o pedido chegou). */
   momento: string;
   /** "Leitura do Mercado Pago de dd/mm às HH:MM: aprovado." */
@@ -81,6 +83,7 @@ export function previaParaTela(p: Previa): PreviaParaTela {
     rota: p.rota,
     direito: p.direito,
     calculado: p.decisao.calculado,
+    escolha: escolhaDaEquipe(p.decisao.calculado),
     momento,
     leitura: p.avisos.find(ehLeitura) ?? "Ainda sem leitura do Mercado Pago deste pagamento.",
     politica,

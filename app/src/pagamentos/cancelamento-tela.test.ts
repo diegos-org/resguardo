@@ -34,7 +34,7 @@ const previa = (over: Partial<Previa> = {}): Previa => ({
 describe("a prévia do cancelamento na tela (M8.2c)", () => {
   it("integral pela política: o momento e o canal, a política com os prazos, o resultado, os componentes, como sai e a leitura separada dos avisos", () => {
     const t = previaParaTela(previa());
-    expect(t).toMatchObject({ assinatura: "0123456789abcdef", rota: "pedida", direito: "integral", calculado: "integral", leitura: LEITURA });
+    expect(t).toMatchObject({ assinatura: "0123456789abcdef", rota: "pedida", direito: "integral", calculado: "integral", escolha: null, leitura: LEITURA });
     expect(t.pergunta).toContain("R$ 1.824,00");
     expect(t.momento).toBe("Pedido recebido em 01/10 às 12:30 (WhatsApp).");
     expect(t.politica).toBe("Política aceita: versão 2 de 20/09 — reembolso integral para pedidos até 26/10 (23h59); arrependimento até 08/10, ou até a entrada.");
@@ -57,6 +57,8 @@ describe("a prévia do cancelamento na tela (M8.2c)", () => {
       }),
     );
     expect(t.calculado).toBe("nenhum");
+    // A tela oferece a exceção (a mesma regra das recusas do domínio).
+    expect(t.escolha).toBe("excecao");
     expect(t.resultado).toBe("Pela política: sem devolução — pedido depois do prazo de reembolso integral.");
     expect(t.componentes).toContain("Parte do proprietário: R$ 1.535,04 (fica, dividida como uma reserva normal).");
     expect(t.componentes).toContain("Taxa do Mercado Pago: ainda não informada.");
@@ -88,6 +90,7 @@ describe("a prévia do cancelamento na tela (M8.2c)", () => {
   it("sem política aceita: o sistema não calcula e a decisão é da equipe; a SCL cancela e o não comparecimento contam 'agora'", () => {
     const sem = previaParaTela(previa({ decisao: { ...previa().decisao, calculado: "sem_politica", base: "sem_politica", integralAte: null, arrependimentoAte: null }, base: "sem_politica", politica: null }));
     expect(sem.calculado).toBe("sem_politica");
+    expect(sem.escolha).toBe("sem_politica");
     expect(sem.politica).toBeNull();
     expect(sem.resultado).toBe("Sem política aceita: o sistema não calcula. Decisão da equipe: devolução integral de R$ 1.824,00.");
     expect(previaParaTela(previa({ base: "empresa", canal: null })).momento).toBe("A SCL cancela agora (01/10 às 12:30).");

@@ -166,9 +166,17 @@ describe("calcular o cancelamento", () => {
     expect(m.previa).not.toHaveBeenCalled();
   });
 
-  it("a recusa do domínio volta com o código (a tela abre a escolha da equipe sem política aceita)", async () => {
-    m.previa.mockResolvedValue({ ok: false, codigo: "decisao_obrigatoria", erro: "Este pagamento foi feito sem o aceite das páginas legais" });
-    expect(await calcularCancelamentoAcao({}, form(doHospede))).toMatchObject({ codigo: "decisao_obrigatoria", mensagem: "Este pagamento foi feito sem o aceite das páginas legais" });
+  it("a recusa do domínio volta com o código e o que a equipe pode escolher (a tela abre a exceção ou a escolha sem política aceita)", async () => {
+    m.previa.mockResolvedValue({ ok: false, codigo: "decisao_obrigatoria", erro: "Este pagamento foi feito sem o aceite das páginas legais", escolha: "sem_politica" });
+    expect(await calcularCancelamentoAcao({}, form(doHospede))).toMatchObject({ codigo: "decisao_obrigatoria", mensagem: "Este pagamento foi feito sem o aceite das páginas legais", escolha: "sem_politica" });
+    // Saída antecipada (ou pagamento já devolvido no painel do Mercado Pago) sem devolução pela política: a exceção.
+    m.previa.mockResolvedValue({ ok: false, codigo: "estadia_iniciada", erro: "O pedido chegou depois do início da estadia", escolha: "excecao" });
+    expect(await calcularCancelamentoAcao({}, form(doHospede))).toMatchObject({ codigo: "estadia_iniciada", escolha: "excecao" });
+    m.cancelar.mockResolvedValue({ ok: false, codigo: "decisao_obrigatoria", erro: "O Mercado Pago já mostra este pagamento devolvido por inteiro", escolha: "excecao" });
+    expect(await cancelarReservaPagaAcao({}, form({ ...doHospede, assinatura: ASSINATURA }))).toMatchObject({ codigo: "decisao_obrigatoria", escolha: "excecao" });
+    // Recusa de antes da decisão: sem a chave (a tela mantém a escolha que já mostrava).
+    m.previa.mockResolvedValue({ ok: false, codigo: "dados", erro: "Escolha quem cancela." });
+    expect(await calcularCancelamentoAcao({}, form(doHospede))).not.toHaveProperty("escolha");
   });
 });
 

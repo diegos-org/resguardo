@@ -58,6 +58,14 @@ export { regrasComPadrao };
 
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
 const HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** Sem horário de entrada cadastrado no imóvel (ou com um inválido), a política conta a entrada às 15:00. */
+export const HORA_ENTRADA_PADRAO = "15:00";
+/**
+ * O horário de entrada que a política conta: o cadastrado no imóvel (`imoveis_detalhes.checkin_a_partir_de`) ou o padrão.
+ * Uma regra só para o painel (a decisão e o horário do não comparecimento na ficha) e para Minha reserva.
+ */
+export const horaDeEntrada = (cadastrada: string | null | undefined): string => (cadastrada && HORA.test(cadastrada) ? cadastrada : HORA_ENTRADA_PADRAO);
 const instanteValido = (d: Date) => d instanceof Date && !Number.isNaN(d.getTime());
 function fusoValido(fuso: string): boolean {
   try {

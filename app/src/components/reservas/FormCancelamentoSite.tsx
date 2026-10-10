@@ -35,8 +35,9 @@ function useEnvio(acao: Acao) {
  *    o servidor relê o pagamento no Mercado Pago e devolve a prévia (só textos: a tela nunca calcula).
  * 2. "Cancelar a reserva": só com a prévia de agora na tela (mexeu em qualquer campo, calcule de novo) e com a pergunta
  *    de confirmação da prévia (o valor, a base, a rota e a perda do proprietário). O servidor confere a assinatura.
- * Quando a política não dá devolução, a tela oferece a exceção (motivo da lista e nota); sem política aceita, a equipe
- * escolhe devolver tudo ou não devolver, com o motivo.
+ * Quando a política não dá devolução, a tela oferece a exceção (motivo da lista e nota), também depois de uma recusa sem
+ * prévia (saída antecipada; pagamento já devolvido no painel do Mercado Pago); sem política aceita, a equipe escolhe
+ * devolver tudo ou não devolver, com o motivo. O que oferecer vem sempre do servidor (`escolha`).
  */
 export function FormCancelamentoSite({
   reservaId,
@@ -65,10 +66,15 @@ export function FormCancelamentoSite({
   motivosEmpresa: readonly OpcaoCancelamento[];
   motivosExcecao: readonly OpcaoCancelamento[];
 }) {
-  const [estado, enviar, enviando] = useActionState(async (_a: EstadoCancelamentoPainel, x: { etapa: "calcular" | "cancelar"; dados: FormData }) => {
-    const r = await (x.etapa === "cancelar" ? cancelar : calcular)({}, x.dados);
+  const [estado, enviar, enviando] = useActionState(async (anterior: EstadoCancelamentoPainel, x: { etapa: "calcular" | "cancelar"; dados: FormData }) => {
+    const r: EstadoCancelamentoPainel = (await (x.etapa === "cancelar" ? cancelar : calcular)({}, x.dados)) ?? {};
+    // O que a equipe pode escolher vem do servidor: da prévia ou da recusa de depois da decisão pela política (a saída
+    // antecipada e o pagamento já devolvido no painel do Mercado Pago chegam como recusa, sem prévia, e a exceção vale).
+    // Numa recusa de antes da decisão (nota com dado pessoal, prévia velha...), fica a escolha que estava na tela, com o
+    // que foi digitado nela.
+    const escolha = r.previa ? r.previa.escolha : r.escolha !== undefined ? r.escolha : anterior.escolha;
     // Sempre um estado novo: a prévia de agora vale de novo mesmo quando a resposta é igual à anterior.
-    return { ...(r ?? {}) };
+    return { ...r, escolha };
   }, {} as EstadoCancelamentoPainel);
   const etapa = useRef<"calcular" | "cancelar">("calcular");
   // A prévia vale enquanto nada mudar no formulário: mexeu, o botão de cancelar some até calcular de novo.
@@ -80,8 +86,8 @@ export function FormCancelamentoSite({
   const previa = estado.previa && alteradoEm !== estado ? estado.previa : null;
   const doHospede = quem === "hospede";
   const momentoCorrigido = !!pedido && !pedido.site && doHospede && (data !== pedido.data || hora !== pedido.hora);
-  const escolheSemPolitica = semPolitica || estado.codigo === "decisao_obrigatoria" || estado.previa?.calculado === "sem_politica";
-  const ofereceExcecao = !escolheSemPolitica && estado.previa?.calculado === "nenhum";
+  const escolheSemPolitica = semPolitica || estado.escolha === "sem_politica";
+  const ofereceExcecao = !escolheSemPolitica && estado.escolha === "excecao";
   return (
     <form
       aria-label="Cancelar a reserva paga pelo site"

@@ -26,6 +26,7 @@ import {
   cancelarReservaPaga,
   descartarPedidoDeCancelamento,
   type EntradaCancelamento,
+  type EscolhaDaEquipe,
   marcarHospedeAvisado,
   marcarOtaLiberada,
   previaDoCancelamento,
@@ -39,8 +40,13 @@ import type { ProvedorPagamento } from "./provedor";
 export type EstadoCancelamentoPainel = {
   ok?: boolean;
   mensagem?: string;
-  /** O código da recusa do domínio (a tela abre a escolha da equipe em `decisao_obrigatoria`, por exemplo). */
+  /** O código da recusa do domínio. */
   codigo?: CodigoRecusaCancelamento;
+  /**
+   * Numa recusa de depois da decisão pela política, o que a equipe pode escolher (a tela oferece a exceção, ou devolver
+   * tudo / não devolver sem política, mesmo sem prévia); null = nada a escolher; ausente = a recusa veio antes de decidir.
+   */
+  escolha?: EscolhaDaEquipe | null;
   previa?: PreviaParaTela;
   valores?: Record<string, string>;
 };
@@ -140,7 +146,7 @@ export async function calcularCancelamentoAcao(_e: EstadoCancelamentoPainel, for
   const v = entradaDoForm(form);
   if (!v.ok) return { mensagem: v.mensagem, valores };
   const r = await previaDoCancelamento(getDb(), sessao.organizacaoId, v.reservaId, v.e, await provedorDaLeitura(), new Date());
-  if (!r.ok) return { mensagem: r.erro, codigo: r.codigo, valores };
+  if (!r.ok) return { mensagem: r.erro, codigo: r.codigo, ...("escolha" in r ? { escolha: r.escolha } : {}), valores };
   // A releitura pode ter mudado o pagamento (situação, taxa, liberação): a ficha mostra o que vale agora.
   revalidar();
   return { ok: true, previa: previaParaTela(r.previa), valores };
@@ -158,7 +164,7 @@ export async function cancelarReservaPagaAcao(_e: EstadoCancelamentoPainel, form
   const assinatura = texto(form, "assinatura");
   if (!ASSINATURA.test(assinatura)) return { mensagem: TEXTO_PREVIA_MUDOU, codigo: "previa_mudou", valores };
   const r = await cancelarReservaPaga(getDb(), sessao.organizacaoId, v.reservaId, v.e, sessao.usuarioId, await provedorDaLeitura(), new Date(), assinatura);
-  if (!r.ok) return { mensagem: r.erro, codigo: r.codigo, valores };
+  if (!r.ok) return { mensagem: r.erro, codigo: r.codigo, ...("escolha" in r ? { escolha: r.escolha } : {}), valores };
   revalidar();
   // A rota vem da prévia que a equipe viu (só escolhe o texto do resultado; o domínio já decidiu tudo).
   return paraFicha(v.reservaId, resultadoDoCancelamento(r, texto(form, "rota")));

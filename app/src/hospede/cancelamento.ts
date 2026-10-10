@@ -15,7 +15,7 @@ import { normalizarEmail } from "@/acesso/entrada";
 import { emailValido } from "@/acesso/codigo-email";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { lerConfigPagamentoSite } from "@/configuracoes/pagamento-site";
-import { decidirPelaPolitica } from "@/configuracoes/politica-cancelamento";
+import { decidirPelaPolitica, horaDeEntrada } from "@/configuracoes/politica-cancelamento";
 import { travaOcupada, violouUnicidade } from "@/db/erros";
 import { cancelamentosReserva, cotacoes, imoveis, imoveisDetalhes, pagamentos, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
@@ -55,7 +55,6 @@ export const PEDIDO_DESLIGADO = "O pedido de cancelamento pelo site está deslig
 export const ESTADIA_COMECOU = "A estadia já começou: para cancelar, fale com a equipe.";
 export const JA_CANCELADA = "Esta reserva já foi cancelada.";
 export const PEDIDO_OCUPADO = "Não deu para registrar o pedido agora: tente de novo em instantes.";
-const HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /** A reserva paga pelo site deste e-mail (vigente), o pagamento que a confirmou e o que a política precisa. */
 async function reservaDoHospede(db: Db, organizacaoId: string, email: string, reservaCodigo: string, agora: Date) {
@@ -83,7 +82,7 @@ async function reservaDoHospede(db: Db, organizacaoId: string, email: string, re
     .where(and(eq(pagamentos.reservaId, r.id), eq(pagamentos.organizacaoId, organizacaoId), eq(pagamentos.desfecho, "reserva")));
   if (!p) return null;
   const fuso = r.fuso || "America/Sao_Paulo";
-  const horaEntrada = r.hora && HORA.test(r.hora) ? r.hora : "15:00";
+  const horaEntrada = horaDeEntrada(r.hora);
   return { email: e, r, p, fuso, horaEntrada, entradaEm: instanteLocal(r.checkin, horaEntrada, fuso) };
 }
 

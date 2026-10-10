@@ -10,6 +10,7 @@ import { auditoria, cancelamentosReserva, contratos, cotacoes, devolucoesPagamen
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { aplicarMotor } from "@/financeiro/aplicar";
+import { lerConfigPagamentoSite, salvarConfigPagamentoSite } from "@/configuracoes/pagamento-site";
 import { lancar, saldoAcerto } from "@/financeiro/ledger";
 import { pedirCancelamentoPeloHospede } from "@/hospede/cancelamento";
 import { lancamentoEmConferencia, lancamentoEmVigor } from "@/portal/posse";
@@ -18,10 +19,11 @@ import { repasseAPagarDaReservaDados } from "@/repasses/recebimentos";
 import { gerarAntecipado, preverRepasses } from "@/repasses/repasses";
 import { resolverConferencia, tentarCancelarReserva } from "@/reservas/repositorio";
 import { acertarCaixa, acertarResultado, chaveSaidaDevolucao } from "./acerto-cancelamento";
-import { cancelamentoDaReserva } from "./cancelamento-painel";
+import { cancelamentoDaReserva, momentosDoCancelamento } from "./cancelamento-painel";
 import {
   cancelarReservaPaga,
   descartarPedidoDeCancelamento,
+  diaHoraBr,
   marcarHospedeAvisado,
   marcarOtaLiberada,
   previaDoCancelamento,
@@ -33,7 +35,7 @@ import {
   TEXTO_SEM_POLITICA,
 } from "./cancelamento";
 import { conferirTentativa } from "./conferencia";
-import { avisosDePagamento } from "./consultas";
+import { avisosDePagamento, pagamentosDaReserva } from "./consultas";
 import { confirmarDevolucaoVistaNoProvedor, ERRO_POR_FORA_CARTAO, ERRO_POR_FORA_SEM_CONFERIR, registrarDevolucaoPorFora, registrarRecusaNoPainel, registrarTaxaPerdida } from "./devolucao";
 import { ErroProvedor } from "./provedor";
 import { conferirPendentes } from "./rotina";
@@ -249,7 +251,7 @@ describe("exceção, sem política e o direito integral que nunca se nega (M8.2c
   it("sem o aceite das páginas legais: sem decisão, recusa; 'nenhum' com motivo retém; 'integral' com motivo devolve", async () => {
     const a = await pagarEConfirmar(c, { ...longe, semAceite: true });
     const p = await previaDoCancelamento(db, c.org, a.reservaId, entradaPadrao({ recebidoEm: minutos(30), canal: "whatsapp" }), c.provedor, minutos(60));
-    expect(p).toEqual({ ok: false, codigo: "decisao_obrigatoria", erro: TEXTO_SEM_POLITICA });
+    expect(p).toEqual({ ok: false, codigo: "decisao_obrigatoria", erro: TEXTO_SEM_POLITICA, escolha: "sem_politica" });
     const nenhum = await cancelar(c, a.reservaId, entradaPadrao({ recebidoEm: minutos(30), canal: "whatsapp", decisao: "nenhum", motivoDecisao: "Combinado com o hóspede" }), equipe, minutos(60));
     expect(nenhum.resultado).toMatchObject({ ok: true, direito: "nenhum" });
     expect(await cancelamentoDe(a.reservaId)).toMatchObject({ calculado: "sem_politica", base: "sem_politica", politicaVersao: null, integralAte: null });
@@ -263,7 +265,7 @@ describe("exceção, sem política e o direito integral que nunca se nega (M8.2c
   it("integral pela política: 'nenhum' é recusado; pedido no prazo e 'não comparecimento' depois da entrada é recusado (há pedido); como pedido do hóspede, integral pelo prazo mesmo depois da saída", async () => {
     const x = await pagarEConfirmar(c, longe);
     const nega = await previaDoCancelamento(db, c.org, x.reservaId, entradaPadrao({ recebidoEm: minutos(30), canal: "whatsapp", decisao: "nenhum", motivoDecisao: "teste" }), c.provedor, minutos(60));
-    expect(nega).toEqual({ ok: false, codigo: "integral_nao_se_nega", erro: TEXTO_INTEGRAL_NAO_SE_NEGA });
+    expect(nega).toEqual({ ok: false, codigo: "integral_nao_se_nega", erro: TEXTO_INTEGRAL_NAO_SE_NEGA, escolha: null });
     await comPedido(x.reservaId, sp("2026-10-02 09:00"));
     const naoVeio = await previaDoCancelamento(db, c.org, x.reservaId, entradaPadrao({ quemCancela: "nao_comparecimento" }), c.provedor, sp("2026-11-21 14:00"));
     expect(naoVeio).toEqual({ ok: false, codigo: "ha_pedido", erro: "Há um pedido de cancelamento do hóspede recebido em 02/10 às 09:00: não é não comparecimento. Cancele como pedido do hóspede (vale o horário do pedido)." });
@@ -278,6 +280,8 @@ describe("exceção, sem política e o direito integral que nunca se nega (M8.2c
     const x = await pagarEConfirmar(c);
     const r = await previaDoCancelamento(db, c.org, x.reservaId, entradaPadrao({ quemCancela: "empresa", motivoEmpresa: "forca_maior" }), c.provedor, sp("2026-10-16 10:00"));
     expect(r).toEqual({ ok: false, codigo: "estadia_encerrada", erro: "A estadia já terminou e não há pedido de cancelamento registrado: não se cancela; registre um ajuste se precisar." });
+    // Recusa de antes da decisão pela política: sem `escolha` (a tela fica com a que mostrava).
+    expect(r).not.toHaveProperty("escolha");
   });
 
   it("a SCL cancela depois da entrada: integral; o proprietário deixa de receber o que a política daria", async () => {
@@ -306,11 +310,41 @@ describe("não comparecimento, saída antecipada e o momento do pedido (M8.2c)",
     expect(resultado).toMatchObject({ ok: true, direito: "nenhum" });
   });
 
+  it("o horário do não comparecimento na ficha (momentosDoCancelamento) é o que a decisão confere: o padrão, o horário do imóvel e a tolerância editados", async () => {
+    const x = await pagarEConfirmar(c);
+    const confere = async (esperado: { entradaEm: Date; naoComparecimentoApos: Date }) => {
+      const m = await momentosDoCancelamento(db, c.org, x.reservaId);
+      expect(m).toEqual({ ...esperado, fuso: "America/Sao_Paulo" });
+      const libera = m!.naoComparecimentoApos;
+      const naoVeio = entradaPadrao({ quemCancela: "nao_comparecimento" });
+      expect(await previaDoCancelamento(db, c.org, x.reservaId, naoVeio, c.provedor, new Date(libera.getTime() - 60_000))).toEqual({
+        ok: false,
+        codigo: "cedo_para_nao_comparecimento",
+        erro: `Não comparecimento só depois de ${diaHoraBr(libera)} (o hóspede pode chegar atrasado e avisar).`,
+      });
+      expect(await previaDoCancelamento(db, c.org, x.reservaId, naoVeio, c.provedor, libera)).toMatchObject({ ok: true, previa: { direito: "nenhum", base: "nao_comparecimento" } });
+    };
+    // Padrão: entrada às 15:00 do cadastro, 21 horas de tolerância (12:00 do dia seguinte).
+    await confere({ entradaEm: sp("2026-10-12 15:00"), naoComparecimentoApos: sp("2026-10-13 12:00") });
+    // Horário de entrada do imóvel 14:00 e tolerância de 6 horas (Configurações → Pagamento no site).
+    await db.update(imoveisDetalhes).set({ checkinAPartirDe: "14:00" }).where(eq(imoveisDetalhes.imovelId, c.imovel));
+    expect(await salvarConfigPagamentoSite(db, c.org, { ...(await lerConfigPagamentoSite(db, c.org)), naoComparecimentoHoras: 6 }, null)).toMatchObject({ ok: true });
+    await confere({ entradaEm: sp("2026-10-12 14:00"), naoComparecimentoApos: sp("2026-10-12 20:00") });
+    // Imóvel sem os detalhes cadastrados: entrada às 15:00 (o mesmo padrão da decisão).
+    await db.delete(imoveisDetalhes).where(eq(imoveisDetalhes.imovelId, c.imovel));
+    await confere({ entradaEm: sp("2026-10-12 15:00"), naoComparecimentoApos: sp("2026-10-12 21:00") });
+    // De outra empresa ou inexistente: nada.
+    const outra = await montarCenario(db);
+    expect(await momentosDoCancelamento(db, outra.org, x.reservaId)).toBeNull();
+    expect(await momentosDoCancelamento(db, c.org, "nao-e-uuid")).toBeNull();
+  });
+
   it("saída antecipada: pedido do hóspede depois da entrada, sem devolução pela política → recusado, nada muda; com exceção, vale", async () => {
     const x = await pagarEConfirmar(c);
     await comPedido(x.reservaId, sp("2026-10-13 09:00"));
     const r = await previaDoCancelamento(db, c.org, x.reservaId, entradaPadrao(), c.provedor, sp("2026-10-13 10:00"));
-    expect(r).toMatchObject({ ok: false, codigo: "estadia_iniciada", erro: expect.stringContaining("O pedido chegou depois do início da estadia (12/10 às 15:00)") });
+    // A recusa vem sem prévia, mas diz que a exceção vale (a ficha a oferece).
+    expect(r).toMatchObject({ ok: false, codigo: "estadia_iniciada", erro: expect.stringContaining("O pedido chegou depois do início da estadia (12/10 às 15:00)"), escolha: "excecao" });
     expect(await c.reserva(x.reservaId)).toMatchObject({ estado: "confirmada" });
     expect((await motorEmVigor(x.reservaId)).length).toBe(4);
     const excecao = await cancelar(c, x.reservaId, entradaPadrao({ decisao: "excecao", motivoExcecao: "cortesia_comercial", motivoDecisao: "Cortesia pela obra no prédio" }), equipe, sp("2026-10-13 10:00"));
@@ -390,7 +424,7 @@ describe("recusas e a assinatura da prévia (M8.2c)", () => {
     const x = await pagarEConfirmar(c, longe);
     c.provedor.falhas.consultar = new ErroProvedor("incerto", "sem resposta");
     const p = await previaDoCancelamento(db, c.org, x.reservaId, entrada(), c.provedor, minutos(60));
-    expect(p).toEqual({ ok: false, codigo: "sem_leitura", erro: TEXTO_SEM_LEITURA });
+    expect(p).toEqual({ ok: false, codigo: "sem_leitura", erro: TEXTO_SEM_LEITURA, escolha: null });
     const r = await cancelarReservaPaga(db, c.org, x.reservaId, entrada(), equipe, c.provedor, minutos(60), "0123456789abcdef");
     expect(r).toMatchObject({ ok: false, codigo: "sem_leitura" });
     expect(await c.reserva(x.reservaId)).toMatchObject({ estado: "confirmada" });
@@ -426,6 +460,7 @@ describe("recusas e a assinatura da prévia (M8.2c)", () => {
       ok: false,
       codigo: "repasse_a_pagar",
       erro: "A parte desta reserva já compõe o repasse antecipado de 13/10, ainda não pago: estorne esse repasse (o proprietário recebe o resto no próximo) e então cancele. Se ele já foi pago de fato, marque-o como pago antes — a parte paga é descontada no próximo repasse.",
+      escolha: null,
     });
     // Pago: a parte já repassada muda a conta, e a prévia velha não vale mais.
     const { marcarRepassePago } = await import("@/repasses/repasses");
@@ -599,6 +634,8 @@ describe("pagamento velho e o já devolvido no painel do Mercado Pago (M8.2c)", 
     expect(pedidosDeDevolucao()).toEqual([]);
     expect(await devolucaoDe(x.pagamentoId)).toMatchObject({ situacao: "recusada", falhas: 0, proximaTentativaEm: null, origem: "cancelamento" });
     expect((await c.tentativa(x.pagamentoId)).avisos).toContain("devolucao_fora_do_prazo");
+    // O quadro do pagamento sabe que parou pelo prazo (a regra do domínio, não um palpite pelos números).
+    expect((await pagamentosDaReserva(db, c.org, x.reservaId)).find((p) => p.id === x.pagamentoId)?.devolucao).toMatchObject({ situacao: "recusada", paradaPeloPrazo: true });
     // Pedir de novo ao Mercado Pago: recusado (mais de 78 dias).
     const { devolverPeloProvedor } = await import("./devolucao");
     expect(await devolverPeloProvedor(db, c.org, x.pagamentoId, equipe, c.provedor, minutos(70))).toMatchObject({ ok: false, erro: expect.stringContaining("mais de 78 dias") });
@@ -609,6 +646,20 @@ describe("pagamento velho e o já devolvido no painel do Mercado Pago (M8.2c)", 
     expect((await cancelamentoDe(x.reservaId)).caixaLancadoEm).not.toBeNull();
     const despesa = (await doLivro(x.reservaId)).find((l) => l.tipo === "despesa_empresa");
     expect(despesa).toMatchObject({ valor: -1824, reservaId: x.reservaId, dataCaixa: "2026-10-01" });
+  });
+
+  it("devolução do cancelamento parada por outro motivo (o Mercado Pago mostra parte devolvida no painel): recusada sem falha nem código, mas não 'parada pelo prazo'", async () => {
+    const x = await pagarEConfirmar(c, longe);
+    c.provedor.respostaDevolucao = "em_andamento";
+    const { resultado } = await cancelar(c, x.reservaId, entrada(), equipe, minutos(60));
+    expect(resultado).toMatchObject({ ok: true, devolucao: "pedida" });
+    c.provedor.devolverNoProvedor(x.idProvedor, 5000);
+    await conferirPendentes(db, c.org, c.provedor, minutos(80));
+    expect(await devolucaoDe(x.pagamentoId)).toMatchObject({ situacao: "recusada", falhas: 0, origem: "cancelamento" });
+    const avisos = (await c.tentativa(x.pagamentoId)).avisos;
+    expect(avisos).toContain("devolucao_parada");
+    expect(avisos).not.toContain("devolucao_fora_do_prazo");
+    expect((await pagamentosDaReserva(db, c.org, x.reservaId)).find((p) => p.id === x.pagamentoId)?.devolucao).toMatchObject({ situacao: "recusada", paradaPeloPrazo: false });
   });
 
   it("cartão com mais de 85 dias: por fora recusado; confirmação da equipe só com a order fora da leitura; recusa do painel registrada libera o por fora", async () => {
@@ -753,6 +804,30 @@ describe("pagamento velho e o já devolvido no painel do Mercado Pago (M8.2c)", 
     expect(depois.avisos).toContain("taxa_perdida_desconhecida");
     expect(await emConferencia(x.reservaId)).toBe(false);
     // Nenhum pedido ao Mercado Pago (já estava devolvido).
+    expect(pedidosDeDevolucao()).toEqual([]);
+  });
+
+  it("já devolvido no painel do Mercado Pago e a política sem devolução (pedido depois do prazo): recusa que oferece a exceção; com a exceção, integral já devolvido", async () => {
+    const x = await pagarEConfirmar(c);
+    c.provedor.devolverNoProvedor(x.idProvedor, TOTAL);
+    await conferirTentativa(db, c.org, x.pagamentoId, c.provedor, sp("2026-10-09 09:00"), { origem: "painel", forcar: true });
+    expect(await c.tentativa(x.pagamentoId)).toMatchObject({ situacao: "devolvido" });
+    // Prazo integral até 28/09 e arrependimento até 08/10: um pedido em 09/10 não tem devolução pela política.
+    await comPedido(x.reservaId, sp("2026-10-09 10:00"));
+    const r = await previaDoCancelamento(db, c.org, x.reservaId, entradaPadrao(), c.provedor, sp("2026-10-09 11:00"));
+    expect(r).toEqual({
+      ok: false,
+      codigo: "decisao_obrigatoria",
+      erro: "O Mercado Pago já mostra este pagamento devolvido por inteiro: registre como devolução integral (pela política ou por exceção, com o motivo).",
+      escolha: "excecao",
+    });
+    // "Devolver tudo" (a escolha de quando não há política) não serve: a exceção, sim.
+    expect(await previaDoCancelamento(db, c.org, x.reservaId, entradaPadrao({ decisao: "integral", motivoDecisao: "teste" }), c.provedor, sp("2026-10-09 11:00"))).toMatchObject({ ok: false, codigo: "dados", escolha: "excecao" });
+    const entrada = entradaPadrao({ decisao: "excecao", motivoExcecao: "cortesia_comercial", motivoDecisao: "Já devolvido pelo painel do Mercado Pago" });
+    const { previa, resultado } = await cancelar(c, x.reservaId, entrada, equipe, sp("2026-10-09 11:00"));
+    expect(previa).toMatchObject({ ok: true, previa: { direito: "integral", base: "excecao", rota: "ja_devolvida", decisao: { calculado: "nenhum", base: "fora_do_prazo" } } });
+    expect(resultado).toMatchObject({ ok: true, direito: "integral", devolucao: "confirmada" });
+    expect(await cancelamentoDe(x.reservaId)).toMatchObject({ situacao: "cancelada", base: "excecao", calculado: "nenhum", motivoExcecao: "cortesia_comercial" });
     expect(pedidosDeDevolucao()).toEqual([]);
   });
 

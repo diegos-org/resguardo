@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DIAS_ARREPENDIMENTO, decidirPelaPolitica, type EntradaPolitica, regrasComPadrao } from "./politica-cancelamento";
+import { DIAS_ARREPENDIMENTO, decidirPelaPolitica, type EntradaPolitica, HORA_ENTRADA_PADRAO, horaDeEntrada, regrasComPadrao } from "./politica-cancelamento";
 
 const SP = "America/Sao_Paulo";
 /** Um instante dado pelo relógio de São Paulo (UTC−3, sem horário de verão desde 2019). */
@@ -111,5 +111,12 @@ describe("decidirPelaPolitica (M8.2c, regra pura)", () => {
   it("regrasComPadrao: o limite ausente vale sim", () => {
     expect(regrasComPadrao({ diasReembolsoIntegral: 14 })).toEqual({ diasReembolsoIntegral: 14, arrependimentoAteEntrada: true });
     expect(regrasComPadrao({ diasReembolsoIntegral: 14, arrependimentoAteEntrada: false })).toEqual({ diasReembolsoIntegral: 14, arrependimentoAteEntrada: false });
+  });
+
+  it("horaDeEntrada: o horário cadastrado no imóvel; sem ele, ou inválido, 15:00 (nunca um palpite fora do formato)", () => {
+    expect(horaDeEntrada("14:00")).toBe("14:00");
+    expect(horaDeEntrada("00:30")).toBe("00:30");
+    for (const estranho of [null, undefined, "", "25:00", "9:00", "14h"]) expect(horaDeEntrada(estranho)).toBe(HORA_ENTRADA_PADRAO);
+    expect(HORA_ENTRADA_PADRAO).toBe("15:00");
   });
 });

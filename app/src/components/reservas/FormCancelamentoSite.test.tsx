@@ -14,6 +14,7 @@ const previa = (over: Partial<PreviaParaTela> = {}): PreviaParaTela => ({
   rota: "pedida",
   direito: "integral",
   calculado: "integral",
+  escolha: null,
   momento: "A SCL cancela agora (01/10 às 12:00).",
   leitura: "Leitura do Mercado Pago de 01/10 às 11:58: aprovado.",
   politica: "Política aceita: versão 1 de 20/09 — reembolso integral para pedidos até 26/10 (23h59).",
@@ -99,7 +100,7 @@ describe("formulário do cancelamento pela política (M8.2c)", () => {
   });
 
   it("a política não dá devolução: a exceção aparece, com o motivo da lista e a nota obrigatória", async () => {
-    calcular.mockResolvedValue({ ok: true, previa: previa({ direito: "nenhum", calculado: "nenhum", rota: "nenhuma", resultado: "Pela política: sem devolução — pedido depois do prazo de reembolso integral." }) });
+    calcular.mockResolvedValue({ ok: true, previa: previa({ direito: "nenhum", calculado: "nenhum", escolha: "excecao", rota: "nenhuma", resultado: "Pela política: sem devolução — pedido depois do prazo de reembolso integral." }) });
     mostrar();
     expect(screen.queryByLabelText(/Devolver tudo por exceção/)).toBeNull();
     fireEvent.change(screen.getByLabelText("Como chegou"), { target: { value: "email" } });
@@ -118,7 +119,7 @@ describe("formulário do cancelamento pela política (M8.2c)", () => {
     expect(screen.getByLabelText("Devolver tudo")).toBeTruthy();
     expect(screen.getByLabelText("Não devolver")).toBeTruthy();
     cleanup();
-    calcular.mockResolvedValue({ codigo: "decisao_obrigatoria", mensagem: "Este pagamento foi feito sem o aceite das páginas legais (antes de 9/10): o sistema não calcula a devolução." });
+    calcular.mockResolvedValue({ codigo: "decisao_obrigatoria", escolha: "sem_politica", mensagem: "Este pagamento foi feito sem o aceite das páginas legais (antes de 9/10): o sistema não calcula a devolução." });
     mostrar();
     expect(screen.queryByLabelText("Devolver tudo")).toBeNull();
     fireEvent.change(screen.getByLabelText("Como chegou"), { target: { value: "email" } });
@@ -126,6 +127,63 @@ describe("formulário do cancelamento pela política (M8.2c)", () => {
     await screen.findByLabelText("Devolver tudo");
     expect(screen.getByRole("alert").textContent).toContain("o sistema não calcula a devolução");
     expect(screen.getByLabelText(/Motivo \(obrigatório/)).toBeTruthy();
+  });
+
+  it("saída antecipada recusada sem prévia: a exceção aparece mesmo assim e vai no cálculo seguinte, com o motivo da lista e a nota", async () => {
+    calcular.mockResolvedValueOnce({
+      codigo: "estadia_iniciada",
+      escolha: "excecao",
+      mensagem: "O pedido chegou depois do início da estadia (12/10 às 15:00): pela política não há devolução e a reserva continua como está (saída antecipada não é cancelamento). Descarte o pedido com o motivo, se for o caso.",
+    });
+    calcular.mockResolvedValueOnce({ ok: true, previa: previa({ calculado: "nenhum", escolha: "excecao", resultado: "Pela política: sem devolução — pedido depois do início da estadia. Por exceção: devolução integral de R$ 1.824,00." }) });
+    mostrar({ pedido: { site: false, data: "2026-10-01", hora: "09:00", canal: "whatsapp", descricao: "Registrado por Equipe Fictícia" } });
+    fireEvent.click(screen.getByRole("button", { name: "Calcular o cancelamento pela política" }));
+    await screen.findByLabelText(/Devolver tudo por exceção/);
+    expect(screen.getByRole("alert").textContent).toContain("saída antecipada não é cancelamento");
+    // Não é o caso sem política: nada de "Devolver tudo / Não devolver".
+    expect(screen.queryByLabelText("Devolver tudo")).toBeNull();
+    expect(screen.queryByLabelText("Não devolver")).toBeNull();
+    fireEvent.click(screen.getByLabelText(/Devolver tudo por exceção/));
+    fireEvent.change(screen.getByLabelText("Motivo da exceção"), { target: { value: "cortesia_comercial" } });
+    fireEvent.change(screen.getByLabelText(/Nota \(obrigatória/), { target: { value: "Cortesia pela obra no prédio" } });
+    fireEvent.click(screen.getByRole("button", { name: "Calcular o cancelamento pela política" }));
+    await screen.findByRole("button", { name: "Cancelar a reserva" });
+    expect(Object.fromEntries(calcular.mock.calls[1][1])).toMatchObject({ decisao: "excecao", motivoExcecao: "cortesia_comercial", motivoDecisao: "Cortesia pela obra no prédio" });
+    expect(screen.getByText("Pela política: sem devolução — pedido depois do início da estadia. Por exceção: devolução integral de R$ 1.824,00.")).toBeTruthy();
+  });
+
+  it("pagamento já devolvido no painel do Mercado Pago e a política sem devolução: a recusa abre a exceção, não a escolha sem política", async () => {
+    calcular.mockResolvedValue({
+      codigo: "decisao_obrigatoria",
+      escolha: "excecao",
+      mensagem: "O Mercado Pago já mostra este pagamento devolvido por inteiro: registre como devolução integral (pela política ou por exceção, com o motivo).",
+    });
+    mostrar();
+    fireEvent.change(screen.getByLabelText("Como chegou"), { target: { value: "email" } });
+    fireEvent.click(screen.getByRole("button", { name: "Calcular o cancelamento pela política" }));
+    await screen.findByLabelText(/Devolver tudo por exceção/);
+    expect(screen.queryByLabelText("Devolver tudo")).toBeNull();
+    expect(screen.queryByText(/Pagamento sem a política aceita/)).toBeNull();
+  });
+
+  it("recusa de antes da decisão (nota com dado pessoal): a exceção que estava na tela continua, com o que foi digitado; a política dando o integral, ela some", async () => {
+    calcular.mockResolvedValueOnce({ ok: true, previa: previa({ direito: "nenhum", calculado: "nenhum", escolha: "excecao", rota: "nenhuma" }) });
+    calcular.mockResolvedValueOnce({ codigo: "dados", mensagem: "Tire dados pessoais da nota (CPF, e-mail, telefone, chave Pix, cartão)." });
+    calcular.mockResolvedValueOnce({ codigo: "integral_nao_se_nega", escolha: null, mensagem: "Pela política aceita, o hóspede tem direito ao valor integral: a equipe não decide outra coisa." });
+    mostrar();
+    fireEvent.change(screen.getByLabelText("Como chegou"), { target: { value: "email" } });
+    fireEvent.click(screen.getByRole("button", { name: "Calcular o cancelamento pela política" }));
+    fireEvent.click(await screen.findByLabelText(/Devolver tudo por exceção/));
+    fireEvent.change(screen.getByLabelText("Motivo da exceção"), { target: { value: "cortesia_comercial" } });
+    fireEvent.change(screen.getByLabelText(/Nota \(obrigatória/), { target: { value: "CPF 123.456.789-09" } });
+    fireEvent.click(screen.getByRole("button", { name: "Calcular de novo" }));
+    await screen.findByText("Tire dados pessoais da nota (CPF, e-mail, telefone, chave Pix, cartão).");
+    expect((screen.getByLabelText(/Devolver tudo por exceção/) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByLabelText(/Nota \(obrigatória/) as HTMLTextAreaElement).value).toBe("CPF 123.456.789-09");
+    fireEvent.change(screen.getByLabelText(/Nota \(obrigatória/), { target: { value: "Cortesia" } });
+    fireEvent.click(screen.getByRole("button", { name: "Calcular o cancelamento pela política" }));
+    await screen.findByText(/a equipe não decide outra coisa/);
+    expect(screen.queryByLabelText(/Devolver tudo por exceção/)).toBeNull();
   });
 
   it("pedido registrado pela equipe: o momento vem preenchido; corrigir a hora pede o motivo. Pedido feito no site: o momento é travado", () => {

@@ -249,6 +249,7 @@ describe("reserva cancelada pela política no quadro (M8.2c)", () => {
     valorConfirmado: null,
     recusaNoPainelEm: null,
     paradaEm: null,
+    paradaPeloPrazo: false,
     ...over,
   });
   const cancelado = (over: Partial<PagamentoDoPainel> = {}): PagamentoDoPainel => ({ ...base, cancelada: { estado: "cancelada_devolucao_pedida", estornoPelaEquipe: false }, devolucao: devolucao(), acoes: sem, ...over });
@@ -273,7 +274,14 @@ describe("reserva cancelada pela política no quadro (M8.2c)", () => {
     const equipe = cancelado({ devolucao: devolucao({ situacao: "confirmada", confirmadaEm: new Date("2026-10-03T15:00:00Z"), confirmadaPor: "equipe", confirmadaNota: "painel mostra devolvida" }) });
     expect(html([equipe])).toContain("confirmada pelo Mercado Pago · R$ 1.824,00 · em 03/10/2026 · confirmada pela equipe: painel mostra devolvida");
     expect(html([equipe], { verValores: false })).not.toContain("painel mostra devolvida");
-    expect(html([cancelado({ devolucao: devolucao({ situacao: "recusada", tentativas: 0, falhas: 0 }) })])).toContain("parada pelo prazo: o pagamento tem mais de 78 dias");
+    // A parada pelo prazo vem da regra do domínio (aviso do pagamento com mais de 78 dias), nunca adivinhada pelos números:
+    // a parada por outro motivo (devolvido em parte, contestado, outra referência) também fica recusada sem falha nem código.
+    expect(html([cancelado({ devolucao: devolucao({ situacao: "recusada", tentativas: 0, falhas: 0, paradaPeloPrazo: true }) })])).toContain("parada pelo prazo: o pagamento tem mais de 78 dias");
+    const paradaPorOutroMotivo = html([cancelado({ devolucao: devolucao({ situacao: "recusada", tentativas: 1, falhas: 0, paradaPeloPrazo: false }) })]);
+    expect(paradaPorOutroMotivo).not.toContain("parada pelo prazo");
+    expect(paradaPorOutroMotivo).not.toContain("mais de 78 dias");
+    // Parada depois de uma espera pedida pelo Mercado Pago: a recusada não "tenta de novo sozinha".
+    expect(html([cancelado({ devolucao: devolucao({ situacao: "recusada", falhas: 0, ultimoCodigo: "em_andamento" }) })])).not.toContain("o sistema tenta de novo sozinho");
     expect(html([cancelado({ devolucao: devolucao({ situacao: "recusada", falhas: 0, recusaNoPainelEm: new Date("2026-10-04T15:00:00Z") }) })])).toContain("recusada no painel do Mercado Pago (registrado pela equipe)");
     expect(html([cancelado({ devolucao: devolucao({ situacao: "confirmada", confirmadaEm: new Date("2026-10-03T15:00:00Z"), valorConfirmado: 177400 }) })])).toContain("o Mercado Pago mostrou R$ 1.774,00 devolvidos");
   });
