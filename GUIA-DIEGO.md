@@ -13,8 +13,11 @@
 - **Onde está:** tudo neste repositório do GitHub, `al-life/scl-reconstrucao`.
 - **Quem constrói:** o Claude, por meio de uma rotina automática a cada 3 horas e das
   conversas com você.
-- **Quem decide:** você. Por enquanto o Claude faz os merges sozinho (com CI verde e revisão
-  automática sem pendências), por sua autorização; você pode revogar quando quiser.
+- **Quem decide:** você. Desde 9/10, Claude e Codex podem fazer o merge do trabalho autorizado
+  depois de todas as checagens e da revisão automática do Codex no GitHub concluídas, no
+  commit mais recente e sem apontamentos pendentes. Sem limite de rodadas de revisão: os
+  agentes corrigem e conferem quantas vezes forem necessárias, e te avisam com um resumo
+  curto do que mudou. Você pode revogar essa autorização quando quiser.
 - **Está em uso?** **Não.** Só vai ser usado "para valer" quando tudo estiver pronto
   (marco M11).
 
