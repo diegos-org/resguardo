@@ -775,6 +775,22 @@ describe("envio ao Beds24 (M3.7)", () => {
   });
 });
 
+describe("reserva-pedido de uma alteração (M8.2d) no plano do Beds24", () => {
+  it("o envio não conta as noites seguradas de uma alteração: o mínimo em volta delas não muda; o site continua vendo as noites ocupadas", async () => {
+    // Sábado 3/10 segurado por uma alteração (reserva-pedido, que nunca vai ao Beds24). Sem ela, sexta 2/10 pede 2 noites.
+    await db.insert(reservas).values({ organizacaoId: org, imovelId: im, codigo: "SCL-ALTP1", origem: "direta", estado: "pedido", checkin: "2026-10-03", checkout: "2026-10-04", hospedeNome: "Hóspede Fictício", fonte: "alteracao", idFonte: "00000000-0000-4000-8000-000000000001" });
+    const r = await enviar();
+    expect(r).toMatchObject({ ok: true, situacao: "ok" });
+    expect(diaFalso("2026-10-02")).toMatchObject({ minStay: 2 });
+    const rg = await lerRegrasCalendario(db, org);
+    const previa = await planejarImovel(db, org, rg, { id: im, fuso: "America/Sao_Paulo" }, agora, undefined, { paraOBeds24: true });
+    expect(previa.linhas.find((l) => l.data === "2026-10-03")?.livresSeguidas).not.toBe(0);
+    // Para o site, as noites continuam seguradas (como as datas que o visitante segura).
+    const site = await planejarImovel(db, org, rg, { id: im, fuso: "America/Sao_Paulo" }, agora);
+    expect(site.linhas.find((l) => l.data === "2026-10-03")?.livresSeguidas).toBe(0);
+  });
+});
+
 describe("planejarImovel ignorando uma reserva (M8.2d, cotação da alteração)", () => {
   const sp = { id: "", fuso: "America/Sao_Paulo" };
   it("a reserva sai da ocupação, os bloqueios do Beds24 perdem as noites dela (o que passa para fora fica) e os do SCL ficam inteiros", async () => {

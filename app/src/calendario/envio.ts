@@ -89,6 +89,8 @@ export function bloqueiosSemAReserva<B extends { inicio: string; fim: string; fo
  * O estado enviado vale só para o quarto Beds24 vinculado agora (`roomId`; sem informar, é lido do vínculo):
  * o que foi enviado a outro quarto não dá posse de bloqueio neste. `o.ignorar` (M8.2d): a reserva sai da ocupação e os
  * bloqueios do Beds24 perdem as noites dela — o mínimo, as sobras e a regra de 6/10 são calculados sem ela.
+ * `o.paraOBeds24` (envio e prévia do envio): as reservas-pedido das alterações (M8.2d, fonte "alteracao") ficam de fora,
+ * porque nunca vão ao Beds24 e podem vencer; o site continua contando essas noites como seguradas.
  */
 export async function planejarImovel(
   db: Db,
@@ -97,7 +99,7 @@ export async function planejarImovel(
   imovel: { id: string; fuso: string; roomId?: string | null },
   agora: Date,
   intervalo?: { inicio: string; fim: string },
-  o: { ignorar?: ReservaIgnorada } = {},
+  o: { ignorar?: ReservaIgnorada; paraOBeds24?: boolean } = {},
 ) {
   const hoje = hojeISO(imovel.fuso, agora);
   const roomId = imovel.roomId !== undefined ? imovel.roomId : await quartoVinculado(db, org, imovel.id);
@@ -114,7 +116,7 @@ export async function planejarImovel(
   const ateReservas = daRegra.fim > fimDados ? daRegra.fim : fimDados;
   const ignorar = o.ignorar;
   const [ocupantes, impedimentos, observacoes, enviados] = await Promise.all([
-    db.select({ checkin: reservas.checkin, checkout: reservas.checkout, estado: reservas.estado }).from(reservas).where(and(eq(reservas.organizacaoId, org), eq(reservas.imovelId, imovel.id), lt(reservas.checkin, somarDias(ateReservas, 1)), gt(reservas.checkout, daRegra.inicio), ignorar ? ne(reservas.id, ignorar.reservaId) : undefined)),
+    db.select({ checkin: reservas.checkin, checkout: reservas.checkout, estado: reservas.estado }).from(reservas).where(and(eq(reservas.organizacaoId, org), eq(reservas.imovelId, imovel.id), lt(reservas.checkin, somarDias(ateReservas, 1)), gt(reservas.checkout, daRegra.inicio), ignorar ? ne(reservas.id, ignorar.reservaId) : undefined, o.paraOBeds24 ? ne(reservas.fonte, "alteracao") : undefined)),
     db.select({ inicio: bloqueios.inicio, fim: bloqueios.fim, fonte: bloqueios.fonte }).from(bloqueios).where(and(eq(bloqueios.organizacaoId, org), eq(bloqueios.imovelId, imovel.id), lt(bloqueios.inicio, somarDias(fimDados, 1)), gt(bloqueios.fim, inicio))).then((l) => bloqueiosSemAReserva(l, ignorar)),
     roomId === null ? [] : db.select().from(beds24Calendario).where(and(eq(beds24Calendario.organizacaoId, org), eq(beds24Calendario.imovelId, imovel.id), eq(beds24Calendario.roomId, roomId), gte(beds24Calendario.data, inicio), lte(beds24Calendario.data, fim))).orderBy(asc(beds24Calendario.data)),
     roomId === null ? [] : db.select().from(beds24CalendarioEnviado).where(and(eq(beds24CalendarioEnviado.organizacaoId, org), eq(beds24CalendarioEnviado.imovelId, imovel.id), eq(beds24CalendarioEnviado.roomId, roomId), gte(beds24CalendarioEnviado.data, inicio), lte(beds24CalendarioEnviado.data, fim))),
@@ -326,7 +328,7 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
           if (c.confirmadas) aviso(`Imóvel ${m.codigo}: ${c.confirmadas} noite(s) de envio anterior confirmada(s) pela leitura de agora.`);
           if (c.divergentes) aviso(`Imóvel ${m.codigo}: ${c.divergentes} noite(s) de envio anterior sem releitura diferem da leitura de agora; o plano decide se reenvia.`);
         }
-        const p = await planejarImovel(tx, org, regras, { id: m.imovelId, fuso: fusos.get(m.imovelId) ?? "America/Sao_Paulo", roomId: m.roomId }, agora);
+        const p = await planejarImovel(tx, org, regras, { id: m.imovelId, fuso: fusos.get(m.imovelId) ?? "America/Sao_Paulo", roomId: m.roomId }, agora, undefined, { paraOBeds24: true });
         planos.push({ imovelId: m.imovelId, codigo: m.codigo, propertyId: m.propertyId, roomId: m.roomId, fontePrecos: p.fontePrecos, linhas: p.linhas });
         if (p.inicio < inicioLeitura) inicioLeitura = p.inicio;
         if (p.fim > fimLeitura) fimLeitura = p.fim;
