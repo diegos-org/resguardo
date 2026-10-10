@@ -631,7 +631,8 @@ function devolucaoDaAlteracao(a: Alteracao, tentativas: readonly Pagamento[], de
   const p0 = doPagamento(devs[0]);
   return {
     estado,
-    valor: devs.reduce((s2, d) => s2 + d.valor, 0),
+    // O restante de uma devolução feita a menos é parte dela: o valor devido é o das devoluções de origem.
+    valor: devs.filter((d) => !d.origemDevolucaoId || !devs.some((o) => o.id === d.origemDevolucaoId)).reduce((s2, d) => s2 + d.valor, 0),
     valorConfirmado: feitas && confirmados.every((v) => v !== null) ? confirmados.reduce((s2, v) => s2 + v!, 0) : null,
     em: ultima ? quando(ultima) : null,
     previstaEm: prevista ? hojeISO("America/Sao_Paulo", prevista) : null,

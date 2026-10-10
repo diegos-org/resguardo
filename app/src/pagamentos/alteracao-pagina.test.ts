@@ -11,7 +11,7 @@ import { lerRegrasCalendario, salvarRegrasCalendario } from "@/calendario/regras
 import { gravarConfig, lerConfig } from "@/configuracoes/armazem";
 import { PAGINAS_LEGAIS } from "@/configuracoes/paginas-legais-texto";
 import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
-import { aceitesSite, alteracoesReserva, auditoria, contratos, pagamentos, reservas } from "@/db/schema";
+import { aceitesSite, alteracoesReserva, auditoria, contratos, devolucoesPagamento, pagamentos, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { listarImoveis } from "@/imoveis/repositorio";
@@ -22,6 +22,7 @@ import { textoDaAlteracao } from "@/site/pagamento-vista";
 import { desistirDaAlteracao } from "./alteracao";
 import { pagarComCartao } from "./cartao";
 import { conferirTentativa } from "./conferencia";
+import { pedirRestanteDaDevolucao } from "./devolucao";
 import { listarPagamentos } from "./consultas";
 import { ofertaDeCartao, ofertaDePix, type PortaoCobranca, TEXTO_SEM_COBRANCA, TEXTO_SEM_PIX } from "./oferta";
 import { gerarPix } from "./pix";
@@ -187,6 +188,20 @@ describe("a página da reserva: os outros estados da alteração (M8.2d §8)", (
       if (caso.estado !== "pedida") expect(t.resumo).not.toContain(TEXTOS_SITE_INICIAIS.cancelamentoDevolucaoPedida);
     }
     expect(await semDadosDoHospede(db)).toEqual([]);
+  });
+
+  it("devolvida a menos e o restante pedido: o valor da devolução da diferença é o da alteração (o restante não soma de novo)", async () => {
+    const x = await pagarEConfirmar(c, { entrada: "2026-11-02", saida: "2026-11-05", email: "restante@example.com", liberar: true });
+    c.provedor.devolverAMenos(15_000);
+    const { resultado } = await alterar(c, x.reservaId, { checkout: "2026-11-04", valor: menos200 }, minutos(20), { autorId: equipe, aplicar: true });
+    expect(resultado).toMatchObject({ ok: true, situacao: "aplicada" });
+    const [d] = await db.select().from(devolucoesPagamento).where(eq(devolucoesPagamento.pagamentoId, x.pagamentoId));
+    expect(d).toMatchObject({ situacao: "confirmada", valor: 20_000, valorConfirmado: 15_000 });
+    c.provedor.respostaDevolucao = "pedida";
+    expect(await pedirRestanteDaDevolucao(db, c.org, d.id, equipe, c.provedor, minutos(30))).toMatchObject({ ok: true });
+    const v = await pagina(x.cotacaoId, minutos(31));
+    expect(v?.alteracao?.devolucao).toMatchObject({ estado: "pedida", valor: 20_000 });
+    expect(texto(v!.alteracao!, x.reservaCodigo).resumo).not.toContain("R$ 250,00");
   });
 
   it("aplicada depois de adiantar a estadia: a linha da política conta da entrada nova (a menor), a decisão, da de então", async () => {
