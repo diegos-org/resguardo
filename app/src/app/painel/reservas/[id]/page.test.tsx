@@ -395,3 +395,113 @@ it("M8.2d: o resultado da ação da alteração vem só de chaves conhecidas (o 
   expect(op).toContain("Alteração aplicada. Devolução da diferença pedida ao Mercado Pago");
   expect(op).not.toContain("R$");
 });
+
+it("M8.2d (D26): a operação, em cada caso da alteração — aumento aplicado, redução retida, cada resultado e pagamentos com avisos, devoluções e notas com valor — nunca vê R$ nem valores na ficha, nas observações e no histórico", async () => {
+  m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  const VALORES = /R\$|182400|222400|40000|60800|121600|29700|1\.824|2\.224|400,00|608,00/;
+  const observacoes = "Alterada em 01/10: de 12/10–15/10 (3 noites, 4 pessoas) para 12/10–16/10 (4 noites, 4 pessoas).";
+  const historico = (valorDepois: number, diferenca: number) => [
+    { id: "h1", acao: "reserva.alterar", mudancas: { checkout: ["2026-10-15", "2026-10-16"], valorBruto: [182400, valorDepois], diferenca: [null, diferenca], alteracao: [null, ALTERACAO_ID] }, criadoEm: new Date("2026-10-01T15:36:00Z"), autor: "Equipe Fictícia" },
+  ];
+  // Aumento aplicado pelo pagamento da diferença: o pagamento da reserva (com um aviso que leva valor) e o da diferença.
+  const aumento = alteracao({
+    depois: { checkin: "2026-10-12", checkout: "2026-10-16", hospedes: 4, valor: 222400 },
+    diferenca: 40000,
+    valorNovo: 222400,
+    noitesNovas: { inicio: "2026-10-15", fim: "2026-10-16" },
+    aplicadaPor: null,
+    direito: null,
+    base: null,
+    valorADevolver: null,
+    devolucao: null,
+    resultado: { meses: [{ mes: "2026-10", antes: { bruto: 182400, taxa: -1806, comissao: 27090, parte: 153504 }, depois: { bruto: 222400, taxa: -2202, comissao: 33030, parte: 187168 } }] },
+    tentativas: [{ id: "p2", forma: "pix", situacao: "aprovado", criadoEm: new Date("2026-10-01T15:40:00Z"), desfecho: "alteracao" }],
+  });
+  const diferenca: PagamentoDoPainel = { ...pagamento, id: "22222222-2222-4222-8222-222222222222", desfecho: "alteracao", alteracaoId: ALTERACAO_ID, valor: 40000, valorPago: 40000, taxa: 396, liquido: 39604 };
+  const comAviso: PagamentoDoPainel = {
+    ...pagamento,
+    avisos: ["A liberação deste pagamento passou da data prevista e a devolução de R$ 608,00 continua esperando: confira no painel do Mercado Pago e registre a liberação à mão quando ela aparecer."],
+    avisosSemValores: ["A liberação deste pagamento passou da data prevista e a devolução de parte do valor continua esperando: confira no painel do Mercado Pago e registre a liberação à mão quando ela aparecer."],
+  };
+  m.reserva.mockResolvedValue({ ...reserva, checkout: "2026-10-16", valorBruto: 222400, taxaCanal: 2202, valorLiquido: 220198, observacoes });
+  m.alteracoes.mockResolvedValue([aumento]);
+  m.historico.mockResolvedValue(historico(222400, 40000));
+  m.pagamentos.mockResolvedValue([comAviso, diferenca]);
+  const op = await html();
+  expect(op).toContain("Alteração aplicada");
+  expect(op).toContain("Aprovado: pagou a diferença da alteração");
+  expect(op).toContain("a devolução de parte do valor continua esperando");
+  expect(op).toContain(observacoes);
+  expect(op).not.toMatch(VALORES);
+  // O admin vê os mesmos com os valores (a regra é a permissão, não a falta do dado).
+  m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  expect(await html()).toContain("a devolução de R$ 608,00 continua esperando");
+  m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+
+  // Redução retida pela política (o valor da reserva continua o mesmo, com as datas novas).
+  const retida = alteracao({ direito: "nenhum", base: "prazo", valorADevolver: 0, valorNovo: 182400, devolucao: null, mensagens: { proposta: null, confirmada: null, devolvida: null } });
+  m.reserva.mockResolvedValue({ ...reserva, checkout: "2026-10-14", observacoes: "Alterada em 01/10: de 12/10–15/10 (3 noites, 4 pessoas) para 12/10–14/10 (2 noites, 4 pessoas)." });
+  m.alteracoes.mockResolvedValue([retida]);
+  m.historico.mockResolvedValue(historico(182400, -60800));
+  // O pagamento com uma devolução de cada tipo e as notas livres (que podem trazer valor).
+  const linha = {
+    id: "44444444-4444-4444-8444-444444444444",
+    origem: "alteracao",
+    alteracaoId: ALTERACAO_ID,
+    valor: 60800,
+    situacao: "confirmada" as const,
+    valorConfirmado: 29700,
+    ultimoCodigo: null,
+    avisos: ["devolucao_a_menor"],
+    restanteDe: null,
+    temRestante: false,
+    caixaLancadoEm: null,
+    taxaPerdida: 297,
+    criadoEm: new Date("2026-10-01T15:36:00Z"),
+    confirmadaEm: new Date("2026-10-02T15:00:00Z"),
+    porForaData: null,
+    porForaValor: null,
+    tentativas: 1,
+    falhas: 0,
+    confirmadaPor: "equipe" as const,
+    confirmadaNota: "painel mostra R$ 297,00 devolvidos",
+    porForaNota: "",
+    recusaNoPainelEm: null,
+    paradaEm: null,
+    paradaPeloPrazo: false,
+    aguardandoLiberacao: false,
+    restanteSemReserva: null,
+    acoes: { conferir: true, pedirDeNovo: false, porFora: false, confirmarVista: false, registrarRecusaNoPainel: false, parar: false, registrarTaxa: false, corrigirTaxa: true, pedirRestante: true, restantePorFora: true },
+  };
+  const porFora = { ...linha, id: "55555555-5555-4555-8555-555555555555", situacao: "por_fora" as const, valor: 31100, valorConfirmado: null, avisos: [], taxaPerdida: null, porForaData: "2026-10-03", porForaValor: 31100, porForaNota: "Pix de R$ 311,00 da conta da empresa", restanteDe: linha.id };
+  m.pagamentos.mockResolvedValue([
+    {
+      ...pagamento,
+      situacao: "devolvido_parcial",
+      devolucoes: [linha, porFora],
+      avisos: ["O Mercado Pago devolveu R$ 297,00 de R$ 608,00 pedidos nesta devolução: o que voltou já está no financeiro. Peça o restante ao Mercado Pago ou registre o restante devolvido por fora."],
+      avisosSemValores: ["O Mercado Pago devolveu menos do que foi pedido nesta devolução: o que voltou já está no financeiro. Peça o restante ao Mercado Pago ou registre o restante devolvido por fora."],
+      foraReconhecido: 0,
+      devolvidoLido: 29700,
+      restante: null,
+    },
+  ]);
+  const retidaOp = await html();
+  expect(retidaOp).toContain("Devolução da alteração de 01/10/2026: confirmada pela equipe (vista no painel do Mercado Pago) em 02/10/2026");
+  expect(retidaOp).toContain("Restante de uma devolução: feita por fora em 03/10/2026");
+  expect(retidaOp).toContain("O Mercado Pago devolveu menos do que foi pedido nesta devolução");
+  expect(retidaOp).not.toContain("nota:");
+  // As ações de dinheiro de cada devolução são do financeiro.
+  expect(retidaOp).not.toContain("Pedir o restante ao Mercado Pago");
+  expect(retidaOp).not.toContain("Corrigir taxa que não voltou");
+  expect(retidaOp).not.toMatch(VALORES);
+
+  // Cada resultado de ação no endereço, para a operação: nenhum valor (a devolução da última aplicada sem o valor).
+  m.alteracoes.mockResolvedValue([alteracao()]);
+  m.pagamentos.mockResolvedValue([pagamento]);
+  for (const chave of ["segurada", "aplicada_pedida", "aplicada_liberacao", "aplicada_fora_do_prazo", "aplicada_sem_devolucao", "aplicada", "desistida", "ota", "avisado"]) {
+    const h = await html({ alteracao: chave });
+    expect(h).toContain('role="status"');
+    expect(h).not.toMatch(VALORES);
+  }
+});

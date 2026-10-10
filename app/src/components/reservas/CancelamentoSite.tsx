@@ -19,7 +19,7 @@ import { diaBr, diaHoraBr, NOMES_BASE_CANCELAMENTO, NOMES_CANAL_PEDIDO, NOMES_MO
 import type { CancelamentoDoPainel } from "@/pagamentos/cancelamento-painel";
 import type { PagamentoDoPainel } from "@/pagamentos/consultas";
 import { FormCancelamentoSite, FormDescartarPedido, FormRegistrarPedido, type OpcaoCancelamento } from "./FormCancelamentoSite";
-import { linhaDaDevolucao } from "./PagamentoNoSite";
+import { devolucoesDoCancelamento, linhaDaDevolucao } from "./PagamentoNoSite";
 
 const FUSO = "America/Sao_Paulo";
 const horaSP = (d: Date) => new Intl.DateTimeFormat("pt-BR", { timeZone: FUSO, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d);
@@ -38,6 +38,11 @@ export type PropsCancelamentoSite = {
   reserva: { id: string; codigo: string; estado: EstadoReserva; checkin: string };
   /** O pagamento que confirmou a reserva (desfecho "reserva"). */
   pagamento: PagamentoDoPainel;
+  /**
+   * M8.2d: todos os pagamentos da reserva (o da diferença de uma alteração também): o cancelamento tem uma devolução por
+   * pagamento que conta, e a linha "Devolução" mostra cada uma. Sem eles, só a do pagamento que confirmou.
+   */
+  pagamentos?: readonly PagamentoDoPainel[];
   /** O pedido ou o cancelamento ativo, com o histórico de descartados; null = nenhum. */
   cancelamento: CancelamentoDoPainel | null;
   /** O horário de entrada e a partir de quando o não comparecimento é aceito (null = reserva não encontrada). */
@@ -189,7 +194,7 @@ function Descartados({ c }: { c: CancelamentoDoPainel }) {
  * proprietário, as OTAs, as mensagens ao hóspede e os pedidos descartados. Valores, a nota da decisão e as mensagens com
  * valor só com `financeiro:ler`; as ações só com a permissão de cada uma (o servidor confere de novo).
  */
-export function CancelamentoSite({ reserva, pagamento, cancelamento: c, momentos, editarReserva, editarFinanceiro, verValores, agora }: PropsCancelamentoSite) {
+export function CancelamentoSite({ reserva, pagamento, pagamentos, cancelamento: c, momentos, editarReserva, editarFinanceiro, verValores, agora }: PropsCancelamentoSite) {
   const confirmada = reserva.estado === "confirmada";
   if (!c && !confirmada) return null;
   const agoraSP = { data: hojeISO(FUSO, agora), hora: horaSP(agora) };
@@ -279,8 +284,21 @@ export function CancelamentoSite({ reserva, pagamento, cancelamento: c, momentos
     );
   }
 
-  // Cancelada pela política.
-  const devolucao = c.direito === "integral" ? linhaDaDevolucao(pagamento, verValores) : null;
+  // Cancelada pela política. A devolução de cada pagamento que conta (M8.2d: depois de um aumento, também a do pagamento da
+  // diferença); com uma só, a linha de sempre.
+  const porPagamento = c.direito === "integral" ? devolucoesDoCancelamento(pagamentos ?? [pagamento], verValores) : [];
+  const devolucao: ReactNode =
+    c.direito !== "integral" ? null : porPagamento.length > 1 ? (
+      <ul key="devolucoes" style={{ margin: 0, paddingLeft: 18 }}>
+        {porPagamento.map((x) => (
+          <li key={x.pagamentoId}>
+            {x.rotulo}: {x.linha}
+          </li>
+        ))}
+      </ul>
+    ) : (
+      (porPagamento[0]?.linha ?? linhaDaDevolucao(pagamento, verValores))
+    );
   const linhas: [string, ReactNode][] = [
     ["Pedido recebido em", momentoDoPedido(c)],
     ["Quem cancelou", quemCancelou(c)],

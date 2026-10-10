@@ -9,18 +9,21 @@
  * - Instruções de chegada (endereço completo) só a partir de 2 dias antes da entrada, às 10h no
  *   fuso do imóvel, até o horário de saída. Estar logado não antecipa a liberação.
  * - Tudo restrito à organização do site: reserva de outra empresa no mesmo banco não conta.
- * - Alteração da reserva paga pelo site (M8.2d): enquanto uma alteração está com as novas datas seguradas, a reserva
- *   ganha uma linha com o que ela espera (o pagamento da diferença ou a confirmação) e o link da página da reserva no
- *   site, onde está o resto. Sem valores (a regra do M9.1).
+ * - Alteração da reserva paga pelo site (M8.2d): enquanto uma alteração está com as novas datas seguradas (pela situação
+ *   que vale agora, com a carência de um pagamento da diferença em andamento), a reserva ganha uma linha com o que ela
+ *   espera (o pagamento da diferença ou a confirmação) e o link da página da reserva no site, onde está o resto. Sem
+ *   valores (a regra do M9.1).
  */
-import { and, asc, eq, gt, gte, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, sql } from "drizzle-orm";
 import { emitirCodigo, emailValido, type OpcoesCodigo, type ResultadoPedido, verificarCodigo } from "@/acesso/codigo-email";
 import { normalizarEmail } from "@/acesso/entrada";
 import { lerEmpresa } from "@/configuracoes/empresa";
-import { alteracoesReserva, cotacoes, imoveis, imoveisDetalhes, reservas } from "@/db/schema";
+import { alteracoesReserva, cotacoes, imoveis, imoveisDetalhes, pagamentos, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import type { Correio } from "@/email/correio";
 import { hojeISO, instanteLocal, somarDias } from "@/lib/datas";
+import { situacaoEfetiva } from "@/pagamentos/alteracao-regras";
+import { carenciaNoTravado } from "@/pagamentos/travas";
 import { numeroWhatsapp } from "@/site/site";
 
 // Moram em lib/datas (o cancelamento do M8.2c usa as mesmas); continuam saindo daqui para quem já importava.
@@ -99,22 +102,34 @@ export type ReservaDoHospede = {
   alteracao?: AlteracaoNoPortal | null;
 };
 
-/** A alteração esperando o hóspede: o pagamento da diferença (aumento) ou a confirmação dele, até quando, e onde ver. */
-export type AlteracaoNoPortal = { espera: "pagamento" | "confirmacao"; ate: Date; link: string };
+/**
+ * A alteração esperando o hóspede: o pagamento da diferença (aumento) ou a confirmação dele, até quando, e onde ver.
+ * `pagamentoEmAndamento`: o prazo das novas datas acabou, mas um pagamento da diferença em andamento ainda as segura (a
+ * carência).
+ */
+export type AlteracaoNoPortal = { espera: "pagamento" | "confirmacao"; ate: Date; pagamentoEmAndamento: boolean; link: string };
 
 /**
- * As alterações com as novas datas seguradas e o prazo valendo, por reserva (desta organização). Passado o prazo, a linha
- * some (a página da reserva no site mostra o resto, inclusive um pagamento da diferença ainda em andamento).
+ * As alterações com as novas datas seguradas, por reserva (desta organização), pela situação que vale agora
+ * (`situacaoEfetiva`, a mesma do painel e da página da reserva): no prazo, ou na carência de um pagamento da diferença em
+ * andamento. Vencida a alteração, a linha some (a página da reserva no site mostra o resto).
  */
 async function alteracoesSeguradas(db: Db, organizacaoId: string, reservaIds: string[], agora: Date): Promise<Map<string, AlteracaoNoPortal>> {
   if (!reservaIds.length) return new Map();
   const linhas = await db
-    .select({ reservaId: alteracoesReserva.reservaId, diferenca: alteracoesReserva.diferenca, holdAte: alteracoesReserva.holdAte, codigo: cotacoes.codigo })
+    .select({ id: alteracoesReserva.id, situacao: alteracoesReserva.situacao, reservaId: alteracoesReserva.reservaId, diferenca: alteracoesReserva.diferenca, holdAte: alteracoesReserva.holdAte, codigo: cotacoes.codigo })
     .from(alteracoesReserva)
     .innerJoin(cotacoes, and(eq(cotacoes.id, alteracoesReserva.cotacaoId), eq(cotacoes.organizacaoId, organizacaoId)))
-    .where(and(eq(alteracoesReserva.organizacaoId, organizacaoId), inArray(alteracoesReserva.reservaId, reservaIds), eq(alteracoesReserva.situacao, "segurada"), gt(alteracoesReserva.holdAte, agora)));
+    .where(and(eq(alteracoesReserva.organizacaoId, organizacaoId), inArray(alteracoesReserva.reservaId, reservaIds), eq(alteracoesReserva.situacao, "segurada")));
+  // As tentativas da diferença das que já passaram do prazo (só elas podem estar na carência).
+  const vencidas = linhas.filter((l) => !l.holdAte || l.holdAte.getTime() <= agora.getTime()).map((l) => l.id);
+  const tentativas = vencidas.length ? await db.select().from(pagamentos).where(and(eq(pagamentos.organizacaoId, organizacaoId), inArray(pagamentos.alteracaoId, vencidas))) : [];
+  const carencia = carenciaNoTravado({ tentativas }, agora);
   const r = new Map<string, AlteracaoNoPortal>();
-  for (const l of linhas) if (l.holdAte) r.set(l.reservaId, { espera: l.diferenca > 0 ? "pagamento" : "confirmacao", ate: l.holdAte, link: `/reservar/${encodeURIComponent(l.codigo)}` });
+  for (const l of linhas) {
+    if (!l.holdAte || situacaoEfetiva(l, agora, carencia(l)) !== "segurada") continue;
+    r.set(l.reservaId, { espera: l.diferenca > 0 ? "pagamento" : "confirmacao", ate: l.holdAte, pagamentoEmAndamento: l.holdAte.getTime() <= agora.getTime(), link: `/reservar/${encodeURIComponent(l.codigo)}` });
+  }
   return r;
 }
 

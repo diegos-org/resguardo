@@ -220,6 +220,7 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
             <CancelamentoSite
               reserva={{ id: r.id, codigo: r.codigo, estado: r.estado, checkin: r.checkin }}
               pagamento={pagamentoQueConfirmou}
+              pagamentos={pagamentosSite}
               cancelamento={cancelamentoSite}
               momentos={momentos}
               editarReserva={editarReserva}

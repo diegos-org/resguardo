@@ -84,6 +84,8 @@ export type PagamentoDoHospede = {
   pedidoCancelamentoSemPolitica?: boolean;
   /** M8.2d: a alteração da reserva paga que a página mostra; null sem nenhuma. */
   alteracao?: AlteracaoDoHospede | null;
+  /** M8.2d: a reserva já alterada, como está agora (o resumo da página é o da cotação original). */
+  reservaAtual?: { checkin: string; checkout: string; hospedes: number | null; valor: number | null } | null;
 };
 
 /**
@@ -206,6 +208,7 @@ export function paraOHospede(v: VistaPagamentoHospede): PagamentoDoHospede {
     pedidoCancelamentoEm: iso(v.pedidoCancelamentoEm),
     ...(v.pedidoCancelamentoSemPolitica ? { pedidoCancelamentoSemPolitica: true } : {}),
     ...(v.alteracao ? { alteracao: alteracaoParaOHospede(v.alteracao) } : {}),
+    ...(v.reservaAtual ? { reservaAtual: v.reservaAtual } : {}),
   };
 }
 

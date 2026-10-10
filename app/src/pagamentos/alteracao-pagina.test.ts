@@ -65,13 +65,19 @@ describe("a página da reserva mostra a alteração", () => {
     );
     expect(t.resumo).toContain("Versão 1 da Política de cancelamento, aceita no pagamento da reserva");
     expect(t.resumo).not.toMatch(/Beds24|visitante@example\.com|99999/);
-    // O pagamento da reserva continua o mesmo (a diferença tem a vista própria).
+    // O pagamento da reserva continua o mesmo (a diferença tem a vista própria). Segurada, a reserva ainda não mudou.
     expect(v?.estado).toBe((await pagina(x.cotacaoId, minutos(21)))?.estado);
+    expect(v?.reservaAtual).toBeUndefined();
 
     await pagarDiferenca(c, x.cotacaoId, resultado.alteracaoId, { quando: minutos(25) });
     const depois = await pagina(x.cotacaoId, minutos(30));
     expect(depois?.alteracao).toMatchObject({ situacao: "aplicada", pagamento: null, devolucao: null });
     expect(texto(depois!.alteracao!, x.reservaCodigo).linhas[0]).toBe(`Alteração confirmada em 01/10: 12/10–16/10, 4 pessoas, R$ 2.352,00. ${TEXTOS_SITE_INICIAIS.alteracaoConfirmada}`);
+    // A reserva como está agora (o resumo da página é o da cotação original), também depois que a alteração sai do quadro.
+    expect(depois?.reservaAtual).toEqual({ checkin: "2026-10-12", checkout: "2026-10-16", hospedes: 4, valor: 235200 });
+    const muitoDepois = await pagina(x.cotacaoId, minutos(60 * 24 * 40));
+    expect(muitoDepois?.alteracao ?? null).toBeNull();
+    expect(muitoDepois?.reservaAtual).toEqual({ checkin: "2026-10-12", checkout: "2026-10-16", hospedes: 4, valor: 235200 });
     expect(await semDadosDoHospede(db)).toEqual([]);
   });
 

@@ -163,6 +163,7 @@ export default async function PaginaCotacao({ params }: PageProps<"/reservar/[co
           email={conteudo.email}
           pagamentoNoSite={pagamentoNoSite}
           comCartao={cartaoNoPagamento}
+          reservaAtual={pagamento?.reservaAtual && reservaCodigo ? { codigo: reservaCodigo, ...pagamento.reservaAtual } : null}
           formulario={
             mostraFormulario ? (
               <FormSegurar codigo={codigo} minutos={regras.site.minutosHold} acao={segurarDatasAcao} comPagamento={pagamentoNoSite} comCartao={cartaoNoPagamento} privacidade={privacidade} />

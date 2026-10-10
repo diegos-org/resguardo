@@ -25,6 +25,12 @@ type Props = {
   valorNaPergunta?: string;
   /** Nome do campo de data (AAAA-MM-DD) cujo valor entra na pergunta no lugar de `{data}` (dd/mm/aaaa), na hora do clique. */
   dataNaPergunta?: string;
+  /**
+   * M8.2d (D17): o restante que vai sair, no lugar de `{restante}`, calculado na hora do clique: `de` (centavos) menos o
+   * valor digitado no campo `campo` (o devolvido que o painel do Mercado Pago mostra). Quem confirma vê o valor que sai, não
+   * um número que o sistema não sabe.
+   */
+  restanteNaPergunta?: { campo: string; de: number };
   /** Botão secundário (ações raras ou de correção). */
   discreto?: boolean;
   children?: ReactNode;
@@ -35,7 +41,7 @@ type Props = {
  * mensagem que o servidor devolveu — de sucesso ou a recusa do domínio, como veio. Envia pelo `onSubmit` (não pelo
  * `action` do formulário) para o React não limpar os campos: numa recusa, o que foi digitado continua ali para corrigir.
  */
-export function FormAcaoPagamento({ acao, rotulo, nome, pagamentoId, devolucaoId, pergunta, valorNaPergunta, dataNaPergunta, discreto, children }: Props) {
+export function FormAcaoPagamento({ acao, rotulo, nome, pagamentoId, devolucaoId, pergunta, valorNaPergunta, dataNaPergunta, restanteNaPergunta, discreto, children }: Props) {
   const [estado, enviar, enviando] = useActionState(acao, {});
   const formulario = useRef<HTMLFormElement>(null);
   const classe = discreto ? styles.pequeno : undefined;
@@ -51,6 +57,11 @@ export function FormAcaoPagamento({ acao, rotulo, nome, pagamentoId, devolucaoId
     if (dataNaPergunta) {
       const data = String(dados.get(dataNaPergunta) ?? "").trim();
       texto = texto.replace("{data}", /^\d{4}-\d{2}-\d{2}$/.test(data) ? data.split("-").reverse().join("/") : `"${data}"`);
+    }
+    if (restanteNaPergunta) {
+      const centavos = reaisParaCentavos(String(dados.get(restanteNaPergunta.campo) ?? "").trim());
+      const cabe = typeof centavos === "number" && centavos > 0 && centavos <= restanteNaPergunta.de;
+      texto = texto.replace("{restante}", cabe ? formatBRL(restanteNaPergunta.de - centavos) : "(confira o valor informado)");
     }
     return texto;
   };
@@ -71,7 +82,7 @@ export function FormAcaoPagamento({ acao, rotulo, nome, pagamentoId, devolucaoId
       {children}
       <div className={discreto ? undefined : styles.acoes}>
         {pergunta ? (
-          <BotaoConfirmar pergunta={valorNaPergunta || dataNaPergunta ? perguntaComValor : pergunta} disabled={enviando} className={classe}>
+          <BotaoConfirmar pergunta={valorNaPergunta || dataNaPergunta || restanteNaPergunta ? perguntaComValor : pergunta} disabled={enviando} className={classe}>
             {enviando ? "Aguarde…" : rotulo}
           </BotaoConfirmar>
         ) : (

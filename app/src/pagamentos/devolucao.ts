@@ -601,17 +601,35 @@ export const ERRO_FORA_SEM_VALOR = "O Mercado Pago não informou quanto já foi 
 /**
  * D17: quanto do pagamento a equipe reconhece como devolvido fora do sistema (painel do Mercado Pago), para o restante: o
  * que a leitura mostra além das nossas devoluções; sem o valor na leitura, o que a equipe informa (o painel do Mercado
- * Pago). Só cresce. Sem devolução inexplicada, o de antes.
+ * Pago), até o pago menos as OUTRAS devoluções (`outras`: sem a devolução que esta ação refaz com o restante — a parada
+ * pedida de novo ou registrada por fora). Só cresce. Sem devolução inexplicada, o de antes.
  */
-function reconhecidoFora(p: Pagamento, devs: readonly Devolucao[], informado: number | undefined): { ok: true; valor: number } | { ok: false; erro: string } {
+function reconhecidoFora(p: Pagamento, devs: readonly Devolucao[], outras: readonly Devolucao[], informado: number | undefined): { ok: true; valor: number } | { ok: false; erro: string } {
   if (!devolucaoInexplicada(p, devs)) return { ok: true, valor: p.devolvidoForaReconhecido };
   if (devolvidoForaSemValor(p, devs)) {
     if (informado === undefined) return { ok: false, erro: ERRO_FORA_SEM_VALOR };
-    const teto = valorPagoAprovado(p) - comprometidoNoPagamento(devs);
+    const teto = valorPagoAprovado(p) - comprometidoNoPagamento(outras);
     if (!Number.isSafeInteger(informado) || informado < 1 || informado > teto) return { ok: false, erro: `Informe o valor devolvido pelo painel do Mercado Pago (de R$ 0,01 a ${formatBRL(teto)}).` };
     return { ok: true, valor: Math.max(p.devolvidoForaReconhecido, informado) };
   }
   return { ok: true, valor: Math.max(p.devolvidoForaReconhecido, p.devolvidoLido - devolvidoProprio(devs)) };
+}
+
+/**
+ * D17, para a tela: o que "Devolver o restante" do pagamento sem reserva devolve agora (pelo Mercado Pago ou por fora, pelo
+ * pagamento ou pela devolução `dev` parada que se refaz) — a mesma conta de `devolverPeloProvedor` e
+ * `registrarDevolucaoPorFora`: o pago menos as outras devoluções e o devolvido fora reconhecido (o da leitura). Quando o
+ * Mercado Pago não disse quanto devolveu (`semValor`), o restante é `base` menos o valor que a equipe informa (o do painel
+ * dele): a tela não mostra um número que não sabe.
+ */
+export type RestanteSemReserva = { semValor: false; valor: number } | { semValor: true; base: number };
+export function restanteSemReserva(p: Pagamento, devs: readonly Devolucao[], dev: Devolucao | null = null): RestanteSemReserva {
+  // Pelo pagamento (sem `dev`): a devolução principal dele, a que o domínio refaz (`principalSemReserva`).
+  const alvo = dev ?? principalSemReserva(devs);
+  const outras = devs.filter((x) => x.id !== alvo?.id);
+  if (devolvidoForaSemValor(p, devs)) return { semValor: true, base: valorPagoAprovado(p) - comprometidoNoPagamento(outras) };
+  const fora = reconhecidoFora(p, devs, outras, undefined);
+  return { semValor: false, valor: saldoDevolvivel({ ...p, devolvidoForaReconhecido: fora.ok ? fora.valor : p.devolvidoForaReconhecido }, outras) };
 }
 
 async function gravarReconhecido(tx: Db, organizacaoId: string, p: Pagamento, valor: number, autorId: string | null, agora: Date): Promise<void> {
@@ -667,7 +685,7 @@ export async function devolverPeloProvedor(
     let valor = dev?.valor ?? 0;
     if (!dev || dev.origem === "sem_reserva") {
       // D17: o restante do pagamento sem reserva, com o devolvido fora do sistema reconhecido agora.
-      const fora = reconhecidoFora(p, devs, o.valorForaInformado);
+      const fora = reconhecidoFora(p, devs, outras, o.valorForaInformado);
       if (!fora.ok) return fora;
       await gravarReconhecido(tx, organizacaoId, p, fora.valor, autorId, agora);
       valor = saldoDevolvivel(p, outras);
@@ -931,7 +949,7 @@ export async function registrarDevolucaoPorFora(
       if (!dev || dev.origem === "sem_reserva") {
         // D17: o restante, com o que o painel do Mercado Pago já devolveu reconhecido (gravado só se o valor bater). Sem
         // order para reler (passou do tempo em que o Mercado Pago a guarda), vale o último pago que o sistema conferiu.
-        const fora = reconhecidoFora(p, devs, d.valorForaInformado);
+        const fora = reconhecidoFora(p, devs, devs.filter((x) => x.id !== dev?.id), d.valorForaInformado);
         if (!fora.ok) return fora;
         reconhecido = fora.valor;
         devido = saldoDevolvivel({ ...p, devolvidoForaReconhecido: reconhecido }, devs.filter((x) => x.id !== dev?.id));

@@ -439,4 +439,13 @@ describe("alteração da reserva paga pelo site (M8.2d)", () => {
     expect(await html()).not.toContain("Alteração");
     expect(m.aceiteDiferenca).not.toHaveBeenCalled();
   });
+
+  it("reserva já alterada: o resumo diz que é o da cotação original e mostra as datas, as pessoas e o valor de agora (também depois que a alteração sai do quadro)", async () => {
+    m.vistaPagamento.mockResolvedValue({ ...confirmada(null), reservaAtual: { checkin: "2026-10-12", checkout: "2026-10-16", hospedes: 4, valor: 235200 } });
+    const h = await html();
+    expect(h).toContain("A sua reserva <strong>SCL-TESTE1</strong> foi alterada depois desta cotação: agora é de 12/10/2026 a 16/10/2026 · 4 noites · 4 pessoas · valor da reserva R$ 2.352,00. O resumo abaixo é o da cotação original.");
+    expect(h).not.toMatch(/Beds24/i);
+    m.vistaPagamento.mockResolvedValue(confirmada(null));
+    expect(await html()).not.toContain("foi alterada depois desta cotação");
+  });
 });

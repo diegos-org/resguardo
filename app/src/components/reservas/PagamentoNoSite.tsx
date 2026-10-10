@@ -3,6 +3,7 @@ import { BotaoCopiar } from "@/components/BotaoCopiar";
 import styles from "@/components/formularios.module.css";
 import { FormAcaoPagamento } from "@/components/pagamentos/FormAcaoPagamento";
 import { DOCUMENTOS_LEGAIS, PAGINAS_LEGAIS } from "@/configuracoes/paginas-legais-texto";
+import type { SituacaoDevolucao } from "@/db/schema";
 import { centavosParaCampo } from "@/lib/dinheiro-form";
 import { formatBRL } from "@/lib/money";
 import {
@@ -149,20 +150,39 @@ const DICA_DO_CODIGO: Partial<Record<string, string>> = {
   transitorio: "o Mercado Pago pediu para esperar: o sistema tenta de novo sozinho",
 };
 
-/** A situação da devolução em palavras (M8.2c: também a recusa do painel registrada, a parada e a que nunca foi pedida). */
-function situacaoDaDevolucao(d: NonNullable<PagamentoDoPainel["devolucao"]>): string {
-  if (d.situacao === "recusada" && d.recusaNoPainelEm) return "recusada no painel do Mercado Pago (registrado pela equipe): a devolução por fora fica liberada";
-  if (d.situacao === "recusada" && d.paradaEm) return "parada pela equipe depois do prazo de leitura do Mercado Pago";
+/**
+ * A recusada que não é uma recusa do Mercado Pago, em palavras (a mesma na linha "Devolução" e na linha de cada devolução):
+ * a recusa do painel registrada pela equipe, a parada pela equipe e a parada pelo prazo; null = as outras.
+ */
+function recusaEmPalavras(d: { situacao: SituacaoDevolucao; recusaNoPainelEm?: Date | null; paradaEm?: Date | null; paradaPeloPrazo?: boolean }): string | null {
+  if (d.situacao !== "recusada") return null;
+  if (d.recusaNoPainelEm) return "recusada no painel do Mercado Pago (registrado pela equipe): a devolução por fora fica liberada";
+  if (d.paradaEm) return "parada pela equipe depois do prazo de leitura do Mercado Pago";
   // Parada pelo prazo (pagamento com mais de 78 dias, M8.2c), pela regra do domínio: o Mercado Pago não recusou nada; o
   // sistema não pede mais. A parada por outro motivo (devolvido em parte, contestado) não é esta: o aviso dela explica.
-  if (d.situacao === "recusada" && d.paradaPeloPrazo)
-    return "parada pelo prazo: o pagamento tem mais de 78 dias e o sistema não pede mais a devolução ao Mercado Pago (devolva pelo painel dele e confirme aqui, ou por fora)";
-  return DEVOLUCAO[d.situacao];
+  if (d.paradaPeloPrazo) return "parada pelo prazo: o pagamento tem mais de 78 dias e o sistema não pede mais a devolução ao Mercado Pago (devolva pelo painel dele e confirme aqui, ou por fora)";
+  return null;
+}
+
+/** A situação da devolução em palavras (M8.2c: também a recusa do painel registrada, a parada e a que nunca foi pedida). */
+function situacaoDaDevolucao(d: NonNullable<PagamentoDoPainel["devolucao"]>): string {
+  return recusaEmPalavras(d) ?? DEVOLUCAO[d.situacao];
 }
 
 /** A linha "Devolução" do quadro (a mesma do quadro do cancelamento): situação, valor, datas, pedidos e taxa que não voltou. */
 export function linhaDaDevolucao(p: PagamentoDoPainel, verValores: boolean): string | null {
   return devolucao(p, verValores);
+}
+
+/**
+ * As devoluções do cancelamento (M8.2d, D22: uma por pagamento que conta — depois de um aumento, a do pagamento da
+ * reserva e a do pagamento da diferença), cada uma com o pagamento de onde sai e a linha "Devolução" dela. Vazia quando
+ * nenhum pagamento tem a devolução do cancelamento como a que manda (quem chama usa a linha do pagamento que confirmou).
+ */
+export function devolucoesDoCancelamento(pagamentos: readonly PagamentoDoPainel[], verValores: boolean): { pagamentoId: string; rotulo: string; linha: string }[] {
+  return pagamentos
+    .filter((p) => (p.desfecho === "reserva" || p.desfecho === "alteracao") && p.devolucao?.origem === "cancelamento")
+    .map((p) => ({ pagamentoId: p.id, rotulo: `${FORMA[p.forma]} de ${dia(p.criadoEm)}${p.desfecho === "alteracao" ? " (a diferença da alteração)" : ""}`, linha: devolucao(p, verValores)! }));
 }
 
 function devolucao(p: PagamentoDoPainel, verValores: boolean): string | null {
@@ -186,6 +206,12 @@ function devolucao(p: PagamentoDoPainel, verValores: boolean): string | null {
   return partes.join(" · ");
 }
 
+/**
+ * D17: de onde sai o restante quando o Mercado Pago não disse quanto já devolveu (a pergunta tira dele o valor do painel
+ * informado): o pago, ou o que ainda se pode devolver depois das outras devoluções do pagamento.
+ */
+const baseDoRestante = (base: number, pago: number) => `${base === pago ? "o pago" : "o que ainda se pode devolver"} (${formatBRL(base)})`;
+
 /** De onde vem a devolução (M8.2d): da alteração (com o dia), do cancelamento, do pagamento sem reserva, ou o restante de outra. */
 function origemDaDevolucao(d: DevolucaoDoPainel, alteracoes: Props["alteracoes"]): string {
   if (d.restanteDe) return "Restante de uma devolução";
@@ -198,15 +224,36 @@ function origemDaDevolucao(d: DevolucaoDoPainel, alteracoes: Props["alteracoes"]
   return "Devolução";
 }
 
-/** A situação de uma devolução em palavras (M8.2d): esperando a liberação, pedida, confirmada, por fora, recusada ou substituída. */
+/**
+ * A situação de uma devolução em palavras (M8.2d), com os detalhes da linha "Devolução" de antes (M8.2a, M8.2c): esperando a
+ * liberação; pedida (e quantos pedidos e falhas); confirmada (pela equipe, com a nota); por fora (com a nota); substituída;
+ * recusada — pela recusa do painel registrada, parada pela equipe ou pelo prazo, ou pelo aviso dela (três recusas, parada
+ * por uma devolução que o sistema não pediu, o restante recusado). As notas são texto livre: só com `financeiro:ler`.
+ */
 function situacaoDeUmaDevolucao(p: PagamentoDoPainel, d: DevolucaoDoPainel, verValores: boolean): string {
   if (d.situacao === "pedida" && d.aguardandoLiberacao) return `aguardando a liberação do pagamento${p.liberacaoPrevistaEm ? ` (prevista para ${dia(p.liberacaoPrevistaEm)})` : ""}`;
-  if (d.situacao === "pedida") return "pedida ao Mercado Pago, aguardando confirmação";
-  if (d.situacao === "confirmada")
-    return `confirmada${d.confirmadaEm ? ` em ${dia(d.confirmadaEm)}` : ""}${verValores && d.valorConfirmado !== null && d.valorConfirmado !== d.valor ? ` (o Mercado Pago devolveu ${formatBRL(d.valorConfirmado)})` : ""}`;
-  if (d.situacao === "por_fora") return `feita por fora${d.porForaData ? ` em ${dataBr(d.porForaData)}` : ""}${verValores && d.porForaValor !== null && d.porForaValor !== d.valor ? ` (${formatBRL(d.porForaValor)})` : ""}`;
-  if (d.situacao === "substituida") return DEVOLUCAO.substituida;
-  if (d.avisos.includes("devolucao_fora_do_prazo") && !d.avisos.includes("devolucao_falhou")) return "parada pelo prazo: o pagamento tem mais de 78 dias (devolva pelo painel do Mercado Pago e confirme aqui, ou por fora)";
+  const partes: string[] = [];
+  if (d.situacao === "pedida") {
+    partes.push(DEVOLUCAO.pedida);
+    if (d.tentativas) partes.push(`${d.tentativas} pedido(s) ao Mercado Pago${d.falhas ? `, ${d.falhas} falha(s)` : ""}`);
+  } else if (d.situacao === "confirmada") {
+    const valorVisto = verValores && d.valorConfirmado !== null && d.valorConfirmado !== d.valor ? ` (o Mercado Pago devolveu ${formatBRL(d.valorConfirmado)})` : "";
+    partes.push(`confirmada${d.confirmadaPor === "equipe" ? " pela equipe (vista no painel do Mercado Pago)" : ""}${d.confirmadaEm ? ` em ${dia(d.confirmadaEm)}` : ""}${valorVisto}`);
+    if (verValores && d.confirmadaPor === "equipe" && d.confirmadaNota) partes.push(`nota: ${d.confirmadaNota}`);
+  } else if (d.situacao === "por_fora") {
+    partes.push(`feita por fora${d.porForaData ? ` em ${dataBr(d.porForaData)}` : ""}${verValores && d.porForaValor !== null && d.porForaValor !== d.valor ? ` (${formatBRL(d.porForaValor)})` : ""}`);
+    if (verValores && d.porForaNota) partes.push(`nota: ${d.porForaNota}`);
+  } else if (d.situacao === "substituida") partes.push(DEVOLUCAO.substituida);
+  else partes.push(recusaEmPalavras(d) ?? recusadaPeloAviso(d));
+  return partes.join(" · ");
+}
+
+/** Por que a devolução está recusada, pelo aviso dela (o aviso do pagamento explica e diz o que fazer). */
+function recusadaPeloAviso(d: DevolucaoDoPainel): string {
+  if (d.avisos.includes("devolucao_a_menor")) return "o Mercado Pago recusou o pedido deste restante: confira no painel do Mercado Pago (veja o aviso do pagamento)";
+  if (d.avisos.includes("devolucao_parada"))
+    return "parada: o Mercado Pago mostra uma devolução que o sistema não pediu, uma contestação ou outra situação neste pagamento (veja o aviso do pagamento)";
+  if (d.avisos.includes("devolucao_falhou")) return DEVOLUCAO.recusada;
   return "recusada ou parada: veja o aviso do pagamento e confira no painel do Mercado Pago";
 }
 
@@ -234,6 +281,19 @@ function Devolucoes({ p, verValores, editar, hoje, alteracoes }: { p: PagamentoD
         const restante = d.valorConfirmado !== null ? d.valor - d.valorConfirmado : 0;
         const dica = dicaDaDevolucao(p, d);
         const a = d.acoes;
+        // D17: a do pagamento sem reserva, pedida de novo ou registrada por fora, sai pelo restante do pagamento (o domínio
+        // refaz o valor); sem o Mercado Pago dizer quanto já devolveu, a equipe informa o valor do painel dele.
+        const rs = d.restanteSemReserva;
+        const peloRestante = !!rs && (a.pedirDeNovo || a.porFora) && (rs.semValor || rs.valor !== d.valor);
+        const semValor = !!rs && rs.semValor;
+        const valorQueSai = rs && !rs.semValor ? rs.valor : d.valor;
+        const campoDoPainel = semValor && (
+          <label style={{ flex: "0 1 280px" }}>
+            O Mercado Pago não informou quanto já foi devolvido: informe o valor que aparece no painel dele (R$)
+            <input name="valorForaInformado" inputMode="decimal" required />
+          </label>
+        );
+        const restanteNaPergunta = rs?.semValor && verValores ? { campo: "valorForaInformado", de: rs.base } : undefined;
         return (
           <div key={d.id} aria-label={`${origemDaDevolucao(d, alteracoes)}${valor}`} style={{ borderLeft: "3px solid var(--scl-borda)", paddingLeft: 8, display: "flex", flexDirection: "column", gap: 6 }}>
             <span>
@@ -242,6 +302,15 @@ function Devolucoes({ p, verValores, editar, hoje, alteracoes }: { p: PagamentoD
               {verValores && d.taxaPerdida !== null ? ` · taxa que ficou com o Mercado Pago: ${formatBRL(d.taxaPerdida)}` : ""}
             </span>
             {dica && <span style={{ color: "var(--scl-texto-2)" }}>{dica}</span>}
+            {editar && peloRestante && (
+              <span style={{ color: "var(--scl-texto-2)" }}>
+                {semValor
+                  ? "Pedida de novo ou registrada por fora, esta devolução sai pelo restante do pagamento: o pago menos o que o painel do Mercado Pago mostra devolvido (ele não informou quanto: informe o valor que aparece lá)."
+                  : verValores
+                    ? `Pedida de novo ou registrada por fora, esta devolução sai pelo restante do pagamento: ${formatBRL(valorQueSai)} (o Mercado Pago já mostra ${formatBRL((p.valorPago ?? p.valor) - valorQueSai)} devolvidos).`
+                    : "Pedida de novo ou registrada por fora, esta devolução sai pelo restante do pagamento (o Mercado Pago já mostra parte dele devolvida)."}
+              </span>
+            )}
             {editar && (
               <>
                 {a.pedirDeNovo && (
@@ -251,8 +320,16 @@ function Devolucoes({ p, verValores, editar, hoje, alteracoes }: { p: PagamentoD
                     devolucaoId={d.id}
                     rotulo="Pedir a devolução de novo"
                     nome="Pedir a devolução de novo"
-                    pergunta={`Pedir de novo ao Mercado Pago esta devolução${valor}? Confira antes no painel do Mercado Pago que a anterior não saiu.`}
-                  />
+                    pergunta={
+                      semValor
+                        ? `Pedir de novo ao Mercado Pago esta devolução pelo restante do pagamento${restanteNaPergunta ? `: {restante}, que é ${baseDoRestante(restanteNaPergunta.de, p.valorPago ?? p.valor)} menos os {valor} que o painel do Mercado Pago mostra devolvidos` : ""}? Confira antes no painel do Mercado Pago que a anterior não saiu.`
+                        : `Pedir de novo ao Mercado Pago esta devolução${peloRestante ? ", pelo restante do pagamento" : ""}${verValores ? ` (${formatBRL(valorQueSai)})` : ""}? Confira antes no painel do Mercado Pago que a anterior não saiu.`
+                    }
+                    valorNaPergunta={restanteNaPergunta ? "valorForaInformado" : undefined}
+                    restanteNaPergunta={restanteNaPergunta}
+                  >
+                    {campoDoPainel}
+                  </FormAcaoPagamento>
                 )}
                 {a.pedirRestante && (
                   <FormAcaoPagamento
@@ -359,7 +436,13 @@ function Devolucoes({ p, verValores, editar, hoje, alteracoes }: { p: PagamentoD
                     rotulo="Registrar devolução feita por fora"
                     nome="Registrar devolução feita por fora"
                     discreto
-                    pergunta={`Registrar que esta devolução${valor} já voltou ao hóspede por fora do Mercado Pago? Vale só o valor desta devolução, e antes o sistema confere no Mercado Pago que ela não foi feita por lá. Depois, ela não pode mais ser pedida ao Mercado Pago.${cartao ? " O hóspede pode também contestar a cobrança no cartão e receber de novo: só registre se a devolução já foi feita e combinada com ele." : ""}`}
+                    pergunta={`${
+                      peloRestante
+                        ? `Registrar que ${verValores ? "{valor}" : "o restante do pagamento"} já voltou ao hóspede por fora do Mercado Pago? Vale só o restante do pagamento${verValores ? (restanteNaPergunta ? `: {restante}, que é ${baseDoRestante(restanteNaPergunta.de, p.valorPago ?? p.valor)} menos o que o painel do Mercado Pago mostra devolvido` : ` (${formatBRL(valorQueSai)})`) : ""}, e antes o sistema confere no Mercado Pago que ele não foi devolvido por lá. Depois, esta devolução não pode mais ser pedida ao Mercado Pago.`
+                        : `Registrar que esta devolução${valor} já voltou ao hóspede por fora do Mercado Pago? Vale só o valor desta devolução, e antes o sistema confere no Mercado Pago que ela não foi feita por lá. Depois, ela não pode mais ser pedida ao Mercado Pago.`
+                    }${cartao ? " O hóspede pode também contestar a cobrança no cartão e receber de novo: só registre se a devolução já foi feita e combinada com ele." : ""}`}
+                    valorNaPergunta={peloRestante && verValores ? "valor" : undefined}
+                    restanteNaPergunta={restanteNaPergunta}
                   >
                     <label style={{ flex: "0 1 180px" }}>
                       Data da devolução
@@ -367,8 +450,9 @@ function Devolucoes({ p, verValores, editar, hoje, alteracoes }: { p: PagamentoD
                     </label>
                     <label style={{ flex: "0 1 160px" }}>
                       Valor devolvido (R$)
-                      <input name="valor" inputMode="decimal" defaultValue={verValores ? centavosParaCampo(d.valor) : ""} required />
+                      <input name="valor" inputMode="decimal" defaultValue={verValores && !semValor ? centavosParaCampo(valorQueSai) : ""} required />
                     </label>
+                    {campoDoPainel}
                     <label style={{ flex: "1 1 200px" }}>
                       Nota (opcional)
                       <input name="nota" maxLength={300} placeholder="ex.: Pix da conta da empresa em 10/10" />
@@ -510,10 +594,19 @@ function Tentativa({ p, verValores, editar, hoje, alteracoes }: { p: PagamentoDo
         corrigirTaxaPerdida: false,
       }
     : p.acoes;
-  // O restante de um pagamento sem reserva já devolvido em parte (D17): o que ainda se pode devolver, não o pago.
-  const restante = porDevolucao && p.saldoDevolvivel !== undefined && (p.situacao === "devolvido_parcial" || (p.foraReconhecido ?? 0) > 0 || (p.devolvidoLido ?? 0) > 0 || linhasDeDevolucao.length > 0);
+  // O restante de um pagamento sem reserva já devolvido em parte (D17): o que o domínio devolve agora (o pago menos as
+  // devoluções e o devolvido fora do sistema), não o pago; sem o Mercado Pago dizer quanto já devolveu, nenhum número: o
+  // restante sai do valor do painel dele que a equipe informa (e a pergunta mostra a conta na hora).
+  const rest = porDevolucao ? (p.restante ?? null) : null;
+  const restante = !!rest && (p.situacao === "devolvido_parcial" || (p.foraReconhecido ?? 0) > 0 || (p.devolvidoLido ?? 0) > 0 || linhasDeDevolucao.length > 0);
+  const restanteSemValor = restante && !!rest?.semValor;
+  const pago = p.valorPago ?? p.valor;
+  const valorDoRestante = rest && !rest.semValor ? rest.valor : null;
+  const restanteNaPergunta = restanteSemValor && verValores && rest?.semValor ? { campo: "valorForaInformado", de: rest.base } : undefined;
   // O que a devolução integral devolve: o que o hóspede pagou (a mesma regra do domínio), não o total pedido.
-  const valorTexto = verValores ? ` de ${formatBRL(restante ? p.saldoDevolvivel! : (p.valorPago ?? p.valor))}` : "";
+  const valorTexto = verValores ? (restante ? (valorDoRestante !== null ? ` de ${formatBRL(valorDoRestante)}` : "") : ` de ${formatBRL(pago)}`) : "";
+  // D26: os avisos com valores só para quem lê o financeiro; sem os textos sem valores (tentativa montada à mão), nenhum com R$.
+  const avisos = verValores ? p.avisos : (p.avisosSemValores ?? p.avisos.filter((t) => !t.includes("R$")));
   // M8.2c: a devolução do cancelamento pela política (a reserva fica como está; o financeiro do cancelamento é acertado).
   const doCancelamento = p.devolucao?.origem === "cancelamento";
   return (
@@ -537,9 +630,9 @@ function Tentativa({ p, verValores, editar, hoje, alteracoes }: { p: PagamentoDo
       </div>
       <Linhas linhas={linhas} />
       {porDevolucao && <Devolucoes p={p} verValores={verValores} editar={editar} hoje={hoje} alteracoes={alteracoes} />}
-      {p.avisos.length > 0 && (
+      {avisos.length > 0 && (
         <ul role="note" className={styles.alerta} style={{ margin: 0, paddingLeft: 28, fontSize: "0.875rem" }}>
-          {p.avisos.map((t) => (
+          {avisos.map((t) => (
             <li key={t}>{cartao && t === AVISOS_PAGAMENTO.devolucao_falhou ? DEVOLUCAO_FALHOU_CARTAO : t}</li>
           ))}
         </ul>
@@ -599,14 +692,22 @@ function Tentativa({ p, verValores, editar, hoje, alteracoes }: { p: PagamentoDo
                 pagamentoId={p.id}
                 rotulo="Devolver o restante ao hóspede"
                 nome="Devolver o restante ao hóspede"
-                pergunta={`Devolver ao hóspede o restante${valorTexto} pelo Mercado Pago? A devolução não pode ser desfeita.`}
+                pergunta={
+                  restanteNaPergunta
+                    ? `Devolver ao hóspede o restante pelo Mercado Pago: {restante}, que é ${baseDoRestante(restanteNaPergunta.de, pago)} menos os {valor} que o painel do Mercado Pago mostra devolvidos? A devolução não pode ser desfeita.`
+                    : `Devolver ao hóspede o restante${valorTexto} pelo Mercado Pago? A devolução não pode ser desfeita.`
+                }
+                valorNaPergunta={restanteNaPergunta ? "valorForaInformado" : undefined}
+                restanteNaPergunta={restanteNaPergunta}
               >
                 <p style={{ flexBasis: "100%", margin: 0, fontSize: "0.875rem", color: "var(--scl-texto-2)" }}>
-                  {verValores
-                    ? `Devolver o restante ao hóspede (${formatBRL(p.saldoDevolvivel!)}): o Mercado Pago já mostra ${formatBRL(p.devolvidoLido ?? 0)} devolvidos.`
-                    : "Devolver o restante ao hóspede: o Mercado Pago já mostra parte deste pagamento devolvida."}
+                  {restanteSemValor
+                    ? `Devolver o restante ao hóspede: o Mercado Pago mostra parte deste pagamento devolvida, sem dizer quanto. O restante é ${verValores && rest?.semValor ? baseDoRestante(rest.base, pago) : "o pago"} menos o valor que o painel dele mostra devolvido.`
+                    : verValores && valorDoRestante !== null
+                      ? `Devolver o restante ao hóspede (${formatBRL(valorDoRestante)}): o Mercado Pago já mostra ${formatBRL(pago - valorDoRestante)} devolvidos.`
+                      : "Devolver o restante ao hóspede: o Mercado Pago já mostra parte deste pagamento devolvida."}
                 </p>
-                {p.foraSemValor && (
+                {restanteSemValor && (
                   <label style={{ flex: "0 1 280px" }}>
                     O Mercado Pago não informou quanto já foi devolvido: informe o valor que aparece no painel dele (R$)
                     <input name="valorForaInformado" inputMode="decimal" required />
@@ -686,7 +787,8 @@ function Tentativa({ p, verValores, editar, hoje, alteracoes }: { p: PagamentoDo
               rotulo="Registrar devolução feita por fora"
               nome="Registrar devolução feita por fora"
               discreto
-              pergunta={`Registrar que o dinheiro já voltou ao hóspede por fora do Mercado Pago? Vale só ${restante ? "o restante" : "o valor integral pago"}, e antes o sistema confere no Mercado Pago que a devolução não foi feita por lá. ${doCancelamento ? "A devolução não pode mais ser pedida ao Mercado Pago. O financeiro do cancelamento fica acertado com a data informada." : "O pagamento fica encerrado como devolvido por fora e não pode mais ser devolvido pelo Mercado Pago."}${cartao ? " O hóspede pode também contestar a cobrança no cartão e receber de novo: só registre se a devolução já foi feita e combinada com ele." : ""}`}
+              pergunta={`Registrar que o dinheiro já voltou ao hóspede por fora do Mercado Pago? Vale só ${restante ? (restanteNaPergunta ? `o restante ({restante}, que é ${baseDoRestante(restanteNaPergunta.de, pago)} menos o que o painel do Mercado Pago mostra devolvido)` : "o restante") : "o valor integral pago"}, e antes o sistema confere no Mercado Pago que a devolução não foi feita por lá. ${doCancelamento ? "A devolução não pode mais ser pedida ao Mercado Pago. O financeiro do cancelamento fica acertado com a data informada." : "O pagamento fica encerrado como devolvido por fora e não pode mais ser devolvido pelo Mercado Pago."}${cartao ? " O hóspede pode também contestar a cobrança no cartão e receber de novo: só registre se a devolução já foi feita e combinada com ele." : ""}`}
+              restanteNaPergunta={restanteNaPergunta}
             >
               <label style={{ flex: "0 1 180px" }}>
                 Data da devolução
@@ -694,9 +796,9 @@ function Tentativa({ p, verValores, editar, hoje, alteracoes }: { p: PagamentoDo
               </label>
               <label style={{ flex: "0 1 160px" }}>
                 Valor devolvido (R$)
-                <input name="valor" inputMode="decimal" defaultValue={verValores ? centavosParaCampo(restante ? p.saldoDevolvivel! : (p.valorPago ?? p.valor)) : ""} required />
+                <input name="valor" inputMode="decimal" defaultValue={verValores ? (restante ? (valorDoRestante !== null ? centavosParaCampo(valorDoRestante) : "") : centavosParaCampo(pago)) : ""} required />
               </label>
-              {restante && p.foraSemValor && (
+              {restanteSemValor && (
                 <label style={{ flex: "0 1 280px" }}>
                   O Mercado Pago não informou quanto já foi devolvido: informe o valor que aparece no painel dele (R$)
                   <input name="valorForaInformado" inputMode="decimal" required />

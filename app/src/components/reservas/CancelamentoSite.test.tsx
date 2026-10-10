@@ -266,3 +266,49 @@ describe("cancelamento pela política na ficha (M8.2c)", () => {
     expect(html({ reserva: { ...props().reserva, estado: "cancelada" } })).toBe("");
   });
 });
+
+describe("cancelamento depois de uma alteração (M8.2d)", () => {
+  const devolucaoDe = (over: Partial<NonNullable<PagamentoDoPainel["devolucao"]>> = {}): NonNullable<PagamentoDoPainel["devolucao"]> => ({
+    situacao: "pedida",
+    valor: 182400,
+    tentativas: 1,
+    falhas: 0,
+    confirmadaEm: null,
+    porForaData: null,
+    porForaValor: null,
+    porForaNota: "",
+    taxaPerdida: null,
+    origem: "cancelamento",
+    ultimoCodigo: null,
+    ...over,
+  });
+  const reservaCancelada = { ...props().reserva, estado: "cancelada" as const };
+  const doCancelamento = { ...pagamento, devolucao: devolucaoDe({ situacao: "confirmada", confirmadaEm: new Date("2026-10-02T15:00:00Z") }) };
+  const diferenca: PagamentoDoPainel = {
+    ...pagamento,
+    id: "33333333-3333-4333-8333-333333333333",
+    desfecho: "alteracao",
+    valor: 40000,
+    valorPago: 40000,
+    criadoEm: new Date("2026-10-05T15:00:00Z"),
+    devolucao: devolucaoDe({ valor: 40000 }),
+  };
+
+  it("depois de um aumento, a linha Devolução mostra a de cada pagamento (a do pagamento da diferença também): nunca 'feita' com a outra pendente", () => {
+    const h = html({ reserva: reservaCancelada, cancelamento: cancelada, pagamento: doCancelamento, pagamentos: [doCancelamento, diferenca] });
+    expect(h).toContain("Pix de 01/10/2026: confirmada pelo Mercado Pago · R$ 1.824,00 · em 02/10/2026");
+    expect(h).toContain("Pix de 05/10/2026 (a diferença da alteração): pedida ao Mercado Pago, aguardando confirmação · R$ 400,00 · 1 pedido(s) ao Mercado Pago");
+    // Sem o financeiro, as duas sem valores.
+    const op = html({ ...operacao, reserva: reservaCancelada, cancelamento: cancelada, pagamento: doCancelamento, pagamentos: [doCancelamento, diferenca] });
+    expect(op).toContain("Pix de 05/10/2026 (a diferença da alteração): pedida ao Mercado Pago, aguardando confirmação");
+    expect(op).not.toContain("R$");
+  });
+
+  it("a devolução do cancelamento só num pagamento (o outro já devolvido por uma redução): a linha é a dele; com um só pagamento, a de sempre", () => {
+    const reduzido = { ...pagamento, devolucao: devolucaoDe({ origem: "alteracao", situacao: "confirmada", valor: 30000 }) };
+    const h = html({ reserva: reservaCancelada, cancelamento: cancelada, pagamento: reduzido, pagamentos: [reduzido, diferenca] });
+    expect(h).toContain("pedida ao Mercado Pago, aguardando confirmação · R$ 400,00");
+    expect(h).not.toContain("R$ 300,00");
+    expect(html({ reserva: reservaCancelada, cancelamento: cancelada, pagamento: doCancelamento })).toContain("confirmada pelo Mercado Pago · R$ 1.824,00 · em 02/10/2026");
+  });
+});

@@ -189,26 +189,27 @@ export const textosDosAvisos = (codigos: readonly string[]) => codigos.filter((c
 
 /**
  * O aviso `devolucao_a_menor` com os dois valores (o que o Mercado Pago devolveu e o pedido nesta devolução, D15). A
- * devolução por fora do restante entra só quando ela é permitida (no cartão, pela regra do cartão).
+ * devolução por fora do restante entra só quando ela é permitida (no cartão, pela regra do cartão). Sem os valores (null:
+ * quem não lê o financeiro), o mesmo aviso sem nenhum R$.
  */
-export const textoDevolucaoAMenor = (devolvido: number, devido: number, restantePorFora = true) =>
-  `O Mercado Pago devolveu ${formatBRL(devolvido)} de ${formatBRL(devido)} pedidos nesta devolução: o que voltou já está no financeiro. Peça o restante ao Mercado Pago${restantePorFora ? " ou registre o restante devolvido por fora" : ""}.`;
+export const textoDevolucaoAMenor = (devolvido: number | null, devido: number | null, restantePorFora = true) =>
+  `O Mercado Pago devolveu ${devolvido === null || devido === null ? "menos do que foi pedido" : `${formatBRL(devolvido)} de ${formatBRL(devido)} pedidos`} nesta devolução: o que voltou já está no financeiro. Peça o restante ao Mercado Pago${restantePorFora ? " ou registre o restante devolvido por fora" : ""}.`;
 
 /**
  * O aviso `devolucao_a_menor` de uma devolução que a leitura mostra a menos SEM o id dela (D15): `devolvido` é o que a
  * leitura mostra além das outras devoluções confirmadas e do reconhecido devolvido fora. Nada foi acertado no financeiro:
  * a equipe confirma o valor que o painel do Mercado Pago mostra.
  */
-export const textoDevolucaoAMenorSemId = (devolvido: number, devido: number) =>
-  `O Mercado Pago mostra ${formatBRL(devolvido)} devolvidos de ${formatBRL(devido)} pedidos nesta devolução, sem dizer qual devolução é: nada foi acertado no financeiro. Confira no painel do Mercado Pago e use "Confirmar devolução feita no painel do Mercado Pago" com o valor que aparece lá (ou registre um ajuste).`;
+export const textoDevolucaoAMenorSemId = (devolvido: number | null, devido: number | null) =>
+  `O Mercado Pago mostra ${devolvido === null || devido === null ? "menos devolvido do que foi pedido" : `${formatBRL(devolvido)} devolvidos de ${formatBRL(devido)} pedidos`} nesta devolução, sem dizer qual devolução é: nada foi acertado no financeiro. Confira no painel do Mercado Pago e use "Confirmar devolução feita no painel do Mercado Pago" com o valor que aparece lá (ou registre um ajuste).`;
 
 /**
  * O aviso `devolucao_a_menor` do restante que o Mercado Pago recusou com "valor acima do que se pode devolver" ou "não
  * permitido" (D15): o restante pode já ter saído por lá, ou não sair mais pelo sistema. `porFora`: a devolução por fora
  * dele é permitida agora (no cartão, pela regra do cartão).
  */
-export const textoRestanteRecusado = (devido: number, porFora: boolean) =>
-  `O Mercado Pago recusou o pedido do restante (${formatBRL(devido)}) desta devolução: confira no painel do Mercado Pago. Se o restante já voltou por lá, use "Confirmar devolução feita no painel do Mercado Pago" com o valor que aparece lá; se não, ${porFora ? "registre o restante devolvido por fora" : 'registre a recusa do painel do Mercado Pago (a devolução por fora do cartão fica liberada)'} ou um ajuste.`;
+export const textoRestanteRecusado = (devido: number | null, porFora: boolean) =>
+  `O Mercado Pago recusou o pedido do restante${devido === null ? "" : ` (${formatBRL(devido)})`} desta devolução: confira no painel do Mercado Pago. Se o restante já voltou por lá, use "Confirmar devolução feita no painel do Mercado Pago" com o valor que aparece lá; se não, ${porFora ? "registre o restante devolvido por fora" : 'registre a recusa do painel do Mercado Pago (a devolução por fora do cartão fica liberada)'} ou um ajuste.`;
 
 /**
  * O aviso `devolucao_data_a_conferir` da devolução que completou um pagamento com parte já devolvida pelo painel do
@@ -220,9 +221,9 @@ export const TEXTO_CAIXA_COM_DEVOLVIDO_FORA = "Parte deste pagamento já tinha s
 export const textoAguardandoLiberacao = (prevista: string | null) =>
   `A devolução de parte do valor é pedida ao Mercado Pago assim que ele liberar este pagamento${prevista ? ` (previsto para ${prevista})` : ""}: antes disso o sistema não pede. No teste, registre a liberação à mão.`;
 
-/** O aviso `devolucao_aguardando_liberacao_atrasada` com o valor da devolução que espera (M8.2d). */
-export const textoDevolucaoAguardandoLiberacaoAtrasada = (valor: number) =>
-  `A liberação deste pagamento passou da data prevista e a devolução de ${formatBRL(valor)} continua esperando: confira no painel do Mercado Pago e registre a liberação à mão quando ela aparecer.`;
+/** O aviso `devolucao_aguardando_liberacao_atrasada` com o valor da devolução que espera (M8.2d); sem o valor (null), sem R$. */
+export const textoDevolucaoAguardandoLiberacaoAtrasada = (valor: number | null) =>
+  `A liberação deste pagamento passou da data prevista e a devolução de ${valor === null ? "parte do valor" : formatBRL(valor)} continua esperando: confira no painel do Mercado Pago e registre a liberação à mão quando ela aparecer.`;
 
 /**
  * Os avisos que são de uma devolução (M8.2d: cada devolução tem os seus em `devolucoes_pagamento.avisos`; o pagamento leva
