@@ -1139,8 +1139,8 @@ ao escolher o modelo, ao editar um modelo já escolhido e ao copiar (modelo que 
 
 ### OTAs e o gancho do M8.3
 
-Nada é escrito no Beds24. Enquanto o envio ao Beds24 estiver desligado, o Início (para quem edita reservas)
-lista as reservas do site canceladas com saída no futuro e sem a marca: "reabra as datas nas OTAs (no Beds24,
+Nada é escrito no Beds24. O Início (para quem edita reservas), com ou sem o envio ao Beds24 ligado (ver a decisão
+de 10/10 em "OTAs e o gancho do M8.3" do M8.2d), lista as reservas do site canceladas com saída no futuro e sem a marca: "reabra as datas nas OTAs (no Beds24,
 apague o bloqueio)", com o botão **"Datas reabertas nas OTAs"** na ficha (com confirmação, auditado). As datas
 voltam à venda no site na hora do cancelamento. O M8.3 vai consumir `cancelamentos_reserva` com
 `situacao = 'cancelada'` e `ota_liberada_em` vazio, e gravar a marca sozinho.
@@ -1608,12 +1608,24 @@ pelos nomes (`ondeVale`).
 
 ### OTAs e o gancho do M8.3
 
-Nada é escrito no Beds24. Enquanto o envio ao Beds24 estiver desligado, o Início (para quem edita reservas) avisa
+Nada é escrito no Beds24. O Início (para quem edita reservas), com ou sem o envio ao Beds24 ligado, avisa
 "N reserva(s) do site alterada(s) (SCL-…): mude o bloqueio nas OTAs (no Beds24, feche as novas datas e reabra as
-antigas)…" para a alteração aplicada que mudou as datas, ainda sem a marca e com alguma noite por vir; a ficha tem
+antigas)." para a alteração aplicada que mudou as datas, ainda sem a marca e com alguma noite por vir; a ficha tem
 **"Datas atualizadas nas OTAs"** (com confirmação, auditado). Mudar só pessoas ou valor não mexe no bloqueio. O M8.3
 vai consumir `alteracoes_reserva` com `situacao = 'aplicada'` e `ota_atualizada_em` vazio, e gravar a marca
 sozinho; a reserva-pedido nunca vai ao Beds24.
+
+**Decisão de 10/10/2026 (revisão do M8.2d), vale para os três avisos das OTAs** (reserva do site paga, do M8.2a;
+cancelada, do M8.2c; alterada, do M8.2d):
+- *Antes:* cada aviso sumia quando o envio automático ao Beds24 (M3.7) estava ligado no ambiente
+  (`BEDS24_ESCRITA=ligada` com credencial) e no painel, supondo que o envio cuidava das datas.
+- *Agora:* o aviso aparece sempre, até a marca da equipe (ou do M8.3).
+- *Motivo:* o envio do M3.7 manda só os bloqueios do SCL (`bloqueios` com fonte diferente de `beds24`) e o
+  calendário de preços e mínimos; ele nunca fecha, reabre nem muda as datas de uma reserva. Com o aviso escondido,
+  uma reserva paga, cancelada ou alterada no site ficaria vendável (ou fechada) nas OTAs sem ninguém saber, também nos
+  imóveis fora da lista de envio.
+- *Objetivo final:* o M8.3 fecha, reabre e muda as datas das reservas do site no Beds24 e grava as marcas sozinho;
+  aí os avisos deixam de aparecer porque não sobra nada a fazer à mão.
 
 ### Início
 
@@ -1671,7 +1683,7 @@ consulta".
 | Cartão em análise (M8.2b) | "Pagamento em análise": o texto editável da análise e a linha fixa do prazo das datas (antes e depois do fim); continua assim mesmo depois do prazo das datas, porque a análise ainda pode aprovar |
 | Cartão recusado, datas ainda seguradas (M8.2b) | "Datas seguradas" com a mensagem genérica (recusa ou verificação não concluída) e as opções que restam: outro cartão, Pix, WhatsApp; com as datas já vencidas, igual ao Pix (sem pagamento) |
 | Confirmada com pedido de cancelamento esperando a equipe (M8.2c) | a reserva continua confirmada, com a linha "Pedido de cancelamento recebido em dd/mm às HH:MM (horário de Brasília)." e a frase editável de que a equipe confirma por escrito o valor (sem política aceita, a frase fixa sem citar política); "Acompanhe ou peça pelo seu acesso: Minha reserva" |
-| Reserva cancelada, devolução pedida (M8.2c) | "Reserva cancelada": quem cancelou e quando o pedido chegou, "devolvemos o valor integral pago, R$ …, sem desconto de taxas", "Já pedimos a devolução ao Mercado Pago…" e como o dinheiro volta (Pix ou cartão). Também na devolução aceita ainda sem confirmação, no cartão com mais de 78 dias ("Estamos pedindo o estorno no seu cartão…", enquanto a devolução por fora do cartão não abre) e no cartão recusado com a devolução por fora ainda fechada |
+| Reserva cancelada, devolução pedida (M8.2c) | "Reserva cancelada": quem cancelou e quando o pedido chegou, "devolvemos o valor integral pago, R$ …, sem desconto de taxas", "Já pedimos a devolução ao Mercado Pago…" e como o dinheiro volta (Pix ou cartão; com partes por caminhos diferentes — reserva no Pix e diferença no cartão, ou uma parte devolvida por fora —, a frase de cada caminho usado, na mesma regra da devolução da diferença de uma alteração; com alguma parte por fora, o total nunca é dito "pelo Mercado Pago"). Também na devolução aceita ainda sem confirmação, no cartão com mais de 78 dias ("Estamos pedindo o estorno no seu cartão…", enquanto a devolução por fora do cartão não abre) e no cartão recusado com a devolução por fora ainda fechada |
 | Reserva cancelada, devolvida (M8.2c) | "Devolução de R$ … confirmada pelo Mercado Pago em dd/mm" (o valor lido, quando a leitura o traz), "feita pelo Mercado Pago em dd/mm" (confirmada pela equipe) ou "feita em dd/mm" (por fora, com a frase da transferência e sem linha da forma de pagamento) |
 | Reserva cancelada, com a equipe (M8.2c) | "A devolução de R$ … pelo Mercado Pago não foi possível." e a frase editável de que a equipe combina outra forma, sem custo (Pix recusado, ou cartão com a devolução por fora já aberta) |
 | Reserva cancelada, em conferência (M8.2c) | devolução a menos, pagamento contestado ou devolvido em parte, devolução parada por um problema: "Estamos conferindo a devolução com o Mercado Pago; a nossa equipe fala com você." Nunca oferece outro jeito de pagar |
@@ -1754,7 +1766,8 @@ navegador também barra um desafio em outro endereço.
   liberação prevista vencida sem sinal, criação do pagamento sem resposta do Mercado Pago há mais que a
   carência, conta das chaves que não é de teste, configuração inválida,
   aviso com `live_mode`, dinheiro sem cálculo, e o informativo "N reserva(s) do site paga(s): feche as
-  datas nas OTAs enquanto o envio ao Beds24 estiver desligado".
+  datas nas OTAs (no Beds24, como bloqueio)." (desde 10/10, com ou sem o envio ao Beds24 ligado; antes, só com ele
+  desligado: ver a decisão em "OTAs e o gancho do M8.3" do M8.2d).
 - Até o M8.3, a equipe fecha as datas no Beds24 como **bloqueio**, nunca como reserva (a importação
   criaria uma segunda reserva).
 - **Cancelamento no painel (M8.2c):**
@@ -1781,8 +1794,8 @@ navegador também barra um desafio em outro endereço.
   - Lista de reservas: filtro "Pedido de cancelamento → Só com pedido esperando a equipe", de qualquer
     período. Financeiro → Pagamentos do site e o quadro dizem "Reserva cancelada: devolução pedida /
     devolvida / com a equipe / em conferência / sem devolução (valor retido)".
-  - Início: para quem edita reservas (sem valores), os pedidos esperando, as datas a reabrir nas OTAs (só com o
-    envio ao Beds24 desligado); para quem lê o financeiro, as mensagens ao hóspede pendentes, as devoluções
+  - Início: para quem edita reservas (sem valores), os pedidos esperando, as datas a reabrir nas OTAs (desde 10/10,
+    com ou sem o envio ao Beds24 ligado); para quem lê o financeiro, as mensagens ao hóspede pendentes, as devoluções
     pedidas e paradas (de qualquer origem), as de pagamento com mais de 78 dias, as feitas a menos, as reservas
     devolvidas no Mercado Pago fora da política e o desconto de proprietário esperando há mais de 7 dias.
     "Pede atenção" inclui o pagamento com pedido de cancelamento esperando.

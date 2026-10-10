@@ -154,10 +154,15 @@ describe("alteração da reserva paga pelo site na ficha (M8.2d)", () => {
       direito: "integral",
       base: "prazo",
       valorADevolver: 30000,
-      devolucao: { estado: "aguardando_liberacao", valor: 30000, valorConfirmado: null, em: null, previstaEm: "2026-10-20", porFora: false, forma: "pix" },
+      devolucao: { estado: "aguardando_liberacao", valor: 30000, valorConfirmado: null, em: null, previstaEm: "2026-10-20", porFora: false, algumaPorFora: false, forma: "pix" },
     });
     expect(html({ alteracoes: [reducao] })).toContain("Devolução de R$ 300,00: esperando o Mercado Pago liberar o pagamento (previsto para 20/10): nada foi pedido ainda");
     expect(html({ alteracoes: [reducao], ...operacao })).toContain("Devolução: esperando o Mercado Pago liberar o pagamento");
+    // Feita com uma parte por fora (e a outra pelo Mercado Pago), e toda por fora.
+    const feita = (porFora: boolean) => html({ alteracoes: [{ ...reducao, devolucao: { ...reducao.devolucao!, estado: "feita", em: new Date("2026-10-06T15:00:00Z"), porFora, algumaPorFora: true } }] });
+    expect(feita(false)).toContain("(uma parte por fora)");
+    expect(feita(true)).toContain("(por fora)");
+    expect(feita(true)).not.toContain("uma parte");
     const retida = html({ alteracoes: [{ ...reducao, direito: "nenhum", base: "fora_do_prazo", valorADevolver: 0, devolucao: null }] });
     expect(retida).toContain("sem devolução pela política");
     expect(retida).toContain("continua R$ 1.500,00: pela política, a diferença de R$ 300,00 não é devolvida");

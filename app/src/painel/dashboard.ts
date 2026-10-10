@@ -5,8 +5,6 @@
 import { and, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, not, or, sql, sum } from "drizzle-orm";
 import { listarAdiantamentos, totalACobrar } from "@/adiantamentos/adiantamentos";
 import { listarAjustes } from "@/ajustes/ajustes";
-import { escritaBeds24Pronta } from "@/beds24/http";
-import { lerRegrasCalendario } from "@/calendario/regras-config";
 import { alteracoesReserva, lancamentos, pagamentos as pagamentosTabela, reservas as reservasTabela, type TipoLancamento } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { listarDespesas, totaisDespesas } from "@/despesas/despesas";
@@ -325,11 +323,10 @@ const linkDoAviso = (xs: readonly { reservaId: string }[]) => (xs.length === 1 ?
 /**
  * Os avisos da alteração de reserva paga pelo site no Início (da operação: quem edita reservas, sem valores, da empresa
  * toda): cada alteração com as datas seguradas agora (pela situação que vale agora, com a carência do pagamento), as
- * reservas alteradas cujo bloqueio nas OTAs ainda não foi mudado enquanto o envio ao Beds24 estiver desligado, e as
+ * reservas alteradas cujo bloqueio nas OTAs ainda não foi mudado (o envio ao Beds24 não muda datas de reservas), e as
  * mensagens ao hóspede pendentes (a proposta e a devolução feita levam valor: só para quem lê o financeiro).
  */
-export async function avisosDeAlteracao(db: Db, organizacaoId: string, agora: Date = new Date(), o: { env?: NodeJS.ProcessEnv; mensagensComValor?: boolean } = {}): Promise<Alerta[]> {
-  const env = o.env ?? process.env;
+export async function avisosDeAlteracao(db: Db, organizacaoId: string, agora: Date = new Date(), o: { mensagensComValor?: boolean } = {}): Promise<Alerta[]> {
   const hoje = hojeISO("America/Sao_Paulo", agora);
   const alertas: Alerta[] = [];
   const seguradas = await db
@@ -373,15 +370,13 @@ export async function avisosDeAlteracao(db: Db, organizacaoId: string, agora: Da
     )
     .orderBy(reservasTabela.codigo);
   const alteradas = [...new Map(otas.map((x) => [x.reservaId, x])).values()];
-  if (alteradas.length) {
-    const envioLigado = escritaBeds24Pronta(env) && (await lerRegrasCalendario(db, organizacaoId)).envio.automatico;
-    if (!envioLigado)
-      alertas.push({
-        nivel: "info",
-        texto: `${alteradas.length} reserva(s) do site alterada(s) (${codigosDoAviso(alteradas)}): mude o bloqueio nas OTAs (no Beds24, feche as novas datas e reabra as antigas) enquanto o envio ao Beds24 estiver desligado.`,
-        link: linkDoAviso(alteradas),
-      });
-  }
+  // Sempre, mesmo com o envio ao Beds24 ligado: o envio fecha só os bloqueios do SCL, nunca as datas das reservas (até o M8.3).
+  if (alteradas.length)
+    alertas.push({
+      nivel: "info",
+      texto: `${alteradas.length} reserva(s) do site alterada(s) (${codigosDoAviso(alteradas)}): mude o bloqueio nas OTAs (no Beds24, feche as novas datas e reabra as antigas).`,
+      link: linkDoAviso(alteradas),
+    });
   // A proposta leva a diferença e a devolução feita leva o valor: só quem as pode copiar (quem lê o financeiro) recebe o aviso.
   if (o.mensagensComValor === false) return alertas;
   const pendentes = await alteracoesComMensagemPendente(db, organizacaoId, agora);

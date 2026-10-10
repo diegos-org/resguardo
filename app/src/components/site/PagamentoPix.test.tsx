@@ -589,6 +589,7 @@ describe("reserva cancelada pela política e pedido de cancelamento (M8.2c)", ()
     valorConfirmado: null,
     devolucaoEm: null,
     porFora: false,
+    algumaPorFora: false,
     confirmadaPor: null,
     forma: "pix",
     estornoPelaEquipe: false,

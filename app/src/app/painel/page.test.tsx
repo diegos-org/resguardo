@@ -63,7 +63,7 @@ it("M8.2d: os avisos da alteração (datas seguradas, bloqueio a mudar nas OTAs)
     ...vazio,
     alertas: [
       { nivel: "info", texto: "Alteração da reserva SCL-TESTE1: datas seguradas até 13:00, esperando o pagamento da diferença.", link: "/painel/reservas/r1" },
-      { nivel: "info", texto: "1 reserva(s) do site alterada(s) (SCL-TESTE1): mude o bloqueio nas OTAs (no Beds24, feche as novas datas e reabra as antigas) enquanto o envio ao Beds24 estiver desligado.", link: "/painel/reservas/r1" },
+      { nivel: "info", texto: "1 reserva(s) do site alterada(s) (SCL-TESTE1): mude o bloqueio nas OTAs (no Beds24, feche as novas datas e reabra as antigas).", link: "/painel/reservas/r1" },
     ],
   });
   const h = await html();

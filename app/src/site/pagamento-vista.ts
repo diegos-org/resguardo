@@ -316,6 +316,20 @@ const quando = (d: Date | string | null): Date | null => {
 const juntar = (...partes: (string | null | undefined)[]) => partes.filter((x): x is string => !!x && !!x.trim()).join(" ");
 
 /**
+ * Como o dinheiro volta, pelas partes da devolução (a regra única do cancelamento e da alteração, `rotasDaDevolucao`):
+ * todas por fora, a frase da transferência; pelo Mercado Pago, a do meio (as duas com Pix e cartão juntos); uma parte
+ * por fora e outra pelo Mercado Pago, as frases de cada caminho. null sem frase.
+ */
+const comoVoltaODinheiro = (
+  textos: Pick<TextosSite, "cancelamentoVoltaPix" | "cancelamentoVoltaCartao" | "cancelamentoVoltaPorFora">,
+  r: { forma: "pix" | "cartao" | null; porFora: boolean; algumaPorFora: boolean },
+): string | null => {
+  if (r.porFora) return textos.cancelamentoVoltaPorFora || null;
+  const peloMercadoPago = r.forma === "cartao" ? textos.cancelamentoVoltaCartao : r.forma === "pix" ? textos.cancelamentoVoltaPix : juntar(textos.cancelamentoVoltaPix, textos.cancelamentoVoltaCartao);
+  return juntar(peloMercadoPago, r.algumaPorFora ? textos.cancelamentoVoltaPorFora : null) || null;
+};
+
+/**
  * O compositor único do texto do cancelamento (página da reserva e as variáveis `{decisao}` e `{comovolta}` das
  * mensagens). Puro: os fatos (código, datas, horas, versão da política, valores) são escritos aqui; as frases vêm de Textos
  * do site. Nunca cita o Beds24 nem dado pessoal. `fuso` = o do imóvel (o dia da devolução); os horários de pedido são de
@@ -352,29 +366,26 @@ export function textoDoCancelamento(
   const pelaPolitica = c.politicaVersao !== null && (c.base === "prazo" || c.base === "arrependimento" || c.base === "empresa");
   const decisoes: string[] = [];
   let comoVolta: string | null = null;
-  // Devoluções por meios diferentes (forma null): as duas frases, cada pagamento volta pelo seu meio.
-  const voltaPeloMercadoPago = c.forma === "cartao" ? textos.cancelamentoVoltaCartao : c.forma === "pix" ? textos.cancelamentoVoltaPix : juntar(textos.cancelamentoVoltaPix, textos.cancelamentoVoltaCartao);
+  // Cada parte volta pelo seu caminho (Pix, cartão ou por fora): as frases de todos os caminhos usados.
+  const volta = comoVoltaODinheiro(textos, c);
   if (c.direito === "integral") {
     const quem = pelaPolitica ? `Pela Política de cancelamento que você aceitou (versão ${c.politicaVersao})` : "Por decisão da nossa equipe";
     decisoes.push(juntar(`${quem}, devolvemos o valor integral pago, ${formatBRL(valor)},`, textos.cancelamentoSemTaxas));
     const feitaEm = quando(c.devolucaoEm);
     if (v.estado === "cancelada_devolvida") {
       const dia = feitaEm ? ` em ${diaMes(feitaEm, fuso)}` : "";
-      if (c.porFora) {
-        decisoes.push(`Devolução de ${formatBRL(valor)} feita${dia}.`);
-        comoVolta = textos.cancelamentoVoltaPorFora || null;
-      } else {
-        decisoes.push(c.confirmadaPor === "equipe" ? `Devolução de ${formatBRL(valor)} feita pelo Mercado Pago${dia}.` : `Devolução de ${formatBRL(c.valorConfirmado ?? valor)} confirmada pelo Mercado Pago${dia}.`);
-        comoVolta = voltaPeloMercadoPago || null;
-      }
+      // Com alguma parte por fora, nunca "pelo Mercado Pago" para o total.
+      if (c.porFora || c.algumaPorFora) decisoes.push(`Devolução de ${formatBRL(valor)} feita${dia}.`);
+      else decisoes.push(c.confirmadaPor === "equipe" ? `Devolução de ${formatBRL(valor)} feita pelo Mercado Pago${dia}.` : `Devolução de ${formatBRL(c.valorConfirmado ?? valor)} confirmada pelo Mercado Pago${dia}.`);
+      comoVolta = volta;
     } else if (v.estado === "cancelada_devolucao_pedida" && c.aguardandoLiberacao) {
       // M8.2d (D13): nada foi pedido ainda — a devolução sai quando o Mercado Pago liberar o pagamento (nunca "já pedimos").
       const prevista = c.aguardandoLiberacao.previstaEm ? ` (previsto para ${diaIso(c.aguardandoLiberacao.previstaEm)})` : "";
       decisoes.push(juntar(`Devolução de ${formatBRL(valor)}${prevista}.`, textos.devolucaoAguardaLiberacao ?? ""));
-      comoVolta = voltaPeloMercadoPago || null;
+      comoVolta = volta;
     } else if (v.estado === "cancelada_devolucao_pedida") {
       decisoes.push(c.estornoPelaEquipe ? textos.cancelamentoEstornoNoCartao : textos.cancelamentoDevolucaoPedida);
-      comoVolta = voltaPeloMercadoPago || null;
+      comoVolta = volta;
     } else if (v.estado === "cancelada_com_a_equipe") {
       decisoes.push(juntar(`A devolução de ${formatBRL(valor)} pelo Mercado Pago não foi possível.`, textos.cancelamentoComAEquipe));
     } else decisoes.push(textos.cancelamentoEmConferencia);
@@ -478,19 +489,20 @@ export function textoDaAlteracao(a: AlteracaoParaHospede | AlteracaoDoHospede, t
     if (a.rumo === "reducao" && a.reducao?.direito === "nenhum")
       linhas.push(juntar(fraseDaReducao(a.reducao, a.entradaDaPolitica, -a.diferenca), textos.alteracaoSemDevolucao));
     else if (d) {
-      const voltaPeloMercadoPago = d.forma === "cartao" ? textos.cancelamentoVoltaCartao : textos.cancelamentoVoltaPix;
+      // A mesma regra do cancelamento: cada parte pelo seu caminho (Pix, cartão ou por fora).
+      const volta = comoVoltaODinheiro(textos, d);
       if (d.estado === "aguardando_liberacao") {
         // Nada foi pedido ainda (D13): a devolução sai quando o Mercado Pago liberar o pagamento — nunca "já pedimos".
         linhas.push(juntar(`Devolução da diferença: ${formatBRL(d.valor)}${d.previstaEm ? ` (previsto para ${diaIso(d.previstaEm)})` : ""}.`, textos.devolucaoAguardaLiberacao));
-        comoVolta = voltaPeloMercadoPago || null;
+        comoVolta = volta;
       } else if (d.estado === "feita") {
         const feitaEm = quando(d.em);
         linhas.push(`Devolução da diferença de ${formatBRL(d.valorConfirmado ?? d.valor)} feita${feitaEm ? ` em ${diaMes(feitaEm, fuso)}` : ""}.`);
-        comoVolta = (d.porFora ? textos.cancelamentoVoltaPorFora : voltaPeloMercadoPago) || null;
+        comoVolta = volta;
       } else if (d.estado === "pedida") {
         // O cartão com mais de 78 dias: a equipe faz o estorno no painel do Mercado Pago (o sistema nunca pediu) — nunca "já pedimos".
         linhas.push(juntar(`Devolução da diferença: ${formatBRL(d.valor)}.`, d.estornoPelaEquipe ? textos.cancelamentoEstornoNoCartao : textos.cancelamentoDevolucaoPedida));
-        comoVolta = voltaPeloMercadoPago || null;
+        comoVolta = volta;
       } else if (d.estado === "com_a_equipe") linhas.push(juntar(`Devolução da diferença: ${formatBRL(d.valor)}. A devolução pelo Mercado Pago não foi possível.`, textos.cancelamentoComAEquipe));
       else linhas.push(juntar(`Devolução da diferença: ${formatBRL(d.valor)}.`, textos.cancelamentoEmConferencia));
       if (comoVolta) linhas.push(comoVolta);

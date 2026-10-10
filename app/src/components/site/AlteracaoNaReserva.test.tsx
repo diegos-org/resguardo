@@ -197,7 +197,7 @@ describe("a alteração na página da reserva (M8.2d)", () => {
         aplicadaEm: "2026-10-01T15:25:00.000Z",
         pagamento: null,
         reducao: { direito: "integral", base: "prazo", integralAte: "2026-11-01" },
-        devolucao: { estado: "aguardando_liberacao", valor: 60800, valorConfirmado: null, em: null, previstaEm: "2026-10-20", porFora: false, forma: "pix" },
+        devolucao: { estado: "aguardando_liberacao", valor: 60800, valorConfirmado: null, em: null, previstaEm: "2026-10-20", porFora: false, algumaPorFora: false, forma: "pix" },
       }),
     );
     const t = aplicada.container.textContent ?? "";

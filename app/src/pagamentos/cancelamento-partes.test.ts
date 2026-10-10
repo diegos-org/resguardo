@@ -400,6 +400,18 @@ describe("revisão do M8.2d: como o dinheiro volta com pagamentos por meios dife
     await cancelar(c, y.reservaId, empresa(), equipe, minutos(70));
     expect((await vistaDaCotacaoParaHospede(db, c.org, y.cotacaoId, minutos(71), { comAutorizacao: true, oferecido: true }))?.cancelamento?.forma).toBe("pix");
   });
+
+  it("uma parte devolvida por fora e a outra pelo Mercado Pago: o meio é só o das partes pelo Mercado Pago, e a página sabe que houve parte por fora", async () => {
+    const x = await pagarEConfirmar(c, { ...longe, liberar: true });
+    const inc = await aumentarDeTeste(c, x, TOTAL + 40000, { quando: minutos(15) });
+    await db.update(pagamentos).set({ forma: "cartao" }).where(eq(pagamentos.id, inc.pagamentoId));
+    c.provedor.respostaDevolucao = "pedida";
+    await cancelar(c, x.reservaId, empresa(), equipe, minutos(60));
+    const [doPix] = await devolucoesDe(x.pagamentoId);
+    await db.update(devolucoesPagamento).set({ situacao: "por_fora", porForaData: "2026-10-01", porForaValor: doPix.valor }).where(eq(devolucoesPagamento.id, doPix.id));
+    const v = await vistaDaCotacaoParaHospede(db, c.org, x.cotacaoId, minutos(61), { comAutorizacao: true, oferecido: true });
+    expect(v?.cancelamento).toMatchObject({ forma: "cartao", porFora: false, algumaPorFora: true });
+  });
 });
 
 describe("provedor pessimista: redução e depois o cancelamento (M8.2d)", () => {

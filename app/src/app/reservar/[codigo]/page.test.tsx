@@ -341,6 +341,7 @@ describe("reserva cancelada pela política (M8.2c)", () => {
     valorConfirmado: 182400,
     devolucaoEm: "2026-10-11T15:00:00.000Z",
     porFora: false,
+    algumaPorFora: false,
     confirmadaPor: "leitura" as const,
     forma: "pix" as const,
     estornoPelaEquipe: false,

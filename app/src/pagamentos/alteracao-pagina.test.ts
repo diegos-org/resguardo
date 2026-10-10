@@ -27,7 +27,7 @@ import { listarPagamentos } from "./consultas";
 import { ofertaDeCartao, ofertaDePix, type PortaoCobranca, TEXTO_SEM_COBRANCA, TEXTO_SEM_PIX } from "./oferta";
 import { gerarPix } from "./pix";
 import { ErroProvedor } from "./provedor";
-import { alteracaoGravada, alterar, CARTAO_FICTICIO, type Cenario, env, envelhecer, minutos, montarCenario, pagarDiferenca, pagarEConfirmar, semDadosDoHospede, TOTAL, usuarioDeTeste } from "./testes";
+import { alteracaoGravada, alterar, aumentarDeTeste, CARTAO_FICTICIO, type Cenario, envelhecer, minutos, montarCenario, pagarDiferenca, pagarEConfirmar, reduzirDeTeste, semDadosDoHospede, TOTAL, usuarioDeTeste } from "./testes";
 
 let db: Db, close: () => Promise<void>, c: Cenario, equipe: string;
 beforeAll(async () => {
@@ -272,6 +272,39 @@ describe("revisão do M8.2d: o que a página da reserva diz da alteração", () 
   });
 });
 
+describe("revisão do M8.2d: como volta a devolução da diferença com partes por caminhos diferentes", () => {
+  it("reserva no Pix e aumento no cartão, depois a redução devolvida dos dois: as frases dos dois meios; uma parte por fora: a do cartão e a da transferência", async () => {
+    const x = await pagarEConfirmar(c, { entrada: "2026-11-20", saida: "2026-11-23", email: "meios@example.com", liberar: true });
+    const inc = await aumentarDeTeste(c, x, TOTAL + 40_000, { quando: minutos(15) });
+    await db.update(pagamentos).set({ forma: "cartao" }).where(eq(pagamentos.id, inc.pagamentoId));
+    // A redução de R$ 500,00: R$ 400,00 do cartão (a diferença) e R$ 100,00 do Pix (a reserva).
+    const red = await reduzirDeTeste(c, x, TOTAL - 10_000, { quando: minutos(20), devolucoes: [{ pagamentoId: inc.pagamentoId, valor: 40_000 }, { pagamentoId: x.pagamentoId, valor: 10_000 }] });
+    const [doCartao, doPix] = red.devolucaoIds;
+    const confirmar = (id: string, valor: number) => db.update(devolucoesPagamento).set({ situacao: "confirmada", valorConfirmado: valor, confirmadaEm: minutos(30), confirmadaPor: "leitura" }).where(eq(devolucoesPagamento.id, id));
+    await confirmar(doCartao, 40_000);
+    await confirmar(doPix, 10_000);
+    let v = await pagina(x.cotacaoId, minutos(31));
+    expect(v?.alteracao).toMatchObject({ situacao: "aplicada", rumo: "reducao", devolucao: { estado: "feita", valor: 50_000, forma: null, porFora: false, algumaPorFora: false } });
+    let t = texto(v!.alteracao!, x.reservaCodigo);
+    expect(t.linhas).toContain(`${TEXTOS_SITE_INICIAIS.cancelamentoVoltaPix} ${TEXTOS_SITE_INICIAIS.cancelamentoVoltaCartao}`);
+    // A parte do Pix devolvida por fora (transferência da empresa): a do cartão continua pelo Mercado Pago.
+    await db.update(devolucoesPagamento).set({ situacao: "por_fora", porForaData: "2026-10-01", porForaValor: 10_000, valorConfirmado: null, confirmadaEm: null, confirmadaPor: null }).where(eq(devolucoesPagamento.id, doPix));
+    v = await pagina(x.cotacaoId, minutos(32));
+    expect(v?.alteracao?.devolucao).toMatchObject({ estado: "feita", forma: "cartao", porFora: false, algumaPorFora: true });
+    t = texto(v!.alteracao!, x.reservaCodigo);
+    expect(t.linhas).toContain(`${TEXTOS_SITE_INICIAIS.cancelamentoVoltaCartao} ${TEXTOS_SITE_INICIAIS.cancelamentoVoltaPorFora}`);
+    expect(t.linhas.join(" ")).not.toContain(TEXTOS_SITE_INICIAIS.cancelamentoVoltaPix);
+    // As duas por fora: só a transferência.
+    await db.update(devolucoesPagamento).set({ situacao: "por_fora", porForaData: "2026-10-01", porForaValor: 40_000, valorConfirmado: null, confirmadaEm: null, confirmadaPor: null }).where(eq(devolucoesPagamento.id, doCartao));
+    v = await pagina(x.cotacaoId, minutos(33));
+    expect(v?.alteracao?.devolucao).toMatchObject({ porFora: true, algumaPorFora: true });
+    t = texto(v!.alteracao!, x.reservaCodigo);
+    expect(t.linhas).toContain(TEXTOS_SITE_INICIAIS.cancelamentoVoltaPorFora);
+    for (const meio of [TEXTOS_SITE_INICIAIS.cancelamentoVoltaPix, TEXTOS_SITE_INICIAIS.cancelamentoVoltaCartao]) expect(t.linhas.join(" ")).not.toContain(meio);
+    expect(await semDadosDoHospede(db)).toEqual([]);
+  });
+});
+
 describe("o pagamento da diferença (o alvo da cobrança)", () => {
   it("Pix: valor = diferença; os Pix da reserva não contam no limite da alteração; 3 da alteração esgotam; 'alteracao_mudou' quando ela já não vale", async () => {
     const x = await pagarEConfirmar(c);
@@ -445,10 +478,10 @@ describe("o bloqueio manual e o Início", () => {
     // Sem reserva:editar, nada disso.
     expect((await carregarDashboard(db, c.org, base)).alertas.some((a) => a.texto.includes("Alteração da reserva"))).toBe(false);
     // Vencida (sem a rotina), o aviso sai sozinho.
-    expect((await avisosDeAlteracao(db, c.org, minutos(81), { env: env() })).some((a) => a.texto.includes("Alteração da reserva"))).toBe(false);
+    expect((await avisosDeAlteracao(db, c.org, minutos(81))).some((a) => a.texto.includes("Alteração da reserva"))).toBe(false);
     // Outra empresa não vê.
     const outra = await montarCenario(db);
-    expect(await avisosDeAlteracao(db, outra.org, minutos(30), { env: env() })).toEqual([]);
+    expect(await avisosDeAlteracao(db, outra.org, minutos(30))).toEqual([]);
     expect(await db.select().from(alteracoesReserva).where(eq(alteracoesReserva.organizacaoId, outra.org))).toEqual([]);
   });
 });

@@ -10,8 +10,6 @@
  * mostra BIN, últimos dígitos nem titular (nada disso é guardado).
  */
 import { and, asc, desc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
-import { lerRegrasCalendario } from "@/calendario/regras-config";
-import { escritaBeds24Pronta } from "@/beds24/http";
 import { lerPaginaLegal } from "@/configuracoes/paginas-legais";
 import { entradaQueConta } from "@/configuracoes/politica-cancelamento";
 import type { VersoesLegais } from "@/configuracoes/paginas-legais-texto";
@@ -119,7 +117,10 @@ export type CancelamentoParaHospede = {
   valorConfirmado: number | null;
   /** Quando a devolução foi feita (confirmada ou por fora); null enquanto não foi. */
   devolucaoEm: Date | null;
+  /** Todas as partes da devolução foram feitas por fora (ver `rotasDaDevolucao`). */
   porFora: boolean;
+  /** Ao menos uma parte foi feita por fora (com outras pelo Mercado Pago, as duas frases de como volta). */
+  algumaPorFora: boolean;
   /** Quem confirmou a devolução: a leitura do Mercado Pago ou a equipe (vista no painel dele). */
   confirmadaPor: "leitura" | "equipe" | null;
   /**
@@ -127,7 +128,7 @@ export type CancelamentoParaHospede = {
    * foi pedido ainda, e a página nunca diz "já pedimos"; a data prevista quando há. null nas outras situações.
    */
   aguardandoLiberacao?: { previstaEm: string | null } | null;
-  /** O meio por onde a devolução volta; null quando as devoluções saem por meios diferentes (M8.2d: reserva no Pix, diferença no cartão). */
+  /** O meio das partes pelo Mercado Pago; null quando saem por meios diferentes (M8.2d: reserva no Pix, diferença no cartão). */
   forma: "pix" | "cartao" | null;
   /**
    * Cartão com mais de 78 dias: o sistema não pede a devolução; a equipe faz o estorno pelo painel do Mercado Pago. Só
@@ -170,8 +171,10 @@ export type AlteracaoParaHospede = {
     valorConfirmado: number | null;
     em: Date | null;
     previstaEm: string | null;
+    /** Pela regra do cancelamento (`rotasDaDevolucao`): todas as partes por fora; alguma por fora; o meio das partes pelo Mercado Pago (null com Pix e cartão). */
     porFora: boolean;
-    forma: "pix" | "cartao";
+    algumaPorFora: boolean;
+    forma: "pix" | "cartao" | null;
     /**
      * A devolução sai pelo estorno que a equipe faz no painel do Mercado Pago (cartão com mais de 78 dias): nunca "já
      * pedimos". Sempre preenchido pelo domínio; opcional só para montar a alteração à mão nos testes.
@@ -599,6 +602,21 @@ export async function alteracaoParaMensagem(db: Db, organizacaoId: string, alter
 }
 
 /**
+ * Por onde voltam as partes de uma devolução (uma por pagamento, e o restante de cada uma) — a regra única do cancelamento
+ * e da alteração: `porFora` só com todas as partes por fora; `algumaPorFora` com pelo menos uma; `forma`, o meio dos
+ * pagamentos das partes pelo Mercado Pago (null com Pix e cartão juntos; sem nenhuma pelo Mercado Pago, o do pagamento).
+ */
+const rotasDaDevolucao = (devs: readonly Devolucao[], formaDe: (d: Devolucao) => Pagamento["forma"] | undefined, padrao: Pagamento["forma"]) => {
+  const peloMercadoPago = devs.filter((d) => d.situacao !== "por_fora");
+  const formas = new Set(peloMercadoPago.map(formaDe).filter((f) => f !== undefined));
+  return {
+    porFora: devs.length > 0 && peloMercadoPago.length === 0,
+    algumaPorFora: peloMercadoPago.length < devs.length,
+    forma: formas.size > 1 ? null : (formas.values().next().value ?? padrao),
+  };
+};
+
+/**
  * A devolução da diferença de uma alteração aplicada, para a página (as devoluções dela juntas, pela regra única da página
  * da reserva cancelada, `estadoDaCancelada`): esperando a liberação do pagamento (nada pedido ainda: nunca "já pedimos"),
  * pedida, com a equipe, em conferência ou feita — a menos adiantada vale. null sem devolução (redução retida, aumento).
@@ -636,8 +654,7 @@ function devolucaoDaAlteracao(a: Alteracao, tentativas: readonly Pagamento[], de
     valorConfirmado: feitas && confirmados.every((v) => v !== null) ? confirmados.reduce((s2, v) => s2 + v!, 0) : null,
     em: ultima ? quando(ultima) : null,
     previstaEm: prevista ? hojeISO("America/Sao_Paulo", prevista) : null,
-    porFora: devs.every((d) => d.situacao === "por_fora"),
-    forma: p0?.forma ?? "pix",
+    ...rotasDaDevolucao(devs, (d) => doPagamento(d)?.forma, p0?.forma ?? "pix"),
     estornoPelaEquipe: devs.some((d) => {
       const p = doPagamento(d);
       return !!p && estornaPelaEquipe(p, d, agora);
@@ -713,9 +730,8 @@ function estadoDoCancelamento(
     // Uma devolução: a soma das confirmadas que a leitura mostrou (como no M8.2c); várias: a soma, quando todas têm valor.
     valorConfirmado: devs.length === 1 ? (devs[0].valorConfirmado ?? null) : feitas && confirmados.every((v) => v !== null) ? confirmados.reduce((s, v) => s + v!, 0) : null,
     devolucaoEm: ultima ? quando(ultima) : null,
-    porFora: devs.length > 0 && devs.every((d) => d.situacao === "por_fora"),
+    ...rotasDaDevolucao(devs, (d) => doPagamento(d).forma, p0.forma),
     confirmadaPor: principal?.situacao === "confirmada" ? (principal.confirmadaPor ?? "leitura") : null,
-    forma: ((formas) => (formas.size > 1 ? null : (formas.values().next().value ?? p0.forma)))(new Set(devs.map((d) => doPagamento(d).forma))),
     // A mesma regra do quadro do pagamento (`porForaPermitidoNoCartao`): aberta a devolução por fora, o cartão não é mais o caminho.
     estornoPelaEquipe: devs.some((d) => estornaPelaEquipe(doPagamento(d), d, agora)),
     integralAte: canc.integralAte,
@@ -1484,7 +1500,7 @@ export async function avisosDePagamento(
     const com = new Set(comMotor.map((l) => l.reservaId));
     // Só a reserva que o motor calcula (confirmada, ou cancelada com valor retido): a cancelada com devolução não tem cálculo.
     contagens.semCalculo = pagas.filter((p) => !com.has(p.reservaId) && p.situacao === "aprovado" && calculada(p.reservaId)).length;
-    // Pagas pelo site com a estadia ainda por vir ou em curso: as OTAs não sabem delas enquanto o envio não sai.
+    // Pagas pelo site com a estadia ainda por vir ou em curso: as OTAs não sabem delas até o M8.3 (o envio não fecha datas de reservas).
     const hoje = hojeISO("America/Sao_Paulo", agora);
     const [abertas] = await db
       .select({ n: sql<number>`count(distinct ${reservas.id})::int` })
@@ -1574,10 +1590,8 @@ export async function avisosDePagamento(
   if (contagens.liberacaoVencida) alertas.push({ nivel: "info", texto: `${contagens.liberacaoVencida} pagamento(s) do site com a liberação prevista vencida e sem confirmação do Mercado Pago: confira e, se o dinheiro caiu, registre a liberação na reserva.`, link: `${LINK_PAGAMENTOS}?atencao=1` });
   if (contagens.semCalculo) alertas.push({ nivel: "atencao", texto: `${contagens.semCalculo} reserva(s) paga(s) pelo site com dinheiro recebido sem cálculo no financeiro: confira o contrato na data da entrada.`, link: LINK_PAGAMENTOS });
   if (contagens.comAviso) alertas.push({ nivel: "atencao", texto: `${contagens.comAviso} pagamento(s) do site com aviso: confira na lista.`, link: `${LINK_PAGAMENTOS}?atencao=1` });
-  if (contagens.pagasAbertas) {
-    const envioLigado = escritaBeds24Pronta(env) && (await lerRegrasCalendario(db, organizacaoId)).envio.automatico;
-    if (!envioLigado) alertas.push({ nivel: "info", texto: `${contagens.pagasAbertas} reserva(s) do site paga(s): feche as datas nas OTAs (no Beds24, como bloqueio) enquanto o envio ao Beds24 estiver desligado.`, link: "/painel/reservas" });
-  }
+  // Sempre, mesmo com o envio ao Beds24 ligado: o envio fecha só os bloqueios do SCL, nunca as datas das reservas (até o M8.3).
+  if (contagens.pagasAbertas) alertas.push({ nivel: "info", texto: `${contagens.pagasAbertas} reserva(s) do site paga(s): feche as datas nas OTAs (no Beds24, como bloqueio).`, link: "/painel/reservas" });
   return { alertas, contagens };
 }
 
@@ -1602,12 +1616,11 @@ const somarDiasISO = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:0
  * Avisos do cancelamento pela política para o Início da operação (quem tem `reserva:editar`; da empresa toda, fora dos
  * avisos do financeiro, e sem valores):
  * - um por pedido de cancelamento esperando a equipe, com a idade e a entrada (o pedido nunca se perde pela demora);
- * - reservas do site canceladas com a estadia por vir e as datas ainda não reabertas nas OTAs, enquanto o envio ao Beds24
- *   estiver desligado (o M8.3 grava a marca sozinho);
+ * - reservas do site canceladas com a estadia por vir e as datas ainda não reabertas nas OTAs (o envio ao Beds24 não
+ *   reabre datas de reservas; o M8.3 grava a marca sozinho);
  * - cancelamentos com mensagem ao hóspede pendente (a decisão, ou a devolução feita).
  */
-export async function avisosDeCancelamento(db: Db, organizacaoId: string, agora: Date = new Date(), o: { env?: NodeJS.ProcessEnv; mensagensComValor?: boolean } = {}): Promise<AvisoPagamento[]> {
-  const env = o.env ?? process.env;
+export async function avisosDeCancelamento(db: Db, organizacaoId: string, agora: Date = new Date(), o: { mensagensComValor?: boolean } = {}): Promise<AvisoPagamento[]> {
   const hoje = hojeISO("America/Sao_Paulo", agora);
   const alertas: AvisoPagamento[] = [];
   const pedidos = await db
@@ -1633,15 +1646,13 @@ export async function avisosDeCancelamento(db: Db, organizacaoId: string, agora:
     .where(and(eq(cancelamentosReserva.organizacaoId, organizacaoId), eq(cancelamentosReserva.situacao, "cancelada")))
     .orderBy(asc(reservas.codigo));
   const abertas = canceladas.filter((x) => x.checkout > hoje && !x.c.otaLiberadaEm);
-  if (abertas.length) {
-    const envioLigado = escritaBeds24Pronta(env) && (await lerRegrasCalendario(db, organizacaoId)).envio.automatico;
-    if (!envioLigado)
-      alertas.push({
-        nivel: "info",
-        texto: `${abertas.length} reserva(s) do site cancelada(s) (${codigosDasCanceladas(abertas)}): reabra as datas nas OTAs (no Beds24, apague o bloqueio) enquanto o envio ao Beds24 estiver desligado.`,
-        link: linkDasCanceladas(abertas),
-      });
-  }
+  // Sempre, mesmo com o envio ao Beds24 ligado: o envio fecha só os bloqueios do SCL, nunca reabre as datas das reservas (até o M8.3).
+  if (abertas.length)
+    alertas.push({
+      nivel: "info",
+      texto: `${abertas.length} reserva(s) do site cancelada(s) (${codigosDasCanceladas(abertas)}): reabra as datas nas OTAs (no Beds24, apague o bloqueio).`,
+      link: linkDasCanceladas(abertas),
+    });
   // Mensagem ao hóspede pendente: a decisão (desde o cancelamento) ou a devolução feita (desde ela).
   const devs = canceladas.length
     ? await db

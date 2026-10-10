@@ -101,7 +101,7 @@ function devolucaoEmTexto(a: AlteracaoDoPainel, verValores: boolean): string | n
   const estados: Record<NonNullable<AlteracaoDoPainel["devolucao"]>["estado"], string> = {
     aguardando_liberacao: `esperando o Mercado Pago liberar o pagamento${d.previstaEm ? ` (previsto para ${diaIso(d.previstaEm)})` : ""}: nada foi pedido ainda`,
     pedida: "pedida ao Mercado Pago",
-    feita: `feita${d.em ? ` em ${diaBr(d.em)}` : ""}${d.porFora ? " (por fora)" : ""}`,
+    feita: `feita${d.em ? ` em ${diaBr(d.em)}` : ""}${d.porFora ? " (por fora)" : d.algumaPorFora ? " (uma parte por fora)" : ""}`,
     com_a_equipe: "com a equipe: o Mercado Pago não devolveu (veja o quadro do pagamento)",
     em_conferencia: "em conferência (veja o quadro do pagamento)",
   };

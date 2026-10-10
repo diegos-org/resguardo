@@ -214,6 +214,7 @@ describe("textoDoCancelamento: o texto único da página e das mensagens (M8.2c)
     valorConfirmado: null,
     devolucaoEm: null,
     porFora: false,
+    algumaPorFora: false,
     confirmadaPor: null,
     forma: "pix",
     estornoPelaEquipe: false,
@@ -254,6 +255,17 @@ describe("textoDoCancelamento: o texto único da página e das mensagens (M8.2c)
   it("devoluções por meios diferentes (reserva no Pix, diferença no cartão): as duas frases de como o dinheiro volta", () => {
     expect(texto("cancelada_devolucao_pedida", { forma: null }).comoVolta).toBe("[volta Pix] [volta cartão]");
     expect(texto("cancelada_devolvida", { forma: null, devolucaoEm: "2026-10-06T15:00:00.000Z", confirmadaPor: "leitura" }).linhas).toContain("[volta Pix] [volta cartão]");
+  });
+
+  it("uma parte por fora e outra pelo Mercado Pago: as frases dos dois caminhos, e o total nunca 'pelo Mercado Pago'", () => {
+    const feita = texto("cancelada_devolvida", { forma: "cartao", algumaPorFora: true, devolucaoEm: "2026-10-06T15:00:00.000Z", valorConfirmado: 182400, confirmadaPor: "leitura" });
+    expect(feita.decisao).toContain("Devolução de R$ 1.824,00 feita em 06/10.");
+    expect(feita.decisao).not.toContain("Mercado Pago");
+    expect(feita.comoVolta).toBe("[volta cartão] [volta por fora]");
+    expect(texto("cancelada_devolucao_pedida", { forma: "pix", algumaPorFora: true }).comoVolta).toBe("[volta Pix] [volta por fora]");
+    expect(texto("cancelada_devolucao_pedida", { forma: null, algumaPorFora: true }).comoVolta).toBe("[volta Pix] [volta cartão] [volta por fora]");
+    // Todas por fora: só a transferência.
+    expect(texto("cancelada_devolvida", { porFora: true, algumaPorFora: true, devolucaoEm: "2026-10-06T15:00:00.000Z" }).comoVolta).toBe("[volta por fora]");
   });
 
   it("quem cancela e a base: a SCL (com o motivo), exceção (decisão da equipe), sem devolução pelo prazo (o arrependimento só quando vai além), não comparecimento, sem política", () => {

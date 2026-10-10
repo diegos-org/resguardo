@@ -277,7 +277,7 @@ const alteracao = (over: Partial<AlteracaoDoPainel> = {}): AlteracaoDoPainel => 
   },
   ota: null,
   avisados: { proposta: null, confirmacao: null, devolucao: null },
-  devolucao: { estado: "aguardando_liberacao", valor: 60800, valorConfirmado: null, em: null, previstaEm: "2026-10-20", porFora: false, forma: "pix" },
+  devolucao: { estado: "aguardando_liberacao", valor: 60800, valorConfirmado: null, em: null, previstaEm: "2026-10-20", porFora: false, algumaPorFora: false, forma: "pix" },
   tentativas: [],
   mensagens: { proposta: null, confirmada: { texto: "Olá! A alteração da sua reserva SCL-TESTE1 está confirmada: 12/10–14/10, R$ 1.216,00.", falta: [], textoBase: true }, devolvida: null },
   ...over,

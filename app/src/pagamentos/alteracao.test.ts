@@ -47,7 +47,6 @@ import {
   EMAIL_HOSPEDE,
   entradaAlteracao,
   entradaPadrao,
-  env,
   envelhecer,
   liberar,
   minutos,
@@ -206,17 +205,28 @@ describe("aumento: o hóspede paga a diferença na página da reserva", () => {
     const acoes = (await db.select({ acao: auditoria.acao }).from(auditoria).where(eq(auditoria.organizacaoId, c.org))).map((y) => y.acao);
     expect(acoes).toEqual(expect.arrayContaining(["alteracao.preparar", "alteracao.segurar", "alteracao.estender", "reserva.alterar", "alteracao.aplicar", "pagamento.alteracao"]));
 
-    // Início (operação): mudar o bloqueio nas OTAs enquanto o envio ao Beds24 está desligado, até a equipe marcar.
-    const ota = (await avisosDeAlteracao(db, c.org, minutos(40), { env: env() })).find((y) => y.texto.includes("mude o bloqueio nas OTAs"));
+    // Início (operação): mudar o bloqueio nas OTAs até a equipe marcar.
+    const ota = (await avisosDeAlteracao(db, c.org, minutos(40))).find((y) => y.texto.includes("mude o bloqueio nas OTAs"));
     expect(ota).toEqual({
       nivel: "info",
-      texto: `1 reserva(s) do site alterada(s) (${x.reservaCodigo}): mude o bloqueio nas OTAs (no Beds24, feche as novas datas e reabra as antigas) enquanto o envio ao Beds24 estiver desligado.`,
+      texto: `1 reserva(s) do site alterada(s) (${x.reservaCodigo}): mude o bloqueio nas OTAs (no Beds24, feche as novas datas e reabra as antigas).`,
       link: `/painel/reservas/${x.reservaId}`,
     });
     expect(ota!.texto).not.toContain("R$");
+    // Com o envio automático ao Beds24 ligado (no ambiente e no painel) o aviso continua: o envio fecha só os bloqueios
+    // do SCL, nunca as datas das reservas (até o M8.3). Credencial fictícia: nada é chamado.
+    vi.stubEnv("BEDS24_ESCRITA", "ligada");
+    vi.stubEnv("BEDS24_REFRESH_TOKEN", "refresh-ficticio");
+    try {
+      const regras = await lerRegrasCalendario(db, c.org);
+      await salvarRegrasCalendario(db, c.org, { ...regras, envio: { ...regras.envio, automatico: true } }, null);
+      expect((await avisosDeAlteracao(db, c.org, minutos(40))).find((y) => y.texto.includes("mude o bloqueio nas OTAs"))).toEqual(ota);
+    } finally {
+      vi.unstubAllEnvs();
+    }
     expect(await marcarOtaAtualizada(db, c.org, a.id, equipe, minutos(41))).toEqual({ ok: true });
     expect(await marcarOtaAtualizada(db, c.org, a.id, equipe, minutos(42))).toMatchObject({ ok: false });
-    expect((await avisosDeAlteracao(db, c.org, minutos(43), { env: env() })).some((y) => y.texto.includes("mude o bloqueio nas OTAs"))).toBe(false);
+    expect((await avisosDeAlteracao(db, c.org, minutos(43))).some((y) => y.texto.includes("mude o bloqueio nas OTAs"))).toBe(false);
     // Repetir a aplicação não muda nada: a alteração aplicada recusa de novo (e a outra tentativa não aplica duas vezes).
     expect(await previaDaAplicacao(db, c.org, a.id, c.provedor, minutos(44))).toMatchObject({ ok: false, codigo: "nao_segurada" });
     expect(await semDadosDoHospede(db)).toEqual([]);
@@ -1108,7 +1118,7 @@ describe("revisão do M8.2d: os textos da equipe dizem quem decidiu e só falam 
     expect(aumento.previa.pergunta).not.toContain("OTAs");
     // Aplicada (só as pessoas e o valor): nada a mudar no bloqueio das OTAs.
     expect((await alterar(c, x.reservaId, { hospedes: 2, valor: menos200 }, minutos(20), { autorId: equipe, aplicar: true })).resultado).toMatchObject({ ok: true, situacao: "aplicada" });
-    expect((await avisosDeAlteracao(db, c.org, minutos(30), { env: env() })).some((a) => a.texto.includes("mude o bloqueio nas OTAs"))).toBe(false);
+    expect((await avisosDeAlteracao(db, c.org, minutos(30))).some((a) => a.texto.includes("mude o bloqueio nas OTAs"))).toBe(false);
     // Retida (fora do prazo da política), as mesmas datas: nenhuma noite é liberada.
     const y = await pagarEConfirmar(c, { entrada: "2026-10-20", saida: "2026-10-23", email: "outro@example.com" });
     const retida = await previaDaAlteracao(db, c.org, y.reservaId, entradaAlteracao({ checkin: "2026-10-20", checkout: "2026-10-23", hospedes: 2, recebidoEm: tarde, valor: menos200 }), c.provedor, tarde);
