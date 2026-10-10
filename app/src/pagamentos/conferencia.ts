@@ -11,6 +11,7 @@ import { and, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { eventosPagamento, pagamentos } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
+import { expirarSeVencida } from "./alteracao-prazo";
 import { aplicarLeitura, type Efeitos, type Leitura } from "./aplicar";
 import { DESISTIR_SEM_ORDER_CARTAO_MS, paginaAindaLe } from "./andamento";
 import { type Cobranca, ErroProvedor, type ProvedorPagamento } from "./provedor";
@@ -85,11 +86,16 @@ async function lerProvedor(p: Pagamento, provedor: ProvedorPagamento, agora: Dat
   return { cobranca, financeiro, desistir, idLido: p.idProvedor };
 }
 
-/** Aplica uma leitura numa transação curta, com as travas na ordem única; devolve os efeitos para depois dela. */
-export async function aplicarNaTransacao(db: Db, organizacaoId: string, p: Pick<Pagamento, "id" | "cotacaoId">, leitura: Leitura, agora: Date): Promise<Efeitos | null> {
+/**
+ * Aplica uma leitura numa transação curta, com as travas na ordem única; devolve os efeitos para depois dela.
+ * `o.vencerAlteracoes` (o "Conferir agora" do painel, M8.2d): antes, vence a alteração da reserva com o prazo das datas
+ * vencido (sem provedor).
+ */
+export async function aplicarNaTransacao(db: Db, organizacaoId: string, p: Pick<Pagamento, "id" | "cotacaoId">, leitura: Leitura, agora: Date, o: { vencerAlteracoes?: boolean } = {}): Promise<Efeitos | null> {
   return db.transaction(async (tx) => {
     const t = await travarCotacao(tx, organizacaoId, p.cotacaoId);
     if (!t || !t.tentativas.some((x) => x.id === p.id)) return null;
+    if (o.vencerAlteracoes) await expirarSeVencida(tx, organizacaoId, t, agora);
     return aplicarLeitura(tx, organizacaoId, t, p.id, leitura, agora);
   });
 }
@@ -167,7 +173,7 @@ export async function conferirTentativa(
   }
   let efeitos: Efeitos | null;
   try {
-    efeitos = await aplicarNaTransacao(db, organizacaoId, p, leitura, agora);
+    efeitos = await aplicarNaTransacao(db, organizacaoId, p, leitura, agora, { vencerAlteracoes: opcoes.origem === "painel" });
   } catch (e) {
     await desfazerReserva();
     throw e;

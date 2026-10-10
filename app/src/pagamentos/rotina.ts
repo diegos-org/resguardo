@@ -15,6 +15,9 @@
  *   aviso da própria devolução); a de parte do valor que espera a liberação só é pedida depois dela (D13);
  * - pagamentos pendentes que sobraram numa cotação em que outro DO MESMO ALVO já trouxe dinheiro (a reserva, ou a
  *   diferença da mesma alteração, M8.2d; cancelados no provedor; quem pediu o cancelamento foi o sistema);
+ * - pagamentos da diferença ainda pendentes de uma alteração que já não vale (aplicada, desistida, vencida, ou com o prazo
+ *   e a carência passados; M8.2d): cancelados no provedor, fora de qualquer transação (o vencimento e a desistência nunca
+ *   chamam o provedor; esta varredura cumpre o cancelamento que a desistência promete e cobre o vencimento);
  * - uma vez por dia, os pagamentos dos últimos 85 dias (o provedor só consulta orders de até três meses) com desfecho (reserva, devolução ou devolução por fora) e
  *   os aprovados sem reserva à espera da devolução: devolução ou contestação feita por fora (ou devolução em dobro)
  *   vira aviso, nunca estorno automático.
@@ -24,13 +27,14 @@
  * de 90 dias roda na rotina do site, em qualquer ambiente (fora desta função, que o painel também chama).
  */
 import { and, eq, gte, inArray, isNotNull, isNull, lt, lte, or, type SQL, sql } from "drizzle-orm";
-import { devolucoesPagamento, pagamentos } from "@/db/schema";
+import { alteracoesReserva, devolucoesPagamento, pagamentos } from "@/db/schema";
 import { dinheiroDaReservaSql } from "./travas";
 import type { Db } from "@/db/types";
 import { cancelarNoProvedor, conferirTentativa } from "./conferencia";
 import { tentarDevolucao } from "./devolucao";
 import { apagarEventosAntigos } from "./eventos";
-import { inicioDoPrazoDeReleitura, PRAZO_RELEITURA_DIAS } from "./andamento";
+import { expirarAlteracoesVencidas, type ResumoAlteracoesVencidas } from "./alteracao-prazo";
+import { CARENCIA_PAGAMENTO_MS, inicioDoPrazoDeReleitura, PRAZO_RELEITURA_DIAS } from "./andamento";
 import type { ProvedorPagamento } from "./provedor";
 import { type CodigoAviso, ORIGENS_DEVOLUCAO_CONHECIDAS } from "./situacoes";
 import { expirarHoldsVencidos, type ResumoExpiracao } from "@/site/cotacoes";
@@ -56,6 +60,9 @@ export async function conferirPendentes(db: Db, organizacaoId: string | null, pr
   const forcar = o.forcar === true;
   const resumo: ResumoConferencia = { conferidas: 0, mudaram: 0, devolucoes: 0, canceladas: 0, falhas: 0 };
   const daOrg = organizacaoId ? eq(pagamentos.organizacaoId, organizacaoId) : undefined;
+  // "Conferir agora" do painel (M8.2d): as alterações com o prazo das datas vencido vencem antes (a rotina faz isto depois,
+  // em `rotinaDoSite`). Sem provedor; a varredura abaixo cancela no Mercado Pago o que sobrou delas.
+  if (forcar) resumo.falhas += (await expirarAlteracoesVencidas(db, organizacaoId, agora)).falhas;
   // Prazo único das leituras que se repetem (em andamento, diária, taxa e liberação, devoluções): o provedor só consulta
   // orders de até três meses; depois disso a leitura nunca traria nada e só gastaria o limite de chamadas.
   const corte = inicioDoPrazoDeReleitura(agora);
@@ -136,7 +143,22 @@ export async function conferirPendentes(db: Db, organizacaoId: string | null, pr
         sql`exists (select 1 from ${pagamentos} p2 where p2.cotacao_id = ${pagamentos.cotacaoId} and p2.id <> ${pagamentos.id} and p2.alteracao_id is not distinct from ${pagamentos.alteracaoId} and p2.situacao in ('aprovado', 'devolvido_parcial', 'devolvido', 'contestado'))`,
       ),
     );
-  for (const x of sobrando) {
+  // M8.2d: o pagamento da diferença ainda pendente de uma alteração que já não vale (não segurada, ou segurada com o prazo
+  // e a carência passados — a carência é a deste próprio pagamento: 15 minutos depois do prazo).
+  const daAlteracaoQueNaoVale = await db
+    .select({ id: pagamentos.id, organizacaoId: pagamentos.organizacaoId, idProvedor: pagamentos.idProvedor })
+    .from(pagamentos)
+    .innerJoin(alteracoesReserva, eq(alteracoesReserva.id, pagamentos.alteracaoId))
+    .where(
+      and(
+        daOrg,
+        eq(pagamentos.situacao, "pendente"),
+        isNotNull(pagamentos.idProvedor),
+        gte(pagamentos.criadoEm, corte),
+        or(sql`${alteracoesReserva.situacao} <> 'segurada'`, isNull(alteracoesReserva.holdAte), lte(alteracoesReserva.holdAte, new Date(agora.getTime() - CARENCIA_PAGAMENTO_MS))),
+      ),
+    );
+  for (const x of [...sobrando, ...daAlteracaoQueNaoVale.filter((y) => !sobrando.some((z) => z.id === y.id))]) {
     try {
       await db.update(pagamentos).set({ cancelamentoPor: "sistema" }).where(and(eq(pagamentos.id, x.id), isNull(pagamentos.cancelamentoPor)));
       resumo.canceladas += await cancelarNoProvedor(db, x.organizacaoId, [{ id: x.id, idProvedor: x.idProvedor! }], provedor, agora);
@@ -189,13 +211,19 @@ export async function conferirPendentes(db: Db, organizacaoId: string | null, pr
 }
 
 /**
- * A rotina do site (a de holds, a cada 10 min): primeiro confere os pagamentos e só depois vence os holds, para
- * nunca vencer um pedido cujo pagamento já entrou. Sem provedor (pagamento desligado, como no deploy de produção), só
- * vence os holds — a carência de um pagamento em andamento continua valendo. Em qualquer caso, apaga os avisos do
- * Mercado Pago com mais de 90 dias (o webhook grava no deploy de produção).
+ * A rotina do site (a de holds, a cada 10 min): primeiro confere os pagamentos, depois vence as alterações com as datas
+ * seguradas vencidas (M8.2d) e só então os holds, para nunca vencer um pedido (ou uma alteração) cujo pagamento já entrou.
+ * Sem provedor (pagamento desligado, como no deploy de produção), só vence — a carência de um pagamento em andamento
+ * continua valendo. Em qualquer caso, apaga os avisos do Mercado Pago com mais de 90 dias (o webhook grava no deploy de
+ * produção).
  */
-export async function rotinaDoSite(db: Db, provedor: ProvedorPagamento | null, agora: Date = new Date()): Promise<{ pagamentos: ResumoConferencia | null; holds: ResumoExpiracao; eventosApagados: number }> {
+export async function rotinaDoSite(
+  db: Db,
+  provedor: ProvedorPagamento | null,
+  agora: Date = new Date(),
+): Promise<{ pagamentos: ResumoConferencia | null; alteracoes: ResumoAlteracoesVencidas; holds: ResumoExpiracao; eventosApagados: number }> {
   const pagamentos = provedor ? await conferirPendentes(db, null, provedor, agora) : null;
+  const alteracoes = await expirarAlteracoesVencidas(db, null, agora);
   const holds = await expirarHoldsVencidos(db, null, agora);
-  return { pagamentos, holds, eventosApagados: await apagarEventosAntigos(db, agora) };
+  return { pagamentos, alteracoes, holds, eventosApagados: await apagarEventosAntigos(db, agora) };
 }

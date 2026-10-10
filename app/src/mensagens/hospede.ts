@@ -14,6 +14,13 @@
  * equipe já marcou que enviou à mão. As frases do caso (`{decisao}`, `{comovolta}`) vêm de `textoDoCancelamento`, o mesmo
  * texto da página da reserva. Os botões "Copiar mensagem" do painel usam o mesmo preenchimento (`mensagensDoCancelamento`).
  *
+ * Alteração de reserva paga pelo site (M8.2d): a proposta (enquanto as datas estão seguradas, em qualquer direção), a
+ * confirmação (até 7 dias depois de aplicada) e a devolução da diferença feita (até 7 dias depois dela, com o mesmo modelo
+ * "Devolução feita"). Os candidatos vêm da alteração; a marca de "mensagem enviada" acende nela (pelo sistema), e a
+ * confirmação da reserva não sai de novo só porque as datas mudaram pela alteração. `{alteracao}` vem de
+ * `textoDaAlteracao`, o mesmo texto da página da reserva; os botões "Copiar" do painel usam o mesmo preenchimento
+ * (`mensagensDaAlteracao`).
+ *
  * Regras:
  * - Desligado até Diego ligar em Configurações → Modelos de mensagem. Ligado, vale daquele momento
  *   em diante: nada que estava previsto para antes é mandado atrasado.
@@ -28,6 +35,7 @@ import { emailValido } from "@/acesso/codigo-email";
 import { gravarConfig, lerConfig } from "@/configuracoes/armazem";
 import { lerEmpresa } from "@/configuracoes/empresa";
 import {
+  ehMensagemDeAlteracao,
   ehMensagemDeCancelamento,
   NOMES_TIPO,
   ondeVale,
@@ -35,7 +43,9 @@ import {
   problemaDoModeloNoTipo,
   TEXTO_BASE_RECEBIDO_SEM_POLITICA,
   textoDaFaltaNoCancelamento,
+  TEXTOS_BASE_ALTERACAO,
   TEXTOS_BASE_CANCELAMENTO,
+  type TipoMensagemAlteracao,
   type TipoMensagemCancelamento,
   type Variavel,
   VARIAVEIS_DO_CANCELAMENTO,
@@ -44,6 +54,7 @@ import {
 } from "@/configuracoes/modelos-texto";
 import { lerTextosSite, type TextosSite } from "@/configuracoes/textos-site";
 import {
+  alteracoesReserva,
   appSettings,
   cancelamentosReserva,
   cotacoes,
@@ -66,9 +77,10 @@ import { instanteLocal, liberacaoDasInstrucoes } from "@/hospede/portal";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { formatBRL } from "@/lib/money";
+import { marcarAvisadoDaAlteracao, type MensagemDaAlteracao } from "@/pagamentos/alteracao";
 import { marcarAvisado, type MensagemAoHospede } from "@/pagamentos/cancelamento";
-import { vistaDaCotacaoParaHospede } from "@/pagamentos/consultas";
-import { textoDoCancelamento } from "@/site/pagamento-vista";
+import { type AlteracaoParaHospede, alteracaoParaMensagem, vistaDaCotacaoParaHospede } from "@/pagamentos/consultas";
+import { textoDaAlteracao, textoDoCancelamento } from "@/site/pagamento-vista";
 
 export { NOMES_TIPO };
 
@@ -397,8 +409,9 @@ export async function enviarMensagensHospede(db: Db, organizacaoId: string, corr
   if (!tipos.length || !cfg.origens.length) return res;
   if (!correio) return { ...res, semProvedor: true };
 
-  const tiposDaReserva = tipos.filter((t) => !ehMensagemDeCancelamento(t));
+  const tiposDaReserva = tipos.filter((t) => !ehMensagemDeCancelamento(t) && !ehMensagemDeAlteracao(t));
   const tiposDoCancelamento = tipos.filter(ehMensagemDeCancelamento);
+  const tiposDaAlteracao = tipos.filter(ehMensagemDeAlteracao);
   const idsModelos = tipos.map((t) => cfg.modelos[t]!).filter((i) => uuidValido(i));
   const modelos = new Map(
     (idsModelos.length ? await db.select().from(modelosMensagem).where(and(eq(modelosMensagem.organizacaoId, organizacaoId), inArray(modelosMensagem.id, idsModelos))) : []).map((m) => [m.id, m]),
@@ -433,7 +446,15 @@ export async function enviarMensagensHospede(db: Db, organizacaoId: string, corr
         or(lte(reservas.checkin, somarDias(hoje, 3)), and(isNotNull(reservas.confirmadaEm), gte(reservas.confirmadaEm, ativoDesde))),
       ),
     );
-  const empresa = linhas.length || tiposDoCancelamento.length ? await lerEmpresa(db, organizacaoId) : null;
+  const empresa = linhas.length || tiposDoCancelamento.length || tiposDaAlteracao.length ? await lerEmpresa(db, organizacaoId) : null;
+  // M8.2d: a reserva cujas datas de agora são as de uma alteração aplicada já recebeu a confirmação (das datas de antes) e
+  // recebe a da alteração: a confirmação da reserva não sai de novo.
+  const alteradas = tiposDaReserva.includes("confirmacao") && linhas.length
+    ? await db
+        .select({ reservaId: alteracoesReserva.reservaId, checkin: alteracoesReserva.checkinDepois, checkout: alteracoesReserva.checkoutDepois })
+        .from(alteracoesReserva)
+        .where(and(eq(alteracoesReserva.organizacaoId, organizacaoId), eq(alteracoesReserva.situacao, "aplicada"), inArray(alteracoesReserva.reservaId, linhas.map((l) => l.id))))
+    : [];
 
   for (const l of tiposDaReserva.length ? linhas : []) {
     const fuso = l.fuso || "America/Sao_Paulo";
@@ -442,6 +463,7 @@ export async function enviarMensagensHospede(db: Db, organizacaoId: string, corr
       const prazo = prazoDaMensagem(tipo, prazoDados);
       // Vale de quando foi ligado em diante; fora do prazo, não manda.
       if (!prazo || prazo.inicio < ativoDesde || agora < prazo.inicio || agora >= prazo.fim) continue;
+      if (tipo === "confirmacao" && alteradas.some((x) => x.reservaId === l.id && x.checkin === l.checkin && x.checkout === l.checkout)) continue;
       const [ja] = await db
         .select({ estado: mensagensHospede.estado, tentativas: mensagensHospede.tentativas })
         .from(mensagensHospede)
@@ -550,7 +572,267 @@ export async function enviarMensagensHospede(db: Db, organizacaoId: string, corr
       }
     }
   }
+
+  // Alteração de reserva paga pelo site (M8.2d): a proposta, a confirmação e a devolução da diferença feita.
+  const tiposDeAlteracao: TipoDaAlteracao[] = [...tiposDaAlteracao, ...(tipos.includes("devolucao_concluida") ? (["devolucao_concluida"] as const) : [])];
+  if (tiposDeAlteracao.length) {
+    const alvos = (await alvosDeAlteracao(db, organizacaoId, { desde: new Date(agora.getTime() - 10 * 24 * 3_600_000) })).filter((a) => cfg.origens.includes(a.origem));
+    const textos = alvos.length ? await lerTextosSite(db, organizacaoId) : null;
+    for (const a of alvos) {
+      const vista = await alteracaoParaMensagem(db, organizacaoId, a.alteracaoId, agora);
+      if (!vista) continue;
+      for (const tipo of tiposDeAlteracao) {
+        const prazo = prazoDaMensagemDaAlteracao(tipo, a, vista);
+        if (!prazo || prazo.inicio < ativoDesde || agora < prazo.inicio || agora >= prazo.fim) continue;
+        if (a.avisados[AVISADO_DA_ALTERACAO[tipo]]) continue;
+        const [ja] = await db
+          .select({ estado: mensagensHospede.estado, tentativas: mensagensHospede.tentativas })
+          .from(mensagensHospede)
+          .where(and(eq(mensagensHospede.reservaId, a.reservaId), eq(mensagensHospede.tipo, tipo), eq(mensagensHospede.referencia, prazo.referencia)));
+        if (ja && !(ja.estado === "falhou" && ja.tentativas < MAX_TENTATIVAS)) continue;
+        const aviso = (motivo: string) => res.avisos.push(`${a.codigo} (${NOMES_TIPO[tipo].toLowerCase()}): ${motivo}`);
+        const modelo = modelos.get(cfg.modelos[tipo]!);
+        if (!modelo?.ativo) {
+          aviso("o modelo escolhido não existe mais ou está arquivado");
+          continue;
+        }
+        const para = a.email.trim().toLowerCase();
+        if (!emailValido(para)) {
+          aviso("reserva sem e-mail do hóspede");
+          continue;
+        }
+        const problema = problemaDoModeloNoTipo(tipo, modelo.texto);
+        if (problema) {
+          aviso(problema);
+          continue;
+        }
+        const valores = valoresDaAlteracao(a, vista, empresa!, textos!);
+        const faltando = (variaveisDoTexto(modelo.texto) as Variavel[]).filter((v) => !valores[v]);
+        if (faltando.length) {
+          aviso(`falta ${faltando.map((v) => `{${v}}`).join(", ")} neste caso`);
+          continue;
+        }
+        const enviada = await enviarUma(db, organizacaoId, correio, res, { reservaId: a.reservaId, tipo, referencia: prazo.referencia, para, modeloNome: modelo.nome, assunto: `${modelo.nome} — reserva ${a.codigo}`, texto: preencherModelo(modelo.texto, valores) }, agora);
+        if (enviada) await marcarAvisadoDaAlteracao(db, organizacaoId, a.alteracaoId, AVISADO_DA_ALTERACAO[tipo], null, agora);
+      }
+    }
+  }
   return res;
+}
+
+// ---------------------------------------------------------------- alteração de reserva paga pelo site (M8.2d)
+
+/** As mensagens de uma alteração: a proposta, a confirmação e a devolução da diferença feita (com o modelo "Devolução feita"). */
+type TipoDaAlteracao = TipoMensagemAlteracao | "devolucao_concluida";
+const AVISADO_DA_ALTERACAO: Record<TipoDaAlteracao, MensagemDaAlteracao> = { alteracao_proposta: "proposta", alteracao_confirmada: "confirmacao", devolucao_concluida: "devolucao" };
+/** Até quando a confirmação e a devolução feita da alteração ainda fazem sentido. */
+const PRAZO_ALTERACAO_MS = 7 * 24 * 3_600_000;
+
+/** Uma alteração com o que as mensagens dela precisam (nunca gravado: o nome e o e-mail são lidos da reserva agora). */
+type AlvoAlteracao = {
+  alteracaoId: string;
+  reservaId: string;
+  codigo: string;
+  checkin: string;
+  checkout: string;
+  origem: OrigemReserva;
+  nome: string;
+  email: string;
+  imovel: string;
+  fuso: string;
+  cotacaoCodigo: string;
+  /** A devolução da diferença feita mais recente (a referência da mensagem), quando todas estão feitas. */
+  ultimaDevolucaoId: string | null;
+  avisados: Record<MensagemDaAlteracao, Date | null>;
+};
+
+async function alvosDeAlteracao(db: Db, organizacaoId: string, f: { alteracaoId?: string; desde?: Date }): Promise<AlvoAlteracao[]> {
+  const linhas = await db
+    .select({
+      a: alteracoesReserva,
+      codigo: reservas.codigo,
+      checkin: reservas.checkin,
+      checkout: reservas.checkout,
+      origem: reservas.origem,
+      nome: reservas.hospedeNome,
+      email: reservas.hospedeEmail,
+      imovel: imoveis.nome,
+      fuso: imoveis.fuso,
+      cotacaoCodigo: cotacoes.codigo,
+    })
+    .from(alteracoesReserva)
+    .innerJoin(reservas, and(eq(reservas.id, alteracoesReserva.reservaId), eq(reservas.organizacaoId, alteracoesReserva.organizacaoId)))
+    .innerJoin(imoveis, eq(imoveis.id, reservas.imovelId))
+    .innerJoin(cotacoes, eq(cotacoes.id, alteracoesReserva.cotacaoId))
+    .where(
+      and(
+        eq(alteracoesReserva.organizacaoId, organizacaoId),
+        eq(reservas.estado, "confirmada"),
+        f.alteracaoId ? eq(alteracoesReserva.id, f.alteracaoId) : undefined,
+        // A recente: segurada, mexida ou aplicada desde então, ou com uma devolução da diferença feita desde então (a
+        // devolução que esperou a liberação do Mercado Pago sai dias depois da aplicação).
+        f.desde
+          ? or(
+              eq(alteracoesReserva.situacao, "segurada"),
+              gte(alteracoesReserva.atualizadoEm, f.desde),
+              gte(alteracoesReserva.aplicadaEm, f.desde),
+              sql`exists (select 1 from ${devolucoesPagamento} d where d.alteracao_id = ${alteracoesReserva.id} and (d.confirmada_em >= ${f.desde.toISOString()}::timestamptz or d.por_fora_data >= ${hojeISO("America/Sao_Paulo", f.desde)}::date))`,
+            )
+          : undefined,
+      ),
+    );
+  if (!linhas.length) return [];
+  const devs = await db
+    .select({ id: devolucoesPagamento.id, alteracaoId: devolucoesPagamento.alteracaoId, situacao: devolucoesPagamento.situacao, confirmadaEm: devolucoesPagamento.confirmadaEm, porForaData: devolucoesPagamento.porForaData })
+    .from(devolucoesPagamento)
+    .where(inArray(devolucoesPagamento.alteracaoId, linhas.map((l) => l.a.id)));
+  return linhas.map((l) => {
+    const daAlteracao = devs.filter((d) => d.alteracaoId === l.a.id && d.situacao !== "substituida");
+    const quando = (d: (typeof devs)[number]) => (d.situacao === "confirmada" ? d.confirmadaEm : d.situacao === "por_fora" && d.porForaData ? instanteLocal(d.porForaData, "12:00", "America/Sao_Paulo") : null);
+    const feitas = daAlteracao.map((d) => ({ d, em: quando(d) }));
+    const ultima = feitas.length && feitas.every((x) => x.em) ? feitas.sort((x, y) => x.em!.getTime() - y.em!.getTime()).at(-1)! : null;
+    return {
+      alteracaoId: l.a.id,
+      reservaId: l.a.reservaId,
+      codigo: l.codigo,
+      checkin: l.checkin,
+      checkout: l.checkout,
+      origem: l.origem,
+      nome: l.nome,
+      email: l.email,
+      imovel: l.imovel,
+      fuso: l.fuso || "America/Sao_Paulo",
+      cotacaoCodigo: l.cotacaoCodigo,
+      ultimaDevolucaoId: ultima?.d.id ?? null,
+      avisados: { proposta: l.a.hospedeAvisadoPropostaEm, confirmacao: l.a.hospedeAvisadoConfirmacaoEm, devolucao: l.a.hospedeAvisadoDevolucaoEm },
+    };
+  });
+}
+
+/**
+ * As alterações com mensagem ao hóspede pendente (para o aviso do Início): a proposta enquanto as datas estão seguradas, a
+ * confirmação e a devolução da diferença feita nos prazos delas (os mesmos do envio automático), sem a marca de "mensagem
+ * enviada". `desde`: o começo do prazo da mais antiga pendente (o aviso fica em atenção depois de um tempo).
+ */
+export async function alteracoesComMensagemPendente(db: Db, organizacaoId: string, agora: Date): Promise<{ alteracaoId: string; reservaId: string; codigo: string; desde: Date }[]> {
+  const alvos = await alvosDeAlteracao(db, organizacaoId, { desde: new Date(agora.getTime() - 10 * 24 * 3_600_000) });
+  const pendentes: { alteracaoId: string; reservaId: string; codigo: string; desde: Date }[] = [];
+  for (const a of alvos) {
+    const vista = await alteracaoParaMensagem(db, organizacaoId, a.alteracaoId, agora);
+    if (!vista) continue;
+    const desde = (Object.keys(AVISADO_DA_ALTERACAO) as TipoDaAlteracao[])
+      .map((tipo) => (a.avisados[AVISADO_DA_ALTERACAO[tipo]] ? null : prazoDaMensagemDaAlteracao(tipo, a, vista)))
+      .filter((p): p is NonNullable<typeof p> => !!p && p.inicio.getTime() <= agora.getTime() && agora.getTime() < p.fim.getTime())
+      .map((p) => p.inicio.getTime());
+    if (desde.length) pendentes.push({ alteracaoId: a.alteracaoId, reservaId: a.reservaId, codigo: a.codigo, desde: new Date(Math.min(...desde)) });
+  }
+  return pendentes.sort((x, y) => (x.codigo < y.codigo ? -1 : x.codigo > y.codigo ? 1 : 0));
+}
+
+/**
+ * Quando cada mensagem da alteração pode sair: a proposta enquanto as datas estão seguradas (da preparação até o prazo); a
+ * confirmação da aplicação até 7 dias depois; a devolução da diferença feita, dela até 7 dias depois. `referencia`: a
+ * alteração (proposta e confirmação) ou a última devolução dela.
+ */
+export function prazoDaMensagemDaAlteracao(tipo: TipoDaAlteracao, a: Pick<AlvoAlteracao, "alteracaoId" | "ultimaDevolucaoId">, v: AlteracaoParaHospede): { inicio: Date; fim: Date; referencia: string } | null {
+  switch (tipo) {
+    case "alteracao_proposta":
+      return v.situacao === "segurada" && v.holdAte ? { inicio: v.preparadaEm, fim: v.holdAte, referencia: a.alteracaoId } : null;
+    case "alteracao_confirmada":
+      return v.situacao === "aplicada" && v.aplicadaEm ? { inicio: v.aplicadaEm, fim: new Date(v.aplicadaEm.getTime() + PRAZO_ALTERACAO_MS), referencia: a.alteracaoId } : null;
+    case "devolucao_concluida":
+      return v.situacao === "aplicada" && v.devolucao?.estado === "feita" && v.devolucao.em && a.ultimaDevolucaoId
+        ? { inicio: v.devolucao.em, fim: new Date(v.devolucao.em.getTime() + PRAZO_ALTERACAO_MS), referencia: a.ultimaDevolucaoId }
+        : null;
+  }
+}
+
+/** Os valores das variáveis para uma alteração: as da reserva e as da alteração (`{alteracao}` e, na devolução feita, o valor, o dia e como volta). */
+function valoresDaAlteracao(a: AlvoAlteracao, v: AlteracaoParaHospede, empresa: { nome: string; site: string }, textos: TextosSite): Record<Variavel, string> {
+  const texto = textoDaAlteracao(v, textos, a.codigo, a.fuso);
+  const site = empresa.site.trim().replace(/\/+$/, "");
+  const noites = Math.round((Date.parse(a.checkout) - Date.parse(a.checkin)) / 86_400_000);
+  const d = v.devolucao?.estado === "feita" ? v.devolucao : null;
+  return {
+    hospede: a.nome.trim(),
+    imovel: a.imovel.trim(),
+    // A alteração é preparada antes da entrada, quase sempre antes da liberação do endereço (o modelo é recusado ao ser escolhido).
+    endereco: "",
+    checkin: dataBr(a.checkin),
+    checkout: dataBr(a.checkout),
+    noites: String(noites),
+    codigo: a.codigo,
+    empresa: empresa.nome.trim(),
+    recebido: "",
+    decisao: "",
+    valor: d ? formatBRL(d.valorConfirmado ?? d.valor) : "",
+    data: d?.em ? dataNoFuso(d.em, a.fuso) : "",
+    comovolta: d ? (texto.comoVolta ?? "") : "",
+    link: site ? `${site}/reservar/${a.cotacaoCodigo}` : "",
+    alteracao: texto.resumo,
+  };
+}
+
+/**
+ * As mensagens de uma alteração prontas para copiar no painel (M8.2d, botões "Copiar a proposta", "Copiar mensagem:
+ * alteração confirmada" e "Copiar mensagem: devolução feita"): do modelo escolhido para cada mensagem ou, sem ele, do
+ * texto-base. Montadas na hora (nunca gravadas). null = a mensagem não cabe agora.
+ */
+export async function mensagensDaAlteracao(db: Db, organizacaoId: string, alteracaoId: string, agora: Date): Promise<{ proposta: MensagemPronta | null; confirmada: MensagemPronta | null; devolvida: MensagemPronta | null }> {
+  const vazio = { proposta: null, confirmada: null, devolvida: null };
+  if (!uuidValido(alteracaoId)) return vazio;
+  const [a] = await alvosDeAlteracao(db, organizacaoId, { alteracaoId });
+  const v = a ? await alteracaoParaMensagem(db, organizacaoId, alteracaoId, agora) : null;
+  if (!a || !v) return vazio;
+  const cfg = await lerConfigMensagens(db, organizacaoId);
+  const ids = (["alteracao_proposta", "alteracao_confirmada", "devolucao_concluida"] as const).map((t) => cfg.modelos[t]).filter((x): x is string => !!x && uuidValido(x));
+  const modelos = ids.length ? await db.select().from(modelosMensagem).where(and(eq(modelosMensagem.organizacaoId, organizacaoId), inArray(modelosMensagem.id, ids))) : [];
+  const valores = valoresDaAlteracao(a, v, await lerEmpresa(db, organizacaoId), await lerTextosSite(db, organizacaoId));
+  const montar = (tipo: TipoDaAlteracao): MensagemPronta => {
+    const escolhido = modelos.find((m) => m.id === cfg.modelos[tipo] && m.ativo);
+    const recusado = escolhido ? problemaDoModeloNoTipo(tipo, escolhido.texto) : null;
+    const modelo = recusado ? undefined : escolhido;
+    const texto = modelo?.texto ?? (tipo === "devolucao_concluida" ? TEXTOS_BASE_CANCELAMENTO.devolucao_concluida : TEXTOS_BASE_ALTERACAO[tipo]);
+    const falta = (variaveisDoTexto(texto) as Variavel[]).filter((x) => Object.hasOwn(valores, x) && !valores[x]);
+    return { texto: falta.length ? null : preencherModelo(texto, valores), falta, textoBase: !modelo, ...(recusado ? { modeloRecusado: recusado } : {}) };
+  };
+  return {
+    // A proposta pode ser copiada de novo enquanto a alteração vale (segurada); a confirmação e a devolução, nos prazos delas.
+    proposta: v.situacao === "segurada" ? montar("alteracao_proposta") : null,
+    confirmada: v.situacao === "aplicada" ? montar("alteracao_confirmada") : null,
+    devolvida: prazoDaMensagemDaAlteracao("devolucao_concluida", a, v) || (v.situacao === "aplicada" && v.devolucao?.estado === "feita") ? montar("devolucao_concluida") : null,
+  };
+}
+
+/**
+ * A proposta pronta para copiar a partir da prévia (o cartão da prévia no painel, antes de a alteração existir): o texto
+ * da alteração como ficaria segurada agora, pelo modelo escolhido ou pelo texto-base.
+ */
+export async function propostaDaPrevia(
+  db: Db,
+  organizacaoId: string,
+  reservaId: string,
+  v: Omit<AlteracaoParaHospede, "id" | "situacao" | "devolucao" | "pagoSemAlteracao" | "pagamento" | "aplicadaEm"> & { holdAte: Date },
+): Promise<MensagemPronta | null> {
+  if (!uuidValido(reservaId)) return null;
+  const [r] = await db
+    .select({ codigo: reservas.codigo, checkin: reservas.checkin, checkout: reservas.checkout, origem: reservas.origem, nome: reservas.hospedeNome, email: reservas.hospedeEmail, imovel: imoveis.nome, fuso: imoveis.fuso, cotacaoCodigo: cotacoes.codigo })
+    .from(reservas)
+    .innerJoin(imoveis, eq(imoveis.id, reservas.imovelId))
+    .innerJoin(cotacoes, eq(cotacoes.reservaId, reservas.id))
+    .where(and(eq(reservas.id, reservaId), eq(reservas.organizacaoId, organizacaoId)));
+  if (!r) return null;
+  const alvo: AlvoAlteracao = { ...r, alteracaoId: "", reservaId, fuso: r.fuso || "America/Sao_Paulo", ultimaDevolucaoId: null, avisados: { proposta: null, confirmacao: null, devolucao: null } };
+  const vista: AlteracaoParaHospede = { ...v, id: "", situacao: "segurada", aplicadaEm: null, devolucao: null, pagoSemAlteracao: null, pagamento: null };
+  const cfg = await lerConfigMensagens(db, organizacaoId);
+  const id = cfg.modelos.alteracao_proposta;
+  const [escolhido] = id && uuidValido(id) ? await db.select().from(modelosMensagem).where(and(eq(modelosMensagem.organizacaoId, organizacaoId), eq(modelosMensagem.id, id))) : [];
+  const recusado = escolhido?.ativo ? problemaDoModeloNoTipo("alteracao_proposta", escolhido.texto) : null;
+  const modelo = escolhido?.ativo && !recusado ? escolhido : undefined;
+  const texto = modelo?.texto ?? TEXTOS_BASE_ALTERACAO.alteracao_proposta;
+  const valores = valoresDaAlteracao(alvo, vista, await lerEmpresa(db, organizacaoId), await lerTextosSite(db, organizacaoId));
+  const falta = (variaveisDoTexto(texto) as Variavel[]).filter((x) => Object.hasOwn(valores, x) && !valores[x]);
+  return { texto: falta.length ? null : preencherModelo(texto, valores), falta, textoBase: !modelo, ...(recusado ? { modeloRecusado: recusado } : {}) };
 }
 
 /**

@@ -12,17 +12,23 @@
  *
  * `ofertaDeCartao` (M8.2b): tudo o que vale para o Pix, mais o cartão ligado no painel, o disjuntor de recusas fechado e
  * a chave pública do formulário. O cartão e o disjuntor nunca entram em `podeCobrar`: o Pix continua de qualquer jeito.
+ *
+ * A diferença de uma alteração da reserva paga (M8.2d, `alteracaoId`): a alteração com as datas seguradas e o prazo
+ * valendo, diferença a pagar, a reserva confirmada e sem cancelamento ativo, a cotação das datas novas disponível (ou um
+ * valor da equipe: as noites já passaram pela leitura atual ao segurar), o imóvel no site, o motor em seco nas datas novas
+ * sem pendência e nenhum recebimento à mão na reserva.
  */
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { lerConfigPagamentoSite } from "@/configuracoes/pagamento-site";
 import { versoesLegaisAtuais } from "@/configuracoes/paginas-legais";
-import { cotacoes, imoveis, reservas } from "@/db/schema";
+import { alteracoesReserva, cancelamentosReserva, cotacoes, imoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { dadosDoMotor } from "@/financeiro/aplicar";
 import { type PendenciaDoCalculo, pendenciaDoCalculo } from "@/financeiro/motor";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { esperarNoMaximo } from "@/lib/prazo";
+import { valorNovo } from "./alteracao-regras";
 import { temRecebimentoManual } from "./andamento";
 import { ambienteMercadoPago, contaDeTesteConfirmada, estadoPagamentoDoAmbiente, provedorDoAmbiente } from "./ambiente";
 import { disjuntorAberto } from "./disjuntor";
@@ -168,10 +174,49 @@ export async function motivoSemPixDaCotacao(db: Db, organizacaoId: string, c: Co
   return pendenciaDoMotor(db, organizacaoId, c.imovelId, c.checkin, c.checkout, c.total);
 }
 
-/** O site oferece o Pix nesta cotação agora? `gate` = resultado de `podeCobrar`. */
-export async function ofertaDePix(db: Db, organizacaoId: string, cotacaoId: string, agora: Date, gate: PortaoCobranca): Promise<{ oferecer: true } | { oferecer: false; motivo: MotivoSemPix }> {
+type AlteracaoParaOferta = Pick<typeof alteracoesReserva.$inferSelect, "situacao" | "holdAte" | "diferenca" | "cotacao" | "origemValor" | "checkinDepois" | "checkoutDepois" | "valorAntes" | "valorDepois" | "direito">;
+type ReservaParaOferta = { id: string; imovelId: string; estado: string; cancelamentoAtivo: boolean };
+
+/**
+ * As condições da diferença de uma alteração (M8.2d), sem as travas do ambiente. Lida também dentro da fase 1 do Pix e do
+ * cartão, sob as travas (a reserva, o cancelamento e a alteração já travados).
+ */
+export async function motivoSemPixDaAlteracao(db: Db, organizacaoId: string, a: AlteracaoParaOferta, r: ReservaParaOferta, agora: Date): Promise<MotivoSemPix | null> {
+  if (a.situacao !== "segurada" || a.diferenca <= 0 || r.estado !== "confirmada" || r.cancelamentoAtivo) return "nao_segurada";
+  if (!a.holdAte || a.holdAte.getTime() <= agora.getTime()) return "prazo_vencido";
+  if (a.origemValor === "cotacao" && a.cotacao.situacao !== "disponivel") return "a_confirmar";
+  if (await temRecebimentoManual(db, organizacaoId, r.id)) return "recebimento_manual";
+  const [im] = await db.select({ publico: imoveis.publico, ativo: imoveis.ativo }).from(imoveis).where(and(eq(imoveis.id, r.imovelId), eq(imoveis.organizacaoId, organizacaoId)));
+  if (!im?.publico || !im.ativo) return "imovel_fora_do_site";
+  return pendenciaDoMotor(db, organizacaoId, r.imovelId, a.checkinDepois, a.checkoutDepois, valorNovo(a));
+}
+
+/** A alteração (desta organização e desta cotação) e a reserva dela, para a oferta da diferença; null = não existe. */
+async function alteracaoParaOferta(db: Db, organizacaoId: string, cotacaoId: string, alteracaoId: string): Promise<{ a: AlteracaoParaOferta; r: ReservaParaOferta } | null> {
+  if (!uuidValido(alteracaoId)) return null;
+  const [l] = await db
+    .select({ a: alteracoesReserva, r: { id: reservas.id, imovelId: reservas.imovelId, estado: reservas.estado } })
+    .from(alteracoesReserva)
+    .innerJoin(reservas, eq(reservas.id, alteracoesReserva.reservaId))
+    .where(and(eq(alteracoesReserva.id, alteracaoId), eq(alteracoesReserva.organizacaoId, organizacaoId), eq(alteracoesReserva.cotacaoId, cotacaoId)));
+  if (!l) return null;
+  const [canc] = await db
+    .select({ id: cancelamentosReserva.id })
+    .from(cancelamentosReserva)
+    .where(and(eq(cancelamentosReserva.reservaId, l.r.id), eq(cancelamentosReserva.organizacaoId, organizacaoId), inArray(cancelamentosReserva.situacao, ["pedido", "cancelada"])));
+  return { a: l.a, r: { ...l.r, cancelamentoAtivo: !!canc } };
+}
+
+/** O site oferece o Pix nesta cotação agora? `gate` = resultado de `podeCobrar`. `o.alteracaoId` (M8.2d): a diferença dessa alteração. */
+export async function ofertaDePix(db: Db, organizacaoId: string, cotacaoId: string, agora: Date, gate: PortaoCobranca, o: { alteracaoId?: string | null } = {}): Promise<{ oferecer: true } | { oferecer: false; motivo: MotivoSemPix }> {
   if (!gate.ok) return { oferecer: false, motivo: gate.motivo };
   if (!uuidValido(cotacaoId)) return { oferecer: false, motivo: "cotacao_nao_encontrada" };
+  if (o.alteracaoId) {
+    const x = await alteracaoParaOferta(db, organizacaoId, cotacaoId, o.alteracaoId);
+    if (!x) return { oferecer: false, motivo: "cotacao_nao_encontrada" };
+    const motivo = await motivoSemPixDaAlteracao(db, organizacaoId, x.a, x.r, agora);
+    return motivo ? { oferecer: false, motivo } : { oferecer: true };
+  }
   const [c] = await db
     .select({ cotacao: cotacoes, estadoReserva: reservas.estado })
     .from(cotacoes)
@@ -206,6 +251,14 @@ export async function motivoSemCartaoDaCotacao(db: Db, organizacaoId: string, c:
   return (await disjuntorAberto(db, organizacaoId, agora)) ? "disjuntor" : null;
 }
 
+/** O gêmeo de `motivoSemCartaoDaCotacao` para a diferença de uma alteração (M8.2d). */
+export async function motivoSemCartaoDaAlteracao(db: Db, organizacaoId: string, a: AlteracaoParaOferta, r: ReservaParaOferta, agora: Date): Promise<MotivoSemCartao | null> {
+  if (!(await lerConfigPagamentoSite(db, organizacaoId)).cartao) return "cartao_desligado";
+  const motivo = await motivoSemPixDaAlteracao(db, organizacaoId, a, r, agora);
+  if (motivo) return motivo;
+  return (await disjuntorAberto(db, organizacaoId, agora)) ? "disjuntor" : null;
+}
+
 /**
  * O site oferece o cartão nesta cotação agora? `gate` = resultado de `podeCobrar` (traz a chave pública). Devolve o que o
  * formulário precisa: a chave pública e o número máximo de parcelas do painel (null = o máximo do Mercado Pago).
@@ -216,10 +269,18 @@ export async function ofertaDeCartao(
   cotacaoId: string,
   agora: Date,
   gate: PortaoCobranca,
+  o: { alteracaoId?: string | null } = {},
 ): Promise<{ oferecer: true; chavePublica: string; parcelasMaximas: number | null } | { oferecer: false; motivo: MotivoSemCartao }> {
   if (!gate.ok) return { oferecer: false, motivo: gate.motivo };
   if (!chavePublicaValida(gate.chavePublica)) return { oferecer: false, motivo: "sem_chave_publica" };
   if (!uuidValido(cotacaoId)) return { oferecer: false, motivo: "cotacao_nao_encontrada" };
+  if (o.alteracaoId) {
+    const x = await alteracaoParaOferta(db, organizacaoId, cotacaoId, o.alteracaoId);
+    if (!x) return { oferecer: false, motivo: "cotacao_nao_encontrada" };
+    const motivo = await motivoSemCartaoDaAlteracao(db, organizacaoId, x.a, x.r, agora);
+    if (motivo) return { oferecer: false, motivo };
+    return { oferecer: true, chavePublica: gate.chavePublica, parcelasMaximas: (await lerConfigPagamentoSite(db, organizacaoId)).parcelasMaximas };
+  }
   const [c] = await db
     .select({ cotacao: cotacoes, estadoReserva: reservas.estado })
     .from(cotacoes)

@@ -75,6 +75,10 @@ export type ResultadoAceiteVigente = { ok: true; aceite: AceiteSite } | { ok: fa
  * publica no meio, e os hóspedes não esperam uns pelos outros. Com `novo` (a caixa marcada): as versões têm de ser as
  * publicadas, senão "mudou"; a gravação é idempotente e só uma linha nova ganha registro na auditoria. Sem `novo`, vale
  * o aceite já gravado das versões publicadas, ou "pendente".
+ *
+ * `o.cancelamentoDaReserva` (M8.2d, D11): no pagamento da diferença de uma alteração, a reserva continua na Política de
+ * cancelamento aceita no pagamento que a confirmou (versão N): o aceite que vale é o dos Termos e da Privacidade em vigor
+ * com a política N (gravado assim; nunca uma versão da política que não vai valer para a reserva).
  */
 export async function aceiteVigenteTravado(
   tx: Db,
@@ -83,9 +87,11 @@ export async function aceiteVigenteTravado(
   novo: VersoesLegais | null,
   origem: OrigemAceite,
   agora: Date,
+  o: { cancelamentoDaReserva?: number | null } = {},
 ): Promise<ResultadoAceiteVigente> {
-  const publicadas = await versoesLegaisTravadas(tx, organizacaoId);
-  if (!publicadas) return { ok: false, motivo: "nao_publicadas", publicadas: null };
+  const emVigor = await versoesLegaisTravadas(tx, organizacaoId);
+  if (!emVigor) return { ok: false, motivo: "nao_publicadas", publicadas: null };
+  const publicadas: VersoesLegais = o.cancelamentoDaReserva ? { ...emVigor, cancelamento: o.cancelamentoDaReserva } : emVigor;
   if (novo) {
     if (!mesmasVersoes(novo, publicadas)) return { ok: false, motivo: "mudou", publicadas };
     const [nova] = await tx
@@ -242,6 +248,17 @@ export async function contarAceitesPorVersao(db: Db, organizacaoId: string): Pro
     r[doc] = new Map(linhas.map((l) => [l.versao, Number(l.total)]));
   }
   return r;
+}
+
+/** A versão da Política de cancelamento aceita na criação da tentativa (M8.2d: a da reserva); null = sem aceite (antes do M7.4). */
+export async function versaoDaPoliticaDoPagamento(db: Db, organizacaoId: string, pagamentoId: string): Promise<number | null> {
+  if (!uuidValido(pagamentoId)) return null;
+  const [l] = await db
+    .select({ versao: aceitesSite.versaoCancelamento })
+    .from(pagamentos)
+    .innerJoin(aceitesSite, eq(aceitesSite.id, pagamentos.aceiteId))
+    .where(and(eq(pagamentos.id, pagamentoId), eq(pagamentos.organizacaoId, organizacaoId), eq(aceitesSite.organizacaoId, organizacaoId)));
+  return l?.versao ?? null;
 }
 
 /**

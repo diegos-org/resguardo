@@ -9,10 +9,14 @@
  *
  * Cancelamento pela política (M8.2c): os fatos (código, datas, horas, versão da política, valores) e o texto que a
  * página e as mensagens ao hóspede mostram (`textoDoCancelamento`, o compositor único): as frases vêm de Textos do site.
+ *
+ * Alteração da reserva paga (M8.2d): a alteração segurada (com o pagamento da diferença no aumento), a aplicada (com a
+ * devolução da diferença), a que não pôde valer e a que não vale mais, e o compositor único do texto dela
+ * (`textoDaAlteracao`: a página, a variável `{alteracao}` das mensagens e o botão "Copiar a proposta" do painel).
  */
 import { pagaSemPrazoIntegral, TEXTO_VALOR_PELA_EQUIPE } from "@/configuracoes/politica-cancelamento";
 import type { TextosSite } from "@/configuracoes/textos-site";
-import type { CancelamentoParaHospede, EstadoPagamentoHospede, VistaPagamentoHospede } from "@/pagamentos/consultas";
+import type { AlteracaoParaHospede, CancelamentoParaHospede, EstadoPagamentoHospede, VistaPagamentoHospede } from "@/pagamentos/consultas";
 import { urlDoDesafio } from "@/pagamentos/provedor";
 import { formatBRL } from "@/lib/money";
 
@@ -20,6 +24,16 @@ export type { EstadoPagamentoHospede };
 
 /** O cancelamento como vai ao navegador (datas em texto ISO). */
 export type CancelamentoDoHospede = Omit<CancelamentoParaHospede, "recebidoEm" | "devolucaoEm" | "entradaEm"> & { recebidoEm: string; devolucaoEm: string | null; entradaEm: string | null };
+
+/** A alteração como vai ao navegador (datas em texto ISO; o pagamento da diferença no mesmo formato do da cotação). */
+export type AlteracaoDoHospede = Omit<AlteracaoParaHospede, "holdAte" | "preparadaEm" | "aplicadaEm" | "devolucao" | "pagoSemAlteracao" | "pagamento"> & {
+  holdAte: string | null;
+  preparadaEm: string;
+  aplicadaEm: string | null;
+  devolucao: (Omit<NonNullable<AlteracaoParaHospede["devolucao"]>, "em"> & { em: string | null }) | null;
+  pagoSemAlteracao: { valor: number; em: string } | null;
+  pagamento: PagamentoDoHospede | null;
+};
 
 /** O que o formulário do cartão precisa no navegador (nada pessoal; a chave pública é pública). */
 export type CartaoNaPagina = {
@@ -68,6 +82,8 @@ export type PagamentoDoHospede = {
   pedidoCancelamentoEm: string | null;
   /** Esse pedido é de um pagamento sem a política aceita: o recibo não cita política nenhuma. */
   pedidoCancelamentoSemPolitica?: boolean;
+  /** M8.2d: a alteração da reserva paga que a página mostra; null sem nenhuma. */
+  alteracao?: AlteracaoDoHospede | null;
 };
 
 /**
@@ -82,8 +98,12 @@ export const estadoQuePaga = (e: EstadoPagamentoHospede) => ESTADOS_QUE_PAGAM.in
 /** Situações em que a página acompanha sozinha (consulta a rota a cada poucos segundos). */
 export const ESTADOS_EM_ESPERA: readonly EstadoPagamentoHospede[] = ["pix_aguardando", "pix_vencido", "verificando", "confirmando", "cartao_desafio", "cartao_em_analise"];
 export const emEspera = (e: EstadoPagamentoHospede) => ESTADOS_EM_ESPERA.includes(e);
-/** A página continua acompanhando: situação de espera, ou tentativa que ainda pode virar dinheiro (ex.: Pix esgotado). */
-export const deveAcompanhar = (v: { estado: EstadoPagamentoHospede; acompanhar?: boolean }) => emEspera(v.estado) || v.acompanhar === true;
+/**
+ * A página continua acompanhando: situação de espera, ou tentativa que ainda pode virar dinheiro (ex.: Pix esgotado); M8.2d:
+ * também quando o pagamento da diferença de uma alteração está numa delas.
+ */
+export const deveAcompanhar = (v: { estado: EstadoPagamentoHospede; acompanhar?: boolean; alteracao?: { pagamento: { estado: EstadoPagamentoHospede; acompanhar?: boolean } | null } | null }): boolean =>
+  emEspera(v.estado) || v.acompanhar === true || (!!v.alteracao?.pagamento && (emEspera(v.alteracao.pagamento.estado) || v.alteracao.pagamento.acompanhar === true));
 /**
  * Situações em que o dinheiro já chegou (ou voltou): a página recarrega na hora, mesmo com o formulário do cartão aberto
  * (o hóspede nunca digita um cartão para uma cotação já paga).
@@ -185,6 +205,20 @@ export function paraOHospede(v: VistaPagamentoHospede): PagamentoDoHospede {
     cancelamento: v.cancelamento ? { ...v.cancelamento, recebidoEm: v.cancelamento.recebidoEm.toISOString(), devolucaoEm: iso(v.cancelamento.devolucaoEm), entradaEm: iso(v.cancelamento.entradaEm) } : null,
     pedidoCancelamentoEm: iso(v.pedidoCancelamentoEm),
     ...(v.pedidoCancelamentoSemPolitica ? { pedidoCancelamentoSemPolitica: true } : {}),
+    ...(v.alteracao ? { alteracao: alteracaoParaOHospede(v.alteracao) } : {}),
+  };
+}
+
+/** A alteração do domínio → navegador. A oferta do pagamento da diferença (`podeGerar`, o cartão) quem decide é `vistaDoPagamento`. */
+export function alteracaoParaOHospede(a: AlteracaoParaHospede): AlteracaoDoHospede {
+  return {
+    ...a,
+    holdAte: iso(a.holdAte),
+    preparadaEm: a.preparadaEm.toISOString(),
+    aplicadaEm: iso(a.aplicadaEm),
+    devolucao: a.devolucao ? { ...a.devolucao, em: iso(a.devolucao.em) } : null,
+    pagoSemAlteracao: a.pagoSemAlteracao ? { valor: a.pagoSemAlteracao.valor, em: a.pagoSemAlteracao.em.toISOString() } : null,
+    pagamento: a.pagamento ? paraOHospede(a.pagamento) : null,
   };
 }
 
@@ -346,4 +380,103 @@ export function textoDoCancelamento(
   }
   const decisao = juntar(...decisoes);
   return { linhas: [cabecalho, ...decisoes, ...(comoVolta ? [comoVolta] : []), ...(textos.cancelamentoFecho ? [textos.cancelamentoFecho] : [])].filter((l) => l.trim()), decisao, comoVolta };
+}
+
+// ---------------------------------------------------------------- alteração da reserva paga (M8.2d)
+
+/** As frases editáveis da alteração (Textos do site) e as do cancelamento que a devolução da diferença reusa. */
+export type TextosDaAlteracao = Pick<
+  TextosSite,
+  | "alteracaoEmAndamento"
+  | "alteracaoAguardaConfirmacao"
+  | "alteracaoPolitica"
+  | "alteracaoConfirmada"
+  | "devolucaoAguardaLiberacao"
+  | "alteracaoSemDevolucao"
+  | "alteracaoNaoAplicada"
+  | "alteracaoNaoVale"
+  | "cancelamentoDevolucaoPedida"
+  | "cancelamentoVoltaPix"
+  | "cancelamentoVoltaCartao"
+  | "cancelamentoVoltaPorFora"
+  | "cancelamentoComAEquipe"
+  | "cancelamentoEmConferencia"
+>;
+
+/** O texto da alteração em partes: as linhas da página, o que a variável `{alteracao}` leva e como o dinheiro volta. */
+export type TextoDaAlteracao = { linhas: string[]; resumo: string; comoVolta: string | null };
+
+const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
+const noitesEntre = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
+/** "dd/mm–dd/mm (N noites, P pessoas)". */
+const estadia = (e: { checkin: string; checkout: string; hospedes: number | null }) =>
+  `${diaIso(e.checkin)}–${diaIso(e.checkout)} (${plural(noitesEntre(e.checkin, e.checkout), "noite", "noites")}${e.hospedes === null ? "" : `, ${plural(e.hospedes, "pessoa", "pessoas")}`})`;
+const horaBrasilia = (d: Date) => new Intl.DateTimeFormat("pt-BR", { timeZone: BRASILIA, hour: "2-digit", minute: "2-digit" }).format(d);
+
+/** Por que a diferença é (ou não) devolvida, em palavras do hóspede (os fatos da decisão pela política). */
+function porqueDaReducao(r: NonNullable<AlteracaoParaHospede["reducao"]>, entradaDaPolitica: string): string {
+  if (r.base === "empresa") return "a alteração é proposta por nós";
+  if (r.base === "arrependimento") return "direito de arrependimento: até 7 dias depois do pagamento";
+  if (r.base === "excecao" || r.base === "sem_politica" || !r.integralAte) return "por decisão da nossa equipe";
+  return `o pedido chegou ${r.direito === "integral" ? "até" : "depois de"} ${diaIso(r.integralAte)}, 23h59, contando da entrada de ${diaIso(entradaDaPolitica)}`;
+}
+
+/**
+ * O compositor único do texto da alteração (a página da reserva, a variável `{alteracao}` das mensagens e o botão "Copiar a
+ * proposta" do painel). Puro: os fatos (código, datas, pessoas, valores, horas, versão da política) são escritos aqui; as
+ * frases vêm de Textos do site. Nunca cita o Beds24 nem dado pessoal. `fuso` = o do imóvel (o dia da devolução); o prazo
+ * das datas seguradas sai no horário de Brasília.
+ */
+export function textoDaAlteracao(a: AlteracaoParaHospede | AlteracaoDoHospede, textos: TextosDaAlteracao, codigo: string, fuso: string = BRASILIA): TextoDaAlteracao {
+  const linhas: string[] = [];
+  let comoVolta: string | null = null;
+  const politica =
+    a.politicaVersao !== null ? juntar(`Versão ${a.politicaVersao} da Política de cancelamento, aceita no pagamento da reserva; prazos contados da entrada de ${diaIso(a.entradaDaPolitica)}.`, textos.alteracaoPolitica) : textos.alteracaoPolitica;
+  const devolvida = a.reducao?.direito === "integral";
+  if (a.situacao === "segurada") {
+    const ate = quando(a.holdAte);
+    const diferenca = a.rumo === "aumento" ? ` — diferença de ${formatBRL(a.diferenca)}` : a.rumo === "reducao" ? ` — diferença de ${formatBRL(-a.diferenca)}` : "";
+    linhas.push(
+      juntar(
+        `Alteração da reserva ${codigo}: de ${estadia(a.antes)} para ${estadia(a.depois)}.`,
+        a.rumo === "igual" ? `Valor: o mesmo (${formatBRL(a.antes.valor)}).` : `Valor: de ${formatBRL(a.antes.valor)} para ${formatBRL(a.depois.valor)}${diferenca}.`,
+        ate ? `Datas seguradas até ${horaBrasilia(ate)} (horário de Brasília).` : null,
+        a.rumo === "aumento" ? textos.alteracaoEmAndamento : textos.alteracaoAguardaConfirmacao,
+      ),
+    );
+    if (a.rumo === "reducao" && a.reducao) linhas.push(`Pela política, a diferença de ${formatBRL(-a.diferenca)} ${devolvida ? "é devolvida" : "não é devolvida"} (${porqueDaReducao(a.reducao, a.entradaDaPolitica)}).`);
+    if (politica) linhas.push(politica);
+  } else if (a.situacao === "aplicada") {
+    const em = quando(a.aplicadaEm);
+    linhas.push(juntar(`Alteração confirmada${em ? ` em ${diaMes(em, fuso)}` : ""}: ${diaIso(a.depois.checkin)}–${diaIso(a.depois.checkout)}, ${plural(a.depois.hospedes, "pessoa", "pessoas")}, ${formatBRL(a.valorNovo)}.`, textos.alteracaoConfirmada));
+    const d = a.devolucao;
+    if (a.rumo === "reducao" && a.reducao?.direito === "nenhum")
+      linhas.push(juntar(`Pela política, a diferença de ${formatBRL(-a.diferenca)} não é devolvida (${porqueDaReducao(a.reducao, a.entradaDaPolitica)}).`, textos.alteracaoSemDevolucao));
+    else if (d) {
+      const voltaPeloMercadoPago = d.forma === "cartao" ? textos.cancelamentoVoltaCartao : textos.cancelamentoVoltaPix;
+      if (d.estado === "aguardando_liberacao") {
+        // Nada foi pedido ainda (D13): a devolução sai quando o Mercado Pago liberar o pagamento — nunca "já pedimos".
+        linhas.push(juntar(`Devolução da diferença: ${formatBRL(d.valor)}${d.previstaEm ? ` (previsto para ${diaIso(d.previstaEm)})` : ""}.`, textos.devolucaoAguardaLiberacao));
+        comoVolta = voltaPeloMercadoPago || null;
+      } else if (d.estado === "feita") {
+        const feitaEm = quando(d.em);
+        linhas.push(`Devolução da diferença de ${formatBRL(d.valorConfirmado ?? d.valor)} feita${feitaEm ? ` em ${diaMes(feitaEm, fuso)}` : ""}.`);
+        comoVolta = (d.porFora ? textos.cancelamentoVoltaPorFora : voltaPeloMercadoPago) || null;
+      } else if (d.estado === "pedida") {
+        linhas.push(juntar(`Devolução da diferença: ${formatBRL(d.valor)}.`, textos.cancelamentoDevolucaoPedida));
+        comoVolta = voltaPeloMercadoPago || null;
+      } else if (d.estado === "com_a_equipe") linhas.push(juntar(`Devolução da diferença: ${formatBRL(d.valor)}. A devolução pelo Mercado Pago não foi possível.`, textos.cancelamentoComAEquipe));
+      else linhas.push(juntar(`Devolução da diferença: ${formatBRL(d.valor)}.`, textos.cancelamentoEmConferencia));
+      if (comoVolta) linhas.push(comoVolta);
+    }
+  } else if (a.situacao === "nao_aplicada") {
+    const paga = a.pagoSemAlteracao;
+    const em = quando(paga?.em ?? null);
+    linhas.push(juntar(`Recebemos o pagamento da diferença (${formatBRL(paga?.valor ?? a.diferenca)})${em ? ` em ${diaMes(em, fuso)}` : ""}.`, textos.alteracaoNaoAplicada));
+  } else {
+    const em = quando(a.preparadaEm);
+    linhas.push(juntar(`A alteração preparada${em ? ` em ${diaMes(em, fuso)}` : ""} não vale mais.`, textos.alteracaoNaoVale));
+  }
+  const limpas = linhas.filter((l) => l.trim());
+  return { linhas: limpas, resumo: limpas.join(" "), comoVolta };
 }

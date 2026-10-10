@@ -14,6 +14,10 @@
  * 4. Reserva confirmada à mão (sem recebimento manual e sem outra tentativa com a reserva): o pagamento vira o
  *    desfecho `reserva` dela.
  *
+ * 5. O pagamento da diferença de uma alteração da reserva paga (M8.2d): a decisão é a da alteração
+ *    (`decidirAprovacaoDaAlteracao`): aplica com as datas seguradas, ou depois do prazo se nada mudou e as noites novas
+ *    estão livres; senão, sem reserva com o motivo da alteração.
+ *
  * Confirmação tardia com outra reserva do site do mesmo e-mail confirmada depois que esta tentativa foi criada (M8.2b):
  * a regra de reviver não muda, mas o pagamento ganha o aviso `outra_reserva_mesmo_email` (o hóspede pode ter pago duas
  * vezes, por exemplo um cartão em análise e depois um Pix noutro aparelho).
@@ -25,13 +29,25 @@ import type { Db } from "@/db/types";
 import { aplicarMotor } from "@/financeiro/aplicar";
 import { confirmarPedidoPago } from "@/reservas/repositorio";
 import { noitesLivres } from "@/site/disponibilidade";
+import { decidirAprovacaoDaAlteracao } from "./alteracao";
 import { temRecebimentoManual } from "./andamento";
 import type { Cobranca } from "./provedor";
 import type { CodigoAviso, MotivoSemReserva } from "./situacoes";
 import type { Pagamento, Travado } from "./travas";
 
-/** `avisos`: os do motor; `avisosPagamento`: códigos de aviso para a própria tentativa (ligados por `aplicarLeitura`). */
-export type Decisao = { desfecho: "reserva" | null; desfechoMotivo: string | null; motivoSemReserva: string | null; confirmou: boolean; avisos: string[]; avisosPagamento?: CodigoAviso[] };
+/**
+ * `avisos`: os do motor; `avisosPagamento`: códigos de aviso para a própria tentativa (ligados por `aplicarLeitura`).
+ * `alterou` (M8.2d): a alteração que o pagamento da diferença aplicou (desfecho `alteracao`).
+ */
+export type Decisao = {
+  desfecho: "reserva" | "alteracao" | null;
+  desfechoMotivo: string | null;
+  motivoSemReserva: string | null;
+  confirmou: boolean;
+  avisos: string[];
+  avisosPagamento?: CodigoAviso[];
+  alterou?: string;
+};
 
 /**
  * O valor aprovado é o total da cotação? O que enviamos (total_amount), o valor da transação de pagamento (precisa vir
@@ -63,6 +79,8 @@ async function outraReservaDoMesmoEmail(tx: Db, organizacaoId: string, r: Travad
 const semReserva = (m: MotivoSemReserva, detalhe?: string | null): Decisao => ({ desfecho: null, desfechoMotivo: null, motivoSemReserva: detalhe ? `${m}:${detalhe}` : m, confirmou: false, avisos: [] });
 
 export async function decidirAprovacao(tx: Db, organizacaoId: string, t: Travado, p: Pagamento, c: Cobranca | null, fin: { taxa: number | null; liquido: number | null }, agora: Date): Promise<Decisao> {
+  // M8.2d: o pagamento da diferença de uma alteração tem a própria decisão (antes do valor da cotação e de "outra tentativa").
+  if (p.alteracaoId) return decidirAprovacaoDaAlteracao(tx, organizacaoId, t, p, c, fin, agora, valorConfere);
   const r = t.reserva;
   const cot = t.cotacao;
   // Dinheiro real no ambiente de teste: nunca confirma uma reserva com ele.

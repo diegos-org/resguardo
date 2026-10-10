@@ -9,6 +9,7 @@ import { esperarEnvioBeds24 } from "@/beds24/trava";
 import { bloqueios, imoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
+import { expirarAlteracoesVencidas } from "@/pagamentos/alteracao-prazo";
 import { dataValida, ESTADOS_OCUPANTES } from "./regras";
 
 export type EntradaBloqueio = { imovelId: string; inicio: string; fim: string; motivo: string };
@@ -68,6 +69,9 @@ export async function criarBloqueio(db: Db, organizacaoId: string, e: EntradaBlo
     if (ocupado) return { ok: false as const, erro: ocupado };
     const [im] = await tx.select({ id: imoveis.id }).from(imoveis).where(and(eq(imoveis.id, v.dados.imovelId), eq(imoveis.organizacaoId, organizacaoId))).for("update");
     if (!im) return { ok: false as const, erro: "Imóvel não encontrado." };
+    // As datas seguradas de uma alteração de reserva paga que já venceram (M8.2d) saem antes de conferir (cada uma num
+    // savepoint: uma reserva ocupada agora é pulada, nunca derruba o bloqueio).
+    await expirarAlteracoesVencidas(tx, organizacaoId, new Date(), { imovelId: im.id });
     const [choque] = await tx.select({ id: bloqueios.id }).from(bloqueios).where(and(eq(bloqueios.imovelId, im.id), lt(bloqueios.inicio, v.dados.fim), gt(bloqueios.fim, v.dados.inicio)));
     if (choque) return { ok: false as const, erro: "Já existe um bloqueio nessas datas. Remova-o ou ajuste as datas." };
     if (opcoes.semReserva) {

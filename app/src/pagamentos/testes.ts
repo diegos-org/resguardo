@@ -42,6 +42,7 @@ import { salvarPrecosMarketplace } from "@/marketplace/precos-config";
 import { registrarAceiteDoHospede } from "@/site/aceites";
 import { criarCotacao, segurarDatas } from "@/site/cotacoes";
 import { esquecerProvedorDoAmbiente } from "./ambiente";
+import { type EntradaAlteracao, previaDaAlteracao, segurarAlteracao } from "./alteracao";
 import { cancelarReservaPaga, type EntradaCancelamento, previaDoCancelamento, registrarPedidoDeCancelamento } from "./cancelamento";
 import { type DadosCartaoDoHospede, pagarComCartao, type ResultadoCartao } from "./cartao";
 import { ProvedorFalso } from "./falso";
@@ -543,4 +544,85 @@ export async function alteracaoSeguradaDeTeste(
     atualizadoEm: quando,
   });
   return { alteracaoId: a.id, pagamentoId: id };
+}
+
+// ---------------------------------------------------------------- alteração da reserva paga (M8.2d)
+
+/** O que o formulário do painel manda por padrão numa alteração: o hóspede pediu pelo WhatsApp agora, pela cotação do site e pela política. */
+export const entradaAlteracao = (over: Partial<EntradaAlteracao> & Pick<EntradaAlteracao, "checkin" | "checkout" | "hospedes" | "recebidoEm">): EntradaAlteracao => ({
+  valor: { origem: "cotacao" },
+  quemPede: "hospede",
+  motivoEmpresa: null,
+  canal: "whatsapp",
+  nota: "WhatsApp da empresa",
+  decisao: "politica",
+  motivoExcecao: null,
+  motivoDecisao: "",
+  ...over,
+});
+
+/**
+ * Calcula a prévia da alteração e segura (ou, com `aplicar`, segura e aplica) com a assinatura dela, como o painel: as datas
+ * e as pessoas de agora, salvo `over`.
+ */
+export async function alterar(
+  c: Cenario,
+  reservaId: string,
+  over: Partial<EntradaAlteracao> = {},
+  quando: Date = c.relogio.agora,
+  o: { aplicar?: boolean; autorId?: string | null; provedor?: ProvedorPagamento | null } = {},
+) {
+  const r = await c.reserva(reservaId);
+  const provedor = o.provedor === undefined ? c.provedor : o.provedor;
+  const e = entradaAlteracao({ checkin: r.checkin, checkout: r.checkout, hospedes: r.hospedes ?? 4, recebidoEm: quando, ...over });
+  const previa = await previaDaAlteracao(c.db, c.org, reservaId, e, provedor, quando);
+  if (!previa.ok) return { previa, resultado: previa, entrada: e };
+  const resultado = await segurarAlteracao(c.db, c.org, reservaId, e, o.autorId ?? null, provedor, quando, previa.previa.assinatura, { aplicar: o.aplicar === true });
+  return { previa, resultado, entrada: e };
+}
+
+/**
+ * Paga a diferença de uma alteração segurada (Pix, salvo `forma`) na página da reserva e, salvo `aprovar: false`, aprova no
+ * Mercado Pago falso (taxa `taxa`, padrão 1% da diferença) e lê a aprovação 2 minutos depois (`aprovarEm`).
+ */
+export async function pagarDiferenca(
+  c: Cenario,
+  cotacaoId: string,
+  alteracaoId: string,
+  o: { forma?: "pix" | "cartao"; quando?: Date; aprovarEm?: Date; taxa?: number | null; aprovar?: boolean; cartao?: Partial<DadosCartaoDoHospede> } = {},
+): Promise<{ pagamentoId: string; idProvedor: string; resultado: string }> {
+  const quando = o.quando ?? c.relogio.agora;
+  let pagamentoId: string;
+  let idProvedor: string;
+  let resultado: string;
+  if (o.forma === "cartao") {
+    const antes = new Set((await c.db.select({ id: pagamentos.id }).from(pagamentos).where(eq(pagamentos.cotacaoId, cotacaoId))).map((x) => x.id));
+    const r = await pagarComCartao(c.db, c.org, cotacaoId, quando, c.provedor, { ...CARTAO_FICTICIO, ...o.cartao }, { alteracaoId });
+    const nova = (await c.db.select().from(pagamentos).where(eq(pagamentos.cotacaoId, cotacaoId))).find((x) => !antes.has(x.id));
+    if (!nova?.idProvedor) throw new Error(`cartão da diferença não criado: ${r.ok ? r.situacao : r.codigo}`);
+    pagamentoId = nova.id;
+    idProvedor = nova.idProvedor;
+    resultado = r.ok ? r.situacao : r.codigo;
+    return { pagamentoId, idProvedor, resultado };
+  }
+  const r = await gerarPix(c.db, c.org, cotacaoId, quando, c.provedor, { alteracaoId });
+  if (!r.ok) throw new Error(`${r.codigo}: ${r.erro}`);
+  const p = await c.tentativa(r.pagamentoId);
+  pagamentoId = p.id;
+  idProvedor = p.idProvedor!;
+  resultado = "pendente";
+  if (o.aprovar !== false) {
+    const taxa = o.taxa === undefined ? Math.round(p.valor / 100) : o.taxa;
+    c.provedor.aprovar(idProvedor, taxa === null ? {} : { taxa });
+    const { conferirTentativa } = await import("./conferencia");
+    const lido = await conferirTentativa(c.db, c.org, pagamentoId, c.provedor, o.aprovarEm ?? minutos(2, quando), { origem: "rotina", forcar: true });
+    resultado = lido.ok ? lido.situacao : lido.erro;
+  }
+  return { pagamentoId, idProvedor, resultado };
+}
+
+/** A alteração gravada. */
+export async function alteracaoGravada(c: Cenario, id: string) {
+  const [a] = await c.db.select().from(alteracoesReserva).where(eq(alteracoesReserva.id, id));
+  return a;
 }

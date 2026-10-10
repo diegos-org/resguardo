@@ -6,7 +6,7 @@ import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import type { DadosReserva } from "@/reservas/regras";
 import { cancelarReserva, criarReserva, sincronizarReserva } from "@/reservas/repositorio";
-import { aplicarMotor, conferirMovimentadas, recalcularReservas } from "./aplicar";
+import { aplicarMotor, conferirMovimentadas, MOTIVO_ESTORNO_PADRAO, recalcularReservas } from "./aplicar";
 import { REGRAS_PADRAO } from "./motor";
 import { lerRecebimento, salvarRecebimento } from "@/imoveis/recebimento";
 import { historicoDe } from "@/auditoria/auditoria";
@@ -79,6 +79,29 @@ describe("aplicarMotor", () => {
     expect(t.receita_bruta).toBe(200000);
     expect(t.comissao).toBe(25500);
     expect(await saldoAcerto(db, org, { proprietarioId: dono })).toBe(144500);
+  });
+
+  it("o motivo dos estornos (M8.2d): o de quem chama (a alteração com o id dela) ou, sem ele, o de sempre; mês sem diferença não é tocado", async () => {
+    const id = await sinc();
+    // Muda o valor e o mês (outubro → novembro): o mês antigo é estornado no próprio mês com o motivo dado.
+    const r = await sincronizarReserva(db, org, "beds24", "1", dados({ checkin: "2030-11-10", checkout: "2030-11-13", valorBruto: 200000, taxaCanal: 30000 }), null, new Date(), { motivoEstorno: "Alteração x da reserva y: recalculado" });
+    expect(r.ok).toBe(true);
+    const todos = await listarLancamentos(db, org, { reservaId: id });
+    const estornos = todos.filter((l) => l.estornoDe);
+    expect(estornos).toHaveLength(4);
+    for (const e of estornos) {
+      expect(e.descricao).toBe("Estorno: Alteração x da reserva y: recalculado");
+      expect(e.competencia.slice(0, 7)).toBe("2030-10");
+    }
+    // Σ novo − Σ estornado por componente = a diferença do cálculo.
+    const novos = (await ativosDoMotor(id)).filter((l) => l.competencia.startsWith("2030-11"));
+    const soma = (ls: typeof todos, tipo: string) => ls.filter((l) => l.tipo === tipo).reduce((t, l) => t + l.valor, 0);
+    expect(soma(novos, "receita_bruta") + soma(estornos, "receita_bruta")).toBe(200000 - 150000);
+    // Sem motivo: o texto de sempre.
+    await sinc({ checkin: "2030-11-10", checkout: "2030-11-13", valorBruto: 150000, taxaCanal: 22500 });
+    expect((await listarLancamentos(db, org, { reservaId: id })).filter((l) => l.estornoDe).slice(4).every((e) => e.descricao === `Estorno: ${MOTIVO_ESTORNO_PADRAO}`)).toBe(true);
+    // Repetir não muda nada.
+    expect(await aplicarMotor(db, org, id, null, undefined, { motivoEstorno: "Outro" })).toMatchObject({ criados: 0, estornados: 0, mantidos: 4 });
   });
 
   it("valor volta ao cálculo anterior (A → B → A): lança de novo em vez de reaproveitar o estornado", async () => {

@@ -24,7 +24,9 @@ function resumoDaRotina(r: Resultado): string {
     : "Pagamentos: não conferidos neste ambiente (o teste roda nas prévias)";
   const h = r.holds;
   const falhas = h.falhas ? `, ${h.falhas} não fechado(s) nesta volta` : "";
-  return `${pagamentos} · Pedidos: ${h.expiradas} vencido(s), ${h.convertidas} confirmado(s), ${h.canceladas} cancelado(s)${falhas}`;
+  // M8.2d: as alterações de reserva paga com as datas seguradas vencidas.
+  const alteracoes = r.alteracoes?.expiradas ? ` · Alterações: ${r.alteracoes.expiradas} vencida(s)` : "";
+  return `${pagamentos} · Pedidos: ${h.expiradas} vencido(s), ${h.convertidas} confirmado(s), ${h.canceladas} cancelado(s)${falhas}${alteracoes}`;
 }
 
 async function executar(db: Db): Promise<Resultado> {

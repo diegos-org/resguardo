@@ -13,6 +13,7 @@ import { lerRegrasCalendario } from "@/calendario/regras-config";
 import { travaOcupada, violouUnicidade } from "@/db/erros";
 import { cotacoes, type EstadoCotacao, imoveis, pagamentos, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { expirarAlteracoesVencidas } from "@/pagamentos/alteracao-prazo";
 import { CARENCIA_PAGAMENTO_MINUTOS, CARENCIA_PAGAMENTO_MS, cotacaoEmCarencia, PRAZO_CARTAO_SEM_RESPOSTA_DIAS } from "@/pagamentos/andamento";
 import { cancelarReserva, sincronizarReserva } from "@/reservas/repositorio";
 import { consultarDisponibilidade, type Disponibilidade } from "./disponibilidade";
@@ -260,8 +261,10 @@ export async function segurarDatas(db: Db, organizacaoId: string, codigo: string
       const efetivo: EstadoCotacao = c.estado === "segurada" && c.holdAte && c.holdAte.getTime() <= agora.getTime() ? "expirada" : (c.estado as EstadoCotacao);
       return { ok: false as const, erro: MENSAGEM_ESTADO[efetivo], estado: efetivo };
     }
-    // Holds vencidos deste imóvel liberam as noites antes da conferência.
+    // Holds vencidos deste imóvel liberam as noites antes da conferência, e também as datas seguradas de uma alteração de
+    // reserva paga que já venceram (M8.2d; cada uma num savepoint: uma reserva ocupada agora é pulada, nunca derruba este pedido).
     await expirarHoldsVencidos(tx, organizacaoId, agora, im.id);
+    await expirarAlteracoesVencidas(tx, organizacaoId, agora, { imovelId: im.id });
     const d = await consultarDisponibilidade(tx, organizacaoId, { imovel: im.codigo, entrada: c.checkin, saida: c.checkout, hospedes: String(c.hospedes) }, agora);
     if (!cotacaoBate(c, d)) {
       await tx.update(cotacoes).set({ estado: "desatualizada", atualizadaEm: agora }).where(eq(cotacoes.id, c.id));

@@ -9,9 +9,9 @@
  * tirarem a vez de quem paga.
  */
 import { createHash, timingSafeEqual } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, gt } from "drizzle-orm";
 import { apagarContasVelhas, contarNaJanela, type Limite } from "@/acesso/senha";
-import { cotacoes, reservas } from "@/db/schema";
+import { alteracoesReserva, cotacoes, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
 import { validadeDaAutorizacao } from "./autorizacao";
@@ -92,7 +92,8 @@ export const ERRO_EMAIL_DO_PEDIDO = "Não encontramos um pedido com esse e-mail 
 /**
  * "Continuar o pagamento" noutro aparelho: o e-mail usado ao segurar as datas confere com o do pedido? Com
  * tetos de tentativas; a resposta nunca diz nada do pedido (nem se existe). `ate` = validade da autorização a
- * emitir de novo (o cookie).
+ * emitir de novo (o cookie): pelo prazo das datas da cotação ou, numa reserva com uma alteração segurada (M8.2d: a
+ * diferença se paga na mesma página), pelo prazo das novas datas, o que for mais tarde.
  */
 export async function conferirEmailDoPedido(db: Db, organizacaoId: string, cotacaoId: string, email: string, origem: string | null, agora: Date = new Date()): Promise<{ ok: true; ate: Date } | { ok: false; erro: string }> {
   const limite = await conferirLimite(db, organizacaoId, "continuar", origem, agora);
@@ -108,5 +109,10 @@ export async function conferirEmailDoPedido(db: Db, organizacaoId: string, cotac
   // Comparação em tempo constante (resumos de mesmo tamanho), também quando não há pedido.
   const confere = timingSafeEqual(resumo(digitado), resumo(c?.email?.toLowerCase() ?? `\u0000sem-pedido:${cotacaoId}`));
   if (!c || !digitado || !confere) return { ok: false, erro: ERRO_EMAIL_DO_PEDIDO };
-  return { ok: true, ate: validadeDaAutorizacao(c.holdAte, agora) };
+  const [alteracao] = await db
+    .select({ holdAte: alteracoesReserva.holdAte })
+    .from(alteracoesReserva)
+    .where(and(eq(alteracoesReserva.cotacaoId, cotacaoId), eq(alteracoesReserva.organizacaoId, organizacaoId), eq(alteracoesReserva.situacao, "segurada"), gt(alteracoesReserva.holdAte, agora)));
+  const prazo = Math.max(c.holdAte?.getTime() ?? 0, alteracao?.holdAte?.getTime() ?? 0);
+  return { ok: true, ate: validadeDaAutorizacao(prazo ? new Date(prazo) : null, agora) };
 }

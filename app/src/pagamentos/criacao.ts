@@ -52,11 +52,12 @@ export type ResultadoReleitura = { tipo: "ok" } | { tipo: "ocupado" } | { tipo: 
  * decide se outra tentativa pode sair. As pendentes ficam com a fase 1 (mostradas de novo, ou canceladas e relidas).
  * Sem leitura (o provedor falhou), nenhuma outra sai.
  */
-export async function relerEncerradasRecentes(db: Db, organizacaoId: string, cotacaoId: string, provedor: ProvedorPagamento, agora: Date): Promise<ResultadoReleitura> {
+export async function relerEncerradasRecentes(db: Db, organizacaoId: string, cotacaoId: string, provedor: ProvedorPagamento, agora: Date, o: { alteracaoId?: string | null } = {}): Promise<ResultadoReleitura> {
+  // Só as tentativas do mesmo alvo (M8.2d): a reserva, ou a diferença desta alteração.
   const tentativas = await db
     .select({ id: pagamentos.id, forma: pagamentos.forma, situacao: pagamentos.situacao, idProvedor: pagamentos.idProvedor, pixExpiraEm: pagamentos.pixExpiraEm, criadoEm: pagamentos.criadoEm, encerradoEm: pagamentos.encerradoEm })
     .from(pagamentos)
-    .where(and(eq(pagamentos.cotacaoId, cotacaoId), eq(pagamentos.organizacaoId, organizacaoId)));
+    .where(and(eq(pagamentos.cotacaoId, cotacaoId), eq(pagamentos.organizacaoId, organizacaoId), o.alteracaoId ? eq(pagamentos.alteracaoId, o.alteracaoId) : isNull(pagamentos.alteracaoId)));
   const reler = tentativas.filter((t) => t.situacao !== "pendente" && paginaAindaLe(t, agora));
   for (const a of reler) {
     const lida = await conferirOuOcupado(db, organizacaoId, a.id, provedor, agora, { forcar: true, origem: "pagina" });

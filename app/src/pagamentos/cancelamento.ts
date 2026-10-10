@@ -65,9 +65,10 @@ import { hojeISO, instanteLocal } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { formatBRL } from "@/lib/money";
 import { repasseAPagarDaReservaDados } from "@/repasses/recebimentos";
-import { avisoDoPagamento } from "@/reservas/repositorio";
+import { avisoDoPagamento, cancelarPortador } from "@/reservas/repositorio";
 import { politicaDoPagamento } from "@/site/aceites";
 import { acertarCaixaDaDevolucao, acertarResultado, auditoriaDoDevolvido, fatoDoDevolvidoNoPainel, lancamentosDoMotor } from "./acerto-cancelamento";
+import { expirarSeVencida } from "./alteracao-prazo";
 import { situacaoEfetiva } from "./alteracao-regras";
 import { inicioDoPrazoDePedirDevolucao, inicioDoPrazoDeReleitura } from "./andamento";
 import { sincronizarAvisosDoPagamento, trocarAvisosDaDevolucao } from "./avisos-devolucao";
@@ -269,7 +270,7 @@ const NAO_PAGA = 'Esta reserva não foi paga pelo site: cancele pelo botão "Can
  * Fase 0 (e a releitura da prévia): lê de novo no Mercado Pago, forçado, cada pagamento da reserva quando ainda dá (dentro
  * do prazo de leitura). true = todo pagamento dentro do prazo teve uma leitura que bateu com a tentativa aplicada agora.
  */
-async function releitura(db: Db, organizacaoId: string, ps: readonly { id: string; idProvedor: string | null; criadoEm: Date }[], provedor: ProvedorPagamento | null, agora: Date): Promise<boolean> {
+export async function releituraDosPagamentos(db: Db, organizacaoId: string, ps: readonly { id: string; idProvedor: string | null; criadoEm: Date }[], provedor: ProvedorPagamento | null, agora: Date): Promise<boolean> {
   let todas = true;
   for (const p of ps) {
     if (p.criadoEm.getTime() < inicioDoPrazoDeReleitura(agora).getTime()) continue;
@@ -740,7 +741,7 @@ export async function previaDoCancelamento(
   const alvo = await localizar(db, organizacaoId, reservaId);
   if (!alvo) return recusa("nao_encontrada", "Reserva não encontrada.");
   if (!alvo.pagamento) return alvo.reserva.estado === "cancelada" ? recusa("ja_cancelada", "Esta reserva já foi cancelada.") : recusa("nao_paga_pelo_site", NAO_PAGA);
-  const leituraAplicada = await releitura(db, organizacaoId, alvo.pagamentos, provedor, agora);
+  const leituraAplicada = await releituraDosPagamentos(db, organizacaoId, alvo.pagamentos, provedor, agora);
   const t = await lerCotacaoSemTravar(db, organizacaoId, alvo.pagamento.cotacaoId);
   if (!t) return recusa("nao_encontrada", "Reserva não encontrada.");
   const r = await montarDecisao(db, organizacaoId, t, e, agora, { leituraAplicada, travar: false });
@@ -766,7 +767,7 @@ export async function cancelarReservaPaga(
   if (!alvo) return recusa("nao_encontrada", "Reserva não encontrada.");
   if (!alvo.pagamento) return alvo.reserva.estado === "cancelada" ? recusa("ja_cancelada", "Esta reserva já foi cancelada.") : recusa("nao_paga_pelo_site", NAO_PAGA);
   // Fase 0: a releitura (sem trava; o provedor nunca é chamado com trava aberta).
-  const leituraAplicada = await releitura(db, organizacaoId, alvo.pagamentos, provedor, agora);
+  const leituraAplicada = await releituraDosPagamentos(db, organizacaoId, alvo.pagamentos, provedor, agora);
   const cotacaoId = alvo.pagamento.cotacaoId;
   let feito:
     | { ok: true; cancelamentoId: string; direito: "integral" | "nenhum"; devolucaoId: string | null; situacao: SituacaoDevolucao | null; pedidas: string[]; cancelarNoMp: { id: string; idProvedor: string }[] }
@@ -777,6 +778,8 @@ export async function cancelarReservaPaga(
       const t = await travarCotacao(tx, organizacaoId, cotacaoId);
       if (!t) return recusa("nao_encontrada", "Reserva não encontrada.");
       await travarMotorDaReserva(tx, organizacaoId, t.reserva.id);
+      // M8.2d: a alteração com o prazo das datas (e a carência) vencido vence agora, antes da decisão (sem provedor).
+      await expirarSeVencida(tx, organizacaoId, t, agora, autorId);
       const montada = await montarDecisao(tx, organizacaoId, t, e, agora, { leituraAplicada, travar: true });
       if (!montada.ok) return montada;
       const { m } = montada;
@@ -974,13 +977,7 @@ async function desistirPeloCancelamento(tx: Db, organizacaoId: string, t: Travad
   const mudanca = { situacao: "desistida" as const, desistidaEm: agora, desistidaPor: autorId, desistenciaMotivo: "cancelamento da reserva", atualizadoEm: agora };
   await tx.update(alteracoesReserva).set(mudanca).where(eq(alteracoesReserva.id, a.id));
   Object.assign(a, mudanca);
-  if (a.holdReservaId) {
-    const [portador] = await tx.select({ id: reservas.id, estado: reservas.estado }).from(reservas).where(and(eq(reservas.id, a.holdReservaId), eq(reservas.organizacaoId, organizacaoId))).for("no key update");
-    if (portador && portador.estado !== "cancelada") {
-      await tx.update(reservas).set({ estado: "cancelada", canceladaEm: agora, atualizadoEm: agora }).where(eq(reservas.id, portador.id));
-      await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "reserva.cancelar", entidade: "reserva", entidadeId: portador.id, mudancas: { estado: [portador.estado, "cancelada"], motivo: [null, "alteração desfeita pelo cancelamento da reserva"] } });
-    }
-  }
+  await cancelarPortador(tx, organizacaoId, a, autorId, agora, "alteração desfeita pelo cancelamento da reserva");
   await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "alteracao.desistir", entidade: "alteracao", entidadeId: a.id, mudancas: { situacao: ["segurada", "desistida"], motivo: [null, "cancelamento da reserva"] } });
   return t.tentativas.filter((x) => x.alteracaoId === a.id && x.situacao === "pendente" && x.idProvedor).map((x) => ({ id: x.id, idProvedor: x.idProvedor! }));
 }

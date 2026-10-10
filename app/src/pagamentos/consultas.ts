@@ -38,7 +38,7 @@ import { reservaCalculadaPeloMotor } from "@/financeiro/motor";
 import { hojeISO, instanteLocal } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { reservaCalculadaSql } from "@/portal/posse";
-import { politicaDoPagamento } from "@/site/aceites";
+import { politicaDoPagamento, versaoDaPoliticaDoPagamento } from "@/site/aceites";
 import { ALERTA_ANALISE_CARTAO_HORAS, CARENCIA_PAGAMENTO_MS, inicioDoPrazoDePedirDevolucao, inicioDoPrazoDeReleitura, MAXIMO_CARTAO_POR_COTACAO, MAXIMO_PIX_POR_COTACAO, paginaAindaLe } from "./andamento";
 import { ambienteMercadoPago, estadoPagamentoDoAmbiente } from "./ambiente";
 import { avisosDaDevolucao } from "./avisos-devolucao";
@@ -63,8 +63,10 @@ import {
   textoMotivoSemReserva,
   textoRestanteRecusado,
 } from "./situacoes";
+import { situacaoEfetiva, valorNovo } from "./alteracao-regras";
 import {
   type Alteracao,
+  carenciaNoTravado,
   comprometidoNoPagamento,
   type ContextoDaDevolucao,
   type Devolucao,
@@ -136,6 +138,46 @@ export type CancelamentoParaHospede = {
   politicaVersao: number | null;
 };
 
+/**
+ * A alteração da reserva paga (M8.2d) como a página da reserva e as mensagens ao hóspede mostram (`textoDaAlteracao`): só
+ * fatos (datas, pessoas, valores, prazos, a versão da política), nenhum dado pessoal e nunca a nota da equipe.
+ * - `segurada`: as novas datas seguradas (em qualquer direção); no aumento, `pagamento` é a vista do pagamento da diferença.
+ * - `aplicada`: a última aplicada, enquanto a devolução dela não terminou e por 30 dias depois de aplicada.
+ * - `nao_aplicada`: a diferença foi paga, mas a alteração não pôde valer (o pagamento fica sem reserva, a devolver).
+ * - `nao_vale`: a alteração preparada venceu ou a equipe desistiu, sem pagamento, por 7 dias.
+ */
+export type AlteracaoParaHospede = {
+  id: string;
+  situacao: "segurada" | "aplicada" | "nao_aplicada" | "nao_vale";
+  rumo: "aumento" | "reducao" | "igual";
+  antes: { checkin: string; checkout: string; hospedes: number | null; valor: number };
+  depois: { checkin: string; checkout: string; hospedes: number; valor: number };
+  diferenca: number;
+  /** O que a reserva vale depois (no aumento, o de antes mais a diferença; na redução, pela política). */
+  valorNovo: number;
+  holdAte: Date | null;
+  preparadaEm: Date;
+  aplicadaEm: Date | null;
+  /** A redução pela política: a decisão, a base e o último dia do reembolso integral (null fora da redução). */
+  reducao: { direito: DireitoCancelamento; base: BaseCancelamento | null; integralAte: string | null } | null;
+  /** A devolução da diferença (as da alteração juntas); null sem redução integral aplicada. */
+  devolucao: {
+    estado: "aguardando_liberacao" | "pedida" | "feita" | "com_a_equipe" | "em_conferencia";
+    valor: number;
+    valorConfirmado: number | null;
+    em: Date | null;
+    previstaEm: string | null;
+    porFora: boolean;
+    forma: "pix" | "cartao";
+  } | null;
+  /** A diferença paga que não valeu (nao_aplicada): o valor e quando. */
+  pagoSemAlteracao: { valor: number; em: Date } | null;
+  /** Só na segurada com aumento: o pagamento da diferença (o mesmo formato da página da cotação). */
+  pagamento: VistaPagamentoHospede | null;
+  politicaVersao: number | null;
+  entradaDaPolitica: string;
+};
+
 export type VistaPagamentoHospede = {
   estado: EstadoPagamentoHospede;
   /** "Ambiente de teste: nenhuma cobrança real" (na parte a, todo pagamento é de teste). */
@@ -182,6 +224,8 @@ export type VistaPagamentoHospede = {
   pedidoCancelamentoEm: Date | null;
   /** Esse pedido é de um pagamento sem a política aceita (antes de 9/10): o recibo não cita política nenhuma. */
   pedidoCancelamentoSemPolitica?: boolean;
+  /** M8.2d: a alteração da reserva paga que a página mostra (ver `AlteracaoParaHospede`); null sem nenhuma. */
+  alteracao?: AlteracaoParaHospede | null;
 };
 
 /**
@@ -189,7 +233,13 @@ export type VistaPagamentoHospede = {
  * pagamento nesta cotação (`ofertaDePix` ou `ofertaDeCartao`; sem ele, cotação segurada sem tentativa fica
  * "sem_pagamento", o fluxo pela conversa).
  */
-export async function vistaDaCotacaoParaHospede(db: Db, organizacaoId: string, cotacaoId: string, agora: Date, o: { comAutorizacao: boolean; oferecido?: boolean }): Promise<VistaPagamentoHospede | null> {
+export async function vistaDaCotacaoParaHospede(
+  db: Db,
+  organizacaoId: string,
+  cotacaoId: string,
+  agora: Date,
+  o: { comAutorizacao: boolean; oferecido?: boolean; oferecidoAlteracao?: boolean },
+): Promise<VistaPagamentoHospede | null> {
   if (!uuidValido(cotacaoId)) return null;
   const [c] = await db
     .select({ estado: cotacoes.estado, holdAte: cotacoes.holdAte, reservaId: cotacoes.reservaId, reservaEstado: reservas.estado, reservaCodigo: reservas.codigo })
@@ -202,8 +252,10 @@ export async function vistaDaCotacaoParaHospede(db: Db, organizacaoId: string, c
   // A devolução que manda na página para cada pagamento (M8.2d: várias por pagamento): a aberta, senão a mais nova.
   const devDe = (p: Pagamento) => devolucaoPrincipal(devolucoesDoPagamento({ devolucoes }, p.id));
   const segurada = c.estado === "segurada" && c.reservaEstado === "pedido" && !!c.holdAte && c.holdAte.getTime() > agora.getTime();
-  const pixRestantes = Math.max(0, MAXIMO_PIX_POR_COTACAO - tentativas.filter((t) => t.forma === "pix").length);
-  const cartaoRestantes = Math.max(0, MAXIMO_CARTAO_POR_COTACAO - tentativas.filter((t) => t.forma === "cartao").length);
+  // As tentativas da reserva (sem as da diferença de uma alteração, M8.2d, que têm a vista própria em `alteracao`).
+  const daReservaTentativas = tentativas.filter((t) => !t.alteracaoId);
+  const pixRestantes = Math.max(0, MAXIMO_PIX_POR_COTACAO - daReservaTentativas.filter((t) => t.forma === "pix").length);
+  const cartaoRestantes = Math.max(0, MAXIMO_CARTAO_POR_COTACAO - daReservaTentativas.filter((t) => t.forma === "cartao").length);
   const dinheiroSemDesfecho = tentativas.some((t) => emAndamento(t.situacao) || (comDinheiro(t.situacao) && t.desfecho === null));
   const quemManda = tentativas.find((t) => t.desfecho === "reserva") ?? tentativas.find((t) => comDinheiro(t.situacao)) ?? tentativas[0];
   const base: VistaPagamentoHospede = {
@@ -250,6 +302,7 @@ export async function vistaDaCotacaoParaHospede(db: Db, organizacaoId: string, c
     // de uma alteração (M8.2d) é dinheiro da reserva, nunca "em dobro".
     const emDobro = tentativas.some((t) => t.id !== comReserva.id && !dinheiroDaReserva(t) && !t.alteracaoId && comDinheiro(t.situacao) && !devolvida(t));
     const pedido = canc?.situacao === "pedido" ? canc : null;
+    const alteracao = c.reservaId ? await alteracaoParaHospede(db, organizacaoId, c.reservaId, tentativas, devolucoes, base, agora, o) : null;
     return {
       ...base,
       estado: "confirmada",
@@ -257,6 +310,7 @@ export async function vistaDaCotacaoParaHospede(db: Db, organizacaoId: string, c
       pagamentoEmDobro: emDobro,
       pedidoCancelamentoEm: pedido?.pedidoRecebidoEm ?? null,
       ...(pedido ? { pedidoCancelamentoSemPolitica: !(await politicaDoPagamento(db, organizacaoId, comReserva.id)) } : {}),
+      ...(alteracao ? { alteracao } : {}),
     };
   }
   // Dinheiro sem a reserva: confirmando, aprovado sem as datas, devolução pedida ou feita. Com mais de um pagamento,
@@ -277,6 +331,23 @@ export async function vistaDaCotacaoParaHospede(db: Db, organizacaoId: string, c
     if (pedida && emAberto.every((p) => devDe(p)?.situacao === "pedida")) return { ...base, estado: "devolucao_pedida", devolucao: { situacao: "pedida", em: devDe(pedida)!.criadoEm } };
     return { ...base, estado: "aprovado_sem_datas" };
   }
+  return estadoPelasTentativas(base, tentativas, segurada, c.holdAte, agora, o);
+}
+
+/**
+ * A situação da página pelas tentativas de um alvo sem dinheiro ainda (a reserva segurada, ou a diferença de uma alteração
+ * segurada, M8.2d): conferindo, desafio do banco, análise, cartão recusado, Pix aguardando, vencido ou esgotado, pagar. Uma
+ * regra só para os dois alvos. `tentativas` da mais nova para a mais antiga.
+ */
+function estadoPelasTentativas(
+  base: VistaPagamentoHospede,
+  tentativas: readonly Pagamento[],
+  segurada: boolean,
+  holdAte: Date | null,
+  agora: Date,
+  o: { comAutorizacao: boolean; oferecido?: boolean },
+): VistaPagamentoHospede {
+  const pixRestantes = base.pixRestantes;
   const ultima = tentativas[0];
   // Pagamento marcado como real (live_mode) no teste: nunca o QR, o desafio nem "aguardando" (é cancelado na hora).
   // Enquanto o cancelamento não se confirma, "conferindo" (a página continua lendo, e cada leitura manda cancelar de
@@ -294,7 +365,7 @@ export async function vistaDaCotacaoParaHospede(db: Db, organizacaoId: string, c
       // Pago); sem ele, a página diz que não deu para abrir a verificação e oferece os outros caminhos.
       if (ultima.etapaCartao === "desafio") return { ...base, estado: "cartao_desafio", desafioUrl: o.comAutorizacao ? urlDoDesafio(ultima.desafioUrl) : null };
       // Em análise, mesmo depois do prazo das datas: o pagamento ainda pode ser aprovado.
-      if (ultima.etapaCartao === "analise") return { ...base, estado: "cartao_em_analise", prazoDasDatas: c.holdAte };
+      if (ultima.etapaCartao === "analise") return { ...base, estado: "cartao_em_analise", prazoDasDatas: holdAte };
       return { ...base, estado: "verificando" };
     }
     // Recusado, cancelado ou vencido: com as datas seguradas, o hóspede tenta de novo (o mesmo texto para toda recusa).
@@ -314,6 +385,203 @@ export async function vistaDaCotacaoParaHospede(db: Db, organizacaoId: string, c
   if (!segurada) return base;
   if (ultima) return { ...base, estado: pixRestantes > 0 ? "pix_vencido" : "pix_esgotado" };
   return o.oferecido ? { ...base, estado: "pagar" } : base;
+}
+
+/** Por quantos dias a página mostra a alteração aplicada (depois de a devolução dela terminar) e a que não vale mais. */
+export const DIAS_ALTERACAO_APLICADA_NA_PAGINA = 30;
+export const DIAS_ALTERACAO_QUE_NAO_VALE_NA_PAGINA = 7;
+
+/**
+ * A alteração da reserva paga que a página mostra (M8.2d, `AlteracaoParaHospede`): a segurada pela situação que vale agora
+ * (em qualquer direção; no aumento, com a vista do pagamento da diferença); senão a última aplicada (enquanto a devolução
+ * dela não terminou, e por 30 dias); senão a diferença paga que não valeu (enquanto não volta ao hóspede, e por 7 dias
+ * depois); senão a que venceu ou de que a equipe desistiu, sem pagamento, por 7 dias.
+ */
+async function alteracaoParaHospede(
+  db: Db,
+  organizacaoId: string,
+  reservaId: string,
+  tentativas: readonly Pagamento[],
+  devolucoes: readonly Devolucao[],
+  base: VistaPagamentoHospede,
+  agora: Date,
+  o: { comAutorizacao: boolean; oferecidoAlteracao?: boolean },
+): Promise<AlteracaoParaHospede | null> {
+  const x = await escolherAlteracaoParaHospede(db, organizacaoId, reservaId, tentativas, devolucoes, base, agora, o);
+  return x ? comVersaoDaPolitica(db, organizacaoId, x, tentativas) : null;
+}
+
+/**
+ * A linha da política vale sempre (§8.2): o retrato da alteração só guarda a versão na redução; nas outras, a versão é a
+ * do aceite do pagamento que confirmou a reserva (a que continua valendo para ela).
+ */
+async function comVersaoDaPolitica<T extends AlteracaoParaHospede>(db: Db, organizacaoId: string, x: T, tentativas: readonly Pick<Pagamento, "id" | "desfecho">[]): Promise<T> {
+  if (x.politicaVersao !== null) return x;
+  const p0 = tentativas.find((t) => t.desfecho === "reserva");
+  return p0 ? { ...x, politicaVersao: await versaoDaPoliticaDoPagamento(db, organizacaoId, p0.id) } : x;
+}
+
+async function escolherAlteracaoParaHospede(
+  db: Db,
+  organizacaoId: string,
+  reservaId: string,
+  tentativas: readonly Pagamento[],
+  devolucoes: readonly Devolucao[],
+  base: VistaPagamentoHospede,
+  agora: Date,
+  o: { comAutorizacao: boolean; oferecidoAlteracao?: boolean },
+): Promise<AlteracaoParaHospede | null> {
+  const alteracoes = await db
+    .select()
+    .from(alteracoesReserva)
+    .where(and(eq(alteracoesReserva.reservaId, reservaId), eq(alteracoesReserva.organizacaoId, organizacaoId)))
+    .orderBy(desc(alteracoesReserva.criadoEm), desc(alteracoesReserva.id));
+  if (!alteracoes.length) return null;
+  const carencia = carenciaNoTravado({ tentativas: [...tentativas] }, agora);
+  const dias = (n: number) => n * 86_400_000;
+  const daAlteracao = (a: Alteracao) => tentativas.filter((t) => t.alteracaoId === a.id);
+  // 1. A segurada (pela situação que vale agora), em qualquer direção.
+  const segurada = alteracoes.find((a) => situacaoEfetiva(a, agora, carencia(a)) === "segurada");
+  if (segurada) {
+    const x = comum(segurada, "segurada");
+    if (segurada.diferenca > 0) {
+      const doAlvo = daAlteracao(segurada);
+      const prazoValendo = !!segurada.holdAte && segurada.holdAte.getTime() > agora.getTime();
+      const vistaBase: VistaPagamentoHospede = {
+        ...base,
+        estado: "sem_pagamento",
+        holdAte: prazoValendo ? segurada.holdAte : null,
+        pix: null,
+        pixRestantes: Math.max(0, MAXIMO_PIX_POR_COTACAO - doAlvo.filter((t) => t.forma === "pix").length),
+        cartaoRestantes: Math.max(0, MAXIMO_CARTAO_POR_COTACAO - doAlvo.filter((t) => t.forma === "cartao").length),
+        forma: doAlvo[0]?.forma ?? null,
+        dinheiroSemDesfecho: doAlvo.some((t) => emAndamento(t.situacao) || (comDinheiro(t.situacao) && t.desfecho === null)),
+        acompanhar: doAlvo.some((t) => paginaAindaLe(t, agora)),
+        reservaCodigo: null,
+        pagamentoEmDobro: false,
+        devolucao: null,
+        cancelamento: null,
+        pedidoCancelamentoEm: null,
+      };
+      // Diferença já paga e ainda sem decisão (o aviso a caminho): "confirmando".
+      x.pagamento = doAlvo.some((t) => comDinheiro(t.situacao) && t.desfecho === null && t.motivoSemReserva === null)
+        ? { ...vistaBase, estado: "confirmando" }
+        : estadoPelasTentativas(vistaBase, doAlvo, prazoValendo, segurada.holdAte, agora, { comAutorizacao: o.comAutorizacao, oferecido: o.oferecidoAlteracao });
+    }
+    return x;
+  }
+  // 2. A última aplicada: enquanto a devolução dela não terminou, e por 30 dias.
+  const aplicada = alteracoes.find((a) => a.situacao === "aplicada");
+  if (aplicada) {
+    const x = comum(aplicada, "aplicada");
+    x.devolucao = devolucaoDaAlteracao(aplicada, tentativas, devolucoes, agora);
+    const aberta = !!x.devolucao && x.devolucao.estado !== "feita";
+    const ultimoFato = Math.max(aplicada.aplicadaEm?.getTime() ?? 0, x.devolucao?.em?.getTime() ?? 0);
+    if (aberta || agora.getTime() - ultimoFato <= dias(DIAS_ALTERACAO_APLICADA_NA_PAGINA)) {
+      // Uma alteração mais nova que não vale (nem paga) vem antes só se for mais recente que a aplicada.
+      const maisNova = alteracoes[0];
+      if (maisNova.id === aplicada.id || aberta) return x;
+    }
+  }
+  // 3. A diferença paga que não valeu (sem reserva, com o motivo da alteração).
+  for (const a of alteracoes) {
+    const paga = daAlteracao(a).find((t) => comDinheiro(t.situacao) && t.desfecho !== "alteracao" && codigoMotivo(t.motivoSemReserva)?.startsWith("alteracao_"));
+    if (!paga) continue;
+    const voltou = paga.desfecho === "devolucao" || paga.desfecho === "por_fora";
+    const desde = paga.desfechoEm ?? paga.aprovadoEm ?? paga.criadoEm;
+    if (voltou && agora.getTime() - desde.getTime() > dias(DIAS_ALTERACAO_QUE_NAO_VALE_NA_PAGINA)) continue;
+    return { ...comum(a, "nao_aplicada"), pagoSemAlteracao: { valor: paga.valor, em: paga.aprovadoEm ?? paga.criadoEm } };
+  }
+  // 4. A que venceu ou de que a equipe desistiu, sem pagamento, por 7 dias.
+  const naoVale = alteracoes[0];
+  if (naoVale.situacao !== "aplicada") {
+    const em = naoVale.desistidaEm ?? naoVale.expiradaEm ?? naoVale.holdAte ?? naoVale.criadoEm;
+    if (!daAlteracao(naoVale).some((t) => comDinheiro(t.situacao)) && agora.getTime() - em.getTime() <= dias(DIAS_ALTERACAO_QUE_NAO_VALE_NA_PAGINA)) return comum(naoVale, "nao_vale");
+  }
+  if (aplicada) {
+    const x = comum(aplicada, "aplicada");
+    x.devolucao = devolucaoDaAlteracao(aplicada, tentativas, devolucoes, agora);
+    const ultimoFato = Math.max(aplicada.aplicadaEm?.getTime() ?? 0, x.devolucao?.em?.getTime() ?? 0);
+    if (agora.getTime() - ultimoFato <= dias(DIAS_ALTERACAO_APLICADA_NA_PAGINA)) return x;
+  }
+  return null;
+}
+
+/** Os fatos de uma alteração para a página e as mensagens, na situação dada (sem a devolução nem o pagamento). */
+const comum = (a: Alteracao, situacao: AlteracaoParaHospede["situacao"]): AlteracaoParaHospede => ({
+  id: a.id,
+  situacao,
+  rumo: a.diferenca > 0 ? "aumento" : a.diferenca < 0 ? "reducao" : "igual",
+  antes: { checkin: a.checkinAntes, checkout: a.checkoutAntes, hospedes: a.hospedesAntes, valor: a.valorAntes },
+  depois: { checkin: a.checkinDepois, checkout: a.checkoutDepois, hospedes: a.hospedesDepois, valor: a.valorDepois },
+  diferenca: a.diferenca,
+  valorNovo: valorNovo(a),
+  holdAte: a.holdAte,
+  preparadaEm: a.criadoEm,
+  aplicadaEm: a.aplicadaEm,
+  reducao: a.diferenca < 0 && a.direito ? { direito: a.direito, base: a.base, integralAte: a.integralAte } : null,
+  devolucao: null,
+  pagoSemAlteracao: null,
+  pagamento: null,
+  politicaVersao: a.politicaVersao,
+  entradaDaPolitica: a.entradaDaPolitica,
+});
+
+/**
+ * Uma alteração (pelo id, desta organização) como as mensagens ao hóspede a contam (`{alteracao}`), na situação dela agora:
+ * segurada (pela situação que vale agora), aplicada (com a devolução), não aplicada (a diferença paga sem valer) ou que não
+ * vale mais. Sem o pagamento da diferença (a mensagem leva à página). null = não existe nesta organização.
+ */
+export async function alteracaoParaMensagem(db: Db, organizacaoId: string, alteracaoId: string, agora: Date): Promise<(AlteracaoParaHospede & { reservaId: string; cotacaoId: string }) | null> {
+  if (!uuidValido(alteracaoId)) return null;
+  const [a] = await db.select().from(alteracoesReserva).where(and(eq(alteracoesReserva.id, alteracaoId), eq(alteracoesReserva.organizacaoId, organizacaoId)));
+  if (!a) return null;
+  const tentativas = await db.select().from(pagamentos).where(and(eq(pagamentos.cotacaoId, a.cotacaoId), eq(pagamentos.organizacaoId, organizacaoId)));
+  const devolucoes = tentativas.length ? await db.select().from(devolucoesPagamento).where(inArray(devolucoesPagamento.pagamentoId, tentativas.map((t) => t.id))) : [];
+  const extra = { reservaId: a.reservaId, cotacaoId: a.cotacaoId };
+  const comPolitica = (x: AlteracaoParaHospede) => comVersaoDaPolitica(db, organizacaoId, { ...x, ...extra }, tentativas);
+  if (situacaoEfetiva(a, agora, carenciaNoTravado({ tentativas }, agora)(a)) === "segurada") return comPolitica(comum(a, "segurada"));
+  if (a.situacao === "aplicada") return comPolitica({ ...comum(a, "aplicada"), devolucao: devolucaoDaAlteracao(a, tentativas, devolucoes, agora) });
+  const paga = tentativas.find((t) => t.alteracaoId === a.id && comDinheiro(t.situacao) && t.desfecho !== "alteracao" && codigoMotivo(t.motivoSemReserva)?.startsWith("alteracao_"));
+  if (paga) return comPolitica({ ...comum(a, "nao_aplicada"), pagoSemAlteracao: { valor: paga.valor, em: paga.aprovadoEm ?? paga.criadoEm } });
+  return comPolitica(comum(a, "nao_vale"));
+}
+
+/**
+ * A devolução da diferença de uma alteração aplicada, para a página (as devoluções dela juntas, pela regra única da página
+ * da reserva cancelada, `estadoDaCancelada`): esperando a liberação do pagamento (nada pedido ainda: nunca "já pedimos"),
+ * pedida, com a equipe, em conferência ou feita — a menos adiantada vale. null sem devolução (redução retida, aumento).
+ */
+function devolucaoDaAlteracao(a: Alteracao, tentativas: readonly Pagamento[], devolucoes: readonly Devolucao[], agora: Date): AlteracaoParaHospede["devolucao"] {
+  const devs = devolucoes.filter((d) => d.alteracaoId === a.id && d.situacao !== "substituida");
+  if (!devs.length) return null;
+  const doPagamento = (d: Devolucao) => tentativas.find((t) => t.id === d.pagamentoId);
+  const estados = devs.map((d) => {
+    const p = doPagamento(d);
+    if (!p) return "cancelada_em_conferencia" as EstadoPagamentoHospede;
+    if (esperandoLiberacao(d)) return "aguardando" as const;
+    return estadoDaCancelada(p, "integral", d, estornaPelaEquipe(p, d, agora), agora, devolucoesDoPagamento({ devolucoes }, p.id));
+  });
+  const ordem = ["aguardando", "cancelada_devolucao_pedida", "cancelada_com_a_equipe", "cancelada_em_conferencia", "cancelada_devolvida"] as const;
+  const pior = ordem.find((e) => (estados as string[]).includes(e)) ?? "cancelada_em_conferencia";
+  const estado = ({ aguardando: "aguardando_liberacao", cancelada_devolucao_pedida: "pedida", cancelada_com_a_equipe: "com_a_equipe", cancelada_em_conferencia: "em_conferencia", cancelada_devolvida: "feita" } as const)[pior];
+  const realizada = (d: Devolucao) => d.situacao === "confirmada" || d.situacao === "por_fora";
+  const quando = (d: Devolucao) => (d.situacao === "confirmada" ? d.confirmadaEm : d.situacao === "por_fora" && d.porForaData ? instanteLocal(d.porForaData, "12:00", "America/Sao_Paulo") : null);
+  const feitas = devs.every(realizada);
+  const ultima = feitas ? [...devs].sort((x, y) => (quando(x)?.getTime() ?? 0) - (quando(y)?.getTime() ?? 0)).at(-1) : undefined;
+  const esperando = devs.filter(esperandoLiberacao);
+  const prevista = esperando.length ? dataMaisTardia(esperando.map((d) => doPagamento(d)?.liberacaoPrevistaEm ?? null)) : null;
+  const confirmados = devs.map((d) => (d.situacao === "confirmada" ? d.valorConfirmado : d.situacao === "por_fora" ? (d.porForaValor ?? d.valor) : null));
+  const p0 = doPagamento(devs[0]);
+  return {
+    estado,
+    valor: devs.reduce((s2, d) => s2 + d.valor, 0),
+    valorConfirmado: feitas && confirmados.every((v) => v !== null) ? confirmados.reduce((s2, v) => s2 + v!, 0) : null,
+    em: ultima ? quando(ultima) : null,
+    previstaEm: prevista ? hojeISO("America/Sao_Paulo", prevista) : null,
+    porFora: devs.every((d) => d.situacao === "por_fora"),
+    forma: p0?.forma ?? "pix",
+  };
 }
 
 /** A devolução que manda (a aberta — pedida ou recusada —, senão a mais nova); as vivas vêm em ordem de id. */
@@ -582,7 +850,7 @@ export type DevolucaoDoPainel = {
 type ContextoDoPainel = {
   reserva: { estado: EstadoReserva; valorRetido: number | null } | null;
   cancelamento: { situacao: SituacaoCancelamento; direito: DireitoCancelamento | null } | null;
-  alteracoes?: readonly Pick<Alteracao, "id" | "situacao">[];
+  alteracoes?: readonly (Pick<Alteracao, "id" | "situacao"> & Partial<Pick<Alteracao, "holdAte">>)[];
 };
 
 /** O aviso de devolução recusada, no quadro do pagamento, quando a recusa veio do painel do Mercado Pago (registrada) ou da leitura. */
@@ -732,7 +1000,9 @@ function paraPainel(p: Pagamento, devs: readonly Devolucao[], temRecebimentoManu
       p.situacao === "incerta" ||
       criacaoPresa(p, agora) ||
       (calculada && liberacaoVencida(p, agora)) ||
-      (p.desfecho === "reserva" && ctx.cancelamento?.situacao === "pedido"),
+      (p.desfecho === "reserva" && ctx.cancelamento?.situacao === "pedido") ||
+      // M8.2d: uma alteração com as novas datas seguradas (esperando o pagamento da diferença ou a confirmação do hóspede).
+      (p.desfecho === "reserva" && !!ctx.alteracoes?.some((a) => a.situacao === "segurada" && !!a.holdAte && a.holdAte.getTime() > agora.getTime())),
     acoes: {
       conferir: p.idProvedor !== null || emAndamento(p.situacao) || !!dev,
       // Cancelamento: pedir de novo só a devolução recusada de um pagamento com até 78 dias (depois, nada se pede).
@@ -811,7 +1081,7 @@ async function montarPainel(db: Db, organizacaoId: string, lista: Pagamento[], a
     .where(and(eq(cancelamentosReserva.organizacaoId, organizacaoId), inArray(cancelamentosReserva.reservaId, reservaIds), inArray(cancelamentosReserva.situacao, ["pedido", "cancelada"])));
   // M8.2d: as alterações das reservas (a devolução da alteração só cabe com a alteração aplicada).
   const as = await db
-    .select({ id: alteracoesReserva.id, reservaId: alteracoesReserva.reservaId, situacao: alteracoesReserva.situacao })
+    .select({ id: alteracoesReserva.id, reservaId: alteracoesReserva.reservaId, situacao: alteracoesReserva.situacao, holdAte: alteracoesReserva.holdAte })
     .from(alteracoesReserva)
     .where(and(eq(alteracoesReserva.organizacaoId, organizacaoId), inArray(alteracoesReserva.reservaId, reservaIds)));
   // M7.4: o aceite com que cada tentativa foi criada e o prazo da Política de cancelamento dessa versão.
@@ -878,6 +1148,11 @@ function podePedirAtencao(agora: Date) {
     sql`exists (select 1 from ${devolucoesPagamento} where ${devolucoesPagamento.pagamentoId} = ${pagamentos.id} and ${devolucoesPagamento.situacao} in ('pedida', 'recusada'))`,
     // M8.2c: pedido de cancelamento esperando a equipe.
     and(eq(pagamentos.desfecho, "reserva"), sql`exists (select 1 from ${cancelamentosReserva} where ${cancelamentosReserva.reservaId} = ${pagamentos.reservaId} and ${cancelamentosReserva.situacao} = 'pedido')`),
+    // M8.2d: alteração com as novas datas seguradas.
+    and(
+      eq(pagamentos.desfecho, "reserva"),
+      sql`exists (select 1 from ${alteracoesReserva} where ${alteracoesReserva.reservaId} = ${pagamentos.reservaId} and ${alteracoesReserva.situacao} = 'segurada' and ${alteracoesReserva.holdAte} > ${agora})`,
+    ),
   );
 }
 

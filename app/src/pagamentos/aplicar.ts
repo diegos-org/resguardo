@@ -17,16 +17,15 @@
  * diferença de uma alteração tem o próprio alvo no cartão (as datas da alteração) e só as tentativas do mesmo alvo são
  * canceladas quando o dinheiro chega numa delas.
  */
-import { and, eq, inArray, isNull, lt, ne, or } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { lerRegrasCalendario } from "@/calendario/regras-config";
-import { alteracoesReserva, devolucoesPagamento, type EtapaCartao, pagamentos, reservas } from "@/db/schema";
+import { devolucoesPagamento, type EtapaCartao, pagamentos, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { reservaCalculadaPeloMotor } from "@/financeiro/motor";
 import { hojeISO } from "@/lib/datas";
-import { estenderHold } from "@/site/cotacoes";
 import { acertarCaixaDaDevolucao, acertarCaixasPendentes } from "./acerto-cancelamento";
-import { situacaoEfetiva } from "./alteracao-regras";
+import { alvoDaCobranca, falhaDoAlvo } from "./alvo";
 import { FOLGA_PRAZO_PAGAMENTO_MS, inicioDoPrazoDeReleitura } from "./andamento";
 import { avisosComDevolucoes, trocarAvisosDaDevolucao } from "./avisos-devolucao";
 import { decidirAprovacao } from "./confirmacao";
@@ -36,7 +35,6 @@ import { type Cobranca, DESAFIO_3DS_MINUTOS, type DetalheFinanceiro, PARCELAS_MA
 import { type CodigoAviso, comDinheiro, MAXIMO_FALHAS_DEVOLUCAO, motivoDoDetalhe, origemDeDevolucaoConhecida, type SituacaoPagamento, transicaoPermitida } from "./situacoes";
 import {
   cabeNoPagamento,
-  carenciaNoTravado,
   comprometido,
   comprometidoNoPagamento,
   type Devolucao,
@@ -213,8 +211,9 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
     // O endereço do desafio só vem na resposta da criação (o GET não traz): a leitura seguinte mantém o guardado.
     patch.desafioUrl = etapa === "desafio" ? (urlDoDesafio(cc?.cartao?.desafioUrl) ?? p.desafioUrl) : null;
     // O alvo da cobrança desta tentativa (M8.2d): o pedido segurado da cotação, ou a alteração cuja diferença ela cobra.
-    const alvo = alvoDoCartao(tx, organizacaoId, t, p, agora);
-    const pedidoValido = alvo.valido;
+    const achado = alvoDaCobranca(tx, organizacaoId, t, p.alteracaoId, agora, { daLeitura: true });
+    const alvo = falhaDoAlvo(achado) ? null : achado;
+    const pedidoValido = !!alvo && alvo.valido(agora);
     if (etapa === "desafio") {
       if (patch.desafioUrl) desligar("desafio_sem_url");
       if (!patch.desafioUrl && (leitura.daCriacao || avisos.has("desafio_sem_url"))) {
@@ -231,9 +230,9 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
         // As datas ficam seguradas até o fim do desafio (40 min desde a criação) + 2 min. Só estende; como o QR do Pix,
         // não é desfeito quando o desafio acaba sem dinheiro (no máximo 3 cartões por cotação).
         const ate = new Date(p.criadoEm.getTime() + DESAFIO_3DS_MINUTOS * 60_000 + FOLGA_PRAZO_PAGAMENTO_MS);
-        await alvo.estender(ate, p.id);
+        await alvo!.estender(ate, p.id);
       }
-    } else if ((etapa === "analise" || etapa === "processando") && pedidoValido && !alvo.tentativas.some((x) => x.prazoAnaliseAte)) {
+    } else if ((etapa === "analise" || etapa === "processando") && alvo && pedidoValido && !alvo.tentativas.some((x) => x.prazoAnaliseAte)) {
       // Extensão única por alvo (a primeira leitura em análise ou processando de uma tentativa dele): o tanto editável em
       // Configurações → Calendário; 0 = nenhuma. Depois vale a carência e a regra da aprovação tardia.
       const minutos = (await lerRegrasCalendario(tx, organizacaoId)).site.minutosAnaliseCartao;
@@ -561,41 +560,4 @@ async function liberarPedidoQueFalhou(tx: Db, organizacaoId: string, p: Pagament
   await tx.update(devolucoesPagamento).set(mudanca).where(eq(devolucoesPagamento.id, dev.id));
   Object.assign(dev, mudanca);
   await registrarAuditoria(tx, { organizacaoId, usuarioId: null, acao: "pagamento.devolucao_recusada", entidade: "pagamento", entidadeId: p.id, mudancas: { devolucao: ["pedida", "recusada"], motivo: [null, "o Mercado Pago informou que a devolução pedida não saiu"] } });
-}
-
-/**
- * O alvo da cobrança de uma tentativa no cartão (M8.2d): o pedido segurado da cotação (a tentativa da reserva) ou as datas
- * seguradas de uma alteração (a tentativa da diferença). Se ele ainda vale, o prazo dele, as tentativas dele e como
- * estender o prazo (só estende; o retrato acompanha). O M8.2d inteiro usa a mesma regra para o Pix e o cartão
- * (`alvoDaCobranca`); a leitura do cartão precisa só disto.
- */
-function alvoDoCartao(tx: Db, organizacaoId: string, t: Travado, p: Pagamento, agora: Date) {
-  if (!p.alteracaoId) {
-    return {
-      valido: t.reserva.estado === "pedido" && t.cotacao.estado === "segurada",
-      holdAte: t.cotacao.holdAte,
-      tentativas: t.tentativas.filter((x) => !x.alteracaoId),
-      estender: async (ate: Date, pagamentoId: string) => {
-        if (await estenderHold(tx, organizacaoId, t.cotacao.id, ate, agora, pagamentoId)) t.cotacao.holdAte = ate;
-      },
-    };
-  }
-  const a = t.alteracoes.find((x) => x.id === p.alteracaoId);
-  const segurada = !!a && situacaoEfetiva(a, agora, carenciaNoTravado(t, agora)(a)) === "segurada";
-  return {
-    valido: segurada && t.reserva.estado === "confirmada" && !t.cancelamento,
-    holdAte: a?.holdAte ?? null,
-    tentativas: t.tentativas.filter((x) => x.alteracaoId === p.alteracaoId),
-    estender: async (ate: Date, pagamentoId: string) => {
-      if (!a) return;
-      const [feita] = await tx
-        .update(alteracoesReserva)
-        .set({ holdAte: ate, atualizadoEm: agora })
-        .where(and(eq(alteracoesReserva.id, a.id), eq(alteracoesReserva.situacao, "segurada"), or(isNull(alteracoesReserva.holdAte), lt(alteracoesReserva.holdAte, ate))))
-        .returning({ id: alteracoesReserva.id });
-      if (!feita) return;
-      await registrarAuditoria(tx, { organizacaoId, usuarioId: null, acao: "alteracao.estender", entidade: "alteracao", entidadeId: a.id, mudancas: { holdAte: [a.holdAte?.toISOString() ?? null, ate.toISOString()], pagamento: [null, pagamentoId] } });
-      a.holdAte = ate;
-    },
-  };
 }
