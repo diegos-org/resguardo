@@ -4,10 +4,10 @@ import { salvarPrecosMarketplace } from "@/marketplace/precos-config";
 import { eq } from "drizzle-orm";
 import { gravarConfig } from "@/configuracoes/armazem";
 import { REGRAS_CALENDARIO_PADRAO } from "@/calendario/regras-config";
-import { beds24Calendario, beds24CalendarioEnviado, bloqueios, idsExternos, imoveis, imoveisDetalhes, organizacoes, reservas } from "@/db/schema";
+import { alteracoesReserva, beds24Calendario, beds24CalendarioEnviado, bloqueios, cotacoes, idsExternos, imoveis, imoveisDetalhes, organizacoes, pagamentos, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
-import { consultarDisponibilidade } from "./disponibilidade";
+import { consultarDisponibilidade, noitesLivres } from "./disponibilidade";
 
 let db: Db, close: () => Promise<void>, org: string, im: string;
 // 1/10/2026 (quinta), 12:00 em São Paulo.
@@ -260,5 +260,128 @@ describe("disponibilidade e cotação do site (M7.2)", () => {
     const r = await consultar();
     expect(r.situacao).toBe("indisponivel");
     expect(r.motivos).toEqual(expect.arrayContaining(["Máximo de 2 noites por estadia.", "Precisa reservar com 30 dia(s) de antecedência.", "Entrada só em: terça."]));
+  });
+});
+
+describe("cotação da alteração de uma reserva paga (M8.2d): as noites da própria reserva", () => {
+  // A reserva paga pelo site ocupa 12 a 15/10; a equipe fechou as datas no Beds24 (bloqueio importado) e a leitura mostra 0.
+  let r: string;
+  beforeEach(async () => {
+    [{ id: r }] = await db.insert(reservas).values({ organizacaoId: org, imovelId: im, codigo: "SCL-ALT01", origem: "direta", estado: "confirmada", checkin: "2026-10-12", checkout: "2026-10-15", hospedes: 2, fonte: "site", idFonte: "cot-1" }).returning();
+    await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-10-12", fim: "2026-10-15", fonte: "beds24", idFonte: "blk-1" });
+    await observar(dias("2026-10-12", 6));
+    for (const d of dias("2026-10-12", 3)) await db.update(beds24Calendario).set({ livres: 0, bloqueio: "blackout" }).where(eq(beds24Calendario.data, d));
+  });
+  const propria = () => ({ propria: { reservaId: r, checkin: "2026-10-12", checkout: "2026-10-15" } });
+  const cotar = (over: Partial<ReturnType<typeof pedido>> = {}) => consultarDisponibilidade(db, org, pedido(over), agora, propria());
+
+  it("as noites dela não contam como ocupadas (reserva, bloqueio do Beds24 e leitura fechada); as acrescentadas passam pela conferência inteira", async () => {
+    expect((await consultar({ saida: "2026-10-16" })).situacao).toBe("indisponivel");
+    const r1 = await cotar({ saida: "2026-10-16" });
+    expect(r1).toMatchObject({ situacao: "disponivel", motivos: [], noites: 4, cotacao: { diarias: 180000, limpeza: 25000, valorCheio: 205000 } });
+    // A "agenda conferida em" é só a das noites que a leitura decidiu (a acrescentada e o dia de saída).
+    expect(r1.leituraEm?.toISOString()).toBe("2026-10-01T09:15:00.000Z");
+    // Menos noites, dentro da própria: disponível sem precisar da leitura delas.
+    expect(await cotar({ saida: "2026-10-14" })).toMatchObject({ situacao: "disponivel" });
+    // A noite acrescentada fechada na leitura: indisponível.
+    await db.update(beds24Calendario).set({ livres: 0 }).where(eq(beds24Calendario.data, "2026-10-15"));
+    expect(await cotar({ saida: "2026-10-16" })).toMatchObject({ situacao: "indisponivel", motivos: ["Há noites já reservadas nessas datas (15/10/2026)."] });
+    // Sem leitura da acrescentada: a confirmar.
+    await db.delete(beds24Calendario).where(eq(beds24Calendario.data, "2026-10-15"));
+    expect(await cotar({ saida: "2026-10-16" })).toMatchObject({ situacao: "a_confirmar" });
+  });
+
+  it("a leitura velha das noites dela não deixa a confirmar; a restrição de entrada e saída continua valendo, como para qualquer estadia", async () => {
+    const velha = { observadoEm: new Date("2026-09-20T09:00:00Z") };
+    for (const d of ["2026-10-13", "2026-10-14"]) await db.update(beds24Calendario).set(velha).where(eq(beds24Calendario.data, d));
+    expect(await cotar({ saida: "2026-10-16" })).toMatchObject({ situacao: "disponivel" });
+    // O dia de entrada é conferido pela restrição de entrada: leitura velha nele deixa a confirmar.
+    await db.update(beds24Calendario).set(velha).where(eq(beds24Calendario.data, "2026-10-12"));
+    expect(await cotar({ saida: "2026-10-16" })).toMatchObject({ situacao: "a_confirmar" });
+    await db.update(beds24Calendario).set({ observadoEm: new Date("2026-10-01T09:15:00Z") }).where(eq(beds24Calendario.data, "2026-10-12"));
+    // A saída nova (16/10) com restrição de saída: indisponível, como para qualquer estadia.
+    await db.update(beds24Calendario).set({ bloqueio: "noCheckOut" }).where(eq(beds24Calendario.data, "2026-10-16"));
+    expect(await cotar({ saida: "2026-10-16" })).toMatchObject({ situacao: "indisponivel", motivos: ["Saída não permitida em 16/10/2026."] });
+  });
+
+  it("outra reserva ou um bloqueio do SCL nas noites dela ainda ocupam (só ela e o bloqueio do Beds24 dela ficam de fora)", async () => {
+    await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-10-13", fim: "2026-10-14", fonte: "manual", motivo: "Manutenção" });
+    expect(await cotar({ saida: "2026-10-16" })).toMatchObject({ situacao: "indisponivel", motivos: ["Há noites já reservadas nessas datas (13/10/2026)."] });
+  });
+
+  it("preço pela fonte do imóvel: com preços do Beds24, a noite dela também precisa de uma leitura atual com preço", async () => {
+    await db.update(imoveisDetalhes).set({ fontePrecos: "beds24" }).where(eq(imoveisDetalhes.imovelId, im));
+    await db.update(beds24Calendario).set({ preco: 52000 });
+    expect(await cotar({ saida: "2026-10-16" })).toMatchObject({ situacao: "disponivel", cotacao: { diarias: 208000 } });
+    await db.update(beds24Calendario).set({ observadoEm: new Date("2026-09-20T09:00:00Z") }).where(eq(beds24Calendario.data, "2026-10-13"));
+    expect(await cotar({ saida: "2026-10-16" })).toMatchObject({ situacao: "a_confirmar", cotacao: { diarias: null, total: null } });
+  });
+
+  it("mínimo de noites e sobras calculados sem ela: o espaço até a próxima reserva conta as noites dela como livres", async () => {
+    await db.update(imoveisDetalhes).set({ estadiaMinima: 5 }).where(eq(imoveisDetalhes.imovelId, im));
+    await db.insert(reservas).values({ organizacaoId: org, imovelId: im, codigo: "SCL-OUTRA", origem: "airbnb", estado: "confirmada", checkin: "2026-10-16", checkout: "2026-10-20", fonte: "manual", idFonte: "" });
+    // De 12 a 16/10 há 4 noites livres sem ela: o mínimo de 5 cede às sobras.
+    expect(await cotar({ saida: "2026-10-16" })).toMatchObject({ situacao: "disponivel", noites: 4 });
+    // As pessoas continuam limitadas pela capacidade.
+    expect(await cotar({ saida: "2026-10-16", hospedes: "5" })).toMatchObject({ situacao: "invalida", motivos: ["Este apartamento recebe até 4 pessoas."] });
+  });
+});
+
+describe("noitesLivres com várias reservas de fora e as datas seguradas de uma alteração (M8.2d)", () => {
+  const minutos = (n: number) => new Date(agora.getTime() + n * 60_000);
+  /** Reserva paga R (12 a 15/10) com a alteração que segura 15 a 17/10 numa reserva-pedido (fonte 'alteracao'). */
+  async function cenario(alteracao: { situacao?: "segurada" | "aplicada" | "expirada" | "desistida"; holdAte?: Date | null } = {}) {
+    const [r] = await db.insert(reservas).values({ organizacaoId: org, imovelId: im, codigo: "SCL-ALT02", origem: "direta", estado: "confirmada", checkin: "2026-10-12", checkout: "2026-10-15", hospedes: 2, fonte: "site", idFonte: "cot-2" }).returning();
+    const [cot] = await db.insert(cotacoes).values({ organizacaoId: org, imovelId: im, codigo: "COT-ALT02", estado: "convertida", checkin: "2026-10-12", checkout: "2026-10-15", hospedes: 2, noites: 3, situacao: "disponivel", diarias: 135000, limpeza: 25000, hospedeExtra: 0, valorCheio: 160000, total: 153600, reservaId: r.id }).returning();
+    const pagamento = (o: { alteracaoId?: string; situacao?: "aprovado" | "pendente"; referencia: string }) =>
+      db.insert(pagamentos).values({ organizacaoId: org, cotacaoId: cot.id, reservaId: r.id, imovelId: im, ambiente: "teste", forma: "pix", referencia: o.referencia, chaveIdempotencia: o.referencia, valor: 153600, situacao: o.situacao ?? "aprovado", alteracaoId: o.alteracaoId ?? null }).returning();
+    const [p0] = await pagamento({ referencia: "scl-alt-p0" });
+    const [a] = await db
+      .insert(alteracoesReserva)
+      .values({
+        organizacaoId: org, reservaId: r.id, cotacaoId: cot.id, pagamentoId: p0.id, situacao: alteracao.situacao ?? "segurada", pedidoRecebidoEm: agora,
+        checkinAntes: "2026-10-12", checkoutAntes: "2026-10-15", hospedesAntes: 2, valorAntes: 153600, checkinDepois: "2026-10-12", checkoutDepois: "2026-10-17", hospedesDepois: 2, valorDepois: 240000,
+        origemValor: "cotacao", cotacao: { diarias: 225000, limpeza: 25000, hospedeExtra: 0, valorCheio: 250000, desconto: 10000, total: 240000, situacao: "disponivel", leituraEm: null },
+        diferenca: 86400, entradaDaPolitica: "2026-10-12", noitesNovasInicio: "2026-10-15", noitesNovasFim: "2026-10-17", holdAte: alteracao.holdAte === undefined ? minutos(60) : alteracao.holdAte, assinatura: "0123456789abcdef",
+      })
+      .returning();
+    const [portador] = await db.insert(reservas).values({ organizacaoId: org, imovelId: im, codigo: "SCL-ALT03", origem: "site", estado: "pedido", checkin: "2026-10-15", checkout: "2026-10-17", hospedeNome: "Alteração SCL-ALT02", fonte: "alteracao", idFonte: a.id }).returning();
+    await db.update(alteracoesReserva).set({ holdReservaId: portador.id }).where(eq(alteracoesReserva.id, a.id));
+    return { r: r.id, alteracao: a.id, portador: portador.id, pagamento };
+  }
+  const livres = (o: Parameters<typeof noitesLivres>[5] = {}) => noitesLivres(db, org, im, "2026-10-14", "2026-10-17", { agora, ...o });
+
+  it("excetoReservaIds tira várias reservas (a própria e as datas seguradas dela); excetoReservaId continua valendo", async () => {
+    const c = await cenario();
+    expect(await livres()).toEqual({ livres: false, motivo: "ocupada", conflito: "SCL-ALT02" });
+    expect(await livres({ excetoReservaId: c.r })).toEqual({ livres: false, motivo: "ocupada", conflito: "SCL-ALT03" });
+    expect(await livres({ excetoReservaIds: [c.r, c.portador] })).toEqual({ livres: true });
+    expect(await livres({ excetoReservaIds: [c.portador], excetoReservaId: c.r })).toEqual({ livres: true });
+    expect(await livres({ excetoReservaIds: [] })).toMatchObject({ livres: false, conflito: "SCL-ALT02" });
+  });
+
+  it("as datas seguradas ocupam enquanto a alteração vale; vencida (sem pagamento que segure) não ocupa, mesmo antes de a rotina gravar", async () => {
+    const c = await cenario({ holdAte: minutos(10) });
+    expect(await livres({ excetoReservaId: c.r })).toMatchObject({ livres: false, conflito: "SCL-ALT03" });
+    expect(await livres({ excetoReservaId: c.r, agora: minutos(11) })).toEqual({ livres: true });
+    // Com um Pix da diferença pendente, a carência (15 minutos) segura as datas; passada, não.
+    await c.pagamento({ alteracaoId: c.alteracao, situacao: "pendente", referencia: "scl-alt-p1" });
+    expect(await livres({ excetoReservaId: c.r, agora: minutos(20) })).toMatchObject({ livres: false, conflito: "SCL-ALT03" });
+    expect(await livres({ excetoReservaId: c.r, agora: minutos(26) })).toEqual({ livres: true });
+  });
+
+  it("alteração aplicada, desistida ou expirada não segura nada; sem a alteração da reserva-pedido, ocupa (nunca livre por palpite)", async () => {
+    for (const situacao of ["aplicada", "desistida", "expirada"] as const) {
+      const c = await cenario({ situacao });
+      expect(await livres({ excetoReservaId: c.r }), situacao).toEqual({ livres: true });
+      // Limpa só esta organização (pagamento e alteração se referem um ao outro).
+      await db.update(pagamentos).set({ alteracaoId: null }).where(eq(pagamentos.organizacaoId, org));
+      await db.delete(alteracoesReserva).where(eq(alteracoesReserva.organizacaoId, org));
+      await db.delete(pagamentos).where(eq(pagamentos.organizacaoId, org));
+      await db.delete(cotacoes).where(eq(cotacoes.organizacaoId, org));
+      await db.delete(reservas).where(eq(reservas.organizacaoId, org));
+    }
+    const [orfa] = await db.insert(reservas).values({ organizacaoId: org, imovelId: im, codigo: "SCL-ORFA", origem: "site", estado: "pedido", checkin: "2026-10-15", checkout: "2026-10-17", fonte: "alteracao", idFonte: "sem-alteracao" }).returning();
+    expect(await livres()).toEqual({ livres: false, motivo: "ocupada", conflito: orfa.codigo });
   });
 });

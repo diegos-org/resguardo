@@ -190,11 +190,33 @@ export type PedidoCartao = {
   descricaoFatura: string | null;
 };
 
-/** Código do resultado de uma devolução (lista fechada; nunca tirado de texto livre do provedor). */
-export const CODIGOS_DEVOLUCAO = ["saldo_insuficiente", "prazo", "valor_excede", "em_andamento", "transitorio", "nao_permitido", "nao_encontrado"] as const;
+/**
+ * Código do resultado de uma devolução (lista fechada; nunca tirado de texto livre do provedor). M8.2d: `ja_devolvido` =
+ * pedido de parte do valor numa order que o Mercado Pago já mostra devolvida inteira (a leitura decide);
+ * `aguardando_liberacao` é do domínio (a devolução de parte do valor espera a liberação do pagamento), nunca do adaptador.
+ */
+export const CODIGOS_DEVOLUCAO = [
+  "saldo_insuficiente",
+  "prazo",
+  "valor_excede",
+  "em_andamento",
+  "transitorio",
+  "nao_permitido",
+  "nao_encontrado",
+  "ja_devolvido",
+  "aguardando_liberacao",
+] as const;
 export type CodigoDevolucao = (typeof CODIGOS_DEVOLUCAO)[number];
-/** Recusas que o Mercado Pago não reverte sozinho (abrem a devolução por fora no cartão). */
+/** Recusas que o Mercado Pago não reverte sozinho (abrem a devolução por fora no cartão). `ja_devolvido` e `valor_excede` não abrem. */
 export const RECUSAS_DEFINITIVAS: readonly CodigoDevolucao[] = ["nao_permitido", "prazo", "nao_encontrado"];
+
+/** Como o domínio pede uma devolução (M8.2d: várias por pagamento). */
+export type OpcoesDevolucao = {
+  /** A chave já foi enviada antes (resposta incerta): uma resposta aceita sem devolução nova é a repetição da do pedido anterior. */
+  repetida: boolean;
+  /** Ids (REF…) de devoluções deste pagamento que o sistema já conhece (do banco), para achar a nova na resposta. */
+  conhecidas: readonly string[];
+};
 
 /**
  * - `confirmada`: o provedor confirmou a devolução.
@@ -253,12 +275,14 @@ export interface ProvedorPagamento {
   detalheFinanceiro(c: Cobranca): Promise<DetalheFinanceiro>;
   cancelar(idProvedor: string, chaveIdempotencia: string): Promise<ResultadoCancelamento>;
   /**
-   * `valor` null = integral (o que falta devolver). Nunca lança: falhas viram `recusada`/`incerta`/`aguarde`. `c` é a
-   * leitura de antes do pedido: as devoluções dela (`c.devolucoes`) separam a nova das que já existiam. `repetida`: a
-   * chave já foi enviada antes (resposta incerta) — uma resposta aceita sem devolução nova é a repetição da do pedido
-   * anterior, e a devolução que ela lista sozinha é a desse pedido.
+   * `valor` null = integral, corpo vazio (o domínio só manda null na integral de um pagamento intocado, e em todo reenvio
+   * de uma chave que saiu com corpo vazio); senão, o valor explícito (o limite é conferido pelo domínio, sob a trava, e
+   * pelo Mercado Pago). Nunca lança: falhas viram `recusada`/`incerta`/`aguarde`. `c` é a leitura de antes do pedido: as
+   * devoluções dela (`c.devolucoes`) e as já conhecidas do banco (`o.conhecidas`) separam a nova das que já existiam.
+   * `o.repetida`: a chave já foi enviada antes (resposta incerta) — uma resposta aceita sem devolução nova é a repetição
+   * da do pedido anterior, e a única devolução listada que o banco não conhece é a desse pedido.
    */
-  devolver(c: Cobranca, chaveIdempotencia: string, valor: number | null, o?: { repetida?: boolean }): Promise<ResultadoDevolucao>;
+  devolver(c: Cobranca, chaveIdempotencia: string, valor: number | null, o: OpcoesDevolucao): Promise<ResultadoDevolucao>;
   /**
    * A conta por trás da chave é, comprovadamente, uma conta de TESTE do provedor? true só com
    * prova; false quando comprovadamente não é; null quando não deu para saber. Só true libera

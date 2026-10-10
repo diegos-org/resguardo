@@ -110,6 +110,16 @@ export async function cotacaoEmCarencia(db: Db, cotacaoId: string, holdAte: Date
   return Boolean(t);
 }
 
+/**
+ * A alteração (M8.2d) ainda está na carência: o prazo das novas datas venceu há menos de 15 minutos e uma tentativa da
+ * diferença segura as datas. Gêmea de `cotacaoEmCarencia`, pelas tentativas desta alteração.
+ */
+export async function alteracaoEmCarencia(db: Db, alteracaoId: string, holdAte: Date | null, agora: Date): Promise<boolean> {
+  if (!holdAte || holdAte.getTime() + CARENCIA_PAGAMENTO_MS <= agora.getTime()) return false;
+  const [t] = await db.select({ id: pagamentos.id }).from(pagamentos).where(and(eq(pagamentos.alteracaoId, alteracaoId), tentativaSeguraAsDatas())).limit(1);
+  return Boolean(t);
+}
+
 export type PagamentoQuePrende = { id: string; forma: "pix" | "cartao"; situacao: SituacaoPagamento; pixExpiraEm: Date | null; desfecho: string | null };
 
 /**

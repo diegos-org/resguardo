@@ -9,7 +9,7 @@ import { beds24Calendario, beds24CalendarioEnviado, beds24EnvioNoites, beds24Env
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { ultimasExecucoes } from "@/sistema/automacoes";
-import { enviarCalendarioBeds24, noitesDoEnvio, planejarImovel, ultimosEnvios } from "./envio";
+import { bloqueiosSemAReserva, enviarCalendarioBeds24, noitesDoEnvio, planejarImovel, ultimosEnvios } from "./envio";
 import { REGRAS_CALENDARIO_PADRAO, lerRegrasCalendario, type RegrasCalendario } from "./regras-config";
 
 let db: Db, close: () => Promise<void>, org: string, im: string, beds: Beds24Falso;
@@ -772,6 +772,37 @@ describe("envio ao Beds24 (M3.7)", () => {
     const r = await lerRegrasCalendario(db, org);
     const p = await planejarImovel(db, org, r, { id: im, fuso: "America/Sao_Paulo" }, agora);
     expect(p.linhas[0]).toMatchObject({ data: "2026-10-01", minimoRegra: 90, livresSeguidas: 80, minimoEnviar: 80 });
+  });
+});
+
+describe("planejarImovel ignorando uma reserva (M8.2d, cotação da alteração)", () => {
+  const sp = { id: "", fuso: "America/Sao_Paulo" };
+  it("a reserva sai da ocupação, os bloqueios do Beds24 perdem as noites dela (o que passa para fora fica) e os do SCL ficam inteiros", async () => {
+    const [r] = await db.insert(reservas).values({ organizacaoId: org, imovelId: im, codigo: "SCL-ALT1", origem: "direta", estado: "confirmada", checkin: "2026-10-03", checkout: "2026-10-06", hospedeNome: "Hóspede Fictício", fonte: "site", idFonte: "c1" }).returning();
+    // A equipe fechou as datas no Beds24 (bloqueio importado) um dia antes e um depois; e um bloqueio do SCL no dia 8.
+    await db.insert(bloqueios).values([
+      { organizacaoId: org, imovelId: im, inicio: "2026-10-02", fim: "2026-10-07", fonte: "beds24", idFonte: "b1" },
+      { organizacaoId: org, imovelId: im, inicio: "2026-10-08", fim: "2026-10-09", fonte: "manual" },
+    ]);
+    const rg = await lerRegrasCalendario(db, org);
+    const livres = (p: Awaited<ReturnType<typeof planejarImovel>>) => p.linhas.map((l) => [l.data, l.livresSeguidas === 0 ? "ocupada" : "livre"]);
+    const sem = await planejarImovel(db, org, rg, { ...sp, id: im }, agora, { inicio: "2026-10-01", fim: "2026-10-09" });
+    expect(livres(sem).filter(([, s]) => s === "ocupada").map(([d]) => d)).toEqual(["2026-10-02", "2026-10-03", "2026-10-04", "2026-10-05", "2026-10-06", "2026-10-08"]);
+    const com = await planejarImovel(db, org, rg, { ...sp, id: im }, agora, { inicio: "2026-10-01", fim: "2026-10-09" }, { ignorar: { reservaId: r.id, inicio: "2026-10-03", fim: "2026-10-06" } });
+    expect(livres(com).filter(([, s]) => s === "ocupada").map(([d]) => d)).toEqual(["2026-10-02", "2026-10-06", "2026-10-08"]);
+    // As sobras são contadas sem a reserva: do dia 3 ao 5, livre até o dia 6 (bloqueio do Beds24 que sobra depois dela).
+    expect(com.linhas.find((l) => l.data === "2026-10-03")).toMatchObject({ livresSeguidas: 3 });
+  });
+
+  it("bloqueiosSemAReserva: recorta só os do Beds24 que tocam a reserva, em até duas partes", () => {
+    const ign = { reservaId: "r", inicio: "2026-10-03", fim: "2026-10-06" };
+    const b = (inicio: string, fim: string, fonte = "beds24") => ({ inicio, fim, fonte });
+    expect(bloqueiosSemAReserva([b("2026-10-01", "2026-10-09")], ign)).toEqual([b("2026-10-01", "2026-10-03"), b("2026-10-06", "2026-10-09")]);
+    expect(bloqueiosSemAReserva([b("2026-10-03", "2026-10-06")], ign)).toEqual([]);
+    expect(bloqueiosSemAReserva([b("2026-10-04", "2026-10-08")], ign)).toEqual([b("2026-10-06", "2026-10-08")]);
+    expect(bloqueiosSemAReserva([b("2026-10-01", "2026-10-03"), b("2026-10-06", "2026-10-07")], ign)).toEqual([b("2026-10-01", "2026-10-03"), b("2026-10-06", "2026-10-07")]);
+    expect(bloqueiosSemAReserva([b("2026-10-01", "2026-10-09", "manual"), b("2026-10-04", "2026-10-05", "proprietario")], ign)).toEqual([b("2026-10-01", "2026-10-09", "manual"), b("2026-10-04", "2026-10-05", "proprietario")]);
+    expect(bloqueiosSemAReserva([b("2026-10-01", "2026-10-09")], undefined)).toEqual([b("2026-10-01", "2026-10-09")]);
   });
 });
 

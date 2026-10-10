@@ -13,10 +13,10 @@ export { CODIGOS_FALHA_DO_PROVEDOR, CODIGOS_TOKEN } from "./provedor";
 /** Recusas ou respostas incertas do provedor até a devolução ficar "recusada" (sempre depois de reler a order sem sinal de devolução). */
 export const MAXIMO_FALHAS_DEVOLUCAO = 3;
 /**
- * Origens de devolução que esta versão sabe tratar (M8.2c). Um banco de prévia compartilhado pode ter linhas de uma
- * versão mais nova (o M8.2d acrescenta `alteracao`): a rotina, o pedido ao provedor e a leitura ignoram essas linhas.
+ * Origens de devolução que esta versão sabe tratar (M8.2c; o M8.2d acrescenta `alteracao`). Um banco de prévia
+ * compartilhado pode ter linhas de uma versão mais nova: a rotina, o pedido ao provedor e a leitura ignoram essas linhas.
  */
-export const ORIGENS_DEVOLUCAO_CONHECIDAS = ["sem_reserva", "cancelamento"] as const;
+export const ORIGENS_DEVOLUCAO_CONHECIDAS = ["sem_reserva", "cancelamento", "alteracao"] as const;
 export const origemDeDevolucaoConhecida = (origem: string) => (ORIGENS_DEVOLUCAO_CONHECIDAS as readonly string[]).includes(origem);
 
 /** Tentativas ainda sem resposta final do provedor: seguram as datas (com a carência) e travam ações da equipe. */
@@ -92,6 +92,7 @@ export const NOMES_SITUACAO_PAGAMENTO: Record<SituacaoPagamento, string> = {
 
 export const NOMES_DESFECHO: Record<DesfechoPagamento, string> = {
   reserva: "Confirmou a reserva",
+  alteracao: "Diferença de uma alteração da reserva",
   devolucao: "Devolvido pelo Mercado Pago",
   por_fora: "Devolvido por fora",
 };
@@ -107,6 +108,12 @@ export const MOTIVOS_SEM_RESERVA = {
   recebimento_manual: "A reserva já tinha recebimento registrado à mão pela equipe: o pagamento do site não se liga a ela.",
   ao_vivo: "O Mercado Pago informou um pagamento real (live_mode) no ambiente de teste.",
   situacao_inesperada: "O Mercado Pago mostrou o pagamento já devolvido (no todo ou em parte) ou contestado antes de o sistema decidir a reserva.",
+  // Pagamento da diferença de uma alteração (M8.2d) que não pôde aplicar a alteração: vai para "Devolver ao hóspede".
+  alteracao_noites_ocupadas: "Diferença de uma alteração aprovada depois do prazo, com as novas noites já ocupadas: a reserva continua como estava.",
+  alteracao_sem_leitura: "Diferença de uma alteração aprovada depois do prazo, sem leitura atual do Beds24 para conferir as novas noites: a reserva continua como estava.",
+  alteracao_desistida: "A alteração foi desfeita pela equipe antes da aprovação da diferença: a reserva continua como estava.",
+  alteracao_reserva_mudou: "A reserva mudou (cancelada, com pedido de cancelamento ou alterada de outro jeito) antes da aprovação da diferença.",
+  alteracao_nao_aplicada: "A alteração não pôde ser aplicada na aprovação da diferença: a reserva continua como estava.",
   outro: "A reserva não estava numa situação que permitisse confirmar pelo pagamento.",
 } as const;
 export type MotivoSemReserva = keyof typeof MOTIVOS_SEM_RESERVA;
@@ -126,6 +133,7 @@ export function textoMotivoSemReserva(m: string | null): string | null {
   if (!quem) return MOTIVOS_SEM_RESERVA[c];
   if (c === "conflito") return `As noites ficaram ocupadas ${quem}.`;
   if (c === "noites_ocupadas") return `Aprovado depois do prazo, com as noites já ocupadas ${quem}.`;
+  if (c === "alteracao_noites_ocupadas") return `Diferença de uma alteração aprovada depois do prazo, com as novas noites já ocupadas ${quem}: a reserva continua como estava.`;
   return MOTIVOS_SEM_RESERVA[c];
 }
 
@@ -168,6 +176,10 @@ export const AVISOS_PAGAMENTO = {
   devolucao_a_menor:
     "O Mercado Pago devolveu menos do que foi pedido neste cancelamento: confira no painel do Mercado Pago. Se o restante sair por lá, confirme a devolução; senão, a devolução da diferença chega com o M8.2d (ou registre um ajuste).",
   devolucao_data_a_conferir: "A devolução foi feita pelo painel do Mercado Pago antes de o sistema ver: a data no financeiro é a de hoje. Confira a data real e ajuste se precisar.",
+  // Devolução de parte do valor (M8.2d): só é pedida depois de o Mercado Pago liberar o pagamento. O quadro do pagamento
+  // troca este texto pelo com o valor (`textoDevolucaoAguardandoLiberacaoAtrasada`).
+  devolucao_aguardando_liberacao_atrasada:
+    "A liberação deste pagamento passou da data prevista e a devolução de parte do valor continua esperando: confira no painel do Mercado Pago e registre a liberação à mão quando ela aparecer.",
 } as const;
 export type CodigoAviso = keyof typeof AVISOS_PAGAMENTO;
 
@@ -176,6 +188,25 @@ export const textosDosAvisos = (codigos: readonly string[]) => codigos.filter((c
 /** O aviso `devolucao_a_menor` com os dois valores (o que o Mercado Pago devolveu e o pedido no cancelamento). */
 export const textoDevolucaoAMenor = (devolvido: number, devido: number) =>
   `O Mercado Pago devolveu ${formatBRL(devolvido)} de ${formatBRL(devido)} pedidos neste cancelamento: confira no painel do Mercado Pago. Se o restante sair por lá, confirme a devolução; senão, a devolução da diferença chega com o M8.2d (ou registre um ajuste).`;
+
+/** O aviso `devolucao_aguardando_liberacao_atrasada` com o valor da devolução que espera (M8.2d). */
+export const textoDevolucaoAguardandoLiberacaoAtrasada = (valor: number) =>
+  `A liberação deste pagamento passou da data prevista e a devolução de ${formatBRL(valor)} continua esperando: confira no painel do Mercado Pago e registre a liberação à mão quando ela aparecer.`;
+
+/**
+ * Os avisos que são de uma devolução (M8.2d: cada devolução tem os seus em `devolucoes_pagamento.avisos`; o pagamento leva
+ * a união deles). Os outros avisos são do pagamento.
+ */
+export const AVISOS_DE_DEVOLUCAO = [
+  "devolucao_falhou",
+  "devolucao_parada",
+  "devolucao_sem_confirmacao",
+  "devolucao_fora_do_prazo",
+  "devolucao_a_menor",
+  "taxa_perdida_desconhecida",
+  "devolucao_data_a_conferir",
+  "devolucao_aguardando_liberacao_atrasada",
+] as const satisfies readonly CodigoAviso[];
 
 // ---------------------------------------------------------------- cartão (M8.2b)
 

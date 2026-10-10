@@ -1,7 +1,7 @@
 /**
  * Parte pura dos modelos de mensagem (usada também na tela, para a prévia): variáveis,
- * preenchimento e validação. Inclui as mensagens do cancelamento de reserva paga pelo site
- * (M8.2c): os nomes, os textos-base e onde cada variável nova pode ser usada.
+ * preenchimento e validação. Inclui as mensagens do cancelamento (M8.2c) e da alteração (M8.2d) de
+ * reserva paga pelo site: os nomes, os textos-base e onde cada variável nova pode ser usada.
  */
 import type { TipoMensagemHospede } from "@/db/schema";
 
@@ -24,6 +24,8 @@ export const VARIAVEIS = {
   data: "Dia da devolução",
   comovolta: "Como o dinheiro volta",
   link: "Página da reserva no site",
+  // Só nas mensagens da alteração (M8.2d).
+  alteracao: "Alteração da reserva, em frases prontas, com o prazo das datas seguradas",
 } as const;
 export type Variavel = keyof typeof VARIAVEIS;
 
@@ -42,6 +44,8 @@ export const EXEMPLO: Record<Variavel, string> = {
   data: "12/10/2026",
   comovolta: "O valor volta para a conta de onde saiu o pagamento.",
   link: "https://www.exemplo.com.br/reservar/SCL-AB12",
+  alteracao:
+    "Alteração da reserva SCL-AB12: de 10/10–14/10 (4 noites, 2 pessoas) para 10/10–15/10 (5 noites, 2 pessoas). Valor: de R$ 1.500,00 para R$ 1.900,00 — diferença de R$ 400,00. Datas seguradas até 15:30 (horário de Brasília). Pague a diferença até esse horário para confirmar a alteração; até lá, a sua reserva continua como está.",
 };
 
 /** Nome de cada mensagem automática ao hóspede (Configurações → Modelos de mensagem). */
@@ -52,13 +56,21 @@ export const NOMES_TIPO: Record<TipoMensagemHospede, string> = {
   agradecimento: "Agradecimento (3 dias depois da saída, 10h)",
   cancelamento_recebido: "Cancelamento: pedido recebido",
   cancelamento_decidido: "Cancelamento: decisão",
-  devolucao_concluida: "Cancelamento: devolução feita",
+  // Serve também à devolução da diferença de uma alteração (M8.2d).
+  devolucao_concluida: "Devolução feita (cancelamento ou alteração)",
+  alteracao_proposta: "Alteração: proposta (e pagamento da diferença, se houver)",
+  alteracao_confirmada: "Alteração: confirmada",
 };
 
 /** As mensagens do cancelamento de reserva paga pelo site (M8.2c). */
 export const TIPOS_MENSAGEM_CANCELAMENTO = ["cancelamento_recebido", "cancelamento_decidido", "devolucao_concluida"] as const satisfies readonly TipoMensagemHospede[];
 export type TipoMensagemCancelamento = (typeof TIPOS_MENSAGEM_CANCELAMENTO)[number];
 export const ehMensagemDeCancelamento = (t: TipoMensagemHospede): t is TipoMensagemCancelamento => (TIPOS_MENSAGEM_CANCELAMENTO as readonly string[]).includes(t);
+
+/** As mensagens da alteração de reserva paga pelo site (M8.2d): a proposta (em qualquer direção) e a confirmação. */
+export const TIPOS_MENSAGEM_ALTERACAO = ["alteracao_proposta", "alteracao_confirmada"] as const satisfies readonly TipoMensagemHospede[];
+export type TipoMensagemAlteracao = (typeof TIPOS_MENSAGEM_ALTERACAO)[number];
+export const ehMensagemDeAlteracao = (t: TipoMensagemHospede): t is TipoMensagemAlteracao => (TIPOS_MENSAGEM_ALTERACAO as readonly string[]).includes(t);
 
 /**
  * Textos-base das mensagens do cancelamento: os botões "Copiar mensagem" do painel usam o texto do modelo escolhido para
@@ -69,6 +81,14 @@ export const TEXTOS_BASE_CANCELAMENTO: Record<TipoMensagemCancelamento, string> 
     "Olá, {hospede}! Recebemos o seu pedido de cancelamento da reserva {codigo} em {recebido} (horário de Brasília). Vamos conferir pela Política de cancelamento que você aceitou e confirmamos com você, por escrito, o valor da devolução. Acompanhe em {link}.",
   cancelamento_decidido: "Olá, {hospede}! A reserva {codigo} foi cancelada. {decisao} Acompanhe em {link}. Qualquer dúvida, é só responder esta mensagem.",
   devolucao_concluida: "Olá, {hospede}! A devolução de {valor} da reserva {codigo} foi feita em {data}. {comovolta}",
+};
+/**
+ * Textos-base das mensagens da alteração (M8.2d), como os do cancelamento: os botões "Copiar" usam o modelo escolhido ou,
+ * sem modelo, este. `{alteracao}` são as frases prontas do caso (datas, valor, diferença, prazo e o que o hóspede faz).
+ */
+export const TEXTOS_BASE_ALTERACAO: Record<TipoMensagemAlteracao, string> = {
+  alteracao_proposta: "Olá, {hospede}! Preparamos a alteração da sua reserva {codigo}: {alteracao} Veja os detalhes em {link}. Até a confirmação, a reserva continua como está.",
+  alteracao_confirmada: "Olá, {hospede}! A alteração da sua reserva {codigo} está confirmada: {alteracao} Acompanhe em {link}. Qualquer dúvida, é só responder esta mensagem.",
 };
 /** O texto-base do pedido recebido num pagamento sem a política aceita (antes de 9/10): não cita política nenhuma. */
 export const TEXTO_BASE_RECEBIDO_SEM_POLITICA =
@@ -86,7 +106,9 @@ export const ONDE_VALE: Partial<Record<Variavel, readonly TipoMensagemHospede[]>
   valor: ["devolucao_concluida"],
   data: ["devolucao_concluida"],
   comovolta: ["devolucao_concluida"],
-  link: TIPOS_MENSAGEM_CANCELAMENTO,
+  link: [...TIPOS_MENSAGEM_CANCELAMENTO, ...TIPOS_MENSAGEM_ALTERACAO],
+  // As frases da alteração só existem numa alteração (M8.2d).
+  alteracao: TIPOS_MENSAGEM_ALTERACAO,
 };
 
 /**
@@ -100,6 +122,9 @@ export const textoDaFaltaNoCancelamento = (vs: readonly string[]) =>
 const OBRIGATORIAS: Partial<Record<TipoMensagemHospede, readonly Variavel[]>> = {
   cancelamento_recebido: ["codigo", "recebido"],
   devolucao_concluida: ["valor"],
+  // A proposta leva o hóspede à página da reserva (onde paga a diferença ou vê o que muda).
+  alteracao_proposta: ["alteracao", "link"],
+  alteracao_confirmada: ["alteracao"],
 };
 
 const lista = (vs: readonly string[]) => {
@@ -132,6 +157,8 @@ export function problemaDoModeloNoTipo(tipo: TipoMensagemHospede, texto: string)
   if (usadas.includes("endereco")) {
     if (tipo === "confirmacao") return "A confirmação não pode usar {endereco}: o endereço só é enviado 2 dias antes da entrada (use no modelo de check-in).";
     if (ehMensagemDeCancelamento(tipo)) return `${nome} não pode usar {endereco}: uma reserva cancelada não recebe o endereço.`;
+    // A alteração é preparada antes da entrada, quase sempre antes da liberação do endereço (como a confirmação).
+    if (ehMensagemDeAlteracao(tipo)) return `${nome} não pode usar {endereco}: o endereço só é enviado 2 dias antes da entrada (use no modelo de check-in).`;
   }
   const faltam = (OBRIGATORIAS[tipo] ?? []).filter((v) => !usadas.includes(v));
   if (faltam.length) return `${nome} precisa usar ${lista(faltam)}.`;

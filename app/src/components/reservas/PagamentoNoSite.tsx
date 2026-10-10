@@ -58,6 +58,8 @@ const DEVOLUCAO = {
   confirmada: "confirmada pelo Mercado Pago",
   recusada: "o Mercado Pago recusou ou não respondeu três vezes: confira no painel do Mercado Pago antes de tentar de novo ou de registrar a devolução feita por fora",
   por_fora: "feita por fora",
+  // M8.2d: a devolução de uma alteração que nunca chegou ao Mercado Pago, absorvida pela do cancelamento.
+  substituida: "substituída pela devolução do cancelamento",
 } as const;
 
 /**

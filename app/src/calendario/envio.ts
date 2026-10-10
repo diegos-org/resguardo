@@ -65,12 +65,40 @@ async function quartoVinculado(db: Db, org: string, imovelId: string): Promise<s
   return validos.some(m => m.imovelId !== imovelId && m.roomId === doImovel[0].roomId) ? null : doImovel[0].roomId;
 }
 
+/** Uma reserva que o plano não vê (M8.2d): a cotação da alteração dela não pode contar as próprias noites como ocupadas. */
+export type ReservaIgnorada = { reservaId: string; inicio: string; fim: string };
+
+/**
+ * Tira de cada bloqueio vindo do Beds24 as noites [inicio, fim) da reserva ignorada (até o M8.3, a equipe fecha as datas
+ * de uma reserva do site no Beds24 como bloqueio, que volta na importação); o que passa para fora dela continua. Os
+ * bloqueios do SCL (equipe, proprietário) ficam inteiros.
+ */
+export function bloqueiosSemAReserva<B extends { inicio: string; fim: string; fonte: string }>(lista: readonly B[], ignorar: ReservaIgnorada | undefined): B[] {
+  if (!ignorar) return [...lista];
+  return lista.flatMap((b) => {
+    if (b.fonte !== "beds24" || b.fim <= ignorar.inicio || b.inicio >= ignorar.fim) return [b];
+    const partes: B[] = [];
+    if (b.inicio < ignorar.inicio) partes.push({ ...b, fim: ignorar.inicio });
+    if (b.fim > ignorar.fim) partes.push({ ...b, inicio: ignorar.fim });
+    return partes;
+  });
+}
+
 /**
  * Planeja um imóvel a partir do banco (cadastro, períodos, ocupação, observações e último envio).
  * O estado enviado vale só para o quarto Beds24 vinculado agora (`roomId`; sem informar, é lido do vínculo):
- * o que foi enviado a outro quarto não dá posse de bloqueio neste.
+ * o que foi enviado a outro quarto não dá posse de bloqueio neste. `o.ignorar` (M8.2d): a reserva sai da ocupação e os
+ * bloqueios do Beds24 perdem as noites dela — o mínimo, as sobras e a regra de 6/10 são calculados sem ela.
  */
-export async function planejarImovel(db: Db, org: string, regras: RegrasCalendario, imovel: { id: string; fuso: string; roomId?: string | null }, agora: Date, intervalo?: { inicio: string; fim: string }) {
+export async function planejarImovel(
+  db: Db,
+  org: string,
+  regras: RegrasCalendario,
+  imovel: { id: string; fuso: string; roomId?: string | null },
+  agora: Date,
+  intervalo?: { inicio: string; fim: string },
+  o: { ignorar?: ReservaIgnorada } = {},
+) {
   const hoje = hojeISO(imovel.fuso, agora);
   const roomId = imovel.roomId !== undefined ? imovel.roomId : await quartoVinculado(db, org, imovel.id);
   const inicio = intervalo?.inicio && intervalo.inicio > hoje ? intervalo.inicio : hoje;
@@ -84,9 +112,10 @@ export async function planejarImovel(db: Db, org: string, regras: RegrasCalendar
   // Reservas também do período inteiro de cada feriadão/evento que toca as noites (regra de 6/10).
   const daRegra = intervaloDasReservas(regras, imovel.id, inicio, fim);
   const ateReservas = daRegra.fim > fimDados ? daRegra.fim : fimDados;
+  const ignorar = o.ignorar;
   const [ocupantes, impedimentos, observacoes, enviados] = await Promise.all([
-    db.select({ checkin: reservas.checkin, checkout: reservas.checkout, estado: reservas.estado }).from(reservas).where(and(eq(reservas.organizacaoId, org), eq(reservas.imovelId, imovel.id), lt(reservas.checkin, somarDias(ateReservas, 1)), gt(reservas.checkout, daRegra.inicio))),
-    db.select({ inicio: bloqueios.inicio, fim: bloqueios.fim, fonte: bloqueios.fonte }).from(bloqueios).where(and(eq(bloqueios.organizacaoId, org), eq(bloqueios.imovelId, imovel.id), lt(bloqueios.inicio, somarDias(fimDados, 1)), gt(bloqueios.fim, inicio))),
+    db.select({ checkin: reservas.checkin, checkout: reservas.checkout, estado: reservas.estado }).from(reservas).where(and(eq(reservas.organizacaoId, org), eq(reservas.imovelId, imovel.id), lt(reservas.checkin, somarDias(ateReservas, 1)), gt(reservas.checkout, daRegra.inicio), ignorar ? ne(reservas.id, ignorar.reservaId) : undefined)),
+    db.select({ inicio: bloqueios.inicio, fim: bloqueios.fim, fonte: bloqueios.fonte }).from(bloqueios).where(and(eq(bloqueios.organizacaoId, org), eq(bloqueios.imovelId, imovel.id), lt(bloqueios.inicio, somarDias(fimDados, 1)), gt(bloqueios.fim, inicio))).then((l) => bloqueiosSemAReserva(l, ignorar)),
     roomId === null ? [] : db.select().from(beds24Calendario).where(and(eq(beds24Calendario.organizacaoId, org), eq(beds24Calendario.imovelId, imovel.id), eq(beds24Calendario.roomId, roomId), gte(beds24Calendario.data, inicio), lte(beds24Calendario.data, fim))).orderBy(asc(beds24Calendario.data)),
     roomId === null ? [] : db.select().from(beds24CalendarioEnviado).where(and(eq(beds24CalendarioEnviado.organizacaoId, org), eq(beds24CalendarioEnviado.imovelId, imovel.id), eq(beds24CalendarioEnviado.roomId, roomId), gte(beds24CalendarioEnviado.data, inicio), lte(beds24CalendarioEnviado.data, fim))),
   ]);

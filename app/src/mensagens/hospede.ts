@@ -157,10 +157,13 @@ export function prazoDaMensagem(tipo: TipoMensagemHospede, r: DadosPrazo): { ini
       return { inicio, fim: new Date(inicio.getTime() + PRAZO_AGRADECIMENTO_MS), referencia: r.checkout };
     }
     // Mensagens do cancelamento (M8.2c): não saem de uma reserva confirmada (os prazos contam do pedido, da decisão e da
-    // devolução, que vêm do cancelamento: `prazoDaMensagemDoCancelamento`).
+    // devolução, que vêm do cancelamento: `prazoDaMensagemDoCancelamento`). As da alteração (M8.2d) também não: os
+    // prazos vêm da própria alteração.
     case "cancelamento_recebido":
     case "cancelamento_decidido":
     case "devolucao_concluida":
+    case "alteracao_proposta":
+    case "alteracao_confirmada":
       return null;
   }
 }
@@ -321,6 +324,8 @@ async function dadosDoCancelamento(db: Db, organizacaoId: string, a: AlvoCancela
     data: c?.devolucaoEm ? dataNoFuso(c.devolucaoEm, a.fuso) : "",
     comovolta: texto?.comoVolta ?? "",
     link: site ? `${site}/reservar/${a.cotacaoCodigo}` : "",
+    // Só nas mensagens da alteração (recusada nas do cancelamento ao escolher o modelo).
+    alteracao: "",
   };
   return { valores, semPolitica };
 }
@@ -451,7 +456,7 @@ export async function enviarMensagensHospede(db: Db, organizacaoId: string, corr
       // Modelo editado depois de escolhido para usar uma variável do cancelamento: não manda, avisa.
       const fora = variaveisForaDoLugar(tipo, modelo.texto);
       if (fora.length) {
-        aviso(`o modelo usa {${fora[0]}}, que só vale nas mensagens do cancelamento`);
+        aviso(`o modelo usa {${fora[0]}}, que só vale nas mensagens do ${fora[0] === "alteracao" ? "alteração" : "cancelamento"}`);
         continue;
       }
       const liberado = agora >= liberacaoDasInstrucoes(l.checkin, fuso);
@@ -470,13 +475,14 @@ export async function enviarMensagensHospede(db: Db, organizacaoId: string, corr
         noites: String(noites),
         codigo: l.codigo,
         empresa: empresa!.nome.trim(),
-        // Só nas mensagens do cancelamento (recusadas acima nas outras).
+        // Só nas mensagens do cancelamento e da alteração (recusadas acima nas outras).
         recebido: "",
         decisao: "",
         valor: "",
         data: "",
         comovolta: "",
         link: "",
+        alteracao: "",
       };
       const faltando = usadas.filter((v) => !valores[v]);
       if (faltando.length) {

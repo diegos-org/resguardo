@@ -32,8 +32,9 @@ describe("mensagens ao hóspede: as do cancelamento (M8.2c)", () => {
 
   it("a lista de variáveis diz onde as do cancelamento valem", () => {
     const h = renderToStaticMarkup(<Modelos lista={[]} criar={acao} editar={acao} />);
-    expect(h).toContain("<code>{valor}</code> valor devolvido (só em “Cancelamento: devolução feita”)");
-    expect(h).toContain("<code>{recebido}</code> data e hora em que recebemos o pedido (só em “Cancelamento: pedido recebido”, “Cancelamento: decisão”, “Cancelamento: devolução feita”)");
+    // M8.2d: a devolução feita serve também à alteração (nome novo).
+    expect(h).toContain("<code>{valor}</code> valor devolvido (só em “Devolução feita (cancelamento ou alteração)”)");
+    expect(h).toContain("<code>{recebido}</code> data e hora em que recebemos o pedido (só em “Cancelamento: pedido recebido”, “Cancelamento: decisão”, “Devolução feita (cancelamento ou alteração)”)");
     expect(h).toContain("<code>{hospede}</code> nome do hóspede</span>");
   });
 });

@@ -322,7 +322,8 @@ export async function tentarDevolucao(db: Db, organizacaoId: string, devolucaoId
     });
     if (reserva === null) return situacaoDaDevolucao(db, devolucaoId);
     chaveRepetida = reserva.repetida;
-    res = await provedor.devolver(cobranca, reserva.chave, null, { repetida: chaveRepetida });
+    // As outras devoluções deste pagamento que o banco conhece (até aqui, uma devolução por pagamento: nenhuma).
+    res = await provedor.devolver(cobranca, reserva.chave, null, { repetida: chaveRepetida, conhecidas: [] });
   }
   // Antes de dar a devolução por recusada (a terceira recusa ou resposta incerta), a order é relida: a resposta pode
   // ter cruzado com um pedido que saiu. undefined = não deu para ler (então não se desiste).

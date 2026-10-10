@@ -6,20 +6,22 @@
  * o SCL envia ao Beds24 (motor de calendário: eventos, feriadões, última hora) mais as taxas
  * do cadastro — esse é o valor cheio. Sobre ele entra o desconto único do site (M12.1, a parte do
  * hóspede do modelo B, em Configurações → Marketplace), igual para qualquer contrato. Nada é
- * gravado: cotação persistida e hold são o M8.1.
+ * gravado: cotação persistida e hold são o M8.1. Na alteração de uma reserva paga (M8.2d), a cotação das datas novas
+ * não conta as noites da própria reserva como ocupadas (`propria`).
  */
-import { and, eq, gt, inArray, lt, ne } from "drizzle-orm";
+import { and, eq, gt, inArray, lt, notInArray } from "drizzle-orm";
 import { planejarImovel } from "@/calendario/envio";
 import type { LinhaPlano, ObservacaoPlano } from "@/calendario/motor";
 import { lerRegrasCalendario, type RegrasCalendario } from "@/calendario/regras-config";
-import { bloqueios, cotacoes, imoveis, reservas } from "@/db/schema";
+import { alteracoesReserva, bloqueios, cotacoes, imoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { listarPeriodos } from "@/imoveis/detalhes";
 import { type Cotacao, cotarNoites, diasEntre, verificarEstadia } from "@/imoveis/regras-venda";
 import { hojeISO } from "@/lib/datas";
 import { descontoDoSite } from "@/marketplace/precos";
 import { lerPrecosMarketplace } from "@/marketplace/precos-config";
-import { cotacaoEmCarencia } from "@/pagamentos/andamento";
+import { situacaoEfetiva } from "@/pagamentos/alteracao-regras";
+import { alteracaoEmCarencia, cotacaoEmCarencia } from "@/pagamentos/andamento";
 import { dataValida, ESTADOS_OCUPANTES } from "@/reservas/regras";
 import type { PedidoConsulta } from "./site";
 
@@ -61,7 +63,17 @@ export const fechadaNaLeitura = (o: Pick<ObservacaoPlano, "bloqueio" | "livres">
 export const noiteOcupada = (l: Pick<LinhaPlano, "livresSeguidas" | "observacao" | "enviado">, limite: number) =>
   l.livresSeguidas === 0 || (leituraAtual(l, limite) && fechadaNaLeitura(l.observacao!));
 
-export async function consultarDisponibilidade(db: Db, organizacaoId: string, p: PedidoConsulta, agora = new Date()): Promise<Disponibilidade> {
+/** As noites [checkin, checkout) de uma reserva que a cotação não conta como ocupadas (a da alteração, M8.2d). */
+export type EstadiaPropria = { reservaId: string; checkin: string; checkout: string };
+
+/**
+ * Disponibilidade e valor da estadia pedida. `o.propria` (M8.2d, cotação de uma alteração): a reserva sai do plano (as
+ * sobras, o mínimo e a regra de 6/10 são calculados sem ela, e o bloqueio do Beds24 dela é recortado), e nas noites dela a
+ * leitura do Beds24 não decide a ocupação nem deixa "a confirmar" (o Beds24 mostra a própria reserva fechando as noites).
+ * O preço continua pela fonte do imóvel: com preços do Beds24, a noite própria também precisa de uma leitura atual com
+ * preço. As restrições de entrada e saída e as noites acrescentadas passam pela conferência inteira.
+ */
+export async function consultarDisponibilidade(db: Db, organizacaoId: string, p: PedidoConsulta, agora = new Date(), o: { propria?: EstadiaPropria } = {}): Promise<Disponibilidade> {
   const vazio = (situacao: SituacaoDisponibilidade, motivos: string[], noites = 0): Disponibilidade => ({ situacao, motivos, noites, cotacao: null, leituraEm: null });
   const [imovel] = /^[\w-]{1,40}$/.test(p.imovel)
     ? await db.select({ id: imoveis.id, fuso: imoveis.fuso, capacidade: imoveis.capacidade }).from(imoveis).where(and(eq(imoveis.organizacaoId, organizacaoId), eq(imoveis.codigo, p.imovel), eq(imoveis.publico, true), eq(imoveis.ativo, true)))
@@ -83,7 +95,11 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   if (noites > regras.site.maximoNoitesConsulta) return vazio("a_confirmar", [`Para estadias acima de ${regras.site.maximoNoitesConsulta} noites, fale com a equipe.`], noites);
   // O plano cobre as noites e o dia de saída: a restrição de saída e o último envio do SCL daquela data
   // vêm do mesmo lugar que os das noites.
-  const [plano, periodos] = await Promise.all([planejarImovel(db, organizacaoId, regras, imovel, agora, { inicio: p.entrada, fim: p.saida }), listarPeriodos(db, organizacaoId, imovel.id)]);
+  const propria = o.propria;
+  const ignorar = propria ? { reservaId: propria.reservaId, inicio: propria.checkin, fim: propria.checkout } : undefined;
+  const [plano, periodos] = await Promise.all([planejarImovel(db, organizacaoId, regras, imovel, agora, { inicio: p.entrada, fim: p.saida }, { ignorar }), listarPeriodos(db, organizacaoId, imovel.id)]);
+  // Noite da própria reserva (alteração): a ocupação dela é a do SCL sem ela; a leitura do Beds24 não conta.
+  const daPropria = (data: string) => !!propria && propria.checkin <= data && data < propria.checkout;
   const linhas = plano.linhas.slice(0, noites);
   const saida = plano.linhas[noites];
   const motivos = new Set<string>();
@@ -125,13 +141,18 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   // Uma data pode estar ocupada no SCL e no Beds24 ao mesmo tempo (reserva importada): conta uma vez.
   const ocupadas = new Set<string>();
   for (const l of linhas) {
+    if (daPropria(l.data)) {
+      // Reserva ou bloqueio do SCL (outro que não ela) ainda ocupa; o Beds24 fechado é a própria reserva.
+      if (l.livresSeguidas === 0) ocupadas.add(l.data);
+      continue;
+    }
     if (noiteOcupada(l, limite)) ocupadas.add(l.data);
-    const o = l.observacao;
-    if (!o || !atual(l)) {
-      if (!o) semLeitura = true;
+    const obs = l.observacao;
+    if (!obs || !atual(l)) {
+      if (!obs) semLeitura = true;
       aConfirmar = true;
-    } else if (!fechadaNaLeitura(o) && (o.livres === null || !conhecidas.has(o.bloqueio))) aConfirmar = true;
-    maisAntiga(o);
+    } else if (!fechadaNaLeitura(obs) && (obs.livres === null || !conhecidas.has(obs.bloqueio))) aConfirmar = true;
+    maisAntiga(obs);
   }
   if (ocupadas.size) {
     const lista = [...ocupadas];
@@ -177,11 +198,13 @@ export type NoitesLivres = { livres: true } | { livres: false; motivo: "ocupada"
 
 /**
  * Só ocupação (M8.2a), sem regras de venda, preço nem publicação: as noites [checkin, checkout) estão livres no
- * SCL — nenhuma reserva que ocupa (confirmada, pendente, pedido) nem bloqueio, fora `excetoReservaId` — e, com
- * `exigirLeituraAtual`, também livres na leitura atual do Beds24 (sem leitura atual = não dá para conferir).
- * Pedido do site já vencido (prazo e carência passados, sem pagamento que segure as datas) não ocupa: a
- * conferência do pagamento nunca vence holds de outras cotações, só os ignora. `conflito` = código da reserva
- * que ocupa ("bloqueio", ou `CONFLITO_AGENDA_EXTERNA` quando é a leitura do canal que fecha a noite).
+ * SCL — nenhuma reserva que ocupa (confirmada, pendente, pedido) nem bloqueio, fora `excetoReservaIds` (ou
+ * `excetoReservaId`) — e, com `exigirLeituraAtual`, também livres na leitura atual do Beds24 (sem leitura atual = não dá
+ * para conferir). Pedido do site já vencido (prazo e carência passados, sem pagamento que segure as datas) não ocupa: a
+ * conferência do pagamento nunca vence holds de outras cotações, só os ignora. O mesmo vale para as datas seguradas de
+ * uma alteração (M8.2d, a reserva-pedido de fonte `alteracao`) cuja alteração já não vale (`situacaoEfetiva`); sem a
+ * alteração dela, ocupa (nunca livre por palpite). `conflito` = código da reserva que ocupa ("bloqueio", ou
+ * `CONFLITO_AGENDA_EXTERNA` quando é a leitura do canal que fecha a noite).
  */
 export async function noitesLivres(
   db: Db,
@@ -189,15 +212,28 @@ export async function noitesLivres(
   imovelId: string,
   checkin: string,
   checkout: string,
-  o: { excetoReservaId?: string | null; exigirLeituraAtual?: boolean; agora?: Date } = {},
+  o: { excetoReservaIds?: readonly string[]; excetoReservaId?: string | null; exigirLeituraAtual?: boolean; agora?: Date } = {},
 ): Promise<NoitesLivres> {
   const agora = o.agora ?? new Date();
   const [imovel] = await db.select({ id: imoveis.id, fuso: imoveis.fuso }).from(imoveis).where(and(eq(imoveis.id, imovelId), eq(imoveis.organizacaoId, organizacaoId)));
   if (!imovel || !dataValida(checkin) || !dataValida(checkout) || checkout <= checkin) return { livres: false, motivo: "sem_leitura", conflito: null };
+  const exceto = [...new Set([...(o.excetoReservaIds ?? []), ...(o.excetoReservaId ? [o.excetoReservaId] : [])])];
   const outras = await db
-    .select({ id: reservas.id, codigo: reservas.codigo, estado: reservas.estado, fonte: reservas.fonte, cotacaoId: cotacoes.id, cotacaoEstado: cotacoes.estado, holdAte: cotacoes.holdAte })
+    .select({
+      id: reservas.id,
+      codigo: reservas.codigo,
+      estado: reservas.estado,
+      fonte: reservas.fonte,
+      cotacaoId: cotacoes.id,
+      cotacaoEstado: cotacoes.estado,
+      holdAte: cotacoes.holdAte,
+      alteracaoId: alteracoesReserva.id,
+      alteracaoSituacao: alteracoesReserva.situacao,
+      alteracaoHoldAte: alteracoesReserva.holdAte,
+    })
     .from(reservas)
     .leftJoin(cotacoes, eq(cotacoes.reservaId, reservas.id))
+    .leftJoin(alteracoesReserva, and(eq(alteracoesReserva.holdReservaId, reservas.id), eq(alteracoesReserva.organizacaoId, organizacaoId)))
     .where(
       and(
         eq(reservas.organizacaoId, organizacaoId),
@@ -205,7 +241,7 @@ export async function noitesLivres(
         lt(reservas.checkin, checkout),
         gt(reservas.checkout, checkin),
         inArray(reservas.estado, [...ESTADOS_OCUPANTES]),
-        o.excetoReservaId ? ne(reservas.id, o.excetoReservaId) : undefined,
+        exceto.length ? notInArray(reservas.id, exceto) : undefined,
       ),
     )
     .orderBy(reservas.checkin);
@@ -213,6 +249,13 @@ export async function noitesLivres(
     // Pedido do site cujo prazo (e a carência de um pagamento em andamento) já passou: vence sozinho, não ocupa.
     if (r.estado === "pedido" && r.fonte === "site" && r.cotacaoId && r.cotacaoEstado === "segurada" && r.holdAte && r.holdAte.getTime() <= agora.getTime()) {
       if (!(await cotacaoEmCarencia(db, r.cotacaoId, r.holdAte, agora))) continue;
+    }
+    // Datas seguradas de uma alteração que já não vale (aplicada, desistida, vencida ou com o prazo e a carência passados).
+    if (r.estado === "pedido" && r.fonte === "alteracao" && r.alteracaoId && r.alteracaoSituacao) {
+      const a = { situacao: r.alteracaoSituacao, holdAte: r.alteracaoHoldAte };
+      const vencida = a.situacao === "segurada" && (!a.holdAte || a.holdAte.getTime() <= agora.getTime());
+      const emCarencia = vencida && (await alteracaoEmCarencia(db, r.alteracaoId, a.holdAte, agora));
+      if (situacaoEfetiva(a, agora, emCarencia) !== "segurada") continue;
     }
     return { livres: false, motivo: "ocupada", conflito: r.codigo };
   }
