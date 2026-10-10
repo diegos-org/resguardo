@@ -39,6 +39,24 @@ tabela `aceites_documento` (migração 0054), telas em Configurações → Como 
 - **Painel:** a aba lista, por proprietário ativo, se tem acesso ao portal e o último aceite (versão,
   quando, e-mail), marcando quem ainda não aceitou a atual; a página do proprietário traz a mesma linha.
 
+## Cancelamentos das reservas pagas pelo site (M8.2c, 10/10/2026)
+
+O rascunho sugerido (`como-funciona.ts`, seção "Cancelamentos") ganhou, depois do parágrafo de sempre, o que vale
+para as reservas pagas pelo site:
+
+> Nas reservas pagas pelo site vale a Política de cancelamento do site, na versão que o hóspede aceitou: com
+> devolução integral, não há nada a dividir e a taxa do pagamento que não voltar fica com a {empresa}; sem
+> devolução, o valor pago entra na divisão como uma reserva normal e a sua parte fica disponível depois da data
+> de entrada original. Se a sua parte de uma reserva cancelada com devolução já tiver sido repassada, ela é
+> descontada no repasse seguinte.
+
+É o que o sistema faz (`PAGAMENTO-SITE.md`, seção "Cancelamento pela política (M8.2c)", e
+`REPASSES-POR-PERIODICIDADE.md`, "Desconto de cancelamento"). Versão publicada nunca muda por código, e depois da
+versão 1 o formulário mostra o texto **publicado**, não o rascunho: a versão 1 de Diego (7/10) não tem esse
+parágrafo. Para valer no portal, Diego cola o parágrafo na seção "Cancelamentos" e publica a versão 2 (GUIA,
+seção 6), o que pede o aceite de novo de cada proprietário. A mudança do rascunho só aparece sozinha para uma
+empresa que ainda não publicou a versão 1.
+
 ## Fora deste item
 
 - Páginas legais do site (termos, privacidade, cancelamento) com aceite no checkout: M7.4, pronto em
