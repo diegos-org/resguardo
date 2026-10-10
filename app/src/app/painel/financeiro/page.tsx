@@ -29,6 +29,15 @@ export default async function Financeiro() {
           </p>
         </section>
       )}
+      {sessao.papel !== "proprietario" && (
+        <section className={styles.cartao}>
+          <h2>Pagamentos do site</h2>
+          <p>
+            Cada Pix gerado no site (em teste), com a situação no Mercado Pago, a liberação e o que pede atenção (pagamento sem reserva a devolver,
+            devolução pendente). <Link href="/painel/financeiro/pagamentos-site">Abrir</Link>
+          </p>
+        </section>
+      )}
       <section className={styles.cartao}>
         <h2>Despesas</h2>
         <p>

@@ -4,7 +4,7 @@ import { useActionState, useState } from "react";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import { Periodos } from "@/components/imoveis/Periodos";
 import type { EstadoPeriodo } from "@/imoveis/acoes";
-import { EXPLICACAO_FONTE_PRECOS, type FontePrecos, NOMES_FONTE_PRECOS } from "@/imoveis/fonte-precos";
+import { EXPLICACAO_FONTE_PRECOS_PORTAL, type FontePrecosPortal, NOMES_FONTE_PRECOS_PORTAL } from "@/imoveis/fonte-precos";
 import { DIAS_SEMANA, type Periodo } from "@/imoveis/regras-venda";
 import { centavosParaCampo, reaisParaCentavos } from "@/lib/dinheiro-form";
 import { formatBRL } from "@/lib/money";
@@ -23,7 +23,7 @@ export type ImovelOperavel = {
   hoje: string;
   /** Desde quando o imóvel é dele (AAAA-MM-DD): a data de um serviço não vem antes disso. */
   desde: string | null;
-  fontePrecos: FontePrecos;
+  fontePrecos: FontePrecosPortal;
   regras: {
     precoBase: number | null;
     taxaLimpeza: number | null;
@@ -65,28 +65,31 @@ const ESTADO_LIMPEZA = { pedida: "A fazer", confirmada: "A fazer", realizada: "F
 /**
  * O envio de calendário (M3.7) leva só isto às OTAs; o resto do cadastro vale apenas no site. Com os preços
  * definidos no Beds24 (M3.9), o envio não manda preço nenhum (a SCL só lê os preços de lá): vão só as estadias.
+ * Os textos para o proprietário não citam o Beds24 (M5.9): falam do nosso sistema, dos canais e do preço definido pelo
+ * proprietário ou pela ferramenta de preços dele (as duas coisas: nem todo proprietário usa ferramenta).
  */
-const vaiAsOtas = (fonte: FontePrecos) => (fonte === "beds24" ? "estadias mínima e máxima" : "preço da noite e estadias mínima e máxima");
-const oQueFica = (fonte: FontePrecos) => (fonte === "beds24" ? "as estadias anteriores" : "o preço e as estadias anteriores");
+const vaiAsOtas = (fonte: FontePrecosPortal) => (fonte === "ferramenta" ? "estadias mínima e máxima" : "preço da noite e estadias mínima e máxima");
+const oQueFica = (fonte: FontePrecosPortal) => (fonte === "ferramenta" ? "as estadias anteriores" : "o preço e as estadias anteriores");
 const SO_NO_SITE = "taxa de limpeza, hóspede extra, antecedência, janela de reservas, dias e horários de entrada e saída valem só no site";
-const PRECO_NO_BEDS24 = "o preço da noite é definido no Beds24 e vem de lá para o site e para as OTAs";
+const PRECO_NA_FERRAMENTA = "o preço da noite é definido por você ou pela sua ferramenta de preços e vem de lá para o site e para os canais";
 const maiuscula = (t: string) => `${t[0].toUpperCase()}${t.slice(1)}`;
 
 /** O que falta para o envio alcançar as OTAs de fato (lista, vínculo, chave de escrita, e um envio real que já aceitou o imóvel); vazio = pronto. */
 function oQueFaltaNoEnvio(e: SituacaoEnvio, empresa: string): string | null {
   if (!e.naLista) return `a ${empresa} incluir este imóvel no envio de calendário`;
-  if (!e.vinculado) return `a ${empresa} vincular este imóvel ao Beds24 (propriedade e quarto, em Integrações) — sem o vínculo, o envio pula o imóvel`;
-  if (!e.escritaPronta) return `a ${empresa} ligar a escrita no Beds24 (sinal e credencial da empresa) — hoje o envio só simula, nada sai`;
-  if (!e.ultimo) return `o primeiro envio ao Beds24 confirmar o quarto deste imóvel (ainda não houve envio para ele)`;
-  if (e.ultimo.falha) return `uma nova execução do envio aplicar este imóvel por inteiro — na última (${quando(e.ultimo.em)}): ${e.ultimo.falha}`;
-  if (!e.ultimo.mesmoVinculo) return `o próximo envio confirmar o quarto novo deste imóvel (o vínculo com o Beds24 mudou depois do último envio)`;
-  if (!e.ultimo.mesmaCredencial) return `o próximo envio confirmar o quarto deste imóvel com a credencial atual do Beds24 (a credencial mudou depois do último envio)`;
+  if (!e.vinculado) return `a ${empresa} ligar este imóvel aos canais no nosso sistema — sem essa ligação, o envio pula o imóvel`;
+  if (!e.escritaPronta) return `a ${empresa} ligar o envio aos canais — hoje o envio só simula, nada sai`;
+  if (!e.ultimo) return `o primeiro envio aos canais confirmar este imóvel (ainda não houve envio para ele)`;
+  // O motivo técnico da falha (com nomes internos) fica no painel e nem chega aqui; só que falhou e quando.
+  if (e.ultimo.falhou) return `uma nova execução do envio aplicar este imóvel por inteiro — a última (${quando(e.ultimo.em)}) não conseguiu, e a ${empresa} vê o motivo no painel`;
+  if (!e.ultimo.mesmoVinculo) return `o próximo envio confirmar este imóvel de novo (a ligação dele com os canais mudou depois do último envio)`;
+  if (!e.ultimo.mesmaCredencial) return `o próximo envio confirmar este imóvel de novo (o acesso da ${empresa} aos canais mudou depois do último envio)`;
   return null;
 }
 
 /** Mensagem depois de salvar: promete Airbnb/Booking só para o que o envio carrega para esta fonte de preços, e só se o envio está de fato pronto. */
-export function textoSalvo(e: SituacaoEnvio, empresa: string, fonte: FontePrecos = "scl"): string {
-  const extra = fonte === "beds24" ? `; ${PRECO_NO_BEDS24}` : "";
+export function textoSalvo(e: SituacaoEnvio, empresa: string, fonte: FontePrecosPortal = "scl"): string {
+  const extra = fonte === "ferramenta" ? `; ${PRECO_NA_FERRAMENTA}` : "";
   const falta = oQueFaltaNoEnvio(e, empresa);
   return falta === null
     ? `Salvo. Vale no site da ${empresa} agora. ${maiuscula(vaiAsOtas(fonte))} chegam ao Airbnb e ao Booking no próximo envio de calendário; ${SO_NO_SITE}${extra}.`
@@ -94,12 +97,12 @@ export function textoSalvo(e: SituacaoEnvio, empresa: string, fonte: FontePrecos
 }
 
 /** Explica, sem supor, se (e o que) do que o proprietário mudou chega às OTAs, conforme a fonte de preços e a prontidão real do envio. */
-export function textoDoEnvio(e: SituacaoEnvio, empresa: string, fonte: FontePrecos = "scl"): string {
-  const extra = fonte === "beds24" ? ` ${maiuscula(PRECO_NO_BEDS24)}.` : "";
+export function textoDoEnvio(e: SituacaoEnvio, empresa: string, fonte: FontePrecosPortal = "scl"): string {
+  const extra = fonte === "ferramenta" ? ` ${maiuscula(PRECO_NA_FERRAMENTA)}.` : "";
   const falta = oQueFaltaNoEnvio(e, empresa);
   if (falta !== null) return `O que você mudar aqui vale no site da ${empresa}, mas o Airbnb e o Booking continuam com o calendário e ${oQueFica(fonte)} até ${falta}. Em qualquer caso, ${SO_NO_SITE}.${extra}`;
   const ultimo = e.ultimo ? ` Último envio: ${quando(e.ultimo.em)} (${NOMES_SITUACAO_ENVIO[e.ultimo.situacao] ?? e.ultimo.situacao}).` : " Ainda não houve envio para este imóvel.";
-  return `${e.automatico ? `O envio ao Beds24 roda todo dia e leva ${vaiAsOtas(fonte)} ao Airbnb e ao Booking` : `O envio ao Beds24 é feito pela ${empresa}: até ele rodar, o Airbnb e o Booking continuam com ${oQueFica(fonte)}`}; ${SO_NO_SITE}.${extra}${ultimo}`;
+  return `${e.automatico ? `O envio aos canais roda todo dia e leva ${vaiAsOtas(fonte)} ao Airbnb e ao Booking` : `O envio aos canais é feito pela ${empresa}: até ele rodar, o Airbnb e o Booking continuam com ${oQueFica(fonte)}`}; ${SO_NO_SITE}.${extra}${ultimo}`;
 }
 
 /** Linha da simulação do modelo B (M12.1) para o preço de uma noite. */
@@ -120,13 +123,13 @@ function FormPrecos({ imovel, precos, empresa, salvar }: { imovel: ImovelOperave
   const invalido = (k: string) => (estado.erros?.[k] ? { "aria-invalid": true as const } : {});
   const [precoDigitado, setPrecoDigitado] = useState(dinheiro("precoBase"));
   const centavos = reaisParaCentavos(precoDigitado);
-  const precoNoBeds24 = imovel.fontePrecos === "beds24";
+  const precoNaFerramenta = imovel.fontePrecos === "ferramenta";
   return (
     <form key={JSON.stringify(imovel.regras)} action={enviar} className={f.form} aria-label={`Preços e regras de venda do ${imovel.codigo}`}>
       <input type="hidden" name="imovelId" value={imovel.id} />
       <strong>Preços e regras de venda</strong>
       <p className={styles.miudo}>
-        {NOMES_FONTE_PRECOS[imovel.fontePrecos]}. {EXPLICACAO_FONTE_PRECOS[imovel.fontePrecos]}
+        {NOMES_FONTE_PRECOS_PORTAL[imovel.fontePrecos]}. {EXPLICACAO_FONTE_PRECOS_PORTAL[imovel.fontePrecos]}
       </p>
       {estado.mensagem && (
         <p role="alert" className={f.alerta}>
@@ -140,8 +143,8 @@ function FormPrecos({ imovel, precos, empresa, salvar }: { imovel: ImovelOperave
       )}
       <div className={f.linha}>
         <label>
-          Preço da noite (R$){precoNoBeds24 ? " — definido no Beds24" : ""}
-          <input name="precoBase" inputMode="decimal" value={precoDigitado} onChange={(ev) => setPrecoDigitado(ev.target.value)} readOnly={precoNoBeds24} placeholder="ex.: 350,00" {...invalido("precoBase")} />
+          Preço da noite (R$){precoNaFerramenta ? " — definido por você ou pela sua ferramenta de preços" : ""}
+          <input name="precoBase" inputMode="decimal" value={precoDigitado} onChange={(ev) => setPrecoDigitado(ev.target.value)} readOnly={precoNaFerramenta} placeholder="ex.: 350,00" {...invalido("precoBase")} />
           {erro("precoBase")}
         </label>
         <label>
@@ -161,8 +164,8 @@ function FormPrecos({ imovel, precos, empresa, salvar }: { imovel: ImovelOperave
         </label>
       </div>
       <p className={styles.miudo} aria-live="polite">
-        {precoNoBeds24
-          ? `Como o preço vem do Beds24, o site da ${empresa} lê o valor de cada noite de lá — a conta do que o hóspede paga e do que você recebe não dá para simular aqui com um preço fixo.`
+        {precoNaFerramenta
+          ? `Como o preço de cada noite é o que você ou a sua ferramenta de preços definem, o site da ${empresa} lê esse valor noite a noite — a conta do que o hóspede paga e do que você recebe não dá para simular aqui com um preço fixo.`
           : centavos
             ? textoDaSimulacao(centavos, precos, empresa)
             : "Informe o preço da noite para ver o que o hóspede paga e o que você recebe no site."}
@@ -380,7 +383,7 @@ export function OperacaoMarketplace({ imoveis, precos, limpezas, manutencoes, em
             {textoDoEnvio(i.envio, empresa, i.fontePrecos)}
           </p>
           <FormPrecos imovel={i} precos={precos} empresa={empresa} salvar={salvarPrecos} />
-          <Periodos imovelId={i.id} periodos={i.periodos} criar={novoPeriodo} excluir={excluirPeriodo} semPreco={i.fontePrecos === "beds24"} />
+          <Periodos imovelId={i.id} periodos={i.periodos} criar={novoPeriodo} excluir={excluirPeriodo} semPreco={i.fontePrecos === "ferramenta"} />
         </article>
       ))}
       <Limpezas limpezas={limpezas} marcar={marcarLimpeza} />

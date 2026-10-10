@@ -298,7 +298,16 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
     if (indefinidas) avisos.push(indefinidas);
   }
   if (previstos[0]?.n) avisos.push(`${previstos[0].n} lançamento(s) ainda previsto(s), isto é, dinheiro que pode não ter entrado: confira antes de pagar.`);
-  if (!atual && calc.fora > 0) avisos.push(`${brl(calc.fora)} da competência ficam fora deste repasse e passam para o seguinte: dinheiro ainda não registrado com a empresa (reservas ${codigosDe(foraDoFechamento)}). Registre o recebimento na reserva quando o canal pagar.`);
+  if (!atual && calc.fora > 0) {
+    // Reserva paga pelo site (M8.2a): o recebimento vem da liberação do Mercado Pago, não se registra à mão.
+    const doSite = foraDoFechamento.filter((x) => x.liberacaoSite);
+    const outras = foraDoFechamento.filter((x) => !x.liberacaoSite);
+    const porReserva = [...new Map(doSite.map((x) => [x.reservaId, x])).values()];
+    const site = porReserva.length
+      ? ` Pagas pelo site, o dinheiro vem do Mercado Pago: ${porReserva.map((x) => `${x.codigoReserva}, ${x.liberacaoSite!.prevista ? `o Mercado Pago libera em ${dataBr(x.liberacaoSite!.prevista)}` : "liberação a confirmar"}`).join("; ")}.`
+      : "";
+    avisos.push(`${brl(calc.fora)} da competência ficam fora deste repasse e passam para o seguinte: dinheiro ainda não registrado com a empresa (reservas ${codigosDe(foraDoFechamento)}).${outras.length ? " Registre o recebimento na reserva quando o canal pagar." : ""}${site}`);
+  }
   if (!atual && calc.antecipado > 0) avisos.push(`${brl(calc.antecipado)} de noites de ${mesesDe(antecipadas)} entram neste repasse como adiantamento (reservas ${codigosDe(antecipadas)}): já disponíveis, a reserva é paga inteira.`);
   if (calc.valor > 0 && !dono.chavePix.trim()) avisos.push("Sem chave Pix no cadastro do proprietário.");
   if (calc.contestado > 0) avisos.push(`Adiantamentos contestados (${(calc.contestado / 100).toFixed(2).replace(".", ",")}) ficam fora do desconto até a contestação ser resolvida.`);

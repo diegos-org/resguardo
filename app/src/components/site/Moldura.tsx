@@ -1,7 +1,8 @@
+import Image from "next/image";
 import Link from "next/link";
 import { Fragment, type ReactNode } from "react";
 import { partesDoTitulo } from "@/configuracoes/textos-site";
-import { type ConteudoSite, linkWhatsapp } from "@/site/site";
+import { type ConteudoSite, linkWhatsapp, MARCA_PADRAO } from "@/site/site";
 import styles from "./site.module.css";
 
 /**
@@ -43,12 +44,17 @@ const IconeWhatsapp = () => (
  */
 export function Moldura({ conteudo, children, largura = "miolo" }: { conteudo: ConteudoSite | null; children: ReactNode; largura?: "miolo" | "cheia" }) {
   const nome = conteudo?.nomeEmpresa.trim() || "Início";
+  const marca = conteudo?.imagens.marca ?? MARCA_PADRAO;
   const ano = new Date().getFullYear();
+  // Quem vende (Decreto 7.962, art. 2º): razão social, CNPJ e endereço da empresa, quando preenchidos em Configurações → Empresa.
+  const id = conteudo?.identidade;
+  const identidade = id && (id.razaoSocial || id.cnpj) ? [id.razaoSocial, id.cnpj && `CNPJ ${id.cnpj}`, id.endereco].filter(Boolean).join(" · ") : null;
   return (
     <div className={styles.pagina}>
       <header className={styles.topo}>
         <Link href="/" className={styles.marca}>
-          {marcaComDestaque(nome)}
+          <Image src={marca} alt="" width={40} height={40} unoptimized className={styles.marcaIcone} />
+          <span>{marcaComDestaque(nome)}</span>
         </Link>
         <nav className={styles.menu} aria-label="Principal">
           <Link href="/imoveis" className={styles.menuCelularOculto}>
@@ -76,7 +82,10 @@ export function Moldura({ conteudo, children, largura = "miolo" }: { conteudo: C
       )}
       <footer className={styles.rodape}>
         <div className={styles.rodapeDentro}>
-          <strong className={styles.rodapeMarca}>{marcaComDestaque(nome)}</strong>
+          <strong className={styles.rodapeMarca}>
+            <Image src={marca} alt="" width={34} height={34} unoptimized className={styles.marcaIcone} />
+            <span>{marcaComDestaque(nome)}</span>
+          </strong>
           <p>{conteudo?.textos.rodape || conteudo?.textos.subtitulo || nome}</p>
           <div className={styles.rodapeLinks}>
             <Link href="/imoveis">Nossas casas</Link>
@@ -85,6 +94,13 @@ export function Moldura({ conteudo, children, largura = "miolo" }: { conteudo: C
             <Link href="/anunciar">Anuncie seu imóvel</Link>
             <Link href="/painel">Área da equipe</Link>
           </div>
+          {/* Páginas legais (M7.4): sempre no rodapé; antes da versão 1, cada uma diz que está em preparação. */}
+          <div className={styles.rodapeLegal}>
+            <Link href="/termos">Termos de uso</Link>
+            <Link href="/privacidade">Privacidade</Link>
+            <Link href="/cancelamento">Cancelamento</Link>
+          </div>
+          {identidade && <small className={styles.rodapeIdentidade}>{identidade}</small>}
           <small>
             © {ano} {nome}
           </small>
@@ -105,7 +121,7 @@ export function SiteEmConfiguracao() {
   );
 }
 
-/** Enquanto as fotos reais não são liberadas (M7.3): um quadro com o nome do apartamento. */
+/** Imóvel ainda sem foto real (M7.3): um quadro com o nome do apartamento — nunca uma imagem genérica. */
 export function FotoProvisoria({ titulo }: { titulo: string }) {
   return (
     <div className={styles.foto} role="img" aria-label={titulo ? `Foto de ${titulo} (em breve)` : "Foto (em breve)"}>

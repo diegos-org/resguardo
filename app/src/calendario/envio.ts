@@ -17,7 +17,7 @@ import { fontesDePrecosDosImoveis, lerDetalhes, listarPeriodos, regrasDeVenda } 
 import type { FontePrecos } from "@/imoveis/fonte-precos";
 import { somarDias } from "@/imoveis/regras-venda";
 import { hojeISO } from "@/lib/datas";
-import { faixasDeEnvio, type LinhaPlano, planejarCalendario, resumirPlano, type ResumoPlano } from "./motor";
+import { faixasDeEnvio, intervaloDasReservas, type LinhaPlano, planejarCalendario, resumirPlano, type ResumoPlano } from "./motor";
 import { lerRegrasCalendario, type RegrasCalendario } from "./regras-config";
 
 export type ModoEnvio = "simulacao" | "envio";
@@ -81,8 +81,11 @@ export async function planejarImovel(db: Db, org: string, regras: RegrasCalendar
   // ainda encurta as sobras; sem isso uma noite sairia com o mínimo cheio apesar de a janela livre ser menor.
   const maiorMinimo = Math.max(...regras.minimoPorDia, regrasVenda.estadiaMinima ?? 0, regras.janelaFeriado.estadiaMinima, ...regras.eventos.map(e => e.estadiaMinima ?? 0), ...periodos.map(x => x.estadiaMinima ?? 0));
   const fimDados = somarDias(fim, Math.min(400, Math.max(60, maiorMinimo)));
+  // Reservas também do período inteiro de cada feriadão/evento que toca as noites (regra de 6/10).
+  const daRegra = intervaloDasReservas(regras, imovel.id, inicio, fim);
+  const ateReservas = daRegra.fim > fimDados ? daRegra.fim : fimDados;
   const [ocupantes, impedimentos, observacoes, enviados] = await Promise.all([
-    db.select({ checkin: reservas.checkin, checkout: reservas.checkout, estado: reservas.estado }).from(reservas).where(and(eq(reservas.organizacaoId, org), eq(reservas.imovelId, imovel.id), lt(reservas.checkin, somarDias(fimDados, 1)), gt(reservas.checkout, inicio))),
+    db.select({ checkin: reservas.checkin, checkout: reservas.checkout, estado: reservas.estado }).from(reservas).where(and(eq(reservas.organizacaoId, org), eq(reservas.imovelId, imovel.id), lt(reservas.checkin, somarDias(ateReservas, 1)), gt(reservas.checkout, daRegra.inicio))),
     db.select({ inicio: bloqueios.inicio, fim: bloqueios.fim, fonte: bloqueios.fonte }).from(bloqueios).where(and(eq(bloqueios.organizacaoId, org), eq(bloqueios.imovelId, imovel.id), lt(bloqueios.inicio, somarDias(fimDados, 1)), gt(bloqueios.fim, inicio))),
     roomId === null ? [] : db.select().from(beds24Calendario).where(and(eq(beds24Calendario.organizacaoId, org), eq(beds24Calendario.imovelId, imovel.id), eq(beds24Calendario.roomId, roomId), gte(beds24Calendario.data, inicio), lte(beds24Calendario.data, fim))).orderBy(asc(beds24Calendario.data)),
     roomId === null ? [] : db.select().from(beds24CalendarioEnviado).where(and(eq(beds24CalendarioEnviado.organizacaoId, org), eq(beds24CalendarioEnviado.imovelId, imovel.id), eq(beds24CalendarioEnviado.roomId, roomId), gte(beds24CalendarioEnviado.data, inicio), lte(beds24CalendarioEnviado.data, fim))),

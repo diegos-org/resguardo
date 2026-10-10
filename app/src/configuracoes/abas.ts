@@ -8,9 +8,15 @@ export const ABAS_CONFIG: readonly { slug: string; titulo: string; exige: Acao }
   { slug: "integracoes", titulo: "Integrações", exige: "configuracao:editar" },
   { slug: "calendario", titulo: "Calendário e preços", exige: "configuracao:editar" },
   { slug: "marketplace", titulo: "Marketplace e desconto do site", exige: "configuracao:editar" },
+  // Regras de venda do pagamento no site (M8.2a). A aba aparece para quem edita o financeiro (o proprietário, que lê o
+  // financeiro dos seus imóveis, nunca vê Configurações); a página também abre só para leitura com financeiro:ler.
+  { slug: "pagamento-site", titulo: "Pagamento no site", exige: "financeiro:editar" },
   { slug: "repasses", titulo: "Repasses", exige: "configuracao:editar" },
   { slug: "categorias", titulo: "Categorias de despesa", exige: "despesa:editar" },
   { slug: "mensagens", titulo: "Modelos de mensagem", exige: "configuracao:editar" },
   { slug: "site", titulo: "Textos do site", exige: "configuracao:editar" },
+  // Termos de uso, Política de privacidade e Política de cancelamento do site (M7.4), versionados.
+  { slug: "paginas-legais", titulo: "Páginas legais do site", exige: "configuracao:editar" },
+  { slug: "pagina-proprietarios", titulo: "Página para proprietários", exige: "configuracao:editar" },
   { slug: "como-funciona", titulo: "Como funciona (proprietário)", exige: "configuracao:editar" },
 ];

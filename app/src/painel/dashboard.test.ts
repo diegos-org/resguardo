@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { criarContrato } from "@/contratos/repositorio";
-import { bloqueios, imoveis, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
+import { bloqueios, cadastrosMarketplace, cotacoes, imoveis, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import { registrarAjuste } from "@/ajustes/ajustes";
 import { criarCategoria } from "@/despesas/categorias";
@@ -11,7 +11,11 @@ import { listarImoveis } from "@/imoveis/repositorio";
 import type { DadosReserva } from "@/reservas/regras";
 import { criarReserva, listarReservas } from "@/reservas/repositorio";
 import { criarRotina } from "@/rotinas/rotinas";
-import { carregarDashboard } from "./dashboard";
+import { arquivarPedido, registrarPedidoContato } from "@/proprietarios/pedidos-contato";
+import { conferirTentativa } from "@/pagamentos/conferencia";
+import { ProvedorFalso } from "@/pagamentos/falso";
+import { minutos, montarCenario, TOTAL } from "@/pagamentos/testes";
+import { carregarDashboard, contaDeTesteParaInicio } from "./dashboard";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -245,5 +249,71 @@ describe("painel inicial", () => {
     const base = { imoveis: lista, todos: true, periodo: { inicio: "2026-10-01", fim: "2026-11-01" }, ano: 2026, hoje: "2026-10-09", verFinanceiro: true };
     expect((await carregarDashboard(db, org, { ...base, verRotinas: true })).alertas).toContainEqual({ nivel: "atencao", texto: "1 rotina(s) atrasada(s) ou para hoje.", link: "/painel/rotinas" });
     expect((await carregarDashboard(db, org, base)).alertas.some((x) => x.link === "/painel/rotinas")).toBe(false);
+  });
+
+  it("pedidos de contato e cadastros do site esperando a equipe viram aviso, só para quem trata proprietários (M7.7)", async () => {
+    const lista = await listarImoveis(db, org);
+    const base = { imoveis: lista, todos: true, periodo: { inicio: "2026-10-01", fim: "2026-11-01" }, ano: 2026, hoje: "2026-10-09", verFinanceiro: false };
+    const doSite = (alertas: { link?: string }[]) => alertas.filter((x) => x.link?.startsWith("/painel/proprietarios"));
+    expect(doSite((await carregarDashboard(db, org, { ...base, verProprietarios: true })).alertas)).toEqual([]);
+
+    const dados = { nome: "Maria Exemplo", telefone: "(21) 90000-0000", bairro: "Ipanema", cidade: "Rio de Janeiro", quartos: null, anunciaHoje: null, mensagem: "" };
+    const agora = new Date("2026-10-08T12:00:00Z");
+    await registrarPedidoContato(db, org, { ...dados, email: "maria@exemplo.com" }, agora);
+    const r = await registrarPedidoContato(db, org, { ...dados, email: "joao@exemplo.com" }, agora);
+    const arquivado = await registrarPedidoContato(db, org, { ...dados, email: "caio@exemplo.com" }, agora);
+    if (!arquivado.ok || !r.ok) throw new Error("pedido não gravado");
+    await arquivarPedido(db, org, arquivado.pedido.id, "", null, agora);
+    await db.insert(cadastrosMarketplace).values({
+      organizacaoId: org,
+      email: "dona@exemplo.com",
+      nome: "Dona Exemplo",
+      telefone: "(21) 90000-0001",
+      imovel: { nome: "Apto Exemplo", bairro: "Leblon", cidade: "Rio de Janeiro", endereco: "Rua Fictícia, 1", capacidade: 2, quartos: 1, banheiros: 1, descricao: "" },
+      anuncio: "novo",
+    });
+
+    expect(doSite((await carregarDashboard(db, org, { ...base, verProprietarios: true })).alertas)).toEqual([
+      { nivel: "info", texto: "2 pedido(s) de contato de proprietário esperando resposta.", link: "/painel/proprietarios/contatos" },
+      { nivel: "info", texto: "1 cadastro(s) de proprietário pelo site esperando análise.", link: "/painel/proprietarios/cadastros" },
+    ]);
+    // Vale para a organização toda, mesmo com filtro de imóvel.
+    expect(doSite((await carregarDashboard(db, org, { ...base, imoveis: lista.slice(0, 1), todos: false, verProprietarios: true })).alertas)).toHaveLength(2);
+    expect(doSite((await carregarDashboard(db, org, base)).alertas)).toEqual([]);
+  });
+});
+
+describe("pagamento no site no Início (M8.2a)", () => {
+  it("avisos da empresa toda (sem depender do filtro de imóveis), só para quem lê o financeiro, com links da lista", async () => {
+    const c = await montarCenario(db);
+    const s = await c.segurar();
+    const p = await c.pix(s.cotacaoId);
+    // Valor aprovado diferente do total da cotação: aprovado sem reserva, a devolver.
+    await db.update(cotacoes).set({ total: TOTAL + 1 }).where(eq(cotacoes.id, s.cotacaoId));
+    c.provedor.aprovar(p.idProvedor);
+    await conferirTentativa(db, c.org, p.pagamentoId, c.provedor, minutos(3), { origem: "rotina", forcar: true });
+    const base = { imoveis: [], todos: false, periodo: { inicio: "2026-10-01", fim: "2026-11-01" }, ano: 2026, hoje: "2026-10-01", verFinanceiro: true, agora: minutos(5) };
+    const d = await carregarDashboard(db, c.org, { ...base, verPagamentos: true });
+    expect(d.alertas).toContainEqual({
+      nivel: "atencao",
+      texto: "1 pagamento(s) do site aprovado(s) sem reserva: devolva ao hóspede (pelo Mercado Pago ou por fora).",
+      link: "/painel/financeiro/pagamentos-site?atencao=1",
+    });
+    expect((await carregarDashboard(db, c.org, { ...base, verPagamentos: false })).alertas.some((x) => x.link?.startsWith("/painel/financeiro/pagamentos-site"))).toBe(false);
+    // A conta das chaves conferida como não sendo de teste vira aviso; não conferida (null), nada.
+    expect((await carregarDashboard(db, c.org, { ...base, verPagamentos: true, contaDeTesteMercadoPago: false })).alertas.map((x) => x.texto).join()).toContain("não é de teste");
+    expect(d.alertas.map((x) => x.texto).join()).not.toContain("não é de teste");
+    // Outra empresa não vê nada disso.
+    expect((await carregarDashboard(db, org, { ...base, verPagamentos: true })).alertas.some((x) => x.link?.startsWith("/painel/financeiro/pagamentos-site"))).toBe(false);
+  });
+
+  it("conta de teste para o Início: fora do teste, nada; conferida pelo provedor; demorou demais, sem o aviso", async () => {
+    expect(await contaDeTesteParaInicio({ env: {} as NodeJS.ProcessEnv })).toBeNull();
+    const falso = new ProvedorFalso();
+    falso.contaDeTeste = false;
+    expect(await contaDeTesteParaInicio({ provedor: falso })).toBe(false);
+    const lento = new ProvedorFalso();
+    lento.conferirContaDeTeste = () => new Promise(() => undefined);
+    expect(await contaDeTesteParaInicio({ provedor: lento, esperaMs: 20 })).toBeNull();
   });
 });

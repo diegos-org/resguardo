@@ -14,7 +14,7 @@ function estavel(v: unknown): string {
   return JSON.stringify(v ?? null);
 }
 
-export type ChaveConfig = "empresa" | "regras_financeiras" | "textos_site" | "limpezas" | "agenda" | "portaria" | "fechamento_email" | "mensagens_hospede" | "beds24" | "calendario_regras" | "marketplace_precos" | "repasses_regras" | "inicio_sistema" | "como_funciona";
+export type ChaveConfig = "empresa" | "regras_financeiras" | "textos_site" | "limpezas" | "agenda" | "portaria" | "fechamento_email" | "mensagens_hospede" | "beds24" | "calendario_regras" | "marketplace_precos" | "repasses_regras" | "inicio_sistema" | "como_funciona" | "site_imagens" | "site_bairro" | "textos_proprietarios" | "mercado_proprietarios" | "pagamento_site" | "termos_uso" | "politica_privacidade" | "politica_cancelamento";
 
 export async function lerConfig(db: Db, organizacaoId: string, chave: ChaveConfig): Promise<Record<string, unknown> | null> {
   const [l] = await db
@@ -27,6 +27,15 @@ export async function lerConfig(db: Db, organizacaoId: string, chave: ChaveConfi
 /** Trava a linha da chave (ou o lugar dela, se ainda não existe) até o fim da transação. */
 export async function travarConfig(db: Db, organizacaoId: string, chave: ChaveConfig): Promise<void> {
   await db.execute(sql`select pg_advisory_xact_lock(hashtext(${`config:${organizacaoId}:${chave}`}))`);
+}
+
+/**
+ * Trava compartilhada da chave (o mesmo número de `travarConfig`), até o fim da transação: quem só lê não espera
+ * outro leitor, mas espera uma gravação em andamento — e a gravação (`travarConfig`) espera os leitores terminarem.
+ * Para quem confere uma configuração no meio de outra operação (ex.: o aceite das páginas legais ao gerar o Pix).
+ */
+export async function travarConfigCompartilhada(db: Db, organizacaoId: string, chave: ChaveConfig): Promise<void> {
+  await db.execute(sql`select pg_advisory_xact_lock_shared(hashtext(${`config:${organizacaoId}:${chave}`}))`);
 }
 
 /**

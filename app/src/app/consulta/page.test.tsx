@@ -1,13 +1,18 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, it, vi } from "vitest";
+import { CampoDatas } from "@/components/site/CampoDatas";
 import Page from "./page";
+import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
 const m = vi.hoisted(() => ({ site: vi.fn(), imoveis: vi.fn(), imovel: vi.fn(), disponibilidade: vi.fn() }));
 vi.mock("@/site/pagina", () => ({ carregarSite: m.site, metadadosDoSite: vi.fn() }));
 vi.mock("@/site/disponibilidade", () => ({ consultarDisponibilidade: m.disponibilidade }));
 vi.mock("@/site/site", async (orig) => ({ ...(await orig<typeof import("@/site/site")>()), imoveisDoSite: m.imoveis, imovelDoSite: m.imovel }));
 vi.mock("next/link", () => ({ default: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a> }));
+// Campo de datas real (M7.6), observado para conferir o "hoje" que o formulário recebe.
+vi.mock("@/components/site/CampoDatas", async (orig) => ({ CampoDatas: vi.fn((await orig<typeof import("@/components/site/CampoDatas")>()).CampoDatas) }));
+const hojeDoFormulario = () => vi.mocked(CampoDatas).mock.lastCall?.[0].hoje;
 const imovel = { codigo: "403", fuso: "America/Sao_Paulo", nome: "Studio Exemplo", bairro: "Leblon", cidade: "Rio de Janeiro", capacidade: 4, quartos: 0, banheiros: 1, descricao: "", camas: [], comodidades: [], regrasCasa: "", aceitaAnimais: false, permiteFumar: false, permiteFestas: false, checkinAPartirDe: "15:00", checkoutAte: "11:00", estadiaMinima: null };
-const conteudo = { organizacaoId: "org", nomeEmpresa: "Sua Casa Exemplo", textos: { titulo: "T", subtitulo: "", sobre: "", comoReservar: "", contato: "", rodape: "" }, whatsapp: "5521900000000", email: "" };
+const conteudo = { organizacaoId: "org", nomeEmpresa: "Sua Casa Exemplo", textos: { ...TEXTOS_SITE_INICIAIS, titulo: "T", subtitulo: "", comoReservar: "", contato: "", rodape: "" }, whatsapp: "5521900000000", email: "", imagens: { capa: null, marca: "/marca.png" } };
 beforeEach(() => {
   vi.clearAllMocks();
   m.site.mockResolvedValue({ db: {}, conteudo });
@@ -69,9 +74,11 @@ it("as datas são conferidas no fuso do imóvel escolhido, não no de São Paulo
     expect(m.disponibilidade).not.toHaveBeenCalled();
     // Sem imóvel escolhido, o mínimo do formulário é o "hoje" mais cedo entre os imóveis da lista.
     m.imoveis.mockResolvedValue([imovel, { ...imovel, codigo: "901", fuso: "America/Rio_Branco" }]);
-    expect(await html()).toContain('min="2026-10-11"');
+    await html();
+    expect(hojeDoFormulario()).toBe("2026-10-11");
     m.imoveis.mockResolvedValue([imovel]);
-    expect(await html()).toContain('min="2026-10-12"');
+    await html();
+    expect(hojeDoFormulario()).toBe("2026-10-12");
   } finally {
     vi.useRealTimers();
   }

@@ -56,6 +56,7 @@ export function FormRegrasCalendario({ regras, imoveis, salvar }: Props) {
         <label>Mínimo de noites no feriadão<input name="feriadoMinimo" type="number" min={1} max={30} defaultValue={campo("feriadoMinimo", String(regras.janelaFeriado.estadiaMinima))} {...invalido("feriadoMinimo")} />{erro("feriadoMinimo")}</label>
         <label>Multiplicador do preço base (ex.: 2 = o dobro)<input name="feriadoMultiplicador" inputMode="decimal" defaultValue={campo("feriadoMultiplicador", centesimosParaMultiplicador(regras.janelaFeriado.multiplicador))} {...invalido("feriadoMultiplicador")} />{erro("feriadoMultiplicador")}</label>
       </div>
+      <label className={styles.check}><input type="checkbox" name="feriadoMinimoNormal" defaultChecked={marcado("feriadoMinimoNormal", regras.janelaFeriado.minimoNormalComReserva)} /> Quando o feriadão já tiver uma reserva confirmada, as noites livres dele usam o mínimo normal da semana (o preço do feriadão continua)</label>
       <label className={styles.check}><input type="checkbox" name="feriadoTodos" defaultChecked={marcado("feriadoTodos", regras.janelaFeriado.todosImoveis)} /> Aplicar os feriadões a todos os imóveis</label>
       <p style={nota}>Ou escolha os imóveis (Búzios tem regra própria e pode ficar de fora):</p>
       {listaImoveis("feriadoImoveis", regras.janelaFeriado.imoveis)}
@@ -80,8 +81,10 @@ export function FormRegrasCalendario({ regras, imoveis, salvar }: Props) {
         <label>Validade da leitura do Beds24 (horas)<input name="siteValidadeHoras" type="number" min={1} max={720} defaultValue={campo("siteValidadeHoras", String(regras.site.validadeLeituraHoras))} {...invalido("siteValidadeHoras")} />{erro("siteValidadeHoras")}</label>
         <label>Máximo de noites por consulta online<input name="siteMaximoNoites" type="number" min={1} max={364} defaultValue={campo("siteMaximoNoites", String(regras.site.maximoNoitesConsulta))} {...invalido("siteMaximoNoites")} />{erro("siteMaximoNoites")}</label>
         <label>Minutos que &quot;segurar as datas&quot; reserva no site<input name="siteMinutosHold" type="number" min={5} max={240} defaultValue={campo("siteMinutosHold", String(regras.site.minutosHold))} {...invalido("siteMinutosHold")} />{erro("siteMinutosHold")}</label>
+        <label>Minutos a mais que um cartão em análise segura as datas (uma vez por cotação; 0 = nenhum)<input name="siteMinutosAnaliseCartao" type="number" min={0} max={240} defaultValue={campo("siteMinutosAnaliseCartao", String(regras.site.minutosAnaliseCartao))} {...invalido("siteMinutosAnaliseCartao")} />{erro("siteMinutosAnaliseCartao")}</label>
       </div>
       <p style={nota}>Ao segurar as datas, o visitante cria um pedido que ocupa o calendário por esse tempo (padrão 30 minutos). Se a equipe não confirmar nem o pagamento acontecer até lá, o pedido vence sozinho e as noites voltam à venda.</p>
+      <p style={nota}>Com o pagamento no site ligado, cada Pix segura as datas por pelo menos 30 minutos (até 3 por cotação, um de cada vez); com o cartão, a verificação do banco segura as datas por até 42 minutos e o cartão em análise por mais {regras.site.minutosAnaliseCartao} minutos (uma vez por cotação). Se a análise aprovar depois do prazo, a reserva só é confirmada com as noites ainda livres; senão, o valor fica para devolver.</p>
     </fieldset>
     {estado.ok && <p role="status" className={styles.sucesso}>{estado.aviso ?? "Salvo."}</p>}
     <div className={styles.acoes}><button type="submit" disabled={enviando}>{enviando ? "Salvando…" : "Salvar regras"}</button></div>

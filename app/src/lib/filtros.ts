@@ -106,6 +106,12 @@ export function manterFiltros(params: Params | URLSearchParams): string {
   return texto ? `?${texto}` : "";
 }
 
+/** Junta os filtros (`?…` de `manterFiltros`) a um link que pode já ter os seus parâmetros (ex.: `?atencao=1`). */
+export function comFiltros(link: string, query: string): string {
+  if (!query) return link;
+  return link.includes("?") ? `${link}&${query.replace(/^\?/, "")}` : `${link}${query}`;
+}
+
 const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 
 export function nomeDoMes(mes: number): string {

@@ -1,0 +1,389 @@
+/*
+ * Calendário do site (M7.6), pelo estudo "Sage": campos "Entrada" e "Saída" iguais aos outros campos do site
+ * (rótulo pequeno em maiúsculas, só a linha inferior) e o quadro com os meses. Cores só pelas variáveis de
+ * globals.css. No computador o quadro abre logo abaixo dos campos, com dois meses; no celular, um mês, preso
+ * embaixo da tela e com a largura toda.
+ */
+
+/* Campo: o botão no lugar do campo de data, com o mesmo desenho dos campos do formulário. */
+.rotulo {
+  cursor: pointer;
+}
+
+.campo {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 9px 0;
+  border: 0;
+  border-bottom: 1px solid var(--scl-borda-campo);
+  border-radius: 0;
+  background: transparent;
+  color: var(--scl-tinta);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.campo[aria-expanded="true"] {
+  border-bottom-color: var(--scl-musgo);
+}
+
+.comErro {
+  border-bottom-color: var(--scl-erro);
+}
+
+.campo > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vazio {
+  color: var(--scl-texto-2);
+}
+
+.icone {
+  flex: none;
+  color: var(--scl-texto-2);
+}
+
+/* Quadro do calendário */
+.fundo {
+  display: none;
+}
+
+.calendario {
+  position: absolute;
+  z-index: 30;
+  top: var(--topo, 0);
+  left: var(--esquerda, 0);
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  padding: 18px 24px 14px;
+  background: var(--scl-papel);
+  color: var(--scl-tinta);
+  border: 1px solid var(--scl-borda);
+  border-radius: var(--scl-raio-dialogo);
+  box-shadow: 0 18px 48px color-mix(in srgb, var(--scl-profundo) 18%, transparent);
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.topo {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 20px;
+  margin-bottom: 10px;
+}
+
+.etapa {
+  margin: 0;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--scl-texto-2);
+}
+
+.noites {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 0.9375rem;
+  color: var(--scl-floresta);
+  white-space: nowrap;
+}
+
+.meses {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(2, 280px);
+  gap: 0 32px;
+}
+
+.umMes {
+  grid-template-columns: minmax(0, 300px);
+}
+
+.mes {
+  min-width: 0;
+}
+
+.nomeMes {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  margin-bottom: 4px;
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 1.125rem;
+  letter-spacing: -0.01em;
+  color: var(--scl-floresta);
+}
+
+.nomeMes::first-letter {
+  text-transform: uppercase;
+}
+
+.seta {
+  position: absolute;
+  top: 0;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--scl-borda);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--scl-floresta);
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.seta:hover:not(:disabled) {
+  background: var(--scl-areia);
+}
+
+.anterior {
+  left: 0;
+}
+
+.proximo {
+  right: 0;
+}
+
+.grade {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.grade th {
+  padding: 4px 0 6px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--scl-texto-2);
+}
+
+.grade td {
+  padding: 1px 0;
+  text-align: center;
+}
+
+.dia {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 38px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--scl-raio-campo);
+  background: transparent;
+  color: var(--scl-tinta);
+  font: inherit;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.dia:hover {
+  background: var(--scl-areia);
+}
+
+.dia:focus-visible {
+  outline-offset: -1px;
+  outline-width: 2px;
+}
+
+.dia[aria-disabled="true"] {
+  cursor: default;
+}
+
+.dia[aria-disabled="true"]:hover {
+  background: transparent;
+}
+
+.hoje::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 5px;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  border-radius: 50%;
+  background: var(--scl-dourado-escuro);
+}
+
+.passada {
+  color: var(--scl-texto-2);
+  opacity: 0.45;
+}
+
+/* Noite ocupada: riscada e apagada (legenda "Noites ocupadas"). */
+.ocupada,
+.amostra {
+  color: var(--scl-texto-2);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  background: var(--scl-neutro-fundo);
+}
+
+.dia.ocupada:hover {
+  background: var(--scl-neutro-fundo);
+}
+
+/* Ocupada, mas serve de dia de saída (a saída é de manhã): sem o risco, com um contorno fino. */
+.soSaida {
+  box-shadow: inset 0 0 0 1px var(--scl-borda);
+}
+
+/* Depois de uma noite ocupada não dá para sair: apagado, sem risco. */
+.indisponivel {
+  color: var(--scl-texto-2);
+  opacity: 0.45;
+}
+
+.intervalo,
+.intervalo:hover,
+.dia[aria-disabled="true"].intervalo:hover {
+  border-radius: 0;
+  background: var(--scl-areia);
+}
+
+.ponta,
+.ponta:hover,
+.dia[aria-disabled="true"].ponta:hover {
+  background: var(--scl-musgo);
+  color: var(--scl-branco);
+  opacity: 1;
+  text-decoration: none;
+}
+
+.ponta.hoje::after {
+  background: var(--scl-branco);
+}
+
+.recusa {
+  min-height: 20px;
+  margin: 6px 0 0;
+  font-size: 0.8125rem;
+  color: var(--scl-erro-texto);
+}
+
+.rodape {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 20px;
+  margin-top: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--scl-borda);
+}
+
+.legenda {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--scl-texto-2);
+}
+
+.amostra {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 24px;
+  border-radius: var(--scl-raio-campo);
+  font-size: 0.75rem;
+}
+
+.acoes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.limpar,
+.fechar {
+  min-height: 40px;
+  padding: 8px 14px;
+  border-radius: var(--scl-raio-campo);
+  font: inherit;
+  font-size: 0.8125rem;
+  color: var(--scl-floresta);
+  cursor: pointer;
+}
+
+.limpar {
+  border: 0;
+  background: transparent;
+  text-decoration: underline;
+  text-underline-offset: 5px;
+}
+
+.fechar {
+  border: 1px solid var(--scl-borda);
+  background: transparent;
+}
+
+.fechar:hover,
+.limpar:hover:not(:disabled) {
+  background: var(--scl-areia);
+}
+
+/* Celular: um mês, de baixo para cima, com a largura toda e o fundo escurecido. */
+@media (max-width: 700px) {
+  .fundo {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 29;
+    background: color-mix(in srgb, var(--scl-profundo) 45%, transparent);
+  }
+
+  .calendario {
+    position: fixed;
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    max-width: none;
+    max-height: 92vh;
+    overflow-y: auto;
+    padding: 18px 16px calc(14px + env(safe-area-inset-bottom));
+    border-bottom: 0;
+    border-radius: var(--scl-raio-dialogo) var(--scl-raio-dialogo) 0 0;
+  }
+
+  .meses,
+  .umMes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dia {
+    height: 44px;
+  }
+}

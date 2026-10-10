@@ -41,7 +41,11 @@ tabela `aceites_documento` (migração 0054), telas em Configurações → Como 
 
 ## Fora deste item
 
-- Páginas legais do site (termos, privacidade, cancelamento) com aceite no checkout: M7.4.
+- Páginas legais do site (termos, privacidade, cancelamento) com aceite no checkout: M7.4, pronto em
+  9/10/2026 (`PAGINAS-LEGAIS.md`). Ele reaproveita o motor de versões deste item, que passou para
+  `app/src/configuracoes/documentos-versionados.ts` (o "Como funciona" continua com o mesmo formato
+  gravado e as mesmas funções), mas o aceite do hóspede tem a própria tabela, `aceites_site`: o
+  hóspede não tem usuário, e `aceites_documento` exige proprietário e usuário.
 - Texto das contestações: espera a decisão de Diego (GUIA, seção 7); até lá a seção fica vazia.
 - Correção pequena sem novo aceite: não existe — qualquer mudança de texto pede aceite de novo, como
   Diego pediu. Se virar incômodo, a decisão é dele (ex.: marcar uma publicação como "correção").

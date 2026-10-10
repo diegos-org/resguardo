@@ -10,7 +10,7 @@ vi.mock("@/imoveis/repositorio", () => ({ listarImoveis: m.imoveis }));
 vi.mock("@/imoveis/detalhes", () => ({ fontesDePrecosDosImoveis: async () => new Map([["ib", "beds24"]]) }));
 vi.mock("@/beds24/configuracao", () => ({ listarMapeamentosBeds24: m.mapas }));
 vi.mock("@/calendario/regras-config", async (orig) => ({ ...(await orig<typeof import("@/calendario/regras-config")>()), lerRegrasCalendario: m.regras }));
-vi.mock("@/calendario/acoes", () => ({ novoEventoAcao: vi.fn(), removerEventoAcao: vi.fn(), salvarRegrasCalendarioAcao: vi.fn() }));
+vi.mock("@/calendario/acoes", () => ({ alternarMinimoNormalEventoAcao: vi.fn(), novoEventoAcao: vi.fn(), removerEventoAcao: vi.fn(), salvarRegrasCalendarioAcao: vi.fn() }));
 beforeEach(() => {
   vi.clearAllMocks();
   m.db.mockReturnValue({});
@@ -18,7 +18,7 @@ beforeEach(() => {
   m.sessao.mockResolvedValue({ papel: "admin", usuarioId: "u", organizacaoId: "org" });
   m.imoveis.mockResolvedValue([{ id: "i103", codigo: "103", nome: "Boutique" }, { id: "ib", codigo: "buzios", nome: "Búzios" }]);
   m.mapas.mockResolvedValue([{ id: "m", imovelId: "i103", codigo: "103", ativo: true, propertyId: "10", roomId: "20" }]);
-  m.regras.mockResolvedValue({ ...REGRAS_CALENDARIO_PADRAO, feriados: [{ data: "2026-11-02", nome: "Finados" }], eventos: [{ id: "e", nome: "Carnaval", inicio: "2027-02-08", fim: "2027-02-17", multiplicador: 400, estadiaMinima: 5, todosImoveis: false, imoveis: ["i103"] }], envio: { imoveis: ["i103"], automatico: false } });
+  m.regras.mockResolvedValue({ ...REGRAS_CALENDARIO_PADRAO, feriados: [{ data: "2026-11-02", nome: "Finados" }], eventos: [{ id: "e", nome: "Carnaval", inicio: "2027-02-08", fim: "2027-02-17", multiplicador: 400, estadiaMinima: 5, minimoNormalComReserva: true, todosImoveis: false, imoveis: ["i103"] }, { id: "a", nome: "Alta temporada", inicio: "2026-12-15", fim: "2027-02-28", multiplicador: 200, estadiaMinima: 3, minimoNormalComReserva: false, todosImoveis: true, imoveis: [] }], envio: { imoveis: ["i103"], automatico: false } });
 });
 afterEach(() => vi.unstubAllEnvs());
 const html = async () => renderToStaticMarkup(await Page());
@@ -39,4 +39,16 @@ it("admin vê as regras, feriados, eventos, imóveis com vínculo e o sinal da V
   expect(h).toContain("Sinal de escrita na Vercel: <strong>desligado</strong>");
   expect(h).toContain('name="envioImoveis" checked="" value="i103"');
   expect(h).toContain('name="faixa2Pct"');
+  // M3.10: regra de 6/10 visível e trocável por evento, e a opção dos feriadões no formulário geral.
+  expect(h).toContain("mínimo normal nas livres");
+  expect(h).toContain("Manter o mínimo do evento");
+  expect(h).toContain("mantém o mínimo do evento");
+  expect(h).toContain("Usar o mínimo normal");
+  expect(h).toContain('name="ligado" value="nao"');
+  expect(h).toContain('name="ligado" value="sim"');
+  expect(h).toMatch(/name="feriadoMinimoNormal" checked=""/);
+  expect(h).toMatch(/name="minimoNormalComReserva" checked=""/);
+  // M8.2a: perto do prazo de "segurar as datas", quanto cada Pix segura; M8.2b: e o cartão (desafio e análise, editável).
+  expect(h).toContain("Com o pagamento no site ligado, cada Pix segura as datas por pelo menos 30 minutos (até 3 por cotação, um de cada vez); com o cartão, a verificação do banco segura as datas por até 42 minutos e o cartão em análise por mais 60 minutos (uma vez por cotação).");
+  expect(h).toContain('name="siteMinutosAnaliseCartao" value="60"');
 });

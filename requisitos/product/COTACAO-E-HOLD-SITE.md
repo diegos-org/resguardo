@@ -52,5 +52,9 @@
 - Até o M8.3, as OTAs não sabem do hold: um visitante do Airbnb pode reservar as mesmas noites durante o
   prazo. Por isso o prazo é curto e a equipe deve confirmar ou cancelar logo.
 - Até o M8.2, o fecho da reserva é na conversa (botão de WhatsApp na página da cotação com o código).
+  Desde o M8.2a (8/10, em teste nas prévias), com o Pix oferecido, o pedido confirma sozinho quando o
+  pagamento é aprovado com as datas seguradas; o prazo das datas é estendido até o fim do Pix; pedido com
+  pagamento em andamento não vence antes de 15 minutos depois do prazo; e o painel recusa confirmar ou
+  cancelar um pedido com Pix em andamento. Regras completas em `PAGAMENTO-SITE.md`.
 - Freios por e-mail e por imóvel são constantes de código (não editáveis), por serem defesa, não regra de
   negócio; se incomodarem a operação, viram configuração.

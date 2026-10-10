@@ -12,6 +12,9 @@ import { atualizarModelo, criarModelo, type ErrosModelo, excluirModelo } from ".
 import { lerFormRegras } from "./regras-financeiras";
 import { salvarRegrasFinanceiras } from "./salvar-regras";
 import { publicarComoFunciona, validarSecoes } from "./como-funciona";
+import { publicarPaginaLegal } from "./paginas-legais";
+import { DOCUMENTOS_LEGAIS, type DocumentoLegal, PAGINAS_LEGAIS, validarPaginaLegal } from "./paginas-legais-texto";
+import { type ErrosMercado, salvarMercado, salvarTextosProprietarios, type TextosProprietarios, validarMercado, validarTextosProprietarios } from "./pagina-proprietarios";
 import { salvarTextosSite, type TextosSite, validarTextosSite } from "./textos-site";
 import { alterarUsuario, criarUsuarioEquipe } from "./usuarios";
 
@@ -56,6 +59,29 @@ export async function salvarTextosAcao(_a: EstadoForm<Partial<TextosSite>>, form
   return { ok: true, aviso: mudou ? "Salvo." : "Nada mudou." };
 }
 
+/** Página para proprietários do site (M7.7): textos. */
+export async function salvarTextosProprietariosAcao(_a: EstadoForm<Partial<TextosProprietarios>>, form: FormData): Promise<EstadoForm<Partial<TextosProprietarios>>> {
+  const sessao = await sessaoConfig();
+  const v = validarTextosProprietarios(campos(form));
+  if (!v.ok) return { erros: v.erros, mensagem: "Confira os campos destacados.", valores: campos(form) };
+  const mudou = await salvarTextosProprietarios(getDb(), sessao.organizacaoId, v.textos, sessao.usuarioId);
+  revalidatePath("/painel/configuracoes/pagina-proprietarios");
+  revalidatePath("/anunciar");
+  return { ok: true, aviso: mudou ? "Salvo." : "Nada mudou." };
+}
+
+/** Página para proprietários (M7.7): faixa de mercado. Sem linhas, a seção some da página. */
+export async function salvarMercadoAcao(_a: EstadoForm<ErrosMercado>, form: FormData): Promise<EstadoForm<ErrosMercado>> {
+  const sessao = await sessaoConfig();
+  const v = validarMercado(campos(form));
+  if (!v.ok) return { erros: v.erros, mensagem: "Confira os campos destacados.", valores: campos(form) };
+  const mudou = await salvarMercado(getDb(), sessao.organizacaoId, v.mercado, sessao.usuarioId);
+  revalidatePath("/painel/configuracoes/pagina-proprietarios");
+  revalidatePath("/anunciar");
+  if (!mudou) return { ok: true, aviso: "Nada mudou." };
+  return { ok: true, aviso: v.mercado.linhas.length ? "Salvo. A faixa de mercado aparece na página para proprietários." : "Salvo. Sem números, a faixa de mercado não aparece na página." };
+}
+
 /** "Como funciona" para o proprietário (M5.6): publica uma versão nova quando o texto mudou. */
 export async function publicarComoFuncionaAcao(_a: EstadoForm<Record<string, string>>, form: FormData): Promise<EstadoForm<Record<string, string>>> {
   const sessao = await sessaoConfig();
@@ -73,6 +99,31 @@ export async function publicarComoFuncionaAcao(_a: EstadoForm<Record<string, str
   revalidatePath("/portal", "layout");
   const data = r.versao.data.split("-").reverse().join("/");
   return { ok: true, aviso: r.mudou ? `Versão ${r.versao.numero} publicada em ${data}. Cada proprietário vai ler e aceitar no portal; quem já tinha aceitado a anterior precisa aceitar de novo.` : `Nada mudou no texto: a versão ${r.versao.numero}, de ${data}, continua valendo.` };
+}
+
+/**
+ * Páginas legais do site (M7.4): publica a versão seguinte de um documento quando o texto, um dado da empresa usado
+ * nele ou o prazo do reembolso mudou. Recusada (campo faltando, outra pessoa publicou no meio), nada é revalidado e o
+ * formulário mantém o que foi digitado e a versão que mostrava — a mesma regra do "Como funciona" (M5.6).
+ */
+export async function publicarPaginaLegalAcao(_a: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const sessao = await sessaoConfig();
+  const doc = String(form.get("documento") ?? "");
+  if (!(DOCUMENTOS_LEGAIS as readonly string[]).includes(doc)) return { mensagem: "Documento desconhecido. Recarregue a página." };
+  const documento = doc as DocumentoLegal;
+  const v = validarPaginaLegal(documento, campos(form));
+  if (!v.ok) return { erros: v.erros, mensagem: v.mensagem, valores: campos(form) };
+  const base = String(form.get("versaoBase") ?? "");
+  if (!/^\d{1,6}$/.test(base)) return { mensagem: "Recarregue a página e tente de novo.", valores: campos(form) };
+  const r = await publicarPaginaLegal(getDb(), sessao.organizacaoId, documento, v.entrada, sessao.usuarioId, hojeISO(), Number(base));
+  if (!r.ok) return { mensagem: r.erro, erros: r.erros, valores: campos(form) };
+  revalidatePath("/painel/configuracoes/paginas-legais");
+  revalidatePath(PAGINAS_LEGAIS[documento].rota);
+  const data = r.versao.data.split("-").reverse().join("/");
+  return {
+    ok: true,
+    aviso: r.mudou ? `Versão ${r.versao.numero} publicada em ${data}. O site já mostra esta versão; os próximos pagamentos pedem o aceite dela.` : `Nada mudou: a versão ${r.versao.numero}, de ${data}, continua valendo.`,
+  };
 }
 
 // --- Usuários ------------------------------------------------------------------------

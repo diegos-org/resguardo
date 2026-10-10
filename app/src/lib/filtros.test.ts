@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { descreverFiltros, filtrosParaQuery, hojeNoFuso, lerFiltros, manterFiltros } from "./filtros";
+import { comFiltros, descreverFiltros, filtrosParaQuery, hojeNoFuso, lerFiltros, manterFiltros } from "./filtros";
 
 // 1º de outubro, 01h UTC = ainda 30 de setembro em São Paulo.
 const agora = new Date("2026-10-01T01:00:00Z");
@@ -63,5 +63,13 @@ describe("periodoDosFiltros", () => {
     expect(periodoDosFiltros({ imoveis: [], ano: 2026, mes: 9 })).toEqual({ inicio: "2026-09-01", fim: "2026-10-01" });
     expect(periodoDosFiltros({ imoveis: [], ano: 2026, mes: 12 })).toEqual({ inicio: "2026-12-01", fim: "2027-01-01" });
     expect(periodoDosFiltros({ imoveis: [], ano: 2027, mes: null })).toEqual({ inicio: "2027-01-01", fim: "2028-01-01" });
+  });
+});
+
+describe("comFiltros", () => {
+  it("junta os filtros a links com e sem parâmetros próprios (alertas do Início)", () => {
+    expect(comFiltros("/painel/reservas", "?ano=2026&mes=10")).toBe("/painel/reservas?ano=2026&mes=10");
+    expect(comFiltros("/painel/financeiro/pagamentos-site?atencao=1", "?ano=2026")).toBe("/painel/financeiro/pagamentos-site?atencao=1&ano=2026");
+    expect(comFiltros("/painel/financeiro/pagamentos-site?atencao=1", "")).toBe("/painel/financeiro/pagamentos-site?atencao=1");
   });
 });

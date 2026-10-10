@@ -1,6 +1,16 @@
-/** CPF/CNPJ: validação de dígitos verificadores, formatação e máscara para exibição. */
+/** CPF/CNPJ (validação de dígitos verificadores, formatação e máscara para exibição) e telefone com DDD. */
 
 export const soDigitos = (v: string) => v.replace(/\D/g, "");
+
+/**
+ * Telefone com DDD digitado em formulário público (cadastro do marketplace, pedido de contato): só números, espaços,
+ * parênteses, ponto, + e -, com 10 a 13 dígitos (DDD + número, com ou sem o 55).
+ */
+export function telefoneComDddValido(telefone: string): boolean {
+  const d = soDigitos(telefone);
+  return d.length >= 10 && d.length <= 13 && telefone.length <= 20 && /^[\d\s()+.-]+$/.test(telefone);
+}
+export const ERRO_TELEFONE_DDD = "Telefone com DDD: só números, espaços, parênteses, + e - (10 a 13 dígitos).";
 
 export function cpfValido(valor: string): boolean {
   const d = soDigitos(valor);

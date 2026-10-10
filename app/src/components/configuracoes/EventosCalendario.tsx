@@ -7,11 +7,11 @@ import { centesimosParaMultiplicador, dataBr, type Evento } from "@/calendario/r
 import styles from "../formularios.module.css";
 
 type Imovel = { id: string; codigo: string };
-type Props = { eventos: Evento[]; imoveis: Imovel[]; criar: (a: EstadoEvento, f: FormData) => Promise<EstadoEvento>; remover: (f: FormData) => Promise<void> };
+type Props = { eventos: Evento[]; imoveis: Imovel[]; criar: (a: EstadoEvento, f: FormData) => Promise<EstadoEvento>; remover: (f: FormData) => Promise<void>; alternarMinimoNormal: (f: FormData) => Promise<void> };
 const nota = { fontSize: "0.875rem", color: "var(--scl-texto-2)", margin: 0 };
 
 /** Temporadas e eventos com multiplicador do preço base e mínimo de noites (alta temporada, Réveillon, Carnaval, Rock in Rio). */
-export function EventosCalendario({ eventos, imoveis, criar, remover }: Props) {
+export function EventosCalendario({ eventos, imoveis, criar, remover, alternarMinimoNormal }: Props) {
   const [estado, enviar, enviando] = useActionState(criar, {});
   const v = estado.valores ?? {};
   const texto = (k: string) => String(v[k] ?? "");
@@ -19,10 +19,17 @@ export function EventosCalendario({ eventos, imoveis, criar, remover }: Props) {
   return <section aria-label="Temporadas e eventos" style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 820 }}>
     <h2 style={{ fontSize: "1.25rem", margin: 0 }}>Temporadas e eventos</h2>
     <p style={nota}>Multiplicam o preço base nas noites do evento (vale o maior multiplicador, nunca a soma) e podem exigir mínimo de noites. Preço explícito de um período no cadastro do imóvel substitui o evento. Cadastre as datas de cada ano (alta temporada 15/12 ao fim de fevereiro, Réveillon 25/12 a 1/1, Carnaval, Rock in Rio) depois de confirmá-las.</p>
+    <p style={nota}>Com reserva: quando o imóvel já tem uma reserva confirmada no período do evento, as noites livres dele passam a usar o mínimo normal da semana, sem mudar o preço do evento (decisão de 6/10). Desligue em temporadas longas, como a alta temporada, para o mínimo dela continuar valendo.</p>
     {eventos.length > 0 && <div className={styles.rolagem}><table className={styles.tabela}>
-      <thead><tr><th>Evento</th><th>Noites</th><th className={styles.numero}>Multiplicador</th><th className={styles.numero}>Mínimo</th><th>Imóveis</th><th /></tr></thead>
+      <thead><tr><th>Evento</th><th>Noites</th><th className={styles.numero}>Multiplicador</th><th className={styles.numero}>Mínimo</th><th>Com reserva</th><th>Imóveis</th><th /></tr></thead>
       <tbody>{eventos.map((e) => <tr key={e.id}>
-        <td>{e.nome}</td><td>{dataBr(e.inicio)} a {dataBr(e.fim)}</td><td className={styles.numero}>{centesimosParaMultiplicador(e.multiplicador)}×</td><td className={styles.numero}>{e.estadiaMinima === null ? "—" : `${e.estadiaMinima} noite(s)`}</td><td>{nomes(e)}</td>
+        <td>{e.nome}</td><td>{dataBr(e.inicio)} a {dataBr(e.fim)}</td><td className={styles.numero}>{centesimosParaMultiplicador(e.multiplicador)}×</td><td className={styles.numero}>{e.estadiaMinima === null ? "—" : `${e.estadiaMinima} noite(s)`}</td>
+        <td>{e.estadiaMinima === null ? "—" : <form action={alternarMinimoNormal} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+          <input type="hidden" name="id" value={e.id} /><input type="hidden" name="ligado" value={e.minimoNormalComReserva ? "nao" : "sim"} />
+          <span>{e.minimoNormalComReserva ? "mínimo normal nas livres" : "mantém o mínimo do evento"}</span>
+          <button type="submit" className={styles.pequeno}>{e.minimoNormalComReserva ? "Manter o mínimo do evento" : "Usar o mínimo normal"}</button>
+        </form>}</td>
+        <td>{nomes(e)}</td>
         <td><form action={remover}><input type="hidden" name="id" value={e.id} /><BotaoConfirmar className={styles.pequeno} pergunta={`Excluir o evento "${e.nome}"?`}>Excluir</BotaoConfirmar></form></td>
       </tr>)}</tbody>
     </table></div>}
@@ -36,6 +43,7 @@ export function EventosCalendario({ eventos, imoveis, criar, remover }: Props) {
         <label>Multiplicador do preço base<input name="multiplicador" inputMode="decimal" required placeholder="ex.: 4" defaultValue={texto("multiplicador")} /></label>
         <label>Mínimo de noites<input name="estadiaMinima" type="number" min={1} max={30} placeholder="em branco = o normal" defaultValue={texto("estadiaMinima")} /></label>
       </div>
+      <label className={styles.check}><input type="checkbox" name="minimoNormalComReserva" defaultChecked={estado.valores ? v.minimoNormalComReserva === "on" : true} /> Quando já houver reserva confirmada no período, as noites livres usam o mínimo normal da semana (desmarque para temporadas longas)</label>
       <label className={styles.check}><input type="checkbox" name="todosImoveis" defaultChecked={v.todosImoveis === "on"} /> Todos os imóveis</label>
       <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px" }}>
         {imoveis.map((i) => <label key={i.id} className={styles.check} style={{ flex: "0 0 auto", minWidth: 0 }}><input type="checkbox" name="imoveis" value={i.id} defaultChecked={((v.imoveis as string[] | undefined) ?? []).includes(i.id)} /> {i.codigo}</label>)}

@@ -1,12 +1,18 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { origemDoPedido } from "@/acesso/senha";
 import { getDb } from "@/db/client";
-import { criarCotacao, segurarDatas } from "./cotacoes";
+import { validadeDaAutorizacao } from "@/pagamentos/autorizacao";
+import { conferirLimite } from "@/pagamentos/limites";
+import { gravarAutorizacao } from "./checkout";
+import { codigoCotacaoValido, criarCotacao, segurarDatas, validarContato } from "./cotacoes";
 import { conteudoDoSite } from "./site";
 
-export type EstadoSegurar = { erro?: string; erros?: Record<string, string>; motivos?: string[]; valores?: Record<string, string> };
+/** Estado do formulário de contato: erros e motivos, nunca os dados digitados (o formulário guarda o que digitou). */
+export type EstadoSegurar = { erro?: string; erros?: Record<string, string>; motivos?: string[] };
 
 const texto = (f: FormData, k: string) => String(f.get(k) ?? "").slice(0, 120);
 
@@ -22,15 +28,32 @@ export async function criarCotacaoAcao(form: FormData): Promise<void> {
   redirect(`/reservar/${r.cotacao.codigo}`);
 }
 
-/** Formulário de contato da página da cotação: segura as datas (cria o pedido) e recarrega a página. */
+/**
+ * Formulário de contato da página da cotação: segura as datas (cria o pedido) e recarrega a página. Dados
+ * inválidos voltam sem gastar o freio; depois, o freio por endereço de internet (M8.2a) e o hold. Segurou: o
+ * navegador recebe a autorização do pagamento (cookie só para /reservar, até o fim do pedido).
+ */
 export async function segurarDatasAcao(_a: EstadoSegurar, form: FormData): Promise<EstadoSegurar> {
   const db = getDb();
   const conteudo = await conteudoDoSite(db);
   const codigo = texto(form, "codigo").toUpperCase();
-  const valores = { nome: texto(form, "nome"), email: texto(form, "email"), telefone: texto(form, "telefone") };
-  if (!conteudo) return { erro: "O site ainda está em configuração.", valores };
-  const r = await segurarDatas(db, conteudo.organizacaoId, codigo, valores);
+  const contato = { nome: texto(form, "nome"), email: texto(form, "email"), telefone: texto(form, "telefone") };
+  if (!conteudo) return { erro: "O site ainda está em configuração." };
+  const v = validarContato(contato);
+  if (!v.ok) return { erro: "Confira seus dados.", erros: v.erros };
+  // Código fora do formato: recusa antes do freio (não gasta a conta de ninguém).
+  if (!codigoCotacaoValido(codigo)) return { erro: "Cotação não encontrada." };
+  const agora = new Date();
+  const limite = await conferirLimite(db, conteudo.organizacaoId, "segurar", origemDoPedido(await headers()), agora);
+  if (!limite.ok) return { erro: limite.erro };
+  const r = await segurarDatas(db, conteudo.organizacaoId, codigo, contato, agora);
   revalidatePath(`/reservar/${codigo}`);
-  if (!r.ok) return { erro: r.erro, erros: r.erros, motivos: r.motivos, valores };
+  if (!r.ok) return { erro: r.erro, erros: r.erros, motivos: r.motivos };
+  try {
+    await gravarAutorizacao(r.cotacao.id, validadeDaAutorizacao(r.holdAte, agora));
+  } catch {
+    // Sem AUTH_SECRET o pedido segue pela conversa (o Pix exige a autorização).
+    console.error("[site] autorização do pagamento não emitida (AUTH_SECRET)");
+  }
   return {};
 }

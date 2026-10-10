@@ -8,17 +8,19 @@
  * hóspede do modelo B, em Configurações → Marketplace), igual para qualquer contrato. Nada é
  * gravado: cotação persistida e hold são o M8.1.
  */
-import { and, eq } from "drizzle-orm";
+import { and, eq, gt, inArray, lt, ne } from "drizzle-orm";
 import { planejarImovel } from "@/calendario/envio";
-import { lerRegrasCalendario } from "@/calendario/regras-config";
-import { imoveis } from "@/db/schema";
+import type { LinhaPlano, ObservacaoPlano } from "@/calendario/motor";
+import { lerRegrasCalendario, type RegrasCalendario } from "@/calendario/regras-config";
+import { bloqueios, cotacoes, imoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { listarPeriodos } from "@/imoveis/detalhes";
 import { type Cotacao, cotarNoites, diasEntre, verificarEstadia } from "@/imoveis/regras-venda";
 import { hojeISO } from "@/lib/datas";
 import { descontoDoSite } from "@/marketplace/precos";
 import { lerPrecosMarketplace } from "@/marketplace/precos-config";
-import { dataValida } from "@/reservas/regras";
+import { cotacaoEmCarencia } from "@/pagamentos/andamento";
+import { dataValida, ESTADOS_OCUPANTES } from "@/reservas/regras";
 import type { PedidoConsulta } from "./site";
 
 export type SituacaoDisponibilidade = "disponivel" | "indisponivel" | "a_confirmar" | "invalida";
@@ -42,6 +44,22 @@ export type CotacaoSite = Pick<Cotacao, "diarias" | "limpeza" | "hospedeExtra"> 
 };
 
 const dataBr = (d: string) => d.split("-").reverse().join("/");
+
+/**
+ * Critério de noite ocupada do site, num lugar só (a consulta e o calendário do site usam o mesmo). Leitura do
+ * Beds24 "atual": dentro da validade do site e não anterior ao último envio do SCL para a data (como no motor):
+ * depois de uma escrita sem releitura, a leitura anterior já não descreve o Beds24.
+ */
+type NoiteLida = { observacao: { observadoEm: Date } | null; enviado: { enviadoEm: Date } | null };
+/** Hora (ms) da leitura mais antiga que ainda vale, pela validade em Configurações → Calendário. */
+export const limiteDaLeitura = (regras: Pick<RegrasCalendario, "site">, agora: Date) => agora.getTime() - regras.site.validadeLeituraHoras * 3_600_000;
+export const leituraAtual = (l: NoiteLida | undefined, limite: number) =>
+  !!l?.observacao && l.observacao.observadoEm.getTime() >= limite && (!l.enviado || l.observacao.observadoEm.getTime() >= l.enviado.enviadoEm.getTime());
+/** Leitura que fecha a noite: blackout (mesmo sem unidades informadas) ou nenhuma unidade livre. */
+export const fechadaNaLeitura = (o: Pick<ObservacaoPlano, "bloqueio" | "livres">) => o.bloqueio === "blackout" || o.livres === 0;
+/** Noite certamente ocupada: reserva ou bloqueio no SCL, ou leitura atual que fecha a noite. Sem leitura atual, só o SCL decide. */
+export const noiteOcupada = (l: Pick<LinhaPlano, "livresSeguidas" | "observacao" | "enviado">, limite: number) =>
+  l.livresSeguidas === 0 || (leituraAtual(l, limite) && fechadaNaLeitura(l.observacao!));
 
 export async function consultarDisponibilidade(db: Db, organizacaoId: string, p: PedidoConsulta, agora = new Date()): Promise<Disponibilidade> {
   const vazio = (situacao: SituacaoDisponibilidade, motivos: string[], noites = 0): Disponibilidade => ({ situacao, motivos, noites, cotacao: null, leituraEm: null });
@@ -85,12 +103,9 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   // Restrições de entrada/saída do calendário Beds24: valem na data de entrada e na de saída,
   // só com leitura atual (leitura velha vira "a confirmar", como nas noites).
   // Restrição desconhecida (ex.: "exception") ou não informada na leitura (null) nunca vira "disponível".
-  const limite = agora.getTime() - regras.site.validadeLeituraHoras * 3_600_000;
+  const limite = limiteDaLeitura(regras, agora);
   const conhecidas = new Set<string | null>(["none", "noCheckIn", "noCheckOut", "noCheckInOrCheckOut"]);
-  // Leitura atual: dentro da validade e não anterior ao último envio do SCL para a data (como no motor):
-  // depois de uma escrita sem releitura, a leitura anterior já não descreve o Beds24.
-  const atual = (l: { observacao: { observadoEm: Date } | null; enviado: { enviadoEm: Date } | null } | undefined) =>
-    !!l?.observacao && l.observacao.observadoEm.getTime() >= limite && (!l.enviado || l.observacao.observadoEm.getTime() >= l.enviado.enviadoEm.getTime());
+  const atual = (l: NoiteLida | undefined) => leituraAtual(l, limite);
   const restricao = (l: { observacao: { bloqueio: string | null; observadoEm: Date } | null; enviado: { enviadoEm: Date } | null } | undefined, fecha: readonly string[], motivo: string) => {
     if (!atual(l)) { aConfirmar = true; return; }
     const bloqueio = l!.observacao!.bloqueio;
@@ -110,13 +125,12 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   // Uma data pode estar ocupada no SCL e no Beds24 ao mesmo tempo (reserva importada): conta uma vez.
   const ocupadas = new Set<string>();
   for (const l of linhas) {
-    if (l.livresSeguidas === 0) ocupadas.add(l.data);
+    if (noiteOcupada(l, limite)) ocupadas.add(l.data);
     const o = l.observacao;
     if (!o || !atual(l)) {
       if (!o) semLeitura = true;
       aConfirmar = true;
-    } else if (o.bloqueio === "blackout" || o.livres === 0) ocupadas.add(l.data); // blackout fecha mesmo sem unidades informadas
-    else if (o.livres === null || !conhecidas.has(o.bloqueio)) aConfirmar = true;
+    } else if (!fechadaNaLeitura(o) && (o.livres === null || !conhecidas.has(o.bloqueio))) aConfirmar = true;
     maisAntiga(o);
   }
   if (ocupadas.size) {
@@ -147,7 +161,7 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   // Capacidade não cadastrada: não dá para saber se as pessoas cabem, então nada é confirmado por omissão.
   const semCapacidade = !imovel.capacidade;
   if (semCapacidade) avisos.push("A capacidade deste apartamento ainda não foi cadastrada: confirmamos na conversa se o número de pessoas cabe.");
-  if (total === null) avisos.push(semPrecoNaFonte ? "O preço dessas datas é definido no Beds24 e ainda não foi lido (ou a leitura venceu): confirmamos na conversa." : "O valor dessas datas é confirmado na conversa.");
+  if (total === null) avisos.push(semPrecoNaFonte ? "O preço dessas datas ainda não foi confirmado: confirmamos na conversa." : "O valor dessas datas é confirmado na conversa.");
   return {
     situacao: aConfirmar || semCapacidade || semPrecoNaFonte ? "a_confirmar" : "disponivel",
     motivos: avisos,
@@ -155,4 +169,70 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
     cotacao: { diarias, limpeza: cot.limpeza, hospedeExtra: cot.hospedeExtra, valorCheio, desconto, total },
     leituraEm: semLeitura ? null : leituraEm,
   };
+}
+
+/** Conflito vindo da leitura do calendário externo (e não de uma reserva ou bloqueio do SCL). */
+export const CONFLITO_AGENDA_EXTERNA = "agenda_externa";
+export type NoitesLivres = { livres: true } | { livres: false; motivo: "ocupada" | "sem_leitura"; conflito: string | null };
+
+/**
+ * Só ocupação (M8.2a), sem regras de venda, preço nem publicação: as noites [checkin, checkout) estão livres no
+ * SCL — nenhuma reserva que ocupa (confirmada, pendente, pedido) nem bloqueio, fora `excetoReservaId` — e, com
+ * `exigirLeituraAtual`, também livres na leitura atual do Beds24 (sem leitura atual = não dá para conferir).
+ * Pedido do site já vencido (prazo e carência passados, sem pagamento que segure as datas) não ocupa: a
+ * conferência do pagamento nunca vence holds de outras cotações, só os ignora. `conflito` = código da reserva
+ * que ocupa ("bloqueio", ou `CONFLITO_AGENDA_EXTERNA` quando é a leitura do canal que fecha a noite).
+ */
+export async function noitesLivres(
+  db: Db,
+  organizacaoId: string,
+  imovelId: string,
+  checkin: string,
+  checkout: string,
+  o: { excetoReservaId?: string | null; exigirLeituraAtual?: boolean; agora?: Date } = {},
+): Promise<NoitesLivres> {
+  const agora = o.agora ?? new Date();
+  const [imovel] = await db.select({ id: imoveis.id, fuso: imoveis.fuso }).from(imoveis).where(and(eq(imoveis.id, imovelId), eq(imoveis.organizacaoId, organizacaoId)));
+  if (!imovel || !dataValida(checkin) || !dataValida(checkout) || checkout <= checkin) return { livres: false, motivo: "sem_leitura", conflito: null };
+  const outras = await db
+    .select({ id: reservas.id, codigo: reservas.codigo, estado: reservas.estado, fonte: reservas.fonte, cotacaoId: cotacoes.id, cotacaoEstado: cotacoes.estado, holdAte: cotacoes.holdAte })
+    .from(reservas)
+    .leftJoin(cotacoes, eq(cotacoes.reservaId, reservas.id))
+    .where(
+      and(
+        eq(reservas.organizacaoId, organizacaoId),
+        eq(reservas.imovelId, imovelId),
+        lt(reservas.checkin, checkout),
+        gt(reservas.checkout, checkin),
+        inArray(reservas.estado, [...ESTADOS_OCUPANTES]),
+        o.excetoReservaId ? ne(reservas.id, o.excetoReservaId) : undefined,
+      ),
+    )
+    .orderBy(reservas.checkin);
+  for (const r of outras) {
+    // Pedido do site cujo prazo (e a carência de um pagamento em andamento) já passou: vence sozinho, não ocupa.
+    if (r.estado === "pedido" && r.fonte === "site" && r.cotacaoId && r.cotacaoEstado === "segurada" && r.holdAte && r.holdAte.getTime() <= agora.getTime()) {
+      if (!(await cotacaoEmCarencia(db, r.cotacaoId, r.holdAte, agora))) continue;
+    }
+    return { livres: false, motivo: "ocupada", conflito: r.codigo };
+  }
+  const [bloqueio] = await db
+    .select({ id: bloqueios.id })
+    .from(bloqueios)
+    .where(and(eq(bloqueios.organizacaoId, organizacaoId), eq(bloqueios.imovelId, imovelId), lt(bloqueios.inicio, checkout), gt(bloqueios.fim, checkin)))
+    .limit(1);
+  if (bloqueio) return { livres: false, motivo: "ocupada", conflito: "bloqueio" };
+  if (!o.exigirLeituraAtual) return { livres: true };
+  // Leitura atual do Beds24 noite a noite (a mesma régua do site); só o lado do Beds24: o do SCL já foi conferido acima.
+  const regras = await lerRegrasCalendario(db, organizacaoId);
+  const plano = await planejarImovel(db, organizacaoId, regras, imovel, agora, { inicio: checkin, fim: checkout });
+  const porData = new Map(plano.linhas.map((l) => [l.data, l]));
+  const limite = limiteDaLeitura(regras, agora);
+  for (let t = Date.parse(`${checkin}T00:00:00Z`); t < Date.parse(`${checkout}T00:00:00Z`); t += 86_400_000) {
+    const l = porData.get(new Date(t).toISOString().slice(0, 10));
+    if (!l || !leituraAtual(l, limite)) return { livres: false, motivo: "sem_leitura", conflito: null };
+    if (fechadaNaLeitura(l.observacao!)) return { livres: false, motivo: "ocupada", conflito: CONFLITO_AGENDA_EXTERNA };
+    if (l.observacao!.livres === null) return { livres: false, motivo: "sem_leitura", conflito: null };
+  }
+  return { livres: true };
 }

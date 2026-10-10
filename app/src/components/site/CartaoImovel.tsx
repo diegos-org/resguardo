@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ImovelPublico } from "@/site/site";
-import { FotoProvisoria } from "./Moldura";
+import { CapaDoImovel } from "./CapaDoImovel";
+import { comodidadesDoCartao, IconeComodidade } from "./IconeComodidade";
 import styles from "./site.module.css";
 
 export function resumoImovel(i: ImovelPublico): string {
@@ -22,20 +23,40 @@ export function fraseDoImovel(i: Pick<ImovelPublico, "descricao" | "bairro" | "c
 /** "Olho" do cartão: bairro e código do imóvel, em maiúsculas pelo CSS. */
 export const olhoImovel = (i: Pick<ImovelPublico, "bairro" | "cidade" | "codigo">) => [i.bairro || i.cidade, i.codigo].filter(Boolean).join(" · ");
 
-/** Cartão sálvia do apartamento (carrossel da página inicial e catálogo). */
-export function CartaoImovel({ imovel }: { imovel: ImovelPublico }) {
-  const resumo = resumoImovel(imovel);
+/** Selo sobre a foto (M7.6): o tipo pelo número de quartos (0 = studio) e o bairro; só o que o cadastro diz. */
+export function seloDoImovel(i: Pick<ImovelPublico, "quartos" | "bairro" | "cidade">): string {
+  const tipo = i.quartos === 0 ? "Studio" : i.quartos ? `${i.quartos} ${i.quartos === 1 ? "quarto" : "quartos"}` : null;
+  return [tipo, i.bairro || i.cidade].filter(Boolean).join(" · ");
+}
+
+/** Cartão sálvia do apartamento (vitrine da página inicial e catálogo), como no estudo: foto com selo, ícones e capacidade. */
+export function CartaoImovel({ imovel, carregarCedo = false }: { imovel: ImovelPublico; carregarCedo?: boolean }) {
+  const selo = seloDoImovel(imovel);
+  const icones = comodidadesDoCartao(imovel.comodidades);
   return (
     <Link href={`/imoveis/${encodeURIComponent(imovel.codigo)}`} className={styles.cartaoCasa}>
       <div className={styles.cartaoFoto}>
-        <FotoProvisoria titulo={imovel.nome} />
+        <CapaDoImovel nome={imovel.nome} fotos={imovel.fotos} sizes="(max-width: 600px) 100vw, 360px" carregarCedo={carregarCedo} />
+        {selo && imovel.fotos.length > 0 && <span className={styles.selo}>{selo}</span>}
       </div>
       <div className={styles.cartaoCorpo}>
         <p className={styles.olho}>{olhoImovel(imovel)}</p>
-        <h3>{imovel.nome}</h3>
-        <p>{fraseDoImovel(imovel)}</p>
+        <h3>
+          {imovel.nome}
+          <span aria-hidden="true">↗</span>
+        </h3>
+        <div className={styles.cartaoMeio}>
+          <p>{fraseDoImovel(imovel)}</p>
+          {icones.length > 0 && (
+            <div className={styles.icones}>
+              {icones.map((c) => (
+                <IconeComodidade key={c} nome={c} />
+              ))}
+            </div>
+          )}
+        </div>
         <div className={styles.cartaoRodape}>
-          <span>{resumo}</span>
+          <span>{imovel.capacidade ? `Até ${imovel.capacidade} ${imovel.capacidade === 1 ? "hóspede" : "hóspedes"}` : resumoImovel(imovel)}</span>
           <span>Conheça a casa →</span>
         </div>
       </div>

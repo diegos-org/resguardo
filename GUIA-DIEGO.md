@@ -1,7 +1,10 @@
 # Guia do Diego — tudo sobre o SCL 2.0 num lugar só
 
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
-> **Última atualização:** 5/10/2026, **relatório mensal com os ajustes que você pediu (M5.8):** o quadro diz "noites ocupadas", entraram "receita por noite disponível" (o RevPAN do setor) e "reservas e estadia média", e o segundo gráfico é a ocupação por mês com a diária média sobre cada barra — a opção 1, que você escolheu em 5/10 (seção 2); **dia do fechamento passou para o dia 2 (M4.13, sua decisão de 5/10):** o fechamento mensal, o repasse mensal e o e-mail do relatório saem sozinhos no dia 2 do mês seguinte (o Airbnb só paga no dia 1º a reserva com check-in no último dia do mês); dá para mudar de 1 a 5 em Configurações → Repasses, valendo do fechamento do mês atual em diante; no dia 1º você ainda pode fechar e enviar à mão, e o proprietário baixa o PDF no portal a qualquer hora (seção 2; item 33 da seção 6); **relatório mensal no modelo oficial pronto (M5.7):** o PDF do portal, do painel e do e-mail do fechamento saiu em quatro páginas (capa com o resultado e "como chega até você", números e reservas do mês com o gráfico de 12 meses, conciliação e repasses, extratos dos canais no fim), com os ajustes que você pediu (quadros dois a dois, nada com rolagem lateral no celular); **antes do fechamento de outubro, guarde os extratos dos canais em Financeiro → Repasses → "Extratos dos canais"** para irem no e-mail (item 32 da seção 6); os e-mails do fechamento e do repasse ganharam a versão bonita (HTML) na mesma ordem do texto; **documento "Como funciona" para o proprietário pronto (M5.6):** texto por seção em Configurações → Como funciona (proprietário), versão datada a cada publicação, aceite registrado no convite e no portal (quem, quando, qual versão) — **nada aparece no portal até você revisar o rascunho e publicar a versão 1** (seção 6, item 31); **reserva paga antes do início é acertada inteira por fora (M4.12):** o corte do início do sistema passou a ser pela data em que o canal pagou a reserva, não por noite — a reserva de 29/9 a 2/10 paga em 30/9 é toda de antes, com a noite de outubro; a paga a partir de 1/10 entra inteira; Booking, site e direta que atravessam 30/9→1/10 precisam do recebimento registrado **com a data em que o canal pagou** antes da marcação (item 29 da seção 6); Configurações → Regras financeiras ganhou "em quantos dias depois do check-in o canal paga" (Airbnb: 1) — seção 2; **antes do fechamento de outubro (o primeiro no sistema), faça o item 29 da seção 6: defina o início do sistema (1/10/2026) em Configurações → Repasses e clique em "Marcar como acertado por fora" em Financeiro → Repasses (M4.11) — nada de setembro entra de novo e o fechamento sai sem tratamento à mão;** **modelo oficial do relatório mensal especificado (M5.7, a implementar):** o relatório de setembro que a Lia montou com você virou o padrão, no visual novo, com números do mês e os extratos das OTAs no fim — veja o protótipo com dados fictícios e me diga o que mudar (seção 2 e seção 7); **portal do proprietário marketplace pronto (M12.4):** quem tem contrato marketplace edita no portal os preços e as regras de venda do próprio imóvel (com a conta do site ao vivo), vê se a mudança já foi ao Beds24, marca as limpezas como feitas e registra os consertos por conta própria (seção 2); **atenção ao fechamento de outubro — o primeiro no sistema: checklist no item 29 da seção 6 (setembro já acertado por fora não pode entrar de novo);** **extrato e repasses por periodicidade prontos (M4.10):** o proprietário vê no portal a parte dele em cada reserva (a liberar, disponível, repassada), escolhe como quer receber (mensal, quinzenal, semanal, assim que disponível) e pode pedir um repasse; você registra o recebimento do canal na reserva, marca o repasse pago com o comprovante e o e-mail sai sozinho (seção 2); **identidade visual nova implementada (M7.5):** site, portais e painel estão no visual do estudo que você aprovou (verdes, off-white de papel, grão sutil nos fundos, busca translúcida, serifa nos títulos; painel mais denso), com três textos novos da capa editáveis em Configurações → Site (seção 2); **acervo visual do Sage guardado e especificação de design escrita (M7.5):** o visual que você aprovou está em `prototipos/acervo-visual-2026-10` (e o código dele já estava em `prototipos/scl-publico`); os tokens e os ajustes combinados estão em `requisitos/product/DESIGN.md`; falta só implementar; **fonte de preços por imóvel pronta (M3.9):** cada imóvel escolhe, na ficha, se os preços são automáticos do SCL, definidos no Beds24 (o SCL só lê) ou digitados no cadastro; site, envio ao Beds24, prévia e portal seguem a escolha (seção 2); item novo de **identidade visual** (M7.5, aprovado por você); **referência do sistema antigo cruzada com o plano (M0.6):** o museu que você mandou foi percorrido tela a tela e comparado com o que já existe, com uma lista de ideias para você decidir (seção 2 e `arquivo/sistema-antigo`); **desconto do site e simulação do marketplace prontos (M12.1):** nova aba Configurações → Marketplace e desconto do site, com as taxas de referência e os três pesos editáveis e a simulação Airbnb × Booking × site; o site passa a mostrar valor cheio, desconto e total em toda consulta e cotação (seção 2); recebimento do site decidido (M8.0: empresa recebe e repassa, Mercado Pago; repasse na periodicidade que o proprietário escolher, item novo M4.10), modelo do marketplace decidido (B, partes iguais; M12.1 liberado), marketplace recebendo pela empresa como o site, fonte de preços por imóvel no plano (M3.9), backup do repositório ativado por você (M0.7), publicação de homologação dada por fechada por você (M0.5), pedido do checkout com Pix e cartão registrado (M8.2, com parcelamento pago pelo hóspede) e decisão de não cobrar nada sobre as reservas das OTAs do dono do marketplace; correção do robô de backup depois da sua primeira rodada (ele passa a gravar com uma chave da própria conta de backup e guarda o que vem da origem fora de branches e tags, onde nenhuma automação roda; item 23, passos 4, 5 e 7) e passo a passo mais detalhado (passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório ativo na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
+> **Regras de preservação (9/10/2026):** Claude e Codex trabalham em cópias e branches novas, preservando originais, acervos e o histórico. Cada PR explica o que mudou, por quê, com qual objetivo e onde retomar. Decisões substituídas continuam registradas; voltar atrás acontece por uma nova mudança, sem apagar o passado. O visual continua tomando o acervo do Sage como referência, depois das entregas funcionais.
+> **Conferência da equipe (9/10/2026):** protegido também o caso de um cadastro ligado por engano a uma conta de outro perfil ou outra empresa. O sistema recusa alterar esse acesso, preserva a conta e não usa seu e-mail nos avisos da equipe. Os testes usam dados fictícios; isso não afirma que os cadastros reais foram inspecionados.
+> **Última atualização:** 10/10/2026. **Conferências com dados fictícios:** equipe (senha provisória, troca da própria senha, cidades e avisos) e cartão (liberação imediata, em 14 e em 30 dias). A previsão não vira dinheiro recebido: precisa da confirmação do provedor, e o proprietário espera também o check-in. Não houve criação de contas reais, envio de avisos reais nem cobrança. **Visual:** componentes atuais renderizados localmente em computador (1512 px) e celular (390 px), comparados com o acervo do Sage; sem estouro horizontal, imagens carregadas e campos de no mínimo 44 px. Essa conferência de aparência não valida navegação, autenticação ou pagamentos no site publicado.
+> **Entregas de 9/10/2026:** **pagamento com cartão no site, em teste (M8.2b):** depois de segurar as datas, o hóspede escolhe entre o Pix (recomendado, já marcado) e o cartão de crédito; o formulário do cartão é do Mercado Pago (os dados do cartão nunca passam pelo nosso sistema), aceita só crédito e parcela com os juros pagos pelo hóspede; quando o banco pede, a verificação do banco aparece na própria página. A reserva confirma sozinha quando o cartão é aprovado, e um cartão em análise no Mercado Pago segura as datas por mais um tempo que você escolhe. Contra quem testa cartões roubados, toda recusa mostra a mesma mensagem e, com muitas recusas, o cartão desliga sozinho (o Pix continua). O cartão vem **desligado**: você liga em Configurações → Pagamento no site. Como o Pix, roda só nas prévias da Vercel e com a conta de teste do Mercado Pago: nada é cobrado de verdade (seção 2; o que fazer no item 40 da seção 6; decisões novas na seção 7: verificação do banco, prazo de liberação do cartão, e-mail do formulário e devolução por fora). Também em 9/10, **páginas legais do site prontas (M7.4):** o site ganhou as três páginas que a lei pede para vender pela internet — Termos de uso, Política de privacidade e Política de cancelamento —, com links no rodapé de todas as páginas. Você revisa e publica cada uma em Configurações → Páginas legais do site, com prévia, versão datada e histórico; os dados da empresa entram sozinhos (preencha antes o novo campo "encarregado" em Configurações → Empresa). Antes de gerar o Pix, o hóspede lê o resumo da política de cancelamento, vê até que dia tem o reembolso integral daquela reserva e marca que aceita; na ficha da reserva você vê o que ele aceitou. Os textos são um texto-base que eu escrevi a partir da lei: leve ao contador e, de preferência, a um advogado antes de publicar. **Atenção: enquanto as três não estiverem publicadas, o site não oferece o Pix — nem nas prévias da Vercel**, que usam outro banco e precisam ter as três publicadas lá também para o teste do pagamento continuar (seção 2; o que fazer no item 39 da seção 6). Também em 9/10, **sobras de feriado e evento com reserva (M3.10):** quando um feriadão ou evento já tem uma reserva confirmada, as noites livres dele passam a pedir o mínimo normal da semana (1 noite de domingo a quinta, 2 na sexta e no sábado), sem baixar o preço do evento, como você decidiu em 6/10. A regra vem ligada; desligue, evento por evento, em Configurações → Calendário e preços, nas temporadas longas como a alta temporada (seção 2; o que fazer no item 38 da seção 6). Também em 9/10, **pagamento por Pix no site, em teste (M8.2a):** depois de segurar as datas, a página da cotação mostra o Pix (copia e cola, QR e prazo) e confirma a reserva sozinha quando o pagamento é aprovado; no painel, a ficha da reserva ganha o quadro "Pagamento no site", há a lista em Financeiro → Pagamentos do site e a aba Configurações → Pagamento no site, onde você liga e desliga. Tudo roda só nas prévias da Vercel e só com a conta de teste do Mercado Pago: nada é cobrado de verdade (seção 2; o que fazer no item 37 da seção 6). Em 8/10, **página para proprietários pronta (M7.7):** "Anuncie seu imóvel" no site virou uma página completa, no visual do estudo: as duas formas de trabalhar (gestão completa e marketplace), como gerimos, a vitrine dos imóveis, o "Como funciona" publicado e um pedido de contato para a gestão completa, que chega em Proprietários → Pedidos de contato, com aviso no Início do painel e por e-mail; o cadastro do marketplace continua igual. Os textos começam com um texto-base para você revisar em Configurações → Página para proprietários, e os números de mercado só aparecem quando você digitar dados reais (seção 2; o que fazer no item 36 da seção 6). Em 7/10, **a equipe entra sem e-mail (M6.8):** em Limpezas → Profissionais você cria para cada pessoa um usuário e uma senha provisória (o sistema pode criar a senha), copia a mensagem pronta e manda pelo WhatsApp; ela entra em "Entrar com usuário e senha" e troca a senha no acesso dela. Na mesma tela você escolhe a cidade da agenda de cada uma: quem é de Búzios vê só Búzios, quem é do Rio vê só o Rio (seção 2; o que fazer no item 7 da seção 6). Também em 7/10, **site do hóspede no visual do estudo (M7.6):** a página inicial ganhou a foto de capa que você escolher em Configurações → Site (sem foto, fica o fundo verde), a legenda vertical, a vitrine "Seu endereço no Leblon" em carrossel com setas e botão de pausa, cartões com selo e ícones das comodidades, e "Por que reservar direto" com um texto-base para você revisar; a página do imóvel ganhou "O bairro à sua porta" (lugares que você cadastra no painel, com foto opcional); as datas são escolhidas num calendário próprio, com as noites ocupadas marcadas; a consulta ficou em duas colunas com o "Resumo da viagem"; a marca do logotipo aparece no topo e no rodapé (seção 2; o que fazer no item 35 da seção 6). Também em 7/10, **pesos do marketplace no padrão 6/3/3 (M12.5):** quem nunca salvou a aba Marketplace e desconto do site já usa hóspede 1, proprietário 1 e SCL 2 (desconto do site de cerca de 3%); se o que está salvo é o 1/1/1 antigo, a aba avisa e oferece o botão "Usar o padrão novo" (seção 6, item 24). Também em 7/10, **fotos reais dos imóveis prontas (M7.3):** na ficha de cada imóvel, no painel, há a parte **Fotos**: você sobe várias de uma vez (pode ser a original do celular, o sistema reduz antes de subir), escolhe a capa, muda a ordem e escreve a legenda; o site mostra a capa nos cartões e a galeria na página do imóvel, e a capa do relatório mensal usa a mesma foto (seção 2; o que fazer no item 34 da seção 6). Também em 7/10, **Beds24 fora do que o proprietário e o hóspede leem (M5.9, pronto):** o portal passa a falar de "nosso sistema", "os canais" e "sua ferramenta de preços"; o site, quando o preço de uma data ainda não foi lido, diz só que o preço é confirmado na conversa; o painel continua dizendo Beds24 (seção 2). Também em 7/10, **sua segunda rodada de respostas de 7/10 no plano** (seção 7): a equipe entra de vários jeitos (conta Google, e-mail com senha ou usuário e senha criados por você), sem verificação em duas etapas, e cada pessoa vê só a agenda da cidade dela (M6.8 sai de "bloqueado"); no reembolso integral do site, a taxa que o Mercado Pago não devolver fica com a empresa; a posição sobre o arrependimento de 7 dias eu escrevo e você confere com o contador; dois itens novos para o site: o site do hóspede pronto pelas referências do Sage (M7.6) e a página para proprietários (M7.7). Antes, **suas respostas de 7/10 registradas no plano** (seção 7): no marketplace, relatório e extrato mostram só o que passa pela SCL (as reservas do site e o dinheiro que a empresa receber); o Beds24 fica nos bastidores, sem aparecer para proprietário e hóspede (item novo M5.9); contestação perdida fica com quem deu causa ao motivo, decidido caso a caso; cancelamento do site com a base de 14 dias; pesos 6/3/3 confirmados (item novo M12.5); fotos liberadas (M7.3 sai de "bloqueado"); só o Leblon no site público no começo; e-mail não serve para a equipe (item novo M6.8, espera você decidir como a equipe entra); ideia de serviços à parte com valor mensal fixo (item novo M4.14, espera a sua lista). **O que depende de você agora fica na página "Pendências do Diego"** (https://claude.ai/artifact/PVim3wJVrYgsRVvzabUv6K), onde você marca o que fez e pergunta; esta seção 6 continua como referência completa. Você fez em 7/10: início do sistema e acerto por fora, recebimentos de outubro, chaves Pix, "Como funciona" versão 1 publicada e o remetente do e-mail. Antes, em 5/10: **relatório mensal com os ajustes que você pediu (M5.8):** o quadro diz "noites ocupadas", entraram "receita por noite disponível" (o RevPAN do setor) e "reservas e estadia média", e o segundo gráfico é a ocupação por mês com a diária média sobre cada barra — a opção 1, que você escolheu em 5/10 (seção 2); **dia do fechamento passou para o dia 2 (M4.13, sua decisão de 5/10):** o fechamento mensal, o repasse mensal e o e-mail do relatório saem sozinhos no dia 2 do mês seguinte (o Airbnb só paga no dia 1º a reserva com check-in no último dia do mês); dá para mudar de 1 a 5 em Configurações → Repasses, valendo do fechamento do mês atual em diante; no dia 1º você ainda pode fechar e enviar à mão, e o proprietário baixa o PDF no portal a qualquer hora (seção 2; item 33 da seção 6); **relatório mensal no modelo oficial pronto (M5.7):** o PDF do portal, do painel e do e-mail do fechamento saiu em quatro páginas (capa com o resultado e "como chega até você", números e reservas do mês com o gráfico de 12 meses, conciliação e repasses, extratos dos canais no fim), com os ajustes que você pediu (quadros dois a dois, nada com rolagem lateral no celular); **antes do fechamento de outubro, guarde os extratos dos canais em Financeiro → Repasses → "Extratos dos canais"** para irem no e-mail (item 32 da seção 6); os e-mails do fechamento e do repasse ganharam a versão bonita (HTML) na mesma ordem do texto; **documento "Como funciona" para o proprietário pronto (M5.6):** texto por seção em Configurações → Como funciona (proprietário), versão datada a cada publicação, aceite registrado no convite e no portal (quem, quando, qual versão) — **nada aparece no portal até você revisar o rascunho e publicar a versão 1** (seção 6, item 31); **reserva paga antes do início é acertada inteira por fora (M4.12):** o corte do início do sistema passou a ser pela data em que o canal pagou a reserva, não por noite — a reserva de 29/9 a 2/10 paga em 30/9 é toda de antes, com a noite de outubro; a paga a partir de 1/10 entra inteira; Booking, site e direta que atravessam 30/9→1/10 precisam do recebimento registrado **com a data em que o canal pagou** antes da marcação (item 29 da seção 6); Configurações → Regras financeiras ganhou "em quantos dias depois do check-in o canal paga" (Airbnb: 1) — seção 2; **antes do fechamento de outubro (o primeiro no sistema), faça o item 29 da seção 6: defina o início do sistema (1/10/2026) em Configurações → Repasses e clique em "Marcar como acertado por fora" em Financeiro → Repasses (M4.11) — nada de setembro entra de novo e o fechamento sai sem tratamento à mão;** **modelo oficial do relatório mensal especificado (M5.7, a implementar):** o relatório de setembro que a Lia montou com você virou o padrão, no visual novo, com números do mês e os extratos das OTAs no fim — veja o protótipo com dados fictícios e me diga o que mudar (seção 2 e seção 7); **portal do proprietário marketplace pronto (M12.4):** quem tem contrato marketplace edita no portal os preços e as regras de venda do próprio imóvel (com a conta do site ao vivo), vê se a mudança já foi ao Beds24, marca as limpezas como feitas e registra os consertos por conta própria (seção 2); **atenção ao fechamento de outubro — o primeiro no sistema: checklist no item 29 da seção 6 (setembro já acertado por fora não pode entrar de novo);** **extrato e repasses por periodicidade prontos (M4.10):** o proprietário vê no portal a parte dele em cada reserva (a liberar, disponível, repassada), escolhe como quer receber (mensal, quinzenal, semanal, assim que disponível) e pode pedir um repasse; você registra o recebimento do canal na reserva, marca o repasse pago com o comprovante e o e-mail sai sozinho (seção 2); **identidade visual nova implementada (M7.5):** site, portais e painel estão no visual do estudo que você aprovou (verdes, off-white de papel, grão sutil nos fundos, busca translúcida, serifa nos títulos; painel mais denso), com três textos novos da capa editáveis em Configurações → Site (seção 2); **acervo visual do Sage guardado e especificação de design escrita (M7.5):** o visual que você aprovou está em `prototipos/acervo-visual-2026-10` (e o código dele já estava em `prototipos/scl-publico`); os tokens e os ajustes combinados estão em `requisitos/product/DESIGN.md`; falta só implementar; **fonte de preços por imóvel pronta (M3.9):** cada imóvel escolhe, na ficha, se os preços são automáticos do SCL, definidos no Beds24 (o SCL só lê) ou digitados no cadastro; site, envio ao Beds24, prévia e portal seguem a escolha (seção 2); item novo de **identidade visual** (M7.5, aprovado por você); **referência do sistema antigo cruzada com o plano (M0.6):** o museu que você mandou foi percorrido tela a tela e comparado com o que já existe, com uma lista de ideias para você decidir (seção 2 e `arquivo/sistema-antigo`); **desconto do site e simulação do marketplace prontos (M12.1):** nova aba Configurações → Marketplace e desconto do site, com as taxas de referência e os três pesos editáveis e a simulação Airbnb × Booking × site; o site passa a mostrar valor cheio, desconto e total em toda consulta e cotação (seção 2); recebimento do site decidido (M8.0: empresa recebe e repassa, Mercado Pago; repasse na periodicidade que o proprietário escolher, item novo M4.10), modelo do marketplace decidido (B, partes iguais; M12.1 liberado), marketplace recebendo pela empresa como o site, fonte de preços por imóvel no plano (M3.9), backup do repositório ativado por você (M0.7), publicação de homologação dada por fechada por você (M0.5), pedido do checkout com Pix e cartão registrado (M8.2, com parcelamento pago pelo hóspede) e decisão de não cobrar nada sobre as reservas das OTAs do dono do marketplace; correção do robô de backup depois da sua primeira rodada (ele passa a gravar com uma chave da própria conta de backup e guarda o que vem da origem fora de branches e tags, onde nenhuma automação roda; item 23, passos 4, 5 e 7) e passo a passo mais detalhado (passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório ativo na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
 
 ---
 
@@ -13,8 +16,11 @@
 - **Onde está:** tudo neste repositório do GitHub, `al-life/scl-reconstrucao`.
 - **Quem constrói:** o Claude, por meio de uma rotina automática a cada 3 horas e das
   conversas com você.
-- **Quem decide:** você. Por enquanto o Claude faz os merges sozinho (com CI verde e revisão
-  automática sem pendências), por sua autorização; você pode revogar quando quiser.
+- **Quem decide:** você. Desde 9/10, Claude e Codex podem fazer o merge do trabalho autorizado
+  depois de todas as checagens e da revisão automática do Codex no GitHub concluídas, no
+  commit mais recente e sem apontamentos pendentes. Sem limite de rodadas de revisão: os
+  agentes corrigem e conferem quantas vezes forem necessárias, e te avisam com um resumo
+  curto do que mudou. Você pode revogar essa autorização quando quiser.
 - **Está em uso?** **Não.** Só vai ser usado "para valer" quando tudo estiver pronto
   (marco M11).
 
@@ -27,16 +33,344 @@
 | M0 Fundação | Base do app, banco de dados, layout, publicação na Vercel, backup | 🟡 Vercel e login funcionando; banco de homologação separado conferido em 3/10; backup automático do repositório **ativo desde 4/10** em conta separada (M0.7, seção 6, item 23); conferência automática dos PRs mais rápida (M0.8); M0.5 fechado por você em 4/10; referência do sistema antigo cruzada com o plano em 4/10 (M0.6). **M0 concluído** |
 | M1 Acesso | Login (Google/código por e-mail), convites, permissões | ✅ pronto |
 | M2 Cadastros | Imóveis, proprietários, contratos e aba Anúncios | ✅ implementado; referências dos canais precisam ser preenchidas/conferidas |
-| M3 Reservas | Reservas, calendário central, importação e envio de calendário/preços ao Beds24 | 🟡 importação e envio implementados; o envio começa desligado e espera o seu teste no 103; conferência das reservas parcial; fonte de preços por imóvel escolhida na ficha de cada imóvel (M3.9) pronta |
+| M3 Reservas | Reservas, calendário central, importação e envio de calendário/preços ao Beds24 | 🟡 importação e envio implementados; o envio começa desligado e espera o seu teste no 103; conferência das reservas parcial; fonte de preços por imóvel escolhida na ficha de cada imóvel (M3.9) pronta; sobras de feriado e evento com reserva usam o mínimo normal da semana (M3.10, 9/10) |
 | M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | 🟡 em andamento; extrato e repasses por periodicidade prontos (M4.10); início do sistema e acerto por fora do que é de antes (M4.11); conciliação do extrato bancário (M4.4b) e Pix automático dependem do banco/Mercado Pago; reserva paga antes do início acertada inteira por fora, pela data em que o canal pagou (M4.12); dia do fechamento no dia 2, editável de 1 a 5 (M4.13, 5/10) |
-| M5 Portal do proprietário | Relatórios, saldos, PDF, bloqueio de uso próprio | 🟡 relatórios, PDF, e-mail do fechamento e bloqueio de datas prontos; documento "como funciona" para o proprietário pronto, aguardando você publicar a versão 1 (M5.6); relatório mensal no modelo oficial pronto (M5.7), com os extratos dos canais guardados por mês para o e-mail; ajustes de 5/10 no relatório prontos (M5.8: noites ocupadas, receita por noite disponível, estadia média, gráfico de ocupação) |
-| M6 Operação | Limpezas, manutenção, agenda diária | 🟡 em andamento |
-| M7 Site público | Site novo com disponibilidade e valor reais | 🟡 disponibilidade e valor prontos; visual novo do site, dos portais e do painel pronto (M7.5, 4/10); páginas legais do site (M7.4) a fazer; fotos reais (M7.3) dependem de você |
-| M8 Reserva direta | Cotação, datas seguradas e pagamento pelo Mercado Pago | 🟡 cotação e "segurar as datas" prontos; recebimento decidido em 4/10 (empresa recebe e repassa); pagamento (M8.2) espera só as credenciais de teste do Mercado Pago |
+| M5 Portal do proprietário | Relatórios, saldos, PDF, bloqueio de uso próprio | 🟡 relatórios, PDF, e-mail do fechamento e bloqueio de datas prontos; documento "como funciona" para o proprietário pronto e com a versão 1 publicada por você em 7/10 (M5.6); relatório mensal no modelo oficial pronto (M5.7), com os extratos dos canais guardados por mês para o e-mail; ajustes de 5/10 no relatório prontos (M5.8: noites ocupadas, receita por noite disponível, estadia média, gráfico de ocupação); Beds24 fora dos textos do portal e do site (M5.9, 7/10) pronto |
+| M6 Operação | Limpezas, manutenção, agenda diária | 🟡 em andamento; a equipe entra sem e-mail e vê só a agenda da cidade dela (M6.8, 7/10); aviso pelo WhatsApp depende do M10 |
+| M7 Site público | Site novo com disponibilidade e valor reais | 🟡 disponibilidade e valor prontos; visual novo do site, dos portais e do painel pronto (M7.5, 4/10); páginas legais prontas (M7.4, 9/10): você revisa e publica; fotos reais prontas (M7.3, 7/10: você sobe na ficha do imóvel); site do hóspede no visual do estudo pronto (M7.6, 7/10); página para proprietários pronta (M7.7, 8/10) |
+| M8 Reserva direta | Cotação, datas seguradas e pagamento pelo Mercado Pago | 🟡 cotação e "segurar as datas" prontos; recebimento decidido em 4/10 (empresa recebe e repassa); pagamento dividido em cinco partes (8/10): **Pix em teste pronto (M8.2a)**, testado nas prévias com as suas chaves de teste; **cartão em teste pronto (M8.2b, 9/10)**, desligado até você ligar; cancelamento, alteração e contestação a seguir |
 | M9 Portal do hóspede | Acesso do hóspede e mensagens automáticas | ✅ pronto |
 | M10 WhatsApp | Caixa de entrada do WhatsApp no painel | ⚪ aguardando |
 | M11 Produção | Dados reais, domínio, entrada em uso | ⚪ aguardando |
-| M12 Marketplace | Proprietário que opera o próprio imóvel; SCL cuida do online | 🟡 portal do proprietário marketplace pronto (M12.4, 4/10); cadastro pelo site pronto; modelo de cobrança (B, partes iguais) com pesos editáveis, simulação e desconto único do site prontos (M12.1); cálculo e repasse no financeiro (M12.2) dependem do pagamento (M8.2) e do extrato (M4.10) |
+| M12 Marketplace | Proprietário que opera o próprio imóvel; SCL cuida do online | 🟡 portal do proprietário marketplace pronto (M12.4, 4/10); cadastro pelo site pronto; modelo de cobrança (B, partes iguais) com pesos editáveis, simulação e desconto único do site prontos (M12.1); cálculo e repasse no financeiro (M12.2) dependem do pagamento (M8.2) e do extrato (M4.10); pesos 6/3/3 no padrão do sistema (M12.5, 7/10) |
+
+### Pagamento com cartão no site, em teste — M8.2b (9/10)
+
+Esta é a segunda das cinco partes do pagamento pelo site: o **cartão de crédito**, também em **modo
+de teste** (sem dinheiro de verdade), só nas prévias da Vercel e só com a conta de teste do Mercado
+Pago. Ele vem **desligado**: você liga quando quiser testar (item 40 da seção 6).
+
+- **Para o hóspede:** depois de segurar as datas, o quadro "Pagamento" mostra a escolha **Pix
+  (recomendado)**, já marcado e em destaque, ou **Cartão de crédito**. No cartão, ele marca primeiro o
+  aceite das páginas legais; só então aparece o formulário do Mercado Pago, com a marca do Mercado Pago
+  e as bandeiras aceitas. O número do cartão é digitado no formulário do Mercado Pago e nunca passa pelo
+  nosso sistema. Só cartão de crédito: débito e pré-pago não são aceitos. Aprovado, a página confirma a
+  reserva sozinha, como no Pix. Quem já estava com um Pix na tela pode trocar ("Prefere pagar com
+  cartão?"): o sistema cancela o Pix no Mercado Pago antes, para ninguém pagar duas vezes.
+- **Parcelas e juros:** o hóspede paga os juros do parcelamento, como você decidiu em 4/10. A página
+  avisa: "No cartão parcelado há juros do Mercado Pago, pagos por você; o total aparece no formulário
+  antes de confirmar." A reserva, a taxa e a parte do proprietário são calculadas sobre o valor da
+  reserva, sem os juros, que ficam com o Mercado Pago. O máximo de parcelas você escolhe no painel
+  (vazio = o máximo que o Mercado Pago permitir). Se um dia o Mercado Pago cobrar da empresa o custo das
+  parcelas (o "parcelamento sem acréscimo" ligado na conta), o sistema avisa e não lança a taxa sozinho,
+  para esse custo não sair da parte do proprietário sem você decidir.
+- **Verificação do banco:** às vezes o banco pede que o hóspede confirme a compra (no app do banco ou com
+  um código). Isso aparece num quadro do Mercado Pago na própria página, e as datas ficam seguradas por
+  até 42 minutos enquanto isso. Se a verificação não for concluída, a página diz só isso e oferece outro
+  cartão ou o Pix. No painel você escolhe quando o banco pede a verificação: **"quando houver risco"**
+  (recomendado, já vem assim) ou **"nunca"**. A diferença é quem arca quando alguém contesta uma compra
+  dizendo que o cartão foi roubado (decisão na seção 7).
+- **Cartão em análise:** às vezes o Mercado Pago analisa o pagamento antes de aprovar (pode levar até 2
+  dias úteis). As datas ficam seguradas por mais um tempo, uma vez por cotação: 60 minutos, ou o que você
+  escolher em **Configurações → Calendário e preços**. Enquanto a análise não termina, a cotação não
+  aceita outro pagamento (o Mercado Pago não deixa cancelar um cartão em análise) e o mesmo e-mail não
+  segura outras datas (até 5 dias, ou até o Mercado Pago decidir). Se a análise aprovar depois do prazo
+  das datas, a reserva confirma se as noites ainda estiverem livres; senão, o pagamento fica para devolver,
+  como no Pix. Se o mesmo e-mail já tiver outra reserva confirmada pelo site, o painel avisa que o
+  hóspede pode ter pago duas vezes. O texto que o hóspede lê nessa situação você edita em
+  **Configurações → Site**.
+- **Recusa:** o hóspede vê sempre a mesma mensagem, qualquer que seja o motivo: "Não foi possível aprovar
+  o pagamento com este cartão. Confira os dados, use outro cartão ou pague com Pix." É de propósito: quem
+  testa cartões roubados usa o motivo como pista. O motivo aparece na ficha da reserva só para quem vê o
+  financeiro, com o lembrete de não contar ao hóspede.
+- **Freios contra teste de cartão roubado:** até 3 tentativas de cartão por cotação, 5 por hora por
+  endereço de internet e 30 por hora na empresa toda. Com 8 recusas em meia hora, o cartão desliga sozinho
+  por 1 hora; na terceira vez no mesmo dia, ou com 20 recusas no dia, ele só volta quando alguém clicar
+  **Religar o cartão**. O Pix nunca desliga. O Início avisa quando o cartão desligou, quando o dia passa
+  de 10 recusas e quando várias recusas seguidas parecem ser chave do Mercado Pago trocada.
+- **No painel:** em **Configurações → Pagamento no site**, as opções **Oferecer cartão de crédito** (vem
+  desligada), **Número máximo de parcelas** e **Verificação do banco (3DS)**, e o quadro **Cartão**, com a
+  situação do freio, as recusas do dia, os últimos desligamentos, os limites e o botão **Religar o cartão**
+  (com confirmação, só para quem edita o financeiro). Na **ficha da reserva**, o quadro "Pagamento no
+  site" mostra, por exemplo, "Cartão de crédito · Visa · 3x" e os números do pagamento no Mercado Pago,
+  com botão de copiar, para você achar o pagamento lá. Só quem vê o financeiro vê o motivo de uma recusa,
+  o resultado da verificação do banco e os juros que o hóspede pagou. O número do cartão não aparece em
+  lugar nenhum.
+- **O dinheiro:** a taxa do cartão (cerca de 4% a 5%, conforme o prazo de liberação da conta) entra na
+  reserva como a do Pix. O Mercado Pago libera o dinheiro do cartão conforme o plano da conta (na hora, em
+  14 ou em 30 dias); como você decidiu, a parte do proprietário só fica disponível depois do check-in
+  **e** da liberação, e a empresa não adianta. Se o Mercado Pago liberar parcela por parcela, o sistema
+  avisa e você registra a liberação à mão.
+  **Conferência de 10/10:** os três prazos foram comparados com provedor e banco fictícios. Mesmo
+  depois da data prevista, sem a confirmação do dinheiro liberado não há recebimento nem parte
+  disponível para repasse. Leituras repetidas registram um único recebimento; a liberação imediata
+  continua esperando o check-in. Os valores do teste não são uma tabela de taxas comerciais.
+- **Devolução:** devolva pela ficha da reserva (**Devolver pelo Mercado Pago**). No cartão, **Registrar
+  devolução feita por fora** só é aceito quando o Mercado Pago não conseguiu devolver ou o pagamento tem
+  mais de 180 dias: senão a cobrança continuaria no cartão e o hóspede poderia contestar e receber duas
+  vezes (decisão na seção 7).
+- **O que fica guardado:** só a bandeira, o número de parcelas, o valor pago com os juros e o resultado da
+  verificação do banco; nunca o número do cartão, o CPF ou o nome do titular. O texto-base da Política de
+  privacidade já diz isso; publique uma versão nova antes de ligar o cartão (item 40).
+- **O que ainda não faz:** cancelar reserva paga (M8.2c), alterar reserva paga (M8.2d) e contestação
+  (M8.2e; o sistema já guarda o que ela vai precisar). Antes do dinheiro de verdade faltam também a
+  decisão sobre o campo de e-mail do formulário do cartão (seção 7) e uma proteção a mais da página do
+  pagamento, que eu faço antes de ligar a produção.
+
+### Páginas legais do site — M7.4 (9/10)
+
+O site agora tem as três páginas que a lei pede para vender pela internet: **Termos de uso**,
+**Política de privacidade** e **Política de cancelamento**. Elas são a base para o pagamento de verdade.
+
+- **O que o hóspede vê:** os três links no rodapé de todas as páginas do site e, se a razão social ou
+  o CNPJ estiverem preenchidos, a identificação da empresa (razão social, CNPJ e endereço). Enquanto
+  você não publicar, cada página diz só que está **em preparação** — nada do texto-base aparece.
+- **Antes de gerar o Pix:** o hóspede vê o **resumo da política de cancelamento**, a data-limite do
+  reembolso integral **daquela reserva** ("até 23h59 de 28/09/2026", por exemplo) e marca a caixa
+  "Li e aceito os Termos de uso e a Política de cancelamento, e li a Política de privacidade", com o
+  link de cada uma. Sem marcar, o Pix não sai. Quem já aceitou vê só a linha "Você aceitou… em
+  dd/mm às hh:mm"; na reserva confirmada, essa linha fica com a data-limite.
+- **Ao segurar as datas:** nada a marcar; o formulário só diz que os dados servem para a reserva,
+  com o link da Política de privacidade.
+- **Onde você edita:** **Configurações → Páginas legais do site**. Um documento por vez, com a
+  situação dos três, a **prévia** de como fica no site (o que falta aparece como "[falta: CNPJ]"),
+  o botão para copiar o texto (para mandar ao advogado) e **Publicar a versão N**, sempre com
+  confirmação. Cada publicação vira uma **versão numerada e datada**; as anteriores continuam no site
+  para quem aceitou. O histórico mostra a data, quem publicou e **quantos hóspedes aceitaram** cada
+  versão. Não dá para despublicar.
+- **Dados da empresa entram sozinhos:** nome, razão social, CNPJ, endereço, e-mail, telefone e o
+  **encarregado pela proteção de dados** (campo novo em **Configurações → Empresa**). Se o texto usa
+  um dado que está em branco, publicar é recusado e a tela diz qual preencher. Se você mudar um dado
+  da empresa depois, o site continua com o da versão publicada e o painel avisa para publicar de novo.
+- **Os 14 dias são um campo da política:** "Reembolso integral até quantos dias antes da entrada"
+  fica no formulário da Política de cancelamento e entra no texto sozinho. O texto e a devolução
+  (quando o cancelamento pelo site existir) usam sempre o mesmo número.
+- **Versão nova vale para os próximos pagamentos:** quem já aceitou fica com a versão que aceitou. Um
+  Pix ainda válido continua valendo; um Pix novo pede o aceite da versão nova. Um pagamento aprovado
+  nunca é recusado por causa de versão.
+- **Onde ver o que o hóspede aceitou:** na ficha da reserva, no painel. Cada tentativa de pagamento
+  tem a linha "Aceite" (Termos v1 · Privacidade v1 · Cancelamento v1, o prazo do reembolso e a hora),
+  e a seção **Páginas legais aceitas** lista todos os aceites da reserva. Nada do hóspede é copiado
+  para esse registro (nem e-mail, nem IP): ele fica ligado à reserva.
+- **Os textos são um ponto de partida:** escrevi a partir da lei e ninguém do direito conferiu ainda.
+  A lista do que levar ao contador e ao advogado está no item 39 da seção 6.
+
+### Sobras de feriado e evento com reserva — M3.10 (9/10)
+
+Em 6/10 você decidiu: se um feriado ou evento (Réveillon, Carnaval, um feriadão) já tem uma reserva
+no imóvel, as noites que sobraram livres nesse período não precisam mais do mínimo especial. Agora o
+sistema faz isso sozinho:
+
+- **Com reserva confirmada no período:** cada noite livre do período pede o **mínimo normal da
+  semana**: 1 noite de domingo a quinta, 2 na sexta e no sábado (e o mínimo do cadastro do imóvel, se
+  ele tiver um). Se a sobra até a próxima reserva for menor, o mínimo cai para caber nela: um sábado
+  que sobrou sozinho pede 1 noite, para não encalhar.
+- **O preço não muda:** todas as noites do período continuam com o preço do evento ou do feriadão,
+  antes e depois da reserva. Depois do período, tudo volta ao normal da data.
+- **Sem reserva confirmada, nada muda:** consulta, pedido do site ainda não pago ou reserva pendente
+  não contam. Enquanto não há reserva confirmada, vale o mínimo especial no período inteiro.
+- **Feriado dentro do evento:** se um feriadão cai dentro do Réveillon ou do Carnaval (Natal, 1º de
+  janeiro, um feriado estadual), nas noites em que o evento já cedeu o feriadão cede junto. Fora do
+  evento, o feriadão segue a própria regra: só cede se tiver reserva confirmada na janela dele.
+- **Período do cadastro do imóvel continua mandando:** se você cadastrou na ficha do imóvel um
+  período com mínimo próprio, ele vale como antes.
+- **Onde aparece:** no envio ao Beds24, na prévia do envio (a coluna do mínimo explica a regra
+  usada) e no site, que usa o mesmo cálculo.
+- **Liga e desliga no painel:** em **Configurações → Calendário e preços**, cada evento mostra na
+  coluna **Com reserva** se usa o mínimo normal nas noites livres, com um botão para trocar. Nos
+  feriadões, a opção fica junto do mínimo do feriadão. Vem ligada; desligue nas temporadas longas,
+  como a alta temporada (senão uma reserva em dezembro tiraria o mínimo da temporada inteira).
+
+### Pagamento pelo site, em teste — M8.2a (8/10)
+
+O pagamento pelo site começou. Ele foi dividido em cinco partes, e esta é a primeira: **Pix**, em
+**modo de teste** (sem dinheiro de verdade), com toda a base que as outras partes usam. Depois vêm o
+cartão (M8.2b), o cancelamento com devolução (M8.2c), a alteração de reserva paga (M8.2d) e a
+contestação de cartão (M8.2e). O dinheiro de verdade só liga com as cinco partes, as páginas legais
+(M7.4) e as decisões que ainda faltam.
+
+- **Para o hóspede:** depois de segurar as datas, a página da cotação mostra o **Pix**: o código
+  copia e cola (com botão de copiar), o QR e o prazo. O hóspede paga no app do banco e a página
+  confirma sozinha: "Pagamento aprovado: reserva SCL-… confirmada", com o link para Minha reserva. Se
+  o pagamento chegar mas as datas não puderem ser garantidas, a página diz que a equipe vai falar com
+  ele e devolver o valor integral, e nunca o manda pagar de novo. Só quem segurou as datas naquele
+  aparelho vê o Pix; em outro aparelho, o hóspede usa **Continuar o pagamento** com o e-mail que deu.
+- **As datas ficam seguradas até o fim do Pix.** O Mercado Pago exige que o Pix valha pelo menos 30
+  minutos, então gerar um Pix segura as datas por pelo menos esse tempo (até 3 Pix por cotação, um
+  de cada vez). Um Pix pago no último minuto não perde a reserva.
+- **A reserva confirma sozinha** quando o pagamento é aprovado com as datas ainda seguradas. Pedido
+  que você ou a equipe cancelaram nunca volta sozinho. Até o envio ao Beds24 ser ligado, o Início
+  avisa "reserva do site paga: feche as datas nas OTAs" (feche como **bloqueio** no Beds24, nunca
+  como reserva, senão a importação cria uma segunda reserva).
+- **O dinheiro:** a taxa real do Mercado Pago entra na reserva. A parte do proprietário só fica
+  disponível depois do check-in **e** de o Mercado Pago liberar o dinheiro. A data de liberação que
+  o Mercado Pago mostra é só uma previsão; a liberação conta quando ele disser que liberou (o
+  recebimento entra no caixa no dia em que o sistema viu isso), ou quando você registrar à mão,
+  conferindo no Mercado Pago (vale a data que você informar; se depois o Mercado Pago confirmar o
+  mesmo valor, o registro fica conferido).
+- **No painel:** a ficha da reserva ganha o quadro **Pagamento no site** (situação, valores e os botões
+  **Conferir agora**, **Registrar liberação** (e **Estornar liberação**, se registrou errado),
+  **Devolver pelo Mercado Pago**, **Registrar devolução feita por fora** e, depois de uma devolução,
+  **Registrar taxa que não voltou**, só para quem edita o financeiro, sempre com confirmação). Em **Financeiro →
+  Pagamentos do site** está a lista de todos, com o filtro "pede atenção". Em **Configurações →
+  Pagamento no site** você liga e desliga o pagamento e vê, imóvel por imóvel, se o Pix é oferecido
+  ou por que não. Em **Integrações** aparece a situação da conexão com o Mercado Pago.
+- **Onde roda o teste:** só nas **prévias** da Vercel (os links dos PRs), que usam um banco separado.
+  No endereço de produção o site continua com o pedido pela conversa, porque ali está a operação
+  real (os recebimentos de outubro). Por isso as chaves de teste vão só no ambiente **Preview** da Vercel.
+  Nas prévias nada confere sozinho: a página do hóspede confere o próprio Pix e o botão **Conferir
+  agora** faz o resto.
+- **Travas:** o sistema só cobra se o Mercado Pago confirmar que a conta das chaves é **de teste** e se
+  você ligar **Oferecer pagamento no site** (vem desligado). Chave de produção, mesmo por engano, não
+  cobra nada nesta parte.
+- **O que ainda não faz:** cartão (M8.2b, pronto em 9/10, acima); cancelar uma reserva já paga (o painel recusa e explica;
+  chega no M8.2c); alterar reserva paga (M8.2d); contestação (M8.2e). Nenhum e-mail novo vai ao
+  hóspede: a confirmação do M9.2 passa a valer para as reservas pagas quando você ligar as mensagens.
+
+### Página para proprietários — M7.7 (8/10)
+
+Você pediu em 7/10 uma página de verdade para quem tem imóvel, junto com o site. "Anuncie seu imóvel"
+agora é essa página, no mesmo visual do site:
+
+- **Capa** com o convite e dois botões: pedir uma análise do imóvel (gestão completa) ou cadastrar no
+  marketplace.
+- **As duas formas de trabalhar:** gestão completa (a empresa cuida de tudo) e marketplace (o
+  proprietário cuida do imóvel e a empresa vende pelo site).
+- **Como gerimos:** os passos, do anúncio ao repasse.
+- **Vitrine** com os imóveis públicos do site e **"Portfólio pequeno, de propósito"**.
+- **Como funciona:** o mesmo documento que cada proprietário aceita no portal, na versão publicada.
+  Só aparece quando há uma versão publicada.
+- **Faixa de mercado:** diária média, ocupação e, se quiser, o líquido por mês, por tipo de imóvel.
+  **Só aparece quando você digitar números reais**, com o mês e de onde vêm, e sempre com o aviso de
+  que é estimativa, sem garantia. Sem números, a seção não existe.
+- **Pedido de contato (gestão completa):** a pessoa deixa nome, e-mail, WhatsApp, bairro e uma
+  mensagem. O pedido chega em **Proprietários → Pedidos de contato**, aparece nas pendências do
+  **Início** do painel e vai por e-mail para o e-mail da empresa (Configurações → Empresa). Ali você
+  responde pelo e-mail ou WhatsApp e marca como respondido, ou arquiva. Contra envio em massa, há
+  limites que se desfazem sozinhos: 3 pedidos por e-mail em 24 horas, 5 por hora do mesmo endereço
+  de internet e 30 por hora no total. Ninguém precisa arquivar nada para o formulário voltar a funcionar.
+- **Cadastro do marketplace:** igual ao de antes (e-mail, código e dados do imóvel). No meio do
+  cadastro, a página mostra só ele.
+
+Tudo que é texto se muda em **Configurações → Página para proprietários**, com um texto-base para você
+revisar. O texto-base só diz o que a empresa de fato faz (o mesmo do "Como funciona").
+
+### Site do hóspede no visual do estudo — M7.6 (7/10)
+
+Você pediu em 7/10 para deixar o site "bonitinho de acordo com aquelas referências". Comparei página a
+página com o estudo do Sage e trouxe o que faltava. Tudo que é texto ou foto se muda no painel; nada de
+dado inventado.
+
+- **Página inicial:**
+  - **Capa com foto:** a foto que você escolher em **Configurações → Site → Imagens do site** fica atrás
+    do título, de ponta a ponta. Pode ser a original do celular: o sistema reduz antes de subir. Sem foto,
+    a capa continua no fundo verde, nunca uma imagem genérica.
+  - **Legenda vertical:** o texto pequeno no canto da foto ("Leblon, do nosso jeito.") e o link
+    "Encontre seu lugar".
+  - **Vitrine "Seu endereço no Leblon":** um carrossel com setas que anda sozinho. Para ao passar o mouse
+    e tem o botão "Pausar movimento". Não anda para quem pediu menos movimento no aparelho. No celular,
+    mostra um cartão por vez.
+  - **Cartões das casas:** a capa (M7.3) com um selo ("Studio · Leblon"), até quatro ícones das
+    comodidades do cadastro e "Até N hóspedes".
+  - **"Por que reservar direto":** começa com um texto-base para você revisar perto da entrada no ar
+    (conversa direta, valor claro desde o início, um bairro para viver). Se você já tinha escrito algo
+    ali, o seu texto continua valendo.
+- **Página do imóvel:**
+  - **"O bairro à sua porta":** os lugares perto do imóvel (nome, distância, frase curta e foto opcional).
+    Você cadastra em **Configurações → Site → O bairro à sua porta**. As fotos de lugares do estudo não
+    entram, porque os direitos delas não foram liberados: só fotos suas. Sem lugar cadastrado, a seção
+    não aparece.
+  - **Comodidades com ícone:** a lista "O que você encontra" ganhou os ícones.
+- **Escolha de datas:** a entrada e a saída são escolhidas num calendário do próprio site, em português
+  (dois meses lado a lado no computador, um no celular). As noites já ocupadas aparecem marcadas assim
+  que o hóspede escolhe o lugar. A conferência final (mínimo de noites, regras) continua no servidor,
+  como antes.
+- **Consulta:** em duas colunas, como no estudo. À esquerda fica o formulário; à direita, o quadro
+  "Resumo da viagem", com a situação, o valor por partes, "Segurar estas datas" e a mensagem para o
+  WhatsApp. Antes da consulta, o quadro diz "a confirmar". A escolha Pix ou cartão entra com o pagamento
+  (M8.2).
+- **Marca:** o ícone do logotipo aparece no topo e no rodapé. Vale a marca do estudo até você enviar
+  outra, também em Imagens do site.
+- **Textos novos editáveis** em Configurações → Site:
+  - a legenda vertical;
+  - o olho, o título e a frase da vitrine;
+  - o olho e o título de "Por que reservar direto";
+  - o olho da chamada final;
+  - o olho, o título e a frase da página de consulta.
+
+### Equipe entra sem e-mail — M6.8 (7/10)
+
+Você decidiu em 7/10: vários jeitos de entrar, sem verificação em duas etapas, e o acesso bem contido.
+Ficou assim:
+
+- **Usuário e senha criados por você:** em **Limpezas → Profissionais**, em cada profissional, escreva
+  um usuário (ex.: `maria.limpeza`) e, se quiser, a senha; deixando a senha em branco, o sistema cria
+  uma fácil de ditar (tipo `kp7m-x3cd-h9ta`). Ao salvar, aparece uma mensagem pronta com usuário e
+  senha para copiar e mandar pelo WhatsApp. **A senha aparece só essa vez** — depois nem você vê; se a
+  pessoa esquecer, é só definir outra (e quem estava entrado com a antiga sai na hora). Só você (admin)
+  vê essa parte.
+- **Como ela entra:** em `/entrar`, abre "Entrar com usuário e senha" e digita o usuário (ou o e-mail,
+  se tiver) e a senha. Não precisa de e-mail. Quem tem e-mail continua podendo entrar pelo código, e
+  quem tem conta Google com o mesmo e-mail, pelo Google.
+- **A senha é dela:** no acesso dela aparece "Minha senha" para trocar a provisória por uma que só ela
+  saiba (pelo menos 8 caracteres). Quem entrou pelo código ou pelo Google pode criar uma senha ali.
+- **Segurança sem complicar:** a senha não fica guardada, só uma "impressão digital" dela. Cinco
+  erros seguidos para o mesmo usuário e é preciso esperar 15 minutos; se ela pedir socorro, a senha
+  nova que você cria vale na hora, sem esperar. Contra quem tenta adivinhar em massa, o sistema também
+  segura tentativas demais vindas do mesmo lugar ou todas juntas (passa sozinho em poucos minutos).
+  "Tirar acesso" corta todos os jeitos de entrar na hora.
+- **Cada uma vê só a cidade dela:** na mesma tela, marque a cidade da agenda de cada profissional. O
+  acesso dela mostra as limpezas dela e a **agenda da equipe** só daquela cidade, no mesmo formato da
+  agenda de sempre (Búzios com as reservas dos próximos 30 dias; Rio com as limpezas por dia e as
+  entradas e saídas à parte). Sem cidade marcada, ela não vê agenda nenhuma e a tela avisa. Nada de
+  financeiro, proprietários ou o resto do painel.
+- **Cadastro inconsistente:** se o acesso da profissional estiver ligado a uma conta de outro perfil
+  ou outra empresa, tentar criar/trocar/retirar esse acesso mostra um aviso e preserva a conta. Não
+  aparece o acesso dessa outra conta nem vai aviso de limpeza para ela. Arquivar a profissional
+  também preserva a conta que estiver vinculada por engano; a correção do vínculo precisa ser conferida.
+- **Avisos:** o aviso de limpeza por e-mail só vai para quem tem e-mail; para os outros, a limpeza
+  aparece na tela dela. O aviso pelo WhatsApp entra quando o WhatsApp for ligado (M10).
+
+### Fotos reais dos imóveis — M7.3 (7/10)
+
+Você liberou em 7/10 as fotos dos anúncios do Airbnb (ou as que você separa). Agora elas têm lugar
+no sistema:
+
+- **Onde subir:** Imóveis → o imóvel → parte **Fotos**, logo abaixo do cadastro completo. Escolha
+  várias de uma vez e clique em "Subir fotos". Pode mandar a foto original do celular: cada uma é
+  reduzida no seu navegador antes de subir (uma versão grande para a galeria e uma pequena para os
+  cartões e o relatório), então sobe rápido e não ocupa espaço à toa. Até 40 fotos por imóvel.
+- **Capa e ordem:** a primeira foto é a capa. Cada foto tem as setas para mudar de lugar, "Usar como
+  capa", a legenda (o texto que descreve a foto; no site, ela aparece sobre a foto e ajuda quem usa
+  leitor de tela) e "Remover", que pede confirmação. Tudo fica no histórico do imóvel.
+- **No site:** os cartões da página inicial e de "Nossas casas" mostram a capa; a página do imóvel
+  ganha a galeria com a foto em destaque, o contador (3 / 9) e as miniaturas ao lado (no celular,
+  embaixo, rolando para o lado). Imóvel sem foto continua com o quadro "foto em breve", nunca uma
+  imagem genérica. Foto de imóvel que não está no site não aparece para ninguém de fora.
+- **No relatório mensal:** a capa do PDF usa a primeira foto da ficha — no portal, no e-mail do
+  fechamento e no painel (no painel você ainda pode escolher outra foto só para aquele PDF).
+- **Na aba Anúncios:** o quadro do site diz quantas fotos reais o imóvel tem.
+
+A foto do Leblon na capa da página inicial, a vitrine em carrossel e a seção "O bairro à sua porta" vieram
+no M7.6 (acima).
+
+### Beds24 nos bastidores — M5.9 (7/10)
+
+Você pediu em 7/10: "nem proprietários nem hóspedes precisam saber que tem Beds24 no meio". Conferi tudo o
+que o proprietário e o hóspede leem (portal, site, portal do hóspede, e-mails, relatório) e o Beds24 só
+aparecia no portal do proprietário. Agora:
+
+- **Fonte de preços e preço da noite:** o portal diz "Preços automáticos da SCL", "Preços definidos por você
+  ou pela sua ferramenta de preços" ou "Preços digitados no cadastro", com a explicação sem citar o Beds24.
+- **Envio aos canais:** o que antes era "envio ao Beds24" virou "envio aos canais". Se o último envio falhou,
+  o portal diz só que falhou e quando; o motivo técnico fica no painel, para você.
+- **Bloqueio de datas:** "as datas fecham nos canais (Airbnb, Booking)"; bloqueio que veio dos canais
+  aparece como "Canal", e se o proprietário tentar liberar, a mensagem pede para falar com a empresa.
+- **Site:** quando o preço de uma data ainda não foi lido, o hóspede vê só "o preço dessas datas ainda não foi
+  confirmado: confirmamos na conversa".
+- **Para não voltar:** um teste automático varre as telas, e-mails e documentos do proprietário e do hóspede
+  e falha se a palavra Beds24 aparecer num texto.
+- **O painel continua dizendo Beds24**, porque é para você e a equipe.
 
 ### Relatório mensal: ocupação e indicadores do setor — M5.8 (5/10)
 
@@ -731,9 +1065,9 @@ bloqueio só no Beds24) vira aviso, não ação.
 7. Só então ligue o **envio automático diário** e, se quiser, marque os outros imóveis.
 
 **Limites:** a releitura confirma o que o Beds24 gravou, não a cotação final no Airbnb
-(taxas, limpeza, descontos por duração ficam fora). Última hora em grandes eventos,
-reprecificação de sobras de Réveillon/Carnaval e as tarifas próprias de Búzios continuam
-decisões suas: o sistema aplica as faixas em todas as noites, como as regras nativas fazem
+(taxas, limpeza, descontos por duração ficam fora). Última hora em grandes eventos
+e as tarifas próprias de Búzios continuam decisões suas (as sobras de feriado e evento com
+reserva já seguem a sua regra de 6/10, no M3.10): o sistema aplica as faixas em todas as noites, como as regras nativas fazem
 hoje, e não inventa preço para Búzios (cadastre eventos próprios ou deixe fora). Dias de
 entrada/saída restritos no cadastro ainda não são enviados.
 
@@ -1428,8 +1762,8 @@ Não precisa preencher descrições dos apartamentos para importar. A melhoria n
     uma mensagem pronta que ele envia pelo **WhatsApp da empresa** (o telefone em
     Configurações → Empresa; sem telefone, vai por e-mail). **Nada é gravado nem cobrado**:
     disponibilidade e valor são combinados na conversa (a cotação automática é o M7.2);
-  - **fotos:** enquanto os direitos de uso não forem liberados (M7.3), aparece um quadro
-    com o nome do apartamento no lugar de cada foto;
+  - **fotos:** as fotos reais que você sobe na ficha do imóvel (M7.3, 7/10); imóvel sem foto
+    mostra um quadro com o nome do apartamento;
   - há um link discreto **"Área da equipe"** no rodapé, que leva ao login do painel.
 - M9.1: **portal do hóspede — "Minha reserva"** (link no topo do site):
   - o hóspede digita o **e-mail que está na reserva** e recebe um **código de 6 dígitos**
@@ -1505,11 +1839,13 @@ A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 3. Dois robôs conferem cada PR automaticamente:
    - **CI** (GitHub Actions): roda todos os testes. Verde = passou.
    - **Codex**: revisão automática de código. O Claude corrige o que ele apontar.
-4. **O Claude faz o merge** (autorizado por você em 23/09, até o sistema estabilizar), mas só
-   quando o CI está verde, a revisão do Codex terminou sem pendências e não há conflito.
-   Você continua podendo ler cada PR — a descrição explica em português o que mudou — e
-   pode pedir para voltar a ser você quem faz o merge a qualquer momento.
-5. Pode haver até **3 PRs abertos** ao mesmo tempo esperando seu merge.
+4. **Claude e Codex fazem o merge** do trabalho autorizado (regra atualizada por você em
+   9/10), somente depois de todas as checagens aplicáveis e da revisão automática do Codex
+   no GitHub concluídas para o último commit, com os apontamentos tratados e sem conflito.
+   Corrigem e cumprem quantas rodadas forem necessárias, sem teto, e te avisam com um resumo
+   curto do que mudou. Você pode revogar a autorização a qualquer momento.
+5. Pode haver até **3 PRs de roadmap abertos** ao mesmo tempo aguardando as checagens,
+   as correções e a revisão antes do merge pelos agentes.
 
 **Onde ver o sistema:** assim que a Vercel estiver conectada (seção 6), cada PR ganha um
 link de *preview*, e a `main` fica publicada num endereço fixo de homologação. O painel
@@ -1551,11 +1887,27 @@ e escreva normalmente.
 | **Neon** | Banco de dados (Postgres) | ✅ projeto `scl-sistema` com duas branches: `main` (produção) e `preview` (versões de teste dos PRs); as 41 migrações até o M5.5 aplicadas nas duas, conferido em 3/10 | **Backup:** desde 3/10, 7 dias de histórico e snapshots diário (14 dias) e semanal (35 dias) da `main`, dentro do Neon (seção 6, item 23b). Cópia fora do Neon e checklist ficam para o M11.3 |
 | **Vercel** | Publica o sistema na internet (homologação e depois produção) | ✅ site acessível (27/09); conferido em 3/10 que produção usa a branch `main` do Neon e as previews dos PRs usam a branch `preview` — bancos separados | Variáveis já presentes: banco, login Google, Beds24 (leitura), Resend, agendador. Faltam só as que ligam coisas novas (`BEDS24_ESCRITA`, item 3) |
 | **Beds24** | Channel manager (Airbnb/Booking), reservas, calendário e preços | 🟡 importação feita por Diego (1 e 2/10); envio de calendário/preços pronto e **desligado** | Testar o envio no 103 (simular → `BEDS24_ESCRITA=ligada` com refresh token de inventário → enviar → conferir no Beds24/Airbnb) e só então ligar o automático (seção 6, item 3) |
-| **Mercado Pago** | Pagamentos da reserva direta | ⚪ não conectado | Credenciais de *teste* do Mercado Pago (provedor decidido em 4/10), quando eu pedir no M8.2 |
-| **Meta / WhatsApp Business** | Atendimento pelo WhatsApp da empresa | ⚪ não conectado | Verificação da empresa no Meta Business (demora dias) |
+| **Mercado Pago** | Pagamentos da reserva direta | 🟡 Conta Negócio no CNPJ aberta por você (8/10); Pix em teste pronto (M8.2a); cartão em teste pronto (M8.2b, 9/10) | Criar a aplicação, pôr as chaves de teste só no ambiente Preview da Vercel e testar um Pix (seção 6, item 37); depois, o cartão (item 40) e os ajustes da conta logo abaixo |
+| **Meta / WhatsApp Business** | Atendimento pelo WhatsApp da empresa | ⚪ não conectado | Entrar no Meta (o login voltava para a tela de entrada, 8/10) e decidir qual número o sistema vai usar; a verificação da empresa pode esperar o site no ar (seção 6, item 4) |
 | **Google Cloud (login)** | Botão "Entrar com Google" | ✅ login confirmado por Diego em 27/09 | — |
 | **Resend** (envio de e-mail) | E-mails do sistema: código de login, convites, agenda da equipe, relatórios, mensagens ao hóspede | 🟡 conta criada (e conector no Claude) | Cadastrar o domínio e pôr a chave na Vercel (seção 6, item 5) |
 | **Cloudflare** | Domínio e e-mail | ⚪ não conectado | Só no final (M11) |
+
+**Páginas legais (M7.4):** a Política de privacidade cita o Mercado Pago, a Vercel e o Neon; se
+trocar algum desses serviços, publique uma versão nova dela.
+
+**Mercado Pago e o cartão (M8.2b):** a chave pública que você pôs na Vercel no item 37 passa a ser usada
+pelo formulário do cartão. Na conta do Mercado Pago (se não achar alguma opção, me chame que eu te
+guio tela a tela):
+- deixe **desligado** o "parcelamento sem acréscimo": o hóspede paga os juros, e com ele ligado o
+  Mercado Pago cobra da empresa o custo das parcelas;
+- deixe **ligado** o "receber à vista" (o dinheiro de cada venda no cartão é liberado de uma vez, não
+  parcela por parcela);
+- escolha o prazo de liberação do cartão: na hora (4,98%), em 14 dias (4,49%) ou em 30 dias (3,98%) — as
+  taxas de 4/10, a conferir na conta. Quanto mais longo, mais barato, e a parte do proprietário espera a
+  liberação (seção 7);
+- uma devolução no cartão **antes** da liberação pode precisar de saldo disponível na conta do Mercado
+  Pago; se o sistema disser que a devolução não deu, confira o saldo lá.
 
 **Conector do Claude × chave do sistema:** os "conectores" que você liga no Claude (ex.: o
 do Resend) deixam **o Claude** usar aquele serviço nas conversas. O **sistema SCL**, rodando
@@ -1571,6 +1923,10 @@ ambiente).
 ---
 
 ## 6. O que você precisa fazer agora
+
+> A lista viva do que depende de você, com a marcação de feito e as perguntas e respostas, fica na
+> página **Pendências do Diego** (https://claude.ai/artifact/PVim3wJVrYgsRVvzabUv6K), que só você abre. Esta seção continua como a referência
+> completa de cada passo.
 
 1. **Vercel + Neon — feito:** site publicado (27/09), bancos de produção e de preview
    conferidos (3/10) e M0.5 fechado por você em 4/10. Passos abaixo ficam como referência:
@@ -1617,7 +1973,7 @@ ambiente).
    - As variáveis precisam estar no ambiente do deploy que será testado (Production no
      endereço principal; Preview se for testar um PR). Alteração de variável exige novo
      deploy. Chaves nunca vão no chat, Git ou tela do sistema.
-   - **Envio de calendário e preços (M3.7):** pronto e desligado. O passo a passo do teste no
+   - **Envio de calendário e preços (M3.7):** pronto e desligado. Você prefere esperar (7/10); eu te lembro antes da entrada no ar. O passo a passo do teste no
      103 está na seção 2 ("Calendário e preços no Beds24"). Resumo: regras e feriados em
      Configurações → Calendário e preços; pisos na ficha do imóvel; simular na prévia; só
      depois criar `BEDS24_ESCRITA` = `ligada` na Vercel (o refresh token precisa do escopo
@@ -1627,31 +1983,49 @@ ambiente).
    - **Histórico do acesso:** o teste de 27/09 falhou; após salvar novamente a variável,
      Diego confirmou a leitura. Isso não comprova qual foi a causa da falha anterior.
      Caso reapareça, informe só a mensagem sanitizada do painel, nunca a chave.
-4. **Meta Business:** comece a verificação da empresa, porque ela demora.
-5. **E-mail do sistema (Resend)** — sem pressa; enquanto isso, o login com Google funciona:
+4. **Meta / WhatsApp (atualizado em 8/10):** para o WhatsApp do sistema, o caminho é o site de
+   desenvolvedores do Meta (developers.facebook.com), com o login do Facebook: empresa com endereço
+   no Brasil não consegue criar a conta do WhatsApp pelo Business Suite. Antes de cadastrar número,
+   decida qual o sistema vai usar (o número que entra sai do aplicativo WhatsApp do celular). A
+   verificação da empresa não é necessária para começar e pode esperar o site no ar: com o
+   suacasaleblon.com fora do ar, ela seria recusada. Os passos para o login que volta para a tela de
+   entrada estão na página de pendências.
+5. **E-mail do sistema (Resend) — feito:** domínio `suacasaleblon.com` verificado no Resend e com envio liberado
+   (conferido em 5/10) e remetente `contato@suacasaleblon.com` posto por você na Vercel em 7/10. Falta só
+   o teste: peça um código em `/entrar` com um e-mail que não seja o seu. Passos originais, para referência:
    1. Crie conta grátis em resend.com e cadastre o domínio de onde os e-mails vão sair
       (ex.: suacasaleblon.com.br). Ele pede para adicionar alguns registros no DNS
       (Cloudflare) — eu te guio nessa hora.
    2. Crie uma *API key* e coloque na Vercel como `RESEND_API_KEY`, e crie
       `EMAIL_REMETENTE` = `Sua Casa Leblon <acesso@seudominio.com.br>`. **Não cole no chat.**
-6. **Agenda da equipe (20h):** depois da Vercel e do Resend (itens 1 e 5):
+6. **Agenda da equipe (20h) — e-mail não serve para a equipe (você, 7/10):** a agenda já está no acesso
+   próprio de cada pessoa, só da cidade dela (M6.8, item 7); o aviso pelo WhatsApp entra quando ele
+   ligar. Não ligue o envio diário por e-mail para a equipe. Referência do que existe (se um dia quiser
+   o e-mail para alguém da empresa; depois da Vercel e do Resend, itens 1 e 5):
    1. Na Vercel, em *Settings → Environment Variables*, crie `CRON_SECRET` com um texto
       longo e aleatório. É a senha que o agendador da Vercel usa para chamar a agenda; sem
       ela, a chamada é recusada. **Não cole no chat.**
    2. No painel, em **Agenda**, cadastre os e-mails da equipe (marque Rio ou Búzios para cada
       pessoa), marque "Enviar todo dia às 20h" e salve.
    3. Use "Enviar agora" uma vez para conferir como o e-mail chega.
-7. **Profissionais de limpeza pelo celular:** depois do Resend (item 5), em Limpezas →
-   Profissionais, ponha o e-mail de cada profissional e aperte "Liberar acesso". Ela entra em
-   `/entrar` com esse e-mail (código por e-mail).
-8. **Chaves Pix:**
+7. **Profissionais de limpeza pelo celular (M6.8, pronto em 7/10):** em **Limpezas → Profissionais**,
+   para cada profissional:
+   1. marque a **cidade da agenda** dela (Búzios ou Rio) e salve;
+   2. em "Usuário (para entrar sem e-mail)", escreva um usuário (ex.: `maria.limpeza`), deixe a senha em
+      branco para o sistema criar uma e aperte "Criar usuário e senha";
+   3. copie a mensagem que aparece (a senha só aparece essa vez) e mande para ela pelo seu WhatsApp;
+   4. peça para ela entrar em `/entrar` → "Entrar com usuário e senha" e trocar a senha em "Minha
+      senha".
+   Quem tem e-mail pode, além disso, receber o acesso pelo e-mail ("Liberar acesso") e entrar pelo
+   código. Esqueceu a senha? Defina outra no mesmo lugar.
+8. **Chaves Pix — conferidas por você em 7/10:**
    - confira no cadastro de cada proprietário (Painel → Proprietários) se a chave Pix está
      preenchida. A tela de Repasses usa essa chave para o botão "Copiar Pix" e avisa quando
      falta; o portal mostra ao proprietário a chave para onde vai o repasse;
    - cadastre a **chave Pix da empresa** em Painel → Configurações → Empresa. Ela aparece no
      portal para o proprietário que deve à empresa, depois do fechamento do mês. Sem ela, o
      portal pede que ele fale com a empresa.
-9. **Booking:** criar os anúncios (ver "Copiar anúncios do Airbnb para o Booking" na seção 7).
+9. **Booking:** criar os anúncios (você começou em 7/10; ver "Copiar anúncios do Airbnb para o Booking" na seção 7).
 10. **Relatórios em PDF:** para o fechamento, gere o PDF na ficha do proprietário, anexando o
    **extrato oficial** do canal e uma **foto real** do imóvel. Antes de mandar, abra o PDF e
    confira se o extrato é só daquele imóvel e daquele mês. O **envio automático por e-mail**
@@ -1673,7 +2047,7 @@ ambiente).
    O visual novo do site que você me mostrou em capturas (verde e bege, "Um pouco de Rio. Um
    lugar seu.") não está em lugar nenhum do repositório: quando você reunir as imagens do
    ChatGPT e do Google Fotos numa pasta, eu guardo em `prototipos/` como referência.
-15. **Site novo:** em **Configurações → Site**, escreva os textos (título, "Sobre", "Como
+15. **Site novo** (você, 7/10: fica para perto da entrada no ar): em **Configurações → Site**, escreva os textos (título, "Sobre", "Como
    reservar", contato, rodapé); em **Configurações → Empresa**, confira o **telefone do
    WhatsApp** da consulta; e, em cada imóvel, marque **público** só nos que devem aparecer e
    confira a descrição, as camas e as comodidades. Para a disponibilidade e o valor reais
@@ -1685,7 +2059,8 @@ ambiente).
    código não sai. Confira se as reservas têm o **e-mail do hóspede** (o detalhe da reserva
    avisa quando falta) e se o **endereço e o complemento** de cada imóvel estão no cadastro,
    porque é isso que o hóspede vê 2 dias antes da entrada.
-17. **Mensagens automáticas ao hóspede:** depois do Resend (item 5), em **Configurações →
+17. **Mensagens automáticas ao hóspede** (você, 7/10: esperar e ligar junto com o desligamento das
+   mensagens do Airbnb; eu te lembro): depois do Resend (item 5), em **Configurações →
    Modelos de mensagem**, confira o texto de cada modelo, escolha as origens (vem site e
    direta) e marque "Envio automático ligado". Até lá, nada é enviado.
 18. **Cadastros pelo site (marketplace):** de vez em quando, abra **Proprietários → Cadastros
@@ -1696,7 +2071,8 @@ ambiente).
    são a Conta Negócio do Mercado Pago no CNPJ da empresa e as credenciais de teste, que eu peço
    quando chegar o M8.2.
 
-20. **Bloqueio pelo portal (M5.5):** confira em cada contrato (ficha do imóvel → Contratos) se
+20. **Bloqueio pelo portal (M5.5):** é a chave, em cada contrato, que deixa (Sim) ou não (Não) o proprietário
+   bloquear sozinho, pelo portal, as datas de uso próprio; com Não, só a equipe bloqueia. Confira em cada contrato (ficha do imóvel → Contratos) se
    "Bloqueio pelo portal" deve ficar em Sim (como vem) ou Não — o botão Ligar/Desligar fica na
    própria linha —, e avise os proprietários que já podem bloquear datas de uso próprio pelo
    portal. As datas só fecham nos canais quando o envio
@@ -1847,10 +2223,12 @@ ambiente).
    site**, confira as taxas de referência (Airbnb 16%, Booking 15%, pagamento 4% — eu coloquei os
    valores aproximados que a gente usou nas contas; se a sua tabela do Mercado Pago ou do Airbnb
    disser outro número, corrija ali) e brinque com a simulação. Enquanto não salvar nada, vale o
-   padrão 1/1/1, que já está dando desconto no site de homologação (cerca de 4% do valor cheio).
-   Se preferir que o site não dê desconto por enquanto, ponha 0 no peso do hóspede.
+   padrão 6/3/3 (hóspede 1, proprietário 1, SCL 2), decidido por você em 7/10: desconto no site de
+   cerca de 3% do valor cheio. Se você já tinha salvo a aba com o 1/1/1 antigo, ela mostra um aviso
+   com o botão "Usar o padrão novo" (troca só os pesos; as taxas ficam). Se preferir que o site não
+   dê desconto por enquanto, ponha 0 no peso do hóspede.
 25. **Fonte de preços de cada imóvel (M3.9):** abra a ficha de cada imóvel → Preço e taxas →
-   **Fonte de preços**. Os cinco do Rio ficam em "automáticos do SCL" (já é o padrão). Para um
+   **Fonte de preços**. Os seis imóveis atuais ficam em "automáticos do SCL", o nosso motor (já é o padrão; você confirmou em 7/10). Imóveis novos escolhem se querem os nossos preços ou só a sincronização de calendário. Para um
    imóvel de marketplace em que o dono ou a ferramenta dele define os preços no Beds24, escolha
    "definidos no Beds24": aí ele pode entrar na lista de envio sem risco de o SCL sobrescrever
    preço. Depois, na prévia de calendário, confira a coluna "Site (≈)" contra o anúncio.
@@ -1860,9 +2238,8 @@ ambiente).
    portais e o painel já estão nesse visual (seção 2). O que é seu: abrir a preview, olhar o
    site no celular e no computador e me dizer o que destoa; preencher em Configurações → Site
    o olho da capa, a chamada final e os blocos de "Por que reservar direto" (cada bloco
-   separado por linha em branco; a primeira linha é o título). As fotos entram no M7.3, quando
-   você liberar os direitos. Se encontrar mais imagens no Google Fotos, mande que eu acrescento.
-27. **Recebimentos das reservas (M4.10):** a partir de agora o fechamento só paga a parte de
+   separado por linha em branco; a primeira linha é o título). As fotos já têm lugar (M7.3, item 34).
+27. **Recebimentos das reservas (M4.10) — outubro registrado por você em 7/10:** a partir de agora o fechamento só paga a parte de
    reserva cujo dinheiro você registrou como recebido. Antes do próximo fechamento (dia 2), abra as reservas
    de Booking, site e direta já recebidas e clique em "Registrar recebimento" (o valor vem
    preenchido). Sem isso, a parte fica "a liberar", fora do repasse, com aviso no painel e no
@@ -1873,7 +2250,7 @@ ambiente).
    para todos; segunda-feira no semanal; dias 1 e 16 no quinzenal) e avise os proprietários que
    eles podem escolher no portal. Se quiser outro padrão para o marketplace (ex.: semanal),
    mude ali. E, ao marcar um repasse pago, anexe o comprovante: é ele que libera o e-mail.
-29. **Antes do fechamento de outubro — o primeiro feito no sistema (decisão sua, 4/10): marque o que é
+29. **Feito por você em 7/10 (início do sistema gravado e acerto por fora marcado).** **Antes do fechamento de outubro — o primeiro feito no sistema (decisão sua, 4/10): marque o que é
    de antes como acertado por fora (M4.11).** Faça uma vez, antes do fechamento de outubro (2/11; pode ser hoje):
    1. **Configurações → Repasses → "Início do sistema para valer":** informe **1/10/2026** e salve
       (é sempre dia 1º de um mês).
@@ -1916,7 +2293,7 @@ ambiente).
    lista de envio ao Beds24, senão o que o proprietário mudar vale só no site. Na página de
    Limpezas, as limpezas de imóvel marketplace feitas pelo proprietário aparecem como realizadas
    com custo zero e a observação "feita pelo proprietário".
-31. **Publique o "Como funciona" (M5.6):** em **Configurações → Como funciona (proprietário)**, leia o
+31. **"Como funciona" (M5.6) — versão 1 publicada por você em 7/10.** Referência: em **Configurações → Como funciona (proprietário)**, leia o
    rascunho sugerido com calma (é um texto meu a partir das regras do sistema, não uma decisão sua),
    ajuste o que quiser e clique em "Publicar a versão 1". Até isso, o portal não mostra o documento
    nem pede aceite a ninguém. Depois: cada proprietário vê a faixa no portal e aceita; quem entrar por
@@ -1924,7 +2301,7 @@ ambiente).
    preencha a seção "Contestações" e publique a versão 2 — todos vão aceitar de novo, e é assim mesmo.
    Não escreva no texto a comissão nem a periodicidade: elas aparecem sozinhas, do cadastro.
 
-32. **Guarde os extratos dos canais antes do fechamento (M5.7):** em **Financeiro → Repasses**, abra
+32. **Guarde os extratos dos canais antes do fechamento (M5.7), entre 1/11 e 2/11 para outubro:** em **Financeiro → Repasses**, abra
     "Extratos dos canais para o relatório de {mês}" e suba, para cada imóvel, o PDF que o Airbnb
     emitiu ("Ganhos" do período; Booking quando houver), escolhendo o proprietário favorecido e
     indicando as páginas que são só daquele imóvel, daquele proprietário e daquele mês (se o imóvel
@@ -1939,18 +2316,216 @@ ambiente).
     dia 1º o e-mail do relatório **não** sai sozinho; se quiser adiantar algum mês, feche e envie à
     mão pelo painel (Financeiro → Repasses).
 
+34. **Fotos dos imóveis (M7.3, pronto em 7/10):** para cada imóvel do Leblon, abra **Imóveis → o
+    imóvel → Fotos** e suba as fotos do anúncio do Airbnb (no Airbnb, como anfitrião, em Anúncios →
+    o anúncio → Fotos, dá para baixar cada uma) ou as do seu catálogo. Escolha a capa (a foto que
+    melhor vende o imóvel; ela vai no cartão do site e na capa do relatório) e, se quiser, escreva
+    uma legenda curta em cada foto ("Sala com vista", "Varanda"). Só fotos que você tem direito de
+    usar. Depois abra a página do imóvel no site da preview e confira a galeria no celular.
+35. **Site do hóspede (M7.6, pronto em 7/10):** em **Configurações → Site**:
+    - **Imagens do site:** suba a foto de capa da página inicial (uma foto do Leblon que você tem
+      direito de usar; pode ser a original do celular). Se quiser outra marca, suba também; até lá,
+      vale a do estudo.
+    - **O bairro à sua porta:** cadastre os lugares que você quer mostrar na página de cada imóvel
+      (praia, padaria, livraria…), com a distância ("5 min a pé"), uma frase curta e, se tiver, uma
+      foto sua. Só fotos com direito de uso.
+    - **Textos:** leia o texto-base de "Por que reservar direto" e os textos novos (vitrine, consulta,
+      legenda vertical) e ajuste. Pode deixar para perto da entrada no ar, como combinamos.
+
+    Depois abra o site da preview no celular e no computador. Confira o carrossel, o calendário das
+    datas e a consulta, e me diga o que destoa.
+36. **Página para proprietários (M7.7, pronta em 8/10):**
+    - **Textos:** em **Configurações → Página para proprietários**, leia o texto-base (capa, gestão
+      completa, marketplace, como gerimos, portfólio, pedido de contato) e ajuste. Pode ser perto da
+      entrada no ar.
+    - **Números de mercado (opcional):** se quiser mostrar, digite na mesma tela, por tipo de imóvel,
+      a diária média e a ocupação (e, se quiser, o líquido por mês), com o mês e de onde vêm os
+      números. Só dados reais que você conferiu. Sem números, a seção não aparece.
+    - **Pedidos de contato:** quando chegar um, ele aparece no Início do painel e por e-mail. Responda
+      e marque como respondido em **Proprietários → Pedidos de contato**.
+
+37. **Pagamento pelo site em teste (M8.2a):**
+    - **Aplicação no Mercado Pago:** em mercadopago.com.br/developers, com a Conta Negócio do CNPJ
+      (confira no canto de cima), **Suas integrações → Criar aplicação**, criar manualmente,
+      solução **Checkout Transparente**, tipo de API **Orders**.
+    - **Chaves de teste na Vercel, só no ambiente Preview:** em Testes → Credenciais de teste, copie
+      a Public Key e o Access Token. Na Vercel, em *Settings → Environment Variables*, crie
+      `MERCADOPAGO_PUBLIC_KEY` e `MERCADOPAGO_ACCESS_TOKEN` (marque *Sensitive*), marcando só
+      **Preview**. Nunca mande as chaves no chat.
+    - **Chave Pix na conta do Mercado Pago:** sem ela, o Pix não aparece. Se o CNPJ já é chave em
+      outro banco, use uma chave aleatória.
+    - **Conferir:** abra o link da prévia do PR, entre no painel e veja em **Integrações** que aparece
+      "conta de teste conferida".
+    - **Ligar a oferta:** em **Configurações → Pagamento no site**, marque **Oferecer pagamento no
+      site** e salve. Ela vem **desligada**: sem isso, o site não oferece o Pix (por segurança, nada
+      cobra enquanto você não ligar). Na mesma tela, veja se o imóvel do teste tem ✓. Desde 9/10, o
+      Pix também só aparece com as três páginas legais publicadas no banco das prévias (item 39).
+    - **Testar um Pix:** no site da prévia, faça uma consulta, segure as datas (no nome, escreva
+      **APRO**: no teste, o Mercado Pago aprova sozinho o Pix de quem tem esse nome), gere o Pix e
+      espere a página confirmar. Se demorar, use **Conferir agora** na ficha da reserva. Depois,
+      registre a liberação à mão na mesma ficha (no teste o Mercado Pago não informa liberação).
+    - **Aviso de pagamento (webhook), depois:** quando eu avisar, em Suas integrações → a aplicação →
+      Webhooks → Configurar notificações, use o endereço que aparece em **Integrações**, marque só
+      o evento "Order (Mercado Pago)", salve, copie a assinatura secreta para a Vercel como
+      `MERCADOPAGO_WEBHOOK_SECRET` (marque **Preview** e **Production**: o aviso chega no endereço
+      de produção, que só confere a assinatura e registra que chegou) e use o botão **Simular**. As
+      outras duas chaves continuam só em Preview.
+    - **Na conta do Mercado Pago:** deixe **desligado** o "parcelamento sem acréscimo" (o hóspede paga
+      os juros) e não use cupons do Mercado Pago (o desconto do site já vem no preço).
+    - **Devolva pela ficha da reserva**, para o sistema saber. No cartão, só se o sistema disser que não
+      deu, devolva pelo painel do Mercado Pago e depois use **Conferir agora** (ou registre a devolução
+      por fora). Antes de registrar uma devolução **feita por fora**, o sistema confere no Mercado Pago
+      se o dinheiro já não voltou por lá (se não der para conferir, ele não registra).
+    - **Depois de uma devolução pelo Mercado Pago:** veja no Mercado Pago quanto da taxa ficou com ele
+      e informe em **Registrar taxa que não voltou**, na ficha (em reais, com vírgula, ex.: 18,06; zero se
+      voltou toda; a confirmação mostra o valor digitado, e valor maior que a taxa que ele cobrou é
+      recusado). O Mercado Pago não
+      informa isso sozinho; até você informar, fica um aviso. A regra de a empresa ficar com a taxa que
+      não volta, quando o pagamento ficou sem reserva por falha do sistema, é minha sugestão: confirme
+      se concorda.
+    - **No teste, nada confere sozinho:** a página do hóspede confere o Pix dela; o resto (devolução
+      pedida, Pix que sobrou, um pagamento que ficou sem resposta) você confere com **Conferir agora**.
+38. **Sobras de feriado e evento com reserva (M3.10, pronto em 9/10):** em **Configurações →
+    Calendário e preços**:
+    - Ao cadastrar um evento, deixe marcada a caixa "Quando já houver reserva confirmada no período,
+      as noites livres usam o mínimo normal da semana" para Réveillon, Carnaval e outros eventos
+      curtos. **Desmarque na alta temporada** e em qualquer temporada longa.
+    - Nos eventos já cadastrados, confira a coluna **Com reserva** e troque com o botão, se precisar.
+    - Nos feriadões, a mesma opção fica no quadro "Feriados e feriadões" (vem marcada).
+    - Antes de ligar o envio, abra a **prévia do envio** numa data de evento que já tenha reserva e
+      confira o mínimo das noites livres.
+39. **Páginas legais (M7.4, pronto em 9/10):**
+    1. **Preencha a empresa:** em **Configurações → Empresa**, razão social, CNPJ, endereço, e-mail,
+       telefone e o novo campo **encarregado pela proteção de dados** (quem atende os pedidos sobre
+       dados pessoais; se a empresa puder usar a dispensa para pequeno porte, confirme o texto com o
+       advogado).
+    2. **Leia os três textos-base** em **Configurações → Páginas legais do site** e leve ao contador
+       e, de preferência, a um advogado (o botão "Copiar o texto" ajuda), com a lista abaixo.
+    3. **Publique a versão 1 de cada um:** no painel de produção, para o site de verdade, e também
+       uma vez numa prévia da Vercel, para o teste do Pix continuar (a prévia usa um banco separado).
+       Sem as três, o site não oferece o Pix.
+    4. **Teste numa prévia:** segure as datas, marque a caixa, gere o Pix e confira, na ficha da
+       reserva, as versões aceitas.
+    5. **Depois de qualquer mudança** (texto, prazo dos dias ou dados da empresa), publique uma
+       versão nova. Ela vale para os próximos pagamentos.
+
+    **O que conferir com o contador e o advogado:**
+    - **Arrependimento de 7 dias:** a posição do texto (o hóspede pode desistir em até 7 dias depois
+      do pagamento e recebe tudo, mesmo dentro dos 14 dias) e o limite que eu acrescentei: só até o
+      início da estadia.
+    - Se o **Código de Defesa do Consumidor** vale aqui; se "locação para temporada" é a melhor
+      descrição ou se é hospedagem; e se o site deve limitar as estadias a 90 dias.
+    - **Ficar com 100% com menos de 14 dias** pode ser questionado; uma saída seria devolver o valor
+      das noites que forem alugadas de novo.
+    - **A taxa do Mercado Pago:** conferir no primeiro reembolso em teste se ela volta.
+    - **O que a lei do comércio eletrônico pede antes de vender:** o e-mail de confirmação da reserva
+      ligado antes do pagamento de verdade; um jeito de desistir pelo próprio site (sugerido para o
+      cancelamento pelo site, M8.2c); e uma resposta automática no e-mail fora do horário da equipe.
+    - **Encarregado** pelo nome, ou a dispensa para pequeno porte.
+    - **Por quanto tempo guardar os dados dos hóspedes** (hoje ficam para sempre): uma regra, por
+      exemplo tantos anos depois da saída.
+    - **Servidores fora do Brasil** (Vercel e Neon): conferir as regiões nas contas e a base legal da
+      transferência.
+    - **Registros de acesso por 6 meses** (Marco Civil da Internet): se a empresa precisa guardar.
+    - **Fornecedores citados por categoria** (o serviço de e-mail e o sistema de reservas, sem nome):
+      se o advogado pede os nomes.
+    - Se os dados vão de fato para a **contabilidade**, como a política diz.
+    - **Cópias dos documentos da portaria** que passam pelo WhatsApp ou pelo e-mail: uma regra para
+      apagar.
+    - **Formulários dos proprietários:** a autorização é obrigatória, mas o sistema não registra quando
+      foi dada.
+    - **Idade mínima de 18 anos** para reservar.
+    - **Encerrar a estadia por violação grave** (festa, mais pessoas que o reservado): hoje não está no
+      texto.
+    - **Reservas diretas fechadas pelo WhatsApp:** se seguem a mesma política.
+    - **Alteração para um valor menor:** a diferença seguir as regras de cancelamento (M8.2d).
+40. **Pagamento com cartão em teste (M8.2b, pronto em 9/10):** tudo numa prévia da Vercel, com as mesmas
+    chaves de teste do item 37 (a do Pix já precisa estar funcionando).
+    1. **No Mercado Pago:** faça os ajustes da conta da seção 5 ("Mercado Pago e o cartão":
+       "parcelamento sem acréscimo" desligado, "receber à vista" ligado e o prazo de liberação do
+       cartão). Em **Integrações**, se aparecer que a chave pública e o token parecem de contas
+       diferentes, copie de novo as duas da mesma tela de credenciais de teste.
+    2. **Publique uma versão nova da Política de privacidade** em **Configurações → Páginas legais do
+       site**: o texto-base agora diz o que guardamos do cartão (bandeira, parcelas, valor pago com os
+       juros e o resultado da verificação do banco, nunca o número do cartão). Na prévia, para o teste; e,
+       antes de ligar o cartão de verdade, também no painel de produção.
+    3. **Revise o convite para pagar** em **Configurações → Site** ("Pagamento no site: convite para
+       pagar"): se você já salvou essa tela, o seu texto ainda fala só de Pix (o texto-base novo não cita
+       a forma de pagamento). Na mesma tela, leia o texto novo do cartão em análise.
+    4. **Ligue o cartão:** em **Configurações → Pagamento no site**, marque **Oferecer cartão de
+       crédito** (vem desligado); em **Número máximo de parcelas**, deixe vazio (o máximo do Mercado
+       Pago) ou escolha um número; em **Verificação do banco (3DS)**, deixe **Quando houver risco
+       (recomendado)**. Salve. Confira no quadro **Cartão** que aparece "Ligado".
+    5. **Teste:** na prévia, segure as datas, escolha **Cartão de crédito**, marque o aceite e use um
+       cartão de teste: Mastercard 5480 8328 0103 3311 ou Visa 4235 6477 2802 5682, código de segurança
+       123, validade 11/30, CPF 12345678909. **No formulário do cartão, no campo "Nome do titular"**
+       (não no nome da reserva, ao contrário do teste do Pix), escreva:
+       - **APRO** (aprova), **OTHE** (recusa) ou **CONT** (fica em análise);
+       - **APRO-CHOK** ou **OTHE-CHNO** (o banco pede a verificação: aprova ou recusa);
+       - **APRO-AUTH**, **APRO-ATMT** ou **OTHE-NAUT** (verificação do banco sem desafio).
+       Faça também um em 3 parcelas e confira na ficha da reserva "Cartão de crédito · Mastercard · 3x"
+       e os juros. Se a página demorar, use **Conferir agora** na ficha.
+    6. **O freio vai aparecer no teste:** depois de 8 recusas em meia hora, o cartão desliga por 1 hora
+       (é o freio funcionando; o Pix continua). Na terceira vez no mesmo dia, ou com 20 recusas no dia,
+       use **Religar o cartão** no quadro Cartão. Tentativas seguidas com os mesmos dados podem ser
+       recusadas pela segurança do Mercado Pago e contam no freio: espere alguns minutos entre elas.
+    7. **Para achar um pagamento no Mercado Pago:** use os números da linha "No Mercado Pago" na ficha da
+       reserva (o botão copia).
+    8. **Regra para a equipe:** não informe ao hóspede o motivo de uma recusa de cartão; peça outro
+       cartão ou o Pix.
+    9. **Me conte o que viu:** o tamanho do quadro da verificação do banco, se o formulário mostrou os
+       juros em cada parcela e se algum passo não bateu com este roteiro. Eu ajusto antes da produção.
+
 ---
 
 ## 7. Decisões pendentes e respostas às suas perguntas
 
 **Preciso de você (sem pressa):**
+- **Pagamento com cartão (M8.2b, 9/10) — decisões suas, antes do cartão de verdade** (o teste está no
+  item 40 da seção 6):
+  - **Verificação do banco (3DS):** deixei **"quando houver risco"** como padrão: o banco pede a
+    verificação só nos pagamentos que acha arriscados; quando o hóspede passa pela verificação, a
+    contestação por cartão roubado fica com a bandeira do cartão; nos outros pagamentos, continua com a
+    empresa. A outra opção é **"nunca"**: nenhuma verificação, menos trabalho para o hóspede, e toda
+    contestação por cartão roubado fica com a empresa. "Sempre" não aparece para o Brasil na
+    documentação do Mercado Pago. Confirma "quando houver risco"?
+  - **Prazo de liberação do cartão:** na hora (4,98%), em 14 dias (4,49%) ou em 30 dias (3,98%). Quanto
+    mais longo, mais barato; mas a parte do proprietário só fica disponível depois da liberação (a
+    empresa não adianta). Qual você escolhe?
+  - **Campo de e-mail do formulário do cartão na produção:** no teste, o formulário já vem com o e-mail
+    de teste e o campo fica escondido. Na produção, ou o formulário pede o e-mail ao hóspede (o Mercado
+    Pago manda a ele os e-mails do pagamento), ou o sistema preenche. Antes, vou perguntar ao Mercado
+    Pago se o e-mail de cartão recusado diz o motivo (o que ajudaria quem testa cartões roubados) e se
+    dá para desligá-lo; no teste isso não aparece. Decidimos com a resposta.
+  - **Devolução por fora no cartão:** deixei só quando o Mercado Pago não consegue devolver ou depois de
+    180 dias, porque no cartão a cobrança continuaria na fatura e o hóspede poderia contestar e receber
+    duas vezes. Concorda, ou prefere permitir sempre, com o aviso?
+  - **Taxa do pagamento (pergunta 3, ainda pendente):** no cartão a taxa é de cerca de 4% a 5% (no Pix,
+    cerca de 1%). Hoje ela sai antes da divisão, cada um na proporção. Continua assim também no cartão?
+- **Páginas legais (M7.4, 9/10) — decisões suas, antes de ligar o pagamento de verdade** (o
+  passo a passo e a lista para o advogado estão no item 39 da seção 6):
+  - idade mínima para reservar: o texto diz 18 anos (a maioridade); quer outra?
+  - encerrar a estadia por violação grave das regras (festa, mais pessoas que o reservado): entra no
+    texto, com destaque, ou não?
+  - reservas diretas fechadas pelo WhatsApp seguem a mesma política de cancelamento (mandando o link
+    na conversa) ou não?
+  - alteração para um valor menor: a diferença segue as regras de cancelamento, contando da entrada
+    original, para a alteração não virar um cancelamento sem perda (é o M8.2d). Confirma?
+  - com menos de 14 dias, ficar com tudo ou devolver o valor das noites que forem alugadas de novo?
+  - por quanto tempo guardar os dados dos hóspedes depois da saída (hoje, para sempre)?
+  - guardar um resumo do endereço de internet (IP) de quem aceitou, como prova a mais? Hoje não
+    guardo: a prova é a reserva e o link que só quem tem o e-mail abre. Decida com o advogado.
 - **Como receber as reservas do site (M8.0) — decidido em 4/10:** mantém "empresa recebe e
   repassa" pelo Mercado Pago; o contador confirmou que só a comissão é receita; o repasse segue
   a periodicidade que o proprietário escolher (seção 2 e item M4.10). **Ainda preciso de você,
   só antes de ligar o pagamento de verdade:** se a taxa do cartão/Pix segue a regra de hoje
-  (sai antes da divisão, cada um na proporção) ou muda; quem arca com uma contestação de
-  cartão perdida (SCL, proprietário ou os dois na proporção); e a política de cancelamento do
-  site (reembolso total, parcial ou nenhum, conforme a antecedência). Histórico (24/09 a
+  (sai antes da divisão, cada um na proporção) ou muda; contestação de cartão perdida
+  (decidido em 7/10: arca quem deu causa ao motivo, caso a caso, registrado); e a política de
+  cancelamento do site (base decidida em 7/10: reembolso integral até 14 dias antes da entrada,
+  nenhum com menos de 14 dias; no reembolso integral, a taxa que o Mercado Pago não devolver fica
+  com a empresa, decidido por você em 7/10; falta só você conferir com o contador a posição sobre o
+  arrependimento de 7 dias da compra pela internet, do Código de Defesa do Consumidor, que eu escrevi
+  nas páginas legais em 9/10 — item 39 da seção 6). Histórico (24/09 a
   4/10): a comparação entre "empresa recebe e repassa", split do Mercado Pago e Stripe está em
   `requisitos/product/RECEBIMENTO-SITE.md`; a pergunta ao contador e a do cartão com
   recebimento em 30 dias já foram respondidas.
@@ -1980,11 +2555,36 @@ ambiente).
   fechamento automático no dia do fechamento ou desconto de adiantamentos no antecipado, é um PR pequeno.
 - **Pesos do modelo B (6/3/3):** você propôs SCL 6%, hóspede 3% e proprietário 3% da margem
   de 12 pontos; eu achei justo e defensável (hóspede paga 3% a menos que no Airbnb, proprietário
-  recebe cerca de 3,7% a mais, SCL fica com 6%). Se confirmar, salve em Configurações →
-  Marketplace e desconto do site como hóspede 1 / proprietário 1 / SCL 2, e eu troco o padrão
-  do sistema para esses pesos no PR seguinte.
-- **Búzios:** fica no sistema interno para controle (combinado). No site público, a decidir.
-- **Avaliações**: só no Airbnb ou também próprias.
+  recebe cerca de 3,7% a mais, SCL fica com 6%). **Confirmado por você em 7/10 e já é o padrão do
+  sistema (M12.5):** hóspede 1 / proprietário 1 / SCL 2.
+- **Búzios — decidido em 7/10:** fica no sistema interno; no site público, só o Leblon no começo.
+  Búzios e avaliações próprias ficam para depois, junto com a decisão do nome fantasia.
+- **Marketplace — decidido em 7/10:** relatório e extrato mostram só o que passa pela SCL: as
+  reservas do site e, no caso raro de a empresa receber o dinheiro de uma reserva de outra
+  plataforma, essa reserva. As vendas que o proprietário faz nas outras plataformas e recebe
+  direto entram só no calendário. Consolidar fica para depois, se houver procura (M12.2).
+- **Beds24 nos bastidores — decidido em 7/10:** nenhum texto para proprietário ou hóspede cita o
+  Beds24 (item M5.9). Conferi: só o portal do proprietário cita hoje.
+- **Serviços à parte (sua ideia de 7/10) — preciso de você:** a lista dos serviços, o valor mensal
+  de cada um e quais vêm sempre com a base (item M4.14). Minha opinião: boa ideia, combina com o
+  contrato que já separa gestão completa e marketplace.
+- **Como a equipe entra sem e-mail — decidido em 7/10:** vários jeitos (conta Google, e-mail com
+  senha escolhida pela pessoa, ou usuário e senha criados por você no painel e entregues à pessoa),
+  sem verificação em duas etapas, para ninguém deixar de entrar. Em troca, o acesso é bem contido:
+  cada pessoa vê só a agenda da cidade dela (Búzios só Búzios, Rio só Rio) e só o que interessa à
+  limpeza. Item M6.8.
+- **Reembolso integral e a taxa do Mercado Pago — decidido em 7/10:** se o Mercado Pago não devolver
+  a taxa dele, a empresa arca; se pesar com o tempo, revemos. Não achei regra oficial do Brasil sobre
+  a taxa voltar (na Argentina, volta); confirmamos no primeiro reembolso de teste.
+- **Arrependimento de 7 dias — combinado em 7/10:** eu escrevo a posição com base na lei, nas páginas
+  legais (M7.4), e você confere com o contador; no ponto do consumidor, o ideal é também um advogado.
+  As 24 horas que você lembrou são a regra das passagens aéreas (ANAC); para hospedagem vale o Código
+  de Defesa do Consumidor.
+- **Site — pedido de 7/10:** comparei as referências do Sage com o site de hoje. O que falta virou
+  dois itens: o site do hóspede pronto (M7.6: foto de capa do Leblon, vitrine em carrossel, seção "O
+  bairro à sua porta", calendário próprio para escolher datas, consulta e cotação em duas colunas) e a
+  página para proprietários (M7.7). Os dois vêm depois das fotos (M7.3). As fotos de lugares do bairro
+  do estudo não entram, porque os direitos não foram liberados: você sobe as suas pelo painel.
 
 **Respostas:**
 - **Segundo gráfico do relatório e indicadores (5/10):** você achou "19 noites" ambíguo, lembrou o
@@ -2091,3 +2691,4 @@ ambiente).
 ## Calendário e preços — referência operacional de 1/10/2026
 
 As regras aprovadas de mínimos, feriadões, temporada, multiplicadores, última hora e sobras estão reunidas em [Calendário, preços e duração](requisitos/operations/CALENDARIO-PRECOS-OPERACAO.md), com as exceções e decisões ainda pendentes. Desde 2/10 (M3.7) elas vivem no painel, em Configurações → Calendário e preços, e o envio ao Beds24 existe, mas só é ativado por você. Enquanto o envio do SCL não estiver ligado, a rodada autorizada em 1/10 continua usando o Beds24 conectado, com conferência no Airbnb — e não deve haver dois responsáveis escrevendo no mesmo calendário: ao ligar o SCL, pare de editar preços à mão no Beds24 **nos imóveis em que a fonte de preços é a SCL** (preços automáticos ou digitados no portal); nos imóveis em que você ou o proprietário definem os preços no Beds24 ou numa ferramenta de precificação (M3.9, opção b), continuem editando lá — o SCL só lê. Não aplicar descontos repetidos sobre diárias já reduzidas.
+

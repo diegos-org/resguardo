@@ -10,7 +10,9 @@
  * - última hora: percentual por antecedência da noite, com piso por imóvel na diária final;
  *   a referência é sempre recalculada do cadastro — repetir a execução nunca acumula cortes;
  * - mínimo por entrada: o maior entre semana normal, cadastro do imóvel, evento e feriadão
- *   (período explícito com mínimo substitui); sobras: mínimo ≤ noites livres seguidas;
+ *   (período explícito com mínimo substitui); evento ou feriadão que já tem reserva confirmada no
+ *   período deixa de contar nas noites livres dele, que voltam ao mínimo normal (regra de 6/10; o
+ *   preço do evento continua); sobras: mínimo ≤ noites livres seguidas;
  * - bloqueio: só o que o SCL criou vai como "blackout"; o SCL só reabre o que ele mesmo fechou.
  * Nada aqui afirma disponibilidade para venda nem preço final nas OTAs.
  */
@@ -19,7 +21,7 @@ import { diaDaSemana, diasEntre, periodoDaNoite, precoDaNoite, somarDias, type P
 import { formatBRL } from "@/lib/money";
 import { ocupaInventario } from "@/reservas/regras";
 import { type BloqueioEnvio, ehBloqueioEnvio, type FaixaEnvio } from "@/beds24/tipos";
-import { centesimosParaMultiplicador, type Feriado, type RegrasCalendario } from "./regras-config";
+import { centesimosParaMultiplicador, type Evento, type Feriado, type RegrasCalendario } from "./regras-config";
 import type { FontePrecos } from "@/imoveis/fonte-precos";
 
 export type ImovelPlano = { id: string; regras: RegrasVenda; periodos: readonly Periodo[]; pisos: readonly [number | null, number | null]; /** Fonte de preços (M3.9): scl, beds24 ou manual. */ fontePrecos: FontePrecos };
@@ -89,6 +91,32 @@ export function janelasDeFeriado(feriados: readonly Feriado[]): Janela[] {
   return janelas;
 }
 
+/** Feriadões e eventos que valem para o imóvel. Uma regra, um lugar: o motor e a carga das reservas leem daqui. */
+export function periodosEspeciais(regras: RegrasCalendario, imovelId: string): { janelas: Janela[]; eventos: Evento[] } {
+  const aplica = (todos: boolean, lista: readonly string[]) => todos || lista.includes(imovelId);
+  return {
+    janelas: aplica(regras.janelaFeriado.todosImoveis, regras.janelaFeriado.imoveis) ? janelasDeFeriado(regras.feriados) : [],
+    eventos: regras.eventos.filter((ev) => aplica(ev.todosImoveis, ev.imoveis)),
+  };
+}
+
+/**
+ * Noites cujas reservas o motor precisa ver para a regra de 6/10: o intervalo pedido, estendido até o
+ * começo e o fim de cada feriadão ou evento com mínimo (e a regra ligada) que toca o intervalo. Uma
+ * reserva confirmada antes de hoje, ou antes da entrada consultada, ainda faz parte do período.
+ */
+export function intervaloDasReservas(regras: RegrasCalendario, imovelId: string, inicio: string, fim: string): { inicio: string; fim: string } {
+  const { janelas, eventos } = periodosEspeciais(regras, imovelId);
+  const periodos = [
+    ...(regras.janelaFeriado.minimoNormalComReserva ? janelas : []),
+    ...eventos.filter((ev) => ev.estadiaMinima !== null && ev.minimoNormalComReserva),
+  ].filter((p) => p.inicio <= fim && inicio <= p.fim);
+  return {
+    inicio: periodos.reduce((m, p) => (p.inicio < m ? p.inicio : m), inicio),
+    fim: periodos.reduce((m, p) => (p.fim > m ? p.fim : m), fim),
+  };
+}
+
 const normalizarBloqueio = (b: string | null | undefined) => (b === null || b === undefined || b === "none" ? "none" : b);
 const brl = (c: number) => formatBRL(c);
 
@@ -101,6 +129,7 @@ export type EntradaPlano = {
   fim: string;
   /** Última noite com dados de ocupação carregados (para medir sobras além do fim). */
   fimDados?: string;
+  /** Reservas do imóvel; para a regra de 6/10, também as do período inteiro de cada feriadão/evento (`intervaloDasReservas`). */
   reservas: readonly OcupacaoPlano[];
   bloqueios: readonly BloqueioPlano[];
   observacoes: readonly ObservacaoPlano[];
@@ -112,9 +141,9 @@ export function planejarCalendario(e: EntradaPlano): LinhaPlano[] {
   if (e.fim < inicio) return [];
   const fimDados = e.fimDados && e.fimDados > e.fim ? e.fimDados : e.fim;
   const { imovel, regras } = e;
-  const aplicaAoImovel = (todos: boolean, lista: readonly string[]) => todos || lista.includes(imovel.id);
-  const janelas = aplicaAoImovel(regras.janelaFeriado.todosImoveis, regras.janelaFeriado.imoveis) ? janelasDeFeriado(regras.feriados) : [];
-  const eventos = regras.eventos.filter((ev) => aplicaAoImovel(ev.todosImoveis, ev.imoveis));
+  const { janelas, eventos } = periodosEspeciais(regras, imovel.id);
+  // Regra de 6/10: só reserva confirmada no período conta (consulta, pedido do site e pendente não bastam).
+  const temReservaConfirmada = (de: string, ate: string) => e.reservas.some((r) => r.estado === "confirmada" && r.checkin <= ate && de < r.checkout);
   const observadas = new Map(e.observacoes.map((o) => [o.data, o]));
   const enviadas = new Map(e.enviados.map((o) => [o.data, o]));
   const maximo = imovel.regras.estadiaMaxima ?? regras.estadiaMaxima;
@@ -213,15 +242,27 @@ export function planejarCalendario(e: EntradaPlano): LinhaPlano[] {
       minimoRegra = periodo.estadiaMinima;
       motivoMinimo = `Período ${periodo.nome}`;
     } else {
+      // Regra de 6/10, decidida noite a noite: se um evento ou feriadão desta noite (com a regra ligada) já tem
+      // reserva confirmada no seu período, todos os mínimos especiais com a regra ligada saem desta noite — um
+      // feriadão dentro do Réveillon não segura 3 noites onde o Réveillon já cedeu. Os de regra desligada
+      // (temporadas longas) continuam.
+      const especiais = [
+        ...eventos.filter((ev) => ev.estadiaMinima !== null && ev.inicio <= data && data <= ev.fim)
+          .map((ev) => ({ v: ev.estadiaMinima!, nome: `Evento ${ev.nome}`, ligada: ev.minimoNormalComReserva, inicio: ev.inicio, fim: ev.fim })),
+        ...janelas.filter((j) => j.inicio <= data && data <= j.fim)
+          .map((j) => ({ v: regras.janelaFeriado.estadiaMinima, nome: `Feriadão ${j.nome}`, ligada: regras.janelaFeriado.minimoNormalComReserva, inicio: j.inicio, fim: j.fim })),
+      ];
+      const comReserva = especiais.filter((c) => c.ligada && temReservaConfirmada(c.inicio, c.fim)).map((c) => c.nome);
+      const cedem = comReserva.length > 0;
       const candidatos: { v: number; nome: string }[] = [
         { v: regras.minimoPorDia[dia], nome: "Semana normal" },
         ...(imovel.regras.estadiaMinima !== null ? [{ v: imovel.regras.estadiaMinima, nome: "Cadastro do imóvel" }] : []),
-        ...eventos.filter((ev) => ev.estadiaMinima !== null && ev.inicio <= data && data <= ev.fim).map((ev) => ({ v: ev.estadiaMinima!, nome: `Evento ${ev.nome}` })),
-        ...janelas.filter((j) => j.inicio <= data && data <= j.fim).map((j) => ({ v: regras.janelaFeriado.estadiaMinima, nome: `Feriadão ${j.nome}` })),
+        ...especiais.filter((c) => !(cedem && c.ligada)),
       ];
       const maior = candidatos.reduce((m, c) => (c.v > m.v ? c : m));
       minimoRegra = maior.v;
       motivoMinimo = maior.nome;
+      if (cedem && especiais.some((c) => c.ligada && c.v > maior.v)) motivoMinimo += `; ${comReserva.join(" e ")} já tem reserva confirmada: noites livres com o mínimo normal`;
     }
     const livresSeguidas = livres[n] ?? null;
     let minimoEnviar = minimoRegra;

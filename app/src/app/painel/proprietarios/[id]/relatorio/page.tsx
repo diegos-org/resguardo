@@ -62,11 +62,12 @@ export default async function RelatorioDoProprietario({ params, searchParams }: 
             </fieldset>
           )}
           <label>
-            Foto do imóvel (opcional, JPG ou PNG até 2 MB)
+            Outra foto para a capa (opcional, JPG ou PNG até 2 MB)
             <input type="file" name="foto" accept="image/jpeg,image/png" />
           </label>
           <p className={styles.pequeno} style={{ margin: 0 }}>
-            Só foto real e autorizada deste imóvel. Sem foto, a página sai sem imagem.
+            Sem escolher aqui, a capa usa a primeira foto da ficha do imóvel (Imóveis → o imóvel → Fotos), a mesma do site e do e-mail do fechamento. Sem
+            foto na ficha, a capa mostra &ldquo;foto do imóvel — em breve&rdquo;. Só foto real e autorizada deste imóvel.
           </p>
           <label>
             Extrato oficial do canal (opcional, PDF até 2 MB)

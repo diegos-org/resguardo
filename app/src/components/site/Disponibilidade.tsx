@@ -5,13 +5,34 @@ const brl = (c: number) => `R$ ${(c / 100).toLocaleString("pt-BR", { minimumFrac
 const TITULO: Record<Resultado["situacao"], string> = { disponivel: "Disponível", indisponivel: "Indisponível nessas datas", a_confirmar: "Disponibilidade a confirmar", invalida: "Confira os dados" };
 const quando = (d: Date, fuso: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, dateStyle: "short", timeStyle: "short" }).format(d);
 
-/** Resultado da consulta no site: situação em linguagem simples, valor por partes e o aviso de que a reserva se confirma na conversa. */
-export function Disponibilidade({ resultado, entrada, saida, fuso }: { resultado: Resultado; entrada: string; saida: string; /** Fuso do imóvel: a hora da leitura é mostrada nele. */ fuso: string }) {
+/**
+ * Resultado da consulta no site: situação em linguagem simples, valor por partes e o aviso de que a reserva se
+ * confirma na conversa — ou, com o Pix oferecido para a estadia (`comPagamento`, M8.2a), de que dá para pagar no site
+ * depois de segurar as datas.
+ */
+export function Disponibilidade({
+  resultado,
+  entrada,
+  saida,
+  fuso,
+  nivel = 2,
+  comPagamento = false,
+}: {
+  resultado: Resultado;
+  entrada: string;
+  saida: string;
+  /** Fuso do imóvel: a hora da leitura é mostrada nele. */
+  fuso: string;
+  /** Nível do título: 3 dentro do quadro "Resumo da viagem" da consulta. */
+  nivel?: 2 | 3;
+  comPagamento?: boolean;
+}) {
   const r = resultado;
+  const Titulo = nivel === 3 ? "h3" : "h2";
   const dataBr = (d: string) => d.split("-").reverse().join("/");
   return (
     <section className={styles.bloco} aria-label="Disponibilidade e valor">
-      <h2>{TITULO[r.situacao]}</h2>
+      <Titulo>{TITULO[r.situacao]}</Titulo>
       {r.noites > 0 && (
         <p className={styles.miudo}>
           {dataBr(entrada)} a {dataBr(saida)} · {r.noites} {r.noites === 1 ? "noite" : "noites"}
@@ -59,8 +80,11 @@ export function Disponibilidade({ resultado, entrada, saida, fuso }: { resultado
       )}
       {r.situacao !== "invalida" && (
         <p className={styles.miudo} style={{ marginTop: 12 }}>
-          {r.cotacao?.total !== null && r.cotacao ? "Valor de hoje, em reais, sem reserva ou pagamento por aqui: a reserva é confirmada na conversa. " : ""}
-          Nenhuma data fica reservada pela consulta.
+          {r.cotacao?.total !== null && r.cotacao
+            ? comPagamento
+              ? "Valor de hoje, em reais. Nenhuma data fica reservada pela consulta: segure as datas para pagar por Pix aqui no site."
+              : "Valor de hoje, em reais, sem reserva ou pagamento por aqui: a reserva é confirmada na conversa. Nenhuma data fica reservada pela consulta."
+            : "Nenhuma data fica reservada pela consulta."}
         </p>
       )}
     </section>

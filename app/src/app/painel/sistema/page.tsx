@@ -7,6 +7,7 @@ import styles from "@/components/formularios.module.css";
 import { getDb } from "@/db/client";
 import { lerRegrasFinanceiras } from "@/configuracoes/regras-financeiras";
 import { hojeISO } from "@/lib/datas";
+import { situacaoDoMercadoPago } from "@/pagamentos/integracao";
 import { NOMES_ORIGEM } from "@/reservas/regras";
 import { AUTOMACOES, ultimasExecucoes } from "@/sistema/automacoes";
 import { regrasEmVigor } from "@/sistema/regras";
@@ -33,12 +34,14 @@ export default async function Sistema() {
   } catch {
     bancoOk = false;
   }
-  const [execucoes, regras, financeiras] = await Promise.all([
+  const [execucoes, regras, financeiras, mercadoPago] = await Promise.all([
     ultimasExecucoes(db),
     regrasEmVigor(db, sessao.organizacaoId, hojeISO()),
     lerRegrasFinanceiras(db, sessao.organizacaoId),
+    // A mesma função que Integrações lê (uma regra, um lugar); sem banco, a linha diz que não foi conferida.
+    bancoOk ? situacaoDoMercadoPago(db) : Promise.resolve(null),
   ]);
-  const servicos = situacaoServicos(process.env, bancoOk);
+  const servicos = situacaoServicos(process.env, bancoOk, mercadoPago);
 
   return (
     <>

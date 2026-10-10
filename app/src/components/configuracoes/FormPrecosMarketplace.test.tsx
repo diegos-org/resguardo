@@ -1,15 +1,26 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { PRECOS_MARKETPLACE_PADRAO } from "@/marketplace/precos";
+import { PESOS_PADRAO_ANTIGO, PRECOS_MARKETPLACE_PADRAO } from "@/marketplace/precos";
 import { FormPrecosMarketplace } from "./FormPrecosMarketplace";
 
 afterEach(cleanup);
 const salvar = vi.fn();
 const celula = (linha: string, coluna: number) => screen.getByText(linha).closest("tr")!.children[coluna].textContent;
+// Partes iguais (1/1/1, o modelo de 4/10): os números abaixo são desses pesos.
+const IGUAIS = { ...PRECOS_MARKETPLACE_PADRAO, pesos: { ...PESOS_PADRAO_ANTIGO } };
 
-it("simulação padrão (R$ 500 × 3 + R$ 150 = R$ 1.650): Airbnb, Booking e site com partes iguais", () => {
+it("padrão 6/3/3 (M12.5): desconto de 3%, SCL com 6% e o proprietário com 3% a mais", () => {
   render(<FormPrecosMarketplace precos={PRECOS_MARKETPLACE_PADRAO} salvar={salvar} />);
+  expect(screen.getByText(/desconto do site é de aproximadamente/).textContent).toContain("3%");
+  expect((screen.getByLabelText("SCL") as HTMLInputElement).value).toBe("2");
+  // R$ 1.650: margem 12% = R$ 198 → hóspede R$ 49,50, proprietário R$ 49,50, SCL R$ 99,00.
+  expect(celula("Desconto do site", 3)).toBe("R$ 49,50");
+  expect(celula("SCL recebe", 3)).toBe("R$ 99,00");
+});
+
+it("simulação de exemplo (R$ 500 × 3 + R$ 150 = R$ 1.650): Airbnb, Booking e site com partes iguais", () => {
+  render(<FormPrecosMarketplace precos={IGUAIS} salvar={salvar} />);
   expect(screen.getByText(/desconto do site é de aproximadamente/).textContent).toContain("4%");
   expect(screen.getByText("Valor cheio: R$ 1.650,00")).toBeTruthy();
   expect(celula("Hóspede paga", 1)).toBe("R$ 1.650,00");
@@ -26,7 +37,7 @@ it("simulação padrão (R$ 500 × 3 + R$ 150 = R$ 1.650): Airbnb, Booking e sit
 });
 
 it("a simulação reage aos campos antes de salvar: pesos, taxas e a estadia de exemplo; campo inválido avisa", () => {
-  render(<FormPrecosMarketplace precos={PRECOS_MARKETPLACE_PADRAO} salvar={salvar} />);
+  render(<FormPrecosMarketplace precos={IGUAIS} salvar={salvar} />);
   fireEvent.change(screen.getByLabelText("Hóspede"), { target: { value: "2" } });
   expect(screen.getByText(/desconto do site é de aproximadamente/).textContent).toContain("6%");
   expect(celula("Desconto do site", 3)).toBe("R$ 99,00");
@@ -44,4 +55,43 @@ it("a simulação reage aos campos antes de salvar: pesos, taxas e a estadia de 
   expect(screen.queryByText(/Valor cheio:/)).toBeNull();
   expect(screen.getByText("Corrija os campos acima para ver a simulação.")).toBeTruthy();
   expect(salvar).not.toHaveBeenCalled();
+});
+
+it("valores gravados mudam (ex.: \"Usar o padrão novo\"): os campos recomeçam deles; sem mudança, o que foi digitado fica", () => {
+  const { rerender } = render(<FormPrecosMarketplace precos={IGUAIS} salvar={salvar} />);
+  const scl = () => (screen.getByLabelText("SCL") as HTMLInputElement).value;
+  expect(scl()).toBe("1");
+  fireEvent.change(screen.getByLabelText("Hóspede"), { target: { value: "3" } });
+  // Mesmos valores gravados (outra renderização da página): o que foi digitado continua.
+  rerender(<FormPrecosMarketplace precos={{ ...IGUAIS, pesos: { ...IGUAIS.pesos } }} salvar={salvar} />);
+  expect((screen.getByLabelText("Hóspede") as HTMLInputElement).value).toBe("3");
+  // Gravados mudaram: os campos mostram os novos, e salvar em seguida não regrava os antigos.
+  rerender(<FormPrecosMarketplace precos={PRECOS_MARKETPLACE_PADRAO} salvar={salvar} />);
+  expect(scl()).toBe("2");
+  expect((screen.getByLabelText("Hóspede") as HTMLInputElement).value).toBe("1");
+});
+
+it("erros de uma gravação recusada somem quando os valores gravados mudam por outro caminho; o \"Salvo\" da gravação que os mudou fica", async () => {
+  const recusar = vi.fn(async () => ({ mensagem: "Confira os campos destacados.", erros: { pesoScl: "Use um número inteiro de 0 a 100." } }));
+  const { rerender } = render(<FormPrecosMarketplace precos={IGUAIS} salvar={recusar} />);
+  await act(async () => {
+    fireEvent.submit(screen.getByRole("form", { name: "Marketplace e desconto do site" }));
+  });
+  expect(screen.getByText("Confira os campos destacados.")).toBeTruthy();
+  // Mesmos valores gravados: o aviso continua.
+  rerender(<FormPrecosMarketplace precos={{ ...IGUAIS }} salvar={recusar} />);
+  expect(screen.getByText("Confira os campos destacados.")).toBeTruthy();
+  // "Usar o padrão novo" (ou outra pessoa) mudou o que está gravado: os erros antigos somem.
+  rerender(<FormPrecosMarketplace precos={PRECOS_MARKETPLACE_PADRAO} salvar={recusar} />);
+  expect(screen.queryByText("Confira os campos destacados.")).toBeNull();
+  expect(screen.queryByText("Use um número inteiro de 0 a 100.")).toBeNull();
+  cleanup();
+  // Gravação que muda os valores: o aviso de salvo aparece junto com os valores novos.
+  const gravar = vi.fn(async () => ({ ok: true, aviso: "Salvo de verdade." }));
+  const r2 = render(<FormPrecosMarketplace precos={IGUAIS} salvar={gravar} />);
+  await act(async () => {
+    fireEvent.submit(screen.getByRole("form", { name: "Marketplace e desconto do site" }));
+  });
+  r2.rerender(<FormPrecosMarketplace precos={PRECOS_MARKETPLACE_PADRAO} salvar={gravar} />);
+  expect(screen.getByText("Salvo de verdade.")).toBeTruthy();
 });

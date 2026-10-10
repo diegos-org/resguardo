@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { criarContrato } from "@/contratos/repositorio";
-import { imoveis, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
+import { execucoesAutomacao, imoveis, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { salvarRecebimento } from "@/imoveis/recebimento";
 import { AUTOMACOES, registrarExecucao, ultimasExecucoes } from "./automacoes";
 import { regrasEmVigor } from "./regras";
-import { situacaoServicos } from "./servicos";
+import type { SituacaoMercadoPago } from "@/pagamentos/integracao";
+import { NOME_MERCADO_PAGO, servicoMercadoPago, situacaoServicos } from "./servicos";
 
 describe("serviços", () => {
   it("refresh token configura Beds24 sem afirmar conexão testada nem expor o valor", () => {
@@ -43,6 +44,46 @@ describe("serviços", () => {
   });
 });
 
+describe("Mercado Pago em Serviços e Integrações (M8.2a): a mesma situação de situacaoDoMercadoPago", () => {
+  const mp = (o: Partial<SituacaoMercadoPago> = {}): SituacaoMercadoPago => ({
+    situacao: "teste",
+    motivo: null,
+    contaDeTeste: true,
+    segredoWebhook: true,
+    ultimoAvisoValidoEm: new Date("2026-10-08T13:00:00Z"),
+    assinaturasRecusadasHoje: 2,
+    enderecoWebhook: "https://scl-reconstrucao.vercel.app/api/pagamentos/mercadopago",
+    ...o,
+  });
+  const vazio = {} as NodeJS.ProcessEnv;
+  it("ok só com a conta conferida como de teste; não é de teste ou não conferida = com problema", () => {
+    expect(servicoMercadoPago(mp(), vazio)).toMatchObject({ nome: NOME_MERCADO_PAGO, situacao: "ok", detalhe: expect.stringContaining("conta conferida como de teste") });
+    expect(servicoMercadoPago(mp(), vazio).detalhe).toContain("último aviso válido em 08/10/2026, 10:00 · 2 assinatura(s) recusada(s) hoje");
+    expect(servicoMercadoPago(mp({ contaDeTeste: false }), vazio)).toMatchObject({ situacao: "falha", detalhe: expect.stringContaining("NÃO é de teste") });
+    expect(servicoMercadoPago(mp({ contaDeTeste: null }), vazio)).toMatchObject({ situacao: "falha", detalhe: expect.stringContaining("não deu para conferir") });
+  });
+  it("desligado, configuração inválida, só nas prévias e produção travada", () => {
+    expect(servicoMercadoPago(mp({ situacao: "desligado", motivo: "Falta configurar MERCADOPAGO_ACCESS_TOKEN.", contaDeTeste: null, segredoWebhook: false }), vazio)).toMatchObject({
+      situacao: "nao_configurado",
+      detalhe: expect.stringContaining("sem segredo do webhook"),
+    });
+    expect(servicoMercadoPago(mp({ situacao: "desligado", motivo: "MERCADOPAGO_AMBIENTE com valor inesperado: use teste ou producao.", contaDeTeste: null }), { MERCADOPAGO_AMBIENTE: "prod" } as unknown as NodeJS.ProcessEnv).situacao).toBe("falha");
+    expect(servicoMercadoPago(mp({ situacao: "so_nas_previas", contaDeTeste: null }), vazio).detalhe).toContain("roda nas prévias");
+    expect(servicoMercadoPago(mp({ situacao: "producao_travada", contaDeTeste: null }), vazio).detalhe).toContain("travado");
+    // No deploy de produção, sem as chaves (que ficam só em Preview): é o esperado, não "falta configurar".
+    const producao = { VERCEL_ENV: "production" } as unknown as NodeJS.ProcessEnv;
+    expect(servicoMercadoPago(mp({ situacao: "desligado", motivo: "Falta configurar MERCADOPAGO_ACCESS_TOKEN e MERCADOPAGO_PUBLIC_KEY.", contaDeTeste: null }), producao)).toMatchObject({
+      situacao: "configurado",
+      detalhe: expect.stringContaining("o teste do pagamento roda nas prévias"),
+    });
+    expect(servicoMercadoPago(mp({ situacao: "desligado", motivo: "x", contaDeTeste: null }), { VERCEL_ENV: "production", MERCADOPAGO_AMBIENTE: "prod" } as unknown as NodeJS.ProcessEnv).situacao).toBe("falha");
+  });
+  it("situacaoServicos usa a situação lida; sem ela, diz que não foi conferida (nunca 'planejado')", () => {
+    expect(situacaoServicos(vazio, null, mp()).find((x) => x.nome === NOME_MERCADO_PAGO)?.situacao).toBe("ok");
+    expect(situacaoServicos(vazio, null).find((x) => x.nome === NOME_MERCADO_PAGO)).toMatchObject({ situacao: "nao_configurado", detalhe: "Situação não conferida nesta abertura" });
+  });
+});
+
 describe("automações e regras (com banco)", () => {
   let db: Db;
   let close: () => Promise<void>;
@@ -61,6 +102,17 @@ describe("automações e regras (com banco)", () => {
     const u = await ultimasExecucoes(db);
     expect(u.get("recalculo-deploy")).toMatchObject({ ok: false, resumo: "Falhou: banco caiu" });
     expect(AUTOMACOES.find((a) => a.id === "recalculo-deploy")?.situacao).toBe("ativa");
+  });
+
+  it("a rotina de 10 em 10 minutos não esconde a última execução das que rodam raramente (M8.2a)", async () => {
+    let t = Date.parse("2026-09-01T12:00:00Z");
+    const agora = () => new Date((t += 1000));
+    await registrarExecucao(db, "fechamento-email", async () => "mês fechado", agora);
+    for (let i = 0; i < 520; i++) await db.insert(execucoesAutomacao).values({ nome: "pedidos-site", iniciadoEm: agora(), terminadoEm: agora(), ok: true, resumo: `volta ${i}` });
+    const u = await ultimasExecucoes(db);
+    expect(u.get("fechamento-email")).toMatchObject({ ok: true, resumo: "mês fechado" });
+    expect(u.get("pedidos-site")?.resumo).toBe("volta 519");
+    expect(AUTOMACOES.find((a) => a.id === "pedidos-site")).toMatchObject({ situacao: "ativa", item: "M8.2a", nome: expect.stringContaining("Pedidos e pagamentos do site") });
   });
 
   it("regras em vigor: contrato de hoje, próximo contrato, dono e quem recebe (imóvel × padrão)", async () => {

@@ -5,6 +5,7 @@ import { imoveis, organizacoes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { DETALHES_VAZIOS, salvarDetalhes } from "@/imoveis/detalhes";
+import { guardarFoto } from "@/imoveis/fotos";
 import { conteudoDoSite, destinoDoLinkAntigo, hojeMaisCedo, imovelDoSite, imoveisDoSite, lerPedidoConsulta, tituloDoSite, linkWhatsapp, montarConsulta, numeroWhatsapp, organizacaoDoSite } from "./site";
 
 let db: Db;
@@ -54,6 +55,22 @@ describe("site público (M7.1)", () => {
     expect(lista[0]).toMatchObject({ camas: [], comodidades: [], checkinAPartirDe: "15:00" });
   });
 
+  it("fotos reais (M7.3): cada imóvel com as suas, na ordem, só endereço e legenda; sem foto, lista vazia", async () => {
+    const jpg = (n: number) => Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, n]);
+    const f1 = await guardarFoto(db, org, { imovelId: studio, legenda: "Sala", arquivo: { nome: "a.jpg", conteudo: jpg(1) }, miniatura: jpg(2) }, null);
+    const f2 = await guardarFoto(db, org, { imovelId: studio, arquivo: { nome: "b.jpg", conteudo: jpg(3) } }, null);
+    if (!f1.ok || !f2.ok) throw new Error("foto");
+    const [dois, s] = await imoveisDoSite(db, org);
+    expect(s.fotos).toEqual([
+      { grande: `/fotos/${f1.id}`, pequena: `/fotos/${f1.id}/pequena`, legenda: "Sala" },
+      { grande: `/fotos/${f2.id}`, pequena: `/fotos/${f2.id}`, legenda: "" },
+    ]);
+    expect(dois.fotos).toEqual([]);
+    expect((await imovelDoSite(db, org, "403"))?.fotos).toEqual(s.fotos);
+    // O id do imóvel (usado só para buscar as fotos) nunca vai para o objeto público.
+    expect(JSON.stringify(s)).not.toContain(studio);
+  });
+
   it("página do imóvel: só se for público e ativo", async () => {
     expect(await imovelDoSite(db, org, "403")).toMatchObject({ nome: "Studio Exemplo Leblon" });
     expect(await imovelDoSite(db, org, "buzios")).toBeNull();
@@ -64,10 +81,17 @@ describe("site público (M7.1)", () => {
   it("textos e contato vêm do painel; sem telefone, sem WhatsApp", async () => {
     let c = await conteudoDoSite(db);
     expect(c).toMatchObject({ organizacaoId: org, nomeEmpresa: "Sua Casa Exemplo", whatsapp: null, textos: { titulo: TEXTOS_SITE_INICIAIS.titulo } });
-    await salvarTextosSite(db, org, { ...TEXTOS_SITE_INICIAIS, titulo: "Título novo", sobre: "Sobre nós." }, null);
-    await salvarEmpresa(db, org, { nome: "Sua Casa Exemplo", razaoSocial: "", cnpj: "", email: "contato@example.com", telefone: "(21) 90000-0000", endereco: "", site: "", chavePix: "" }, null);
+    await salvarTextosSite(db, org, { ...TEXTOS_SITE_INICIAIS, titulo: "Título novo", porque: "Sobre nós." }, null);
+    await salvarEmpresa(db, org, { nome: "Sua Casa Exemplo", razaoSocial: "", cnpj: "", email: "contato@example.com", telefone: "(21) 90000-0000", endereco: "", encarregado: "", site: "", chavePix: "" }, null);
     c = await conteudoDoSite(db);
-    expect(c).toMatchObject({ whatsapp: "5521900000000", email: "contato@example.com", textos: { titulo: "Título novo", sobre: "Sobre nós." } });
+    expect(c).toMatchObject({ whatsapp: "5521900000000", email: "contato@example.com", textos: { titulo: "Título novo", porque: "Sobre nós." } });
+  });
+
+  it("identificação da empresa para o rodapé (M7.4): razão social, CNPJ e endereço de agora, do cadastro da empresa", async () => {
+    expect((await conteudoDoSite(db))?.identidade).toEqual({ razaoSocial: "", cnpj: "", endereco: "" });
+    const empresa = { nome: "Sua Casa Exemplo", razaoSocial: "Casa Exemplo Temporada Ltda.", cnpj: "00.000.000/0001-00", email: "", telefone: "", endereco: "Rua Fictícia, 100", encarregado: "", site: "", chavePix: "" };
+    await salvarEmpresa(db, org, empresa, null);
+    expect((await conteudoDoSite(db))?.identidade).toEqual({ razaoSocial: "Casa Exemplo Temporada Ltda.", cnpj: "00.000.000/0001-00", endereco: "Rua Fictícia, 100" });
   });
 
   it("número do WhatsApp a partir do telefone do cadastro", () => {

@@ -32,8 +32,19 @@ const SIMULACAO_PADRAO = { diaria: "500", noites: "3", limpeza: "150" };
  * escreve em OTA ou no pagamento: são parâmetros do desconto do site e da futura divisão (M12.2).
  */
 export function FormPrecosMarketplace({ precos, salvar }: Props) {
-  const [estado, enviar, enviando] = useActionState(salvar, {});
-  const [campos, setCampos] = useState<Record<string, string>>(() => ({ ...camposDe(precos), ...(estado.valores ?? {}) }));
+  const [resposta, enviar, enviando] = useActionState(salvar, {});
+  const [campos, setCampos] = useState<Record<string, string>>(() => ({ ...camposDe(precos), ...(resposta.valores ?? {}) }));
+  // Valores gravados mudaram (ex.: "Usar o padrão novo"): os campos recomeçam deles. Erros de uma gravação recusada
+  // falam de campos que já não estão na tela e somem; o "Salvo" de uma gravação aceita fica.
+  const gravados = JSON.stringify(precos);
+  const [ultimosGravados, setUltimosGravados] = useState(gravados);
+  const [respostaVencida, setRespostaVencida] = useState<EstadoPrecos | null>(null);
+  if (ultimosGravados !== gravados) {
+    setUltimosGravados(gravados);
+    setCampos(camposDe(precos));
+    if (!resposta.ok) setRespostaVencida(resposta);
+  }
+  const estado: EstadoPrecos = resposta === respostaVencida ? {} : resposta;
   const [sim, setSim] = useState(SIMULACAO_PADRAO);
   const erro = (k: string) => (estado.erros?.[k] ? <span className={styles.erro}>{estado.erros[k]}</span> : null);
   const invalido = (k: string) => (estado.erros?.[k] ? { "aria-invalid": true as const } : {});
@@ -66,7 +77,7 @@ export function FormPrecosMarketplace({ precos, salvar }: Props) {
         </fieldset>
         <fieldset style={grupo}>
           <legend style={legenda}>Divisão da margem (pesos)</legend>
-          <p style={nota}>A margem (taxa do Airbnb − taxa do pagamento, sobre o valor cheio) é dividida pelos pesos: a parte do hóspede vira o desconto do site, a da SCL é a receita da SCL e a do proprietário é o que ele recebe a mais que na OTA. 1/1/1 = partes iguais.</p>
+          <p style={nota}>A margem (taxa do Airbnb − taxa do pagamento, sobre o valor cheio) é dividida pelos pesos: a parte do hóspede vira o desconto do site, a da SCL é a receita da SCL e a do proprietário é o que ele recebe a mais que na OTA. O padrão (decisão de 7/10) é hóspede 1, proprietário 1 e SCL 2: numa margem de 12 pontos, 3% de desconto, 3% a mais para o proprietário e 6% para a SCL. 1/1/1 = partes iguais.</p>
           <div className={styles.linha}>
             {campo("pesoHospede", "Hóspede", { inputMode: "numeric" })}
             {campo("pesoProprietario", "Proprietário", { inputMode: "numeric" })}

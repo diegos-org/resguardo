@@ -3,11 +3,52 @@
  * "ok" só quando foi testado agora (o banco); "configurado" quando a chave existe mas o
  * serviço não foi testado nesta abertura (não afirmar que funciona sem ter conferido).
  */
+import { ambienteMercadoPago } from "@/pagamentos/ambiente";
+import type { SituacaoMercadoPago } from "@/pagamentos/integracao";
+
 export type SituacaoServico = "ok" | "configurado" | "falha" | "nao_configurado" | "planejado";
 
 export type Servico = { nome: string; paraQue: string; situacao: SituacaoServico; detalhe: string };
 
-export function situacaoServicos(env: NodeJS.ProcessEnv, bancoOk: boolean | null): Servico[] {
+export const NOME_MERCADO_PAGO = "Pagamentos (Mercado Pago)";
+
+const quando = (d: Date) => d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
+
+/** No deploy de produção sem as chaves de teste (que ficam só no ambiente Preview): é o esperado, não falta nada. */
+export const TEXTO_PRODUCAO_SEM_CHAVES = "Deploy de produção: o teste do pagamento roda nas prévias (as chaves de teste ficam só no ambiente Preview da Vercel)";
+export const producaoSemChaves = (mp: SituacaoMercadoPago, env: NodeJS.ProcessEnv) =>
+  env.VERCEL_ENV === "production" && mp.situacao === "desligado" && ambienteMercadoPago(env.MERCADOPAGO_AMBIENTE) !== null;
+
+/**
+ * A linha do Mercado Pago (Integrações e Sistema), lida de `situacaoDoMercadoPago` — a mesma função nos dois
+ * lugares. "ok" só com a conta conferida agora como de teste no provedor.
+ */
+export function servicoMercadoPago(mp: SituacaoMercadoPago, env: NodeJS.ProcessEnv): Servico {
+  const avisos = [
+    mp.segredoWebhook ? "segredo do webhook configurado" : "sem segredo do webhook (todo aviso é recusado)",
+    mp.ultimoAvisoValidoEm ? `último aviso válido em ${quando(mp.ultimoAvisoValidoEm)}` : "nenhum aviso válido recebido ainda",
+    `${mp.assinaturasRecusadasHoje} assinatura(s) recusada(s) hoje`,
+  ].join(" · ");
+  const base = { nome: NOME_MERCADO_PAGO, paraQue: "Pagamento da reserva direta no site (Pix, em teste)" };
+  switch (mp.situacao) {
+    case "desligado":
+      if (producaoSemChaves(mp, env)) return { ...base, situacao: "configurado", detalhe: `${TEXTO_PRODUCAO_SEM_CHAVES} · ${avisos}` };
+      return { ...base, situacao: ambienteMercadoPago(env.MERCADOPAGO_AMBIENTE) === null ? "falha" : "nao_configurado", detalhe: `Desligado: ${mp.motivo ?? "faltam as chaves"} · ${avisos}` };
+    case "so_nas_previas":
+      return { ...base, situacao: "configurado", detalhe: `Chaves configuradas, mas o teste do pagamento roda nas prévias da Vercel: aqui o site segue pelo pedido na conversa · ${avisos}` };
+    case "producao_travada":
+      return { ...base, situacao: "configurado", detalhe: `Ambiente de produção do Mercado Pago: travado nesta fase (nenhuma cobrança; só teste) · ${avisos}` };
+    case "teste":
+      return {
+        ...base,
+        situacao: mp.contaDeTeste === true ? "ok" : "falha",
+        detalhe: `${mp.contaDeTeste === true ? "Ambiente de teste · conta conferida como de teste no Mercado Pago" : mp.contaDeTeste === false ? "Ambiente de teste · a conta das chaves NÃO é de teste: nenhuma cobrança é feita" : "Ambiente de teste · não deu para conferir no Mercado Pago se a conta é de teste: nenhuma cobrança é feita"} · ${avisos}`,
+      };
+  }
+}
+
+/** `mercadoPago`: a situação já lida (`situacaoDoMercadoPago`); sem ela, a linha diz só que não foi conferida. */
+export function situacaoServicos(env: NodeJS.ProcessEnv, bancoOk: boolean | null, mercadoPago: SituacaoMercadoPago | null = null): Servico[] {
   const tem = (...chaves: string[]) => chaves.every((c) => Boolean(env[c]));
   const banco = env.DATABASE_URL ?? "";
   const bancoLocal = /@(localhost|127\.0\.0\.1)[:/]/.test(banco);
@@ -48,6 +89,8 @@ export function situacaoServicos(env: NodeJS.ProcessEnv, bancoOk: boolean | null
           : "Credencial configurada, conexão não testada · envio para o Beds24 desligado (BEDS24_ESCRITA)",
     },
     { nome: "WhatsApp (Meta)", paraQue: "Atendimento e mensagens", situacao: "planejado", detalhe: "Chega no M10 (depende da verificação no Meta)" },
-    { nome: "Pagamentos (Mercado Pago)", paraQue: "Reserva direta no site", situacao: "planejado", detalhe: "Chega no M8" },
+    mercadoPago
+      ? servicoMercadoPago(mercadoPago, env)
+      : { nome: NOME_MERCADO_PAGO, paraQue: "Pagamento da reserva direta no site (Pix, em teste)", situacao: "nao_configurado", detalhe: "Situação não conferida nesta abertura" },
   ];
 }

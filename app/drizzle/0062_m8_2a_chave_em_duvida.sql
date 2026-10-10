@@ -1,0 +1,1 @@
+ALTER TABLE "devolucoes_pagamento" ADD COLUMN "chave_em_duvida" boolean DEFAULT false NOT NULL;

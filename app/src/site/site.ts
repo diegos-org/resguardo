@@ -13,8 +13,10 @@ import { lerTextosSite, type TextosSite } from "@/configuracoes/textos-site";
 import { imoveis, imoveisDetalhes, organizacoes } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { TIPOS_CAMA, type TipoCama } from "@/imoveis/cadastro-opcoes";
+import { type FotoPublica, fotosParaOSite } from "@/imoveis/fotos";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
+import { enderecoImagemSite, lerImagensSite } from "./imagens-site";
 
 export type ImovelPublico = {
   codigo: string;
@@ -37,6 +39,8 @@ export type ImovelPublico = {
   checkinAPartirDe: string;
   checkoutAte: string;
   estadiaMinima: number | null;
+  /** Fotos reais (M7.3), na ordem da galeria; a primeira é a capa. Vazio = "foto em breve". */
+  fotos: FotoPublica[];
 };
 
 export type ConteudoSite = {
@@ -46,7 +50,17 @@ export type ConteudoSite = {
   /** Número do WhatsApp da empresa (só dígitos, com DDI) ou null se não há telefone no cadastro. */
   whatsapp: string | null;
   email: string;
+  /** Endereços das imagens do site (M7.6): foto da capa (null = o fundo verde) e marca (sem a enviada, a do estudo). */
+  imagens: { capa: string | null; marca: string };
+  /**
+   * Identificação da empresa no rodapé (M7.4, Decreto 7.962, art. 2º): os dados atuais de Configurações → Empresa. As
+   * páginas legais mostram os dados congelados na versão; o rodapé, sempre os de agora. Opcional só para os testes.
+   */
+  identidade?: { razaoSocial: string; cnpj: string; endereco: string };
 };
+
+/** Marca do estudo (o ícone do logotipo), usada enquanto nenhuma outra é enviada em Configurações → Site. */
+export const MARCA_PADRAO = "/marca.png";
 
 /**
  * De qual organização é o site: a da variável SITE_ORGANIZACAO_ID, se existir; senão, a única
@@ -74,8 +88,16 @@ export function numeroWhatsapp(telefone: string): string | null {
 export async function conteudoDoSite(db: Db): Promise<ConteudoSite | null> {
   const organizacaoId = await organizacaoDoSite(db);
   if (!organizacaoId) return null;
-  const [textos, empresa] = await Promise.all([lerTextosSite(db, organizacaoId), lerEmpresa(db, organizacaoId)]);
-  return { organizacaoId, nomeEmpresa: empresa.nome, textos, whatsapp: numeroWhatsapp(empresa.telefone), email: empresa.email };
+  const [textos, empresa, imagens] = await Promise.all([lerTextosSite(db, organizacaoId), lerEmpresa(db, organizacaoId), lerImagensSite(db, organizacaoId)]);
+  return {
+    organizacaoId,
+    nomeEmpresa: empresa.nome,
+    textos,
+    whatsapp: numeroWhatsapp(empresa.telefone),
+    email: empresa.email,
+    imagens: { capa: imagens.capa && enderecoImagemSite(imagens.capa), marca: imagens.marca ? enderecoImagemSite(imagens.marca) : MARCA_PADRAO },
+    identidade: { razaoSocial: empresa.razaoSocial, cnpj: empresa.cnpj, endereco: empresa.endereco },
+  };
 }
 
 const SEM_PALAVRA_CAMA = new Set(["sofa_cama", "beliche", "colchao"]);
@@ -88,6 +110,8 @@ const descreverCamas = (camas: Record<string, number>): string[] =>
     });
 
 const colunasPublicas = {
+  // Só para buscar as fotos: o id nunca vai para o objeto público.
+  id: imoveis.id,
   codigo: imoveis.codigo,
   fuso: imoveis.fuso,
   nome: imoveis.nome,
@@ -110,7 +134,7 @@ const colunasPublicas = {
 
 type Linha = { [K in keyof typeof colunasPublicas]: (typeof colunasPublicas)[K]["_"]["data"] | null };
 
-function publico(l: Linha): ImovelPublico {
+function publico(l: Linha, fotos: FotoPublica[]): ImovelPublico {
   return {
     codigo: l.codigo ?? "",
     fuso: l.fuso ?? "America/Sao_Paulo",
@@ -130,7 +154,13 @@ function publico(l: Linha): ImovelPublico {
     checkinAPartirDe: l.checkinAPartirDe ?? "15:00",
     checkoutAte: l.checkoutAte ?? "11:00",
     estadiaMinima: l.estadiaMinima,
+    fotos,
   };
+}
+
+async function comFotos(db: Db, organizacaoId: string, linhas: Linha[]): Promise<ImovelPublico[]> {
+  const fotos = await fotosParaOSite(db, organizacaoId, linhas.map((l) => l.id).filter((id): id is string => !!id));
+  return linhas.map((l) => publico(l, (l.id && fotos.get(l.id)) || []));
 }
 
 /** Imóveis que aparecem no site: públicos e ativos, pelo código. */
@@ -141,7 +171,7 @@ export async function imoveisDoSite(db: Db, organizacaoId: string): Promise<Imov
     .leftJoin(imoveisDetalhes, eq(imoveisDetalhes.imovelId, imoveis.id))
     .where(and(eq(imoveis.organizacaoId, organizacaoId), eq(imoveis.publico, true), eq(imoveis.ativo, true)))
     .orderBy(asc(imoveis.codigo));
-  return linhas.map(publico);
+  return comFotos(db, organizacaoId, linhas);
 }
 
 /** Um imóvel do site pelo código (o endereço da página); null se não é público ou não existe. */
@@ -152,7 +182,7 @@ export async function imovelDoSite(db: Db, organizacaoId: string, codigo: string
     .from(imoveis)
     .leftJoin(imoveisDetalhes, eq(imoveisDetalhes.imovelId, imoveis.id))
     .where(and(eq(imoveis.organizacaoId, organizacaoId), eq(imoveis.codigo, codigo), eq(imoveis.publico, true), eq(imoveis.ativo, true)));
-  return l ? publico(l) : null;
+  return l ? (await comFotos(db, organizacaoId, [l]))[0] : null;
 }
 
 export type PedidoConsulta = { imovel: string; entrada: string; saida: string; hospedes: string };

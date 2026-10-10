@@ -16,25 +16,65 @@ export const TITULO_COTACAO: Record<CotacaoVista["estado"], string> = {
   cancelada: "Este pedido foi cancelado",
 };
 
+/** Botão para falar com a equipe (WhatsApp antes do e-mail), com a mensagem da cotação; null sem contato configurado. */
+export function BotaoContato({ whatsapp, email, codigo, texto, secundario = false }: { whatsapp: string | null; email: string; codigo: string; texto: string; secundario?: boolean }) {
+  const classe = secundario ? `${styles.botao} ${styles.botaoContorno}` : styles.botao;
+  if (whatsapp) {
+    return (
+      <a href={linkWhatsapp(whatsapp, texto)} className={classe} target="_blank" rel="noopener noreferrer">
+        Falar com a equipe pelo WhatsApp
+      </a>
+    );
+  }
+  if (email) {
+    return (
+      <a href={`mailto:${email}?subject=${encodeURIComponent(`Cotação ${codigo}`)}&body=${encodeURIComponent(texto)}`} className={classe}>
+        Falar com a equipe por e-mail
+      </a>
+    );
+  }
+  return null;
+}
+
+/** "Nenhum pagamento é feito no site…": com o pagamento oferecido para a cotação, diz como é o pagamento. */
+export const RODAPE_COTACAO = {
+  semPagamento: "Nenhum pagamento é feito no site por enquanto. A reserva é confirmada pela equipe.",
+  comPagamento: "Nada é cobrado ao segurar as datas: o pagamento é por Pix, aqui no site, com as datas seguradas.",
+  comCartao: "Nada é cobrado ao segurar as datas: o pagamento é por Pix ou cartão de crédito, aqui no site, com as datas seguradas.",
+} as const;
+
 /**
  * Página da cotação (M8.1): resumo do que foi cotado e, conforme o estado, o formulário para segurar as
  * datas, o prazo do hold com o botão de WhatsApp, ou o aviso de que mudou/venceu com o caminho para
  * consultar de novo. `formulario` é o formulário de contato (só faz sentido na cotação aberta e válida).
+ * `pagamento` (M8.2a): quando há pagamento no site (Pix oferecido, aguardando, recebido…), o título e o quadro
+ * dele vêm primeiro e substituem o que o estado da cotação diria — um pagamento vence "expirada" e "cancelada".
+ * `pagamentoNoSite`: o site oferece o Pix para esta cotação (muda o texto "nenhum pagamento é feito no site");
+ * `comCartao` (M8.2b): o cartão de crédito também está ligado ("por Pix ou cartão").
  */
-export function Cotacao({ vista, whatsapp, email, formulario }: { vista: CotacaoVista; whatsapp: string | null; email: string; formulario?: ReactNode }) {
+export function Cotacao({
+  vista,
+  whatsapp,
+  email,
+  formulario,
+  pagamento,
+  pagamentoNoSite = false,
+  comCartao = false,
+}: {
+  vista: CotacaoVista;
+  whatsapp: string | null;
+  email: string;
+  formulario?: ReactNode;
+  pagamento?: { titulo: string; conteudo: ReactNode };
+  pagamentoNoSite?: boolean;
+  comCartao?: boolean;
+}) {
   const c = vista.cotacao;
   const novaConsulta = `/consulta?${new URLSearchParams({ imovel: c.imovelCodigo, entrada: c.checkin, saida: c.checkout, hospedes: String(c.hospedes) })}`;
-  const texto = textoDaCotacao(vista);
-  const contato = whatsapp ? (
-    <a href={linkWhatsapp(whatsapp, texto)} className={styles.botao} target="_blank" rel="noopener noreferrer">
-      Falar com a equipe pelo WhatsApp
-    </a>
-  ) : email ? (
-    <a href={`mailto:${email}?subject=${encodeURIComponent(`Cotação ${c.codigo}`)}&body=${encodeURIComponent(texto)}`} className={styles.botao}>
-      Falar com a equipe por e-mail
-    </a>
-  ) : null;
-  const titulo = vista.estado === "aberta" && vista.mudou ? TITULO_COTACAO.desatualizada : TITULO_COTACAO[vista.estado];
+  const contato = <BotaoContato whatsapp={whatsapp} email={email} codigo={c.codigo} texto={textoDaCotacao(vista)} />;
+  const temContato = !!(whatsapp || email);
+  const titulo = pagamento ? pagamento.titulo : vista.estado === "aberta" && vista.mudou ? TITULO_COTACAO.desatualizada : TITULO_COTACAO[vista.estado];
+  const estado = pagamento ? null : vista.estado;
   return (
     <section className={styles.bloco} aria-label="Cotação">
       <h2>{titulo}</h2>
@@ -45,6 +85,7 @@ export function Cotacao({ vista, whatsapp, email, formulario }: { vista: Cotacao
         {dataBr(c.checkin)} a {dataBr(c.checkout)} · {c.noites} {c.noites === 1 ? "noite" : "noites"} · {c.hospedes} {c.hospedes === 1 ? "pessoa" : "pessoas"}
         {c.situacao === "a_confirmar" ? " · disponibilidade a confirmar pela equipe" : ""}
       </p>
+      {pagamento?.conteudo}
       <dl className={styles.resumo}>
         <dt>Diárias</dt>
         <dd>{brl(c.diarias)}</dd>
@@ -76,15 +117,17 @@ export function Cotacao({ vista, whatsapp, email, formulario }: { vista: Cotacao
         </dd>
       </dl>
 
-      {vista.estado === "aberta" && !vista.mudou && (
+      {estado === "aberta" && !vista.mudou && (
         <>
           <p className={styles.texto} style={{ marginTop: 12 }}>
-            Valor conferido agora. Para garantir as datas enquanto fala com a equipe, deixe seu contato: elas ficam seguradas para você por alguns minutos e, se não houver confirmação até lá, voltam à venda.
+            {pagamentoNoSite
+              ? `Valor conferido agora. Para garantir as datas, deixe seu contato: elas ficam seguradas para você por alguns minutos, para pagar por ${comCartao ? "Pix ou cartão" : "Pix"} aqui mesmo ou falar com a equipe. Sem pagamento ou confirmação até lá, voltam à venda.`
+              : "Valor conferido agora. Para garantir as datas enquanto fala com a equipe, deixe seu contato: elas ficam seguradas para você por alguns minutos e, se não houver confirmação até lá, voltam à venda."}
           </p>
           {formulario}
         </>
       )}
-      {vista.estado === "aberta" && vista.mudou && (
+      {estado === "aberta" && vista.mudou && (
         <>
           <p className={styles.aviso} role="alert" style={{ marginTop: 12 }}>
             {vista.atual ? motivoDaMudanca(c, vista.atual) : "Esta cotação mudou."}
@@ -98,13 +141,13 @@ export function Cotacao({ vista, whatsapp, email, formulario }: { vista: Cotacao
           </p>
         </>
       )}
-      {vista.estado === "segurada" && c.holdAte && (
+      {estado === "segurada" && c.holdAte && (
         <>
           <p className={styles.texto} style={{ marginTop: 12 }}>
             As datas estão seguradas para você até <strong>{quando(c.holdAte, c.fuso)}</strong>
             {vista.reserva ? ` (pedido ${vista.reserva.codigo})` : ""}. Fale com a equipe para confirmar a reserva; se o prazo passar sem confirmação, as datas voltam à venda.
           </p>
-          {contato ? (
+          {temContato ? (
             <p style={{ marginTop: 12 }}>{contato}</p>
           ) : (
             <p className={styles.aviso} role="note" style={{ marginTop: 12 }}>
@@ -113,17 +156,17 @@ export function Cotacao({ vista, whatsapp, email, formulario }: { vista: Cotacao
           )}
         </>
       )}
-      {vista.estado === "convertida" && (
+      {estado === "convertida" && (
         <p className={styles.texto} style={{ marginTop: 12 }}>
           A equipe confirmou a sua reserva{vista.reserva ? ` (código ${vista.reserva.codigo})` : ""}. Guarde este código: é com ele que você acompanha a reserva.
         </p>
       )}
-      {(vista.estado === "expirada" || vista.estado === "desatualizada" || vista.estado === "cancelada") && (
+      {(estado === "expirada" || estado === "desatualizada" || estado === "cancelada") && (
         <>
           <p className={styles.texto} style={{ marginTop: 12 }}>
-            {vista.estado === "expirada"
+            {estado === "expirada"
               ? "O prazo passou sem confirmação e as datas voltaram à venda. Se ainda quiser, faça uma nova consulta — pode ser que continuem livres."
-              : vista.estado === "cancelada"
+              : estado === "cancelada"
                 ? "Este pedido foi cancelado pela equipe. Se tiver dúvida, fale com a gente ou faça uma nova consulta."
                 : "O valor ou a disponibilidade mudaram desde esta cotação. Faça uma nova consulta para ver a situação atual."}
           </p>
@@ -134,9 +177,11 @@ export function Cotacao({ vista, whatsapp, email, formulario }: { vista: Cotacao
           </p>
         </>
       )}
-      <p className={styles.miudo} style={{ marginTop: 12 }}>
-        Nenhum pagamento é feito no site por enquanto. A reserva é confirmada pela equipe.
-      </p>
+      {!pagamento && (
+        <p className={styles.miudo} style={{ marginTop: 12 }}>
+          {pagamentoNoSite ? (comCartao ? RODAPE_COTACAO.comCartao : RODAPE_COTACAO.comPagamento) : RODAPE_COTACAO.semPagamento}
+        </p>
+      )}
     </section>
   );
 }

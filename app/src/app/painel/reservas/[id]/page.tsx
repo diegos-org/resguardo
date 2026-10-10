@@ -15,9 +15,13 @@ import { lerRegrasFinanceiras } from "@/configuracoes/regras-financeiras";
 import { lerRecebimento } from "@/imoveis/recebimento";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import { Horarios } from "@/components/reservas/Horarios";
+import { PagamentoNoSite } from "@/components/reservas/PagamentoNoSite";
+import { PaginasLegaisAceitas } from "@/components/reservas/PaginasLegaisAceitas";
 import { Recebimentos } from "@/components/reservas/Recebimentos";
 import { hojeISO } from "@/lib/datas";
+import { pagamentosDaReserva } from "@/pagamentos/consultas";
 import { recebidoPorReserva, recebimentosDaReserva } from "@/repasses/recebimentos";
+import { aceitesDaReserva } from "@/site/aceites";
 import { acordoVigente, lerHorariosReservas } from "@/reservas/horarios";
 
 const CAMPOS_FINANCEIROS = ["valorBruto", "taxaCanal", "valorLiquido", "moeda", "recebimento"];
@@ -46,6 +50,10 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
   const quemRecebe = `${efetivo === "a_confirmar" ? "A confirmar" : NOMES_RECEBIMENTO[efetivo]} (${fonte})`;
   // M4.10: recebimentos do canal registrados para esta reserva (liberam a parte do proprietário para repasse).
   const [recebimentos, recebidos] = verValores ? await Promise.all([recebimentosDaReserva(db, sessao.organizacaoId, r.id), recebidoPorReserva(db, sessao.organizacaoId, [r.id])]) : [[], new Map()];
+  // M8.2a: tentativas de pagamento no site desta reserva (situação para quem lê reservas; valores e ações pelo financeiro).
+  const pagamentosSite = podeFazer(sessao.papel, "reserva:ler") ? await pagamentosDaReserva(db, sessao.organizacaoId, r.id) : [];
+  // M7.4: páginas legais que o hóspede aceitou no site (também o aceite gravado sem um Pix que deu certo).
+  const aceitesSite = podeFazer(sessao.papel, "reserva:ler") ? await aceitesDaReserva(db, sessao.organizacaoId, r.id) : [];
 
   const linhas: [string, string][] = [
     ["Imóvel", imovel ? `${imovel.codigo} · ${imovel.nome}` : "—"],
@@ -136,6 +144,8 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
           </BotaoConfirmar>
         </form>
       )}
+      <PagamentoNoSite pagamentos={pagamentosSite} verValores={verValores} editar={podeFazer(sessao.papel, "financeiro:editar")} hoje={hojeISO()} />
+      <PaginasLegaisAceitas aceites={aceitesSite} />
       {emConferencia && (
         <section aria-label="Em conferência" className={styles.alerta} style={{ maxWidth: 820 }}>
           <p style={{ margin: 0 }}>

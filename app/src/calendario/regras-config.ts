@@ -12,8 +12,12 @@ import { uuidValido } from "@/lib/ids";
 import { dataValida } from "@/reservas/regras";
 
 export type Feriado = { data: string; nome: string };
-/** `multiplicador` em centésimos: 200 = 2× o preço base. */
-export type Evento = { id: string; nome: string; inicio: string; fim: string; multiplicador: number; estadiaMinima: number | null; todosImoveis: boolean; imoveis: string[] };
+/**
+ * `multiplicador` em centésimos: 200 = 2× o preço base. `minimoNormalComReserva` (regra de 6/10): com uma
+ * reserva confirmada no período do evento, as noites livres dele usam o mínimo normal da semana em vez do
+ * mínimo do evento (o preço do evento continua). Desligado para temporadas longas, como a alta temporada.
+ */
+export type Evento = { id: string; nome: string; inicio: string; fim: string; multiplicador: number; estadiaMinima: number | null; minimoNormalComReserva: boolean; todosImoveis: boolean; imoveis: string[] };
 export type FaixaUltimaHora = { deDias: number; ateDias: number; percentual: number };
 /** Quem aplica o desconto de última hora: as regras nativas do Beds24 (já configuradas), o SCL (envia o preço final) ou ninguém. */
 export type AplicacaoUltimaHora = "beds24" | "scl" | "desligada";
@@ -31,15 +35,18 @@ export type RegrasCalendario = {
   /** Quantas noites, a partir de hoje, o envio cobre. */
   horizonteDias: number;
   feriados: Feriado[];
-  janelaFeriado: { estadiaMinima: number; multiplicador: number; todosImoveis: boolean; imoveis: string[] };
+  /** `minimoNormalComReserva`: a mesma regra de 6/10 dos eventos, para a janela de cada feriadão. */
+  janelaFeriado: { estadiaMinima: number; multiplicador: number; minimoNormalComReserva: boolean; todosImoveis: boolean; imoveis: string[] };
   eventos: Evento[];
   ultimaHora: { aplicadoPor: AplicacaoUltimaHora; faixas: [FaixaUltimaHora, FaixaUltimaHora] };
   envio: { imoveis: string[]; automatico: boolean };
   /**
    * Site público (M7.2/M8.1): por quantas horas uma leitura do Beds24 vale como disponibilidade; máximo de
    * noites cotadas online; por quantos minutos "segurar as datas" ocupa o calendário antes de vencer.
+   * `minutosAnaliseCartao` (M8.2b): quantos minutos a mais as datas ficam seguradas quando um cartão entra em
+   * análise ou processamento no Mercado Pago — uma vez por cotação; 0 = nenhum.
    */
-  site: { validadeLeituraHoras: number; maximoNoitesConsulta: number; minutosHold: number };
+  site: { validadeLeituraHoras: number; maximoNoitesConsulta: number; minutosHold: number; minutosAnaliseCartao: number };
 };
 
 export const REGRAS_CALENDARIO_PADRAO: RegrasCalendario = {
@@ -47,14 +54,16 @@ export const REGRAS_CALENDARIO_PADRAO: RegrasCalendario = {
   estadiaMaxima: 27,
   horizonteDias: 270,
   feriados: [],
-  janelaFeriado: { estadiaMinima: 3, multiplicador: 200, todosImoveis: false, imoveis: [] },
+  janelaFeriado: { estadiaMinima: 3, multiplicador: 200, minimoNormalComReserva: true, todosImoveis: false, imoveis: [] },
   eventos: [],
   ultimaHora: { aplicadoPor: "beds24", faixas: [{ deDias: 3, ateDias: 7, percentual: 15 }, { deDias: 0, ateDias: 2, percentual: 25 }] },
   envio: { imoveis: [], automatico: false },
-  site: { validadeLeituraHoras: 36, maximoNoitesConsulta: 90, minutosHold: 30 },
+  site: { validadeLeituraHoras: 36, maximoNoitesConsulta: 90, minutosHold: 30, minutosAnaliseCartao: 60 },
 };
 
-const LIMITES = { minimo: [1, 30], estadiaMaxima: [1, 364], horizonte: [7, 540], multiplicador: [100, 1000], percentual: [0, 90], dias: [0, 60], feriados: 200, eventos: 100, validadeHoras: [1, 720], noitesConsulta: [1, 364], minutosHold: [5, 240] } as const;
+const LIMITES = { minimo: [1, 30], estadiaMaxima: [1, 364], horizonte: [7, 540], multiplicador: [100, 1000], percentual: [0, 90], dias: [0, 60], feriados: 200, eventos: 100, validadeHoras: [1, 720], noitesConsulta: [1, 364], minutosHold: [5, 240], minutosAnaliseCartao: [0, 240] } as const;
+/** Teto dos minutos a mais de um cartão em análise (o cookie do pedido usa o teto para continuar puro). */
+export const LIMITE_MINUTOS_ANALISE_CARTAO = LIMITES.minutosAnaliseCartao[1];
 
 type Entrada = Record<string, unknown>;
 const txt = (v: unknown) => (typeof v === "string" ? v.trim() : "");
@@ -114,6 +123,8 @@ export function regrasDeJson(valor: unknown): RegrasCalendario {
     eventos.push({
       id: o.id!, nome: txt(o.nome).slice(0, 60) || "Evento", inicio: o.inicio, fim: o.fim, multiplicador: o.multiplicador!,
       estadiaMinima: inteiroEntre(o.estadiaMinima, LIMITES.minimo) ? (o.estadiaMinima as number) : null,
+      // Gravado antes da regra de 6/10: vale a regra (ligada); só um "false" gravado desliga.
+      minimoNormalComReserva: o.minimoNormalComReserva !== false,
       todosImoveis: o.todosImoveis === true, imoveis: ids(o.imoveis),
     });
   }
@@ -125,6 +136,7 @@ export function regrasDeJson(valor: unknown): RegrasCalendario {
     janelaFeriado: {
       estadiaMinima: inteiroEntre(jf.estadiaMinima, LIMITES.minimo) ? (jf.estadiaMinima as number) : P.janelaFeriado.estadiaMinima,
       multiplicador: inteiroEntre(jf.multiplicador, LIMITES.multiplicador) ? (jf.multiplicador as number) : P.janelaFeriado.multiplicador,
+      minimoNormalComReserva: jf.minimoNormalComReserva !== false,
       todosImoveis: jf.todosImoveis === true,
       imoveis: ids(jf.imoveis),
     },
@@ -138,6 +150,7 @@ export function regrasDeJson(valor: unknown): RegrasCalendario {
       validadeLeituraHoras: inteiroEntre(site.validadeLeituraHoras, LIMITES.validadeHoras) ? (site.validadeLeituraHoras as number) : P.site.validadeLeituraHoras,
       maximoNoitesConsulta: inteiroEntre(site.maximoNoitesConsulta, LIMITES.noitesConsulta) ? (site.maximoNoitesConsulta as number) : P.site.maximoNoitesConsulta,
       minutosHold: inteiroEntre(site.minutosHold, LIMITES.minutosHold) ? (site.minutosHold as number) : P.site.minutosHold,
+      minutosAnaliseCartao: inteiroEntre(site.minutosAnaliseCartao, LIMITES.minutosAnaliseCartao) ? (site.minutosAnaliseCartao as number) : P.site.minutosAnaliseCartao,
     },
   };
 }
@@ -193,17 +206,19 @@ export function validarFormRegras(e: Entrada, atual: RegrasCalendario, imoveisDa
   const siteValidadeHoras = inteiro("siteValidadeHoras", LIMITES.validadeHoras);
   const siteMaximoNoites = inteiro("siteMaximoNoites", LIMITES.noitesConsulta);
   const siteMinutosHold = inteiro("siteMinutosHold", LIMITES.minutosHold);
+  // Campo novo (M8.2b): um formulário aberto antes dele (sem o campo) mantém o valor gravado; presente, vale a faixa.
+  const siteMinutosAnaliseCartao = e.siteMinutosAnaliseCartao === undefined ? atual.site.minutosAnaliseCartao : inteiro("siteMinutosAnaliseCartao", LIMITES.minutosAnaliseCartao);
   if (Object.keys(erros).length) return { ok: false, erros };
   return {
     ok: true,
     regras: {
       minimoPorDia, estadiaMaxima, horizonteDias,
       feriados: feriados.sort((a, b) => a.data.localeCompare(b.data)),
-      janelaFeriado: { estadiaMinima: feriadoMinimo, multiplicador: multiplicador!, todosImoveis: marcado(e.feriadoTodos), imoveis: ids(e.feriadoImoveis, imoveisDaOrg) },
+      janelaFeriado: { estadiaMinima: feriadoMinimo, multiplicador: multiplicador!, minimoNormalComReserva: marcado(e.feriadoMinimoNormal), todosImoveis: marcado(e.feriadoTodos), imoveis: ids(e.feriadoImoveis, imoveisDaOrg) },
       eventos: atual.eventos,
       ultimaHora: { aplicadoPor: aplicadoPor as AplicacaoUltimaHora, faixas },
       envio: { imoveis: ids(e.envioImoveis, imoveisDaOrg), automatico: marcado(e.envioAutomatico) },
-      site: { validadeLeituraHoras: siteValidadeHoras, maximoNoitesConsulta: siteMaximoNoites, minutosHold: siteMinutosHold },
+      site: { validadeLeituraHoras: siteValidadeHoras, maximoNoitesConsulta: siteMaximoNoites, minutosHold: siteMinutosHold, minutosAnaliseCartao: siteMinutosAnaliseCartao },
     },
   };
 }
@@ -222,7 +237,7 @@ export function validarEvento(e: Entrada, imoveisDaOrg: readonly string[]): { ok
   const todosImoveis = marcado(e.todosImoveis);
   const imoveis = todosImoveis ? [] : ids(e.imoveis, imoveisDaOrg);
   if (!todosImoveis && !imoveis.length) return { ok: false, erro: "Escolha os imóveis do evento (ou marque todos)." };
-  return { ok: true, evento: { nome, inicio, fim, multiplicador, estadiaMinima: m ? Number(m) : null, todosImoveis, imoveis } };
+  return { ok: true, evento: { nome, inicio, fim, multiplicador, estadiaMinima: m ? Number(m) : null, minimoNormalComReserva: marcado(e.minimoNormalComReserva), todosImoveis, imoveis } };
 }
 
 /**
@@ -245,6 +260,20 @@ export async function adicionarEvento(db: Db, organizacaoId: string, evento: Omi
     const id = randomUUID();
     await gravarConfig(tx, organizacaoId, "calendario_regras", { ...atual, eventos: [...atual.eventos, { ...evento, id }] }, autorId);
     return { ok: true as const, id };
+  });
+}
+
+/** Liga ou desliga, num evento já cadastrado, a regra de 6/10 das noites livres com reserva no período. */
+export async function definirMinimoNormalDoEvento(db: Db, organizacaoId: string, id: string, ligado: boolean, autorId: string | null): Promise<boolean> {
+  if (!uuidValido(id)) return false;
+  return db.transaction(async (tx) => {
+    await travarConfig(tx, organizacaoId, "calendario_regras");
+    const atual = await lerRegrasCalendario(tx, organizacaoId);
+    const evento = atual.eventos.find((e) => e.id === id);
+    if (!evento) return false;
+    if (evento.minimoNormalComReserva === ligado) return true;
+    await gravarConfig(tx, organizacaoId, "calendario_regras", { ...atual, eventos: atual.eventos.map((e) => (e.id === id ? { ...e, minimoNormalComReserva: ligado } : e)) }, autorId);
+    return true;
   });
 }
 

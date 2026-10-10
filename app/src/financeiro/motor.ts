@@ -72,6 +72,15 @@ export function noitesPorMes(checkin: string, checkout: string): [string, number
 /** `ratear` e `comissao` vivem em `lib/rateio` (também usados pelos preços do marketplace, M12.1). */
 export { comissao, ratear };
 
+/** Quem recebe o dinheiro da reserva, nesta ordem: o gravado nela, o do imóvel para o canal, o padrão das regras. */
+export function quemRecebeNaReserva(
+  r: Pick<ReservaParaMotor, "recebimento" | "origem">,
+  regras: RegrasMotor = REGRAS_PADRAO,
+  recebimentoDoImovel: Partial<Record<OrigemReserva, RecebimentoReserva>> = {},
+): RecebimentoReserva | "a_confirmar" {
+  return r.recebimento ?? recebimentoDoImovel[r.origem] ?? regras.recebimento[r.origem];
+}
+
 export function calcularReserva(
   r: ReservaParaMotor,
   contratos: readonly ContratoParaMotor[],
@@ -98,7 +107,7 @@ export function calcularReserva(
   const bp = contrato.comissaoBp;
   const comissaoTotal = comissao(base, bp);
   const direitoTotal = base - comissaoTotal;
-  const quemRecebe = r.recebimento ?? recebimentoDoImovel[r.origem] ?? regras.recebimento[r.origem];
+  const quemRecebe = quemRecebeNaReserva(r, regras, recebimentoDoImovel);
   const proprietarioId = donos.length === 1 ? donos[0] : null;
   if (donos.length === 0) avisos.push("Imóvel sem proprietário vinculado: acerto pendente.");
   if (donos.length > 1) avisos.push("Imóvel com mais de um proprietário: acerto pendente até definir a cota de cada um.");
@@ -150,3 +159,33 @@ export function calcularReserva(
   return { lancamentos, avisos };
 }
 
+
+/** Por que o motor, em seco, não fecharia o cálculo de uma reserva (o pagamento no site só é oferecido sem nenhum destes). */
+export type PendenciaDoCalculo = "sem_valor" | "sem_contrato" | "marketplace" | "sem_proprietario" | "varios_proprietarios" | "recebimento_nao_empresa" | "calculo_pendente";
+
+/**
+ * O mesmo cálculo do motor, em seco, para a reserva como se já estivesse confirmada (M8.2a): só oferece o
+ * pagamento no site se saem receita e parte do proprietário sem pendência — contrato de gestão vigente na data
+ * de ENTRADA, um proprietário só e quem recebe do canal = a empresa (o dinheiro entra na conta da SCL). Fora
+ * disso o dinheiro do hóspede ficaria sem receita no livro (avisar em vez de supor).
+ */
+export function pendenciaDoCalculo(
+  r: ReservaParaMotor,
+  contratos: readonly ContratoParaMotor[],
+  donos: readonly string[],
+  regras: RegrasMotor = REGRAS_PADRAO,
+  recebimentoDoImovel: Partial<Record<OrigemReserva, RecebimentoReserva>> = {},
+): PendenciaDoCalculo | null {
+  if (r.valorBruto === null) return "sem_valor";
+  const contrato = contratoVigente(contratos, r.checkin);
+  if (!contrato) return "sem_contrato";
+  if (contrato.tipo === "marketplace" || contrato.comissaoBp === null) return "marketplace";
+  if (donos.length === 0) return "sem_proprietario";
+  if (donos.length > 1) return "varios_proprietarios";
+  if (quemRecebeNaReserva(r, regras, recebimentoDoImovel) !== "empresa") return "recebimento_nao_empresa";
+  const { lancamentos } = calcularReserva({ ...r, estado: "confirmada" }, contratos, donos, regras, recebimentoDoImovel);
+  const receita = lancamentos.some((l) => l.tipo === "receita_bruta");
+  const direito = lancamentos.filter((l) => l.tipo === "direito_proprietario");
+  if (!receita || !direito.length || lancamentos.some((l) => l.estado === "pendente") || direito.some((l) => !l.proprietarioId)) return "calculo_pendente";
+  return null;
+}

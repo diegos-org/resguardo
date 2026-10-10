@@ -45,9 +45,9 @@ it("prefere 103, mostra plano por noite, leitura parcial e horário local; opera
   expect(h).toContain("2 noites nesta consulta · 1 com leitura do Beds24 · 2 a enviar");
   expect(h).toContain("12:00");
   expect(h).toContain("R$ 450,00 → R$ 450,00 (R$ 337,50)");
-  // Fonte de preços (M3.9) e preço aproximado no site: R$ 337,50 − 4% = R$ 324,00.
+  // Fonte de preços (M3.9) e preço aproximado no site, com o padrão 6/3/3 (M12.5): R$ 337,50 − 3% = R$ 327,38.
   expect(h).toContain("Fonte de preços deste imóvel:</strong> Preços automáticos do SCL");
-  expect(h).toContain("R$ 324,00");
+  expect(h).toContain("R$ 327,38");
   expect(h).toContain("Semana normal");
   expect(h).toContain("Enviar (diferente ou sem leitura)");
   expect(h).not.toContain("Envio ao Beds24");

@@ -4,7 +4,9 @@
  * `montante` = valor recebido, sem efeito no resultado nem no acerto (a receita e a parte do
  * proprietário já estão lançadas pelo motor). Serve a uma regra só: a parte do proprietário de uma
  * reserva fica **disponível** para repasse quando o recebido alcança o líquido do canal da reserva.
- * O M4.4 (conciliação do extrato) e o M8.2 (liberação do provedor) alimentam a mesma condição.
+ * O M4.4 (conciliação do extrato) e o M8.2 (liberação do provedor) alimentam a mesma condição. Reserva paga pelo
+ * site (M8.2a) não recebe recebimento à mão: o dela vem da liberação do Mercado Pago (chave `mercadopago:`), que só
+ * se corrige pelo quadro do pagamento.
  */
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
@@ -14,6 +16,7 @@ import { estornar, lancar, type Lancamento } from "@/financeiro/ledger";
 import { travarMotorDaReserva } from "@/financeiro/trava";
 import { uuidValido } from "@/lib/ids";
 import { formatBRL } from "@/lib/money";
+import { pagamentoEmAndamentoOuAprovado } from "@/pagamentos/andamento";
 import { dataValida } from "@/reservas/regras";
 
 export type Resultado = { ok: true; id: string } | { ok: false; erro: string };
@@ -36,12 +39,17 @@ export async function registrarRecebimento(
   if (!Number.isSafeInteger(d.valor) || d.valor <= 0) return { ok: false, erro: "Informe o valor recebido (maior que zero)." };
   const nota = d.nota.trim().slice(0, 200);
   return db.transaction(async (tx) => {
+    // A reserva fica travada (NO KEY UPDATE, o modo do pagamento) antes de conferir o pagamento pelo site: um Pix
+    // criado ou aprovado ao mesmo tempo espera este recebimento, ou este espera o Pix e o vê (9ª rodada do Codex).
     const [r] = await tx
       .select({ id: reservas.id, codigo: reservas.codigo, imovelId: reservas.imovelId, estado: reservas.estado })
       .from(reservas)
-      .where(and(eq(reservas.id, d.reservaId), eq(reservas.organizacaoId, organizacaoId)));
+      .where(and(eq(reservas.id, d.reservaId), eq(reservas.organizacaoId, organizacaoId)))
+      .for("no key update");
     if (!r) return { ok: false as const, erro: "Reserva não encontrada." };
     if (r.estado === "cancelada") return { ok: false as const, erro: "Reserva cancelada: registre um ajuste em vez de recebimento." };
+    // Pagamento pelo site em andamento ou aprovado: o recebimento vem da liberação do Mercado Pago (M8.2a).
+    if (await pagamentoEmAndamentoOuAprovado(tx, r.id)) return { ok: false as const, erro: "Esta reserva tem pagamento pelo site: o recebimento vem da liberação do Mercado Pago. Veja o quadro \"Pagamento no site\" da reserva." };
     const [l] = await lancar(
       tx,
       organizacaoId,
@@ -73,30 +81,41 @@ export async function estornarRecebimento(db: Db, organizacaoId: string, lancame
   if (!m) return { ok: false, erro: "Informe o motivo do estorno." };
   if (!uuidValido(lancamentoId)) return { ok: false, erro: "Recebimento não encontrado." };
   return db.transaction(async (tx) => {
+    // A reserva primeiro (NO KEY UPDATE, a ordem do pagamento: reserva antes do livro): uma aprovação do pagamento
+    // pelo site, que confere se há recebimento à mão sob essa trava, nunca vê um recebimento que está sendo estornado.
+    const [alvo] = await tx.select({ reservaId: lancamentos.reservaId }).from(lancamentos).where(and(eq(lancamentos.id, lancamentoId), eq(lancamentos.organizacaoId, organizacaoId)));
+    if (alvo?.reservaId) await tx.select({ id: reservas.id }).from(reservas).where(and(eq(reservas.id, alvo.reservaId), eq(reservas.organizacaoId, organizacaoId))).for("no key update");
     const [l] = await tx
       .select()
       .from(lancamentos)
       .where(and(eq(lancamentos.id, lancamentoId), eq(lancamentos.organizacaoId, organizacaoId), eq(lancamentos.tipo, "recebimento"), emVigor()))
       .for("update");
     if (!l) return { ok: false as const, erro: "Recebimento não encontrado ou já estornado." };
+    // Liberação do pagamento pelo site (M8.2a): corrige-se pelo quadro do pagamento, que versiona a chave.
+    if (l.chaveOrigem.startsWith("mercadopago:")) return { ok: false as const, erro: "Recebimento do pagamento pelo site: corrija pelo quadro \"Pagamento no site\" da reserva." };
     // Mesma trava do motor e do repasse: enquanto esta transação confere o repasse, nenhum antecipado ou
     // fechamento lê o recebimento e vincula a parte (3ª rodada do Codex).
     if (l.reservaId) await travarMotorDaReserva(tx, organizacaoId, l.reservaId);
-    // A parte desta reserva já está num repasse a pagar? O dinheiro "com a empresa" sustenta esse repasse:
-    // primeiro se estorna o repasse, depois o recebimento (2ª rodada do Codex). Repasse já pago não trava:
-    // o dinheiro já saiu e a correção é um ajuste manual.
-    const [preso] = l.reservaId
-      ? await tx
-          .select({ data: repasses.data, tipo: repasses.tipo })
-          .from(repasseItens)
-          .innerJoin(repasses, eq(repasses.id, repasseItens.repasseId))
-          .where(and(eq(repasseItens.organizacaoId, organizacaoId), eq(repasseItens.reservaId, l.reservaId), isNull(repasseItens.liberadoEm), isNull(repasses.estornadoEm), isNull(repasses.dataPagamento)))
-          .limit(1)
-      : [];
-    if (preso) return { ok: false as const, erro: `A parte desta reserva já compõe o repasse ${preso.tipo === "antecipado" ? "antecipado" : "do fechamento"} de ${preso.data.split("-").reverse().join("/")}, ainda não pago: estorne o repasse antes de estornar o recebimento.` };
+    const preso = l.reservaId ? await repasseAPagarDaReserva(tx, organizacaoId, l.reservaId) : null;
+    if (preso) return { ok: false as const, erro: preso };
     await estornar(tx, organizacaoId, l.id, `Recebimento estornado: ${m}`, autorId);
     return { ok: true as const, id: l.id };
   });
+}
+
+/**
+ * A parte desta reserva já está num repasse a pagar? O dinheiro "com a empresa" sustenta esse repasse: primeiro se
+ * estorna o repasse, depois o recebimento (2ª rodada do Codex). Repasse já pago não trava: o dinheiro já saiu e a
+ * correção é um ajuste manual. Devolve a mensagem da recusa, ou null. Quem chama já tomou a trava do motor.
+ */
+export async function repasseAPagarDaReserva(tx: Db, organizacaoId: string, reservaId: string): Promise<string | null> {
+  const [preso] = await tx
+    .select({ data: repasses.data, tipo: repasses.tipo })
+    .from(repasseItens)
+    .innerJoin(repasses, eq(repasses.id, repasseItens.repasseId))
+    .where(and(eq(repasseItens.organizacaoId, organizacaoId), eq(repasseItens.reservaId, reservaId), isNull(repasseItens.liberadoEm), isNull(repasses.estornadoEm), isNull(repasses.dataPagamento)))
+    .limit(1);
+  return preso ? `A parte desta reserva já compõe o repasse ${preso.tipo === "antecipado" ? "antecipado" : "do fechamento"} de ${preso.data.split("-").reverse().join("/")}, ainda não pago: estorne o repasse antes de estornar o recebimento.` : null;
 }
 
 /** Recebimentos em vigor de uma reserva, do mais antigo ao mais novo. */

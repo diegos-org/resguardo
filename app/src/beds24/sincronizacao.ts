@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
-import { beds24Calendario, beds24Execucoes, beds24ExecucaoReservas, bloqueios, reservas } from "@/db/schema";
+import { beds24Calendario, beds24Execucoes, beds24ExecucaoReservas, bloqueios, imoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
 import { registrarRemocaoDeBloqueio } from "@/reservas/bloqueios";
@@ -114,6 +114,9 @@ async function aplicarRegistro(tx: Db, org: string, b: ReservaBeds24, imovelId: 
   const ondeBloqueio = and(eq(bloqueios.organizacaoId, org), eq(bloqueios.fonte, "beds24"), eq(bloqueios.idFonte, b.idExterno));
   const [bl] = await tx.select().from(bloqueios).where(ondeBloqueio);
   if (b.estado === "bloqueio") {
+    // Bloqueio ocupa noites: a mesma trava do imóvel que a confirmação do pagamento do site toma antes de conferir
+    // as noites (reservas/repositorio.ts, pagamentos/travas.ts), sempre antes da reserva.
+    await tx.select({ id: imoveis.id }).from(imoveis).where(and(eq(imoveis.id, imovelId), eq(imoveis.organizacaoId, org))).for("no key update");
     const [antiga] = await tx.select().from(reservas).where(and(eq(reservas.organizacaoId, org), or(eq(reservas.beds24Id, b.idExterno), and(eq(reservas.fonte, "beds24"), eq(reservas.idFonte, b.idExterno)))));
     if (antiga) {
       const s = await sincronizarReserva(tx, org, "beds24", b.idExterno, { ...antiga, estado: "cancelada" }, autorId);

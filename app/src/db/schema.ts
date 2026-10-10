@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { boolean, customType, date, index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type { FontePrecos } from "@/imoveis/fonte-precos";
+import type { ModoTresDS, StatusTresDS } from "@/pagamentos/provedor";
 import type { PeriodicidadeRepasse } from "@/repasses/periodicidade";
 
 /**
@@ -39,16 +40,34 @@ export const usuarios = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    /** Vazio só para quem entra com usuário e senha, sem e-mail (equipe, M6.8). */
     email: text("email").notNull(),
     nome: text("nome").notNull(),
     papel: papelEnum("papel").notNull(),
     ativo: boolean("ativo").notNull().default(true),
-    /** Sessões abertas antes disso não valem mais (e-mail trocado, acesso devolvido). */
+    /** Sessões abertas antes disso não valem mais (e-mail trocado, acesso devolvido, senha redefinida). */
     sessaoValidaDesde: timestamp("sessao_valida_desde", { withTimezone: true }),
+    /** Usuário para entrar com senha (M6.8), em minúsculas; null = sem usuário (entra pelo e-mail). */
+    login: text("login"),
+    /** Senha (M6.8) só como hash scrypt (`acesso/senha.ts`); null = não entra com senha. */
+    senhaHash: text("senha_hash"),
+    /** Senha definida pela empresa (provisória): a tela da equipe sugere trocar. */
+    senhaProvisoria: boolean("senha_provisoria").notNull().default(false),
     criadoEm: criadoEm(),
   },
-  (t) => [uniqueIndex("usuarios_email_unico").on(sql`lower(${t.email})`)],
+  (t) => [uniqueIndex("usuarios_email_unico").on(sql`lower(${t.email})`).where(sql`${t.email} <> ''`), uniqueIndex("usuarios_login_unico").on(t.login)],
 );
+
+/**
+ * Tentativas erradas de senha por usuário digitado (M6.8), exista ele ou não: depois de muitas, espera. A chave é o
+ * que foi digitado, normalizado — assim a resposta é a mesma para quem existe e para quem não existe.
+ */
+export const tentativasLogin = pgTable("tentativas_login", {
+  chave: text("chave").primaryKey(),
+  erros: integer("erros").notNull().default(0),
+  bloqueadoAte: timestamp("bloqueado_ate", { withTimezone: true }),
+  atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+});
 
 /**
  * Código de login enviado por e-mail (M1.3). Guarda só o HMAC do código, nunca o código.
@@ -212,7 +231,7 @@ export const convites = pgTable(
 /**
  * Aceite de um documento pelo proprietário (M5.6): quem (usuário do portal, em nome de qual proprietário),
  * quando e qual versão. Só inclusão: uma versão nova do documento pede um aceite novo; os antigos ficam.
- * `documento` hoje é só "como_funciona"; as páginas legais do site (M7.4) poderão usar a mesma tabela.
+ * `documento` hoje é só "como_funciona"; as páginas legais do site (M7.4) têm a própria tabela, `aceites_site` (o hóspede não tem usuário).
  */
 export const aceitesDocumento = pgTable(
   "aceites_documento",
@@ -892,6 +911,32 @@ export const extratosCanal = pgTable(
 );
 
 /**
+ * Foto real de um imóvel (M7.3, liberado por Diego em 7/10/2026): subida pela equipe na ficha do imóvel, guardada em
+ * `arquivos` (como o comprovante e o extrato — fora do Git, sem conta nova). A ordem decide a galeria do site; a
+ * primeira é a capa (cartão do site, página do imóvel e capa do relatório mensal). O site só mostra as fotos de imóvel
+ * público; sem foto, continua o quadro "foto em breve", nunca uma imagem genérica.
+ */
+export const fotosImoveis = pgTable(
+  "fotos_imoveis",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    imovelId: uuid("imovel_id").notNull().references(() => imoveis.id),
+    /** A foto grande (galeria da página do imóvel), já reduzida no navegador antes de subir. */
+    arquivoId: uuid("arquivo_id").notNull().references(() => arquivos.id),
+    /** A versão pequena (cartões do site, miniaturas e capa do relatório); sem ela, vale a grande. */
+    miniaturaId: uuid("miniatura_id").references(() => arquivos.id),
+    /** Posição na galeria (0 = capa). */
+    ordem: integer("ordem").notNull(),
+    /** Texto curto que descreve a foto (vira o texto alternativo no site); vazio = "Foto de {imóvel}". */
+    legenda: text("legenda").notNull().default(""),
+    criadoPor: uuid("criado_por").references(() => usuarios.id),
+    criadoEm: criadoEm(),
+  },
+  (t) => [index("fotos_imoveis_imovel").on(t.imovelId, t.ordem), uniqueIndex("fotos_imoveis_arquivo").on(t.arquivoId), uniqueIndex("fotos_imoveis_miniatura").on(t.miniaturaId)],
+);
+
+/**
  * Repasse ao proprietário. `fechamento` (M4.9): o fechamento de um mês, por competência, com os
  * valores gravados como foram calculados; um ativo por proprietário e mês. `antecipado` (M4.10):
  * repasse programado ou avulso com o que ficou disponível até o dia anterior — um adiantamento
@@ -1030,6 +1075,11 @@ export const profissionaisLimpeza = pgTable(
     ativo: boolean("ativo").notNull().default(true),
     /** Acesso próprio pelo celular (M6.6): o usuário (papel "limpeza") desta profissional. */
     usuarioId: uuid("usuario_id").references(() => usuarios.id),
+    /**
+     * Cidades da agenda que ela vê no acesso próprio (M6.8: Búzios só Búzios, Rio só Rio), com o nome da cidade como
+     * no cadastro dos imóveis. Vazio = nenhuma: a tela avisa que falta escolher, nunca mostra todas.
+     */
+    cidades: jsonb("cidades").$type<string[]>().notNull().default([]),
     criadoEm: criadoEm(),
   },
   (t) => [uniqueIndex("profissionais_limpeza_nome").on(t.organizacaoId, sql`lower(${t.nome})`), uniqueIndex("profissionais_limpeza_usuario").on(t.usuarioId)],
@@ -1236,6 +1286,46 @@ export const cadastrosMarketplace = pgTable(
   (t) => [index("cadastros_marketplace_org").on(t.organizacaoId, t.situacao, t.criadoEm), index("cadastros_marketplace_email").on(t.email)],
 );
 
+// ---------------------------------------------------------------------------
+// Pedido de contato para a gestão completa (M7.7): o proprietário deixa os dados na página
+// "Anuncie seu imóvel" do site e a equipe responde por e-mail ou WhatsApp. Não cria conta,
+// proprietário nem imóvel; fica "novo" até a equipe marcar como respondido ou arquivar.
+// ---------------------------------------------------------------------------
+
+export const SITUACOES_PEDIDO_CONTATO = ["novo", "respondido", "arquivado"] as const;
+export type SituacaoPedidoContato = (typeof SITUACOES_PEDIDO_CONTATO)[number];
+
+export const pedidosContatoProprietario = pgTable(
+  "pedidos_contato_proprietario",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    nome: text("nome").notNull(),
+    /** Normalizado (minúsculas, sem espaços nas pontas). Não é confirmado por código. */
+    email: text("email").notNull(),
+    telefone: text("telefone").notNull(),
+    bairro: text("bairro").notNull(),
+    cidade: text("cidade").notNull(),
+    /** 0 = studio; null = não informou. */
+    quartos: integer("quartos"),
+    /** Já anuncia em alguma plataforma? null = não informou. */
+    anunciaHoje: boolean("anuncia_hoje"),
+    mensagem: text("mensagem").notNull().default(""),
+    situacao: text("situacao").$type<SituacaoPedidoContato>().notNull().default("novo"),
+    /** Nota interna da equipe (nunca aparece para a pessoa). */
+    nota: text("nota").notNull().default(""),
+    criadoEm: criadoEm(),
+    decididoEm: timestamp("decidido_em", { withTimezone: true }),
+    decididoPor: uuid("decidido_por").references(() => usuarios.id, { onDelete: "set null" }),
+  },
+  (t) => [
+    index("pedidos_contato_proprietario_org").on(t.organizacaoId, t.situacao, t.criadoEm),
+    // Tetos do formulário público: por e-mail em 24 h e no total por hora.
+    index("pedidos_contato_proprietario_email").on(t.organizacaoId, t.email, t.criadoEm),
+    index("pedidos_contato_proprietario_criado").on(t.organizacaoId, t.criadoEm),
+  ],
+);
+
 
 /** Registros efetivamente alterados por execução; gravados na mesma transação da importação. */
 export const beds24ExecucaoReservas = pgTable("beds24_execucao_reservas", {
@@ -1321,3 +1411,260 @@ export const beds24CalendarioEnviado = pgTable("beds24_calendario_enviado", {
   confirmado: boolean("confirmado").notNull().default(false),
   envioId: uuid("envio_id").references(() => beds24Envios.id),
 }, t => [primaryKey({ columns: [t.organizacaoId, t.imovelId, t.data] })]);
+
+// ---------------------------------------------------------------------------
+// Pagamento no site (M8.2a): tentativas de pagamento, devoluções e avisos do provedor.
+// Nada de CPF, e-mail ou nome do pagador; nada de resposta crua do provedor.
+// ---------------------------------------------------------------------------
+
+/**
+ * Situação local de uma tentativa. `criando` = gravada antes da chamada ao provedor; `incerta` = a chamada
+ * caiu e não se sabe se a order existe. As outras vêm sempre de uma leitura do provedor (nunca do relógio).
+ */
+export const SITUACOES_PAGAMENTO = ["criando", "incerta", "pendente", "aprovado", "recusado", "cancelado", "expirado", "devolvido", "devolvido_parcial", "contestado"] as const;
+export type SituacaoPagamento = (typeof SITUACOES_PAGAMENTO)[number];
+/** O que foi feito do dinheiro aprovado: confirmou a reserva, foi devolvido pelo provedor ou devolvido por fora. */
+export const DESFECHOS_PAGAMENTO = ["reserva", "devolucao", "por_fora"] as const;
+export type DesfechoPagamento = (typeof DESFECHOS_PAGAMENTO)[number];
+export const SITUACOES_DEVOLUCAO = ["pedida", "confirmada", "recusada", "por_fora"] as const;
+export type SituacaoDevolucao = (typeof SITUACOES_DEVOLUCAO)[number];
+export const RESULTADOS_EVENTO_PAGAMENTO = ["pendente", "aplicado", "ignorado", "desconhecido", "erro"] as const;
+export type ResultadoEventoPagamento = (typeof RESULTADOS_EVENTO_PAGAMENTO)[number];
+/**
+ * Etapa de um cartão ainda `pendente` (M8.2b): o banco pediu a verificação ao hóspede (desafio 3DS), o Mercado Pago está
+ * analisando (in_review) ou processando em segundo plano. A situação local continua `pendente`; a etapa só muda texto,
+ * prazo das datas, intervalo de leitura e o que dá para cancelar.
+ */
+export const ETAPAS_CARTAO = ["desafio", "analise", "processando"] as const;
+export type EtapaCartao = (typeof ETAPAS_CARTAO)[number];
+/** Quem pediu ao provedor o cancelamento de uma tentativa: o hóspede (trocou de forma ou de cartão), o sistema ou a equipe. */
+export const QUEM_CANCELA_PAGAMENTO = ["hospede", "sistema", "equipe"] as const;
+export type QuemCancelaPagamento = (typeof QUEM_CANCELA_PAGAMENTO)[number];
+
+/**
+ * Aceite das páginas legais do site (M7.4): o hóspede marca "li e aceito" antes de gerar o pagamento. Uma linha por
+ * aceite, com as versões dos três documentos e quando. Só inclusão. Sem dado pessoal: a pessoa é a da reserva
+ * (cotação → reserva), e o IP não é guardado (a autorização é o cookie assinado do pedido).
+ */
+export const aceitesSite = pgTable(
+  "aceites_site",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    cotacaoId: uuid("cotacao_id").notNull().references(() => cotacoes.id),
+    reservaId: uuid("reserva_id").notNull().references(() => reservas.id),
+    versaoTermos: integer("versao_termos").notNull(),
+    versaoPrivacidade: integer("versao_privacidade").notNull(),
+    versaoCancelamento: integer("versao_cancelamento").notNull(),
+    /** Onde a caixa foi marcada: "pix" (M7.4) ou "cartao" (M8.2b). */
+    origem: text("origem").$type<"pix" | "cartao">().notNull(),
+    aceitoEm: timestamp("aceito_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("aceites_site_unico").on(t.cotacaoId, t.versaoTermos, t.versaoPrivacidade, t.versaoCancelamento),
+    index("aceites_site_reserva").on(t.reservaId),
+    index("aceites_site_organizacao").on(t.organizacaoId, t.aceitoEm),
+  ],
+);
+
+/**
+ * Uma tentativa de pagamento (uma order do provedor, que aceita uma transação). `valor` é o que enviamos
+ * (= `cotacoes.total`); `valorPago` só para mostrar. `taxa` = valor − líquido, numa leitura só. A liberação
+ * prevista não libera nada; o recebimento no livro só nasce com o sinal explícito do provedor ou à mão.
+ * Copia e cola e imagem do Pix são apagados quando o Pix vence ou é pago.
+ */
+export const pagamentos = pgTable(
+  "pagamentos",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    cotacaoId: uuid("cotacao_id").notNull().references(() => cotacoes.id),
+    reservaId: uuid("reserva_id").notNull().references(() => reservas.id),
+    imovelId: uuid("imovel_id").notNull().references(() => imoveis.id),
+    /** Ambiente do provedor quando a tentativa foi criada (na parte a, sempre "teste"). */
+    ambiente: text("ambiente").$type<"teste" | "producao">().notNull(),
+    forma: text("forma").$type<"pix" | "cartao">().notNull(),
+    /** `external_reference` (scl-<id>), única por organização. */
+    referencia: text("referencia").notNull(),
+    /** Chave de idempotência da criação, gravada antes da chamada. */
+    chaveIdempotencia: text("chave_idempotencia").notNull(),
+    situacao: text("situacao").$type<SituacaoPagamento>().notNull().default("criando"),
+    /** Id da order no provedor (ORD…). */
+    idProvedor: text("id_provedor"),
+    /** `live_mode` lido do provedor; null = não informado. */
+    aoVivo: boolean("ao_vivo"),
+    /** "status/status_detail" do provedor (só códigos curtos). */
+    detalheProvedor: text("detalhe_provedor").notNull().default(""),
+    valor: integer("valor").notNull(),
+    valorPago: integer("valor_pago"),
+    taxa: integer("taxa"),
+    liquido: integer("liquido"),
+    liberacaoPrevistaEm: timestamp("liberacao_prevista_em", { withTimezone: true }),
+    liberacaoConfirmadaEm: timestamp("liberacao_confirmada_em", { withTimezone: true }),
+    /** Quem confirmou a liberação: o provedor (sinal explícito) ou a equipe (à mão). */
+    liberacaoOrigem: text("liberacao_origem").$type<"provedor" | "manual">(),
+    pixCopiaECola: text("pix_copia_e_cola"),
+    pixImagem: text("pix_imagem"),
+    pixLink: text("pix_link"),
+    pixExpiraEm: timestamp("pix_expira_em", { withTimezone: true }),
+    /** Primeira leitura do provedor com a situação aprovada. */
+    aprovadoEm: timestamp("aprovado_em", { withTimezone: true }),
+    consultadoEm: timestamp("consultado_em", { withTimezone: true }),
+    financeiroConsultadoEm: timestamp("financeiro_consultado_em", { withTimezone: true }),
+    desfecho: text("desfecho").$type<DesfechoPagamento>(),
+    desfechoMotivo: text("desfecho_motivo"),
+    /** null = o sistema. */
+    desfechoPor: uuid("desfecho_por").references(() => usuarios.id, { onDelete: "set null" }),
+    desfechoEm: timestamp("desfecho_em", { withTimezone: true }),
+    /** Aprovado sem reserva: o motivo (código), gravado na mesma transação da aprovação. Depois disso só a equipe decide. */
+    motivoSemReserva: text("motivo_sem_reserva"),
+    /** Códigos de aviso (lista fechada em pagamentos/situacoes.ts). */
+    avisos: jsonb("avisos").$type<string[]>().notNull().default([]),
+    /**
+     * Aceite das páginas legais que valia quando esta tentativa foi criada; M8.2c calcula a devolução pela política
+     * dessa versão. Null só nas tentativas de antes do M7.4.
+     */
+    aceiteId: uuid("aceite_id").references(() => aceitesSite.id),
+    // --- Cartão (M8.2b). Nunca BIN, últimos dígitos, titular, documento, token ou o id do aparelho.
+    /** Parcelas enviadas (1 a 36), atualizadas pela leitura só com valor válido; null no Pix. */
+    parcelas: integer("parcelas"),
+    /** payment_method_id (visa, master, elo…), atualizado pela leitura. */
+    bandeira: text("bandeira"),
+    /** Verificação do banco (3DS) pedida: retrato do painel na criação. */
+    tresDS: text("tres_ds").$type<ModoTresDS>(),
+    /** Último resultado da verificação do banco lido do provedor (lista fechada, maiúsculo). */
+    tresDSStatus: text("tres_ds_status").$type<StatusTresDS>(),
+    /** Só com a situação `pendente`; null nas outras. */
+    etapaCartao: text("etapa_cartao").$type<EtapaCartao>(),
+    /** Endereço do desafio 3DS (https de domínio do Mercado Pago); apagado quando a etapa deixa de ser `desafio`. */
+    desafioUrl: text("desafio_url"),
+    /** Prazo das datas dado pela extensão única de cartão em análise/processando (preenchido = a cotação já usou a extensão). */
+    prazoAnaliseAte: timestamp("prazo_analise_ate", { withTimezone: true }),
+    /** O pedido trouxe um id de aparelho válido (o id em si nunca é guardado). */
+    comDispositivo: boolean("com_dispositivo"),
+    /** Primeira vez que a tentativa saiu de "em andamento" para recusado, cancelado ou expirado (qualquer forma). */
+    encerradoEm: timestamp("encerrado_em", { withTimezone: true }),
+    /** Quem pediu ao provedor o cancelamento desta tentativa (gravado na fila do cancelamento, só se vazio). */
+    cancelamentoPor: text("cancelamento_por").$type<QuemCancelaPagamento>(),
+    /** Esta tentativa de cartão encerrada conta no disjuntor de recusas (decidido uma vez, na transição que a encerra). */
+    contaNoDisjuntor: boolean("conta_no_disjuntor").notNull().default(false),
+    /** Id numérico do pagamento na Payments API (as contestações chegam por ele, no M8.2e). */
+    idPagamentoProvedor: text("id_pagamento_provedor"),
+    /**
+     * Centavos do custo do "parcelamento sem acréscimo" cobrado da SCL (financing_fee que não é do comprador), da última
+     * leitura da Payments API que o trouxe; null = não lido. Com ele > 0 a taxa não entra sozinha (aviso `parcelas_sem_juros`).
+     */
+    custoParcelasVendedor: integer("custo_parcelas_vendedor"),
+    criadoEm: criadoEm(),
+    atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("pagamentos_referencia").on(t.organizacaoId, t.referencia),
+    uniqueIndex("pagamentos_id_provedor").on(t.organizacaoId, t.idProvedor).where(sql`${t.idProvedor} is not null`),
+    // Só um pagamento confirma cada reserva: os outros só podem ser devolvidos.
+    uniqueIndex("pagamentos_um_desfecho_reserva").on(t.reservaId).where(sql`${t.desfecho} = 'reserva'`),
+    index("pagamentos_busca_id_provedor").on(t.idProvedor),
+    index("pagamentos_cotacao").on(t.cotacaoId, t.criadoEm),
+    index("pagamentos_reserva").on(t.reservaId),
+    index("pagamentos_situacao").on(t.organizacaoId, t.situacao),
+    index("pagamentos_criado").on(t.organizacaoId, t.criadoEm),
+    // Limite geral de cartões por hora e disjuntor de recusas (M8.2b).
+    index("pagamentos_cartao_org_criado").on(t.organizacaoId, t.criadoEm).where(sql`${t.forma} = 'cartao'`),
+  ],
+);
+
+/**
+ * Disjuntor do cartão (M8.2b): cada vez que as recusas passam do limite, uma linha. Aberto ⇔ `religado_em` vazio e
+ * (`ate` vazio ou no futuro). Só contas, horários e quem religou: nenhum IP, e-mail ou dado de cartão.
+ */
+export const disjuntoresCartao = pgTable(
+  "disjuntores_cartao",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    abertoEm: timestamp("aberto_em", { withTimezone: true }).notNull(),
+    /** Até quando o cartão fica desligado; null = só religando à mão (20 em 24 h ou terceiro disparo em 24 h). */
+    ate: timestamp("ate", { withTimezone: true }),
+    /** Recusas contadas na janela quando disparou. */
+    recusas: integer("recusas").notNull(),
+    /** "30min" ou "24h": qual janela disparou. */
+    janela: text("janela").$type<"30min" | "24h">().notNull(),
+    reincidente: boolean("reincidente").notNull().default(false),
+    religadoEm: timestamp("religado_em", { withTimezone: true }),
+    religadoPor: uuid("religado_por").references(() => usuarios.id, { onDelete: "set null" }),
+  },
+  (t) => [index("disjuntores_cartao_org").on(t.organizacaoId, t.abertoEm)],
+);
+
+/** Devolução de um pagamento (uma por pagamento): pelo provedor (pedida → confirmada/recusada) ou feita por fora. */
+export const devolucoesPagamento = pgTable(
+  "devolucoes_pagamento",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    pagamentoId: uuid("pagamento_id").notNull().references(() => pagamentos.id),
+    motivo: text("motivo").notNull(),
+    valor: integer("valor").notNull(),
+    situacao: text("situacao").$type<SituacaoDevolucao>().notNull().default("pedida"),
+    /** Pedidos enviados ao provedor (`chaveAtual`, gravada antes). Chave nova a cada pedido, salvo depois de resposta incerta. */
+    tentativas: integer("tentativas").notNull().default(0),
+    /** Pedidos recusados pelo provedor (resposta incerta não conta): depois de 3, relida a order, a devolução fica recusada (aviso). */
+    falhas: integer("falhas").notNull().default(0),
+    chaveAtual: text("chave_atual"),
+    /**
+     * O pedido com `chaveAtual` pode ter sido aceito (resposta incerta) ou foi aceito (pedida/confirmada, à espera de a
+     * order mostrar): o próximo envio repete a MESMA chave (o provedor nunca devolve duas vezes pela mesma chave). Chave
+     * nova só depois de uma recusa clara ou de um pedido novo da equipe. Desliga quando a leitura confirma.
+     */
+    chaveEmDuvida: boolean("chave_em_duvida").notNull().default(false),
+    /**
+     * O provedor ACEITOU o pedido com `chaveAtual` (pedida/confirmada): daí em diante nada se envia de novo (nem com outra
+     * chave, nem num pedido novo da equipe); só a leitura da order confirma. Desliga quando a leitura confirma.
+     */
+    chaveAceita: boolean("chave_aceita").notNull().default(false),
+    proximaTentativaEm: timestamp("proxima_tentativa_em", { withTimezone: true }),
+    idProvedor: text("id_provedor"),
+    confirmadaEm: timestamp("confirmada_em", { withTimezone: true }),
+    porForaData: date("por_fora_data", { mode: "string" }),
+    porForaValor: integer("por_fora_valor"),
+    porForaNota: text("por_fora_nota").notNull().default(""),
+    /** Taxa que o provedor não devolveu (valor informado pela equipe, conferido no Mercado Pago); null = ainda não informado. */
+    taxaPerdida: integer("taxa_perdida"),
+    despesaLancamentoId: uuid("despesa_lancamento_id").references(() => lancamentos.id),
+    autorId: uuid("autor_id").references(() => usuarios.id, { onDelete: "set null" }),
+    criadoEm: criadoEm(),
+    atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("devolucoes_pagamento_um_por_pagamento").on(t.pagamentoId), index("devolucoes_pagamento_situacao").on(t.organizacaoId, t.situacao)],
+);
+
+/**
+ * Aviso (webhook) do provedor com assinatura válida. Repetição (mesmo request-id, ts e id) não é processada.
+ * Só ids e códigos; apagado depois de 90 dias. A organização é preenchida quando a tentativa é achada.
+ */
+export const eventosPagamento = pgTable(
+  "eventos_pagamento",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").references(() => organizacoes.id),
+    tipo: text("tipo").notNull().default(""),
+    acao: text("acao").notNull().default(""),
+    dataId: text("data_id").notNull(),
+    requestId: text("request_id").notNull().default(""),
+    ts: text("ts").notNull().default(""),
+    /** `live_mode` do corpo (não é assinado; serve de alarme). */
+    aoVivo: boolean("ao_vivo"),
+    recebidoEm: timestamp("recebido_em", { withTimezone: true }).notNull().defaultNow(),
+    resultado: text("resultado").$type<ResultadoEventoPagamento>().notNull().default("pendente"),
+    processadoEm: timestamp("processado_em", { withTimezone: true }),
+  },
+  // A repetição só se reconhece com request-id ou ts: sem os dois, cada aviso é um evento (nunca se fundem).
+  (t) => [uniqueIndex("eventos_pagamento_unico").on(t.requestId, t.ts, t.dataId).where(sql`${t.requestId} <> '' or ${t.ts} <> ''`), index("eventos_pagamento_recebido").on(t.recebidoEm)],
+);
+
+/** Contas agregadas dos avisos por dia (São Paulo): assinaturas recusadas e o último aviso válido. Nenhum dado do pedido. */
+export const pagamentosAvisosDia = pgTable("pagamentos_avisos_dia", {
+  dia: date("dia", { mode: "string" }).primaryKey(),
+  assinaturasRecusadas: integer("assinaturas_recusadas").notNull().default(0),
+  ultimoValidoEm: timestamp("ultimo_valido_em", { withTimezone: true }),
+});
