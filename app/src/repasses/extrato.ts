@@ -13,6 +13,9 @@
  * - **repassado**: já saiu num repasse (fechamento ou antecipado) que está em vigor. Se a parte foi
  *   recalculada depois de um fechamento antigo (migração 0049), o repasse incluiu o valor de então
  *   (`repasse.valor`) e a `diferenca` é acertada, ou descontada, pelo fechamento mensal (pelo acerto).
+ * - **desconto de cancelamento** (M8.2c): a parte negativa lançada quando uma reserva paga pelo site é cancelada com
+ *   devolução integral depois de a parte do proprietário já ter sido repassada (`repasses/descontos.ts`). Fica
+ *   disponível na hora e o próximo repasse, de qualquer tipo, a desconta.
  */
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { lerVersoesRegras } from "@/configuracoes/regras-financeiras";
@@ -71,7 +74,14 @@ export type ParteBruta = {
    * liberação (AAAA-MM-DD, São Paulo), null = a confirmar. Ausente = não é reserva paga pelo site.
    */
   liberacaoSite?: { prevista: string | null } | null;
+  /** Origem do lançamento da parte ("motor"; "cancelamento" = o desconto da parte já repassada, M8.2c). */
+  origemLancamento?: string;
+  /** A reserva foi cancelada pela política sem devolução (valor retido, M8.2c): dividida como uma reserva normal. */
+  canceladaComRetencao?: boolean;
 };
+
+/** O desconto de uma reserva cancelada com devolução integral depois do repasse (M8.2c): parte negativa, origem "cancelamento". */
+export const ehDescontoDeCancelamento = (p: Pick<ParteBruta, "valor" | "origemLancamento">) => p.valor < 0 && p.origemLancamento === "cancelamento";
 
 export type Parte = ParteBruta & {
   quemRecebe: QuemRecebeParte;
@@ -100,8 +110,12 @@ export function classificarParte(p: ParteBruta, inicioDoSistema: string | null =
     const recalculo = diferenca === 0 ? "" : ` Recalculada depois: o repasse incluiu ${formatBRL(r.valor)}; a diferença de ${formatBRL(Math.abs(diferenca))} ${diferenca > 0 ? "a mais é acertada" : "a menos é descontada"} pelo fechamento mensal.`;
     // M4.11: parte de antes do início do sistema, já acertada fora dele — nunca entra em outro repasse.
     if (r.tipo === "por_fora") return com("repassado", `Acertada por fora, antes do início do sistema (até ${dataBr(r.data)}).${recalculo}`, diferenca);
+    if (ehDescontoDeCancelamento(p)) return com("repassado", `${descontoDe(p)}: descontado ${r.tipo === "fechamento" ? "no fechamento" : "no repasse"} de ${dataBr(r.data)}${pago}.`, diferenca);
     return com("repassado", `${r.tipo === "fechamento" ? "No fechamento" : "Repasse"} de ${dataBr(r.data)}${pago}.${recalculo}`, diferenca);
   }
+  // M8.2c: o desconto da parte já repassada nunca espera nada (o dinheiro já saiu para o proprietário e já voltou ao
+  // hóspede): disponível na hora, para o próximo repasse de qualquer tipo descontá-lo.
+  if (ehDescontoDeCancelamento(p)) return com("disponivel", `${descontoDe(p)}: sai do próximo repasse.`);
   if (quemRecebe === "a_confirmar") return com("a_liberar", "Quem recebe o dinheiro desta reserva ainda está a confirmar pela empresa: fica fora de qualquer repasse até definir.");
   if (quemRecebe === "split") {
     const quando = p.pagamento ? ` (${p.pagamento.data <= p.hoje ? "pago" : "previsto"} em ${dataBr(p.pagamento.data)}, ${p.pagamento.prazo === 0 ? "no check-in" : `${p.pagamento.prazo} dia(s) depois do check-in`})` : "";
@@ -111,6 +125,8 @@ export function classificarParte(p: ParteBruta, inicioDoSistema: string | null =
   if (lado === "antes") return com("a_liberar", `Reserva paga antes do início do sistema (${dataBr(inicioDoSistema!)})${p.pagamento ? `, em ${dataBr(p.pagamento.data)}` : ""}: já acertada por fora; aguarda a marcação em Financeiro → Repasses.`);
   if (lado === "indefinido") return com("a_liberar", `Reserva que atravessa o início do sistema (${dataBr(inicioDoSistema!)}) sem data de pagamento: registre o recebimento completo com a data em que o canal pagou — antes do início, a reserva inteira é acertada por fora; a partir dele, entra inteira no sistema.`);
   if (p.emConferencia) return com("a_liberar", "Reserva em conferência: a empresa precisa esclarecer os valores antes do repasse.");
+  if (p.checkin >= p.hoje && p.canceladaComRetencao)
+    return com("a_liberar", `Reserva cancelada sem devolução ao hóspede (política de cancelamento): o valor retido é dividido como uma reserva normal. Libera depois da data de entrada original (${dataBr(p.checkin)}), com o dinheiro já com a empresa.`);
   if (p.checkin >= p.hoje) return com("a_liberar", `Libera depois do check-in (${dataBr(p.checkin)}), com o dinheiro já com a empresa.`);
   if (!dinheiroComAEmpresa(p.recebido)) {
     if (p.liberacaoSite) {
@@ -126,6 +142,8 @@ export function classificarParte(p: ParteBruta, inicioDoSistema: string | null =
   }
   return com("disponivel", "Disponível para o próximo repasse.");
 }
+
+const descontoDe = (p: Pick<ParteBruta, "codigoReserva">) => `Desconto da sua parte já repassada da reserva ${p.codigoReserva} (cancelada com devolução integral ao hóspede)`;
 
 /**
  * `ajusteNoFechamento`: soma das diferenças de recálculo das partes repassadas — acertada (ou descontada) pelo fechamento
@@ -169,6 +187,8 @@ export async function partesDoProprietario(db: Db, organizacaoId: string, propri
       efeitoSaldo: lancamentos.efeitoSaldo,
       estado: lancamentos.estado,
       emConferencia: sql<boolean>`coalesce(${lancamentoEmConferencia()}, false)`,
+      origemLancamento: lancamentos.origem,
+      canceladaComRetencao: sql<boolean>`(${reservas.estado} = 'cancelada' and coalesce(${reservas.valorRetido}, 0) > 0)`,
       codigoReserva: reservas.codigo,
       checkin: reservas.checkin,
       checkout: reservas.checkout,
@@ -224,6 +244,8 @@ export async function partesDoProprietario(db: Db, organizacaoId: string, propri
         emConferencia: l.emConferencia === true,
         repasse: porLancamento.get(l.lancamentoId) ?? null,
         liberacaoSite: doSite.has(l.reservaId!) ? { prevista: doSite.get(l.reservaId!) ? hojeISO("America/Sao_Paulo", doSite.get(l.reservaId!)!) : null } : null,
+        origemLancamento: l.origemLancamento,
+        canceladaComRetencao: l.canceladaComRetencao === true,
       },
       inicioDoSistema,
     ),

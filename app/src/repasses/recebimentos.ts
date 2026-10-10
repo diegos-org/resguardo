@@ -129,7 +129,7 @@ export async function recebimentosDaReserva(db: Db, organizacaoId: string, reser
 }
 
 export type RecebidoDaReserva = {
-  /** Soma dos recebimentos realizados/conciliados em vigor. */
+  /** Soma dos recebimentos realizados/conciliados em vigor, menos o que já voltou ao hóspede (devolução realizada, M8.2c). */
   recebido: number;
   /** Líquido do canal (valor bruto − taxa do canal) pelos lançamentos do motor em vigor. */
   devido: number;
@@ -139,7 +139,9 @@ export type RecebidoDaReserva = {
 
 /**
  * Quanto a empresa já recebeu de cada reserva e quanto era de receber (líquido do canal). Base da
- * condição "o dinheiro está com a empresa": recebido ≥ devido (e devido > 0).
+ * condição "o dinheiro está com a empresa": recebido ≥ devido (e devido > 0). O dinheiro que voltou ao
+ * hóspede (lançamento "devolucao" realizado/conciliado, M8.2c) sai do recebido; a data em que o canal pagou
+ * continua vindo só dos recebimentos.
  */
 export async function recebidoPorReserva(db: Db, organizacaoId: string, reservaIds: readonly string[]): Promise<Map<string, RecebidoDaReserva>> {
   const ids = [...new Set(reservaIds.filter(uuidValido))];
@@ -152,7 +154,7 @@ export async function recebidoPorReserva(db: Db, organizacaoId: string, reservaI
       and(
         eq(lancamentos.organizacaoId, organizacaoId),
         inArray(lancamentos.reservaId, ids),
-        inArray(lancamentos.tipo, ["recebimento", "receita_bruta", "taxa_canal"]),
+        inArray(lancamentos.tipo, ["recebimento", "devolucao", "receita_bruta", "taxa_canal"]),
         emVigor(),
       ),
     );
@@ -166,6 +168,8 @@ export async function recebidoPorReserva(db: Db, organizacaoId: string, reservaI
         lista.push({ data: l.dataCaixa ?? "", montante: l.montante ?? 0, ordem: l.criadoEm?.getTime() ?? 0 });
         recebimentos.set(l.reservaId!, lista);
       }
+    } else if (l.tipo === "devolucao") {
+      if (l.estado === "realizado" || l.estado === "conciliado") r.recebido -= l.montante ?? 0;
     } else r.devido += l.valor;
   }
   // A data em que o dinheiro ficou completo: o recebimento (na ordem de caixa) em que a soma alcançou o líquido do canal.

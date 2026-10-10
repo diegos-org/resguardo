@@ -2,14 +2,15 @@
  * Dados do painel inicial (M4.6), já filtrados pelo filtro global (imóveis + período). Cada
  * bloco vem da mesma função que alimenta a tela específica (reservas, despesas, ajustes…).
  */
-import { and, eq, gte, inArray, isNotNull, isNull, lt, ne, or, sql, sum } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, not, or, sql, sum } from "drizzle-orm";
 import { listarAdiantamentos, totalACobrar } from "@/adiantamentos/adiantamentos";
 import { listarAjustes } from "@/ajustes/ajustes";
 import { lancamentos, reservas as reservasTabela, type TipoLancamento } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { listarDespesas, totaisDespesas } from "@/despesas/despesas";
 import { totaisPorTipo } from "@/financeiro/ledger";
-import { lancamentoDeConferenciaResolvida, reservasQueContam } from "@/portal/posse";
+import { reservaCalculadaPeloMotor } from "@/financeiro/motor";
+import { lancamentoDeConferenciaResolvida, reservaCalculadaSql, reservasQueContam } from "@/portal/posse";
 import type { Imovel } from "@/imoveis/repositorio";
 import { ESPERA_TELA_MS, esperarNoMaximo } from "@/lib/prazo";
 import { contarPendentes as contarCadastrosPendentes } from "@/marketplace/cadastro";
@@ -17,6 +18,7 @@ import { contaDeTesteConfirmada, estadoPagamentoDoAmbiente, provedorDoAmbiente }
 import { avisosDePagamento } from "@/pagamentos/consultas";
 import type { ProvedorPagamento } from "@/pagamentos/provedor";
 import { contarPedidosNovos } from "@/proprietarios/pedidos-contato";
+import { avisosDeDescontos } from "@/repasses/descontos";
 import { conflitos } from "@/reservas/regras";
 import { listarBloqueios, listarReservas, type Reserva } from "@/reservas/repositorio";
 import { rotinasPendentes } from "@/rotinas/rotinas";
@@ -113,6 +115,8 @@ export async function carregarDashboard(
   if (o.verPagamentos) {
     const pagamentos = await avisosDePagamento(db, organizacaoId, o.agora ?? new Date(), { contaDeTeste: o.contaDeTesteMercadoPago ?? null });
     alertas.push(...pagamentos.alertas);
+    // M8.2c: desconto de cancelamento (parte já repassada que voltou ao hóspede) que as partes disponíveis não cobriram.
+    alertas.push(...(await avisosDeDescontos(db, organizacaoId, o.agora ?? new Date())));
   }
 
   let financeiro: Financeiro | null = null;
@@ -125,8 +129,22 @@ export async function carregarDashboard(
     const fimAno = `${o.ano + 1}-01-01`;
     // Em "todos", a conferência de cálculo olha também reservas de imóveis arquivados (como os totais).
     const doPeriodo = o.todos ? await listarReservas(db, organizacaoId, o.periodo) : reservas;
-    // Pendente não é calculada até confirmar (M4.8): não entra no aviso de "sem cálculo".
-    const comValor = doPeriodo.filter((r) => r.valorBruto !== null && r.estado === "confirmada");
+    // Pendente não é calculada até confirmar (M4.8): não entra no aviso de "sem cálculo". A cancelada com valor retido
+    // pela política (M8.2c) é calculada como uma confirmada: entra (a lista do período não traz canceladas).
+    const retidas = await db
+      .select()
+      .from(reservasTabela)
+      .where(
+        and(
+          eq(reservasTabela.organizacaoId, organizacaoId),
+          eq(reservasTabela.estado, "cancelada"),
+          gt(reservasTabela.valorRetido, 0),
+          lt(reservasTabela.checkin, o.periodo.fim),
+          gt(reservasTabela.checkout, o.periodo.inicio),
+          o.todos ? undefined : inArray(reservasTabela.imovelId, ids),
+        ),
+      );
+    const comValor = [...doPeriodo, ...retidas].filter((r) => reservaCalculadaPeloMotor(r) && (r.valorBruto !== null || r.estado === "cancelada"));
     const [totais, mensal, regras, despesas, ajustesPendentes, adiantamentos, pendentes, calculadas] = await Promise.all([
       totaisPorTipo(db, organizacaoId, f),
       db
@@ -219,7 +237,7 @@ export async function carregarDashboard(
         texto: `${semCalculo.length} reserva(s) do período com valor mas sem cálculo no financeiro: confira o contrato na data da entrada.${notaArquivados(semCalculo.map((r) => r.imovelId))}`,
         link: "/painel/reservas",
       });
-    // Reserva que deixou de estar confirmada (pendente/cancelada) e ainda tem lançamento do motor em
+    // Reserva que o motor não calcula mais (pendente, cancelada sem valor retido) e ainda tem lançamento do motor em
     // vigor no período: já movimentou dinheiro (o recálculo não mexe nisso) e fica em conferência.
     const comDinheiro = await db
       .selectDistinct({ reservaId: lancamentos.reservaId })
@@ -228,7 +246,7 @@ export async function carregarDashboard(
       .where(
         and(
           eq(lancamentos.organizacaoId, organizacaoId),
-          or(ne(reservasTabela.estado, "confirmada"), isNotNull(reservasTabela.divergenciaEm)),
+          or(not(reservaCalculadaSql()), isNotNull(reservasTabela.divergenciaEm)),
           isNull(reservasTabela.conferenciaResolvidaEm),
           eq(lancamentos.origem, "motor"),
           gte(lancamentos.competencia, o.periodo.inicio),

@@ -183,3 +183,32 @@ describe("conciliação do extrato dos canais ao resultado por noite", () => {
     expect(conciliacaoFecha([])).toBe(false);
   });
 });
+
+describe("reserva cancelada com devolução ao hóspede depois do repasse (M8.2c)", () => {
+  // Novembro: o desconto (parte negativa) da reserva de Bruno, cancelada com devolução integral; outubro já tinha sido repassado.
+  const desconto = parte({ ...bruno, mes: "2026-11", noitesNoMes: 0, bruto: -300000, taxa: -45000, comissao: -38250, suaParte: -216750, situacao: "disponivel", motivo: "", pagamento: null, repasse: null, cancelamento: "desconto" });
+
+  it("conciliação: o desconto é uma ponte própria (nenhum canal pagou), e a ponte fecha", () => {
+    const l = conciliacao([desconto], "2026-11", HOJE, E);
+    expect(l.map((x) => [x.rotulo, x.bruto, x.suaParte, x.quemRecebeu, x.tipo])).toEqual([
+      ["Pago pelos canais em novembro de 2026", 0, 0, "", "subtotal"],
+      ["− Reserva SCL-1 cancelada com devolução ao hóspede (estadia de 7/10 → 10/10): desconto da parte já repassada", -300000, -216750, "sai do próximo repasse", "ponte"],
+      ["Resultado por noite de novembro de 2026", -300000, -216750, "", "total"],
+    ]);
+    expect(conciliacaoFecha(l)).toBe(true);
+    const descontado = conciliacao([{ ...desconto, situacao: "repassado", repasse: { id: "rep2", tipo: "antecipado", data: "2026-11-05", situacao: "pago", dataPagamento: "2026-11-06", valor: -216750 } }], "2026-11", HOJE, E);
+    expect(descontado[1].quemRecebeu).toBe("descontada no repasse de 6/11");
+  });
+
+  it("como chega: o desconto de outro mês num antecipado sai discriminado, sem falar em noites", () => {
+    const carlaNov = parte({ ...carla, mes: "2026-11", repasse: { id: "rep3", tipo: "antecipado", data: "2026-12-04", situacao: "pago", dataPagamento: "2026-12-04", valor: 346800 }, situacao: "repassado" });
+    const descontoNov = { ...desconto, mes: "2026-11", situacao: "repassado" as const, repasse: { id: "rep3", tipo: "antecipado" as const, data: "2026-12-04", situacao: "pago" as const, dataPagamento: "2026-12-04", valor: -216750 } };
+    const { linhas } = comoChega([carlaNov, descontoNov], "2026-12", "2026-12-10", [], E, [{ id: "rep3", valor: 346800 - 216750, reservas: ["Carla", "Bruno"] }]);
+    expect(linhas.map((x) => [x.texto, x.valor])).toEqual([
+      ["Já repassado em 4/12 (repasse antecipado: Carla e Bruno; Pix com comprovante no portal)", 130050],
+      ["Desse valor, o desconto da parte já repassada da reserva de Bruno (7/10 → 10/10), cancelada com devolução ao hóspede: entra no resultado de novembro de 2026", -216750],
+      ["Desse valor, 4 noites de novembro de 2026 da reserva de Carla (12/10 → 16/10), pagas junto: entram no resultado de novembro de 2026", 346800],
+    ]);
+  });
+});
+

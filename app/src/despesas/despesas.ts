@@ -183,12 +183,20 @@ export async function marcarDespesaPaga(db: Db, organizacaoId: string, id: strin
 }
 
 /**
+ * A taxa de um pagamento do site que não voltou ao hóspede (chave `mercadopago:`, M8.2a/M8.2c) só se corrige pelo quadro
+ * do pagamento ("Corrigir taxa que não voltou"), que versiona a chave; estornada em Despesas, nunca mais seria lançada.
+ */
+export const ERRO_DESPESA_DO_SITE =
+  'Esta despesa é a taxa de um pagamento do site que não voltou: corrija pelo quadro "Pagamento no site" da reserva (Corrigir taxa que não voltou).';
+
+/**
  * Estorna a despesa e, junto, o adiantamento que ela gerou (se houver). Se o adiantamento já
  * teve quitação (reembolso, compensação…), recusa: desfazer primeiro, senão o proprietário
  * ficaria com crédito indevido. Retorna "quitado" (desfazer em Adiantamentos) ou "compensacao"
- * (descontado num repasse: só estornando o repasse) nesse caso.
+ * (descontado num repasse: só estornando o repasse) nesse caso, e "do_site" para a taxa de um
+ * pagamento do site (`ERRO_DESPESA_DO_SITE`).
  */
-export async function estornarDespesa(db: Db, organizacaoId: string, id: string, motivo: string, autorId: string | null): Promise<boolean | "quitado" | "compensacao"> {
+export async function estornarDespesa(db: Db, organizacaoId: string, id: string, motivo: string, autorId: string | null): Promise<boolean | "quitado" | "compensacao" | "do_site"> {
   if (!uuidValido(id)) return false;
   return db.transaction(async (tx) => {
     // Trava a despesa primeiro: um "marcar como paga" ao mesmo tempo (que também trava esta
@@ -196,6 +204,7 @@ export async function estornarDespesa(db: Db, organizacaoId: string, id: string,
     await tx.select({ id: lancamentos.id }).from(lancamentos).where(and(eq(lancamentos.id, id), eq(lancamentos.organizacaoId, organizacaoId))).for("update");
     const d = await obterDespesa(tx, organizacaoId, id);
     if (!d || d.estornada || !motivo.trim()) return false;
+    if (d.chaveOrigem.startsWith("mercadopago:")) return "do_site";
     const a = await adiantamentoAtivo(tx, organizacaoId, id);
     if (a) {
       // Trava o adiantamento: uma quitação ao mesmo tempo espera ou aparece aqui.

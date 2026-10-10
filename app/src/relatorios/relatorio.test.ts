@@ -90,7 +90,7 @@ const base: DadosRelatorio = {
   mes: 10,
   situacao: "fechado",
   ate: null,
-  resumo: { reservas: 1, receitaBruta: 100000, taxasCanais: 15000, comissao: 12750, suaParte: 72250, despesas: 0, acerto: 72250, acertoPendente: 0, emConferencia: false },
+  resumo: { reservas: 1, receitaBruta: 100000, taxasCanais: 15000, comissao: 12750, suaParte: 72250, despesas: 0, acerto: 72250, acertoPendente: 0, emConferencia: false, retidoDeCanceladas: { n: 0, bruto: 0 }, devolvidoDeCanceladas: { n: 0, bruto: 0 } },
   reservas: [
     {
       id: "r1",
@@ -106,6 +106,8 @@ const base: DadosRelatorio = {
       suaParte: 72250,
       situacao: "definido",
       confirmada: true,
+      cancelada: false,
+      etiqueta: null,
     },
   ],
   rodape: [],
@@ -183,6 +185,29 @@ describe("textos do relatório (modelo oficial, M5.7)", () => {
       { texto: "12/10 — Troca do chuveiro", valor: "R$ 50,00", tipo: "normal" },
       { texto: "Total descontado no fechamento", valor: "R$ 50,00", tipo: "total" },
     ]);
+  });
+
+  it("M8.2c: o bruto diz o que vem de canceladas pela política; o desconto vira linha própria na tabela, sem noites", () => {
+    const t = textosDoRelatorio({
+      ...base,
+      resumo: { ...base.resumo, retidoDeCanceladas: { n: 1, bruto: 50000 }, devolvidoDeCanceladas: { n: 2, bruto: -80000 } },
+      partes: [
+        parte(),
+        parte({ reservaId: "r9", codigo: "SCL-9", checkin: "2026-09-10", checkout: "2026-09-12", noitesNoMes: 0, noitesTotal: 2, bruto: -50000, taxa: -500, comissao: -7425, suaParte: -42075, cancelamento: "desconto", pagamento: null }),
+        parte({ reservaId: "r8", codigo: "SCL-8", checkin: "2026-09-20", checkout: "2026-09-22", noitesNoMes: 0, noitesTotal: 2, bruto: -30000, taxa: 0, comissao: -4500, suaParte: -25500, cancelamento: "desconto", situacao: "repassado", pagamento: null, repasse: { id: "x", tipo: "antecipado", data: "2026-10-20", situacao: "pago", dataPagamento: "2026-10-21", valor: -25500 } }),
+      ],
+    });
+    expect(t.brutoAoResultado[0]).toMatchObject({
+      texto: "Bruto das reservas (1 reserva, 3 noites em outubro de 2026)",
+      etiqueta: "inclui R$ 500,00 retido de 1 reserva cancelada sem devolução (política de cancelamento); inclui −R$ 800,00 de 2 reservas canceladas com devolução depois do repasse",
+    });
+    expect(t.reservas.map((l) => [l.codigo, l.situacao, l.noites, l.atravessa])).toEqual([
+      ["R1", "a transferir no fechamento", "3", false],
+      ["SCL-9", "cancelada com devolução ao hóspede (estadia de 10/9): desconto no próximo repasse", "—", false],
+      ["SCL-8", "cancelada com devolução ao hóspede (estadia de 20/9): descontada no repasse de 21/10", "—", false],
+    ]);
+    // Sem canceladas, nenhuma nota no bruto.
+    expect(textosDoRelatorio(base).brutoAoResultado[0].etiqueta).toBeUndefined();
   });
 
   it("como chega até você e avisos: o fechamento pelo rodapé, a parte a liberar vira aviso; em conferência também", () => {

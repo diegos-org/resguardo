@@ -53,7 +53,17 @@ export type ReservaParaMotor = {
   valorBruto: number | null;
   taxaCanal: number | null;
   recebimento: RecebimentoReserva | null;
+  /** Reserva cancelada pela política sem devolução (M8.2c): o que ficou com a empresa (base do cálculo); null = nada. */
+  valorRetido?: number | null;
 };
+
+/**
+ * A reserva que o motor calcula (uma regra, um lugar; o SQL gêmeo, `reservaCalculadaSql`, está em `portal/posse.ts`):
+ * a confirmada e a cancelada com valor retido pela política (M8.2c), que é dividida como uma reserva normal. Vale em
+ * todo lugar que testa "confirmada" por causa do dinheiro.
+ */
+export const reservaCalculadaPeloMotor = (r: { estado: EstadoReserva; valorRetido: number | null }) =>
+  r.estado === "confirmada" || (r.estado === "cancelada" && (r.valorRetido ?? 0) > 0);
 
 export type ContratoParaMotor = { tipo: TipoContrato; comissaoBp: number | null; inicio: string; fim: string | null };
 
@@ -82,7 +92,7 @@ export function quemRecebeNaReserva(
 }
 
 export function calcularReserva(
-  r: ReservaParaMotor,
+  reserva: ReservaParaMotor,
   contratos: readonly ContratoParaMotor[],
   /** Proprietários vinculados ao imóvel. */
   donos: readonly string[],
@@ -91,7 +101,13 @@ export function calcularReserva(
   recebimentoDoImovel: Partial<Record<OrigemReserva, RecebimentoReserva>> = {},
 ): ResultadoMotor {
   const avisos: string[] = [];
-  if (r.estado === "cancelada") return { lancamentos: [], avisos: ["Reserva cancelada: sem lançamentos."] };
+  let r = reserva;
+  if (r.estado === "cancelada") {
+    if (!r.valorRetido || r.valorRetido <= 0) return { lancamentos: [], avisos: ["Reserva cancelada: sem lançamentos."] };
+    // M8.2c: cancelada sem devolução pela política — o valor retido segue o cálculo de uma confirmada.
+    avisos.push("Reserva cancelada com valor retido pela política: dividido como uma reserva normal.");
+    r = { ...r, valorBruto: r.valorRetido };
+  }
   // Pendente ainda não é receita (nem dívida com o proprietário): assim o painel, o portal e o
   // PDF contam a mesma coisa (M4.8). Ao confirmar, a reserva é calculada.
   if (r.estado === "consulta" || r.estado === "pedido") return { lancamentos: [], avisos: [] };

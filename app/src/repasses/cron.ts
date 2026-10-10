@@ -17,7 +17,7 @@ import { enviarEmailsDeRepasses } from "./email";
 import { geraAntecipadoEm } from "./periodicidade";
 import { periodicidadeDoProprietario } from "./proprietario";
 import { lerRegrasRepasses } from "./regras-config";
-import { gerarAntecipado } from "./repasses";
+import { ERRO_DESCONTO_NAO_COBERTO, gerarAntecipado } from "./repasses";
 
 export type ResultadoRotinaRepasses = { gerados: number; semDisponivel: number; falhas: string[]; emails: Awaited<ReturnType<typeof enviarEmailsDeRepasses>> };
 
@@ -31,7 +31,8 @@ export async function rotinaDeRepasses(db: Db, organizacaoId: string, correio: C
     if (!p || !geraAntecipadoEm(hoje, p.efetiva, regras)) continue;
     const g = await gerarAntecipado(db, organizacaoId, d.id, hoje, null, { agora });
     if (g.ok) r.gerados++;
-    else if (g.erro.startsWith("Nada disponível") || g.erro.startsWith("Já existe")) r.semDisponivel++;
+    // Partes que não cobrem um desconto de cancelamento (M8.2c) também é "sem valor disponível": o desconto espera.
+    else if (g.erro.startsWith("Nada disponível") || g.erro.startsWith("Já existe") || g.erro.startsWith(ERRO_DESCONTO_NAO_COBERTO)) r.semDisponivel++;
     else r.falhas.push(`${d.nome}: ${g.erro}`);
   }
   r.emails = await enviarEmailsDeRepasses(db, organizacaoId, correio, agora);

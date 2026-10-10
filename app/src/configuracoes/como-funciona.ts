@@ -60,7 +60,7 @@ export const RASCUNHO_COMO_FUNCIONA: SecoesComoFunciona = {
   relatorios:
     "Todo mês você recebe por e-mail o relatório do mês anterior, com as reservas, os números, a sua parte e o acerto, e pode baixar o PDF no portal a qualquer momento. O extrato do portal mostra a sua parte em cada reserva (a liberar, disponível ou já repassada), os repasses feitos e o que ainda está em conferência.",
   cancelamentos:
-    "Quando o hóspede cancela, vale a política do canal em que a reserva foi feita (Airbnb, Booking ou o site). Se o canal pagar alguma coisa pela reserva cancelada, esse valor entra na divisão como uma reserva normal; se não pagar nada, não há nada a dividir. O calendário é liberado para novas reservas na hora.",
+    "Quando o hóspede cancela, vale a política do canal em que a reserva foi feita (Airbnb, Booking ou o site). Se o canal pagar alguma coisa pela reserva cancelada, esse valor entra na divisão como uma reserva normal; se não pagar nada, não há nada a dividir. O calendário é liberado para novas reservas na hora.\n\nNas reservas pagas pelo site vale a Política de cancelamento do site, na versão que o hóspede aceitou: com devolução integral, não há nada a dividir e a taxa do pagamento que não voltar fica com a {empresa}; sem devolução, o valor pago entra na divisão como uma reserva normal e a sua parte fica disponível depois da data de entrada original. Se a sua parte de uma reserva cancelada com devolução já tiver sido repassada, ela é descontada no repasse seguinte.",
   contestacoes: "",
   duvidas: "Qualquer dúvida sobre uma reserva, um valor ou um repasse: fale com a {empresa} pelo WhatsApp ou pelo e-mail de sempre. Se algo no extrato não bater, avise — o item fica em conferência até a resposta.",
 };

@@ -9,7 +9,7 @@
  */
 import { type AnyColumn, and, eq, exists, gt, gte, isNotNull, isNull, lt, not, notInArray, inArray, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { lancamentos, proprietarioImoveis, reservas } from "@/db/schema";
+import { cancelamentosReserva, lancamentos, pagamentos, proprietarioImoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 
 /** Lançamento em vigor: não é estorno e não foi estornado. */
@@ -19,15 +19,33 @@ export function lancamentoEmVigor(db: Db) {
 }
 
 /**
+ * Condição sobre `reservas`: a reserva que o motor calcula — confirmada, ou cancelada com valor retido pela política
+ * (M8.2c). Gêmeo SQL de `reservaCalculadaPeloMotor` (`financeiro/motor.ts`): os dois mudam juntos.
+ */
+export const reservaCalculadaSql = () => sql`(${reservas.estado} = 'confirmada' or (${reservas.estado} = 'cancelada' and coalesce(${reservas.valorRetido}, 0) > 0))`;
+
+/**
+ * Condição sobre `reservas` (D21, M8.2c): o pagamento do site que confirmou a reserva aparece devolvido no Mercado Pago
+ * (no todo, em parte, ou com o aviso de devolução por fora) fora do cancelamento pela política com devolução integral.
+ * O dinheiro já voltou ao hóspede: a parte do proprietário fica em conferência e não é repassada. Gêmeo TS:
+ * `devolvidaNoProvedor` (`pagamentos/consultas.ts`).
+ */
+export const devolvidaNoProvedorSql = () => sql`(exists (select 1 from ${pagamentos} p where p.reserva_id = ${reservas.id} and p.desfecho = 'reserva'
+    and (p.situacao in ('devolvido', 'devolvido_parcial') or p.devolvido_lido > 0 or p.avisos @> '["devolvido_por_fora"]'::jsonb))
+  and not exists (select 1 from ${cancelamentosReserva} c where c.reserva_id = ${reservas.id} and c.situacao = 'cancelada' and c.direito = 'integral'))`;
+
+/**
  * Lançamento em conferência (uma regra, um lugar: portal, PDF, fechamento do mês e Início): o
- * pendente, e o do motor de uma reserva que deixou de estar confirmada (pendente/cancelada) mas
- * ficou em vigor porque já movimentou dinheiro. Sai da conferência quando a reserva é confirmada de
- * novo ou quando alguém dá a conferência por resolvida no painel (depois do ajuste manual).
+ * pendente, e o do motor de uma reserva que o motor não calcula mais (pendente/cancelada sem valor
+ * retido) mas ficou em vigor porque já movimentou dinheiro, com divergência, ou cujo pagamento do site
+ * o Mercado Pago mostra devolvido fora do cancelamento pela política (D21). Sai da conferência quando
+ * a reserva é confirmada de novo ou quando alguém dá a conferência por resolvida no painel (depois do
+ * ajuste manual; no cancelamento com a parte já repassada, o próprio sistema dá por resolvida).
  */
 const daReservaNaoConfirmada = (resolvida: boolean) =>
   and(
     eq(lancamentos.origem, "motor"),
-    sql`${lancamentos.reservaId} in (select ${reservas.id} from ${reservas} where (${reservas.estado} <> 'confirmada' or ${reservas.divergenciaEm} is not null) and ${reservas.conferenciaResolvidaEm} is ${sql.raw(resolvida ? "not null" : "null")})`,
+    sql`${lancamentos.reservaId} in (select ${reservas.id} from ${reservas} where (not ${reservaCalculadaSql()} or ${reservas.divergenciaEm} is not null or ${devolvidaNoProvedorSql()}) and ${reservas.conferenciaResolvidaEm} is ${sql.raw(resolvida ? "not null" : "null")})`,
   );
 
 /** Lançamento do motor de reserva não confirmada cuja conferência foi dada por resolvida. */

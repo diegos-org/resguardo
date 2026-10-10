@@ -11,7 +11,7 @@ import { ratear } from "@/lib/rateio";
 import { lancamentoEmVigor } from "@/portal/posse";
 import { reservasDoPortal } from "@/portal/reservas";
 import { resumoDoProprietario } from "@/portal/resumo";
-import { partesDoProprietario } from "@/repasses/extrato";
+import { ehDescontoDeCancelamento, partesDoProprietario } from "@/repasses/extrato";
 import { somarDias } from "@/repasses/inicio";
 import { lerInicioDoSistema } from "@/repasses/regras-config";
 import { itensDoRepasse, listarRepasses, type Repasse } from "@/repasses/repasses";
@@ -82,6 +82,7 @@ export async function partesDoRelatorio(db: Db, organizacaoId: string, o: { dono
         motivo: p.motivo,
         pagamento: p.pagamento,
         repasse: p.repasse,
+        ...(ehDescontoDeCancelamento(p) ? { cancelamento: "desconto" as const } : p.canceladaComRetencao ? { cancelamento: "retida" as const } : {}),
       };
     })
     .sort((a, b) => a.checkin.localeCompare(b.checkin) || a.codigo.localeCompare(b.codigo));

@@ -14,7 +14,7 @@ import { lerRegrasCalendario } from "@/calendario/regras-config";
 import { escritaBeds24Pronta } from "@/beds24/http";
 import { lerPaginaLegal } from "@/configuracoes/paginas-legais";
 import type { VersoesLegais } from "@/configuracoes/paginas-legais-texto";
-import { aceitesSite, cotacoes, devolucoesPagamento, eventosPagamento, imoveis, lancamentos, pagamentos, reservas, type SituacaoDevolucao } from "@/db/schema";
+import { aceitesSite, cotacoes, devolucoesPagamento, type DireitoCancelamento, eventosPagamento, imoveis, lancamentos, pagamentos, reservas, type SituacaoCancelamento, type SituacaoDevolucao } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
@@ -365,6 +365,21 @@ async function montarPainel(db: Db, organizacaoId: string, lista: Pagamento[], a
     return { versoes: { termos: a.versaoTermos, privacidade: a.versaoPrivacidade, cancelamento: a.versaoCancelamento }, aceitoEm: a.aceitoEm, diasReembolsoIntegral: dias };
   };
   return lista.map((p) => ({ ...paraPainel(p, devs.find((d) => d.pagamentoId === p.id), comManual.has(p.id), agora), aceite: aceiteDe(p) }));
+}
+
+/**
+ * D21 (M8.2c), gêmeo TS de `devolvidaNoProvedorSql` (`portal/posse.ts`): o pagamento que confirmou a reserva (desfecho
+ * "reserva") aparece devolvido no Mercado Pago — no todo, em parte, pela leitura ou pelo aviso de devolução por fora —
+ * e a reserva não tem cancelamento pela política com devolução integral. A parte do proprietário fica em conferência.
+ */
+export function devolvidaNoProvedor(
+  pagamentoQueConfirmou: Pick<Pagamento, "desfecho" | "situacao" | "devolvidoLido" | "avisos"> | null | undefined,
+  cancelamento: { situacao: SituacaoCancelamento; direito: DireitoCancelamento | null } | null | undefined,
+): boolean {
+  const p = pagamentoQueConfirmou;
+  if (!p || p.desfecho !== "reserva") return false;
+  const devolvido = p.situacao === "devolvido" || p.situacao === "devolvido_parcial" || p.devolvidoLido > 0 || p.avisos.includes("devolvido_por_fora");
+  return devolvido && !(cancelamento?.situacao === "cancelada" && cancelamento.direito === "integral");
 }
 
 /** Pagamentos do site de uma reserva (ficha da reserva), do mais antigo ao mais novo. */

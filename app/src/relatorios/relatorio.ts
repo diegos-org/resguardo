@@ -316,6 +316,9 @@ export function marcaDe(empresa: string): { inicio: string; destaque: string } {
 
 /** A situação da parte na tabela de reservas; `hoje` separa o que o canal já pagou do que ainda está previsto. */
 const situacaoDaParte = (p: ParteDoRelatorio, hoje: string): { texto: string; tipo: LinhaReserva["situacaoTipo"] } => {
+  // M8.2c: o desconto da parte já repassada de uma reserva cancelada com devolução ao hóspede (mês do cancelamento).
+  if (p.cancelamento === "desconto")
+    return { texto: `cancelada com devolução ao hóspede (estadia de ${dataCurta(p.checkin)}): ${p.repasse ? `descontada no repasse de ${dataCurta(dataDoPix(p.repasse))}` : "desconto no próximo repasse"}`, tipo: "info" };
   if (p.repasse) {
     if (p.repasse.tipo === "por_fora") return { texto: "acertada por fora, antes do início do sistema", tipo: "ok" };
     return p.repasse.situacao === "pago" ? { texto: `repassada em ${dataCurta(dataDoPix(p.repasse))}`, tipo: "ok" } : { texto: `em repasse de ${dataCurta(p.repasse.data)}, a pagar`, tipo: "info" };
@@ -328,7 +331,9 @@ const situacaoDaParte = (p: ParteDoRelatorio, hoje: string): { texto: string; ti
   if (p.quemRecebe === "a_confirmar") return { texto: "a liberar: quem recebe a confirmar", tipo: "aviso" };
   const curto = /não registrou o recebimento/i.test(p.motivo)
     ? "pagamento do canal não registrado"
-    : /depois do check-in/i.test(p.motivo)
+    : p.cancelamento === "retida" && /entrada original/i.test(p.motivo)
+      ? "cancelada sem devolução (valor retido), libera depois da entrada original"
+      : /depois do check-in/i.test(p.motivo)
       ? "libera depois do check-in"
       : /conferência/i.test(p.motivo)
         ? "em conferência"
@@ -373,8 +378,18 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
   const chega = comoChega(d.partes, mes, d.hoje, d.rodape, e, d.repasses);
   const canaisComTaxa = [...new Set(doMes.filter((p) => p.taxa > 0).map((p) => nomeDoCanal(p.canal, e)))];
   const nDespesas = d.despesas.length;
+  // M8.2c: de onde vem parte do bruto das canceladas pela política (o retido e o desconto depois do repasse).
+  const doBruto = [
+    r.retidoDeCanceladas.n ? `inclui ${formatBRL(r.retidoDeCanceladas.bruto)} retido de ${r.retidoDeCanceladas.n} ${plural(r.retidoDeCanceladas.n, "reserva cancelada", "reservas canceladas")} sem devolução (política de cancelamento)` : "",
+    r.devolvidoDeCanceladas.n ? `inclui −${formatBRL(-r.devolvidoDeCanceladas.bruto)} de ${r.devolvidoDeCanceladas.n} ${plural(r.devolvidoDeCanceladas.n, "reserva cancelada", "reservas canceladas")} com devolução depois do repasse` : "",
+  ].filter(Boolean);
   const brutoAoResultado: LinhaValor[] = [
-    { texto: `Bruto das reservas (${nReservas} ${plural(nReservas, "reserva", "reservas")}, ${noites} ${plural(noites, "noite", "noites")} em ${mesNome})`, valor: formatBRL(r.receitaBruta), tipo: "normal" },
+    {
+      texto: `Bruto das reservas (${nReservas} ${plural(nReservas, "reserva", "reservas")}, ${noites} ${plural(noites, "noite", "noites")} em ${mesNome})`,
+      valor: formatBRL(r.receitaBruta),
+      tipo: "normal",
+      ...(doBruto.length ? { etiqueta: doBruto.join("; ") } : {}),
+    },
     { texto: `− Taxas dos canais${canaisComTaxa.length ? ` (${canaisComTaxa.join(", ")})` : ""}`, valor: `− ${formatBRL(r.taxasCanais)}`, tipo: "sub" },
     { texto: "Líquido depois dos canais", valor: formatBRL(r.receitaBruta - r.taxasCanais), tipo: "normal" },
     { texto: `− Comissão da gestão${comissoes.length === 1 ? ` (${comissoes[0]} do líquido)` : ""}`, valor: `− ${formatBRL(r.comissao)}`, tipo: "sub" },
@@ -409,7 +424,9 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
   const linhasReservas: LinhaReserva[] = [
     ...doMes.map((p) => {
       const s = situacaoDaParte(p, d.hoje);
-      const atravessa = p.noitesNoMes !== p.noitesTotal;
+      // O desconto de uma cancelada (M8.2c) não tem noites no mês: é o espelho do mês já repassado.
+      const desconto = p.cancelamento === "desconto";
+      const atravessa = !desconto && p.noitesNoMes !== p.noitesTotal;
       return {
         imovel: nomes.get(d.reservas.find((x) => x.id === p.reservaId)?.imovelId ?? "") ?? "",
         hospede: primeiroNome(p.hospede) || "não informado",
@@ -418,7 +435,7 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
         situacao: s.texto,
         situacaoTipo: s.tipo,
         datas: `${dataCurta(p.checkin)} → ${dataCurta(p.checkout)}${atravessa ? " *" : ""}`,
-        noites: atravessa ? `${p.noitesNoMes} de ${p.noitesTotal}` : String(p.noitesNoMes),
+        noites: desconto ? "—" : atravessa ? `${p.noitesNoMes} de ${p.noitesTotal}` : String(p.noitesNoMes),
         bruto: formatBRL(p.bruto),
         taxa: formatBRL(p.taxa),
         gestao: formatBRL(p.comissao),
@@ -434,7 +451,7 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
         hospede: primeiroNome(x.hospede) || "não informado",
         canal: nomeDoCanal(x.canal, e),
         codigo: x.codigo,
-        situacao: SITUACAO_RESERVA[x.situacao],
+        situacao: x.etiqueta ? `${SITUACAO_RESERVA[x.situacao]} · ${x.etiqueta.toLowerCase()}` : SITUACAO_RESERVA[x.situacao],
         situacaoTipo: (x.situacao === "definido" ? "info" : "aviso") as LinhaReserva["situacaoTipo"],
         datas: `${dataCurta(x.checkin)} → ${dataCurta(x.checkout)}`,
         noites: "—",

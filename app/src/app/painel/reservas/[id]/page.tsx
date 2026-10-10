@@ -6,6 +6,7 @@ import styles from "@/components/formularios.module.css";
 import { HistoricoAlteracoes } from "@/components/HistoricoAlteracoes";
 import { getDb } from "@/db/client";
 import { listarLancamentos } from "@/financeiro/ledger";
+import { reservaCalculadaPeloMotor } from "@/financeiro/motor";
 import { obterImovel } from "@/imoveis/repositorio";
 import { formatBRL } from "@/lib/money";
 import { cancelar, confirmar, resolverConferenciaAcao, salvarEmailHospedeAcao } from "@/reservas/acoes";
@@ -39,9 +40,10 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
   const [imovel, historico] = await Promise.all([obterImovel(db, sessao.organizacaoId, r.imovelId), historicoDe(db, sessao.organizacaoId, "reserva", r.id)]);
   const verValores = podeFazer(sessao.papel, "financeiro:ler");
   const lancs = verValores ? await listarLancamentos(db, sessao.organizacaoId, { reservaId: r.id }) : [];
-  // Não confirmada com lançamento do motor ainda em vigor: já movimentou dinheiro, em conferência (M4.8).
+  // Não calculada pelo motor (a cancelada com valor retido, M8.2c, é calculada) com lançamento do motor ainda em vigor:
+  // já movimentou dinheiro, em conferência (M4.8).
   const emVigor = lancs.filter((l) => l.origem === "motor" && !l.estornoDe && !lancs.some((e) => e.estornoDe === l.id));
-  const emConferencia = (r.estado !== "confirmada" || r.divergenciaEm !== null) && !r.conferenciaResolvidaEm && emVigor.length > 0;
+  const emConferencia = (!reservaCalculadaPeloMotor(r) || r.divergenciaEm !== null) && !r.conferenciaResolvidaEm && emVigor.length > 0;
 
   // Mesma ordem do motor: reserva > configuração do imóvel para o canal > padrão do sistema.
   const doImovel = verValores ? (await lerRecebimento(db, sessao.organizacaoId, r.imovelId))[r.origem] : undefined;

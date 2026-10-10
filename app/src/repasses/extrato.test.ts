@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classificarParte, type ParteBruta, resumirPartes } from "./extrato";
+import { classificarParte, ehDescontoDeCancelamento, type ParteBruta, resumirPartes } from "./extrato";
 
 const base: ParteBruta = {
   lancamentoId: "l1",
@@ -120,5 +120,42 @@ describe("lado do início do sistema pela data do pagamento (M4.12, regra pura)"
       motivo: "O canal pagou sua parte direto a você (pago em 30/09/2026, 1 dia(s) depois do check-in), antes do início do sistema (01/10/2026): já acertada por fora.",
     });
     expect(classificarParte({ ...split, ...atravessa, pagamento: null }, inicio).motivo).toBe("O canal paga sua parte direto a você: não entra em repasse.");
+  });
+});
+
+describe("cancelamento pela política do site (M8.2c, regra pura)", () => {
+  const desconto: ParteBruta = { ...base, lancamentoId: "d1", competencia: "2026-11-01", valor: -72250, efeitoSaldo: -72250, origemLancamento: "cancelamento", hoje: "2026-11-03", recebido: { recebido: 85000, devido: 0 } };
+
+  it("desconto da parte já repassada: disponível na hora, nunca a liberar (nem dinheiro, nem check-in, nem conferência)", () => {
+    expect(ehDescontoDeCancelamento(desconto)).toBe(true);
+    expect(ehDescontoDeCancelamento({ ...desconto, origemLancamento: "motor" })).toBe(false);
+    expect(ehDescontoDeCancelamento({ ...desconto, valor: 100 })).toBe(false);
+    expect(classificarParte(desconto)).toMatchObject({
+      quemRecebe: "empresa",
+      situacao: "disponivel",
+      motivo: "Desconto da sua parte já repassada da reserva R-1 (cancelada com devolução integral ao hóspede): sai do próximo repasse.",
+    });
+    expect(classificarParte({ ...desconto, recebido: { recebido: 0, devido: 0 }, checkin: "2026-12-01", emConferencia: true }).situacao).toBe("disponivel");
+    // Vinculado a um repasse: descontado (pelo repasse ou pelo fechamento).
+    const rep = { id: "x", tipo: "antecipado" as const, data: "2026-11-05", situacao: "pago" as const, dataPagamento: "2026-11-06", valor: -72250 };
+    expect(classificarParte({ ...desconto, repasse: rep })).toMatchObject({
+      situacao: "repassado",
+      motivo: "Desconto da sua parte já repassada da reserva R-1 (cancelada com devolução integral ao hóspede): descontado no repasse de 05/11/2026 (pago em 06/11/2026).",
+      diferenca: 0,
+    });
+    expect(classificarParte({ ...desconto, repasse: { ...rep, tipo: "fechamento", situacao: "a_pagar", dataPagamento: null } }).motivo).toContain("descontado no fechamento de 05/11/2026 (a pagar).");
+    // No resumo, o desconto sai do disponível.
+    expect(resumirPartes([classificarParte(base), classificarParte(desconto)])).toMatchObject({ disponivel: 0 });
+  });
+
+  it("cancelada sem devolução (valor retido): libera depois da entrada original, com o motivo próprio; depois segue a regra", () => {
+    const retida: ParteBruta = { ...base, canceladaComRetencao: true, checkin: "2026-12-10", checkout: "2026-12-13", competencia: "2026-12-01" };
+    expect(classificarParte(retida)).toMatchObject({
+      situacao: "a_liberar",
+      motivo: "Reserva cancelada sem devolução ao hóspede (política de cancelamento): o valor retido é dividido como uma reserva normal. Libera depois da data de entrada original (10/12/2026), com o dinheiro já com a empresa.",
+    });
+    expect(classificarParte({ ...retida, hoje: "2026-12-11" }).situacao).toBe("disponivel");
+    // Sem o dinheiro com a empresa, vale o motivo do dinheiro.
+    expect(classificarParte({ ...retida, hoje: "2026-12-11", recebido: { recebido: 0, devido: 85000 } }).motivo).toContain("ainda não registrou o recebimento");
   });
 });

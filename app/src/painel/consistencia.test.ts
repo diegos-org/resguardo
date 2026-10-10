@@ -7,15 +7,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { criarContrato } from "@/contratos/repositorio";
-import { conferirMovimentadas, recalcularPendentes, recalcularReservas } from "@/financeiro/aplicar";
-import { preverRepasses } from "@/repasses/repasses";
+import { aplicarMotor, conferirMovimentadas, recalcularPendentes, recalcularReservas } from "@/financeiro/aplicar";
+import { gerarAntecipado, marcarRepassePago, preverRepasses } from "@/repasses/repasses";
+import { cancelamentoDeTeste, espelharCancelamento, pagamentoDoSiteDeTeste } from "@/repasses/testes-cancelamento";
+import { receberTudo } from "@/repasses/testes";
 import { contratos, lancamentos, imoveis, organizacoes, proprietarioImoveis, proprietarios, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { criarCategoria } from "@/despesas/categorias";
 import { registrarDespesa } from "@/despesas/despesas";
 import { listarImoveis } from "@/imoveis/repositorio";
-import { reservasDoPortal } from "@/portal/reservas";
+import { ETIQUETA_CANCELADA_DEVOLVIDA, ETIQUETA_CANCELADA_RETIDA, reservasDoPortal } from "@/portal/reservas";
 import { resumoDoProprietario } from "@/portal/resumo";
 import { dadosDoRelatorio, textosDoRelatorio } from "@/relatorios/relatorio";
 import type { DadosReserva } from "@/reservas/regras";
@@ -444,5 +446,87 @@ describe("consistência entre telas (M4.8)", () => {
     const so102 = (await listarImoveis(db, org)).filter((i) => i.codigo === "102");
     const inicio102 = await carregarDashboard(db, org, { imoveis: so102, todos: false, periodo: OUTUBRO, ano: 2026, hoje: "2026-11-10", verFinanceiro: true });
     expect(inicio102.reservasNoPeriodo).toBe(1);
+  });
+
+  it("M8.2c — cancelada sem devolução (valor retido): os mesmos totais em todas as telas, fora da contagem, e o PDF diz de onde vem", async () => {
+    const r = await criarReserva(db, org, reserva(a, "2026-10-01", "2026-10-03", { origem: "site", valorBruto: 50000, taxaCanal: 0 }), null);
+    if (!r.ok) throw new Error("reserva");
+    await db.update(reservas).set({ estado: "cancelada", canceladaEm: new Date(), valorRetido: 50000 }).where(eq(reservas.id, r.reserva.id));
+    expect(await aplicarMotor(db, org, r.reserva.id, null)).toMatchObject({ criados: 0, estornados: 0 });
+    const t = await tresTelas();
+    expect(t.brutos).toEqual([310000, 310000, 310000]);
+    expect(t.contagens).toEqual([3, 3, 3]);
+    expect(t.acertos[0]).toBe(t.acertos[1]);
+    const alertas = t.inicio.alertas.map((x) => x.texto).join(" | ");
+    expect(alertas).not.toContain("com dinheiro já movimentado");
+    expect(alertas).not.toContain("sem cálculo");
+    const portal = await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], semImovel: true, periodo: OUTUBRO });
+    expect(portal).toMatchObject({ emConferencia: false, retidoDeCanceladas: { n: 1, bruto: 50000 }, devolvidoDeCanceladas: { n: 0, bruto: 0 } });
+    const lista = await reservasDoPortal(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo: OUTUBRO });
+    expect(lista.find((x) => x.id === r.reserva.id)).toMatchObject({ situacao: "definido", confirmada: false, cancelada: true, etiqueta: ETIQUETA_CANCELADA_RETIDA, bruto: 50000 });
+    expect(lista.reduce((x, y) => x + y.bruto, 0)).toBe(portal.receitaBruta);
+    const pdf = textosDoRelatorio(await dadosDoRelatorio(db, org, { donos: [{ id: dona, nome: "Dona Fictícia" }], imoveis: [{ id: a, codigo: "403", nome: "Quatro" }], todosOsImoveis: true, ano: 2026, mes: 10, hoje: "2026-11-10" }));
+    expect(pdf.brutoAoResultado[0]).toMatchObject({ valor: formatBRL(310000), etiqueta: "inclui R$ 500,00 retido de 1 reserva cancelada sem devolução (política de cancelamento)" });
+    expect(pdf.conciliacaoFecha).toBe(true);
+    expect((await preverRepasses(db, org, "2026-10", "2026-11-10", [dona]))[0].bloqueios.join(" ")).not.toContain("acerto pendente");
+  });
+
+  it("M8.2c — cancelada com devolução integral depois do repasse: outubro não muda; novembro mostra o desconto; cada mês fecha; nada trava", async () => {
+    const NOVEMBRO = { inicio: "2026-11-01", fim: "2026-12-01" };
+    const dados = reserva(a, "2026-10-01", "2026-10-03", { valorBruto: 50000, taxaCanal: 0 });
+    const r = await criarReserva(db, org, dados, null);
+    if (!r.ok) throw new Error("reserva");
+    await receberTudo(db, org, r.reserva.id, "2026-10-01");
+    const g = await gerarAntecipado(db, org, dona, "2026-10-04", null);
+    if (!g.ok) throw new Error(g.erro);
+    await marcarRepassePago(db, org, g.id, "2026-10-05", "2026-10-05", null);
+    const so403 = (await listarImoveis(db, org)).filter((i) => i.codigo === "403");
+    const telas = async (periodo: { inicio: string; fim: string }, hoje: string) => {
+      const inicio = await carregarDashboard(db, org, { imoveis: so403, todos: false, periodo, ano: 2026, hoje, verFinanceiro: true });
+      const { linhas } = await carregarApartamentos(db, org, { imoveis: so403, todos: false, periodo });
+      const portal = await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], semImovel: true, periodo });
+      return { inicio, apto: linhas[0], portal };
+    };
+    const dinheiro = (x: Awaited<ReturnType<typeof telas>>) => ({
+      inicio: x.inicio.financeiro,
+      apto: x.apto.financeiro,
+      portal: [x.portal.receitaBruta, x.portal.taxasCanais, x.portal.comissao, x.portal.suaParte, x.portal.despesas, x.portal.acerto],
+    });
+    const pdfDe = async (mes: number, hoje: string) =>
+      textosDoRelatorio(await dadosDoRelatorio(db, org, { donos: [{ id: dona, nome: "Dona Fictícia" }], imoveis: [{ id: a, codigo: "403", nome: "Quatro" }], todosOsImoveis: true, ano: 2026, mes, hoje }));
+    const outubroAntes = await telas(OUTUBRO, "2026-11-10");
+    const pdfOutubroAntes = await pdfDe(10, "2026-11-10");
+    const novembroAntes = await telas(NOVEMBRO, "2026-12-10");
+
+    const pagamentoId = await pagamentoDoSiteDeTeste(db, org, r.reserva);
+    const cancelamentoId = await cancelamentoDeTeste(db, org, { reservaId: r.reserva.id, pagamentoId, direito: "integral" });
+    await espelharCancelamento(db, org, { reservaId: r.reserva.id, cancelamentoId, competencia: "2026-11-01", codigo: r.reserva.codigo });
+
+    // Outubro: os valores ficam exatamente como estavam (o mês já movimentou dinheiro), em todas as telas e no PDF.
+    const outubro = await telas(OUTUBRO, "2026-11-10");
+    expect(dinheiro(outubro)).toEqual(dinheiro(outubroAntes));
+    const pdfOutubro = await pdfDe(10, "2026-11-10");
+    expect(pdfOutubro.brutoAoResultado.map((l) => l.valor)).toEqual(pdfOutubroAntes.brutoAoResultado.map((l) => l.valor));
+    expect(pdfOutubro.conciliacao.at(-1)).toEqual(pdfOutubroAntes.conciliacao.at(-1));
+    // Novembro: o desconto (bruto −500, parte −425) entra no mês do cancelamento, igual em todas as telas.
+    const novembro = await telas(NOVEMBRO, "2026-12-10");
+    expect(novembro.portal.receitaBruta).toBe(novembroAntes.portal.receitaBruta - 50000);
+    expect(novembro.portal.suaParte).toBe(novembroAntes.portal.suaParte - 42500);
+    expect([novembro.inicio.financeiro?.receitaBruta, novembro.apto.financeiro.receitaBruta]).toEqual([novembro.portal.receitaBruta, novembro.portal.receitaBruta]);
+    expect(novembro.portal.devolvidoDeCanceladas).toEqual({ n: 1, bruto: -50000 });
+    // Cada mês fecha: bruto − taxas − comissão = parte.
+    for (const m of [outubro, novembro]) expect(m.portal.receitaBruta - m.portal.taxasCanais - m.portal.comissao).toBe(m.portal.suaParte);
+    for (const m of [outubro, novembro]) expect(m.inicio.alertas.map((x) => x.texto).join(" | ")).not.toContain("com dinheiro já movimentado");
+    const lista = await reservasDoPortal(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo: NOVEMBRO });
+    expect(lista.find((x) => x.id === r.reserva.id)).toMatchObject({ bruto: -50000, suaParte: -42500, situacao: "definido", cancelada: true, etiqueta: ETIQUETA_CANCELADA_DEVOLVIDA });
+    expect(lista.reduce((x, y) => x + y.bruto, 0)).toBe(novembro.portal.receitaBruta);
+    // O PDF de novembro: a linha do desconto, a nota do bruto e a conciliação que fecha.
+    const pdf = await pdfDe(11, "2026-12-10");
+    expect(pdf.brutoAoResultado[0].etiqueta).toBe("inclui −R$ 500,00 de 1 reserva cancelada com devolução depois do repasse");
+    expect(pdf.reservas.find((l) => l.situacao.startsWith("cancelada com devolução"))).toMatchObject({ situacao: "cancelada com devolução ao hóspede (estadia de 1/10): desconto no próximo repasse", noites: "—", atravessa: false });
+    expect(pdf.conciliacao.find((l) => l.rotulo.includes("desconto da parte já repassada"))).toMatchObject({ tipo: "ponte", quemRecebeu: "sai do próximo repasse" });
+    expect(pdf.conciliacaoFecha).toBe(true);
+    // Nenhum fechamento trava por causa dela.
+    for (const [mes, hoje] of [["2026-10", "2026-11-10"], ["2026-11", "2026-12-10"]]) expect((await preverRepasses(db, org, mes, hoje, [dona], true))[0].bloqueios.join(" ")).not.toContain("acerto pendente");
   });
 });

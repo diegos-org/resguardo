@@ -6,7 +6,7 @@ import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import type { DadosReserva } from "@/reservas/regras";
 import { cancelarReserva, criarReserva, sincronizarReserva } from "@/reservas/repositorio";
-import { aplicarMotor, recalcularReservas } from "./aplicar";
+import { aplicarMotor, conferirMovimentadas, recalcularReservas } from "./aplicar";
 import { REGRAS_PADRAO } from "./motor";
 import { lerRecebimento, salvarRecebimento } from "@/imoveis/recebimento";
 import { historicoDe } from "@/auditoria/auditoria";
@@ -231,5 +231,42 @@ describe("aplicarMotor", () => {
   it("reserva de outra organização ou id inválido: nada acontece", async () => {
     expect(await aplicarMotor(db, org, "lixo", null)).toBeNull();
     expect(await aplicarMotor(db, org, "00000000-0000-4000-8000-000000000999", null)).toBeNull();
+  });
+});
+
+describe("cancelada pela política do site (M8.2c)", () => {
+  it("cancelada com valor retido igual ao bruto: o motor mantém os quatro lançamentos (nada criado, nada estornado)", async () => {
+    const id = await sinc();
+    await db.update(reservas).set({ estado: "cancelada", valorRetido: 150000 }).where(eq(reservas.id, id));
+    const res = await aplicarMotor(db, org, id, null);
+    expect(res).toMatchObject({ criados: 0, estornados: 0, mantidos: 4 });
+    expect(res?.avisos).toContain("Reserva cancelada com valor retido pela política: dividido como uma reserva normal.");
+    expect(await ativosDoMotor(id)).toHaveLength(4);
+    expect(await saldoAcerto(db, org, { proprietarioId: dono })).toBe(108375);
+  });
+
+  it("cancelada com devolução integral sem dinheiro movimentado: os quatro lançamentos são estornados", async () => {
+    const id = await sinc();
+    await db.update(reservas).set({ estado: "cancelada", valorRetido: null }).where(eq(reservas.id, id));
+    expect(await aplicarMotor(db, org, id, null)).toMatchObject({ criados: 0, estornados: 4, mantidos: 0 });
+    expect(await ativosDoMotor(id)).toHaveLength(0);
+    expect(await saldoAcerto(db, org, { proprietarioId: dono })).toBe(0);
+  });
+
+  it("a conferência do deploy alcança a cancelada com valor retido que já movimentou dinheiro; a cancelada sem retido, não", async () => {
+    const retida = await sinc();
+    const outra = await sincronizarReserva(db, org, "beds24", "2", dados({ checkin: "2030-11-10", checkout: "2030-11-12" }));
+    if (!outra.ok) throw new Error("reserva");
+    for (const r of [retida, outra.reserva.id]) {
+      const receita = (await ativosDoMotor(r)).find((l) => l.tipo === "receita_bruta")!;
+      await mudarEstado(db, org, receita.id, "realizado", null, "2030-10-14");
+    }
+    await db.update(reservas).set({ estado: "cancelada", valorRetido: 150000 }).where(eq(reservas.id, retida));
+    await db.update(reservas).set({ estado: "cancelada", valorRetido: null }).where(eq(reservas.id, outra.reserva.id));
+    expect(await conferirMovimentadas(db, org)).toEqual({ reservas: 1, divergentes: 0 });
+    await db.update(contratos).set({ comissaoBp: 2500 }).where(eq(contratos.imovelId, im));
+    expect(await conferirMovimentadas(db, org)).toEqual({ reservas: 1, divergentes: 1 });
+    const [r] = await db.select().from(reservas).where(eq(reservas.id, retida));
+    expect(r.divergenciaEm).not.toBeNull();
   });
 });

@@ -4,10 +4,12 @@ import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
 import { violouUnicidade } from "@/db/erros";
 import { bloqueios, imoveis, reservas, cotacoes } from "@/db/schema";
 import { aplicarMotor } from "@/financeiro/aplicar";
+import { reservaCalculadaPeloMotor } from "@/financeiro/motor";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
 import { hojeISO } from "@/lib/datas";
 import { pagamentoEmAndamentoOuAprovado, type PagamentoQuePrende, pagamentoSemReservaADevolver } from "@/pagamentos/andamento";
+import { devolvidaNoProvedorSql } from "@/portal/posse";
 import { chavesDaImportacao } from "./travas-importacao";
 import { type DadosReserva, type ErrosReserva, gerarCodigo, validarReserva } from "./regras";
 
@@ -453,9 +455,10 @@ export async function confirmarPedidoPago(
 }
 
 /**
- * Dá por resolvida a conferência de uma reserva não confirmada que já movimentou dinheiro (M4.8),
- * depois do ajuste manual: os lançamentos dela deixam de travar o fechamento do mês. Só vale para
- * reserva não confirmada; se a situação mudar de novo, a conferência volta.
+ * Dá por resolvida a conferência de uma reserva que já movimentou dinheiro (M4.8), depois do ajuste manual: os
+ * lançamentos dela deixam de travar o fechamento do mês. Vale para a reserva que o motor não calcula (não confirmada,
+ * cancelada sem valor retido), a divergente e a que tem o pagamento do site devolvido no Mercado Pago fora da política
+ * (D21, M8.2c) — a mesma regra de `lancamentoEmConferencia`; se a situação mudar de novo, a conferência volta.
  */
 export async function resolverConferencia(db: Db, organizacaoId: string, id: string, autorId: string | null): Promise<boolean> {
   if (!uuidValido(id)) return false;
@@ -465,7 +468,12 @@ export async function resolverConferencia(db: Db, organizacaoId: string, id: str
       .from(reservas)
       .where(and(eq(reservas.id, id), eq(reservas.organizacaoId, organizacaoId)))
       .for("update");
-    if (!r || (r.estado === "confirmada" && !r.divergenciaEm) || r.conferenciaResolvidaEm) return false;
+    if (!r || r.conferenciaResolvidaEm) return false;
+    if (reservaCalculadaPeloMotor(r) && !r.divergenciaEm) {
+      // D21: a mesma condição SQL do livro (`devolvidaNoProvedorSql`), lida sob a trava da reserva.
+      const [d] = await tx.select({ devolvida: sql<boolean>`coalesce(${devolvidaNoProvedorSql()}, false)` }).from(reservas).where(eq(reservas.id, r.id));
+      if (!d?.devolvida) return false;
+    }
     const agora = new Date();
     await tx.update(reservas).set({ conferenciaResolvidaEm: agora, atualizadoEm: agora }).where(eq(reservas.id, id));
     await registrarAuditoria(tx, {

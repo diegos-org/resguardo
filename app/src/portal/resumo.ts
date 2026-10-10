@@ -4,7 +4,7 @@
  * reservas confirmadas dos imóveis dele no período.
  */
 import { and, eq, gte, inArray, isNotNull, isNull, lt, or, sql, sum } from "drizzle-orm";
-import { ajustes, lancamentos, proprietarios, proprietarioUsuarios, type TipoLancamento } from "@/db/schema";
+import { ajustes, lancamentos, proprietarios, proprietarioUsuarios, reservas, type TipoLancamento } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
 import { lancamentoEmConferencia, lancamentoEmVigor, noPeriodoDosDonos, reservasQueContam } from "./posse";
@@ -37,10 +37,26 @@ export type ResumoPortal = {
    * valor)? Vale mesmo se os valores se anularem: como no fechamento do mês, conta a existência.
    */
   emConferencia: boolean;
+  /** M8.2c: do bruto, o que é de reservas canceladas sem devolução (valor retido pela política, dividido como normal). */
+  retidoDeCanceladas: { n: number; bruto: number };
+  /** M8.2c: do bruto, o espelho (negativo) de reservas canceladas com devolução integral depois do repasse. */
+  devolvidoDeCanceladas: { n: number; bruto: number };
 };
 
 
-const ZERO: ResumoPortal = { reservas: 0, receitaBruta: 0, taxasCanais: 0, comissao: 0, suaParte: 0, despesas: 0, acerto: 0, acertoPendente: 0, emConferencia: false };
+const ZERO: ResumoPortal = {
+  reservas: 0,
+  receitaBruta: 0,
+  taxasCanais: 0,
+  comissao: 0,
+  suaParte: 0,
+  despesas: 0,
+  acerto: 0,
+  acertoPendente: 0,
+  emConferencia: false,
+  retidoDeCanceladas: { n: 0, bruto: 0 },
+  devolvidoDeCanceladas: { n: 0, bruto: 0 },
+};
 
 export async function resumoDoProprietario(
   db: Db,
@@ -113,6 +129,18 @@ export async function resumoDoProprietario(
     .from(lancamentos)
     .where(and(base, inArray(lancamentos.tipo, ["receita_bruta", "taxa_canal", "comissao"]), sql`${lancamentos.reservaId} in (${reservasDele})`))
     .groupBy(lancamentos.tipo);
+  // M8.2c: de onde vem parte do bruto das canceladas pela política — o retido (dividido como uma reserva normal, pelo
+  // motor) e o espelho da devolução integral depois do repasse (origem "cancelamento", no mês do cancelamento).
+  const brutoDe = async (condicao: ReturnType<typeof and>) => {
+    const [x] = await db
+      .select({ n: sql<number>`count(distinct ${lancamentos.reservaId})::int`, bruto: sum(lancamentos.valor) })
+      .from(lancamentos)
+      .innerJoin(reservas, eq(reservas.id, lancamentos.reservaId))
+      .where(and(base, eq(lancamentos.tipo, "receita_bruta"), sql`${lancamentos.reservaId} in (${reservasDele})`, condicao));
+    return { n: x?.n ?? 0, bruto: Number(x?.bruto ?? 0) };
+  };
+  const retidoDeCanceladas = await brutoDe(and(eq(reservas.estado, "cancelada"), sql`coalesce(${reservas.valorRetido}, 0) > 0`, ativo));
+  const devolvidoDeCanceladas = await brutoDe(and(eq(reservas.estado, "cancelada"), eq(lancamentos.origem, "cancelamento"), ativo));
 
   const v = (lista: { tipo: TipoLancamento; valor: string | null }[], t: TipoLancamento) => lista.filter((x) => x.tipo === t).reduce((s, x) => s + Number(x.valor ?? 0), 0);
   const neg = (x: number) => (x === 0 ? 0 : -x);
@@ -128,5 +156,7 @@ export async function resumoDoProprietario(
     acerto: dele.filter((x) => !x.conferencia).reduce((t, x) => t + Number(x.acerto ?? 0), 0),
     acertoPendente: Number(pendente?.total ?? 0),
     emConferencia: (pendente?.n ?? 0) > 0 || (abertos?.n ?? 0) > 0,
+    retidoDeCanceladas,
+    devolvidoDeCanceladas,
   };
 }

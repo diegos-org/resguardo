@@ -3,9 +3,9 @@ import { historicoDe } from "@/auditoria/auditoria";
 import { imoveis, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
-import { listarLancamentos, saldoAcerto, totaisPorTipo } from "@/financeiro/ledger";
+import { lancar, listarLancamentos, saldoAcerto, totaisPorTipo } from "@/financeiro/ledger";
 import { atualizarCategoria, criarCategoria, excluirCategoria, garantirCategoriasIniciais, listarCategorias } from "./categorias";
-import { type DadosDespesa, estornarDespesa, listarDespesas, marcarDespesaPaga, obterDespesa, registrarDespesa, totaisDespesas } from "./despesas";
+import { type DadosDespesa, ERRO_DESPESA_DO_SITE, estornarDespesa, listarDespesas, marcarDespesaPaga, obterDespesa, registrarDespesa, totaisDespesas } from "./despesas";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -157,6 +157,21 @@ describe("despesas", () => {
     expect(lista).toHaveLength(1); // estornada some da lista padrão, espelho nunca aparece
     expect(await listarDespesas(db, org, { incluirEstornadas: true })).toHaveLength(2);
     expect(totaisDespesas(await listarDespesas(db, org, { incluirEstornadas: true }))).toEqual({ empresa: 25000, proprietarios: 0, aPagar: 0 });
+  });
+
+  it("a taxa de um pagamento do site que não voltou (chave mercadopago:) não se estorna em Despesas (M8.2c)", async () => {
+    const [taxa] = await lancar(
+      db,
+      org,
+      [{ tipo: "despesa_empresa", descricao: "Taxa do Mercado Pago que não voltou (reserva fictícia)", valor: -1485, montante: 1485, competencia: "2026-10-20", estado: "realizado", categoriaId: cat, chaveOrigem: "mercadopago:pagamento-ficticio:devolucao:devolucao-ficticia:taxa_perdida" }],
+      null,
+    );
+    expect(await estornarDespesa(db, org, taxa.id, "lançada errado", null)).toBe("do_site");
+    expect((await obterDespesa(db, org, taxa.id))?.estornada).toBe(false);
+    expect(ERRO_DESPESA_DO_SITE).toBe('Esta despesa é a taxa de um pagamento do site que não voltou: corrija pelo quadro "Pagamento no site" da reserva (Corrigir taxa que não voltou).');
+    // Uma despesa comum continua estornável.
+    const r = await registrarDespesa(db, org, despesa(), null);
+    expect(await estornarDespesa(db, org, r.ok ? r.lancamento.id : "", "valor errado", null)).toBe(true);
   });
 
   it("outra organização não marca nem estorna", async () => {

@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { criarContrato } from "@/contratos/repositorio";
-import { bloqueios, cadastrosMarketplace, cotacoes, imoveis, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
+import { bloqueios, cadastrosMarketplace, cotacoes, imoveis, organizacoes, proprietarioImoveis, proprietarios, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import { registrarAjuste } from "@/ajustes/ajustes";
 import { criarCategoria } from "@/despesas/categorias";
@@ -176,6 +176,21 @@ describe("painel inicial", () => {
     );
     const d2 = await carregarDashboard(db, org, { imoveis: await listarImoveis(db, org), todos: true, periodo: { inicio: "2026-10-01", fim: "2026-11-01" }, ano: 2026, hoje: "2026-10-30", verFinanceiro: true });
     expect(d2.alertas.some((x) => x.texto.includes("1 reserva(s) do período com valor mas sem cálculo"))).toBe(true);
+  });
+
+  it("M8.2c: a cancelada com valor retido é calculada como uma confirmada — sem cálculo avisa; a cancelada sem retido, não", async () => {
+    const r = await criarReserva(db, org, reserva(b, "2026-10-12", "2026-10-15", { origem: "site" }), null); // 102 sem contrato: nada calculado
+    if (!r.ok) throw new Error("reserva");
+    const semCalculo = async (todos: boolean) => {
+      const lista = await listarImoveis(db, org);
+      const d = await carregarDashboard(db, org, { imoveis: todos ? lista : lista.filter((i) => i.codigo === "102"), todos, periodo: { inicio: "2026-10-01", fim: "2026-11-01" }, ano: 2026, hoje: "2026-10-30", verFinanceiro: true });
+      return d.alertas.some((x) => x.texto.includes("1 reserva(s) do período com valor mas sem cálculo"));
+    };
+    await db.update(reservas).set({ estado: "cancelada", valorRetido: 100000 }).where(eq(reservas.id, r.reserva.id));
+    expect(await semCalculo(true)).toBe(true);
+    expect(await semCalculo(false)).toBe(true);
+    await db.update(reservas).set({ valorRetido: null }).where(eq(reservas.id, r.reserva.id));
+    expect(await semCalculo(true)).toBe(false);
   });
 
   it("em 'todos', imóvel arquivado com reserva entra na ocupação; sem reserva, some", async () => {
