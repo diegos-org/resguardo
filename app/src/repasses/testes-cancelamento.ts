@@ -5,14 +5,12 @@
  * conferência, o extrato, os repasses e o relatório sem depender do fluxo do pagamento: a tentativa de pagamento do site
  * que confirmou a reserva, a linha do cancelamento e, quando a parte de algum mês já tinha movimentado dinheiro, os
  * espelhos no mês do cancelamento (o da parte do proprietário é o desconto) e o estorno dos meses que não movimentaram.
- * O fluxo de verdade (prévia, decisão, devolução) é `pagamentos/cancelamento.ts`, que lança os mesmos lançamentos.
+ * O fluxo de verdade (prévia, decisão, devolução) é `pagamentos/cancelamento.ts`; os espelhos são os mesmos (`espelharMovidos`).
  */
-import { and, eq, inArray, isNull, isNotNull, sql } from "drizzle-orm";
-import { cancelamentosReserva, cotacoes, lancamentos, pagamentos, repasseItens, repasses, reservas } from "@/db/schema";
+import { eq } from "drizzle-orm";
+import { cancelamentosReserva, cotacoes, pagamentos, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { estornar, lancar } from "@/financeiro/ledger";
-import { travarMotorDaReserva } from "@/financeiro/trava";
-import { chaveEspelhoDoCancelamento, lancarDescontoDoProprietario, ORIGEM_CANCELAMENTO } from "./descontos";
+import { espelharMovidos } from "@/pagamentos/acerto-cancelamento";
 
 /** A tentativa de pagamento do site que confirmou a reserva (cotação e pagamento mínimos, dados fictícios). */
 export async function pagamentoDoSiteDeTeste(
@@ -48,47 +46,16 @@ export async function cancelamentoDeTeste(db: Db, org: string, d: { reservaId: s
  * Cancela a reserva com devolução integral depois de a parte de algum mês já ter movimentado dinheiro: cada mês
  * movimentado (parte num repasse pago, ou algum lançamento realizado/conciliado) ganha espelhos na `competencia` (o mês
  * do cancelamento) — o da parte é o desconto do proprietário —, os outros meses são estornados, a reserva fica
- * cancelada e a conferência dada por resolvida. Devolve o total descontado do proprietário.
+ * cancelada e a conferência dada por resolvida. Os espelhos são os do cancelamento de verdade (`espelharMovidos`).
+ * Devolve o total da parte espelhada.
  */
 export async function espelharCancelamento(db: Db, org: string, d: { reservaId: string; cancelamentoId: string; competencia: string; codigo: string; agora?: Date }): Promise<{ desconto: number }> {
   // O cancelamento acontece no mês da competência dos espelhos (o mês corrente dele): o dia 2, ao meio-dia em São Paulo.
   const quando = d.agora ?? new Date(`${d.competencia.slice(0, 8)}02T12:00:00-03:00`);
   return db.transaction(async (tx) => {
-    await travarMotorDaReserva(tx, org, d.reservaId);
-    const ativos = await tx
-      .select()
-      .from(lancamentos)
-      .where(and(eq(lancamentos.organizacaoId, org), eq(lancamentos.reservaId, d.reservaId), eq(lancamentos.origem, "motor"), isNull(lancamentos.estornoDe), sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`));
-    const pagos = ativos.length
-      ? await tx
-          .select({ lancamentoId: repasseItens.lancamentoId })
-          .from(repasseItens)
-          .innerJoin(repasses, eq(repasses.id, repasseItens.repasseId))
-          .where(and(inArray(repasseItens.lancamentoId, ativos.map((a) => a.id)), isNull(repasseItens.liberadoEm), isNull(repasses.estornadoEm), isNotNull(repasses.dataPagamento)))
-      : [];
-    const mesDe = (c: string) => c.slice(0, 7);
-    const movidos = new Set(ativos.filter((a) => a.estado === "realizado" || a.estado === "conciliado" || pagos.some((p) => p.lancamentoId === a.id)).map((a) => mesDe(a.competencia)));
-    let desconto = 0;
-    for (const a of ativos) {
-      if (!movidos.has(mesDe(a.competencia))) {
-        await estornar(tx, org, a.id, "Reserva cancelada com devolução integral ao hóspede", null);
-        continue;
-      }
-      const descricao = `Reserva ${d.codigo} cancelada com devolução integral ao hóspede: espelho de ${mesDe(a.competencia)}`;
-      const chave = chaveEspelhoDoCancelamento(d.cancelamentoId, a.id);
-      if (a.tipo === "direito_proprietario" && a.proprietarioId && a.imovelId) {
-        await lancarDescontoDoProprietario(tx, org, { chave, proprietarioId: a.proprietarioId, imovelId: a.imovelId, reservaId: d.reservaId, valor: a.valor, competencia: d.competencia, descricao }, null, quando);
-        desconto += a.valor;
-      } else
-        await lancar(
-          tx,
-          org,
-          [{ tipo: a.tipo, descricao, valor: -a.valor, efeitoSaldo: -a.efeitoSaldo, montante: a.montante === null ? null : -a.montante, competencia: d.competencia, estado: "previsto", imovelId: a.imovelId, reservaId: d.reservaId, proprietarioId: a.proprietarioId, origem: ORIGEM_CANCELAMENTO, chaveOrigem: chave }],
-          null,
-        );
-    }
-    await tx.update(reservas).set({ estado: "cancelada", canceladaEm: quando, confirmadaEm: null, conferenciaResolvidaEm: movidos.size ? quando : null, valorRetido: null }).where(eq(reservas.id, d.reservaId));
-    if (movidos.size) await tx.update(cancelamentosReserva).set({ espelhado: true }).where(eq(cancelamentosReserva.id, d.cancelamentoId));
-    return { desconto };
+    const m = await espelharMovidos(tx, org, { reservaId: d.reservaId, cancelamentoId: d.cancelamentoId, codigo: d.codigo }, null, quando);
+    await tx.update(reservas).set({ estado: "cancelada", canceladaEm: quando, confirmadaEm: null, conferenciaResolvidaEm: m.meses ? quando : null, valorRetido: null }).where(eq(reservas.id, d.reservaId));
+    if (m.meses) await tx.update(cancelamentosReserva).set({ espelhado: true }).where(eq(cancelamentosReserva.id, d.cancelamentoId));
+    return { desconto: m.parteEspelhada };
   });
 }

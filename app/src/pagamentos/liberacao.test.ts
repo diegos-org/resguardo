@@ -9,7 +9,7 @@ import { dinheiroComAEmpresa, estornarRecebimento, recebidoPorReserva, registrar
 import { aplicarNaTransacao, conferirTentativa } from "./conferencia";
 import { chaveRecebimento, estornarLiberacaoManual, registrarLiberacaoManual } from "./liberacao";
 import { conferirPendentes } from "./rotina";
-import { type Cenario, minutos, montarCenario, TOTAL } from "./testes";
+import { type Cenario, cancelar, entradaPadrao, liberar, minutos, montarCenario, pagarEConfirmar, TOTAL, usuarioDeTeste } from "./testes";
 
 let db: Db, close: () => Promise<void>, c: Cenario;
 beforeAll(async () => { ({ db, close } = await createTestDb()); });
@@ -323,3 +323,36 @@ const recebidos = (reservaId: string) =>
     const estornados = new Set((await db.select({ de: lancamentos.estornoDe }).from(lancamentos)).map((l) => l.de));
     return ls.filter((l) => !estornados.has(l.id));
   });
+
+describe("liberação à mão e o cancelamento pela política (M8.2c)", () => {
+  const longe = { entrada: "2026-11-20", saida: "2026-11-23" };
+
+  it("cancelada com valor retido: a liberação à mão vale (o dinheiro ficou com a empresa); com devolução integral, recusada", async () => {
+    const equipe = await usuarioDeTeste(c);
+    const retida = await pagarEConfirmar(c);
+    const quando = new Date("2026-10-10T11:00:00-03:00");
+    await cancelar(c, retida.reservaId, entradaPadrao({ recebidoEm: new Date("2026-10-10T10:00:00-03:00"), canal: "email" }), equipe, quando);
+    expect((await c.reserva(retida.reservaId)).valorRetido).toBe(TOTAL);
+    expect(await registrarLiberacaoManual(db, c.org, retida.pagamentoId, { data: "2026-10-10", liquido: TOTAL - 1824 }, equipe, quando)).toEqual({ ok: true });
+    expect(await recebimentos(retida.reservaId)).toMatchObject([{ montante: TOTAL - 1824 }]);
+
+    const integral = await pagarEConfirmar(c, { ...longe, email: "outro@example.com" });
+    c.provedor.respostaDevolucao = "pedida";
+    await cancelar(c, integral.reservaId, entradaPadrao({ quemCancela: "empresa", motivoEmpresa: "forca_maior" }), equipe, minutos(60));
+    expect(await registrarLiberacaoManual(db, c.org, integral.pagamentoId, { data: "2026-10-01", liquido: TOTAL - 1824 }, equipe, minutos(70))).toEqual({
+      ok: false,
+      erro: "A reserva não está confirmada nem cancelada com valor retido: o dinheiro deste pagamento volta ao hóspede.",
+    });
+    expect(await recebimentos(integral.reservaId)).toEqual([]);
+  });
+
+  it("liberação à mão já espelhada pela saída da devolução ao hóspede: o estorno é recusado (corrige-se com um ajuste)", async () => {
+    const equipe = await usuarioDeTeste(c);
+    const x = await pagarEConfirmar(c, longe);
+    await liberar(c, x.pagamentoId, { quando: minutos(10) });
+    const { resultado } = await cancelar(c, x.reservaId, entradaPadrao({ quemCancela: "empresa", motivoEmpresa: "forca_maior" }), equipe, minutos(60));
+    expect(resultado).toMatchObject({ ok: true, devolucao: "confirmada" });
+    expect(await estornarLiberacaoManual(db, c.org, x.pagamentoId, "Lançada por engano", equipe, minutos(70))).toEqual({ ok: false, erro: "A devolução ao hóspede já espelhou esta liberação: corrija com um ajuste." });
+    expect(await recebimentos(x.reservaId)).toHaveLength(1);
+  });
+});

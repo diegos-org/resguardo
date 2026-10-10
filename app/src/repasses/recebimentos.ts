@@ -10,7 +10,7 @@
  */
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
-import { lancamentos, repasseItens, repasses, reservas } from "@/db/schema";
+import { lancamentos, repasseItens, repasses, reservas, type TipoRepasse } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { estornar, lancar, type Lancamento } from "@/financeiro/ledger";
 import { travarMotorDaReserva } from "@/financeiro/trava";
@@ -110,13 +110,19 @@ export async function estornarRecebimento(db: Db, organizacaoId: string, lancame
  * correção é um ajuste manual. Devolve a mensagem da recusa, ou null. Quem chama já tomou a trava do motor.
  */
 export async function repasseAPagarDaReserva(tx: Db, organizacaoId: string, reservaId: string): Promise<string | null> {
+  const preso = await repasseAPagarDaReservaDados(tx, organizacaoId, reservaId);
+  return preso ? `A parte desta reserva já compõe o repasse ${preso.tipo === "antecipado" ? "antecipado" : "do fechamento"} de ${preso.data.split("-").reverse().join("/")}, ainda não pago: estorne o repasse antes de estornar o recebimento.` : null;
+}
+
+/** O repasse em vigor, ainda não pago, que tem uma parte desta reserva (o tipo e a data); null = nenhum. A mesma regra de `repasseAPagarDaReserva`, para quem escreve o próprio texto (o cancelamento pela política, M8.2c). */
+export async function repasseAPagarDaReservaDados(tx: Db, organizacaoId: string, reservaId: string): Promise<{ tipo: TipoRepasse; data: string } | null> {
   const [preso] = await tx
     .select({ data: repasses.data, tipo: repasses.tipo })
     .from(repasseItens)
     .innerJoin(repasses, eq(repasses.id, repasseItens.repasseId))
     .where(and(eq(repasseItens.organizacaoId, organizacaoId), eq(repasseItens.reservaId, reservaId), isNull(repasseItens.liberadoEm), isNull(repasses.estornadoEm), isNull(repasses.dataPagamento)))
     .limit(1);
-  return preso ? `A parte desta reserva já compõe o repasse ${preso.tipo === "antecipado" ? "antecipado" : "do fechamento"} de ${preso.data.split("-").reverse().join("/")}, ainda não pago: estorne o repasse antes de estornar o recebimento.` : null;
+  return preso ?? null;
 }
 
 /** Recebimentos em vigor de uma reserva, do mais antigo ao mais novo. */

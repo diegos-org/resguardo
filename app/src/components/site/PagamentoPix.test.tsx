@@ -40,6 +40,8 @@ const base: PagamentoDoHospede = {
   forma: null,
   recusa: null,
   prazoDasDatas: null,
+  cancelamento: null,
+  pedidoCancelamentoEm: null,
 };
 const pix = { copiaECola: "00020126580014br.gov.bcb.pix0136FALSO-ORDTST0001", imagem: "data:image/png;base64,RkFMU08=", link: "https://pagamento.falso.invalid/pix/1", expiraEm: "2026-10-01T15:30:00.000Z" };
 const textos = { convite: "CONVITE EDITAVEL", aguardando: "AGUARDANDO EDITAVEL", semDatas: "SEM DATAS EDITAVEL", cartaoAnalise: "ANALISE EDITAVEL" };

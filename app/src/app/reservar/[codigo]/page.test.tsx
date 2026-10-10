@@ -46,7 +46,7 @@ const cotacao: CotacaoVista["cotacao"] = {
 const vistaCotacao = (estado: CotacaoVista["estado"], over: Partial<CotacaoVista> = {}): CotacaoVista => ({ cotacao: { ...cotacao, estado }, estado, atual: null, mudou: false, reserva: { codigo: "SCL-TESTE1", estado: "pedido" }, ...over });
 const pagamento = (over: Partial<PagamentoDoHospede>): PagamentoDoHospede => ({
   estado: "sem_pagamento", ambienteTeste: true, dinheiroSemDesfecho: false, holdAte: holdAte.toISOString(), pix: null, pixRestantes: 3, podeGerar: true, reservaCodigo: null, pagamentoEmDobro: false, devolucao: null, acompanhar: false,
-  podePagarCartao: false, cartao: null, cartaoRestantes: 3, desafioUrl: null, forma: null, recusa: null, prazoDasDatas: null, ...over,
+  podePagarCartao: false, cartao: null, cartaoRestantes: 3, desafioUrl: null, forma: null, recusa: null, prazoDasDatas: null, cancelamento: null, pedidoCancelamentoEm: null, ...over,
 });
 const CARTAO = { chavePublica: "TEST-chave-publica-ficticia", valor: 182400, parcelasMaximas: null, emailTeste: "test@testuser.com" };
 const GATE_OK = { ok: true, ambiente: "teste", provedor: {} };

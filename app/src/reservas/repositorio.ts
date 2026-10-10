@@ -257,30 +257,33 @@ export async function salvarEmailHospede(
 
 const horaBr = (d: Date, fuso: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, hour: "2-digit", minute: "2-digit" }).format(d);
 
-/** Por que a equipe não mexe à mão num pedido com pagamento do site (M8.2a). */
-function avisoDoPagamento(p: PagamentoQuePrende, fuso: string, acao: "cancelar" | "confirmar"): string {
+/**
+ * Por que a equipe não mexe à mão num pedido com pagamento do site (M8.2a). Também o texto do cancelamento pela política
+ * (M8.2c) quando há uma tentativa em andamento.
+ */
+export function avisoDoPagamento(p: PagamentoQuePrende, fuso: string, acao: "cancelar" | "confirmar"): string {
   if (p.situacao === "criando" || p.situacao === "incerta" || p.situacao === "pendente") {
     if (p.forma === "cartao") {
       // M8.2b: um cartão em andamento (verificação do banco, processamento ou análise) não tem prazo que a equipe veja.
       const andamento = "há um pagamento com cartão em andamento (verificação do banco, processamento ou análise do Mercado Pago)";
       return acao === "confirmar"
         ? `Não confirmada: ${andamento}. Aguarde a resposta do Mercado Pago antes de confirmar à mão.`
-        : `Não cancelada: ${andamento}. Aguarde a resposta dele; o cancelamento com devolução chega no M8.2c.`;
+        : `Não cancelada: ${andamento}. Aguarde a resposta dele.`;
     }
     const ate = p.pixExpiraEm ? ` até ${horaBr(p.pixExpiraEm, fuso)}` : "";
     return acao === "confirmar"
       ? `Não confirmada: há um Pix em andamento${ate}. Aguarde o pagamento (ou o prazo dele) antes de confirmar à mão.`
-      : `Não cancelada: há um Pix do site em andamento${ate}. Aguarde o prazo dele; o cancelamento com devolução chega no M8.2c.`;
+      : `Não cancelada: há um Pix do site em andamento${ate}. Aguarde o prazo dele.`;
   }
   return acao === "confirmar"
     ? "Não confirmada: há um pagamento do site aprovado sendo processado. Atualize a página em instantes."
-    : "Não cancelada: esta reserva foi paga pelo site (mesmo que o Mercado Pago mostre o valor devolvido depois). O cancelamento com devolução chega no M8.2c.";
+    : 'Não cancelada por aqui: esta reserva foi paga pelo site. Use "Cancelar a reserva" no quadro Pagamento no site (devolução pela política aceita pelo hóspede).';
 }
 
 /**
- * Cancela a reserva. Recusa (com o motivo em `aviso`) quando há pagamento do site em andamento ou aprovado
- * (M8.2a: o cancelamento com devolução é o M8.2c) — salvo `vencimento`, o pedido que vence sozinho pela rotina,
- * que já respeitou a carência.
+ * Cancela a reserva. Recusa (com o motivo em `aviso`) quando há pagamento do site em andamento ou aprovado (a
+ * reserva paga pelo site se cancela pela política, no quadro Pagamento no site: `pagamentos/cancelamento.ts`, M8.2c) —
+ * salvo `vencimento`, o pedido que vence sozinho pela rotina, que já respeitou a carência.
  */
 export async function tentarCancelarReserva(
   db: Db,

@@ -51,6 +51,14 @@ export const DESISTIR_SEM_ORDER_CARTAO_MS = 24 * 3_600_000;
 export const PRAZO_RELEITURA_DIAS = RETENCAO_ORDERS_DIAS - 5;
 /** Tentativas criadas antes deste momento estão fora do prazo de releitura. */
 export const inicioDoPrazoDeReleitura = (agora: Date) => new Date(agora.getTime() - PRAZO_RELEITURA_DIAS * 86_400_000);
+/**
+ * Margem do pedido de devolução (M8.2c): o sistema só pede uma devolução ao Mercado Pago com pelo menos 7 dias de leitura
+ * pela frente para conferir que ela saiu — o pagamento com até 78 dias. Mais velho, nenhuma chamada: a equipe devolve pelo
+ * painel do Mercado Pago (cartão) ou por fora (Pix) e registra aqui.
+ */
+export const MARGEM_PEDIDO_DEVOLUCAO_DIAS = 7;
+/** Tentativas criadas antes deste momento não têm mais devolução pedida ao Mercado Pago pelo sistema. */
+export const inicioDoPrazoDePedirDevolucao = (agora: Date) => new Date(inicioDoPrazoDeReleitura(agora).getTime() + MARGEM_PEDIDO_DEVOLUCAO_DIAS * 86_400_000);
 
 /** Depois do prazo do Pix, por quanto tempo a página ainda lê a order de um Pix recusado, cancelado ou vencido. */
 export const FOLGA_LEITURA_PIX_ENCERRADO_MS = 15 * 60_000;

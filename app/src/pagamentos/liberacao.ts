@@ -4,7 +4,8 @@
  * - Taxa = valor − líquido, a partir do líquido informado numa leitura (nunca soma de itens), gravada em
  *   `reservas.taxaCanal` (e `valorLiquido`) e depois o motor, nessa ordem, na mesma transação. Se o provedor informar
  *   outro líquido antes de qualquer recebimento lançado, a taxa é atualizada (e o motor roda) antes de lançar.
- * - Só o pagamento com desfecho `reserva`, com a reserva confirmada e a situação ainda `aprovado`, lança o
+ * - Só o pagamento com desfecho `reserva`, com a reserva confirmada (ou cancelada com valor retido pela política, M8.2c)
+ *   e a situação ainda `aprovado`, lança o
  *   recebimento, e só quando o provedor diz EXPLICITAMENTE que liberou (data passada sozinha nunca basta):
  *   montante = o líquido INFORMADO pelo provedor nessa leitura, data de caixa = o dia (em São Paulo) da leitura que
  *   viu o sinal (a data que o provedor informa é a PREVISTA e pode ser anterior à liberação de fato),
@@ -23,6 +24,7 @@ import { auditoria, lancamentos, pagamentos, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { aplicarMotor } from "@/financeiro/aplicar";
 import { estornar, lancar, LancamentoInvalido, mudarEstado } from "@/financeiro/ledger";
+import { reservaCalculadaPeloMotor } from "@/financeiro/motor";
 import { travarMotorDaReserva } from "@/financeiro/trava";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
@@ -30,7 +32,7 @@ import { formatBRL } from "@/lib/money";
 import { repasseAPagarDaReserva } from "@/repasses/recebimentos";
 import { dataValida } from "@/reservas/regras";
 import type { CodigoAviso } from "./situacoes";
-import { type Pagamento, type ReservaTravada, travarCotacao } from "./travas";
+import { devolucaoDoPagamento, type Pagamento, type ReservaTravada, travarCotacao } from "./travas";
 
 export const FUSO_PAGAMENTO = "America/Sao_Paulo";
 export const chaveRecebimento = (pagamentoId: string) => `mercadopago:${pagamentoId}:recebimento`;
@@ -139,7 +141,9 @@ export async function registrarLiberacaoManual(db: Db, organizacaoId: string, pa
     if (!t || !p) return { ok: false as const, erro: "Pagamento não encontrado." };
     if (p.desfecho !== "reserva") return { ok: false as const, erro: "Só o pagamento que confirmou a reserva tem liberação registrada." };
     if (p.situacao !== "aprovado") return { ok: false as const, erro: "Este pagamento não está mais aprovado no Mercado Pago: confira antes de registrar a liberação." };
-    if (t.reserva.estado !== "confirmada") return { ok: false as const, erro: "A reserva não está confirmada." };
+    // Confirmada, ou cancelada com valor retido pela política (M8.2c): o dinheiro ficou com a empresa. Cancelada com
+    // devolução integral: o dinheiro volta ao hóspede e nunca entra no livro.
+    if (!reservaCalculadaPeloMotor(t.reserva)) return { ok: false as const, erro: "A reserva não está confirmada nem cancelada com valor retido: o dinheiro deste pagamento volta ao hóspede." };
     if (d.liquido > p.valor) return { ok: false as const, erro: `O líquido não pode passar do valor pago (${formatBRL(p.valor)}).` };
     // O dinheiro não cai antes de o pagamento existir (a hora da criação é nossa e confiável).
     const criadoNoDia = hojeISO(FUSO_PAGAMENTO, p.criadoEm);
@@ -207,6 +211,8 @@ export async function estornarLiberacaoManual(db: Db, organizacaoId: string, pag
     const l = emVigor[0];
     if (!l) return { ok: false as const, erro: "Não há liberação registrada para estornar." };
     if (l.estado !== "realizado") return { ok: false as const, erro: "A liberação foi confirmada pelo Mercado Pago: não se estorna pelo painel." };
+    // M8.2c: a saída do caixa da devolução ao hóspede espelha este recebimento; estornar a liberação deixaria a saída sem a entrada.
+    if (devolucaoDoPagamento(t, p.id)?.saidaLancamentoId) return { ok: false as const, erro: "A devolução ao hóspede já espelhou esta liberação: corrija com um ajuste." };
     await travarMotorDaReserva(tx, organizacaoId, t.reserva.id);
     const preso = await repasseAPagarDaReserva(tx, organizacaoId, t.reserva.id);
     if (preso) return { ok: false as const, erro: preso };

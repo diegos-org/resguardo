@@ -31,9 +31,9 @@ export const INSTRUCOES_HORA = "10:00";
 
 export const liberacaoDasInstrucoes = (checkin: string, fuso: string) => instanteLocal(somarDias(checkin, -INSTRUCOES_DIAS_ANTES), INSTRUCOES_HORA, fuso);
 
-/** Reservas daquele e-mail, só da organização do site (nunca de outra empresa no mesmo banco). */
-const doEmail = (organizacaoId: string, email: string) => and(eq(reservas.organizacaoId, organizacaoId), eq(sql`lower(trim(${reservas.hospedeEmail}))`, email));
-const vigentes = (hoje: string) => and(eq(reservas.estado, "confirmada"), gte(reservas.checkout, somarDias(hoje, -DIAS_APOS_SAIDA)));
+/** Reservas daquele e-mail, só da organização do site (nunca de outra empresa no mesmo banco). O pedido de cancelamento (M8.2c) usa o mesmo filtro. */
+export const doEmail = (organizacaoId: string, email: string) => and(eq(reservas.organizacaoId, organizacaoId), eq(sql`lower(trim(${reservas.hospedeEmail}))`, email));
+export const vigentes = (hoje: string) => and(eq(reservas.estado, "confirmada"), gte(reservas.checkout, somarDias(hoje, -DIAS_APOS_SAIDA)));
 
 /** O e-mail tem alguma reserva que dá acesso ao portal agora? */
 export async function hospedeTemAcesso(db: Db, organizacaoId: string, email: string, agora: Date): Promise<boolean> {

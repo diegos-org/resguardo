@@ -8,6 +8,12 @@
  * Horários no fuso do imóvel; o agendador roda de hora em hora. Cada execução calcula o que está no prazo a partir dos
  * dados atuais: cancelou, a mensagem não sai; mudou a data, vale a nova.
  *
+ * Cancelamento de reserva paga pelo site (M8.2c): pedido recebido (até 2 dias depois de recebido), decisão (até 7 dias
+ * depois do cancelamento) e devolução feita (até 7 dias depois dela). Os candidatos vêm do cancelamento, não da reserva
+ * confirmada; a mesma mensagem é marcada como enviada no cancelamento (`hospedeAvisado…`, pelo sistema) — e não sai se a
+ * equipe já marcou que enviou à mão. As frases do caso (`{decisao}`, `{comovolta}`) vêm de `textoDoCancelamento`, o mesmo
+ * texto da página da reserva. Os botões "Copiar mensagem" do painel usam o mesmo preenchimento (`mensagensDoCancelamento`).
+ *
  * Regras:
  * - Desligado até Diego ligar em Configurações → Modelos de mensagem. Ligado, vale daquele momento
  *   em diante: nada que estava previsto para antes é mandado atrasado.
@@ -21,16 +27,32 @@ import { and, desc, eq, gte, inArray, isNotNull, lte, or, sql } from "drizzle-or
 import { emailValido } from "@/acesso/codigo-email";
 import { gravarConfig, lerConfig } from "@/configuracoes/armazem";
 import { lerEmpresa } from "@/configuracoes/empresa";
-import { NOMES_TIPO, preencherModelo, problemaDoModeloNoTipo, type Variavel, variaveisDoTexto, variaveisForaDoLugar } from "@/configuracoes/modelos-texto";
+import {
+  ehMensagemDeCancelamento,
+  NOMES_TIPO,
+  preencherModelo,
+  problemaDoModeloNoTipo,
+  TEXTOS_BASE_CANCELAMENTO,
+  type TipoMensagemCancelamento,
+  type Variavel,
+  variaveisDoTexto,
+  variaveisForaDoLugar,
+} from "@/configuracoes/modelos-texto";
+import { lerTextosSite, type TextosSite } from "@/configuracoes/textos-site";
 import {
   appSettings,
+  cancelamentosReserva,
+  cotacoes,
+  devolucoesPagamento,
   imoveis,
   imoveisDetalhes,
   mensagensHospede,
   modelosMensagem,
   ORIGENS_RESERVA,
   type OrigemReserva,
+  pagamentos,
   reservas,
+  type SituacaoCancelamento,
   TIPOS_MENSAGEM_HOSPEDE,
   type TipoMensagemHospede,
 } from "@/db/schema";
@@ -39,6 +61,10 @@ import { type Correio, ErroEnvioIncerto } from "@/email/correio";
 import { instanteLocal, liberacaoDasInstrucoes } from "@/hospede/portal";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
+import { formatBRL } from "@/lib/money";
+import { marcarAvisado, type MensagemAoHospede } from "@/pagamentos/cancelamento";
+import { vistaDaCotacaoParaHospede } from "@/pagamentos/consultas";
+import { textoDoCancelamento } from "@/site/pagamento-vista";
 
 export { NOMES_TIPO };
 
@@ -128,7 +154,7 @@ export function prazoDaMensagem(tipo: TipoMensagemHospede, r: DadosPrazo): { ini
       return { inicio, fim: new Date(inicio.getTime() + PRAZO_AGRADECIMENTO_MS), referencia: r.checkout };
     }
     // Mensagens do cancelamento (M8.2c): não saem de uma reserva confirmada (os prazos contam do pedido, da decisão e da
-    // devolução, que vêm do cancelamento).
+    // devolução, que vêm do cancelamento: `prazoDaMensagemDoCancelamento`).
     case "cancelamento_recebido":
     case "cancelamento_decidido":
     case "devolucao_concluida":
@@ -137,6 +163,183 @@ export function prazoDaMensagem(tipo: TipoMensagemHospede, r: DadosPrazo): { ini
 }
 
 const dataBr = (d: string) => d.split("-").reverse().join("/");
+
+/** Até quando cada mensagem do cancelamento ainda faz sentido, depois do momento dela. */
+const PRAZO_PEDIDO_RECEBIDO_MS = 2 * 24 * 3_600_000;
+const PRAZO_DECISAO_MS = 7 * 24 * 3_600_000;
+
+export type DadosPrazoCancelamento = {
+  cancelamentoId: string;
+  situacao: SituacaoCancelamento;
+  /** Só o pedido do hóspede tem "pedido recebido" (a SCL cancelar ou o não comparecimento, não). */
+  doHospede: boolean;
+  pedidoRecebidoEm: Date;
+  canceladaEm: Date | null;
+  /** A devolução feita (confirmada, ou por fora ao meio-dia do dia informado); null enquanto não foi. */
+  devolucao: { id: string; em: Date } | null;
+};
+
+/**
+ * Quando cada mensagem do cancelamento pode sair (M8.2c): pedido recebido, do pedido até 2 dias depois; decisão, do
+ * cancelamento até 7 dias depois; devolução feita, dela até 7 dias depois. `referencia`: o cancelamento (pedido e
+ * decisão) ou a devolução.
+ */
+export function prazoDaMensagemDoCancelamento(tipo: TipoMensagemCancelamento, c: DadosPrazoCancelamento): { inicio: Date; fim: Date; referencia: string } | null {
+  const ativo = c.situacao === "pedido" || c.situacao === "cancelada";
+  switch (tipo) {
+    case "cancelamento_recebido":
+      return ativo && c.doHospede ? { inicio: c.pedidoRecebidoEm, fim: new Date(c.pedidoRecebidoEm.getTime() + PRAZO_PEDIDO_RECEBIDO_MS), referencia: c.cancelamentoId } : null;
+    case "cancelamento_decidido":
+      return c.situacao === "cancelada" && c.canceladaEm ? { inicio: c.canceladaEm, fim: new Date(c.canceladaEm.getTime() + PRAZO_DECISAO_MS), referencia: c.cancelamentoId } : null;
+    case "devolucao_concluida":
+      return c.situacao === "cancelada" && c.devolucao ? { inicio: c.devolucao.em, fim: new Date(c.devolucao.em.getTime() + PRAZO_DECISAO_MS), referencia: c.devolucao.id } : null;
+  }
+}
+
+/** Qual marca de "mensagem enviada ao hóspede" cada mensagem do cancelamento acende. */
+const AVISADO_DO_TIPO: Record<TipoMensagemCancelamento, MensagemAoHospede> = { cancelamento_recebido: "pedido", cancelamento_decidido: "decisao", devolucao_concluida: "devolucao" };
+
+/** Um cancelamento com o que as mensagens dele precisam (nunca gravado: o nome e o e-mail são lidos da reserva agora). */
+type AlvoCancelamento = DadosPrazoCancelamento & {
+  reservaId: string;
+  codigo: string;
+  checkin: string;
+  checkout: string;
+  origem: OrigemReserva;
+  nome: string;
+  email: string;
+  imovel: string;
+  fuso: string;
+  cotacaoId: string;
+  cotacaoCodigo: string;
+  avisados: Record<MensagemAoHospede, Date | null>;
+};
+
+async function alvosDeCancelamento(db: Db, organizacaoId: string, f: { reservaId?: string; desde?: Date }): Promise<AlvoCancelamento[]> {
+  const linhas = await db
+    .select({
+      c: cancelamentosReserva,
+      codigo: reservas.codigo,
+      checkin: reservas.checkin,
+      checkout: reservas.checkout,
+      origem: reservas.origem,
+      nome: reservas.hospedeNome,
+      email: reservas.hospedeEmail,
+      imovel: imoveis.nome,
+      fuso: imoveis.fuso,
+      cotacaoId: pagamentos.cotacaoId,
+      cotacaoCodigo: cotacoes.codigo,
+    })
+    .from(cancelamentosReserva)
+    .innerJoin(reservas, and(eq(reservas.id, cancelamentosReserva.reservaId), eq(reservas.organizacaoId, cancelamentosReserva.organizacaoId)))
+    .innerJoin(imoveis, eq(imoveis.id, reservas.imovelId))
+    .innerJoin(pagamentos, eq(pagamentos.id, cancelamentosReserva.pagamentoId))
+    .innerJoin(cotacoes, eq(cotacoes.id, pagamentos.cotacaoId))
+    .where(
+      and(
+        eq(cancelamentosReserva.organizacaoId, organizacaoId),
+        inArray(cancelamentosReserva.situacao, ["pedido", "cancelada"]),
+        f.reservaId ? eq(cancelamentosReserva.reservaId, f.reservaId) : undefined,
+        f.desde ? gte(cancelamentosReserva.atualizadoEm, f.desde) : undefined,
+      ),
+    );
+  if (!linhas.length) return [];
+  const devs = await db
+    .select({ id: devolucoesPagamento.id, cancelamentoId: devolucoesPagamento.cancelamentoId, situacao: devolucoesPagamento.situacao, confirmadaEm: devolucoesPagamento.confirmadaEm, porForaData: devolucoesPagamento.porForaData })
+    .from(devolucoesPagamento)
+    .where(inArray(devolucoesPagamento.cancelamentoId, linhas.map((l) => l.c.id)));
+  return linhas.map((l) => {
+    const d = devs.find((x) => x.cancelamentoId === l.c.id);
+    const em = d?.situacao === "confirmada" ? d.confirmadaEm : d?.situacao === "por_fora" && d.porForaData ? instanteLocal(d.porForaData, "12:00", "America/Sao_Paulo") : null;
+    return {
+      cancelamentoId: l.c.id,
+      situacao: l.c.situacao,
+      doHospede: l.c.quemCancela === "hospede",
+      pedidoRecebidoEm: l.c.pedidoRecebidoEm,
+      canceladaEm: l.c.canceladaEm,
+      devolucao: d && em && l.c.direito === "integral" ? { id: d.id, em } : null,
+      reservaId: l.c.reservaId,
+      codigo: l.codigo,
+      checkin: l.checkin,
+      checkout: l.checkout,
+      origem: l.origem,
+      nome: l.nome,
+      email: l.email,
+      imovel: l.imovel,
+      fuso: l.fuso || "America/Sao_Paulo",
+      cotacaoId: l.cotacaoId,
+      cotacaoCodigo: l.cotacaoCodigo,
+      avisados: { pedido: l.c.hospedeAvisadoPedidoEm, decisao: l.c.hospedeAvisadoDecisaoEm, devolucao: l.c.hospedeAvisadoDevolucaoEm },
+    };
+  });
+}
+
+/** "10/10/2026 às 14:10" no horário de Brasília (o que a política conta). */
+const dataHoraBrasilia = (d: Date) => {
+  const f = (o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", ...o }).format(d);
+  return `${f({ day: "2-digit", month: "2-digit", year: "numeric" })} às ${f({ hour: "2-digit", minute: "2-digit" })}`;
+};
+const dataNoFuso = (d: Date, fuso: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, day: "2-digit", month: "2-digit", year: "numeric" }).format(d);
+
+/**
+ * Os valores das variáveis para um cancelamento: as da reserva e as do cancelamento (o momento do pedido, a decisão e a
+ * devolução pelo mesmo texto da página da reserva, o valor, o dia e o endereço da página no site). Vazio = falta.
+ */
+async function valoresDoCancelamento(db: Db, organizacaoId: string, a: AlvoCancelamento, empresa: { nome: string; site: string }, textos: TextosSite, agora: Date): Promise<Record<Variavel, string>> {
+  const vista = await vistaDaCotacaoParaHospede(db, organizacaoId, a.cotacaoId, agora, { comAutorizacao: false });
+  const texto = vista ? textoDoCancelamento(vista, textos, a.fuso) : null;
+  const c = vista?.cancelamento ?? null;
+  const devolvido = c?.direito === "integral" ? (c.valorConfirmado ?? c.valor) : null;
+  const site = empresa.site.trim().replace(/\/+$/, "");
+  const noites = Math.round((Date.parse(a.checkout) - Date.parse(a.checkin)) / 86_400_000);
+  return {
+    hospede: a.nome.trim(),
+    imovel: a.imovel.trim(),
+    // Uma reserva cancelada nunca recebe o endereço (o modelo é recusado ao ser escolhido).
+    endereco: "",
+    checkin: dataBr(a.checkin),
+    checkout: dataBr(a.checkout),
+    noites: String(noites),
+    codigo: a.codigo,
+    empresa: empresa.nome.trim(),
+    recebido: dataHoraBrasilia(a.pedidoRecebidoEm),
+    decisao: texto?.decisao ?? "",
+    valor: devolvido !== null && devolvido !== undefined ? formatBRL(devolvido) : "",
+    data: c?.devolucaoEm ? dataNoFuso(c.devolucaoEm, a.fuso) : "",
+    comovolta: texto?.comoVolta ?? "",
+    link: site ? `${site}/reservar/${a.cotacaoCodigo}` : "",
+  };
+}
+
+/** A mensagem pronta para copiar: o texto (null quando falta dado), o que falta e se veio do texto-base (sem modelo escolhido). */
+export type MensagemPronta = { texto: string | null; falta: Variavel[]; textoBase: boolean };
+
+/**
+ * As mensagens do cancelamento prontas para copiar no painel (M8.2c, botões "Copiar mensagem"): do modelo escolhido para
+ * cada mensagem em Configurações → Mensagens ao hóspede ou, sem ele, do texto-base. Montadas na hora (nunca gravadas). null
+ * = a mensagem não cabe agora (sem pedido do hóspede, sem decisão, devolução ainda não feita).
+ */
+export async function mensagensDoCancelamento(db: Db, organizacaoId: string, reservaId: string, agora: Date): Promise<{ recebido: MensagemPronta | null; decidido: MensagemPronta | null; devolvida: MensagemPronta | null }> {
+  const vazio = { recebido: null, decidido: null, devolvida: null };
+  if (!uuidValido(reservaId)) return vazio;
+  const [a] = await alvosDeCancelamento(db, organizacaoId, { reservaId });
+  if (!a) return vazio;
+  const cfg = await lerConfigMensagens(db, organizacaoId);
+  const ids = (["cancelamento_recebido", "cancelamento_decidido", "devolucao_concluida"] as const).map((t) => cfg.modelos[t]).filter((x): x is string => !!x && uuidValido(x));
+  const modelos = ids.length ? await db.select().from(modelosMensagem).where(and(eq(modelosMensagem.organizacaoId, organizacaoId), inArray(modelosMensagem.id, ids))) : [];
+  const valores = await valoresDoCancelamento(db, organizacaoId, a, await lerEmpresa(db, organizacaoId), await lerTextosSite(db, organizacaoId), agora);
+  const montar = (tipo: TipoMensagemCancelamento): MensagemPronta => {
+    const modelo = modelos.find((m) => m.id === cfg.modelos[tipo] && m.ativo);
+    const texto = modelo?.texto ?? TEXTOS_BASE_CANCELAMENTO[tipo];
+    const falta = (variaveisDoTexto(texto) as Variavel[]).filter((v) => Object.hasOwn(valores, v) && !valores[v]);
+    return { texto: falta.length ? null : preencherModelo(texto, valores), falta, textoBase: !modelo };
+  };
+  return {
+    recebido: prazoDaMensagemDoCancelamento("cancelamento_recebido", a) ? montar("cancelamento_recebido") : null,
+    decidido: prazoDaMensagemDoCancelamento("cancelamento_decidido", a) ? montar("cancelamento_decidido") : null,
+    devolvida: prazoDaMensagemDoCancelamento("devolucao_concluida", a) ? montar("devolucao_concluida") : null,
+  };
+}
 
 export type ResultadoMensagens = {
   enviadas: number;
@@ -160,6 +363,8 @@ export async function enviarMensagensHospede(db: Db, organizacaoId: string, corr
   if (!tipos.length || !cfg.origens.length) return res;
   if (!correio) return { ...res, semProvedor: true };
 
+  const tiposDaReserva = tipos.filter((t) => !ehMensagemDeCancelamento(t));
+  const tiposDoCancelamento = tipos.filter(ehMensagemDeCancelamento);
   const idsModelos = tipos.map((t) => cfg.modelos[t]!).filter((i) => uuidValido(i));
   const modelos = new Map(
     (idsModelos.length ? await db.select().from(modelosMensagem).where(and(eq(modelosMensagem.organizacaoId, organizacaoId), inArray(modelosMensagem.id, idsModelos))) : []).map((m) => [m.id, m]),
@@ -194,13 +399,12 @@ export async function enviarMensagensHospede(db: Db, organizacaoId: string, corr
         or(lte(reservas.checkin, somarDias(hoje, 3)), and(isNotNull(reservas.confirmadaEm), gte(reservas.confirmadaEm, ativoDesde))),
       ),
     );
-  if (!linhas.length) return res;
-  const empresa = await lerEmpresa(db, organizacaoId);
+  const empresa = linhas.length || tiposDoCancelamento.length ? await lerEmpresa(db, organizacaoId) : null;
 
-  for (const l of linhas) {
+  for (const l of tiposDaReserva.length ? linhas : []) {
     const fuso = l.fuso || "America/Sao_Paulo";
     const prazoDados: DadosPrazo = { checkin: l.checkin, checkout: l.checkout, confirmadaEm: l.confirmadaEm, fuso, entradaAPartirDe: l.entradaAPartirDe ?? "15:00", saidaAte: l.saidaAte ?? "11:00" };
-    for (const tipo of tipos) {
+    for (const tipo of tiposDaReserva) {
       const prazo = prazoDaMensagem(tipo, prazoDados);
       // Vale de quando foi ligado em diante; fora do prazo, não manda.
       if (!prazo || prazo.inicio < ativoDesde || agora < prazo.inicio || agora >= prazo.fim) continue;
@@ -243,7 +447,7 @@ export async function enviarMensagensHospede(db: Db, organizacaoId: string, corr
         checkout: dataBr(l.checkout),
         noites: String(noites),
         codigo: l.codigo,
-        empresa: empresa.nome.trim(),
+        empresa: empresa!.nome.trim(),
         // Só nas mensagens do cancelamento (recusadas acima nas outras).
         recebido: "",
         decisao: "",
@@ -257,41 +461,100 @@ export async function enviarMensagensHospede(db: Db, organizacaoId: string, corr
         aviso(`falta ${faltando.map((v) => `{${v}}`).join(", ")} no cadastro`);
         continue;
       }
-      const texto = preencherModelo(modelo.texto, valores);
-      const assunto = `${modelo.nome} — reserva ${l.codigo}`;
+      await enviarUma(db, organizacaoId, correio, res, { reservaId: l.id, tipo, referencia: prazo.referencia, para, modeloNome: modelo.nome, assunto: `${modelo.nome} — reserva ${l.codigo}`, texto: preencherModelo(modelo.texto, valores) }, agora);
+    }
+  }
 
-      // Marca antes de chamar o provedor: outra execução ao mesmo tempo não manda de novo.
-      const [marca] = await db
-        .insert(mensagensHospede)
-        .values({ organizacaoId, reservaId: l.id, tipo, referencia: prazo.referencia, estado: "enviando", para, modeloNome: modelo.nome, criadoEm: agora, atualizadoEm: agora })
-        .onConflictDoUpdate({
-          target: [mensagensHospede.reservaId, mensagensHospede.tipo, mensagensHospede.referencia],
-          set: { estado: "enviando", tentativas: sql`${mensagensHospede.tentativas} + 1`, para, modeloNome: modelo.nome, erro: "", atualizadoEm: agora },
-          setWhere: and(eq(mensagensHospede.estado, "falhou"), sql`${mensagensHospede.tentativas} < ${MAX_TENTATIVAS}`),
-        })
-        .returning({ id: mensagensHospede.id, tentativas: mensagensHospede.tentativas });
-      if (!marca) continue;
-      let falha: unknown = null;
-      try {
-        await correio.enviar({ para, assunto, texto, chave: `mensagem-hospede:${marca.id}:${marca.tentativas}` });
-      } catch (e) {
-        falha = e ?? new Error("falha no envio");
-      }
-      if (falha === null) {
-        // Se gravar o sucesso falhar, o registro fica "enviando" (aparece como incerto) e nunca é
-        // tentado de novo: o provedor já aceitou.
-        await db.update(mensagensHospede).set({ estado: "enviado", enviadoEm: new Date(), atualizadoEm: new Date() }).where(eq(mensagensHospede.id, marca.id));
-        res.enviadas++;
-      } else {
-        const incerto = falha instanceof ErroEnvioIncerto;
-        const erro = (falha instanceof Error ? falha.message : String(falha)).slice(0, 300);
-        await db.update(mensagensHospede).set({ estado: incerto ? "incerto" : "falhou", erro, atualizadoEm: new Date() }).where(eq(mensagensHospede.id, marca.id));
-        if (incerto) res.incertas++;
-        else res.falhas++;
+  // Cancelamento de reserva paga pelo site (M8.2c): os candidatos vêm do cancelamento (pedido ou decidido) mexido nos
+  // últimos dias, das origens escolhidas.
+  if (tiposDoCancelamento.length) {
+    const alvos = (await alvosDeCancelamento(db, organizacaoId, { desde: new Date(agora.getTime() - 10 * 24 * 3_600_000) })).filter((a) => cfg.origens.includes(a.origem));
+    const textos = alvos.length ? await lerTextosSite(db, organizacaoId) : null;
+    for (const a of alvos) {
+      let valores: Record<Variavel, string> | null = null;
+      for (const tipo of tiposDoCancelamento) {
+        const prazo = prazoDaMensagemDoCancelamento(tipo, a);
+        if (!prazo || prazo.inicio < ativoDesde || agora < prazo.inicio || agora >= prazo.fim) continue;
+        // A equipe já mandou à mão (marcou "mensagem enviada"): não manda de novo.
+        if (a.avisados[AVISADO_DO_TIPO[tipo]]) continue;
+        const [ja] = await db
+          .select({ estado: mensagensHospede.estado, tentativas: mensagensHospede.tentativas })
+          .from(mensagensHospede)
+          .where(and(eq(mensagensHospede.reservaId, a.reservaId), eq(mensagensHospede.tipo, tipo), eq(mensagensHospede.referencia, prazo.referencia)));
+        if (ja && !(ja.estado === "falhou" && ja.tentativas < MAX_TENTATIVAS)) continue;
+        const aviso = (motivo: string) => res.avisos.push(`${a.codigo} (${NOMES_TIPO[tipo].toLowerCase()}): ${motivo}`);
+        const modelo = modelos.get(cfg.modelos[tipo]!);
+        if (!modelo?.ativo) {
+          aviso("o modelo escolhido não existe mais ou está arquivado");
+          continue;
+        }
+        const para = a.email.trim().toLowerCase();
+        if (!emailValido(para)) {
+          aviso("reserva sem e-mail do hóspede");
+          continue;
+        }
+        const problema = problemaDoModeloNoTipo(tipo, modelo.texto);
+        if (problema) {
+          aviso(problema);
+          continue;
+        }
+        valores ??= await valoresDoCancelamento(db, organizacaoId, a, empresa!, textos!, agora);
+        const usadas = variaveisDoTexto(modelo.texto) as Variavel[];
+        const faltando = usadas.filter((v) => !valores![v]);
+        if (faltando.length) {
+          aviso(`falta ${faltando.map((v) => `{${v}}`).join(", ")} no cadastro`);
+          continue;
+        }
+        const enviada = await enviarUma(db, organizacaoId, correio, res, { reservaId: a.reservaId, tipo, referencia: prazo.referencia, para, modeloNome: modelo.nome, assunto: `${modelo.nome} — reserva ${a.codigo}`, texto: preencherModelo(modelo.texto, valores) }, agora);
+        // Enviada: a marca do cancelamento acende, pelo sistema (o painel para de pedir "avise o hóspede").
+        if (enviada) await marcarAvisado(db, organizacaoId, a.cancelamentoId, AVISADO_DO_TIPO[tipo], null, agora);
       }
     }
   }
   return res;
+}
+
+/**
+ * Uma mensagem: marca antes de chamar o provedor (outra execução ao mesmo tempo não manda de novo), envia e registra o
+ * resultado. true = o provedor aceitou.
+ */
+async function enviarUma(
+  db: Db,
+  organizacaoId: string,
+  correio: Correio,
+  res: ResultadoMensagens,
+  m: { reservaId: string; tipo: TipoMensagemHospede; referencia: string; para: string; modeloNome: string; assunto: string; texto: string },
+  agora: Date,
+): Promise<boolean> {
+  const [marca] = await db
+    .insert(mensagensHospede)
+    .values({ organizacaoId, reservaId: m.reservaId, tipo: m.tipo, referencia: m.referencia, estado: "enviando", para: m.para, modeloNome: m.modeloNome, criadoEm: agora, atualizadoEm: agora })
+    .onConflictDoUpdate({
+      target: [mensagensHospede.reservaId, mensagensHospede.tipo, mensagensHospede.referencia],
+      set: { estado: "enviando", tentativas: sql`${mensagensHospede.tentativas} + 1`, para: m.para, modeloNome: m.modeloNome, erro: "", atualizadoEm: agora },
+      setWhere: and(eq(mensagensHospede.estado, "falhou"), sql`${mensagensHospede.tentativas} < ${MAX_TENTATIVAS}`),
+    })
+    .returning({ id: mensagensHospede.id, tentativas: mensagensHospede.tentativas });
+  if (!marca) return false;
+  let falha: unknown = null;
+  try {
+    await correio.enviar({ para: m.para, assunto: m.assunto, texto: m.texto, chave: `mensagem-hospede:${marca.id}:${marca.tentativas}` });
+  } catch (e) {
+    falha = e ?? new Error("falha no envio");
+  }
+  if (falha === null) {
+    // Se gravar o sucesso falhar, o registro fica "enviando" (aparece como incerto) e nunca é
+    // tentado de novo: o provedor já aceitou.
+    await db.update(mensagensHospede).set({ estado: "enviado", enviadoEm: new Date(), atualizadoEm: new Date() }).where(eq(mensagensHospede.id, marca.id));
+    res.enviadas++;
+    return true;
+  }
+  const incerto = falha instanceof ErroEnvioIncerto;
+  const erro = (falha instanceof Error ? falha.message : String(falha)).slice(0, 300);
+  await db.update(mensagensHospede).set({ estado: incerto ? "incerto" : "falhou", erro, atualizadoEm: new Date() }).where(eq(mensagensHospede.id, marca.id));
+  if (incerto) res.incertas++;
+  else res.falhas++;
+  return false;
 }
 
 /**

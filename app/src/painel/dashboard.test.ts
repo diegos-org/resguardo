@@ -14,7 +14,7 @@ import { criarRotina } from "@/rotinas/rotinas";
 import { arquivarPedido, registrarPedidoContato } from "@/proprietarios/pedidos-contato";
 import { conferirTentativa } from "@/pagamentos/conferencia";
 import { ProvedorFalso } from "@/pagamentos/falso";
-import { minutos, montarCenario, TOTAL } from "@/pagamentos/testes";
+import { minutos, montarCenario, pagarEConfirmar, pedir, TOTAL, usuarioDeTeste } from "@/pagamentos/testes";
 import { carregarDashboard, contaDeTesteParaInicio } from "./dashboard";
 
 let db: Db;
@@ -330,5 +330,20 @@ describe("pagamento no site no Início (M8.2a)", () => {
     const lento = new ProvedorFalso();
     lento.conferirContaDeTeste = () => new Promise(() => undefined);
     expect(await contaDeTesteParaInicio({ provedor: lento, esperaMs: 20 })).toBeNull();
+  });
+});
+
+describe("Início: avisos do cancelamento pela política (M8.2c)", () => {
+  it("só para quem edita reservas (verCancelamentos), sem precisar do financeiro: o pedido esperando a equipe", async () => {
+    const c = await montarCenario(db);
+    const equipe = await usuarioDeTeste(c);
+    const x = await pagarEConfirmar(c, { entrada: "2026-11-20", saida: "2026-11-23" });
+    expect(await pedir(c, x.reservaId, equipe, { recebidoEm: minutos(30), quando: minutos(40) })).toEqual({ ok: true });
+    const base = { imoveis: await listarImoveis(db, c.org), todos: true, periodo: { inicio: "2026-10-01", fim: "2026-11-01" }, ano: 2026, hoje: "2026-10-01", verFinanceiro: false, agora: minutos(60) };
+    const com = await carregarDashboard(db, c.org, { ...base, verCancelamentos: true });
+    expect(com.alertas).toContainEqual({ nivel: "info", texto: `Pedido de cancelamento da reserva ${x.reservaCodigo}: recebido em 01/10 às 12:30, entrada em 20/11 (há 0 dia(s)).`, link: "/painel/reservas?cancelamento=pedido" });
+    expect((await carregarDashboard(db, c.org, base)).alertas.some((a) => a.texto.includes("Pedido de cancelamento"))).toBe(false);
+    // Outra empresa não vê.
+    expect((await carregarDashboard(db, org, { ...base, verCancelamentos: true })).alertas.some((a) => a.texto.includes("Pedido de cancelamento"))).toBe(false);
   });
 });

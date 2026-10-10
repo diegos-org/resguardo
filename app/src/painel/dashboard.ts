@@ -15,7 +15,7 @@ import type { Imovel } from "@/imoveis/repositorio";
 import { ESPERA_TELA_MS, esperarNoMaximo } from "@/lib/prazo";
 import { contarPendentes as contarCadastrosPendentes } from "@/marketplace/cadastro";
 import { contaDeTesteConfirmada, estadoPagamentoDoAmbiente, provedorDoAmbiente } from "@/pagamentos/ambiente";
-import { avisosDePagamento } from "@/pagamentos/consultas";
+import { avisosDeCancelamento, avisosDePagamento } from "@/pagamentos/consultas";
 import type { ProvedorPagamento } from "@/pagamentos/provedor";
 import { contarPedidosNovos } from "@/proprietarios/pedidos-contato";
 import { avisosDeDescontos } from "@/repasses/descontos";
@@ -69,6 +69,11 @@ export async function carregarDashboard(
     verProprietarios?: boolean;
     /** Quem lê o financeiro recebe os avisos do pagamento no site (M8.2a), da empresa toda. */
     verPagamentos?: boolean;
+    /**
+     * Quem edita reservas recebe os avisos do cancelamento pela política (M8.2c: pedidos esperando, datas a reabrir nas
+     * OTAs, hóspede a avisar), da empresa toda e sem valores — mesmo sem acesso ao financeiro.
+     */
+    verCancelamentos?: boolean;
     /** Conta das chaves do Mercado Pago conferida agora (true/false); null ou ausente = não conferida (sem esse aviso). */
     contaDeTesteMercadoPago?: boolean | null;
     agora?: Date;
@@ -110,6 +115,8 @@ export async function carregarDashboard(
     if (contatos) alertas.push({ nivel: "info", texto: `${contatos} pedido(s) de contato de proprietário esperando resposta.`, link: "/painel/proprietarios/contatos" });
     if (cadastros) alertas.push({ nivel: "info", texto: `${cadastros} cadastro(s) de proprietário pelo site esperando análise.`, link: "/painel/proprietarios/cadastros" });
   }
+  // Cancelamento pela política (M8.2c): da operação, fora dos avisos do financeiro e sem valores.
+  if (o.verCancelamentos) alertas.push(...(await avisosDeCancelamento(db, organizacaoId, o.agora ?? new Date())));
   // Pagamento no site (M8.2a): da empresa toda, sem depender do filtro de imóveis (aprovado sem reserva, devoluções,
   // liberação vencida, configuração e conta do Mercado Pago, live_mode, dinheiro sem cálculo, datas a fechar nas OTAs).
   if (o.verPagamentos) {

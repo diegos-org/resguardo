@@ -6,11 +6,19 @@
  *
  * Cartão (M8.2b): o formulário do cartão (chave pública, valor, parcelas) e o endereço do desafio do banco também só
  * com a autorização; a recusa é sempre o mesmo texto (o motivo nunca chega ao navegador).
+ *
+ * Cancelamento pela política (M8.2c): os fatos (código, datas, horas, versão da política, valores) e o texto que a
+ * página e as mensagens ao hóspede mostram (`textoDoCancelamento`, o compositor único): as frases vêm de Textos do site.
  */
-import type { EstadoPagamentoHospede, VistaPagamentoHospede } from "@/pagamentos/consultas";
+import type { TextosSite } from "@/configuracoes/textos-site";
+import type { CancelamentoParaHospede, EstadoPagamentoHospede, VistaPagamentoHospede } from "@/pagamentos/consultas";
 import { urlDoDesafio } from "@/pagamentos/provedor";
+import { formatBRL } from "@/lib/money";
 
 export type { EstadoPagamentoHospede };
+
+/** O cancelamento como vai ao navegador (datas em texto ISO). */
+export type CancelamentoDoHospede = Omit<CancelamentoParaHospede, "recebidoEm" | "devolucaoEm" | "entradaEm"> & { recebidoEm: string; devolucaoEm: string | null; entradaEm: string | null };
 
 /** O que o formulário do cartão precisa no navegador (nada pessoal; a chave pública é pública). */
 export type CartaoNaPagina = {
@@ -53,6 +61,10 @@ export type PagamentoDoHospede = {
   recusa: "cartao" | "verificacao" | null;
   /** Fim do prazo das datas (ISO), mesmo já passado: só no cartão em análise. */
   prazoDasDatas: string | null;
+  // --- Cancelamento pela política (M8.2c)
+  cancelamento: CancelamentoDoHospede | null;
+  /** Pedido de cancelamento recebido, ainda sem decisão (ISO). */
+  pedidoCancelamentoEm: string | null;
 };
 
 /**
@@ -73,7 +85,21 @@ export const deveAcompanhar = (v: { estado: EstadoPagamentoHospede; acompanhar?:
  * Situações em que o dinheiro já chegou (ou voltou): a página recarrega na hora, mesmo com o formulário do cartão aberto
  * (o hóspede nunca digita um cartão para uma cotação já paga).
  */
-export const ESTADOS_COM_DINHEIRO: readonly EstadoPagamentoHospede[] = ["confirmando", "confirmada", "aprovado_sem_datas", "devolucao_pedida", "devolvido"];
+export const ESTADOS_COM_DINHEIRO: readonly EstadoPagamentoHospede[] = [
+  "confirmando",
+  "confirmada",
+  "aprovado_sem_datas",
+  "devolucao_pedida",
+  "devolvido",
+  "cancelada_devolucao_pedida",
+  "cancelada_devolvida",
+  "cancelada_com_a_equipe",
+  "cancelada_em_conferencia",
+  "cancelada_sem_devolucao",
+];
+/** A reserva paga pelo site e cancelada pela política (M8.2c). */
+export const ESTADOS_CANCELADA: readonly EstadoPagamentoHospede[] = ["cancelada_devolucao_pedida", "cancelada_devolvida", "cancelada_com_a_equipe", "cancelada_em_conferencia", "cancelada_sem_devolucao"];
+export const estadoCancelada = (e: EstadoPagamentoHospede) => ESTADOS_CANCELADA.includes(e);
 
 /** Título do quadro da cotação em cada situação do pagamento (sem_pagamento = o título de sempre). */
 export const TITULO_PAGAMENTO: Record<Exclude<EstadoPagamentoHospede, "sem_pagamento">, string> = {
@@ -90,10 +116,15 @@ export const TITULO_PAGAMENTO: Record<Exclude<EstadoPagamentoHospede, "sem_pagam
   cartao_desafio: "Verificação do seu banco",
   cartao_em_analise: "Pagamento em análise",
   cartao_recusado: "Datas seguradas",
+  cancelada_devolucao_pedida: "Reserva cancelada",
+  cancelada_devolvida: "Reserva cancelada",
+  cancelada_com_a_equipe: "Reserva cancelada",
+  cancelada_em_conferencia: "Reserva cancelada",
+  cancelada_sem_devolucao: "Reserva cancelada",
 };
 
 /** Situações em que falar com a equipe é o caminho principal (não há pagamento a fazer na página). */
-const CONTATO_PRINCIPAL: readonly EstadoPagamentoHospede[] = ["aprovado_sem_datas", "devolucao_pedida", "devolvido", "cartao_em_analise"];
+const CONTATO_PRINCIPAL: readonly EstadoPagamentoHospede[] = ["aprovado_sem_datas", "devolucao_pedida", "devolvido", "cartao_em_analise", ...ESTADOS_CANCELADA];
 /**
  * O botão da equipe é o caminho principal? Nas situações acima, e no Pix esgotado ou no cartão recusado quando nenhuma
  * outra forma de pagar está disponível agora.
@@ -148,6 +179,8 @@ export function paraOHospede(v: VistaPagamentoHospede): PagamentoDoHospede {
     forma: v.forma,
     recusa: v.recusa,
     prazoDasDatas: iso(v.prazoDasDatas),
+    cancelamento: v.cancelamento ? { ...v.cancelamento, recebidoEm: v.cancelamento.recebidoEm.toISOString(), devolucaoEm: iso(v.cancelamento.devolucaoEm), entradaEm: iso(v.cancelamento.entradaEm) } : null,
+    pedidoCancelamentoEm: iso(v.pedidoCancelamentoEm),
   };
 }
 
@@ -187,6 +220,114 @@ export function mensagemDoContato(textoDaCotacao: string, estado: EstadoPagament
     devolvido: `Quero falar sobre a devolução do meu pagamento ${pelo}.`,
     cartao_em_analise: "Paguei com cartão e a página diz que o pagamento está em análise.",
   };
+  for (const e of ESTADOS_CANCELADA) linha[e] = `Quero falar sobre o cancelamento da minha reserva${reservaCodigo ? ` ${reservaCodigo}` : ""}.`;
   const extra = linha[estado];
   return extra ? [...textoDaCotacao.split("\n").slice(0, 2), extra].join("\n") : textoDaCotacao;
+}
+
+// ---------------------------------------------------------------- cancelamento pela política (M8.2c)
+
+/** As frases editáveis do cancelamento (Textos do site). */
+export type TextosDoCancelamento = Pick<
+  TextosSite,
+  | "cancelamentoSemTaxas"
+  | "cancelamentoDevolucaoPedida"
+  | "cancelamentoEstornoNoCartao"
+  | "cancelamentoVoltaPix"
+  | "cancelamentoVoltaCartao"
+  | "cancelamentoVoltaPorFora"
+  | "cancelamentoComAEquipe"
+  | "cancelamentoEmConferencia"
+  | "cancelamentoSemDevolucaoPrazo"
+  | "cancelamentoSemDevolucaoNaoComparecimento"
+  | "cancelamentoSemDevolucaoEquipe"
+  | "cancelamentoFecho"
+  | "cancelamentoPedidoRecebido"
+>;
+
+/** O texto do cancelamento em partes: as linhas da página e o que as mensagens usam (`{decisao}`, `{comovolta}`). */
+export type TextoDoCancelamento = {
+  /** Tudo o que a página mostra, na ordem (vazio quando não há cancelamento nem pedido). */
+  linhas: string[];
+  /** A decisão e a situação da devolução (`{decisao}` da mensagem "Cancelamento: decisão"). */
+  decisao: string;
+  /** Como o dinheiro volta (`{comovolta}`); null quando não há devolução. */
+  comoVolta: string | null;
+};
+
+/** Os pedidos e a hora de Brasília (a política conta neste horário). */
+const BRASILIA = "America/Sao_Paulo";
+const diaMes = (d: Date, fuso: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, day: "2-digit", month: "2-digit" }).format(d);
+const diaHora = (d: Date, fuso: string) => `${diaMes(d, fuso)} às ${new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, hour: "2-digit", minute: "2-digit" }).format(d)}`;
+const diaIso = (d: string) => d.slice(0, 10).split("-").reverse().slice(0, 2).join("/");
+const quando = (d: Date | string | null): Date | null => {
+  if (!d) return null;
+  const x = d instanceof Date ? d : new Date(d);
+  return Number.isNaN(x.getTime()) ? null : x;
+};
+const juntar = (...partes: (string | null | undefined)[]) => partes.filter((x): x is string => !!x && !!x.trim()).join(" ");
+
+/**
+ * O compositor único do texto do cancelamento (página da reserva e as variáveis `{decisao}` e `{comovolta}` das
+ * mensagens). Puro: os fatos (código, datas, horas, versão da política, valores) são escritos aqui; as frases vêm de Textos
+ * do site. Nunca cita o Beds24 nem dado pessoal. `fuso` = o do imóvel (o dia da devolução); os horários de pedido são de
+ * Brasília, como a política conta.
+ */
+export function textoDoCancelamento(
+  v: {
+    estado: EstadoPagamentoHospede;
+    reservaCodigo: string | null;
+    cancelamento: CancelamentoParaHospede | CancelamentoDoHospede | null;
+    pedidoCancelamentoEm?: Date | string | null;
+  },
+  textos: TextosDoCancelamento,
+  fuso: string = BRASILIA,
+): TextoDoCancelamento {
+  const codigo = v.reservaCodigo ?? "";
+  const c = v.cancelamento;
+  if (!c || !estadoCancelada(v.estado)) {
+    const pedido = quando(v.pedidoCancelamentoEm ?? null);
+    if (!pedido) return { linhas: [], decisao: "", comoVolta: null };
+    const linha = juntar(`Pedido de cancelamento recebido em ${diaHora(pedido, BRASILIA)} (horário de Brasília).`, textos.cancelamentoPedidoRecebido);
+    return { linhas: [linha], decisao: "", comoVolta: null };
+  }
+  const recebido = quando(c.recebidoEm)!;
+  const cabecalho =
+    c.quemCancela === "empresa"
+      ? `Nós cancelamos a sua reserva ${codigo}${c.motivoEmpresa === "imovel_sem_condicoes" ? ": o apartamento ficou sem condições de receber você" : c.motivoEmpresa === "forca_maior" ? " por motivo de força maior" : ""}.`
+      : c.quemCancela === "nao_comparecimento"
+        ? `A reserva ${codigo} foi cancelada por não comparecimento.`
+        : `Reserva ${codigo} cancelada. Recebemos o seu pedido em ${diaHora(recebido, BRASILIA)} (horário de Brasília).`;
+  const valor = c.valor ?? 0;
+  const pelaPolitica = c.politicaVersao !== null && (c.base === "prazo" || c.base === "arrependimento" || c.base === "empresa");
+  const decisoes: string[] = [];
+  let comoVolta: string | null = null;
+  const voltaPeloMercadoPago = c.forma === "cartao" ? textos.cancelamentoVoltaCartao : textos.cancelamentoVoltaPix;
+  if (c.direito === "integral") {
+    const quem = pelaPolitica ? `Pela Política de cancelamento que você aceitou (versão ${c.politicaVersao})` : "Por decisão da nossa equipe";
+    decisoes.push(juntar(`${quem}, devolvemos o valor integral pago, ${formatBRL(valor)},`, textos.cancelamentoSemTaxas));
+    const feitaEm = quando(c.devolucaoEm);
+    if (v.estado === "cancelada_devolvida") {
+      const dia = feitaEm ? ` em ${diaMes(feitaEm, fuso)}` : "";
+      if (c.porFora) {
+        decisoes.push(`Devolução de ${formatBRL(valor)} feita${dia}.`);
+        comoVolta = textos.cancelamentoVoltaPorFora || null;
+      } else {
+        decisoes.push(c.confirmadaPor === "equipe" ? `Devolução de ${formatBRL(valor)} feita pelo Mercado Pago${dia}.` : `Devolução de ${formatBRL(c.valorConfirmado ?? valor)} confirmada pelo Mercado Pago${dia}.`);
+        comoVolta = voltaPeloMercadoPago || null;
+      }
+    } else if (v.estado === "cancelada_devolucao_pedida") {
+      decisoes.push(c.estornoPelaEquipe ? textos.cancelamentoEstornoNoCartao : textos.cancelamentoDevolucaoPedida);
+      comoVolta = voltaPeloMercadoPago || null;
+    } else if (v.estado === "cancelada_com_a_equipe") {
+      decisoes.push(juntar(`A devolução de ${formatBRL(valor)} pelo Mercado Pago não foi possível.`, textos.cancelamentoComAEquipe));
+    } else decisoes.push(textos.cancelamentoEmConferencia);
+  } else if (c.base === "nao_comparecimento") decisoes.push(textos.cancelamentoSemDevolucaoNaoComparecimento);
+  else if (c.base === "sem_politica" || !c.integralAte) decisoes.push(textos.cancelamentoSemDevolucaoEquipe);
+  else {
+    const arrependimento = c.arrependimentoAte && c.arrependimentoAte > c.integralAte ? ` Arrependimento: até ${diaIso(c.arrependimentoAte)}.` : "";
+    decisoes.push(juntar(`Prazo de reembolso integral: pedidos até ${diaIso(c.integralAte)}, às 23h59.${arrependimento}`, textos.cancelamentoSemDevolucaoPrazo));
+  }
+  const decisao = juntar(...decisoes);
+  return { linhas: [cabecalho, ...decisoes, ...(comoVolta ? [comoVolta] : []), ...(textos.cancelamentoFecho ? [textos.cancelamentoFecho] : [])].filter((l) => l.trim()), decisao, comoVolta };
 }
