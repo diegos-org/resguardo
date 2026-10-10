@@ -2,7 +2,9 @@
 
 Fonte única de planejamento. Cada item abaixo vira **um PR** com título `[ID] descrição`
 (ex.: `[M1.2] Convite de proprietário`). As rotinas automáticas escolhem o próximo item
-por esta lista; Diego revisa e faz o merge.
+por esta lista. Claude e Codex fazem o merge do trabalho autorizado conforme `CLAUDE.md`:
+checagens aplicáveis e revisão do Codex concluídas no último commit, sem pendências e sem
+limite de rodadas (autorização de Diego atualizada em 9/10/2026).
 
 **Meta:** sistema completo, testado em homologação, antes de uso real. Nada é usado
 "para valer" antes do marco M11.
@@ -198,7 +200,10 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 
 ## Ações de Diego (o que destrava o quê)
 
-1. **Revisar e mergear PRs** — por enquanto o Claude faz os merges (autorizado em 23/09).
+1. **Acompanhar as decisões de produto** — Claude e Codex fazem o merge do trabalho autorizado
+   depois das checagens e da revisão do Codex concluídas no último commit, sem pendências;
+   cumprem todas as rodadas necessárias e avisam Diego com um resumo curto (autorização
+   atualizada em 9/10; regras em `CLAUDE.md`).
 2. **Vercel — feito:** repositório na Vercel (*root directory* `app`) com a integração Neon ligados por Diego (27/09); bancos de produção e de preview conferidos em 3/10; M0.5 fechado por Diego em 4/10.
 3. **Beds24:** leitura de quartos confirmada por Diego em 28/09; quarto 403 duplicado removido por ele. Diego cadastrou e vinculou os seis imóveis e fez a primeira importação em 1/10. Diego confirmou o merge do M3.8 e uma nova importação em 2/10. Agosto/setembro podem estar incompletos: uma reserva antiga ausente no SCL também não foi encontrada por ele no Beds24; a causa histórica é hipótese, não auditoria concluída. A conferência de outubro em diante permanece pendente. Conferir reservas, bloqueios e avisos antes de ligar a rotina diária (requer `CRON_SECRET`). O mapeamento Airbnb → Beds24 não cria os vínculos Beds24 → SCL. Nenhuma importação real foi feita durante a implementação. O envio de calendário e preços (M3.7) está implementado e **desligado**: para o teste no 103, cadastrar regras/pisos, simular na prévia, ligar `BEDS24_ESCRITA=ligada` na Vercel com um refresh token que tenha o escopo de inventário, enviar e conferir no Beds24/Airbnb (ver guia, seção 6). Cotação e disponibilidade de venda dependem do M7.2.
 4. **Meta / WhatsApp Business:** iniciar a verificação da empresa no Meta Business — leva dias. (destrava M10)

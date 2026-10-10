@@ -1,4 +1,4 @@
-# Instruções para sessões Claude neste repositório
+# Instruções para sessões Claude e Codex neste repositório
 
 Sistema de gestão da Sua Casa Leblon (aluguel por temporada): painel interno,
 financeiro, portal do proprietário, portal do hóspede, site público e integrações
@@ -62,31 +62,39 @@ financeiro, portal do proprietário, portal do hóspede, site público e integra
 - **Um proprietário por imóvel** (pode ser pessoa ou empresa). Os imóveis do Diego são
   clientes como os outros.
 
-## Merge (autorizado por Diego em 23/09/2026, até o sistema estabilizar)
+## Merge (autorizado por Diego em 23/09/2026; ampliado em 9/10/2026)
 
-O Claude faz o merge dos PRs de roadmap **somente** quando, no commit mais recente do PR:
-1. o CI está todo verde;
-2. a revisão do Codex terminou (resumo "Completed") e não há conversa de revisão aberta;
+Diego autoriza Claude e Codex a fazer o merge dos PRs dentro do trabalho autorizado no SCL,
+sem pedir confirmação a cada PR. Isso inclui manutenção e ajustes das regras de trabalho.
+O merge acontece **somente** quando, no commit mais recente do PR:
+1. todas as checagens aplicáveis terminaram e passaram; checagens dispensadas pelo CI por
+   não se aplicarem ao escopo não são falhas;
+2. a revisão automática do Codex no GitHub terminou (resumo "Completed") para o commit
+   mais recente, todos os apontamentos foram tratados e não há conversa de revisão aberta;
 3. não há conflito com a `main`;
 4. PRs empilhados entram em ordem (primeiro o PR base).
 
 Usar "merge commit" (nunca squash/rebase de histórico alheio). Depois do merge, conferir a
 `main` e seguir para o próximo item. Diego pode revogar essa autorização a qualquer momento.
 
-PR de manutenção que não é item do ROADMAP (dependências, CI): o Claude só mergeia com
-autorização expressa de Diego para aquele PR.
+Avisar Diego com um resumo curto do que está sendo feito e, depois do merge, do que mudou
+(pode ser pelo chat; mais curto que a descrição do PR). Não transferir para Diego testes e
+conferências técnicas que o agente consegue executar. Decisões de produto fora do escopo
+já autorizado continuam sendo de Diego.
 
-## Revisão do Codex (ajustes autorizados por Diego em 4/10/2026)
+## Revisão do Codex (ajustes autorizados por Diego em 9/10/2026)
 
-- **PR só de documentação** (sem mudança em `app/`): uma rodada completa do Codex é
-  obrigatória. Depois dela, só apontamento **P1** trava o merge; P2 e P3 são corrigidos,
-  respondidos e resolvidos, e o PR pode ser mergeado sem esperar nova rodada completa — o
-  Codex revisa o resultado na `main` pelo PR seguinte. Em PR com código, as quatro condições
-  da seção "Merge" valem integralmente.
+- **Todos os PRs, inclusive documentação:** cumprir integralmente as condições da seção
+  "Merge". A revisão é a automática do Codex no GitHub; a leitura do próprio autor não
+  substitui essa revisão. Depois de corrigir um apontamento e atualizar o commit, aguardar
+  as checagens e a revisão sobre o resultado antes do merge.
 - **PR em revisão não ganha escopo novo.** Decisão ou pedido novo de Diego vai para o PR
   seguinte, mesmo com o anterior ainda aberto.
-- **Teto:** se um PR passar de 3 rodadas do Codex, o Claude avisa Diego antes de continuar
-  sozinho.
+- **Sem teto de rodadas:** continuar corrigindo e cumprindo as rodadas necessárias, sejam
+  5, 10, 17 ou mais. A regra anterior de parar após 3 rodadas e a exceção de documentação
+  de 4/10 deixam de valer. Quantidade de rodadas, por si só, não pede nova autorização.
+- Se houver bloqueio concreto que dependa de Diego (decisão, informação ou acesso), avisar
+  qual é; não fazer merge pendente nem declarar uma revisão concluída sem evidência.
 
 ## Nunca
 
