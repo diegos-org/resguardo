@@ -2,7 +2,7 @@
 
 Sistema de gestão da Sua Casa Leblon (aluguel por temporada): painel interno,
 financeiro, portal do proprietário, portal do hóspede, site público e integrações
-(Beds24, Mercado Pago, WhatsApp). Dono e único revisor: Diego.
+(Beds24, Mercado Pago, WhatsApp). Responsável pelas decisões de produto: Diego. Revisão técnica e execução: Claude e Codex.
 
 ## Como trabalhar
 
@@ -16,7 +16,7 @@ financeiro, portal do proprietário, portal do hóspede, site público e integra
    No mesmo PR, mudar a linha do item no ROADMAP para `feito` **e atualizar o
    `GUIA-DIEGO.md`** (seção "Onde estamos", contas/serviços, o que Diego precisa fazer,
    data da última atualização). O guia é o documento de Diego: linguagem simples, sem código.
-   Branch por item: `claude/<id>-<slug>` a partir da `main` (autorizado por Diego em 23/09).
+   Branch por item: `claude/<id>-<slug>` ou `codex/<id>-<slug>` a partir da `main` atualizada (autorizado por Diego em 23/09 e 9/10).
 6. Se não houver item disponível (tudo bloqueado ou em PR), não abrir nada — encerrar.
 7. No máximo **3 PRs de roadmap abertos** ao mesmo tempo. Se já houver 3, só consertar.
 
@@ -26,6 +26,14 @@ financeiro, portal do proprietário, portal do hóspede, site público e integra
 - **Como conferir** — link da preview da Vercel quando existir, ou passos.
 - **Testes** — o que foi testado e o resultado real.
 - **Limites** — o que ficou de fora, o que depende de Diego.
+
+## Preservação e continuidade (Diego, 9/10/2026)
+
+- **Trabalhar em cópias novas.** Na máquina, em acervos e em arquivos externos, preservar os originais e editar uma cópia identificada. No GitHub, usar branch nova a partir da `main`; não apagar branches nem reescrever histórico. Esta regra não autoriza escrita no Google Drive nem em integrações reais: respeitar o acesso autorizado na sessão.
+- **Preservar decisões e referências.** Não apagar o acervo legado para substituir a implementação. Quando uma decisão mudar, registrar a anterior, a nova, a data, o motivo e o objetivo final no requisito ou documento correspondente; o histórico de commits preserva as versões completas. Voltar atrás por um commit novo de reversão, sem force push ou apagar commits.
+- **Conferir o trabalho em curso.** Antes de começar, conferir a `main`, os PRs abertos e os registros do item escolhido. Não assumir que outro agente parou só porque não há PR aberto: trabalho ainda não publicado não aparece no GitHub. Evitar o mesmo item/branch se houver trabalho em curso; registrar qualquer incerteza.
+- **Deixar o ponto de retomada compreensível.** Na descrição de cada PR, incluir “Continuidade”: ponto de partida (commit/PR), o que mudou, por quê, objetivo final, verificações concluídas, pendências concretas e próximo passo. Atualizar ROADMAP e GUIA-DIEGO junto da entrega, nos documentos já usados pelo projeto; não recriar o processo antigo de handoffs/CURRENT.
+- **Distinguir entrega de intenção.** Dizer se a mudança está só na branch, em revisão ou integrada; não marcar trabalho incompleto como feito. Registrar limites de acesso/testes e a referência do visual legado usado. Não abrir PR só para relatar status.
 
 ## Regras técnicas
 
