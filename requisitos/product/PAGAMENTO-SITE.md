@@ -1376,3 +1376,25 @@ Cancelamento e devolução (M8.2c):
 43. **As situações de devolução que aparecem de fato (além de `processed`)**, para a lista branca da leitura
     (`processed`/`approved` = confirmada; `failed`/`rejected`/`canceled`/`cancelled` = falhou; o resto = em
     andamento).
+
+
+## Conferência dos prazos de cartão — 10/10/2026
+
+A regra de taxa e liberação do M8.2b acima foi mantida. O teste automatizado
+`app/src/pagamentos/cartao-prazos.test.ts` compara liberação imediata, em 14 dias e em
+30 dias com reserva, proprietário, relógio, banco e provedor fictícios. O objetivo é
+proteger o caixa e o repasse em todos os prazos, sem inferir que o dinheiro entrou
+apenas porque a previsão passou.
+
+Em cada cenário: cartão aprovado confirma a reserva; previsão futura com sinal
+contraditório não lança recebimento; previsão passada com sinal ausente ou pendente
+também não; confirmação explícita lança só o líquido informado, uma vez mesmo com
+releitura; a parte do proprietário só fica disponível depois do check-in e da
+liberação. Os valores e as datas do teste são fictícios, sem tabela comercial de
+taxas nem mudança do plano da conta.
+
+Esta conferência não foi executada contra a conta de teste do Mercado Pago. Continuam
+pendentes as verificações de formato e comportamento do provedor na lista de sandbox
+acima, inclusive o item 14. Nenhuma cobrança ou devolução real foi feita. Cancelar
+reserva paga (M8.2c), alterar (M8.2d) e tratar contestação (M8.2e) permanecem itens
+próprios, ainda não entregues por este reforço de testes.

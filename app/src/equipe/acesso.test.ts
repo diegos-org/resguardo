@@ -7,7 +7,7 @@ import { imoveis, limpezas, organizacoes, profissionaisLimpeza, usuarios } from 
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { CorreioMemoria } from "@/email/correio";
-import { confirmarLimpeza, criarLimpezaAvulsa, criarProfissional } from "@/limpezas/limpezas";
+import { confirmarLimpeza, criarLimpezaAvulsa, criarProfissional, editarProfissional } from "@/limpezas/limpezas";
 import { criarReserva } from "@/reservas/repositorio";
 import { agendaDaProfissional, definirCidades, definirSenhaPelaEmpresa, situacaoDaSenha, trocarMinhaSenha } from "./acesso";
 import { acessosDasProfissionais, avisarAtribuicao, darAcesso, tirarAcesso } from "./equipe";
@@ -36,6 +36,41 @@ beforeEach(async () => {
 afterEach(() => close());
 
 describe("entrada da equipe sem e-mail (M6.8)", () => {
+  it.each([
+    { papel: "admin" as const, outra: false },
+    { papel: "operacao" as const, outra: false },
+    { papel: "proprietario" as const, outra: false },
+    { papel: "hospede" as const, outra: false },
+    { papel: "limpeza" as const, outra: true },
+  ])("vínculo inconsistente ($papel, outra organização: $outra) não permite alterar nem retirar a conta", async ({ papel, outra }) => {
+    // Simula cadastro legado inconsistente. O fluxo da equipe não ganha controle dessa conta.
+    const [u] = await db.insert(usuarios).values({ organizacaoId: outra ? outraOrg : org, email: "conta@example.com", nome: "Conta preservada", papel, ativo: false, login: "conta", senhaHash: "hash-ficticio" }).returning();
+    await db.update(profissionaisLimpeza).set({ usuarioId: u.id }).where(eq(profissionaisLimpeza.id, ana));
+    expect.soft(await definirSenhaPelaEmpresa(db, org, ana, { login: "ana" }, null, AGORA)).toMatchObject({ ok: false });
+    expect.soft(await darAcesso(db, org, ana, "novo@example.com", null)).toMatchObject({ ok: false });
+    expect.soft(await tirarAcesso(db, org, ana, null)).toMatchObject({ ok: false });
+    expect(await editarProfissional(db, org, ana, { nome: "Ana Fictícia", telefone: "", observacoes: "", ativo: false }, null)).toEqual({ ok: true });
+    const [depois] = await db.select().from(usuarios).where(eq(usuarios.id, u.id));
+    expect(depois).toEqual(u);
+    expect(await historicoDe(db, org, "profissional_limpeza", ana)).not.toEqual(expect.arrayContaining([expect.objectContaining({ acao: "profissional_limpeza.acesso" })]));
+  });
+
+  it.each([
+    { papel: "admin" as const, outra: false },
+    { papel: "limpeza" as const, outra: true },
+  ])("vínculo inconsistente ativo ($papel, outra organização: $outra) não aparece na lista e não recebe aviso", async ({ papel, outra }) => {
+    const [u] = await db.insert(usuarios).values({ organizacaoId: outra ? outraOrg : org, email: "conta@example.com", nome: "Conta preservada", papel, ativo: true }).returning();
+    await db.update(profissionaisLimpeza).set({ usuarioId: u.id }).where(eq(profissionaisLimpeza.id, ana));
+    expect((await acessosDasProfissionais(db, org)).has(ana)).toBe(false);
+    expect(await criarLimpezaAvulsa(db, org, { imovelId: rio, data: "2026-10-12", observacao: "" }, null)).toEqual({ ok: true });
+    const [l] = await db.select().from(limpezas).where(eq(limpezas.imovelId, rio));
+    expect(await confirmarLimpeza(db, org, l.id, ana, null)).toEqual({ ok: true });
+    const correio = new CorreioMemoria();
+    expect(await avisarAtribuicao(db, org, l.id, correio, "https://exemplo/equipe")).toEqual({ enviado: false, aviso: null });
+    expect(correio.enviadas).toEqual([]);
+    expect((await db.select().from(usuarios).where(eq(usuarios.id, u.id)))[0]).toEqual(u);
+  });
+
   it("a empresa cria usuário e senha provisória (sem e-mail); ela entra com eles e cai na tela da equipe; a senha não fica guardada nem no histórico", async () => {
     const r = await definirSenhaPelaEmpresa(db, org, ana, { login: " Ana.Limpeza " }, null, AGORA);
     if (!r.ok) throw new Error(r.erro);
@@ -171,3 +206,4 @@ describe("entrada da equipe sem e-mail (M6.8)", () => {
     expect(correio.enviadas).toEqual([]);
   });
 });
+
