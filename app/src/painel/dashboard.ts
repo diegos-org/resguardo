@@ -116,7 +116,8 @@ export async function carregarDashboard(
     if (cadastros) alertas.push({ nivel: "info", texto: `${cadastros} cadastro(s) de proprietário pelo site esperando análise.`, link: "/painel/proprietarios/cadastros" });
   }
   // Cancelamento pela política (M8.2c): da operação, fora dos avisos do financeiro e sem valores.
-  if (o.verCancelamentos) alertas.push(...(await avisosDeCancelamento(db, organizacaoId, o.agora ?? new Date())));
+  // A mensagem pendente ao hóspede (decisão, devolução feita) leva o valor: o aviso dela só para quem lê o financeiro.
+  if (o.verCancelamentos) alertas.push(...(await avisosDeCancelamento(db, organizacaoId, o.agora ?? new Date(), { mensagensComValor: o.verPagamentos === true })));
   // Pagamento no site (M8.2a): da empresa toda, sem depender do filtro de imóveis (aprovado sem reserva, devoluções,
   // liberação vencida, configuração e conta do Mercado Pago, live_mode, dinheiro sem cálculo, datas a fechar nas OTAs).
   if (o.verPagamentos) {

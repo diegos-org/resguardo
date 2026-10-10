@@ -255,6 +255,10 @@ describe("textoDoCancelamento: o texto único da página e das mensagens (M8.2c)
     const semDevolucao = { direito: "nenhum" as const, base: "fora_do_prazo" as const, valor: 0 };
     expect(texto("cancelada_sem_devolucao", semDevolucao).decisao).toBe("Prazo de reembolso integral: pedidos até 28/10, às 23h59. [sem devolução: prazo]");
     expect(texto("cancelada_sem_devolucao", { ...semDevolucao, integralAte: "2026-10-01", arrependimentoAte: "2026-10-08" }).decisao).toBe("Prazo de reembolso integral: pedidos até 01/10, às 23h59. Arrependimento: até 08/10. [sem devolução: prazo]");
+    // Paga já depois do prazo do reembolso integral (aprovada em 10/10, prazo até 06/10): nenhum prazo que nunca valeu.
+    expect(texto("cancelada_sem_devolucao", { ...semDevolucao, integralAte: "2026-10-06", arrependimentoAte: "2026-10-17" }).decisao).toBe(
+      "Esta reserva foi paga quando o prazo de reembolso integral já tinha passado. Arrependimento: até 17/10. [sem devolução: prazo]",
+    );
     const naoVeio = texto("cancelada_sem_devolucao", { ...semDevolucao, quemCancela: "nao_comparecimento", base: "nao_comparecimento" });
     expect(naoVeio.linhas[0]).toBe("A reserva SCL-ABC123 foi cancelada por não comparecimento.");
     expect(naoVeio.decisao).toBe("[não comparecimento]");
@@ -269,6 +273,10 @@ describe("textoDoCancelamento: o texto único da página e das mensagens (M8.2c)
       comoVolta: null,
     });
     expect(textoDoCancelamento({ estado: "confirmada", reservaCodigo: "SCL-ABC123", cancelamento: null }, textos)).toEqual({ linhas: [], decisao: "", comoVolta: null });
+    // Pagamento sem a política aceita: o recibo não diz "a política que você aceitou" (a frase editável cita a política).
+    expect(textoDoCancelamento({ estado: "confirmada", reservaCodigo: "SCL-ABC123", cancelamento: null, pedidoCancelamentoEm: "2026-10-05T13:10:00.000Z", pedidoCancelamentoSemPolitica: true }, textos).linhas).toEqual([
+      "Pedido de cancelamento recebido em 05/10 às 10:10 (horário de Brasília). A equipe confirma com você, por escrito, o valor da devolução.",
+    ]);
     // O fecho vazio não vira linha.
     expect(textoDoCancelamento({ estado: "cancelada_em_conferencia", reservaCodigo: "X", cancelamento: base }, { ...textos, cancelamentoFecho: "" }).linhas).not.toContain("");
   });

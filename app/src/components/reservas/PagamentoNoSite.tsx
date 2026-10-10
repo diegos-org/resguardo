@@ -169,7 +169,8 @@ function devolucao(p: PagamentoDoPainel, verValores: boolean): string | null {
   if (dica) partes.push(dica);
   if (verValores && d.situacao === "confirmada" && d.valorConfirmado !== null && d.valorConfirmado !== undefined && d.valorConfirmado !== d.valor) partes.push(`o Mercado Pago mostrou ${formatBRL(d.valorConfirmado)} devolvidos`);
   if (verValores && d.taxaPerdida !== null) partes.push(`taxa que ficou com o Mercado Pago: ${formatBRL(d.taxaPerdida)}`);
-  if (d.situacao === "por_fora" && d.porForaNota) partes.push(`nota: ${d.porForaNota}`);
+  // A nota da devolução por fora é texto livre (pode trazer um valor): só para quem lê o financeiro, como a da confirmação.
+  if (verValores && d.situacao === "por_fora" && d.porForaNota) partes.push(`nota: ${d.porForaNota}`);
   return partes.join(" · ");
 }
 
@@ -304,7 +305,7 @@ function Tentativa({ p, verValores, editar, hoje }: { p: PagamentoDoPainel } & O
               pergunta="Estornar a liberação registrada à mão? O recebimento sai da reserva e a parte do proprietário pode deixar de estar disponível para repasse."
             >
               <label style={{ flex: "1 1 220px" }}>
-                Motivo do estorno
+                Motivo do estorno (sem dados pessoais)
                 <input name="motivo" required maxLength={200} placeholder="ex.: valor digitado errado" />
               </label>
             </FormAcaoPagamento>

@@ -889,6 +889,66 @@ describe("devolução do cancelamento pela política e as regras do M8.2c", () =
     expect(await devolucao(w.pagamentoId)).toMatchObject({ situacao: "pedida", chaveAceita: true });
   });
 
+  it("resposta incerta e o pedido repetido com a mesma chave: o reenvio vai marcado como repetido (o adaptador sabe que a resposta é a do pedido anterior) e o id dela solta o pedido que falhou", async () => {
+    c.provedor.chaveRepetida = "mesma_resposta";
+    const x = await cancelada({ forma: "cartao", resposta: "pedida", antes: () => { c.provedor.falhasDepois.devolver = new ErroProvedor("incerto", "Sem resposta do Mercado Pago."); } });
+    const d = await devolucao(x.pagamentoId);
+    expect(d).toMatchObject({ situacao: "pedida", chaveEmDuvida: true, chaveAceita: false, falhas: 1 });
+    expect(pedidos().at(-1)).toMatchObject({ chave: chaveDevolucao(d.id, 1), repetida: false });
+    // A devolução que o primeiro envio criou falha; a próxima volta reenvia a MESMA chave, marcada como repetida.
+    c.provedor.falhasDepois.devolver = null;
+    const [criada] = (await c.provedor.consultar(x.idProvedor))!.devolucoes;
+    c.provedor.falharDevolucao(criada.id);
+    await conferirPendentes(db, c.org, c.provedor, minutos(71));
+    expect(pedidos().at(-1)).toMatchObject({ chave: chaveDevolucao(d.id, 1), repetida: true });
+    // O Mercado Pago repetiu a resposta do primeiro envio, com o id da devolução dele: a leitura a mostra falha e solta o pedido.
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "recusada", chaveAceita: false, idProvedor: criada.id, falhas: MAXIMO_FALHAS_DEVOLUCAO });
+    expect((await c.tentativa(x.pagamentoId)).avisos).toContain("devolucao_falhou");
+  });
+
+  it("aceita sem o id e depois falha (o sistema não solta sozinho): com o aviso de sem confirmação, a equipe registra a recusa do painel e a devolução sai da espera", async () => {
+    const original = c.provedor.devolver.bind(c.provedor);
+    const espiao = vi.spyOn(c.provedor, "devolver").mockImplementation(async (...a) => ({ ...(await original(...a)), idDevolucao: null }));
+    const x = await cancelada({ forma: "cartao", resposta: "pedida" });
+    espiao.mockRestore();
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "pedida", chaveAceita: true, idProvedor: null });
+    const [item] = (await c.provedor.consultar(x.idProvedor))!.devolucoes;
+    c.provedor.falharDevolucao(item.id);
+    const registrar = (quando: Date) => registrarRecusaNoPainel(db, c.org, x.pagamentoId, { data: "2026-10-01", nota: "Painel mostra o estorno recusado" }, x.equipe, quando);
+    // Antes do aviso de sem confirmação: o pedido aceito ainda pode sair, então não.
+    await conferirPendentes(db, c.org, c.provedor, minutos(71));
+    expect((await c.tentativa(x.pagamentoId)).avisos).not.toContain("devolucao_sem_confirmacao");
+    expect(await registrar(minutos(75))).toMatchObject({ ok: false, erro: expect.stringContaining("Só uma devolução recusada") });
+    await conferirPendentes(db, c.org, c.provedor, minutos(82));
+    await conferirPendentes(db, c.org, c.provedor, minutos(93));
+    expect((await c.tentativa(x.pagamentoId)).avisos).toContain("devolucao_sem_confirmacao");
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "pedida", chaveAceita: true });
+    expect((await pagamentosDaReserva(db, c.org, x.reservaId, minutos(95)))[0].acoes.registrarRecusaNoPainel).toBe(true);
+    // Com o aviso: a recusa do painel tira a devolução da espera (recusada, chaves desligadas), com auditoria.
+    expect(await registrar(minutos(95))).toEqual({ ok: true, situacao: "recusada" });
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "recusada", chaveAceita: false, chaveEmDuvida: false, proximaTentativaEm: null, recusaNoPainelPor: x.equipe });
+    const t = await c.tentativa(x.pagamentoId);
+    expect(t.avisos).toContain("devolucao_falhou");
+    expect(t.avisos).not.toContain("devolucao_sem_confirmacao");
+    // Daí a equipe segue: pedir de novo ao Mercado Pago, ou a devolução por fora (no cartão, aberta pela recusa registrada).
+    const acoes = (await pagamentosDaReserva(db, c.org, x.reservaId, minutos(96)))[0].acoes;
+    expect([acoes.devolver, acoes.devolucaoPorFora]).toEqual([true, true]);
+    expect(await porFora(x.pagamentoId, minutos(97))).toEqual({ ok: true, situacao: "por_fora" });
+  });
+
+  it("aceita, sem o id, com o aviso de sem confirmação, mas a leitura mostra devolução em andamento ou valor devolvido: a recusa do painel não é registrada", async () => {
+    const original = c.provedor.devolver.bind(c.provedor);
+    const espiao = vi.spyOn(c.provedor, "devolver").mockImplementation(async (...a) => ({ ...(await original(...a)), idDevolucao: null }));
+    const x = await cancelada({ forma: "cartao", resposta: "pedida" });
+    espiao.mockRestore();
+    await db.update(pagamentos).set({ avisos: ["devolucao_sem_confirmacao"], devolucaoEmAndamentoLida: true }).where(eq(pagamentos.id, x.pagamentoId));
+    const registrar = () => registrarRecusaNoPainel(db, c.org, x.pagamentoId, { data: "2026-10-01", nota: "Painel mostra o estorno recusado" }, x.equipe, minutos(95));
+    expect(await registrar()).toMatchObject({ ok: false, erro: expect.stringContaining("Só uma devolução recusada") });
+    await db.update(pagamentos).set({ devolucaoEmAndamentoLida: false, devolvidoLido: 1000 }).where(eq(pagamentos.id, x.pagamentoId));
+    expect(await registrar()).toMatchObject({ ok: false, erro: expect.stringContaining("Só uma devolução recusada") });
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "pedida", chaveAceita: true });
+  });
+
   it("confirmada pelo valor: a order 'processed/refunded' (situação desconhecida) com as devoluções que somam o devido confirma, acerta o caixa e guarda o valor confirmado", async () => {
     c.provedor.detalheDevolvido = "processed/refunded";
     const x = await cancelada({ liberar: true });

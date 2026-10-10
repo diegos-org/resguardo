@@ -52,7 +52,11 @@ describe("mensagens do cancelamento (M8.2c) nos modelos de mensagem", () => {
     expect(problemaDoModeloNoTipo("confirmacao", "Olá, {hospede}! {recebido}")).toContain("não pode usar {recebido}");
     expect(problemaDoModeloNoTipo("checkin", "Olá! {link}")).toContain("não pode usar {link}");
     expect(variaveisForaDoLugar("agradecimento", "{valor} {data} {hospede}")).toEqual(["valor", "data"]);
-    expect(variaveisForaDoLugar("cancelamento_decidido", "{recebido} {decisao} {valor} {data} {comovolta} {link}")).toEqual([]);
+    // {valor}, {data} e {comovolta} só existem com a devolução feita (na decisão sairiam vazios e travariam a mensagem).
+    expect(variaveisForaDoLugar("cancelamento_decidido", "{recebido} {decisao} {valor} {data} {comovolta} {link}")).toEqual(["valor", "data", "comovolta"]);
+    expect(variaveisForaDoLugar("cancelamento_decidido", "{recebido} {decisao} {link}")).toEqual([]);
+    expect(problemaDoModeloNoTipo("cancelamento_decidido", "A reserva {codigo} foi cancelada. {decisao} Valor: {valor}.")).toBe("“Cancelamento: decisão” não pode usar {valor}: essa variável só vale em “Cancelamento: devolução feita”.");
+    expect(variaveisForaDoLugar("devolucao_concluida", "{valor} {data} {comovolta} {link}")).toEqual([]);
     expect(variaveisForaDoLugar("cancelamento_recebido", "{recebido} {link} {hospede} {codigo}")).toEqual([]);
     // Toda variável com restrição vale em algum tipo de cancelamento.
     for (const [v, tipos] of Object.entries(ONDE_VALE)) expect(tipos!.length, v).toBeGreaterThan(0);

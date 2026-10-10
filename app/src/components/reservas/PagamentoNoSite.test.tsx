@@ -123,6 +123,12 @@ describe("quadro Pagamento no site", () => {
       acoes: sem,
     };
     expect(html([porFora])).toContain("feita por fora · R$ 1.824,00 · em 05/10/2026 · nota: Pix da empresa");
+    // A nota da devolução por fora é texto livre (pode trazer um valor): só para quem lê o financeiro, como a da confirmação.
+    const comValorNaNota: PagamentoDoPainel = { ...porFora, devolucao: { ...porFora.devolucao!, porForaNota: "Pix de R$ 1.500,00 feito pela conta da empresa em 12/10" } };
+    const semFinanceiro = html([comValorNaNota], { verValores: false });
+    expect(semFinanceiro).toContain("feita por fora · em 05/10/2026");
+    expect(semFinanceiro).not.toContain("nota:");
+    expect(semFinanceiro).not.toContain("R$");
     // Recusada: o quadro não afirma que o Mercado Pago não fez; manda conferir lá antes.
     const recusada: PagamentoDoPainel = { ...base, desfecho: null, devolucao: { situacao: "recusada", valor: 182400, tentativas: 3, falhas: 3, confirmadaEm: null, porForaData: null, porForaValor: null, porForaNota: "", taxaPerdida: null }, acoes: sem };
     const hr = html([recusada]);

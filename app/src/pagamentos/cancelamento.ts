@@ -155,7 +155,11 @@ const recusa = (codigo: CodigoRecusaCancelamento, erro: string): Recusa => ({ ok
 
 export const TEXTO_PREVIA_MUDOU = "O cálculo mudou desde a prévia (pagamento, pedido, repasse ou leitura do Mercado Pago mudaram): calcule de novo antes de cancelar.";
 export const TEXTO_OCUPADO = "Muitas mudanças nesta reserva agora: tente de novo em instantes.";
-export const TEXTO_SEM_LEITURA = "Não deu para conferir o pagamento no Mercado Pago agora: tente de novo em instantes. O horário do pedido já está registrado e não muda.";
+export const TEXTO_SEM_LEITURA = "Não deu para conferir o pagamento no Mercado Pago agora: tente de novo em instantes.";
+/** Depois do TEXTO_SEM_LEITURA: com um pedido registrado, o horário dele fica; digitado só no formulário, nada foi guardado. */
+const SEM_LEITURA_PEDIDO_REGISTRADO = " O horário do pedido já está registrado e não muda.";
+const SEM_LEITURA_PEDIDO_NAO_GUARDADO = ' O horário do pedido ainda não está guardado: registre o pedido ("Registrar pedido de cancelamento") para ele não se perder.';
+export const TEXTO_EMPRESA_SEMPRE_INTEGRAL = "Quando a SCL cancela, o hóspede recebe o valor integral pago (com ou sem a política aceita): a equipe não decide outra coisa.";
 export const TEXTO_SEM_POLITICA = "Este pagamento foi feito sem o aceite das páginas legais (antes de 9/10): o sistema não calcula a devolução. Escolha o que fazer e escreva o motivo.";
 export const TEXTO_INTEGRAL_NAO_SE_NEGA = "Pela política aceita, o hóspede tem direito ao valor integral: a equipe não decide outra coisa.";
 export const TEXTO_DEVOLVIDO_EM_PARTE =
@@ -353,7 +357,11 @@ async function montarDecisao(db: Db, organizacaoId: string, t: Travado, e: Entra
   const politica = await politicaDoPagamento(db, organizacaoId, p.id);
   const valorPago = valorPagoNaOrder({ pago: p.valorPago, valor: p.valor });
   const entradaPolitica = { regras: politica?.regras ?? null, checkin: r.checkin, horaEntrada, fuso, aprovadoEm: p.aprovadoEm ?? p.criadoEm, pedidoRecebidoEm: recebidoEm, valorBase: valorPago };
-  const decisao = decidirPelaPolitica({ ...entradaPolitica, quemCancela: e.quemCancela });
+  const calculada = decidirPelaPolitica({ ...entradaPolitica, quemCancela: e.quemCancela });
+  // D5: a SCL cancela → sempre integral, também num pagamento sem a política aceita (a escolha "sem política" é só do
+  // pedido do hóspede; a SCL nunca fica com o dinheiro de uma reserva que ela mesma cancelou).
+  const decisao: DecisaoPolitica =
+    e.quemCancela === "empresa" && calculada.calculado === "sem_politica" ? { ...calculada, calculado: "integral", base: "empresa", valorADevolver: valorPago } : calculada;
   // Daqui em diante, toda recusa diz o que a equipe pode escolher (a tela oferece a exceção mesmo sem prévia).
   const escolha = escolhaDaEquipe(decisao.calculado);
   const recusaDecidida = (codigo: CodigoRecusaCancelamento, erro: string): Recusa => ({ ...recusa(codigo, erro), escolha });
@@ -374,7 +382,7 @@ async function montarDecisao(db: Db, organizacaoId: string, t: Travado, e: Entra
       base = decisao.base;
     } else return recusaDecidida("dados", "Pela política aceita não há devolução: para devolver tudo, escolha a exceção, com o motivo.");
   } else {
-    if (e.decisao !== "politica") return recusaDecidida("integral_nao_se_nega", TEXTO_INTEGRAL_NAO_SE_NEGA);
+    if (e.decisao !== "politica") return recusaDecidida("integral_nao_se_nega", politica ? TEXTO_INTEGRAL_NAO_SE_NEGA : TEXTO_EMPRESA_SEMPRE_INTEGRAL);
     direito = "integral";
     base = decisao.base;
   }
@@ -387,7 +395,8 @@ async function montarDecisao(db: Db, organizacaoId: string, t: Travado, e: Entra
       `O pedido chegou depois do início da estadia (${diaHoraBr(entradaEm, fuso)}): pela política não há devolução e a reserva continua como está (saída antecipada não é cancelamento). Descarte o pedido com o motivo, se for o caso.`,
     );
   // 11. Integral de um pagamento ainda no prazo de leitura: só com a leitura de agora aplicada.
-  if (direito === "integral" && p.criadoEm.getTime() >= inicioLeitura && !extras.leituraAplicada) return recusaDecidida("sem_leitura", TEXTO_SEM_LEITURA);
+  if (direito === "integral" && p.criadoEm.getTime() >= inicioLeitura && !extras.leituraAplicada)
+    return recusaDecidida("sem_leitura", `${TEXTO_SEM_LEITURA}${ativo ? SEM_LEITURA_PEDIDO_REGISTRADO : e.quemCancela === "hospede" ? SEM_LEITURA_PEDIDO_NAO_GUARDADO : ""}`);
   // 12. Os componentes (sob a trava do motor na fase 1) e a parte num repasse ainda não pago.
   const motor = await lancamentosDoMotor(db, organizacaoId, r.id, { travar: extras.travar });
   const somar = (tipo: string) => motor.ativos.filter((a) => a.tipo === tipo).reduce((s, a) => s + a.valor, 0);
@@ -410,8 +419,9 @@ async function montarDecisao(db: Db, organizacaoId: string, t: Travado, e: Entra
   let perdaDoProprietario = 0;
   if (direito === "integral" && base === "excecao") perdaDoProprietario = parteProprietario;
   else if (direito === "integral" && base === "empresa" && politica) {
-    // O que o hóspede teria se o pedido fosse dele agora: sem devolução, o proprietário receberia a parte.
-    if (decidirPelaPolitica({ ...entradaPolitica, quemCancela: "hospede" }).calculado === "nenhum") perdaDoProprietario = parteProprietario;
+    // O que o hóspede teria pela política se o pedido fosse dele: o pedido registrado, no horário dele (um pedido no
+    // prazo já dava o integral); sem pedido, agora. Sem devolução, o proprietário receberia a parte.
+    if (decidirPelaPolitica({ ...entradaPolitica, pedidoRecebidoEm: ativo?.pedidoRecebidoEm ?? recebidoEm, quemCancela: "hospede" }).calculado === "nenhum") perdaDoProprietario = parteProprietario;
   }
   const ajustes = await db
     .select({ id: lancamentos.id, descricao: lancamentos.descricao, valor: lancamentos.valor })
@@ -504,6 +514,10 @@ async function montarDecisao(db: Db, organizacaoId: string, t: Travado, e: Entra
         leitura.situacao,
         leitura.devolvidoLido,
         leitura.emAndamento,
+        // O pedido ativo e os descartados: um pedido registrado ou descartado entre a prévia e o clique muda a prévia
+        // (sem isto, o descarte de um pedido da equipe com o mesmo minuto e canal passaria como pedido novo).
+        ativo?.id ?? null,
+        descartadas.map((x) => x.id),
       ]),
     )
     .digest("hex")

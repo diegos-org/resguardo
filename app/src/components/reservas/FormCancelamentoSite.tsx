@@ -86,7 +86,8 @@ export function FormCancelamentoSite({
   const previa = estado.previa && alteradoEm !== estado ? estado.previa : null;
   const doHospede = quem === "hospede";
   const momentoCorrigido = !!pedido && !pedido.site && doHospede && (data !== pedido.data || hora !== pedido.hora);
-  const escolheSemPolitica = semPolitica || estado.escolha === "sem_politica";
+  // A SCL cancela: sempre integral, com ou sem política aceita (a escolha sem política é só do pedido do hóspede).
+  const escolheSemPolitica = quem !== "empresa" && (semPolitica || estado.escolha === "sem_politica");
   const ofereceExcecao = !escolheSemPolitica && estado.escolha === "excecao";
   return (
     <form

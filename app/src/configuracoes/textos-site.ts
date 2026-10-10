@@ -108,8 +108,9 @@ export const TEXTOS_SITE_INICIAIS: TextosSite = {
     "Seu pagamento com cartão está em análise pelo Mercado Pago, que pode levar até 2 dias úteis. Enquanto a análise não termina, não dá para pagar de outro jeito nesta cotação: fale com a equipe pelo WhatsApp se precisar.",
   // Cancelamento (M8.2c): texto-base para Diego revisar. Nunca cita o Beds24 nem traz dado pessoal.
   cancelamentoSemTaxas: "sem desconto de taxas.",
-  cancelamentoDevolucaoPedida: "Já pedimos a devolução ao Mercado Pago; esta página mostra quando ela for confirmada.",
-  cancelamentoEstornoNoCartao: "Estamos pedindo o estorno no seu cartão; esta página mostra quando for feito.",
+  // Também vão para a mensagem ao hóspede ({decisao}): "a página da sua reserva", nunca "esta página".
+  cancelamentoDevolucaoPedida: "Já pedimos a devolução ao Mercado Pago; a página da sua reserva mostra quando ela for confirmada.",
+  cancelamentoEstornoNoCartao: "Estamos pedindo o estorno no seu cartão; a página da sua reserva mostra quando for feito.",
   cancelamentoVoltaPix: "O valor volta para a conta de onde saiu o pagamento.",
   cancelamentoVoltaCartao: "No cartão, o estorno aparece na fatura atual ou na seguinte, conforme o banco.",
   cancelamentoVoltaPorFora: "Devolvemos por transferência, como combinado com a nossa equipe.",

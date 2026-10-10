@@ -32,9 +32,12 @@ import {
   NOMES_TIPO,
   preencherModelo,
   problemaDoModeloNoTipo,
+  TEXTO_BASE_RECEBIDO_SEM_POLITICA,
+  textoDaFaltaNoCancelamento,
   TEXTOS_BASE_CANCELAMENTO,
   type TipoMensagemCancelamento,
   type Variavel,
+  VARIAVEIS_DO_CANCELAMENTO,
   variaveisDoTexto,
   variaveisForaDoLugar,
 } from "@/configuracoes/modelos-texto";
@@ -290,13 +293,19 @@ const dataNoFuso = (d: Date, fuso: string) => new Intl.DateTimeFormat("pt-BR", {
  * devolução pelo mesmo texto da página da reserva, o valor, o dia e o endereço da página no site). Vazio = falta.
  */
 async function valoresDoCancelamento(db: Db, organizacaoId: string, a: AlvoCancelamento, empresa: { nome: string; site: string }, textos: TextosSite, agora: Date): Promise<Record<Variavel, string>> {
+  return (await dadosDoCancelamento(db, organizacaoId, a, empresa, textos, agora)).valores;
+}
+
+/** Os valores das variáveis e se o pagamento foi feito sem a política aceita (o texto-base do pedido recebido muda). */
+async function dadosDoCancelamento(db: Db, organizacaoId: string, a: AlvoCancelamento, empresa: { nome: string; site: string }, textos: TextosSite, agora: Date): Promise<{ valores: Record<Variavel, string>; semPolitica: boolean }> {
   const vista = await vistaDaCotacaoParaHospede(db, organizacaoId, a.cotacaoId, agora, { comAutorizacao: false });
+  const semPolitica = vista?.cancelamento ? vista.cancelamento.politicaVersao === null : vista?.pedidoCancelamentoSemPolitica === true;
   const texto = vista ? textoDoCancelamento(vista, textos, a.fuso) : null;
   const c = vista?.cancelamento ?? null;
   const devolvido = c?.direito === "integral" ? (c.valorConfirmado ?? c.valor) : null;
   const site = empresa.site.trim().replace(/\/+$/, "");
   const noites = Math.round((Date.parse(a.checkout) - Date.parse(a.checkin)) / 86_400_000);
-  return {
+  const valores: Record<Variavel, string> = {
     hospede: a.nome.trim(),
     imovel: a.imovel.trim(),
     // Uma reserva cancelada nunca recebe o endereço (o modelo é recusado ao ser escolhido).
@@ -313,10 +322,14 @@ async function valoresDoCancelamento(db: Db, organizacaoId: string, a: AlvoCance
     comovolta: texto?.comoVolta ?? "",
     link: site ? `${site}/reservar/${a.cotacaoCodigo}` : "",
   };
+  return { valores, semPolitica };
 }
 
-/** A mensagem pronta para copiar: o texto (null quando falta dado), o que falta e se veio do texto-base (sem modelo escolhido). */
-export type MensagemPronta = { texto: string | null; falta: Variavel[]; textoBase: boolean };
+/**
+ * A mensagem pronta para copiar: o texto (null quando falta dado), o que falta e se veio do texto-base (sem modelo
+ * escolhido, ou com um modelo que não serve para a mensagem: `modeloRecusado` diz por quê).
+ */
+export type MensagemPronta = { texto: string | null; falta: Variavel[]; textoBase: boolean; modeloRecusado?: string };
 
 /**
  * As mensagens do cancelamento prontas para copiar no painel (M8.2c, botões "Copiar mensagem"): do modelo escolhido para
@@ -331,12 +344,17 @@ export async function mensagensDoCancelamento(db: Db, organizacaoId: string, res
   const cfg = await lerConfigMensagens(db, organizacaoId);
   const ids = (["cancelamento_recebido", "cancelamento_decidido", "devolucao_concluida"] as const).map((t) => cfg.modelos[t]).filter((x): x is string => !!x && uuidValido(x));
   const modelos = ids.length ? await db.select().from(modelosMensagem).where(and(eq(modelosMensagem.organizacaoId, organizacaoId), inArray(modelosMensagem.id, ids))) : [];
-  const valores = await valoresDoCancelamento(db, organizacaoId, a, await lerEmpresa(db, organizacaoId), await lerTextosSite(db, organizacaoId), agora);
+  const { valores, semPolitica } = await dadosDoCancelamento(db, organizacaoId, a, await lerEmpresa(db, organizacaoId), await lerTextosSite(db, organizacaoId), agora);
   const montar = (tipo: TipoMensagemCancelamento): MensagemPronta => {
-    const modelo = modelos.find((m) => m.id === cfg.modelos[tipo] && m.ativo);
-    const texto = modelo?.texto ?? TEXTOS_BASE_CANCELAMENTO[tipo];
+    const escolhido = modelos.find((m) => m.id === cfg.modelos[tipo] && m.ativo);
+    // A regra de cada mensagem vale também aqui, como no envio automático: um modelo editado depois de escolhido (ex.:
+    // {valor} no pedido recebido, que a operação copia sem ver valores) não chega ao botão — fica o texto-base.
+    const recusado = escolhido ? problemaDoModeloNoTipo(tipo, escolhido.texto) : null;
+    const modelo = recusado ? undefined : escolhido;
+    const base = tipo === "cancelamento_recebido" && semPolitica ? TEXTO_BASE_RECEBIDO_SEM_POLITICA : TEXTOS_BASE_CANCELAMENTO[tipo];
+    const texto = modelo?.texto ?? base;
     const falta = (variaveisDoTexto(texto) as Variavel[]).filter((v) => Object.hasOwn(valores, v) && !valores[v]);
-    return { texto: falta.length ? null : preencherModelo(texto, valores), falta, textoBase: !modelo };
+    return { texto: falta.length ? null : preencherModelo(texto, valores), falta, textoBase: !modelo, ...(recusado ? { modeloRecusado: recusado } : {}) };
   };
   return {
     recebido: prazoDaMensagemDoCancelamento("cancelamento_recebido", a) ? montar("cancelamento_recebido") : null,
@@ -506,7 +524,10 @@ export async function enviarMensagensHospede(db: Db, organizacaoId: string, corr
         const usadas = variaveisDoTexto(modelo.texto) as Variavel[];
         const faltando = usadas.filter((v) => !valores![v]);
         if (faltando.length) {
-          aviso(`falta ${faltando.map((v) => `{${v}}`).join(", ")} no cadastro`);
+          // O que é do cancelamento (o valor, o dia…) não se completa no cadastro: o dado ainda não existe neste caso.
+          const doCancelamento = faltando.filter((v) => VARIAVEIS_DO_CANCELAMENTO.includes(v));
+          const doCadastro = faltando.filter((v) => !VARIAVEIS_DO_CANCELAMENTO.includes(v));
+          aviso([doCadastro.length ? `falta ${doCadastro.map((v) => `{${v}}`).join(", ")} no cadastro` : "", doCancelamento.length ? textoDaFaltaNoCancelamento(doCancelamento) : ""].filter(Boolean).join("; "));
           continue;
         }
         const enviada = await enviarUma(db, organizacaoId, correio, res, { reservaId: a.reservaId, tipo, referencia: prazo.referencia, para, modeloNome: modelo.nome, assunto: `${modelo.nome} — reserva ${a.codigo}`, texto: preencherModelo(modelo.texto, valores) }, agora);

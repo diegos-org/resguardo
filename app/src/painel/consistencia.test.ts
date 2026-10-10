@@ -617,4 +617,37 @@ describe("consistência entre telas (M4.8)", () => {
     expect(pdf.conciliacao.some((l) => l.rotulo.startsWith("+ a receber") && l.rotulo.includes("Site A"))).toBe(false);
     expect(pdf.conciliacaoFecha).toBe(true);
   });
+
+  it("M8.2c — dois meses espelhados no mesmo mês: cada desconto traz só os componentes do próprio mês da estadia, e as linhas somam o livro", async () => {
+    // Estadia de 25/10 a 4/11 (as duas partes ficam disponíveis no dia seguinte à entrada); o antecipado de 26/10 paga as
+    // duas; a SCL cancela em 27/10: os dois meses movimentaram e os espelhos caem os dois em outubro.
+    const r = await criarReserva(db, org, reserva(a, "2026-10-25", "2026-11-04", { origem: "site", valorBruto: 100000, taxaCanal: 1000 }), null);
+    if (!r.ok) throw new Error("reserva");
+    await receberTudo(db, org, r.reserva.id, "2026-10-20");
+    const g = await gerarAntecipado(db, org, dona, "2026-10-26", null);
+    if (!g.ok) throw new Error(g.erro);
+    await marcarRepassePago(db, org, g.id, "2026-10-26", "2026-10-26", null);
+    const pagamentoId = await pagamentoDoSiteDeTeste(db, org, r.reserva);
+    const cancelamentoId = await cancelamentoDeTeste(db, org, { reservaId: r.reserva.id, pagamentoId, direito: "integral" });
+    await espelharCancelamento(db, org, { reservaId: r.reserva.id, cancelamentoId, competencia: "2026-10-01", codigo: r.reserva.codigo, agora: new Date("2026-10-27T12:00:00-03:00") });
+    const dados = await dadosDoRelatorio(db, org, { donos: [{ id: dona, nome: "Dona Fictícia" }], imoveis: [{ id: a, codigo: "403", nome: "Quatro" }], todosOsImoveis: true, ano: 2026, mes: 10, hoje: "2026-11-10" });
+    const daReserva = dados.partes.filter((p) => p.reservaId === r.reserva.id && p.mes === "2026-10");
+    // A linha do motor de outubro (7 de 10 noites) e um desconto por mês da estadia: o de outubro (7 noites) e o de novembro (3).
+    expect(daReserva.map((p) => [p.cancelamento ?? "motor", p.bruto, p.taxa, p.comissao, p.suaParte]).sort()).toEqual(
+      [
+        ["motor", 70000, 700, 10395, 58905],
+        ["desconto", -70000, -700, -10395, -58905],
+        ["desconto", -30000, -300, -4455, -25245],
+      ].sort(),
+    );
+    for (const p of daReserva) expect(p.bruto - p.taxa - p.comissao).toBe(p.suaParte);
+    // As linhas somam o que o livro tem de outubro para a reserva (o mesmo número da capa).
+    const livro = await db.select().from(lancamentos).where(and(eq(lancamentos.reservaId, r.reserva.id), eq(lancamentos.competencia, "2026-10-01")));
+    const doLivro = (tipo: string) => livro.filter((l) => l.tipo === tipo).reduce((s, l) => s + l.valor, 0);
+    expect(daReserva.reduce((s, p) => s + p.bruto, 0)).toBe(doLivro("receita_bruta"));
+    expect(daReserva.reduce((s, p) => s + p.taxa, 0)).toBe(-doLivro("taxa_canal"));
+    expect(daReserva.reduce((s, p) => s + p.comissao, 0)).toBe(doLivro("comissao"));
+    expect(daReserva.reduce((s, p) => s + p.suaParte, 0)).toBe(doLivro("direito_proprietario"));
+    expect(textosDoRelatorio(dados).conciliacaoFecha).toBe(true);
+  });
 });

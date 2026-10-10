@@ -6,10 +6,11 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
 import { violouUnicidade } from "@/db/erros";
-import { appSettings, modelosMensagem } from "@/db/schema";
+import { appSettings, modelosMensagem, TIPOS_MENSAGEM_HOSPEDE } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
-import { type DadosModelo, type ErrosModelo, validarModelo } from "./modelos-texto";
+import { lerConfig } from "./armazem";
+import { type DadosModelo, type ErrosModelo, NOMES_TIPO, problemaDoModeloNoTipo, validarModelo } from "./modelos-texto";
 
 export * from "./modelos-texto";
 
@@ -64,6 +65,14 @@ export async function atualizarModelo(
     const v = validarModelo(mudanca.dados);
     if (!v.ok) return v;
     dados = v.dados;
+    // O modelo já escolhido para uma mensagem ao hóspede (M9.2/M8.2c) segue a regra dela também na edição (a mesma da
+    // escolha, `salvarConfigMensagens`): ex.: {valor} nunca no pedido recebido do cancelamento, que a operação copia.
+    const modelos = ((await lerConfig(db, organizacaoId, "mensagens_hospede"))?.modelos ?? {}) as Record<string, unknown>;
+    for (const tipo of TIPOS_MENSAGEM_HOSPEDE) {
+      if (modelos[tipo] !== id) continue;
+      const problema = problemaDoModeloNoTipo(tipo, v.dados.texto);
+      if (problema) return { ok: false, erros: { texto: `Este modelo está escolhido para “${NOMES_TIPO[tipo]}”: ${problema}` } };
+    }
   }
   try {
     return await db.transaction(async (tx) => {

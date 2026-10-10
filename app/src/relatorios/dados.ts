@@ -2,7 +2,7 @@
  * Consultas dos dados novos do relatório mensal (M5.7). Nada é recalculado: as partes vêm do extrato (M4.10/M4.12), os
  * números do mês do resumo do portal, os repasses e as despesas do livro. Aqui só se junta o que cada página mostra.
  */
-import { and, asc, eq, gt, gte, inArray, isNull, lt, or, sql, sum } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, isNull, lt, or, type SQL, sql, sum } from "drizzle-orm";
 import { NOMES_TIPO } from "@/contratos/regras";
 import { auditoria, bloqueios, contratos, lancamentos, proprietarioImoveis, reservas, type TipoContrato } from "@/db/schema";
 import type { Db } from "@/db/types";
@@ -28,9 +28,10 @@ const comissaoTexto = (bp: number | null): string | null => (bp === null ? null 
  * pagou (um antecipado de outubro pode levar uma reserva de julho liberada só agora: a capa mostra o Pix inteiro, como a
  * tabela de repasses); só dos imóveis do relatório. Cada parte traz os componentes do livro daquele mês (bruto, taxa do
  * canal, comissão) e a data em que o canal pagou (M4.12). O espelho de um cancelamento pela política (origem
- * "cancelamento", M8.2c) traz só os componentes espelhados, e a parte do motor só os do motor — mesmo quando o
- * cancelamento cai no mês da estadia, cada linha fecha bruto − taxa − comissão = parte; e o espelho não tem data de
- * pagamento do canal (nenhum canal pagou o espelho: é o dinheiro que voltou ao hóspede).
+ * "cancelamento", M8.2c) traz só os componentes espelhados do mesmo mês original que ele, e a parte do motor só os do
+ * motor — mesmo quando o cancelamento cai no mês da estadia, ou quando dois meses da estadia são espelhados no mesmo
+ * mês, cada linha fecha bruto − taxa − comissão = parte; e o espelho não tem data de pagamento do canal (nenhum canal
+ * pagou o espelho: é o dinheiro que voltou ao hóspede).
  */
 export async function partesDoRelatorio(db: Db, organizacaoId: string, o: { donos: readonly Dono[]; imovelIds: readonly string[]; mes: MesISO; agora: Date }): Promise<ParteDoRelatorio[]> {
   const imoveis = new Set(o.imovelIds.filter(uuidValido));
@@ -42,9 +43,31 @@ export async function partesDoRelatorio(db: Db, organizacaoId: string, o: { dono
   if (!partes.length) return [];
   const reservaIds = [...new Set(partes.map((p) => p.reservaId))];
   const mesesDasPartes = [...new Set(partes.map((p) => mesDe(p.competencia)))].sort();
+  // O espelho de um cancelamento (chave `cancelamento:<id>:espelho:<original>`) leva o mês do lançamento original: dois
+  // meses da estadia que movimentaram dinheiro dão dois espelhos no mesmo mês, e cada linha de desconto fica só com os
+  // componentes do próprio mês (senão cada uma somaria os dois e nenhuma fecharia).
+  const mesDoOriginal = (chave: SQL) => sql<string | null>`(select to_char(o.competencia, 'YYYY-MM') from ${lancamentos} o where o.organizacao_id = ${organizacaoId} and o.id::text = split_part(${chave}, ':', 4))`;
+  const espelhos = partes.filter((p) => p.origemLancamento === "cancelamento").map((p) => p.lancamentoId);
+  const mesesOriginais = new Map(
+    espelhos.length
+      ? (
+          await db
+            .select({ id: lancamentos.id, mes: mesDoOriginal(sql`${lancamentos.chaveOrigem}`) })
+            .from(lancamentos)
+            .where(and(eq(lancamentos.organizacaoId, organizacaoId), inArray(lancamentos.id, espelhos)))
+        ).map((l) => [l.id, l.mes] as const)
+      : [],
+  );
   const [componentes, codigos] = await Promise.all([
     db
-      .select({ reservaId: lancamentos.reservaId, mes: sql<string>`to_char(${lancamentos.competencia}, 'YYYY-MM')`, tipo: lancamentos.tipo, espelho: sql<boolean>`(${lancamentos.origem} = 'cancelamento')`, valor: sum(lancamentos.valor) })
+      .select({
+        reservaId: lancamentos.reservaId,
+        mes: sql<string>`to_char(${lancamentos.competencia}, 'YYYY-MM')`,
+        tipo: lancamentos.tipo,
+        espelho: sql<boolean>`(${lancamentos.origem} = 'cancelamento')`,
+        mesOriginal: sql<string | null>`(case when ${lancamentos.origem} = 'cancelamento' then ${mesDoOriginal(sql`${lancamentos.chaveOrigem}`)} end)`,
+        valor: sum(lancamentos.valor),
+      })
       .from(lancamentos)
       .where(
         and(
@@ -56,17 +79,18 @@ export async function partesDoRelatorio(db: Db, organizacaoId: string, o: { dono
           lancamentoEmVigor(db),
         ),
       )
-      .groupBy(sql`1`, sql`2`, sql`3`, sql`4`),
+      .groupBy(sql`1`, sql`2`, sql`3`, sql`4`, sql`5`),
     db.select({ id: reservas.id, codigoCanal: reservas.codigoCanal }).from(reservas).where(inArray(reservas.id, reservaIds)),
   ]);
-  const comp = (reservaId: string, mes: MesISO, tipo: string, espelho: boolean) =>
-    Number(componentes.find((c) => c.reservaId === reservaId && c.mes === mes && c.tipo === tipo && c.espelho === espelho)?.valor ?? 0);
+  const comp = (reservaId: string, mes: MesISO, tipo: string, espelho: boolean, mesOriginal: string | null) =>
+    Number(componentes.find((c) => c.reservaId === reservaId && c.mes === mes && c.tipo === tipo && c.espelho === espelho && (c.mesOriginal ?? null) === mesOriginal)?.valor ?? 0);
   const codigoCanal = new Map(codigos.map((c) => [c.id, c.codigoCanal]));
   return partes
     .map((p) => {
       const mes = mesDe(p.competencia);
       const { inicio, fim } = limitesDe(mes);
       const espelho = p.origemLancamento === "cancelamento";
+      const original = espelho ? (mesesOriginais.get(p.lancamentoId) ?? null) : null;
       return {
         reservaId: p.reservaId,
         codigo: p.codigoReserva,
@@ -78,9 +102,9 @@ export async function partesDoRelatorio(db: Db, organizacaoId: string, o: { dono
         mes,
         noitesNoMes: noitesNoIntervalo(p.checkin, p.checkout, inicio, fim),
         noitesTotal: noitesNoIntervalo(p.checkin, p.checkout, p.checkin, p.checkout),
-        bruto: comp(p.reservaId, mes, "receita_bruta", espelho),
-        taxa: -comp(p.reservaId, mes, "taxa_canal", espelho),
-        comissao: comp(p.reservaId, mes, "comissao", espelho),
+        bruto: comp(p.reservaId, mes, "receita_bruta", espelho, original),
+        taxa: -comp(p.reservaId, mes, "taxa_canal", espelho, original),
+        comissao: comp(p.reservaId, mes, "comissao", espelho, original),
         suaParte: p.valor,
         quemRecebe: p.quemRecebe,
         situacao: p.situacao,

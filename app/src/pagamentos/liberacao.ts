@@ -27,6 +27,7 @@ import { estornar, lancar, LancamentoInvalido, mudarEstado } from "@/financeiro/
 import { reservaCalculadaPeloMotor } from "@/financeiro/motor";
 import { travarMotorDaReserva } from "@/financeiro/trava";
 import { hojeISO } from "@/lib/datas";
+import { ERRO_DADOS_PESSOAIS, textoSemDadosPessoais } from "@/lib/dados-pessoais";
 import { uuidValido } from "@/lib/ids";
 import { formatBRL } from "@/lib/money";
 import { repasseAPagarDaReserva } from "@/repasses/recebimentos";
@@ -39,6 +40,8 @@ export const chaveRecebimento = (pagamentoId: string) => `mercadopago:${pagament
 const dataBr = (d: string) => d.split("-").reverse().join("/");
 
 export type Resultado = { ok: true } | { ok: false; erro: string };
+
+export const ERRO_ESTORNO_LIBERACAO_CANCELADA = "A reserva foi cancelada com devolução integral ao hóspede: a liberação não se estorna mais (não poderia ser registrada de novo). Corrija com um ajuste.";
 
 /** Recebimentos lançados para este pagamento (a chave base e as versões #N), com os que ainda estão em vigor. */
 export async function recebimentosDoPagamento(tx: Db, organizacaoId: string, pagamentoId: string) {
@@ -196,11 +199,14 @@ async function taxaAntesDoManual(tx: Db, organizacaoId: string, pagamentoId: str
 /**
  * Estorna a liberação registrada à mão (a do provedor nunca): a taxa e o líquido voltam ao que o provedor tinha
  * informado antes (ou a desconhecidos), a reserva recebe essa taxa com o motor, o aviso de liberação divergente sai, e
- * a próxima conferência relê a Payments API. A próxima liberação usa a chave seguinte (#N).
+ * a próxima conferência relê a Payments API. A próxima liberação usa a chave seguinte (#N). Na reserva cancelada com
+ * devolução integral (M8.2c), nunca: a liberação não se registraria de novo e a saída da devolução espelha esta entrada.
  */
 export async function estornarLiberacaoManual(db: Db, organizacaoId: string, pagamentoId: string, motivo: string, autorId: string | null, agora: Date = new Date()): Promise<Resultado> {
   const m = motivo.trim().slice(0, 200);
   if (!m) return { ok: false, erro: "Informe o motivo do estorno." };
+  // O motivo vai para a descrição do estorno no livro: nunca com dado pessoal (como toda nota, M8.2c).
+  if (textoSemDadosPessoais(motivo.trim()) === null) return { ok: false, erro: ERRO_DADOS_PESSOAIS };
   const cotacaoId = await cotacaoDoPagamento(db, organizacaoId, pagamentoId);
   if (!cotacaoId) return { ok: false, erro: "Pagamento não encontrado." };
   return db.transaction(async (tx) => {
@@ -213,6 +219,9 @@ export async function estornarLiberacaoManual(db: Db, organizacaoId: string, pag
     if (l.estado !== "realizado") return { ok: false as const, erro: "A liberação foi confirmada pelo Mercado Pago: não se estorna pelo painel." };
     // M8.2c: a saída do caixa da devolução ao hóspede espelha este recebimento; estornar a liberação deixaria a saída sem a entrada.
     if (devolucaoDoPagamento(t, p.id)?.saidaLancamentoId) return { ok: false as const, erro: "A devolução ao hóspede já espelhou esta liberação: corrija com um ajuste." };
+    // M8.2c: cancelada com devolução integral, a liberação não se registra de novo (`registrarLiberacaoManual`), e a taxa
+    // nunca volta à reserva (gravá-la reabriria a conferência que o acerto do cancelamento deu por resolvida).
+    if (!reservaCalculadaPeloMotor(t.reserva)) return { ok: false as const, erro: ERRO_ESTORNO_LIBERACAO_CANCELADA };
     await travarMotorDaReserva(tx, organizacaoId, t.reserva.id);
     const preso = await repasseAPagarDaReserva(tx, organizacaoId, t.reserva.id);
     if (preso) return { ok: false as const, erro: preso };
@@ -232,7 +241,7 @@ export async function estornarLiberacaoManual(db: Db, organizacaoId: string, pag
       .where(eq(pagamentos.id, p.id));
     // A reserva volta à taxa do provedor (ou a nenhuma) antes de qualquer novo recebimento: o motor recalcula.
     if (p.desfecho === "reserva") await gravarTaxaNaReserva(tx, organizacaoId, t.reserva.id, taxa, liquido, autorId, p.id, agora);
-    await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "pagamento.liberacao_estornar", entidade: "pagamento", entidadeId: p.id, mudancas: { liberacao: [`${l.montante} em ${l.dataCaixa}`, null], taxa: [p.taxa, taxa], motivo: [null, m] } });
+    await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "pagamento.liberacao_estornar", entidade: "pagamento", entidadeId: p.id, mudancas: { liberacao: [`${l.montante} em ${l.dataCaixa}`, null], taxa: [p.taxa, taxa] } });
     return { ok: true as const };
   });
 }

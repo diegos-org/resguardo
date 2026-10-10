@@ -6,10 +6,10 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { lerEmpresa, salvarEmpresa } from "@/configuracoes/empresa";
-import { criarModelo } from "@/configuracoes/modelos";
+import { atualizarModelo, criarModelo } from "@/configuracoes/modelos";
 import { TEXTOS_BASE_CANCELAMENTO } from "@/configuracoes/modelos-texto";
 import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
-import { cancelamentosReserva, mensagensHospede } from "@/db/schema";
+import { cancelamentosReserva, mensagensHospede, modelosMensagem } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { CorreioMemoria } from "@/email/correio";
@@ -110,7 +110,8 @@ describe("mensagens do cancelamento pelo motor (M8.2c)", () => {
     expect(await enviarMensagensHospede(db, c.org, correio, new Date("2026-10-10T11:05:00-03:00"))).toMatchObject({ enviadas: 2 });
     const ultimas = correio.enviadas.slice(antes);
     expect(ultimas.map((m) => m.assunto).sort()).toEqual([`Cancelamento decidido — reserva ${z.reservaCodigo}`, `Pedido recebido — reserva ${z.reservaCodigo}`]);
-    expect(ultimas.find((m) => m.assunto.startsWith("Cancelamento decidido"))!.texto).toContain("Prazo de reembolso integral: pedidos até 28/09, às 23h59.");
+    // Paga em 01/10 com o prazo do integral até 28/09: esse prazo nunca valeu para ela (não aparece), só o arrependimento.
+    expect(ultimas.find((m) => m.assunto.startsWith("Cancelamento decidido"))!.texto).toContain("Esta reserva foi paga quando o prazo de reembolso integral já tinha passado. Arrependimento: até 08/10.");
   });
 
   it("pedido do hóspede pelo site e a SCL cancela antes de o motor rodar: o 'pedido recebido' sai mesmo assim (o recibo é do pedido), com a hora do pedido; o botão de copiar também", async () => {
@@ -152,5 +153,35 @@ describe("mensagens prontas para copiar no painel (M8.2c)", () => {
     // O botão de copiar não depende do prazo do envio automático: o "pedido recebido" continua disponível depois.
     expect((await mensagensDoCancelamento(db, c.org, x.reservaId, new Date(minutos(60).getTime() + 3 * 86_400_000))).recebido?.texto).toContain("Recebemos o seu pedido");
     expect(await mensagensDoCancelamento(db, c.org, "nao-e-uuid", minutos(150))).toEqual({ recebido: null, decidido: null, devolvida: null });
+  });
+
+  it("modelo editado depois de escolhido com {valor} no pedido recebido: a edição é recusada; e um texto gravado que não serve não chega ao botão de copiar (usa o texto-base, sem R$)", async () => {
+    const x = await pagarEConfirmar(c);
+    const r = await criarModelo(db, c.org, { nome: "Recibo", quando: "", texto: "Recebemos o pedido da reserva {codigo} em {recebido}." }, null);
+    if (!r.ok || !r.modelo) throw new Error("modelo");
+    const id = r.modelo.id;
+    expect(await salvarConfigMensagens(db, c.org, { ativo: false, origens: ["site"], modelos: { cancelamento_recebido: id } }, null, AGORA)).toEqual({ ok: true });
+    // Editar o modelo escolhido para pôr {valor}: recusado, como na escolha (a operação copia esta mensagem).
+    expect(await atualizarModelo(db, c.org, id, { dados: { nome: "Recibo", quando: "", texto: "Recebemos o pedido da reserva {codigo} em {recebido}. Devolução de {valor}." } }, null)).toMatchObject({
+      ok: false,
+      erros: { texto: expect.stringContaining("não pode usar {valor}") },
+    });
+    // Um texto que não serve gravado assim mesmo (antes desta conferência): a cópia não o usa.
+    await db.update(modelosMensagem).set({ texto: "Recebemos {codigo} em {recebido}. Devolução de {valor}. {decisao}" }).where(eq(modelosMensagem.id, id));
+    await pedirCancelamentoPeloHospede(db, c.org, EMAIL_HOSPEDE, x.reservaCodigo, minutos(60));
+    await cancelar(c, x.reservaId, entradaPadrao(), equipe, minutos(120));
+    const m = await mensagensDoCancelamento(db, c.org, x.reservaId, minutos(130));
+    expect(m.recebido).toMatchObject({ textoBase: true, modeloRecusado: expect.stringContaining("não pode usar {valor}") });
+    expect(m.recebido!.texto).toContain("Recebemos o seu pedido de cancelamento");
+    expect(m.recebido!.texto).not.toContain("R$");
+  });
+
+  it("pagamento sem a política aceita: o texto-base do pedido recebido não diz 'a política que você aceitou'", async () => {
+    const x = await pagarEConfirmar(c, { semAceite: true });
+    await pedirCancelamentoPeloHospede(db, c.org, EMAIL_HOSPEDE, x.reservaCodigo, minutos(60));
+    const m = await mensagensDoCancelamento(db, c.org, x.reservaId, minutos(70));
+    expect(m.recebido?.texto).toContain("Recebemos o seu pedido de cancelamento");
+    expect(m.recebido?.texto).not.toContain("que você aceitou");
+    expect(m.recebido?.texto).toContain("confirmamos com você, por escrito, o valor da devolução");
   });
 });

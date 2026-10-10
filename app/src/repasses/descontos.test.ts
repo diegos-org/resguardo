@@ -25,7 +25,8 @@ import { avisosDeDescontos, chaveEspelhoDoCancelamento, descontosDoProprietario,
 import { partesDoProprietario, resumirPartes } from "./extrato";
 import { escolherPeriodicidade } from "./proprietario";
 import { recebidoPorReserva } from "./recebimentos";
-import { descricaoDoItem, estornarRepasse, fecharMes, gerarAntecipado, itensDoRepasse, marcarRepassePago, obterRepasse, preverRepasses, travarDono } from "./repasses";
+import { descricaoDoItem, estornarRepasse, fecharMes, gerarAntecipado, itensDoRepasse, marcarRepassePago, obterRepasse, preverRepasses, separarAntecipado, travarDono } from "./repasses";
+import { formatBRL } from "@/lib/money";
 import { cancelamentoDeTeste, espelharCancelamento, pagamentoDoSiteDeTeste } from "./testes-cancelamento";
 import { receberTudo } from "./testes";
 
@@ -186,6 +187,24 @@ describe("desconto da parte já repassada (M8.2c)", () => {
     expect(texto).not.toContain("Noites de meses seguintes já pagas");
   });
 
+  it("fechamento com noites de mês seguinte e um desconto de mês seguinte: o painel e o e-mail mostram os dois, cada um na sua linha (o total gravado fica)", async () => {
+    await repassadaECancelada();
+    // Estadia de 28/10 a 4/11, recebida: a parte de novembro já está disponível no dia do fechamento de outubro.
+    const outra = await criar(reserva("2026-10-28", "2026-11-04", { valorBruto: 200000, taxaCanal: 30000 }), "2026-10-28");
+    const [p] = await preverRepasses(db, org, "2026-10", "2026-11-02", [dono]);
+    const novembro = (await partes("2026-11-02")).find((x) => x.reservaId === outra.id && x.competencia === "2026-11-01")!;
+    expect(p.antecipado).toBe(novembro.valor - 72250);
+    expect(p.antecipadoSeparado).toEqual({ noites: novembro.valor, desconto: -72250, estorno: 0 });
+    const rep = id(await fecharMes(db, org, dono, "2026-10", "2026-11-02", null));
+    const gravado = (await obterRepasse(db, org, rep))!;
+    expect(gravado.antecipado).toBe(novembro.valor - 72250);
+    const itens = await itensDoRepasse(db, org, rep);
+    expect(separarAntecipado(gravado.antecipado, itens, gravado.mes)).toEqual({ noites: novembro.valor, desconto: -72250, estorno: 0 });
+    const { texto } = textoDoEmailDoRepasse(gravado, itens, "Sua Casa Exemplo");
+    expect(texto).toContain(`Noites de meses seguintes já pagas: ${formatBRL(novembro.valor)}`);
+    expect(texto).toContain("Desconto de reserva cancelada com devolução ao hóspede: − R$ 722,50");
+  });
+
   it("cancelada sem devolução (valor retido): a parte segue a regra de uma confirmada, com o motivo próprio antes da entrada original", async () => {
     const r = await criar(reserva("2026-12-10", "2026-12-13"), "2026-11-01");
     await db.update(reservas).set({ estado: "cancelada", valorRetido: 100000 }).where(eq(reservas.id, r.id));
@@ -314,6 +333,8 @@ describe("mês que movimentou dinheiro sem a parte ter sido paga ao proprietári
     // O fechamento de outubro leva os dois (a parte da competência e o estorno como antecipado) e fecha zerado: o proprietário não deve nada.
     const [outubro] = await preverRepasses(db, org, "2026-10", "2026-11-06", [dono], true);
     expect(outubro).toMatchObject({ valor: 0, deve: 0, antecipado: -72250, bloqueios: [] });
+    // O antecipado negativo é o estorno (que anula a parte do saldo): nem noites de meses seguintes, nem desconto.
+    expect(outubro.antecipadoSeparado).toEqual({ noites: 0, desconto: 0, estorno: -72250 });
     expect(outubro.avisos.join(" ")).toContain(`A parte de R$ 722,50 (reservas ${r.codigo}, canceladas com devolução integral ao hóspede antes de a parte ser repassada) e o estorno dela entram juntos neste repasse e se anulam.`);
     expect(outubro.avisos.join(" ")).not.toContain("desconto de cancelamento");
   });

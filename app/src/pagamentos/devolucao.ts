@@ -322,7 +322,7 @@ export async function tentarDevolucao(db: Db, organizacaoId: string, devolucaoId
     });
     if (reserva === null) return situacaoDaDevolucao(db, devolucaoId);
     chaveRepetida = reserva.repetida;
-    res = await provedor.devolver(cobranca, reserva.chave, null);
+    res = await provedor.devolver(cobranca, reserva.chave, null, { repetida: chaveRepetida });
   }
   // Antes de dar a devolução por recusada (a terceira recusa ou resposta incerta), a order é relida: a resposta pode
   // ter cruzado com um pedido que saiu. undefined = não deu para ler (então não se desiste).
@@ -690,27 +690,40 @@ export async function confirmarDevolucaoVistaNoProvedor(
 }
 
 /**
+ * A recusa do painel pode ser registrada (uma regra; o quadro do pagamento lê daqui): devolução recusada; pedida sem aceite
+ * depois do prazo de leitura; ou pedida e aceita que a leitura nunca confirmou (aviso de sem confirmação) — a que falhou
+ * sem o sistema saber o id dela, que nada solta sozinho — com a última leitura sem nada devolvido nem em andamento.
+ */
+export function podeRegistrarRecusaNoPainel(p: Pick<Pagamento, "criadoEm" | "situacao" | "avisos" | "devolvidoLido" | "devolucaoEmAndamentoLida">, dev: Devolucao | undefined, agora: Date): boolean {
+  if (!dev || !origemDeDevolucaoConhecida(dev.origem) || dev.recusaNoPainelEm) return false;
+  if (dev.situacao === "recusada") return true;
+  if (dev.situacao !== "pedida") return false;
+  if (!dev.chaveAceita) return p.criadoEm.getTime() < inicioDoPrazoDeReleitura(agora).getTime();
+  return p.avisos.includes("devolucao_sem_confirmacao") && p.situacao === "aprovado" && p.devolvidoLido === 0 && !p.devolucaoEmAndamentoLida;
+}
+
+/**
  * "Registrar que o Mercado Pago recusou a devolução no painel" (M8.2c, `financeiro:editar`): a devolução ficou recusada
- * aqui (ou pedida sem aceite, depois do prazo de leitura) e o painel do Mercado Pago também recusou. Libera a devolução
- * por fora no cartão. Data e nota (sem dado pessoal), auditadas.
+ * aqui (ou pedida sem aceite, depois do prazo de leitura; ou aceita e nunca confirmada, `podeRegistrarRecusaNoPainel`) e
+ * o painel do Mercado Pago também recusou. Sai da espera (recusada, chaves desligadas) e libera a devolução por fora no
+ * cartão. Data e nota (sem dado pessoal), auditadas.
  */
 export async function registrarRecusaNoPainel(db: Db, organizacaoId: string, pagamentoId: string, d: { data: string; nota: string }, autorId: string | null, agora: Date = new Date()): Promise<ResultadoAcaoPagamento> {
   const problema = problemaDoRegistro(d, agora);
   if (problema) return { ok: false, erro: problema };
   const nota = d.nota.trim();
   return comPagamento(db, organizacaoId, pagamentoId, async (tx, _t, p, dev) => {
-    const foraDaLeitura = p.criadoEm.getTime() < inicioDoPrazoDeReleitura(agora).getTime();
-    const pode = !!dev && origemDeDevolucaoConhecida(dev.origem) && (dev.situacao === "recusada" || (dev.situacao === "pedida" && foraDaLeitura && !dev.chaveAceita));
-    if (!dev || !pode) return { ok: false as const, erro: "Só uma devolução recusada (ou pedida, sem aceite, depois do prazo de leitura do Mercado Pago) pode ter a recusa do painel registrada." };
-    if (dev.recusaNoPainelEm) return { ok: false as const, erro: "A recusa do painel do Mercado Pago já foi registrada." };
+    if (dev?.recusaNoPainelEm) return { ok: false as const, erro: "A recusa do painel do Mercado Pago já foi registrada." };
+    if (!dev || !podeRegistrarRecusaNoPainel(p, dev, agora))
+      return { ok: false as const, erro: "Só uma devolução recusada (ou pedida, sem aceite, depois do prazo de leitura do Mercado Pago; ou aceita que o Mercado Pago nunca confirmou) pode ter a recusa do painel registrada." };
     if (d.data < hojeISO(FUSO_PAGAMENTO, dev.criadoEm)) return { ok: false as const, erro: "A data não pode ser antes de a devolução ser registrada." };
     const [linha] = await tx
       .update(devolucoesPagamento)
-      .set({ situacao: "recusada", proximaTentativaEm: null, chaveEmDuvida: false, recusaNoPainelEm: instanteLocal(d.data, "12:00", FUSO_PAGAMENTO), recusaNoPainelPor: autorId, recusaNoPainelNota: nota, atualizadoEm: agora })
+      .set({ situacao: "recusada", proximaTentativaEm: null, chaveEmDuvida: false, chaveAceita: false, recusaNoPainelEm: instanteLocal(d.data, "12:00", FUSO_PAGAMENTO), recusaNoPainelPor: autorId, recusaNoPainelNota: nota, atualizadoEm: agora })
       .where(eq(devolucoesPagamento.id, dev.id))
       .returning();
     Object.assign(dev, linha);
-    await ligarAvisoNoPagamento(tx, p, "devolucao_falhou", agora);
+    await trocarAvisos(tx, p, { desligar: ["devolucao_sem_confirmacao"], ligar: ["devolucao_falhou"] }, agora);
     await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "pagamento.devolucao_recusada_no_painel", entidade: "pagamento", entidadeId: p.id, mudancas: { recusaNoPainel: [null, d.data] } });
     return { ok: true as const, situacao: "recusada" as const };
   });

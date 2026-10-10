@@ -2,9 +2,10 @@ import { redirect } from "next/navigation";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import styles from "@/components/site/site.module.css";
 import { Moldura } from "@/components/site/Moldura";
+import { TEXTO_VALOR_PELA_EQUIPE } from "@/configuracoes/politica-cancelamento";
 import { TEXTOS_SITE_INICIAIS, type TextosSite } from "@/configuracoes/textos-site";
 import { pedirCancelamentoAcao, sairHospede } from "@/hospede/acoes";
-import { type CancelamentoNoPortal, cancelamentoNoPortal, ESTADIA_COMECOU, JA_CANCELADA, NAO_DA, PEDIDO_DESLIGADO, PEDIDO_OCUPADO, textoDaPoliticaNoPortal } from "@/hospede/cancelamento";
+import { type CancelamentoNoPortal, cancelamentoNoPortal, ESTADIA_COMECOU, JA_CANCELADA, NAO_DA, PEDIDO_DESLIGADO, PEDIDO_OCUPADO, perguntaDoPedidoDeCancelamento, textoDaPoliticaNoPortal } from "@/hospede/cancelamento";
 import { INSTRUCOES_HORA, type ReservaDoHospede, reservasDoHospede } from "@/hospede/portal";
 import { emailDoHospede } from "@/hospede/sessao-atual";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
@@ -64,7 +65,7 @@ function CancelarReserva({ codigo, c, textos, agora }: { codigo: string; c: Canc
     return (
       <div className={styles.aviso} role="note">
         <p style={{ margin: 0 }}>
-          Pedido de cancelamento recebido em {diaHoraBrasilia(c.pedidoEm)} (horário de Brasília). {textos.cancelamentoPedidoRecebido}
+          Pedido de cancelamento recebido em {diaHoraBrasilia(c.pedidoEm)} (horário de Brasília). {c.semPolitica ? TEXTO_VALOR_PELA_EQUIPE : textos.cancelamentoPedidoRecebido}
         </p>
         <p style={{ margin: 0 }}>
           Acompanhe na página da sua reserva: <a href={c.linkCotacao}>ver a reserva no site</a>.
@@ -83,7 +84,7 @@ function CancelarReserva({ codigo, c, textos, agora }: { codigo: string; c: Canc
       <form action={pedirCancelamentoAcao}>
         <input type="hidden" name="reserva" value={codigo} />
         <BotaoConfirmar
-          pergunta={`Pedir o cancelamento da reserva ${codigo}? A data e a hora em que recebemos o pedido ficam registradas agora. A equipe confirma com você, por escrito, o valor que será devolvido pela política que você aceitou ao pagar.`}
+          pergunta={perguntaDoPedidoDeCancelamento(codigo, c.semPolitica)}
           className={`${styles.botao} ${styles.botaoContorno}`}
         >
           Pedir o cancelamento

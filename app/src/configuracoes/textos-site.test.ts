@@ -119,4 +119,11 @@ describe("textos do cancelamento (M8.2c): editáveis, com texto-base", () => {
   it("o texto-base não cita o Beds24, não traz valor nem dado pessoal (as datas e os valores são do sistema)", () => {
     for (const k of chaves) expect(TEXTOS_SITE_INICIAIS[k], k).not.toMatch(/beds24|R\$|\d|@/i);
   });
+
+  it("as frases que também vão para a mensagem ao hóspede ({decisao}) não dizem 'esta página' (no e-mail não há página na frente dele)", () => {
+    for (const k of ["cancelamentoDevolucaoPedida", "cancelamentoEstornoNoCartao"] as const) {
+      expect(TEXTOS_SITE_INICIAIS[k], k).not.toMatch(/esta página/i);
+      expect(TEXTOS_SITE_INICIAIS[k], k).toContain("a página da sua reserva");
+    }
+  });
 });

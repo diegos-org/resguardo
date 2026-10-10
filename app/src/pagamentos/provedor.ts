@@ -254,9 +254,11 @@ export interface ProvedorPagamento {
   cancelar(idProvedor: string, chaveIdempotencia: string): Promise<ResultadoCancelamento>;
   /**
    * `valor` null = integral (o que falta devolver). Nunca lança: falhas viram `recusada`/`incerta`/`aguarde`. `c` é a
-   * leitura de antes do pedido: as devoluções dela (`c.devolucoes`) separam a nova das que já existiam.
+   * leitura de antes do pedido: as devoluções dela (`c.devolucoes`) separam a nova das que já existiam. `repetida`: a
+   * chave já foi enviada antes (resposta incerta) — uma resposta aceita sem devolução nova é a repetição da do pedido
+   * anterior, e a devolução que ela lista sozinha é a desse pedido.
    */
-  devolver(c: Cobranca, chaveIdempotencia: string, valor: number | null): Promise<ResultadoDevolucao>;
+  devolver(c: Cobranca, chaveIdempotencia: string, valor: number | null, o?: { repetida?: boolean }): Promise<ResultadoDevolucao>;
   /**
    * A conta por trás da chave é, comprovadamente, uma conta de TESTE do provedor? true só com
    * prova; false quando comprovadamente não é; null quando não deu para saber. Só true libera

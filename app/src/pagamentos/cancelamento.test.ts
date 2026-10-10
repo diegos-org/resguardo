@@ -28,6 +28,7 @@ import {
   marcarOtaLiberada,
   previaDoCancelamento,
   TEXTO_DEVOLVIDO_EM_PARTE,
+  TEXTO_EMPRESA_SEMPRE_INTEGRAL,
   TEXTO_INTEGRAL_NAO_SE_NEGA,
   TEXTO_OCUPADO,
   TEXTO_PREVIA_MUDOU,
@@ -293,6 +294,37 @@ describe("exceção, sem política e o direito integral que nunca se nega (M8.2c
     expect(resultado).toMatchObject({ ok: true, direito: "integral" });
   });
 
+  it("a SCL cancela um pagamento sem o aceite das páginas legais: sempre integral (base: a SCL cancela); 'não devolver' é recusado", async () => {
+    const a = await pagarEConfirmar(c, { ...longe, semAceite: true });
+    const empresa = { quemCancela: "empresa" as const, motivoEmpresa: "imovel_sem_condicoes" as const };
+    const nega = await previaDoCancelamento(db, c.org, a.reservaId, entradaPadrao({ ...empresa, decisao: "nenhum", motivoDecisao: "Apartamento sem condições" }), c.provedor, minutos(60));
+    expect(nega).toEqual({ ok: false, codigo: "integral_nao_se_nega", erro: TEXTO_EMPRESA_SEMPRE_INTEGRAL, escolha: null });
+    const { previa, resultado } = await cancelar(c, a.reservaId, entradaPadrao(empresa), equipe, minutos(60));
+    if (!previa.ok) throw new Error(previa.erro);
+    expect(previa.previa).toMatchObject({ direito: "integral", base: "empresa", valorADevolver: TOTAL, politica: null });
+    expect(previa.previa.avisos).not.toContain(TEXTO_SEM_POLITICA);
+    expect(resultado).toMatchObject({ ok: true, direito: "integral" });
+    expect(await cancelamentoDe(a.reservaId)).toMatchObject({ calculado: "integral", base: "empresa", direito: "integral", politicaVersao: null, valorADevolver: TOTAL });
+    expect((await c.reserva(a.reservaId)).valorRetido).toBeNull();
+  });
+
+  it("a SCL cancela com um pedido do hóspede registrado dentro do prazo: pela política ele já teria o integral, então o proprietário não perde nada a mais", async () => {
+    const x = await pagarEConfirmar(c, longe);
+    // Pedido por WhatsApp em 1/10 (prazo integral até 6/11); a SCL cancela em 10/11, depois do prazo.
+    await comPedido(x.reservaId, minutos(30));
+    const empresa = await previaDoCancelamento(db, c.org, x.reservaId, entradaPadrao({ quemCancela: "empresa", motivoEmpresa: "forca_maior" }), c.provedor, sp("2026-11-10 10:00"));
+    if (!empresa.ok) throw new Error(empresa.erro);
+    expect(empresa.previa).toMatchObject({ direito: "integral", base: "empresa" });
+    expect(empresa.previa.componentes.perdaDoProprietario).toBe(0);
+    expect(empresa.previa.avisos.join(" ")).not.toContain("deixa de receber");
+    expect(empresa.previa.pergunta).not.toContain("deixa de receber");
+    // Sem pedido (outra reserva, prazo integral até 9/11), no mesmo instante a política não daria nada: aí sim o proprietário deixa de receber a parte.
+    const y = await pagarEConfirmar(c, { entrada: "2026-11-23", saida: "2026-11-24", email: "y@example.com" });
+    const semPedido = await previaDoCancelamento(db, c.org, y.reservaId, entradaPadrao({ quemCancela: "empresa", motivoEmpresa: "forca_maior" }), c.provedor, sp("2026-11-10 10:00"));
+    if (!semPedido.ok) throw new Error(semPedido.erro);
+    expect(semPedido.previa.componentes.perdaDoProprietario).toBe(semPedido.previa.componentes.parteProprietario);
+  });
+
   it("empresa sem o motivo: dados", async () => {
     const x = await pagarEConfirmar(c);
     expect(await previaDoCancelamento(db, c.org, x.reservaId, entradaPadrao({ quemCancela: "empresa" }), c.provedor, minutos(60))).toMatchObject({ ok: false, codigo: "dados" });
@@ -433,6 +465,17 @@ describe("recusas e a assinatura da prévia (M8.2c)", () => {
     expect(await previaDoCancelamento(db, c.org, x.reservaId, entrada(), null, minutos(60))).toMatchObject({ ok: false, codigo: "sem_leitura" });
   });
 
+  it("sem leitura: o texto só diz que o horário do pedido está registrado quando há um pedido registrado; digitado no formulário, pede para registrar", async () => {
+    const x = await pagarEConfirmar(c, longe);
+    c.provedor.falhas.consultar = new ErroProvedor("incerto", "sem resposta");
+    const digitado = await previaDoCancelamento(db, c.org, x.reservaId, entradaPadrao({ recebidoEm: minutos(30), canal: "whatsapp" }), c.provedor, minutos(60));
+    expect(digitado).toMatchObject({ ok: false, codigo: "sem_leitura", erro: `${TEXTO_SEM_LEITURA} O horário do pedido ainda não está guardado: registre o pedido ("Registrar pedido de cancelamento") para ele não se perder.` });
+    expect(await cancelamentoDe(x.reservaId)).toBeUndefined();
+    await comPedido(x.reservaId, minutos(30), minutos(61));
+    const registrado = await previaDoCancelamento(db, c.org, x.reservaId, entradaPadrao({ recebidoEm: minutos(30), canal: "whatsapp" }), c.provedor, minutos(62));
+    expect(registrado).toMatchObject({ ok: false, codigo: "sem_leitura", erro: `${TEXTO_SEM_LEITURA} O horário do pedido já está registrado e não muda.` });
+  });
+
   it("assinatura vazia ou velha: previa_mudou; o segundo clique: já cancelada", async () => {
     const x = await pagarEConfirmar(c, longe);
     const p = await previaDoCancelamento(db, c.org, x.reservaId, entrada(), c.provedor, minutos(60));
@@ -443,6 +486,24 @@ describe("recusas e a assinatura da prévia (M8.2c)", () => {
     expect(await cancelarReservaPaga(db, c.org, x.reservaId, entrada(), equipe, c.provedor, minutos(61), p.previa.assinatura)).toMatchObject({ ok: true });
     expect(await cancelarReservaPaga(db, c.org, x.reservaId, entrada(), equipe, c.provedor, minutos(62), p.previa.assinatura)).toMatchObject({ ok: false, codigo: "ja_cancelada", erro: expect.stringContaining("Esta reserva já foi cancelada em 01/10") });
     expect(pedidosDeDevolucao()).toHaveLength(1);
+  });
+
+  it("pedido da equipe descartado (ou registrado) entre a prévia e o clique: previa_mudou, e nada é cancelado", async () => {
+    const x = await pagarEConfirmar(c, longe);
+    expect(await pedir(c, x.reservaId, equipe, { recebidoEm: minutos(30), quando: minutos(31) })).toEqual({ ok: true });
+    // O formulário manda a data, a hora e o canal pré-preenchidos do pedido.
+    const doPedido = entradaPadrao({ recebidoEm: minutos(30), canal: "whatsapp" });
+    const p = await previaDoCancelamento(db, c.org, x.reservaId, doPedido, c.provedor, minutos(60));
+    if (!p.ok) throw new Error(p.erro);
+    expect(await descartarPedidoDeCancelamento(db, c.org, x.reservaId, { motivo: "O hóspede desistiu" }, { id: equipe, podeFinanceiro: false }, minutos(61))).toEqual({ ok: true });
+    expect(await cancelarReservaPaga(db, c.org, x.reservaId, doPedido, equipe, c.provedor, minutos(62), p.previa.assinatura)).toEqual({ ok: false, codigo: "previa_mudou", erro: TEXTO_PREVIA_MUDOU });
+    expect(await c.reserva(x.reservaId)).toMatchObject({ estado: "confirmada" });
+    expect((await db.select().from(cancelamentosReserva).where(eq(cancelamentosReserva.reservaId, x.reservaId))).map((l) => l.situacao)).toEqual(["descartado"]);
+    // Sem pedido na prévia e um registrado no mesmo minuto antes do clique: também muda.
+    const semPedido = await previaDoCancelamento(db, c.org, x.reservaId, doPedido, c.provedor, minutos(63));
+    if (!semPedido.ok) throw new Error(semPedido.erro);
+    expect(await pedir(c, x.reservaId, equipe, { recebidoEm: minutos(30), quando: minutos(64) })).toEqual({ ok: true });
+    expect(await cancelarReservaPaga(db, c.org, x.reservaId, doPedido, equipe, c.provedor, minutos(65), semPedido.previa.assinatura)).toMatchObject({ ok: false, codigo: "previa_mudou" });
   });
 
   it("parte num repasse ainda não pago: recusado (estorne o repasse); repasse pago entre a prévia e o clique: previa_mudou", async () => {

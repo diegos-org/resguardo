@@ -15,6 +15,7 @@ vi.mock("@/site/pagina", () => ({ carregarSite: m.site, metadadosDoSite: vi.fn()
 vi.mock("@/hospede/portal", async (original) => ({ ...(await original<typeof import("@/hospede/portal")>()), reservasDoHospede: m.reservas }));
 vi.mock("@/hospede/cancelamento", async (original) => ({ ...(await original<typeof import("@/hospede/cancelamento")>()), cancelamentoNoPortal: m.cancelamento }));
 vi.mock("@/hospede/acoes", () => ({ pedirCancelamentoAcao: vi.fn(), sairHospede: vi.fn() }));
+import { perguntaDoPedidoDeCancelamento } from "@/hospede/cancelamento";
 import Page from "./page";
 
 const conteudo = { organizacaoId: "org", nomeEmpresa: "Sua Casa Exemplo", textos: { ...TEXTOS_SITE_INICIAIS }, whatsapp: "5521900000000", email: "", imagens: { capa: null, marca: "/marca.png" } };
@@ -88,6 +89,20 @@ describe("Minha reserva: pedir o cancelamento (M8.2c)", () => {
     const h = await html();
     expect(h).toContain("A equipe confirma com você, por escrito, o valor da devolução.");
     expect(h).not.toContain("Pela Política de cancelamento");
+    // Nem a pergunta do botão nem o recibo dizem "a política que você aceitou".
+    expect(perguntaDoPedidoDeCancelamento("SCL-TESTE1", true)).not.toContain("que você aceitou");
+    expect(perguntaDoPedidoDeCancelamento("SCL-TESTE1", false)).toContain("pela política que você aceitou ao pagar");
+    m.cancelamento.mockResolvedValue(cancelamento({ semPolitica: true, integralAte: null, arrependimentoAte: null, direitoAgora: null, podePedir: false, pedidoEm: new Date("2026-10-10T13:00:00Z") }));
+    const recibo = await html();
+    expect(recibo).toContain("Pedido de cancelamento recebido em 10/10 às 10:00 (horário de Brasília). A equipe confirma com você, por escrito, o valor da devolução.");
+    expect(recibo).not.toContain(TEXTOS_SITE_INICIAIS.cancelamentoPedidoRecebido);
+  });
+
+  it("paga já depois do prazo do reembolso integral: nenhum prazo que nunca valeu, só o arrependimento", async () => {
+    m.cancelamento.mockResolvedValue(cancelamento({ integralAte: "2026-10-06", arrependimentoAte: "2026-10-17", direitoAgora: "integral" }));
+    const h = await html();
+    expect(h).toContain("Pela Política de cancelamento que você aceitou, esta reserva foi paga quando o prazo de devolução integral já tinha passado: há devolução integral só no arrependimento, até 17/10 ou até a entrada, o que vier antes. Pedido feito agora: devolução integral.");
+    expect(h).not.toContain("pedidos até 06/10");
   });
 
   it("pedido já recebido: a data e a hora (Brasília), a frase editável e o link para a página da reserva; sem botão", async () => {

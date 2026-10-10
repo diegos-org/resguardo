@@ -15,7 +15,7 @@ import { normalizarEmail } from "@/acesso/entrada";
 import { emailValido } from "@/acesso/codigo-email";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { lerConfigPagamentoSite } from "@/configuracoes/pagamento-site";
-import { decidirPelaPolitica, horaDeEntrada } from "@/configuracoes/politica-cancelamento";
+import { decidirPelaPolitica, horaDeEntrada, pagaSemPrazoIntegral, TEXTO_VALOR_PELA_EQUIPE } from "@/configuracoes/politica-cancelamento";
 import { travaOcupada, violouUnicidade } from "@/db/erros";
 import { cancelamentosReserva, cotacoes, imoveis, imoveisDetalhes, pagamentos, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
@@ -188,12 +188,19 @@ const diaIso = (d: string) => d.split("-").reverse().slice(0, 2).join("/");
  * quando vai além do prazo) e o que um pedido feito agora daria. Sem política aceita, a equipe confirma o valor por escrito.
  */
 export function textoDaPoliticaNoPortal(c: Pick<CancelamentoNoPortal, "semPolitica" | "integralAte" | "arrependimentoAte" | "arrependimentoAteEntrada" | "direitoAgora">): string {
-  if (c.semPolitica || !c.integralAte) return "A equipe confirma com você, por escrito, o valor da devolução.";
-  const arrependimento =
-    c.arrependimentoAte && c.arrependimentoAte > c.integralAte ? `, salvo o arrependimento até ${diaIso(c.arrependimentoAte)}${c.arrependimentoAteEntrada ? " ou até a entrada, o que vier antes" : ""}` : "";
+  if (c.semPolitica || !c.integralAte) return TEXTO_VALOR_PELA_EQUIPE;
+  const ateEntrada = c.arrependimentoAteEntrada ? " ou até a entrada, o que vier antes" : "";
   const agora = c.direitoAgora === "integral" ? "devolução integral" : "sem devolução pela política";
+  // Paga já depois do prazo do reembolso integral: esse prazo nunca valeu para ela; vale só o arrependimento.
+  if (pagaSemPrazoIntegral(c) && c.arrependimentoAte)
+    return `Pela Política de cancelamento que você aceitou, esta reserva foi paga quando o prazo de devolução integral já tinha passado: há devolução integral só no arrependimento, até ${diaIso(c.arrependimentoAte)}${ateEntrada}. Pedido feito agora: ${agora}.`;
+  const arrependimento = c.arrependimentoAte && c.arrependimentoAte > c.integralAte ? `, salvo o arrependimento até ${diaIso(c.arrependimentoAte)}${ateEntrada}` : "";
   return `Pela Política de cancelamento que você aceitou: pedidos até ${diaIso(c.integralAte)} (23h59) têm devolução integral; depois disso, não há devolução${arrependimento}. Pedido feito agora: ${agora}.`;
 }
+
+/** A pergunta do botão "Pedir o cancelamento" (Minha reserva). Sem política aceita, não cita política nenhuma. */
+export const perguntaDoPedidoDeCancelamento = (codigo: string, semPolitica: boolean) =>
+  `Pedir o cancelamento da reserva ${codigo}? A data e a hora em que recebemos o pedido ficam registradas agora. A equipe confirma com você, por escrito, o valor que será devolvido${semPolitica ? "" : " pela política que você aceitou ao pagar"}.`;
 
 const diaHoraBrasilia = (d: Date) => {
   const f = (o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", ...o }).format(d);

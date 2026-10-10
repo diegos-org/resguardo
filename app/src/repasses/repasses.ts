@@ -128,6 +128,8 @@ export type PrevisaoRepasse = ReturnType<typeof calcularRepasse> & {
    */
   diferencaPosFechamento: number;
   repasse: Repasse | null;
+  /** M8.2c: o `antecipado` deste cálculo separado em noites de meses seguintes, desconto de cancelamento e estorno (`separarAntecipado`). */
+  antecipadoSeparado: AntecipadoSeparado;
   /** M4.10: partes de reserva que este fechamento paga (disponíveis da competência e as antecipadas de meses seguintes). */
   itens: Parte[];
   /** M4.10: partes da competência que ficam fora (dinheiro ainda não com a empresa, conferência): vão para o repasse seguinte. */
@@ -393,7 +395,13 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
     }
     if (diferenca !== 0) avisos.push(`Depois do repasse de ${nomeMes(posterior.mes.slice(0, 7))}, o acerto até este mês mudou em ${(diferenca / 100).toFixed(2).replace(".", ",")}: a diferença entra no próximo repasse.`);
   }
+  const separado = separarAntecipado(
+    calc.antecipado,
+    antecipadas.map((x) => ({ competencia: x.competencia, valor: x.valor, anula: x.anulacao === "estorno", anulada: x.anulacao === "anulada" })),
+    lim.inicio,
+  );
   return { ...calc, proprietarioId: dono.id, nome: dono.nome, email: dono.email, chavePix: dono.chavePix, imoveis: vinculos.map((v) => v.codigo), bloqueios, avisos, repasse: atual ?? null,
+    antecipadoSeparado: separado,
     emConferencia: Boolean(pendentesDele?.n || ajustesDele?.n),
     repassePosterior: primeiroPosterior ? primeiroPosterior.mes.slice(0, 7) : null,
     diferencaPosFechamento: diferenca,
@@ -601,7 +609,24 @@ export type ItemDoRepasse = RepasseItem & {
   diferenca: number;
   /** M8.2c: item negativo que é o estorno de uma parte da mesma reserva neste mesmo repasse (nunca paga): os dois se anulam. */
   anula?: boolean;
+  /** M8.2c: a parte (positiva) que o estorno de outro item deste mesmo repasse anula. */
+  anulada?: boolean;
 };
+
+/**
+ * M8.2c: o "antecipado" de um fechamento (as partes de meses seguintes que ele levou, um número só no repasse) separado no
+ * que ele é: `noites` = noites de meses seguintes já pagas; `desconto` (≤ 0) = desconto de reserva cancelada com
+ * devolução, de parte já repassada; `estorno` (≤ 0) = o estorno da parte nunca paga cujo par está no saldo do mês (o par
+ * inteiro de meses seguintes soma zero). Pelos itens (o que o repasse vinculou), com `noites` pelo resto: o total é o gravado.
+ */
+export type AntecipadoSeparado = { noites: number; desconto: number; estorno: number };
+export function separarAntecipado(antecipado: number, itens: readonly Pick<ItemDoRepasse, "competencia" | "valor" | "anula" | "anulada">[], mes: string): AntecipadoSeparado {
+  const seguinte = `${somarMes(mes.slice(0, 7), 1)}-01`;
+  const deMesSeguinte = itens.filter((i) => i.competencia >= seguinte);
+  const desconto = deMesSeguinte.filter((i) => i.valor < 0 && !i.anula).reduce((t, i) => t + i.valor, 0);
+  const estorno = deMesSeguinte.filter((i) => (i.valor < 0 && i.anula) || (i.valor > 0 && i.anulada)).reduce((t, i) => t + i.valor, 0);
+  return { noites: antecipado - desconto - estorno, desconto, estorno };
+}
 
 /** Como descrever o item (integral, parte de um mês, ou recalculado — com a direção certa): a mesma frase no painel, no portal e no e-mail. */
 export function descricaoDoItem(i: Pick<ItemDoRepasse, "parcial" | "diferenca" | "competencia" | "valor" | "anula">): string {
@@ -638,9 +663,11 @@ export async function itensDoRepasse(db: Db, org: string, repasseId: string): Pr
   // O espelho (chave `cancelamento:<id>:espelho:<parte>`) cuja parte original está neste mesmo repasse a anula.
   const lancamentosDoItem = new Set(linhas.map((l) => l.item.lancamentoId));
   const anula = (l: (typeof linhas)[number]) => l.item.valor < 0 && /^cancelamento:[^:]+:espelho:/.test(l.chaveOrigem) && lancamentosDoItem.has(l.chaveOrigem.split(":")[3] ?? "");
+  const anuladas = new Set(linhas.filter(anula).map((l) => l.chaveOrigem.split(":")[3]));
   return linhas.map((l) => ({
     ...l.item,
     ...(anula(l) ? { anula: true } : {}),
+    ...(l.item.valor > 0 && anuladas.has(l.item.lancamentoId) ? { anulada: true } : {}),
     codigoReserva: l.codigoReserva,
     codigoImovel: l.codigoImovel,
     checkin: l.checkin,

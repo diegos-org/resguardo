@@ -3,7 +3,7 @@ import {
   centavosParaValorApi, ClienteMercadoPagoHttp, cobrancaDaOrder, codigosDeErro, contaDeTesteDoUsuario, dataRfc3339, detalheDaOrder,
   EMAIL_PAGADOR_SANDBOX, falhaDeRede, financeiroDoPagamento, normalizarSituacao, primeiroCodigo, valorApiParaCentavos,
 } from "./mercadopago";
-import { type Cobranca, ErroProvedor, type PedidoCartao, type PedidoPix, RECUSA_GENERICA, urlDoDesafio } from "./provedor";
+import { type Cobranca, type DevolucaoLida, ErroProvedor, type PedidoCartao, type PedidoPix, RECUSA_GENERICA, urlDoDesafio } from "./provedor";
 
 // Tudo fictício. O token tem cara de real para os testes de vazamento.
 const TOKEN = "APP_USR-0000000000000000-000000-ficticio0000000000000000000000-000000000";
@@ -1128,6 +1128,21 @@ describe("devolver", () => {
     expect(await pedir(["REF01UMA000000000000000000", "REF01OUTRA0000000000000000"], [])).toMatchObject({ situacao: "pedida", idDevolucao: null });
     // Id inválido ou sem o prefixo de devolução não conta.
     expect(await pedir(["../x", "PAY01NAOEDEVOLUCAO00000000"], [])).toMatchObject({ situacao: "pedida", idDevolucao: null });
+  });
+
+  it("201 com a chave repetida (depois de uma resposta incerta): sem devolução nova, é a repetição do pedido anterior — uma devolução só na resposta é a nossa", async () => {
+    const nossa = { id: "REF01NOSSA00000000000000000", estado: "falhou" as const, valor: 182_400 };
+    const outra = { id: "REF01OUTRA00000000000000000", estado: "falhou" as const, valor: 50_000 };
+    const corpo = (ids: string[]) => ({ transactions: { refunds: ids.map((id) => refund("in_process", { id })) } });
+    const pedir = (ids: string[], devolucoes: DevolucaoLida[], repetida: boolean) => cliente(fetchFalso(json(201, corpo(ids))).impl).devolver(cobrancaAprovada({ devolucoes }), "devolucao-x-1", null, { repetida });
+    // A leitura de antes já lista a nossa (o pedido anterior saiu e falhou): o Mercado Pago repete a resposta dele.
+    expect(await pedir([nossa.id], [nossa], true)).toMatchObject({ situacao: "pedida", idDevolucao: nossa.id });
+    // A mesma resposta com uma chave nova: não dá para saber (pode ser a lista de antes).
+    expect(await pedir([nossa.id], [nossa], false)).toMatchObject({ situacao: "pedida", idDevolucao: null });
+    // Repetida, mas a resposta lista mais de uma conhecida: não dá para saber qual era a nossa.
+    expect(await pedir([outra.id, nossa.id], [outra, nossa], true)).toMatchObject({ situacao: "pedida", idDevolucao: null });
+    // Repetida e com uma nova: a nova (o pedido anterior não tinha chegado).
+    expect(await pedir([outra.id, "REF01NOVA00000000000000000"], [outra], true)).toMatchObject({ situacao: "pedida", idDevolucao: "REF01NOVA00000000000000000" });
   });
 
   it("tempo-limite → incerta", async () => {

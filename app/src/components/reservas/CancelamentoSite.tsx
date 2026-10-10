@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import { BotaoCopiar } from "@/components/BotaoCopiar";
 import styles from "@/components/formularios.module.css";
+import { textoDaFaltaNoCancelamento, VARIAVEIS_DO_CANCELAMENTO } from "@/configuracoes/modelos-texto";
 import { CANAIS_PEDIDO_CANCELAMENTO, type EstadoReserva, MOTIVOS_CANCELAMENTO_EMPRESA, MOTIVOS_EXCECAO, type MotivoCancelamentoEmpresa } from "@/db/schema";
 import { hojeISO } from "@/lib/datas";
 import { formatBRL } from "@/lib/money";
@@ -116,32 +117,49 @@ function parteDoProprietario(c: CancelamentoDoPainel, checkin: string, verValore
 
 /** O botão de copiar uma mensagem ao hóspede (montada agora, nunca gravada), ou o que falta para ela sair. */
 function Copiar({ m, rotulo }: { m: MensagemPronta; rotulo: string }) {
-  if (!m.texto)
+  if (!m.texto) {
+    // O que é do cancelamento (o valor, o dia…) não se completa na reserva: o dado ainda não existe neste caso.
+    const doCancelamento = m.falta.filter((v) => VARIAVEIS_DO_CANCELAMENTO.includes(v));
+    const daReserva = m.falta.filter((v) => !VARIAVEIS_DO_CANCELAMENTO.includes(v));
     return (
       <p role="note" style={nota}>
-        {rotulo}: falta {m.falta.map((v) => `{${v}}`).join(", ")} na reserva: complete antes de copiar.{m.falta.includes("link") ? " O endereço do site fica em Configurações → Empresa." : ""}
+        {rotulo}:{" "}
+        {[
+          daReserva.length ? `falta ${daReserva.map((v) => `{${v}}`).join(", ")} na reserva: complete antes de copiar.${daReserva.includes("link") ? " O endereço do site fica em Configurações → Empresa." : ""}` : "",
+          doCancelamento.length ? `${textoDaFaltaNoCancelamento(doCancelamento)}.` : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
       </p>
     );
+  }
   return (
     <span style={{ display: "inline-flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
       <BotaoCopiar texto={m.texto} rotulo={rotulo} className={styles.pequeno} />
-      {m.textoBase && <span style={nota}>texto-base — edite em Configurações → Mensagens ao hóspede</span>}
+      {m.textoBase && (
+        <span style={nota}>{m.modeloRecusado ? `texto-base: o modelo escolhido não serve para esta mensagem (${m.modeloRecusado})` : "texto-base"} — edite em Configurações → Mensagens ao hóspede</span>
+      )}
     </span>
   );
 }
 
-/** "Mensagem enviada ao hóspede": a marca (quando e quem) ou o botão (reserva:editar). */
-function Avisado({ reservaId, qual, marca, editar }: { reservaId: string; qual: "pedido" | "decisao" | "devolucao"; marca: CancelamentoDoPainel["avisados"]["pedido"]; editar: boolean }) {
+/**
+ * "Mensagem enviada ao hóspede": a marca (quando e quem) ou o botão (reserva:editar), com confirmação — a marca não se
+ * desfaz, e com ela o sistema não envia mais a mensagem e o aviso do Início some. `podeCopiar` falso: a mensagem leva o valor
+ * (decisão, devolução feita) e só quem lê o financeiro a copia; sem isso, o botão fica com quem pode enviá-la.
+ */
+function Avisado({ reservaId, qual, marca, editar, podeCopiar = true }: { reservaId: string; qual: "pedido" | "decisao" | "devolucao"; marca: CancelamentoDoPainel["avisados"]["pedido"]; editar: boolean; podeCopiar?: boolean }) {
   if (marca) return <>enviada em {diaBr(marca.em)} por {marca.por ?? "o sistema"}</>;
   if (!editar) return <>ainda não enviada</>;
+  if (!podeCopiar) return <>ainda não enviada (quem cuida do financeiro copia e envia esta mensagem)</>;
   return (
     <form action={marcarHospedeAvisadoAcao} style={{ display: "inline" }}>
       <input type="hidden" name="reservaId" value={reservaId} />
       <input type="hidden" name="qual" value={qual} />
       ainda não enviada{" "}
-      <button type="submit" style={botaoDiscreto}>
+      <BotaoConfirmar pergunta="Confirmar que esta mensagem já foi enviada ao hóspede? A marca não se desfaz: o sistema não a envia mais e o aviso some do Início." style={botaoDiscreto}>
         Mensagem enviada ao hóspede
-      </button>
+      </BotaoConfirmar>
     </form>
   );
 }
@@ -289,9 +307,9 @@ export function CancelamentoSite({ reserva, pagamento, cancelamento: c, momentos
       ),
     ],
     ...(recebido || c.avisados.pedido ? ([["Hóspede avisado: pedido recebido", <Avisado key="pedido" reservaId={reserva.id} qual="pedido" marca={c.avisados.pedido} editar={editarReserva} />]] as [string, ReactNode][]) : []),
-    ["Hóspede avisado: decisão", <Avisado key="decisao" reservaId={reserva.id} qual="decisao" marca={c.avisados.decisao} editar={editarReserva} />],
+    ["Hóspede avisado: decisão", <Avisado key="decisao" reservaId={reserva.id} qual="decisao" marca={c.avisados.decisao} editar={editarReserva} podeCopiar={verValores} />],
     ...(c.mensagens.devolvida || c.avisados.devolucao
-      ? ([["Hóspede avisado: devolução feita", <Avisado key="devolucao" reservaId={reserva.id} qual="devolucao" marca={c.avisados.devolucao} editar={editarReserva} />]] as [string, ReactNode][])
+      ? ([["Hóspede avisado: devolução feita", <Avisado key="devolucao" reservaId={reserva.id} qual="devolucao" marca={c.avisados.devolucao} editar={editarReserva} podeCopiar={verValores} />]] as [string, ReactNode][])
       : []),
   ];
   return secao(

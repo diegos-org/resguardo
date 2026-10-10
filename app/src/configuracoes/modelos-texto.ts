@@ -37,7 +37,7 @@ export const EXEMPLO: Record<Variavel, string> = {
   codigo: "SCL-AB12",
   empresa: "Sua Casa Leblon",
   recebido: "10/10/2026 às 14:10",
-  decisao: "Pela Política de cancelamento que você aceitou (versão 1), devolvemos o valor integral pago, R$ 1.500,00, sem desconto de taxas. Já pedimos a devolução ao Mercado Pago; esta página mostra quando ela for confirmada.",
+  decisao: "Pela Política de cancelamento que você aceitou (versão 1), devolvemos o valor integral pago, R$ 1.500,00, sem desconto de taxas. Já pedimos a devolução ao Mercado Pago; a página da sua reserva mostra quando ela for confirmada.",
   valor: "R$ 1.500,00",
   data: "12/10/2026",
   comovolta: "O valor volta para a conta de onde saiu o pagamento.",
@@ -70,6 +70,9 @@ export const TEXTOS_BASE_CANCELAMENTO: Record<TipoMensagemCancelamento, string> 
   cancelamento_decidido: "Olá, {hospede}! A reserva {codigo} foi cancelada. {decisao} Acompanhe em {link}. Qualquer dúvida, é só responder esta mensagem.",
   devolucao_concluida: "Olá, {hospede}! A devolução de {valor} da reserva {codigo} foi feita em {data}. {comovolta}",
 };
+/** O texto-base do pedido recebido num pagamento sem a política aceita (antes de 9/10): não cita política nenhuma. */
+export const TEXTO_BASE_RECEBIDO_SEM_POLITICA =
+  "Olá, {hospede}! Recebemos o seu pedido de cancelamento da reserva {codigo} em {recebido} (horário de Brasília). Vamos conferir e confirmamos com você, por escrito, o valor da devolução. Acompanhe em {link}.";
 
 /**
  * Onde cada variável do cancelamento pode ser usada (as outras valem em qualquer mensagem). `{valor}` nunca vai no pedido
@@ -78,11 +81,21 @@ export const TEXTOS_BASE_CANCELAMENTO: Record<TipoMensagemCancelamento, string> 
 export const ONDE_VALE: Partial<Record<Variavel, readonly TipoMensagemHospede[]>> = {
   recebido: TIPOS_MENSAGEM_CANCELAMENTO,
   decisao: ["cancelamento_decidido"],
-  valor: ["cancelamento_decidido", "devolucao_concluida"],
-  data: ["cancelamento_decidido", "devolucao_concluida"],
-  comovolta: ["cancelamento_decidido", "devolucao_concluida"],
+  // O valor, o dia e como o dinheiro volta só existem com a devolução feita: na decisão (sem devolução, ou ainda pedida)
+  // sairiam vazios e travariam a mensagem. Na decisão, `{decisao}` já traz o valor quando há devolução.
+  valor: ["devolucao_concluida"],
+  data: ["devolucao_concluida"],
+  comovolta: ["devolucao_concluida"],
   link: TIPOS_MENSAGEM_CANCELAMENTO,
 };
+
+/**
+ * As variáveis que vêm do cancelamento (não da reserva nem do cadastro): vazias, não há o que completar na reserva — o
+ * dado ainda não existe neste cancelamento. O aviso diz isso (avisar em vez de mandar completar o que não existe).
+ */
+export const VARIAVEIS_DO_CANCELAMENTO: readonly Variavel[] = ["recebido", "decisao", "valor", "data", "comovolta"];
+export const textoDaFaltaNoCancelamento = (vs: readonly string[]) =>
+  `${lista(vs)} ainda não ${vs.length > 1 ? "existem" : "existe"} neste cancelamento: o modelo escolhido não serve para este caso (ajuste-o em Configurações → Modelos de mensagem)`;
 /** Variáveis que a mensagem precisa usar. */
 const OBRIGATORIAS: Partial<Record<TipoMensagemHospede, readonly Variavel[]>> = {
   cancelamento_recebido: ["codigo", "recebido"],

@@ -24,6 +24,7 @@ import {
 import { marcarHospedeAvisado, marcarOtaLiberada } from "./cancelamento";
 import { devolverPeloProvedor, registrarDevolucaoPorFora, registrarRecusaNoPainel, registrarTaxaPerdida } from "./devolucao";
 import { registrarEventoDeAviso } from "./eventos";
+import { conferirPendentes } from "./rotina";
 import { gerarPix } from "./pix";
 import { ErroProvedor } from "./provedor";
 import { AGORA, type Cenario, cancelar, DOCUMENTO_FICTICIO, EMAIL_HOSPEDE, entradaPadrao, env, envelhecer, minutos, montarCenario, pagarEConfirmar, pedir, TOTAL, usuarioDeTeste } from "./testes";
@@ -441,7 +442,8 @@ describe("cancelamento pela política: a página do hóspede, o quadro do pagame
     const ta = await texto(a.cotacaoId, new Date("2026-10-10T12:00:00-03:00"));
     expect(ta.v).toMatchObject({ estado: "cancelada_sem_devolucao", reservaCodigo: a.reservaCodigo, cancelamento: { direito: "nenhum", base: "fora_do_prazo", integralAte: "2026-09-28", arrependimentoAte: "2026-10-08", politicaVersao: 1 } });
     expect(ta.linhas[0]).toBe(`Reserva ${a.reservaCodigo} cancelada. Recebemos o seu pedido em 10/10 às 10:00 (horário de Brasília).`);
-    expect(ta.decisao).toBe(`Prazo de reembolso integral: pedidos até 28/09, às 23h59. Arrependimento: até 08/10. ${t.cancelamentoSemDevolucaoPrazo}`);
+    // Paga em 01/10 com o prazo do integral até 28/09: esse prazo nunca valeu para ela (não aparece), só o arrependimento.
+    expect(ta.decisao).toBe(`Esta reserva foi paga quando o prazo de reembolso integral já tinha passado. Arrependimento: até 08/10. ${t.cancelamentoSemDevolucaoPrazo}`);
     expect(ta.comoVolta).toBeNull();
 
     // Devolvida pelo Mercado Pago (Pix): o valor confirmado e o dia; como volta no Pix.
@@ -496,6 +498,23 @@ describe("cancelamento pela política: a página do hóspede, o quadro do pagame
     }
   });
 
+  it("cartão com a devolução recusada por falta de saldo (a por fora do cartão continua fechada): 'devolução pedida', nunca 'outra forma'; com a recusa do painel registrada, com a equipe", async () => {
+    const equipe = await usuarioDeTeste(c);
+    c.provedor.respostaDevolucao = "saldo_insuficiente";
+    const x = await pagarEConfirmar(c, { ...longe, forma: "cartao" });
+    await cancelar(c, x.reservaId, empresa(), equipe, minutos(60));
+    await conferirPendentes(db, c.org, c.provedor, minutos(71));
+    await conferirPendentes(db, c.org, c.provedor, minutos(82));
+    expect((await db.select().from(devolucoesPagamento).where(eq(devolucoesPagamento.pagamentoId, x.pagamentoId)))[0]).toMatchObject({ situacao: "recusada", ultimoCodigo: "saldo_insuficiente" });
+    const tx = await texto(x.cotacaoId, minutos(90));
+    expect(tx.v.estado).toBe("cancelada_devolucao_pedida");
+    expect(tx.decisao).not.toContain(t.cancelamentoComAEquipe);
+    expect((await acoes(x.reservaId, minutos(90))).cancelada?.estado).toBe("cancelada_devolucao_pedida");
+    // A recusa do painel do Mercado Pago registrada abre a por fora do cartão: aí sim, a equipe combina outra forma.
+    expect(await registrarRecusaNoPainel(db, c.org, x.pagamentoId, { data: "2026-10-01", nota: "Painel recusou o estorno" }, equipe, minutos(95))).toEqual({ ok: true, situacao: "recusada" });
+    expect((await texto(x.cotacaoId, minutos(100))).v.estado).toBe("cancelada_com_a_equipe");
+  });
+
   it("o quadro do pagamento e a lista dizem a mesma situação da página do hóspede (a reserva cancelada pela política, pela devolução)", async () => {
     const equipe = await usuarioDeTeste(c);
     // Ainda confirmada: nada de cancelada.
@@ -543,6 +562,13 @@ describe("cancelamento pela política: a página do hóspede, o quadro do pagame
     expect(textoDoCancelamento(v, t)).toEqual({ linhas: [`Pedido de cancelamento recebido em 01/10 às 12:30 (horário de Brasília). ${t.cancelamentoPedidoRecebido}`], decisao: "", comoVolta: null });
     expect((await acoes(x.reservaId, minutos(50))).pedeAtencao).toBe(true);
     expect((await listarPagamentos(db, c.org, { atencao: true }, minutos(50))).map((p) => p.reservaId)).toContain(x.reservaId);
+    expect(v.pedidoCancelamentoSemPolitica).toBe(false);
+    // Pagamento sem a política aceita: o recibo não cita a política "que você aceitou".
+    const y = await pagarEConfirmar(c, { entrada: "2026-11-25", saida: "2026-11-27", email: "y@example.com", semAceite: true });
+    await pedir(c, y.reservaId, equipe, { recebidoEm: minutos(30), quando: minutos(40) });
+    const vy = (await vista(y.cotacaoId, minutos(50)))!;
+    expect(vy).toMatchObject({ estado: "confirmada", pedidoCancelamentoSemPolitica: true });
+    expect(textoDoCancelamento(vy, t).linhas).toEqual(["Pedido de cancelamento recebido em 01/10 às 12:30 (horário de Brasília). A equipe confirma com você, por escrito, o valor da devolução."]);
   });
 
   it("o quadro do pagamento: as ações de cada caso do cancelamento", async () => {
@@ -593,8 +619,11 @@ describe("cancelamento pela política: a página do hóspede, o quadro do pagame
     // Cancelada: as datas a reabrir (envio ao Beds24 desligado) e a mensagem da decisão e da devolução.
     await cancelar(c, x.reservaId, entradaPadrao(), equipe, minutos(60));
     const depois = await avisos(minutos(70));
-    expect(depois).toContainEqual({ nivel: "info", texto: "1 reserva(s) do site cancelada(s): reabra as datas nas OTAs (no Beds24, apague o bloqueio) enquanto o envio ao Beds24 estiver desligado.", link: "/painel/reservas" });
-    expect(depois).toContainEqual({ nivel: "info", texto: "1 cancelamento(s) com mensagem ao hóspede pendente (decisão ou devolução feita): avise o hóspede.", link: "/painel/reservas" });
+    // Com o código da reserva e o link para a ficha dela (a lista do mês esconde as canceladas).
+    expect(depois).toContainEqual({ nivel: "info", texto: `1 reserva(s) do site cancelada(s) (${x.reservaCodigo}): reabra as datas nas OTAs (no Beds24, apague o bloqueio) enquanto o envio ao Beds24 estiver desligado.`, link: `/painel/reservas/${x.reservaId}` });
+    expect(depois).toContainEqual({ nivel: "info", texto: `1 cancelamento(s) com mensagem ao hóspede pendente (decisão ou devolução feita): avise o hóspede (${x.reservaCodigo}).`, link: `/painel/reservas/${x.reservaId}` });
+    // Quem não lê o financeiro não copia essas mensagens (levam o valor): o aviso delas não aparece para ele.
+    expect((await avisosDeCancelamento(db, c.org, minutos(70), { env: env(), mensagensComValor: false })).some((a) => a.texto.includes("mensagem ao hóspede"))).toBe(false);
     expect((await avisos(minutos(70 + 24 * 60))).find((a) => a.texto.includes("mensagem ao hóspede"))?.nivel).toBe("atencao");
     expect(await marcarOtaLiberada(db, c.org, x.reservaId, equipe, minutos(80))).toEqual({ ok: true });
     expect(await marcarHospedeAvisado(db, c.org, x.reservaId, "decisao", equipe, minutos(80))).toEqual({ ok: true });
@@ -664,6 +693,17 @@ describe("cancelamento pela política: a página do hóspede, o quadro do pagame
     // A recusa do painel registrada na de mais de 78 dias: passa a contar como recusada pelo Mercado Pago.
     expect(await registrarRecusaNoPainel(db, c.org, x.pagamentoId, { data: "2026-10-01", nota: "Painel recusou" }, equipe, minutos(85))).toMatchObject({ ok: true });
     expect((await avisosDePagamento(db, c.org, minutos(90), { env: env() })).contagens).toMatchObject({ devolucaoForaDoPrazo: 0, devolucaoRecusada: 2 });
+  });
+
+  it("Início da operação: com mais de uma reserva, os códigos no texto e o link para a lista das canceladas de todo o histórico", async () => {
+    const equipe = await usuarioDeTeste(c);
+    const x = await pagarEConfirmar(c, longe);
+    const y = await pagarEConfirmar(c, { entrada: "2026-11-25", saida: "2026-11-27", email: "y@example.com" });
+    await cancelar(c, x.reservaId, empresa(), equipe, minutos(60));
+    await cancelar(c, y.reservaId, empresa(), equipe, minutos(60));
+    const ota = (await avisosDeCancelamento(db, c.org, minutos(70), { env: env() })).find((a) => a.texto.includes("reabra as datas"));
+    expect(ota?.texto).toContain(`(${[x.reservaCodigo, y.reservaCodigo].sort().join(", ")})`);
+    expect(ota?.link).toBe("/painel/reservas?situacao=cancelada&escopo=historico");
   });
 
   it("Início da operação: com o envio automático ao Beds24 ligado, 'reabra as datas nas OTAs' não aparece (o envio cuida); o resto continua", async () => {

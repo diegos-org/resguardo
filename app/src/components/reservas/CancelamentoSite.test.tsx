@@ -44,7 +44,12 @@ const pagamento: PagamentoDoPainel = {
   acoes: sem,
   aceite: { versoes: { termos: 1, privacidade: 1, cancelamento: 1 }, aceitoEm: new Date("2026-10-01T15:02:00Z"), diasReembolsoIntegral: 14 },
 };
-const msg = (texto: string | null, o: { textoBase?: boolean; falta?: ("hospede" | "link" | "valor")[] } = {}) => ({ texto, falta: o.falta ?? [], textoBase: o.textoBase ?? true });
+const msg = (texto: string | null, o: { textoBase?: boolean; falta?: ("hospede" | "link" | "valor")[]; modeloRecusado?: string } = {}) => ({
+  texto,
+  falta: o.falta ?? [],
+  textoBase: o.textoBase ?? true,
+  ...(o.modeloRecusado ? { modeloRecusado: o.modeloRecusado } : {}),
+});
 const pedido: CancelamentoDoPainel = {
   id: "c1",
   situacao: "pedido",
@@ -207,6 +212,26 @@ describe("cancelamento pela política na ficha (M8.2c)", () => {
     expect(h).toContain("Devolução integral por exceção (Cortesia comercial)");
     expect(h).toContain("já repassada: desconto lançado em 01/10 — descontado no repasse de 05/10");
     expect(h).toContain("Copiar mensagem: pedido recebido");
+  });
+
+  it("sem financeiro:ler: a 'mensagem enviada' da decisão e da devolução fica com quem pode copiá-las (só a do pedido recebido é da operação)", () => {
+    const h = html({ ...operacao, reserva: { ...props().reserva, estado: "cancelada" }, cancelamento: { ...cancelada, mensagens: { ...cancelada.mensagens, devolvida: msg("Olá! A devolução foi feita.") } } });
+    expect(h.match(/Mensagem enviada ao hóspede/g)).toHaveLength(1);
+    expect(h).toContain("ainda não enviada (quem cuida do financeiro copia e envia esta mensagem)");
+    expect(html({ reserva: { ...props().reserva, estado: "cancelada" }, cancelamento: { ...cancelada, mensagens: { ...cancelada.mensagens, devolvida: msg("Olá! A devolução foi feita.") } } }).match(/Mensagem enviada ao hóspede/g)).toHaveLength(3);
+  });
+
+  it("mensagem que falta um dado do cancelamento (não da reserva) e modelo que não serve: o aviso diz o que é, sem mandar completar a reserva", () => {
+    const h = html({
+      reserva: { ...props().reserva, estado: "cancelada" },
+      cancelamento: {
+        ...cancelada,
+        mensagens: { recebido: msg("Olá! Recebemos o seu pedido.", { modeloRecusado: "“Cancelamento: pedido recebido” não pode usar {valor}." }), decidido: msg(null, { falta: ["valor"] }), devolvida: null },
+      },
+    });
+    expect(h).toContain("Copiar mensagem: cancelamento: {valor} ainda não existe neste cancelamento: o modelo escolhido não serve para este caso (ajuste-o em Configurações → Modelos de mensagem).");
+    expect(h).not.toContain("{valor} na reserva");
+    expect(h).toContain("texto-base: o modelo escolhido não serve para esta mensagem (“Cancelamento: pedido recebido” não pode usar {valor}.) — edite em Configurações → Mensagens ao hóspede");
   });
 
   it("sem devolução: a parte retida, nada a lançar no caixa; OTAs marcadas e mensagens enviadas mostram quando e quem", () => {

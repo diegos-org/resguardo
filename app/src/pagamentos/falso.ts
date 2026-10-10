@@ -25,7 +25,7 @@ import type {
 
 export type MetodoProvedor =
   | "criarPix" | "criarCartao" | "consultar" | "buscarPorReferencia" | "existePagamentoPorReferencia" | "detalheFinanceiro" | "cancelar" | "devolver" | "conferirContaDeTeste";
-export type ChamadaFalsa = { metodo: MetodoProvedor; chave: string | null; id: string | null; referencia: string | null; valor: number | null };
+export type ChamadaFalsa = { metodo: MetodoProvedor; chave: string | null; id: string | null; referencia: string | null; valor: number | null; repetida?: boolean };
 export type OpcoesAprovacao = { taxa?: number | null; liquido?: number | null; liberacaoPrevista?: Date | null; liberado?: boolean | null };
 /** O que chegou ao provedor no último cartão, sem o token (só se ele veio): para os testes conferirem o que passou por aqui. */
 export type PedidoCartaoRecebido = Omit<PedidoCartao, "token"> & { comToken: boolean };
@@ -139,7 +139,7 @@ export class ProvedorFalso implements ProvedorPagamento {
   }
 
   private registrar(metodo: MetodoProvedor, o: Partial<Omit<ChamadaFalsa, "metodo">> = {}) {
-    this.chamadas.push({ metodo, chave: o.chave ?? null, id: o.id ?? null, referencia: o.referencia ?? null, valor: o.valor ?? null });
+    this.chamadas.push({ metodo, chave: o.chave ?? null, id: o.id ?? null, referencia: o.referencia ?? null, valor: o.valor ?? null, ...(o.repetida !== undefined ? { repetida: o.repetida } : {}) });
   }
 
   /** Falha injetada antes da operação, se houver. */
@@ -342,8 +342,8 @@ export class ProvedorFalso implements ProvedorPagamento {
    * outra devolução em andamento (409 order_refund_already_in_process) vira "aguarde"; order que a leitura não acha mais,
    * recusada/nao_encontrado. Toda resposta traz `codigo` (null nas aceitas e nas validações locais).
    */
-  async devolver(c: Cobranca, chaveIdempotencia: string, valor: number | null): Promise<ResultadoDevolucao> {
-    this.registrar("devolver", { id: c.idProvedor, chave: chaveIdempotencia, valor });
+  async devolver(c: Cobranca, chaveIdempotencia: string, valor: number | null, o: { repetida?: boolean } = {}): Promise<ResultadoDevolucao> {
+    this.registrar("devolver", { id: c.idProvedor, chave: chaveIdempotencia, valor, repetida: o.repetida === true });
     const recusada = (mensagem: string, codigo: CodigoDevolucao | null = null): ResultadoDevolucao => ({ situacao: "recusada", idDevolucao: null, mensagem, codigo });
     const incerta = (mensagem: string): ResultadoDevolucao => ({ situacao: "incerta", idDevolucao: null, mensagem, codigo: null });
     const antes = this.falhaAntes("devolver");

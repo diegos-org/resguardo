@@ -10,6 +10,7 @@
  * Cancelamento pela política (M8.2c): os fatos (código, datas, horas, versão da política, valores) e o texto que a
  * página e as mensagens ao hóspede mostram (`textoDoCancelamento`, o compositor único): as frases vêm de Textos do site.
  */
+import { pagaSemPrazoIntegral, TEXTO_VALOR_PELA_EQUIPE } from "@/configuracoes/politica-cancelamento";
 import type { TextosSite } from "@/configuracoes/textos-site";
 import type { CancelamentoParaHospede, EstadoPagamentoHospede, VistaPagamentoHospede } from "@/pagamentos/consultas";
 import { urlDoDesafio } from "@/pagamentos/provedor";
@@ -65,6 +66,8 @@ export type PagamentoDoHospede = {
   cancelamento: CancelamentoDoHospede | null;
   /** Pedido de cancelamento recebido, ainda sem decisão (ISO). */
   pedidoCancelamentoEm: string | null;
+  /** Esse pedido é de um pagamento sem a política aceita: o recibo não cita política nenhuma. */
+  pedidoCancelamentoSemPolitica?: boolean;
 };
 
 /**
@@ -181,6 +184,7 @@ export function paraOHospede(v: VistaPagamentoHospede): PagamentoDoHospede {
     prazoDasDatas: iso(v.prazoDasDatas),
     cancelamento: v.cancelamento ? { ...v.cancelamento, recebidoEm: v.cancelamento.recebidoEm.toISOString(), devolucaoEm: iso(v.cancelamento.devolucaoEm), entradaEm: iso(v.cancelamento.entradaEm) } : null,
     pedidoCancelamentoEm: iso(v.pedidoCancelamentoEm),
+    ...(v.pedidoCancelamentoSemPolitica ? { pedidoCancelamentoSemPolitica: true } : {}),
   };
 }
 
@@ -279,6 +283,7 @@ export function textoDoCancelamento(
     reservaCodigo: string | null;
     cancelamento: CancelamentoParaHospede | CancelamentoDoHospede | null;
     pedidoCancelamentoEm?: Date | string | null;
+    pedidoCancelamentoSemPolitica?: boolean;
   },
   textos: TextosDoCancelamento,
   fuso: string = BRASILIA,
@@ -288,7 +293,8 @@ export function textoDoCancelamento(
   if (!c || !estadoCancelada(v.estado)) {
     const pedido = quando(v.pedidoCancelamentoEm ?? null);
     if (!pedido) return { linhas: [], decisao: "", comoVolta: null };
-    const linha = juntar(`Pedido de cancelamento recebido em ${diaHora(pedido, BRASILIA)} (horário de Brasília).`, textos.cancelamentoPedidoRecebido);
+    // Sem a política aceita, a frase editável (que cita a política) dá lugar à fixa: a equipe confirma o valor por escrito.
+    const linha = juntar(`Pedido de cancelamento recebido em ${diaHora(pedido, BRASILIA)} (horário de Brasília).`, v.pedidoCancelamentoSemPolitica ? TEXTO_VALOR_PELA_EQUIPE : textos.cancelamentoPedidoRecebido);
     return { linhas: [linha], decisao: "", comoVolta: null };
   }
   const recebido = quando(c.recebidoEm)!;
@@ -324,6 +330,9 @@ export function textoDoCancelamento(
     } else decisoes.push(textos.cancelamentoEmConferencia);
   } else if (c.base === "nao_comparecimento") decisoes.push(textos.cancelamentoSemDevolucaoNaoComparecimento);
   else if (c.base === "sem_politica" || !c.integralAte) decisoes.push(textos.cancelamentoSemDevolucaoEquipe);
+  else if (pagaSemPrazoIntegral(c) && c.arrependimentoAte)
+    // Paga já depois do prazo do reembolso integral: esse prazo nunca valeu para ela; só o arrependimento.
+    decisoes.push(juntar(`Esta reserva foi paga quando o prazo de reembolso integral já tinha passado. Arrependimento: até ${diaIso(c.arrependimentoAte)}.`, textos.cancelamentoSemDevolucaoPrazo));
   else {
     const arrependimento = c.arrependimentoAte && c.arrependimentoAte > c.integralAte ? ` Arrependimento: até ${diaIso(c.arrependimentoAte)}.` : "";
     decisoes.push(juntar(`Prazo de reembolso integral: pedidos até ${diaIso(c.integralAte)}, às 23h59.${arrependimento}`, textos.cancelamentoSemDevolucaoPrazo));

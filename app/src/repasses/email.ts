@@ -19,7 +19,7 @@ import type { Db } from "@/db/types";
 import { type Correio, ErroEnvioIncerto } from "@/email/correio";
 import { montarEmail } from "@/email/modelo";
 import { formatBRL } from "@/lib/money";
-import { arquivoPorId, itensDoRepasse, JANELA_TENTATIVA_EMAIL_MS, nomeMes, obterRepasse, type RepasseListado, descricaoDoItem } from "./repasses";
+import { arquivoPorId, itensDoRepasse, JANELA_TENTATIVA_EMAIL_MS, nomeMes, obterRepasse, type RepasseListado, descricaoDoItem, separarAntecipado } from "./repasses";
 
 export type SituacaoEnvioRepasse = "enviado" | "ja_enviado" | "nao_pago" | "por_fora" | "sem_comprovante" | "sem_email" | "sem_provedor" | "incerto" | "aguardando" | "em_andamento" | "falhou" | "nao_encontrado";
 
@@ -54,11 +54,12 @@ export function textoDoEmailDoRepasse(r: RepasseListado, itens: readonly Item[],
     if (r.descontado) valores.push({ rotulo: "Adiantamentos descontados", valor: `− ${formatBRL(r.descontado)}` });
     if (r.contestado) valores.push({ rotulo: "Contestados (fora deste repasse)", valor: formatBRL(r.contestado) });
     if (r.foraDoFechamento) valores.push({ rotulo: "Para o próximo repasse (dinheiro ainda não recebido pela empresa)", valor: formatBRL(r.foraDoFechamento) });
-    // M8.2c: um desconto de cancelamento de mês seguinte entra como "antecipado" negativo (sai do valor). Pode ser o
-    // desconto da parte já repassada ou o estorno da parte que nunca foi paga (que anula a parte deste saldo): cada item
-    // diz qual é, na lista de reservas.
-    if (r.antecipado > 0) valores.push({ rotulo: "Noites de meses seguintes já pagas", valor: formatBRL(r.antecipado) });
-    else if (r.antecipado < 0) valores.push({ rotulo: "Desconto de reserva cancelada com devolução ao hóspede", valor: `− ${formatBRL(-r.antecipado)}` });
+    // M8.2c: o "antecipado" gravado junta as noites de meses seguintes com o desconto de cancelamento de mês seguinte (a
+    // parte já repassada) e o estorno da parte nunca paga (que anula a parte deste saldo): cada um na sua linha, pelos itens.
+    const a = separarAntecipado(r.antecipado, itens, r.mes);
+    if (a.noites) valores.push({ rotulo: "Noites de meses seguintes já pagas", valor: formatBRL(a.noites) });
+    if (a.desconto) valores.push({ rotulo: "Desconto de reserva cancelada com devolução ao hóspede", valor: `− ${formatBRL(-a.desconto)}` });
+    if (a.estorno) valores.push({ rotulo: "Estorno de parte de reserva cancelada antes de ser repassada (anula a parte no saldo)", valor: `− ${formatBRL(-a.estorno)}` });
   }
   const reservas = itens.map((i) => `${i.codigoImovel} · ${i.hospede || i.codigoReserva} · ${dataBr(i.checkin)} a ${dataBr(i.checkout)} · ${formatBRL(i.valor)} (${descricaoDoItem(i)})`);
   const { texto, html } = montarEmail({

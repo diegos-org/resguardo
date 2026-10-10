@@ -2,7 +2,7 @@ import { eq as eq_ } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { salvarEmpresa } from "@/configuracoes/empresa";
 import { atualizarModelo, criarModelo, garantirModelosIniciais, listarModelos, TEXTOS_BASE_CANCELAMENTO } from "@/configuracoes/modelos";
-import { execucoesAutomacao, imoveis, mensagensHospede, organizacoes, reservas } from "@/db/schema";
+import { execucoesAutomacao, imoveis, mensagensHospede, modelosMensagem, organizacoes, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { type Correio, CorreioMemoria, ErroEnvioIncerto } from "@/email/correio";
@@ -113,7 +113,13 @@ describe("mensagens do cancelamento (M8.2c) na configuração", () => {
     const r: DadosPrazo = { checkin: "2026-10-10", checkout: "2026-10-13", confirmadaEm: sp("2026-09-20", "12:00"), fuso: "America/Sao_Paulo", entradaAPartirDe: "15:00", saidaAte: "11:00" };
     for (const t of ["cancelamento_recebido", "cancelamento_decidido", "devolucao_concluida"] as const) expect(prazoDaMensagem(t, r), t).toBeNull();
     await ligar();
-    await atualizarModelo(db, org, modelo.confirmacao, { dados: { nome: "Confirmação da reserva", quando: "", texto: "Olá, {hospede}! Valor: {valor}." } }, null);
+    // Editar o modelo escolhido para pôr variável do cancelamento é recusado (a mesma regra da escolha, M8.2c)...
+    expect(await atualizarModelo(db, org, modelo.confirmacao, { dados: { nome: "Confirmação da reserva", quando: "", texto: "Olá, {hospede}! Valor: {valor}." } }, null)).toMatchObject({
+      ok: false,
+      erros: { texto: expect.stringContaining("Este modelo está escolhido para “Confirmação da reserva”") },
+    });
+    // ...e um texto assim gravado antes dessa conferência continua não saindo: o envio confere de novo.
+    await db.update(modelosMensagem).set({ texto: "Olá, {hospede}! Valor: {valor}." }).where(eq_(modelosMensagem.id, modelo.confirmacao));
     await db.insert(reservas).values(reserva());
     const res = await enviarMensagensHospede(db, org, correio, sp("2026-09-20", "14:00"));
     expect(res.avisos[0]).toContain("o modelo usa {valor}, que só vale nas mensagens do cancelamento");
@@ -198,7 +204,9 @@ describe("envio (M9.2)", () => {
 
   it("modelo editado para usar {endereco} na confirmação: não manda antes da liberação", async () => {
     await ligar();
-    await atualizarModelo(db, org, modelo.confirmacao, { dados: { nome: "Confirmação da reserva", quando: "", texto: "Olá, {hospede}! Endereço: {endereco}." } }, null);
+    // A edição do modelo escolhido é recusada (M8.2c: a mesma regra da escolha); um texto assim gravado antes dela não sai.
+    expect(await atualizarModelo(db, org, modelo.confirmacao, { dados: { nome: "Confirmação da reserva", quando: "", texto: "Olá, {hospede}! Endereço: {endereco}." } }, null)).toMatchObject({ ok: false });
+    await db.update(modelosMensagem).set({ texto: "Olá, {hospede}! Endereço: {endereco}." }).where(eq_(modelosMensagem.id, modelo.confirmacao));
     await db.insert(reservas).values(reserva());
     const r = await enviarMensagensHospede(db, org, correio, sp("2026-09-20", "14:00"));
     expect(r.avisos[0]).toContain("{endereco}");

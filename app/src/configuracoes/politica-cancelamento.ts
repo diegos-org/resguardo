@@ -56,6 +56,17 @@ export type DecisaoPolitica = {
 /** `arrependimentoAteEntrada` ausente = true (o texto-base publicado tem o limite). Também dá o valor inicial do formulário. */
 export { regrasComPadrao };
 
+/**
+ * A reserva foi paga quando o prazo do reembolso integral já tinha passado (paga a menos dos N dias da entrada): esse prazo
+ * nunca valeu para ela, e o texto ao hóspede não o mostra como se tivesse valido — só o arrependimento. O dia da aprovação
+ * é o do fim do arrependimento menos os 7 dias (`decidirPelaPolitica`).
+ */
+export const pagaSemPrazoIntegral = (d: { integralAte: string | null; arrependimentoAte: string | null }): boolean =>
+  !!d.integralAte && !!d.arrependimentoAte && d.integralAte < somarDias(d.arrependimentoAte, -DIAS_ARREPENDIMENTO);
+
+/** Sem política aceita (pagamento de antes de 9/10), o valor não é calculado: a frase ao hóspede não cita política nenhuma. */
+export const TEXTO_VALOR_PELA_EQUIPE = "A equipe confirma com você, por escrito, o valor da devolução.";
+
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
 const HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
 

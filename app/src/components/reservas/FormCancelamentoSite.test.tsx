@@ -129,6 +129,16 @@ describe("formulário do cancelamento pela política (M8.2c)", () => {
     expect(screen.getByLabelText(/Motivo \(obrigatório/)).toBeTruthy();
   });
 
+  it("sem política aceita, mas a SCL cancela: nada de 'Devolver tudo / Não devolver' (a devolução é sempre integral)", () => {
+    mostrar({ semPolitica: true });
+    fireEvent.click(screen.getByLabelText(/A SCL cancela/));
+    expect(screen.queryByLabelText("Devolver tudo")).toBeNull();
+    expect(screen.queryByLabelText("Não devolver")).toBeNull();
+    // Volta para o pedido do hóspede: a escolha sem política reaparece.
+    fireEvent.click(screen.getByLabelText("O hóspede pediu"));
+    expect(screen.getByLabelText("Não devolver")).toBeTruthy();
+  });
+
   it("saída antecipada recusada sem prévia: a exceção aparece mesmo assim e vai no cálculo seguinte, com o motivo da lista e a nota", async () => {
     calcular.mockResolvedValueOnce({
       codigo: "estadia_iniciada",

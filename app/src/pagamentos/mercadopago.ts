@@ -773,7 +773,8 @@ export class ClienteMercadoPagoHttp implements ProvedorPagamento {
    * lista fechada, nunca do texto do provedor):
    * - 200/201: confirmada (todas as devoluções da resposta confirmadas) ou pedida. `idDevolucao` = a devolução da resposta
    *   que não estava na leitura de antes do pedido (`c.devolucoes`); nenhuma ou mais de uma nova = null (não dá para saber
-   *   qual é a nossa — nunca "a última da lista").
+   *   qual é a nossa — nunca "a última da lista"). Com a chave repetida (`o.repetida`) e nenhuma nova, a resposta é a
+   *   repetição da do pedido anterior com esta chave: se ela lista uma devolução só, é a dele (já na leitura de antes).
    * - order_refund_already_in_process ou refund_in_progress (qualquer status): aguarde/em_andamento — há uma devolução em
    *   curso que não é deste pedido; movement_operations_pending, 425 e 423: aguarde/transitorio.
    * - 409 order_already_refunded: confirmada.
@@ -782,7 +783,7 @@ export class ClienteMercadoPagoHttp implements ProvedorPagamento {
    *   recusada/valor_excede; outro 400: recusada sem código; 404: recusada/nao_encontrado.
    * - 409 idempotency_key_already_used (ou outro 409), 5xx, 429 e rede: incerta.
    */
-  async devolver(c: Cobranca, chaveIdempotencia: string, valor: number | null): Promise<ResultadoDevolucao> {
+  async devolver(c: Cobranca, chaveIdempotencia: string, valor: number | null, o: { repetida?: boolean } = {}): Promise<ResultadoDevolucao> {
     const recusada = (mensagem: string, codigo: CodigoDevolucao | null = null): ResultadoDevolucao => ({ situacao: "recusada", idDevolucao: null, mensagem, codigo });
     const incerta = (mensagem: string): ResultadoDevolucao => ({ situacao: "incerta", idDevolucao: null, mensagem, codigo: null });
     const aguarde = (codigo: "em_andamento" | "transitorio"): ResultadoDevolucao => ({
@@ -811,8 +812,10 @@ export class ClienteMercadoPagoHttp implements ProvedorPagamento {
       const daTransacao = devolucoes.filter((d) => !c.idTransacao || d.transaction_id === undefined || d.transaction_id === c.idTransacao);
       // A nossa é a que não aparecia na leitura de antes do pedido. A resposta pode listar todas as devoluções da order.
       const conhecidas = new Set(c.devolucoes.map((d) => d.id));
-      const novas = [...new Set((daTransacao.length ? daTransacao : devolucoes).map((d) => d.id).filter(idDevolucaoValido))].filter((id) => !conhecidas.has(id));
-      const idDevolucao = novas.length === 1 ? novas[0] : null;
+      const listadas = [...new Set((daTransacao.length ? daTransacao : devolucoes).map((d) => d.id).filter(idDevolucaoValido))];
+      const novas = listadas.filter((id) => !conhecidas.has(id));
+      // Chave repetida sem nada novo: o Mercado Pago repetiu a resposta do pedido anterior (a devolução dele, sozinha nela).
+      const idDevolucao = novas.length === 1 ? novas[0] : o.repetida && novas.length === 0 && listadas.length === 1 ? listadas[0] : null;
       const confirmadas = devolucoes.length > 0 && devolucoes.every((d) => STATUS_DEVOLUCAO_CONFIRMADA.has(codigo(d.status) ?? ""));
       return confirmadas
         ? { situacao: "confirmada", idDevolucao, mensagem: "Devolução confirmada pelo Mercado Pago.", codigo: null }
