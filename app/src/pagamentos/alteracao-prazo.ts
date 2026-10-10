@@ -87,4 +87,3 @@ export async function expirarAlteracoesVencidas(db: Db, organizacaoId: string | 
   }
   return resumo;
 }
-
