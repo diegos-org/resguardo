@@ -1828,11 +1828,13 @@ A lista completa e detalhada, item por item, está em [ROADMAP.md](ROADMAP.md).
 3. Dois robôs conferem cada PR automaticamente:
    - **CI** (GitHub Actions): roda todos os testes. Verde = passou.
    - **Codex**: revisão automática de código. O Claude corrige o que ele apontar.
-4. **O Claude faz o merge** (autorizado por você em 23/09, até o sistema estabilizar), mas só
-   quando o CI está verde, a revisão do Codex terminou sem pendências e não há conflito.
-   Você continua podendo ler cada PR — a descrição explica em português o que mudou — e
-   pode pedir para voltar a ser você quem faz o merge a qualquer momento.
-5. Pode haver até **3 PRs abertos** ao mesmo tempo esperando seu merge.
+4. **Claude e Codex fazem o merge** do trabalho autorizado (regra atualizada por você em
+   9/10), somente depois de todas as checagens aplicáveis e da revisão automática do Codex
+   no GitHub concluídas para o último commit, com os apontamentos tratados e sem conflito.
+   Corrigem e cumprem quantas rodadas forem necessárias, sem teto, e te avisam com um resumo
+   curto do que mudou. Você pode revogar a autorização a qualquer momento.
+5. Pode haver até **3 PRs de roadmap abertos** ao mesmo tempo aguardando as checagens,
+   as correções e a revisão antes do merge pelos agentes.
 
 **Onde ver o sistema:** assim que a Vercel estiver conectada (seção 6), cada PR ganha um
 link de *preview*, e a `main` fica publicada num endereço fixo de homologação. O painel
