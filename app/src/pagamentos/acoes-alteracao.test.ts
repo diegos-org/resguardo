@@ -203,6 +203,13 @@ describe("calcular a alteração", () => {
     await calcularAlteracaoAcao({}, form(doHospede));
     expect(m.proposta).toHaveBeenCalledWith({ banco: true }, "org", RESERVA, expect.objectContaining({ rumo: "aumento", diferenca: 40000, entradaDosPrazos: "2026-11-10" }));
   });
+
+  it("o prazo da proposta para copiar é o mesmo das datas seguradas: nunca depois do limite (a entrada), mesmo com o prazo da configuração maior", async () => {
+    const limite = new Date(Date.now() + 10 * 60_000);
+    m.previa.mockResolvedValue({ ok: true, previa: { ...previa, holdAte: null, holdMinutos: 60, limiteDoPrazo: limite } });
+    await calcularAlteracaoAcao({}, form(doHospede));
+    expect(m.proposta).toHaveBeenCalledWith({ banco: true }, "org", RESERVA, expect.objectContaining({ holdAte: limite }));
+  });
 });
 
 describe("segurar e aplicar", () => {

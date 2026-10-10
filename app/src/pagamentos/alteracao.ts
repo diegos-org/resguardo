@@ -287,7 +287,7 @@ const horaBr = (d: Date, fuso = FUSO_PAGAMENTO) => fmt(d, fuso, { hour: "2-digit
 export const prazoBr = (d: Date, agora: Date, fuso = FUSO_PAGAMENTO) =>
   hojeISO(fuso, d) === hojeISO(fuso, agora) ? horaBr(d, fuso) : `${fmt(d, fuso, { day: "2-digit", month: "2-digit" })} às ${horaBr(d, fuso)}`;
 /** O prazo das datas seguradas de uma alteração nova: o tempo da configuração, nunca depois do limite (D1, a entrada). */
-const prazoDasDatas = (agora: Date, minutos: number, limite: Date | null | undefined) => {
+export const prazoDasDatas = (agora: Date, minutos: number, limite: Date | null | undefined) => {
   const ate = new Date(agora.getTime() + minutos * 60_000);
   return limite && limite.getTime() < ate.getTime() ? limite : ate;
 };
