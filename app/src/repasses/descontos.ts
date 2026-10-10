@@ -6,8 +6,13 @@
  * disponível na hora (`classificarParte`), e o próximo repasse, de qualquer tipo (antecipado ou fechamento), a vincula
  * como item negativo e a desconta. Se as partes disponíveis não cobrem o desconto, o antecipado espera e o fechamento
  * mostra o que o proprietário deve. Uma regra, um lugar: o painel, o portal e o Início leem `descontosDoProprietario`.
+ *
+ * O espelho da parte de um mês que movimentou dinheiro sem a parte ter sido paga ao proprietário (só uma receita dada
+ * como realizada, por exemplo) não é desconto: ele **anula** a parte original, que nunca saiu (`espelhoAnulaAParte`). As
+ * duas ficam disponíveis juntas e entram juntas no próximo repasse, somando zero — o proprietário nunca perde o que não
+ * recebeu, nem recebe o que voltou ao hóspede.
  */
-import { and, asc, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, lt, not, type SQL, sql } from "drizzle-orm";
 import { lancamentos, proprietarios, repasseItens, repasses, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
@@ -27,22 +32,61 @@ export const chaveEspelhoDoCancelamento = (cancelamentoId: string, lancamentoOri
 /** O mesmo formato, para achar em SQL o espelho de um lançamento qualquer (`like` + o id do original). */
 export const PREFIXO_ESPELHO_LIKE = "cancelamento:%:espelho:";
 
+/**
+ * A parte original (`original`, id em SQL) nunca saiu para o proprietário sem o espelho (`espelho`): não compõe repasse
+ * em vigor, a não ser o mesmo repasse em que o espelho está, e não está realizada (paga à mão) — salvo pelo pagamento
+ * desse mesmo repasse, que realiza os dois juntos. Então os dois se anulam.
+ */
+const parteNaoPagaSemOEspelho = (original: SQL, espelho: SQL) => {
+  const noRepasse = (comOEspelho: boolean) => sql`exists (
+    select 1 from ${repasseItens} ri join ${repasses} rr on rr.id = ri.repasse_id
+    where ri.lancamento_id = ${original} and ri.liberado_em is null and rr.estornado_em is null
+      and ${sql.raw(comOEspelho ? "" : "not ")}exists (select 1 from ${repasseItens} rj where rj.repasse_id = ri.repasse_id and rj.lancamento_id = ${espelho} and rj.liberado_em is null))`;
+  return sql`(not ${noRepasse(false)}
+  and (not exists (select 1 from ${lancamentos} o where o.id = ${original} and o.estado in ('realizado', 'conciliado')) or ${noRepasse(true)}))`;
+};
+
+/**
+ * Condição sobre `lancamentos` (a parte negativa de origem "cancelamento"): é o espelho de uma parte em vigor que nunca
+ * foi paga ao proprietário — anula a parte, não é desconto (ver o topo do arquivo). Uma regra, um lugar: o extrato
+ * (`partesDoProprietario`), a lista de descontos e o aviso do Início leem daqui.
+ */
+export const espelhoAnulaAParte = () => sql`(${lancamentos.chaveOrigem} like ${`${PREFIXO_ESPELHO_LIKE}%`} and exists (
+    select 1 from ${lancamentos} po
+    where po.organizacao_id = ${lancamentos.organizacaoId} and po.reserva_id = ${lancamentos.reservaId} and po.tipo = 'direito_proprietario'
+      and po.id::text = split_part(${lancamentos.chaveOrigem}, ':', 4)
+      and po.estorno_de is null and not exists (select 1 from ${lancamentos} px where px.estorno_de = po.id)
+      and ${parteNaoPagaSemOEspelho(sql`po.id`, sql`${lancamentos.id}`)}))`;
+
+/** Condição sobre `lancamentos` (a parte do motor): um espelho em vigor a anula (o gêmeo de `espelhoAnulaAParte`). */
+export const parteAnuladaPeloEspelho = () => sql`exists (
+    select 1 from ${lancamentos} pe
+    where pe.organizacao_id = ${lancamentos.organizacaoId} and pe.reserva_id = ${lancamentos.reservaId} and pe.tipo = 'direito_proprietario'
+      and pe.origem = ${ORIGEM_CANCELAMENTO} and pe.valor < 0 and pe.chave_origem like ${PREFIXO_ESPELHO_LIKE} || ${lancamentos.id}::text
+      and pe.estorno_de is null and not exists (select 1 from ${lancamentos} px where px.estorno_de = pe.id)
+      and ${parteNaoPagaSemOEspelho(sql`${lancamentos.id}`, sql`pe.id`)})`;
+
 const MES_DO_DESCONTO = /^\d{4}-(0[1-9]|1[0-2])-01$/;
+/** O 1º dia do mês corrente em São Paulo: a única competência que um desconto pode ter (nunca o passado). */
+export const mesDoDesconto = (agora: Date) => `${hojeISO("America/Sao_Paulo", agora).slice(0, 7)}-01`;
 
 /**
  * Lança o desconto (a parte negativa) de `valor` centavos (> 0; o sinal é posto aqui) para o proprietário que recebeu a
- * parte. `competencia`: o 1º dia do mês corrente (quem chama passa o mês do cancelamento, que ainda não pode estar
- * fechado). `chave`: idempotência (ex.: `cancelamento:<id>:espelho:<lançamento original>`). Roda dentro da transação de
- * quem chama, com a trava do motor da reserva já tomada.
+ * parte. `competencia`: o 1º dia do mês corrente em São Paulo (`mesDoDesconto(agora)`) — um mês anterior, que já pode ter
+ * sido fechado e enviado, é recusado, e um mês seguinte atrasaria o desconto. `chave`: idempotência (ex.:
+ * `cancelamento:<id>:espelho:<lançamento original>`). Roda dentro da transação de quem chama, com a trava do motor da
+ * reserva já tomada.
  */
 export async function lancarDescontoDoProprietario(
   tx: Db,
   organizacaoId: string,
   d: { chave: string; proprietarioId: string; imovelId: string; reservaId: string; valor: number; competencia: string; descricao: string },
   autorId: string | null,
+  agora: Date,
 ): Promise<Lancamento> {
   if (!Number.isSafeInteger(d.valor) || d.valor <= 0) throw new LancamentoInvalido("O desconto precisa ser um valor positivo em centavos.");
   if (!MES_DO_DESCONTO.test(d.competencia)) throw new LancamentoInvalido("A competência do desconto é o primeiro dia de um mês.");
+  if (d.competencia !== mesDoDesconto(agora)) throw new LancamentoInvalido(`A competência do desconto é o mês corrente (${mesDoDesconto(agora).split("-").reverse().join("/")}): nunca um mês que já pode ter sido fechado.`);
   if (!d.chave.trim()) throw new LancamentoInvalido("O desconto precisa de chave de origem.");
   const [l] = await lancar(
     tx,
@@ -78,7 +122,7 @@ export type DescontoDoProprietario = {
   situacao: { tipo: "a_descontar" } | { tipo: "descontado"; repasse: string; data: string };
 };
 
-/** Condição: o desconto de cancelamento (parte negativa de origem "cancelamento") em vigor. */
+/** Condição: o desconto de cancelamento (parte negativa de origem "cancelamento") em vigor — o espelho que só anula uma parte nunca paga não é desconto. */
 const descontoEmVigor = (db: Db, organizacaoId: string) =>
   and(
     eq(lancamentos.organizacaoId, organizacaoId),
@@ -86,6 +130,7 @@ const descontoEmVigor = (db: Db, organizacaoId: string) =>
     eq(lancamentos.origem, ORIGEM_CANCELAMENTO),
     lt(lancamentos.valor, 0),
     lancamentoEmVigor(db),
+    not(espelhoAnulaAParte()),
   );
 
 /**

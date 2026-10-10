@@ -15,7 +15,7 @@ import { contratos, imoveis, lancamentos, organizacoes, proprietarioImoveis, pro
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { aplicarMotor } from "@/financeiro/aplicar";
-import { lancar, saldoAcerto } from "@/financeiro/ledger";
+import { lancar, mudarEstado, saldoAcerto } from "@/financeiro/ledger";
 import { carregarDashboard } from "@/painel/dashboard";
 import type { DadosReserva } from "@/reservas/regras";
 import { criarReserva } from "@/reservas/repositorio";
@@ -181,7 +181,8 @@ describe("desconto da parte já repassada (M8.2c)", () => {
     expect(await saldo("2026-12-01")).toBe(0);
     // O e-mail do fechamento nomeia o desconto (nunca "noites de meses seguintes" negativas).
     const { texto } = textoDoEmailDoRepasse((await obterRepasse(db, org, rep))!, await itensDoRepasse(db, org, rep), "Sua Casa Exemplo");
-    expect(texto).toContain("Desconto de reserva cancelada com devolução ao hóspede (parte já repassada): − R$ 722,50");
+    expect(texto).toContain("Desconto de reserva cancelada com devolução ao hóspede: − R$ 722,50");
+    expect(texto).toContain("desconto da parte já repassada (reserva cancelada com devolução ao hóspede)");
     expect(texto).not.toContain("Noites de meses seguintes já pagas");
   });
 
@@ -226,13 +227,20 @@ describe("desconto da parte já repassada (M8.2c)", () => {
     expect(depois.conferenciaResolvidaEm).not.toBeNull();
   });
 
-  it("a parte negativa só nasce com valor positivo, competência no dia 1º e chave; é idempotente pela chave", async () => {
+  it("a parte negativa só nasce com valor positivo, competência no mês corrente (nunca um mês passado) e chave; é idempotente pela chave", async () => {
     const r = await criar(reserva("2026-10-10", "2026-10-13"));
     const d = { chave: chaveEspelhoDoCancelamento(randomUUID(), randomUUID()), proprietarioId: dono, imovelId: a, reservaId: r.id, valor: 1000, competencia: "2026-11-01", descricao: "Desconto fictício" };
-    for (const over of [{ valor: 0 }, { valor: -1 }, { valor: 1.5 }, { competencia: "2026-11-02" }, { chave: " " }]) await expect(lancarDescontoDoProprietario(db, org, { ...d, ...over }, null)).rejects.toThrow();
-    const l = await lancarDescontoDoProprietario(db, org, d, null);
+    const agora = new Date("2026-11-02T13:00:00Z");
+    for (const over of [{ valor: 0 }, { valor: -1 }, { valor: 1.5 }, { competencia: "2026-11-02" }, { chave: " " }]) await expect(lancarDescontoDoProprietario(db, org, { ...d, ...over }, null, agora)).rejects.toThrow();
+    // O mês já pode ter sido fechado e enviado (outubro) ou ainda não chegou (dezembro): recusado, nada lançado.
+    await expect(lancarDescontoDoProprietario(db, org, { ...d, competencia: "2026-10-01" }, null, agora)).rejects.toThrow("A competência do desconto é o mês corrente (01/11/2026): nunca um mês que já pode ter sido fechado.");
+    await expect(lancarDescontoDoProprietario(db, org, { ...d, competencia: "2026-12-01" }, null, agora)).rejects.toThrow("mês corrente");
+    // O mês corrente é o de São Paulo: 31/10 às 23h30 em Brasília ainda é outubro (já é 1º/11 em UTC).
+    await expect(lancarDescontoDoProprietario(db, org, d, null, new Date("2026-11-01T02:30:00Z"))).rejects.toThrow("(01/10/2026)");
+    expect(await db.select().from(lancamentos).where(eq(lancamentos.origem, "cancelamento"))).toEqual([]);
+    const l = await lancarDescontoDoProprietario(db, org, d, null, agora);
     expect(l).toMatchObject({ tipo: "direito_proprietario", valor: -1000, efeitoSaldo: -1000, origem: "cancelamento", estado: "previsto", competencia: "2026-11-01" });
-    expect((await lancarDescontoDoProprietario(db, org, d, null)).id).toBe(l.id);
+    expect((await lancarDescontoDoProprietario(db, org, d, null, agora)).id).toBe(l.id);
   });
 
   it("o dinheiro que voltou ao hóspede (devolução realizada) sai do recebido; a data do pagamento continua a do recebimento", async () => {
@@ -241,6 +249,20 @@ describe("desconto da parte já repassada (M8.2c)", () => {
     await lancar(db, org, [{ tipo: "devolucao", descricao: "Devolução fictícia ao hóspede", valor: 0, montante: 85000, competencia: "2026-10-20", dataCaixa: "2026-10-20", estado: "realizado", imovelId: a, reservaId: r.id, origem: "manual" }], null);
     await lancar(db, org, [{ tipo: "devolucao", descricao: "Devolução prevista não conta", valor: 0, montante: 1, competencia: "2026-10-21", estado: "previsto", imovelId: a, reservaId: r.id, origem: "manual" }], null);
     expect((await recebidoPorReserva(db, org, [r.id])).get(r.id)).toEqual({ recebido: 0, devido: 85000, dataCompleto: "2026-10-10" });
+    // A parte de outubro (sem repasse) volta a esperar o dinheiro, mas a data em que o hóspede pagou não some.
+    const [parte] = await partes("2026-10-25");
+    expect(parte).toMatchObject({ situacao: "a_liberar", pagamento: { data: "2026-10-10", fonte: "recebimento" } });
+  });
+
+  it("os espelhos do cancelamento (receita e taxa no mês do cancelamento) não mexem no devido: a parte repassada continua paga pelo canal na data dela", async () => {
+    const { r } = await repassadaECancelada();
+    expect((await recebidoPorReserva(db, org, [r.id])).get(r.id)).toEqual({ recebido: 85000, devido: 85000, dataCompleto: "2026-10-10" });
+    const [outubro] = await partes("2026-11-03");
+    expect(outubro).toMatchObject({ competencia: "2026-10-01", situacao: "repassado", pagamento: { data: "2026-10-10", fonte: "recebimento" } });
+    // Depois da devolução realizada (o lado do caixa), a data continua a mesma.
+    await lancar(db, org, [{ tipo: "devolucao", descricao: "Devolução fictícia ao hóspede", valor: 0, montante: 85000, competencia: "2026-11-05", dataCaixa: "2026-11-05", estado: "conciliado", imovelId: a, reservaId: r.id, origem: "sincronizacao" }], null);
+    expect((await recebidoPorReserva(db, org, [r.id])).get(r.id)).toEqual({ recebido: 0, devido: 85000, dataCompleto: "2026-10-10" });
+    expect((await partes("2026-11-06"))[0].pagamento).toEqual({ data: "2026-10-10", fonte: "recebimento" });
   });
 
   it("a trava do proprietário é NO KEY UPDATE (fechamento, antecipado e estorno do repasse): lançamento novo dele não espera", async () => {
@@ -254,5 +276,92 @@ describe("desconto da parte já repassada (M8.2c)", () => {
     expect(doDono.length).toBe(2);
     expect(doDono.every((q) => /for no key update/i.test(q))).toBe(true);
     expect(r.id).toBeTruthy();
+  });
+});
+
+describe("mês que movimentou dinheiro sem a parte ter sido paga ao proprietário (M8.2c): o espelho anula a parte", () => {
+  /** Outubro "movimentou" só porque a receita foi dada como realizada; a parte do proprietário nunca saiu. Cancelada em novembro. */
+  async function movidaSemRepasse() {
+    const r = await criar(reserva("2026-10-10", "2026-10-13"), "2026-10-10");
+    const [receita] = await db.select().from(lancamentos).where(and(eq(lancamentos.reservaId, r.id), eq(lancamentos.tipo, "receita_bruta")));
+    await mudarEstado(db, org, receita.id, "realizado", null, "2026-10-10");
+    const { desconto } = await espelharCancelamento(db, org, { reservaId: r.id, cancelamentoId: randomUUID(), competencia: "2026-11-01", codigo: r.codigo });
+    return { r, desconto };
+  }
+
+  it("a parte e o estorno ficam disponíveis juntos (mesmo depois da devolução), não são desconto, e nada é cobrado do proprietário", async () => {
+    const { r, desconto } = await movidaSemRepasse();
+    expect(desconto).toBe(72250);
+    const textos = {
+      anulada: `Reserva ${r.codigo} cancelada com devolução integral ao hóspede antes de esta parte ser repassada: ela e o estorno no mês do cancelamento se anulam no próximo repasse (nada a receber).`,
+      estorno: `Estorno da sua parte da reserva ${r.codigo} (cancelada com devolução integral ao hóspede antes de a parte ser repassada): anula a parte no próximo repasse (nada a descontar).`,
+    };
+    const confere = async (hoje: string) => {
+      const [outubro, novembro] = await partes(hoje);
+      expect(outubro).toMatchObject({ competencia: "2026-10-01", valor: 72250, situacao: "disponivel", anulacao: "anulada", motivo: textos.anulada });
+      expect(novembro).toMatchObject({ competencia: "2026-11-01", valor: -72250, situacao: "disponivel", anulacao: "estorno", motivo: textos.estorno });
+      expect(resumirPartes(await partes(hoje))).toMatchObject({ disponivel: 0, aLiberar: 0 });
+    };
+    await confere("2026-11-03");
+    // Não é desconto: nem na lista, nem no aviso do Início.
+    expect(await descontosDoProprietario(db, org, dono)).toEqual([]);
+    expect(await avisosDeDescontos(db, org, new Date(Date.now() + 8 * 86_400_000))).toEqual([]);
+    // O dinheiro volta ao hóspede (devolução realizada): a parte original não fica "a liberar" sozinha — os dois seguem juntos.
+    await lancar(db, org, [{ tipo: "devolucao", descricao: "Devolução fictícia ao hóspede", valor: 0, montante: 85000, competencia: "2026-11-05", dataCaixa: "2026-11-05", estado: "realizado", imovelId: a, reservaId: r.id, origem: "manual" }], null);
+    await confere("2026-11-06");
+    // Só o par, somando zero: o antecipado não tem o que repassar (e não diz que falta cobrir desconto nenhum).
+    expect(await gerarAntecipado(db, org, dono, "2026-11-06", null)).toEqual({ ok: false, erro: "Nada disponível para repassar agora." });
+    // O fechamento de outubro leva os dois (a parte da competência e o estorno como antecipado) e fecha zerado: o proprietário não deve nada.
+    const [outubro] = await preverRepasses(db, org, "2026-10", "2026-11-06", [dono], true);
+    expect(outubro).toMatchObject({ valor: 0, deve: 0, antecipado: -72250, bloqueios: [] });
+    expect(outubro.avisos.join(" ")).toContain(`A parte de R$ 722,50 (reservas ${r.codigo}, canceladas com devolução integral ao hóspede antes de a parte ser repassada) e o estorno dela entram juntos neste repasse e se anulam.`);
+    expect(outubro.avisos.join(" ")).not.toContain("desconto de cancelamento");
+  });
+
+  it("o próximo repasse leva a parte e o estorno juntos (somam zero) com as outras partes; estornar esse repasse devolve os dois juntos", async () => {
+    const { r } = await movidaSemRepasse();
+    const outra = await criar(reserva("2026-11-01", "2026-11-04", { valorBruto: 200000, taxaCanal: 30000 }), "2026-11-01");
+    const rep = id(await gerarAntecipado(db, org, dono, "2026-11-05", null));
+    // Paga só a outra reserva: o proprietário nunca perde a parte que não recebeu, nem recebe o que voltou ao hóspede.
+    expect(await obterRepasse(db, org, rep)).toMatchObject({ valor: 144500 });
+    const itens = await itensDoRepasse(db, org, rep);
+    expect(itens.map((i) => [i.reservaId, i.competencia, i.valor, descricaoDoItem(i)]).sort()).toEqual(
+      [
+        [outra.id, "2026-11-01", 144500, "integral"],
+        [r.id, "2026-10-01", 72250, "integral"],
+        [r.id, "2026-11-01", -72250, "estorno da parte desta reserva neste repasse (cancelada com devolução ao hóspede antes de a parte ser repassada): as duas se anulam"],
+      ].sort(),
+    );
+    // Cada mês fecha zerado no acerto.
+    expect(await saldo("2026-11-01")).toBe(0);
+    expect(await saldo("2026-12-01")).toBe(0);
+    expect((await partes("2026-11-06")).filter((p) => p.reservaId === r.id).map((p) => [p.situacao, p.motivo])).toEqual([
+      ["repassado", "Repasse de 05/11/2026 (a pagar)."],
+      ["repassado", `Estorno da sua parte da reserva ${r.codigo} (cancelada com devolução integral ao hóspede antes de a parte ser repassada): anulou a parte no repasse de 05/11/2026 (a pagar).`],
+    ]);
+    // Pago o repasse (os dois itens passam a realizados), o estorno continua sendo estorno — nunca vira desconto.
+    id(await marcarRepassePago(db, org, rep, "2026-11-06", "2026-11-06", null));
+    expect((await partes("2026-11-07")).filter((p) => p.reservaId === r.id).map((p) => [p.situacao, p.anulacao, p.motivo])).toEqual([
+      ["repassado", "anulada", "Repasse de 05/11/2026 (pago em 06/11/2026)."],
+      ["repassado", "estorno", `Estorno da sua parte da reserva ${r.codigo} (cancelada com devolução integral ao hóspede antes de a parte ser repassada): anulou a parte no repasse de 05/11/2026 (pago em 06/11/2026).`],
+    ]);
+    expect(await descontosDoProprietario(db, org, dono)).toEqual([]);
+    // A parte e o espelho que a anula estão no mesmo repasse: estornar é permitido, e os dois voltam juntos a disponíveis.
+    id(await estornarRepasse(db, org, rep, "lançado por engano", "2026-11-07", null));
+    expect((await partes("2026-11-07")).filter((p) => p.reservaId === r.id).map((p) => [p.situacao, p.anulacao])).toEqual([
+      ["disponivel", "anulada"],
+      ["disponivel", "estorno"],
+    ]);
+  });
+
+  it("a parte paga à mão (realizada sem repasse) é paga: o espelho dela é desconto de verdade", async () => {
+    const r = await criar(reserva("2026-10-10", "2026-10-13"), "2026-10-10");
+    const [parte] = await db.select().from(lancamentos).where(and(eq(lancamentos.reservaId, r.id), eq(lancamentos.tipo, "direito_proprietario")));
+    await mudarEstado(db, org, parte.id, "realizado", null, "2026-10-12");
+    await espelharCancelamento(db, org, { reservaId: r.id, cancelamentoId: randomUUID(), competencia: "2026-11-01", codigo: r.codigo });
+    const [, novembro] = await partes("2026-11-03");
+    expect(novembro).toMatchObject({ valor: -72250, situacao: "disponivel", motivo: expect.stringContaining("Desconto da sua parte já repassada") });
+    expect(novembro.anulacao).toBeUndefined();
+    expect(await descontosDoProprietario(db, org, dono)).toHaveLength(1);
   });
 });

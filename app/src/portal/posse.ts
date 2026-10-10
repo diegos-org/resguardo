@@ -101,8 +101,11 @@ export function noPeriodoDosDonos(donos: readonly string[], imovel: AnyColumn, d
  * Reservas que contam no período, com o imóvel em que contam (a mesma regra no Início, na aba
  * Apartamentos, no portal e no PDF): confirmadas pela estada e pelo imóvel atual; confirmada com
  * divergência entre o cálculo e o dinheiro já movimentado (M4.8) conta pelo livro — imóvel e mês
- * dos valores em vigor —, porque é lá que os valores dela estão. Com `donos`, só as deles (regra de
- * posse; divergente: a parte deles no livro).
+ * dos valores em vigor —, porque é lá que os valores dela estão. A cancelada pela política com o
+ * acerto no mês do cancelamento (espelhada, M8.2c) também conta pelo livro, só nos meses dos
+ * lançamentos do motor (os que ficaram como estavam): o mês que já movimentou dinheiro não muda; o
+ * mês do cancelamento mostra o espelho, mas não conta a reserva de novo. Com `donos`, só as deles
+ * (regra de posse; pelo livro: a parte deles).
  */
 export async function reservasQueContam(
   db: Db,
@@ -133,8 +136,14 @@ export async function reservasQueContam(
       .where(
         and(
           eq(lancamentos.organizacaoId, organizacaoId),
-          eq(reservas.estado, "confirmada"),
-          isNotNull(reservas.divergenciaEm),
+          or(
+            and(eq(reservas.estado, "confirmada"), isNotNull(reservas.divergenciaEm)),
+            and(
+              eq(reservas.estado, "cancelada"),
+              eq(lancamentos.origem, "motor"),
+              sql`exists (select 1 from ${cancelamentosReserva} c where c.reserva_id = ${reservas.id} and c.situacao = 'cancelada' and c.espelhado)`,
+            ),
+          ),
           o.donos ? and(eq(lancamentos.tipo, "direito_proprietario"), inArray(lancamentos.proprietarioId, [...o.donos])) : eq(lancamentos.tipo, "receita_bruta"),
           inArray(lancamentos.imovelId, ids),
           gte(lancamentos.competencia, o.periodo.inicio),

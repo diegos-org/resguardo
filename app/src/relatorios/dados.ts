@@ -27,7 +27,10 @@ const comissaoTexto = (bp: number | null): string | null => (bp === null ? null 
  * ponte da conciliação), qualquer parte paga pelo canal dentro do mês e qualquer parte que um repasse com o Pix no mês
  * pagou (um antecipado de outubro pode levar uma reserva de julho liberada só agora: a capa mostra o Pix inteiro, como a
  * tabela de repasses); só dos imóveis do relatório. Cada parte traz os componentes do livro daquele mês (bruto, taxa do
- * canal, comissão) e a data em que o canal pagou (M4.12).
+ * canal, comissão) e a data em que o canal pagou (M4.12). O espelho de um cancelamento pela política (origem
+ * "cancelamento", M8.2c) traz só os componentes espelhados, e a parte do motor só os do motor — mesmo quando o
+ * cancelamento cai no mês da estadia, cada linha fecha bruto − taxa − comissão = parte; e o espelho não tem data de
+ * pagamento do canal (nenhum canal pagou o espelho: é o dinheiro que voltou ao hóspede).
  */
 export async function partesDoRelatorio(db: Db, organizacaoId: string, o: { donos: readonly Dono[]; imovelIds: readonly string[]; mes: MesISO; agora: Date }): Promise<ParteDoRelatorio[]> {
   const imoveis = new Set(o.imovelIds.filter(uuidValido));
@@ -41,7 +44,7 @@ export async function partesDoRelatorio(db: Db, organizacaoId: string, o: { dono
   const mesesDasPartes = [...new Set(partes.map((p) => mesDe(p.competencia)))].sort();
   const [componentes, codigos] = await Promise.all([
     db
-      .select({ reservaId: lancamentos.reservaId, mes: sql<string>`to_char(${lancamentos.competencia}, 'YYYY-MM')`, tipo: lancamentos.tipo, valor: sum(lancamentos.valor) })
+      .select({ reservaId: lancamentos.reservaId, mes: sql<string>`to_char(${lancamentos.competencia}, 'YYYY-MM')`, tipo: lancamentos.tipo, espelho: sql<boolean>`(${lancamentos.origem} = 'cancelamento')`, valor: sum(lancamentos.valor) })
       .from(lancamentos)
       .where(
         and(
@@ -53,15 +56,17 @@ export async function partesDoRelatorio(db: Db, organizacaoId: string, o: { dono
           lancamentoEmVigor(db),
         ),
       )
-      .groupBy(sql`1`, sql`2`, sql`3`),
+      .groupBy(sql`1`, sql`2`, sql`3`, sql`4`),
     db.select({ id: reservas.id, codigoCanal: reservas.codigoCanal }).from(reservas).where(inArray(reservas.id, reservaIds)),
   ]);
-  const comp = (reservaId: string, mes: MesISO, tipo: string) => Number(componentes.find((c) => c.reservaId === reservaId && c.mes === mes && c.tipo === tipo)?.valor ?? 0);
+  const comp = (reservaId: string, mes: MesISO, tipo: string, espelho: boolean) =>
+    Number(componentes.find((c) => c.reservaId === reservaId && c.mes === mes && c.tipo === tipo && c.espelho === espelho)?.valor ?? 0);
   const codigoCanal = new Map(codigos.map((c) => [c.id, c.codigoCanal]));
   return partes
     .map((p) => {
       const mes = mesDe(p.competencia);
       const { inicio, fim } = limitesDe(mes);
+      const espelho = p.origemLancamento === "cancelamento";
       return {
         reservaId: p.reservaId,
         codigo: p.codigoReserva,
@@ -73,16 +78,22 @@ export async function partesDoRelatorio(db: Db, organizacaoId: string, o: { dono
         mes,
         noitesNoMes: noitesNoIntervalo(p.checkin, p.checkout, inicio, fim),
         noitesTotal: noitesNoIntervalo(p.checkin, p.checkout, p.checkin, p.checkout),
-        bruto: comp(p.reservaId, mes, "receita_bruta"),
-        taxa: -comp(p.reservaId, mes, "taxa_canal"),
-        comissao: comp(p.reservaId, mes, "comissao"),
+        bruto: comp(p.reservaId, mes, "receita_bruta", espelho),
+        taxa: -comp(p.reservaId, mes, "taxa_canal", espelho),
+        comissao: comp(p.reservaId, mes, "comissao", espelho),
         suaParte: p.valor,
         quemRecebe: p.quemRecebe,
         situacao: p.situacao,
         motivo: p.motivo,
-        pagamento: p.pagamento,
+        pagamento: espelho ? null : p.pagamento,
         repasse: p.repasse,
-        ...(ehDescontoDeCancelamento(p) ? { cancelamento: "desconto" as const } : p.canceladaComRetencao ? { cancelamento: "retida" as const } : {}),
+        ...(ehDescontoDeCancelamento(p)
+          ? { cancelamento: "desconto" as const }
+          : p.anulacao
+            ? { cancelamento: p.anulacao }
+            : p.canceladaComRetencao
+              ? { cancelamento: "retida" as const }
+              : {}),
       };
     })
     .sort((a, b) => a.checkin.localeCompare(b.checkin) || a.codigo.localeCompare(b.codigo));

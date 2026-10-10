@@ -16,7 +16,7 @@ import { gerarAntecipado, marcarRepassePago, preverRepasses } from "@/repasses/r
 import { cancelamentoDeTeste, espelharCancelamento, pagamentoDoSiteDeTeste } from "@/repasses/testes-cancelamento";
 import { receberTudo } from "@/repasses/testes";
 import type { DadosReserva } from "@/reservas/regras";
-import { criarReserva, resolverConferencia } from "@/reservas/repositorio";
+import { criarReserva, devolvidaNoProvedorDaReserva, resolverConferencia } from "@/reservas/repositorio";
 import { devolvidaNoProvedorSql, lancamentoEmConferencia, lancamentoEmVigor, reservaCalculadaSql } from "./posse";
 import { reservasDoPortal } from "./reservas";
 
@@ -83,8 +83,13 @@ describe("pagamento do site devolvido no Mercado Pago fora da política (D21, M8
       await db.update(pagamentos).set({ situacao: "aprovado", devolvidoLido: 0, avisos: [], ...leitura }).where(eq(pagamentos.id, pagamentoId));
       expect(await devolvidaSql(r.id)).toBe(true);
       expect(devolvidaNoProvedor(await pagamento(pagamentoId), null)).toBe(true);
+      // A ficha (quadro "Em conferência") lê a mesma regra, só da própria organização.
+      expect(await devolvidaNoProvedorDaReserva(db, org, r.id)).toBe(true);
       expect(await emConferencia(r.id)).toBe(4);
     }
+    const [{ id: outraOrg }] = await db.insert(organizacoes).values({ nome: "B" }).returning();
+    expect(await devolvidaNoProvedorDaReserva(db, outraOrg, r.id)).toBe(false);
+    expect(await devolvidaNoProvedorDaReserva(db, org, "nao-e-uuid")).toBe(false);
     // A parte sai do disponível: nenhum antecipado a paga; o fechamento de outubro trava; o portal mostra em conferência.
     expect(await partesDisponiveis(db, org, dono, agora)).toEqual([]);
     expect(await gerarAntecipado(db, org, dono, "2026-10-20", null)).toMatchObject({ ok: false, erro: "Nada disponível para repassar agora." });

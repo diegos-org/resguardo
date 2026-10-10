@@ -455,6 +455,20 @@ export async function confirmarPedidoPago(
 }
 
 /**
+ * D21 (M8.2c): o pagamento do site que confirmou a reserva aparece devolvido no Mercado Pago fora do cancelamento pela
+ * política — a parte do proprietário fica em conferência. A mesma condição SQL do livro (`devolvidaNoProvedorSql`): a
+ * ficha (o quadro "Em conferência") e `resolverConferencia` leem daqui.
+ */
+export async function devolvidaNoProvedorDaReserva(db: Db, organizacaoId: string, reservaId: string): Promise<boolean> {
+  if (!uuidValido(reservaId)) return false;
+  const [d] = await db
+    .select({ devolvida: sql<boolean>`coalesce(${devolvidaNoProvedorSql()}, false)` })
+    .from(reservas)
+    .where(and(eq(reservas.id, reservaId), eq(reservas.organizacaoId, organizacaoId)));
+  return d?.devolvida === true;
+}
+
+/**
  * Dá por resolvida a conferência de uma reserva que já movimentou dinheiro (M4.8), depois do ajuste manual: os
  * lançamentos dela deixam de travar o fechamento do mês. Vale para a reserva que o motor não calcula (não confirmada,
  * cancelada sem valor retido), a divergente e a que tem o pagamento do site devolvido no Mercado Pago fora da política
@@ -469,11 +483,8 @@ export async function resolverConferencia(db: Db, organizacaoId: string, id: str
       .where(and(eq(reservas.id, id), eq(reservas.organizacaoId, organizacaoId)))
       .for("update");
     if (!r || r.conferenciaResolvidaEm) return false;
-    if (reservaCalculadaPeloMotor(r) && !r.divergenciaEm) {
-      // D21: a mesma condição SQL do livro (`devolvidaNoProvedorSql`), lida sob a trava da reserva.
-      const [d] = await tx.select({ devolvida: sql<boolean>`coalesce(${devolvidaNoProvedorSql()}, false)` }).from(reservas).where(eq(reservas.id, r.id));
-      if (!d?.devolvida) return false;
-    }
+    // D21: a mesma condição SQL do livro (`devolvidaNoProvedorSql`), lida sob a trava da reserva.
+    if (reservaCalculadaPeloMotor(r) && !r.divergenciaEm && !(await devolvidaNoProvedorDaReserva(tx, organizacaoId, r.id))) return false;
     const agora = new Date();
     await tx.update(reservas).set({ conferenciaResolvidaEm: agora, atualizadoEm: agora }).where(eq(reservas.id, id));
     await registrarAuditoria(tx, {

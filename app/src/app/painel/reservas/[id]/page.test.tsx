@@ -2,11 +2,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, it, vi } from "vitest";
 import type { PagamentoDoPainel } from "@/pagamentos/consultas";
 
-const m = vi.hoisted(() => ({ sessao: vi.fn(), reserva: vi.fn(), pagamentos: vi.fn(), lancamentos: vi.fn(), recebimentos: vi.fn(), aceites: vi.fn() }));
+const m = vi.hoisted(() => ({ sessao: vi.fn(), reserva: vi.fn(), pagamentos: vi.fn(), lancamentos: vi.fn(), recebimentos: vi.fn(), aceites: vi.fn(), devolvida: vi.fn() }));
 vi.mock("next/navigation", () => ({ notFound: () => { throw new Error("NEXT_NOT_FOUND"); }, redirect: vi.fn() }));
 vi.mock("@/acesso/sessao-atual", () => ({ exigirSessaoPainel: m.sessao }));
 vi.mock("@/db/client", () => ({ getDb: () => ({}) }));
-vi.mock("@/reservas/repositorio", () => ({ obterReserva: m.reserva }));
+vi.mock("@/reservas/repositorio", () => ({ obterReserva: m.reserva, devolvidaNoProvedorDaReserva: m.devolvida }));
 vi.mock("@/reservas/horarios", async (original) => ({ ...(await original<typeof import("@/reservas/horarios")>()), lerHorariosReservas: async () => new Map() }));
 vi.mock("@/imoveis/repositorio", () => ({ obterImovel: async () => ({ id: "im", codigo: "403", nome: "Studio Fictício" }) }));
 vi.mock("@/auditoria/auditoria", async (original) => ({ ...(await original<typeof import("@/auditoria/auditoria")>()), historicoDe: async () => [] }));
@@ -81,6 +81,7 @@ beforeEach(() => {
   m.lancamentos.mockResolvedValue([]);
   m.recebimentos.mockResolvedValue([]);
   m.aceites.mockResolvedValue([]);
+  m.devolvida.mockResolvedValue(false);
 });
 const html = async () => renderToStaticMarkup(await Page({ params: Promise.resolve({ id: "r1" }), searchParams: Promise.resolve({}) } as PageProps<"/painel/reservas/[id]">));
 
@@ -135,4 +136,22 @@ it("páginas legais aceitas no site (M7.4): a seção aparece para quem lê rese
   m.sessao.mockResolvedValue({ papel: "limpeza", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
   expect(await html()).not.toContain('aria-label="Páginas legais aceitas"');
   expect(m.aceites).not.toHaveBeenCalled();
+});
+
+it("M8.2c (D21): pagamento do site devolvido no Mercado Pago fora da política — o quadro \"Em conferência\" aparece, com o motivo e o botão de dar por resolvida", async () => {
+  m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  m.lancamentos.mockResolvedValue([{ id: "l1", origem: "motor", estornoDe: null, competencia: "2026-10-01", descricao: "Parte do proprietário", valor: 150000, efeitoSaldo: 150000, estado: "previsto" }]);
+  // Sem a devolução no Mercado Pago, a reserva confirmada e sem divergência não está em conferência.
+  expect(await html()).not.toContain('aria-label="Em conferência"');
+  expect(m.devolvida).toHaveBeenCalledWith({}, "org", "r1");
+  m.devolvida.mockResolvedValue(true);
+  const h = await html();
+  expect(h).toContain('aria-label="Em conferência"');
+  expect(h).toContain("O Mercado Pago mostra o pagamento desta reserva devolvido fora do sistema: a parte do proprietário não é repassada.");
+  expect(h).toContain("Dar a conferência por resolvida");
+  // Já dada por resolvida: o quadro some (e nem se consulta de novo).
+  m.devolvida.mockClear();
+  m.reserva.mockResolvedValue({ ...reserva, conferenciaResolvidaEm: new Date("2026-10-05T12:00:00Z") });
+  expect(await html()).not.toContain('aria-label="Em conferência"');
+  expect(m.devolvida).not.toHaveBeenCalled();
 });

@@ -200,6 +200,33 @@ describe("reserva cancelada com devolução ao hóspede depois do repasse (M8.2c
     expect(descontado[1].quemRecebeu).toBe("descontada no repasse de 6/11");
   });
 
+  it("o estorno da parte que nunca foi paga: ponte própria que anula a parte, sem falar em desconto", () => {
+    const estorno = { ...desconto, cancelamento: "estorno" as const };
+    const l = conciliacao([estorno], "2026-11", HOJE, E);
+    expect(l[1]).toMatchObject({ rotulo: "− Reserva SCL-1 cancelada com devolução ao hóspede (estadia de 7/10 → 10/10): estorno da parte não repassada", suaParte: -216750, quemRecebeu: "anula a parte no próximo repasse (nada a descontar)", tipo: "ponte" });
+    expect(conciliacaoFecha(l)).toBe(true);
+    const junto = conciliacao([{ ...estorno, situacao: "repassado", repasse: { id: "rep2", tipo: "antecipado", data: "2026-11-05", situacao: "a_pagar", dataPagamento: null, valor: -216750 } }], "2026-11", HOJE, E);
+    expect(junto[1].quemRecebeu).toBe("anulou a parte no repasse de 5/11");
+  });
+
+  it("fechamento em que o desconto passa da parte: nada a transferir, sai do próximo repasse; com despesas também, só elas pedem o Pix", () => {
+    const so = comoChega([], "2026-11", "2026-12-02", [rodape({ situacao: "proprietario_deve", valor: 216750, aFavor: "empresa", descontoCancelamento: 216750 })], E);
+    expect(so.linhas).toEqual([{ texto: "Desconto de reserva cancelada com devolução ao hóspede maior que a sua parte: sai do próximo repasse, nada a transferir", valor: 216750, tipo: "info", origem: "fechamento" }]);
+    expect(so.quemPagaQuem).toBe("Maria Exemplo não transfere nada: o desconto de reserva cancelada com devolução ao hóspede (R$ 2.167,50) passou da sua parte deste fechamento e sai do próximo repasse.");
+    // O desconto maior que o que ela deve (outras partes cobriram uma parte dele): tudo sai do próximo repasse.
+    expect(comoChega([], "2026-11", "2026-12-02", [rodape({ situacao: "proprietario_deve", valor: 5000, aFavor: "empresa", descontoCancelamento: 216750 })], E).linhas).toEqual([
+      expect.objectContaining({ valor: 5000, tipo: "info", texto: expect.stringContaining("nada a transferir") }),
+    ]);
+    const misto = comoChega([], "2026-11", "2026-12-02", [rodape({ situacao: "proprietario_deve", valor: 226750, aFavor: "empresa", descontoCancelamento: 216750 })], E);
+    expect(misto.linhas.map((l) => [l.texto, l.valor, l.aviso ?? null])).toEqual([
+      ["Desconto de reserva cancelada com devolução ao hóspede maior que a sua parte: sai do próximo repasse, nada a transferir", 216750, null],
+      ["Você transfere à Sua Casa Leblon no fechamento", 10000, "voce_transfere"],
+    ]);
+    expect(misto.quemPagaQuem).toBe(
+      "Maria Exemplo transfere R$ 100,00 para a Sua Casa Leblon (as despesas do mês passaram da sua parte): chave Pix da empresa no portal. Já o desconto de reserva cancelada com devolução ao hóspede (R$ 2.167,50) não se transfere: sai do próximo repasse.",
+    );
+  });
+
   it("como chega: o desconto de outro mês num antecipado sai discriminado, sem falar em noites", () => {
     const carlaNov = parte({ ...carla, mes: "2026-11", repasse: { id: "rep3", tipo: "antecipado", data: "2026-12-04", situacao: "pago", dataPagamento: "2026-12-04", valor: 346800 }, situacao: "repassado" });
     const descontoNov = { ...desconto, mes: "2026-11", situacao: "repassado" as const, repasse: { id: "rep3", tipo: "antecipado" as const, data: "2026-12-04", situacao: "pago" as const, dataPagamento: "2026-12-04", valor: -216750 } };

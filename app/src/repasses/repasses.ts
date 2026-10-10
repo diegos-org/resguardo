@@ -311,9 +311,13 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
   }
   // M8.2c: o desconto de cancelamento (parte negativa) entra como as outras partes disponíveis — da competência, ou
   // "antecipada" quando é de mês seguinte — e se desconta sozinho do valor (S já o inclui, ou o adiantamento o subtrai).
-  const adiantadas = antecipadas.filter((x) => !ehDescontoDeCancelamento(x));
+  // A parte nunca paga e o espelho que a anula entram juntos e somam zero: nem adiantamento nem desconto.
+  const adiantadas = antecipadas.filter((x) => !ehDescontoDeCancelamento(x) && !x.anulacao);
   const adiantado = adiantadas.reduce((t, x) => t + x.valor, 0);
   if (!atual && adiantado > 0) avisos.push(`${brl(adiantado)} de noites de ${mesesDe(adiantadas)} entram neste repasse como adiantamento (reservas ${codigosDe(adiantadas)}): já disponíveis, a reserva é paga inteira.`);
+  const anuladas = itens.filter((x) => x.anulacao === "anulada");
+  if (!atual && anuladas.length)
+    avisos.push(`A parte de ${brl(anuladas.reduce((t, x) => t + x.valor, 0))} (reservas ${codigosDe(anuladas)}, canceladas com devolução integral ao hóspede antes de a parte ser repassada) e o estorno dela entram juntos neste repasse e se anulam.`);
   const descontos = itens.filter(ehDescontoDeCancelamento);
   if (!atual && descontos.length) {
     const d = -descontos.reduce((t, x) => t + x.valor, 0);
@@ -587,11 +591,22 @@ export async function vincularItens(tx: Db, org: string, repasseId: string, part
  * (recálculo depois de um fechamento antigo, migrações 0049–0052): positiva é acertada, negativa descontada, pelo
  * fechamento mensal.
  */
-export type ItemDoRepasse = RepasseItem & { codigoReserva: string; codigoImovel: string; checkin: string; checkout: string; hospede: string; parcial: boolean; diferenca: number };
+export type ItemDoRepasse = RepasseItem & {
+  codigoReserva: string;
+  codigoImovel: string;
+  checkin: string;
+  checkout: string;
+  hospede: string;
+  parcial: boolean;
+  diferenca: number;
+  /** M8.2c: item negativo que é o estorno de uma parte da mesma reserva neste mesmo repasse (nunca paga): os dois se anulam. */
+  anula?: boolean;
+};
 
 /** Como descrever o item (integral, parte de um mês, ou recalculado — com a direção certa): a mesma frase no painel, no portal e no e-mail. */
-export function descricaoDoItem(i: Pick<ItemDoRepasse, "parcial" | "diferenca" | "competencia" | "valor">): string {
-  // M8.2c: o desconto de cancelamento (item negativo) nunca é "parcial".
+export function descricaoDoItem(i: Pick<ItemDoRepasse, "parcial" | "diferenca" | "competencia" | "valor" | "anula">): string {
+  // M8.2c: o item negativo do cancelamento nunca é "parcial": o desconto da parte já paga, ou o estorno da parte que não foi.
+  if (i.valor < 0 && i.anula) return "estorno da parte desta reserva neste repasse (cancelada com devolução ao hóspede antes de a parte ser repassada): as duas se anulam";
   if (i.valor < 0) return "desconto da parte já repassada (reserva cancelada com devolução ao hóspede)";
   if (i.diferenca > 0) return `parte recalculada depois: ${formatBRL(i.diferenca)} a mais, acertados pelo fechamento mensal`;
   if (i.diferenca < 0) return `parte recalculada depois: ${formatBRL(-i.diferenca)} a menos, descontados pelo fechamento mensal`;
@@ -601,7 +616,7 @@ export function descricaoDoItem(i: Pick<ItemDoRepasse, "parcial" | "diferenca" |
 export async function itensDoRepasse(db: Db, org: string, repasseId: string): Promise<ItemDoRepasse[]> {
   if (!uuidValido(repasseId)) return [];
   const linhas = await db
-    .select({ item: repasseItens, codigoReserva: reservasRef.codigo, codigoImovel: imoveis.codigo, checkin: reservasRef.checkin, checkout: reservasRef.checkout, hospede: reservasRef.hospedeNome, valorAtual: lancamentos.valor })
+    .select({ item: repasseItens, codigoReserva: reservasRef.codigo, codigoImovel: imoveis.codigo, checkin: reservasRef.checkin, checkout: reservasRef.checkout, hospede: reservasRef.hospedeNome, valorAtual: lancamentos.valor, chaveOrigem: lancamentos.chaveOrigem })
     .from(repasseItens)
     .innerJoin(reservasRef, eq(reservasRef.id, repasseItens.reservaId))
     .innerJoin(imoveis, eq(imoveis.id, repasseItens.imovelId))
@@ -620,8 +635,12 @@ export async function itensDoRepasse(db: Db, org: string, repasseId: string): Pr
   const totalPartes = new Map(outras.map((o) => [o.reservaId!, o.n]));
   const nesteRepasse = new Map<string, number>();
   for (const l of linhas) if (l.item.valor >= 0) nesteRepasse.set(l.item.reservaId, (nesteRepasse.get(l.item.reservaId) ?? 0) + 1);
+  // O espelho (chave `cancelamento:<id>:espelho:<parte>`) cuja parte original está neste mesmo repasse a anula.
+  const lancamentosDoItem = new Set(linhas.map((l) => l.item.lancamentoId));
+  const anula = (l: (typeof linhas)[number]) => l.item.valor < 0 && /^cancelamento:[^:]+:espelho:/.test(l.chaveOrigem) && lancamentosDoItem.has(l.chaveOrigem.split(":")[3] ?? "");
   return linhas.map((l) => ({
     ...l.item,
+    ...(anula(l) ? { anula: true } : {}),
     codigoReserva: l.codigoReserva,
     codigoImovel: l.codigoImovel,
     checkin: l.checkin,
@@ -864,7 +883,8 @@ export async function estornarRepasse(db: Db, org: string, id: string, motivo: s
     if (posterior) return { ok: false as const, erro: posterior.tipo === "fechamento" ? "Há um repasse de mês posterior: estorne-o primeiro." : "Há um repasse antecipado posterior: estorne-o primeiro." };
     // M8.2c: parte deste repasse já descontada por um cancelamento com devolução integral (o espelho dela está em vigor):
     // estornar o repasse deixaria o desconto sem o pagamento, e o proprietário pagaria duas vezes. Um repasse que só tem
-    // o item negativo (o desconto) pode ser estornado: o desconto volta a ficar a descontar.
+    // o item negativo (o desconto) pode ser estornado: o desconto volta a ficar a descontar. O repasse que levou juntos
+    // a parte e o espelho que a anula também: os dois voltam a ficar disponíveis juntos.
     const [espelhada] = await tx
       .select({ codigo: reservasRef.codigo })
       .from(repasseItens)
@@ -873,7 +893,8 @@ export async function estornarRepasse(db: Db, org: string, id: string, motivo: s
         and(
           eq(repasseItens.repasseId, id),
           isNull(repasseItens.liberadoEm),
-          sql`exists (select 1 from ${lancamentos} e where e.organizacao_id = ${org} and e.chave_origem like ${PREFIXO_ESPELHO_LIKE} || ${repasseItens.lancamentoId}::text and e.estorno_de is null and not exists (select 1 from ${lancamentos} x where x.estorno_de = e.id))`,
+          sql`exists (select 1 from ${lancamentos} e where e.organizacao_id = ${org} and e.chave_origem like ${PREFIXO_ESPELHO_LIKE} || ${repasseItens.lancamentoId}::text and e.estorno_de is null and not exists (select 1 from ${lancamentos} x where x.estorno_de = e.id)
+            and not exists (select 1 from ${repasseItens} j where j.repasse_id = ${id} and j.lancamento_id = e.id and j.liberado_em is null))`,
         ),
       )
       .limit(1);

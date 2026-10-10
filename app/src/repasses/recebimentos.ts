@@ -18,6 +18,7 @@ import { uuidValido } from "@/lib/ids";
 import { formatBRL } from "@/lib/money";
 import { pagamentoEmAndamentoOuAprovado } from "@/pagamentos/andamento";
 import { dataValida } from "@/reservas/regras";
+import { ORIGEM_CANCELAMENTO } from "./descontos";
 
 export type Resultado = { ok: true; id: string } | { ok: false; erro: string };
 
@@ -131,9 +132,16 @@ export async function recebimentosDaReserva(db: Db, organizacaoId: string, reser
 export type RecebidoDaReserva = {
   /** Soma dos recebimentos realizados/conciliados em vigor, menos o que já voltou ao hóspede (devolução realizada, M8.2c). */
   recebido: number;
-  /** Líquido do canal (valor bruto − taxa do canal) pelos lançamentos do motor em vigor. */
+  /**
+   * Líquido do canal (valor bruto − taxa do canal) pelos lançamentos do motor em vigor. Os espelhos de um cancelamento
+   * pela política (origem "cancelamento", M8.2c, no mês do cancelamento) não entram: o que o canal (o hóspede) devia
+   * pagar pela reserva não muda porque o dinheiro voltou depois.
+   */
   devido: number;
-  /** Data (caixa) do recebimento que completou o líquido do canal — a data em que o canal pagou (M4.12); null se ainda falta. */
+  /**
+   * Data (caixa) do recebimento que completou o líquido do canal — a data em que o canal pagou (M4.12); null se ainda
+   * falta. Pelos recebimentos brutos: uma devolução ao hóspede depois (M8.2c) não apaga a data em que ele pagou.
+   */
   dataCompleto?: string | null;
 };
 
@@ -141,14 +149,14 @@ export type RecebidoDaReserva = {
  * Quanto a empresa já recebeu de cada reserva e quanto era de receber (líquido do canal). Base da
  * condição "o dinheiro está com a empresa": recebido ≥ devido (e devido > 0). O dinheiro que voltou ao
  * hóspede (lançamento "devolucao" realizado/conciliado, M8.2c) sai do recebido; a data em que o canal pagou
- * continua vindo só dos recebimentos.
+ * continua vindo só dos recebimentos, e o devido, só dos lançamentos do motor (sem os espelhos do cancelamento).
  */
 export async function recebidoPorReserva(db: Db, organizacaoId: string, reservaIds: readonly string[]): Promise<Map<string, RecebidoDaReserva>> {
   const ids = [...new Set(reservaIds.filter(uuidValido))];
   const mapa = new Map<string, RecebidoDaReserva>(ids.map((id) => [id, { recebido: 0, devido: 0, dataCompleto: null }]));
   if (!ids.length) return mapa;
   const linhas = await db
-    .select({ reservaId: lancamentos.reservaId, tipo: lancamentos.tipo, estado: lancamentos.estado, valor: lancamentos.valor, montante: lancamentos.montante, dataCaixa: lancamentos.dataCaixa, criadoEm: lancamentos.criadoEm })
+    .select({ reservaId: lancamentos.reservaId, tipo: lancamentos.tipo, estado: lancamentos.estado, origem: lancamentos.origem, valor: lancamentos.valor, montante: lancamentos.montante, dataCaixa: lancamentos.dataCaixa, criadoEm: lancamentos.criadoEm })
     .from(lancamentos)
     .where(
       and(
@@ -170,7 +178,7 @@ export async function recebidoPorReserva(db: Db, organizacaoId: string, reservaI
       }
     } else if (l.tipo === "devolucao") {
       if (l.estado === "realizado" || l.estado === "conciliado") r.recebido -= l.montante ?? 0;
-    } else r.devido += l.valor;
+    } else if (l.origem !== ORIGEM_CANCELAMENTO) r.devido += l.valor;
   }
   // A data em que o dinheiro ficou completo: o recebimento (na ordem de caixa) em que a soma alcançou o líquido do canal.
   for (const [id, lista] of recebimentos) {

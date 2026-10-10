@@ -33,7 +33,7 @@ import { janela, lerPeriodoPortal, nome, situacaoDoPeriodo, vizinhos } from "@/p
 import { bloqueiosDoPortal, reservasDoPortal, type SituacaoReserva } from "@/portal/reservas";
 import { hojeMaisCedo } from "@/site/site";
 import { proprietariosDoUsuario, resumoDoProprietario } from "@/portal/resumo";
-import { type Rodape, rodapeDoPortal } from "@/portal/rodape";
+import { divisaoDoDeve, type Rodape, rodapeDoPortal } from "@/portal/rodape";
 import { donosDosEscolhidos } from "@/relatorios/gerar";
 import { nomeMes } from "@/repasses/repasses";
 import { NOMES_ORIGEM } from "@/reservas/regras";
@@ -117,25 +117,31 @@ function TextoRodape({ r, empresa, diaFechamento }: { r: Rodape; empresa: string
           )}
         </p>
       );
-    case "proprietario_deve":
+    case "proprietario_deve": {
+      // M8.2c: o desconto de reserva cancelada com devolução ao hóspede não se transfere (sai do próximo repasse): o Pix
+      // da empresa só aparece para o resto, com esse valor.
+      const { proximoRepasse, transferir } = divisaoDoDeve(r);
+      const desconto = `o desconto de reserva cancelada com devolução ao hóspede (${formatBRL(proximoRepasse)}), maior que a sua parte deste mês, não se transfere: sai do próximo repasse`;
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <p style={{ margin: 0 }}>
-            <strong>Credor: {empresa}.</strong> Você deve {valor} à {empresa}.
+            <strong>Credor: {empresa}.</strong> Você deve {valor} à {empresa}
+            {!transferir ? <>, mas não precisa transferir: {desconto}.</> : proximoRepasse ? <>. Desse valor, {desconto}; transfira {formatBRL(transferir)}.</> : "."}
           </p>
-          {r.chavePix ? (
+          {!transferir ? null : r.chavePix ? (
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
               <span>
                 Pix da {empresa}: <code>{r.chavePix}</code>
               </span>
               <BotaoCopiar texto={r.chavePix} rotulo="Copiar Pix" className={`${styles.botao} ${styles.botaoContorno}`} />
-              <BotaoCopiar texto={centavosParaCampo(r.valor)} rotulo="Copiar valor" className={`${styles.botao} ${styles.botaoContorno}`} />
+              <BotaoCopiar texto={centavosParaCampo(transferir)} rotulo="Copiar valor" className={`${styles.botao} ${styles.botaoContorno}`} />
             </div>
           ) : (
             <p style={{ margin: 0 }}>Fale com a {empresa} para combinar o pagamento.</p>
           )}
         </div>
       );
+    }
     case "parcial":
       return (
         <p style={{ margin: 0 }}>

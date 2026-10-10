@@ -324,6 +324,21 @@ describe("textos do relatório (modelo oficial, M5.7)", () => {
     expect(JSON.stringify(textosDoRelatorio(base))).toBe(JSON.stringify(textosDoRelatorio({ ...base })));
   });
 
+  it("M8.2c — saldo com desconto de reserva cancelada que passa da parte: sai do próximo repasse; o Pix só para o resto", () => {
+    const e = "SCL";
+    expect(textoDoSaldo(rodape({ situacao: "proprietario_deve", valor: 30000, chavePix: "pix-da-empresa", descontoCancelamento: 30000 }), e)).toEqual([
+      "Credor: SCL. Você deve R$ 300,00 à SCL, mas não precisa transferir: o desconto de reserva cancelada com devolução ao hóspede (R$ 300,00), maior que a sua parte deste mês, não se transfere: sai do próximo repasse.",
+    ]);
+    expect(textoDoSaldo(rodape({ situacao: "proprietario_deve", valor: 30000, chavePix: "pix-da-empresa", descontoCancelamento: 20000 }), e)).toEqual([
+      "Credor: SCL. Você deve R$ 300,00 à SCL. Desse valor, o desconto de reserva cancelada com devolução ao hóspede (R$ 200,00), maior que a sua parte deste mês, não se transfere: sai do próximo repasse; transfira R$ 100,00.",
+      "Pix da SCL: pix-da-empresa",
+    ]);
+    const so = textosDoRelatorio({ ...base, rodape: [rodape({ nome: "Dona Fictícia", situacao: "proprietario_deve", valor: 5000, saldo: -5000, aFavor: "empresa", descontoCancelamento: 5000 })] });
+    expect(so.acerto.at(-1)).toEqual({ texto: "Desconto de reserva cancelada com devolução ao hóspede: sai do próximo repasse", valor: "R$ 50,00", tipo: "total" });
+    expect(JSON.stringify(so)).not.toContain("Você transfere");
+    expect(so.avisos.join(" ")).not.toContain("As despesas do mês passaram da sua parte");
+  });
+
   it("saldo: mesma leitura do rodapé do portal; Pix do proprietário nunca impresso", () => {
     const e = "SCL";
     expect(textoDoSaldo(rodape({ situacao: "empresa_deve", valor: 72250, chavePix: "dona@example.com" }), e)[0]).toBe(

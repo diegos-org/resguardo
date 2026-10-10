@@ -50,7 +50,9 @@ export async function cancelamentoDeTeste(db: Db, org: string, d: { reservaId: s
  * do cancelamento) — o da parte é o desconto do proprietário —, os outros meses são estornados, a reserva fica
  * cancelada e a conferência dada por resolvida. Devolve o total descontado do proprietário.
  */
-export async function espelharCancelamento(db: Db, org: string, d: { reservaId: string; cancelamentoId: string; competencia: string; codigo: string }): Promise<{ desconto: number }> {
+export async function espelharCancelamento(db: Db, org: string, d: { reservaId: string; cancelamentoId: string; competencia: string; codigo: string; agora?: Date }): Promise<{ desconto: number }> {
+  // O cancelamento acontece no mês da competência dos espelhos (o mês corrente dele): o dia 2, ao meio-dia em São Paulo.
+  const quando = d.agora ?? new Date(`${d.competencia.slice(0, 8)}02T12:00:00-03:00`);
   return db.transaction(async (tx) => {
     await travarMotorDaReserva(tx, org, d.reservaId);
     const ativos = await tx
@@ -75,7 +77,7 @@ export async function espelharCancelamento(db: Db, org: string, d: { reservaId: 
       const descricao = `Reserva ${d.codigo} cancelada com devolução integral ao hóspede: espelho de ${mesDe(a.competencia)}`;
       const chave = chaveEspelhoDoCancelamento(d.cancelamentoId, a.id);
       if (a.tipo === "direito_proprietario" && a.proprietarioId && a.imovelId) {
-        await lancarDescontoDoProprietario(tx, org, { chave, proprietarioId: a.proprietarioId, imovelId: a.imovelId, reservaId: d.reservaId, valor: a.valor, competencia: d.competencia, descricao }, null);
+        await lancarDescontoDoProprietario(tx, org, { chave, proprietarioId: a.proprietarioId, imovelId: a.imovelId, reservaId: d.reservaId, valor: a.valor, competencia: d.competencia, descricao }, null, quando);
         desconto += a.valor;
       } else
         await lancar(
@@ -85,8 +87,7 @@ export async function espelharCancelamento(db: Db, org: string, d: { reservaId: 
           null,
         );
     }
-    const agora = new Date();
-    await tx.update(reservas).set({ estado: "cancelada", canceladaEm: agora, confirmadaEm: null, conferenciaResolvidaEm: movidos.size ? agora : null, valorRetido: null }).where(eq(reservas.id, d.reservaId));
+    await tx.update(reservas).set({ estado: "cancelada", canceladaEm: quando, confirmadaEm: null, conferenciaResolvidaEm: movidos.size ? quando : null, valorRetido: null }).where(eq(reservas.id, d.reservaId));
     if (movidos.size) await tx.update(cancelamentosReserva).set({ espelhado: true }).where(eq(cancelamentosReserva.id, d.cancelamentoId));
     return { desconto };
   });

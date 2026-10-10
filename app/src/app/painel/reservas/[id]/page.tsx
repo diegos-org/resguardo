@@ -11,7 +11,7 @@ import { obterImovel } from "@/imoveis/repositorio";
 import { formatBRL } from "@/lib/money";
 import { cancelar, confirmar, resolverConferenciaAcao, salvarEmailHospedeAcao } from "@/reservas/acoes";
 import { NOMES_ESTADO, NOMES_ORIGEM, NOMES_RECEBIMENTO, noites } from "@/reservas/regras";
-import { obterReserva } from "@/reservas/repositorio";
+import { devolvidaNoProvedorDaReserva, obterReserva } from "@/reservas/repositorio";
 import { lerRegrasFinanceiras } from "@/configuracoes/regras-financeiras";
 import { lerRecebimento } from "@/imoveis/recebimento";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
@@ -40,10 +40,12 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
   const [imovel, historico] = await Promise.all([obterImovel(db, sessao.organizacaoId, r.imovelId), historicoDe(db, sessao.organizacaoId, "reserva", r.id)]);
   const verValores = podeFazer(sessao.papel, "financeiro:ler");
   const lancs = verValores ? await listarLancamentos(db, sessao.organizacaoId, { reservaId: r.id }) : [];
-  // Não calculada pelo motor (a cancelada com valor retido, M8.2c, é calculada) com lançamento do motor ainda em vigor:
-  // já movimentou dinheiro, em conferência (M4.8).
+  // Não calculada pelo motor (a cancelada com valor retido, M8.2c, é calculada), divergente, ou com o pagamento do site
+  // devolvido no Mercado Pago fora da política (D21, M8.2c), com lançamento do motor ainda em vigor: já movimentou
+  // dinheiro, em conferência (M4.8) — a mesma regra de `lancamentoEmConferencia`. Este quadro é o caminho para dar por resolvida.
   const emVigor = lancs.filter((l) => l.origem === "motor" && !l.estornoDe && !lancs.some((e) => e.estornoDe === l.id));
-  const emConferencia = (!reservaCalculadaPeloMotor(r) || r.divergenciaEm !== null) && !r.conferenciaResolvidaEm && emVigor.length > 0;
+  const devolvidaNoProvedor = emVigor.length > 0 && !r.conferenciaResolvidaEm && reservaCalculadaPeloMotor(r) && !r.divergenciaEm ? await devolvidaNoProvedorDaReserva(db, sessao.organizacaoId, r.id) : false;
+  const emConferencia = (!reservaCalculadaPeloMotor(r) || r.divergenciaEm !== null || devolvidaNoProvedor) && !r.conferenciaResolvidaEm && emVigor.length > 0;
 
   // Mesma ordem do motor: reserva > configuração do imóvel para o canal > padrão do sistema.
   const doImovel = verValores ? (await lerRecebimento(db, sessao.organizacaoId, r.imovelId))[r.origem] : undefined;
@@ -151,9 +153,11 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
       {emConferencia && (
         <section aria-label="Em conferência" className={styles.alerta} style={{ maxWidth: 820 }}>
           <p style={{ margin: 0 }}>
-            {r.estado !== "confirmada"
-              ? "Esta reserva não está confirmada, mas já movimentou dinheiro: os valores continuam no financeiro, em conferência, e o fechamento do mês do proprietário espera. Confirme a reserva de novo ou faça o ajuste manual e depois dê a conferência por resolvida."
-              : "Os valores atuais desta reserva não batem com o que já movimentou dinheiro no financeiro: em conferência, e o fechamento do mês do proprietário espera. Faça o ajuste manual e depois dê a conferência por resolvida."}
+            {devolvidaNoProvedor
+              ? "O Mercado Pago mostra o pagamento desta reserva devolvido fora do sistema: a parte do proprietário não é repassada. Cancele pela política (devolução integral) ou registre um ajuste e dê a conferência por resolvida."
+              : !reservaCalculadaPeloMotor(r)
+                ? "Esta reserva não está confirmada, mas já movimentou dinheiro: os valores continuam no financeiro, em conferência, e o fechamento do mês do proprietário espera. Confirme a reserva de novo ou faça o ajuste manual e depois dê a conferência por resolvida."
+                : "Os valores atuais desta reserva não batem com o que já movimentou dinheiro no financeiro: em conferência, e o fechamento do mês do proprietário espera. Faça o ajuste manual e depois dê a conferência por resolvida."}
           </p>
           {podeFazer(sessao.papel, "financeiro:editar") && (
             <form action={resolverConferenciaAcao} style={{ marginTop: 8 }}>
