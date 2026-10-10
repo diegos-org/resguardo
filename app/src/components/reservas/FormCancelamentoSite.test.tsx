@@ -176,6 +176,21 @@ describe("formulário do cancelamento pela política (M8.2c)", () => {
     expect(screen.queryByText(/Pagamento sem a política aceita/)).toBeNull();
   });
 
+  it("M8.2d (D17): o Mercado Pago mostra parte devolvida pelo painel sem dizer quanto — a recusa pede o valor visto lá, e ele vai no cálculo seguinte", async () => {
+    calcular.mockResolvedValueOnce({ codigo: "devolvido_fora_sem_valor", mensagem: "O Mercado Pago mostra parte deste pagamento devolvida pelo painel, sem informar quanto." });
+    calcular.mockResolvedValueOnce({ ok: true, previa: previa(), valores: { valorForaInformado: "300,00" } });
+    mostrar();
+    expect(screen.queryByLabelText(/Valor que o painel do Mercado Pago mostra devolvido/)).toBeNull();
+    fireEvent.change(screen.getByLabelText("Como chegou"), { target: { value: "email" } });
+    fireEvent.click(screen.getByRole("button", { name: "Calcular o cancelamento pela política" }));
+    fireEvent.change(await screen.findByLabelText(/Valor que o painel do Mercado Pago mostra devolvido/), { target: { value: "300,00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Calcular o cancelamento pela política" }));
+    await screen.findByRole("button", { name: "Cancelar a reserva" });
+    expect(Object.fromEntries(calcular.mock.calls[1][1])).toMatchObject({ valorForaInformado: "300,00" });
+    // Com a prévia (o valor veio no formulário), o campo continua na tela para o cancelamento.
+    expect(screen.getByLabelText(/Valor que o painel do Mercado Pago mostra devolvido/)).toBeTruthy();
+  });
+
   it("recusa de antes da decisão (nota com dado pessoal): a exceção que estava na tela continua, com o que foi digitado; a política dando o integral, ela some", async () => {
     calcular.mockResolvedValueOnce({ ok: true, previa: previa({ direito: "nenhum", calculado: "nenhum", escolha: "excecao", rota: "nenhuma" }) });
     calcular.mockResolvedValueOnce({ codigo: "dados", mensagem: "Tire dados pessoais da nota (CPF, e-mail, telefone, chave Pix, cartão)." });

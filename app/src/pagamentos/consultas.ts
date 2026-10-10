@@ -73,9 +73,11 @@ import {
   type Devolucao,
   devolucaoInexplicada,
   devolucoesDoPagamento,
+  devolvidoForaSemValor,
   dinheiroDaReserva,
   type Pagamento,
   possivelmenteNoProvedor,
+  saldoDevolvivel,
 } from "./travas";
 
 export { pagamentoEmAndamentoOuAprovado } from "./andamento";
@@ -806,6 +808,14 @@ export type PagamentoDoPainel = {
   aberta?: DevolucaoDoPainel | null;
   foraReconhecido?: number;
   alteracaoId?: string | null;
+  /**
+   * D17: o que o Mercado Pago mostra devolvido (a última leitura), o que ainda se pode devolver (o pago menos as devoluções
+   * e o reconhecido devolvido fora) e se ele mostra parte devolvida fora do sistema sem dizer quanto (a equipe informa o valor
+   * do painel dele). Para o "Devolver o restante ao hóspede" do pagamento sem reserva.
+   */
+  devolvidoLido?: number;
+  saldoDevolvivel?: number;
+  foraSemValor?: boolean;
   /** Pede atenção da equipe (lista "pede atenção" e Início). */
   pedeAtencao: boolean;
   /** O que a ficha pode oferecer (quem chama ainda confere a permissão financeiro:editar). */
@@ -844,6 +854,8 @@ const criacaoPresa = (p: Pagamento, agora: Date) => (p.situacao === "criando" ||
 export type DevolucaoDoPainel = {
   id: string;
   origem: string;
+  /** A alteração cuja diferença esta devolução devolve (origem "alteracao"). */
+  alteracaoId: string | null;
   valor: number;
   situacao: SituacaoDevolucao;
   valorConfirmado: number | null;
@@ -998,6 +1010,9 @@ function paraPainel(p: Pagamento, devs: readonly Devolucao[], temRecebimentoManu
     })(),
     foraReconhecido: p.devolvidoForaReconhecido,
     alteracaoId: p.alteracaoId,
+    devolvidoLido: p.devolvidoLido,
+    saldoDevolvivel: saldoDevolvivel(p, devs),
+    foraSemValor: devolvidoForaSemValor(p, devs),
     idProvedor: p.idProvedor,
     referencia: p.referencia,
     idPagamentoProvedor: p.idPagamentoProvedor,
@@ -1053,6 +1068,7 @@ function devolucaoDoPainel(p: Pagamento, d: Devolucao, devs: readonly Devolucao[
   return {
     id: d.id,
     origem: d.origem,
+    alteracaoId: d.alteracaoId,
     valor: d.valor,
     situacao: d.situacao,
     valorConfirmado: d.valorConfirmado,
@@ -1174,7 +1190,8 @@ function podePedirAtencao(agora: Date) {
   );
 }
 
-export type LinhaPagamento = PagamentoDoPainel & { reservaCodigo: string; reservaEstado: string; imovelCodigo: string; checkin: string; checkout: string; cotacaoCodigo: string };
+/** `alteracaoEm` (M8.2d): quando foi preparada a alteração cuja diferença este pagamento cobra; null nos outros. */
+export type LinhaPagamento = PagamentoDoPainel & { reservaCodigo: string; reservaEstado: string; imovelCodigo: string; checkin: string; checkout: string; cotacaoCodigo: string; alteracaoEm: Date | null };
 
 /**
  * Financeiro → Pagamentos do site: por período (dia de criação, em São Paulo, `de` e `ate` inclusive), com o
@@ -1183,16 +1200,26 @@ export type LinhaPagamento = PagamentoDoPainel & { reservaCodigo: string; reserv
 export async function listarPagamentos(db: Db, organizacaoId: string, f: { de?: string; ate?: string; atencao?: boolean } = {}, agora: Date = new Date()): Promise<LinhaPagamento[]> {
   const dia = sql`(${pagamentos.criadoEm} at time zone 'America/Sao_Paulo')::date`;
   const linhas = await db
-    .select({ p: pagamentos, reservaCodigo: reservas.codigo, reservaEstado: reservas.estado, imovelCodigo: imoveis.codigo, checkin: reservas.checkin, checkout: reservas.checkout, cotacaoCodigo: cotacoes.codigo })
+    .select({
+      p: pagamentos,
+      reservaCodigo: reservas.codigo,
+      reservaEstado: reservas.estado,
+      imovelCodigo: imoveis.codigo,
+      checkin: reservas.checkin,
+      checkout: reservas.checkout,
+      cotacaoCodigo: cotacoes.codigo,
+      alteracaoEm: alteracoesReserva.criadoEm,
+    })
     .from(pagamentos)
     .innerJoin(reservas, eq(reservas.id, pagamentos.reservaId))
     .innerJoin(imoveis, eq(imoveis.id, pagamentos.imovelId))
     .innerJoin(cotacoes, eq(cotacoes.id, pagamentos.cotacaoId))
+    .leftJoin(alteracoesReserva, and(eq(alteracoesReserva.id, pagamentos.alteracaoId), eq(alteracoesReserva.organizacaoId, pagamentos.organizacaoId)))
     .where(and(eq(pagamentos.organizacaoId, organizacaoId), !f.atencao && f.de ? gte(dia, f.de) : undefined, !f.atencao && f.ate ? sql`${dia} <= ${f.ate}` : undefined, f.atencao ? podePedirAtencao(agora) : undefined))
     .orderBy(desc(pagamentos.criadoEm), desc(pagamentos.id))
     .limit(500);
   const painel = await montarPainel(db, organizacaoId, linhas.map((l) => l.p), agora);
-  const r = painel.map((p, i) => ({ ...p, reservaCodigo: linhas[i].reservaCodigo, reservaEstado: linhas[i].reservaEstado, imovelCodigo: linhas[i].imovelCodigo, checkin: linhas[i].checkin, checkout: linhas[i].checkout, cotacaoCodigo: linhas[i].cotacaoCodigo }));
+  const r = painel.map((p, i) => ({ ...p, reservaCodigo: linhas[i].reservaCodigo, reservaEstado: linhas[i].reservaEstado, imovelCodigo: linhas[i].imovelCodigo, checkin: linhas[i].checkin, checkout: linhas[i].checkout, cotacaoCodigo: linhas[i].cotacaoCodigo, alteracaoEm: linhas[i].alteracaoEm ?? null }));
   return f.atencao ? r.filter((x) => x.pedeAtencao) : r;
 }
 

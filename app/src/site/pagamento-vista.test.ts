@@ -10,6 +10,7 @@ import {
   linhaDaAnalise,
   linkDoPix,
   mensagemDoContato,
+  mensagemDoContatoDaAlteracao,
   paraOHospede,
   type TextosDoCancelamento,
   textoDoCancelamento,
@@ -181,6 +182,8 @@ describe("vista do pagamento para o navegador (M8.2a)", () => {
     expect(mensagemDoContato(texto, "verificando", null, "pix")).toContain("Fiz o pagamento por Pix e a página ainda está conferindo.");
     expect(mensagemDoContato(texto, "cartao_em_analise", null, "cartao")).toBe("Olá! Fiz a cotação COT-ABCDEFGH no site.\nEntrada: 12/10 · Saída: 15/10.\nPaguei com cartão e a página diz que o pagamento está em análise.");
     expect(mensagemDoContato(texto, "cartao_recusado", null, "cartao")).toBe(texto);
+    // M8.2d: no quadro da alteração, a linha cita a reserva.
+    expect(mensagemDoContatoDaAlteracao(texto, "SCL-TESTE1")).toBe("Olá! Fiz a cotação COT-ABCDEFGH no site.\nEntrada: 12/10 · Saída: 15/10.\nQuero falar sobre a alteração da minha reserva SCL-TESTE1.");
   });
 });
 

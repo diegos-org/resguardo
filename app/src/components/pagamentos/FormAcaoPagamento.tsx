@@ -14,6 +14,8 @@ type Props = {
   nome: string;
   /** Tentativa a que a ação se aplica; sem ela, "Conferir agora" confere todas as pendentes da empresa. */
   pagamentoId?: string;
+  /** M8.2d: a devolução a que a ação se aplica (várias por pagamento); vai junto do pagamento, e o servidor usa ela. */
+  devolucaoId?: string;
   /** Pergunta de confirmação: toda ação que mexe em dinheiro passa por ela. Sem pergunta, envio direto (conferir). */
   pergunta?: string;
   /**
@@ -33,7 +35,7 @@ type Props = {
  * mensagem que o servidor devolveu — de sucesso ou a recusa do domínio, como veio. Envia pelo `onSubmit` (não pelo
  * `action` do formulário) para o React não limpar os campos: numa recusa, o que foi digitado continua ali para corrigir.
  */
-export function FormAcaoPagamento({ acao, rotulo, nome, pagamentoId, pergunta, valorNaPergunta, dataNaPergunta, discreto, children }: Props) {
+export function FormAcaoPagamento({ acao, rotulo, nome, pagamentoId, devolucaoId, pergunta, valorNaPergunta, dataNaPergunta, discreto, children }: Props) {
   const [estado, enviar, enviando] = useActionState(acao, {});
   const formulario = useRef<HTMLFormElement>(null);
   const classe = discreto ? styles.pequeno : undefined;
@@ -65,6 +67,7 @@ export function FormAcaoPagamento({ acao, rotulo, nome, pagamentoId, pergunta, v
       }}
     >
       {pagamentoId && <input type="hidden" name="pagamentoId" value={pagamentoId} />}
+      {devolucaoId && <input type="hidden" name="devolucaoId" value={devolucaoId} />}
       {children}
       <div className={discreto ? undefined : styles.acoes}>
         {pergunta ? (

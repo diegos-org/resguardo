@@ -98,6 +98,17 @@ export function mensagemSemPix(m: MotivoSemPix): string {
 }
 
 /**
+ * M8.2d: por que o pagamento da diferença de uma alteração não é oferecido, em linguagem do hóspede. A alteração que não
+ * existe mais nesta cotação ou não está mais segurada (aplicada, desistida, outra): a página mudou; o prazo das novas
+ * datas acabou: a reserva continua como estava.
+ */
+export function mensagemSemPixDaAlteracao(m: MotivoSemPix): string {
+  if (m === "cotacao_nao_encontrada" || m === "nao_segurada") return MENSAGENS_PIX_HOSPEDE.alteracao_mudou;
+  if (m === "prazo_vencido") return "O prazo das novas datas acabou: a sua reserva continua como estava.";
+  return MENSAGENS_PIX_HOSPEDE.nao_oferecido;
+}
+
+/**
  * As travas do pagamento para as telas do site; qualquer falha inesperada = não cobra (deny-by-default). A conferência
  * da conta no Mercado Pago espera no máximo `esperaMs` (padrão `ESPERA_TELA_MS`, 2 s): passou disso, não cobra e a
  * página segue (a consulta, a ficha e a cotação nunca ficam presas a um Mercado Pago lento).

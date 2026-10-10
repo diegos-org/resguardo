@@ -44,9 +44,10 @@ const texto = (v: unknown) => (typeof v === "string" ? v : "");
  * O que vai ao servidor no envio do cartão: só o token (o número do cartão nunca), a bandeira, o tipo, as parcelas, o
  * documento (repassado ao Mercado Pago, nunca guardado), o id do aparelho quando o SDK o deu, e o aceite com as versões
  * que a página mostrou (só quando o aceite ainda estava pendente e a caixa foi marcada). E-mail, valor, emissor, BIN,
- * últimos dígitos e titular ficam de fora, nem que o formulário os entregue.
+ * últimos dígitos e titular ficam de fora, nem que o formulário os entregue. M8.2d: no pagamento da diferença, o id da
+ * alteração (`alteracao`; quem confere é o servidor).
  */
-export function formularioDoCartao(dados: DadosDoFormularioCartao, tipo: unknown, extra: { dispositivo: unknown; aceite: VersoesLegais | null }): FormData {
+export function formularioDoCartao(dados: DadosDoFormularioCartao, tipo: unknown, extra: { dispositivo: unknown; aceite: VersoesLegais | null; alteracaoId?: string | null }): FormData {
   const f = new FormData();
   f.set("token", texto(dados?.token));
   f.set("bandeira", texto(dados?.payment_method_id));
@@ -62,11 +63,14 @@ export function formularioDoCartao(dados: DadosDoFormularioCartao, tipo: unknown
     f.set("aceite", "sim");
     for (const doc of DOCUMENTOS_LEGAIS) f.set(CAMPOS_VERSAO[doc], String(extra.aceite[doc]));
   }
+  if (extra.alteracaoId) f.set("alteracao", extra.alteracaoId);
   return f;
 }
 
 type Props = {
   codigo: string;
+  /** M8.2d: o pagamento da diferença desta alteração (o formulário leva o id; `valor` é a diferença). */
+  alteracaoId?: string | null;
   chavePublica: string;
   /** Total da cotação, em centavos (o que o servidor cobra; os juros das parcelas o formulário mostra por cima). */
   valor: number;
@@ -89,7 +93,7 @@ type Props = {
  * O formulário só é recriado quando muda a chave, o valor, as parcelas ou o e-mail de teste (props simples: uma nova
  * renderização da página com os mesmos valores não apaga o que foi digitado).
  */
-export function PagamentoCartao({ codigo, chavePublica, valor, parcelasMaximas, emailTeste, aceite, fuso, acao, bloqueio, oferecerPix }: Props) {
+export function PagamentoCartao({ codigo, alteracaoId = null, chavePublica, valor, parcelasMaximas, emailTeste, aceite, fuso, acao, bloqueio, oferecerPix }: Props) {
   const router = useRouter();
   const aceitePendente = !!aceite && !aceite.aceito;
   const [marcado, setMarcado] = useState(false);
@@ -109,7 +113,8 @@ export function PagamentoCartao({ codigo, chavePublica, valor, parcelasMaximas, 
   const [falhou, setFalhou] = useState(false);
   const [geracao, setGeracao] = useState(0);
   const pronto = (!aceitePendente || liberado) && !falhou;
-  const container = `cartao-${codigo.replace(/[^A-Za-z0-9_-]/g, "")}`;
+  // Um quadro por pagamento (o da cotação e o da diferença de uma alteração nunca dividem o mesmo elemento).
+  const container = `cartao-${codigo.replace(/[^A-Za-z0-9_-]/g, "")}${alteracaoId ? `-${alteracaoId.replace(/[^A-Za-z0-9_-]/g, "")}` : ""}`;
 
   const aoMarcar = (v: boolean) => {
     setMarcado(v);
@@ -122,7 +127,7 @@ export function PagamentoCartao({ codigo, chavePublica, valor, parcelasMaximas, 
       setMensagem(MENSAGEM_ACEITE_PENDENTE_CARTAO);
       throw new Error("aceite_pendente");
     }
-    const form = formularioDoCartao(dados, adicionais?.paymentTypeId, { dispositivo: idDoAparelho(), aceite: aceitePendente && aceite ? aceite.versoes : null });
+    const form = formularioDoCartao(dados, adicionais?.paymentTypeId, { dispositivo: idDoAparelho(), aceite: aceitePendente && aceite ? aceite.versoes : null, alteracaoId });
     let r: EstadoCartao;
     try {
       r = await acao(form);

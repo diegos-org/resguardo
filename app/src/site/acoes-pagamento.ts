@@ -8,10 +8,11 @@ import { type CodigoFalhaCartao, type DadosCartaoDoHospede, pagarComCartao, type
 import { conferirEmailDoPedido, conferirLimite } from "@/pagamentos/limites";
 import { motivoSoDoCartao, ofertaDeCartao, ofertaDePix } from "@/pagamentos/oferta";
 import { gerarPix } from "@/pagamentos/pix";
+import { uuidValido } from "@/lib/ids";
 import { versoesDoFormulario } from "./aceites";
 import { autorizadoNaCotacao, gravarAutorizacao } from "./checkout";
 import { codigoCotacaoValido, obterCotacao } from "./cotacoes";
-import { MENSAGEM_INDISPONIVEL, MENSAGEM_SEM_AUTORIZACAO, MENSAGENS_CARTAO_HOSPEDE, MENSAGENS_PIX_HOSPEDE, mensagemSemPix, portaoDoSite } from "./pagamento";
+import { MENSAGEM_INDISPONIVEL, MENSAGEM_SEM_AUTORIZACAO, MENSAGENS_CARTAO_HOSPEDE, MENSAGENS_PIX_HOSPEDE, mensagemSemPix, mensagemSemPixDaAlteracao, portaoDoSite } from "./pagamento";
 import { organizacaoDoSite } from "./site";
 
 /** Estado das ações do pagamento no site: só o resultado e uma frase (nenhum dado pessoal). */
@@ -27,6 +28,16 @@ export type EstadoCartao = { ok?: boolean; erro?: string; situacao?: SituacaoCar
 const EM_CONFIGURACAO = "O site ainda está em configuração.";
 const RECARREGAR_PAGINA = "Recarregue a página e tente de novo.";
 const lerCodigo = (v: unknown) => (typeof v === "string" ? v.trim().toUpperCase().slice(0, 20) : "");
+/**
+ * M8.2d: a alteração do formulário (o pagamento da diferença na página da reserva). Ausente ou vazia = o pagamento da
+ * cotação; fora do formato = undefined (recusa: a página mudou). Quem confere se ela é desta cotação e ainda está
+ * segurada é a oferta e o domínio.
+ */
+function lerAlteracao(form: FormData | undefined): string | null | undefined {
+  const v = form?.get("alteracao");
+  if (v === null || v === undefined || v === "") return null;
+  return typeof v === "string" && uuidValido(v) ? v : undefined;
+}
 
 /**
  * "Gerar Pix" na página da cotação (`codigo` vem ligado pela página; o estado anterior que o `useActionState`
@@ -34,6 +45,7 @@ const lerCodigo = (v: unknown) => (typeof v === "string" ? v.trim().toUpperCase(
  * gastar qualquer tentativa; depois, o freio por endereço, as travas (`podeCobrar`), a oferta e o domínio
  * (`gerarPix`), que reaproveita um Pix ainda válido. Do formulário só se lê a caixa do aceite das páginas legais e as
  * versões que a página mostrou (M7.4); quem confere se são as publicadas é o domínio, na mesma transação do Pix.
+ * M8.2d: com `alteracao` (o Pix da diferença de uma alteração segurada), a oferta e o domínio são os da alteração.
  */
 export async function gerarPixAcao(codigo: string, _estado?: EstadoPix, form?: FormData): Promise<EstadoPix> {
   const cod = lerCodigo(codigo);
@@ -45,18 +57,20 @@ export async function gerarPixAcao(codigo: string, _estado?: EstadoPix, form?: F
   if (!c) return { erro: MENSAGENS_PIX_HOSPEDE.nao_encontrada };
   const agora = new Date();
   if (!(await autorizadoNaCotacao(c.id, agora))) return { erro: MENSAGEM_SEM_AUTORIZACAO };
+  const alteracaoId = lerAlteracao(form);
+  if (alteracaoId === undefined) return { erro: MENSAGENS_PIX_HOSPEDE.alteracao_mudou };
   const limite = await conferirLimite(db, organizacaoId, "gerar_pix", origemDoPedido(await headers()), agora);
   if (!limite.ok) return { erro: limite.erro };
   const gate = await portaoDoSite(db, organizacaoId, agora);
   if (!gate.ok) return { erro: MENSAGENS_PIX_HOSPEDE.nao_oferecido };
-  const oferta = await ofertaDePix(db, organizacaoId, c.id, agora, gate);
-  if (!oferta.oferecer) return { erro: mensagemSemPix(oferta.motivo) };
+  const oferta = await ofertaDePix(db, organizacaoId, c.id, agora, gate, { alteracaoId });
+  if (!oferta.oferecer) return { erro: alteracaoId ? mensagemSemPixDaAlteracao(oferta.motivo) : mensagemSemPix(oferta.motivo) };
   const marcado = form?.get("aceite") === "sim";
   const aceite = marcado && form ? versoesDoFormulario(form) : null;
   if (marcado && !aceite) return { erro: RECARREGAR_PAGINA };
   let resultado: EstadoPix;
   try {
-    const r = await gerarPix(db, organizacaoId, c.id, agora, gate.provedor, { aceite });
+    const r = await gerarPix(db, organizacaoId, c.id, agora, gate.provedor, { aceite, alteracaoId });
     resultado = r.ok ? { ok: true } : { erro: MENSAGENS_PIX_HOSPEDE[r.codigo] };
   } catch (e) {
     // O registro leva só o tipo do erro (nada da cotação nem do hóspede).
@@ -100,7 +114,7 @@ function dadosDoFormulario(form: FormData): DadosCartaoDoHospede {
  * tentativas que chegaram ao Mercado Pago, na fase 1 do domínio) → travas (`podeCobrar`) → oferta do cartão → os campos
  * conhecidos do formulário e o aceite das páginas legais → domínio (`pagarComCartao`). O estado devolvido é só a
  * situação ou uma frase da lista fechada (nunca o motivo da recusa nem algo do que foi enviado); o registro de erro leva
- * só o tipo do erro.
+ * só o tipo do erro. M8.2d: com `alteracao`, o cartão da diferença (a oferta e o domínio da alteração).
  */
 export async function pagarComCartaoAcao(codigo: string, form: FormData): Promise<EstadoCartao> {
   const cod = lerCodigo(codigo);
@@ -112,18 +126,21 @@ export async function pagarComCartaoAcao(codigo: string, form: FormData): Promis
   if (!c) return { erro: MENSAGENS_CARTAO_HOSPEDE.nao_encontrada };
   const agora = new Date();
   if (!(await autorizadoNaCotacao(c.id, agora))) return { erro: MENSAGEM_SEM_AUTORIZACAO };
+  const alteracaoId = lerAlteracao(form);
+  if (alteracaoId === undefined) return { erro: MENSAGENS_CARTAO_HOSPEDE.alteracao_mudou, recarregar: true };
   const limite = await conferirLimite(db, organizacaoId, "cartao", origemDoPedido(await headers()), agora, { semGeral: true });
   if (!limite.ok) return { erro: limite.erro };
   const gate = await portaoDoSite(db, organizacaoId, agora);
   if (!gate.ok) return { erro: MENSAGENS_CARTAO_HOSPEDE.nao_oferecido, recarregar: true };
-  const oferta = await ofertaDeCartao(db, organizacaoId, c.id, agora, gate);
-  if (!oferta.oferecer) return { erro: motivoSoDoCartao(oferta.motivo) ? MENSAGENS_CARTAO_HOSPEDE.indisponivel : mensagemSemPix(oferta.motivo), recarregar: true };
+  const oferta = await ofertaDeCartao(db, organizacaoId, c.id, agora, gate, { alteracaoId });
+  if (!oferta.oferecer)
+    return { erro: motivoSoDoCartao(oferta.motivo) ? MENSAGENS_CARTAO_HOSPEDE.indisponivel : alteracaoId ? mensagemSemPixDaAlteracao(oferta.motivo) : mensagemSemPix(oferta.motivo), recarregar: true };
   const marcado = form.get("aceite") === "sim";
   const aceite = marcado ? versoesDoFormulario(form) : null;
   if (marcado && !aceite) return { erro: RECARREGAR_PAGINA, recarregar: true };
   let resultado: EstadoCartao;
   try {
-    const r = await pagarComCartao(db, organizacaoId, c.id, agora, gate.provedor, dadosDoFormulario(form), { aceite });
+    const r = await pagarComCartao(db, organizacaoId, c.id, agora, gate.provedor, dadosDoFormulario(form), { aceite, alteracaoId });
     resultado = r.ok ? { ok: true, situacao: r.situacao } : { erro: MENSAGENS_CARTAO_HOSPEDE[r.codigo], ...(RECARREGAR.has(r.codigo) ? { recarregar: true } : {}) };
   } catch (e) {
     // O registro leva só o tipo do erro (nada da cotação, do hóspede nem do cartão).

@@ -173,6 +173,12 @@ export type AceiteNaPagina = {
   resumo: Bloco[];
   /** Prazo do reembolso integral desta reserva, pela política do aceite que vale (ou a em vigor, antes do aceite). */
   prazo: ReturnType<typeof prazoDoReembolso>;
+  /**
+   * M8.2d (D11): no pagamento da diferença de uma alteração, a Política de cancelamento da reserva (a versão aceita no
+   * pagamento que a confirmou e quando, em ISO): a caixa só pede os Termos e a Privacidade em vigor e diz que a reserva
+   * continua nessa versão. Ausente fora da diferença (ou com a reserva confirmada sem aceite, antes do M7.4).
+   */
+  daReserva?: { versao: number; em: string };
 };
 
 /**
@@ -213,6 +219,48 @@ export async function aceiteParaPagina(
     // M8.2d: depois de uma alteração, o prazo conta da entrada que conta (a menor entre a da cotação e a atual da reserva),
     // a mesma data do painel e de Minha reserva.
     prazo: prazoDoReembolso(c.reservaId ? entradaQueConta(c.checkin, (await checkinDaReserva(db, organizacaoId, c.reservaId)) ?? c.checkin) : c.checkin, daRegra.regras.diasReembolsoIntegral, hojeISO(c.fuso, agora)),
+  };
+}
+
+/**
+ * Para o pagamento da diferença de uma alteração (M8.2d, D11), na página da reserva (sem trava, só para mostrar): as
+ * versões que o domínio confere (`aceiteVigenteTravado` com `cancelamentoDaReserva`) — os Termos e a Privacidade em
+ * vigor com a Política de cancelamento aceita no pagamento que confirmou a reserva —, o aceite dessas versões nesta
+ * cotação (já feito = sem caixa), o resumo e o prazo dessa política (contado da entrada que conta). Reserva confirmada
+ * sem aceite (antes do M7.4): a política em vigor, como o domínio. null quando as três páginas não estão publicadas.
+ */
+export async function aceiteDaDiferencaParaPagina(
+  db: Db,
+  organizacaoId: string,
+  c: { id: string; checkin: string; fuso: string; reservaId: string },
+  agora: Date,
+): Promise<AceiteNaPagina | null> {
+  const emVigor = await versoesLegaisAtuais(db, organizacaoId);
+  if (!emVigor) return null;
+  const [p0] = await db
+    .select({ versao: aceitesSite.versaoCancelamento, em: aceitesSite.aceitoEm })
+    .from(pagamentos)
+    .innerJoin(aceitesSite, eq(aceitesSite.id, pagamentos.aceiteId))
+    .where(
+      and(
+        eq(pagamentos.organizacaoId, organizacaoId),
+        eq(pagamentos.cotacaoId, c.id),
+        eq(pagamentos.reservaId, c.reservaId),
+        eq(pagamentos.desfecho, "reserva"),
+        eq(aceitesSite.organizacaoId, organizacaoId),
+      ),
+    );
+  const versoes: VersoesLegais = p0 ? { ...emVigor, cancelamento: p0.versao } : emVigor;
+  const aceito = await aceiteDasVersoes(db, organizacaoId, c.id, versoes);
+  const daRegra = (await lerPaginaLegal(db, organizacaoId, "cancelamento")).find((v) => v.numero === versoes.cancelamento);
+  // Política sem o prazo gravado não acontece pela publicação; se acontecer, nada é suposto: a página não mostra o aceite.
+  if (!daRegra?.regras) return null;
+  return {
+    versoes,
+    aceito: aceito ? { em: aceito.aceitoEm.toISOString(), versoes: aceito.versoes } : null,
+    resumo: blocosDoDocumento(preencherCampos(daRegra.secoes.resumo ?? "", daRegra.valores)),
+    prazo: prazoDoReembolso(entradaQueConta(c.checkin, (await checkinDaReserva(db, organizacaoId, c.reservaId)) ?? c.checkin), daRegra.regras.diasReembolsoIntegral, hojeISO(c.fuso, agora)),
+    ...(p0 ? { daReserva: { versao: p0.versao, em: p0.em.toISOString() } } : {}),
   };
 }
 

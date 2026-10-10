@@ -10,6 +10,8 @@
  * enviada", `reserva:editar` (o descarte do pedido feito pelo hóspede no site também pede o financeiro, e quem confere é
  * o domínio). A leitura do Mercado Pago usa `provedorDeConferencia` (desligar a oferta nunca impede de cancelar). As notas
  * passam pelo validador de dados pessoais aqui e de novo no domínio. Numa recusa, o que foi digitado volta em `valores`.
+ * M8.2d (D17): quando o Mercado Pago mostra parte do pagamento devolvida pelo painel dele sem dizer quanto, o valor visto
+ * lá (`valorForaInformado`, em reais) vai ao domínio.
  */
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -19,6 +21,7 @@ import { getDb } from "@/db/client";
 import { CANAIS_PEDIDO_CANCELAMENTO, type CanalPedidoCancelamento, MOTIVOS_CANCELAMENTO_EMPRESA, MOTIVOS_EXCECAO, type MotivoCancelamentoEmpresa, type MotivoExcecao, QUEM_CANCELA_RESERVA } from "@/db/schema";
 import { ERRO_DADOS_PESSOAIS, textoSemDadosPessoais } from "@/lib/dados-pessoais";
 import { instanteLocal } from "@/lib/datas";
+import { reaisParaCentavos } from "@/lib/dinheiro-form";
 import { uuidValido } from "@/lib/ids";
 import { dataValida } from "@/reservas/regras";
 import {
@@ -127,7 +130,15 @@ function entradaDoForm(form: FormData): { ok: true; reservaId: string; e: Entrad
     const problema = problemaDaNota(n, null);
     if (problema) return { ok: false, mensagem: problema };
   }
-  return { ok: true, reservaId, e: { recebidoEm, motivoMomento, canal, quemCancela, motivoEmpresa, decisao, motivoExcecao, motivoDecisao, nota } };
+  // D17: o valor que o painel do Mercado Pago mostra devolvido fora do sistema (só quando a leitura não diz quanto).
+  const foraBruto = texto(form, "valorForaInformado");
+  const valorForaInformado = foraBruto ? reaisParaCentavos(foraBruto) : undefined;
+  if (foraBruto && (typeof valorForaInformado !== "number" || valorForaInformado <= 0)) return { ok: false, mensagem: "Informe o valor que o painel do Mercado Pago mostra devolvido, em reais (ex.: 300,00)." };
+  return {
+    ok: true,
+    reservaId,
+    e: { recebidoEm, motivoMomento, canal, quemCancela, motivoEmpresa, decisao, motivoExcecao, motivoDecisao, nota, ...(typeof valorForaInformado === "number" ? { valorForaInformado } : {}) },
+  };
 }
 
 /** O provedor para a releitura (fase 0); sem ele, o domínio decide (o integral de um pagamento ainda legível espera). */

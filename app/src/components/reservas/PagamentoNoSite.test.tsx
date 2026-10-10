@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import type { PagamentoDoPainel } from "@/pagamentos/consultas";
+import type { DevolucaoDoPainel, PagamentoDoPainel } from "@/pagamentos/consultas";
 vi.mock("@/pagamentos/acoes-painel", () => ({
   conferirAgoraAcao: vi.fn(),
   devolverAcao: vi.fn(),
@@ -12,6 +12,7 @@ vi.mock("@/pagamentos/acoes-painel", () => ({
   registrarRecusaNoPainelAcao: vi.fn(),
   pararDevolucaoPedidaAcao: vi.fn(),
   corrigirTaxaPerdidaAcao: vi.fn(),
+  pedirRestanteAcao: vi.fn(),
 }));
 import { AVISOS_PAGAMENTO } from "@/pagamentos/situacoes";
 import { DEVOLUCAO_FALHOU_CARTAO, NAO_INFORME_O_MOTIVO, PagamentoNoSite, situacaoEmPalavras } from "./PagamentoNoSite";
@@ -317,5 +318,119 @@ describe("reserva cancelada pela política no quadro (M8.2c)", () => {
     const h = renderToStaticMarkup(<PagamentoNoSite pagamentos={[cancelado()]} verValores editar={false} hoje="2026-10-09" cancelamento={<div id="quadro-do-cancelamento" />} />);
     expect(h.indexOf('id="quadro-do-cancelamento"')).toBeGreaterThan(h.indexOf("Pagamento no site"));
     expect(h.indexOf('id="quadro-do-cancelamento"')).toBeLessThan(h.indexOf("<article"));
+  });
+});
+
+describe("várias devoluções por pagamento (M8.2d)", () => {
+  const nenhuma = { conferir: false, pedirDeNovo: false, porFora: false, confirmarVista: false, registrarRecusaNoPainel: false, parar: false, registrarTaxa: false, corrigirTaxa: false, pedirRestante: false, restantePorFora: false };
+  const ALTERACAO = "33333333-3333-4333-8333-333333333333";
+  const dev = (over: Partial<DevolucaoDoPainel> = {}): DevolucaoDoPainel => ({
+    id: "44444444-4444-4444-8444-444444444444",
+    origem: "alteracao",
+    alteracaoId: ALTERACAO,
+    valor: 30000,
+    situacao: "pedida",
+    valorConfirmado: null,
+    ultimoCodigo: "aguardando_liberacao",
+    avisos: [],
+    restanteDe: null,
+    temRestante: false,
+    caixaLancadoEm: null,
+    taxaPerdida: null,
+    criadoEm: new Date("2026-10-01T15:30:00Z"),
+    confirmadaEm: null,
+    porForaData: null,
+    porForaValor: null,
+    aguardandoLiberacao: true,
+    acoes: nenhuma,
+    ...over,
+  });
+  const alteracoes = [{ id: ALTERACAO, criadaEm: new Date("2026-10-01T15:20:00Z") }];
+  const comDevolucoes = (devolucoes: DevolucaoDoPainel[], over: Partial<PagamentoDoPainel> = {}): PagamentoDoPainel => ({ ...base, devolucoes, foraReconhecido: 0, devolvidoLido: 0, saldoDevolvivel: 152400, foraSemValor: false, ...over });
+  const quadro = (p: PagamentoDoPainel[], o: { verValores?: boolean; editar?: boolean } = {}) =>
+    renderToStaticMarkup(<PagamentoNoSite pagamentos={p} verValores={o.verValores ?? true} editar={o.editar ?? true} hoje="2026-10-09" alteracoes={alteracoes} />);
+
+  it("uma linha por devolução, de onde ela vem e a situação; a que espera a liberação nunca diz que foi pedida, e explica o porquê", () => {
+    const h = quadro([comDevolucoes([dev()])]);
+    expect(h).toContain("Devolução da alteração de 01/10/2026 de R$ 300,00: aguardando a liberação do pagamento (prevista para 20/10/2026)");
+    expect(h).toContain("A devolução de parte do valor é pedida ao Mercado Pago assim que ele liberar este pagamento (previsto para 20/10): antes disso o sistema não pede. No teste, registre a liberação à mão.");
+    expect(h).not.toContain("pedida ao Mercado Pago, aguardando confirmação");
+    // Sem o financeiro, sem valores.
+    const semValores = quadro([comDevolucoes([dev()])], { verValores: false, editar: false });
+    expect(semValores).toContain("Devolução da alteração de 01/10/2026: aguardando a liberação");
+    expect(semValores).not.toContain("R$");
+  });
+
+  it("as ações são de cada devolução e levam o id dela; a feita a menos tem 'Pedir o restante' e o restante por fora (com o restante)", () => {
+    const aMenor = dev({
+      id: "55555555-5555-4555-8555-555555555555",
+      origem: "cancelamento",
+      alteracaoId: null,
+      valor: 30000,
+      situacao: "confirmada",
+      valorConfirmado: 29000,
+      ultimoCodigo: null,
+      aguardandoLiberacao: false,
+      confirmadaEm: new Date("2026-10-05T15:00:00Z"),
+      avisos: ["devolucao_a_menor"],
+      acoes: { ...nenhuma, pedirRestante: true, restantePorFora: true, registrarTaxa: true },
+    });
+    const h = quadro([comDevolucoes([aMenor])]);
+    expect(h).toContain("Devolução do cancelamento de R$ 300,00: confirmada em 05/10/2026 (o Mercado Pago devolveu R$ 290,00)");
+    expect(h).toContain("Pedir o restante ao Mercado Pago");
+    expect(h).toContain('name="devolucaoId" value="55555555-5555-4555-8555-555555555555"');
+    expect(h).toContain("Registrar o restante devolvido por fora");
+    expect(h).toContain('name="restanteDe" value="55555555-5555-4555-8555-555555555555"');
+    expect(h).toContain('value="10,00"');
+    expect(h).toContain("Registrar taxa que não voltou");
+    // No cartão, o restante por fora só quando a regra do cartão deixa (o domínio manda a ação desligada).
+    const cartao = quadro([comDevolucoes([{ ...aMenor, acoes: { ...aMenor.acoes, restantePorFora: false } }], { forma: "cartao" })]);
+    expect(cartao).toContain("Pedir o restante ao Mercado Pago");
+    expect(cartao).not.toContain("Registrar o restante devolvido por fora");
+    // Sem financeiro:editar, nenhuma ação.
+    expect(quadro([comDevolucoes([aMenor])], { editar: false })).not.toContain("<form");
+  });
+
+  it("pedir de novo, confirmar com o valor visto no painel, por fora, recusa do painel, parar e corrigir a taxa: cada uma só quando a devolução permite", () => {
+    const recusada = dev({ situacao: "recusada", ultimoCodigo: "saldo_insuficiente", aguardandoLiberacao: false, taxaPerdida: 297, acoes: { ...nenhuma, pedirDeNovo: true, porFora: true, confirmarVista: true, registrarRecusaNoPainel: true, parar: true, corrigirTaxa: true } });
+    const h = quadro([comDevolucoes([recusada])]);
+    for (const t of ["Pedir a devolução de novo", "Confirmar devolução vista no painel do Mercado Pago", "Registrar devolução feita por fora", "Registrar que o Mercado Pago recusou a devolução no painel", "Parar a devolução pedida", "Corrigir taxa que não voltou"]) expect(h).toContain(t);
+    expect(h).toContain("Confirme só se o painel do Mercado Pago mostra esta devolução concluída, com o valor que aparece lá.");
+    expect(h).toContain("o Mercado Pago pediu saldo disponível na conta: coloque saldo e peça de novo");
+    // As ações do pagamento que viraram de cada devolução não se repetem no quadro do pagamento.
+    expect(h.match(/>Pedir a devolução de novo</g)).toHaveLength(1);
+    expect(h.match(/>Registrar devolução feita por fora</g)).toHaveLength(1);
+    expect(quadro([comDevolucoes([dev()])])).not.toContain("Pedir a devolução de novo");
+  });
+
+  it("pagamento sem reserva já devolvido em parte: 'Devolver o restante ao hóspede' com o que falta e o que o Mercado Pago mostra; sem o valor na leitura, o campo do valor do painel", () => {
+    const parcial = comDevolucoes([], {
+      situacao: "devolvido_parcial",
+      desfecho: null,
+      motivoSemReserva: "situacao_inesperada",
+      motivoSemReservaTexto: "Chegou já devolvido em parte.",
+      devolvidoLido: 30000,
+      foraReconhecido: 0,
+      saldoDevolvivel: 152400,
+      acoes: { ...sem, devolver: true, devolucaoPorFora: true },
+    });
+    const h = quadro([parcial]);
+    expect(h).toContain("Devolver o restante ao hóspede (R$ 1.524,00): o Mercado Pago já mostra R$ 300,00 devolvidos.");
+    expect(h).not.toContain("Devolver pelo Mercado Pago");
+    expect(h).not.toContain('name="valorForaInformado"');
+    const semValor = quadro([{ ...parcial, devolvidoLido: 0, saldoDevolvivel: 182400, foraSemValor: true }]);
+    expect(semValor).toContain("O Mercado Pago não informou quanto já foi devolvido: informe o valor que aparece no painel dele (R$)");
+    expect(semValor).toContain('name="valorForaInformado"');
+    // Sem devolução nenhuma e nada devolvido: o integral, como no M8.2a.
+    const integral = quadro([comDevolucoes([], { desfecho: null, motivoSemReserva: "conflito:SCL-1", motivoSemReservaTexto: "Noites ocupadas.", acoes: { ...sem, devolver: true } })]);
+    expect(integral).toContain("Devolver pelo Mercado Pago");
+    expect(integral).not.toContain("Devolver o restante");
+  });
+
+  it("o pagamento da diferença diz de qual alteração é", () => {
+    const diferenca = comDevolucoes([], { id: "66666666-6666-4666-8666-666666666666", desfecho: "alteracao", alteracaoId: ALTERACAO, valor: 40000, valorPago: 40000 });
+    const h = quadro([diferenca]);
+    expect(h).toContain("diferença da alteração de 01/10/2026");
+    expect(h).toContain("Aprovado: pagou a diferença da alteração de 01/10/2026");
   });
 });

@@ -136,6 +136,18 @@ describe("calcular o cancelamento", () => {
     expect(m.revalidar).toHaveBeenCalledWith("/painel", "layout");
   });
 
+  it("M8.2d (D17): o valor que o painel do Mercado Pago mostra devolvido fora do sistema vai ao domínio em centavos; inválido não chega lá", async () => {
+    m.previa.mockResolvedValue({ ok: true, previa });
+    await calcularCancelamentoAcao({}, form({ ...doHospede, valorForaInformado: "300,00" }));
+    expect(m.previa.mock.calls[0][3]).toMatchObject({ valorForaInformado: 30000 });
+    m.previa.mockClear();
+    await calcularCancelamentoAcao({}, form(doHospede));
+    expect(m.previa.mock.calls[0][3]).not.toHaveProperty("valorForaInformado");
+    m.previa.mockClear();
+    expect((await calcularCancelamentoAcao({}, form({ ...doHospede, valorForaInformado: "trezentos" }))).mensagem).toBe("Informe o valor que o painel do Mercado Pago mostra devolvido, em reais (ex.: 300,00).");
+    expect(m.previa).not.toHaveBeenCalled();
+  });
+
   it("sem provedor (oferta ou conta fora): calcula sem a releitura (o domínio decide o que exige a leitura)", async () => {
     m.gate.mockResolvedValue({ ok: false, motivo: "desligado", texto: "desligado" });
     m.previa.mockResolvedValue({ ok: false, codigo: "sem_leitura", erro: "Não deu para conferir o pagamento no Mercado Pago agora: tente de novo em instantes." });

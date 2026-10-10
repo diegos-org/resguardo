@@ -9,12 +9,15 @@
  * - Instruções de chegada (endereço completo) só a partir de 2 dias antes da entrada, às 10h no
  *   fuso do imóvel, até o horário de saída. Estar logado não antecipa a liberação.
  * - Tudo restrito à organização do site: reserva de outra empresa no mesmo banco não conta.
+ * - Alteração da reserva paga pelo site (M8.2d): enquanto uma alteração está com as novas datas seguradas, a reserva
+ *   ganha uma linha com o que ela espera (o pagamento da diferença ou a confirmação) e o link da página da reserva no
+ *   site, onde está o resto. Sem valores (a regra do M9.1).
  */
-import { and, asc, eq, gte, sql } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, sql } from "drizzle-orm";
 import { emitirCodigo, emailValido, type OpcoesCodigo, type ResultadoPedido, verificarCodigo } from "@/acesso/codigo-email";
 import { normalizarEmail } from "@/acesso/entrada";
 import { lerEmpresa } from "@/configuracoes/empresa";
-import { imoveis, imoveisDetalhes, reservas } from "@/db/schema";
+import { alteracoesReserva, cotacoes, imoveis, imoveisDetalhes, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import type { Correio } from "@/email/correio";
 import { hojeISO, instanteLocal, somarDias } from "@/lib/datas";
@@ -92,7 +95,28 @@ export type ReservaDoHospede = {
   encerrada: boolean;
   instrucoes: Instrucoes;
   contato: { empresa: string; whatsapp: string | null; email: string };
+  /** M8.2d: a alteração com as novas datas seguradas, quando há (sem valores). */
+  alteracao?: AlteracaoNoPortal | null;
 };
+
+/** A alteração esperando o hóspede: o pagamento da diferença (aumento) ou a confirmação dele, até quando, e onde ver. */
+export type AlteracaoNoPortal = { espera: "pagamento" | "confirmacao"; ate: Date; link: string };
+
+/**
+ * As alterações com as novas datas seguradas e o prazo valendo, por reserva (desta organização). Passado o prazo, a linha
+ * some (a página da reserva no site mostra o resto, inclusive um pagamento da diferença ainda em andamento).
+ */
+async function alteracoesSeguradas(db: Db, organizacaoId: string, reservaIds: string[], agora: Date): Promise<Map<string, AlteracaoNoPortal>> {
+  if (!reservaIds.length) return new Map();
+  const linhas = await db
+    .select({ reservaId: alteracoesReserva.reservaId, diferenca: alteracoesReserva.diferenca, holdAte: alteracoesReserva.holdAte, codigo: cotacoes.codigo })
+    .from(alteracoesReserva)
+    .innerJoin(cotacoes, and(eq(cotacoes.id, alteracoesReserva.cotacaoId), eq(cotacoes.organizacaoId, organizacaoId)))
+    .where(and(eq(alteracoesReserva.organizacaoId, organizacaoId), inArray(alteracoesReserva.reservaId, reservaIds), eq(alteracoesReserva.situacao, "segurada"), gt(alteracoesReserva.holdAte, agora)));
+  const r = new Map<string, AlteracaoNoPortal>();
+  for (const l of linhas) if (l.holdAte) r.set(l.reservaId, { espera: l.diferenca > 0 ? "pagamento" : "confirmacao", ate: l.holdAte, link: `/reservar/${encodeURIComponent(l.codigo)}` });
+  return r;
+}
 
 /** As reservas do hóspede logado, com as instruções de chegada só depois da liberação. */
 export async function reservasDoHospede(db: Db, organizacaoId: string, email: string, agora: Date): Promise<ReservaDoHospede[]> {
@@ -101,6 +125,7 @@ export async function reservasDoHospede(db: Db, organizacaoId: string, email: st
   const hoje = hojeISO(undefined, agora);
   const linhas = await db
     .select({
+      id: reservas.id,
       codigo: reservas.codigo,
       checkin: reservas.checkin,
       checkout: reservas.checkout,
@@ -122,6 +147,7 @@ export async function reservasDoHospede(db: Db, organizacaoId: string, email: st
     .orderBy(asc(reservas.checkin), asc(reservas.codigo));
 
   const empresa = linhas.length ? await lerEmpresa(db, organizacaoId) : null;
+  const alteracoes = await alteracoesSeguradas(db, organizacaoId, linhas.map((l) => l.id), agora);
 
   return linhas.map((l) => {
     const fuso = l.fuso || "America/Sao_Paulo";
@@ -147,6 +173,7 @@ export async function reservasDoHospede(db: Db, organizacaoId: string, email: st
           ? { liberadas: true, endereco: l.endereco, complemento: l.complemento ?? "" }
           : { liberadas: false, liberaEm, dia: somarDias(l.checkin, -INSTRUCOES_DIAS_ANTES) },
       contato: { empresa: empresa!.nome, whatsapp: numeroWhatsapp(empresa!.telefone), email: empresa!.email },
+      alteracao: alteracoes.get(l.id) ?? null,
     };
   });
 }

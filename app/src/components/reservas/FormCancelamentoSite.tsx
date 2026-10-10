@@ -89,6 +89,9 @@ export function FormCancelamentoSite({
   // A SCL cancela: sempre integral, com ou sem política aceita (a escolha sem política é só do pedido do hóspede).
   const escolheSemPolitica = quem !== "empresa" && (semPolitica || estado.escolha === "sem_politica");
   const ofereceExcecao = !escolheSemPolitica && estado.escolha === "excecao";
+  // M8.2d (D17): o Mercado Pago mostra parte do pagamento devolvida pelo painel dele sem dizer quanto — a equipe informa o
+  // valor visto lá. Pedido pelo servidor (a recusa), o campo fica na tela enquanto vier no formulário.
+  const pedeValorFora = estado.codigo === "devolvido_fora_sem_valor" || estado.valores?.valorForaInformado !== undefined;
   return (
     <form
       aria-label="Cancelar a reserva paga pelo site"
@@ -176,6 +179,12 @@ export function FormCancelamentoSite({
         Onde está o pedido (opcional, sem dados pessoais — ex.: &ldquo;WhatsApp da empresa, 14h10&rdquo;)
         <input name="nota" maxLength={300} />
       </label>
+      {pedeValorFora && (
+        <label style={{ maxWidth: 360 }}>
+          Valor que o painel do Mercado Pago mostra devolvido fora do sistema (R$)
+          <input name="valorForaInformado" inputMode="decimal" required defaultValue={estado.valores?.valorForaInformado ?? ""} />
+        </label>
+      )}
       {escolheSemPolitica && (
         <fieldset style={{ border: 0, padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
           <legend style={{ fontSize: "0.875rem" }}>Pagamento sem a política aceita: o sistema não calcula. O que fazer?</legend>

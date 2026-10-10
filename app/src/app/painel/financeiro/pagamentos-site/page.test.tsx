@@ -45,6 +45,7 @@ const linha: LinhaPagamento = {
   checkin: "2026-10-12",
   checkout: "2026-10-15",
   cotacaoCodigo: "COT1",
+  alteracaoEm: null,
 };
 const hoje = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
 const html = async (params: Record<string, string> = {}) => renderToStaticMarkup(await Page({ params: Promise.resolve({}), searchParams: Promise.resolve(params) } as PageProps<"/painel/financeiro/pagamentos-site">));
@@ -111,4 +112,11 @@ it("M8.2c: reserva paga cancelada pela política — o desfecho diz o que houve 
   const parcial = await html();
   expect(parcial).toContain("Sem reserva: Chegou já devolvido em parte. Devolva o restante pelo quadro do pagamento.");
   expect(parcial).not.toMatch(/M8\.2/);
+});
+
+it("M8.2d: o pagamento da diferença de uma alteração aplicada diz de qual alteração é", async () => {
+  m.listar.mockResolvedValue([{ ...linha, id: "dif-1", desfecho: "alteracao" as const, motivoSemReserva: null, motivoSemReservaTexto: null, avisos: [], alteracaoId: "a1", alteracaoEm: new Date("2026-10-01T15:00:00Z") }]);
+  expect(await html()).toContain("Diferença da alteração de 01/10");
+  m.listar.mockResolvedValue([{ ...linha, id: "dif-2", desfecho: "alteracao" as const, motivoSemReserva: null, motivoSemReservaTexto: null, avisos: [], alteracaoId: "a1", alteracaoEm: null }]);
+  expect(await html()).toContain("Diferença de uma alteração da reserva");
 });

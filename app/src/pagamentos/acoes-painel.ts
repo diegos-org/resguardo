@@ -6,7 +6,11 @@
  * estornar a liberação à mão, salvar a aba Configurações → Pagamento no site e religar o cartão desligado pelo
  * disjuntor de recusas (M8.2b). M8.2c: as mesmas devoluções servem à do cancelamento pela política (quem decide é o
  * domínio), mais confirmar a devolução vista no painel do Mercado Pago, registrar a recusa de lá, parar a devolução
- * pedida depois do prazo de leitura e corrigir a taxa que não voltou.
+ * pedida depois do prazo de leitura e corrigir a taxa que não voltou. M8.2d: várias devoluções por pagamento — cada ação de
+ * devolução leva o id da devolução (`devolucaoId`, procurado na empresa da sessão pelo domínio); o pagamento (`pagamentoId`)
+ * fica para o pagamento sem reserva ("Devolver ao hóspede" ou o restante dele, com o valor que o painel do Mercado Pago
+ * mostra quando a leitura não diz, `valorForaInformado`). Mais "Pedir o restante ao Mercado Pago" e o restante por fora
+ * (`restanteDe`) de uma devolução que ele fez a menos, e o valor visto no painel ao confirmar uma devolução.
  *
  * Sempre nesta ordem: sessão (a empresa vem só dela) → permissão `financeiro:editar` → validação → domínio. Conferir,
  * cancelar, devolver e a devolução por fora (que relê a order antes) usam `provedorDeConferencia` (sem a chave do
@@ -23,7 +27,17 @@ import { reaisParaCentavos } from "@/lib/dinheiro-form";
 import { uuidValido } from "@/lib/ids";
 import { dataValida } from "@/reservas/regras";
 import { conferirTentativa } from "./conferencia";
-import { confirmarDevolucaoVistaNoProvedor, corrigirTaxaPerdida, devolverPeloProvedor, pararDevolucaoPedida, registrarDevolucaoPorFora, registrarRecusaNoPainel, registrarTaxaPerdida } from "./devolucao";
+import {
+  type AlvoDaDevolucao,
+  confirmarDevolucaoVistaNoProvedor,
+  corrigirTaxaPerdida,
+  devolverPeloProvedor,
+  pararDevolucaoPedida,
+  pedirRestanteDaDevolucao,
+  registrarDevolucaoPorFora,
+  registrarRecusaNoPainel,
+  registrarTaxaPerdida,
+} from "./devolucao";
 import { religarCartao } from "./disjuntor";
 import { estornarLiberacaoManual, registrarLiberacaoManual } from "./liberacao";
 import { provedorDeConferencia } from "./oferta";
@@ -36,6 +50,7 @@ export type EstadoConfigPagamento = { ok?: boolean; mensagem?: string; aviso?: s
 
 const FUSO = "America/Sao_Paulo";
 const NAO_ENCONTRADO: EstadoAcaoPagamento = { mensagem: "Pagamento não encontrado." };
+const DEVOLUCAO_NAO_ENCONTRADA: EstadoAcaoPagamento = { mensagem: "Devolução não encontrada." };
 
 async function sessaoFinanceira() {
   const sessao = await exigirSessaoPainel();
@@ -47,6 +62,30 @@ const texto = (form: FormData, k: string) => {
   const v = form.get(k);
   return typeof v === "string" ? v.trim() : "";
 };
+
+/**
+ * A devolução que a ação alcança: pelo id (o quadro do pagamento, M8.2d) ou, sem ele, pelo pagamento (o pagamento sem
+ * reserva). null = nenhum id válido (nada chega ao domínio).
+ */
+function alvoDoForm(form: FormData): AlvoDaDevolucao | null {
+  const devolucaoId = texto(form, "devolucaoId");
+  if (devolucaoId) return uuidValido(devolucaoId) ? { devolucaoId } : null;
+  const pagamentoId = texto(form, "pagamentoId");
+  return uuidValido(pagamentoId) ? { pagamentoId } : null;
+}
+const naoEncontrado = (form: FormData) => (texto(form, "devolucaoId") ? DEVOLUCAO_NAO_ENCONTRADA : NAO_ENCONTRADO);
+
+/**
+ * O valor que o painel do Mercado Pago mostra devolvido fora do sistema (D17), em reais, quando a leitura não diz quanto:
+ * vazio = não informado; inválido = o texto do problema.
+ */
+function valorForaDoForm(form: FormData): { ok: true; valor: number | undefined } | { ok: false; mensagem: string } {
+  const bruto = texto(form, "valorForaInformado");
+  if (!bruto) return { ok: true, valor: undefined };
+  const v = reaisParaCentavos(bruto);
+  if (typeof v !== "number" || v <= 0) return { ok: false, mensagem: "Informe o valor que o painel do Mercado Pago mostra devolvido, em reais (ex.: 300,00)." };
+  return { ok: true, valor: v };
+}
 
 /** Campos de texto do formulário, sem os internos do Next.js ($ACTION_…). */
 const campos = (form: FormData) => Object.fromEntries([...form.entries()].filter((e): e is [string, string] => typeof e[1] === "string" && !e[0].startsWith("$ACTION")));
@@ -100,15 +139,20 @@ export async function conferirAgoraAcao(_e: EstadoAcaoPagamento, form: FormData)
   }
 }
 
-/** Devolver pelo Mercado Pago (integral) o pagamento que ficou sem reserva. */
+/**
+ * Devolver pelo Mercado Pago: o pagamento que ficou sem reserva (o integral, ou o restante de um já devolvido em parte, D17,
+ * com o valor que o painel do Mercado Pago mostra quando a leitura não diz) ou, pelo id, pedir de novo uma devolução recusada.
+ */
 export async function devolverAcao(_e: EstadoAcaoPagamento, form: FormData): Promise<EstadoAcaoPagamento> {
   const sessao = await sessaoFinanceira();
-  const pagamentoId = texto(form, "pagamentoId");
-  if (!uuidValido(pagamentoId)) return NAO_ENCONTRADO;
+  const alvo = alvoDoForm(form);
+  if (!alvo) return naoEncontrado(form);
+  const fora = valorForaDoForm(form);
+  if (!fora.ok) return { mensagem: fora.mensagem };
   const gate = await provedorDeConferencia();
   if (!gate.ok) return { mensagem: `${gate.texto} Se o dinheiro voltou ao hóspede por outro caminho, registre a devolução feita por fora.` };
   try {
-    const r = await devolverPeloProvedor(getDb(), sessao.organizacaoId, pagamentoId, sessao.usuarioId, gate.provedor);
+    const r = await devolverPeloProvedor(getDb(), sessao.organizacaoId, alvo, sessao.usuarioId, gate.provedor, new Date(), fora.valor === undefined ? {} : { valorForaInformado: fora.valor });
     if (!r.ok) return { mensagem: r.erro };
     revalidar();
     // Parada logo na releitura (em parte, contestada, fora de "aprovado"...): nada foi pedido, e a equipe resolve.
@@ -124,13 +168,42 @@ export async function devolverAcao(_e: EstadoAcaoPagamento, form: FormData): Pro
 }
 
 /**
+ * "Pedir o restante ao Mercado Pago" (M8.2d, D15): a devolução que o Mercado Pago fez a menos ganha a do restante, com chave
+ * nova e o valor explícito; o domínio confere o teto sob a trava e pede.
+ */
+export async function pedirRestanteAcao(_e: EstadoAcaoPagamento, form: FormData): Promise<EstadoAcaoPagamento> {
+  const sessao = await sessaoFinanceira();
+  const devolucaoId = texto(form, "devolucaoId");
+  if (!uuidValido(devolucaoId)) return DEVOLUCAO_NAO_ENCONTRADA;
+  const gate = await provedorDeConferencia();
+  if (!gate.ok) return { mensagem: `${gate.texto} Se o restante voltou ao hóspede por outro caminho, registre o restante devolvido por fora.` };
+  try {
+    const r = await pedirRestanteDaDevolucao(getDb(), sessao.organizacaoId, devolucaoId, sessao.usuarioId, gate.provedor);
+    if (!r.ok) return { mensagem: r.erro };
+    revalidar();
+    if (r.situacao === "recusada") return { mensagem: "O restante foi registrado, mas o Mercado Pago não aceitou o pedido agora: veja o aviso no quadro do pagamento e confira no painel do Mercado Pago." };
+    return {
+      ok: true,
+      mensagem: r.situacao === "confirmada" ? "Restante confirmado pelo Mercado Pago." : "Restante pedido ao Mercado Pago: a confirmação aparece no quadro do pagamento quando ele concluir (use Conferir agora).",
+    };
+  } catch (e) {
+    return falhaDoProvedor(e);
+  }
+}
+
+/**
  * A devolução foi feita fora do sistema (Pix da conta da empresa, por exemplo): data, valor e nota. Antes, o domínio
- * relê a order no Mercado Pago (pelo provedor de conferência): sem conseguir conferir, nada é registrado.
+ * relê a order no Mercado Pago (pelo provedor de conferência): sem conseguir conferir, nada é registrado. M8.2d: pelo id
+ * da devolução (o valor dela), pelo restante de uma devolvida a menos (`restanteDe`) ou pelo pagamento sem reserva.
  */
 export async function devolucaoPorForaAcao(_e: EstadoAcaoPagamento, form: FormData): Promise<EstadoAcaoPagamento> {
   const sessao = await sessaoFinanceira();
-  const pagamentoId = texto(form, "pagamentoId");
-  if (!uuidValido(pagamentoId)) return NAO_ENCONTRADO;
+  const restanteDe = texto(form, "restanteDe");
+  if (restanteDe && !uuidValido(restanteDe)) return DEVOLUCAO_NAO_ENCONTRADA;
+  const alvo: AlvoDaDevolucao | { restanteDe: string } | null = restanteDe ? { restanteDe } : alvoDoForm(form);
+  if (!alvo) return naoEncontrado(form);
+  const fora = valorForaDoForm(form);
+  if (!fora.ok) return { mensagem: fora.mensagem };
   const data = texto(form, "data");
   if (!dataValida(data)) return { mensagem: "Informe a data da devolução." };
   if (data > hojeISO(FUSO)) return { mensagem: "A data da devolução não pode ser no futuro." };
@@ -138,7 +211,14 @@ export async function devolucaoPorForaAcao(_e: EstadoAcaoPagamento, form: FormDa
   if (typeof valor !== "number" || valor <= 0) return { mensagem: "Informe o valor devolvido em reais (ex.: 850,00)." };
   const gate = await provedorDeConferencia();
   if (!gate.ok) return { mensagem: `Não deu para conferir no Mercado Pago se a devolução já foi feita por lá (${gate.texto.replace(/\.$/, "")}). Sem essa conferência, a devolução feita por fora não é registrada.` };
-  const r = await registrarDevolucaoPorFora(getDb(), sessao.organizacaoId, pagamentoId, { data, valor, nota: texto(form, "nota") }, sessao.usuarioId, gate.provedor);
+  const r = await registrarDevolucaoPorFora(
+    getDb(),
+    sessao.organizacaoId,
+    alvo,
+    { data, valor, nota: texto(form, "nota"), ...(fora.valor === undefined ? {} : { valorForaInformado: fora.valor }) },
+    sessao.usuarioId,
+    gate.provedor,
+  );
   if (!r.ok) return { mensagem: r.erro };
   revalidar();
   return { ok: true, mensagem: "Devolução feita por fora registrada." };
@@ -150,11 +230,11 @@ export async function devolucaoPorForaAcao(_e: EstadoAcaoPagamento, form: FormDa
  */
 export async function registrarTaxaPerdidaAcao(_e: EstadoAcaoPagamento, form: FormData): Promise<EstadoAcaoPagamento> {
   const sessao = await sessaoFinanceira();
-  const pagamentoId = texto(form, "pagamentoId");
-  if (!uuidValido(pagamentoId)) return NAO_ENCONTRADO;
+  const alvo = alvoDoForm(form);
+  if (!alvo) return naoEncontrado(form);
   const valor = reaisParaCentavos(texto(form, "valor"));
   if (typeof valor !== "number" || valor < 0) return { mensagem: "Informe a taxa que não voltou em reais (ex.: 18,06; zero se voltou toda)." };
-  const r = await registrarTaxaPerdida(getDb(), sessao.organizacaoId, pagamentoId, valor, sessao.usuarioId);
+  const r = await registrarTaxaPerdida(getDb(), sessao.organizacaoId, alvo, valor, sessao.usuarioId);
   if (!r.ok) return { mensagem: r.erro };
   revalidar();
   return { ok: true, mensagem: valor > 0 ? "Taxa registrada: a despesa entrou no financeiro da empresa." : "Registrado: a taxa voltou toda, nenhuma despesa lançada." };
@@ -169,33 +249,37 @@ function problemaDoRegistro(data: string, nota: string): string | null {
 }
 
 /**
- * "Confirmar devolução feita no painel do Mercado Pago" (M8.2c): a equipe viu lá a devolução do valor integral concluída
- * e o sistema não tem como ver. O domínio relê a order antes (pelo provedor de conferência; sem ele, só quando a order
- * com certeza não existe mais) e lança o caixa do cancelamento com a data informada.
+ * "Confirmar devolução feita no painel do Mercado Pago" (M8.2c): a equipe viu lá a devolução concluída e o sistema não tem
+ * como ver. O domínio relê a order antes (pelo provedor de conferência; sem ele, só quando a order com certeza não existe
+ * mais) e lança o caixa da devolução com a data informada. M8.2d: com o valor que o painel mostra (menos que o pedido =
+ * confirmada por esse valor, com o aviso de a menor); vazio = o valor da devolução.
  */
 export async function confirmarDevolucaoVistaAcao(_e: EstadoAcaoPagamento, form: FormData): Promise<EstadoAcaoPagamento> {
   const sessao = await sessaoFinanceira();
-  const pagamentoId = texto(form, "pagamentoId");
-  if (!uuidValido(pagamentoId)) return NAO_ENCONTRADO;
-  const d = { data: texto(form, "data"), nota: texto(form, "nota") };
+  const alvo = alvoDoForm(form);
+  if (!alvo) return naoEncontrado(form);
+  const brutoValor = texto(form, "valor");
+  const valor = brutoValor ? reaisParaCentavos(brutoValor) : null;
+  if (brutoValor && (typeof valor !== "number" || valor <= 0)) return { mensagem: "Informe o valor que o painel do Mercado Pago mostra devolvido, em reais (ex.: 300,00)." };
+  const d = { data: texto(form, "data"), nota: texto(form, "nota"), ...(typeof valor === "number" ? { valor } : {}) };
   const problema = problemaDoRegistro(d.data, d.nota);
   if (problema) return { mensagem: problema };
   const gate = await provedorDeConferencia();
-  const r = await confirmarDevolucaoVistaNoProvedor(getDb(), sessao.organizacaoId, pagamentoId, d, sessao.usuarioId, gate.ok ? gate.provedor : null);
+  const r = await confirmarDevolucaoVistaNoProvedor(getDb(), sessao.organizacaoId, alvo, d, sessao.usuarioId, gate.ok ? gate.provedor : null);
   if (!r.ok) return { mensagem: r.erro };
   revalidar();
-  return { ok: true, mensagem: r.mensagem ?? "Devolução confirmada: o financeiro do cancelamento foi lançado com a data informada. Informe a taxa que não voltou." };
+  return { ok: true, mensagem: r.mensagem ?? "Devolução confirmada: o financeiro da devolução foi lançado com a data informada. Informe a taxa que não voltou." };
 }
 
 /** "Registrar que o Mercado Pago recusou a devolução no painel" (M8.2c): libera a devolução por fora no cartão. */
 export async function registrarRecusaNoPainelAcao(_e: EstadoAcaoPagamento, form: FormData): Promise<EstadoAcaoPagamento> {
   const sessao = await sessaoFinanceira();
-  const pagamentoId = texto(form, "pagamentoId");
-  if (!uuidValido(pagamentoId)) return NAO_ENCONTRADO;
+  const alvo = alvoDoForm(form);
+  if (!alvo) return naoEncontrado(form);
   const d = { data: texto(form, "data"), nota: texto(form, "nota") };
   const problema = problemaDoRegistro(d.data, d.nota);
   if (problema) return { mensagem: problema };
-  const r = await registrarRecusaNoPainel(getDb(), sessao.organizacaoId, pagamentoId, d, sessao.usuarioId);
+  const r = await registrarRecusaNoPainel(getDb(), sessao.organizacaoId, alvo, d, sessao.usuarioId);
   if (!r.ok) return { mensagem: r.erro };
   revalidar();
   return { ok: true, mensagem: "Recusa do painel do Mercado Pago registrada: a devolução por fora fica liberada (no cartão também)." };
@@ -207,10 +291,10 @@ export async function registrarRecusaNoPainelAcao(_e: EstadoAcaoPagamento, form:
  */
 export async function pararDevolucaoPedidaAcao(_e: EstadoAcaoPagamento, form: FormData): Promise<EstadoAcaoPagamento> {
   const sessao = await sessaoFinanceira();
-  const pagamentoId = texto(form, "pagamentoId");
-  if (!uuidValido(pagamentoId)) return NAO_ENCONTRADO;
+  const alvo = alvoDoForm(form);
+  if (!alvo) return naoEncontrado(form);
   const gate = await provedorDeConferencia();
-  const r = await pararDevolucaoPedida(getDb(), sessao.organizacaoId, pagamentoId, { nota: texto(form, "nota") }, sessao.usuarioId, gate.ok ? gate.provedor : null);
+  const r = await pararDevolucaoPedida(getDb(), sessao.organizacaoId, alvo, { nota: texto(form, "nota") }, sessao.usuarioId, gate.ok ? gate.provedor : null);
   if (!r.ok) return { mensagem: r.erro };
   revalidar();
   return { ok: true, mensagem: "Devolução pedida parada: a devolução por fora fica liberada." };
@@ -222,13 +306,13 @@ export async function pararDevolucaoPedidaAcao(_e: EstadoAcaoPagamento, form: Fo
  */
 export async function corrigirTaxaPerdidaAcao(_e: EstadoAcaoPagamento, form: FormData): Promise<EstadoAcaoPagamento> {
   const sessao = await sessaoFinanceira();
-  const pagamentoId = texto(form, "pagamentoId");
-  if (!uuidValido(pagamentoId)) return NAO_ENCONTRADO;
+  const alvo = alvoDoForm(form);
+  if (!alvo) return naoEncontrado(form);
   const valor = reaisParaCentavos(texto(form, "valor"));
   if (typeof valor !== "number" || valor < 0) return { mensagem: "Informe a taxa que não voltou em reais (ex.: 18,06; zero se voltou toda)." };
   const motivo = texto(form, "motivo");
   if (!motivo) return { mensagem: "Informe o motivo da correção." };
-  const r = await corrigirTaxaPerdida(getDb(), sessao.organizacaoId, pagamentoId, valor, motivo, sessao.usuarioId);
+  const r = await corrigirTaxaPerdida(getDb(), sessao.organizacaoId, alvo, valor, motivo, sessao.usuarioId);
   if (!r.ok) return { mensagem: r.erro };
   revalidar();
   return { ok: true, mensagem: valor > 0 ? "Taxa corrigida: a despesa anterior foi estornada e a nova entrou no financeiro da empresa." : "Taxa corrigida para zero: a despesa anterior foi estornada." };

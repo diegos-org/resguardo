@@ -263,6 +263,11 @@ export function mensagemDoContato(textoDaCotacao: string, estado: EstadoPagament
   return extra ? [...textoDaCotacao.split("\n").slice(0, 2), extra].join("\n") : textoDaCotacao;
 }
 
+/** M8.2d: a mensagem do botão da equipe no quadro da alteração (as duas primeiras linhas da cotação e a reserva). */
+export function mensagemDoContatoDaAlteracao(textoDaCotacao: string, reservaCodigo: string): string {
+  return [...textoDaCotacao.split("\n").slice(0, 2), `Quero falar sobre a alteração da minha reserva ${reservaCodigo}.`].join("\n");
+}
+
 // ---------------------------------------------------------------- cancelamento pela política (M8.2c)
 
 /** As frases editáveis do cancelamento (Textos do site). */
