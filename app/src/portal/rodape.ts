@@ -5,6 +5,7 @@
  * terminado e sem nada em conferência; antes disso o saldo é mostrado como parcial.
  */
 import type { Db } from "@/db/types";
+import { ehDescontoDeCancelamento } from "@/repasses/extrato";
 import { limitesDoMes, preverRepasses } from "@/repasses/repasses";
 
 export type SituacaoRodape =
@@ -45,7 +46,24 @@ export type Rodape = {
   emConferencia: boolean;
   /** Mês ("AAAA-MM") do repasse posterior que levou o saldo deste mês. */
   repassePosterior: string | null;
+  /**
+   * M8.2c: desconto de reserva cancelada com devolução ao hóspede (a parte já repassada) que o fechamento leva, em
+   * centavos positivos; 0 = nenhum. Quando o proprietário fica devendo, essa parte não se transfere: o desconto continua a
+   * descontar e sai do próximo repasse (`divisaoDoDeve`).
+   */
+  descontoCancelamento?: number;
 };
+
+/**
+ * M8.2c: do que o proprietário deve no fechamento, quanto é desconto de reserva cancelada com devolução ao hóspede — não
+ * se transfere: sai do próximo repasse, como diz o painel — e quanto ele transfere (as despesas que passaram da parte
+ * dele). Uma regra, um lugar: o portal, o PDF e o "como chega até você" leem daqui; nunca um Pix para pagar o que o
+ * próximo repasse já desconta (o desconto seria cobrado duas vezes).
+ */
+export function divisaoDoDeve(r: Pick<Rodape, "valor" | "descontoCancelamento">): { proximoRepasse: number; transferir: number } {
+  const proximoRepasse = Math.min(r.valor, Math.max(0, r.descontoCancelamento ?? 0));
+  return { proximoRepasse, transferir: r.valor - proximoRepasse };
+}
 
 export async function rodapeDoPortal(
   db: Db,
@@ -65,7 +83,7 @@ export async function rodapeDoPortal(
   );
   return o.proprietarios.map((dono) => {
     const p = previsoes.find((x) => x.proprietarioId === dono.id);
-    const base = { proprietarioId: dono.id, nome: dono.nome, saldo: 0, descontado: 0, valor: 0, aFavor: null, chavePix: "", dataPagamento: null, diferenca: 0, emConferencia: false, repassePosterior: null };
+    const base = { proprietarioId: dono.id, nome: dono.nome, saldo: 0, descontado: 0, valor: 0, aFavor: null, chavePix: "", dataPagamento: null, diferenca: 0, emConferencia: false, repassePosterior: null, descontoCancelamento: 0 };
     if (!p) return { ...base, situacao: "zerado" };
     const r = p.repasse;
     if (r) {
@@ -84,7 +102,8 @@ export async function rodapeDoPortal(
       };
     }
     const aFavor = p.valor > 0 ? ("proprietario" as const) : p.deve > 0 ? ("empresa" as const) : null;
-    const comum = { ...base, saldo: p.saldo, descontado: p.aDescontar, aFavor };
+    const descontoCancelamento = -p.itens.filter(ehDescontoDeCancelamento).reduce((t, x) => t + x.valor, 0);
+    const comum = { ...base, saldo: p.saldo, descontado: p.aDescontar, aFavor, descontoCancelamento };
     if (o.hoje < lim.fim) return { ...comum, situacao: "parcial", valor: p.valor || p.deve };
     // Só o que é conferência de verdade (pendente, ajuste a esclarecer) segura o credor e o Pix.
     if (p.emConferencia) return { ...comum, situacao: "em_conferencia", valor: p.valor || p.deve };

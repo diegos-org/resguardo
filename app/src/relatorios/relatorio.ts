@@ -14,12 +14,12 @@ import { formatBRL } from "@/lib/money";
 import { nome as nomeDoPeriodo, type SituacaoPeriodo } from "@/portal/periodo";
 import { type ReservaPortal, reservasDoPortal, type SituacaoReserva } from "@/portal/reservas";
 import { type ResumoPortal, resumoDoProprietario } from "@/portal/resumo";
-import { type Rodape, rodapeDoPortal } from "@/portal/rodape";
+import { divisaoDoDeve, type Rodape, rodapeDoPortal } from "@/portal/rodape";
 import { nomeMes, type Repasse } from "@/repasses/repasses";
 import { type ContratoDoRelatorio, contratosDoRelatorio, type DespesaDoRelatorio, despesasDoRelatorio, type MetricasDoRelatorio, metricasDoRelatorio, partesDoRelatorio, type RepasseDoRelatorio, repassesDoRelatorio } from "./dados";
 import { DIA_FECHAMENTO_PADRAO, diaDoFechamento } from "@/repasses/periodicidade";
 import { lerRegrasRepasses } from "@/repasses/regras-config";
-import { type AvisoDaLinha, comoChega, conciliacao, conciliacaoFecha, dataCurta, dataDoPix, type Linha, type LinhaConciliacao, nomeDoCanal, type ParteDoRelatorio, primeiroNome } from "./dinheiro";
+import { type AvisoDaLinha, comoChega, conciliacao, conciliacaoFecha, dataCurta, dataDoPix, ehEspelhoDoCancelamento, type Linha, type LinhaConciliacao, nomeDoCanal, type ParteDoRelatorio, primeiroNome } from "./dinheiro";
 import { acumuladoDoAno, mesISO, type MesISO, nomeDoMes, type PontoDaSerie, type PontoOcupacao, type Quadro, quadrosDoMes, serieDe12, serieOcupacaoDe12 } from "./metricas";
 
 export type Dono = { id: string; nome: string };
@@ -294,8 +294,16 @@ export function textoDoSaldo(r: Rodape, empresa: string, diaFechamento: number =
       return [`Mês fechado: a ${empresa} vai lhe transferir ${valor}${descontos}${pixDele}`, ...depois];
     case "empresa_deve":
       return [`Credor: você. A ${empresa} vai lhe transferir ${valor}${descontos}${pixDele}`];
-    case "proprietario_deve":
-      return [`Credor: ${empresa}. Você deve ${valor} à ${empresa}.`, r.chavePix ? `Pix da ${empresa}: ${r.chavePix}` : `Fale com a ${empresa} para combinar o pagamento.`];
+    case "proprietario_deve": {
+      // M8.2c: o desconto de reserva cancelada com devolução ao hóspede não se transfere: sai do próximo repasse.
+      const { proximoRepasse, transferir } = divisaoDoDeve(r);
+      const desconto = `o desconto de reserva cancelada com devolução ao hóspede (${formatBRL(proximoRepasse)}), maior que a sua parte deste mês, não se transfere: sai do próximo repasse`;
+      if (!transferir) return [`Credor: ${empresa}. Você deve ${valor} à ${empresa}, mas não precisa transferir: ${desconto}.`];
+      return [
+        `Credor: ${empresa}. Você deve ${valor} à ${empresa}.${proximoRepasse ? ` Desse valor, ${desconto}; transfira ${formatBRL(transferir)}.` : ""}`,
+        r.chavePix ? `Pix da ${empresa}: ${r.chavePix}` : `Fale com a ${empresa} para combinar o pagamento.`,
+      ];
+    }
     case "parcial":
       return [
         `Saldo parcial até o fim do mês: ${valor}${r.aFavor === "proprietario" ? " a seu favor" : r.aFavor === "empresa" ? ` a favor da ${empresa}` : ""}. O valor final e quem paga saem no fechamento, no dia ${diaFechamento} do mês seguinte.`,
@@ -316,6 +324,13 @@ export function marcaDe(empresa: string): { inicio: string; destaque: string } {
 
 /** A situação da parte na tabela de reservas; `hoje` separa o que o canal já pagou do que ainda está previsto. */
 const situacaoDaParte = (p: ParteDoRelatorio, hoje: string): { texto: string; tipo: LinhaReserva["situacaoTipo"] } => {
+  // M8.2c: o desconto da parte já repassada de uma reserva cancelada com devolução ao hóspede (mês do cancelamento), o
+  // estorno da parte que nunca foi paga e essa parte, que o estorno anula.
+  if (p.cancelamento === "desconto")
+    return { texto: `cancelada com devolução ao hóspede (estadia de ${dataCurta(p.checkin)}): ${p.repasse ? `descontada no repasse de ${dataCurta(dataDoPix(p.repasse))}` : "desconto no próximo repasse"}`, tipo: "info" };
+  if (p.cancelamento === "estorno")
+    return { texto: `cancelada com devolução ao hóspede antes do repasse (estadia de ${dataCurta(p.checkin)}): ${p.repasse ? `estorno da parte no repasse de ${dataCurta(dataDoPix(p.repasse))}` : "estorno da parte no próximo repasse"}`, tipo: "info" };
+  if (p.cancelamento === "anulada" && !p.repasse) return { texto: "cancelada com devolução ao hóspede antes do repasse: anulada pelo estorno no mês do cancelamento", tipo: "info" };
   if (p.repasse) {
     if (p.repasse.tipo === "por_fora") return { texto: "acertada por fora, antes do início do sistema", tipo: "ok" };
     return p.repasse.situacao === "pago" ? { texto: `repassada em ${dataCurta(dataDoPix(p.repasse))}`, tipo: "ok" } : { texto: `em repasse de ${dataCurta(p.repasse.data)}, a pagar`, tipo: "info" };
@@ -328,7 +343,9 @@ const situacaoDaParte = (p: ParteDoRelatorio, hoje: string): { texto: string; ti
   if (p.quemRecebe === "a_confirmar") return { texto: "a liberar: quem recebe a confirmar", tipo: "aviso" };
   const curto = /não registrou o recebimento/i.test(p.motivo)
     ? "pagamento do canal não registrado"
-    : /depois do check-in/i.test(p.motivo)
+    : p.cancelamento === "retida" && /entrada original/i.test(p.motivo)
+      ? "cancelada sem devolução (valor retido), libera depois da entrada original"
+      : /depois do check-in/i.test(p.motivo)
       ? "libera depois do check-in"
       : /conferência/i.test(p.motivo)
         ? "em conferência"
@@ -373,8 +390,18 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
   const chega = comoChega(d.partes, mes, d.hoje, d.rodape, e, d.repasses);
   const canaisComTaxa = [...new Set(doMes.filter((p) => p.taxa > 0).map((p) => nomeDoCanal(p.canal, e)))];
   const nDespesas = d.despesas.length;
+  // M8.2c: de onde vem parte do bruto das canceladas pela política (o retido e o desconto depois do repasse).
+  const doBruto = [
+    r.retidoDeCanceladas.n ? `inclui ${formatBRL(r.retidoDeCanceladas.bruto)} retido de ${r.retidoDeCanceladas.n} ${plural(r.retidoDeCanceladas.n, "reserva cancelada", "reservas canceladas")} sem devolução (política de cancelamento)` : "",
+    r.devolvidoDeCanceladas.n ? `inclui −${formatBRL(-r.devolvidoDeCanceladas.bruto)} de ${r.devolvidoDeCanceladas.n} ${plural(r.devolvidoDeCanceladas.n, "reserva cancelada", "reservas canceladas")} com devolução depois do repasse` : "",
+  ].filter(Boolean);
   const brutoAoResultado: LinhaValor[] = [
-    { texto: `Bruto das reservas (${nReservas} ${plural(nReservas, "reserva", "reservas")}, ${noites} ${plural(noites, "noite", "noites")} em ${mesNome})`, valor: formatBRL(r.receitaBruta), tipo: "normal" },
+    {
+      texto: `Bruto das reservas (${nReservas} ${plural(nReservas, "reserva", "reservas")}, ${noites} ${plural(noites, "noite", "noites")} em ${mesNome})`,
+      valor: formatBRL(r.receitaBruta),
+      tipo: "normal",
+      ...(doBruto.length ? { etiqueta: doBruto.join("; ") } : {}),
+    },
     { texto: `− Taxas dos canais${canaisComTaxa.length ? ` (${canaisComTaxa.join(", ")})` : ""}`, valor: `− ${formatBRL(r.taxasCanais)}`, tipo: "sub" },
     { texto: "Líquido depois dos canais", valor: formatBRL(r.receitaBruta - r.taxasCanais), tipo: "normal" },
     { texto: `− Comissão da gestão${comissoes.length === 1 ? ` (${comissoes[0]} do líquido)` : ""}`, valor: `− ${formatBRL(r.comissao)}`, tipo: "sub" },
@@ -409,7 +436,9 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
   const linhasReservas: LinhaReserva[] = [
     ...doMes.map((p) => {
       const s = situacaoDaParte(p, d.hoje);
-      const atravessa = p.noitesNoMes !== p.noitesTotal;
+      // O espelho de uma cancelada (M8.2c: desconto ou estorno) não tem noites no mês: é o espelho do mês que movimentou dinheiro.
+      const desconto = ehEspelhoDoCancelamento(p);
+      const atravessa = !desconto && p.noitesNoMes !== p.noitesTotal;
       return {
         imovel: nomes.get(d.reservas.find((x) => x.id === p.reservaId)?.imovelId ?? "") ?? "",
         hospede: primeiroNome(p.hospede) || "não informado",
@@ -418,7 +447,7 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
         situacao: s.texto,
         situacaoTipo: s.tipo,
         datas: `${dataCurta(p.checkin)} → ${dataCurta(p.checkout)}${atravessa ? " *" : ""}`,
-        noites: atravessa ? `${p.noitesNoMes} de ${p.noitesTotal}` : String(p.noitesNoMes),
+        noites: desconto ? "—" : atravessa ? `${p.noitesNoMes} de ${p.noitesTotal}` : String(p.noitesNoMes),
         bruto: formatBRL(p.bruto),
         taxa: formatBRL(p.taxa),
         gestao: formatBRL(p.comissao),
@@ -434,7 +463,7 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
         hospede: primeiroNome(x.hospede) || "não informado",
         canal: nomeDoCanal(x.canal, e),
         codigo: x.codigo,
-        situacao: SITUACAO_RESERVA[x.situacao],
+        situacao: x.etiqueta ? `${SITUACAO_RESERVA[x.situacao]} · ${x.etiqueta.toLowerCase()}` : SITUACAO_RESERVA[x.situacao],
         situacaoTipo: (x.situacao === "definido" ? "info" : "aviso") as LinhaReserva["situacaoTipo"],
         datas: `${dataCurta(x.checkin)} → ${dataCurta(x.checkout)}`,
         noites: "—",
@@ -485,7 +514,12 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
     const linhas: LinhaValor[] = [{ texto: `Saldo do acerto em ${fim}/${d.mes} ${saldoTexto}${quem}`, valor: formatBRL(Math.abs(x.saldo)), tipo: "normal" }];
     if (x.descontado > 0) linhas.push({ texto: `− Adiantamentos descontados${quem}`, valor: `− ${formatBRL(x.descontado)}`, tipo: "sub" });
     if (x.situacao === "pago") linhas.push({ texto: `Transferido em ${br(x.dataPagamento!)}${quem}`, valor: formatBRL(x.valor), tipo: "total" });
-    else if (x.situacao === "fechado" || x.situacao === "empresa_deve" || x.situacao === "proprietario_deve") linhas.push({ texto: `${x.situacao === "proprietario_deve" ? "Você transfere" : "A transferir"} no fechamento${quem}`, valor: formatBRL(x.valor), tipo: "total" });
+    else if (x.situacao === "proprietario_deve") {
+      // M8.2c: o desconto de reserva cancelada com devolução ao hóspede sai do próximo repasse; só o resto se transfere.
+      const { proximoRepasse, transferir } = divisaoDoDeve(x);
+      if (proximoRepasse) linhas.push({ texto: `Desconto de reserva cancelada com devolução ao hóspede: sai do próximo repasse${quem}`, valor: formatBRL(proximoRepasse), tipo: transferir ? "normal" : "total" });
+      if (transferir) linhas.push({ texto: `Você transfere no fechamento${quem}`, valor: formatBRL(transferir), tipo: "total" });
+    } else if (x.situacao === "fechado" || x.situacao === "empresa_deve") linhas.push({ texto: `A transferir no fechamento${quem}`, valor: formatBRL(x.valor), tipo: "total" });
     else if (x.situacao === "no_repasse_posterior") linhas.push({ texto: `Levado pelo repasse de ${nomeMes(x.repassePosterior!)}${quem}`, valor: formatBRL(x.valor), tipo: "total" });
     else if (x.situacao === "parcial") linhas.push({ texto: `Saldo parcial, fecha em ${br(`${d.ano}-${String(d.mes).padStart(2, "0")}-${String(fim).padStart(2, "0")}`)}${quem}`, valor: formatBRL(x.valor), tipo: "total" });
     return linhas;

@@ -1,5 +1,5 @@
 import { and, asc, count, desc, eq, getTableColumns, gte, ilike, inArray, lt, or, sql } from "drizzle-orm";
-import { beds24ExecucaoReservas, beds24Execucoes, ESTADOS_RESERVA, reservas, type EstadoReserva } from "@/db/schema";
+import { beds24ExecucaoReservas, beds24Execucoes, cancelamentosReserva, ESTADOS_RESERVA, reservas, type EstadoReserva } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
 import { ESTADOS_OCUPANTES } from "./regras";
@@ -10,6 +10,8 @@ export type FiltrosLista = {
   busca: string; situacao: EstadoReserva | "todas"; escopo: "periodo" | "historico";
   ordem: "checkin" | "origem"; recentes: 0 | 7 | 30; pagina: number;
   execucao: string; mudanca: "todas" | "adicionada" | "alterada" | "cancelada";
+  /** M8.2c: "pedido" = só as reservas com pedido de cancelamento esperando a equipe. */
+  cancelamento: "todas" | "pedido";
 };
 const primeiro = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
 export function lerFiltrosLista(p: ParamsLista): FiltrosLista {
@@ -26,10 +28,11 @@ export function lerFiltrosLista(p: ParamsLista): FiltrosLista {
     // Preserva seleção inválida como filtro vazio de resultados (não abre toda a lista).
     execucao: primeiro(p.execucao).slice(0, 100),
     mudanca: ["adicionada", "alterada", "cancelada"].includes(mudanca) ? mudanca as FiltrosLista["mudanca"] : "todas",
+    cancelamento: primeiro(p.cancelamento) === "pedido" ? "pedido" : "todas",
   };
 }
 
-const CHAVES = ["imovel", "mes", "ano", "busca", "situacao", "escopo", "ordem", "recentes", "execucao", "mudanca", "canceladas"];
+const CHAVES = ["imovel", "mes", "ano", "busca", "situacao", "escopo", "ordem", "recentes", "execucao", "mudanca", "canceladas", "cancelamento"];
 export function linkLista(p: ParamsLista, alteracoes: Record<string, string | null> = {}) {
   const q = new URLSearchParams();
   for (const k of CHAVES) for (const v of [p[k] ?? []].flat()) q.append(k, v);
@@ -42,7 +45,8 @@ export async function listarReservasPaginadas(db: Db, org: string, f: FiltrosLis
   imovelIds: string[]; periodo: { inicio: string; fim: string }; incluirCanceladas?: boolean; agora?: Date;
 }) {
   const condicoes = [eq(reservas.organizacaoId, org), o.imovelIds.length ? inArray(reservas.imovelId, o.imovelIds) : sql`false`];
-  if (f.escopo === "periodo") condicoes.push(lt(reservas.checkin, o.periodo.fim), sql`${reservas.checkout} > ${o.periodo.inicio}`);
+  // Os pedidos de cancelamento esperando a equipe (M8.2c) aparecem de qualquer período: um pedido nunca some da lista.
+  if (f.escopo === "periodo" && f.cancelamento !== "pedido") condicoes.push(lt(reservas.checkin, o.periodo.fim), sql`${reservas.checkout} > ${o.periodo.inicio}`);
   if (f.situacao !== "todas") condicoes.push(eq(reservas.estado, f.situacao));
   else if (!o.incluirCanceladas && !f.execucao) condicoes.push(sql`${reservas.estado} <> 'cancelada'`);
   if (f.busca) {
@@ -52,6 +56,9 @@ export async function listarReservasPaginadas(db: Db, org: string, f: FiltrosLis
   if (f.recentes) {
     const agora = o.agora ?? new Date();
     condicoes.push(gte(reservas.reservadaEm, new Date(agora.getTime() - f.recentes * 86_400_000)), sql`${reservas.reservadaEm} <= ${agora}`);
+  }
+  if (f.cancelamento === "pedido") {
+    condicoes.push(sql`exists (select 1 from ${cancelamentosReserva} c where c.organizacao_id = ${org} and c.reserva_id = reservas.id and c.situacao = 'pedido')`);
   }
   if (f.execucao) {
     condicoes.push(uuidValido(f.execucao) ? sql`exists (select 1 from ${beds24ExecucaoReservas} e where e.organizacao_id = ${org} and e.execucao_id = ${f.execucao} and e.reserva_id = reservas.id ${f.mudanca === "todas" ? sql`` : sql`and e.tipo = ${f.mudanca}`})` : sql`false`);

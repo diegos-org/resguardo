@@ -6,19 +6,23 @@ import styles from "@/components/formularios.module.css";
 import { HistoricoAlteracoes } from "@/components/HistoricoAlteracoes";
 import { getDb } from "@/db/client";
 import { listarLancamentos } from "@/financeiro/ledger";
+import { reservaCalculadaPeloMotor } from "@/financeiro/motor";
 import { obterImovel } from "@/imoveis/repositorio";
 import { formatBRL } from "@/lib/money";
 import { cancelar, confirmar, resolverConferenciaAcao, salvarEmailHospedeAcao } from "@/reservas/acoes";
 import { NOMES_ESTADO, NOMES_ORIGEM, NOMES_RECEBIMENTO, noites } from "@/reservas/regras";
-import { obterReserva } from "@/reservas/repositorio";
+import { devolvidaNoProvedorDaReserva, obterReserva } from "@/reservas/repositorio";
 import { lerRegrasFinanceiras } from "@/configuracoes/regras-financeiras";
 import { lerRecebimento } from "@/imoveis/recebimento";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
+import { CancelamentoSite } from "@/components/reservas/CancelamentoSite";
 import { Horarios } from "@/components/reservas/Horarios";
 import { PagamentoNoSite } from "@/components/reservas/PagamentoNoSite";
 import { PaginasLegaisAceitas } from "@/components/reservas/PaginasLegaisAceitas";
 import { Recebimentos } from "@/components/reservas/Recebimentos";
 import { hojeISO } from "@/lib/datas";
+import { cancelamentoDaReserva, momentosDoCancelamento } from "@/pagamentos/cancelamento-painel";
+import { textoDoResultado } from "@/pagamentos/cancelamento-tela";
 import { pagamentosDaReserva } from "@/pagamentos/consultas";
 import { recebidoPorReserva, recebimentosDaReserva } from "@/repasses/recebimentos";
 import { aceitesDaReserva } from "@/site/aceites";
@@ -31,7 +35,7 @@ const brl = (c: number | null) => (c === null ? "não informado" : formatBRL(c))
 export default async function DetalheReserva({ params, searchParams }: PageProps<"/painel/reservas/[id]">) {
   const sessao = await exigirSessaoPainel();
   const { id } = await params;
-  const { salvo, erro } = await searchParams;
+  const { salvo, erro, cancelamento: resultadoCancelamento } = await searchParams;
   const db = getDb();
   const r = await obterReserva(db, sessao.organizacaoId, id);
   if (!r) notFound();
@@ -39,9 +43,12 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
   const [imovel, historico] = await Promise.all([obterImovel(db, sessao.organizacaoId, r.imovelId), historicoDe(db, sessao.organizacaoId, "reserva", r.id)]);
   const verValores = podeFazer(sessao.papel, "financeiro:ler");
   const lancs = verValores ? await listarLancamentos(db, sessao.organizacaoId, { reservaId: r.id }) : [];
-  // Não confirmada com lançamento do motor ainda em vigor: já movimentou dinheiro, em conferência (M4.8).
+  // Não calculada pelo motor (a cancelada com valor retido, M8.2c, é calculada), divergente, ou com o pagamento do site
+  // devolvido no Mercado Pago fora da política (D21, M8.2c), com lançamento do motor ainda em vigor: já movimentou
+  // dinheiro, em conferência (M4.8) — a mesma regra de `lancamentoEmConferencia`. Este quadro é o caminho para dar por resolvida.
   const emVigor = lancs.filter((l) => l.origem === "motor" && !l.estornoDe && !lancs.some((e) => e.estornoDe === l.id));
-  const emConferencia = (r.estado !== "confirmada" || r.divergenciaEm !== null) && !r.conferenciaResolvidaEm && emVigor.length > 0;
+  const devolvidaNoProvedor = emVigor.length > 0 && !r.conferenciaResolvidaEm && reservaCalculadaPeloMotor(r) && !r.divergenciaEm ? await devolvidaNoProvedorDaReserva(db, sessao.organizacaoId, r.id) : false;
+  const emConferencia = (!reservaCalculadaPeloMotor(r) || r.divergenciaEm !== null || devolvidaNoProvedor) && !r.conferenciaResolvidaEm && emVigor.length > 0;
 
   // Mesma ordem do motor: reserva > configuração do imóvel para o canal > padrão do sistema.
   const doImovel = verValores ? (await lerRecebimento(db, sessao.organizacaoId, r.imovelId))[r.origem] : undefined;
@@ -52,6 +59,14 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
   const [recebimentos, recebidos] = verValores ? await Promise.all([recebimentosDaReserva(db, sessao.organizacaoId, r.id), recebidoPorReserva(db, sessao.organizacaoId, [r.id])]) : [[], new Map()];
   // M8.2a: tentativas de pagamento no site desta reserva (situação para quem lê reservas; valores e ações pelo financeiro).
   const pagamentosSite = podeFazer(sessao.papel, "reserva:ler") ? await pagamentosDaReserva(db, sessao.organizacaoId, r.id) : [];
+  // M8.2c: a reserva paga pelo site cancela pela política (o botão de sempre some); o pedido e o cancelamento dela.
+  const pagamentoQueConfirmou = pagamentosSite.find((p) => p.desfecho === "reserva") ?? null;
+  const editarReserva = podeFazer(sessao.papel, "reserva:editar");
+  const editarFinanceiro = podeFazer(sessao.papel, "financeiro:editar");
+  const agora = new Date();
+  const cancelamentoSite = pagamentoQueConfirmou ? await cancelamentoDaReserva(db, sessao.organizacaoId, r.id, agora) : null;
+  const momentos = pagamentoQueConfirmou && editarReserva && editarFinanceiro && r.estado === "confirmada" ? await momentosDoCancelamento(db, sessao.organizacaoId, r.id) : null;
+  const textoCancelamento = textoDoResultado(resultadoCancelamento);
   // M7.4: páginas legais que o hóspede aceitou no site (também o aceite gravado sem um Pix que deu certo).
   const aceitesSite = podeFazer(sessao.papel, "reserva:ler") ? await aceitesDaReserva(db, sessao.organizacaoId, r.id) : [];
 
@@ -90,6 +105,11 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
       {salvo && (
         <p role="status" className={styles.sucesso}>
           {salvo === "recebimento" ? "Recebimento registrado." : "Reserva salva."}
+        </p>
+      )}
+      {textoCancelamento && (
+        <p role="status" className={styles.sucesso}>
+          {textoCancelamento}
         </p>
       )}
       <dl className={styles.form} style={{ display: "grid", gridTemplateColumns: "minmax(140px, max-content) 1fr", gap: "8px 16px" }}>
@@ -133,7 +153,7 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
           </BotaoConfirmar>
         </form>
       )}
-      {r.estado !== "cancelada" && podeFazer(sessao.papel, "reserva:editar") && (
+      {r.estado !== "cancelada" && editarReserva && !pagamentoQueConfirmou && (
         <form action={cancelar}>
           <input type="hidden" name="id" value={r.id} />
           <BotaoConfirmar
@@ -144,14 +164,35 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
           </BotaoConfirmar>
         </form>
       )}
-      <PagamentoNoSite pagamentos={pagamentosSite} verValores={verValores} editar={podeFazer(sessao.papel, "financeiro:editar")} hoje={hojeISO()} />
+      <PagamentoNoSite
+        pagamentos={pagamentosSite}
+        verValores={verValores}
+        editar={editarFinanceiro}
+        hoje={hojeISO()}
+        cancelamento={
+          pagamentoQueConfirmou ? (
+            <CancelamentoSite
+              reserva={{ id: r.id, codigo: r.codigo, estado: r.estado, checkin: r.checkin }}
+              pagamento={pagamentoQueConfirmou}
+              cancelamento={cancelamentoSite}
+              momentos={momentos}
+              editarReserva={editarReserva}
+              editarFinanceiro={editarFinanceiro}
+              verValores={verValores}
+              agora={agora}
+            />
+          ) : null
+        }
+      />
       <PaginasLegaisAceitas aceites={aceitesSite} />
       {emConferencia && (
         <section aria-label="Em conferência" className={styles.alerta} style={{ maxWidth: 820 }}>
           <p style={{ margin: 0 }}>
-            {r.estado !== "confirmada"
-              ? "Esta reserva não está confirmada, mas já movimentou dinheiro: os valores continuam no financeiro, em conferência, e o fechamento do mês do proprietário espera. Confirme a reserva de novo ou faça o ajuste manual e depois dê a conferência por resolvida."
-              : "Os valores atuais desta reserva não batem com o que já movimentou dinheiro no financeiro: em conferência, e o fechamento do mês do proprietário espera. Faça o ajuste manual e depois dê a conferência por resolvida."}
+            {devolvidaNoProvedor
+              ? "O Mercado Pago mostra o pagamento desta reserva devolvido fora do sistema: a parte do proprietário não é repassada. Cancele pela política (devolução integral) ou registre um ajuste e dê a conferência por resolvida."
+              : !reservaCalculadaPeloMotor(r)
+                ? "Esta reserva não está confirmada, mas já movimentou dinheiro: os valores continuam no financeiro, em conferência, e o fechamento do mês do proprietário espera. Confirme a reserva de novo ou faça o ajuste manual e depois dê a conferência por resolvida."
+                : "Os valores atuais desta reserva não batem com o que já movimentou dinheiro no financeiro: em conferência, e o fechamento do mês do proprietário espera. Faça o ajuste manual e depois dê a conferência por resolvida."}
           </p>
           {podeFazer(sessao.papel, "financeiro:editar") && (
             <form action={resolverConferenciaAcao} style={{ marginTop: 8 }}>

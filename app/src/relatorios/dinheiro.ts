@@ -7,7 +7,7 @@
  */
 import type { OrigemReserva } from "@/db/schema";
 import { formatBRL } from "@/lib/money";
-import type { Rodape } from "@/portal/rodape";
+import { divisaoDoDeve, type Rodape } from "@/portal/rodape";
 import type { QuemRecebeParte, RepasseDaParte, SituacaoParte } from "@/repasses/extrato";
 import type { PagamentoDaReserva } from "@/repasses/inicio";
 import { NOMES_ORIGEM } from "@/reservas/regras";
@@ -37,7 +37,17 @@ export type ParteDoRelatorio = {
   motivo: string;
   pagamento: PagamentoDaReserva | null;
   repasse: RepasseDaParte | null;
+  /**
+   * Reserva cancelada pela política do site (M8.2c): `retida` = sem devolução, o valor retido dividido como uma reserva
+   * normal; `desconto` = esta parte é o desconto (negativo) da parte já repassada de uma reserva cancelada com devolução
+   * integral, no mês do cancelamento; `estorno` = o espelho (negativo) de uma parte que nunca foi paga ao proprietário,
+   * que a anula; `anulada` = essa parte nunca paga. Ausente nas demais.
+   */
+  cancelamento?: "retida" | "desconto" | "estorno" | "anulada";
 };
+
+/** O espelho no mês do cancelamento (o desconto da parte já repassada ou o estorno da parte nunca paga): sem noites, sem canal. */
+export const ehEspelhoDoCancelamento = (p: Pick<ParteDoRelatorio, "cancelamento">) => p.cancelamento === "desconto" || p.cancelamento === "estorno";
 
 /** De onde vem a linha: o canal pagou direto, um repasse antecipado (ou acerto por fora), o fechamento, ou valor a liberar. */
 export type OrigemLinha = "canal" | "antecipado" | "fechamento" | "a_liberar";
@@ -98,7 +108,12 @@ export function comoChega(
   const noitesDe = (p: ParteDoRelatorio) => `${p.noitesNoMes} ${plural(p.noitesNoMes, "noite", "noites")} de ${nomeDoMes(p.mes)} da reserva de ${reservaDe(p)}`;
   /** A parte de outro mês paga junto com as deste (reserva que atravessa): sai discriminada e entra no resultado do mês dela. */
   const pagaJunto = (p: ParteDoRelatorio, origem: OrigemLinha): Linha => ({
-    texto: `Desse valor, ${noitesDe(p)}, ${plural(p.noitesNoMes, "paga", "pagas")} junto: ${plural(p.noitesNoMes, "entra", "entram")} no resultado de ${nomeDoMes(p.mes)}`,
+    texto:
+      p.cancelamento === "desconto"
+        ? `Desse valor, o desconto da parte já repassada da reserva de ${reservaDe(p)}, cancelada com devolução ao hóspede: entra no resultado de ${nomeDoMes(p.mes)}`
+        : p.cancelamento === "estorno"
+          ? `Desse valor, o estorno da parte não repassada da reserva de ${reservaDe(p)}, cancelada com devolução ao hóspede: entra no resultado de ${nomeDoMes(p.mes)}`
+          : `Desse valor, ${noitesDe(p)}, ${plural(p.noitesNoMes, "paga", "pagas")} junto: ${plural(p.noitesNoMes, "entra", "entram")} no resultado de ${nomeDoMes(p.mes)}`,
     valor: p.suaParte,
     tipo: "info",
     origem,
@@ -184,10 +199,19 @@ export function comoChega(
         linhas.push({ texto: `A transferir no fechamento, ${r.situacao === "fechado" ? "mês já fechado" : `previsto para ${dataBr(fim)}`}${quem}`, valor: r.valor, tipo: "normal", origem: "fechamento" });
         quemPagaQuem = `A ${empresa} transfere ${v} para ${r.nome}${r.situacao === "fechado" ? "" : ` em ${dataBr(fim)}`}, pela chave Pix cadastrada no portal.`;
         break;
-      case "proprietario_deve":
-        linhas.push({ texto: `Você transfere à ${empresa} no fechamento${quem}`, valor: r.valor, tipo: "aviso", origem: "fechamento", aviso: "voce_transfere" });
-        quemPagaQuem = `${r.nome} transfere ${v} para a ${empresa} (as despesas do mês passaram da sua parte): chave Pix da empresa no portal.`;
+      case "proprietario_deve": {
+        // M8.2c: o desconto de reserva cancelada com devolução ao hóspede maior que a parte não se transfere — continua a
+        // descontar e sai do próximo repasse (o mesmo que o painel diz); só as despesas que passaram da parte, sim.
+        const { proximoRepasse, transferir } = divisaoDoDeve(r);
+        const desconto = `o desconto de reserva cancelada com devolução ao hóspede (${formatBRL(proximoRepasse)})`;
+        if (proximoRepasse > 0) linhas.push({ texto: `Desconto de reserva cancelada com devolução ao hóspede maior que a sua parte: sai do próximo repasse, nada a transferir${quem}`, valor: proximoRepasse, tipo: "info", origem: "fechamento" });
+        if (transferir > 0) linhas.push({ texto: `Você transfere à ${empresa} no fechamento${quem}`, valor: transferir, tipo: "aviso", origem: "fechamento", aviso: "voce_transfere" });
+        quemPagaQuem =
+          transferir > 0
+            ? `${r.nome} transfere ${formatBRL(transferir)} para a ${empresa} (as despesas do mês passaram da sua parte): chave Pix da empresa no portal.${proximoRepasse > 0 ? ` Já ${desconto} não se transfere: sai do próximo repasse.` : ""}`
+            : `${r.nome} não transfere nada: ${desconto} passou da sua parte deste fechamento e sai do próximo repasse.`;
         break;
+      }
       case "parcial":
         linhas.push({ texto: `Saldo parcial a acertar no fechamento de ${dataBr(fim)}${r.aFavor === "proprietario" ? " (a seu favor)" : r.aFavor === "empresa" ? ` (a favor da ${empresa})` : ""}${quem}`, valor: r.valor, tipo: "info", origem: "fechamento" });
         break;
@@ -241,8 +265,26 @@ export function conciliacao(partes: readonly ParteDoRelatorio[], mes: MesISO, ho
       tipo: "ponte",
     });
   }
+  // M8.2c: o desconto da parte já repassada de uma reserva cancelada com devolução integral (os espelhos no mês do
+  // cancelamento): nenhum canal pagou nada — é o dinheiro que voltou ao hóspede, descontado num repasse. O estorno da
+  // parte que nunca foi paga só a anula (as duas entram juntas no repasse, somando zero).
+  for (const p of doMes.filter(ehEspelhoDoCancelamento)) {
+    const desconto = p.cancelamento === "desconto";
+    linhas.push({
+      rotulo: `− Reserva ${p.codigo} cancelada com devolução ao hóspede (estadia de ${dataCurta(p.checkin)} → ${dataCurta(p.checkout)}): ${desconto ? "desconto da parte já repassada" : "estorno da parte não repassada"}`,
+      ...somaDe([p]),
+      quemRecebeu: desconto
+        ? p.repasse
+          ? `descontada no repasse de ${dataCurta(dataDoPix(p.repasse))}`
+          : "sai do próximo repasse"
+        : p.repasse
+          ? `anulou a parte no repasse de ${dataCurta(dataDoPix(p.repasse))}`
+          : "anula a parte no próximo repasse (nada a descontar)",
+      tipo: "ponte",
+    });
+  }
   // O resto do mês: pago depois do mês, previsto (data do canal ainda no futuro) ou a receber.
-  for (const p of doMes.filter((x) => !pago(x, hoje) || depoisDe(x.pagamento?.data, mes))) {
+  for (const p of doMes.filter((x) => !ehEspelhoDoCancelamento(x) && (!pago(x, hoje) || depoisDe(x.pagamento?.data, mes)))) {
     const depois = pago(p, hoje) && depoisDe(p.pagamento?.data, mes);
     const previsto = Boolean(p.pagamento) && !pago(p, hoje);
     linhas.push({

@@ -73,9 +73,11 @@ export default async function ListaReservas({ searchParams }: PageProps<"/painel
         <label>Situação<select name="situacao" defaultValue={local.situacao}><option value="todas">Todas</option>{Object.entries(NOMES_ESTADO).map(([v, nome]) => <option key={v} value={v}>{nome}</option>)}</select></label>
         <label>Ordenar por<select name="ordem" defaultValue={local.ordem}><option value="checkin">Data de entrada</option><option value="origem">Mais recentes na origem</option></select></label>
         <label>Feitas na origem<select name="recentes" defaultValue={local.recentes}><option value="0">Qualquer data</option><option value="7">Últimos 7 dias</option><option value="30">Últimos 30 dias</option></select></label>
+        <label>Pedido de cancelamento<select name="cancelamento" defaultValue={local.cancelamento}><option value="todas">Com ou sem pedido</option><option value="pedido">Só com pedido esperando a equipe</option></select></label>
         <button type="submit">Buscar reservas</button>
       </form>
       {local.execucao && <p>Mostrando mudanças da importação selecionada. <Link href={linkLista(params, { execucao: null, mudanca: null })}>Ver todas as importações</Link></p>}
+      {local.cancelamento === "pedido" && <p role="note">Mostrando só as reservas com pedido de cancelamento esperando a equipe, de qualquer período. <Link href={linkLista(params, { cancelamento: null })}>Ver todas as reservas</Link></p>}
       <p>Consultas não ocupam datas. A data da origem é a informada pelo Beds24. Datas ausentes ficam como “Não informada” e no fim da ordenação por mais recentes; não entram nos filtros de 7 ou 30 dias.</p>
       <p className={styles.etiqueta} style={{ alignSelf: "flex-start" }}>
         {local.escopo === "historico" ? "Todo o histórico · imóveis selecionados" : efetivos.length ? descricao : "Nenhum imóvel ativo selecionado"} · {resultado.total} registro(s) · página {resultado.pagina} de {resultado.paginas}

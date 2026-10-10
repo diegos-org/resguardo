@@ -32,11 +32,48 @@ export const CAMPOS_TEXTOS_SITE = [
     limite: 400,
     linhas: 3,
   },
+  // Cancelamento de reserva paga pelo site (M8.2c): só as frases. As datas, horas, valores e a versão da política são
+  // escritos pelo sistema na página da reserva, nas mensagens e em Minha reserva (nunca editáveis aqui).
+  { chave: "cancelamentoSemTaxas", rotulo: "Cancelamento: fim da frase da devolução integral (depois de \"devolvemos o valor integral pago, R$ …,\")", limite: 120, linhas: 1 },
+  { chave: "cancelamentoDevolucaoPedida", rotulo: "Cancelamento: devolução pedida ao Mercado Pago, ainda não confirmada", limite: 240, linhas: 2 },
+  { chave: "cancelamentoEstornoNoCartao", rotulo: "Cancelamento: estorno no cartão feito pela equipe no painel do Mercado Pago (pagamento com mais de 78 dias)", limite: 240, linhas: 2 },
+  { chave: "cancelamentoVoltaPix", rotulo: "Cancelamento: como o dinheiro volta no Pix", limite: 240, linhas: 2 },
+  { chave: "cancelamentoVoltaCartao", rotulo: "Cancelamento: como o dinheiro volta no cartão", limite: 240, linhas: 2 },
+  { chave: "cancelamentoVoltaPorFora", rotulo: "Cancelamento: devolução feita por fora (transferência da empresa)", limite: 240, linhas: 2 },
+  { chave: "cancelamentoComAEquipe", rotulo: "Cancelamento: a devolução pelo Mercado Pago não foi possível (a equipe combina outra forma)", limite: 240, linhas: 2 },
+  { chave: "cancelamentoEmConferencia", rotulo: "Cancelamento: devolução em conferência com o Mercado Pago", limite: 240, linhas: 2 },
+  { chave: "cancelamentoSemDevolucaoPrazo", rotulo: "Cancelamento sem devolução: o pedido chegou depois dos prazos da política (a página mostra os prazos antes)", limite: 240, linhas: 2 },
+  { chave: "cancelamentoSemDevolucaoNaoComparecimento", rotulo: "Cancelamento sem devolução: não comparecimento", limite: 240, linhas: 2 },
+  { chave: "cancelamentoSemDevolucaoEquipe", rotulo: "Cancelamento sem devolução decidido pela equipe (pagamento sem a política aceita)", limite: 240, linhas: 2 },
+  { chave: "cancelamentoFecho", rotulo: "Cancelamento: frase final da página da reserva cancelada", limite: 240, linhas: 2 },
+  { chave: "cancelamentoPedidoRecebido", rotulo: "Cancelamento: pedido recebido, ainda sem decisão (página da reserva e Minha reserva, depois da data e hora do pedido)", limite: 240, linhas: 2 },
+  { chave: "cancelamentoMinhaReservaIntro", rotulo: "Cancelamento: abertura do quadro \"Cancelar a reserva\" em Minha reserva (antes dos prazos da política)", limite: 240, linhas: 2 },
 ] as const;
 export type ChaveTextoSite = (typeof CAMPOS_TEXTOS_SITE)[number]["chave"];
 export type TextosSite = Record<ChaveTextoSite, string>;
-/** Textos que não podem ficar vazios (o título e os do pagamento, que o hóspede precisa ler). */
-export const TEXTOS_SITE_OBRIGATORIOS: readonly ChaveTextoSite[] = ["titulo", "pagamentoConvite", "pagamentoAguardando", "pagamentoSemDatas", "pagamentoCartaoAnalise"];
+/**
+ * Textos que não podem ficar vazios: o título, os do pagamento e os do cancelamento que o hóspede precisa ler (o que
+ * acontece com o dinheiro dele). A frase final e a abertura do quadro em Minha reserva podem ficar vazias.
+ */
+export const TEXTOS_SITE_OBRIGATORIOS: readonly ChaveTextoSite[] = [
+  "titulo",
+  "pagamentoConvite",
+  "pagamentoAguardando",
+  "pagamentoSemDatas",
+  "pagamentoCartaoAnalise",
+  "cancelamentoSemTaxas",
+  "cancelamentoDevolucaoPedida",
+  "cancelamentoEstornoNoCartao",
+  "cancelamentoVoltaPix",
+  "cancelamentoVoltaCartao",
+  "cancelamentoVoltaPorFora",
+  "cancelamentoComAEquipe",
+  "cancelamentoEmConferencia",
+  "cancelamentoSemDevolucaoPrazo",
+  "cancelamentoSemDevolucaoNaoComparecimento",
+  "cancelamentoSemDevolucaoEquipe",
+  "cancelamentoPedidoRecebido",
+];
 
 export const TEXTOS_SITE_INICIAIS: TextosSite = {
   olho: "Rio de Janeiro · Brasil",
@@ -69,6 +106,22 @@ export const TEXTOS_SITE_INICIAIS: TextosSite = {
   // Cartão em análise (M8.2b): sem horário (a página põe a linha do prazo das datas, que não é editável).
   pagamentoCartaoAnalise:
     "Seu pagamento com cartão está em análise pelo Mercado Pago, que pode levar até 2 dias úteis. Enquanto a análise não termina, não dá para pagar de outro jeito nesta cotação: fale com a equipe pelo WhatsApp se precisar.",
+  // Cancelamento (M8.2c): texto-base para Diego revisar. Nunca cita o Beds24 nem traz dado pessoal.
+  cancelamentoSemTaxas: "sem desconto de taxas.",
+  // Também vão para a mensagem ao hóspede ({decisao}): "a página da sua reserva", nunca "esta página".
+  cancelamentoDevolucaoPedida: "Já pedimos a devolução ao Mercado Pago; a página da sua reserva mostra quando ela for confirmada.",
+  cancelamentoEstornoNoCartao: "Estamos pedindo o estorno no seu cartão; a página da sua reserva mostra quando for feito.",
+  cancelamentoVoltaPix: "O valor volta para a conta de onde saiu o pagamento.",
+  cancelamentoVoltaCartao: "No cartão, o estorno aparece na fatura atual ou na seguinte, conforme o banco.",
+  cancelamentoVoltaPorFora: "Devolvemos por transferência, como combinado com a nossa equipe.",
+  cancelamentoComAEquipe: "A nossa equipe vai falar com você para combinar outra forma, sem custo para você.",
+  cancelamentoEmConferencia: "Estamos conferindo a devolução com o Mercado Pago; a nossa equipe fala com você.",
+  cancelamentoSemDevolucaoPrazo: "O pedido chegou depois desses prazos: pela política que você aceitou, não há devolução.",
+  cancelamentoSemDevolucaoNaoComparecimento: "Pela política, o não comparecimento não tem devolução.",
+  cancelamentoSemDevolucaoEquipe: "A nossa equipe registrou que não há devolução.",
+  cancelamentoFecho: "Se tiver dúvida, fale com a equipe.",
+  cancelamentoPedidoRecebido: "A equipe confirma com você, por escrito, o valor da devolução pela política que você aceitou.",
+  cancelamentoMinhaReservaIntro: "Precisa cancelar? Faça o pedido aqui: a data e a hora em que ele chega ficam registradas na hora, e é esse momento que vale pela política.",
 };
 
 /**

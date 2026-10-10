@@ -43,3 +43,16 @@ it("links dos alertas com os filtros do Início continuam válidos (link que já
   expect(h).toContain('href="/painel/financeiro/pagamentos-site?atencao=1&amp;imovel=403&amp;ano=2026&amp;mes=10"');
   expect(h).toContain('href="/painel/rotinas?imovel=403&amp;ano=2026&amp;mes=10"');
 });
+
+it("M8.2c: quem edita reservas recebe os avisos do cancelamento pela política (sem valores), mesmo sem o financeiro", async () => {
+  m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  await html();
+  expect(m.dashboard).toHaveBeenLastCalledWith({}, "org", expect.objectContaining({ verCancelamentos: true, verPagamentos: false }));
+  m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  await html();
+  expect(m.dashboard).toHaveBeenLastCalledWith({}, "org", expect.objectContaining({ verCancelamentos: true, verPagamentos: true }));
+  // Sem reserva:editar (ex.: limpeza), nenhum.
+  m.sessao.mockResolvedValue({ papel: "limpeza", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  await html();
+  expect(m.dashboard).toHaveBeenLastCalledWith({}, "org", expect.objectContaining({ verCancelamentos: false }));
+});

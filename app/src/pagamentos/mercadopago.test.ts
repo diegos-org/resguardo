@@ -3,7 +3,7 @@ import {
   centavosParaValorApi, ClienteMercadoPagoHttp, cobrancaDaOrder, codigosDeErro, contaDeTesteDoUsuario, dataRfc3339, detalheDaOrder,
   EMAIL_PAGADOR_SANDBOX, falhaDeRede, financeiroDoPagamento, normalizarSituacao, primeiroCodigo, valorApiParaCentavos,
 } from "./mercadopago";
-import { type Cobranca, ErroProvedor, type PedidoCartao, type PedidoPix, RECUSA_GENERICA, urlDoDesafio } from "./provedor";
+import { type Cobranca, type DevolucaoLida, ErroProvedor, type PedidoCartao, type PedidoPix, RECUSA_GENERICA, urlDoDesafio } from "./provedor";
 
 // Tudo fictício. O token tem cara de real para os testes de vazamento.
 const TOKEN = "APP_USR-0000000000000000-000000-ficticio0000000000000000000000-000000000";
@@ -128,6 +128,7 @@ const cobrancaAprovada = (over: Partial<Cobranca> = {}): Cobranca => ({
   pago: 50000,
   devolvido: 0,
   devolucaoEmAndamento: false,
+  devolucoes: [],
   parcelas: 3,
   idTransacao: "PAY01KB0JDVXYPD6HPP2HSMJS11QN",
   aoVivo: null,
@@ -275,6 +276,7 @@ describe("order → Cobranca", () => {
       pago: null,
       devolvido: 0,
       devolucaoEmAndamento: false,
+      devolucoes: [],
       parcelas: null,
       idTransacao: "PAY01KB00C5QRFKWERZQW5DX6XMMJ",
       aoVivo: false,
@@ -385,6 +387,44 @@ describe("order → Cobranca", () => {
     (o.transactions as Record<string, unknown>).refunds = [{ id: "REF1", amount: "100.00", status: "processed" }, { id: "REF5", amount: "10.00", status: "failed" }];
     delete (o.transactions.payments[0] as Record<string, unknown>).amount;
     expect(cobrancaDaOrder(o)).toMatchObject({ devolucaoEmAndamento: false, devolvido: 10000, valorTransacao: null });
+  });
+
+  it("devoluções lidas (M8.2c): status por lista branca, ids inválidos fora, só id, estado e valor (nunca e2e_id ou reference_id)", () => {
+    const o = orderCartao({ status: "processed", status_detail: "partially_refunded" });
+    (o.transactions as Record<string, unknown>).refunds = [
+      { id: "REF01A", amount: "100.00", status: "processed", e2e_id: "E00000000202610081500ficticio", reference_id: "ref-ficticia" },
+      { id: "REF01B", amount: "50.50", status: "APPROVED" },
+      { id: "REF01C", amount: "70.00", status: "in_process" },
+      { id: "REF01D", amount: "10.00", status: "failed" },
+      { id: "REF01E", amount: "10.00", status: "rejected" },
+      { id: "REF01F", amount: "10.00", status: "canceled" },
+      { id: "REF01G", amount: "10.00", status: "cancelled" },
+      { id: "REF01H", amount: "abc", status: "status_novo" },
+      { id: "../../x", amount: "1.00", status: "processed" },
+      { id: "PAY01NAOEDEVOLUCAO", amount: "1.00", status: "processed" },
+      { amount: "1.00", status: "processed" },
+      null,
+    ];
+    const c = cobrancaDaOrder(o)!;
+    expect(c.devolucoes).toEqual([
+      { id: "REF01A", estado: "confirmada", valor: 10_000 },
+      { id: "REF01B", estado: "confirmada", valor: 5_050 },
+      { id: "REF01C", estado: "andamento", valor: 7_000 },
+      { id: "REF01D", estado: "falhou", valor: 1_000 },
+      { id: "REF01E", estado: "falhou", valor: 1_000 },
+      { id: "REF01F", estado: "falhou", valor: 1_000 },
+      { id: "REF01G", estado: "falhou", valor: 1_000 },
+      { id: "REF01H", estado: "andamento", valor: 0 },
+    ]);
+    expect(JSON.stringify(c)).not.toMatch(/E00000000202610081500ficticio|ref-ficticia/);
+    // No máximo 20; sem a lista, nenhuma (não quer dizer "nenhuma devolução").
+    (o.transactions as Record<string, unknown>).refunds = Array.from({ length: 30 }, (_, i) => ({ id: `REF${i}`, amount: "1.00", status: "processed" }));
+    expect(cobrancaDaOrder(o)!.devolucoes).toHaveLength(20);
+    expect(cobrancaDaOrder(orderPix())!.devolucoes).toEqual([]);
+    // processed/refunded (exemplo da resposta de devolução): situação desconhecida, com a devolução confirmada na lista.
+    const refunded = orderCartao({ status: "processed", status_detail: "refunded" });
+    (refunded.transactions as Record<string, unknown>).refunds = [{ id: "REF01J49MMW3SSBK5PSV3DFR32959", amount: "500.00", status: "processed" }];
+    expect(cobrancaDaOrder(refunded)).toMatchObject({ situacao: "desconhecido", devolvido: 50_000, devolucoes: [{ id: "REF01J49MMW3SSBK5PSV3DFR32959", estado: "confirmada", valor: 50_000 }] });
   });
 
   it("ids com sublinhado (exemplos da documentação) e lista de pagamentos com null", () => {
@@ -984,7 +1024,7 @@ describe("devolver", () => {
 
   it("integral: corpo vazio, chave no cabeçalho; devolução processed → confirmada", async () => {
     const f = fetchFalso(json(201, { id: "ORD1", status: "refunded", status_detail: "refunded", transactions: { refunds: [refund("processed")] } }));
-    expect(await cliente(f.impl).devolver(cobrancaAprovada(), "devolver-1", null)).toEqual({ situacao: "confirmada", idDevolucao: "REF01J49MMW3SSBK5PSV3DFR32959", mensagem: "Devolução confirmada pelo Mercado Pago." });
+    expect(await cliente(f.impl).devolver(cobrancaAprovada(), "devolver-1", null)).toEqual({ situacao: "confirmada", idDevolucao: "REF01J49MMW3SSBK5PSV3DFR32959", mensagem: "Devolução confirmada pelo Mercado Pago.", codigo: null });
     const [p] = f.pedidos;
     expect(p.url.toString()).toBe("https://api.mercadopago.com/v1/orders/ORDTST01KB0JDVXYPD6HPP2HSJDKH8FG/refund");
     expect(p.headers["x-idempotency-key"]).toBe("devolver-1");
@@ -998,7 +1038,9 @@ describe("devolver", () => {
   });
 
   it("devolução sem status confirmado, ou sem lista → pedida", async () => {
-    expect(await cliente(fetchFalso(json(201, { transactions: { refunds: [refund("processed", { id: "REF_A" }), refund("in_process", { id: "REF_B" })] } })).impl).devolver(cobrancaAprovada(), "d", null)).toMatchObject({ situacao: "pedida", idDevolucao: "REF_B" });
+    // A REF_A já estava na leitura de antes do pedido: a nova (a nossa) é a REF_B.
+    const antes = cobrancaAprovada({ devolucoes: [{ id: "REF_A", estado: "confirmada", valor: 50_000 }] });
+    expect(await cliente(fetchFalso(json(201, { transactions: { refunds: [refund("processed", { id: "REF_A" }), refund("in_process", { id: "REF_B" })] } })).impl).devolver(antes, "d", null)).toMatchObject({ situacao: "pedida", idDevolucao: "REF_B" });
     expect(await cliente(fetchFalso(json(201, { status: "refunded" })).impl).devolver(cobrancaAprovada(), "d", null)).toMatchObject({ situacao: "pedida", idDevolucao: null });
     expect(await cliente(fetchFalso(json(200, { transactions: { refunds: [refund("approved")] } })).impl).devolver(cobrancaAprovada(), "d", null)).toMatchObject({ situacao: "confirmada" });
   });
@@ -1016,7 +1058,8 @@ describe("devolver", () => {
   });
 
   it.each([
-    [json(409, { errors: [{ code: "order_refund_already_in_process" }] }), "pedida"],
+    // M8.2c: devolução já em andamento = "aguarde" (nada aceito por esta chave), não "pedida".
+    [json(409, { errors: [{ code: "order_refund_already_in_process" }] }), "aguarde"],
     [json(409, { errors: [{ code: "order_already_refunded" }] }), "confirmada"],
     [json(409, { errors: [{ code: "idempotency_key_already_used" }] }), "incerta"],
     [json(409, { errors: [{ code: "cannot_refund_order" }] }), "recusada"],
@@ -1024,7 +1067,8 @@ describe("devolver", () => {
     [json(400, { errors: [{ code: "refund_amount_exceeds", message: "texto-do-provedor" }] }), "recusada"],
     [json(400, {}), "recusada"],
     [json(404, { errors: [{ code: "transaction_not_found" }] }), "recusada"],
-    [json(423, { errors: [{ code: "resource_locked" }] }), "incerta"],
+    // M8.2c: travado no provedor = "aguarde" (transitório; não conta como falha).
+    [json(423, { errors: [{ code: "resource_locked" }] }), "aguarde"],
     [json(500, { errors: [{ code: "idempotency_validation_failed" }] }), "incerta"],
     [json(502, {}), "incerta"],
     [json(401, {}), "recusada"],
@@ -1034,6 +1078,71 @@ describe("devolver", () => {
     const r = await cliente(fetchFalso(resposta).impl).devolver(cobrancaAprovada(), "devolver-1", null);
     expect(r.situacao).toBe(esperado);
     semSegredos(r.mensagem);
+  });
+
+  it.each([
+    // [resposta, situação, código]
+    [json(400, { errors: [{ code: "order_refund_already_in_process" }] }), "aguarde", "em_andamento"],
+    [json(409, { errors: [{ code: "order_refund_already_in_process" }] }), "aguarde", "em_andamento"],
+    [json(409, { errors: [{ code: "refund_in_progress" }] }), "aguarde", "em_andamento"],
+    [json(422, { errors: [{ code: "refund_in_progress" }] }), "aguarde", "em_andamento"],
+    [json(400, { errors: [{ code: "movement_operations_pending" }] }), "aguarde", "transitorio"],
+    [json(425, { errors: [{ code: "order_payment_not_yet_enabled_for_refund" }] }), "aguarde", "transitorio"],
+    [json(423, {}), "aguarde", "transitorio"],
+    [json(428, { errors: [{ code: "insufficient_money_for_refund" }] }), "recusada", "saldo_insuficiente"],
+    [json(428, {}), "recusada", "saldo_insuficiente"],
+    [json(400, { errors: [{ code: "insufficient_money_for_refund" }] }), "recusada", "saldo_insuficiente"],
+    [json(409, { errors: [{ code: "refund_period_exceeded" }] }), "recusada", "prazo"],
+    [json(400, { errors: [{ code: "refund_period_exceeded" }] }), "recusada", "prazo"],
+    [json(404, {}), "recusada", "nao_encontrado"],
+    [json(409, { errors: [{ code: "cannot_refund_order" }] }), "recusada", "nao_permitido"],
+    [json(409, { errors: [{ code: "operation_not_supported" }] }), "recusada", "nao_permitido"],
+    [json(400, { errors: [{ code: "refund_amount_exceeds" }] }), "recusada", "valor_excede"],
+    [json(400, { errors: [{ code: "outro_codigo" }] }), "recusada", null],
+    [json(409, { errors: [{ code: "order_already_refunded" }] }), "confirmada", null],
+    [json(409, { errors: [{ code: "idempotency_key_already_used" }] }), "incerta", null],
+    [json(500, {}), "incerta", null],
+    [json(429, {}), "incerta", null],
+  ])("%#: código do resultado (M8.2c) → %s / %s", async (resposta, situacao, codigo) => {
+    const r = await cliente(fetchFalso(resposta).impl).devolver(cobrancaAprovada(), "devolver-1", null);
+    expect([r.situacao, r.codigo, r.idDevolucao]).toEqual([situacao, codigo, null]);
+    semSegredos(r.mensagem);
+  });
+
+  it("o código nunca vem do texto livre do provedor: só dos códigos de erro conhecidos", async () => {
+    const r = await cliente(fetchFalso(json(400, { message: "insufficient_money_for_refund refund_period_exceeded", errors: [{ code: "bad_request", message: "order_refund_already_in_process" }] })).impl).devolver(cobrancaAprovada(), "d", null);
+    expect(r).toMatchObject({ situacao: "recusada", codigo: null });
+    // Validação local (antes da rede): sem código.
+    expect(await cliente(fetchFalso().impl).devolver(cobrancaAprovada(), "", null)).toMatchObject({ situacao: "recusada", codigo: null });
+  });
+
+  it("201: a devolução deste pedido é a que não estava na leitura de antes; nenhuma nova ou mais de uma = sem id", async () => {
+    const antiga = { id: "REF01ANTIGA0000000000000000", estado: "falhou" as const, valor: 50_000 };
+    const corpo = (ids: string[]) => ({ transactions: { refunds: ids.map((id) => refund("in_process", { id })) } });
+    const pedir = (ids: string[], devolucoes = [antiga]) => cliente(fetchFalso(json(201, corpo(ids))).impl).devolver(cobrancaAprovada({ devolucoes }), "d", null);
+    // A antiga (que falhou) e a nova: a nova.
+    expect(await pedir([antiga.id, "REF01NOVA00000000000000000"])).toMatchObject({ situacao: "pedida", idDevolucao: "REF01NOVA00000000000000000" });
+    // Só a já conhecida: não dá para saber qual é a nossa.
+    expect(await pedir([antiga.id])).toMatchObject({ situacao: "pedida", idDevolucao: null });
+    // Duas desconhecidas (a leitura de antes não listava nada): também não — nunca "a última da lista".
+    expect(await pedir(["REF01UMA000000000000000000", "REF01OUTRA0000000000000000"], [])).toMatchObject({ situacao: "pedida", idDevolucao: null });
+    // Id inválido ou sem o prefixo de devolução não conta.
+    expect(await pedir(["../x", "PAY01NAOEDEVOLUCAO00000000"], [])).toMatchObject({ situacao: "pedida", idDevolucao: null });
+  });
+
+  it("201 com a chave repetida (depois de uma resposta incerta): sem devolução nova, é a repetição do pedido anterior — uma devolução só na resposta é a nossa", async () => {
+    const nossa = { id: "REF01NOSSA00000000000000000", estado: "falhou" as const, valor: 182_400 };
+    const outra = { id: "REF01OUTRA00000000000000000", estado: "falhou" as const, valor: 50_000 };
+    const corpo = (ids: string[]) => ({ transactions: { refunds: ids.map((id) => refund("in_process", { id })) } });
+    const pedir = (ids: string[], devolucoes: DevolucaoLida[], repetida: boolean) => cliente(fetchFalso(json(201, corpo(ids))).impl).devolver(cobrancaAprovada({ devolucoes }), "devolucao-x-1", null, { repetida });
+    // A leitura de antes já lista a nossa (o pedido anterior saiu e falhou): o Mercado Pago repete a resposta dele.
+    expect(await pedir([nossa.id], [nossa], true)).toMatchObject({ situacao: "pedida", idDevolucao: nossa.id });
+    // A mesma resposta com uma chave nova: não dá para saber (pode ser a lista de antes).
+    expect(await pedir([nossa.id], [nossa], false)).toMatchObject({ situacao: "pedida", idDevolucao: null });
+    // Repetida, mas a resposta lista mais de uma conhecida: não dá para saber qual era a nossa.
+    expect(await pedir([outra.id, nossa.id], [outra, nossa], true)).toMatchObject({ situacao: "pedida", idDevolucao: null });
+    // Repetida e com uma nova: a nova (o pedido anterior não tinha chegado).
+    expect(await pedir([outra.id, "REF01NOVA00000000000000000"], [outra], true)).toMatchObject({ situacao: "pedida", idDevolucao: "REF01NOVA00000000000000000" });
   });
 
   it("tempo-limite → incerta", async () => {

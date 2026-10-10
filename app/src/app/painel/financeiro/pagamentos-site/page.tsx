@@ -8,7 +8,7 @@ import { getDb } from "@/db/client";
 import { hojeISO } from "@/lib/datas";
 import { formatBRL } from "@/lib/money";
 import { conferirAgoraAcao } from "@/pagamentos/acoes-painel";
-import { type LinhaPagamento, listarPagamentos } from "@/pagamentos/consultas";
+import { canceladaEmPalavras, type LinhaPagamento, listarPagamentos } from "@/pagamentos/consultas";
 import { NOMES_DESFECHO, NOMES_SITUACAO_PAGAMENTO } from "@/pagamentos/situacoes";
 import { dataValida } from "@/reservas/regras";
 
@@ -24,12 +24,15 @@ function periodoPadrao(hoje: string): { de: string; ate: string } {
 }
 
 /** O que foi feito do dinheiro (ou o que falta fazer), em palavras simples. */
-function desfechoEmPalavras(p: Pick<LinhaPagamento, "desfecho" | "devolucao" | "motivoSemReservaTexto" | "situacao">): string {
+function desfechoEmPalavras(p: Pick<LinhaPagamento, "desfecho" | "devolucao" | "motivoSemReservaTexto" | "situacao" | "cancelada">): string {
+  // M8.2c: a reserva que o pagamento confirmou foi cancelada pela política (a mesma situação da página do hóspede).
+  if (p.desfecho === "reserva" && p.cancelada) return canceladaEmPalavras(p.cancelada);
   if (p.desfecho) return NOMES_DESFECHO[p.desfecho];
   if (p.devolucao?.situacao === "pedida") return "Devolução pedida ao Mercado Pago";
   if (p.devolucao?.situacao === "recusada") return "Devolução parada: o Mercado Pago recusou ou não respondeu três vezes. Confira no painel do Mercado Pago antes de tentar de novo ou de registrar a devolução feita por fora";
   if (p.situacao === "aprovado" && p.motivoSemReservaTexto) return `Sem reserva, a devolver: ${p.motivoSemReservaTexto}`;
-  if ((p.situacao === "devolvido_parcial" || p.situacao === "contestado") && p.motivoSemReservaTexto) return `Sem reserva: ${p.motivoSemReservaTexto} O resto se resolve pelo Mercado Pago até o M8.2c.`;
+  if ((p.situacao === "devolvido_parcial" || p.situacao === "contestado") && p.motivoSemReservaTexto)
+    return `Sem reserva: ${p.motivoSemReservaTexto} O resto se resolve pelo painel do Mercado Pago (a devolução de parte do valor pelo sistema chega no M8.2d).`;
   if (p.situacao === "aprovado") return "Confirmando a reserva";
   return "—";
 }

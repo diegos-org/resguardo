@@ -62,4 +62,30 @@ describe("aplicação das migrações por hash (build da Vercel)", () => {
     expect(await aplicarMigracoesPendentes(executar, todas)).toBe(1);
     expect((await registradas()).some((r) => r.hash === m0053.hash)).toBe(true);
   }, 120_000);
+
+  it("a 0067 (M8.2c, cancelamento) aplica do zero e é idempotente: rodar as instruções dela de novo não muda nada", async () => {
+    const todas = readMigrationFiles({ migrationsFolder: join(process.cwd(), "drizzle") });
+    expect(await aplicarMigracoesPendentes(executar, todas)).toBe(todas.length);
+    const m0067 = todas[67];
+    expect(m0067.sql.join("\n")).toContain('"cancelamentos_reserva"');
+    const colunas = async () =>
+      (
+        await db.query<{ c: string }>(
+          "select table_name || '.' || column_name as c from information_schema.columns where table_schema = 'public' and table_name in ('cancelamentos_reserva', 'devolucoes_pagamento', 'pagamentos', 'reservas') order by 1",
+        )
+      ).rows.map((r) => r.c);
+    const restricoes = async () => (await db.query<{ n: string }>("select conname as n from pg_constraint where conname like 'cancelamentos_reserva%' or conname like 'devolucoes_pagamento%' order by 1")).rows.map((r) => r.n);
+    const antes = { colunas: await colunas(), restricoes: await restricoes(), tabelas: await tabelas() };
+    expect(antes.colunas).toEqual(expect.arrayContaining(["reservas.valor_retido", "pagamentos.devolvido_lido", "pagamentos.devolucao_em_andamento_lida", "pagamentos.devolvido_visto_em", "devolucoes_pagamento.origem", "devolucoes_pagamento.parada_nota"]));
+    expect(antes.restricoes).toEqual(expect.arrayContaining(["cancelamentos_reserva_hospede_avisado_devolucao_por_fk", "devolucoes_pagamento_cancelamento_id_fk"]));
+    // Nenhum nome passa dos 63 caracteres do Postgres (cortado, o "se não existe" da migração não o acharia).
+    expect(antes.restricoes.every((n) => n.length <= 63)).toBe(true);
+    // As instruções de novo, uma a uma, sobre o banco que já tem tudo (como no banco compartilhado das prévias).
+    for (const instrucao of m0067.sql) await db.exec(instrucao);
+    expect({ colunas: await colunas(), restricoes: await restricoes(), tabelas: await tabelas() }).toEqual(antes);
+    expect((await db.query<{ v: string }>("select unnest(enum_range(null::tipo_lancamento))::text as v")).rows.map((r) => r.v)).toContain("devolucao");
+    // E sem o registro dela: a migração inteira entra de novo sem erro.
+    await db.query('delete from "drizzle"."__drizzle_migrations" where hash = $1', [m0067.hash]);
+    expect(await aplicarMigracoesPendentes(executar, todas)).toBe(1);
+  }, 120_000);
 });

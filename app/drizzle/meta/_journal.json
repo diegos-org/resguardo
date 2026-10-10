@@ -470,6 +470,13 @@
       "when": 1791572770269,
       "tag": "0066_m8_2b_cartao",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1791595870834,
+      "tag": "0067_m8_2c_cancelamento",
+      "breakpoints": true
     }
   ]
 }

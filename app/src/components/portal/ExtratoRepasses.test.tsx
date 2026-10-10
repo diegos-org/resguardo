@@ -102,4 +102,19 @@ describe("extrato e repasses no portal (M4.10)", () => {
     expect(h).not.toContain("Empresa Dela)");
     expect(h.match(/Pedir repasse agora/g)).toHaveLength(1);
   });
+
+  it("M8.2c: o desconto da parte já repassada de uma reserva cancelada com devolução aparece como 'Desconto', a descontar ou descontado, com a explicação", () => {
+    const desconto = parte({ lancamentoId: "d1", reservaId: "r9", codigoReserva: "SCL-CANC", valor: -63119, efeitoSaldo: -63119, origemLancamento: "cancelamento" });
+    const h = render({ partes: [classificarParte(desconto)] });
+    expect(h).toContain("<strong>Desconto</strong> · a descontar");
+    expect(h).toContain("Desconto da sua parte já repassada da reserva SCL-CANC (cancelada com devolução integral ao hóspede): sai do próximo repasse.");
+    expect(h).toContain("“Desconto” é a sua parte já repassada de uma reserva paga pelo site e cancelada com devolução integral ao hóspede: sai do próximo repasse.");
+    // Descontado num repasse: a situação e o repasse.
+    const descontado = classificarParte({ ...desconto, repasse: { id: "rep2", tipo: "antecipado", data: "2026-10-20", situacao: "pago", dataPagamento: "2026-10-20", valor: -63119 } });
+    const h2 = render({ partes: [descontado] });
+    expect(h2).toContain("<strong>Desconto</strong> · descontado");
+    expect(h2).toContain("descontado no repasse de 20/10/2026");
+    // Sem desconto, sem a explicação.
+    expect(render()).not.toContain("“Desconto” é a sua parte");
+  });
 });

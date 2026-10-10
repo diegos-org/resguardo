@@ -4,13 +4,14 @@ import { afterEach, expect, it, vi } from "vitest";
 import { FormPagamentoSite } from "./FormPagamentoSite";
 
 const props = {
-  config: { oferecer: true, nomeFatura: null, categoriaTaxaId: null, cartao: false, parcelasMaximas: null, tresDS: "on_fraud_risk" as const },
+  config: { oferecer: true, nomeFatura: null, categoriaTaxaId: null, cartao: false, parcelasMaximas: null, tresDS: "on_fraud_risk" as const, pedidoCancelamentoNoPortal: true, naoComparecimentoHoras: 21 },
   categorias: [{ id: "33333333-3333-4333-8333-333333333333", nome: "Tarifas bancárias" }],
   nomeEmpresa: "Sua Casa Leblon",
   limiteNome: 22,
   visiveis: 10,
   categoriaPadrao: "Taxa do pagamento do site",
   parcelasLimite: 36,
+  horasLimite: 72,
   opcoesTresDS: [
     { valor: "on_fraud_risk", texto: "Quando houver risco (recomendado): texto do servidor" },
     { valor: "never", texto: "Nunca: texto do servidor" },
@@ -78,4 +79,26 @@ it("cartão: o que estava salvo aparece; um erro devolve o que foi digitado com 
   fireEvent.submit(screen.getByRole("form", { name: "Pagamento no site" }));
   await waitFor(() => expect(screen.getByText("Use um número de 1 a 36 (vazio = o máximo que o Mercado Pago permitir).")).toBeTruthy());
   expect((screen.getByLabelText(/Número máximo de parcelas/) as HTMLInputElement).getAttribute("aria-invalid")).toBe("true");
+});
+
+it("cancelamento (M8.2c): a caixa do pedido em Minha reserva e as horas do não comparecimento, com o que está salvo; um erro fica no campo", async () => {
+  const salvar = vi
+    .fn()
+    .mockResolvedValueOnce({ ok: true, aviso: "Salvo." })
+    .mockResolvedValueOnce({ erros: { naoComparecimentoHoras: "Use um número inteiro de horas de 0 a 72 (vazio = 21)." }, mensagem: "Confira os campos destacados.", valores: { naoComparecimentoHoras: "80" } });
+  render(<FormPagamentoSite {...props} salvar={salvar} />);
+  const caixa = screen.getByLabelText(/Hóspede pode pedir o cancelamento em Minha reserva/) as HTMLInputElement;
+  expect(caixa.checked).toBe(true);
+  const horas = screen.getByLabelText(/Não comparecimento: horas depois do horário de entrada/) as HTMLInputElement;
+  expect([horas.value, horas.min, horas.max]).toEqual(["21", "0", "72"]);
+  expect(screen.getByText(/21 horas = 12:00 do dia seguinte/)).toBeTruthy();
+  fireEvent.click(caixa);
+  fireEvent.change(horas, { target: { value: "30" } });
+  fireEvent.submit(screen.getByRole("form", { name: "Pagamento no site" }));
+  await waitFor(() => expect(salvar).toHaveBeenCalledTimes(1));
+  const [, dados] = salvar.mock.calls[0] as [unknown, FormData];
+  expect([dados.has("pedidoCancelamentoNoPortal"), dados.get("naoComparecimentoHoras")]).toEqual([false, "30"]);
+  fireEvent.submit(screen.getByRole("form", { name: "Pagamento no site" }));
+  await waitFor(() => expect(screen.getByText("Use um número inteiro de horas de 0 a 72 (vazio = 21).")).toBeTruthy());
+  expect((screen.getByLabelText(/Não comparecimento/) as HTMLInputElement).getAttribute("aria-invalid")).toBe("true");
 });

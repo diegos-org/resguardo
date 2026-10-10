@@ -3,17 +3,21 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { auditoria, beds24Calendario, cotacoes, lancamentos, pagamentos, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
+import { lancamentoEmConferencia, lancamentoEmVigor } from "@/portal/posse";
+import { partesDisponiveis } from "@/repasses/extrato";
 import { registrarRecebimento } from "@/repasses/recebimentos";
+import { gerarAntecipado } from "@/repasses/repasses";
 import { confirmarReserva, criarReserva, tentarCancelarReserva } from "@/reservas/repositorio";
 import { criarCotacao, ERRO_EMAIL_EM_ANDAMENTO, expirarHoldsVencidos, segurarDatas } from "@/site/cotacoes";
 import { CARENCIA_PAGAMENTO_MS } from "./andamento";
 import { conferirTentativa } from "./conferencia";
 import { valorConfere } from "./confirmacao";
+import { registrarDevolucaoPorFora } from "./devolucao";
 import { gerarPix } from "./pix";
 import { conferirPendentes } from "./rotina";
 import type { Cobranca } from "./provedor";
 import { textosDosAvisos } from "./situacoes";
-import { AGORA, type Cenario, EMAIL_HOSPEDE, minutos, montarCenario, TOTAL } from "./testes";
+import { AGORA, type Cenario, cancelar, EMAIL_HOSPEDE, entradaPadrao, envelhecer, liberar, minutos, montarCenario, pagarEConfirmar, TOTAL, usuarioDeTeste } from "./testes";
 
 let db: Db, close: () => Promise<void>, c: Cenario;
 beforeAll(async () => { ({ db, close } = await createTestDb()); });
@@ -337,7 +341,7 @@ describe("confirmação pelo pagamento (M8.2a)", () => {
     const x = await comPix();
     const conf = await confirmarReserva(db, c.org, x.reservaId, null, minutos(5));
     expect(conf).toMatchObject({ ok: false, aviso: expect.stringContaining("há um Pix em andamento até 12:30") });
-    expect(await tentarCancelarReserva(db, c.org, x.reservaId, null)).toMatchObject({ ok: false, aviso: expect.stringContaining("M8.2c") });
+    expect(await tentarCancelarReserva(db, c.org, x.reservaId, null)).toMatchObject({ ok: false, aviso: expect.stringContaining("Pix do site em andamento até 12:30. Aguarde o prazo dele.") });
     // Mesmo com o prazo vencido (na carência), a confirmação manual não vence o pedido.
     expect(await confirmarReserva(db, c.org, x.reservaId, null, new Date(x.T.getTime() + 60_000))).toMatchObject({ ok: false, aviso: expect.stringContaining("Pix em andamento") });
     expect((await c.reserva(x.reservaId)).estado).toBe("pedido");
@@ -414,6 +418,7 @@ describe("confirmação pelo cartão (M8.2b)", () => {
     pago: TOTAL,
     devolvido: 0,
     devolucaoEmAndamento: false,
+    devolucoes: [],
     parcelas: 1,
     idTransacao: "PAYTST9999",
     aoVivo: false,
@@ -469,5 +474,108 @@ describe("confirmação pelo cartão (M8.2b)", () => {
     expect(textosDosAvisos(p.avisos).join(" ")).toContain("o hóspede pode ter pago duas vezes");
     // Sem outra reserva do mesmo e-mail, nenhum aviso.
     expect((await c.tentativa(pix.pagamentoId)).avisos).not.toContain("outra_reserva_mesmo_email");
+  });
+});
+
+describe("a leitura do pagamento depois do cancelamento pela política (M8.2c)", () => {
+  const longe = { entrada: "2026-11-20", saida: "2026-11-23" };
+  const empresa = () => entradaPadrao({ quemCancela: "empresa", motivoEmpresa: "forca_maior" });
+  const doLivro = (reservaId: string) => db.select().from(lancamentos).where(eq(lancamentos.reservaId, reservaId));
+  const emConferencia = async (reservaId: string) =>
+    (await db.select({ id: lancamentos.id }).from(lancamentos).where(and(eq(lancamentos.reservaId, reservaId), lancamentoEmVigor(db), lancamentoEmConferencia()))).length > 0;
+
+  it("cancelamento devolvido por fora e o Mercado Pago mostrando a devolução: devolução em dobro", async () => {
+    const equipe = await usuarioDeTeste(c);
+    const x = await pagarEConfirmar(c, longe);
+    await envelhecer(c, x.pagamentoId, 80);
+    await cancelar(c, x.reservaId, empresa(), equipe, minutos(60));
+    expect(await registrarDevolucaoPorFora(db, c.org, x.pagamentoId, { data: "2026-10-01", valor: TOTAL, nota: "Pix da conta da empresa" }, equipe, c.provedor, minutos(70))).toEqual({ ok: true, situacao: "por_fora" });
+    c.provedor.devolverNoProvedor(x.idProvedor, TOTAL);
+    await conferir(x.pagamentoId, minutos(80));
+    const t = await c.tentativa(x.pagamentoId);
+    expect(t.avisos).toContain("devolucao_em_dobro");
+    // A reserva cancelada com devolução integral não volta para a conferência (D21 só fora do cancelamento).
+    expect(await emConferencia(x.reservaId)).toBe(false);
+  });
+
+  it("devolvido no painel do Mercado Pago numa reserva confirmada (sem cancelamento): devolvido por fora e a parte em conferência (D21), fora das disponíveis e de qualquer antecipado", async () => {
+    const x = await pagarEConfirmar(c);
+    await liberar(c, x.pagamentoId, { quando: minutos(10) });
+    c.provedor.devolverNoProvedor(x.idProvedor, TOTAL);
+    await conferir(x.pagamentoId, minutos(20));
+    const t = await c.tentativa(x.pagamentoId);
+    expect(t).toMatchObject({ situacao: "devolvido", desfecho: "reserva", devolvidoLido: TOTAL });
+    expect(t.avisos).toContain("devolvido_por_fora");
+    expect(await emConferencia(x.reservaId)).toBe(true);
+    const depois = new Date("2026-10-16T12:00:00-03:00");
+    expect((await partesDisponiveis(db, c.org, c.dono, depois)).filter((p) => p.reservaId === x.reservaId)).toEqual([]);
+    expect(await gerarAntecipado(db, c.org, c.dono, "2026-10-16", null, { agora: depois })).toMatchObject({ ok: false });
+  });
+
+  it("cancelada com valor retido e depois devolvida no painel do Mercado Pago: em conferência", async () => {
+    const equipe = await usuarioDeTeste(c);
+    const x = await pagarEConfirmar(c);
+    const quando = new Date("2026-10-10T11:00:00-03:00");
+    await cancelar(c, x.reservaId, entradaPadrao({ recebidoEm: new Date("2026-10-10T10:00:00-03:00"), canal: "email" }), equipe, quando);
+    expect((await c.reserva(x.reservaId)).valorRetido).toBe(TOTAL);
+    expect(await emConferencia(x.reservaId)).toBe(false);
+    c.provedor.devolverNoProvedor(x.idProvedor, TOTAL);
+    await conferir(x.pagamentoId, minutos(10, quando));
+    expect((await c.tentativa(x.pagamentoId)).avisos).toContain("devolvido_por_fora");
+    expect(await emConferencia(x.reservaId)).toBe(true);
+  });
+
+  it("taxa que chega depois do cancelamento integral: fica no pagamento, não entra na reserva (nada a dividir)", async () => {
+    const equipe = await usuarioDeTeste(c);
+    const x = await pagarEConfirmar(c, { ...longe, financeiro: { taxa: null } });
+    expect((await c.tentativa(x.pagamentoId)).taxa).toBeNull();
+    c.provedor.respostaDevolucao = "pedida";
+    await cancelar(c, x.reservaId, empresa(), equipe, minutos(60));
+    const antes = (await c.reserva(x.reservaId)).taxaCanal;
+    const livro = (await doLivro(x.reservaId)).length;
+    c.provedor.atualizarFinanceiro(x.idProvedor, { taxa: 1824, liquido: TOTAL - 1824 });
+    await conferir(x.pagamentoId, minutos(70));
+    expect((await c.tentativa(x.pagamentoId)).taxa).toBe(1824);
+    expect((await c.reserva(x.reservaId)).taxaCanal).toBe(antes);
+    expect((await doLivro(x.reservaId)).length).toBe(livro);
+    expect(await emConferencia(x.reservaId)).toBe(false);
+  });
+
+  it("taxa que chega depois do cancelamento com valor retido: entra na reserva, o motor divide de novo; fora da conferência", async () => {
+    const equipe = await usuarioDeTeste(c);
+    const x = await pagarEConfirmar(c, { financeiro: { taxa: null } });
+    const quando = new Date("2026-10-10T11:00:00-03:00");
+    await cancelar(c, x.reservaId, entradaPadrao({ recebidoEm: new Date("2026-10-10T10:00:00-03:00"), canal: "email" }), equipe, quando);
+    c.provedor.atualizarFinanceiro(x.idProvedor, { taxa: 1824, liquido: TOTAL - 1824 });
+    await conferir(x.pagamentoId, minutos(10, quando));
+    expect((await c.reserva(x.reservaId)).taxaCanal).toBe(1824);
+    const taxa = (await doLivro(x.reservaId)).filter((l) => l.origem === "motor" && l.tipo === "taxa_canal" && !l.estornoDe);
+    expect(taxa.map((l) => l.valor)).toContain(-1824);
+    expect(await emConferencia(x.reservaId)).toBe(false);
+  });
+
+  it("sinal de liberação numa reserva cancelada com devolução integral: só marca a liberação (nada entra no livro)", async () => {
+    const equipe = await usuarioDeTeste(c);
+    const x = await pagarEConfirmar(c, longe);
+    c.provedor.respostaDevolucao = "pedida";
+    await cancelar(c, x.reservaId, empresa(), equipe, minutos(60));
+    expect((await c.tentativa(x.pagamentoId)).situacao).toBe("aprovado");
+    c.provedor.atualizarFinanceiro(x.idProvedor, { liberado: true, liquido: TOTAL - 1824 });
+    await conferir(x.pagamentoId, minutos(70));
+    expect(await c.tentativa(x.pagamentoId)).toMatchObject({ liberacaoConfirmadaEm: minutos(70), liberacaoOrigem: "provedor" });
+    expect((await doLivro(x.reservaId)).filter((l) => l.tipo === "recebimento")).toEqual([]);
+  });
+
+  it("colunas da leitura gravadas: o devolvido lido, a devolução em andamento lida e o dia em que o sistema viu 'devolvido' (uma vez)", async () => {
+    const equipe = await usuarioDeTeste(c);
+    const x = await pagarEConfirmar(c, longe);
+    c.provedor.respostaDevolucao = "pedida";
+    await cancelar(c, x.reservaId, empresa(), equipe, minutos(60));
+    expect(await c.tentativa(x.pagamentoId)).toMatchObject({ devolvidoLido: 0, devolucaoEmAndamentoLida: true, devolvidoVistoEm: null });
+    c.provedor.confirmarDevolucoes(x.idProvedor);
+    await conferir(x.pagamentoId, minutos(70));
+    expect(await c.tentativa(x.pagamentoId)).toMatchObject({ situacao: "devolvido", devolvidoLido: TOTAL, devolucaoEmAndamentoLida: false, devolvidoVistoEm: minutos(70) });
+    await conferir(x.pagamentoId, minutos(90));
+    expect((await c.tentativa(x.pagamentoId)).devolvidoVistoEm).toEqual(minutos(70));
   });
 });

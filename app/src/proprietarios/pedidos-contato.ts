@@ -18,9 +18,9 @@ import { emailValido } from "@/acesso/codigo-email";
 import { normalizarEmail } from "@/acesso/entrada";
 import { apagarContasVelhas, contarNaJanela, type Limite } from "@/acesso/senha";
 import { registrarAuditoria } from "@/auditoria/auditoria";
-import { lerEmpresa } from "@/configuracoes/empresa";
 import { pedidosContatoProprietario, type SituacaoPedidoContato, usuarios } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { avisarEquipePorEmail, type ResultadoAviso } from "@/email/aviso-equipe";
 import type { Correio } from "@/email/correio";
 import { uuidValido } from "@/lib/ids";
 import { ERRO_TELEFONE_DDD, telefoneComDddValido } from "./documento";
@@ -268,7 +268,7 @@ export function arquivarPedido(db: Db, organizacaoId: string, id: string, nota: 
   return decidir(db, organizacaoId, id, nota, autorId, agora, ["novo", "respondido"], "arquivado");
 }
 
-export type ResultadoAviso = "enviado" | "sem-email" | "sem-correio" | "falhou";
+export type { ResultadoAviso };
 
 /** Texto do e-mail para a equipe (puro). */
 export function mensagemAvisoEquipe(p: Pick<PedidoContato, "nome" | "email" | "telefone" | "bairro" | "cidade" | "quartos" | "anunciaHoje" | "mensagem">, linkPainel: string): { assunto: string; texto: string } {
@@ -289,25 +289,12 @@ export function mensagemAvisoEquipe(p: Pick<PedidoContato, "nome" | "email" | "t
 }
 
 /**
- * Um e-mail para o endereço da empresa (Configurações → Empresa). Sem e-mail do sistema ou sem e-mail da empresa,
- * não envia (o pedido continua no painel). Falha no envio não derruba o pedido: volta "falhou".
+ * Um e-mail para o endereço da empresa (Configurações → Empresa), pelo padrão dos avisos internos
+ * (`avisarEquipePorEmail`). Sem e-mail do sistema ou sem e-mail da empresa, não envia (o pedido continua no painel).
+ * Falha no envio não derruba o pedido: volta "falhou".
  */
 export async function avisarEquipe(db: Db, organizacaoId: string, pedido: PedidoContato, correio: Correio | null, linkPainel: string): Promise<ResultadoAviso> {
-  if (!correio) return "sem-correio";
-  const para = (await lerEmpresa(db, organizacaoId)).email.trim();
-  if (!para) return "sem-email";
-  try {
-    await correio.enviar({
-      para,
-      ...mensagemAvisoEquipe(pedido, linkPainel),
-      // Dados pessoais de quem pediu: nunca no terminal de desenvolvimento.
-      conteudoRestrito: true,
-      // Repetir o aviso do mesmo pedido não manda dois e-mails.
-      chave: `pedido-contato-proprietario:${pedido.id}`,
-    });
-    return "enviado";
-  } catch (e) {
-    console.error("[pedido de contato] falha ao avisar a equipe por e-mail", e instanceof Error ? e.message : String(e));
-    return "falhou";
-  }
+  // Dados pessoais de quem pediu: nunca no terminal de desenvolvimento (o conteúdo vai restrito). Repetir o aviso do
+  // mesmo pedido não manda dois e-mails.
+  return avisarEquipePorEmail(db, organizacaoId, correio, { ...mensagemAvisoEquipe(pedido, linkPainel), chave: `pedido-contato-proprietario:${pedido.id}`, rotulo: "pedido de contato" });
 }

@@ -7,15 +7,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { criarContrato } from "@/contratos/repositorio";
-import { conferirMovimentadas, recalcularPendentes, recalcularReservas } from "@/financeiro/aplicar";
-import { preverRepasses } from "@/repasses/repasses";
+import { aplicarMotor, conferirMovimentadas, recalcularPendentes, recalcularReservas } from "@/financeiro/aplicar";
+import { fecharMes, gerarAntecipado, marcarRepassePago, preverRepasses } from "@/repasses/repasses";
+import { cancelamentoDeTeste, espelharCancelamento, pagamentoDoSiteDeTeste } from "@/repasses/testes-cancelamento";
+import { receberTudo } from "@/repasses/testes";
 import { contratos, lancamentos, imoveis, organizacoes, proprietarioImoveis, proprietarios, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { criarCategoria } from "@/despesas/categorias";
 import { registrarDespesa } from "@/despesas/despesas";
 import { listarImoveis } from "@/imoveis/repositorio";
-import { reservasDoPortal } from "@/portal/reservas";
+import { ETIQUETA_CANCELADA_DEVOLVIDA, ETIQUETA_CANCELADA_RETIDA, reservasDoPortal } from "@/portal/reservas";
 import { resumoDoProprietario } from "@/portal/resumo";
 import { dadosDoRelatorio, textosDoRelatorio } from "@/relatorios/relatorio";
 import type { DadosReserva } from "@/reservas/regras";
@@ -444,5 +446,208 @@ describe("consistência entre telas (M4.8)", () => {
     const so102 = (await listarImoveis(db, org)).filter((i) => i.codigo === "102");
     const inicio102 = await carregarDashboard(db, org, { imoveis: so102, todos: false, periodo: OUTUBRO, ano: 2026, hoje: "2026-11-10", verFinanceiro: true });
     expect(inicio102.reservasNoPeriodo).toBe(1);
+  });
+
+  it("M8.2c — cancelada sem devolução (valor retido): os mesmos totais em todas as telas, fora da contagem, e o PDF diz de onde vem", async () => {
+    const r = await criarReserva(db, org, reserva(a, "2026-10-01", "2026-10-03", { origem: "site", valorBruto: 50000, taxaCanal: 0 }), null);
+    if (!r.ok) throw new Error("reserva");
+    await db.update(reservas).set({ estado: "cancelada", canceladaEm: new Date(), valorRetido: 50000 }).where(eq(reservas.id, r.reserva.id));
+    expect(await aplicarMotor(db, org, r.reserva.id, null)).toMatchObject({ criados: 0, estornados: 0 });
+    const t = await tresTelas();
+    expect(t.brutos).toEqual([310000, 310000, 310000]);
+    expect(t.contagens).toEqual([3, 3, 3]);
+    expect(t.acertos[0]).toBe(t.acertos[1]);
+    const alertas = t.inicio.alertas.map((x) => x.texto).join(" | ");
+    expect(alertas).not.toContain("com dinheiro já movimentado");
+    expect(alertas).not.toContain("sem cálculo");
+    const portal = await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], semImovel: true, periodo: OUTUBRO });
+    expect(portal).toMatchObject({ emConferencia: false, retidoDeCanceladas: { n: 1, bruto: 50000 }, devolvidoDeCanceladas: { n: 0, bruto: 0 } });
+    const lista = await reservasDoPortal(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo: OUTUBRO });
+    expect(lista.find((x) => x.id === r.reserva.id)).toMatchObject({ situacao: "definido", confirmada: false, cancelada: true, etiqueta: ETIQUETA_CANCELADA_RETIDA, bruto: 50000 });
+    expect(lista.reduce((x, y) => x + y.bruto, 0)).toBe(portal.receitaBruta);
+    const pdf = textosDoRelatorio(await dadosDoRelatorio(db, org, { donos: [{ id: dona, nome: "Dona Fictícia" }], imoveis: [{ id: a, codigo: "403", nome: "Quatro" }], todosOsImoveis: true, ano: 2026, mes: 10, hoje: "2026-11-10" }));
+    expect(pdf.brutoAoResultado[0]).toMatchObject({ valor: formatBRL(310000), etiqueta: "inclui R$ 500,00 retido de 1 reserva cancelada sem devolução (política de cancelamento)" });
+    expect(pdf.conciliacaoFecha).toBe(true);
+    expect((await preverRepasses(db, org, "2026-10", "2026-11-10", [dona]))[0].bloqueios.join(" ")).not.toContain("acerto pendente");
+  });
+
+  it("M8.2c — cancelada com devolução integral depois do repasse: outubro não muda; novembro mostra o desconto; cada mês fecha; nada trava", async () => {
+    const NOVEMBRO = { inicio: "2026-11-01", fim: "2026-12-01" };
+    const dados = reserva(a, "2026-10-01", "2026-10-03", { origem: "site", valorBruto: 50000, taxaCanal: 500 });
+    const r = await criarReserva(db, org, dados, null);
+    if (!r.ok) throw new Error("reserva");
+    await receberTudo(db, org, r.reserva.id, "2026-10-01");
+    const g = await gerarAntecipado(db, org, dona, "2026-10-04", null);
+    if (!g.ok) throw new Error(g.erro);
+    await marcarRepassePago(db, org, g.id, "2026-10-05", "2026-10-05", null);
+    // O relatório de outubro sai com o fechamento de outubro (dia 2/11), antes do cancelamento: a reserva de 5/10 recebida
+    // dá o que transferir, e o fechamento fica gravado.
+    const [recebida] = await db.select({ id: reservas.id }).from(reservas).where(and(eq(reservas.imovelId, a), eq(reservas.checkin, "2026-10-05")));
+    await receberTudo(db, org, recebida.id, "2026-10-05");
+    const fechamento = await fecharMes(db, org, dona, "2026-10", "2026-11-02", null);
+    if (!fechamento.ok) throw new Error(fechamento.erro);
+    const so403 = (await listarImoveis(db, org)).filter((i) => i.codigo === "403");
+    const telas = async (periodo: { inicio: string; fim: string }, hoje: string) => {
+      const inicio = await carregarDashboard(db, org, { imoveis: so403, todos: false, periodo, ano: 2026, hoje, verFinanceiro: true });
+      const { linhas } = await carregarApartamentos(db, org, { imoveis: so403, todos: false, periodo });
+      const portal = await resumoDoProprietario(db, org, { proprietarioIds: [dona], imovelIds: [a], semImovel: true, periodo });
+      return { inicio, apto: linhas[0], portal };
+    };
+    const dinheiro = (x: Awaited<ReturnType<typeof telas>>) => ({
+      inicio: x.inicio.financeiro,
+      apto: x.apto.financeiro,
+      portal: [x.portal.receitaBruta, x.portal.taxasCanais, x.portal.comissao, x.portal.suaParte, x.portal.despesas, x.portal.acerto],
+    });
+    const pdfDe = async (mes: number, hoje: string) =>
+      textosDoRelatorio(await dadosDoRelatorio(db, org, { donos: [{ id: dona, nome: "Dona Fictícia" }], imoveis: [{ id: a, codigo: "403", nome: "Quatro" }], todosOsImoveis: true, ano: 2026, mes, hoje }));
+    const outubroAntes = await telas(OUTUBRO, "2026-11-10");
+    const pdfOutubroAntes = await pdfDe(10, "2026-11-10");
+    const novembroAntes = await telas(NOVEMBRO, "2026-12-10");
+
+    const pagamentoId = await pagamentoDoSiteDeTeste(db, org, r.reserva);
+    const cancelamentoId = await cancelamentoDeTeste(db, org, { reservaId: r.reserva.id, pagamentoId, direito: "integral" });
+    await espelharCancelamento(db, org, { reservaId: r.reserva.id, cancelamentoId, competencia: "2026-11-01", codigo: r.reserva.codigo });
+
+    // Outubro: os valores ficam exatamente como estavam (o mês já movimentou dinheiro), em todas as telas e no PDF — o
+    // relatório gerado de novo é igual ao enviado: conciliação (a reserva paga pelo hóspede em 1/10, no canal do site),
+    // "como chega até você", a tabela de reservas e o saldo.
+    const outubro = await telas(OUTUBRO, "2026-11-10");
+    expect(dinheiro(outubro)).toEqual(dinheiro(outubroAntes));
+    const pdfOutubro = await pdfDe(10, "2026-11-10");
+    expect(pdfOutubro).toEqual(pdfOutubroAntes);
+    expect(pdfOutubro.conciliacao.find((l) => l.rotulo === "Site A")).toMatchObject({ reservas: "1", bruto: "R$ 500,00", quemRecebeu: "pagou à A em 1/10", tipo: "canal" });
+    expect(pdfOutubro.conciliacao.some((l) => l.rotulo.startsWith("+ a receber") && l.rotulo.includes("Site A"))).toBe(false);
+    // Novembro: o desconto (bruto −500, taxa +5, parte −420,75) entra no mês do cancelamento, igual em todas as telas.
+    const novembro = await telas(NOVEMBRO, "2026-12-10");
+    expect(novembro.portal.receitaBruta).toBe(novembroAntes.portal.receitaBruta - 50000);
+    expect(novembro.portal.suaParte).toBe(novembroAntes.portal.suaParte - 42075);
+    expect([novembro.inicio.financeiro?.receitaBruta, novembro.apto.financeiro.receitaBruta]).toEqual([novembro.portal.receitaBruta, novembro.portal.receitaBruta]);
+    expect(novembro.portal.devolvidoDeCanceladas).toEqual({ n: 1, bruto: -50000 });
+    // Cada mês fecha: bruto − taxas − comissão = parte.
+    for (const m of [outubro, novembro]) expect(m.portal.receitaBruta - m.portal.taxasCanais - m.portal.comissao).toBe(m.portal.suaParte);
+    for (const m of [outubro, novembro]) expect(m.inicio.alertas.map((x) => x.texto).join(" | ")).not.toContain("com dinheiro já movimentado");
+    const lista = await reservasDoPortal(db, org, { proprietarioIds: [dona], imovelIds: [a], periodo: NOVEMBRO });
+    expect(lista.find((x) => x.id === r.reserva.id)).toMatchObject({ bruto: -50000, suaParte: -42075, situacao: "definido", cancelada: true, etiqueta: ETIQUETA_CANCELADA_DEVOLVIDA });
+    expect(lista.reduce((x, y) => x + y.bruto, 0)).toBe(novembro.portal.receitaBruta);
+    // O PDF de novembro: a linha do desconto, a nota do bruto e a conciliação que fecha.
+    const pdf = await pdfDe(11, "2026-12-10");
+    expect(pdf.brutoAoResultado[0].etiqueta).toBe("inclui −R$ 500,00 de 1 reserva cancelada com devolução depois do repasse");
+    expect(pdf.reservas.find((l) => l.situacao.startsWith("cancelada com devolução"))).toMatchObject({ situacao: "cancelada com devolução ao hóspede (estadia de 1/10): desconto no próximo repasse", noites: "—", atravessa: false });
+    expect(pdf.conciliacao.find((l) => l.rotulo.includes("desconto da parte já repassada"))).toMatchObject({ tipo: "ponte", quemRecebeu: "sai do próximo repasse" });
+    expect(pdf.conciliacaoFecha).toBe(true);
+    // Nenhum fechamento trava por causa dela.
+    for (const [mes, hoje] of [["2026-10", "2026-11-10"], ["2026-11", "2026-12-10"]]) expect((await preverRepasses(db, org, mes, hoje, [dona], true))[0].bloqueios.join(" ")).not.toContain("acerto pendente");
+  });
+
+  it("M8.2c — sem fechamento de outubro gravado (nada a transferir): a conciliação de outubro fica igual; o desconto que passa da parte sai do próximo repasse, sem pedir Pix", async () => {
+    const r = await criarReserva(db, org, reserva(a, "2026-10-01", "2026-10-03", { origem: "site", valorBruto: 50000, taxaCanal: 500 }), null);
+    if (!r.ok) throw new Error("reserva");
+    await receberTudo(db, org, r.reserva.id, "2026-10-01");
+    const g = await gerarAntecipado(db, org, dona, "2026-10-04", null);
+    if (!g.ok) throw new Error(g.erro);
+    await marcarRepassePago(db, org, g.id, "2026-10-05", "2026-10-05", null);
+    const pdfDe = async () =>
+      textosDoRelatorio(await dadosDoRelatorio(db, org, { donos: [{ id: dona, nome: "Dona Fictícia" }], imoveis: [{ id: a, codigo: "403", nome: "Quatro" }], todosOsImoveis: true, ano: 2026, mes: 10, hoje: "2026-11-10" }));
+    const antes = await pdfDe();
+    const pagamentoId = await pagamentoDoSiteDeTeste(db, org, r.reserva);
+    const cancelamentoId = await cancelamentoDeTeste(db, org, { reservaId: r.reserva.id, pagamentoId, direito: "integral" });
+    await espelharCancelamento(db, org, { reservaId: r.reserva.id, cancelamentoId, competencia: "2026-11-01", codigo: r.reserva.codigo });
+    const depois = await pdfDe();
+    // A reserva continua paga pelo hóspede em 1/10 (canal do site), nunca "a receber"; a conciliação inteira é a mesma.
+    expect(depois.conciliacao).toEqual(antes.conciliacao);
+    expect(depois.reservas).toEqual(antes.reservas);
+    expect(depois.brutoAoResultado).toEqual(antes.brutoAoResultado);
+    // O que chegou em outubro também: o antecipado de 5/10.
+    expect(depois.comoChega.linhas[0]).toEqual(antes.comoChega.linhas[0]);
+    // O fechamento de outubro (sem registro: a despesa de R$ 120 paga pela empresa já passava da parte) agora leva o
+    // desconto de novembro como antecipado. Do que ela deve, o desconto sai do próximo repasse — igual ao painel — e só a
+    // despesa pede o Pix, com o mesmo valor de antes: o desconto nunca é cobrado duas vezes.
+    const transfere = (t: typeof antes) => t.comoChega.linhas.find((l) => l.texto.startsWith("Você transfere"));
+    expect(transfere(antes)).toEqual({ texto: "Você transfere à A no fechamento", valor: "R$ 120,00", tipo: "aviso" });
+    expect(transfere(depois)).toEqual(transfere(antes));
+    expect(depois.comoChega.linhas.find((l) => l.texto.startsWith("Desconto de reserva cancelada"))).toEqual({
+      texto: "Desconto de reserva cancelada com devolução ao hóspede maior que a sua parte: sai do próximo repasse, nada a transferir",
+      valor: "R$ 420,75",
+      tipo: "info",
+    });
+    expect(depois.comoChega.quemPagaQuem).toBe(
+      "Dona Fictícia transfere R$ 120,00 para a A (as despesas do mês passaram da sua parte): chave Pix da empresa no portal. Já o desconto de reserva cancelada com devolução ao hóspede (R$ 420,75) não se transfere: sai do próximo repasse. O valor a liberar entra no próximo repasse assim que o canal pagar.",
+    );
+    expect(depois.saldo).toEqual([
+      "Credor: A. Você deve R$ 540,75 à A. Desse valor, o desconto de reserva cancelada com devolução ao hóspede (R$ 420,75), maior que a sua parte deste mês, não se transfere: sai do próximo repasse; transfira R$ 120,00.",
+      "Fale com a A para combinar o pagamento.",
+    ]);
+    expect(depois.acerto.slice(-2)).toEqual([
+      { texto: "Desconto de reserva cancelada com devolução ao hóspede: sai do próximo repasse", valor: "R$ 420,75", tipo: "normal" },
+      { texto: "Você transfere no fechamento", valor: "R$ 120,00", tipo: "total" },
+    ]);
+    const [previsao] = await preverRepasses(db, org, "2026-10", "2026-11-10", [dona], true);
+    expect(previsao).toMatchObject({ valor: 0, deve: 54075 });
+    expect(previsao.avisos.join(" ")).toContain("nada a repassar; o proprietário fica devendo e o desconto passa para o próximo repasse.");
+  });
+
+  it("M8.2c — cancelada no mesmo mês em que a parte foi repassada: cada linha (a reserva e o desconto) traz os próprios valores e fecha", async () => {
+    const r = await criarReserva(db, org, reserva(a, "2026-10-01", "2026-10-03", { origem: "site", valorBruto: 50000, taxaCanal: 500 }), null);
+    if (!r.ok) throw new Error("reserva");
+    await receberTudo(db, org, r.reserva.id, "2026-10-01");
+    const g = await gerarAntecipado(db, org, dona, "2026-10-04", null);
+    if (!g.ok) throw new Error(g.erro);
+    await marcarRepassePago(db, org, g.id, "2026-10-05", "2026-10-05", null);
+    const pagamentoId = await pagamentoDoSiteDeTeste(db, org, r.reserva);
+    const cancelamentoId = await cancelamentoDeTeste(db, org, { reservaId: r.reserva.id, pagamentoId, direito: "integral" });
+    // A SCL cancela em 20/10: os espelhos caem no próprio mês da estadia (outubro).
+    await espelharCancelamento(db, org, { reservaId: r.reserva.id, cancelamentoId, competencia: "2026-10-01", codigo: r.reserva.codigo, agora: new Date("2026-10-20T12:00:00-03:00") });
+    const dados = await dadosDoRelatorio(db, org, { donos: [{ id: dona, nome: "Dona Fictícia" }], imoveis: [{ id: a, codigo: "403", nome: "Quatro" }], todosOsImoveis: true, ano: 2026, mes: 10, hoje: "2026-11-10" });
+    const daReserva = dados.partes.filter((p) => p.reservaId === r.reserva.id && p.mes === "2026-10");
+    expect(daReserva.map((p) => [p.cancelamento ?? "motor", p.bruto, p.taxa, p.comissao, p.suaParte, p.pagamento?.data ?? null]).sort()).toEqual(
+      [
+        ["desconto", -50000, -500, -7425, -42075, null],
+        ["motor", 50000, 500, 7425, 42075, "2026-10-01"],
+      ].sort(),
+    );
+    for (const p of daReserva) expect(p.bruto - p.taxa - p.comissao).toBe(p.suaParte);
+    const pdf = textosDoRelatorio(dados);
+    expect(pdf.reservas.filter((l) => l.codigo === r.reserva.codigo).map((l) => [l.bruto, l.taxa, l.gestao, l.suaParte, l.situacao])).toEqual([
+      ["R$ 500,00", "R$ 5,00", "R$ 74,25", "R$ 420,75", "repassada em 5/10"],
+      ["-R$ 500,00", "-R$ 5,00", "-R$ 74,25", "-R$ 420,75", "cancelada com devolução ao hóspede (estadia de 1/10): desconto no próximo repasse"],
+    ]);
+    // A reserva fica no canal do site (o hóspede pagou em 1/10), o desconto na ponte, e a conciliação fecha.
+    expect(pdf.conciliacao.find((l) => l.rotulo === "Site A")).toMatchObject({ reservas: "1", bruto: "R$ 500,00", suaParte: "R$ 420,75", quemRecebeu: "pagou à A em 1/10" });
+    expect(pdf.conciliacao.find((l) => l.rotulo.includes("desconto da parte já repassada"))).toMatchObject({ bruto: "-R$ 500,00", suaParte: "-R$ 420,75", quemRecebeu: "sai do próximo repasse" });
+    expect(pdf.conciliacao.some((l) => l.rotulo.startsWith("+ a receber") && l.rotulo.includes("Site A"))).toBe(false);
+    expect(pdf.conciliacaoFecha).toBe(true);
+  });
+
+  it("M8.2c — dois meses espelhados no mesmo mês: cada desconto traz só os componentes do próprio mês da estadia, e as linhas somam o livro", async () => {
+    // Estadia de 25/10 a 4/11 (as duas partes ficam disponíveis no dia seguinte à entrada); o antecipado de 26/10 paga as
+    // duas; a SCL cancela em 27/10: os dois meses movimentaram e os espelhos caem os dois em outubro.
+    const r = await criarReserva(db, org, reserva(a, "2026-10-25", "2026-11-04", { origem: "site", valorBruto: 100000, taxaCanal: 1000 }), null);
+    if (!r.ok) throw new Error("reserva");
+    await receberTudo(db, org, r.reserva.id, "2026-10-20");
+    const g = await gerarAntecipado(db, org, dona, "2026-10-26", null);
+    if (!g.ok) throw new Error(g.erro);
+    await marcarRepassePago(db, org, g.id, "2026-10-26", "2026-10-26", null);
+    const pagamentoId = await pagamentoDoSiteDeTeste(db, org, r.reserva);
+    const cancelamentoId = await cancelamentoDeTeste(db, org, { reservaId: r.reserva.id, pagamentoId, direito: "integral" });
+    await espelharCancelamento(db, org, { reservaId: r.reserva.id, cancelamentoId, competencia: "2026-10-01", codigo: r.reserva.codigo, agora: new Date("2026-10-27T12:00:00-03:00") });
+    const dados = await dadosDoRelatorio(db, org, { donos: [{ id: dona, nome: "Dona Fictícia" }], imoveis: [{ id: a, codigo: "403", nome: "Quatro" }], todosOsImoveis: true, ano: 2026, mes: 10, hoje: "2026-11-10" });
+    const daReserva = dados.partes.filter((p) => p.reservaId === r.reserva.id && p.mes === "2026-10");
+    // A linha do motor de outubro (7 de 10 noites) e um desconto por mês da estadia: o de outubro (7 noites) e o de novembro (3).
+    expect(daReserva.map((p) => [p.cancelamento ?? "motor", p.bruto, p.taxa, p.comissao, p.suaParte]).sort()).toEqual(
+      [
+        ["motor", 70000, 700, 10395, 58905],
+        ["desconto", -70000, -700, -10395, -58905],
+        ["desconto", -30000, -300, -4455, -25245],
+      ].sort(),
+    );
+    for (const p of daReserva) expect(p.bruto - p.taxa - p.comissao).toBe(p.suaParte);
+    // As linhas somam o que o livro tem de outubro para a reserva (o mesmo número da capa).
+    const livro = await db.select().from(lancamentos).where(and(eq(lancamentos.reservaId, r.reserva.id), eq(lancamentos.competencia, "2026-10-01")));
+    const doLivro = (tipo: string) => livro.filter((l) => l.tipo === tipo).reduce((s, l) => s + l.valor, 0);
+    expect(daReserva.reduce((s, p) => s + p.bruto, 0)).toBe(doLivro("receita_bruta"));
+    expect(daReserva.reduce((s, p) => s + p.taxa, 0)).toBe(-doLivro("taxa_canal"));
+    expect(daReserva.reduce((s, p) => s + p.comissao, 0)).toBe(doLivro("comissao"));
+    expect(daReserva.reduce((s, p) => s + p.suaParte, 0)).toBe(doLivro("direito_proprietario"));
+    expect(textosDoRelatorio(dados).conciliacaoFecha).toBe(true);
   });
 });

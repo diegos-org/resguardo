@@ -6,17 +6,37 @@ import { Moldura, SiteEmConfiguracao } from "@/components/site/Moldura";
 import { PagamentoPix } from "@/components/site/PagamentoPix";
 import styles from "@/components/site/site.module.css";
 import { versaoAtualDaPaginaLegal } from "@/configuracoes/paginas-legais";
-import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
+import { TEXTOS_SITE_INICIAIS, TEXTOS_SITE_OBRIGATORIOS, type TextosSite } from "@/configuracoes/textos-site";
 import { aceiteParaPagina } from "@/site/aceites";
 import { segurarDatasAcao } from "@/site/acoes";
 import { continuarPagamentoAcao, gerarPixAcao, pagarComCartaoAcao } from "@/site/acoes-pagamento";
 import { autorizadoNaCotacao } from "@/site/checkout";
 import { codigoCotacaoValido, textoDaCotacao, verCotacao } from "@/site/cotacoes";
 import { cartaoNoSite, pixPossivel, portaoDoSite, vistaDoPagamento } from "@/site/pagamento";
-import { contatoPrincipal, ESTADOS_QUE_PAGAM, linhaDaAnalise, mensagemDoContato, TITULO_PAGAMENTO } from "@/site/pagamento-vista";
+import { contatoPrincipal, ESTADOS_QUE_PAGAM, linhaDaAnalise, mensagemDoContato, type TextosDoCancelamento, TITULO_PAGAMENTO } from "@/site/pagamento-vista";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
 
 export const generateMetadata = () => metadadosDoSite("Cotação");
+
+const CHAVES_DO_CANCELAMENTO = [
+  "cancelamentoSemTaxas",
+  "cancelamentoDevolucaoPedida",
+  "cancelamentoEstornoNoCartao",
+  "cancelamentoVoltaPix",
+  "cancelamentoVoltaCartao",
+  "cancelamentoVoltaPorFora",
+  "cancelamentoComAEquipe",
+  "cancelamentoEmConferencia",
+  "cancelamentoSemDevolucaoPrazo",
+  "cancelamentoSemDevolucaoNaoComparecimento",
+  "cancelamentoSemDevolucaoEquipe",
+  "cancelamentoFecho",
+  "cancelamentoPedidoRecebido",
+] as const satisfies readonly (keyof TextosDoCancelamento)[];
+
+/** As frases do cancelamento (M8.2c) de Textos do site: as obrigatórias nunca saem vazias; a frase final pode. */
+const textosDoCancelamento = (t: TextosSite): TextosDoCancelamento =>
+  Object.fromEntries(CHAVES_DO_CANCELAMENTO.map((k) => [k, t[k] || (TEXTOS_SITE_OBRIGATORIOS.includes(k) ? TEXTOS_SITE_INICIAIS[k] : "")])) as TextosDoCancelamento;
 
 /**
  * Situações que mostram o aceite das páginas legais (M7.4): a caixa antes do Pix ou do cartão (M8.2b) em toda situação
@@ -100,6 +120,7 @@ export default async function PaginaCotacao({ params }: PageProps<"/reservar/[co
                         aguardando: textos.pagamentoAguardando || TEXTOS_SITE_INICIAIS.pagamentoAguardando,
                         semDatas: textos.pagamentoSemDatas || TEXTOS_SITE_INICIAIS.pagamentoSemDatas,
                         cartaoAnalise: textos.pagamentoCartaoAnalise || TEXTOS_SITE_INICIAIS.pagamentoCartaoAnalise,
+                        cancelamento: textosDoCancelamento(textos),
                       }}
                       contato={
                         conteudo.whatsapp || conteudo.email ? (

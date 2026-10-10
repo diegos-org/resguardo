@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { CAMPOS_LEGAIS, type CampoLegal, MENSAGEM_SEM_PRAZO } from "@/configuracoes/paginas-legais-texto";
+import { CAMPOS_LEGAIS, type CampoLegal, MENSAGEM_ARREPENDIMENTO_SEM_LIMITE, MENSAGEM_SEM_PRAZO } from "@/configuracoes/paginas-legais-texto";
 import { FormPaginaLegal } from "./FormPaginaLegal";
 
 // Dados fictícios da empresa; o CNPJ ficou sem preencher.
@@ -81,6 +81,41 @@ it("Política de cancelamento: prazo do reembolso no formulário, no resumo da p
   fireEvent.change(screen.getByLabelText(/^Resumo/), { target: { value: CANCELAMENTO.resumo } });
   expect(screen.getByRole("note", { name: "O que impede publicar" }).querySelectorAll("li")).toHaveLength(1);
   expect(previa().getByText("[falta: Dias para o reembolso integral]").tagName).toBe("MARK");
+});
+
+it("limite do arrependimento (M8.2c): caixa só na Política de cancelamento, marcada pela regra; desmarcar com a frase no texto impede publicar", async () => {
+  const salvar = vi.fn().mockResolvedValue({ mensagem: "Confira os campos destacados.", erros: { arrependimentoAteEntrada: MENSAGEM_ARREPENDIMENTO_SEM_LIMITE }, valores: { versaoBase: "1" } });
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  const comFrase = { ...CANCELAMENTO, texto: `${CANCELAMENTO.texto}\n\nO arrependimento pode ser usado até o horário de entrada no dia do check-in.` };
+  mostrar({ documento: "cancelamento", valores: comFrase, dias: 14, atual: { numero: 1, data: "2026-10-01" }, salvar });
+  const caixa = screen.getByLabelText(/O arrependimento vale só até o horário de entrada/) as HTMLInputElement;
+  // Sem valor vindo da versão (a v1 não tinha o campo): marcada, como a regra.
+  expect(caixa.checked).toBe(true);
+  expect(screen.queryByRole("note", { name: "O que impede publicar" })).toBeNull();
+  const sair = () => {
+    const ev = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(ev);
+    return ev.defaultPrevented;
+  };
+  expect(sair()).toBe(false);
+  fireEvent.click(caixa);
+  expect(sair()).toBe(true);
+  expect(screen.getByRole("note", { name: "O que impede publicar" }).textContent).toContain(MENSAGEM_ARREPENDIMENTO_SEM_LIMITE);
+  fireEvent.click(screen.getByRole("button", { name: "Publicar a versão 2" }));
+  await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("Confira os campos destacados."));
+  const [, dados] = salvar.mock.calls[0] as [unknown, FormData];
+  expect(dados.has("arrependimentoAteEntrada")).toBe(false);
+  expect(caixa.getAttribute("aria-invalid")).toBe("true");
+  // Marcada de novo: vai no formulário e nada impede.
+  fireEvent.click(caixa);
+  expect(screen.queryByRole("note", { name: "O que impede publicar" })).toBeNull();
+  cleanup();
+  // A versão em vigor sem o limite abre desmarcada; fora da política, nenhuma caixa.
+  mostrar({ documento: "cancelamento", valores: CANCELAMENTO, dias: 14, arrependimentoAteEntrada: false });
+  expect((screen.getByLabelText(/O arrependimento vale só até o horário de entrada/) as HTMLInputElement).checked).toBe(false);
+  cleanup();
+  mostrar();
+  expect(screen.queryByLabelText(/O arrependimento vale só até o horário de entrada/)).toBeNull();
 });
 
 it("publicar pede confirmação com o número da versão seguinte; sem confirmar, nada é enviado", () => {

@@ -3,6 +3,8 @@
  * leitura do Beds24 livre, proprietário, contrato de gestão, páginas legais publicadas — M7.4), relógio fixo
  * controlável e o provedor falso. Só testes importam daqui; nada usa rede nem credenciais. Cartão (M8.2b): dados
  * fictícios do formulário (token, aparelho, documento) e a varredura de dados pessoais nas tabelas do pagamento.
+ * Cancelamento (M8.2c): reserva paga e confirmada pelo site, pedido, cancelamento pela prévia (com a assinatura dela),
+ * liberação, repasse da parte e um usuário fictício da equipe.
  */
 import { and, eq } from "drizzle-orm";
 import { CONFIG_PAGAMENTO_SITE_PADRAO, salvarConfigPagamentoSite } from "@/configuracoes/pagamento-site";
@@ -13,18 +15,22 @@ import {
   aceitesSite,
   auditoria,
   beds24Calendario,
+  cancelamentosReserva,
   cotacoes,
+  devolucoesPagamento,
   disjuntoresCartao,
   eventosPagamento,
   idsExternos,
   imoveis,
   imoveisDetalhes,
+  lancamentos,
   organizacoes,
   pagamentos,
   proprietarioImoveis,
   proprietarios,
   reservas,
   tentativasLogin,
+  usuarios,
 } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { PESOS_PADRAO_ANTIGO, PRECOS_MARKETPLACE_PADRAO } from "@/marketplace/precos";
@@ -32,8 +38,10 @@ import { salvarPrecosMarketplace } from "@/marketplace/precos-config";
 import { registrarAceiteDoHospede } from "@/site/aceites";
 import { criarCotacao, segurarDatas } from "@/site/cotacoes";
 import { esquecerProvedorDoAmbiente } from "./ambiente";
+import { cancelarReservaPaga, type EntradaCancelamento, previaDoCancelamento, registrarPedidoDeCancelamento } from "./cancelamento";
 import { type DadosCartaoDoHospede, pagarComCartao, type ResultadoCartao } from "./cartao";
 import { ProvedorFalso } from "./falso";
+import type { ProvedorPagamento } from "./provedor";
 import { type PortaoCobranca, podeCobrar } from "./oferta";
 import { gerarPix } from "./pix";
 
@@ -171,16 +179,133 @@ export async function montarCenario(db: Db, o: { semPaginasLegais?: boolean } = 
 /**
  * Varre as tabelas do pagamento (pagamentos, eventos, auditoria, aceites, disjuntor, freios de tentativas) atrás de
  * `valores` (token, documento, id do aparelho, e-mails, nome do titular…) e devolve os que apareceram — o esperado é
- * nenhum.
+ * nenhum. `nomes` (M8.2c): o nome do hóspede, procurado nas mesmas tabelas, menos a auditoria da reserva que nasce no
+ * M8.1 (`reserva.importar` guarda os dados dela, nome inclusive, fora das tabelas do pagamento).
  */
-export async function semDadosPessoais(db: Db, valores: string[]): Promise<string[]> {
-  const tudo = JSON.stringify([
+export async function semDadosPessoais(db: Db, valores: string[], o: { nomes?: string[] } = {}): Promise<string[]> {
+  const semAuditoria = [
     await db.select().from(pagamentos),
     await db.select().from(eventosPagamento),
-    await db.select().from(auditoria),
     await db.select().from(aceitesSite),
     await db.select().from(disjuntoresCartao),
     await db.select().from(tentativasLogin),
-  ]);
-  return valores.filter((v) => v && tudo.includes(v));
+    // M8.2c: as devoluções, os cancelamentos e o livro (descrições com o código da reserva, nunca o hóspede).
+    await db.select().from(devolucoesPagamento),
+    await db.select().from(cancelamentosReserva),
+    await db.select().from(lancamentos),
+  ];
+  const registros = await db.select().from(auditoria);
+  const tudo = JSON.stringify([semAuditoria, registros]);
+  const semReservaImportada = JSON.stringify([semAuditoria, registros.filter((a) => a.acao !== "reserva.importar")]);
+  return [...valores.filter((v) => v && tudo.includes(v)), ...(o.nomes ?? []).filter((n) => n && semReservaImportada.includes(n))];
+}
+
+// ---------------------------------------------------------------- cancelamento pela política (M8.2c)
+
+/** Nome e telefone do hóspede fictício do cenário (a varredura de dados pessoais procura por eles, com o e-mail). */
+export const NOME_HOSPEDE = "Visitante Fictício";
+export const TELEFONE_HOSPEDE = "(21) 99999-0000";
+
+/** A varredura dos testes do cancelamento (M8.2c): o e-mail, o telefone e o nome do hóspede fictício do cenário. */
+export const semDadosDoHospede = (db: Db) => semDadosPessoais(db, [EMAIL_HOSPEDE, TELEFONE_HOSPEDE], { nomes: [NOME_HOSPEDE] });
+
+/** Um usuário fictício da equipe (quem registra pedidos, cancela e confirma). */
+export async function usuarioDeTeste(c: Cenario, nome = "Equipe Fictícia"): Promise<string> {
+  const [u] = await c.db.insert(usuarios).values({ organizacaoId: c.org, email: `${nome.toLowerCase().replace(/\W+/g, ".")}.${crypto.randomUUID().slice(0, 8)}@example.com`, nome, papel: "admin" }).returning({ id: usuarios.id });
+  return u.id;
+}
+
+/**
+ * Uma reserva paga e confirmada pelo site (Pix, ou cartão), com o aceite das páginas legais (`semAceite`: o pagamento
+ * fica sem o aceite ligado, como os de antes do M7.4).
+ * `quando`: a hora em que o hóspede pagou (a cotação e o pagamento nascem aí); a aprovação é lida 3 minutos depois.
+ */
+export async function pagarEConfirmar(
+  c: Cenario,
+  o: { forma?: "pix" | "cartao"; parcelas?: number; entrada?: string; saida?: string; email?: string; semAceite?: boolean; quando?: Date; financeiro?: Parameters<ProvedorFalso["aprovar"]>[1] } = {},
+): Promise<{ cotacaoId: string; reservaId: string; codigo: string; pagamentoId: string; idProvedor: string; reservaCodigo: string }> {
+  const quando = o.quando ?? c.relogio.agora;
+  const s = await c.segurar({ entrada: o.entrada, saida: o.saida, email: o.email, origemAceite: o.forma === "cartao" ? "cartao" : "pix" }, quando);
+  let pagamentoId: string;
+  let idProvedor: string;
+  if (o.forma === "cartao") {
+    c.provedor.respostaCartao = "processando";
+    const r = await c.cartao(s.cotacaoId, o.parcelas ? { parcelas: o.parcelas } : {}, quando);
+    if (!r.pagamentoId || !r.idProvedor) throw new Error("cartão não criado");
+    c.provedor.concluirAnalise(r.idProvedor, "aprovado");
+    c.provedor.respostaCartao = "aprovado";
+    // A taxa da aprovação (o líquido sai do valor da cotação; os juros do parcelamento são do hóspede).
+    const taxa = o.financeiro?.taxa === undefined ? 1824 : o.financeiro.taxa;
+    if (taxa !== null) c.provedor.atualizarFinanceiro(r.idProvedor, { taxa, liquido: TOTAL - taxa });
+    pagamentoId = r.pagamentoId;
+    idProvedor = r.idProvedor;
+  } else {
+    const p = await c.pix(s.cotacaoId, quando);
+    c.provedor.aprovar(p.idProvedor, o.financeiro ?? { taxa: 1824 });
+    pagamentoId = p.pagamentoId;
+    idProvedor = p.idProvedor;
+  }
+  const { conferirTentativa } = await import("./conferencia");
+  await conferirTentativa(c.db, c.org, pagamentoId, c.provedor, minutos(3, quando), { origem: "rotina", forcar: true });
+  const r = await c.reserva(s.reservaId);
+  if (r.estado !== "confirmada") throw new Error(`reserva não confirmada: ${r.estado}`);
+  // Pagamento de antes do aceite das páginas legais (M7.4): sem aceite ligado, sem política para o cancelamento.
+  if (o.semAceite) await c.db.update(pagamentos).set({ aceiteId: null }).where(eq(pagamentos.id, pagamentoId));
+  return { ...s, pagamentoId, idProvedor, reservaCodigo: r.codigo };
+}
+
+/** Recua a criação e a aprovação do pagamento (pagamento velho: mais de 78, 85, 90 ou 180 dias). */
+export async function envelhecer(c: Cenario, pagamentoId: string, dias: number): Promise<void> {
+  const p = await c.tentativa(pagamentoId);
+  const menos = (d: Date | null) => (d ? new Date(d.getTime() - dias * 86_400_000) : null);
+  await c.db.update(pagamentos).set({ criadoEm: menos(p.criadoEm)!, aprovadoEm: menos(p.aprovadoEm) }).where(eq(pagamentos.id, pagamentoId));
+}
+
+/** O que o formulário do painel manda por padrão: o hóspede pediu, pela política. */
+export const entradaPadrao = (over: Partial<EntradaCancelamento> = {}): EntradaCancelamento => ({
+  recebidoEm: null,
+  motivoMomento: "",
+  canal: null,
+  quemCancela: "hospede",
+  motivoEmpresa: null,
+  decisao: "politica",
+  motivoExcecao: null,
+  motivoDecisao: "",
+  nota: "",
+  ...over,
+});
+
+/** Registra um pedido da equipe (por WhatsApp, salvo `canal`), recebido em `recebidoEm` (padrão: agora). */
+export async function pedir(c: Cenario, reservaId: string, autorId: string, o: { canal?: "whatsapp" | "email" | "telefone" | "presencial" | "outro"; recebidoEm?: Date; quando?: Date; nota?: string } = {}) {
+  const quando = o.quando ?? c.relogio.agora;
+  return registrarPedidoDeCancelamento(c.db, c.org, reservaId, { recebidoEm: o.recebidoEm ?? quando, canal: o.canal ?? "whatsapp", nota: o.nota ?? "WhatsApp da empresa, 14h10" }, autorId, quando);
+}
+
+/** Calcula a prévia e cancela com a assinatura dela (como o painel: prévia, depois o botão). */
+export async function cancelar(c: Cenario, reservaId: string, entrada: EntradaCancelamento, autorId: string | null, quando: Date = c.relogio.agora, o: { provedor?: ProvedorPagamento | null } = {}) {
+  const provedor = o.provedor === undefined ? c.provedor : o.provedor;
+  const previa = await previaDoCancelamento(c.db, c.org, reservaId, entrada, provedor, quando);
+  if (!previa.ok) return { previa, resultado: previa };
+  const resultado = await cancelarReservaPaga(c.db, c.org, reservaId, entrada, autorId, provedor, quando, previa.previa.assinatura);
+  return { previa, resultado };
+}
+
+/** A liberação do dinheiro (registrada à mão, no dia `data`): o recebimento do líquido (padrão: o valor menos a taxa de R$ 18,24) entra no livro. */
+export async function liberar(c: Cenario, pagamentoId: string, o: { data?: string; liquido?: number; quando?: Date } = {}) {
+  const { registrarLiberacaoManual } = await import("./liberacao");
+  const r = await registrarLiberacaoManual(c.db, c.org, pagamentoId, { data: o.data ?? "2026-10-01", liquido: o.liquido ?? (await c.tentativa(pagamentoId)).valor - 1824 }, null, o.quando ?? c.relogio.agora);
+  if (!r.ok) throw new Error(r.erro);
+}
+
+/** Um repasse da parte da dona (antecipado no dia `hoje`, ou o fechamento do mês), pago no mesmo dia salvo `pago: false`. */
+export async function repassar(c: Cenario, tipo: "antecipado" | "fechamento", o: { hoje: string; mes?: string; pago?: boolean }): Promise<string> {
+  const { fecharMes, gerarAntecipado, marcarRepassePago } = await import("@/repasses/repasses");
+  const agora = new Date(`${o.hoje}T12:00:00-03:00`);
+  const r = tipo === "antecipado" ? await gerarAntecipado(c.db, c.org, c.dono, o.hoje, null, { agora }) : await fecharMes(c.db, c.org, c.dono, o.mes ?? o.hoje.slice(0, 7), o.hoje, null, agora);
+  if (!r.ok || !("id" in r)) throw new Error("erro" in r ? r.erro : "repasse não gerado");
+  if (o.pago !== false) {
+    const pago = await marcarRepassePago(c.db, c.org, r.id, o.hoje, o.hoje, null);
+    if (!pago.ok) throw new Error("erro" in pago ? pago.erro : "repasse não pago");
+  }
+  return r.id;
 }

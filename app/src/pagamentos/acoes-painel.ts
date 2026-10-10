@@ -4,7 +4,9 @@
  * Pagamento no site (M8.2a) — ações do painel: conferir agora (uma tentativa ou todas as pendentes da empresa),
  * devolver pelo Mercado Pago, registrar a devolução feita por fora, registrar a taxa que não voltou, registrar e
  * estornar a liberação à mão, salvar a aba Configurações → Pagamento no site e religar o cartão desligado pelo
- * disjuntor de recusas (M8.2b).
+ * disjuntor de recusas (M8.2b). M8.2c: as mesmas devoluções servem à do cancelamento pela política (quem decide é o
+ * domínio), mais confirmar a devolução vista no painel do Mercado Pago, registrar a recusa de lá, parar a devolução
+ * pedida depois do prazo de leitura e corrigir a taxa que não voltou.
  *
  * Sempre nesta ordem: sessão (a empresa vem só dela) → permissão `financeiro:editar` → validação → domínio. Conferir,
  * cancelar, devolver e a devolução por fora (que relê a order antes) usam `provedorDeConferencia` (sem a chave do
@@ -21,7 +23,7 @@ import { reaisParaCentavos } from "@/lib/dinheiro-form";
 import { uuidValido } from "@/lib/ids";
 import { dataValida } from "@/reservas/regras";
 import { conferirTentativa } from "./conferencia";
-import { devolverPeloProvedor, registrarDevolucaoPorFora, registrarTaxaPerdida } from "./devolucao";
+import { confirmarDevolucaoVistaNoProvedor, corrigirTaxaPerdida, devolverPeloProvedor, pararDevolucaoPedida, registrarDevolucaoPorFora, registrarRecusaNoPainel, registrarTaxaPerdida } from "./devolucao";
 import { religarCartao } from "./disjuntor";
 import { estornarLiberacaoManual, registrarLiberacaoManual } from "./liberacao";
 import { provedorDeConferencia } from "./oferta";
@@ -156,6 +158,80 @@ export async function registrarTaxaPerdidaAcao(_e: EstadoAcaoPagamento, form: Fo
   if (!r.ok) return { mensagem: r.erro };
   revalidar();
   return { ok: true, mensagem: valor > 0 ? "Taxa registrada: a despesa entrou no financeiro da empresa." : "Registrado: a taxa voltou toda, nenhuma despesa lançada." };
+}
+
+/** A data de um registro da equipe (até hoje, em São Paulo) e a nota obrigatória; o texto do problema, ou null. */
+function problemaDoRegistro(data: string, nota: string): string | null {
+  if (!dataValida(data)) return "Informe a data.";
+  if (data > hojeISO(FUSO)) return "A data não pode ser no futuro.";
+  if (!nota) return "Escreva a nota (sem dados pessoais).";
+  return null;
+}
+
+/**
+ * "Confirmar devolução feita no painel do Mercado Pago" (M8.2c): a equipe viu lá a devolução do valor integral concluída
+ * e o sistema não tem como ver. O domínio relê a order antes (pelo provedor de conferência; sem ele, só quando a order
+ * com certeza não existe mais) e lança o caixa do cancelamento com a data informada.
+ */
+export async function confirmarDevolucaoVistaAcao(_e: EstadoAcaoPagamento, form: FormData): Promise<EstadoAcaoPagamento> {
+  const sessao = await sessaoFinanceira();
+  const pagamentoId = texto(form, "pagamentoId");
+  if (!uuidValido(pagamentoId)) return NAO_ENCONTRADO;
+  const d = { data: texto(form, "data"), nota: texto(form, "nota") };
+  const problema = problemaDoRegistro(d.data, d.nota);
+  if (problema) return { mensagem: problema };
+  const gate = await provedorDeConferencia();
+  const r = await confirmarDevolucaoVistaNoProvedor(getDb(), sessao.organizacaoId, pagamentoId, d, sessao.usuarioId, gate.ok ? gate.provedor : null);
+  if (!r.ok) return { mensagem: r.erro };
+  revalidar();
+  return { ok: true, mensagem: r.mensagem ?? "Devolução confirmada: o financeiro do cancelamento foi lançado com a data informada. Informe a taxa que não voltou." };
+}
+
+/** "Registrar que o Mercado Pago recusou a devolução no painel" (M8.2c): libera a devolução por fora no cartão. */
+export async function registrarRecusaNoPainelAcao(_e: EstadoAcaoPagamento, form: FormData): Promise<EstadoAcaoPagamento> {
+  const sessao = await sessaoFinanceira();
+  const pagamentoId = texto(form, "pagamentoId");
+  if (!uuidValido(pagamentoId)) return NAO_ENCONTRADO;
+  const d = { data: texto(form, "data"), nota: texto(form, "nota") };
+  const problema = problemaDoRegistro(d.data, d.nota);
+  if (problema) return { mensagem: problema };
+  const r = await registrarRecusaNoPainel(getDb(), sessao.organizacaoId, pagamentoId, d, sessao.usuarioId);
+  if (!r.ok) return { mensagem: r.erro };
+  revalidar();
+  return { ok: true, mensagem: "Recusa do painel do Mercado Pago registrada: a devolução por fora fica liberada (no cartão também)." };
+}
+
+/**
+ * "Parar a devolução pedida" (M8.2c): a devolução ainda pedida de um pagamento que já saiu do prazo de leitura. Com um
+ * pedido que o Mercado Pago pode ter aceito, o domínio confere antes que a order não aparece mais e exige a nota.
+ */
+export async function pararDevolucaoPedidaAcao(_e: EstadoAcaoPagamento, form: FormData): Promise<EstadoAcaoPagamento> {
+  const sessao = await sessaoFinanceira();
+  const pagamentoId = texto(form, "pagamentoId");
+  if (!uuidValido(pagamentoId)) return NAO_ENCONTRADO;
+  const gate = await provedorDeConferencia();
+  const r = await pararDevolucaoPedida(getDb(), sessao.organizacaoId, pagamentoId, { nota: texto(form, "nota") }, sessao.usuarioId, gate.ok ? gate.provedor : null);
+  if (!r.ok) return { mensagem: r.erro };
+  revalidar();
+  return { ok: true, mensagem: "Devolução pedida parada: a devolução por fora fica liberada." };
+}
+
+/**
+ * "Corrigir taxa que não voltou" (M8.2c): a despesa atual é estornada (com o motivo) e a nova é lançada; o mesmo teto da
+ * taxa. Valor em reais, zero se voltou toda.
+ */
+export async function corrigirTaxaPerdidaAcao(_e: EstadoAcaoPagamento, form: FormData): Promise<EstadoAcaoPagamento> {
+  const sessao = await sessaoFinanceira();
+  const pagamentoId = texto(form, "pagamentoId");
+  if (!uuidValido(pagamentoId)) return NAO_ENCONTRADO;
+  const valor = reaisParaCentavos(texto(form, "valor"));
+  if (typeof valor !== "number" || valor < 0) return { mensagem: "Informe a taxa que não voltou em reais (ex.: 18,06; zero se voltou toda)." };
+  const motivo = texto(form, "motivo");
+  if (!motivo) return { mensagem: "Informe o motivo da correção." };
+  const r = await corrigirTaxaPerdida(getDb(), sessao.organizacaoId, pagamentoId, valor, motivo, sessao.usuarioId);
+  if (!r.ok) return { mensagem: r.erro };
+  revalidar();
+  return { ok: true, mensagem: valor > 0 ? "Taxa corrigida: a despesa anterior foi estornada e a nova entrou no financeiro da empresa." : "Taxa corrigida para zero: a despesa anterior foi estornada." };
 }
 
 /** Liberação registrada à mão (sem o sinal do Mercado Pago): a data em que caiu (até hoje) e o líquido. */

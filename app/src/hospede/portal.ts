@@ -17,8 +17,11 @@ import { lerEmpresa } from "@/configuracoes/empresa";
 import { imoveis, imoveisDetalhes, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import type { Correio } from "@/email/correio";
-import { hojeISO } from "@/lib/datas";
+import { hojeISO, instanteLocal, somarDias } from "@/lib/datas";
 import { numeroWhatsapp } from "@/site/site";
+
+// Moram em lib/datas (o cancelamento do M8.2c usa as mesmas); continuam saindo daqui para quem já importava.
+export { instanteLocal, somarDias };
 
 /** Depois da saída, o hóspede ainda vê a reserva por este tempo. */
 export const DIAS_APOS_SAIDA = 30;
@@ -26,36 +29,11 @@ export const DIAS_APOS_SAIDA = 30;
 export const INSTRUCOES_DIAS_ANTES = 2;
 export const INSTRUCOES_HORA = "10:00";
 
-const somarDias = (dataISO: string, dias: number) => {
-  const d = new Date(`${dataISO}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + dias);
-  return d.toISOString().slice(0, 10);
-};
-
-/** Diferença (ms) entre o relógio local do fuso e o UTC naquele instante. */
-function deslocamento(instante: number, fuso: string): number {
-  const p = Object.fromEntries(
-    new Intl.DateTimeFormat("en-US", { timeZone: fuso, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
-      .formatToParts(new Date(instante))
-      .map((x) => [x.type, x.value]),
-  );
-  return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - instante;
-}
-
-/** O instante em que é `hora` ("HH:MM") do dia `dataISO` no fuso informado. */
-export function instanteLocal(dataISO: string, hora: string, fuso: string): Date {
-  const [a, m, d] = dataISO.split("-").map(Number);
-  const [h, min] = hora.split(":").map(Number);
-  const relogio = Date.UTC(a, m - 1, d, h, min);
-  const t = relogio - deslocamento(relogio, fuso);
-  return new Date(relogio - deslocamento(t, fuso));
-}
-
 export const liberacaoDasInstrucoes = (checkin: string, fuso: string) => instanteLocal(somarDias(checkin, -INSTRUCOES_DIAS_ANTES), INSTRUCOES_HORA, fuso);
 
-/** Reservas daquele e-mail, só da organização do site (nunca de outra empresa no mesmo banco). */
-const doEmail = (organizacaoId: string, email: string) => and(eq(reservas.organizacaoId, organizacaoId), eq(sql`lower(trim(${reservas.hospedeEmail}))`, email));
-const vigentes = (hoje: string) => and(eq(reservas.estado, "confirmada"), gte(reservas.checkout, somarDias(hoje, -DIAS_APOS_SAIDA)));
+/** Reservas daquele e-mail, só da organização do site (nunca de outra empresa no mesmo banco). O pedido de cancelamento (M8.2c) usa o mesmo filtro. */
+export const doEmail = (organizacaoId: string, email: string) => and(eq(reservas.organizacaoId, organizacaoId), eq(sql`lower(trim(${reservas.hospedeEmail}))`, email));
+export const vigentes = (hoje: string) => and(eq(reservas.estado, "confirmada"), gte(reservas.checkout, somarDias(hoje, -DIAS_APOS_SAIDA)));
 
 /** O e-mail tem alguma reserva que dá acesso ao portal agora? */
 export async function hospedeTemAcesso(db: Db, organizacaoId: string, email: string, agora: Date): Promise<boolean> {

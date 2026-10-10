@@ -10,7 +10,7 @@
  */
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
-import { lancamentos, repasseItens, repasses, reservas } from "@/db/schema";
+import { lancamentos, repasseItens, repasses, reservas, type TipoRepasse } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { estornar, lancar, type Lancamento } from "@/financeiro/ledger";
 import { travarMotorDaReserva } from "@/financeiro/trava";
@@ -18,6 +18,7 @@ import { uuidValido } from "@/lib/ids";
 import { formatBRL } from "@/lib/money";
 import { pagamentoEmAndamentoOuAprovado } from "@/pagamentos/andamento";
 import { dataValida } from "@/reservas/regras";
+import { ORIGEM_CANCELAMENTO } from "./descontos";
 
 export type Resultado = { ok: true; id: string } | { ok: false; erro: string };
 
@@ -109,13 +110,19 @@ export async function estornarRecebimento(db: Db, organizacaoId: string, lancame
  * correção é um ajuste manual. Devolve a mensagem da recusa, ou null. Quem chama já tomou a trava do motor.
  */
 export async function repasseAPagarDaReserva(tx: Db, organizacaoId: string, reservaId: string): Promise<string | null> {
+  const preso = await repasseAPagarDaReservaDados(tx, organizacaoId, reservaId);
+  return preso ? `A parte desta reserva já compõe o repasse ${preso.tipo === "antecipado" ? "antecipado" : "do fechamento"} de ${preso.data.split("-").reverse().join("/")}, ainda não pago: estorne o repasse antes de estornar o recebimento.` : null;
+}
+
+/** O repasse em vigor, ainda não pago, que tem uma parte desta reserva (o tipo e a data); null = nenhum. A mesma regra de `repasseAPagarDaReserva`, para quem escreve o próprio texto (o cancelamento pela política, M8.2c). */
+export async function repasseAPagarDaReservaDados(tx: Db, organizacaoId: string, reservaId: string): Promise<{ tipo: TipoRepasse; data: string } | null> {
   const [preso] = await tx
     .select({ data: repasses.data, tipo: repasses.tipo })
     .from(repasseItens)
     .innerJoin(repasses, eq(repasses.id, repasseItens.repasseId))
     .where(and(eq(repasseItens.organizacaoId, organizacaoId), eq(repasseItens.reservaId, reservaId), isNull(repasseItens.liberadoEm), isNull(repasses.estornadoEm), isNull(repasses.dataPagamento)))
     .limit(1);
-  return preso ? `A parte desta reserva já compõe o repasse ${preso.tipo === "antecipado" ? "antecipado" : "do fechamento"} de ${preso.data.split("-").reverse().join("/")}, ainda não pago: estorne o repasse antes de estornar o recebimento.` : null;
+  return preso ?? null;
 }
 
 /** Recebimentos em vigor de uma reserva, do mais antigo ao mais novo. */
@@ -129,30 +136,39 @@ export async function recebimentosDaReserva(db: Db, organizacaoId: string, reser
 }
 
 export type RecebidoDaReserva = {
-  /** Soma dos recebimentos realizados/conciliados em vigor. */
+  /** Soma dos recebimentos realizados/conciliados em vigor, menos o que já voltou ao hóspede (devolução realizada, M8.2c). */
   recebido: number;
-  /** Líquido do canal (valor bruto − taxa do canal) pelos lançamentos do motor em vigor. */
+  /**
+   * Líquido do canal (valor bruto − taxa do canal) pelos lançamentos do motor em vigor. Os espelhos de um cancelamento
+   * pela política (origem "cancelamento", M8.2c, no mês do cancelamento) não entram: o que o canal (o hóspede) devia
+   * pagar pela reserva não muda porque o dinheiro voltou depois.
+   */
   devido: number;
-  /** Data (caixa) do recebimento que completou o líquido do canal — a data em que o canal pagou (M4.12); null se ainda falta. */
+  /**
+   * Data (caixa) do recebimento que completou o líquido do canal — a data em que o canal pagou (M4.12); null se ainda
+   * falta. Pelos recebimentos brutos: uma devolução ao hóspede depois (M8.2c) não apaga a data em que ele pagou.
+   */
   dataCompleto?: string | null;
 };
 
 /**
  * Quanto a empresa já recebeu de cada reserva e quanto era de receber (líquido do canal). Base da
- * condição "o dinheiro está com a empresa": recebido ≥ devido (e devido > 0).
+ * condição "o dinheiro está com a empresa": recebido ≥ devido (e devido > 0). O dinheiro que voltou ao
+ * hóspede (lançamento "devolucao" realizado/conciliado, M8.2c) sai do recebido; a data em que o canal pagou
+ * continua vindo só dos recebimentos, e o devido, só dos lançamentos do motor (sem os espelhos do cancelamento).
  */
 export async function recebidoPorReserva(db: Db, organizacaoId: string, reservaIds: readonly string[]): Promise<Map<string, RecebidoDaReserva>> {
   const ids = [...new Set(reservaIds.filter(uuidValido))];
   const mapa = new Map<string, RecebidoDaReserva>(ids.map((id) => [id, { recebido: 0, devido: 0, dataCompleto: null }]));
   if (!ids.length) return mapa;
   const linhas = await db
-    .select({ reservaId: lancamentos.reservaId, tipo: lancamentos.tipo, estado: lancamentos.estado, valor: lancamentos.valor, montante: lancamentos.montante, dataCaixa: lancamentos.dataCaixa, criadoEm: lancamentos.criadoEm })
+    .select({ reservaId: lancamentos.reservaId, tipo: lancamentos.tipo, estado: lancamentos.estado, origem: lancamentos.origem, valor: lancamentos.valor, montante: lancamentos.montante, dataCaixa: lancamentos.dataCaixa, criadoEm: lancamentos.criadoEm })
     .from(lancamentos)
     .where(
       and(
         eq(lancamentos.organizacaoId, organizacaoId),
         inArray(lancamentos.reservaId, ids),
-        inArray(lancamentos.tipo, ["recebimento", "receita_bruta", "taxa_canal"]),
+        inArray(lancamentos.tipo, ["recebimento", "devolucao", "receita_bruta", "taxa_canal"]),
         emVigor(),
       ),
     );
@@ -166,7 +182,9 @@ export async function recebidoPorReserva(db: Db, organizacaoId: string, reservaI
         lista.push({ data: l.dataCaixa ?? "", montante: l.montante ?? 0, ordem: l.criadoEm?.getTime() ?? 0 });
         recebimentos.set(l.reservaId!, lista);
       }
-    } else r.devido += l.valor;
+    } else if (l.tipo === "devolucao") {
+      if (l.estado === "realizado" || l.estado === "conciliado") r.recebido -= l.montante ?? 0;
+    } else if (l.origem !== ORIGEM_CANCELAMENTO) r.devido += l.valor;
   }
   // A data em que o dinheiro ficou completo: o recebimento (na ordem de caixa) em que a soma alcançou o líquido do canal.
   for (const [id, lista] of recebimentos) {

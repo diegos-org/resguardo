@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { criarContrato } from "@/contratos/repositorio";
-import { bloqueios, cadastrosMarketplace, cotacoes, imoveis, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
+import { bloqueios, cadastrosMarketplace, cotacoes, imoveis, organizacoes, proprietarioImoveis, proprietarios, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import { registrarAjuste } from "@/ajustes/ajustes";
 import { criarCategoria } from "@/despesas/categorias";
@@ -14,7 +14,7 @@ import { criarRotina } from "@/rotinas/rotinas";
 import { arquivarPedido, registrarPedidoContato } from "@/proprietarios/pedidos-contato";
 import { conferirTentativa } from "@/pagamentos/conferencia";
 import { ProvedorFalso } from "@/pagamentos/falso";
-import { minutos, montarCenario, TOTAL } from "@/pagamentos/testes";
+import { minutos, montarCenario, pagarEConfirmar, pedir, TOTAL, usuarioDeTeste } from "@/pagamentos/testes";
 import { carregarDashboard, contaDeTesteParaInicio } from "./dashboard";
 
 let db: Db;
@@ -178,6 +178,21 @@ describe("painel inicial", () => {
     expect(d2.alertas.some((x) => x.texto.includes("1 reserva(s) do período com valor mas sem cálculo"))).toBe(true);
   });
 
+  it("M8.2c: a cancelada com valor retido é calculada como uma confirmada — sem cálculo avisa; a cancelada sem retido, não", async () => {
+    const r = await criarReserva(db, org, reserva(b, "2026-10-12", "2026-10-15", { origem: "site" }), null); // 102 sem contrato: nada calculado
+    if (!r.ok) throw new Error("reserva");
+    const semCalculo = async (todos: boolean) => {
+      const lista = await listarImoveis(db, org);
+      const d = await carregarDashboard(db, org, { imoveis: todos ? lista : lista.filter((i) => i.codigo === "102"), todos, periodo: { inicio: "2026-10-01", fim: "2026-11-01" }, ano: 2026, hoje: "2026-10-30", verFinanceiro: true });
+      return d.alertas.some((x) => x.texto.includes("1 reserva(s) do período com valor mas sem cálculo"));
+    };
+    await db.update(reservas).set({ estado: "cancelada", valorRetido: 100000 }).where(eq(reservas.id, r.reserva.id));
+    expect(await semCalculo(true)).toBe(true);
+    expect(await semCalculo(false)).toBe(true);
+    await db.update(reservas).set({ valorRetido: null }).where(eq(reservas.id, r.reserva.id));
+    expect(await semCalculo(true)).toBe(false);
+  });
+
   it("em 'todos', imóvel arquivado com reserva entra na ocupação; sem reserva, some", async () => {
     await criarReserva(db, org, reserva(a, "2026-10-12", "2026-10-15"), null);
     await db.update(imoveis).set({ ativo: false }).where(eq(imoveis.id, a));
@@ -315,5 +330,20 @@ describe("pagamento no site no Início (M8.2a)", () => {
     const lento = new ProvedorFalso();
     lento.conferirContaDeTeste = () => new Promise(() => undefined);
     expect(await contaDeTesteParaInicio({ provedor: lento, esperaMs: 20 })).toBeNull();
+  });
+});
+
+describe("Início: avisos do cancelamento pela política (M8.2c)", () => {
+  it("só para quem edita reservas (verCancelamentos), sem precisar do financeiro: o pedido esperando a equipe", async () => {
+    const c = await montarCenario(db);
+    const equipe = await usuarioDeTeste(c);
+    const x = await pagarEConfirmar(c, { entrada: "2026-11-20", saida: "2026-11-23" });
+    expect(await pedir(c, x.reservaId, equipe, { recebidoEm: minutos(30), quando: minutos(40) })).toEqual({ ok: true });
+    const base = { imoveis: await listarImoveis(db, c.org), todos: true, periodo: { inicio: "2026-10-01", fim: "2026-11-01" }, ano: 2026, hoje: "2026-10-01", verFinanceiro: false, agora: minutos(60) };
+    const com = await carregarDashboard(db, c.org, { ...base, verCancelamentos: true });
+    expect(com.alertas).toContainEqual({ nivel: "info", texto: `Pedido de cancelamento da reserva ${x.reservaCodigo}: recebido em 01/10 às 12:30, entrada em 20/11 (há 0 dia(s)).`, link: "/painel/reservas?cancelamento=pedido" });
+    expect((await carregarDashboard(db, c.org, base)).alertas.some((a) => a.texto.includes("Pedido de cancelamento"))).toBe(false);
+    // Outra empresa não vê.
+    expect((await carregarDashboard(db, org, { ...base, verCancelamentos: true })).alertas.some((a) => a.texto.includes("Pedido de cancelamento"))).toBe(false);
   });
 });

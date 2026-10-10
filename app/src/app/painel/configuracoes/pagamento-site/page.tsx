@@ -6,7 +6,7 @@ import { FormPagamentoSite } from "@/components/configuracoes/FormPagamentoSite"
 import styles from "@/components/formularios.module.css";
 import { FormAcaoPagamento } from "@/components/pagamentos/FormAcaoPagamento";
 import { nomeDaEmpresa } from "@/configuracoes/empresa";
-import { CARACTERES_VISIVEIS_FATURA, CATEGORIA_TAXA_PERDIDA, LIMITE_NOME_FATURA, lerConfigPagamentoSite, TEXTOS_TRES_DS } from "@/configuracoes/pagamento-site";
+import { CARACTERES_VISIVEIS_FATURA, CATEGORIA_TAXA_PERDIDA, LIMITE_NOME_FATURA, lerConfigPagamentoSite, NAO_COMPARECIMENTO_HORAS_MAX, TEXTOS_TRES_DS } from "@/configuracoes/pagamento-site";
 import { getDb } from "@/db/client";
 import { listarCategorias } from "@/despesas/categorias";
 import { ESPERA_TELA_MS, esperarNoMaximo } from "@/lib/prazo";
@@ -85,6 +85,7 @@ export default async function PagamentoNoSite() {
         visiveis={CARACTERES_VISIVEIS_FATURA}
         categoriaPadrao={CATEGORIA_TAXA_PERDIDA}
         parcelasLimite={PARCELAS_MAXIMAS}
+        horasLimite={NAO_COMPARECIMENTO_HORAS_MAX}
         opcoesTresDS={MODOS_TRES_DS.map((m) => ({ valor: m, texto: TEXTOS_TRES_DS[m] }))}
         editar={editar}
         salvar={salvarConfigPagamentoSiteAcao}

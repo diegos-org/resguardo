@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
 import { and, asc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { listarContratos } from "@/contratos/repositorio";
-import { lancamentos, type OrigemReserva, proprietarioImoveis, type RecebimentoReserva, recebimentoPorCanal, repasseItens, reservas } from "@/db/schema";
+import { cancelamentosReserva, lancamentos, type OrigemReserva, proprietarioImoveis, type RecebimentoReserva, recebimentoPorCanal, repasseItens, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
+import { reservaCalculadaSql } from "@/portal/posse";
 import { estornar, lancar, type NovoLancamento } from "./ledger";
 import { travarMotorDaReserva } from "./trava";
 import { lerRegrasFinanceiras } from "@/configuracoes/regras-financeiras";
@@ -67,6 +68,23 @@ export async function aplicarMotor(
       .from(reservas)
       .where(and(eq(reservas.id, reservaId), eq(reservas.organizacaoId, organizacaoId)));
     if (!r) return null;
+    // M8.2c: cancelada com o acerto lançado no mês do cancelamento (espelhos, a parte já repassada descontada): o
+    // cálculo dela não muda mais — recalcular estornaria o que já foi espelhado. Nem o livro nem a divergência mudam.
+    if (r.estado === "cancelada" && (await canceladaComEspelhos(tx, organizacaoId, r.id))) {
+      const [{ n }] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(lancamentos)
+        .where(
+          and(
+            eq(lancamentos.organizacaoId, organizacaoId),
+            eq(lancamentos.reservaId, reservaId),
+            eq(lancamentos.origem, "motor"),
+            isNull(lancamentos.estornoDe),
+            sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`,
+          ),
+        );
+      return { criados: 0, estornados: 0, mantidos: n, avisos: ["Reserva cancelada com o acerto lançado no mês do cancelamento: o cálculo não muda."] };
+    }
 
     const d = await dadosDoMotor(tx, organizacaoId, r.imovelId, r.checkin, regras);
     const { lancamentos: calculados, avisos } = calcularReserva(r, d.contratos, d.donos, d.regras, d.recebimentoDoImovel);
@@ -162,6 +180,16 @@ export async function aplicarMotor(
   });
 }
 
+/** O cancelamento pela política lançou espelhos no mês do cancelamento (`espelhado`): a reserva fica congelada no motor. */
+async function canceladaComEspelhos(tx: Db, organizacaoId: string, reservaId: string): Promise<boolean> {
+  const [c] = await tx
+    .select({ id: cancelamentosReserva.id })
+    .from(cancelamentosReserva)
+    .where(and(eq(cancelamentosReserva.organizacaoId, organizacaoId), eq(cancelamentosReserva.reservaId, reservaId), eq(cancelamentosReserva.situacao, "cancelada"), eq(cancelamentosReserva.espelhado, true)))
+    .limit(1);
+  return Boolean(c);
+}
+
 export type ResultadoRecalculo = { reservas: number; criados: number; estornados: number };
 
 /**
@@ -233,9 +261,9 @@ export async function recalcularPendentes(db: Db, organizacaoId: string, autorId
 }
 
 /**
- * Confirmadas de qualquer data que já movimentaram dinheiro: confere o cálculo atual com o livro e
- * marca em conferência a que diverge (M4.8), sem recalcular nada — o passado não muda, e a
- * divergência vira aviso e ajuste manual. Roda no deploy. Idempotente.
+ * Reservas que o motor calcula (confirmadas e canceladas com valor retido, M8.2c), de qualquer data, que já
+ * movimentaram dinheiro: confere o cálculo atual com o livro e marca em conferência a que diverge (M4.8), sem
+ * recalcular nada — o passado não muda, e a divergência vira aviso e ajuste manual. Roda no deploy. Idempotente.
  */
 export async function conferirMovimentadas(db: Db, organizacaoId: string): Promise<{ reservas: number; divergentes: number }> {
   const ids = await db
@@ -245,7 +273,7 @@ export async function conferirMovimentadas(db: Db, organizacaoId: string): Promi
     .where(
       and(
         eq(reservas.organizacaoId, organizacaoId),
-        eq(reservas.estado, "confirmada"),
+        reservaCalculadaSql(),
         eq(lancamentos.origem, "motor"),
         inArray(lancamentos.estado, ["realizado", "conciliado"]),
         isNull(lancamentos.estornoDe),

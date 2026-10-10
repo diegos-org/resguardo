@@ -14,16 +14,36 @@ import { lerRegrasCalendario } from "@/calendario/regras-config";
 import { escritaBeds24Pronta } from "@/beds24/http";
 import { lerPaginaLegal } from "@/configuracoes/paginas-legais";
 import type { VersoesLegais } from "@/configuracoes/paginas-legais-texto";
-import { aceitesSite, cotacoes, devolucoesPagamento, eventosPagamento, imoveis, lancamentos, pagamentos, reservas, type SituacaoDevolucao } from "@/db/schema";
+import {
+  aceitesSite,
+  type BaseCancelamento,
+  cancelamentosReserva,
+  cotacoes,
+  devolucoesPagamento,
+  type DireitoCancelamento,
+  type EstadoReserva,
+  eventosPagamento,
+  imoveis,
+  lancamentos,
+  type MotivoCancelamentoEmpresa,
+  pagamentos,
+  type QuemCancelaReserva,
+  reservas,
+  type SituacaoCancelamento,
+  type SituacaoDevolucao,
+} from "@/db/schema";
 import type { Db } from "@/db/types";
-import { hojeISO } from "@/lib/datas";
+import { reservaCalculadaPeloMotor } from "@/financeiro/motor";
+import { hojeISO, instanteLocal } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
-import { ALERTA_ANALISE_CARTAO_HORAS, CARENCIA_PAGAMENTO_MS, MAXIMO_CARTAO_POR_COTACAO, MAXIMO_PIX_POR_COTACAO, paginaAindaLe } from "./andamento";
+import { reservaCalculadaSql } from "@/portal/posse";
+import { politicaDoPagamento } from "@/site/aceites";
+import { ALERTA_ANALISE_CARTAO_HORAS, CARENCIA_PAGAMENTO_MS, inicioDoPrazoDePedirDevolucao, inicioDoPrazoDeReleitura, MAXIMO_CARTAO_POR_COTACAO, MAXIMO_PIX_POR_COTACAO, paginaAindaLe } from "./andamento";
 import { ambienteMercadoPago, estadoPagamentoDoAmbiente } from "./ambiente";
 import { recusaDoCartao } from "./cartao";
-import { porForaPermitidoNoCartao } from "./devolucao";
+import { podeRegistrarRecusaNoPainel, porForaPermitidoNoCartao } from "./devolucao";
 import { ALERTA_RECUSAS_24H, ALERTA_TOKEN_INVALIDO_1H, disjuntorAberto, RECUSAS_PARA_DESLIGAR_24H, recusasNasUltimas24h, recusasPorTokenNaUltimaHora } from "./disjuntor";
-import { type ModoTresDS, type StatusTresDS, urlDoDesafio } from "./provedor";
+import { type CodigoDevolucao, type ModoTresDS, type StatusTresDS, urlDoDesafio } from "./provedor";
 import {
   AVISOS_PAGAMENTO,
   type CodigoAviso,
@@ -31,12 +51,13 @@ import {
   comDinheiro,
   emAndamento,
   motivoDoDetalhe,
+  origemDeDevolucaoConhecida,
   type SituacaoPagamento,
+  textoDevolucaoAMenor,
   textoMotivoRecusaCartao,
   textoMotivoSemReserva,
-  textosDosAvisos,
 } from "./situacoes";
-import type { Devolucao, Pagamento } from "./travas";
+import { type Devolucao, devolucaoDoPagamento, type Pagamento } from "./travas";
 
 export { pagamentoEmAndamentoOuAprovado } from "./andamento";
 
@@ -54,7 +75,45 @@ export type EstadoPagamentoHospede =
   | "devolvido"
   | "cartao_desafio"
   | "cartao_em_analise"
-  | "cartao_recusado";
+  | "cartao_recusado"
+  // Reserva paga pelo site e cancelada pela política (M8.2c).
+  | "cancelada_devolucao_pedida"
+  | "cancelada_devolvida"
+  | "cancelada_com_a_equipe"
+  | "cancelada_em_conferencia"
+  | "cancelada_sem_devolucao";
+
+/**
+ * O cancelamento pela política, para a página da reserva e as mensagens ao hóspede (`textoDoCancelamento`): só fatos
+ * (datas, valores, versão da política), nenhum dado pessoal e nunca a nota da equipe.
+ */
+export type CancelamentoParaHospede = {
+  recebidoEm: Date;
+  quemCancela: QuemCancelaReserva;
+  direito: DireitoCancelamento;
+  base: BaseCancelamento;
+  motivoEmpresa: MotivoCancelamentoEmpresa | null;
+  /** O que a decisão devolve (o pago, no integral); null sem valor gravado. */
+  valor: number | null;
+  /** A soma das devoluções confirmadas que a leitura mostrou; null quando ela não trouxe a lista. */
+  valorConfirmado: number | null;
+  /** Quando a devolução foi feita (confirmada ou por fora); null enquanto não foi. */
+  devolucaoEm: Date | null;
+  porFora: boolean;
+  /** Quem confirmou a devolução: a leitura do Mercado Pago ou a equipe (vista no painel dele). */
+  confirmadaPor: "leitura" | "equipe" | null;
+  forma: "pix" | "cartao";
+  /**
+   * Cartão com mais de 78 dias: o sistema não pede a devolução; a equipe faz o estorno pelo painel do Mercado Pago. Só
+   * enquanto a devolução por fora do cartão não abriu (recusa do painel registrada, 180 dias...): aberta, o estorno no
+   * cartão não sai mais e a página diz que a equipe combina outra forma.
+   */
+  estornoPelaEquipe: boolean;
+  integralAte: string | null;
+  arrependimentoAte: string | null;
+  entradaEm: Date | null;
+  politicaVersao: number | null;
+};
 
 export type VistaPagamentoHospede = {
   estado: EstadoPagamentoHospede;
@@ -96,6 +155,12 @@ export type VistaPagamentoHospede = {
    * acompanhando mesmo numa situação que não é de espera (ex.: os 3 Pix gastos, o último recusado há pouco).
    */
   acompanhar: boolean;
+  /** Reserva cancelada pela política (M8.2c): os fatos do cancelamento; null nas outras situações. */
+  cancelamento: CancelamentoParaHospede | null;
+  /** Pedido de cancelamento recebido e ainda sem decisão (a reserva continua confirmada): quando chegou. */
+  pedidoCancelamentoEm: Date | null;
+  /** Esse pedido é de um pagamento sem a política aceita (antes de 9/10): o recibo não cita política nenhuma. */
+  pedidoCancelamentoSemPolitica?: boolean;
 };
 
 /**
@@ -106,14 +171,14 @@ export type VistaPagamentoHospede = {
 export async function vistaDaCotacaoParaHospede(db: Db, organizacaoId: string, cotacaoId: string, agora: Date, o: { comAutorizacao: boolean; oferecido?: boolean }): Promise<VistaPagamentoHospede | null> {
   if (!uuidValido(cotacaoId)) return null;
   const [c] = await db
-    .select({ estado: cotacoes.estado, holdAte: cotacoes.holdAte, reservaEstado: reservas.estado, reservaCodigo: reservas.codigo })
+    .select({ estado: cotacoes.estado, holdAte: cotacoes.holdAte, reservaId: cotacoes.reservaId, reservaEstado: reservas.estado, reservaCodigo: reservas.codigo })
     .from(cotacoes)
     .leftJoin(reservas, eq(reservas.id, cotacoes.reservaId))
     .where(and(eq(cotacoes.id, cotacaoId), eq(cotacoes.organizacaoId, organizacaoId)));
   if (!c) return null;
   const tentativas = await db.select().from(pagamentos).where(and(eq(pagamentos.cotacaoId, cotacaoId), eq(pagamentos.organizacaoId, organizacaoId))).orderBy(desc(pagamentos.criadoEm), desc(pagamentos.id));
   const devolucoes = tentativas.length ? await db.select().from(devolucoesPagamento).where(inArray(devolucoesPagamento.pagamentoId, tentativas.map((t) => t.id))) : [];
-  const devDe = (p: Pagamento) => devolucoes.find((d) => d.pagamentoId === p.id);
+  const devDe = (p: Pagamento) => devolucaoDoPagamento({ devolucoes }, p.id);
   const segurada = c.estado === "segurada" && c.reservaEstado === "pedido" && !!c.holdAte && c.holdAte.getTime() > agora.getTime();
   const pixRestantes = Math.max(0, MAXIMO_PIX_POR_COTACAO - tentativas.filter((t) => t.forma === "pix").length);
   const cartaoRestantes = Math.max(0, MAXIMO_CARTAO_POR_COTACAO - tentativas.filter((t) => t.forma === "cartao").length);
@@ -136,6 +201,8 @@ export async function vistaDaCotacaoParaHospede(db: Db, organizacaoId: string, c
     devolucao: null,
     aoVivo: tentativas.some((t) => t.aoVivo === true),
     acompanhar: tentativas.some((t) => paginaAindaLe(t, agora)),
+    cancelamento: null,
+    pedidoCancelamentoEm: null,
   };
   // Dinheiro que já voltou ao hóspede: desfecho de devolução (pelo provedor ou por fora) ou devolvido no provedor.
   const devolvida = (p: Pagamento) => {
@@ -143,10 +210,29 @@ export async function vistaDaCotacaoParaHospede(db: Db, organizacaoId: string, c
     return p.desfecho === "devolucao" || p.desfecho === "por_fora" || dev?.situacao === "confirmada" || dev?.situacao === "por_fora" || p.situacao === "devolvido";
   };
   const comReserva = tentativas.find((t) => t.desfecho === "reserva");
+  // M8.2c: o cancelamento ativo da reserva (pedido ou decidido) vem antes de "confirmada".
+  const [canc] = comReserva && c.reservaId
+    ? await db
+        .select()
+        .from(cancelamentosReserva)
+        .where(and(eq(cancelamentosReserva.reservaId, c.reservaId), eq(cancelamentosReserva.organizacaoId, organizacaoId), inArray(cancelamentosReserva.situacao, ["pedido", "cancelada"])))
+    : [];
+  if (comReserva && canc?.situacao === "cancelada" && canc.direito) {
+    const dev = devDe(comReserva);
+    return { ...base, ...estadoDoCancelamento(comReserva, canc, dev, agora), reservaCodigo: c.reservaCodigo, forma: comReserva.forma };
+  }
   if (comReserva) {
     // Pagamento em dobro: só enquanto o outro pagamento ainda não voltou ao hóspede (devolvido, o aviso sai).
     const emDobro = tentativas.some((t) => t.id !== comReserva.id && comDinheiro(t.situacao) && !devolvida(t));
-    return { ...base, estado: "confirmada", reservaCodigo: c.reservaCodigo, pagamentoEmDobro: emDobro };
+    const pedido = canc?.situacao === "pedido" ? canc : null;
+    return {
+      ...base,
+      estado: "confirmada",
+      reservaCodigo: c.reservaCodigo,
+      pagamentoEmDobro: emDobro,
+      pedidoCancelamentoEm: pedido?.pedidoRecebidoEm ?? null,
+      ...(pedido ? { pedidoCancelamentoSemPolitica: !(await politicaDoPagamento(db, organizacaoId, comReserva.id)) } : {}),
+    };
   }
   // Dinheiro sem a reserva: confirmando, aprovado sem as datas, devolução pedida ou feita. Com mais de um pagamento,
   // "devolvido" só quando todos foram devolvidos; antes disso vale o que ainda está em aberto, nesta ordem: ainda
@@ -205,7 +291,97 @@ export async function vistaDaCotacaoParaHospede(db: Db, organizacaoId: string, c
   return o.oferecido ? { ...base, estado: "pagar" } : base;
 }
 
-export type AcoesDoPagamento = { conferir: boolean; devolver: boolean; devolucaoPorFora: boolean; registrarLiberacao: boolean; estornarLiberacao: boolean; registrarTaxaPerdida: boolean };
+/**
+ * A situação da página numa reserva cancelada pela política (M8.2c), pela devolução: sem devolução; devolvida; pedida
+ * (inclusive a aceita ainda sem aparecer, o cartão com mais de 78 dias, que a equipe devolve pelo painel do Mercado
+ * Pago enquanto a devolução por fora do cartão não abre, e o cartão recusado com a por fora ainda fechada, que se pede de
+ * novo pelo Mercado Pago); em conferência (devolvida a menos, contestada, em parte, ou
+ * parada por isso — nunca oferece outra forma de pagar); com a equipe (o Mercado Pago não devolveu: Pix fora do prazo,
+ * recusa — inclusive a do painel dele, registrada —, cartão depois dos 180 dias, ou pedida parada depois do prazo).
+ */
+function estadoDoCancelamento(p: Pagamento, canc: typeof cancelamentosReserva.$inferSelect, dev: Devolucao | undefined, agora: Date): { estado: EstadoPagamentoHospede; cancelamento: CancelamentoParaHospede } {
+  const devolucaoEm = dev?.situacao === "confirmada" ? dev.confirmadaEm : dev?.situacao === "por_fora" && dev.porForaData ? instanteLocal(dev.porForaData, "12:00", "America/Sao_Paulo") : null;
+  const cancelamento: CancelamentoParaHospede = {
+    recebidoEm: canc.pedidoRecebidoEm,
+    quemCancela: canc.quemCancela,
+    direito: canc.direito!,
+    base: canc.base ?? (canc.direito === "integral" ? "prazo" : "fora_do_prazo"),
+    motivoEmpresa: canc.motivoEmpresa,
+    valor: canc.valorADevolver,
+    valorConfirmado: dev?.valorConfirmado ?? null,
+    devolucaoEm,
+    porFora: dev?.situacao === "por_fora",
+    confirmadaPor: dev?.situacao === "confirmada" ? (dev.confirmadaPor ?? "leitura") : null,
+    forma: p.forma,
+    // A mesma regra do quadro do pagamento (`porForaPermitidoNoCartao`): aberta a devolução por fora, o cartão não é mais o caminho.
+    estornoPelaEquipe: estornaPelaEquipe(p, dev, agora),
+    integralAte: canc.integralAte,
+    arrependimentoAte: canc.arrependimentoAte,
+    entradaEm: canc.entradaEm,
+    politicaVersao: canc.politicaVersao,
+  };
+  return { estado: estadoDaCancelada(p, canc.direito!, dev, cancelamento.estornoPelaEquipe, agora), cancelamento };
+}
+
+/**
+ * A situação da reserva cancelada pela política, pela devolução (a regra única da página do hóspede e do quadro do
+ * painel): sem devolução; devolvida; em conferência; pedida (ou o estorno no cartão feito pela equipe); com a equipe.
+ */
+function estadoDaCancelada(p: Pagamento, direito: DireitoCancelamento, dev: Devolucao | undefined, estornoPelaEquipe: boolean, agora: Date): EstadoPagamentoHospede {
+  if (direito === "nenhum") return "cancelada_sem_devolucao";
+  if (dev?.situacao === "confirmada" || dev?.situacao === "por_fora") return "cancelada_devolvida";
+  const paradaPorProblema = p.avisos.includes("devolucao_parada") && !dev?.paradaEm;
+  if (p.avisos.includes("devolucao_a_menor") || p.situacao === "contestado" || p.situacao === "devolvido_parcial" || paradaPorProblema) return "cancelada_em_conferencia";
+  if (dev?.situacao === "pedida") return "cancelada_devolucao_pedida";
+  // Cartão com mais de 78 dias: nada foi pedido pelo sistema; a equipe devolve pelo painel do Mercado Pago.
+  if (estornoPelaEquipe) return "cancelada_devolucao_pedida";
+  // Recusada: "outra forma" só quando ela existe. No cartão com a por fora ainda fechada (saldo insuficiente, respostas
+  // incertas), o caminho continua sendo o Mercado Pago (pedir de novo): para o hóspede, a devolução segue pedida.
+  if (dev?.situacao === "recusada" && p.situacao === "aprovado") return p.forma === "cartao" && !porForaPermitidoNoCartao(p, dev, agora) ? "cancelada_devolucao_pedida" : "cancelada_com_a_equipe";
+  return "cancelada_em_conferencia";
+}
+
+/** Cartão com mais de 78 dias, devolução parada pelo prazo e a por fora do cartão ainda fechada: a equipe estorna pelo painel do Mercado Pago. */
+const estornaPelaEquipe = (p: Pagamento, dev: Devolucao | undefined, agora: Date) =>
+  !!dev && devolucaoParadaPeloPrazo(p, dev) && !dev.paradaEm && p.forma === "cartao" && !porForaPermitidoNoCartao(p, dev, agora);
+
+/** A situação da reserva cancelada pela política no quadro do pagamento e na lista (M8.2c): as mesmas da página do hóspede. */
+export type CanceladaNoPainel = { estado: EstadoPagamentoHospede; estornoPelaEquipe: boolean };
+
+/** "Reserva cancelada: devolução pedida / devolvida / com a equipe / em conferência / sem devolução (valor retido)". */
+export function canceladaEmPalavras(c: CanceladaNoPainel): string {
+  const palavras: Partial<Record<EstadoPagamentoHospede, string>> = {
+    cancelada_devolucao_pedida: c.estornoPelaEquipe ? "devolução pelo painel do Mercado Pago (pagamento com mais de 78 dias)" : "devolução pedida",
+    cancelada_devolvida: "devolvida",
+    cancelada_com_a_equipe: "com a equipe",
+    cancelada_em_conferencia: "em conferência",
+    cancelada_sem_devolucao: "sem devolução (valor retido)",
+  };
+  return `Reserva cancelada: ${palavras[c.estado] ?? "em conferência"}`;
+}
+
+/**
+ * A devolução parou pelo prazo (M8.2c, D12), não por uma recusa do Mercado Pago: recusada com o aviso do pagamento com mais
+ * de 78 dias (nada foi pedido; ou o pedido sem dúvida que passou dos 78 dias entre um envio e outro; ou a pedida parada
+ * pela equipe depois dos 85) e sem o aviso de recusa (três recusas, a nossa devolução falha na leitura, a recusa do painel
+ * dele registrada).
+ */
+const devolucaoParadaPeloPrazo = (p: Pick<Pagamento, "avisos">, dev: Pick<Devolucao, "situacao">) =>
+  dev.situacao === "recusada" && p.avisos.includes("devolucao_fora_do_prazo") && !p.avisos.includes("devolucao_falhou");
+
+export type AcoesDoPagamento = {
+  conferir: boolean;
+  devolver: boolean;
+  devolucaoPorFora: boolean;
+  registrarLiberacao: boolean;
+  estornarLiberacao: boolean;
+  registrarTaxaPerdida: boolean;
+  // M8.2c (a devolução do cancelamento e a do pagamento velho); opcionais só para montar tentativas à mão nos testes.
+  confirmarDevolucaoVista?: boolean;
+  registrarRecusaNoPainel?: boolean;
+  pararDevolucaoPedida?: boolean;
+  corrigirTaxaPerdida?: boolean;
+};
 
 /** Nome da bandeira para o painel (o código do Mercado Pago quando o sistema não conhece). */
 export const NOMES_BANDEIRA: Record<string, string> = { master: "Mastercard", visa: "Visa", elo: "Elo", amex: "American Express", hipercard: "Hipercard" };
@@ -235,7 +411,33 @@ export type PagamentoDoPainel = {
   motivoSemReserva: string | null;
   motivoSemReservaTexto: string | null;
   avisos: string[];
-  devolucao: { situacao: SituacaoDevolucao; valor: number; tentativas: number; falhas: number; confirmadaEm: Date | null; porForaData: string | null; porForaValor: number | null; porForaNota: string; taxaPerdida: number | null } | null;
+  devolucao: {
+    situacao: SituacaoDevolucao;
+    valor: number;
+    tentativas: number;
+    falhas: number;
+    confirmadaEm: Date | null;
+    porForaData: string | null;
+    porForaValor: number | null;
+    porForaNota: string;
+    taxaPerdida: number | null;
+    // M8.2c; opcionais só para montar tentativas à mão nos testes.
+    origem?: string;
+    /** Último código da resposta do Mercado Pago (lista fechada): explica a espera ou a recusa no quadro. */
+    ultimoCodigo?: CodigoDevolucao | null;
+    confirmadaPor?: "leitura" | "equipe" | null;
+    confirmadaNota?: string;
+    valorConfirmado?: number | null;
+    recusaNoPainelEm?: Date | null;
+    paradaEm?: Date | null;
+    /** Parada pelo prazo (pagamento com mais de 78 dias, D12), pela regra do domínio (`devolucaoParadaPeloPrazo`), não por recusa. */
+    paradaPeloPrazo?: boolean;
+  } | null;
+  /**
+   * M8.2c: a reserva que este pagamento confirmou foi cancelada pela política — a situação pela devolução (a mesma da
+   * página do hóspede); null nos outros casos. Opcional só para montar tentativas à mão nos testes.
+   */
+  cancelada?: CanceladaNoPainel | null;
   /** Pede atenção da equipe (lista "pede atenção" e Início). */
   pedeAtencao: boolean;
   /** O que a ficha pode oferecer (quem chama ainda confere a permissão financeiro:editar). */
@@ -270,20 +472,59 @@ const liberacaoVencida = (p: Pagamento, agora: Date) => p.desfecho === "reserva"
 /** Tentativa `criando`/`incerta` sem resposta há mais que a carência: a criação do pagamento não se resolve sozinha. */
 const criacaoPresa = (p: Pagamento, agora: Date) => (p.situacao === "criando" || p.situacao === "incerta") && p.criadoEm.getTime() + CARENCIA_PAGAMENTO_MS < agora.getTime();
 
-function paraPainel(p: Pagamento, dev: Devolucao | undefined, temRecebimentoManual: boolean, agora: Date): Omit<PagamentoDoPainel, "aceite"> {
+/** O que o quadro do pagamento precisa saber da reserva e do cancelamento dela (M8.2c). */
+type ContextoDoPainel = {
+  reserva: { estado: EstadoReserva; valorRetido: number | null } | null;
+  cancelamento: { situacao: SituacaoCancelamento; direito: DireitoCancelamento | null } | null;
+};
+
+/** O aviso de devolução recusada, no quadro do pagamento, quando a recusa veio do painel do Mercado Pago (registrada) ou da leitura. */
+export const TEXTO_RECUSA_NO_PAINEL =
+  "A recusa da devolução no painel do Mercado Pago foi registrada: a devolução por fora fica liberada (no cartão também). Registre a devolução feita por fora quando ela sair.";
+export const TEXTO_DEVOLUCAO_FALHOU_NA_LEITURA =
+  "O Mercado Pago mostrou a devolução pedida como falha (ela não saiu): confira no painel do Mercado Pago antes de tentar de novo ou de registrar a devolução feita por fora.";
+
+/** Os avisos do pagamento em palavras, com os valores quando o texto precisa deles. */
+function textosDoPagamento(p: Pagamento, dev: Devolucao | undefined): string[] {
+  return p.avisos
+    .filter((c): c is CodigoAviso => c in AVISOS_PAGAMENTO)
+    .map((c) => {
+      if (c === "devolucao_a_menor" && dev && p.devolvidoLido > 0) return textoDevolucaoAMenor(p.devolvidoLido, dev.valor);
+      // O aviso de devolução recusada (M8.2c) também vem da recusa do painel do Mercado Pago registrada pela equipe e da
+      // leitura que mostrou a nossa devolução falha: o texto diz qual foi (nem sempre foram "três vezes").
+      if (c === "devolucao_falhou" && dev?.situacao === "recusada" && dev.recusaNoPainelEm) return TEXTO_RECUSA_NO_PAINEL;
+      if (c === "devolucao_falhou" && dev?.situacao === "recusada" && dev.idProvedor !== null && !dev.paradaEm) return TEXTO_DEVOLUCAO_FALHOU_NA_LEITURA;
+      // Sem reserva (M8.2a), o devolvido fora do sistema não tem parte de proprietário em conferência.
+      if (c === "devolvido_por_fora" && p.desfecho !== "reserva") return "Este pagamento foi devolvido (no todo ou em parte) fora do sistema: confira no painel do Mercado Pago.";
+      return AVISOS_PAGAMENTO[c];
+    });
+}
+
+function paraPainel(p: Pagamento, dev: Devolucao | undefined, temRecebimentoManual: boolean, agora: Date, ctx: ContextoDoPainel): Omit<PagamentoDoPainel, "aceite"> {
   const semDecisao = p.situacao === "aprovado" && p.desfecho === null;
   // Dinheiro que chegou já devolvido em parte ou contestado, sem decisão do sistema (situação inesperada).
   const inesperada = (p.situacao === "devolvido_parcial" || p.situacao === "contestado") && p.desfecho === null;
   const devolucaoAberta = dev?.situacao === "pedida" || dev?.situacao === "recusada";
   const semDevolucaoAberta = dev?.situacao !== "pedida" && (!dev || dev.situacao === "recusada");
-  const podeDecidir = semDecisao && p.motivoSemReserva !== null && semDevolucaoAberta;
+  const podeDecidir = semDecisao && p.motivoSemReserva !== null && semDevolucaoAberta && (!dev || dev.origem === "sem_reserva");
   // Contestado sem desfecho: a situação local nunca volta a "aprovado", então a devolução feita por fora fica oferecida
   // (o domínio relê a order antes e só aceita quando o Mercado Pago mostra o pagamento aprovado de novo). Devolvido em
-  // parte, não: o Mercado Pago sempre mostra a parte devolvida e o domínio recusaria; resolve-se por lá até o M8.2c.
+  // parte, não: o Mercado Pago sempre mostra a parte devolvida e o domínio recusaria; resolve-se por lá (M8.2d).
   const contestadoSemDesfecho = p.situacao === "contestado" && p.desfecho === null && p.motivoSemReserva !== null && semDevolucaoAberta;
-  // Cartão: por fora só quando a devolução pelo Mercado Pago não deu ou o pagamento passou de 180 dias (a mesma regra do domínio).
+  // Cartão: por fora só quando a devolução pelo Mercado Pago não deu de vez ou o pagamento passou de 180 dias (a mesma regra do domínio).
   const porForaNoCartao = porForaPermitidoNoCartao(p, dev, agora);
   const cartao = p.forma === "cartao";
+  // M8.2c: a devolução do cancelamento (reserva cancelada com direito integral) e os registros da equipe.
+  const conhecida = !!dev && origemDeDevolucaoConhecida(dev.origem);
+  const doCancelamento = conhecida && dev!.origem === "cancelamento" && p.desfecho === "reserva" && ctx.cancelamento?.situacao === "cancelada" && ctx.cancelamento.direito === "integral";
+  const doSemReserva = conhecida && dev!.origem === "sem_reserva" && p.desfecho === null;
+  const recusadaDoCancelamento = doCancelamento && dev!.situacao === "recusada" && p.situacao === "aprovado";
+  const foraDaLeitura = p.criadoEm.getTime() < inicioDoPrazoDeReleitura(agora).getTime();
+  const semConfirmacaoPelaLeitura = p.avisos.includes("devolucao_sem_confirmacao") || p.avisos.includes("devolucao_a_menor") || p.avisos.includes("situacao_desconhecida");
+  const calculada = !!ctx.reserva && reservaCalculadaPeloMotor(ctx.reserva);
+  const estorno = estornaPelaEquipe(p, dev, agora);
+  const cancelada: CanceladaNoPainel | null =
+    p.desfecho === "reserva" && ctx.cancelamento?.situacao === "cancelada" && ctx.cancelamento.direito ? { estado: estadoDaCancelada(p, ctx.cancelamento.direito, dev, estorno, agora), estornoPelaEquipe: estorno } : null;
   return {
     id: p.id,
     cotacaoId: p.cotacaoId,
@@ -307,9 +548,27 @@ function paraPainel(p: Pagamento, dev: Devolucao | undefined, temRecebimentoManu
     desfechoEm: p.desfechoEm,
     motivoSemReserva: p.motivoSemReserva,
     motivoSemReservaTexto: textoMotivoSemReserva(p.motivoSemReserva),
-    avisos: textosDosAvisos(p.avisos),
+    avisos: textosDoPagamento(p, dev),
     devolucao: dev
-      ? { situacao: dev.situacao, valor: dev.valor, tentativas: dev.tentativas, falhas: dev.falhas, confirmadaEm: dev.confirmadaEm, porForaData: dev.porForaData, porForaValor: dev.porForaValor, porForaNota: dev.porForaNota, taxaPerdida: dev.taxaPerdida }
+      ? {
+          situacao: dev.situacao,
+          valor: dev.valor,
+          tentativas: dev.tentativas,
+          falhas: dev.falhas,
+          confirmadaEm: dev.confirmadaEm,
+          porForaData: dev.porForaData,
+          porForaValor: dev.porForaValor,
+          porForaNota: dev.porForaNota,
+          taxaPerdida: dev.taxaPerdida,
+          origem: dev.origem,
+          ultimoCodigo: dev.ultimoCodigo,
+          confirmadaPor: dev.confirmadaPor,
+          confirmadaNota: dev.confirmadaNota,
+          valorConfirmado: dev.valorConfirmado,
+          recusaNoPainelEm: dev.recusaNoPainelEm,
+          paradaEm: dev.paradaEm,
+          paradaPeloPrazo: devolucaoParadaPeloPrazo(p, dev),
+        }
       : null,
     idProvedor: p.idProvedor,
     referencia: p.referencia,
@@ -322,15 +581,31 @@ function paraPainel(p: Pagamento, dev: Devolucao | undefined, temRecebimentoManu
     juros: cartao && p.valorPago !== null && p.valorPago > p.valor ? p.valorPago - p.valor : null,
     custoParcelasVendedor: cartao ? p.custoParcelasVendedor : null,
     motivoRecusa: cartao && p.situacao === "recusado" ? textoMotivoRecusaCartao(motivoDoDetalhe(p.detalheProvedor)) : null,
-    pedeAtencao: semDecisao || inesperada || devolucaoAberta || p.avisos.length > 0 || p.situacao === "incerta" || criacaoPresa(p, agora) || liberacaoVencida(p, agora),
+    cancelada,
+    pedeAtencao:
+      semDecisao ||
+      inesperada ||
+      devolucaoAberta ||
+      p.avisos.length > 0 ||
+      p.situacao === "incerta" ||
+      criacaoPresa(p, agora) ||
+      (calculada && liberacaoVencida(p, agora)) ||
+      (p.desfecho === "reserva" && ctx.cancelamento?.situacao === "pedido"),
     acoes: {
       conferir: p.idProvedor !== null || emAndamento(p.situacao) || !!dev,
-      devolver: podeDecidir,
+      // Cancelamento: pedir de novo só a devolução recusada de um pagamento com até 78 dias (depois, nada se pede).
+      devolver: podeDecidir || (recusadaDoCancelamento && p.criadoEm.getTime() >= inicioDoPrazoDePedirDevolucao(agora).getTime()),
       // A devolução por fora relê antes a order no Mercado Pago (devolvida, em andamento ou contestada = recusa).
-      devolucaoPorFora: (podeDecidir || contestadoSemDesfecho) && porForaNoCartao,
-      registrarLiberacao: p.desfecho === "reserva" && p.situacao === "aprovado" && !p.liberacaoConfirmadaEm,
-      estornarLiberacao: p.liberacaoOrigem === "manual" && temRecebimentoManual,
-      registrarTaxaPerdida: dev?.situacao === "confirmada" && dev.taxaPerdida === null,
+      devolucaoPorFora: ((podeDecidir || contestadoSemDesfecho) && porForaNoCartao) || (recusadaDoCancelamento && !dev!.chaveAceita && porForaNoCartao),
+      // Só a reserva que o motor calcula (confirmada, ou cancelada com valor retido) recebe a liberação no livro.
+      registrarLiberacao: p.desfecho === "reserva" && p.situacao === "aprovado" && !p.liberacaoConfirmadaEm && calculada,
+      // Cancelada com devolução integral, a liberação não se registraria de novo: o estorno não é oferecido (o domínio recusa).
+      estornarLiberacao: p.liberacaoOrigem === "manual" && temRecebimentoManual && !dev?.saidaLancamentoId && calculada,
+      registrarTaxaPerdida: (dev?.situacao === "confirmada" || dev?.situacao === "por_fora") && dev.taxaPerdida === null,
+      confirmarDevolucaoVista: (doSemReserva || doCancelamento) && (dev!.situacao === "pedida" || dev!.situacao === "recusada") && (foraDaLeitura || semConfirmacaoPelaLeitura),
+      registrarRecusaNoPainel: podeRegistrarRecusaNoPainel(p, dev, agora),
+      pararDevolucaoPedida: conhecida && dev!.situacao === "pedida" && foraDaLeitura,
+      corrigirTaxaPerdida: !!dev && dev.taxaPerdida !== null,
     },
   };
 }
@@ -354,6 +629,13 @@ async function montarPainel(db: Db, organizacaoId: string, lista: Pagamento[], a
       ),
     );
   const comManual = new Set(manuais.map((m) => m.chave.split(":")[1]));
+  // M8.2c: a reserva (calculada pelo motor?) e o cancelamento ativo dela, para as ações e o "pede atenção".
+  const reservaIds = [...new Set(lista.map((p) => p.reservaId))];
+  const rs = await db.select({ id: reservas.id, estado: reservas.estado, valorRetido: reservas.valorRetido }).from(reservas).where(inArray(reservas.id, reservaIds));
+  const cs = await db
+    .select({ reservaId: cancelamentosReserva.reservaId, situacao: cancelamentosReserva.situacao, direito: cancelamentosReserva.direito })
+    .from(cancelamentosReserva)
+    .where(and(eq(cancelamentosReserva.organizacaoId, organizacaoId), inArray(cancelamentosReserva.reservaId, reservaIds), inArray(cancelamentosReserva.situacao, ["pedido", "cancelada"])));
   // M7.4: o aceite com que cada tentativa foi criada e o prazo da Política de cancelamento dessa versão.
   const aceiteIds = [...new Set(lista.map((p) => p.aceiteId).filter((x): x is string => x !== null))];
   const aceites = aceiteIds.length ? await db.select().from(aceitesSite).where(and(eq(aceitesSite.organizacaoId, organizacaoId), inArray(aceitesSite.id, aceiteIds))) : [];
@@ -364,7 +646,25 @@ async function montarPainel(db: Db, organizacaoId: string, lista: Pagamento[], a
     const dias = politicas.find((v) => v.numero === a.versaoCancelamento)?.regras?.diasReembolsoIntegral ?? null;
     return { versoes: { termos: a.versaoTermos, privacidade: a.versaoPrivacidade, cancelamento: a.versaoCancelamento }, aceitoEm: a.aceitoEm, diasReembolsoIntegral: dias };
   };
-  return lista.map((p) => ({ ...paraPainel(p, devs.find((d) => d.pagamentoId === p.id), comManual.has(p.id), agora), aceite: aceiteDe(p) }));
+  return lista.map((p) => ({
+    ...paraPainel(p, devolucaoDoPagamento({ devolucoes: devs }, p.id), comManual.has(p.id), agora, { reserva: rs.find((r) => r.id === p.reservaId) ?? null, cancelamento: cs.find((c) => c.reservaId === p.reservaId) ?? null }),
+    aceite: aceiteDe(p),
+  }));
+}
+
+/**
+ * D21 (M8.2c), gêmeo TS de `devolvidaNoProvedorSql` (`portal/posse.ts`): o pagamento que confirmou a reserva (desfecho
+ * "reserva") aparece devolvido no Mercado Pago — no todo, em parte, pela leitura ou pelo aviso de devolução por fora —
+ * e a reserva não tem cancelamento pela política com devolução integral. A parte do proprietário fica em conferência.
+ */
+export function devolvidaNoProvedor(
+  pagamentoQueConfirmou: Pick<Pagamento, "desfecho" | "situacao" | "devolvidoLido" | "avisos"> | null | undefined,
+  cancelamento: { situacao: SituacaoCancelamento; direito: DireitoCancelamento | null } | null | undefined,
+): boolean {
+  const p = pagamentoQueConfirmou;
+  if (!p || p.desfecho !== "reserva") return false;
+  const devolvido = p.situacao === "devolvido" || p.situacao === "devolvido_parcial" || p.devolvidoLido > 0 || p.avisos.includes("devolvido_por_fora");
+  return devolvido && !(cancelamento?.situacao === "cancelada" && cancelamento.direito === "integral");
 }
 
 /** Pagamentos do site de uma reserva (ficha da reserva), do mais antigo ao mais novo. */
@@ -385,8 +685,17 @@ function podePedirAtencao(agora: Date) {
     sql`jsonb_array_length(${pagamentos.avisos}) > 0`,
     eq(pagamentos.situacao, "incerta"),
     and(eq(pagamentos.situacao, "criando"), sql`${pagamentos.criadoEm} < ${limiteCriacao}`),
-    and(eq(pagamentos.desfecho, "reserva"), eq(pagamentos.situacao, "aprovado"), isNull(pagamentos.liberacaoConfirmadaEm), sql`${pagamentos.liberacaoPrevistaEm} < ${agora}`),
+    // Liberação vencida: só da reserva que o motor calcula (a cancelada com devolução integral nunca lança recebimento).
+    and(
+      eq(pagamentos.desfecho, "reserva"),
+      eq(pagamentos.situacao, "aprovado"),
+      isNull(pagamentos.liberacaoConfirmadaEm),
+      sql`${pagamentos.liberacaoPrevistaEm} < ${agora}`,
+      sql`exists (select 1 from ${reservas} where ${reservas.id} = ${pagamentos.reservaId} and ${reservaCalculadaSql()})`,
+    ),
     sql`exists (select 1 from ${devolucoesPagamento} where ${devolucoesPagamento.pagamentoId} = ${pagamentos.id} and ${devolucoesPagamento.situacao} in ('pedida', 'recusada'))`,
+    // M8.2c: pedido de cancelamento esperando a equipe.
+    and(eq(pagamentos.desfecho, "reserva"), sql`exists (select 1 from ${cancelamentosReserva} where ${cancelamentosReserva.reservaId} = ${pagamentos.reservaId} and ${cancelamentosReserva.situacao} = 'pedido')`),
   );
 }
 
@@ -419,7 +728,13 @@ export type ContagensPagamento = {
   /** Chegou já devolvido em parte ou contestado, antes de o sistema decidir: resolve-se no painel do Mercado Pago. */
   situacaoInesperada: number;
   devolucaoPedida: number;
+  /** Devoluções paradas porque o Mercado Pago recusou, não respondeu ou mostrou a devolução pedida como falha. */
   devolucaoRecusada: number;
+  /**
+   * Devoluções paradas de pagamentos com mais de 78 dias, que o sistema não pede mais ao Mercado Pago (M8.2c, D12): nada
+   * foi recusado por ele; a equipe devolve pelo painel dele (cartão) ou por fora (Pix).
+   */
+  devolucaoForaDoPrazo: number;
   liberacaoVencida: number;
   comAviso: number;
   aoVivo: number;
@@ -433,6 +748,10 @@ export type ContagensPagamento = {
   recusasCartao24h: number;
   /** Cartões recusados por dados do cartão inválidos na última hora (M8.2b). */
   recusasPorToken: number;
+  /** Devoluções do cancelamento que o Mercado Pago fez a menos do que o integral pedido (M8.2c). */
+  devolucaoAMenor: number;
+  /** Reservas pagas pelo site que o Mercado Pago mostra devolvidas fora do cancelamento pela política (D21, M8.2c). */
+  reservaDevolvidaNoProvedor: number;
 };
 
 const LINK_PAGAMENTOS = "/painel/financeiro/pagamentos-site";
@@ -467,12 +786,13 @@ export async function avisosDePagamento(
       ),
     );
   const devs = lista.length ? await db.select().from(devolucoesPagamento).where(inArray(devolucoesPagamento.pagamentoId, lista.map((p) => p.id))) : [];
-  const devDe = (id: string) => devs.find((d) => d.pagamentoId === id);
+  const devDe = (id: string) => devolucaoDoPagamento({ devolucoes: devs }, id);
   const contagens: ContagensPagamento = {
     aprovadoSemDesfecho: 0,
     situacaoInesperada: 0,
     devolucaoPedida: 0,
     devolucaoRecusada: 0,
+    devolucaoForaDoPrazo: 0,
     liberacaoVencida: 0,
     comAviso: 0,
     aoVivo: 0,
@@ -482,18 +802,39 @@ export async function avisosDePagamento(
     cartaoEmAnalise: 0,
     recusasCartao24h: 0,
     recusasPorToken: 0,
+    devolucaoAMenor: 0,
+    reservaDevolvidaNoProvedor: 0,
+  };
+  // M8.2c: as reservas pagas (o motor ainda calcula?) e os cancelamentos ativos delas.
+  const reservaIds = [...new Set(lista.filter((p) => p.desfecho === "reserva").map((p) => p.reservaId))];
+  const rs = reservaIds.length ? await db.select({ id: reservas.id, estado: reservas.estado, valorRetido: reservas.valorRetido }).from(reservas).where(inArray(reservas.id, reservaIds)) : [];
+  const cs = reservaIds.length
+    ? await db
+        .select({ reservaId: cancelamentosReserva.reservaId, situacao: cancelamentosReserva.situacao, direito: cancelamentosReserva.direito })
+        .from(cancelamentosReserva)
+        .where(and(eq(cancelamentosReserva.organizacaoId, organizacaoId), inArray(cancelamentosReserva.reservaId, reservaIds), inArray(cancelamentosReserva.situacao, ["pedido", "cancelada"])))
+    : [];
+  const calculada = (reservaId: string) => {
+    const r = rs.find((x) => x.id === reservaId);
+    return !!r && reservaCalculadaPeloMotor(r);
   };
   const analiseDesde = agora.getTime() - ALERTA_ANALISE_CARTAO_HORAS * 3_600_000;
   for (const p of lista) {
     const dev = devDe(p.id);
-    if (comDinheiro(p.situacao) && p.situacao !== "devolvido" && p.desfecho === null) {
-      if (dev?.situacao === "pedida") contagens.devolucaoPedida++;
-      else if (dev?.situacao === "recusada") contagens.devolucaoRecusada++;
+    // Devoluções pedidas ou paradas, de qualquer origem que esta versão conhece (sem reserva e cancelamento, M8.2c).
+    const devolucaoConta = !!dev && origemDeDevolucaoConhecida(dev.origem) && comDinheiro(p.situacao) && p.situacao !== "devolvido";
+    if (devolucaoConta && dev.situacao === "pedida") contagens.devolucaoPedida++;
+    else if (devolucaoConta && devolucaoParadaPeloPrazo(p, dev)) contagens.devolucaoForaDoPrazo++;
+    else if (devolucaoConta && dev.situacao === "recusada") contagens.devolucaoRecusada++;
+    else if (comDinheiro(p.situacao) && p.situacao !== "devolvido" && p.desfecho === null) {
       // Não é "devolva ao hóspede": o Mercado Pago já devolveu parte ou há contestação (o sistema não devolve isso).
-      else if (codigoMotivo(p.motivoSemReserva) === "situacao_inesperada") contagens.situacaoInesperada++;
-      else contagens.aprovadoSemDesfecho++;
+      if (codigoMotivo(p.motivoSemReserva) === "situacao_inesperada") contagens.situacaoInesperada++;
+      else if (!dev || dev.situacao !== "pedida") contagens.aprovadoSemDesfecho++;
     }
-    if (liberacaoVencida(p, agora)) contagens.liberacaoVencida++;
+    if (p.avisos.includes("devolucao_a_menor")) contagens.devolucaoAMenor++;
+    if (p.desfecho === "reserva" && devolvidaNoProvedor(p, cs.find((x) => x.reservaId === p.reservaId))) contagens.reservaDevolvidaNoProvedor++;
+    // A liberação só é esperada da reserva que o motor calcula (a cancelada com devolução integral nunca lança).
+    if (liberacaoVencida(p, agora) && calculada(p.reservaId)) contagens.liberacaoVencida++;
     if (criacaoPresa(p, agora)) contagens.criacaoPresa++;
     if (p.forma === "cartao" && p.situacao === "pendente" && p.etapaCartao === "analise" && p.criadoEm.getTime() < analiseDesde) contagens.cartaoEmAnalise++;
     if (p.avisos.some((a) => a !== "ao_vivo" && a in AVISOS_PAGAMENTO)) contagens.comAviso++;
@@ -514,7 +855,8 @@ export async function avisosDePagamento(
       .from(lancamentos)
       .where(and(eq(lancamentos.organizacaoId, organizacaoId), inArray(lancamentos.reservaId, ids), eq(lancamentos.origem, "motor"), isNull(lancamentos.estornoDe), sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`));
     const com = new Set(comMotor.map((l) => l.reservaId));
-    contagens.semCalculo = pagas.filter((p) => !com.has(p.reservaId) && p.situacao === "aprovado").length;
+    // Só a reserva que o motor calcula (confirmada, ou cancelada com valor retido): a cancelada com devolução não tem cálculo.
+    contagens.semCalculo = pagas.filter((p) => !com.has(p.reservaId) && p.situacao === "aprovado" && calculada(p.reservaId)).length;
     // Pagas pelo site com a estadia ainda por vir ou em curso: as OTAs não sabem delas enquanto o envio não sai.
     const hoje = hojeISO("America/Sao_Paulo", agora);
     const [abertas] = await db
@@ -562,11 +904,27 @@ export async function avisosDePagamento(
   if (contagens.situacaoInesperada)
     alertas.push({
       nivel: "atencao",
-      texto: `${contagens.situacaoInesperada} pagamento(s) do site que o Mercado Pago mostrou já devolvido(s) em parte ou contestado(s) antes de o sistema decidir a reserva: resolva pelo painel do Mercado Pago (o sistema passa a cuidar disso no M8.2c).`,
+      texto: `${contagens.situacaoInesperada} pagamento(s) do site que o Mercado Pago mostrou já devolvido(s) em parte ou contestado(s) antes de o sistema decidir a reserva: resolva pelo painel do Mercado Pago (o sistema passa a cuidar disso no M8.2d).`,
       link: `${LINK_PAGAMENTOS}?atencao=1`,
     });
   if (contagens.devolucaoPedida) alertas.push({ nivel: "info", texto: `${contagens.devolucaoPedida} devolução(ões) pedida(s) ao Mercado Pago aguardando confirmação.`, link: `${LINK_PAGAMENTOS}?atencao=1` });
+  // Recusada pelo Mercado Pago (três recusas ou respostas incertas, a nossa devolução falha na leitura, a recusa do painel
+  // dele registrada); a do pagamento com mais de 78 dias, que nunca foi pedida, conta à parte.
   if (contagens.devolucaoRecusada) alertas.push({ nivel: "atencao", texto: `${contagens.devolucaoRecusada} devolução(ões) parada(s): o Mercado Pago recusou ou não respondeu três vezes. Confira no painel do Mercado Pago antes de tentar de novo ou de registrar a devolução feita por fora.`, link: `${LINK_PAGAMENTOS}?atencao=1` });
+  if (contagens.devolucaoForaDoPrazo)
+    alertas.push({
+      nivel: "atencao",
+      texto: `${contagens.devolucaoForaDoPrazo} devolução(ões) de pagamento(s) com mais de 78 dias, que o sistema não pede mais ao Mercado Pago: no cartão, devolva pelo painel do Mercado Pago; no Pix, faça a devolução por fora.`,
+      link: `${LINK_PAGAMENTOS}?atencao=1`,
+    });
+  if (contagens.devolucaoAMenor)
+    alertas.push({ nivel: "atencao", texto: `${contagens.devolucaoAMenor} devolução(ões) de cancelamento que o Mercado Pago fez a menos do que o pedido: confira no painel do Mercado Pago.`, link: `${LINK_PAGAMENTOS}?atencao=1` });
+  if (contagens.reservaDevolvidaNoProvedor)
+    alertas.push({
+      nivel: "atencao",
+      texto: `${contagens.reservaDevolvidaNoProvedor} reserva(s) paga(s) pelo site que o Mercado Pago mostra devolvida(s) fora do sistema: a parte do proprietário ficou em conferência. Cancele pela política ou registre um ajuste.`,
+      link: `${LINK_PAGAMENTOS}?atencao=1`,
+    });
   if (contagens.criacaoPresa) alertas.push({ nivel: "atencao", texto: `${contagens.criacaoPresa} pagamento(s) do site sem resposta do Mercado Pago sobre a criação há mais de ${CARENCIA_PAGAMENTO_MS / 60_000} minutos: confira no painel do Mercado Pago e use Conferir agora.`, link: `${LINK_PAGAMENTOS}?atencao=1` });
   if (contagens.liberacaoVencida) alertas.push({ nivel: "info", texto: `${contagens.liberacaoVencida} pagamento(s) do site com a liberação prevista vencida e sem confirmação do Mercado Pago: confira e, se o dinheiro caiu, registre a liberação na reserva.`, link: `${LINK_PAGAMENTOS}?atencao=1` });
   if (contagens.semCalculo) alertas.push({ nivel: "atencao", texto: `${contagens.semCalculo} reserva(s) paga(s) pelo site com dinheiro recebido sem cálculo no financeiro: confira o contrato na data da entrada.`, link: LINK_PAGAMENTOS });
@@ -580,3 +938,97 @@ export async function avisosDePagamento(
 
 /** Códigos de aviso conhecidos, para quem precisar listar (painel). */
 export const CODIGOS_AVISO = Object.keys(AVISOS_PAGAMENTO) as CodigoAviso[];
+
+// ---------------------------------------------------------------- cancelamento pela política (M8.2c): Início da operação
+
+/** Pedido esperando a equipe: "atenção" depois de 24 h, ou a 3 dias (ou menos) da entrada. */
+export const ATENCAO_PEDIDO_CANCELAMENTO_HORAS = 24;
+export const ATENCAO_PEDIDO_CANCELAMENTO_DIAS_ANTES = 3;
+/** Mensagem ao hóspede pendente vira "atenção" depois de 24 h. */
+export const ATENCAO_AVISAR_HOSPEDE_HORAS = 24;
+const LINK_PEDIDOS_CANCELAMENTO = "/painel/reservas?cancelamento=pedido";
+const diaHoraSP = (d: Date) => {
+  const f = (o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", ...o }).format(d);
+  return `${f({ day: "2-digit", month: "2-digit" })} às ${f({ hour: "2-digit", minute: "2-digit" })}`;
+};
+const somarDiasISO = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+
+/**
+ * Avisos do cancelamento pela política para o Início da operação (quem tem `reserva:editar`; da empresa toda, fora dos
+ * avisos do financeiro, e sem valores):
+ * - um por pedido de cancelamento esperando a equipe, com a idade e a entrada (o pedido nunca se perde pela demora);
+ * - reservas do site canceladas com a estadia por vir e as datas ainda não reabertas nas OTAs, enquanto o envio ao Beds24
+ *   estiver desligado (o M8.3 grava a marca sozinho);
+ * - cancelamentos com mensagem ao hóspede pendente (a decisão, ou a devolução feita).
+ */
+export async function avisosDeCancelamento(db: Db, organizacaoId: string, agora: Date = new Date(), o: { env?: NodeJS.ProcessEnv; mensagensComValor?: boolean } = {}): Promise<AvisoPagamento[]> {
+  const env = o.env ?? process.env;
+  const hoje = hojeISO("America/Sao_Paulo", agora);
+  const alertas: AvisoPagamento[] = [];
+  const pedidos = await db
+    .select({ codigo: reservas.codigo, checkin: reservas.checkin, recebidoEm: cancelamentosReserva.pedidoRecebidoEm })
+    .from(cancelamentosReserva)
+    .innerJoin(reservas, eq(reservas.id, cancelamentosReserva.reservaId))
+    .where(and(eq(cancelamentosReserva.organizacaoId, organizacaoId), eq(cancelamentosReserva.situacao, "pedido")))
+    .orderBy(asc(cancelamentosReserva.pedidoRecebidoEm));
+  for (const x of pedidos) {
+    const dias = Math.max(0, Math.floor((agora.getTime() - x.recebidoEm.getTime()) / 86_400_000));
+    const antigo = agora.getTime() - x.recebidoEm.getTime() >= ATENCAO_PEDIDO_CANCELAMENTO_HORAS * 3_600_000;
+    const perto = x.checkin <= somarDiasISO(hoje, ATENCAO_PEDIDO_CANCELAMENTO_DIAS_ANTES);
+    alertas.push({
+      nivel: antigo || perto ? "atencao" : "info",
+      texto: `Pedido de cancelamento da reserva ${x.codigo}: recebido em ${diaHoraSP(x.recebidoEm)}, entrada em ${x.checkin.slice(8, 10)}/${x.checkin.slice(5, 7)} (há ${dias} dia(s)).`,
+      link: LINK_PEDIDOS_CANCELAMENTO,
+    });
+  }
+  const canceladas = await db
+    .select({ c: cancelamentosReserva, checkout: reservas.checkout, codigo: reservas.codigo })
+    .from(cancelamentosReserva)
+    .innerJoin(reservas, eq(reservas.id, cancelamentosReserva.reservaId))
+    .where(and(eq(cancelamentosReserva.organizacaoId, organizacaoId), eq(cancelamentosReserva.situacao, "cancelada")))
+    .orderBy(asc(reservas.codigo));
+  const abertas = canceladas.filter((x) => x.checkout > hoje && !x.c.otaLiberadaEm);
+  if (abertas.length) {
+    const envioLigado = escritaBeds24Pronta(env) && (await lerRegrasCalendario(db, organizacaoId)).envio.automatico;
+    if (!envioLigado)
+      alertas.push({
+        nivel: "info",
+        texto: `${abertas.length} reserva(s) do site cancelada(s) (${codigosDasCanceladas(abertas)}): reabra as datas nas OTAs (no Beds24, apague o bloqueio) enquanto o envio ao Beds24 estiver desligado.`,
+        link: linkDasCanceladas(abertas),
+      });
+  }
+  // Mensagem ao hóspede pendente: a decisão (desde o cancelamento) ou a devolução feita (desde ela).
+  const devs = canceladas.length
+    ? await db
+        .select({ cancelamentoId: devolucoesPagamento.cancelamentoId, situacao: devolucoesPagamento.situacao, confirmadaEm: devolucoesPagamento.confirmadaEm, porForaData: devolucoesPagamento.porForaData })
+        .from(devolucoesPagamento)
+        .where(inArray(devolucoesPagamento.cancelamentoId, canceladas.map((x) => x.c.id)))
+    : [];
+  // A mensagem da decisão e a da devolução feita levam o valor: só quem as pode copiar (quem lê o financeiro) recebe o aviso.
+  if (o.mensagensComValor === false) return alertas;
+  const pendentes: typeof canceladas = [];
+  let atrasada = false;
+  for (const x of canceladas) {
+    const { c } = x;
+    const desde: Date[] = [];
+    if (!c.hospedeAvisadoDecisaoEm && c.canceladaEm) desde.push(c.canceladaEm);
+    const d = devs.find((x) => x.cancelamentoId === c.id);
+    const feita = d?.situacao === "confirmada" ? d.confirmadaEm : d?.situacao === "por_fora" && d.porForaData ? instanteLocal(d.porForaData, "12:00", "America/Sao_Paulo") : null;
+    if (feita && !c.hospedeAvisadoDevolucaoEm) desde.push(feita);
+    if (!desde.length) continue;
+    pendentes.push(x);
+    if (desde.some((d) => agora.getTime() - d.getTime() >= ATENCAO_AVISAR_HOSPEDE_HORAS * 3_600_000)) atrasada = true;
+  }
+  if (pendentes.length)
+    alertas.push({
+      nivel: atrasada ? "atencao" : "info",
+      texto: `${pendentes.length} cancelamento(s) com mensagem ao hóspede pendente (decisão ou devolução feita): avise o hóspede (${codigosDasCanceladas(pendentes)}).`,
+      link: linkDasCanceladas(pendentes),
+    });
+  return alertas;
+}
+
+/** Os códigos das reservas do aviso (até 5; o resto em número): quem lê sabe qual abrir. */
+const codigosDasCanceladas = (xs: readonly { codigo: string }[]) => (xs.length <= 5 ? xs.map((x) => x.codigo).join(", ") : `${xs.slice(0, 5).map((x) => x.codigo).join(", ")} e mais ${xs.length - 5}`);
+/** Uma reserva: a ficha dela. Mais de uma: a lista das canceladas, de todo o histórico (a lista do mês esconde as canceladas). */
+const linkDasCanceladas = (xs: readonly { c: { reservaId: string } }[]) => (xs.length === 1 ? `/painel/reservas/${xs[0].c.reservaId}` : "/painel/reservas?situacao=cancelada&escopo=historico");

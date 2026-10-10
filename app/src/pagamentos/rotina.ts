@@ -9,7 +9,8 @@
  *   (depois, a equipe registra à mão);
  * - devoluções pedidas cuja próxima tentativa chegou (relê a order antes; chave nova a cada pedido), só de pagamentos
  *   dos últimos 85 dias: depois disso a order não aparece mais, a rotina para de ler e liga o aviso
- *   `devolucao_fora_do_prazo` (uma vez), para a equipe resolver pelo painel do Mercado Pago;
+ *   `devolucao_fora_do_prazo` (uma vez), para a equipe resolver pelo painel do Mercado Pago. Vale para as duas origens
+ *   (sem reserva, M8.2a; cancelamento, M8.2c); origem desconhecida (prévia com banco compartilhado) fica de fora;
  * - pagamentos pendentes que sobraram numa cotação em que outro já trouxe dinheiro (cancelados no provedor; quem
  *   pediu o cancelamento foi o sistema);
  * - uma vez por dia, os pagamentos dos últimos 85 dias (o provedor só consulta orders de até três meses) com desfecho (reserva, devolução ou devolução por fora) e
@@ -28,7 +29,7 @@ import { tentarDevolucao } from "./devolucao";
 import { apagarEventosAntigos } from "./eventos";
 import { inicioDoPrazoDeReleitura, PRAZO_RELEITURA_DIAS } from "./andamento";
 import type { ProvedorPagamento } from "./provedor";
-import type { CodigoAviso } from "./situacoes";
+import { type CodigoAviso, ORIGENS_DEVOLUCAO_CONHECIDAS } from "./situacoes";
 import { expirarHoldsVencidos, type ResumoExpiracao } from "@/site/cotacoes";
 
 /**
@@ -140,8 +141,10 @@ export async function conferirPendentes(db: Db, organizacaoId: string | null, pr
     }
   }
 
-  // Devoluções: o mesmo prazo. Fora dele, nada se lê (a confirmação nunca chegaria): só o aviso, uma vez.
-  await avisarForaDoPrazo("devolucao_fora_do_prazo", sql`exists (select 1 from ${devolucoesPagamento} d where d.pagamento_id = ${pagamentos.id} and d.situacao = 'pedida')`);
+  // Devoluções: o mesmo prazo. Fora dele, nada se lê (a confirmação nunca chegaria): só o aviso, uma vez. Só as de origem
+  // que esta versão conhece (M8.2c); a que o Mercado Pago devolveu a menos espera a equipe (a rotina não relê).
+  const conhecidas = sql.join(ORIGENS_DEVOLUCAO_CONHECIDAS.map((o) => sql`${o}`), sql`, `);
+  await avisarForaDoPrazo("devolucao_fora_do_prazo", sql`exists (select 1 from ${devolucoesPagamento} d where d.pagamento_id = ${pagamentos.id} and d.situacao = 'pedida' and d.origem in (${conhecidas}))`);
   const devolucoes = await db
     .select({ id: devolucoesPagamento.id, organizacaoId: devolucoesPagamento.organizacaoId })
     .from(devolucoesPagamento)
@@ -150,6 +153,8 @@ export async function conferirPendentes(db: Db, organizacaoId: string | null, pr
       and(
         organizacaoId ? eq(devolucoesPagamento.organizacaoId, organizacaoId) : undefined,
         eq(devolucoesPagamento.situacao, "pedida"),
+        inArray(devolucoesPagamento.origem, [...ORIGENS_DEVOLUCAO_CONHECIDAS]),
+        sql`not (${pagamentos.avisos} @> '["devolucao_a_menor"]'::jsonb)`,
         or(isNull(devolucoesPagamento.proximaTentativaEm), lte(devolucoesPagamento.proximaTentativaEm, agora)),
         gte(pagamentos.criadoEm, corte),
       ),

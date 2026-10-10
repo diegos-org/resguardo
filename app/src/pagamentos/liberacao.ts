@@ -4,7 +4,8 @@
  * - Taxa = valor − líquido, a partir do líquido informado numa leitura (nunca soma de itens), gravada em
  *   `reservas.taxaCanal` (e `valorLiquido`) e depois o motor, nessa ordem, na mesma transação. Se o provedor informar
  *   outro líquido antes de qualquer recebimento lançado, a taxa é atualizada (e o motor roda) antes de lançar.
- * - Só o pagamento com desfecho `reserva`, com a reserva confirmada e a situação ainda `aprovado`, lança o
+ * - Só o pagamento com desfecho `reserva`, com a reserva confirmada (ou cancelada com valor retido pela política, M8.2c)
+ *   e a situação ainda `aprovado`, lança o
  *   recebimento, e só quando o provedor diz EXPLICITAMENTE que liberou (data passada sozinha nunca basta):
  *   montante = o líquido INFORMADO pelo provedor nessa leitura, data de caixa = o dia (em São Paulo) da leitura que
  *   viu o sinal (a data que o provedor informa é a PREVISTA e pode ser anterior à liberação de fato),
@@ -23,20 +24,24 @@ import { auditoria, lancamentos, pagamentos, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { aplicarMotor } from "@/financeiro/aplicar";
 import { estornar, lancar, LancamentoInvalido, mudarEstado } from "@/financeiro/ledger";
+import { reservaCalculadaPeloMotor } from "@/financeiro/motor";
 import { travarMotorDaReserva } from "@/financeiro/trava";
 import { hojeISO } from "@/lib/datas";
+import { ERRO_DADOS_PESSOAIS, textoSemDadosPessoais } from "@/lib/dados-pessoais";
 import { uuidValido } from "@/lib/ids";
 import { formatBRL } from "@/lib/money";
 import { repasseAPagarDaReserva } from "@/repasses/recebimentos";
 import { dataValida } from "@/reservas/regras";
 import type { CodigoAviso } from "./situacoes";
-import { type Pagamento, type ReservaTravada, travarCotacao } from "./travas";
+import { devolucaoDoPagamento, type Pagamento, type ReservaTravada, travarCotacao } from "./travas";
 
 export const FUSO_PAGAMENTO = "America/Sao_Paulo";
 export const chaveRecebimento = (pagamentoId: string) => `mercadopago:${pagamentoId}:recebimento`;
 const dataBr = (d: string) => d.split("-").reverse().join("/");
 
 export type Resultado = { ok: true } | { ok: false; erro: string };
+
+export const ERRO_ESTORNO_LIBERACAO_CANCELADA = "A reserva foi cancelada com devolução integral ao hóspede: a liberação não se estorna mais (não poderia ser registrada de novo). Corrija com um ajuste.";
 
 /** Recebimentos lançados para este pagamento (a chave base e as versões #N), com os que ainda estão em vigor. */
 export async function recebimentosDoPagamento(tx: Db, organizacaoId: string, pagamentoId: string) {
@@ -139,7 +144,9 @@ export async function registrarLiberacaoManual(db: Db, organizacaoId: string, pa
     if (!t || !p) return { ok: false as const, erro: "Pagamento não encontrado." };
     if (p.desfecho !== "reserva") return { ok: false as const, erro: "Só o pagamento que confirmou a reserva tem liberação registrada." };
     if (p.situacao !== "aprovado") return { ok: false as const, erro: "Este pagamento não está mais aprovado no Mercado Pago: confira antes de registrar a liberação." };
-    if (t.reserva.estado !== "confirmada") return { ok: false as const, erro: "A reserva não está confirmada." };
+    // Confirmada, ou cancelada com valor retido pela política (M8.2c): o dinheiro ficou com a empresa. Cancelada com
+    // devolução integral: o dinheiro volta ao hóspede e nunca entra no livro.
+    if (!reservaCalculadaPeloMotor(t.reserva)) return { ok: false as const, erro: "A reserva não está confirmada nem cancelada com valor retido: o dinheiro deste pagamento volta ao hóspede." };
     if (d.liquido > p.valor) return { ok: false as const, erro: `O líquido não pode passar do valor pago (${formatBRL(p.valor)}).` };
     // O dinheiro não cai antes de o pagamento existir (a hora da criação é nossa e confiável).
     const criadoNoDia = hojeISO(FUSO_PAGAMENTO, p.criadoEm);
@@ -192,11 +199,14 @@ async function taxaAntesDoManual(tx: Db, organizacaoId: string, pagamentoId: str
 /**
  * Estorna a liberação registrada à mão (a do provedor nunca): a taxa e o líquido voltam ao que o provedor tinha
  * informado antes (ou a desconhecidos), a reserva recebe essa taxa com o motor, o aviso de liberação divergente sai, e
- * a próxima conferência relê a Payments API. A próxima liberação usa a chave seguinte (#N).
+ * a próxima conferência relê a Payments API. A próxima liberação usa a chave seguinte (#N). Na reserva cancelada com
+ * devolução integral (M8.2c), nunca: a liberação não se registraria de novo e a saída da devolução espelha esta entrada.
  */
 export async function estornarLiberacaoManual(db: Db, organizacaoId: string, pagamentoId: string, motivo: string, autorId: string | null, agora: Date = new Date()): Promise<Resultado> {
   const m = motivo.trim().slice(0, 200);
   if (!m) return { ok: false, erro: "Informe o motivo do estorno." };
+  // O motivo vai para a descrição do estorno no livro: nunca com dado pessoal (como toda nota, M8.2c).
+  if (textoSemDadosPessoais(motivo.trim()) === null) return { ok: false, erro: ERRO_DADOS_PESSOAIS };
   const cotacaoId = await cotacaoDoPagamento(db, organizacaoId, pagamentoId);
   if (!cotacaoId) return { ok: false, erro: "Pagamento não encontrado." };
   return db.transaction(async (tx) => {
@@ -207,6 +217,11 @@ export async function estornarLiberacaoManual(db: Db, organizacaoId: string, pag
     const l = emVigor[0];
     if (!l) return { ok: false as const, erro: "Não há liberação registrada para estornar." };
     if (l.estado !== "realizado") return { ok: false as const, erro: "A liberação foi confirmada pelo Mercado Pago: não se estorna pelo painel." };
+    // M8.2c: a saída do caixa da devolução ao hóspede espelha este recebimento; estornar a liberação deixaria a saída sem a entrada.
+    if (devolucaoDoPagamento(t, p.id)?.saidaLancamentoId) return { ok: false as const, erro: "A devolução ao hóspede já espelhou esta liberação: corrija com um ajuste." };
+    // M8.2c: cancelada com devolução integral, a liberação não se registra de novo (`registrarLiberacaoManual`), e a taxa
+    // nunca volta à reserva (gravá-la reabriria a conferência que o acerto do cancelamento deu por resolvida).
+    if (!reservaCalculadaPeloMotor(t.reserva)) return { ok: false as const, erro: ERRO_ESTORNO_LIBERACAO_CANCELADA };
     await travarMotorDaReserva(tx, organizacaoId, t.reserva.id);
     const preso = await repasseAPagarDaReserva(tx, organizacaoId, t.reserva.id);
     if (preso) return { ok: false as const, erro: preso };
@@ -226,7 +241,7 @@ export async function estornarLiberacaoManual(db: Db, organizacaoId: string, pag
       .where(eq(pagamentos.id, p.id));
     // A reserva volta à taxa do provedor (ou a nenhuma) antes de qualquer novo recebimento: o motor recalcula.
     if (p.desfecho === "reserva") await gravarTaxaNaReserva(tx, organizacaoId, t.reserva.id, taxa, liquido, autorId, p.id, agora);
-    await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "pagamento.liberacao_estornar", entidade: "pagamento", entidadeId: p.id, mudancas: { liberacao: [`${l.montante} em ${l.dataCaixa}`, null], taxa: [p.taxa, taxa], motivo: [null, m] } });
+    await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "pagamento.liberacao_estornar", entidade: "pagamento", entidadeId: p.id, mudancas: { liberacao: [`${l.montante} em ${l.dataCaixa}`, null], taxa: [p.taxa, taxa] } });
     return { ok: true as const };
   });
 }

@@ -1,6 +1,20 @@
 import { describe, expect, it } from "vitest";
 import type { EstadoPagamentoHospede, VistaPagamentoHospede } from "@/pagamentos/consultas";
-import { contatoPrincipal, emEspera, ESTADOS_COM_DINHEIRO, ESTADOS_QUE_PAGAM, imagemDoQr, linhaDaAnalise, linkDoPix, mensagemDoContato, paraOHospede, TITULO_PAGAMENTO } from "./pagamento-vista";
+import {
+  type CancelamentoDoHospede,
+  contatoPrincipal,
+  emEspera,
+  ESTADOS_COM_DINHEIRO,
+  ESTADOS_QUE_PAGAM,
+  imagemDoQr,
+  linhaDaAnalise,
+  linkDoPix,
+  mensagemDoContato,
+  paraOHospede,
+  type TextosDoCancelamento,
+  textoDoCancelamento,
+  TITULO_PAGAMENTO,
+} from "./pagamento-vista";
 
 const TODOS: EstadoPagamentoHospede[] = [
   "sem_pagamento",
@@ -17,6 +31,11 @@ const TODOS: EstadoPagamentoHospede[] = [
   "cartao_desafio",
   "cartao_em_analise",
   "cartao_recusado",
+  "cancelada_devolucao_pedida",
+  "cancelada_devolvida",
+  "cancelada_com_a_equipe",
+  "cancelada_em_conferencia",
+  "cancelada_sem_devolucao",
 ];
 
 describe("vista do pagamento para o navegador (M8.2a)", () => {
@@ -47,6 +66,8 @@ describe("vista do pagamento para o navegador (M8.2a)", () => {
       // Só para o servidor: não vai ao navegador (o toEqual abaixo confere).
       aoVivo: true,
       acompanhar: true,
+      cancelamento: null,
+      pedidoCancelamentoEm: null,
     };
     expect(paraOHospede(v)).toEqual({
       estado: "pix_aguardando",
@@ -68,6 +89,8 @@ describe("vista do pagamento para o navegador (M8.2a)", () => {
       forma: "pix",
       recusa: null,
       prazoDasDatas: null,
+      cancelamento: null,
+      pedidoCancelamentoEm: null,
     });
     expect(paraOHospede({ ...v, pix: null, holdAte: null, devolucao: null })).toMatchObject({ pix: null, holdAte: null, devolucao: null });
   });
@@ -90,6 +113,8 @@ describe("vista do pagamento para o navegador (M8.2a)", () => {
       prazoDasDatas: null,
       aoVivo: false,
       acompanhar: true,
+      cancelamento: null,
+      pedidoCancelamentoEm: null,
     };
     expect(paraOHospede(v)).toMatchObject({ estado: "cartao_desafio", desafioUrl: "https://www.mercadopago.com.br/checkout/v1/3ds/FALSO1", forma: "cartao", cartaoRestantes: 2, podePagarCartao: false, cartao: null });
     for (const ruim of ["http://www.mercadopago.com.br/3ds", "https://mercadopago.com.br.golpe.example/3ds", "javascript:alert(1)", "https://example.com/3ds"]) expect(paraOHospede({ ...v, desafioUrl: ruim }).desafioUrl).toBeNull();
@@ -106,7 +131,19 @@ describe("vista do pagamento para o navegador (M8.2a)", () => {
   it("situações que podem pagar (M8.2b): uma lista só para a oferta e para a caixa do aceite; dinheiro recarrega na hora", () => {
     expect(ESTADOS_QUE_PAGAM).toEqual(["sem_pagamento", "pagar", "pix_aguardando", "pix_vencido", "pix_esgotado", "cartao_recusado", "cartao_desafio"]);
     expect(ESTADOS_QUE_PAGAM).not.toContain("cartao_em_analise");
-    expect(ESTADOS_COM_DINHEIRO).toEqual(["confirmando", "confirmada", "aprovado_sem_datas", "devolucao_pedida", "devolvido"]);
+    // M8.2c: as cinco situações da reserva cancelada também recarregam na hora (o formulário do cartão nunca fica aberto).
+    expect(ESTADOS_COM_DINHEIRO).toEqual([
+      "confirmando",
+      "confirmada",
+      "aprovado_sem_datas",
+      "devolucao_pedida",
+      "devolvido",
+      "cancelada_devolucao_pedida",
+      "cancelada_devolvida",
+      "cancelada_com_a_equipe",
+      "cancelada_em_conferencia",
+      "cancelada_sem_devolucao",
+    ]);
   });
 
   it("botão da equipe como caminho principal: dinheiro sem as datas, devolução, cartão em análise; esgotado ou recusado só sem outra forma de pagar", () => {
@@ -144,5 +181,103 @@ describe("vista do pagamento para o navegador (M8.2a)", () => {
     expect(mensagemDoContato(texto, "verificando", null, "pix")).toContain("Fiz o pagamento por Pix e a página ainda está conferindo.");
     expect(mensagemDoContato(texto, "cartao_em_analise", null, "cartao")).toBe("Olá! Fiz a cotação COT-ABCDEFGH no site.\nEntrada: 12/10 · Saída: 15/10.\nPaguei com cartão e a página diz que o pagamento está em análise.");
     expect(mensagemDoContato(texto, "cartao_recusado", null, "cartao")).toBe(texto);
+  });
+});
+
+describe("textoDoCancelamento: o texto único da página e das mensagens (M8.2c)", () => {
+  // Textos editáveis trocados por marcadores: prova que cada caso usa a chave certa (e nada fixo no lugar).
+  const textos: TextosDoCancelamento = {
+    cancelamentoSemTaxas: "[sem taxas]",
+    cancelamentoDevolucaoPedida: "[pedida]",
+    cancelamentoEstornoNoCartao: "[estorno no cartão]",
+    cancelamentoVoltaPix: "[volta Pix]",
+    cancelamentoVoltaCartao: "[volta cartão]",
+    cancelamentoVoltaPorFora: "[volta por fora]",
+    cancelamentoComAEquipe: "[com a equipe]",
+    cancelamentoEmConferencia: "[em conferência]",
+    cancelamentoSemDevolucaoPrazo: "[sem devolução: prazo]",
+    cancelamentoSemDevolucaoNaoComparecimento: "[não comparecimento]",
+    cancelamentoSemDevolucaoEquipe: "[sem política]",
+    cancelamentoFecho: "[fecho]",
+    cancelamentoPedidoRecebido: "[pedido recebido]",
+  };
+  const base: CancelamentoDoHospede = {
+    recebidoEm: "2026-10-05T13:10:00.000Z",
+    quemCancela: "hospede",
+    direito: "integral",
+    base: "prazo",
+    motivoEmpresa: null,
+    valor: 182400,
+    valorConfirmado: null,
+    devolucaoEm: null,
+    porFora: false,
+    confirmadaPor: null,
+    forma: "pix",
+    estornoPelaEquipe: false,
+    integralAte: "2026-10-28",
+    arrependimentoAte: "2026-10-08",
+    entradaEm: "2026-11-11T18:00:00.000Z",
+    politicaVersao: 2,
+  };
+  const texto = (estado: EstadoPagamentoHospede, c: Partial<CancelamentoDoHospede> = {}) => textoDoCancelamento({ estado, reservaCodigo: "SCL-ABC123", cancelamento: { ...base, ...c } }, textos);
+
+  it("integral pela política: devolvida (confirmada pela leitura, pela equipe, por fora), pedida, estorno no cartão, com a equipe, em conferência", () => {
+    const feita = texto("cancelada_devolvida", { devolucaoEm: "2026-10-06T15:00:00.000Z", valorConfirmado: 182400, confirmadaPor: "leitura" });
+    expect(feita).toEqual({
+      linhas: [
+        "Reserva SCL-ABC123 cancelada. Recebemos o seu pedido em 05/10 às 10:10 (horário de Brasília).",
+        "Pela Política de cancelamento que você aceitou (versão 2), devolvemos o valor integral pago, R$ 1.824,00, [sem taxas]",
+        "Devolução de R$ 1.824,00 confirmada pelo Mercado Pago em 06/10.",
+        "[volta Pix]",
+        "[fecho]",
+      ],
+      decisao: "Pela Política de cancelamento que você aceitou (versão 2), devolvemos o valor integral pago, R$ 1.824,00, [sem taxas] Devolução de R$ 1.824,00 confirmada pelo Mercado Pago em 06/10.",
+      comoVolta: "[volta Pix]",
+    });
+    expect(texto("cancelada_devolvida", { devolucaoEm: "2026-10-06T15:00:00.000Z", confirmadaPor: "equipe", forma: "cartao" }).decisao).toContain("Devolução de R$ 1.824,00 feita pelo Mercado Pago em 06/10.");
+    expect(texto("cancelada_devolvida", { devolucaoEm: "2026-10-06T15:00:00.000Z", confirmadaPor: "equipe", forma: "cartao" }).comoVolta).toBe("[volta cartão]");
+    // Por fora: sem a linha do meio de pagamento (Pix ou cartão).
+    const porFora = texto("cancelada_devolvida", { porFora: true, devolucaoEm: "2026-10-06T15:00:00.000Z" });
+    expect(porFora.decisao).toContain("Devolução de R$ 1.824,00 feita em 06/10.");
+    expect(porFora.comoVolta).toBe("[volta por fora]");
+    expect(porFora.linhas.join(" ")).not.toMatch(/volta Pix|volta cartão/);
+    expect(texto("cancelada_devolucao_pedida").decisao).toContain("[pedida]");
+    expect(texto("cancelada_devolucao_pedida", { forma: "cartao", estornoPelaEquipe: true }).decisao).toContain("[estorno no cartão]");
+    expect(texto("cancelada_com_a_equipe").decisao).toContain("A devolução de R$ 1.824,00 pelo Mercado Pago não foi possível. [com a equipe]");
+    expect(texto("cancelada_com_a_equipe").comoVolta).toBeNull();
+    expect(texto("cancelada_em_conferencia").decisao).toContain("[em conferência]");
+  });
+
+  it("quem cancela e a base: a SCL (com o motivo), exceção (decisão da equipe), sem devolução pelo prazo (o arrependimento só quando vai além), não comparecimento, sem política", () => {
+    expect(texto("cancelada_devolucao_pedida", { quemCancela: "empresa", base: "empresa", motivoEmpresa: "imovel_sem_condicoes" }).linhas[0]).toBe("Nós cancelamos a sua reserva SCL-ABC123: o apartamento ficou sem condições de receber você.");
+    expect(texto("cancelada_devolucao_pedida", { quemCancela: "empresa", base: "empresa", motivoEmpresa: "outro" }).linhas[0]).toBe("Nós cancelamos a sua reserva SCL-ABC123.");
+    expect(texto("cancelada_devolucao_pedida", { base: "excecao" }).decisao).toMatch(/^Por decisão da nossa equipe, devolvemos o valor integral pago/);
+    const semDevolucao = { direito: "nenhum" as const, base: "fora_do_prazo" as const, valor: 0 };
+    expect(texto("cancelada_sem_devolucao", semDevolucao).decisao).toBe("Prazo de reembolso integral: pedidos até 28/10, às 23h59. [sem devolução: prazo]");
+    expect(texto("cancelada_sem_devolucao", { ...semDevolucao, integralAte: "2026-10-01", arrependimentoAte: "2026-10-08" }).decisao).toBe("Prazo de reembolso integral: pedidos até 01/10, às 23h59. Arrependimento: até 08/10. [sem devolução: prazo]");
+    // Paga já depois do prazo do reembolso integral (aprovada em 10/10, prazo até 06/10): nenhum prazo que nunca valeu.
+    expect(texto("cancelada_sem_devolucao", { ...semDevolucao, integralAte: "2026-10-06", arrependimentoAte: "2026-10-17" }).decisao).toBe(
+      "Esta reserva foi paga quando o prazo de reembolso integral já tinha passado. Arrependimento: até 17/10. [sem devolução: prazo]",
+    );
+    const naoVeio = texto("cancelada_sem_devolucao", { ...semDevolucao, quemCancela: "nao_comparecimento", base: "nao_comparecimento" });
+    expect(naoVeio.linhas[0]).toBe("A reserva SCL-ABC123 foi cancelada por não comparecimento.");
+    expect(naoVeio.decisao).toBe("[não comparecimento]");
+    expect(texto("cancelada_sem_devolucao", { ...semDevolucao, base: "sem_politica", politicaVersao: null, integralAte: null, arrependimentoAte: null }).decisao).toBe("[sem política]");
+    for (const e of ["cancelada_devolvida", "cancelada_devolucao_pedida", "cancelada_com_a_equipe", "cancelada_em_conferencia", "cancelada_sem_devolucao"] as const) expect(JSON.stringify(texto(e))).not.toMatch(/Beds24/i);
+  });
+
+  it("pedido ainda sem decisão: só a linha do pedido; sem pedido nem cancelamento: nada", () => {
+    expect(textoDoCancelamento({ estado: "confirmada", reservaCodigo: "SCL-ABC123", cancelamento: null, pedidoCancelamentoEm: "2026-10-05T13:10:00.000Z" }, textos)).toEqual({
+      linhas: ["Pedido de cancelamento recebido em 05/10 às 10:10 (horário de Brasília). [pedido recebido]"],
+      decisao: "",
+      comoVolta: null,
+    });
+    expect(textoDoCancelamento({ estado: "confirmada", reservaCodigo: "SCL-ABC123", cancelamento: null }, textos)).toEqual({ linhas: [], decisao: "", comoVolta: null });
+    // Pagamento sem a política aceita: o recibo não diz "a política que você aceitou" (a frase editável cita a política).
+    expect(textoDoCancelamento({ estado: "confirmada", reservaCodigo: "SCL-ABC123", cancelamento: null, pedidoCancelamentoEm: "2026-10-05T13:10:00.000Z", pedidoCancelamentoSemPolitica: true }, textos).linhas).toEqual([
+      "Pedido de cancelamento recebido em 05/10 às 10:10 (horário de Brasília). A equipe confirma com você, por escrito, o valor da devolução.",
+    ]);
+    // O fecho vazio não vira linha.
+    expect(textoDoCancelamento({ estado: "cancelada_em_conferencia", reservaCodigo: "X", cancelamento: base }, { ...textos, cancelamentoFecho: "" }).linhas).not.toContain("");
   });
 });

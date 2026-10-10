@@ -2,11 +2,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, it, vi } from "vitest";
 import type { PagamentoDoPainel } from "@/pagamentos/consultas";
 
-const m = vi.hoisted(() => ({ sessao: vi.fn(), reserva: vi.fn(), pagamentos: vi.fn(), lancamentos: vi.fn(), recebimentos: vi.fn(), aceites: vi.fn() }));
+const m = vi.hoisted(() => ({ sessao: vi.fn(), reserva: vi.fn(), pagamentos: vi.fn(), lancamentos: vi.fn(), recebimentos: vi.fn(), aceites: vi.fn(), devolvida: vi.fn(), cancelamento: vi.fn(), momentos: vi.fn() }));
 vi.mock("next/navigation", () => ({ notFound: () => { throw new Error("NEXT_NOT_FOUND"); }, redirect: vi.fn() }));
 vi.mock("@/acesso/sessao-atual", () => ({ exigirSessaoPainel: m.sessao }));
 vi.mock("@/db/client", () => ({ getDb: () => ({}) }));
-vi.mock("@/reservas/repositorio", () => ({ obterReserva: m.reserva }));
+vi.mock("@/reservas/repositorio", () => ({ obterReserva: m.reserva, devolvidaNoProvedorDaReserva: m.devolvida }));
 vi.mock("@/reservas/horarios", async (original) => ({ ...(await original<typeof import("@/reservas/horarios")>()), lerHorariosReservas: async () => new Map() }));
 vi.mock("@/imoveis/repositorio", () => ({ obterImovel: async () => ({ id: "im", codigo: "403", nome: "Studio Fictício" }) }));
 vi.mock("@/auditoria/auditoria", async (original) => ({ ...(await original<typeof import("@/auditoria/auditoria")>()), historicoDe: async () => [] }));
@@ -20,6 +20,15 @@ vi.mock("@/reservas/acoes", () => ({ cancelar: vi.fn(), confirmar: vi.fn(), reso
 vi.mock("@/reservas/horarios-acoes", () => ({ alterarHorarioAcao: vi.fn() }));
 vi.mock("@/repasses/acoes", () => ({ estornarRecebimentoAcao: vi.fn(), registrarRecebimentoAcao: vi.fn() }));
 vi.mock("@/pagamentos/acoes-painel", () => ({ conferirAgoraAcao: vi.fn(), devolverAcao: vi.fn(), devolucaoPorForaAcao: vi.fn(), registrarLiberacaoAcao: vi.fn(), estornarLiberacaoAcao: vi.fn(), registrarTaxaPerdidaAcao: vi.fn() }));
+vi.mock("@/pagamentos/cancelamento-painel", () => ({ cancelamentoDaReserva: m.cancelamento, momentosDoCancelamento: m.momentos }));
+vi.mock("@/pagamentos/acoes-cancelamento", () => ({
+  calcularCancelamentoAcao: vi.fn(),
+  cancelarReservaPagaAcao: vi.fn(),
+  registrarPedidoCancelamentoAcao: vi.fn(),
+  descartarPedidoCancelamentoAcao: vi.fn(),
+  marcarOtaLiberadaAcao: vi.fn(),
+  marcarHospedeAvisadoAcao: vi.fn(),
+}));
 import Page from "./page";
 
 const reserva = {
@@ -81,8 +90,12 @@ beforeEach(() => {
   m.lancamentos.mockResolvedValue([]);
   m.recebimentos.mockResolvedValue([]);
   m.aceites.mockResolvedValue([]);
+  m.devolvida.mockResolvedValue(false);
+  m.cancelamento.mockResolvedValue(null);
+  m.momentos.mockResolvedValue({ entradaEm: new Date("2026-10-12T18:00:00Z"), naoComparecimentoApos: new Date("2026-10-13T15:00:00Z"), fuso: "America/Sao_Paulo" });
 });
-const html = async () => renderToStaticMarkup(await Page({ params: Promise.resolve({ id: "r1" }), searchParams: Promise.resolve({}) } as PageProps<"/painel/reservas/[id]">));
+const html = async (busca: Record<string, string> = {}) =>
+  renderToStaticMarkup(await Page({ params: Promise.resolve({ id: "r1" }), searchParams: Promise.resolve(busca) } as PageProps<"/painel/reservas/[id]">));
 
 it("operação (lê reservas, não o financeiro): vê o quadro com situação e o selo de teste, sem valores nem ações", async () => {
   m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
@@ -135,4 +148,56 @@ it("páginas legais aceitas no site (M7.4): a seção aparece para quem lê rese
   m.sessao.mockResolvedValue({ papel: "limpeza", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
   expect(await html()).not.toContain('aria-label="Páginas legais aceitas"');
   expect(m.aceites).not.toHaveBeenCalled();
+});
+
+it("M8.2c (D21): pagamento do site devolvido no Mercado Pago fora da política — o quadro \"Em conferência\" aparece, com o motivo e o botão de dar por resolvida", async () => {
+  m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  m.lancamentos.mockResolvedValue([{ id: "l1", origem: "motor", estornoDe: null, competencia: "2026-10-01", descricao: "Parte do proprietário", valor: 150000, efeitoSaldo: 150000, estado: "previsto" }]);
+  // Sem a devolução no Mercado Pago, a reserva confirmada e sem divergência não está em conferência.
+  expect(await html()).not.toContain('aria-label="Em conferência"');
+  expect(m.devolvida).toHaveBeenCalledWith({}, "org", "r1");
+  m.devolvida.mockResolvedValue(true);
+  const h = await html();
+  expect(h).toContain('aria-label="Em conferência"');
+  expect(h).toContain("O Mercado Pago mostra o pagamento desta reserva devolvido fora do sistema: a parte do proprietário não é repassada.");
+  expect(h).toContain("Dar a conferência por resolvida");
+  // Já dada por resolvida: o quadro some (e nem se consulta de novo).
+  m.devolvida.mockClear();
+  m.reserva.mockResolvedValue({ ...reserva, conferenciaResolvidaEm: new Date("2026-10-05T12:00:00Z") });
+  expect(await html()).not.toContain('aria-label="Em conferência"');
+  expect(m.devolvida).not.toHaveBeenCalled();
+});
+
+it("M8.2c: reserva paga pelo site — o botão de cancelar de sempre some; o cancelamento pela política fica no quadro do pagamento", async () => {
+  m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  const h = await html();
+  expect(h).not.toContain(">Cancelar reserva</button>");
+  expect(h).toContain('aria-label="Cancelamento pela política"');
+  expect(h).toContain("Calcular o cancelamento pela política");
+  expect(h.indexOf('aria-label="Cancelamento pela política"')).toBeGreaterThan(h.indexOf('aria-label="Pagamento no site"'));
+  expect(m.cancelamento).toHaveBeenCalledWith({}, "org", "r1", expect.any(Date));
+  expect(m.momentos).toHaveBeenCalledWith({}, "org", "r1");
+  // A operação (sem o financeiro) registra o pedido; não calcula e não lê os momentos do cálculo.
+  m.momentos.mockClear();
+  m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  const op = await html();
+  expect(op).toContain("Registrar pedido de cancelamento");
+  expect(op).not.toContain("Calcular o cancelamento");
+  expect(m.momentos).not.toHaveBeenCalled();
+});
+
+it("M8.2c: reserva sem pagamento no site continua com o botão de cancelar de sempre e sem o quadro do cancelamento", async () => {
+  m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  m.pagamentos.mockResolvedValue([{ ...pagamento, desfecho: null }]);
+  const h = await html();
+  expect(h).toContain(">Cancelar reserva</button>");
+  expect(h).not.toContain('aria-label="Cancelamento pela política"');
+  expect(m.cancelamento).not.toHaveBeenCalled();
+});
+
+it("M8.2c: o resultado da ação do cancelamento vem só de chaves conhecidas", async () => {
+  m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  expect(await html({ cancelamento: "pedida" })).toContain("Reserva cancelada. Devolução pedida ao Mercado Pago: a confirmação aparece aqui quando ele concluir (use Conferir agora).");
+  expect(await html({ cancelamento: "pedido_registrado" })).toContain("Pedido de cancelamento registrado");
+  expect(await html({ cancelamento: "qualquer coisa" })).not.toContain("Reserva cancelada.");
 });

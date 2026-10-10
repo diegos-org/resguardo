@@ -3,7 +3,8 @@ import { historicoDe } from "@/auditoria/auditoria";
 import { auditoria, configuracoes, organizacoes, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { gravarConfig } from "./armazem";
 import { type DefinicaoDocumento, lerVersoes, mensagemVersaoMudou, normalizarSecoes, publicarVersao, secoesIguais, validarSecoes, versaoAtual, versoesDe } from "./documentos-versionados";
 
 // Documento de mentira numa chave livre: duas seções e um campo próprio gravado em cada versão.
@@ -74,6 +75,17 @@ describe("documento versionado genérico (M7.4, motor do M5.6)", () => {
     expect(historico).toContainEqual({ versao: [null, 1], selo: [null, "s1"], "secao.a": [null, "um"], "secao.b": [null, "dois"] });
     expect(historico).toContainEqual({ versao: [1, 2], selo: ["s1", "s2"] });
     expect(historico).toContainEqual({ versao: [2, 3], "secao.b": ["dois", "três"] });
+  });
+
+  it("publicar: as versões já publicadas voltam ao banco exatamente como estavam gravadas (a leitura tolerante, que completa e descarta campos, não as reescreve)", async () => {
+    // Gravada por um código mais antigo: sem o campo próprio de hoje e com uma chave que a leitura descarta.
+    const antiga = { numero: 1, data: "2026-10-04", autorId: null, secoes: { a: "um" }, legado: "x" };
+    await gravarConfig(db, org, DOC.chave, { versoes: [antiga] }, null, false);
+    expect((await lerVersoes(db, DOC, org))[0]).toEqual({ numero: 1, data: "2026-10-04", autorId: null, secoes: { a: "um", b: "" }, selo: "" });
+    expect(await publicarVersao(db, DOC, org, { a: "dois", b: "" }, admin, "2026-10-05", 1, com("s2"))).toMatchObject({ ok: true, mudou: true, versao: { numero: 2 } });
+    const [linha] = await db.select().from(configuracoes).where(and(eq(configuracoes.organizacaoId, org), eq(configuracoes.chave, DOC.chave)));
+    expect((linha.valor as { versoes: unknown[] }).versoes).toEqual([antiga, { numero: 2, data: "2026-10-05", autorId: admin, secoes: { a: "dois", b: "" }, selo: "s2" }]);
+    expect((await lerVersoes(db, DOC, org)).map((v) => [v.numero, v.selo])).toEqual([[1, ""], [2, "s2"]]);
   });
 
   it("publicar: base velha é recusada; o campo próprio pode recusar sem gravar nada; data inválida é erro; cada organização tem as suas", async () => {

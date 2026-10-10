@@ -18,6 +18,8 @@ type Props = {
   categoriaPadrao: string;
   /** Cartão (M8.2b): o teto de parcelas do Mercado Pago e as opções da verificação do banco, com os textos do servidor. */
   parcelasLimite: number;
+  /** Cancelamento (M8.2c): o máximo de horas do não comparecimento (a regra mora em configuracoes/pagamento-site). */
+  horasLimite: number;
   opcoesTresDS: readonly { valor: string; texto: string }[];
   /** financeiro:editar; sem ela, só leitura. */
   editar: boolean;
@@ -26,10 +28,11 @@ type Props = {
 
 /**
  * Configurações → Pagamento no site (M8.2a): oferecer ou não o pagamento no site, o cartão de crédito (M8.2b: ligado ou
- * não, o máximo de parcelas e a verificação do banco), o nome na fatura (para o cartão; vazio = o nome da empresa) e a
- * categoria da despesa da taxa que o Mercado Pago não devolve. Vale para as tentativas novas.
+ * não, o máximo de parcelas e a verificação do banco), o nome na fatura (para o cartão; vazio = o nome da empresa), a
+ * categoria da despesa da taxa que o Mercado Pago não devolve e, no cancelamento (M8.2c), o pedido pelo hóspede em Minha
+ * reserva e a tolerância do não comparecimento. Vale para as tentativas novas.
  */
-export function FormPagamentoSite({ config, categorias, nomeEmpresa, limiteNome, visiveis, categoriaPadrao, parcelasLimite, opcoesTresDS, editar, salvar }: Props) {
+export function FormPagamentoSite({ config, categorias, nomeEmpresa, limiteNome, visiveis, categoriaPadrao, parcelasLimite, horasLimite, opcoesTresDS, editar, salvar }: Props) {
   const [estado, enviar, enviando] = useActionState(salvar, {});
   const [nome, setNome] = useState(estado.valores?.nomeFatura ?? config.nomeFatura ?? "");
   const naFatura = (nome.trim() || nomeEmpresa).slice(0, visiveis);
@@ -126,6 +129,36 @@ export function FormPagamentoSite({ config, categorias, nomeEmpresa, limiteNome,
         <p style={nota}>
           Quando um pagamento sem reserva é devolvido, a parte da taxa que o Mercado Pago não devolve vira despesa da empresa nesta categoria, só depois da
           confirmação e com o valor que ele informar.
+        </p>
+        <label className={styles.check}>
+          <input
+            type="checkbox"
+            name="pedidoCancelamentoNoPortal"
+            defaultChecked={estado.valores ? estado.valores.pedidoCancelamentoNoPortal === "on" : config.pedidoCancelamentoNoPortal}
+          />{" "}
+          Hóspede pode pedir o cancelamento em Minha reserva (reservas pagas pelo site)
+        </label>
+        <p style={nota}>
+          O hóspede só pede: a data e a hora em que o pedido chegou ficam registradas na hora, e quem cuida do financeiro faz o cancelamento no painel, com a
+          devolução pela política que ele aceitou.
+        </p>
+        <label>
+          Não comparecimento: horas depois do horário de entrada
+          <input
+            name="naoComparecimentoHoras"
+            type="number"
+            min={0}
+            max={horasLimite}
+            inputMode="numeric"
+            defaultValue={estado.valores ? (estado.valores.naoComparecimentoHoras ?? "") : config.naoComparecimentoHoras}
+            aria-invalid={estado.erros?.naoComparecimentoHoras ? true : undefined}
+            aria-describedby={estado.erros?.naoComparecimentoHoras ? "erro-naoComparecimentoHoras" : undefined}
+          />
+          {erro("naoComparecimentoHoras")}
+        </label>
+        <p style={nota}>
+          Só depois disso a equipe pode registrar que o hóspede não chegou e não avisou (ele pode chegar atrasado). Com entrada às 15:00, 21 horas = 12:00 do
+          dia seguinte.
         </p>
       </fieldset>
       {estado.ok && (

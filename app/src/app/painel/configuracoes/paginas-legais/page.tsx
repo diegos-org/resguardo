@@ -9,7 +9,7 @@ import { versaoAtual } from "@/configuracoes/documentos-versionados";
 import { lerEmpresa } from "@/configuracoes/empresa";
 import { camposDesatualizados, lerPaginasLegais } from "@/configuracoes/paginas-legais";
 import { RASCUNHO_PAGINAS_LEGAIS } from "@/configuracoes/paginas-legais-rascunho";
-import { CAMPOS_LEGAIS, DOCUMENTOS_LEGAIS, type DocumentoLegal, noMeioDaFrase, PAGINAS_LEGAIS, rotuloDoCampo, valoresDisponiveis } from "@/configuracoes/paginas-legais-texto";
+import { CAMPOS_LEGAIS, DOCUMENTOS_LEGAIS, type DocumentoLegal, noMeioDaFrase, PAGINAS_LEGAIS, regrasComPadrao, rotuloDoCampo, valoresDisponiveis } from "@/configuracoes/paginas-legais-texto";
 import { getDb } from "@/db/client";
 import { usuarios } from "@/db/schema";
 import { contarAceitesPorVersao } from "@/site/aceites";
@@ -42,6 +42,8 @@ export default async function PaginasLegais({ searchParams }: PageProps<"/painel
   const desatualizados = atual ? camposDesatualizados(atual, valoresDisponiveis(empresa, atual.regras)) : [];
   const empresaAgora = valoresDisponiveis(empresa, null);
   const rascunho = RASCUNHO_PAGINAS_LEGAIS[doc];
+  // Com o padrão da regra: a versão 1, publicada sem o campo, abre marcada (republicar sem mexer mantém o limite).
+  const limiteDoArrependimento = doc === "cancelamento" ? (atual?.regras ? regrasComPadrao(atual.regras).arrependimentoAteEntrada : rascunho.arrependimentoAteEntrada) : null;
   const { rota, titulo } = PAGINAS_LEGAIS[doc];
   return (
     <>
@@ -86,6 +88,7 @@ export default async function PaginasLegais({ searchParams }: PageProps<"/painel
         atual={atual ? { numero: atual.numero, data: atual.data } : null}
         valores={atual?.secoes ?? rascunho.secoes}
         dias={doc === "cancelamento" ? (atual?.regras?.diasReembolsoIntegral ?? rascunho.diasReembolsoIntegral) : null}
+        arrependimentoAteEntrada={limiteDoArrependimento}
         campos={CAMPOS_LEGAIS.filter((c) => !("so" in c)).map((c) => ({ chave: c.chave, rotulo: c.rotulo, valor: empresaAgora[c.chave] ?? "" }))}
         salvar={publicarPaginaLegalAcao}
       />

@@ -353,7 +353,7 @@ describe("ProvedorFalso: cancelar e devolver", () => {
     const p = novo();
     await p.criarCartao(cartao());
     const c = (await p.consultar("ORDTST0001"))!;
-    expect(await p.devolver(c, "d1", null)).toEqual({ situacao: "confirmada", idDevolucao: "REFTST0001", mensagem: "Devolução confirmada pelo Mercado Pago." });
+    expect(await p.devolver(c, "d1", null)).toEqual({ situacao: "confirmada", idDevolucao: "REFTST0001", mensagem: "Devolução confirmada pelo Mercado Pago.", codigo: null });
     expect(await p.consultar("ORDTST0001")).toMatchObject({ situacao: "devolvido", devolvido: 50_000, detalhe: "refunded/refunded" });
     expect(await p.devolver(c, "d2", null)).toMatchObject({ situacao: "confirmada", idDevolucao: null });
   });
@@ -378,14 +378,14 @@ describe("ProvedorFalso: cancelar e devolver", () => {
     expect(await p.devolver({ ...(await p.consultar("ORDTST0001"))!, idProvedor: "ORDTST0099" }, "d2", null)).toMatchObject({ situacao: "recusada" });
   });
 
-  it("devolução 'pedida' espera a confirmação; nova integral enquanto pende → pedida", async () => {
+  it("devolução 'pedida' espera a confirmação; nova integral enquanto pende → aguarde (M8.2c: não é aceita por esta chave)", async () => {
     const p = novo();
     p.respostaDevolucao = "pedida";
     await p.criarCartao(cartao());
     const c = (await p.consultar("ORDTST0001"))!;
     expect(await p.devolver(c, "d1", null)).toMatchObject({ situacao: "pedida", idDevolucao: "REFTST0001" });
     expect(await p.consultar("ORDTST0001")).toMatchObject({ situacao: "aprovado", devolvido: 0 });
-    expect(await p.devolver(c, "d2", null)).toMatchObject({ situacao: "pedida", idDevolucao: null });
+    expect(await p.devolver(c, "d2", null)).toEqual({ situacao: "aguarde", idDevolucao: null, mensagem: "Já há uma devolução em andamento para este pagamento: aguardar o Mercado Pago concluir.", codigo: "em_andamento" });
     p.confirmarDevolucoes("ORDTST0001");
     expect(await p.consultar("ORDTST0001")).toMatchObject({ situacao: "devolvido", devolvido: 50_000 });
   });
@@ -411,6 +411,126 @@ describe("ProvedorFalso: cancelar e devolver", () => {
     p.devolverNoProvedor("ORDTST0001", 5_000);
     expect(await p.consultar("ORDTST0001")).toMatchObject({ situacao: "devolvido_parcial", devolvido: 5_000, detalhe: "processed/partially_refunded" });
     expect(() => p.devolverNoProvedor("ORDTST0001", -1)).toThrow();
+  });
+});
+
+describe("ProvedorFalso: devoluções do M8.2c (ids, respostas com código e simuladores)", () => {
+  const aprovado = async (p: ProvedorFalso) => {
+    await p.criarCartao(cartao({ parcelas: 1 }));
+    return (await p.consultar("ORDTST0001"))!;
+  };
+
+  it("as devoluções aparecem na leitura com id e estado; a do painel do provedor tem id próprio", async () => {
+    const p = novo();
+    p.respostaDevolucao = "pedida";
+    const c = await aprovado(p);
+    expect(c.devolucoes).toEqual([]);
+    await p.devolver(c, "d1", null);
+    expect(await p.consultar("ORDTST0001")).toMatchObject({ devolucaoEmAndamento: true, devolucoes: [{ id: "REFTST0001", estado: "andamento", valor: 50_000 }] });
+    p.confirmarDevolucoes("ORDTST0001");
+    expect(await p.consultar("ORDTST0001")).toMatchObject({ situacao: "devolvido", devolucaoEmAndamento: false, devolucoes: [{ id: "REFTST0001", estado: "confirmada", valor: 50_000 }] });
+    // A cópia é independente: mexer nela não muda a order.
+    const lida = (await p.consultar("ORDTST0001"))!;
+    lida.devolucoes[0].estado = "falhou";
+    expect((await p.consultar("ORDTST0001"))!.devolucoes[0].estado).toBe("confirmada");
+    const outro = novo();
+    await aprovado(outro);
+    outro.devolverNoProvedor("ORDTST0001", 5_000);
+    expect((await outro.consultar("ORDTST0001"))!.devolucoes).toEqual([{ id: "REFPNL0001", estado: "confirmada", valor: 5_000 }]);
+  });
+
+  it.each([
+    ["saldo_insuficiente", "recusada", "saldo_insuficiente"],
+    ["prazo", "recusada", "prazo"],
+    ["em_andamento", "aguarde", "em_andamento"],
+    ["transitorio", "aguarde", "transitorio"],
+  ] as const)("respostaDevolucao %s → %s com o código, sem mexer na order", async (resposta, situacao, codigo) => {
+    const p = novo();
+    const c = await aprovado(p);
+    p.respostaDevolucao = resposta;
+    expect(await p.devolver(c, "d1", null)).toMatchObject({ situacao, codigo, idDevolucao: null });
+    expect(await p.consultar("ORDTST0001")).toMatchObject({ situacao: "aprovado", devolvido: 0, devolucaoEmAndamento: false, devolucoes: [] });
+    // A espera não guarda a chave (nada foi aceito): a mesma chave vale depois. A recusa guarda (como a API).
+    p.respostaDevolucao = "confirmada";
+    expect((await p.devolver(c, "d1", null)).situacao).toBe(situacao === "aguarde" ? "confirmada" : "incerta");
+  });
+
+  it("toda resposta traz o código: aceitas e validações locais null; recusas do provedor com o código da lista", async () => {
+    const p = novo();
+    const c = await aprovado(p);
+    expect((await p.devolver(c, "", null)).codigo).toBeNull();
+    expect(await p.devolver(c, "d1", 60_000)).toMatchObject({ situacao: "recusada", codigo: "valor_excede" });
+    expect(await p.devolver(c, "d2", null)).toMatchObject({ situacao: "confirmada", codigo: null });
+    expect(await p.devolver(c, "d3", null)).toMatchObject({ situacao: "confirmada", idDevolucao: null, codigo: null });
+    const pendente = novo();
+    await pendente.criarPix(pix());
+    expect(await pendente.devolver((await pendente.consultar("ORDTST0001"))!, "d1", null)).toMatchObject({ situacao: "recusada", codigo: "nao_permitido" });
+  });
+
+  it("falharDevolucao: a aceita passa a falhou na leitura; o devolvido e a situação não mudam", async () => {
+    const p = novo();
+    p.respostaDevolucao = "pedida";
+    const c = await aprovado(p);
+    await p.devolver(c, "d1", null);
+    p.falharDevolucao("REFTST0001");
+    expect(await p.consultar("ORDTST0001")).toMatchObject({ situacao: "aprovado", devolvido: 0, devolucaoEmAndamento: false, devolucoes: [{ id: "REFTST0001", estado: "falhou" }] });
+    expect(() => p.falharDevolucao("REFTST0099")).toThrow();
+    // Sem devolução em andamento, um pedido novo cria outra.
+    p.respostaDevolucao = "confirmada";
+    expect(await p.devolver(c, "d2", null)).toMatchObject({ situacao: "confirmada", idDevolucao: "REFTST0002" });
+  });
+
+  it("atrasarListagem: a próxima aceita fica fora das próximas leituras (consultar), depois aparece", async () => {
+    const p = novo();
+    p.respostaDevolucao = "pedida";
+    const c = await aprovado(p);
+    await p.devolver(c, "d1", null);
+    p.falharDevolucao("REFTST0001");
+    p.atrasarListagem(2);
+    expect(await p.devolver(c, "d2", null)).toMatchObject({ situacao: "pedida", idDevolucao: "REFTST0002" });
+    // Leituras 1 e 2: só a antiga (que falhou); nada em andamento à vista.
+    for (let i = 0; i < 2; i++) expect(await p.consultar("ORDTST0001")).toMatchObject({ devolucaoEmAndamento: false, devolucoes: [{ id: "REFTST0001", estado: "falhou" }] });
+    // O provedor sabe dela: outra integral agora é "aguarde".
+    expect((await p.devolver(c, "d3", null)).situacao).toBe("aguarde");
+    expect((await p.consultar("ORDTST0001"))!.devolucoes.map((d) => [d.id, d.estado])).toEqual([["REFTST0001", "falhou"], ["REFTST0002", "andamento"]]);
+    expect(() => p.atrasarListagem(-1)).toThrow();
+  });
+
+  it("detalheDevolvido processed/refunded: a order inteira devolvida vem desconhecida, com a devolução confirmada; nova devolução = já devolvida", async () => {
+    const p = novo();
+    p.detalheDevolvido = "processed/refunded";
+    const c = await aprovado(p);
+    expect(await p.devolver(c, "d1", null)).toMatchObject({ situacao: "confirmada", idDevolucao: "REFTST0001" });
+    expect(await p.consultar("ORDTST0001")).toMatchObject({ situacao: "desconhecido", detalhe: "processed/refunded", devolvido: 50_000, devolucoes: [{ id: "REFTST0001", estado: "confirmada", valor: 50_000 }] });
+    expect(await p.devolver(c, "d2", null)).toMatchObject({ situacao: "confirmada", idDevolucao: null });
+  });
+
+  it("devolverAMenos: a próxima aceita conclui por menos (devolvida em parte), na hora ou ao confirmar", async () => {
+    const p = novo();
+    const c = await aprovado(p);
+    p.devolverAMenos(30_000);
+    expect(await p.devolver(c, "d1", null)).toMatchObject({ situacao: "confirmada", idDevolucao: "REFTST0001" });
+    expect(await p.consultar("ORDTST0001")).toMatchObject({ situacao: "devolvido_parcial", devolvido: 30_000, devolucoes: [{ id: "REFTST0001", estado: "confirmada", valor: 30_000 }] });
+    const q = novo();
+    q.respostaDevolucao = "pedida";
+    const d = await aprovado(q);
+    q.devolverAMenos(10_000);
+    await q.devolver(d, "d1", null);
+    expect((await q.consultar("ORDTST0001"))!.devolucoes).toEqual([{ id: "REFTST0001", estado: "andamento", valor: 50_000 }]);
+    q.confirmarDevolucoes("ORDTST0001");
+    expect(await q.consultar("ORDTST0001")).toMatchObject({ situacao: "devolvido_parcial", devolvido: 10_000, devolucoes: [{ id: "REFTST0001", estado: "confirmada", valor: 10_000 }] });
+    // Só a próxima: a seguinte devolve o que pedir.
+    expect(await q.devolver(d, "d2", null)).toMatchObject({ situacao: "pedida", idDevolucao: "REFTST0002" });
+    expect(() => q.devolverAMenos(0)).toThrow();
+  });
+
+  it("esquecerOrder: a leitura não acha mais a order e a devolução é recusada como não encontrada", async () => {
+    const p = novo();
+    const c = await aprovado(p);
+    p.esquecerOrder("ORDTST0001");
+    expect(await p.consultar("ORDTST0001")).toBeNull();
+    expect(await p.buscarPorReferencia("scl-2", new Date(AGORA.getTime() - 60_000))).toBeNull();
+    expect(await p.devolver(c, "d1", null)).toMatchObject({ situacao: "recusada", codigo: "nao_encontrado" });
   });
 });
 
