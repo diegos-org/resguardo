@@ -328,6 +328,7 @@ describe("várias devoluções por pagamento (M8.2d)", () => {
     id: "44444444-4444-4444-8444-444444444444",
     origem: "alteracao",
     alteracaoId: ALTERACAO,
+    cancelamentoId: null,
     valor: 30000,
     situacao: "pedida",
     valorConfirmado: null,

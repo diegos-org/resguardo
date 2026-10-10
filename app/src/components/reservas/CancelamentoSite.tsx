@@ -284,20 +284,22 @@ export function CancelamentoSite({ reserva, pagamento, pagamentos, cancelamento:
     );
   }
 
-  // Cancelada pela política. A devolução de cada pagamento que conta (M8.2d: depois de um aumento, também a do pagamento da
-  // diferença); com uma só, a linha de sempre.
-  const porPagamento = c.direito === "integral" ? devolucoesDoCancelamento(pagamentos ?? [pagamento], verValores) : [];
+  // Cancelada pela política. As devoluções deste cancelamento em cada pagamento que conta (M8.2d: depois de um aumento,
+  // também a do pagamento da diferença; o restante de uma devolvida a menos); com uma só, a linha de sempre. Sem nenhuma
+  // na lista do domínio, nada (a que manda no pagamento pode ser a de uma redução de antes); a tentativa montada à mão, sem
+  // a lista, usa a que manda.
+  const porPagamento = c.direito === "integral" ? devolucoesDoCancelamento(pagamentos ?? [pagamento], verValores, c.id) : [];
   const devolucao: ReactNode =
     c.direito !== "integral" ? null : porPagamento.length > 1 ? (
       <ul key="devolucoes" style={{ margin: 0, paddingLeft: 18 }}>
         {porPagamento.map((x) => (
-          <li key={x.pagamentoId}>
+          <li key={x.chave}>
             {x.rotulo}: {x.linha}
           </li>
         ))}
       </ul>
     ) : (
-      (porPagamento[0]?.linha ?? linhaDaDevolucao(pagamento, verValores))
+      (porPagamento[0]?.linha ?? (pagamento.devolucoes ? null : linhaDaDevolucao(pagamento, verValores)))
     );
   const linhas: [string, ReactNode][] = [
     ["Pedido recebido em", momentoDoPedido(c)],

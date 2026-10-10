@@ -50,6 +50,7 @@ import { and, eq, like, or } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { categoriaDaTaxaPerdida } from "@/configuracoes/pagamento-site";
 import { devolucoesPagamento, lancamentos, pagamentos, type SituacaoDevolucao } from "@/db/schema";
+import { violouUnicidade } from "@/db/erros";
 import type { Db } from "@/db/types";
 import { estornar, lancar, LancamentoInvalido } from "@/financeiro/ledger";
 import { ERRO_DADOS_PESSOAIS, textoSemDadosPessoais } from "@/lib/dados-pessoais";
@@ -104,6 +105,8 @@ export const ERRO_POR_FORA_CARTAO =
 /** O pedido já foi enviado e ainda pode sair pelo Mercado Pago (D16): a devolução por fora não é registrada. */
 export const ERRO_POR_FORA_CHAVE_ENVIADA =
   "O pedido desta devolução já foi enviado ao Mercado Pago e ainda pode sair por lá: a devolução por fora não é registrada. Espere a leitura (Conferir agora) ou, passado o prazo de leitura, pare a devolução pedida.";
+/** Outra devolução do mesmo pagamento já está pedida ao Mercado Pago (uma pedida por pagamento). */
+export const ERRO_OUTRA_PEDIDA = "Já há uma devolução pedida ao Mercado Pago para este pagamento: espere ela se resolver.";
 /** Limite das notas da equipe (devolução por fora, confirmação, recusa no painel, parada, correção da taxa). */
 const LIMITE_NOTA = 300;
 
@@ -567,6 +570,9 @@ function recusaDoPedido(p: Pagamento, dev: Devolucao | undefined, devs: readonly
     const emParteExplicada = p.situacao === "devolvido_parcial" && !devolucaoInexplicada(p, devs);
     if (p.situacao !== "aprovado" && !emParteExplicada) return "Só um pagamento aprovado (e ainda não devolvido) pode ser devolvido.";
     if (!dev) return "A devolução deste cancelamento não foi registrada: confira o quadro Pagamento no site.";
+    // Uma pedida por pagamento (índice único): com outra devolução deste pagamento pedida ao Mercado Pago (a de outra
+    // alteração, a do cancelamento), esta espera aquela se resolver para ser pedida de novo.
+    if (!porFora && devs.some((x) => x.situacao === "pedida" && x.id !== dev.id)) return ERRO_OUTRA_PEDIDA;
   }
   if (dev) {
     // Por fora (D16): só numa devolução nunca enviada ao Mercado Pago (esperando a liberação, fora do prazo, um restante
@@ -676,7 +682,22 @@ export async function devolverPeloProvedor(
   o: { valorForaInformado?: number } = {},
 ): Promise<ResultadoAcaoPagamento> {
   const alvo = comoAlvo(alvoBruto);
-  const r = await comAlvo(db, organizacaoId, alvo, (d) => d.situacao === "pedida" || d.situacao === "recusada", async (tx, t, p, devAlvo, devs) => {
+  let r: { ok: true; id: string } | { ok: false; erro: string };
+  try {
+    r = await pedirDeNovoOuCriar(db, organizacaoId, alvo, autorId, agora, o);
+  } catch (erro) {
+    // Outra devolução do pagamento pedida ao mesmo tempo (o índice de uma pedida por pagamento): a recusa, nunca o erro do banco.
+    if (violouUnicidade(erro, "devolucoes_pagamento_uma_pedida")) return { ok: false, erro: ERRO_OUTRA_PEDIDA };
+    throw erro;
+  }
+  if (!r.ok) return r;
+  const situacao = await tentarDevolucao(db, organizacaoId, r.id, provedor, agora);
+  return { ok: true, situacao: situacao ?? "pedida" };
+}
+
+/** A fase sob a trava de `devolverPeloProvedor`: confere, cria a devolução (ou volta a recusada a pedida) e devolve o id. */
+async function pedirDeNovoOuCriar(db: Db, organizacaoId: string, alvo: AlvoDaDevolucao, autorId: string | null, agora: Date, o: { valorForaInformado?: number }) {
+  return comAlvo(db, organizacaoId, alvo, (d) => d.situacao === "pedida" || d.situacao === "recusada", async (tx, t, p, devAlvo, devs) => {
     // Pelo pagamento sem reserva: a devolução principal dele (sem reserva, não um restante), se houver.
     const dev = "devolucaoId" in alvo ? devAlvo : p.desfecho === null && !dinheiroDaReserva(p) ? principalSemReserva(devs) : devAlvo;
     const recusa = recusaDoPedido(p, dev, devs, t, false, agora);
@@ -719,9 +740,6 @@ export async function devolverPeloProvedor(
     await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "pagamento.devolver", entidade: "pagamento", entidadeId: p.id, mudancas: { devolucao: [dev?.situacao ?? null, "pedida"], valor: [null, valor] } });
     return { ok: true as const, id };
   });
-  if (!r.ok) return r;
-  const situacao = await tentarDevolucao(db, organizacaoId, r.id, provedor, agora);
-  return { ok: true, situacao: situacao ?? "pedida" };
 }
 
 /**
@@ -1045,6 +1063,14 @@ export async function registrarDevolucaoPorFora(
   });
 }
 
+/** A última leitura gravada mostra, além das outras devoluções nossas e do reconhecido, ao menos `valor` devolvido. */
+async function mostraDevolvidoAlem(db: Db, pagamentoId: string, devolucaoId: string, valor: number): Promise<boolean> {
+  const [p] = await db.select().from(pagamentos).where(eq(pagamentos.id, pagamentoId));
+  const devs = devolucoesDoPagamento({ devolucoes: await db.select().from(devolucoesPagamento).where(eq(devolucoesPagamento.pagamentoId, pagamentoId)) }, pagamentoId);
+  const dev = devs.find((x) => x.id === devolucaoId);
+  return !!p && !!dev && devolvidoAlemDoNosso(p, dev, devs) >= valor;
+}
+
 /** A data e a nota de um registro da equipe (confirmação ou recusa no painel do Mercado Pago). */
 function problemaDoRegistro(d: { data: string; nota: string }, agora: Date): string | null {
   if (!dataValida(d.data)) return "Data inválida.";
@@ -1057,6 +1083,20 @@ const semConfirmacaoPelaLeitura = (p: Pagamento, dev: Devolucao, devs: readonly 
   const avisos = avisosDaDevolucao(p, dev, devs.every((x) => x.id === dev.id));
   return avisos.includes("devolucao_sem_confirmacao") || avisos.includes("devolucao_a_menor") || avisos.includes("devolucao_parada") || p.avisos.includes("situacao_desconhecida");
 };
+
+/**
+ * A devolução que o sistema nunca pediu ao Mercado Pago: recusada de saída porque o pagamento passou do prazo de pedir
+ * (fora do prazo, sem nenhum envio nem chave). Nada dela pode estar lá; a equipe a faz no painel dele. A de parte (a
+ * redução de uma alteração) nunca completa a order: a leitura não tem como confirmá-la, e a equipe confirma quando a
+ * leitura mostra devolvido além das nossas devoluções e do reconhecido (`devolvidoAlemDoNosso`).
+ */
+const nuncaPedidaPeloPrazo = (p: Pagamento, dev: Devolucao, devs: readonly Devolucao[]) =>
+  dev.situacao === "recusada" && dev.tentativas === 0 && dev.chaveAtual === null && avisosDaDevolucao(p, dev, devs.every((x) => x.id === dev.id)).includes("devolucao_fora_do_prazo");
+/** O devolvido que a última leitura mostra além das outras devoluções nossas e do reconhecido devolvido fora. */
+const devolvidoAlemDoNosso = (p: Pagamento, dev: Devolucao, devs: readonly Devolucao[]) =>
+  p.devolvidoLido - p.devolvidoForaReconhecido - devolvidoProprio(devs.filter((x) => x.id !== dev.id));
+const NAO_MOSTRA_A_DEVOLUCAO =
+  "O Mercado Pago ainda deixa conferir este pagamento e a leitura não mostra esta devolução: faça a devolução no painel do Mercado Pago, use Conferir agora e confirme de novo.";
 
 /**
  * "Confirmar devolução feita no painel do Mercado Pago" (M8.2c, `financeiro:editar`): a equipe viu no painel do Mercado
@@ -1095,8 +1135,13 @@ export async function confirmarDevolucaoVistaNoProvedor(
     return { ok: false, erro: `Informe o valor que o painel do Mercado Pago mostra (até ${formatBRL(devLida.valor)}).` };
   const foraDaLeitura = lido.criadoEm.getTime() < inicioDoPrazoDeReleitura(agora).getTime();
   const semLeitura = semConfirmacaoPelaLeitura(lido, devLida, vivasLidas);
+  // Nunca pedida (fora do prazo de pedir): a equipe a faz no painel do Mercado Pago e confirma aqui, também com a order
+  // ainda legível, desde que a leitura mostre o valor devolvido além do que as nossas devoluções explicam.
+  const nuncaPedida = nuncaPedidaPeloPrazo(lido, devLida, vivasLidas);
   const AINDA_CONFERE = "O Mercado Pago ainda deixa conferir este pagamento: use Conferir agora (a confirmação vem da leitura).";
-  if (!foraDaLeitura && !semLeitura) return { ok: false, erro: AINDA_CONFERE };
+  if (!foraDaLeitura && !semLeitura && !nuncaPedida) return { ok: false, erro: AINDA_CONFERE };
+  /** A order foi lida agora (o Mercado Pago ainda a mostra). */
+  let cobrancaLegivel = false;
   if (!provedor) {
     // Sem como reler: só quando a order com certeza não existe mais (passou do tempo em que o Mercado Pago a guarda).
     if (lido.criadoEm.getTime() >= agora.getTime() - RETENCAO_ORDERS_DIAS * 86_400_000) return { ok: false, erro: ERRO_POR_FORA_SEM_CONFERIR };
@@ -1108,6 +1153,7 @@ export async function confirmarDevolucaoVistaNoProvedor(
       return { ok: false, erro: ERRO_POR_FORA_SEM_CONFERIR };
     }
     if (cobranca) {
+      cobrancaLegivel = true;
       try {
         await conferirTentativa(db, organizacaoId, lido.id, provedor, agora, { forcar: true, origem: "painel", cobranca });
       } catch {
@@ -1116,8 +1162,11 @@ export async function confirmarDevolucaoVistaNoProvedor(
       if ((await situacaoDaDevolucao(db, devLida.id)) === "confirmada") return { ok: true, situacao: "confirmada", mensagem: "O Mercado Pago já mostra a devolução: confirmada pela leitura." };
       // A order ainda aparece e não confirma: sem aviso, a confirmação vem da leitura (Conferir agora), também depois do
       // prazo de leitura, enquanto o Mercado Pago ainda mostra a order. Com um dos avisos, a leitura não tem como
-      // confirmar, dentro ou fora do prazo: a equipe confirma o que vê no painel dele.
-      if (!semLeitura) return { ok: false, erro: AINDA_CONFERE };
+      // confirmar, dentro ou fora do prazo: a equipe confirma o que vê no painel dele. A nunca pedida: só com a leitura
+      // (a de agora) mostrando o devolvido (conferido de novo sob a trava).
+      if (nuncaPedida) {
+        if (!(await mostraDevolvidoAlem(db, lido.id, devLida.id, d.valor ?? devLida.valor))) return { ok: false, erro: NAO_MOSTRA_A_DEVOLUCAO };
+      } else if (!semLeitura) return { ok: false, erro: AINDA_CONFERE };
     }
   }
   return comAlvo(db, organizacaoId, { devolucaoId: devLida.id }, undefined, async (tx, t, p, dev, devs) => {
@@ -1127,6 +1176,9 @@ export async function confirmarDevolucaoVistaNoProvedor(
     const valor = d.valor ?? dev.valor;
     const outras = devs.filter((x) => x.id !== dev.id);
     if (!cabeNoTeto(p, outras, valor)) return { ok: false as const, erro: ERRO_TETO };
+    // A nunca pedida com a order legível: a leitura (a gravada, sob a trava) ainda mostra o devolvido.
+    const explicaOPorFora = nuncaPedidaPeloPrazo(p, dev, devs);
+    if (explicaOPorFora && cobrancaLegivel && devolvidoAlemDoNosso(p, dev, devs) < valor) return { ok: false as const, erro: NAO_MOSTRA_A_DEVOLUCAO };
     const aMenor = valor < dev.valor;
     const antes = dev.situacao;
     const mudanca = {
@@ -1160,6 +1212,13 @@ export async function confirmarDevolucaoVistaNoProvedor(
       },
       agora,
     );
+    // O devolvido que a leitura mostrava sem explicação (D21) era esta devolução: explicado agora, o aviso sai já (a
+    // próxima leitura recalcula do mesmo jeito).
+    if (explicaOPorFora && p.avisos.includes("devolvido_por_fora") && !devolucaoInexplicada(p, devs)) {
+      const avisos = p.avisos.filter((a) => a !== "devolvido_por_fora");
+      await tx.update(pagamentos).set({ avisos, atualizadoEm: agora }).where(eq(pagamentos.id, p.id));
+      p.avisos = avisos;
+    }
     await sincronizarAvisosDoPagamento(tx, t, p, agora);
     await registrarAuditoria(tx, {
       organizacaoId,
@@ -1424,7 +1483,7 @@ export function acoesDaDevolucao(p: Pagamento, dev: Devolucao, devs: readonly De
       cabeNoPagamento(dev, p, t) &&
       (dev.situacao === "pedida" || dev.situacao === "recusada") &&
       !(dev.tentativas === 0 && dev.ultimoCodigo === "aguardando_liberacao") &&
-      (foraDaLeitura || semConfirmacaoPelaLeitura(p, dev, devs)),
+      (foraDaLeitura || semConfirmacaoPelaLeitura(p, dev, devs) || (nuncaPedidaPeloPrazo(p, dev, devs) && devolvidoAlemDoNosso(p, dev, devs) > 0)),
     registrarRecusaNoPainel: podeRegistrarRecusaNoPainel(p, dev, agora, devs.filter((x) => x.id !== dev.id)),
     parar: conhecida && dev.situacao === "pedida" && foraDaLeitura,
     registrarTaxa: (dev.situacao === "confirmada" || dev.situacao === "por_fora") && dev.taxaPerdida === null,

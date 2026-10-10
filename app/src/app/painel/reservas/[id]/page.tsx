@@ -82,6 +82,7 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
     holdAte: alteracoes.find((a) => a.situacao === "segurada")?.holdAte ?? null,
     valorADevolver: verValores ? (ultimaAplicada?.valorADevolver ?? null) : null,
     previstaEm: ultimaAplicada?.devolucao?.previstaEm ?? null,
+    agora,
   });
   // M7.4: páginas legais que o hóspede aceitou no site (também o aceite gravado sem um Pix que deu certo).
   const aceitesSite = podeFazer(sessao.papel, "reserva:ler") ? await aceitesDaReserva(db, sessao.organizacaoId, r.id) : [];

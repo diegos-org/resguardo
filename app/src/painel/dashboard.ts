@@ -355,7 +355,8 @@ export async function avisosDeAlteracao(db: Db, organizacaoId: string, agora: Da
     });
   }
   // Aplicada e o bloqueio nas OTAs ainda não mudado (o M8.3 vai gravar sozinho; até lá, à mão), com alguma noite (de antes
-  // ou de agora) ainda por vir. A reserva-pedido das datas seguradas nunca vai às OTAs.
+  // ou de agora) ainda por vir. A reserva-pedido das datas seguradas nunca vai às OTAs. Só a que mudou as datas: as pessoas
+  // ou o valor não mexem no bloqueio.
   const otas = await db
     .select({ reservaId: alteracoesReserva.reservaId, codigo: reservasTabela.codigo })
     .from(alteracoesReserva)
@@ -365,6 +366,7 @@ export async function avisosDeAlteracao(db: Db, organizacaoId: string, agora: Da
         eq(alteracoesReserva.organizacaoId, organizacaoId),
         eq(alteracoesReserva.situacao, "aplicada"),
         isNull(alteracoesReserva.otaAtualizadaEm),
+        or(ne(alteracoesReserva.checkinAntes, alteracoesReserva.checkinDepois), ne(alteracoesReserva.checkoutAntes, alteracoesReserva.checkoutDepois)),
         eq(reservasTabela.estado, "confirmada"),
         sql`greatest(${alteracoesReserva.checkoutAntes}, ${alteracoesReserva.checkoutDepois}) >= ${hoje}::date`,
       ),

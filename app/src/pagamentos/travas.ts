@@ -25,8 +25,10 @@
  * cria, pede, registra ou confirma dinheiro confere o teto sob a trava da cotação.
  */
 import { type AnyColumn, and, asc, eq, inArray, sql } from "drizzle-orm";
-import { alteracoesReserva, cancelamentosReserva, cotacoes, devolucoesPagamento, imoveis, pagamentos, reservas, type SituacaoPagamento } from "@/db/schema";
+import { horaDeEntrada } from "@/configuracoes/politica-cancelamento";
+import { alteracoesReserva, cancelamentosReserva, cotacoes, devolucoesPagamento, imoveis, imoveisDetalhes, pagamentos, reservas, type SituacaoPagamento } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { instanteLocal } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { principalEJuros, situacaoEfetiva, taxaAtribuida } from "./alteracao-regras";
 import { CARENCIA_PAGAMENTO_MS } from "./andamento";
@@ -44,7 +46,8 @@ export type Cancelamento = typeof cancelamentosReserva.$inferSelect;
 export type Alteracao = typeof alteracoesReserva.$inferSelect;
 
 export type Travado = {
-  imovel: { id: string; codigo: string; nome: string; fuso: string };
+  /** `horaEntrada`: a hora de entrada cadastrada do imóvel (ou a padrão), sem trava: o limite das alterações (D1). */
+  imovel: { id: string; codigo: string; nome: string; fuso: string; horaEntrada: string };
   reserva: ReservaTravada;
   cotacao: CotacaoTravada;
   /** Todas as tentativas da cotação, travadas, em ordem de id. */
@@ -58,6 +61,13 @@ export type Travado = {
 };
 
 // ---------------------------------------------------------------- alterações (M8.2d)
+
+/**
+ * D1: o instante até o qual uma alteração vale — a entrada que chega primeiro (a de antes ou a nova), na hora de entrada
+ * do imóvel. O prazo das datas seguradas nunca passa dele (nem pelas extensões do pagamento da diferença).
+ */
+export const limiteDaAlteracao = (t: Pick<Travado, "imovel">, a: Pick<Alteracao, "checkinAntes" | "checkinDepois">): Date =>
+  instanteLocal(a.checkinDepois < a.checkinAntes ? a.checkinDepois : a.checkinAntes, t.imovel.horaEntrada, t.imovel.fuso || "America/Sao_Paulo");
 
 /**
  * A alteração da reserva cujas datas ainda estão seguradas pela situação que vale agora (`situacaoEfetiva`: o prazo
@@ -161,6 +171,14 @@ export function devolucaoInexplicada(p: PagamentoLido, devs: readonly DevolucaoP
 /** Inexplicada e sem o valor (o Mercado Pago não disse quanto): a equipe informa o valor visto no painel dele. */
 export const devolvidoForaSemValor = (p: PagamentoLido, devs: readonly DevolucaoPropria[]) =>
   devolucaoInexplicada(p, devs) && p.devolvidoLido <= p.devolvidoForaReconhecido + devolvidoProprio(devs);
+/**
+ * O Mercado Pago mostra o pagamento devolvido por inteiro e as nossas devoluções (com o reconhecido devolvido fora) explicam
+ * tudo — a diferença de um aumento devolvida inteira numa redução, por exemplo: o pagamento está quitado pelo sistema, sem
+ * saldo. Não é devolução de fora do sistema; as regras que recusam o "devolvido" (outra alteração, o cancelamento sem
+ * devolução, o pedido do hóspede) só valem para o que o sistema não explica.
+ */
+export const devolvidoPeloSistema = (p: PagamentoLido & Pick<Pagamento, "valorPago" | "valor">, devs: readonly DevolucaoPropria[]) =>
+  p.situacao === "devolvido" && !devolucaoInexplicada(p, devs) && devolvidoProprio(devs) + p.devolvidoForaReconhecido >= valorPagoAprovado(p);
 
 type PagamentoDoSaldo = Pick<Pagamento, "valorPago" | "valor" | "devolvidoForaReconhecido">;
 /** O que ainda se pode devolver: o pago menos o comprometido e menos o reconhecido devolvido fora. */
@@ -232,7 +250,9 @@ async function lerCotacao(tx: Db, organizacaoId: string, cotacaoId: string, trav
   const [antes] = await tx.select({ imovelId: cotacoes.imovelId, reservaId: cotacoes.reservaId }).from(cotacoes).where(and(eq(cotacoes.id, cotacaoId), eq(cotacoes.organizacaoId, organizacaoId)));
   if (!antes?.reservaId) return null;
   const qImovel = tx.select({ id: imoveis.id, codigo: imoveis.codigo, nome: imoveis.nome, fuso: imoveis.fuso }).from(imoveis).where(eq(imoveis.id, antes.imovelId));
-  const [imovel] = travar ? await qImovel.for("no key update") : await qImovel;
+  const [imovelLido] = travar ? await qImovel.for("no key update") : await qImovel;
+  const [detalhe] = imovelLido ? await tx.select({ hora: imoveisDetalhes.checkinAPartirDe }).from(imoveisDetalhes).where(eq(imoveisDetalhes.imovelId, imovelLido.id)) : [];
+  const imovel = imovelLido ? { ...imovelLido, horaEntrada: horaDeEntrada(detalhe?.hora) } : undefined;
   const qReserva = tx.select().from(reservas).where(and(eq(reservas.id, antes.reservaId), eq(reservas.organizacaoId, organizacaoId)));
   const [reserva] = travar ? await qReserva.for("no key update") : await qReserva;
   const qCotacao = tx.select().from(cotacoes).where(eq(cotacoes.id, cotacaoId));

@@ -413,3 +413,21 @@ describe("provedor pessimista: redução e depois o cancelamento (M8.2d)", () =>
     expect((await c.tentativa(x.pagamentoId)).valorPago).toBe(TOTAL);
   });
 });
+
+describe("revisão do M8.2d: a devolução que manda no quadro do pagamento", () => {
+  it("é a mais nova pela criação (nunca pela ordem dos ids, que são aleatórios); cada devolução do quadro traz o cancelamento dela (o restante também)", async () => {
+    const x = await pagarEConfirmar(c, { ...longe, liberar: true });
+    c.provedor.devolverAMenos(TOTAL - 5000);
+    expect((await cancelar(c, x.reservaId, empresa(), equipe, minutos(60))).resultado).toMatchObject({ ok: true });
+    const [d1] = await devolucoesDe(x.pagamentoId);
+    expect(d1).toMatchObject({ situacao: "confirmada", valorConfirmado: TOTAL - 5000 });
+    expect(await pedirRestanteDaDevolucao(db, c.org, d1.id, equipe, c.provedor, minutos(70))).toMatchObject({ ok: true, situacao: "confirmada" });
+    const [, d2] = await devolucoesDe(x.pagamentoId);
+    // Os ids são aleatórios: o do restante pode sair antes do da devolução do cancelamento.
+    await db.update(devolucoesPagamento).set({ id: "00000000-0000-4000-8000-000000000001" }).where(eq(devolucoesPagamento.id, d2.id));
+    const [q] = await pagamentosDaReserva(db, c.org, x.reservaId, minutos(71));
+    expect(q.devolucao).toMatchObject({ situacao: "confirmada", valor: 5000 });
+    const canc = await cancelamentoDe(x.reservaId);
+    expect(q.devolucoes!.filter((d) => d.cancelamentoId === canc.id).map((d) => d.valor).sort((a, b) => b - a)).toEqual([TOTAL, 5000]);
+  });
+});

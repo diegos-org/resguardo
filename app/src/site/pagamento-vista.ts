@@ -404,6 +404,7 @@ export type TextosDaAlteracao = Pick<
   | "alteracaoNaoAplicada"
   | "alteracaoNaoVale"
   | "cancelamentoDevolucaoPedida"
+  | "cancelamentoEstornoNoCartao"
   | "cancelamentoVoltaPix"
   | "cancelamentoVoltaCartao"
   | "cancelamentoVoltaPorFora"
@@ -420,13 +421,28 @@ const noitesEntre = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00
 const estadia = (e: { checkin: string; checkout: string; hospedes: number | null }) =>
   `${diaIso(e.checkin)}–${diaIso(e.checkout)} (${plural(noitesEntre(e.checkin, e.checkout), "noite", "noites")}${e.hospedes === null ? "" : `, ${plural(e.hospedes, "pessoa", "pessoas")}`})`;
 const horaBrasilia = (d: Date) => new Intl.DateTimeFormat("pt-BR", { timeZone: BRASILIA, hour: "2-digit", minute: "2-digit" }).format(d);
+/**
+ * O prazo das datas seguradas: "HH:MM" quando acaba no dia em que a alteração foi preparada, senão "dd/mm às HH:MM" (o
+ * prazo vai até 48 horas). Puro: o dia de referência é o da preparação, nunca o relógio de quem lê.
+ */
+const prazoBrasilia = (ate: Date, desde: Date | null) => (desde && diaMes(ate, BRASILIA) !== diaMes(desde, BRASILIA) ? `${diaMes(ate, BRASILIA)} às ${horaBrasilia(ate)}` : horaBrasilia(ate));
 
-/** Por que a diferença é (ou não) devolvida, em palavras do hóspede (os fatos da decisão pela política). */
-function porqueDaReducao(r: NonNullable<AlteracaoParaHospede["reducao"]>, entradaDaPolitica: string): string {
-  if (r.base === "empresa") return "a alteração é proposta por nós";
+/** Por que a política devolve (ou não) a diferença, em palavras do hóspede (os fatos da decisão pela política). */
+function porqueDaReducao(r: NonNullable<AlteracaoParaHospede["reducao"]> & { integralAte: string }, entradaDaPolitica: string): string {
   if (r.base === "arrependimento") return "direito de arrependimento: até 7 dias depois do pagamento";
-  if (r.base === "excecao" || r.base === "sem_politica" || !r.integralAte) return "por decisão da nossa equipe";
   return `o pedido chegou ${r.direito === "integral" ? "até" : "depois de"} ${diaIso(r.integralAte)}, 23h59, contando da entrada de ${diaIso(entradaDaPolitica)}`;
+}
+
+/**
+ * A frase da decisão sobre a diferença: "Pela política" só quando foi a política que decidiu (o prazo, o arrependimento, o
+ * pedido fora do prazo); a decisão da equipe (exceção, pagamento sem política aceita) e a alteração proposta por nós dizem
+ * quem decidiu — o hóspede nunca lê que aceitou uma política que não aceitou.
+ */
+function fraseDaReducao(r: NonNullable<AlteracaoParaHospede["reducao"]>, entradaDaPolitica: string, diferenca: number): string {
+  const resto = `a diferença de ${formatBRL(diferenca)} ${r.direito === "integral" ? "é devolvida" : "não é devolvida"}`;
+  if (r.base === "empresa") return `Como a alteração é proposta por nós, ${resto}.`;
+  if (r.base === "excecao" || r.base === "sem_politica" || !r.integralAte) return `Por decisão da nossa equipe, ${resto}.`;
+  return `Pela política, ${resto} (${porqueDaReducao({ ...r, integralAte: r.integralAte }, entradaDaPolitica)}).`;
 }
 
 /**
@@ -439,9 +455,9 @@ export function textoDaAlteracao(a: AlteracaoParaHospede | AlteracaoDoHospede, t
   const linhas: string[] = [];
   let comoVolta: string | null = null;
   // A linha da política vale sempre (§8.2): a versão aceita no pagamento da reserva e a entrada de que os prazos contam agora.
+  // Sem política aceita no pagamento, nenhuma linha dela (a frase editável diz "a que você aceitou ao pagar").
   const politica =
-    a.politicaVersao !== null ? juntar(`Versão ${a.politicaVersao} da Política de cancelamento, aceita no pagamento da reserva; prazos contados da entrada de ${diaIso(a.entradaDosPrazos)}.`, textos.alteracaoPolitica) : textos.alteracaoPolitica;
-  const devolvida = a.reducao?.direito === "integral";
+    a.politicaVersao !== null ? juntar(`Versão ${a.politicaVersao} da Política de cancelamento, aceita no pagamento da reserva; prazos contados da entrada de ${diaIso(a.entradaDosPrazos)}.`, textos.alteracaoPolitica) : "";
   if (a.situacao === "segurada") {
     const ate = quando(a.holdAte);
     const diferenca = a.rumo === "aumento" ? ` — diferença de ${formatBRL(a.diferenca)}` : a.rumo === "reducao" ? ` — diferença de ${formatBRL(-a.diferenca)}` : "";
@@ -449,17 +465,17 @@ export function textoDaAlteracao(a: AlteracaoParaHospede | AlteracaoDoHospede, t
       juntar(
         `Alteração da reserva ${codigo}: de ${estadia(a.antes)} para ${estadia(a.depois)}.`,
         a.rumo === "igual" ? `Valor: o mesmo (${formatBRL(a.antes.valor)}).` : `Valor: de ${formatBRL(a.antes.valor)} para ${formatBRL(a.depois.valor)}${diferenca}.`,
-        ate ? `Datas seguradas até ${horaBrasilia(ate)} (horário de Brasília).` : null,
+        ate ? `Datas seguradas até ${prazoBrasilia(ate, quando(a.preparadaEm))} (horário de Brasília).` : null,
         a.rumo === "aumento" ? textos.alteracaoEmAndamento : textos.alteracaoAguardaConfirmacao,
       ),
     );
-    if (a.rumo === "reducao" && a.reducao) linhas.push(`Pela política, a diferença de ${formatBRL(-a.diferenca)} ${devolvida ? "é devolvida" : "não é devolvida"} (${porqueDaReducao(a.reducao, a.entradaDaPolitica)}).`);
+    if (a.rumo === "reducao" && a.reducao) linhas.push(fraseDaReducao(a.reducao, a.entradaDaPolitica, -a.diferenca));
   } else if (a.situacao === "aplicada") {
     const em = quando(a.aplicadaEm);
     linhas.push(juntar(`Alteração confirmada${em ? ` em ${diaMes(em, fuso)}` : ""}: ${diaIso(a.depois.checkin)}–${diaIso(a.depois.checkout)}, ${plural(a.depois.hospedes, "pessoa", "pessoas")}, ${formatBRL(a.valorNovo)}.`, textos.alteracaoConfirmada));
     const d = a.devolucao;
     if (a.rumo === "reducao" && a.reducao?.direito === "nenhum")
-      linhas.push(juntar(`Pela política, a diferença de ${formatBRL(-a.diferenca)} não é devolvida (${porqueDaReducao(a.reducao, a.entradaDaPolitica)}).`, textos.alteracaoSemDevolucao));
+      linhas.push(juntar(fraseDaReducao(a.reducao, a.entradaDaPolitica, -a.diferenca), textos.alteracaoSemDevolucao));
     else if (d) {
       const voltaPeloMercadoPago = d.forma === "cartao" ? textos.cancelamentoVoltaCartao : textos.cancelamentoVoltaPix;
       if (d.estado === "aguardando_liberacao") {
@@ -471,7 +487,8 @@ export function textoDaAlteracao(a: AlteracaoParaHospede | AlteracaoDoHospede, t
         linhas.push(`Devolução da diferença de ${formatBRL(d.valorConfirmado ?? d.valor)} feita${feitaEm ? ` em ${diaMes(feitaEm, fuso)}` : ""}.`);
         comoVolta = (d.porFora ? textos.cancelamentoVoltaPorFora : voltaPeloMercadoPago) || null;
       } else if (d.estado === "pedida") {
-        linhas.push(juntar(`Devolução da diferença: ${formatBRL(d.valor)}.`, textos.cancelamentoDevolucaoPedida));
+        // O cartão com mais de 78 dias: a equipe faz o estorno no painel do Mercado Pago (o sistema nunca pediu) — nunca "já pedimos".
+        linhas.push(juntar(`Devolução da diferença: ${formatBRL(d.valor)}.`, d.estornoPelaEquipe ? textos.cancelamentoEstornoNoCartao : textos.cancelamentoDevolucaoPedida));
         comoVolta = voltaPeloMercadoPago || null;
       } else if (d.estado === "com_a_equipe") linhas.push(juntar(`Devolução da diferença: ${formatBRL(d.valor)}. A devolução pelo Mercado Pago não foi possível.`, textos.cancelamentoComAEquipe));
       else linhas.push(juntar(`Devolução da diferença: ${formatBRL(d.valor)}.`, textos.cancelamentoEmConferencia));

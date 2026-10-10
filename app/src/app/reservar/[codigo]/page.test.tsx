@@ -368,6 +368,19 @@ describe("reserva cancelada pela política (M8.2c)", () => {
     m.site.mockResolvedValue({ db: {}, conteudo: { ...conteudo, textos: { ...TEXTOS_SITE_INICIAIS, cancelamentoFecho: "" } } });
     expect(await html()).not.toContain(TEXTOS_SITE_INICIAIS.cancelamentoFecho);
   });
+
+  it("devolução que espera o Mercado Pago liberar o pagamento (M8.2d): a frase editável de Textos do site, nunca 'já pedimos'", async () => {
+    m.verCotacao.mockResolvedValue(vistaCotacao("cancelada"));
+    const esperando = { ...cancelamento, valorConfirmado: null, devolucaoEm: null, aguardandoLiberacao: { previstaEm: "2026-11-15" } };
+    m.vistaPagamento.mockResolvedValue(pagamento({ estado: "cancelada_devolucao_pedida", holdAte: null, podeGerar: false, reservaCodigo: "SCL-TESTE1", forma: "cartao", cancelamento: esperando }));
+    m.site.mockResolvedValue({ db: {}, conteudo: { ...conteudo, textos: { ...TEXTOS_SITE_INICIAIS, devolucaoAguardaLiberacao: "PEDIMOS QUANDO O MERCADO PAGO LIBERAR" } } });
+    const h = await html();
+    expect(h).toContain("Devolução de R$ 1.824,00 (previsto para 15/11). PEDIMOS QUANDO O MERCADO PAGO LIBERAR");
+    expect(h).not.toContain(TEXTOS_SITE_INICIAIS.cancelamentoDevolucaoPedida);
+    // Vazia (obrigatória), volta o texto-base.
+    m.site.mockResolvedValue({ db: {}, conteudo: { ...conteudo, textos: { ...TEXTOS_SITE_INICIAIS, devolucaoAguardaLiberacao: "" } } });
+    expect(await html()).toContain(TEXTOS_SITE_INICIAIS.devolucaoAguardaLiberacao);
+  });
 });
 
 describe("alteração da reserva paga pelo site (M8.2d)", () => {

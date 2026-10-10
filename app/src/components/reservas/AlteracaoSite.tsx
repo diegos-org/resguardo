@@ -180,6 +180,9 @@ function Avisado({ alteracaoId, qual, marca, editar, podeCopiar }: { alteracaoId
   );
 }
 
+/** A alteração mudou as datas (só as pessoas ou o valor não mexem no bloqueio das OTAs). */
+const mudouDatas = (a: Pick<AlteracaoDoPainel, "antes" | "depois">) => a.antes.checkin !== a.depois.checkin || a.antes.checkout !== a.depois.checkout;
+
 /** "Datas atualizadas nas OTAs" (reserva:editar) de uma alteração aplicada; o M8.3 vai gravar sozinho quando chegar. */
 function Otas({ a, editar }: { a: AlteracaoDoPainel; editar: boolean }) {
   if (a.ota) return <>bloqueio mudado em {diaBr(a.ota.em)} por {a.ota.por ?? "o sistema"}</>;
@@ -245,7 +248,7 @@ function Aplicada({ a, editarReserva, verValores }: { a: AlteracaoDoPainel; edit
     ["Datas e pessoas", deParaEmTexto(a)],
     ...(verValores ? ([["Valor", valorEmTexto(a)]] as [string, ReactNode][]) : []),
     ...(devolucao ? ([["Devolução da diferença", devolucao]] as [string, ReactNode][]) : []),
-    ["OTAs", <Otas key="ota" a={a} editar={editarReserva} />],
+    ...(mudouDatas(a) ? ([["OTAs", <Otas key="ota" a={a} editar={editarReserva} />]] as [string, ReactNode][]) : []),
     ...(a.mensagens.confirmada || a.avisados.confirmacao
       ? ([["Hóspede avisado: alteração confirmada", <Avisado key="confirmacao" alteracaoId={a.id} qual="confirmacao" marca={a.avisados.confirmacao} editar={editarReserva} podeCopiar={verValores} />]] as [string, ReactNode][])
       : []),
@@ -270,7 +273,7 @@ function Aplicada({ a, editarReserva, verValores }: { a: AlteracaoDoPainel; edit
 function Historico({ lista, verValores }: { lista: readonly AlteracaoDoPainel[]; verValores: boolean }) {
   if (!lista.length) return null;
   const desfecho = (a: AlteracaoDoPainel) => {
-    if (a.situacao === "aplicada") return `aplicada em ${a.aplicadaEm ? diaBr(a.aplicadaEm) : "—"}${a.ota ? "" : " (bloqueio nas OTAs ainda não marcado)"}`;
+    if (a.situacao === "aplicada") return `aplicada em ${a.aplicadaEm ? diaBr(a.aplicadaEm) : "—"}${a.ota || !mudouDatas(a) ? "" : " (bloqueio nas OTAs ainda não marcado)"}`;
     if (a.situacao === "desistida") return `desistida${a.desistidaEm ? ` em ${diaBr(a.desistidaEm)}` : ""}${a.desistidaPor ? ` por ${a.desistidaPor}` : ""}${verValores && a.desistenciaMotivo ? `: ${a.desistenciaMotivo}` : ""}`;
     return "o prazo das datas acabou (as novas datas voltaram à venda)";
   };

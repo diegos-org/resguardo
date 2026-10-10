@@ -176,18 +176,35 @@ export function linhaDaDevolucao(p: PagamentoDoPainel, verValores: boolean): str
 
 /**
  * As devoluções do cancelamento (M8.2d, D22: uma por pagamento que conta — depois de um aumento, a do pagamento da
- * reserva e a do pagamento da diferença), cada uma com o pagamento de onde sai e a linha "Devolução" dela. Vazia quando
- * nenhum pagamento tem a devolução do cancelamento como a que manda (quem chama usa a linha do pagamento que confirmou).
+ * reserva e a do pagamento da diferença; e o restante de uma devolvida a menos), cada uma com o pagamento de onde sai e a
+ * linha "Devolução" dela. Vêm das devoluções do pagamento que são deste cancelamento (nunca da que manda no pagamento, que
+ * pode ser a de uma redução de antes), pela criação. Sem a lista (tentativa montada à mão), a que manda, se for do
+ * cancelamento. Vazia quando nenhuma é (quem chama usa a linha do pagamento que confirmou).
  */
-export function devolucoesDoCancelamento(pagamentos: readonly PagamentoDoPainel[], verValores: boolean): { pagamentoId: string; rotulo: string; linha: string }[] {
+export function devolucoesDoCancelamento(
+  pagamentos: readonly PagamentoDoPainel[],
+  verValores: boolean,
+  cancelamentoId?: string,
+): { chave: string; pagamentoId: string; rotulo: string; linha: string }[] {
+  const pelaCriacao = (a: DevolucaoDoPainel, b: DevolucaoDoPainel) => a.criadoEm.getTime() - b.criadoEm.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
   return pagamentos
-    .filter((p) => (p.desfecho === "reserva" || p.desfecho === "alteracao") && p.devolucao?.origem === "cancelamento")
-    .map((p) => ({ pagamentoId: p.id, rotulo: `${FORMA[p.forma]} de ${dia(p.criadoEm)}${p.desfecho === "alteracao" ? " (a diferença da alteração)" : ""}`, linha: devolucao(p, verValores)! }));
+    .filter((p) => p.desfecho === "reserva" || p.desfecho === "alteracao")
+    .flatMap((p) => {
+      const rotulo = `${FORMA[p.forma]} de ${dia(p.criadoEm)}${p.desfecho === "alteracao" ? " (a diferença da alteração)" : ""}`;
+      if (!p.devolucoes) return p.devolucao?.origem === "cancelamento" ? [{ chave: p.id, pagamentoId: p.id, rotulo, linha: linhaDe(p.devolucao, verValores) }] : [];
+      return p.devolucoes
+        .filter((d) => d.origem === "cancelamento" && (cancelamentoId === undefined || d.cancelamentoId === cancelamentoId))
+        .sort(pelaCriacao)
+        .map((d) => ({ chave: d.id, pagamentoId: p.id, rotulo: `${rotulo}${d.restanteDe ? " (restante)" : ""}`, linha: linhaDe(d, verValores) }));
+    });
 }
 
 function devolucao(p: PagamentoDoPainel, verValores: boolean): string | null {
-  const d = p.devolucao;
-  if (!d) return null;
+  return p.devolucao ? linhaDe(p.devolucao, verValores) : null;
+}
+
+/** A linha "Devolução" de uma devolução (a que manda no pagamento, ou uma da lista do M8.2d). */
+function linhaDe(d: NonNullable<PagamentoDoPainel["devolucao"]>, verValores: boolean): string {
   const partes: string[] = [situacaoDaDevolucao(d)];
   if (verValores) partes.push(formatBRL(d.situacao === "por_fora" && d.porForaValor !== null ? d.porForaValor : d.valor));
   if (d.situacao === "por_fora" && d.porForaData) partes.push(`em ${dataBr(d.porForaData)}`);

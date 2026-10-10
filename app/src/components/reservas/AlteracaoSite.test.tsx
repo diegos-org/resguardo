@@ -138,6 +138,15 @@ describe("alteração da reserva paga pelo site na ficha (M8.2d)", () => {
     expect(op).toContain("Datas atualizadas nas OTAs");
   });
 
+  it("revisão do M8.2d: a aplicada que mudou só as pessoas ou o valor (as mesmas datas) não pede para mudar o bloqueio nas OTAs", () => {
+    const soPessoas = aplicada({ depois: { checkin: "2026-11-10", checkout: "2026-11-14", hospedes: 3, valor: 160000 }, diferenca: 10000, valorNovo: 160000, noitesNovas: null });
+    const h = html({ alteracoes: [soPessoas] });
+    expect(h).toContain("Alteração aplicada");
+    expect(h).not.toContain("Datas atualizadas nas OTAs");
+    expect(h).not.toContain("mude o bloqueio nas OTAs");
+    expect(html({ alteracoes: [aplicada({ id: "a3" }), soPessoas] })).not.toContain("bloqueio nas OTAs ainda não marcado");
+  });
+
   it("a redução aplicada: a devolução da diferença esperando a liberação (nunca 'pedida'), e a retida sem devolução", () => {
     const reducao = aplicada({
       diferenca: -30000,

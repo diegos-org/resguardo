@@ -42,6 +42,7 @@ const CHAVES_DO_CANCELAMENTO = [
   "cancelamentoSemDevolucaoEquipe",
   "cancelamentoFecho",
   "cancelamentoPedidoRecebido",
+  "devolucaoAguardaLiberacao",
 ] as const satisfies readonly (keyof TextosDoCancelamento)[];
 
 /** As frases do cancelamento (M8.2c) de Textos do site: as obrigatórias nunca saem vazias; a frase final pode. */
@@ -58,6 +59,7 @@ const CHAVES_DA_ALTERACAO = [
   "alteracaoNaoAplicada",
   "alteracaoNaoVale",
   "cancelamentoDevolucaoPedida",
+  "cancelamentoEstornoNoCartao",
   "cancelamentoVoltaPix",
   "cancelamentoVoltaCartao",
   "cancelamentoVoltaPorFora",

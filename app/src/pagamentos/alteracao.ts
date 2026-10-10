@@ -54,7 +54,7 @@ import { dadosDoMotor } from "@/financeiro/aplicar";
 import { calcularReserva, type PendenciaDoCalculo } from "@/financeiro/motor";
 import { travarMotorDaReserva } from "@/financeiro/trava";
 import { ERRO_DADOS_PESSOAIS, textoSemDadosPessoais } from "@/lib/dados-pessoais";
-import { hojeISO } from "@/lib/datas";
+import { hojeISO, instanteLocal } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { formatBRL } from "@/lib/money";
 import { acordoVigente, lerHorariosReservas } from "@/reservas/horarios";
@@ -84,6 +84,7 @@ import {
   type Devolucao,
   devolucaoInexplicada,
   devolucoesDoPagamento,
+  devolvidoPeloSistema,
   integralIntocada,
   lerCotacaoSemTravar,
   type Pagamento,
@@ -195,6 +196,8 @@ export type PreviaAlteracao = {
   holdMinutos: number;
   /** Até quando as datas estão seguradas (só na prévia do "Aplicar"). */
   holdAte: Date | null;
+  /** D1: a entrada que chega primeiro (a de antes ou a nova): o prazo das datas seguradas nunca passa dela. */
+  limiteDoPrazo?: Date | null;
   entradaDaPolitica: string;
   decisao: DecisaoPolitica | null;
   direito: "integral" | "nenhum" | null;
@@ -248,8 +251,8 @@ export const TEXTO_SO_REDUCAO = "A alteração com diferença a pagar vale quand
 /** A estadia já começou: o texto do D1, com a entrada. */
 export const textoEstadiaIniciada = (entradaEm: Date, fuso = FUSO_PAGAMENTO) =>
   `A estadia já começou (entrada em ${diaHoraBr(entradaEm, fuso)}): a alteração pelo sistema vale só antes da entrada. Para mais noites, faça uma nova reserva (no painel, com o pagamento registrado, ou pelo site quando a estadia mínima permitir). A saída antecipada não tem devolução pela política e a reserva fica como está: as noites seguem ocupadas e a limpeza de saída fica na data original.`;
-const textoHaAlteracao = (holdAte: Date | null, fuso: string) =>
-  `Já há uma alteração com as datas seguradas${holdAte ? ` até ${horaBr(holdAte, fuso)}` : ""}: aplique, espere o pagamento da diferença ou desista dela antes de preparar outra.`;
+const textoHaAlteracao = (holdAte: Date | null, fuso: string, agora: Date) =>
+  `Já há uma alteração com as datas seguradas${holdAte ? ` até ${prazoBr(holdAte, agora, fuso)}` : ""}: aplique, espere o pagamento da diferença ou desista dela antes de preparar outra.`;
 
 /** Por que o motor não fecharia o cálculo nas novas datas (o motivo do `sem_calculo`). */
 const PENDENCIAS: Record<PendenciaDoCalculo, string> = {
@@ -280,6 +283,14 @@ const ZERO: Componentes = { bruto: 0, taxa: 0, comissao: 0, parte: 0 };
 
 const fmt = (d: Date, fuso: string, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, ...o }).format(d);
 const horaBr = (d: Date, fuso = FUSO_PAGAMENTO) => fmt(d, fuso, { hour: "2-digit", minute: "2-digit" });
+/** Um prazo: "HH:MM" quando acaba hoje (no fuso), senão "dd/mm às HH:MM" (o prazo das datas vai até 48 horas). */
+export const prazoBr = (d: Date, agora: Date, fuso = FUSO_PAGAMENTO) =>
+  hojeISO(fuso, d) === hojeISO(fuso, agora) ? horaBr(d, fuso) : `${fmt(d, fuso, { day: "2-digit", month: "2-digit" })} às ${horaBr(d, fuso)}`;
+/** O prazo das datas seguradas de uma alteração nova: o tempo da configuração, nunca depois do limite (D1, a entrada). */
+const prazoDasDatas = (agora: Date, minutos: number, limite: Date | null | undefined) => {
+  const ate = new Date(agora.getTime() + minutos * 60_000);
+  return limite && limite.getTime() < ate.getTime() ? limite : ate;
+};
 /** "dd/mm" de uma data AAAA-MM-DD. */
 const dataBr = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 const minuto = (d: Date) => Math.floor(d.getTime() / 60_000);
@@ -336,7 +347,7 @@ async function conferirReserva(db: Db, organizacaoId: string, t: Travado, agora:
   if (t.cancelamento) return recusa("ha_cancelamento", TEXTO_HA_CANCELAMENTO);
   // 6. Outra alteração com as datas seguradas (pela situação que vale agora).
   const ativa = alteracaoAtiva(t, agora, carenciaNoTravado(t, agora));
-  if (ativa && ativa.id !== o.aplicando?.id) return recusa("ha_alteracao", textoHaAlteracao(ativa.holdAte, fuso));
+  if (ativa && ativa.id !== o.aplicando?.id) return recusa("ha_alteracao", textoHaAlteracao(ativa.holdAte, fuso, agora));
   // 3. Uma tentativa sem resposta dentro do prazo de leitura: espera. Fora dele, só o aviso da prévia.
   const inicioLeitura = inicioDoPrazoDeReleitura(agora).getTime();
   const andando = t.tentativas.find((x) => emAndamento(x.situacao) && x.criadoEm.getTime() >= inicioLeitura && x.alteracaoId !== (o.aplicando?.id ?? "-"));
@@ -347,7 +358,9 @@ async function conferirReserva(db: Db, organizacaoId: string, t: Travado, agora:
   for (const p of daReserva) {
     if (p.situacao === "contestado") return recusa("contestado", TEXTO_CONTESTADO_ALTERACAO);
     const devs = devolucoesDoPagamento(t, p.id);
-    if (devolucaoInexplicada(p, devs) || p.avisos.includes("situacao_desconhecida") || (p.situacao !== "aprovado" && p.situacao !== "devolvido_parcial")) return recusa("devolvido_fora", TEXTO_DEVOLVIDO_FORA);
+    // O devolvido por inteiro pelas nossas devoluções (quitado, sem saldo) não é devolução de fora do sistema.
+    const situacaoConhecida = p.situacao === "aprovado" || p.situacao === "devolvido_parcial" || devolvidoPeloSistema(p, devs);
+    if (devolucaoInexplicada(p, devs) || p.avisos.includes("situacao_desconhecida") || !situacaoConhecida) return recusa("devolvido_fora", TEXTO_DEVOLVIDO_FORA);
     if (devs.some((d) => chaveEmVoo(d) && d.ultimoCodigo !== "aguardando_liberacao")) return recusa("devolucao_em_andamento", TEXTO_DEVOLUCAO_EM_ANDAMENTO);
     if (devs.some((d) => d.avisos.includes("devolucao_a_menor") && !devs.some((y) => y.origemDevolucaoId === d.id))) return recusa("devolucao_em_andamento", TEXTO_DEVOLUCAO_EM_ANDAMENTO);
     const esperando = devs.find((d) => d.situacao === "pedida" && d.ultimoCodigo === "aguardando_liberacao");
@@ -581,6 +594,11 @@ async function montarAlteracao(db: Db, organizacaoId: string, t: Travado, e: Ent
   if (!dataValida(e.checkin) || !dataValida(e.checkout) || e.checkout <= e.checkin) return recusa("dados", "Informe as novas datas (a saída depois da entrada).");
   const hoje = hojeISO(fuso, agora);
   if (e.checkin < hoje) return recusa("dados", "A nova entrada não pode ser antes de hoje.");
+  // D1 na nova entrada: hoje, só antes do horário de entrada (a alteração vale só antes da entrada). A entrada de agora
+  // já foi conferida (a estadia que já começou tem o texto dela).
+  const entradaNova = instanteLocal(e.checkin, c.horaEntrada, fuso);
+  if (agora.getTime() >= entradaNova.getTime()) return recusa("dados", `A nova entrada (hoje) já passou do horário de entrada (${c.horaEntrada}): escolha uma data a partir de amanhã.`);
+  const limiteDoPrazo = entradaNova.getTime() < c.entradaEm.getTime() ? entradaNova : c.entradaEm;
   const [im] = await db.select({ capacidade: imoveis.capacidade }).from(imoveis).where(eq(imoveis.id, t.imovel.id));
   if (!Number.isInteger(e.hospedes) || e.hospedes < 1) return recusa("dados", "Informe quantas pessoas.");
   if (im?.capacidade && e.hospedes > im.capacidade) return recusa("dados", `Este apartamento recebe até ${im.capacidade} pessoas.`);
@@ -654,6 +672,7 @@ async function montarAlteracao(db: Db, organizacaoId: string, t: Travado, e: Ent
     noitesNovas: novas,
     holdMinutos: regras.site.minutosHoldAlteracao,
     holdAte: null,
+    limiteDoPrazo,
     decidida,
     valorADevolver,
     partes,
@@ -696,6 +715,7 @@ async function completarPrevia(
     noitesNovas: { inicio: string; fim: string } | null;
     holdMinutos: number;
     holdAte: Date | null;
+    limiteDoPrazo?: Date | null;
     decidida: Decidida | null;
     valorADevolver: number;
     partes: ParteDaDevolucao[];
@@ -735,8 +755,14 @@ async function completarPrevia(
         `A Política de cancelamento em vigor é a versão ${vigentes.cancelamento}; esta reserva continua seguindo a versão ${politica.versao}, aceita no pagamento. Na página da reserva, o hóspede aceita os Termos e a Privacidade em vigor e vê que a política dele continua a ${politica.versao}.`,
       );
   }
-  if (x.alteracaoId === null && (x.noitesNovas || rumo === "aumento"))
-    avisos.push(`As novas datas ficam seguradas por ${x.holdMinutos} minutos (Configurações → Calendário e preços, "alteração de reserva paga pelo site"); o Pix da diferença estende esse prazo.`);
+  if (x.alteracaoId === null && (x.noitesNovas || rumo === "aumento")) {
+    const ate = prazoDasDatas(x.agora, x.holdMinutos, x.limiteDoPrazo);
+    avisos.push(
+      x.limiteDoPrazo && ate.getTime() === x.limiteDoPrazo.getTime()
+        ? `As novas datas ficam seguradas só até ${prazoBr(ate, x.agora, fuso)}, o horário da entrada (a alteração vale só antes da entrada); o Pix da diferença não estende esse prazo.`
+        : `As novas datas ficam seguradas por ${x.holdMinutos} minutos (Configurações → Calendário e preços, "alteração de reserva paga pelo site"); o Pix da diferença estende esse prazo.`,
+    );
+  }
   if (rumo === "reducao")
     avisos.push(`A política conta da entrada de ${dataBr(entradaDaPolitica)} (${entradaDaPolitica === t.cotacao.checkin ? "a original" : "a atual, que é anterior à original"}).`);
   for (const p of x.partes) {
@@ -755,10 +781,10 @@ async function completarPrevia(
     avisos.push(`A taxa do Mercado Pago sobre a parte devolvida (${formatBRL(taxaDevolvida)}) sai da reserva; o que o Mercado Pago não devolver dessa taxa fica com a SCL.`);
   if (rumo === "reducao" && direito === "nenhum") {
     avisos.push(
-      `Pela política${politica ? ` (versão ${politica.versao}, contando da entrada de ${dataBr(entradaDaPolitica)})` : ""}, o hóspede não recebe a diferença de ${formatBRL(-x.diferenca)}: o valor da reserva continua ${formatBRL(antes.valor)}, dividido como uma reserva normal.`,
+      `${quemDecidiu(x.decidida?.base ?? null, politica ? ` (versão ${politica.versao}, contando da entrada de ${dataBr(entradaDaPolitica)})` : "")}, o hóspede não recebe a diferença de ${formatBRL(-x.diferenca)}: o valor da reserva continua ${formatBRL(antes.valor)}, dividido como uma reserva normal.`,
     );
     if (noites(x.depois.checkin, x.depois.checkout) < noites(antes.checkin, antes.checkout) || mudaDatas)
-      avisos.push(`As noites liberadas voltam à venda; pela política o hóspede não recebe a diferença de ${formatBRL(-x.diferenca)}.`);
+      avisos.push(`As noites liberadas voltam à venda; ${decididaPelaPolitica(x.decidida?.base ?? null) ? "pela política " : ""}o hóspede não recebe a diferença de ${formatBRL(-x.diferenca)}.`);
   }
   if (direito === "integral" && (x.decidida?.base === "empresa" || x.decidida?.base === "excecao")) avisos.push("A SCL arca com a taxa que não voltar da parte devolvida.");
   if (x.quemPede === "empresa" && rumo === "aumento" && x.origemValor === "cotacao") avisos.push(`A alteração é proposta pela SCL: cobrar ${formatBRL(x.diferenca)} do hóspede?`);
@@ -818,6 +844,7 @@ async function completarPrevia(
     noitesNovas: x.noitesNovas,
     holdMinutos: x.holdMinutos,
     holdAte: x.holdAte,
+    limiteDoPrazo: x.limiteDoPrazo ?? null,
     entradaDaPolitica,
     decisao: x.decidida?.decisao ?? null,
     direito,
@@ -844,17 +871,32 @@ async function politicaDaReserva(db: Db, organizacaoId: string, p0Id: string): P
   return { versao: p.versao, data: p.data, diasReembolsoIntegral: regras.diasReembolsoIntegral, arrependimentoAteEntrada: regras.arrependimentoAteEntrada };
 }
 
+/** A política decidiu a diferença (o prazo, o arrependimento, o pedido fora do prazo); as outras bases são decisão da equipe ou da SCL. */
+const decididaPelaPolitica = (base: BaseCancelamento | null) => base === "prazo" || base === "arrependimento" || base === "fora_do_prazo" || base === "estadia_iniciada";
+/** A abertura das frases da equipe sobre a diferença (a pergunta, os avisos): "Pela política" só quando foi ela. */
+function quemDecidiu(base: BaseCancelamento | null, contando: string): string {
+  if (base === "excecao") return "Por exceção";
+  if (base === "empresa") return "Como a alteração é proposta pela SCL";
+  if (decididaPelaPolitica(base)) return `Pela política${contando}`;
+  return base === "sem_politica" ? "Por decisão da equipe (pagamento sem política aceita)" : "Por decisão da equipe";
+}
+/** O motivo gravado na devolução da diferença (lista de devoluções, auditoria): quem decidiu, como na pergunta. */
+const motivoDaDevolucao = (codigo: string, base: BaseCancelamento | null) =>
+  `Alteração da reserva ${codigo}: devolução da diferença ${base === "excecao" ? "por exceção" : base === "empresa" ? "proposta pela SCL" : decididaPelaPolitica(base) ? "pela política" : "por decisão da equipe"}`;
+
 /** O texto do BotaoConfirmar de cada caso (§9.2): o que muda, o dinheiro e o que fica a fazer. */
 export function perguntaDaAlteracao(p: PreviaAlteracao, fuso: string, agora: Date): string {
   const depois = `${dataBr(p.depois.checkin)} a ${dataBr(p.depois.checkout)}`;
+  // As OTAs e as noites liberadas só quando as datas mudam (só as pessoas ou o valor não mexem no calendário).
+  const mudaDatas = p.antes.checkin !== p.depois.checkin || p.antes.checkout !== p.depois.checkout;
   const contando = p.politica ? ` (versão ${p.politica.versao}, contando da entrada de ${dataBr(p.entradaDaPolitica)})` : "";
   if (p.rumo === "aumento") {
-    const ate = p.holdAte ?? new Date(agora.getTime() + p.holdMinutos * 60_000);
+    const ate = p.holdAte ?? prazoDasDatas(agora, p.holdMinutos, p.limiteDoPrazo);
     return [
-      `Segurar as novas datas (${depois}, ${nNoites(noites(p.depois.checkin, p.depois.checkout))}, ${pessoas(p.depois.hospedes)}) até ${horaBr(ate, fuso)} e liberar para o hóspede pagar a diferença de ${formatBRL(p.diferenca)} na página da reserva?`,
+      `Segurar as novas datas (${depois}, ${nNoites(noites(p.depois.checkin, p.depois.checkout))}, ${pessoas(p.depois.hospedes)}) até ${prazoBr(ate, agora, fuso)} e liberar para o hóspede pagar a diferença de ${formatBRL(p.diferenca)} na página da reserva?`,
       ...(p.quemPede === "empresa" ? ["A alteração é proposta pela SCL: confirme que o hóspede paga a diferença."] : []),
       `Até o pagamento, a reserva continua como está (${dataBr(p.antes.checkin)} a ${dataBr(p.antes.checkout)}).`,
-      "Quando ele pagar, a alteração vale sozinha; depois, mude o bloqueio nas OTAs (no Beds24).",
+      mudaDatas ? "Quando ele pagar, a alteração vale sozinha; depois, mude o bloqueio nas OTAs (no Beds24)." : "Quando ele pagar, a alteração vale sozinha.",
     ].join(" ");
   }
   if (p.rumo === "reducao" && p.direito === "integral") {
@@ -865,13 +907,13 @@ export function perguntaDaAlteracao(p: PreviaAlteracao, fuso: string, agora: Dat
       : `pelo Mercado Pago${espera ? `, quando ele liberar o pagamento${espera.liberacaoPrevista ? ` (previsto para ${diaBr(espera.liberacaoPrevista, fuso)})` : ""}` : ""}`;
     return [
       `Confirme que o hóspede aceitou por escrito: novas datas ${depois}, ${pessoas(p.depois.hospedes)}, novo valor ${formatBRL(p.depois.valor)} (antes ${formatBRL(p.antes.valor)}).`,
-      `Pela política${contando}, a diferença de ${formatBRL(p.valorADevolver)} é devolvida ${como}.`,
+      `${quemDecidiu(p.base, contando)}, a diferença de ${formatBRL(p.valorADevolver)} é devolvida ${como}.`,
       ...(p.financeiro.taxaDevolvida !== null ? [`A taxa do Mercado Pago sobre a parte devolvida (${formatBRL(p.financeiro.taxaDevolvida)}) sai da reserva; o que ele não devolver fica com a SCL.`] : []),
       "Aplicar agora? A alteração não se desfaz por aqui.",
     ].join(" ");
   }
   if (p.rumo === "reducao")
-    return `Confirme que o hóspede aceitou por escrito: novas datas ${depois}, ${pessoas(p.depois.hospedes)}. Pela política${contando}, a diferença de ${formatBRL(-p.diferenca)} não é devolvida: o valor da reserva continua ${formatBRL(p.antes.valor)}, dividido como uma reserva normal, e as noites liberadas voltam à venda. Aplicar agora? A alteração não se desfaz por aqui.`;
+    return `Confirme que o hóspede aceitou por escrito: novas datas ${depois}, ${pessoas(p.depois.hospedes)}. ${quemDecidiu(p.base, contando)}, a diferença de ${formatBRL(-p.diferenca)} não é devolvida: o valor da reserva continua ${formatBRL(p.antes.valor)}, dividido como uma reserva normal${mudaDatas ? ", e as noites liberadas voltam à venda" : ""}. Aplicar agora? A alteração não se desfaz por aqui.`;
   return `Confirme que o hóspede aceitou por escrito: novas datas ${depois}, ${pessoas(p.depois.hospedes)}, mesmo valor (${formatBRL(p.antes.valor)}). Aplicar agora? A alteração não se desfaz por aqui.`;
 }
 
@@ -930,8 +972,26 @@ async function montarAplicacao(db: Db, organizacaoId: string, t: Travado, a: Alt
     valorADevolver,
     partes,
     recebidoEm: a.pedidoRecebidoEm,
-    // A assinatura da aplicação: o retrato gravado (id, última mudança) e o dinheiro de agora; nunca uma cotação nova.
-    assinar: (extra) => [a.id, a.atualizadoEm.toISOString(), ...extra],
+    // A assinatura da aplicação: o retrato gravado (o que decide: situação, prazo, datas, valor, diferença, política) e o
+    // dinheiro de agora; nunca uma cotação nova. Não a última mudança: marcar o hóspede avisado ou as OTAs atualizadas
+    // (sem mexer no dinheiro, nas datas ou na política) não invalida o "Aplicar".
+    assinar: (extra) => [
+      a.id,
+      a.situacao,
+      a.holdAte?.toISOString() ?? null,
+      a.pagamentoId,
+      a.checkinDepois,
+      a.checkoutDepois,
+      a.hospedesDepois,
+      a.valorDepois,
+      a.diferenca,
+      a.politicaVersao,
+      a.calculado,
+      a.direito,
+      a.base,
+      a.valorADevolver,
+      ...extra,
+    ],
     agora,
   });
   return { ok: true, c, previa };
@@ -1027,7 +1087,7 @@ async function aplicarNaTransacao(
         .values({
           organizacaoId,
           pagamentoId: pg.id,
-          motivo: `Alteração da reserva ${r.codigo}: devolução da diferença pela política`,
+          motivo: motivoDaDevolucao(r.codigo, a.base),
           valor: parte.valor,
           origem: "alteracao",
           alteracaoId: a.id,
@@ -1172,7 +1232,7 @@ export async function segurarAlteracao(
 async function gravarAlteracao(tx: Db, organizacaoId: string, m: Montada, autorId: string | null, agora: Date, o: { semPortador: boolean }): Promise<Alteracao> {
   const { c, previa } = m;
   const r = c.r;
-  const holdAte = new Date(agora.getTime() + previa.holdMinutos * 60_000);
+  const holdAte = prazoDasDatas(agora, previa.holdMinutos, previa.limiteDoPrazo);
   const decisao = previa.decisao;
   const [a] = await tx
     .insert(alteracoesReserva)

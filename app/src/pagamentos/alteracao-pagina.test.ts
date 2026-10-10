@@ -7,6 +7,7 @@
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { lerRegrasCalendario, salvarRegrasCalendario } from "@/calendario/regras-config";
 import { gravarConfig, lerConfig } from "@/configuracoes/armazem";
 import { PAGINAS_LEGAIS } from "@/configuracoes/paginas-legais-texto";
 import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
@@ -195,6 +196,64 @@ describe("a página da reserva: os outros estados da alteração (M8.2d §8)", (
     const v = await pagina(x.cotacaoId, minutos(25));
     expect(v?.alteracao).toMatchObject({ situacao: "aplicada", entradaDaPolitica: "2026-11-20", entradaDosPrazos: "2026-10-12" });
     expect(texto(v!.alteracao!, x.reservaCodigo).linhas.at(-1)).toBe(`Versão 1 da Política de cancelamento, aceita no pagamento da reserva; prazos contados da entrada de 12/10. ${TEXTOS_SITE_INICIAIS.alteracaoPolitica}`);
+  });
+});
+
+describe("revisão do M8.2d: o que a página da reserva diz da alteração", () => {
+  const menos200 = { origem: "digitado" as const, valor: TOTAL - 20_000, motivo: "acordo_com_hospede" as const, nota: "Saída um dia antes" };
+  const tarde = new Date("2026-10-09T13:00:00Z");
+
+  it("cartão com mais de 78 dias: a devolução da diferença é o estorno que a equipe faz no painel do Mercado Pago — nunca 'já pedimos'", async () => {
+    const x = await pagarEConfirmar(c, { entrada: "2026-11-20", saida: "2026-11-23", forma: "cartao", liberar: true });
+    await envelhecer(c, x.pagamentoId, 80);
+    const { resultado } = await alterar(c, x.reservaId, { checkout: "2026-11-22", valor: menos200 }, minutos(20), { autorId: equipe, aplicar: true });
+    expect(resultado).toMatchObject({ ok: true, situacao: "aplicada", devolucoes: ["recusada"] });
+    const v = await pagina(x.cotacaoId, minutos(25));
+    expect(v?.alteracao).toMatchObject({ situacao: "aplicada", devolucao: { estado: "pedida", estornoPelaEquipe: true, forma: "cartao" } });
+    const t = texto(v!.alteracao!, x.reservaCodigo);
+    expect(t.linhas).toContain(`Devolução da diferença: R$ 200,00. ${TEXTOS_SITE_INICIAIS.cancelamentoEstornoNoCartao}`);
+    expect(t.resumo).not.toContain(TEXTOS_SITE_INICIAIS.cancelamentoDevolucaoPedida);
+  });
+
+  it("a devolução que a fase 2 não pediu (sem provedor) num pagamento ainda não liberado: esperando a liberação — nunca 'já pedimos'", async () => {
+    const x = await pagarEConfirmar(c);
+    const { resultado } = await alterar(c, x.reservaId, { checkout: "2026-10-14", valor: menos200 }, minutos(20), { autorId: equipe, aplicar: true, provedor: null });
+    expect(resultado).toMatchObject({ ok: true, situacao: "aplicada", devolucoes: ["pedida"] });
+    const v = await pagina(x.cotacaoId, minutos(25));
+    expect(v?.alteracao).toMatchObject({ devolucao: { estado: "aguardando_liberacao", valor: 20_000 } });
+    const t = texto(v!.alteracao!, x.reservaCodigo);
+    expect(t.resumo).toContain(`Devolução da diferença: R$ 200,00. ${TEXTOS_SITE_INICIAIS.devolucaoAguardaLiberacao}`);
+    expect(t.resumo).not.toContain(TEXTOS_SITE_INICIAIS.cancelamentoDevolucaoPedida);
+  });
+
+  it("o prazo das datas que acaba noutro dia (até 48 horas): 'até dd/mm às HH:MM'", async () => {
+    const regras = await lerRegrasCalendario(db, c.org);
+    expect(await salvarRegrasCalendario(db, c.org, { ...regras, site: { ...regras.site, minutosHoldAlteracao: 1440 } }, null)).toBe(true);
+    const x = await pagarEConfirmar(c);
+    expect((await alterar(c, x.reservaId, { checkout: "2026-10-14", valor: menos200 }, minutos(20), { autorId: equipe })).resultado).toMatchObject({ ok: true, situacao: "segurada" });
+    const v = await pagina(x.cotacaoId, minutos(21));
+    expect(texto(v!.alteracao!, x.reservaCodigo).linhas[0]).toContain("Datas seguradas até 02/10 às 12:20 (horário de Brasília).");
+  });
+
+  it("a decisão da equipe (exceção) e o pagamento sem política aceita: nunca 'pela política', nem 'a política que você aceitou'", async () => {
+    const x = await pagarEConfirmar(c);
+    const excecao = { decisao: "excecao" as const, motivoExcecao: "cortesia_comercial" as const, motivoDecisao: "Cliente antigo" };
+    expect((await alterar(c, x.reservaId, { checkout: "2026-10-14", valor: menos200, recebidoEm: tarde, ...excecao }, tarde, { autorId: equipe })).resultado).toMatchObject({ ok: true, situacao: "segurada" });
+    const v = await pagina(x.cotacaoId, new Date(tarde.getTime() + 60_000));
+    expect(v?.alteracao).toMatchObject({ reducao: { direito: "integral", base: "excecao" } });
+    const t = texto(v!.alteracao!, x.reservaCodigo);
+    expect(t.linhas).toContain("Por decisão da nossa equipe, a diferença de R$ 200,00 é devolvida.");
+    expect(t.resumo).not.toContain("Pela política");
+
+    const y = await pagarEConfirmar(c, { entrada: "2026-10-20", saida: "2026-10-23", email: "y@example.com", semAceite: true });
+    const semPolitica = { decisao: "nenhum" as const, motivoDecisao: "Combinado com o hóspede" };
+    expect((await alterar(c, y.reservaId, { checkout: "2026-10-22", valor: menos200, ...semPolitica }, minutos(20), { autorId: equipe })).resultado).toMatchObject({ ok: true, situacao: "segurada" });
+    const vy = await pagina(y.cotacaoId, minutos(21));
+    expect(vy?.alteracao).toMatchObject({ politicaVersao: null, reducao: { direito: "nenhum", base: "sem_politica" } });
+    const ty = texto(vy!.alteracao!, y.reservaCodigo);
+    expect(ty.linhas).toContain("Por decisão da nossa equipe, a diferença de R$ 200,00 não é devolvida.");
+    expect(ty.resumo).not.toContain("Pela política");
+    expect(ty.resumo).not.toContain(TEXTOS_SITE_INICIAIS.alteracaoPolitica);
   });
 });
 

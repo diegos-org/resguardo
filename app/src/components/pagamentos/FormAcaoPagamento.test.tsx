@@ -126,6 +126,7 @@ describe("o restante do pagamento sem reserva (D17, M8.2d): a pergunta mostra o 
     id: DEV,
     origem: "sem_reserva",
     alteracaoId: null,
+    cancelamentoId: null,
     valor: 182400,
     situacao: "recusada",
     valorConfirmado: null,

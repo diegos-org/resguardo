@@ -112,6 +112,26 @@ describe("mensagens da alteração pelo motor (M8.2d)", () => {
   });
 });
 
+describe("revisão do M8.2d: o modelo 'Devolução feita' com o momento do pedido", () => {
+  it("{recebido} (que vale no cancelamento) também se preenche na devolução da diferença: o pedido da alteração; a mensagem sai e o botão copia", async () => {
+    const r = await criarModelo(db, c.org, { nome: "Devolução feita com o pedido", quando: "", texto: "Olá, {hospede}! Sobre o seu pedido de {recebido}: a devolução de {valor} foi feita em {data}." }, null);
+    if (!r.ok || !r.modelo) throw new Error(JSON.stringify(r));
+    expect(await salvarConfigMensagens(db, c.org, { ativo: true, origens: ["site"], modelos: { devolucao_concluida: r.modelo.id } }, null, AGORA)).toEqual({ ok: true });
+    const x = await pagarEConfirmar(c);
+    const { resultado } = await alterar(c, x.reservaId, { checkout: "2026-10-14" }, minutos(20), { autorId: equipe, aplicar: true });
+    if (!resultado.ok) throw new Error(resultado.erro);
+    await liberar(c, x.pagamentoId, { quando: minutos(40) });
+    const [d] = await db.select().from(devolucoesPagamento).where(eq(devolucoesPagamento.alteracaoId, resultado.alteracaoId));
+    expect(await tentarDevolucao(db, c.org, d.id, c.provedor, minutos(41))).toBe("confirmada");
+    const esperado = "Olá, Visitante Fictício! Sobre o seu pedido de 01/10/2026 às 12:20: a devolução de R$ 528,00 foi feita em 01/10/2026.";
+    const m = await mensagensDaAlteracao(db, c.org, resultado.alteracaoId, minutos(42));
+    expect(m.devolvida).toMatchObject({ texto: esperado, falta: [], textoBase: false });
+    const res = await enviarMensagensHospede(db, c.org, correio, minutos(42));
+    expect(res.avisos).toEqual([]);
+    expect(correio.enviadas.at(-1)!.texto).toBe(esperado);
+  });
+});
+
 describe("mensagens da alteração prontas para copiar (painel)", () => {
   it("sem modelo, o texto-base; a proposta só enquanto segurada; a confirmação depois de aplicada; de outra empresa, nada", async () => {
     const x = await pagarEConfirmar(c);

@@ -74,6 +74,7 @@ import {
   devolucaoInexplicada,
   devolucoesDoPagamento,
   dinheiroDaReserva,
+  esperaLiberacao,
   type Pagamento,
   possivelmenteNoProvedor,
 } from "./travas";
@@ -170,6 +171,11 @@ export type AlteracaoParaHospede = {
     previstaEm: string | null;
     porFora: boolean;
     forma: "pix" | "cartao";
+    /**
+     * A devolução sai pelo estorno que a equipe faz no painel do Mercado Pago (cartão com mais de 78 dias): nunca "já
+     * pedimos". Sempre preenchido pelo domínio; opcional só para montar a alteração à mão nos testes.
+     */
+    estornoPelaEquipe?: boolean;
   } | null;
   /** A diferença paga que não valeu (nao_aplicada): o valor e quando. */
   pagoSemAlteracao: { valor: number; em: Date } | null;
@@ -600,11 +606,16 @@ function devolucaoDaAlteracao(a: Alteracao, tentativas: readonly Pagamento[], de
   const devs = devolucoes.filter((d) => d.alteracaoId === a.id && d.situacao !== "substituida");
   if (!devs.length) return null;
   const doPagamento = (d: Devolucao) => tentativas.find((t) => t.id === d.pagamentoId);
+  const vivasDe = (p: Pagamento) => devolucoesDoPagamento({ devolucoes }, p.id);
+  const espera = (d: Devolucao) => {
+    const p = doPagamento(d);
+    return !!p && esperaALiberacao(p, d, vivasDe(p));
+  };
   const estados = devs.map((d) => {
     const p = doPagamento(d);
     if (!p) return "cancelada_em_conferencia" as EstadoPagamentoHospede;
-    if (esperandoLiberacao(d)) return "aguardando" as const;
-    return estadoDaCancelada(p, "integral", d, estornaPelaEquipe(p, d, agora), agora, devolucoesDoPagamento({ devolucoes }, p.id));
+    if (espera(d)) return "aguardando" as const;
+    return estadoDaCancelada(p, "integral", d, estornaPelaEquipe(p, d, agora), agora, vivasDe(p));
   });
   const ordem = ["aguardando", "cancelada_devolucao_pedida", "cancelada_com_a_equipe", "cancelada_em_conferencia", "cancelada_devolvida"] as const;
   const pior = ordem.find((e) => (estados as string[]).includes(e)) ?? "cancelada_em_conferencia";
@@ -613,7 +624,7 @@ function devolucaoDaAlteracao(a: Alteracao, tentativas: readonly Pagamento[], de
   const quando = (d: Devolucao) => (d.situacao === "confirmada" ? d.confirmadaEm : d.situacao === "por_fora" && d.porForaData ? instanteLocal(d.porForaData, "12:00", "America/Sao_Paulo") : null);
   const feitas = devs.every(realizada);
   const ultima = feitas ? [...devs].sort((x, y) => (quando(x)?.getTime() ?? 0) - (quando(y)?.getTime() ?? 0)).at(-1) : undefined;
-  const esperando = devs.filter(esperandoLiberacao);
+  const esperando = devs.filter(espera);
   const prevista = esperando.length ? dataMaisTardia(esperando.map((d) => doPagamento(d)?.liberacaoPrevistaEm ?? null)) : null;
   const confirmados = devs.map((d) => (d.situacao === "confirmada" ? d.valorConfirmado : d.situacao === "por_fora" ? (d.porForaValor ?? d.valor) : null));
   const p0 = doPagamento(devs[0]);
@@ -625,11 +636,27 @@ function devolucaoDaAlteracao(a: Alteracao, tentativas: readonly Pagamento[], de
     previstaEm: prevista ? hojeISO("America/Sao_Paulo", prevista) : null,
     porFora: devs.every((d) => d.situacao === "por_fora"),
     forma: p0?.forma ?? "pix",
+    estornoPelaEquipe: devs.some((d) => {
+      const p = doPagamento(d);
+      return !!p && estornaPelaEquipe(p, d, agora);
+    }),
   };
 }
 
-/** A devolução que manda (a aberta — pedida ou recusada —, senão a mais nova); as vivas vêm em ordem de id. */
-const devolucaoPrincipal = (devs: readonly Devolucao[]): Devolucao | undefined => [...devs].reverse().find((d) => d.situacao === "pedida" || d.situacao === "recusada") ?? devs.at(-1);
+/**
+ * A devolução que manda (a aberta — pedida ou recusada —, senão a mais nova), pela criação (e o id, no empate): as vivas
+ * vêm em ordem de id, e os ids são aleatórios (o restante pode ter id menor que o da devolução que ele completa).
+ */
+const devolucaoPrincipal = (devs: readonly Devolucao[]): Devolucao | undefined => {
+  const pelaCriacao = [...devs].sort((a, b) => a.criadoEm.getTime() - b.criadoEm.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  return [...pelaCriacao].reverse().find((d) => d.situacao === "pedida" || d.situacao === "recusada") ?? pelaCriacao.at(-1);
+};
+
+/**
+ * D13 na página do hóspede, pela regra única (`esperaLiberacao`): a devolução pedida que espera o Mercado Pago liberar o
+ * pagamento — nada dela foi ao Mercado Pago, também quando a fase 2 ainda não rodou (nunca "já pedimos").
+ */
+const esperaALiberacao = (p: Pagamento, d: Devolucao, devs: readonly Devolucao[]) => d.situacao === "pedida" && esperaLiberacao(p, d, devs);
 
 /**
  * D13: a devolução espera a liberação do pagamento (nada dela está no Mercado Pago: nunca pedida, ou pedida de novo pela
@@ -666,7 +693,7 @@ function estadoDoCancelamento(
   const principal = ultima ?? devolucaoPrincipal(devs);
   const estados = devs.map((d) => estadoDaCancelada(doPagamento(d), canc.direito!, d, estornaPelaEquipe(doPagamento(d), d, agora), agora, vivasDe(doPagamento(d))));
   const ordem: EstadoPagamentoHospede[] = ["cancelada_devolucao_pedida", "cancelada_com_a_equipe", "cancelada_em_conferencia", "cancelada_devolvida"];
-  const esperando = devs.filter(esperandoLiberacao);
+  const esperando = devs.filter((d) => esperaALiberacao(doPagamento(d), d, vivasDe(doPagamento(d))));
   const estado: EstadoPagamentoHospede =
     canc.direito === "nenhum"
       ? "cancelada_sem_devolucao"
@@ -886,6 +913,8 @@ export type DevolucaoDoPainel = {
   origem: string;
   /** A alteração cuja diferença esta devolução devolve (origem "alteracao"). */
   alteracaoId: string | null;
+  /** O cancelamento que pediu esta devolução (origem "cancelamento"; o restante dela também). */
+  cancelamentoId: string | null;
   valor: number;
   situacao: SituacaoDevolucao;
   valorConfirmado: number | null;
@@ -1119,6 +1148,7 @@ function devolucaoDoPainel(p: Pagamento, d: Devolucao, devs: readonly Devolucao[
     id: d.id,
     origem: d.origem,
     alteracaoId: d.alteracaoId,
+    cancelamentoId: d.cancelamentoId,
     valor: d.valor,
     situacao: d.situacao,
     valorConfirmado: d.valorConfirmado,

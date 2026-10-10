@@ -15,7 +15,7 @@ import { alteracoesReserva, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { estenderHold, voltarHold } from "@/site/cotacoes";
 import { situacaoEfetiva } from "./alteracao-regras";
-import { type Alteracao, carenciaNoTravado, type Pagamento, type Travado } from "./travas";
+import { type Alteracao, carenciaNoTravado, limiteDaAlteracao, type Pagamento, type Travado } from "./travas";
 
 export type AlvoDaCobranca = {
   tipo: "reserva" | "alteracao";
@@ -82,6 +82,9 @@ export function alvoDaCobranca(tx: Db, organizacaoId: string, t: Travado, altera
   if (!a) return { erro: "nao_oferecido" };
   const carencia = carenciaNoTravado(t, agora);
   if (!o.daLeitura && (situacaoEfetiva(a, agora, carencia(a)) !== "segurada" || a.diferenca <= 0)) return { erro: "alteracao_mudou" };
+  // D1: nada da alteração vale da entrada em diante (nem na carência), e nenhuma extensão passa dela.
+  const limite = limiteDaAlteracao(t, a);
+  const noLimite = (d: Date) => (d.getTime() > limite.getTime() ? limite : d);
   const alvo: AlvoDaCobranca = {
     tipo: "alteracao",
     alteracaoId: a.id,
@@ -89,14 +92,15 @@ export function alvoDaCobranca(tx: Db, organizacaoId: string, t: Travado, altera
     valor: a.diferenca,
     holdAte: a.holdAte,
     tentativas: t.tentativas.filter((x) => x.alteracaoId === a.id),
-    valido: (quando) => situacaoEfetiva(a, quando, carenciaNoTravado(t, quando)(a)) === "segurada" && t.reserva.estado === "confirmada" && !t.cancelamento,
+    valido: (quando) =>
+      quando.getTime() < limite.getTime() && situacaoEfetiva(a, quando, carenciaNoTravado(t, quando)(a)) === "segurada" && t.reserva.estado === "confirmada" && !t.cancelamento,
     async estender(ate, pagamentoId) {
-      if (!(await estenderHoldDaAlteracao(tx, organizacaoId, a, ate, agora, pagamentoId, t.imovel.fuso))) return false;
-      alvo.holdAte = ate;
+      if (!(await estenderHoldDaAlteracao(tx, organizacaoId, a, noLimite(ate), agora, pagamentoId, t.imovel.fuso))) return false;
+      alvo.holdAte = noLimite(ate);
       return true;
     },
     async voltar(ate, provisorio, pagamentoId) {
-      if (!(await voltarHoldDaAlteracao(tx, organizacaoId, a, ate, provisorio, agora, pagamentoId, t.imovel.fuso))) return false;
+      if (!(await voltarHoldDaAlteracao(tx, organizacaoId, a, ate, noLimite(provisorio), agora, pagamentoId, t.imovel.fuso))) return false;
       alvo.holdAte = ate;
       return true;
     },

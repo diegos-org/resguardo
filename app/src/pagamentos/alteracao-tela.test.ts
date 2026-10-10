@@ -158,3 +158,29 @@ describe("os resultados da alteração na ficha", () => {
     for (const k of RESULTADOS_DA_ALTERACAO) expect(textoDoResultadoDaAlteracao(k, ctx)).toBeTruthy();
   });
 });
+
+describe("revisão do M8.2d: o prazo que acaba noutro dia e quem decidiu a devolução", () => {
+  it("o prazo das datas que acaba noutro dia (até 48 horas): 'Só segurar', as noites novas e o resultado dizem o dia e a hora; no mesmo dia, só a hora", () => {
+    const longo = previaAlteracaoParaTela({ ...reducao, holdMinutos: 1440 }, AGORA);
+    expect(longo.perguntaSoSegurar).toContain("até 02/10 às 12:00, sem aplicar?");
+    const aplicar = previaAlteracaoParaTela({ ...reducao, alteracaoId: "a", holdAte: new Date("2026-10-02T16:30:00Z") }, AGORA);
+    expect(aplicar.noitesNovas).toBe("Novas noites seguradas: 05/12–09/12 até 02/10 às 13:30.");
+    const ctx = { holdAte: new Date("2026-10-02T16:30:00Z"), valorADevolver: 30000, previstaEm: null, agora: AGORA };
+    expect(textoDoResultadoDaAlteracao("segurada", ctx)).toBe("Datas seguradas até 02/10 às 13:30: copie a proposta para o hóspede.");
+    expect(textoDoResultadoDaAlteracao("segurada", { ...ctx, holdAte: new Date("2026-10-01T16:30:00Z") })).toBe("Datas seguradas até 13:30: copie a proposta para o hóspede.");
+  });
+
+  it("a devolução por exceção, sem política aceita ou proposta pela SCL: a diferença não diz 'pela política'", () => {
+    const excecao = previaAlteracaoParaTela({ ...reducao, base: "excecao" }, AGORA);
+    expect(excecao.diferenca).toBe("Diferença: devolução de R$ 300,00 por exceção (decisão da equipe).");
+    const empresa = previaAlteracaoParaTela({ ...reducao, base: "empresa", decisao: { ...reducao.decisao!, base: "empresa" } }, AGORA);
+    expect(empresa.diferenca).toBe("Diferença: devolução de R$ 300,00 porque a alteração é proposta pela SCL.");
+    const semPolitica = previaAlteracaoParaTela(
+      { ...reducao, politica: null, direito: "nenhum", base: "sem_politica", valorADevolver: 0, partes: [], decisao: { ...reducao.decisao!, calculado: "sem_politica", base: "sem_politica", valorADevolver: 0 } },
+      AGORA,
+    );
+    expect(semPolitica.diferenca).toBe("Diferença: sem devolução por decisão da equipe (pagamento sem política aceita): o valor da reserva continua R$ 1.500,00.");
+    expect(semPolitica.depois).not.toContain("pela política");
+    expect(previaAlteracaoParaTela(reducao, AGORA).diferenca).toBe("Diferença: devolução de R$ 300,00 pela política (pedido dentro do prazo de reembolso integral).");
+  });
+});

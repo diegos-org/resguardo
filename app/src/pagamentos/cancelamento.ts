@@ -87,6 +87,7 @@ import {
   devolucaoInexplicada,
   devolucoesDoPagamento,
   devolvidoForaSemValor,
+  devolvidoPeloSistema,
   devolvidoProprio,
   lerCotacaoSemTravar,
   type Pagamento,
@@ -269,11 +270,21 @@ const NAO_PAGA = 'Esta reserva não foi paga pelo site: cancele pelo botão "Can
 /**
  * Fase 0 (e a releitura da prévia): lê de novo no Mercado Pago, forçado, cada pagamento da reserva quando ainda dá (dentro
  * do prazo de leitura). true = todo pagamento dentro do prazo teve uma leitura que bateu com a tentativa aplicada agora.
+ * Também relê as tentativas em andamento das cotações deles (criando, incerta, pendente; dentro do prazo), sem contar no
+ * resultado: o Pix da diferença de uma alteração que venceu pelo prazo (sem chamar o provedor) fica pendente até alguém o
+ * ler, e sem esta leitura recusaria o cancelamento e a alteração com um prazo que já acabou.
  */
-export async function releituraDosPagamentos(db: Db, organizacaoId: string, ps: readonly { id: string; idProvedor: string | null; criadoEm: Date }[], provedor: ProvedorPagamento | null, agora: Date): Promise<boolean> {
+export async function releituraDosPagamentos(
+  db: Db,
+  organizacaoId: string,
+  ps: readonly { id: string; idProvedor: string | null; criadoEm: Date; cotacaoId?: string }[],
+  provedor: ProvedorPagamento | null,
+  agora: Date,
+): Promise<boolean> {
   let todas = true;
+  const inicio = inicioDoPrazoDeReleitura(agora).getTime();
   for (const p of ps) {
-    if (p.criadoEm.getTime() < inicioDoPrazoDeReleitura(agora).getTime()) continue;
+    if (p.criadoEm.getTime() < inicio) continue;
     if (!provedor || !p.idProvedor) {
       todas = false;
       continue;
@@ -283,6 +294,21 @@ export async function releituraDosPagamentos(db: Db, organizacaoId: string, ps: 
       if (!(r.ok && r.aplicada === true)) todas = false;
     } catch {
       todas = false;
+    }
+  }
+  const cotacoes = [...new Set(ps.map((p) => p.cotacaoId).filter((x): x is string => !!x))];
+  if (provedor && cotacoes.length) {
+    const emAndamento = await db
+      .select({ id: pagamentos.id, criadoEm: pagamentos.criadoEm })
+      .from(pagamentos)
+      .where(and(eq(pagamentos.organizacaoId, organizacaoId), inArray(pagamentos.cotacaoId, cotacoes), inArray(pagamentos.situacao, ["criando", "incerta", "pendente"])));
+    for (const x of emAndamento) {
+      if (x.criadoEm.getTime() < inicio || ps.some((p) => p.id === x.id)) continue;
+      try {
+        await conferirTentativa(db, organizacaoId, x.id, provedor, agora, { forcar: true, origem: "painel" });
+      } catch {
+        // Sem a leitura, vale o que está gravado (a recusa de sempre aponta o pagamento em andamento).
+      }
     }
   }
   return todas;
@@ -502,7 +528,9 @@ async function montarDecisao(db: Db, organizacaoId: string, t: Travado, e: Entra
     direito = "integral";
     base = decisao.base;
   }
-  if (daReserva.some((x) => x.situacao === "devolvido") && direito === "nenhum")
+  // Devolvido por inteiro fora do sistema (painel do Mercado Pago) com "sem devolução": a equipe registra a devolução. O
+  // devolvido por inteiro pelas nossas devoluções (a diferença de um aumento devolvida numa redução, M8.2d) não conta: quitado.
+  if (daReserva.some((x) => x.situacao === "devolvido" && !devolvidoPeloSistema(x, devolucoesDoPagamento(t, x.id))) && direito === "nenhum")
     return recusaDecidida("decisao_obrigatoria", "O Mercado Pago já mostra este pagamento devolvido por inteiro: registre como devolução integral (pela política ou por exceção, com o motivo).");
   // D17: sem devolução pela política, com dinheiro já devolvido pelo painel do Mercado Pago fora do sistema: nunca suposto.
   const foraDoSistema = daReserva.find((x) => devolucaoInexplicada(x, devolucoesDoPagamento(t, x.id)));

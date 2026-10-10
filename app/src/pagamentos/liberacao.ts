@@ -86,7 +86,8 @@ export async function recebimentosDoPagamento(tx: Db, organizacaoId: string, pag
  * calculada agora quando ainda não congelou). Uma taxa desconhecida não apaga as conhecidas: `desconhecida` avisa, e o
  * pagamento continua com o aviso dele. Nenhuma conhecida (um pagamento só, sem a taxa): `taxa` 0, `conhecida` false — a
  * reserva fica sem taxa, como antes de qualquer leitura. Um pagamento só, sem devolução de alteração: exatamente a taxa
- * dele (o M8.2c não muda).
+ * dele (o M8.2c não muda). A devolução de alteração confirmada a menos (D15) conta pelo valor decidido até o restante
+ * dela ser registrado.
  * `o.taxaNova`: a taxa de um pagamento que esta transação ainda vai gravar (a aprovação da diferença); `o.partes`: as
  * devoluções da alteração que está sendo aplicada (ainda não gravadas), cada uma com o valor dela.
  */
@@ -112,6 +113,16 @@ export function taxaDaReserva(
     for (const d of daAlteracao) {
       const x = d.taxaAtribuida ?? taxaAtribuidaDaDevolucao(comTaxa, d, devs) ?? 0;
       d.taxaAtribuida = x;
+      atribuida += x;
+    }
+    // D15: a confirmada a menos ainda sem o restante registrado conta pelo decidido (a reserva já foi reduzida pelo todo):
+    // o que falta leva a taxa dele como se já estivesse registrado, e a taxa da reserva não sobe e desce com o restante.
+    for (const d of daAlteracao) {
+      const falta = d.situacao === "confirmada" && d.valorConfirmado !== null ? d.valor - d.valorConfirmado : 0;
+      if (falta <= 0 || devs.some((x) => x.origemDevolucaoId === d.id)) continue;
+      const resto = { id: `resto:${d.id}`, situacao: "pedida" as const, valor: falta, valorConfirmado: null, porForaValor: null, taxaAtribuida: null };
+      const x = taxaAtribuidaDaDevolucao(comTaxa, resto, devs) ?? 0;
+      devs.push({ ...resto, taxaAtribuida: x } as (typeof devs)[number]);
       atribuida += x;
     }
     for (const parte of o.partes ?? []) {

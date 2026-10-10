@@ -388,7 +388,8 @@ it("M8.2d: o resultado da ação da alteração vem só de chaves conhecidas (o 
   expect(await html({ alteracao: "desistida" })).toContain("Alteração desfeita: as novas datas voltaram à venda e a reserva continua como estava.");
   expect(await html({ alteracao: "qualquer coisa" })).not.toContain("Alteração aplicada.");
   m.alteracoes.mockResolvedValue([alteracao({ situacao: "segurada", holdAte: new Date("2026-10-01T16:30:00Z"), aplicadaEm: null })]);
-  expect(await html({ alteracao: "segurada" })).toContain("Datas seguradas até 13:30: copie a proposta para o hóspede.");
+  // O prazo de outro dia leva o dia (revisão do M8.2d); a ficha usa o relógio de agora.
+  expect(await html({ alteracao: "segurada" })).toMatch(/Datas seguradas até (01\/10 às )?13:30: copie a proposta para o hóspede\./);
   m.alteracoes.mockResolvedValue([alteracao()]);
   m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
   const op = await html({ alteracao: "aplicada_pedida" });

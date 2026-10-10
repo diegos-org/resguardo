@@ -641,6 +641,8 @@ type AlvoAlteracao = {
   imovel: string;
   fuso: string;
   cotacaoCodigo: string;
+  /** Quando o pedido da alteração chegou (a variável `{recebido}`, como no cancelamento); null na prévia, antes de gravar. */
+  pedidoRecebidoEm: Date | null;
   /** A devolução da diferença feita mais recente (a referência da mensagem), quando todas estão feitas. */
   ultimaDevolucaoId: string | null;
   avisados: Record<MensagemDaAlteracao, Date | null>;
@@ -703,6 +705,7 @@ async function alvosDeAlteracao(db: Db, organizacaoId: string, f: { alteracaoId?
       imovel: l.imovel,
       fuso: l.fuso || "America/Sao_Paulo",
       cotacaoCodigo: l.cotacaoCodigo,
+      pedidoRecebidoEm: l.a.pedidoRecebidoEm,
       ultimaDevolucaoId: ultima?.d.id ?? null,
       avisados: { proposta: l.a.hospedeAvisadoPropostaEm, confirmacao: l.a.hospedeAvisadoConfirmacaoEm, devolucao: l.a.hospedeAvisadoDevolucaoEm },
     };
@@ -763,7 +766,8 @@ function valoresDaAlteracao(a: AlvoAlteracao, v: AlteracaoParaHospede, empresa: 
     noites: String(noites),
     codigo: a.codigo,
     empresa: empresa.nome.trim(),
-    recebido: "",
+    // O momento do pedido da alteração: o modelo "Devolução feita" serve ao cancelamento e à alteração, e o {recebido} vale nos dois.
+    recebido: a.pedidoRecebidoEm ? dataHoraBrasilia(a.pedidoRecebidoEm) : "",
     decisao: "",
     valor: d ? formatBRL(d.valorConfirmado ?? d.valor) : "",
     data: d?.em ? dataNoFuso(d.em, a.fuso) : "",
@@ -822,7 +826,7 @@ export async function propostaDaPrevia(
     .innerJoin(cotacoes, eq(cotacoes.reservaId, reservas.id))
     .where(and(eq(reservas.id, reservaId), eq(reservas.organizacaoId, organizacaoId)));
   if (!r) return null;
-  const alvo: AlvoAlteracao = { ...r, alteracaoId: "", reservaId, fuso: r.fuso || "America/Sao_Paulo", ultimaDevolucaoId: null, avisados: { proposta: null, confirmacao: null, devolucao: null } };
+  const alvo: AlvoAlteracao = { ...r, alteracaoId: "", reservaId, fuso: r.fuso || "America/Sao_Paulo", pedidoRecebidoEm: null, ultimaDevolucaoId: null, avisados: { proposta: null, confirmacao: null, devolucao: null } };
   const vista: AlteracaoParaHospede = { ...v, id: "", situacao: "segurada", aplicadaEm: null, devolucao: null, pagoSemAlteracao: null, pagamento: null };
   const cfg = await lerConfigMensagens(db, organizacaoId);
   const id = cfg.modelos.alteracao_proposta;

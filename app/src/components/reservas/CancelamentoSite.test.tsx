@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { CancelamentoDoPainel } from "@/pagamentos/cancelamento-painel";
-import type { PagamentoDoPainel } from "@/pagamentos/consultas";
+import type { DevolucaoDoPainel, PagamentoDoPainel } from "@/pagamentos/consultas";
 vi.mock("@/pagamentos/acoes-cancelamento", () => ({
   calcularCancelamentoAcao: vi.fn(),
   cancelarReservaPagaAcao: vi.fn(),
@@ -310,5 +310,57 @@ describe("cancelamento depois de uma alteração (M8.2d)", () => {
     expect(h).toContain("pedida ao Mercado Pago, aguardando confirmação · R$ 400,00");
     expect(h).not.toContain("R$ 300,00");
     expect(html({ reserva: reservaCancelada, cancelamento: cancelada, pagamento: doCancelamento })).toContain("confirmada pelo Mercado Pago · R$ 1.824,00 · em 02/10/2026");
+  });
+
+  // Revisão do M8.2d: as devoluções do cancelamento vêm das devoluções do pagamento que são dele (nunca da que manda no pagamento).
+  const nenhuma = { conferir: false, pedirDeNovo: false, porFora: false, confirmarVista: false, registrarRecusaNoPainel: false, parar: false, registrarTaxa: false, corrigirTaxa: false, pedirRestante: false, restantePorFora: false };
+  const linha = (over: Partial<DevolucaoDoPainel>): DevolucaoDoPainel => ({
+    id: "d",
+    origem: "cancelamento",
+    alteracaoId: null,
+    cancelamentoId: cancelada.id,
+    valor: 182400,
+    situacao: "confirmada",
+    valorConfirmado: 182400,
+    ultimoCodigo: null,
+    avisos: [],
+    restanteDe: null,
+    temRestante: false,
+    caixaLancadoEm: null,
+    taxaPerdida: null,
+    criadoEm: new Date("2026-10-01T16:00:00Z"),
+    confirmadaEm: new Date("2026-10-02T15:00:00Z"),
+    porForaData: null,
+    porForaValor: null,
+    tentativas: 1,
+    falhas: 0,
+    confirmadaPor: "leitura",
+    confirmadaNota: "",
+    porForaNota: "",
+    recusaNoPainelEm: null,
+    paradaEm: null,
+    paradaPeloPrazo: false,
+    aguardandoLiberacao: false,
+    restanteSemReserva: null,
+    acoes: nenhuma,
+    ...over,
+  });
+
+  it("a devolução do cancelamento que o Mercado Pago fez a menos e o restante dela: as duas, cada uma com o valor dela (não só a que manda no pagamento)", () => {
+    const d1 = linha({ id: "d1", valorConfirmado: 177400, temRestante: true });
+    const d2 = linha({ id: "d2", valor: 5000, valorConfirmado: 5000, restanteDe: "d1", criadoEm: new Date("2026-10-02T16:00:00Z"), confirmadaEm: new Date("2026-10-03T15:00:00Z") });
+    const p = { ...pagamento, devolucao: devolucaoDe({ situacao: "confirmada", valor: 5000, valorConfirmado: 5000, confirmadaEm: d2.confirmadaEm }), devolucoes: [d2, d1] };
+    const h = html({ reserva: reservaCancelada, cancelamento: cancelada, pagamento: p, pagamentos: [p] });
+    expect(h).toContain("Pix de 01/10/2026: confirmada pelo Mercado Pago · R$ 1.824,00 · em 02/10/2026 · o Mercado Pago mostrou R$ 1.774,00 devolvidos");
+    expect(h).toContain("Pix de 01/10/2026 (restante): confirmada pelo Mercado Pago · R$ 50,00 · em 03/10/2026");
+  });
+
+  it("a devolução de uma redução de antes, no mesmo pagamento, nunca aparece como a do cancelamento (mesmo sendo a que manda no pagamento)", () => {
+    const reducao = linha({ id: "a1", origem: "alteracao", alteracaoId: "a", cancelamentoId: null, valor: 30000, valorConfirmado: 30000, criadoEm: new Date("2026-10-01T15:30:00Z") });
+    const doCanc = linha({ id: "c1", valor: 152400, valorConfirmado: 152400 });
+    const p = { ...pagamento, devolucao: devolucaoDe({ origem: "alteracao", situacao: "confirmada", valor: 30000, confirmadaEm: new Date("2026-10-01T16:00:00Z") }), devolucoes: [doCanc, reducao] };
+    const h = html({ reserva: reservaCancelada, cancelamento: cancelada, pagamento: p, pagamentos: [p] });
+    expect(h).toContain("confirmada pelo Mercado Pago · R$ 1.524,00 · em 02/10/2026");
+    expect(h).not.toContain("R$ 300,00");
   });
 });

@@ -57,6 +57,8 @@ const FUSO = "America/Sao_Paulo";
 const fmt = (d: Date, o: Intl.DateTimeFormatOptions, fuso = FUSO) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, ...o }).format(d);
 const diaBr = (d: Date, fuso = FUSO) => fmt(d, { day: "2-digit", month: "2-digit" }, fuso);
 const horaBr = (d: Date, fuso = FUSO) => fmt(d, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }, fuso);
+/** Um prazo: "HH:MM" quando acaba no dia de `agora`, senão "dd/mm às HH:MM" (o prazo das datas vai até 48 horas). */
+const prazoBr = (d: Date, agora: Date | undefined, fuso = FUSO) => (!agora || diaBr(d, fuso) === diaBr(agora, fuso) ? horaBr(d, fuso) : `${diaBr(d, fuso)} às ${horaBr(d, fuso)}`);
 /** "dd/mm" de uma data AAAA-MM-DD. */
 const dataBr = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 const nNoites = (n: number) => `${n} ${n === 1 ? "noite" : "noites"}`;
@@ -85,6 +87,15 @@ const BASES = {
   estadia_iniciada: "pedido depois do início da estadia",
   nao_comparecimento: "não comparecimento",
 } as const;
+/** As bases em que a política decidiu (as outras são decisão da equipe ou da SCL). */
+const pelaPolitica = (base: keyof typeof BASES | null) => base === "prazo" || base === "arrependimento" || base === "fora_do_prazo" || base === "estadia_iniciada" || base === "nao_comparecimento";
+/** Quem decidiu devolver (ou não) a diferença: "pela política" só quando foi ela. */
+function quemDecidiu(base: keyof typeof BASES | null): string {
+  if (base === "excecao") return "por exceção (decisão da equipe)";
+  if (base === "empresa") return "porque a alteração é proposta pela SCL";
+  if (base && pelaPolitica(base)) return `pela política (${BASES[base]})`;
+  return base === "sem_politica" ? "por decisão da equipe (pagamento sem política aceita)" : "por decisão da equipe";
+}
 const COMPONENTES: [keyof Componentes, string][] = [
   ["bruto", "Valor bruto"],
   ["taxa", "Taxa do Mercado Pago"],
@@ -119,8 +130,8 @@ export function previaAlteracaoParaTela(p: PreviaAlteracao, agora: Date, propost
       : p.rumo === "igual"
         ? "Diferença: o valor não muda."
         : p.direito === "integral"
-          ? `Diferença: devolução de ${formatBRL(p.valorADevolver)} pela política (${p.base ? BASES[p.base] : "decisão da equipe"}).`
-          : `Diferença: sem devolução pela política (${p.base ? BASES[p.base] : "decisão da equipe"}): o valor da reserva continua ${formatBRL(p.antes.valor)}.`;
+          ? `Diferença: devolução de ${formatBRL(p.valorADevolver)} ${quemDecidiu(p.base)}.`
+          : `Diferença: sem devolução ${quemDecidiu(p.base)}: o valor da reserva continua ${formatBRL(p.antes.valor)}.`;
   const politica = p.politica
     ? p.rumo === "reducao" && p.decisao
       ? [
@@ -141,16 +152,17 @@ export function previaAlteracaoParaTela(p: PreviaAlteracao, agora: Date, propost
           : "pelo Mercado Pago agora";
     return `${forma} de ${diaBr(x.pagoEm)}: ${formatBRL(x.valor)} — ${como}.`;
   });
-  const ate = p.holdAte ?? new Date(agora.getTime() + p.holdMinutos * 60_000);
+  const novo = new Date(agora.getTime() + p.holdMinutos * 60_000);
+  const ate = p.holdAte ?? (p.limiteDoPrazo && p.limiteDoPrazo.getTime() < novo.getTime() ? p.limiteDoPrazo : novo);
   const noitesNovas = p.noitesNovas
     ? p.holdAte
-      ? `Novas noites seguradas: ${dataBr(p.noitesNovas.inicio)}–${dataBr(p.noitesNovas.fim)} até ${horaBr(p.holdAte)}.`
+      ? `Novas noites seguradas: ${dataBr(p.noitesNovas.inicio)}–${dataBr(p.noitesNovas.fim)} até ${prazoBr(p.holdAte, agora)}.`
       : `Novas noites seguradas: ${dataBr(p.noitesNovas.inicio)}–${dataBr(p.noitesNovas.fim)} por ${p.holdMinutos} minutos.`
     : "Nenhuma noite nova: as novas datas cabem nas de agora.";
   const rota = rotaDaPrevia(p);
   const soSegurar =
     p.alteracaoId === null && p.rumo !== "aumento"
-      ? `Segurar as novas datas (${dataBr(p.depois.checkin)} a ${dataBr(p.depois.checkout)}, ${pessoas(p.depois.hospedes)}) até ${horaBr(ate)}, sem aplicar? A reserva continua como está (${dataBr(p.antes.checkin)} a ${dataBr(p.antes.checkout)}); depois que o hóspede aceitar por escrito, use "Aplicar a alteração", ou desista.`
+      ? `Segurar as novas datas (${dataBr(p.depois.checkin)} a ${dataBr(p.depois.checkout)}, ${pessoas(p.depois.hospedes)}) até ${prazoBr(ate, agora)}, sem aplicar? A reserva continua como está (${dataBr(p.antes.checkin)} a ${dataBr(p.antes.checkout)}); depois que o hóspede aceitar por escrito, use "Aplicar a alteração", ou desista.`
       : null;
   return {
     alteracaoId: p.alteracaoId,
@@ -164,7 +176,7 @@ export function previaAlteracaoParaTela(p: PreviaAlteracao, agora: Date, propost
     rota,
     botao: p.rumo === "aumento" ? "Segurar as novas datas e liberar o pagamento da diferença" : "Aplicar a alteração",
     hoje: `Hoje: ${estadia(p.antes)}, ${formatBRL(p.antes.valor)}.`,
-    depois: `Depois: ${estadia(p.depois)}, ${formatBRL(p.depois.valor)} (${origem})${retida ? `; pela política, a reserva continua valendo ${formatBRL(p.antes.valor)}` : ""}.`,
+    depois: `Depois: ${estadia(p.depois)}, ${formatBRL(p.depois.valor)} (${origem})${retida ? `; ${pelaPolitica(p.base) ? "pela política, " : ""}a reserva continua valendo ${formatBRL(p.antes.valor)}` : ""}.`,
     diferenca,
     politica,
     comoSai,
@@ -195,12 +207,12 @@ export function resultadoDaAlteracao(situacao: "segurada" | "aplicada", rota: st
  * O texto de um resultado vindo do endereço (só as chaves conhecidas; o resto não mostra nada). `ctx` vem da ficha: o prazo
  * da alteração segurada e, da última aplicada, o valor devolvido (null sem `financeiro:ler`) e a liberação prevista.
  */
-export function textoDoResultadoDaAlteracao(v: unknown, ctx: { holdAte: Date | null; valorADevolver: number | null; previstaEm: string | null }): string | null {
+export function textoDoResultadoDaAlteracao(v: unknown, ctx: { holdAte: Date | null; valorADevolver: number | null; previstaEm: string | null; agora?: Date }): string | null {
   if (typeof v !== "string" || !(RESULTADOS_DA_ALTERACAO as readonly string[]).includes(v)) return null;
   const valor = ctx.valorADevolver !== null && ctx.valorADevolver > 0 ? ` de ${formatBRL(ctx.valorADevolver)}` : " da diferença";
   switch (v as ResultadoDaAlteracao) {
     case "segurada":
-      return `Datas seguradas${ctx.holdAte ? ` até ${horaBr(ctx.holdAte)}` : ""}: copie a proposta para o hóspede.`;
+      return `Datas seguradas${ctx.holdAte ? ` até ${prazoBr(ctx.holdAte, ctx.agora)}` : ""}: copie a proposta para o hóspede.`;
     case "aplicada_pedida":
       return `Alteração aplicada. Devolução${valor} pedida ao Mercado Pago: a confirmação aparece no quadro do pagamento quando ele concluir.`;
     case "aplicada_liberacao":

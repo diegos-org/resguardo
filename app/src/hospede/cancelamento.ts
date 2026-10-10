@@ -7,8 +7,9 @@
  *   trava, gravado com o canal "site" e nunca mais mudado. Pedir de novo devolve o mesmo horário.
  * - Só reservas pagas pelo site (pagamento que confirmou a reserva, aprovado), antes do horário de entrada, com o
  *   botão ligado em Configurações → Pagamento no site. M8.2d: todo pagamento da reserva (também a diferença de uma
- *   alteração) aprovado, ou devolvido em parte pelas devoluções do sistema (a mesma regra do painel); depois de uma
- *   alteração, o prazo conta da entrada que conta (`entradaQueConta`) e o horário de entrada é o da entrada atual.
+ *   alteração) aprovado, ou devolvido (em parte ou por inteiro) pelas devoluções do sistema (a mesma regra do painel);
+ *   depois de uma alteração, o prazo conta da entrada que conta (`entradaQueConta`) e o horário de entrada é o da entrada
+ *   atual.
  * - A equipe recebe um e-mail (sem nome nem e-mail do hóspede) e o pedido aparece no Início e na ficha.
  * - Nunca valores: as datas da política e uma palavra (devolução integral ou sem devolução), como no resto do portal.
  */
@@ -25,7 +26,7 @@ import { avisarEquipePorEmail, type ResultadoAviso } from "@/email/aviso-equipe"
 import type { Correio } from "@/email/correio";
 import { hojeISO, instanteLocal } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
-import { devolucaoInexplicada, devolucoesDoPagamento, type Pagamento, pagamentosDaReserva, travarCotacao } from "@/pagamentos/travas";
+import { devolucaoInexplicada, devolucoesDoPagamento, devolvidoPeloSistema, type Pagamento, pagamentosDaReserva, travarCotacao } from "@/pagamentos/travas";
 import { politicaDoPagamento } from "@/site/aceites";
 import { doEmail, vigentes } from "./portal";
 
@@ -103,11 +104,16 @@ async function reservaDoHospede(db: Db, organizacaoId: string, email: string, re
 
 /**
  * Todo pagamento com o dinheiro da reserva está aprovado, ou devolvido em parte pelas devoluções do sistema (uma alteração
- * com devolução, M8.2d) — a mesma regra do painel. Uma devolução que o sistema não explica (painel do Mercado Pago) esconde
- * o botão: a equipe resolve.
+ * com devolução, M8.2d), ou devolvido por inteiro por elas (a diferença de um aumento devolvida numa redução: quitado) — a
+ * mesma regra do painel —, e algum ainda tem o dinheiro. Uma devolução que o sistema não explica (painel do Mercado Pago)
+ * esconde o botão: a equipe resolve.
  */
 const todosAprovados = (ps: readonly Pagamento[], devolucoes: Parameters<typeof devolucoesDoPagamento>[0]["devolucoes"]) =>
-  ps.length > 0 && ps.every((x) => x.situacao === "aprovado" || (x.situacao === "devolvido_parcial" && !devolucaoInexplicada(x, devolucoesDoPagamento({ devolucoes }, x.id))));
+  ps.some((x) => x.situacao !== "devolvido") &&
+  ps.every((x) => {
+    const devs = devolucoesDoPagamento({ devolucoes }, x.id);
+    return x.situacao === "aprovado" || (x.situacao === "devolvido_parcial" && !devolucaoInexplicada(x, devs)) || devolvidoPeloSistema(x, devs);
+  });
 
 /**
  * O quadro "Cancelar a reserva" de Minha reserva. null = não é uma reserva paga pelo site deste e-mail (ou não está mais

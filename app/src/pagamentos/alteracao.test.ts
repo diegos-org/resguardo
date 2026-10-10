@@ -1,10 +1,12 @@
 import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { lerRegrasCalendario, salvarRegrasCalendario } from "@/calendario/regras-config";
 import { CONFIG_PAGAMENTO_SITE_PADRAO, salvarConfigPagamentoSite } from "@/configuracoes/pagamento-site";
 import { alteracoesReserva, auditoria, beds24Calendario, bloqueios, contratos, devolucoesPagamento, imoveisDetalhes, lancamentos, pagamentos, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
-import { aplicarMotor } from "@/financeiro/aplicar";
+import { aplicarMotor, recalcularReservas } from "@/financeiro/aplicar";
+import { cancelamentoNoPortal, pedirCancelamentoPeloHospede } from "@/hospede/cancelamento";
 import { avisosDeAlteracao } from "@/painel/dashboard";
 import { recebidoPorReserva } from "@/repasses/recebimentos";
 import { criarCotacao, segurarDatas } from "@/site/cotacoes";
@@ -14,6 +16,7 @@ import {
   aplicarAlteracaoPelaEquipe,
   desistirDaAlteracao,
   expirarAlteracoesVencidas,
+  marcarHospedeAvisadoDaAlteracao,
   marcarOtaAtualizada,
   previaDaAlteracao,
   previaDaAplicacao,
@@ -29,15 +32,19 @@ import {
   TEXTO_SEM_LEITURA_ALTERACAO,
   TEXTO_SEM_MUDANCA,
 } from "./alteracao";
+import { alvoDaCobranca, falhaDoAlvo } from "./alvo";
+import { previaDoCancelamento } from "./cancelamento";
 import { conferirTentativa } from "./conferencia";
-import { TEXTO_SEM_COBRANCA } from "./oferta";
+import { ofertaDePix, TEXTO_SEM_COBRANCA } from "./oferta";
 import { registrarTaxaPerdida, tentarDevolucao } from "./devolucao";
 import { conferirPendentes } from "./rotina";
+import { travarCotacao } from "./travas";
 import {
   alteracaoGravada,
   alterar,
   type Cenario,
   cancelar,
+  EMAIL_HOSPEDE,
   entradaAlteracao,
   entradaPadrao,
   env,
@@ -942,5 +949,171 @@ describe("concorrência", () => {
       .where(and(eq(reservas.organizacaoId, c.org), eq(reservas.estado, "pedido"), sql`${reservas.checkin} <= '2026-10-15' and ${reservas.checkout} > '2026-10-15'`));
     expect(pedidos).toHaveLength(1);
     expect(pedidos[0].fonte).toBe(alteracao.ok ? "alteracao" : "site");
+  });
+});
+
+describe("revisão do M8.2d: o pagamento da diferença devolvido por inteiro pelas nossas devoluções", () => {
+  it("aumento, liberação e a redução que devolve a diferença inteira: outra alteração, o cancelamento sem devolução pela política e o pedido do hóspede seguem (não é devolução de fora do sistema)", async () => {
+    const x = await pagarEConfirmar(c, { liberar: true });
+    const { resultado } = await alterar(c, x.reservaId, { checkout: "2026-10-16" }, minutos(20), { autorId: equipe });
+    if (!resultado.ok) throw new Error(resultado.erro);
+    const pag = await pagarDiferenca(c, x.cotacaoId, resultado.alteracaoId, { quando: minutos(25) });
+    expect(pag.resultado).toBe("aprovado");
+    await liberar(c, pag.pagamentoId, { quando: minutos(30) });
+    // A noite sai de novo no mesmo dia (arrependimento): a devolução sai inteira do pagamento da diferença (o mais novo).
+    const reducao = await alterar(c, x.reservaId, { checkout: "2026-10-15" }, minutos(40), { autorId: equipe, aplicar: true });
+    expect(reducao.resultado).toMatchObject({ ok: true, situacao: "aplicada", devolucoes: ["confirmada"] });
+    expect(await c.tentativa(pag.pagamentoId)).toMatchObject({ situacao: "devolvido", devolvidoLido: 52800 });
+    expect((await c.tentativa(x.pagamentoId)).situacao).toBe("aprovado");
+    // Outra alteração da reserva: a devolução sai do pagamento que ainda tem saldo.
+    const outra = await previaDaAlteracao(db, c.org, x.reservaId, entradaAlteracao({ checkin: "2026-10-12", checkout: "2026-10-14", hospedes: 4, recebidoEm: minutos(60) }), c.provedor, minutos(60));
+    expect(outra).toMatchObject({ ok: true, previa: { rumo: "reducao", direito: "integral" } });
+    if (outra.ok) expect(outra.previa.partes.map((p) => p.pagamentoId)).toEqual([x.pagamentoId]);
+    // O cancelamento pela política sem devolução (fora do arrependimento): sem pedir a exceção.
+    const tarde = sp("2026-10-09 10:00");
+    expect(await previaDoCancelamento(db, c.org, x.reservaId, entradaPadrao({ recebidoEm: tarde, canal: "whatsapp" }), c.provedor, tarde)).toMatchObject({ ok: true, previa: { direito: "nenhum" } });
+    // E o hóspede continua podendo pedir o cancelamento em Minha reserva.
+    expect((await cancelamentoNoPortal(db, c.org, EMAIL_HOSPEDE, x.reservaCodigo, minutos(61)))?.podePedir).toBe(true);
+    expect(await pedirCancelamentoPeloHospede(db, c.org, EMAIL_HOSPEDE, x.reservaCodigo, minutos(61))).toMatchObject({ ok: true, novo: true });
+  });
+});
+
+describe("revisão do M8.2d: o Pix da diferença que venceu sem ninguém ler", () => {
+  /** Uma alteração segurada com o Pix da diferença gerado e não pago, vencido no Mercado Pago; devolve o instante depois do prazo e da carência. */
+  async function comPixVencido(o: { entrada?: string; saida?: string; checkout: string; email?: string }) {
+    const x = await pagarEConfirmar(c, { entrada: o.entrada, saida: o.saida, email: o.email });
+    const { resultado } = await alterar(c, x.reservaId, { checkout: o.checkout }, minutos(20), { autorId: equipe });
+    if (!resultado.ok) throw new Error(resultado.erro);
+    const pix = await pagarDiferenca(c, x.cotacaoId, resultado.alteracaoId, { quando: minutos(25), aprovar: false });
+    const holdAte = (await alteracaoGravada(c, resultado.alteracaoId)).holdAte!;
+    // O hóspede fechou a página: o Pix vence no Mercado Pago; sem a rotina (como nas prévias), ninguém o lê.
+    c.provedor.expirar(pix.idProvedor);
+    const depois = new Date(holdAte.getTime() + 60 * 60_000);
+    await lerAgenda(depois);
+    return { x, pix, depois };
+  }
+
+  it("a prévia de outra alteração relê o Pix na fase 0 e passa (não fica esperando um prazo que já acabou)", async () => {
+    const { x, pix, depois } = await comPixVencido({ checkout: "2026-10-16" });
+    const e = entradaAlteracao({ checkin: "2026-10-12", checkout: "2026-10-14", hospedes: 4, recebidoEm: depois });
+    expect(await previaDaAlteracao(db, c.org, x.reservaId, e, c.provedor, depois)).toMatchObject({ ok: true });
+    expect((await c.tentativa(pix.pagamentoId)).situacao).toBe("expirado");
+  });
+
+  it("o cancelamento relê o Pix na fase 0 e passa", async () => {
+    const { x, pix, depois } = await comPixVencido({ entrada: "2026-10-20", saida: "2026-10-23", checkout: "2026-10-24", email: "outro@example.com" });
+    const { resultado } = await cancelar(c, x.reservaId, entradaPadrao({ quemCancela: "empresa", motivoEmpresa: "forca_maior" }), equipe, depois);
+    expect(resultado).toMatchObject({ ok: true, direito: "integral" });
+    expect((await c.tentativa(pix.pagamentoId)).situacao).toBe("expirado");
+  });
+});
+
+describe("revisão do M8.2d: travas, assinatura e prazo das datas", () => {
+  it("o recálculo de toda a empresa (regras financeiras) não passa pelas reservas-pedido das alterações (não trava o motor delas fora da ordem única)", async () => {
+    const x = await pagarEConfirmar(c);
+    const { resultado } = await alterar(c, x.reservaId, { checkin: "2026-10-11" }, minutos(20), { autorId: equipe });
+    if (!resultado.ok) throw new Error(resultado.erro);
+    expect((await portadores())[0]).toMatchObject({ estado: "pedido", checkin: "2026-10-11", checkout: "2026-10-12" });
+    vi.useFakeTimers({ now: minutos(21), toFake: ["Date"] });
+    try {
+      expect(await recalcularReservas(db, c.org, {})).toMatchObject({ reservas: 1 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("marcar a proposta como enviada entre a prévia e o 'Aplicar' (o botão ou o envio automático) não invalida a assinatura da aplicação", async () => {
+    const x = await pagarEConfirmar(c);
+    const valor = { origem: "digitado" as const, valor: TOTAL - 10_000, motivo: "cortesia_comercial" as const, nota: "Cortesia pela mudança" };
+    const { resultado } = await alterar(c, x.reservaId, { checkout: "2026-10-16", valor }, minutos(20), { autorId: equipe });
+    if (!resultado.ok) throw new Error(resultado.erro);
+    const previa = await previaDaAplicacao(db, c.org, resultado.alteracaoId, c.provedor, minutos(25));
+    if (!previa.ok) throw new Error(previa.erro);
+    expect(await marcarHospedeAvisadoDaAlteracao(db, c.org, resultado.alteracaoId, "proposta", equipe, minutos(26))).toEqual({ ok: true });
+    expect(await aplicarAlteracaoPelaEquipe(db, c.org, resultado.alteracaoId, equipe, c.provedor, minutos(28), previa.previa.assinatura)).toMatchObject({ ok: true });
+  });
+
+  it("o prazo das datas seguradas nunca passa do horário da entrada (D1): a prévia avisa, o Pix não estende além dele e, depois dele, a diferença não é mais oferecida nem o alvo vale", async () => {
+    const x = await pagarEConfirmar(c);
+    const prep = sp("2026-10-12 14:20");
+    await lerAgenda(prep);
+    const { previa, resultado } = await alterar(c, x.reservaId, { checkout: "2026-10-16" }, prep, { autorId: equipe });
+    if (!previa.ok) throw new Error(previa.erro);
+    expect(previa.previa.pergunta).toContain("até 15:00 e liberar para o hóspede pagar a diferença");
+    expect(previa.previa.avisos).toContain("As novas datas ficam seguradas só até 15:00, o horário da entrada (a alteração vale só antes da entrada); o Pix da diferença não estende esse prazo.");
+    expect(resultado).toMatchObject({ ok: true, situacao: "segurada", holdAte: sp("2026-10-12 15:00") });
+    if (!resultado.ok) throw new Error();
+    await pagarDiferenca(c, x.cotacaoId, resultado.alteracaoId, { quando: sp("2026-10-12 14:55"), aprovar: false });
+    expect((await alteracaoGravada(c, resultado.alteracaoId)).holdAte).toEqual(sp("2026-10-12 15:00"));
+    const depois = sp("2026-10-12 15:10");
+    expect(await ofertaDePix(db, c.org, x.cotacaoId, depois, c.gate, { alteracaoId: resultado.alteracaoId })).toMatchObject({ oferecer: false });
+    // Na carência do Pix pendente (15 minutos depois do prazo), o alvo da cobrança já não vale: passou da entrada.
+    const valido = await db.transaction(async (tx) => {
+      const t = await travarCotacao(tx, c.org, x.cotacaoId);
+      const alvo = alvoDaCobranca(tx, c.org, t!, resultado.alteracaoId, depois, { daLeitura: true });
+      return falhaDoAlvo(alvo) ? null : alvo.valido(depois);
+    });
+    expect(valido).toBe(false);
+  });
+
+  it("a nova entrada hoje depois do horário de entrada: a prévia recusa com o texto dela (não 'a estadia já começou'); antes do horário, passa", async () => {
+    const x = await pagarEConfirmar(c);
+    const mantido = { origem: "mantido" as const, motivo: "outro" as const, nota: "Chega antes" };
+    const e = (quando: Date) => previaDaAlteracao(db, c.org, x.reservaId, entradaAlteracao({ checkin: "2026-10-10", checkout: "2026-10-15", hospedes: 4, recebidoEm: quando, valor: mantido }), c.provedor, quando);
+    const tarde = sp("2026-10-10 16:00");
+    await lerAgenda(tarde);
+    expect(await e(tarde)).toMatchObject({ ok: false, codigo: "dados", erro: "A nova entrada (hoje) já passou do horário de entrada (15:00): escolha uma data a partir de amanhã." });
+    const cedo = sp("2026-10-10 14:00");
+    await lerAgenda(cedo);
+    expect(await e(cedo)).toMatchObject({ ok: true, previa: { rumo: "igual" } });
+  });
+
+  it("o prazo das datas que acaba noutro dia (até 48 horas): a pergunta e a recusa de outra alteração dizem o dia e a hora", async () => {
+    const regras = await lerRegrasCalendario(db, c.org);
+    expect(await salvarRegrasCalendario(db, c.org, { ...regras, site: { ...regras.site, minutosHoldAlteracao: 1440 } }, null)).toBe(true);
+    const x = await pagarEConfirmar(c);
+    const valor = { origem: "digitado" as const, valor: TOTAL - 10_000, motivo: "cortesia_comercial" as const, nota: "Cortesia pela mudança" };
+    const { previa, resultado } = await alterar(c, x.reservaId, { checkout: "2026-10-16" }, minutos(20), { autorId: equipe });
+    if (!previa.ok) throw new Error(previa.erro);
+    expect(previa.previa.pergunta).toContain("até 02/10 às 12:20 e liberar");
+    expect(resultado).toMatchObject({ ok: true });
+    const outra = await previaDaAlteracao(db, c.org, x.reservaId, entradaAlteracao({ checkin: "2026-10-12", checkout: "2026-10-14", hospedes: 4, recebidoEm: minutos(30), valor }), c.provedor, minutos(30));
+    expect(outra).toMatchObject({ ok: false, codigo: "ha_alteracao", erro: expect.stringContaining("seguradas até 02/10 às 12:20:") });
+  });
+});
+
+describe("revisão do M8.2d: os textos da equipe dizem quem decidiu e só falam das datas quando elas mudam", () => {
+  const tarde = sp("2026-10-09 10:00");
+  const menos200 = { origem: "digitado" as const, valor: TOTAL - 20_000, motivo: "acordo_com_hospede" as const, nota: "Acordo por WhatsApp" };
+
+  it("exceção: a pergunta diz 'por exceção' (não 'pela política', que não devolveria) e o motivo da devolução também", async () => {
+    const x = await pagarEConfirmar(c);
+    const excecao = { decisao: "excecao" as const, motivoExcecao: "cortesia_comercial" as const, motivoDecisao: "Cliente antigo" };
+    const { previa, resultado } = await alterar(c, x.reservaId, { checkout: "2026-10-14", valor: menos200, recebidoEm: tarde, ...excecao }, tarde, { autorId: equipe, aplicar: true });
+    if (!previa.ok) throw new Error(previa.erro);
+    expect(previa.previa).toMatchObject({ direito: "integral", base: "excecao" });
+    expect(previa.previa.pergunta).toContain("Por exceção, a diferença de R$ 200,00 é devolvida");
+    expect(previa.previa.pergunta).not.toContain("Pela política");
+    expect(resultado).toMatchObject({ ok: true, situacao: "aplicada" });
+    if (!resultado.ok) throw new Error();
+    expect((await devolucoesDa(resultado.alteracaoId))[0].motivo).toBe(`Alteração da reserva ${x.reservaCodigo}: devolução da diferença por exceção`);
+  });
+
+  it("só o valor ou as pessoas (as mesmas datas): a pergunta não fala das OTAs nem de noites liberadas, e o Início não pede para mudar o bloqueio", async () => {
+    const x = await pagarEConfirmar(c);
+    const mais = { origem: "digitado" as const, valor: TOTAL + 10_000, motivo: "acordo_com_hospede" as const, nota: "Pedido de mais um item" };
+    const aumento = await previaDaAlteracao(db, c.org, x.reservaId, entradaAlteracao({ checkin: "2026-10-12", checkout: "2026-10-15", hospedes: 4, recebidoEm: minutos(20), valor: mais }), c.provedor, minutos(20));
+    if (!aumento.ok) throw new Error(aumento.erro);
+    expect(aumento.previa.rumo).toBe("aumento");
+    expect(aumento.previa.pergunta).not.toContain("OTAs");
+    // Aplicada (só as pessoas e o valor): nada a mudar no bloqueio das OTAs.
+    expect((await alterar(c, x.reservaId, { hospedes: 2, valor: menos200 }, minutos(20), { autorId: equipe, aplicar: true })).resultado).toMatchObject({ ok: true, situacao: "aplicada" });
+    expect((await avisosDeAlteracao(db, c.org, minutos(30), { env: env() })).some((a) => a.texto.includes("mude o bloqueio nas OTAs"))).toBe(false);
+    // Retida (fora do prazo da política), as mesmas datas: nenhuma noite é liberada.
+    const y = await pagarEConfirmar(c, { entrada: "2026-10-20", saida: "2026-10-23", email: "outro@example.com" });
+    const retida = await previaDaAlteracao(db, c.org, y.reservaId, entradaAlteracao({ checkin: "2026-10-20", checkout: "2026-10-23", hospedes: 2, recebidoEm: tarde, valor: menos200 }), c.provedor, tarde);
+    if (!retida.ok) throw new Error(retida.erro);
+    expect(retida.previa).toMatchObject({ rumo: "reducao", direito: "nenhum" });
+    expect(retida.previa.pergunta).not.toContain("noites liberadas");
   });
 });

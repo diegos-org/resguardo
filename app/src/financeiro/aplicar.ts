@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, asc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, ne, sql } from "drizzle-orm";
 import { listarContratos } from "@/contratos/repositorio";
 import { cancelamentosReserva, lancamentos, type OrigemReserva, proprietarioImoveis, type RecebimentoReserva, recebimentoPorCanal, repasseItens, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
@@ -225,6 +225,9 @@ export async function recalcularReservas(
         eq(reservas.organizacaoId, organizacaoId),
         f.imovelId ? eq(reservas.imovelId, f.imovelId) : undefined,
         gte(reservas.checkin, aPartirDe),
+        // As reservas-pedido que seguram as noites de uma alteração (M8.2d, `FONTE_ALTERACAO`) nunca têm lançamentos, e
+        // só a própria alteração trava o motor delas (sempre depois do da reserva alterada): o recálculo não passa por elas.
+        ne(reservas.fonte, "alteracao"),
       ),
     )
     .orderBy(asc(reservas.checkin), asc(reservas.id));
