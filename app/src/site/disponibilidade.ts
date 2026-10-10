@@ -71,7 +71,10 @@ export type EstadiaPropria = { reservaId: string; checkin: string; checkout: str
  * sobras, o mínimo e a regra de 6/10 são calculados sem ela, e o bloqueio do Beds24 dela é recortado), e nas noites dela a
  * leitura do Beds24 não decide a ocupação nem deixa "a confirmar" (o Beds24 mostra a própria reserva fechando as noites).
  * O preço continua pela fonte do imóvel: com preços do Beds24, a noite própria também precisa de uma leitura atual com
- * preço. As restrições de entrada e saída e as noites acrescentadas passam pela conferência inteira.
+ * preço. As noites acrescentadas passam pela conferência inteira. A data de entrada ou de saída que não muda já foi vendida
+ * com a reserva, e a alteração vale até a entrada: as regras de quando se pode reservar e do dia em que se pode entrar ou
+ * sair (antecedência, horizonte, dias de entrada e de saída, restrição de entrada e de saída do Beds24) valem só na data
+ * nova; sem mudar as datas (só pessoas ou valor), o mínimo e o máximo de noites também não contam (a estadia é a mesma).
  */
 export async function consultarDisponibilidade(db: Db, organizacaoId: string, p: PedidoConsulta, agora = new Date(), o: { propria?: EstadiaPropria } = {}): Promise<Disponibilidade> {
   const vazio = (situacao: SituacaoDisponibilidade, motivos: string[], noites = 0): Disponibilidade => ({ situacao, motivos, noites, cotacao: null, leituraEm: null });
@@ -100,6 +103,10 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   const [plano, periodos] = await Promise.all([planejarImovel(db, organizacaoId, regras, imovel, agora, { inicio: p.entrada, fim: p.saida }, { ignorar }), listarPeriodos(db, organizacaoId, imovel.id)]);
   // Noite da própria reserva (alteração): a ocupação dela é a do SCL sem ela; a leitura do Beds24 não conta.
   const daPropria = (data: string) => !!propria && propria.checkin <= data && data < propria.checkout;
+  // Entrada ou saída da própria reserva que a alteração não muda: já vendida, as regras do dia de entrada ou de saída não
+  // valem nela (D1: a alteração vale até a entrada, mesmo dentro da antecedência).
+  const mesmaEntrada = !!propria && p.entrada === propria.checkin;
+  const mesmaSaida = !!propria && p.saida === propria.checkout;
   const linhas = plano.linhas.slice(0, noites);
   const saida = plano.linhas[noites];
   const motivos = new Set<string>();
@@ -112,9 +119,18 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   // manda o máximo ao Beds24 e avisa no painel; para o site vale a regra original, e a estadia fica
   // impossível até o cadastro ser corrigido — nunca "disponível" por causa do ajuste de envio.
   const minimo = entrada ? (entrada.minimoRegra !== null && entrada.minimoRegra > entrada.maximoEnviar ? entrada.minimoRegra : entrada.minimoEnviar) : null;
-  if (minimo !== null && noites < minimo) motivos.add(`Para entrada em ${dataBr(p.entrada)}, o mínimo é de ${minimo} ${minimo === 1 ? "noite" : "noites"}.`);
-  if (entrada && noites > entrada.maximoEnviar) motivos.add(`Máximo de ${entrada.maximoEnviar} noites por estadia.`);
-  for (const problema of verificarEstadia({ ...plano.regras, estadiaMinima: null, estadiaMaxima: null }, periodos.map((x) => ({ ...x, estadiaMinima: null })), p.entrada, p.saida, hoje)) motivos.add(problema);
+  // Sem mudar as datas (alteração só de pessoas ou valor), as noites são as já vendidas: o mínimo e o máximo não contam.
+  const mesmasNoites = mesmaEntrada && mesmaSaida;
+  if (!mesmasNoites && minimo !== null && noites < minimo) motivos.add(`Para entrada em ${dataBr(p.entrada)}, o mínimo é de ${minimo} ${minimo === 1 ? "noite" : "noites"}.`);
+  if (!mesmasNoites && entrada && noites > entrada.maximoEnviar) motivos.add(`Máximo de ${entrada.maximoEnviar} noites por estadia.`);
+  const regrasDaEstadia = {
+    ...plano.regras,
+    estadiaMinima: null,
+    estadiaMaxima: null,
+    ...(mesmaEntrada ? { antecedenciaMinima: null, janelaMaxima: null, diasChegada: [] } : {}),
+    ...(mesmaSaida ? { diasSaida: [] } : {}),
+  };
+  for (const problema of verificarEstadia(regrasDaEstadia, periodos.map((x) => ({ ...x, estadiaMinima: null })), p.entrada, p.saida, hoje)) motivos.add(problema);
 
   // Restrições de entrada/saída do calendário Beds24: valem na data de entrada e na de saída,
   // só com leitura atual (leitura velha vira "a confirmar", como nas noites).
@@ -128,16 +144,16 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
     if (fecha.includes(bloqueio ?? "")) motivos.add(motivo);
     else if (!conhecidas.has(bloqueio) && bloqueio !== "blackout") aConfirmar = true;
   };
-  restricao(entrada, ["noCheckIn", "noCheckInOrCheckOut"], `Entrada não permitida em ${dataBr(p.entrada)}.`);
-  restricao(saida, ["noCheckOut", "noCheckInOrCheckOut"], `Saída não permitida em ${dataBr(p.saida)}.`);
+  if (!mesmaEntrada) restricao(entrada, ["noCheckIn", "noCheckInOrCheckOut"], `Entrada não permitida em ${dataBr(p.entrada)}.`);
+  if (!mesmaSaida) restricao(saida, ["noCheckOut", "noCheckInOrCheckOut"], `Saída não permitida em ${dataBr(p.saida)}.`);
 
   // Ocupação e leitura do Beds24, noite a noite. "Agenda conferida em" é a leitura mais antiga que
   // participou da decisão: as noites e o dia de saída (a restrição de saída também conta). Sem leitura
-  // de qualquer um deles, não há hora a mostrar.
+  // de qualquer um deles, não há hora a mostrar. A saída da própria reserva que não muda não é conferida (acima): não conta.
   let leituraEm: Date | null = null;
-  let semLeitura = !saida?.observacao;
+  let semLeitura = !mesmaSaida && !saida?.observacao;
   const maisAntiga = (o: { observadoEm: Date } | null | undefined) => { if (o && (!leituraEm || o.observadoEm < leituraEm)) leituraEm = o.observadoEm; };
-  maisAntiga(saida?.observacao);
+  if (!mesmaSaida) maisAntiga(saida?.observacao);
   // Uma data pode estar ocupada no SCL e no Beds24 ao mesmo tempo (reserva importada): conta uma vez.
   const ocupadas = new Set<string>();
   for (const l of linhas) {

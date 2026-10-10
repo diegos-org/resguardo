@@ -122,7 +122,19 @@ describe("mensagens do cancelamento (M8.2c) na configuração", () => {
     await db.update(modelosMensagem).set({ texto: "Olá, {hospede}! Valor: {valor}." }).where(eq_(modelosMensagem.id, modelo.confirmacao));
     await db.insert(reservas).values(reserva());
     const res = await enviarMensagensHospede(db, org, correio, sp("2026-09-20", "14:00"));
-    expect(res.avisos[0]).toContain("o modelo usa {valor}, que só vale nas mensagens do cancelamento");
+    // O aviso diz em que mensagens a variável vale, com os nomes (a mesma frase da escolha do modelo). M8.2d: {valor} vale
+    // na devolução feita, que serve também à devolução da diferença de uma alteração.
+    expect(res.avisos[0]).toContain("o modelo usa {valor}, que só vale em “Devolução feita (cancelamento ou alteração)”");
+    expect(correio.enviadas).toHaveLength(0);
+    // As variáveis da alteração (M8.2d): {alteracao} só nas mensagens dela; {link} nas do cancelamento e nas dela.
+    await db.update(modelosMensagem).set({ texto: "Olá, {hospede}! {alteracao}" }).where(eq_(modelosMensagem.id, modelo.confirmacao));
+    expect((await enviarMensagensHospede(db, org, correio, sp("2026-09-20", "14:00"))).avisos[0]).toBe(
+      "SCL-0001 (confirmação da reserva): o modelo usa {alteracao}, que só vale em “Alteração: proposta (e pagamento da diferença, se houver)” e “Alteração: confirmada”",
+    );
+    await db.update(modelosMensagem).set({ texto: "Olá, {hospede}! Veja em {link}." }).where(eq_(modelosMensagem.id, modelo.confirmacao));
+    expect((await enviarMensagensHospede(db, org, correio, sp("2026-09-20", "14:00"))).avisos[0]).toBe(
+      "SCL-0001 (confirmação da reserva): o modelo usa {link}, que só vale em “Cancelamento: pedido recebido”, “Cancelamento: decisão”, “Devolução feita (cancelamento ou alteração)”, “Alteração: proposta (e pagamento da diferença, se houver)” e “Alteração: confirmada”",
+    );
     expect(correio.enviadas).toHaveLength(0);
   });
 });

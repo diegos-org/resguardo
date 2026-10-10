@@ -4,6 +4,7 @@ import {
   EXEMPLO,
   NOMES_TIPO,
   ONDE_VALE,
+  ondeVale,
   preencherModelo,
   problemaDoModeloNoTipo,
   ehMensagemDeAlteracao,
@@ -112,6 +113,13 @@ describe("mensagens da alteração (M8.2d) nos modelos de mensagem", () => {
     expect(variaveisForaDoLugar("alteracao_proposta", "{alteracao} {link} {hospede} {codigo} {checkin}")).toEqual([]);
     expect(variaveisForaDoLugar("alteracao_confirmada", "{alteracao} {recebido} {decisao} {valor}")).toEqual(["recebido", "decisao", "valor"]);
     expect(ONDE_VALE.link).toEqual([...TIPOS_MENSAGEM_CANCELAMENTO, ...TIPOS_MENSAGEM_ALTERACAO]);
+    // A frase de onde a variável vale (a da escolha do modelo e a do aviso do envio): os nomes, tirados de ONDE_VALE.
+    expect(ondeVale("alteracao")).toBe("“Alteração: proposta (e pagamento da diferença, se houver)” e “Alteração: confirmada”");
+    expect(ondeVale("valor")).toBe("“Devolução feita (cancelamento ou alteração)”");
+    expect(ondeVale("link")).toBe(
+      "“Cancelamento: pedido recebido”, “Cancelamento: decisão”, “Devolução feita (cancelamento ou alteração)”, “Alteração: proposta (e pagamento da diferença, se houver)” e “Alteração: confirmada”",
+    );
+    expect(ondeVale("hospede")).toBe("");
   });
 
   it("obrigatórias: a proposta usa {alteracao} e {link}; a confirmação, {alteracao}; nenhuma das duas usa {endereco}", () => {

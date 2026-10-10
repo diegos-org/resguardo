@@ -30,6 +30,7 @@ import { lerEmpresa } from "@/configuracoes/empresa";
 import {
   ehMensagemDeCancelamento,
   NOMES_TIPO,
+  ondeVale,
   preencherModelo,
   problemaDoModeloNoTipo,
   TEXTO_BASE_RECEBIDO_SEM_POLITICA,
@@ -453,10 +454,11 @@ export async function enviarMensagensHospede(db: Db, organizacaoId: string, corr
         continue;
       }
       const usadas = variaveisDoTexto(modelo.texto) as Variavel[];
-      // Modelo editado depois de escolhido para usar uma variável do cancelamento: não manda, avisa.
+      // Modelo editado depois de escolhido para usar uma variável do cancelamento ou da alteração: não manda, avisa (com as
+      // mensagens em que ela vale, a mesma frase da escolha do modelo).
       const fora = variaveisForaDoLugar(tipo, modelo.texto);
       if (fora.length) {
-        aviso(`o modelo usa {${fora[0]}}, que só vale nas mensagens do ${fora[0] === "alteracao" ? "alteração" : "cancelamento"}`);
+        aviso(`o modelo usa {${fora[0]}}, que só vale em ${ondeVale(fora[0])}`);
         continue;
       }
       const liberado = agora >= liberacaoDasInstrucoes(l.checkin, fuso);

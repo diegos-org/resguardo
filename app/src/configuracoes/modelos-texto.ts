@@ -132,6 +132,15 @@ const lista = (vs: readonly string[]) => {
   return t.length > 1 ? `${t.slice(0, -1).join(", ")} e ${t.at(-1)}` : (t[0] ?? "");
 };
 
+/**
+ * As mensagens em que a variável vale, pelos nomes (“A”, “B” e “C”): a mesma frase na escolha do modelo e no aviso do envio
+ * automático, tirada de `ONDE_VALE` (uma regra, um lugar). Vazio = vale em qualquer mensagem.
+ */
+export const ondeVale = (v: Variavel) => {
+  const onde = (ONDE_VALE[v] ?? []).map((t) => `“${NOMES_TIPO[t]}”`);
+  return onde.length > 1 ? `${onde.slice(0, -1).join(", ")} e ${onde.at(-1)}` : (onde[0] ?? "");
+};
+
 /** Variáveis do texto usadas numa mensagem em que não valem (na ordem de `VARIAVEIS`). */
 export function variaveisForaDoLugar(tipo: TipoMensagemHospede, texto: string): Variavel[] {
   const usadas = new Set(variaveisDoTexto(texto));
@@ -148,11 +157,7 @@ export function problemaDoModeloNoTipo(tipo: TipoMensagemHospede, texto: string)
   const fora = variaveisForaDoLugar(tipo, texto);
   if (tipo === "cancelamento_recebido" && fora.includes("valor"))
     return `${nome} não pode usar {valor}: essa mensagem é copiada pela operação, que não vê valores, e o valor só existe depois da decisão.`;
-  if (fora.length) {
-    const [v] = fora;
-    const onde = (ONDE_VALE[v] ?? []).map((t) => `“${NOMES_TIPO[t]}”`);
-    return `${nome} não pode usar {${v}}: essa variável só vale em ${onde.length > 1 ? `${onde.slice(0, -1).join(", ")} e ${onde.at(-1)}` : onde[0]}.`;
-  }
+  if (fora.length) return `${nome} não pode usar {${fora[0]}}: essa variável só vale em ${ondeVale(fora[0])}.`;
   const usadas = variaveisDoTexto(texto);
   if (usadas.includes("endereco")) {
     if (tipo === "confirmacao") return "A confirmação não pode usar {endereco}: o endereço só é enviado 2 dias antes da entrada (use no modelo de check-in).";

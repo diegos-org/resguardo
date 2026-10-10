@@ -291,17 +291,51 @@ describe("cotação da alteração de uma reserva paga (M8.2d): as noites da pr�
     expect(await cotar({ saida: "2026-10-16" })).toMatchObject({ situacao: "a_confirmar" });
   });
 
-  it("a leitura velha das noites dela não deixa a confirmar; a restrição de entrada e saída continua valendo, como para qualquer estadia", async () => {
+  it("a leitura velha das noites dela não deixa a confirmar; a restrição de entrada e saída vale na data nova, como para qualquer estadia", async () => {
     const velha = { observadoEm: new Date("2026-09-20T09:00:00Z") };
     for (const d of ["2026-10-13", "2026-10-14"]) await db.update(beds24Calendario).set(velha).where(eq(beds24Calendario.data, d));
     expect(await cotar({ saida: "2026-10-16" })).toMatchObject({ situacao: "disponivel" });
-    // O dia de entrada é conferido pela restrição de entrada: leitura velha nele deixa a confirmar.
-    await db.update(beds24Calendario).set(velha).where(eq(beds24Calendario.data, "2026-10-12"));
-    expect(await cotar({ saida: "2026-10-16" })).toMatchObject({ situacao: "a_confirmar" });
-    await db.update(beds24Calendario).set({ observadoEm: new Date("2026-10-01T09:15:00Z") }).where(eq(beds24Calendario.data, "2026-10-12"));
+    // Uma entrada nova (13/10) é conferida pela restrição de entrada: leitura velha nela deixa a confirmar.
+    expect(await cotar({ entrada: "2026-10-13", saida: "2026-10-16" })).toMatchObject({ situacao: "a_confirmar" });
     // A saída nova (16/10) com restrição de saída: indisponível, como para qualquer estadia.
     await db.update(beds24Calendario).set({ bloqueio: "noCheckOut" }).where(eq(beds24Calendario.data, "2026-10-16"));
     expect(await cotar({ saida: "2026-10-16" })).toMatchObject({ situacao: "indisponivel", motivos: ["Saída não permitida em 16/10/2026."] });
+  });
+
+  it("na entrada e na saída que não mudam (já vendidas, D1), as regras do dia de entrada e de saída não valem; na data nova, valem", async () => {
+    // Antecedência de 30 dias, horizonte de 5 dias, entrada só na terça e saída só no sábado: nenhuma vale para 12 (segunda)
+    // a 15/10 (quinta), já vendidas; a entrada (12/10) e a saída (15/10) dela têm restrição no Beds24 e leitura velha.
+    await db.update(imoveisDetalhes).set({ antecedenciaMinima: 30, janelaMaxima: 5, diasChegada: [2], diasSaida: [6] }).where(eq(imoveisDetalhes.imovelId, im));
+    await db.update(beds24Calendario).set({ bloqueio: "noCheckIn", observadoEm: new Date("2026-09-20T09:00:00Z") }).where(eq(beds24Calendario.data, "2026-10-12"));
+    await db.update(beds24Calendario).set({ bloqueio: "noCheckOut", observadoEm: new Date("2026-09-20T09:00:00Z") }).where(eq(beds24Calendario.data, "2026-10-15"));
+    // Uma estadia nova nas mesmas datas não seria vendida.
+    expect((await consultar({ hospedes: "3" })).motivos).toEqual(
+      expect.arrayContaining(["Precisa reservar com 30 dia(s) de antecedência.", "Aceita reservas só até 5 dias à frente.", "Entrada só em: terça.", "Saída só em: sábado."]),
+    );
+    // Só as pessoas mudam: disponível, com o hóspede extra da terceira pessoa (sem leitura que participe da decisão).
+    expect(await cotar({ hospedes: "3" })).toMatchObject({ situacao: "disponivel", motivos: [], noites: 3, cotacao: { diarias: 135000, hospedeExtra: 15000 }, leituraEm: null });
+    // Mais noites no fim (15/10 passa a ser noite nova, com leitura atual): a entrada não muda (as regras dela não valem); a
+    // saída nova passa pelas da saída (sexta não; sábado sim).
+    await db.update(beds24Calendario).set({ bloqueio: "none", observadoEm: new Date("2026-10-01T09:15:00Z") }).where(eq(beds24Calendario.data, "2026-10-15"));
+    expect(await cotar({ saida: "2026-10-16" })).toMatchObject({ situacao: "indisponivel", motivos: ["Saída só em: sábado."] });
+    expect(await cotar({ saida: "2026-10-17" })).toMatchObject({ situacao: "disponivel", noites: 5 });
+    // Entrada nova (11/10, domingo, sem leitura): antecedência, horizonte e dia de entrada valem; a saída que não muda, não.
+    const antes = await cotar({ entrada: "2026-10-11" });
+    expect(antes.situacao).toBe("indisponivel");
+    expect(antes.motivos).toEqual(expect.arrayContaining(["Precisa reservar com 30 dia(s) de antecedência.", "Aceita reservas só até 5 dias à frente.", "Entrada só em: terça."]));
+    expect(antes.motivos.join(" ")).not.toMatch(/Saída/);
+    // Entrada nova dentro da estadia (13/10, terça) com restrição de entrada no Beds24: vale, como para qualquer estadia.
+    await db.update(beds24Calendario).set({ bloqueio: "noCheckIn" }).where(eq(beds24Calendario.data, "2026-10-13"));
+    expect(await cotar({ entrada: "2026-10-13" })).toMatchObject({ situacao: "indisponivel" });
+    expect((await cotar({ entrada: "2026-10-13" })).motivos).toEqual(expect.arrayContaining(["Entrada não permitida em 13/10/2026."]));
+  });
+
+  it("sem mudar as datas, o mínimo e o máximo de noites não contam; mudando, contam (calculados sem ela)", async () => {
+    await db.update(imoveisDetalhes).set({ estadiaMinima: 4, estadiaMaxima: 3 }).where(eq(imoveisDetalhes.imovelId, im));
+    expect((await consultar()).motivos).toEqual(expect.arrayContaining(["Para entrada em 12/10/2026, o mínimo é de 4 noites."]));
+    expect(await cotar({ hospedes: "3" })).toMatchObject({ situacao: "disponivel", noites: 3 });
+    expect(await cotar({ saida: "2026-10-14" })).toMatchObject({ situacao: "indisponivel", motivos: expect.arrayContaining(["Para entrada em 12/10/2026, o mínimo é de 4 noites."]) });
+    expect((await cotar({ saida: "2026-10-16" })).motivos).toEqual(expect.arrayContaining(["Máximo de 3 noites por estadia."]));
   });
 
   it("outra reserva ou um bloqueio do SCL nas noites dela ainda ocupam (só ela e o bloqueio do Beds24 dela ficam de fora)", async () => {
