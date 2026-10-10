@@ -9,6 +9,10 @@
 > `COMO-FUNCIONA-PROPRIETARIO.md`. **Desde o M8.2c (10/10/2026)**, a devolução do cancelamento lê a versão
 > da política aceita no pagamento, o limite do arrependimento passou a ser uma regra da versão (caixa no
 > formulário) e o hóspede pede o cancelamento em Minha reserva (seção "Para o M8.2c — feito em 10/10/2026").
+> **Desde o M8.2d (10/10/2026)**, a alteração para um valor menor segue a política contando da entrada original ou
+> da nova, a que vier primeiro, o pagamento da diferença aceita os Termos e a Privacidade em vigor e mantém a
+> política da reserva, e a devolução de parte do valor espera a liberação do pagamento (seção "Para o M8.2d — feito
+> em 10/10/2026").
 
 Código: `app/src/configuracoes/documentos-versionados.ts` (motor de versões, o mesmo do "Como
 funciona"), `paginas-legais-texto.ts` (regras puras: campos, blocos do texto, prazo do reembolso,
@@ -167,6 +171,42 @@ Desenho e regra completos em `PAGAMENTO-SITE.md`, seção "Cancelamento pela pol
   parágrafo: "Se preferir, use o botão "Pedir o cancelamento" em Minha reserva, no site: o horário do pedido
   fica registrado na hora." A versão publicada não muda sozinha: Diego publica a v2 (GUIA, seção 6).
 
+## Para o M8.2d — feito em 10/10/2026
+
+Desenho e regra completos em `PAGAMENTO-SITE.md`, seção "Alteração de reserva paga (M8.2d)".
+
+- **Alteração para um valor menor** (a pergunta de 9/10, abaixo e no GUIA): **respondida pelo padrão, a
+  confirmar por Diego** (★ decisão 1 do M8.2d). A diferença segue as regras de cancelamento da versão aceita no
+  pagamento, como um cancelamento naquele momento: dentro do prazo do integral (ou do arrependimento), é devolvida;
+  fora dele, fica retida e é dividida como uma reserva normal. **Refinamento:** os prazos contam da entrada original
+  **ou da nova, a que vier primeiro** (`entradaQueConta`), e não só da original como diz o texto-base publicado
+  ("contando os dias a partir da data de entrada original"): contar só da original deixaria uma estadia adiantada
+  ser cancelada com devolução integral no meio da estadia. Adiar nunca reabre o prazo; adiantar o fecha. O mesmo
+  vale para um cancelamento depois da alteração, e "a estadia começou" conta da entrada de agora. A frase para a v2
+  da política está no GUIA (seção 6, item 42).
+- **Pagamento da diferença (aumento), aceite (D11):** a reserva continua na Política de cancelamento aceita no
+  pagamento que a confirmou. A caixa do pagamento da diferença diz "Li e aceito os Termos (versão T) e li a
+  Privacidade (versão P). A sua reserva continua na Política de cancelamento versão N, aceita em dd/mm." (com o
+  resumo e o prazo da política da reserva) e só aparece quando as versões em vigor ainda não foram aceitas na
+  cotação; `aceites_site` grava `{ termos: T, privacidade: P, cancelamento: N }` (`aceiteVigenteTravado` com
+  `cancelamentoDaReserva`, aceito só quando N é a versão do primeiro pagamento). Aceitar a versão N+1, que não vai
+  valer para a reserva, confundiria o hóspede. Reserva paga antes do aceite das páginas legais (sem versão aceita):
+  a caixa de sempre, com a política em vigor, como o domínio confere.
+- **Arrependimento:** o pagamento da diferença não abre outro prazo de 7 dias; toda decisão de política da reserva
+  (alteração e cancelamento) conta o arrependimento da aprovação do primeiro pagamento. A confirmar com o advogado
+  (abaixo).
+- **Devolução de parte do valor só depois da liberação do pagamento:** a devolução da diferença (e o restante de um
+  pagamento já devolvido em parte) só é pedida ao Mercado Pago depois que ele libera o pagamento; o hóspede vê "será
+  pedida quando o Mercado Pago liberar o pagamento (previsto para dd/mm)", nunca "já pedimos". Isso se afasta do
+  texto-base publicado ("Pedimos a devolução ao Mercado Pago logo depois de confirmar o cancelamento" e, no
+  arrependimento, "pedimos a devolução imediatamente"): ★ decisão 11 de Diego; a frase para a v2 está no GUIA (item
+  42); o caso do arrependimento vai ao advogado.
+- **Texto-base:** a seção "Alteração de datas" da Política de cancelamento já dizia que a diferença menor segue a
+  política e que a alteração só vale confirmada por escrito; o rascunho no código não mudou nesta entrega. Para a v2,
+  Diego troca "contando os dias a partir da data de entrada original" por "contando os dias a partir da data de
+  entrada original ou da nova, a que vier primeiro" e cola as duas frases do GUIA (item 42). A versão publicada não
+  muda sozinha.
+
 ## Para o M8.2b (cartão) — feito em 9/10/2026
 
 - O formulário do cartão usa a mesma `BlocoAceite` e manda as mesmas versões escondidas. Com o aceite
@@ -259,6 +299,14 @@ Desenho e regra completos em `PAGAMENTO-SITE.md`, seção "Cancelamento pela pol
   recebido" está pronto e **falta ligar** as mensagens ao hóspede; fora do horário da equipe, pelo menos uma
   resposta automática no e-mail.
 
+**Alteração de reserva (M8.2d)**
+- A redução seguindo a política, contando da entrada original ou da nova, a que vier primeiro (o texto publicado
+  diz "da data de entrada original"): conferir se a regra e a frase da v2 bastam.
+- O pagamento da diferença não abre outro arrependimento de 7 dias (conta do primeiro pagamento): conferir.
+- A devolução de parte do valor pedida ao Mercado Pago só depois da liberação do pagamento, inclusive numa redução
+  dentro dos 7 dias do arrependimento (a lei fala em devolução imediata): conferir se o aviso ao hóspede ("será
+  pedida quando o Mercado Pago liberar o pagamento, previsto para dd/mm") basta.
+
 **Privacidade (LGPD)**
 - Encarregado: indicar o nome (campo novo em Configurações → Empresa) ou confirmar se a SCL pode usar
   a dispensa para agentes de pequeno porte (Resolução CD/ANPD nº 2/2022, art. 11). Mesmo com a
@@ -293,7 +341,8 @@ Desenho e regra completos em `PAGAMENTO-SITE.md`, seção "Cancelamento pela pol
   texto; se entrar, com destaque.
 - Reservas diretas fechadas pelo WhatsApp: seguem a mesma política (mandar o link na conversa) ou não.
 - Alteração para um valor menor: o texto propõe que a diferença siga as regras de cancelamento,
-  contando da entrada original (M8.2d). Confirmar.
+  contando da entrada original (M8.2d). Confirmar. **Respondida pelo padrão em 10/10/2026 (M8.2d), a confirmar
+  por Diego:** sim, contando da entrada original ou da nova, a que vier primeiro (seção "Para o M8.2d", acima).
 - O número de dias do reembolso integral entra no texto pelo campo da política; o prazo de 7 dias do
   arrependimento é da lei e fica escrito no texto.
 
