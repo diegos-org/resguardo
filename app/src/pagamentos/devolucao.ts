@@ -293,6 +293,21 @@ export async function tentarDevolucao(db: Db, organizacaoId: string, devolucaoId
         }
         return null;
       }
+      // D12: a devolução do cancelamento só é pedida ao Mercado Pago com folga para conferir que saiu (pagamento com até
+      // 78 dias). Passou disso entre um envio e outro (espera, resposta incerta, recusa clara): nada mais se envia. Com a
+      // chave em dúvida (um envio anterior pode ter sido aceito), continua pedida e só a leitura segue, até os 85 dias
+      // (depois, "Parar a devolução pedida"); sem dúvida, nada está no Mercado Pago: fica recusada, com o aviso, para a
+      // equipe devolver pelo painel dele (cartão) ou por fora (Pix).
+      if (dev.origem === "cancelamento" && p.criadoEm.getTime() < inicioDoPrazoDePedirDevolucao(agora).getTime()) {
+        if (dev.chaveEmDuvida) {
+          await tx.update(devolucoesPagamento).set({ proximaTentativaEm: new Date(agora.getTime() + ESPERA_DEVOLUCAO_MS), atualizadoEm: agora }).where(eq(devolucoesPagamento.id, dev.id));
+          return null;
+        }
+        await tx.update(devolucoesPagamento).set({ situacao: "recusada", proximaTentativaEm: null, atualizadoEm: agora }).where(eq(devolucoesPagamento.id, dev.id));
+        await ligarAvisoNoPagamento(tx, p, "devolucao_fora_do_prazo", agora);
+        await registrarAuditoria(tx, { organizacaoId, usuarioId: null, acao: "pagamento.devolucao_fora_do_prazo", entidade: "pagamento", entidadeId: p.id, mudancas: { devolucao: ["pedida", "recusada"] } });
+        return null;
+      }
       const proxima = dev.tentativas + 1;
       const usar = dev.chaveEmDuvida && dev.chaveAtual ? dev.chaveAtual : chaveDevolucao(dev.id, proxima);
       // O valor registrado é o que a order relida mostra como pago (a devolução integral devolve isso, não o da cotação).
@@ -367,6 +382,11 @@ export async function tentarDevolucao(db: Db, organizacaoId: string, devolucaoId
   if (res.situacao === "confirmada" || res.situacao === "pedida") await conferirTentativa(db, organizacaoId, d.dev.pagamentoId, provedor, agora, { forcar: true, origem: "rotina" });
   else if (releitura && temDevolucao(releitura)) await conferirTentativa(db, organizacaoId, d.dev.pagamentoId, provedor, agora, { forcar: true, origem: "rotina", cobranca: releitura });
   return (await situacaoDaDevolucao(db, devolucaoId)) ?? null;
+}
+
+/** A devolução do pagamento, lida sem trava (fora de transação, antes de reler a order): pela regra única `devolucaoDoPagamento`. */
+async function devolucaoLida(db: Db, pagamentoId: string): Promise<Devolucao | undefined> {
+  return devolucaoDoPagamento({ devolucoes: await db.select().from(devolucoesPagamento).where(eq(devolucoesPagamento.pagamentoId, pagamentoId)) }, pagamentoId);
 }
 
 async function situacaoDaDevolucao(db: Db, devolucaoId: string): Promise<SituacaoDevolucao | null> {
@@ -615,7 +635,7 @@ export async function confirmarDevolucaoVistaNoProvedor(
   if (!uuidValido(pagamentoId)) return { ok: false, erro: "Pagamento não encontrado." };
   const [lido] = await db.select().from(pagamentos).where(and(eq(pagamentos.id, pagamentoId), eq(pagamentos.organizacaoId, organizacaoId)));
   if (!lido) return { ok: false, erro: "Pagamento não encontrado." };
-  const [devLida] = await db.select().from(devolucoesPagamento).where(eq(devolucoesPagamento.pagamentoId, lido.id));
+  const devLida = await devolucaoLida(db, lido.id);
   if (!devLida || (devLida.situacao !== "pedida" && devLida.situacao !== "recusada")) return { ok: false, erro: "Não há devolução pedida ou recusada para confirmar neste pagamento." };
   const foraDaLeitura = lido.criadoEm.getTime() < inicioDoPrazoDeReleitura(agora).getTime();
   const semConfirmacaoPelaLeitura = lido.avisos.includes("devolucao_sem_confirmacao") || lido.avisos.includes("devolucao_a_menor") || lido.avisos.includes("situacao_desconhecida");
@@ -638,9 +658,12 @@ export async function confirmarDevolucaoVistaNoProvedor(
         return { ok: false, erro: ERRO_POR_FORA_SEM_CONFERIR };
       }
       if ((await situacaoDaDevolucao(db, devLida.id)) === "confirmada") return { ok: true, situacao: "confirmada", mensagem: "O Mercado Pago já mostra a devolução: confirmada pela leitura." };
-      // A order ainda aparece e não confirma: fora do prazo isso é o Mercado Pago mostrando a order (confira por lá);
-      // dentro dele, só nos casos de aviso (a leitura não tem como confirmar) a equipe confirma.
-      if (foraDaLeitura && !semConfirmacaoPelaLeitura) return { ok: false, erro: AINDA_CONFERE };
+      // A order ainda aparece e não confirma: sem aviso, a confirmação vem da leitura (Conferir agora), também depois do
+      // prazo de leitura, enquanto o Mercado Pago ainda mostra a order. Com um dos avisos (aceita sem aparecer, devolvida a
+      // menos, situação que o sistema não reconhece), a leitura não tem como confirmar, dentro ou fora do prazo: a equipe
+      // confirma o que vê no painel dele (recusar aqui só a faria esperar a order sumir, aos 90 dias, para confirmar sem
+      // leitura nenhuma).
+      if (!semConfirmacaoPelaLeitura) return { ok: false, erro: AINDA_CONFERE };
     }
   }
   return comPagamento(db, organizacaoId, pagamentoId, async (tx, t, p, dev) => {
@@ -704,7 +727,7 @@ export async function pararDevolucaoPedida(db: Db, organizacaoId: string, pagame
   if (!uuidValido(pagamentoId)) return { ok: false, erro: "Pagamento não encontrado." };
   const [lido] = await db.select().from(pagamentos).where(and(eq(pagamentos.id, pagamentoId), eq(pagamentos.organizacaoId, organizacaoId)));
   if (!lido) return { ok: false, erro: "Pagamento não encontrado." };
-  const [devLida] = await db.select().from(devolucoesPagamento).where(eq(devolucoesPagamento.pagamentoId, lido.id));
+  const devLida = await devolucaoLida(db, lido.id);
   const FORA = "Só se para uma devolução pedida depois do prazo de leitura do Mercado Pago (85 dias): antes disso, o sistema confere sozinho.";
   if (!devLida || devLida.situacao !== "pedida" || lido.criadoEm.getTime() >= inicioDoPrazoDeReleitura(agora).getTime()) return { ok: false, erro: FORA };
   const comAceite = devLida.chaveAceita || devLida.chaveEmDuvida;

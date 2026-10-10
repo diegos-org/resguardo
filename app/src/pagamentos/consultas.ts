@@ -102,7 +102,11 @@ export type CancelamentoParaHospede = {
   /** Quem confirmou a devolução: a leitura do Mercado Pago ou a equipe (vista no painel dele). */
   confirmadaPor: "leitura" | "equipe" | null;
   forma: "pix" | "cartao";
-  /** Cartão com mais de 78 dias: o sistema não pediu a devolução; a equipe faz o estorno pelo painel do Mercado Pago. */
+  /**
+   * Cartão com mais de 78 dias: o sistema não pede a devolução; a equipe faz o estorno pelo painel do Mercado Pago. Só
+   * enquanto a devolução por fora do cartão não abriu (recusa do painel registrada, 180 dias...): aberta, o estorno no
+   * cartão não sai mais e a página diz que a equipe combina outra forma.
+   */
   estornoPelaEquipe: boolean;
   integralAte: string | null;
   arrependimentoAte: string | null;
@@ -212,7 +216,7 @@ export async function vistaDaCotacaoParaHospede(db: Db, organizacaoId: string, c
     : [];
   if (comReserva && canc?.situacao === "cancelada" && canc.direito) {
     const dev = devDe(comReserva);
-    return { ...base, ...estadoDoCancelamento(comReserva, canc, dev), reservaCodigo: c.reservaCodigo, forma: comReserva.forma };
+    return { ...base, ...estadoDoCancelamento(comReserva, canc, dev, agora), reservaCodigo: c.reservaCodigo, forma: comReserva.forma };
   }
   if (comReserva) {
     // Pagamento em dobro: só enquanto o outro pagamento ainda não voltou ao hóspede (devolvido, o aviso sai).
@@ -279,10 +283,11 @@ export async function vistaDaCotacaoParaHospede(db: Db, organizacaoId: string, c
 /**
  * A situação da página numa reserva cancelada pela política (M8.2c), pela devolução: sem devolução; devolvida; pedida
  * (inclusive a aceita ainda sem aparecer, e o cartão com mais de 78 dias, que a equipe devolve pelo painel do Mercado
- * Pago); em conferência (devolvida a menos, contestada, em parte, ou parada por isso — nunca oferece outra forma de
- * pagar); com a equipe (o Mercado Pago não devolveu: Pix fora do prazo, recusa, ou pedida parada depois do prazo).
+ * Pago enquanto a devolução por fora do cartão não abre); em conferência (devolvida a menos, contestada, em parte, ou
+ * parada por isso — nunca oferece outra forma de pagar); com a equipe (o Mercado Pago não devolveu: Pix fora do prazo,
+ * recusa — inclusive a do painel dele, registrada —, cartão depois dos 180 dias, ou pedida parada depois do prazo).
  */
-function estadoDoCancelamento(p: Pagamento, canc: typeof cancelamentosReserva.$inferSelect, dev: Devolucao | undefined): { estado: EstadoPagamentoHospede; cancelamento: CancelamentoParaHospede } {
+function estadoDoCancelamento(p: Pagamento, canc: typeof cancelamentosReserva.$inferSelect, dev: Devolucao | undefined, agora: Date): { estado: EstadoPagamentoHospede; cancelamento: CancelamentoParaHospede } {
   const devolucaoEm = dev?.situacao === "confirmada" ? dev.confirmadaEm : dev?.situacao === "por_fora" && dev.porForaData ? instanteLocal(dev.porForaData, "12:00", "America/Sao_Paulo") : null;
   const cancelamento: CancelamentoParaHospede = {
     recebidoEm: canc.pedidoRecebidoEm,
@@ -296,7 +301,8 @@ function estadoDoCancelamento(p: Pagamento, canc: typeof cancelamentosReserva.$i
     porFora: dev?.situacao === "por_fora",
     confirmadaPor: dev?.situacao === "confirmada" ? (dev.confirmadaPor ?? "leitura") : null,
     forma: p.forma,
-    estornoPelaEquipe: dev?.situacao === "recusada" && dev.falhas === 0 && !dev.paradaEm && p.forma === "cartao" && p.avisos.includes("devolucao_fora_do_prazo"),
+    // A mesma regra do quadro do pagamento (`porForaPermitidoNoCartao`): aberta a devolução por fora, o cartão não é mais o caminho.
+    estornoPelaEquipe: !!dev && devolucaoParadaPeloPrazo(p, dev) && !dev.paradaEm && p.forma === "cartao" && !porForaPermitidoNoCartao(p, dev, agora),
     integralAte: canc.integralAte,
     arrependimentoAte: canc.arrependimentoAte,
     entradaEm: canc.entradaEm,
@@ -313,6 +319,15 @@ function estadoDoCancelamento(p: Pagamento, canc: typeof cancelamentosReserva.$i
   if (dev?.situacao === "recusada" && p.situacao === "aprovado") return em("cancelada_com_a_equipe");
   return em("cancelada_em_conferencia");
 }
+
+/**
+ * A devolução parou pelo prazo (M8.2c, D12), não por uma recusa do Mercado Pago: recusada com o aviso do pagamento com mais
+ * de 78 dias (nada foi pedido; ou o pedido sem dúvida que passou dos 78 dias entre um envio e outro; ou a pedida parada
+ * pela equipe depois dos 85) e sem o aviso de recusa (três recusas, a nossa devolução falha na leitura, a recusa do painel
+ * dele registrada).
+ */
+const devolucaoParadaPeloPrazo = (p: Pick<Pagamento, "avisos">, dev: Pick<Devolucao, "situacao">) =>
+  dev.situacao === "recusada" && p.avisos.includes("devolucao_fora_do_prazo") && !p.avisos.includes("devolucao_falhou");
 
 export type AcoesDoPagamento = {
   conferir: boolean;
@@ -416,12 +431,22 @@ type ContextoDoPainel = {
   cancelamento: { situacao: SituacaoCancelamento; direito: DireitoCancelamento | null } | null;
 };
 
+/** O aviso de devolução recusada, no quadro do pagamento, quando a recusa veio do painel do Mercado Pago (registrada) ou da leitura. */
+export const TEXTO_RECUSA_NO_PAINEL =
+  "A recusa da devolução no painel do Mercado Pago foi registrada: a devolução por fora fica liberada (no cartão também). Registre a devolução feita por fora quando ela sair.";
+export const TEXTO_DEVOLUCAO_FALHOU_NA_LEITURA =
+  "O Mercado Pago mostrou a devolução pedida como falha (ela não saiu): confira no painel do Mercado Pago antes de tentar de novo ou de registrar a devolução feita por fora.";
+
 /** Os avisos do pagamento em palavras, com os valores quando o texto precisa deles. */
 function textosDoPagamento(p: Pagamento, dev: Devolucao | undefined): string[] {
   return p.avisos
     .filter((c): c is CodigoAviso => c in AVISOS_PAGAMENTO)
     .map((c) => {
       if (c === "devolucao_a_menor" && dev && p.devolvidoLido > 0) return textoDevolucaoAMenor(p.devolvidoLido, dev.valor);
+      // O aviso de devolução recusada (M8.2c) também vem da recusa do painel do Mercado Pago registrada pela equipe e da
+      // leitura que mostrou a nossa devolução falha: o texto diz qual foi (nem sempre foram "três vezes").
+      if (c === "devolucao_falhou" && dev?.situacao === "recusada" && dev.recusaNoPainelEm) return TEXTO_RECUSA_NO_PAINEL;
+      if (c === "devolucao_falhou" && dev?.situacao === "recusada" && dev.idProvedor !== null && !dev.paradaEm) return TEXTO_DEVOLUCAO_FALHOU_NA_LEITURA;
       // Sem reserva (M8.2a), o devolvido fora do sistema não tem parte de proprietário em conferência.
       if (c === "devolvido_por_fora" && p.desfecho !== "reserva") return "Este pagamento foi devolvido (no todo ou em parte) fora do sistema: confira no painel do Mercado Pago.";
       return AVISOS_PAGAMENTO[c];
@@ -650,7 +675,13 @@ export type ContagensPagamento = {
   /** Chegou já devolvido em parte ou contestado, antes de o sistema decidir: resolve-se no painel do Mercado Pago. */
   situacaoInesperada: number;
   devolucaoPedida: number;
+  /** Devoluções paradas porque o Mercado Pago recusou, não respondeu ou mostrou a devolução pedida como falha. */
   devolucaoRecusada: number;
+  /**
+   * Devoluções paradas de pagamentos com mais de 78 dias, que o sistema não pede mais ao Mercado Pago (M8.2c, D12): nada
+   * foi recusado por ele; a equipe devolve pelo painel dele (cartão) ou por fora (Pix).
+   */
+  devolucaoForaDoPrazo: number;
   liberacaoVencida: number;
   comAviso: number;
   aoVivo: number;
@@ -702,12 +733,13 @@ export async function avisosDePagamento(
       ),
     );
   const devs = lista.length ? await db.select().from(devolucoesPagamento).where(inArray(devolucoesPagamento.pagamentoId, lista.map((p) => p.id))) : [];
-  const devDe = (id: string) => devs.find((d) => d.pagamentoId === id);
+  const devDe = (id: string) => devolucaoDoPagamento({ devolucoes: devs }, id);
   const contagens: ContagensPagamento = {
     aprovadoSemDesfecho: 0,
     situacaoInesperada: 0,
     devolucaoPedida: 0,
     devolucaoRecusada: 0,
+    devolucaoForaDoPrazo: 0,
     liberacaoVencida: 0,
     comAviso: 0,
     aoVivo: 0,
@@ -739,6 +771,7 @@ export async function avisosDePagamento(
     // Devoluções pedidas ou paradas, de qualquer origem que esta versão conhece (sem reserva e cancelamento, M8.2c).
     const devolucaoConta = !!dev && origemDeDevolucaoConhecida(dev.origem) && comDinheiro(p.situacao) && p.situacao !== "devolvido";
     if (devolucaoConta && dev.situacao === "pedida") contagens.devolucaoPedida++;
+    else if (devolucaoConta && devolucaoParadaPeloPrazo(p, dev)) contagens.devolucaoForaDoPrazo++;
     else if (devolucaoConta && dev.situacao === "recusada") contagens.devolucaoRecusada++;
     else if (comDinheiro(p.situacao) && p.situacao !== "devolvido" && p.desfecho === null) {
       // Não é "devolva ao hóspede": o Mercado Pago já devolveu parte ou há contestação (o sistema não devolve isso).
@@ -822,7 +855,15 @@ export async function avisosDePagamento(
       link: `${LINK_PAGAMENTOS}?atencao=1`,
     });
   if (contagens.devolucaoPedida) alertas.push({ nivel: "info", texto: `${contagens.devolucaoPedida} devolução(ões) pedida(s) ao Mercado Pago aguardando confirmação.`, link: `${LINK_PAGAMENTOS}?atencao=1` });
+  // Recusada pelo Mercado Pago (três recusas ou respostas incertas, a nossa devolução falha na leitura, a recusa do painel
+  // dele registrada); a do pagamento com mais de 78 dias, que nunca foi pedida, conta à parte.
   if (contagens.devolucaoRecusada) alertas.push({ nivel: "atencao", texto: `${contagens.devolucaoRecusada} devolução(ões) parada(s): o Mercado Pago recusou ou não respondeu três vezes. Confira no painel do Mercado Pago antes de tentar de novo ou de registrar a devolução feita por fora.`, link: `${LINK_PAGAMENTOS}?atencao=1` });
+  if (contagens.devolucaoForaDoPrazo)
+    alertas.push({
+      nivel: "atencao",
+      texto: `${contagens.devolucaoForaDoPrazo} devolução(ões) de pagamento(s) com mais de 78 dias, que o sistema não pede mais ao Mercado Pago: no cartão, devolva pelo painel do Mercado Pago; no Pix, faça a devolução por fora.`,
+      link: `${LINK_PAGAMENTOS}?atencao=1`,
+    });
   if (contagens.devolucaoAMenor)
     alertas.push({ nivel: "atencao", texto: `${contagens.devolucaoAMenor} devolução(ões) de cancelamento que o Mercado Pago fez a menos do que o pedido: confira no painel do Mercado Pago.`, link: `${LINK_PAGAMENTOS}?atencao=1` });
   if (contagens.reservaDevolvidaNoProvedor)

@@ -171,7 +171,10 @@ const PRAZO_DECISAO_MS = 7 * 24 * 3_600_000;
 export type DadosPrazoCancelamento = {
   cancelamentoId: string;
   situacao: SituacaoCancelamento;
-  /** Só o pedido do hóspede tem "pedido recebido" (a SCL cancelar ou o não comparecimento, não). */
+  /**
+   * O hóspede fez um pedido (por qualquer canal): só ele tem "pedido recebido". Vale mesmo quando a SCL cancelou depois, por
+   * motivo dela: o pedido existiu e o recibo por escrito é dele. A SCL cancelando sem pedido, ou o não comparecimento, não.
+   */
   doHospede: boolean;
   pedidoRecebidoEm: Date;
   canceladaEm: Date | null;
@@ -254,7 +257,8 @@ async function alvosDeCancelamento(db: Db, organizacaoId: string, f: { reservaId
     return {
       cancelamentoId: l.c.id,
       situacao: l.c.situacao,
-      doHospede: l.c.quemCancela === "hospede",
+      // O canal fica gravado quando houve pedido do hóspede (a SCL cancelando por cima dele não o apaga); sem pedido, null.
+      doHospede: l.c.quemCancela === "hospede" || l.c.canal !== null,
       pedidoRecebidoEm: l.c.pedidoRecebidoEm,
       canceladaEm: l.c.canceladaEm,
       devolucao: d && em && l.c.direito === "integral" ? { id: d.id, em } : null,

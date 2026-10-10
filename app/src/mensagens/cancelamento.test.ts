@@ -112,6 +112,19 @@ describe("mensagens do cancelamento pelo motor (M8.2c)", () => {
     expect(ultimas.map((m) => m.assunto).sort()).toEqual([`Cancelamento decidido — reserva ${z.reservaCodigo}`, `Pedido recebido — reserva ${z.reservaCodigo}`]);
     expect(ultimas.find((m) => m.assunto.startsWith("Cancelamento decidido"))!.texto).toContain("Prazo de reembolso integral: pedidos até 28/09, às 23h59.");
   });
+
+  it("pedido do hóspede pelo site e a SCL cancela antes de o motor rodar: o 'pedido recebido' sai mesmo assim (o recibo é do pedido), com a hora do pedido; o botão de copiar também", async () => {
+    await ligar();
+    const x = await pagarEConfirmar(c, longe);
+    expect(await pedirCancelamentoPeloHospede(db, c.org, EMAIL_HOSPEDE, x.reservaCodigo, minutos(60))).toMatchObject({ ok: true });
+    await cancelar(c, x.reservaId, entradaPadrao({ quemCancela: "empresa", motivoEmpresa: "imovel_sem_condicoes" }), equipe, minutos(61));
+    expect(await cancelamentoDe(x.reservaId)).toMatchObject({ situacao: "cancelada", quemCancela: "empresa", canal: "site", pedidoRecebidoEm: minutos(60) });
+    expect((await mensagensDoCancelamento(db, c.org, x.reservaId, minutos(62))).recebido?.texto).toContain(`Recebemos o seu pedido de cancelamento da reserva ${x.reservaCodigo} em 01/10/2026 às 13:00`);
+    expect(await enviarMensagensHospede(db, c.org, correio, minutos(62))).toMatchObject({ enviadas: 3, falhas: 0, avisos: [] });
+    expect(correio.enviadas.map((m) => m.assunto).sort()).toEqual([`Cancelamento decidido — reserva ${x.reservaCodigo}`, `Devolução feita — reserva ${x.reservaCodigo}`, `Pedido recebido — reserva ${x.reservaCodigo}`]);
+    expect(correio.enviadas.find((m) => m.assunto.startsWith("Cancelamento decidido"))!.texto).toContain("devolvemos o valor integral pago, R$ 1.824,00");
+    expect(await cancelamentoDe(x.reservaId)).toMatchObject({ hospedeAvisadoPedidoEm: minutos(62), hospedeAvisadoDecisaoEm: minutos(62), hospedeAvisadoDevolucaoEm: minutos(62) });
+  });
 });
 
 describe("mensagens prontas para copiar no painel (M8.2c)", () => {

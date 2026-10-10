@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { ERRO_CATEGORIA_TAXA_PADRAO_ARQUIVADA, lerConfigPagamentoSite } from "@/configuracoes/pagamento-site";
 import { auditoria, categoriasDespesa, cotacoes, devolucoesPagamento, lancamentos, pagamentos } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
@@ -12,6 +12,7 @@ import {
   corrigirTaxaPerdida,
   devolverPeloProvedor,
   ERRO_POR_FORA_CARTAO,
+  ESPERA_DEVOLUCAO_MS,
   ERRO_POR_FORA_SEM_CONFERIR,
   MAXIMO_FALHAS_DEVOLUCAO,
   PRAZO_DEVOLUCAO_CARTAO_DIAS,
@@ -27,7 +28,7 @@ import { type Cobranca, type CodigoDevolucao, type DevolucaoLida, ErroProvedor, 
 import { pagamentosDaReserva } from "./consultas";
 import { conferirPendentes } from "./rotina";
 import { type CodigoAviso, textosDosAvisos } from "./situacoes";
-import { AGORA, type Cenario, cancelar, entradaPadrao, envelhecer, liberar, minutos, montarCenario, pagarEConfirmar, TOTAL, usuarioDeTeste } from "./testes";
+import { AGORA, type Cenario, cancelar, entradaPadrao, envelhecer, liberar, minutos, montarCenario, pagarEConfirmar, semDadosDoHospede, TOTAL, usuarioDeTeste } from "./testes";
 
 let db: Db, close: () => Promise<void>, c: Cenario;
 beforeAll(async () => { ({ db, close } = await createTestDb()); });
@@ -250,7 +251,7 @@ describe("devolução do pagamento sem reserva (M8.2a)", () => {
     vi.restoreAllMocks();
     const t = await c.tentativa(x.pagamentoId);
     expect(t.avisos.filter((a) => a === "devolucao_fora_do_prazo")).toHaveLength(1);
-    expect(textosDosAvisos(t.avisos).join(" ")).toContain("não é mais pedida nem conferida pelo sistema");
+    expect(textosDosAvisos(t.avisos).join(" ")).toContain("A devolução não é mais pedida pelo sistema");
     expect((await devolucao(x.pagamentoId)).situacao).toBe("pedida");
     expect(pedidos()).toHaveLength(1);
   });
@@ -774,6 +775,11 @@ describe("devolução do cartão (M8.2b)", () => {
 
 describe("devolução do cancelamento pela política e as regras do M8.2c", () => {
   const longe = { entrada: "2026-11-20", saida: "2026-11-23" };
+  // Dados pessoais (§10): depois de cada fluxo, nada do hóspede (e-mail, telefone, nome) nas tabelas do pagamento, da
+  // devolução, do cancelamento e do livro (notas de por fora, confirmação, recusa, parada e correção da taxa incluídas).
+  afterEach(async () => {
+    expect(await semDadosDoHospede(db)).toEqual([]);
+  });
   const doLivro = (reservaId: string) => db.select().from(lancamentos).where(eq(lancamentos.reservaId, reservaId));
   /** Reserva paga e cancelada pela SCL (integral), com a devolução pedida ao Mercado Pago na fase 2. */
   async function cancelada(o: { forma?: "pix" | "cartao"; resposta?: ProvedorFalso["respostaDevolucao"]; liberar?: boolean; envelhecer?: number; antes?: () => void } = {}) {
@@ -1064,6 +1070,46 @@ describe("devolução do cancelamento pela política e as regras do M8.2c", () =
     expect(await registrarRecusaNoPainel(db, c.org, x.pagamentoId, { data: "2026-10-01", nota: "De novo" }, x.equipe, minutos(71))).toMatchObject({ ok: false, erro: expect.stringContaining("já foi registrada") });
     expect(await devolucao(x.pagamentoId)).toMatchObject({ recusaNoPainelNota: "Painel recusou: prazo", recusaNoPainelPor: x.equipe });
     expect(await porFora(x.pagamentoId, minutos(72))).toEqual({ ok: true, situacao: "por_fora" });
+  });
+
+  it("D12 nas novas tentativas: passados os 78 dias entre um envio e outro, nada mais se pede; sem a chave em dúvida, a devolução fica recusada com o aviso e a equipe resolve", async () => {
+    // Recusa clara (saldo insuficiente): a próxima tentativa iria com chave nova.
+    const x = await cancelada({ resposta: "saldo_insuficiente" });
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "pedida", falhas: 1, chaveEmDuvida: false });
+    c.provedor.respostaDevolucao = "confirmada";
+    await envelhecer(c, x.pagamentoId, 80);
+    const enviados = pedidos().length;
+    await conferirPendentes(db, c.org, c.provedor, minutos(71));
+    expect(pedidos().length).toBe(enviados);
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "recusada", falhas: 1, proximaTentativaEm: null, ultimoCodigo: "saldo_insuficiente" });
+    expect((await c.tentativa(x.pagamentoId)).avisos).toContain("devolucao_fora_do_prazo");
+    const [a] = await db.select().from(auditoria).where(and(eq(auditoria.entidadeId, x.pagamentoId), eq(auditoria.acao, "pagamento.devolucao_fora_do_prazo")));
+    expect(a.mudancas).toEqual({ devolucao: ["pedida", "recusada"] });
+    // Pedir de novo ao Mercado Pago, não (mais de 78 dias); no Pix, a devolução por fora vale.
+    expect(await devolverPeloProvedor(db, c.org, x.pagamentoId, x.equipe, c.provedor, minutos(80))).toMatchObject({ ok: false, erro: expect.stringContaining("mais de 78 dias") });
+    expect(await porFora(x.pagamentoId, minutos(80))).toEqual({ ok: true, situacao: "por_fora" });
+  });
+
+  it("D12 nas novas tentativas: com a chave em dúvida (um envio pode ter sido aceito), nada se envia depois dos 78 dias; continua pedida, só a leitura, e ela confirma quando o Mercado Pago mostra", async () => {
+    const x = await cancelada({ forma: "cartao", antes: () => { c.provedor.falhas.devolver = new ErroProvedor("incerto", "Sem resposta do Mercado Pago."); } });
+    c.provedor.falhas.devolver = null;
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "pedida", falhas: 1, chaveEmDuvida: true });
+    // Ainda com até 78 dias, a mesma chave sairia de novo; com 80, não.
+    await envelhecer(c, x.pagamentoId, 80);
+    const enviados = pedidos().length;
+    await conferirPendentes(db, c.org, c.provedor, minutos(71));
+    expect(pedidos().length).toBe(enviados);
+    const d = await devolucao(x.pagamentoId);
+    expect(d).toMatchObject({ situacao: "pedida", falhas: 1, chaveEmDuvida: true, chaveAceita: false });
+    expect(d.proximaTentativaEm).toEqual(new Date(minutos(71).getTime() + ESPERA_DEVOLUCAO_MS));
+    expect((await c.tentativa(x.pagamentoId)).avisos).not.toContain("devolucao_fora_do_prazo");
+    // Pedida (o envio pode ter saído): a devolução por fora é recusada.
+    expect(await porFora(x.pagamentoId, minutos(75))).toEqual({ ok: false, erro: "A devolução deste cancelamento já está pedida ou feita." });
+    // O envio incerto tinha saído: o Mercado Pago mostra a devolução e a leitura confirma (nada foi pedido de novo).
+    c.provedor.devolverNoProvedor(x.idProvedor, TOTAL);
+    await conferirPendentes(db, c.org, c.provedor, minutos(90));
+    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "confirmada", confirmadaPor: "leitura" });
+    expect(pedidos().length).toBe(enviados);
   });
 
   it("rotina: a devolução do cancelamento pedida é retomada; fora do prazo de leitura, só o aviso (uma vez); de origem desconhecida, não é tocada", async () => {

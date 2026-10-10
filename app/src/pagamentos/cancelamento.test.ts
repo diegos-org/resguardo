@@ -5,15 +5,16 @@
  * painel do Mercado Pago, a idempotência e a varredura de dados pessoais. Dados fictícios; provedor falso.
  */
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { auditoria, cancelamentosReserva, contratos, cotacoes, devolucoesPagamento, lancamentos, pagamentos, reservas } from "@/db/schema";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { auditoria, cancelamentosReserva, contratos, cotacoes, devolucoesPagamento, imoveis, imoveisDetalhes, lancamentos, pagamentos, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { aplicarMotor } from "@/financeiro/aplicar";
-import { saldoAcerto } from "@/financeiro/ledger";
+import { lancar, saldoAcerto } from "@/financeiro/ledger";
 import { pedirCancelamentoPeloHospede } from "@/hospede/cancelamento";
 import { lancamentoEmConferencia, lancamentoEmVigor } from "@/portal/posse";
 import { partesDoProprietario } from "@/repasses/extrato";
+import { repasseAPagarDaReservaDados } from "@/repasses/recebimentos";
 import { gerarAntecipado, preverRepasses } from "@/repasses/repasses";
 import { resolverConferencia, tentarCancelarReserva } from "@/reservas/repositorio";
 import { acertarCaixa, acertarResultado, chaveSaidaDevolucao } from "./acerto-cancelamento";
@@ -48,11 +49,11 @@ import {
   liberar,
   minutos,
   montarCenario,
+  NOME_HOSPEDE,
   pagarEConfirmar,
   pedir,
   repassar,
-  semDadosPessoais,
-  TELEFONE_HOSPEDE,
+  semDadosDoHospede,
   TOTAL,
   usuarioDeTeste,
 } from "./testes";
@@ -63,6 +64,11 @@ afterAll(() => close());
 beforeEach(async () => {
   c = await montarCenario(db);
   equipe = await usuarioDeTeste(c);
+});
+// Dados pessoais (§10): depois de cada fluxo, nem o e-mail, nem o telefone, nem o nome do hóspede nas tabelas do
+// pagamento, da devolução, do cancelamento, do livro e na auditoria (fora a da reserva criada no M8.1).
+afterEach(async () => {
+  expect(await semDadosDoHospede(db)).toEqual([]);
 });
 
 /** Um instante em São Paulo ("2026-10-10 14:00"). */
@@ -134,7 +140,7 @@ describe("cancelamento pela política: devolução integral (M8.2c)", () => {
     expect(await registrarTaxaPerdida(db, c.org, x.pagamentoId, 1824, equipe, minutos(70))).toEqual({ ok: true });
     const [despesa] = (await doLivro(x.reservaId)).filter((l) => l.tipo === "despesa_empresa");
     expect(despesa).toMatchObject({ valor: -1824, montante: 1824, reservaId: x.reservaId, chaveOrigem: `mercadopago:${x.pagamentoId}:devolucao:${dev.id}:taxa_perdida` });
-    expect(await semDadosPessoais(db, [EMAIL_HOSPEDE, TELEFONE_HOSPEDE])).toEqual([]);
+    expect(await semDadosDoHospede(db)).toEqual([]);
   });
 
   it("liberado antes de cancelar: a devolução confirmada lança a saída do líquido que entrou (conciliada, no dia da leitura)", async () => {
@@ -454,6 +460,38 @@ describe("recusas e a assinatura da prévia (M8.2c)", () => {
     // O cancelamento de sempre continua recusado para a reserva paga (texto que aponta para o quadro do pagamento).
     expect(await tentarCancelarReserva(db, c.org, x.reservaId, null)).toEqual({ ok: false, aviso: 'Não cancelada por aqui: esta reserva foi paga pelo site. Use "Cancelar a reserva" no quadro Pagamento no site (devolução pela política aceita pelo hóspede).' });
   });
+
+  it("avisos da prévia: outro fuso, sem horário de entrada cadastrado, pedido registrado mais de dois dias depois de chegar, ajustes da reserva e cartão ainda não liberado", async () => {
+    const AVISOS = [
+      "A política conta no horário de Brasília e este imóvel está em outro fuso: confira as datas.",
+      "Este imóvel não tem horário de entrada cadastrado: vale o padrão 15:00.",
+      "O pedido foi registrado mais de dois dias depois de chegar: confira a data e a hora na mensagem do hóspede.",
+      "Esta reserva tem 1 ajuste(s) manual(is) (R$ 50,00): o cancelamento não mexe neles. Revise depois.",
+      "Cartão ainda não liberado pelo Mercado Pago: a devolução pode precisar de saldo disponível na conta do Mercado Pago.",
+    ];
+    // Pix liberado, pedido registrado na hora, imóvel em São Paulo com o horário de entrada: nenhum desses avisos.
+    const y = await pagarEConfirmar(c, { entrada: "2026-11-25", saida: "2026-11-27", email: "y@example.com" });
+    await liberar(c, y.pagamentoId, { quando: minutos(10) });
+    await comPedido(y.reservaId, minutos(30), minutos(35));
+    const py = await previaDoCancelamento(db, c.org, y.reservaId, entradaPadrao(), c.provedor, minutos(60));
+    if (!py.ok) throw new Error(py.erro);
+    for (const a of AVISOS) expect(py.previa.avisos).not.toContainEqual(a);
+    // Cartão ainda não liberado, pedido de 01/10 12:30 registrado 49 h depois, um ajuste manual na reserva e o imóvel em
+    // outro fuso, sem o cadastro do horário de entrada.
+    const x = await pagarEConfirmar(c, { ...longe, forma: "cartao" });
+    await comPedido(x.reservaId, minutos(30), minutos(30 + 49 * 60));
+    await lancar(db, c.org, [{ tipo: "ajuste", descricao: "Ajuste fictício da reserva", valor: 5000, efeitoSaldo: 0, montante: 5000, competencia: "2026-10-01", estado: "realizado", imovelId: c.imovel, reservaId: x.reservaId, origem: "ajuste" }], null);
+    await db.update(imoveis).set({ fuso: "America/Manaus" }).where(eq(imoveis.id, c.imovel));
+    await db.delete(imoveisDetalhes).where(eq(imoveisDetalhes.imovelId, c.imovel));
+    const px = await previaDoCancelamento(db, c.org, x.reservaId, entradaPadrao(), c.provedor, minutos(30 + 50 * 60));
+    if (!px.ok) throw new Error(px.erro);
+    expect(px.previa).toMatchObject({ direito: "integral", rota: "pedida", componentes: { ajustes: [{ descricao: "Ajuste fictício da reserva", valor: 5000 }] } });
+    expect(px.previa.avisos).toEqual(expect.arrayContaining(AVISOS));
+    // Liberado, o aviso do cartão sai.
+    await liberar(c, x.pagamentoId, { quando: minutos(30 + 50 * 60) });
+    const liberado = await previaDoCancelamento(db, c.org, x.reservaId, entradaPadrao(), c.provedor, minutos(30 + 51 * 60));
+    expect(liberado.ok && liberado.previa.avisos).not.toContainEqual(AVISOS[4]);
+  });
 });
 
 describe("parte já repassada: espelhos no mês do cancelamento e desconto (M8.2c)", () => {
@@ -584,6 +622,9 @@ describe("pagamento velho e o já devolvido no painel do Mercado Pago (M8.2c)", 
     // (order com menos de 90 dias), recusado.
     const confirmar = (provedor: typeof c.provedor | null) => confirmarDevolucaoVistaNoProvedor(db, c.org, x.pagamentoId, { data: "2026-10-01", nota: "Painel do Mercado Pago mostra o estorno" }, equipe, provedor, minutos(80));
     expect(await confirmar(c.provedor)).toMatchObject({ ok: false, erro: expect.stringContaining("ainda deixa conferir") });
+    // A leitura feita para conferir foi aplicada (o pagamento foi relido agora), e nada da devolução mudou.
+    expect((await c.tentativa(x.pagamentoId)).consultadoEm).toEqual(minutos(80));
+    expect(await devolucaoDe(x.pagamentoId)).toMatchObject({ situacao: "recusada", confirmadaPor: null });
     expect(await confirmar(null)).toEqual({ ok: false, erro: ERRO_POR_FORA_SEM_CONFERIR });
     // O painel do Mercado Pago recusou: registrado, o por fora no cartão passa a valer.
     expect(await registrarRecusaNoPainel(db, c.org, x.pagamentoId, { data: "2026-10-01", nota: "Painel do Mercado Pago recusou o estorno" }, equipe, minutos(90))).toEqual({ ok: true, situacao: "recusada" });
@@ -604,6 +645,86 @@ describe("pagamento velho e o já devolvido no painel do Mercado Pago (M8.2c)", 
     const t = await c.tentativa(x.pagamentoId);
     expect(t.avisos).toContain("taxa_perdida_desconhecida");
     expect(t.avisos).not.toContain("devolucao_fora_do_prazo");
+  });
+
+  it("Pix com mais de 90 dias e cartão com mais de 180 dias: os avisos da prévia; no cartão depois dos 180 dias, a devolução por fora vale", async () => {
+    const PIX_90 = "Pix com mais de 90 dias: pela regra do Banco Central, o Mercado Pago pode não conseguir devolver; a devolução por fora (Pix da conta da empresa) fica liberada.";
+    const CARTAO_180 = "Cartão com mais de 180 dias: o Mercado Pago não devolve mais; a devolução será por fora.";
+    const x = await pagarEConfirmar(c, longe);
+    await envelhecer(c, x.pagamentoId, 80);
+    const com80 = await previaDoCancelamento(db, c.org, x.reservaId, entrada(), c.provedor, minutos(60));
+    expect(com80.ok && com80.previa.avisos).not.toContainEqual(PIX_90);
+    await envelhecer(c, x.pagamentoId, 15);
+    const com95 = await previaDoCancelamento(db, c.org, x.reservaId, entrada(), c.provedor, minutos(60));
+    expect(com95.ok && com95.previa).toMatchObject({ rota: "fora_do_prazo", avisos: expect.arrayContaining([PIX_90]) });
+    const y = await pagarEConfirmar(c, { entrada: "2026-11-25", saida: "2026-11-27", email: "y@example.com", forma: "cartao" });
+    await envelhecer(c, y.pagamentoId, 185);
+    const { previa, resultado } = await cancelar(c, y.reservaId, entrada(), equipe, minutos(60));
+    expect(previa.ok && previa.previa).toMatchObject({ rota: "fora_do_prazo", avisos: expect.arrayContaining([CARTAO_180]) });
+    expect(previa.ok && previa.previa.avisos).not.toContainEqual(PIX_90);
+    expect(resultado).toMatchObject({ ok: true, devolucao: "recusada" });
+    expect(pedidosDeDevolucao()).toEqual([]);
+    const pago = (await c.tentativa(y.pagamentoId)).valorPago!;
+    expect(await registrarDevolucaoPorFora(db, c.org, y.pagamentoId, { data: "2026-10-01", valor: pago, nota: "Transferência da empresa" }, equipe, c.provedor, minutos(70))).toEqual({ ok: true, situacao: "por_fora" });
+  });
+
+  it("confirmar a devolução vista no painel: se a leitura já mostra a devolução, vale a leitura; data de antes de a devolução ser registrada, recusada", async () => {
+    // Pedido aceito que não aparecia (aviso) e que o Mercado Pago concluiu: a releitura confirma, sem a nota da equipe.
+    c.provedor.respostaDevolucao = "pedida";
+    const x = await pagarEConfirmar(c, longe);
+    await cancelar(c, x.reservaId, entrada(), equipe, minutos(60));
+    await db.update(pagamentos).set({ avisos: ["devolucao_sem_confirmacao"] }).where(eq(pagamentos.id, x.pagamentoId));
+    c.provedor.confirmarDevolucoes(x.idProvedor);
+    const r = await confirmarDevolucaoVistaNoProvedor(db, c.org, x.pagamentoId, { data: "2026-10-01", nota: "Painel mostra o estorno" }, equipe, c.provedor, minutos(80));
+    expect(r).toEqual({ ok: true, situacao: "confirmada", mensagem: "O Mercado Pago já mostra a devolução: confirmada pela leitura." });
+    expect(await devolucaoDe(x.pagamentoId)).toMatchObject({ situacao: "confirmada", confirmadaPor: "leitura", confirmadaNota: "" });
+    expect((await doLivro(x.reservaId)).filter((l) => l.tipo === "devolucao")).toEqual([]);
+    expect(await db.select().from(auditoria).where(and(eq(auditoria.entidadeId, x.pagamentoId), eq(auditoria.acao, "pagamento.devolucao_confirmada_pela_equipe")))).toEqual([]);
+    // Cartão velho com a order que o Mercado Pago não acha mais: a data não pode ser de antes da devolução registrada.
+    c.provedor.respostaDevolucao = "confirmada";
+    const y = await pagarEConfirmar(c, { entrada: "2026-11-25", saida: "2026-11-27", email: "y@example.com", forma: "cartao" });
+    await envelhecer(c, y.pagamentoId, 88);
+    await cancelar(c, y.reservaId, entrada(), equipe, minutos(60));
+    c.provedor.esquecerOrder(y.idProvedor);
+    const confirmar = (data: string) => confirmarDevolucaoVistaNoProvedor(db, c.org, y.pagamentoId, { data, nota: "Painel mostra o estorno" }, equipe, c.provedor, minutos(80));
+    expect(await confirmar("2026-09-30")).toEqual({ ok: false, erro: "A data não pode ser antes de a devolução ser registrada (01/10/2026)." });
+    expect(await devolucaoDe(y.pagamentoId)).toMatchObject({ situacao: "recusada" });
+    expect(await confirmar("2026-10-01")).toEqual({ ok: true, situacao: "confirmada" });
+  });
+
+  it("depois do prazo de leitura com a order ainda legível: sem aviso, a confirmação vem da leitura (recusada aqui); com o aviso de devolução aceita sem aparecer, a equipe confirma o que vê no painel", async () => {
+    c.provedor.respostaDevolucao = "pedida";
+    const x = await pagarEConfirmar(c, longe);
+    await cancelar(c, x.reservaId, entrada(), equipe, minutos(60));
+    await envelhecer(c, x.pagamentoId, 87);
+    const confirmar = () => confirmarDevolucaoVistaNoProvedor(db, c.org, x.pagamentoId, { data: "2026-10-01", nota: "Painel mostra o estorno do valor integral" }, equipe, c.provedor, minutos(80));
+    expect(await confirmar()).toMatchObject({ ok: false, erro: expect.stringContaining("ainda deixa conferir") });
+    expect(await devolucaoDe(x.pagamentoId)).toMatchObject({ situacao: "pedida", chaveAceita: true });
+    await db.update(pagamentos).set({ avisos: ["devolucao_sem_confirmacao"] }).where(eq(pagamentos.id, x.pagamentoId));
+    expect(await confirmar()).toEqual({ ok: true, situacao: "confirmada" });
+    expect(await devolucaoDe(x.pagamentoId)).toMatchObject({ situacao: "confirmada", confirmadaPor: "equipe", chaveAceita: false });
+    expect((await c.tentativa(x.pagamentoId)).avisos).not.toContain("devolucao_sem_confirmacao");
+  });
+
+  it("recusa do painel numa devolução ainda pedida: só depois do prazo de leitura e sem pedido aceito pelo Mercado Pago", async () => {
+    c.provedor.respostaDevolucao = "saldo_insuficiente";
+    const x = await pagarEConfirmar(c, { ...longe, forma: "cartao" });
+    await cancelar(c, x.reservaId, entrada(), equipe, minutos(60));
+    expect(await devolucaoDe(x.pagamentoId)).toMatchObject({ situacao: "pedida", chaveAceita: false, chaveEmDuvida: false, ultimoCodigo: "saldo_insuficiente" });
+    const registrar = (pagamentoId: string, quando: Date) => registrarRecusaNoPainel(db, c.org, pagamentoId, { data: "2026-10-01", nota: "Painel recusou o estorno" }, equipe, quando);
+    // Dentro do prazo de leitura: não (o sistema ainda pede e confere).
+    expect(await registrar(x.pagamentoId, minutos(70))).toMatchObject({ ok: false, erro: expect.stringContaining("Só uma devolução recusada") });
+    await envelhecer(c, x.pagamentoId, 88);
+    expect(await registrar(x.pagamentoId, minutos(80))).toEqual({ ok: true, situacao: "recusada" });
+    expect(await devolucaoDe(x.pagamentoId)).toMatchObject({ situacao: "recusada", proximaTentativaEm: null, chaveEmDuvida: false, recusaNoPainelNota: "Painel recusou o estorno", recusaNoPainelPor: equipe });
+    expect((await c.tentativa(x.pagamentoId)).avisos).toContain("devolucao_falhou");
+    // Com o pedido aceito pelo Mercado Pago (ainda pode sair por lá): não.
+    c.provedor.respostaDevolucao = "pedida";
+    const y = await pagarEConfirmar(c, { entrada: "2026-11-25", saida: "2026-11-27", email: "y@example.com", forma: "cartao" });
+    await cancelar(c, y.reservaId, entrada(), equipe, minutos(60));
+    await envelhecer(c, y.pagamentoId, 88);
+    expect(await devolucaoDe(y.pagamentoId)).toMatchObject({ situacao: "pedida", chaveAceita: true });
+    expect(await registrar(y.pagamentoId, minutos(80))).toMatchObject({ ok: false, erro: expect.stringContaining("Só uma devolução recusada") });
   });
 
   it("já devolvido por inteiro no painel do Mercado Pago (D15): só integral; devolução confirmada pela leitura; caixa no dia em que o sistema viu; o aviso de devolvido por fora sai", async () => {
@@ -758,7 +879,12 @@ describe("pedido, descarte, OTAs, avisado e idempotência (M8.2c)", () => {
     await pedirCancelamentoPeloHospede(db, c.org, EMAIL_HOSPEDE, x.reservaCodigo, minutos(20));
     await cancelar(c, x.reservaId, entradaPadrao({ nota: "Pedido em Minha reserva" }), equipe, minutos(60));
     await registrarTaxaPerdida(db, c.org, x.pagamentoId, 1000, equipe, minutos(70));
-    expect(await semDadosPessoais(db, [EMAIL_HOSPEDE, TELEFONE_HOSPEDE])).toEqual([]);
+    expect(await semDadosDoHospede(db)).toEqual([]);
+    // A varredura acha o nome se ele vazar para uma tabela nova (aqui, posto à mão numa nota e tirado de volta).
+    const canc = await cancelamentoDe(x.reservaId);
+    await db.update(cancelamentosReserva).set({ nota: `Pedido de ${NOME_HOSPEDE}` }).where(eq(cancelamentosReserva.id, canc.id));
+    expect(await semDadosDoHospede(db)).toEqual([NOME_HOSPEDE]);
+    await db.update(cancelamentosReserva).set({ nota: canc.nota }).where(eq(cancelamentosReserva.id, canc.id));
   });
 
   it("a cotação cancelada continua ligada ao pagamento; a reserva cancelada sai das reservas que o motor calcula", async () => {
@@ -767,5 +893,96 @@ describe("pedido, descarte, OTAs, avisado e idempotência (M8.2c)", () => {
     const [cot] = await db.select().from(cotacoes).where(eq(cotacoes.id, x.cotacaoId));
     expect(cot).toMatchObject({ estado: "cancelada", reservaId: x.reservaId });
     expect(await c.tentativa(x.pagamentoId)).toMatchObject({ desfecho: "reserva" });
+  });
+});
+
+describe("ao mesmo tempo: antecipado, conferência e outro clique (M8.2c)", () => {
+  // O PGlite dos testes tem uma conexão só e serializa as transações: quem chega com uma transação aberta espera ela
+  // terminar inteira, como quem espera a trava no Postgres. Os dois primeiros casos abrem a corrida de dentro da transação
+  // do outro (a ordem fica certa); os outros conferem, nas duas ordens, que o resultado é sempre um dos permitidos. A trava
+  // ocupada (55P03/40P01) tem teste próprio em "recusas e a assinatura da prévia".
+  const entrada = () => entradaPadrao({ quemCancela: "empresa", motivoEmpresa: "forca_maior" });
+
+  it("o antecipado com a transação aberta (dono e reservas travados) e o cancelamento esperando: depois que ele grava, o cancelamento responde repasse_a_pagar e nada muda", async () => {
+    const x = await pagarEConfirmar(c);
+    await liberar(c, x.pagamentoId, { quando: minutos(10) });
+    const quando = sp("2026-10-13 10:00");
+    const p = await previaDoCancelamento(db, c.org, x.reservaId, entrada(), c.provedor, quando);
+    if (!p.ok) throw new Error(p.erro);
+    const original = db.transaction.bind(db);
+    let cancelamento: ReturnType<typeof cancelarReservaPaga> | null = null;
+    const espiao = vi.spyOn(db, "transaction").mockImplementationOnce(async (fn) =>
+      original(async (tx) => {
+        // A transação do antecipado está aberta: o cancelamento começa agora e espera por ela (nada aqui o aguarda).
+        cancelamento = cancelarReservaPaga(db, c.org, x.reservaId, entrada(), equipe, c.provedor, quando, p.previa.assinatura);
+        return fn(tx);
+      }),
+    );
+    const rep = await gerarAntecipado(db, c.org, c.dono, "2026-10-13", null, { agora: quando });
+    espiao.mockRestore();
+    expect(rep).toMatchObject({ ok: true });
+    expect(await cancelamento).toMatchObject({ ok: false, codigo: "repasse_a_pagar" });
+    expect(await c.reserva(x.reservaId)).toMatchObject({ estado: "confirmada" });
+    expect(await cancelamentoDe(x.reservaId)).toBeUndefined();
+    expect((await motorEmVigor(x.reservaId)).length).toBe(4);
+    expect(pedidosDeDevolucao()).toEqual([]);
+  });
+
+  it("o cancelamento com a transação aberta e o antecipado esperando: depois que ele grava, o antecipado não acha a parte (nunca cancelada com a parte num repasse a pagar)", async () => {
+    // Pagamento fora do prazo de leitura: o cancelamento não relê nada antes, e a primeira transação dele é a da fase 1.
+    const x = await pagarEConfirmar(c);
+    await liberar(c, x.pagamentoId, { quando: minutos(10) });
+    await envelhecer(c, x.pagamentoId, 90);
+    const quando = sp("2026-10-13 10:00");
+    const p = await previaDoCancelamento(db, c.org, x.reservaId, entrada(), c.provedor, quando);
+    if (!p.ok) throw new Error(p.erro);
+    const original = db.transaction.bind(db);
+    let antecipado: ReturnType<typeof gerarAntecipado> | null = null;
+    const espiao = vi.spyOn(db, "transaction").mockImplementationOnce(async (fn) =>
+      original(async (tx) => {
+        antecipado = gerarAntecipado(db, c.org, c.dono, "2026-10-13", null, { agora: quando });
+        return fn(tx);
+      }),
+    );
+    const canc = await cancelarReservaPaga(db, c.org, x.reservaId, entrada(), equipe, c.provedor, quando, p.previa.assinatura);
+    espiao.mockRestore();
+    expect(canc).toMatchObject({ ok: true, direito: "integral", devolucao: "recusada" });
+    expect(await antecipado).toMatchObject({ ok: false });
+    expect(await repasseAPagarDaReservaDados(db, c.org, x.reservaId)).toBeNull();
+    expect(await motorEmVigor(x.reservaId)).toEqual([]);
+  });
+
+  it("a conferência do pagamento e o cancelamento juntos: um pedido de devolução só, confirmada pela leitura, o motor estornado uma vez", async () => {
+    for (const primeiro of ["conferencia", "cancelamento"] as const) {
+      c = await montarCenario(db);
+      equipe = await usuarioDeTeste(c);
+      const x = await pagarEConfirmar(c, longe);
+      const p = await previaDoCancelamento(db, c.org, x.reservaId, entrada(), c.provedor, minutos(60));
+      if (!p.ok) throw new Error(p.erro);
+      const conferencia = () => conferirTentativa(db, c.org, x.pagamentoId, c.provedor, minutos(61), { origem: "rotina", forcar: true });
+      const cancelamento = () => cancelarReservaPaga(db, c.org, x.reservaId, entrada(), equipe, c.provedor, minutos(61), p.previa.assinatura);
+      const [conf, canc] = primeiro === "conferencia" ? await Promise.all([conferencia(), cancelamento()]) : (await Promise.all([cancelamento(), conferencia()])).reverse() as [Awaited<ReturnType<typeof conferencia>>, Awaited<ReturnType<typeof cancelamento>>];
+      expect(conf).toMatchObject({ ok: true });
+      expect(canc).toMatchObject({ ok: true, direito: "integral", devolucao: "confirmada" });
+      expect(pedidosDeDevolucao()).toHaveLength(1);
+      const livro = await doLivro(x.reservaId);
+      expect(livro.filter((l) => l.origem === "estorno")).toHaveLength(4);
+      expect(livro.filter((l) => l.origem === "cancelamento")).toEqual([]);
+      expect(await devolucaoDe(x.pagamentoId)).toMatchObject({ situacao: "confirmada", confirmadaPor: "leitura" });
+      expect((await c.tentativa(x.pagamentoId)).avisos).not.toContain("devolvido_por_fora");
+    }
+  });
+
+  it("dois cliques ao mesmo tempo: um cancela, o outro responde 'já cancelada'; um pedido de devolução só", async () => {
+    const x = await pagarEConfirmar(c, longe);
+    const p = await previaDoCancelamento(db, c.org, x.reservaId, entrada(), c.provedor, minutos(60));
+    if (!p.ok) throw new Error(p.erro);
+    const clique = () => cancelarReservaPaga(db, c.org, x.reservaId, entrada(), equipe, c.provedor, minutos(61), p.previa.assinatura);
+    const rs = await Promise.all([clique(), clique()]);
+    expect(rs.filter((r) => r.ok)).toHaveLength(1);
+    expect(rs.find((r) => !r.ok)).toMatchObject({ ok: false, codigo: "ja_cancelada" });
+    expect(pedidosDeDevolucao()).toHaveLength(1);
+    expect(await db.select().from(cancelamentosReserva).where(eq(cancelamentosReserva.reservaId, x.reservaId))).toHaveLength(1);
+    expect((await doLivro(x.reservaId)).filter((l) => l.origem === "estorno")).toHaveLength(4);
   });
 });

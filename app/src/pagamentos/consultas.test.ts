@@ -4,13 +4,24 @@ import { auditoria, cotacoes, devolucoesPagamento, eventosPagamento, lancamentos
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { estornar } from "@/financeiro/ledger";
+import { lerRegrasCalendario, salvarRegrasCalendario } from "@/calendario/regras-config";
 import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
 import { expirarHoldsVencidos } from "@/site/cotacoes";
 import { textoDoCancelamento } from "@/site/pagamento-vista";
 import { conferirTentativa } from "./conferencia";
-import { avisosDeCancelamento, avisosDePagamento, listarPagamentos, nomeDaBandeira, pagamentoEmAndamentoOuAprovado, pagamentosDaReserva, vistaDaCotacaoParaHospede } from "./consultas";
+import {
+  avisosDeCancelamento,
+  avisosDePagamento,
+  listarPagamentos,
+  nomeDaBandeira,
+  pagamentoEmAndamentoOuAprovado,
+  pagamentosDaReserva,
+  TEXTO_DEVOLUCAO_FALHOU_NA_LEITURA,
+  TEXTO_RECUSA_NO_PAINEL,
+  vistaDaCotacaoParaHospede,
+} from "./consultas";
 import { marcarHospedeAvisado, marcarOtaLiberada } from "./cancelamento";
-import { devolverPeloProvedor, registrarDevolucaoPorFora, registrarTaxaPerdida } from "./devolucao";
+import { devolverPeloProvedor, registrarDevolucaoPorFora, registrarRecusaNoPainel, registrarTaxaPerdida } from "./devolucao";
 import { registrarEventoDeAviso } from "./eventos";
 import { gerarPix } from "./pix";
 import { ErroProvedor } from "./provedor";
@@ -567,6 +578,84 @@ describe("cancelamento pela política: a página do hóspede, o quadro do pagame
     const fim = await avisos(minutos(100));
     expect(fim.some((a) => a.texto.includes("reabra as datas") || a.texto.includes("mensagem ao hóspede") || a.texto.includes(x.reservaCodigo))).toBe(false);
     for (const a of [...depois, ...fim]) expect(a.texto).not.toContain("R$");
+  });
+
+  it("cartão com mais de 78 dias: 'pedindo o estorno no cartão' só enquanto a devolução por fora do cartão não abre (recusa do painel registrada, 180 dias); contestado: em conferência", async () => {
+    const equipe = await usuarioDeTeste(c);
+    // A recusa do painel do Mercado Pago registrada: o estorno no cartão não sai mais; a equipe combina outra forma.
+    const f = await pagarEConfirmar(c, { ...longe, forma: "cartao" });
+    await envelhecer(c, f.pagamentoId, 80);
+    await cancelar(c, f.reservaId, empresa(), equipe, minutos(60));
+    expect((await texto(f.cotacaoId, minutos(70))).v).toMatchObject({ estado: "cancelada_devolucao_pedida", cancelamento: { estornoPelaEquipe: true } });
+    expect(await registrarRecusaNoPainel(db, c.org, f.pagamentoId, { data: "2026-10-01", nota: "Painel recusou o estorno" }, equipe, minutos(75))).toEqual({ ok: true, situacao: "recusada" });
+    const tf = await texto(f.cotacaoId, minutos(80));
+    expect(tf.v).toMatchObject({ estado: "cancelada_com_a_equipe", cancelamento: { estornoPelaEquipe: false } });
+    expect(tf.decisao).toContain(t.cancelamentoComAEquipe);
+    expect(tf.decisao).not.toContain(t.cancelamentoEstornoNoCartao);
+    // O quadro do pagamento diz que a recusa foi a do painel (não "três vezes").
+    expect((await acoes(f.reservaId, minutos(80))).avisos).toContain(TEXTO_RECUSA_NO_PAINEL);
+
+    // Cartão com mais de 180 dias: o Mercado Pago não estorna mais; com a equipe desde o cancelamento.
+    const g = await pagarEConfirmar(c, { entrada: "2026-11-25", saida: "2026-11-27", email: "g@example.com", forma: "cartao" });
+    await envelhecer(c, g.pagamentoId, 185);
+    await cancelar(c, g.reservaId, empresa(), equipe, minutos(60));
+    const tg = await texto(g.cotacaoId, minutos(70));
+    expect(tg.v).toMatchObject({ estado: "cancelada_com_a_equipe", cancelamento: { estornoPelaEquipe: false, forma: "cartao" } });
+    expect(tg.decisao).not.toContain(t.cancelamentoEstornoNoCartao);
+
+    // Contestado depois do cancelamento, com a devolução ainda pedida: em conferência, sem oferecer outra forma.
+    c.provedor.respostaDevolucao = "pedida";
+    const h = await pagarEConfirmar(c, { entrada: "2026-11-28", saida: "2026-11-30", email: "h@example.com" });
+    await cancelar(c, h.reservaId, empresa(), equipe, minutos(60));
+    expect((await texto(h.cotacaoId, minutos(70))).v.estado).toBe("cancelada_devolucao_pedida");
+    await db.update(pagamentos).set({ situacao: "contestado" }).where(eq(pagamentos.id, h.pagamentoId));
+    const th = await texto(h.cotacaoId, minutos(70));
+    expect(th.v.estado).toBe("cancelada_em_conferencia");
+    expect(th.decisao).toContain(t.cancelamentoEmConferencia);
+    expect(th.decisao).not.toContain(t.cancelamentoComAEquipe);
+  });
+
+  it("Início do financeiro: a devolução de pagamento com mais de 78 dias (nunca pedida) conta à parte da recusada pelo Mercado Pago; a solta pela leitura tem o texto dela no quadro", async () => {
+    const equipe = await usuarioDeTeste(c);
+    const x = await pagarEConfirmar(c, longe);
+    await envelhecer(c, x.pagamentoId, 80);
+    await cancelar(c, x.reservaId, empresa(), equipe, minutos(60));
+    const antes = await avisosDePagamento(db, c.org, minutos(70), { env: env() });
+    expect(antes.contagens).toMatchObject({ devolucaoForaDoPrazo: 1, devolucaoRecusada: 0 });
+    const textos = antes.alertas.map((a) => a.texto);
+    expect(textos).toContain("1 devolução(ões) de pagamento(s) com mais de 78 dias, que o sistema não pede mais ao Mercado Pago: no cartão, devolva pelo painel do Mercado Pago; no Pix, faça a devolução por fora.");
+    expect(textos.join("\n")).not.toContain("recusou ou não respondeu três vezes");
+    // A nossa devolução aceita e depois falha na leitura: recusada pelo Mercado Pago (conta como recusada), com o texto dela.
+    c.provedor.respostaDevolucao = "pedida";
+    const y = await pagarEConfirmar(c, { entrada: "2026-11-25", saida: "2026-11-27", email: "y@example.com", forma: "cartao" });
+    await cancelar(c, y.reservaId, empresa(), equipe, minutos(60));
+    const idDevolucao = (await db.select().from(devolucoesPagamento).where(eq(devolucoesPagamento.pagamentoId, y.pagamentoId)))[0].idProvedor!;
+    c.provedor.falharDevolucao(idDevolucao);
+    await conferir(y.pagamentoId, minutos(70));
+    const depois = await avisosDePagamento(db, c.org, minutos(80), { env: env() });
+    expect(depois.contagens).toMatchObject({ devolucaoForaDoPrazo: 1, devolucaoRecusada: 1 });
+    expect((await acoes(y.reservaId, minutos(80))).avisos).toContain(TEXTO_DEVOLUCAO_FALHOU_NA_LEITURA);
+    // A recusa do painel registrada na de mais de 78 dias: passa a contar como recusada pelo Mercado Pago.
+    expect(await registrarRecusaNoPainel(db, c.org, x.pagamentoId, { data: "2026-10-01", nota: "Painel recusou" }, equipe, minutos(85))).toMatchObject({ ok: true });
+    expect((await avisosDePagamento(db, c.org, minutos(90), { env: env() })).contagens).toMatchObject({ devolucaoForaDoPrazo: 0, devolucaoRecusada: 2 });
+  });
+
+  it("Início da operação: com o envio automático ao Beds24 ligado, 'reabra as datas nas OTAs' não aparece (o envio cuida); o resto continua", async () => {
+    const equipe = await usuarioDeTeste(c);
+    const x = await pagarEConfirmar(c, longe);
+    await cancelar(c, x.reservaId, empresa(), equipe, minutos(60));
+    // Credencial fictícia: nada é chamado (só a regra "o envio está ligado" é conferida).
+    const ligado = env({ BEDS24_ESCRITA: "ligada", BEDS24_REFRESH_TOKEN: "refresh-ficticio" });
+    const textos = async (e: NodeJS.ProcessEnv) => (await avisosDeCancelamento(db, c.org, minutos(70), { env: e })).map((a) => a.texto).join("\n");
+    // Escrita ligada no ambiente, mas o envio automático desligado no painel: o aviso continua.
+    expect(await textos(ligado)).toContain("reabra as datas nas OTAs");
+    const regras = await lerRegrasCalendario(db, c.org);
+    await salvarRegrasCalendario(db, c.org, { ...regras, envio: { ...regras.envio, automatico: true } }, null);
+    const comEnvio = await textos(ligado);
+    expect(comEnvio).not.toContain("reabra as datas nas OTAs");
+    expect(comEnvio).toContain("mensagem ao hóspede pendente");
+    // Sem a escrita ligada no ambiente, o envio marcado não basta: o aviso volta.
+    expect(await textos(env())).toContain("reabra as datas nas OTAs");
   });
 
   it("Início do financeiro: devolvida a menos e reserva devolvida no Mercado Pago fora do cancelamento (D21) contam e avisam", async () => {

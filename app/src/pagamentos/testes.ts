@@ -179,13 +179,13 @@ export async function montarCenario(db: Db, o: { semPaginasLegais?: boolean } = 
 /**
  * Varre as tabelas do pagamento (pagamentos, eventos, auditoria, aceites, disjuntor, freios de tentativas) atrás de
  * `valores` (token, documento, id do aparelho, e-mails, nome do titular…) e devolve os que apareceram — o esperado é
- * nenhum.
+ * nenhum. `nomes` (M8.2c): o nome do hóspede, procurado nas mesmas tabelas, menos a auditoria da reserva que nasce no
+ * M8.1 (`reserva.importar` guarda os dados dela, nome inclusive, fora das tabelas do pagamento).
  */
-export async function semDadosPessoais(db: Db, valores: string[]): Promise<string[]> {
-  const tudo = JSON.stringify([
+export async function semDadosPessoais(db: Db, valores: string[], o: { nomes?: string[] } = {}): Promise<string[]> {
+  const semAuditoria = [
     await db.select().from(pagamentos),
     await db.select().from(eventosPagamento),
-    await db.select().from(auditoria),
     await db.select().from(aceitesSite),
     await db.select().from(disjuntoresCartao),
     await db.select().from(tentativasLogin),
@@ -193,15 +193,21 @@ export async function semDadosPessoais(db: Db, valores: string[]): Promise<strin
     await db.select().from(devolucoesPagamento),
     await db.select().from(cancelamentosReserva),
     await db.select().from(lancamentos),
-  ]);
-  return valores.filter((v) => v && tudo.includes(v));
+  ];
+  const registros = await db.select().from(auditoria);
+  const tudo = JSON.stringify([semAuditoria, registros]);
+  const semReservaImportada = JSON.stringify([semAuditoria, registros.filter((a) => a.acao !== "reserva.importar")]);
+  return [...valores.filter((v) => v && tudo.includes(v)), ...(o.nomes ?? []).filter((n) => n && semReservaImportada.includes(n))];
 }
 
 // ---------------------------------------------------------------- cancelamento pela política (M8.2c)
 
-/** Nome e e-mail do hóspede fictício do cenário (a varredura de dados pessoais procura por eles). */
+/** Nome e telefone do hóspede fictício do cenário (a varredura de dados pessoais procura por eles, com o e-mail). */
 export const NOME_HOSPEDE = "Visitante Fictício";
 export const TELEFONE_HOSPEDE = "(21) 99999-0000";
+
+/** A varredura dos testes do cancelamento (M8.2c): o e-mail, o telefone e o nome do hóspede fictício do cenário. */
+export const semDadosDoHospede = (db: Db) => semDadosPessoais(db, [EMAIL_HOSPEDE, TELEFONE_HOSPEDE], { nomes: [NOME_HOSPEDE] });
 
 /** Um usuário fictício da equipe (quem registra pedidos, cancela e confirma). */
 export async function usuarioDeTeste(c: Cenario, nome = "Equipe Fictícia"): Promise<string> {

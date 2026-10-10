@@ -4,20 +4,25 @@
  * a equipe que cancela no meio; o e-mail à equipe sem dado do hóspede. Dados fictícios; provedor e correio falsos.
  */
 import { and, eq } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { lerEmpresa, salvarEmpresa } from "@/configuracoes/empresa";
 import { lerConfigPagamentoSite, salvarConfigPagamentoSite } from "@/configuracoes/pagamento-site";
 import { auditoria, cancelamentosReserva } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { CorreioMemoria } from "@/email/correio";
-import { type Cenario, cancelar, EMAIL_HOSPEDE, entradaPadrao, minutos, montarCenario, NOME_HOSPEDE, pagarEConfirmar, pedir, semDadosPessoais, TELEFONE_HOSPEDE, usuarioDeTeste } from "@/pagamentos/testes";
+import { type Cenario, cancelar, EMAIL_HOSPEDE, entradaPadrao, minutos, montarCenario, NOME_HOSPEDE, pagarEConfirmar, pedir, semDadosDoHospede, TELEFONE_HOSPEDE, usuarioDeTeste } from "@/pagamentos/testes";
 import { avisarEquipeDoPedido, cancelamentoNoPortal, mensagemPedidoDeCancelamento, pedirCancelamentoPeloHospede } from "./cancelamento";
 
 let db: Db, close: () => Promise<void>, c: Cenario;
 beforeAll(async () => { ({ db, close } = await createTestDb()); });
 afterAll(() => close());
 beforeEach(async () => { c = await montarCenario(db); });
+// Dados pessoais (§10): depois de cada fluxo, nem o e-mail, nem o telefone, nem o nome do hóspede nas tabelas do pagamento,
+// do cancelamento e do livro, nem na auditoria (o nome fica só na da reserva criada no M8.1, `reserva.importar`).
+afterEach(async () => {
+  expect(await semDadosDoHospede(db)).toEqual([]);
+});
 
 const NAO_DA = "Não foi possível registrar o pedido por aqui: fale com a equipe.";
 /** Um instante em São Paulo ("2026-10-12 15:00"). */
@@ -94,8 +99,9 @@ describe("Minha reserva: o quadro 'Cancelar a reserva' (M8.2c)", () => {
     expect(resultado).toMatchObject({ ok: true, direito: "integral" });
     expect(await cancelamentoNoPortal(db, c.org, EMAIL_HOSPEDE, x.reservaCodigo, sp("2026-10-10 12:00"))).toBeNull();
     expect(await pedirCancelamentoPeloHospede(db, c.org, EMAIL_HOSPEDE, x.reservaCodigo, sp("2026-10-10 12:00"))).toMatchObject({ ok: false });
-    // (O nome do hóspede fica na auditoria da reserva desde o M8.1 — `reserva.importar` —, fora das tabelas do pagamento.)
-    expect(await semDadosPessoais(db, [EMAIL_HOSPEDE, TELEFONE_HOSPEDE])).toEqual([]);
+    // (O nome do hóspede fica na auditoria da reserva desde o M8.1 — `reserva.importar` —, fora das tabelas do pagamento;
+    // a varredura procura o nome em todo o resto.)
+    expect(await semDadosDoHospede(db)).toEqual([]);
   });
 
   it("trava ocupada: uma tentativa de novo com a MESMA hora; ocupada de novo, pede para tentar em instantes (nada gravado)", async () => {
