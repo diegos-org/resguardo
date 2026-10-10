@@ -6,7 +6,7 @@ import { BotaoCopiar } from "@/components/BotaoCopiar";
 import type { AceiteNaPagina } from "@/site/aceites";
 import type { EstadoCartao, EstadoContinuar, EstadoPix } from "@/site/acoes-pagamento";
 import { MENSAGEM_CARTAO_RECUSADO, MENSAGEM_VERIFICACAO_NAO_CONCLUIDA, NOTA_JUROS_CARTAO } from "@/site/mensagens-cartao";
-import { deveAcompanhar, ESTADOS_COM_DINHEIRO, type EstadoPagamentoHospede, type PagamentoDoHospede } from "@/site/pagamento-vista";
+import { deveAcompanhar, ESTADOS_COM_DINHEIRO, type EstadoPagamentoHospede, type PagamentoDoHospede, type TextosDoCancelamento, textoDoCancelamento } from "@/site/pagamento-vista";
 import { AceiteFeito, BlocoAceite } from "./BlocoAceite";
 import { DesafioCartao } from "./DesafioCartao";
 import { type BloqueioDaRecarga, PagamentoCartao, type TravaRecarga } from "./PagamentoCartao";
@@ -20,8 +20,11 @@ type AcaoPix = (estado: EstadoPix, form: FormData) => Promise<EstadoPix>;
 type AcaoContinuar = (estado: EstadoContinuar, form: FormData) => Promise<EstadoContinuar>;
 type AcaoCartao = (form: FormData) => Promise<EstadoCartao>;
 
-/** Textos editáveis do pagamento (Configurações → Site). */
-export type TextosPagamento = { convite: string; aguardando: string; semDatas: string; cartaoAnalise: string };
+/**
+ * Textos editáveis do pagamento (Configurações → Site). `cancelamento` (M8.2c): as frases da reserva cancelada pela
+ * política e do pedido de cancelamento recebido; sem elas, a página mostra só os fatos do cancelamento.
+ */
+export type TextosPagamento = { convite: string; aguardando: string; semDatas: string; cartaoAnalise: string; cancelamento?: TextosDoCancelamento };
 
 const brl = (c: number) => `R$ ${(c / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const formato = (fuso: string, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, ...o });
@@ -399,6 +402,8 @@ export function PagamentoPix({
 }) {
   const { bloqueio, adiar } = useTravaDeRecarga();
   useAcompanharPagamento(codigo, v.estado, { podeGerar: v.podeGerar, podePagarCartao: v.podePagarCartao }, deveAcompanhar(v), adiar);
+  // O cancelamento pela política (ou o pedido de cancelamento recebido): o compositor único dos textos, no fuso do imóvel.
+  const cancelamento = textos.cancelamento ? textoDoCancelamento(v, textos.cancelamento, fuso) : { linhas: [], decisao: "", comoVolta: null };
   const prazo = v.holdAte ? (
     <p className={styles.texto}>
       As datas estão seguradas para você até <strong>{quando(v.holdAte, fuso)}</strong>.
@@ -583,6 +588,19 @@ export function PagamentoPix({
           <p className={styles.texto}>Guarde este link. Os detalhes da estadia ficam em Minha reserva, com o e-mail usado ao segurar as datas.</p>
           {aceite?.aceito && <AceiteFeito aceito={aceite.aceito} fuso={fuso} prazo={aceite.prazo} />}
           {v.pagamentoEmDobro && <p className={styles.aviso}>Recebemos mais de um pagamento desta cotação: a equipe vai devolver o valor pago a mais.</p>}
+          {/* M8.2c: pedido de cancelamento recebido, ainda sem decisão (a reserva continua confirmada). */}
+          {cancelamento.linhas.length > 0 && (
+            <div className={styles.aviso} role="note">
+              {cancelamento.linhas.map((l) => (
+                <p key={l} style={{ margin: 0 }}>
+                  {l}
+                </p>
+              ))}
+              <p style={{ margin: 0 }}>
+                Acompanhe ou peça pelo seu acesso: <a href="/hospede">Minha reserva</a>.
+              </p>
+            </div>
+          )}
           <p>
             <a href="/hospede" className={styles.botao}>
               Minha reserva
@@ -590,6 +608,24 @@ export function PagamentoPix({
           </p>
         </>,
         { classe: styles.pixOk, aoVivo: true },
+      );
+    // M8.2c: a reserva paga pelo site foi cancelada pela política. Os fatos (código, datas, valores, versão) vêm do
+    // servidor; as frases, de Textos do site. Nunca oferece outra forma de pagar.
+    case "cancelada_devolucao_pedida":
+    case "cancelada_devolvida":
+    case "cancelada_com_a_equipe":
+    case "cancelada_em_conferencia":
+    case "cancelada_sem_devolucao":
+      return secao(
+        <>
+          {cancelamento.linhas.map((l, i) => (
+            <p key={l} className={styles.texto}>
+              {i === 0 ? <strong>{l}</strong> : l}
+            </p>
+          ))}
+          {contato}
+        </>,
+        { classe: v.estado === "cancelada_devolvida" || v.estado === "cancelada_sem_devolucao" ? undefined : styles.pixAtencao },
       );
     case "aprovado_sem_datas":
       return secao(

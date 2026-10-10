@@ -5,22 +5,27 @@
  * `financeiro:ler`; as mensagens com `{valor}` também). Nada daqui é gravado: as mensagens são montadas na hora.
  */
 import { and, asc, eq, inArray, isNull, lt, not } from "drizzle-orm";
+import { lerConfigPagamentoSite } from "@/configuracoes/pagamento-site";
 import {
   type BaseCancelamento,
   type CalculoCancelamento,
   type CanalPedidoCancelamento,
   cancelamentosReserva,
   type DireitoCancelamento,
+  imoveis,
+  imoveisDetalhes,
   lancamentos,
   type MotivoCancelamentoEmpresa,
   type MotivoExcecao,
   type QuemCancelaReserva,
   repasseItens,
   repasses,
+  reservas,
   type SituacaoCancelamento,
   usuarios,
 } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { instanteLocal } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { type MensagemPronta, mensagensDoCancelamento } from "@/mensagens/hospede";
 import { lancamentoEmVigor } from "@/portal/posse";
@@ -44,6 +49,8 @@ export type CancelamentoDoPainel = {
   politicaVersao: number | null;
   integralAte: string | null;
   arrependimentoAte: string | null;
+  /** O arrependimento valia só até a entrada (na versão aceita); null sem política. */
+  arrependimentoAteEntrada: boolean | null;
   entradaEm: Date | null;
   calculado: CalculoCancelamento | null;
   direito: DireitoCancelamento | null;
@@ -123,6 +130,7 @@ export async function cancelamentoDaReserva(db: Db, organizacaoId: string, reser
     politicaVersao: c.politicaVersao,
     integralAte: c.integralAte,
     arrependimentoAte: c.arrependimentoAte,
+    arrependimentoAteEntrada: c.arrependimentoAteEntrada,
     entradaEm: c.entradaEm,
     calculado: c.calculado,
     direito: c.direito,
@@ -142,4 +150,26 @@ export async function cancelamentoDaReserva(db: Db, organizacaoId: string, reser
     descartados: descartadas.map((x) => ({ em: x.pedidoRecebidoEm, canal: x.canal, motivo: x.descarteMotivo, por: nome(x.descartadoPor), descartadoEm: x.descartadoEm })),
     mensagens: await mensagensDoCancelamento(db, organizacaoId, reservaId, agora),
   };
+}
+
+const HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/**
+ * Os momentos que o formulário do cancelamento mostra: o horário de entrada da reserva (no fuso do imóvel; sem cadastro,
+ * 15:00, como a regra) e a partir de quando o não comparecimento é aceito (a tolerância de Configurações → Pagamento no
+ * site). null = reserva não encontrada.
+ */
+export async function momentosDoCancelamento(db: Db, organizacaoId: string, reservaId: string): Promise<{ entradaEm: Date; naoComparecimentoApos: Date; fuso: string } | null> {
+  if (!uuidValido(reservaId)) return null;
+  const [r] = await db
+    .select({ checkin: reservas.checkin, fuso: imoveis.fuso, hora: imoveisDetalhes.checkinAPartirDe })
+    .from(reservas)
+    .innerJoin(imoveis, eq(imoveis.id, reservas.imovelId))
+    .leftJoin(imoveisDetalhes, eq(imoveisDetalhes.imovelId, imoveis.id))
+    .where(and(eq(reservas.id, reservaId), eq(reservas.organizacaoId, organizacaoId)));
+  if (!r) return null;
+  const fuso = r.fuso || "America/Sao_Paulo";
+  const entradaEm = instanteLocal(r.checkin, r.hora && HORA.test(r.hora) ? r.hora : "15:00", fuso);
+  const horas = (await lerConfigPagamentoSite(db, organizacaoId)).naoComparecimentoHoras;
+  return { entradaEm, naoComparecimentoApos: new Date(entradaEm.getTime() + horas * 3_600_000), fuso };
 }

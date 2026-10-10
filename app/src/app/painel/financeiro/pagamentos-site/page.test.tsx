@@ -7,7 +7,7 @@ vi.mock("next/navigation", () => ({ redirect: m.redirect }));
 vi.mock("next/link", () => ({ default: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a> }));
 vi.mock("@/acesso/sessao-atual", () => ({ exigirSessaoPainel: m.sessao }));
 vi.mock("@/db/client", () => ({ getDb: () => ({}) }));
-vi.mock("@/pagamentos/consultas", () => ({ listarPagamentos: m.listar }));
+vi.mock("@/pagamentos/consultas", async (original) => ({ ...(await original<typeof import("@/pagamentos/consultas")>()), listarPagamentos: m.listar }));
 vi.mock("@/pagamentos/acoes-painel", () => ({ conferirAgoraAcao: vi.fn() }));
 import Page from "./page";
 
@@ -89,4 +89,26 @@ it("filtro pede atenção e período informado; datas inválidas voltam ao padr�
   expect(m.listar).toHaveBeenLastCalledWith({}, "org", expect.objectContaining({ ate: hoje(), atencao: false }));
   m.listar.mockResolvedValue([]);
   expect(await html({ atencao: "1" })).toContain("Nenhum pagamento do site pedindo atenção.");
+});
+
+it("M8.2c: reserva paga cancelada pela política — o desfecho diz o que houve com a devolução; o texto antigo do M8.2c virou M8.2d", async () => {
+  const cancelada = (estado: "cancelada_devolucao_pedida" | "cancelada_sem_devolucao" | "cancelada_devolvida") => ({
+    ...linha,
+    id: `${estado}-1`,
+    desfecho: "reserva" as const,
+    motivoSemReserva: null,
+    motivoSemReservaTexto: null,
+    avisos: [],
+    reservaEstado: "cancelada",
+    cancelada: { estado, estornoPelaEquipe: false },
+  });
+  m.listar.mockResolvedValue([cancelada("cancelada_devolucao_pedida"), cancelada("cancelada_sem_devolucao"), cancelada("cancelada_devolvida")]);
+  const h = await html();
+  expect(h).toContain("Reserva cancelada: devolução pedida");
+  expect(h).toContain("Reserva cancelada: sem devolução (valor retido)");
+  expect(h).toContain("Reserva cancelada: devolvida");
+  m.listar.mockResolvedValue([{ ...linha, situacao: "devolvido_parcial", motivoSemReservaTexto: "Chegou já devolvido em parte." }]);
+  const parcial = await html();
+  expect(parcial).toContain("a devolução de parte do valor pelo sistema chega no M8.2d");
+  expect(parcial).not.toContain("M8.2c");
 });

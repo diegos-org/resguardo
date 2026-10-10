@@ -14,6 +14,10 @@ const m = vi.hoisted(() => ({
   estornar: vi.fn(),
   salvar: vi.fn(),
   religar: vi.fn(),
+  confirmarVista: vi.fn(),
+  recusaPainel: vi.fn(),
+  parar: vi.fn(),
+  corrigirTaxa: vi.fn(),
 }));
 vi.mock("@/acesso/sessao-atual", () => ({ exigirSessaoPainel: m.sessao }));
 vi.mock("@/db/client", () => ({ getDb: () => ({ banco: true }) }));
@@ -21,11 +25,32 @@ vi.mock("next/cache", () => ({ revalidatePath: m.revalidar }));
 vi.mock("./oferta", () => ({ provedorDeConferencia: m.gate }));
 vi.mock("./conferencia", () => ({ conferirTentativa: m.conferir }));
 vi.mock("./rotina", () => ({ conferirPendentes: m.pendentes }));
-vi.mock("./devolucao", () => ({ devolverPeloProvedor: m.devolver, registrarDevolucaoPorFora: m.porFora, registrarTaxaPerdida: m.taxa }));
+vi.mock("./devolucao", () => ({
+  devolverPeloProvedor: m.devolver,
+  registrarDevolucaoPorFora: m.porFora,
+  registrarTaxaPerdida: m.taxa,
+  confirmarDevolucaoVistaNoProvedor: m.confirmarVista,
+  registrarRecusaNoPainel: m.recusaPainel,
+  pararDevolucaoPedida: m.parar,
+  corrigirTaxaPerdida: m.corrigirTaxa,
+}));
 vi.mock("./liberacao", () => ({ registrarLiberacaoManual: m.liberar, estornarLiberacaoManual: m.estornar }));
 vi.mock("./disjuntor", () => ({ religarCartao: m.religar }));
 vi.mock("@/configuracoes/pagamento-site", async (original) => ({ ...(await original<typeof import("@/configuracoes/pagamento-site")>()), salvarConfigPagamentoSite: m.salvar }));
-import { conferirAgoraAcao, devolucaoPorForaAcao, devolverAcao, estornarLiberacaoAcao, registrarLiberacaoAcao, registrarTaxaPerdidaAcao, religarCartaoAcao, salvarConfigPagamentoSiteAcao } from "./acoes-painel";
+import {
+  confirmarDevolucaoVistaAcao,
+  conferirAgoraAcao,
+  corrigirTaxaPerdidaAcao,
+  devolucaoPorForaAcao,
+  devolverAcao,
+  estornarLiberacaoAcao,
+  pararDevolucaoPedidaAcao,
+  registrarLiberacaoAcao,
+  registrarRecusaNoPainelAcao,
+  registrarTaxaPerdidaAcao,
+  religarCartaoAcao,
+  salvarConfigPagamentoSiteAcao,
+} from "./acoes-painel";
 
 const ID = "11111111-1111-4111-8111-111111111111";
 const provedor = { falso: true };
@@ -56,11 +81,16 @@ describe("permissão (deny-by-default)", () => {
     () => registrarTaxaPerdidaAcao({}, form({ pagamentoId: ID, valor: "18,06" })),
     () => salvarConfigPagamentoSiteAcao({}, form({ oferecer: "on" })),
     () => religarCartaoAcao(),
+    // M8.2c
+    () => confirmarDevolucaoVistaAcao({}, form({ pagamentoId: ID, data: hoje(), nota: "painel mostra devolvida" })),
+    () => registrarRecusaNoPainelAcao({}, form({ pagamentoId: ID, data: hoje(), nota: "painel recusou" })),
+    () => pararDevolucaoPedidaAcao({}, form({ pagamentoId: ID, nota: "nada saiu" })),
+    () => corrigirTaxaPerdidaAcao({}, form({ pagamentoId: ID, valor: "10,00", motivo: "extrato" })),
   ];
   it.each(["operacao", "proprietario", "limpeza", "hospede"])("%s não executa nenhuma ação de dinheiro", async (papel) => {
     m.sessao.mockResolvedValue({ papel, organizacaoId: "org", usuarioId: "u", imovelIds: [] });
     for (const f of todas) await expect(f()).rejects.toThrow("Acesso negado");
-    for (const fn of [m.gate, m.conferir, m.pendentes, m.devolver, m.porFora, m.taxa, m.liberar, m.estornar, m.salvar, m.religar]) expect(fn).not.toHaveBeenCalled();
+    for (const fn of [m.gate, m.conferir, m.pendentes, m.devolver, m.porFora, m.taxa, m.liberar, m.estornar, m.salvar, m.religar, m.confirmarVista, m.recusaPainel, m.parar, m.corrigirTaxa]) expect(fn).not.toHaveBeenCalled();
   });
 });
 
@@ -154,6 +184,50 @@ describe("taxa que não voltou", () => {
     expect(m.taxa).toHaveBeenLastCalledWith({ banco: true }, "org", ID, 0, "u");
     m.taxa.mockResolvedValue({ ok: false, erro: "A taxa que não voltou já foi registrada (R$ 18,06)." });
     expect(await registrarTaxaPerdidaAcao({}, form({ pagamentoId: ID, valor: "18,06" }))).toEqual({ mensagem: "A taxa que não voltou já foi registrada (R$ 18,06)." });
+  });
+});
+
+describe("devolução do cancelamento e do pagamento velho (M8.2c)", () => {
+  it("confirmar a devolução vista no painel do Mercado Pago: data até hoje e nota obrigatória; o provedor de conferência (ou nenhum) vai ao domínio", async () => {
+    expect(await confirmarDevolucaoVistaAcao({}, form({ pagamentoId: ID, data: amanha(), nota: "x" }))).toEqual({ mensagem: "A data não pode ser no futuro." });
+    expect(await confirmarDevolucaoVistaAcao({}, form({ pagamentoId: ID, data: hoje(), nota: " " }))).toEqual({ mensagem: "Escreva a nota (sem dados pessoais)." });
+    expect(await confirmarDevolucaoVistaAcao({}, form({ pagamentoId: ID, data: "", nota: "x" }))).toEqual({ mensagem: "Informe a data." });
+    expect(await confirmarDevolucaoVistaAcao({}, form({ pagamentoId: "x", data: hoje(), nota: "x" }))).toEqual({ mensagem: "Pagamento não encontrado." });
+    expect(m.confirmarVista).not.toHaveBeenCalled();
+    m.confirmarVista.mockResolvedValue({ ok: true, situacao: "confirmada" });
+    expect((await confirmarDevolucaoVistaAcao({}, form({ pagamentoId: ID, data: hoje(), nota: "painel mostra devolvida" }))).mensagem).toContain("o financeiro do cancelamento foi lançado");
+    expect(m.confirmarVista).toHaveBeenCalledWith({ banco: true }, "org", ID, { data: hoje(), nota: "painel mostra devolvida" }, "u", provedor);
+    // A leitura já confirmou: a mensagem do domínio.
+    m.confirmarVista.mockResolvedValue({ ok: true, situacao: "confirmada", mensagem: "O Mercado Pago já mostra a devolução: confirmada pela leitura." });
+    expect(await confirmarDevolucaoVistaAcao({}, form({ pagamentoId: ID, data: hoje(), nota: "x" }))).toEqual({ ok: true, mensagem: "O Mercado Pago já mostra a devolução: confirmada pela leitura." });
+    m.gate.mockResolvedValue({ ok: false, motivo: "desligado", texto: "desligado" });
+    m.confirmarVista.mockResolvedValue({ ok: false, erro: "Sem conferir no Mercado Pago, nada é registrado." });
+    expect(await confirmarDevolucaoVistaAcao({}, form({ pagamentoId: ID, data: hoje(), nota: "x" }))).toEqual({ mensagem: "Sem conferir no Mercado Pago, nada é registrado." });
+    expect(m.confirmarVista.mock.calls.at(-1)?.[5]).toBeNull();
+  });
+
+  it("registrar a recusa do painel e parar a devolução pedida: autor e empresa da sessão; recusas do domínio voltam como vieram", async () => {
+    m.recusaPainel.mockResolvedValue({ ok: true, situacao: "recusada" });
+    expect((await registrarRecusaNoPainelAcao({}, form({ pagamentoId: ID, data: hoje(), nota: "painel recusou" }))).mensagem).toContain("a devolução por fora fica liberada");
+    expect(m.recusaPainel).toHaveBeenCalledWith({ banco: true }, "org", ID, { data: hoje(), nota: "painel recusou" }, "u");
+    expect(await registrarRecusaNoPainelAcao({}, form({ pagamentoId: ID, data: hoje(), nota: "" }))).toEqual({ mensagem: "Escreva a nota (sem dados pessoais)." });
+    m.parar.mockResolvedValue({ ok: false, erro: "O Mercado Pago ainda mostra este pagamento: a devolução aceita ainda pode aparecer por lá. Use Conferir agora." });
+    expect(await pararDevolucaoPedidaAcao({}, form({ pagamentoId: ID, nota: "nada saiu" }))).toEqual({ mensagem: "O Mercado Pago ainda mostra este pagamento: a devolução aceita ainda pode aparecer por lá. Use Conferir agora." });
+    expect(m.parar).toHaveBeenCalledWith({ banco: true }, "org", ID, { nota: "nada saiu" }, "u", provedor);
+    m.parar.mockResolvedValue({ ok: true, situacao: "recusada" });
+    expect(await pararDevolucaoPedidaAcao({}, form({ pagamentoId: ID }))).toEqual({ ok: true, mensagem: "Devolução pedida parada: a devolução por fora fica liberada." });
+  });
+
+  it("corrigir a taxa que não voltou: valor em reais (zero vale) e o motivo; recusa do domínio (teto) volta como veio", async () => {
+    expect((await corrigirTaxaPerdidaAcao({}, form({ pagamentoId: ID, valor: "dez", motivo: "x" }))).mensagem).toContain("Informe a taxa que não voltou");
+    expect(await corrigirTaxaPerdidaAcao({}, form({ pagamentoId: ID, valor: "10,00", motivo: "" }))).toEqual({ mensagem: "Informe o motivo da correção." });
+    expect(m.corrigirTaxa).not.toHaveBeenCalled();
+    m.corrigirTaxa.mockResolvedValue({ ok: true });
+    expect((await corrigirTaxaPerdidaAcao({}, form({ pagamentoId: ID, valor: "12,50", motivo: "extrato do Mercado Pago" }))).mensagem).toContain("a despesa anterior foi estornada e a nova entrou");
+    expect(m.corrigirTaxa).toHaveBeenCalledWith({ banco: true }, "org", ID, 1250, "extrato do Mercado Pago", "u");
+    expect((await corrigirTaxaPerdidaAcao({}, form({ pagamentoId: ID, valor: "0", motivo: "voltou toda" }))).mensagem).toBe("Taxa corrigida para zero: a despesa anterior foi estornada.");
+    m.corrigirTaxa.mockResolvedValue({ ok: false, erro: "A taxa que não voltou (R$ 99,00) não pode passar da taxa que o Mercado Pago cobrou neste pagamento (R$ 18,06)." });
+    expect((await corrigirTaxaPerdidaAcao({}, form({ pagamentoId: ID, valor: "99,00", motivo: "x" }))).mensagem).toContain("não pode passar");
   });
 });
 

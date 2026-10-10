@@ -562,3 +562,98 @@ describe("acompanhamento com o cartão (M8.2b)", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("reserva cancelada pela política e pedido de cancelamento (M8.2c)", () => {
+  const frases = {
+    cancelamentoSemTaxas: "SEM TAXAS.",
+    cancelamentoDevolucaoPedida: "DEVOLUCAO PEDIDA EDITAVEL",
+    cancelamentoEstornoNoCartao: "ESTORNO NO CARTAO EDITAVEL",
+    cancelamentoVoltaPix: "VOLTA PIX EDITAVEL",
+    cancelamentoVoltaCartao: "VOLTA CARTAO EDITAVEL",
+    cancelamentoVoltaPorFora: "VOLTA POR FORA EDITAVEL",
+    cancelamentoComAEquipe: "COM A EQUIPE EDITAVEL",
+    cancelamentoEmConferencia: "EM CONFERENCIA EDITAVEL",
+    cancelamentoSemDevolucaoPrazo: "SEM DEVOLUCAO PRAZO EDITAVEL",
+    cancelamentoSemDevolucaoNaoComparecimento: "NAO COMPARECIMENTO EDITAVEL",
+    cancelamentoSemDevolucaoEquipe: "SEM DEVOLUCAO EQUIPE EDITAVEL",
+    cancelamentoFecho: "FECHO EDITAVEL",
+    cancelamentoPedidoRecebido: "PEDIDO RECEBIDO EDITAVEL",
+  };
+  const cancelamento: NonNullable<PagamentoDoHospede["cancelamento"]> = {
+    recebidoEm: "2026-10-10T13:00:00.000Z",
+    quemCancela: "hospede",
+    direito: "integral",
+    base: "prazo",
+    motivoEmpresa: null,
+    valor: 182400,
+    valorConfirmado: null,
+    devolucaoEm: null,
+    porFora: false,
+    confirmadaPor: null,
+    forma: "pix",
+    estornoPelaEquipe: false,
+    integralAte: "2026-10-26",
+    arrependimentoAte: "2026-10-08",
+    entradaEm: "2026-11-09T18:00:00.000Z",
+    politicaVersao: 1,
+  };
+  const ver = (over: Partial<PagamentoDoHospede>) =>
+    render(
+      <PagamentoPix
+        codigo="COT-ABCDEFGH"
+        pagamento={{ ...base, holdAte: null, podeGerar: false, reservaCodigo: "SCL-TESTE1", ...over }}
+        autorizado
+        fuso="America/Sao_Paulo"
+        total={182400}
+        textos={{ ...textos, cancelamento: frases }}
+        contato={<a href="https://wa.me/55">Falar com a equipe pelo WhatsApp</a>}
+        gerarPix={acoes.gerarPix}
+        continuar={acoes.continuar}
+      />,
+    );
+
+  it("devolução pedida: o cabeçalho com o horário do pedido, a decisão com o valor, as frases editáveis e a equipe; nunca uma forma de pagar", () => {
+    const { container } = ver({ estado: "cancelada_devolucao_pedida", cancelamento });
+    expect(screen.getByText("Reserva SCL-TESTE1 cancelada. Recebemos o seu pedido em 10/10 às 10:00 (horário de Brasília).")).toBeTruthy();
+    expect(container.textContent).toContain("Pela Política de cancelamento que você aceitou (versão 1), devolvemos o valor integral pago, R$ 1.824,00, SEM TAXAS.");
+    expect(container.textContent).toContain("DEVOLUCAO PEDIDA EDITAVEL");
+    expect(container.textContent).toContain("VOLTA PIX EDITAVEL");
+    expect(container.textContent).toContain("FECHO EDITAVEL");
+    expect(screen.getByRole("link", { name: "Falar com a equipe pelo WhatsApp" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Gerar/ })).toBeNull();
+    expect(container.textContent).not.toMatch(/Beds24/i);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("as outras quatro: devolvida (por fora, sem a linha do meio de pagamento), com a equipe, em conferência e sem devolução (os prazos)", () => {
+    let r = ver({ estado: "cancelada_devolvida", cancelamento: { ...cancelamento, porFora: true, devolucaoEm: "2026-10-12T15:00:00.000Z" } });
+    expect(r.container.textContent).toContain("Devolução de R$ 1.824,00 feita em 12/10.");
+    expect(r.container.textContent).toContain("VOLTA POR FORA EDITAVEL");
+    expect(r.container.textContent).not.toContain("VOLTA PIX EDITAVEL");
+    cleanup();
+    r = ver({ estado: "cancelada_com_a_equipe", cancelamento });
+    expect(r.container.textContent).toContain("A devolução de R$ 1.824,00 pelo Mercado Pago não foi possível. COM A EQUIPE EDITAVEL");
+    cleanup();
+    r = ver({ estado: "cancelada_em_conferencia", cancelamento });
+    expect(r.container.textContent).toContain("EM CONFERENCIA EDITAVEL");
+    cleanup();
+    r = ver({ estado: "cancelada_sem_devolucao", cancelamento: { ...cancelamento, direito: "nenhum", base: "fora_do_prazo", valor: 0 } });
+    expect(r.container.textContent).toContain("Prazo de reembolso integral: pedidos até 26/10, às 23h59. SEM DEVOLUCAO PRAZO EDITAVEL");
+    expect(r.container.textContent).not.toContain("R$");
+    cleanup();
+    r = ver({ estado: "cancelada_sem_devolucao", cancelamento: { ...cancelamento, quemCancela: "nao_comparecimento", direito: "nenhum", base: "nao_comparecimento", valor: 0 } });
+    expect(r.container.textContent).toContain("A reserva SCL-TESTE1 foi cancelada por não comparecimento.");
+    expect(r.container.textContent).toContain("NAO COMPARECIMENTO EDITAVEL");
+  });
+
+  it("pedido recebido, ainda sem decisão: a reserva continua confirmada, com a linha do pedido e o caminho para Minha reserva", () => {
+    const { container } = ver({ estado: "confirmada", pedidoCancelamentoEm: "2026-10-10T13:00:00.000Z" });
+    expect(screen.getByText("Pagamento aprovado: reserva SCL-TESTE1 confirmada.")).toBeTruthy();
+    expect(container.textContent).toContain("Pedido de cancelamento recebido em 10/10 às 10:00 (horário de Brasília). PEDIDO RECEBIDO EDITAVEL");
+    expect(container.textContent).toContain("Acompanhe ou peça pelo seu acesso: Minha reserva.");
+    expect(screen.getAllByRole("link", { name: "Minha reserva" }).every((l) => l.getAttribute("href") === "/hospede")).toBe(true);
+    cleanup();
+    // Sem pedido, nada a mais na reserva confirmada.
+    expect(ver({ estado: "confirmada" }).container.textContent).not.toContain("Pedido de cancelamento");
+  });
+});

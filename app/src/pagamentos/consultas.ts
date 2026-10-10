@@ -302,22 +302,48 @@ function estadoDoCancelamento(p: Pagamento, canc: typeof cancelamentosReserva.$i
     confirmadaPor: dev?.situacao === "confirmada" ? (dev.confirmadaPor ?? "leitura") : null,
     forma: p.forma,
     // A mesma regra do quadro do pagamento (`porForaPermitidoNoCartao`): aberta a devolução por fora, o cartão não é mais o caminho.
-    estornoPelaEquipe: !!dev && devolucaoParadaPeloPrazo(p, dev) && !dev.paradaEm && p.forma === "cartao" && !porForaPermitidoNoCartao(p, dev, agora),
+    estornoPelaEquipe: estornaPelaEquipe(p, dev, agora),
     integralAte: canc.integralAte,
     arrependimentoAte: canc.arrependimentoAte,
     entradaEm: canc.entradaEm,
     politicaVersao: canc.politicaVersao,
   };
-  const em = (estado: EstadoPagamentoHospede) => ({ estado, cancelamento });
-  if (canc.direito === "nenhum") return em("cancelada_sem_devolucao");
-  if (dev?.situacao === "confirmada" || dev?.situacao === "por_fora") return em("cancelada_devolvida");
+  return { estado: estadoDaCancelada(p, canc.direito!, dev, cancelamento.estornoPelaEquipe), cancelamento };
+}
+
+/**
+ * A situação da reserva cancelada pela política, pela devolução (a regra única da página do hóspede e do quadro do
+ * painel): sem devolução; devolvida; em conferência; pedida (ou o estorno no cartão feito pela equipe); com a equipe.
+ */
+function estadoDaCancelada(p: Pagamento, direito: DireitoCancelamento, dev: Devolucao | undefined, estornoPelaEquipe: boolean): EstadoPagamentoHospede {
+  if (direito === "nenhum") return "cancelada_sem_devolucao";
+  if (dev?.situacao === "confirmada" || dev?.situacao === "por_fora") return "cancelada_devolvida";
   const paradaPorProblema = p.avisos.includes("devolucao_parada") && !dev?.paradaEm;
-  if (p.avisos.includes("devolucao_a_menor") || p.situacao === "contestado" || p.situacao === "devolvido_parcial" || paradaPorProblema) return em("cancelada_em_conferencia");
-  if (dev?.situacao === "pedida") return em("cancelada_devolucao_pedida");
+  if (p.avisos.includes("devolucao_a_menor") || p.situacao === "contestado" || p.situacao === "devolvido_parcial" || paradaPorProblema) return "cancelada_em_conferencia";
+  if (dev?.situacao === "pedida") return "cancelada_devolucao_pedida";
   // Cartão com mais de 78 dias: nada foi pedido pelo sistema; a equipe devolve pelo painel do Mercado Pago.
-  if (cancelamento.estornoPelaEquipe) return em("cancelada_devolucao_pedida");
-  if (dev?.situacao === "recusada" && p.situacao === "aprovado") return em("cancelada_com_a_equipe");
-  return em("cancelada_em_conferencia");
+  if (estornoPelaEquipe) return "cancelada_devolucao_pedida";
+  if (dev?.situacao === "recusada" && p.situacao === "aprovado") return "cancelada_com_a_equipe";
+  return "cancelada_em_conferencia";
+}
+
+/** Cartão com mais de 78 dias, devolução parada pelo prazo e a por fora do cartão ainda fechada: a equipe estorna pelo painel do Mercado Pago. */
+const estornaPelaEquipe = (p: Pagamento, dev: Devolucao | undefined, agora: Date) =>
+  !!dev && devolucaoParadaPeloPrazo(p, dev) && !dev.paradaEm && p.forma === "cartao" && !porForaPermitidoNoCartao(p, dev, agora);
+
+/** A situação da reserva cancelada pela política no quadro do pagamento e na lista (M8.2c): as mesmas da página do hóspede. */
+export type CanceladaNoPainel = { estado: EstadoPagamentoHospede; estornoPelaEquipe: boolean };
+
+/** "Reserva cancelada: devolução pedida / devolvida / com a equipe / em conferência / sem devolução (valor retido)". */
+export function canceladaEmPalavras(c: CanceladaNoPainel): string {
+  const palavras: Partial<Record<EstadoPagamentoHospede, string>> = {
+    cancelada_devolucao_pedida: c.estornoPelaEquipe ? "devolução pelo painel do Mercado Pago (pagamento com mais de 78 dias)" : "devolução pedida",
+    cancelada_devolvida: "devolvida",
+    cancelada_com_a_equipe: "com a equipe",
+    cancelada_em_conferencia: "em conferência",
+    cancelada_sem_devolucao: "sem devolução (valor retido)",
+  };
+  return `Reserva cancelada: ${palavras[c.estado] ?? "em conferência"}`;
 }
 
 /**
@@ -391,6 +417,11 @@ export type PagamentoDoPainel = {
     recusaNoPainelEm?: Date | null;
     paradaEm?: Date | null;
   } | null;
+  /**
+   * M8.2c: a reserva que este pagamento confirmou foi cancelada pela política — a situação pela devolução (a mesma da
+   * página do hóspede); null nos outros casos. Opcional só para montar tentativas à mão nos testes.
+   */
+  cancelada?: CanceladaNoPainel | null;
   /** Pede atenção da equipe (lista "pede atenção" e Início). */
   pedeAtencao: boolean;
   /** O que a ficha pode oferecer (quem chama ainda confere a permissão financeiro:editar). */
@@ -475,6 +506,9 @@ function paraPainel(p: Pagamento, dev: Devolucao | undefined, temRecebimentoManu
   const foraDaLeitura = p.criadoEm.getTime() < inicioDoPrazoDeReleitura(agora).getTime();
   const semConfirmacaoPelaLeitura = p.avisos.includes("devolucao_sem_confirmacao") || p.avisos.includes("devolucao_a_menor") || p.avisos.includes("situacao_desconhecida");
   const calculada = !!ctx.reserva && reservaCalculadaPeloMotor(ctx.reserva);
+  const estorno = estornaPelaEquipe(p, dev, agora);
+  const cancelada: CanceladaNoPainel | null =
+    p.desfecho === "reserva" && ctx.cancelamento?.situacao === "cancelada" && ctx.cancelamento.direito ? { estado: estadoDaCancelada(p, ctx.cancelamento.direito, dev, estorno), estornoPelaEquipe: estorno } : null;
   return {
     id: p.id,
     cotacaoId: p.cotacaoId,
@@ -530,6 +564,7 @@ function paraPainel(p: Pagamento, dev: Devolucao | undefined, temRecebimentoManu
     juros: cartao && p.valorPago !== null && p.valorPago > p.valor ? p.valorPago - p.valor : null,
     custoParcelasVendedor: cartao ? p.custoParcelasVendedor : null,
     motivoRecusa: cartao && p.situacao === "recusado" ? textoMotivoRecusaCartao(motivoDoDetalhe(p.detalheProvedor)) : null,
+    cancelada,
     pedeAtencao:
       semDecisao ||
       inesperada ||

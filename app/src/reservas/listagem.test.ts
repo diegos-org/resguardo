@@ -87,6 +87,11 @@ it("filtro de pedidos de cancelamento (M8.2c): ?cancelamento=pedido mostra só a
   expect((await listarDe({})).itens.map((r) => r.id).sort()).toEqual([comPedido.reservaId, semPedido.reservaId].sort());
   expect((await listarDe({ cancelamento: "pedido" })).itens.map((r) => r.id)).toEqual([comPedido.reservaId]);
   expect(linkLista({ cancelamento: "pedido" })).toBe("/painel/reservas?cancelamento=pedido");
+  // O pedido aparece de qualquer período (um pedido nunca some da lista por causa do filtro de mês).
+  const noPeriodo = (p: Record<string, string>, periodo: { inicio: string; fim: string }) => listarReservasPaginadas(db, c.org, lerFiltrosLista(p), { imovelIds: [c.imovel], periodo, agora: minutos(50) });
+  const outroMes = { inicio: "2027-01-01", fim: "2027-02-01" };
+  expect((await noPeriodo({ cancelamento: "pedido" }, outroMes)).itens.map((r) => r.id)).toEqual([comPedido.reservaId]);
+  expect((await noPeriodo({}, outroMes)).itens).toEqual([]);
   // Decidido o cancelamento, sai do filtro (não é mais um pedido esperando).
   await cancelar(c, comPedido.reservaId, entradaPadrao(), equipe, minutos(60));
   expect((await listarDe({ cancelamento: "pedido" })).itens).toEqual([]);

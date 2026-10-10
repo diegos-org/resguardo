@@ -45,7 +45,8 @@ export async function listarReservasPaginadas(db: Db, org: string, f: FiltrosLis
   imovelIds: string[]; periodo: { inicio: string; fim: string }; incluirCanceladas?: boolean; agora?: Date;
 }) {
   const condicoes = [eq(reservas.organizacaoId, org), o.imovelIds.length ? inArray(reservas.imovelId, o.imovelIds) : sql`false`];
-  if (f.escopo === "periodo") condicoes.push(lt(reservas.checkin, o.periodo.fim), sql`${reservas.checkout} > ${o.periodo.inicio}`);
+  // Os pedidos de cancelamento esperando a equipe (M8.2c) aparecem de qualquer período: um pedido nunca some da lista.
+  if (f.escopo === "periodo" && f.cancelamento !== "pedido") condicoes.push(lt(reservas.checkin, o.periodo.fim), sql`${reservas.checkout} > ${o.periodo.inicio}`);
   if (f.situacao !== "todas") condicoes.push(eq(reservas.estado, f.situacao));
   else if (!o.incluirCanceladas && !f.execucao) condicoes.push(sql`${reservas.estado} <> 'cancelada'`);
   if (f.busca) {

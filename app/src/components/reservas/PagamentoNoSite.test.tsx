@@ -1,7 +1,18 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { PagamentoDoPainel } from "@/pagamentos/consultas";
-vi.mock("@/pagamentos/acoes-painel", () => ({ conferirAgoraAcao: vi.fn(), devolverAcao: vi.fn(), devolucaoPorForaAcao: vi.fn(), registrarLiberacaoAcao: vi.fn(), estornarLiberacaoAcao: vi.fn(), registrarTaxaPerdidaAcao: vi.fn() }));
+vi.mock("@/pagamentos/acoes-painel", () => ({
+  conferirAgoraAcao: vi.fn(),
+  devolverAcao: vi.fn(),
+  devolucaoPorForaAcao: vi.fn(),
+  registrarLiberacaoAcao: vi.fn(),
+  estornarLiberacaoAcao: vi.fn(),
+  registrarTaxaPerdidaAcao: vi.fn(),
+  confirmarDevolucaoVistaAcao: vi.fn(),
+  registrarRecusaNoPainelAcao: vi.fn(),
+  pararDevolucaoPedidaAcao: vi.fn(),
+  corrigirTaxaPerdidaAcao: vi.fn(),
+}));
 import { AVISOS_PAGAMENTO } from "@/pagamentos/situacoes";
 import { DEVOLUCAO_FALHOU_CARTAO, NAO_INFORME_O_MOTIVO, PagamentoNoSite, situacaoEmPalavras } from "./PagamentoNoSite";
 
@@ -217,5 +228,79 @@ describe("cartão de crédito no quadro (M8.2b)", () => {
 
   it("introdução fala de Pix e cartão", () => {
     expect(html([cartao])).toContain("Cada tentativa de pagamento (Pix ou cartão) feita pelo hóspede no site.");
+  });
+});
+
+describe("reserva cancelada pela política no quadro (M8.2c)", () => {
+  const devolucao = (over: Partial<NonNullable<PagamentoDoPainel["devolucao"]>> = {}): NonNullable<PagamentoDoPainel["devolucao"]> => ({
+    situacao: "pedida",
+    valor: 182400,
+    tentativas: 1,
+    falhas: 0,
+    confirmadaEm: null,
+    porForaData: null,
+    porForaValor: null,
+    porForaNota: "",
+    taxaPerdida: null,
+    origem: "cancelamento",
+    ultimoCodigo: null,
+    confirmadaPor: null,
+    confirmadaNota: "",
+    valorConfirmado: null,
+    recusaNoPainelEm: null,
+    paradaEm: null,
+    ...over,
+  });
+  const cancelado = (over: Partial<PagamentoDoPainel> = {}): PagamentoDoPainel => ({ ...base, cancelada: { estado: "cancelada_devolucao_pedida", estornoPelaEquipe: false }, devolucao: devolucao(), acoes: sem, ...over });
+
+  it("a situação em palavras é a da reserva cancelada (as mesmas da página do hóspede); o texto antigo do M8.2c virou M8.2d", () => {
+    expect(situacaoEmPalavras(cancelado())).toBe("Reserva cancelada: devolução pedida");
+    expect(situacaoEmPalavras(cancelado({ cancelada: { estado: "cancelada_devolucao_pedida", estornoPelaEquipe: true } }))).toBe(
+      "Reserva cancelada: devolução pelo painel do Mercado Pago (pagamento com mais de 78 dias)",
+    );
+    expect(situacaoEmPalavras(cancelado({ cancelada: { estado: "cancelada_devolvida", estornoPelaEquipe: false } }))).toBe("Reserva cancelada: devolvida");
+    expect(situacaoEmPalavras(cancelado({ cancelada: { estado: "cancelada_com_a_equipe", estornoPelaEquipe: false } }))).toBe("Reserva cancelada: com a equipe");
+    expect(situacaoEmPalavras(cancelado({ cancelada: { estado: "cancelada_em_conferencia", estornoPelaEquipe: false } }))).toBe("Reserva cancelada: em conferência");
+    expect(situacaoEmPalavras(cancelado({ cancelada: { estado: "cancelada_sem_devolucao", estornoPelaEquipe: false }, devolucao: null }))).toBe("Reserva cancelada: sem devolução (valor retido)");
+    const parcial: PagamentoDoPainel = { ...base, situacao: "devolvido_parcial", desfecho: null, motivoSemReservaTexto: "Chegou já devolvido em parte." };
+    expect(situacaoEmPalavras(parcial)).toContain("a devolução de parte do valor pelo sistema chega no M8.2d");
+    expect(situacaoEmPalavras(parcial)).not.toContain("M8.2c");
+  });
+
+  it("a linha da devolução explica a espera ou a recusa pelo último código do Mercado Pago, a confirmação da equipe e a parada pelo prazo", () => {
+    expect(html([cancelado({ devolucao: devolucao({ ultimoCodigo: "em_andamento" }) })])).toContain("o Mercado Pago pediu para esperar: o sistema tenta de novo sozinho");
+    expect(html([cancelado({ devolucao: devolucao({ situacao: "recusada", falhas: 3, ultimoCodigo: "saldo_insuficiente" }) })])).toContain("o Mercado Pago pediu saldo disponível na conta: coloque saldo e peça de novo");
+    const equipe = cancelado({ devolucao: devolucao({ situacao: "confirmada", confirmadaEm: new Date("2026-10-03T15:00:00Z"), confirmadaPor: "equipe", confirmadaNota: "painel mostra devolvida" }) });
+    expect(html([equipe])).toContain("confirmada pelo Mercado Pago · R$ 1.824,00 · em 03/10/2026 · confirmada pela equipe: painel mostra devolvida");
+    expect(html([equipe], { verValores: false })).not.toContain("painel mostra devolvida");
+    expect(html([cancelado({ devolucao: devolucao({ situacao: "recusada", tentativas: 0, falhas: 0 }) })])).toContain("parada pelo prazo: o pagamento tem mais de 78 dias");
+    expect(html([cancelado({ devolucao: devolucao({ situacao: "recusada", falhas: 0, recusaNoPainelEm: new Date("2026-10-04T15:00:00Z") }) })])).toContain("recusada no painel do Mercado Pago (registrado pela equipe)");
+    expect(html([cancelado({ devolucao: devolucao({ situacao: "confirmada", confirmadaEm: new Date("2026-10-03T15:00:00Z"), valorConfirmado: 177400 }) })])).toContain("o Mercado Pago mostrou R$ 1.774,00 devolvidos");
+  });
+
+  it("as ações novas aparecem só quando o domínio permite: pedir de novo, confirmar a vista no painel, registrar a recusa, parar e corrigir a taxa", () => {
+    const todas = cancelado({
+      devolucao: devolucao({ situacao: "recusada", falhas: 3, taxaPerdida: 1806 }),
+      acoes: { ...sem, devolver: true, confirmarDevolucaoVista: true, registrarRecusaNoPainel: true, pararDevolucaoPedida: true, corrigirTaxaPerdida: true },
+    });
+    const h = html([todas]);
+    expect(h).toContain("Pedir a devolução de novo");
+    expect(h).not.toContain("Devolver pelo Mercado Pago");
+    expect(h).toContain("Confirmar devolução feita no painel do Mercado Pago");
+    expect(h).toContain("Confirme só se o painel do Mercado Pago mostra a devolução <strong>do valor integral</strong> concluída.");
+    expect(h).toContain("Registrar que o Mercado Pago recusou a devolução no painel");
+    expect(h).toContain("Parar a devolução pedida");
+    expect(h).toContain("Corrigir taxa que não voltou");
+    expect(h).toContain('name="motivo"');
+    const nenhuma = html([cancelado()]);
+    for (const t of ["Pedir a devolução de novo", "Confirmar devolução feita no painel", "Registrar que o Mercado Pago recusou", "Parar a devolução pedida", "Corrigir taxa que não voltou"]) expect(nenhuma).not.toContain(t);
+    // Sem financeiro:editar, nenhuma.
+    expect(html([todas], { editar: false })).not.toContain("<form");
+  });
+
+  it("o quadro do cancelamento entra dentro da seção, antes das tentativas", () => {
+    const h = renderToStaticMarkup(<PagamentoNoSite pagamentos={[cancelado()]} verValores editar={false} hoje="2026-10-09" cancelamento={<div id="quadro-do-cancelamento" />} />);
+    expect(h.indexOf('id="quadro-do-cancelamento"')).toBeGreaterThan(h.indexOf("Pagamento no site"));
+    expect(h.indexOf('id="quadro-do-cancelamento"')).toBeLessThan(h.indexOf("<article"));
   });
 });

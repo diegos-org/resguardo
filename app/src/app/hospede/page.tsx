@@ -1,7 +1,10 @@
 import { redirect } from "next/navigation";
+import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import styles from "@/components/site/site.module.css";
 import { Moldura } from "@/components/site/Moldura";
-import { sairHospede } from "@/hospede/acoes";
+import { TEXTOS_SITE_INICIAIS, type TextosSite } from "@/configuracoes/textos-site";
+import { pedirCancelamentoAcao, sairHospede } from "@/hospede/acoes";
+import { type CancelamentoNoPortal, cancelamentoNoPortal, ESTADIA_COMECOU, JA_CANCELADA, NAO_DA, PEDIDO_DESLIGADO, PEDIDO_OCUPADO, textoDaPoliticaNoPortal } from "@/hospede/cancelamento";
 import { INSTRUCOES_HORA, type ReservaDoHospede, reservasDoHospede } from "@/hospede/portal";
 import { emailDoHospede } from "@/hospede/sessao-atual";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
@@ -37,7 +40,60 @@ function Contato({ r }: { r: ReservaDoHospede }) {
   );
 }
 
-function Reserva({ r }: { r: ReservaDoHospede }) {
+/** O que o endereço traz depois de "Pedir o cancelamento" (M8.2c): só códigos conhecidos, cada um com o seu texto fixo. */
+const ERROS_DO_PEDIDO: Record<string, string> = {
+  cancelamento: NAO_DA,
+  "cancelamento-desligado": PEDIDO_DESLIGADO,
+  "cancelamento-estadia": ESTADIA_COMECOU,
+  "cancelamento-cancelada": JA_CANCELADA,
+  "cancelamento-ocupado": PEDIDO_OCUPADO,
+};
+
+const BRASILIA = "America/Sao_Paulo";
+const diaHoraBrasilia = (d: Date) => {
+  const f = (o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("pt-BR", { timeZone: BRASILIA, ...o }).format(d);
+  return `${f({ day: "2-digit", month: "2-digit" })} às ${f({ hour: "2-digit", minute: "2-digit", hourCycle: "h23" })}`;
+};
+/**
+ * "Cancelar a reserva" em Minha reserva (M8.2c): só para reservas pagas pelo site deste e-mail. O hóspede só PEDE (a data
+ * e a hora ficam registradas na hora); a equipe confirma por escrito e cancela no painel. Nunca valores.
+ */
+function CancelarReserva({ codigo, c, textos, agora }: { codigo: string; c: CancelamentoNoPortal | null; textos: Pick<TextosSite, "cancelamentoMinhaReservaIntro" | "cancelamentoPedidoRecebido">; agora: Date }) {
+  if (!c) return null;
+  if (c.pedidoEm)
+    return (
+      <div className={styles.aviso} role="note">
+        <p style={{ margin: 0 }}>
+          Pedido de cancelamento recebido em {diaHoraBrasilia(c.pedidoEm)} (horário de Brasília). {textos.cancelamentoPedidoRecebido}
+        </p>
+        <p style={{ margin: 0 }}>
+          Acompanhe na página da sua reserva: <a href={c.linkCotacao}>ver a reserva no site</a>.
+        </p>
+      </div>
+    );
+  if (agora.getTime() >= c.entradaEm.getTime()) return <p className={styles.miudo}>A estadia já começou: para cancelar, fale com a equipe.</p>;
+  if (!c.podePedir) return null;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <strong>Cancelar a reserva</strong>
+      {textos.cancelamentoMinhaReservaIntro && <p className={styles.miudo} style={{ margin: 0 }}>{textos.cancelamentoMinhaReservaIntro}</p>}
+      <p className={styles.miudo} style={{ margin: 0 }}>
+        {textoDaPoliticaNoPortal(c)}
+      </p>
+      <form action={pedirCancelamentoAcao}>
+        <input type="hidden" name="reserva" value={codigo} />
+        <BotaoConfirmar
+          pergunta={`Pedir o cancelamento da reserva ${codigo}? A data e a hora em que recebemos o pedido ficam registradas agora. A equipe confirma com você, por escrito, o valor que será devolvido pela política que você aceitou ao pagar.`}
+          className={`${styles.botao} ${styles.botaoContorno}`}
+        >
+          Pedir o cancelamento
+        </BotaoConfirmar>
+      </form>
+    </div>
+  );
+}
+
+function Reserva({ r, cancelamento, textos, agora }: { r: ReservaDoHospede; cancelamento: CancelamentoNoPortal | null; textos: Pick<TextosSite, "cancelamentoMinhaReservaIntro" | "cancelamentoPedidoRecebido">; agora: Date }) {
   return (
     <article className={styles.cartao}>
       <div className={styles.cartaoCorpo}>
@@ -86,6 +142,7 @@ function Reserva({ r }: { r: ReservaDoHospede }) {
             O endereço completo e as instruções de chegada aparecem aqui em {data(r.instrucoes.dia)}, às {hora(INSTRUCOES_HORA)}.
           </p>
         )}
+        {!r.encerrada && <CancelarReserva codigo={r.codigo} c={cancelamento} textos={textos} agora={agora} />}
         <Contato r={r} />
       </div>
     </article>
@@ -93,12 +150,21 @@ function Reserva({ r }: { r: ReservaDoHospede }) {
 }
 
 /** Portal do hóspede (M9.1): só as reservas com o e-mail verificado, conferidas a cada acesso. */
-export default async function PortalHospede() {
+export default async function PortalHospede({ searchParams }: PageProps<"/hospede">) {
   const email = await emailDoHospede();
   if (!email) redirect("/hospede/entrar");
+  const { pedido, erro } = await searchParams;
   const { db, conteudo } = await carregarSite();
+  const agora = new Date();
   // Só reservas da empresa deste site; sem empresa definida, nenhuma.
-  const lista = conteudo ? await reservasDoHospede(db, conteudo.organizacaoId, email, new Date()) : [];
+  const lista = conteudo ? await reservasDoHospede(db, conteudo.organizacaoId, email, agora) : [];
+  // M8.2c: o pedido de cancelamento de cada reserva paga pelo site (o mesmo e-mail; null nas outras).
+  const cancelamentos = conteudo ? await Promise.all(lista.map((r) => cancelamentoNoPortal(db, conteudo.organizacaoId, email, r.codigo, agora))) : [];
+  const textos = {
+    cancelamentoMinhaReservaIntro: conteudo?.textos.cancelamentoMinhaReservaIntro ?? TEXTOS_SITE_INICIAIS.cancelamentoMinhaReservaIntro,
+    cancelamentoPedidoRecebido: conteudo?.textos.cancelamentoPedidoRecebido || TEXTOS_SITE_INICIAIS.cancelamentoPedidoRecebido,
+  };
+  const erroDoPedido = typeof erro === "string" && Object.hasOwn(ERROS_DO_PEDIDO, erro) ? ERROS_DO_PEDIDO[erro] : null;
 
   return (
     <Moldura conteudo={conteudo}>
@@ -108,10 +174,20 @@ export default async function PortalHospede() {
           <h1 id="titulo-reserva">Minha reserva</h1>
           <p>Entrou como {email}.</p>
         </header>
+        {pedido === "ok" && (
+          <p className={styles.aviso} role="status">
+            Pedido de cancelamento registrado. A data e a hora em que ele chegou aparecem na reserva abaixo.
+          </p>
+        )}
+        {erroDoPedido && (
+          <p className={styles.aviso} role="alert">
+            {erroDoPedido}
+          </p>
+        )}
         {lista.length ? (
           <div className={styles.grade}>
-            {lista.map((r) => (
-              <Reserva key={r.codigo} r={r} />
+            {lista.map((r, i) => (
+              <Reserva key={r.codigo} r={r} cancelamento={cancelamentos[i] ?? null} textos={textos} agora={agora} />
             ))}
           </div>
         ) : (

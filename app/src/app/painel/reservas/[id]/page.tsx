@@ -15,11 +15,14 @@ import { devolvidaNoProvedorDaReserva, obterReserva } from "@/reservas/repositor
 import { lerRegrasFinanceiras } from "@/configuracoes/regras-financeiras";
 import { lerRecebimento } from "@/imoveis/recebimento";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
+import { CancelamentoSite } from "@/components/reservas/CancelamentoSite";
 import { Horarios } from "@/components/reservas/Horarios";
 import { PagamentoNoSite } from "@/components/reservas/PagamentoNoSite";
 import { PaginasLegaisAceitas } from "@/components/reservas/PaginasLegaisAceitas";
 import { Recebimentos } from "@/components/reservas/Recebimentos";
 import { hojeISO } from "@/lib/datas";
+import { cancelamentoDaReserva, momentosDoCancelamento } from "@/pagamentos/cancelamento-painel";
+import { textoDoResultado } from "@/pagamentos/cancelamento-tela";
 import { pagamentosDaReserva } from "@/pagamentos/consultas";
 import { recebidoPorReserva, recebimentosDaReserva } from "@/repasses/recebimentos";
 import { aceitesDaReserva } from "@/site/aceites";
@@ -32,7 +35,7 @@ const brl = (c: number | null) => (c === null ? "não informado" : formatBRL(c))
 export default async function DetalheReserva({ params, searchParams }: PageProps<"/painel/reservas/[id]">) {
   const sessao = await exigirSessaoPainel();
   const { id } = await params;
-  const { salvo, erro } = await searchParams;
+  const { salvo, erro, cancelamento: resultadoCancelamento } = await searchParams;
   const db = getDb();
   const r = await obterReserva(db, sessao.organizacaoId, id);
   if (!r) notFound();
@@ -56,6 +59,14 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
   const [recebimentos, recebidos] = verValores ? await Promise.all([recebimentosDaReserva(db, sessao.organizacaoId, r.id), recebidoPorReserva(db, sessao.organizacaoId, [r.id])]) : [[], new Map()];
   // M8.2a: tentativas de pagamento no site desta reserva (situação para quem lê reservas; valores e ações pelo financeiro).
   const pagamentosSite = podeFazer(sessao.papel, "reserva:ler") ? await pagamentosDaReserva(db, sessao.organizacaoId, r.id) : [];
+  // M8.2c: a reserva paga pelo site cancela pela política (o botão de sempre some); o pedido e o cancelamento dela.
+  const pagamentoQueConfirmou = pagamentosSite.find((p) => p.desfecho === "reserva") ?? null;
+  const editarReserva = podeFazer(sessao.papel, "reserva:editar");
+  const editarFinanceiro = podeFazer(sessao.papel, "financeiro:editar");
+  const agora = new Date();
+  const cancelamentoSite = pagamentoQueConfirmou ? await cancelamentoDaReserva(db, sessao.organizacaoId, r.id, agora) : null;
+  const momentos = pagamentoQueConfirmou && editarReserva && editarFinanceiro && r.estado === "confirmada" ? await momentosDoCancelamento(db, sessao.organizacaoId, r.id) : null;
+  const textoCancelamento = textoDoResultado(resultadoCancelamento);
   // M7.4: páginas legais que o hóspede aceitou no site (também o aceite gravado sem um Pix que deu certo).
   const aceitesSite = podeFazer(sessao.papel, "reserva:ler") ? await aceitesDaReserva(db, sessao.organizacaoId, r.id) : [];
 
@@ -94,6 +105,11 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
       {salvo && (
         <p role="status" className={styles.sucesso}>
           {salvo === "recebimento" ? "Recebimento registrado." : "Reserva salva."}
+        </p>
+      )}
+      {textoCancelamento && (
+        <p role="status" className={styles.sucesso}>
+          {textoCancelamento}
         </p>
       )}
       <dl className={styles.form} style={{ display: "grid", gridTemplateColumns: "minmax(140px, max-content) 1fr", gap: "8px 16px" }}>
@@ -137,7 +153,7 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
           </BotaoConfirmar>
         </form>
       )}
-      {r.estado !== "cancelada" && podeFazer(sessao.papel, "reserva:editar") && (
+      {r.estado !== "cancelada" && editarReserva && !pagamentoQueConfirmou && (
         <form action={cancelar}>
           <input type="hidden" name="id" value={r.id} />
           <BotaoConfirmar
@@ -148,7 +164,26 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
           </BotaoConfirmar>
         </form>
       )}
-      <PagamentoNoSite pagamentos={pagamentosSite} verValores={verValores} editar={podeFazer(sessao.papel, "financeiro:editar")} hoje={hojeISO()} />
+      <PagamentoNoSite
+        pagamentos={pagamentosSite}
+        verValores={verValores}
+        editar={editarFinanceiro}
+        hoje={hojeISO()}
+        cancelamento={
+          pagamentoQueConfirmou ? (
+            <CancelamentoSite
+              reserva={{ id: r.id, codigo: r.codigo, estado: r.estado, checkin: r.checkin }}
+              pagamento={pagamentoQueConfirmou}
+              cancelamento={cancelamentoSite}
+              momentos={momentos}
+              editarReserva={editarReserva}
+              editarFinanceiro={editarFinanceiro}
+              verValores={verValores}
+              agora={agora}
+            />
+          ) : null
+        }
+      />
       <PaginasLegaisAceitas aceites={aceitesSite} />
       {emConferencia && (
         <section aria-label="Em conferência" className={styles.alerta} style={{ maxWidth: 820 }}>

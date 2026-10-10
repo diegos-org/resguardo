@@ -327,3 +327,43 @@ describe("cartão de crédito na página da cotação (M8.2b)", () => {
     expect(h).toContain("O pagamento pelo site não está disponível agora.");
   });
 });
+
+describe("reserva cancelada pela política (M8.2c)", () => {
+  const cancelamento = {
+    recebidoEm: "2026-10-10T13:00:00.000Z",
+    quemCancela: "empresa" as const,
+    direito: "integral" as const,
+    base: "empresa" as const,
+    motivoEmpresa: "imovel_sem_condicoes" as const,
+    valor: 182400,
+    valorConfirmado: 182400,
+    devolucaoEm: "2026-10-11T15:00:00.000Z",
+    porFora: false,
+    confirmadaPor: "leitura" as const,
+    forma: "pix" as const,
+    estornoPelaEquipe: false,
+    integralAte: "2026-10-26",
+    arrependimentoAte: "2026-10-08",
+    entradaEm: "2026-11-09T18:00:00.000Z",
+    politicaVersao: 1,
+  };
+
+  it("a situação do pagamento vence a cotação cancelada: o título, os fatos e as frases de Textos do site (as editadas; vazias, as do texto-base)", async () => {
+    m.verCotacao.mockResolvedValue(vistaCotacao("cancelada"));
+    m.vistaPagamento.mockResolvedValue(pagamento({ estado: "cancelada_devolvida", holdAte: null, podeGerar: false, reservaCodigo: "SCL-TESTE1", forma: "pix", cancelamento }));
+    m.site.mockResolvedValue({ db: {}, conteudo: { ...conteudo, textos: { ...TEXTOS_SITE_INICIAIS, cancelamentoVoltaPix: "VOLTA PIX EDITADA", cancelamentoSemTaxas: "" } } });
+    const h = await html();
+    expect(h).toContain("<h2>Reserva cancelada</h2>");
+    expect(h).toContain("Nós cancelamos a sua reserva SCL-TESTE1: o apartamento ficou sem condições de receber você.");
+    expect(h).toContain("Devolução de R$ 1.824,00 confirmada pelo Mercado Pago em 11/10.");
+    expect(h).toContain("VOLTA PIX EDITADA");
+    expect(h).toContain(TEXTOS_SITE_INICIAIS.cancelamentoSemTaxas);
+    expect(h).toContain(TEXTOS_SITE_INICIAIS.cancelamentoFecho);
+    expect(h).toContain(encodeURIComponent("Quero falar sobre o cancelamento da minha reserva SCL-TESTE1."));
+    expect(h).not.toContain("Este pedido foi cancelado");
+    expect(h).not.toMatch(/Beds24/i);
+    // A frase final pode ficar vazia (não volta o texto-base).
+    m.site.mockResolvedValue({ db: {}, conteudo: { ...conteudo, textos: { ...TEXTOS_SITE_INICIAIS, cancelamentoFecho: "" } } });
+    expect(await html()).not.toContain(TEXTOS_SITE_INICIAIS.cancelamentoFecho);
+  });
+});

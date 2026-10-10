@@ -2,11 +2,22 @@ import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { PagamentoDoPainel } from "@/pagamentos/consultas";
-vi.mock("@/pagamentos/acoes-painel", () => ({ conferirAgoraAcao: vi.fn(), devolverAcao: vi.fn(), devolucaoPorForaAcao: vi.fn(), registrarLiberacaoAcao: vi.fn(), estornarLiberacaoAcao: vi.fn(), registrarTaxaPerdidaAcao: vi.fn() }));
+vi.mock("@/pagamentos/acoes-painel", () => ({
+  conferirAgoraAcao: vi.fn(),
+  devolverAcao: vi.fn(),
+  devolucaoPorForaAcao: vi.fn(),
+  registrarLiberacaoAcao: vi.fn(),
+  estornarLiberacaoAcao: vi.fn(),
+  registrarTaxaPerdidaAcao: vi.fn(),
+  confirmarDevolucaoVistaAcao: vi.fn(),
+  registrarRecusaNoPainelAcao: vi.fn(),
+  pararDevolucaoPedidaAcao: vi.fn(),
+  corrigirTaxaPerdidaAcao: vi.fn(),
+}));
 // A pergunta de confirmação só aparece no clique: aqui ela vira um atributo, para conferir o texto.
 vi.mock("@/components/pagamentos/FormAcaoPagamento", () => ({
-  FormAcaoPagamento: (p: { rotulo: string; pergunta?: string; children?: ReactNode }) => (
-    <form data-pergunta={p.pergunta ?? ""}>
+  FormAcaoPagamento: (p: { rotulo: string; pergunta?: string; dataNaPergunta?: string; children?: ReactNode }) => (
+    <form data-pergunta={p.pergunta ?? ""} data-campo-data={p.dataNaPergunta ?? ""}>
       {p.children}
       <button>{p.rotulo}</button>
     </form>
@@ -57,5 +68,33 @@ describe("quadro Pagamento no site: perguntas de confirmação", () => {
     expect(cartao).toContain("O hóspede pode também contestar a cobrança no cartão e receber de novo: só registre se a devolução já foi feita e combinada com ele.");
     const pix = renderToStaticMarkup(<PagamentoNoSite pagamentos={[pagamento]} verValores editar hoje="2026-10-09" />);
     expect(pix).not.toContain("contestar a cobrança no cartão");
+  });
+});
+
+describe("perguntas da devolução do cancelamento (M8.2c)", () => {
+  const cancelado: PagamentoDoPainel = {
+    ...pagamento,
+    valorPago: 182400,
+    desfecho: "reserva",
+    motivoSemReserva: null,
+    motivoSemReservaTexto: null,
+    devolucao: { situacao: "recusada", valor: 182400, tentativas: 3, falhas: 3, confirmadaEm: null, porForaData: null, porForaValor: null, porForaNota: "", taxaPerdida: 1806, origem: "cancelamento" },
+    acoes: { ...sem, devolver: true, devolucaoPorFora: true, confirmarDevolucaoVista: true, pararDevolucaoPedida: true, corrigirTaxaPerdida: true },
+  };
+  const h = () => renderToStaticMarkup(<PagamentoNoSite pagamentos={[cancelado]} verValores editar hoje="2026-10-09" />);
+
+  it("pedir de novo, confirmar a vista no painel (com a data digitada) e parar: o valor integral e o que acontece", () => {
+    expect(h()).toContain("Pedir de novo ao Mercado Pago a devolução integral de R$ 1.824,00? Confira antes no painel do Mercado Pago que a anterior não saiu.");
+    expect(h()).toContain(
+      "Confirmar que o Mercado Pago devolveu ao hóspede o valor integral de R$ 1.824,00 em {data}? Confira no painel do Mercado Pago. O financeiro do cancelamento é lançado agora e não se desfaz.",
+    );
+    expect(h()).toContain('data-campo-data="data"');
+    expect(h()).toContain("Parar o pedido de devolução de R$ 1.824,00? Confira no painel do Mercado Pago que nenhuma devolução saiu: depois disso a devolução por fora fica liberada.");
+    expect(h()).toContain("Corrigir a taxa que não voltou para {valor} (hoje: R$ 18,06)? A despesa atual é estornada, com o motivo, e a nova entra no financeiro da empresa.");
+  });
+
+  it("por fora do cancelamento: a devolução não se pede mais e o financeiro do cancelamento fica acertado com a data informada", () => {
+    expect(h()).toContain("A devolução não pode mais ser pedida ao Mercado Pago. O financeiro do cancelamento fica acertado com a data informada.");
+    expect(h()).not.toContain("O pagamento fica encerrado como devolvido por fora");
   });
 });

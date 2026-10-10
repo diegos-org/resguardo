@@ -5,8 +5,19 @@ import { FormAcaoPagamento } from "@/components/pagamentos/FormAcaoPagamento";
 import { DOCUMENTOS_LEGAIS, PAGINAS_LEGAIS } from "@/configuracoes/paginas-legais-texto";
 import { centavosParaCampo } from "@/lib/dinheiro-form";
 import { formatBRL } from "@/lib/money";
-import { conferirAgoraAcao, devolucaoPorForaAcao, devolverAcao, estornarLiberacaoAcao, registrarLiberacaoAcao, registrarTaxaPerdidaAcao } from "@/pagamentos/acoes-painel";
-import { nomeDaBandeira, type PagamentoDoPainel } from "@/pagamentos/consultas";
+import {
+  confirmarDevolucaoVistaAcao,
+  conferirAgoraAcao,
+  corrigirTaxaPerdidaAcao,
+  devolucaoPorForaAcao,
+  devolverAcao,
+  estornarLiberacaoAcao,
+  pararDevolucaoPedidaAcao,
+  registrarLiberacaoAcao,
+  registrarRecusaNoPainelAcao,
+  registrarTaxaPerdidaAcao,
+} from "@/pagamentos/acoes-painel";
+import { canceladaEmPalavras, nomeDaBandeira, type PagamentoDoPainel } from "@/pagamentos/consultas";
 import { DESAFIO_3DS_MINUTOS, type ModoTresDS, type StatusTresDS } from "@/pagamentos/provedor";
 import { AVISOS_PAGAMENTO, NOMES_DESFECHO, NOMES_SITUACAO_PAGAMENTO } from "@/pagamentos/situacoes";
 
@@ -17,6 +28,8 @@ type Props = {
   /** financeiro:editar — as ações (cada uma só quando o pagamento permite). */
   editar: boolean;
   hoje: string;
+  /** M8.2c: o quadro do cancelamento pela política (pedido, cálculo, decisão, OTAs, mensagens), dentro desta seção. */
+  cancelamento?: ReactNode;
 };
 
 const FUSO = "America/Sao_Paulo";
@@ -66,11 +79,13 @@ export function situacaoEmPalavras(p: PagamentoDoPainel): string {
   }
   if (p.situacao === "pendente") return p.pixExpiraEm ? `Aguardando o pagamento do Pix (vale até ${hora(p.pixExpiraEm)} de ${dia(p.pixExpiraEm)})` : "Aguardando o pagamento";
   if (p.situacao === "criando" || p.situacao === "incerta") return "Conferindo no Mercado Pago se o Pix foi criado";
+  // M8.2c: a reserva que o pagamento confirmou foi cancelada pela política (a mesma situação da página do hóspede).
+  if (p.desfecho === "reserva" && p.cancelada) return canceladaEmPalavras(p.cancelada);
   if (p.desfecho === "reserva") return p.situacao === "aprovado" ? "Aprovado: confirmou a reserva" : `${NOMES_SITUACAO_PAGAMENTO[p.situacao]} (tinha confirmado a reserva)`;
   if (p.desfecho) return NOMES_DESFECHO[p.desfecho];
   if (p.situacao === "aprovado" && p.motivoSemReservaTexto) return `Aprovado sem reserva: ${p.motivoSemReservaTexto} O valor precisa ser devolvido ao hóspede.`;
   if ((p.situacao === "devolvido_parcial" || p.situacao === "contestado") && p.motivoSemReservaTexto)
-    return `${NOMES_SITUACAO_PAGAMENTO[p.situacao]} sem reserva: ${p.motivoSemReservaTexto} O que falta resolver se resolve pelo painel do Mercado Pago até o M8.2c.`;
+    return `${NOMES_SITUACAO_PAGAMENTO[p.situacao]} sem reserva: ${p.motivoSemReservaTexto} O que falta resolver se resolve pelo painel do Mercado Pago (a devolução de parte do valor pelo sistema chega no M8.2d).`;
   if (p.situacao === "aprovado") return "Aprovado: confirmando a reserva";
   return NOMES_SITUACAO_PAGAMENTO[p.situacao];
 }
@@ -115,14 +130,41 @@ function liberacao(p: PagamentoDoPainel): string | null {
   return p.desfecho === "reserva" ? "ainda sem data do Mercado Pago" : null;
 }
 
+/** O último código do Mercado Pago que explica a espera ou a recusa (M8.2c). */
+const DICA_DO_CODIGO: Partial<Record<string, string>> = {
+  saldo_insuficiente: "o Mercado Pago pediu saldo disponível na conta: coloque saldo e peça de novo",
+  em_andamento: "o Mercado Pago pediu para esperar: o sistema tenta de novo sozinho",
+  transitorio: "o Mercado Pago pediu para esperar: o sistema tenta de novo sozinho",
+};
+
+/** A situação da devolução em palavras (M8.2c: também a recusa do painel registrada, a parada e a que nunca foi pedida). */
+function situacaoDaDevolucao(d: NonNullable<PagamentoDoPainel["devolucao"]>): string {
+  if (d.situacao === "recusada" && d.recusaNoPainelEm) return "recusada no painel do Mercado Pago (registrado pela equipe): a devolução por fora fica liberada";
+  if (d.situacao === "recusada" && d.paradaEm) return "parada pela equipe depois do prazo de leitura do Mercado Pago";
+  // Parada pelo prazo (pagamento com mais de 78 dias, M8.2c): o Mercado Pago não recusou nada; o sistema não pede mais.
+  if (d.situacao === "recusada" && d.origem === "cancelamento" && d.falhas === 0 && !d.ultimoCodigo)
+    return "parada pelo prazo: o pagamento tem mais de 78 dias e o sistema não pede mais a devolução ao Mercado Pago (devolva pelo painel dele e confirme aqui, ou por fora)";
+  return DEVOLUCAO[d.situacao];
+}
+
+/** A linha "Devolução" do quadro (a mesma do quadro do cancelamento): situação, valor, datas, pedidos e taxa que não voltou. */
+export function linhaDaDevolucao(p: PagamentoDoPainel, verValores: boolean): string | null {
+  return devolucao(p, verValores);
+}
+
 function devolucao(p: PagamentoDoPainel, verValores: boolean): string | null {
   const d = p.devolucao;
   if (!d) return null;
-  const partes: string[] = [DEVOLUCAO[d.situacao]];
+  const partes: string[] = [situacaoDaDevolucao(d)];
   if (verValores) partes.push(formatBRL(d.situacao === "por_fora" && d.porForaValor !== null ? d.porForaValor : d.valor));
   if (d.situacao === "por_fora" && d.porForaData) partes.push(`em ${dataBr(d.porForaData)}`);
   if (d.confirmadaEm) partes.push(`em ${dia(d.confirmadaEm)}`);
+  // M8.2c: confirmada pela equipe (vista no painel do Mercado Pago); a nota, só para quem lê o financeiro.
+  if (d.situacao === "confirmada" && d.confirmadaPor === "equipe") partes.push(`confirmada pela equipe${verValores && d.confirmadaNota ? `: ${d.confirmadaNota}` : ""}`);
   if (d.situacao === "pedida" && d.tentativas) partes.push(`${d.tentativas} pedido(s) ao Mercado Pago${d.falhas ? `, ${d.falhas} falha(s)` : ""}`);
+  const dica = (d.situacao === "pedida" || d.situacao === "recusada") && d.ultimoCodigo ? DICA_DO_CODIGO[d.ultimoCodigo] : undefined;
+  if (dica) partes.push(dica);
+  if (verValores && d.situacao === "confirmada" && d.valorConfirmado !== null && d.valorConfirmado !== undefined && d.valorConfirmado !== d.valor) partes.push(`o Mercado Pago mostrou ${formatBRL(d.valorConfirmado)} devolvidos`);
   if (verValores && d.taxaPerdida !== null) partes.push(`taxa que ficou com o Mercado Pago: ${formatBRL(d.taxaPerdida)}`);
   if (d.situacao === "por_fora" && d.porForaNota) partes.push(`nota: ${d.porForaNota}`);
   return partes.join(" · ");
@@ -200,6 +242,8 @@ function Tentativa({ p, verValores, editar, hoje }: { p: PagamentoDoPainel } & O
   const a = p.acoes;
   // O que a devolução integral devolve: o que o hóspede pagou (a mesma regra do domínio), não o total pedido.
   const valorTexto = verValores ? ` de ${formatBRL(p.valorPago ?? p.valor)}` : "";
+  // M8.2c: a devolução do cancelamento pela política (a reserva fica como está; o financeiro do cancelamento é acertado).
+  const doCancelamento = p.devolucao?.origem === "cancelamento";
   return (
     <article aria-label={`Pagamento ${FORMA[p.forma]} de ${quando(p.criadoEm)}`} style={{ border: "1px solid var(--scl-borda)", borderRadius: "var(--scl-raio-cartao)", padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
       <div className={styles.linha} style={{ alignItems: "center", gap: 8 }}>
@@ -262,14 +306,80 @@ function Tentativa({ p, verValores, editar, hoje }: { p: PagamentoDoPainel } & O
               </label>
             </FormAcaoPagamento>
           )}
-          {a.devolver && (
+          {a.devolver &&
+            (doCancelamento ? (
+              <FormAcaoPagamento
+                acao={devolverAcao}
+                pagamentoId={p.id}
+                rotulo="Pedir a devolução de novo"
+                nome="Pedir a devolução de novo"
+                pergunta={`Pedir de novo ao Mercado Pago a devolução integral${valorTexto}? Confira antes no painel do Mercado Pago que a anterior não saiu.`}
+              />
+            ) : (
+              <FormAcaoPagamento
+                acao={devolverAcao}
+                pagamentoId={p.id}
+                rotulo="Devolver pelo Mercado Pago"
+                nome="Devolver pelo Mercado Pago"
+                pergunta={`Devolver ao hóspede o valor integral${valorTexto} pelo Mercado Pago? A devolução não pode ser desfeita.`}
+              />
+            ))}
+          {a.confirmarDevolucaoVista && (
             <FormAcaoPagamento
-              acao={devolverAcao}
+              acao={confirmarDevolucaoVistaAcao}
               pagamentoId={p.id}
-              rotulo="Devolver pelo Mercado Pago"
-              nome="Devolver pelo Mercado Pago"
-              pergunta={`Devolver ao hóspede o valor integral${valorTexto} pelo Mercado Pago? A devolução não pode ser desfeita.`}
-            />
+              rotulo="Confirmar devolução feita no painel do Mercado Pago"
+              nome="Confirmar devolução feita no painel do Mercado Pago"
+              discreto
+              pergunta={`Confirmar que o Mercado Pago devolveu ao hóspede o valor integral${valorTexto} em {data}? Confira no painel do Mercado Pago. ${doCancelamento ? "O financeiro do cancelamento é lançado agora e não se desfaz." : "O pagamento fica encerrado como devolvido pelo Mercado Pago."}`}
+              dataNaPergunta="data"
+            >
+              <p style={{ flexBasis: "100%", margin: 0, fontSize: "0.875rem", color: "var(--scl-texto-2)" }}>
+                Confirme só se o painel do Mercado Pago mostra a devolução <strong>do valor integral</strong> concluída.
+              </p>
+              <label style={{ flex: "0 1 180px" }}>
+                Data da devolução no Mercado Pago
+                <input type="date" name="data" defaultValue={hoje} max={hoje} required />
+              </label>
+              <label style={{ flex: "1 1 220px" }}>
+                Nota (obrigatória, sem dados pessoais)
+                <input name="nota" required maxLength={300} placeholder="ex.: painel do Mercado Pago mostra devolução concluída em 12/10" />
+              </label>
+            </FormAcaoPagamento>
+          )}
+          {a.registrarRecusaNoPainel && (
+            <FormAcaoPagamento
+              acao={registrarRecusaNoPainelAcao}
+              pagamentoId={p.id}
+              rotulo="Registrar que o Mercado Pago recusou a devolução no painel"
+              nome="Registrar que o Mercado Pago recusou a devolução no painel"
+              discreto
+              pergunta="Registrar que o painel do Mercado Pago recusou a devolução? Isso libera a devolução por fora no cartão."
+            >
+              <label style={{ flex: "0 1 180px" }}>
+                Data da recusa
+                <input type="date" name="data" defaultValue={hoje} max={hoje} required />
+              </label>
+              <label style={{ flex: "1 1 220px" }}>
+                Nota (obrigatória, sem dados pessoais)
+                <input name="nota" required maxLength={300} placeholder="ex.: painel do Mercado Pago não deixou devolver" />
+              </label>
+            </FormAcaoPagamento>
+          )}
+          {a.pararDevolucaoPedida && (
+            <FormAcaoPagamento
+              acao={pararDevolucaoPedidaAcao}
+              pagamentoId={p.id}
+              rotulo="Parar a devolução pedida"
+              nome="Parar a devolução pedida"
+              discreto
+              pergunta={`Parar o pedido de devolução${valorTexto}? Confira no painel do Mercado Pago que nenhuma devolução saiu: depois disso a devolução por fora fica liberada.`}
+            >
+              <label style={{ flex: "1 1 220px" }}>
+                Nota (o que o painel do Mercado Pago mostra; sem dados pessoais)
+                <input name="nota" maxLength={300} placeholder="ex.: painel do Mercado Pago sem nenhuma devolução" />
+              </label>
+            </FormAcaoPagamento>
           )}
           {a.devolucaoPorFora && (
             <FormAcaoPagamento
@@ -278,7 +388,7 @@ function Tentativa({ p, verValores, editar, hoje }: { p: PagamentoDoPainel } & O
               rotulo="Registrar devolução feita por fora"
               nome="Registrar devolução feita por fora"
               discreto
-              pergunta={`Registrar que o dinheiro já voltou ao hóspede por fora do Mercado Pago? Vale só o valor integral pago, e antes o sistema confere no Mercado Pago que a devolução não foi feita por lá. O pagamento fica encerrado como devolvido por fora e não pode mais ser devolvido pelo Mercado Pago.${cartao ? " O hóspede pode também contestar a cobrança no cartão e receber de novo: só registre se a devolução já foi feita e combinada com ele." : ""}`}
+              pergunta={`Registrar que o dinheiro já voltou ao hóspede por fora do Mercado Pago? Vale só o valor integral pago, e antes o sistema confere no Mercado Pago que a devolução não foi feita por lá. ${doCancelamento ? "A devolução não pode mais ser pedida ao Mercado Pago. O financeiro do cancelamento fica acertado com a data informada." : "O pagamento fica encerrado como devolvido por fora e não pode mais ser devolvido pelo Mercado Pago."}${cartao ? " O hóspede pode também contestar a cobrança no cartão e receber de novo: só registre se a devolução já foi feita e combinada com ele." : ""}`}
             >
               <label style={{ flex: "0 1 180px" }}>
                 Data da devolução
@@ -304,9 +414,29 @@ function Tentativa({ p, verValores, editar, hoje }: { p: PagamentoDoPainel } & O
               pergunta={`Registrar {valor} como a taxa que o Mercado Pago não devolveu${verValores && p.taxa !== null ? ` (a taxa cobrada na aprovação foi ${formatBRL(p.taxa)})` : ""}? Ela entra como despesa da empresa (zero, se a taxa voltou toda) e só se registra uma vez.`}
               valorNaPergunta="valor"
             >
-              <label style={{ flex: "0 1 220px" }}>
-                Taxa que não voltou (R$)
+              <label style={{ flex: "0 1 260px" }}>
+                Taxa (e juros do parcelamento, se o Mercado Pago tirou da SCL) que não voltou (R$)
                 <input name="valor" inputMode="decimal" required placeholder="confira no Mercado Pago" />
+              </label>
+            </FormAcaoPagamento>
+          )}
+          {a.corrigirTaxaPerdida && (
+            <FormAcaoPagamento
+              acao={corrigirTaxaPerdidaAcao}
+              pagamentoId={p.id}
+              rotulo="Corrigir taxa que não voltou"
+              nome="Corrigir taxa que não voltou"
+              discreto
+              pergunta={`Corrigir a taxa que não voltou para {valor}${verValores && p.devolucao?.taxaPerdida !== null && p.devolucao?.taxaPerdida !== undefined ? ` (hoje: ${formatBRL(p.devolucao.taxaPerdida)})` : ""}? A despesa atual é estornada, com o motivo, e a nova entra no financeiro da empresa.`}
+              valorNaPergunta="valor"
+            >
+              <label style={{ flex: "0 1 220px" }}>
+                Taxa certa que não voltou (R$)
+                <input name="valor" inputMode="decimal" required placeholder="zero se voltou toda" />
+              </label>
+              <label style={{ flex: "1 1 220px" }}>
+                Motivo da correção (sem dados pessoais)
+                <input name="motivo" required maxLength={300} placeholder="ex.: o extrato do Mercado Pago mostrou outra taxa" />
               </label>
             </FormAcaoPagamento>
           )}
@@ -321,9 +451,11 @@ function Tentativa({ p, verValores, editar, hoje }: { p: PagamentoDoPainel } & O
  * identificadores no Mercado Pago (quem lê reservas); valores para quem lê o financeiro — no cartão (M8.2b), também os
  * juros, a verificação do banco e o motivo de uma recusa, com a linha de não informar o motivo ao hóspede; ações para
  * quem edita o financeiro, só as que o pagamento permite, e cada uma que mexe em dinheiro com confirmação. Nunca BIN,
- * últimos dígitos nem titular do cartão (nada disso é guardado).
+ * últimos dígitos nem titular do cartão (nada disso é guardado). M8.2c: o quadro do cancelamento pela política
+ * (`cancelamento`) vem antes das tentativas, e a devolução do cancelamento ganha as ações da equipe (confirmar a vista no
+ * painel do Mercado Pago, registrar a recusa de lá, parar, corrigir a taxa).
  */
-export function PagamentoNoSite({ pagamentos, verValores, editar, hoje }: Props) {
+export function PagamentoNoSite({ pagamentos, verValores, editar, hoje, cancelamento }: Props) {
   if (!pagamentos.length) return null;
   return (
     <section aria-label="Pagamento no site" style={{ maxWidth: 820, display: "flex", flexDirection: "column", gap: 8 }}>
@@ -332,6 +464,7 @@ export function PagamentoNoSite({ pagamentos, verValores, editar, hoje }: Props)
         Cada tentativa de pagamento (Pix ou cartão) feita pelo hóspede no site. A situação só muda pelo que o Mercado Pago informa; o recebimento desta
         reserva vem da liberação do pagamento (pelo Mercado Pago ou registrada aqui), nunca da lista de recebimentos.
       </p>
+      {cancelamento}
       {pagamentos.map((p) => (
         <Tentativa key={p.id} p={p} verValores={verValores} editar={editar} hoje={hoje} />
       ))}

@@ -49,7 +49,12 @@ export type CancelamentoNoPortal = {
 };
 
 /** A mesma resposta para qualquer recusa que diga respeito a quem é o hóspede (nunca revela se a reserva existe). */
-const NAO_DA = "Não foi possível registrar o pedido por aqui: fale com a equipe.";
+export const NAO_DA = "Não foi possível registrar o pedido por aqui: fale com a equipe.";
+/** As outras recusas do pedido (Minha reserva mostra cada uma pelo código do endereço). */
+export const PEDIDO_DESLIGADO = "O pedido de cancelamento pelo site está desligado: fale com a equipe.";
+export const ESTADIA_COMECOU = "A estadia já começou: para cancelar, fale com a equipe.";
+export const JA_CANCELADA = "Esta reserva já foi cancelada.";
+export const PEDIDO_OCUPADO = "Não deu para registrar o pedido agora: tente de novo em instantes.";
 const HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /** A reserva paga pelo site deste e-mail (vigente), o pagamento que a confirmou e o que a política precisa. */
@@ -135,17 +140,17 @@ export async function pedirCancelamentoPeloHospede(
 ): Promise<{ ok: true; recebidoEm: Date; cancelamentoId: string; novo: boolean } | { ok: false; erro: string }> {
   // O momento que vale: o do servidor ao receber, antes de qualquer trava.
   const recebidoEm = agora;
-  if (!(await lerConfigPagamentoSite(db, organizacaoId)).pedidoCancelamentoNoPortal) return { ok: false, erro: "O pedido de cancelamento pelo site está desligado: fale com a equipe." };
+  if (!(await lerConfigPagamentoSite(db, organizacaoId)).pedidoCancelamentoNoPortal) return { ok: false, erro: PEDIDO_DESLIGADO };
   const x = await reservaDoHospede(db, organizacaoId, email, reservaCodigo, agora);
   if (!x || x.p.situacao !== "aprovado") return { ok: false, erro: NAO_DA };
-  if (recebidoEm.getTime() >= x.entradaEm.getTime()) return { ok: false, erro: "A estadia já começou: para cancelar, fale com a equipe." };
+  if (recebidoEm.getTime() >= x.entradaEm.getTime()) return { ok: false, erro: ESTADIA_COMECOU };
   const tentar = () =>
     db.transaction(async (tx) => {
       const t = await travarCotacao(tx, organizacaoId, x.p.cotacaoId);
       const p = t?.tentativas.find((y) => y.desfecho === "reserva");
       // Sob a trava: a reserva ainda é deste e-mail e está confirmada.
       if (!t || !p || p.id !== x.p.id || t.reserva.hospedeEmail.trim().toLowerCase() !== x.email) return { ok: false as const, erro: NAO_DA };
-      if (t.cancelamento?.situacao === "cancelada" || t.reserva.estado === "cancelada") return { ok: false as const, erro: "Esta reserva já foi cancelada." };
+      if (t.cancelamento?.situacao === "cancelada" || t.reserva.estado === "cancelada") return { ok: false as const, erro: JA_CANCELADA };
       if (t.reserva.estado !== "confirmada") return { ok: false as const, erro: NAO_DA };
       if (t.cancelamento?.situacao === "pedido") return { ok: true as const, recebidoEm: t.cancelamento.pedidoRecebidoEm, cancelamentoId: t.cancelamento.id, novo: false };
       const [linha] = await tx
@@ -162,7 +167,7 @@ export async function pedirCancelamentoPeloHospede(
     } catch (erro) {
       // Trava ocupada (a equipe mexendo na reserva): uma vez de novo, com o mesmo horário.
       if (travaOcupada(erro) && vez === 0) continue;
-      if (travaOcupada(erro)) return { ok: false, erro: "Não deu para registrar o pedido agora: tente de novo em instantes." };
+      if (travaOcupada(erro)) return { ok: false, erro: PEDIDO_OCUPADO };
       if (violouUnicidade(erro, "cancelamentos_reserva_um_ativo")) {
         // Outro pedido (ou o cancelamento da equipe) gravado ao mesmo tempo: responde pelo que ficou.
         const [c] = await db
@@ -170,11 +175,25 @@ export async function pedirCancelamentoPeloHospede(
           .from(cancelamentosReserva)
           .where(and(eq(cancelamentosReserva.reservaId, x.r.id), eq(cancelamentosReserva.organizacaoId, organizacaoId), inArray(cancelamentosReserva.situacao, ["pedido", "cancelada"])));
         if (c?.situacao === "pedido") return { ok: true, recebidoEm: c.pedidoRecebidoEm, cancelamentoId: c.id, novo: false };
-        return { ok: false, erro: "Esta reserva já foi cancelada." };
+        return { ok: false, erro: JA_CANCELADA };
       }
       throw erro;
     }
   }
+}
+
+const diaIso = (d: string) => d.split("-").reverse().slice(0, 2).join("/");
+
+/**
+ * O que a política aceita diz em Minha reserva, sem valores (M9.1): o prazo do reembolso integral, o arrependimento (só
+ * quando vai além do prazo) e o que um pedido feito agora daria. Sem política aceita, a equipe confirma o valor por escrito.
+ */
+export function textoDaPoliticaNoPortal(c: Pick<CancelamentoNoPortal, "semPolitica" | "integralAte" | "arrependimentoAte" | "arrependimentoAteEntrada" | "direitoAgora">): string {
+  if (c.semPolitica || !c.integralAte) return "A equipe confirma com você, por escrito, o valor da devolução.";
+  const arrependimento =
+    c.arrependimentoAte && c.arrependimentoAte > c.integralAte ? `, salvo o arrependimento até ${diaIso(c.arrependimentoAte)}${c.arrependimentoAteEntrada ? " ou até a entrada, o que vier antes" : ""}` : "";
+  const agora = c.direitoAgora === "integral" ? "devolução integral" : "sem devolução pela política";
+  return `Pela Política de cancelamento que você aceitou: pedidos até ${diaIso(c.integralAte)} (23h59) têm devolução integral; depois disso, não há devolução${arrependimento}. Pedido feito agora: ${agora}.`;
 }
 
 const diaHoraBrasilia = (d: Date) => {

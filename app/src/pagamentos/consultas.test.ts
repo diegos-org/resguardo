@@ -12,6 +12,7 @@ import { conferirTentativa } from "./conferencia";
 import {
   avisosDeCancelamento,
   avisosDePagamento,
+  canceladaEmPalavras,
   listarPagamentos,
   nomeDaBandeira,
   pagamentoEmAndamentoOuAprovado,
@@ -493,6 +494,31 @@ describe("cancelamento pela política: a página do hóspede, o quadro do pagame
       expect(JSON.stringify(x)).not.toMatch(/Beds24/i);
       expect(JSON.stringify(x)).not.toContain(EMAIL_HOSPEDE);
     }
+  });
+
+  it("o quadro do pagamento e a lista dizem a mesma situação da página do hóspede (a reserva cancelada pela política, pela devolução)", async () => {
+    const equipe = await usuarioDeTeste(c);
+    // Ainda confirmada: nada de cancelada.
+    const a = await pagarEConfirmar(c);
+    expect((await acoes(a.reservaId, minutos(10))).cancelada).toBeNull();
+    // Sem devolução (valor retido).
+    await cancelar(c, a.reservaId, entradaPadrao({ recebidoEm: new Date("2026-10-10T10:00:00-03:00"), canal: "email" }), equipe, new Date("2026-10-10T11:00:00-03:00"));
+    const pa = await acoes(a.reservaId, new Date("2026-10-10T12:00:00-03:00"));
+    expect(pa.cancelada).toEqual({ estado: "cancelada_sem_devolucao", estornoPelaEquipe: false });
+    expect(canceladaEmPalavras(pa.cancelada!)).toBe("Reserva cancelada: sem devolução (valor retido)");
+    // Devolvida pelo Mercado Pago: a mesma situação na lista dos pagamentos do site.
+    const b = await pagarEConfirmar(c, { entrada: "2026-11-25", saida: "2026-11-27", email: "b@example.com" });
+    await cancelar(c, b.reservaId, empresa(), equipe, minutos(60));
+    expect((await acoes(b.reservaId, minutos(70))).cancelada?.estado).toBe("cancelada_devolvida");
+    const linha = (await listarPagamentos(db, c.org, { de: "2026-10-01", ate: "2026-10-31" }, minutos(70))).find((p) => p.reservaId === b.reservaId);
+    expect(linha?.cancelada).toEqual({ estado: "cancelada_devolvida", estornoPelaEquipe: false });
+    // Cartão com mais de 78 dias: o estorno pelo painel do Mercado Pago, feito pela equipe.
+    const f = await pagarEConfirmar(c, { entrada: "2026-11-05", saida: "2026-11-07", email: "f@example.com", forma: "cartao" });
+    await envelhecer(c, f.pagamentoId, 80);
+    await cancelar(c, f.reservaId, empresa(), equipe, minutos(60));
+    const pf = await acoes(f.reservaId, minutos(70));
+    expect(pf.cancelada).toEqual({ estado: "cancelada_devolucao_pedida", estornoPelaEquipe: true });
+    expect(canceladaEmPalavras(pf.cancelada!)).toBe("Reserva cancelada: devolução pelo painel do Mercado Pago (pagamento com mais de 78 dias)");
   });
 
   it("por fora: a devolução feita no dia informado, sem a linha do meio de pagamento; pela equipe no painel do Mercado Pago: 'feita pelo Mercado Pago'", async () => {
