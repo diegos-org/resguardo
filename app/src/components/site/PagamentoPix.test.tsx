@@ -573,6 +573,7 @@ describe("reserva cancelada pela política e pedido de cancelamento (M8.2c)", ()
     cancelamentoVoltaPorFora: "VOLTA POR FORA EDITAVEL",
     cancelamentoComAEquipe: "COM A EQUIPE EDITAVEL",
     cancelamentoEmConferencia: "EM CONFERENCIA EDITAVEL",
+    cancelamentoDevolvidoPelaDisputa: "DEVOLVIDO PELA DISPUTA EDITAVEL",
     cancelamentoSemDevolucaoPrazo: "SEM DEVOLUCAO PRAZO EDITAVEL",
     cancelamentoSemDevolucaoNaoComparecimento: "NAO COMPARECIMENTO EDITAVEL",
     cancelamentoSemDevolucaoEquipe: "SEM DEVOLUCAO EQUIPE EDITAVEL",

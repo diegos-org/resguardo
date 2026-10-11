@@ -68,7 +68,15 @@ import {
   textoRestanteRecusado,
 } from "./situacoes";
 import { situacaoEfetiva, valorNovo } from "./alteracao-regras";
-import { MOTIVO_CANCELAMENTO_CONTESTACAO, NOMES_SITUACAO_CONTESTACAO, NOMES_TIPO_CONTESTACAO, type TipoContestacao, tipoDaDisputaEmCurso } from "./contestacao-regras";
+import {
+  disputaDoPagamento,
+  type LinhaEmCurso,
+  MOTIVO_CANCELAMENTO_CONTESTACAO,
+  NOMES_SITUACAO_CONTESTACAO,
+  NOMES_TIPO_CONTESTACAO,
+  type TipoContestacao,
+  tipoDaDisputaEmCurso,
+} from "./contestacao-regras";
 import {
   type Alteracao,
   carenciaNoTravado,
@@ -354,7 +362,14 @@ export async function vistaDaCotacaoParaHospede(
     // M8.2d: o cancelamento devolve por pagamento da reserva (o que a confirmou e as diferenças); a página junta as devoluções dele.
     const daReserva = tentativas.filter(dinheiroDaReserva);
     const doCancelamento = devolucoes.filter((d) => d.cancelamentoId === canc.id && d.situacao !== "substituida");
-    return { ...base, ...estadoDoCancelamento(comReserva, daReserva, canc, doCancelamento, agora, devolucoes), reservaCodigo: c.reservaCodigo, forma: comReserva.forma };
+    // M8.2e: as linhas da disputa dos pagamentos da reserva ("Cancelar a reserva contestada" segue o resultado delas).
+    const disputas = daReserva.length
+      ? await db
+          .select({ pagamentoId: contestacoesPagamento.pagamentoId, situacao: contestacoesPagamento.situacao, avisos: contestacoesPagamento.avisos, estadoLido: contestacoesPagamento.estadoLido })
+          .from(contestacoesPagamento)
+          .where(inArray(contestacoesPagamento.pagamentoId, daReserva.map((p) => p.id)))
+      : [];
+    return { ...base, ...estadoDoCancelamento(comReserva, daReserva, canc, doCancelamento, agora, devolucoes, disputas), reservaCodigo: c.reservaCodigo, forma: comReserva.forma };
   }
   if (comReserva) {
     // Pagamento em dobro: só enquanto o outro pagamento ainda não voltou ao hóspede (devolvido, o aviso sai). A diferença
@@ -745,6 +760,7 @@ function estadoDoCancelamento(
   devs: readonly Devolucao[],
   agora: Date,
   todas: readonly Devolucao[] = devs,
+  disputas: readonly LinhaEmCurso[] = [],
 ): { estado: EstadoPagamentoHospede; cancelamento: CancelamentoParaHospede } {
   const doPagamento = (d: Devolucao) => pagamentosDaReserva.find((x) => x.id === d.pagamentoId) ?? p0;
   // Todas as devoluções vivas do pagamento (as de alteração também): o que o Mercado Pago mostra devolvido é explicado por elas.
@@ -757,14 +773,18 @@ function estadoDoCancelamento(
   const estados = devs.map((d) => estadoDaCancelada(doPagamento(d), canc.direito!, d, estornaPelaEquipe(doPagamento(d), d, agora), agora, vivasDe(doPagamento(d))));
   const ordem: EstadoPagamentoHospede[] = ["cancelada_devolucao_pedida", "cancelada_com_a_equipe", "cancelada_em_conferencia", "cancelada_devolvida"];
   const esperando = devs.filter((d) => esperaALiberacao(doPagamento(d), d, vivasDe(doPagamento(d))));
-  // M8.2e: "Cancelar a reserva contestada" (sem devolução pelo sistema): em conferência enquanto a disputa de um pagamento da
-  // reserva está em curso ou perdida (o dinheiro pode voltar, ou voltou, ao hóspede por ela).
-  const pelaDisputa = canc.base === MOTIVO_CANCELAMENTO_CONTESTACAO && pagamentosDaReserva.some(emDisputa);
+  // M8.2e: "Cancelar a reserva contestada" (sem devolução pelo sistema), pelas linhas da disputa dos pagamentos da reserva: em
+  // conferência enquanto alguma está em curso; perdida (o resultado confirmado), o dinheiro voltou ao hóspede por ela
+  // ("devolvida", com a frase própria); ganha ou encerrada sem efeito, sem devolução. Sem linha nenhuma (lido antes do
+  // M8.2e), a situação do pagamento.
+  const pelaDisputa = canc.base === MOTIVO_CANCELAMENTO_CONTESTACAO ? situacaoDaDisputaDaReserva(pagamentosDaReserva, disputas) : null;
   const estado: EstadoPagamentoHospede =
     canc.direito === "nenhum"
-      ? pelaDisputa
+      ? pelaDisputa === "em_curso"
         ? "cancelada_em_conferencia"
-        : "cancelada_sem_devolucao"
+        : pelaDisputa === "perdida"
+          ? "cancelada_devolvida"
+          : "cancelada_sem_devolucao"
       : devs.length === 0
         ? estadoDaCancelada(p0, canc.direito!, undefined, false, agora, vivasDe(p0))
         : (ordem.find((e) => estados.includes(e)) ?? estados[0]);
@@ -792,6 +812,17 @@ function estadoDoCancelamento(
       esperando.length && estado === "cancelada_devolucao_pedida" ? { previstaEm: ((d) => (d ? hojeISO("America/Sao_Paulo", d) : null))(dataMaisTardia(esperando.map((d) => doPagamento(d).liberacaoPrevistaEm))) } : null,
   };
   return { estado, cancelamento };
+}
+
+/**
+ * A disputa dos pagamentos de uma reserva para a página do hóspede (M8.2e): em curso se alguma está; senão perdida se
+ * alguma foi; senão nada. Sem linha nenhuma (pagamento lido como contestado antes do M8.2e), em curso pela situação.
+ */
+function situacaoDaDisputaDaReserva(pagamentosDaReserva: readonly Pagamento[], disputas: readonly LinhaEmCurso[]): "em_curso" | "perdida" | null {
+  const dela = disputas.filter((d) => pagamentosDaReserva.some((p) => p.id === d.pagamentoId));
+  if (!dela.length) return pagamentosDaReserva.some(emDisputa) ? "em_curso" : null;
+  const situacoes = pagamentosDaReserva.map((p) => disputaDoPagamento({ contestacoes: dela }, p.id));
+  return situacoes.includes("em_curso") ? "em_curso" : situacoes.includes("perdida") ? "perdida" : null;
 }
 
 /** A mais tardia das datas (null se alguma falta). */

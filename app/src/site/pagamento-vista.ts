@@ -287,6 +287,7 @@ export type TextosDoCancelamento = Pick<
   | "cancelamentoVoltaPorFora"
   | "cancelamentoComAEquipe"
   | "cancelamentoEmConferencia"
+  | "cancelamentoDevolvidoPelaDisputa"
   | "cancelamentoSemDevolucaoPrazo"
   | "cancelamentoSemDevolucaoNaoComparecimento"
   | "cancelamentoSemDevolucaoEquipe"
@@ -405,6 +406,9 @@ export function textoDoCancelamento(
     // M8.2e: "Cancelar a reserva contestada" — o dinheiro pode voltar ao hóspede pela disputa: em conferência, nunca "não há
     // devolução" enquanto ela decide (a frase de sempre, `cancelamentoEmConferencia`).
     decisoes.push(textos.cancelamentoEmConferencia);
+  else if (c.base === "contestacao" && v.estado === "cancelada_devolvida")
+    // Perdida (o resultado confirmado pela equipe): o dinheiro voltou ao hóspede pela disputa, nunca pelo sistema.
+    decisoes.push(textos.cancelamentoDevolvidoPelaDisputa);
   else if (c.base === "nao_comparecimento") decisoes.push(textos.cancelamentoSemDevolucaoNaoComparecimento);
   else if (c.base === "sem_politica" || !c.integralAte) decisoes.push(textos.cancelamentoSemDevolucaoEquipe);
   else if (pagaSemPrazoIntegral(c) && c.arrependimentoAte)

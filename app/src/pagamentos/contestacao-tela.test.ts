@@ -373,6 +373,34 @@ describe("revisão das telas (11/10/2026)", () => {
     expect(t.linhas.join(" ")).not.toMatch(/não há devolução|chegou depois|contesta/i);
   });
 
+  it("hóspede da reserva cancelada por 'Cancelar a reserva contestada': perdida a disputa, o dinheiro voltou (nunca 'em conferência' para sempre)", async () => {
+    const x = await disputada();
+    const pv = await previaDoCancelamentoContestado(db, c.org, x.reservaId, sp("2026-10-06 10:00"));
+    if (!pv.ok) throw new Error(pv.erro);
+    const r = await cancelarReservaContestada(db, c.org, x.reservaId, { nota: "Titular não reconhece a compra.", assinatura: pv.previa.assinatura }, equipe, null, sp("2026-10-06 10:00"));
+    if (!r.ok) throw new Error(r.erro);
+    const pm = await previaDoResultado(db, c.org, x.id);
+    if (!pm.ok) throw new Error(pm.erro);
+    const rm = await confirmarResultado(
+      db,
+      c.org,
+      x.id,
+      { resultado: "perdida", data: "2026-10-08", nota: "Painel do Mercado Pago mostra a disputa perdida.", notaReforcada: true, versao: pm.fatos.versao, assinatura: pm.fatos.assinatura, tarifa: null, valorPerdido: pm.fatos.proposta.valorPerdido!, liquidoNaoEntrou: pm.fatos.proposta.liquidoNaoEntrou!, debitoEm: "2026-10-07" },
+      equipe,
+      null,
+      sp("2026-10-08 10:00"),
+    );
+    if (!rm.ok) throw new Error(rm.erro);
+    // O pagamento continua contestado (a disputa perdida), mas a página não fica "em conferência" para sempre.
+    expect((await c.tentativa(x.pagamentoId)).situacao).toBe("contestado");
+    const v = await vistaDaCotacaoParaHospede(db, c.org, x.cotacaoId, sp("2026-10-09 10:00"), { comAutorizacao: false });
+    expect(v?.estado).toBe("cancelada_devolvida");
+    const t = textoDoCancelamento(paraOHospede(v!), TEXTOS_SITE_INICIAIS);
+    expect(t.linhas).toContain(TEXTOS_SITE_INICIAIS.cancelamentoDevolvidoPelaDisputa);
+    expect(t.linhas.join(" ")).not.toContain(TEXTOS_SITE_INICIAIS.cancelamentoEmConferencia);
+    expect(t.linhas.join(" ")).not.toMatch(/não há devolução|contesta/i);
+  });
+
   it("'Documentos para a defesa': o valor pago só para quem lê o financeiro; o resumo da reserva segue o desenho (sem o titular)", async () => {
     const x = await disputada();
     const semValores = await documentosParaDefesa(db, c.org, x.reservaId, { verValores: false });

@@ -3325,6 +3325,14 @@ desenho)* só fazem o código cumprir o que já estava escrito acima.
   reclamação que explicava a devolução tirava o aviso só da lista em memória antes da gravação única dos avisos; quando o
   resto da lista não mudava, a gravação era pulada e o aviso continuava no pagamento. *Agora:* a saída vai pelo `desligar`
   de `sincronizarAvisosDaDisputa`, como os outros avisos do pagamento.
+- **A página do hóspede depois do resultado de "Cancelar a reserva contestada"** *(segue o desenho, "Estados da página":
+  "enquanto a disputa não termina")*. *Antes:* a página ficava em `cancelada_em_conferencia` enquanto o pagamento estava
+  contestado, e a disputa perdida deixa o pagamento contestado para sempre: "Estamos conferindo a devolução…" nunca saía.
+  *Agora:* a página segue as linhas da disputa dos pagamentos da reserva: em curso, `cancelada_em_conferencia`; perdida
+  (o resultado confirmado pela equipe), `cancelada_devolvida`, com a frase nova editável `cancelamentoDevolvidoPelaDisputa`
+  ("O dinheiro desta reserva voltou a você pelo banco ou pelo Mercado Pago."; sem a palavra "contestação"); ganha ou
+  encerrada sem efeito, `cancelada_sem_devolucao`, como antes. Sem linha nenhuma (lido antes do M8.2e), a situação do
+  pagamento, como antes. *Motivo:* a página não pode prometer uma conferência que já terminou.
 
 ### Mudanças nas outras seções deste arquivo (no mesmo PR)
 
@@ -3375,7 +3383,7 @@ consulta".
 | Reserva cancelada, devolução pedida (M8.2c) | "Reserva cancelada": quem cancelou e quando o pedido chegou, "devolvemos o valor integral pago, R$ …, sem desconto de taxas", "Já pedimos a devolução ao Mercado Pago…" e como o dinheiro volta (Pix ou cartão; com partes por caminhos diferentes — reserva no Pix e diferença no cartão, ou uma parte devolvida por fora —, a frase de cada caminho usado, na mesma regra da devolução da diferença de uma alteração; com alguma parte por fora, o total nunca é dito "pelo Mercado Pago"). Também na devolução aceita ainda sem confirmação, no cartão com mais de 78 dias ("Estamos pedindo o estorno no seu cartão…", enquanto a devolução por fora do cartão não abre) e no cartão recusado com a devolução por fora ainda fechada |
 | Reserva cancelada, devolvida (M8.2c) | "Devolução de R$ … confirmada pelo Mercado Pago em dd/mm" (o valor lido, quando a leitura o traz), "feita pelo Mercado Pago em dd/mm" (confirmada pela equipe) ou "feita em dd/mm" (por fora, com a frase da transferência e sem linha da forma de pagamento) |
 | Reserva cancelada, com a equipe (M8.2c) | "A devolução de R$ … pelo Mercado Pago não foi possível." e a frase editável de que a equipe combina outra forma, sem custo (Pix recusado, ou cartão com a devolução por fora já aberta) |
-| Reserva cancelada, em conferência (M8.2c) | devolução a menos, pagamento contestado ou devolvido em parte, devolução parada por um problema (desde o M8.2e, também a reserva cancelada por "Cancelar a reserva contestada", enquanto a disputa não termina): "Estamos conferindo a devolução com o Mercado Pago; a nossa equipe fala com você." Nunca oferece outro jeito de pagar |
+| Reserva cancelada, em conferência (M8.2c) | devolução a menos, pagamento contestado ou devolvido em parte, devolução parada por um problema (desde o M8.2e, também a reserva cancelada por "Cancelar a reserva contestada", enquanto a disputa não termina; perdida, a página diz que o dinheiro voltou pela frase `cancelamentoDevolvidoPelaDisputa`, desde a revisão do Codex de 11/10): "Estamos conferindo a devolução com o Mercado Pago; a nossa equipe fala com você." Nunca oferece outro jeito de pagar |
 | Reserva cancelada sem devolução (M8.2c) | os prazos da política aceita ("Prazo de reembolso integral: pedidos até dd/mm, às 23h59." e o arrependimento, quando vai além) e a frase do caso (fora do prazo, não comparecimento, ou decisão da equipe sem política) |
 | Reserva cancelada, devolução esperando a liberação (M8.2d) | o restante de um pagamento já devolvido em parte, que só é pedido depois da liberação: "…previsto para dd/mm" e a frase editável `devolucaoAguardaLiberacao` ("Ela será pedida ao Mercado Pago quando ele liberar o seu pagamento…"), nunca "Já pedimos" |
 | Alteração segurada (M8.2d) | "Alteração da sua reserva": de/para (datas, noites, pessoas, valor, diferença), "Datas seguradas até HH:MM (horário de Brasília)" (ou "dd/mm às HH:MM"), a frase do rumo e a linha da política; no aumento, o Pix e o cartão da diferença (com o aceite D11 quando preciso); a reserva continua como está até a confirmação |

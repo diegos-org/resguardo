@@ -37,6 +37,7 @@ const CHAVES_DO_CANCELAMENTO = [
   "cancelamentoVoltaPorFora",
   "cancelamentoComAEquipe",
   "cancelamentoEmConferencia",
+  "cancelamentoDevolvidoPelaDisputa",
   "cancelamentoSemDevolucaoPrazo",
   "cancelamentoSemDevolucaoNaoComparecimento",
   "cancelamentoSemDevolucaoEquipe",

@@ -93,6 +93,7 @@ describe("textos do cancelamento (M8.2c): editáveis, com texto-base", () => {
       "cancelamentoVoltaPorFora",
       "cancelamentoComAEquipe",
       "cancelamentoEmConferencia",
+      "cancelamentoDevolvidoPelaDisputa",
       "cancelamentoSemDevolucaoPrazo",
       "cancelamentoSemDevolucaoNaoComparecimento",
       "cancelamentoSemDevolucaoEquipe",
