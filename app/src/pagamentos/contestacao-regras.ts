@@ -24,6 +24,14 @@ export const SITUACOES_NAO_FINAIS_CONTESTACAO = ["aberta", "a_confirmar"] as con
 export const contestacaoNaoFinal = (s: SituacaoContestacao) => s === "aberta" || s === "a_confirmar";
 
 /**
+ * A ordem das disputas de um pagamento: pela abertura e, no mesmo instante, pelo id (uma ordem só, sem empate). Uma regra,
+ * um lugar: o valor em risco (`recalcularDisputas`), o devolvido que cada MED ou reclamação explica
+ * (`devolvidoExplicadoPelaDisputa`), o acerto do retido lido, a primeira não final e o tipo da disputa em curso.
+ */
+export const ordemDeAbertura = (a: { abertaEm: Date; id: string }, b: { abertaEm: Date; id: string }): number =>
+  a.abertaEm.getTime() - b.abertaEm.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+
+/**
  * O "voltou a aprovada" (a order ou a Payments API aprovada de novo, sem disputa listada) fala de uma contestação no cartão
  * do quadro, de qualquer origem: a lida, a registrada pela equipe e a achada pela Chargebacks API (estas duas não mudam a
  * situação do pagamento, que continua `aprovado`). Na ainda não final, leva a disputa a `a_confirmar`; na perdida, contradiz
@@ -989,8 +997,8 @@ export function disputaDoPagamento(t: { contestacoes: readonly LinhaEmCurso[] },
  * O tipo da disputa em curso mais antiga do pagamento (o aviso `contestado` do quadro diz o tipo: `textoDoAvisoContestado`);
  * null sem disputa em curso.
  */
-export function tipoDaDisputaEmCurso(linhas: readonly (LinhaEmCurso & Pick<LinhaDeContestacao, "tipo" | "abertaEm">)[], pagamentoId: string): TipoContestacao | null {
-  const emCurso = linhas.filter((x) => x.pagamentoId === pagamentoId && linhaEmCurso(x)).sort((a, b) => a.abertaEm.getTime() - b.abertaEm.getTime());
+export function tipoDaDisputaEmCurso(linhas: readonly (LinhaEmCurso & Pick<LinhaDeContestacao, "id" | "tipo" | "abertaEm">)[], pagamentoId: string): TipoContestacao | null {
+  const emCurso = linhas.filter((x) => x.pagamentoId === pagamentoId && linhaEmCurso(x)).sort(ordemDeAbertura);
   return emCurso[0]?.tipo ?? null;
 }
 

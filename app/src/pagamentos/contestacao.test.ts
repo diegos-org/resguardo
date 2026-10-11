@@ -25,7 +25,7 @@ import {
 } from "./contestacao";
 import { LEITURAS_DE_CONTESTACAO_POR_VOLTA, NOTA_SEM_LEITURA, TEXTO_CASO_DE_OUTRO_PAGAMENTO, TEXTO_DISPUTA_JA_NO_QUADRO } from "./contestacao-regras";
 import { ErroProvedor } from "./provedor";
-import { rotinaDoSite } from "./rotina";
+import { conferirPendentes, rotinaDoSite } from "./rotina";
 import { type Cenario, envelhecer, minutos, montarCenario, pagarEConfirmar, semDadosDoHospede, TOTAL, usuarioDeTeste } from "./testes";
 
 let db: Db, close: () => Promise<void>, c: Cenario, equipe: string;
@@ -282,6 +282,26 @@ describe("rotina das disputas (item 20)", () => {
     expect(await conferirContestacoes(db, c.org, c.provedor, dias(3))).toMatchObject({ foraDoPrazo: 3 });
     expect(await marcadas()).toHaveLength(53);
     expect(chamadas("consultarContestacao")).toEqual([]);
+  });
+
+  it("a leitura da order na volta das disputas não cancela a irmã pendente (cancelar e reler passaria do tempo reservado); a varredura das que sobraram cancela (Codex, 11/10)", async () => {
+    const x = await contestado();
+    // Um Pix que sobrou pendente na mesma cotação, ao lado do cartão pago e contestado.
+    const extra = await c.provedor.criarPix({ referencia: "scl-irma", chaveIdempotencia: "irma", valor: TOTAL, email: "test@testuser.com", nome: "", validadeMinutos: 30, descricao: "", descricaoFatura: null });
+    if (!extra.ok) throw new Error("Pix extra não criado");
+    const [irma] = await db
+      .insert(pagamentos)
+      .values({ organizacaoId: c.org, cotacaoId: x.cotacaoId, reservaId: x.reservaId, imovelId: c.imovel, ambiente: "teste", forma: "pix", referencia: "scl-irma", chaveIdempotencia: "irma", situacao: "pendente", idProvedor: extra.cobranca.idProvedor, valor: TOTAL })
+      .returning();
+    const cancelamentos = () => chamadas("cancelar").filter((ch) => ch.id === extra.cobranca.idProvedor);
+    // A volta das disputas relê a order do cartão: a irmã fica marcada pelo sistema, sem cancelar nem reler aqui.
+    expect(await conferirContestacoes(db, c.org, c.provedor, dias(2))).toMatchObject({ lidas: 1 });
+    expect(cancelamentos()).toEqual([]);
+    expect(await c.tentativa(irma.id)).toMatchObject({ situacao: "pendente", cancelamentoPor: "sistema" });
+    // A conferência dos pagamentos (que roda antes das disputas, em toda volta) cancela a que sobrou.
+    expect(await conferirPendentes(db, c.org, c.provedor, dias(2))).toMatchObject({ canceladas: 1 });
+    expect(cancelamentos()).toHaveLength(1);
+    expect((await c.tentativa(irma.id)).situacao).toBe("cancelado");
   });
 
   it("no máximo 50 por volta, em ordem de proxima_leitura_em; o orçamento de tempo para a volta", async () => {

@@ -3489,6 +3489,21 @@ desenho)* só fazem o código cumprir o que já estava escrito acima.
   as mais antigas primeiro (`aberta_em`, depois `id`), no máximo `LEITURAS_DE_CONTESTACAO_POR_VOLTA` (50) por volta. O
   orçamento é conferido antes de cada uma, e a marcação para quando ele acaba. As que ficaram são marcadas na volta
   seguinte. *Motivo:* a volta tem de caber no tempo da função, e a marcação não pode tomar o lugar das leituras.
+- **A leitura da order na volta das disputas não cancela as irmãs pendentes** *(segue o desenho, "Rotina", orçamento de
+  60 s)*. *Antes:* a releitura da order (`conferirTentativa`) cancelava no provedor os pagamentos pendentes que sobraram
+  na cotação e relia cada um. O cancelamento e a releitura têm 15 s cada, e os 30 s reservados para a order não os
+  contavam: com uma irmã pendente, a chamada passava do orçamento. *Agora:* a leitura das disputas lê a order sem
+  cancelar (`semCancelar`). As irmãs ficam marcadas pelo sistema (`cancelamento_por`), e a varredura das que sobraram
+  (`conferirPendentes`, que roda antes das disputas em toda volta da rotina) as cancela. *Motivo:* a volta tem de caber
+  no tempo da função, e o cancelamento já tem o lugar dele.
+- **Disputas abertas no mesmo instante** *(segue o desenho, "Devolvido no painel do Mercado Pago (fora da política)": o
+  devolvido lido é explicado pelas disputas mais antigas primeiro)*. *Antes:* o devolvido que um MED ou uma reclamação
+  explica descontava as outras abertas "até o mesmo instante". Com duas abertas no mesmo instante, cada uma descontava a
+  outra: com 500,00 devolvidos e duas disputas de 500,00, nenhuma ganhava o retido realizado, e o caixa ficava sem a saída
+  que o Mercado Pago já mostrava. *Agora:* uma ordem só, `ordemDeAbertura` (`contestacao-regras.ts`): pela abertura e,
+  no mesmo instante, pelo id. Uma regra, um lugar: o valor em risco, o devolvido que cada disputa explica, o acerto do
+  retido lido, a primeira disputa não final e o tipo da disputa em curso. *Motivo:* o mesmo fato tem de dar o mesmo
+  caixa, sem depender de empate.
 
 ### Mudanças nas outras seções deste arquivo (no mesmo PR)
 

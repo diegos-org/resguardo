@@ -378,6 +378,32 @@ describe("retido (item 13: abertura e MED)", () => {
     expect(await daDisputa(x.pagamentoId)).toHaveLength(2);
   });
 
+  it("duas disputas abertas no mesmo instante: o devolvido lido vai para uma só, pela ordem de abertura com o id (Codex, 11/10)", async () => {
+    const x = await pagarEConfirmar(c);
+    // Um MED e uma reclamação de 500,00 (números distintos), registrados no mesmo instante, antes da leitura.
+    const med = { tipo: "med", abertaEm: "2026-10-01", valor: 50_000, prazo: "2026-10-10", idCaso: "8100000001", nota: "MED visto no painel" };
+    const reclamacao = { tipo: "reclamacao", abertaEm: "2026-10-01", valor: 50_000, prazo: "2026-10-12", idCaso: "8100000002", nota: "Reclamação vista no painel" };
+    expect(await registrarContestacaoDaEquipe(db, c.org, x.pagamentoId, med, equipe, null, minutos(20))).toMatchObject({ ok: true });
+    expect(await registrarContestacaoDaEquipe(db, c.org, x.pagamentoId, reclamacao, equipe, null, minutos(20))).toMatchObject({ ok: true });
+    // A segunda nasce possível duplicata; a equipe confirma que é outra disputa (ainda sem devolução lida).
+    const dup = (await linhas(x.pagamentoId)).find((l) => l.duplicataPossivel)!;
+    expect(await confirmarOutraDisputa(db, c.org, dup.id, equipe, minutos(25))).toMatchObject({ ok: true });
+    const ls = await linhas(x.pagamentoId);
+    expect(ls.map((l) => ({ duplicata: l.duplicataPossivel, abertaEm: l.abertaEm, valorEmRisco: l.valorEmRisco }))).toEqual([
+      { duplicata: false, abertaEm: minutos(20), valorEmRisco: 50_000 },
+      { duplicata: false, abertaEm: minutos(20), valorEmRisco: 50_000 },
+    ]);
+    // O Mercado Pago devolve 500,00 ao pagador: só a primeira pela ordem (o id menor) o explica, com o retido realizado.
+    c.provedor.devolverNoProvedor(x.idProvedor, 50_000);
+    await conferir(x.pagamentoId, minutos(40));
+    const [primeira, segunda] = [...ls].sort((a, b) => (a.id < b.id ? -1 : 1));
+    const realizado = (l: (typeof ls)[number]) =>
+      daDisputa(x.pagamentoId).then((ys) => ys.filter((y) => y.estado === "realizado" && !y.estornoDe && y.chaveOrigem.startsWith(chavesDaContestacao(x.pagamentoId, l.id).retido())));
+    expect(await realizado(primeira)).toEqual([expect.objectContaining({ montante: 50_000, dataCaixa: "2026-10-01" })]);
+    expect(await realizado(segunda)).toEqual([]);
+    expect((await c.tentativa(x.pagamentoId)).avisos).not.toContain("devolvido_por_fora");
+  });
+
   it("a saída do devolvido_por_fora pelo MED é gravada mesmo quando o resto dos avisos não muda", async () => {
     const x = await pagarEConfirmar(c);
     c.provedor.devolverNoProvedor(x.idProvedor, TOTAL);

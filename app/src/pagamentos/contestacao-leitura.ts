@@ -38,6 +38,7 @@ import {
   leituraEmDisputa,
   NOMES_TIPO_CONTESTACAO,
   novaContestacao,
+  ordemDeAbertura,
   ORIGEM_LANCAMENTO_CONTESTACAO,
   type SituacaoPagamentoAntes,
   type TipoEventoContestacao,
@@ -283,7 +284,7 @@ export function devolvidoExplicadoPelaDisputa(
   l: Pick<Contestacao, "id" | "valorEmRisco" | "abertaEm">,
 ): number {
   const outras = t.contestacoes
-    .filter((c) => c.pagamentoId === p.id && c.id !== l.id && explicaDevolucaoLida(c) && c.abertaEm.getTime() <= l.abertaEm.getTime())
+    .filter((c) => c.pagamentoId === p.id && c.id !== l.id && explicaDevolucaoLida(c) && ordemDeAbertura(c, l) < 0)
     .reduce((s, c) => s + Math.max(0, c.valor ?? 0), 0);
   const lido = p.devolvidoLido - p.devolvidoForaReconhecido - devolvidoProprio(devolucoesDoPagamento(t, p.id)) - outras;
   return Math.max(0, Math.min(l.valorEmRisco, lido));
@@ -369,7 +370,7 @@ export async function acertarRetidoDasDevolucoesLidas(
   let mudou = false;
   const linhas = contestacoesDoPagamento(t, p.id)
     .filter((l) => (l.tipo === "med" || l.tipo === "reclamacao") && contestacaoNaoFinal(l.situacao) && !l.duplicataPossivel && !l.retidoConfirmadoEm)
-    .sort((a, b) => a.abertaEm.getTime() - b.abertaEm.getTime());
+    .sort(ordemDeAbertura);
   for (const l of linhas) {
     const antes = l.retidoLancamentoId;
     await lancarRetidoRealizado(tx, organizacaoId, t, p, l, agora);
@@ -421,7 +422,7 @@ export async function recalcularDisputas(tx: Db, organizacaoId: string, t: Trava
   const pDoCaixa = { id: p.id, desfecho: o.desfecho === undefined ? p.desfecho : o.desfecho };
   const linhas = contestacoesDoPagamento(t, p.id)
     .filter((l) => contestacaoNaoFinal(l.situacao))
-    .sort((a, b) => a.abertaEm.getTime() - b.abertaEm.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    .sort(ordemDeAbertura);
   const pago = valorPagoAprovado(p);
   const realizada = comDevolucaoRealizada(t, p);
   // As perdidas já levaram parte do pago: as que seguem cabem só no resto.
@@ -492,7 +493,7 @@ export type NovaLinha = ReturnType<typeof novaContestacao> & { notaRegistro?: st
 export function contextoDaNova(t: Pick<Travado, "contestacoes">, pagamentoId: string): { deOutraNaoFinal: SituacaoPagamentoAntes | null; outras: number } {
   const naoFinais = contestacoesDoPagamento(t, pagamentoId)
     .filter((l) => contestacaoNaoFinal(l.situacao))
-    .sort((a, b) => a.abertaEm.getTime() - b.abertaEm.getTime());
+    .sort(ordemDeAbertura);
   return { deOutraNaoFinal: naoFinais[0]?.situacaoPagamentoAntes ?? null, outras: naoFinais.filter((l) => !l.duplicataPossivel).reduce((s, l) => s + l.valorEmRisco, 0) };
 }
 

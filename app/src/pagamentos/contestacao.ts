@@ -235,8 +235,10 @@ async function lerFontes(
   if (o.order && naOrder && semTempo(TEMPO_LEITURA_DA_ORDER_MS)) return lido;
   if (o.order && naOrder) {
     // Melhor esforço: a trava da cotação ocupada (outra leitura, uma ação na outra aba) é uma leitura que não deu agora.
+    // Sem cancelar as irmãs pendentes aqui (cada uma, o cancelamento e a releitura, de 15 s cada, passaria do tempo
+    // reservado): elas ficam marcadas pelo sistema, e a varredura das que sobraram (`conferirPendentes`) as cancela.
     try {
-      const r = await conferirTentativa(db, p.organizacaoId, p.id, provedor, agora, { forcar: true, origem: "rotina" });
+      const r = await conferirTentativa(db, p.organizacaoId, p.id, provedor, agora, { forcar: true, origem: "rotina", semCancelar: true });
       if (!r.ok) falhaDoPagamento();
       else lido.orderLida = true;
     } catch (e) {

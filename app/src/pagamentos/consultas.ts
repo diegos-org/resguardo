@@ -1072,7 +1072,7 @@ type ContextoDoPainel = {
    * M8.2e: as disputas do pagamento (as ações das devoluções e a liberação à mão as leem; a perdida sem decisão pede atenção;
    * o aviso `contestado` diz o tipo da em curso mais antiga).
    */
-  contestacoes?: readonly Pick<Contestacao, "pagamentoId" | "tipo" | "abertaEm" | "situacao" | "avisos" | "estadoLido" | "decisaoVersao" | "definitivoEm" | "liquidoNaoEntrou">[];
+  contestacoes?: readonly Pick<Contestacao, "id" | "pagamentoId" | "tipo" | "abertaEm" | "situacao" | "avisos" | "estadoLido" | "decisaoVersao" | "definitivoEm" | "liquidoNaoEntrou">[];
 };
 
 /** O aviso de devolução recusada, no quadro do pagamento, quando a recusa veio do painel do Mercado Pago (registrada) ou da leitura. */
@@ -1351,6 +1351,7 @@ async function montarPainel(db: Db, organizacaoId: string, lista: Pagamento[], a
   // M8.2e: as disputas dos pagamentos (as ações das devoluções, a liberação à mão e o "pede atenção").
   const cts = await db
     .select({
+      id: contestacoesPagamento.id,
       pagamentoId: contestacoesPagamento.pagamentoId,
       tipo: contestacoesPagamento.tipo,
       abertaEm: contestacoesPagamento.abertaEm,
