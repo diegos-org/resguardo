@@ -3333,6 +3333,18 @@ desenho)* só fazem o código cumprir o que já estava escrito acima.
   ("O dinheiro desta reserva voltou a você pelo banco ou pelo Mercado Pago."; sem a palavra "contestação"); ganha ou
   encerrada sem efeito, `cancelada_sem_devolucao`, como antes. Sem linha nenhuma (lido antes do M8.2e), a situação do
   pagamento, como antes. *Motivo:* a página não pode prometer uma conferência que já terminou.
+- **O teto do pago com uma disputa já perdida** *(segue o desenho, "Valor em risco": a soma nunca passa do pago)*.
+  *Antes:* o valor em risco somava só as disputas não finais; com duas disputas confirmadas no mesmo pagamento, a perdida
+  saía da conta e a outra voltava a poder segurar (e perder) o pago inteiro, e "Confirmar o resultado" aceitava qualquer
+  perda até o pago: a soma das perdas podia passar do que entrou. *Agora:* `perdidoNoPagamento` (`contestacao-leitura.ts`)
+  soma o que as perdidas do pagamento já levaram (o valor perdido; no pagamento sem reserva, o contestado ou o pago); o
+  valor em risco das outras parte desse total (`recalcularDisputas`), a proposta do valor perdido nunca passa do que sobra,
+  e "Confirmar o resultado" recusa uma perda acima disso (`textoPerdaAcimaDoQueSobra`). *Motivo:* o dinheiro perdido nas
+  disputas de um pagamento nunca passa do que ele pagou.
+- **O prazo dos documentos no registro pela equipe** *(segue o desenho, "Registro pela equipe")*. *Antes:* o registro aceitava
+  um prazo anterior ao dia em que a disputa abriu (o formulário só limitava pelo dia da aprovação), e a disputa já nascia
+  com o prazo vencido nos avisos. *Agora:* o prazo vai do dia da abertura em diante, no servidor e no formulário (como em
+  "Informar o prazo").
 
 ### Mudanças nas outras seções deste arquivo (no mesmo PR)
 

@@ -32,6 +32,8 @@ export function FormRegistrarContestacao({
   valorPadrao: string;
 }) {
   const [aberto, setAberto] = useState(false);
+  // O prazo dos documentos nunca antes do dia em que a disputa abriu (o servidor confere o mesmo).
+  const [abertaEm, setAbertaEm] = useState(hoje);
   const tipos = [
     { valor: "chargeback", texto: "Contestação no cartão" },
     ...(pix ? [{ valor: "med", texto: "Devolução pedida pelo Pix (MED)" }] : []),
@@ -71,7 +73,7 @@ export function FormRegistrarContestacao({
       </label>
       <label style={{ flex: "0 1 170px" }}>
         Aberta em
-        <input type="date" name="abertaEm" min={desde} max={hoje} defaultValue={hoje} required />
+        <input type="date" name="abertaEm" min={desde} max={hoje} value={abertaEm} onChange={(e) => setAbertaEm(e.target.value)} required />
       </label>
       <label style={{ flex: "0 1 160px" }}>
         Valor em disputa (R$)
@@ -79,7 +81,7 @@ export function FormRegistrarContestacao({
       </label>
       <label style={{ flex: "0 1 190px" }}>
         Prazo dos documentos (opcional)
-        <input type="date" name="prazo" min={desde} />
+        <input type="date" name="prazo" min={abertaEm || desde} />
       </label>
       <label style={{ flex: "0 1 200px" }}>
         Número do caso (opcional)

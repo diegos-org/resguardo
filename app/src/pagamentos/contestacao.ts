@@ -50,6 +50,7 @@ import {
   lancarRetidoRealizado,
   leituraDaSituacao,
   leituraDoCaso,
+  perdidoNoPagamento,
   recalcularDisputas,
   registrarEventoDaContestacao,
   sincronizarAvisosDaDisputa,
@@ -142,6 +143,10 @@ const diaMes = (d: Date) => dataBr(hojeISO(FUSO, d));
  * prévia mudou), `decisao_mudou` (a versão da decisão mudou), `nao_encontrada`, `ocupado`, `dados` e os da transição.
  */
 export type ResultadoContestacao = { ok: true; contestacaoId: string; mensagem?: string } | { ok: false; erro: string; codigo?: string };
+
+/** A perda informada passa do que sobra do pago depois das outras disputas perdidas do mesmo pagamento. */
+export const textoPerdaAcimaDoQueSobra = (jaPerdido: number, sobra: number) =>
+  `As outras disputas perdidas deste pagamento já levaram ${formatBRL(jaPerdido)}: o valor que a SCL perdeu nesta vai até ${formatBRL(sobra)}.`;
 
 /** Muitas mudanças no mesmo pagamento ao mesmo tempo (trava ocupada): nada foi gravado. */
 export const TEXTO_OCUPADO_CONTESTACAO = "Muitas mudanças neste pagamento agora: tente de novo em instantes.";
@@ -593,6 +598,8 @@ function conferirEntrada(p: Pagamento, e: EntradaRegistroDisputa, agora: Date): 
   const pago = valorPagoAprovado(p);
   if (!Number.isSafeInteger(e.valor) || e.valor < 1 || e.valor > pago) return { ok: false, erro: `Informe o valor em disputa (de R$ 0,01 até o pago).` };
   if (e.prazo !== null && !dataValida(e.prazo)) return { ok: false, erro: "Prazo dos documentos inválido." };
+  // O prazo dos documentos nunca antes da abertura da disputa (como em "Informar o prazo").
+  if (e.prazo !== null && e.prazo < e.abertaEm) return { ok: false, erro: `Informe o prazo dos documentos a partir do dia em que a disputa abriu (${dataBr(e.abertaEm)}).` };
   const idCaso = e.idCaso?.trim() || null;
   if (idCaso !== null && !ID_NUMERICO_PROVEDOR.test(idCaso)) return { ok: false, erro: "O número do caso tem só algarismos (até 20)." };
   const nota = e.nota.trim();
@@ -1409,12 +1416,13 @@ export type FatosDoResultado = {
   sugestao: "ganha" | "perdida" | null;
 };
 
-async function fatosDoResultado(tx: Db, organizacaoId: string, p: Pagamento, l: Contestacao): Promise<FatosDoResultado> {
+async function fatosDoResultado(tx: Db, organizacaoId: string, t: Travado, p: Pagamento, l: Contestacao): Promise<FatosDoResultado> {
   const livro = await livroDaDisputa(tx, organizacaoId, l);
   const semReserva = !dinheiroDaReserva(p) || !l.reservaId;
   const recebidos = semReserva ? [] : (await recebimentosDoPagamento(tx, organizacaoId, p.id)).emVigor.filter((x) => x.estado === "realizado" || x.estado === "conciliado");
   const comRecebimento = recebidos.length > 0;
-  const valorPerdido = semReserva ? p.taxa : (l.valor ?? valorPagoAprovado(p));
+  // O que sobra do pago depois das outras perdidas deste pagamento (`perdidoNoPagamento`): a proposta nunca passa disso.
+  const valorPerdido = semReserva ? p.taxa : Math.min(l.valor ?? valorPagoAprovado(p), Math.max(0, valorPagoAprovado(p) - perdidoNoPagamento(t, p, l.id)));
   // Sem recebimento em vigor, o "nunca entrou" só se propõe quando o Mercado Pago não mostrou a liberação e a disputa é do
   // valor inteiro: com o sinal de liberação, ou numa disputa de parte do valor (o resto entra pela liberação), a liberação
   // se registra antes (o caixa final fica pelo que de fato entrou, e a taxa da reserva fica a do pagamento).
@@ -1456,7 +1464,7 @@ export async function previaDoResultado(db: Db, organizacaoId: string, contestac
   const p = t?.tentativas.find((x) => x.id === alvo.pagamentoId);
   const l = t?.contestacoes.find((x) => x.id === alvo.contestacaoId);
   if (!t || !p || !l) return recusada(TEXTO_DISPUTA_NAO_ENCONTRADA, "nao_encontrada");
-  return { ok: true, fatos: await fatosDoResultado(db, organizacaoId, p, l) };
+  return { ok: true, fatos: await fatosDoResultado(db, organizacaoId, t, p, l) };
 }
 
 /**
@@ -1529,7 +1537,7 @@ export async function confirmarResultado(
   return naDisputa(db, organizacaoId, alvo, agora, async (tx, t, p, l) => {
     if (!contestacaoNaoFinal(l.situacao)) return recusada(TEXTO_DISPUTA_JA_TERMINOU, "nao_permitida");
     if (e.versao !== l.decisaoVersao) return recusada(TEXTO_DECISAO_MUDOU, "decisao_mudou");
-    const fatos = await fatosDoResultado(tx, organizacaoId, p, l);
+    const fatos = await fatosDoResultado(tx, organizacaoId, t, p, l);
     if (!e.assinatura || e.assinatura !== fatos.assinatura) return recusada(TEXTO_CONTESTACAO_PREVIA_MUDOU, "contestacao_previa_mudou");
     const tr = transicaoDaContestacao(l, { tipo: "resultado", resultado, em: agora, emDisputaNaLeitura: leitura.emDisputa, notaReforcada: e.notaReforcada });
     if (!tr.ok) return recusada(tr.erro, tr.codigo);
@@ -1549,6 +1557,9 @@ export async function confirmarResultado(
       const v = centavosOuNull(e.valorPerdido);
       const n = daReserva ? centavosOuNull(e.liquidoNaoEntrou) : 0;
       if (v === null || !centavosValidos(v, pago)) return recusada(`Informe o valor que a SCL perdeu (até o pago, ${formatBRL(pago)}).`);
+      // As outras disputas perdidas deste pagamento já levaram parte do pago: esta perde no máximo o resto.
+      const jaPerdido = daReserva ? perdidoNoPagamento(t, p, l.id) : 0;
+      if (daReserva && v > pago - jaPerdido) return recusada(textoPerdaAcimaDoQueSobra(jaPerdido, Math.max(0, pago - jaPerdido)));
       // Pagamento sem reserva: o dinheiro dele nunca entrou no livro; o que a SCL perde é a taxa (com o custo do parcelamento
       // que ela pagou). Um valor acima é quase sempre digitação; sem a taxa conhecida, a nota diz a que o painel mostra.
       if (!daReserva) {

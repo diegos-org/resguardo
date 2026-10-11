@@ -365,6 +365,14 @@ describe("registro pela equipe (item 22)", () => {
     expect(ev.find((e) => e.tipo === "aberta")).toMatchObject({ fonte: "equipe", usuarioId: equipe });
   });
 
+  it("o prazo dos documentos nunca antes do dia em que a disputa abriu", async () => {
+    const x = await pagarEConfirmar(c);
+    const r = await registrarContestacaoDaEquipe(db, c.org, x.pagamentoId, entrada({ tipo: "med", abertaEm: "2026-10-01", prazo: "2026-09-30" }), equipe, null, minutos(20));
+    expect(r).toEqual({ ok: false, erro: "Informe o prazo dos documentos a partir do dia em que a disputa abriu (01/10)." });
+    expect(await linhas(x.pagamentoId)).toEqual([]);
+    expect(await registrarContestacaoDaEquipe(db, c.org, x.pagamentoId, entrada({ tipo: "med", abertaEm: "2026-10-01", prazo: "2026-10-01" }), equipe, null, minutos(20))).toMatchObject({ ok: true });
+  });
+
   it("MED só no Pix; sem prazo, o aviso de prazo desconhecido; nota com dado pessoal recusada; pagamento de outra empresa = não encontrado", async () => {
     const cartao = await pagarEConfirmar(c, { forma: "cartao" });
     expect(await registrarContestacaoDaEquipe(db, c.org, cartao.pagamentoId, entrada({ tipo: "med" }), equipe, null, minutos(20))).toEqual({ ok: false, erro: TEXTO_MED_SO_NO_PIX });

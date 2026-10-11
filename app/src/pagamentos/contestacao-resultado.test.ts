@@ -21,6 +21,7 @@ import { avisosDeCancelamento, pagamentosDaReserva, vistaDaCotacaoParaHospede } 
 import {
   conferirAviso,
   confirmarDebito,
+  confirmarOutraDisputa,
   confirmarResultado,
   type EntradaResultado,
   encerrarSemEfeito,
@@ -29,6 +30,7 @@ import {
   registrarContestacaoDaEquipe,
   registrarDecisao,
   TEXTO_NOTA_DO_RESULTADO,
+  textoPerdaAcimaDoQueSobra,
 } from "./contestacao";
 import { partesEfetivasDaReserva, TEXTO_INFORME_A_VOLTA } from "./contestacao-acerto";
 import {
@@ -375,6 +377,29 @@ describe("perdida (item 15)", () => {
     // A decisão definitiva não muda mais.
     const pv2 = await previaDaDecisao(db, c.org, x.l.id);
     expect(pv2.ok && pv2.fatos.recusa).toBe("A disputa já terminou: corrija com um ajuste, que fica registrado.");
+  });
+});
+
+describe("duas disputas confirmadas no mesmo pagamento (o teto do pago)", () => {
+  it("a perdida leva parte do pago: a outra disputa fica com o resto, e a perda dela não passa do que sobra", async () => {
+    const V = 100_000;
+    const x = await disputada({ valor: V });
+    // Uma segunda contestação no cartão, com o seu caso, confirmada pela equipe como outra disputa.
+    const reg = await registrarContestacaoDaEquipe(db, c.org, x.pagamentoId, { tipo: "chargeback", abertaEm: "2026-10-20", valor: V, prazo: null, idCaso: "8100000001", nota: "Segunda contestação vista no painel." }, equipe, null, sp("2026-10-20 11:00"));
+    if (!reg.ok) throw new Error(reg.erro);
+    expect(await confirmarOutraDisputa(db, c.org, reg.contestacaoId, equipe, sp("2026-10-20 12:00"))).toMatchObject({ ok: true });
+    expect(await linha(reg.contestacaoId)).toMatchObject({ duplicataPossivel: false, valorEmRisco: TOTAL - V });
+    // A primeira perdida (o valor inteiro dela): a segunda continua com o resto do pago, nunca com o valor inteiro de novo.
+    expect(await confirmar(x.l, "perdida", sp("2026-10-25 10:00"), { valorPerdido: V, liquidoNaoEntrou: 0, debitoEm: "2026-10-21" })).toMatchObject({ ok: true });
+    expect(await linha(reg.contestacaoId)).toMatchObject({ situacao: "aberta", valorEmRisco: TOTAL - V });
+    const pv = await previaDoResultado(db, c.org, reg.contestacaoId);
+    expect(pv.ok && pv.fatos.proposta.valorPerdido).toBe(TOTAL - V);
+    const segunda = await linha(reg.contestacaoId);
+    expect(await confirmar(segunda, "perdida", sp("2026-10-26 10:00"), { valorPerdido: V, liquidoNaoEntrou: 0, debitoEm: "2026-10-22" })).toMatchObject({ ok: false, erro: textoPerdaAcimaDoQueSobra(V, TOTAL - V) });
+    expect(await confirmar(segunda, "perdida", sp("2026-10-26 10:00"), { valorPerdido: TOTAL - V, liquidoNaoEntrou: 0, debitoEm: "2026-10-22" })).toMatchObject({ ok: true });
+    // O dinheiro da reserva nunca perde mais que o pago.
+    const d = await dinheiro(x.reservaId);
+    expect(d.perdaCoberta ?? 0).toBeLessThanOrEqual(TOTAL);
   });
 });
 

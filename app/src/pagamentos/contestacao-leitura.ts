@@ -369,13 +369,26 @@ export async function acertarRetidoDasDevolucoesLidas(
 const comDevolucaoRealizada = (t: Pick<Travado, "devolucoes">, p: Pick<Pagamento, "id" | "devolvidoForaReconhecido" | "situacao">) =>
   p.devolvidoForaReconhecido > 0 || p.situacao === "devolvido" || devolucoesDoPagamento(t, p.id).some((d) => d.situacao === "confirmada" || d.situacao === "por_fora");
 
+/**
+ * O que as disputas perdidas deste pagamento já levaram do pago (M8.2e): o valor perdido de cada uma; no pagamento sem
+ * reserva (ali o valor perdido é a taxa), o valor contestado, ou o pago, que voltou ao pagador. As possíveis duplicatas não
+ * contam. O valor em risco das outras disputas e o valor perdido de uma nova perdida cabem só no que sobra do pago.
+ * `exceto`: a disputa que está sendo confirmada.
+ */
+export function perdidoNoPagamento(t: Pick<Travado, "contestacoes">, p: Pagamento, exceto?: string): number {
+  const pago = valorPagoAprovado(p);
+  return t.contestacoes
+    .filter((c) => c.pagamentoId === p.id && c.id !== exceto && c.situacao === "perdida" && !c.duplicataPossivel)
+    .reduce((s, c) => s + Math.max(0, dinheiroDaReserva(p) && c.reservaId ? (c.valorPerdido ?? 0) : (c.valor ?? pago)), 0);
+}
+
 /** O que as devoluções substituídas por esta disputa tiram do valor em risco (o cancelamento ou a alteração já o tirou do resultado). */
 export const substituidoPelaDisputa = (t: Pick<Travado, "devolucoes">, contestacaoId: string) =>
   t.devolucoes.filter((d) => d.contestacaoId === contestacaoId && d.situacao !== "substituida").reduce((s, d) => s + d.valor, 0);
 
 /**
  * Recalcula, sob a trava, o valor em risco de cada disputa não final do pagamento (`valorEmRisco`; a mais antiga primeiro:
- * a soma das não duplicadas nunca passa do pago), os avisos que dependem dele (`contestacao_valor_mudou` com decisão,
+ * a soma das não duplicadas, com o que as perdidas já levaram (`perdidoNoPagamento`), nunca passa do pago), os avisos que dependem dele (`contestacao_valor_mudou` com decisão,
  * `contestacao_com_devolucao` com devolução realizada) e o retido previsto (`o.semCaixa`: ainda não; quem chama lança o
  * retido realizado do MED antes). Grava só o que mudou.
  */
@@ -386,7 +399,8 @@ export async function recalcularDisputas(tx: Db, organizacaoId: string, t: Trava
     .sort((a, b) => a.abertaEm.getTime() - b.abertaEm.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const pago = valorPagoAprovado(p);
   const realizada = comDevolucaoRealizada(t, p);
-  let outras = 0;
+  // As perdidas já levaram parte do pago: as que seguem cabem só no resto.
+  let outras = perdidoNoPagamento(t, p);
   for (const l of linhas) {
     const v = valorEmRisco({ valor: l.valor, pago, outras, substituido: substituidoPelaDisputa(t, l.id), duplicataPossivel: l.duplicataPossivel, situacao: l.situacao });
     if (!l.duplicataPossivel) outras += v;
