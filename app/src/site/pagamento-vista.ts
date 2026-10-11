@@ -401,7 +401,11 @@ export function textoDoCancelamento(
     } else if (v.estado === "cancelada_com_a_equipe") {
       decisoes.push(juntar(`A devolução de ${formatBRL(valor)} pelo Mercado Pago não foi possível.`, textos.cancelamentoComAEquipe));
     } else decisoes.push(textos.cancelamentoEmConferencia);
-  } else if (c.base === "nao_comparecimento") decisoes.push(textos.cancelamentoSemDevolucaoNaoComparecimento);
+  } else if (c.base === "contestacao" && v.estado === "cancelada_em_conferencia")
+    // M8.2e: "Cancelar a reserva contestada" — o dinheiro pode voltar ao hóspede pela disputa: em conferência, nunca "não há
+    // devolução" enquanto ela decide (a frase de sempre, `cancelamentoEmConferencia`).
+    decisoes.push(textos.cancelamentoEmConferencia);
+  else if (c.base === "nao_comparecimento") decisoes.push(textos.cancelamentoSemDevolucaoNaoComparecimento);
   else if (c.base === "sem_politica" || !c.integralAte) decisoes.push(textos.cancelamentoSemDevolucaoEquipe);
   else if (pagaSemPrazoIntegral(c) && c.arrependimentoAte)
     // Paga já depois do prazo do reembolso integral: esse prazo nunca valeu para ela; só o arrependimento (que para na

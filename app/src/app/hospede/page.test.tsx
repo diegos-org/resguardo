@@ -46,6 +46,7 @@ const cancelamento = (over: Partial<CancelamentoNoPortal> = {}): CancelamentoNoP
   semPolitica: false,
   linkCotacao: "/reservar/COT-ABCDEFGH",
   emConferencia: false,
+  faleComAEquipe: false,
   ...over,
 });
 const html = async (busca: Record<string, string> = {}) => renderToStaticMarkup(await Page({ params: Promise.resolve({}), searchParams: Promise.resolve(busca) } as PageProps<"/hospede">));
@@ -173,6 +174,15 @@ describe("Minha reserva: o pagamento em conferência (M8.2e)", () => {
     expect(h).toContain("Para cancelar, fale com a equipe.");
     expect(h).not.toContain(TEXTOS_SITE_INICIAIS.pagamentoEmConferencia);
     expect(h).not.toContain("Pedir o cancelamento");
+  });
+
+  it("disputa perdida (revisão de 11/10): sem o botão e sem a frase de conferência, mas com 'Para cancelar, fale com a equipe.' (nunca o sumiço sem explicação)", async () => {
+    m.cancelamento.mockResolvedValue(cancelamento({ emConferencia: false, faleComAEquipe: true, podePedir: false }));
+    const h = await html();
+    expect(h).toContain("Para cancelar, fale com a equipe.");
+    expect(h).not.toContain(TEXTOS_SITE_INICIAIS.pagamentoEmConferencia);
+    expect(h).not.toContain("Pedir o cancelamento");
+    expect(h).not.toMatch(/contesta|chargeback|disputa|Beds24/i);
   });
 
   it("pedido já recebido antes da disputa: o recibo do pedido continua valendo", async () => {

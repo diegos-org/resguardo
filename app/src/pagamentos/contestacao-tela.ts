@@ -37,6 +37,7 @@ import {
   confirmacaoReforcadaDaDecisao,
   contestacaoNaoFinal,
   fraseDaCausa,
+  leituraEmDisputa,
   NOMES_QUEM_ARCA,
   NOMES_SITUACAO_CONTESTACAO,
   NOMES_TIPO_CONTESTACAO,
@@ -309,15 +310,33 @@ function eventoEmPalavras(tipo: string, antes: Record<string, unknown> | null, d
   }
 }
 
-/** "Texto para o proprietário" pronto para copiar depois da decisão (causa, valores, o que acontece em cada resultado; sem envio automático). */
-export function textoParaOProprietario(e: { reservaCodigo: string; causa: string; valor: number; proprietario: number; explicacao: string; comResultado: boolean; perdida: boolean }): string {
-  const partes = [`Disputa do pagamento da reserva ${e.reservaCodigo}: o banco do titular do cartão pediu para desfazer a cobrança de ${formatBRL(e.valor)}. Causa registrada: ${e.causa}.`];
+/**
+ * "Texto para o proprietário" pronto para copiar depois da decisão (causa, valores, o que acontece em cada resultado; sem
+ * envio automático). Neutro quanto ao tipo e à forma de pagamento ("disputa do pagamento", como o portal: nunca "cartão"
+ * num MED do Pix ou numa reclamação) e pela situação: segurado até o resultado; ganha, o valor volta; perdida, o desconto
+ * fica definitivo; sem efeito, nada fica descontado.
+ */
+export function textoParaOProprietario(e: {
+  reservaCodigo: string;
+  causa: string;
+  valor: number;
+  proprietario: number;
+  explicacao: string;
+  situacao: SituacaoContestacao;
+  /** AAAA-MM-DD do resultado confirmado (ganha ou perdida). */
+  resultadoEm: string | null;
+}): string {
+  const partes = [`Disputa do pagamento da reserva ${e.reservaCodigo}: foi aberta uma disputa de ${formatBRL(e.valor)} sobre o pagamento desta reserva no Mercado Pago. Causa registrada: ${e.causa}.`];
   if (e.explicacao.trim()) partes.push(e.explicacao.trim().replace(/([^.!?])$/, "$1."));
-  if (e.proprietario <= 0) partes.push("Pela decisão registrada, nada é descontado de você.");
-  else if (e.comResultado || e.perdida) partes.push(`Pela decisão registrada, ${formatBRL(e.proprietario)} são descontados dos seus próximos repasses.`);
+  const quando = e.resultadoEm ? ` em ${dataBr(e.resultadoEm)}` : "";
+  const valor = formatBRL(e.proprietario);
+  if (e.situacao === "sem_efeito") partes.push(e.proprietario > 0 ? `A disputa foi encerrada sem efeito: nada fica descontado de você (o valor segurado, ${valor}, volta no repasse seguinte).` : "A disputa foi encerrada sem efeito: nada fica descontado de você.");
+  else if (e.proprietario <= 0) partes.push(e.situacao === "ganha" ? `A SCL ganhou a disputa${quando}: nada foi descontado de você.` : "Pela decisão registrada, nada é descontado de você.");
+  else if (e.situacao === "ganha") partes.push(`A SCL ganhou a disputa${quando}: o valor segurado (${valor}) volta no repasse seguinte.`);
+  else if (e.situacao === "perdida") partes.push(`A SCL perdeu a disputa${quando}: o desconto de ${valor} dos seus repasses fica definitivo.`);
   else
     partes.push(
-      `Pela decisão registrada, ${formatBRL(e.proprietario)} ficam segurados dos seus próximos repasses até o resultado: se a SCL ganhar a disputa, o valor volta no repasse seguinte; se perder, o desconto fica definitivo. Cada passo aparece no seu extrato.`,
+      `Pela decisão registrada, ${valor} ficam segurados dos seus próximos repasses até o resultado: se a SCL ganhar a disputa, o valor volta no repasse seguinte; se perder, o desconto fica definitivo. Cada passo aparece no seu extrato.`,
     );
   return partes.join(" ");
 }
@@ -347,8 +366,23 @@ export type ContestacaoNaTela = {
   seguraValor: boolean;
 };
 
-/** Uma opção de quem arca no formulário: os valores, a assinatura e a pergunta do BotaoConfirmar de cada causa. */
-export type OpcaoNaTela = { quemArca: QuemArcaContestacao; nome: string; proprietario: string; scl: string; assinatura: string; perguntas: Record<CodigoCausaContestacao, string> };
+/** O que o proprietário e a SCL ficam da reserva num resultado (D − x e C − y na perdida; D e C na ganha), em reais. */
+export type FicaDaReserva = { proprietario: string; scl: string };
+
+/**
+ * Uma opção de quem arca no formulário: o débito de cada lado, o que cada um fica da reserva com o resultado perdido e com
+ * o ganho (a prévia do desenho; `ganha` null quando a disputa já está perdida), a assinatura e a pergunta do
+ * BotaoConfirmar de cada causa.
+ */
+export type OpcaoNaTela = {
+  quemArca: QuemArcaContestacao;
+  nome: string;
+  proprietario: string;
+  scl: string;
+  fica: { perdida: FicaDaReserva; ganha: FicaDaReserva | null };
+  assinatura: string;
+  perguntas: Record<CodigoCausaContestacao, string>;
+};
 
 /** O formulário da decisão (registrar ou mudar quem arca): os fatos ao lado e as opções. */
 export type DecisaoNaTela = {
@@ -362,6 +396,11 @@ export type DecisaoNaTela = {
   fatos: string[];
   /** "O valor em disputa mudou…": a ação pronta "Atualizar o valor segurado" (versão e assinatura), ou null. */
   atualizacao: { versao: number; assinatura: string; pergunta: string } | null;
+  /**
+   * A explicação ao proprietário em vigor: no "Mudar quem arca", o campo vem preenchido com ela (enviar sem mexer a mantém;
+   * apagar o campo é apagar a explicação). Vazia no "Registrar".
+   */
+  explicacao: string;
 };
 
 /** O formulário de "Confirmar o resultado": os fatos em palavras, os valores propostos e as perguntas (C1: nada marcado). */
@@ -370,7 +409,7 @@ export type ResultadoNaTela = {
   assinatura: string;
   /** Os fatos do Mercado Pago em palavras, ao lado do formulário. */
   fatos: string[];
-  /** A leitura de agora mostra a disputa em andamento (a nota reforçada é pedida). */
+  /** A leitura de agora pode mostrar a disputa em andamento (`podeEstarEmAndamento`): a caixa da nota reforçada aparece. */
   emAndamento: boolean;
   semReserva: boolean;
   /** O retido já saiu do caixa: o "Ganhou" pede o dia em que o dinheiro voltou. */
@@ -378,6 +417,11 @@ export type ResultadoNaTela = {
   /** Sem recebimento do pagamento: o "Ganhou" oferece registrar a liberação ali mesmo. */
   semRecebimento: boolean;
   proposta: { valorPerdido: number | null; liquidoNaoEntrou: number | null; debitoEm: string | null; liquido: number | null };
+  /**
+   * O "Perdeu" pede antes a liberação registrada à mão (`FatosDoResultado.liberacaoAntesDaPerda`): o texto, mostrado no
+   * formulário (o "nunca entrou" vem vazio, sem valor suposto), ou null.
+   */
+  liberacaoAntes: string | null;
   /** A conta do valor perdido proposto. */
   contaDoPerdido: string;
   desde: string;
@@ -424,6 +468,13 @@ export async function reservaDoPagamento(db: Db, organizacaoId: string, pagament
   if (!uuidValido(pagamentoId)) return null;
   const [p] = await db.select({ reservaId: pagamentos.reservaId }).from(pagamentos).where(and(eq(pagamentos.id, pagamentoId), eq(pagamentos.organizacaoId, organizacaoId)));
   return p ?? null;
+}
+
+/** A reserva na empresa ("Cancelar a reserva contestada" a resolve antes de ler o Mercado Pago). null = não é desta empresa. */
+export async function reservaDaOrganizacao(db: Db, organizacaoId: string, reservaId: string): Promise<{ reservaId: string } | null> {
+  if (!uuidValido(reservaId)) return null;
+  const [r] = await db.select({ reservaId: reservas.id }).from(reservas).where(and(eq(reservas.id, reservaId), eq(reservas.organizacaoId, organizacaoId)));
+  return r ?? null;
 }
 
 /** A reserva (na empresa) da disputa, pelo pagamento dela (a do pagamento sem reserva também tem a reserva da cotação). */
@@ -521,7 +572,7 @@ export async function lerContestacoesDaEquipe(db: Db, sessao: Sessao, reservaId:
     const pr = naoFinal ? await previaDoResultado(db, org, l.id) : null;
     const fr: FatosDoResultado | null = pr?.ok ? pr.fatos : null;
     const semReserva = fd?.semReserva ?? !l.reservaId;
-    const emAndamento = l.estadoLido === "in_process";
+    const emAndamento = podeEstarEmAndamento(l);
     const comForm = editar && !!fd && (fd.recusa === null || (naoFinal && fd.versao > 0 && !fd.semReserva));
     // Ao lado do formulário: quanto o proprietário já recebeu da reserva e se ele aceitou um "Como funciona" que fale de disputas.
     const doProprietario =
@@ -563,8 +614,8 @@ export async function lerContestacoesDaEquipe(db: Db, sessao: Sessao, reservaId:
                     valor: l.exposicao ?? l.valorEmRisco,
                     proprietario: l.parteProprietario ?? 0,
                     explicacao: l.explicacaoProprietario,
-                    comResultado: !naoFinal,
-                    perdida: l.situacao === "perdida",
+                    situacao: l.situacao,
+                    resultadoEm: l.resultadoEm,
                   })
                 : null,
             }
@@ -632,6 +683,14 @@ function decisaoDoForm(l: Contestacao, p: Pagamento, f: FatosDaDecisao, causas: 
   const doPagamento = { forma: p.forma, tresDSStatus: l.tresDSStatus };
   const semOpcao: string[] = [];
   const opcoes: OpcaoNaTela[] = [];
+  // A prévia: o que cada lado fica da reserva (as partes efetivas de agora, D e C, as mesmas da divisão) com o resultado
+  // perdido (D − x, C − y) e com o ganho (D, C; nada é descontado). Na perdida, só o resultado que aconteceu.
+  const D = f.partes.parteProprietario;
+  const C = f.partes.comissao;
+  const fica = (o: { proprietario: number; scl: number }): OpcaoNaTela["fica"] => ({
+    perdida: { proprietario: formatBRL(D - o.proprietario), scl: formatBRL(C - o.scl) },
+    ganha: f.perdida ? null : { proprietario: formatBRL(D), scl: formatBRL(C) },
+  });
   for (const q of QUEM_ARCA_CONTESTACAO) {
     const o = f.opcoes[q];
     if (!o) {
@@ -641,7 +700,7 @@ function decisaoDoForm(l: Contestacao, p: Pagamento, f: FatosDaDecisao, causas: 
     const perguntas = Object.fromEntries(
       CODIGOS_CAUSA_CONTESTACAO.map((c) => [
         c,
-        perguntaDaDecisao({
+        `${perguntaDaDecisao({
           nomeCausa: causas[c].nome,
           quemArca: q,
           proprietario: o.proprietario,
@@ -649,10 +708,10 @@ function decisaoDoForm(l: Contestacao, p: Pagamento, f: FatosDaDecisao, causas: 
           comResultado: l.situacao === "perdida",
           pelaRegra: quemArcaPelaRegra(c, doPagamento),
           reforcada: confirmacaoReforcadaDaDecisao(c, q),
-        }),
+        })} ${ficaEmPalavras(fica(o))}`,
       ]),
     ) as Record<CodigoCausaContestacao, string>;
-    opcoes.push({ quemArca: q, nome: NOMES_QUEM_ARCA[q], proprietario: formatBRL(o.proprietario), scl: formatBRL(o.scl), assinatura: o.assinatura, perguntas });
+    opcoes.push({ quemArca: q, nome: NOMES_QUEM_ARCA[q], proprietario: formatBRL(o.proprietario), scl: formatBRL(o.scl), fica: fica(o), assinatura: o.assinatura, perguntas });
   }
   const fatos = [
     `Valor em disputa: ${l.valor === null ? "não informado" : formatBRL(l.valor)}; ${f.perdida ? `perda a dividir: ${formatBRL(f.valor)}` : `valor em risco: ${formatBRL(f.valor)}`}.`,
@@ -678,8 +737,24 @@ function decisaoDoForm(l: Contestacao, p: Pagamento, f: FatosDaDecisao, causas: 
     semOpcao: semOpcao.filter(Boolean),
     fatos,
     atualizacao,
+    explicacao: f.versao > 0 ? l.explicacaoProprietario : "",
   };
 }
+
+/** A prévia de uma opção em palavras (a pergunta do BotaoConfirmar a repete): o que cada lado fica da reserva em cada resultado. */
+function ficaEmPalavras(f: OpcaoNaTela["fica"]): string {
+  const perdida = `Com a disputa perdida, ficam da reserva: proprietário ${f.perdida.proprietario}; SCL ${f.perdida.scl}.`;
+  return f.ganha ? `${perdida} Ganha: proprietário ${f.ganha.proprietario}; SCL ${f.ganha.scl}.` : perdida;
+}
+
+/**
+ * A leitura de agora pode mostrar a disputa em andamento: o formulário já traz a caixa da nota reforçada, que a fase 0 do
+ * domínio pede (`releituraDaDisputa`) — `in_process` guardado ou, com a linha ainda aberta, o caso da Chargebacks API ainda
+ * sem estado nem cobertura (a mesma regra, `leituraEmDisputa`). A caixa a mais não muda nada quando a releitura não a pede;
+ * a recusa `nota_reforcada` também a mostra (o formulário), para a ação sempre poder ser concluída pela tela.
+ */
+export const podeEstarEmAndamento = (l: Pick<Contestacao, "situacao" | "estadoLido" | "coberturaAplicada">): boolean =>
+  l.estadoLido === "in_process" || (l.situacao === "aberta" && leituraEmDisputa({ fonte: "chargebacks", estadoLido: l.estadoLido, coberturaAplicada: l.coberturaAplicada }));
 
 /** Os fatos do Mercado Pago em palavras para "Confirmar o resultado" (C1: o formulário começa sem nada marcado). */
 export function fatosDoResultadoEmPalavras(l: Pick<Contestacao, "estadoLido" | "coberturaAplicada" | "codigo" | "origem" | "situacao">): string[] {
@@ -709,11 +784,12 @@ function resultadoDoForm(l: Contestacao, p: Pagamento, f: FatosDoResultado, emAn
     retidoRealizado: !!f.retido && (f.retido.estado === "realizado" || f.retido.estado === "conciliado"),
     semRecebimento: f.semRecebimento,
     proposta: { ...f.proposta, liquido: p.liquido },
+    liberacaoAntes: f.liberacaoAntesDaPerda,
     contaDoPerdido: conta,
     desde: hojeISO(FUSO, l.abertaEm),
     perguntas: {
       ganha: `Confirmar que a SCL GANHOU a disputa (resultado em {data})? ${f.lancado.proprietario > 0 ? `O valor segurado do proprietário (${formatBRL(f.lancado.proprietario)}) volta no repasse seguinte e a perda prevista da SCL é desfeita.` : "Nada foi descontado de ninguém."} O resultado não se desfaz pelo sistema: uma correção depois é um ajuste.`,
-      perdida: `Confirmar que a SCL PERDEU a disputa (resultado em {data}), com {valor} perdidos? ${l.decisaoVersao > 0 ? "O desconto do proprietário e a perda da SCL ficam definitivos no mês corrente." : "Sem decisão de quem arca, a reserva continua em conferência até a decisão."} O resultado não se desfaz pelo sistema: uma correção depois é um ajuste.`,
+      perdida: `Confirmar que a SCL PERDEU a disputa (resultado em {data}), com {valor} perdidos${f.semReserva ? "" : " ({naoEntrou} deste pagamento nunca entraram na conta)"}? ${l.decisaoVersao > 0 ? "O desconto do proprietário e a perda da SCL ficam definitivos no mês corrente." : "Sem decisão de quem arca, a reserva continua em conferência até a decisão."} O resultado não se desfaz pelo sistema: uma correção depois é um ajuste.`,
     },
   };
 }
@@ -742,9 +818,11 @@ export const DOCUMENTOS_POR_FORA = [
  * "Documentos para a defesa" (reserva:editar ou financeiro:editar, conferido por quem chama): o resumo da reserva (código,
  * imóvel, datas, pessoas), o pagamento de cada disputa (ids, data, forma, verificação do banco), a política aceita (versão,
  * horário e texto) e a lista da portaria (M6.4, quando o imóvel exige), e o que a equipe junta por fora. Montada na hora,
- * nunca gravada. null = a reserva não é desta empresa ou não tem disputa.
+ * nunca gravada. null = a reserva não é desta empresa ou não tem disputa. O valor pago só com `verValores` (quem lê o
+ * financeiro, como na ficha): a operação abre a página sem ver valores. O resumo segue a lista do desenho (sem o nome do
+ * titular: a equipe junta por fora o que o Mercado Pago pedir).
  */
-export async function documentosParaDefesa(db: Db, organizacaoId: string, reservaId: string): Promise<DocumentosParaDefesa | null> {
+export async function documentosParaDefesa(db: Db, organizacaoId: string, reservaId: string, o: { verValores: boolean }): Promise<DocumentosParaDefesa | null> {
   if (!uuidValido(reservaId)) return null;
   const [r] = await db
     .select({ r: reservas, imovelCodigo: imoveis.codigo, imovelNome: imoveis.nome })
@@ -774,7 +852,6 @@ export async function documentosParaDefesa(db: Db, organizacaoId: string, reserv
       ["Imóvel", `${r.imovelCodigo} · ${r.imovelNome}`],
       ["Entrada e saída", `${dataCompleta(r.r.checkin)} → ${dataCompleta(r.r.checkout)}`],
       ["Pessoas", r.r.hospedes === null ? "não informado" : String(r.r.hospedes)],
-      ["Titular da reserva", r.r.hospedeNome || "não informado"],
     ],
     pagamentos: disputados.map((p) => ({
       titulo: `${p.forma === "cartao" ? "Cartão de crédito" : "Pix"} de ${diaBr(p.criadoEm)}`,
@@ -783,7 +860,7 @@ export async function documentosParaDefesa(db: Db, organizacaoId: string, reserv
         ["Referência", p.referencia],
         ["Número do pagamento", p.idPagamentoProvedor ?? "—"],
         ["Aprovado em", p.aprovadoEm ? diaHoraBr(p.aprovadoEm) : "—"],
-        ["Valor pago", formatBRL(p.valorPago ?? p.valor)],
+        ...(o.verValores ? ([["Valor pago", formatBRL(p.valorPago ?? p.valor)]] as [string, string][]) : []),
         ["Verificação do banco", verificacaoDoBanco({ tresDSStatus: ls.find((l) => l.pagamentoId === p.id)?.tresDSStatus ?? p.tresDSStatus }, p)],
         ...ls.filter((l) => l.pagamentoId === p.id).map((l) => [cabecalhoDaDisputa(l), l.idCaso ? `caso ${l.idCaso}` : "número do caso não informado"] as [string, string]),
       ],

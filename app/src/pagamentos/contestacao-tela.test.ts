@@ -8,16 +8,20 @@
 import { and, eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Sessao } from "@/acesso/politica";
-import { imoveis, lancamentos, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
+import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
+import { contestacoesPagamento, imoveis, lancamentos, organizacoes, pagamentos, proprietarioImoveis, proprietarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { cancelamentoNoPortal } from "@/hospede/cancelamento";
+import { formatBRL } from "@/lib/money";
 import { avisosDeContestacao } from "@/painel/dashboard";
+import { paraOHospede, textoDoCancelamento } from "@/site/pagamento-vista";
+import { cancelarReservaContestada, previaDoCancelamentoContestado } from "./cancelamento";
 import { conferirTentativa } from "./conferencia";
 import { listarPagamentos, vistaDaCotacaoParaHospede } from "./consultas";
-import { confirmarResultado, informarPrazoDocumentos, previaDaDecisao, previaDoResultado, registrarDecisao } from "./contestacao";
+import { confirmarResultado, informarPrazoDocumentos, previaDaDecisao, previaDoResultado, registrarContestacaoDaEquipe, registrarDecisao } from "./contestacao";
 import { contestacoesDoProprietario, disputaParaOProprietario } from "./contestacao-portal";
-import { documentosParaDefesa, lerContestacoesDaEquipe, lerContestacoesDaOperacao, reservaDaContestacao, reservaDoPagamento, textoDoResultadoDaContestacao } from "./contestacao-tela";
+import { documentosParaDefesa, lerContestacoesDaEquipe, lerContestacoesDaOperacao, reservaDaContestacao, reservaDoPagamento, textoDoResultadoDaContestacao, textoParaOProprietario } from "./contestacao-tela";
 import { type Cenario, EMAIL_HOSPEDE, montarCenario, NOME_HOSPEDE, pagarEConfirmar, semDadosDoHospede, TOTAL, usuarioDeTeste } from "./testes";
 
 let db: Db, close: () => Promise<void>, c: Cenario, equipe: string;
@@ -107,7 +111,7 @@ describe("o bloco da disputa na ficha (item 9: quem lê o quê)", () => {
     expect(await reservaDoPagamento(db, outra, x.pagamentoId)).toBeNull();
     expect(await reservaDaContestacao(db, c.org, x.id)).toEqual({ reservaId: x.reservaId, pagamentoId: x.pagamentoId });
     expect(await lerContestacoesDaEquipe(db, sessao("admin", outra), x.reservaId)).toEqual([]);
-    expect(await documentosParaDefesa(db, outra, x.reservaId)).toBeNull();
+    expect(await documentosParaDefesa(db, outra, x.reservaId, { verValores: true })).toBeNull();
   });
 
   it("depois da decisão: as linhas da decisão (a nota só para a equipe), o texto para o proprietário e os lançamentos de cada lado; a ação vira 'mudar'", async () => {
@@ -127,7 +131,7 @@ describe("o bloco da disputa na ficha (item 9: quem lê o quê)", () => {
 
   it("'Documentos para a defesa': a reserva, o pagamento, a política aceita com o texto e o que juntar por fora; montada na hora", async () => {
     const x = await disputada();
-    const d = await documentosParaDefesa(db, c.org, x.reservaId);
+    const d = await documentosParaDefesa(db, c.org, x.reservaId, { verValores: true });
     expect(d?.reserva.find(([k]) => k === "Reserva")?.[1]).toBe(x.reservaCodigo);
     expect(d?.pagamentos[0].linhas.find(([k]) => k === "Order no Mercado Pago")?.[1]).toBe(x.idProvedor);
     expect(d?.pagamentos[0].linhas.some(([k, v]) => k.startsWith("Contestação no cartão") && v === `caso ${x.idCaso}`)).toBe(true);
@@ -137,7 +141,7 @@ describe("o bloco da disputa na ficha (item 9: quem lê o quê)", () => {
     expect(d?.porFora.length).toBeGreaterThan(2);
     // Sem disputa, nada a montar.
     const y = await pagarEConfirmar(c, { entrada: "2026-11-02", saida: "2026-11-05" });
-    expect(await documentosParaDefesa(db, c.org, y.reservaId)).toBeNull();
+    expect(await documentosParaDefesa(db, c.org, y.reservaId, { verValores: true })).toBeNull();
   });
 
   it("os textos dos resultados vêm só das chaves conhecidas (?contestacao=)", () => {
@@ -241,5 +245,163 @@ describe("proprietário (item 27)", () => {
     expect(disputaParaOProprietario({ ...base, situacao: "ganha" })).toMatchObject({ variante: "devolvido", texto: expect.stringContaining("valor segurado devolvido (R$ 850,00) — a SCL ganhou a disputa em 10/03") });
     expect(disputaParaOProprietario({ ...base, situacao: "sem_efeito" }).variante).toBe("sem_efeito");
     expect(disputaParaOProprietario({ ...base, situacao: "aberta", parteProprietario: 0 }).texto).toContain("nada é descontado de você");
+  });
+});
+
+// ---------------------------------------------------------------- revisão das telas (11/10/2026)
+
+describe("revisão das telas (11/10/2026)", () => {
+  const sessaoAdmin = () => sessao("admin");
+
+  it("'Mudar quem arca': o formulário traz a explicação ao proprietário em vigor (o campo não vem vazio); 'Registrar' começa vazio", async () => {
+    const x = await disputada();
+    const [antes] = await lerContestacoesDaEquipe(db, sessaoAdmin(), x.reservaId, sp("2026-10-05 10:05"));
+    expect(antes.acoes.decidir?.explicacao).toBe("");
+    await decidir(x.id, "proporcional", sp("2026-10-06 10:00"), "O ar-condicionado do quarto parou.");
+    const [d] = await lerContestacoesDaEquipe(db, sessaoAdmin(), x.reservaId, sp("2026-10-06 10:05"));
+    expect(d.acoes.decidir?.modo).toBe("mudar");
+    expect(d.acoes.decidir?.explicacao).toBe("O ar-condicionado do quarto parou.");
+  });
+
+  it("prévia da decisão: cada opção mostra o que o proprietário e a SCL ficam da reserva, com o resultado perdido e com o ganho, também na pergunta", async () => {
+    const x = await disputada();
+    const pv = await previaDaDecisao(db, c.org, x.id);
+    if (!pv.ok) throw new Error(pv.erro);
+    const { parteProprietario: D, comissao: C } = pv.fatos.partes;
+    const [d] = await lerContestacoesDaEquipe(db, sessaoAdmin(), x.reservaId, sp("2026-10-05 10:05"));
+    for (const q of ["proprietario", "scl", "proporcional"] as const) {
+      const o = pv.fatos.opcoes[q]!;
+      const tela = d.acoes.decidir!.opcoes.find((y) => y.quemArca === q)!;
+      expect(tela.fica).toEqual({ perdida: { proprietario: formatBRL(D - o.proprietario), scl: formatBRL(C - o.scl) }, ganha: { proprietario: formatBRL(D), scl: formatBRL(C) } });
+      expect(tela.perguntas.imovel).toContain(`Com a disputa perdida, ficam da reserva: proprietário ${formatBRL(D - o.proprietario)}; SCL ${formatBRL(C - o.scl)}.`);
+      expect(tela.perguntas.imovel).toContain(`Ganha: proprietário ${formatBRL(D)}; SCL ${formatBRL(C)}.`);
+    }
+  });
+
+  it("'Texto para o proprietário': sem 'titular do cartão' num MED do Pix; pela situação depois do resultado (ganha volta, sem efeito nada fica, perdida é definitivo)", async () => {
+    const x = await pagarEConfirmar(c, { forma: "pix", liberar: true });
+    const reg = await registrarContestacaoDaEquipe(db, c.org, x.pagamentoId, { tipo: "med", abertaEm: "2026-10-05", valor: TOTAL, prazo: null, idCaso: null, nota: "MED visto no painel do Mercado Pago." }, equipe, null, sp("2026-10-05 10:00"));
+    if (!reg.ok) throw new Error(reg.erro);
+    await decidir(reg.contestacaoId, "proporcional", sp("2026-10-06 10:00"));
+    const [d] = await lerContestacoesDaEquipe(db, sessaoAdmin(), x.reservaId, sp("2026-10-06 10:05"));
+    const texto = d.decisao!.textoParaProprietario!;
+    expect(texto).not.toMatch(/cartão/i);
+    expect(texto).toContain(`Disputa do pagamento da reserva ${x.reservaCodigo}`);
+    expect(texto).toContain("ficam segurados dos seus próximos repasses até o resultado");
+    // Depois da ganha: o valor volta (nunca "são descontados").
+    const pr = await previaDoResultado(db, c.org, reg.contestacaoId);
+    if (!pr.ok) throw new Error(pr.erro);
+    const r = await confirmarResultado(db, c.org, reg.contestacaoId, { resultado: "ganha", data: "2026-10-08", nota: "Painel do Mercado Pago mostra ganha.", notaReforcada: true, versao: pr.fatos.versao, assinatura: pr.fatos.assinatura, tarifa: null }, equipe, null, sp("2026-10-08 10:00"));
+    if (!r.ok) throw new Error(r.erro);
+    const [g] = await lerContestacoesDaEquipe(db, sessaoAdmin(), x.reservaId, sp("2026-10-08 10:05"));
+    expect(g.decisao!.textoParaProprietario).not.toContain("são descontados");
+    expect(g.decisao!.textoParaProprietario).toMatch(/A SCL ganhou a disputa em 08\/10: o valor segurado \(R\$ [\d.,]+\) volta no repasse seguinte\./);
+    // Puro: sem efeito e perdida.
+    const base = { reservaCodigo: "SCL-TESTE1", causa: "Outro", valor: 100000, proprietario: 85000, explicacao: "", resultadoEm: "2026-10-09" };
+    expect(textoParaOProprietario({ ...base, situacao: "sem_efeito" })).toContain("A disputa foi encerrada sem efeito: nada fica descontado de você (o valor segurado, R$ 850,00, volta no repasse seguinte).");
+    expect(textoParaOProprietario({ ...base, situacao: "perdida" })).toContain("A SCL perdeu a disputa em 09/10: o desconto de R$ 850,00 dos seus repasses fica definitivo.");
+    expect(textoParaOProprietario({ ...base, situacao: "aberta", resultadoEm: null })).toContain("R$ 850,00 ficam segurados dos seus próximos repasses até o resultado");
+    for (const s of ["aberta", "ganha", "perdida", "sem_efeito"] as const) expect(textoParaOProprietario({ ...base, situacao: s })).not.toMatch(/cartão|titular/i);
+  });
+
+  it("Início: a disputa ambígua (aviso do pagamento) aparece com o texto próprio, com ou sem linha no quadro", async () => {
+    const textos = async () => (await avisosDeContestacao(db, c.org, sp("2026-10-02 12:00"))).map((a) => `${a.nivel}: ${a.texto}`);
+    // Sem linha nenhuma: a busca tardia achou uma disputa já encerrada num pagamento sem disputa no quadro.
+    const y = await pagarEConfirmar(c, { entrada: "2026-11-02", saida: "2026-11-05" });
+    await db.update(pagamentos).set({ avisos: ["contestacao_ambigua"] }).where(eq(pagamentos.id, y.pagamentoId));
+    const so = (await avisosDeContestacao(db, c.org, sp("2026-10-02 12:00"))).find((a) => a.texto.includes("não conseguiu casar"));
+    expect(so).toEqual({ nivel: "atencao", texto: "1 disputa(s) do pagamento que o sistema não conseguiu casar com as do quadro: confira no painel do Mercado Pago e registre pelo quadro.", link: `/painel/reservas/${y.reservaId}` });
+    // Com linha: a order mostra uma disputa B encerrada que o sistema nunca viu.
+    const x = await pagarEConfirmar(c, { forma: "cartao" });
+    c.provedor.contestar(x.idProvedor);
+    await conferirTentativa(db, c.org, x.pagamentoId, c.provedor, sp("2026-10-02 10:00"), { origem: "rotina", forcar: true });
+    const b = c.provedor.contestar(x.idProvedor);
+    c.provedor.resolverContestacao(b.idCaso, { estado: "settled" });
+    await conferirTentativa(db, c.org, x.pagamentoId, c.provedor, sp("2026-10-02 11:00"), { origem: "rotina", forcar: true });
+    expect((await c.tentativa(x.pagamentoId)).avisos).toContain("contestacao_ambigua");
+    expect(await textos()).toContain("atencao: 2 disputa(s) do pagamento que o sistema não conseguiu casar com as do quadro: confira no painel do Mercado Pago e registre pelo quadro.");
+  });
+
+  it("Minha reserva depois da disputa perdida: sem botão, com 'fale com a equipe' (cartão contestado e MED num Pix que segue aprovado)", async () => {
+    const x = await disputada();
+    const pr = await previaDoResultado(db, c.org, x.id);
+    if (!pr.ok) throw new Error(pr.erro);
+    const r = await confirmarResultado(
+      db,
+      c.org,
+      x.id,
+      { resultado: "perdida", data: "2026-10-08", nota: "Painel do Mercado Pago mostra perdida.", notaReforcada: true, versao: pr.fatos.versao, assinatura: pr.fatos.assinatura, tarifa: null, valorPerdido: pr.fatos.proposta.valorPerdido!, liquidoNaoEntrou: pr.fatos.proposta.liquidoNaoEntrou!, debitoEm: "2026-10-07" },
+      equipe,
+      null,
+      sp("2026-10-08 10:00"),
+    );
+    if (!r.ok) throw new Error(r.erro);
+    expect(await cancelamentoNoPortal(db, c.org, EMAIL_HOSPEDE, x.reservaCodigo, sp("2026-10-09 10:00"))).toMatchObject({ podePedir: false, emConferencia: false, faleComAEquipe: true });
+    // MED num Pix: o pagamento segue aprovado; perdida, o botão não volta.
+    const y = await pagarEConfirmar(c, { forma: "pix", liberar: true, entrada: "2026-11-02", saida: "2026-11-05" });
+    const reg = await registrarContestacaoDaEquipe(db, c.org, y.pagamentoId, { tipo: "med", abertaEm: "2026-10-05", valor: TOTAL, prazo: null, idCaso: null, nota: "MED visto no painel do Mercado Pago." }, equipe, null, sp("2026-10-05 10:00"));
+    if (!reg.ok) throw new Error(reg.erro);
+    expect(await cancelamentoNoPortal(db, c.org, EMAIL_HOSPEDE, y.reservaCodigo, sp("2026-10-05 11:00"))).toMatchObject({ podePedir: false, emConferencia: true, faleComAEquipe: true });
+    const pm = await previaDoResultado(db, c.org, reg.contestacaoId);
+    if (!pm.ok) throw new Error(pm.erro);
+    const rm = await confirmarResultado(
+      db,
+      c.org,
+      reg.contestacaoId,
+      { resultado: "perdida", data: "2026-10-08", nota: "Painel do Mercado Pago mostra a devolução.", notaReforcada: true, versao: pm.fatos.versao, assinatura: pm.fatos.assinatura, tarifa: null, valorPerdido: pm.fatos.proposta.valorPerdido!, liquidoNaoEntrou: pm.fatos.proposta.liquidoNaoEntrou!, debitoEm: "2026-10-07" },
+      equipe,
+      null,
+      sp("2026-10-08 10:00"),
+    );
+    if (!rm.ok) throw new Error(rm.erro);
+    expect((await c.tentativa(y.pagamentoId)).situacao).toBe("aprovado");
+    expect(await cancelamentoNoPortal(db, c.org, EMAIL_HOSPEDE, y.reservaCodigo, sp("2026-10-09 10:00"))).toMatchObject({ podePedir: false, emConferencia: false, faleComAEquipe: true });
+  });
+
+  it("hóspede da reserva cancelada por 'Cancelar a reserva contestada': 'em conferência', nunca 'não há devolução'", async () => {
+    const x = await disputada();
+    const quando = sp("2026-10-06 10:00");
+    const pv = await previaDoCancelamentoContestado(db, c.org, x.reservaId, quando);
+    if (!pv.ok) throw new Error(pv.erro);
+    const r = await cancelarReservaContestada(db, c.org, x.reservaId, { nota: "Titular não reconhece a compra.", assinatura: pv.previa.assinatura }, equipe, null, quando);
+    if (!r.ok) throw new Error(r.erro);
+    const v = await vistaDaCotacaoParaHospede(db, c.org, x.cotacaoId, sp("2026-10-06 11:00"), { comAutorizacao: false });
+    expect(v?.estado).toBe("cancelada_em_conferencia");
+    const t = textoDoCancelamento(paraOHospede(v!), TEXTOS_SITE_INICIAIS);
+    expect(t.linhas).toContain(TEXTOS_SITE_INICIAIS.cancelamentoEmConferencia);
+    expect(t.linhas.join(" ")).not.toContain(TEXTOS_SITE_INICIAIS.cancelamentoSemDevolucaoEquipe);
+    expect(t.linhas.join(" ")).not.toMatch(/não há devolução|chegou depois|contesta/i);
+  });
+
+  it("'Documentos para a defesa': o valor pago só para quem lê o financeiro; o resumo da reserva segue o desenho (sem o titular)", async () => {
+    const x = await disputada();
+    const semValores = await documentosParaDefesa(db, c.org, x.reservaId, { verValores: false });
+    expect(semValores?.pagamentos[0].linhas.some(([k]) => k === "Valor pago")).toBe(false);
+    expect(JSON.stringify(semValores)).not.toMatch(/R\$/);
+    const comValores = await documentosParaDefesa(db, c.org, x.reservaId, { verValores: true });
+    expect(comValores?.pagamentos[0].linhas.find(([k]) => k === "Valor pago")?.[1]).toBe(formatBRL(TOTAL));
+    for (const d of [semValores, comValores]) {
+      expect(d?.reserva.map(([k]) => k)).toEqual(["Reserva", "Imóvel", "Entrada e saída", "Pessoas"]);
+      expect(JSON.stringify(d)).not.toContain(NOME_HOSPEDE);
+    }
+  });
+
+  it("caso da Chargebacks API ainda sem cobertura (registrado com o número do caso): o quadro mostra a caixa reforçada no resultado e no sem efeito, e a confirmação conclui", async () => {
+    const x = await pagarEConfirmar(c, { forma: "cartao", entrada: "2026-11-20", saida: "2026-11-23" });
+    const [p] = await db.select().from(pagamentos).where(eq(pagamentos.id, x.pagamentoId));
+    const ids = c.provedor.contestarTarde(p.idPagamentoProvedor!);
+    // Registrada pela equipe com o número do caso (a releitura pode já tê-la posto no quadro: "já está no quadro").
+    await registrarContestacaoDaEquipe(db, c.org, x.pagamentoId, { tipo: "chargeback", abertaEm: "2026-10-05", valor: TOTAL, prazo: "2026-10-20", idCaso: ids.idCaso, nota: "Vista no painel do Mercado Pago." }, equipe, c.provedor, sp("2026-10-05 10:00"));
+    const [l] = await db.select().from(contestacoesPagamento).where(eq(contestacoesPagamento.pagamentoId, x.pagamentoId));
+    expect(l).toMatchObject({ situacao: "aberta", estadoLido: null, coberturaAplicada: null, idCaso: ids.idCaso });
+    const reg = { contestacaoId: l.id };
+    const [d] = await lerContestacoesDaEquipe(db, sessaoAdmin(), x.reservaId, sp("2026-10-06 10:00"));
+    expect(d.situacao).toBe("aberta");
+    expect(d.acoes.resultado?.emAndamento).toBe(true);
+    expect(d.acoes.semEfeito?.emAndamento).toBe(true);
+    const r = d.acoes.resultado!;
+    const entrada = { resultado: "ganha" as const, data: "2026-10-06", nota: "O painel do Mercado Pago já mostra o resultado.", versao: r.versao, assinatura: r.assinatura, tarifa: null };
+    expect(await confirmarResultado(db, c.org, reg.contestacaoId, { ...entrada, notaReforcada: false }, equipe, c.provedor, sp("2026-10-06 10:05"))).toMatchObject({ ok: false, codigo: "nota_reforcada" });
+    expect(await confirmarResultado(db, c.org, reg.contestacaoId, { ...entrada, notaReforcada: true }, equipe, c.provedor, sp("2026-10-06 10:10"))).toMatchObject({ ok: true });
   });
 });

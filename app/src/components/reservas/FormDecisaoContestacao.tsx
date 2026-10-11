@@ -12,8 +12,9 @@ const nota = { margin: 0, fontSize: "0.8125rem", color: "var(--scl-texto-2)" } a
 /**
  * "Registrar quem arca" e "Mudar quem arca" (M8.2e; desenho "Quem arca: a decisão da equipe"), para quem cuida do
  * financeiro. O sistema nunca escolhe: o formulário começa sem nada marcado. Cada causa mostra a frase da regra (editável em
- * Configurações → Pagamento no site) e cada opção de quem arca, os dois valores; os fatos da disputa e da estadia ficam ao
- * lado. A pergunta do BotaoConfirmar vem pronta do servidor para cada causa e opção (`perguntaDaDecisao`: causa, quem arca,
+ * Configurações → Pagamento no site) e cada opção de quem arca, os dois débitos e o que cada lado fica da reserva com o
+ * resultado perdido e com o ganho (a prévia); os fatos da disputa e da estadia ficam ao lado. No "Mudar", a explicação ao
+ * proprietário vem preenchida com a que está em vigor (enviar sem mexer a mantém). A pergunta do BotaoConfirmar vem pronta do servidor para cada causa e opção (`perguntaDaDecisao`: causa, quem arca,
  * os valores, o que fica segurado e, na fraude com o proprietário, a confirmação reforçada). Vão juntos a versão e a
  * assinatura da opção escolhida: se a disputa ou a reserva mudarem entre a tela e o clique, o servidor recusa.
  */
@@ -60,7 +61,13 @@ export function FormDecisaoContestacao({ contestacaoId, decisao: d, acao, perdid
             <input type="radio" name="quemArca" value={o.quemArca} checked={quemArca === o.quemArca} onChange={() => setQuemArca(o.quemArca)} /> {o.nome}
             <span style={nota}>
               {" "}
-              — proprietário {o.proprietario}; SCL {o.scl}
+              — proprietário {o.proprietario}; SCL {o.scl}. Fica da reserva — perdida: proprietário {o.fica.perdida.proprietario}, SCL {o.fica.perdida.scl}
+              {o.fica.ganha && (
+                <>
+                  ; ganha: proprietário {o.fica.ganha.proprietario}, SCL {o.fica.ganha.scl}
+                </>
+              )}
+              .
             </span>
           </label>
         ))}
@@ -75,8 +82,9 @@ export function FormDecisaoContestacao({ contestacaoId, decisao: d, acao, perdid
         <textarea name="nota" required maxLength={300} rows={2} />
       </label>
       <label>
-        Explicação ao proprietário (opcional, sem dados pessoais: aparece no extrato, no PDF e no e-mail, ao lado da causa)
-        <textarea name="explicacao" maxLength={300} rows={2} />
+        Explicação ao proprietário (opcional, sem dados pessoais: aparece no extrato, no PDF e no e-mail, ao lado da causa
+        {mudar ? "; vem com a explicação em vigor: apagar o campo apaga a explicação" : ""})
+        <textarea name="explicacao" maxLength={300} rows={2} defaultValue={d.explicacao} />
       </label>
       <div className={styles.acoes}>
         <BotaoConfirmar pergunta={pergunta} disabled={enviando || !opcao || !causa}>

@@ -46,8 +46,8 @@ export function FormCancelarContestada({ reservaId, calcular, cancelar }: { rese
       {previa && <input type="hidden" name="assinatura" value={previa.assinatura} />}
       <strong>Cancelar a reserva contestada (sem devolução pelo sistema)</strong>
       <p style={nota}>
-        Só antes do horário de entrada. A reserva fica cancelada e o valor pago fica retido: o dinheiro volta ao titular do cartão pela disputa, se ele
-        ganhar. Nenhuma devolução é pedida ao Mercado Pago.
+        Só antes do horário de entrada. A reserva fica cancelada e o valor pago fica retido: o dinheiro volta ao pagador pela disputa, se ele ganhar.
+        Nenhuma devolução é pedida ao Mercado Pago.
       </p>
       <label>
         Nota (obrigatória, sem dados pessoais)
@@ -66,7 +66,8 @@ export function FormCancelarContestada({ reservaId, calcular, cancelar }: { rese
         </div>
       )}
       <div className={styles.acoes}>
-        <button type="submit" disabled={enviando} className={previa ? styles.pequeno : undefined} onClick={() => (etapa.current = "calcular")}>
+        {/* A prévia é só leitura: não valida o formulário (a nota obrigatória é do passo 2, e o servidor a confere). */}
+        <button type="submit" formNoValidate disabled={enviando} className={previa ? styles.pequeno : undefined} onClick={() => (etapa.current = "calcular")}>
           {enviando ? "Aguarde…" : previa ? "Ver de novo" : "Ver o cancelamento"}
         </button>
         {previa && (

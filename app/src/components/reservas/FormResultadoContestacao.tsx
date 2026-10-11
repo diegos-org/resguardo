@@ -16,14 +16,30 @@ const nota = { margin: 0, fontSize: "0.8125rem", color: "var(--scl-texto-2)" } a
  * valores vêm preenchidos (o valor em disputa, o líquido que não entrou, o dia do débito). No "Ganhou": o dia em que o
  * dinheiro voltou (com o retido realizado) e, sem recebimento do pagamento, a liberação ali mesmo. No "Perdeu": o valor que
  * a SCL perdeu, quanto nunca entrou na conta e o dia do débito. A tarifa do Mercado Pago pela disputa é opcional nos dois.
- * Com a leitura de agora mostrando a disputa em andamento, a nota reforçada ("o painel do Mercado Pago já mostra o
- * resultado") é pedida. A pergunta do BotaoConfirmar vem do servidor, com a data e o valor digitados.
+ * Com a leitura de agora podendo mostrar a disputa em andamento (e sempre depois da recusa `nota_reforcada`), a caixa da
+ * nota reforçada ("o painel do Mercado Pago já mostra o resultado") aparece. O "nunca entrou na conta" é obrigatório (em
+ * branco, nunca vira zero) e, quando o domínio pede a liberação antes, o texto dele aparece. A pergunta do BotaoConfirmar
+ * vem do servidor, com a data e os valores digitados.
  */
 export function FormResultadoContestacao({ contestacaoId, resultado: r, acao, hoje }: { contestacaoId: string; resultado: ResultadoNaTela; acao: AcaoContestacao; hoje: string }) {
-  const [estado, enviar, enviando] = useActionState(async (_a: EstadoContestacaoPainel, f: FormData) => (await acao({}, f)) ?? {}, {} as EstadoContestacaoPainel);
+  // `pediuReforcada`: a recusa `nota_reforcada` já veio uma vez — a caixa fica na tela dali em diante (uma recusa seguinte por
+  // outro motivo não a esconde de novo).
+  const [estado, enviar, enviando] = useActionState(async (anterior: EstadoContestacaoPainel & { pediuReforcada?: boolean }, f: FormData) => {
+    const r = (await acao({}, f)) ?? {};
+    return { ...r, pediuReforcada: !!anterior.pediuReforcada || r.codigo === "nota_reforcada" };
+  }, {} as EstadoContestacaoPainel & { pediuReforcada?: boolean });
   const [escolha, setEscolha] = useState<"" | "ganha" | "perdida">("");
   const formulario = useRef<HTMLFormElement>(null);
-  const pergunta = () => (escolha && formulario.current ? perguntaComCampos(r.perguntas[escolha], new FormData(formulario.current), { dataNaPergunta: "data", valorNaPergunta: "valorPerdido" }) : "");
+  const pergunta = () => {
+    if (!escolha || !formulario.current) return "";
+    const dados = new FormData(formulario.current);
+    // O "nunca entrou na conta" digitado também vai na pergunta (quem confirma vê o que entra no caixa final).
+    const naoEntrou = perguntaComCampos("{valor}", dados, { valorNaPergunta: "liquidoNaoEntrou" });
+    return perguntaComCampos(r.perguntas[escolha], dados, { dataNaPergunta: "data", valorNaPergunta: "valorPerdido" }).replaceAll("{naoEntrou}", naoEntrou);
+  };
+  // A caixa da nota reforçada: quando a leitura pode mostrar a disputa em andamento e, sempre, depois da recusa
+  // `nota_reforcada` (a ação nunca fica travada sem a caixa que o domínio pede).
+  const reforcada = r.emAndamento || !!estado.pediuReforcada;
   return (
     <form
       ref={formulario}
@@ -88,10 +104,17 @@ export function FormResultadoContestacao({ contestacaoId, resultado: r, acao, ho
           </label>
           <p style={nota}>Preenchido com {r.contaDoPerdido}.</p>
           {!r.semReserva && (
-            <label>
-              Quanto deste pagamento nunca entrou na conta (R$; zero se o Mercado Pago já tinha liberado)
-              <input name="liquidoNaoEntrou" inputMode="decimal" defaultValue={r.proposta.liquidoNaoEntrou !== null ? centavosParaCampo(r.proposta.liquidoNaoEntrou) : ""} />
-            </label>
+            <>
+              {r.liberacaoAntes && (
+                <p role="note" className={styles.alerta} style={{ margin: 0 }}>
+                  {r.liberacaoAntes}
+                </p>
+              )}
+              <label>
+                Quanto deste pagamento nunca entrou na conta (R$; zero se o Mercado Pago já tinha liberado; obrigatório: o sistema não supõe)
+                <input name="liquidoNaoEntrou" inputMode="decimal" required defaultValue={r.proposta.liquidoNaoEntrou !== null ? centavosParaCampo(r.proposta.liquidoNaoEntrou) : ""} />
+              </label>
+            </>
           )}
           <label>
             Dia em que o Mercado Pago debitou
@@ -105,9 +128,9 @@ export function FormResultadoContestacao({ contestacaoId, resultado: r, acao, ho
           <input name="tarifa" inputMode="decimal" placeholder="em branco se não houve" />
         </label>
       )}
-      {r.emAndamento && (
+      {reforcada && (
         <label className={styles.check}>
-          <input type="checkbox" name="notaReforcada" value="sim" /> O painel do Mercado Pago já mostra o resultado (a leitura daqui ainda mostra a disputa em andamento)
+          <input type="checkbox" name="notaReforcada" value="sim" /> O painel do Mercado Pago já mostra o resultado (a leitura daqui ainda não o mostra)
         </label>
       )}
       <label>

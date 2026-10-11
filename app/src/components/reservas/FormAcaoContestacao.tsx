@@ -29,6 +29,11 @@ type Props = {
   opcaoNaPergunta?: { campo: string; textos: Readonly<Record<string, string>> };
   /** Botão secundário (ações raras ou de correção). */
   discreto?: boolean;
+  /**
+   * Campos que aparecem depois de uma recusa com este código do domínio e ficam na tela dali em diante (ex.: a caixa da
+   * nota reforçada depois de `nota_reforcada`): a ação nunca fica travada sem o campo que o domínio pede.
+   */
+  aposRecusa?: { codigo: string; campos: ReactNode };
   children?: ReactNode;
 };
 
@@ -56,8 +61,14 @@ export function perguntaComCampos(pergunta: string, dados: FormData, o: Pick<Pro
  * devolveu (a recusa do domínio, como veio; feito, a ação volta para a ficha com o resultado). Envia pelo `onSubmit` (não
  * pelo `action` do formulário) para o React não limpar os campos: numa recusa, o que foi digitado continua ali.
  */
-export function FormAcaoContestacao({ acao, rotulo, nome, contestacaoId, pagamentoId, pergunta, valorNaPergunta, dataNaPergunta, opcaoNaPergunta, discreto, children }: Props) {
-  const [estado, enviar, enviando] = useActionState(async (_a: EstadoContestacaoPainel, f: FormData) => (await acao({}, f)) ?? {}, {} as EstadoContestacaoPainel);
+export function FormAcaoContestacao({ acao, rotulo, nome, contestacaoId, pagamentoId, pergunta, valorNaPergunta, dataNaPergunta, opcaoNaPergunta, discreto, aposRecusa, children }: Props) {
+  const [estado, enviar, enviando] = useActionState(
+    async (anterior: EstadoContestacaoPainel & { recusouPor?: boolean }, f: FormData) => {
+      const r = (await acao({}, f)) ?? {};
+      return { ...r, recusouPor: !!anterior.recusouPor || (!!aposRecusa && r.codigo === aposRecusa.codigo) };
+    },
+    {} as EstadoContestacaoPainel & { recusouPor?: boolean },
+  );
   const formulario = useRef<HTMLFormElement>(null);
   const comCampos = valorNaPergunta || dataNaPergunta || opcaoNaPergunta;
   return (
@@ -75,6 +86,7 @@ export function FormAcaoContestacao({ acao, rotulo, nome, contestacaoId, pagamen
       {contestacaoId && <input type="hidden" name="contestacaoId" value={contestacaoId} />}
       {pagamentoId && <input type="hidden" name="pagamentoId" value={pagamentoId} />}
       {children}
+      {estado.recusouPor && aposRecusa?.campos}
       <div className={discreto ? undefined : styles.acoes}>
         <BotaoConfirmar
           pergunta={comCampos ? () => (formulario.current ? perguntaComCampos(pergunta, new FormData(formulario.current), { valorNaPergunta, dataNaPergunta, opcaoNaPergunta }) : pergunta) : pergunta}

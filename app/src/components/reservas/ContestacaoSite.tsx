@@ -91,6 +91,15 @@ function FormDocumentos({ id, desde, hoje }: { id: string; desde: string; hoje: 
   );
 }
 
+/** A caixa da nota reforçada do "Encerrar sem efeito" (a leitura de agora pode mostrar a disputa em andamento). */
+function CaixaReforcadaSemEfeito() {
+  return (
+    <label className={styles.check} style={{ flex: "1 1 100%" }}>
+      <input type="checkbox" name="notaReforcada" value="sim" /> O painel do Mercado Pago já mostra a disputa encerrada (a leitura daqui ainda não mostra o encerramento)
+    </label>
+  );
+}
+
 /** O bloco de uma disputa para quem lê a reserva sem o financeiro: a frase, a situação e o prazo, e as ações de documentos. */
 function DisputaResumida({ d, reservaId, hoje, defesa }: { d: ContestacaoNaTela; reservaId: string; hoje: string; defesa: boolean }) {
   return (
@@ -256,6 +265,7 @@ function DisputaDaEquipe({ d, reservaId, hoje, defesa }: { d: ContestacaoDaEquip
             rotulo="Encerrar sem efeito"
             nome="Encerrar sem efeito"
             discreto
+            aposRecusa={a.semEfeito.emAndamento ? undefined : { codigo: "nota_reforcada", campos: <CaixaReforcadaSemEfeito /> }}
             pergunta="Encerrar esta disputa sem efeito (registrada por engano, duplicata, ou reclamação resolvida sem dinheiro)? Os lançamentos previstos dela são desfeitos no mês corrente, a devolução que ela substituía volta a ser devida e o pagamento volta à situação de antes. Não se desfaz."
           >
             {a.semEfeito.pedeVolta && (
@@ -264,11 +274,7 @@ function DisputaDaEquipe({ d, reservaId, hoje, defesa }: { d: ContestacaoDaEquip
                 <input type="date" name="voltaEm" max={hoje} required />
               </label>
             )}
-            {a.semEfeito.emAndamento && (
-              <label className={styles.check} style={{ flex: "1 1 100%" }}>
-                <input type="checkbox" name="notaReforcada" value="sim" /> O painel do Mercado Pago já mostra a disputa encerrada (a leitura daqui ainda a mostra em andamento)
-              </label>
-            )}
+            {a.semEfeito.emAndamento && <CaixaReforcadaSemEfeito />}
             <label style={{ flex: "1 1 260px" }}>
               Por que fica sem efeito (obrigatória, sem dados pessoais)
               <input name="nota" required maxLength={300} />

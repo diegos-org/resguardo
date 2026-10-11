@@ -18,6 +18,7 @@ const m = vi.hoisted(() => ({
   correio: vi.fn(() => null),
   reservaDaContestacao: vi.fn(),
   reservaDoPagamento: vi.fn(),
+  reservaDaOrganizacao: vi.fn(),
   registrar: vi.fn(),
   debito: vi.fn(),
   decidir: vi.fn(),
@@ -38,7 +39,7 @@ vi.mock("next/cache", () => ({ revalidatePath: m.revalidar }));
 vi.mock("next/navigation", () => ({ redirect: m.redirect }));
 vi.mock("@/email/correio", () => ({ correioDoAmbiente: m.correio }));
 vi.mock("./oferta", () => ({ provedorDeConferencia: m.gate }));
-vi.mock("./contestacao-tela", () => ({ reservaDaContestacao: m.reservaDaContestacao, reservaDoPagamento: m.reservaDoPagamento }));
+vi.mock("./contestacao-tela", () => ({ reservaDaContestacao: m.reservaDaContestacao, reservaDoPagamento: m.reservaDoPagamento, reservaDaOrganizacao: m.reservaDaOrganizacao }));
 vi.mock("./contestacao", () => ({
   registrarContestacaoDaEquipe: m.registrar,
   confirmarDebito: m.debito,
@@ -109,6 +110,7 @@ beforeEach(() => {
   m.gate.mockResolvedValue({ ok: true, provedor, ambiente: "teste" });
   m.reservaDaContestacao.mockResolvedValue({ reservaId: RESERVA, pagamentoId: PAGAMENTO });
   m.reservaDoPagamento.mockResolvedValue({ reservaId: RESERVA });
+  m.reservaDaOrganizacao.mockResolvedValue({ reservaId: RESERVA });
   for (const f of dominio) f.mockResolvedValue({ ok: true, contestacaoId: CONTESTACAO });
 });
 
@@ -224,7 +226,8 @@ describe("validação antes do domínio e o resultado pela chave fixa", () => {
     await expect(confirmarResultadoAcao({}, form({ contestacaoId: CONTESTACAO, resultado: "perdida", data: "2026-10-10", versao: "1", assinatura: ASSINATURA, valorPerdido: "1.000,00", debitoEm: "2026-10-08" }))).rejects.toThrow(
       "?contestacao=perdida",
     );
-    expect(m.resultado.mock.calls[1][3]).toEqual({ resultado: "perdida", data: "2026-10-10", nota: "", notaReforcada: false, versao: 1, assinatura: ASSINATURA, tarifa: null, valorPerdido: 100000, liquidoNaoEntrou: 0, debitoEm: "2026-10-08" });
+    // O "nunca entrou na conta" em branco vai como null: o domínio recusa (avisar em vez de supor que entrou tudo).
+    expect(m.resultado.mock.calls[1][3]).toEqual({ resultado: "perdida", data: "2026-10-10", nota: "", notaReforcada: false, versao: 1, assinatura: ASSINATURA, tarifa: null, valorPerdido: 100000, liquidoNaoEntrou: null, debitoEm: "2026-10-08" });
     // Só uma das duas da liberação: recusa.
     expect((await confirmarResultadoAcao({}, form({ contestacaoId: CONTESTACAO, resultado: "ganha", data: "2026-10-10", versao: "1", assinatura: ASSINATURA, liberacaoData: "2026-10-09" }))).mensagem).toContain("liberação");
   });
@@ -249,5 +252,29 @@ describe("validação antes do domínio e o resultado pela chave fixa", () => {
     m.cancelar.mockResolvedValue({ ok: true, cancelamentoId: "c1", valorRetido: 182400 });
     await expect(cancelarReservaContestadaAcao({}, form({ reservaId: RESERVA, nota: "Titular não reconhece.", assinatura: ASSINATURA }))).rejects.toThrow(`REDIRECT /painel/reservas/${RESERVA}?contestacao=cancelada`);
     expect(m.cancelar).toHaveBeenCalledWith({ banco: true }, "org", RESERVA, { nota: "Titular não reconhece.", assinatura: ASSINATURA }, "u", provedor, expect.any(Date));
+  });
+});
+
+describe("revisão das telas (11/10/2026)", () => {
+  it("Perdeu: 'quanto nunca entrou na conta' em branco não vira zero; digitado, vai em centavos", async () => {
+    await expect(confirmarResultadoAcao({}, form({ contestacaoId: CONTESTACAO, resultado: "perdida", data: "2026-10-10", versao: "1", assinatura: ASSINATURA, valorPerdido: "1.000,00", liquidoNaoEntrou: "" }))).rejects.toThrow("?contestacao=perdida");
+    expect(m.resultado.mock.calls[0][3]).toMatchObject({ valorPerdido: 100000, liquidoNaoEntrou: null });
+    await expect(confirmarResultadoAcao({}, form({ contestacaoId: CONTESTACAO, resultado: "perdida", data: "2026-10-10", versao: "1", assinatura: ASSINATURA, valorPerdido: "1.000,00", liquidoNaoEntrou: "39,80" }))).rejects.toThrow("?contestacao=perdida");
+    expect(m.resultado.mock.calls[1][3]).toMatchObject({ liquidoNaoEntrou: 3980 });
+    // A recusa do domínio volta com o código (o formulário mostra a caixa da nota reforçada por ele).
+    m.resultado.mockResolvedValue({ ok: false, erro: "O Mercado Pago ainda mostra esta disputa em andamento.", codigo: "nota_reforcada" });
+    expect(await confirmarResultadoAcao({}, form({ contestacaoId: CONTESTACAO, resultado: "ganha", data: "2026-10-10", versao: "1", assinatura: ASSINATURA }))).toMatchObject({ codigo: "nota_reforcada" });
+    m.semEfeito.mockResolvedValue({ ok: false, erro: "O Mercado Pago ainda mostra esta disputa em andamento.", codigo: "nota_reforcada" });
+    expect(await encerrarSemEfeitoAcao({}, form({ contestacaoId: CONTESTACAO, nota: "Engano." }))).toMatchObject({ codigo: "nota_reforcada" });
+  });
+
+  it("cancelar a reserva contestada: a reserva é resolvida na empresa da sessão antes de ler o Mercado Pago (de outra empresa: 'não encontrada', sem chamada)", async () => {
+    m.reservaDaOrganizacao.mockResolvedValue(null);
+    expect(await cancelarReservaContestadaAcao({}, form({ reservaId: RESERVA, nota: "Titular não reconhece.", assinatura: ASSINATURA }))).toMatchObject({ mensagem: "Reserva não encontrada." });
+    expect(m.reservaDaOrganizacao).toHaveBeenCalledWith({ banco: true }, "org", RESERVA);
+    expect(m.gate).not.toHaveBeenCalled();
+    expect(m.cancelar).not.toHaveBeenCalled();
+    expect(await previaDoCancelamentoContestadoAcao({}, form({ reservaId: RESERVA }))).toMatchObject({ mensagem: "Reserva não encontrada." });
+    expect(m.previaCancelar).not.toHaveBeenCalled();
   });
 });

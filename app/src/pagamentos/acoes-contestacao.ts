@@ -10,9 +10,10 @@
  * - `financeiro:editar` para todas, menos "Documentos enviados" (`reserva:editar` ou `financeiro:editar`) e "Cancelar a
  *   reserva contestada" (`reserva:editar` **e** `financeiro:editar`). O papel proprietário não edita o financeiro: nunca
  *   passa daqui.
- * - O id da disputa e o do pagamento vindos do formulário são resolvidos na empresa da sessão antes de qualquer outra coisa
- *   (`reservaDaContestacao`, `reservaDoPagamento`): de outra empresa, "não encontrada", sem ler o Mercado Pago e sem
- *   gravar nada (o domínio confere de novo, com `contestacaoDaOrganizacao`/`pagamentoDaOrganizacao`).
+ * - O id da disputa, o do pagamento e o da reserva vindos do formulário são resolvidos na empresa da sessão antes de qualquer
+ *   outra coisa (`reservaDaContestacao`, `reservaDoPagamento`, `reservaDaOrganizacao`): de outra empresa, "não encontrada",
+ *   sem ler o Mercado Pago e sem gravar nada (o domínio confere de novo, com `contestacaoDaOrganizacao`,
+ *   `pagamentoDaOrganizacao` e `localizar`).
  * - A leitura do Mercado Pago (fase 0) usa `provedorDeConferencia`; sem ele, o domínio segue com a nota "sem leitura".
  * - As notas passam pelo validador de dados pessoais aqui e de novo no domínio. Numa recusa, o que foi digitado volta em
  *   `valores`; feito, volta para a ficha com a chave fixa do resultado (`?contestacao=`).
@@ -42,7 +43,7 @@ import {
   registrarDecisao,
 } from "./contestacao";
 import { LIMITE_NOTA_CONTESTACAO, TEXTO_CONTESTACAO_PREVIA_MUDOU, TEXTO_DECISAO_MUDOU } from "./contestacao-regras";
-import { reservaDaContestacao, reservaDoPagamento, type ResultadoDaContestacao } from "./contestacao-tela";
+import { reservaDaContestacao, reservaDaOrganizacao, reservaDoPagamento, type ResultadoDaContestacao } from "./contestacao-tela";
 import { provedorDeConferencia } from "./oferta";
 import type { ProvedorPagamento } from "./provedor";
 
@@ -340,7 +341,9 @@ export async function confirmarResultadoAcao(_e: EstadoContestacaoPainel, form: 
     if (liquidoNaoEntrou === "invalido") return { mensagem: "Informe quanto deste pagamento nunca entrou na conta, em reais (zero se entrou tudo).", valores };
     if (debitoEm === "invalido") return { mensagem: "Informe o dia em que o Mercado Pago debitou.", valores };
     e.valorPerdido = valorPerdido;
-    e.liquidoNaoEntrou = liquidoNaoEntrou ?? 0;
+    // Em branco vai como null, nunca zero: o domínio recusa (avisar em vez de supor que o dinheiro entrou todo); no pagamento
+    // sem reserva, o domínio não lê o campo.
+    e.liquidoNaoEntrou = liquidoNaoEntrou;
     e.debitoEm = debitoEm;
   }
   const r = await confirmarResultado(getDb(), sessao.organizacaoId, ref.id, e, sessao.usuarioId, await provedorDaLeitura(), new Date());
@@ -388,7 +391,7 @@ export async function previaDoCancelamentoContestadoAcao(_e: EstadoContestacaoPa
   const sessao = await sessaoDoCancelamento();
   const valores = campos(form);
   const reservaId = texto(form, "reservaId");
-  if (!uuidValido(reservaId)) return { mensagem: RESERVA_NAO_ENCONTRADA, valores };
+  if (!uuidValido(reservaId) || !(await reservaDaOrganizacao(getDb(), sessao.organizacaoId, reservaId))) return { mensagem: RESERVA_NAO_ENCONTRADA, valores };
   const r = await previaDoCancelamentoContestado(getDb(), sessao.organizacaoId, reservaId, new Date());
   if (!r.ok) return recusa(r, valores);
   const { valorPago, valorRetido, avisos, assinatura, pergunta } = r.previa;
@@ -400,7 +403,9 @@ export async function cancelarReservaContestadaAcao(_e: EstadoContestacaoPainel,
   const sessao = await sessaoDoCancelamento();
   const valores = campos(form);
   const reservaId = texto(form, "reservaId");
-  if (!uuidValido(reservaId)) return { mensagem: RESERVA_NAO_ENCONTRADA, valores };
+  // A reserva na empresa da sessão antes de qualquer outra coisa (a leitura do Mercado Pago vem depois): de outra empresa,
+  // "não encontrada", sem chamada ao provedor.
+  if (!uuidValido(reservaId) || !(await reservaDaOrganizacao(getDb(), sessao.organizacaoId, reservaId))) return { mensagem: RESERVA_NAO_ENCONTRADA, valores };
   const nota = texto(form, "nota");
   const problema = problemaDaNota(nota, "Escreva por que cancelar a reserva contestada (obrigatória, sem dados pessoais).");
   if (problema) return { mensagem: problema, valores };

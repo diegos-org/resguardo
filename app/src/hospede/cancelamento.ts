@@ -26,6 +26,7 @@ import { avisarEquipePorEmail, type ResultadoAviso } from "@/email/aviso-equipe"
 import type { Correio } from "@/email/correio";
 import { hojeISO, instanteLocal } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
+import { disputaDoPagamento } from "@/pagamentos/contestacao-regras";
 import { entradasDaReserva } from "@/pagamentos/entradas";
 import { devolucaoInexplicada, devolucoesDoPagamento, devolvidoPeloSistema, type Pagamento, pagamentosDaReserva, travarCotacao } from "@/pagamentos/travas";
 import { politicaDoPagamento } from "@/site/aceites";
@@ -51,10 +52,17 @@ export type CancelamentoNoPortal = {
   /** Onde acompanhar: a página da reserva no site. */
   linkCotacao: string;
   /**
-   * M8.2e: algum pagamento da reserva está em disputa em curso ("pagamento em conferência"): o botão some e a página diz
-   * "Para cancelar, fale com a equipe.", com a frase editável de Textos do site.
+   * M8.2e: algum pagamento da reserva está em disputa em curso, sem resultado (`disputaDoPagamento` = em curso: aberta, a
+   * confirmar, ou ganha que o Mercado Pago voltou a mostrar em andamento): a frase editável "pagamento em conferência" de
+   * Textos do site.
    */
   emConferencia: boolean;
+  /**
+   * M8.2e: a regra única do "em curso" (`contestacaoEmCurso`: em curso ou perdida) recusa o cancelamento pela política: o
+   * botão some e a página diz "Para cancelar, fale com a equipe." (nunca o sumiço sem explicação, nem um botão que a equipe
+   * não consegue atender).
+   */
+  faleComAEquipe: boolean;
 };
 
 /** A mesma resposta para qualquer recusa que diga respeito a quem é o hóspede (nunca revela se a reserva existe). */
@@ -105,15 +113,26 @@ async function reservaDoHospede(db: Db, organizacaoId: string, email: string, re
   const devolucoes = daReserva.length ? await db.select().from(devolucoesPagamento).where(inArray(devolucoesPagamento.pagamentoId, daReserva.map((x) => x.id))) : [];
   const fuso = r.fuso || "America/Sao_Paulo";
   const horaEntrada = horaDeEntrada(r.hora);
-  // M8.2e: uma disputa em curso (aberta ou a confirmar) num pagamento com o dinheiro da reserva.
-  const [disputa] = daReserva.length
+  // M8.2e: as disputas dos pagamentos com o dinheiro da reserva, pela regra única (`disputaDoPagamento`): em curso (a frase
+  // "pagamento em conferência") ou perdida (recusa o cancelamento pela política do mesmo jeito).
+  const contestacoes = daReserva.length
     ? await db
-        .select({ id: contestacoesPagamento.id })
+        .select({ pagamentoId: contestacoesPagamento.pagamentoId, situacao: contestacoesPagamento.situacao, avisos: contestacoesPagamento.avisos, estadoLido: contestacoesPagamento.estadoLido })
         .from(contestacoesPagamento)
-        .where(and(eq(contestacoesPagamento.organizacaoId, organizacaoId), inArray(contestacoesPagamento.pagamentoId, daReserva.map((x) => x.id)), inArray(contestacoesPagamento.situacao, ["aberta", "a_confirmar"])))
-        .limit(1)
+        .where(and(eq(contestacoesPagamento.organizacaoId, organizacaoId), inArray(contestacoesPagamento.pagamentoId, daReserva.map((x) => x.id))))
     : [];
-  return { email: e, r, p, fuso, horaEntrada, entradaEm: instanteLocal(r.checkin, horaEntrada, fuso), aprovados: todosAprovados(daReserva, devolucoes), emConferencia: !!disputa };
+  const disputas = daReserva.map((x) => disputaDoPagamento({ contestacoes }, x.id));
+  return {
+    email: e,
+    r,
+    p,
+    fuso,
+    horaEntrada,
+    entradaEm: instanteLocal(r.checkin, horaEntrada, fuso),
+    aprovados: todosAprovados(daReserva, devolucoes),
+    emConferencia: disputas.includes("em_curso"),
+    faleComAEquipe: disputas.some((d) => d !== null),
+  };
 }
 
 /**
@@ -160,7 +179,7 @@ export async function cancelamentoNoPortal(db: Db, organizacaoId: string, email:
     : null;
   const pedidoEm = ativo?.situacao === "pedido" ? ativo.pedidoRecebidoEm : null;
   return {
-    podePedir: ligado && !pedidoEm && x.aprovados && agora.getTime() < x.entradaEm.getTime(),
+    podePedir: ligado && !pedidoEm && x.aprovados && !x.faleComAEquipe && agora.getTime() < x.entradaEm.getTime(),
     pedidoEm,
     integralAte: decisao?.integralAte ?? null,
     arrependimentoAte: decisao?.arrependimentoAte ?? null,
@@ -170,6 +189,7 @@ export async function cancelamentoNoPortal(db: Db, organizacaoId: string, email:
     semPolitica: !politica,
     linkCotacao: `/reservar/${x.p.cotacaoCodigo}`,
     emConferencia: x.emConferencia,
+    faleComAEquipe: x.faleComAEquipe,
   };
 }
 

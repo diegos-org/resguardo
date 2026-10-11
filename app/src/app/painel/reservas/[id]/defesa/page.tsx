@@ -23,7 +23,7 @@ function Linhas({ linhas }: { linhas: readonly [string, string][] }) {
 /**
  * Ficha da reserva → "Documentos para a defesa" (M8.2e; desenho "Painel"): uma página para imprimir (ou salvar em PDF pelo
  * navegador) e enviar pelo painel do Mercado Pago, montada na hora e nunca gravada — o resumo da reserva, o pagamento de
- * cada disputa (ids, data, forma, verificação do banco), a Política de cancelamento que o hóspede aceitou (versão, horário e
+ * cada disputa (ids, data, forma, verificação do banco; o valor pago só para quem lê o financeiro), a Política de cancelamento que o hóspede aceitou (versão, horário e
  * texto), a lista da portaria (quando o imóvel exige) e o que a equipe junta por fora. Só para quem edita a reserva ou o
  * financeiro; reserva de outra empresa ou sem disputa = não encontrada.
  */
@@ -31,7 +31,8 @@ export default async function DocumentosParaDefesa({ params }: PageProps<"/paine
   const sessao = await exigirSessaoPainel();
   if (!podeFazer(sessao.papel, "reserva:editar") && !podeFazer(sessao.papel, "financeiro:editar")) notFound();
   const { id } = await params;
-  const d = await documentosParaDefesa(getDb(), sessao.organizacaoId, id);
+  // O valor pago só para quem lê o financeiro (como a ficha): a operação abre a página para mandar os documentos, sem valores.
+  const d = await documentosParaDefesa(getDb(), sessao.organizacaoId, id, { verValores: podeFazer(sessao.papel, "financeiro:ler") && sessao.papel !== "proprietario" });
   if (!d) notFound();
   return (
     <article aria-label="Documentos para a defesa" style={{ maxWidth: 820, display: "flex", flexDirection: "column", gap: 16 }}>

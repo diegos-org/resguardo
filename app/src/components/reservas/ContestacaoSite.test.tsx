@@ -15,6 +15,9 @@ const m = vi.hoisted(() => ({
   resultado: vi.fn<Acao>(async () => ({})),
   documentos: vi.fn<Acao>(async () => ({})),
   registrar: vi.fn<Acao>(async () => ({})),
+  mudar: vi.fn<Acao>(async () => ({})),
+  semEfeito: vi.fn<Acao>(async () => ({})),
+  previaCancelar: vi.fn<Acao>(async () => ({})),
 }));
 vi.mock("@/pagamentos/acoes-contestacao", () => ({
   atualizarValorSeguradoAcao: vi.fn(),
@@ -23,11 +26,11 @@ vi.mock("@/pagamentos/acoes-contestacao", () => ({
   confirmarDebitoAcao: vi.fn(),
   confirmarOutraDisputaAcao: vi.fn(),
   confirmarResultadoAcao: m.resultado,
-  encerrarSemEfeitoAcao: vi.fn(),
+  encerrarSemEfeitoAcao: m.semEfeito,
   informarPrazoAcao: vi.fn(),
   marcarDocumentosEnviadosAcao: m.documentos,
-  mudarDecisaoAcao: vi.fn(),
-  previaDoCancelamentoContestadoAcao: vi.fn(),
+  mudarDecisaoAcao: m.mudar,
+  previaDoCancelamentoContestadoAcao: m.previaCancelar,
   registrarDecisaoAcao: m.decidir,
   registrarDisputaAcao: m.registrar,
 }));
@@ -98,12 +101,29 @@ const decidir: DecisaoNaTela = {
     { codigo: "fraude", nome: "Fraude", frase: "o titular do cartão não reconhece a compra" },
   ],
   opcoes: [
-    { quemArca: "proprietario", nome: "O proprietário", proprietario: "R$ 1.200,00", scl: "R$ 0,00", assinatura: "aaaaaaaaaaaaaaaa", perguntas: perguntas("o proprietário") },
-    { quemArca: "scl", nome: "A SCL", proprietario: "R$ 0,00", scl: "R$ 1.824,00", assinatura: "bbbbbbbbbbbbbbbb", perguntas: perguntas("a SCL") },
+    {
+      quemArca: "proprietario",
+      nome: "O proprietário",
+      proprietario: "R$ 1.200,00",
+      scl: "R$ 0,00",
+      fica: { perdida: { proprietario: "-R$ 392,33", scl: "R$ 142,53" }, ganha: { proprietario: "R$ 807,67", scl: "R$ 142,53" } },
+      assinatura: "aaaaaaaaaaaaaaaa",
+      perguntas: perguntas("o proprietário"),
+    },
+    {
+      quemArca: "scl",
+      nome: "A SCL",
+      proprietario: "R$ 0,00",
+      scl: "R$ 1.824,00",
+      fica: { perdida: { proprietario: "R$ 807,67", scl: "-R$ 1.681,47" }, ganha: { proprietario: "R$ 807,67", scl: "R$ 142,53" } },
+      assinatura: "bbbbbbbbbbbbbbbb",
+      perguntas: perguntas("a SCL"),
+    },
   ],
   semOpcao: [],
   fatos: ["Aberta em 05/10, antes da entrada (12/10)."],
   atualizacao: null,
+  explicacao: "",
 };
 const resultado: ResultadoNaTela = {
   versao: 1,
@@ -114,6 +134,7 @@ const resultado: ResultadoNaTela = {
   retidoRealizado: false,
   semRecebimento: false,
   proposta: { valorPerdido: 182400, liquidoNaoEntrou: 173371, debitoEm: "2026-10-09", liquido: 173371 },
+  liberacaoAntes: null,
   contaDoPerdido: "o valor em disputa",
   desde: "2026-10-01",
   perguntas: { ganha: "Confirmar que a SCL ganhou a disputa em {data}? (teste)", perdida: "Confirmar que a SCL perdeu {valor} em {data}? (teste)" },
@@ -301,5 +322,80 @@ describe("Cancelar a reserva contestada (M8.2e)", () => {
     expect(container.innerHTML).toBe("");
     render(<CancelarContestada reservaId="r1" mostrar />);
     expect(screen.getByRole("button", { name: "Cancelar a reserva contestada" })).toBeTruthy();
+  });
+});
+
+describe("revisão das telas (11/10/2026)", () => {
+  it("mudar quem arca: a explicação ao proprietário em vigor vem no campo (enviar sem mexer a mantém)", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    const mudar: DecisaoNaTela = { ...decidir, versao: 1, modo: "mudar", explicacao: "O ar-condicionado do quarto parou." };
+    render(<ContestacaoSite reservaId="r1" pagamento={pagamento} equipe={[equipe({}, { decidir: mudar })]} operacao={[]} editarFinanceiro={false} defesa={false} hoje={HOJE} />);
+    const form = screen.getByRole("form", { name: "Mudar quem arca" });
+    const campo = within(form).getByLabelText(/Explicação ao proprietário/) as HTMLTextAreaElement;
+    expect(campo.value).toBe("O ar-condicionado do quarto parou.");
+    fireEvent.click(within(form).getByLabelText(/Problema no imóvel/));
+    fireEvent.click(within(form).getByLabelText(/O proprietário/));
+    fireEvent.change(within(form).getByLabelText(/Por que mudar/), { target: { value: "nota fictícia" } });
+    fireEvent.click(within(form).getByRole("button", { name: "Mudar quem arca" }));
+    await vi.waitFor(() => expect(m.mudar).toHaveBeenCalled());
+    expect(m.mudar.mock.calls[0]![1].get("explicacao")).toBe("O ar-condicionado do quarto parou.");
+  });
+
+  it("a prévia de cada opção: o débito de cada lado e o que cada um fica da reserva, perdida e ganha", () => {
+    render(<ContestacaoSite reservaId="r1" pagamento={pagamento} equipe={[equipe({}, { decidir })]} operacao={[]} editarFinanceiro={false} defesa={false} hoje={HOJE} />);
+    const form = screen.getByRole("form", { name: "Registrar quem arca" });
+    const opcao = within(form).getByLabelText(/O proprietário/).closest("label")!;
+    expect(opcao.textContent).toContain("proprietário R$ 1.200,00; SCL R$ 0,00");
+    expect(opcao.textContent).toContain("perdida: proprietário -R$ 392,33, SCL R$ 142,53");
+    expect(opcao.textContent).toContain("ganha: proprietário R$ 807,67, SCL R$ 142,53");
+  });
+
+  it("confirmar o resultado: a recusa 'nota reforçada' mostra a caixa (a leitura não mostrava em andamento); o 'nunca entrou' é obrigatório e vai na pergunta", async () => {
+    const confirmar = vi.fn<(pergunta: string) => boolean>(() => true);
+    vi.stubGlobal("confirm", confirmar);
+    m.resultado.mockResolvedValueOnce({ ok: false, mensagem: "O Mercado Pago ainda mostra esta disputa em andamento.", codigo: "nota_reforcada" } as never);
+    const r: ResultadoNaTela = { ...resultado, perguntas: { ...resultado.perguntas, perdida: "Perdeu {valor} em {data}; nunca entrou: {naoEntrou}? (teste)" } };
+    render(<ContestacaoSite reservaId="r1" pagamento={pagamento} equipe={[equipe({}, { resultado: r })]} operacao={[]} editarFinanceiro={false} defesa={false} hoje={HOJE} />);
+    const form = screen.getByRole("form", { name: "Confirmar o resultado" });
+    expect(form.querySelector('input[name="notaReforcada"]')).toBeNull();
+    fireEvent.click(within(form).getByLabelText(/Perdeu/));
+    const naoEntrou = within(form).getByLabelText(/nunca entrou na conta/) as HTMLInputElement;
+    expect(naoEntrou.required).toBe(true);
+    fireEvent.change(naoEntrou, { target: { value: "39,80" } });
+    fireEvent.change(within(form).getByLabelText(/Data do resultado/), { target: { value: "2026-10-10" } });
+    fireEvent.click(within(form).getByRole("button", { name: "Confirmar o resultado" }));
+    expect(confirmar).toHaveBeenCalledWith("Perdeu R$ 1.824,00 em 10/10/2026; nunca entrou: R$ 39,80? (teste)");
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(within(form).getByLabelText(/O painel do Mercado Pago já mostra o resultado/)).toBeTruthy();
+  });
+
+  it("confirmar o resultado: o líquido desconhecido (proposta vazia) e o pedido de registrar a liberação antes aparecem em palavras", () => {
+    const r: ResultadoNaTela = { ...resultado, proposta: { ...resultado.proposta, liquidoNaoEntrou: null }, liberacaoAntes: "Registre a liberação à mão antes (teste)." };
+    render(<ContestacaoSite reservaId="r1" pagamento={pagamento} equipe={[equipe({}, { resultado: r })]} operacao={[]} editarFinanceiro={false} defesa={false} hoje={HOJE} />);
+    const form = screen.getByRole("form", { name: "Confirmar o resultado" });
+    fireEvent.click(within(form).getByLabelText(/Perdeu/));
+    expect((within(form).getByLabelText(/nunca entrou na conta/) as HTMLInputElement).value).toBe("");
+    expect(within(form).getByText("Registre a liberação à mão antes (teste).")).toBeTruthy();
+  });
+
+  it("encerrar sem efeito: a recusa 'nota reforçada' mostra a caixa", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    m.semEfeito.mockResolvedValueOnce({ ok: false, mensagem: "O Mercado Pago ainda mostra esta disputa em andamento.", codigo: "nota_reforcada" } as never);
+    render(<ContestacaoSite reservaId="r1" pagamento={pagamento} equipe={[equipe({}, { semEfeito: { pedeVolta: false, emAndamento: false } })]} operacao={[]} editarFinanceiro={false} defesa={false} hoje={HOJE} />);
+    const form = screen.getByRole("form", { name: "Encerrar sem efeito" });
+    expect(form.querySelector('input[name="notaReforcada"]')).toBeNull();
+    fireEvent.change(within(form).getByLabelText(/Por que fica sem efeito/), { target: { value: "Registrada por engano." } });
+    fireEvent.click(within(form).getByRole("button", { name: "Encerrar sem efeito" }));
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(within(form).getByLabelText(/O painel do Mercado Pago já mostra a disputa encerrada/)).toBeTruthy();
+  });
+
+  it("cancelar a reserva contestada: a prévia não exige a nota (o botão não valida o formulário) e o texto não fala em cartão", () => {
+    render(<CancelarContestada reservaId="r1" mostrar />);
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar a reserva contestada" }));
+    const form = screen.getByRole("form", { name: "Cancelar a reserva contestada" });
+    expect((within(form).getByRole("button", { name: "Ver o cancelamento" }) as HTMLButtonElement).formNoValidate).toBe(true);
+    expect((within(form).getByLabelText(/Nota/) as HTMLTextAreaElement).required).toBe(true);
+    expect(form.textContent).not.toMatch(/cartão/);
   });
 });

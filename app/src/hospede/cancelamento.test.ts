@@ -47,6 +47,7 @@ describe("Minha reserva: o quadro 'Cancelar a reserva' (M8.2c)", () => {
       semPolitica: false,
       linkCotacao: `/reservar/${x.codigo}`,
       emConferencia: false,
+      faleComAEquipe: false,
     });
     // Nunca valores no quadro.
     expect(JSON.stringify(quadro)).not.toMatch(/R\$|182400|1824/);

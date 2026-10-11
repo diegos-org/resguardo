@@ -84,11 +84,13 @@ function CancelarReserva({
       </div>
     );
   if (agora.getTime() >= c.entradaEm.getTime()) return <p className={styles.miudo}>A estadia já começou: para cancelar, fale com a equipe.</p>;
-  // M8.2e: o pagamento está em conferência (disputa): a frase editável (pode ficar vazia) e o contato no lugar do botão.
-  if (c.emConferencia)
+  // M8.2e: disputa do pagamento em curso ou perdida (a regra única que recusa o cancelamento pela política): o contato no
+  // lugar do botão, nunca o sumiço sem explicação; a frase editável "pagamento em conferência" (pode ficar vazia) só enquanto
+  // a disputa ainda não tem resultado.
+  if (c.emConferencia || c.faleComAEquipe)
     return (
       <div className={styles.aviso} role="note">
-        {textos.pagamentoEmConferencia && <p style={{ margin: 0 }}>{textos.pagamentoEmConferencia}</p>}
+        {c.emConferencia && textos.pagamentoEmConferencia && <p style={{ margin: 0 }}>{textos.pagamentoEmConferencia}</p>}
         <p style={{ margin: 0 }}>{TEXTO_PARA_CANCELAR_FALE_COM_A_EQUIPE}</p>
       </div>
     );

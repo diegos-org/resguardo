@@ -408,13 +408,19 @@ export async function avisosDeAlteracao(db: Db, organizacaoId: string, agora: Da
 
 // ---------------------------------------------------------------- disputa do pagamento (M8.2e)
 
-const LINK_DISPUTAS = "/painel/financeiro/pagamentos-site?disputa=1";
+const LINK_PAGAMENTOS_SITE = "/painel/financeiro/pagamentos-site";
+const LINK_DISPUTAS = `${LINK_PAGAMENTOS_SITE}?disputa=1`;
 const DIA_MS = 86_400_000;
+
+/**
+ * A disputa ambígua (`contestacao_ambigua`) mora só no pagamento (a leitura a tira das linhas, e no caso típico — uma
+ * disputa encerrada que o sistema não conhecia — nem há linha): conta pelos pagamentos da empresa.
+ */
+const textoDaAmbiguaNoInicio = (n: number) => `${n} disputa(s) do pagamento que o sistema não conseguiu casar com as do quadro: confira no painel do Mercado Pago e registre pelo quadro.`;
 
 /** Os avisos de cada linha que pedem a equipe no Início (atenção), com o texto curto da contagem. */
 const AVISOS_DA_LINHA_NO_INICIO: Partial<Record<AvisoDeContestacao, (n: number) => string>> = {
   contestacao_possivel_duplicata: (n) => `${n} disputa(s) do pagamento possivelmente duplicada(s): confirme no quadro se é outra disputa (ou encerre sem efeito).`,
-  contestacao_ambigua: (n) => `${n} disputa(s) do pagamento que o sistema não conseguiu casar com as do quadro: confira no painel do Mercado Pago e registre pelo quadro.`,
   contestacao_caso_de_outro_pagamento: (n) => `${n} disputa(s) com o número do caso de outro pagamento no Mercado Pago: confira no quadro.`,
   contestacao_resultado_mudou: (n) => `${n} disputa(s) encerrada(s) que o Mercado Pago voltou a mostrar de outro jeito: use "Conferir o aviso" no quadro.`,
   contestacao_leitura_conflitante: (n) => `${n} disputa(s) com leituras do Mercado Pago em conflito: confira no painel dele e confirme o resultado.`,
@@ -432,11 +438,19 @@ const AVISOS_DA_LINHA_NO_INICIO: Partial<Record<AvisoDeContestacao, (n: number) 
  *   o prazo que passou e o prazo desconhecido, atenção);
  * - as encerradas no Mercado Pago com resultado a conferir, as perdidas sem decisão de quem arca;
  * - a estadia por vir com disputa em curso ("não libere a entrada…");
- * - os avisos de cada linha (possível duplicata, ambígua, caso de outro pagamento, resultado que mudou, leituras em
- *   conflito, ganha sem recebimento, dia 85 sem fonte, mais de 240 dias, sem leitura).
+ * - os avisos de cada linha (possível duplicata, caso de outro pagamento, resultado que mudou, leituras em conflito, ganha
+ *   sem recebimento, dia 85 sem fonte, mais de 240 dias, sem leitura);
+ * - a disputa ambígua, pelos avisos do pagamento (com ou sem linha no quadro).
  * Nada daqui é lançamento `pendente`: o contador de pendentes do Início não conta a disputa (C3).
  */
 export async function avisosDeContestacao(db: Db, organizacaoId: string, agora: Date = new Date()): Promise<Alerta[]> {
+  const ambiguas = await db
+    .select({ reservaId: pagamentosTabela.reservaId })
+    .from(pagamentosTabela)
+    .where(and(eq(pagamentosTabela.organizacaoId, organizacaoId), sql`${pagamentosTabela.avisos} @> '["contestacao_ambigua"]'::jsonb`));
+  const daAmbigua: Alerta[] = ambiguas.length
+    ? [{ nivel: "atencao", texto: textoDaAmbiguaNoInicio(ambiguas.length), link: ambiguas.length === 1 && ambiguas[0].reservaId ? `/painel/reservas/${ambiguas[0].reservaId}` : `${LINK_PAGAMENTOS_SITE}?atencao=1` }]
+    : [];
   const linhas = await db
     .select({
       l: contestacoesPagamento,
@@ -450,7 +464,7 @@ export async function avisosDeContestacao(db: Db, organizacaoId: string, agora: 
     .innerJoin(pagamentosTabela, eq(pagamentosTabela.id, contestacoesPagamento.pagamentoId))
     .leftJoin(reservasTabela, eq(reservasTabela.id, contestacoesPagamento.reservaId))
     .where(eq(contestacoesPagamento.organizacaoId, organizacaoId));
-  if (!linhas.length) return [];
+  if (!linhas.length) return daAmbigua;
   const { diasAvisoDocumentacao } = await lerConfigPagamentoSite(db, organizacaoId);
   const hoje = hojeISO("America/Sao_Paulo", agora);
   const alertas: Alerta[] = [];
@@ -508,7 +522,7 @@ export async function avisosDeContestacao(db: Db, organizacaoId: string, agora: 
     const com = linhas.filter((x) => x.l.avisos.includes(codigo));
     if (com.length) alertas.push({ nivel: "atencao", texto: texto(com.length), link: linkDe(com) });
   }
-  return alertas;
+  return [...alertas, ...daAmbigua];
 }
 
 /** Quanto da parte do proprietário desta reserva está preso pela disputa sem decisão (a liberar, ainda não repassado). */
