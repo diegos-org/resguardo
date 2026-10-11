@@ -62,6 +62,31 @@ describe("o caixa de cada devolução (M8.2d)", () => {
     expect((await devolucao(devolucaoIds[0])).caixaLancadoEm).not.toBeNull();
   });
 
+  it("uma parte confirmada pela equipe antes da liberação, sem nunca ter sido pedida (corpo desconhecido), não conta como integral: a saída espera o recebimento", async () => {
+    const x = await pagarEConfirmar(c, longe);
+    const { devolucaoIds } = await reduzirDeTeste(c, x, TOTAL - 30000, { quando: minutos(15) });
+    // Retrato: a devolução de parte do valor feita no painel do Mercado Pago e confirmada pela equipe, nunca pedida pelo
+    // sistema (o corpo do pedido não é conhecido), com o pagamento ainda não liberado.
+    await db
+      .update(devolucoesPagamento)
+      .set({ situacao: "confirmada", confirmadaPor: "equipe", confirmadaEm: minutos(20), confirmadaNota: "Vista no painel do Mercado Pago", corpoIntegral: null, tentativas: 0 })
+      .where(eq(devolucoesPagamento.id, devolucaoIds[0]));
+    await db.transaction(async (tx) => {
+      const t = (await travarCotacao(tx, c.org, x.cotacaoId))!;
+      const p = t.tentativas.find((y) => y.id === x.pagamentoId)!;
+      expect(p.liberacaoConfirmadaEm).toBeNull();
+      const dev = devolucoesDoPagamento(t, p.id)[0];
+      expect(dev).toMatchObject({ situacao: "confirmada", corpoIntegral: null });
+      await acertarCaixaDaDevolucao(tx, c.org, t, p, dev, { data: "2026-10-01", estado: "realizado", origem: "manual" }, minutos(20));
+    });
+    // O resto do pagamento ainda vai entrar: nada sai antes do recebimento e o caixa da devolução fica por acertar.
+    expect(await devolucao(devolucaoIds[0])).toMatchObject({ caixaLancadoEm: null });
+    expect(await saidas(x.reservaId)).toEqual([]);
+    await liberar(c, x.pagamentoId, { manual: true, quando: minutos(40) });
+    expect(await saidas(x.reservaId)).toEqual([29700]);
+    expect((await devolucao(devolucaoIds[0])).caixaLancadoEm).not.toBeNull();
+  });
+
   it("a integral de alteração de uma diferença nunca liberada: nada entrou, nada sai, a devolução fica acertada", async () => {
     const x = await pagarEConfirmar(c, { ...longe, liberar: true });
     const inc = await aumentarDeTeste(c, x, TOTAL + 40000, { quando: minutos(15) });

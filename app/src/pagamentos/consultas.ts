@@ -167,7 +167,8 @@ export type AlteracaoParaHospede = {
   aplicadaEm: Date | null;
   /**
    * A redução pela política: a decisão, a base, o último dia do reembolso integral e o fim do arrependimento (o dia 7 depois
-   * do pagamento, se a política para na entrada e a entrada da estadia de então) — null fora da redução.
+   * do pagamento, se a política para na entrada e a entrada da estadia alterada: a que vale daqui em diante, que o hóspede
+   * lê) — null fora da redução.
    */
   reducao: {
     direito: DireitoCancelamento;
@@ -582,7 +583,7 @@ const comum = (a: Alteracao, situacao: AlteracaoParaHospede["situacao"]): Altera
   aplicadaEm: a.aplicadaEm,
   reducao:
     a.diferenca < 0 && a.direito
-      ? { direito: a.direito, base: a.base, integralAte: a.integralAte, arrependimentoAte: a.arrependimentoAte, arrependimentoAteEntrada: a.arrependimentoAteEntrada, entradaDaEstadia: a.checkinAntes }
+      ? { direito: a.direito, base: a.base, integralAte: a.integralAte, arrependimentoAte: a.arrependimentoAte, arrependimentoAteEntrada: a.arrependimentoAteEntrada, entradaDaEstadia: a.checkinDepois }
       : null,
   devolucao: null,
   pagoSemAlteracao: null,

@@ -193,7 +193,7 @@ async function propostaDe(organizacaoId: string, p: PreviaAlteracao, agora: Date
             integralAte: p.decisao?.integralAte ?? null,
             arrependimentoAte: p.decisao?.arrependimentoAte ?? null,
             arrependimentoAteEntrada: p.politica?.arrependimentoAteEntrada ?? null,
-            entradaDaEstadia: p.antes.checkin,
+            entradaDaEstadia: p.depois.checkin,
           }
         : null,
     politicaVersao: p.politica?.versao ?? null,

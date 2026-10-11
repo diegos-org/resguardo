@@ -226,8 +226,10 @@ export async function acertarCaixaDaDevolucao(
     saida = completa ? resta : Math.min(resta, Math.max(0, devolvido - (taxa ?? 0)));
   } else {
     // A devolução que saiu pelo Mercado Pago antes da liberação (só a integral de um pagamento intocado, D13) leva o
-    // dinheiro de volta antes de ele entrar: nada vai entrar por este pagamento.
-    const saiuAntes = dev.situacao === "confirmada" && dev.corpoIntegral !== false && !p.liberacaoConfirmadaEm;
+    // dinheiro de volta antes de ele entrar: nada vai entrar por este pagamento. Só a que se sabe integral (o pedido de
+    // corpo vazio): a confirmada pela equipe sem nunca ter sido pedida não diz o que voltou, e a parte espera o
+    // recebimento como as outras (a que completa o pagamento já não espera, acima).
+    const saiuAntes = dev.situacao === "confirmada" && dev.corpoIntegral === true && !p.liberacaoConfirmadaEm;
     const aindaEntra = reservaCalculadaPeloMotor(t.reserva) && !completa && !saiuAntes;
     if (aindaEntra) return { avisos };
   }

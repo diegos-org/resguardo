@@ -1510,7 +1510,10 @@ e está no "Entregue em" do ROADMAP.
   sai `devolvido − taxa atribuída` (a que completa o pagamento leva tudo o que ainda está dentro); sem o recebimento
   do pagamento lançado, espera (`acertarCaixasPendentes` lança logo depois do recebimento, na liberação do
   provedor **e** na registrada à mão), ou nada é lançado quando nada vai entrar (pagamento completado pelas
-  devoluções, reserva cancelada com devolução integral). A taxa que não voltou é despesa da empresa com a reserva
+  devoluções, reserva cancelada com devolução integral, ou a integral de corpo vazio que saiu antes da liberação).
+  A confirmada pela equipe sem nunca ter sido pedida não conta como integral: a parte espera o recebimento como as
+  outras (ajuste de 11/10, revisão do Codex: antes, a que não se sabia parcial era tratada como integral e o caixa
+  ficava acertado sem saída, sobrando dinheiro no caixa depois da liberação). A taxa que não voltou é despesa da empresa com a reserva
   (`reservaId`), informada pela equipe ou calculada no por fora; tetos por devolução e por pagamento (a soma das
   taxas perdidas ≤ taxa + juros), com os dois valores na recusa.
 - **Liberação:** lança `mercadopago:<pagamento>:recebimento` para qualquer pagamento da reserva (desfecho
@@ -1581,7 +1584,10 @@ versão da política e a data de que os prazos contam) e frases editáveis em Te
 `alteracaoSemDevolucao`, `alteracaoNaoAplicada`, `alteracaoNaoVale`; as cinco primeiras obrigatórias). Nunca
 "Beds24", nunca dado pessoal. O fim do arrependimento é escrito com a mesma regra da decisão (`fimDoArrependimento`):
 "até dd/mm, 7 dias depois do pagamento" ou, quando a política aceita para o arrependimento na entrada e ela vem antes,
-"até a entrada, em dd/mm" (também no texto do cancelamento, desde 11/10).
+"até a entrada, em dd/mm" (também no texto do cancelamento, desde 11/10). Na alteração, a entrada desse texto é a
+da estadia alterada, a que vale dali em diante (ajuste de 11/10, revisão do Codex: antes era a entrada de antes da
+alteração, e uma alteração que adiantava a entrada para antes dos 7 dias ainda dizia "7 dias depois do pagamento").
+A decisão não muda: ela continua contando da estadia de quando o pedido chegou.
 - **Segurada** (em qualquer rumo): "Alteração da sua reserva"; no aumento, com o Pix e o cartão da diferença
   (aceite D11 quando preciso); na redução ou no mesmo valor, "Para confirmar, responda à nossa mensagem…" e a linha
   da política com a decisão ("…é devolvida | não é devolvida…").

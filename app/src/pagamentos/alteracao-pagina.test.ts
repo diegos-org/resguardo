@@ -139,6 +139,13 @@ describe("a página da reserva: os outros estados da alteração (M8.2d §8)", (
     const vz = await pagina(z.cotacaoId, minutos(21));
     expect(vz?.alteracao?.reducao).toMatchObject({ direito: "integral", base: "arrependimento" });
     expect(texto(vz!.alteracao!, z.reservaCodigo).linhas[1]).toMatch(/^Pela política, a diferença de R\$ [\d.,]+ é devolvida \(direito de arrependimento: até a entrada, em 05\/10\)\.$/);
+    // A alteração adianta a entrada (09/10) para antes dos 7 dias (03/10): o texto conta da entrada alterada, a que vale
+    // daqui em diante (a decisão continua contando da estadia de quando o pedido chegou).
+    const w = await pagarEConfirmar(c, { entrada: "2026-10-09", saida: "2026-10-12", email: "w@example.com" });
+    expect((await alterar(c, w.reservaId, { checkin: "2026-10-03", checkout: "2026-10-05", valor: menos200 }, minutos(20), { autorId: equipe })).resultado).toMatchObject({ ok: true, situacao: "segurada" });
+    const vw = await pagina(w.cotacaoId, minutos(21));
+    expect(vw?.alteracao?.reducao).toMatchObject({ direito: "integral", base: "arrependimento", entradaDaEstadia: "2026-10-03" });
+    expect(texto(vw!.alteracao!, w.reservaCodigo).linhas[1]).toMatch(/^Pela política, a diferença de R\$ [\d.,]+ é devolvida \(direito de arrependimento: até a entrada, em 03\/10\)\.$/);
     // Mesmo valor (outra reserva: só as datas mudam).
     const y = await pagarEConfirmar(c, { entrada: "2026-10-20", saida: "2026-10-23", email: "y@example.com" });
     const mantido = { origem: "mantido" as const, motivo: "acordo_com_hospede" as const, nota: "Mesmas noites em outra semana" };

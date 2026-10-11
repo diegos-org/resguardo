@@ -204,6 +204,27 @@ describe("calcular a alteração", () => {
     expect(m.proposta).toHaveBeenCalledWith({ banco: true }, "org", RESERVA, expect.objectContaining({ rumo: "aumento", diferenca: 40000, entradaDosPrazos: "2026-11-10" }));
   });
 
+  it("na redução, o fim do arrependimento da proposta conta da entrada alterada (a que vale daqui em diante)", async () => {
+    const reducao = {
+      ...previa,
+      depois: { checkin: "2026-10-03", checkout: "2026-10-05", hospedes: 2, valor: 110000 },
+      diferenca: -40000,
+      rumo: "reducao" as const,
+      valorNovo: 110000,
+      direito: "integral" as const,
+      base: "arrependimento" as const,
+      decisao: { calculado: "integral", base: "arrependimento", valorADevolver: 40000, integralAte: "2026-10-27", arrependimentoAte: "2026-10-08", entradaEm: new Date("2026-11-10T17:00:00Z"), comecou: false },
+    };
+    m.previa.mockResolvedValue({ ok: true, previa: reducao });
+    await calcularAlteracaoAcao({}, form({ ...doHospede, checkin: "2026-10-03", checkout: "2026-10-05" }));
+    expect(m.proposta).toHaveBeenCalledWith(
+      { banco: true },
+      "org",
+      RESERVA,
+      expect.objectContaining({ reducao: { direito: "integral", base: "arrependimento", integralAte: "2026-10-27", arrependimentoAte: "2026-10-08", arrependimentoAteEntrada: true, entradaDaEstadia: "2026-10-03" } }),
+    );
+  });
+
   it("o prazo da proposta para copiar é o mesmo das datas seguradas: nunca depois do limite (a entrada), mesmo com o prazo da configuração maior", async () => {
     const limite = new Date(Date.now() + 10 * 60_000);
     m.previa.mockResolvedValue({ ok: true, previa: { ...previa, holdAte: null, holdMinutos: 60, limiteDoPrazo: limite } });
