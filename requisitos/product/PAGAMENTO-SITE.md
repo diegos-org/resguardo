@@ -3437,6 +3437,17 @@ desenho)* só fazem o código cumprir o que já estava escrito acima.
   falha na Chargebacks API, na busca ou na Payments API (a order lida sem problema) não entrava na mensagem, que podia
   dizer "nada mudou". *Agora:* a mensagem diz "Não deu para conferir as disputas do pagamento agora: tente de novo em
   instantes.", como o "Conferir agora" da empresa já diz das falhas.
+- **A disputa perdida no cartão depois dos 85 dias** *(segue o desenho, "Transições": a leitura que contradiz uma linha
+  final liga `contestacao_resultado_mudou`; e "Rotina", a busca tardia semanal)*. *Antes:* a releitura diária só pega as
+  disputas `aberta` e `a_confirmar`; depois dos 85 dias (a order não é mais lida), nada lia a situação de um pagamento cuja
+  disputa no cartão foi perdida, e a transação de volta a aprovada não dava aviso. *Agora:* a busca tardia semanal
+  (`buscarContestacoesTardias`), na vez do pagamento, lê também a Payments API pelo número quando ele está fora da order,
+  tem uma contestação no cartão perdida e nenhuma outra no cartão ainda não final (essa a releitura diária já lê). A
+  leitura passa pelo mesmo casamento e pelas mesmas transições: a transação de volta a aprovada liga o aviso na perdida, e
+  a liberação lida liga `contestacao_liberacao_lida` (`avisarLiberacaoLidaNaDisputa`). A perdida não volta à fila diária
+  (sem espera crescente nem `contestacao_sem_fonte`). A falha dessa leitura, ou a falta de tempo para ela na volta,
+  devolve a vez, como a falha da busca. *Motivo:* a perda definitiva não pode ficar sem aviso quando o Mercado Pago a
+  desfaz, e a busca semanal já é a leitura dos pagamentos antigos.
 
 ### Mudanças nas outras seções deste arquivo (no mesmo PR)
 

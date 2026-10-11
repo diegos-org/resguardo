@@ -114,7 +114,7 @@ import {
 } from "./contestacao-regras";
 import { confirmarDevolucaoPelaDisputa, devolucaoDevidaDepoisDaDisputa } from "./devolucao";
 import { avisarLiberacaoLidaNaDisputa, liquidoQueAindaPodeEntrar, recebimentosDoPagamento, registrarLiberacaoManual } from "./liberacao";
-import { ErroProvedor, ID_NUMERICO_PROVEDOR, liberadoPeloStatus, type ProvedorPagamento, semAcessoContestacao } from "./provedor";
+import { ErroProvedor, ID_NUMERICO_PROVEDOR, liberadoPeloStatus, type ProvedorPagamento, semAcessoContestacao, type SituacaoDoPagamento } from "./provedor";
 import { comDinheiro } from "./situacoes";
 import {
   type Contestacao,
@@ -478,6 +478,11 @@ export async function conferirContestacoes(
  * disputas) gasta a vez e liga, sob a trava, o aviso `contestacao_busca_sem_acesso` no pagamento (no Início e no quadro):
  * nunca uma semana em silêncio. A primeira busca tardia que responder (a da semana seguinte, ou a do "Conferir agora")
  * desliga o aviso.
+ * Depois dos 85 dias (a order não é mais lida), o pagamento cuja contestação no cartão foi perdida, sem outra no cartão ainda
+ * não final (essa a releitura diária já lê), tem a situação lida também pela Payments API na mesma vez: a transação de volta a
+ * aprovada contradiz a perda (`contestacao_resultado_mudou`) e a liberação lida pede o registro à mão
+ * (`avisarLiberacaoLidaNaDisputa`), como na leitura da order. A disputa perdida não volta à fila diária (sem espera crescente
+ * nem `contestacao_sem_fonte`); a falha dessa leitura devolve a vez, como a da busca.
  * `o.pagamentoId` com `o.forcar` ("Conferir agora" de uma reserva): só aquele pagamento, sem esperar a semana. `o.inicio`:
  * o início do orçamento da volta, dividido com `conferirContestacoes` (um orçamento só, de 60 s, para as duas); sem ele, agora.
  */
@@ -529,9 +534,24 @@ export async function buscarContestacoesTardias(
     if (!reservada) continue;
     resumo.buscados++;
     const devolverAVez = () => db.update(pagamentos).set({ contestacoesBuscadasEm: antes }).where(and(eq(pagamentos.id, p.id), eq(pagamentos.contestacoesBuscadasEm, agora)));
+    // A disputa perdida no cartão fora da order (sem outra no cartão ainda não final): a situação pela Payments API também.
+    const doPagamento = await db.select({ tipo: contestacoesPagamento.tipo, situacao: contestacoesPagamento.situacao }).from(contestacoesPagamento).where(eq(contestacoesPagamento.pagamentoId, p.id));
+    const noCartao = doPagamento.filter((l) => l.tipo === "chargeback");
+    const lerSituacao =
+      (!p.idProvedor || p.criadoEm.getTime() < inicioDoPrazoDeReleitura(agora).getTime()) && noCartao.some((l) => l.situacao === "perdida") && !noCartao.some((l) => contestacaoNaoFinal(l.situacao));
     let lista: Awaited<ReturnType<ProvedorPagamento["buscarContestacoes"]>>;
+    let situacao: SituacaoDoPagamento | null = null;
     try {
       lista = await provedor.buscarContestacoes(p.idPagamentoProvedor!);
+      if (lerSituacao) {
+        // Sem tempo para a segunda chamada: a vez volta inteira (a próxima volta faz as duas).
+        if (relogio() - inicio >= ORCAMENTO_VOLTA_CONTESTACAO_MS) {
+          await devolverAVez();
+          resumo.buscados--;
+          break;
+        }
+        situacao = await provedor.situacaoDoPagamento(p.idPagamentoProvedor!);
+      }
     } catch (e) {
       // A busca que falhou não conta: a marca volta ao que era (a próxima volta tenta de novo).
       await devolverAVez();
@@ -542,13 +562,19 @@ export async function buscarContestacoesTardias(
     // 403: a vez fica gasta (a próxima busca é na semana seguinte, ou no "Conferir agora"), mas o pagamento ganha o aviso.
     const semAcesso = semAcessoContestacao(lista);
     const leituras = semAcessoContestacao(lista) ? [] : lista.filter((caso) => casoDestePagamento(caso, p.idPagamentoProvedor) === "sim").map((caso) => leituraDoCaso(caso, agora));
-    if (!leituras.length && semAcesso === p.avisos.includes(AVISO_BUSCA_SEM_ACESSO)) continue;
+    const daSituacao = situacao ? leituraDaSituacao(situacao, agora, true) : null;
+    if (daSituacao) leituras.push(daSituacao);
+    const liberadoLido = situacao ? liberadoPeloStatus(situacao.moneyReleaseStatus) : null;
+    if (!leituras.length && liberadoLido !== true && semAcesso === p.avisos.includes(AVISO_BUSCA_SEM_ACESSO)) continue;
     try {
       const r = await db.transaction(async (tx) => {
         const t = await travarCotacao(tx, p.organizacaoId, p.cotacaoId);
         const pt = t?.tentativas.find((x) => x.id === p.id);
         if (!t || !pt) return null;
-        const ef = await aplicarLeiturasDaDisputa(tx, p.organizacaoId, t, pt, leituras, agora, { fonte: "chargebacks", sincronizar: false });
+        const fonte: FonteEventoContestacao = leituras.some((l) => l.fonte === "chargebacks") ? "chargebacks" : "payments";
+        const ef = await aplicarLeiturasDaDisputa(tx, p.organizacaoId, t, pt, leituras, agora, { fonte, sincronizar: false });
+        // A liberação que a Payments API mostra, com a disputa perdida (ou em curso): o mesmo aviso de `aplicarFontes`.
+        if (liberadoLido === true && dinheiroDaReserva(pt) && contestacaoEmCurso(t, pt.id) && (await avisarLiberacaoLidaNaDisputa(tx, p.organizacaoId, t, pt, agora))) ef.mudou = true;
         // Só liga a ambígua (como em `aplicarFontes`): a que a order deu fica até a releitura dela ou o registro da equipe.
         await sincronizarAvisosDaDisputa(tx, t, pt, agora, {
           ambigua: ef.ambigua === true ? true : null,

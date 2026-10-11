@@ -19,7 +19,9 @@ import { cancelarReservaContestada, canceladaPelaDisputa, previaDoCancelamentoCo
 import { conferirTentativa } from "./conferencia";
 import { avisosDeCancelamento, pagamentosDaReserva, vistaDaCotacaoParaHospede } from "./consultas";
 import {
+  buscarContestacoesTardias,
   conferirAviso,
+  conferirContestacoes,
   confirmarDebito,
   confirmarOutraDisputa,
   confirmarResultado,
@@ -48,7 +50,7 @@ import { devolverPeloProvedor, registrarTaxaPerdida } from "./devolucao";
 import type { ProvedorPagamento } from "./provedor";
 import { textoDevolucaoDevidaDepoisDaDisputa } from "./situacoes";
 import type { Contestacao } from "./travas";
-import { type Cenario, cancelar, entradaPadrao, liberar, minutos, montarCenario, pagarEConfirmar, reduzirDeTeste, repassar, semDadosDoHospede, TOTAL, usuarioDeTeste } from "./testes";
+import { type Cenario, cancelar, entradaPadrao, envelhecer, liberar, minutos, montarCenario, pagarEConfirmar, reduzirDeTeste, repassar, semDadosDoHospede, TOTAL, usuarioDeTeste } from "./testes";
 
 let db: Db, close: () => Promise<void>, c: Cenario, equipe: string;
 beforeAll(async () => {
@@ -520,6 +522,29 @@ describe("encerrar sem efeito e conferir o aviso", () => {
     expect(await conferirAviso(db, c.org, l.id, { como: "continua_encerrada", nota: "O painel mostra a disputa perdida." }, equipe, sp("2026-12-11 11:00"))).toMatchObject({ ok: true });
     await conferir(x.pagamentoId, sp("2026-12-12 10:00"));
     expect((await linha(l.id)).avisos).not.toContain("contestacao_resultado_mudou");
+  });
+
+  it("depois dos 85 dias, a disputa perdida no cartão: a busca semanal lê também a Payments API; a transação de volta a aprovada liga o aviso, sem a perdida voltar à fila diária (Codex, 11/10)", async () => {
+    const x = await disputada();
+    await debito(x.l, "2026-10-21", TOTAL);
+    await decidir(x.l, "proporcional", sp("2026-10-22 10:00"));
+    expect(await confirmar(x.l, "perdida", sp("2026-12-10 10:00"), { valorPerdido: TOTAL, liquidoNaoEntrou: 0, debitoEm: "2026-10-21" })).toMatchObject({ ok: true });
+    await envelhecer(c, x.pagamentoId, 100);
+    expect((await c.tentativa(x.pagamentoId)).idPagamentoProvedor).not.toBeNull();
+    const naPayments = () => c.provedor.chamadas.filter((ch) => ch.metodo === "situacaoDoPagamento").length;
+    // A releitura diária não pega a perdida (sem espera crescente nem "sem fonte").
+    await conferirContestacoes(db, c.org, c.provedor, sp("2026-12-11 09:00"));
+    expect(naPayments()).toBe(0);
+    // O Mercado Pago volta a mostrar a transação aprovada.
+    c.provedor.resolverContestacao(x.idProvedor, { transacaoAprovada: true });
+    const r = await buscarContestacoesTardias(db, c.org, c.provedor, sp("2026-12-11 10:00"));
+    expect(r).toMatchObject({ buscados: 1, falhas: 0, mudaram: 1 });
+    expect(naPayments()).toBe(1);
+    const l = await linha(x.l.id);
+    expect(l.situacao).toBe("perdida");
+    expect(l.avisos).toContain("contestacao_resultado_mudou");
+    expect(l.avisos).not.toContain("contestacao_sem_fonte");
+    expect(l.falhasLeitura).toBe(0);
   });
 });
 
