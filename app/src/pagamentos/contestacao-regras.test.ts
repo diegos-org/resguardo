@@ -4,6 +4,7 @@ import {
   assinaturaDaDecisao,
   assinaturaDoResultado,
   AVISOS_DE_CONTESTACAO,
+  AVISOS_DE_CONTESTACAO_DO_PAGAMENTO,
   caixaFinalDaPerda,
   casarContestacao,
   casoDestePagamento,
@@ -131,8 +132,11 @@ function volta(linhas: LinhaDeContestacao[], lidas: LeituraDeContestacao[]) {
 describe("listas e constantes (M8.2e)", () => {
   it("listas fechadas, origem dos lançamentos e prazos da leitura", () => {
     expect(SITUACOES_CONTESTACAO).toEqual(["aberta", "a_confirmar", "ganha", "perdida", "sem_efeito"]);
-    expect(AVISOS_DE_CONTESTACAO).toHaveLength(17);
-    expect(new Set(AVISOS_DE_CONTESTACAO).size).toBe(17);
+    expect(AVISOS_DE_CONTESTACAO).toHaveLength(18);
+    expect(new Set(AVISOS_DE_CONTESTACAO).size).toBe(18);
+    // Os que moram só no pagamento (nunca numa linha): a leitura ambígua e a busca tardia recusada (403).
+    expect(AVISOS_DE_CONTESTACAO_DO_PAGAMENTO).toEqual(["contestacao_ambigua", "contestacao_busca_sem_acesso"]);
+    expect(AVISOS_DE_CONTESTACAO_DO_PAGAMENTO.every((a) => AVISOS_DE_CONTESTACAO.includes(a))).toBe(true);
     expect(ORIGEM_LANCAMENTO_CONTESTACAO).toBe("contestacao_pagamento");
     expect(RELER_CONTESTACAO_A_CADA_MS).toBe(DIA);
     expect(LEITURAS_DE_CONTESTACAO_POR_VOLTA).toBe(50);
