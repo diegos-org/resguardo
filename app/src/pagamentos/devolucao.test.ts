@@ -301,7 +301,7 @@ describe("devolução do pagamento sem reserva (M8.2a)", () => {
     expect(pedidos()).toHaveLength(1);
   });
 
-  it("order devolvida em parte ou contestada antes de pedir de novo: a leitura é aplicada e a devolução para (aviso), sem pedir o valor inteiro por cima", async () => {
+  it("order devolvida em parte ou contestada antes de pedir de novo: a leitura é aplicada e a devolução para (aviso), sem pedir o valor inteiro por cima — salvo a contestada com a chave em dúvida (M8.2e), que só espera a leitura", async () => {
     for (const [n, mexer] of [
       [0, (id: string) => c.provedor.devolverNoProvedor(id, 5000)],
       [1, (id: string) => c.provedor.contestar(id)],
@@ -315,12 +315,19 @@ describe("devolução do pagamento sem reserva (M8.2a)", () => {
       expect((await devolucao(x.pagamentoId)).situacao).toBe("pedida");
       mexer(x.idProvedor);
       await tentarDevolucao(db, c.org, (await devolucao(x.pagamentoId)).id, c.provedor, minutos(21));
-      expect((await devolucao(x.pagamentoId)).situacao).toBe("recusada");
       expect(pedidos()).toHaveLength(antes + 1);
       const t = await c.tentativa(x.pagamentoId);
       expect(t.situacao).toBe(n === 0 ? "devolvido_parcial" : "contestado");
-      expect(t.avisos).toContain("devolucao_parada");
-      expect(textosDosAvisos(t.avisos).join(" ")).toContain("parou");
+      if (n === 0) {
+        expect((await devolucao(x.pagamentoId)).situacao).toBe("recusada");
+        expect(t.avisos).toContain("devolucao_parada");
+        expect(textosDosAvisos(t.avisos).join(" ")).toContain("parou");
+      } else {
+        // M8.2e ("Devoluções do mesmo pagamento"): com a chave em dúvida (o primeiro pedido pode ter sido aceito), a disputa
+        // não a para nem a substitui: nada se envia (nem com a mesma chave) e ela espera a leitura.
+        expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "pedida", chaveEmDuvida: true, contestacaoId: null });
+        expect(t.avisos).not.toContain("devolucao_parada");
+      }
     }
   });
 

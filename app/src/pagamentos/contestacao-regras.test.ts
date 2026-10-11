@@ -224,13 +224,19 @@ describe("casamento e idempotência (matriz de casarContestacao)", () => {
     expect(relida.linhas[0]).toMatchObject({ situacao: "ganha", coberturaAplicada: true });
   });
 
-  it("in_process sem id com só linhas finais vai para a final mais nova e liga o aviso, sem linha nova", () => {
+  it("in_process sem id com só linhas finais vai para a final mais nova com resultado e liga o aviso, sem linha nova; a sem efeito nunca a absorve", () => {
     const velha = linha({ id: "c1", situacao: "perdida", idCaso: "1", abertaEm: em(0) });
     const nova = linha({ id: "c2", situacao: "sem_efeito", abertaEm: em(100) });
     const r = volta([velha, nova], [leitura({ lidaEm: em(200) })]);
     expect(r.linhas).toHaveLength(2);
-    expect(r.r.existentes.map((x) => x.linhaId)).toEqual(["c2"]);
-    expect(r.linhas[1]).toMatchObject({ situacao: "sem_efeito", avisos: ["contestacao_resultado_mudou"], estadoLido: "in_process" });
+    expect(r.r.existentes.map((x) => x.linhaId)).toEqual(["c1"]);
+    expect(r.linhas[0]).toMatchObject({ situacao: "perdida", avisos: ["contestacao_resultado_mudou"], estadoLido: "in_process" });
+    expect(r.linhas[1]).toMatchObject({ situacao: "sem_efeito", avisos: [] });
+    // Só uma sem efeito (registrada por engano): a disputa lida em andamento é uma disputa nova (revisão de 11/10).
+    const soSemEfeito = volta([linha({ id: "c3", situacao: "sem_efeito", abertaEm: em(0) })], [leitura({ lidaEm: em(200) })]);
+    expect(soSemEfeito.r.existentes).toEqual([]);
+    expect(soSemEfeito.linhas).toHaveLength(2);
+    expect(soSemEfeito.linhas[1]).toMatchObject({ situacao: "aberta", estadoLido: "in_process", duplicataPossivel: false });
   });
 
   it("duas não finais e uma leitura sem id = ambígua; segunda disputa com outra aberta = possível duplicata com valor em risco 0", () => {

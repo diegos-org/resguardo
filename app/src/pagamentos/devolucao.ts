@@ -118,6 +118,9 @@ export const ERRO_POR_FORA_CHAVE_ENVIADA =
 export const ERRO_OUTRA_PEDIDA = "Já há uma devolução pedida ao Mercado Pago para este pagamento: espere ela se resolver.";
 /** M8.2e: disputa do pagamento em curso (o dinheiro pode voltar ao hóspede por ela): a devolução espera o resultado. */
 export const ERRO_DEVOLUCAO_COM_DISPUTA = "O pagamento está em disputa: a devolução espera o resultado (o dinheiro pode voltar ao hóspede por ela). Acompanhe no quadro da disputa.";
+/** M8.2e: o restante da devolução que a disputa perdida confirmou a menos não se pede ao Mercado Pago. */
+export const ERRO_RESTANTE_DA_DISPUTA =
+  "Esta devolução foi confirmada pela disputa perdida (o Mercado Pago devolveu ao hóspede por ela): o restante que a reserva ainda deve não se pede ao Mercado Pago. Registre o restante devolvido por fora.";
 
 /** M8.2e: a recusa da devolução pela disputa do pagamento (em curso, ou perdida); null = sem disputa que impeça. */
 function recusaPelaDisputa(t: Pick<ContextoDaDevolucao, "contestacoes">, pagamentoId: string): string | null {
@@ -359,6 +362,15 @@ export async function tentarDevolucao(db: Db, organizacaoId: string, devolucaoId
     await esperarAceita(db, organizacaoId, p.cotacaoId, devolucaoId, agora);
     return (await situacaoDaDevolucao(db, devolucaoId)) ?? null;
   }
+  // M8.2e: com a chave em dúvida (um envio anterior pode ter sido aceito) e o pagamento em disputa, nada se envia de novo —
+  // nem com a mesma chave: se o primeiro pedido não chegou, sairia uma devolução nova por cima da disputa — e nada para
+  // (parar abriria a por fora e o hóspede receberia duas vezes): a leitura é aplicada e a devolução espera por ela, como a
+  // aceita, sem substituição.
+  if (cobranca && dev.chaveEmDuvida && (situacaoLida === "contestado" || contestacaoEmCurso({ contestacoes }, p.id))) {
+    await reler(cobranca);
+    if ((await situacaoDaDevolucao(db, devolucaoId)) === "pedida") await adiarDevolucao(db, devolucaoId, agora);
+    return (await situacaoDaDevolucao(db, devolucaoId)) ?? null;
+  }
   // Contestada (pela situação explicada, ou uma disputa em curso ou perdida registrada: M8.2e), ou devolução que o sistema não
   // explica: a leitura é aplicada e a devolução automática para (nunca o resto por cima). A resposta perdida de um pedido de
   // parte do valor em dúvida não para: o reenvio com a mesma chave a reconhece.
@@ -411,6 +423,11 @@ export async function tentarDevolucao(db: Db, organizacaoId: string, devolucaoId
       // O teto (D12): o comprometido das outras mais esta nunca passa do pago menos o reconhecido devolvido fora (e uma
       // devolução sem valor positivo nunca sai).
       const cabeNoTeto = d.valor > 0 && comprometidoNoPagamento(outrasT) + d.valor <= valorPagoAprovado(pt) - pt.devolvidoForaReconhecido;
+      // M8.2e: a disputa abriu entre a leitura e aqui, com a chave em dúvida: espera a leitura (nunca para nem envia).
+      if (d.chaveEmDuvida && (pt.situacao === "contestado" || contestacaoEmCurso(t, pt.id))) {
+        await tx.update(devolucoesPagamento).set({ proximaTentativaEm: new Date(agora.getTime() + ESPERA_DEVOLUCAO_MS), atualizadoEm: agora }).where(eq(devolucoesPagamento.id, d.id));
+        return null;
+      }
       if ((pt.situacao !== "aprovado" && pt.situacao !== "devolvido_parcial") || inexplicada || !cabeNoPagamento(d, pt, t) || !cabeNoTeto || contestacaoEmCurso(t, pt.id)) {
         await tx.update(devolucoesPagamento).set({ situacao: "recusada", proximaTentativaEm: null, atualizadoEm: agora }).where(eq(devolucoesPagamento.id, d.id));
         d.situacao = "recusada";
@@ -777,6 +794,9 @@ export async function pedirRestanteDaDevolucao(db: Db, organizacaoId: string, de
     r = await comAlvo(db, organizacaoId, { devolucaoId }, undefined, async (tx, t, p, dev, devs) => {
       if (!dev || dev.situacao !== "confirmada" || !dev.avisos.includes("devolucao_a_menor") || dev.valorConfirmado === null)
         return { ok: false as const, erro: "Só uma devolução que o Mercado Pago fez a menos tem o restante pedido." };
+      // M8.2e: a confirmada pela disputa perdida (o Mercado Pago devolveu ao hóspede pela disputa, não por um pedido): o resto
+      // que a reserva ainda deve não se pede a ele; sai por fora.
+      if (dev.confirmadaPor === CONFIRMADA_PELA_CONTESTACAO) return { ok: false as const, erro: ERRO_RESTANTE_DA_DISPUTA };
       const pelaDisputa = recusaPelaDisputa(t, p.id);
       if (pelaDisputa) return { ok: false as const, erro: pelaDisputa };
       if (t.devolucoes.some((x) => x.origemDevolucaoId === dev.id)) return { ok: false as const, erro: "O restante desta devolução já foi registrado." };
@@ -829,13 +849,14 @@ export const ERRO_POR_FORA_SEM_CONFERIR =
  * não pediu, em andamento, contestado (pela situação explicada: a disputa já encerrada aqui não conta, M8.2e), ou outra
  * situação que não aprovado (ou devolvido em parte pelas nossas devoluções); null = pode.
  */
-function recusaPeloProvedor(c: Cobranca, p: Pagamento, devs: readonly Devolucao[], linhas: readonly LinhaParaCasar[]): string | null {
+function recusaPeloProvedor(c: Cobranca, p: Pagamento, devs: readonly Devolucao[], linhas: readonly LinhaParaCasar[], o: { contestadoPelaPerdida?: boolean } = {}): string | null {
   const situacao = situacaoDaLeitura(c, p, devs, linhas);
   if (situacao === "devolvido") return "O Mercado Pago mostra este pagamento como devolvido: a devolução por fora não é registrada, para o hóspede não receber duas vezes. Confira no painel do Mercado Pago.";
   const lido = { situacao: situacao ?? p.situacao, devolvidoLido: devolvidoDa(c), devolvidoForaReconhecido: p.devolvidoForaReconhecido };
   if (devolucaoInexplicada(lido, devs))
     return "O Mercado Pago mostra uma devolução deste pagamento que o sistema não pediu: a devolução por fora não é registrada, para o hóspede não receber duas vezes. Confira no painel do Mercado Pago e use Conferir agora.";
   if (c.devolucaoEmAndamento) return "O Mercado Pago mostra uma devolução em andamento neste pagamento: espere ela concluir (use Conferir agora) em vez de devolver por fora.";
+  if (situacao === "contestado" && o.contestadoPelaPerdida) return null;
   if (situacao === "contestado") return "Este pagamento está contestado no Mercado Pago: o dinheiro pode voltar ao hóspede pela contestação. Resolva pelo painel do Mercado Pago, sem devolver por fora.";
   if (situacao !== "aprovado" && situacao !== "devolvido_parcial") return "O Mercado Pago não mostra este pagamento como aprovado agora: confira no painel do Mercado Pago antes de registrar a devolução por fora.";
   return null;
@@ -846,7 +867,17 @@ function recusaPeloProvedor(c: Cobranca, p: Pagamento, devs: readonly Devolucao[
  * dinheiro é da reserva (cancelamento, alteração e o restante delas), a reserva. Sob as travas de quem chama. Devolve o
  * lançamento, ou o erro da categoria (arquivada).
  */
-async function lancarTaxaPerdida(tx: Db, organizacaoId: string, t: Travado, p: Pagamento, valor: number, data: string, chave: string, autorId: string | null): Promise<{ ok: true; id: string } | { ok: false; erro: string }> {
+async function lancarTaxaPerdida(
+  tx: Db,
+  organizacaoId: string,
+  t: Travado,
+  p: Pagamento,
+  valor: number,
+  data: string,
+  chave: string,
+  autorId: string | null,
+  o: { semCaixa?: boolean } = {},
+): Promise<{ ok: true; id: string } | { ok: false; erro: string }> {
   const categoria = await categoriaDaTaxaPerdida(tx, organizacaoId, autorId);
   if (!categoria.ok) return categoria;
   const [l] = await lancar(
@@ -860,7 +891,7 @@ async function lancarTaxaPerdida(tx: Db, organizacaoId: string, t: Travado, p: P
         montante: valor,
         efeitoSaldo: 0,
         competencia: data,
-        dataCaixa: data,
+        dataCaixa: o.semCaixa ? null : data,
         estado: "realizado",
         imovelId: t.imovel.id,
         reservaId: dinheiroDaReserva(p) ? t.reserva.id : null,
@@ -976,6 +1007,7 @@ export async function registrarDevolucaoPorFora(
   return comAlvo(db, organizacaoId, alvo, (x) => x.situacao === "pedida" || x.situacao === "recusada", async (tx, t, p, devAlvo, devs) => {
     // A devolução do alvo: o restante (nova), a do id, ou a do pagamento (sem reserva: a principal dele, ou nova).
     let dev: Devolucao | undefined;
+    const restanteDaDisputa = !!restanteDe && devAlvo?.confirmadaPor === CONFIRMADA_PELA_CONTESTACAO;
     let devido: number;
     let reconhecido = p.devolvidoForaReconhecido;
     if (restanteDe) {
@@ -984,10 +1016,17 @@ export async function registrarDevolucaoPorFora(
         return { ok: false as const, erro: "Só uma devolução que o Mercado Pago fez a menos tem o restante registrado por fora." };
       if (t.devolucoes.some((x) => x.origemDevolucaoId === origem.id)) return { ok: false as const, erro: "O restante desta devolução já foi registrado." };
       devido = origem.valor - origem.valorConfirmado;
+      // M8.2e: o restante da devolução que a disputa perdida confirmou a menos (`confirmada_por = 'contestacao'`) sai por fora,
+      // também no cartão: o pagamento já voltou ao titular pela disputa e não há mais devolução pelo Mercado Pago. Outra
+      // disputa ainda em curso no pagamento continua segurando.
       const pelaDisputa = recusaPelaDisputa(t, p.id);
-      if (pelaDisputa) return { ok: false as const, erro: pelaDisputa };
-      // A regra do cartão vale para o restante (uma linha nova, nunca enviada): só com o cartão aberto para a por fora.
-      if (!porForaPermitidoNoCartao(p, undefined, agora)) return { ok: false as const, erro: ERRO_POR_FORA_CARTAO };
+      if (restanteDaDisputa) {
+        if (disputaDoPagamento({ contestacoes: t.contestacoes ?? [] }, p.id) === "em_curso") return { ok: false as const, erro: ERRO_DEVOLUCAO_COM_DISPUTA };
+      } else {
+        if (pelaDisputa) return { ok: false as const, erro: pelaDisputa };
+        // A regra do cartão vale para o restante (uma linha nova, nunca enviada): só com o cartão aberto para a por fora.
+        if (!porForaPermitidoNoCartao(p, undefined, agora)) return { ok: false as const, erro: ERRO_POR_FORA_CARTAO };
+      }
     } else {
       dev = "devolucaoId" in alvo ? devAlvo : p.desfecho === null && !dinheiroDaReserva(p) ? principalSemReserva(devs) : devAlvo;
       const recusa = recusaDoPedido(p, dev, devs, t, true, agora);
@@ -1001,9 +1040,10 @@ export async function registrarDevolucaoPorFora(
         devido = saldoDevolvivel({ ...p, devolvidoForaReconhecido: reconhecido }, devs.filter((x) => x.id !== dev?.id));
       } else devido = dev.valor;
     }
-    // O que o Mercado Pago mostra agora (com o devolvido pelo painel dele já reconhecido, no restante sem reserva).
+    // O que o Mercado Pago mostra agora (com o devolvido pelo painel dele já reconhecido, no restante sem reserva). O restante
+    // da devolução confirmada pela disputa perdida: o pagamento continua contestado lá (é a disputa que já se perdeu).
     if (cobranca) {
-      const peloProvedor = recusaPeloProvedor(cobranca, { ...p, devolvidoForaReconhecido: reconhecido }, devs, contestacoesDoPagamento(t, p.id));
+      const peloProvedor = recusaPeloProvedor(cobranca, { ...p, devolvidoForaReconhecido: reconhecido }, devs, contestacoesDoPagamento(t, p.id), { contestadoPelaPerdida: restanteDaDisputa });
       if (peloProvedor) return { ok: false as const, erro: peloProvedor };
     }
     if (d.valor !== devido)
@@ -1402,8 +1442,17 @@ async function tetoDaTaxa(tx: Db, organizacaoId: string, p: Pagamento, dev: Devo
   };
 }
 
-/** Dia da despesa da taxa: o da confirmação da devolução, ou a data da devolução por fora. */
-const diaDaTaxa = (dev: Devolucao, agora: Date) => (dev.situacao === "por_fora" && dev.porForaData ? dev.porForaData : hojeISO(FUSO_PAGAMENTO, dev.confirmadaEm ?? agora));
+/**
+ * Dia da despesa da taxa: o da confirmação da devolução, ou a data da devolução por fora. A confirmada pela disputa perdida
+ * (M8.2e): hoje, o mês corrente (a confirmação leva o dia do débito, que pode ser de um mês já fechado).
+ */
+const diaDaTaxa = (dev: Devolucao, agora: Date) =>
+  dev.confirmadaPor === CONFIRMADA_PELA_CONTESTACAO ? hojeISO(FUSO_PAGAMENTO, agora) : dev.situacao === "por_fora" && dev.porForaData ? dev.porForaData : hojeISO(FUSO_PAGAMENTO, dev.confirmadaEm ?? agora);
+/**
+ * M8.2e: a taxa que não voltou na devolução confirmada pela disputa é linha de resultado sem caixa: o retido (ou o caixa
+ * final) da disputa já tirou do caixa o valor bruto debitado pelo Mercado Pago, que inclui a taxa.
+ */
+const taxaSemCaixa = (dev: Pick<Devolucao, "confirmadaPor">) => dev.confirmadaPor === CONFIRMADA_PELA_CONTESTACAO;
 
 /**
  * Taxa (e juros do parcelamento, se o Mercado Pago tirou da SCL) que não voltou, informada pela equipe depois da
@@ -1423,7 +1472,7 @@ export async function registrarTaxaPerdida(db: Db, organizacaoId: string, alvoBr
     if (valor > teto) return { ok: false as const, erro: erro(valor) };
     let despesaLancamentoId: string | null = null;
     if (valor > 0) {
-      const l = await lancarTaxaPerdida(tx, organizacaoId, t, p, valor, diaDaTaxa(dev, agora), chaveTaxaPerdida(p.id, dev.id), autorId);
+      const l = await lancarTaxaPerdida(tx, organizacaoId, t, p, valor, diaDaTaxa(dev, agora), chaveTaxaPerdida(p.id, dev.id), autorId, { semCaixa: taxaSemCaixa(dev) });
       if (!l.ok) return { ok: false as const, erro: l.erro };
       despesaLancamentoId = l.id;
     }
@@ -1468,7 +1517,7 @@ export async function corrigirTaxaPerdida(db: Db, organizacaoId: string, alvoBru
       );
       let n = 2;
       while (usadas.has(chaveTaxaPerdida(p.id, dev.id, n))) n++;
-      const l = await lancarTaxaPerdida(tx, organizacaoId, t, p, valor, dia, chaveTaxaPerdida(p.id, dev.id, n), autorId);
+      const l = await lancarTaxaPerdida(tx, organizacaoId, t, p, valor, dia, chaveTaxaPerdida(p.id, dev.id, n), autorId, { semCaixa: taxaSemCaixa(dev) });
       if (!l.ok) return { ok: false as const, erro: l.erro };
       despesaLancamentoId = l.id;
     }
@@ -1503,6 +1552,10 @@ export function acoesDaDevolucao(p: Pagamento, dev: Devolucao, devs: readonly De
   const foraDaLeitura = p.criadoEm.getTime() < inicioDoPrazoDeReleitura(agora).getTime();
   const aMenorSemRestante =
     conhecida && dev.situacao === "confirmada" && dev.avisos.includes("devolucao_a_menor") && dev.valorConfirmado !== null && !devs.some((x) => x.origemDevolucaoId === dev.id) && !devs.some((x) => x.situacao === "pedida");
+  // M8.2e: as mesmas recusas da disputa que o domínio confere (em curso ou perdida); a confirmada pela disputa perdida tem só o
+  // restante por fora.
+  const disputa = disputaDoPagamento({ contestacoes: t.contestacoes ?? [] }, p.id);
+  const daDisputa = dev.confirmadaPor === CONFIRMADA_PELA_CONTESTACAO;
   return {
     conferir: p.idProvedor !== null,
     pedirDeNovo: conhecida && dev.situacao === "recusada" && recusaDoPedido(p, dev, devs, t, false, agora) === null,
@@ -1517,8 +1570,8 @@ export function acoesDaDevolucao(p: Pagamento, dev: Devolucao, devs: readonly De
     parar: conhecida && dev.situacao === "pedida" && foraDaLeitura,
     registrarTaxa: (dev.situacao === "confirmada" || dev.situacao === "por_fora") && dev.taxaPerdida === null,
     corrigirTaxa: dev.taxaPerdida !== null,
-    pedirRestante: aMenorSemRestante,
-    restantePorFora: aMenorSemRestante && porForaPermitidoNoCartao(p, undefined, agora),
+    pedirRestante: aMenorSemRestante && !daDisputa && disputa === null,
+    restantePorFora: aMenorSemRestante && (daDisputa ? disputa !== "em_curso" : disputa === null && porForaPermitidoNoCartao(p, undefined, agora)),
   };
 }
 

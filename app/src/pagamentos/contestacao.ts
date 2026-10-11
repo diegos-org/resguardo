@@ -21,6 +21,7 @@ import { and, asc, eq, gte, inArray, isNotNull, isNull, lt, lte, or, sql } from 
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { lerConfigPagamentoSite } from "@/configuracoes/pagamento-site";
 import { reservaCalculadaPeloMotor } from "@/financeiro/motor";
+import { travarMotorDaReserva } from "@/financeiro/trava";
 import { violouUnicidade } from "@/db/erros";
 import { contestacoesPagamento, eventosContestacao, imoveis, pagamentos, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
@@ -69,6 +70,7 @@ import {
   DESFECHO_CONTESTACAO,
   divisaoDaDecisao,
   esperaDaLeituraDaContestacao,
+  FALHAS_PARA_SEM_FONTE,
   type FonteEventoContestacao,
   JANELA_CONTESTACAO_TARDIA,
   LEITURAS_DE_CONTESTACAO_POR_VOLTA,
@@ -106,7 +108,7 @@ import {
   valorSeguradoDesatualizado,
 } from "./contestacao-regras";
 import { confirmarDevolucaoPelaDisputa, devolucaoDevidaDepoisDaDisputa } from "./devolucao";
-import { recebimentosDoPagamento, registrarLiberacaoManual } from "./liberacao";
+import { liquidoQueAindaPodeEntrar, recebimentosDoPagamento, registrarLiberacaoManual } from "./liberacao";
 import { ErroProvedor, ID_NUMERICO_PROVEDOR, type ProvedorPagamento, semAcessoContestacao } from "./provedor";
 import { comDinheiro } from "./situacoes";
 import {
@@ -159,6 +161,8 @@ type LidoDasFontes = {
   casosDeOutro: string[];
   /** A order foi relida e aplicada nesta volta (`conferirTentativa` sem falha). */
   orderLida: boolean;
+  /** A Chargebacks API respondeu nesta volta sem 403 (um caso, a lista, ou "não achado"): a conta lê as contestações. */
+  chargebacksRespondeu: boolean;
 };
 
 type PagamentoLido = Pick<Pagamento, "id" | "organizacaoId" | "cotacaoId" | "idProvedor" | "idPagamentoProvedor" | "criadoEm" | "consultadoEm" | "situacao">;
@@ -178,19 +182,26 @@ async function lerFontes(
   agora: Date,
   o: { order: boolean; buscar: boolean },
 ): Promise<LidoDasFontes> {
-  const lido: LidoDasFontes = { leituras: [], semAcesso: false, falhou: false, util: false, casosDeOutro: [], orderLida: false };
+  const lido: LidoDasFontes = { leituras: [], semAcesso: false, falhou: false, util: false, casosDeOutro: [], orderLida: false, chargebacksRespondeu: false };
   const naOrder = !!p.idProvedor && p.criadoEm.getTime() >= inicioDoPrazoDeReleitura(agora).getTime();
   if (o.order && naOrder) {
-    const r = await conferirTentativa(db, p.organizacaoId, p.id, provedor, agora, { forcar: true, origem: "rotina" });
-    if (!r.ok) lido.falhou = true;
-    else lido.orderLida = true;
+    // Melhor esforço: a trava da cotação ocupada (outra leitura, uma ação na outra aba) é uma leitura que não deu agora.
+    try {
+      const r = await conferirTentativa(db, p.organizacaoId, p.id, provedor, agora, { forcar: true, origem: "rotina" });
+      if (!r.ok) lido.falhou = true;
+      else lido.orderLida = true;
+    } catch (e) {
+      if (!travaOcupada(e)) throw e;
+      lido.falhou = true;
+    }
   }
   const casos = [...new Set(linhas.map((l) => l.idCaso).filter((x): x is string => !!x && ID_NUMERICO_PROVEDOR.test(x)))];
   try {
     for (const idCaso of casos) {
       const caso = await provedor.consultarContestacao(idCaso);
       if (semAcessoContestacao(caso)) lido.semAcesso = true;
-      else if (caso) {
+      else lido.chargebacksRespondeu = true;
+      if (caso && !semAcessoContestacao(caso)) {
         const deste = casoDestePagamento(caso, p.idPagamentoProvedor);
         if (deste === "sim") {
           lido.leituras.push(leituraDoCaso(caso, agora));
@@ -202,6 +213,7 @@ async function lerFontes(
       const lista = await provedor.buscarContestacoes(p.idPagamentoProvedor);
       if (semAcessoContestacao(lista)) lido.semAcesso = true;
       else {
+        lido.chargebacksRespondeu = true;
         // Útil só um caso deste pagamento: a lista vazia não diz nada da disputa que o sistema conhece.
         for (const caso of lista) if (casoDestePagamento(caso, p.idPagamentoProvedor) === "sim") lido.leituras.push(leituraDoCaso(caso, agora));
         lido.util ||= lido.leituras.length > 0;
@@ -251,16 +263,22 @@ async function aplicarFontes(db: Db, p: PagamentoLido, lidas: readonly string[],
       Object.assign(l, mudanca);
       const ligar: string[] = [];
       const desligar: string[] = [];
+      // Sem acesso à Chargebacks API (403): liga; ela voltou a responder (a conta lê as contestações): sai.
       if (lido.semAcesso) ligar.push("contestacao_sem_leitura");
+      else if (lido.chargebacksRespondeu) desligar.push("contestacao_sem_leitura");
       if (l.idCaso && lido.casosDeOutro.includes(l.idCaso)) ligar.push("contestacao_caso_de_outro_pagamento");
       else if (l.idCaso && lido.leituras.some((x) => x.idCaso === l.idCaso)) desligar.push("contestacao_caso_de_outro_pagamento");
       // Dia 85 sem fonte: a order não é mais lida e nem a Chargebacks API nem a Payments API disseram algo útil (ou não há
-      // caso nem número do pagamento): a equipe confere o resultado no painel do Mercado Pago.
-      if (foraDaOrder && !lido.util && !lido.falhou) ligar.push("contestacao_sem_fonte");
+      // caso nem número do pagamento), inclusive quando elas falham seguidas vezes: a equipe confere o resultado no painel
+      // do Mercado Pago. Uma resposta útil depois desliga o aviso.
+      if (lido.util) desligar.push("contestacao_sem_fonte");
+      else if (foraDaOrder && (!lido.falhou || falhas >= FALHAS_PARA_SEM_FONTE)) ligar.push("contestacao_sem_fonte");
       if (await trocarAvisosDaContestacao(tx, l, { ligar, desligar }, agora)) mudou = true;
     }
     if (ef.aoVivo && !pt.avisos.includes("ao_vivo")) pt.avisos = [...pt.avisos, "ao_vivo"];
-    await sincronizarAvisosDaDisputa(tx, t, pt, agora, { ambigua: ef.ambigua });
+    // A Chargebacks API e a Payments API só ligam a ambígua; quem a desliga é a releitura da order (`aplicarLeitura`) ou o
+    // registro pela equipe (o aviso que a order deu nunca some pela leitura de outra fonte).
+    await sincronizarAvisosDaDisputa(tx, t, pt, agora, { ambigua: ef.ambigua === true ? true : null });
     return { mudou, novas: ef.novas.length };
   });
 }
@@ -385,6 +403,7 @@ export async function buscarContestacoesTardias(
   const j = JANELA_CONTESTACAO_TARDIA;
   const semanaAtras = new Date(agora.getTime() - j.aCadaMs);
   const daVez = o.forcar && o.pagamentoId ? undefined : or(isNull(pagamentos.contestacoesBuscadasEm), lt(pagamentos.contestacoesBuscadasEm, semanaAtras));
+  const depoisDaSaida = new Date(agora.getTime() - j.depoisDaSaidaDias * DIA_MS);
   const candidatos = await db
     .select({ p: pagamentos, checkout: reservas.checkout })
     .from(pagamentos)
@@ -398,6 +417,10 @@ export async function buscarContestacoesTardias(
         inArray(pagamentos.situacao, ["aprovado", "devolvido_parcial", "devolvido", "contestado"]),
         lte(pagamentos.aprovadoEm, new Date(agora.getTime() - j.desdeDias * DIA_MS)),
         gte(pagamentos.aprovadoEm, new Date(agora.getTime() - j.tetoDias * DIA_MS)),
+        // A janela inteira antes do limite (o gêmeo SQL de `naJanelaTardia`): até 200 dias depois do maior entre a aprovação e
+        // a saída da reserva (12h, em São Paulo). Um pagamento que já saiu dela nunca ganha marca nova e, sem isto, ficaria na
+        // frente da fila para sempre.
+        or(gte(pagamentos.aprovadoEm, depoisDaSaida), sql`((${reservas.checkout} + time '12:00') at time zone ${FUSO}) >= ${depoisDaSaida.toISOString()}::timestamptz`),
         daVez,
       ),
     )
@@ -414,13 +437,14 @@ export async function buscarContestacoesTardias(
       .returning({ id: pagamentos.id });
     if (!reservada) continue;
     resumo.buscados++;
+    const devolverAVez = () => db.update(pagamentos).set({ contestacoesBuscadasEm: antes }).where(and(eq(pagamentos.id, p.id), eq(pagamentos.contestacoesBuscadasEm, agora)));
     let lista: Awaited<ReturnType<ProvedorPagamento["buscarContestacoes"]>>;
     try {
       lista = await provedor.buscarContestacoes(p.idPagamentoProvedor!);
     } catch (e) {
-      if (!(e instanceof ErroProvedor)) throw e;
       // A busca que falhou não conta: a marca volta ao que era (a próxima volta tenta de novo).
-      await db.update(pagamentos).set({ contestacoesBuscadasEm: antes }).where(and(eq(pagamentos.id, p.id), eq(pagamentos.contestacoesBuscadasEm, agora)));
+      await devolverAVez();
+      if (!(e instanceof ErroProvedor)) throw e;
       resumo.falhas++;
       continue;
     }
@@ -434,12 +458,16 @@ export async function buscarContestacoesTardias(
         if (!t || !pt) return null;
         const ef = await aplicarLeiturasDaDisputa(tx, p.organizacaoId, t, pt, leituras, agora, { fonte: "chargebacks", sincronizar: false });
         if (ef.aoVivo && !pt.avisos.includes("ao_vivo")) pt.avisos = [...pt.avisos, "ao_vivo"];
-        await sincronizarAvisosDaDisputa(tx, t, pt, agora, { ambigua: ef.ambigua });
+        // Só liga a ambígua (como em `aplicarFontes`): a que a order deu fica até a releitura dela ou o registro da equipe.
+        await sincronizarAvisosDaDisputa(tx, t, pt, agora, { ambigua: ef.ambigua === true ? true : null });
         return ef;
       });
       if (r?.mudou) resumo.mudaram++;
       resumo.novas += r?.novas.length ?? 0;
     } catch (e) {
+      // A aplicação não aconteceu (trava ocupada, ou outro erro): a vez volta, como na falha do provedor, e a próxima volta
+      // lê o caso de novo (nunca uma semana sem a disputa achada).
+      await devolverAVez();
       if (!travaOcupada(e)) throw e;
       resumo.falhas++;
     }
@@ -548,7 +576,8 @@ export async function registrarContestacaoDaEquipe(
         else for (const caso of lista) if (casoDestePagamento(caso, p1.idPagamentoProvedor) === "sim") leituras.push(leituraDoCaso(caso, agora));
       } else semLeitura = true;
     } catch (erro) {
-      if (!(erro instanceof ErroProvedor)) throw erro;
+      // Melhor esforço: a falha do provedor e a trava da cotação ocupada (a releitura da order não aplicou) seguem sem a leitura.
+      if (!(erro instanceof ErroProvedor) && !travaOcupada(erro)) throw erro;
       semLeitura = true;
     }
   }
@@ -604,9 +633,10 @@ export async function registrarContestacaoDaEquipe(
         if (violouUnicidade(erro)) return { ok: false, erro: TEXTO_DISPUTA_JA_NO_QUADRO };
         throw erro;
       }
+      let retidoLido: number | null = null;
       if (devolucaoLida) {
         await recalcularDisputas(tx, organizacaoId, t, p, agora, { semCaixa: true });
-        await lancarRetidoRealizado(tx, organizacaoId, t, p, linha, agora);
+        retidoLido = await lancarRetidoRealizado(tx, organizacaoId, t, p, linha, agora);
       }
       await recalcularDisputas(tx, organizacaoId, t, p, agora);
       // D21: o MED e a reclamação explicam a devolução lida; o aviso `devolvido_por_fora` sai quando nada mais fica sem explicação.
@@ -620,7 +650,13 @@ export async function registrarContestacaoDaEquipe(
         entidadeId: p.id,
         mudancas: { contestacao: [null, linha.id], tipo: [null, linha.tipo], valor: [null, e.valor], abertaEm: [null, e.abertaEm], prazo: [null, e.prazo], idCaso: [null, linha.idCaso], duplicataPossivel: [null, linha.duplicataPossivel], semLeitura: [null, semLeitura] },
       });
-      return { ok: true, contestacaoId: linha.id, ...(linha.duplicataPossivel ? { mensagem: "Registrada como possível duplicata de outra disputa do pagamento: confirme que é outra disputa no quadro." } : {}) };
+      // O MED (ou a reclamação) registrado acima do que o Mercado Pago mostra devolvido: o caixa registra só o devolvido lido.
+      const mensagem = linha.duplicataPossivel
+        ? "Registrada como possível duplicata de outra disputa do pagamento: confirme que é outra disputa no quadro."
+        : retidoLido !== null && retidoLido < linha.valorEmRisco
+          ? textoRetidoMenorQueOMed(retidoLido, linha.valorEmRisco)
+          : null;
+      return { ok: true, contestacaoId: linha.id, ...(mensagem ? { mensagem } : {}) };
     });
   } catch (erro) {
     if (travaOcupada(erro)) return { ok: false, erro: TEXTO_OCUPADO_CONTESTACAO };
@@ -738,6 +774,24 @@ export const TEXTO_SEM_DECISAO_PARA_MUDAR = "Esta disputa ainda não tem decisã
 export const TEXTO_VALOR_SEGURADO_EM_DIA = "O valor segurado já é o valor em disputa de agora: nada a atualizar.";
 export const TEXTO_DEBITO_DEPOIS_DO_RESULTADO = "A disputa já terminou: o dia e o valor do débito entram na confirmação do resultado.";
 export const TEXTO_NOTA_DO_DEBITO = "O valor debitado é diferente do valor em risco: escreva a nota (o que o painel do Mercado Pago mostra).";
+/** O MED (ou a reclamação) registrado acima do devolvido que o Mercado Pago mostra: o caixa fica no que de fato saiu. */
+export const textoRetidoMenorQueOMed = (lido: number, registrado: number) =>
+  `O Mercado Pago mostra ${formatBRL(lido)} devolvidos ao pagador, menos que o valor registrado (${formatBRL(registrado)}): o caixa registra ${formatBRL(lido)}; o resto entra no caixa final da disputa, se o Mercado Pago debitar.`;
+/** "Perdeu" sem recebimento em vigor e com o sinal de liberação do Mercado Pago: a liberação se registra antes. */
+export const TEXTO_LIBERACAO_ANTES_DA_PERDA =
+  "O Mercado Pago mostra a liberação deste pagamento: registre a liberação à mão (o líquido que caiu na conta) antes de confirmar a perdida.";
+/** "Perdeu" numa disputa de parte do valor sem recebimento em vigor: o resto do pagamento entra pela liberação, que se registra antes. */
+export const TEXTO_LIBERACAO_ANTES_DA_PERDA_PARCIAL =
+  "A disputa é de parte do valor e a liberação deste pagamento ainda não está registrada: registre a liberação à mão (o líquido que caiu na conta) antes de confirmar a perdida.";
+/** Pagamento sem reserva: o valor perdido acima da taxa do pagamento. */
+export const textoPerdaSemReservaAcimaDaTaxa = (v: number, teto: number) =>
+  `Pagamento sem reserva: o dinheiro dele nunca entrou no livro e o que a SCL perde é a taxa do pagamento (até ${formatBRL(teto)}). ${formatBRL(v)} passa disso: confira o valor (quase sempre é digitação).`;
+export const TEXTO_NOTA_DA_TAXA_SEM_RESERVA =
+  "Pagamento sem reserva com a taxa do pagamento desconhecida: escreva na nota a taxa que o painel do Mercado Pago mostra (é o que a SCL perde).";
+/** "Conferir o aviso → reaberta" com outra disputa sem número aberta no pagamento. */
+export const textoOutraDisputaSemNumero = (abertaEm: Date) =>
+  `Há outra disputa sem número aberta neste pagamento (aberta em ${diaMes(abertaEm)}): se ela é esta reabertura, siga por ela; senão, encerre-a sem efeito antes de reabrir.`;
+export const TEXTO_RODADA_JA_NO_QUADRO = "A rodada seguinte desta disputa já está no quadro.";
 export const TEXTO_NOTA_DO_RESULTADO = "Escreva a nota: o resultado ou o valor diferem do que o Mercado Pago mostra, ou ele não mostra o resultado (confirme pelo painel dele).";
 
 type Recusa = { ok: false; erro: string; codigo: string };
@@ -745,6 +799,24 @@ const recusada = (erro: string, codigo = "dados"): Recusa => ({ ok: false, erro,
 const diaDe = (d: Date) => hojeISO(FUSO, d);
 /** dd/mm/aaaa de uma data AAAA-MM-DD. */
 const dataCompleta = (d: string) => d.split("-").reverse().join("/");
+
+/**
+ * O primeiro dia possível do débito da disputa: o da abertura no Mercado Pago (o caso, ou o dia que a equipe registrou),
+ * nunca antes da aprovação. Sem a abertura no provedor (a leitura só da order), a aprovação: o dia em que o sistema viu a
+ * disputa pode vir depois do débito.
+ */
+function desdeAberturaDaDisputa(p: Pick<Pagamento, "aprovadoEm" | "criadoEm">, l: Pick<Contestacao, "abertaNoProvedorEm">): string {
+  const aprovacao = diaDe(p.aprovadoEm ?? p.criadoEm);
+  const abertura = l.abertaNoProvedorEm ? diaDe(l.abertaNoProvedorEm) : null;
+  return abertura && abertura > aprovacao ? abertura : aprovacao;
+}
+
+/** O primeiro dia possível da volta do dinheiro debitado: o do débito (o do retido realizado), nunca antes da abertura. */
+function desdeODebito(p: Pick<Pagamento, "aprovadoEm" | "criadoEm">, l: Pick<Contestacao, "abertaNoProvedorEm" | "debitoEm">, dataDoRetido: string | null): string {
+  const desde = desdeAberturaDaDisputa(p, l);
+  const debito = l.debitoEm ?? dataDoRetido;
+  return debito && debito > desde ? debito : desde;
+}
 
 /** Nota de uma ação da disputa (até 300, sem dado pessoal; obrigatória quando pedida). */
 function conferirNota(nota: string | undefined, obrigatoria: boolean, faltando = "Escreva a nota (sem dados pessoais)."): { ok: true; nota: string } | Recusa {
@@ -836,7 +908,10 @@ async function releituraDaDisputa(db: Db, alvo: { pagamentoId: string; contestac
   }
   const [depois] = await db.select().from(contestacoesPagamento).where(eq(contestacoesPagamento.id, x.l.id));
   const pelaOrder = lido.orderLida && depois?.lidaEm?.getTime() === agora.getTime() && depois.estadoLido === "in_process";
-  const peloCaso = lido.leituras.some((y) => y.fonte === "chargebacks" && (x.l.idCaso === null || y.idCaso === x.l.idCaso) && leituraEmDisputa(y, x.l.coberturaAplicada !== null));
+  // O caso ainda sem cobertura só conta com a linha ainda aberta: depois de outra fonte mostrar a disputa encerrada (a linha
+  // a confirmar), ele não diz que ela continua em andamento.
+  const peloCaso =
+    depois?.situacao === "aberta" && lido.leituras.some((y) => y.fonte === "chargebacks" && (x.l.idCaso === null || y.idCaso === x.l.idCaso) && leituraEmDisputa(y, x.l.coberturaAplicada !== null));
   const pelaSituacao = lido.leituras.some((y) => y.fonte === "payments" && y.estadoLido === "in_process");
   return { lida: !lido.falhou && (lido.orderLida || lido.util), emDisputa: pelaOrder || peloCaso || pelaSituacao };
 }
@@ -851,8 +926,8 @@ export type EntradaDebito = { data: string; valor: number; nota: string };
  * `a_confirmar`: o retido vira realizado na data e no valor confirmados (a prevista é estornada e nasce a realizada `#N`,
  * com competência = data de caixa = o dia do débito; `lancarContestacao`, momento `debito`). Data entre a aprovação e hoje;
  * valor até o pago. Uma vez (o MED lido como devolução já nasce realizado). No pagamento sem reserva (o dinheiro dele nunca
- * entrou no livro), só a data e a marca. A nota é conferida (sem dado pessoal) e não é gravada: a 0069 não tem coluna para
- * ela (fica a auditoria com os valores).
+ * entrou no livro), só a data e a marca. A nota é conferida (sem dado pessoal) e gravada na linha (`debito_nota`); a
+ * auditoria fica com os valores.
  */
 export async function confirmarDebito(db: Db, organizacaoId: string, contestacaoId: string, e: EntradaDebito, autorId: string | null, agora: Date = new Date()): Promise<ResultadoContestacao> {
   const alvo = await contestacaoDaOrganizacao(db, organizacaoId, contestacaoId);
@@ -861,7 +936,7 @@ export async function confirmarDebito(db: Db, organizacaoId: string, contestacao
     if (!contestacaoNaoFinal(l.situacao)) return recusada(TEXTO_DEBITO_DEPOIS_DO_RESULTADO, "nao_permitida");
     if (l.duplicataPossivel) return recusada(TEXTO_DUPLICATA_SEM_DECIDIR, "duplicata");
     if (l.retidoConfirmadoEm) return recusada(TEXTO_DEBITO_JA_CONFIRMADO, "nao_permitida");
-    const data = conferirData(e.data, diaDe(p.aprovadoEm ?? p.criadoEm), agora, "o dia em que o Mercado Pago debitou");
+    const data = conferirData(e.data, desdeAberturaDaDisputa(p, l), agora, "o dia em que o Mercado Pago debitou");
     if (!data.ok) return data;
     const pago = valorPagoAprovado(p);
     if (!Number.isSafeInteger(e.valor) || e.valor < 1 || e.valor > pago) return recusada(`Informe o valor debitado (de R$ 0,01 até o pago, ${formatBRL(pago)}).`);
@@ -869,6 +944,8 @@ export async function confirmarDebito(db: Db, organizacaoId: string, contestacao
     if (!nota.ok) return nota;
     const antes = { retidoConfirmadoEm: null, valorEmRisco: l.valorEmRisco };
     await lancarContestacao(tx, organizacaoId, t, p, l, { tipo: "debito", data: data.data, valor: e.valor }, autorId, agora);
+    // A nota fica na linha (o quadro a mostra a quem lê o financeiro); o evento e a auditoria levam só o dia e o valor.
+    if (nota.nota) await gravarLinha(tx, l, { debitoNota: nota.nota }, agora);
     await registrarEventoDaContestacao(tx, l.id, { fonte: "equipe", tipo: "debito_confirmado", antes, depois: { valor: e.valor, data: data.data }, usuarioId: autorId }, agora);
     await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "contestacao.debito", entidade: "pagamento", entidadeId: p.id, mudancas: { contestacao: [null, l.id], valor: [l.valorEmRisco, e.valor], data: [null, data.data] } });
     return { ok: true, contestacaoId: l.id };
@@ -1110,6 +1187,8 @@ export async function registrarDecisao(db: Db, organizacaoId: string, contestaca
   if (!entrada.ok) return entrada;
   return naDisputa(db, organizacaoId, alvo, agora, async (tx, t, p, l) => {
     if (e.versao !== l.decisaoVersao || l.decisaoVersao !== 0) return recusada(TEXTO_DECISAO_MUDOU, "decisao_mudou");
+    // A ordem única: o motor da reserva antes de ler as partes efetivas (um recálculo em curso termina antes da leitura).
+    await travarMotorDaReserva(tx, organizacaoId, t.reserva.id);
     const f = await fatosDaDecisao(tx, organizacaoId, t, p, l);
     if (f.recusa) return recusada(f.recusa, "nao_permitida");
     const escolhida = opcaoEscolhida(f, f.opcoes[entrada.quemArca], entrada.quemArca, e.assinatura);
@@ -1142,6 +1221,7 @@ export async function mudarDecisao(db: Db, organizacaoId: string, contestacaoId:
     if (!contestacaoNaoFinal(l.situacao)) return recusada(TEXTO_DISPUTA_JA_TERMINOU, "nao_permitida");
     if (l.decisaoVersao === 0) return recusada(TEXTO_SEM_DECISAO_PARA_MUDAR, "decisao_mudou");
     if (e.versao !== l.decisaoVersao) return recusada(TEXTO_DECISAO_MUDOU, "decisao_mudou");
+    await travarMotorDaReserva(tx, organizacaoId, t.reserva.id);
     const f = await fatosDaDecisao(tx, organizacaoId, t, p, l);
     if (f.semReserva) return recusada(TEXTO_PAGAMENTO_SEM_RESERVA, "nao_permitida");
     const escolhida = opcaoEscolhida(f, f.opcoes[entrada.quemArca], entrada.quemArca, e.assinatura);
@@ -1173,6 +1253,7 @@ export async function atualizarValorSegurado(db: Db, organizacaoId: string, cont
     if (l.decisaoVersao === 0 || !l.causa || !l.quemArca) return recusada(TEXTO_SEM_DECISAO_PARA_MUDAR, "decisao_mudou");
     if (e.versao !== l.decisaoVersao) return recusada(TEXTO_DECISAO_MUDOU, "decisao_mudou");
     if (!valorSeguradoDesatualizado(l)) return recusada(TEXTO_VALOR_SEGURADO_EM_DIA, "nao_permitida");
+    await travarMotorDaReserva(tx, organizacaoId, t.reserva.id);
     const f = await fatosDaDecisao(tx, organizacaoId, t, p, l);
     if (!f.base) return recusada(TEXTO_SEM_DECISAO_PARA_MUDAR, "decisao_mudou");
     const escolhida = opcaoEscolhida(f, f.atualizacao, l.quemArca, e.assinatura);
@@ -1206,10 +1287,18 @@ export type FatosDoResultado = {
   retido: { estado: string; montante: number; data: string | null } | null;
   /** O pagamento ainda não tem recebimento em vigor (o "Ganhou" oferece registrar a liberação ali mesmo). */
   semRecebimento: boolean;
+  /**
+   * O "Perdeu" pede antes a liberação registrada à mão (sem recebimento em vigor e com o sinal de liberação do Mercado Pago,
+   * ou numa disputa de parte do valor): o texto da recusa, ou null. Nada de "nunca entrou" suposto.
+   */
+  liberacaoAntesDaPerda: string | null;
   proposta: {
     /** O valor em disputa (com a conta); no pagamento sem reserva, a taxa do pagamento (o que a SCL perde). */
     valorPerdido: number | null;
-    /** O líquido sem recebimento em vigor (o Mercado Pago não liberou); 0 com recebimento. */
+    /**
+     * O líquido sem recebimento em vigor (o Mercado Pago não liberou), nunca mais que o valor perdido; 0 com recebimento;
+     * null quando a liberação precisa ser registrada antes (`liberacaoAntesDaPerda`) ou o líquido não é conhecido.
+     */
     liquidoNaoEntrou: number | null;
     /** O dia do débito confirmado, ou o do retido realizado. */
     debitoEm: string | null;
@@ -1223,6 +1312,13 @@ async function fatosDoResultado(tx: Db, organizacaoId: string, p: Pagamento, l: 
   const semReserva = !dinheiroDaReserva(p) || !l.reservaId;
   const recebidos = semReserva ? [] : (await recebimentosDoPagamento(tx, organizacaoId, p.id)).emVigor.filter((x) => x.estado === "realizado" || x.estado === "conciliado");
   const comRecebimento = recebidos.length > 0;
+  const valorPerdido = semReserva ? p.taxa : (l.valor ?? valorPagoAprovado(p));
+  // Sem recebimento em vigor, o "nunca entrou" só se propõe quando o Mercado Pago não mostrou a liberação e a disputa é do
+  // valor inteiro: com o sinal de liberação, ou numa disputa de parte do valor (o resto entra pela liberação), a liberação
+  // se registra antes (o caixa final fica pelo que de fato entrou, e a taxa da reserva fica a do pagamento).
+  const liberacaoLida = l.avisos.includes("contestacao_liberacao_lida") || !!p.liberacaoConfirmadaEm;
+  const parcial = l.valor !== null && l.valor < valorPagoAprovado(p);
+  const liberacaoAntesDaPerda = semReserva || comRecebimento ? null : liberacaoLida ? TEXTO_LIBERACAO_ANTES_DA_PERDA : parcial ? TEXTO_LIBERACAO_ANTES_DA_PERDA_PARCIAL : null;
   return {
     versao: l.decisaoVersao,
     assinatura: assinaturaDoResultado({
@@ -1240,9 +1336,10 @@ async function fatosDoResultado(tx: Db, organizacaoId: string, p: Pagamento, l: 
     lancado: { proprietario: livro.proprietario, scl: livro.scl },
     retido: livro.retido ? { estado: livro.retido.estado, montante: livro.retido.montante ?? 0, data: livro.retido.dataCaixa } : null,
     semRecebimento: !semReserva && !comRecebimento,
+    liberacaoAntesDaPerda,
     proposta: {
-      valorPerdido: semReserva ? p.taxa : (l.valor ?? valorPagoAprovado(p)),
-      liquidoNaoEntrou: semReserva ? 0 : liquidoNaoEntrouProposto({ comRecebimento, liquido: p.liquido }),
+      valorPerdido,
+      liquidoNaoEntrou: semReserva ? 0 : liquidoNaoEntrouProposto({ comRecebimento, liquido: p.liquido, valorPerdido, liberacaoLida: liberacaoAntesDaPerda !== null }),
       debitoEm: l.debitoEm ?? (retidoRealizado(livro.retido) ? livro.retido!.dataCaixa : null),
     },
     sugestao: resultadoSugeridoPelaLeitura(l),
@@ -1344,22 +1441,32 @@ export async function confirmarResultado(
     let liquidoNaoEntrou = 0;
     let debitoEm: string | null = null;
     let voltaEm: string | null = null;
-    const desde = diaDe(p.aprovadoEm ?? p.criadoEm);
+    // As datas de caixa: o débito nunca antes da abertura da disputa; a volta nunca antes do débito que ela desfaz.
+    const desdeAbertura = desdeAberturaDaDisputa(p, l);
     if (resultado === "perdida") {
       const v = centavosOuNull(e.valorPerdido);
       const n = daReserva ? centavosOuNull(e.liquidoNaoEntrou) : 0;
       if (v === null || !centavosValidos(v, pago)) return recusada(`Informe o valor que a SCL perdeu (até o pago, ${formatBRL(pago)}).`);
+      // Pagamento sem reserva: o dinheiro dele nunca entrou no livro; o que a SCL perde é a taxa (com o custo do parcelamento
+      // que ela pagou). Um valor acima é quase sempre digitação; sem a taxa conhecida, a nota diz a que o painel mostra.
+      if (!daReserva) {
+        const teto = p.taxa === null ? null : p.taxa + Math.max(0, p.custoParcelasVendedor ?? 0);
+        if (teto !== null && v > teto) return recusada(textoPerdaSemReservaAcimaDaTaxa(v, teto));
+        if (teto === null && !(e.nota ?? "").trim()) return recusada(TEXTO_NOTA_DA_TAXA_SEM_RESERVA);
+      }
       if (n === null || !centavosValidos(n, pago)) return recusada(`Informe quanto deste pagamento nunca entrou na conta (zero se entrou tudo; até ${formatBRL(pago)}).`);
+      if (n > v) return recusada(`O que deste pagamento nunca entrou na conta (${formatBRL(n)}) não passa do valor que a SCL perdeu (${formatBRL(v)}): o resto entra pela liberação.`);
+      if (daReserva && fatos.liberacaoAntesDaPerda) return recusada(fatos.liberacaoAntesDaPerda, "liberacao_antes");
       valorPerdido = v;
       liquidoNaoEntrou = n;
       const dia = e.debitoEm || l.debitoEm || fatos.proposta.debitoEm;
       if (dia) {
-        const d = conferirData(dia, desde, agora, "o dia em que o Mercado Pago debitou");
+        const d = conferirData(dia, desdeAbertura, agora, "o dia em que o Mercado Pago debitou");
         if (!d.ok) return d;
         debitoEm = d.data;
       }
     } else if (fatos.retido && (fatos.retido.estado === "realizado" || fatos.retido.estado === "conciliado")) {
-      const d = conferirData(e.voltaEm || data.data, desde, agora, "o dia em que o dinheiro voltou");
+      const d = conferirData(e.voltaEm || data.data, desdeODebito(p, l, fatos.retido.data), agora, "o dia em que o dinheiro voltou");
       if (!d.ok) return d;
       voltaEm = d.data;
     }
@@ -1402,10 +1509,16 @@ export async function confirmarResultado(
       for (const d of substituidas) await devolucaoDevidaDepoisDaDisputa(tx, organizacaoId, p, d, autorId, agora);
       await voltarASituacaoDeAntes(tx, organizacaoId, t, p, l, "contestacao_ganha", autorId, agora);
       const semRecebimento = daReserva && reservaCalculadaPeloMotor(t.reserva) && !(await recebimentosDoPagamento(tx, organizacaoId, p.id)).emVigor.some((x) => x.estado === "realizado" || x.estado === "conciliado");
-      await trocarAvisosDaContestacao(tx, l, semRecebimento ? { ligar: ["contestacao_ganha_sem_recebimento"] } : { desligar: ["contestacao_ganha_sem_recebimento"] }, agora);
+      // Depois da ganha a leitura volta a lançar a liberação sozinha: o aviso da liberação lida sob disputa sai; fica o da
+      // ganha sem recebimento, até a liberação entrar no livro.
+      await trocarAvisosDaContestacao(tx, l, semRecebimento ? { ligar: ["contestacao_ganha_sem_recebimento"], desligar: ["contestacao_liberacao_lida"] } : { desligar: ["contestacao_ganha_sem_recebimento", "contestacao_liberacao_lida"] }, agora);
       await gravarLinha(tx, l, { definitivoEm: agora }, agora);
     } else {
       await lancarContestacao(tx, organizacaoId, t, p, l, { tipo: "perdida", resultadoEm: data.data, debitoEm, valorPerdido, liquidoNaoEntrou, tarifa }, autorId, agora);
+      // A liberação lida só se pede enquanto ainda cabe: com o recebimento no livro, ou com o líquido inteiro contado como
+      // "nunca entrou" pelo caixa final, o aviso sai (e a leitura não o religa).
+      const cabe = liquidoQueAindaPodeEntrar(t, p);
+      if (!fatos.semRecebimento || (cabe !== null && cabe <= 0)) await trocarAvisosDaContestacao(tx, l, { desligar: ["contestacao_liberacao_lida"] }, agora);
       // A devolução substituída: confirmada pela disputa pelo menor entre o valor dela e o que sobra do perdido (no pagamento
       // sem reserva, do valor em disputa: o perdido ali é só a taxa).
       const confirmados = confirmadoPelasSubstituidas(
@@ -1509,7 +1622,8 @@ export async function encerrarSemEfeito(
     if (tr.descartada) return recusada(TEXTO_DISPUTA_JA_TERMINOU, "nao_permitida");
     let voltaEm: string | null = null;
     if (e.voltaEm) {
-      const d = conferirData(e.voltaEm, diaDe(p.aprovadoEm ?? p.criadoEm), agora, "o dia em que o dinheiro voltou");
+      const livro = await livroDaDisputa(tx, organizacaoId, l);
+      const d = conferirData(e.voltaEm, desdeODebito(p, l, retidoRealizado(livro.retido) ? livro.retido!.dataCaixa : null), agora, "o dia em que o dinheiro voltou");
       if (!d.ok) return d;
       voltaEm = d.data;
     }
@@ -1544,6 +1658,11 @@ export async function conferirAviso(db: Db, organizacaoId: string, contestacaoId
     const tr = transicaoDaContestacao(l, { tipo: "conferir_aviso", como, em: agora });
     if (!tr.ok) return recusada(tr.erro, tr.codigo);
     if (tr.descartada) return recusada(TEXTO_SEM_AVISO_A_CONFERIR, "sem_aviso");
+    // A rodada seguinte sem número com outra disputa sem número aberta no pagamento: pode ser a mesma (a equipe a registrou
+    // antes), e o índice `contestacoes_pagamento_sem_id` não deixaria duas. A equipe decide por qual seguir.
+    const semId = (x: Pick<Contestacao, "idCaso" | "idContestacao">) => x.idCaso === null && x.idContestacao === null;
+    const outraSemId = tr.novaRodada && semId(l) ? contestacoesDoPagamento(t, p.id).find((x) => x.id !== l.id && contestacaoNaoFinal(x.situacao) && semId(x)) : undefined;
+    if (outraSemId) return recusada(textoOutraDisputaSemNumero(outraSemId.abertaEm), "nao_permitida");
     await gravarLinha(tx, l, { avisos: tr.avisos, avisoConferidoEm: agora, avisoConferidoPor: autorId, avisoConferidoNota: nota.nota }, agora);
     for (const ev of tr.eventos) await registrarEventoDaContestacao(tx, l.id, { fonte: "equipe", tipo: ev.tipo, antes: ev.antes, depois: ev.depois, usuarioId: autorId }, agora);
     let novaId: string | null = null;
@@ -1564,31 +1683,40 @@ export async function conferirAviso(db: Db, organizacaoId: string, contestacaoId
         agora,
       });
       // A rodada seguinte leva os fatos que a leitura já mostrou (o caso relido em andamento): uma leitura iniciada antes desta
-      // ação é descartada nela.
-      const nova = await criarLinha(
-        tx,
-        organizacaoId,
-        t,
-        p,
-        {
-          ...dados,
-          rodada: l.rodada + 1,
-          estadoLido: l.estadoLido,
-          codigo: l.codigo,
-          coberturaElegivel: l.coberturaElegivel,
-          motivoId: l.motivoId,
-          motivoCodigo: l.motivoCodigo,
-          valorOrigem: l.valorOrigem,
-          abertaNoProvedorEm: l.abertaNoProvedorEm,
-          aoVivo: l.aoVivo,
-          lidaEm: agora,
-          atualizadoNoProvedorEm: l.atualizadoNoProvedorEm,
-          notaRegistro: nota.nota,
-          proximaLeituraEm: agora,
-        },
-        agora,
-        { fonte: "equipe", usuarioId: autorId },
-      );
+      // ação é descartada nela. Num ponto de salvamento: o índice único violado (outra rodada criada ao mesmo tempo) responde
+      // com texto, nunca o erro cru.
+      const criar = (sp: Db) =>
+        criarLinha(
+          sp,
+          organizacaoId,
+          t,
+          p,
+          {
+            ...dados,
+            rodada: l.rodada + 1,
+            estadoLido: l.estadoLido,
+            codigo: l.codigo,
+            coberturaElegivel: l.coberturaElegivel,
+            motivoId: l.motivoId,
+            motivoCodigo: l.motivoCodigo,
+            valorOrigem: l.valorOrigem,
+            abertaNoProvedorEm: l.abertaNoProvedorEm,
+            aoVivo: l.aoVivo,
+            lidaEm: agora,
+            atualizadoNoProvedorEm: l.atualizadoNoProvedorEm,
+            notaRegistro: nota.nota,
+            proximaLeituraEm: agora,
+          },
+          agora,
+          { fonte: "equipe", usuarioId: autorId },
+        );
+      let nova: Contestacao;
+      try {
+        nova = await tx.transaction((sp) => criar(sp));
+      } catch (erro) {
+        if (violouUnicidade(erro)) throw new RecusaDaContestacao(TEXTO_RODADA_JA_NO_QUADRO, "nao_permitida");
+        throw erro;
+      }
       novaId = nova.id;
       await recalcularDisputas(tx, organizacaoId, t, p, agora);
     }

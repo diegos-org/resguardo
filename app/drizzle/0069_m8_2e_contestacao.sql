@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS "contestacoes_pagamento" (
 	"retido_lancamento_id" uuid,
 	"retido_confirmado_em" timestamp with time zone,
 	"retido_confirmado_por" uuid,
+	"debito_nota" text DEFAULT '' NOT NULL,
 	"volta_lancamento_id" uuid,
 	"caixa_final_lancamento_id" uuid,
 	"criado_em" timestamp with time zone DEFAULT now() NOT NULL,

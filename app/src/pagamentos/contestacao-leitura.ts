@@ -46,7 +46,7 @@ import {
 } from "./contestacao-regras";
 import { type CasoDeContestacao, type Cobranca, estadoLidoDaContestacao, type SituacaoDoPagamento, type StatusTresDS } from "./provedor";
 import { origemDeDevolucaoConhecida } from "./situacoes";
-import { type Contestacao, contestacoesDoPagamento, type Devolucao, devolucoesDoPagamento, dinheiroDaReserva, type Pagamento, type Travado, valorPagoAprovado } from "./travas";
+import { type Contestacao, contestacoesDoPagamento, type Devolucao, devolucoesDoPagamento, devolvidoProprio, dinheiroDaReserva, type Pagamento, type Travado, valorPagoAprovado } from "./travas";
 
 const FUSO = "America/Sao_Paulo";
 const dataBr = (d: string) => d.split("-").reverse().slice(0, 2).join("/");
@@ -244,14 +244,46 @@ export async function acertarRetidoPrevisto(tx: Db, organizacaoId: string, t: Tr
 }
 
 /**
- * O retido realizado do MED (ou da reclamação) que a leitura mostra como devolução: a saída de caixa já aconteceu, no dia em
- * que a leitura viu a devolução (`devolvido_visto_em`; sem ele, hoje), pelo valor em risco da disputa. Só no dinheiro da
- * reserva e uma vez (a disputa sem retido ainda).
+ * Quanto da devolução que a leitura mostra este MED (ou reclamação) explica: o devolvido lido menos o reconhecido devolvido
+ * fora, as devoluções do próprio sistema e o valor das outras disputas MED/reclamação do pagamento (as mais antigas
+ * primeiro), nunca mais que o valor em risco dela. É o fato lido: o que de fato saiu do caixa.
  */
-export async function lancarRetidoRealizado(tx: Db, organizacaoId: string, t: Travado, p: Pick<Pagamento, "id" | "desfecho" | "devolvidoVistoEm">, l: Contestacao, agora: Date): Promise<void> {
-  if (!dinheiroDaReserva(p) || l.retidoLancamentoId || l.valorEmRisco <= 0) return;
+export function devolvidoExplicadoPelaDisputa(
+  t: Pick<Travado, "contestacoes" | "devolucoes">,
+  p: Pick<Pagamento, "id" | "devolvidoLido" | "devolvidoForaReconhecido">,
+  l: Pick<Contestacao, "id" | "valorEmRisco" | "abertaEm">,
+): number {
+  const outras = t.contestacoes
+    .filter((c) => c.pagamentoId === p.id && c.id !== l.id && (c.tipo === "med" || c.tipo === "reclamacao") && c.situacao !== "sem_efeito" && c.abertaEm.getTime() <= l.abertaEm.getTime())
+    .reduce((s, c) => s + Math.max(0, c.valor ?? 0), 0);
+  const lido = p.devolvidoLido - p.devolvidoForaReconhecido - devolvidoProprio(devolucoesDoPagamento(t, p.id)) - outras;
+  return Math.max(0, Math.min(l.valorEmRisco, lido));
+}
+
+/**
+ * O retido realizado do MED (ou da reclamação) que a leitura mostra como devolução: a saída de caixa já aconteceu, no dia em
+ * que a leitura viu a devolução (`devolvido_visto_em`; sem ele, hoje), pelo que o Mercado Pago mostra devolvido e esta
+ * disputa explica (`devolvidoExplicadoPelaDisputa`, até o valor em risco): um registro acima do devolvido lido não vira
+ * saída de caixa que não existiu (o resto entra no caixa final, se o Mercado Pago debitar). O retido previsto (registrado
+ * antes de a leitura ver a devolução) é estornado. Só no dinheiro da reserva e uma vez (a disputa sem retido realizado).
+ * Devolve o montante lançado (null = nada lançado).
+ */
+export async function lancarRetidoRealizado(
+  tx: Db,
+  organizacaoId: string,
+  t: Travado,
+  p: Pick<Pagamento, "id" | "desfecho" | "devolvidoVistoEm" | "devolvidoLido" | "devolvidoForaReconhecido">,
+  l: Contestacao,
+  agora: Date,
+): Promise<number | null> {
+  if (!dinheiroDaReserva(p) || l.retidoConfirmadoEm || l.valorEmRisco <= 0) return null;
+  const atual = await lancamentoDoRetido(tx, organizacaoId, l);
+  if (atual && atual.estado !== "previsto") return null;
+  const montante = devolvidoExplicadoPelaDisputa(t, p, l);
+  if (montante <= 0) return null;
   const dia = hojeISO(FUSO, p.devolvidoVistoEm ?? agora);
   await travarMotorDaReserva(tx, organizacaoId, t.reserva.id);
+  if (atual) await estornar(tx, organizacaoId, atual.id, `a leitura do Mercado Pago mostrou a devolução em ${dataBr(dia)}`, null);
   const [novo] = await lancar(
     tx,
     organizacaoId,
@@ -261,7 +293,7 @@ export async function lancarRetidoRealizado(tx: Db, organizacaoId: string, t: Tr
         descricao: `Reserva ${t.reserva.codigo} — valor em disputa (${NOMES_TIPO_CONTESTACAO[l.tipo].toLowerCase()}) que o Mercado Pago devolveu ao pagador, visto em ${dataBr(dia)}`,
         valor: 0,
         efeitoSaldo: 0,
-        montante: l.valorEmRisco,
+        montante,
         competencia: dia,
         dataCaixa: dia,
         estado: "realizado",
@@ -275,7 +307,33 @@ export async function lancarRetidoRealizado(tx: Db, organizacaoId: string, t: Tr
   );
   await tx.update(contestacoesPagamento).set({ retidoLancamentoId: novo.id, atualizadoEm: agora }).where(eq(contestacoesPagamento.id, l.id));
   l.retidoLancamentoId = novo.id;
-  await registrarEventoDaContestacao(tx, l.id, { fonte: "sistema", tipo: "caixa", antes: { retidoRealizado: null }, depois: { retidoRealizado: l.valorEmRisco, dia } }, agora);
+  await registrarEventoDaContestacao(tx, l.id, { fonte: "sistema", tipo: "caixa", antes: { retidoRealizado: null, retidoPrevisto: atual?.montante ?? null }, depois: { retidoRealizado: montante, dia } }, agora);
+  return montante;
+}
+
+/**
+ * Depois da leitura da order (sob a trava de `aplicarLeitura`): o MED ou a reclamação registrados antes de a leitura mostrar a
+ * devolução ganham agora o retido realizado, no dia em que a leitura a viu (o mesmo fato dá o mesmo caixa, qualquer que seja
+ * a ordem do registro e da leitura). `p` com o devolvido lido e o dia visto desta leitura.
+ */
+export async function acertarRetidoDasDevolucoesLidas(
+  tx: Db,
+  organizacaoId: string,
+  t: Travado,
+  p: Pick<Pagamento, "id" | "desfecho" | "devolvidoVistoEm" | "devolvidoLido" | "devolvidoForaReconhecido">,
+  agora: Date,
+): Promise<boolean> {
+  if (!dinheiroDaReserva(p) || p.devolvidoLido <= 0) return false;
+  let mudou = false;
+  const linhas = contestacoesDoPagamento(t, p.id)
+    .filter((l) => (l.tipo === "med" || l.tipo === "reclamacao") && contestacaoNaoFinal(l.situacao) && !l.duplicataPossivel && !l.retidoConfirmadoEm)
+    .sort((a, b) => a.abertaEm.getTime() - b.abertaEm.getTime());
+  for (const l of linhas) {
+    const antes = l.retidoLancamentoId;
+    await lancarRetidoRealizado(tx, organizacaoId, t, p, l, agora);
+    if (l.retidoLancamentoId !== antes) mudou = true;
+  }
+  return mudou;
 }
 
 // ---------------------------------------------------------------- o valor em risco

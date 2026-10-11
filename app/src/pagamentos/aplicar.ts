@@ -35,10 +35,19 @@ import { alvoDaCobranca, falhaDoAlvo } from "./alvo";
 import { FOLGA_PRAZO_PAGAMENTO_MS, inicioDoPrazoDeReleitura } from "./andamento";
 import { avisosComDevolucoes, trocarAvisosDaDevolucao } from "./avisos-devolucao";
 import { decidirAprovacao } from "./confirmacao";
-import { aplicarLeiturasDaDisputa, avisosComContestacoes, leiturasDaOrder, trocarAvisosDaContestacao } from "./contestacao-leitura";
+import { acertarRetidoDasDevolucoesLidas, aplicarLeiturasDaDisputa, avisosComContestacoes, leiturasDaOrder, trocarAvisosDaContestacao } from "./contestacao-leitura";
 import { contestacaoEmCurso, contestacaoNaoFinal } from "./contestacao-regras";
 import { avaliarDisjuntor, contaNoDisjuntor } from "./disjuntor";
-import { acordarDevolucoesQueEsperam, FUSO_PAGAMENTO, gravarTaxaNaReserva, liberarPeloProvedor, recebimentosDoPagamento, taxaCanalDaReserva } from "./liberacao";
+import {
+  acordarDevolucoesQueEsperam,
+  desligarAvisosDaLiberacaoNaDisputa,
+  FUSO_PAGAMENTO,
+  gravarTaxaNaReserva,
+  liberarPeloProvedor,
+  liquidoQueAindaPodeEntrar,
+  recebimentosDoPagamento,
+  taxaCanalDaReserva,
+} from "./liberacao";
 import { type Cobranca, DESAFIO_3DS_MINUTOS, type DetalheFinanceiro, ID_NUMERICO_PROVEDOR, PARCELAS_MAXIMAS, RETENCAO_ORDERS_DIAS, STATUS_TRES_DS, urlDoDesafio } from "./provedor";
 import { type CodigoAviso, comDinheiro, MAXIMO_FALHAS_DEVOLUCAO, motivoDoDetalhe, origemDeDevolucaoConhecida, type SituacaoPagamento, transicaoPermitida } from "./situacoes";
 import {
@@ -504,6 +513,11 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
   // O dia em que o sistema viu "devolvido" pela primeira vez: só na leitura que leva a "devolvido". O pagamento que já estava
   // devolvido antes da coluna (M8.2c) fica sem ele, e o caixa do cancelamento usa o dia da auditoria dessa leitura.
   if (situacao === "devolvido" && p.situacao !== "devolvido" && !p.devolvidoVistoEm) patch.devolvidoVistoEm = agora;
+  // M8.2e: o MED ou a reclamação registrados antes de a leitura mostrar a devolução: o retido vira realizado agora, no dia em
+  // que a leitura a viu (o mesmo caixa que o registro depois da leitura daria).
+  if (cobrancaAplicada)
+    disputaMudou =
+      (await acertarRetidoDasDevolucoesLidas(tx, organizacaoId, t, { ...p, desfecho, devolvidoLido, devolvidoVistoEm: patch.devolvidoVistoEm ?? p.devolvidoVistoEm }, agora)) || disputaMudou;
 
   // Liberação: só o dinheiro da reserva (o que a confirmou e a diferença aplicada, M8.2d), ainda aprovado (ou devolvido
   // em parte pelas nossas devoluções), e só com o sinal explícito. M8.2e: com disputa em curso ou perdida, a liberação lida
@@ -511,8 +525,15 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
   // contestado sem disputa registrada (leitura ambígua) também não.
   if (f?.liberado === true) {
     if (dinheiroDaReserva({ desfecho }) && emDisputa) {
+      // O aviso só pede o que ainda falta: sem recebimento em vigor (a liberação já registrada à mão, ou lida antes da
+      // disputa, não se registra de novo) e com líquido que ainda cabe (a perdida que já contou o líquido como "nunca entrou"
+      // não pede a liberação por cima do caixa final dela).
+      const comRecebimento = (await recebimentosDoPagamento(tx, organizacaoId, p.id)).emVigor.length > 0;
+      const cabe = liquidoQueAindaPodeEntrar(t, p);
+      const pede = !comRecebimento && (cabe === null || cabe > 0);
       for (const l of contestacoesDoPagamento(t, p.id)) {
-        if (contestacaoNaoFinal(l.situacao) || l.situacao === "perdida") disputaMudou = (await trocarAvisosDaContestacao(tx, l, { ligar: ["contestacao_liberacao_lida"] }, agora)) || disputaMudou;
+        if (!contestacaoNaoFinal(l.situacao) && l.situacao !== "perdida") continue;
+        disputaMudou = (await trocarAvisosDaContestacao(tx, l, pede ? { ligar: ["contestacao_liberacao_lida"] } : { desligar: ["contestacao_liberacao_lida"] }, agora)) || disputaMudou;
       }
     } else if (dinheiroDaReserva({ desfecho }) && (situacao === "aprovado" || (situacao === "devolvido_parcial" && !inexplicada))) {
       const [r] = await tx.select().from(reservas).where(eq(reservas.id, t.reserva.id));
@@ -532,6 +553,9 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
             p.liberacaoConfirmadaEm ??= agora;
             await acertarCaixasPendentes(tx, organizacaoId, t, p, hojeISO(FUSO_PAGAMENTO, agora), agora);
             await acordarDevolucoesQueEsperam(tx, t, p, agora);
+            // M8.2e: a liberação está no livro (lançada agora, ou a registrada à mão conciliada): os avisos de liberação das
+            // disputas (a ganha sem recebimento, a lida sob disputa) cumpriram o papel.
+            disputaMudou = (await desligarAvisosDaLiberacaoNaDisputa(tx, t, p, agora)) || disputaMudou;
           }
         }
       } else if (r?.estado === "cancelada" && !p.liberacaoConfirmadaEm) {

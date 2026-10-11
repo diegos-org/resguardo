@@ -2022,6 +2022,8 @@ export const contestacoesPagamento = pgTable(
     retidoLancamentoId: uuid("retido_lancamento_id").references(() => lancamentos.id),
     retidoConfirmadoEm: timestamp("retido_confirmado_em", { withTimezone: true }),
     retidoConfirmadoPor: uuid("retido_confirmado_por").references(() => usuarios.id, { onDelete: "set null" }),
+    /** A nota do "Confirmar o débito do Mercado Pago" (obrigatória quando o valor difere do valor em risco; sem dado pessoal). */
+    debitoNota: text("debito_nota").notNull().default(""),
     /** Ganha: o retido realizado que voltou. */
     voltaLancamentoId: uuid("volta_lancamento_id").references(() => lancamentos.id),
     /** Perdida: o caixa final. Chave estrangeira com nome próprio (abaixo): o automático passaria dos 63 caracteres. */

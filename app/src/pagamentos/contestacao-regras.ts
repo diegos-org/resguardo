@@ -162,6 +162,12 @@ export const LIMITE_NOTA_CONTESTACAO = 300;
  */
 export const SUGERIR_RESULTADO_PELA_LEITURA = false;
 
+/**
+ * Depois dos 85 dias (a order não é mais lida), quantas falhas seguidas da Chargebacks API e da Payments API valem como
+ * "sem resposta útil": o aviso `contestacao_sem_fonte` em vez de esperar os 240 dias calado.
+ */
+export const FALHAS_PARA_SEM_FONTE = 3;
+
 /** Espera da próxima leitura de uma contestação: um dia; depois de falhas, 1, 2, 4 e até 7 dias (a fila anda na falha). */
 export function esperaDaLeituraDaContestacao(falhas: number): number {
   if (!Number.isInteger(falhas) || falhas <= 0) return RELER_CONTESTACAO_A_CADA_MS;
@@ -292,6 +298,16 @@ export function estadoDaVolta(
   const estados = new Set(finais.map((l) => l.estadoLido).filter((e) => e === "settled" || e === "reimbursed"));
   return (s.has("a_favor") && s.has("contra")) || estados.size > 1 ? "conflito" : "encerrada";
 }
+
+/**
+ * Os fatos guardados de uma linha (o estado lido de uma fonte e a cobertura de outra, cada um o mais novo da sua fonte)
+ * divergem no encerramento: `reimbursed` com a cobertura true, por exemplo. As fontes de uma volta podem chegar em
+ * transações diferentes (a order na leitura dela, a Chargebacks API na rotina); a divergência é vista nos fatos juntados.
+ */
+export const fatosEmConflito = (f: Pick<FatosDaContestacao, "estadoLido" | "coberturaAplicada">): boolean => {
+  const s = sentidos({ estadoLido: f.estadoLido, coberturaAplicada: f.coberturaAplicada });
+  return s.includes("a_favor") && s.includes("contra");
+};
 
 /**
  * Ordem das leituras: sob a trava, uma leitura iniciada antes da última aplicada (`lida_em`), ou com `date_last_updated`
@@ -563,7 +579,10 @@ export function casarContestacao(lidas: readonly LeituraDeContestacao[], linhas:
       if (naoFinais.length === 1) naLinha(naoFinais[0], l);
       else if (naoFinais.length > 1) ambiguas.push(l);
       else if (emDisputa) {
-        if (finais.length) naLinha(maisNovaRodada(finais), l);
+        // Uma disputa encerrada sem efeito (registrada por engano, duplicata) não absorve a disputa nova: só a ganha ou a
+        // perdida recebem a leitura em andamento (`contestacao_resultado_mudou`).
+        const comResultado = finais.filter((a) => a.situacao !== "sem_efeito");
+        if (comResultado.length) naLinha(maisNovaRodada(comResultado), l);
         else nova(l, false);
       } else if (leituraEncerrada(l) && finais.length) explicadas.push(l);
       else ambiguas.push(l);
@@ -732,9 +751,14 @@ function pelaLeitura(linha: LinhaDeContestacao, leituras: readonly LeituraDeCont
   else if (j.conhecida) avisos = comAviso(avisos, "contestacao_situacao_desconhecida", false);
 
   if (contestacaoNaoFinal(linha.situacao)) {
-    if (estado === "conflito") avisos = comAviso(avisos, "contestacao_leitura_conflitante", true);
+    // Fontes que divergem no encerramento, na mesma volta ou entre o que já estava guardado e a fonte nova: o aviso, uma
+    // vez, sem transição.
+    const conflito = estado === "conflito" || (estado !== "em_disputa" && fatosEmConflito(j.fatos));
+    if (conflito) avisos = comAviso(avisos, "contestacao_leitura_conflitante", true);
     else if (estado === "encerrada" && linha.situacao === "aberta") situacao = "a_confirmar";
-    else if (estado === "em_disputa" && linha.situacao === "a_confirmar") {
+    else if (estado === "em_disputa" && linha.situacao === "a_confirmar" && validas.some((l) => l.estadoLido === "in_process")) {
+      // Só uma leitura que mostra `in_process` do mesmo caso reabre: o caso da Chargebacks API ainda sem cobertura conta como
+      // "em disputa" para criar ou manter a linha aberta, nunca para desfazer o encerramento que outra fonte mostrou.
       situacao = "aberta";
       avisos = comAviso(avisos, "contestacao_resultado_mudou", true);
     }
@@ -1006,8 +1030,17 @@ export function caixaFinalDaPerda(e: { valorPerdido: number; liquidoNaoEntrou: n
   return centavos(e.valorPerdido, "valor perdido") - centavos(e.liquidoNaoEntrou, "líquido que não entrou") - centavos(e.retidoRealizado, "retido realizado");
 }
 
-/** O "Quanto deste pagamento nunca entrou na conta" proposto: o líquido sem recebimento em vigor (o Mercado Pago não liberou), 0 com. */
-export const liquidoNaoEntrouProposto = (e: { comRecebimento: boolean; liquido: number | null }): number | null => (e.comRecebimento ? 0 : e.liquido);
+/**
+ * O "Quanto deste pagamento nunca entrou na conta" proposto: 0 com recebimento em vigor; sem ele e sem sinal de liberação
+ * (o Mercado Pago não liberou), o líquido, nunca mais que o valor perdido (numa disputa de parte do valor, o resto ainda
+ * pode entrar pela liberação). Com o sinal de liberação e sem o recebimento, null: a liberação se registra antes (nada de
+ * valor suposto). Sem o líquido conhecido, null.
+ */
+export const liquidoNaoEntrouProposto = (e: { comRecebimento: boolean; liquido: number | null; valorPerdido?: number | null; liberacaoLida?: boolean }): number | null => {
+  if (e.comRecebimento) return 0;
+  if (e.liberacaoLida || e.liquido === null) return null;
+  return e.valorPerdido === null || e.valorPerdido === undefined ? e.liquido : Math.min(e.liquido, Math.max(0, e.valorPerdido));
+};
 
 /**
  * O acerto da perdida (`acertoDaPerda`): a perda a dividir (valor perdido − o confirmado pelas substituídas), a divisão
@@ -1217,6 +1250,14 @@ const diaMes = (d: Date | string) =>
 export const TEXTO_DISPUTA_JA_NO_QUADRO = "O Mercado Pago já mostra esta disputa: ela está no quadro.";
 export const TEXTO_CASO_DE_OUTRO_PAGAMENTO = "Este caso é de outro pagamento no Mercado Pago.";
 export const TEXTO_REGISTRADA_A_MAO = "registrada à mão: o sistema confere pela leitura quando puder";
+/**
+ * A disputa que a leitura abriu (`charged_back/in_process` na order): pode ser uma reclamação no Mercado Pago (a página de
+ * migração mapeia `in_mediation` para isso), e o sistema não tem como separar.
+ */
+export const TEXTO_LIDA_PODE_SER_RECLAMACAO =
+  "lida no Mercado Pago como contestação: pode ser uma reclamação no Mercado Pago (mediação); o sistema não tem como separar, confira no painel dele";
+/** O texto da origem de uma disputa no quadro: registrada à mão pela equipe, ou lida (com o aviso de que pode ser uma reclamação). */
+export const textoDaOrigemDaContestacao = (l: { origem: OrigemContestacao }): string => (l.origem === "equipe" ? TEXTO_REGISTRADA_A_MAO : TEXTO_LIDA_PODE_SER_RECLAMACAO);
 /** Nota acrescentada quando a fase 0 não leu (provedor fechado ou falha). */
 export const NOTA_SEM_LEITURA = "sem leitura do Mercado Pago";
 export const NOTA_SEM_CONFERIR_AGORA = "não deu para conferir no Mercado Pago agora";

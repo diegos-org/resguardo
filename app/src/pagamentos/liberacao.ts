@@ -49,6 +49,7 @@ import { TEXTO_ESTORNO_LIBERACAO_COM_RETIDO } from "./contestacao-regras";
 import type { CodigoAviso } from "./situacoes";
 import {
   type Alteracao,
+  type Contestacao,
   contestacoesDoPagamento,
   devolucaoInexplicada,
   devolvidoPelaDisputa,
@@ -308,6 +309,10 @@ export async function registrarLiberacaoManual(db: Db, organizacaoId: string, pa
     }
     const { emVigor, proxima } = await recebimentosDoPagamento(tx, organizacaoId, p.id);
     if (emVigor.length) return { ok: false as const, erro: emVigor[0].estado === "conciliado" ? "A liberação já foi confirmada pelo Mercado Pago." : "A liberação já está registrada: estorne a registrada à mão antes de registrar de novo." };
+    // M8.2e: a disputa perdida já contou no caixa final o que deste pagamento nunca entrou: só cabe o resto do líquido.
+    const cabe = liquidoQueAindaPodeEntrar(t, p);
+    if (cabe !== null && cabe <= 0) return { ok: false as const, erro: TEXTO_LIBERACAO_DEPOIS_DA_PERDIDA };
+    if (cabe !== null && d.liquido > cabe) return { ok: false as const, erro: `O líquido não pode passar de ${formatBRL(cabe)}: a disputa perdida já contou o resto deste pagamento como "nunca entrou". Confira o valor, ou corrija com um ajuste.` };
     const taxa = p.valor - d.liquido;
     const taxaAntes = p.taxa;
     const mudanca = { taxa, liquido: d.liquido, liberacaoConfirmadaEm: agora, liberacaoOrigem: "manual" as const, atualizadoEm: agora };
@@ -346,12 +351,34 @@ export async function registrarLiberacaoManual(db: Db, organizacaoId: string, pa
 }
 
 /**
- * M8.2e: a liberação registrada à mão cumpriu o papel dos avisos de liberação das disputas do pagamento (a lida sob disputa
- * e a ganha sem recebimento): eles saem das linhas (a união no pagamento é refeita por `sincronizarAvisosDaDisputa`). Sob as
- * travas de quem chama.
+ * M8.2e: a liberação registrada (à mão, ou lida do Mercado Pago depois da disputa) cumpriu o papel dos avisos de liberação
+ * das disputas do pagamento (a lida sob disputa e a ganha sem recebimento): eles saem das linhas (a união no pagamento é
+ * refeita por quem grava o pagamento). Sob as travas de quem chama. Devolve se algum saiu.
  */
-async function desligarAvisosDaLiberacaoNaDisputa(tx: Db, t: Travado, p: Pagamento, agora: Date): Promise<void> {
-  for (const c of contestacoesDoPagamento(t, p.id)) await trocarAvisosDaContestacao(tx, c, { desligar: ["contestacao_liberacao_lida", "contestacao_ganha_sem_recebimento"] }, agora);
+export async function desligarAvisosDaLiberacaoNaDisputa(tx: Db, t: Pick<Travado, "contestacoes">, p: Pick<Pagamento, "id">, agora: Date): Promise<boolean> {
+  let mudou = false;
+  for (const c of contestacoesDoPagamento(t, p.id)) mudou = (await trocarAvisosDaContestacao(tx, c, { desligar: ["contestacao_liberacao_lida", "contestacao_ganha_sem_recebimento"] }, agora)) || mudou;
+  return mudou;
+}
+
+export const TEXTO_LIBERACAO_DEPOIS_DA_PERDIDA =
+  "A disputa perdida já contou que o líquido deste pagamento nunca entrou na conta (o caixa final da disputa): a liberação não se registra por cima. Corrija com um ajuste, que fica registrado.";
+
+/**
+ * M8.2e: quanto do líquido deste pagamento ainda pode entrar na conta depois das disputas perdidas dele (o líquido, ou o
+ * valor menos a taxa conhecida, menos o "nunca entrou" que o caixa final de cada perdida já contou); null = nenhuma perdida
+ * contou algo como "nunca entrou" (sem teto além das regras de sempre).
+ */
+export function liquidoQueAindaPodeEntrar(
+  t: { contestacoes: readonly Pick<Contestacao, "pagamentoId" | "situacao" | "liquidoNaoEntrou">[] },
+  p: Pick<Pagamento, "id" | "valor" | "liquido" | "taxa">,
+): number | null {
+  const naoEntrou = t.contestacoes
+    .filter((c) => c.pagamentoId === p.id && c.situacao === "perdida")
+    .reduce((s, c) => s + Math.max(0, c.liquidoNaoEntrou ?? 0), 0);
+  if (naoEntrou <= 0) return null;
+  const liquido = p.liquido ?? (p.taxa !== null ? p.valor - p.taxa : p.valor);
+  return liquido - naoEntrou;
 }
 
 /**

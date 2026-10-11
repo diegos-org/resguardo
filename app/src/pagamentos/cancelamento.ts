@@ -1292,11 +1292,20 @@ async function montarContestada(db: Db, organizacaoId: string, t: Travado, agora
       "repasse_a_pagar",
       `A parte desta reserva já compõe o repasse ${preso.tipo === "antecipado" ? "antecipado" : preso.tipo === "fechamento" ? "do fechamento" : "por fora"} de ${dataIsoBr(preso.data)}, ainda não pago: estorne esse repasse (o proprietário recebe o resto no próximo) e então cancele.`,
     );
-  // O pago e o retido: o principal de cada pagamento da reserva menos o que já voltou ao hóspede (realizado).
+  // O pago e o retido: o principal de cada pagamento da reserva menos o que já voltou ao hóspede (realizado) e menos o que a
+  // reserva ainda deve a ele pela disputa (as devoluções substituídas por uma disputa não final: o acerto do cancelamento ou
+  // da alteração já as tirou do resultado, e o dinheiro volta ao hóspede pela disputa, ou volta a ser devido se a SCL
+  // ganhar). Nunca mais que o valor da reserva de agora (depois de uma alteração): o resto é do hóspede.
   const realizado = (x: Pagamento) =>
     x.devolvidoForaReconhecido + devolucoesDoPagamento(t, x.id).filter((d) => d.situacao === "confirmada" || d.situacao === "por_fora").reduce((s, d) => s + comprometido(d), 0);
+  const naoFinais = new Set(t.contestacoes.filter((l) => contestacaoNaoFinal(l.situacao)).map((l) => l.id));
+  const substituido = (x: Pagamento) =>
+    devolucoesDoPagamento(t, x.id)
+      .filter((d) => d.contestacaoId !== null && naoFinais.has(d.contestacaoId) && (d.situacao === "recusada" || d.situacao === "pedida"))
+      .reduce((s, d) => s + d.valor, 0);
   const valorPago = daReserva.reduce((s, x) => s + valorPagoAprovado(x), 0);
-  const valorRetido = daReserva.reduce((s, x) => s + Math.max(0, x.valor - realizado(x)), 0);
+  const retidoDosPagamentos = daReserva.reduce((s, x) => s + Math.max(0, x.valor - realizado(x) - substituido(x)), 0);
+  const valorRetido = r.valorBruto === null ? retidoDosPagamentos : Math.min(retidoDosPagamentos, Math.max(0, r.valorBruto));
   const ativo = t.cancelamento?.situacao === "pedido" ? t.cancelamento : null;
   const avisos: string[] = [];
   if (segurada) avisos.push(`A alteração preparada em ${diaBr(segurada.criadoEm)} (datas seguradas) é desfeita pelo cancelamento: as novas datas voltam à venda.`);

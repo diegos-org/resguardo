@@ -4162,6 +4162,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "debito_nota": {
+          "name": "debito_nota",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
         "volta_lancamento_id": {
           "name": "volta_lancamento_id",
           "type": "uuid",

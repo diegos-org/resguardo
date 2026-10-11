@@ -46,6 +46,7 @@ import { entradasDaReserva } from "./entradas";
 import { recusaDoCartao } from "./cartao";
 import { type AcoesDaDevolucao, acoesDaDevolucao, liberacaoAtrasada, podeRegistrarRecusaNoPainel, porForaPermitidoNoCartao, type RestanteSemReserva, restanteSemReserva } from "./devolucao";
 import { ALERTA_RECUSAS_24H, ALERTA_TOKEN_INVALIDO_1H, disjuntorAberto, RECUSAS_PARA_DESLIGAR_24H, recusasNasUltimas24h, recusasPorTokenNaUltimaHora } from "./disjuntor";
+import { liquidoQueAindaPodeEntrar } from "./liberacao";
 import { type CodigoDevolucao, type ModoTresDS, type StatusTresDS, urlDoDesafio } from "./provedor";
 import {
   AVISOS_PAGAMENTO,
@@ -1032,7 +1033,7 @@ type ContextoDoPainel = {
   cancelamento: { situacao: SituacaoCancelamento; direito: DireitoCancelamento | null } | null;
   alteracoes?: readonly (Pick<Alteracao, "id" | "situacao"> & Partial<Pick<Alteracao, "holdAte">>)[];
   /** M8.2e: as disputas do pagamento (as ações das devoluções e a liberação à mão as leem; a perdida sem decisão pede atenção). */
-  contestacoes?: readonly Pick<Contestacao, "pagamentoId" | "situacao" | "avisos" | "estadoLido" | "decisaoVersao" | "definitivoEm">[];
+  contestacoes?: readonly Pick<Contestacao, "pagamentoId" | "situacao" | "avisos" | "estadoLido" | "decisaoVersao" | "definitivoEm" | "liquidoNaoEntrou">[];
 };
 
 /** O aviso de devolução recusada, no quadro do pagamento, quando a recusa veio do painel do Mercado Pago (registrada) ou da leitura. */
@@ -1213,9 +1214,12 @@ function paraPainel(p: Pagamento, devs: readonly Devolucao[], temRecebimentoManu
       // Só a reserva que o motor calcula (confirmada, ou cancelada com valor retido) recebe a liberação no livro. Cancelada
       // com devolução integral (M8.2d, D13): a liberação só se registra quando uma devolução de parte do valor espera por
       // ela (nada entra no livro; a devolução sai depois dela).
+      // M8.2e: a disputa perdida que já contou o líquido inteiro como "nunca entrou" não recebe a liberação por cima (o domínio
+      // recusa; a correção é um ajuste).
       registrarLiberacao:
         dinheiroDaReserva(p) &&
         (p.situacao === "aprovado" || (p.situacao === "devolvido_parcial" && !devolucaoInexplicada(p, devs)) || contestadoExplicado) &&
+        (liquidoQueAindaPodeEntrar({ contestacoes: disputasP }, p) ?? 1) > 0 &&
         ((!p.liberacaoConfirmadaEm && calculada) || (ctx.cancelamento?.situacao === "cancelada" && ctx.cancelamento.direito === "integral" && devs.some(esperandoLiberacao))),
       // Cancelada com devolução integral, a liberação não se registraria de novo: o estorno não é oferecido (o domínio recusa).
       estornarLiberacao:
@@ -1304,6 +1308,7 @@ async function montarPainel(db: Db, organizacaoId: string, lista: Pagamento[], a
       avisos: contestacoesPagamento.avisos,
       estadoLido: contestacoesPagamento.estadoLido,
       decisaoVersao: contestacoesPagamento.decisaoVersao,
+      liquidoNaoEntrou: contestacoesPagamento.liquidoNaoEntrou,
       definitivoEm: contestacoesPagamento.definitivoEm,
     })
     .from(contestacoesPagamento)
