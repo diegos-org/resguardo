@@ -25,6 +25,7 @@ import { formatBRL } from "@/lib/money";
 import { avisosComDevolucoes, trocarAvisosDaDevolucao } from "./avisos-devolucao";
 import {
   AVISOS_DE_CONTESTACAO,
+  AVISOS_DE_CONTESTACAO_DO_PAGAMENTO,
   chavesDaContestacao,
   contestacaoNaoFinal,
   casarContestacao,
@@ -55,10 +56,11 @@ const iguais = (a: readonly string[], b: readonly string[]) => a.length === b.le
 // ---------------------------------------------------------------- avisos: a união no pagamento
 
 /**
- * Os avisos de contestação que moram em cada linha. `contestacao_ambigua` é do pagamento (a leitura que não se liga a
- * nenhuma linha com segurança não tem onde ficar): liga e desliga só nele.
+ * Os avisos de contestação que moram em cada linha. `contestacao_ambigua` e `contestacao_busca_sem_acesso` são do pagamento
+ * (`AVISOS_DE_CONTESTACAO_DO_PAGAMENTO`: a leitura que não se liga a nenhuma linha com segurança e a busca recusada não têm
+ * onde ficar): ligam e desligam só nele.
  */
-const DA_LINHA: readonly string[] = AVISOS_DE_CONTESTACAO.filter((a) => a !== "contestacao_ambigua");
+const DA_LINHA: readonly string[] = AVISOS_DE_CONTESTACAO.filter((a) => !AVISOS_DE_CONTESTACAO_DO_PAGAMENTO.includes(a));
 
 /**
  * Os avisos do pagamento com a união dos avisos das disputas dele (puro; o gêmeo de `avisosComDevolucoes`). O aviso
@@ -77,11 +79,23 @@ export function avisosComContestacoes(
   return [...new Set([...proprios, ...(emCurso ? ["contestado"] : []), ...linhas.flatMap((c) => c.avisos)])];
 }
 
-/** Recalcula e grava os avisos do pagamento (os dele, a união dos das devoluções e a das disputas), numa escrita só. */
-export async function sincronizarAvisosDaDisputa(tx: Db, t: Pick<Travado, "devolucoes" | "contestacoes">, p: Pagamento, agora: Date, o: { ambigua?: boolean | null } = {}): Promise<void> {
+/**
+ * Recalcula e grava os avisos do pagamento (os dele, a união dos das devoluções e a das disputas), numa escrita só.
+ * `o.ligar`/`o.desligar`: avisos do próprio pagamento a mudar junto (`ao_vivo`, `contestacao_busca_sem_acesso`), aplicados
+ * aqui e comparados com o que está gravado (nunca mudar `p.avisos` antes: a escrita seria pulada por já "estar igual").
+ */
+export async function sincronizarAvisosDaDisputa(
+  tx: Db,
+  t: Pick<Travado, "devolucoes" | "contestacoes">,
+  p: Pagamento,
+  agora: Date,
+  o: { ambigua?: boolean | null; ligar?: readonly string[]; desligar?: readonly string[] } = {},
+): Promise<void> {
   let lista = avisosComContestacoes(avisosComDevolucoes(p.avisos, t.devolucoes, p.id), t.contestacoes, p.id);
   if (o.ambigua === true && !lista.includes("contestacao_ambigua")) lista = [...lista, "contestacao_ambigua"];
   if (o.ambigua === false) lista = lista.filter((a) => a !== "contestacao_ambigua");
+  if (o.desligar?.length) lista = lista.filter((a) => !o.desligar!.includes(a));
+  for (const a of o.ligar ?? []) if (!lista.includes(a)) lista = [...lista, a];
   if (iguais(lista, p.avisos)) return;
   await tx.update(pagamentos).set({ avisos: lista, atualizadoEm: agora }).where(eq(pagamentos.id, p.id));
   p.avisos = lista;
@@ -482,6 +496,11 @@ export async function criarLinha(
 export type EfeitosDaDisputa = {
   /** As linhas que esta leitura criou. */
   novas: Contestacao[];
+  /**
+   * As linhas que já existiam e receberam alguma leitura desta volta (casadas pela identificação, ou por serem a única não
+   * final): a resposta útil para cada uma (o aviso `contestacao_sem_fonte` olha linha a linha, nunca a volta inteira).
+   */
+  comLeitura: string[];
   /** Alguma linha mudou (situação, fatos, avisos, identificação) ou nasceu. */
   mudou: boolean;
   /** true = alguma leitura não se liga a nada com segurança (`contestacao_ambigua` no pagamento); false = todas se ligaram; null = nada lido. */
@@ -507,12 +526,13 @@ export async function aplicarLeiturasDaDisputa(
   agora: Date,
   o: { fonte: FonteEventoContestacao; desfecho?: DesfechoPagamento | null; sincronizar?: boolean },
 ): Promise<EfeitosDaDisputa> {
-  const efeitos: EfeitosDaDisputa = { novas: [], mudou: false, ambigua: leituras.length ? false : null, aoVivo: leituras.some((l) => l.aoVivo === true) };
+  const efeitos: EfeitosDaDisputa = { novas: [], comLeitura: [], mudou: false, ambigua: leituras.length ? false : null, aoVivo: leituras.some((l) => l.aoVivo === true) };
   if (!leituras.length) return efeitos;
   const linhas = contestacoesDoPagamento(t, p.id);
   const r = casarContestacao(leituras, linhas);
   for (const e of r.existentes) {
     const l = linhas.find((x) => x.id === e.linhaId)!;
+    efeitos.comLeitura.push(l.id);
     const completar = Object.fromEntries(Object.entries(e.completar).filter(([, v]) => v !== null && v !== undefined)) as Partial<Pick<Contestacao, "idCaso" | "idContestacao" | "idTransacao">>;
     if (Object.keys(completar).length) {
       await tx.update(contestacoesPagamento).set({ ...completar, atualizadoEm: agora }).where(eq(contestacoesPagamento.id, l.id));

@@ -416,6 +416,13 @@ const DIA_MS = 86_400_000;
  * A disputa ambígua (`contestacao_ambigua`) mora só no pagamento (a leitura a tira das linhas, e no caso típico — uma
  * disputa encerrada que o sistema não conhecia — nem há linha): conta pelos pagamentos da empresa.
  */
+/**
+ * A busca tardia recusada pelo Mercado Pago (403, `contestacao_busca_sem_acesso`) também mora só no pagamento (a disputa que
+ * ela procuraria ainda não tem linha): conta pelos pagamentos da empresa, como a ambígua.
+ */
+const textoDaBuscaSemAcessoNoInicio = (n: number) =>
+  `O Mercado Pago não deixa esta conta procurar disputas (Chargebacks) em ${n} pagamento(s) do site: confira as disputas deles no painel do Mercado Pago.`;
+
 const textoDaAmbiguaNoInicio = (n: number) => `${n} disputa(s) do pagamento que o sistema não conseguiu casar com as do quadro: confira no painel do Mercado Pago e registre pelo quadro.`;
 
 /** Os avisos de cada linha que pedem a equipe no Início (atenção), com o texto curto da contagem. */
@@ -440,7 +447,7 @@ const AVISOS_DA_LINHA_NO_INICIO: Partial<Record<AvisoDeContestacao, (n: number) 
  * - a estadia por vir com disputa em curso ("não libere a entrada…");
  * - os avisos de cada linha (possível duplicata, caso de outro pagamento, resultado que mudou, leituras em conflito, ganha
  *   sem recebimento, dia 85 sem fonte, mais de 240 dias, sem leitura);
- * - a disputa ambígua, pelos avisos do pagamento (com ou sem linha no quadro).
+ * - a disputa ambígua e a busca tardia recusada (403), pelos avisos do pagamento (com ou sem linha no quadro).
  * Nada daqui é lançamento `pendente`: o contador de pendentes do Início não conta a disputa (C3).
  */
 export async function avisosDeContestacao(db: Db, organizacaoId: string, agora: Date = new Date()): Promise<Alerta[]> {
@@ -448,9 +455,15 @@ export async function avisosDeContestacao(db: Db, organizacaoId: string, agora: 
     .select({ reservaId: pagamentosTabela.reservaId })
     .from(pagamentosTabela)
     .where(and(eq(pagamentosTabela.organizacaoId, organizacaoId), sql`${pagamentosTabela.avisos} @> '["contestacao_ambigua"]'::jsonb`));
-  const daAmbigua: Alerta[] = ambiguas.length
-    ? [{ nivel: "atencao", texto: textoDaAmbiguaNoInicio(ambiguas.length), link: ambiguas.length === 1 && ambiguas[0].reservaId ? `/painel/reservas/${ambiguas[0].reservaId}` : `${LINK_PAGAMENTOS_SITE}?atencao=1` }]
-    : [];
+  const semBusca = await db
+    .select({ reservaId: pagamentosTabela.reservaId })
+    .from(pagamentosTabela)
+    .where(and(eq(pagamentosTabela.organizacaoId, organizacaoId), sql`${pagamentosTabela.avisos} @> '["contestacao_busca_sem_acesso"]'::jsonb`));
+  const doPagamento = (xs: readonly { reservaId: string | null }[]) => (xs.length === 1 && xs[0].reservaId ? `/painel/reservas/${xs[0].reservaId}` : `${LINK_PAGAMENTOS_SITE}?atencao=1`);
+  const daAmbigua: Alerta[] = [
+    ...(ambiguas.length ? [{ nivel: "atencao" as const, texto: textoDaAmbiguaNoInicio(ambiguas.length), link: doPagamento(ambiguas) }] : []),
+    ...(semBusca.length ? [{ nivel: "atencao" as const, texto: textoDaBuscaSemAcessoNoInicio(semBusca.length), link: doPagamento(semBusca) }] : []),
+  ];
   const linhas = await db
     .select({
       l: contestacoesPagamento,

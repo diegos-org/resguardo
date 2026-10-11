@@ -109,6 +109,7 @@ export const AVISOS_DE_CONTESTACAO = [
   "contestacao_resultado_mudou",
   "contestacao_leitura_conflitante",
   "contestacao_ambigua",
+  "contestacao_busca_sem_acesso",
   "contestacao_possivel_duplicata",
   "contestacao_caso_de_outro_pagamento",
   "contestacao_sem_leitura",
@@ -118,6 +119,11 @@ export const AVISOS_DE_CONTESTACAO = [
 ] as const;
 export type AvisoDeContestacao = (typeof AVISOS_DE_CONTESTACAO)[number];
 export const avisoDeContestacao = (c: string): c is AvisoDeContestacao => (AVISOS_DE_CONTESTACAO as readonly string[]).includes(c);
+/**
+ * Os avisos de contestação que moram só no pagamento (nunca numa linha): a leitura que não se liga a nenhuma disputa com
+ * segurança (`contestacao_ambigua`) e a busca tardia que o Mercado Pago recusou com 403 (`contestacao_busca_sem_acesso`).
+ */
+export const AVISOS_DE_CONTESTACAO_DO_PAGAMENTO: readonly AvisoDeContestacao[] = ["contestacao_ambigua", "contestacao_busca_sem_acesso"];
 
 /** Origem dos lançamentos de resultado da disputa (proprietário e SCL). Sem tipo novo no `pgEnum` de lançamentos. */
 export const ORIGEM_LANCAMENTO_CONTESTACAO = "contestacao_pagamento";

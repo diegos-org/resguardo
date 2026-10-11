@@ -160,6 +160,8 @@ const TEXTOS_AVISOS_DE_CONTESTACAO = {
     "As leituras do Mercado Pago não batem sobre o fim desta disputa (uma parece a favor da SCL, outra contra): nada mudou aqui. Confira no painel do Mercado Pago e confirme o resultado.",
   contestacao_ambigua:
     "O Mercado Pago mostra uma disputa que o sistema não consegue ligar ao quadro com segurança (por exemplo, uma disputa já encerrada que o sistema não conhecia): nada foi criado. Confira no painel do Mercado Pago, registre-a pelo quadro do pagamento e confirme o resultado.",
+  contestacao_busca_sem_acesso:
+    'O Mercado Pago não deixa esta conta procurar as disputas deste pagamento (Chargebacks): uma disputa aberta depois dos 85 dias só aparece no painel do Mercado Pago. Confira por lá; o aviso sai quando a busca semanal (ou o "Conferir agora") voltar a responder.',
   contestacao_possivel_duplicata: 'Esta disputa pode ser a mesma de outra do quadro: ela não segura nada até a equipe usar "Confirmar que é outra disputa" (ou encerrá-la sem efeito).',
   contestacao_caso_de_outro_pagamento: "Este caso é de outro pagamento no Mercado Pago: nada dele foi usado.",
   contestacao_sem_leitura: "O Mercado Pago não deixa esta conta ler as disputas (Chargebacks): acompanhe esta disputa pelo painel do Mercado Pago.",

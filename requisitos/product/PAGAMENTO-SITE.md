@@ -1970,10 +1970,12 @@ e se pelo bruto ou pelo líquido, está a conferir: item 64) e a decisão pode l
 5. **Rotina** (`conferirContestacoes`, em `rotinaDoSite` **depois** de `expirarHoldsVencidos`, para um Mercado Pago lento
    nunca atrasar o vencimento das datas seguradas; nas prévias, pelo "Conferir agora", depois de `conferirPendentes`).
    - Orçamento de 60 s por volta e 8 s por chamada; no máximo 50 leituras por volta
-     (`LEITURAS_DE_CONTESTACAO_POR_VOLTA`), em ordem de `proxima_leitura_em`.
+     (`LEITURAS_DE_CONTESTACAO_POR_VOLTA`), em ordem de `proxima_leitura_em`. Desde a revisão do Codex de 11/10, o
+     orçamento é conferido também antes de cada chamada dentro de um pagamento (abaixo, "Revisão do Codex").
    - Cada contestação `aberta` ou `a_confirmar` é relida uma vez por dia (`RELER_CONTESTACAO_A_CADA_MS`):
      - pela order, enquanto ela está nos 85 dias;
-     - pela Chargebacks API, pelo id do caso (ou pela busca pelo id do pagamento, sem o caso);
+     - pela Chargebacks API, pelo id do caso (ou pela busca pelo id do pagamento, sem o caso; desde a revisão do Codex de
+       11/10, a busca roda sempre que alguma disputa do pagamento não tem o caso, mesmo com outra com caso ao lado);
      - depois dos 85 dias, também pela Payments API pelo número.
    - **A fila anda também na falha:** `proxima_leitura_em` avança com espera crescente (1, 2, 4 dias, até 7) e
      `falhas_leitura` conta; as mesmas 50 nunca ocupam todas as voltas.
@@ -1989,7 +1991,9 @@ e se pelo bruto ou pelo líquido, está a conferir: item 64) e a decisão pode l
      com teto de 540 dias da aprovação (`JANELA_CONTESTACAO_TARDIA`): nas bandeiras, o prazo de "serviço não prestado"
      conta do dia previsto do serviço (itens 66 e 71). Uma vez por semana por pagamento, pela coluna
      `pagamentos.contestacoes_buscadas_em`, reservada por `UPDATE … RETURNING` antes da chamada (como a leitura reservada
-     do M8.2a). Sem o id, nada (o quadro diz isso).
+     do M8.2a). Sem o id, nada (o quadro diz isso). O 403 gasta a vez e, desde a revisão do Codex de 11/10, liga o aviso
+     `contestacao_busca_sem_acesso` no pagamento (contado no Início), que sai na primeira busca tardia que responder (a da
+     semana seguinte, ou a do "Conferir agora").
    - **"Conferir agora" com `pagamentoId`** (o quadro de uma reserva): só as contestações e a busca daquele pagamento.
    - O comentário de `rotina.ts` ("Contestação depois disso é do M8.2e") e o de `RETENCAO_ORDERS_DIAS` passam a apontar
      para cá.
@@ -2110,7 +2114,9 @@ compartilhado. Sem tipo novo no `pgEnum` de lançamentos.
   `contestacao_ganha_sem_recebimento`, `contestacao_resultado_mudou`, `contestacao_leitura_conflitante`,
   `contestacao_ambigua`, `contestacao_possivel_duplicata`, `contestacao_caso_de_outro_pagamento`,
   `contestacao_sem_leitura`, `contestacao_sem_fonte`, `contestacao_fora_do_prazo` e `contestacao_prazo_desconhecido`
-  ("a divisão da reserva mudou depois da decisão" é calculado na leitura, nunca gravado: abaixo);
+  ("a divisão da reserva mudou depois da decisão" é calculado na leitura, nunca gravado: abaixo); desde a revisão do Codex
+  de 11/10, também `contestacao_busca_sem_acesso` (o 403 da busca tardia), que mora só no pagamento, como a
+  `contestacao_ambigua` (`AVISOS_DE_CONTESTACAO_DO_PAGAMENTO`);
 - o desfecho `contestacao` (só no pagamento sem reserva, abaixo);
 - a origem de lançamento `contestacao_pagamento` e o prefixo das chaves `mercadopago:<pagamento>:contestacao:<id>:`;
 - a origem de devolução não muda; a confirmação de uma devolução ganha o valor `contestacao` em `confirmada_por`;
@@ -3265,6 +3271,31 @@ desenho)* só fazem o código cumprir o que já estava escrito acima.
   ao lado não a tornam ambígua). No MED e na reclamação, só a leitura do caso deles conta como fonte útil (o
   `contestacao_sem_fonte` deles não sai por causa da Payments API). *Motivo:* o desenho pede a releitura de cada disputa
   no cartão pela Payments API depois dos 85 dias.
+- **A busca pelo número do pagamento com uma disputa sem caso ao lado de outra com caso** *(segue o desenho, "De onde vem
+  cada fato", item 2)*. *Antes:* a rotina só fazia a busca da Chargebacks API pelo número do pagamento quando **nenhuma**
+  disputa dele tinha número de caso; um MED ou uma reclamação registrados sem o número, ao lado de uma contestação no
+  cartão com caso, nunca eram procurados. E a resposta útil do caso de uma disputa contava como fonte para todas as
+  disputas no cartão do pagamento (o `contestacao_sem_fonte` de uma contestação sem caso saía sem nada tê-la lido).
+  *Agora:* a busca roda sempre que alguma disputa a reler não tem um número de caso legível (os casos já lidos pelo número
+  não entram de novo), e a fonte útil é olhada disputa a disputa: só a que recebeu alguma leitura na volta (casada pelo caso,
+  ou por ser a única não final do tipo) perde o `contestacao_sem_fonte`. O casamento continua conservador: com duas
+  disputas não finais, o caso novo achado pela busca não se liga a nenhuma e vira a `contestacao_ambigua` (a equipe confere
+  no painel do Mercado Pago e registra pelo quadro). *Motivo:* sem isso, a disputa sem caso ficava sem fonte e sem aviso.
+- **O orçamento da volta dentro de um pagamento** *(segue o desenho, "Rotina", orçamento de 60 s)*. *Antes:* o orçamento
+  era conferido só antes de cada pagamento; um pagamento com muitas disputas chamava a Chargebacks API caso a caso até o
+  fim (8 s cada), passando do minuto. *Agora:* ele é conferido também antes de cada chamada da Chargebacks API e da Payments
+  API. Esgotado no meio de um pagamento, andam na fila só as disputas cujo caso já respondeu (sem ligar o
+  `contestacao_sem_fonte`, porque as fontes que faltaram não foram chamadas); as outras continuam na vez e são as primeiras
+  da próxima volta, e a volta para ali. *Motivo:* a rotina tem de caber no tempo da função.
+- **O 403 na busca tardia** *(segue o desenho, "Busca tardia")*. *Antes:* a Chargebacks API recusando a busca (403) gastava
+  a vez da semana sem nenhum aviso: a disputa aberta tarde ficava invisível. *Agora:* o 403 continua gastando a vez (a
+  próxima busca é na semana seguinte, ou no "Conferir agora"), mas liga, sob a trava, o aviso do pagamento
+  `contestacao_busca_sem_acesso` (mora só no pagamento, como a `contestacao_ambigua`), com a contagem no Início ("O
+  Mercado Pago não deixa esta conta procurar disputas…"). A primeira busca tardia que responder (a da semana seguinte, ou a
+  do "Conferir agora") desliga o aviso. Junto, os avisos
+  do pagamento que a leitura da disputa liga (`ao_vivo` e este) passam pela gravação única dos avisos
+  (`sincronizarAvisosDaDisputa`, `ligar`/`desligar`), em vez de mudar a lista na memória antes dela (o que podia pular a
+  escrita num pagamento sem disputa em curso). *Motivo:* "avisar em vez de supor": a falta de permissão tem de aparecer.
 
 ### Mudanças nas outras seções deste arquivo (no mesmo PR)
 

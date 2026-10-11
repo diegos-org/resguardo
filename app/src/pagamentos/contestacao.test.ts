@@ -9,6 +9,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { lerEmpresa, salvarEmpresa } from "@/configuracoes/empresa";
 import { contestacoesPagamento, cotacoes, eventosContestacao, pagamentos } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
+import { avisosDeContestacao } from "@/painel/dashboard";
 import type { Db } from "@/db/types";
 import { CorreioMemoria } from "@/email/correio";
 import { conferirTentativa } from "./conferencia";
@@ -110,6 +111,42 @@ describe("rotina das disputas (item 20)", () => {
     expect((await db.select({ avisos: pagamentos.avisos }).from(pagamentos).where(eq(pagamentos.id, x.pagamentoId)))[0].avisos).not.toContain("contestacao_ambigua");
   });
 
+  it("a busca pelo número do pagamento roda também quando só uma das disputas tem caso: a disputa achada que não casa com segurança vira a ambígua", async () => {
+    const x = await contestado();
+    expect(await registrarContestacaoDaEquipe(db, c.org, x.pagamentoId, entrada({ tipo: "reclamacao" }), equipe, null, minutos(20))).toMatchObject({ ok: true });
+    await envelhecer(c, x.pagamentoId, 90);
+    const numero = (await c.tentativa(x.pagamentoId)).idPagamentoProvedor!;
+    // No Mercado Pago, um caso que o quadro não conhece (a reclamação foi registrada sem o número); o do cartão encerrou.
+    c.provedor.contestarTarde(numero, { valor: 20_000 });
+    c.provedor.resolverContestacao(x.idCaso, { estado: "settled" });
+    await conferirContestacoes(db, c.org, c.provedor, dias(2));
+    // O caso conhecido pelo número e, pela reclamação sem número, a busca do pagamento (o caso já lido não entra de novo).
+    expect(chamadas("consultarContestacao").map((ch) => ch.id)).toEqual([x.idCaso]);
+    expect(chamadas("buscarContestacoes").map((ch) => ch.id)).toEqual([numero]);
+    const [cartao, reclamacao] = await linhas(x.pagamentoId);
+    expect(cartao.avisos).not.toContain("contestacao_sem_fonte");
+    // Duas disputas não finais: o caso novo não se liga a nenhuma com segurança, e a equipe fica sabendo (nada é criado).
+    expect(reclamacao).toMatchObject({ tipo: "reclamacao", situacao: "aberta", idCaso: null });
+    expect(reclamacao.avisos).toContain("contestacao_sem_fonte");
+    expect(await linhas(x.pagamentoId)).toHaveLength(2);
+    expect((await c.tentativa(x.pagamentoId)).avisos).toContain("contestacao_ambigua");
+  });
+
+  it("depois dos 85 dias, a resposta útil do caso de uma disputa não apaga o sem fonte de outra do mesmo pagamento sem caso", async () => {
+    const x = await contestado();
+    // Uma segunda contestação no cartão, registrada pela equipe sem o número do caso (possível duplicata até a equipe confirmar).
+    expect(await registrarContestacaoDaEquipe(db, c.org, x.pagamentoId, entrada(), equipe, null, minutos(20))).toMatchObject({ ok: true });
+    await envelhecer(c, x.pagamentoId, 90);
+    c.provedor.resolverContestacao(x.idCaso, { estado: "settled", cobertura: true });
+    await conferirContestacoes(db, c.org, c.provedor, dias(2));
+    const [comCaso, semCaso] = await linhas(x.pagamentoId);
+    expect(comCaso).toMatchObject({ idCaso: x.idCaso, situacao: "a_confirmar", coberturaAplicada: true });
+    expect(comCaso.avisos).not.toContain("contestacao_sem_fonte");
+    // Nada leu a outra (a busca só achou o caso já conhecido; a situação do pagamento não diz de qual das duas fala).
+    expect(semCaso).toMatchObject({ tipo: "chargeback", situacao: "aberta", idCaso: null });
+    expect(semCaso.avisos).toContain("contestacao_sem_fonte");
+  });
+
   it("dia 85 sem fonte: sem caso nem número do pagamento, o aviso contestacao_sem_fonte (em vez de esperar os 240 dias)", async () => {
     const x = await pagarEConfirmar(c);
     expect(await registrarContestacaoDaEquipe(db, c.org, x.pagamentoId, entrada({ tipo: "med" }), equipe, null, minutos(20))).toMatchObject({ ok: true });
@@ -141,14 +178,23 @@ describe("rotina das disputas (item 20)", () => {
       Array.from({ length: 52 }, (_, i) => ({ ...(base as Omit<typeof l0, "id">), idCaso: String(8_100_000_000 + i), idContestacao: null, duplicataPossivel: true, retidoLancamentoId: null, proximaLeituraEm: minutos(i), avisos: [] })),
     );
     expect(await conferirContestacoes(db, c.org, c.provedor, dias(2))).toMatchObject({ lidas: LEITURAS_DE_CONTESTACAO_POR_VOLTA });
-    // O orçamento: o relógio passa do minuto antes do segundo pagamento com disputa; ele fica para a próxima volta.
+    // O orçamento é conferido antes de cada chamada, também entre os casos do mesmo pagamento: o relógio anda 12 s por caso.
     const y = await contestado({ entrada: "2026-11-02", saida: "2026-11-05", email: "outro@example.com" });
-    // O relógio: o início da volta, o primeiro pagamento (dentro do minuto) e, no segundo, 70 s depois.
-    const tempos = [0, 0, 70_000];
-    const r = await conferirContestacoes(db, c.org, c.provedor, dias(4), { relogio: () => tempos.shift() ?? 70_000 });
-    expect(r.lidas).toBeGreaterThan(0);
+    let relogio = 0;
+    const original = c.provedor.consultarContestacao.bind(c.provedor);
+    c.provedor.consultarContestacao = async (id: string) => {
+      relogio += 12_000;
+      return original(id);
+    };
+    const antes = chamadas("consultarContestacao").length;
+    const r = await conferirContestacoes(db, c.org, c.provedor, dias(4), { relogio: () => relogio });
+    c.provedor.consultarContestacao = original;
+    // Cinco casos (aos 0, 12, 24, 36 e 48 s); antes do sexto o minuto acabou: a volta para no meio do primeiro pagamento.
+    expect(chamadas("consultarContestacao").length - antes).toBe(5);
+    expect(r.lidas).toBe(5);
+    expect((await linhas(x.pagamentoId)).filter((l) => l.consultadaEm?.getTime() === dias(4).getTime())).toHaveLength(5);
     expect((await linhas(y.pagamentoId))[0].consultadaEm).toEqual(minutos(10));
-    // A volta seguinte (sem o relógio estourado) chega nele.
+    // A volta seguinte (sem o relógio estourado) segue de onde parou e chega no segundo pagamento.
     await conferirContestacoes(db, c.org, c.provedor, dias(4));
     expect((await linhas(y.pagamentoId))[0].consultadaEm).toEqual(dias(4));
   });
@@ -177,6 +223,23 @@ describe("rotina das disputas (item 20)", () => {
     await envelhecer(c, z.pagamentoId, 100);
     expect(await buscarContestacoesTardias(db, c.org, c.provedor, dias(9))).toMatchObject({ buscados: 1 });
     expect(chamadas("buscarContestacoes").at(-1)!.id).toBe((await c.tentativa(z.pagamentoId)).idPagamentoProvedor);
+  });
+
+  it("403 na busca tardia: a vez fica gasta, mas o pagamento ganha o aviso (no Início) até a busca voltar a responder", async () => {
+    const x = await pagarEConfirmar(c, { forma: "cartao" });
+    await envelhecer(c, x.pagamentoId, 100);
+    c.provedor.respostaChargebacks.buscarContestacoes = "403";
+    expect(await buscarContestacoesTardias(db, c.org, c.provedor, minutos(30))).toMatchObject({ buscados: 1, novas: 0 });
+    const p = await c.tentativa(x.pagamentoId);
+    expect(p.contestacoesBuscadasEm).toEqual(minutos(30));
+    expect(p.avisos).toContain("contestacao_busca_sem_acesso");
+    const alerta = (await avisosDeContestacao(db, c.org, minutos(30))).find((a) => a.texto.includes("procurar disputas"));
+    expect(alerta).toMatchObject({ nivel: "atencao", link: `/painel/reservas/${p.reservaId}` });
+    // A próxima busca (uma semana depois) responde: o aviso sai.
+    c.provedor.respostaChargebacks.buscarContestacoes = null;
+    expect(await buscarContestacoesTardias(db, c.org, c.provedor, dias(8))).toMatchObject({ buscados: 1 });
+    expect((await c.tentativa(x.pagamentoId)).avisos).not.toContain("contestacao_busca_sem_acesso");
+    expect((await avisosDeContestacao(db, c.org, dias(8))).some((a) => a.texto.includes("procurar disputas"))).toBe(false);
   });
 
   it("roda depois dos holds (o vencimento não espera o Mercado Pago); \"Conferir agora\" de um pagamento só lê aquele", async () => {
